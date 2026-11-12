@@ -237,6 +237,14 @@ export class ModelImportController {
       this.clear();
       return answer.taskId;
     }
+    if (answer.kind === 'full') {
+      // A Space being rebuilt has said so itself; the model can be confirmed again.
+      if (answer.reason === 'resyncing') this.publish({ phase: 'ready' });
+      else this.publish({ phase: 'failed', error: new Error('The Space is full'), uploadFailure: {
+        key: answer.reason === 'over_ceiling' ? 'spaces.sizeCap.over' : 'spaces.sizeCap.add', params: {}, retryable: true,
+      } });
+      return null;
+    }
     const error = answer.kind === 'refused' ? new UploadFailedError(answer.reason) : new Error('Upload did not start');
     this.publish({ phase: 'failed', error, uploadFailure: modelUploadFailure(error, prepared.file.name) });
     return null;

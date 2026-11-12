@@ -61,10 +61,19 @@ describe("worker concurrency", () => {
   });
 });
 
+// inner#1617: how often the sweep looks for unsettled charges, how old one must
+// be before the sweep takes it from the settle that follows its delivery, and
+// how many it takes per round.
+describe("credit charge sweep", () => {
+  it("reads the sweep's interval, minimum age and batch from config/worker.yaml", () => {
+    expect(getWorkerConfig().credit_charge_sweep).toEqual({ interval_ms: 60_000, min_age_ms: 30_000, batch_size: 100 });
+  });
+});
+
 // A misspelt queue name would leave that queue at the default without a word.
 describe("assertKnownQueues", () => {
   it("accepts per-queue figures that name the queues the worker runs", () => {
-    expect(() => assertKnownQueues(["tasks", "upload-finish", "url-ingest", "media-read", "audio-peaks", "mail", "long-media-dispatch"])).not.toThrow();
+    expect(() => assertKnownQueues(["tasks", "upload-finish", "url-ingest", "media-read", "audio-peaks", "mail", "long-media-dispatch", "credit-charge-sweep"])).not.toThrow();
   });
 
   it("refuses a per-queue figure for a queue the worker does not run", () => {

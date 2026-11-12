@@ -18,8 +18,9 @@
  * param without a default at a sample value (a list its fewest urls, items two items, sent without a prompt
  * when they carry the shots, a text "sample text"). Every run is resolved as the application resolves
  * it (`resolvedParams`: defaults, forced values, conditions), a value outside its param's own range is
- * sent with the condition of the range that holds it, and a run the resolution changes the value of
- * is not sent. A covered value the default run's variants miss
+ * sent with the condition of the range that holds it, a param sent only under a condition (`when`) is
+ * sent with that condition, a run its model takes no prompt for (`prompt_when`) sends none, and a run
+ * the resolution changes the value of is not sent. A covered value the default run's variants miss
  * is tried on each run taken, and listed in `untaken` when none takes it. Each run is sent through
  * the media runner against a loopback stand-in for the binding's upstream (`runnerCalls`), and its
  * `body` is what the runner sent for the run's own call: the voice clone for a binding whose own
@@ -32,14 +33,14 @@
 import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
-import type { CatalogBound } from "../packages/provider/src/config/__tests__/shipped.js";
+import type { CatalogBound, CatalogGate } from "../packages/provider/src/config/__tests__/shipped.js";
 import type { MediaBinding } from "../packages/provider/src/config/schema.js";
 import type { SampleRun } from "../packages/provider/src/media/__tests__/reseller-bodies.js";
 import { isPresent } from "../packages/provider/src/pricing/estimate.js";
 
 // The test helpers read `__dirname`, which only a CommonJS load of them has.
 const load = createRequire(import.meta.url);
-const { catalog, coveredValues, resolvedParams, shipped } = load("../packages/provider/src/config/__tests__/shipped.ts") as typeof import("../packages/provider/src/config/__tests__/shipped.js");
+const { catalog, coveredValues, gateHolds, resolvedParams, shipped } = load("../packages/provider/src/config/__tests__/shipped.ts") as typeof import("../packages/provider/src/config/__tests__/shipped.js");
 const { sampledCalls, takes } = load("../packages/provider/src/media/__tests__/reseller-bodies.ts") as typeof import("../packages/provider/src/media/__tests__/reseller-bodies.js");
 
 /** One param of our catalog, as far as samples read it. */
@@ -49,6 +50,8 @@ interface CatalogParam {
   max?: number;
   /** Ranges that replace `min` and `max` while their condition holds. */
   bounds?: CatalogBound[];
+  /** Sent only while this holds. */
+  when?: CatalogGate;
   default?: unknown;
   type?: string;
   fields?: Record<string, { values?: (string | number | boolean)[] }>;
@@ -109,12 +112,15 @@ function sampleOf(name: string, param: CatalogParam): unknown {
 /**
  * The prompt the samples send: a sentence, and one reference to each param the binding has a mention template for
  * that the run carries.
+ * @param model - The model.
  * @param binding - The binding.
  * @param params - The run's params.
- * @returns The prompt, empty for a binding that takes none.
+ * @returns The prompt, empty for a binding that takes none or a run its model takes none for (`prompt_when`).
  */
-function promptOf(binding: MediaBinding, params: Record<string, unknown>): string {
+function promptOf(model: string, binding: MediaBinding, params: Record<string, unknown>): string {
   if (binding.prompt_field === undefined) return "";
+  const when = entries.get(model)?.prompt_when as CatalogGate | undefined;
+  if (when !== undefined && !gateHolds(when, params)) return "";
   const carried = Object.keys(binding.mentions ?? {}).filter((param) => isPresent(params[param]));
   return [SAMPLE_PROMPT, ...carried.map((param) => `<<ref:${param}:1>>`)].join(" ");
 }
@@ -144,7 +150,16 @@ const sourceGroups = new Map([...entries].map(([name, m]) => [name, m.source_gro
 function reaching(value: unknown, param: CatalogParam | undefined): Record<string, unknown> {
   if (typeof value !== "number" || param?.min === undefined || param.max === undefined || (value >= param.min && value <= param.max)) return {};
   const bound = param.bounds?.find((b) => value >= (b.min ?? param.min!) && value <= (b.max ?? param.max!));
-  return bound === undefined ? {} : { ...(bound.when.flag_on === undefined ? {} : { [bound.when.flag_on]: true }), ...bound.when.equals };
+  return bound === undefined ? {} : satisfying(bound.when);
+}
+
+/**
+ * The params that make a condition hold: its switch on and its params at their values.
+ * @param when - The condition, if any.
+ * @returns The params to set.
+ */
+function satisfying(when: CatalogGate | undefined): Record<string, unknown> {
+  return when === undefined ? {} : { ...(when.flag_on === undefined ? {} : { [when.flag_on]: true }), ...when.equals };
 }
 
 /**
@@ -160,9 +175,9 @@ function reaching(value: unknown, param: CatalogParam | undefined): Record<strin
  */
 function withParam(model: string, binding: MediaBinding, base: Run, name: string, value: unknown, param: CatalogParam | undefined): Run | undefined {
   const set = shotsAddingUp(value, param, base.params);
-  const params = resolvedParams(entries.get(model)!, { ...base.params, ...reaching(value, param), [name]: set });
+  const params = resolvedParams(entries.get(model)!, { ...base.params, ...reaching(value, param), ...satisfying(param?.when), [name]: set });
   if (JSON.stringify(params[name]) !== JSON.stringify(set)) return undefined;
-  return { params, prompt: carriesShots(param) ? "" : promptOf(binding, params) };
+  return { params, prompt: carriesShots(param) ? "" : promptOf(model, binding, params) };
 }
 
 /**
@@ -208,7 +223,7 @@ for (const [model, { upstreams: bindings }] of Object.entries(config.media.model
       required[seeded] = sampleOf(seeded, params[seeded]);
     }
     const firstParams = resolvedParams(entries.get(model)!, { ...defaults, ...required });
-    const first: Run = { params: firstParams, prompt: promptOf(binding, firstParams) };
+    const first: Run = { params: firstParams, prompt: promptOf(model, binding, firstParams) };
     const candidates: (Run | undefined)[] = [first];
     for (const name of bound) {
       const values = coveredValues(name, params[name], binding);

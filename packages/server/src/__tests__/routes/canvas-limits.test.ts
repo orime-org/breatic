@@ -25,6 +25,8 @@ vi.mock("@breatic/core", async (importOriginal) => {
       waveform_max_bytes: 200_000_000,
       waveform_peaks_retry_ms: 5000,
       waveform_peaks_retry_max_ms: 600_000,
+      // Not the shipped 20, so the case proves the route reads the accessor.
+      join_max_clips: 17,
     })),
   };
 });
@@ -78,6 +80,7 @@ describe("GET /canvas/limits", () => {
         waveformMaxBytes: number;
         waveformPeaksRetryMs: number;
         waveformPeaksRetryMaxMs: number;
+        joinMaxClips: number;
       };
     };
     expect(body.data.referencePoolCap).toBe(42);
@@ -93,5 +96,7 @@ describe("GET /canvas/limits", () => {
     // An open band reads peaks not yet written this often, for this long.
     expect(body.data.waveformPeaksRetryMs).toBe(5000);
     expect(body.data.waveformPeaksRetryMaxMs).toBe(600_000);
+    // inner#1825 §6.3: the join panel's add tile and slot pick stop at this many clips.
+    expect(body.data.joinMaxClips).toBe(17);
   });
 });

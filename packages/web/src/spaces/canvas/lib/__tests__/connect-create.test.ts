@@ -16,10 +16,11 @@ import {
 // dragged source's kind (connection rules §9.1) — never a row that would be
 // rejected the moment the edge is written.
 describe('connectableCreatableTypes — creatable ∩ rule-compatible targets', () => {
-  it('image source can feed text / image / video', () => {
+  it('image source can feed all four creatable modalities', () => {
     expect(connectableCreatableTypes('image')).toEqual([
       'text',
       'image',
+      'audio',
       'video',
     ]);
   });
@@ -37,8 +38,8 @@ describe('connectableCreatableTypes — creatable ∩ rule-compatible targets', 
     expect(connectableCreatableTypes('audio')).toEqual(['text', 'audio', 'video']);
   });
 
-  it('video source can feed text / video only', () => {
-    expect(connectableCreatableTypes('video')).toEqual(['text', 'video']);
+  it('video source can feed text / audio / video', () => {
+    expect(connectableCreatableTypes('video')).toEqual(['text', 'audio', 'video']);
   });
 
   it('a source no creatable input accepts (3d / unknown) yields no rows', () => {
@@ -188,7 +189,7 @@ describe('resolveConnectCreateIntent — when a blank release opens the menu', (
     expect(resolveConnectCreateIntent(base)).toEqual({
       sourceId: 'a',
       sourceKind: 'image',
-      types: ['text', 'image', 'video'],
+      types: ['text', 'image', 'audio', 'video'],
     });
   });
 

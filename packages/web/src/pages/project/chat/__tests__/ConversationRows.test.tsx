@@ -54,6 +54,7 @@ function renderSheet(over: Partial<React.ComponentProps<typeof ConversationHisto
       onReachEnd={vi.fn()}
       nextPageFailed={false}
       loadingMore={false}
+      running={new Set<string>()}
       {...over}
     />,
   );
@@ -79,6 +80,7 @@ function renderSheetFor(props: Partial<React.ComponentProps<typeof ConversationH
     onReachEnd: vi.fn(),
     nextPageFailed: false,
     loadingMore: false,
+    running: new Set<string>() as ReadonlySet<string>,
   };
   const result = render(<ConversationHistorySheet {...base} {...props} />);
   return {

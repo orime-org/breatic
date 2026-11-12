@@ -8,21 +8,26 @@
  * fills pass the gate Generate holds them to.
  */
 import {
+  completeEntries,
   evaluateExecute,
   extractPromptText,
   PANEL_EDITOR_PARAM,
   promptPlainText,
+  promptTaken,
   promptTextOf,
   proposalMarkSegments,
   referencePool,
+  standInOf,
   storyboardSend,
   type CanvasProposal,
   type ExecuteVerdict,
+  type ModelEntry,
   type ProposalNode,
 } from "@breatic/shared";
 
 import type { ProposalVerdict } from "@domain/agent/tools/proposal-input.js";
-import { fixOn, nodeLabel, refAsSent, refuse, type NodeLabel, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
+import { onDialogueSide, proposalDialogueText, proposalModelEntry } from "@domain/agent/tools/proposal-dialogue.js";
+import { fixOn, gateWords, nodeLabel, refAsSent, refuse, type NodeLabel, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
 import { checkParams } from "@domain/agent/tools/proposal-params-check.js";
 import { quoted } from "@domain/agent/tools/template-expansion.js";
 import {
@@ -75,6 +80,29 @@ function resolveModel(node: ProposalNode, index: number): { chosen: ModelInfo } 
 }
 
 /**
+ * The catalog entry of the model a generation names.
+ * @param node - The generation.
+ * @returns The entry, or undefined for a text node or a model the catalog lacks.
+ * @throws {never} Never.
+ */
+function entryOf(node: ProposalNode): ModelEntry | undefined {
+  return node.type === "text" ? undefined : getModelCatalog()[node.type]?.find((m) => m.name === node.model);
+}
+
+/**
+ * Whether the run a generation describes takes its prompt, asked the way the
+ * panel and the server ask it: Mureka V9.5 Song composing from a melody takes none.
+ * @param node - The generation.
+ * @param chosen - Its model.
+ * @returns True when the panel draws the prompt box for this run.
+ * @throws {never} Never.
+ */
+export function takesPromptHere(node: ProposalNode, chosen: ModelInfo): boolean {
+  const entry = entryOf(node);
+  return entry === undefined ? chosen.takesPrompt : promptTaken(entry, node.mode, node.params ?? {});
+}
+
+/**
  * Whether the node's values, shots and prompt suit its model.
  * @param node - The node.
  * @param chosen - Its model.
@@ -98,11 +126,57 @@ function checkSettings(node: ProposalNode, chosen: ModelInfo, at: NodeLabel): Pr
   if (node.shots !== undefined && (node.prompt?.length ?? 0) > 0) {
     return refuse("shots-with-prompt", "With shots the main prompt is not sent; its words, refs and notes go in the shots.", fixOn(at, "leave prompt out."));
   }
+  const lines = checkLines(node, chosen, at);
+  if (!lines.ok) return lines;
   // A model drawing no box mounts no editor and forces the box empty: only a
   // note, which the user reads on the card and which is never sent, has a
   // place there. Words, a tweak and an @ all need a box.
-  if (!chosen.takesPrompt && proposalMarkSegments(node).some((segment) => segment.slot?.kind !== "note")) {
+  const written = proposalMarkSegments(node).some((segment) => segment.slot?.kind !== "note");
+  if (written && !chosen.takesPrompt) {
     return refuse("no-prompt-box", `"${chosen.name}" draws no prompt box, so words, tweak marks and refs written there reach nobody.`, fixOn(at, "keep only notes saying what the user picks in the panel."));
+  }
+  if (written && chosen.promptWhen !== undefined && !takesPromptHere(node, chosen)) {
+    return refuse("prompt-box-gated-off", `"${chosen.name}" draws its prompt box only while ${gateWords(chosen.promptWhen)}, so words, tweak marks and refs written there reach nobody.`);
+  }
+  return { ok: true };
+}
+
+/**
+ * Whether a node's dialogue lines suit its model (inner#1825 design 8.5): on
+ * the dialogue side of a model whose speakers stand in for its voice the
+ * lines are what is read, in place of the prompt, each naming one of the
+ * speakers; elsewhere a node sends no lines.
+ * @param node - The node.
+ * @param chosen - Its model.
+ * @param at - The node, as a fix names it.
+ * @returns Whether it stands, and what is wrong when it does not.
+ * @throws {never} Never.
+ */
+function checkLines(node: ProposalNode, chosen: ModelInfo, at: NodeLabel): ProposalVerdict {
+  const entry = proposalModelEntry(node);
+  const standIn = standInOf(entry);
+  if (standIn === null || entry === undefined) {
+    return node.lines === undefined
+      ? { ok: true }
+      : refuse("lines-without-stand-in", `"${chosen.name}" reads in one voice, and lines are a dialogue between named speakers.`, fixOn(at, "leave lines out."));
+  }
+  const params = node.params ?? {};
+  if (node.lines === undefined) {
+    return onDialogueSide(node)
+      ? refuse("lines-missing", `With speakers in its params "${chosen.name}" reads a dialogue, and its lines are what is read.`, fixOn(at, "give lines, one per turn, each { speaker, prompt }: speaker the number of a speaker in params counted from 1, prompt only the words said, with no name or colon in front."))
+      : { ok: true };
+  }
+  const complete = completeEntries(params[standIn.name], entry.params[standIn.name]?.fields ?? {}).length;
+  if (complete < standIn.min) {
+    return refuse("speakers-missing", `"${chosen.name}" reads a dialogue between ${String(standIn.min)} speakers, each named and voiced in params ${standIn.name}, and this proposal completes ${String(complete)} of them.`);
+  }
+  if ((node.prompt?.length ?? 0) > 0) {
+    return refuse("lines-with-prompt", "With lines the main prompt is not sent; its words, refs and notes go in the lines.", fixOn(at, "leave prompt out."));
+  }
+  const count = Array.isArray(params[standIn.name]) ? (params[standIn.name] as unknown[]).length : 0;
+  const stray = node.lines.findIndex((line) => line.speaker < 1 || line.speaker > count);
+  if (stray >= 0) {
+    return refuse("line-speaker-out-of-range", `Line ${String(stray + 1)} names speaker ${String(node.lines[stray]?.speaker)}, and "${node.name}" has ${String(count)} speakers, numbered from 1.`);
   }
   return { ok: true };
 }
@@ -141,8 +215,9 @@ function strayRefReason(
   }
   const ways = waysOrNone(named, node, chosen);
   const byRefs = count > 1 ? `${String(count)} refs` : "a ref";
-  const pool = (waysIn(chosen).get(named.type) ?? []).find((way) => way.mark === "ref");
-  if (pool === undefined || !entriesFor(chosen, named.type, holdingOf(named)).some((entry) => entry.ref)) {
+  const params = node.params ?? {};
+  const pool = (waysIn(chosen, params).get(named.type) ?? []).find((way) => way.mark === "ref");
+  if (pool === undefined || !entriesFor(chosen, named.type, holdingOf(named), params).some((entry) => entry.ref)) {
     return refuse("ref-not-pooled-no-pool", `"${named.name}" is @'d by ${byRefs} in "${node.name}", and only a node in its pool takes a ref, while "${chosen.name}" has no pool for ${aNode(named.type)}. ${ways}`, takeOut);
   }
   const held = goingWay(arriving, named.type, pool.into);
@@ -193,8 +268,10 @@ function checkWiring(proposal: CanvasProposal, node: ProposalNode, index: number
   if ("refusal" in filling) return filling;
   const arriving = [...routing.routed, ...filling.filled];
   // Over a way's room is said first: every count below would otherwise ask
-  // for a mark or note for a node that may not stay.
-  for (const [kind, list] of waysIn(chosen)) {
+  // for a mark or note for a node that may not stay. Only the places drawn for
+  // the node's settings are room.
+  const params = node.params ?? {};
+  for (const [kind, list] of waysIn(chosen, params)) {
     for (const option of list) {
       const going = goingWay(arriving, kind, option.into);
       if (going.length <= option.room) continue;
@@ -202,7 +279,7 @@ function checkWiring(proposal: CanvasProposal, node: ProposalNode, index: number
       // The rule for each kind of node going this way, and the room and
       // holders of every other way the kind has.
       const holdings = [...new Set(going.map(holdingOf))];
-      const rules = holdings.map((holding) => waysSentence(holdingSubject(kind, holding), node, entriesFor(chosen, kind, holding)));
+      const rules = holdings.map((holding) => waysSentence(holdingSubject(kind, holding), node, entriesFor(chosen, kind, holding, params)));
       const others = list.filter((way) => way !== option).map((way) => `"${way.into}" takes ${roomOf(way.room)} ${kind} node(s) and holds ${namesOrNone(goingWay(arriving, kind, way.into))}.`);
       return refuse("way-over-room", [over, ...rules, ...others].join(" "));
     }
@@ -243,7 +320,7 @@ function checkWiring(proposal: CanvasProposal, node: ProposalNode, index: number
 function refWordsFor(proposal: CanvasProposal, node: ProposalNode, pooled: readonly number[]): (at: number) => string {
   const pool = node.type === "text"
     ? {}
-    : referencePool(getModelCatalog()[node.type]?.find((m) => m.name === node.model), node.mode ?? "");
+    : referencePool(entryOf(node), node.mode ?? "");
   return (at) => {
     const target = proposal.nodes[at];
     if (!target) return "";
@@ -320,14 +397,21 @@ function checkPanelGate(proposal: CanvasProposal, node: ProposalNode, chosen: Mo
   const shots = (node.shots ?? []).map((shot) => ({ text: promptTextOf(shot.prompt, refWords), duration: shot.duration }));
   const totalParam = board?.totalParam;
   const total = totalParam === undefined ? undefined : Number(node.params?.[totalParam] ?? chosen.params[totalParam]?.default);
+  // A dialogue's words are its lines, each held to having words as the
+  // panel holds the box, and sent as the script they write out.
+  const dialogue = onDialogueSide(node);
+  const blank = dialogue ? (node.lines ?? []).findIndex((line) => extractPromptText(promptTextOf(line.prompt, refWords)).length === 0) : -1;
+  if (blank >= 0) return refuse("line-empty", `Line ${String(blank + 1)} writes nothing. Every line needs its own words.`);
   // What goes out as the prompt: the shots written into one, for a model with
   // no field for them, so its length is held to the model's cap.
-  const sent = board === undefined
-    ? promptTextOf(node.prompt ?? [], refWords)
-    : (storyboardSend(board, shots.map((shot) => ({ prompt: shot.text, duration: shot.duration }))).prompt ?? "");
+  const sent = dialogue
+    ? proposalDialogueText(node, (segments) => promptTextOf(segments, refWords))
+    : board === undefined
+      ? promptTextOf(node.prompt ?? [], refWords)
+      : (storyboardSend(board, shots.map((shot) => ({ prompt: shot.text, duration: shot.duration }))).prompt ?? "");
   // A song model's lyrics box is a second box the panel holds to the same
   // gate: the words of the nodes wired into it, a line apart.
-  const lyricsRequired = waysIn(chosen).get("text")?.some((way) => way.into === PANEL_EDITOR_PARAM) === true;
+  const lyricsRequired = waysIn(chosen, node.params ?? {}).get("text")?.some((way) => way.into === PANEL_EDITOR_PARAM) === true;
   const lyricsText = arriving
     .filter(({ entry }) => entry.way.into === PANEL_EDITOR_PARAM)
     .map(({ node: n }) => promptPlainText(n.prompt ?? []))
@@ -337,7 +421,7 @@ function checkPanelGate(proposal: CanvasProposal, node: ProposalNode, chosen: Mo
     model: chosen.name,
     nodeExists: true,
     isSubmitting: false,
-    promptRequired: chosen.takesPrompt,
+    promptRequired: takesPromptHere(node, chosen),
     ...(lyricsRequired ? { lyricsRequired, lyricsText } : {}),
     ...(chosen.maxInputChars === undefined ? {} : { maxInputChars: chosen.maxInputChars }),
     ...(node.shots !== undefined && total !== undefined
@@ -349,13 +433,12 @@ function checkPanelGate(proposal: CanvasProposal, node: ProposalNode, chosen: Mo
 
 /**
  * The labels of the tweak blanks a node's words hold, once each, from its
- * prompt and every shot.
+ * prompt, every shot and every dialogue line.
  * @param node - The node.
  * @returns The labels, in the order they first appear.
  */
-function tweakLabels(node: Pick<ProposalNode, "prompt" | "shots">): string[] {
-  const words = [...(node.prompt ?? []), ...(node.shots ?? []).flatMap((shot) => shot.prompt)];
-  return [...new Set(words.flatMap((segment) => (segment.slot?.kind === "tweak" ? [segment.slot.label] : [])))];
+function tweakLabels(node: ProposalNode): string[] {
+  return [...new Set(proposalMarkSegments(node).flatMap((segment) => (segment.slot?.kind === "tweak" ? [segment.slot.label] : [])))];
 }
 
 /** How a blank left in a generation's words is filled: the remedy every blank refusal gives. */

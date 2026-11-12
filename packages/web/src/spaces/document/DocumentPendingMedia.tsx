@@ -49,6 +49,7 @@ const STATUS_MESSAGE: Readonly<Record<Exclude<PendingStatus['kind'], 'failed' | 
   peerUploading: 'spaces.document.media.uploading',
   waitingDemoted: 'spaces.document.media.readOnlyWaiting',
   waitingRefused: 'spaces.document.media.notWrittenYet',
+  waitingFull: 'spaces.sizeCap.wait',
   notFinished: 'spaces.document.media.notFinished',
 };
 
@@ -62,6 +63,7 @@ const FAILURE_MESSAGE: Readonly<Record<PendingFailureReason, string>> = {
   tooLarge: 'spaces.document.media.failure.tooLarge',
   empty: 'spaces.document.media.failure.empty',
   unreachable: 'spaces.document.media.failure.unreachable',
+  spaceFull: 'spaces.sizeCap.reason',
 };
 
 /**

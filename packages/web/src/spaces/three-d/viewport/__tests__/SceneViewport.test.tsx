@@ -30,6 +30,7 @@ function props(): SceneViewportProps {
     objects: [], selectedIds: [], mode: 'translate', readOnly: false,
     view: { position: [7, 5, 8], target: [0, 1, 0] }, focusRevision: 0, cancelRevision: 0,
     remotePeers: [], scaleSensitivity: 0.006, importLimits: IMPORT_LIMITS,
+    jointMode: false, selectedJoint: null, onJointSelect: vi.fn(), onSkeletonState: vi.fn(),
     onSelect: vi.fn(), onGestureStart: vi.fn(() => true), onGestureChange: vi.fn(), onGestureEnd: vi.fn(), onViewChange: vi.fn(), onError: vi.fn(),
     resolveAsset: vi.fn(),
   };
@@ -52,6 +53,7 @@ describe('viewport effect ownership under React Activity (inner#1689)', () => {
       { view: { position: [1, 2, 3] as [number, number, number], target: [0, 0, 0] as [number, number, number] } },
       { selectedIds: ['selected'] }, { objects: [...initial.objects] }, { remotePeers: [...initial.remotePeers] },
       { readOnly: true }, { mode: 'rotate' as const }, { scaleSensitivity: 0.02 },
+      { jointMode: true }, { selectedJoint: 'h:leftUpperArm' },
     ]) {
       runtime.update.mockClear();
       const next = { ...initial, ...change };

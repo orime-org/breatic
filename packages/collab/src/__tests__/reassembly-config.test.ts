@@ -57,6 +57,16 @@ async function load(keys: Record<string, number | null>): Promise<ConfigModule> 
   return withYaml((text) => Object.entries(keys).reduce((t, [k, v]) => setKey(t, k, v), text));
 }
 
+/**
+ * The size-line keys a small document cap needs to load: the full margin and
+ * the warning line must both sit below the cap (inner#1790).
+ * @param cap - The document cap.
+ * @returns Keys to set alongside it.
+ */
+function linesFor(cap: number): Record<string, number> {
+  return cap > 0 && cap < 1_000_000 ? { document_size_full_margin_bytes: 1, document_size_warn_ratio: 0.4 } : {};
+}
+
 describe("reassembly config", () => {
   it("C01 defaults the budget to 64 MiB and the idle timeout to 30 s", async () => {
     const mod = await load({ reassembly_budget_bytes: null, reassembly_idle_timeout_ms: null });
@@ -89,10 +99,10 @@ describe("reassembly config", () => {
     }
   });
 
-  it("C04 with a document cap of 1 the budget floor is twice 128 KiB", async () => {
-    const low = await load({ max_document_bytes: 1, reassembly_budget_bytes: 262_143 });
+  it("C04 with a document cap of 2 the budget floor is twice 128 KiB", async () => {
+    const low = await load({ max_document_bytes: 2, reassembly_budget_bytes: 262_143, ...linesFor(2) });
     expect(() => low.getCollabConfig()).toThrow(/reassembly_budget_bytes/);
-    const ok = await load({ max_document_bytes: 1, reassembly_budget_bytes: 262_144 });
+    const ok = await load({ max_document_bytes: 2, reassembly_budget_bytes: 262_144, ...linesFor(2) });
     expect(ok.getReassemblyLimits().maxMessageBytes).toBe(131_072);
   });
 
@@ -122,13 +132,13 @@ describe("reassembly config", () => {
   it.each([
     [0, 67_108_864, 67_108_864],
     [0, 131_073, 131_073],
-    [1, 67_108_864, 131_072],
+    [2, 67_108_864, 131_072],
     [65_535, 67_108_864, 131_072],
     [65_536, 67_108_864, 131_072],
     [65_537, 67_108_864, 131_073],
     [10_485_760, 67_108_864, 10_551_296],
   ])("C07 document cap %d with budget %d gives a per-connection cap of %d", async (doc, budget, expected) => {
-    const mod = await load({ max_document_bytes: doc, reassembly_budget_bytes: budget });
+    const mod = await load({ max_document_bytes: doc, reassembly_budget_bytes: budget, ...linesFor(doc) });
     expect(mod.getReassemblyLimits().maxMessageBytes).toBe(expected);
   });
 

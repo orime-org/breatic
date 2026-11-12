@@ -32,6 +32,7 @@ const state = vi.hoisted(() => ({
   perCall: [] as unknown[][],
   calls: 0,
   toolContexts: [] as Array<Record<string, unknown>>,
+  projectInstructions: undefined as string | undefined,
 }));
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>, _forModel?: unknown) => 5);
@@ -44,6 +45,7 @@ vi.mock("@server/agent/turn-context.js", () => ({
     memoryContext: { entries: [], migrated: [], olderCount: 0, progress: "" },
     history: state.history.filter((row) => row.turnIndex > WATERMARK && row.turnIndex < before),
     watermark: WATERMARK,
+    projectInstructions: state.projectInstructions,
   })),
 }));
 
@@ -204,6 +206,7 @@ beforeEach(() => {
   state.perCall = [];
   state.calls = 0;
   state.toolContexts = [];
+  state.projectInstructions = undefined;
 });
 
 describe("a turn opened by a message", () => {
@@ -219,6 +222,16 @@ describe("a turn opened by a message", () => {
     expect(await allowed("https://this-message.example/post")).toBe(true);
     expect(await allowed("https://folded.example/old")).toBe(true);
     expect(await allowed("https://recent.example/new")).toBe(true);
+    expect(await allowed("https://never-said.example/x")).toBe(false);
+  });
+
+  it("allows a link the Project Instructions hold, as text the user wrote (#1400)", async () => {
+    state.projectInstructions = "Follow the brand guide at https://brand.example/guide in every reply.";
+    state.perCall = [says("Sure.")];
+
+    await chat("hello");
+
+    expect(await allowed("https://brand.example/guide")).toBe(true);
     expect(await allowed("https://never-said.example/x")).toBe(false);
   });
 

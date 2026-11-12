@@ -14,7 +14,7 @@ import type * as ChatApiModule from '@web/data/api/chat';
 vi.mock('@web/data/api/chat', async (importOriginal) => ({
   ...(await importOriginal<typeof ChatApiModule>()),
   chatApi: {
-    streamConfig: vi.fn(async () => ({ heartbeatIntervalMs: 5000, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200, spaceReadTimeoutMs: 20_000 })),
+    streamConfig: vi.fn(async () => ({ heartbeatIntervalMs: 5000, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200, spaceReadTimeoutMs: 20_000, runningPollIntervalMs: 5000 })),
     openChat: vi.fn(),
     messagesBefore: vi.fn(),
     renameConversation: vi.fn(),
@@ -136,7 +136,7 @@ describe('ChatPanel', () => {
     evictAllChatSessions();
     wire = stubChatWire();
     chatOpensWith([]);
-    vi.mocked(chatApi.streamConfig).mockResolvedValue({ heartbeatIntervalMs: 5000, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200, spaceReadTimeoutMs: 20_000 });
+    vi.mocked(chatApi.streamConfig).mockResolvedValue({ heartbeatIntervalMs: 5000, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200, spaceReadTimeoutMs: 20_000, runningPollIntervalMs: 5000 });
   });
 
   afterEach(() => {
@@ -730,7 +730,7 @@ describe('deleting a conversation from the list', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     _resetForTests();
-    vi.mocked(chatApi.streamConfig).mockResolvedValue({ heartbeatIntervalMs: 5000, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200, spaceReadTimeoutMs: 20_000 });
+    vi.mocked(chatApi.streamConfig).mockResolvedValue({ heartbeatIntervalMs: 5000, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200, spaceReadTimeoutMs: 20_000, runningPollIntervalMs: 5000 });
     vi.mocked(chatApi.openChat).mockResolvedValue({
       conversations: [
         { id: 'c-1', title: 'one' },

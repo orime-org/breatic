@@ -100,6 +100,9 @@ const Toaster = ({ ...props }: ToasterProps) => {
           // genuinely caps long toasts at 28rem. shadow-lg same — vendor
           // shadow is read from CSS var, not directly set on selector.
           toast: 'group toast max-w-md group-[.toaster]:shadow-lg',
+          // Japanese breaks between phrases (the page declares the language)
+          // and the last line keeps more than one word.
+          title: 'text-pretty [word-break:auto-phrase]',
           description: 'group-[.toast]:text-muted-foreground',
           actionButton:
             'group-[.toast]:bg-primary group-[.toast]:text-primary-foreground',

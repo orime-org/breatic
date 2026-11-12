@@ -58,6 +58,13 @@ export interface Scenario {
   readonly user: string;
   /** Answers given word for word to the first questions, before the simulated user takes over. */
   readonly fixed?: readonly string[];
+  /** The Project instructions saved before the first message (#1400). */
+  readonly instructions?: string;
+  /**
+   * A message sent first in another conversation of the same Project, which
+   * must make the agent save a memory entry before the judged run starts.
+   */
+  readonly memory?: string;
   /** What a run must do to pass, as the judge reads it. */
   readonly pass: string;
 }

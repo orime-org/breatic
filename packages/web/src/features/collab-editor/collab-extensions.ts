@@ -35,12 +35,16 @@
  * the test names its own gap rather than implying full coverage.
  */
 
-import type { Extensions } from '@tiptap/core';
+import { Extension, type CommandProps, type Extensions } from '@tiptap/core';
 import { Collaboration } from '@tiptap/extension-collaboration';
 import { CollaborationCaret } from '@tiptap/extension-collaboration-caret';
+import type { EditorState } from '@tiptap/pm/state';
 import type * as Y from 'yjs';
 
+import { docNameOf } from '@web/data/yjs/manager';
 import { CollabCaretRefresh } from '@web/features/collab-editor/collab-caret-refresh';
+import { ySyncPluginKey, yUndoPluginKey } from '@web/features/collab-editor/collab-plugin-keys';
+import { gatedHistoryStep, spaceSizeFilterPlugin } from '@web/features/collab-editor/space-size-gate';
 import { CollabUndoSelection } from '@web/features/collab-editor/collab-undo-selection';
 import {
   renderCollabCaret,
@@ -89,6 +93,51 @@ export interface CollabExtensionOptions {
   undoManager?: Y.UndoManager;
 }
 
+/** A TipTap command as the collaboration extension defines `undo` and `redo`. */
+type HistoryCommand = () => (props: CommandProps) => boolean;
+
+/**
+ * The collaboration extension with its `undo` and `redo` judged against the
+ * Space's size (inner#1790): what the step writes decides whether a full
+ * Space lets it through. Its `Mod-z`, `Mod-y` and `Shift-Mod-z` bindings call
+ * these commands by name, so they are gated too.
+ */
+const SizedCollaboration = Collaboration.extend({
+  addCommands() {
+    const { undo, redo } = this.parent?.() as { undo: HistoryCommand; redo: HistoryCommand };
+    const { fragment } = this.options as { fragment: Y.XmlFragment };
+    /**
+     * One of the two commands, run through the size gate.
+     * @param direction - Which stack.
+     * @param command - The extension's own command.
+     * @returns The gated command.
+     */
+    const gated = (direction: 'undo' | 'redo', command: HistoryCommand): HistoryCommand => () => (props) => {
+      if (props.dispatch === undefined) return command()(props);
+      const { undoManager } = yUndoPluginKey.getState(props.state as EditorState) as { undoManager: Y.UndoManager };
+      const ran = gatedHistoryStep(docNameOf(fragment.doc), undoManager, direction, () => command()(props));
+      // Refused, there is nothing to dispatch either way.
+      props.tr.setMeta('preventDispatch', true);
+      return ran;
+    };
+    return { undo: gated('undo', undo), redo: gated('redo', redo) };
+  },
+});
+
+/**
+ * The size filter for an editor on a y-tiptap fragment.
+ * @param fragment - The fragment it edits, whose document names the Space.
+ * @returns The extension.
+ */
+function sizeFilterExtension(fragment: Y.XmlFragment): Extension {
+  return Extension.create({
+    name: 'spaceSizeFilter',
+    addProseMirrorPlugins: () => [
+      spaceSizeFilterPlugin({ syncKey: ySyncPluginKey, docName: () => docNameOf(fragment.doc) }),
+    ],
+  });
+}
+
 /**
  * Build the collaboration half of an editor's extension list.
  * @param options - The document fragment and the caret wiring.
@@ -101,10 +150,14 @@ export function buildCollabExtensions(
     options;
 
   const extensions: Extensions = [
-    Collaboration.configure({
+    SizedCollaboration.configure({
       fragment,
       ...(undoManager ? { yUndoOptions: { undoManager } } : {}),
     }),
+    // While the Space is full every local edit is stopped before it reaches
+    // the state, so the sync plugin never writes it; deletions are written
+    // by the delete executor instead (inner#1790).
+    sizeFilterExtension(fragment),
     // Undo must restore the selection the edit started from. Upstream emits its
     // stack-item-popped hand-off AFTER the restore transaction has run, so the
     // editor keeps the caret where it was at undo time and the late write

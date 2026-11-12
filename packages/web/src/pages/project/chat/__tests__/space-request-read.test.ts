@@ -329,7 +329,7 @@ describe('a Space this tab does not hold', () => {
     const socket = reader.config.websocketProvider as FakeSocket;
 
     expect(wsInstances).toContain(socket);
-    expect(socket.config.url).toBe('wss://collab.example/ws');
+    expect(socket.config.url).toBe('wss://collab.example/ws?size_ack=1');
     expect(socket.config.WebSocketPolyfill).toBe(ChunkingWebSocket);
 
     serve(reader, canvasUpdate(['a']));
@@ -348,7 +348,7 @@ describe('a Space this tab does not hold', () => {
 
     expect(sharedSocket).not.toBe(readSocket);
     expect(readSocket.config.url).toBe(sharedSocket.config.url);
-    expect(readSocket.config.url).toBe(`ws://${window.location.host}/ws`);
+    expect(readSocket.config.url).toBe(`ws://${window.location.host}/ws?size_ack=1`);
   });
 
   it('connects read-only, attaches its provider, and stays out of the tab registry and document cache', async () => {

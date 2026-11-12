@@ -392,7 +392,8 @@ export function callOptionsFor(modelString: string | undefined, wants: CallWants
  * goes whole, as one message.
  * @param modelString - Model identifier, or undefined for the fallback.
  * @param parts - The base prompt, the memory entries (there whenever the
- *   caller has memory) and this conversation's progress note, when it has one.
+ *   caller has memory), this conversation's progress note and the Project
+ *   Instructions, each when there is one; neither of the last two is marked.
  * @param cache - How long to cache, or false when the call does not cache.
  * @returns The system messages, in order.
  * @throws {never} Never.
@@ -409,5 +410,6 @@ export function systemFor(
     { role: "system", content: parts.base, providerOptions },
     ...(parts.project === undefined ? [] : [{ role: "system" as const, content: parts.project, providerOptions }]),
     ...(parts.conversation === undefined ? [] : [{ role: "system" as const, content: parts.conversation }]),
+    ...(parts.projectInstructions === undefined ? [] : [{ role: "system" as const, content: parts.projectInstructions }]),
   ];
 }

@@ -2,16 +2,18 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import type { HocuspocusProvider } from '@hocuspocus/provider';
-import { Paragraph } from '@tiptap/extension-paragraph';
 import { Placeholder } from '@tiptap/extension-placeholder';
 import { Text } from '@tiptap/extension-text';
 import { Selection } from '@tiptap/pm/state';
+import { Plus } from 'lucide-react';
 import { Editor, EditorContent } from '@tiptap/react';
 import * as React from 'react';
-import type * as Y from 'yjs';
-import { REFERENCE_KINDS, type ReferenceKind } from '@breatic/shared';
+import * as Y from 'yjs';
+import { CANVAS_NODES_KEY, REFERENCE_KINDS, type ReferenceKind } from '@breatic/shared';
 
+import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
+import { useTranslation } from '@web/i18n/use-translation';
 import { useCanvasContext, useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 import { endKeptEditor, keptEditor } from '@web/spaces/canvas/kept-editors';
 import { useCollabCaretPresence } from '@web/features/collab-editor/use-collab-caret-presence';
@@ -27,14 +29,28 @@ import {
 } from '@web/spaces/canvas/generate/at-reference';
 import { PromptDocument, PromptNote } from '@web/features/prompt-note/prompt-note';
 import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
-import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import {
+  deriveReferences, focusToRailItem, type ReferenceRailItem,
+} from '@web/spaces/canvas/generate/derive-references';
+import { validFocusImages } from '@web/data/focus-images';
+import { readEdges, readNodes } from '@web/data/yjs/canvas-space';
+import { useDocSize } from '@web/data/yjs/doc-size';
+import { docNameOf } from '@web/data/yjs/manager';
 import {
   MENTION_LABEL_ATTR,
   MENTION_THUMBNAIL_ATTR,
   ReferenceMention,
   referenceMentionContent,
+  serializeDialogueText,
   serializePromptText,
 } from '@web/spaces/canvas/generate/reference-mention';
+import {
+  addDialogueLine,
+  DialogueLines,
+  DialogueParagraph,
+  dialogueNormalisation,
+  SpeakerParagraph,
+} from '@web/spaces/canvas/generate/dialogue-line';
 import { dispatchMachineEdit } from '@web/features/reference-mention/reference-mention-local-input';
 import { NO_MENTION_TOKENS, type MentionTokens } from '@web/spaces/canvas/generate/reference-urls';
 import { makeReferenceSuggestion } from '@web/spaces/canvas/generate/reference-mention-suggestion';
@@ -100,9 +116,16 @@ interface PromptWiring {
   placeholder: string;
   onTextChange: (text: string) => void;
   onAtMentionsChange: (sourceIds: string[]) => void;
+  /** The speakers' names on the dialogue side, from speaker 1. */
+  dialogueNames: readonly string[];
+  /** Each speaker's voice name beside them, empty for a speaker with none. */
+  dialogueVoices: readonly string[];
   /** Where the open `@` popup registers its refresh. */
   suggestionRefresh: { current: (() => void) | null };
 }
+
+/** Text bodies are not needed to tell which sources a pool holds. */
+const NO_TEXT: ReadonlyMap<string, string> = new Map();
 
 /** Each kept editor's wiring, what it was built on, and whether the caret goes back into it when it is shown. */
 const keptOf = new WeakMap<
@@ -111,6 +134,8 @@ const keptOf = new WeakMap<
     wiring: PromptWiring;
     caretProvider: Pick<HocuspocusProvider, 'awareness'> | null;
     mentionEmptyLabel: string;
+    /** Whether it was built with dialogue lines. */
+    dialogue: boolean;
     /** Whether the user has put a caret in this editor since it was built. */
     caretPlaced: boolean;
     hadFocus: boolean;
@@ -189,6 +214,176 @@ interface PromptEditorProps {
    * extension mounts only when present (it throws on a null provider).
    */
   caretProvider?: Pick<HocuspocusProvider, 'awareness'> | null;
+  /**
+   * On the dialogue side of a model whose speakers stand in for its voice
+   * (inner#1825 design 8.5): the speakers' names, from speaker 1. The box then
+   * holds one line per turn, each with a picker for who says it, and reports
+   * and serializes the lines as the `Name: line` script. Absent, it is one
+   * prompt. `voices` names each speaker's voice beside it in the picker.
+   */
+  dialogue?: { readonly names: readonly string[]; readonly voices?: readonly string[] };
+}
+
+/**
+ * The string a prompt editor hands the model: its words, or on the dialogue
+ * side its lines as the script.
+ * @param editor - The editor.
+ * @param wiring - What it reads from the component showing it.
+ * @param dialogue - Whether it holds dialogue lines.
+ * @param tokens - Each media chip's words; the wiring's when absent.
+ * @returns The string.
+ */
+function serialized(editor: Editor, wiring: PromptWiring, dialogue: boolean, tokens?: MentionTokens): string {
+  return dialogue
+    ? serializeDialogueText(editor, wiring.references, wiring.dialogueNames, tokens ?? wiring.mentionTokens)
+    : serializePromptText(editor, wiring.references, wiring.blockSeparator, tokens ?? wiring.mentionTokens);
+}
+
+/**
+ * Removes every chip whose source is stale, each with the spaces it owns, as
+ * one machine edit.
+ * @param editor - The prompt editor.
+ * @param isStale - Whether a chip's source has left the pool.
+ * @throws {never} Never.
+ */
+function clearStaleChips(editor: Editor, isStale: (sourceNodeId: string) => boolean): void {
+  if (editor.isDestroyed) return;
+  const occurrences: MentionOccurrence[] = [];
+  editor.state.doc.descendants((n, pos) => {
+    if (n.type.name !== REFERENCE_MENTION_NODE) return;
+    const id: unknown = n.attrs[MENTION_SOURCE_ID_ATTR];
+    if (typeof id === 'string') {
+      occurrences.push({ sourceNodeId: id, from: pos, to: pos + n.nodeSize });
+    }
+  });
+  const kept = new Set(occurrences.map((o) => o.sourceNodeId).filter((id) => !isStale(id)));
+  const deletions = planMentionDeletions(occurrences, kept);
+  if (deletions.length === 0) return;
+  // Delete each stale chip WITH its owned spaces (same deletion-unit model as
+  // the keyboard path), so a cascade clear leaves NO orphan space — a space
+  // shared with a SURVIVING chip is kept (design 2026-07-13 §5; adversarial
+  // finding: the old chip-node-only delete left orphan spaces, diverging from
+  // the keyboard path). Ranges are descending + merged, so each delete leaves
+  // the remaining (lower) positions valid.
+  const stalePositions = new Set(deletions.map((d) => d.from));
+  const ranges = planCascadeDeletion(editor.state.doc, stalePositions);
+  const tr = editor.state.tr;
+  for (const { from, to } of ranges) tr.delete(from, to);
+  // Edge-driven chip removal is a CONSEQUENCE of a canvas action, not a prompt
+  // edit: dispatchMachineEdit keeps it out of the undo stack (Cmd+Z can't
+  // resurrect an orphan chip whose reference is gone) AND tags it machine-
+  // derived so the local-input tracker never counts it as a keystroke —
+  // deleting a chip BEFORE an active `@` shifts its range and fires onUpdate,
+  // which must not resurrect a dismissed popup (#1802 round-4; batch-4).
+  dispatchMachineEdit(editor.view, tr);
+}
+
+/**
+ * Keeps every chip a LIVE PROJECTION of its source's pool row, for every
+ * modality (design 2026-07-12 invariant; batch-5 I5): the name and thumbnail
+ * are frozen into attributes at insert time, so a renamed or regenerated
+ * source is re-synced here. Chips whose source is not in `pool` are left
+ * alone; {@link clearStaleChips} removes them. A text chip's hover CONTENT is
+ * not synced: it is read live at hover-open (HoverPreview's resolveOnOpen),
+ * keeping the source node the single truth.
+ * @param editor - The prompt editor.
+ * @param pool - The live pool rows.
+ * @throws {never} Never.
+ */
+function syncChipDisplay(editor: Editor, pool: readonly ReferenceRailItem[]): void {
+  if (editor.isDestroyed) return;
+  const chips: ChipDisplaySnapshot[] = [];
+  editor.state.doc.descendants((n, pos) => {
+    if (n.type.name !== REFERENCE_MENTION_NODE) return;
+    const id: unknown = n.attrs[MENTION_SOURCE_ID_ATTR];
+    if (typeof id !== 'string') return;
+    chips.push({
+      pos,
+      sourceNodeId: id,
+      label: (n.attrs[MENTION_LABEL_ATTR] as string | null) ?? null,
+      thumbnail: (n.attrs[MENTION_THUMBNAIL_ATTR] as string | null) ?? null,
+    });
+  });
+  const updates = planChipDisplayUpdates(chips, pool);
+  if (updates.length === 0) return;
+  const tr = editor.state.tr;
+  for (const u of updates) {
+    if ('label' in u) {
+      tr.setNodeAttribute(u.pos, MENTION_LABEL_ATTR, u.label ?? null);
+    }
+    if ('thumbnail' in u) {
+      tr.setNodeAttribute(u.pos, MENTION_THUMBNAIL_ATTR, u.thumbnail ?? null);
+    }
+  }
+  // Machine-derived cosmetic sync: dispatchMachineEdit keeps it OUT of the
+  // collaborative undo stack (else Cmd+Z reverts a name / thumbnail refresh
+  // instead of the user's own edit, and — gated on `references`, not the doc —
+  // that revert never self-heals) AND tags it so the local-input tracker never
+  // counts it as a keystroke (#1802 round-4; batch-4).
+  dispatchMachineEdit(editor.view, tr);
+}
+
+/**
+ * Whether a transaction can change a reference pool: a top-level map entry
+ * (node or edge added or removed), a node's name, or a node's focus crops.
+ * Prompt and body typing (XML types only) and moves do not.
+ * @param transaction - The finished transaction.
+ * @returns Whether the pool may have changed.
+ * @throws {never} Never.
+ */
+function touchesPool(transaction: Y.Transaction): boolean {
+  for (const [type, keys] of transaction.changed) {
+    if (type._item === null || type instanceof Y.Array) return true;
+    if (type instanceof Y.Map && keys.has('name')) return true;
+  }
+  return false;
+}
+
+/**
+ * The canvas node a prompt fragment is stored under.
+ * @param fragment - The prompt fragment.
+ * @param nodesMap - The canvas node map.
+ * @returns The node id, or null when the fragment is not under a node.
+ * @throws {never} Never.
+ */
+function hostNodeOf(fragment: Y.XmlFragment, nodesMap: Y.Map<unknown>): string | null {
+  let item = fragment._item;
+  while (item !== null) {
+    const parent = item.parent;
+    if (parent === nodesMap) return item.parentSub;
+    item = parent instanceof Y.AbstractType ? parent._item : null;
+  }
+  return null;
+}
+
+/**
+ * Applies a local canvas write's consequences to an editor's chips right
+ * after the write, from the pool the document now gives its host node. Only
+ * sources the editor's current pool holds are judged: a source the container
+ * filters out is left to the effects.
+ * @param editor - The prompt editor.
+ * @param fragment - The fragment it edits.
+ * @param transaction - The finished canvas transaction.
+ * @throws {never} Never.
+ */
+function projectChipsAfterWrite(editor: Editor, fragment: Y.XmlFragment, transaction: Y.Transaction): void {
+  if (editor.isDestroyed || !transaction.local || !touchesPool(transaction)) return;
+  const shown = keptOf.get(editor)?.wiring.references ?? [];
+  const doc = fragment.doc;
+  if (shown.length === 0 || doc === null) return;
+  const host = hostNodeOf(fragment, doc.getMap(CANVAS_NODES_KEY));
+  if (host === null) return;
+  const nodes = readNodes(doc);
+  const hostView = nodes.find((n) => n.id === host);
+  if (hostView === undefined) return;
+  const shownIds = new Set(shown.map((r) => r.sourceNodeId));
+  const live = [
+    ...deriveReferences(host, nodes, readEdges(doc), NO_TEXT),
+    ...validFocusImages((hostView.data as { focusImages?: unknown }).focusImages).map(focusToRailItem),
+  ].filter((r) => shownIds.has(r.sourceNodeId));
+  const liveIds = new Set(live.map((r) => r.sourceNodeId));
+  clearStaleChips(editor, (id) => shownIds.has(id) && !liveIds.has(id));
+  syncChipDisplay(editor, live);
 }
 
 /**
@@ -214,6 +409,7 @@ interface PromptEditorProps {
  * @param root0.startingHeight - How tall the box opens before anything is typed.
  * @param root0.blockSeparator - What joins two blocks in the serialized string.
  * @param root0.mentionTokens - Each media chip's words in the serialized string, by pool id.
+ * @param root0.dialogue - The speakers' names on the dialogue side; absent for one prompt.
  * @param ref - Imperative handle exposing `insertReference` (click-to-insert).
  * @returns The prompt editor.
  */
@@ -234,6 +430,7 @@ export const PromptEditor = React.forwardRef<
     startingHeight = 'full',
     blockSeparator,
     mentionTokens = NO_MENTION_TOKENS,
+    dialogue,
   }: PromptEditorProps,
   ref,
 ): React.JSX.Element {
@@ -246,6 +443,10 @@ export const PromptEditor = React.forwardRef<
   // replaced by another, ends it; hiding the Space does not (inner#1235 A13).
   const panelSession = useCanvasSession((st) => st.panelSession);
   const resolveName = collaboratorNames?.resolve;
+  const t = useTranslation();
+  const dialogueOn = dialogue !== undefined;
+  const dialogueNames = dialogue?.names;
+  const dialogueVoices = dialogue?.voices;
   const editor = React.useMemo((): Editor => {
     /**
      * Builds the editor, with its handlers reading the wiring box.
@@ -260,6 +461,8 @@ export const PromptEditor = React.forwardRef<
         placeholder,
         onTextChange,
         onAtMentionsChange,
+        dialogueNames: dialogueNames ?? [],
+        dialogueVoices: dialogueVoices ?? [],
         suggestionRefresh: { current: null },
       };
       // The editor is built during render, and binding it to a fragment that
@@ -277,9 +480,7 @@ export const PromptEditor = React.forwardRef<
        */
       const report = (e: Editor): void => {
         if (constructing) return;
-        wiring.onTextChange(
-          serializePromptText(e, wiring.references, wiring.blockSeparator, wiring.mentionTokens),
-        );
+        wiring.onTextChange(serialized(e, wiring, dialogueOn));
         wiring.onAtMentionsChange(extractAtMentionedSourceIds(e.getJSON()));
       };
       const built = new Editor({
@@ -287,7 +488,15 @@ export const PromptEditor = React.forwardRef<
           // Notes on operating the panel sit above the words and are never
           // sent (inner#977); the document keeps a line below them to write in.
           PromptDocument,
-          Paragraph,
+          // On the dialogue side each paragraph is a line with its speaker
+          // (inner#1825 design 8.5); every box keeps the attribute, so a
+          // line's speaker survives an edit made reading in one voice.
+          ...(dialogueOn
+            ? [
+              DialogueParagraph.configure({ names: () => wiring.dialogueNames, voices: () => wiring.dialogueVoices }),
+              DialogueLines.configure({ names: () => wiring.dialogueNames }),
+            ]
+            : [SpeakerParagraph]),
           Text,
           PromptNote,
           // The caret between two adjacent chips (no auto space — user
@@ -347,6 +556,7 @@ export const PromptEditor = React.forwardRef<
         wiring,
         caretProvider,
         mentionEmptyLabel,
+        dialogue: dialogueOn,
         caretPlaced: false,
         hadFocus: false,
         returning: false,
@@ -368,14 +578,15 @@ export const PromptEditor = React.forwardRef<
       const bound = keptOf.get(kept);
       return (
         bound?.caretProvider === caretProvider &&
-        bound.mentionEmptyLabel === mentionEmptyLabel
+        bound.mentionEmptyLabel === mentionEmptyLabel &&
+        bound.dialogue === dialogueOn
       );
     });
     // Everything else reaches a kept editor through its wiring below, not by
     // rebuilding it. The panel's session is listed so that a panel ending
     // under a mounted editor builds this one a new editor.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [spaceId, fragment, caretProvider, mentionEmptyLabel, resolveName, panelSession]);
+  }, [spaceId, fragment, caretProvider, mentionEmptyLabel, resolveName, panelSession, dialogueOn]);
 
   const kept = keptOf.get(editor);
   if (kept !== undefined) {
@@ -387,6 +598,8 @@ export const PromptEditor = React.forwardRef<
       placeholder,
       onTextChange,
       onAtMentionsChange,
+      dialogueNames: dialogueNames ?? [],
+      dialogueVoices: dialogueVoices ?? [],
     });
   }
   // Back on screen after a switch of Space, the caret goes back in if it was
@@ -453,17 +666,12 @@ export const PromptEditor = React.forwardRef<
         if (editor.isDestroyed) return;
         editor.commands.focus(keptOf.get(editor)?.caretPlaced === true ? null : 'end');
       },
-      serializePrompt: (tokens?: MentionTokens): string | null =>
-        editor.isDestroyed
-          ? null
-          : serializePromptText(
-            editor,
-            references,
-            blockSeparator,
-            tokens ?? mentionTokens,
-          ),
+      serializePrompt: (tokens?: MentionTokens): string | null => {
+        const wiring = keptOf.get(editor)?.wiring;
+        return editor.isDestroyed || wiring === undefined ? null : serialized(editor, wiring, dialogueOn, tokens);
+      },
     }),
-    [editor, references, blockSeparator, mentionTokens],
+    [editor, dialogueOn],
   );
   // Re-report the substituted prompt text when the POOL changes (round-2
   // adversarial): a text chip resolves its source node's content at
@@ -474,12 +682,22 @@ export const PromptEditor = React.forwardRef<
   // node gains words; an emptied node leaves the button lit but dead). A media
   // chip's words move the same way: mentioning a second picture or switching
   // model renumbers them with no edit to this chip.
+  const namesKey = dialogueNames?.join('\n');
   React.useEffect(() => {
-    if (editor.isDestroyed) return;
-    onTextChange(
-      serializePromptText(editor, references, blockSeparator, mentionTokens),
-    );
-  }, [editor, references, blockSeparator, mentionTokens, onTextChange]);
+    const wiring = keptOf.get(editor)?.wiring;
+    if (editor.isDestroyed || wiring === undefined) return;
+    onTextChange(serialized(editor, wiring, dialogueOn));
+  }, [editor, references, blockSeparator, mentionTokens, onTextChange, dialogueOn, namesKey]);
+  // The lines read the speakers' names too: a renamed speaker is put right on
+  // every line (a typed prefix may name one now) and shown at once, through a
+  // machine edit even when no line changes, which the lines re-read on; a
+  // changed voice is shown the same way.
+  const voicesKey = dialogueVoices?.join('\n');
+  React.useEffect(() => {
+    const wiring = keptOf.get(editor)?.wiring;
+    if (!dialogueOn || editor.isDestroyed || wiring === undefined) return;
+    dispatchMachineEdit(editor.view, dialogueNormalisation(editor.state, wiring.dialogueNames) ?? editor.state.tr);
+  }, [editor, dialogueOn, namesKey, voicesKey]);
 
   // Refresh an OPEN `@` popup's list when the mode or pool changes (collaboration
   // residual 2): a REMOTE peer toggling this node's mode or editing its
@@ -493,87 +711,39 @@ export const PromptEditor = React.forwardRef<
     keptOf.get(editor)?.wiring.suggestionRefresh.current?.();
   }, [editor, referenceKinds, references]);
 
-  // Cascade-clear stale @-mention chips: when a reference edge is removed the
-  // pool shrinks, so any @-mention pointing at a now-disconnected source must
-  // disappear from the prompt (design §2.1 — a mention only picks from the
-  // pool). Collect the mention occurrences, plan the deletions purely, then
-  // apply them in one transaction (synced to collaborators via Collaboration).
+  // A chip only picks from the pool (design §2.1) and shows its source's live
+  // name and thumbnail; these two effects keep it so for whatever reaches the
+  // pool, remote writes included.
+  // While the Space is full, over its ceiling or resyncing, the size gate
+  // drops what these machine edits cannot write, so a peer's rename shows the
+  // old name until the size state changes; they run again then (inner#1790
+  // design 5.3).
+  const { phase: sizePhase, overCeiling } = useDocSize(docNameOf(fragment.doc) ?? '');
   React.useEffect(() => {
-    if (editor.isDestroyed) return;
     const poolIds = new Set(references.map((r) => r.sourceNodeId));
-    const occurrences: MentionOccurrence[] = [];
-    editor.state.doc.descendants((n, pos) => {
-      if (n.type.name !== REFERENCE_MENTION_NODE) return;
-      const id: unknown = n.attrs[MENTION_SOURCE_ID_ATTR];
-      if (typeof id === 'string') {
-        occurrences.push({ sourceNodeId: id, from: pos, to: pos + n.nodeSize });
-      }
-    });
-    const deletions = planMentionDeletions(occurrences, poolIds);
-    if (deletions.length === 0) return;
-    // Delete each stale chip WITH its owned spaces (same deletion-unit model as
-    // the keyboard path), so a cascade clear leaves NO orphan space — a space
-    // shared with a SURVIVING chip is kept (design 2026-07-13 §5; adversarial
-    // finding: the old chip-node-only delete left orphan spaces, diverging from
-    // the keyboard path). Ranges are descending + merged, so each delete leaves
-    // the remaining (lower) positions valid.
-    const stalePositions = new Set(deletions.map((d) => d.from));
-    const ranges = planCascadeDeletion(editor.state.doc, stalePositions);
-    const tr = editor.state.tr;
-    for (const { from, to } of ranges) tr.delete(from, to);
-    // Edge-driven chip removal is a CONSEQUENCE of a canvas action, not a prompt
-    // edit: dispatchMachineEdit keeps it out of the undo stack (Cmd+Z can't
-    // resurrect an orphan chip whose reference is gone) AND tags it machine-
-    // derived so the local-input tracker never counts it as a keystroke —
-    // deleting a chip BEFORE an active `@` shifts its range and fires onUpdate,
-    // which must not resurrect a dismissed popup (#1802 round-4; batch-4).
-    dispatchMachineEdit(editor.view, tr);
-  }, [editor, references]);
-
-  // Keep every reference chip a LIVE PROJECTION of its source node's pool row —
-  // for EVERY modality, not just images (design 2026-07-12 invariant; batch-5
-  // I5). The chip's cheap synced display attrs (name + thumbnail) are frozen at
-  // insert time, so a renamed / re-generated source must be re-synced here; the
-  // pure planner diffs each chip against the live pool and reports only changed
-  // fields (a text source has no thumbnail — its name still syncs, which the
-  // old thumbnail-only effect missed). Setting an attr re-renders the
-  // ReactNodeView. Chips whose source left the pool are removed by the
-  // cascade-clear effect above (the planner skips them). The text chip's hover
-  // CONTENT is not synced here — it is read live at hover-open (see
-  // HoverPreview's resolveOnOpen), keeping the source node the single truth
-  // (freezing the body into an attr would duplicate it into the Yjs prompt doc).
+    clearStaleChips(editor, (id) => !poolIds.has(id));
+  }, [editor, references, sizePhase, overCeiling]);
   React.useEffect(() => {
-    if (editor.isDestroyed) return;
-    const chips: ChipDisplaySnapshot[] = [];
-    editor.state.doc.descendants((n, pos) => {
-      if (n.type.name !== REFERENCE_MENTION_NODE) return;
-      const id: unknown = n.attrs[MENTION_SOURCE_ID_ATTR];
-      if (typeof id !== 'string') return;
-      chips.push({
-        pos,
-        sourceNodeId: id,
-        label: (n.attrs[MENTION_LABEL_ATTR] as string | null) ?? null,
-        thumbnail: (n.attrs[MENTION_THUMBNAIL_ATTR] as string | null) ?? null,
-      });
-    });
-    const updates = planChipDisplayUpdates(chips, references);
-    if (updates.length === 0) return;
-    const tr = editor.state.tr;
-    for (const u of updates) {
-      if ('label' in u) {
-        tr.setNodeAttribute(u.pos, MENTION_LABEL_ATTR, u.label ?? null);
-      }
-      if ('thumbnail' in u) {
-        tr.setNodeAttribute(u.pos, MENTION_THUMBNAIL_ATTR, u.thumbnail ?? null);
-      }
-    }
-    // Machine-derived cosmetic sync: dispatchMachineEdit keeps it OUT of the
-    // collaborative undo stack (else Cmd+Z reverts a name / thumbnail refresh
-    // instead of the user's own edit, and — gated on `references`, not the doc —
-    // that revert never self-heals) AND tags it so the local-input tracker never
-    // counts it as a keystroke (#1802 round-4; batch-4).
-    dispatchMachineEdit(editor.view, tr);
-  }, [editor, references]);
+    syncChipDisplay(editor, references);
+  }, [editor, references, sizePhase, overCeiling]);
+  // A local canvas write that changes the pool (rename, cut edge, delete
+  // source, remove crop, undo of a connect) gets its chip follow-up in the same
+  // task, so both leave as one Update message: collab judges the size cap per
+  // message (inner#1790 design 5.6), and the effects above run only after the
+  // container re-renders, past the provider's send window.
+  React.useEffect(() => {
+    const doc = fragment.doc;
+    if (doc === null) return undefined;
+    /**
+     * Projects the chips after one transaction of the canvas document.
+     * @param transaction - The finished transaction.
+     */
+    const onTransaction = (transaction: Y.Transaction): void => {
+      projectChipsAfterWrite(editor, fragment, transaction);
+    };
+    doc.on('afterTransaction', onTransaction);
+    return (): void => doc.off('afterTransaction', onTransaction);
+  }, [editor, fragment]);
   // Kept in step here rather than passed at creation: the editor's options are
   // read once when it is built, and rebuilding it for this would take the
   // collaborative binding and the caret down with it.
@@ -646,6 +816,19 @@ export const PromptEditor = React.forwardRef<
       }
     >
       <EditorContent editor={editor} />
+      {dialogueOn && (
+        <Button
+          type='button'
+          variant={null}
+          size={null}
+          data-testid='dialogue-add-line'
+          onClick={() => addDialogueLine(editor, keptOf.get(editor)?.wiring.dialogueNames.length ?? 0)}
+          className='mt-1 inline-flex h-6 w-fit items-center gap-1 rounded-chrome px-1.5 text-xs text-muted-foreground hover-enabled:bg-accent hover-enabled:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+        >
+          <Plus className='size-3' aria-hidden='true' />
+          {t('canvas.generatePanel.dialogueAddLine')}
+        </Button>
+      )}
     </ScrollArea>
   );
 });

@@ -73,7 +73,7 @@ function placesByKind(proposal: CanvasProposal): Map<string, number> {
   for (const node of proposal.nodes) {
     const chosen = chosenModelOf(node);
     if (!chosen) continue;
-    for (const [kind, list] of waysIn(chosen)) {
+    for (const [kind, list] of waysIn(chosen, node.params ?? {})) {
       room.set(kind, (room.get(kind) ?? 0) + list.reduce((sum, way) => sum + way.room, 0));
     }
   }
@@ -130,7 +130,7 @@ export function checkUnsentNotes(proposal: CanvasProposal): ProposalVerdict {
   for (const [index, node] of proposal.nodes.entries()) {
     const chosen = chosenModelOf(node);
     if (!chosen) continue;
-    for (const [kind, list] of waysIn(chosen)) {
+    for (const [kind, list] of waysIn(chosen, node.params ?? {})) {
       if (list.some((way) => way.into !== "pool")) slotKinds.add(kind);
     }
     // Every generation passed checkGenerateNode, so its edges route.

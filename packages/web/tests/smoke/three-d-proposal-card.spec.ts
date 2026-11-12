@@ -22,7 +22,7 @@ const PROPOSAL: SceneGenerationProposal = {
   mode: 't23d',
   model: 'tripo-h3.1-t23d',
   prompt: 'A small wooden treasure chest',
-  params: { texture: false, pbr: false, geometry_quality: 'standard', negative_prompt: 'cracks' },
+  params: { texture: false, pbr: false, geometry_quality: 'standard', negative_prompt: 'cracks', rig_skeleton: true },
   images: [],
   credits: 12,
   rationale: 'A prop for the opening scene.',
@@ -91,6 +91,8 @@ test('the card opens the 3D Space in front on a generation dialog filled from th
   await expect(dialog.getByLabel('Negative prompt', { exact: true })).toHaveValue('cracks');
   await expect(dialog.getByRole('switch', { name: 'Texture', exact: true })).toHaveAttribute('aria-checked', 'false');
   await expect(dialog.getByRole('switch', { name: 'PBR', exact: true })).toHaveAttribute('aria-checked', 'false');
+  // A proposal that asks for a skeleton opens with Rig skeleton on (inner#1692).
+  await expect(dialog.getByRole('switch', { name: 'Rig skeleton', exact: true })).toHaveAttribute('aria-checked', 'true');
   await expect(dialog.getByRole('button', { name: 'Generate', exact: true })).toBeEnabled();
   await dialog.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(dialog).toBeHidden();

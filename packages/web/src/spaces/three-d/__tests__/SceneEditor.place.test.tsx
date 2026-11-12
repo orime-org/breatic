@@ -88,7 +88,7 @@ async function placeable(label = 'Barn lamp'): Promise<SceneSession> {
     deadlineAt: new Date(Date.now() + 7_200_000).toISOString(), errorMessage: null, assetId: ASSET }];
   const doc = new Y.Doc();
   doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
-  const session = new SceneSession(doc);
+  const session = new SceneSession(doc, 'project-p1/3d-s1');
   session.setEnvironment({ readOnly: false, connected: true, hasEverSynced: true, writeAccess: 'granted', refused: false, awareness: null });
   owners.push({ doc, session });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });

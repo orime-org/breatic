@@ -41,7 +41,7 @@ const h = vi.hoisted(() => {
     updateData: vi.fn(),
     upsertGenerationSucceeded: vi.fn(),
     insertGenerationFailedIfAbsent: vi.fn(),
-    chargeForGeneration: vi.fn(),
+    settleCharge: vi.fn(),
     settleSceneRowById: vi.fn(),
     publishSpaceTasksChanged: vi.fn(async (_projectId: string, _spaceId: string) => undefined),
   };
@@ -101,7 +101,10 @@ vi.mock("@breatic/domain", async () => ({
   },
   upstreamStepRepo: { failOpenSteps: vi.fn() },
   assetService: { resolveOwnerStudioId: vi.fn(async () => "studio-1") },
-  creditLotService: { chargeForGeneration: h.chargeForGeneration },
+  creditLotService: {
+    settleCharge: h.settleCharge,
+    pendingChargeRequestId: vi.fn(async () => null),
+  },
   creditHoldService: { releaseHold: vi.fn(async () => undefined) },
   creditsForUsd: (usd: number) => usd,
   toChargeCredits: (await import("@domain/credit/credit-math.js")).toChargeCredits,
@@ -201,7 +204,7 @@ beforeEach(() => {
     mimeType: "model/gltf-binary",
     sizeBytes: 2048,
   }));
-  h.chargeForGeneration.mockResolvedValue({ billed: true, charged: 0.24, shortfall: 0, studioId: "studio-1", lotIds: [] });
+  h.settleCharge.mockResolvedValue({ billed: true, charged: "0.240000", shortfall: "0.000000", studioId: "studio-1", lotIds: [] });
   h.settleSceneRowById.mockResolvedValue({ row: ROW, applied: true, assetWritten: true });
 });
 
@@ -225,7 +228,7 @@ describe("a 3D generation on the catalog lane (inner#1691)", () => {
     const result = await runTask(sceneJob(), "lock-token");
 
     expect(result).not.toHaveProperty("failed");
-    expect(h.settleSceneRowById).toHaveBeenCalledExactlyOnceWith("row-1", { outcome: "done", assetId: "asset-glb" });
+    expect(h.settleSceneRowById).toHaveBeenCalledExactlyOnceWith("row-1", { outcome: "done", assetId: "asset-glb", notice: null });
     expect(h.publishSpaceTasksChanged).toHaveBeenCalledWith("proj-1", "space-1");
     // A Space row is not a node: nothing is settled on the canvas.
     expect(h.settleTaskForNode).not.toHaveBeenCalled();
@@ -264,8 +267,62 @@ describe("a 3D generation on the catalog lane (inner#1691)", () => {
     await runTask(sceneJob(), "lock-token");
 
     expect(h.runCatalogTask).not.toHaveBeenCalled();
-    expect(h.settleSceneRowById).toHaveBeenCalledExactlyOnceWith("row-1", { outcome: "done", assetId: "asset-glb" });
+    expect(h.settleSceneRowById).toHaveBeenCalledExactlyOnceWith("row-1", { outcome: "done", assetId: "asset-glb", notice: null });
     expect(h.publishSpaceTasksChanged).toHaveBeenCalledWith("proj-1", "space-1");
+  });
+});
+
+/**
+ * A run whose optional rig step failed (inner#1692, design 6.2): the run
+ * hands `notice: 'rig_failed'` up with its outputs, the task row's stored
+ * result keeps it, and every path that settles the Space row reads it from
+ * there, so the row says the model cannot be posed however it was settled.
+ */
+describe("a 3D generation whose rig failed (inner#1692)", () => {
+  it("hands the job's last attempt to the run, so a last network error delivers the model", async () => {
+    await runTask(sceneJob(0), "lock-token");
+    await runTask(sceneJob(2), "lock-token");
+
+    expect(h.runCatalogTask.mock.calls[0]![1]).toMatchObject({ lastAttempt: false });
+    expect(h.runCatalogTask.mock.calls[1]![1]).toMatchObject({ lastAttempt: true });
+  });
+
+  it("stores the notice on the task's result and settles the row done with it", async () => {
+    h.runCatalogTask.mockResolvedValue({ outputs: [{ url: GLB }], cost: 0.24, model: "tripo-h3.1-t23d", notice: "rig_failed" });
+
+    const result = await runTask(sceneJob(), "lock-token");
+
+    expect(result).not.toHaveProperty("failed");
+    const stored = h.markCompletedAndBill.mock.calls[0]![1] as Record<string, unknown>;
+    expect(stored).toMatchObject({ notice: "rig_failed" });
+    expect(h.settleSceneRowById).toHaveBeenCalledExactlyOnceWith("row-1", { outcome: "done", assetId: "asset-glb", notice: "rig_failed" });
+  });
+
+  it("settles the row with the notice when a billed job is delivered again", async () => {
+    h.getByIdInternal.mockResolvedValue({
+      billedAt: new Date(),
+      billedCredits: 0.24,
+      result: { model: "tripo-h3.1-t23d", notice: "rig_failed", outputs: [{ url: GLB, asset_id: "asset-glb" }] },
+    });
+
+    await runTask(sceneJob(), "lock-token");
+
+    expect(h.runCatalogTask).not.toHaveBeenCalled();
+    expect(h.settleSceneRowById).toHaveBeenCalledExactlyOnceWith("row-1", { outcome: "done", assetId: "asset-glb", notice: "rig_failed" });
+  });
+
+  it("settles the same row the same way on the live path and on billed redelivery", async () => {
+    h.runCatalogTask.mockResolvedValue({ outputs: [{ url: GLB }], cost: 0.24, model: "tripo-h3.1-t23d", notice: "rig_failed" });
+    await runTask(sceneJob(), "lock-token");
+    const stored = h.markCompletedAndBill.mock.calls[0]![1] as Record<string, unknown>;
+    const live = h.settleSceneRowById.mock.calls[0]![1];
+
+    vi.clearAllMocks();
+    h.settleSceneRowById.mockResolvedValue({ row: ROW, applied: false, assetWritten: false });
+    h.getByIdInternal.mockResolvedValue({ billedAt: new Date(), billedCredits: 0.24, result: stored });
+    await runTask(sceneJob(), "lock-token");
+
+    expect(h.settleSceneRowById.mock.calls[0]![1]).toEqual(live);
   });
 });
 

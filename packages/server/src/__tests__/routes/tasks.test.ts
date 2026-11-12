@@ -5,7 +5,11 @@
  * Tasks route tests — list, get, canvas task creation.
  */
 
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { resetLocales, setLocale, setLocaleMessages } from "@breatic/shared";
 vi.mock("ai", () => ({
   tool: (c: Record<string, unknown>) => c,
   streamText: vi.fn(), generateText: vi.fn(), stepCountIs: vi.fn(),
@@ -219,6 +223,30 @@ describe("Tasks routes", () => {
       expect(mocks.taskService.create).toHaveBeenCalled();
     });
 
+    it("rejects a style prompt sent while Mureka composes from a melody BEFORE enqueue (breatic#1393)", async () => {
+      mocks.sendsUntakenPrompt.mockReturnValue(true);
+      const app = createApp();
+      const res = await app.request("/api/v1/canvas/tasks", {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify({
+          task_type: "audio",
+          params: { compose_from: "melody", prompt: "lo-fi piano", lyrics: "la", melody: "https://cdn/m.mp3" },
+          model: "mureka-v9.5-generate-song",
+          source: "task",
+          project_id: PID,
+          space_id: SID,
+          mode: "append",
+        }),
+      });
+
+      expect(res.status).toBe(422);
+      expect(mocks.sendsUntakenPrompt).toHaveBeenCalledWith("mureka-v9.5-generate-song", expect.objectContaining({ compose_from: "melody" }));
+      expect(mocks.taskService.create).not.toHaveBeenCalled();
+      expect(mockQueueAdd).not.toHaveBeenCalled();
+      mocks.sendsUntakenPrompt.mockReturnValue(false);
+    });
+
     it("rejects a submission with too many reference images BEFORE enqueue (#1735) — no task, no bill", async () => {
       // The submission over-fills a capped list param; the gate must fire
       // before taskService.create + enqueue so nothing is created / queued /
@@ -244,6 +272,37 @@ describe("Tasks routes", () => {
       });
 
       expect(res.status).toBe(422);
+      expect(mocks.taskService.create).not.toHaveBeenCalled();
+      expect(mockQueueAdd).not.toHaveBeenCalled();
+    });
+
+    it("rejects a submission with a text setting emptied below its least length BEFORE enqueue (inner#1825)", async () => {
+      setLocaleMessages("en", JSON.parse(readFileSync(resolve(import.meta.dirname, "../../../../../locales/en.json"), "utf8")) as Record<string, unknown>);
+      setLocale("en");
+      // The case above leaves the reference gate refusing; this one is about the text gate.
+      mocks.violatesReferenceCountForModel.mockReturnValue(null);
+      mocks.violatesTextLengthForModel.mockReturnValueOnce({ param: "voice_description", min: 1 });
+      const app = createApp();
+      const res = await app.request("/api/v1/canvas/tasks", {
+        method: "POST",
+        headers: AUTH,
+        body: JSON.stringify({
+          task_type: "audio",
+          params: { voice_description: "", text: "Hello." },
+          model: "qwen3-tts-voice-design",
+          source: "task",
+          project_id: PID,
+          space_id: SID,
+          mode: "append",
+        }),
+      });
+
+      expect(mocks.violatesTextLengthForModel).toHaveBeenCalledWith("qwen3-tts-voice-design", expect.objectContaining({ voice_description: "" }));
+      expect(res.status).toBe(422);
+      // Said with the control's name the panel shows (round 3).
+      const said = JSON.stringify(await res.json());
+      resetLocales();
+      expect(said).toContain("Fill in Voice description first");
       expect(mocks.taskService.create).not.toHaveBeenCalled();
       expect(mockQueueAdd).not.toHaveBeenCalled();
     });

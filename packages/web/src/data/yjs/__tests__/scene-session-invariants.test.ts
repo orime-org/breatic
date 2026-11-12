@@ -30,8 +30,8 @@ const peerDocs: Y.Doc[] = [];
 function fixture(name = NAME): { session: SceneSession; doc: Y.Doc } {
   const doc = new Y.Doc();
   doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
-  applySceneCommand(doc, { type: 'create', objects: [OBJECT] }, Symbol(), true);
-  const session = new SceneSession(doc);
+  applySceneCommand(doc, { type: 'create', objects: [OBJECT] }, Symbol(), true, NAME);
+  const session = new SceneSession(doc, NAME);
   managed.push({ session, doc, name });
   session.setEnvironment(EDITOR);
   return { session, doc };
@@ -86,7 +86,7 @@ describe('scene session invariants (inner#1685 acceptance 5/6/8/9/10/11/14)', ()
 
   it('makes generated Shift-selection sequences personal and never writes scene content or history', () => {
     const { session, doc } = fixture();
-    applySceneCommand(doc, { type: 'create', objects: [{ ...OBJECT, id: OTHER }] }, Symbol(), true);
+    applySceneCommand(doc, { type: 'create', objects: [{ ...OBJECT, id: OTHER }] }, Symbol(), true, NAME);
     const bytes = Y.encodeStateAsUpdate(doc);
     fc.assert(fc.property(fc.array(fc.constantFrom(ID, OTHER, null), { minLength: 1, maxLength: 40 }), (targets) => {
       session.select(null, false); const expected = new Set<string>();
@@ -103,7 +103,7 @@ describe('scene session invariants (inner#1685 acceptance 5/6/8/9/10/11/14)', ()
 
   it('ignores stale previews, keeps valid drafts, and never commits after the selected object is deleted', () => {
     const { session, doc } = fixture();
-    applySceneCommand(doc, { type: 'create', objects: [{ ...OBJECT, id: OTHER }] }, Symbol(), true);
+    applySceneCommand(doc, { type: 'create', objects: [{ ...OBJECT, id: OTHER }] }, Symbol(), true, NAME);
     expect(session.beginGesture()).toBe(false);
     session.previewGesture([{ id: ID, position: [9, 0, 0] }]);
     session.select(ID, false); expect(session.beginGesture()).toBe(true);
@@ -112,7 +112,7 @@ describe('scene session invariants (inner#1685 acceptance 5/6/8/9/10/11/14)', ()
     session.previewGesture([{ id: ID, scale: [0, 1, 1] }]);
     expect(session.getSnapshot().objects.find((object) => object.id === ID)?.position).toEqual([1, 2, 3]);
     expect(readSceneDocument(doc).objects.find((object) => object.id === ID)?.position).toEqual([0, 0, 0]);
-    applySceneCommand(doc, { type: 'delete', ids: [ID] }, Symbol(), true);
+    applySceneCommand(doc, { type: 'delete', ids: [ID] }, Symbol(), true, NAME);
     expect(session.getSnapshot().selectedIds).toEqual([]);
     expect(session.getSnapshot().gestureActive).toBe(false);
     const bytes = Y.encodeStateAsUpdate(doc);
@@ -130,7 +130,7 @@ describe('scene session invariants (inner#1685 acceptance 5/6/8/9/10/11/14)', ()
     expect(session.getSnapshot().gestureActive).toBe(false);
     expect(readSceneDocument(doc).objects).toEqual([OBJECT]);
     expect(session.getSnapshot().canRedo).toBe(true);
-    applySceneCommand(doc, { type: 'lock', ids: [ID], locked: true }, Symbol(), true);
+    applySceneCommand(doc, { type: 'lock', ids: [ID], locked: true }, Symbol(), true, NAME);
     session.historyStep('redo');
     expect(readSceneDocument(doc).objects).toEqual([{ ...OBJECT, name: 'Renamed', locked: true }]);
     session.setEnvironment({ ...EDITOR, readOnly: true }); session.historyStep('undo');
@@ -139,8 +139,8 @@ describe('scene session invariants (inner#1685 acceptance 5/6/8/9/10/11/14)', ()
 
   it('treats remote hints as validated temporary data while keeping local editing independent', () => {
     const { session, doc } = fixture();
-    applySceneCommand(doc, { type: 'create', objects: [{ ...OBJECT, id: OTHER }] }, Symbol(), true);
-    applySceneCommand(doc, { type: 'lock', ids: [OTHER], locked: true }, Symbol(), true);
+    applySceneCommand(doc, { type: 'create', objects: [{ ...OBJECT, id: OTHER }] }, Symbol(), true, NAME);
+    applySceneCommand(doc, { type: 'lock', ids: [OTHER], locked: true }, Symbol(), true, NAME);
     const local = presence(doc, 'alice'); session.setEnvironment({ ...EDITOR, awareness: local });
     const remote = publishPeer(local, 'bob', {
       selectedIds: [ID, OTHER, MISSING],
@@ -248,7 +248,7 @@ describe('scene session invariants (inner#1685 acceptance 5/6/8/9/10/11/14)', ()
       bob.setLocalState({ user: { id: 'bob' }, scenePresence: { selectedIds: [], gesture: null }, sceneUploads: { 'task-1': 10 } });
       applyAwarenessUpdate(local, encodeAwarenessUpdate(bob, [bob.clientID]), 'remote');
       const first = session.getSnapshot().remoteUploads;
-      applySceneCommand(doc, { type: 'patch', patches: [{ id: ID, position: [3, 0, 0] }] }, Symbol(), true);
+      applySceneCommand(doc, { type: 'patch', patches: [{ id: ID, position: [3, 0, 0] }] }, Symbol(), true, NAME);
       bob.setLocalState({ user: { id: 'bob' }, scenePresence: { selectedIds: [ID], gesture: null }, sceneUploads: { 'task-1': 10 } });
       applyAwarenessUpdate(local, encodeAwarenessUpdate(bob, [bob.clientID]), 'remote');
       expect(session.getSnapshot().remoteUploads).toBe(first);

@@ -3,8 +3,8 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
-import type * as Y from 'yjs';
-import type { CanvasProposal } from '@breatic/shared';
+import * as Y from 'yjs';
+import type { CanvasProposal, ModelCatalog, ModelEntry } from '@breatic/shared';
 
 import type { ContentNodeView } from '@web/data/yjs/node-view';
 
@@ -18,13 +18,28 @@ import { GUIDE_STEP_PX, LAYER_STEP_PX, ROW_GAP_PX, occupiedRects, planFlowLayout
 import { EMPTY_NODE_SIZE, GROUP_PADDING, groupRectForMembers, mediaNodeHeight, type Rect } from '@web/spaces/canvas/group-geometry';
 import { createEmptyNode, createGroupNode, type CreatableNodeType } from '@web/spaces/canvas/node-factory';
 import { writeProposalPrompt, type ProposalMention } from '@web/spaces/canvas/generate/proposal-prompt';
+import { wireParams } from '@web/spaces/canvas/generate/stand-in';
 import { ApiException } from '@web/data/api/types';
 import { COUNTS_COLUMN_FLOW_DEPTH, COUNTS_COLUMN_FLOW_REACH } from '@web/spaces/canvas/overlay-scale';
-import { useNodeCreation, type ExistingNode } from '@web/spaces/canvas/use-node-creation';
+import { useNodeCreation, type ExistingNode, type NodeCreation, type PlacedProposal } from '@web/spaces/canvas/use-node-creation';
 import { CLIPBOARD_VERSION, type ClipboardNode, type ClipboardPayload } from '@web/spaces/canvas/node-clipboard';
 import { toast } from '@web/lib/toast';
 import { canvasApi } from '@web/data/api/canvas';
 import en from '@locales/en.json';
+
+/**
+ * Places a proposal and hands back what it placed. These cases run with no
+ * size known, where the size cap lets every write in (inner#1790).
+ * @param creation - The hook's result.
+ * @param args - What `placeProposalAt` takes.
+ * @returns What it placed.
+ * @throws {Error} When the size cap refused the proposal.
+ */
+function placeOk(creation: NodeCreation, ...args: Parameters<NodeCreation['placeProposalAt']>): PlacedProposal {
+  const placed = creation.placeProposalAt(...args);
+  if ('ok' in placed) throw new Error(`placeProposalAt was refused: ${placed.reason}`);
+  return placed;
+}
 
 vi.mock('@web/lib/toast', () => ({
   toast: { info: vi.fn(), error: vi.fn(), warning: vi.fn(), success: vi.fn() },
@@ -59,7 +74,7 @@ describe('useNodeCreation', () => {
   it('createNodeAt writes an empty node of the type/position via addNode and returns its id', () => {
     const addNode = vi
       .spyOn(canvasSpace, 'addNode')
-      .mockImplementation(() => undefined);
+      .mockImplementation(() => ({ ok: true }));
     const { result } = renderHook(() => useNodeCreation('p1', 's1'));
 
     const id = result.current.createNodeAt('image', { x: 100, y: 200 });
@@ -106,7 +121,7 @@ describe('useNodeCreation', () => {
   it('createUploadNodeAt writes a media node and reports where it put it', () => {
     const addNode = vi
       .spyOn(canvasSpace, 'addNode')
-      .mockImplementation(() => undefined);
+      .mockImplementation(() => ({ ok: true }));
     const { result } = renderHook(() => useNodeCreation('p1', 's1'));
 
     const created = result.current.createUploadNodeAt('image', { x: 7, y: 8 });
@@ -473,7 +488,7 @@ describe('useNodeCreation', () => {
     it('places what feeds the generation to its left, wired the way it was proposed', () => {
       const { result } = renderHook(() => useNodeCreation('p-prop', 's-prop'));
 
-      const { nodeIds: ids } = result.current.placeProposalAt(PAIR, { x: 0, y: 0 }, []);
+      const { nodeIds: ids } = placeOk(result.current, PAIR, { x: 0, y: 0 }, []);
 
       const { nodes, edges } = canvasSpace.readCanvasGraph('p-prop', 's-prop');
       expect(ids).toHaveLength(2);
@@ -492,13 +507,91 @@ describe('useNodeCreation', () => {
     it('fills in the mode, model and parameters the proposal chose', () => {
       const { result } = renderHook(() => useNodeCreation('p-cfg', 's-cfg'));
 
-      const { nodeIds: ids } = result.current.placeProposalAt(PAIR, { x: 0, y: 0 }, []);
+      const { nodeIds: ids } = placeOk(result.current, PAIR, { x: 0, y: 0 }, []);
 
       const { nodes } = canvasSpace.readCanvasGraph('p-cfg', 's-cfg');
       const generate = contentAt(nodes, ids[1]);
       expect(generate.mode).toBe('i2i');
       expect(generate.model).toBe('some-model');
       expect(generate.paramsByModel).toEqual({ 'some-model': { ratio: '1:1' } });
+    });
+
+    describe('a dialogue the Agent proposes on Gemini speech', () => {
+      /** Gemini's speech model: one voice, or a dialogue whose speakers replace it. */
+      const GEMINI_TTS = {
+        name: 'gemini-3.1-flash-text-to-speech',
+        modality: 'audio',
+        mode: 'tts',
+        params: {
+          speakers: {
+            fill: 'panel',
+            type: 'items',
+            default: null,
+            min_items: 2,
+            max_items: 2,
+            replaces: 'voice_id',
+            fields: { speaker: { type: 'text' }, voice: { values: ['Kore', 'Puck'] } },
+          },
+          voice_id: { fill: 'remote', remote_source: 'voices', default: 'Kore' },
+        },
+      } as unknown as ModelEntry;
+      const SPEAKERS = [
+        { speaker: 'Ava', voice: 'Kore' },
+        { speaker: 'Leo', voice: 'Puck' },
+      ];
+      const DIALOGUE: CanvasProposal = {
+        nodes: [
+          {
+            role: 'generate',
+            type: 'audio',
+            name: 'Dialogue',
+            mode: 'tts',
+            model: GEMINI_TTS.name,
+            takesPrompt: true,
+            params: { speakers: SPEAKERS },
+            prompt: [{ text: 'Ava: hi\nLeo: hello' }],
+          },
+        ],
+        edges: [],
+        rationale: '',
+        groupName: 'Dialogue',
+      };
+
+      it('lands the node on the dialogue side, so the speakers are what gets sent', () => {
+        const catalog = {
+          image: [], video: [], audio: [], tts: [GEMINI_TTS], three_d: [], total: 1, credit_multiplier: 1,
+        } as unknown as ModelCatalog;
+        const { result } = renderHook(() => useNodeCreation('p-duo', 's-duo', catalog));
+
+        const { nodeIds: ids } = placeOk(result.current, DIALOGUE, { x: 0, y: 0 }, []);
+
+        const { nodes } = canvasSpace.readCanvasGraph('p-duo', 's-duo');
+        const record = contentAt(nodes, ids[0]).paramsByModel?.[GEMINI_TTS.name] ?? {};
+        const sent = wireParams(GEMINI_TTS, record);
+        expect(sent).toHaveProperty('speakers', SPEAKERS);
+        expect(sent).not.toHaveProperty('voice_id');
+      });
+
+      it('lands proposed lines as one paragraph each, carrying its speaker, with no name in the words (inner#1825)', () => {
+        const catalog = {
+          image: [], video: [], audio: [], tts: [GEMINI_TTS], three_d: [], total: 1, credit_multiplier: 1,
+        } as unknown as ModelCatalog;
+        const { prompt: _prompt, ...anchor } = DIALOGUE.nodes[0]!;
+        const lines: CanvasProposal = {
+          ...DIALOGUE,
+          nodes: [{ ...anchor, lines: [{ speaker: 1, prompt: [{ text: 'hi' }] }, { speaker: 2, prompt: [{ text: 'hello' }] }] }],
+        } as unknown as CanvasProposal;
+        const { result } = renderHook(() => useNodeCreation('p-lines', 's-lines', catalog));
+
+        const { nodeIds: ids } = placeOk(result.current, lines, { x: 0, y: 0 }, []);
+
+        const fragment = canvasSpace.getPromptFragment('p-lines', 's-lines', ids[0]!, 'tts')!;
+        const paragraphs = fragment.toArray().filter((block): block is Y.XmlElement => block instanceof Y.XmlElement && block.nodeName === 'paragraph');
+        expect(paragraphs.map((p) => [Number(p.getAttribute('speaker')), p.toArray().map((c) => (c instanceof Y.XmlText ? c.toString() : '')).join('')])).toEqual([
+          [1, 'hi'],
+          [2, 'hello'],
+        ]);
+      });
     });
 
     it('puts the prompt in the generation node, @-ing the pooled node for the user (inner#1315)', () => {
@@ -508,7 +601,7 @@ describe('useNodeCreation', () => {
       };
       const { result } = renderHook(() => useNodeCreation('p-pr', 's-pr'));
 
-      const { nodeIds: ids } = result.current.placeProposalAt(withRef, { x: 0, y: 0 }, []);
+      const { nodeIds: ids } = placeOk(result.current, withRef, { x: 0, y: 0 }, []);
 
       const written = canvasSpace.getPromptFragment('p-pr', 's-pr', ids[1]!, 'i2i')!.toJSON();
       expect(written).toContain('white ground, ');
@@ -532,7 +625,7 @@ describe('useNodeCreation', () => {
       };
       const { result } = renderHook(() => useNodeCreation('p-cover', 's-cover'));
 
-      const { nodeIds: ids } = result.current.placeProposalAt(held, { x: 0, y: 0 }, []);
+      const { nodeIds: ids } = placeOk(result.current, held, { x: 0, y: 0 }, []);
 
       expect(canvasSpace.getPromptFragment('p-cover', 's-cover', ids[1]!, 'ref')!.toJSON()).toContain(`thumbnail="${COVER}"`);
     });
@@ -548,7 +641,7 @@ describe('useNodeCreation', () => {
       };
       const { result } = renderHook(() => useNodeCreation('p-thumb', 's-thumb'));
 
-      const { nodeIds: ids } = result.current.placeProposalAt(held, { x: 0, y: 0 }, []);
+      const { nodeIds: ids } = placeOk(result.current, held, { x: 0, y: 0 }, []);
 
       expect(canvasSpace.getPromptFragment('p-thumb', 's-thumb', ids[1]!, 'i2i')!.toJSON()).toContain(`thumbnail="${PHOTO}"`);
     });
@@ -569,7 +662,7 @@ describe('useNodeCreation', () => {
       };
       const { result } = renderHook(() => useNodeCreation('p-lyr2', 's-lyr2'));
 
-      const { nodeIds: ids } = result.current.placeProposalAt(song, { x: 0, y: 0 }, []);
+      const { nodeIds: ids } = placeOk(result.current, song, { x: 0, y: 0 }, []);
 
       const box = canvasSpace.getLyricsFragment('p-lyr2', 's-lyr2', ids[2]!, 't2m')!;
       const lines = box.toArray().map((line) => (line as Y.XmlElement).toString());
@@ -590,7 +683,7 @@ describe('useNodeCreation', () => {
       };
       const { result } = renderHook(() => useNodeCreation('p-lyr', 's-lyr'));
 
-      const { nodeIds: ids } = result.current.placeProposalAt(song, { x: 0, y: 0 }, []);
+      const { nodeIds: ids } = placeOk(result.current, song, { x: 0, y: 0 }, []);
 
       expect(canvasSpace.getLyricsFragment('p-lyr', 's-lyr', ids[1]!, 't2m')!.toJSON()).toContain(`sourceNodeId="${ids[0]!}"`);
       expect(canvasSpace.getPromptFragment('p-lyr', 's-lyr', ids[1]!, 't2m')!.toJSON()).not.toContain('sourceNodeId');
@@ -602,7 +695,7 @@ describe('useNodeCreation', () => {
       // moment the user looked at another mode.
       const { result } = renderHook(() => useNodeCreation('p-mm', 's-mm'));
 
-      const { nodeIds: ids } = result.current.placeProposalAt(PAIR, { x: 0, y: 0 }, []);
+      const { nodeIds: ids } = placeOk(result.current, PAIR, { x: 0, y: 0 }, []);
 
       const { nodes } = canvasSpace.readCanvasGraph('p-mm', 's-mm');
       const generate = contentAt(nodes, ids[1]);
@@ -616,7 +709,7 @@ describe('useNodeCreation', () => {
         nodes: [PAIR.nodes[0]!, { ...PAIR.nodes[1]!, prompt: [{ text: 'a red boat' }] }],
       };
 
-      const { nodeIds: ids } = result.current.placeProposalAt(withWords, { x: 0, y: 0 }, []);
+      const { nodeIds: ids } = placeOk(result.current, withWords, { x: 0, y: 0 }, []);
 
       expect(canvasSpace.getPromptFragment('p-mode', 's-mode', ids[1]!, 'i2i')!.toJSON()).toContain('a red boat');
       expect(canvasSpace.getPromptFragment('p-mode', 's-mode', ids[1]!, 't2i')!.toJSON()).not.toContain('a red boat');
@@ -642,7 +735,7 @@ describe('useNodeCreation', () => {
       };
       const { result } = renderHook(() => useNodeCreation('p-shot', 's-shot'));
 
-      const { nodeIds: ids } = result.current.placeProposalAt(shots, { x: 0, y: 0 }, []);
+      const { nodeIds: ids } = placeOk(result.current, shots, { x: 0, y: 0 }, []);
 
       const landed = readShots('p-shot', 's-shot', ids[2]!);
       expect(landed?.map((shot) => shot.duration)).toEqual([2, 3]);
@@ -664,7 +757,7 @@ describe('useNodeCreation', () => {
           ],
         };
         const { result } = renderHook(() => useNodeCreation('p-mk', 's-mk'));
-        result.current.placeProposalAt(marked, { x: 0, y: 0 }, []);
+        placeOk(result.current, marked, { x: 0, y: 0 }, []);
         // A proposal lands no square brackets: its references arrive as
         // mentions, so the reminder speaks of the braces alone.
         expect(toast.info).toHaveBeenCalledWith(en.canvas.generatePanel.editProposalMarks);
@@ -684,7 +777,7 @@ describe('useNodeCreation', () => {
           groupName: 'Clip',
         };
         const { result } = renderHook(() => useNodeCreation('p-mks', 's-mks'));
-        result.current.placeProposalAt(shot, { x: 0, y: 0 }, []);
+        placeOk(result.current, shot, { x: 0, y: 0 }, []);
         expect(toast.info).toHaveBeenCalledTimes(1);
       });
 
@@ -701,7 +794,7 @@ describe('useNodeCreation', () => {
           ],
         };
         const { result } = renderHook(() => useNodeCreation('p-box', 's-box'));
-        const { nodeIds: ids } = result.current.placeProposalAt(boxless, { x: 0, y: 0 }, []);
+        const { nodeIds: ids } = placeOk(result.current, boxless, { x: 0, y: 0 }, []);
         expect(toast.info).not.toHaveBeenCalled();
         expect(canvasSpace.getPromptFragment('p-box', 's-box', ids[1]!, 'i2i')!.toJSON()).not.toContain('Pick the photo');
       });
@@ -715,7 +808,7 @@ describe('useNodeCreation', () => {
           ],
         };
         const { result } = renderHook(() => useNodeCreation('p-nt', 's-nt'));
-        result.current.placeProposalAt(noted, { x: 0, y: 0 }, []);
+        placeOk(result.current, noted, { x: 0, y: 0 }, []);
         expect(toast.info).not.toHaveBeenCalled();
       });
 
@@ -725,13 +818,13 @@ describe('useNodeCreation', () => {
           nodes: [PAIR.nodes[0]!, { ...PAIR.nodes[1]!, prompt: [{ text: 'repaint ' }, { ref: 0 }] }],
         };
         const { result } = renderHook(() => useNodeCreation('p-atonly', 's-atonly'));
-        result.current.placeProposalAt(atOnly, { x: 0, y: 0 }, []);
+        placeOk(result.current, atOnly, { x: 0, y: 0 }, []);
         expect(toast.info).not.toHaveBeenCalled();
       });
 
       it('says nothing when the prompts are plain words', () => {
         const { result } = renderHook(() => useNodeCreation('p-plain', 's-plain'));
-        result.current.placeProposalAt(PAIR, { x: 0, y: 0 }, []);
+        placeOk(result.current, PAIR, { x: 0, y: 0 }, []);
         expect(toast.info).not.toHaveBeenCalled();
       });
     });
@@ -772,7 +865,7 @@ describe('useNodeCreation', () => {
       it('lands each material node holding the file and the numbers an upload gives it', () => {
         const { result } = renderHook(() => useNodeCreation('p-mat', 's-mat'));
 
-        const { nodeIds: ids } = result.current.placeProposalAt(TALKING, { x: 0, y: 0 }, []);
+        const { nodeIds: ids } = placeOk(result.current, TALKING, { x: 0, y: 0 }, []);
 
         const { nodes } = canvasSpace.readCanvasGraph('p-mat', 's-mat');
         const portrait = contentAt(nodes, ids[0]);
@@ -786,7 +879,7 @@ describe('useNodeCreation', () => {
       it('fills the talking head the way picks in its panel would, with no wire drawn', () => {
         const { result } = renderHook(() => useNodeCreation('p-fill', 's-fill'));
 
-        const { nodeIds: ids } = result.current.placeProposalAt(TALKING, { x: 0, y: 0 }, []);
+        const { nodeIds: ids } = placeOk(result.current, TALKING, { x: 0, y: 0 }, []);
 
         const { nodes, edges } = canvasSpace.readCanvasGraph('p-fill', 's-fill');
         const head = contentAt(nodes, ids[2]);
@@ -819,7 +912,7 @@ describe('useNodeCreation', () => {
         };
         const { result } = renderHook(() => useNodeCreation('p-style', 's-style'));
 
-        const { nodeIds: ids } = result.current.placeProposalAt(styled, { x: 0, y: 0 }, []);
+        const { nodeIds: ids } = placeOk(result.current, styled, { x: 0, y: 0 }, []);
 
         const { nodes } = canvasSpace.readCanvasGraph('p-style', 's-style');
         expect(contentAt(nodes, ids[2]).styleImageUrls).toEqual([PORTRAIT, 'https://ours.example/image/b.png']);
@@ -853,7 +946,7 @@ describe('useNodeCreation', () => {
         };
         const { result } = renderHook(() => useNodeCreation('p-sfx', 's-sfx'));
 
-        const { nodeIds: ids } = result.current.placeProposalAt(scored, { x: 0, y: 0 }, []);
+        const { nodeIds: ids } = placeOk(result.current, scored, { x: 0, y: 0 }, []);
 
         const { nodes } = canvasSpace.readCanvasGraph('p-sfx', 's-sfx');
         expect(nodes.find((n) => n.id === ids[0])?.type).toBe('video');
@@ -867,7 +960,7 @@ describe('useNodeCreation', () => {
         );
         const { result } = renderHook(() => useNodeCreation('p-mundo', 's-mundo'));
 
-        const { nodeIds: ids } = result.current.placeProposalAt(TALKING, { x: 0, y: 0 }, []);
+        const { nodeIds: ids } = placeOk(result.current, TALKING, { x: 0, y: 0 }, []);
         expect(undo.undoStack).toHaveLength(1);
         undo.undo();
         undo.redo();
@@ -882,7 +975,7 @@ describe('useNodeCreation', () => {
     it('leaves the source node without a mode or a model', () => {
       const { result } = renderHook(() => useNodeCreation('p-src', 's-src'));
 
-      const { nodeIds: ids } = result.current.placeProposalAt(PAIR, { x: 0, y: 0 }, []);
+      const { nodeIds: ids } = placeOk(result.current, PAIR, { x: 0, y: 0 }, []);
 
       const { nodes } = canvasSpace.readCanvasGraph('p-src', 's-src');
       expect(contentAt(nodes, ids[0]).model).toBeUndefined();
@@ -899,7 +992,7 @@ describe('useNodeCreation', () => {
       );
       const { result } = renderHook(() => useNodeCreation('p-undo', 's-undo'));
 
-      result.current.placeProposalAt(PAIR, { x: 0, y: 0 }, []);
+      placeOk(result.current, PAIR, { x: 0, y: 0 }, []);
 
       expect(undo.undoStack).toHaveLength(1);
       const placed = canvasSpace.readCanvasGraph('p-undo', 's-undo');
@@ -922,7 +1015,7 @@ describe('useNodeCreation', () => {
       // agent owns -- so the user changes the model the agent picked and
       // wires the result into something of their own, both the ordinary way.
       const { result } = renderHook(() => useNodeCreation('p-after', 's-after'));
-      const { nodeIds: ids } = result.current.placeProposalAt(PAIR, { x: 0, y: 0 }, []);
+      const { nodeIds: ids } = placeOk(result.current, PAIR, { x: 0, y: 0 }, []);
       const generated = ids[1]!;
 
       canvasSpace.setNodeModel('p-after', 's-after', generated, 'i2i', 'their-model', {
@@ -951,7 +1044,7 @@ describe('useNodeCreation', () => {
       // group was drawn around it -- and the group is drawn from these rects.
       const { result } = renderHook(() => useNodeCreation('p-pos', 's-pos'));
 
-      const { nodeIds: ids } = result.current.placeProposalAt(PAIR, { x: 700, y: 400 }, []);
+      const { nodeIds: ids } = placeOk(result.current, PAIR, { x: 700, y: 400 }, []);
 
       const wanted = planFlowLayout(PAIR, { x: 700, y: 400 });
       const { nodes } = canvasSpace.readCanvasGraph('p-pos', 's-pos');
@@ -988,7 +1081,7 @@ describe('useNodeCreation', () => {
       };
       const { result } = renderHook(() => useNodeCreation('p-copy', 's-copy'));
 
-      const { nodeIds } = result.current.placeProposalAt(withCopy, { x: 0, y: 0 }, []);
+      const { nodeIds } = placeOk(result.current, withCopy, { x: 0, y: 0 }, []);
 
       const body = canvasSpace.getTextBody('p-copy', 's-copy', nodeIds[0]!);
       expect(body).not.toBeNull();
@@ -1002,7 +1095,7 @@ describe('useNodeCreation', () => {
     it('puts two or more nodes inside a group the model named', () => {
       const { result } = renderHook(() => useNodeCreation('p-grp', 's-grp'));
 
-      const { nodeIds, groupId } = result.current.placeProposalAt(PAIR, { x: 0, y: 0 }, []);
+      const { nodeIds, groupId } = placeOk(result.current, PAIR, { x: 0, y: 0 }, []);
 
       expect(groupId).toBeDefined();
       const { nodes } = canvasSpace.readCanvasGraph('p-grp', 's-grp');
@@ -1020,7 +1113,7 @@ describe('useNodeCreation', () => {
       const random = vi.spyOn(Math, 'random').mockReturnValue(roll);
       const { result } = renderHook(() => useNodeCreation(`p-roll-${roll}`, 's-roll'));
 
-      const { groupId } = result.current.placeProposalAt(PAIR, { x: 0, y: 0 }, []);
+      const { groupId } = placeOk(result.current, PAIR, { x: 0, y: 0 }, []);
       random.mockRestore();
 
       const group = canvasSpace
@@ -1052,7 +1145,7 @@ describe('useNodeCreation', () => {
       };
       const { result } = renderHook(() => useNodeCreation('p-tall', 's-tall'));
 
-      const { nodeIds, groupId } = result.current.placeProposalAt(long, { x: 0, y: 0 }, []);
+      const { nodeIds, groupId } = placeOk(result.current, long, { x: 0, y: 0 }, []);
 
       const { nodes } = canvasSpace.readCanvasGraph('p-tall', 's-tall');
       const group = nodes.find((n) => n.id === groupId);
@@ -1067,7 +1160,7 @@ describe('useNodeCreation', () => {
       const { result } = renderHook(() => useNodeCreation('p-wrap', 's-wrap'));
       const stranger = result.current.createNodeAt('image', { x: 0, y: 0 });
 
-      const { groupId } = result.current.placeProposalAt(PAIR, { x: 0, y: 0 }, []);
+      const { groupId } = placeOk(result.current, PAIR, { x: 0, y: 0 }, []);
 
       const { nodes } = canvasSpace.readCanvasGraph('p-wrap', 's-wrap');
       expect(nodes.find((n) => n.id === stranger)?.parentId).toBeUndefined();
@@ -1082,7 +1175,7 @@ describe('useNodeCreation', () => {
       };
       const { result } = renderHook(() => useNodeCreation('p-one', 's-one'));
 
-      const { nodeIds, groupId } = result.current.placeProposalAt(alone, { x: 0, y: 0 }, []);
+      const { nodeIds, groupId } = placeOk(result.current, alone, { x: 0, y: 0 }, []);
 
       expect(groupId).toBeUndefined();
       const { nodes } = canvasSpace.readCanvasGraph('p-one', 's-one');
@@ -1108,7 +1201,7 @@ describe('useNodeCreation', () => {
       const taken = { x: planned.x, y: planned.y, width: 100, height: 100 };
       const { result } = renderHook(() => useNodeCreation('p-clear', 's-clear'));
 
-      result.current.placeProposalAt(PAIR, start, [taken]);
+      placeOk(result.current, PAIR, start, [taken]);
 
       const [group] = groupRects('p-clear', 's-clear');
       expect(group?.x).toBe(taken.x + taken.width + ROW_GAP_PX);
@@ -1126,7 +1219,7 @@ describe('useNodeCreation', () => {
       const taken = { x: spot!.x, y: spot!.y, width: 100, height: 100 };
       const { result } = renderHook(() => useNodeCreation('p-single', 's-single'));
 
-      result.current.placeProposalAt(one, start, [taken]);
+      placeOk(result.current, one, start, [taken]);
 
       const [placed] = canvasSpace.readNodePlacements('p-single', 's-single');
       expect(placed?.x).toBe(taken.x + taken.width + ROW_GAP_PX);
@@ -1139,7 +1232,7 @@ describe('useNodeCreation', () => {
       const taken = { x: planned.x, y: planned.y, width: 100, height: 100 };
       const { result } = renderHook(() => useNodeCreation('p-bounds', 's-bounds'));
 
-      const { bounds } = result.current.placeProposalAt(PAIR, start, [taken]);
+      const { bounds } = placeOk(result.current, PAIR, start, [taken]);
 
       const [group] = groupRects('p-bounds', 's-bounds');
       expect(bounds).toEqual(group);
@@ -1154,7 +1247,7 @@ describe('useNodeCreation', () => {
       const [spot] = planFlowLayout(one, { x: 0, y: 0 });
       const { result } = renderHook(() => useNodeCreation('p-bounds-one', 's-bounds-one'));
 
-      const { bounds } = result.current.placeProposalAt(one, { x: 0, y: 0 }, []);
+      const { bounds } = placeOk(result.current, one, { x: 0, y: 0 }, []);
 
       expect(bounds).toEqual(spot);
     });
@@ -1183,7 +1276,7 @@ describe('useNodeCreation', () => {
       } as unknown as CanvasProposal;
       const { result } = renderHook(() => useNodeCreation('p-stale', 's-stale'));
 
-      expect(() => result.current.placeProposalAt(stale, { x: 0, y: 0 }, [])).toThrow();
+      expect(() => placeOk(result.current, stale, { x: 0, y: 0 }, [])).toThrow();
 
       const { nodes, edges } = canvasSpace.readCanvasGraph('p-stale', 's-stale');
       expect(nodes).toHaveLength(0);
@@ -1194,7 +1287,7 @@ describe('useNodeCreation', () => {
       const name = docName.canvasSpace('p-hist', 's-hist');
       const undo = canvasSpace.getCanvasUndoManager(getDoc(name), name);
       const { result } = renderHook(() => useNodeCreation('p-hist', 's-hist'));
-      result.current.placeProposalAt(PAIR, { x: 0, y: 0 }, []);
+      placeOk(result.current, PAIR, { x: 0, y: 0 }, []);
       undo.undo();
       const before = { undo: undo.undoStack.length, redo: undo.redoStack.length };
       const stale = {
@@ -1202,7 +1295,7 @@ describe('useNodeCreation', () => {
         nodes: [PAIR.nodes[0]!, { ...PAIR.nodes[1]!, prompt: [{ slot: { kind: 'ref', label: 'x', note: 'y' } }] }],
       } as unknown as CanvasProposal;
 
-      expect(() => result.current.placeProposalAt(stale, { x: 0, y: 0 }, [])).toThrow();
+      expect(() => placeOk(result.current, stale, { x: 0, y: 0 }, [])).toThrow();
 
       expect({ undo: undo.undoStack.length, redo: undo.redoStack.length }).toEqual(before);
       expect(before.redo).toBe(1);
@@ -1214,7 +1307,7 @@ describe('useNodeCreation', () => {
       });
       const { result } = renderHook(() => useNodeCreation('p-grp', 's-grp'));
 
-      expect(() => result.current.placeProposalAt(PAIR, { x: 0, y: 0 }, [])).toThrow();
+      expect(() => placeOk(result.current, PAIR, { x: 0, y: 0 }, [])).toThrow();
 
       expect(canvasSpace.readNodePlacements('p-grp', 's-grp')).toHaveLength(0);
     });
@@ -1229,7 +1322,7 @@ describe('useNodeCreation', () => {
       const below = { x: spot!.x, y: spot!.y + COUNTS_COLUMN_FLOW_DEPTH + ROW_GAP_PX - 1, width: 100, height: 100 };
       const { result } = renderHook(() => useNodeCreation('p-depth', 's-depth'));
 
-      result.current.placeProposalAt(one, { x: 0, y: 0 }, [below]);
+      placeOk(result.current, one, { x: 0, y: 0 }, [below]);
 
       const [placed] = canvasSpace.readNodePlacements('p-depth', 's-depth');
       expect(placed?.x).toBe(below.x + below.width + ROW_GAP_PX);
@@ -1241,7 +1334,7 @@ describe('useNodeCreation', () => {
       const right = { x: planned.x + planned.width + reach + ROW_GAP_PX + 1, y: planned.y, width: 100, height: 100 };
       const { result } = renderHook(() => useNodeCreation('p-greach', 's-greach'));
 
-      result.current.placeProposalAt(PAIR, { x: 0, y: 0 }, [right]);
+      placeOk(result.current, PAIR, { x: 0, y: 0 }, [right]);
 
       const [group] = groupRects('p-greach', 's-greach');
       expect(group?.x).toBe(planned.x);
@@ -1255,7 +1348,7 @@ describe('useNodeCreation', () => {
       expect(right.x).toBeGreaterThan(planned.x + planned.width + ROW_GAP_PX);
       const { result } = renderHook(() => useNodeCreation('p-gright', 's-gright'));
 
-      result.current.placeProposalAt(PAIR, { x: 0, y: 0 }, [right]);
+      placeOk(result.current, PAIR, { x: 0, y: 0 }, [right]);
 
       const [group] = groupRects('p-gright', 's-gright');
       expect(group!.x).toBeGreaterThan(planned.x);
@@ -1270,7 +1363,7 @@ describe('useNodeCreation', () => {
       expect(below.y).toBeGreaterThan(planned.y + planned.height + ROW_GAP_PX);
       const { result } = renderHook(() => useNodeCreation('p-gdeep', 's-gdeep'));
 
-      result.current.placeProposalAt(PAIR, { x: 0, y: 0 }, [below]);
+      placeOk(result.current, PAIR, { x: 0, y: 0 }, [below]);
 
       const [group] = groupRects('p-gdeep', 's-gdeep');
       expect(group!.x).toBeGreaterThan(planned.x);
@@ -1287,7 +1380,7 @@ describe('useNodeCreation', () => {
       const right = { x: spot!.x + spot!.width + ROW_GAP_PX + COUNTS_COLUMN_FLOW_REACH - 1, y: spot!.y, width: 100, height: 100 };
       const { result } = renderHook(() => useNodeCreation('p-reach', 's-reach'));
 
-      result.current.placeProposalAt(one, { x: 0, y: 0 }, [right]);
+      placeOk(result.current, one, { x: 0, y: 0 }, [right]);
 
       const [placed] = canvasSpace.readNodePlacements('p-reach', 's-reach');
       expect(placed?.x).toBe(right.x + right.width + ROW_GAP_PX);
@@ -1297,9 +1390,9 @@ describe('useNodeCreation', () => {
       const start = { x: 0, y: 0 };
       const { result } = renderHook(() => useNodeCreation('p-twice', 's-twice'));
 
-      result.current.placeProposalAt(PAIR, start, []);
+      placeOk(result.current, PAIR, start, []);
       const occupied = occupiedRects(canvasSpace.readNodePlacements('p-twice', 's-twice'), () => undefined);
-      result.current.placeProposalAt(PAIR, start, occupied);
+      placeOk(result.current, PAIR, start, occupied);
 
       const [first, second] = groupRects('p-twice', 's-twice');
       expect(first && second).toBeTruthy();
@@ -1543,7 +1636,7 @@ describe('useNodeCreation', () => {
         ]);
         const { result } = renderHook(() => useNodeCreation('p-ex1', 's-ex1'));
 
-        result.current.placeProposalAt(proposalOf([anchorSlot([{ text: 'template words' }])]), { x: 0, y: 0 }, [], existing);
+        placeOk(result.current, proposalOf([anchorSlot([{ text: 'template words' }])]), { x: 0, y: 0 }, [], existing);
 
         const { nodes } = canvasSpace.readCanvasGraph('p-ex1', 's-ex1');
         expect(nodes).toHaveLength(1);
@@ -1566,7 +1659,7 @@ describe('useNodeCreation', () => {
         ]);
         const { result } = renderHook(() => useNodeCreation('p-ex2', 's-ex2'));
 
-        result.current.placeProposalAt(
+        placeOk(result.current,
           proposalOf([
             anchorSlot([{ text: 'pose of ' }, { ref: 1 }]),
             { role: 'source', type: 'image', name: 'character reference' },
@@ -1597,7 +1690,7 @@ describe('useNodeCreation', () => {
         ]);
         const { result } = renderHook(() => useNodeCreation('p-ex3', 's-ex3'));
 
-        result.current.placeProposalAt(
+        placeOk(result.current,
           proposalOf(
             [anchorSlot([{ text: 'from ' }, { ref: 1 }]), { role: 'source', type: 'image', name: 'character reference' }],
             [{ fromIndex: 1, toIndex: 0, into: 'pool' }],
@@ -1628,7 +1721,7 @@ describe('useNodeCreation', () => {
         ]);
         const { result } = renderHook(() => useNodeCreation('p-ex4', 's-ex4'));
 
-        const placed = result.current.placeProposalAt(
+        const placed = placeOk(result.current,
           {
             ...proposalOf(
               [anchorSlot([{ text: 'finish ' }, { ref: 1 }]), UPSTREAM, STYLE, GUIDE],
@@ -1674,7 +1767,7 @@ describe('useNodeCreation', () => {
         ]);
         const { result } = renderHook(() => useNodeCreation('p-ex4b', 's-ex4b'));
 
-        const placed = result.current.placeProposalAt(
+        const placed = placeOk(result.current,
           {
             ...proposalOf(
               [anchorSlot([{ text: 'from ' }, { ref: 1 }]), { role: 'source', type: 'image', name: 'character reference' }],
@@ -1702,7 +1795,7 @@ describe('useNodeCreation', () => {
         ]);
         const { result } = renderHook(() => useNodeCreation('p-ex5', 's-ex5'));
 
-        result.current.placeProposalAt(
+        placeOk(result.current,
           proposalOf(
             [anchorSlot([{ text: 'from ' }, { ref: 1 }]), { role: 'source', type: 'image', name: 'character reference' }],
             [{ fromIndex: 1, toIndex: 0, into: 'pool' }],
@@ -1731,7 +1824,7 @@ describe('useNodeCreation', () => {
         ]);
         const { result } = renderHook(() => useNodeCreation('p-ex6', 's-ex6'));
 
-        result.current.placeProposalAt(
+        placeOk(result.current,
           proposalOf(
             [
               anchorSlot([{ ref: 1 }, { text: ' and ' }, { ref: 2 }]),
@@ -1765,7 +1858,7 @@ describe('useNodeCreation', () => {
         ]);
         const { result } = renderHook(() => useNodeCreation('p-ex7', 's-ex7'));
 
-        result.current.placeProposalAt(
+        placeOk(result.current,
           {
             ...proposalOf(
               [
@@ -1816,7 +1909,7 @@ describe('useNodeCreation', () => {
         ]);
         const { result } = renderHook(() => useNodeCreation('p-again', 's-again'));
 
-        const placed = result.current.placeProposalAt(
+        const placed = placeOk(result.current,
           {
             ...proposalOf(
               [anchorSlot([{ text: 'finish ' }, { ref: 1 }]), UPSTREAM, STYLE, GUIDE],
@@ -1854,7 +1947,7 @@ describe('useNodeCreation', () => {
         ]);
         const { result } = renderHook(() => useNodeCreation('p-share', 's-share'));
 
-        result.current.placeProposalAt(
+        placeOk(result.current,
           proposalOf(
             [anchorSlot([{ text: 'finish ' }, { ref: 1 }]), SKETCH, CHARACTER],
             [{ fromIndex: 2, toIndex: 1, into: 'pool' }, { fromIndex: 1, toIndex: 0, into: 'pool' }],
@@ -1888,7 +1981,7 @@ describe('useNodeCreation', () => {
         ]);
         const { result } = renderHook(() => useNodeCreation('p-col', 's-col'));
 
-        result.current.placeProposalAt(
+        placeOk(result.current,
           proposalOf(
             [anchorSlot([{ text: 'from ' }, { ref: 1 }]), { role: 'source', type: 'image', name: 'Side' }, { role: 'source', type: 'image', name: 'Back' }, { role: 'source', type: 'image', name: 'Character' }, { role: 'source', type: 'image', name: 'Front' }],
             [
@@ -1928,7 +2021,7 @@ describe('useNodeCreation', () => {
         ]);
         const { result } = renderHook(() => useNodeCreation('p-both', 's-both'));
 
-        result.current.placeProposalAt(
+        placeOk(result.current,
           {
             ...proposalOf(
               [anchorSlot([{ text: 'finish ' }, { ref: 1 }]), UPSTREAM, STYLE, GUIDE],
@@ -1966,7 +2059,7 @@ describe('useNodeCreation', () => {
         ]);
         const { result } = renderHook(() => useNodeCreation('p-shut', 's-shut'));
 
-        const placed = result.current.placeProposalAt(
+        const placed = placeOk(result.current,
           {
             ...proposalOf(
               [anchorSlot([{ text: 'finish ' }, { ref: 1 }]), UPSTREAM, STYLE, GUIDE],
@@ -2010,7 +2103,7 @@ describe('useNodeCreation', () => {
         const { result } = renderHook(() => useNodeCreation('p-input', 's-input'));
 
         // The only new node is the input put back.
-        result.current.placeProposalAt(
+        placeOk(result.current,
           {
             ...proposalOf(
               [anchorSlot([{ text: 'finish ' }, { ref: 1 }]), SKETCH, CHARACTER],
@@ -2043,7 +2136,7 @@ describe('useNodeCreation', () => {
         ]);
         const { result } = renderHook(() => useNodeCreation('p-moved', 's-moved'));
 
-        result.current.placeProposalAt(
+        placeOk(result.current,
           proposalOf(
             [anchorSlot([{ text: 'finish ' }, { ref: 1 }]), SKETCH, CHARACTER],
             [{ fromIndex: 2, toIndex: 1, into: 'pool' }, { fromIndex: 1, toIndex: 0, into: 'pool' }],
@@ -2076,7 +2169,7 @@ describe('useNodeCreation', () => {
         ]);
         const { result } = renderHook(() => useNodeCreation('p-ref', 's-ref'));
 
-        result.current.placeProposalAt(
+        placeOk(result.current,
           {
             ...proposalOf(
               [anchorSlot([{ text: 'finish ' }, { ref: 1 }]), UPSTREAM, STYLE, { role: 'source', type: 'image', name: 'Hero photo' }],
@@ -2109,7 +2202,7 @@ describe('useNodeCreation', () => {
         const { result } = renderHook(() => useNodeCreation('p-exundo', 's-exundo'));
         const stacked = undo.undoStack.length;
 
-        result.current.placeProposalAt(
+        placeOk(result.current,
           {
             ...proposalOf(
               [anchorSlot([{ text: 'finish ' }, { ref: 1 }]), UPSTREAM, STYLE, GUIDE],
@@ -2144,7 +2237,7 @@ describe('useNodeCreation', () => {
         ]);
         const { result } = renderHook(() => useNodeCreation('p-ex7', 's-ex7'));
 
-        result.current.placeProposalAt(
+        placeOk(result.current,
           proposalOf([anchorSlot([{ text: 'from ' }, { ref: 1 }]), { role: 'source', type: 'image', name: 'character reference' }, GUIDE]),
           { x: 0, y: 0 },
           [{ x: 1000 - LAYER_STEP_PX, y: -400, ...EMPTY_NODE_SIZE }],
@@ -2167,7 +2260,7 @@ describe('useNodeCreation', () => {
         ]);
         const { result } = renderHook(() => useNodeCreation('p-ex8', 's-ex8'));
 
-        result.current.placeProposalAt(
+        placeOk(result.current,
           proposalOf(
             [anchorSlot([{ text: 'finish ' }, { ref: 1 }]), UPSTREAM, STYLE, GUIDE],
             [{ fromIndex: 2, toIndex: 1, into: 'pool' }, { fromIndex: 1, toIndex: 0, into: 'pool' }],
@@ -2196,7 +2289,7 @@ describe('useNodeCreation', () => {
         ]);
         const { result } = renderHook(() => useNodeCreation('p-in8', 's-in8'));
 
-        result.current.placeProposalAt(
+        placeOk(result.current,
           proposalOf(
             [anchorSlot([{ text: 'from ' }, { ref: 1 }]), { role: 'source', type: 'image', name: 'Hero', templateNode: { template: 'fx', key: 'hero', input: true, anchor: 0 } }],
             [{ fromIndex: 1, toIndex: 0, into: 'pool' }],
@@ -2213,7 +2306,7 @@ describe('useNodeCreation', () => {
       it('points the guide of an agent proposal at the anchor node it placed', () => {
         const { result } = renderHook(() => useNodeCreation('p-ag1', 's-ag1'));
 
-        const { nodeIds } = result.current.placeProposalAt(
+        const { nodeIds } = placeOk(result.current,
           {
             ...proposalOf(
               [anchorSlot([{ text: 'finish ' }, { ref: 1 }]), UPSTREAM, STYLE, GUIDE],
@@ -2234,7 +2327,7 @@ describe('useNodeCreation', () => {
         const now = vi.spyOn(Date, 'now').mockReturnValue(7000);
         const { result } = renderHook(() => useNodeCreation('p-ord', 's-ord'));
 
-        const { nodeIds } = result.current.placeProposalAt(
+        const { nodeIds } = placeOk(result.current,
           {
             ...proposalOf(
               [
@@ -2273,7 +2366,7 @@ describe('useNodeCreation', () => {
         });
         const { result } = renderHook(() => useNodeCreation('p-res1', 's-res1'));
 
-        const { nodeIds } = result.current.placeProposalAt(
+        const { nodeIds } = placeOk(result.current,
           {
             ...proposalOf(
               [anchorSlot([{ text: 'finish ' }, { ref: 1 }]), UPSTREAM, STYLE],
@@ -2299,7 +2392,7 @@ describe('useNodeCreation', () => {
         ingestUrl.mockRejectedValue(new ApiException({ status: 429, message: 'slow down' }));
         const { result } = renderHook(() => useNodeCreation('p-res2', 's-res2'));
 
-        result.current.placeProposalAt(
+        placeOk(result.current,
           { ...proposalOf([anchorSlot([{ ref: 1 }]), STYLE], [{ fromIndex: 1, toIndex: 0, into: 'pool' }]), groupName: 'Fixture' },
           { x: 0, y: 0 },
           [],
@@ -2321,7 +2414,7 @@ describe('useNodeCreation', () => {
         } as unknown as CanvasProposal;
         const { result } = renderHook(() => useNodeCreation('p-res3', 's-res3'));
 
-        expect(() => result.current.placeProposalAt(stale, { x: 0, y: 0 }, [])).toThrow();
+        expect(() => placeOk(result.current, stale, { x: 0, y: 0 }, [])).toThrow();
 
         expect(ingestUrl).not.toHaveBeenCalled();
       });
@@ -2336,7 +2429,7 @@ describe('useNodeCreation', () => {
         ]);
         const { result } = renderHook(() => useNodeCreation('p-res4', 's-res4'));
 
-        result.current.placeProposalAt(proposalOf([anchorSlot([{ ref: 1 }]), STYLE]), { x: 0, y: 0 }, [], existing);
+        placeOk(result.current, proposalOf([anchorSlot([{ ref: 1 }]), STYLE]), { x: 0, y: 0 }, [], existing);
 
         expect(canvasSpace.readCanvasGraph('p-res4', 's-res4').nodes).toHaveLength(2);
         expect(ingestUrl).toHaveBeenCalledTimes(1);
@@ -2367,7 +2460,7 @@ describe('useNodeCreation', () => {
         ]);
         const { result } = renderHook(() => useNodeCreation('p-res5', 's-res5'));
 
-        result.current.placeProposalAt(
+        placeOk(result.current,
           proposalOf([anchorSlot([{ ref: 1 }, { ref: 2 }]), STYLE, { ...STYLE, name: 'Style two' }]),
           { x: 0, y: 0 },
           [],
@@ -2397,7 +2490,7 @@ describe('useNodeCreation', () => {
         ]);
         const { result } = renderHook(() => useNodeCreation('p-up', 's-up'));
 
-        result.current.placeProposalAt(
+        placeOk(result.current,
           proposalOf([anchorSlot([{ text: 'finish ' }, { ref: 1 }]), UPSTREAM, STYLE]),
           { x: 0, y: 0 },
           [],
@@ -2435,7 +2528,7 @@ describe('useNodeCreation', () => {
         ]);
         const { result } = renderHook(() => useNodeCreation('p-grow', 's-grow'));
 
-        result.current.placeProposalAt(
+        placeOk(result.current,
           proposalOf(
             [anchorSlot([{ text: 'from ' }, { ref: 1 }]), { role: 'source', type: 'image', name: 'character reference' }, GUIDE],
             [{ fromIndex: 1, toIndex: 0, into: 'pool' }],
@@ -2483,7 +2576,7 @@ describe('useNodeCreation', () => {
         ]);
         const { result } = renderHook(() => useNodeCreation('p-lock', 's-lock'));
 
-        result.current.placeProposalAt(
+        placeOk(result.current,
           proposalOf([anchorSlot([{ text: 'pose of ' }, { ref: 1 }]), { role: 'source', type: 'image', name: 'character reference' }]),
           { x: 0, y: 0 },
           [],
@@ -2507,7 +2600,7 @@ describe('useNodeCreation', () => {
         ]);
         const { result } = renderHook(() => useNodeCreation('p-chain', 's-chain'));
 
-        result.current.placeProposalAt(
+        placeOk(result.current,
           proposalOf([anchorSlot([{ text: 'finish ' }, { ref: 1 }]), UPSTREAM, STYLE], [{ fromIndex: 2, toIndex: 1, into: 'pool' }]),
           { x: 0, y: 0 },
           [{ x: 1000 - LAYER_STEP_PX, y: 500, ...EMPTY_NODE_SIZE }],
@@ -2552,7 +2645,7 @@ describe('useNodeCreation', () => {
         const { result } = renderHook(() => useNodeCreation('p-rb', 's-rb'));
 
         expect(() =>
-          result.current.placeProposalAt(
+          placeOk(result.current,
             proposalOf(
               [
                 { role: 'generate', type: 'audio', name: 'Song', mode: 't2m', model: 'tpl-model', takesPrompt: true, params: {}, prompt: [{ text: 'new prompt' }] },

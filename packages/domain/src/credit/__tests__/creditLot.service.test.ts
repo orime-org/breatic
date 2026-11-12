@@ -8,18 +8,65 @@
  * 查询本身失败：什么都不知道，这时记一行「没扣到」等于把一次未知的失败
  * 写成一条确定的账，而调用方会当作正常结果继续往下走、把差额写进日志。
  *
- * 这条分岔在 `db.transaction` 之前就发生了，所以这里只替换解析 studio 和
- * 写流水两处，事务那一层一次都碰不到。放在 domain 包内是因为被测函数用
+ * Since inner#1617 the studio is resolved inside the settle transaction,
+ * after the charge request row is locked: a failed query rolls the settle
+ * back and leaves the request pending for the sweep, and a vanished project
+ * settles the request with its usage recorded. The transaction and the
+ * charge-request repository are stand-ins here (repository names as assumed
+ * in `charge-signal.test.ts`). 放在 domain 包内是因为被测函数用
  * `@domain/*` 引用它的依赖，只有这个包的 vitest 别名拦得住；server 的集成
  * 测试从 `dist` 解析这个包，那是打平的产物，内部引用没有替换的余地。
  */
 
 import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
+import type * as CoreModule from "@breatic/core";
 import { initCore, NotFoundError } from "@breatic/core";
 
 const resolveOwnerStudioId = vi.fn<(projectId: string) => Promise<string>>();
 const appendLedgerEntry = vi.fn(async (..._args: unknown[]) => undefined);
 const recordStandaloneUsage = vi.fn(async (..._args: unknown[]) => undefined);
+const markSettled = vi.fn(async (..._args: unknown[]) => undefined);
+const recordFailure = vi.fn(async (..._args: unknown[]): Promise<void> => undefined);
+const committed = { value: false };
+
+vi.mock("@breatic/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof CoreModule>();
+  return {
+    ...actual,
+    db: {
+      transaction: async (run: (tx: unknown) => Promise<unknown>): Promise<unknown> => {
+        const result = await run({});
+        committed.value = true;
+        return result;
+      },
+    },
+    publishCreditsChanged: async () => undefined,
+  };
+});
+
+vi.mock("@domain/credit/creditHold.repo.js", () => ({
+  releaseHold: async () => undefined,
+}));
+
+vi.mock("@domain/credit/creditCharge.repo.js", () => ({
+  lockById: async (id: string) => ({
+    id,
+    kind: "task",
+    actorUserId: "22222222-2222-4222-8222-222222222222",
+    referenceId: "task-1",
+    projectId: "11111111-1111-4111-8111-111111111111",
+    amount: "10.000000",
+    description: null,
+    model: null,
+    provider: null,
+    tokensUsed: null,
+    releaseHold: null,
+    status: "pending",
+  }),
+  markSettled: (...args: unknown[]) => markSettled(...args),
+  insertPending: async () => null,
+  recordFailure: (...args: unknown[]) => recordFailure(...args),
+}));
 
 vi.mock("@domain/asset/asset.service.js", () => ({
   resolveOwnerStudioId: (projectId: string) => resolveOwnerStudioId(projectId),
@@ -28,6 +75,8 @@ vi.mock("@domain/asset/asset.service.js", () => ({
 vi.mock("@domain/credit/creditLot.repo.js", () => ({
   appendLedgerEntry: (...args: unknown[]) => appendLedgerEntry(...args),
   recordStandaloneUsage: (...args: unknown[]) => recordStandaloneUsage(...args),
+  lockDebt: async () => "0",
+  adjustDebt: async () => undefined,
   listSpendableLots: async () => [],
   lockLot: async () => null,
   applyCharge: async () => undefined,
@@ -46,16 +95,16 @@ beforeEach(() => {
   resolveOwnerStudioId.mockReset();
   appendLedgerEntry.mockClear();
   recordStandaloneUsage.mockClear();
+  markSettled.mockClear();
+  recordFailure.mockReset();
+  recordFailure.mockResolvedValue(undefined);
+  committed.value = false;
 });
 
 /** 每个用例各自 import，让上面的替身在模块求值时就位。 */
 async function charge(): Promise<unknown> {
-  const { chargeForGeneration } = await import("@domain/credit/creditLot.service.js");
-  return chargeForGeneration({
-    projectId: "11111111-1111-4111-8111-111111111111",
-    actorUserId: "22222222-2222-4222-8222-222222222222",
-    amount: 10,
-  });
+  const { settleCharge } = await import("@domain/credit/creditLot.service.js");
+  return settleCharge("req-1");
 }
 
 describe("project 真的没了", () => {
@@ -72,6 +121,10 @@ describe("project 真的没了", () => {
     // keeps no balance in step, so it is whole on its own.
     expect(recordStandaloneUsage).toHaveBeenCalledTimes(1);
     expect(appendLedgerEntry).not.toHaveBeenCalled();
+    // Recorded is settled: the request leaves the sweep in the same commit.
+    expect(markSettled).toHaveBeenCalledTimes(1);
+    expect(markSettled.mock.calls[0]?.[0]).toBe("req-1");
+    expect(committed.value).toBe(true);
   });
 });
 
@@ -91,5 +144,49 @@ describe("解析 studio 的查询本身失败", () => {
 
     expect(appendLedgerEntry).not.toHaveBeenCalled();
     expect(recordStandaloneUsage).not.toHaveBeenCalled();
+  });
+
+  it("leaves the request pending for the sweep", async () => {
+    resolveOwnerStudioId.mockRejectedValueOnce(new Error("pool exhausted"));
+
+    await charge().catch(() => undefined);
+
+    expect(markSettled).not.toHaveBeenCalled();
+    expect(committed.value).toBe(false);
+  });
+});
+
+describe("a settlement that fails (inner#1617)", () => {
+  it("counts the failure on the request with the whole error chain, outermost first, and rethrows", async () => {
+    const root = new Error("connection terminated unexpectedly");
+    const wrapped = new Error("Failed query: select studio", { cause: root });
+    resolveOwnerStudioId.mockRejectedValueOnce(wrapped);
+
+    await expect(charge()).rejects.toBe(wrapped);
+
+    expect(recordFailure).toHaveBeenCalledExactlyOnceWith(
+      "req-1",
+      "Failed query: select studio <- connection terminated unexpectedly",
+    );
+  });
+
+  it("throws both errors when the failure cannot be recorded either", async () => {
+    const down = new Error("pool exhausted");
+    const stillDown = new Error("still exhausted");
+    resolveOwnerStudioId.mockRejectedValueOnce(down);
+    recordFailure.mockRejectedValueOnce(stillDown);
+
+    const thrown = await charge().catch((err: unknown) => err);
+
+    expect(thrown).toBeInstanceOf(AggregateError);
+    expect((thrown as AggregateError).errors).toEqual([down, stillDown]);
+  });
+
+  it("records nothing when the settlement succeeds", async () => {
+    resolveOwnerStudioId.mockRejectedValueOnce(new NotFoundError("gone"));
+
+    await charge();
+
+    expect(recordFailure).not.toHaveBeenCalled();
   });
 });

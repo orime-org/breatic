@@ -200,6 +200,11 @@ export const mocks = {
   // #1735 server reference-count gate (too many reference images). Default: no
   // violation (null) — existing tests stay green; the #1735 test flips it.
   violatesReferenceCountForModel: vi.fn().mockReturnValue(null),
+  // inner#1825 text-length gate: default no violation.
+  violatesTextLengthForModel: vi.fn().mockReturnValue(null),
+  // breatic#1393 server gate (a style prompt with Mureka composing from a
+  // melody). Default: no violation; the breatic#1393 test flips it.
+  sendsUntakenPrompt: vi.fn().mockReturnValue(false),
   nodeHistoryService: {
     listByNode: vi.fn(),
     recordGenerationSuccess: vi.fn(),
@@ -295,14 +300,7 @@ export const mocks = {
     }),
     getUnassignedCredits: vi.fn().mockResolvedValue("0.000000"),
     getGrantedCredits: vi.fn().mockResolvedValue("0.000000"),
-    chargeForGeneration: vi.fn().mockResolvedValue({
-      billed: true,
-      charged: "5.000000",
-      shortfall: "0.000000",
-      studioId: "s0000000-0000-4000-8000-000000000001",
-      lotIds: ["l0000000-0000-4000-8000-000000000001"],
-    }),
-    chargeOnceForGeneration: vi.fn().mockResolvedValue({
+    chargeOnce: vi.fn().mockResolvedValue({
       billed: true,
       charged: "5.000000",
       shortfall: "0.000000",
@@ -581,6 +579,7 @@ function usageRecorderDouble(options: {
   recordLookedUpCall: () => void;
   awaitingLookup: () => readonly string[];
   settle: () => Promise<number>;
+  settleForCharge: () => Promise<{ credits: number; writeFailures: unknown[] }>;
 } {
   let credits = 0;
   const { operationKey, feature, actorUserId, projectId } = options;
@@ -593,6 +592,7 @@ function usageRecorderDouble(options: {
     recordLookedUpCall: () => {},
     awaitingLookup: () => [],
     settle: async () => credits,
+    settleForCharge: async () => ({ credits, writeFailures: [] }),
   };
 }
 
@@ -619,7 +619,6 @@ export const domainMock = async () => ({
     findByStudioAndHash: vi.fn().mockResolvedValue(null),
     findCoverOf: vi.fn().mockResolvedValue(null),
     setCoverAsset: vi.fn(),
-    findKindByStorageKey: vi.fn().mockResolvedValue("video"),
     findLiveByStorageKey: vi.fn().mockResolvedValue(null),
     findLiveByKeyInStudio: vi.fn().mockResolvedValue(null),
   },
@@ -644,6 +643,8 @@ export const domainMock = async () => ({
   estimateTaskCredits: vi.fn().mockResolvedValue(5),
   violatesSourceRequirementForModel: mocks.violatesSourceRequirementForModel,
   violatesReferenceCountForModel: mocks.violatesReferenceCountForModel,
+  violatesTextLengthForModel: mocks.violatesTextLengthForModel,
+  sendsUntakenPrompt: mocks.sendsUntakenPrompt,
   getModel: vi.fn(),
   resolveProvider: vi.fn(),
   // Shaped like the real return so a turn built on this stub spreads the

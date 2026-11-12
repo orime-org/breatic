@@ -272,7 +272,10 @@ export const DocumentOutline = React.memo(function DocumentOutline({
 
   const column = React.useRef<HTMLElement>(null);
   const [spaceWidth, setSpaceWidth] = React.useState(0);
-  React.useEffect(() => {
+  // In layout effects: an outline put away under a full-screen table stops
+  // watching before the row widens to the window, and reads the row again
+  // before it paints on coming back.
+  React.useLayoutEffect(() => {
     const space = column.current?.parentElement;
     if (space === null || space === undefined) return undefined;
     setSpaceWidth(space.getBoundingClientRect().width);

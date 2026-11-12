@@ -39,6 +39,8 @@ export interface AgentConfigRequest {
   basePrompt: string;
   /** The turn's memory, when the caller has any. */
   memoryContext?: MemoryContext;
+  /** The Project's instructions as stored, when it has any (#1400). */
+  projectInstructions?: string;
   /**
    * The model this turn is answered by, as the route resolved it from the
    * user's pick (#1363); `default_model` when the caller names none.
@@ -85,7 +87,7 @@ export interface ResolvedAgentConfig {
 export async function buildAgentConfig(
   request: AgentConfigRequest,
 ): Promise<ResolvedAgentConfig> {
-  const { basePrompt, memoryContext, toolContext } = request;
+  const { basePrompt, memoryContext, projectInstructions, toolContext } = request;
   const config = getAgentConfig();
   const modelId = request.modelId ?? config.default_model;
   const catalogPolicy = {
@@ -106,7 +108,7 @@ export async function buildAgentConfig(
   const toolNames = [...BASELINE_TOOLS, ...CANVAS_TOOLS];
   return {
     modelId,
-    instructions: instructionsForAgentMemory(basePrompt, memoryContext),
+    instructions: instructionsForAgentMemory(basePrompt, memoryContext, projectInstructions),
     tools: buildToolSet(toolNames, { ...toolContext, mediaUrlAllowed: toolContext?.mediaUrlAllowed ?? (() => false), seesPictures }),
     seesPictures,
     picturePolicy,

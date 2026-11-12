@@ -46,7 +46,7 @@ import type {
   RemoteParamSource,
   SourceGroup,
 } from "@breatic/shared";
-import { fitsSomeMode } from "@breatic/shared";
+import { checkParamCombination, extractPromptText, fitsSomeMode, promptTaken, resolveParams } from "@breatic/shared";
 import { estimateCredits, type CreditEstimate, type EstimateInput } from "@breatic/shared/pricing";
 
 /** Root directory for model YAML configs. */
@@ -93,6 +93,8 @@ export interface FullParamSpec {
   bounds?: ParamBound[];
   /** The most characters a text param takes once cleaned (inner#1691). */
   max_length?: number;
+  /** The fewest characters a text param takes once cleaned (inner#1825). */
+  min_length?: number;
   /**
    * Names the picker that fills this param, for params whose value domain
    * lives upstream instead of in `values` (#1960). Projected onto the wire
@@ -160,6 +162,8 @@ export interface FullModelEntry {
   forces?: ParamForce[];
   /** The most characters the prompt takes once cleaned (inner#1691). */
   prompt_max_length?: number;
+  /** The condition the prompt is taken under, read through shared `promptTaken`. */
+  prompt_when?: ParamGate;
   /** The three params that together set one camera pose (inner#830). */
   camera_angle?: CameraAngleParams;
   params?: Record<string, FullParamSpec>;
@@ -371,6 +375,7 @@ function projectModelEntry(
     // The panel locks and the run resolves by these, the same as every reader (inner#1691).
     forces: m.forces,
     prompt_max_length: m.prompt_max_length,
+    prompt_when: m.prompt_when,
   };
 }
 
@@ -466,7 +471,9 @@ export async function estimateTaskCredits(
 }
 
 /**
- * One run of a served model, priced by its contract the way the panels price it.
+ * One run of a served model, priced by its contract the way the panels price it:
+ * on its params as the run resolves them, so what its settings do not send is
+ * not priced.
  * @param model - Model name.
  * @param input - The run as set up so far; `{ params: {} }` prices the defaults.
  * @returns The credits and how they bound the charge, or undefined for a model
@@ -479,7 +486,7 @@ export async function estimateModelCredits(
 ): Promise<CreditEstimate | undefined> {
   const entry = findCatalogEntry(model);
   if (!entry?.pricing) return undefined;
-  return estimateCredits({ ...entry, pricing: entry.pricing }, input, env.CREDIT_MULTIPLIER);
+  return estimateCredits({ ...entry, pricing: entry.pricing }, { ...input, params: resolveParams(entry, input.params) }, env.CREDIT_MULTIPLIER);
 }
 
 /**
@@ -518,6 +525,23 @@ export function violatesSourceRequirementForModel(
 }
 
 /**
+ * Server gate beside the source check (breatic#1393): whether a submitted run
+ * carries a prompt its model does not take with these settings, as Mureka V9.5
+ * Song composing from a melody. The panel neither shows nor sends the style box
+ * then, so a request carrying one came from elsewhere (the Agent, or crafted).
+ * The client narrows params to the run's mode before submitting, so they are
+ * read as they come. An unknown or absent model passes.
+ * @param model - The task's model name from the request body, if any.
+ * @param params - The task params, the prompt under `prompt`.
+ * @returns True when a non-empty prompt goes to a run that takes none.
+ */
+export function sendsUntakenPrompt(model: string | undefined, params: Record<string, unknown>): boolean {
+  const entry = model ? findCatalogEntry(model) : undefined;
+  if (!entry || typeof params.prompt !== "string" || extractPromptText(params.prompt) === "") return false;
+  return !promptTaken(entry, undefined, params);
+}
+
+/**
  * #1735 server reference-count gate: whether the submitted params carry more
  * items in a capped list param than the model's `max_items` allows. The
  * /canvas/tasks route runs this BEFORE enqueue so an over-picked submission is
@@ -541,6 +565,27 @@ export function violatesReferenceCountForModel(
     if (entry) return violatesReferenceCount(entry.params, params);
   }
   return null; // unknown model — existence is not this gate's job
+}
+
+/**
+ * Whether a run writes a text setting shorter than the model takes
+ * (inner#1825): the server's gate before anything is queued, the rule the
+ * panel and the worker read from `checkParamCombination` too.
+ * @param model - The model name.
+ * @param params - The run's params.
+ * @returns The setting and the least it takes, or null when every one is long enough or the model is unknown.
+ * @throws {never} Never.
+ */
+export function violatesTextLengthForModel(model: string | undefined, params: Record<string, unknown>): { param: string; min: number } | null {
+  if (!model) return null;
+  const catalog = getModelCatalog();
+  for (const modality of MODALITIES) {
+    const entry = catalog[modality].find((m) => m.name === model);
+    if (!entry) continue;
+    const short = checkParamCombination(entry, params).find((violation) => violation.rule === "min_length");
+    return short?.rule === "min_length" ? { param: short.param, min: short.min } : null;
+  }
+  return null;
 }
 
 /**

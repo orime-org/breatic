@@ -127,8 +127,10 @@
       "attachment_limit_reached": "這個對話的附件已達上限 {limit} 個，請先刪除一些再上傳。"
     },
     "canvas": {
+      "prompt_not_taken": "這個模型在目前設定下不接受風格。移除風格後再生成。",
       "model_requires_source": "這個模型需要來源輸入，請先連接一個圖片、影片或音訊節點",
       "too_many_inputs": "這個模型這類輸入最多接受 {limit} 個，實際給了 {actual, number} 個",
+      "param_too_short": "先填寫{name}",
       "history_entry_not_found": "找不到這筆歷史記錄",
       "voices_model_not_found": "這個模型不可用",
       "voices_not_offered": "這個模型沒有音色列表"
@@ -263,7 +265,9 @@
       "invalidParam": "「{name}」的值這個工具不支援。",
       "foreignSource": "這個檔案無法處理。",
       "sourceTooLong": "這個工具只處理 {minutes} 分鐘以內的音訊。",
-      "sourceTooLarge": "這個工具只處理 {size} 以內的檔案。"
+      "sourceTooLarge": "這個工具只處理 {size} 以內的檔案。",
+      "clipsTooLarge": "這些片段加起來太大，無法拼接。",
+      "joinClipCount": "拼接需要 2 到 {max} 段。"
     },
     "idempotency": {
       "missing": "頁面已更新，請重新整理後再試。",
@@ -602,6 +606,19 @@
       "needScene": "先開啟一個 3D Space。",
       "credits": "約 {credits} 積分",
       "setting": "{name}：{value}"
+    },
+    "instructions": {
+      "open": "Project 指令",
+      "title": "Project 指令",
+      "description": "這裡寫的內容會在這個 Project 的每次對話中傳給 Agent，所有成員共用。",
+      "placeholder": "例如：回答用英文；配色只用藍和白。",
+      "atLimit": "已達到 {max, number} 字上限",
+      "lastEdited": "最後由 {name} 修改於 {time}",
+      "save": "儲存",
+      "saved": "已儲存",
+      "cleared": "已清空 Project 指令",
+      "readFailed": "Project 指令讀取失敗",
+      "saveFailed": "Project 指令儲存失敗"
     }
   },
   "canvas": {
@@ -841,6 +858,7 @@
       "coverSongTip": "挑一個音訊節點，翻唱這首",
       "selectCoverSongFromCanvas": "挑一首要翻唱的歌",
       "errorNoMusicSong": "先挑一首歌",
+      "errorNoMusicMelody": "先挑一段旋律",
       "moodImage": "參考圖",
       "moodImageTip": "挑一張圖，定下音樂的情緒",
       "removeMoodImage": "移除參考圖",
@@ -852,23 +870,28 @@
       "musicLyricsLabel": "歌詞",
       "lyricsMissing": "先寫下歌詞",
       "refuseExecuteNoStyle": "先寫下風格",
-      "refuseExecuteNoReference": "挑一段整曲、旋律或人聲",
+      "refuseExecuteNoReference": "先挑一段整曲或人聲",
       "creditsPerThousandChars": "{credits} / 千字",
       "itemsAdd": "新增",
       "itemsRemove": "移除",
       "refuseExecuteNoSpeakers": "請填好說話人",
+      "refuseExecuteNoLines": "至少寫一句台詞",
+      "refuseExecuteParamEmpty": "先填寫{name}",
+      "dialogueAddLine": "加一句",
+      "dialogueLinePlaceholder": "{name} 說的話",
       "audioSettings": "音色與參數",
       "audioVoice": "音色",
       "audioReadingMode": "朗讀方式",
       "audioReadingSingle": "單人",
       "audioReadingDialogue": "對話（{count} 人）",
       "audioDialogueSummary": "對話 · {count} 人",
-      "audioSpeakersNote": "台詞寫成「名字：台詞」",
       "audioSpeakerRow": "說話人 {n}",
       "audioLanguageSearch": "搜尋語言…",
       "audioOptionEmpty": "沒有符合項目",
       "param": {
+        "compose_from": "生成依據",
         "language": "語言",
+        "voice_description": "音色描述",
         "speakers": "說話人",
         "emotion": "情緒",
         "pronunciation_dict": "讀音",
@@ -920,6 +943,7 @@
         "face_limit": "面數上限",
         "auto_size": "自動尺寸",
         "export_uv": "匯出 UV",
+        "rig_skeleton": "綁定骨骼",
         "model_seed": "模型種子",
         "texture_seed": "貼圖種子",
         "texture_alignment": "貼圖對齊",
@@ -1232,6 +1256,12 @@
         "cut": {
           "label": "剪切"
         },
+        "join": {
+          "label": "拼接",
+          "slot": {
+            "clips": "選要拼接的影片"
+          }
+        },
         "adjust": {
           "label": "調色"
         },
@@ -1261,6 +1291,12 @@
         },
         "cut": {
           "label": "剪切"
+        },
+        "join": {
+          "label": "拼接",
+          "slot": {
+            "clips": "選要拼接的音訊"
+          }
         },
         "eq": {
           "label": "等化"
@@ -1350,6 +1386,9 @@
         },
         "cents": {
           "label": "音分"
+        },
+        "crossfade": {
+          "label": "交叉淡化"
         }
       },
       "panel": {
@@ -1374,7 +1413,12 @@
         "sourceTooLargeToExpand": "這張圖片已經到外擴能做的最大尺寸。",
         "ratioTooLarge": "超出外擴能做的最大尺寸",
         "sourceTooLong": "這個工具只處理 {minutes} 分鐘以內的音訊。",
-        "sourceTooLarge": "這個工具只處理 {size} 以內的檔案。"
+        "sourceTooLarge": "這個工具只處理 {size} 以內的檔案。",
+        "joinClips": "片段 · 依順序拼接，可拖曳調整",
+        "joinCrossfadeCap": "最多 {cap} 秒：最短片段（{shortest} 秒）的一半",
+        "joinTotal": "≈ {seconds} 秒",
+        "joinNeedsClip": "再加一段才能執行。",
+        "joinTooMany": "最多 {n} 段"
       },
       "adjust": {
         "exposure": "曝光",
@@ -1449,7 +1493,8 @@
       "goal": {
         "character": "角色設定與一致性",
         "comics-storyboards": "漫畫與分鏡",
-        "social-hooks": "社群鉤子"
+        "social-hooks": "社群鉤子",
+        "sound": "配樂、音效與配音"
       },
       "storyboard-grid-25": {
         "name": "25 宮格時序圖",
@@ -1709,7 +1754,117 @@
         }
       },
       "applyFailed": "模板套用失敗。",
-      "groupLocked": "群組已鎖定，解鎖後才能放入新節點。"
+      "groupLocked": "群組已鎖定，解鎖後才能放入新節點。",
+      "ambience-sfx-bed": {
+        "name": "環境聲床加擬音",
+        "description": "循環的環境聲，加幾個擬音點",
+        "prompt": "一段可以無縫循環的環境聲床，地點是{✏️ 地點，例如老城區下雨的夜晚街道}。持續的那一層：{✏️ 持續的聲音，例如雨打在石板路上、遠處的車流}。裡面有兩三個擬音點：{✏️ 點狀的聲音，例如遠處一扇門關上、近處有人走過}。每個聲音都有遠近，擬音點隔一陣出現一次，不踩節拍。沒有音樂，沒有人聲。"
+      },
+      "voice-line": {
+        "name": "配音台詞",
+        "description": "一句台詞，照寫的原樣讀",
+        "prompt": "{✏️ 要讀的原話，需要停頓的地方加逗號或句號}"
+      },
+      "two-voice-dialogue": {
+        "name": "雙人對白",
+        "description": "兩個具名的人對話，一次生成",
+        "line": {
+          "1": "{✏️ Ava 的第一句}",
+          "2": "{✏️ Leo 的回答}",
+          "3": "{✏️ Ava 的下一句}"
+        }
+      },
+      "underscore-bgm": {
+        "name": "背景音樂",
+        "description": "壓在旁白或畫面下面的純音樂",
+        "prompt": "一段純器樂的背景音樂，配在{✏️ 影片是什麼，例如一段平靜的產品講解}下面，長度{✏️ 時長，例如 40 秒}。曲風：{✏️ 曲風}。速度大約{✏️ 速度，例如 90 BPM}，調性{✏️ 調性，例如 D 大調}。兩三件樂器：{✏️ 樂器，例如輕柔的鋼琴、溫暖的鋪底和少量打擊樂}。能量走向：{✏️ 怎麼變化，例如開頭稀疏，中段慢慢推起來，結尾收住}。它壓在旁白下面：沒有人聲，沒有跟說話搶的主旋律，沒有突然的重音。",
+        "step": {
+          "trim": "生成出來的曲子通常比需要的長。生成後，在它上面用 工具 → 剪切，截到影片的長度。"
+        }
+      },
+      "voice-from-descriptor": {
+        "name": "按描述的聲音配音",
+        "description": "用文字描述的聲音說你的台詞",
+        "prompt": "{✏️ 要說的原話}"
+      },
+      "song-cover": {
+        "name": "翻唱",
+        "description": "你的歌換成另一種風格",
+        "prompt": "把這首歌改成{✏️ 新風格，例如指彈吉他伴奏、輕聲演唱的慢板民謠}。保留旋律和歌詞，換掉編曲、樂器和感覺。",
+        "input": {
+          "song": {
+            "name": "歌曲",
+            "note": "先放入你的歌，再把它選進整曲槽"
+          }
+        }
+      },
+      "voice-clone-line": {
+        "name": "用你的聲音讀台詞",
+        "description": "用你錄音裡的聲音讀一段新台詞",
+        "prompt": "{✏️ 要用這個聲音說的原話}",
+        "input": {
+          "sample": {
+            "name": "聲音樣本",
+            "note": "先放入一段乾淨的錄音（只有一個人說話、沒有音樂、10 秒以上），再把它選進聲音樣本槽"
+          }
+        }
+      },
+      "score-for-my-video": {
+        "name": "給你的影片配樂",
+        "description": "跟著影片的情緒和剪接走的音樂",
+        "prompt": "跟著這段影片的情緒、節奏和場景切換走的音樂。風格：{✏️ 風格，例如帶輕打擊樂的溫暖原聲民謠}。",
+        "input": {
+          "video": {
+            "name": "你的影片",
+            "note": "先放入你的影片，再把它選進影片槽"
+          }
+        }
+      },
+      "music-mood-from-image": {
+        "name": "按圖片的感覺配樂",
+        "description": "跟你的圖片同一種情緒的音樂",
+        "prompt": "一段純器樂，情緒跟參考圖一樣：由圖裡的感覺、顏色和場景決定曲風、調性和樂器。{✏️ 其他要求，例如慢、夢幻}。",
+        "input": {
+          "image": {
+            "name": "圖片",
+            "note": "先放入圖片，再把它選進參考圖槽"
+          }
+        }
+      },
+      "clip-ambience-foley": {
+        "name": "靜音鏡頭加擬音",
+        "description": "先出靜音鏡頭，再按畫面配擬音",
+        "prompt": "一個連續鏡頭：{✏️ 場景，例如廚師在木砧板上切菜}。0–2 秒：{✏️ 第一個動作}。2–5 秒：{✏️ 接下來的動作}。每一次接觸都看得清楚，什麼碰到什麼、什麼時候碰到，方便之後配聲音。一個主運鏡：{✏️ 例如緩慢推近}。一個光源：{✏️ 例如左邊的窗戶}。畫面裡不出現文字。",
+        "node": {
+          "foley": {
+            "name": "擬音",
+            "prompt": "(💡 先生成影片，再把它選進影片槽)給這個鏡頭配擬音：{✏️ 聲音，例如刀落在砧板上、菜滑開、後面鍋裡滋滋響}。每個聲音都落在畫面上它發生的那一刻；近處的聲音乾、清楚，背景的聲音輕一些。沒有音樂，沒有人聲。"
+          }
+        }
+      },
+      "section-mapped-score": {
+        "name": "四段配樂",
+        "description": "同一風格的四段，截好後拼接",
+        "prompt": "一首四段純器樂配樂的片頭，配的是{✏️ 片子，例如一支兩分鐘的品牌片}。四段共用：{✏️ 曲風}，速度約{✏️ 速度，例如 96 BPM}，調性{✏️ 調性，例如 A 小調}，樂器{✏️ 兩三件樂器}。這一段：{✏️ 時長，例如 15 秒}，安靜、開闊，引出主題。",
+        "node": {
+          "body": {
+            "name": "正文",
+            "prompt": "同一首四段純器樂配樂的正文。四段共用：{✏️ 曲風}，速度約{✏️ 速度}，調性{✏️ 調性}，樂器{✏️ 兩三件樂器}。這一段：{✏️ 時長，例如 60 秒}，平穩向前，墊在主要內容下面。"
+          },
+          "reveal": {
+            "name": "揭示",
+            "prompt": "同一首四段純器樂配樂的揭示段。四段共用：{✏️ 曲風}，速度約{✏️ 速度}，調性{✏️ 調性}，樂器{✏️ 兩三件樂器}。這一段：{✏️ 時長，例如 25 秒}，高潮：更滿、更響，主題最強。"
+          },
+          "outro": {
+            "name": "片尾",
+            "prompt": "同一首四段純器樂配樂的片尾。四段共用：{✏️ 曲風}，速度約{✏️ 速度}，調性{✏️ 調性}，樂器{✏️ 兩三件樂器}。這一段：{✏️ 時長，例如 15 秒}，慢慢收住、乾淨結束，主題再輕輕出現一次。"
+          }
+        },
+        "step": {
+          "trim": "每段生成出來通常比需要的長。生成後，在它上面用 工具 → 剪切，截到它提示詞裡寫的長度。",
+          "join": "選取剪切後的四段（名字以 CUT- 開頭），按右鍵選「拼接」；確認順序是片頭、正文、揭示、片尾，交叉淡化設為 1 秒左右。"
+        }
+      }
     },
     "promptMark": {
       "reference": "請用 @ 選擇 {label}"
@@ -2209,6 +2364,8 @@
         "splitCell": "分割儲存格",
         "mergeCells": "合併儲存格",
         "textHighlight": "背景（醒目提示文字）",
+        "fullscreen": "全螢幕",
+        "exitFullscreen": "結束全螢幕",
         "cut": "剪下",
         "pasteAbove": "貼上到上方",
         "pasteBelow": "貼上到下方",
@@ -2326,6 +2483,18 @@
       "selectedCount": "已選取 {count} 個物件",
       "multiTransform": "使用場景中的控制柄，圍繞選取集合的中心調整變換。",
       "mixed": "混合值",
+      "pose": {
+        "title": "姿勢",
+        "stand": "站立",
+        "sit": "坐下",
+        "lie": "躺下",
+        "walk": "行走",
+        "wave": "揮手",
+        "jointMode": "調整關節",
+        "reset": "恢復預設姿勢",
+        "noSkeleton": "這個模型沒有骨骼，無法擺姿勢。",
+        "humanoidOnly": "預設只適用於人形角色。"
+      },
       "selectObject": "選取物件以編輯屬性。",
       "refused": "與此場景的連線被拒絕了，變更不會被儲存。",
       "retry": "重試",
@@ -2415,6 +2584,9 @@
         "kindGeneration": "生成",
         "originSpace": "Space 內",
         "originAgent": "Agent",
+        "rigFailed": "骨骼綁定失敗，這個模型無法擺姿勢",
+        "rigged": "已綁定骨骼",
+        "willRig": "生成完成後綁定骨骼",
         "generating": "生成中",
         "generatingFor": "生成中 · 已用 {minutes} 分鐘",
         "stillRunning": "這次生成還在收尾，請稍後再試。",
@@ -2434,6 +2606,7 @@
       "proposalBusy": "正在提交另一次生成。",
       "readOnlyCreate": "Viewer 不能新增、匯入或生成模型。",
       "force": {
+        "low_poly_skips_parts": "智慧低面數不拆分部件。",
         "parts_geometry_only": "拆分部件只生成幾何。",
         "pbr_needs_texture": "PBR 需要貼圖。",
         "fast_uses_v35": "Fast 貼圖只有 v3.5。"
@@ -2480,6 +2653,19 @@
         "formats": "PNG、JPEG 或 WebP",
         "chooseFile": "選擇檔案"
       }
+    },
+    "sizeCap": {
+      "noticeWarning": "這個 Space 已用 {used}，超過 {limit} 後將不能再新增內容。",
+      "noticeFull": "這個 Space 已滿（{used} / {limit}），只能刪除內容，降到上限以下後才能繼續編輯。",
+      "noticeOver": "這個 Space 已超出上限（{used} / {limit}），只能整個刪除節點、片段、模型或整段內容。",
+      "add": "這個 Space 已滿，刪除一些內容後才能繼續編輯。",
+      "compound": "這個 Space 已滿，這項刪除還要改動其他內容，暫時不能執行。",
+      "over": "這個 Space 已超出上限，請整個刪除節點、片段、模型或整段內容。",
+      "resync": "你剛才的變更超出了這個 Space 的大小上限，沒有儲存。",
+      "proposal": "這個 Space 已滿，提案沒有放進去。",
+      "reason": "這個 Space 已滿。",
+      "text": "文字沒有寫入：這個 Space 已滿。",
+      "wait": "這個 Space 已滿，刪除一些內容後會自動完成。"
     }
   },
   "menu": {
@@ -3457,8 +3643,6 @@
       "more": "載入更多",
       "chooseFile": "選擇影片",
       "fileEmpty": "選擇本機影片檔案。",
-      "preparing": "正在準備影片…",
-      "progress": "正在上傳 {progress}%",
       "confirm": "新增至 Timeline",
       "insertAfter": "將插在 {name} 之後",
       "insertFirst": "將插在主軌最前面"
@@ -3472,12 +3656,13 @@
       "invalid_range": "請輸入影片範圍內的影格。",
       "target_missing": "目標已變更。請檢查位置後重試。",
       "clip_removed": "該片段已被其他成員移除。",
-      "upload": "上傳失敗。可使用已選檔案重試。",
       "permission_changed": "編輯權限已變更。請再次確認新增此影片。",
       "track_missing": "目標軌道已被移除，請選擇其他軌道。",
       "id_taken": "此項目已存在，請重試。",
       "main_track": "主軌無法刪除。",
       "track_not_empty": "只能刪除空軌道。",
+      "full": "這個 Space 已滿，刪除一些內容後才能繼續編輯。",
+      "over_ceiling": "這個 Space 已超出上限，請刪除整個片段。",
       "source_unresolved": "網頁動畫尚未就緒，請稍後重試。"
     },
     "mainTrack": "主軌",
@@ -3571,6 +3756,14 @@
         "unavailable": "{track}：網頁動畫不可用",
         "loading": "{track}：網頁動畫載入中…"
       }
+    },
+    "upload": {
+      "uploading": "上傳中",
+      "progress": "上傳中 {progress}%",
+      "failed": "上傳失敗",
+      "waiting": "已上傳，等待編輯權限",
+      "unfinished": "未完成",
+      "preview": "{track}：{state, select, failed {影片上傳失敗，不顯示} unfinished {影片未完成，不顯示} other {影片上傳中…}}"
     }
   }
 }

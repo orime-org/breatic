@@ -127,8 +127,10 @@
       "attachment_limit_reached": "この会話の添付ファイルは上限の {limit} 件に達しています。いくつか削除してからアップロードしてください。"
     },
     "canvas": {
+      "prompt_not_taken": "このモデルは現在の設定ではスタイルを受け付けません。スタイルを外してから生成してください。",
       "model_requires_source": "このモデルにはソース入力が必要です。画像・動画・音声のノードを接続してください",
       "too_many_inputs": "このモデルはこの種類の入力を最大 {limit} 件まで受け付けますが、{actual} 件が指定されました",
+      "param_too_short": "{name}を入力してください",
       "history_entry_not_found": "履歴が見つかりません",
       "voices_model_not_found": "このモデルは利用できません",
       "voices_not_offered": "このモデルには音声の一覧がありません"
@@ -263,7 +265,9 @@
       "invalidParam": "「{name}」の値はこのツールでは使えません。",
       "foreignSource": "このファイルは処理できません。",
       "sourceTooLong": "このツールは {minutes} 分以内の音声のみ処理できます。",
-      "sourceTooLarge": "このツールは {size} 以内のファイルのみ処理できます。"
+      "sourceTooLarge": "このツールは {size} 以内のファイルのみ処理できます。",
+      "clipsTooLarge": "これらのクリップは合計サイズが大きすぎるため、つなげられません。",
+      "joinClipCount": "結合できるクリップは 2〜{max} 本です。"
     },
     "idempotency": {
       "missing": "ページが更新されました。再読み込みしてからもう一度お試しください。",
@@ -602,6 +606,19 @@
       "needScene": "先に 3D Space を開いてください。",
       "credits": "約 {credits} クレジット",
       "setting": "{name}：{value}"
+    },
+    "instructions": {
+      "open": "Project の指示",
+      "title": "Project の指示",
+      "description": "この Project のすべての会話で Agent に送られます。メンバー全員で共有します。",
+      "placeholder": "例：英語で回答する。配色は青と白だけにする。",
+      "atLimit": "{max, number} 文字の上限に達しました",
+      "lastEdited": "{name} が {time} に最終更新",
+      "save": "保存",
+      "saved": "保存しました",
+      "cleared": "Project の指示をクリアしました",
+      "readFailed": "Project の指示を読み込めませんでした",
+      "saveFailed": "Project の指示を保存できませんでした"
     }
   },
   "canvas": {
@@ -841,6 +858,7 @@
       "coverSongTip": "音声ノードを選び、その曲をカバーします",
       "selectCoverSongFromCanvas": "カバーする曲を選ぶ",
       "errorNoMusicSong": "先に楽曲を選んでください",
+      "errorNoMusicMelody": "先にメロディを選んでください",
       "moodImage": "参考画像",
       "moodImageTip": "画像を選び、雰囲気を決めます",
       "removeMoodImage": "参考画像を外す",
@@ -852,23 +870,28 @@
       "musicLyricsLabel": "歌詞",
       "lyricsMissing": "歌詞を書いてください",
       "refuseExecuteNoStyle": "スタイルを書いてください",
-      "refuseExecuteNoReference": "楽曲・メロディ・ボーカルのいずれかを選んでください",
+      "refuseExecuteNoReference": "先に楽曲かボーカルを選んでください",
       "creditsPerThousandChars": "{credits} / 1000文字",
       "itemsAdd": "追加",
       "itemsRemove": "削除",
       "refuseExecuteNoSpeakers": "話者を入力してください",
+      "refuseExecuteNoLines": "セリフを1つ以上入力してください",
+      "refuseExecuteParamEmpty": "{name}を入力してください",
+      "dialogueAddLine": "セリフを追加",
+      "dialogueLinePlaceholder": "{name} のセリフ",
       "audioSettings": "音声と設定",
       "audioVoice": "音声",
       "audioReadingMode": "読み上げ方",
       "audioReadingSingle": "1 人",
       "audioReadingDialogue": "対話（{count} 人）",
       "audioDialogueSummary": "対話 · {count} 人",
-      "audioSpeakersNote": "セリフは「名前：セリフ」と書きます",
       "audioSpeakerRow": "話者 {n}",
       "audioLanguageSearch": "言語を検索…",
       "audioOptionEmpty": "一致する項目がありません",
       "param": {
+        "compose_from": "生成のもと",
         "language": "言語",
+        "voice_description": "声の説明",
         "speakers": "話者",
         "emotion": "感情",
         "pronunciation_dict": "読み方",
@@ -920,6 +943,7 @@
         "face_limit": "ポリゴン数上限",
         "auto_size": "自動サイズ",
         "export_uv": "UV を出力",
+        "rig_skeleton": "スケルトンをリギング",
         "model_seed": "モデルシード",
         "texture_seed": "テクスチャシード",
         "texture_alignment": "テクスチャの合わせ方",
@@ -1232,6 +1256,12 @@
         "cut": {
           "label": "カット"
         },
+        "join": {
+          "label": "結合",
+          "slot": {
+            "clips": "結合する動画を選んでください"
+          }
+        },
         "adjust": {
           "label": "色調整"
         },
@@ -1261,6 +1291,12 @@
         },
         "cut": {
           "label": "カット"
+        },
+        "join": {
+          "label": "結合",
+          "slot": {
+            "clips": "結合する音声を選んでください"
+          }
         },
         "eq": {
           "label": "イコライザー"
@@ -1350,6 +1386,9 @@
         },
         "cents": {
           "label": "セント"
+        },
+        "crossfade": {
+          "label": "クロスフェード"
         }
       },
       "panel": {
@@ -1374,7 +1413,12 @@
         "sourceTooLargeToExpand": "この画像はすでに拡張できる最大サイズです。",
         "ratioTooLarge": "拡張できる最大サイズを超えます",
         "sourceTooLong": "このツールは {minutes} 分以内の音声のみ処理できます。",
-        "sourceTooLarge": "このツールは {size} 以内のファイルのみ処理できます。"
+        "sourceTooLarge": "このツールは {size} 以内のファイルのみ処理できます。",
+        "joinClips": "クリップ · 順番に結合、ドラッグで並べ替え",
+        "joinCrossfadeCap": "最大 {cap} 秒：最も短いクリップ（{shortest} 秒）の半分",
+        "joinTotal": "≈ {seconds} 秒",
+        "joinNeedsClip": "もう1つクリップを追加すると実行できます。",
+        "joinTooMany": "最大 {n} 本まで"
       },
       "adjust": {
         "exposure": "露出",
@@ -1449,7 +1493,8 @@
       "goal": {
         "character": "キャラクター設定と一貫性",
         "comics-storyboards": "漫画と絵コンテ",
-        "social-hooks": "SNS フック"
+        "social-hooks": "SNS フック",
+        "sound": "音楽・効果音・ボイス"
       },
       "storyboard-grid-25": {
         "name": "25コマ絵コンテ",
@@ -1709,7 +1754,117 @@
         }
       },
       "applyFailed": "テンプレートを適用できませんでした。",
-      "groupLocked": "グループはロックされています。ノードを追加するにはロックを解除してください。"
+      "groupLocked": "グループはロックされています。ノードを追加するにはロックを解除してください。",
+      "ambience-sfx-bed": {
+        "name": "環境音ベッドとフォーリー",
+        "description": "ループする環境音に、いくつかのフォーリー",
+        "prompt": "{✏️ 場所、例：古い街の雨の夜の通り}の、つなぎ目なくループする環境音ベッド。ずっと続く層：{✏️ 続く音、例：石畳に落ちる雨と遠くの車の流れ}。その中に二つか三つのフォーリー：{✏️ 点の音、例：遠くでドアが閉まる音、近くを通る足音}。どの音にも距離があり、フォーリーは時々鳴るだけでリズムには乗らない。音楽なし、人の声なし。"
+      },
+      "voice-line": {
+        "name": "ナレーション一文",
+        "description": "書いたとおりに読む一文",
+        "prompt": "{✏️ 読む言葉そのまま、間を置くところに読点か句点}"
+      },
+      "two-voice-dialogue": {
+        "name": "二人の会話",
+        "description": "名前のある二人の会話を一度で生成",
+        "line": {
+          "1": "{✏️ Ava の最初のせりふ}",
+          "2": "{✏️ Leo の返事}",
+          "3": "{✏️ Ava の次のせりふ}"
+        }
+      },
+      "underscore-bgm": {
+        "name": "BGM",
+        "description": "ナレーションや映像の下に敷くインスト",
+        "prompt": "{✏️ どんな動画か、例：落ち着いた製品紹介}の下に敷く、インストゥルメンタルのBGM。長さ{✏️ 長さ、例：40秒}。ジャンル：{✏️ ジャンル}。テンポは約{✏️ テンポ、例：90 BPM}、キーは{✏️ キー、例：Dメジャー}。楽器は二つか三つ：{✏️ 楽器、例：やわらかいピアノ、あたたかいパッド、軽いパーカッション}。エネルギーの流れ：{✏️ どう変わるか、例：始まりはまばらで、中盤でゆっくり盛り上がり、終わりで落ち着く}。ナレーションの下に敷く：ボーカルなし、話し声とぶつかる主旋律なし、急なアクセントなし。",
+        "step": {
+          "trim": "生成される曲はたいてい必要より長くなります。生成したら、その上で ツール → カット を使い、動画の長さに切りそろえてください。"
+        }
+      },
+      "voice-from-descriptor": {
+        "name": "説明した声で話す",
+        "description": "言葉で説明した声があなたのせりふを話す",
+        "prompt": "{✏️ 話す言葉そのまま}"
+      },
+      "song-cover": {
+        "name": "カバー",
+        "description": "あなたの曲を別のスタイルで",
+        "prompt": "この曲を{✏️ 新しいスタイル、例：フィンガーピッキングのギターとささやくような歌のスローなアコースティックバラード}にする。メロディと歌詞はそのままで、アレンジ、楽器、雰囲気を変える。",
+        "input": {
+          "song": {
+            "name": "曲",
+            "note": "先にあなたの曲を入れ、楽曲スロットに選んでください"
+          }
+        }
+      },
+      "voice-clone-line": {
+        "name": "あなたの声で読む",
+        "description": "録音の声で新しいせりふを読む",
+        "prompt": "{✏️ この声で話す言葉そのまま}",
+        "input": {
+          "sample": {
+            "name": "音声サンプル",
+            "note": "先にきれいな録音（話し手は一人、音楽なし、10秒以上）を入れ、音声サンプルスロットに選んでください"
+          }
+        }
+      },
+      "score-for-my-video": {
+        "name": "あなたの動画に音楽",
+        "description": "動画のムードとカットに沿う音楽",
+        "prompt": "この動画のムード、テンポ、場面の切り替わりに沿う音楽。スタイル：{✏️ スタイル、例：軽いパーカッションの入ったあたたかいアコースティックフォーク}。",
+        "input": {
+          "video": {
+            "name": "あなたの動画",
+            "note": "先にあなたの動画を入れ、動画スロットに選んでください"
+          }
+        }
+      },
+      "music-mood-from-image": {
+        "name": "画像の雰囲気で音楽",
+        "description": "あなたの画像と同じムードの音楽",
+        "prompt": "参考画像と同じムードのインストゥルメンタル：画像の感じ、色、場所からジャンル、キー、楽器を決める。{✏️ ほかの希望、例：ゆっくり、夢のように}。",
+        "input": {
+          "image": {
+            "name": "画像",
+            "note": "先に画像を入れ、参考画像スロットに選んでください"
+          }
+        }
+      },
+      "clip-ambience-foley": {
+        "name": "無音ショットとフォーリー",
+        "description": "無音のショットに、映像に合わせたフォーリー",
+        "prompt": "ひと続きのショット：{✏️ 場面、例：木のまな板で野菜を切るシェフ}。0〜2秒：{✏️ 最初の動き}。2〜5秒：{✏️ 次の動き}。何が何にいつ触れるか、接触はどれもはっきり見えるようにし、あとで音を付けられるようにする。カメラの主な動きは一つ：{✏️ 例：ゆっくり寄る}。光源は一つ：{✏️ 例：左の窓}。画面に文字は入れない。",
+        "node": {
+          "foley": {
+            "name": "フォーリー",
+            "prompt": "(💡 先に動画を生成し、動画スロットに選んでください)このショットのフォーリー：{✏️ 音、例：まな板に当たる包丁、すべる野菜、奥でジュッと鳴るフライパン}。どの音も画面でそれが起きる瞬間に鳴る。近い音はドライではっきり、背景の音は小さめ。音楽なし、人の声なし。"
+          }
+        }
+      },
+      "section-mapped-score": {
+        "name": "4パートの劇伴",
+        "description": "同じスタイルの4パートを切りそろえてつなぐ",
+        "prompt": "{✏️ 映像、例：2分のブランドフィルム}のための、4パートのインストゥルメンタル劇伴のイントロ。4パート共通：{✏️ ジャンル}、テンポ約{✏️ テンポ、例：96 BPM}、キーは{✏️ キー、例：Aマイナー}、楽器は{✏️ 二つか三つの楽器}。このパート：{✏️ 長さ、例：15秒}、静かで広がりがあり、テーマを提示する。",
+        "node": {
+          "body": {
+            "name": "本編",
+            "prompt": "同じ4パートのインストゥルメンタル劇伴の本編。4パート共通：{✏️ ジャンル}、テンポ約{✏️ テンポ}、キーは{✏️ キー}、楽器は{✏️ 二つか三つの楽器}。このパート：{✏️ 長さ、例：60秒}、安定して前へ進み、本編の下に敷く。"
+          },
+          "reveal": {
+            "name": "見せ場",
+            "prompt": "同じ4パートのインストゥルメンタル劇伴の見せ場。4パート共通：{✏️ ジャンル}、テンポ約{✏️ テンポ}、キーは{✏️ キー}、楽器は{✏️ 二つか三つの楽器}。このパート：{✏️ 長さ、例：25秒}、クライマックス：より厚く大きく、テーマがいちばん強い。"
+          },
+          "outro": {
+            "name": "アウトロ",
+            "prompt": "同じ4パートのインストゥルメンタル劇伴のアウトロ。4パート共通：{✏️ ジャンル}、テンポ約{✏️ テンポ}、キーは{✏️ キー}、楽器は{✏️ 二つか三つの楽器}。このパート：{✏️ 長さ、例：15秒}、ゆっくり収まりきれいに終わる。最後にもう一度テーマを静かに。"
+          }
+        },
+        "step": {
+          "trim": "各パートはたいてい必要より長く生成されます。生成したら、その上で ツール → カット を使い、プロンプトに書いた長さに切りそろえてください。",
+          "join": "切りそろえた4つのクリップ（名前が CUT-… のもの）を選択し、右クリックで「結合」を選んでください。順番がイントロ、本編、見せ場、アウトロになっているか確かめ、クロスフェードを1秒ほどにします。"
+        }
+      }
     },
     "promptMark": {
       "reference": "@ で {label} を選択"
@@ -2209,6 +2364,8 @@
         "splitCell": "セルを分割",
         "mergeCells": "セルを結合",
         "textHighlight": "背景（文字のハイライト）",
+        "fullscreen": "全画面",
+        "exitFullscreen": "全画面を終了",
         "cut": "切り取り",
         "pasteAbove": "上に貼り付け",
         "pasteBelow": "下に貼り付け",
@@ -2326,6 +2483,18 @@
       "selectedCount": "{count} 個を選択中",
       "multiTransform": "シーンのギズモで、選択したオブジェクトを中心の周りで変形します。",
       "mixed": "複数の値",
+      "pose": {
+        "title": "ポーズ",
+        "stand": "立つ",
+        "sit": "座る",
+        "lie": "寝そべる",
+        "walk": "歩く",
+        "wave": "手を振る",
+        "jointMode": "関節を調整",
+        "reset": "ポーズをリセット",
+        "noSkeleton": "このモデルにはスケルトンがないため、ポーズを付けられません。",
+        "humanoidOnly": "プリセットは人型キャラクター専用です。"
+      },
       "selectObject": "オブジェクトを選択してプロパティを編集します。",
       "refused": "このシーンへの接続が拒否されました。変更は保存されません。",
       "retry": "再試行",
@@ -2415,6 +2584,9 @@
         "kindGeneration": "生成",
         "originSpace": "Space 内",
         "originAgent": "Agent",
+        "rigFailed": "スケルトンのリギングに失敗しました。このモデルはポーズを付けられません",
+        "rigged": "スケルトンをリギング済み",
+        "willRig": "生成完了後にスケルトンをリギングします",
         "generating": "生成中",
         "generatingFor": "生成中 · {minutes} 分経過",
         "stillRunning": "この生成はまだ処理中です。後でもう一度お試しください。",
@@ -2434,6 +2606,7 @@
       "proposalBusy": "別の生成を送信中です。",
       "readOnlyCreate": "Viewer はモデルを追加・インポート・生成できません。",
       "force": {
+        "low_poly_skips_parts": "スマートローポリではパーツ分割できません。",
         "parts_geometry_only": "パーツ分割はジオメトリのみ生成します。",
         "pbr_needs_texture": "PBR にはテクスチャが必要です。",
         "fast_uses_v35": "Fast テクスチャは v3.5 のみです。"
@@ -2480,6 +2653,19 @@
         "formats": "PNG、JPEG、WebP",
         "chooseFile": "ファイルを選択"
       }
+    },
+    "sizeCap": {
+      "noticeWarning": "この Space は {used} を使用しています。{limit} を超えると、これ以上内容を追加できません。",
+      "noticeFull": "この Space はいっぱいです（{used} / {limit}）。上限を下回るまでは内容の削除だけができます。",
+      "noticeOver": "この Space は上限を超えています（{used} / {limit}）。ノード、クリップ、モデル、段落全体を丸ごと削除することだけができます。",
+      "add": "この Space はいっぱいです。編集を続けるには一部の内容を削除してください。",
+      "compound": "この Space はいっぱいです。この削除はほかの内容も変更するため、今は実行できません。",
+      "over": "この Space は上限を超えています。ノード、クリップ、モデル、段落全体を丸ごと削除してください。",
+      "resync": "直前の変更はこの Space のサイズ上限を超えたため、保存されませんでした。",
+      "proposal": "この Space はいっぱいのため、提案は配置されませんでした。",
+      "reason": "この Space はいっぱいです。",
+      "text": "テキストは追加されませんでした。この Space はいっぱいです。",
+      "wait": "この Space はいっぱいです。一部の内容を削除すると完了します。"
     }
   },
   "menu": {
@@ -3457,8 +3643,6 @@
       "more": "さらに読み込む",
       "chooseFile": "動画を選択",
       "fileEmpty": "ローカルの動画ファイルを選択してください。",
-      "preparing": "動画を準備中…",
-      "progress": "アップロード中 {progress}%",
       "confirm": "Timeline に追加",
       "insertAfter": "{name} の後に挿入",
       "insertFirst": "メイントラックの先頭に挿入"
@@ -3472,12 +3656,13 @@
       "invalid_range": "動画の範囲内のフレームを入力してください。",
       "target_missing": "追加先が変更されました。位置を確認して再試行してください。",
       "clip_removed": "このクリップは他のメンバーによって削除されました。",
-      "upload": "アップロードに失敗しました。選択したファイルで再試行できます。",
       "permission_changed": "編集権限が変更されました。動画の追加をもう一度確認してください。",
       "track_missing": "対象のトラックは削除されました。別のトラックを選択してください。",
       "id_taken": "この項目はすでに存在します。もう一度お試しください。",
       "main_track": "メイントラックは削除できません。",
       "track_not_empty": "空のトラックのみ削除できます。",
+      "full": "この Space はいっぱいです。編集を続けるには一部の内容を削除してください。",
+      "over_ceiling": "この Space は上限を超えています。クリップ全体を削除してください。",
       "source_unresolved": "ウェブアニメーションはまだ準備できていません。しばらくしてから再試行してください。"
     },
     "mainTrack": "メイントラック",
@@ -3571,6 +3756,14 @@
         "unavailable": "{track}：ウェブアニメーションを利用できません",
         "loading": "{track}：ウェブアニメーションを読み込み中…"
       }
+    },
+    "upload": {
+      "uploading": "アップロード中",
+      "progress": "アップロード中 {progress}%",
+      "failed": "アップロードに失敗しました",
+      "waiting": "アップロード済み、編集権限を待っています",
+      "unfinished": "未完了",
+      "preview": "{track}：{state, select, failed {動画のアップロードに失敗、表示しません} unfinished {動画は未完了、表示しません} other {動画をアップロード中…}}"
     }
   }
 }

@@ -272,13 +272,14 @@ export async function recordProviderTaskId(
  * transitioned the task to completed (first winner), `false` if the
  * task was already completed by another Worker.
  *
- * The `billed_at` column is set here as the idempotency guard. A
- * subsequent `chargeOnce()` call uses this column to determine whether
- * to actually deduct credits (first call wins, retries are no-ops).
+ * The `billed_at` column is set here as the idempotency guard: only the
+ * call that wins it records the task's charge request, in the same
+ * transaction (inner#1617).
  * @param id - UUID of the task to mark completed.
  * @param result - Provider/tool result payload to persist on the task.
  * @param creditsUsed - Credits consumed; also written to the `billed_credits` guard column.
  * @param durationMs - Wall-clock duration of the task in milliseconds.
+ * @param tx - The completion's transaction, which also records the charge request.
  * @returns `true` if this call performed the transition, `false` if already completed
  */
 export async function markCompletedAndBill(
@@ -286,9 +287,10 @@ export async function markCompletedAndBill(
   result: Record<string, unknown>,
   creditsUsed: number,
   durationMs: number,
+  tx: DbTx,
 ): Promise<boolean> {
   const now = new Date();
-  const rows = await db
+  const rows = await tx
     .update(tasks)
     .set({
       status: "completed",

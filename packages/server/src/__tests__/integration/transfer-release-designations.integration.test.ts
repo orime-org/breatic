@@ -43,10 +43,11 @@ import * as studioTransferService from "@server/modules/studio/studioTransfer.se
 
 import { waitUntilBlockedOn } from "./lock-probe.js";
 import { openPaymentSource } from "./payment-source.js";
+import { chargeNow } from "./studio-credit-fixtures.js";
 
 // Payments on, because charging is one of the writers these tests make queue
-// against the release. With them off, `chargeForGeneration` records the usage
-// without a transaction and takes no lock at all, so the ordering pinned here
+// against the release. With them off, `settleCharge` records the usage
+// without taking the debt or lot locks, so the ordering pinned here
 // never happens. The two placeholder keys only get past the startup check that
 // payments imply keys; no Stripe call is made.
 initCore({
@@ -550,8 +551,7 @@ describe("a transfer takes the admin away and the designations go with it", () =
       );
       await waitUntilBlockedOn(sql, ["credit_lots", "for update"]);
 
-      charging = creditLotService
-        .chargeForGeneration({
+      charging = chargeNow({
           projectId,
           actorUserId: s.adminId,
           amount: 10,

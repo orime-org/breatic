@@ -365,6 +365,53 @@ export default [
     },
   },
   {
+    // Every Space document write sits inside a writeSpaceDoc or
+    // runCanvasUndoBatch callback, where the size cap is checked (inner#1790).
+    // The functions below check it another way; each says how.
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['**/__tests__/**', '**/*.test.{ts,tsx}', '**/*.spec.{ts,tsx}'],
+    plugins: { breatic: breaticPlugin },
+    rules: {
+      'breatic/space-doc-write-gateway': [
+        'error',
+        {
+          exceptions: [
+            {
+              file: 'src/data/yjs/canvas-space.ts',
+              function: 'writeSnapshotNodes',
+              reason: 'Takes a Y.Doc and writes both scratch documents and real Spaces; the real caller checks in its runCanvasUndoBatch.',
+            },
+            {
+              file: 'src/data/yjs/canvas-space.ts',
+              function: 'landHandlingContent',
+              reason: 'Only called inside the already-checked writes of setNodeExtractedText and restoreNodeMedia.',
+            },
+            {
+              file: 'src/spaces/canvas/generate/proposal-prompt.ts',
+              function: 'writeProposalPrompt',
+              reason: 'Only called inside the placeProposalAt batch.',
+            },
+            {
+              file: 'src/spaces/canvas/generate/proposal-prompt.ts',
+              function: 'writeDialogueLines',
+              reason: 'Only called inside the placeProposalAt batch.',
+            },
+            {
+              file: 'src/data/yjs/history-step.ts',
+              function: 'copyRedone',
+              reason: 'Writes only the throwaway copy the undo/redo trial runs on, never a Space document.',
+            },
+            {
+              file: 'src/data/yjs/history-step.ts',
+              function: 'trial',
+              reason: 'Runs undo/redo only on the throwaway copy, never a Space document.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     // The app-level provider lives in App.tsx; the dev gallery is a separate
     // page tree and legitimately mounts its own. The vendor primitive file
     // needed an exemption from the text guard because its JSDoc examples read

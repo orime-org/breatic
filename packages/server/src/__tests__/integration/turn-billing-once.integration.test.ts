@@ -15,9 +15,10 @@
  *     written in two separately committed statements, so two messages arriving
  *     together could compute the same number. What that costs is not a
  *     duplicate charge but a missing one: the second turn's key collides with
- *     the first's, the lock says "already settled", and it runs for free.
- *   - the key not holding when it should. The lock lives in Redis, so a stub
- *     would only ever prove what the stub does.
+ *     the first's, the request row says "already asked for", and it runs for free.
+ *   - the key not holding when it should. The key is a unique row in
+ *     `credit_charge_requests`, so a stub would only ever prove what the stub
+ *     does.
  *
  * Payments are turned on for this suite. They default off, and with them off
  * `deduct` records the ledger row but leaves the balance alone — which would
@@ -69,8 +70,7 @@ beforeAll(async () => {
   // The Stripe secrets come with the switch: the config refuses to turn
   // payments on without them, because a webhook that cannot verify its
   // signature fails confusingly later instead of clearly here. Nothing in this
-  // suite reaches Stripe — the deduction path is entirely our own database and
-  // Redis — so placeholders satisfy the check without standing in for a key.
+  // suite reaches Stripe — the deduction path is entirely our own database — so placeholders satisfy the check without standing in for a key.
   initCore({
     ...process.env,
     PAYMENT_ENABLED: "true",
@@ -255,7 +255,7 @@ describe("one turn is settled once, however many times it is asked for", () => {
           `;
 
           const charge = async (): Promise<unknown> =>
-            creditLotService.chargeOnceForGeneration(refKey, {
+            creditLotService.chargeOnce("operation", refKey, {
               projectId,
               actorUserId: userId,
               amount,
@@ -274,8 +274,14 @@ describe("one turn is settled once, however many times it is asked for", () => {
             FROM credit_lots WHERE user_id = ${userId}
           `;
 
+          const requests = await sql<{ status: string; amount: string }[]>`
+            SELECT status, amount::text AS amount FROM credit_charge_requests
+            WHERE kind = 'operation' AND actor_user_id = ${userId} AND reference_id = ${refKey}
+          `;
+
           expect(Number(rows[0]!.n)).toBe(1);
           expect(Number(after!.total)).toBe(Number(before!.total) - amount);
+          expect(requests).toEqual([{ status: "settled", amount: `${amount}.000000` }]);
         },
       ),
       { numRuns: 15 },

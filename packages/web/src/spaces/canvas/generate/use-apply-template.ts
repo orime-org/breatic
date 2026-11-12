@@ -26,11 +26,48 @@ import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import { deriveReferences } from '@web/spaces/canvas/generate/derive-references';
 import type { ProposalMention } from '@web/spaces/canvas/generate/proposal-prompt';
+import { slotForParam } from '@web/spaces/canvas/generate/proposal-fills';
+import { readSlotPick } from '@web/spaces/canvas/generate/slots';
 import { templateParams, templateServed } from '@web/spaces/canvas/generate/template-writes';
-import { standsEmpty, type ExistingNode } from '@web/spaces/canvas/use-node-creation';
+import type { SpaceRefusal } from '@web/data/yjs/space-write';
+import { standsEmpty, type ExistingNode, type PlacedProposal } from '@web/spaces/canvas/use-node-creation';
 
 /** Places a template's proposal around nodes already on the canvas: `CanvasSpace`'s callback. */
-export type PlaceTemplate = (proposal: CanvasProposal, existing: ReadonlyMap<number, ExistingNode>, order: readonly number[]) => unknown;
+export type PlaceTemplate = (proposal: CanvasProposal, existing: ReadonlyMap<number, ExistingNode>, order: readonly number[]) => PlacedProposal | SpaceRefusal;
+
+/**
+ * Which canvas node each generate node holds in a template input's slot, the
+ * slot read under the mode of the template node the input feeds: the node
+ * whose content is the slot's file, one tagged for that input of this
+ * template first (design 8.6), so a take filled with a clip another take was
+ * placed with finds that clip on a re-apply.
+ * @param template - The template applied.
+ * @param nodes - Every node on the canvas.
+ * @returns Per generate node, slot param to the node holding its file.
+ */
+function slotFills(template: GenerationTemplate, nodes: readonly CanvasNodeView[]): Map<string, Map<string, string>> {
+  const fills = new Map<string, Map<string, string>>();
+  for (const node of nodes) {
+    const data = node.data as unknown as Record<string, unknown>;
+    for (const input of template.inputs) {
+      // The slot as the template node it feeds names it, under that node's
+      // mode: a param name means another slot in another mode.
+      const fed = template.nodes.find((one) => one.key === (input.feeds?.[0] ?? template.anchor));
+      if (fed?.role !== 'generate' || fed.type !== node.type) continue;
+      const spec = input.into === undefined ? undefined : slotForParam(node.type, fed.mode, input.into);
+      const url = spec === undefined || spec.multiple ? undefined : readSlotPick(spec, data[spec.field])?.url;
+      if (url === undefined || input.into === undefined) continue;
+      const holders = nodes.filter((other) => other.id !== node.id && other.type === input.type && (other.data as { content?: unknown }).content === url);
+      const tagged = holders.find((other) => {
+        const tag = templateTagOf(other);
+        return tag?.input === true && tag.template === template.id && tag.key === input.key;
+      });
+      const holder = tagged ?? holders[0];
+      if (holder !== undefined) fills.set(node.id, (fills.get(node.id) ?? new Map<string, string>()).set(input.into, holder.id));
+    }
+  }
+  return fills;
+}
 
 /**
  * Applies a picked template to a generate panel's node (inner#977,
@@ -75,11 +112,14 @@ export function useApplyTemplate(
       const nodes = new Map<string, TemplateGraphNode>(
         graph.nodes.map((n): [string, TemplateGraphNode] => {
           const tag = templateTagOf(n);
+          // The anchor id a tag records finds a standalone node or an input
+          // the agent placed with fills again (inner#1825 §4.1, §4.2).
+          const anchor = tag?.anchor === undefined ? {} : { anchor: tag.anchor };
           const marks = tag === undefined || tag.key === TEMPLATE_GUIDE_KEY
             ? {}
             : tag.input
-              ? { inputTag: { template: tag.template, input: tag.key } }
-              : { tag: { template: tag.template, key: tag.key } };
+              ? { inputTag: { template: tag.template, input: tag.key, ...anchor } }
+              : { tag: { template: tag.template, key: tag.key, ...anchor } };
           // Every node keeps the template's settings here: applying writes
           // each one it reuses back to them (inner#1345 6.5 step 3).
           return [n.id, { id: n.id, type: n.type as TemplateGraphNode['type'], ...marks, keeps: true }];
@@ -87,7 +127,8 @@ export function useApplyTemplate(
       );
       const incoming = new Map([...rails].map(([id, rows]) => [id, rows.map((row) => ({ from: row.sourceNodeId }))]));
       const skeleton = templateSkeleton(template);
-      const match = matchTemplateInstance(skeleton, { nodes, incoming }, nodeId);
+      const fills = slotFills(template, graph.nodes);
+      const match = matchTemplateInstance(skeleton, { nodes, incoming, fills }, nodeId);
 
       // The nodes the proposal starts from, at indices from 0: the panel's
       // node, then each template node the board already has, then each node
@@ -156,7 +197,9 @@ export function useApplyTemplate(
           ...(paramsByModel === undefined ? {} : { paramsByModel }),
           ...(instance.has(index) ? { instance: true } : {}),
         });
-        return rewritten ?? { role: 'source', type: view.type as ProposalNode['type'], name: nameOf(view) };
+        // A node holding material carries it, so a fill naming it writes it
+        // into its slot as a placed proposal's material does (inner#1825 §4.1).
+        return rewritten ?? { role: 'source', type: view.type as ProposalNode['type'], name: nameOf(view), ...materialOf(view) };
       });
       const proposal: CanvasProposal = {
         nodes: [...proposalNodes, ...expansion.appended],
@@ -181,12 +224,15 @@ export function useApplyTemplate(
         if (tag === undefined || tag.key === TEMPLATE_GUIDE_KEY) return last + index;
         return (tag.input ? inputRank.get(tag.key) : nodeRank.get(tag.key)) ?? last + index;
       });
+      let placed: PlacedProposal | SpaceRefusal;
       try {
-        placeTemplate(proposal, existing, order);
+        placed = placeTemplate(proposal, existing, order);
       } catch {
         toast.error(t('canvas.template.applyFailed'));
         return;
       }
+      // Refused for room, with its own warning.
+      if ('ok' in placed) return;
       // An empty node to fill or words in braces to write are left for the
       // user; nothing stops them generating as it is.
       const toFill =
@@ -217,6 +263,35 @@ function writable(view: CanvasNodeView): boolean {
  */
 function templateTagOf(view: CanvasNodeView | undefined): NonNullable<CanvasNodeFields['data']['templateNode']> | undefined {
   return view === undefined || view.type === 'group' || view.type === 'annotation' ? undefined : view.data.templateNode;
+}
+
+/**
+ * The material a node already on the canvas holds, as a proposal carries it.
+ * @param view - The node.
+ * @returns Its address and media numbers, or nothing when it holds none.
+ */
+function materialOf(view: CanvasNodeView): Pick<ProposalNode, 'material' | 'materialMedia'> {
+  const data = view.data as {
+    content?: unknown;
+    coverUrl?: string;
+    mediaWidth?: number;
+    mediaHeight?: number;
+    duration?: number;
+    mimeType?: string;
+    size?: number;
+  };
+  if (typeof data.content !== 'string' || data.content.length === 0) return {};
+  return {
+    material: data.content,
+    materialMedia: {
+      coverUrl: data.coverUrl ?? null,
+      width: data.mediaWidth ?? null,
+      height: data.mediaHeight ?? null,
+      duration: data.duration ?? null,
+      mimeType: data.mimeType ?? null,
+      size: data.size ?? null,
+    },
+  };
 }
 
 /**

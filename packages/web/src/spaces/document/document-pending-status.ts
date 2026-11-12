@@ -8,12 +8,8 @@
  */
 
 import type { WriteAccess } from '@web/data/yjs/collab-socket';
-import {
-  CLAIMS_FIELD,
-  type UploadClaim,
-  type UploadEntry,
-  type UploadFailure,
-} from '@web/spaces/document/document-upload-controller';
+import type { UploadClaim } from '@web/lib/upload-claims';
+import type { UploadEntry, UploadFailure } from '@web/spaces/document/document-upload-controller';
 
 /** What a pending block shows. */
 export type PendingStatus =
@@ -25,6 +21,8 @@ export type PendingStatus =
   | { readonly kind: 'waitingDemoted' }
   /** This page has the result and the server refused it. */
   | { readonly kind: 'waitingRefused' }
+  /** This page has the result and the Space is full (inner#1790). */
+  | { readonly kind: 'waitingFull' }
   /** Another client claims it as uploading. */
   | { readonly kind: 'peerUploading' }
   /** Another client claims it as failed. */
@@ -42,6 +40,8 @@ export interface PendingFacts {
   readonly refused: boolean;
   /** What other clients claim. */
   readonly claim: UploadClaim | null;
+  /** Whether the Space is full or over its ceiling, outside a rebuild. */
+  readonly full?: boolean;
 }
 
 /**
@@ -56,28 +56,10 @@ export function pendingStatus(facts: PendingFacts): PendingStatus {
     if (entry.phase === 'done' && facts.access === 'denied') {
       return facts.refused ? { kind: 'waitingRefused' } : { kind: 'waitingDemoted' };
     }
+    if (entry.phase === 'done' && facts.full === true) return { kind: 'waitingFull' };
     return { kind: 'uploading', progress: entry.phase === 'uploading' ? entry.progress : null };
   }
   if (facts.claim === 'uploading') return { kind: 'peerUploading' };
   if (facts.claim === 'failed') return { kind: 'peerFailed' };
   return { kind: 'notFinished' };
-}
-
-/**
- * What the clients in awareness claim about an upload. A client running it
- * outweighs one that saw it fail: the upload is still going somewhere.
- * @param states - Awareness states by client id.
- * @param uploadId - The upload.
- * @returns The claim, or null when nobody claims it.
- */
-export function claimIn(states: ReadonlyMap<number, Record<string, unknown>>, uploadId: string): UploadClaim | null {
-  let claim: UploadClaim | null = null;
-  for (const state of states.values()) {
-    const uploads = state[CLAIMS_FIELD];
-    if (typeof uploads !== 'object' || uploads === null) continue;
-    const said: unknown = (uploads as Record<string, unknown>)[uploadId];
-    if (said === 'uploading') return 'uploading';
-    if (said === 'failed') claim = 'failed';
-  }
-  return claim;
 }

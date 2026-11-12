@@ -12,12 +12,13 @@
  * about the model: the catalog entry, the family, and param validation.
  */
 
-import { checkParamCombination, resolveParams, type ResolvableModel } from "@breatic/shared";
+import { checkParamCombination, extractPromptText, resolveParams, type ResolvableModel, type SceneTaskNotice } from "@breatic/shared";
 import { getFullModelConfig } from "@breatic/domain";
 import type { FullModelEntry } from "@breatic/domain";
 
 import { validateParams, type ModelFamily } from "@worker/providers/shared.js";
 import minimaxSpeech from "@worker/providers/families/minimax-speech.js";
+import murekaSong from "@worker/providers/families/mureka-song.js";
 import nanoBanana from "@worker/providers/families/nano-banana.js";
 import nanoBananaRelight from "@worker/providers/families/nano-banana-relight.js";
 
@@ -31,11 +32,13 @@ export interface GenerationResult {
   model: string;
   /** What WaveSpeed billed, in USD; 0 when there was no prediction to bill. */
   cost: number;
+  /** Set when an optional step failed and the run delivered without it (inner#1692). */
+  notice?: SceneTaskNotice;
 }
 
 /** Model name -> family, for the models that have one. */
 export const FAMILIES = new Map<string, ModelFamily>(
-  [minimaxSpeech, nanoBanana, nanoBananaRelight].flatMap((family) => [...family.MODELS].map((name) => [name, family] as const)),
+  [minimaxSpeech, murekaSong, nanoBanana, nanoBananaRelight].flatMap((family) => [...family.MODELS].map((name) => [name, family] as const)),
 );
 
 /**
@@ -67,11 +70,36 @@ export function validateModelParams(
   modelName: string | undefined,
   params?: Record<string, unknown>,
 ): [string, Record<string, unknown>] {
-  const [name, cleaned] = validateParams(modality, modelName, params);
-  const model = entryOf(modality, name) as unknown as ResolvableModel;
-  const tooLong = checkParamCombination(model, cleaned).find((v) => v.rule === "max_length");
+  const [name, validated] = validateParams(modality, modelName, params);
+  const entry = entryOf(modality, name);
+  // Every text setting is something the user typed, cleaned as a prompt is
+  // before its length is judged, so what is judged is what is sent; so is
+  // each text field of a list's entries (a speaker's name, which the script
+  // names in its cleaned form).
+  const cleaned = Object.fromEntries(
+    Object.entries(validated).map(([key, value]) => {
+      const spec = entry.params?.[key];
+      if (spec?.type === "text" && typeof value === "string") return [key, extractPromptText(value)];
+      if (spec?.type !== "items" || !Array.isArray(value)) return [key, value];
+      const fields = spec.fields ?? {};
+      return [key, value.map((item: unknown) =>
+        typeof item === "object" && item !== null && !Array.isArray(item)
+          ? Object.fromEntries(Object.entries(item as Record<string, unknown>).map(([field, held]) =>
+            [field, fields[field]?.type === "text" && typeof held === "string" ? extractPromptText(held) : held]))
+          : item,
+      )];
+    }),
+  );
+  const model = entry as unknown as ResolvableModel;
+  const found = checkParamCombination(model, cleaned);
+  const tooLong = found.find((v) => v.rule === "max_length");
   if (tooLong?.rule === "max_length") {
     throw new Error(`${tooLong.param} is ${tooLong.length} characters once cleaned; ${name} takes at most ${tooLong.max}`);
+  }
+  // The server refuses it before queueing; a job that got past is never sent.
+  const tooShort = found.find((v) => v.rule === "min_length");
+  if (tooShort?.rule === "min_length") {
+    throw new Error(`${tooShort.param} is ${tooShort.length} characters once cleaned; ${name} takes at least ${tooShort.min}`);
   }
   return [name, resolveParams(model, cleaned)];
 }

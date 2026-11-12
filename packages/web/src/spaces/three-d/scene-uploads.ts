@@ -14,6 +14,10 @@
  * closing its tab is held back and leaving the page asks first. The File is
  * let go once its row ends in a model or a timeout, or disappears from the
  * list, because only a failed row is retried.
+ *
+ * The model is placed in the Space only after the server answers, so a full
+ * Space sends nothing (inner#1790): a start says why to the import dialog,
+ * a retry warns and keeps its row and file.
  */
 
 import { t } from '@breatic/shared';
@@ -22,6 +26,8 @@ import { sendFileAndFinish } from '@web/data/upload/finish-upload';
 import { hashFile } from '@web/data/upload/hash';
 import { runMediaUpload, type MediaUploadDeps, type UploadFailure } from '@web/data/upload/media-upload';
 import type { UploadContext } from '@web/data/upload/ingest-upload';
+import { docName } from '@web/data/yjs/manager';
+import { checkAdd, type SpaceRefusalReason } from '@web/data/yjs/space-write';
 import { reportSpaceTaskFailure } from '@web/data/api/scene';
 import { toast } from '@web/lib/toast';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
@@ -63,6 +69,7 @@ export interface SceneUploadDeps {
 export type SceneUploadStart =
   | { kind: 'opened'; taskId: string }
   | { kind: 'refused'; reason: UploadFailure['reason'] }
+  | { kind: 'full'; reason: SpaceRefusalReason }
   | { kind: 'missing' };
 
 /** The part of a listed row the store reads. */
@@ -229,10 +236,15 @@ export function createSceneUploads(deps: SceneUploadDeps): SceneUploads {
   });
 
   return {
-    start: (args) => send(args),
+    start: (args) => {
+      const room = checkAdd(docName.threeDSpace(args.projectId, args.spaceId), { notify: false });
+      return room.ok ? send(args) : Promise.resolve({ kind: 'full', reason: room.reason });
+    },
     retry: (taskId) => {
       const entry = entries.get(taskId);
       if (!entry || entry.phase !== 'retained') return Promise.resolve({ kind: 'missing' });
+      const room = checkAdd(docName.threeDSpace(entry.projectId, entry.spaceId));
+      if (!room.ok) return Promise.resolve({ kind: 'full', reason: room.reason });
       patch(taskId, { phase: 'retrying' });
       return send(entry, taskId);
     },

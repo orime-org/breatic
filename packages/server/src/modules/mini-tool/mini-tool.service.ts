@@ -40,6 +40,11 @@ export interface PreparedRun {
   params: Record<string, unknown>;
   /** The stored object a container tool reads. */
   sourceKey: string | undefined;
+  /**
+   * Every stored object a container tool reads, in order, the source first; a
+   * join's clips follow it (inner#1825 §6.4). Absent on a model tool.
+   */
+  inputKeys?: string[];
   /** What the precheck holds the user to. */
   credits: number;
 }
@@ -170,34 +175,72 @@ async function prepareModelRun(spec: MiniToolSpec, body: MiniToolRequest): Promi
 }
 
 /**
- * A container tool's run: the stored key it reads, and the precheck its
- * operation's expected seconds come to at the class's published prices.
+ * The stored key behind one input of a container tool, checked as the source
+ * is: one of our addresses, filed as the tool's medium; read with its size
+ * from the one ledger row.
  * @param spec - The tool, whose declared source medium the stored file must be.
- * @param op - The container operation.
- * @param body - The validated request.
- * @returns The prepared run.
- * @throws {AppError} 400 when the source is not one of our addresses, or not the tool's medium.
+ * @param op - The container operation, for the log.
+ * @param url - The input's address.
+ * @returns Its storage key and the size the ledger holds for it.
+ * @throws {AppError} 400 when the input is not one of our addresses, or not the tool's medium.
  */
-async function prepareContainerRun(spec: MiniToolSpec, op: string, body: MiniToolRequest): Promise<PreparedRun> {
-  const sourceKey = (await getStorageAdapter()).keyFromUrl(body.source.url);
-  if (sourceKey === null) throw new AppError(400, t("server.mini_tool.foreignSource"));
+async function checkedInput(spec: MiniToolSpec, op: string, url: string): Promise<{ key: string; sizeBytes: number }> {
+  const key = (await getStorageAdapter()).keyFromUrl(url);
+  if (key === null) throw new AppError(400, t("server.mini_tool.foreignSource"));
   // A container operation reads the medium its tool declares; the panel only
   // offers a tool on a node of that medium, so another kind here came from a
   // forged request.
-  const kind = await assetRepo.findKindByStorageKey(sourceKey);
-  if (kind !== spec.source) {
-    logger.warn({ op, sourceKey, kind, expected: spec.source }, "mini_tool_source_wrong_kind");
+  const row = await assetRepo.findLiveByStorageKey(key);
+  if (row?.kind !== spec.source) {
+    logger.warn({ op, sourceKey: key, kind: row?.kind ?? null, expected: spec.source }, "mini_tool_source_wrong_kind");
     throw new AppError(400, t("server.mini_tool.foreignSource"));
   }
+  return { key, sizeBytes: row.sizeBytes };
+}
+
+/**
+ * A container tool's run: the stored keys it reads, and the precheck its
+ * operation's expected seconds come to at the class's published prices. A
+ * tool with slots (the joins, inner#1825 §6.4) also reads every slot's clips
+ * after the source, between 1 and `join_max_clips − 1` of them, and their
+ * bytes twice over (read, then written again as the output) must fit the
+ * class's disk.
+ * @param spec - The tool, whose declared source medium every stored file must be.
+ * @param op - The container operation.
+ * @param body - The validated request.
+ * @returns The prepared run.
+ * @throws {AppError} 400 when an input is not one of our addresses or not the tool's medium, when the clip count is out of range, or when the clips are too large together.
+ */
+async function prepareContainerRun(spec: MiniToolSpec, op: string, body: MiniToolRequest): Promise<PreparedRun> {
   const config = getMiniToolsConfig();
+  const source = await checkedInput(spec, op, body.source.url);
+  const inputKeys = [source.key];
   const plan = config.ops[op as keyof typeof config.ops];
   const size = config.classes[plan.container_class]!;
+  // ponytail: the joins are the only container tools with slots, so slots mean a join.
+  if (spec.slots.length > 0) {
+    const clips = spec.slots.flatMap((slot) => body.slots[slot.key] ?? []);
+    // The panel holds a join to the cap; a request past it is said as the count.
+    if (clips.length < 1 || clips.length > config.join_max_clips - 1) {
+      throw new AppError(400, t("server.mini_tool.joinClipCount", { max: config.join_max_clips }));
+    }
+    let bytes = source.sizeBytes;
+    for (const clip of clips) {
+      const input = await checkedInput(spec, op, clip.url);
+      inputKeys.push(input.key);
+      bytes += input.sizeBytes;
+    }
+    if (bytes * 2 > size.disk_gb * 1_000_000_000) {
+      throw new AppError(400, t("server.mini_tool.clipsTooLarge"));
+    }
+  }
   // The expected run billed as the charge bills it, with the full vCPU for its time.
   const usd = containerCostUsd({ wallMs: plan.precheck_seconds * 1000, cpuUsec: null }, size, config.prices);
   return {
     model: undefined,
     params: body.params,
-    sourceKey,
+    sourceKey: source.key,
+    inputKeys,
     credits: Math.max(creditsForUsd(usd, env.CREDIT_MULTIPLIER), MIN_TASK_CREDIT_COST),
   };
 }

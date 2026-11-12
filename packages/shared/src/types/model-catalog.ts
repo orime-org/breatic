@@ -69,6 +69,8 @@ export interface ExtraStep {
   readonly per_item?: boolean;
   /** Skipped when the same source was sent through it before. */
   readonly reused?: boolean;
+  /** A failure of this step keeps the run: the previous step's output is delivered. */
+  readonly optional?: boolean;
 }
 
 /** Params of which at least one has to carry material in one mode. */
@@ -199,6 +201,8 @@ export interface ParamDescriptor {
   bounds?: readonly ParamBound[];
   /** The most characters a text param takes, counted on the cleaned text (inner#1691). */
   max_length?: number;
+  /** The fewest characters a text param takes, counted on the cleaned text (inner#1825). */
+  min_length?: number;
   max_items?: number;
   /** The longest the picked clips may run together, in seconds. */
   max_total_duration?: number;
@@ -298,6 +302,12 @@ export interface ModelEntry {
    * would let a forgotten line silently unmount the editor.
    */
   takes_prompt: boolean;
+  /**
+   * The condition the prompt is taken under, when a choice of the model's own
+   * turns it off (breatic#1393: Mureka V9.5 Song composing from a melody).
+   * Read through `promptTaken`, never directly.
+   */
+  prompt_when?: ParamGate;
   /** Values the model forces while their conditions hold, in order (inner#1691). */
   forces?: readonly ParamForce[];
   /** The most characters the prompt takes, counted on the cleaned text (inner#1691). */
@@ -568,6 +578,7 @@ const paramDescriptorSchema = z
     type: z.enum(["list", "items", "text", "integer"]).optional().catch(undefined),
     bounds: z.array(paramBoundSchema).optional().catch(undefined),
     max_length: z.number().optional().catch(undefined),
+    min_length: z.number().optional().catch(undefined),
     max_items: z.number().optional().catch(undefined),
     max_total_duration: z.number().optional().catch(undefined),
     max_bytes: z.number().optional().catch(undefined),
@@ -658,6 +669,9 @@ const modelEntrySchema = z.object({
   // editor and then happily submit a paid generation with an empty prompt from
   // a model that actually wanted one.
   takes_prompt: z.boolean().catch(true),
+  // A malformed condition degrades to absent: the prompt is then taken, which
+  // at worst sends text the model was not to get, the side takes_prompt errs on.
+  prompt_when: paramGateSchema.optional().catch(undefined),
   // A malformed list degrades to absent, as a malformed contract does: half
   // the forced values would lock half a rule (inner#1691).
   forces: z.array(paramForceSchema).optional().catch(undefined),
@@ -675,6 +689,7 @@ const modelEntrySchema = z.object({
         for_param: z.string().optional(),
         per_item: z.boolean().optional(),
         reused: z.boolean().optional(),
+        optional: z.boolean().optional(),
       }),
     )
     .optional()

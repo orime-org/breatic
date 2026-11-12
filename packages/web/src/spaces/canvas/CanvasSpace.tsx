@@ -105,6 +105,7 @@ import {
   appendNodeSlotItem,
   expandGroup,
   removeEdge,
+  removalKind,
   removeElements,
   removeNode,
   resizeGroup,
@@ -168,7 +169,9 @@ import {
   type UploadNodeSpec,
   assetUrlSurvives,
   isReportableAssetUrl,
+  TEXT_REFUSAL_MARK,
 } from '@web/spaces/canvas/canvas-upload';
+import { checkAdd, checkWrite, type SpaceRefusal } from '@web/data/yjs/space-write';
 import {
   runMediaUpload,
   type UploadFailure,
@@ -240,9 +243,11 @@ import {
 import {
   activeMiniToolSlot,
   heldSlotUrls,
+  joinOfSelection,
   miniToolSlotCandidate,
   miniToolSlotValue,
 } from '@web/spaces/canvas/mini-tool/mini-tool-slot-pick';
+import { isJoinSlot, isJoinTool, joinFirstClipOf } from '@web/spaces/canvas/mini-tool/join';
 import { pickedSlotUrl } from '@web/spaces/canvas/generate/slot-pick';
 import { readSlotPicks, slotForPurpose, slotSpec } from '@web/spaces/canvas/generate/slots';
 import { planResizeJoin } from '@web/spaces/canvas/group-reparent';
@@ -946,6 +951,9 @@ function CanvasSpaceInner({
         toast.warning(t('canvas.generatePanel.referencePoolFull', { cap }));
         return false;
       }
+      // The crop is uploaded before it is written, so the Space is asked
+      // first: one that cannot take an add uploads nothing (inner#1790).
+      if (!checkAdd(docName.canvasSpace(projectId, spaceId)).ok) return false;
       const pendingId = newId();
       store.addPendingFocusUpload({
         id: pendingId,
@@ -987,7 +995,9 @@ function CanvasSpaceInner({
                     cap: MAX_FOCUS_ENTRIES,
                   }),
                 );
-              } else {
+              } else if (outcome !== 'refused') {
+                // A size-cap refusal said so itself; its crop is still an
+                // orphan to report below.
                 toast.warning(t('canvas.generatePanel.focusCropDiscarded'));
               }
               if (
@@ -1333,6 +1343,7 @@ function CanvasSpaceInner({
     [projectId, spaceId],
   );
 
+  const modelCatalog = useQuery(modelCatalogQuery()).data;
   const {
     createNodeAt,
     createUploadNodeAt,
@@ -1340,7 +1351,7 @@ function CanvasSpaceInner({
     pastePayload,
     stepPaste,
     placeProposalAt,
-  } = useNodeCreation(projectId, spaceId);
+  } = useNodeCreation(projectId, spaceId, modelCatalog);
 
   // Once nodes just placed and the generate panel opened on one of them,
   // grown around its prompt, are laid out, the camera moves once so all of
@@ -1403,9 +1414,11 @@ function CanvasSpaceInner({
   // in the places its earlier instance holds (inner#1345 6.5), where its flow
   // puts it, over whatever is there (inner#1846).
   const placeTemplate = React.useCallback(
-    (proposal: CanvasProposal, existing: ReadonlyMap<number, ExistingNode>, order: readonly number[]): PlacedProposal => {
+    (proposal: CanvasProposal, existing: ReadonlyMap<number, ExistingNode>, order: readonly number[]): PlacedProposal | SpaceRefusal => {
       const anchorId = existing.get(0)?.nodeId;
       const placed = placeProposalAt(proposal, TEMPLATE_AIM, [], existing, order);
+      // A template the Space has no room for was refused with its own toast.
+      if ('ok' in placed) return placed;
       showPlaced(placed, anchorId ?? '', FRAME_PAN_MS);
       return placed;
     },
@@ -1428,6 +1441,10 @@ function CanvasSpaceInner({
   const [localGestureIds, setLocalGestureIds] = React.useState<
     ReadonlySet<string>
   >(() => new Set());
+  // Bumped when the size cap refuses a move xyflow has already drawn. An
+  // arrow-key nudge holds no gesture whose release would rerun the merge, and
+  // the unchanged document never does (inner#1790).
+  const [refusedMoves, redrawFromDocument] = React.useReducer((n: number): number => n + 1, 0);
   // The nodes this browser is working on before the server has heard of it —
   // the same registry the tab-close guard reads, so the set is exactly the
   // uploads and extractions `trackOperation` registered.
@@ -1460,6 +1477,7 @@ function CanvasSpaceInner({
     localGestureIds,
     locallyBusyIds,
     setFlowNodes,
+    refusedMoves,
   ]);
 
 
@@ -1612,9 +1630,14 @@ function CanvasSpaceInner({
       if (survivors.nodes.length === 0 && survivors.edges.length === 0) {
         return false;
       }
+      // Judged here, with the kind `removeElements` will write, so a deletion
+      // the size cap refuses leaves ReactFlow's own copy whole (inner#1790);
+      // `onDelete` makes the write.
+      const kind = removalKind(projectId, spaceId, survivors.nodes.map((node) => node.id));
+      if (!checkWrite(docName.canvasSpace(projectId, spaceId), { kind }).ok) return false;
       return survivors;
     },
-    [readOnly, flowNodes, deletingViewer, t],
+    [readOnly, flowNodes, deletingViewer, t, projectId, spaceId],
   );
 
   // Activity-feed reporters (ADR 2026-07-04) behind the canvas write-backs.
@@ -1651,13 +1674,13 @@ function CanvasSpaceInner({
       nodes: Node[];
       edges: Edge[];
     }): void => {
-      removeElements(
+      const written = removeElements(
         projectId,
         spaceId,
         deletedNodes.map((node) => node.id),
         deletedEdges.map((edge) => edge.id),
       );
-      reportDeletedAssets(deletedNodes);
+      if (written.ok) reportDeletedAssets(deletedNodes);
     },
     [projectId, spaceId, reportDeletedAssets],
   );
@@ -1877,15 +1900,21 @@ function CanvasSpaceInner({
       }
       // Edge validity (self-loop + both endpoints must exist) is enforced at
       // the addEdge write boundary — the only race-free place under collab.
-      const added = addEdge(projectId, spaceId, {
+      const edge = {
         id: `${connection.source}->${connection.target}`,
         source: connection.source,
         target: connection.target,
+      };
+      // Judged here so a Space without room says so once, and is not also
+      // reported as a missing endpoint.
+      let added = false;
+      const written = runCanvasUndoBatch(projectId, spaceId, { kind: 'add' }, () => {
+        added = addEdge(projectId, spaceId, edge);
       });
       // Surface a deleted-endpoint race like the reference-pick flow does, so a
       // drag that silently failed doesn't read as a made connection (a self-loop
       // stays silent — ReactFlow shouldn't offer one).
-      if (!added && connection.source !== connection.target) {
+      if (written.ok && !added && connection.source !== connection.target) {
         toast.error(t('canvas.generatePanel.referenceAddFailed'));
       }
     },
@@ -1958,7 +1987,10 @@ function CanvasSpaceInner({
         if (!miniToolSlotCandidate(node, target, slot, held)) return;
         const value = miniToolSlotValue(node);
         if (value === null) return;
-        fillMiniToolSlot(slot.key, value, slot.many);
+        // Only a join's list is ordered and wired by node (inner#1825 §6.5);
+        // any other slot keeps the copy it always held.
+        const { nodeId: _nodeId, name: _name, ...copy } = value;
+        fillMiniToolSlot(slot.key, isJoinSlot(slot) ? value : copy, slot.many);
         if (!slot.many || (session.capacity !== undefined && held.size + 1 >= session.capacity)) endPick();
         return;
       }
@@ -2046,14 +2078,15 @@ function CanvasSpaceInner({
       // Wire clicked-source → target as a reference. Self-loop + both-endpoints-
       // still-exist are enforced race-free at the addEdge write boundary (a
       // collaborator may have deleted either node between render and click).
-      const added = addEdge(projectId, spaceId, {
-        id: `${node.id}->${target}`,
-        source: node.id,
-        target,
+      const edge = { id: `${node.id}->${target}`, source: node.id, target };
+      let added = false;
+      const written = runCanvasUndoBatch(projectId, spaceId, { kind: 'add' }, () => {
+        added = addEdge(projectId, spaceId, edge);
       });
-      // Couldn't wire = the node (or target) was deleted mid-pick — surface it.
-      // Stay in pick mode either way; Exit is the only way out (item 7).
-      if (!added) toast.error(t('canvas.generatePanel.referenceAddFailed'));
+      // Couldn't wire = the node (or target) was deleted mid-pick — surface it;
+      // a Space without room already said so. Stay in pick mode either way;
+      // Exit is the only way out (item 7).
+      if (written.ok && !added) toast.error(t('canvas.generatePanel.referenceAddFailed'));
     },
     [graphStore, sessionStore, projectId, spaceId, flowEdges, t, kindLabel, endPick, setFocusTarget],
   );
@@ -2069,13 +2102,12 @@ function CanvasSpaceInner({
   // Enter on the new-note box: this is the moment the node exists. Everything
   // before it lived in one browser.
   const createAnnotationAt = React.useCallback(
-    (at: { x: number; y: number }, content: string): void => {
+    (at: { x: number; y: number }, content: string): boolean =>
       addNode(
         projectId,
         spaceId,
         createAnnotationNode(at, viewerId ?? '', content),
-      );
-    },
+      ).ok,
     [projectId, spaceId, viewerId],
   );
 
@@ -2415,7 +2447,8 @@ function CanvasSpaceInner({
         x: connectCreate.x,
         y: connectCreate.y,
       });
-      runCanvasUndoBatch(projectId, spaceId, () => {
+      // One add for the size cap: the empty node and its wire.
+      runCanvasUndoBatch(projectId, spaceId, { kind: 'add' }, () => {
         const id = createNodeAt(type, point);
         const added = addEdge(projectId, spaceId, {
           id: `${connectCreate.sourceId}->${id}`,
@@ -2570,7 +2603,9 @@ function CanvasSpaceInner({
         // One drop is one thing to take back, so every node it makes and the
         // Group around them go down as a single undo step.
         let selectAfter: string[] = [];
-        runCanvasUndoBatch(projectId, spaceId, () => {
+        // One add for the size cap: the empty nodes and their Group. A full
+        // Space refuses the whole drop, and nothing is uploaded or read.
+        const built = runCanvasUndoBatch(projectId, spaceId, { kind: 'add' }, () => {
           // Two or more files arrive inside a Group, framed the way
           // `planGroupCreation` frames them below.
           const { centres: laid, tops, frame } = batchLayoutAt(origin, admitted.length);
@@ -2627,6 +2662,7 @@ function CanvasSpaceInner({
           // deselects everything else when the Group mirrors back.
           selectAfter = [plan.groupId];
         });
+        if (!built.ok) return;
         if (selectAfter.length > 0) {
           if (pasted) selectPasted(selectAfter);
           else setSelectAfterCreate(selectAfter);
@@ -2668,8 +2704,10 @@ function CanvasSpaceInner({
               nodeId,
               extractText(file)
                 .then((text) => {
-                  setNodeExtractedText(projectId, spaceId, nodeId, text);
-                  useUploadMarksStore.getState().answer(spaceId, nodeId, op);
+                  // The node's own mark says it when the words do not fit.
+                  const written = setNodeExtractedText(projectId, spaceId, nodeId, text, false);
+                  if (written.ok) useUploadMarksStore.getState().answer(spaceId, nodeId, op);
+                  else useUploadMarksStore.getState().fail(spaceId, nodeId, op, TEXT_REFUSAL_MARK);
                 })
                 .catch(() =>
                   useUploadMarksStore.getState().fail(spaceId, nodeId, op, {
@@ -2789,7 +2827,13 @@ function CanvasSpaceInner({
             ? { width: measured.width, height: measured.height }
             : undefined;
         });
-        const placed = placeProposalAt(intent.proposal, center, occupied);
+        // The card reports a refusal by the size cap itself, so no toast here.
+        const placed = placeProposalAt(intent.proposal, center, occupied, undefined, undefined, false);
+        if ('ok' in placed) {
+          reportProposalOutcome(placed);
+          consumePendingNodeCreate();
+          return;
+        }
         const focus = whatToFocus(intent.proposal, placed);
         // A Space opened empty and never framed still has its opening fit
         // queued for the first nodes to arrive; the framing below is that one.
@@ -3221,9 +3265,13 @@ function CanvasSpaceInner({
       // half-applied state. Every member position already reads against the
       // origin an expansion is moving its Group to, so each node takes one
       // write and the Group's own geometry is all the expansion writes.
-      return runCanvasUndoBatch(
+      let step: CanvasUndoStep | undefined;
+      // An edit for the size cap; a refused move leaves the document as it
+      // was, and the nodes are drawn back where it has them.
+      const written = runCanvasUndoBatch(
         projectId,
         spaceId,
+        { kind: 'edit', joinStep, onStep: (landed) => { step = landed; } },
         () => {
           for (const r of ops.reparents) {
             setNodeParent(projectId, spaceId, r.id, r.parentId, r.position);
@@ -3235,8 +3283,9 @@ function CanvasSpaceInner({
             resizeGroup(projectId, spaceId, e.groupId, e.position, e.width, e.height);
           }
         },
-        joinStep,
       );
+      if (!written.ok) redrawFromDocument();
+      return step;
     },
     [projectId, spaceId, buffer, getInternalNode],
   );
@@ -3383,13 +3432,14 @@ function CanvasSpaceInner({
       );
       if (blocked && reason) warnNodeGate(t(NODE_GATE_TOAST_KEY[reason]));
       if (survivors.nodes.length === 0 && survivors.edges.length === 0) return;
-      removeElements(
+      const written = removeElements(
         projectId,
         spaceId,
         survivors.nodes.map((node) => node.id),
         survivors.edges.map((edge) => edge.id),
       );
-      reportDeletedAssets(survivors.nodes);
+      // Only a deletion that ran removed any asset (inner#1790).
+      if (written.ok) reportDeletedAssets(survivors.nodes);
     },
     [readOnly, projectId, spaceId, t, reportDeletedAssets, buffer, deletingViewer],
   );
@@ -3459,6 +3509,21 @@ function CanvasSpaceInner({
     },
     [readOnly, projectId, spaceId, captureClipboardFor, keepUpstreamFor, pastePayload, selectPasted, buffer],
   );
+
+  // Join is offered over two or more clips of one medium (inner#1825 §6.5);
+  // the clips are read fresh when it is picked.
+  const openJoinPanel = useCanvasSession((s) => s.openJoinPanel);
+  const joinOffer = React.useMemo(
+    () => (readOnly ? undefined : joinOfSelection(flowNodes)?.tool.source),
+    [readOnly, flowNodes],
+  );
+  const joinSelection = React.useCallback((): void => {
+    const join = joinOfSelection(buffer.settled());
+    const first = join?.clips[0]?.nodeId;
+    if (join === null || first === undefined) return;
+    openJoinPanel(join.tool.id, join.clips);
+    selectOnlyNode(first);
+  }, [buffer, openJoinPanel, selectOnlyNode]);
 
   const copySelection = React.useCallback((): void => {
     writeNodesToClipboard(collectSelectedClipboard());
@@ -3723,6 +3788,13 @@ function CanvasSpaceInner({
         if (continuing !== undefined) useUploadMarksStore.getState().answer(spaceId, nodeId, continuing);
         return undefined;
       }
+      // What the node ends up holding is written by the server past the size
+      // gate, so a Space that cannot take an add sends nothing; a Retry keeps
+      // its file for later (inner#1790, design 5.2).
+      if (!checkAdd(docName.canvasSpace(projectId, spaceId)).ok) {
+        if (continuing !== undefined) useUploadMarksStore.getState().fail(spaceId, nodeId, continuing, { key: 'spaces.sizeCap.reason' });
+        return undefined;
+      }
       // The uploader sees the node wait from this moment until the server
       // answers (inner#1303 §6.7); a tool's export carries on the operation
       // its press began.
@@ -3762,7 +3834,7 @@ function CanvasSpaceInner({
           // there is nobody else to write it. A media node's content arrives
           // from the server through Yjs.
           setContent: (id, content) =>
-            setNodeExtractedText(projectId, spaceId, id, content),
+            setNodeExtractedText(projectId, spaceId, id, content, false),
           // A failure after the server answered has a task row: the same
           // outcome as the drop path, reason for reason, where the Retry
           // stash is decided.
@@ -3941,18 +4013,17 @@ function CanvasSpaceInner({
   // when Download is offered (inner#888 §7.1).
   // A model tool whose pinned model the catalog does not serve is left off,
   // as the generation panel leaves such models off its list.
-  const menuCatalog = useQuery(modelCatalogQuery()).data;
   const menuTools = React.useMemo(
     () =>
       menuDownloadUrl === null
         ? undefined
-        : servedMiniToolsFor(nodeMenu.type, menuCatalog).map((tool) => ({
+        : servedMiniToolsFor(nodeMenu.type, modelCatalog).map((tool) => ({
           id: tool.id,
           labelKey: tool.labelKey,
           icon: tool.icon,
           model: tool.run.kind === 'model',
         })),
-    [menuDownloadUrl, nodeMenu.type, menuCatalog],
+    [menuDownloadUrl, nodeMenu.type, modelCatalog],
   );
   const openMiniTool = useCanvasSession((s) => s.openMiniTool);
   // The picture adjust is judged in fine detail (inner#1303 §6.1): on opening
@@ -4013,16 +4084,21 @@ function CanvasSpaceInner({
       const spec = miniToolById(toolId);
       if (spec === undefined || menuDownloadUrl === null) return;
       const nodeId = nodeMenu.nodeId;
-      openMiniTool(nodeId, toolId, {
-        sourceContent: menuDownloadUrl,
-        params: defaultParamsOf(spec),
-      });
+      // A join's list starts with the node it opened on (inner#1825 §6.5).
+      const clip = isJoinTool(spec) ? miniToolSlotValue(buffer.settled().find((n) => n.id === nodeId) ?? { id: nodeId }) : null;
+      if (clip !== null) openJoinPanel(toolId, [clip]);
+      else {
+        openMiniTool(nodeId, toolId, {
+          sourceContent: menuDownloadUrl,
+          params: defaultParamsOf(spec),
+        });
+      }
       selectOnlyNode(nodeId);
       if (spec.source === 'image' && !isModelTool(spec) && spec.params.some((param) => param.kind === 'adjust')) {
         inspectNode(nodeId);
       }
     },
-    [inspectNode, menuDownloadUrl, nodeMenu.nodeId, openMiniTool, selectOnlyNode],
+    [inspectNode, menuDownloadUrl, nodeMenu.nodeId, openMiniTool, openJoinPanel, buffer, selectOnlyNode],
   );
   // Understand is offered on exactly what Download is offered on — the asset
   // the node's body is showing — so it reads the same answer. What happens
@@ -4142,6 +4218,16 @@ function CanvasSpaceInner({
           height: ('height' in view ? view.height : undefined) ?? sourceSize?.height,
         },
         sourceExists: () => buffer.settled().some((n) => n.id === nodeId),
+        // A join's list is the draft at the press: its first clip is the
+        // source, and every clip still on the canvas is wired (inner#1825 §6.5).
+        sourceNodeId: isJoinTool(spec) ? joinFirstClipOf(sessionStore.getState().miniTool) : undefined,
+        placementOf: (id) => {
+          const settled = buffer.settled();
+          const at = settled.find((n) => n.id === id);
+          if (at === undefined) return undefined;
+          const parent = at.parentId === undefined ? undefined : settled.find((n) => n.id === at.parentId);
+          return { position: at.position, groupOrigin: parent?.position ?? null };
+        },
         exportFile: exportMiniToolFile,
         fillUpload,
         fillUploads,
@@ -4338,7 +4424,7 @@ function CanvasSpaceInner({
         // size/position, its members, PLUS any newly absorbed loose nodes.
         /** Put this resize into the document as one undo entry. */
         const writeDocument = (): void => {
-          runCanvasUndoBatch(projectId, spaceId, () => {
+          runCanvasUndoBatch(projectId, spaceId, { kind: 'edit' }, () => {
             // Everything below is measured against the origin this call writes.
             // A collaborator can drop the Group between the frame this resize
             // was planned on and this transaction, and then there is no origin
@@ -4832,9 +4918,7 @@ function CanvasSpaceInner({
                   }}
                 >
                   <AnnotationComposer
-                    onCommit={(content) => {
-                      createAnnotationAt(composerAt, content);
-                    }}
+                    onCommit={(content) => createAnnotationAt(composerAt, content)}
                     onClose={() => setComposerAt(null)}
                   />
                 </div>
@@ -5161,6 +5245,8 @@ function CanvasSpaceInner({
             // Group is offered only for an all-loose 2+ selection (same rule as
             // the floating toolbar + Cmd/Ctrl+G).
             onGroup={groupOffer.kind === 'group' ? groupSelection : undefined}
+            join={joinOffer === 'video' || joinOffer === 'audio' ? joinOffer : undefined}
+            onJoin={joinSelection}
             onCopy={copySelection}
             onDuplicate={duplicateSelection}
             onDelete={deleteSelection}

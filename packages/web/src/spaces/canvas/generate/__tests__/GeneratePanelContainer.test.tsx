@@ -109,7 +109,7 @@ type ContainerProps = Parameters<typeof GeneratePanelContainer>[0];
  * case that picks a template passes a spy, every other case this stand-in.
  * @returns Nothing.
  */
-const NO_PLACE = (): undefined => undefined;
+const NO_PLACE: PlaceTemplate = () => ({ nodeIds: [], rects: [] });
 
 /**
  * The container under a QueryClient, inside the Activity a Space body sits in.
@@ -304,7 +304,7 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
             nodes={[{ id: 'target', type: 'image', data: { handling: false, mode } }]}
             edges={[]}
             getLastWriteWasLocal={author}
-            placeTemplate={() => undefined}
+            placeTemplate={() => ({ nodeIds: [], rects: [] })}
           />
         </ReactFlow>
       </CanvasContext.Provider>
@@ -491,7 +491,7 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
               nodes={[{ id: 'target', type: 'image', data: { handling: false, mode: 't2i', model } }]}
               edges={[]}
               getLastWriteWasLocal={LAST_WRITE_LOCAL}
-              placeTemplate={() => undefined}
+              placeTemplate={() => ({ nodeIds: [], rects: [] })}
             />
           </ReactFlow>
         </CanvasContext.Provider>
@@ -548,7 +548,7 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
               ]}
               edges={[]}
               getLastWriteWasLocal={LAST_WRITE_LOCAL}
-              placeTemplate={() => undefined}
+              placeTemplate={() => ({ nodeIds: [], rects: [] })}
             />
           </ReactFlow>
         </CanvasContext.Provider>
@@ -1683,7 +1683,7 @@ describe('GeneratePanelContainer — picking a template (inner#977)', () => {
       },
     } as Parameters<typeof addNode>[2]);
     addEdge('p', 's', { id: 'e1', source: 'src', target: 'target' });
-    const placeTemplate = vi.fn();
+    const placeTemplate = vi.fn((..._args: unknown[]) => ({ nodeIds: [], rects: [] }));
     mountContainer(
       {
         nodes: [

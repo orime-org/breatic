@@ -14,6 +14,7 @@ import { loadLocales } from "@breatic/core";
 import {
   GENERATION_NODE_MODES,
   PANEL_EDITOR_PARAM,
+  gateHolds,
   type CanvasProposal,
   type GenerationNodeType,
   type PromptSegment,
@@ -133,16 +134,25 @@ function probe(kind: string, what: ProbeKind): ProposalNode {
  */
 function follow(setting: Setting, node: ProposalNode, entry: Entry | undefined): CanvasProposal {
   const { nodeType, mode, chosen } = setting;
-  const prompt: PromptSegment[] = chosen.takesPrompt ? [{ text: "Make it. " }] : [];
+  // A slot drawn only under another setting is followed with that setting, as
+  // its line in the listing says; the prompt is written only where its box is drawn.
+  const gate = entry === undefined ? undefined : chosen.params[entry.way.into]?.gate;
+  const drawing: Record<string, unknown> = gate === undefined ? {} : { ...(gate.flag_on === undefined ? {} : { [gate.flag_on]: true }), ...gate.equals };
+  const defaults = Object.fromEntries(Object.entries(chosen.params).map(([name, info]) => [name, info.default]));
+  const takesWords = chosen.takesPrompt && (chosen.promptWhen === undefined || gateHolds(chosen.promptWhen, { ...defaults, ...drawing }));
+  const prompt: PromptSegment[] = takesWords ? [{ text: "Make it. " }] : [];
   if (entry?.ref === true) prompt.push({ ref: 0 });
   if (entry?.note === true) prompt.push(NOTE);
+  const words = wordsFor(chosen, prompt);
+  const params = { ...words.params, ...drawing };
   const gen: ProposalNode = {
     role: "generate",
     type: nodeType,
     name: "Gen",
     mode,
     model: chosen.name,
-    ...wordsFor(chosen, prompt),
+    ...words,
+    ...(Object.keys(params).length > 0 ? { params } : {}),
     ...(entry?.by === "fills" ? { fills: { [entry.way.into]: [0] } } : {}),
   };
   const song = (waysIn(chosen).get("text") ?? []).some((way) => way.into === PANEL_EDITOR_PARAM) && entry?.way.into !== PANEL_EDITOR_PARAM;
@@ -284,7 +294,8 @@ describe("each refusal tells the agent a way that is there", () => {
     expect(verdict.ok ? "" : verdict.reason).not.toContain("empty");
   });
 
-  it("places an empty node the canvas will not wire unwired with a note, from fills and from params", () => {
+  // inner#1825: the canvas now wires a video into a sound node, so the empty video goes by an edge, never unwired.
+  it("places an empty video wired into a sound model's slot with a note, from fills and from params", () => {
     const setting = settingWhere("video", (s) => s.nodeType === "audio" && marks(s, "video").includes("note"));
     const slot = (waysIn(setting.chosen).get("video") ?? []).find((way) => way.mark === "note")?.into ?? "";
     const viaFills = follow(setting, probe("video", "empty"), undefined);
@@ -293,8 +304,8 @@ describe("each refusal tells the agent a way that is there", () => {
     viaParams.nodes[1] = { ...(viaParams.nodes[1] as ProposalNode), params: { [slot]: "x" } };
     for (const proposal of [viaFills, viaParams]) {
       const verdict = checkProposal(proposal, MATERIALS);
-      expect(verdict).toMatchObject({ ok: false, reason: expect.stringContaining(`unwired, with a note saying to pick it into "${slot}"`) });
-      expect(verdict.ok ? "" : verdict.reason).not.toContain("by an edge");
+      expect(verdict).toMatchObject({ ok: false, reason: expect.stringContaining(`by an edge with into: "${slot}" and a note saying to pick it there`) });
+      expect(verdict.ok ? "" : verdict.reason).not.toContain("unwired");
     }
   });
 

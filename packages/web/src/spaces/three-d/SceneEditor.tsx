@@ -9,7 +9,7 @@ import { getLocale, type SceneObject } from '@breatic/shared';
 import { Button } from '@web/components/ui/button';
 import { getSceneControls, resolveSceneAsset, type SpaceTask } from '@web/data/api/scene';
 import { docName } from '@web/data/yjs/manager';
-import { isOlderSceneFormat } from '@web/data/yjs/scene-document';
+import { isOlderSceneFormat, isSceneSizeRefusal } from '@web/data/yjs/scene-document';
 import type { ScenePeer, SceneSession, SceneSessionSnapshot } from '@web/data/yjs/scene-session';
 import type { SocketState } from '@web/data/yjs/use-socket';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -26,7 +26,7 @@ import { SceneObjectList } from '@web/spaces/three-d/SceneObjectList';
 import { SceneRightPanel } from '@web/spaces/three-d/SceneRightPanel';
 import { SceneViewportToolbar, type ScenePanel } from '@web/spaces/three-d/SceneViewportToolbar';
 import { SceneObjectToolbar } from '@web/spaces/three-d/SceneObjectToolbar';
-import type { SceneModelAcquire, SceneModelState, SceneTransformMode, SceneView, SceneViewportProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
+import type { SceneModelAcquire, SceneModelState, SceneSkeletonState, SceneTransformMode, SceneView, SceneViewportProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
 import { getModelImportController } from '@web/spaces/three-d/model-import-controller';
 import type { ModelImportController, PreparedModel } from '@web/spaces/three-d/model-import-controller';
 import type { ModelSource } from '@web/spaces/three-d/model-source';
@@ -89,6 +89,21 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   const [modelStates, setModelStates] = React.useState<ReadonlyMap<string, SceneModelState>>(new Map());
   const [modelErrors, setModelErrors] = React.useState<ReadonlyMap<string, Error>>(new Map());
   const [fieldDrafts, setFieldDrafts] = React.useState<ReadonlyMap<string, SceneFieldDraft>>(new Map());
+  const [skeletonStates, setSkeletonStates] = React.useState<ReadonlyMap<string, SceneSkeletonState>>(new Map());
+  const [jointMode, setJointMode] = React.useState(false);
+  const [selectedJoint, setSelectedJoint] = React.useState<string | null>(null);
+  /**
+   * Turn joint mode on or off; either way no joint is selected yet.
+   * @param next - The requested joint mode.
+   * @throws {never} Never.
+   */
+  const changeJointMode = React.useCallback((next: boolean): void => { setJointMode(next); setSelectedJoint(null); }, []);
+  /** Leave joint mode (design 5.2): any selection, lock, permission, panel or transform-tool change. */
+  const leaveJointMode = React.useCallback((): void => changeJointMode(false), [changeJointMode]);
+  /** Remember what the viewport found in a loaded model's skeleton. */
+  const onSkeletonState = React.useCallback((id: string, state: SceneSkeletonState): void => {
+    setSkeletonStates((previous) => previous.get(id) === state ? previous : new Map(previous).set(id, state));
+  }, []);
   /**
    * Retain temporary field input for this Activity's lifetime, outside its floating panel.
    * @throws {never} Never.
@@ -141,7 +156,8 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   }, [session, userId, projectId, spaceId, t]);
 
   React.useEffect(() => {
-    if (snapshot.commandError && snapshot.commandError !== reportedCommandError.current) {
+    // A size refusal is reported by its own warning.
+    if (snapshot.commandError && !isSceneSizeRefusal(snapshot.commandError.reason) && snapshot.commandError !== reportedCommandError.current) {
       toast.error(t('spaces.threeD.commandFailed'));
     }
     reportedCommandError.current = snapshot.commandError;
@@ -168,6 +184,8 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
       if (event.key === 'Escape') {
         if (event.repeat) return;
         event.preventDefault();
+        // One step per press: cancel the drag, then clear the selection. Joint mode lives only
+        // while the properties panel is open, and the panel's own Escape leaves it first.
         if (session.getSnapshot().gestureActive) session.endGesture(false);
         else session.select(null, false);
         return;
@@ -352,6 +370,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     if (selection === lastSelection.current) return;
     lastSelection.current = selection;
     setFieldDrafts(new Map());
+    leaveJointMode();
     if (keepTasksPanel.current) {
       // A model placed from the task list is selected there; the list stays open for the next one.
       keepTasksPanel.current = false;
@@ -361,7 +380,10 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
       returnTarget.current = stage.current?.querySelector('canvas') ?? null;
       setPanel('properties'); setRightOpen(true);
     } else if (panel === 'properties') setRightOpen(false);
-  }, [selection, snapshot.selectedIds.length, panel, setRightOpen, importOpen]);
+  }, [selection, snapshot.selectedIds.length, panel, setRightOpen, importOpen, leaveJointMode]);
+  React.useEffect(() => {
+    if (!mutable || panel !== 'properties' || !rightOpen) leaveJointMode();
+  }, [mutable, panel, rightOpen, leaveJointMode]);
   React.useEffect(() => (): void => {
     // Activity hiding releases the overlay while the editor retains unfinished input.
     wasRightOpen.current = false;
@@ -380,15 +402,16 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     setPanel(next); setRightOpen(true);
   }, [panel, rightOpen, setRightOpen]);
   /**
-   * Give an in-progress native transform ownership of its cancellation key.
-   * @returns Whether this press cancelled the current personal gesture.
+   * Give an in-progress native transform, then joint mode, ownership of the panel's Escape.
+   * @returns Whether this press cancelled the current personal gesture or left joint mode.
    * @throws {never} Cancellation uses the existing session owner.
    */
   const cancelGesture = React.useCallback((): boolean => {
-    if (!session.getSnapshot().gestureActive) return false;
-    session.endGesture(false);
+    if (session.getSnapshot().gestureActive) session.endGesture(false);
+    else if (jointMode) changeJointMode(false);
+    else return false;
     return true;
-  }, [session]);
+  }, [session, jointMode, changeJointMode]);
   /**
    * Keep keyboard ownership in the persistent panel before its selected row unmounts.
    * @throws {never} Never directly.
@@ -448,7 +471,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
    * Release the current draft before switching tools.
    * @throws {never} Never.
    */
-  const onMode = React.useCallback((next: SceneTransformMode): void => { session.endGesture(false); setMode(next); }, [session]);
+  const onMode = React.useCallback((next: SceneTransformMode): void => { session.endGesture(false); setMode(next); leaveJointMode(); }, [session, leaveJointMode]);
   /**
    * Frame the current selection.
    * @throws {never} Never.
@@ -471,13 +494,14 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   const panelContent = React.useMemo(() => panel === 'properties'
     ? <React.Suspense fallback={inspectorFallback}>
       <SceneInspector session={session} snapshot={snapshot} readObjects={readObjects} namedPeers={namedPeers} spaceId={spaceId} Field={SceneField}
-        fieldDrafts={fieldDrafts} onFieldDraftChange={onFieldDraftChange} />
+        fieldDrafts={fieldDrafts} onFieldDraftChange={onFieldDraftChange}
+        skeletonStates={skeletonStates} jointMode={jointMode} onJointModeChange={changeJointMode} />
     </React.Suspense>
     : panel === 'objects' ? <SceneObjectList session={session} snapshot={snapshot} modelStates={modelStates} onSelect={showSelectedProperties} />
       : <SceneTaskList projectId={projectId} spaceId={spaceId} userId={userId} canEdit={snapshot.canEdit} canGenerate={myRole !== 'viewer'} uploads={uploads}
         remoteUploads={snapshot.remoteUploads} onPlace={placeTask} focusTaskId={focusTaskId} onFocused={taskFocused}
         onRetryGeneration={retryGeneration} placedAssetIds={placedAssetIds} onLocate={locateAsset} filterHost={filterHost} />,
-  [panel, inspectorFallback, session, snapshot, readObjects, namedPeers, spaceId, fieldDrafts, onFieldDraftChange, modelStates, showSelectedProperties,
+  [panel, inspectorFallback, session, snapshot, readObjects, namedPeers, spaceId, fieldDrafts, onFieldDraftChange, skeletonStates, jointMode, changeJointMode, modelStates, showSelectedProperties,
     projectId, userId, myRole, uploads, placeTask, focusTaskId, taskFocused, retryGeneration, placedAssetIds, locateAsset, filterHost]);
   // An older-format scene is never opened, so no editing chrome is shown around its message.
   if (snapshot.status === 'unsupported' && isOlderSceneFormat(snapshot.version)) {
@@ -498,6 +522,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
                 <SceneViewport key={`${userId}:${spaceId}:${rendererRevision}`} objects={snapshot.objects} selectedIds={snapshot.selectedIds}
                   overviewHost={overviewHost} mode={mode} readOnly={!mutable} view={view.current} focusRevision={focusRevision} cancelRevision={snapshot.cancelRevision}
                   remotePeers={snapshot.remotePeers} scaleSensitivity={controls.data.scaleSensitivity} importLimits={controls.data.import} modelRetryRevision={modelRetryRevision}
+                  jointMode={jointMode} selectedJoint={selectedJoint} onJointSelect={setSelectedJoint} onSkeletonState={onSkeletonState}
                   onSelect={onSelect} onGestureStart={onGestureStart}
                   onGestureChange={onGestureChange} onGestureEnd={onGestureEnd}
                   onViewChange={onViewChange} onError={onError} onModelStateChange={onModelStateChange} resolveAsset={resolveAsset} onResources={onResources} />
@@ -521,7 +546,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     </div>
     <SceneViewportToolbar undo={snapshot.canEdit && snapshot.canUndo} redo={snapshot.canEdit && snapshot.canRedo}
       onHistory={onHistory} hasSelection={selected.length > 0} onPanel={showPanel} minimap={minimap} onMinimap={toggleMinimap} />
-    {selected.length > 0 ? <SceneObjectToolbar mode={mode} mutable={mutable} canDuplicate={snapshot.canEdit}
+    {selected.length > 0 ? <SceneObjectToolbar mode={mode} jointMode={jointMode} mutable={mutable} canDuplicate={snapshot.canEdit}
       onMode={onMode} onFocus={onFocus} onDuplicate={duplicate} onDelete={onDelete} /> : null}
   </div>;
 });

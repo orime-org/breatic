@@ -212,3 +212,67 @@ describe('__EVERY_LOCALE_MESSAGES__', () => {
     expect(__EVERY_LOCALE_MESSAGES__).toEqual(expected);
   });
 });
+
+// inner#1737, inner#960: the page declares the interface language, so the
+// browser breaks lines, picks fonts and offers translation by it. `<html>`
+// starts each case on a value no locale has, so an assertion cannot pass on
+// the attribute index.html writes.
+describe('the page language (inner#1737 test spec LB-01 to LB-06)', () => {
+  beforeEach(() => {
+    document.documentElement.lang = 'xx';
+  });
+
+  it.each(['en', 'ja', 'ko', 'zh-CN', 'zh-TW'] as const)('LB-01 bootstrap declares the stored locale %s on <html>', async (locale) => {
+    window.localStorage.setItem(STORAGE_KEY, locale);
+
+    await boot.bootstrapLocale();
+
+    expect(document.documentElement.lang).toBe(locale);
+  });
+
+  it('LB-02 bootstrap declares English when the stored locale fails to download', async () => {
+    window.localStorage.setItem(STORAGE_KEY, 'ja');
+    failChunk('ja', new Error('chunk download failed'));
+
+    await boot.bootstrapLocale();
+
+    expect(document.documentElement.lang).toBe('en');
+  });
+
+  it('LB-03 a switch that lands declares the new locale', async () => {
+    await boot.bootstrapLocale();
+
+    await expect(boot.changeLocale('ja')).resolves.toBe('switched');
+
+    expect(document.documentElement.lang).toBe('ja');
+  });
+
+  it('LB-04 a switch whose download fails leaves the page language alone', async () => {
+    await boot.bootstrapLocale();
+    failChunk('ja', new Error('chunk download failed'));
+
+    await expect(boot.changeLocale('ja')).resolves.toBe('failed');
+
+    expect(document.documentElement.lang).toBe('en');
+  });
+
+  it('LB-05 an unsupported locale leaves the page language alone', async () => {
+    await boot.bootstrapLocale();
+
+    await expect(boot.changeLocale('fr' as never)).resolves.toBe('failed');
+
+    expect(document.documentElement.lang).toBe('en');
+  });
+
+  it('LB-06 a switch superseded by a later one leaves the later language', async () => {
+    await boot.bootstrapLocale();
+    const ja = hold('ja');
+
+    const first = boot.changeLocale('ja');
+    await expect(boot.changeLocale('en')).resolves.toBe('switched');
+    ja.open();
+
+    await expect(first).resolves.toBe('superseded');
+    expect(document.documentElement.lang).toBe('en');
+  });
+});

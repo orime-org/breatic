@@ -28,6 +28,7 @@ import type { ReadSpaces } from '@web/pages/project/chat/space-context';
 import { SpaceRequestAnswerContext } from '@web/pages/project/chat/space-request-answer';
 import type { SpaceRequestAnswering } from '@web/pages/project/chat/space-request-answer';
 import { readRequestedSpaces } from '@web/pages/project/chat/space-request-read';
+import { useRunningConversations } from '@web/pages/project/chat/use-running-conversations';
 import type { ChatSpaceRequest } from '@web/pages/project/chat/types';
 
 /**
@@ -215,6 +216,7 @@ export function ChatPanel({
     [currentId],
   );
   const attachFiles = useAttachFiles(projectId);
+  const runningConversations = useRunningConversations(projectId, historyOpen);
 
   /**
    * Send what is in the box.
@@ -342,6 +344,7 @@ export function ChatPanel({
         loadingMore={loadingMore}
         nextPageFailed={nextPageFailed}
         listLoading={listLoading}
+        running={runningConversations}
       />
     </div>
   );

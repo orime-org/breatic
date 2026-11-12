@@ -9,8 +9,9 @@
 
 import { describe, expect, it } from 'vitest';
 
-import type { ModelEntry, TemplateGenerateNode } from '@breatic/shared';
+import { GENERATION_TEMPLATES, templateAnchor, type ModelEntry, type TemplateGenerateNode } from '@breatic/shared';
 
+import { STAND_IN_ON, wireParams } from '@web/spaces/canvas/generate/stand-in';
 import { templateParams } from '@web/spaces/canvas/generate/template-writes';
 
 /** The storyboard's anchor node, as the migrated template declares it. */
@@ -102,5 +103,37 @@ describe('templateParams', () => {
       resolution: '4k',
       output_format: 'png',
     });
+  });
+});
+
+/** Gemini's speech model: one voice, or a dialogue whose speakers replace it. */
+const GEMINI_TTS = {
+  name: 'gemini-3.1-flash-text-to-speech',
+  params: {
+    speakers: {
+      fill: 'panel',
+      type: 'items',
+      default: null,
+      min_items: 2,
+      max_items: 2,
+      replaces: 'voice_id',
+      fields: { speaker: { type: 'text' }, voice: { values: ['Kore', 'Puck'] } },
+    },
+    voice_id: { fill: 'remote', remote_source: 'voices', default: 'Kore' },
+  },
+} as unknown as ModelEntry;
+
+describe('templateParams on a dialogue template', () => {
+  it('puts the node on the dialogue side, so the speakers are what gets sent', () => {
+    const dialogue = GENERATION_TEMPLATES.find((template) => template.id === 'two-voice-dialogue');
+    if (!dialogue) throw new Error('two-voice-dialogue is not in the registry');
+    const node = templateAnchor(dialogue);
+
+    const record = templateParams(node, undefined, GEMINI_TTS)[GEMINI_TTS.name]!;
+
+    expect(record[STAND_IN_ON]).toBe(true);
+    const sent = wireParams(GEMINI_TTS, record);
+    expect(sent).toHaveProperty('speakers', node.params.speakers);
+    expect(sent).not.toHaveProperty('voice_id');
   });
 });

@@ -53,7 +53,7 @@ describe("the 3D settings as the agent reads them", () => {
       for (const model of modelsIn(mode)) {
         expect(model.params.face_limit, model.name).toMatchObject({
           type: "integer",
-          min: 1,
+          min: 48,
           max: 1_500_000,
           bounds: [
             { when: { flag_on: "smart_low_poly" }, min: 500, max: 20_000 },
@@ -74,6 +74,7 @@ describe("the 3D settings as the agent reads them", () => {
           forces.map((f) => ({ id: f.id, set: f.set })),
           model.name,
         ).toEqual([
+          { id: "low_poly_skips_parts", set: { generate_parts: false } },
           { id: "parts_geometry_only", set: { texture: false, pbr: false } },
           { id: "pbr_needs_texture", set: { texture: true } },
           { id: "fast_uses_v35", set: { texture_version: "v3.5" } },

@@ -106,6 +106,39 @@ describe('ModelParamControls', () => {
     await waitFor(() => expect(onChange).toHaveBeenCalledWith({ negative_prompt: 'blur, text' }));
   });
 
+  it('writes a text param in a box that wraps and grows to four lines before it scrolls', () => {
+    render(<ModelParamControls mode='t2i' model={MIXED} value={{ negative_prompt: 'a long line '.repeat(20) }} onChange={() => {}} />);
+    const box = screen.getByLabelText('Negative prompt');
+    expect(box.tagName).toBe('TEXTAREA');
+    expect(box).toHaveAttribute('rows', '1');
+    // The box takes the height of its words; the scroller around it stops at four lines.
+    expect(box.style.height).not.toBe('');
+    const viewport = screen.getByTestId('generate-param-negative_prompt-scroller').querySelector('[data-radix-scroll-area-viewport]');
+    expect(viewport).toHaveClass('max-h-[78px]');
+  });
+
+  it('writes the text on Enter, and starts a new line on Shift+Enter without writing', () => {
+    const onChange = vi.fn();
+    render(<ModelParamControls mode='t2i' model={MIXED} value={{}} onChange={onChange} />);
+    const box = screen.getByLabelText('Negative prompt');
+    fireEvent.change(box, { target: { value: 'blur' } });
+    const shifted = fireEvent.keyDown(box, { key: 'Enter', shiftKey: true });
+    expect(shifted).toBe(true);
+    expect(onChange).not.toHaveBeenCalled();
+    const plain = fireEvent.keyDown(box, { key: 'Enter' });
+    expect(plain).toBe(false);
+    expect(onChange).toHaveBeenCalledWith({ negative_prompt: 'blur' });
+  });
+
+  it('writes nothing on the Enter that confirms an input-method word', () => {
+    const onChange = vi.fn();
+    render(<ModelParamControls mode='t2i' model={MIXED} value={{}} onChange={onChange} />);
+    const box = screen.getByLabelText('Negative prompt');
+    fireEvent.change(box, { target: { value: 'blur' } });
+    fireEvent.keyDown(box, { key: 'Enter', isComposing: true });
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   describe('a list of entries', () => {
     const SPEAKERS = model({
       speakers: {

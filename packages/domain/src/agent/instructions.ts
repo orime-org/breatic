@@ -8,7 +8,9 @@ import type { MemoryContext } from "@breatic/shared";
  * reading the same text: every conversation shares the base prompt; the
  * memory entries are shared by one user's conversations in a project while
  * none of them has entries of its own, since the index lists this
- * conversation's entries too; the progress note is this conversation's alone.
+ * conversation's entries too; the progress note is this conversation's alone;
+ * the Project Instructions come last, so editing them leaves every part before
+ * them as it was.
  */
 export interface Instructions {
   /** The base prompt. */
@@ -17,6 +19,8 @@ export interface Instructions {
   project?: string;
   /** This conversation's progress note, when it has one. */
   conversation?: string;
+  /** The Project Instructions section, when the Project has instructions (#1400). */
+  projectInstructions?: string;
 }
 
 /**
@@ -43,18 +47,36 @@ function memoryEntriesSection(memory: MemoryContext): string {
 }
 
 /**
+ * The Project Instructions as the system prompt shows them: the members' text
+ * exactly as written, inside its own tag, with what it is said outside it.
+ * @param text - What the members wrote.
+ * @returns The section.
+ * @throws {never} Never.
+ */
+function projectInstructionsSection(text: string): string {
+  return "## Project Instructions\n\n" +
+    "Standing requirements the members of this Project wrote for it. Follow them in every reply here; where they conflict with a memory entry, these win.\n\n" +
+    `<project_instructions>\n${text}\n</project_instructions>`;
+}
+
+/**
  * Assemble memory instructions without selecting another model or tool set.
  * @param basePrompt - The caller's base system prompt.
  * @param memoryContext - The turn's memory.
+ * @param projectInstructions - The Project's instructions as stored, if any.
  * @returns The system instructions for this assembly's memory snapshot.
  * @throws {never} Never.
  */
-export function instructionsForAgentMemory(basePrompt: string, memoryContext?: MemoryContext): Instructions {
-  if (memoryContext === undefined) return { base: basePrompt };
+export function instructionsForAgentMemory(
+  basePrompt: string,
+  memoryContext?: MemoryContext,
+  projectInstructions?: string,
+): Instructions {
   return {
     base: basePrompt,
-    project: memoryEntriesSection(memoryContext),
-    ...(memoryContext.progress ? { conversation: `## Conversation So Far\n\n${memoryContext.progress}` } : {}),
+    ...(memoryContext === undefined ? {} : { project: memoryEntriesSection(memoryContext) }),
+    ...(memoryContext?.progress ? { conversation: `## Conversation So Far\n\n${memoryContext.progress}` } : {}),
+    ...(projectInstructions?.trim() ? { projectInstructions: projectInstructionsSection(projectInstructions) } : {}),
   };
 }
 
@@ -64,7 +86,7 @@ export function instructionsForAgentMemory(basePrompt: string, memoryContext?: M
  * @returns The parts there are, joined in order.
  */
 export function instructionsText(instructions: Instructions): string {
-  return [instructions.base, instructions.project, instructions.conversation]
+  return [instructions.base, instructions.project, instructions.conversation, instructions.projectInstructions]
     .filter((part): part is string => part !== undefined)
     .join("\n\n");
 }

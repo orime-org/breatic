@@ -43,7 +43,7 @@ export function useSecondPanelSide(
 
 interface SecondPanelRowProps {
   /** The row's name, in the first column. */
-  label: string;
+  label: React.ReactNode;
   /** What the row stands on, in the second column. */
   value: React.ReactNode;
   /** Whether this row's second panel is open. */

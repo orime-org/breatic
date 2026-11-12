@@ -72,7 +72,7 @@ function provider(doc: Y.Doc): HocuspocusProvider {
 function fixture(): { doc: Y.Doc; session: SceneSession; connection: SocketState } {
   const doc = getDoc(NAME);
   doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
-  expect(applySceneCommand(doc, { type: 'create', objects: [OBJECT] }, Symbol('peer'), true)).toEqual({ ok: true, ids: [ID] });
+  expect(applySceneCommand(doc, { type: 'create', objects: [OBJECT] }, Symbol('peer'), true, NAME)).toEqual({ ok: true, ids: [ID] });
   return { doc, session: getSceneSession(doc, NAME), connection: {
     provider: provider(doc), status: 'connected', synced: true, hasEverSynced: true,
     writeAccess: 'granted', authFailedReason: null,
@@ -165,13 +165,14 @@ describe('real scene connection lifetime outside a hidden Activity body', () => 
     expect(readSceneDocument(doc).objects).toEqual([{ ...OBJECT, name: 'Edited', position: [4, 5, 6] }]);
   });
 
-  it('cancels the live gesture and withdraws presence when the Context disconnects', () => {
+  it('cancels the live gesture and withdraws presence when the Context disconnects', async () => {
     const { doc, session, connection } = fixture();
     const { rerender } = render(tab(connection));
     edit(session);
     expect(session.beginGesture()).toBe(true);
     session.previewGesture([{ id: ID, position: [9, 0, 0] }]);
-    expect(connection.provider?.awareness?.getLocalState()?.scenePresence).toEqual({ selectedIds: [ID], gesture: [{ ...OBJECT, name: 'Edited', position: [9, 0, 0] }] });
+    // Drag previews are throttled (inner#1692 section 5.4), so the preview lands a frame later.
+    await vi.waitFor(() => expect(connection.provider?.awareness?.getLocalState()?.scenePresence).toEqual({ selectedIds: [ID], gesture: [{ ...OBJECT, name: 'Edited', position: [9, 0, 0] }] }));
     const committed = Y.encodeStateAsUpdate(doc);
     const offline: SocketState = { ...connection, status: 'disconnected', synced: false };
 

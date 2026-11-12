@@ -38,6 +38,36 @@
   }
 }
 
+/* Focus rings show only for keyboard users (#1452). `lib/input-modality.ts`
+   writes `data-input-modality` on <html>; a menu closed with the mouse hands
+   focus back to its trigger by script, which the browser's own :focus-visible
+   counts as visible. Rewriting the built-in variant carries every
+   `focus-visible:`, `group-`, `peer-` and `has-focus-visible:` class with it.
+   `lib/__tests__/focus-visible-guard.test.ts` keeps arbitrary variants and
+   hand-written rules from going around it. */
+@custom-variant focus-visible (&:focus-visible:where([data-input-modality=keyboard] *));
+
+/* The project card draws its keyboard ring for the open target, its first
+   child, on itself: the card clips with overflow-hidden, so a ring on the
+   child would be cut off. */
+@custom-variant has-first-child-focus-visible (&:has(> :first-child:focus-visible):where([data-input-modality=keyboard] *));
+
+@layer base {
+  /* The browser's default outline, which a rewritten `focus-visible:outline-none`
+     no longer clears outside keyboard modality. */
+  :where(html:not([data-input-modality=keyboard])) :focus-visible {
+    outline: none;
+  }
+}
+
+/* react-colorful injects `.react-colorful__interactive:focus .react-colorful__pointer`
+   (scale 1.1) into <head> after this file, unlayered, and focuses the area on
+   every press. The html ancestor outranks its (0,3,0) whatever the order, so
+   the dot grows only for keyboard users. */
+html:not([data-input-modality=keyboard]) .react-colorful__interactive:focus .react-colorful__pointer {
+  transform: translate(-50%, -50%);
+}
+
 html,
 body,
 #root {
@@ -554,9 +584,11 @@ body {
    variants on one editor's container, which meant a second editor could
    configure a placeholder, pass every test, and show nothing at all. It is a
    property of the extension, not of any one editor, so it lives here and every
-   editor that installs Placeholder gets it. */
+   editor that installs Placeholder gets it. A dialogue line (inner#1825) marks
+   its own words the same way, each saying whose line it is. */
 .ProseMirror p.is-editor-empty:first-child::before,
-.ProseMirror .prompt-note + p.is-empty:last-child::before {
+.ProseMirror .prompt-note + p.is-empty:last-child::before,
+.ProseMirror .dialogue-line > p.is-empty::before {
   content: attr(data-placeholder);
   float: left;
   height: 0;
@@ -1307,6 +1339,29 @@ body {
   .doc-body .bn-trailing-block {
     flex-grow: 1;
     height: auto;
+  }
+
+  /* A table open full screen (#1427): the body shows that table alone.
+     Every block not holding it goes, the trailing widget with them; a block it
+     is nested under keeps only the path down to it. The table's own cells hold
+     block groups too, which the first rule leaves alone. */
+  [data-table-fullscreen] .doc-body .bn-block-group:not([data-fullscreen-table] *) > :not([data-fullscreen-table]):not(:has([data-fullscreen-table])) {
+    display: none;
+  }
+
+  [data-table-fullscreen] .doc-body .bn-block-outer:has([data-fullscreen-table]) > .bn-block > .bn-block-content {
+    display: none;
+  }
+
+  [data-table-fullscreen] .doc-body .bn-block-outer:has([data-fullscreen-table]) > .bn-block > .bn-block-group {
+    margin-left: 0;
+  }
+
+  /* The exit button takes the top-right corner the way the whole-document
+     entry takes the right gutter, so the table starts one gutter down and its
+     header never shares a line with the button. */
+  [data-table-fullscreen] .doc-body {
+    padding-top: var(--doc-body-gutter);
   }
 
   /* While the last block is one a drag has to reach past (a divider, a fallback
@@ -2384,8 +2439,11 @@ body {
   /* ---- The mark a comment leaves in the body (#18) ----
      Half of what a comment is for: the words it is about have to look
      commented. The mark itself is the library's — it carries the thread id and
-     survives an Enter through `keepOnSplit` — and what it looks like is here,
-     because nothing else paints `bn-thread-mark`.
+     survives an Enter through `keepOnSplit` — and the paint is our decoration
+     over it, `doc-comment-mark-live`, drawn while the thread is open
+     (`document-comment-mark.ts`, inner#1790). The mark's `orphan` flag is a
+     write to the body a full Space holds back, so the paint is read from the
+     threads, never from the flag.
 
      The hue is the sticky note's, which is what a comment already looks like on
      the canvas. Nothing in the seven-colour palette is yellow, so a user
@@ -2406,26 +2464,24 @@ body {
 
      A comment being written wears the same colour over the words it is aimed
      at (design §9.4.1): it is a comment that has not been saved yet. */
-  .doc-body .bn-thread-mark,
+  .doc-body .doc-comment-mark-live,
   .doc-body .doc-comment-draft-mark {
     background-color: var(--color-comment-mark);
   }
 
-  /* The pointer says a press does something other than put the caret down, and
-     it is owed the same answer the hit test gives: `document-comment-hit.ts`
-     reaches a thread only while its mark is not orphaned. A settled thread
-     keeps its mark with the paint taken off it, so those words read as prose
-     and a press on them does nothing — offered the pointer they read as
-     something to open (user 2026-09-22). */
-  .doc-body .bn-thread-mark:not([data-orphan='true']) {
+  /* The pointer says a press does something other than put the caret down. A
+     settled thread keeps its mark with the paint taken off it, so those words
+     read as prose — offered the pointer they read as something to open (user
+     2026-09-22). */
+  .doc-body .doc-comment-mark-live[data-thread-id] {
     cursor: pointer;
   }
 
-  /* A resolved thread keeps its mark and loses its paint (§9.2, S2). The mark is
-     where the highlight comes back from when somebody reopens the thread, so it
-     must not be removed — the library sets this attribute for a thread that is
-     resolved, deleted, or not yet known here. */
-  .doc-body .bn-thread-mark[data-orphan='true'] {
+  /* A resolved or deleted thread keeps its mark and loses its paint (§9.2, S2).
+     The mark is where the highlight comes back from when somebody reopens the
+     thread, so it must not be removed; the library paints it itself while its
+     `orphan` flag is false, which this takes off. */
+  .doc-body .bn-thread-mark {
     /* Stated rather than left to inherit: A8 promises these words read as
        prose, and a case can only hold that promise against a rule that makes
        it. `auto` over editable text is the text caret. */

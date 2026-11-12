@@ -40,7 +40,7 @@ The hosted service has a free Starter plan. AI generation credits are purchased 
 | **Projects with multiple Spaces** | Keep a brief, scenes and alternative creative directions together, with a separate tab for each Space. |
 | **Document Spaces** | Write scripts, shot descriptions and production checklists with headings, lists and formatted text. |
 | **Canvas Spaces** | Arrange references and media on an infinite canvas; generate and refine assets using prompts, models and reference inputs. |
-| **3D (DEV)** | Arrange built-in objects, imported glTF models and AI-generated models in a shared scene and edit their position, rotation and scale. |
+| **3D (DEV)** | Arrange built-in objects, imported glTF models and AI-generated models in a shared scene, edit their position, rotation and scale, and pose characters with presets or joint by joint. |
 | **Timeline (DEV)** | Arrange Project videos or uploaded local videos on shared tracks: move, trim, split, duplicate and delete clips, undo your own edits and preview the sequence. Describe a web animation, run it with DeepSeek, follow it in the execution list and add the result as clips that play on the Timeline clock. |
 | **An AI agent in your project** | Discuss ideas, provide document or canvas context, and review proposed work alongside your materials. |
 | **Real-time collaboration** | Invite collaborators, set project access permissions and work on synchronized canvases, documents, 3D scenes and Timelines. |

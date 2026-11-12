@@ -177,6 +177,9 @@ promoter-apply: { max: 5, window_seconds: 3600 }
 # database. A person starts a handful of conversations a minute and creates
 # far fewer projects.
 conversation-create: { max: 30, window_seconds: 60 }
+# Saving a Project's instructions for the Agent (#1400, post-auth, user-keyed).
+# Each save writes one row; a person saves a few times while editing.
+agent-instructions: { max: 30, window_seconds: 60 }
 # Document AI text tools (inner#1860), per user: each run is one model call
 # charged to the project's studio; this bounds how fast a member can start them.
 text-tool: { max: 30, window_seconds: 60 }

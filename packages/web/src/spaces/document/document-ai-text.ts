@@ -19,6 +19,7 @@ import { Fragment, type Node as ProseMirrorNode, type Schema } from '@tiptap/pm/
 import type { EditorState, Transaction } from '@tiptap/pm/state';
 
 import { aiCoverIn, BN_BLOCK } from '@web/spaces/document/document-ai-range';
+import { leaveFullscreenForWrite } from '@web/spaces/document/document-table-fullscreen';
 import type { DocumentEditorHandle } from '@web/spaces/document/document-editor-cache';
 import type { ViewedEditor } from '@web/spaces/document/document-editor-view';
 import type { WrittenBlock } from '@web/spaces/document/document-external-media';
@@ -982,6 +983,8 @@ export function replaceAiAnswer(
   if (cover === null) return { outcome: 'targetGone' };
   if (answer.preview.length === 0) return { outcome: 'nothingWritten', leftOut: answer.leftOut };
   const { editor } = handle;
+  // A table open full screen shows only its cells (#1427 §5.3).
+  leaveFullscreenForWrite(editor, cover, cover.from);
   asOneUndoStep(undoOf(handle.editor), () => {
     editor.transact((tr) => {
       writeOver(tr, spanOf(tr.doc, cover), answer.preview);
@@ -1007,9 +1010,13 @@ export function insertAiAnswer(
   const refusal = writeRefusal(readAdmission(), handle.editor);
   if (refusal !== null) return { outcome: refusal };
   const doc = handle.editor.prosemirrorState.doc;
-  if (blockById(doc, blockId) === null) return { outcome: 'targetGone' };
+  const below = blockById(doc, blockId);
+  if (below === null) return { outcome: 'targetGone' };
   const blocks = answer.preview.map((b) => withoutIds(b as Read));
   if (blocks.length === 0) return { outcome: 'nothingWritten', leftOut: answer.leftOut };
+  const end = below.pos + below.node.nodeSize;
+  // A table open full screen shows only its cells (#1427 §5.3).
+  leaveFullscreenForWrite(handle.editor, { from: below.pos, to: end }, end);
   asOneUndoStep(undoOf(handle.editor), () => {
     handle.editor.insertBlocks(blocks as never, blockId, 'after');
   });

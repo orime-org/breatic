@@ -9,6 +9,15 @@ import {
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type * as React from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+
+// The header now holds the Project instructions entry (#1400), which reads
+// the Project's instructions through React Query; answer that read with
+// none so these tests stay about the rest of the row.
+vi.mock('@web/data/api/request', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@web/data/api/request')>()),
+  apiGet: vi.fn(async () => ({ text: '', updatedBy: null, updatedAt: null })),
+}));
 
 import { AgentColHeader } from '@web/pages/project/chrome/agent-header/AgentColHeader';
 import { TooltipProvider } from '@web/components/ui/tooltip';
@@ -20,8 +29,16 @@ import { unexpectedTextIn } from '@web/test-utils/visible-text';
 // `TooltipProvider` somewhere up the tree. App.tsx supplies one at
 // runtime — tests need to add it explicitly. Alias `render` so each
 // call site auto-wraps without per-site edits.
+function Providers({ children }: { children: React.ReactNode }): React.JSX.Element {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return (
+    <QueryClientProvider client={client}>
+      <TooltipProvider>{children}</TooltipProvider>
+    </QueryClientProvider>
+  );
+}
 const render = (ui: React.ReactElement, options?: RenderOptions) =>
-  rtlRender(ui, { wrapper: TooltipProvider, ...options });
+  rtlRender(ui, { wrapper: Providers, ...options });
 
 function setup(overrides: Partial<Parameters<typeof AgentColHeader>[0]> = {}) {
   const onToggleHistory = vi.fn();
@@ -29,6 +46,7 @@ function setup(overrides: Partial<Parameters<typeof AgentColHeader>[0]> = {}) {
   const onRenameConversation = vi.fn();
   render(
     <AgentColHeader
+      projectId='p-1'
       conversationName='Onboarding'
       conversationNamePlaceholder='Untitled conversation'
       onToggleHistory={onToggleHistory}

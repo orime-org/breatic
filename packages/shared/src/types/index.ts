@@ -17,6 +17,7 @@ export type {
   ProjectRegisteredAsset,
   ProjectAssetPage,
   ConversationAttachmentEntity,
+  ProjectAgentInstructionsEntity,
   AssetKind,
   PaymentEntity,
   CreditLotEntity,
@@ -131,6 +132,7 @@ export type { ParamOptionValue } from "@shared/types/param-values.js";
 export type {
   PromptSegment,
   ProposalNode,
+  ProposalLine,
   ProposalShot,
   ProposalNodeType,
   CanvasProposal,
@@ -149,14 +151,15 @@ export {
   markedSegments,
   marksTypedIn,
   proposalMarkSegments,
+  proposalWordRuns,
   promptPlainText,
   promptTextOf,
 } from "@shared/types/canvas-proposal.js";
 
 export type { DocumentProposal } from "@shared/types/document-proposal.js";
 export { documentProposalSchema, hasWords, occurrences } from "@shared/types/document-proposal.js";
-export type { SceneGenerationOrigin, SceneGenerationProposal } from "@shared/types/scene-generation-proposal.js";
-export { SCENE_GENERATION_ORIGINS, sceneGenerationProposalSchema } from "@shared/types/scene-generation-proposal.js";
+export type { SceneGenerationOrigin, SceneGenerationProposal, SceneTaskNotice } from "@shared/types/scene-generation-proposal.js";
+export { SCENE_GENERATION_ORIGINS, SCENE_TASK_NOTICES, sceneGenerationProposalSchema } from "@shared/types/scene-generation-proposal.js";
 
 export type {
   ReferenceRefusal,

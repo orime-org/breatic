@@ -127,8 +127,10 @@
       "attachment_limit_reached": "This conversation has reached its limit of {limit} attachments. Delete some before uploading more."
     },
     "canvas": {
+      "prompt_not_taken": "This model takes no style with these settings. Remove the style to generate.",
       "model_requires_source": "This model needs a source input — connect an image, video or audio node",
       "too_many_inputs": "This model accepts at most {limit} inputs of this kind, but {actual} were provided",
+      "param_too_short": "Fill in {name} first",
       "history_entry_not_found": "History entry not found",
       "voices_model_not_found": "That model is not available",
       "voices_not_offered": "This model does not offer a voice list"
@@ -263,7 +265,9 @@
       "invalidParam": "\"{name}\" has a value this tool does not take.",
       "foreignSource": "This file cannot be processed.",
       "sourceTooLong": "This tool takes audio up to {minutes} minutes long.",
-      "sourceTooLarge": "This tool takes files up to {size}."
+      "sourceTooLarge": "This tool takes files up to {size}.",
+      "clipsTooLarge": "These clips are too large to join together.",
+      "joinClipCount": "A join takes 2 to {max} clips."
     },
     "idempotency": {
       "missing": "This page was updated. Refresh it and try again.",
@@ -602,6 +606,19 @@
       "needScene": "Open a 3D Space first.",
       "credits": "About {credits} credits",
       "setting": "{name}: {value}"
+    },
+    "instructions": {
+      "open": "Project instructions",
+      "title": "Project instructions",
+      "description": "Sent to the Agent in every conversation in this Project. Shared by all members.",
+      "placeholder": "For example: reply in English; use only blue and white.",
+      "atLimit": "{max, number}-character limit reached",
+      "lastEdited": "Last edited by {name} on {time}",
+      "save": "Save",
+      "saved": "Saved",
+      "cleared": "Project instructions cleared",
+      "readFailed": "Couldn't load the Project instructions",
+      "saveFailed": "Couldn't save the Project instructions"
     }
   },
   "canvas": {
@@ -854,6 +871,7 @@
       "coverSongTip": "Pick an audio node to cover",
       "selectCoverSongFromCanvas": "Pick a song to cover",
       "errorNoMusicSong": "Pick a song first",
+      "errorNoMusicMelody": "Pick a melody first",
       "moodImage": "Reference image",
       "moodImageTip": "Pick an image to set the mood",
       "removeMoodImage": "Remove reference image",
@@ -865,23 +883,28 @@
       "musicLyricsLabel": "Lyrics",
       "lyricsMissing": "Write the lyrics first",
       "refuseExecuteNoStyle": "Write the style first",
-      "refuseExecuteNoReference": "Pick a song, melody or vocals",
+      "refuseExecuteNoReference": "Pick a song or vocals first",
       "creditsPerThousandChars": "{credits} / 1K chars",
       "itemsAdd": "Add",
       "itemsRemove": "Remove",
       "refuseExecuteNoSpeakers": "Fill in the speakers",
+      "refuseExecuteNoLines": "Write at least one line first",
+      "refuseExecuteParamEmpty": "Fill in {name} first",
+      "dialogueAddLine": "Add line",
+      "dialogueLinePlaceholder": "{name}'s line",
       "audioSettings": "Voice and settings",
       "audioVoice": "Voice",
       "audioReadingMode": "Reading",
       "audioReadingSingle": "Single voice",
       "audioReadingDialogue": "Dialogue ({count})",
       "audioDialogueSummary": "Dialogue · {count}",
-      "audioSpeakersNote": "Write each line as \"Name: line\"",
       "audioSpeakerRow": "Speaker {n}",
       "audioLanguageSearch": "Search languages…",
       "audioOptionEmpty": "No matches",
       "param": {
+        "compose_from": "Compose from",
         "language": "Language",
+        "voice_description": "Voice description",
         "speakers": "Speakers",
         "emotion": "Emotion",
         "pronunciation_dict": "Pronunciations",
@@ -933,6 +956,7 @@
         "face_limit": "Face limit",
         "auto_size": "Auto size",
         "export_uv": "Export UV",
+        "rig_skeleton": "Rig skeleton",
         "model_seed": "Model seed",
         "texture_seed": "Texture seed",
         "texture_alignment": "Texture alignment",
@@ -1232,6 +1256,12 @@
         "cut": {
           "label": "Cut"
         },
+        "join": {
+          "label": "Join",
+          "slot": {
+            "clips": "Pick videos to join"
+          }
+        },
         "adjust": {
           "label": "Adjust"
         },
@@ -1261,6 +1291,12 @@
         },
         "cut": {
           "label": "Cut"
+        },
+        "join": {
+          "label": "Join",
+          "slot": {
+            "clips": "Pick audio to join"
+          }
         },
         "eq": {
           "label": "Equalizer"
@@ -1350,6 +1386,9 @@
         },
         "cents": {
           "label": "Cents"
+        },
+        "crossfade": {
+          "label": "Crossfade"
         }
       },
       "panel": {
@@ -1374,7 +1413,12 @@
         "sourceTooLargeToExpand": "This picture is already as large as Expand can make it.",
         "ratioTooLarge": "Larger than Expand can make this picture",
         "sourceTooLong": "This tool takes audio up to {minutes} minutes long.",
-        "sourceTooLarge": "This tool takes files up to {size}."
+        "sourceTooLarge": "This tool takes files up to {size}.",
+        "joinClips": "Clips · joined in order, drag to reorder",
+        "joinCrossfadeCap": "Up to {cap} s: half the shortest clip ({shortest} s)",
+        "joinTotal": "≈ {seconds} s",
+        "joinNeedsClip": "Add one more clip to run.",
+        "joinTooMany": "Up to {n} clips"
       },
       "adjust": {
         "exposure": "Exposure",
@@ -1449,7 +1493,8 @@
       "goal": {
         "character": "Character design & consistency",
         "comics-storyboards": "Comics & storyboards",
-        "social-hooks": "Social hooks"
+        "social-hooks": "Social hooks",
+        "sound": "Sound, music & voice"
       },
       "storyboard-grid-25": {
         "name": "25-panel storyboard",
@@ -1709,7 +1754,117 @@
         }
       },
       "applyFailed": "Couldn't apply the template.",
-      "groupLocked": "The group is locked. Unlock it to add nodes."
+      "groupLocked": "The group is locked. Unlock it to add nodes.",
+      "ambience-sfx-bed": {
+        "name": "Ambience bed with foley",
+        "description": "A looping place sound with a few foley hits",
+        "prompt": "A seamless ambience bed of {✏️ the place, e.g. a rainy night street in an old town}. The steady layer: {✏️ the continuous sound, e.g. rain on cobblestones and traffic far away}. Two or three foley hits inside it: {✏️ the hits, e.g. a door closing far off, footsteps passing close}. Every sound has its distance, near or far, and the hits come now and then, not on a beat. No music, no voices."
+      },
+      "voice-line": {
+        "name": "Voice-over line",
+        "description": "One line read exactly as written",
+        "prompt": "{✏️ the exact words to read, with a comma or a full stop wherever a pause belongs}"
+      },
+      "two-voice-dialogue": {
+        "name": "Two-voice dialogue",
+        "description": "Two named people talking, in one pass",
+        "line": {
+          "1": "{✏️ Ava's first line}",
+          "2": "{✏️ Leo's answer}",
+          "3": "{✏️ Ava's next line}"
+        }
+      },
+      "underscore-bgm": {
+        "name": "Background music",
+        "description": "Instrumental music under a voice-over or picture",
+        "prompt": "Instrumental background music for {✏️ what the video is, e.g. a calm product walkthrough}, {✏️ length, e.g. 40 seconds} long. Genre: {✏️ genre}. Tempo around {✏️ tempo, e.g. 90 BPM}, in {✏️ key, e.g. D major}. Two or three instruments: {✏️ instruments, e.g. soft piano, warm pads and light percussion}. Energy: {✏️ how it moves, e.g. sparse at the start, building gently in the middle, settling at the end}. It sits under a voice-over: no vocals, no lead melody competing with speech, no sudden hits.",
+        "step": {
+          "trim": "It usually comes out longer than you need. Once it has generated, use Tools → Cut on it to trim it to the video's length."
+        }
+      },
+      "voice-from-descriptor": {
+        "name": "Voice from a description",
+        "description": "A voice described in words saying your line",
+        "prompt": "{✏️ the exact words to say}"
+      },
+      "song-cover": {
+        "name": "Song cover",
+        "description": "Your song redone in another style",
+        "prompt": "Redo the song as {✏️ the new style, e.g. a slow acoustic ballad with fingerpicked guitar and soft vocals}. Keep the melody and the lyrics; change the arrangement, the instruments and the feel.",
+        "input": {
+          "song": {
+            "name": "Song",
+            "note": "Add your song first, then pick it into the Song slot"
+          }
+        }
+      },
+      "voice-clone-line": {
+        "name": "Line in your voice",
+        "description": "A new line read in the voice of your recording",
+        "prompt": "{✏️ the exact words to say in this voice}",
+        "input": {
+          "sample": {
+            "name": "Voice sample",
+            "note": "Add a clean recording of the voice first (one speaker, no music, 10 seconds or more), then pick it into the Voice sample slot"
+          }
+        }
+      },
+      "score-for-my-video": {
+        "name": "Music for your video",
+        "description": "Music that follows your video's mood and cuts",
+        "prompt": "Music that follows this video's mood, pace and scene changes. Style: {✏️ the style, e.g. warm acoustic folk with light percussion}.",
+        "input": {
+          "video": {
+            "name": "Your video",
+            "note": "Add your video first, then pick it into the Video slot"
+          }
+        }
+      },
+      "music-mood-from-image": {
+        "name": "Music from a picture",
+        "description": "Music in the mood of your picture",
+        "prompt": "Instrumental music in the mood of the reference image: its feeling, colours and setting decide the genre, the key and the instruments. {✏️ anything else, e.g. slow and dreamy}.",
+        "input": {
+          "image": {
+            "name": "Picture",
+            "note": "Add the picture first, then pick it into the Reference image slot"
+          }
+        }
+      },
+      "clip-ambience-foley": {
+        "name": "Silent shot with foley",
+        "description": "A silent shot, then foley timed to it",
+        "prompt": "One continuous shot of {✏️ the scene, e.g. a chef chopping vegetables on a wooden board}. 0–2 s: {✏️ the first action}. 2–5 s: {✏️ the next action}. Every contact is visible and clear, what touches what and when, so its sound can be added afterwards. One main camera move: {✏️ e.g. a slow push in}. Light from one source: {✏️ e.g. a window on the left}. No text on screen.",
+        "node": {
+          "foley": {
+            "name": "Foley",
+            "prompt": "(💡 Generate the video first, then pick it into the Video slot)Foley for this shot: {✏️ the sounds, e.g. the knife on the board, vegetables sliding, a pan sizzling behind}. Each sound lands exactly when it happens on screen; close sounds dry and clear, background ones quieter. No music, no voices."
+          }
+        }
+      },
+      "section-mapped-score": {
+        "name": "Score in four sections",
+        "description": "Four sections in one style, trimmed and joined",
+        "prompt": "Intro of a four-part instrumental score for {✏️ the film, e.g. a 2-minute brand film}. Shared by all four parts: {✏️ genre}, around {✏️ tempo, e.g. 96 BPM}, in {✏️ key, e.g. A minor}, with {✏️ two or three instruments}. This part: {✏️ length, e.g. 15 seconds}, quiet and open, setting out the theme.",
+        "node": {
+          "body": {
+            "name": "Body",
+            "prompt": "Body of the same four-part instrumental score. Shared by all four parts: {✏️ genre}, around {✏️ tempo}, in {✏️ key}, with {✏️ two or three instruments}. This part: {✏️ length, e.g. 60 seconds}, steady and moving forward under the main story."
+          },
+          "reveal": {
+            "name": "Reveal",
+            "prompt": "Reveal of the same four-part instrumental score. Shared by all four parts: {✏️ genre}, around {✏️ tempo}, in {✏️ key}, with {✏️ two or three instruments}. This part: {✏️ length, e.g. 25 seconds}, the peak: fuller and louder, the theme at its strongest."
+          },
+          "outro": {
+            "name": "Outro",
+            "prompt": "Outro of the same four-part instrumental score. Shared by all four parts: {✏️ genre}, around {✏️ tempo}, in {✏️ key}, with {✏️ two or three instruments}. This part: {✏️ length, e.g. 15 seconds}, winding down and ending cleanly, the theme once more, softly."
+          }
+        },
+        "step": {
+          "trim": "Each section usually comes out longer than you need. Once it has generated, use Tools → Cut on it to trim it to the length its prompt asks for.",
+          "join": "Select the four trimmed clips (named CUT-…), right-click and choose Join; check the order runs intro, body, reveal, outro, and set a crossfade of about 1 second."
+        }
+      }
     },
     "promptMark": {
       "reference": "Use @ to pick {label}"
@@ -2209,6 +2364,8 @@
         "splitCell": "Split cell",
         "mergeCells": "Merge cells",
         "textHighlight": "Highlight",
+        "fullscreen": "Full screen",
+        "exitFullscreen": "Exit full screen",
         "cut": "Cut",
         "pasteAbove": "Paste above",
         "pasteBelow": "Paste below",
@@ -2326,6 +2483,18 @@
       "selectedCount": "{count} selected",
       "multiTransform": "Use the scene handles to transform the selection around its centre.",
       "mixed": "Mixed",
+      "pose": {
+        "title": "Pose",
+        "stand": "Stand",
+        "sit": "Sit",
+        "lie": "Lie down",
+        "walk": "Walk",
+        "wave": "Wave",
+        "jointMode": "Adjust joints",
+        "reset": "Reset pose",
+        "noSkeleton": "This model has no skeleton and cannot be posed.",
+        "humanoidOnly": "Presets work on humanoid characters only."
+      },
       "selectObject": "Select an object to edit its properties.",
       "refused": "The connection to this scene was refused. Changes will not be saved.",
       "retry": "Retry",
@@ -2415,6 +2584,9 @@
         "kindGeneration": "Generate",
         "originSpace": "In Space",
         "originAgent": "Agent",
+        "rigFailed": "Skeleton rigging failed; this model can't be posed",
+        "rigged": "Skeleton rigged",
+        "willRig": "A skeleton is rigged when generation finishes",
         "generating": "Generating",
         "generatingFor": "Generating · {minutes} min",
         "stillRunning": "This generation is still finishing. Try again later.",
@@ -2434,6 +2606,7 @@
       "proposalBusy": "Another generation is being submitted.",
       "readOnlyCreate": "Viewers can’t add, import or generate models.",
       "force": {
+        "low_poly_skips_parts": "Smart low-poly doesn't separate parts.",
         "parts_geometry_only": "Separate parts generates geometry only.",
         "pbr_needs_texture": "PBR needs texture.",
         "fast_uses_v35": "Fast texture uses v3.5 only."
@@ -2480,6 +2653,19 @@
         "formats": "PNG, JPEG or WebP",
         "chooseFile": "Choose file"
       }
+    },
+    "sizeCap": {
+      "noticeWarning": "This Space is using {used}. Once it passes {limit}, no more content can be added.",
+      "noticeFull": "This Space is full ({used} of {limit}). You can only delete content until it is back under the limit.",
+      "noticeOver": "This Space is over its limit ({used} of {limit}). You can only delete whole items: a node, a clip, a model or a whole passage.",
+      "add": "This Space is full. Delete some content before editing further.",
+      "compound": "This Space is full. This deletion would also change other content, so it cannot run right now.",
+      "over": "This Space is over its limit. Delete whole items: a node, a clip, a model or a whole passage.",
+      "resync": "Your last change went over this Space's size limit and was not saved.",
+      "proposal": "This Space is full, so the proposal was not placed.",
+      "reason": "This Space is full.",
+      "text": "Text not added: this Space is full.",
+      "wait": "This Space is full. It will finish once some content is deleted."
     }
   },
   "menu": {
@@ -3457,8 +3643,6 @@
       "more": "Load more",
       "chooseFile": "Choose video",
       "fileEmpty": "Choose a local video file.",
-      "preparing": "Preparing video…",
-      "progress": "Uploading {progress}%",
       "confirm": "Add to Timeline",
       "insertAfter": "Inserts after {name}",
       "insertFirst": "Inserts at the start of the main track"
@@ -3472,12 +3656,13 @@
       "invalid_range": "Enter a frame range inside the video.",
       "target_missing": "The target has changed. Check the position and retry.",
       "clip_removed": "This clip was removed by another member.",
-      "upload": "Upload failed. Retry with the selected file.",
       "permission_changed": "Editing permission changed. Confirm again to add this video.",
       "track_missing": "The target track was removed. Choose another track.",
       "id_taken": "This item already exists. Try again.",
       "main_track": "The main track cannot be deleted.",
       "track_not_empty": "Only an empty track can be deleted.",
+      "full": "This Space is full. Delete some content before editing further.",
+      "over_ceiling": "This Space is over its limit. Delete a whole clip.",
       "source_unresolved": "This web animation is not ready yet. Try again shortly."
     },
     "mainTrack": "Main track",
@@ -3571,6 +3756,14 @@
         "unavailable": "{track}: web animation unavailable",
         "loading": "{track}: web animation loading…"
       }
+    },
+    "upload": {
+      "uploading": "Uploading",
+      "progress": "Uploading {progress}%",
+      "failed": "Upload failed",
+      "waiting": "Uploaded, waiting for edit access",
+      "unfinished": "Unfinished",
+      "preview": "{track}: {state, select, failed {video upload failed, not shown} unfinished {video unfinished, not shown} other {video uploading…}}"
     }
   }
 }

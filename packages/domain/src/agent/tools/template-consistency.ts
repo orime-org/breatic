@@ -14,6 +14,7 @@
  */
 
 import {
+  keyStanding,
   matchTemplateInstance,
   templateSkeleton,
   type CanvasProposal,
@@ -65,8 +66,10 @@ export function anchoredInstances(proposal: CanvasProposal, places: readonly (Te
       const place = places[index];
       const id = String(index);
       if (place === undefined) return [id, { id, type: node.type, keeps: true }];
-      if ("input" in place) return [id, { id, type: node.type, inputTag: { template: place.template.id, input: place.input }, keeps: true }];
-      const tag = place.anchor ? {} : { tag: { template: place.template.id, key: place.key } };
+      // The tag names its anchor by index; the graph names nodes by id, the index as a string.
+      const anchor = place.tagAnchor === undefined ? {} : { anchor: String(place.tagAnchor) };
+      if ("input" in place) return [id, { id, type: node.type, inputTag: { template: place.template.id, input: place.input, ...anchor }, keeps: true }];
+      const tag = place.anchor ? {} : { tag: { template: place.template.id, key: place.key, ...anchor } };
       return [id, { id, type: node.type, ...tag, keeps: keeps(proposal, index, place) }];
     }),
   );
@@ -75,9 +78,15 @@ export function anchoredInstances(proposal: CanvasProposal, places: readonly (Te
     const to = String(edge.toIndex);
     incoming.set(to, [...(incoming.get(to) ?? []), edge.into === undefined ? { from: String(edge.fromIndex) } : { from: String(edge.fromIndex), into: edge.into }]);
   }
+  // A slot filled through fills has no edge; the match finds an input there by its slot.
+  const fills = new Map<string, Map<string, string>>();
+  proposal.nodes.forEach((node, index) => {
+    const named = Object.entries(node.fills ?? {}).flatMap(([param, from]): [string, string][] => (from[0] === undefined ? [] : [[param, String(from[0])]]));
+    if (named.length > 0) fills.set(String(index), new Map(named));
+  });
   return places.flatMap((place, anchor): AnchoredInstance[] => {
     if (place === undefined || "input" in place || !place.anchor) return [];
-    return [{ anchor, place, match: matchTemplateInstance(templateSkeleton(place.template), { nodes, incoming }, String(anchor)) }];
+    return [{ anchor, place, match: matchTemplateInstance(templateSkeleton(place.template), { nodes, incoming, fills }, String(anchor)) }];
   });
 }
 
@@ -124,38 +133,62 @@ export function checkTemplateInstances(proposal: CanvasProposal, instances: read
       const generation = proposal.nodes[to];
       const chosen = generation === undefined ? undefined : chosenModelOf(generation);
       // The registry test passes every template through this check, so its edges go a way their model takes.
-      const entry = node === undefined || chosen === undefined ? undefined : entriesFor(chosen, node.type, holdingOf(node)).find((one) => one.way.into === into && one.by === "edge");
+      const ways = node === undefined || chosen === undefined ? [] : entriesFor(chosen, node.type, holdingOf(node), generation?.params ?? {}).filter((one) => one.way.into === into);
+      const subject = nodeLabel(proposal.nodes, from);
+      // Material goes into a slot through fills alone (an input into a slot, inner#1825).
+      const filled = ways.find((one) => one.by === "fills");
+      if (filled !== undefined) {
+        const lead = edge === "add" ? `send ${subject} into it` : `take the edge from ${subject} off and send it into it`;
+        return fixOn(nodeLabel(proposal.nodes, to), `${lead} ${entryPhrase(filled)}.`);
+      }
+      const entry = ways.find((one) => one.by === "edge");
       const how = entry === undefined ? `by an edge with into: "${into}"` : entryPhrase(entry);
       const marks = [...(entry?.ref === true ? ["ref"] : []), ...(entry?.note === true ? ["note"] : [])];
-      const placed = generation?.role === "generate" ? sentWords(generation.mode).placed : "";
+      const placed = generation?.role === "generate" ? sentWords(generation).placed : "";
       const shot = marks.length > 0 && placed !== "" ? `, its ${marks.join(" and ")}${placed}` : "";
-      const subject = nodeLabel(proposal.nodes, from);
       const lead = edge === "add" ? `send ${subject} into it` : `change the edge from ${subject} so it goes into it`;
       return fixOn(nodeLabel(proposal.nodes, to), `${lead} ${how}${shot}.`);
     };
     for (const [key, found] of match.keys) {
+      const standing = keyStanding(place.template, key);
       if (found.kind === "many") {
-        return refuse("template-key-repeated", `Template "${id}" anchored at ${at} takes one "${key}" node, and ${found.nodes.map(label).join(", ")} are each wired in where it goes.`);
+        const how = standing === "standalone" ? `each tagged with ${at} as its anchor` : "each wired in where it goes";
+        return refuse("template-key-repeated", `Template "${id}" anchored at ${at} takes one "${key}" node, and ${found.nodes.map(label).join(", ")} are ${how}.`);
       }
       if (found.kind !== "missing") continue;
       const candidates = match.candidates.get(key) ?? [];
-      const edge = match.walked.find((one) => one.from === key);
-      const only = candidates[0];
-      const into = edge?.into ?? "pool";
-      const to = edge === undefined ? undefined : indexAt(edge.to);
-      if (candidates.length === 1 && only !== undefined && edge !== undefined && to !== undefined) {
+      const own = place.template.nodes.find((node) => node.key === key);
+      const kind = `${own?.role ?? ""} ${own?.type ?? ""}`;
+      if (standing === "standalone") {
+        const loose = candidates.length === 0 ? "" : ` Nodes tagged "${key}" whose tag names no anchor on the proposal: ${candidates.map(label).join(", ")}.`;
         return refuse(
-          "template-edge-missing",
-          `Template "${id}" anchored at ${at} wires its "${key}" node into "${edge.to}" by "${into}", and ${label(only)}, tagged "${key}", has no edge there.`,
-          routeFix(Number(only), to, into, "add"),
+          "template-key-missing",
+          `Template "${id}" anchored at ${at} places a ${kind} "${key}" node beside it with no edge, tied to it by the tag ` +
+            `{ id: "${id}", key: "${key}", anchor: ${String(anchor)} }, anchor being the index of ${at}, and no node carries that tag.${loose}`,
         );
       }
-      const own = place.template.nodes.find((node) => node.key === key);
-      const where = to === undefined ? `its "${edge?.to ?? ""}" node` : nodeLabel(proposal.nodes, to);
+      // An upstream key is found along its edge into the node it feeds, a downstream one along its edge from the node feeding it.
+      const below = standing === "downstream";
+      const edge = match.walked.find((one) => (below ? one.to === key : one.from === key));
+      const only = candidates[0];
+      const into = edge?.into ?? "pool";
+      const near = edge === undefined ? undefined : indexAt(below ? edge.from : edge.to);
+      const nearKey = (below ? edge?.from : edge?.to) ?? place.template.anchor;
+      const where = near === undefined ? `its "${nearKey}" node` : nodeLabel(proposal.nodes, near);
+      if (candidates.length === 1 && only !== undefined && edge !== undefined && near !== undefined) {
+        const [from, to] = below ? [near, Number(only)] : [Number(only), near];
+        const wired = below ? `its "${nearKey}" node, ${where}, into "${key}"` : `its "${key}" node into "${nearKey}"`;
+        return refuse(
+          "template-edge-missing",
+          `Template "${id}" anchored at ${at} wires ${wired} by "${into}", and ${label(only)}, tagged "${key}", has no edge ${below ? `from ${where}` : "there"}.`,
+          routeFix(from, to, into, "add"),
+        );
+      }
       const listed = candidates.length === 0 ? "" : ` Nodes tagged "${key}" that are wired nowhere it goes: ${candidates.map(label).join(", ")}.`;
+      const wires = below ? `its "${nearKey}" node, ${where}, into a ${kind} "${key}" node` : `a ${kind} "${key}" node into ${where}`;
       return refuse(
         "template-key-missing",
-        `Template "${id}" anchored at ${at} wires a ${own?.role ?? ""} ${own?.type ?? ""} "${key}" node into ${where} by "${into}", and none is wired in there.${listed}`,
+        `Template "${id}" anchored at ${at} wires ${wires} by "${into}", and none is wired ${below ? `from ${where}` : "in there"}.${listed}`,
       );
     }
     const unwired = match.unwired[0];
@@ -183,11 +216,26 @@ export function checkTemplateInstances(proposal: CanvasProposal, instances: read
         routeFix(from, to, want, "change"),
       );
     }
+    for (const input of place.template.inputs) {
+      if (input.into === undefined) continue;
+      for (const [fed, node] of match.inputs.get(input.key) ?? []) {
+        const from = Number(node);
+        const to = indexAt(fed);
+        const sent = proposal.edges.find((one) => one.fromIndex === from && one.toIndex === to);
+        if (sent?.into === undefined || sent.into === input.into || to === undefined) continue;
+        return refuse(
+          "template-input-into",
+          `Template "${id}" anchored at ${at} takes input "${input.key}" into the "${input.into}" slot of ${nodeLabel(proposal.nodes, to)}, not its pool or another slot, and the edge from ${label(node)} says into "${sent.into}".`,
+          routeFix(from, to, input.into, "change"),
+        );
+      }
+    }
     const missing = match.unassigned[0];
     if (missing !== undefined) {
       const input = place.template.inputs.find((one) => one.key === missing.input);
       const fed = missing.fed === place.template.anchor ? at : label(nodeIdOf(match, missing.fed));
-      return refuse("template-input-missing", `Template "${id}" takes input "${missing.input}" on ${fed}, and no ${input?.type ?? ""} node of its own is wired in there.`);
+      const there = input?.into === undefined ? "wired in there" : `wired into its "${input.into}" slot or filling it through fills`;
+      return refuse("template-input-missing", `Template "${id}" takes input "${missing.input}" on ${fed}, and no ${input?.type ?? ""} node of its own is ${there}.`);
     }
   }
   return { ok: true };

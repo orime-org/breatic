@@ -15,7 +15,10 @@ import { assetsApi } from '@web/data/api/assets';
 import { canvasApi } from '@web/data/api/canvas';
 import { uploadMedia } from '@web/data/upload/media-upload';
 import { waitForUploadEnding } from '@web/data/upload/upload-status';
+import { renewOnWorker } from '@web/lib/upload-claims';
 import { readDocFacts, readWriteAccess } from '@web/data/yjs/collab-socket';
+import { docName } from '@web/data/yjs/manager';
+import { canAdd } from '@web/data/yjs/space-write';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 import {
   openBodyUploads,
@@ -27,6 +30,7 @@ import {
   createUploadController,
   type UploadController,
   type UploadControllerDeps,
+  type UploadOutcome,
 } from '@web/spaces/document/document-upload-controller';
 import { createUploadSources } from '@web/spaces/document/document-upload-sources';
 
@@ -65,8 +69,14 @@ function readLocalAddress(url: string): Promise<Blob> {
   });
 }
 
+/** How an upload ends when its Space could not take an add when it was asked for. */
+const SPACE_FULL: UploadOutcome = { ok: false, failure: { reason: 'spaceFull', retryable: true } };
+
 /**
- * The run function for uploads landing in a Space.
+ * The run function for uploads landing in a Space. What it brings back is
+ * written into the body, so nothing is asked of the server while the Space
+ * cannot take an add (inner#1790, design 5.2); the block fails and offers
+ * Retry, which asks again.
  * @param target - The project and Space.
  * @returns The run function.
  */
@@ -74,7 +84,8 @@ function runnerFor(target: UploadTarget): UploadControllerDeps['run'] {
   const key = `${target.projectId}:${target.spaceId}`;
   let run = runners.get(key);
   if (run === undefined) {
-    run = createUploadSources({
+    const name = docName.documentSpace(target.projectId, target.spaceId);
+    const sources = createUploadSources({
       uploadFile: (file, onProgress) => uploadMedia(file, target, onProgress),
       ingest: async (url) =>
         (await assetsApi.ingestUrl({ url, project_id: target.projectId, space_id: target.spaceId })).storage_key,
@@ -89,27 +100,10 @@ function runnerFor(target: UploadTarget): UploadControllerDeps['run'] {
       readAddress: readLocalAddress,
       sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     });
+    run = (uploadId, source, onProgress) => (canAdd(name) ? sources(uploadId, source, onProgress) : Promise.resolve(SPACE_FULL));
     runners.set(key, run);
   }
   return run;
-}
-
-/**
- * Ticks on a Worker's timer, which a hidden tab does not slow.
- * @param tick - Called on each tick.
- * @returns What stops the timer.
- */
-function renewOnWorker(tick: () => void): () => void {
-  let worker: Worker;
-  try {
-    worker = new Worker(new URL('./document-claim-renewal-worker.ts', import.meta.url), { type: 'module' });
-  } catch {
-    // ponytail: main-thread fallback, throttled to once in 30 s+ when hidden.
-    const id = setInterval(tick, 15_000);
-    return () => clearInterval(id);
-  }
-  worker.onmessage = tick;
-  return () => worker.terminate();
 }
 
 let controller: UploadController | null = null;
@@ -180,7 +174,7 @@ export function openPageBodyUploads(
   name: string,
   provider: HocuspocusProvider | undefined,
 ): BodyUploads {
-  const link = openBodyUploads(pageController(), { spaceId: target.spaceId, doc, connection: connectionOf(name, provider) });
+  const link = openBodyUploads(pageController(), { spaceId: target.spaceId, doc, name, connection: connectionOf(name, provider) });
   return {
     ...link,
     start: (uploadId, source) => {

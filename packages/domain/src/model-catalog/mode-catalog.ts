@@ -7,6 +7,8 @@
 import {
   appliesInMode,
   canConnect,
+  gateHolds,
+  gateParams,
   GENERATION_NODE_BUCKETS,
   GENERATION_NODE_MODES,
   missingSources,
@@ -94,6 +96,8 @@ export interface ParamInfo {
   step?: number;
   /** How many entries it takes, for a field that takes a list. */
   maxItems?: number;
+  /** The fewest characters it takes once cleaned, for a text field that declares it. */
+  minLength?: number;
   /**
    * Where its values come from, for a field whose domain lives upstream.
    *
@@ -196,6 +200,11 @@ export interface ModelInfo {
    * that does not say so has the agent telling the user to write one.
    */
   takesPrompt: boolean;
+  /**
+   * What has to hold for a model that takes a prompt to draw its box: Mureka
+   * V9.5 Song composing from a melody takes none.
+   */
+  promptWhen?: ParamGate;
   /**
    * The bracketed camera commands it reads out of its prompt,
    * for a model that declares them.
@@ -395,10 +404,11 @@ function projectParam(
   // The picker's own list, so the user is offered what the control offers.
   // A stepped range is a slider: its bounds and step say more than walking it.
   const options = spec.step === undefined ? paramValues(entry, name) : [];
-  // Only a control waits on something: material is held to this mode's slots
-  // by the projection above. The name a clause gives is a param of this same
-  // model, which `assertParamDeclarations` refuses at load time otherwise.
-  const gate = by === "panel" ? spec.when : undefined;
+  // A control and a slot can both wait on another setting: Mureka V9.5 Song
+  // draws its melody slot only while it composes from a melody. The name a
+  // clause gives is a param of this same model, which
+  // `assertParamDeclarations` refuses at load time otherwise.
+  const gate = by === "panel" || by === "canvas" ? spec.when : undefined;
   return {
     ...(spec.type !== undefined ? { type: spec.type } : {}),
     ...(options.length > 0 ? { options } : {}),
@@ -406,6 +416,7 @@ function projectParam(
     ...(spec.max !== undefined ? { max: spec.max } : {}),
     ...(spec.step !== undefined ? { step: spec.step } : {}),
     ...(spec.max_items !== undefined ? { maxItems: spec.max_items } : {}),
+    ...(spec.min_length !== undefined ? { minLength: spec.min_length } : {}),
     ...(spec.remote_source !== undefined ? { valuesFrom: spec.remote_source } : {}),
     ...(by === "canvas" ? { filledBySource: true as const } : {}),
     ...(by === "canvas" && spec.accepts !== undefined ? { accepts: spec.accepts } : {}),
@@ -463,15 +474,46 @@ export interface WayIn {
 export type WayKind = ReferenceKind | "text";
 
 /**
+ * What a place waits on: the pool on the prompt box it is mentioned in, a slot
+ * or box on its own gate (Mureka V9.5 Song draws its melody slot and its style
+ * box on its compose-from setting).
+ * @param chosen - The model, as the catalog projects it.
+ * @param into - The place.
+ * @returns Its gate, or undefined for a place always drawn.
+ * @throws {never} Never.
+ */
+export function placeGate(chosen: ModelInfo, into: string): ParamGate | undefined {
+  return into === "pool" ? chosen.promptWhen : chosen.params[into]?.gate;
+}
+
+/**
+ * Whether a gate holds on what a proposal fills in, every other param at its default.
+ * @param chosen - The model, as the catalog projects it.
+ * @param params - What the proposal fills in.
+ * @param gate - The gate.
+ * @returns True when the gate holds.
+ * @throws {never} Never.
+ */
+export function gateHoldsOn(chosen: ModelInfo, params: Readonly<Record<string, unknown>>, gate: ParamGate): boolean {
+  const defaults = Object.fromEntries(Object.entries(chosen.params).map(([name, declared]) => [name, declared.default]));
+  const given = Object.entries(params).filter(([, value]) => value !== null && value !== undefined);
+  return gateHolds(gate, { ...defaults, ...Object.fromEntries(given) });
+}
+
+/**
  * Every way a model takes each kind of node reaching it (design 5.7 table
  * A): its pool, mentioned in the prompt box by a ref; each slot, which the
  * user picks into in the panel; and for words, the prompt box, mentioned by
  * a ref, and the lyrics box, which landing mentions them in.
+ *
+ * Given a generation's params, only the places its panel draws for them: the
+ * listing reads every way with its gate, a proposal's node the ones it has.
  * @param chosen - The model, as the catalog projects it.
+ * @param params - The generation's params, for the places it draws.
  * @returns Per kind, its ways in declaration order.
  * @throws {never} Never.
  */
-export function waysIn(chosen: ModelInfo): Map<WayKind, WayIn[]> {
+export function waysIn(chosen: ModelInfo, params?: Readonly<Record<string, unknown>>): Map<WayKind, WayIn[]> {
   const ways = new Map<WayKind, WayIn[]>();
   /**
    * List one more way for a kind.
@@ -482,6 +524,8 @@ export function waysIn(chosen: ModelInfo): Map<WayKind, WayIn[]> {
     // A pool is read through mentions of wired nodes, so a kind no edge can
     // carry has no pool way at all. A slot is picked in the panel and needs no edge.
     if (way.into === "pool" && !canConnect(kind, chosen.nodeType)) return;
+    const gate = params === undefined ? undefined : placeGate(chosen, way.into);
+    if (gate !== undefined && params !== undefined && !gateHoldsOn(chosen, params, gate)) return;
     ways.set(kind, [...(ways.get(kind) ?? []), way]);
   };
   for (const [name, info] of Object.entries(chosen.params)) {
@@ -574,6 +618,11 @@ function modelsIn(
         ? { maxInputChars: entry.max_input_chars }
         : {}),
       takesPrompt: entry.takes_prompt,
+      // A condition on a setting this mode does not have never holds back the
+      // prompt here (`promptTaken` reads the mode's own params).
+      ...(entry.prompt_when !== undefined && gateParams(entry.prompt_when).every((name) => appliesInMode(entry.params?.[name] ?? {}, mode))
+        ? { promptWhen: entry.prompt_when }
+        : {}),
       ...(entry.camera_commands !== undefined
         ? { cameraCommands: entry.camera_commands.map((command) => command.name) }
         : {}),

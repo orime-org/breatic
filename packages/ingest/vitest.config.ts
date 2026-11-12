@@ -48,6 +48,12 @@ const workers = defineWorkersProject({
     // eight packages' suites beside this one; every other package in the repo
     // raises this for the same reason.
     testTimeout: 30_000,
+    // workerd starts only after the two Node projects have finished. Started
+    // beside them on CI, it dropped the pool's first connection to its runner
+    // in about two runs of three (#1448), and miniflare 4.20260310.0 has no
+    // listener for that error, so vitest exited 1 before the workers project
+    // ran a file. Later miniflare handles it, but needs vitest 4.
+    sequence: { groupOrder: 1 },
     poolOptions: {
       workers: {
         main: "./src/index.ts",

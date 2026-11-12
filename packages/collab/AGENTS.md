@@ -96,6 +96,12 @@ Cross-service stream keys: [packages/core/AGENTS.md#stream-keys](../core/AGENTS.
 
 **One browser tab shares one WebSocket across all its documents, so a socket id covers several Yjs client ids.** Judge whether a connection is alive from the seat registry (`services/connection-registry.ts`), not from awareness (transient states cause false kills) and not from this instance's own connection list (it cannot see other instances).
 
+## Document formats
+
+### Old formats are upgraded on load
+
+**When the stored format of a Space document changes, the same PR ships an upgrade that collab runs in its load hook before any client syncs, and the editor keeps reading the old format until that upgrade has run; never leave documents written before the change unreadable or wrong.** The product is live, so every older document is someone's work. Follow `convertStoredTablesOnLoad` (`services/legacy-table-conversion.ts`, wired in `hocuspocus.ts`): it does nothing on a document already in the new format, takes a per-document lock in collab Redis so one instance converts, reads the stored state again under the lock, and on failure logs and lets the load go on in the old format, trying again on the next load. Check: would a document written before this change open wrong after it? Then this PR carries its on-load upgrade.
+
 ## Space lifecycle
 
 ### Space count lock

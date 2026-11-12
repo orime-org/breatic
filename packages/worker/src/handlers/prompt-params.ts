@@ -81,13 +81,10 @@ export function takePromptAndValidate(
   validateParams: ValidateParams,
 ): [string, string, Record<string, unknown>] {
   const [prompt, promptless] = takePromptOutOfParams(params);
-  // A 3D generation's negative prompt is typed beside its prompt (inner#1691)
-  // and stays in the bag, since the vendor reads it as a declared param.
-  // Cleaned BEFORE validation, unlike the lyrics below: its length bound is
-  // judged on the text that is sent.
-  if (typeof promptless.negative_prompt === "string") {
-    promptless.negative_prompt = extractPromptText(promptless.negative_prompt);
-  }
+  // Every text setting (a 3D negative prompt, a voice description, a motion
+  // prompt) and every text field of a list's entries (a storyboard shot's
+  // prompt, a speaker's name) is cleaned by the validator, which knows from
+  // the model's declaration which ones are text.
   const [resolvedModel, validated] = validateParams(model, promptless);
   // The lyrics are the second thing a user types into a rich-text editor on
   // the way to a provider (#1960), and the mandate that every AIGC prompt is
@@ -103,25 +100,6 @@ export function takePromptAndValidate(
     typeof validated.lyrics === "string"
       ? { ...validated, lyrics: extractPromptText(validated.lyrics) }
       : { ...validated };
-  // A storyboard's shots are prompts too (#2218), one per editor, carried as
-  // entries of a list param. Each entry's `prompt` gets the same cleaning.
-  for (const [key, value] of Object.entries(cleaned)) {
-    if (!Array.isArray(value)) continue;
-    if (!value.some((entry) => isRecord(entry) && typeof entry.prompt === "string")) continue;
-    cleaned[key] = value.map((entry) =>
-      isRecord(entry) && typeof entry.prompt === "string"
-        ? { ...entry, prompt: extractPromptText(entry.prompt) }
-        : entry,
-    );
-  }
   return [prompt, resolvedModel, cleaned];
 }
 
-/**
- * Whether a value is a plain object whose fields can be read by name.
- * @param value - The value to test.
- * @returns True for a non-null, non-array object.
- */
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}

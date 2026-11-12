@@ -89,6 +89,8 @@ miniTools.post(
           taskType,
           params: run.params,
           ...(run.sourceKey !== undefined && { sourceKey: run.sourceKey }),
+          // A join's clips after its source, in the order the user set (inner#1825 §6.4).
+          ...(run.inputKeys !== undefined && run.inputKeys.length > 1 && { extraKeys: run.inputKeys.slice(1) }),
           targetNodeIds: body.node_ids,
           mode: "append" as const,
         },

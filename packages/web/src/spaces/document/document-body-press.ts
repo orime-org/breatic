@@ -27,7 +27,9 @@ import { extendFromPress, followFromPoint } from '@web/spaces/document/document-
 import { DOCUMENT_COMMENT_SELECTION, selectedThreadsIn } from '@web/spaces/document/document-comment-selection';
 import { MEDIA_CONTROLS } from '@web/spaces/document/DocumentMediaBlock';
 import { rowHit } from '@web/spaces/document/document-media-row-press';
+import { inTableFullscreen } from '@web/spaces/document/document-table-fullscreen';
 import { SCROLLBAR_MARK } from '@web/components/ui/scroll-area';
+import { isMac } from '@web/lib/is-mac';
 import { SPACE_FOCUS_ROOT } from '@web/lib/space-focus-root';
 
 /** The attribute on the layout elements beside the body column that count as blank. */
@@ -70,6 +72,9 @@ const CLICK_SLOP = 4;
  * @returns True on that strip.
  */
 function onEdgeStrip(view: EditorView, x: number, y: number): boolean {
+  // Under a full-screen table the blocks around it are hidden and measure
+  // nothing; the table is the whole body on screen.
+  if (inTableFullscreen(view.state)) return false;
   const box = view.dom.getBoundingClientRect();
   if (x < box.left || x > box.right) return false;
   const group = view.dom.querySelector('.bn-block-group');
@@ -126,7 +131,7 @@ export function pressTargetOf(view: EditorView, event: MouseEvent): PressTarget 
  * @returns True for such a press.
  */
 function contextPress(event: MouseEvent): boolean {
-  return event.button === 2 || (event.button === 0 && event.ctrlKey && /Mac/.test(navigator.platform));
+  return event.button === 2 || (event.button === 0 && event.ctrlKey && isMac());
 }
 
 /**
@@ -269,8 +274,10 @@ export function attachBodyScroller(
     event.preventDefault();
     blankPresses.add(event);
     // A press that is not on a comment closes the one that was open, the same
-    // as a press on plain text (`document-comment-selection.ts`).
-    if (selectedThreadsIn(view.state).length > 0) {
+    // as a press on plain text (`document-comment-selection.ts`). Under a
+    // full-screen table the comments are put away and a press leaves them, as
+    // a press in a cell does.
+    if (selectedThreadsIn(view.state).length > 0 && !inTableFullscreen(view.state)) {
       view.dispatch(view.state.tr.setMeta(DOCUMENT_COMMENT_SELECTION, []).setMeta('addToHistory', false));
     }
     if (contextPress(event)) {

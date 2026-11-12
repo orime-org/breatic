@@ -32,6 +32,7 @@ import {
   editAnnotationBody,
   editReply,
   removeReply,
+  runCanvasUndoBatch,
 } from '@web/data/yjs/canvas-space';
 import type { AnnotationNodeView } from '@web/data/yjs/node-view';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -163,21 +164,28 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
     [profiles],
   );
 
+  // Judged here as one batch so a Space without room keeps the box and its
+  // words open (the size cap says why) rather than reading as a note gone.
+  // A reply and a rewrite are both words the user wrote: an add.
   const write = React.useCallback(
-    (at: DraftTarget, use: DraftState['use'], text: string): boolean => {
+    (at: DraftTarget, use: DraftState['use'], text: string): boolean | 'refused' => {
       const now = Date.now();
-      if (use === 'reply') {
-        return addReply(projectId, spaceId, nodeId, {
-          id: newId(),
-          content: text,
-          createdBy: viewerId ?? '',
-          createdAt: now,
-        });
-      }
-      if (at?.kind === 'reply') {
-        return editReply(projectId, spaceId, nodeId, at.id, text, now);
-      }
-      return editAnnotationBody(projectId, spaceId, nodeId, text, now);
+      let wrote = false;
+      const written = runCanvasUndoBatch(projectId, spaceId, { kind: 'add' }, () => {
+        if (use === 'reply') {
+          wrote = addReply(projectId, spaceId, nodeId, {
+            id: newId(),
+            content: text,
+            createdBy: viewerId ?? '',
+            createdAt: now,
+          });
+        } else if (at?.kind === 'reply') {
+          wrote = editReply(projectId, spaceId, nodeId, at.id, text, now);
+        } else {
+          wrote = editAnnotationBody(projectId, spaceId, nodeId, text, now);
+        }
+      });
+      return written.ok ? wrote : 'refused';
     },
     [nodeId, projectId, spaceId, viewerId],
   );
@@ -206,8 +214,11 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
       // is told. The entry can go between the last render and this keystroke,
       // and by the time the effect below sees that the box is already closed —
       // the writer's answer is the only account of where the words went.
-      const wrote =
+      const result =
         next.commit !== undefined && write(held.target, next.use, next.commit);
+      // Refused by the size cap: the box stays as it was, words and all.
+      if (result === 'refused') return;
+      const wrote = result;
       // A reply goes on the end of a thread that is capped at 180px, so past
       // the fourth one the author posts into a part of the sticky they cannot
       // see. Their own reply is the one thing they are certainly looking for.

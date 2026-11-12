@@ -969,6 +969,45 @@ export const CONVERSATION_TITLE_MAX_CHARS = 200;
  */
 export const CHAT_MESSAGE_MAX_CHARS = 10_000;
 
+/** How long a Project's instructions for the Agent may be, by `.length` (#1400). */
+export const AGENT_INSTRUCTIONS_MAX_CHARS = 10_000;
+
+/** Query for reading a Project's instructions for the Agent. */
+export const agentInstructionsQuerySchema = z.object({
+  project_id: z.string().uuid(),
+});
+
+/** Query for asking which of the caller's conversations in a project have an Agent turn running (#1394). */
+export const chatRunningQuerySchema = z.object({
+  project_id: z.string().uuid(),
+});
+
+/** What `GET /chat/running` answers: the caller's conversations in that project with a turn running. */
+export interface ChatRunningAnswer {
+  /** Each conversation once, in no particular order. */
+  conversation_ids: string[];
+}
+
+/**
+ * Body for saving a Project's instructions for the Agent. The text is kept
+ * exactly as typed; one that is empty or only whitespace clears them.
+ */
+export const agentInstructionsSaveSchema = z.object({
+  project_id: z.string().uuid(),
+  text: z.string().max(AGENT_INSTRUCTIONS_MAX_CHARS),
+});
+export type AgentInstructionsSaveInput = z.infer<typeof agentInstructionsSaveSchema>;
+
+/** A Project's instructions as the editor shows them. */
+export interface AgentInstructionsView {
+  /** The text as saved; empty when there are none. */
+  text: string;
+  /** Display name of whoever saved them last, or null when there are none. */
+  updatedBy: string | null;
+  /** When they were last saved (ISO), or null when there are none. */
+  updatedAt: string | null;
+}
+
 /**
  * Body for naming a conversation.
  *

@@ -25,6 +25,7 @@
 import { create } from 'zustand';
 import { t, type DocumentProposal } from '@breatic/shared';
 
+import type { SpaceRefusal } from '@web/data/yjs/space-write';
 import { toast } from '@web/lib/toast';
 
 /** What the user pressed: put it on as a comment, or write it into the body. */
@@ -39,6 +40,7 @@ export type DocumentProposalCardState = 'working' | 'applied';
  * address is not in our storage were left out. `located`: a locate press
  * showed where the proposal points. `left`: the user switched away from, or
  * closed, the document a locate or "View" press was waiting on (inner#1646).
+ * `refused`: the Space's size left no room for it (inner#1790).
  */
 export type DocumentProposalOutcome =
   | 'applied'
@@ -50,6 +52,7 @@ export type DocumentProposalOutcome =
   | 'spaceGone'
   | 'gone'
   | 'mediaOnly'
+  | 'refused'
   | 'failed';
 
 /** The warning a press that was stopped is told with: nothing broke, it was not done. */
@@ -87,9 +90,13 @@ const FAILED_KEY: Readonly<Record<PressKind, string>> = {
  * @param action - What it was pressed to do.
  * @param outcome - How it ended.
  * @param leftOut - How many media were left out of what it wrote.
+ * @param refusal - Why the Space had no room, for `refused`.
  */
-function tell(proposal: DocumentProposal, action: LandingAction, outcome: DocumentProposalOutcome, leftOut: number): void {
-  if (outcome === 'failed') {
+function tell(proposal: DocumentProposal, action: LandingAction, outcome: DocumentProposalOutcome, leftOut: number, refusal: SpaceRefusal | undefined): void {
+  if (outcome === 'refused') {
+    // A rebuild said its own sentence once.
+    if (refusal !== undefined && refusal.reason !== 'resyncing') toast.warning(t('spaces.sizeCap.proposal'));
+  } else if (outcome === 'failed') {
     toast.error(t(FAILED_KEY[pressKind(proposal, action)]));
   } else if (outcome === 'applied' || outcome === 'mediaOnly') {
     if (leftOut > 0) toast.warning(t('chat.documentProposal.mediaLeftOut', { count: leftOut }));
@@ -133,7 +140,7 @@ interface DocumentProposalsState {
   /** One document changed. */
   bump: (spaceId: string) => void;
   /** How a press ended, and how many media it left out: ignored for a card with no press waiting. */
-  report: (proposalId: string, outcome: DocumentProposalOutcome, leftOut?: number) => void;
+  report: (proposalId: string, outcome: DocumentProposalOutcome, leftOut?: number, refusal?: SpaceRefusal) => void;
   /** The same ending for every press waiting on one document. */
   reportSpace: (spaceId: string, outcome: DocumentProposalOutcome) => void;
   reset: () => void;
@@ -194,7 +201,7 @@ export const useDocumentProposals = create<DocumentProposalsState>()((set, get) 
       };
     }),
   bump: (spaceId) => set((s) => ({ docVersion: { ...s.docVersion, [spaceId]: (s.docVersion[spaceId] ?? 0) + 1 } })),
-  report: (proposalId, outcome, leftOut = 0) => {
+  report: (proposalId, outcome, leftOut = 0, refusal) => {
     const { pending, cards } = get();
     const waiting = pending[proposalId];
     const card = cards[proposalId];
@@ -213,7 +220,7 @@ export const useDocumentProposals = create<DocumentProposalsState>()((set, get) 
       return;
     }
     set((s) => ended(s, proposalId, outcome));
-    if (card !== undefined) tell(waiting.proposal, card.action, outcome, leftOut);
+    if (card !== undefined) tell(waiting.proposal, card.action, outcome, leftOut, refusal);
   },
   reportSpace: (spaceId, outcome) => {
     for (const p of pendingFor(spaceId)) get().report(p.proposal.proposalId, outcome);

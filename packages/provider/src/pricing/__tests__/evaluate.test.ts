@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
-import { evaluationMessage, priceUsd, type PriceContract } from "../evaluate.js";
+import { evaluationMessage, holds, priceUsd, type PriceContract } from "../evaluate.js";
 
 interface PriceFixture {
   contracts: Record<string, PriceContract>;
@@ -53,6 +53,21 @@ describe("priceUsd — properties", () => {
     await fc.assert(fc.asyncProperty(fc.array(fc.integer({ min: 0, max: 30 }), { maxLength: 5 }), async (clips) => {
       const billed = Math.min(25, clips.reduce((sum, clip) => sum + Math.min(10, Math.max(5, clip)), 0));
       expect(await priceUsd({ basePrice: 0, formula, discountRate: 100 }, { video: clips.map(() => "u") }, { video: clips })).toBeCloseTo(billed * 1000 / 1_000_000, 12);
+    }));
+  });
+
+  it("one formula priced at once on many runs reads each run's own clips", async () => {
+    const formula = "{\"total_price\": get_duration(video) * 1000}";
+    await fc.assert(fc.asyncProperty(fc.array(fc.array(fc.integer({ min: 0, max: 30 }), { maxLength: 4 }), { minLength: 2, maxLength: 8 }), async (runs) => {
+      const prices = await Promise.all(runs.map((clips) => priceUsd({ basePrice: 0, formula, discountRate: 100 }, { video: clips.map(() => "u") }, { video: clips })));
+      expect(prices).toEqual(runs.map((clips) => clips.reduce((sum, clip) => sum + clip, 0) * 1000 / 1_000_000));
+    }));
+  });
+
+  it("a condition held at once on many runs reads each run's own clips", async () => {
+    await fc.assert(fc.asyncProperty(fc.array(fc.integer({ min: 0, max: 30 }), { minLength: 2, maxLength: 8 }), async (lengths) => {
+      const verdicts = await Promise.all(lengths.map((length) => holds("get_duration(video) > 15", { video: ["u"] }, { video: [length] })));
+      expect(verdicts).toEqual(lengths.map((length) => length > 15));
     }));
   });
 

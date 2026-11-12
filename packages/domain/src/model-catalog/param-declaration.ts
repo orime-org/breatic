@@ -13,7 +13,7 @@
  * on the machine that ships the yaml.
  */
 
-import { PARAM_FILLS, gateParams } from "@breatic/shared";
+import { PARAM_FILLS, gateParams, type ParamGate } from "@breatic/shared";
 import { z } from "zod";
 
 import { namedModes, SOURCE_TYPES } from "@domain/model-catalog/mode-config.js";
@@ -26,6 +26,8 @@ export interface ParamClaimant {
   readonly mode?: string | readonly string[];
   /** Its parameters, as the yaml declares them. */
   readonly params?: Record<string, unknown>;
+  /** The condition its prompt is taken under, when it has one. */
+  readonly prompt_when?: ParamGate;
 }
 
 /** A value a choice or a switch can hold. */
@@ -60,6 +62,8 @@ const declarationSchema = z.object({
     .optional(),
   // The most characters a text param takes once cleaned (inner#1691).
   max_length: z.number().int().positive().optional(),
+  // The fewest characters a text param takes once cleaned (inner#1825).
+  min_length: z.number().int().positive().optional(),
   modes: z.array(z.string()).optional(),
   note: z.string().optional(),
   values: z.array(z.union([z.string(), z.number(), z.boolean()])).optional(),
@@ -137,6 +141,7 @@ const DECLARATION_KEYS: ReadonlySet<string> = new Set([
   "when",
   "bounds",
   "max_length",
+  "min_length",
   "modes",
   "note",
   "type",
@@ -192,6 +197,10 @@ export function assertParamDeclarations(
     const namedPools = new Set(
       [...pools].filter((pool) => typeof (params[pool] as { mention?: unknown }).mention === "string"),
     );
+    // The prompt's condition reads the model's own params, as a param's gate does.
+    for (const gate of model.prompt_when === undefined ? [] : gateParams(model.prompt_when)) {
+      if (!names.has(gate)) faults.push(`${model.name}: prompt_when names "${gate}", which this model does not declare`);
+    }
     for (const [param, raw] of Object.entries(params)) {
       const parsed = declarationSchema.safeParse(raw);
       if (!parsed.success) {
@@ -310,6 +319,9 @@ function faultsOn(
   // A cap on text counts characters, and only free text has them.
   if (declared.max_length !== undefined && declared.type !== "text") {
     faults.push("max_length counts characters, so this has to declare type: text");
+  }
+  if (declared.min_length !== undefined && declared.type !== "text") {
+    faults.push("min_length counts characters, so this has to declare type: text");
   }
 
   // A label for a value the control does not offer is a label for nothing, and

@@ -315,6 +315,24 @@ describe('a press on blank space in the body (A20)', () => {
     expect(document.activeElement).toBe(scroller);
   });
 
+  it.each([
+    ['MacIntel', true],
+    ['Win32', false],
+  ] as const)('takes Control with the main button as the right button on %s: %s', (platform, leaves) => {
+    vi.spyOn(navigator, 'platform', 'get').mockReturnValue(platform);
+    const { editor, scroller } = open(TEXT);
+    selectWords(editor);
+    const before = document.activeElement;
+    const press = new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, ctrlKey: true });
+
+    act(() => {
+      scroller.dispatchEvent(press);
+    });
+
+    expect(before).not.toBe(scroller);
+    expect(document.activeElement === scroller).toBe(leaves);
+  });
+
   it('leaves a middle press to the browser', () => {
     const { editor, scroller } = open(TEXT);
     selectWords(editor);

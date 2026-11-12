@@ -32,6 +32,9 @@ vi.mock('@hocuspocus/provider', async () => {
     },
   };
 });
+// Canvas and Document tabs never read the Timeline execution list; its own file covers the Timeline branch.
+vi.mock('@web/spaces/timeline/use-timeline-executions', () => ({ useTimelineExecutions: () => ({ data: undefined }) }));
+vi.mock('@web/spaces/timeline/use-timeline-limits', () => ({ useTimelineLimits: () => undefined }));
 vi.mock('@web/data/yjs/collab-failure-report', () => ({ reportCollabFailure: vi.fn() }));
 
 const PROJECT = 'project-one';

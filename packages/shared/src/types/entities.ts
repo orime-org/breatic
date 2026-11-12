@@ -383,6 +383,14 @@ export interface TaskEntity {
 /** Kinds of uploadable assets. */
 export type AssetKind = "image" | "video" | "audio" | "3d" | "document";
 
+/** A Project's instructions for the Agent, one row per Project (#1400). */
+export interface ProjectAgentInstructionsEntity {
+  projectId: string;
+  content: string;
+  updatedByUserId: string;
+  updatedAt: Date;
+}
+
 /** Conversation attachment — per-conversation reference pool. */
 export interface ConversationAttachmentEntity {
   id: string;

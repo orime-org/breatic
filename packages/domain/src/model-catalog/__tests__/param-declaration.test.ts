@@ -108,6 +108,22 @@ describe("a parameter declaration", () => {
     ).toThrow(/a-model.*lens.*enable_camera/s);
   });
 
+  it("is refused when the prompt's condition names a parameter the model does not declare", () => {
+    expect(() =>
+      assertParamDeclarations("audio", [
+        { name: "a-model", mode: "a2m", prompt_when: { equals: { compose: "references" } }, params: { compose_from: { fill: "panel", values: ["references", "melody"], default: "references" } } },
+      ]),
+    ).toThrow(/a-model.*prompt_when.*compose/s);
+  });
+
+  it("passes a prompt condition on a parameter the model declares", () => {
+    expect(() =>
+      assertParamDeclarations("audio", [
+        { name: "a-model", mode: "a2m", prompt_when: { equals: { compose_from: "references" } }, params: { compose_from: { fill: "panel", values: ["references", "melody"], default: "references" } } },
+      ]),
+    ).not.toThrow();
+  });
+
   it("is refused when it limits itself to a mode the model does not serve", () => {
     expect(() =>
       assertParamDeclarations(

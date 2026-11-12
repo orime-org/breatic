@@ -236,3 +236,13 @@ export function voiceListReducer(
       return { ...state, loadingMore: false, moreFailed: true };
   }
 }
+
+/**
+ * A voice as the voice list names it.
+ * @param voices - The voices loaded so far.
+ * @param id - The voice id a node holds.
+ * @returns Its name, or the id when the list does not carry it.
+ */
+export function voiceDisplayName(voices: readonly Voice[], id: string): string {
+  return voices.find((v) => v.id === id)?.name ?? id;
+}

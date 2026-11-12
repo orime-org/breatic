@@ -282,6 +282,28 @@ describe('buildAudioPanelViewModel — what execute needs to know', () => {
   });
 });
 
+describe('buildAudioPanelViewModel — a run that takes no style (breatic#1393)', () => {
+  const SONG = ttsModel('mureka-v9.5-generate-song', {
+    modality: 'audio',
+    mode: ['t2m', 'a2m'],
+    prompt_when: { equals: { compose_from: 'references' } },
+    params: {
+      compose_from: { description: '', label: 'Compose from', default: 'references', values: ['references', 'melody'], modes: ['a2m'], fill: 'panel' },
+      melody: { description: '', default: null, fill: 'canvas', accepts: 'audio', optional: true, modes: ['a2m'], when: { equals: { compose_from: 'melody' } } },
+    },
+  });
+
+  it('asks for no style while composing from a melody, and still takes text references for the lyrics', () => {
+    const vm = buildAudioPanelViewModel({
+      ...BASE,
+      models: [SONG],
+      mode: 'a2m',
+      nodes: nodes({ model: 'mureka-v9.5-generate-song', paramsByModel: { 'mureka-v9.5-generate-song': { compose_from: 'melody' } } }),
+    });
+    expect([vm.promptRequired, vm.takesPrompt]).toEqual([false, true]);
+  });
+});
+
 describe('buildAudioPanelViewModel — a model that reads a dialogue (#2156)', () => {
   const GEMINI = ttsModel('gemini', {
     params: {
@@ -313,5 +335,29 @@ describe('buildAudioPanelViewModel — a model that reads a dialogue (#2156)', (
     });
     expect(vm.voiceRequired).toBe(false);
     expect(vm.speakersShort).toBe(true);
+  });
+
+  it('names the speakers the prompt editor offers per line on the dialogue side, and none reading alone (inner#1825)', () => {
+    const pair = [{ speaker: 'Ada', voice: 'Kore' }, { speaker: 'Bo', voice: 'Puck' }];
+    const on = buildAudioPanelViewModel({ ...models, nodes: nodes({ model: 'gemini', paramsByModel: { gemini: { speakers: pair, _stand_in_on: true } } }) });
+    expect(on.dialogueNames).toEqual(['Ada', 'Bo']);
+    // A stored record with speakers and no switch reads in one voice (design 8.5):
+    // a landing writes the switch, and nothing else counts as one.
+    const unswitched = buildAudioPanelViewModel({ ...models, nodes: nodes({ model: 'gemini', paramsByModel: { gemini: { speakers: pair } } }) });
+    expect(unswitched.dialogueNames).toBeNull();
+    // Switched on before any speaker is written: one blank name per speaker
+    // the settings show, so the lines offer both and alternate between them.
+    const unwritten = buildAudioPanelViewModel({ ...models, nodes: nodes({ model: 'gemini', paramsByModel: { gemini: { speakers: null, _stand_in_on: true } } }) });
+    expect(unwritten.dialogueNames).toEqual(['', '']);
+    const alone = buildAudioPanelViewModel({ ...models, nodes: nodes({ model: 'gemini', paramsByModel: { gemini: { speakers: pair, _stand_in_on: false } } }) });
+    expect(alone.dialogueNames).toBeNull();
+  });
+
+  it('gives each speaker its voice beside its name, blank where none is set, and none reading alone', () => {
+    const pair = [{ speaker: 'Ada', voice: 'Kore' }, { speaker: 'Bo' }];
+    const on = buildAudioPanelViewModel({ ...models, nodes: nodes({ model: 'gemini', paramsByModel: { gemini: { speakers: pair, _stand_in_on: true } } }) });
+    expect(on.dialogueVoices).toEqual(['Kore', '']);
+    const alone = buildAudioPanelViewModel({ ...models, nodes: nodes({ model: 'gemini', paramsByModel: { gemini: { speakers: pair, _stand_in_on: false } } }) });
+    expect(alone.dialogueVoices).toBeNull();
   });
 });

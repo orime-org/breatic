@@ -23,6 +23,8 @@ import { buildDocumentEditor } from '@web/spaces/document/build-document-editor'
 import { DOCUMENT_COMMENT_DRAFT_RANGE } from '@web/spaces/document/document-comment-draft-range';
 import { commentsOn } from '@web/spaces/document/document-comment-extension';
 import { postComment } from '@web/spaces/document/document-comment-post';
+import { setTableFullscreen } from '@web/spaces/document/document-table-fullscreen';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 import {
   hoverThread,
   onSelectedThreadsChange,
@@ -413,3 +415,26 @@ describe('a click beside a picture', () => {
   });
 });
 
+describe('a press on blank space while a table is open full screen (#1427)', () => {
+  it('keeps the comment that was open, the way a press in a cell does', async () => {
+    const { attachBodyScroller } = await import('@web/spaces/document/document-body-press');
+    const editor = open();
+    const threadId = await comment(editor, 0, 5);
+    press(editor, 2);
+    editor.insertBlocks([tableBlock({ rows: [{ cells: ['a1'] }] })] as never, (editor.document as { id: string }[])[0]!.id, 'after');
+    const table = (editor.document as { id: string; type: string }[]).find((block) => block.type === 'docTable')!.id;
+    const view = editor.prosemirrorView!;
+    const scroller = document.createElement('div');
+    const host = view.dom.parentElement === document.body ? view.dom : view.dom.parentElement!;
+    host.parentElement!.insertBefore(scroller, host);
+    scroller.appendChild(host);
+    const detach = attachBodyScroller(view, scroller, editor);
+    setTableFullscreen(editor, { table, scrollTop: 0, offset: 0 });
+
+    scroller.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }));
+    scroller.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0 }));
+
+    expect(selectedThreadsIn(editor.prosemirrorState)).toEqual([threadId]);
+    detach();
+  });
+});

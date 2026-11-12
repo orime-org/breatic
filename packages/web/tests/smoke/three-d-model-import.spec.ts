@@ -355,6 +355,33 @@ test('a textured GLB is registered once, independently edited, undone and reopen
   }
 });
 
+test('an imported rigged model takes presets and one without bones says it has none (inner#1692) @needs-storage @needs-ingest', async ({ page }) => {
+  await openSmokeProject(page);
+  const id = await createSpace(page, '3d', `Imported rigs ${crypto.randomUUID()}`);
+  try {
+    // The built-in figure's own bytes stand in for a rigged character from elsewhere.
+    const rigged: SceneModelInput = { name: 'rigged-character.glb', mimeType: 'model/gltf-binary', buffer: readFileSync('src/spaces/three-d/viewport/assets/figure.glb') };
+    await importModel(page, rigged, 'Rigged character');
+    await importModel(page, sceneGlb(crypto.randomUUID()), 'Unrigged prop');
+    await expect.poll(async () => (await renderedObjects(page)).length, { timeout: test.info().timeout }).toBe(2);
+    const objects = await sceneObjects(page, id);
+    const pick = async (name: string): Promise<void> => {
+      await visibleSpace(page).getByTestId('scene-objects-trigger').click();
+      await page.getByTestId(`scene-object-${objects.find((object) => object.name === name)!.id}`).click();
+      await showProperties(page);
+    };
+    await pick('Rigged character');
+    const section = page.getByTestId('scene-pose-section');
+    await expect(section.getByRole('button', { name: 'Sit', exact: true })).toBeEnabled({ timeout: 30_000 });
+    await expect(page.getByTestId('scene-pose-no-skeleton')).toHaveCount(0);
+    await pick('Unrigged prop');
+    await expect(page.getByTestId('scene-pose-no-skeleton')).toBeVisible({ timeout: 30_000 });
+    await expect(section.getByRole('button', { name: 'Sit', exact: true })).toHaveCount(0);
+  } finally {
+    await deleteSpace(page, id);
+  }
+});
+
 test('a selected ZIP entry preserves original resources through registration and reload @needs-storage @needs-ingest', async ({ page }) => {
   await openSmokeProject(page);
   const id = await createSpace(page, '3d', `Imported ZIP ${crypto.randomUUID()}`);
