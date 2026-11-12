@@ -269,7 +269,7 @@ test('asked outright for a cheese pull food video, it reads the food money shot 
   test.setTimeout(240_000);
   await ask('Make a vertical food video of a pizza with a long cheese pull. Do not ask me anything, just propose it.');
   const turn = await settledTurn(page);
-  expect(turn.templates, `named: ${turn.templates.join(', ')}; tools: ${turn.tools.join(', ')}`).toContain('food-money-shot');
+  expect(turn.templates, `named: ${turn.templates.join(', ')}; read: ${turn.read.join(', ')}; tools: ${turn.tools.join(', ')}`).toContain('food-money-shot');
   expect(turn.read, `read: ${turn.read.join(', ')}`).toContain('food-money-shot');
   await expect(page.getByTestId('proposal-card').last()).toBeVisible({ timeout: 20_000 });
 });
