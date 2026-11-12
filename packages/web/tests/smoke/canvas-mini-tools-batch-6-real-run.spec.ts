@@ -59,6 +59,9 @@ function prepareMedia(): string {
     ...mp4, join(dir, name),
   );
   clip('clip6.mp4', '640x360', 6, 330);
+  // 30 fps, so most frame starts are not whole microseconds, which the browser rounds a seek target to.
+  ffmpeg('-f', 'lavfi', '-i', 'testsrc2=size=640x360:rate=30:duration=6', '-f', 'lavfi', '-i', 'sine=frequency=370:duration=6',
+    ...mp4, join(dir, 'clip6at30.mp4'));
   clip('clip3a.mp4', '640x360', 3, 440);
   clip('clip3b.mp4', '640x360', 3, 550);
   clip('square3.mp4', '480x480', 3, 660);
@@ -466,6 +469,59 @@ test('split: two cut points give three videos that add up to the source @needs-i
     const total = parts.reduce((sum, n) => sum + duration(n.content), 0);
     const whole = duration(await contentOf(c, 'clip6.mp4'));
     expect(Math.abs(total - whole)).toBeLessThanOrEqual(2 * FRAME);
+  } finally {
+    await deleteSpace(page, c.spaceId);
+  }
+});
+
+test('split: a 30 fps video previews a segment between frames and keeps typed rows while others change @needs-ingest @needs-storage', async ({ page }) => {
+  const c = await openCanvas(page, 'split-30fps');
+  try {
+    await upload(c, 'clip6at30.mp4');
+    await presented(c, 'clip6at30.mp4');
+    await openTool(c, 'clip6at30.mp4', 'video.split');
+    const editor = c.page.getByTestId('video-cut-editor');
+    for (const fraction of [0.5, 0.8]) {
+      await seek(c, 'clip6at30.mp4', fraction);
+      await c.page.getByTestId('video-add-cut').click();
+    }
+    await expect(c.page.getByTestId('video-cut-1')).toBeVisible();
+    // 1.04 s falls inside frame 31, whose start 31/30 s is not a whole microsecond.
+    const first = c.page.getByTestId('video-cut-0');
+    await first.fill('1.04');
+    await first.press('Tab');
+    const secondEnd = Number(await c.page.getByTestId('video-cut-1').inputValue());
+    const media = nodeOf(c, 'clip6at30.mp4').getByTestId('media-element');
+    await media.evaluate((el: HTMLMediaElement) => { el.muted = true; });
+    await c.page.getByTestId('video-segment-1').click();
+    await expect(c.page.getByTestId('video-segment-preview')).toBeVisible();
+    await expect.poll(() => media.evaluate((el: HTMLMediaElement) => el.paused), { timeout: 10_000 }).toBe(true);
+    expect(Math.abs(await media.evaluate((el: HTMLMediaElement) => el.currentTime) - secondEnd)).toBeLessThan(0.1);
+    // A third cut, then type into the middle row and remove the first: the typed row keeps the focus and its text.
+    await seek(c, 'clip6at30.mp4', 0.95);
+    await c.page.getByTestId('video-add-cut').click();
+    await expect(c.page.getByTestId('video-cut-2')).toBeVisible();
+    const middle = c.page.getByTestId('video-cut-1');
+    await middle.fill('');
+    await middle.pressSequentially('3.3');
+    await editor.getByRole('button', { name: 'Remove', exact: true }).first().click();
+    const focused = c.page.locator('input:focus');
+    await expect(focused).toHaveValue('3.3');
+    await focused.press('Tab');
+    await expect(c.page.getByTestId('video-cut-0')).toHaveValue('3.3');
+    // Typing a value that reorders the rows, then dragging a handle, moves that handle.
+    const last = c.page.getByTestId('video-cut-1');
+    await last.fill('');
+    await last.pressSequentially('2');
+    const handle = c.page.getByTestId('video-cut-handle-0');
+    const box = (await handle.boundingBox())!;
+    const track = (await c.page.getByTestId('video-playback-track').boundingBox())!;
+    const before = await handle.evaluate((el) => (el as HTMLElement).style.left);
+    await c.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await c.page.mouse.down();
+    await c.page.mouse.move(track.x + track.width * 0.1, box.y + box.height / 2, { steps: 8 });
+    await c.page.mouse.up();
+    await expect.poll(() => handle.evaluate((el) => (el as HTMLElement).style.left)).not.toBe(before);
   } finally {
     await deleteSpace(page, c.spaceId);
   }
