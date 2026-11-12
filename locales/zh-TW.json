@@ -2288,7 +2288,7 @@
         "unchanged": "正文已經和這張快照相同。",
         "restoreFailed": "沒能找回快照。",
         "deleted": "快照已刪除",
-        "leftOut": "{count, plural, other {# 個圖片、影片或音訊還在上傳，沒有存進這張快照。}}",
+        "leftOut": "{count, plural, other {# 個圖片、影片或音訊還沒上傳完成，沒有存進這張快照。}}",
         "contentFailed": "快照內容沒有載入。",
         "gone": "這張快照已經不在了。",
         "saveFailed": "快照沒有儲存。",

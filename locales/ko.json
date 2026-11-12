@@ -2288,7 +2288,7 @@
         "unchanged": "본문이 이미 이 스냅샷과 같습니다.",
         "restoreFailed": "스냅샷을 복원하지 못했습니다.",
         "deleted": "스냅샷을 삭제했습니다",
-        "leftOut": "{count, plural, other {이미지·동영상·오디오 #개가 아직 업로드 중이라 이 스냅샷에 저장되지 않았습니다.}}",
+        "leftOut": "{count, plural, other {이미지·동영상·오디오 #개는 업로드가 완료되지 않아 이 스냅샷에 저장되지 않았습니다.}}",
         "contentFailed": "스냅샷을 불러오지 못했습니다.",
         "gone": "이 스냅샷은 더 이상 없습니다.",
         "saveFailed": "스냅샷을 저장하지 못했습니다.",

@@ -1875,7 +1875,7 @@ export function renderProductGuide(): string {
       "with their names. Content written by a newer version of the editor shows as a box marked " +
       `${quoted(t("spaces.document.unsupported.label"))} and is kept as it is.`,
     `- Snapshots: ${quoted(t("spaces.document.docMenu.saveSnapshot"))} asks for an optional name and keeps the body ` +
-      "as it is; media still uploading is left out and a notice says how many. When the snapshots are " +
+      "as it is; media not finished uploading is left out and a notice says how many. When snapshots are " +
       "full, a notice says to delete old ones first. " +
       `${quoted(t("spaces.document.docMenu.restoreSnapshot"))} opens the ${quoted(t("spaces.document.versions.title"))} ` +
       `panel on the right: ${quoted(t("spaces.document.versions.current"))} on top, then each ` +
@@ -1887,7 +1887,7 @@ export function renderProductGuide(): string {
       `with ${quoted(t("spaces.document.versions.compareWithShown"))} (not on the one shown), ` +
       `${quoted(t("spaces.document.versions.rename"))} ` +
       `and ${quoted(t("spaces.document.versions.delete"))} (the last two not for a Viewer). A comparison marks added ` +
-      "text on a green background, removed text red and struck through, and changed formatting on blue, and " +
+      "text on a green background, removed text red and struck through, changed formatting on blue, and " +
       "folds long unchanged " +
       `stretches into one row that opens on a click; ${quoted(t("spaces.document.versions.exitCompare"))} leaves it. ` +
       `${quoted(t("spaces.document.versions.restore"))} asks first, then replaces the whole body with the snapshot ` +

@@ -33,11 +33,12 @@ export interface ThreadState {
 const CELLS = new Set(['docTableCell', 'docTableHeader']);
 
 /**
- * Whether a block is media still uploading, which a snapshot cannot keep.
+ * Whether a block is media that has not finished uploading (uploading, failed
+ * or left unfinished), which a snapshot cannot keep.
  * @param block - A `blockContainer`'s JSON.
  * @returns True for a pending upload.
  */
-function isUploading(block: Json): boolean {
+function isPendingUpload(block: Json): boolean {
   const content = (block.content as Json[] | undefined)?.[0];
   return content !== undefined && pendingUploadId((content.attrs ?? {}) as Json) !== null;
 }
@@ -51,25 +52,25 @@ function emptyBlock(): Json {
 }
 
 /**
- * A node's JSON without its blocks still uploading.
+ * A node's JSON without its blocks that have not finished uploading.
  * @param node - The node's JSON.
  * @param left - Counts the blocks left out.
  * @param left.out - The count.
  * @returns The JSON to keep.
  */
-function withoutUploading(node: Json, left: { out: number }): Json {
+function withoutPendingUploads(node: Json, left: { out: number }): Json {
   const children = node.content as Json[] | undefined;
   if (children === undefined) return node;
   const kept: Json[] = [];
   for (const child of children) {
-    if (child.type === 'blockContainer' && isUploading(child)) {
+    if (child.type === 'blockContainer' && isPendingUpload(child)) {
       left.out += 1;
       // What is nested under it is finished content: it takes the block's place.
       const nested = (child.content as Json[])[1];
-      if (nested !== undefined) kept.push(...(withoutUploading(nested, left).content as Json[]));
+      if (nested !== undefined) kept.push(...(withoutPendingUploads(nested, left).content as Json[]));
       continue;
     }
-    const next = withoutUploading(child, left);
+    const next = withoutPendingUploads(child, left);
     if (next.type === 'blockGroup' && (next.content as Json[]).length === 0) {
       // A block's children may go; the body itself keeps one line.
       if (node.type !== 'blockContainer') kept.push({ ...next, content: [emptyBlock()] });
@@ -82,13 +83,13 @@ function withoutUploading(node: Json, left: { out: number }): Json {
 }
 
 /**
- * What a snapshot of the body keeps: its JSON without media still uploading.
+ * What a snapshot of the body keeps: its JSON without media that has not finished uploading.
  * @param doc - The body.
- * @returns The JSON, and how many uploading blocks were left out.
+ * @returns The JSON, and how many such blocks were left out.
  */
 export function snapshotOf(doc: PMNode): { content: Json; leftOut: number } {
   const left = { out: 0 };
-  const content = withoutUploading(doc.toJSON() as Json, left);
+  const content = withoutPendingUploads(doc.toJSON() as Json, left);
   return { content, leftOut: left.out };
 }
 

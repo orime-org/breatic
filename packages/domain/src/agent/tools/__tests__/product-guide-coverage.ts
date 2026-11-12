@@ -1156,7 +1156,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "spaces.document.versions.deleted": { excluded: REASONS.ECHO },
   "spaces.document.versions.restored": { excluded: REASONS.ECHO },
   "spaces.document.versions.unchanged": { excluded: REASONS.SAYS_WHAT_HAPPENED },
-  "spaces.document.versions.leftOut": { described: /media still uploading is left out and a notice says how many/ },
+  "spaces.document.versions.leftOut": { described: /media not finished uploading is left out and a notice says how many/ },
   "spaces.document.versions.gone": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "spaces.document.versions.contentFailed": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "spaces.document.versions.saveFailed": { excluded: REASONS.SAYS_WHAT_HAPPENED },
