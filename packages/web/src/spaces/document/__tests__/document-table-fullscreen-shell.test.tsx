@@ -82,7 +82,7 @@ function area(editor: Editor, surface: HTMLElement, readOnly: boolean): React.JS
     <TooltipProvider>
       <DocumentProjectProvider projectId='project-1'>
         <div data-region='space'>
-          <DocumentEditor handle={{ editor, surface }} readOnly={readOnly} myRole={readOnly ? 'viewer' : 'editor'} />
+          <DocumentEditor handle={{ editor, surface, onEvict: () => () => undefined }} readOnly={readOnly} myRole={readOnly ? 'viewer' : 'editor'} />
         </div>
       </DocumentProjectProvider>
     </TooltipProvider>

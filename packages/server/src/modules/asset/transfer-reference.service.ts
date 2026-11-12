@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The transfer reference (inner#1006): the three routes that can legitimately
+ * The transfer reference (inner#1006): the four routes that can legitimately
  * carry more than the request body limit (`/canvas/paste`,
- * `/canvas/node-history/snapshot`, `/chat/message`) also take
+ * `/canvas/node-history/snapshot`, `/chat/message`, `/documents/versions`)
+ * also take
  * `{ "transfer": "<storageKey>" }`, naming a transfer file the caller just
  * uploaded. This checks the reference and reads the body back out of it.
  *

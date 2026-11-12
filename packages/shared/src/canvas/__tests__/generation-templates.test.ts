@@ -167,6 +167,12 @@ afterEach(() => {
 /** The two templates that came over from the old preset shape: one anchor fed by one reference. */
 const MIGRATED = ['costume-sheet', 'storyboard-grid-25'];
 
+/** The food templates (inner#1808), in registry order. */
+const FOOD = ['food-money-shot', 'recipe-process-montage', 'dish-hero-still'];
+
+/** The food templates a video panel lists. */
+const FOOD_VIDEOS = FOOD.filter((id) => id !== 'dish-hero-still');
+
 /** The social hook templates (inner#1816), in registry order. */
 const SOCIAL_HOOKS = [
   'pet-selfie-vlog',
@@ -291,6 +297,7 @@ describe('generation templates', () => {
       'expression-sheet',
       'character-design-from-text',
       'storyboard-grid-25',
+      'dish-hero-still',
       'fisheye-clone-pov',
       'flash-photo-dump-grid',
     ]);
@@ -298,6 +305,7 @@ describe('generation templates', () => {
       'single-view-refs-scene',
       'identity-locked-sequence',
       'character-showcase-orbit',
+      ...FOOD_VIDEOS,
       ...SOCIAL_HOOK_VIDEOS,
       'clip-ambience-foley',
     ]);
@@ -342,6 +350,9 @@ describe('generation templates', () => {
       },
       'identity-locked-sequence': { result: { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 8 } } },
       'character-showcase-orbit': { result: { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 6 } } },
+      'food-money-shot': t2v(8),
+      'recipe-process-montage': t2v(15),
+      'dish-hero-still': { result: { type: 'image', mode: 'i2i', model: 'gpt-image-2.5-sunburst-edit', params: { aspect_ratio: '4:5' } } },
       'pet-selfie-vlog': t2v(10),
       'phone-vlog-realism': t2v(15),
       'retro-found-footage': t2v(10, '4:3'),
@@ -461,11 +472,12 @@ describe('generation templates', () => {
 
 describe('creative goals and triggers', () => {
   it('lists the goals the registry uses, in panel order', () => {
-    expect([...TEMPLATE_GOALS]).toEqual(['character', 'comics-storyboards', 'social-hooks', 'sound']);
+    expect([...TEMPLATE_GOALS]).toEqual(['character', 'comics-storyboards', 'food', 'social-hooks', 'sound']);
   });
 
   it('gives every template a known goal and words the user asks for it with, and words for when to offer it unless it has none', () => {
     const goals: Record<string, string> = {
+      ...Object.fromEntries(FOOD.map((id) => [id, 'food'])),
       ...Object.fromEntries(SOCIAL_HOOKS.map((id) => [id, 'social-hooks'])),
       ...Object.fromEntries(SOUND.map((id) => [id, 'sound'])),
       'storyboard-grid-25': 'comics-storyboards',
@@ -513,10 +525,12 @@ describe('creative goals and triggers', () => {
     expect(templateGoalsFor('image').map(({ goal, templates }) => [goal, templates.map((one) => one.id)])).toEqual([
       ['character', ['costume-sheet', 'character-bible', 'expression-sheet', 'character-design-from-text']],
       ['comics-storyboards', ['storyboard-grid-25']],
+      ['food', ['dish-hero-still']],
       ['social-hooks', ['fisheye-clone-pov', 'flash-photo-dump-grid']],
     ]);
     expect(templateGoalsFor('video').map(({ goal, templates }) => [goal, templates.map((one) => one.id)])).toEqual([
       ['character', ['single-view-refs-scene', 'identity-locked-sequence', 'character-showcase-orbit']],
+      ['food', FOOD_VIDEOS],
       ['social-hooks', SOCIAL_HOOK_VIDEOS],
       ['sound', ['clip-ambience-foley']],
     ]);

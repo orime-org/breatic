@@ -684,7 +684,8 @@ export async function updateProjectMeta(
  * saying so for two months after that stopped being true.
  *
  * Does NOT copy:
- *   - Conversations, messages, tasks, or node_history (these belong
+ *   - Conversations, messages, tasks, node_history or document
+ *     snapshots (these belong
  *     to the user's past work; the duplicate starts with a fresh
  *     timeline)
  *   - Project / user memory rows (derived from past conversations

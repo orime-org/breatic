@@ -141,7 +141,7 @@ export function mountDocumentEditor(
   if (!surface) throw new Error('open the editor with openSharedBody first');
   const body = (
     <DocumentEditor
-      handle={{ editor, surface }}
+      handle={{ editor, surface, onEvict: () => () => undefined }}
       readOnly={readOnly}
       myRole={readOnly ? 'viewer' : 'editor'}
     />
