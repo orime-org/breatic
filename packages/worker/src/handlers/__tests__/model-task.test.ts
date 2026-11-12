@@ -72,6 +72,7 @@ const TASK: ModelTask = {
   projectId: "p1",
   outputCount: 1,
   deadlineAt: Date.now() + 60_000,
+  lastAttempt: true,
 };
 
 /**
@@ -98,7 +99,7 @@ describe("runModelTask", () => {
     const { run, input } = await handed(TASK);
 
     expect(input).toEqual({ prompt: "a drone shot", params: { image: "https://cdn/x.png", duration: 5 } });
-    expect(run).toMatchObject({ taskId: "task-1", studioId: "studio-1", model: "kling-o3-pro", outputCount: 1, deadlineAt: TASK.deadlineAt });
+    expect(run).toMatchObject({ taskId: "task-1", studioId: "studio-1", model: "kling-o3-pro", outputCount: 1, deadlineAt: TASK.deadlineAt, lastAttempt: true });
   });
 
   it("runs on the route the estimate used, and on the default one when the task names none", async () => {

@@ -114,7 +114,9 @@ function produced(taskId: string, model: string, done: MediaRunDone): RunProduce
   const outputs: PersistedOutput[] = done.outputs.map((output) =>
     output.kind === "url" ? { url: output.url } : { extra: { buffer: Buffer.from(output.bytes), contentType: output.contentType } },
   );
-  return { result: { outputs, model }, ...pricedCosts(taskId, done.costs), servedBy: done.servedBy };
+  // A step provider gave up is not charged; what it cost stays in the log.
+  if (done.notice) logger.warn({ taskId, notice: done.notice, passedOverCosts: done.passedOverCosts }, "optional_step_failed");
+  return { result: { outputs, model, ...(done.notice && { notice: done.notice }) }, ...pricedCosts(taskId, done.costs), servedBy: done.servedBy };
 }
 
 
@@ -582,6 +584,7 @@ async function runTaskBody(
         projectId,
         taskId,
         deadlineAt,
+        lastAttempt: isTerminalAttempt(job),
       });
     } else if (taskType === "understand") {
       // A reading answers with one piece of text, and the row on the node it
@@ -618,6 +621,7 @@ async function runTaskBody(
         projectId,
         outputCount: 1,
         deadlineAt,
+        lastAttempt: isTerminalAttempt(job),
       }));
     } else {
       throw new Error(`Task type '${taskType}' has no runner`);
@@ -1935,6 +1939,8 @@ interface RunMiniToolOpts {
   taskId: string;
   /** The task's deadline, in epoch milliseconds. */
   deadlineAt: number;
+  /** Whether no retry follows this attempt. */
+  lastAttempt: boolean;
 }
 
 /**
@@ -1949,7 +1955,7 @@ interface RunMiniToolOpts {
  * @throws {Error} When the registry holds no such server-run tool, or the run has no project or source.
  */
 export async function runMiniTool(opts: RunMiniToolOpts): Promise<RunProduce> {
-  const { toolId, params, userId, projectId, taskId, deadlineAt } = opts;
+  const { toolId, params, userId, projectId, taskId, deadlineAt, lastAttempt } = opts;
   const spec = miniToolById(toolId);
   if (!spec) throw new Error(`mini-tool ${toolId} is not in the registry`);
 
@@ -1963,6 +1969,7 @@ export async function runMiniTool(opts: RunMiniToolOpts): Promise<RunProduce> {
       projectId,
       outputCount: spec.outputs.length,
       deadlineAt,
+      lastAttempt,
     });
     return produced(taskId, model, done);
   }

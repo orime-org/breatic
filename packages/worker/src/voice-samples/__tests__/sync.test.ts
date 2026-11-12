@@ -113,7 +113,7 @@ describe("ticketedPredict", () => {
   const NONE = { clones: [], retiredClones: [], warnings: [] };
   const send = (t: MediaTicket): MediaAnswer => ({ state: "send", ticket: t, step: { kind: "generate" }, ...NONE });
   const running = (t: MediaTicket, askAgainAt: number): MediaAnswer => ({ state: "running", ticket: t, askAgainAt, ...NONE });
-  const done: MediaAnswer = { state: "done", outputs: [{ kind: "url", url: "https://out.test/a.mp3" }], costs: [], servedBy: "wavespeed", ...NONE };
+  const done: MediaAnswer = { state: "done", outputs: [{ kind: "url", url: "https://out.test/a.mp3" }], costs: [], servedBy: "wavespeed", passedOverCosts: [], ...NONE };
 
   /**
    * A runner whose answers each case scripts.

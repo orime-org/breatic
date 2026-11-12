@@ -6,6 +6,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { OFF_WAVESPEED } from "../../media/wavespeed/__tests__/departures.js";
 import { createProvider } from "../../provider.js";
+import { assess } from "../../pricing/estimate.js";
 import { assertBindsCatalog, parseProviderConfig } from "../schema.js";
 import { catalog, ROOT, shipped, yaml } from "./shipped.js";
 
@@ -21,12 +22,13 @@ describe("the shipped provider configuration", () => {
     expect(off.map(([name]) => name)).toEqual([]);
   });
 
-  it("runs Voice Cloning's speech after the clone on WaveSpeed, and every other extra call first", () => {
+  it("runs Voice Cloning's speech and a Tripo rig after the model's own call on WaveSpeed, and every other extra call first", () => {
     const { models } = parseProviderConfig(shipped());
     const at = (name: string): string[] =>
       (models[name]?.find((b) => b.upstream === "wavespeed")?.extra_steps ?? []).map((step) => `${step.endpoint}@${step.at}`);
     expect(at("minimax-voice-clone")).toEqual(["minimax/speech-2.8-hd@after"]);
     expect(at("kling-video-o3-4k-image-to-video")).toEqual(["kwaivgi/kling-elements@before"]);
+    for (const tripo of ["tripo-h3.1-t23d", "tripo-h3.1-i23d", "tripo-h3.1-multiview"]) expect(at(tripo), tripo).toEqual(["tripo3d/rig@after"]);
     expect(at("mureka-v9.5-generate-song")).toEqual([
       "mureka-ai/create-upload-id@before",
       "mureka-ai/create-upload-id@before",
@@ -95,6 +97,59 @@ describe("the shipped provider configuration", () => {
     const llm = shipped().llm!;
     const missing = Object.keys(llm.prices ?? {}).filter((model) => llm.openrouter_prices?.[model] === undefined);
     expect(missing).toEqual([]);
+  });
+
+  describe("the optional rig after a Tripo H3.1 generation (inner#1692)", () => {
+    const TRIPO = ["tripo-h3.1-t23d", "tripo-h3.1-i23d", "tripo-h3.1-multiview"];
+
+    it.each(TRIPO)("%s rigs on rig_skeleton as an optional step priced per run", (model) => {
+      const binding = parseProviderConfig(shipped()).models[model]?.find((b) => b.upstream === "wavespeed");
+      expect(binding?.extra_steps).toEqual([{
+        kind: "rig",
+        endpoint: "tripo3d/rig",
+        at: "after",
+        for_param: "rig_skeleton",
+        optional: true,
+        pricing: { kind: "formula", base_price: 300000, formula: "", discount_rate: 100 },
+      }]);
+    });
+
+    it.each(TRIPO)("%s never sends rig_skeleton to the generation: no field binds it", (model) => {
+      const binding = parseProviderConfig(shipped()).models[model]?.find((b) => b.upstream === "wavespeed");
+      expect(binding?.params).toBeDefined();
+      expect(Object.keys(binding?.params ?? {})).not.toContain("rig_skeleton");
+    });
+
+    it("binds no field to a param that switches on a step after the model's own call, on any model", () => {
+      const leaked = Object.entries(parseProviderConfig(shipped()).models).flatMap(([model, bindings]) =>
+        bindings.flatMap((b) => (b.extra_steps ?? [])
+          .filter((s) => s.at === "after" && s.for_param !== undefined && b.params?.[s.for_param] !== undefined)
+          .map((s) => `${model}.${s.for_param!}`)));
+      expect(leaked).toEqual([]);
+    });
+
+    it.each(TRIPO)("%s takes a run asking for a skeleton only on WaveSpeed, the one upstream that rigs", async (model) => {
+      const provider = createProvider({ config: shipped(), keyOf: () => "k", llmMaxRetries: 0, cleanText: (t) => t });
+      const rules = provider.pricingRules(model);
+      const run = (rig: boolean) => ({ params: { rig_skeleton: rig }, prompt: "a knight", durations: {}, placeholders: [], durationsMissing: [] });
+      for (const upstream of ["fal", "sandbase"]) {
+        expect(await assess(rules, upstream, run(true)), upstream).toHaveProperty("rejected");
+        expect(await assess(rules, upstream, run(false)), upstream).toHaveProperty("estimate");
+      }
+      expect(await assess(rules, "wavespeed", run(true))).toHaveProperty("estimate");
+    });
+
+    it.each(TRIPO)("%s estimates the rig only when rig_skeleton is on", async (model) => {
+      const provider = createProvider({ config: shipped(), keyOf: (name) => (name === "WAVESPEED_API_KEY" ? "k" : undefined), llmMaxRetries: 0, cleanText: (t) => t });
+      const at = (params: Record<string, unknown>): Promise<number | undefined> =>
+        provider.estimate(model, { params, prompt: "a knight", durations: {}, placeholders: [], durationsMissing: [] }, { mode: "default" }).then((e) => e?.usd);
+      const absent = await at({});
+      const off = await at({ rig_skeleton: false });
+      const on = await at({ rig_skeleton: true });
+      expect(absent).toBeDefined();
+      expect(off).toBeCloseTo(absent!, 9);
+      expect(on! - absent!).toBeCloseTo(0.3, 9);
+    });
   });
 
   it("ships the deployment override only as a template", () => {

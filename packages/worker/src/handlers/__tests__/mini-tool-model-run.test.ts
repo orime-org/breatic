@@ -32,11 +32,11 @@ vi.mock("@worker/handlers/model-task.js", () => ({ runModelTask: h.runModelTask,
 
 import { runMiniTool } from "@worker/handlers/dispatch.js";
 
-const RUN = { userId: "u1", projectId: "p1", taskId: "task-1", deadlineAt: 1_800_000_000_000 };
+const RUN = { userId: "u1", projectId: "p1", taskId: "task-1", deadlineAt: 1_800_000_000_000, lastAttempt: true };
 
 beforeEach(() => {
   h.runModelTask.mockReset();
-  h.runModelTask.mockResolvedValue({ outputs: [{ kind: "url", url: "https://cdn/out.mp4" }], costs: [], servedBy: "wavespeed" });
+  h.runModelTask.mockResolvedValue({ outputs: [{ kind: "url", url: "https://cdn/out.mp4" }], costs: [], servedBy: "wavespeed", passedOverCosts: [] });
 });
 
 describe("a model mini-tool", () => {
@@ -53,6 +53,7 @@ describe("a model mini-tool", () => {
       projectId: "p1",
       outputCount: 1,
       deadlineAt: RUN.deadlineAt,
+      lastAttempt: true,
     });
   });
 

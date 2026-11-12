@@ -35,6 +35,12 @@ export const DEPARTURES: Readonly<Record<string, { rename?: Record<string, strin
 export const ADDED_AFTER_FREEZE: Readonly<Record<string, readonly string[]>> = {
   // MiniMax's language_boost, with the official values (platform.minimax.io speech-t2a-http).
   "minimax-speech-2.8-hd": ["language_boost"],
+  // A model main added after the freeze (inner#1825): a voice described in words.
+  "qwen3-tts-voice-design": ["voice_description", "language"],
+  // The optional rig after a Tripo generation (inner#1692); its switch never reaches the generation.
+  "tripo-h3.1-t23d": ["rig_skeleton"],
+  "tripo-h3.1-i23d": ["rig_skeleton"],
+  "tripo-h3.1-multiview": ["rig_skeleton"],
 };
 
 /**

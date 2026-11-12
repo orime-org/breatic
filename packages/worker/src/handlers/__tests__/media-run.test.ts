@@ -50,7 +50,9 @@ const running = (t: MediaTicket, askAgainAt = LATER): MediaAnswer => ({ state: "
 const COST: Cost = { state: "known", usd: 0.25, source: "billing" };
 /** What the run hands provider once opened. */
 const INPUT = { prompt: "hello", params: { audio: "https://cdn/a.mp3", speed: 1 } };
-const done = (urls: string[]): MediaAnswer => ({ state: "done", outputs: urls.map((url) => ({ kind: "url" as const, url })), costs: [COST], servedBy: "fal", ...NONE });
+const done = (urls: string[], extra: { notice?: "rig_failed"; passedOverCosts?: Cost[] } = {}): MediaAnswer => ({
+  state: "done", outputs: urls.map((url) => ({ kind: "url" as const, url })), costs: [COST], servedBy: "fal", passedOverCosts: [], ...extra, ...NONE,
+});
 
 /**
  * The kind of a fake ticket's next step.
@@ -123,6 +125,7 @@ function setup(held: Partial<Held> = {}, runner: Partial<MediaRunner> = {}, lega
     route: { mode: "default" },
     deadlineAt: LATER,
     outputCount: 1,
+    lastAttempt: false,
   };
   return { run, deps, store, recorded, retired, slot };
 }
@@ -171,7 +174,29 @@ describe("a new task", () => {
 
     expect(deps.runner.send).toHaveBeenCalledTimes(2);
     // A generation writes as many outputs as it has nodes for.
-    expect(result).toEqual({ outputs: [{ kind: "url", url: "https://up/a.wav" }], costs: [COST], servedBy: "fal" });
+    expect(result).toEqual({ outputs: [{ kind: "url", url: "https://up/a.wav" }], costs: [COST], servedBy: "fal", passedOverCosts: [] });
+  });
+
+  it("tells every send whether it is the caller's last try, so an optional step is given up then", async () => {
+    const bounds = await Promise.all([true, false].map(async (lastAttempt) => {
+      const { run, deps } = setup({}, { plan: vi.fn(async () => send(ticket(1, "send"))), send: vi.fn(async () => done(["https://up/a.glb"])) });
+      await runMedia({ ...run, lastAttempt }, deps);
+      return vi.mocked(deps.runner.send).mock.calls.map(([, sent]) => sent);
+    }));
+
+    expect(bounds).toEqual([[{ deadlineAt: LATER, final: true }], [{ deadlineAt: LATER, final: false }]]);
+  });
+
+  it("hands back a passed-over optional step's notice and what it cost, apart from the delivered steps", async () => {
+    const RIG: Cost = { state: "known", usd: 0.3, source: "billing" };
+    const { run, deps } = setup({}, {
+      plan: vi.fn(async () => send(ticket(1, "send"))),
+      send: vi.fn(async () => done(["https://up/a.glb"], { notice: "rig_failed", passedOverCosts: [RIG] })),
+    });
+
+    const result = await runMedia(run, deps);
+
+    expect(result).toEqual({ outputs: [{ kind: "url", url: "https://up/a.glb" }], costs: [COST], servedBy: "fal", passedOverCosts: [RIG], notice: "rig_failed" });
   });
 
   it("keeps the sending mark of a send that finished the run, for the caller to clear once the result is recorded", async () => {
@@ -226,7 +251,7 @@ describe("a task holding a ticket", () => {
 
     await expect(runMedia(run, deps)).rejects.toBeInstanceOf(StillRunning);
 
-    expect(deps.runner.send).toHaveBeenCalledWith(held, { deadlineAt: LATER });
+    expect(deps.runner.send).toHaveBeenCalledWith(held, { deadlineAt: LATER, final: false });
   });
 
   it("sends nothing new past the deadline", async () => {

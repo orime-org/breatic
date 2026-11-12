@@ -25,9 +25,16 @@ const IMAGE = {
     aspect_ratio: { default: "1:1", values: ["1:1", "16:9"], fill: "panel" },
     resolution: { default: "2k", values: ["1k", "2k"], fill: "panel" },
     caption: { default: null, type: "text", max_length: 5, fill: "panel" },
+    voice_description: { default: null, type: "text", min_length: 3, fill: "panel" },
     images: { type: "list", max_items: 13, default: null, fill: "pool", mention: "image {n}" },
     style_images: { type: "list", max_items: 3, default: null, fill: "canvas", joins: "images", prompt_note: "Style references: {list}." },
   },
+};
+
+/** A storyboard model: each shot's prompt is text the user typed. */
+const STORYBOARD = {
+  name: "storyboard",
+  params: { shots: { default: null, type: "items", fill: "panel", fields: { prompt: { type: "text" }, duration: { values: [2, 3] } } } },
 };
 
 /**
@@ -39,7 +46,7 @@ const IMAGE = {
 const files = (n: number, tag: string): string[] => Array.from({ length: n }, (_, i) => `${tag}${i}`);
 
 beforeEach(() => {
-  h.getFullModelConfig.mockReturnValue({ models: [IMAGE] });
+  h.getFullModelConfig.mockReturnValue({ models: [IMAGE, STORYBOARD] });
 });
 
 describe("validateModelParams", () => {
@@ -70,6 +77,24 @@ describe("validateModelParams", () => {
 
   it("refuses a text param longer than its cap, naming it", () => {
     expect(() => validateModelParams("image", "edit", { caption: "too long" })).toThrow(/caption is 8 characters once cleaned; edit takes at most 5/);
+  });
+
+  it("sends each text setting cleaned, the way the prompt is", () => {
+    expect(validateModelParams("image", "edit", { caption: " <b>hi</b>\u200b " })[1].caption).toBe("hi");
+  });
+
+  it("cleans each text field of a list's entries and keeps its other fields", () => {
+    const [, cleaned] = validateModelParams("image", "storyboard", {
+      shots: [{ prompt: "<b>a boat</b>", duration: 2 }, { prompt: "the pond\u200b <!-- x -->", duration: 3 }],
+    });
+
+    expect(cleaned.shots).toEqual([{ prompt: "a boat", duration: 2 }, { prompt: "the pond", duration: 3 }]);
+  });
+
+  it("refuses a text setting shorter than its least length once cleaned, naming it", () => {
+    expect(() => validateModelParams("image", "edit", { voice_description: "<i>ab</i> " })).toThrow(
+      /voice_description is 2 characters once cleaned; edit takes at least 3/,
+    );
   });
 
   it("refuses a model the catalog does not have", () => {

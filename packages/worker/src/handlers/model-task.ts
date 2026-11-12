@@ -35,6 +35,8 @@ export interface ModelTask {
   outputCount: number;
   /** The task's deadline, in epoch milliseconds. */
   deadlineAt: number;
+  /** Whether no retry follows this attempt. */
+  lastAttempt: boolean;
 }
 
 /** Fields a task carries in its params that are not the model's. */
@@ -129,7 +131,16 @@ export async function runModelTask(task: ModelTask): Promise<MediaRunDone> {
     readingPlace: withUnderstandSlot,
     pollIntervalMs: getWorkerConfig().poll_interval,
   };
-  return runMedia({ taskId: task.taskId, studioId, model: entry.name, input, route, deadlineAt: task.deadlineAt, outputCount: task.outputCount }, deps);
+  return runMedia({
+    taskId: task.taskId,
+    studioId,
+    model: entry.name,
+    input,
+    route,
+    deadlineAt: task.deadlineAt,
+    outputCount: task.outputCount,
+    lastAttempt: task.lastAttempt,
+  }, deps);
 }
 
 /**

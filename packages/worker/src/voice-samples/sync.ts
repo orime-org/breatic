@@ -233,6 +233,8 @@ export function ticketedPredict(runner: MediaRunner, waiting: PredictionWaiting)
           // A maintainer's run: each sample gets its own two hours.
           deadlineAt: budgetDeadlineFrom(Date.now()),
           outputCount: 1,
+          // A failed send is not retried here.
+          lastAttempt: true,
         }, deps);
         tickets.forget(job.key);
         const output = done.outputs[0];

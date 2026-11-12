@@ -37,6 +37,8 @@ export interface MediaRun {
   deadlineAt: number;
   /** How many outputs the task writes: 1 for a canvas generation, the tool's outputs for a mini-tool. */
   outputCount: number;
+  /** Whether this pickup is the queue's last try, so provider gives an optional step up on any failure. */
+  lastAttempt: boolean;
 }
 
 /** What the run reads and writes besides provider. */
@@ -71,6 +73,10 @@ export interface MediaRunDone {
   costs: Cost[];
   /** The upstream that served it. */
   servedBy: string;
+  /** What the optional steps provider gave up cost; failed steps are not charged. */
+  passedOverCosts: Cost[];
+  /** Set when an optional step was given up, for the user to see. */
+  notice?: "rig_failed";
 }
 
 /**
@@ -185,7 +191,7 @@ async function store(run: MediaRun, deps: MediaRunDeps, ticket: MediaTicket, sto
  */
 async function sendOnce(run: MediaRun, deps: MediaRunDeps, ticket: MediaTicket): Promise<MediaAnswer> {
   await deps.tickets.markSending(run.taskId);
-  return deps.runner.send(ticket, { deadlineAt: run.deadlineAt });
+  return deps.runner.send(ticket, { deadlineAt: run.deadlineAt, final: run.lastAttempt });
 }
 
 /**
@@ -218,7 +224,13 @@ export async function runMedia(run: MediaRun, deps: MediaRunDeps): Promise<Media
       switch (answer.state) {
         case "done":
           // The mark of a send that finished the run stays until the caller records the result (design §12.2).
-          return { outputs: answer.outputs.slice(0, run.outputCount), costs: answer.costs, servedBy: answer.servedBy };
+          return {
+            outputs: answer.outputs.slice(0, run.outputCount),
+            costs: answer.costs,
+            servedBy: answer.servedBy,
+            passedOverCosts: answer.passedOverCosts,
+            ...(answer.notice && { notice: answer.notice }),
+          };
         case "failed":
           await unmark();
           throw new MediaRunFailed(answer.reason, answer.costs);

@@ -33,15 +33,6 @@ const FORCES = [
   },
 ];
 
-/** The rigging step every entry declares (inner#1692, design 6.1). */
-const RIG_STEP = {
-  endpoint: "tripo3d/rig",
-  at: "after",
-  for_param: "rig_skeleton",
-  optional: true,
-  pricing: { base_price: 300_000, formula: "", discount_rate: 100 },
-};
-
 /** Each entry's sources and its default generation price in US cents (Standard texture with PBR). */
 const DEFAULT_RUNS: readonly { name: string; params: Record<string, unknown>; cents: number }[] = [
   { name: T23D, params: {}, cents: 24 },
@@ -180,17 +171,10 @@ describe("rigging a generated 3D model (inner#1692)", () => {
     }
   });
 
-  it("declares exactly one extra step on every entry: the optional rig after generation", () => {
-    for (const name of [T23D, I23D, MULTIVIEW]) {
-      expect(declared(name).extra_steps, name).toEqual([RIG_STEP]);
-    }
-  });
-
-  it("ships the rig toggle and the optional rig step to the panel intact", () => {
+  it("ships the rig toggle to the panel intact", () => {
     const wire = sanitizeModelCatalog(JSON.parse(JSON.stringify(getModelCatalog())));
     expect(wire.three_d).toHaveLength(3);
     for (const entry of wire.three_d) {
-      expect(entry.extra_steps, entry.name).toEqual([RIG_STEP]);
       expect(entry.params.rig_skeleton, entry.name).toMatchObject({ default: false, values: [true, false], fill: "panel" });
     }
   });

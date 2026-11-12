@@ -73,6 +73,19 @@ describe("a param the catalog gained after today's code was frozen", () => {
     const body = buildBody(binding, { params: { voice_id: "Wise_Woman", language_boost: "Chinese,Yue" }, prompt: "hello" });
     expect(body).toMatchObject({ text: "hello", voice_id: "Wise_Woman", language_boost: "Chinese,Yue" });
   });
+
+  it("sends a voice described in words as WaveSpeed's voice design takes it", () => {
+    const binding = bindings.get("qwen3-tts-voice-design")!;
+    const body = buildBody(binding, { params: { voice_description: "A calm narrator", language: "English" }, prompt: "hello" });
+    expect(body).toEqual({ text: "hello", voice_description: "A calm narrator", language: "English" });
+  });
+
+  it("keeps the rig switch off a Tripo generation's own body", () => {
+    for (const model of ["tripo-h3.1-t23d", "tripo-h3.1-i23d", "tripo-h3.1-multiview"]) {
+      const body = buildBody(bindings.get(model)!, { params: { rig_skeleton: true }, prompt: "a knight" });
+      expect(body, model).not.toHaveProperty("rig_skeleton");
+    }
+  });
 });
 
 describe("the body fixture samples every input the bindings read", () => {

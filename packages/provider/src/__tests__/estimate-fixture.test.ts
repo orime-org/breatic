@@ -6,7 +6,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { shipped } from "../config/__tests__/shipped.js";
 import { estimateCost, type EstimateInput } from "../pricing/estimate.js";
-import { holdsRefused, OFF_WAVESPEED, outsideVendor } from "../media/wavespeed/__tests__/departures.js";
+import { ADDED_AFTER_FREEZE, holdsRefused, OFF_WAVESPEED, outsideVendor } from "../media/wavespeed/__tests__/departures.js";
 import { createProvider } from "../provider.js";
 
 interface EstimateFixture {
@@ -24,12 +24,15 @@ describe("the estimate fixture prices every extra step with its param present", 
     for (const [model, { upstreams }] of Object.entries(shipped().media.models)) {
       for (const step of upstreams.find((b) => b.upstream === "wavespeed")?.extra_steps ?? []) {
         if (step.for_param === undefined || step.pricing === undefined) continue;
+        // A step added after the fixture froze is priced by its own test in shipped-config.test.ts.
+        if (ADDED_AFTER_FREEZE[model]?.includes(step.for_param) === true) continue;
         const name = step.for_param;
         const filled = fixture.cases.some((c) => {
           if (c.model !== model) return false;
           const value = c.input.params[name];
           if (step.per_item === true) return Array.isArray(value) && value.length >= 2;
-          return value !== undefined && value !== null && value !== "" && !(Array.isArray(value) && value.length === 0);
+          // A switch turned off asks for no step, so it samples nothing (inner#1692).
+          return value !== undefined && value !== null && value !== "" && value !== false && !(Array.isArray(value) && value.length === 0);
         });
         if (!filled) unsampled.push(`${model}.${name}`);
       }

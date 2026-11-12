@@ -188,7 +188,7 @@ beforeEach(() => {
   h.taskDeadline.mockResolvedValue(DEADLINE);
   h.markCompletedAndBill.mockResolvedValue(true);
   h.markFailed.mockResolvedValue(true);
-  h.runModelTask.mockResolvedValue({ outputs: [{ kind: "url", url: GLB }], costs: [{ state: "known", usd: 0.24, source: "billing" }], servedBy: "wavespeed" });
+  h.runModelTask.mockResolvedValue({ outputs: [{ kind: "url", url: GLB }], costs: [{ state: "known", usd: 0.24, source: "billing" }], servedBy: "wavespeed", passedOverCosts: [] });
   h.resolveRegisteredProjectMedia.mockImplementation(async (_projectId, fileUrl) => ({
     assetId: "asset-glb",
     fileUrl,
@@ -267,7 +267,7 @@ describe("a 3D generation on the catalog lane (inner#1691)", () => {
 });
 
 /**
- * A run whose optional rig step failed (inner#1692, design 6.2): the run
+ * A run whose optional rig step provider gave up: the run
  * hands `notice: 'rig_failed'` up with its outputs, the task row's stored
  * result keeps it, and every path that settles the Space row reads it from
  * there, so the row says the model cannot be posed however it was settled.
@@ -277,12 +277,18 @@ describe("a 3D generation whose rig failed (inner#1692)", () => {
     await runTask(sceneJob(0), "lock-token");
     await runTask(sceneJob(2), "lock-token");
 
-    expect(h.runCatalogTask.mock.calls[0]![1]).toMatchObject({ lastAttempt: false });
-    expect(h.runCatalogTask.mock.calls[1]![1]).toMatchObject({ lastAttempt: true });
+    expect(h.runModelTask.mock.calls[0]![0]).toMatchObject({ lastAttempt: false });
+    expect(h.runModelTask.mock.calls[1]![0]).toMatchObject({ lastAttempt: true });
   });
 
   it("stores the notice on the task's result and settles the row done with it", async () => {
-    h.runCatalogTask.mockResolvedValue({ outputs: [{ url: GLB }], cost: 0.24, model: "tripo-h3.1-t23d", notice: "rig_failed" });
+    h.runModelTask.mockResolvedValue({
+      outputs: [{ kind: "url", url: GLB }],
+      costs: [{ state: "known", usd: 0.24, source: "billing" }],
+      servedBy: "wavespeed",
+      passedOverCosts: [{ state: "known", usd: 0.1, source: "billing" }],
+      notice: "rig_failed",
+    });
 
     const result = await runTask(sceneJob(), "lock-token");
 
@@ -290,6 +296,13 @@ describe("a 3D generation whose rig failed (inner#1692)", () => {
     const stored = h.markCompletedAndBill.mock.calls[0]![1] as Record<string, unknown>;
     expect(stored).toMatchObject({ notice: "rig_failed" });
     expect(h.settleSceneRowById).toHaveBeenCalledExactlyOnceWith("row-1", { outcome: "done", assetId: "asset-glb", notice: "rig_failed" });
+    // The given-up step is not charged; what it cost is kept in the log.
+    expect(h.markCompletedAndBill.mock.calls[0]![2]).toBe(0.24);
+    const { logger } = await import("@breatic/core");
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ taskId: "task-1", notice: "rig_failed", passedOverCosts: [{ state: "known", usd: 0.1, source: "billing" }] }),
+      "optional_step_failed",
+    );
   });
 
   it("settles the row with the notice when a billed job is delivered again", async () => {
@@ -301,12 +314,18 @@ describe("a 3D generation whose rig failed (inner#1692)", () => {
 
     await runTask(sceneJob(), "lock-token");
 
-    expect(h.runCatalogTask).not.toHaveBeenCalled();
+    expect(h.runModelTask).not.toHaveBeenCalled();
     expect(h.settleSceneRowById).toHaveBeenCalledExactlyOnceWith("row-1", { outcome: "done", assetId: "asset-glb", notice: "rig_failed" });
   });
 
   it("settles the same row the same way on the live path and on billed redelivery", async () => {
-    h.runCatalogTask.mockResolvedValue({ outputs: [{ url: GLB }], cost: 0.24, model: "tripo-h3.1-t23d", notice: "rig_failed" });
+    h.runModelTask.mockResolvedValue({
+      outputs: [{ kind: "url", url: GLB }],
+      costs: [{ state: "known", usd: 0.24, source: "billing" }],
+      servedBy: "wavespeed",
+      passedOverCosts: [{ state: "known", usd: 0.1, source: "billing" }],
+      notice: "rig_failed",
+    });
     await runTask(sceneJob(), "lock-token");
     const stored = h.markCompletedAndBill.mock.calls[0]![1] as Record<string, unknown>;
     const live = h.settleSceneRowById.mock.calls[0]![1];
