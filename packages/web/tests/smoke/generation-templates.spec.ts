@@ -498,12 +498,15 @@ async function nodeIdNamed(name: string): Promise<string> {
   return id;
 }
 
-test('the food goal holds its two videos in a video panel and its menu photo in an image panel', async () => {
+test('a video panel lists the two food videos under the food goal', async () => {
   await openPanelOnNewNode('video');
   await openGoal('food');
   await expect(page.getByTestId('generate-template-goal-food')).toHaveText(/^Food\s*2$/);
   expect(await listedTemplates()).toEqual(['food-money-shot', 'recipe-process-montage']);
   await closeTemplateMenu();
+});
+
+test('an image panel lists the dish hero still under the food goal', async () => {
   await openPanelOnNewNode('image');
   await openGoal('food');
   await expect(page.getByTestId('generate-template-goal-food')).toHaveText(/^Food\s*1$/);
