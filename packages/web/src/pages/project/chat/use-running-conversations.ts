@@ -67,8 +67,8 @@ export function useRunningConversations(projectId: string, open: boolean): Reado
     return (): void => window.removeEventListener('focus', onFocus);
   }, [open, refetch]);
 
-  // A turn that ended here: the server released its lease before the stream
-  // closed, so asking now drops the mark without waiting for the next poll.
+  // A turn that ended here: the last answer still listed it, so asking now
+  // drops the mark without waiting for the next poll.
   React.useEffect(
     () =>
       useRunningTurns.subscribe((next, prev) => {

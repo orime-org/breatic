@@ -1527,11 +1527,8 @@ async function remove(projectId: string, conversationId: string): Promise<void> 
   }
   if (visit.signal.aborted) return;
 
-  // Whatever it was running stops with it. Leaving the turn to finish would
-  // go on calling the model, and being billed for it, on behalf of a
-  // conversation that no longer exists. Dropping the session from the map is
-  // not enough on its own -- the request is out, and nothing about a map
-  // entry disappearing reaches it.
+  // The server stopped whatever it was running when it deleted it; this page
+  // lets go of the stream it was reading and drops the session.
   evictChatSession(conversationId);
 
   const remaining = (useStore.getState().listByProject[projectId] ?? []).filter(
@@ -1660,11 +1657,8 @@ function draftOf(conversationId: string | undefined): string {
 /**
  * Forget everything about one project's chat.
  *
- * Called when the user leaves the project. A turn still running is stopped
- * first, because leaving says more plainly than a dropped connection that
- * nobody is listening -- and once the entry is gone there is no screen
- * anywhere showing a stop button for it, so not stopping it would leave the
- * model running on the user's account with the switch out of reach.
+ * Called when the user leaves the project. A run still going goes on on the
+ * server; this page lets go of the stream it was reading and drops the rest.
  * @param projectId - The project being left.
  */
 function leaveProject(projectId: string): void {
