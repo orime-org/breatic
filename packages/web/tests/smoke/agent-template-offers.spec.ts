@@ -265,6 +265,24 @@ test('asked outright for a pet video, it reads the pet selfie vlog and lands a p
   await expect(page.getByTestId('proposal-card').last()).toBeVisible({ timeout: 20_000 });
 });
 
+test('asked outright for a cheese pull food video, it reads the food money shot and lands a proposal built on it @needs-model', async () => {
+  test.setTimeout(240_000);
+  await ask('Make a vertical food video of a pizza with a long cheese pull. Do not ask me anything, just propose it.');
+  const turn = await settledTurn(page);
+  expect(turn.templates, `named: ${turn.templates.join(', ')}; tools: ${turn.tools.join(', ')}`).toContain('food-money-shot');
+  expect(turn.read, `read: ${turn.read.join(', ')}`).toContain('food-money-shot');
+  await expect(page.getByTestId('proposal-card').last()).toBeVisible({ timeout: 20_000 });
+});
+
+test('given a dish photo and asked only for a video of it, it lands a video carrying that dish @needs-model', async () => {
+  test.setTimeout(240_000);
+  await ask('Make a video with this. Do not ask me anything, just propose it.', 'dish.jpg');
+  const turn = await settledTurn(page);
+  // Solved when a video draws on the photo, whether through a food template or a setup of the agent's own.
+  const carrying = turn.landed.reduce((count, proposal) => count + videosCarryingMaterial(proposal), 0);
+  expect(carrying, `videos drawing on the photo. Templates: ${turn.templates.join(', ')}; tools: ${turn.tools.join(', ')}; said: ${turn.said.slice(0, 600)}`).toBeGreaterThanOrEqual(1);
+});
+
 test('given a pet photo and asked only for a video of it, it lands a video carrying that pet @needs-model', async () => {
   test.setTimeout(240_000);
   await ask('Make a video with this. Do not ask me anything, just propose it.', 'pet.jpg');

@@ -236,6 +236,20 @@ async function lowestResolution(): Promise<void> {
   await trigger.click();
 }
 
+/**
+ * Pick the open panel's lowest quality when its model has one, the way a user does: the first of the
+ * values the model declares, cheapest first. Like resolution, quality changes neither duration nor ratio.
+ */
+async function lowestQuality(): Promise<void> {
+  const prefix = 'generate-param-quality-option-';
+  const menu = page.getByTestId('generate-param-quality-menu');
+  const opened = (await menu.count()) > 0;
+  if (opened) await menu.click();
+  const options = page.locator(`[data-testid^="${prefix}"]`);
+  if ((await options.count()) > 0) await options.first().click();
+  else if (opened) await page.keyboard.press('Escape');
+}
+
 /** Each node type's Generate button. */
 const EXECUTE: Record<Kind, string> = { image: 'generate-execute', video: 'generate-video-execute', audio: 'generate-audio-execute' };
 
@@ -246,6 +260,7 @@ const EXTENSION: Record<Kind, string> = { image: 'png', video: 'mp4', audio: 'mp
 async function generate(nodeId: string, kind: Kind): Promise<string> {
   const before = (await graph()).nodes.find((n) => n.id === nodeId)?.data.content ?? '';
   await lowestResolution();
+  await lowestQuality();
   const button = page.getByTestId(EXECUTE[kind]);
   await expect(button).toBeEnabled({ timeout: 20_000 });
   await bringIntoView(button);
@@ -589,6 +604,29 @@ const RUNS: Record<string, Run> = {
     },
   },
   'character-showcase-orbit': { type: 'video', photo: true, first: [], fills: { anchor: ['a rooftop with railings in front and city towers far away'] } },
+  'food-money-shot': {
+    type: 'video',
+    photo: true,
+    image: 'dish.jpg',
+    first: [],
+    fills: { anchor: ['steam rising off the melted cheese', 'a slice lifted with a long cheese pull', 'a soft sizzle and a crisp crunch of the crust'] },
+  },
+  'recipe-process-montage': {
+    type: 'video',
+    photo: true,
+    image: 'dish.jpg',
+    first: [],
+    fills: {
+      anchor: [
+        'top-down over the counter',
+        'dough pressed out into a round',
+        'tomato sauce spread to the edge',
+        'mozzarella torn over the top and basil leaves added',
+        'it slides out of the oven, bubbling',
+      ],
+    },
+  },
+  'dish-hero-still': { type: 'image', photo: true, image: 'dish.jpg', first: [], fills: { anchor: ['a dark slate table with a linen napkin'] } },
   'pet-selfie-vlog': { type: 'video', photo: true, image: 'pet.jpg', first: [], fills: { anchor: ['a sunny living room', 'jumps onto the sofa and sniffs the phone'] } },
   'phone-vlog-realism': {
     type: 'video',
