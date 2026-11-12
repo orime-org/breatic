@@ -353,7 +353,7 @@ describe('a sync that says a run holds it when no stream is there to read', () =
   });
 });
 
-describe('a run that carries on the paused reply', () => {
+describe('a run resumed after a card', () => {
   /** The reply paused at a card the user answered, as the history holds it. */
   const PAUSED: StoredUiMessage = {
     id: 'a1',
@@ -366,7 +366,7 @@ describe('a run that carries on the paused reply', () => {
     vi.mocked(chatApi.readConversation).mockResolvedValue(page([userRow('m1', 1), PAUSED]));
   });
 
-  it('goes on in that reply', async () => {
+  it('is drawn as a reply of its own after the reply that asked, as the server stores it', async () => {
     vi.mocked(chatApi.sync).mockResolvedValueOnce(RUNNING);
     chatLive.show('p1', 'c1');
     await settle();
@@ -376,11 +376,12 @@ describe('a run that carries on the paused reply', () => {
     for (const f of replyEnds('t2')) s.push(f);
     s.close();
     await settle();
-    expect(messages().map((m) => m.id)).toEqual(['m1', 'a1']);
-    expect(messages()[1]!.parts.filter((p) => p.type === 'text').map((p) => (p as { text: string }).text)).toEqual(['Which ratio?', 'Going with 9:16.']);
+    expect(messages().map((m) => m.role)).toEqual(['user', 'assistant', 'assistant']);
+    expect(messages()[1]).toEqual(PAUSED);
+    expect(messages()[2]!.parts.filter((p) => p.type === 'text').map((p) => (p as { text: string }).text)).toEqual(['Going with 9:16.']);
   });
 
-  it('leaves the reply as it is when no run is there to read', async () => {
+  it('leaves the history as it is when no run is there to read', async () => {
     vi.mocked(chatApi.sync).mockResolvedValueOnce(RUNNING);
     wire.noRunNext();
     chatLive.show('p1', 'c1');

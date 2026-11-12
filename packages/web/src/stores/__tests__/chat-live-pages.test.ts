@@ -136,7 +136,7 @@ describe('a card another page answered', () => {
     for (const f of replyOpens('t2')) s.push(f);
     s.push({ type: 'text-delta', id: 't2', delta: 'Going with 9:16.' });
     await settle();
-    expect(here.messages().map((m) => m.id)).toEqual(['u0', 'a0']);
+    expect(here.messages().map((m) => m.role)).toEqual(['user', 'assistant', 'assistant']);
     expect(here.messages()[1]!.parts[0]).toMatchObject(answered);
   });
 });

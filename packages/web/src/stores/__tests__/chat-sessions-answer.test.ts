@@ -168,9 +168,9 @@ describe('answering a card', () => {
     expect(conversationRuntime.draftOf('c-1')).toBe('half a thought');
   });
 
-  it('carries on the paused reply: the card is answered and what the run says next follows it there', async () => {
-    // The server names every reply it streams, a resumed one too, with an id
-    // of its own; the paused reply on screen goes by another.
+  it('draws the card answered from the store, and what the run says next as a reply of its own after it', async () => {
+    // The server stores a resumed run's reply as a row of its own after the
+    // reply that asked, and reads the answer back on the card.
     const chat = pausedChat();
     vi.mocked(chatApi.readConversation).mockResolvedValue(page(ANSWERED));
 
@@ -183,9 +183,10 @@ describe('answering a card', () => {
     s.close();
     await settle();
 
-    expect(chat.messages.map((m) => m.id)).toEqual(['u-1', 'a-1']);
+    expect(chat.messages.map((m) => m.role)).toEqual(['user', 'assistant', 'assistant']);
+    expect(chat.messages[1]?.id).toBe('a-1');
     expect(askPart(chat)).toMatchObject({ state: 'output-available', output: { answers: ANSWERS } });
-    expect(chat.messages[1]?.parts.at(-1)).toMatchObject({ type: 'text', text: 'Here is the plan.' });
+    expect(chat.messages[2]?.parts.at(-1)).toMatchObject({ type: 'text', text: 'Here is the plan.' });
   });
 
   it('draws what the store holds when the card was already answered elsewhere, and says nothing', async () => {

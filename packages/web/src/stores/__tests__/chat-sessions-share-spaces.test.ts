@@ -193,7 +193,7 @@ describe('answering a request card', () => {
     expect(bodyOrTransfer).toHaveBeenCalledWith('p-1', expect.objectContaining({ shared_spaces: SHARED }));
   });
 
-  it('carries on the paused reply: the card settles and what the run says next follows it there', async () => {
+  it('draws the card settled from the store, and what the run says next as a reply of its own after it', async () => {
     const chat = pausedChat();
     vi.mocked(chatApi.readConversation).mockResolvedValue(
       page(paused({ state: 'output-available', output: { spaces: [{ id: 'c1', name: 'Cast', kind: 'canvas', state: 'read' }] } })),
@@ -208,9 +208,10 @@ describe('answering a request card', () => {
     s.close();
     await settle();
 
-    expect(chat.messages.map((m) => m.id)).toEqual(['u-1', 'a-1']);
+    expect(chat.messages.map((m) => m.role)).toEqual(['user', 'assistant', 'assistant']);
+    expect(chat.messages[1]?.id).toBe('a-1');
     expect(requestPart(chat)).toMatchObject({ state: 'output-available', output: { spaces: [{ id: 'c1', state: 'read' }] } });
-    expect(chat.messages[1]?.parts.at(-1)).toMatchObject({ type: 'text', text: 'They wear red.' });
+    expect(chat.messages[2]?.parts.at(-1)).toMatchObject({ type: 'text', text: 'They wear red.' });
   });
 
   it('draws what the server holds when the card was already settled, and says nothing', async () => {
