@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 import {
   t, type ProjectRegisteredAsset, type TimelineDocumentV1, type TimelineTrack,
-  type TimelineVideoClip, type TimelineVideoSource,
+  type TimelineVideoClip, type TimelineVideoSource, TIMELINE_PREVIEW_DEFAULTS,
 } from '@breatic/shared';
 import type { TimelineEditCommand } from '@web/data/yjs/timeline-edit';
 import { initializeTimelineDocument } from '@breatic/shared/space-content';
@@ -355,6 +355,7 @@ beforeEach(() => {
   vi.mocked(timelineApi.limits).mockReset().mockResolvedValue({
     defaults: SETTINGS, assets: { pageSize: 50, pageMax: 100 },
     webAnimation: { promptMaxLength: 4000, durationSeconds: { min: 1, max: 60, default: 4 }, aspects: ['16:9', '9:16', '1:1'], playerLoadTimeoutMs: 15000, sourceRefreshIntervalMs: 10000 },
+    preview: TIMELINE_PREVIEW_DEFAULTS,
   });
   vi.mocked(uploadMedia).mockReset().mockResolvedValue(stored());
   vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});

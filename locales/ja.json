@@ -3567,7 +3567,6 @@
       "missing_source": "動画が見つかりません",
       "source_unresolved": "ウェブアニメーションを利用できません"
     },
-    "loadingMedia": "動画を読み込み中…",
     "mediaUnavailable": "この動画を利用できません。",
     "retry": "再試行",
     "play": "再生",
@@ -3583,8 +3582,7 @@
     "transport": {
       "paused": "一時停止中",
       "playing": "再生中",
-      "waiting": "バッファリング中…",
-      "failed": "再生に失敗しました"
+      "waiting": "バッファリング中…"
     },
     "material": {
       "description": "動画を選択して追加位置を確認してください。",
@@ -3647,7 +3645,14 @@
       "magnetStartHint": "メイントラックのマグネットがオンです。ドラッグで順序を変更します。",
       "splitOutside": "分割するには再生ヘッドを選択中のクリップ内に移動してください。",
       "lowestTrack": "このクリップはすでに一番下の映像トラックにあります。",
-      "bumped": "連動クリップ {count, plural, other {# 件}}を上のトラックに移動しました。"
+      "bumped": "連動クリップ {count, plural, other {# 件}}を上のトラックに移動しました。",
+      "transform": "位置とサイズ",
+      "positionX": "X",
+      "positionY": "Y",
+      "scaleX": "幅の拡大率（%）",
+      "scaleY": "高さの拡大率（%）",
+      "rotation": "回転（°）",
+      "lockRatio": "比率を固定"
     },
     "webAnimation": {
       "create": "ウェブアニメーションを作成",
@@ -3719,6 +3724,11 @@
       "waiting": "アップロード済み、編集権限を待っています",
       "unfinished": "未完了",
       "preview": "{track}：{state, select, failed {動画のアップロードに失敗、表示しません} unfinished {動画は未完了、表示しません} other {動画をアップロード中…}}"
+    },
+    "preview": {
+      "playBlocked": "ブラウザが音声付きの再生をブロックしました。再生を押して開始してください。",
+      "videoLoading": "{track}：動画を読み込み中…",
+      "videoUnavailable": "{track}：動画を利用できません"
     }
   }
 }

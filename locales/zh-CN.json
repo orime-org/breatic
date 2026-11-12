@@ -3567,7 +3567,6 @@
       "missing_source": "所用视频已丢失",
       "source_unresolved": "网页动画不可用"
     },
-    "loadingMedia": "正在加载视频…",
     "mediaUnavailable": "此视频不可用。",
     "retry": "重试",
     "play": "播放",
@@ -3583,8 +3582,7 @@
     "transport": {
       "paused": "已暂停",
       "playing": "播放中",
-      "waiting": "缓冲中…",
-      "failed": "播放失败"
+      "waiting": "缓冲中…"
     },
     "material": {
       "description": "选择视频并确认添加位置。",
@@ -3647,7 +3645,14 @@
       "magnetStartHint": "主轨磁吸已开启，拖动调整顺序。",
       "splitOutside": "请把播放头移到选中片段内再分割。",
       "lowestTrack": "该片段已在最下面的画面轨。",
-      "bumped": "{count, plural, other {# 个联动片段}}已移到上方轨道。"
+      "bumped": "{count, plural, other {# 个联动片段}}已移到上方轨道。",
+      "transform": "位置与大小",
+      "positionX": "X",
+      "positionY": "Y",
+      "scaleX": "宽度缩放（%）",
+      "scaleY": "高度缩放（%）",
+      "rotation": "旋转（°）",
+      "lockRatio": "锁定比例"
     },
     "webAnimation": {
       "create": "制作网页动画",
@@ -3719,6 +3724,11 @@
       "waiting": "已上传，等待编辑权限",
       "unfinished": "未完成",
       "preview": "{track}：{state, select, failed {视频上传失败，不显示} unfinished {视频未完成，不显示} other {视频上传中…}}"
+    },
+    "preview": {
+      "playBlocked": "浏览器阻止了有声播放，请按播放开始。",
+      "videoLoading": "{track}：视频加载中…",
+      "videoUnavailable": "{track}：视频不可用"
     }
   }
 }

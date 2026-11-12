@@ -4,102 +4,11 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import fc from 'fast-check';
 
-import {
-  resolveTimelineMediaTransport,
-  timelineFrameAt,
-} from '@web/spaces/timeline/media-transport';
+import { timelineFrameAt, type TimelineMediaTransport } from '@web/spaces/timeline/media-transport';
 
-type MediaSnapshot = Parameters<typeof resolveTimelineMediaTransport>[0];
-
-const READY: MediaSnapshot = {
-  intent: 'play',
-  generationMatches: true,
-  targetReady: true,
-  paused: false,
-  seeking: false,
-  ended: false,
-  readyState: 3,
-};
-
-describe('resolveTimelineMediaTransport', () => {
-  it.each([3, 4])('confirms current playback at readyState %i', (readyState) => {
-    expect(resolveTimelineMediaTransport({ ...READY, readyState })).toBe('playing');
-  });
-
-  it.each([0, 1, 2])('waits while an unpaused element has readyState %i', (readyState) => {
-    expect(resolveTimelineMediaTransport({ ...READY, readyState })).toBe('waiting');
-  });
-
-  it('waits for a play request to start the paused element', () => {
-    expect(resolveTimelineMediaTransport({ ...READY, paused: true })).toBe('waiting');
-  });
-
-  it('waits for the current source and frame generation', () => {
-    expect(resolveTimelineMediaTransport({ ...READY, generationMatches: false })).toBe('waiting');
-  });
-
-  it('waits for the requested target to become ready', () => {
-    expect(resolveTimelineMediaTransport({ ...READY, targetReady: false })).toBe('waiting');
-  });
-
-  it('waits while the current element is seeking', () => {
-    expect(resolveTimelineMediaTransport({ ...READY, seeking: true })).toBe('waiting');
-  });
-
-  it('waits after the element has ended', () => {
-    expect(resolveTimelineMediaTransport({ ...READY, ended: true })).toBe('waiting');
-  });
-
+describe('TimelineMediaTransport', () => {
   it('has no failed state: a failure belongs to one video layer, never to the whole preview (#1410 design §6.2)', () => {
-    expectTypeOf<ReturnType<typeof resolveTimelineMediaTransport>>().toEqualTypeOf<'paused' | 'waiting' | 'playing'>();
-  });
-
-  it.each([
-    { paused: false },
-    { paused: true },
-    { seeking: true },
-    { generationMatches: false },
-    { targetReady: false },
-    { ended: true },
-    { readyState: 0 },
-    { readyState: 1 },
-    { readyState: 2 },
-  ] satisfies Partial<MediaSnapshot>[])('retains pause intent with %j', (state) => {
-    expect(resolveTimelineMediaTransport({ ...READY, ...state, intent: 'pause' })).toBe('paused');
-  });
-
-  it('confirms a buffered seek from current properties', () => {
-    const seeking: MediaSnapshot = { ...READY, targetReady: false, seeking: true };
-    expect(resolveTimelineMediaTransport(seeking)).toBe('waiting');
-    expect(resolveTimelineMediaTransport({ ...seeking, targetReady: true, seeking: false })).toBe('playing');
-  });
-
-  it('confirms readiness when buffering recovers before seek completion', () => {
-    const buffering: MediaSnapshot = { ...READY, readyState: 2, targetReady: false, seeking: true };
-    expect(resolveTimelineMediaTransport(buffering)).toBe('waiting');
-    expect(resolveTimelineMediaTransport({ ...buffering, readyState: 4 })).toBe('waiting');
-    expect(resolveTimelineMediaTransport({ ...buffering, readyState: 4, targetReady: true, seeking: false })).toBe('playing');
-  });
-
-  it('keeps a pause issued during buffering through later media readiness', () => {
-    const buffering: MediaSnapshot = { ...READY, readyState: 2 };
-    expect(resolveTimelineMediaTransport(buffering)).toBe('waiting');
-    expect(resolveTimelineMediaTransport({ ...buffering, intent: 'pause' })).toBe('paused');
-    expect(resolveTimelineMediaTransport({ ...buffering, intent: 'pause', readyState: 4 })).toBe('paused');
-  });
-
-  it('holds the current generation while an earlier source becomes ready', () => {
-    const previous: MediaSnapshot = { ...READY, generationMatches: false, targetReady: true, readyState: 4 };
-    expect(resolveTimelineMediaTransport(previous)).toBe('waiting');
-    expect(resolveTimelineMediaTransport({ ...previous, generationMatches: true, targetReady: false })).toBe('waiting');
-    expect(resolveTimelineMediaTransport({ ...previous, generationMatches: true })).toBe('playing');
-  });
-
-  it('reads an immutable snapshot repeatedly', () => {
-    const input = Object.freeze({ ...READY });
-    expect(resolveTimelineMediaTransport(input)).toBe('playing');
-    expect(resolveTimelineMediaTransport(input)).toBe('playing');
-    expect(input).toEqual(READY);
+    expectTypeOf<TimelineMediaTransport>().toEqualTypeOf<'paused' | 'waiting' | 'playing'>();
   });
 });
 

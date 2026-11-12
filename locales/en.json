@@ -3567,7 +3567,6 @@
       "missing_source": "Its video is missing",
       "source_unresolved": "Its web animation is unavailable"
     },
-    "loadingMedia": "Loading video…",
     "mediaUnavailable": "This video is unavailable.",
     "retry": "Retry",
     "play": "Play",
@@ -3583,8 +3582,7 @@
     "transport": {
       "paused": "Paused",
       "playing": "Playing",
-      "waiting": "Buffering…",
-      "failed": "Playback failed"
+      "waiting": "Buffering…"
     },
     "material": {
       "description": "Choose a video and confirm its position.",
@@ -3647,7 +3645,14 @@
       "magnetStartHint": "Main track magnet is on. Drag to reorder.",
       "splitOutside": "Move the playhead inside the selected clip to split it.",
       "lowestTrack": "This clip is already on the bottom visual track.",
-      "bumped": "{count, plural, one {# linked clip moved} other {# linked clips moved}} to a track above."
+      "bumped": "{count, plural, one {# linked clip moved} other {# linked clips moved}} to a track above.",
+      "transform": "Position and size",
+      "positionX": "X",
+      "positionY": "Y",
+      "scaleX": "Width scale (%)",
+      "scaleY": "Height scale (%)",
+      "rotation": "Rotation (°)",
+      "lockRatio": "Lock ratio"
     },
     "webAnimation": {
       "create": "Create web animation",
@@ -3719,6 +3724,11 @@
       "waiting": "Uploaded, waiting for edit access",
       "unfinished": "Unfinished",
       "preview": "{track}: {state, select, failed {video upload failed, not shown} unfinished {video unfinished, not shown} other {video uploading…}}"
+    },
+    "preview": {
+      "playBlocked": "The browser blocked playback with sound. Press play to start.",
+      "videoLoading": "{track}: video loading…",
+      "videoUnavailable": "{track}: video unavailable"
     }
   }
 }

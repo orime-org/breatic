@@ -96,7 +96,7 @@ function showPreview(state: WebInstanceState | undefined): (next: WebInstanceSta
   const onRetry = vi.fn();
   const states = (value: WebInstanceState | undefined): ReadonlyMap<string, WebInstanceState> => new Map(value === undefined ? [] : [[KEY, value]]);
   const view = (value: WebInstanceState | undefined): React.JSX.Element => <div className='relative' data-testid='preview'>
-    <TimelineWebPreview projectId={PROJECT} entries={ENTRIES} states={states(value)} onPlayer={onPlayer} onRetry={onRetry} />
+    <TimelineWebPreview projectId={PROJECT} notes={document.body} entries={ENTRIES} states={states(value)} onPlayer={onPlayer} onRetry={onRetry} />
   </div>;
   const { rerender } = render(view(state));
   return (next) => { rerender(view(next)); };
@@ -174,7 +174,7 @@ describe('Timeline preview of a web copy', () => {
       .mockResolvedValue({ url: 'https://preview.example/web-animation/other-token/index.html' });
     const onPlayer = vi.fn();
     const view = (mode: 'visible' | 'hidden'): React.JSX.Element => <React.Activity mode={mode}><div className='relative' data-testid='preview'>
-      <TimelineWebPreview projectId={PROJECT} entries={ENTRIES} states={new Map([[KEY, 'loading']])} onPlayer={onPlayer} onRetry={vi.fn()} />
+      <TimelineWebPreview projectId={PROJECT} notes={document.body} entries={ENTRIES} states={new Map([[KEY, 'loading']])} onPlayer={onPlayer} onRetry={vi.fn()} />
     </div></React.Activity>;
     const { rerender } = render(view('visible'));
     const element = await player();
@@ -192,7 +192,7 @@ describe('Timeline preview of a web copy', () => {
     playerModule.fail = true;
     const onPlayer = vi.fn();
     render(<div className='relative' data-testid='preview'>
-      <TimelineWebPreview projectId={PROJECT} entries={ENTRIES} states={new Map()} onPlayer={onPlayer} onRetry={vi.fn()} />
+      <TimelineWebPreview projectId={PROJECT} notes={document.body} entries={ENTRIES} states={new Map()} onPlayer={onPlayer} onRetry={vi.fn()} />
     </div>);
     await waitFor(() => expect(playerModule.imports).toBe(1));
     const note = await screen.findByTestId(`timeline-web-note-${COPY}`);
@@ -234,7 +234,7 @@ function showPooled(role: PoolRole, state: WebInstanceState): (nextRole: PoolRol
   const onPlayer = vi.fn();
   const onRetry = vi.fn();
   const view = (r: PoolRole, value: WebInstanceState): React.JSX.Element => <div className='relative' data-testid='preview'>
-    <TimelineWebPreview projectId={PROJECT} entries={[entryAs(r)]} states={new Map([[KEY, value]])} onPlayer={onPlayer} onRetry={onRetry} />
+    <TimelineWebPreview projectId={PROJECT} notes={document.body} entries={[entryAs(r)]} states={new Map([[KEY, value]])} onPlayer={onPlayer} onRetry={onRetry} />
   </div>;
   const { rerender } = render(view(role, state));
   return (nextRole, nextState) => { rerender(view(nextRole, nextState)); };
@@ -279,7 +279,7 @@ describe('Timeline preview of premounted and idle instances (inner#1711 design Â
     const onPlayer = vi.fn();
     const view = (mode: 'visible' | 'hidden', role: PoolRole, state: WebInstanceState): React.JSX.Element => <React.Activity mode={mode}>
       <div className='relative' data-testid='preview'>
-        <TimelineWebPreview projectId={PROJECT} entries={[entryAs(role)]} states={new Map([[KEY, state]])} onPlayer={onPlayer} onRetry={vi.fn()} />
+        <TimelineWebPreview projectId={PROJECT} notes={document.body} entries={[entryAs(role)]} states={new Map([[KEY, state]])} onPlayer={onPlayer} onRetry={vi.fn()} />
       </div>
     </React.Activity>;
     const { rerender } = render(view('visible', 'idle', 'ready'));
