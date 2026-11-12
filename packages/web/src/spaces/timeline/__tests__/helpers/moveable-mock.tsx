@@ -40,8 +40,11 @@ export interface MoveableMockProps {
   [name: string]: unknown;
 }
 
-/** What the mounted handles were last given, and how many are mounted. */
-export const moveableMock: { props: MoveableMockProps | null; mounted: number } = { props: null, mounted: 0 };
+/** The instance methods of a mounted handle that tests read. */
+export interface MoveableMockInstance { updateRect: ReturnType<typeof vi.fn> }
+
+/** What the mounted handles were last given, how many are mounted, and the last mounted instance. */
+export const moveableMock: { props: MoveableMockProps | null; mounted: number; instance: MoveableMockInstance | null } = { props: null, mounted: 0, instance: null };
 
 /**
  * Forget every mounted handle; call it before each test.
@@ -50,6 +53,7 @@ export const moveableMock: { props: MoveableMockProps | null; mounted: number } 
 export function resetMoveableMock(): void {
   moveableMock.props = null;
   moveableMock.mounted = 0;
+  moveableMock.instance = null;
 }
 
 /** The mocked Moveable: an inert element that publishes its props. */
@@ -61,12 +65,13 @@ class MoveableMock extends React.Component<MoveableMockProps> {
   isDragging = vi.fn(() => false);
 
   /**
-   * Publish the first props.
+   * Publish the first props and this instance.
    * @throws {never} Never.
    */
   componentDidMount(): void {
     moveableMock.mounted += 1;
     moveableMock.props = this.props;
+    moveableMock.instance = this;
   }
 
   /**
@@ -83,7 +88,10 @@ class MoveableMock extends React.Component<MoveableMockProps> {
    */
   componentWillUnmount(): void {
     moveableMock.mounted -= 1;
-    if (moveableMock.mounted === 0) moveableMock.props = null;
+    if (moveableMock.mounted === 0) {
+      moveableMock.props = null;
+      moveableMock.instance = null;
+    }
   }
 
   /**

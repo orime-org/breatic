@@ -106,6 +106,21 @@ describe('TimelineLayerHandles proxy and handles (§4.1, §4.3)', () => {
     expect(props.keepRatio).toBe(true);
     expect(props.renderDirections).toEqual(expect.arrayContaining(['nw', 'n', 'ne', 'w', 'e', 'sw', 's', 'se']));
   });
+
+  it('re-measures the handles when the stored transform or base box changes outside a gesture', () => {
+    const { rerender } = showHandles();
+    const instance = moveableMock.instance;
+    if (instance === null) throw new Error('No Moveable instance is mounted');
+    const before = instance.updateRect.mock.calls.length;
+    rerender({ transform: { ...IDENTITY, rotation: 20 } });
+    expect(proxyTransform()).toMatch(layerCss(0, 0, 20, 1, 1));
+    expect(moveableMock.instance).toBe(instance);
+    expect(instance.updateRect.mock.calls.length).toBeGreaterThan(before);
+    const afterTransform = instance.updateRect.mock.calls.length;
+    rerender({ transform: { ...IDENTITY, rotation: 20 }, base: { left: 240, top: 0, width: 1440, height: 1080 } });
+    expect(screen.getByTestId('timeline-layer-proxy').style.left).toBe('120px');
+    expect(instance.updateRect.mock.calls.length).toBeGreaterThan(afterTransform);
+  });
 });
 
 describe('TimelineLayerHandles move (§4.3, §7.2)', () => {

@@ -153,6 +153,9 @@ export function TimelineLayerHandles({ canvas, base, transform, factor, snap, on
     left: base.left * factor, top: base.top * factor, width: base.width * factor, height: base.height * factor,
     transform: timelineLayerCss(shown, factor), transformOrigin: 'center',
   }), [base, factor, shown]);
+  // Moveable measures its target only when told: a transform written by the panel, a collaborator or undo moves the
+  // proxy without a gesture, so the box is measured again whenever the proxy's place changes.
+  React.useLayoutEffect(() => { moveable.current?.updateRect(); }, [style]);
   const width = canvas.width * factor;
   const height = canvas.height * factor;
   const vertical = React.useMemo(() => [0, width / 2, width], [width]);
