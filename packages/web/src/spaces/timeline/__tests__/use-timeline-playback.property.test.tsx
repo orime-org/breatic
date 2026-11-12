@@ -654,6 +654,8 @@ describe('useTimelinePlayback over two video lanes (property)', () => {
           const fake = 'lane' in command ? fakeOf(command.lane) : undefined;
           // The lane that skipped just before this tick, with how far it moved and its drift then.
           let jumped: { fake: Fake; by: number; drift: number } | null = null;
+          // Any lane the decoder skip moved, near its file end too: it may be hard-synced on this tick (design §6.3).
+          let skipped: { fake: Fake; by: number } | null = null;
           if (command.op === 'advance' && before.state === 'playing' && pendingJump !== null) {
             const { lane, by } = pendingJump;
             for (const index of [lane, lane === 0 ? 1 : 0] as const) {
@@ -663,6 +665,7 @@ describe('useTimelinePlayback over two video lanes (property)', () => {
               const from = skipping.facts.currentTime;
               if (!jump(skipping, by)) continue;
               const { currentTime, duration } = skipping.facts;
+              skipped = { fake: skipping, by: currentTime - from };
               const target = targetAt(spec, before.frame);
               // Judged only well inside the file, where neither the clock nor the element is near the tail.
               const inside = target + JUMP_MARGIN < duration && currentTime + JUMP_MARGIN < duration;
@@ -716,7 +719,11 @@ describe('useTimelinePlayback over two video lanes (property)', () => {
 
           // Tail: never the cause of a wait; while playing, at most one seek, to the file end, and paused.
           if (before.state === 'playing' && after.state === 'waiting' && !user) {
-            const cause = views.some((view) => !view.tail && (view.fake.facts.seeking || view.fake.facts.readyState < 3));
+            // A lane hard-synced after a skip is sought to the held frame, which can be its file end, so it then reads as a
+            // tail lane; the skip caused that wait, not a tail.
+            const resynced = skipped !== null && Math.abs(skipped.by) > HARD_SYNC_SECONDS - JUMP_MARGIN
+              && skipped.fake.seeks.length > (seekCounts.get(skipped.fake) ?? 0);
+            const cause = resynced || views.some((view) => !view.tail && (view.fake.facts.seeking || view.fake.facts.readyState < 3));
             expect(cause, `playing went to waiting with only tail lanes off ${where}`).toBe(true);
           }
           for (const view of views) {
