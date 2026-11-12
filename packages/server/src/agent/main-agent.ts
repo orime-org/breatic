@@ -1546,25 +1546,7 @@ export class MainAgent {
         );
       },
     });
-    if (opening.kind !== "answer") return stream;
-    // The card a resumed segment answers, as the SDK's own result chunk, put
-    // ahead of everything so the browser settles that call in the message it
-    // is continuing. Ahead of the stream rather than written into it: what is
-    // written into it is also what this side assembles the reply row from,
-    // and that row is the resumed segment alone -- the call is in the row
-    // that asked.
-    const answered: UIMessageChunk = {
-      type: "tool-output-available",
-      toolCallId: opening.toolCallId,
-      output: opening.output,
-    };
-    return stream.pipeThrough(
-      new TransformStream<UIMessageChunk, UIMessageChunk>({
-        start(controller) {
-          controller.enqueue(answered);
-        },
-      }),
-    );
+    return stream;
   }
 
   /**

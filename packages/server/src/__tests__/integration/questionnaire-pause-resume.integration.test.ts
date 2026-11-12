@@ -283,9 +283,7 @@ describe("answering on the card", () => {
     const { status, chunks } = await post(chat, { message: "", answer: { toolCallId: "ask-2", answers: ANSWERS } });
 
     expect(status).toBe(200);
-    const firstOutput = chunks.findIndex((c) => c.type === "tool-output-available");
-    expect(chunks[firstOutput]).toMatchObject({ toolCallId: "ask-2", output: { answers: ANSWERS } });
-    expect(firstOutput).toBeLessThan(chunks.findIndex((c) => c.type === "text-delta"));
+    expect(chunks.some((c) => c.type === "tool-output-available")).toBe(false);
 
     const result = promptParts().find((p) => p.type === "tool-result" && p.toolCallId === "ask-2");
     expect(result).toMatchObject({ output: { type: "json", value: { answers: ANSWERS } } });

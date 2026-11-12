@@ -368,9 +368,7 @@ describe("sharing the Spaces on the card", () => {
     const { status, chunks } = await post(chat, { message: "", shared_spaces: shared("req-2") });
 
     expect(status).toBe(200);
-    const firstOutput = chunks.findIndex((c) => c.type === "tool-output-available");
-    expect(chunks[firstOutput]).toEqual({ type: "tool-output-available", toolCallId: "req-2", output: SUMMARY });
-    expect(firstOutput).toBeLessThan(chunks.findIndex((c) => c.type === "text-delta"));
+    expect(chunks.some((c) => c.type === "tool-output-available")).toBe(false);
     expect(JSON.stringify(chunks)).not.toContain("THE CAST LIST");
 
     const result = promptParts().find((p) => p.type === "tool-result" && p.toolCallId === "req-2");
@@ -475,11 +473,7 @@ describe("declining on the card", () => {
     const { status, chunks } = await post(chat, { message: "", shared_spaces: { toolCallId: "req-8", decision: "declined" } });
 
     expect(status).toBe(200);
-    expect(chunks.find((c) => c.type === "tool-output-available")).toEqual({
-      type: "tool-output-available",
-      toolCallId: "req-8",
-      output: { declined: true },
-    });
+    expect(chunks.some((c) => c.type === "tool-output-available")).toBe(false);
     const result = promptParts().find((p) => p.type === "tool-result" && p.toolCallId === "req-8");
     expect(result).toMatchObject({ toolName: "request_space_content", output: { type: "json", value: { declined: true } } });
     expect(partOf(await storedRows(chat.conversationId), "req-8")).toMatchObject({ status: "success", output: { declined: true } });
@@ -616,7 +610,7 @@ describe("the largest answer a browser can send", () => {
     const res = await postReference(chat, key);
 
     expect(res.status).toBe(200);
-    expect(res.chunks.find((c) => c.type === "tool-output-available")).toMatchObject({ toolCallId: "req-max" });
+    expect(res.chunks.some((c) => c.type === "text-delta")).toBe(true);
     expect(model.calls).toHaveLength(1);
   }, 120_000);
 });
