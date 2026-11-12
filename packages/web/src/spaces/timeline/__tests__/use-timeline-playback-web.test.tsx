@@ -563,10 +563,14 @@ describe('ready barrier', () => {
     expect(play).toHaveBeenCalledTimes(1);
     expect(video.facts.paused).toBe(false);
     expect(hook.result.current.state).toBe('waiting');
+    // The started video plays 0.3 s past the held frame, beyond the 0.15 s resume threshold, before the copy reloads.
+    runFrames(300);
+    expect(video.facts.currentTime).toBeCloseTo(0.3, 6);
     act(() => { fixture.iframe.dispatchEvent(new Event('load')); });
     expect(hook.result.current.webStates.get(`${SRC}:0`)).toBe('loading');
     expect(hook.result.current.state).toBe('waiting');
     expect(video.facts.paused).toBe(true);
+    expect(video.seeks).toEqual([0]);
     runFrames(1000);
     expect(hook.result.current.frame).toBe(0);
     expect(video.facts.currentTime).toBe(0);
@@ -575,6 +579,7 @@ describe('ready barrier', () => {
       await pending;
     });
     expect(video.facts.paused).toBe(true);
+    videoEvent(video, 'seeked', { seeking: false, readyState: 4 });
     bridgeReady(fixture);
     answerLast(fixture);
     await settle();

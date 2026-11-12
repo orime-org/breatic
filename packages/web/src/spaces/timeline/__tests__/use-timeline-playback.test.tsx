@@ -1101,6 +1101,100 @@ describe('useTimelinePlayback', () => {
     expect(media.play).toHaveBeenCalledTimes(0);
   });
 
+  // A file of 1.013 s under TAIL_CLIP: frame 24 samples 1.000 s, within half a frame of the end yet 13 ms short of it;
+  // frame 25 samples 1.0417 s, past the end. A tail lane is in place only within 1 ms of its end (#1410 design §6.3).
+  const NEAR_END_SECONDS = 1.013;
+
+  it('seeks a paused lane within half a frame of its file end on to the end at a seek into the tail, and plays to the sequence end once it lands (§6.3, §9.1)', async () => {
+    const media = mediaFixture({ duration: NEAR_END_SECONDS });
+    const hook = renderPlayback(media, { document: timelineDocument([TAIL_CLIP], [TAIL_SOURCE]) });
+    act(() => hook.result.current.seek(24));
+    mediaEvent(media, 'seeked', { seeking: false, readyState: 4 });
+    await settle();
+    expect(media.facts.currentTime).toBe(1);
+    const sought = media.seeks.length;
+    act(() => hook.result.current.seek(25));
+    act(() => hook.result.current.toggle());
+    await settle();
+    expect(media.seeks.slice(sought)).toHaveLength(1);
+    expect(media.seeks.at(-1)).toBeGreaterThanOrEqual(NEAR_END_SECONDS - 0.001);
+    expect(hook.result.current.state).toBe('waiting');
+    mediaEvent(media, 'seeked', { seeking: false, currentTime: NEAR_END_SECONDS, readyState: 2 });
+    await settle();
+    expect(hook.result.current.state).toBe('playing');
+    expect(hook.result.current.frame).toBe(25);
+    tick(now + 42);
+    expect(hook.result.current.frame).toBe(25);
+    expect(hook.result.current.intent).toBe('pause');
+    expect(hook.result.current.state).toBe('paused');
+  });
+
+  it.each([
+    ['reports data at its end', { readyState: 2 }],
+    ['clamps the seek to its end and reports ended', { ended: true, paused: true, readyState: 2 }],
+  ] as const)('seeks a playing lane within half a frame of its file end on to the end at a seek into the tail when it %s, and plays on to the sequence end (§6.3)', async (_name, landed) => {
+    const media = mediaFixture({ duration: NEAR_END_SECONDS });
+    const hook = renderPlayback(media, { document: timelineDocument([TAIL_CLIP], [TAIL_SOURCE]) });
+    act(() => hook.result.current.toggle());
+    await settle();
+    tick(1000);
+    expect(hook.result.current.frame).toBe(24);
+    expect(media.facts.currentTime).toBe(1);
+    const sought = media.seeks.length;
+    act(() => hook.result.current.seek(25));
+    await settle();
+    expect(media.seeks.slice(sought)).toHaveLength(1);
+    expect(media.seeks.at(-1)).toBeGreaterThanOrEqual(NEAR_END_SECONDS - 0.001);
+    expect(hook.result.current.state).toBe('waiting');
+    mediaEvent(media, 'seeked', { seeking: false, currentTime: NEAR_END_SECONDS, ...landed });
+    await settle();
+    expect(hook.result.current.state).toBe('playing');
+    expect(hook.result.current.frame).toBe(25);
+    tick(now + 42);
+    expect(hook.result.current.frame).toBe(25);
+    expect(hook.result.current.intent).toBe('pause');
+    expect(hook.result.current.state).toBe('paused');
+  });
+
+  it('sends no seek at a seek into the tail when the playing lane is already within 1 ms of its file end, and plays on (§6.3)', async () => {
+    const media = mediaFixture({ duration: NEAR_END_SECONDS });
+    const hook = renderPlayback(media, { document: timelineDocument([TAIL_CLIP], [TAIL_SOURCE]) });
+    act(() => hook.result.current.toggle());
+    await settle();
+    tick(1012.5);
+    expect(hook.result.current.frame).toBe(24);
+    expect(media.facts.currentTime).toBeCloseTo(1.0125, 6);
+    const sought = media.seeks.length;
+    act(() => hook.result.current.seek(25));
+    await settle();
+    expect(media.seeks.slice(sought)).toEqual([]);
+    expect(hook.result.current.state).toBe('playing');
+    tick(now + 42);
+    expect(hook.result.current.frame).toBe(25);
+    expect(hook.result.current.intent).toBe('pause');
+    expect(hook.result.current.state).toBe('paused');
+  });
+
+  it('waits for a lane still seeking from an earlier request at a seek into the tail, and plays once it lands at its file end (§6.3)', async () => {
+    const media = mediaFixture({ duration: NEAR_END_SECONDS });
+    const hook = renderPlayback(media, { document: timelineDocument([TAIL_CLIP], [TAIL_SOURCE]) });
+    act(() => hook.result.current.seek(24));
+    expect(media.facts.seeking).toBe(true);
+    act(() => hook.result.current.seek(25));
+    act(() => hook.result.current.toggle());
+    await settle();
+    expect(hook.result.current.state).toBe('waiting');
+    // The browser runs only the latest seek and reports one seeked, clamped to the end.
+    mediaEvent(media, 'seeked', { seeking: false, currentTime: NEAR_END_SECONDS, ended: true, paused: true, readyState: 2 });
+    await settle();
+    expect(hook.result.current.state).toBe('playing');
+    expect(hook.result.current.frame).toBe(25);
+    tick(now + 42);
+    expect(hook.result.current.frame).toBe(25);
+    expect(hook.result.current.intent).toBe('pause');
+    expect(hook.result.current.state).toBe('paused');
+  });
+
   it('plays the final frame bucket before stopping at the sequence end', async () => {
     const media = mediaFixture({ duration: 1 });
     const hook = renderPlayback(media, { document: timelineDocument([{ ...CLIP, durationFrames: 24 }]) });
@@ -2200,45 +2294,6 @@ describe('several video layers playing together (#1410 design §6.3)', () => {
     expect(Math.abs(b.facts.currentTime - 30 / 24)).toBeLessThan(ONE_FRAME);
   });
 
-  it('pauses a lane that started after a user seek when another lane stalls before its play() settles, and resumes both from the held frame', async () => {
-    const { hook, a, b } = twoLanes();
-    act(() => hook.result.current.toggle());
-    await settle();
-    tick(1000);
-    expect(hook.result.current.state).toBe('playing');
-    const pending = deferredPlay();
-    b.play.mockReturnValueOnce(pending.promise);
-    // Frame 120 samples 5 s.
-    act(() => hook.result.current.seek(120));
-    mediaEvent(a, 'seeked', { seeking: false, readyState: 4 });
-    mediaEvent(b, 'seeked', { seeking: false, readyState: 4 });
-    await settle();
-    // The main lane's play() has settled; the upper lane's is still pending.
-    expect(a.play).toHaveBeenCalledTimes(2);
-    expect(b.play).toHaveBeenCalledTimes(2);
-    expect(hook.result.current.state).toBe('waiting');
-    mediaEvent(b, 'waiting', { readyState: 2 });
-    expect(hook.result.current.state).toBe('waiting');
-    expect(a.facts.paused).toBe(true);
-    tick(2500);
-    expect(hook.result.current.frame).toBe(120);
-    expect(a.facts.currentTime).toBe(5);
-    await act(async () => {
-      pending.resolve();
-      await pending.promise;
-    });
-    mediaEvent(b, 'canplay', { readyState: 4 });
-    await settle();
-    expect(hook.result.current.state).toBe('playing');
-    expect(Math.abs(a.facts.currentTime - 5)).toBeLessThan(ONE_FRAME);
-    expect(Math.abs(b.facts.currentTime - 5)).toBeLessThan(ONE_FRAME);
-    tick(2750);
-    expect(hook.result.current.frame).toBe(126);
-    expect(Math.abs(a.facts.currentTime - b.facts.currentTime)).toBeLessThan(ONE_FRAME);
-    expect(Math.abs(a.facts.currentTime - 126 / 24)).toBeLessThan(ONE_FRAME);
-    expect(Math.abs(b.facts.currentTime - 126 / 24)).toBeLessThan(ONE_FRAME);
-  });
-
   it('seeks a lane that ran past the resume threshold while another lane\'s play() was pending back to the held frame, and anchors the clock only once it lands', async () => {
     const { hook, a, b } = twoLanes();
     act(() => hook.result.current.toggle());
@@ -2250,6 +2305,9 @@ describe('several video layers playing together (#1410 design §6.3)', () => {
     mediaEvent(a, 'seeked', { seeking: false, readyState: 4 });
     mediaEvent(b, 'seeked', { seeking: false, readyState: 4 });
     await settle();
+    // The main lane's play() has settled; the upper lane's is still pending.
+    expect(a.play).toHaveBeenCalledTimes(2);
+    expect(b.play).toHaveBeenCalledTimes(2);
     expect(hook.result.current.state).toBe('waiting');
     expect(a.seeks).toEqual([5]);
     // The main lane plays 0.3 s past the held frame, beyond the 0.15 s resume threshold, before the upper lane stalls.
