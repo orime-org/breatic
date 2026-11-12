@@ -79,6 +79,20 @@ export function resetDialoguePeople(rows: readonly VideoToolDialogueRow[]): Vide
 }
 
 /**
+ * Whether binding a person to a row would take the run past its people limit (canvas design §4 lip-sync row): the run
+ * takes every distinct person the other rows hold, plus this one.
+ * @param rows - Every dialogue row.
+ * @param dialogueId - The row being bound.
+ * @param personId - The person to bind.
+ * @param maxPeople - The people limit, absent while unknown.
+ * @returns True when it would.
+ * @throws {never} Never.
+ */
+export function overPeopleLimit(rows: readonly VideoToolDialogueRow[], dialogueId: string, personId: string, maxPeople: number | undefined): boolean {
+  return maxPeople !== undefined && new Set([...rows.filter((row) => row.dialogueId !== dialogueId && row.personId !== null).map((row) => row.personId), personId]).size > maxPeople;
+}
+
+/**
  * Applies a row edit by its stable identity.
  * @throws {never} Never.
  * @param rows - Every independent dialogue row in display order.

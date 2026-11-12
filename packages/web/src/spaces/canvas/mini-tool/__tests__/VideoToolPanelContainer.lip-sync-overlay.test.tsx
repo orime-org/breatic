@@ -4,7 +4,9 @@
 /**
  * inner#1306 lip-sync person boxes on the node (demo lip-sync-controls.tsx FaceOverlay and redetectPatch; canvas design line 98):
  * - E1: the box of the person bound to the active dialogue row (the first row until one is chosen) is the selected one;
- * - E6: after a failed re-detect, the earlier identification's boxes stay hidden.
+ * - E6: after a failed re-detect, the earlier identification's boxes stay hidden;
+ * - a box whose person would take the run past the people limit is aria-disabled, and its press toasts the limit and leaves
+ *   the row as it was.
  */
 
 import * as React from 'react';
@@ -20,7 +22,9 @@ vi.mock('@web/spaces/canvas/_shared/NodePanelMount', async (importOriginal) => (
   NodePanelMount: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 vi.mock('@web/spaces/canvas/mini-tool/FilmStrip', () => ({ FilmStrip: () => null }));
+vi.mock('@web/lib/toast', () => ({ toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn() } }));
 
+import { t } from '@breatic/shared';
 import { fingerprintMiniToolAnalysisInput, projectMiniToolAnalysisInput, type MiniToolAnalysisRecord, type VideoToolDraftById } from '@breatic/shared/mini-tools';
 import { VideoToolPanelContainer } from '../video/VideoToolPanelContainer';
 import { createVideoToolDraft } from '../video/video-tool-edit';
@@ -33,6 +37,8 @@ import { canvasSessions } from '@web/stores/canvas-session';
 import { resetRunOnceForTests } from '@web/stores/task-actions-in-flight';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import type { MediaSurfaceBinding } from '../../video-presentation/types';
+import { readVideoToolDraft } from '@web/data/yjs/video-tool-drafts';
+import { toast } from '@web/lib/toast';
 
 const projectId = '01000000-0000-4000-8000-000000000002'; const spaceId = '02000000-0000-4000-8000-000000000002';
 const nodeId = '10000000-0000-4000-8000-000000000003';
@@ -51,14 +57,17 @@ afterEach(() => { target?.remove(); target = null; destroyDoc(docName.canvasSpac
  * Seeds a lip-sync draft whose two rows are bound to person-a and person-b of a completed identification, with an optional
  * later identification that failed, then mounts the panel over a node display.
  * @param failedLater - Whether a later identification failed.
+ * @param options - Overrides: each row's person, and the people limit.
+ * @param options.persons - Each row's person, in row order.
+ * @param options.maxPeople - The people limit.
  * @returns Nothing.
  */
-async function mount(failedLater: boolean): Promise<void> {
+async function mount(failedLater: boolean, options: { persons?: readonly (string | null)[]; maxPeople?: number } = {}): Promise<void> {
   http.get.mockRejectedValue(new Error('not served'));
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   addNode(projectId, spaceId, { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { content: sourceURL, name: 'Source', locked: false, createdAt: 0, createdBy: 'test', attachments: [] } });
   const initial = createVideoToolDraft('video.lip-sync', source);
-  const rows = [ROW_A, ROW_B].map((dialogueId, index) => ({ dialogueId, personId: failedLater ? null : `person-${'ab'[index]}`, analysisRunId: failedLater ? null : RUN_A, audioInputId: null, startTime: 0 }));
+  const rows = [ROW_A, ROW_B].map((dialogueId, index) => ({ dialogueId, personId: failedLater ? null : options.persons?.[index] !== undefined ? options.persons[index] : `person-${'ab'[index]}`, analysisRunId: failedLater ? null : RUN_A, audioInputId: null, startTime: 0 }));
   const draft: VideoToolDraftById['video.lip-sync'] = { ...initial, params: { ...initial.params, dialogues: rows } };
   commitVideoToolDraft(doc, nodeId, 'video.lip-sync', draft);
   const analysisInput = projectMiniToolAnalysisInput({ kind: 'people', source, params: draft.params, profile });
@@ -85,7 +94,7 @@ async function mount(failedLater: boolean): Promise<void> {
   const frame = { sourceKey: 'canonical-key', sourceEpoch: 1, seekEpoch: 1, mediaTime: 0, surface };
   const binding: MediaSurfaceBinding = { sourceKey: frame.sourceKey, sourceEpoch: 1, element, surface, container: target, original: mediaInfo, getSeekEpoch: () => 1, getPresentedFrame: () => frame, seek: vi.fn(), play: vi.fn().mockResolvedValue(undefined), pause: vi.fn() };
   const node: CanvasNodeView = { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { handling: false, content: sourceURL, ...mediaInfo } };
-  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TooltipProvider><CanvasContext.Provider value={{ projectId, spaceId, readOnly: false, myRole: 'editor', caretProvider: null }}><ReactFlowProvider><VideoToolPanelContainer nodeId={nodeId} toolId='video.lip-sync' node={node} nodes={[node]} overlayTarget={target} binding={binding} lipSync={{ models: [], tracking: { minDurationSeconds: 0.5, maxDurationSeconds: 600 } }} presentation={{ frameTable, status: 'ready', sourceURL, sourceEpoch: 1, seekEpoch: 1, presentedTime: 0 }} /></ReactFlowProvider></CanvasContext.Provider></TooltipProvider></QueryClientProvider>);
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TooltipProvider><CanvasContext.Provider value={{ projectId, spaceId, readOnly: false, myRole: 'editor', caretProvider: null }}><ReactFlowProvider><VideoToolPanelContainer nodeId={nodeId} toolId='video.lip-sync' node={node} nodes={[node]} overlayTarget={target} binding={binding} lipSync={{ models: [], tracking: { minDurationSeconds: 0.5, maxDurationSeconds: 600 }, maxPeople: options.maxPeople }} presentation={{ frameTable, status: 'ready', sourceURL, sourceEpoch: 1, seekEpoch: 1, presentedTime: 0 }} /></ReactFlowProvider></CanvasContext.Provider></TooltipProvider></QueryClientProvider>);
   await waitFor(() => expect(screen.getByTestId('video-identify-people')).toBeInTheDocument());
 }
 
@@ -113,5 +122,18 @@ describe('lip-sync person boxes on the node', () => {
     await waitFor(() => expect(miniToolAnalysesApi.get).toHaveBeenCalledTimes(2));
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
     expect(boxes()).toHaveLength(0);
+  });
+
+  it('refuses a box press that would take the run past the people limit', async () => {
+    await mount(false, { persons: ['person-a', null], maxPeople: 1 });
+    act(() => canvasSessions.of(spaceId).getState().setMiniToolParam('activeDialogueId', ROW_B));
+    await waitFor(() => expect(boxes()).toHaveLength(2));
+    const [first, second] = boxes();
+    expect(second).toHaveAttribute('aria-disabled', 'true');
+    expect(first).not.toHaveAttribute('aria-disabled');
+    act(() => second!.click());
+    expect(toast.warning).toHaveBeenCalledWith(t('server.mini_tool.lipSyncTooManyPeople', { max: 1 }));
+    const held = readVideoToolDraft(getDoc(docName.canvasSpace(projectId, spaceId)), nodeId, 'video.lip-sync');
+    expect(held.state === 'supported' ? (held.draft as VideoToolDraftById['video.lip-sync']).params.dialogues.map((row) => row.personId) : null).toEqual(['person-a', null]);
   });
 });

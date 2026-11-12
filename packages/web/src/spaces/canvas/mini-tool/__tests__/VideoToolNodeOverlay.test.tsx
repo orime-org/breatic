@@ -118,4 +118,18 @@ describe('person boxes follow the active dialogue row (E1)', () => {
     expect(first!.className).not.toContain('status-selected');
     expect(first!.className).toContain('border-border');
   });
+
+  // Canvas design line 98: a person over the people limit is aria-disabled and dimmed, and a press still reaches the panel,
+  // which explains the limit with a toast.
+  it('dims a capped person\'s box and still reports its press', () => {
+    const onPerson = vi.fn();
+    render(<VideoToolNodeOverlay {...props} region={undefined} people={people} activePersonId='person-a' cappedPersonIds={new Set(['person-b'])} onPerson={onPerson} />);
+    const [first, second] = screen.getAllByRole('button').filter((button) => button.hasAttribute('aria-pressed'));
+    expect(second).toHaveAttribute('aria-disabled', 'true');
+    expect(second).not.toBeDisabled();
+    expect(second!.className).toContain('aria-disabled:opacity-50');
+    expect(first).not.toHaveAttribute('aria-disabled');
+    fireEvent.click(second!);
+    expect(onPerson).toHaveBeenCalledWith('person-b');
+  });
 });

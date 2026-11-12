@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import { VIDEO_TOOL_IDS, videoToolDraftSchema, type MiniToolAnalysisRecord, type VideoToolDialogueRow, type VideoToolTimelineClip } from '@breatic/shared/mini-tools';
-import { createVideoToolDraft, currentPeopleResult, resetDialoguePeople, editDialogue, trimTimelineClip } from '../video/video-tool-edit';
+import { createVideoToolDraft, currentPeopleResult, overPeopleLimit, resetDialoguePeople, editDialogue, trimTimelineClip } from '../video/video-tool-edit';
 
 const source = { nodeId: '10000000-0000-4000-8000-000000000001', canonicalURL: 'https://media.example.test/source.mp4', mediaInfo: { width: 960, height: 540, duration: 5, mimeType: 'video/mp4' } };
 const rows: VideoToolDialogueRow[] = [0, 1, 2].map((index) => ({ dialogueId: `20000000-0000-4000-8000-00000000000${index}`, personId: 'person-a', analysisRunId: '30000000-0000-4000-8000-000000000001', audioInputId: `40000000-0000-4000-8000-00000000000${index}`, startTime: [0, 1.25, 3][index] }));
@@ -89,5 +89,24 @@ describe('currentPeopleResult', () => {
   });
   it('ignores records of other kinds', () => {
     expect(currentPeopleResult([done, { ...record('run-c', 'failed', '2026-11-03T00:00:00Z'), kind: 'scene_cuts' } as MiniToolAnalysisRecord])?.analysisRunId).toBe('run-a');
+  });
+});
+
+// Canvas design line 98: binding a person is refused when the run would then take more distinct people than the limit.
+describe('overPeopleLimit', () => {
+  const row = (dialogueId: string, personId: string | null): VideoToolDialogueRow => ({ dialogueId, personId, analysisRunId: null, audioInputId: null, startTime: 0 });
+  const bound = [row('row-a', 'person-a'), row('row-b', 'person-b'), row('row-c', null)];
+
+  it('refuses a new person past the limit', () => {
+    expect(overPeopleLimit(bound, 'row-c', 'person-c', 2)).toBe(true);
+  });
+  it('allows a person another row already takes', () => {
+    expect(overPeopleLimit(bound, 'row-c', 'person-a', 2)).toBe(false);
+  });
+  it('does not count the edited row\'s own person', () => {
+    expect(overPeopleLimit(bound, 'row-b', 'person-c', 2)).toBe(false);
+  });
+  it('allows anything while the limit is unknown', () => {
+    expect(overPeopleLimit(bound, 'row-c', 'person-c', undefined)).toBe(false);
   });
 });

@@ -24,7 +24,7 @@ import { NodePanelMount } from '@web/spaces/canvas/_shared/NodePanelMount';
 import { useCanvasContext, useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
 import { expandDrop, isExpanded, type PixelSize } from '@web/spaces/canvas/mini-tool/expand-frame';
-import { createVideoToolDraft, currentPeopleResult, eraseTrackingStatus, resetDialoguePeople, transitionHostInputId } from '@web/spaces/canvas/mini-tool/video/video-tool-edit';
+import { createVideoToolDraft, currentPeopleResult, eraseTrackingStatus, overPeopleLimit, resetDialoguePeople, transitionHostInputId } from '@web/spaces/canvas/mini-tool/video/video-tool-edit';
 import { VideoToolControls, type LipSyncChoices } from '@web/spaces/canvas/mini-tool/video/VideoToolControls';
 import type { VideoTimelineDecoderRenderer } from '@web/spaces/canvas/mini-tool/video/video-timeline-decoder';
 import { VideoTimelineDialog } from '@web/spaces/canvas/mini-tool/video/VideoTimelineDialog';
@@ -655,6 +655,14 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
     const draft = current as VideoToolDraftById['video.extract-frames'];
     change({ ...draft, params: { ...draft.params, mode: frameRequest, ...(frameRequest === 'current' && time !== null ? { currentTime: time } : {}) } });
   }, [frameRequest, current, presentation, change, store]);
+  // The row a box press fills, the first until one is chosen (demo FaceOverlay); its person's box is drawn selected.
+  const lipSyncRows = toolId === 'video.lip-sync' && current !== null ? (current as VideoToolDraftById['video.lip-sync']).params.dialogues : undefined;
+  const activeRow = lipSyncRows?.find((row) => row.dialogueId === session?.params.activeDialogueId) ?? lipSyncRows?.[0];
+  const maxPeople = lipSync?.maxPeople;
+  // The boxes a press would take past the people limit, dimmed as the person dropdown's items are (canvas design §4 lip-sync row).
+  const cappedPersonIds = React.useMemo(() => new Set(lipSyncRows === undefined || activeRow === undefined ? []
+    : (currentPeopleResult(matchingRecords)?.people ?? []).filter((person) => overPeopleLimit(lipSyncRows, activeRow.dialogueId, person.personId, maxPeople)).map((person) => person.personId)),
+  [lipSyncRows, activeRow, matchingRecords, maxPeople]);
   const spec = miniToolById(toolId);
   // The box following the tracked object on the presented frame, from the tracking made for this selection (§10.3).
   const trackedBox = useTrackedBox(tracking,
@@ -734,9 +742,6 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
     return quoteFacts === null || toolId === 'video.remove-bg' ? onRunVideo(nodeId, toolId, frozen, matchingRecords)
       : onRunVideo(nodeId, toolId, frozen, matchingRecords, { ...quoteFacts, outputNodeIds: quote.outputNodeIds });
   }
-  // The row a box press fills, the first until one is chosen (demo FaceOverlay); its person's box is drawn selected.
-  const lipSyncRows = toolId === 'video.lip-sync' ? (current as VideoToolDraftById['video.lip-sync']).params.dialogues : undefined;
-  const activeRow = lipSyncRows?.find((row) => row.dialogueId === session?.params.activeDialogueId) ?? lipSyncRows?.[0];
   const frame = binding?.getPresentedFrame() ?? null;
   const currentFrame = frame !== null && frame.sourceKey === binding?.sourceKey && frame.sourceEpoch === binding.sourceEpoch && frame.seekEpoch === binding.getSeekEpoch();
   const overlay = overlayTarget && binding && (toolId === 'video.erase' || toolId === 'video.lip-sync') ? createPortal(<VideoToolNodeOverlay
@@ -744,12 +749,15 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
     selection={session?.params.videoRegionMode === 'point' ? 'point' : 'rectangle'}
     people={analysing ? undefined : visiblePeople}
     activePersonId={activeRow?.personId}
+    cappedPersonIds={cappedPersonIds}
     onRegion={(region) => { if (toolId === 'video.erase') change({ ...current as VideoToolDraftById['video.erase'], params: { ...(current as VideoToolDraftById['video.erase']).params, region } }); }}
     onPerson={(personId) => {
       if (toolId !== 'video.lip-sync' || visiblePeople?.kind !== 'people') return;
       const draft = current as VideoToolDraftById['video.lip-sync'];
       const id = activeRow?.dialogueId;
-      if (id !== undefined) change({ ...draft, params: { ...draft.params, dialogues: draft.params.dialogues.map((row) => row.dialogueId === id ? { ...row, personId, analysisRunId: visiblePeople.analysisRunId } : row) } });
+      if (id === undefined) return;
+      if (overPeopleLimit(draft.params.dialogues, id, personId, maxPeople)) { toast.warning(t('server.mini_tool.lipSyncTooManyPeople', { max: maxPeople ?? 0 })); return; }
+      change({ ...draft, params: { ...draft.params, dialogues: draft.params.dialogues.map((row) => row.dialogueId === id ? { ...row, personId, analysisRunId: visiblePeople.analysisRunId } : row) } });
     }}
     trackedBox={toolId === 'video.erase' ? trackedBox : undefined}
     tracked={trackingStatus === 'tracked'}

@@ -23,7 +23,7 @@ import { SlotTool } from '@web/spaces/canvas/generate/generate-tools';
 import { PreviewImg } from '@web/components/PreviewImg';
 import { PARAM_OPTION_CLASS } from '@web/spaces/canvas/generate/ParamOptionGroup';
 import { EXPAND_RATIOS, frameForRatio } from '@web/spaces/canvas/mini-tool/expand-frame';
-import { currentPeopleResult, editDialogue, transitionHostInputId, type EraseTrackingStatus } from '@web/spaces/canvas/mini-tool/video/video-tool-edit';
+import { currentPeopleResult, editDialogue, overPeopleLimit, transitionHostInputId, type EraseTrackingStatus } from '@web/spaces/canvas/mini-tool/video/video-tool-edit';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 import { ModelPicker } from '@web/spaces/canvas/generate/ModelPicker';
 import { ModeToggle } from '@web/spaces/canvas/generate/ModeToggle';
@@ -157,15 +157,6 @@ function PeopleDialogues(props: VideoToolControlsProps): React.JSX.Element {
   const maxDialogues = props.lipSync?.maxDialogues;
   const rowsFull = maxDialogues !== undefined && rows.length >= maxDialogues;
   /**
-   * Whether binding a person to a row would take the run past its people cap (canvas design §4 lip-sync row).
-   * @param dialogueId - The row.
-   * @param personId - The person.
-   * @returns True when it would.
-   * @throws {never} Never.
-   */
-  const overPeople = (dialogueId: string, personId: string): boolean => maxPeople !== undefined
-    && new Set([...rows.filter((row) => row.dialogueId !== dialogueId && row.personId !== null).map((row) => row.personId), personId]).size > maxPeople;
-  /**
    * Commits all rows atomically without collapsing repeated people.
    * @throws {never} Never.
    * @param next - The complete next snapshot or sequence.
@@ -203,11 +194,11 @@ function PeopleDialogues(props: VideoToolControlsProps): React.JSX.Element {
         const slotKey = `dialogue:${row.dialogueId}`;
         return <div key={row.dialogueId} className='col-span-4 grid grid-cols-subgrid items-center gap-x-2 gap-y-1.5' data-testid={`video-dialogue-${row.dialogueId}`} onFocusCapture={() => props.onActiveDialogue?.(row.dialogueId)}>
           <Select onOpenChange={setOpen} value={selected?.personId ?? ''} disabled={props.disabled || props.analysing || !ready || people.length === 0} onValueChange={(personId) => {
-            if (overPeople(row.dialogueId, personId)) { toast.warning(t('server.mini_tool.lipSyncTooManyPeople', { max: maxPeople ?? 0 })); return; }
+            if (overPeopleLimit(rows, row.dialogueId, personId, maxPeople)) { toast.warning(t('server.mini_tool.lipSyncTooManyPeople', { max: maxPeople ?? 0 })); return; }
             changeRows(editDialogue(rows, row.dialogueId, { personId, analysisRunId: result?.analysisRunId ?? null }));
           }}>
             <SelectTrigger data-testid={`video-person-${row.dialogueId}`} className='w-auto gap-1.5 px-2 text-xs'><span className='relative size-5 shrink-0 overflow-hidden rounded-content-xs bg-muted'>{thumbnail === undefined ? <Users className='size-5 text-muted-foreground' /> : <img src={thumbnail} alt='' className='size-full object-cover' />}</span><span className='min-w-0 truncate'><SelectValue placeholder={t('canvas.miniTool.videoUI.choosePerson')} /></span></SelectTrigger>
-            <SelectContent avoidCollisions={false}>{people.map((person, personIndex) => { const capped = overPeople(row.dialogueId, person.personId); return <SelectItem key={person.personId} value={person.personId} aria-disabled={capped ? true : undefined} className='aria-disabled:opacity-50'>{t('canvas.miniTool.videoUI.personNumber', { number: personIndex + 1 })}{capped ? <span className='ml-2 text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.personCapReached', { count: maxPeople ?? 0 })}</span> : null}</SelectItem>; })}</SelectContent>
+            <SelectContent avoidCollisions={false}>{people.map((person, personIndex) => { const capped = overPeopleLimit(rows, row.dialogueId, person.personId, maxPeople); return <SelectItem key={person.personId} value={person.personId} aria-disabled={capped ? true : undefined} className='aria-disabled:opacity-50'>{t('canvas.miniTool.videoUI.personNumber', { number: personIndex + 1 })}{capped ? <span className='ml-2 text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.personCapReached', { count: maxPeople ?? 0 })}</span> : null}</SelectItem>; })}</SelectContent>
           </Select>
           <div className={'min-w-0 [&>div]:min-w-0 [&>div>button:first-child]:h-[var(--control-height)] [&>div>button:first-child]:w-full [&>div>button:first-child]:min-w-0 [&>div>button:first-child]:flex-row [&>div>button:first-child]:justify-start [&>div>button:first-child]:gap-1.5 [&>div>button:first-child]:pr-6 [&>div>button:first-child>span]:truncate [&>div>button[aria-pressed=false]]:border-border [&>div>button[aria-pressed=true]]:border-active-border [&>div>button[aria-pressed=true]]:bg-accent [&>div>button[aria-pressed=true]]:text-foreground' + (input === undefined ? '' : ' [&>div>button:first-child>svg]:hidden [&>div>button:first-child]:pl-2')}>
             <SlotTool testId={`video-audio-${row.dialogueId}`} thumbnailTestId={`video-audio-thumbnail-${row.dialogueId}`} clearTestId={`video-audio-clear-${row.dialogueId}`} Icon={AudioLines} onPick={() => props.onPick(slotKey)} active={props.pickingSlot === slotKey} pick={input === undefined ? undefined : { kind: 'audio', url: input.url }} disabled={props.disabled} onClear={() => { if (props.pickingSlot === slotKey) props.onEndPick?.(); changeRows(editDialogue(rows, row.dialogueId, { audioInputId: null })); }} clearLabel={t('canvas.miniTool.panel.clearSlot')} label={input === undefined ? t('canvas.miniTool.videoUI.chooseDialogueAudio') : props.inputNames.get(input.inputId) ?? input.url.split('/').at(-1) ?? ''} tip={t('canvas.miniTool.videoUI.pickAudio')} />
