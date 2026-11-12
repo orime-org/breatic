@@ -124,6 +124,8 @@ export interface TaskJobData {
   toolId?: string;
   /** The stored object a container tool reads. */
   sourceKey?: string;
+  /** The stored objects a join reads after its source, in order (inner#1825 §6.4). */
+  extraKeys?: string[];
   /**
    * Target canvas node IDs whose task rows this run settles.
    * Length === 1 for single-output ops; length === N for multi-output ops
@@ -376,7 +378,7 @@ async function runTaskBody(
   job: Job<TaskJobData>,
   token?: string,
 ): Promise<Record<string, unknown>> {
-  const { taskId, taskType, userId, projectId, spaceId, params, model, source, toolId, sourceKey, targetNodeIds, sceneRowId } = job.data;
+  const { taskId, taskType, userId, projectId, spaceId, params, model, source, toolId, sourceKey, extraKeys, targetNodeIds, sceneRowId } = job.data;
   const canvasDocName = resolveCanvasDocName(projectId, spaceId);
 
   const streamRedis = getStreamRedis();
@@ -437,6 +439,7 @@ async function runTaskBody(
     const storedResult = existing.result as {
       model?: string;
       credits?: number;
+      notice?: unknown;
       outputs?: PersistedOutput[];
     } | null;
     const storedOutputs = storedResult?.outputs;
@@ -468,7 +471,7 @@ async function runTaskBody(
     }
     // The 3D Space's row is settled from the stored output the same way.
     if (sceneRowId !== undefined) {
-      await settleSceneRow(taskId, sceneRowId, sceneTaskService.generationOutcome(storedOutputs), { rethrow: true });
+      await settleSceneRow(taskId, sceneRowId, sceneTaskService.generationOutcome(storedResult), { rethrow: true });
     }
     // #1580-parallel activity-feed fix: a crash between billing and the
     // Stage-4 activity write leaves the feed with no success row (or a
@@ -570,12 +573,14 @@ async function runTaskBody(
       externalTaskId: `breatic-${taskId}`,
       retryStarting,
       deadlineAt,
+      lastAttempt: isTerminalAttempt(job),
     };
     if (source === "mini_tool" && toolId) {
       [providerResult, creditsUsed] = await runMiniTool({
         toolId,
         params,
         ...(sourceKey !== undefined && { sourceKey }),
+        ...(extraKeys !== undefined && { extraKeys }),
         userId,
         projectId,
         taskId,
@@ -832,7 +837,7 @@ async function runTaskBody(
   }
   // A 3D generation's result lands on its Space's own row (inner#1691).
   if (sceneRowId !== undefined) {
-    await settleSceneRow(taskId, sceneRowId, sceneTaskService.generationOutcome(persistedOutputs), { rethrow: true });
+    await settleSceneRow(taskId, sceneRowId, sceneTaskService.generationOutcome(result), { rethrow: true });
   }
 
   if (projectId) {
@@ -1650,6 +1655,8 @@ interface RunMiniToolOpts {
   params: Record<string, unknown>;
   /** The stored object a container tool reads. */
   sourceKey?: string;
+  /** The stored objects a join reads after its source, in order. */
+  extraKeys?: string[];
   userId: string;
   projectId: string | undefined;
   taskId: string;
@@ -1704,6 +1711,7 @@ export async function runMiniTool(
       projectId,
       params,
       sourceKey: opts.sourceKey,
+      ...(opts.extraKeys !== undefined && { extraKeys: opts.extraKeys }),
       deadlineAt: resume.deadlineAt,
     });
   }
@@ -2007,7 +2015,8 @@ async function importProvider(taskType: string): Promise<{
           return {
             ...(await runCatalogTask(
               stepDepsFor(studioId, run.resume.deadlineAt),
-              { taskId: run.taskId, studioId, deadlineAt: run.resume.deadlineAt, retryStarting: run.resume.retryStarting },
+              { taskId: run.taskId, studioId, deadlineAt: run.resume.deadlineAt, retryStarting: run.resume.retryStarting,
+                lastAttempt: run.resume.lastAttempt ?? false },
               modality,
               prompt,
               model,

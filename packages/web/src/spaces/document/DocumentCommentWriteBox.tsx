@@ -125,7 +125,7 @@ export function DocumentCommentWriteBox({
           rows={1}
           maxLength={NOTE_MAX_CHARS}
           data-testid={`doc-comment-${name}-input`}
-          className='min-h-0 resize-none overflow-hidden rounded-none border-0 bg-transparent px-2 py-1 text-sm focus-visible:border-0 md:text-sm'
+          className='min-h-0 resize-none overflow-hidden rounded-none border-0 bg-transparent px-2 py-1 text-sm focus:border-0 md:text-sm'
           placeholder={placeholder}
           value={value}
           onChange={(event) => {

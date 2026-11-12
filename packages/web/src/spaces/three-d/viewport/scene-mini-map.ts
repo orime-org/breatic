@@ -4,6 +4,7 @@
 import { Box3, Color, DoubleSide, type Group, HemisphereLight, Mesh, MeshBasicMaterial, MeshStandardMaterial, OrthographicCamera, Plane, Raycaster, RingGeometry, Scene, Vector2, Vector3, WebGLRenderer } from 'three';
 import type { SceneObject } from '@breatic/shared';
 import type { ModelResourceCache, SceneModelLease } from '@web/spaces/three-d/viewport/model-resources';
+import { applyPose } from '@web/spaces/three-d/viewport/pose-rig';
 
 /**
  * Fit complete world bounds in a top view with the host's actual aspect ratio.
@@ -46,6 +47,7 @@ export class SceneMiniMapRuntime {
   private readonly resize: ResizeObserver;
   private readonly target = new Vector3();
   private objects: readonly SceneObject[] = [];
+  private previewed: ReadonlySet<string> = new Set();
   private disposed = false;
   private renderKey = '';
   private width = 0;
@@ -75,11 +77,13 @@ export class SceneMiniMapRuntime {
    * @param objects - The current scene projection, including gesture drafts.
    * @param ready - Model IDs admitted by the main viewport's completed loads.
    * @param target - This user's current orbit target.
+   * @param previewed - Objects drawn from a drag still in progress.
    * @throws {never} Load failures release the overview lease.
    */
-  update(objects: readonly SceneObject[], ready: ReadonlySet<string>, target: Vector3): void {
+  update(objects: readonly SceneObject[], ready: ReadonlySet<string>, target: Vector3, previewed: ReadonlySet<string>): void {
     if (this.disposed) return;
     this.objects = objects;
+    this.previewed = previewed;
     this.target.copy(target);
     const existing = new Map(objects.map((object) => [object.id, object]));
     for (const [id, item] of this.items) {
@@ -126,7 +130,7 @@ export class SceneMiniMapRuntime {
     const background = css.getPropertyValue('--color-popover').trim();
     const foreground = css.getPropertyValue('--color-foreground').trim();
     const builtin = css.getPropertyValue('--color-muted-foreground').trim();
-    const key = JSON.stringify([this.objects.filter((object) => this.items.get(object.id)?.root), this.target.toArray(), background, foreground, builtin, this.host.clientWidth, this.host.clientHeight]);
+    const key = JSON.stringify([this.objects.filter((object) => this.items.get(object.id)?.root), [...this.previewed], this.target.toArray(), background, foreground, builtin, this.host.clientWidth, this.host.clientHeight]);
     if (key === this.renderKey) return;
     this.renderKey = key;
     if (background) this.scene.background = new Color(background);
@@ -136,6 +140,7 @@ export class SceneMiniMapRuntime {
       const root = this.items.get(object.id)?.root;
       if (!root) continue;
       root.position.fromArray(object.position); root.quaternion.fromArray(object.rotation); root.scale.fromArray(object.scale); root.updateMatrixWorld(true);
+      applyPose(root, object.pose, !this.previewed.has(object.id));
       if (object.model.kind === 'builtin' && builtin) root.traverse((child) => {
         if (child instanceof Mesh) for (const material of Array.isArray(child.material) ? child.material : [child.material]) {
           if (material instanceof MeshStandardMaterial) material.color.setStyle(builtin);

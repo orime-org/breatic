@@ -669,7 +669,8 @@ test('a video plays in place and keeps playing while its width changes (A7, A8)'
   const video = page.locator(`${VIDEO} video`);
   await expect(video).toBeVisible({ timeout: UPLOAD_TIMEOUT });
   // The size the server read off the stored file reaches the player, which holds it while loading (A23).
-  expect([await video.getAttribute('width'), await video.getAttribute('height')]).toEqual(['64', '48']);
+  // It can follow the player onto the page by a moment, under load.
+  await expect.poll(async () => [await video.getAttribute('width'), await video.getAttribute('height')]).toEqual(['64', '48']);
   const handle = page.locator(`${VIDEO} [data-testid="doc-media-resize-se"]`);
   const element = await video.elementHandle();
 
@@ -684,6 +685,43 @@ test('a video plays in place and keeps playing while its width changes (A7, A8)'
   // The same element: the block redrew in place rather than being rebuilt.
   expect(await page.locator(`${VIDEO} video`).evaluate((v, before) => v === before, element)).toBe(true);
 });
+
+for (const align of ['left', 'right'] as const) {
+  test(`the toolbar of a picture narrower than it, at the body's ${align} edge, stands whole in the body (A9)`, async () => {
+    // Narrow enough that the body has no margin beside the picture for the
+    // toolbar's ends to reach into.
+    await page.setViewportSize({ width: 1024, height: 900 });
+    await openFreshDocument(page);
+    await page.keyboard.type('Above');
+    await page.keyboard.press('Enter');
+    await pasteFile(page, await pngBytes(page, 40, 40), 'narrow.png', 'image/png');
+    const img = page.locator(`${IMAGE} img`);
+    await expect(img).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+    await expect.poll(async () => (await img.boundingBox())?.width).toBe(40);
+    if (align === 'right') {
+      await img.click();
+      await page.getByTestId('doc-media-align-right').click();
+      await expect(page.locator(IMAGE)).toHaveAttribute('data-text-alignment', 'right');
+      await page.mouse.move(5, 5);
+    }
+
+    await img.hover();
+    const toolbar = page.locator(`${IMAGE} [data-testid="doc-media-toolbar"]`);
+    await expect(toolbar).toHaveAttribute('data-shown', 'true');
+    await expect(toolbar).toHaveAttribute('data-side', 'top');
+    const [bar, media] = await Promise.all([toolbar.boundingBox(), img.boundingBox()]);
+    expect(bar!.width).toBeGreaterThan(media!.width);
+    expect(bar!.y + bar!.height).toBeLessThanOrEqual(media!.y);
+    // Each corner of the toolbar is what the page shows at that point: the
+    // body's scroller does not cut its end off.
+    const corners = await toolbar.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      return [[r.left + 2, r.top + 2], [r.right - 2, r.top + 2], [r.left + 2, r.bottom - 2], [r.right - 2, r.bottom - 2]]
+        .map(([x, y]) => el.contains(document.elementFromPoint(x!, y!)));
+    });
+    expect(corners).toEqual([true, true, true, true]);
+  });
+}
 
 test('a picture that is the first block takes its width from any corner (A8)', async () => {
   await openFreshDocument(page);

@@ -345,7 +345,7 @@ async function settleSceneUpload(
   if (row === null) return {};
   const settled = await sceneTaskService.settle(
     row,
-    outcome.outcome === "done" ? { outcome: "done", assetId: outcome.asset.id } : outcome,
+    outcome.outcome === "done" ? { outcome: "done", assetId: outcome.asset.id, notice: null } : outcome,
   );
   let activityAppendFailed = false;
   if (settled.assetWritten && outcome.outcome === "done") {

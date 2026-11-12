@@ -117,6 +117,66 @@ export const SHOTS: GenerationTemplate = {
 /** Every fixture, as a registry. */
 export const FIXTURES: readonly GenerationTemplate[] = [SHEET, SOLO, STEPPED, SHOTS];
 
+/** A music cover model whose only way to take a song is its "audio" slot. */
+export const COVER_MODEL = "minimax-music-cover";
+
+/**
+ * A fixture whose input goes into a slot of the anchor's model rather than
+ * its pool (inner#1825 design 4.1): `song` into "audio".
+ */
+export const SLOTTED: GenerationTemplate = {
+  id: "fixture-slotted",
+  anchor: "cover",
+  nodes: [{ key: "cover", role: "generate", type: "audio", mode: "a2m", model: COVER_MODEL, params: {} }],
+  edges: [],
+  inputs: [{ key: "song", type: "audio", into: "audio" }],
+  steps: [],
+  agentNote: "a fixture cover of one song",
+  goal: "character",
+  triggers: { asks: ["a fixture"], offerWhen: ["a fixture is wanted"] },
+};
+
+/**
+ * A fixture with a node downstream of its anchor (inner#1825 design 4.2): the
+ * anchor's picture goes into the style slot of `restyle`.
+ */
+export const DOWNSTREAM: GenerationTemplate = {
+  id: "fixture-downstream",
+  anchor: "draw",
+  nodes: [
+    { key: "draw", role: "generate", type: "image", mode: "t2i", model: T2I, params: {} },
+    { key: "restyle", role: "generate", type: "image", mode: "i2i", model: EDIT, params: { aspect_ratio: "1:1" } },
+  ],
+  edges: [{ from: "draw", to: "restyle", into: "style_images" }],
+  inputs: [],
+  steps: [],
+  agentNote: "a fixture picture restyled after it is drawn",
+  goal: "character",
+  triggers: { asks: ["a fixture"], offerWhen: ["a fixture is wanted"] },
+};
+
+/**
+ * A fixture with a node no template edge touches (inner#1825 design 4.2): the
+ * `outro` stands beside the anchor, tied to it only by its tag's anchor.
+ */
+export const STANDALONE: GenerationTemplate = {
+  id: "fixture-standalone",
+  anchor: "intro",
+  nodes: [
+    { key: "intro", role: "generate", type: "image", mode: "t2i", model: T2I, params: {} },
+    { key: "outro", role: "generate", type: "image", mode: "t2i", model: T2I, params: {} },
+  ],
+  edges: [],
+  inputs: [],
+  steps: [],
+  agentNote: "a fixture opening and closing picture",
+  goal: "character",
+  triggers: { asks: ["a fixture"], offerWhen: ["a fixture is wanted"] },
+};
+
+/** The fixtures with the new places a template node or input can stand (inner#1825), as a registry. */
+export const PLACED_FIXTURES: readonly GenerationTemplate[] = [...FIXTURES, SLOTTED, DOWNSTREAM, STANDALONE];
+
 /** The fixtures' strings, under `canvas.template`, by locale. */
 const STRINGS: Record<string, Record<string, unknown>> = {
   en: {
@@ -153,6 +213,21 @@ const STRINGS: Record<string, Record<string, unknown>> = {
       prompt: "(💡 Generate Still first)[📎 Still] walks along the shore.",
       node: { still: { name: "Still", prompt: "A woman in a yellow coat." } },
     },
+    "fixture-slotted": {
+      name: "Fixture slotted",
+      prompt: "The same song as a slow acoustic ballad, keeping the melody and the lyrics.",
+      input: { song: { name: "Song", note: "Put the song in Song, then pick it into the audio slot" } },
+    },
+    "fixture-downstream": {
+      name: "Fixture downstream",
+      prompt: "A lighthouse at dusk.",
+      node: { restyle: { name: "Restyle", prompt: "(💡 Generate Fixture downstream first, then pick it into the style slot)A harbour in the same style." } },
+    },
+    "fixture-standalone": {
+      name: "Fixture standalone",
+      prompt: "An opening picture of a harbour.",
+      node: { outro: { name: "Outro", prompt: "A closing picture of the same harbour at night." } },
+    },
   },
   ja: {
     "fixture-sheet": {
@@ -188,6 +263,21 @@ const STRINGS: Record<string, Record<string, unknown>> = {
       prompt: "(💡 先にスチルを生成してください)[📎 スチル] が海岸を歩く。",
       node: { still: { name: "スチル", prompt: "黄色いコートの女性。" } },
     },
+    "fixture-slotted": {
+      name: "フィクスチャ枠入力",
+      prompt: "同じ曲をゆっくりしたアコースティックバラードで、メロディと歌詞はそのまま。",
+      input: { song: { name: "曲", note: "曲に曲を入れてから、オーディオ枠に選んでください" } },
+    },
+    "fixture-downstream": {
+      name: "フィクスチャ下流",
+      prompt: "夕暮れの灯台。",
+      node: { restyle: { name: "スタイル変換", prompt: "(💡 先にフィクスチャ下流を生成し、スタイル枠に選んでください)同じスタイルの港。" } },
+    },
+    "fixture-standalone": {
+      name: "フィクスチャ独立",
+      prompt: "港のオープニング画像。",
+      node: { outro: { name: "エンディング", prompt: "同じ港の夜のエンディング画像。" } },
+    },
   },
 };
 
@@ -221,37 +311,62 @@ export interface AgentShape {
 /**
  * The proposal the agent sends for one template (design 6.9 "Agent shape"),
  * built from `templateSkeleton`: one node per key carrying `template: { id,
- * key }` (the anchor's key written or left out), one empty source node per
- * input wired into the nodes it feeds, the template edges, each generate
+ * key }` (the anchor's key written or left out; a key no template edge
+ * touches also carries the anchor's index, inner#1825), one empty source node
+ * per input wired into the nodes it feeds (into the input's slot when it
+ * names one, else the pool), the template edges, each generate
  * node's locale prompt with each reference mark bound by name to a ref and
  * each tweak mark written as words, and
- * each input's note as a note on top of every node it feeds. A node with
+ * each input's note as a note on top of every node it feeds. An input given
+ * material is sent holding it, with no edge and no note, through the fills of
+ * the node it feeds (inner#1825 design 4.1). A node with
  * shots sends them instead of a prompt, each with its seconds and its
- * `shot.<n>` words bound the same way, the notes on top of the first shot.
+ * `shot.<n>` words bound the same way, the notes on top of the first shot;
+ * a node with dialogue lines sends them the same way from its `line.<n>` words.
  * No guide node.
  * @param template - The template.
- * @param options - `anchorKey`: write the anchor's key; `tagInputs`: tag each input node with `{ id, input }`.
+ * @param options - `anchorKey`: write the anchor's key; `tagInputs`: tag each input node with `{ id, input }`; `material`: input key to the address its node holds.
  * @returns The proposal and where each identity sits.
  */
-export function agentShape(template: GenerationTemplate, options: { anchorKey?: boolean; tagInputs?: boolean } = {}): AgentShape {
+export function agentShape(
+  template: GenerationTemplate,
+  options: { anchorKey?: boolean; tagInputs?: boolean; material?: ReadonlyMap<string, string> } = {},
+): AgentShape {
   const skeleton = templateSkeleton(template);
   const base = `canvas.template.${template.id}`;
   const nodes: SentNode[] = [];
   const at: Identities = new Map();
+  const anchorAt = [...skeleton.nodes.keys()].indexOf(skeleton.anchor);
+  const wiredKeys = new Set(skeleton.edges.flatMap((edge) => [edge.from, edge.to]));
   for (const [key, node] of skeleton.nodes) {
     const anchor = key === skeleton.anchor;
     const name = anchor ? t(`${base}.name`) : t(`${base}.node.${key}.name`);
     at.set(`node:${key}`, nodes.length);
-    const tag = anchor && options.anchorKey !== true ? { id: template.id } : { id: template.id, key };
+    const standalone = !anchor && !wiredKeys.has(key);
+    const tag = anchor && options.anchorKey !== true ? { id: template.id } : standalone ? { id: template.id, key, anchor: anchorAt } : { id: template.id, key };
     nodes.push({ role: node.role, type: node.type, name, template: tag });
   }
+  /**
+   * The slot an input goes into, where it names one.
+   * @param key - The input key.
+   * @returns The slot, or undefined for the pool.
+   */
+  const intoOf = (key: string): string | undefined => template.inputs.find((input) => input.key === key)?.into;
+  /**
+   * The address an input's node holds, where it goes into a slot and is given one.
+   * @param key - The input key.
+   * @returns The address, or undefined for an empty node.
+   */
+  const materialOf = (key: string): string | undefined => (intoOf(key) === undefined ? undefined : options.material?.get(key));
   for (const input of skeleton.inputs) {
     const name = t(`${base}.input.${input.key}.name`);
+    const material = materialOf(input.key);
     at.set(`input:${input.key}`, nodes.length);
     nodes.push({
       role: "source",
       type: input.type,
       name,
+      ...(material === undefined ? {} : { material }),
       ...(options.tagInputs === true ? { template: { id: template.id, input: input.key } } : {}),
     });
   }
@@ -263,7 +378,9 @@ export function agentShape(template: GenerationTemplate, options: { anchorKey?: 
       ...(edge.into === undefined ? {} : { into: edge.into }),
     })),
     ...skeleton.inputs.flatMap((input) =>
-      input.feeds.map((fed) => ({ fromIndex: index(`input:${input.key}`), toIndex: index(`node:${fed}`), into: "pool" })),
+      materialOf(input.key) === undefined
+        ? input.feeds.map((fed) => ({ fromIndex: index(`input:${input.key}`), toIndex: index(`node:${fed}`), into: intoOf(input.key) ?? "pool" }))
+        : [],
     ),
   ];
   for (const node of template.nodes) {
@@ -275,15 +392,34 @@ export function agentShape(template: GenerationTemplate, options: { anchorKey?: 
     const targets = new Map(
       [...templateMarkTargets(template, key)].map(([name, target]): [string, number] => [name, index("input" in target ? `input:${target.input}` : `node:${target.node}`)]),
     );
-    const notes = fedBy.map((input) => ({ slot: { kind: "note" as const, label: t(`${base}.input.${input.key}.note`) } }));
+    const notes = fedBy
+      .filter((input) => materialOf(input.key) === undefined)
+      .map((input) => ({ slot: { kind: "note" as const, label: t(`${base}.input.${input.key}.note`) } }));
+    const fills = Object.fromEntries(
+      fedBy.flatMap((input): [string, number[]][] => {
+        const into = intoOf(input.key);
+        return into === undefined || materialOf(input.key) === undefined ? [] : [[into, [index(`input:${input.key}`)]]];
+      }),
+    );
     const sent = (words: string): NonNullable<SentNode["prompt"]> => markedSegments(words).map((segment) => sentSegment(segment, targets));
     const at_ = index(`node:${key}`);
+    const filled = Object.keys(fills).length === 0 ? {} : { fills };
+    // A node with dialogue lines sends them in place of the prompt, each its speaker and its `line.<n>` words (inner#1825 design 8.5).
+    if (node.lines !== undefined) {
+      nodes[at_] = {
+        ...(nodes[at_] as SentNode),
+        ...filled,
+        lines: node.lines.map((line, n) => ({ speaker: line.speaker, prompt: [...(n === 0 ? notes : []), ...sent(t(`${head}.line.${String(n + 1)}`))] })),
+      };
+      continue;
+    }
     // A node with shots sends them in place of the prompt, the notes on top of the first shot.
     nodes[at_] =
       node.shots === undefined
-        ? { ...(nodes[at_] as SentNode), prompt: [...notes, ...sent(t(`${head}.prompt`))] }
+        ? { ...(nodes[at_] as SentNode), ...filled, prompt: [...notes, ...sent(t(`${head}.prompt`))] }
         : {
             ...(nodes[at_] as SentNode),
+            ...filled,
             shots: node.shots.map((shot, n) => ({
               duration: shot.seconds,
               prompt: [...(n === 0 ? notes : []), ...sent(t(`${head}.shot.${String(n + 1)}`))],

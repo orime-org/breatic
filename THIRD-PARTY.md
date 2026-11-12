@@ -49,10 +49,10 @@ every new dependency, which is what that review is for.
 | Source | `https://ffmpeg.org/releases/ffmpeg-8.0.1.tar.xz` for the program, and `https://gitlab.alpinelinux.org/alpine/aports/-/tree/8623c9968f3fca48863eb9d3a355c2baaba7b20b/community/ffmpeg` for the recipe Alpine built it with |
 
 It reads media numbers, cuts cover frames, and runs the mini-tools' video
-operations: crop, speed, cut, colour adjustment, audio denoise, stabilisation
-(`libvidstab`) and HDR conversion (`zimg` and `libx265`), and the audio
-operations: denoise, loudness, speed, cut, equaliser, compressor, pan and
-voice enhance.
+operations: crop, speed, cut, join, colour adjustment, audio denoise,
+stabilisation (`libvidstab`) and HDR conversion (`zimg` and `libx265`), and the
+audio operations: denoise, loudness, speed, cut, join, equaliser, compressor,
+pan and voice enhance.
 
 Version 3 of the GPL: Alpine configures this build with `--enable-gpl` **and**
 `--enable-version3`, and asked directly it answers
@@ -228,6 +228,75 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+```
+
+### GDQuest Mannequiny, the built-in 3D figure
+
+| | |
+|---|---|
+| What | The rigged mannequin a 3D Space adds as its built-in figure |
+| Where it lives here | [packages/web/src/spaces/three-d/viewport/assets/figure.glb](./packages/web/src/spaces/three-d/viewport/assets/figure.glb) |
+| Copied from | `godot/assets/3d/mannequiny/mannequiny-0.3.0.glb` of https://github.com/GDQuest/godot-3d-mannequin at commit `d48a4fdb49a3930f38cdbeb854cf5be3ae4b6b2a` (SHA-256 `8005cc2ab9221ad605be2d1cbb89eea894583e72bd5f50a5fbe40243a64f0493`) |
+| Changes | Animations, vertex colours and texture coordinates removed and the mesh quantized (`KHR_mesh_quantization`) with `@gltf-transform`; each joint's transform set to its bind pose from the skin's inverse bind matrices, and the root scaled to 1.75 m tall with the soles at the origin; geometry, skin weights and bone hierarchy unchanged |
+| Licence | The project's art assets are **CC-BY-4.0**, attributed to "GDQuest and contributors (https://www.gdquest.com/)"; its code is **MIT**. This entry is the attribution CC-BY-4.0 asks for, and the MIT notice follows |
+
+```
+MIT License
+
+Copyright (c) 2020 GDQuest
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### three-vrm's Mixamo bone-name map
+
+| | |
+|---|---|
+| What | The Mixamo bone names and the VRM humanoid bone each stands for, used to recognise a Mixamo rig when posing a 3D model |
+| Where it lives here | [packages/web/src/spaces/three-d/viewport/pose-bone-names.ts](./packages/web/src/spaces/three-d/viewport/pose-bone-names.ts) |
+| Copied from | `packages/three-vrm/examples/humanoidAnimation/mixamoVRMRigMap.js` of https://github.com/pixiv/three-vrm at commit `b6f3d136577f200652a87d57b320c59598b1d418` |
+| Changes | The name pairs are folded into shared lookup tables: a name loses its `mixamorig` prefix and its side, and the rest is looked up as a VRM 1.0 bone name |
+| Licence | **MIT**, Copyright (c) 2019-2026 pixiv Inc. |
+
+```
+Copyright (c) 2019-2026 pixiv Inc.
+
+MIT License
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
 ## Packages reachable from the front-end bundle

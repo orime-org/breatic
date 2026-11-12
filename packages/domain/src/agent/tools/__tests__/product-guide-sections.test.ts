@@ -69,7 +69,7 @@ const SPACE_SECTIONS: Record<string, readonly string[]> = {
     "Groups and undo",
     "Proposal cards",
   ],
-  document: ["Document spaces", "Document proposal cards"],
+  document: ["Document spaces", "Document proposal cards", "Document snapshots"],
   timeline: ["Timeline spaces"],
   "3d": ["3D spaces"],
 };

@@ -221,18 +221,17 @@ export function StudioAccountMenu(): React.JSX.Element {
             aria-label={t('studio.topBar.account')}
             variant={null}
             size={null}
-            // As tall as the language and theme buttons beside it, with the
-            // avatar centred inside. `sideOffset` is measured from the
-            // trigger, so a 26px anchor in a 32px row hangs the menu 3px
-            // higher than those two and leaves 1px of visible gap under the
-            // bar instead of their 4.
+            // As tall as the language and theme buttons beside it, so the menu
+            // hangs from the same edge as theirs (`sideOffset` is measured
+            // from the trigger). The avatar inside is the size of the avatars
+            // in the project page's top bar, and the keyboard ring hugs it.
             //
             // Hover dims rather than tinting the background: with an avatar set
             // the background is covered by the image, so a background hover is
             // invisible. Opacity also leaves the element's box untouched — this
             // button is the menu's anchor, and anything that resizes it
             // (a scale, a border) makes the menu jump on hover.
-            className='ml-1 flex h-[var(--btn-chrome)] shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
+            className='group/account ml-1 flex size-[var(--btn-chrome)] shrink-0 items-center justify-center rounded-full transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-0'
           >
             <StudioAvatar
               name={user?.name ?? '?'}
@@ -241,6 +240,7 @@ export function StudioAccountMenu(): React.JSX.Element {
               type='personal'
               avatarUrl={user?.avatarUrl ?? null}
               size='sm'
+              className='group-focus-visible/account:ring-1 group-focus-visible/account:ring-ring'
             />
           </Button>
         </DropdownMenuTrigger>

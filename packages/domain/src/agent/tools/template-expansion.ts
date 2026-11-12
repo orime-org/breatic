@@ -27,34 +27,43 @@ import {
   type TemplateNodeKey,
 } from "@breatic/shared";
 
+import { onDialogueSide } from "@domain/agent/tools/proposal-dialogue.js";
 import { fixOn, refuse, type NodeLabel, type Refusal } from "@domain/agent/tools/proposal-refusals.js";
 import { poolSentence } from "@domain/agent/tools/proposal-routing.js";
 
-/** Where a node stands in the template it names, as the agent writes it. */
-export type TemplateTag = { id: string; key?: string } | { id: string; input: string };
+/**
+ * Where a node stands in the template it names, as the agent writes it;
+ * `anchor` is the index of its instance's anchor (inner#1825).
+ */
+export type TemplateTag = { id: string; key?: string; anchor?: number } | { id: string; input: string; anchor?: number };
 
-/** Where a node stands once its tag is read: the anchor, another node by key, or an input. */
+/**
+ * Where a node stands once its tag is read: the anchor, another node by key,
+ * or an input; `tagAnchor` is the anchor index its tag names, if any.
+ */
 export type TemplatePlace =
-  | { template: GenerationTemplate; key: TemplateNodeKey; anchor: boolean }
-  | { template: GenerationTemplate; input: string };
+  | { template: GenerationTemplate; key: TemplateNodeKey; anchor: boolean; tagAnchor?: number }
+  | { template: GenerationTemplate; input: string; tagAnchor?: number };
 
 /** The node with its template filled in, or why the template does not apply. */
 export type TemplateExpansion = { ok: true; node: ProposalNode } | Refusal;
 
 /** The words a generate node takes in the mode it is sent in, as refusals and fixes name them. */
-export type SentWords = { name: "shots" | "prompt"; mentions: string; write: string; placed: string };
+export type SentWords = { name: "shots" | "lines" | "prompt"; mentions: string; write: string; placed: string };
 
 /**
- * The words a generate node takes in a mode: shots in multi_shot, a prompt in
- * any other, whatever form the template's own words have.
- * @param mode - The mode the node is sent in.
+ * The words a generate node takes as it is sent: shots in multi_shot, lines on
+ * the dialogue side of a model whose speakers stand in for its voice
+ * (inner#1825 design 8.5), a prompt otherwise, whatever form the template's
+ * own words have.
+ * @param node - The node, with the mode, model and params it is sent with.
  * @returns How refusals and fixes name those words.
  * @throws {never} Never.
  */
-export function sentWords(mode: string | undefined): SentWords {
-  return mode === MULTI_SHOT_MODE
-    ? { name: "shots", mentions: "the shots @", write: "write the shots.", placed: " in a shot" }
-    : { name: "prompt", mentions: "the prompt @s", write: "write a prompt.", placed: "" };
+export function sentWords(node: Pick<ProposalNode, "mode" | "model" | "params">): SentWords {
+  if (node.mode === MULTI_SHOT_MODE) return { name: "shots", mentions: "the shots @", write: "write the shots.", placed: " in a shot" };
+  if (onDialogueSide(node)) return { name: "lines", mentions: "the lines @", write: "write the lines.", placed: " in a line" };
+  return { name: "prompt", mentions: "the prompt @s", write: "write a prompt.", placed: "" };
 }
 
 /**
@@ -68,7 +77,7 @@ export function quoted(names: readonly string[]): string {
 }
 
 /**
- * A template generate node's prompt, or its shots when it has them, as the
+ * A template generate node's prompt, or its shots or lines when it has them, as the
  * segments a proposal sends: words as they are, each reference mark as a ref
  * naming what is wired in there by its key, the number left for the agent to
  * fill since it knows which node it wired in for each.
@@ -97,6 +106,7 @@ export function templateSegmentsText(template: GenerationTemplate, key: Template
   };
   const words = templateNodeWords(template, key);
   if ("prompt" in words) return segments(words.prompt);
+  if ("lines" in words) return `lines: [${words.lines.map((line) => `{"speaker": ${String(line.speaker)}, "prompt": ${segments(line.key)}}`).join(", ")}]`;
   return `shots: [${words.shots.map((shot) => `{"duration": ${String(shot.seconds)}, "prompt": ${segments(shot.key)}}`).join(", ")}]`;
 }
 
@@ -121,7 +131,7 @@ export function templatePlace(tag: TemplateTag, node: ProposalNode, templates: r
     if (node.type !== input.type) {
       return refuse("template-key-kind", `Input "${input.key}" of template "${template.id}" takes ${input.type}; "${node.name}" is a ${node.type} node.`);
     }
-    return { template, input: input.key };
+    return { template, input: input.key, ...(tag.anchor === undefined ? {} : { tagAnchor: tag.anchor }) };
   }
   const key = tag.key ?? template.anchor;
   const own = template.nodes.find((one) => one.key === key);
@@ -131,7 +141,7 @@ export function templatePlace(tag: TemplateTag, node: ProposalNode, templates: r
   if (node.role !== own.role || node.type !== own.type) {
     return refuse("template-key-kind", `Node "${key}" of template "${template.id}" is a ${own.role} ${own.type} node; "${node.name}" is a ${node.role} ${node.type} node.`);
   }
-  return { template, key, anchor: key === template.anchor };
+  return { template, key, anchor: key === template.anchor, ...(tag.anchor === undefined ? {} : { tagAnchor: tag.anchor }) };
 }
 
 /**
@@ -153,14 +163,14 @@ export function expandAt(place: TemplatePlace, rest: ProposalNode, at: NodeLabel
   }
   const own = template.nodes.find((one) => one.key === key);
   const filled = templateNodeDefaults(template, anchor ? undefined : key, rest);
-  if (rest.prompt === undefined && rest.shots === undefined) {
+  if (rest.prompt === undefined && rest.shots === undefined && rest.lines === undefined) {
     // The pool is the template's own model's; a node settling another model
     // is told how its nodes go in once it has a prompt to check.
     const keeps = own?.role === "generate" && filled.mode === own.mode && filled.model === own.model;
-    const words = sentWords(filled.mode);
+    const words = sentWords(filled);
     const pool = keeps ? ` Each node ${words.mentions} goes into the pool. ${poolSentence(rest.name)}` : "";
-    const shotList = own?.role === "generate" && own.shots !== undefined;
-    return refuse("template-no-prompt", `"${rest.name}" names template "${template.id}" and sends no ${words.name}. The template's ${shotList ? "shots" : "prompt"}, to rewrite in the user's language with their story or detail in it: ${templateSegmentsText(template, key)}.${pool}`, fixOn(at, words.write));
+    const form = own?.role !== "generate" ? "prompt" : own.shots !== undefined ? "shots" : own.lines !== undefined ? "lines" : "prompt";
+    return refuse("template-no-prompt", `"${rest.name}" names template "${template.id}" and sends no ${words.name}. The template's ${form}, to rewrite in the user's language with their story or detail in it: ${templateSegmentsText(template, key)}.${pool}`, fixOn(at, words.write));
   }
   return { ok: true, node: filled };
 }

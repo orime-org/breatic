@@ -33,6 +33,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
       attachment_max_items: 7,
       current_space_max_chars: 4321,
       space_list_max_items: 12,
+      running_poll_interval_ms: 6543,
     }),
   };
 });
@@ -80,6 +81,7 @@ describe("GET /chat/stream-config", () => {
       "attachmentMaxItems",
       "currentSpaceMaxChars",
       "heartbeatIntervalMs",
+      "runningPollIntervalMs",
       "spaceListMaxItems",
       "spaceReadTimeoutMs",
     ]);
@@ -97,5 +99,11 @@ describe("GET /chat/stream-config", () => {
 
     expect(data.currentSpaceMaxChars).toBe(4321);
     expect(data.spaceListMaxItems).toBe(12);
+  });
+
+  it("answers how often an open conversation list asks which conversations are running, from config", async () => {
+    const { data } = await askForStreamConfig();
+
+    expect(data.runningPollIntervalMs).toBe(6543);
   });
 });

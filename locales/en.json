@@ -130,6 +130,7 @@
       "prompt_not_taken": "This model takes no style with these settings. Remove the style to generate.",
       "model_requires_source": "This model needs a source input — connect an image, video or audio node",
       "too_many_inputs": "This model accepts at most {limit} inputs of this kind, but {actual} were provided",
+      "param_too_short": "Fill in {name} first",
       "history_entry_not_found": "History entry not found",
       "voices_model_not_found": "That model is not available",
       "voices_not_offered": "This model does not offer a voice list"
@@ -264,7 +265,9 @@
       "invalidParam": "\"{name}\" has a value this tool does not take.",
       "foreignSource": "This file cannot be processed.",
       "sourceTooLong": "This tool takes audio up to {minutes} minutes long.",
-      "sourceTooLarge": "This tool takes files up to {size}."
+      "sourceTooLarge": "This tool takes files up to {size}.",
+      "clipsTooLarge": "These clips are too large to join together.",
+      "joinClipCount": "A join takes 2 to {max} clips."
     },
     "idempotency": {
       "missing": "This page was updated. Refresh it and try again.",
@@ -334,6 +337,9 @@
       "view_not_image": "View slot {index} ({slot, select, front {front} left {left} back {back} right {right} other {extra}}): this file is {kind, select, video {a video} audio {an audio file} other {a model or another file}}, not an image.",
       "still_running": "This generation is still finishing and may still produce a result. Try again in a moment.",
       "has_result": "This generation finished with a result, which is now on the task list."
+    },
+    "document": {
+      "versions_full": "{limit, plural, one {This document already has 1 snapshot. Delete it to save a new one.} other {This document already has # snapshots. Delete an old one to save a new one.}}"
     }
   },
   "chat": {
@@ -882,19 +888,23 @@
       "itemsAdd": "Add",
       "itemsRemove": "Remove",
       "refuseExecuteNoSpeakers": "Fill in the speakers",
+      "refuseExecuteNoLines": "Write at least one line first",
+      "refuseExecuteParamEmpty": "Fill in {name} first",
+      "dialogueAddLine": "Add line",
+      "dialogueLinePlaceholder": "{name}'s line",
       "audioSettings": "Voice and settings",
       "audioVoice": "Voice",
       "audioReadingMode": "Reading",
       "audioReadingSingle": "Single voice",
       "audioReadingDialogue": "Dialogue ({count})",
       "audioDialogueSummary": "Dialogue · {count}",
-      "audioSpeakersNote": "Write each line as \"Name: line\"",
       "audioSpeakerRow": "Speaker {n}",
       "audioLanguageSearch": "Search languages…",
       "audioOptionEmpty": "No matches",
       "param": {
         "compose_from": "Compose from",
         "language": "Language",
+        "voice_description": "Voice description",
         "speakers": "Speakers",
         "emotion": "Emotion",
         "pronunciation_dict": "Pronunciations",
@@ -946,6 +956,7 @@
         "face_limit": "Face limit",
         "auto_size": "Auto size",
         "export_uv": "Export UV",
+        "rig_skeleton": "Rig skeleton",
         "model_seed": "Model seed",
         "texture_seed": "Texture seed",
         "texture_alignment": "Texture alignment",
@@ -1245,6 +1256,12 @@
         "cut": {
           "label": "Cut"
         },
+        "join": {
+          "label": "Join",
+          "slot": {
+            "clips": "Pick videos to join"
+          }
+        },
         "adjust": {
           "label": "Adjust"
         },
@@ -1274,6 +1291,12 @@
         },
         "cut": {
           "label": "Cut"
+        },
+        "join": {
+          "label": "Join",
+          "slot": {
+            "clips": "Pick audio to join"
+          }
         },
         "eq": {
           "label": "Equalizer"
@@ -1363,6 +1386,9 @@
         },
         "cents": {
           "label": "Cents"
+        },
+        "crossfade": {
+          "label": "Crossfade"
         }
       },
       "panel": {
@@ -1387,7 +1413,12 @@
         "sourceTooLargeToExpand": "This picture is already as large as Expand can make it.",
         "ratioTooLarge": "Larger than Expand can make this picture",
         "sourceTooLong": "This tool takes audio up to {minutes} minutes long.",
-        "sourceTooLarge": "This tool takes files up to {size}."
+        "sourceTooLarge": "This tool takes files up to {size}.",
+        "joinClips": "Clips · joined in order, drag to reorder",
+        "joinCrossfadeCap": "Up to {cap} s: half the shortest clip ({shortest} s)",
+        "joinTotal": "≈ {seconds} s",
+        "joinNeedsClip": "Add one more clip to run.",
+        "joinTooMany": "Up to {n} clips"
       },
       "adjust": {
         "exposure": "Exposure",
@@ -1462,7 +1493,9 @@
       "goal": {
         "character": "Character design & consistency",
         "comics-storyboards": "Comics & storyboards",
-        "social-hooks": "Social hooks"
+        "food": "Food",
+        "social-hooks": "Social hooks",
+        "sound": "Sound, music & voice"
       },
       "storyboard-grid-25": {
         "name": "25-panel storyboard",
@@ -1563,6 +1596,39 @@
           "reference": {
             "name": "Character",
             "note": "Add the character reference first, then generate."
+          }
+        }
+      },
+      "food-money-shot": {
+        "name": "Food money shot",
+        "description": "A close-up build to the dish's most tempting moment",
+        "prompt": "A vertical close-up food video of [📎 Dish]: the same food, plating and tableware as in the picture, nothing else taken from it. 0–2 s hook: a slow-motion macro shot already moving, {✏️ the first detail, e.g. steam rising off the melted cheese}. 2–5 s: the camera slowly pushes in across its texture, the crust, gloss and crumbs sharp. 5–8 s money shot: {✏️ the most tempting moment, e.g. a slice lifted with a long cheese pull}, held at its peak. Light from behind and to the side so the steam and the gloss shine, one warm light source. Sound in place of taste: close sounds of the food itself, {✏️ e.g. sizzling and a crisp crunch}, no music. No text on screen.",
+        "input": {
+          "dish": {
+            "name": "Dish",
+            "note": "Add a clear photo of the dish or drink first, then generate."
+          }
+        }
+      },
+      "recipe-process-montage": {
+        "name": "Recipe process montage",
+        "description": "A dish made step by step from one fixed camera",
+        "prompt": "A vertical cooking video that ends with [📎 Dish], the same food, plating and tableware as in the picture. Throughout: one fixed camera {✏️ the angle, e.g. top-down over the counter}, the same counter, the same cookware and the same pair of hands, nothing else changes. Each state only moves forward: what is cut stays cut, what is cooked stays cooked. 0–3 s: {✏️ step 1, e.g. dough pressed out into a round}. 3–6 s: {✏️ step 2, e.g. tomato sauce spread to the edge}. 6–9 s: {✏️ step 3, e.g. mozzarella torn over the top}. 9–12 s: {✏️ step 4, e.g. it slides out of the oven, bubbling}. 12–15 s: the finished dish is served and a hand takes the first piece, a lived-in moment. Daylight from one window. Sound: the live sounds of each step, chopping, sizzling and pouring, no music. No text on screen.",
+        "input": {
+          "dish": {
+            "name": "Dish",
+            "note": "Add a photo of the finished dish first, then generate."
+          }
+        }
+      },
+      "dish-hero-still": {
+        "name": "Dish hero still",
+        "description": "A casual dish photo reshot as a studio menu picture",
+        "prompt": "A studio menu photo of [📎 Dish]: exactly the same food, ingredients, plating and tableware as in the picture, only the photography changes. Warm key light from 45 degrees in front, back light making the steam and the gloss glow, side light bringing out the texture. Colours vivid but natural, nothing oversaturated. Surface and background: {✏️ e.g. a dark slate table with a linen napkin}. The background softly out of focus, the dish itself sharp from front to back. Real photo, not illustrated. No text.",
+        "input": {
+          "dish": {
+            "name": "Dish",
+            "note": "Add a clear photo of the dish first, then generate."
           }
         }
       },
@@ -1722,7 +1788,117 @@
         }
       },
       "applyFailed": "Couldn't apply the template.",
-      "groupLocked": "The group is locked. Unlock it to add nodes."
+      "groupLocked": "The group is locked. Unlock it to add nodes.",
+      "ambience-sfx-bed": {
+        "name": "Ambience bed with foley",
+        "description": "A looping place sound with a few foley hits",
+        "prompt": "A seamless ambience bed of {✏️ the place, e.g. a rainy night street in an old town}. The steady layer: {✏️ the continuous sound, e.g. rain on cobblestones and traffic far away}. Two or three foley hits inside it: {✏️ the hits, e.g. a door closing far off, footsteps passing close}. Every sound has its distance, near or far, and the hits come now and then, not on a beat. No music, no voices."
+      },
+      "voice-line": {
+        "name": "Voice-over line",
+        "description": "One line read exactly as written",
+        "prompt": "{✏️ the exact words to read, with a comma or a full stop wherever a pause belongs}"
+      },
+      "two-voice-dialogue": {
+        "name": "Two-voice dialogue",
+        "description": "Two named people talking, in one pass",
+        "line": {
+          "1": "{✏️ Ava's first line}",
+          "2": "{✏️ Leo's answer}",
+          "3": "{✏️ Ava's next line}"
+        }
+      },
+      "underscore-bgm": {
+        "name": "Background music",
+        "description": "Instrumental music under a voice-over or picture",
+        "prompt": "Instrumental background music for {✏️ what the video is, e.g. a calm product walkthrough}, {✏️ length, e.g. 40 seconds} long. Genre: {✏️ genre}. Tempo around {✏️ tempo, e.g. 90 BPM}, in {✏️ key, e.g. D major}. Two or three instruments: {✏️ instruments, e.g. soft piano, warm pads and light percussion}. Energy: {✏️ how it moves, e.g. sparse at the start, building gently in the middle, settling at the end}. It sits under a voice-over: no vocals, no lead melody competing with speech, no sudden hits.",
+        "step": {
+          "trim": "It usually comes out longer than you need. Once it has generated, use Tools → Cut on it to trim it to the video's length."
+        }
+      },
+      "voice-from-descriptor": {
+        "name": "Voice from a description",
+        "description": "A voice described in words saying your line",
+        "prompt": "{✏️ the exact words to say}"
+      },
+      "song-cover": {
+        "name": "Song cover",
+        "description": "Your song redone in another style",
+        "prompt": "Redo the song as {✏️ the new style, e.g. a slow acoustic ballad with fingerpicked guitar and soft vocals}. Keep the melody and the lyrics; change the arrangement, the instruments and the feel.",
+        "input": {
+          "song": {
+            "name": "Song",
+            "note": "Add your song first, then pick it into the Song slot"
+          }
+        }
+      },
+      "voice-clone-line": {
+        "name": "Line in your voice",
+        "description": "A new line read in the voice of your recording",
+        "prompt": "{✏️ the exact words to say in this voice}",
+        "input": {
+          "sample": {
+            "name": "Voice sample",
+            "note": "Add a clean recording of the voice first (one speaker, no music, 10 seconds or more), then pick it into the Voice sample slot"
+          }
+        }
+      },
+      "score-for-my-video": {
+        "name": "Music for your video",
+        "description": "Music that follows your video's mood and cuts",
+        "prompt": "Music that follows this video's mood, pace and scene changes. Style: {✏️ the style, e.g. warm acoustic folk with light percussion}.",
+        "input": {
+          "video": {
+            "name": "Your video",
+            "note": "Add your video first, then pick it into the Video slot"
+          }
+        }
+      },
+      "music-mood-from-image": {
+        "name": "Music from a picture",
+        "description": "Music in the mood of your picture",
+        "prompt": "Instrumental music in the mood of the reference image: its feeling, colours and setting decide the genre, the key and the instruments. {✏️ anything else, e.g. slow and dreamy}.",
+        "input": {
+          "image": {
+            "name": "Picture",
+            "note": "Add the picture first, then pick it into the Reference image slot"
+          }
+        }
+      },
+      "clip-ambience-foley": {
+        "name": "Silent shot with foley",
+        "description": "A silent shot, then foley timed to it",
+        "prompt": "One continuous shot of {✏️ the scene, e.g. a chef chopping vegetables on a wooden board}. 0–2 s: {✏️ the first action}. 2–5 s: {✏️ the next action}. Every contact is visible and clear, what touches what and when, so its sound can be added afterwards. One main camera move: {✏️ e.g. a slow push in}. Light from one source: {✏️ e.g. a window on the left}. No text on screen.",
+        "node": {
+          "foley": {
+            "name": "Foley",
+            "prompt": "(💡 Generate the video first, then pick it into the Video slot)Foley for this shot: {✏️ the sounds, e.g. the knife on the board, vegetables sliding, a pan sizzling behind}. Each sound lands exactly when it happens on screen; close sounds dry and clear, background ones quieter. No music, no voices."
+          }
+        }
+      },
+      "section-mapped-score": {
+        "name": "Score in four sections",
+        "description": "Four sections in one style, trimmed and joined",
+        "prompt": "Intro of a four-part instrumental score for {✏️ the film, e.g. a 2-minute brand film}. Shared by all four parts: {✏️ genre}, around {✏️ tempo, e.g. 96 BPM}, in {✏️ key, e.g. A minor}, with {✏️ two or three instruments}. This part: {✏️ length, e.g. 15 seconds}, quiet and open, setting out the theme.",
+        "node": {
+          "body": {
+            "name": "Body",
+            "prompt": "Body of the same four-part instrumental score. Shared by all four parts: {✏️ genre}, around {✏️ tempo}, in {✏️ key}, with {✏️ two or three instruments}. This part: {✏️ length, e.g. 60 seconds}, steady and moving forward under the main story."
+          },
+          "reveal": {
+            "name": "Reveal",
+            "prompt": "Reveal of the same four-part instrumental score. Shared by all four parts: {✏️ genre}, around {✏️ tempo}, in {✏️ key}, with {✏️ two or three instruments}. This part: {✏️ length, e.g. 25 seconds}, the peak: fuller and louder, the theme at its strongest."
+          },
+          "outro": {
+            "name": "Outro",
+            "prompt": "Outro of the same four-part instrumental score. Shared by all four parts: {✏️ genre}, around {✏️ tempo}, in {✏️ key}, with {✏️ two or three instruments}. This part: {✏️ length, e.g. 15 seconds}, winding down and ending cleanly, the theme once more, softly."
+          }
+        },
+        "step": {
+          "trim": "Each section usually comes out longer than you need. Once it has generated, use Tools → Cut on it to trim it to the length its prompt asks for.",
+          "join": "Select the four trimmed clips (named CUT-…), right-click and choose Join; check the order runs intro, body, reveal, outro, and set a crossfade of about 1 second."
+        }
+      }
     },
     "promptMark": {
       "reference": "Use @ to pick {label}"
@@ -2184,7 +2360,6 @@
         "label": "Whole-document commands",
         "saveSnapshot": "Save snapshot",
         "restoreSnapshot": "Restore snapshot",
-        "notOpenYet": "Not open yet",
         "comments": "Comments",
         "commentsUnresolved": "{count} unresolved",
         "commentsNone": "None"
@@ -2271,6 +2446,49 @@
         "notWrittenYet": "Uploaded, not added yet",
         "notPasted": "{count, plural, one {# item was not pasted.} other {# items were not pasted.}}",
         "stillUploading": "{count, plural, one {# image, video or audio is still uploading and was not pasted. Copy it again once the upload finishes.} other {# images, videos or audio are still uploading and were not pasted. Copy them again once the upload finishes.}}"
+      },
+      "versions": {
+        "title": "Snapshots",
+        "close": "Close snapshots",
+        "current": "Current content",
+        "empty": "No snapshots yet",
+        "loadMore": "Load more",
+        "loadFailed": "The snapshot list did not load.",
+        "retry": "Retry",
+        "more": "More",
+        "compareWithShown": "Compare with the one shown",
+        "rename": "Rename",
+        "delete": "Delete",
+        "viewing": "Viewing snapshot: {name}",
+        "comparing": "Comparing: {from} → {to}",
+        "legendInsert": "Added",
+        "legendDelete": "Removed",
+        "legendFormat": "Formatting changed",
+        "compareWithCurrent": "Compare with current content",
+        "restore": "Restore",
+        "exitPreview": "Exit preview",
+        "exitCompare": "Exit comparison",
+        "renameTitle": "Rename snapshot",
+        "namePlaceholder": "Name (optional)",
+        "save": "Save",
+        "restoreTitle": "Restore this snapshot?",
+        "restoreBody": "The current text will become this snapshot, and everyone in the document will see it at once. Press Cmd/Ctrl+Z to undo.",
+        "deleteTitle": "Delete this snapshot?",
+        "deleteBody": "“{name}” cannot be recovered once deleted.",
+        "saved": "Snapshot saved",
+        "renamed": "Renamed",
+        "restored": "Snapshot restored. Press Cmd/Ctrl+Z to undo.",
+        "unchanged": "The text already matches this snapshot.",
+        "restoreFailed": "The snapshot could not be restored.",
+        "deleted": "Snapshot deleted",
+        "leftOut": "{count, plural, one {# image, video or audio has not finished uploading and was not saved in this snapshot.} other {# images, videos or audio have not finished uploading and were not saved in this snapshot.}}",
+        "contentFailed": "The snapshot did not load.",
+        "gone": "This snapshot is no longer there.",
+        "saveFailed": "The snapshot was not saved.",
+        "renameFailed": "The snapshot was not renamed.",
+        "deleteFailed": "The snapshot was not deleted.",
+        "folded": "{count, plural, one {# unchanged block · Show} other {# unchanged blocks · Show}}",
+        "unavailable": "Snapshots could not load. Refresh the page to use them."
       }
     },
     "readOnlyReconnect": "Reconnect",
@@ -2301,6 +2519,18 @@
       "selectedCount": "{count} selected",
       "multiTransform": "Use the scene handles to transform the selection around its centre.",
       "mixed": "Mixed",
+      "pose": {
+        "title": "Pose",
+        "stand": "Stand",
+        "sit": "Sit",
+        "lie": "Lie down",
+        "walk": "Walk",
+        "wave": "Wave",
+        "jointMode": "Adjust joints",
+        "reset": "Reset pose",
+        "noSkeleton": "This model has no skeleton and cannot be posed.",
+        "humanoidOnly": "Presets work on humanoid characters only."
+      },
       "selectObject": "Select an object to edit its properties.",
       "refused": "The connection to this scene was refused. Changes will not be saved.",
       "retry": "Retry",
@@ -2390,6 +2620,9 @@
         "kindGeneration": "Generate",
         "originSpace": "In Space",
         "originAgent": "Agent",
+        "rigFailed": "Skeleton rigging failed; this model can't be posed",
+        "rigged": "Skeleton rigged",
+        "willRig": "A skeleton is rigged when generation finishes",
         "generating": "Generating",
         "generatingFor": "Generating · {minutes} min",
         "stillRunning": "This generation is still finishing. Try again later.",

@@ -14,7 +14,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { describe, it, expect, beforeAll } from "vitest";
-import { getAgentConfig, loadLocales, runWithLocale } from "@breatic/core";
+import { getAgentConfig, getMiniToolsConfig, loadLocales, runWithLocale } from "@breatic/core";
 import { CHAT_MESSAGE_MAX_CHARS, GENERATION_TEMPLATES, TEMPLATE_GOALS, canConnect, canGenerate, t, templateGoalsFor } from "@breatic/shared";
 import { MINI_TOOLS } from "@breatic/shared/mini-tools";
 
@@ -94,11 +94,13 @@ type MessageCall = [id: string, values: Record<string, number> | undefined];
  * @returns The calls, in source order.
  */
 function messageCalls(): MessageCall[] {
+  // A value the guide reads from the deployment's config, by the local it names it with.
+  const locals: Record<string, number> = { joinCap: getMiniToolsConfig().join_max_clips };
   return [...source.matchAll(/\bt\("([\w.-]+)"(?:, (\{[^}]*\}))?\)/g)].map((m) => [
     m[1] ?? "",
     m[2] === undefined
       ? undefined
-      : (JSON.parse(m[2].replace(/(\w+):/g, '"$1":')) as Record<string, number>),
+      : (JSON.parse(m[2].replace(/: ([a-z]\w*)/g, (_, name: string) => `: ${String(locals[name])}`).replace(/(\w+):/g, '"$1":')) as Record<string, number>),
   ]);
 }
 
@@ -388,7 +390,7 @@ describe("what the guide says", () => {
     expect(doc).toMatch(/a resolved card takes no replies until it is reopened/);
     // DocumentCommentDraftCard.tsx: the outside-press check is against the whole card.
     expect(doc).toMatch(/With nothing typed yet, clicking anywhere outside its card also drops it/);
-    expect(doc).toMatch(/The three dots are hidden while the comments panel is open/);
+    expect(doc).toMatch(/The three dots are hidden while the comments panel or the snapshots panel is open/);
   });
 
   it("quotes no name the screen only gives a screen reader", () => {
@@ -458,6 +460,15 @@ describe("what the guide says", () => {
     expect(ids.flat()).toEqual(namedIds(menu));
     const sentence = section("Node menus").split("inside that frame opens")[1]?.split(". ")[0] ?? "";
     expectRowsInOrder(sentence, ids);
+  });
+
+  it("offers joining in the selection menu, above Copy (inner#1825)", () => {
+    const join = MINI_TOOLS.find((tool) => tool.id === "video.join");
+    expect(join).toBeDefined();
+    const sentence = section("Node menus").split("inside that frame opens")[1]?.split(". ")[0] ?? "";
+    const at = sentence.indexOf(`"${t(join?.labelKey ?? "")}"`);
+    expect(at).toBeGreaterThanOrEqual(0);
+    expect(at).toBeLessThan(sentence.indexOf(`"${t("canvas.contextMenu.copy")}"`));
   });
 
   it("names the view bar's buttons by their tooltips, in the bar's order", () => {
@@ -612,15 +623,28 @@ describe("what the guide says", () => {
     expect(list).toMatch(/a list under that heading of creative goals; pointing at a goal opens the templates for it/);
     const picture = list.slice(list.indexOf("A picture node"), list.indexOf("A video node"));
     const video = list.slice(list.indexOf("A video node"), list.indexOf("A sound node"));
-    for (const [type, text] of [["image", picture], ["video", video]] as const) {
+    // inner#1825: sound nodes have templates of their own, listed like the others.
+    const sound = list.slice(list.indexOf("A sound node"));
+    for (const [type, text] of [["image", picture], ["video", video], ["audio", sound]] as const) {
       const rows = templateGoalsFor(type).flatMap(({ goal, templates }) => [
         [`canvas.template.goal.${goal}`],
         ...templates.map((template) => [`canvas.template.${template.id}.name`]),
       ]);
       expectRowsInOrder(text, rows);
     }
-    expect(list.slice(list.indexOf("A sound node"))).toMatch(new RegExp(`^A sound node shows "${t("canvas.template.empty")}"`));
+    expect(sound).not.toMatch(new RegExp(`^A sound node shows "${t("canvas.template.empty")}"`));
     expect(list).not.toMatch(/video and sound nodes list none/);
+  });
+
+  it("lists the sound goal under the sound node and, for the foley template, under the video node (inner#1825)", () => {
+    expect(TEMPLATE_GOALS).toContain("sound");
+    const generating = section("Generating");
+    const list = generating.slice(generating.indexOf(`"${t("canvas.template.title")}"`));
+    const video = list.slice(list.indexOf("A video node"), list.indexOf("A sound node"));
+    const sound = list.slice(list.indexOf("A sound node"));
+    expect(sound).toContain(`"${t("canvas.template.goal.sound")}"`);
+    expect(video).toContain(`"${t("canvas.template.goal.sound")}"`);
+    expect(video).toContain(`"${t("canvas.template.clip-ambience-foley.name")}"`);
   });
 
   it("says a template may place generations upstream to run first, wired and @'d, and nodes it places to take what it needs reuse a picture already connected, even one the node itself does not use", () => {
@@ -680,6 +704,14 @@ describe("what the guide says", () => {
     const generating = CREATABLE.filter((type) => canGenerate(type)).map(label);
     const line = text.split("\n").find((l) => l.startsWith("Nodes that generate:"));
     expect(line).toBe(`Nodes that generate: ${generating.join(", ")}.`);
+  });
+
+  it("says a sound node takes connections from video and picture nodes (inner#1825)", () => {
+    expect(canConnect("video", "audio")).toBe(true);
+    expect(canConnect("image", "audio")).toBe(true);
+    const line = renderProductGuide().split("\n").find((l) => l.startsWith(`- into ${label("audio")}:`)) ?? "";
+    expect(line).toContain(label("video"));
+    expect(line).toContain(label("image"));
   });
 
   it("lists what connects into each node, from the rule the canvas enforces", () => {
@@ -770,8 +802,14 @@ describe("the guide's source", () => {
     for (const call of registry) expect(source.split(call), call).toHaveLength(2);
     const calls = (source.match(/\bt\([^)]*\)/g) ?? []).filter((call) => !registry.includes(call));
     expect(calls.length).toBeGreaterThan(0);
-    // A sample number may fill a message that carries one; nothing else goes in.
-    for (const call of calls) expect(call).toMatch(/^t\("[\w.-]+"(?:, \{(?: ?\w+: \d+,?)+ ?\})?\)$/);
+    // A sample number, or a number read from the deployment's config into a
+    // local of the guide, may fill a message that carries one; nothing else goes in.
+    for (const call of calls) expect(call).toMatch(/^t\("[\w.-]+"(?:, \{(?: ?\w+: (?:\d+|[a-z]\w*),?)+ ?\})?\)$/);
+  });
+
+  it("names the join's clip cap the deployment serves (round 2)", () => {
+    expect(renderProductGuide()).toContain(t("canvas.miniTool.panel.joinTooMany", { n: getMiniToolsConfig().join_max_clips }));
+    expect(source).toContain('t("canvas.miniTool.panel.joinTooMany", { n: joinCap })');
   });
 
   it("does not name the generate button by its hidden label", () => {
@@ -953,6 +991,15 @@ describe("mini-tools and the task rows", () => {
     expect(tools).toContain(`"${t("canvas.nodeMenu.tools")}"`);
     for (const tool of MINI_TOOLS) {
       expect(tools).toContain(`"${t(tool.labelKey)}"`);
+    }
+  });
+
+  it("names the join tools for video and sound among the tools (inner#1825)", () => {
+    const tools = section("Mini-tools");
+    for (const id of ["video.join", "audio.join"]) {
+      const tool = MINI_TOOLS.find((one) => one.id === id);
+      expect(tool, id).toBeDefined();
+      expect(tools).toContain(`"${t(tool?.labelKey ?? "")}": ${tool?.guide ?? ""}`);
     }
   });
 

@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import type { AgentModelChoice, ConversationEntity, StoredMessageMetadata } from '@breatic/shared';
+import type { AgentModelChoice, ChatRunningAnswer, ConversationEntity, StoredMessageMetadata } from '@breatic/shared';
 import type { UIMessage } from 'ai';
 
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut, runOnceRequest } from '@web/data/api/request';
@@ -108,6 +108,8 @@ export interface StreamConfig {
   spaceListMaxItems: number;
   /** How long one requested Space may take to sync before it is given up on, in milliseconds. */
   spaceReadTimeoutMs: number;
+  /** How often an open conversation list asks which conversations are running, in milliseconds (#1394). */
+  runningPollIntervalMs: number;
 }
 
 /**
@@ -207,6 +209,17 @@ export const chatApi = {
       },
       signal,
     });
+  },
+  /**
+   * The user's conversations in a project with an Agent turn running now, on
+   * this page or any other tab or device (#1394).
+   * @param projectId - The project.
+   * @param signal - Aborts the request.
+   * @returns Their ids, each once.
+   */
+  async running(projectId: string, signal?: AbortSignal): Promise<string[]> {
+    const answer = await apiGet<ChatRunningAnswer>('/chat/running', { params: { project_id: projectId }, signal });
+    return answer.conversation_ids;
   },
   /**
    * Read one conversation with the newest page of its messages.

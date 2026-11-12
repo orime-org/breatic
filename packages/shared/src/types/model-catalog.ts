@@ -69,6 +69,8 @@ export interface ExtraStep {
   readonly per_item?: boolean;
   /** Skipped when the same source was sent through it before. */
   readonly reused?: boolean;
+  /** A failure of this step keeps the run: the previous step's output is delivered. */
+  readonly optional?: boolean;
 }
 
 /** Params of which at least one has to carry material in one mode. */
@@ -199,6 +201,8 @@ export interface ParamDescriptor {
   bounds?: readonly ParamBound[];
   /** The most characters a text param takes, counted on the cleaned text (inner#1691). */
   max_length?: number;
+  /** The fewest characters a text param takes, counted on the cleaned text (inner#1825). */
+  min_length?: number;
   max_items?: number;
   /** The longest the picked clips may run together, in seconds. */
   max_total_duration?: number;
@@ -574,6 +578,7 @@ const paramDescriptorSchema = z
     type: z.enum(["list", "items", "text", "integer"]).optional().catch(undefined),
     bounds: z.array(paramBoundSchema).optional().catch(undefined),
     max_length: z.number().optional().catch(undefined),
+    min_length: z.number().optional().catch(undefined),
     max_items: z.number().optional().catch(undefined),
     max_total_duration: z.number().optional().catch(undefined),
     max_bytes: z.number().optional().catch(undefined),
@@ -684,6 +689,7 @@ const modelEntrySchema = z.object({
         for_param: z.string().optional(),
         per_item: z.boolean().optional(),
         reused: z.boolean().optional(),
+        optional: z.boolean().optional(),
       }),
     )
     .optional()

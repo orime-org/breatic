@@ -27,7 +27,7 @@ import type * as AssetsApiModule from '@web/data/api/assets';
 vi.mock('@web/data/api/chat', async (importOriginal) => ({
   ...(await importOriginal<typeof ChatApiModule>()),
   chatApi: {
-    streamConfig: vi.fn(async () => ({ heartbeatIntervalMs: 5000, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200, spaceReadTimeoutMs: 20_000 })),
+    streamConfig: vi.fn(async () => ({ heartbeatIntervalMs: 5000, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200, spaceReadTimeoutMs: 20_000, runningPollIntervalMs: 5000 })),
     openChat: vi.fn(),
     messagesBefore: vi.fn(),
     readConversation: vi.fn(),
@@ -593,6 +593,7 @@ describe('the Spaces a message carries (inner#1413)', () => {
       currentSpaceMaxChars: 16,
       spaceListMaxItems: 2,
       spaceReadTimeoutMs: 20_000,
+      runningPollIntervalMs: 5000,
     });
     const panel = renderHook(() => useChatSession('p-1', () => read));
     await waitFor(() => {
@@ -660,6 +661,7 @@ describe('the wait for the limits before a send (inner#1413)', () => {
         currentSpaceMaxChars: 100_000,
         spaceListMaxItems: 200,
         spaceReadTimeoutMs: 20_000,
+        runningPollIntervalMs: 5000,
       });
     });
     await waitFor(() => {
@@ -691,6 +693,7 @@ describe('the wait for the limits before a send (inner#1413)', () => {
         currentSpaceMaxChars: 100_000,
         spaceListMaxItems: 200,
         spaceReadTimeoutMs: 20_000,
+        runningPollIntervalMs: 5000,
       });
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
@@ -722,6 +725,7 @@ describe('the wait for the limits before a send (inner#1413)', () => {
           currentSpaceMaxChars: 100_000,
           spaceListMaxItems: 200,
           spaceReadTimeoutMs: 20_000,
+          runningPollIntervalMs: 5000,
         });
         await new Promise((resolve) => setTimeout(resolve, 50));
       });

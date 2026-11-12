@@ -41,6 +41,12 @@ export interface ProbeStream {
   sampleRate?: number;
   /** An audio stream's channel count, when ffprobe read one. */
   channels?: number;
+  /**
+   * A video stream's frame rate in frames per second, when ffprobe read one:
+   * its `avg_frame_rate`, or `r_frame_rate` where that is `0/0`. A join
+   * writes at its first clip's rate (inner#1825 §6.4).
+   */
+  frameRate?: number;
 }
 
 /** One /probe answer, minus the cover bytes. */

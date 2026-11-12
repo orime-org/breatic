@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import type { SceneImportLimits, SceneObject } from '@breatic/shared';
+import type { SceneImportLimits, SceneObject, ScenePose } from '@breatic/shared';
 import type { MeasuredSceneModelLease } from '@web/spaces/three-d/viewport/model-resources';
 
 /** Plain tuples keep the Project shell outside the lazy Three dependency graph. */
@@ -17,6 +17,8 @@ export interface SceneTransformPatch {
   position?: SceneVector3;
   rotation?: SceneQuaternion;
   scale?: SceneVector3;
+  /** The whole pose a joint drag shows: the drag-start pose with the dragged bone's value. */
+  pose?: ScenePose;
 }
 export interface SceneRemotePeer {
   clientId: number;
@@ -26,6 +28,8 @@ export interface SceneRemotePeer {
   gesture: readonly SceneObject[] | null;
 }
 export type SceneModelState = 'loading' | 'ready' | 'failed';
+/** What a loaded model's skeleton allows: nothing, presets and joints, or joints only. */
+export type SceneSkeletonState = 'none' | 'humanoid' | 'other';
 export interface ResolvedSceneAsset {
   url: string;
   mimeType: string;
@@ -47,6 +51,13 @@ export interface SceneViewportProps {
   importLimits: SceneImportLimits;
   /** A new value retries failed model loads without changing their identity. */
   modelRetryRevision?: number;
+  /** Joint mode: the single selected character shows its joints instead of the object controls. */
+  jointMode: boolean;
+  /** The pose key of the joint carrying the rotation rings, or null. */
+  selectedJoint: string | null;
+  onJointSelect: (key: string | null) => void;
+  /** Told once per loaded model what its skeleton allows. */
+  onSkeletonState: (id: string, state: SceneSkeletonState) => void;
   onSelect: (id: string | null, additive: boolean) => void;
   onGestureStart: () => boolean;
   onGestureChange: (patches: readonly SceneTransformPatch[]) => void;

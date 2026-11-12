@@ -29,9 +29,11 @@ const AUDIO_TOOLS = [
 ] as const;
 
 describe("batch-five audio tools", () => {
-  it("lists the ten container edits, then enhance and separate", () => {
+  it("lists the ten container edits with the join right after cut (inner#1825), then enhance and separate", () => {
+    const edits: string[] = AUDIO_TOOLS.map(([id]) => id);
+    edits.splice(edits.indexOf("audio.cut") + 1, 0, "audio.join");
     expect(miniToolsFor("audio").map((tool) => tool.id)).toEqual([
-      ...AUDIO_TOOLS.map(([id]) => id),
+      ...edits,
       "audio.enhance",
       "audio.separate",
     ]);

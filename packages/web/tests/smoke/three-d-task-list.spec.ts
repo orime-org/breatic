@@ -39,7 +39,7 @@ interface ServedRows {
  * @param startedBy - Who started it.
  * @returns The row.
  */
-function generationRow(id: string, status: 'failed' | 'done', startedBy: string): Record<string, unknown> {
+function generationRow(id: string, status: 'failed' | 'done' | 'running', startedBy: string, extra: Record<string, unknown> = {}): Record<string, unknown> {
   const now = Date.now();
   return {
     id, label: `Chest ${id.slice(0, 4)}`, status, startedByUserId: startedBy,
@@ -48,6 +48,7 @@ function generationRow(id: string, status: 'failed' | 'done', startedBy: string)
     errorCode: status === 'failed' ? 'internal' : null, origin: 'space',
     model: { name: 'tripo-h3.1-t23d', displayName: 'Tripo H3.1' }, mode: 't23d',
     prompt: 'A small wooden treasure chest', negativePrompt: null, params: { texture: false, pbr: false }, inputs: [],
+    ...extra,
   };
 }
 
@@ -132,6 +133,29 @@ test('an editor filters generation rows and gets Retry, Remove and Place on them
   await expect(dialog.getByRole('switch', { name: 'Texture', exact: true })).toHaveAttribute('aria-checked', 'false');
   await dialog.getByRole('button', { name: 'Close', exact: true }).click();
   await expect(dialog).toBeHidden();
+});
+
+test('generation rows asked to rig say how the skeleton went (inner#1692)', async ({ page }) => {
+  await openSmokeProject(page);
+  const id = await createSpace(page, '3d', `scene-tasks-rig-${crypto.randomUUID()}`);
+  created.push(id);
+  const me = await whoIs(page);
+  const rows = { failed: crypto.randomUUID(), rigged: crypto.randomUUID(), running: crypto.randomUUID() };
+  const rig = { texture: false, pbr: false, rig_skeleton: true };
+  await page.route((url) => url.pathname.endsWith(`/three-d/${id}/tasks`), async (route: Route) => {
+    const response = await route.fetch();
+    const body = await response.json() as { data: { tasks: unknown[] } };
+    body.data.tasks = [
+      generationRow(rows.failed, 'done', me, { params: rig, notice: 'rig_failed' }),
+      generationRow(rows.rigged, 'done', me, { params: rig, notice: null }),
+      generationRow(rows.running, 'running', me, { params: rig, notice: null }),
+    ];
+    await route.fulfill({ response, json: body });
+  });
+  const panel = await openTasks(page);
+  await expect(panel.getByTestId(`scene-task-${rows.failed}`)).toContainText('Skeleton rigging failed;');
+  await expect(panel.getByTestId(`scene-task-${rows.rigged}`)).toContainText('Skeleton rigged');
+  await expect(panel.getByTestId(`scene-task-${rows.running}`)).toContainText('A skeleton is rigged when generation finishes');
 });
 
 test('a viewer reads generation rows with no Retry, Remove or Place', async ({ page, browser, baseURL }) => {

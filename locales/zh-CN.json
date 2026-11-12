@@ -130,6 +130,7 @@
       "prompt_not_taken": "这个模型在当前设置下不接受风格。去掉风格后再生成。",
       "model_requires_source": "这个模型需要源输入，请先连接一个图片、视频或音频节点",
       "too_many_inputs": "这个模型这类输入最多接受 {limit} 个，实际给了 {actual, number} 个",
+      "param_too_short": "先填写{name}",
       "history_entry_not_found": "找不到这条历史记录",
       "voices_model_not_found": "这个模型不可用",
       "voices_not_offered": "这个模型没有音色列表"
@@ -264,7 +265,9 @@
       "invalidParam": "“{name}”的值这个工具不支持。",
       "foreignSource": "这个文件无法处理。",
       "sourceTooLong": "这个工具只处理 {minutes} 分钟以内的音频。",
-      "sourceTooLarge": "这个工具只处理 {size} 以内的文件。"
+      "sourceTooLarge": "这个工具只处理 {size} 以内的文件。",
+      "clipsTooLarge": "这些片段加起来太大，无法拼接。",
+      "joinClipCount": "拼接需要 2 到 {max} 段。"
     },
     "idempotency": {
       "missing": "页面已更新，请刷新后重试。",
@@ -334,6 +337,9 @@
       "view_not_image": "第 {index} 个视图槽（{slot, select, front {正面} left {左侧} back {背面} right {右侧} other {多余}}）：这个文件是{kind, select, video {视频} audio {音频} other {模型或其他文件}}，不是图片。",
       "still_running": "这次生成还在收尾，可能还会出结果，请稍后再试。",
       "has_result": "这次生成已经出了结果，结果已回到任务列表。"
+    },
+    "document": {
+      "versions_full": "{limit, plural, other {这个 Document 的快照已满 # 张。删掉旧的快照后再保存。}}"
     }
   },
   "chat": {
@@ -869,19 +875,23 @@
       "itemsAdd": "添加",
       "itemsRemove": "移除",
       "refuseExecuteNoSpeakers": "请填好说话人",
+      "refuseExecuteNoLines": "至少写一句台词",
+      "refuseExecuteParamEmpty": "先填写{name}",
+      "dialogueAddLine": "加一句",
+      "dialogueLinePlaceholder": "{name} 说的话",
       "audioSettings": "音色与参数",
       "audioVoice": "音色",
       "audioReadingMode": "朗读方式",
       "audioReadingSingle": "单人",
       "audioReadingDialogue": "对话（{count} 人）",
       "audioDialogueSummary": "对话 · {count} 人",
-      "audioSpeakersNote": "台词写成「名字：台词」",
       "audioSpeakerRow": "说话人 {n}",
       "audioLanguageSearch": "搜索语言…",
       "audioOptionEmpty": "没有匹配项",
       "param": {
         "compose_from": "生成依据",
         "language": "语言",
+        "voice_description": "音色描述",
         "speakers": "说话人",
         "emotion": "情绪",
         "pronunciation_dict": "读音",
@@ -933,6 +943,7 @@
         "face_limit": "面数上限",
         "auto_size": "自动尺寸",
         "export_uv": "导出 UV",
+        "rig_skeleton": "绑定骨骼",
         "model_seed": "模型种子",
         "texture_seed": "贴图种子",
         "texture_alignment": "贴图对齐",
@@ -1245,6 +1256,12 @@
         "cut": {
           "label": "剪切"
         },
+        "join": {
+          "label": "拼接",
+          "slot": {
+            "clips": "选要拼接的视频"
+          }
+        },
         "adjust": {
           "label": "调色"
         },
@@ -1274,6 +1291,12 @@
         },
         "cut": {
           "label": "剪切"
+        },
+        "join": {
+          "label": "拼接",
+          "slot": {
+            "clips": "选要拼接的音频"
+          }
         },
         "eq": {
           "label": "均衡"
@@ -1363,6 +1386,9 @@
         },
         "cents": {
           "label": "音分"
+        },
+        "crossfade": {
+          "label": "交叉淡化"
         }
       },
       "panel": {
@@ -1387,7 +1413,12 @@
         "sourceTooLargeToExpand": "这张图片已经到外扩能做的最大尺寸。",
         "ratioTooLarge": "超出外扩能做的最大尺寸",
         "sourceTooLong": "这个工具只处理 {minutes} 分钟以内的音频。",
-        "sourceTooLarge": "这个工具只处理 {size} 以内的文件。"
+        "sourceTooLarge": "这个工具只处理 {size} 以内的文件。",
+        "joinClips": "片段 · 按顺序拼接，可拖动调整",
+        "joinCrossfadeCap": "最多 {cap} 秒：最短片段（{shortest} 秒）的一半",
+        "joinTotal": "≈ {seconds} 秒",
+        "joinNeedsClip": "再加一段才能执行。",
+        "joinTooMany": "最多 {n} 段"
       },
       "adjust": {
         "exposure": "曝光",
@@ -1462,7 +1493,9 @@
       "goal": {
         "character": "角色设定与一致性",
         "comics-storyboards": "漫画与分镜",
-        "social-hooks": "社媒钩子"
+        "food": "美食",
+        "social-hooks": "社媒钩子",
+        "sound": "配乐、音效与配音"
       },
       "storyboard-grid-25": {
         "name": "25 宫格时序图",
@@ -1563,6 +1596,39 @@
           "reference": {
             "name": "角色",
             "note": "先放入角色参考图，再生成"
+          }
+        }
+      },
+      "food-money-shot": {
+        "name": "美食诱人瞬间",
+        "description": "特写一路推进到这道菜最诱人的那一刻",
+        "prompt": "一段竖屏美食特写视频，拍的是 [📎 菜品]：食物、摆盘和餐具都跟照片一样，照片里的其他东西都不要。0–2 秒钩子：慢动作微距镜头，第一帧已经在动，{✏️ 第一个细节，例如融化的芝士冒着热气}。2–5 秒：镜头慢慢推近掠过质感，焦皮、油光和碎屑都清楚。5–8 秒最诱人的瞬间：{✏️ 那一刻，例如夹起一块披萨，芝士拉出长丝}，停在最高点。光从背后和侧面打过来，让热气和油光发亮，只有一个暖色光源。用声音代替味道：近距离的食物本身的声音，{✏️ 例如滋滋声和清脆的咔嚓声}，没有音乐。画面里不出现文字。",
+        "input": {
+          "dish": {
+            "name": "菜品",
+            "note": "先放入一张清楚的菜品或饮品照片，再生成"
+          }
+        }
+      },
+      "recipe-process-montage": {
+        "name": "菜谱制作过程",
+        "description": "固定机位，一步一步做出这道菜",
+        "prompt": "一段竖屏做菜视频，最后做出 [📎 菜品]，食物、摆盘和餐具都跟照片一样。全程不变：一个固定机位{✏️ 角度，例如从正上方俯拍台面}，同一个台面、同一套厨具、同一双手，别的都不变。每一步的状态只往前走：切开的一直是切开的，做熟的一直是熟的。0–3 秒：{✏️ 第 1 步，例如把面团压成圆饼}。3–6 秒：{✏️ 第 2 步，例如把番茄酱抹到边缘}。6–9 秒：{✏️ 第 3 步，例如把马苏里拉撕碎铺在上面}。9–12 秒：{✏️ 第 4 步，例如从烤箱里滑出来，还在冒泡}。12–15 秒：做好的菜端上桌，一只手拿起第一块，有生活气息的一刻。一扇窗户进来的日光。声音：每一步的现场声，切、煎、倒，没有音乐。画面里不出现文字。",
+        "input": {
+          "dish": {
+            "name": "菜品",
+            "note": "先放入一张做好的菜品照片，再生成"
+          }
+        }
+      },
+      "dish-hero-still": {
+        "name": "菜品棚拍图",
+        "description": "随手拍的菜品照重拍成菜单棚拍图",
+        "prompt": "一张菜单用的棚拍照片，拍的是 [📎 菜品]：食物、配料、摆盘和餐具都跟照片完全一样，只换拍摄方式。暖色主光从前方 45 度打过来，逆光让热气和油光发亮，侧光拉出质感。颜色鲜艳但自然，不过饱和。台面和背景：{✏️ 例如深色石板桌面配一块亚麻餐巾}。背景柔和虚化，菜本身从前到后都清楚。真实照片，不是插画。没有文字。",
+        "input": {
+          "dish": {
+            "name": "菜品",
+            "note": "先放入一张清楚的菜品照片，再生成"
           }
         }
       },
@@ -1722,7 +1788,117 @@
         }
       },
       "applyFailed": "模板应用失败。",
-      "groupLocked": "编组已锁定，解锁后才能放入新节点。"
+      "groupLocked": "编组已锁定，解锁后才能放入新节点。",
+      "ambience-sfx-bed": {
+        "name": "环境声床加拟音",
+        "description": "循环的环境声，加几个拟音点",
+        "prompt": "一段可以无缝循环的环境声床，地点是{✏️ 地点，例如老城区下雨的夜晚街道}。持续的那一层：{✏️ 持续的声音，例如雨打在石板路上、远处的车流}。里面有两三个拟音点：{✏️ 点状的声音，例如远处一扇门关上、近处有人走过}。每个声音都有远近，拟音点隔一阵出现一次，不踩节拍。没有音乐，没有人声。"
+      },
+      "voice-line": {
+        "name": "配音台词",
+        "description": "一句台词，照写的原样读",
+        "prompt": "{✏️ 要读的原话，需要停顿的地方加逗号或句号}"
+      },
+      "two-voice-dialogue": {
+        "name": "双人对白",
+        "description": "两个具名的人对话，一遍生成",
+        "line": {
+          "1": "{✏️ Ava 的第一句}",
+          "2": "{✏️ Leo 的回答}",
+          "3": "{✏️ Ava 的下一句}"
+        }
+      },
+      "underscore-bgm": {
+        "name": "背景音乐",
+        "description": "压在旁白或画面下面的纯音乐",
+        "prompt": "一段纯器乐的背景音乐，配在{✏️ 视频是什么，例如一段平静的产品讲解}下面，长度{✏️ 时长，例如 40 秒}。曲风：{✏️ 曲风}。速度大约{✏️ 速度，例如 90 BPM}，调性{✏️ 调性，例如 D 大调}。两三件乐器：{✏️ 乐器，例如轻柔的钢琴、温暖的铺底和少量打击乐}。能量走向：{✏️ 怎么变化，例如开头稀疏，中段慢慢推起来，结尾收住}。它压在旁白下面：没有人声，没有跟说话抢的主旋律，没有突然的重音。",
+        "step": {
+          "trim": "生成出来的曲子通常比需要的长。生成后，在它上面用 工具 → 剪切，截到视频的长度。"
+        }
+      },
+      "voice-from-descriptor": {
+        "name": "按描述的声音配音",
+        "description": "用文字描述的声音说你的台词",
+        "prompt": "{✏️ 要说的原话}"
+      },
+      "song-cover": {
+        "name": "翻唱",
+        "description": "你的歌换成另一种风格",
+        "prompt": "把这首歌改成{✏️ 新风格，例如指弹吉他伴奏、轻声演唱的慢板民谣}。保留旋律和歌词，换掉编曲、乐器和感觉。",
+        "input": {
+          "song": {
+            "name": "歌曲",
+            "note": "先放入你的歌，再把它选进整曲槽"
+          }
+        }
+      },
+      "voice-clone-line": {
+        "name": "用你的声音读台词",
+        "description": "用你录音里的声音读一段新台词",
+        "prompt": "{✏️ 要用这个声音说的原话}",
+        "input": {
+          "sample": {
+            "name": "声音样本",
+            "note": "先放入一段干净的录音（只有一个人说话、没有音乐、10 秒以上），再把它选进声音样本槽"
+          }
+        }
+      },
+      "score-for-my-video": {
+        "name": "给你的视频配乐",
+        "description": "跟着视频的情绪和剪辑走的音乐",
+        "prompt": "跟着这段视频的情绪、节奏和场景切换走的音乐。风格：{✏️ 风格，例如带轻打击乐的温暖原声民谣}。",
+        "input": {
+          "video": {
+            "name": "你的视频",
+            "note": "先放入你的视频，再把它选进视频槽"
+          }
+        }
+      },
+      "music-mood-from-image": {
+        "name": "按图片的感觉配乐",
+        "description": "跟你的图片同一种情绪的音乐",
+        "prompt": "一段纯器乐，情绪跟参考图一样：由图里的感觉、颜色和场景决定曲风、调性和乐器。{✏️ 其他要求，例如慢、梦幻}。",
+        "input": {
+          "image": {
+            "name": "图片",
+            "note": "先放入图片，再把它选进参考图槽"
+          }
+        }
+      },
+      "clip-ambience-foley": {
+        "name": "静音镜头加拟音",
+        "description": "先出静音镜头，再按画面配拟音",
+        "prompt": "一个连续镜头：{✏️ 场景，例如厨师在木砧板上切菜}。0–2 秒：{✏️ 第一个动作}。2–5 秒：{✏️ 接下来的动作}。每一次接触都看得清楚，什么碰到什么、什么时候碰到，方便之后配声音。一个主运镜：{✏️ 例如缓慢推近}。一个光源：{✏️ 例如左边的窗户}。画面里不出现文字。",
+        "node": {
+          "foley": {
+            "name": "拟音",
+            "prompt": "(💡 先生成视频，再把它选进视频槽)给这个镜头配拟音：{✏️ 声音，例如刀落在砧板上、菜滑开、后面锅里滋滋响}。每个声音都落在画面上它发生的那一刻；近处的声音干、清楚，背景的声音轻一些。没有音乐，没有人声。"
+          }
+        }
+      },
+      "section-mapped-score": {
+        "name": "四段配乐",
+        "description": "同一风格的四段，截好后拼接",
+        "prompt": "一首四段纯器乐配乐的片头，配的是{✏️ 片子，例如一支两分钟的品牌片}。四段共用：{✏️ 曲风}，速度约{✏️ 速度，例如 96 BPM}，调性{✏️ 调性，例如 A 小调}，乐器{✏️ 两三件乐器}。这一段：{✏️ 时长，例如 15 秒}，安静、开阔，引出主题。",
+        "node": {
+          "body": {
+            "name": "正文",
+            "prompt": "同一首四段纯器乐配乐的正文。四段共用：{✏️ 曲风}，速度约{✏️ 速度}，调性{✏️ 调性}，乐器{✏️ 两三件乐器}。这一段：{✏️ 时长，例如 60 秒}，平稳向前，垫在主要内容下面。"
+          },
+          "reveal": {
+            "name": "揭示",
+            "prompt": "同一首四段纯器乐配乐的揭示段。四段共用：{✏️ 曲风}，速度约{✏️ 速度}，调性{✏️ 调性}，乐器{✏️ 两三件乐器}。这一段：{✏️ 时长，例如 25 秒}，高潮：更满、更响，主题最强。"
+          },
+          "outro": {
+            "name": "片尾",
+            "prompt": "同一首四段纯器乐配乐的片尾。四段共用：{✏️ 曲风}，速度约{✏️ 速度}，调性{✏️ 调性}，乐器{✏️ 两三件乐器}。这一段：{✏️ 时长，例如 15 秒}，慢慢收住、干净结束，主题再轻轻出现一次。"
+          }
+        },
+        "step": {
+          "trim": "每段生成出来通常比需要的长。生成后，在它上面用 工具 → 剪切，截到它提示词里写的长度。",
+          "join": "选中剪切后的四段（名字以 CUT- 开头），右键选「拼接」；确认顺序是片头、正文、揭示、片尾，交叉淡化设为 1 秒左右。"
+        }
+      }
     },
     "promptMark": {
       "reference": "请用 @ 选择 {label}"
@@ -2184,7 +2360,6 @@
         "label": "整个 Document 的命令",
         "saveSnapshot": "保存快照",
         "restoreSnapshot": "恢复快照",
-        "notOpenYet": "未开放",
         "comments": "批注",
         "commentsUnresolved": "{count} 条未解决",
         "commentsNone": "无"
@@ -2271,6 +2446,49 @@
         "notWrittenYet": "已上传，还没写进正文",
         "notPasted": "{count} 项没有粘贴进来。",
         "stillUploading": "{count} 个图片、视频或音频还在上传，没有粘贴进来。上传完成后重新复制。"
+      },
+      "versions": {
+        "title": "快照",
+        "close": "关闭快照",
+        "current": "当前内容",
+        "empty": "还没有快照",
+        "loadMore": "加载更多",
+        "loadFailed": "快照列表没有加载出来。",
+        "retry": "重试",
+        "more": "更多",
+        "compareWithShown": "与正在查看的对比",
+        "rename": "改名",
+        "delete": "删除",
+        "viewing": "正在查看快照：{name}",
+        "comparing": "对比：{from} → {to}",
+        "legendInsert": "新增",
+        "legendDelete": "删除",
+        "legendFormat": "格式变化",
+        "compareWithCurrent": "和当前内容对比",
+        "restore": "找回",
+        "exitPreview": "退出预览",
+        "exitCompare": "退出对比",
+        "renameTitle": "快照改名",
+        "namePlaceholder": "名字（可不填）",
+        "save": "保存",
+        "restoreTitle": "找回这张快照？",
+        "restoreBody": "当前正文会变成这张快照的内容，所有协作者会立即看到。可以按 Cmd/Ctrl+Z 撤销。",
+        "deleteTitle": "删除这张快照？",
+        "deleteBody": "「{name}」删除后找不回来。",
+        "saved": "快照已保存",
+        "renamed": "已改名",
+        "restored": "已找回快照。按 Cmd/Ctrl+Z 可以撤销。",
+        "unchanged": "正文已经和这张快照相同。",
+        "restoreFailed": "没能找回快照。",
+        "deleted": "快照已删除",
+        "leftOut": "{count, plural, other {# 个图片、视频或音频还没上传完成，没有存进这张快照。}}",
+        "contentFailed": "快照内容没有加载出来。",
+        "gone": "这张快照已经不在了。",
+        "saveFailed": "快照没有保存。",
+        "renameFailed": "没能改名。",
+        "deleteFailed": "没能删除快照。",
+        "folded": "{count, plural, other {# 个块未改动 · 展开}}",
+        "unavailable": "快照加载失败，刷新页面后可用"
       }
     },
     "readOnlyReconnect": "重新连接",
@@ -2301,6 +2519,18 @@
       "selectedCount": "已选中 {count} 个对象",
       "multiTransform": "使用场景中的手柄，围绕选中集合的中心调整变换。",
       "mixed": "混合值",
+      "pose": {
+        "title": "姿势",
+        "stand": "站立",
+        "sit": "坐下",
+        "lie": "躺下",
+        "walk": "行走",
+        "wave": "挥手",
+        "jointMode": "调整关节",
+        "reset": "恢复默认姿势",
+        "noSkeleton": "这个模型没有骨骼，不能摆姿势。",
+        "humanoidOnly": "预设只适用于人形角色。"
+      },
       "selectObject": "选择对象以编辑属性。",
       "refused": "与此场景的连接被拒绝了，改动不会被保存。",
       "retry": "重试",
@@ -2390,6 +2620,9 @@
         "kindGeneration": "生成",
         "originSpace": "Space 内",
         "originAgent": "Agent",
+        "rigFailed": "骨骼绑定失败，这个模型不能摆姿势",
+        "rigged": "已绑定骨骼",
+        "willRig": "生成完成后绑定骨骼",
         "generating": "生成中",
         "generatingFor": "生成中 · 已用 {minutes} 分钟",
         "stillRunning": "这次生成还在收尾，请稍后再试。",

@@ -8,6 +8,8 @@ import { Plus } from 'lucide-react';
 
 import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';
+import { ScrollArea } from '@web/components/ui/scroll-area';
+import { Textarea } from '@web/components/ui/textarea';
 import { LIGHT_SPHERE } from '@web/spaces/canvas/generate/angle-spheres';
 import { CameraAngleControl } from '@web/spaces/canvas/generate/CameraAngleControl';
 import { SWATCH, SWATCH_DOT, Tip } from '@web/spaces/canvas/mini-tool/DrawingControls';
@@ -16,6 +18,7 @@ import { ItemsEditor } from '@web/spaces/canvas/generate/ItemsEditor';
 import { lightTintOf } from '@web/spaces/canvas/generate/light-tint';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
+import { useAutosizeTextarea } from '@web/lib/use-autosize-textarea';
 import { cn } from '@web/lib/utils';
 import { modelControls, type ModelControl } from '@web/spaces/canvas/generate/model-controls';
 import { ChoiceMenu } from '@web/spaces/canvas/generate/ChoiceMenu';
@@ -537,11 +540,18 @@ interface TextControlProps {
   invalid?: boolean;
 }
 
+/** Four lines of the box's text and its padding, where it stops growing and scrolls. */
+const TEXT_BOX_MAX_HEIGHT = 'max-h-[78px]';
+
 /**
- * A free-text param, written to the node when the user leaves the box.
+ * A free-text param, written to the node when the user leaves the box or
+ * presses Enter; Shift+Enter starts a new line.
  *
  * One write per edit rather than per key: every write is a canvas undo entry,
  * and a word typed a letter at a time would push out everything else.
+ *
+ * The box grows with what is written up to four lines; past that the words
+ * scroll in a `ScrollArea` around it, the way the document's comment box does.
  * @param root0 - Props.
  * @param root0.name - The param name.
  * @param root0.label - Its name on screen.
@@ -557,19 +567,46 @@ function TextControl({ name, label, held, onChange, invalid }: TextControlProps)
     [onChange, name],
   );
   const box = useDraftBox(held, commitText);
+  const commitOnEnter = box.onKeyDown;
+  const onKeyDown = React.useCallback(
+    (event: React.KeyboardEvent<HTMLTextAreaElement>): void => {
+      // Shift+Enter is the new line; the Enter that confirms an IME word is neither.
+      if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return;
+      event.preventDefault();
+      commitOnEnter(event);
+    },
+    [commitOnEnter],
+  );
+  const field = React.useRef<HTMLTextAreaElement>(null);
+  useAutosizeTextarea(field, box.value);
   return (
     <div>
       <label htmlFor={id} className='mb-1.5 block text-xs font-medium text-muted-foreground'>
         {label}
       </label>
-      <Input
-        autoComplete='off'
-        id={id}
-        data-testid={`generate-param-${name}-input`}
-        {...box}
-        aria-invalid={invalid === true ? true : undefined}
-        className='h-8 text-xs'
-      />
+      {/* The frame is the scroller's, so it stays still while the words scroll. */}
+      <ScrollArea
+        scrollbars='vertical'
+        className={cn(
+          'rounded-chrome border border-border transition-colors focus-within:border-active-border',
+          invalid === true && 'border-status-error-foreground focus-within:border-status-error-foreground',
+        )}
+        viewportClassName={TEXT_BOX_MAX_HEIGHT}
+        data-testid={`generate-param-${name}-scroller`}
+      >
+        <Textarea
+          ref={field}
+          rows={1}
+          autoComplete='off'
+          id={id}
+          data-testid={`generate-param-${name}-input`}
+          {...box}
+          onKeyDown={onKeyDown}
+          aria-invalid={invalid === true ? true : undefined}
+          // 7px above and below a 16px line makes one line 32px tall, as the h-8 number box is.
+          className='min-h-0 resize-none overflow-hidden rounded-none border-0 px-3 py-[7px] text-xs focus-visible:border-0 md:text-xs'
+        />
+      </ScrollArea>
     </div>
   );
 }

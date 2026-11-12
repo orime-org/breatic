@@ -175,7 +175,11 @@ describe('SceneGenerateDialog (inner#1691 design 7.1)', () => {
     renderDialog();
     await ready();
     const common = screen.getByTestId('scene-generate-common');
-    for (const name of ['texture', 'pbr', 'smart_low_poly', 'generate_parts', 'export_uv']) expect(within(common).getByTestId(`generate-param-${name}-toggle`)).toBeInTheDocument();
+    for (const name of ['texture', 'pbr', 'smart_low_poly', 'generate_parts', 'export_uv', 'rig_skeleton']) expect(within(common).getByTestId(`generate-param-${name}-toggle`)).toBeInTheDocument();
+    // Rig skeleton is the last common switch and starts off (inner#1692).
+    const toggles = within(common).getAllByTestId(/^generate-param-.*-toggle$/u);
+    expect(toggles.at(-1)).toHaveAttribute('data-testid', 'generate-param-rig_skeleton-toggle');
+    expect(toggles.at(-1)).toHaveAttribute('aria-checked', 'false');
     for (const name of ['face_limit', 'model_seed', 'texture_seed']) expect(within(common).getByTestId(`generate-param-${name}-input`)).toBeInTheDocument();
     expect(within(common).getByTestId('generate-param-geometry_quality-menu')).toBeInTheDocument();
     expect(within(common).queryByTestId('generate-param-negative_prompt-input')).toBeNull();
@@ -351,8 +355,10 @@ describe('SceneGenerateDialog (inner#1691 design 7.1)', () => {
     expect(screen.getByTestId('generate-param-texture_quality-menu')).toHaveTextContent(valueLabel('texture_quality', 'standard'));
 
     await user.type(screen.getByTestId('scene-generate-prompt'), 'Something else');
-    rerender(true, fillOf({ source: 'agent', origin: 'agent', prompt: 'A stone lion', params: { texture_quality: 'detailed', geometry_quality: 'detailed', negative_prompt: 'base' } }));
+    rerender(true, fillOf({ source: 'agent', origin: 'agent', prompt: 'A stone lion', params: { texture_quality: 'detailed', geometry_quality: 'detailed', negative_prompt: 'base', rig_skeleton: true } }));
     await waitFor(() => expect(screen.getByTestId('scene-generate-prompt')).toHaveValue('A stone lion'));
+    // A proposal that asks for a skeleton opens with the switch on (inner#1692 acceptance 3).
+    expect(screen.getByTestId('generate-param-rig_skeleton-toggle')).toHaveAttribute('aria-checked', 'true');
     expect(screen.getByTestId('generate-param-negative_prompt-input')).toHaveValue('base');
     expect(screen.getByTestId('generate-param-texture_quality-menu')).toHaveTextContent(valueLabel('texture_quality', 'detailed'));
     expect(screen.getByTestId('generate-param-geometry_quality-menu')).toHaveTextContent(valueLabel('geometry_quality', 'detailed'));

@@ -22,7 +22,7 @@ import { inputSchema } from "../proposal-input.js";
 import { markTypedAsWords } from "../proposal-node-checks.js";
 import { REFUSALS, type RefusalId } from "../proposal-refusals.js";
 
-import { FIXTURES, loadFixtureLocales } from "./template-fixtures.js";
+import { COVER_MODEL, FIXTURES, loadFixtureLocales, PLACED_FIXTURES } from "./template-fixtures.js";
 
 beforeEach(() => {
   loadFixtureLocales();
@@ -82,6 +82,7 @@ const TTS = "realtime-tts-2";
 const SHOTS = "kling-v3.0-4k-text-to-video";
 const VID = "minimax-h3-image-to-video";
 const OMNI_SHOTS = "gemini-omni-1.1-flash-image-to-video";
+const DUO = "gemini-3.1-flash-text-to-speech";
 
 /** A note, as every to-do on a card is. */
 const NOTE = { slot: { kind: "note" as const, label: "Put the picture in Pic first" } };
@@ -108,6 +109,15 @@ function gen(type: ProposalNode["type"], mode: string, model: string, rest: Part
   return { role: "generate", type, name: "Gen", mode, model, prompt: [{ text: "Make it." }], ...rest };
 }
 
+/** Two speakers, both named and voiced. */
+const PAIR = [{ speaker: "Ava", voice: "Kore" }, { speaker: "Leo", voice: "Puck" }];
+/** A dialogue sent as lines, one per turn (inner#1825 design 8.5). */
+const DIALOGUE = gen("audio", "tts", DUO, {
+  prompt: undefined,
+  params: { speakers: PAIR },
+  lines: [{ speaker: 1, prompt: [{ text: "Hi." }] }, { speaker: 2, prompt: [{ text: "Hello." }] }],
+});
+
 /** A text-to-image generation standing on its own. */
 const DRAW = gen("image", "t2i", T2I);
 /** An empty picture node. */
@@ -133,6 +143,10 @@ const LONG_SCRIPT = "x".repeat(600);
 
 /** An empty clip node. */
 const CLIP_EMPTY: Sent["nodes"][number] = { role: "source", type: "video", name: "Clip" };
+/** An empty sound node, which the canvas does not wire into a picture node. */
+const SONG_EMPTY: Sent["nodes"][number] = { role: "source", type: "audio", name: "Song" };
+/** The note telling the user to pick the song into the cover model's slot. */
+const SONG_NOTE = { slot: { kind: "note" as const, label: "Put the song in Song, then pick it into the audio slot" } };
 /** A clip node holding material. */
 const CLIP_HELD: Sent["nodes"][number] = { role: "source", type: "video", name: "Clip", material: CLIP };
 /**
@@ -283,9 +297,10 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     states: ['An edge flows into "Words", which generates nothing'],
   }],
   "edge-not-allowed": [{
-    meets: group([CLIP_EMPTY, gen("audio", "a2m", SCORE, { prompt: [{ text: "Score it." }] })], [{ fromIndex: 0, toIndex: 1 }]),
-    states: ["The canvas does not let a video node feed an audio node", 'An edge runs from node 0 ("Clip") to node 1 ("Gen") (no into).', 'Take every edge from node 0 ("Clip") to node 1 ("Gen") off.', '"Clip" goes into "Gen" unwired, with a note saying to pick it into "video" and no ref.'],
-    fix: group([CLIP_EMPTY, gen("audio", "a2m", SCORE, { prompt: [{ text: "Score it." }] })]),
+    // inner#1825: a video now wires into a sound node, so the refused pair is a sound into a picture.
+    meets: group([SONG_EMPTY, gen("image", "i2i", EDIT)], [{ fromIndex: 0, toIndex: 1 }]),
+    states: ["The canvas does not let an audio node feed an image node", 'An edge runs from node 0 ("Song") to node 1 ("Gen") (no into).', 'Take every edge from node 0 ("Song") to node 1 ("Gen") off.', '"nano-banana-pro-edit-ultra" takes no audio node, so "Song" has no way into "Gen".'],
+    fix: group([SONG_EMPTY, gen("image", "i2i", EDIT)]),
   }, {
     meets: group([CLIP_EMPTY, gen("image", "i2i", EDIT)], [{ fromIndex: 0, toIndex: 1 }]),
     states: ['Take every edge from node 0 ("Clip") to node 1 ("Gen") off.', '"nano-banana-pro-edit-ultra" takes no video node, so "Clip" has no way into "Gen".'],
@@ -297,9 +312,9 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     fix: group([CLIP_EMPTY, gen("image", "i2i", "no-such-model")]),
   }, {
     // The same edge twice: the fix names the pair, so following it takes both.
-    meets: group([CLIP_EMPTY, gen("audio", "a2m", SCORE, { prompt: [{ text: "Score it." }] })], [{ fromIndex: 0, toIndex: 1 }, { fromIndex: 0, toIndex: 1, into: "video" }]),
-    states: ['2 edges run from node 0 ("Clip") to node 1 ("Gen") (no into, into "video")', 'Take every edge from node 0 ("Clip") to node 1 ("Gen") off.'],
-    fix: group([CLIP_EMPTY, gen("audio", "a2m", SCORE, { prompt: [{ text: "Score it." }] })]),
+    meets: group([CLIP_EMPTY, gen("image", "i2i", EDIT)], [{ fromIndex: 0, toIndex: 1 }, { fromIndex: 0, toIndex: 1, into: "pool" }]),
+    states: ['2 edges run from node 0 ("Clip") to node 1 ("Gen") (no into, into "pool")', 'Take every edge from node 0 ("Clip") to node 1 ("Gen") off.'],
+    fix: group([CLIP_EMPTY, gen("image", "i2i", EDIT)]),
   }, {
     // Two nodes share a name: the fix names the pair by index, so the image's pool edge stays.
     meets: group([CLIP_EMPTY, { ...EMPTY_PIC, name: "Clip" }, EDIT_POOL_1], [{ fromIndex: 0, toIndex: 2 }, { fromIndex: 1, toIndex: 2, into: "pool" }]),
@@ -395,6 +410,25 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     states: ['"Pic"', '"fixture-sheet"', '"palette"', "takes no material"],
     templates: FIXTURES,
   }],
+  "template-input-into": [{
+    // inner#1825: the fixture's song goes into the cover model's "audio" slot, and the edge says the pool.
+    meets: group(
+      [
+        { ...gen("audio", "a2m", COVER_MODEL, { name: "Cover", prompt: [SONG_NOTE, { text: "A slow acoustic ballad." }] }), template: { id: "fixture-slotted" } },
+        { ...SONG_EMPTY, template: { id: "fixture-slotted", input: "song" } },
+      ],
+      [{ fromIndex: 1, toIndex: 0, into: "pool" }],
+    ),
+    states: ['input "song"', '"audio" slot of node 0 ("Cover")', 'the edge from node 1 ("Song") says into "pool"', 'change the edge from node 1 ("Song") so it goes into it by an edge with into: "audio"'],
+    fix: group(
+      [
+        { ...gen("audio", "a2m", COVER_MODEL, { name: "Cover", prompt: [SONG_NOTE, { text: "A slow acoustic ballad." }] }), template: { id: "fixture-slotted" } },
+        { ...SONG_EMPTY, template: { id: "fixture-slotted", input: "song" } },
+      ],
+      [{ fromIndex: 1, toIndex: 0, into: "audio" }],
+    ),
+    templates: PLACED_FIXTURES,
+  }],
   "template-edge-into": [{
     // The sketch goes into the sheet's style slot, and the edge says the pool.
     meets: group(
@@ -452,6 +486,11 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     ],
     absent: ["who the character is"],
     fix: group([CHARACTER_DESIGN, CHARACTER_SHEET], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
+  }, {
+    // A blank left in a line of the dialogue, as the two-voice template's lines carry one.
+    meets: group([{ ...DIALOGUE, lines: [{ speaker: 1, prompt: [{ slot: { kind: "tweak", label: "Ava's first line", note: "Ava's first line" } }] }, { speaker: 2, prompt: [{ text: "Hello." }] }] }]),
+    states: ['"Gen" still holds the blanks "Ava\'s first line".'],
+    fix: group([DIALOGUE]),
   }],
   "sources-no-taker": [{
     meets: group([EMPTY_PIC, DRAW]),
@@ -502,6 +541,33 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     meets: group([gen("video", "multi_shot", SHOTS, { params: { duration: 5 } })]),
     states: ["In the multi_shot mode the shots are what is generated. On node 0 (\"Gen\"), give shots"],
     fix: group([{ ...gen("video", "multi_shot", SHOTS, { params: { duration: 5 } }), shots: TWO_SHOTS }]),
+  }],
+  "lines-missing": [{
+    meets: group([gen("audio", "tts", DUO, { params: { speakers: PAIR }, prompt: [{ text: "Ava: Hi.\nLeo: Hello." }] })]),
+    states: ['On node 0 ("Gen"), give lines'],
+    fix: group([DIALOGUE]),
+  }],
+  "lines-with-prompt": [{
+    meets: group([{ ...DIALOGUE, prompt: [{ text: "Ava: Hi." }] }]),
+    states: ['On node 0 ("Gen"), leave prompt out.'],
+    fix: group([DIALOGUE]),
+  }],
+  "lines-without-stand-in": [{
+    meets: group([gen("audio", "tts", TTS, { prompt: [{ text: "Hello." }], lines: [{ speaker: 1, prompt: [{ text: "Hi." }] }] })]),
+    states: [`"${TTS}" reads in one voice`, 'On node 0 ("Gen"), leave lines out.'],
+    fix: group([gen("audio", "tts", TTS, { prompt: [{ text: "Hello." }] })]),
+  }],
+  "line-speaker-out-of-range": [{
+    meets: group([{ ...DIALOGUE, lines: [{ speaker: 1, prompt: [{ text: "Hi." }] }, { speaker: 3, prompt: [{ text: "Hello." }] }] }]),
+    states: ["Line 2 names speaker 3", "2 speakers"],
+  }],
+  "line-empty": [{
+    meets: group([{ ...DIALOGUE, lines: [{ speaker: 1, prompt: [{ text: "Hi." }] }, { speaker: 2, prompt: [{ text: "   " }] }] }]),
+    states: ["Line 2 writes nothing."],
+  }],
+  "speakers-missing": [{
+    meets: group([{ ...DIALOGUE, params: { speakers: [PAIR[0], { speaker: "", voice: "Puck" }] } }]),
+    states: [`"${DUO}" reads a dialogue between 2 speakers`, "1 of them"],
   }],
   "shots-with-prompt": [{
     meets: group([{ ...STORY, prompt: [{ text: "Make it." }] }]),
@@ -730,7 +796,7 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   }],
   "source-configured": [{
     meets: group([{ ...EMPTY_PIC, mode: "t2i" }, EDIT_POOL], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
-    states: ["takes no mode, model, params, fills, shots, or prompt; it carries mode."],
+    states: ["takes no mode, model, params, fills, shots, lines, or prompt; it carries mode."],
   }],
   "written-not-text": [{
     meets: group([{ ...WORDS, type: "image" }, DRAW]),
@@ -738,10 +804,13 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   }],
   "written-configured": [{
     meets: group([{ ...WORDS, mode: "t2i" }, DRAW]),
-    states: ["takes no mode, model, params, fills, or shots -- nothing is generated there; it carries mode."],
+    states: ["takes no mode, model, params, fills, shots, or lines -- nothing is generated there; it carries mode."],
   }, {
     meets: group([{ ...WORDS, params: { duration: 5 } }, DRAW]),
     states: ["it carries params."],
+  }, {
+    meets: group([{ ...WORDS, lines: [{ speaker: 1, prompt: [{ text: "Hi." }] }] }, DRAW]),
+    states: ["it carries lines."],
   }],
   "written-empty": [{
     meets: group([{ ...WORDS, prompt: [{ text: "   " }] }, DRAW]),
@@ -755,6 +824,9 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     meets: group([EMPTY_PIC, gen("image", "i2i", EDIT, { prompt: [{ text: "Edit [📎 " }, { ref: 0 }, { text: "] now." }, NOTE] })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
     states: ['"Gen" types 1 mark(s) into its words as text: "[📎 {"ref": 0}]".', '{"ref": <index>} for a node'],
     absent: ["meant by"],
+  }, {
+    meets: group([{ ...DIALOGUE, lines: [{ speaker: 1, prompt: [{ text: "Hi {✏️ mood}." }] }, { speaker: 2, prompt: [{ text: "Hello." }] }] }]),
+    states: ['"Gen" types 1 mark(s) into its words as text: "{✏️ mood}".'],
   }],
   "param-undeclared": [{
     meets: group([EMPTY_PIC, gen("image", "i2i", ANGLES, { prompt: [{ text: "Turn " }, { ref: 0 }, NOTE], params: { format: "png" } })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
@@ -812,6 +884,10 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
   "param-out-of-range": [{
     meets: group([gen("audio", "tts", TTS, { prompt: [{ text: "Hello." }], params: { speed: 9 } })]),
     states: ["runs from 0.5 to 1.5"],
+  }],
+  "param-too-short": [{
+    meets: group([gen("audio", "tts", "qwen3-tts-voice-design", { prompt: [{ text: "Hello." }], params: { voice_description: "" } })]),
+    states: ['"voice_description" takes at least 1 character'],
   }],
   "param-off-step": [{
     meets: group([EMPTY_PIC, gen("image", "i2i", ANGLES, { prompt: [{ text: "Turn " }, { ref: 0 }, NOTE], params: { horizontal_angle: 50 } })], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
@@ -1000,10 +1076,11 @@ describe("every refusal states its fault, its rule and its facts", () => {
         const after = verdictFor(entry.fix, MATERIALS, entry.templates);
         expect(after.ok ? undefined : after.refusal, `following the fix of "${reason}"`).not.toBe(refusal);
         // A template edge's fix names everything its route asks, so the proposal then stands.
-        if (refusal === "template-edge-missing" || refusal === "template-edge-into") expect(after, `following the fix of "${reason}"`).toEqual({ ok: true });
+        const rewires = refusal === "template-edge-into" || refusal === "template-input-into";
+        if (refusal === "template-edge-missing" || rewires) expect(after, `following the fix of "${reason}"`).toEqual({ ok: true });
         // The fix proposal changes only what the sentence names.
         if (refusal === "template-edge-missing") wiresOneEdgeIn(entry.meets, entry.fix);
-        else if (refusal === "template-edge-into") rewiresOneEdge(entry.meets, entry.fix);
+        else if (rewires) rewiresOneEdge(entry.meets, entry.fix);
         else actsWhereItSays(entry.meets, entry.fix, lastSentence(reason));
       });
     }

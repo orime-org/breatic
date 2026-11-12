@@ -27,6 +27,7 @@ import type { AskUserAnswer, AskUserResult, ChatAttachedChip, ChatSpaceContext, 
 import { API_BASE_PATH } from '@web/data/api/base-path';
 import { chatApi } from '@web/data/api/chat';
 import { clearConsolidating, noteConsolidating } from '@web/stores/consolidating';
+import { clearRunningTurns, noteTurnRunning, noteTurnSettled } from '@web/stores/running-turns';
 import type { StoredUiMessage } from '@web/data/api/chat';
 import { checkStaleRelease } from '@web/data/deployment/stale-release';
 import { bodyOrTransfer, type TransferReference } from '@web/data/upload/transfer-body';
@@ -622,6 +623,7 @@ function settleTurn(
   answering.delete(conversationId);
   stopWatching(conversationId);
   runningTurn.delete(conversationId);
+  noteTurnSettled(conversationId);
   pausedTurn.delete(conversationId);
   // A turn that failed, was stopped, or folded and then said nothing would
   // otherwise leave the line up — and it says something about a turn that is
@@ -772,6 +774,7 @@ async function runTurn(
   const turn = (turnsRun.get(conversationId) ?? 0) + 1;
   turnsRun.set(conversationId, turn);
   runningTurn.set(conversationId, turn);
+  noteTurnRunning(conversationId);
   void expectAnotherBeat(conversationId, turn, pressedAt);
   try {
     await send(chat);
@@ -991,6 +994,7 @@ export function evictChatSession(conversationId: string): void {
   projectOf.delete(conversationId);
   turnsRun.delete(conversationId);
   runningTurn.delete(conversationId);
+  noteTurnSettled(conversationId);
   pausedTurn.delete(conversationId);
   answeredTurn.delete(conversationId);
   givenUpOn.delete(conversationId);
@@ -1013,6 +1017,7 @@ export function evictAllChatSessions(): void {
   projectOf.clear();
   turnsRun.clear();
   runningTurn.clear();
+  clearRunningTurns();
   pausedTurn.clear();
   answeredTurn.clear();
   givenUpOn.clear();

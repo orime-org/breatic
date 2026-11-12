@@ -38,6 +38,36 @@
   }
 }
 
+/* Focus rings show only for keyboard users (#1452). `lib/input-modality.ts`
+   writes `data-input-modality` on <html>; a menu closed with the mouse hands
+   focus back to its trigger by script, which the browser's own :focus-visible
+   counts as visible. Rewriting the built-in variant carries every
+   `focus-visible:`, `group-`, `peer-` and `has-focus-visible:` class with it.
+   `lib/__tests__/focus-visible-guard.test.ts` keeps arbitrary variants and
+   hand-written rules from going around it. */
+@custom-variant focus-visible (&:focus-visible:where([data-input-modality=keyboard] *));
+
+/* The project card draws its keyboard ring for the open target, its first
+   child, on itself: the card clips with overflow-hidden, so a ring on the
+   child would be cut off. */
+@custom-variant has-first-child-focus-visible (&:has(> :first-child:focus-visible):where([data-input-modality=keyboard] *));
+
+@layer base {
+  /* The browser's default outline, which a rewritten `focus-visible:outline-none`
+     no longer clears outside keyboard modality. */
+  :where(html:not([data-input-modality=keyboard])) :focus-visible {
+    outline: none;
+  }
+}
+
+/* react-colorful injects `.react-colorful__interactive:focus .react-colorful__pointer`
+   (scale 1.1) into <head> after this file, unlayered, and focuses the area on
+   every press. The html ancestor outranks its (0,3,0) whatever the order, so
+   the dot grows only for keyboard users. */
+html:not([data-input-modality=keyboard]) .react-colorful__interactive:focus .react-colorful__pointer {
+  transform: translate(-50%, -50%);
+}
+
 html,
 body,
 #root {
@@ -554,9 +584,11 @@ body {
    variants on one editor's container, which meant a second editor could
    configure a placeholder, pass every test, and show nothing at all. It is a
    property of the extension, not of any one editor, so it lives here and every
-   editor that installs Placeholder gets it. */
+   editor that installs Placeholder gets it. A dialogue line (inner#1825) marks
+   its own words the same way, each saying whose line it is. */
 .ProseMirror p.is-editor-empty:first-child::before,
-.ProseMirror .prompt-note + p.is-empty:last-child::before {
+.ProseMirror .prompt-note + p.is-empty:last-child::before,
+.ProseMirror .dialogue-line > p.is-empty::before {
   content: attr(data-placeholder);
   float: left;
   height: 0;
@@ -741,6 +773,51 @@ body {
 
   .doc-body span[data-unsupported-inline]::before {
     content: attr(data-label);
+  }
+
+  /* ---- Snapshot comparison (inner#1129) ----
+     The marks BlockNote's diff renderer draws, under the class names
+     `document-version-view.ts` gives them: added on green, removed red and
+     struck through, a change of format or attributes on blue. Added and
+     reformatted text keep the colour of the text around them, so they read
+     as easily as the rest of the body; the background says what changed.
+     A block-level mark wraps its blocks in a `display: contents` span, so
+     the colour goes on the blocks inside it. The library's own "Deleted" badge hangs off its
+     default class names, so it does not appear here; the banner's legend
+     (`doc-version-legend-*`) says it, in the same colours. */
+  .doc-body .doc-version-insert,
+  .doc-body .doc-version-insert-block > *,
+  .doc-version-legend-insert {
+    background-color: var(--color-palette-green-bg);
+    text-decoration: none;
+  }
+
+  .doc-body .doc-version-delete,
+  .doc-body .doc-version-delete-block > *,
+  .doc-version-legend-delete {
+    color: var(--color-palette-red);
+    text-decoration: line-through;
+  }
+
+  .doc-body .doc-version-format,
+  .doc-body .doc-version-format-block > *,
+  .doc-version-legend-format {
+    background-color: var(--color-palette-blue-bg);
+  }
+
+  /* The blocks a comparison folds away; the fold row stands in for them. */
+  .doc-body .doc-version-folded {
+    display: none;
+  }
+
+  /* A fold row's height belongs to its host: a hidden Space also hides the
+     button React draws into it, and a scroller at its end would be cut back.
+     The block below brings its own space above its text, so the row sits as
+     far from the text above it as from the text below. */
+  .doc-body [data-version-fold] {
+    box-sizing: content-box;
+    height: 1.875rem;
+    padding-block: 1rem 0.25rem;
   }
 
   /* ---- A line's text fills the row it sits on ----

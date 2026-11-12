@@ -87,6 +87,21 @@ describe("the figures on the path from pressing send to the first frame", () => 
     expect(shippedConfig().sse_heartbeat_interval_ms).toBe(5000);
   });
 
+  it("declares how often an open conversation list asks which conversations are running", () => {
+    // Both halves: the yaml ships the figure, the schema answers for a
+    // deployment whose file does not carry the key (#1394).
+    expect(defaults().running_poll_interval_ms).toBe(5000);
+    expect(shippedConfig().running_poll_interval_ms).toBe(5000);
+  });
+
+  it("rejects a running poll interval that is not a positive whole number", () => {
+    // It reaches a browser timer: zero or a negative is a list that asks
+    // without pause, a fraction is not an interval a timer takes.
+    for (const bad of [0, -1, 1.5]) {
+      expect(agentConfigSchemaForTests.safeParse({ running_poll_interval_ms: bad }).success).toBe(false);
+    }
+  });
+
   it("declares how many messages one page of a conversation holds", () => {
     // Thirty, the same figure `conversation_page_size` already uses: the two
     // are the same kind of dial and whoever reads this file should not have

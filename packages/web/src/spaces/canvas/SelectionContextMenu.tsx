@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import { Copy, CopyPlus, Group, MessageSquarePlus, Trash2 } from 'lucide-react';
+import { Combine, Copy, CopyPlus, Group, MessageSquarePlus, Trash2 } from 'lucide-react';
 import * as React from 'react';
 
 import {
@@ -27,6 +27,10 @@ interface SelectionContextMenuProps {
   onOpenChange: (open: boolean) => void;
   /** Group the current multi-selection (offered only when groupable). */
   onGroup?: () => void;
+  /** The medium the selection's clips are, when it offers a join (inner#1825 §6.5). */
+  join?: 'video' | 'audio' | undefined;
+  /** Open the join panel on the selection's clips (offered only with `join`). */
+  onJoin?: () => void;
   /** Copy the selection to the clipboard. */
   onCopy?: () => void;
   /** Duplicate the selection in place. */
@@ -41,7 +45,7 @@ interface SelectionContextMenuProps {
 
 /**
  * The right-click menu for a canvas multi-selection (2+ loose nodes): group,
- * copy, duplicate, delete. A controlled `DropdownMenu` anchored to a zero-size
+ * join, copy, duplicate, delete. A controlled `DropdownMenu` anchored to a zero-size
  * element pinned at the cursor (ReactFlow's `onSelectionContextMenu` gives a
  * point, not an element Radix can anchor to). Each item renders only when its
  * handler is supplied, so the parent controls availability (read-only passes
@@ -53,6 +57,8 @@ interface SelectionContextMenuProps {
  * @param root0.y - Viewport y to anchor the menu at.
  * @param root0.onOpenChange - Open-state change callback.
  * @param root0.onGroup - Group the selection (offered only when groupable).
+ * @param root0.join - The medium of the clips a join is offered for.
+ * @param root0.onJoin - Open the join panel on the selection's clips.
  * @param root0.onCopy - Copy the selection.
  * @param root0.onDuplicate - Duplicate the selection.
  * @param root0.onDelete - Delete the selection.
@@ -66,6 +72,8 @@ export const SelectionContextMenu = React.memo(function SelectionContextMenu({
   y,
   onOpenChange,
   onGroup,
+  join,
+  onJoin,
   onCopy,
   onDuplicate,
   onDelete,
@@ -97,6 +105,12 @@ export const SelectionContextMenu = React.memo(function SelectionContextMenu({
             </DropdownMenuItem>
             <DropdownMenuSeparator />
           </>
+        ) : null}
+        {join !== undefined && onJoin ? (
+          <DropdownMenuItem data-testid='selection-menu-join' onSelect={onJoin}>
+            <Combine className='mr-2 h-4 w-4' aria-hidden='true' />
+            {join === 'audio' ? t('canvas.miniTool.audio.join.label') : t('canvas.miniTool.video.join.label')}
+          </DropdownMenuItem>
         ) : null}
         {onCopy ? (
           <DropdownMenuItem data-testid='selection-menu-copy' onSelect={onCopy}>

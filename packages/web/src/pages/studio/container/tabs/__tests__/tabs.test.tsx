@@ -183,7 +183,7 @@ describe('ProjectsTab — views and loading', () => {
     const row = screen.getByTestId('project-row-a');
     // Muted text on the highlight fill falls under 4.5:1 in the dark theme.
     expect(row.className).toContain('hover:[&>td]:text-foreground');
-    expect(row.className).toContain('has-[:focus-visible]:[&>td]:text-foreground');
+    expect(row.className).toContain('has-focus-visible:[&>td]:text-foreground');
     // The outline is what tells focus apart from a row the pointer rests on.
     for (const target of [within(row).getByRole('link'), within(screen.getByTestId('project-row-b')).getByRole('button', { name: 'Other Project' })]) {
       expect(target.className).toContain('focus-visible:after:ring-1');

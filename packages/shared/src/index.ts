@@ -217,11 +217,13 @@ export type {
   ReferenceUsabilityContext,
   PromptSegment,
   ProposalNode,
+  ProposalLine,
   ProposalShot,
   ProposalNodeType,
   CanvasProposal,
   DocumentProposal,
   SceneGenerationOrigin,
+  SceneTaskNotice,
   SceneGenerationProposal,
   ProposalRefused,
   ProposalAnswer,
@@ -257,6 +259,7 @@ export {
   canvasProposalSchema,
   documentProposalSchema,
   SCENE_GENERATION_ORIGINS,
+  SCENE_TASK_NOTICES,
   sceneGenerationProposalSchema,
   hasWords,
   occurrences,
@@ -265,6 +268,7 @@ export {
   layoutFeedsOf,
   TEMPLATE_GUIDE_KEY,
   proposalMarkSegments,
+  proposalWordRuns,
   markReadsBack,
   markText,
   writtenMark,
@@ -334,6 +338,11 @@ export {
   understandSchema,
   transcribeSchema,
   nodeHistorySnapshotSchema,
+  DOCUMENT_VERSION_NAME_MAX_CHARS,
+  documentVersionSaveSchema,
+  documentVersionRenameSchema,
+  documentVersionListQuerySchema,
+  documentVersionScopeSchema,
   canvasPasteSchema,
   pastePairSchema,
   pasteHistoryItemSchema,
@@ -355,6 +364,7 @@ export {
   AGENT_INSTRUCTIONS_MAX_CHARS,
   agentInstructionsQuerySchema,
   agentInstructionsSaveSchema,
+  chatRunningQuerySchema,
   CONVERSATION_TITLE_MAX_CHARS,
   PROJECT_NAME_MAX_CHARS,
   projectNameSchema,
@@ -398,6 +408,7 @@ export type {
   ChatSetModelInput,
   AgentInstructionsSaveInput,
   AgentInstructionsView,
+  ChatRunningAnswer,
   SceneGenerationAnswer,
   SceneGenerationBody,
 } from "@shared/schemas/index.js";
@@ -578,7 +589,7 @@ export { newId, deriveId } from "@shared/ids.js";
 // The three gates on a capped list param — the panel while picking, the server
 // before enqueue, the worker before mapping to vendor names — read one number,
 // so a submission the panel allowed is never the one the worker truncates.
-export { completeEntries, itemCap, isPresent, usableUrls } from "@shared/item-cap.js";
+export { completeEntries, itemCap, isPresent, stepRequested, usableUrls } from "@shared/item-cap.js";
 export type { CappedParam } from "@shared/item-cap.js";
 export { joinSlotFiles } from "@shared/join-slot-files.js";
 export type { JoinDeclarations, JoinedRun } from "@shared/join-slot-files.js";
@@ -912,11 +923,30 @@ export {
   type TemplateNodeKey,
   type TemplateNodeWords,
   type TemplateResourceNode,
+  type TemplateLine,
   type TemplateShot,
   type TemplateTriggers,
 } from "@shared/canvas/generation-templates.js";
 export {
+  STAND_IN_ON,
+  dialogueSideOf,
+  dialogueSpeakers,
+  dialogueText,
+  isStandInOn,
+  lineSpeakers,
+  planDialogueLines,
+  speakersShort,
+  standInOf,
+  typedSpeaker,
+  withStandInOn,
+  type DialogueLine,
+  type LinePlan,
+  type StandIn,
+  type StandInModel,
+} from "@shared/canvas/dialogue.js";
+export {
   expandTemplate,
+  keyStanding,
   matchTemplateInstance,
   templateGuideNode,
   templateMarkTargets,
@@ -973,6 +1003,7 @@ export {
   readMiniToolJob,
   readMiniToolJobReport,
   submitMiniToolJob,
+  MINI_TOOL_JOB_MAX_EXTRA_INPUTS,
   MINI_TOOL_JOB_MAX_OUTPUTS,
   type MiniToolJobOutput,
   type MiniToolJobReport,
@@ -1128,8 +1159,8 @@ export {
   type AttributionTouch,
 } from "@shared/analytics/attribution.js";
 
-export { SCENE_OBJECT_NAME_MAX, SceneVectorSchema, SceneRotationSchema, SceneScaleSchema, SceneModelSchema, SceneObjectValuesSchema, SceneObjectSchema, isSceneModelMediaType } from "@shared/scene.js";
-export type { SceneVector, SceneRotation, SceneModel, SceneObjectValues, SceneObject, SceneEditableField, SceneImportLimits, SceneControlsConfig } from "@shared/scene.js";
+export { SCENE_OBJECT_NAME_MAX, SCENE_POSE_KEY_PREFIX, SCENE_POSE_KEY_MAX_LENGTH, SCENE_POSE_HIPS_KEY, SceneVectorSchema, SceneRotationSchema, SceneScaleSchema, SceneModelSchema, ScenePoseSchema, SceneObjectValuesSchema, SceneObjectSchema, gatherScenePose, expandScenePose, isSceneModelMediaType } from "@shared/scene.js";
+export type { SceneVector, SceneRotation, SceneModel, ScenePose, SceneObjectValues, SceneObject, SceneEditableField, SceneImportLimits, SceneControlsConfig } from "@shared/scene.js";
 export { SCENE_FORMAT_VERSION, getSceneRootMap, initializeSceneDocument } from "@shared/scene-version.js";
 
 export * from "@shared/credit-amount.js";
@@ -1139,5 +1170,5 @@ export { projectVisitRequestSchema, projectVisitReceiptSchema, projectVisitOpene
 export type { ProjectVisitRequest, ProjectVisitReceipt, ProjectVisitOpened, ProjectVisitLookup } from "@shared/project-visit-contract.js";
 export type { AccountActivityEntity, AccountActivityKind, AccountActivityCoverageEntity } from "@shared/types/entities.js";
 export type {
-  TimelineExecution, TimelineExecutionRow, TimelineExecutionStatus, TimelineWebResolution, WebAnimationSourceVersion,
+  TimelineExecution, TimelineExecutionRow, TimelineExecutionStatus, TimelineWebResolution, WebAnimationSourceVersion, DocumentVersion,
 } from "@shared/types/entities.js";

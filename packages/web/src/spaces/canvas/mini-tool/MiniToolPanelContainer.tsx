@@ -13,10 +13,12 @@ import {
   miniToolEstimateInput,
   tieredParamKeys,
   toolParamKeys,
+  type MiniToolSlotValue,
   type MiniToolSnapshot,
   type MiniToolSpec,
 } from '@breatic/shared/mini-tools';
 
+import { getCachedJoinMaxClips } from '@web/data/api/canvas';
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
 import { asContentView } from '@web/data/yjs/node-view';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -28,6 +30,7 @@ import { canvasRootOf, useCanvasContext, useCanvasSession, useCanvasSessionStore
 import { controlsForKeys } from '@web/spaces/canvas/generate/model-controls';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import { useCreditText } from '@web/spaces/canvas/generate/use-credit-estimate';
+import { isJoinTool, joinClipsOf } from '@web/spaces/canvas/mini-tool/join';
 import { useMiniToolRunning } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
 import { MiniToolPanel } from '@web/spaces/canvas/mini-tool/MiniToolPanel';
 import {
@@ -177,6 +180,8 @@ function OpenMiniToolPanel({
   const setMiniToolParam = useCanvasSession((s) => s.setMiniToolParam);
   const setMiniToolPrompt = useCanvasSession((s) => s.setMiniToolPrompt);
   const clearMiniToolSlot = useCanvasSession((s) => s.clearMiniToolSlot);
+  const moveMiniToolSlotItem = useCanvasSession((s) => s.moveMiniToolSlotItem);
+  const removeMiniToolSlotItem = useCanvasSession((s) => s.removeMiniToolSlotItem);
   const resetMiniToolSource = useCanvasSession((s) => s.resetMiniToolSource);
   const startMiniToolSlotPick = useCanvasSession((s) => s.startMiniToolSlotPick);
   const endPick = useCanvasSession((s) => s.endPick);
@@ -297,18 +302,31 @@ function OpenMiniToolPanel({
     return controlsForKeys(entry, toolParamKeys(spec).filter((key) => !tiered.has(key)), display);
   }, [entry, spec]);
   const prompt = draft?.prompt ?? '';
+  // A join's list cap is served with the canvas limits: a container tool
+  // has no catalog entry to read `max_items` from (inner#1825 §6.3).
+  const join = isJoinTool(spec);
+  const joinCap = join ? (getCachedJoinMaxClips() ?? undefined) : undefined;
   const slotCaps = React.useMemo(
-    () => Object.fromEntries(spec.slots.map((slot) => [slot.key, entry?.params[slot.param]?.max_items])),
-    [spec, entry],
+    () => Object.fromEntries(spec.slots.map((slot) => [slot.key, join ? joinCap : entry?.params[slot.param]?.max_items])),
+    [spec, entry, join, joinCap],
   );
+  // A join's draft is its whole list, the first clip included: the first
+  // clip is what the run reads as its source, the rest its clips (§6.5).
+  const sent = React.useMemo((): Pick<MiniToolSnapshot, 'source' | 'slots'> => {
+    const list = join ? spec.slots.find((slot) => slot.many) : undefined;
+    const held = list === undefined ? undefined : (slots as MiniToolSnapshot['slots'])[list.key];
+    if (list === undefined || !Array.isArray(held)) {
+      return { source: { url: content, ...(source.duration !== undefined && { duration: source.duration }) }, slots };
+    }
+    const [first, ...rest] = held as readonly MiniToolSlotValue[];
+    return {
+      source: { url: first?.url ?? '', ...(first?.duration !== undefined && { duration: first.duration }) },
+      slots: { ...slots, [list.key]: rest },
+    };
+  }, [join, spec, slots, content, source.duration]);
   const snapshot = React.useMemo<MiniToolSnapshot>(
-    () => ({
-      params,
-      prompt,
-      source: { url: content, ...(source.duration !== undefined && { duration: source.duration }) },
-      slots,
-    }),
-    [params, prompt, content, source.duration, slots],
+    () => ({ params, prompt, source: sent.source, slots: sent.slots }),
+    [params, prompt, sent],
   );
   const estimateInput = React.useMemo(() => miniToolEstimateInput(spec, snapshot), [spec, snapshot]);
   const estimate = useCreditText(entry, estimateInput, catalog?.credit_multiplier ?? 1);
@@ -332,7 +350,7 @@ function OpenMiniToolPanel({
     spec,
     entry,
     prompt,
-    slots,
+    slots: sent.slots,
     sourceShown: content !== '' && (!crops || measured !== null),
     source,
     tiers: sizeTiers,
@@ -341,6 +359,7 @@ function OpenMiniToolPanel({
     params,
     expandFrame: draft?.expand?.frame,
     mark: draft?.mark,
+    ...(join && joinCap !== undefined ? { join: { clips: joinClipsOf(slots).length, cap: joinCap } } : {}),
   });
   const pickingSlot = pickSession?.purpose === 'miniToolSlot' ? (pickSession.slotKey ?? null) : null;
 
@@ -373,6 +392,10 @@ function OpenMiniToolPanel({
     }
     if (refusal === 'sourceTooLargeToExpand') {
       toast.warning(t('canvas.miniTool.panel.sourceTooLargeToExpand'));
+      return;
+    }
+    if (refusal === 'joinTooMany') {
+      toast.warning(t('canvas.miniTool.panel.joinTooMany', { n: joinCap ?? 0 }));
       return;
     }
     if (refusal === 'slotTooLong') {
@@ -413,7 +436,7 @@ function OpenMiniToolPanel({
     // Pressing Run leaves picking, as pressing generate does (inner#1304).
     if (sessionStore.getState().pickSession !== null) endPick();
     void onRun(nodeId, spec, snapshot, capture, sourceSize);
-  }, [refusal, onRun, nodeId, spec, entry, slots, snapshot, drawingSteps, source, sessionStore, endPick, t]);
+  }, [refusal, onRun, nodeId, spec, entry, slots, snapshot, drawingSteps, source, sessionStore, endPick, t, joinCap]);
 
   // Escape closes the panel; a running pick takes the press first.
   useEscapeInSpace(pickSession === null, closeActivePanel);
@@ -434,6 +457,8 @@ function OpenMiniToolPanel({
         pickingSlot={pickingSlot}
         onPickSlot={onPickSlot}
         onClearSlot={clearMiniToolSlot}
+        onMoveSlotItem={moveMiniToolSlotItem}
+        onRemoveSlotItem={removeMiniToolSlotItem}
         prompt={prompt}
         onPrompt={setMiniToolPrompt}
         creditText={creditText}

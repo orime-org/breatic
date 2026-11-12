@@ -3,6 +3,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import en from '@locales/en.json';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactFlow } from '@xyflow/react';
@@ -1305,4 +1306,142 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
     );
   });
 
+});
+
+describe('AudioGeneratePanelContainer — a dialogue written line by line (inner#1825)', () => {
+  const GEMINI: ModelEntry = {
+    ...ELEVEN,
+    name: 'gemini-3.1-flash-text-to-speech',
+    display_name: 'Gemini 3.1 Flash TTS',
+    params: {
+      speakers: {
+        description: '',
+        default: null,
+        type: 'items',
+        min_items: 2,
+        max_items: 2,
+        replaces: 'voice_id',
+        fields: { speaker: { type: 'text' }, voice: { values: ['Kore', 'Puck'] } },
+      },
+      voice_id: { description: '', default: 'Kore', remote_source: 'voices' },
+    },
+  } as ModelEntry;
+  const PAIR = [{ speaker: 'Ava', voice: 'Kore' }, { speaker: 'Leo', voice: 'Puck' }];
+
+  /**
+   * Opens the panel on a Gemini node whose tts prompt holds the given lines.
+   * @param lines - Each line's speaker and words.
+   * @param standInOn - Which side the record is on.
+   */
+  async function openDialogue(lines: Array<[number, string]>, standInOn = true): Promise<void> {
+    vi.spyOn(modelsApi, 'list').mockResolvedValue({ ...catalog(), tts: [GEMINI, ...catalog().tts] });
+    const data = { mode: 'tts', model: GEMINI.name, paramsByModel: { [GEMINI.name]: { speakers: PAIR, _stand_in_on: standInOn } } };
+    seedAudioNode(data);
+    const fragment = getPromptFragment('p', 's', 'target', 'tts');
+    if (!fragment) throw new Error('the node has no tts prompt');
+    fragment.insert(
+      0,
+      lines.map(([speaker, text]) => {
+        const paragraph = new Y.XmlElement('paragraph');
+        paragraph.setAttribute('speaker', speaker as unknown as string);
+        if (text !== '') paragraph.insert(0, [new Y.XmlText(text)]);
+        return paragraph;
+      }),
+    );
+    render(panelTree(data));
+    act(() => {
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'audio');
+    });
+    await screen.findByTestId('generate-audio-execute');
+  }
+
+  /**
+   * The tts prompt as stored: each paragraph's speaker and words.
+   * @returns One entry per paragraph.
+   */
+  function stored(): Array<[unknown, string]> {
+    return (getPromptFragment('p', 's', 'target', 'tts')?.toArray() ?? [])
+      .filter((block): block is Y.XmlElement => block instanceof Y.XmlElement && block.nodeName === 'paragraph')
+      .map((block) => [block.getAttribute('speaker') ?? null, block.toArray().map((child) => (child instanceof Y.XmlText ? child.toString() : '')).join('')]);
+  }
+
+  it('says to write a line when every line is blank, and sends nothing', async () => {
+    const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+    await openDialogue([[1, ''], [2, '   ']]);
+    fireEvent.click(screen.getByTestId('generate-audio-execute'));
+    await waitFor(() => expect(toast.warning).toHaveBeenCalled());
+    expect(create).not.toHaveBeenCalled();
+    // The sentence, not just that one appeared: an empty dialogue would
+    // otherwise say the prompt one.
+    expect(vi.mocked(toast.warning).mock.calls.at(-1)?.[0]).toBe(t('canvas.generatePanel.refuseExecuteNoLines'));
+    expect((en.canvas.generatePanel as unknown as Record<string, string | undefined>).refuseExecuteNoLines).toBe(t('canvas.generatePanel.refuseExecuteNoLines'));
+  });
+
+  it('sends the lines written out after each speaker\'s name', async () => {
+    const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+    await openDialogue([[1, 'Hi.'], [2, 'Hello.']]);
+    fireEvent.click(screen.getByTestId('generate-audio-execute'));
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    expect(create.mock.calls[0]?.[0]?.params.prompt).toBe('Ava: Hi.\nLeo: Hello.');
+    expect(create.mock.calls[0]?.[0]?.params.speakers).toEqual(PAIR);
+  });
+
+  it('names each speaker\'s voice beside it in a line\'s speaker menu', async () => {
+    await openDialogue([[1, 'Hi.'], [2, 'Hello.']]);
+    const user = userEvent.setup();
+    await user.click((await screen.findAllByTestId('dialogue-line-speaker'))[0] as HTMLElement);
+    expect(await screen.findByTestId('dialogue-line-speaker-option-1')).toHaveTextContent('Kore');
+    expect(screen.getByTestId('dialogue-line-speaker-option-2')).toHaveTextContent('Puck');
+  });
+
+  it('keeps the lines\' words and speakers as they are when the reading mode goes to single and back', async () => {
+    await openDialogue([[1, 'Hi.'], [2, 'Hello.']]);
+    const before = stored();
+    fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
+    fireEvent.click(await screen.findByTestId('generate-audio-reading-single'));
+    await waitFor(() => {
+      const node = readCanvasGraph('p', 's').nodes.find((n) => n.id === 'target');
+      expect((node?.data as { paramsByModel?: Record<string, Record<string, unknown>> }).paramsByModel?.[GEMINI.name]?._stand_in_on).toBe(false);
+    });
+    expect(stored()).toEqual(before);
+    fireEvent.click(screen.getByTestId('generate-audio-reading-dialogue'));
+    await waitFor(() => {
+      const node = readCanvasGraph('p', 's').nodes.find((n) => n.id === 'target');
+      expect((node?.data as { paramsByModel?: Record<string, Record<string, unknown>> }).paramsByModel?.[GEMINI.name]?._stand_in_on).toBe(true);
+    });
+    expect(stored()).toEqual(before);
+  });
+});
+
+describe('AudioGeneratePanelContainer — a text setting a model needs written (inner#1825)', () => {
+  const DESIGN: ModelEntry = {
+    ...ELEVEN,
+    name: 'qwen3-tts-voice-design',
+    display_name: 'Qwen3 TTS Voice Design',
+    params: {
+      voice_description: { description: '', default: 'A warm narrator', type: 'text', min_length: 1, fill: 'panel' },
+    },
+  } as ModelEntry;
+
+  it('says to fill the setting in when it is emptied, and sends nothing', async () => {
+    const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+    vi.spyOn(modelsApi, 'list').mockResolvedValue({ ...catalog(), tts: [DESIGN, ...catalog().tts] });
+    const data = { mode: 'tts', model: DESIGN.name, paramsByModel: { [DESIGN.name]: { voice_description: '' } } };
+    seedAudioNode(data);
+    const fragment = getPromptFragment('p', 's', 'target', 'tts');
+    if (!fragment) throw new Error('the node has no tts prompt');
+    const paragraph = new Y.XmlElement('paragraph');
+    paragraph.insert(0, [new Y.XmlText('Hello.')]);
+    fragment.insert(0, [paragraph]);
+    render(panelTree(data));
+    act(() => {
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'audio');
+    });
+    fireEvent.click(await screen.findByTestId('generate-audio-execute'));
+    await waitFor(() => expect(toast.warning).toHaveBeenCalled());
+    expect(vi.mocked(toast.warning).mock.calls.at(-1)?.[0]).toBe(
+      t('canvas.generatePanel.refuseExecuteParamEmpty', { name: t('canvas.generatePanel.param.voice_description') }),
+    );
+    expect(create).not.toHaveBeenCalled();
+  });
 });

@@ -40,9 +40,9 @@ describe('native scene overview (inner#1724)', () => {
     const host = document.createElement('div'); document.body.append(host);
     Object.defineProperties(host, { clientWidth: { value: 200 }, clientHeight: { value: 140 } });
     const map = new SceneMiniMapRuntime(host, cache, vi.fn()); owners.push(() => map.dispose());
-    map.update([OBJECT], new Set(), new Vector3());
+    map.update([OBJECT], new Set(), new Vector3(), new Set());
     expect(renders.at(-1)?.[0]).toMatchObject({ children: expect.any(Array) });
-    map.update([OBJECT], new Set([OBJECT.id]), new Vector3());
+    map.update([OBJECT], new Set([OBJECT.id]), new Vector3(), new Set());
     await vi.waitFor(() => expect(load).toHaveBeenCalledTimes(1)); await Promise.resolve(); await Promise.resolve();
     const scene = renders.at(-1)?.[0] as Group;
     const instance = scene.children.find((child) => child.userData.sceneObjectId === OBJECT.id);
@@ -57,7 +57,7 @@ describe('native scene overview (inner#1724)', () => {
     const host = document.createElement('div'); document.body.append(host);
     Object.defineProperties(host, { clientWidth: { value: 200 }, clientHeight: { value: 140 } });
     const navigate = vi.fn(); const map = new SceneMiniMapRuntime(host, cache, navigate); owners.push(() => map.dispose());
-    map.update([OBJECT], new Set([OBJECT.id]), new Vector3(80, 5, -70));
+    map.update([OBJECT], new Set([OBJECT.id]), new Vector3(80, 5, -70), new Set());
     await Promise.resolve(); await Promise.resolve();
     const canvas = host.querySelector('canvas'); if (!canvas) throw new Error('Expected overview canvas');
     vi.spyOn(canvas, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 200, height: 140 } as DOMRect);
@@ -71,8 +71,8 @@ describe('native scene overview (inner#1724)', () => {
     const host = document.createElement('div'); document.body.append(host);
     Object.defineProperties(host, { clientWidth: { value: 200 }, clientHeight: { value: 140 } });
     const map = new SceneMiniMapRuntime(host, cache, vi.fn()); owners.push(() => map.dispose());
-    map.update([], new Set(), new Vector3()); const count = renders.length;
-    map.update([], new Set(), new Vector3()); map.render();
+    map.update([], new Set(), new Vector3(), new Set()); const count = renders.length;
+    map.update([], new Set(), new Vector3(), new Set()); map.render();
     expect(renders).toHaveLength(count);
     host.style.setProperty('--color-popover', '#eeeeee'); map.render();
     expect(renders).toHaveLength(count + 1);

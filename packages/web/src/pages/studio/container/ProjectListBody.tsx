@@ -228,7 +228,7 @@ function ProjectRow({ project, columns }: { project: ContainerProject; columns: 
   return (
     <tr
       data-testid={`project-row-${project.id}`}
-      className='relative isolate text-muted-foreground hover:[&>td]:bg-accent hover:[&>td]:text-foreground has-[:focus-visible]:[&>td]:bg-accent has-[:focus-visible]:[&>td]:text-foreground'
+      className='relative isolate text-muted-foreground hover:[&>td]:bg-accent hover:[&>td]:text-foreground has-focus-visible:[&>td]:bg-accent has-focus-visible:[&>td]:text-foreground'
     >
       <td className={`${CELL} w-px pr-0`}>
         <div className='aspect-video w-12 overflow-hidden rounded-content-sm bg-muted text-muted-foreground'>

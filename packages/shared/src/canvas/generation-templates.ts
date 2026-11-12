@@ -8,7 +8,7 @@
  * mode, model and params. Its prompt is interface text in the locale files,
  * `canvas.template.<id>.prompt` for the anchor and
  * `canvas.template.<id>.node.<key>.prompt` for the others (a node with shots
- * has `shot.<n>` in place of `prompt`), with the places the
+ * has `shot.<n>` in place of `prompt`, a node with dialogue lines `line.<n>`), with the places the
  * user acts on written as the proposal marks: `[📎 …]` for material to @,
  * `{✏️ …}` for words to fill in. What to put in an input is its
  * `canvas.template.<id>.input.<key>.note`.
@@ -27,32 +27,46 @@
  * this module holds the shape and the registry they are collected into.
  */
 
+import { AMBIENCE_SFX_BED } from "@shared/canvas/templates/ambience-sfx-bed.js";
 import { BEAT_SYNC_OUTFIT_CHANGE } from "@shared/canvas/templates/beat-sync-outfit-change.js";
 import { BULLET_TIME_MISHAP } from "@shared/canvas/templates/bullet-time-mishap.js";
 import { CARRIED_OBJECT_TRANSITION } from "@shared/canvas/templates/carried-object-transition.js";
 import { CHARACTER_BIBLE } from "@shared/canvas/templates/character-bible.js";
 import { CHARACTER_DESIGN_FROM_TEXT } from "@shared/canvas/templates/character-design-from-text.js";
 import { CHARACTER_SHOWCASE_ORBIT } from "@shared/canvas/templates/character-showcase-orbit.js";
+import { CLIP_AMBIENCE_FOLEY } from "@shared/canvas/templates/clip-ambience-foley.js";
 import { COSTUME_SHEET } from "@shared/canvas/templates/costume-sheet.js";
+import { DISH_HERO_STILL } from "@shared/canvas/templates/dish-hero-still.js";
 import { EXPRESSION_SHEET } from "@shared/canvas/templates/expression-sheet.js";
 import { FISHEYE_CLONE_POV } from "@shared/canvas/templates/fisheye-clone-pov.js";
 import { FLASH_PHOTO_DUMP_GRID } from "@shared/canvas/templates/flash-photo-dump-grid.js";
+import { FOOD_MONEY_SHOT } from "@shared/canvas/templates/food-money-shot.js";
 import { GAME_UI_LIVESTREAM } from "@shared/canvas/templates/game-ui-livestream.js";
 import { IDENTITY_LOCKED_SEQUENCE } from "@shared/canvas/templates/identity-locked-sequence.js";
+import { MUSIC_MOOD_FROM_IMAGE } from "@shared/canvas/templates/music-mood-from-image.js";
 import { PET_SELFIE_VLOG } from "@shared/canvas/templates/pet-selfie-vlog.js";
 import { PHONE_VLOG_REALISM } from "@shared/canvas/templates/phone-vlog-realism.js";
 import { POV_CONTINUOUS_SHOT } from "@shared/canvas/templates/pov-continuous-shot.js";
+import { RECIPE_PROCESS_MONTAGE } from "@shared/canvas/templates/recipe-process-montage.js";
 import { RETRO_FOUND_FOOTAGE } from "@shared/canvas/templates/retro-found-footage.js";
+import { SCORE_FOR_MY_VIDEO } from "@shared/canvas/templates/score-for-my-video.js";
+import { SECTION_MAPPED_SCORE } from "@shared/canvas/templates/section-mapped-score.js";
 import { SINGLE_VIEW_REFS_SCENE } from "@shared/canvas/templates/single-view-refs-scene.js";
+import { SONG_COVER } from "@shared/canvas/templates/song-cover.js";
 import { STORYBOARD_GRID_25 } from "@shared/canvas/templates/storyboard-grid-25.js";
 import { TIME_FREEZE_REWIND } from "@shared/canvas/templates/time-freeze-rewind.js";
 import { TRAVEL_CITY_WALK } from "@shared/canvas/templates/travel-city-walk.js";
 import { TWIST_COMEDY_SKIT } from "@shared/canvas/templates/twist-comedy-skit.js";
+import { TWO_VOICE_DIALOGUE } from "@shared/canvas/templates/two-voice-dialogue.js";
+import { UNDERSCORE_BGM } from "@shared/canvas/templates/underscore-bgm.js";
 import { VERTICAL_15S_QUICK_TIP } from "@shared/canvas/templates/vertical-15s-quick-tip.js";
+import { VOICE_CLONE_LINE } from "@shared/canvas/templates/voice-clone-line.js";
+import { VOICE_FROM_DESCRIPTOR } from "@shared/canvas/templates/voice-from-descriptor.js";
+import { VOICE_LINE } from "@shared/canvas/templates/voice-line.js";
 import type { GenerationNodeType } from "@shared/types/model-catalog.js";
 
 /** Every creative goal, in the order the panels list them; its name is `canvas.template.goal.<goal>`. */
-export const TEMPLATE_GOALS = ["character", "comics-storyboards", "social-hooks"] as const;
+export const TEMPLATE_GOALS = ["character", "comics-storyboards", "food", "social-hooks", "sound"] as const;
 
 /** A creative goal a template serves; the panel groups templates under it. */
 export type TemplateGoal = (typeof TEMPLATE_GOALS)[number];
@@ -71,6 +85,11 @@ export interface TemplateShot {
   seconds: number;
 }
 
+/** One line of a dialogue node: who says it, numbered from 1 among the node's speakers. */
+export interface TemplateLine {
+  speaker: number;
+}
+
 /** A template node's key: names its locale strings and lets marks point at it. */
 export type TemplateNodeKey = string;
 
@@ -87,6 +106,12 @@ export interface TemplateGenerateNode {
   params: Readonly<Record<string, unknown>>;
   /** The shots it generates, in order: given in the multi_shot mode only, where they stand in for the prompt. */
   shots?: readonly TemplateShot[];
+  /**
+   * The lines of a dialogue, in order: given on a model whose speakers stand
+   * in for its voice, where they stand in for the prompt (inner#1825 design
+   * 8.5). Each line's words are `line.<n>`, words only, no name in front.
+   */
+  lines?: readonly TemplateLine[];
 }
 
 /** A node of the template that holds a file we host. */
@@ -104,6 +129,13 @@ export interface TemplateInput {
   type: GenerationNodeType;
   /** The generate nodes whose pool it is wired into; the anchor when left out. */
   feeds?: readonly TemplateNodeKey[];
+  /**
+   * The slot param of the one node it feeds that it is wired into in place of
+   * the pool (inner#1825): a slot that node's model declares in its mode for
+   * the input's type, filled from the canvas. Not in the pool, so no prompt
+   * marks it.
+   */
+  into?: string;
 }
 
 /** Wiring between two template nodes, `into` as in a proposal edge. */
@@ -117,7 +149,14 @@ export interface TemplateEdge {
 export interface GenerationTemplate {
   /** Stable id: the panel, the agent and the locale keys name it by this. */
   id: string;
-  /** The generate node the panel applies the template to; every other node is upstream of it. */
+  /**
+   * The generate node the panel applies the template to. The template is a
+   * graph with no circle around it, and every other node is one of three
+   * (inner#1825): upstream of it, reaching it along template edges;
+   * downstream of it, reached from it along template edges; or standalone,
+   * touched by no template edge and tied to its instance by the anchor its
+   * tag names.
+   */
   anchor: TemplateNodeKey;
   nodes: readonly (TemplateGenerateNode | TemplateResourceNode)[];
   edges: readonly TemplateEdge[];
@@ -142,6 +181,9 @@ export const GENERATION_TEMPLATES: readonly GenerationTemplate[] = [
   IDENTITY_LOCKED_SEQUENCE,
   CHARACTER_SHOWCASE_ORBIT,
   STORYBOARD_GRID_25,
+  FOOD_MONEY_SHOT,
+  RECIPE_PROCESS_MONTAGE,
+  DISH_HERO_STILL,
   PET_SELFIE_VLOG,
   PHONE_VLOG_REALISM,
   RETRO_FOUND_FOOTAGE,
@@ -156,6 +198,17 @@ export const GENERATION_TEMPLATES: readonly GenerationTemplate[] = [
   TRAVEL_CITY_WALK,
   TWIST_COMEDY_SKIT,
   VERTICAL_15S_QUICK_TIP,
+  AMBIENCE_SFX_BED,
+  VOICE_LINE,
+  TWO_VOICE_DIALOGUE,
+  UNDERSCORE_BGM,
+  VOICE_FROM_DESCRIPTOR,
+  SONG_COVER,
+  VOICE_CLONE_LINE,
+  SCORE_FOR_MY_VIDEO,
+  MUSIC_MOOD_FROM_IMAGE,
+  CLIP_AMBIENCE_FOLEY,
+  SECTION_MAPPED_SCORE,
 ];
 
 /**
@@ -171,11 +224,15 @@ export function templateAnchor(template: GenerationTemplate): TemplateGenerateNo
 }
 
 /** Where a template's generate node keeps its words: keys under the template's `canvas.template.<id>.` entry. */
-export type TemplateNodeWords = { prompt: string } | { shots: ReadonlyArray<{ seconds: number; key: string }> };
+export type TemplateNodeWords =
+  | { prompt: string }
+  | { shots: ReadonlyArray<{ seconds: number; key: string }> }
+  | { lines: ReadonlyArray<{ speaker: number; key: string }> };
 
 /**
  * Where one of a template's generate nodes keeps its words: its prompt, or,
- * for a node with a shot list, one key per shot in place of a prompt.
+ * for a node with a shot list or dialogue lines, one key per shot or line in
+ * place of a prompt.
  * @param template - The template.
  * @param key - The node's key.
  * @returns The keys under the template's locale entry.
@@ -184,6 +241,8 @@ export type TemplateNodeWords = { prompt: string } | { shots: ReadonlyArray<{ se
 export function templateNodeWords(template: GenerationTemplate, key: TemplateNodeKey): TemplateNodeWords {
   const node = template.nodes.find((one) => one.key === key);
   const own = key === template.anchor ? "" : `node.${key}.`;
+  const lines = node?.role === "generate" ? node.lines : undefined;
+  if (lines !== undefined) return { lines: lines.map((line, i) => ({ speaker: line.speaker, key: `${own}line.${String(i + 1)}` })) };
   const shots = node?.role === "generate" ? node.shots : undefined;
   if (shots === undefined) return { prompt: `${own}prompt` };
   return { shots: shots.map((shot, i) => ({ seconds: shot.seconds, key: `${own}shot.${String(i + 1)}` })) };

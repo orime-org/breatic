@@ -17,7 +17,7 @@
 import type { NodeType } from '@breatic/shared';
 import { castDraft } from 'immer';
 
-import { miniToolById, type MiniToolSlotValue } from '@breatic/shared/mini-tools';
+import { defaultParamsOf, miniToolById, type MiniToolSlotValue } from '@breatic/shared/mini-tools';
 
 import {
   EMPTY_DRAWING,
@@ -364,6 +364,16 @@ export interface CanvasSessionState {
   fillMiniToolSlot: (slotKey: string, value: MiniToolSlotValue, many: boolean) => void;
   /** Take one item out of a draft slot. */
   clearMiniToolSlot: (slotKey: string, url?: string) => void;
+  /**
+   * Open a join tool's panel on the first clip with the whole ordered list in
+   * its `clips` slot, the first clip included (inner#1825 §6.5); whatever that
+   * panel held before is replaced.
+   */
+  openJoinPanel: (toolId: string, clips: readonly MiniToolSlotValue[]) => void;
+  /** Move the list item picked from this node to a new place in the list, the panel staying where it is. */
+  moveMiniToolSlotItem: (slotKey: string, nodeId: string, toIndex: number) => void;
+  /** Take the list item picked from this node out, leaving another item holding the same file. */
+  removeMiniToolSlotItem: (slotKey: string, nodeId: string) => void;
   /** The source changed under the open panel: reset what depends on its geometry. */
   resetMiniToolSource: (sourceContent: string, params: Readonly<Record<string, unknown>>) => void;
   /** Record the source size the crop box read off the shown element. */
@@ -734,6 +744,45 @@ export function createCanvasSessionStore(): CanvasSessionStore {
           if (Array.isArray(held) && url !== undefined) slots[slotKey] = held.filter((item) => item.url !== url);
           else delete slots[slotKey];
           s.miniTool = { ...s.miniTool, slots };
+        }),
+      openJoinPanel: (toolId, clips) =>
+        set((s) => {
+          const [first] = clips;
+          const spec = miniToolById(toolId);
+          const list = spec?.slots.find((slot) => slot.many);
+          if (first?.nodeId === undefined || spec === undefined || list === undefined) return;
+          if (s.panelKind === 'miniTool' && s.panelHostId === first.nodeId) s.panelSession += 1;
+          openPanel(s, first.nodeId, 'miniTool');
+          s.miniTool = {
+            toolId,
+            sourceContent: first.url,
+            prompt: '',
+            params: { ...defaultParamsOf(spec) },
+            slots: { [list.key]: castDraft([...clips]) },
+            sourceSize: null,
+            drawing: null,
+            expand: null,
+            mark: null,
+            exporting: false,
+          };
+        }),
+      moveMiniToolSlotItem: (slotKey, nodeId, toIndex) =>
+        set((s) => {
+          const held = s.miniTool?.slots[slotKey];
+          if (!s.miniTool || !Array.isArray(held)) return;
+          const list = held as readonly MiniToolSlotValue[];
+          const item = list.find((value) => value.nodeId === nodeId);
+          if (item === undefined) return;
+          const rest = list.filter((value) => value !== item);
+          rest.splice(Math.max(0, Math.min(toIndex, rest.length)), 0, item);
+          s.miniTool = { ...s.miniTool, slots: { ...s.miniTool.slots, [slotKey]: castDraft(rest) } };
+        }),
+      removeMiniToolSlotItem: (slotKey, nodeId) =>
+        set((s) => {
+          const held = s.miniTool?.slots[slotKey];
+          if (!s.miniTool || !Array.isArray(held)) return;
+          const list = (held as readonly MiniToolSlotValue[]).filter((value) => value.nodeId !== nodeId);
+          s.miniTool = { ...s.miniTool, slots: { ...s.miniTool.slots, [slotKey]: castDraft(list) } };
         }),
       resetMiniToolSource: (sourceContent, params) =>
         set((s) => {

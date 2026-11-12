@@ -15,6 +15,10 @@ import { cn } from '@web/lib/utils';
  * after a loading delay (configurable via `<AvatarFallback delayMs={...}>`).
  *
  * Default size: 40px (`h-10 w-10`); override via `className` on root.
+ *
+ * A picture gets a 1px inset edge in the border colour, drawn over it, so a
+ * light picture still shows its outline on a light surface. Initials keep
+ * their own fill and no edge.
  */
 const Avatar = React.forwardRef<
   React.ElementRef<typeof AvatarPrimitive.Root>,
@@ -24,6 +28,7 @@ const Avatar = React.forwardRef<
     ref={ref}
     className={cn(
       'relative flex h-10 w-10 shrink-0 overflow-hidden rounded-full',
+      'has-[img]:after:pointer-events-none has-[img]:after:absolute has-[img]:after:inset-0 has-[img]:after:rounded-[inherit] has-[img]:after:ring-1 has-[img]:after:ring-inset has-[img]:after:ring-border',
       className,
     )}
     {...props}

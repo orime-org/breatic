@@ -5,7 +5,7 @@
  * The checks one proposed node answers on its own: the material it names,
  * whether it is what its role says, and whether it types a mark as words.
  */
-import { marksTypedIn, promptPlainText, type PromptSegment, type ProposalNode } from "@breatic/shared";
+import { marksTypedIn, promptPlainText, proposalWordRuns, type PromptSegment, type ProposalNode } from "@breatic/shared";
 
 import type { ProposalVerdict } from "@domain/agent/tools/proposal-input.js";
 import { fixOn, refAsSent, refuse, type NodeLabel } from "@domain/agent/tools/proposal-refusals.js";
@@ -14,7 +14,7 @@ import { SAVE_IMAGE } from "@domain/agent/tools/tool-names.js";
 import type { MaterialTable } from "@domain/asset/material-facts.js";
 
 /** The fields that configure a generation, named as the agent sends them. */
-const CONFIGURED = ["mode", "model", "params", "fills", "shots"] as const;
+const CONFIGURED = ["mode", "model", "params", "fills", "shots", "lines"] as const;
 
 /** Field names joined for a sentence, the last after "or". */
 const ONE_OF = new Intl.ListFormat("en", { type: "disjunction" });
@@ -147,8 +147,8 @@ function segmentAsSent(segment: PromptSegment): string {
 }
 
 /**
- * The marks a node's words carry typed out as text, read from its prompt and
- * every shot.
+ * The marks a node's words carry typed out as text, read from its prompt,
+ * every shot and every dialogue line.
  *
  * Each prompt is read as one string, so a mark typed across two text segments
  * is caught too. Every other segment stands in as a character of its own:
@@ -159,7 +159,7 @@ function segmentAsSent(segment: PromptSegment): string {
  * @throws {never} Never.
  */
 function typedMarks(node: ProposalNode): TypedMark[] {
-  return [node.prompt ?? [], ...(node.shots ?? []).map((shot) => shot.prompt)].flatMap((segments) => {
+  return proposalWordRuns(node).flatMap((segments) => {
     const words = segments.map((segment, i) => segment.text ?? String.fromCodePoint(SEGMENT_MARK + i)).join("");
     return marksTypedIn(words).map(({ slot, text }): TypedMark => ({
       slot,
