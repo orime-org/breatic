@@ -481,8 +481,8 @@ export const DocumentEditor = React.memo(function DocumentEditor({
                 className='doc-body-editor mx-auto max-w-3xl [&_.ProseMirror]:outline-none'
               />
             </div>
-            {/* Beside the body rather than over it, so opening it narrows the
-              text column and closing it widens the column again (A18). */}
+            {/* Takes the body column's place while open; the body stays
+              mounted behind it. */}
             {panelOpen && scope !== null && (
               <React.Suspense fallback={null}>
                 <DocumentVersionArea
@@ -496,6 +496,8 @@ export const DocumentEditor = React.memo(function DocumentEditor({
                 />
               </React.Suspense>
             )}
+            {/* Beside the body rather than over it, so opening it narrows the
+              text column and closing it widens the column again (A18). */}
             {railOpen && (
               <DocumentCommentRail
                 editor={handle.editor}

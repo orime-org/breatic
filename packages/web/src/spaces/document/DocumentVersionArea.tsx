@@ -191,7 +191,8 @@ export default function DocumentVersionArea({
     viewport.scrollTo({ top: Math.max(0, top - viewport.clientHeight / 3), behavior: 'smooth' });
   }, [shownNow, viewport]);
 
-  // Refreshes the list after a save from the menu while the panel is open.
+  // Refreshes the list after a snapshot is saved while the panel is open (its
+  // empty state's Save snapshot button).
   const savedOnOpen = React.useRef(versions.saved);
   React.useEffect(() => {
     if (versions.saved !== savedOnOpen.current) void controller.list();

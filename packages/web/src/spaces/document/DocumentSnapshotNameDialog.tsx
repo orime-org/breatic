@@ -32,8 +32,8 @@ interface DocumentSnapshotNameDialogProps {
 /**
  * The dialog that names a snapshot, when saving or renaming one (inner#1129
  * design §7.5, §7.6). A name is optional: an empty one shows the time the
- * snapshot was saved. An unchanged name closes it with nothing sent, as the
- * project rename dialog does.
+ * snapshot was saved. When renaming, an unchanged name closes it with nothing
+ * sent, as the project rename dialog does.
  * @param props - Dialog props.
  * @param props.mode - What it is for, or null when closed.
  * @param props.currentName - The name the field starts from.

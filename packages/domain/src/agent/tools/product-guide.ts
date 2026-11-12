@@ -1875,23 +1875,24 @@ export function renderProductGuide(): string {
       "with their names. Content written by a newer version of the editor shows as a box marked " +
       `${quoted(t("spaces.document.unsupported.label"))} and is kept as it is.`,
     `- Snapshots: ${quoted(t("spaces.document.docMenu.saveSnapshot"))} asks for an optional name and keeps the body ` +
-      "as it is now; media still uploading is left out and a notice says how many. When a document's snapshots are " +
+      "as it is; media still uploading is left out and a notice says how many. When the snapshots are " +
       "full, a notice says to delete old ones first. " +
       `${quoted(t("spaces.document.docMenu.restoreSnapshot"))} opens the ${quoted(t("spaces.document.versions.title"))} ` +
       `panel on the right: ${quoted(t("spaces.document.versions.current"))} on top, then each ` +
       "snapshot, newest first, by its name (or save time) and who saved it, and " +
-      `${quoted(t("spaces.document.versions.loadMore"))} at the end when there are more. Clicking one shows it in ` +
+      `${quoted(t("spaces.document.versions.loadMore"))} at the end if there are more. Clicking one shows it in ` +
       "the body's place, read-only, under a bar with " +
       `${quoted(t("spaces.document.versions.compareWithCurrent"))}, ${quoted(t("spaces.document.versions.restore"))} ` +
       `(not for a Viewer) and ${quoted(t("spaces.document.versions.exitPreview"))}. Hovering a row shows three dots ` +
-      `with ${quoted(t("spaces.document.versions.compareWithShown"))}, ${quoted(t("spaces.document.versions.rename"))} ` +
+      `with ${quoted(t("spaces.document.versions.compareWithShown"))} (not on the one shown), ` +
+      `${quoted(t("spaces.document.versions.rename"))} ` +
       `and ${quoted(t("spaces.document.versions.delete"))} (the last two not for a Viewer). A comparison marks added ` +
       "text on a green background, removed text red and struck through, and changed formatting on blue, and " +
       "folds long unchanged " +
       `stretches into one row that opens on a click; ${quoted(t("spaces.document.versions.exitCompare"))} leaves it. ` +
       `${quoted(t("spaces.document.versions.restore"))} asks first, then replaces the whole body with the snapshot ` +
       "for everyone at once; Cmd/Ctrl+Z takes it back. Comments are kept: those the snapshot had go back where they " +
-      "were; later ones lose their place, as if their text were deleted. " +
+      "were; later ones lose their place as if their text were deleted. " +
       "Deleting a snapshot asks first and cannot be undone.",
     "- The heading outline: an icon at the top left of the body, level with the three dots, opens and shuts " +
       `it; hovering it says ${quoted(t("spaces.document.outline.show"))} or ${quoted(t("spaces.document.outline.hide"))}. ` +

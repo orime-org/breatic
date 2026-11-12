@@ -4,8 +4,9 @@
 /**
  * What a snapshot comparison looks like in the real app (inner#1129 design
  * §7.2, §7.3): both compared rows carry the one selected look, added words
- * are green, removed words red and struck through, the banner's legend uses
- * the same colours, and a long unchanged stretch folds into one row. Checked
+ * sit on green in the colour of the text around them, removed words are red
+ * and struck through, the banner's legend uses the same colours, and a long
+ * unchanged stretch folds into one row. Checked
  * in both themes against the palette tokens themselves.
  */
 
