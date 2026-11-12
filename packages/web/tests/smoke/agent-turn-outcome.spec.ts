@@ -5,9 +5,9 @@
  * A turn that failed, said nothing, or had a step fail leaves a line that stays (#324).
  *
  * A real model cannot be made to end any of these ways on demand, so the turn
- * request is answered here with a stream written to open the way the server's
+ * send is answered here with a run whose stream opens the way the server's
  * does: the heartbeat, the conversation's title, then `start` with an id
- * (`routes/chat.ts`, `main-agent.ts`). What each case checks is that the line
+ * (`helpers/fake-run.ts`). What each case checks is that the line
  * is on screen once the turn has settled and is still there after the toast
  * has gone. That the same lines come back when the
  * conversation is reopened is checked against a real store in the server's
@@ -17,13 +17,13 @@ import { expect, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
 import { startNewConversation } from '../helpers/conversation';
 
+import { answerRuns } from '../helpers/fake-run';
 import { openSmokeProject } from '../helpers/project';
 
 test.use({ viewport: { width: 1500, height: 900 } });
 
-/** How the server opens every turn. */
+/** How the server opens every run, after the heartbeat. */
 const OPENING = [
-  { type: 'data-heartbeat', transient: true, data: {} },
   { type: 'data-conversation-titled', data: { title: 'outcome' } },
   { type: 'start', messageId: 'm-reply' },
 ];
@@ -37,10 +37,7 @@ const PAST_THE_TOAST_MS = 3_500;
  * @param chunks - What the turn streams.
  */
 async function answerWith(page: Page, chunks: object[]): Promise<void> {
-  const body = [...OPENING, ...chunks].map((c) => `data: ${JSON.stringify(c)}\n\n`).join('');
-  await page.route('**/chat/message', (route) =>
-    route.fulfill({ status: 200, headers: { 'content-type': 'text/event-stream' }, body }),
-  );
+  await answerRuns(page, () => [...OPENING, ...chunks]);
 }
 
 /**
@@ -59,7 +56,8 @@ async function sendOne(page: Page): Promise<void> {
 }
 
 test('a turn that fails before its first word keeps its failure line', async ({ page }) => {
-  await answerWith(page, [{ type: 'error', errorText: 'The turn could not be run.' }]);
+  // The server marks the failed turn on the stream ahead of the error frame (`main-agent.ts`).
+  await answerWith(page, [{ type: 'data-failed', data: {} }, { type: 'error', errorText: 'The turn could not be run.' }]);
   await sendOne(page);
 
   await page.waitForTimeout(PAST_THE_TOAST_MS);
