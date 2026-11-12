@@ -77,7 +77,6 @@ vi.mock("@breatic/domain", async () => ({
     recordGenerationFailure: vi.fn(),
     updateGenerationCredits: mockUpdateGenerationCredits,
   },
-  getModel: vi.fn(),
   buildToolSet: vi.fn(),
   runAgentLoop: vi.fn(),
   getModelCatalog: vi.fn(),

@@ -77,7 +77,6 @@ vi.mock("@breatic/domain", async (importOriginal) => ({
     recordProviderResult: vi.fn(),
   },
   nodeHistoryService: { recordGenerationSuccess: vi.fn(), recordGenerationFailure: vi.fn() },
-  getModel: vi.fn(),
   buildToolSet: vi.fn(),
   extractPromptText: vi.fn(),
 }));

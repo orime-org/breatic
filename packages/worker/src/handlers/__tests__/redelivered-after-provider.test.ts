@@ -55,7 +55,6 @@ vi.mock("@breatic/core", () => ({
 }));
 vi.mock("@breatic/domain", () => ({
   buildAgentConfig: vi.fn(),
-  getModel: vi.fn(),
   generateTextRetry: vi.fn(),
   taskService: {
     markFailed: mockMarkFailed,

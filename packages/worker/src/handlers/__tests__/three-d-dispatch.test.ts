@@ -85,7 +85,6 @@ vi.mock("@breatic/core", () => ({
 vi.mock("@breatic/domain", async () => ({
   failureOutcome: (await import("@domain/node-task/failure-outcome.js")).failureOutcome,
   buildAgentConfig: vi.fn(),
-  getModel: vi.fn(),
   generateTextRetry: vi.fn(),
   taskService: {
     markFailed: h.markFailed,

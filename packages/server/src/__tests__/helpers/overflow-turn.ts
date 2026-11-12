@@ -372,7 +372,7 @@ export const TOOLS = {
 };
 
 /**
- * The model, as the turn gets it from `getModel`.
+ * The model, as the turn gets it from `provider().llm.prepare`.
  * @returns A model that plays `world.script`.
  */
 export function scriptedModel(): MockLanguageModelV4 {

@@ -107,7 +107,6 @@ vi.mock("@breatic/domain", async () => ({
   // The real judgement: the case below is about the ending it gives.
   failureOutcome: (await import("@domain/node-task/failure-outcome.js")).failureOutcome,
   buildAgentConfig: vi.fn(),
-  getModel: vi.fn(),
   generateTextRetry: vi.fn(),
   taskService: {
     markFailed: h.markFailed,

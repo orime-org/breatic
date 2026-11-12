@@ -90,9 +90,9 @@ describe("buildAgentConfig", () => {
   });
 
   it("takes the model from config rather than a literal when the request names none", async () => {
-    // Worker used to call getModel() with no argument, landing on a literal
-    // in llm.ts that happened to equal agent.yaml's default_model but was
-    // not read from it. Editing the yaml moved one and not the other.
+    // A run that names no model takes agent.yaml's default_model, read from
+    // config; a literal in code that equals it today would not move when the
+    // yaml is edited.
     //
     // Asserting against getAgentConfig().default_model directly does NOT
     // catch that: the yaml's value IS that literal, so a hardcoded factory

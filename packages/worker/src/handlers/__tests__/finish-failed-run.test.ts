@@ -51,7 +51,6 @@ vi.mock("@breatic/core", () => ({
 vi.mock("@breatic/domain", () => ({
   creditHoldService: { releaseHold: mockReleaseHold },
   buildAgentConfig: vi.fn(),
-  getModel: vi.fn(),
   generateTextRetry: vi.fn(),
   taskService: { markFailed: mockMarkFailed },
   upstreamStepRepo: { failOpenSteps: mockFailOpenSteps },

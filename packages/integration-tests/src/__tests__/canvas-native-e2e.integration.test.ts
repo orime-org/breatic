@@ -114,11 +114,10 @@ async function syntheticRun(): Promise<Record<string, unknown>> {
       if (providerCtrl.calls === 1) throw providerCtrl.error;
     }
     if (providerCtrl.mode === "buffer") {
-      // Sync-transport shape: raw bytes (no output URL) → toUnifiedOutputs
-      // routes the buffer into extra.buffer, exercising persistOutputs Case 1.
+      // Raw bytes with no output URL, as a run that answered bytes hands them on (`produced` in dispatch.ts):
+      // persistOutputs stores them through Case 1.
       return {
-        buffer: Buffer.from("synthetic-audio-bytes"),
-        contentType: "audio/mp3",
+        outputs: [{ extra: { buffer: Buffer.from("synthetic-audio-bytes"), contentType: "audio/mp3" } }],
         cost: 0,
       };
     }
