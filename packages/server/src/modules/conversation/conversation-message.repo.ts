@@ -25,6 +25,7 @@ import {
   db,
   conversations,
   conversationMessages,
+  ConflictError,
   getAgentConfig,
   NotFoundError,
   type ActivityCursor,
@@ -138,7 +139,7 @@ export async function addMessage(id: string, message: MessageInput, forModel?: u
  * @returns The turn index the message went into.
  * @throws {NotFoundError} if the conversation does not exist or is soft-deleted.
  */
-async function insertIn(tx: DbTx, id: string, message: MessageInput, forModel?: unknown): Promise<number> {
+async function insertIn(tx: DbTx, id: string, message: MessageInput, forModel?: unknown, rowId?: string): Promise<number> {
   const owner = await tx
     .select({ userId: conversations.userId })
     .from(conversations)
@@ -183,6 +184,7 @@ async function insertIn(tx: DbTx, id: string, message: MessageInput, forModel?: 
   const seq = seqRows[0]?.maxSeq == null ? 0 : seqRows[0].maxSeq + 1;
 
   await tx.insert(conversationMessages).values({
+    ...(rowId === undefined ? {} : { id: rowId }),
     conversationId: id,
     userId: owner[0].userId,
     role: message.role,
@@ -249,16 +251,35 @@ async function settleInRow(
  * @param message - The user's message.
  * @param settle - The settlement for a waiting call, given its id and its
  *   tool's name, which the result the model reads is filed under.
- * @returns The turn index the message opened, and the calls it closed.
+ * @param opts - How the row is written.
+ * @param opts.messageId - The id the page sent the message with (inner#1717):
+ *   the row is written under it, and a row already written under it in this
+ *   conversation is handed back as it is, so a run that opens again after a
+ *   crash answers the row its predecessor wrote instead of writing another.
+ * @returns The turn index the message opened, the calls it closed, and whether
+ *   the row was already there.
  * @throws {NotFoundError} if the conversation does not exist or is soft-deleted.
+ * @throws {ConflictError} if the id names a message of another conversation.
  */
 export async function addUserMessage(
   id: string,
   message: MessageInput,
   settle: (toolCallId: string, toolName: string) => AskSettlement,
-): Promise<{ turnIndex: number; closedAsks: string[] }> {
+  opts: { messageId?: string } = {},
+): Promise<{ turnIndex: number; closedAsks: string[]; reused?: true }> {
   return db.transaction(async (tx) => {
-    const turnIndex = await insertIn(tx, id, message);
+    if (opts.messageId !== undefined) {
+      const [held] = await tx
+        .select({ conversationId: conversationMessages.conversationId, role: conversationMessages.role, turnIndex: conversationMessages.turnIndex })
+        .from(conversationMessages)
+        .where(eq(conversationMessages.id, opts.messageId))
+        .limit(1);
+      if (held !== undefined) {
+        if (held.conversationId !== id || held.role !== "user") throw new ConflictError(t("server.error.conflict"));
+        return { turnIndex: held.turnIndex, closedAsks: [], reused: true };
+      }
+    }
+    const turnIndex = await insertIn(tx, id, message, undefined, opts.messageId);
     const asking = await tx
       .select({ id: conversationMessages.id, parts: conversationMessages.parts, forModel: conversationMessages.forModel })
       .from(conversationMessages)
@@ -283,6 +304,48 @@ export async function addUserMessage(
     }
     return { turnIndex, closedAsks };
   });
+}
+
+/**
+ * Which of the messages a dead run left taken a stored reply already
+ * answered, and the turn of each that has a user row and no reply
+ * (inner#1717). Answered is one the conversation's newest reply holds as a
+ * message taken in mid-turn, or one whose user row's turn has a reply.
+ * @param id - Conversation UUID.
+ * @param ids - The taken messages' ids.
+ * @returns The answered ids, and the unanswered ones' turns by id.
+ */
+export async function takenStatus(
+  id: string,
+  ids: readonly string[],
+): Promise<{ answered: Set<string>; unansweredRows: Map<string, number> }> {
+  const answered = new Set<string>();
+  const unansweredRows = new Map<string, number>();
+  if (ids.length === 0) return { answered, unansweredRows };
+  const [newest] = await db
+    .select({ parts: conversationMessages.parts })
+    .from(conversationMessages)
+    .where(and(eq(conversationMessages.conversationId, id), eq(conversationMessages.role, "assistant"), isNull(conversationMessages.deletedAt)))
+    .orderBy(desc(conversationMessages.turnIndex), desc(conversationMessages.seq))
+    .limit(1);
+  const inNewest = new Set((newest?.parts ?? []).flatMap((p) => (p.type === "user-message" ? [p.id] : [])));
+  const rows = await db.execute<{ id: string; turn_index: number; replied: boolean }>(sql`
+    SELECT u.id, u.turn_index,
+           EXISTS (
+             SELECT 1 FROM conversation_messages r
+             WHERE r.conversation_id = u.conversation_id AND r.turn_index = u.turn_index
+               AND r.role = 'assistant' AND r.deleted_at IS NULL
+           ) AS replied
+    FROM conversation_messages u
+    WHERE u.conversation_id = ${id} AND u.role = 'user' AND u.deleted_at IS NULL
+      AND u.id = ANY(${textArray(ids)}::uuid[])
+  `);
+  for (const taken of ids) if (inNewest.has(taken)) answered.add(taken);
+  for (const row of rows) {
+    if (row.replied) answered.add(row.id);
+    else if (!answered.has(row.id)) unansweredRows.set(row.id, row.turn_index);
+  }
+  return { answered, unansweredRows };
 }
 
 /** How an answer to a waiting question was taken. */
