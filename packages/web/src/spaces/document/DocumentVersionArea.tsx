@@ -447,7 +447,7 @@ export default function DocumentVersionArea({
             disabled={restoring}
           />
           {open === null || (open.history.status === 'pending' && rows.length === 0) ? (
-            [0, 1, 2].map((i) => <Skeleton key={i} className='my-1 h-11 rounded-content-xs' />)
+            [0, 1, 2].map((i) => <Skeleton key={i} className='my-1 h-11 rounded-chrome' />)
           ) : (failedPage !== null || retrying) && rows.length === 0 ? (
             failedRow
           ) : rows.length === 0 ? (
@@ -567,7 +567,7 @@ const RowButton = React.memo(function RowButton({ testId, active, title, by, at,
         disabled={disabled}
         onClick={onPress}
         className={cn(
-          'flex w-full flex-col items-start gap-0.5 rounded-content-xs border px-2.5 py-2 text-left',
+          'flex w-full flex-col items-start gap-0.5 rounded-chrome border px-2.5 py-2 text-left',
           active ? 'border-active-border bg-accent' : 'border-transparent hover-enabled:bg-accent',
         )}
       >
@@ -678,7 +678,7 @@ function FoldRows({ preview, host }: { preview: Preview; host: React.RefObject<H
             variant={null}
             size={null}
             data-testid='doc-version-fold'
-            className='flex h-full w-full items-center justify-center gap-1.5 rounded-content-xs border border-dashed border-border py-1.5 text-xs text-muted-foreground hover-enabled:bg-accent'
+            className='flex h-full w-full items-center justify-center gap-1.5 rounded-chrome border border-dashed border-border py-1.5 text-xs text-muted-foreground hover-enabled:bg-accent'
             onClick={() => {
               const view = preview.prosemirrorView;
               if (view) view.dispatch(openVersionFold(view.state, fold.key));
