@@ -133,7 +133,7 @@ export const openRouterUnderstand: UnderstandAdapter = {
   },
 
   contentBlocked(error) {
-    // The words its refusal uses for blocked content, which today's understand reads (domain understand.ts errorType).
+    // The words its refusal uses for blocked content, which the understand before provider read (domain understand.ts errorType).
     const type = (error as { metadata?: { error_type?: unknown } } | null | undefined)?.metadata?.error_type;
     return type === "content_policy_violation" || type === "refusal";
   },

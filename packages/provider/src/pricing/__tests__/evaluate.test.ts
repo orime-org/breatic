@@ -12,12 +12,12 @@ interface PriceFixture {
   cases: { model: string; contract: string; fields: Record<string, unknown>; durations: Record<string, number[]>; usd: number | null }[];
 }
 
-/** What today's code answered for every catalog contract (scripts/provider-fixtures.ts). */
+/** What the code before provider answered for every catalog contract, frozen in test/fixtures before the move. */
 const fixture = JSON.parse(
   readFileSync(resolve(__dirname, "../../../test/fixtures/upstream-price.json"), "utf8"),
 ) as PriceFixture;
 
-describe("priceUsd — equal to today's evaluator on every catalog contract", () => {
+describe("priceUsd — equal to the evaluator before provider on every catalog contract", () => {
   it("has cases to compare", () => {
     expect(fixture.cases.length).toBeGreaterThan(500);
   });

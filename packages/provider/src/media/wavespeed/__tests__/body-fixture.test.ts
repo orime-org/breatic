@@ -12,7 +12,7 @@ interface BodyFixture {
   cases: { model: string; params: Record<string, unknown>; prompt: string; body: Record<string, unknown> }[];
 }
 
-/** What today's worker sends for each case (scripts/provider-fixtures.ts). */
+/** What the worker sent before provider for each case, frozen in test/fixtures before the move. */
 const fixture = JSON.parse(readFileSync(resolve(__dirname, "../../../../test/fixtures/upstream-body.json"), "utf8")) as BodyFixture;
 
 /** Every model's WaveSpeed binding, from the binding files the configuration migration writes. */
@@ -25,9 +25,9 @@ const intoPrompt = new Map(catalog().models.flatMap((model) => {
 }));
 
 /**
- * Today's body as the binding now writes it: the departures applied.
+ * The body before provider as the binding now writes it: the departures applied.
  * @param model - The model.
- * @param body - Today's body.
+ * @param body - The body before provider.
  * @returns The body the binding is expected to build.
  */
 function expectedBody(model: string, body: Record<string, unknown>): Record<string, unknown> {
@@ -43,7 +43,7 @@ function expectedBody(model: string, body: Record<string, unknown>): Record<stri
 
 const liveCases = fixture.cases.filter((c) => !OFF_WAVESPEED.has(c.model));
 
-describe("buildBody — today's WaveSpeed body on every case, departures applied", () => {
+describe("buildBody — the WaveSpeed body before provider on every case, departures applied", () => {
   it("has a WaveSpeed binding for every model WaveSpeed still serves", () => {
     expect([...new Set(liveCases.map((c) => c.model))].filter((m) => !bindings.has(m))).toEqual([]);
   });
@@ -67,7 +67,7 @@ function carried(value: unknown, absent: unknown): boolean {
   return value !== undefined && value !== null && value !== "" && value !== absent && !(Array.isArray(value) && value.length === 0);
 }
 
-describe("a param the catalog gained after today's code was frozen", () => {
+describe("a param the catalog gained after the code before provider was frozen", () => {
   it("is sent to WaveSpeed under its own name", () => {
     const binding = bindings.get("minimax-speech-2.8-hd")!;
     const body = buildBody(binding, { params: { voice_id: "Wise_Woman", language_boost: "Chinese,Yue" }, prompt: "hello" });

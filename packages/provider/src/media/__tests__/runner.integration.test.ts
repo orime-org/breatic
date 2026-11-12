@@ -805,7 +805,7 @@ describe("poll — answers that are not the task's ending", () => {
     ["data that is null", { code: 200, data: null }],
     ["a status that is not a string", { code: 200, data: { status: 5 } }],
     ["no status", { code: 200, data: { outputs: [] } }],
-  ])("answers running, as today's poll does, when a 200 answer carries %s", async (_name, body) => {
+  ])("answers running, as the poll before provider did, when a 200 answer carries %s", async (_name, body) => {
     const r = runner();
     const ticket = await sentThen(r, () => ({ status: 200, body }));
     expectState(await r.poll(ticket, live()), "running");

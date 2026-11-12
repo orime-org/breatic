@@ -13,7 +13,7 @@ interface EstimateFixture {
   cases: { model: string; input: EstimateInput; credits: number; usd: number; bound: string }[];
 }
 
-/** Today's estimate for each case (scripts/provider-fixtures.ts). */
+/** The estimate before provider for each case, frozen in test/fixtures before the move. */
 const fixture = JSON.parse(readFileSync(resolve(__dirname, "../../test/fixtures/upstream-estimate.json"), "utf8")) as EstimateFixture;
 
 const provider = createProvider({ config: shipped(), keyOf: (name) => (name === "WAVESPEED_API_KEY" ? "k" : undefined), llmMaxRetries: 0, cleanText: (t) => t });
@@ -41,7 +41,7 @@ describe("the estimate fixture prices every extra step with its param present", 
   });
 });
 
-describe("estimate — equal to today's estimate on every case", () => {
+describe("estimate — equal to the estimate before provider on every case", () => {
   it("has cases of every bound", () => {
     expect(new Set(fixture.cases.map((c) => c.bound))).toEqual(new Set(["exact", "at_least", "at_most", "per_thousand_chars"]));
   });

@@ -127,7 +127,7 @@ interface DeclaredMode {
 function readBucket(bucket: string): DeclaredModel[] {
   const found: DeclaredModel[] = [];
   for (const file of readdirSync(`${CONFIG}/${bucket}`)) {
-    if (!file.endsWith('.yaml') || file === 'providers.yaml') continue;
+    if (!file.endsWith('.yaml')) continue;
     const doc: unknown = parse(readFileSync(`${CONFIG}/${bucket}/${file}`, 'utf8'));
     const models = (doc as { models?: unknown })?.models;
     if (!Array.isArray(models)) continue;

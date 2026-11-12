@@ -319,7 +319,7 @@ describe('every param a panel names has words in every locale', () => {
     .filter((dir) => existsSync(dir))
     .flatMap((dir) =>
       readdirSync(dir)
-        .filter((file) => extname(file) === '.yaml' && file !== 'providers.yaml')
+        .filter((file) => extname(file) === '.yaml')
         .map((file) => resolve(dir, file)),
     )
     .flatMap((file) => {

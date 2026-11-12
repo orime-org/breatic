@@ -934,7 +934,7 @@ describe("the optional rig after a 3D generation (inner#1692)", () => {
     expect(reported([...done.costs, ...done.passedOverCosts])).toEqual(["p-gen", "p-rig"]);
   });
 
-  it("passes over a rig whose poll answer cannot be read, as run-steps does with a non-JSON answer", async () => {
+  it("passes over a rig whose poll answer cannot be read, as the worker's step runner did with a non-JSON answer", async () => {
     a.answer((req) => (req.method === "GET" && req.path.includes("p-rig") ? { status: 200, raw: "<html>", contentType: "text/html" } : tripoUpstream("rigged")(req)));
     const r = runner();
     const done = expectState(await drive(r, await r.plan("tripo", knight({ rig_skeleton: true }), DEFAULT, options)), "done");
@@ -944,7 +944,7 @@ describe("the optional rig after a 3D generation (inner#1692)", () => {
     expect(reported([...done.costs, ...done.passedOverCosts])).toEqual(["p-gen", "p-rig"]);
   });
 
-  it("keeps waiting on a rig the upstream answers 429 about while it runs, as run-steps does", async () => {
+  it("keeps waiting on a rig the upstream answers 429 about while it runs, as the worker's step runner did", async () => {
     a.answer((req) => (req.method === "GET" && req.path.includes("p-rig") ? { status: 429, body: {} } : tripoUpstream("rigged")(req)));
     const r = runner();
     const generating = expectState(await r.send(stored(expectState(await r.plan("tripo", knight({ rig_skeleton: true }), DEFAULT, options), "send").ticket), live()), "running");
@@ -1002,7 +1002,7 @@ describe("the optional rig after a 3D generation (inner#1692)", () => {
     expect(r.abandon(stored(rigging.ticket)).costs).toEqual([lookupOf("p-gen"), lookupOf("p-rig")]);
   });
 
-  it("continues a worker task whose rig already failed by delivering the generated model, as run-steps does", async () => {
+  it("continues a worker task whose rig already failed by delivering the generated model, as the worker's step runner did", async () => {
     a.answer(tripoUpstream("failed"));
     const legacy = {
       steps: [

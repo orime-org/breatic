@@ -70,7 +70,7 @@ describe('ModelIcon — per-vendor brand marks for the model picker', () => {
     .filter((dir) => existsSync(dir))
     .flatMap((dir) =>
       readdirSync(dir)
-        .filter((file) => extname(file) === '.yaml' && file !== 'providers.yaml')
+        .filter((file) => extname(file) === '.yaml')
         .map((file) => resolve(dir, file)),
     )
     .flatMap((file) => {

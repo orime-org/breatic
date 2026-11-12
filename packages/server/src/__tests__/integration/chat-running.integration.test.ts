@@ -33,7 +33,6 @@ vi.mock("@breatic/domain", async (importOriginal) => {
   const { FINISHED } = await import("../helpers/model-double.js");
   return {
     ...actual,
-    resolveProvider: () => "test",
     // Says its first words at once, then waits for the gate (or the stop)
     // before finishing.
     getModel: () =>

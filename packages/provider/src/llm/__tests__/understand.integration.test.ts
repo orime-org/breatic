@@ -465,7 +465,7 @@ describe("reading OpenRouter's understand answer against one typed structure", (
     ["at the top of the body, with a code that is not a number", { ...completion, error: { code: "upstream_error", message: "it broke" } }],
     ["at the top of the body, with no code", { ...completion, error: { message: "it broke" } }],
     ["in the choice, with no code and nothing written", { ...completion, choices: [{ index: 0, message: { role: "assistant", content: "" }, finish_reason: "error", error: { message: "it broke" } }] }],
-  ])("refuses with the answer's own status an error %s, as today's understand does", async (_name, body) => {
+  ])("refuses with the answer's own status an error %s, as the understand before provider did", async (_name, body) => {
     const error = await openRouterAnswering({ status: 200, body });
     expect(error).toBeInstanceOf(UpstreamRequestRejected);
     expect((error as UpstreamRequestRejected).status).toBe(200);
@@ -574,7 +574,7 @@ describe("an image handed over by its address", () => {
     };
   };
 
-  it("sends OpenRouter the address, as today, and never reads the image", async () => {
+  it("sends OpenRouter the address, as before provider, and never reads the image", async () => {
     const { item, reads } = addressed();
     await llmProvider(fakes, keys, { understandOpenRouterFirst: true }).llm.understand({ ...question(), media: [item] });
     const parts = (posted(fakes.openrouter)[0] as { messages: { content: Record<string, unknown>[] }[] }).messages[0]!.content;

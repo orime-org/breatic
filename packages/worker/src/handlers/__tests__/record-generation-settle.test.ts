@@ -42,7 +42,6 @@ vi.mock("@breatic/domain", () => ({
   taskService: {},
   assetService: {},
   creditLotService: {},
-  resolveProvider: vi.fn(),
   nodeHistoryService: { recordGenerationSuccess: mockRecordSuccess },
   settleTaskForNode: mockSettleTaskForNode,
   extractPromptText: vi.fn(),

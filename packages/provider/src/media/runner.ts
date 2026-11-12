@@ -938,7 +938,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
         answer = await capped(ticket.upstream, bounds, () => adapterFor(ticket.upstream).submit(reach(ticket.upstream), at.step.endpoint, body, { ...bounds, maxMediaBytes: options.mediaLimits.maxMediaBytes }, at.step.kind));
       } catch (error) {
         const failure = classify(error, adapterFor(ticket.upstream));
-        // On the caller's last try an optional step is given up, as run-steps does on its last attempt.
+        // On the caller's last try an optional step is given up, as the worker's step runner did on its last attempt.
         const givenUp = bounds.final === true && isOptional(ticket, at.step);
         if (failure?.kind === "no_answer" && givenUp) return passOver(ticket, at.index, bounds, error as Error);
         if (failure === null || failure.kind === "no_answer") throw error;
@@ -999,7 +999,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
       } catch (error) {
         const resendable = error instanceof NoAnswer || error instanceof NotSent || (error instanceof HttpStatus && passingStatus(error.status, "media_submit"));
         if (error instanceof Aborted && pollOptions.finalAsk !== true && cutAtDeadline(pollOptions)) throw new DeadlinePassed(pollOptions.deadlineAt);
-        // An answer that says the same next time ends an optional step, as run-steps reads it: a 4xx other than
+        // An answer that says the same next time ends an optional step, as the worker's step runner read it: a 4xx other than
         // 408 and 429, or a 2xx that is not JSON.
         const lastingAnswer = (error instanceof HttpStatus && !resendable && error.status >= 400 && error.status < 500 && error.status !== 408)
           || error instanceof SyntaxError;
@@ -1074,7 +1074,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
           ...(row.status === "done" ? { output } : {}),
           ...(typeof output.description === "string" ? { description: output.description } : {}),
         };
-        // A clone step not yet sent takes the cache as a fresh plan does (and as run-steps did).
+        // A clone step not yet sent takes the cache as a fresh plan does (and as the worker's step runner did).
         const cached = row.status === "pending" ? cachedOutput({ ...base, steps }, step) : undefined;
         if (cached !== undefined) {
           steps.push({ ...step, status: "done", output: cached });

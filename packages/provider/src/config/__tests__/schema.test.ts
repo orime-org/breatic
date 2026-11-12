@@ -17,7 +17,7 @@ import { createProvider } from "../../provider.js";
 
 const pricing = { kind: "formula", base_price: 0.1, formula: "", discount_rate: 100 };
 
-// Three upstreams of the one media kind provider speaks to today, under different names.
+// Three upstreams of one media kind provider speaks to, under different names.
 const upstreams = {
   bytedance: { kind: "wavespeed", base_url: "https://ark.example", key_env: "BYTEPLUS_ARK_API_KEY" },
   wavespeed: { kind: "wavespeed", base_url: "https://api.wavespeed.ai/api/v3", key_env: "WAVESPEED_API_KEY" },
