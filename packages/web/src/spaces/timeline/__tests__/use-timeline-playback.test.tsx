@@ -681,12 +681,18 @@ describe('useTimelinePlayback', () => {
     const hook = renderPlayback(media);
     act(() => hook.result.current.toggle());
     await settle();
+    media.pause.mockClear();
     act(() => hook.result.current.seek(48));
     act(() => hook.result.current.seek(96));
+    expect(media.pause).toHaveBeenCalled();
+    expect(media.facts.paused).toBe(true);
     mediaEvent(media, 'seeked', { currentTime: 2, seeking: false });
     expect(hook.result.current.frame).toBe(96);
     expect(hook.result.current.state).toBe('waiting');
+    expect(media.play).toHaveBeenCalledTimes(1);
     mediaEvent(media, 'seeked', { currentTime: 4, seeking: false });
+    expect(media.play).toHaveBeenCalledTimes(2);
+    await settle();
     expect(hook.result.current.state).toBe('playing');
     tick(250);
     expect(hook.result.current.frame).toBe(102);

@@ -71,12 +71,10 @@ export interface VideoLayerController {
 /** What the controller reads and reports. */
 export interface VideoLayerControllerOptions {
   document: () => TimelineDocumentV1;
-  /** The current Timeline frame, for a lane's first placement. */
-  frame: () => number;
   /** Called when an element reports something the playback checks. */
   onChange: () => void;
-  /** Makes a clip's element; a `<video>` by default. */
-  createMedia?: (clipId: string) => HTMLVideoElement;
+  /** Makes a clip's element. */
+  createMedia: (clipId: string) => HTMLVideoElement;
 }
 
 const MEDIA_EVENTS = [
@@ -134,6 +132,18 @@ export function reachableTime(element: HTMLVideoElement, target: number): number
 }
 
 /**
+ * Whether a lane failed: only its asset or its element's error count (#1410 design §6.2); `networkState` 3 right after
+ * a new src is not a failure (`media.js:157-159` uses it only to skip one play()).
+ * @param lane - The lane.
+ * @returns Whether it failed.
+ * @throws {never} Never.
+ */
+export function videoLaneFailed(lane: VideoLane): boolean {
+  // jsdom reports a missing error as undefined, the platform as null.
+  return lane.layer.state === 'failed' || Boolean(lane.element.error);
+}
+
+/**
  * Create the controller.
  * @param options - What it reads and reports.
  * @returns The controller.
@@ -141,7 +151,6 @@ export function reachableTime(element: HTMLVideoElement, target: number): number
  */
 export function createVideoLayerController(options: VideoLayerControllerOptions): VideoLayerController {
   const lanes = new Map<string, VideoLane>();
-  const listeners = new Map<string, EventListener>();
 
   /**
    * Apply the clip's speed, gain and mute.
@@ -179,9 +188,7 @@ export function createVideoLayerController(options: VideoLayerControllerOptions)
   function remove(lane: VideoLane): void {
     lane.token += 1;
     lane.pendingPlay = false;
-    const listener = listeners.get(lane.clipId);
-    if (listener !== undefined) for (const event of MEDIA_EVENTS) lane.element.removeEventListener(event, listener);
-    listeners.delete(lane.clipId);
+    for (const event of MEDIA_EVENTS) lane.element.removeEventListener(event, options.onChange);
     lanes.delete(lane.clipId);
     lane.element.pause();
     lane.element.remove();
@@ -195,7 +202,7 @@ export function createVideoLayerController(options: VideoLayerControllerOptions)
       for (const layer of layers) {
         let lane = lanes.get(layer.clipId);
         if (lane === undefined) {
-          const element = options.createMedia?.(layer.clipId) ?? document.createElement('video');
+          const element = options.createMedia(layer.clipId);
           element.setAttribute('data-clip-id', layer.clipId);
           element.preload = 'auto';
           element.playsInline = true;
@@ -205,9 +212,7 @@ export function createVideoLayerController(options: VideoLayerControllerOptions)
           };
           attach(lane, layer);
           configureLane(lane);
-          const listener = options.onChange;
-          for (const event of MEDIA_EVENTS) element.addEventListener(event, listener);
-          listeners.set(layer.clipId, listener);
+          for (const event of MEDIA_EVENTS) element.addEventListener(event, options.onChange);
         } else {
           const fileChanged = layer.fileUrl !== null && layer.fileUrl !== lane.layer.fileUrl;
           const coverChanged = layer.coverUrl !== lane.layer.coverUrl;
@@ -233,11 +238,7 @@ export function createVideoLayerController(options: VideoLayerControllerOptions)
     lanes: () => [...lanes.values()],
     states(): ReadonlyMap<string, TimelineVideoLayerState> {
       const states = new Map<string, TimelineVideoLayerState>();
-      for (const lane of lanes.values()) {
-        // A lane fails only on its asset or the element's error (#1410 design §6.2); `networkState` 3 right after a
-        // new src is not a failure (`media.js:157-159` uses it only to skip one play()).
-        states.set(lane.clipId, lane.layer.state === 'failed' || lane.element.error !== null ? 'failed' : lane.layer.state);
-      }
+      for (const lane of lanes.values()) states.set(lane.clipId, videoLaneFailed(lane) ? 'failed' : lane.layer.state);
       return states;
     },
     configure(): void {

@@ -94,7 +94,6 @@ function controllerFor(elements: Readonly<Record<string, ElementFixture>>): { co
   const onChange = vi.fn();
   const controller = createVideoLayerController({
     document: () => DOCUMENT,
-    frame: () => 0,
     onChange,
     createMedia: (clipId: string): HTMLVideoElement => {
       const fixture = elements[clipId];
