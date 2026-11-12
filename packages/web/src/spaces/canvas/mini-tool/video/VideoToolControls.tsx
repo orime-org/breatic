@@ -561,7 +561,7 @@ function VideoCutEditor(props: VideoToolControlsProps & { table: VideoPresentati
           else if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) { event.preventDefault(); event.stopPropagation(); step(index, event.key === 'ArrowLeft' || event.key === 'ArrowDown'); }
         }}><span className='h-full border-l border-status-selected' /><span className='absolute bottom-0 rounded-chrome-sm bg-popover px-1 text-xs text-foreground'>{index + 1}</span></Button>)}
     </VideoPlaybackStrip>
-    <div className='flex items-center justify-between gap-2'><span data-testid='video-cut-count' className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.cutSummary', { cuts: segments.length - 1, segments: segments.length })}</span><AddCutButton table={table} cuts={cuts} segmentCount={segments.length} presentedTime={props.presentedTime} liveClock={props.liveClock} disabled={props.disabled} onAdd={add} /></div>
+    <div className='flex items-center justify-between gap-2'><span data-testid='video-cut-count' className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.cutSummary', { cuts: segments.length - 1, segments: segments.length })}</span><AddCutButton table={table} starts={snapped} presentedTime={props.presentedTime} liveClock={props.liveClock} disabled={props.disabled} onAdd={add} /></div>
     {rows.length === 0 ? <p className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.noCuts')}</p> : <ScrollArea className='max-h-48' viewportClassName='max-h-48'><div className='grid gap-2'>{rows.map(({ id, value: cut }, index) => <div key={id} className='flex items-center gap-2'><span className='text-xs'>{index + 1}</span><VideoNumericInput value={cut} label={`${t('canvas.miniTool.videoUI.cutPoint')} ${index + 1}`} testId={`video-cut-${index}`} min={0} exclusiveMin max={duration} exclusiveMax disabled={props.disabled} onInvalidChange={props.onInvalidChange} onChange={(value) => type(id, value)} onSettle={settle} /><span className='text-xs'>s</span><Button variant='ghost' size='compact' disabled={props.disabled} aria-label={t('canvas.miniTool.videoUI.removeCut')} onMouseDown={(event) => event.preventDefault()} onClick={() => remove(id)}><Trash2 className='size-3.5' /></Button></div>)}</div></ScrollArea>}
     <div className='flex min-h-8 overflow-hidden rounded-chrome border border-border'>{segments.map((segment) => <Button key={segment.outputIndex} variant={null} size={null} data-testid={`video-segment-${segment.outputIndex}`} disabled={props.onPlayRange === undefined} className='min-w-0 rounded-none border-r border-border bg-accent px-1 py-2 text-xs last:border-r-0 hover-enabled:bg-accent-strong' style={{ flexGrow: segment.end - segment.start, flexBasis: 0 }} onClick={() => preview(segment.start, segment.end)}>{segment.outputIndex + 1}</Button>)}</div>
     {previewing === null ? null : <div data-testid='video-segment-preview' className='flex items-center justify-between gap-2 text-xs text-muted-foreground'><span className='tabular-nums'>{t('canvas.miniTool.videoUI.segmentPreview', { start: secondsLabel(previewing.start), end: secondsLabel(previewing.end) })}</span><Button variant='outline' size='compact' onClick={() => playback.current?.stop()}>{t('canvas.miniTool.videoUI.stopPreview')}</Button></div>}
@@ -569,26 +569,33 @@ function VideoCutEditor(props: VideoToolControlsProps & { table: VideoPresentati
   </div>;
 }
 
-interface AddCutButtonProps { table: VideoPresentationTable; cuts: readonly number[]; segmentCount: number; presentedTime: number | null; liveClock?: VideoPlaybackLiveClock; disabled: boolean; onAdd: (time: number) => void }
+interface AddCutButtonProps { table: VideoPresentationTable; starts: readonly number[]; presentedTime: number | null; liveClock?: VideoPlaybackLiveClock; disabled: boolean; onAdd: (time: number) => void }
 
 /**
  * Add at cursor, available by the time the strip's head shows; a press reads the live clock, so a cut added while the
- * source plays lands where the head is, not at the time the panel last rendered with.
- * @param props - The frame table, the normalized cuts, the clock and the add command.
+ * source plays lands where the head is, not at the time the panel last rendered with. A time makes a new cut when the
+ * frame start it splits at, by planVideoSplit's snap rule, is after the first frame and not already a cut's; this is
+ * read on every animation frame while the source plays, so it is not a whole plan.
+ * @param props - The frame table, the frame starts the cuts split at, the clock and the add command.
  * @returns The button.
  * @throws {z.ZodError} When the frame table is malformed.
  */
 const AddCutButton = React.memo(function AddCutButton(props: AddCutButtonProps): React.JSX.Element {
   const t = useTranslation();
-  const { table, cuts, segmentCount } = props;
+  const { table, starts } = props;
   const duration = presentationVideoEnd(table);
+  const first = presentationFrameAt(table, 0).pts;
   /**
    * Whether a cut at this time would make a new segment.
    * @param time - The time, null while no frame is shown.
    * @returns True when it splits a segment.
-   * @throws {z.ZodError} When the frame table is malformed.
+   * @throws {RangeError} When the frame table is malformed.
    */
-  const makesCut = (time: number | null): time is number => time !== null && time > 0 && time < duration && planVideoSplit(table, [...cuts, time]).length > segmentCount;
+  const makesCut = (time: number | null): time is number => {
+    if (time === null || !(time > 0 && time < duration)) return false;
+    const start = presentationFrameAt(table, presentationCoveringFrame(table, time)).pts;
+    return start > first && !starts.includes(start);
+  };
   const shown = useShownTime(props.liveClock, props.presentedTime);
   return <Button variant='outline' size='compact' data-testid='video-add-cut' disabled={props.disabled || !makesCut(shown)} onClick={() => { const time = props.liveClock?.read() ?? props.presentedTime; if (makesCut(time)) props.onAdd(time); }} icon={<Plus className='size-3' />}>{t('canvas.miniTool.videoUI.atCursor')}</Button>;
 });

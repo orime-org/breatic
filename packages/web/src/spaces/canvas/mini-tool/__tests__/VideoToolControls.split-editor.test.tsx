@@ -13,8 +13,14 @@ import * as React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { t } from '@breatic/shared';
-import type { MiniToolAnalysisRecord, VideoToolDraftById } from '@breatic/shared/mini-tools';
+import { planVideoSplit, type MiniToolAnalysisRecord, type VideoToolDraftById } from '@breatic/shared/mini-tools';
 import { VideoToolControls, type VideoToolControlsProps } from '../video/VideoToolControls';
+
+// The real plan, spied on, so a test can count the whole plans the panel makes.
+vi.mock('@breatic/shared/mini-tools', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@breatic/shared/mini-tools')>();
+  return { ...actual, planVideoSplit: vi.fn(actual.planVideoSplit) };
+});
 import type { VideoPlaybackLiveClock } from '../video/VideoPlaybackStrip';
 
 const source = { nodeId: '10000000-0000-4000-8000-000000000001', canonicalURL: 'https://media.example.test/source.mp4', mediaInfo: { width: 960, height: 540, duration: 5, mimeType: 'video/mp4' } };
@@ -369,6 +375,28 @@ describe('typing a cut row in place (web AGENTS "Inputs send what they show")', 
   });
 });
 
+describe('Add at cursor decides a new cut by the frame it would split at', () => {
+  it('is available exactly where planVideoSplit gains a segment', () => {
+    const cuts = [1, 3, 2.5];
+    const { rerender } = mount({ draft: draftWith(cuts) });
+    for (const time of [0, 0.01, 0.04, 0.99, 1, 1.03, 1.04, 2.47, 2.48, 2.5, 2.52, 3.02, 4.96, 4.99, 5]) {
+      rerender({ presentedTime: time });
+      const expected = time > 0 && time < 5 && planVideoSplit(frameTable, [...cuts, time]).length > planVideoSplit(frameTable, cuts).length;
+      expect(screen.getByTestId('video-add-cut').hasAttribute('disabled'), String(time)).toBe(!expected);
+    }
+  });
+
+  it('is unavailable before the first frame of a table that does not start at 0', () => {
+    const late = { schemaVersion: 1 as const, timescale: 100, runs: [{ start: 8, count: 123, step: 4, duration: 4 }] };
+    const { rerender } = mount({ draft: draftWith([]), frameTable: late });
+    for (const time of [0.04, 0.08, 0.1, 0.12]) {
+      rerender({ presentedTime: time });
+      const expected = planVideoSplit(late, [time]).length > 1;
+      expect(screen.getByTestId('video-add-cut').hasAttribute('disabled'), String(time)).toBe(!expected);
+    }
+  });
+});
+
 describe('stepping a handle that is not on a frame start', () => {
   it('moves one frame from the frame the cut splits at, so the first press moves the handle', () => {
     const changes: number[][] = [];
@@ -436,6 +464,15 @@ describe('Add at cursor while the source plays', () => {
     tick();
     fireEvent.click(screen.getByTestId('video-add-cut'));
     expect(changes.at(-1)).toEqual([1, 3, 3.2]);
+  });
+
+  it('makes no whole split plan on the animation frames of a playing source', () => {
+    let now = 0.5;
+    render(<StatefulSplit cuts={[1, 3]} presentedTime={0.4} liveClock={{ element: playingElement(), read: () => now }} />);
+    tick();
+    vi.mocked(planVideoSplit).mockClear();
+    for (let frame = 0; frame < 5; frame += 1) { now += 0.37; tick(); }
+    expect(planVideoSplit).not.toHaveBeenCalled();
   });
 
   it('becomes available once the shown time moves past 0', () => {
