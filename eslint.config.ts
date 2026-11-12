@@ -647,14 +647,12 @@ export default tseslint.config(
   {
     // Only provider names an upstream (inner#1743): its addresses, names and
     // key variables, read from config/provider/upstreams.yaml. web declares
-    // the same rule in its own config. The env schema is where the key
-    // variables are declared, so it is exempt.
+    // the same rule in its own config.
     files: [
       "packages/{collab,core,domain,integration-tests,server,shared,worker,ingest}/src/**/*.{ts,tsx}",
       "packages/ingest/container/**/*.ts",
     ],
     ignores: [
-      "packages/core/src/config/schema.ts",
       "**/__tests__/**",
       "**/*.test.ts",
       "**/*.spec.ts",

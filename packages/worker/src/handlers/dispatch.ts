@@ -552,8 +552,8 @@ async function runTaskBody(
   /**
    * A recorder for the agent run a reading makes (#296). A retried job opens
    * a fresh one under the same key: each attempt's calls were paid for, and
-   * the task is charged once, by `markCompletedAndBill`, plus a separate
-   * charge for each call of the successful attempt that is looked up later.
+   * the task is charged once, by `markCompletedAndBill`, or, when a call's
+   * cost is pending, once its lookups answer, by `markBilledAndCharge`.
    * @param feature - Which path this task runs.
    * @returns The recorder.
    */
@@ -697,13 +697,10 @@ async function runTaskBody(
 
   // ─── Point of no return: record that the provider has returned ───
   // From here on, any failure must NOT re-run the provider. We write
-  // provider_result_url (or a sentinel if the transport returned a
-  // raw buffer with no upstream URL) so the re-entry guard at the top
-  // of runTask can detect a duplicate delivery and fail-fast.
-  const providerUrlSentinel =
-    unified.outputs[0]?.url ??
-    (run.result.url_original as string | undefined) ??
-    `buffer://${taskId}`; // sync transports return raw bytes with no URL
+  // provider_result_url (or a sentinel if the run returned raw bytes with
+  // no upstream URL) so the re-entry guard at the top of runTask can detect
+  // a duplicate delivery and fail-fast.
+  const providerUrlSentinel = unified.outputs[0]?.url ?? `buffer://${taskId}`;
   await taskService.recordProviderResult(taskId, providerUrlSentinel);
   // The send that finished a model run kept its mark until the result was
   // recorded (inner#1743): a crash before this line resumes the send.
@@ -713,7 +710,7 @@ async function runTaskBody(
   // Any error here marks the task failed with NO CHARGE and NO RETRY.
   let persistedOutputs: PersistedOutput[];
   try {
-    persistedOutputs = await persistOutputs(unified.outputs, unified.extras, {
+    persistedOutputs = await persistOutputs(unified.outputs, {
       taskType,
       userId,
       projectId,
@@ -1671,35 +1668,17 @@ async function recordFailureHistory(
 // ── Normalisation + persistence helpers ────────────────────────────
 
 /**
- * Collapse provider / handler raw results into a unified outputs
- * shape. Provider paths return `{url, cover_url, buffer?, cost, ...}`
- * (always one output). Local handlers return
- * `{outputs:[{url,cover_url?,extra?}], cost}` (N outputs). Callers
- * downstream consume a single shape.
- * @param raw - Raw provider or local-handler result dict
- * @returns The normalised `{ outputs, extras }` view where `outputs` is always an array
+ * Split a run's result into its outputs and the rest of what it says (its model, notice, finish reason). Every run
+ * answers `{ outputs: [...] }`; a result with none has produced nothing.
+ * @param raw - The run's result.
+ * @returns Its outputs, and every other field.
  */
 function toUnifiedOutputs(raw: Record<string, unknown>): {
   outputs: PersistedOutput[];
   extras: Record<string, unknown>;
 } {
-  if (Array.isArray(raw.outputs)) {
-    const outputs = raw.outputs as PersistedOutput[];
-    const extras: Record<string, unknown> = { ...raw };
-    delete extras.outputs;
-    return { outputs, extras };
-  }
-  const { url, cover_url, buffer, contentType, ...rest } = raw;
-  return {
-    outputs: [{
-      url: url as string | undefined,
-      cover_url: cover_url as string | undefined,
-      extra: (buffer !== undefined || contentType !== undefined)
-        ? { buffer, contentType }
-        : undefined,
-    }],
-    extras: rest,
-  };
+  const { outputs, ...extras } = raw;
+  return { outputs: Array.isArray(outputs) ? (outputs as PersistedOutput[]) : [], extras };
 }
 
 /**
@@ -1790,15 +1769,6 @@ const EXTENSION_OF_TYPE: Readonly<Record<string, string>> = {
   "audio/webm": ".webm",
 };
 
-/** Provider-level result fields that may carry a URL consumers read. */
-const EXTRA_URL_FIELDS = [
-  "result_url",
-  "audio_url",
-  "video_url",
-  "image_url",
-  "output_url",
-];
-
 /**
  * Put every output of a generation into R2, through the ingest Worker.
  *
@@ -1817,7 +1787,6 @@ const EXTRA_URL_FIELDS = [
  * from the one just written, and that one is queued for offline reclaim —
  * pinning it would 404 (storage rule ②).
  * @param outputs - Unified outputs, each possibly carrying a temp URL or raw buffer.
- * @param extras - Non-output result fields that may also carry re-hostable URLs.
  * @param opts - Persistence context.
  * @param opts.taskType - Task type, which decides the key's segment and extension.
  * @param opts.userId - User the stored assets are attributed to.
@@ -1833,7 +1802,6 @@ const EXTRA_URL_FIELDS = [
  */
 export async function persistOutputs(
   outputs: PersistedOutput[],
-  extras: Record<string, unknown>,
   opts: { taskType: string; userId: string; projectId?: string; taskId: string; deadlineAt: number; outputType?: string | undefined },
 ): Promise<PersistedOutput[]> {
   const persisted: PersistedOutput[] = [];
@@ -1910,32 +1878,6 @@ export async function persistOutputs(
     }
 
     persisted.push(next);
-  }
-
-  // Provider-level extras can also carry media consumers read. Existing owned
-  // objects must be accepted through the Project directory. External links
-  // take lane ③ best-effort, retaining the provider's URL if transfer fails.
-  for (const field of EXTRA_URL_FIELDS) {
-    const value = extras[field];
-    if (typeof value !== "string" || !value.startsWith("http")) continue;
-    if (adapter.keyFromUrl(value) !== null) {
-      if (projectId !== undefined) {
-        const stored = await resolveRegisteredProjectMedia(projectId, value);
-        extras[field] = stored.fileUrl;
-        extras[`${field}_original`] = value;
-      }
-      continue;
-    }
-    try {
-      const stored = await storeFromUrl(value, uploadContext());
-      // The canonical, not the key just written: on a dedup hit that key lost
-      // and is queued for reclaim, so this field would name a 404 (storage
-      // rule ②).
-      extras[field] = stored.fileUrl;
-      extras[`${field}_original`] = value;
-    } catch (err) {
-      logger.warn({ field, url: value, err }, "Failed to persist result URL, keeping original");
-    }
   }
 
   return persisted;

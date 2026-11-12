@@ -112,12 +112,12 @@ export async function* executeTextTool(
 ): AsyncGenerator<TextToolEvent> {
   let totalTokens = 0;
   // Declared out here so both exits reach them. The model call is recorded
-  // when its response arrives. A run that died before that is recorded later
-  // when the model routes through OpenRouter (the cut-off call goes to the
-  // generation lookup), and not at all on a direct route; a run that died
-  // after it is charged the same as the success path. The second case is reached when the consumer throws while
-  // taking an event: the throw comes back out of the suspended `yield`, by
-  // which point the model has already billed us.
+  // when its response arrives. A call cut off before that is handed over by
+  // provider's pending costs: looked up later when its upstream can say what
+  // it billed, recorded as missing when it cannot. A run that died after the
+  // response is charged the same as the success path; that is reached when
+  // the consumer throws while taking an event: the throw comes back out of the
+  // suspended `yield`, by which point the model has already billed us.
   let modelString: string | null = null;
   const usage = createUsageRecorder({
     operationKey: `texttool:${operationKey}`,

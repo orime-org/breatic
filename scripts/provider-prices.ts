@@ -36,10 +36,7 @@
  * call ranks OpenRouter beside the direct upstream. Beside them it writes `openrouter_states_quantization`, the
  * models one of whose endpoints states a level, priced or not, and stamps
  * `openrouter_prices_at` with the moment they were read; it names each
- * direct price whose off-peak holidays list no date in the current year (from 1 December, the next). Last it regenerates
- * `config/provider/upstream-field-names.json`: the upstream field names no
- * catalog param shares, which repo-lint's `no-upstream-field-in-catalog`
- * keeps out of the catalog's param names.
+ * direct price whose off-peak holidays list no date in the current year (from 1 December, the next).
  *
  * Every problem (a model the upstream no longer has, a changed price fact) is listed at the
  * end and makes the run exit non-zero; whatever could be synced is written
@@ -378,13 +375,6 @@ for (const [modality, doc] of docs) {
 }
 
 await syncOpenRouterPrices();
-
-const ours = new Set([...catalogModels.values()]
-  .flatMap((m) => Object.entries(m.params).flatMap(([name, p]) => [name, ...Object.keys(p.fields ?? {})])));
-const fieldNames = new Set(bindings.flatMap(({ binding }) => Object.values(binding.params ?? {})
-  .flatMap((p) => [p.field, ...Object.values(p.item_fields ?? {}).map((f) => f.field)])
-  .flatMap((field) => field.split("."))));
-writeJson(resolve(ROOT, "config/provider/upstream-field-names.json"), [...fieldNames].filter((name) => !ours.has(name)).sort());
 
 const committed = readdirSync(SNAPSHOTS, { recursive: true }).filter((f) => String(f).endsWith(".json")).length;
 process.stdout.write(`${committed} schema snapshots in ${SNAPSHOTS}\n`);
