@@ -13,10 +13,17 @@
  */
 
 import { createPrivateKey, createPublicKey, sign, verify, type KeyObject } from "node:crypto";
+import { MEMBERSHIP_TIERS } from "@breatic/shared";
 import { z } from "zod";
 
 /** How long a token is good for after it is signed. */
 export const IDENTITY_TOKEN_TTL_SECONDS = 60;
+
+/**
+ * The cookie the token travels in, set on the parent domain so every region's
+ * API host receives it.
+ */
+export const IDENTITY_COOKIE_NAME = "breatic_identity";
 
 const personalStudioSchema = z
   .object({
@@ -31,7 +38,7 @@ const claimsInputSchema = z.object({
   sub: z.string().min(1),
   sid: z.string().min(1),
   email: z.string(),
-  tier: z.string(),
+  tier: z.enum(MEMBERSHIP_TIERS),
   locale: z.string(),
   personalStudio: personalStudioSchema,
 });

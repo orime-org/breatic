@@ -30,7 +30,11 @@ vi.mock("@breatic/core", async (importOriginal) => ({
 }));
 
 import { signIdentityToken } from "@breatic/core";
-import { createUpgradeSessionGate } from "@collab/infra/upgrade-session-gate.js";
+import {
+  BOUND_IDENTITY_HEADER,
+  createUpgradeSessionGate,
+  readBoundIdentity,
+} from "@collab/infra/upgrade-session-gate.js";
 
 const REDIS = {} as unknown as Redis;
 const NOW = 1_800_000_000;
@@ -68,7 +72,7 @@ class GateSocket extends Duplex {
  */
 function identityToken(signedAt: number): string {
   return signIdentityToken(
-    { sub: USER, sid: SID, email: "user@example.test", tier: "free", locale: "en", personalStudio: null },
+    { sub: USER, sid: SID, email: "user@example.test", tier: "base", locale: "en", personalStudio: null },
     { kid: "k1", privateKey: PRIVATE_KEY },
     signedAt,
   );
@@ -160,7 +164,7 @@ describe("upgrade gate in a non-global region", () => {
   it("refuses a token signed by a key this region does not hold", async () => {
     const other = generateKeyPairSync("ed25519").privateKey.export({ type: "pkcs8", format: "pem" }).toString();
     const forged = signIdentityToken(
-      { sub: USER, sid: SID, email: "user@example.test", tier: "free", locale: "en", personalStudio: null },
+      { sub: USER, sid: SID, email: "user@example.test", tier: "base", locale: "en", personalStudio: null },
       { kid: "k1", privateKey: other },
       NOW - 10,
     );
@@ -169,5 +173,25 @@ describe("upgrade gate in a non-global region", () => {
 
     expect(await admitted(gate.onUpgrade({ request, socket }))).toBe(false);
     expect(socket.chunks.join("")).toContain("401");
+  });
+
+  it("hands the bound identity to document authentication through the request headers", async () => {
+    const gate = regionGate();
+    const { request, socket } = upgrade(`breatic_identity=${identityToken(NOW - 10)}`);
+
+    await gate.onUpgrade({ request, socket });
+
+    const headers = new Headers(request.headers as Record<string, string>);
+    expect(readBoundIdentity(headers)).toEqual({ userId: USER, sid: SID });
+  });
+
+  it("drops an identity header the client sent itself", async () => {
+    const gate = regionGate();
+    const { request, socket } = upgrade(undefined);
+    request.headers[BOUND_IDENTITY_HEADER] = JSON.stringify({ userId: "someone-else", sid: "forged" });
+
+    await gate.onUpgrade({ request, socket }).catch(() => undefined);
+
+    expect(request.headers[BOUND_IDENTITY_HEADER]).toBeUndefined();
   });
 });

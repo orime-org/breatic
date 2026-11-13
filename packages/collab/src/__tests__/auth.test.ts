@@ -702,7 +702,7 @@ describe("createAuthHook", () => {
 
   it("E-A10 takes nothing that could write a seat: the handshake only counts and asks", () => {
     expectTypeOf<keyof CreateAuthHookOptions>().toEqualTypeOf<
-      "redis" | "resolveConnectionLimit" | "countConnections" | "hasOwnSeat"
+      "redis" | "resolveConnectionLimit" | "countConnections" | "hasOwnSeat" | "boundIdentity"
     >();
   });
 

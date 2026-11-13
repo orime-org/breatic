@@ -14,12 +14,16 @@
  * exfiltrate the session token from the page.
  */
 
-import type { MiddlewareHandler } from "hono";
+import type { Context, MiddlewareHandler } from "hono";
+import { getCookie } from "hono/cookie";
 import * as Sentry from "@sentry/node";
 import { authService } from "@server/modules";
-import { logger } from "@breatic/core";
+import { env, getRedis, IDENTITY_COOKIE_NAME, isIdentityRevoked, logger, verifyIdentityToken } from "@breatic/core";
 import { t, type MembershipTier } from "@breatic/shared";
 import { readSessionCookie } from "@server/middleware/session-cookie.js";
+
+/** The `error.reason` of a 401 the page answers by renewing its identity token once. */
+export const IDENTITY_EXPIRED_REASON = "identity_expired";
 
 /** Hono context variables set by auth middleware. */
 export interface AuthVariables {
@@ -53,6 +57,14 @@ export interface AuthVariables {
 export const requireAuth: MiddlewareHandler<{
   Variables: AuthVariables;
 }> = async (c, next) => {
+  if (env.REGION !== env.GLOBAL_REGION) {
+    const user = await userFromIdentityToken(c);
+    if (user instanceof Response) return user;
+    c.set("user", user);
+    Sentry.setUser({ id: user.id });
+    await next();
+    return;
+  }
   const token = readSessionCookie(c);
   if (!token) {
     logger.warn({ reason: "no_token", path: c.req.path }, "auth_rejected");
@@ -76,3 +88,40 @@ export const requireAuth: MiddlewareHandler<{
   Sentry.setUser({ id: user.id });
   await next();
 };
+
+/**
+ * Who is asking, in a region that does not hold the sessions: the identity
+ * token cookie checked with the public keys and this region's revocation
+ * tombstones, with no call to the global region.
+ * @param c - The request context.
+ * @returns The user, or the 401 to answer with.
+ * @throws {Error} When Redis cannot be read for the tombstone.
+ */
+async function userFromIdentityToken(c: Context): Promise<AuthVariables["user"] | Response> {
+  const cookie = getCookie(c, IDENTITY_COOKIE_NAME);
+  if (!cookie) {
+    logger.warn({ reason: "no_identity", path: c.req.path }, "auth_rejected");
+    return c.json({ error: { code: 401, message: t("server.auth.not_authenticated") } }, 401);
+  }
+  const verdict = verifyIdentityToken(cookie, env.IDENTITY_PUBLIC_KEYS, Math.floor(Date.now() / 1000));
+  if (!verdict.ok) {
+    logger.warn({ reason: `identity_${verdict.reason}`, path: c.req.path }, "auth_rejected");
+    if (verdict.reason === "expired") {
+      return c.json(
+        { error: { code: 401, message: t("server.auth.token_expired"), reason: IDENTITY_EXPIRED_REASON } },
+        401,
+      );
+    }
+    return c.json({ error: { code: 401, message: t("server.auth.not_authenticated") } }, 401);
+  }
+  if (await isIdentityRevoked(getRedis(), verdict.claims.sid)) {
+    logger.warn({ reason: "identity_revoked", path: c.req.path }, "auth_rejected");
+    return c.json({ error: { code: 401, message: t("server.auth.token_expired") } }, 401);
+  }
+  return {
+    id: verdict.claims.sub,
+    email: verdict.claims.email,
+    membershipTier: verdict.claims.tier,
+    locale: verdict.claims.locale,
+  };
+}

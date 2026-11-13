@@ -36,7 +36,7 @@ const CLAIMS: IdentityClaimsInput = {
   sub: "11111111-1111-4111-8111-111111111111",
   sid: "a".repeat(64),
   email: "user@example.test",
-  tier: "free",
+  tier: "base",
   locale: "en",
   personalStudio: {
     id: "22222222-2222-4222-8222-222222222222",

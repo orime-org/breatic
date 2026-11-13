@@ -18,6 +18,8 @@ vi.mock("@server/modules", () => ({ authService: accounts }));
 vi.mock("@breatic/core", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   logger: logged,
+  // `requireAuth` reads which region it runs in; this is the global one.
+  env: { REGION: "default", GLOBAL_REGION: "default" },
 }));
 
 import { loadLocales, runWithLocale } from "@breatic/core";

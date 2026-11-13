@@ -83,6 +83,7 @@ export { getSceneConfig, type SceneConfig } from "@core/config/scene.js";
 export { getRegionsConfig, type RegionsConfig } from "@core/config/regions.js";
 export { TABLE_PLACEMENT, type TablePlacement } from "@core/db/table-placement.js";
 export {
+  IDENTITY_COOKIE_NAME,
   IDENTITY_TOKEN_TTL_SECONDS,
   signIdentityToken,
   verifyIdentityToken,
@@ -208,6 +209,10 @@ export {
   revokeSession,
   revokeAllSessions,
   sessionCookieName,
+  backfillSessionIdIndex,
+  checkSessions,
+  recordRevokedIdentities,
+  isIdentityRevoked,
   type RevokeOutcome,
 } from "@core/infra/session-store.js";
 export { redactSessionError, type RedactedSessionError } from "@core/infra/session-error.js";

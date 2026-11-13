@@ -25,6 +25,7 @@ import { env, NotFoundError, UnauthorizedError, trackServerEvent } from "@breati
 import { logger } from "@breatic/core";
 import { emailSchema, getActiveLocale, normalizeEmail, parseAttribution, t } from "@breatic/shared";
 import type { PersonalStudioRef, SignupReferralSource } from "@breatic/shared";
+import { writeIdentityCookie, type IdentitySubject } from "@server/middleware/identity-cookie.js";
 import { rateLimitFor, rateLimitForAll } from "@server/middleware/rate-limit.js";
 import {
   setSessionCookie,
@@ -449,8 +450,49 @@ auth.get("/me", requireAuth, async (c) => {
     authService.withTierInForce(user),
     studioService.getPersonalStudio(user.id),
   ]);
+  const token = readSessionCookie(c);
+  if (token) await writeIdentityCookie(c, identitySubject(shown, studio), token);
   return c.json({ data: { ...shown, personalStudio: toPersonalStudioRef(studio) } });
 });
+
+/**
+ * `POST /auth/identity` — sign a fresh identity token for the page's session
+ * (inner#1955). A build with several regions calls it every 45 seconds, and
+ * again when a region answers 401 `identity_expired`.
+ * @param c - Hono context with authenticated user
+ * @returns `200` with `{ data: { ok: true } }` and the `breatic_identity`
+ *   cookie; `401` without a session
+ */
+auth.post("/identity", requireAuth, async (c) => {
+  const user = c.get("user");
+  const token = readSessionCookie(c);
+  if (!token) throw new UnauthorizedError(t("server.auth.not_authenticated"));
+  const [shown, studio] = await Promise.all([
+    authService.withTierInForce(user),
+    studioService.getPersonalStudio(user.id),
+  ]);
+  await writeIdentityCookie(c, identitySubject(shown, studio), token);
+  return c.json({ data: { ok: true } });
+});
+
+/** A personal Studio as the identity token carries it. */
+type PersonalStudioRow = { id: string; name: string; slug: string; avatarUrl?: string | null } | null;
+
+/**
+ * Who the identity token says the user is.
+ * @param user - The account, with the tier in force.
+ * @param studio - Their personal Studio, if set up.
+ * @returns The token subject.
+ */
+function identitySubject(user: AuthVariables["user"], studio: PersonalStudioRow): IdentitySubject {
+  return {
+    userId: user.id,
+    email: user.email,
+    tier: user.membershipTier,
+    locale: user.locale,
+    personalStudio: studio ? { id: studio.id, slug: studio.slug, name: studio.name, avatarUrl: studio.avatarUrl ?? null } : null,
+  };
+}
 
 /**
  * `POST /auth/logout` - invalidate the current session.
