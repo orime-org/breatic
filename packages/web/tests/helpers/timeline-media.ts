@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 import type { ProjectRegisteredAsset, TimelineClientLimits } from '@breatic/shared';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import type { Doc } from 'yjs';
-import { expect, type Browser, type BrowserContext, type Page, type Request, type Response } from 'playwright/test';
+import { expect, type Browser, type BrowserContext, type Locator, type Page, type Request, type Response } from 'playwright/test';
 
 import { dataOf } from './api';
 import { credentialsFor } from './credentials';
@@ -137,11 +137,19 @@ export async function moveTimelineClip(page: Page, clipId: string, start: number
 }
 
 /**
- * Wait for the registered source to load and decode through the real native video element.
+ * The preview's video element of one placement; every visible or premounted video placement has its own (#1410).
+ * @throws {never} Never.
+ */
+export function timelineVideoOf(page: Page, clipId: string): Locator {
+  return visibleSpace(page).getByTestId('timeline-preview').locator(`video[data-clip-id="${clipId}"]`);
+}
+
+/**
+ * Wait for the registered source to load and decode through the placement's real native video element.
  * @throws {Error} When authorized media cannot produce a decoded frame.
  */
-export async function expectTimelineVideoReady(page: Page, fileUrl: string): Promise<void> {
-  const video = visibleSpace(page).getByTestId('timeline-preview').locator('video');
+export async function expectTimelineVideoReady(page: Page, clipId: string, fileUrl: string): Promise<void> {
+  const video = timelineVideoOf(page, clipId);
   await expect(video).toHaveAttribute('src', fileUrl);
   expect(new URL(fileUrl).protocol).toMatch(/^https?:$/);
   await expect.poll(() => video.evaluate((element: HTMLVideoElement) => ({
@@ -235,8 +243,8 @@ export async function uploadTimelineVideo(page: Page, projectId: string, fixture
   const durationFrames = Number(await outlet.getByTestId('timeline-clip-duration').inputValue());
   expect(Number.isSafeInteger(durationFrames)).toBe(true);
   expect(durationFrames).toBeGreaterThan(0);
-  await expectTimelineVideoReady(page, asset.fileUrl);
-  const durationSeconds = await outlet.getByTestId('timeline-preview').locator('video').evaluate((element: HTMLVideoElement) => element.duration);
+  await expectTimelineVideoReady(page, clipId, asset.fileUrl);
+  const durationSeconds = await timelineVideoOf(page, clipId).evaluate((element: HTMLVideoElement) => element.duration);
   expect(durationSeconds).toBeGreaterThan(0);
   return { asset, clipId, durationFrames, durationSeconds, fps };
 }

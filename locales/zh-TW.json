@@ -2328,6 +2328,7 @@
       "comment": {
         "placeholder": "寫一條批註…",
         "targetGone": "原文已被改動或刪除。",
+        "mediaGone": "這個媒體已被刪除。",
         "cannotWrite": "你已無法在這裡書寫。",
         "railTitle": "批註",
         "filterOpen": "未解決",
@@ -2434,6 +2435,7 @@
         "captionReadOnly": "目前為唯讀，可複製這份草稿。",
         "captionRetained": "媒體已移除，請在關閉 Space 前複製草稿。",
         "notFinished": "上傳沒有完成",
+        "notUploaded": "媒體還沒上傳完成。",
         "pendingExport": "{name}（尚未上傳完成）",
         "uploadFailed": "上傳失敗",
         "failure": {
@@ -3673,7 +3675,6 @@
       "missing_source": "所用影片已遺失",
       "source_unresolved": "網頁動畫不可用"
     },
-    "loadingMedia": "正在載入影片…",
     "mediaUnavailable": "此影片無法使用。",
     "retry": "重試",
     "play": "播放",
@@ -3689,8 +3690,7 @@
     "transport": {
       "paused": "已暫停",
       "playing": "播放中",
-      "waiting": "緩衝中…",
-      "failed": "播放失敗"
+      "waiting": "緩衝中…"
     },
     "material": {
       "description": "選擇影片並確認新增位置。",
@@ -3715,6 +3715,8 @@
       "source_unavailable": "此影片無法使用。請選擇其他影片或重試。",
       "metadata_unavailable": "無法取得影片長度。請重試或選擇其他影片。",
       "invalid_range": "請輸入影片範圍內的影格。",
+      "notNumber": "請輸入數字。",
+      "scaleRange": "請輸入 {min} 到 {max}。",
       "target_missing": "目標已變更。請檢查位置後重試。",
       "clip_removed": "該片段已被其他成員移除。",
       "permission_changed": "編輯權限已變更。請再次確認新增此影片。",
@@ -3753,7 +3755,15 @@
       "magnetStartHint": "主軌磁吸已開啟，拖動調整順序。",
       "splitOutside": "請將播放頭移到選取片段內再分割。",
       "lowestTrack": "此片段已在最下方的畫面軌。",
-      "bumped": "{count, plural, other {# 個連動片段}}已移到上方軌道。"
+      "bumped": "{count, plural, other {# 個連動片段}}已移到上方軌道。",
+      "transform": "位置與大小",
+      "positionX": "X（px）",
+      "positionY": "Y（px）",
+      "scaleX": "寬度縮放（%）",
+      "scaleY": "高度縮放（%）",
+      "rotation": "旋轉（°）",
+      "lockRatio": "鎖定比例",
+      "offFrame": "這個片段不在目前的影格。"
     },
     "webAnimation": {
       "create": "製作網頁動畫",
@@ -3825,6 +3835,11 @@
       "waiting": "已上傳，等待編輯權限",
       "unfinished": "未完成",
       "preview": "{track}：{state, select, failed {影片上傳失敗，不顯示} unfinished {影片未完成，不顯示} other {影片上傳中…}}"
+    },
+    "preview": {
+      "playBlocked": "瀏覽器阻止了有聲播放，請按播放開始。",
+      "videoLoading": "{track}：影片載入中…",
+      "videoUnavailable": "{track}：影片不可用"
     }
   }
 }

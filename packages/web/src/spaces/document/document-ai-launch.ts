@@ -179,7 +179,8 @@ export function aiContextOf(editor: BlockNoteEditor<never, never, never>, budget
   const { doc, selection } = editor.prosemirrorState;
   const order = new Map<string, number>();
   doc.firstChild?.forEach((node, _offset, index) => order.set(String(node.attrs['id']), index));
-  const blocks: ContextBlock[] = readTopBlocks(editor).map((block) => ({
+  // Only the Markdown is read here, never `lossy`.
+  const blocks: ContextBlock[] = readTopBlocks(editor, new Set()).map((block) => ({
     markdown: block.markdown.trim(),
     index: order.get(block.id) ?? -1,
   }));

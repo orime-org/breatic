@@ -289,6 +289,13 @@ export async function getTimelineLimits(projectId: string, userId: string): Prom
       premountMs: config.web_animation.preview_premount_ms,
       idleInstancesMax: config.web_animation.preview_idle_instances_max,
     },
+    preview: {
+      driftSteerSeconds: config.preview.drift_steer_seconds,
+      driftHardSyncSeconds: config.preview.drift_hard_sync_seconds,
+      driftCatastrophicSeconds: config.preview.drift_catastrophic_seconds,
+      resumeSeekSeconds: config.preview.resume_seek_seconds,
+      driftSteerRate: config.preview.drift_steer_rate,
+    },
   };
 }
 

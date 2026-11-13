@@ -2108,3 +2108,48 @@ test('a viewer opens a video full screen from its row of icons, which offers not
     await expect(peer.getByTestId('media-fullscreen')).toHaveCount(0);
   });
 });
+
+// inner#1316: a comment on the whole picture, from its toolbar, shows as a
+// count on the picture, and pressing that count reads it in the panel.
+test('a comment written from a picture\'s toolbar shows its count on the picture and opens there (inner#1316)', async () => {
+  await openFreshDocument(page);
+  await pickFromPlus(page, 'image', { name: 'note.png', mimeType: 'image/png', buffer: await pngBytes(page, 400, 240) });
+  const img = page.locator(`${IMAGE} img`);
+  await expect(img).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+  await expect.poll(async () => (await img.boundingBox())?.width).toBe(400);
+
+  await img.hover();
+  await page.locator(`${IMAGE} [data-testid="doc-media-comment"]`).click();
+  await expect(page.getByTestId('doc-comment-draft-quote').locator('img')).toBeVisible();
+  await page.getByTestId('doc-comment-draft-input').fill('warmer light');
+  await page.getByTestId('doc-comment-draft-save').click();
+  await expect(page.getByTestId('doc-comment-draft-card')).toHaveCount(0);
+  const badge = page.locator(`${EDITOR} [data-testid="doc-media-comment-badge"]`);
+  await expect(badge).toHaveText('1');
+
+  await page.getByTestId('doc-comment-rail-close').click();
+  await expect(page.getByTestId('doc-comment-rail')).toHaveCount(0);
+  await badge.click();
+  const card = page.getByTestId('doc-comment-card');
+  await expect(card).toHaveCount(1);
+  await expect(card).toHaveAttribute('data-selected', 'true');
+  await expect(card.getByTestId('doc-comment-card-quote').locator('img')).toBeVisible();
+  await expect(page.locator(`${IMAGE}`).getByTestId('doc-media-frame')).toHaveAttribute('data-comment-reading', 'true');
+});
+
+// inner#1316: Add to Agent on a picture's toolbar hands the picture itself
+// to the Agent's tray.
+test('Add to Agent on a picture\'s toolbar puts the picture in the Agent\'s tray (inner#1316)', async () => {
+  await page.route('**/chat/message', () => undefined);
+  await openFreshDocument(page);
+  await pickFromPlus(page, 'image', { name: 'tray.png', mimeType: 'image/png', buffer: await pngBytes(page, 400, 240) });
+  const img = page.locator(`${IMAGE} img`);
+  await expect(img).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+  await expect.poll(async () => (await img.boundingBox())?.width).toBe(400);
+
+  await img.hover();
+  await page.locator(`${IMAGE} [data-testid="doc-media-add-to-agent"]`).click();
+  const chip = page.locator('[data-testid^="chat-chip-document-media-"]');
+  await expect(chip).toHaveCount(1, { timeout: 20_000 });
+  await expect(chip).toContainText('tray.png');
+});
