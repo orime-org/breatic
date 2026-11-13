@@ -25,7 +25,7 @@
 import { join } from 'node:path';
 
 import { expect, type Page } from 'playwright/test';
-import { GENERATION_TEMPLATES, feedsOf, proposalMarkSegments, templateAnchor, type CanvasProposal } from '@breatic/shared';
+import { ATTACHMENT_DATA_PART, GENERATION_TEMPLATES, feedsOf, proposalMarkSegments, templateAnchor, type CanvasProposal } from '@breatic/shared';
 import { test } from '../helpers/slot';
 import { askInNewConversation, storedMessages, type StoredPart } from '../helpers/conversation';
 
@@ -184,7 +184,7 @@ async function settledTurn(p: Page): Promise<Turn> {
   const messages = await storedMessages(p);
   const parts = messages.filter((m) => m.role === 'assistant').flatMap((m) => m.parts ?? []);
   const attached = messages.filter((m) => m.role === 'user').flatMap((m) => m.parts ?? [])
-    .flatMap((part) => (part.type === 'attachment' && typeof part.chip?.data_snapshot?.url === 'string' ? [part.chip.data_snapshot.url] : []));
+    .flatMap((part) => (part.type === ATTACHMENT_DATA_PART && typeof part.data?.data_snapshot?.url === 'string' ? [part.data.data_snapshot.url] : []));
   const input = (part: StoredPart): { id?: string; nodes?: { template?: { id?: string } }[] } => part.input ?? {};
   // A refused proposal answers { placed: false } and never reaches the canvas.
   const landed = parts.filter(

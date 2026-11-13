@@ -58,8 +58,8 @@ export interface StoredPart {
   text?: string;
   output?: unknown;
   input?: Record<string, unknown>;
-  /** An attached item, on a user message's attachment part. */
-  chip?: { data_snapshot?: { url?: unknown } };
+  /** A data part's payload; on an attachment part, the attached item. */
+  data?: { data_snapshot?: { url?: unknown } };
 }
 
 /** A message of the conversation, as the conversation endpoint returns it. */
