@@ -415,7 +415,7 @@ describe("where a taken message was read", () => {
     script.onCall[1] = () => waiting.push(taken("b", "message b"));
     await runTurn();
     expect(script.prompts).toHaveLength(3);
-    const [, before, carried] = script.prompts as unknown[][];
+    const [, before, carried] = script.prompts;
     expect(carried!.slice(0, before!.length)).toEqual(before);
     expect(JSON.stringify(carried)).not.toContain("weighing it up");
     expect(userTexts(carried!).at(-1)).toContain("message b");
