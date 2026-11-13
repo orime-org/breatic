@@ -34,7 +34,8 @@ const MODEL: ModelEntry = {
     aspect_ratio: { description: '', values: ['1:1', '16:9'], default: '1:1' },
     resolution: { description: '', values: ['1K', '2K'], default: '1K' },
   },
-  providers: [],
+  availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: false, envVar: 'WAVESPEED_API_KEY' }] },
+  pricing_rules: undefined,
 };
 
 /**

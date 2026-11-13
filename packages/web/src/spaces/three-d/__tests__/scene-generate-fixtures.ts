@@ -77,14 +77,18 @@ function formula(geometry: number, standard: number, detailed: number, extreme: 
 }
 
 /**
- * One entry as the server sends it.
+ * One entry as the server sends it: served by WaveSpeed here, priced by its formula there.
  * @param over - What differs per entry.
+ * @param over.name - The model's name.
+ * @param over.pricing - WaveSpeed's price of it.
  * @returns The raw entry.
  */
-function entry(over: Record<string, unknown>): Record<string, unknown> {
+function entry({ pricing, ...over }: { name: string; pricing: Record<string, unknown> } & Record<string, unknown>): Record<string, unknown> {
   return {
     display_name: 'Tripo H3.1', modality: 'three_d', description: '', guide: '', tier: 'recommended', generation_time: 120,
-    providers: [{ name: 'wavespeed', model_id: 'x', priority: 1, available: true }], forces: FORCES, ...over,
+    availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: true, envVar: 'WAVESPEED_API_KEY' }] },
+    pricing_rules: { model: over.name, upstreams: [{ upstream: 'wavespeed', fields: {}, pricing: { kind: 'formula', ...pricing }, steps: [] }] },
+    forces: FORCES, ...over,
   };
 }
 

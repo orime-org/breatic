@@ -123,7 +123,6 @@ export async function understandMediaInBatches(
     const inputDigest = longMediaInputDigest({
       question: request.question,
       model: request.model,
-      backend: request.backend,
       maxOutputTokens: request.maxOutputTokens,
       promptVersion: "long-media-batch-v1",
       batch: batch.map(({ url, ledgerType, sizeBytes, startUs, endUs }) => ({

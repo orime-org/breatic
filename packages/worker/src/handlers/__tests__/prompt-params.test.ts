@@ -2,19 +2,9 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * `takePromptOutOfParams` (#1966) — the one place the prompt leaves the params
- * bag, shared by both execution paths.
- *
- * They used to do it in opposite orders. `runAigcDirect` extracted first and
- * validated the rest; `runMiniTool` validated first and read the prompt off
- * the validated result. That difference was invisible until a model stopped
- * declaring `prompt` under `params`: `validateParams` drops keys a model does
- * not declare (silently, one `unknown_param_dropped` line), so on the
- * mini-tool path the user's words vanished on the way to the provider.
- *
- * One function, called before validation on both paths, is what makes the
- * declaration deletable at all — and what stops the two orders from drifting
- * apart again, since there is no longer a second copy to drift.
+ * `takePromptAndValidate` (#1966): the one place the prompt leaves the params bag. It lifts the prompt before the
+ * params are validated, because validation drops keys a model does not declare (one `unknown_param_dropped` line), and
+ * a prompt read off the validated params would vanish for every model that declares no `prompt` param.
  */
 
 import { describe, it, expect } from "vitest";

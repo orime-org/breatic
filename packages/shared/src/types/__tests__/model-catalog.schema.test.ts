@@ -28,11 +28,11 @@ function entry(name: string, over: Record<string, unknown> = {}): Record<string,
     guide: "",
     tier: "optional",
     generation_time: 10,
-    pricing: { base_price: 50_000, formula: "", discount_rate: 100 },
     params: {
       aspect_ratio: { description: "", values: ["1:1", "16:9"], default: "1:1" },
     },
-    providers: [{ name: "p", model_id: "m", priority: 0, available: true }],
+    availability: { upstreams: [{ upstream: "wavespeed", weight: 1, configured: true, envVar: "WAVESPEED_API_KEY" }] },
+    pricing_rules: { model: name, upstreams: [] },
     ...over,
   };
 }
@@ -143,17 +143,25 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
     expect(out.image.map((m) => m.name)).toEqual(["good"]);
   });
 
-  it("keeps a model's pricing contract, which the estimate reads", () => {
+  it("keeps a model's availability and pricing rules, which the estimate reads", () => {
     const out = sanitizeModelCatalog(catalog([entry("flux")]));
-    expect(out.image[0]?.pricing).toEqual({ base_price: 50_000, formula: "", discount_rate: 100 });
+    expect(out.image[0]?.availability).toEqual({ upstreams: [{ upstream: "wavespeed", weight: 1, configured: true, envVar: "WAVESPEED_API_KEY" }] });
+    expect(out.image[0]?.pricing_rules).toEqual({ model: "flux", upstreams: [] });
   });
 
-  // A malformed contract degrades to absent: the panel then states no price,
-  // where a half-parsed one would state a wrong one.
-  it("drops a malformed pricing contract but keeps the entry", () => {
-    const out = sanitizeModelCatalog(catalog([entry("flux", { pricing: { base_price: "cheap" } })]));
+  // A malformed availability degrades to none configured, and keeps the entry: the panel then names no upstream it
+  // cannot vouch for. The pricing rules are checked where an estimate is made.
+  it("degrades a malformed availability to none configured but keeps the entry", () => {
+    const out = sanitizeModelCatalog(catalog([entry("flux", { availability: { upstreams: "all" } })]));
     expect(out.image).toHaveLength(1);
-    expect(out.image[0]?.pricing).toBeUndefined();
+    expect(out.image[0]?.availability).toEqual({ upstreams: [] });
+  });
+
+  it("leaves behind what goes upstream, which the browser never reads", () => {
+    const out = sanitizeModelCatalog(catalog([entry("flux", { pricing: { base_price: 1, formula: "", discount_rate: 100 }, prompt_upstream: "text", providers: [] })])).image[0];
+    expect(out).not.toHaveProperty("pricing");
+    expect(out).not.toHaveProperty("prompt_upstream");
+    expect(out).not.toHaveProperty("providers");
   });
 
   it("keeps the credit multiplier the estimate converts by", () => {
@@ -330,73 +338,14 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
   // file never declares is stripped silently: the panel then renders without
   // it, typecheck stays green and no test elsewhere notices. These two cases
   // are the only place the wire→browser half of that chain is pinned.
-  it("keeps the steps, the prompt field and the source groups the estimate and gate read", () => {
-    const steps = [
-      {
-        endpoint: "mureka-ai/vocal-clone",
-        at: "before",
-        for_param: "vocal",
-        reused: true,
-        pricing: { base_price: 7_500_000, formula: "", discount_rate: 100 },
-      },
-    ];
+  it("keeps the source groups the gate reads", () => {
     const groups = [{ mode: "a2m", any_of: ["song", "vocal", "melody"] }];
-    const raw = catalog([
-      entry("mureka", { extra_steps: steps, prompt_upstream: "text", reused_by: "audio", source_groups: groups }),
-    ]);
-    const out = sanitizeModelCatalog(raw).image[0];
-    expect(out?.extra_steps).toEqual(steps);
-    expect(out?.prompt_upstream).toBe("text");
-    expect(out?.reused_by).toBe("audio");
+    const out = sanitizeModelCatalog(catalog([entry("mureka", { source_groups: groups })])).image[0];
     expect(out?.source_groups).toEqual(groups);
   });
 
-  // inner#1692: a step the run may lose without failing, such as rigging a
-  // generated mesh, says so with `optional`; the panel's copy keeps the flag
-  // and every other step beside it.
-  it("keeps an optional after step with its flag, beside a step that has none", () => {
-    const steps = [
-      {
-        endpoint: "mureka-ai/create-upload-id",
-        at: "before",
-        for_param: "song",
-        pricing: { base_price: 10_000, formula: "", discount_rate: 100 },
-      },
-      {
-        endpoint: "tripo3d/rig",
-        at: "after",
-        for_param: "rig_skeleton",
-        optional: true,
-        pricing: { base_price: 300_000, formula: "", discount_rate: 100 },
-      },
-    ];
-    const out = sanitizeModelCatalog(catalog([entry("tripo", { extra_steps: steps })])).image[0];
-    expect(out?.extra_steps).toEqual(steps);
-    expect(out?.extra_steps?.[1]?.optional).toBe(true);
-    expect(out?.extra_steps?.[0]?.optional).toBeUndefined();
-  });
-
-  it("keeps a step that says it is not optional", () => {
-    const steps = [
-      {
-        endpoint: "tripo3d/rig",
-        at: "after",
-        for_param: "rig_skeleton",
-        optional: false,
-        pricing: { base_price: 300_000, formula: "", discount_rate: 100 },
-      },
-    ];
-    const out = sanitizeModelCatalog(catalog([entry("tripo", { extra_steps: steps })])).image[0];
-    expect(out?.extra_steps).toEqual(steps);
-    expect(out?.extra_steps?.[0]?.optional).toBe(false);
-  });
-
-  it("leaves the optional model fields undefined when a model declares none", () => {
-    const out = sanitizeModelCatalog(catalog([entry("flux")])).image[0];
-    expect(out?.extra_steps).toBeUndefined();
-    expect(out?.prompt_upstream).toBeUndefined();
-    expect(out?.reused_by).toBeUndefined();
-    expect(out?.source_groups).toBeUndefined();
+  it("leaves the source groups undefined when a model declares none", () => {
+    expect(sanitizeModelCatalog(catalog([entry("flux")])).image[0]?.source_groups).toBeUndefined();
   });
 
   it("keeps a model's input cap, which the panel refuses longer text by", () => {
@@ -521,7 +470,7 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
     expect(out.image[0]?.params.similarity?.step).toBe(0.05);
   });
 
-  it("keeps a param's upstream name, English label, shape and list fields", () => {
+  it("keeps a param's English label, shape and list fields, and leaves its upstream name behind", () => {
     const fields = { prompt: { type: "text" }, duration: { values: [1, 2, 3], default: 2 } };
     const raw = catalog([
       entry("kling", {
@@ -540,8 +489,8 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
       }),
     ]);
     const params = sanitizeModelCatalog(raw).image[0]?.params;
+    expect(params?.multi_prompt).not.toHaveProperty("upstream");
     expect(params?.multi_prompt).toMatchObject({
-      upstream: "multi_prompt",
       label: "Storyboard",
       type: "items",
       max_items: 6,
@@ -550,7 +499,7 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
     expect(params?.negative_prompt?.type).toBe("text");
   });
 
-  it("keeps what a value is sent as upstream and how shots are written into the prompt", () => {
+  it("keeps how shots are written into the prompt, and leaves what a value is sent as upstream behind", () => {
     const raw = catalog([
       entry("kling", {
         params: {
@@ -567,9 +516,8 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
       }),
     ]);
     const params = sanitizeModelCatalog(raw).image[0]?.params;
-    expect(params?.auto_shots?.upstream_values).toEqual({ true: "intelligence" });
+    expect(params?.auto_shots).not.toHaveProperty("upstream_values");
     expect(params?.shots?.into_prompt).toBe("Shot {n}: {prompt}");
-    expect(params?.broken?.upstream_values).toBeUndefined();
     expect(params?.broken?.into_prompt).toBeUndefined();
     expect(params?.broken?.values).toEqual(["a"]);
   });
@@ -605,7 +553,7 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
     expect(params?.videos?.accepts).toBe("video");
   });
 
-  it("keeps how a style slot reaches the upstream, and drops fields that are not text", () => {
+  it("keeps how a style slot joins its pool, drops fields that are not text, and leaves item keys behind", () => {
     const raw = catalog([
       entry("gpt-edit", {
         params: {
@@ -621,8 +569,7 @@ describe("sanitizeModelCatalog — boundary validation for the model catalog", (
     const params = sanitizeModelCatalog(raw).image[0]?.params;
     expect(params?.style_images?.joins).toBe("images");
     expect(params?.style_images?.prompt_note).toBe("{list} are style references.");
-    expect(params?.refs?.item_key).toBe("image");
-    expect(params?.broken?.item_key).toBeUndefined();
+    expect(params?.refs).not.toHaveProperty("item_key");
     expect(params?.broken?.joins).toBeUndefined();
     expect(params?.broken?.prompt_note).toBeUndefined();
   });

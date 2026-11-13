@@ -9,6 +9,7 @@
  * /api/v1/mini-tools` on a real database and Redis.
  */
 
+import { initConfiguredProvider } from "@breatic/integration-tests/provider";
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
 
 // Fulfilment asks Stripe what the session is; every fixture payment is 1000 / usd.
@@ -60,6 +61,7 @@ beforeAll(async () => {
     WAVESPEED_API_KEY: "unused_by_this_suite",
   });
   loadLocales();
+  initConfiguredProvider();
   sql = postgres(inject("DATABASE_URL"), {
     max: 4,
     prepare: false,

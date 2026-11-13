@@ -638,7 +638,8 @@ const T2I_MODEL: ModelEntry = {
   params: {
     aspect_ratio: { description: '', values: ['1:1', '16:9'], default: '1:1' },
   },
-  providers: [],
+  availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: false, envVar: 'WAVESPEED_API_KEY' }] },
+  pricing_rules: undefined,
 };
 
 /** An image-to-image model, so a switch to i2i has something to resolve to. */

@@ -255,17 +255,6 @@ export async function findLiveByStorageKey(storageKey: string, tx?: DbTx): Promi
 }
 
 /**
- * The content hash of the bytes stored under a key, from any studio's live
- * asset row.
- * @param storageKey - The object's storage key.
- * @returns The sha256 hex, or null when no live asset is stored under it.
- * @throws {Error} When the database query fails.
- */
-export async function findHashByStorageKey(storageKey: string): Promise<string | null> {
-  return (await findLiveByStorageKey(storageKey))?.contentHash ?? null;
-}
-
-/**
  * Register a physical asset with WITHIN-STUDIO dedup. If the studio
  * already has a live asset with this content hash, nothing new is stored
  * and the existing row is returned (`deduped: true`); otherwise the new

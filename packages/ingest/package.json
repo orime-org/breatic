@@ -5,12 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "node scripts/dev.mjs",
-    "deploy:worker": "pnpm --filter @breatic/shared build && node scripts/web-animation-fonts.mjs && wrangler deploy --env production",
+    "deploy:worker": "pnpm --filter @breatic/shared --filter @breatic/provider build && node scripts/web-animation-fonts.mjs && wrangler deploy --env production",
     "test": "vitest run",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit && tsc --noEmit -p container/tsconfig.json && tsc --noEmit -p web-reader/tsconfig.json"
   },
   "dependencies": {
+    "@breatic/provider": "workspace:*",
     "@breatic/shared": "workspace:*",
     "@cloudflare/containers": "0.3.7",
     "@sentry/cloudflare": "catalog:",

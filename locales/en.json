@@ -338,6 +338,10 @@
       "still_running": "This generation is still finishing and may still produce a result. Try again in a moment.",
       "has_result": "This generation finished with a result, which is now on the task list."
     },
+    "model": {
+      "not_configured": "{model} is not set up on this deployment: it needs {envVars}.",
+      "upstream_not_bound": "{model} is not offered through {upstream}."
+    },
     "document": {
       "versions_full": "{limit, plural, one {This document already has 1 snapshot. Delete it to save a new one.} other {This document already has # snapshots. Delete an old one to save a new one.}}"
     }
@@ -904,6 +908,7 @@
       "param": {
         "compose_from": "Compose from",
         "language": "Language",
+        "language_boost": "Language",
         "voice_description": "Voice description",
         "speakers": "Speakers",
         "emotion": "Emotion",
@@ -3464,6 +3469,7 @@
     "close": "Close",
     "indexLabel": "Credit sections",
     "unit": "credits",
+    "billingPending": "Billing",
     "loadFailed": "Could not load. Close and open again.",
     "listEnd": "No more",
     "listPageFailed": "Could not load this page. Scroll to retry.",

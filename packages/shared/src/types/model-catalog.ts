@@ -47,32 +47,6 @@ export type ModelTier = 'recommended' | 'optional' | 'internal';
  */
 export type RemoteParamSource = "voices";
 
-/** An endpoint's WaveSpeed pricing contract, as the catalog yaml writes it. */
-export interface PricingContract {
-  /** Price basis in millionths of a US dollar. */
-  readonly base_price: number;
-  /** JSONata formula WaveSpeed publishes; empty means `base_price` per call. */
-  readonly formula: string;
-  /** Percent of the formula's price actually charged. */
-  readonly discount_rate: number;
-}
-
-/** An upstream call a run of this model makes besides the model's own. */
-export interface ExtraStep {
-  readonly endpoint: string;
-  /** Whether the call runs before or after the model's own endpoint. */
-  readonly at: "before" | "after";
-  readonly pricing: PricingContract;
-  /** The param whose value makes the run take this step; absent means every run does. */
-  readonly for_param?: string;
-  /** One call per item of `for_param`. */
-  readonly per_item?: boolean;
-  /** Skipped when the same source was sent through it before. */
-  readonly reused?: boolean;
-  /** A failure of this step keeps the run: the previous step's output is delivered. */
-  readonly optional?: boolean;
-}
-
 /** Params of which at least one has to carry material in one mode. */
 export interface SourceGroup {
   readonly mode: string;
@@ -157,11 +131,6 @@ export interface ParamDescriptor {
    */
   mention?: string;
   /**
-   * The key each entry of this list travels under upstream, when the upstream
-   * takes objects rather than bare URLs (Krea's `reference: [{ image }]`).
-   */
-  item_key?: string;
-  /**
    * The pool this slot's files are appended to on their way upstream, for a
    * model with no field of its own for them (inner#826).
    */
@@ -214,14 +183,6 @@ export interface ParamDescriptor {
   replaces?: string;
   /** The fields of one entry of an `items` list. */
   fields?: Readonly<Record<string, ItemField>>;
-  /** The upstream field this param is sent as, when the names differ. */
-  upstream?: string;
-  /**
-   * What a value is sent as upstream, keyed by the value's string form, when
-   * the panel's value is not the endpoint's (Kling's switch sends
-   * `shot_type: "intelligence"`). A value not listed goes as it is.
-   */
-  upstream_values?: Readonly<Record<string, string>>;
   /**
    * For an `items` list the endpoint has no field for: each entry is written
    * into the prompt with this template instead (`{n}` its place from 1,
@@ -245,12 +206,12 @@ export interface ParamDescriptor {
   default: unknown;
 }
 
-/** One provider backing a model (with resolved availability). */
-export interface ModelProvider {
-  name: string;
-  model_id: string;
-  priority: number;
-  available: boolean;
+/**
+ * Which of a model's upstreams this deployment can reach, in effective weight order: one with `configured` false
+ * names the environment variable its key is missing from.
+ */
+export interface ModelAvailability {
+  upstreams: { upstream: string; weight: number; configured: boolean; envVar: string }[];
 }
 
 /** A kind of node a source slot takes. */
@@ -288,7 +249,13 @@ export interface ModelEntry {
   tier: ModelTier;
   generation_time: number;
   params: Record<string, ParamDescriptor>;
-  providers: ModelProvider[];
+  /** Which upstreams can serve the model here; a model none can serve is still listed. */
+  availability: ModelAvailability;
+  /**
+   * The model's pricing on each upstream, opaque here: the panel, the proposal card and the balance gate estimate a
+   * run with it through `@breatic/provider/pricing` (`parsePricingRules`, `estimateCost`).
+   */
+  pricing_rules?: unknown;
   /**
    * Whether this model consumes the text the user writes (#1966). Declared
    * per model in yaml, never derived: it used to be read off a `prompt` entry
@@ -312,19 +279,6 @@ export interface ModelEntry {
   forces?: readonly ParamForce[];
   /** The most characters the prompt takes, counted on the cleaned text (inner#1691). */
   prompt_max_length?: number;
-  /**
-   * The WaveSpeed pricing contract of the model's endpoint, which the panel,
-   * the proposal card, the agent and the balance gate all estimate a run by.
-   * Absent only on a version-skewed or corrupted wire: the panel then states
-   * no price.
-   */
-  pricing?: PricingContract;
-  /** The upstream field the prompt is sent as, when it is not `prompt`. */
-  prompt_upstream?: string;
-  /** Upstream calls a run makes besides the model's own. */
-  extra_steps?: readonly ExtraStep[];
-  /** The param whose source, once sent, lets later runs skip the model's own call. */
-  reused_by?: string;
   /** Per mode, params of which at least one has to carry material. */
   source_groups?: readonly SourceGroup[];
   /**
@@ -539,12 +493,6 @@ const itemFieldSchema = z.object({
   max_chars: z.number().optional(),
 });
 
-const pricingContractSchema = z.object({
-  base_price: z.number(),
-  formula: z.string(),
-  discount_rate: z.number(),
-});
-
 const paramScalarSchema = z.union([z.string(), z.number(), z.boolean()]);
 
 const paramGateSchema = z.object({
@@ -585,8 +533,6 @@ const paramDescriptorSchema = z
     min_items: z.number().optional().catch(undefined),
     replaces: z.string().optional().catch(undefined),
     fields: z.record(z.string(), itemFieldSchema).optional().catch(undefined),
-    upstream: z.string().optional().catch(undefined),
-    upstream_values: z.record(z.string(), z.string()).optional().catch(undefined),
     into_prompt: z.string().optional().catch(undefined),
     label: z.string().optional().catch(undefined),
     value_labels: z.record(z.string(), z.string()).optional().catch(undefined),
@@ -603,7 +549,6 @@ const paramDescriptorSchema = z
       .catch(undefined),
     accepts: z.enum(["image", "video", "audio"]).optional().catch(undefined),
     mention: z.string().optional().catch(undefined),
-    item_key: z.string().optional().catch(undefined),
     joins: z.string().optional().catch(undefined),
     prompt_note: z.string().optional().catch(undefined),
     optional: z.boolean().optional().catch(undefined),
@@ -619,11 +564,8 @@ const SAFE_DESCRIPTOR: z.infer<typeof paramDescriptorSchema> = {
   default: undefined,
 };
 
-const modelProviderSchema = z.object({
-  name: z.string().catch(""),
-  model_id: z.string().catch(""),
-  priority: z.number().catch(0),
-  available: z.boolean().catch(false),
+const modelAvailabilitySchema = z.object({
+  upstreams: z.array(z.object({ upstream: z.string(), weight: z.number(), configured: z.boolean(), envVar: z.string() })),
 });
 
 const modelEntrySchema = z.object({
@@ -654,7 +596,10 @@ const modelEntrySchema = z.object({
       }
       return out;
     }),
-  providers: z.array(modelProviderSchema).catch([]),
+  // A malformed availability degrades to none configured: the panel then names no upstream it cannot vouch for.
+  availability: modelAvailabilitySchema.catch({ upstreams: [] }),
+  // Read by `parsePricingRules` where an estimate is made; one that does not parse states no price.
+  pricing_rules: z.unknown().optional(),
   // Whether the model consumes the user's text (#1966). The backend refuses to
   // load a catalog where a model omits it, so this `.catch` only fires on a
   // corrupted or version-skewed wire — and there it degrades OPEN.
@@ -676,26 +621,7 @@ const modelEntrySchema = z.object({
   // the forced values would lock half a rule (inner#1691).
   forces: z.array(paramForceSchema).optional().catch(undefined),
   prompt_max_length: z.number().optional().catch(undefined),
-  // A malformed contract degrades to absent: the panel then states no price,
-  // where a half-parsed one would state a wrong one.
-  pricing: pricingContractSchema.optional().catch(undefined),
-  prompt_upstream: z.string().optional().catch(undefined),
-  extra_steps: z
-    .array(
-      z.object({
-        endpoint: z.string(),
-        at: z.enum(["before", "after"]),
-        pricing: pricingContractSchema,
-        for_param: z.string().optional(),
-        per_item: z.boolean().optional(),
-        reused: z.boolean().optional(),
-        optional: z.boolean().optional(),
-      }),
-    )
-    .optional()
-    .catch(undefined),
-  reused_by: z.string().optional().catch(undefined),
-  source_groups: z
+    source_groups: z
     .array(z.object({ mode: z.string(), any_of: z.array(z.string()) }))
     .optional()
     .catch(undefined),

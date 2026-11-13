@@ -35,6 +35,7 @@ export {
 } from "@domain/credit/container-cost.js";
 export {
   createUsageRecorder,
+  type AwaitedLookup,
   type RecordedOperation,
   type UsageRecorder,
   type UsageRow,
@@ -42,16 +43,13 @@ export {
   type UsageSource,
 } from "@domain/credit/usage-recorder.js";
 export { usageContextFor } from "@domain/agent/tools/usage-context.js";
-export { creditsForUsd, type ModelCallUsage } from "@domain/credit/usage-cost.js";
-export { agentModelIds, assertModelsPriced } from "@domain/credit/priced-models.js";
+export { creditsForUsd } from "@domain/credit/usage-cost.js";
+export { agentModelIds } from "@domain/credit/priced-models.js";
 export {
   USAGE_LOOKUP_QUEUE,
   handOffLookups,
-  lookupGeneration,
-  type GenerationAnswer,
   type UsageLookupJob,
 } from "@domain/credit/generation-lookup.js";
-export { isGenerationId, trackOpenGeneration, type OpenGeneration } from "@domain/credit/open-generation.js";
 export type { LotContext, PayerLedgerRow } from "@domain/credit/creditLot.repo.js";
 
 // ── Studio auth (loadStudioRole + studio_members repo; server+worker) ──
@@ -112,8 +110,6 @@ export type {
 } from "@domain/asset/upload-grant.repo.js";
 
 // ── Agent (AIGC execution kernel: model / tools / prompt extraction) ──
-export { getModel, resolveProvider, callOptionsFor, systemFor } from "@domain/agent/llm.js";
-export type { CallWants } from "@domain/agent/llm.js";
 export { generateTextRetry, streamTextRetry } from "@domain/agent/model-call.js";
 export {
   buildToolSet,
@@ -179,7 +175,6 @@ export {
   type ToolPictureContext,
   type AgentPicturePreparation,
 } from "@domain/agent/prepare-agent-pictures.js";
-export { resolveModelPictureCapability } from "@domain/agent/model-picture-capability.js";
 export { pictureMiddleware } from "@domain/agent/picture-middleware.js";
 export {
   projectAgentRequest,
@@ -203,14 +198,12 @@ export type { Instructions } from "@domain/agent/instructions.js";
 
 // ── Model catalog (incl. per-call credit cost: cost_per_call) ────
 export * as modelCatalog from "@domain/model-catalog/model-catalog.js";
-export { estimateTaskCredits, sendsUntakenPrompt, violatesSourceRequirementForModel, violatesReferenceCountForModel, violatesTextLengthForModel, MIN_TASK_CREDIT_COST, getFullModelConfig } from "@domain/model-catalog/model-catalog.js";
+export { estimateTaskCredits, llmServability, sendsUntakenPrompt, servability, violatesSourceRequirementForModel, violatesReferenceCountForModel, violatesTextLengthForModel, MIN_TASK_CREDIT_COST, getFullModelConfig, type Servability } from "@domain/model-catalog/model-catalog.js";
 export type { ReferenceCountViolation } from "@domain/model-catalog/reference-count.js";
-export type { FullModalityConfig, FullModelEntry, FullProviderEndpoint, FullParamSpec, ProviderConnectionConfig } from "@domain/model-catalog/model-catalog.js";
+export type { FullModalityConfig, FullModelEntry, FullParamSpec } from "@domain/model-catalog/model-catalog.js";
 // Which upstream a model runs on in this deployment. One rule, two callers:
 // the worker sends the generation, the voice endpoint lists voices in that
 // same upstream's value domain.
-export { resolveActiveProvider } from "@domain/model-catalog/resolve-active-provider.js";
-export type { ActiveProvider } from "@domain/model-catalog/resolve-active-provider.js";
 
 // The voices a tts model offers, in one shape whichever vendor answers.
 export { listVoices, getVoice } from "@domain/model-catalog/voice-catalog.js";
@@ -318,3 +311,7 @@ export type {
 export { MAIL_QUEUE, enqueueMail, type MailJob } from "@domain/mail/mail-queue.js";
 
 export * as storageReclaimRepo from "@domain/asset/storage-reclaim.repo.js";
+
+// ── Provider (every model call goes through it, inner#1743) ──
+export { initProvider, provider } from "@domain/provider/instance.js";
+export { readProviderConfig } from "@domain/provider/provider-config-loader.js";

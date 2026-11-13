@@ -29,6 +29,15 @@ describe("worker entry exits", () => {
     expect(code).toMatch(/if \(monitoring === "invalid_dsn"\) logger\.error\(\{\}, "sentry_dsn_invalid"\);/);
   });
 
+  it("builds the provider after the agent config it reads and before the model catalog, whose entries ask it", () => {
+    const agent = code.indexOf("getAgentConfig();");
+    const built = code.indexOf("initProvider();");
+    const catalog = code.indexOf("modelCatalog.getModelCatalog();");
+    expect(agent).toBeGreaterThanOrEqual(0);
+    expect(built).toBeGreaterThan(agent);
+    expect(catalog).toBeGreaterThan(built);
+  });
+
   it("never ends the process without sending pending error events", () => {
     expect(code).not.toMatch(/process\.exit\(/);
   });

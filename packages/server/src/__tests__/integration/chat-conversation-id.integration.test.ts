@@ -14,6 +14,7 @@
  * one of them only is the failure this suite is built to catch.
  */
 
+import { initConfiguredProvider } from "@breatic/integration-tests/provider";
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
 
 vi.mock("ai", () => ({
@@ -45,6 +46,7 @@ try {
   // already initialised by a sibling suite in this worker — fine.
 }
 loadLocales();
+initConfiguredProvider();
 
 const PG_DRIVER_LOCAL = "chat-conversation-id-test-driver";
 

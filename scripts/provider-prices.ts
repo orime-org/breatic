@@ -5,7 +5,9 @@
  * Syncs the provider configuration with what each upstream publishes
  * (inner#1775). Run from the repository root with `pnpm provider:prices`,
  * the keys of the upstreams the configuration binds in the environment
- * (each upstream's `key_env` in `config/provider/upstreams.yaml`).
+ * (each upstream's `key_env` in `config/provider/upstreams.yaml`), read from
+ * the repository root's `.env` the way the services read it; a key already in
+ * the environment wins.
  *
  * For every bound model and extra-step endpoint of every media upstream it
  * writes the input schema snapshot to
@@ -36,10 +38,7 @@
  * call ranks OpenRouter beside the direct upstream. Beside them it writes `openrouter_states_quantization`, the
  * models one of whose endpoints states a level, priced or not, and stamps
  * `openrouter_prices_at` with the moment they were read; it names each
- * direct price whose off-peak holidays list no date in the current year (from 1 December, the next). Last it regenerates
- * `config/provider/upstream-field-names.json`: the upstream field names no
- * catalog param shares, the list a planned lint rule will keep out of
- * non-provider code (nothing reads it yet).
+ * direct price whose off-peak holidays list no date in the current year (from 1 December, the next).
  *
  * Every problem (a model the upstream no longer has, a changed price fact) is listed at the
  * end and makes the run exit non-zero; whatever could be synced is written
@@ -51,7 +50,8 @@ import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { parse, parseDocument, type Document } from "yaml";
-import { openRouterLevels, parseProviderConfig, type ProviderConfigInput } from "../packages/provider/src/config/schema.js";
+import { parseProviderConfig, type ProviderConfigInput } from "../packages/provider/src/config/schema.js";
+import { openRouterLevels } from "../packages/provider/src/llm/upstreams/openrouter.js";
 import { snapshotOf, type SchemaSnapshot } from "../packages/provider/src/config/upstream-schema.js";
 import { buildBody } from "../packages/provider/src/media/body.js";
 import { assess } from "../packages/provider/src/pricing/estimate.js";
@@ -75,6 +75,8 @@ interface Binding {
 interface Upstream { kind: string; key_env: string }
 
 const ROOT = resolve(import.meta.dirname, "..");
+const ENV = resolve(ROOT, ".env");
+if (existsSync(ENV)) process.loadEnvFile(ENV);
 const SNAPSHOTS = resolve(ROOT, "packages/provider/test/fixtures/upstream-schemas");
 const PRICES = resolve(ROOT, "packages/provider/test/fixtures/upstream-prices");
 const MODALITIES = ["image", "video", "audio", "tts", "three_d"] as const;
@@ -377,13 +379,6 @@ for (const [modality, doc] of docs) {
 }
 
 await syncOpenRouterPrices();
-
-const ours = new Set([...catalogModels.values()]
-  .flatMap((m) => Object.entries(m.params).flatMap(([name, p]) => [name, ...Object.keys(p.fields ?? {})])));
-const fieldNames = new Set(bindings.flatMap(({ binding }) => Object.values(binding.params ?? {})
-  .flatMap((p) => [p.field, ...Object.values(p.item_fields ?? {}).map((f) => f.field)])
-  .flatMap((field) => field.split("."))));
-writeJson(resolve(ROOT, "config/provider/upstream-field-names.json"), [...fieldNames].filter((name) => !ours.has(name)).sort());
 
 const committed = readdirSync(SNAPSHOTS, { recursive: true }).filter((f) => String(f).endsWith(".json")).length;
 process.stdout.write(`${committed} schema snapshots in ${SNAPSHOTS}\n`);

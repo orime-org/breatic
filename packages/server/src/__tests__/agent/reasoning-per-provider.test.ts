@@ -4,17 +4,15 @@
 /**
  * A chat turn asks for the model's working, and the ask reaches the model.
  *
- * Which vendor takes the request which way is settled in the routing table
- * and covered by its own tests; what is only observable from here is whether
- * the turn puts the answer on the call at all. A turn that worked it out and
- * dropped it looks identical from outside, and that is what used to happen:
- * OpenRouter was reached through `createOpenAI`, which decides from the model
- * id whether a model reasons at all, so the option was dropped before the
- * request was built.
+ * Which upstream takes the request which way is provider's, and its tests
+ * hold it; what is only observable from here is whether the turn asks for the
+ * working and puts what provider prepared on the call at all. A turn that
+ * worked it out and dropped it looks identical from outside, and that is what
+ * used to happen: OpenRouter was reached through `createOpenAI`, which decides
+ * from the model id whether a model reasons at all, so the option was dropped
+ * before the request was built.
  *
- * The model is a double so the options can be read off the call; the routing
- * and the translation are both real, because those are the parts that decide
- * what gets written.
+ * The model is a double so the options can be read off the call.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type * as CoreModule from "@breatic/core";
@@ -31,10 +29,6 @@ import type { MockLanguageModelV4 } from "ai/test";
  */
 const runningOn = vi.hoisted(() => ({
   modelId: "",
-  /** What this deployment has for an Anthropic key, if anything. */
-  anthropicKey: undefined as string | undefined,
-  /** And what it has for a Google key. */
-  googleKey: undefined as string | undefined,
   model: undefined as MockLanguageModelV4 | undefined,
 }));
 
@@ -55,20 +49,12 @@ vi.mock("@breatic/core", async (importOriginal) => {
     runWithContext: actual.runWithContext,
     getContext: actual.getContext,
     getAgentConfig: () => config,
-    // Whether this deployment has an Anthropic key of its own is what decides
-    // between calling Anthropic and reaching the same model through
-    // OpenRouter -- and those two take the request differently. Per case, so
-    // both deployments are covered.
-    env: new Proxy(base.env, {
-      get: (target, key) =>
-        key === "ANTHROPIC_API_KEY"
-          ? runningOn.anthropicKey
-          : key === "GOOGLE_API_KEY"
-            ? runningOn.googleKey
-            : Reflect.get(target, key),
-    }),
   };
 });
+
+/** What provider prepared for the call, as the turn must hand it on. */
+const PREPARED = { "test-upstream": { reasoning: { effort: "high" } } };
+const prepare = vi.hoisted(() => vi.fn());
 
 vi.mock("@breatic/domain", async (importOriginal) => {
   const { domainMock } = await import("../helpers/mock-core.js");
@@ -78,23 +64,23 @@ vi.mock("@breatic/domain", async (importOriginal) => {
   return {
     ...base,
     streamTextRetry: actual.streamTextRetry,
-    // The real one. What this file is about is which provider instance ends
-    // up being called, and stubbing the function that decides that would
-    // leave the question unasked.
-    resolveProvider: actual.resolveProvider,
-    // Real as well: what it returns is the thing under assertion.
-    callOptionsFor: actual.callOptionsFor,
     buildAgentConfig: () => ({
       modelId: runningOn.modelId,
       instructions: { base: "system" },
       tools: {},
     }),
     finalizeTurn: async () => [],
-    getModel: () => {
-      const model = modelProducing(() => saying("好的"));
-      runningOn.model = model;
-      return model;
-    },
+    provider: () => ({
+      llm: {
+        prepare: prepare.mockImplementation(() => {
+          const model = modelProducing(() => saying("好的"));
+          runningOn.model = model;
+          return { model, options: { providerOptions: PREPARED, maxRetries: 0 }, system: () => [], pendingCosts: () => [] };
+        }),
+        costOf: () => ({ state: "missing", reason: "test" }),
+        servedBy: () => "test-upstream",
+      },
+    }),
   };
 });
 
@@ -124,35 +110,12 @@ interface SentCall {
 }
 
 /**
- * Run one turn and report the provider options the model call was given.
- * @param modelId - What the turn runs on.
- * @param anthropicKey - What this deployment holds for Anthropic, if anything.
- * @param googleKey - And for Google.
- * @returns The `providerOptions` argument, or undefined when there was none.
- */
-async function providerOptionsFor(
-  modelId: string,
-  anthropicKey?: string,
-  googleKey?: string,
-): Promise<Record<string, Record<string, unknown>> | undefined> {
-  return (await callFor(modelId, anthropicKey, googleKey))?.providerOptions;
-}
-
-/**
  * Run one turn and report the call the model was given.
  * @param modelId - What the turn runs on.
- * @param anthropicKey - What this deployment holds for Anthropic, if anything.
- * @param googleKey - And for Google.
  * @returns The first call the model received, or undefined when there was none.
  */
-async function callFor(
-  modelId: string,
-  anthropicKey?: string,
-  googleKey?: string,
-): Promise<SentCall | undefined> {
+async function callFor(modelId: string): Promise<SentCall | undefined> {
   runningOn.modelId = modelId;
-  runningOn.anthropicKey = anthropicKey;
-  runningOn.googleKey = googleKey;
 
   const { MainAgent } = await import("@server/agent/main-agent.js");
   const { runWithContext } = await import("@breatic/core");
@@ -167,88 +130,30 @@ async function callFor(
   return runningOn.model?.doStreamCalls[0];
 }
 
-describe("asking DeepSeek for its working", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("addresses OpenRouter, which is who a deployment without the key reaches", async () => {
-    // No DeepSeek key here, so the model id names a vendor this deployment
-    // cannot reach directly and the call goes through the fallback. The key
-    // has to name whoever is on the other end -- a request addressed to
-    // anyone else is a switch that reads as working and asks for nothing.
-    const options = await providerOptionsFor("deepseek/deepseek-v4-pro");
-    expect(options?.openrouter?.reasoning).toEqual({ effort: "max" });
-  });
-
-  it("does not address Anthropic when Anthropic is not who is being called", async () => {
-    const options = await providerOptionsFor("deepseek/deepseek-v4-pro");
-    expect(options?.anthropic).toBeUndefined();
-  });
-});
-
-describe("asking Claude for its working", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("still asks the way Anthropic wants to be asked", async () => {
-    // Green before the change as well as after: the point of it is that
-    // splitting the request per provider does not drop the branch that
-    // already worked. Both fields carry weight -- without `type` extended
-    // thinking stays off, and on the adaptive tier the blocks arrive empty
-    // unless the summary is asked for by name.
-    const options = await providerOptionsFor("anthropic/claude-sonnet-4-6", "sk-ant-test");
-    expect(options?.anthropic?.thinking).toEqual({
-      type: "adaptive",
-      display: "summarized",
-    });
-    expect(options?.openai).toBeUndefined();
-  });
-
-  it("addresses OpenRouter when the same model is reached through it", async () => {
-    // Same model id, deployment without an Anthropic key of its own. The
-    // call goes through the fallback then, so addressing Anthropic here
-    // would be addressing a provider that is not on the other end.
-    const options = await providerOptionsFor("anthropic/claude-sonnet-4-6");
-    expect(options?.openrouter?.reasoning).toEqual({ effort: "high" });
-    expect(options?.anthropic).toBeUndefined();
-  });
-});
-
-describe("asking Gemini for its working", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  it("asks the way Google takes it, not the OpenAI-compatible way", async () => {
-    // A deployment with its own Google key calls Google directly, and Google
-    // neither reads `openai` options nor takes a level -- it takes a budget,
-    // plus a separate say-so for the thoughts themselves.
-    const options = await providerOptionsFor("google/gemini-2.5-pro", undefined, "goog-test");
-    expect(options?.google?.thinkingConfig).toEqual({
-      thinkingBudget: -1,
-      includeThoughts: true,
-    });
-    expect(options?.openai).toBeUndefined();
-  });
-});
-
-
 describe("a turn that asks for the model's working", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
+  it("asks provider for the working, the cache and the conversation's session", async () => {
+    await callFor("deepseek/deepseek-v4-pro");
+    expect(prepare).toHaveBeenCalledWith(
+      "deepseek/deepseek-v4-pro",
+      expect.objectContaining({ thinking: true, session: "c1" }),
+      undefined,
+    );
+  });
+
+  it("puts what provider prepared on the call the model receives", async () => {
+    const call = await callFor("deepseek/deepseek-v4-pro");
+    expect(call?.providerOptions).toMatchObject(PREPARED);
+  });
+
   // With reasoning on, DeepSeek and Anthropic drop a temperature and say so,
   // OpenAI's reasoning models reject it, and Google asks that Gemini 3 be left
   // at its default of 1.0. There is no route where one set here takes effect.
-  it.each([
-    ["deepseek/deepseek-v4-pro", undefined, undefined],
-    ["anthropic/claude-sonnet-4-6", "sk-ant-test", undefined],
-    ["google/gemini-2.5-pro", undefined, "goog-test"],
-  ])("leaves the temperature to %s", async (modelId, anthropicKey, googleKey) => {
-    const call = await callFor(modelId, anthropicKey, googleKey);
+  it("leaves the temperature to the model", async () => {
+    const call = await callFor("google/gemini-2.5-pro");
     expect(call).toBeDefined();
     expect(call?.temperature).toBeUndefined();
   });

@@ -6,25 +6,13 @@ import { describe, it, expect } from "vitest";
 import { createUsageRecorder, type UsageRow } from "@domain/credit/usage-recorder.js";
 
 const PRICING = {
-  models: {
-    "deepseek/deepseek-v4-pro": {
-      input_cache_hit_per_mtok: 0.044,
-      input_cache_miss_per_mtok: 1.32,
-      output_per_mtok: 3.96,
-    },
-  },
   services: {
     brave_web_search: { per_request: 0.005 },
     brave_image_search: { per_request: 0.005 },
   },
 };
 
-const USAGE = {
-  inputTokens: 1_000_000,
-  inputTokenDetails: { noCacheTokens: 1_000_000, cacheReadTokens: 0 },
-  outputTokens: 0,
-  outputTokenDetails: { reasoningTokens: 0 },
-};
+const TOKENS = { input: 1_000_000, cachedInput: 0, output: 0, reasoning: 0 };
 
 /**
  * A recorder whose writes land in an array.
@@ -48,14 +36,13 @@ function recorderWithRows(write?: (row: UsageRow) => Promise<void>) {
 }
 
 describe("the usage recorder", () => {
-  it("writes one row per model call, with its tokens, dollars and credits", async () => {
+  it("writes one row per model call, with the tokens, dollars and credits of its cost", async () => {
     const { recorder, rows } = recorderWithRows();
     recorder.recordModelCall({
       source: "model",
       model: "deepseek/deepseek-v4-pro",
-      provider: "deepseek",
-      usage: USAGE,
-      providerMetadata: undefined,
+      upstream: "deepseek",
+      cost: { state: "known", usd: 1.32, source: "price_table", tokens: TOKENS },
     });
     await recorder.settle();
     expect(rows).toHaveLength(1);
@@ -108,107 +95,55 @@ describe("the usage recorder", () => {
     expect(rows[0]!.costUsd).toBeCloseTo(0.005, 10);
   });
 
-  it("takes the dollars a service reported", async () => {
+  it("takes the dollars an upstream reported, as the provider's, counting the requests the caller names", async () => {
     const { recorder, rows } = recorderWithRows();
-    recorder.recordServiceCall({
+    recorder.recordModelCall({
       source: "tool:judge_likelihood",
-      service: "typesafe/jev-1.13",
-      provider: "openrouter",
+      model: "typesafe/jev-1.13",
+      upstream: "openrouter",
       requests: 1,
-      costUsd: 0.0004,
+      cost: { state: "known", usd: 0.0004, source: "reported" },
     });
     await recorder.settle();
-    expect(rows[0]).toMatchObject({ costSource: "provider", provider: "openrouter" });
+    expect(rows[0]).toMatchObject({ costSource: "provider", provider: "openrouter", requestCount: 1, inputTokens: null });
     expect(rows[0]!.costUsd).toBe(0.0004);
   });
 
-  it("records an OpenRouter service call with no reported cost as missing, and says so", async () => {
-    const { recorder, rows, missing } = recorderWithRows();
-    recorder.recordServiceCall({
-      source: "tool:understand_media",
-      service: "google/gemini-3.8-flash",
-      provider: "openrouter",
-      requests: 1,
-    });
-    await recorder.settle();
-    expect(rows[0]).toMatchObject({ costSource: "missing", costUsd: 0, credits: 0 });
-    expect(missing).toEqual([rows[0]]);
-  });
-
-  it("says so when an OpenRouter model call reported no cost", async () => {
+  it("records a missing cost at zero with the tokens it knows, and says so", async () => {
     const { recorder, rows, missing } = recorderWithRows();
     recorder.recordModelCall({
       source: "model",
       model: "google/gemini-2.5-flash",
-      provider: "openrouter",
-      usage: USAGE,
-      providerMetadata: undefined,
+      upstream: "openrouter",
+      cost: { state: "missing", reason: "openrouter reported no cost and no generation id", tokens: TOKENS },
     });
     await recorder.settle();
-    expect(rows[0]).toMatchObject({ costSource: "missing" });
+    expect(rows[0]).toMatchObject({ costSource: "missing", costUsd: 0, credits: 0, inputTokens: 1_000_000 });
     expect(missing).toEqual([rows[0]]);
+    expect(recorder.awaitingLookup()).toEqual([]);
   });
 
-  it("keeps an OpenRouter model call with no cost for the lookup, and writes no row", async () => {
+  it("keeps a pending cost for the lookup, and writes no row", async () => {
     const { recorder, rows, missing } = recorderWithRows();
-    recorder.recordModelCall({
-      source: "model",
-      model: "google/gemini-2.5-flash",
-      provider: "openrouter",
-      usage: USAGE,
-      providerMetadata: undefined,
-      generationId: "gen-1",
-    });
+    const lookup = { upstream: "openrouter", generationId: "gen-1" };
+    recorder.recordModelCall({ source: "model", model: "google/gemini-2.5-flash", upstream: "openrouter", cost: { state: "pending", lookup } });
     expect(await recorder.settle()).toBe(0);
     expect(rows).toEqual([]);
     expect(missing).toEqual([]);
-    expect(recorder.awaitingLookup()).toEqual(["gen-1"]);
+    expect(recorder.awaitingLookup()).toEqual([{ lookup, source: "model", model: "google/gemini-2.5-flash" }]);
   });
 
-  it("records an OpenRouter call with no cost and no generation id as missing, and keeps nothing for the lookup", async () => {
-    const { recorder, rows, missing } = recorderWithRows();
-    recorder.recordModelCall({
-      source: "model",
-      model: "google/gemini-2.5-flash",
-      provider: "openrouter",
-      usage: USAGE,
-      providerMetadata: undefined,
-      generationId: "aitxt-1",
-    });
-    await recorder.settle();
-    expect(rows[0]).toMatchObject({ costSource: "missing" });
-    expect(missing).toEqual([rows[0]]);
-    expect(recorder.awaitingLookup()).toEqual([]);
+  it("keeps each pending call's source and model beside its lookup, so a tool's call is looked up as the tool's", () => {
+    const { recorder } = recorderWithRows();
+    const lookup = { upstream: "openrouter", generationId: "gen-tool" };
+    recorder.recordModelCall({ source: "tool:understand_media", model: "google/gemini-3.8-flash", upstream: "openrouter", cost: { state: "pending", lookup } });
+    expect(recorder.awaitingLookup()).toEqual([{ lookup, source: "tool:understand_media", model: "google/gemini-3.8-flash" }]);
   });
 
-  it("records an OpenRouter model call that reported its cost, and keeps nothing for the lookup", async () => {
-    const { recorder, rows } = recorderWithRows();
-    recorder.recordModelCall({
-      source: "model",
-      model: "google/gemini-2.5-flash",
-      provider: "openrouter",
-      usage: USAGE,
-      providerMetadata: { openrouter: { usage: { cost: 0.01 } } },
-      generationId: "gen-1",
-    });
-    await recorder.settle();
-    expect(rows[0]).toMatchObject({ costSource: "provider" });
-    expect(recorder.awaitingLookup()).toEqual([]);
-  });
-
-  it("records a direct model call by the table whatever id it carries", async () => {
-    const { recorder, rows } = recorderWithRows();
-    recorder.recordModelCall({
-      source: "model",
-      model: "deepseek/deepseek-v4-pro",
-      provider: "deepseek",
-      usage: USAGE,
-      providerMetadata: undefined,
-      generationId: "gen-1",
-    });
-    await recorder.settle();
-    expect(rows[0]).toMatchObject({ costSource: "price_table" });
-    expect(recorder.awaitingLookup()).toEqual([]);
+  it("keeps one lookup per generation, however often it is recorded", () => {
+    const { recorder } = recorderWithRows();
+    for (let i = 0; i < 2; i++) recorder.recordModelCall({ source: "model", model: "m", upstream: "openrouter", cost: { state: "pending", lookup: { upstream: "openrouter", generationId: "gen-1" } } });
+    expect(recorder.awaitingLookup()).toHaveLength(1);
   });
 
   it("does not call a priced row missing", async () => {
@@ -218,9 +153,14 @@ describe("the usage recorder", () => {
     expect(missing).toEqual([]);
   });
 
-  it("records a looked-up generation at the cost OpenRouter answered", async () => {
+  it("records a looked-up call at the cost its upstream's billing answered, with its tokens", async () => {
     const { recorder, rows, missing } = recorderWithRows();
-    recorder.recordLookedUpCall({ source: "model", model: "google/gemini-2.5-flash", costUsd: 0.01 });
+    recorder.recordLookedUpCall({
+      source: "model",
+      model: "google/gemini-2.5-flash",
+      upstream: "openrouter",
+      cost: { state: "known", usd: 0.01, source: "billing", tokens: { input: 100, cachedInput: 40, output: 20, reasoning: 5 } },
+    });
     await recorder.settle();
     expect(rows[0]).toMatchObject({
       source: "model",
@@ -228,29 +168,20 @@ describe("the usage recorder", () => {
       requestCount: 1,
       costUsd: 0.01,
       costSource: "generation_lookup",
-      inputTokens: null,
+      inputTokens: 100,
+      cachedInputTokens: 40,
+      outputTokens: 20,
+      reasoningTokens: 5,
     });
     expect(rows[0]!.credits).toBeCloseTo(2, 10);
     expect(missing).toEqual([]);
   });
 
-  it("records the token buckets OpenRouter answered with the generation", async () => {
-    const { recorder, rows } = recorderWithRows();
-    recorder.recordLookedUpCall({
-      source: "model",
-      model: "google/gemini-2.5-flash",
-      costUsd: 0.01,
-      tokens: { input: 100, cachedInput: 40, output: 20, reasoning: 5 },
-    });
-    await recorder.settle();
-    expect(rows[0]).toMatchObject({ inputTokens: 100, cachedInputTokens: 40, outputTokens: 20, reasoningTokens: 5 });
-  });
-
-  it("records a lookup that never found the generation as missing", async () => {
+  it("records a lookup that never found the cost as missing", async () => {
     const { recorder, rows, missing } = recorderWithRows();
-    recorder.recordLookedUpCall({ source: "model", model: "google/gemini-2.5-flash", costUsd: undefined });
+    recorder.recordLookedUpCall({ source: "model", model: "google/gemini-2.5-flash", upstream: "openrouter", cost: { state: "missing", reason: "not found" } });
     await recorder.settle();
-    expect(rows[0]).toMatchObject({ costSource: "missing", costUsd: 0, credits: 0 });
+    expect(rows[0]).toMatchObject({ costSource: "missing", costUsd: 0, credits: 0, inputTokens: null });
     expect(missing).toEqual([rows[0]]);
   });
 
@@ -270,12 +201,18 @@ describe("the usage recorder", () => {
     expect(landed).toHaveLength(2);
   });
 
-  it("settles to the next whole cent while each row keeps its exact credits (inner#1666)", async () => {
+  it("charges the next whole cent while each row keeps its exact credits (inner#1666)", async () => {
     const { recorder, rows } = recorderWithRows();
     // 0.00041 dollars at a multiplier of 2 is 0.082 credits.
     recorder.recordServiceCall({ source: "tool:judge_likelihood", service: "x/a", provider: "openrouter", requests: 1, costUsd: 0.00041 });
-    expect(await recorder.settle()).toBe(0.09);
+    expect((await recorder.settleForCharge()).credits).toBe(0.09);
     expect(rows[0]!.credits).toBeCloseTo(0.082, 10);
+  });
+
+  it("settles to the exact credits, so a caller that adds what a lookup finds rounds the sum once", async () => {
+    const { recorder } = recorderWithRows();
+    recorder.recordServiceCall({ source: "tool:judge_likelihood", service: "x/a", provider: "openrouter", requests: 1, costUsd: 0.00041 });
+    expect(await recorder.settle()).toBeCloseTo(0.082, 10);
   });
 
   it("does not round floating-point residue in the total up a cent", async () => {
@@ -284,7 +221,7 @@ describe("the usage recorder", () => {
     for (let i = 0; i < 3; i++) {
       recorder.recordServiceCall({ source: "tool:judge_likelihood", service: "x/a", provider: "openrouter", requests: 1, costUsd: 0.0005 });
     }
-    expect(await recorder.settle()).toBe(0.3);
+    expect((await recorder.settleForCharge()).credits).toBe(0.3);
   });
 
   it("holds a write that failed before settle, and fails settle with it", async () => {
@@ -320,7 +257,7 @@ describe("the usage recorder", () => {
 });
 
 describe("settleForCharge", () => {
-  it("answers the same credits settle does when every write lands", async () => {
+  it("charges what settle answers, rounded up to the cent once, when every write lands", async () => {
     const first = recorderWithRows();
     const second = recorderWithRows();
     for (const { recorder } of [first, second]) {
@@ -328,8 +265,8 @@ describe("settleForCharge", () => {
       recorder.recordServiceCall({ source: "tool:judge_likelihood", service: "x/a", provider: "openrouter", requests: 1, costUsd: 0.00041 });
     }
     const settled = await first.recorder.settle();
-    expect(await second.recorder.settleForCharge()).toEqual({ credits: settled, writeFailures: [] });
-    expect(settled).toBe(1.09);
+    expect(settled).toBeCloseTo(1.082, 10);
+    expect(await second.recorder.settleForCharge()).toEqual({ credits: 1.09, writeFailures: [] });
   });
 
   it("still answers what to charge when a row could not be written, and hands back the failure", async () => {

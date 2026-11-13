@@ -21,5 +21,8 @@
   },
   "imports": {
     "#rules/*": "./src/*.ts"
+  },
+  "dependencies": {
+    "yaml": "catalog:"
   }
 }

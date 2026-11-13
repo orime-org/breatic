@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Model catalog — loads all AIGC model configs from YAML and filters by available API keys.
+ * Model catalog — loads all AIGC model configs from YAML.
  *
- * Reads config/models/{modality}/*.yaml at startup, resolves provider availability
- * from environment variables, and serves a cached, filtered catalog for the API.
+ * Reads config/models/{modality}/*.yaml at startup and serves a cached catalog for the API, each model with what
+ * provider says about it: which upstreams can serve it here and its pricing on each.
  * @module
  */
 
-import { readFileSync, readdirSync, existsSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { resolve, extname } from "node:path";
 import { parse } from "yaml";
 import { env, MONOREPO_ROOT } from "@breatic/core";
@@ -34,7 +34,6 @@ import {
 import { assertCameraAngle, shipCameraAngle } from "@domain/model-catalog/camera-angle.js";
 import type {
   CameraAngleParams,
-  ExtraStep,
   ModelCatalog,
   ModelEntry,
   ModelTier,
@@ -42,12 +41,13 @@ import type {
   ParamDescriptor,
   ParamForce,
   ParamGate,
-  PricingContract,
   RemoteParamSource,
   SourceGroup,
 } from "@breatic/shared";
 import { checkParamCombination, extractPromptText, fitsSomeMode, promptTaken, resolveParams } from "@breatic/shared";
-import { estimateCredits, type CreditEstimate, type EstimateInput } from "@breatic/shared/pricing";
+import { creditEstimateOf, prepareRunParams, type CreditEstimate, type EstimateInput } from "@breatic/shared/pricing";
+import type { Route } from "@breatic/provider";
+import { provider } from "@domain/provider/instance.js";
 
 /** Root directory for model YAML configs. */
 const MODELS_DIR = resolve(MONOREPO_ROOT, "config/models");
@@ -79,10 +79,6 @@ export interface FullParamSpec {
   replaces?: string;
   /** The value that is sent as nothing: holding it leaves the param out. */
   absent_value?: string | number | boolean;
-  /** The upstream field this param is sent as, when it is not the param's name. */
-  upstream?: string;
-  /** What a value is sent as upstream, keyed by the value's string form. */
-  upstream_values?: Record<string, string>;
   /** The template each entry of a list is written into the prompt with. */
   into_prompt?: string;
   /** How the param's value reaches the run. */
@@ -101,16 +97,6 @@ export interface FullParamSpec {
    * `ParamDescriptor` unchanged.
    */
   remote_source?: RemoteParamSource;
-  [extra: string]: unknown;
-}
-
-/** One provider endpoint on a model with every yaml field preserved (backend-only). */
-export interface FullProviderEndpoint {
-  name: string;
-  model_id: string;
-  priority?: number;
-  /** The endpoint's WaveSpeed pricing contract. */
-  pricing?: PricingContract;
   [extra: string]: unknown;
 }
 
@@ -133,12 +119,6 @@ export interface FullModelEntry {
    * error, so the wire type (`ModelEntry.takes_prompt`) can be non-optional.
    */
   takes_prompt?: boolean;
-  /** The upstream field the prompt is sent as, when it is not `prompt`. */
-  prompt_upstream?: string;
-  /** Upstream calls a run makes besides the model's own. */
-  extra_steps?: ExtraStep[];
-  /** The param whose source, once sent, lets later runs skip the model's own call. */
-  reused_by?: string;
   /** Per mode, params of which at least one has to carry material. */
   source_groups?: SourceGroup[];
   /**
@@ -167,7 +147,6 @@ export interface FullModelEntry {
   /** The three params that together set one camera pose (inner#830). */
   camera_angle?: CameraAngleParams;
   params?: Record<string, FullParamSpec>;
-  providers?: FullProviderEndpoint[];
   /**
    * The voices a tts model writes inline, for a deployment behind a gateway
    * with no voice endpoint of its own (#1960). `sample_url` may be null: yaml
@@ -190,22 +169,9 @@ export interface FullModelEntry {
   [extra: string]: unknown;
 }
 
-/**
- * Connection config for one provider from providers.yaml. Carries secrets
- * plumbing (api_key_env) and vendor endpoints — backend-only; must never be
- * projected into `@breatic/shared` or any web-facing response.
- */
-export interface ProviderConnectionConfig {
-  base_url?: string;
-  api_key_env?: string;
-  max_concurrency?: number;
-  [extra: string]: unknown;
-}
-
-/** Full config for one modality: all models plus provider connection configs. */
+/** Full config for one modality: all its models. */
 export interface FullModalityConfig {
   models: FullModelEntry[];
-  providers: Record<string, ProviderConnectionConfig>;
 }
 
 const _fullConfigCache = new Map<string, FullModalityConfig>();
@@ -214,11 +180,11 @@ const _fullConfigCache = new Map<string, FullModalityConfig>();
  * Load the complete, unprojected model config for one modality.
  *
  * Domain is the single config/models YAML reader (#1672): the catalog
- * projections below and the worker's resolveModel/validateParams all
+ * projections below and the worker's param validation all
  * consume this accessor instead of parsing YAML themselves. Results are
  * cached per modality; {@link resetModelCatalog} clears the cache.
  * @param modality - Modality directory name (e.g. "image"); unknown values yield an empty config
- * @returns Models with every yaml field plus provider connection configs
+ * @returns Models with every yaml field
  * @throws {Error} when a yaml file is malformed (fail-fast; the application boot path logs)
  */
 export function getFullModelConfig(modality: string): FullModalityConfig {
@@ -229,12 +195,12 @@ export function getFullModelConfig(modality: string): FullModalityConfig {
   let files: string[];
   try {
     files = readdirSync(dir)
-      .filter((f) => extname(f) === ".yaml" && f !== "providers.yaml")
+      .filter((f) => extname(f) === ".yaml")
       .sort();
   } catch {
     // Unknown modality / missing directory — an empty config lets callers
     // fail with their own "model not found" semantics.
-    return { models: [], providers: {} };
+    return { models: [] };
   }
 
   const models: FullModelEntry[] = [];
@@ -264,71 +230,20 @@ export function getFullModelConfig(modality: string): FullModalityConfig {
   assertCameraCommands(modality, models);
   assertCameraAngle(modality, models);
 
-  let providers: Record<string, ProviderConnectionConfig> = {};
-  const providersPath = resolve(dir, "providers.yaml");
-  if (existsSync(providersPath)) {
-    providers =
-      (parse(readFileSync(providersPath, "utf-8")) as Record<string, ProviderConnectionConfig>) ??
-      {};
-  }
-
-  const config = { models, providers };
+  const config = { models };
   _fullConfigCache.set(modality, config);
   return config;
 }
 
 /**
- * Map provider name → env var name for API key lookup.
- * Built from each modality's provider connection configs.
- * @returns A map from provider name to its `api_key_env` variable name.
- */
-function loadProviderKeyMap(): ReadonlyMap<string, string> {
-  const keyMap = new Map<string, string>();
-
-  for (const modality of MODALITIES) {
-    for (const [name, config] of Object.entries(getFullModelConfig(modality).providers)) {
-      if (config.api_key_env) {
-        keyMap.set(name, config.api_key_env);
-      }
-    }
-  }
-
-  return keyMap;
-}
-
-/**
- * Check if a provider has an API key configured.
- * @param providerName - Name of the provider to check.
- * @param keyMap - Provider→env-var map from {@link loadProviderKeyMap}.
- * @returns `true` if the provider's API key env var is set to a non-empty string.
- */
-function isProviderAvailable(providerName: string, keyMap: ReadonlyMap<string, string>): boolean {
-  const envVar = keyMap.get(providerName);
-  if (!envVar) return false;
-  const value = (env as Record<string, unknown>)[envVar];
-  return typeof value === "string" && value.length > 0;
-}
-
-/**
  * Project a full yaml model entry onto the shared wire {@link ModelEntry},
- * dropping `note` (it is for whoever ships the yaml) and resolving
- * per-provider availability.
+ * dropping `note` (it is for whoever ships the yaml),
+ * with provider's availability and pricing rules of the model.
  * @param m - Full model entry from {@link getFullModelConfig}.
  * @param modality - Modality the entry belongs to (stamped onto the projection).
- * @param keyMap - Provider→env-var map used to resolve provider availability.
  * @returns The wire-facing catalog entry.
  */
-function projectModelEntry(
-  m: FullModelEntry,
-  modality: Modality,
-  keyMap: ReadonlyMap<string, string>,
-): ModelEntry {
-  const providers = (m.providers ?? []).map((p) => ({
-    name: p.name,
-    model_id: p.model_id,
-    priority: p.priority ?? 99,
-    available: isProviderAvailable(p.name, keyMap),
-  }));
+function projectModelEntry(m: FullModelEntry, modality: Modality): ModelEntry {
 
   return {
     name: m.name,
@@ -350,17 +265,12 @@ function projectModelEntry(
         return [name, rest as unknown as ParamDescriptor];
       }),
     ),
-    providers,
+    availability: provider().availability(m.name),
+    pricing_rules: provider().pricingRules(m.name),
     // #1966: declared per model in yaml, never derived. The loader has
     // already refused any modality where a model omits it, so the wire
     // field is a plain boolean the panels can read without a fallback.
     takes_prompt: m.takes_prompt as boolean,
-    // Every run is estimated off the endpoint's own pricing contract and the
-    // upstream calls it adds, by the same function on both sides.
-    pricing: m.providers?.find((p) => p.pricing !== undefined)?.pricing,
-    prompt_upstream: m.prompt_upstream,
-    extra_steps: m.extra_steps,
-    reused_by: m.reused_by,
     source_groups: m.source_groups,
     // #1960: how much text this model takes, so the panel can say so before
     // sending text the upstream will reject. Absent on models whose upstream
@@ -384,24 +294,15 @@ let _cache: ModelCatalog | null = null;
 /**
  * Load the full model catalog from YAML configs.
  *
- * Results are cached after first load. A model is in the catalog when at
- * least one of its providers has an API key configured — no exception, so an
- * empty catalog is the honest answer for a deployment that has configured
- * nothing (#1951).
- *
- * There used to be one: with not a single key set anywhere, the filter was
- * skipped and every model came back, for development. What that bought was a
- * full catalog with nothing configured. Availability asks only whether the
- * variable is non-empty, never whether the key works.
- * What it cost was a deployment showing capabilities it cannot deliver:
- * the panel opened, the pickers filled, the execute button armed, and the
- * task failed upstream (user 2026-08-18 ruled it a bug).
+ * Results are cached after first load. Every model is listed, one no upstream can serve here included: its
+ * availability names the environment variables its keys are missing from, and a run of it is refused before it is
+ * queued, saying which (inner#1743). Availability asks only whether the variable is non-empty, never whether the
+ * key works.
  * @returns Complete model catalog grouped by modality
  */
 export function getModelCatalog(): ModelCatalog {
   if (_cache) return _cache;
 
-  const keyMap = loadProviderKeyMap();
   const catalog: Record<Modality, ModelEntry[]> = {
     image: [],
     video: [],
@@ -417,13 +318,7 @@ export function getModelCatalog(): ModelCatalog {
     // startup — a malformed YAML should fail-fast, not silently drop the
     // affected modality).
     catalog[modality] = getFullModelConfig(modality).models.map((m) =>
-      projectModelEntry(m, modality, keyMap),
-    );
-  }
-
-  for (const modality of MODALITIES) {
-    catalog[modality] = catalog[modality].filter(
-      (m) => m.providers.some((p) => p.available),
+      projectModelEntry(m, modality),
     );
   }
 
@@ -450,43 +345,91 @@ export const MIN_TASK_CREDIT_COST = 5;
  * concurrently may drive the balance negative, an accepted trade-off of
  * a soft pre-check).
  *
- * Prices the run the request describes by the model's pricing contract. The
+ * Prices the run the request describes on the upstream its route would choose. The
  * server does not know how long a source is, so a formula billed by source
  * length prices it at zero: the answer is a lower bound, which is what a gate
- * refusing broke requests needs. Unknown / unspecified models and models with
- * no contract fall back to {@link MIN_TASK_CREDIT_COST}, which is also the
+ * refusing broke requests needs. Unknown / unspecified models and models no
+ * upstream can price fall back to {@link MIN_TASK_CREDIT_COST}, which is also the
  * floor.
  * @param model - Model name from the request body, if any.
  * @param input - The run as the request describes it: params keyed by the
  *   catalog's names, the prompt, and the source lengths the caller knows.
+ * @param route - How the run chooses its upstream, the same value the task carries.
  * @returns The credits the caller must at least hold to enqueue.
  * @throws {Error} When a pricing formula does not produce a finite price.
  */
 export async function estimateTaskCredits(
   model: string | undefined,
   input: EstimateInput,
+  route?: Route,
 ): Promise<number> {
-  const estimate = model ? await estimateModelCredits(model, input) : undefined;
+  const estimate = model ? await estimateModelCredits(model, input, route) : undefined;
   return Math.max(estimate?.credits ?? 0, MIN_TASK_CREDIT_COST);
 }
 
 /**
- * One run of a served model, priced by its contract the way the panels price it:
- * on its params as the run resolves them, so what its settings do not send is
- * not priced.
+ * One run of a catalog model, priced the way the panels price it: on its params as the run resolves them, so what
+ * its settings do not send is not priced, prepared by shared's `prepareRunParams` and priced by provider on the
+ * upstream the route would choose.
  * @param model - Model name.
  * @param input - The run as set up so far; `{ params: {} }` prices the defaults.
+ * @param route - How the run chooses its upstream; the weights when left out.
  * @returns The credits and how they bound the charge, or undefined for a model
- *   this deployment does not serve or does not price.
+ *   not in the catalog or one no upstream here can serve.
  * @throws {Error} When a pricing formula does not produce a finite price.
  */
 export async function estimateModelCredits(
   model: string,
   input: EstimateInput,
+  route: Route = { mode: "default" },
 ): Promise<CreditEstimate | undefined> {
   const entry = findCatalogEntry(model);
-  if (!entry?.pricing) return undefined;
-  return estimateCredits({ ...entry, pricing: entry.pricing }, { ...input, params: resolveParams(entry, input.params) }, env.CREDIT_MULTIPLIER);
+  if (entry === undefined) return undefined;
+  const prepared = prepareRunParams(entry, { ...input, params: resolveParams(entry, input.params) });
+  return creditEstimateOf(await provider().estimate(model, prepared, route), env.CREDIT_MULTIPLIER);
+}
+
+/** Whether a run of a model can be served here on its route, and if not, why. */
+export type Servability =
+  | { servable: true }
+  /** The route names an upstream the model has no binding on. */
+  | { servable: false; reason: "unbound"; upstream: string }
+  /** No upstream the route may use has its key: the environment variables they read, in weight order. */
+  | { servable: false; reason: "unconfigured"; envVars: string[] };
+
+/**
+ * Whether a run of a model can be served here on its route: one upstream the route may use has its key.
+ * @param model - Model name.
+ * @param route - How the run chooses its upstream; the weights when left out.
+ * @returns Servable, or why not.
+ */
+export function servability(model: string, route: Route = { mode: "default" }): Servability {
+  return servabilityOn(provider().availability(model).upstreams, route);
+}
+
+/**
+ * Whether a language model's calls of one use can be served here on a route: one upstream of the routes that use
+ * takes, and the route may use, has its key.
+ * @param model - Our model id.
+ * @param use - `call` for chat, consolidation and the text tools; `understand` for reading media.
+ * @param route - How the call chooses its upstream; the weights when left out.
+ * @returns Servable, or why not.
+ */
+export function llmServability(model: string, use: "call" | "understand", route: Route = { mode: "default" }): Servability {
+  return servabilityOn(provider().llm.availability(model, use).upstreams, route);
+}
+
+/**
+ * Whether a route can be served by the upstreams a model is offered on.
+ * @param upstreams - Each upstream, and whether its key is set.
+ * @param route - How the run chooses its upstream.
+ * @returns Servable, or why not.
+ */
+function servabilityOn(upstreams: readonly { upstream: string; configured: boolean; envVar: string }[], route: Route): Servability {
+  const pool = route.mode === "upstream" ? upstreams.filter((u) => u.upstream === route.upstream) : upstreams;
+  if (route.mode === "upstream" && pool.length === 0) return { servable: false, reason: "unbound", upstream: route.upstream };
+  if (pool.some((u) => u.configured)) return { servable: true };
+  return { servable: false, reason: "unconfigured", envVars: pool.map((u) => u.envVar) };
 }
 
 /**
@@ -546,7 +489,7 @@ export function sendsUntakenPrompt(model: string | undefined, params: Record<str
  * items in a capped list param than the model's `max_items` allows. The
  * /canvas/tasks route runs this BEFORE enqueue so an over-picked submission is
  * rejected (with a message naming the limit) rather than silently truncated by
- * the worker (providers/shared.ts). Sits at the same gate as
+ * the worker (`cleanParams` in handlers/model-params.ts). Sits at the same gate as
  * {@link violatesSourceRequirementForModel}, reading the model's per-param
  * `max_items` off the wire `ParamDescriptor`. An unknown / absent model
  * passes (existence is not this gate's job).

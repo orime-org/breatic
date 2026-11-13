@@ -350,6 +350,11 @@ describe("fal costs", () => {
     expect((await provider.cost.lookup({ upstream: "fal", predictionId: "r7" }, { lastAttempt: true })).state).toBe("missing");
   });
 
+  it("answers missing at once for a lookup that names no request to ask about", async () => {
+    const { provider } = await finished(events([]));
+    expect(await provider.cost.lookup({ upstream: "fal", generationId: "gen-9" }, { lastAttempt: false })).toEqual({ state: "missing", reason: "the lookup names nothing to ask" });
+  });
+
   it("leaves a cost pending, with a warning, when the billing events cannot be read, and missing on the last lookup", async () => {
     const { done, provider } = await finished({ status: 200, body: { billing_events: [{ request_id: "r7", cost_total: "a lot", quantity: 1 }], has_more: false } });
     expect(done.costs).toEqual([{ state: "pending", lookup: { upstream: "fal", predictionId: "r7" } }]);

@@ -33,8 +33,6 @@ const kling: Record<string, ParamDescriptor> = {
     values: [true, false],
     modes: ["t2v", "i2v"],
     fill: "panel",
-    upstream: "shot_type",
-    upstream_values: { true: "intelligence" },
   },
 };
 const seedance: Record<string, ParamDescriptor> = {

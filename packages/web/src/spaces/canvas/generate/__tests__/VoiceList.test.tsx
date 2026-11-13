@@ -104,7 +104,8 @@ const VOICED: ModelEntry = {
   generation_time: 30,
   takes_prompt: true,
   params: { voice_id: { description: '', default: null, remote_source: 'voices', fill: 'remote' } },
-  providers: [],
+  availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: false, envVar: 'WAVESPEED_API_KEY' }] },
+  pricing_rules: undefined,
 };
 
 /**

@@ -155,7 +155,8 @@ function videoModel(name: string, storyboard: boolean): ModelEntry {
         }
         : {}),
     },
-    providers: [],
+    availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: false, envVar: 'WAVESPEED_API_KEY' }] },
+    pricing_rules: undefined,
   } as ModelEntry;
 }
 

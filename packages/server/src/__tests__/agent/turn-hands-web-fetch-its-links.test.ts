@@ -87,7 +87,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       return { modelId: "test", instructions: { base: "system" }, tools: { web_search: webSearch } };
     },
     finalizeTurn: async () => [],
-    getModel: () =>
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider(() =>
       new MockLanguageModelV4({
         doStream: async () => {
           const script = state.perCall[state.calls] ?? [FINISHED];
@@ -101,7 +101,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
             }),
           };
         },
-      }),
+      })),
   };
 });
 
