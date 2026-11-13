@@ -138,7 +138,7 @@ models:
             field: negative_prompt
         drops:
           # No rig on this upstream: a run that asks for a skeleton goes to one that rigs (inner#1692).
-          rig_skeleton: [false]
+          rig_skeleton: [ false ]
           texture_version:
             values:
               - v3.0
@@ -186,7 +186,7 @@ models:
             field: negative_prompt
         drops:
           # No rig on this upstream: a run that asks for a skeleton goes to one that rigs (inner#1692).
-          rig_skeleton: [false]
+          rig_skeleton: [ false ]
           texture_version:
             values:
               - v3.0
@@ -326,7 +326,7 @@ models:
             field: orientation
         drops:
           # No rig on this upstream: a run that asks for a skeleton goes to one that rigs (inner#1692).
-          rig_skeleton: [false]
+          rig_skeleton: [ false ]
           texture_version:
             values:
               - v3.0
@@ -375,7 +375,7 @@ models:
             field: seed
         drops:
           # No rig on this upstream: a run that asks for a skeleton goes to one that rigs (inner#1692).
-          rig_skeleton: [false]
+          rig_skeleton: [ false ]
           texture_version:
             values:
               - v3.0
@@ -528,7 +528,7 @@ models:
             field: orientation
         drops:
           # No rig on this upstream: a run that asks for a skeleton goes to one that rigs (inner#1692).
-          rig_skeleton: [false]
+          rig_skeleton: [ false ]
           texture_version:
             values:
               - v3.0
@@ -577,7 +577,7 @@ models:
             field: seed
         drops:
           # No rig on this upstream: a run that asks for a skeleton goes to one that rigs (inner#1692).
-          rig_skeleton: [false]
+          rig_skeleton: [ false ]
           texture_version:
             values:
               - v3.0
