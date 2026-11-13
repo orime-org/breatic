@@ -118,19 +118,30 @@ export function VideoNumericInput(props: NumericProps): React.JSX.Element {
     if (persisted !== written.current) {
       written.current = persisted;
       setText(String(persisted));
-      onInvalidChange?.(testId, false);
     }
-  }, [persisted, testId, onInvalidChange]);
-  React.useEffect(() => () => onInvalidChange?.(testId, false), [onInvalidChange, testId]);
-  const numeric = text.trim() === '' ? NaN : Number(text);
-  const invalid = !Number.isFinite(numeric) || numeric < props.min || (props.exclusiveMin === true && numeric === props.min) || (props.max !== undefined && (numeric > props.max || props.exclusiveMax === true && numeric === props.max));
+  }, [persisted]);
+  /**
+   * Whether a typed text is no number the field accepts.
+   * @param typed - The text.
+   * @returns Whether it is refused.
+   * @throws {never} Never.
+   */
+  const refuses = (typed: string): boolean => {
+    const value = typed.trim() === '' ? NaN : Number(typed);
+    return !Number.isFinite(value) || value < props.min || (props.exclusiveMin === true && value === props.min) || (props.max !== undefined && (value > props.max || props.exclusiveMax === true && value === props.max));
+  };
+  const invalid = refuses(text);
+  // Reported under the field's current key whenever the shown text, a limit or the key changes, so a row that moves to
+  // another position or a limit that moves under the text still blocks the run.
+  React.useEffect(() => {
+    onInvalidChange?.(testId, invalid);
+    return () => onInvalidChange?.(testId, false);
+  }, [onInvalidChange, testId, invalid]);
   return <Input type='text' inputMode='decimal' autoComplete='off' value={text} aria-label={props.label} data-testid={props.testId} aria-invalid={invalid} disabled={props.disabled} className='h-[var(--control-height)] min-w-0 px-2 text-xs tabular-nums md:text-xs' onBlur={props.onSettle} onKeyDown={(event) => { if (event.key === 'Enter' && props.onSettle !== undefined) event.currentTarget.blur(); }} onChange={(event) => {
     const nextText = event.currentTarget.value;
     setText(nextText);
-    const value = nextText.trim() === '' ? NaN : Number(nextText);
-    const bad = !Number.isFinite(value) || value < props.min || (props.exclusiveMin === true && value === props.min) || (props.max !== undefined && (value > props.max || props.exclusiveMax === true && value === props.max));
-    props.onInvalidChange?.(props.testId, bad);
-    if (!bad) {
+    if (!refuses(nextText)) {
+      const value = Number(nextText);
       written.current = value;
       props.onChange(value);
     }

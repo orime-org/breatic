@@ -14,7 +14,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { t } from '@breatic/shared';
 import { planVideoSplit, type MiniToolAnalysisRecord, type VideoToolDraftById } from '@breatic/shared/mini-tools';
-import { VideoToolControls, type VideoToolControlsProps } from '../video/VideoToolControls';
+import { VideoNumericInput, VideoToolControls, type VideoToolControlsProps } from '../video/VideoToolControls';
 
 // The real plan, spied on, so a test can count the whole plans the panel makes.
 vi.mock('@breatic/shared/mini-tools', async (importOriginal) => {
@@ -284,11 +284,52 @@ describe('a failed scene detection (canvas design §4; demo main.tsx run-error)'
  * @param props.changes - Collects every stored cut list.
  * @returns The panel.
  */
-function StatefulSplit(props: { cuts: number[]; presentedTime?: number | null; liveClock?: VideoPlaybackLiveClock; changes?: number[][] }): React.JSX.Element {
+function StatefulSplit(props: { cuts: number[]; presentedTime?: number | null; liveClock?: VideoPlaybackLiveClock; changes?: number[][]; invalid?: Set<string> }): React.JSX.Element {
   const [draft, setDraft] = React.useState(draftWith(props.cuts));
+  const { invalid } = props;
+  const onInvalidChange = React.useCallback((key: string, bad: boolean) => { if (bad) invalid?.add(key); else invalid?.delete(key); }, [invalid]);
   return <VideoToolControls toolId='video.split' draft={draft} onChange={(next) => { const split = next as VideoToolDraftById['video.split']; props.changes?.push(split.params.cuts); setDraft({ ...split, revision: crypto.randomUUID() }); }} analyses={[]} frameTable={frameTable} presentedTime={props.presentedTime ?? 1.25} liveClock={props.liveClock} disabled={false} pickingSlot={null}
-    inputNames={new Map()} onPick={vi.fn()} onAnalyse={vi.fn()} analysing={false} onEditTimeline={vi.fn()} onSeek={vi.fn()} />;
+    inputNames={new Map()} onPick={vi.fn()} onAnalyse={vi.fn()} analysing={false} onEditTimeline={vi.fn()} onSeek={vi.fn()} onInvalidChange={onInvalidChange} />;
 }
+
+describe('an invalid cut row keeps blocking the run wherever it moves (web AGENTS "Inputs send what they show")', () => {
+  it('reports the invalid row under its new position after leaving it reorders the rows', () => {
+    const invalid = new Set<string>();
+    render(<StatefulSplit cuts={[1, 3]} invalid={invalid} />);
+    act(() => (screen.getByTestId('video-cut-0') as HTMLInputElement).focus());
+    fireEvent.change(screen.getByTestId('video-cut-0'), { target: { value: '4' } });
+    fireEvent.change(screen.getByTestId('video-cut-0'), { target: { value: '' } });
+    expect([...invalid]).toEqual(['video-cut-0']);
+    act(() => (screen.getByTestId('video-cut-0') as HTMLInputElement).blur());
+    expect(screen.getByTestId('video-cut-1')).toHaveValue('');
+    expect([...invalid]).toEqual(['video-cut-1']);
+  });
+
+  it('reports the invalid row under its new position after another row is removed', () => {
+    const invalid = new Set<string>();
+    render(<StatefulSplit cuts={[1.5, 3, 4.5]} invalid={invalid} />);
+    act(() => (screen.getByTestId('video-cut-2') as HTMLInputElement).focus());
+    fireEvent.change(screen.getByTestId('video-cut-2'), { target: { value: '' } });
+    const bin = screen.getAllByRole('button', { name: 'Remove' })[0]!;
+    fireEvent.mouseDown(bin);
+    fireEvent.click(bin);
+    expect(screen.getByTestId('video-cut-1')).toHaveValue('');
+    expect([...invalid]).toEqual(['video-cut-1']);
+  });
+});
+
+describe('a numeric field reports what it shows', () => {
+  it('reports a shown value that a changed limit makes invalid, and clears it when the limit allows it again', () => {
+    const invalid = new Set<string>();
+    const report = (key: string, bad: boolean): void => { if (bad) invalid.add(key); else invalid.delete(key); };
+    const view = render(<VideoNumericInput value={2} label='In point' testId='in' min={0} max={5} onInvalidChange={report} onChange={vi.fn()} />);
+    expect([...invalid]).toEqual([]);
+    view.rerender(<VideoNumericInput value={2} label='In point' testId='in' min={0} max={1} onInvalidChange={report} onChange={vi.fn()} />);
+    expect([...invalid]).toEqual(['in']);
+    view.rerender(<VideoNumericInput value={2} label='In point' testId='in' min={0} max={5} onInvalidChange={report} onChange={vi.fn()} />);
+    expect([...invalid]).toEqual([]);
+  });
+});
 
 describe('typing a cut row in place (web AGENTS "Inputs send what they show")', () => {
   it('keeps every typed key in the typed row and the other row unchanged, then shows the rows ordered on blur without a write', () => {
