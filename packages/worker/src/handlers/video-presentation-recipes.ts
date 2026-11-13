@@ -159,7 +159,7 @@ function presentedFrames(ledger: VideoPresentationLedger): PresentedFrame[] {
  * frame when that comes later; its decode starts at the latest source keyframe whose pts is not after that frame, presented
  * or not, at the keyframe's dts less min(0, the first packet's dts) (§93 D6-1, §7.17 timeline row). Each derived-empty frame
  * is its own entry with the plan's fill. With `from`, the first entry starts at that presentation time inside the first
- * frame instead (a chunk on an output frame grid starts at its first slot's time, §7.17 转场输出档 row).
+ * frame instead (a chunk on an output frame grid starts at its first slot's time, §7.17 transition output profile row).
  * @param ledger - The full ledger.
  * @param window - The window.
  * @param from - A presentation time in the window's first frame to start from; that frame's start when absent.

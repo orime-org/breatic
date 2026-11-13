@@ -498,7 +498,7 @@ function profileGrid(profile: MiniToolPlanTransitionProfile, count: number): str
 
 /**
  * The decode clock of a window a transition profile's grid follows: fine enough to keep distinct source frames apart and
- * to place a chunk that starts at an output frame's time inside a source frame (§7.17 转场输出档 row), which the source's
+ * to place a chunk that starts at an output frame's time inside a source frame (§7.17 transition output profile row), which the source's
  * own timescale cannot.
  * @param profile - The profile.
  * @returns Ticks per second.

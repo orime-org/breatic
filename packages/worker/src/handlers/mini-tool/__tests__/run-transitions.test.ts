@@ -643,9 +643,9 @@ describe("the frozen chunk boundaries are dispatched as they are (§97 D23-3)", 
   });
 });
 
-// frames-split §7.17 转场输出档 row (每段从输出帧k取覆盖该时刻的源呈现帧) and §5.4 切块 row: a chunk's frames are the output
+// frames-split §7.17 transition output profile row (每段从输出帧k取覆盖该时刻的源呈现帧) and §5.4 chunking row: a chunk's frames are the output
 // slots k0..k1-1, so its picture starts at slot k0's time in the clip, which can fall inside a source frame.
-describe("a chunk starts at its first output slot's time in the clip (§7.17 转场输出档; §5.4 切块)", () => {
+describe("a chunk starts at its first output slot's time in the clip (§7.17 transition output profile row; §5.4 chunking row)", () => {
   // The cut fixture presents frame i (i ≥ 1) over [0.04i − 0.02, 0.04i + 0.02) s, so every 25 fps output slot of it falls
   // in the middle of a source frame. The second clip starts at output frame 96 and is split at 110.
   const FROZEN = { encode: [{ start: 0, end: 96 }, { start: 96, end: 110 }, { start: 110, end: 133 }], window: [] };

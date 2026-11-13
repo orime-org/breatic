@@ -33,7 +33,7 @@ interface Clip { inputId: string; storageKey: string; ledger: VideoPresentationL
 const clipInputId = (at: number): string => `00000000-0000-4000-8002-${String(at).padStart(12, "0")}`;
 
 /**
- * The time in a clip's presentation that output frame `k` shows (§7.17 转场输出档 row: each clip takes, at output frame k, the
+ * The time in a clip's presentation that output frame `k` shows (§7.17 transition output profile row: each clip takes, at output frame k, the
  * source frame covering that moment), exact.
  * @param clip - The clip.
  * @param k - The output frame.
@@ -128,7 +128,7 @@ export async function runMiniToolTransitions(execution: AcceptedMiniToolExecutio
   const boundary = timeline.window?.startFrame ?? clips[1]!.startFrame;
   /**
    * A clip's recipe fields over output frames: its picture starts at the first output frame's time, so the chunk's frame
-   * grid lines up with the output's (§5.4 切块 row).
+   * grid lines up with the output's (§5.4 chunking row).
    * @param at - The clip.
    * @param frames - The output frames.
    * @returns Its entries and window.

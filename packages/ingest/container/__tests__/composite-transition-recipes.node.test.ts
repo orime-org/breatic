@@ -446,7 +446,7 @@ describe('the last frame of a transition chunk (§7.17 chunk_encode row: every p
   });
 });
 
-describe('a chunk that starts inside a source frame (§7.17 转场输出档 row: output frame k shows the source frame covering k / fps)', () => {
+describe('a chunk that starts inside a source frame (§7.17 transition output profile row: output frame k shows the source frame covering k / fps)', () => {
   // greys.mp4: ten 25 fps frames of stored luma 16 + 20n. On a 30 fps profile, output frame k shows frame ⌊k · 25 / 30⌋.
   it('CR03 a 25 fps clip split at output frame 5 of a 30 fps profile shows, chunk after chunk, the frames one window would', async () => {
     const thirty = { ...PROFILE, fps: r(30), timeBase: r(1, 30) };
