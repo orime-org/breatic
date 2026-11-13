@@ -328,6 +328,7 @@ interface Probe {
     width?: number;
     height?: number;
     pix_fmt?: string;
+    duration?: string;
     tags?: Record<string, string>;
   }[];
   format: { duration?: string };
@@ -645,6 +646,29 @@ test('transitions: two videos and a crossfade give one video as long as both les
   }
 });
 
+test('transitions: a second video at a lower rate keeps every frame, so the picture lasts as long as the composition @needs-ingest @needs-storage @needs-ffmpeg', async ({ page }) => {
+  const c = await openCanvas(page, 'transitions-rates');
+  try {
+    // 30 fps first sets the output grid; the 25 fps second clip covers more output frames than it has frames of its own.
+    await upload(c, 'clip6at30.mp4', 'clip3a.mp4');
+    await presented(c, 'clip6at30.mp4');
+    await presented(c, 'clip3a.mp4');
+    await openTool(c, 'clip6at30.mp4', 'video.transitions');
+    await c.page.getByTestId('video-timeline-input').click();
+    await nodeOf(c, 'clip3a.mp4').click();
+    const dialog = c.page.getByTestId('video-timeline-dialog');
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText(/30 fps · 9\.0\d\d s/)).toBeVisible();
+    const made = await runBuilding(c, () => dialog.getByRole('button', { name: 'Export' }).click(), 1);
+    await expect(dialog).toBeHidden({ timeout: 60_000 });
+    const [joined] = await stored(c, made);
+    const whole = duration(await contentOf(c, 'clip6at30.mp4')) + duration(await contentOf(c, 'clip3a.mp4'));
+    expect(Math.abs(Number(videoStream(joined!.content).duration) - whole)).toBeLessThanOrEqual(2 * FRAME);
+  } finally {
+    await deleteSpace(page, c.spaceId);
+  }
+});
+
 test('transitions: the preview plays two videos of different sizes, before and after Swap order @needs-ingest @needs-storage', async ({ page }) => {
   const c = await openCanvas(page, 'transitions-preview');
   const pageErrors: string[] = [];
@@ -710,6 +734,11 @@ test('transitions: the preview plays two videos of different sizes, before and a
     await c.page.keyboard.press('Enter');
     await expect(outField).toHaveValue('2.9');
     await expect(overlap).toHaveValue('1.4');
+    // Tab from an Out typed key by key goes on to the transition type, the next control.
+    await outField.click({ clickCount: 3 });
+    await c.page.keyboard.type('2.95');
+    await c.page.keyboard.press('Tab');
+    await expect(dialog.getByRole('combobox').filter({ hasNotText: /^\d+\./ })).toBeFocused();
     // An In refused under its Out is stored once the Out moves past it, and the track shows it.
     await outField.fill('2');
     await outField.press('Enter');
