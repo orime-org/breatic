@@ -405,6 +405,22 @@ describe("where a taken message was read", () => {
     expect(roles.slice(0, 5)).toEqual(["assistant", "tool", "assistant", "tool", "user"]);
   });
 
+  it("carries on from the request its last step sent, a fold before that step included", async () => {
+    script.calls = [
+      () => [{ type: "reasoning-start", id: "r1" }, { type: "reasoning-delta", id: "r1", delta: "weighing it up" }, { type: "reasoning-end", id: "r1" }, ...calls("search_conversations", "s1")()],
+      says("done"),
+      says("after"),
+    ];
+    vi.mocked(foldIfTooLong).mockResolvedValueOnce("none").mockResolvedValueOnce("moved").mockResolvedValue("none");
+    script.onCall[1] = () => waiting.push(taken("b", "message b"));
+    await runTurn();
+    expect(script.prompts).toHaveLength(3);
+    const [, before, carried] = script.prompts as unknown[][];
+    expect(carried!.slice(0, before!.length)).toEqual(before);
+    expect(JSON.stringify(carried)).not.toContain("weighing it up");
+    expect(userTexts(carried!).at(-1)).toContain("message b");
+  });
+
   it("is in a step's request once when that step's precheck folds (PS-10)", async () => {
     script.calls = [calls("search_conversations", "s1"), calls("search_conversations", "s2"), says("done")];
     vi.mocked(foldIfTooLong).mockResolvedValueOnce("none").mockResolvedValueOnce("moved").mockResolvedValue("none");

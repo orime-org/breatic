@@ -901,18 +901,17 @@ export class MainAgent {
       const mainModel = getModel(agentConfig.modelId);
       if (typeof mainModel === "string") throw new TypeError("The main agent requires an instantiated language model.");
 
-      for (let first = true; ; first = false) {
-        // With no fold yet, the steps go on as they were sent, thinking
-        // included, so the request keeps the prefix it had.
-        const outcome = await streamOnce(writer, {
-          messages: first ? sent.messages : overflowFolds === 0 ? [...sent.messages, ...withTaken(steps)] : carriedOn(sent),
-          mainModel,
-          watch,
-          studioId,
-        });
+      let messages = sent.messages;
+      for (;;) {
+        const outcome = await streamOnce(writer, { messages, mainModel, watch, studioId });
         if (outcome === undefined) return;
-        // What the user sent during the last step: the same reply goes on.
-        if (outcome === CARRY_ON) continue;
+        // What the user sent during the last step: the same reply goes on from
+        // the request that step sent, as the SDK goes on to its next step, so
+        // the request keeps the prefix it had.
+        if (outcome === CARRY_ON) {
+          messages = [...lastRequest, ...steps.at(-1)!, ...takenAt(steps.length)];
+          continue;
+        }
 
         overflowFolds += 1;
         const folded = await fold(writer, withTaken(steps.map((step) => stripThinking(step))), {
@@ -938,7 +937,7 @@ export class MainAgent {
         }
         lastCallTotal = undefined;
         prefixChangedDuringTurn = true;
-        await reassemble();
+        messages = carriedOn(await reassemble());
       }
     };
 
