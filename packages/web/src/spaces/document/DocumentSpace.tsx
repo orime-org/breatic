@@ -239,6 +239,7 @@ export function DocumentSpace({
             files={shown.files}
             pending={shown.pending}
             landed={landed}
+            scope={uploadTarget}
           />
         </DocumentProjectProvider>
       ) : (

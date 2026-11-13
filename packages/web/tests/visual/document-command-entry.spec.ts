@@ -10,8 +10,9 @@
  * whether a wheel over it scrolls the body. The DOM structure those rest on is
  * asserted in `DocumentEditor.test.tsx` and re-read here as a precondition,
  * since a measurement of the wrong element would otherwise look like a
- * measurement. Which two commands the menu opens onto, and how their
- * not-open-yet state looks, are pinned in `document-menu-entry.test.tsx`.
+ * measurement. Which commands the menu opens onto, for an editor and for a
+ * viewer, is pinned in `document-menu-entry.test.tsx`; what the snapshot
+ * commands do, in `tests/smoke/document-version-snapshots.spec.ts`.
  *
  * Needs the dev server and a smoke account:
  *   pnpm --filter @breatic/web test:visual
@@ -256,27 +257,6 @@ test('opens a menu below the trigger, uncropped', async () => {
   expect(placement.below).toBe(true);
   expect(placement.insideWindow).toBe(true);
   expect(placement.hitsItself).toBe(true);
-});
-
-test('clicking a not-open-yet item leaves menu and document alone', async () => {
-  await openFreshDocument(page);
-  await page.getByTestId('doc-doc-menu-trigger').click();
-  const item = page.getByTestId('doc-doc-menu-save-snapshot');
-  await expect(item).toBeVisible({ timeout: 5_000 });
-
-  const editor = page.locator(`${DOCUMENT_EDITOR}`);
-  const before = await editor.innerHTML();
-  // `force` skips playwright's own actionability check, which treats
-  // `aria-disabled` as unclickable. Browsers do not read that attribute: a real
-  // click dispatches, and `onSelect`'s preventDefault is what stops it. Without
-  // force this waits for an "enabled" that never comes, and what gets measured
-  // is the framework's guard rather than the product's behaviour.
-  await item.click({ force: true });
-
-  // preventDefault inside `onSelect`: the menu stays put, the document is
-  // untouched.
-  await expect(item).toBeVisible();
-  expect(await editor.innerHTML()).toBe(before);
 });
 
 test('clicking the body both dismisses the menu and lands the caret', async () => {

@@ -337,6 +337,9 @@
       "view_not_image": "第 {index} 個視圖槽（{slot, select, front {正面} left {左側} back {背面} right {右側} other {多餘}}）：這個檔案是{kind, select, video {影片} audio {音訊} other {模型或其他檔案}}，不是圖片。",
       "still_running": "這次生成還在收尾，可能還會出結果，請稍後再試。",
       "has_result": "這次生成已經出了結果，結果已回到任務列表。"
+    },
+    "document": {
+      "versions_full": "{limit, plural, other {這個 Document 的快照已滿 # 張。刪掉舊的快照後再儲存。}}"
     }
   },
   "chat": {
@@ -1490,6 +1493,7 @@
       "goal": {
         "character": "角色設定與一致性",
         "comics-storyboards": "漫畫與分鏡",
+        "food": "美食",
         "social-hooks": "社群鉤子",
         "sound": "配樂、音效與配音"
       },
@@ -1592,6 +1596,39 @@
           "reference": {
             "name": "角色",
             "note": "先放入角色參考圖，再生成"
+          }
+        }
+      },
+      "food-money-shot": {
+        "name": "美食誘人瞬間",
+        "description": "特寫一路推進到這道菜最誘人的那一刻",
+        "prompt": "一段直式美食特寫影片，拍的是 [📎 菜品]：食物、擺盤和餐具都跟照片一樣，照片裡的其他東西都不要。0–2 秒鉤子：慢動作微距鏡頭，第一格已經在動，{✏️ 第一個細節，例如融化的起司冒著熱氣}。2–5 秒：鏡頭慢慢推近掠過質感，焦皮、油光和碎屑都清楚。5–8 秒最誘人的瞬間：{✏️ 那一刻，例如夾起一塊披薩，起司拉出長絲}，停在最高點。光從背後和側面打過來，讓熱氣和油光發亮，只有一個暖色光源。用聲音代替味道：近距離的食物本身的聲音，{✏️ 例如滋滋聲和清脆的喀嚓聲}，沒有音樂。畫面裡不出現文字。",
+        "input": {
+          "dish": {
+            "name": "菜品",
+            "note": "先放入一張清楚的菜品或飲品照片，再生成"
+          }
+        }
+      },
+      "recipe-process-montage": {
+        "name": "食譜製作過程",
+        "description": "固定機位，一步一步做出這道菜",
+        "prompt": "一段直式做菜影片，最後做出 [📎 菜品]，食物、擺盤和餐具都跟照片一樣。全程不變：一個固定機位{✏️ 角度，例如從正上方俯拍檯面}，同一個檯面、同一套廚具、同一雙手，其他都不變。每一步的狀態只往前走：切開的一直是切開的，煮熟的一直是熟的。0–3 秒：{✏️ 第 1 步，例如把麵團壓成圓餅}。3–6 秒：{✏️ 第 2 步，例如把番茄醬抹到邊緣}。6–9 秒：{✏️ 第 3 步，例如把莫札瑞拉撕碎鋪在上面}。9–12 秒：{✏️ 第 4 步，例如從烤箱裡滑出來，還在冒泡}。12–15 秒：做好的菜端上桌，一隻手拿起第一塊，有生活感的一刻。一扇窗戶進來的日光。聲音：每一步的現場聲，切、煎、倒，沒有音樂。畫面裡不出現文字。",
+        "input": {
+          "dish": {
+            "name": "菜品",
+            "note": "先放入一張做好的菜品照片，再生成"
+          }
+        }
+      },
+      "dish-hero-still": {
+        "name": "菜品棚拍圖",
+        "description": "隨手拍的菜品照重拍成菜單棚拍圖",
+        "prompt": "一張菜單用的棚拍照片，拍的是 [📎 菜品]：食物、配料、擺盤和餐具都跟照片完全一樣，只換拍攝方式。暖色主光從前方 45 度打過來，逆光讓熱氣和油光發亮，側光拉出質感。顏色鮮豔但自然，不過飽和。檯面和背景：{✏️ 例如深色石板桌面配一塊亞麻餐巾}。背景柔和虛化，菜本身從前到後都清楚。真實照片，不是插畫。沒有文字。",
+        "input": {
+          "dish": {
+            "name": "菜品",
+            "note": "先放入一張清楚的菜品照片，再生成"
           }
         }
       },
@@ -2322,7 +2359,6 @@
         "label": "整個 Document 的命令",
         "saveSnapshot": "儲存快照",
         "restoreSnapshot": "還原快照",
-        "notOpenYet": "未開放",
         "comments": "批註",
         "commentsUnresolved": "{count} 條未解決",
         "commentsNone": "無"
@@ -2408,6 +2444,49 @@
         "notWrittenYet": "已上傳，還沒寫進正文",
         "notPasted": "{count} 項沒有貼上。",
         "stillUploading": "{count} 個圖片、影片或音訊還在上傳，沒有貼上。上傳完成後重新複製。"
+      },
+      "versions": {
+        "title": "快照",
+        "close": "關閉快照",
+        "current": "目前內容",
+        "empty": "還沒有快照",
+        "loadMore": "載入更多",
+        "loadFailed": "快照列表沒有載入。",
+        "retry": "重試",
+        "more": "更多",
+        "compareWithShown": "與正在查看的對比",
+        "rename": "重新命名",
+        "delete": "刪除",
+        "viewing": "正在查看快照：{name}",
+        "comparing": "對比：{from} → {to}",
+        "legendInsert": "新增",
+        "legendDelete": "刪除",
+        "legendFormat": "格式變化",
+        "compareWithCurrent": "和目前內容對比",
+        "restore": "找回",
+        "exitPreview": "退出預覽",
+        "exitCompare": "退出對比",
+        "renameTitle": "快照重新命名",
+        "namePlaceholder": "名稱（可不填）",
+        "save": "儲存",
+        "restoreTitle": "找回這張快照？",
+        "restoreBody": "目前正文會變成這張快照的內容，所有協作者會立即看到。可以按 Cmd/Ctrl+Z 復原。",
+        "deleteTitle": "刪除這張快照？",
+        "deleteBody": "「{name}」刪除後找不回來。",
+        "saved": "快照已儲存",
+        "renamed": "已重新命名",
+        "restored": "已找回快照。按 Cmd/Ctrl+Z 可以復原。",
+        "unchanged": "正文已經和這張快照相同。",
+        "restoreFailed": "沒能找回快照。",
+        "deleted": "快照已刪除",
+        "leftOut": "{count, plural, other {# 個圖片、影片或音訊還沒上傳完成，沒有存進這張快照。}}",
+        "contentFailed": "快照內容沒有載入。",
+        "gone": "這張快照已經不在了。",
+        "saveFailed": "快照沒有儲存。",
+        "renameFailed": "沒能重新命名。",
+        "deleteFailed": "沒能刪除快照。",
+        "folded": "{count, plural, other {# 個區塊未變動 · 展開}}",
+        "unavailable": "快照載入失敗，重新整理頁面後可用"
       }
     },
     "readOnlyReconnect": "重新連線",
@@ -2607,6 +2686,27 @@
         "more": "載入更多",
         "formats": "PNG、JPEG 或 WebP",
         "chooseFile": "選擇檔案"
+      },
+      "viewfinder": {
+        "open": "取景框",
+        "ratio": "畫幅",
+        "size": "{width} × {height}",
+        "cancel": "取消",
+        "confirm": "確定",
+        "modelsLoading": "模型還在載入，載入完再截圖",
+        "captureFailed": "截圖失敗",
+        "toAgent": "加入 Agent",
+        "toCanvas": "加入 Canvas",
+        "copy": "複製",
+        "reframe": "重新取景",
+        "canvasListTitle": "加入 Canvas",
+        "noCanvas": "這個 Project 還沒有 Canvas，先新建一個",
+        "addedToAgent": "已加入 Agent",
+        "addedToCanvas": "已加入「{name}」",
+        "view": "查看",
+        "copied": "已複製",
+        "copyFailed": "複製失敗",
+        "canvasUnreachable": "連不上「{name}」，請再試一次"
       }
     },
     "sizeCap": {

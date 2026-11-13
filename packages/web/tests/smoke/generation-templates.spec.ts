@@ -498,6 +498,37 @@ async function nodeIdNamed(name: string): Promise<string> {
   return id;
 }
 
+test('a video panel lists the two food videos under the food goal', async () => {
+  await openPanelOnNewNode('video');
+  await openGoal('food');
+  await expect(page.getByTestId('generate-template-goal-food')).toHaveText(/^Food\s*2$/);
+  expect(await listedTemplates()).toEqual(['food-money-shot', 'recipe-process-montage']);
+  await closeTemplateMenu();
+});
+
+test('an image panel lists the dish hero still under the food goal', async () => {
+  await openPanelOnNewNode('image');
+  await openGoal('food');
+  await expect(page.getByTestId('generate-template-goal-food')).toHaveText(/^Food\s*1$/);
+  expect(await listedTemplates()).toEqual(['dish-hero-still']);
+  await closeTemplateMenu();
+});
+
+test('picking the food money shot places the dish it asks for, wired, @\'d and noted', async () => {
+  await openPanelOnNewNode('video');
+  await openGoal('food');
+  await page.getByTestId('generate-template-food-money-shot').click();
+
+  await expect(page.getByTestId('generate-model-trigger')).toContainText('Seedance 2.5', { timeout: 15_000 });
+  await expect(visibleSpace(page).locator('.react-flow__node')).toHaveCount(2, { timeout: 15_000 });
+  expect(await graph()).toEqual({ names: ['Dish', 'video-template'], edges: ['Dish -> video-template'] });
+  const prompt = page.getByTestId('generate-prompt-editor');
+  await expect(prompt.locator('[data-reference-mention]').filter({ hasText: 'Dish' })).toHaveCount(1);
+  await expect(prompt.locator('[data-prompt-note]')).toHaveCount(1);
+  await expect(prompt).toContainText('{✏️ the most tempting moment');
+  await page.screenshot({ path: test.info().outputPath('food-money-shot-applied.png') });
+});
+
 test('an audio panel lists the ten sound templates under one goal', async () => {
   await openPanelOnNewNode('audio');
   await openGoal('sound');

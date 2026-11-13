@@ -265,6 +265,27 @@ test('asked outright for a pet video, it reads the pet selfie vlog and lands a p
   await expect(page.getByTestId('proposal-card').last()).toBeVisible({ timeout: 20_000 });
 });
 
+test('asked outright for a cheese pull food video, it reads the food money shot and lands a video @needs-model', async () => {
+  test.setTimeout(240_000);
+  await ask('Make a vertical food video of a pizza with a long cheese pull. Do not ask me anything, just propose it.');
+  const turn = await settledTurn(page);
+  expect(turn.read, `read: ${turn.read.join(', ')}; tools: ${turn.tools.join(', ')}`).toContain('food-money-shot');
+  // Solved when a video lands, whether built on the template or on the agent's own setup drawing on it: with no
+  // photo of the dish, the agent may write the template's craft into a setup of its own.
+  const videos = turn.landed.flatMap((proposal) => proposal.nodes).filter((node) => node.role === 'generate' && node.type === 'video');
+  expect(videos.length, `named: ${turn.templates.join(', ')}; said: ${turn.said.slice(0, 600)}`).toBeGreaterThanOrEqual(1);
+  await expect(page.getByTestId('proposal-card').last()).toBeVisible({ timeout: 20_000 });
+});
+
+test('given a dish photo and asked only for a video of it, it lands a video carrying that dish @needs-model', async () => {
+  test.setTimeout(240_000);
+  await ask('Make a video with this. Do not ask me anything, just propose it.', 'dish.jpg');
+  const turn = await settledTurn(page);
+  // Solved when a video draws on the photo, whether through a food template or a setup of the agent's own.
+  const carrying = turn.landed.reduce((count, proposal) => count + videosCarryingMaterial(proposal), 0);
+  expect(carrying, `videos drawing on the photo. Templates: ${turn.templates.join(', ')}; tools: ${turn.tools.join(', ')}; said: ${turn.said.slice(0, 600)}`).toBeGreaterThanOrEqual(1);
+});
+
 test('given a pet photo and asked only for a video of it, it lands a video carrying that pet @needs-model', async () => {
   test.setTimeout(240_000);
   await ask('Make a video with this. Do not ask me anything, just propose it.', 'pet.jpg');

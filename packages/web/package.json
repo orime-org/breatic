@@ -68,6 +68,8 @@
     "@tiptap/suggestion": "catalog:",
     "@tiptap/y-tiptap": "catalog:",
     "@xyflow/react": "^12.11.2",
+    "@y/prosemirror": "catalog:",
+    "@y/y": "catalog:",
     "@xyflow/system": "0.0.79",
     "ahooks": "^3.9.7",
     "ai": "catalog:",
