@@ -408,7 +408,9 @@ export const mocks = {
     listFeed: vi.fn().mockResolvedValue({ items: [], resolved: { users: {}, studios: {}, projects: {} }, unavailableRegions: [] }),
     countFeed: vi.fn().mockResolvedValue({ count: 0, unavailableRegions: [] }),
     markRead: vi.fn().mockResolvedValue(undefined),
+    markReadIn: vi.fn().mockResolvedValue(undefined),
     markAllRead: vi.fn().mockResolvedValue(0),
+    markAllReadEverywhere: vi.fn().mockResolvedValue(0),
     createRoleUpgradeRequest: vi.fn().mockResolvedValue({
       id: "n-1", userId: "u-owner",
       type: "access.role_upgrade_request",

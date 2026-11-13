@@ -10,6 +10,7 @@
 import { z } from 'zod';
 
 import { API_BASE_PATH } from '@web/data/api/base-path';
+import { ApiException } from '@web/data/api/types';
 
 const regionAddressSchema = z.object({ api: z.string().min(1), collab: z.string().min(1) });
 
@@ -152,4 +153,14 @@ export function apiBaseForToken(token: string, config: RegionConfig | null): str
   if (config === null) return API_BASE_PATH;
   const prefix = /^([a-z0-9-]+)\./.exec(token);
   return apiBaseFor(prefix ? prefix[1]! : null, config);
+}
+
+/**
+ * Whether a failed request means the region holding the Studio or Project
+ * did not answer: the network failed or the region said 503 (inner#1955).
+ * @param err - What the request threw.
+ * @returns True for a region that is down.
+ */
+export function isRegionDown(err: unknown): boolean {
+  return err instanceof ApiException && (err.network || err.status === 503);
 }

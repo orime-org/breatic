@@ -4,18 +4,7 @@
 import type * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
-import { ApiException } from '@web/data/api/types';
 import { useTranslation } from '@web/i18n/use-translation';
-
-/**
- * Whether a failed request means the region holding the Studio or Project
- * did not answer: the network failed or the region said 503 (inner#1955).
- * @param err - What the request threw.
- * @returns True for a region that is down.
- */
-export function isRegionDown(err: unknown): boolean {
-  return err instanceof ApiException && (err.network || err.status === 503);
-}
 
 /**
  * The main area while the open Studio's or Project's region cannot be

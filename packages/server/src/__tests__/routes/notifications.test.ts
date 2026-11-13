@@ -117,16 +117,27 @@ describe("PATCH /users/me/notifications/:id/read", () => {
       { method: "PATCH", headers: AUTH },
     );
     expect(res.status).toBe(200);
-    expect(mocks.notificationService.markRead).toHaveBeenCalledWith(
+    expect(mocks.notificationService.markReadIn).toHaveBeenCalledWith(
       NID,
       expect.any(String),
+      null,
     );
+  });
+
+  it("marks it in the region the bell named", async () => {
+    const app = createApp();
+    const res = await app.request(
+      `/api/v1/users/me/notifications/${NID}/read?region=sg`,
+      { method: "PATCH", headers: AUTH },
+    );
+    expect(res.status).toBe(200);
+    expect(mocks.notificationService.markReadIn).toHaveBeenCalledWith(NID, expect.any(String), "sg");
   });
 });
 
 describe("POST /users/me/notifications/read-all", () => {
   it("returns 200 + count from service", async () => {
-    mocks.notificationService.markAllRead.mockResolvedValueOnce(3);
+    mocks.notificationService.markAllReadEverywhere.mockResolvedValueOnce(3);
     const app = createApp();
     const res = await app.request(`/api/v1/users/me/notifications/read-all`, {
       method: "POST",
