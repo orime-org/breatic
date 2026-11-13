@@ -322,6 +322,23 @@ test('a symbol deleted in a formula block and Escape keep the deletion, with the
   await expect(page.locator(`${EDITOR} .doc-math`).first()).toContainText('Formula has an error');
 });
 
+test('a formula block emptied with Backspace still takes what is typed next', async () => {
+  await openFreshDocument(page);
+  await insertFromPlus(page);
+  await page.keyboard.type('a');
+  await page.keyboard.press('Enter');
+  await expect(page.locator(OPEN)).toHaveCount(0);
+
+  await page.locator(`${EDITOR} .doc-math .bn-preview-container`).first().click();
+  await expect(page.locator(OPEN)).toHaveCount(1);
+  await page.keyboard.press('Backspace');
+  await page.keyboard.type('yz');
+  await page.keyboard.press('Enter');
+
+  await expect(page.locator(OPEN)).toHaveCount(0);
+  expect((await lines(page))[0]).toBe('mathBlock:yz');
+});
+
 test('a line holding a formula copies as $$source$$ and pastes back as a formula', async () => {
   await openFreshDocument(page);
   await page.keyboard.type('a $$x^2$$ b');
