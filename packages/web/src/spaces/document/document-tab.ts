@@ -53,6 +53,8 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { EditorView } from '@tiptap/pm/view';
 import type { Node as PMNode } from '@tiptap/pm/model';
 
+import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-nodes';
+
 /** The attribute the stylesheet animates. */
 const BLOCKED_ATTRIBUTE = 'data-tab-blocked';
 
@@ -83,7 +85,7 @@ interface TabEditor {
  * marked is the block that would have moved: `nestBlock.ts` takes
  * `$from.blockRange($to, node => node.childCount > 0 && (blockGroup ||
  * column))`, gives up when `range.startIndex === 0`, and otherwise moves from
- * `range.start`.
+ * `range.start`; our column is `docColumn` (inner#1314).
  *
  * Walking the document for the first `blockContainer` instead named the wrong
  * block. Blocks nest inside one another, so the containers reached on the way
@@ -112,13 +114,35 @@ function topmostBlockPos(view: EditorView): number | null {
     $to,
     (node: PMNode) =>
       node.childCount > 0 &&
-      (node.type.name === 'blockGroup' || node.type.name === 'column'),
+      (node.type.name === 'blockGroup' || node.type.name === DOC_COLUMN),
   );
   if (range !== null) return range.start;
 
   // The body's first block, a table too (inner#1619), stands right inside
   // its block group.
   return (view.state.doc.firstChild?.childCount ?? 0) > 0 ? 1 : null;
+}
+
+/**
+ * Whether Tab would move a column group: the range `nestBlock` acts on
+ * (`holdsItems` in its `nestBlock.ts`) holds one, as when the selection runs
+ * across columns. Columns never stand under another block (inner#1314 A1).
+ * @param state - The editor state.
+ * @returns True when it would.
+ */
+function wouldNestColumns(state: EditorState): boolean {
+  const { $from, $to } = state.selection;
+  const item = state.schema.nodes['blockContainer'];
+  const range = $from.blockRange(
+    $to,
+    (node: PMNode) =>
+      node.childCount > 0 && node.type.isInGroup('childContainer') && item !== undefined && node.type.contentMatch.matchType(item) !== null,
+  );
+  if (range === null) return false;
+  for (let index = range.startIndex; index < range.endIndex; index += 1) {
+    if (range.parent.child(index).type.name === DOC_COLUMN_LIST) return true;
+  }
+  return false;
 }
 
 /**
@@ -194,7 +218,7 @@ export const documentTabExtension = createExtension(() => {
       Tab: ({ editor }: { editor: TabEditor }) => {
         const view = editor.prosemirrorView;
         const before = view.state.doc;
-        editor.nestBlock();
+        if (!wouldNestColumns(view.state)) editor.nestBlock();
         if (view.state.doc === before) sayItCannotMove(view);
         return true;
       },
