@@ -230,17 +230,22 @@ describe('the transition duration input clamps to the shared bounds (§97; canva
     expect(field).toHaveAttribute('aria-invalid', 'false');
   });
 
-  it('keeps the transition through the keys of an Out typed key by key, and fits it to the Out left in the field', async () => {
+  it('fits the transition held since an Out began to be typed to each key, so a key on the way does not shorten it for good', async () => {
     bounds.mockReturnValue({ min: 0.04, max: 1.5 });
     const user = userEvent.setup();
     render(<StatefulDialog initial={draftWith('fade', 1.4)} />);
     // The first clip runs 1 s to 5 s; typing Out 2.9 passes through Out 2, a 1 s clip that holds at most a 0.5 s transition.
     await user.tripleClick(screen.getByTestId('video-clip-out'));
-    await user.keyboard('2.9');
-    expect(screen.getByTestId('video-clip-overlap')).toHaveValue('1.4');
-    await user.keyboard('{Enter}');
-    expect(screen.getByTestId('video-clip-out')).toHaveValue('2.9');
+    await user.keyboard('2');
+    expect(Number((screen.getByTestId('video-clip-overlap') as HTMLInputElement).value)).toBeLessThan(0.6);
+    await user.keyboard('.9');
+    expect(screen.getByTestId('video-clip-out')).toHaveFocus();
     expect(Number((screen.getByTestId('video-clip-overlap') as HTMLInputElement).value)).toBeGreaterThan(0.9);
+    await user.keyboard('{Enter}');
+    // A new entry holds the transition as it now is.
+    await user.tripleClick(screen.getByTestId('video-clip-out'));
+    await user.keyboard('5');
+    expect(Number((screen.getByTestId('video-clip-overlap') as HTMLInputElement).value)).toBeLessThan(1);
   });
 
   it('shows the bound it commits when the stored duration already sits at that bound', () => {

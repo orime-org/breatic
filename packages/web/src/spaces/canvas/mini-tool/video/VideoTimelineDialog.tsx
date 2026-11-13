@@ -155,15 +155,24 @@ function TimelineWorkspace(props: VideoTimelineDialogProps): React.JSX.Element {
     setSelected(selection);
     props.onChange({ ...draft, params: { clips: normalize(next, props.inputTables) } });
   }
+  // The transition as it was when an In or Out began to be typed: every key re-fits that one, so a key on the way to a
+  // number (Out 2 on the way to 2.9) cannot shorten the transition or make it a Cut for good.
+  const held = React.useRef<VideoToolTimelineClip['transition'] | null>(null);
   /**
-   * Edits only the selected clip's owned source properties.
+   * Edits the selected clip's In or Out, the transition re-fitted from the one held since typing began.
    * @throws {never} Never.
-   * @param partial - Only the fields changed by this edit.
+   * @param partial - The In or the Out.
    */
-  function edit(partial: Partial<VideoToolTimelineClip>): void {
+  function editPoint(partial: Pick<Partial<VideoToolTimelineClip>, 'in' | 'out'>): void {
     if (clip === undefined) return;
-    commit(clips.map((item) => item.clipId === clip.clipId ? { ...item, ...partial } : item), clip.clipId);
+    const base = held.current ??= clips[0]?.transition ?? null;
+    commit(clips.map((item, index) => ({ ...item, ...(item.clipId === clip.clipId ? partial : {}), ...(index === 0 && base !== null ? { transition: base } : {}) })), clip.clipId);
   }
+  /**
+   * Ends an In or Out entry: the next one holds the transition as it then is.
+   * @throws {never} Never.
+   */
+  function settlePoint(): void { held.current = null; }
   /**
    * Edits the one transition between the two clips, whichever clip is selected.
    * @throws {never} Never.
@@ -208,7 +217,7 @@ function TimelineWorkspace(props: VideoTimelineDialogProps): React.JSX.Element {
       <aside className='grid min-h-0 grid-rows-[auto_minmax(0,1fr)] border-l border-border'><h3 className='border-b border-border p-3 text-xs font-medium'>{t('canvas.miniTool.videoUI.timelineProperties')}</h3><ScrollArea className='min-h-0'><fieldset disabled={props.disabled} className='grid min-w-0'>{clip === undefined ? <p className='p-3 text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.selectedClipEmpty')}</p> : <div className='grid min-w-0 gap-3 p-3'>
         <label className='grid gap-1.5 text-xs'>{t('canvas.miniTool.videoUI.selectedClip')}<Select value={clip.clipId} onValueChange={setSelected}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{clips.map((item, index) => <SelectItem key={item.clipId} value={item.clipId}>{index + 1}. {props.inputNames.get(item.inputId)}</SelectItem>)}</SelectContent></Select></label>
         <div data-testid='video-clip-lengths' className='grid gap-1 text-xs text-muted-foreground tabular-nums'>{selectedSourceLength === undefined ? null : <span>{t('canvas.miniTool.videoUI.sourceDuration')}: {selectedSourceLength.toFixed(2)} s</span>}<span>{t('canvas.miniTool.videoUI.clipDuration')}: {(clip.out - clip.in).toFixed(2)} s</span></div>
-        <div className='grid grid-cols-2 gap-2'><label className='grid gap-1.5 text-xs'>{t('canvas.miniTool.videoUI.inPoint')}<VideoNumericInput key={`${clip.clipId}:in`} onInvalidChange={invalidChange} value={clip.in} label={t('canvas.miniTool.videoUI.inPoint')} testId='video-clip-in' commitOnSettle exclusiveMax min={0} max={clip.out} disabled={props.disabled} onChange={(value) => edit({ in: value })} /></label><label className='grid gap-1.5 text-xs'>{t('canvas.miniTool.videoUI.outPoint')}<VideoNumericInput key={`${clip.clipId}:out`} onInvalidChange={invalidChange} value={clip.out} label={t('canvas.miniTool.videoUI.outPoint')} testId='video-clip-out' commitOnSettle exclusiveMin min={clip.in} max={input?.mediaInfo?.duration} disabled={props.disabled} onChange={(value) => edit({ out: value })} /></label></div>
+        <div className='grid grid-cols-2 gap-2'><label className='grid gap-1.5 text-xs'>{t('canvas.miniTool.videoUI.inPoint')}<VideoNumericInput key={`${clip.clipId}:in`} onInvalidChange={invalidChange} value={clip.in} label={t('canvas.miniTool.videoUI.inPoint')} testId='video-clip-in' exclusiveMax min={0} max={clip.out} disabled={props.disabled} onChange={(value) => editPoint({ in: value })} onSettle={settlePoint} /></label><label className='grid gap-1.5 text-xs'>{t('canvas.miniTool.videoUI.outPoint')}<VideoNumericInput key={`${clip.clipId}:out`} onInvalidChange={invalidChange} value={clip.out} label={t('canvas.miniTool.videoUI.outPoint')} testId='video-clip-out' exclusiveMin min={clip.in} max={input?.mediaInfo?.duration} disabled={props.disabled} onChange={(value) => editPoint({ out: value })} onSettle={settlePoint} /></label></div>
       </div>}
       <h3 className='border-y border-border p-3 text-xs font-medium'>{t('canvas.miniTool.videoUI.transitionBetween')}</h3>
       {junction === null ? null : <div className='grid min-w-0 gap-3 p-3'>
