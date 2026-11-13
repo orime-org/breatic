@@ -61,12 +61,13 @@ export async function runRefundLoopOnce(isStopped: () => boolean = () => false):
 }
 
 /**
- * Start the loop when this deployment runs the internal API: every
- * disposition the API accepts is finished by it. Otherwise do nothing.
+ * Start the loop when this deployment runs the internal API in the global
+ * region: every disposition the API accepts is finished by it, and refunds
+ * live with the global data (inner#1955). Otherwise do nothing.
  * @returns The handle to stop it.
  */
 export function startRefundLoop(): RefundLoop {
-  if (!env.INTERNAL_API_ENABLED) return { stop: async () => {} };
+  if (!env.INTERNAL_API_ENABLED || env.REGION !== env.GLOBAL_REGION) return { stop: async () => {} };
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let running: Promise<void> | null = null;

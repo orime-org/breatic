@@ -246,8 +246,8 @@ server.on("error", (err) => {
 // side cannot run inside the business transaction).
 const lifecycleRelay = startLifecycleRelay();
 
-// The refund disposition loop (inner#1410 §7.1); it runs whenever the
-// internal API is on, since it finishes every disposition the API accepts.
+// The refund disposition loop (inner#1410 §7.1); it runs whenever the global
+// region's internal API is on, since it finishes every disposition the API accepts.
 const refundLoop = startRefundLoop();
 const maintenanceLoop = startMaintenanceLoop();
 // Work left between the global region and another region (inner#1955).
