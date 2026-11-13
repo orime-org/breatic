@@ -275,6 +275,39 @@ function FormulaMarkup({ html, className }: { html: string; className?: string }
 interface FaceActions {
   readonly open: () => void;
   readonly close: () => void;
+  readonly cancel: () => void;
+}
+
+/** What a node view does with an edit the user takes back. */
+interface FormulaEditing {
+  /** Opens the box. */
+  readonly open: () => void;
+  /** Closes the box, keeping what was typed. */
+  readonly close: () => void;
+  /** Writes a source back into the formula. */
+  readonly restore: (source: string) => void;
+}
+
+/** Takes back what was typed in a box and closes it. */
+type Cancel = () => void;
+
+/**
+ * Per editor, how to take back the edit in the one box open, for Escape.
+ * A box registers itself as it opens and removes itself as it closes.
+ */
+const openEdits = new WeakMap<object, Cancel>();
+
+/**
+ * Takes back what was typed in the open formula box and closes it, as the
+ * close button does.
+ * @param editor - The editor.
+ * @returns Whether a box was open.
+ */
+export function cancelOpenFormula(editor: object): boolean {
+  const cancel = openEdits.get(editor);
+  if (cancel === undefined) return false;
+  cancel();
+  return true;
 }
 
 /**
@@ -335,6 +368,32 @@ const MathFace = React.memo(function MathFace({
     whileElementsMounted: shown ? autoUpdate : undefined,
   });
 
+  // A press outside the open box takes back what was typed, as the body's
+  // other input-and-confirm boxes do (the link field drops its draft).
+  const [wrapper, setWrapper] = React.useState<HTMLElement | null>(null);
+  const holdWrapper = React.useCallback(
+    (element: HTMLElement | null): void => {
+      setWrapper(element);
+      refs.setReference(element);
+    },
+    [refs],
+  );
+  React.useEffect(() => {
+    if (!shown || wrapper === null) return undefined;
+    /**
+     * Takes the edit back when the press lands outside the formula and its box.
+     * @param event - The press.
+     */
+    const onPress = (event: PointerEvent): void => {
+      if (event.target instanceof Node && wrapper.contains(event.target)) return;
+      actions.cancel();
+    };
+    document.addEventListener('pointerdown', onPress, true);
+    return () => {
+      document.removeEventListener('pointerdown', onPress, true);
+    };
+  }, [shown, wrapper, actions]);
+
   const placeSource = React.useCallback(
     (slot: HTMLElement | null): void => {
       if (slot === null || sourceElement.parentElement === slot) return;
@@ -379,7 +438,7 @@ const MathFace = React.memo(function MathFace({
 
   return (
     <Wrapper
-      ref={refs.setReference}
+      ref={holdWrapper}
       className={cn('bn-preview-with-source-popup doc-math', selected && 'ProseMirror-selectednode')}
       data-open={shown ? 'true' : 'false'}
     >
@@ -433,7 +492,7 @@ const MathFace = React.memo(function MathFace({
             }}
             onClick={(event) => {
               event.stopPropagation();
-              actions.close();
+              actions.cancel();
             }}
           >
             <X className='h-3.5 w-3.5' />
@@ -493,7 +552,8 @@ interface FormulaView {
  * Mounts a formula's face around the element ProseMirror edits.
  * @param inline - Whether the formula sits inside a line.
  * @param initial - The face's first state.
- * @param actions - Opening and closing the box.
+ * @param editor - The editor, which Escape finds the open box through.
+ * @param editing - Opening and closing the box, and writing a source back.
  * @param typeName - The node type the view stays bound to.
  * @param stop - Releases what the caller subscribed to.
  * @returns The node view.
@@ -501,7 +561,8 @@ interface FormulaView {
 function mountFormula(
   inline: boolean,
   initial: FaceState,
-  actions: FaceActions,
+  editor: AnyEditor,
+  editing: FormulaEditing,
   typeName: string,
   stop: () => void,
 ): FormulaView & { store: FaceStore } {
@@ -517,6 +578,28 @@ function mountFormula(
   // into the box when it commits.
   dom.append(code, chrome);
   const store = faceStore(initial);
+  // The source as the box opened on it, which the close button, Escape and a
+  // press outside put back.
+  let openedWith: string | null = null;
+  /** Puts the source back as it was when the box opened, and closes the box. */
+  const cancel = (): void => {
+    const before = openedWith;
+    if (before !== null && before !== store.get().source) editing.restore(before);
+    editing.close();
+  };
+  const actions: FaceActions = { open: editing.open, close: editing.close, cancel };
+  const stopWatching = store.subscribe(() => {
+    const { open, editable, source } = store.get();
+    if (open && editable) {
+      if (openedWith === null) {
+        openedWith = source;
+        openEdits.set(editor, cancel);
+      }
+      return;
+    }
+    openedWith = null;
+    if (openEdits.get(editor) === cancel) openEdits.delete(editor);
+  });
   const root: Root = createRoot(chrome);
   root.render(<MathFace store={store} actions={actions} inline={inline} source={code} host={dom} />);
   return {
@@ -533,6 +616,8 @@ function mountFormula(
     ignoreMutation: (mutation) => mutation.type !== 'selection' && !code.contains(mutation.target),
     destroy: () => {
       stop();
+      stopWatching();
+      if (openEdits.get(editor) === cancel) openEdits.delete(editor);
       // React refuses a synchronous unmount while it is rendering, and
       // ProseMirror can tear views down from inside a React commit.
       queueMicrotask(() => {
@@ -645,6 +730,7 @@ export function mathBlockSpec(): unknown {
             selected: false,
             editable: editor.isEditable,
           },
+          editor,
           {
             open: () => {
               if (!editor.isEditable) return;
@@ -655,6 +741,10 @@ export function mathBlockSpec(): unknown {
             close: () => {
               preview.store.setState((state) => ({ ...state, popupOpen: undefined }));
               editor.focus();
+            },
+            restore: (source) => {
+              editor.updateBlock(block.id, { content: source } as never);
+              editor.setTextCursorPosition(block.id, 'end');
             },
           },
           MATH_BLOCK,
@@ -710,6 +800,7 @@ export function mathInlineSpec(): unknown {
         view = mountFormula(
           true,
           { ...sourcesOf(node), open: false, selected: false, editable: editor.isEditable },
+          editor,
           {
             open: () => {
               const pos = getPos();
@@ -728,6 +819,15 @@ export function mathInlineSpec(): unknown {
                 pmView.state.tr.setSelection(TextSelection.create(pmView.state.doc, pos + current.nodeSize)),
               );
               editor.focus();
+            },
+            restore: (source) => {
+              const pos = getPos();
+              if (pos === undefined) return;
+              const pmView = editor.prosemirrorView!;
+              const { state } = pmView;
+              const content = source === '' ? [] : [state.schema.text(source)];
+              const tr = state.tr.replaceWith(pos + 1, pos + current.nodeSize - 1, content);
+              pmView.dispatch(tr.setSelection(TextSelection.create(tr.doc, pos + 1 + source.length)));
             },
           },
           MATH_INLINE,
