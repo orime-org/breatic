@@ -180,7 +180,8 @@ export class DirectorFigure {
     this.root.quaternion.fromArray(object.rotation);
     this.root.updateMatrixWorld(true);
     const number = String(object.number ?? '');
-    if (this.label && number !== this.paintedLabel) { this.label.paint(number, style.ink); this.paintedLabel = number; }
+    const label = `${number}|${style.ink}`;
+    if (this.label && label !== this.paintedLabel) { this.label.paint(number, style.ink); this.paintedLabel = label; }
     if (isSceneCamera(object)) {
       for (const material of this.materials) material.color.setStyle(style.ink);
       this.shapeFrustum(object);
