@@ -63,6 +63,7 @@ vi.mock("@breatic/core", async (importOriginal: () => Promise<Record<string, unk
 
 vi.mock("@server/modules/invitation/claim-email-invitations.js", () => ({
   claimEmailInvitations: vi.fn().mockResolvedValue(undefined),
+  claimEmailInvitationsOnSignIn: vi.fn().mockResolvedValue(undefined),
 }));
 
 const mockSendMail = vi.fn().mockResolvedValue(true);

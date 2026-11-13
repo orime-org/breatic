@@ -49,7 +49,8 @@
       "signup_code_exhausted": "這個驗證碼已失效，請重新取得。",
       "signup_expired": "本次註冊已過期。",
       "signup_resend_cooldown": "請 {seconds, plural, other {# 秒}}後再取得驗證碼。",
-      "signup_code_send_failed": "驗證碼傳送失敗，請重試。"
+      "signup_code_send_failed": "驗證碼傳送失敗，請重試。",
+      "invitation_region_unavailable": "暫時無法開啟這則邀請，請稍後再試。"
     },
     "studio": {
       "slug_taken": "該 Slug 已被使用，請換一個。",

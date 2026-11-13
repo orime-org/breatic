@@ -49,7 +49,8 @@
       "signup_code_exhausted": "This code can no longer be used. Request a new one.",
       "signup_expired": "This sign-up has expired.",
       "signup_resend_cooldown": "Wait {seconds, plural, one {# second} other {# seconds}} before requesting another code.",
-      "signup_code_send_failed": "The verification code could not be sent. Try again."
+      "signup_code_send_failed": "The verification code could not be sent. Try again.",
+      "invitation_region_unavailable": "This invitation can't be opened right now. Please try again in a moment."
     },
     "studio": {
       "slug_taken": "That Slug is already in use. Please choose another.",

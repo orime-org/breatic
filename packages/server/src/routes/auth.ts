@@ -21,7 +21,7 @@ import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { authService, invitationService, signupCodeService, studioService } from "@server/modules";
 import { randomUUID } from "node:crypto";
-import { env, NotFoundError, UnauthorizedError, trackServerEvent } from "@breatic/core";
+import { AppError, callRegion, env, getRegionsConfig, NotFoundError, regionOfShareToken, UnauthorizedError, trackServerEvent } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { emailSchema, getActiveLocale, normalizeEmail, parseAttribution, t } from "@breatic/shared";
 import type { PersonalStudioRef, SignupReferralSource } from "@breatic/shared";
@@ -45,9 +45,37 @@ const invitationPreviewSchema = z.object({ token: z.string().min(1).max(64) });
 
 auth.get("/invitation", rateLimitFor("invite-preview"), validate("query", invitationPreviewSchema), async (c) => {
   const { token } = c.req.valid("query");
-  const data = await invitationService.getInvitationPreview(token);
+  // A token issued in another region names it; that region answers (inner#1955).
+  const region = regionOfShareToken(token);
+  const data = region === null || region === env.REGION
+    ? await invitationService.getInvitationPreview(token)
+    : await previewInRegion(region, token);
   return c.json({ data });
 });
+
+/**
+ * Ask the region that issued an invitation token for its preview.
+ * @param region - The region the token names.
+ * @param token - The token.
+ * @returns The region's preview.
+ * @throws {AppError} 503 `region_unavailable` when the region has no address or does not answer in time.
+ */
+async function previewInRegion(region: string, token: string): Promise<unknown> {
+  const url = env.REGION_API_URLS[region];
+  try {
+    if (url === undefined) throw new Error(`no address for region ${region}`);
+    return await callRegion("previewInvitation", [token], {
+      callerRegion: env.REGION,
+      url,
+      secret: env.INTERNAL_API_SECRET,
+      timeoutMs: getRegionsConfig().cross_region_fanout_timeout_ms,
+    });
+  } catch (err) {
+    if (err instanceof AppError) throw err;
+    logger.error({ err, ctx: { region } }, "invitation_preview_region_unavailable");
+    throw new AppError(503, t("server.auth.invitation_region_unavailable"), "region_unavailable");
+  }
+}
 
 /**
  * Project a studio row onto the wire shape every `/auth/*` response uses
@@ -256,7 +284,7 @@ auth.post(
       parseAttribution(attribution),
     );
     clearSignupTicketCookie(c);
-    if (user.emailVerified) await invitationService.claimEmailInvitations(user);
+    await invitationService.claimEmailInvitationsOnSignIn(user);
     setSessionCookie(c, await authService.createSession(user.id));
     logger.info({ userId: user.id, email: user.email }, "user_registered");
     logger.info({ userId: user.id, method: "email" }, "user_logged_in");

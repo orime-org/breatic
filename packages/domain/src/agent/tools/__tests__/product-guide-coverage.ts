@@ -928,6 +928,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "server.auth.invalid_google_credential": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "server.auth.invalid_recovery_code": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "server.auth.invalid_reset_token": { excluded: REASONS.NOT_ON_THESE_SCREENS },
+  "server.auth.invitation_region_unavailable": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "server.auth.logout_success": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "server.auth.logout_others_success": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "server.auth.not_authenticated": { excluded: REASONS.SAYS_WHAT_HAPPENED },

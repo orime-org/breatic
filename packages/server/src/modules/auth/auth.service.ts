@@ -12,7 +12,7 @@ import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 
 import { usersRepo as userRepo } from "@breatic/domain";
-import { claimEmailInvitations } from "@server/modules/invitation/claim-email-invitations.js";
+import { claimEmailInvitationsOnSignIn } from "@server/modules/invitation/claim-email-invitations.js";
 import {
   generateRecoveryCode,
   hashRecoveryCode,
@@ -135,7 +135,7 @@ export async function createAccount(
   }).catch((err: unknown) => {
     logger.error({ err, userId: user.id }, "ads_conversion_enqueue_failed");
   });
-  if (user.emailVerified) await claimEmailInvitations(user);
+  await claimEmailInvitationsOnSignIn(user);
   return { user, referral: outcome };
 }
 
@@ -247,7 +247,7 @@ export async function loginEmail(
     throw new UnauthorizedError(t("server.auth.invalid_credentials"));
   }
 
-  if (user.emailVerified) await claimEmailInvitations(user);
+  await claimEmailInvitationsOnSignIn(user);
   const token = await createSession(user.id);
   // Caller logs `user_logged_in` (method=email) audit line.
   return { user, token };
@@ -311,7 +311,7 @@ export async function loginOrCreateGoogle(
     user = (await userRepo.updateUser(user.id, { emailVerified: true })) ?? user;
   }
 
-  if (user.emailVerified) await claimEmailInvitations(user);
+  await claimEmailInvitationsOnSignIn(user);
   const token = await createSession(user.id);
   // Caller logs `user_logged_in` (method=google) audit line.
   return { user, token, created, referral: referralOutcome };

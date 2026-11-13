@@ -6,7 +6,10 @@
  * lists (inner#1955), beside domain's `REGION_FUNCTIONS`.
  */
 
-import type { NotificationListView, RecentItem } from "@breatic/shared";
+import type { NotificationListView, RecentItem, SignupInvitationPreview } from "@breatic/shared";
+import { profilesService } from "@breatic/domain";
+import { claimEmailInvitations } from "@server/modules/invitation/claim-email-invitations.js";
+import { getInvitationPreview } from "@server/modules/invitation/invitation.service.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import { withResolvedRefs } from "@server/modules/notification/notification-refs.js";
 import * as recentService from "@server/modules/recent/recent.service.js";
@@ -33,4 +36,19 @@ export const SERVER_REGION_FUNCTIONS = {
    * @returns The count.
    */
   countUnread: (userId: string): Promise<number> => notificationService.countUnread(userId),
+  /**
+   * The preview of an invitation this region issued.
+   * @param token - The invitation token.
+   * @returns The preview.
+   */
+  previewInvitation: (token: string): Promise<SignupInvitationPreview> => getInvitationPreview(token),
+  /**
+   * Claim this region's email invitations for an account that signed in.
+   * @param userId - The account.
+   * @returns Once claimed.
+   */
+  claimEmailInvitations: async (userId: string): Promise<void> => {
+    const account = (await profilesService.accountsOf([userId])).get(userId);
+    if (account !== undefined) await claimEmailInvitations(account);
+  },
 };

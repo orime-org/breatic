@@ -21,6 +21,10 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@server/modules/invitation/claim-email-invitations.js", () => ({
   claimEmailInvitations: mocks.claimEmailInvitations,
+  // Signing in claims this region's invitations for a verified mailbox.
+  claimEmailInvitationsOnSignIn: async (user: { emailVerified: boolean }) => {
+    if (user.emailVerified) await mocks.claimEmailInvitations(user);
+  },
 }));
 
 vi.mock("bcryptjs", () => ({

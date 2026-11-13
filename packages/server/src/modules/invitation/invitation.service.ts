@@ -9,7 +9,7 @@ import { profilesService } from "@breatic/domain";
 import * as projectRepo from "@server/modules/project/project.repo.js";
 import { studioRepo } from "@breatic/domain";
 import { claimEmailInvitations } from "@server/modules/invitation/claim-email-invitations.js";
-export { claimEmailInvitations } from "@server/modules/invitation/claim-email-invitations.js";
+export { claimEmailInvitations, claimEmailInvitationsOnSignIn } from "@server/modules/invitation/claim-email-invitations.js";
 import { invitationRepo, prepareInvitation, settleSignupInvitationDelivery } from "@server/modules/invitation/invitation-lifecycle.service.js";
 import type { InvitationKind, InvitationRole } from "@server/modules/invitation/invitation.types.js";
 import { isUniqueViolation } from "@breatic/core";

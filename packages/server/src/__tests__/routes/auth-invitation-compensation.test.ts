@@ -39,6 +39,10 @@ vi.mock("@server/modules", async (importOriginal) => ({
 
 vi.mock("@server/modules/invitation/claim-email-invitations.js", () => ({
   claimEmailInvitations: spies.claimEmailInvitations,
+  // Signing in claims this region's invitations for a verified mailbox.
+  claimEmailInvitationsOnSignIn: async (user: { emailVerified: boolean }) => {
+    if (user.emailVerified) await spies.claimEmailInvitations(user);
+  },
 }));
 
 import { authRoute } from "@server/routes/auth.js";

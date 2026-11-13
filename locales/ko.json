@@ -49,7 +49,8 @@
       "signup_code_exhausted": "이 코드는 더 이상 사용할 수 없습니다. 새 코드를 받으세요.",
       "signup_expired": "가입 요청이 만료되었습니다.",
       "signup_resend_cooldown": "{seconds, plural, other {#초}} 후에 다시 코드를 받으세요.",
-      "signup_code_send_failed": "인증 코드를 보내지 못했습니다. 다시 시도하세요."
+      "signup_code_send_failed": "인증 코드를 보내지 못했습니다. 다시 시도하세요.",
+      "invitation_region_unavailable": "지금은 이 초대를 열 수 없습니다. 잠시 후 다시 시도해 주세요."
     },
     "studio": {
       "slug_taken": "이미 사용 중인 Slug입니다. 다른 것을 선택하세요.",
