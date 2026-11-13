@@ -281,6 +281,27 @@ describe("a run reads what is sent while it runs", () => {
   });
 });
 
+describe("a reply the store cannot hold as written", () => {
+  it("is stored without what jsonb refuses, and the message is answered once", async () => {
+    const who = await seedOwner(sql, app);
+    const unstorable = (): Record<string, unknown>[] => [
+      { type: "text-start", id: "t" },
+      { type: "text-delta", id: "t", delta: "a\u0000b\ud83dc" },
+      { type: "text-end", id: "t" },
+      { type: "finish", finishReason: { unified: "stop", raw: undefined }, usage: { inputTokens: { total: 1, noCache: 1, cacheRead: 0, cacheWrite: 0 }, outputTokens: { total: 1, text: 1, reasoning: 0 } } },
+    ];
+    script.calls = [unstorable, unstorable];
+    await send(app, who, { message: "read that page" });
+    await untilIdle(who.conversationId);
+    await sync(app, who);
+    await untilIdle(who.conversationId);
+    const reply = (await rowsOf(who.conversationId)).find((r) => r.role === "assistant");
+    expect(reply?.parts.find((p) => p.type === "text")).toMatchObject({ text: "ab\ufffdc" });
+    expect(await listIds(keysOf(who.conversationId).taken)).toEqual([]);
+    expect(script.count).toBe(1);
+  });
+});
+
 describe("POST /chat/conversations/:id/sync", () => {
   it("opens a run for what waits and answers once its opening is done (RT-10)", async () => {
     const who = await seedOwner(sql, app);

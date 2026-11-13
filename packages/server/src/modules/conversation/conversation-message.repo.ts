@@ -33,6 +33,7 @@ import {
 import type { DbTx } from "@breatic/core";
 import { ASK_USER, RECORD_TOOL_NAMES } from "@breatic/domain";
 import { t } from "@breatic/shared";
+import { asStorable } from "@server/utils/storable-text.js";
 import type { MessageData, MessageInput, MessagePart } from "@breatic/shared";
 
 /** Trusted HTTP identity accompanying a first accepted card answer. */
@@ -193,8 +194,8 @@ async function insertIn(tx: DbTx, id: string, message: MessageInput, forModel?: 
     role: message.role,
     turnIndex,
     seq,
-    parts: message.parts,
-    ...(forModel === undefined ? {} : { forModel }),
+    parts: asStorable(message.parts),
+    ...(forModel === undefined ? {} : { forModel: asStorable(forModel) }),
   });
 
   await tx
@@ -233,11 +234,11 @@ async function settleInRow(
   settlement: AskSettlement,
 ): Promise<{ id: string; parts: MessagePart[]; forModel: unknown }> {
   const parts = row.parts.map((part) =>
-    part.type === "tool" && part.toolCallId === toolCallId ? { ...part, status: "success" as const, output: settlement.output } : part,
+    part.type === "tool" && part.toolCallId === toolCallId ? { ...part, status: "success" as const, output: asStorable(settlement.output) } : part,
   );
   const kept = row.forModel as { messages?: unknown[] } | null;
   const forModel =
-    kept && Array.isArray(kept.messages) ? { ...kept, messages: [...kept.messages, settlement.forModel] } : kept;
+    kept && Array.isArray(kept.messages) ? { ...kept, messages: [...kept.messages, asStorable(settlement.forModel)] } : kept;
   await tx.update(conversationMessages).set({ parts, forModel }).where(eq(conversationMessages.id, row.id));
   return { id: row.id, parts, forModel };
 }
@@ -482,7 +483,7 @@ export async function getReplyModelId(id: string, toolCallId: string): Promise<s
 export async function setUserForModel(id: string, turnIndex: number, forModel: unknown): Promise<void> {
   await db
     .update(conversationMessages)
-    .set({ forModel })
+    .set({ forModel: asStorable(forModel) })
     .where(
       and(
         eq(conversationMessages.conversationId, id),
