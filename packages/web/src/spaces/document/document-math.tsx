@@ -41,7 +41,7 @@ import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Textarea } from '@web/components/ui/textarea';
 import { useTranslation } from '@web/i18n/use-translation';
 import { MATH_BLOCK_SOURCE_ATTR, MATH_SOURCE_ATTR, formulaSourceHolder } from '@web/lib/formula-source';
-import { KATEX_OPTIONS } from '@web/lib/katex-options';
+import { DISPLAY_MATH_SCROLLER, KATEX_OPTIONS } from '@web/lib/katex-options';
 import { cn } from '@web/lib/utils';
 import { DOC_TABLE, cellDepthOf } from '@web/spaces/document/document-table-nodes';
 
@@ -464,7 +464,7 @@ const MathFace = React.memo(function MathFace({
           // scroller, as a formula in a chat reply does (`MarkdownMessage.tsx`);
           // the frame a selection draws sits around that scroller.
           <div data-math-frame className='mx-auto w-fit max-w-full'>
-            <ScrollArea scrollbars='horizontal' className='w-full [&_.katex-display]:my-0'>
+            <ScrollArea scrollbars='horizontal' className={cn('w-full', DISPLAY_MATH_SCROLLER)}>
               <div className='flex w-max min-w-full flex-col items-center'>{face}</div>
             </ScrollArea>
           </div>

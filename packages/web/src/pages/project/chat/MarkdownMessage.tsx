@@ -24,7 +24,8 @@ import remend from 'remend';
 
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { useTranslation } from '@web/i18n/use-translation';
-import { KATEX_OPTIONS } from '@web/lib/katex-options';
+import { DISPLAY_MATH_SCROLLER, KATEX_OPTIONS } from '@web/lib/katex-options';
+import { cn } from '@web/lib/utils';
 // Puts a copy handler on the document, so a copied formula reads as the
 // source the model wrote rather than as the glyphs it was drawn into.
 import '@web/pages/project/chat/copy-formula-source';
@@ -170,7 +171,7 @@ function ScrollableTable({ children }: { children?: ReactNode }): ReactElement {
  */
 function ScrollableMath({ children }: { children?: ReactNode }): ReactElement {
   return (
-    <ScrollArea className='my-[1em] [&_.katex-display]:my-0' scrollbars='horizontal'>
+    <ScrollArea className={cn('my-[1em]', DISPLAY_MATH_SCROLLER)} scrollbars='horizontal'>
       {children}
     </ScrollArea>
   );

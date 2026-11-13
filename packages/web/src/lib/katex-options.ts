@@ -41,3 +41,12 @@ export const KATEX_OPTIONS = {
   leqno: false,
   globalGroup: false,
 } as const;
+
+/**
+ * The classes of the sideways scroller a display formula sits in, in the chat
+ * and in the document body alike. A scroller clips what spills past its edges,
+ * and KaTeX draws tall glyphs (a fraction's numerator, a brace) a few pixels
+ * past its own box; the padding keeps them inside, as a KaTeX maintainer
+ * suggests (https://github.com/KaTeX/KaTeX/discussions/2942).
+ */
+export const DISPLAY_MATH_SCROLLER = '[&_.katex-display]:my-0 [&_.katex]:px-0.5 [&_.katex]:py-[0.25em]';
