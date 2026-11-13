@@ -35,9 +35,10 @@
  * only guess.
  */
 
-import { AppError, getStudioStorageQuota, logger } from "@breatic/core";
+import { AppError, env, getRedis, getRegionsConfig, logger } from "@breatic/core";
 import { t } from "@breatic/shared";
-import { assetService } from "@breatic/domain";
+import { assetService, directoryWrites, globalApi } from "@breatic/domain";
+import type { StorageBudget } from "@breatic/domain";
 import { accountStorageUsage } from "@server/modules/asset/assetUsage.service.js";
 import {
   claimNoticeWindow,
@@ -83,6 +84,25 @@ export async function assertStorageAllowance(
 }
 
 /**
+ * A Studio admin's ceiling and what the admin's Studios use in other regions,
+ * from the global region; outside it the answer is cached in Redis for
+ * `limits_cache_ttl_ms` (inner#1955).
+ * @param studioId - The studio the bytes land in.
+ * @returns The budget.
+ * @throws {Error} When the studio has no live admin, or the global region does not answer.
+ */
+async function storageBudget(studioId: string): Promise<StorageBudget> {
+  if (directoryWrites.inGlobalRegion()) return globalApi().getStorageBudget(studioId, env.REGION);
+  const redis = getRedis();
+  const key = `${env.ENV}:storage-budget:${studioId}`;
+  const cached = await redis.get(key);
+  if (cached !== null) return JSON.parse(cached) as StorageBudget;
+  const budget = await globalApi().getStorageBudget(studioId, env.REGION);
+  await redis.set(key, JSON.stringify(budget), "PX", getRegionsConfig().limits_cache_ttl_ms);
+  return budget;
+}
+
+/**
  * The same gate, for a caller that already holds the studio the bytes land in.
  * @param studioId - The studio whose pool the bytes land in; its current admin
  *   is the account judged.
@@ -93,14 +113,16 @@ export async function assertStudioStorageAllowance(
   studioId: string,
   purpose: StorageWritePurpose,
 ): Promise<void> {
-  const { adminUserId, storageBytes } = await getStudioStorageQuota(studioId);
+  const { adminUserId, storageBytes, elsewhereBytes } = await storageBudget(studioId);
 
   // Effective enterprise membership retains its storage exemption. Its
   // negotiated storage value is recorded, while the storage gate uses null.
   // This also preserves the exemption for legacy enterprise information.
   if (storageBytes === null) return;
 
-  const usedBytes = await accountStorageUsage(adminUserId);
+  // This region's Studios are read live on every write; other regions'
+  // usage is what they last reported (inner#1955).
+  const usedBytes = elsewhereBytes + (await accountStorageUsage(adminUserId));
   if (storageBytes - usedBytes <= 0) {
     // Logged on EVERY refusal, unlike the notice below. The bell is for the
     // admin and is deliberately quietened to one per window; this line is for

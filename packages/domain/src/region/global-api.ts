@@ -32,6 +32,7 @@ import {
 } from "@domain/region/studioDirectory.service.js";
 import { releaseSlug, reserveSlug } from "@domain/region/directory-writes.js";
 import { applyRegionEvent } from "@domain/region/regionOutboxApply.service.js";
+import { getStorageBudget, recordRegionUsage, type RegionUsageReport, type StorageBudget } from "@domain/region/storageUsage.service.js";
 import type { OutboxEvent } from "@domain/region/regionOutbox.service.js";
 import {
   getSpendableCredits,
@@ -185,6 +186,19 @@ export const GLOBAL_FUNCTIONS = {
    * @returns Once saved.
    */
   setAgentModel: (userId: string, model: string): Promise<void> => usersRepo.setAgentModel(userId, model),
+  /**
+   * A Studio admin's storage ceiling and what the admin's Studios use outside the calling region.
+   * @param studioId - The Studio.
+   * @param callerRegion - The calling region.
+   * @returns The budget.
+   */
+  getStorageBudget: (studioId: string, callerRegion: string): Promise<StorageBudget> => getStorageBudget(studioId, callerRegion),
+  /**
+   * Record what a region's Studios use.
+   * @param report - The region's report.
+   * @returns Once recorded.
+   */
+  recordRegionUsage: (report: RegionUsageReport): Promise<void> => recordRegionUsage(report),
   /** Queue an account's ad conversion, credited to its sign-up click; core's own client calls the same. */
   enqueueAdsConversion: enqueueAccountAdsConversion,
 };

@@ -15,6 +15,7 @@ import {
   slugReservations,
   studioDirectory,
   studioDirectoryMembers,
+  studioStorageUsageGlobal,
   userRegions,
 } from "@core/db/schema.js";
 
@@ -511,4 +512,50 @@ export async function listUserRegions(userId: string): Promise<string[]> {
     .from(userRegions)
     .where(eq(userRegions.userId, userId));
   return rows.map((row) => row.region);
+}
+
+/**
+ * Record what a region's Studios use, keeping only reports newer than the
+ * one already held for each Studio and region.
+ * @param region - The reporting region.
+ * @param asOf - When the region measured.
+ * @param usage - Bytes per Studio.
+ * @param tx - The recording transaction.
+ */
+export async function recordRegionUsage(
+  region: string,
+  asOf: Date,
+  usage: readonly { studioId: string; bytes: number }[],
+  tx: DbTx,
+): Promise<void> {
+  if (usage.length === 0) return;
+  await tx
+    .insert(studioStorageUsageGlobal)
+    .values(usage.map((entry) => ({ studioId: entry.studioId, region, bytes: entry.bytes, asOf })))
+    .onConflictDoUpdate({
+      target: [studioStorageUsageGlobal.studioId, studioStorageUsageGlobal.region],
+      set: { bytes: sql`excluded.bytes`, asOf: sql`excluded.as_of`, updatedAt: new Date() },
+      setWhere: sql`excluded.as_of > ${studioStorageUsageGlobal.asOf}`,
+    });
+}
+
+/**
+ * What an admin's Studios use in every region but one, as the regions last reported.
+ * @param adminUserId - The admin.
+ * @param exceptRegion - The region whose usage the caller reads live.
+ * @returns The bytes.
+ */
+export async function sumUsageElsewhere(adminUserId: string, exceptRegion: string): Promise<number> {
+  const [row] = await db
+    .select({ bytes: sql<string>`COALESCE(SUM(${studioStorageUsageGlobal.bytes}), 0)::text` })
+    .from(studioStorageUsageGlobal)
+    .innerJoin(studioDirectory, eq(studioDirectory.studioId, studioStorageUsageGlobal.studioId))
+    .where(
+      and(
+        eq(studioDirectory.adminUserId, adminUserId),
+        isNull(studioDirectory.deletedAt),
+        sql`${studioStorageUsageGlobal.region} <> ${exceptRegion}`,
+      ),
+    );
+  return Number(row?.bytes ?? 0);
 }

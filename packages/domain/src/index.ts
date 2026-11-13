@@ -33,6 +33,8 @@ export { REGION_FUNCTIONS, isKnownRegion, regionClient } from "@domain/region/re
 export * as directoryWrites from "@domain/region/directory-writes.js";
 export { globalApi, GLOBAL_FUNCTIONS, type Account, type GlobalApi } from "@domain/region/global-api.js";
 export * as profilesService from "@domain/region/profiles.service.js";
+export * as storageUsageService from "@domain/region/storageUsage.service.js";
+export type { StorageBudget } from "@domain/region/storageUsage.service.js";
 export type { Profile } from "@domain/region/studioDirectory.service.js";
 export { sumCreditsByOperationKeys } from "@domain/credit/agentUsage.repo.js";
 export * as webAnimationSourceRepo from "@domain/timeline/web-animation-source.repo.js";

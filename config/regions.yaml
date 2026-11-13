@@ -22,8 +22,9 @@
 # profile_cache_ttl_ms: how long a region caches names and avatars read from
 #   the global region. The relay interval plus this stays within sixty
 #   seconds, so a rename reaches every region within a minute.
-# limits_cache_ttl_ms: how long collab in a region caches a Studio's
-#   membership ceilings read from the global region when a Space opens.
+# limits_cache_ttl_ms: how long a region caches what the global region says
+#   about a Studio's membership: collab's editor ceiling when a Space opens,
+#   and the storage ceiling with the usage of the admin's other regions.
 global_api_timeout_ms: 5000
 region_probe_timeout_ms: 2000
 cross_region_fanout_timeout_ms: 2000
