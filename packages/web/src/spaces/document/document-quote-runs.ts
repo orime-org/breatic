@@ -18,6 +18,8 @@
 
 import type { Node as PMNode } from '@tiptap/pm/model';
 
+import { bodiesOf } from '@web/spaces/document/document-column-nodes';
+
 import { QUOTED } from '@web/spaces/document/document-list-block';
 
 /**
@@ -36,7 +38,7 @@ function walkGroup(
   group.forEach((block) => {
     if (block.type.name !== 'blockContainer') {
       out.push({ id: String(block.attrs['id']), quoted: block.attrs[QUOTED] === true });
-      block.forEach((row) => row.forEach((cell) => cells.push(cell)));
+      cells.push(...bodiesOf(block));
       return;
     }
     const content = block.child(0);

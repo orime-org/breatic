@@ -74,6 +74,22 @@ export function isColumnList(node: PMNode): boolean {
   return node.type.name === DOC_COLUMN_LIST;
 }
 
+/**
+ * The bodies a layout block holds, each a run of blocks of its own: a column
+ * group's columns, or a table's cells.
+ * @param node - The layout block.
+ * @returns Its bodies, in reading order.
+ */
+export function bodiesOf(node: PMNode): PMNode[] {
+  const bodies: PMNode[] = [];
+  if (node.type.name === DOC_COLUMN_LIST) {
+    node.forEach((column) => bodies.push(column));
+  } else {
+    node.forEach((row) => row.forEach((cell) => bodies.push(cell)));
+  }
+  return bodies;
+}
+
 /** A column's props as the block API carries them. */
 interface ColumnProps {
   readonly width: number;
