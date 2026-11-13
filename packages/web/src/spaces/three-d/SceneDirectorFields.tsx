@@ -44,15 +44,12 @@ function Row({ label, labelId, children }: { label: string; labelId: string; chi
  * @returns Preview and commit callbacks.
  */
 function useContinuousPatch(session: SceneSession, id: string): { preview: (patch: Omit<ScenePatch, 'id'>) => void; commit: () => void } {
-  const active = React.useRef(false);
+  // The session owns whether the drag is open: Escape, undo or leaving the window may have ended it.
   const preview = React.useCallback((patch: Omit<ScenePatch, 'id'>): void => {
-    if (!active.current) active.current = session.beginGesture();
-    if (active.current) session.previewGesture([{ ...patch, id }]);
+    if (session.getSnapshot().gestureActive || session.beginGesture()) session.previewGesture([{ ...patch, id }]);
   }, [session, id]);
   const commit = React.useCallback((): void => {
-    if (!active.current) return;
-    active.current = false;
-    session.endGesture(true);
+    if (session.getSnapshot().gestureActive) session.endGesture(true);
   }, [session]);
   return { preview, commit };
 }
@@ -71,7 +68,8 @@ export const SceneColorField = React.memo(function SceneColorField({ value, disa
   value: string; disabled: boolean; labelId: string; onPreview: (hex: string) => void; onCommit: () => void;
 }): React.JSX.Element {
   const onOpenChange = React.useCallback((open: boolean): void => { if (!open) onCommit(); }, [onCommit]);
-  const pick = React.useCallback((hex: string): void => onPreview(hex.toLowerCase()), [onPreview]);
+  // The hex input accepts three digits as well as six; the scene stores six.
+  const pick = React.useCallback((hex: string): void => onPreview((hex.length === 4 ? `#${[...hex.slice(1)].map((digit) => digit + digit).join('')}` : hex).toLowerCase()), [onPreview]);
   return <Popover onOpenChange={onOpenChange}>
     <PopoverTrigger asChild>
       <Button variant={null} size={null} aria-labelledby={labelId} disabled={disabled}
@@ -173,7 +171,7 @@ export const SceneDirectorFields = React.memo(function SceneDirectorFields(props
     </Row>
     <Row label={t('spaces.threeD.intensity')} labelId={`${ids}-intensity`}>
       <Slider aria-labelledby={`${ids}-intensity`} className='w-28' min={0} max={max} step={step} value={[object.intensity]} disabled={disabled}
-        onValueChange={([value]) => { if (value !== undefined) continuous.preview({ intensity: value }); }} onValueCommit={continuous.commit} />
+        onValueChange={([value]) => { if (value !== undefined) continuous.preview({ intensity: value }); }} onValueCommit={continuous.commit} onPointerUp={continuous.commit} />
       <span className='w-10 text-right text-xs tabular-nums text-muted-foreground'>{Number(object.intensity.toFixed(1))}</span>
     </Row>
     <Row label={t('spaces.threeD.castShadow')} labelId={`${ids}-shadow`}>
@@ -181,7 +179,7 @@ export const SceneDirectorFields = React.memo(function SceneDirectorFields(props
     </Row>
     {object.model.type === 'spot' ? <Row label={t('spaces.threeD.angle')} labelId={`${ids}-angle`}>
       <Slider aria-labelledby={`${ids}-angle`} className='w-28' min={SCENE_SPOT_ANGLE_MIN} max={SCENE_SPOT_ANGLE_MAX} step={1} value={[object.angle ?? SCENE_SPOT_ANGLE_DEFAULT]}
-        disabled={disabled} onValueChange={([value]) => { if (value !== undefined) continuous.preview({ angle: value }); }} onValueCommit={continuous.commit} />
+        disabled={disabled} onValueChange={([value]) => { if (value !== undefined) continuous.preview({ angle: value }); }} onValueCommit={continuous.commit} onPointerUp={continuous.commit} />
       <span className='w-10 text-right text-xs tabular-nums text-muted-foreground'>{`${Math.round(object.angle ?? SCENE_SPOT_ANGLE_DEFAULT)}°`}</span>
     </Row> : null}
     {lock}
