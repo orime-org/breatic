@@ -29,7 +29,7 @@ import { openSmokeProject } from '../helpers/project';
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 import { dropFile } from '../helpers/upload';
-import { startNewConversation } from '../helpers/conversation';
+import { answerIfAsked, say, startNewConversation } from '../helpers/conversation';
 import { seedNode, wire } from '../helpers/mini-tool';
 
 const OUT = process.env.TEMPLATE_RUN_OUT ?? join(__dirname, '../../test-results/template-runs');
@@ -423,21 +423,6 @@ const AGENT_ASK = process.env.TEMPLATE_RUN_ASK;
 const ASK_IMAGE = process.env.TEMPLATE_RUN_ASK_IMAGE === undefined ? CHARACTER : process.env.TEMPLATE_RUN_ASK_IMAGE === '' ? undefined : join(FIXTURES, process.env.TEMPLATE_RUN_ASK_IMAGE);
 const ASK_REPLY = process.env.TEMPLATE_RUN_ASK_REPLY;
 
-/**
- * Send a chat message and wait for the turn it starts to end.
- * @param text - What the user writes.
- * @param bubbles - How many message bubbles the conversation holds once the reply has begun.
- * @returns Nothing.
- */
-async function say(text: string, bubbles: number): Promise<void> {
-  await page.getByTestId('chat-composer-box').fill(text);
-  const send = page.getByTestId('chat-composer-send');
-  await expect(send).toBeEnabled({ timeout: 60_000 });
-  await send.click();
-  await expect(page.getByTestId('message-bubble')).toHaveCount(bubbles, { timeout: 200_000 });
-  await expect(page.getByTestId('chat-composer-abort')).toHaveCount(0, { timeout: 600_000 });
-}
-
 if (AGENT_ASK !== undefined) test('agent @needs-model', async () => {
   test.setTimeout(1_800_000);
   const composer = page.getByTestId('chat-composer-box');
@@ -448,16 +433,24 @@ if (AGENT_ASK !== undefined) test('agent @needs-model', async () => {
     await page.getByTestId('chat-composer-file-input').setInputFiles(ASK_IMAGE);
     await expect(page.getByTestId('chat-composer-chips')).toContainText(basename(ASK_IMAGE, extname(ASK_IMAGE)), { timeout: 30_000 });
   }
-  await say(AGENT_ASK, 2);
-  // The agent asks what only the user knows before it fills a template; the
-  // user answers in the chat, which closes its questionnaire as replied to.
-  if (ASK_REPLY !== undefined && (await page.getByTestId('proposal-card').count()) === 0) await say(ASK_REPLY, 4);
-  const turn = await page.evaluate(async () => {
-    const list = await (await fetch('/api/v1/chat/conversations?limit=1', { credentials: 'include' })).json();
-    const id = list?.data?.conversations?.[0]?.id as string;
-    const read = await (await fetch(`/api/v1/chat/conversations/${id}`, { credentials: 'include' })).json();
-    return JSON.stringify((read?.data?.messages ?? []).filter((m: { role?: string }) => m.role === 'assistant').flatMap((m: { parts?: unknown[] }) => m.parts ?? []));
-  });
+  await say(page, AGENT_ASK, 2);
+  // The agent asks what only the user knows before it fills a template.
+  if (ASK_REPLY !== undefined) await answerIfAsked(page, ASK_REPLY);
+  // The turn's end on screen can come before the server writes the reply,
+  // while the user's message is stored as the turn starts.
+  let turn = '';
+  await expect
+    .poll(async () => {
+      const read = await page.evaluate(async () => {
+        const list = await (await fetch('/api/v1/chat/conversations?limit=1', { credentials: 'include' })).json();
+        const id = list?.data?.conversations?.[0]?.id as string;
+        const conversation = await (await fetch(`/api/v1/chat/conversations/${id}`, { credentials: 'include' })).json();
+        return (conversation?.data?.messages ?? []) as { role?: string; parts?: unknown[] }[];
+      });
+      turn = JSON.stringify(read.filter((m) => m.role === 'assistant').flatMap((m) => m.parts ?? []));
+      return read.at(-1)?.role;
+    }, { timeout: 30_000 })
+    .toBe('assistant');
   record({ template: 'agent', label: LABEL, ask: AGENT_ASK, reply: ASK_REPLY, parts: JSON.parse(turn) as unknown });
   // Recorded first, so a turn that ends without a proposal still shows what it did.
   await expect(page.getByTestId('proposal-card').last()).toBeVisible({ timeout: 30_000 });

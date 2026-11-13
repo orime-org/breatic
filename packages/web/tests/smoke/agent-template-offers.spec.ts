@@ -27,7 +27,7 @@ import { basename, join } from 'node:path';
 import { expect, type Page } from 'playwright/test';
 import { GENERATION_TEMPLATES, feedsOf, templateAnchor, type CanvasProposal } from '@breatic/shared';
 import { test } from '../helpers/slot';
-import { startNewConversation } from '../helpers/conversation';
+import { answerIfAsked, say, startNewConversation } from '../helpers/conversation';
 
 import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace } from '../helpers/space';
@@ -188,14 +188,15 @@ async function lastTurn(p: Page): Promise<Turn> {
         part.type === 'tool-get_generation_template' && typeof part.output === 'string' && part.input?.id ? [part.input.id] : [],
       ),
       said: parts.flatMap((part) => (part.type === 'text' ? [part.text ?? ''] : part.type?.startsWith('tool-ask_user') ? [JSON.stringify(part.input)] : [])).join('\n'),
-      stored: messages.some((m) => m.role === 'assistant'),
+      stored: messages.at(-1)?.role === 'assistant',
     };
   });
 }
 
 /**
  * The newest turn once its reply is stored: the turn's end on screen can come
- * before the server writes the reply, which it writes whole.
+ * before the server writes the reply, which it writes whole, while the user's
+ * message is stored as the turn starts.
  * @param p - The signed-in page.
  * @returns What the turn did and said.
  */
@@ -228,20 +229,8 @@ async function ask(message: string, reply: string, attach?: string): Promise<voi
     await page.getByTestId('chat-composer-file-input').setInputFiles(join(__dirname, '../fixtures', attach));
     await expect(page.getByTestId('chat-composer-chips')).toContainText(basename(attach), { timeout: 30_000 });
   }
-  await composer.fill(message);
-  // Attachments still uploading hold the send back; a press before then is
-  // ignored, so wait for the button the user would see light up.
-  const send = page.getByTestId('chat-composer-send');
-  await expect(send).toBeEnabled({ timeout: 60_000 });
-  await send.click();
-  await expect(page.getByTestId('message-bubble')).toHaveCount(2, { timeout: 200_000 });
-  await expect(page.getByTestId('chat-composer-abort')).toHaveCount(0, { timeout: 200_000 });
-  if ((await page.getByTestId('proposal-card').count()) > 0) return;
-  // Answering in the chat closes the agent's questionnaire as replied to.
-  await composer.fill(reply);
-  await send.click();
-  await expect(page.getByTestId('message-bubble')).toHaveCount(4, { timeout: 200_000 });
-  await expect(page.getByTestId('chat-composer-abort')).toHaveCount(0, { timeout: 200_000 });
+  await say(page, message, 2);
+  await answerIfAsked(page, reply);
 }
 
 test.beforeEach(async ({ browser }) => {
