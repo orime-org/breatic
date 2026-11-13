@@ -41,9 +41,7 @@ import { accountActivityRepo } from "@breatic/core";
 import { db } from "@breatic/core";
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
-import * as studioService from "@server/modules/studio/studio.service.js";
 import * as projectRepo from "@server/modules/project/project.repo.js";
-import { studioRepo } from "@breatic/domain";
 import * as requestsRepo from "@server/modules/role-upgrade-request/roleUpgradeRequests.repo.js";
 import { usersRepo as userRepo } from "@breatic/domain";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
@@ -64,6 +62,7 @@ import { ConflictError, NotFoundError } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { t } from "@breatic/shared";
 import type { NotificationEntity, RequestFailedReason } from "@breatic/shared";
+import { profilesService } from "@breatic/domain";
 
 interface RoleUpgradeRequestInput {
   requesterUserId: string;
@@ -414,10 +413,7 @@ export async function readdressOnOwnerChange(
   }
   if (others.length === 0) return;
   const project = await projectRepo.getProjectById(projectId, tx);
-  const profiles = await studioRepo.getPersonalProfilesByCreators(
-    others.map((r) => r.requesterUserId),
-    tx,
-  );
+  const profiles = await profilesService.personalProfiles(others.map((r) => r.requesterUserId));
   for (const req of others) {
     const entry = await notificationService.createRoleUpgradeRequest({
       ownerUserId: newOwnerUserId,
@@ -583,7 +579,7 @@ async function fail(req: OpenRequest, reason: RequestFailedReason, tx: DbTx): Pr
 async function resolveActorProfile(
   userId: string,
 ): Promise<{ name: string; handle: string }> {
-  const profiles = await studioService.getPersonalStudioProfilesByUserIds([
+  const profiles = await profilesService.personalProfiles([
     userId,
   ]);
   const p = profiles.get(userId);

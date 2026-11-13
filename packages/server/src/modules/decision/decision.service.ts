@@ -48,6 +48,7 @@ import { studioRepo } from "@breatic/domain";
 import * as projectRepo from "@server/modules/project/project.repo.js";
 import { MS_PER_DAY } from "@server/config/limits.js";
 import type { RequestFailedReason } from "@breatic/shared";
+import { profilesService } from "@breatic/domain";
 
 
 /** Terminal status words meaning the recipient said yes. */
@@ -210,7 +211,7 @@ async function readContainerName(
  */
 async function readActor(userId: string): Promise<{ name: string; handle: string }> {
   if (userId === "") return { name: "", handle: "" };
-  const profiles = await studioRepo.getPersonalProfilesByCreators([userId]);
+  const profiles = await profilesService.personalProfiles([userId]);
   const profile = profiles.get(userId);
   return { name: profile?.name ?? "", handle: profile?.slug ?? "" };
 }

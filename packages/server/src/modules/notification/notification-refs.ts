@@ -29,6 +29,7 @@ import type {
   NotificationListView,
   NotificationRef,
 } from "@breatic/shared";
+import { profilesService } from "@breatic/domain";
 
 /**
  * Payload keys that hold a user id, a studio id, and a project id.
@@ -107,7 +108,7 @@ export async function withResolvedRefs(
   }
 
   const [users, studios, projects] = await Promise.all([
-    studioRepo.getPersonalProfilesByCreators(userIds),
+    profilesService.personalProfiles(userIds),
     studioRepo.getIdentitiesByStudioIds(studioIds),
     projectRepo.getIdentitiesByProjectIds([...projectIds]),
   ]);

@@ -38,6 +38,7 @@ import { db, trackServerEvent } from "@breatic/core";
 import { ConflictError, NotFoundError } from "@breatic/core";
 import { directoryWrites, globalApi, studioMembersRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
+import { profilesService } from "@breatic/domain";
 
 /** Roles an admin may invite a user as — admin is granted via transfer only. */
 type InvitableRole = "maintainer" | "guest";
@@ -134,6 +135,7 @@ async function acceptInTransaction(
     throw new NotFoundError(t("server.error.not_found"));
   }
   const { studio_members: memberLimit } = await globalApi().getLimitsForStudio(targetStudioId);
+  const inviteeProfiles = await profilesService.personalProfiles([receiverUserId]);
   return db.transaction(async (tx) => {
 
     // Taken BEFORE the CAS, matching the order the project side has to use
@@ -202,11 +204,7 @@ async function acceptInTransaction(
       await notificationRepo.markRead(accepted.notificationId, receiverUserId, tx);
     }
 
-    const profiles = await studioRepo.getPersonalProfilesByCreators(
-      [accepted.invitedUserId],
-      tx,
-    );
-    const invitee = profiles.get(accepted.invitedUserId);
+    const invitee = inviteeProfiles.get(accepted.invitedUserId);
     await notificationService.createStudioInviteAccepted({
       userId: accepted.invitedBy,
       payload: {

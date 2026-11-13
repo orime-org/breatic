@@ -16,9 +16,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const studioRepoMock = vi.hoisted(() => ({
   createPersonalStudio: vi.fn(),
-  getPersonalByCreator: vi.fn(),
-  getPersonalIdentitiesByCreators: vi.fn(),
-  getPersonalProfilesByCreators: vi.fn(),
   getBySlug: vi.fn(),
   listByUser: vi.fn(),
   countMembersByStudioIds: vi.fn(),
@@ -28,15 +25,17 @@ const studioRepoMock = vi.hoisted(() => ({
 // Whether this deployment sells anything decides whether the trial grant's
 // figure is read at all, so the flag is a knob here rather than whatever the
 // developer's own .env happens to say.
-const { envRef, mockTrialGrantCredits } = vi.hoisted(() => ({
+const { envRef, mockTrialGrantCredits, mockFindPersonalByCreator } = vi.hoisted(() => ({
   envRef: { PAYMENT_ENABLED: true, GLOBAL_REGION: "us-west", REGION_API_URLS: { sg: "http://sg.invalid" } },
   mockTrialGrantCredits: vi.fn(() => 100),
+  mockFindPersonalByCreator: vi.fn(),
 }));
 vi.mock("@breatic/core", async (importOriginal: () => Promise<Record<string, unknown>>) => {
   const actual = await importOriginal();
   return {
     ...actual,
     env: envRef,
+    studioDirectoryRepo: { findPersonalByCreator: mockFindPersonalByCreator },
     db: {
       transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) =>
         cb({ TX: true }),
@@ -80,8 +79,6 @@ const studioRepo = studioRepoMock;
 import {
   createPersonalStudio,
   getPersonalStudio,
-  getPersonalStudioIdentitiesByUserIds,
-  getPersonalStudioProfilesByUserIds,
   getStudioDetail,
   listUserStudios,
 } from "../studio.service.js";
@@ -176,58 +173,25 @@ describe("createPersonalStudio", () => {
 });
 
 describe("getPersonalStudio", () => {
-  it("returns the user's personal studio when present", async () => {
-    vi.mocked(studioRepo.getPersonalByCreator).mockResolvedValueOnce(STUDIO);
-    expect(await getPersonalStudio("user-1")).toBe(STUDIO);
+  it("returns the user's personal studio from the directory when present", async () => {
+    mockFindPersonalByCreator.mockResolvedValueOnce({
+      studioId: "studio-1",
+      name: "Alice",
+      slug: "alice-handle",
+      avatarUrl: null,
+    });
+    expect(await getPersonalStudio("user-1")).toEqual({
+      id: "studio-1",
+      name: "Alice",
+      slug: "alice-handle",
+      avatarUrl: null,
+    });
+    expect(mockFindPersonalByCreator).toHaveBeenCalledWith("user-1");
   });
 
   it("returns null when the user has not completed onboarding (no studio)", async () => {
-    vi.mocked(studioRepo.getPersonalByCreator).mockResolvedValueOnce(null);
+    mockFindPersonalByCreator.mockResolvedValueOnce(null);
     expect(await getPersonalStudio("user-1")).toBeNull();
-  });
-});
-
-describe("getPersonalStudioIdentitiesByUserIds", () => {
-  it("delegates to the repo's batch identity lookup (name + avatar)", async () => {
-    const identities = new Map([
-      ["user-1", { name: "alice-handle", avatarUrl: "https://cdn/a.png" }],
-    ]);
-    vi.mocked(studioRepo.getPersonalIdentitiesByCreators).mockResolvedValueOnce(
-      identities,
-    );
-
-    const result = await getPersonalStudioIdentitiesByUserIds([
-      "user-1",
-      "user-2",
-    ]);
-
-    expect(result).toBe(identities);
-    expect(studioRepo.getPersonalIdentitiesByCreators).toHaveBeenCalledWith([
-      "user-1",
-      "user-2",
-    ]);
-  });
-});
-
-describe("getPersonalStudioProfilesByUserIds", () => {
-  it("delegates to the repo's batch profile lookup (name + slug)", async () => {
-    const profiles = new Map([
-      ["user-1", { name: "Alice", slug: "alice-handle", deleted: false }],
-    ]);
-    vi.mocked(studioRepo.getPersonalProfilesByCreators).mockResolvedValueOnce(
-      profiles,
-    );
-
-    const result = await getPersonalStudioProfilesByUserIds([
-      "user-1",
-      "user-2",
-    ]);
-
-    expect(result).toBe(profiles);
-    expect(studioRepo.getPersonalProfilesByCreators).toHaveBeenCalledWith([
-      "user-1",
-      "user-2",
-    ]);
   });
 });
 

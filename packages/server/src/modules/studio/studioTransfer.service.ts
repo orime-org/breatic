@@ -60,6 +60,7 @@ import {
 } from "@server/utils/deferred-decision.js";
 import type { Refused } from "@server/utils/deferred-decision.js";
 import type { RequestFailedReason } from "@breatic/shared";
+import { profilesService } from "@breatic/domain";
 
 /**
  * The current admin offers the studio to an existing member.
@@ -104,7 +105,7 @@ export async function requestTransfer(
   }
 
   const expiresAt = new Date(Date.now() + getDecisionWindowMs());
-  const profiles = await studioRepo.getPersonalProfilesByCreators([
+  const profiles = await profilesService.personalProfiles([
     fromAdminUserId,
   ]);
   const from = profiles.get(fromAdminUserId);
@@ -328,7 +329,7 @@ async function finishAccepted(transferId: string): Promise<void> {
   // notification, needing no transactional consistency — and a read issued from
   // inside a transaction reaches for a SECOND pooled connection while the first
   // is still held.
-  const accepterProfiles = await studioRepo.getPersonalProfilesByCreators([parties.toUserId]);
+  const accepterProfiles = await profilesService.personalProfiles([parties.toUserId]);
   await db.transaction(async (tx) => {
     await studioRepo.lockStudio(parties.studioId, tx);
     const row = await transfersRepo.lockRequest(transferId, tx);

@@ -444,6 +444,13 @@ export const mocks = {
     status: "skipped",
     reason: "backend_disabled",
   }),
+  profilesService: {
+    profilesOf: vi.fn().mockResolvedValue(new Map()),
+    personalProfiles: vi.fn().mockResolvedValue(new Map()),
+    personalIdentities: vi.fn().mockResolvedValue(new Map()),
+    accountsOf: vi.fn().mockResolvedValue(new Map()),
+    accountByEmail: vi.fn().mockResolvedValue(null),
+  },
   studioService: {
     createPersonalStudio: vi.fn().mockResolvedValue({
       id: "studio-1",
@@ -459,7 +466,6 @@ export const mocks = {
       type: "personal",
       name: "Personal Studio",
     }),
-    getPersonalStudioIdentitiesByUserIds: vi.fn().mockResolvedValue(new Map()),
   },
 };
 
@@ -606,6 +612,7 @@ export const domainMock = async () => ({
   isGenerationId: realIsGenerationId,
   handOffLookups: mocks.handOffLookups,
   usersRepo: mocks.userRepo,
+  profilesService: mocks.profilesService,
   // The same shape as the real one: every tool in the set gets the recorder.
   usageContextFor: (tools: Record<string, unknown>, usage: unknown) =>
     Object.fromEntries(Object.keys(tools).map((name) => [name, { usage }])),

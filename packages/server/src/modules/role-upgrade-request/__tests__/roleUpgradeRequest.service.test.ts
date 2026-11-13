@@ -75,7 +75,13 @@ vi.mock("@breatic/core", async (importOriginal) => {
   };
 });
 // The email is queued for the worker; the job carries the built mail.
-vi.mock("@breatic/domain", () => ({ enqueueMail: vi.fn(async () => {}), usersRepo: { getUserById: vi.fn() } }));
+vi.mock("@breatic/domain", () => ({
+  enqueueMail: vi.fn(async () => {}),
+  usersRepo: { getUserById: vi.fn() },
+  // The request / approve / reject paths resolve the actor's display identity
+  // (name + personal-studio slug = @handle) for the bell payload.
+  profilesService: { personalProfiles: vi.fn() },
+}));
 vi.mock("../roleUpgradeRequests.repo.js", () => ({
   createPending: vi.fn(),
   attachNotification: vi.fn(),
@@ -101,11 +107,6 @@ vi.mock("../../notification/notification.service.js", async (importOriginal) => 
     createRoleUpgradeRejected: vi.fn(),
   };
 });
-// The request / approve / reject paths resolve the actor's display identity
-// (name + personal-studio slug = @handle) for the bell payload.
-vi.mock("../../studio/studio.service.js", () => ({
-  getPersonalStudioProfilesByUserIds: vi.fn(),
-}));
 // The outcome notification's project label is read from the repo with the
 // transaction's own handle — reading it through the service would reach for a
 // second pooled connection while the first is still held.
@@ -128,11 +129,10 @@ vi.mock("@server/config/limits.js", () => ({
 
 import * as notificationRepo from "../../notification/notification.repo.js";
 import * as notificationService from "../../notification/notification.service.js";
-import * as studioService from "../../studio/studio.service.js";
 import * as projectRepo from "../../project/project.repo.js";
 import * as requestsRepo from "../roleUpgradeRequests.repo.js";
 import { projectMembersRepo } from "@breatic/core";
-import { enqueueMail, usersRepo as userRepo } from "@breatic/domain";
+import { enqueueMail, profilesService, usersRepo as userRepo } from "@breatic/domain";
 import * as roleUpgradeRequestService from "../roleUpgradeRequest.service.js";
 import { NotFoundError, ForbiddenError, ConflictError } from "@breatic/core";
 
@@ -146,8 +146,8 @@ const VIEWER = "u-viewer";
 const PID = "p-1";
 const RID = "r-1";
 const NID = "n-1";
-const VIEWER_PROFILE = { name: "Vicky Viewer", slug: "vicky" };
-const OWNER_PROFILE = { name: "Olivia Owner", slug: "olivia" };
+const VIEWER_PROFILE = { name: "Vicky Viewer", slug: "vicky", deleted: false };
+const OWNER_PROFILE = { name: "Olivia Owner", slug: "olivia", deleted: false };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -155,7 +155,7 @@ beforeEach(() => {
   // Default: no actor profile resolved (callers fall back to ""). Happy-path
   // tests override with a specific name + slug (@handle) per the bell payload.
   vi.mocked(
-    studioService.getPersonalStudioProfilesByUserIds,
+    profilesService.personalProfiles,
   ).mockResolvedValue(new Map());
   vi.mocked(projectRepo.lockLiveProject).mockResolvedValue(true);
   vi.mocked(projectMembersRepo.getOwner).mockResolvedValue(OWNER);
@@ -224,7 +224,7 @@ function fakeNotification(): Awaited<
 describe("request", () => {
   it("files the row and the bell entry with one shared deadline", async () => {
     vi.mocked(
-      studioService.getPersonalStudioProfilesByUserIds,
+      profilesService.personalProfiles,
     ).mockResolvedValueOnce(new Map([[VIEWER, VIEWER_PROFILE]]));
     vi.mocked(requestsRepo.createPending).mockResolvedValueOnce({
       id: RID,
@@ -274,7 +274,7 @@ describe("request", () => {
     // looks exactly like a builder with one — so the assertion is on the
     // transport, not on the template.
     vi.mocked(
-      studioService.getPersonalStudioProfilesByUserIds,
+      profilesService.personalProfiles,
     ).mockResolvedValueOnce(new Map([[VIEWER, VIEWER_PROFILE]]));
     vi.mocked(requestsRepo.createPending).mockResolvedValueOnce({
       id: RID,
@@ -306,7 +306,7 @@ describe("request", () => {
 
   it("skips the email when the caller had no Origin to build a link from", async () => {
     vi.mocked(
-      studioService.getPersonalStudioProfilesByUserIds,
+      profilesService.personalProfiles,
     ).mockResolvedValueOnce(new Map([[VIEWER, VIEWER_PROFILE]]));
     vi.mocked(requestsRepo.createPending).mockResolvedValueOnce({
       id: RID,
@@ -395,7 +395,7 @@ describe("approve", () => {
       true,
     );
     vi.mocked(
-      studioService.getPersonalStudioProfilesByUserIds,
+      profilesService.personalProfiles,
     ).mockResolvedValueOnce(new Map([[OWNER, OWNER_PROFILE]]));
 
     await roleUpgradeRequestService.approve({

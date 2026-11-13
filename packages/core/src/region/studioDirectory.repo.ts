@@ -7,7 +7,7 @@
  * offer is open on it. Only the global region reads or writes these rows.
  */
 
-import { and, eq, isNull, lte, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lte, sql } from "drizzle-orm";
 import { db, type DbTx } from "@core/db/client.js";
 import { projectDirectory, slugReservations, studioDirectory, studioDirectoryMembers, userRegions } from "@core/db/schema.js";
 
@@ -64,6 +64,47 @@ export async function findLive(studioId: string): Promise<DirectoryRow | null> {
     .select(columns)
     .from(studioDirectory)
     .where(and(eq(studioDirectory.studioId, studioId), isNull(studioDirectory.deletedAt)))
+    .limit(1);
+  return row ?? null;
+}
+
+/**
+ * The personal Studio rows of these users, live and deleted; a user who has
+ * not finished onboarding has none.
+ * @param userIds - The users.
+ * @returns Their rows, in no order.
+ */
+export async function listPersonalByCreators(userIds: readonly string[]): Promise<DirectoryRow[]> {
+  if (userIds.length === 0) return [];
+  return db
+    .select(columns)
+    .from(studioDirectory)
+    .where(
+      and(
+        inArray(studioDirectory.createdByUserId, [...userIds]),
+        eq(studioDirectory.type, "personal"),
+        eq(studioDirectory.state, "live"),
+      ),
+    );
+}
+
+/**
+ * One user's live personal Studio row.
+ * @param userId - The user.
+ * @returns The row, or null before onboarding.
+ */
+export async function findPersonalByCreator(userId: string): Promise<DirectoryRow | null> {
+  const [row] = await db
+    .select(columns)
+    .from(studioDirectory)
+    .where(
+      and(
+        eq(studioDirectory.createdByUserId, userId),
+        eq(studioDirectory.type, "personal"),
+        eq(studioDirectory.state, "live"),
+        isNull(studioDirectory.deletedAt),
+      ),
+    )
     .limit(1);
   return row ?? null;
 }

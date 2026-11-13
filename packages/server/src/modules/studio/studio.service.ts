@@ -23,7 +23,7 @@ import { studioRepo } from "@breatic/domain";
 import * as studioInvitationsRepo from "@server/modules/studio/studioInvitations.repo.js";
 import { isUniqueViolation } from "@breatic/core";
 import { randomUUID } from "node:crypto";
-import { db } from "@breatic/core";
+import { db, studioDirectoryRepo } from "@breatic/core";
 import { ConflictError, NotFoundError, ValidationError } from "@breatic/core";
 import { env } from "@breatic/core";
 import {
@@ -48,6 +48,7 @@ import type {
   StudioMembersView,
   StudioSummary,
 } from "@breatic/shared";
+
 
 /**
  * Create the user's personal studio with the slug they chose at onboarding,
@@ -265,7 +266,9 @@ export async function updateStudio(
 }
 
 /**
- * Look up a user's personal studio without creating one.
+ * Look up a user's personal studio without creating one, from the global
+ * directory, which holds it whichever region the Studio lives in
+ * (inner#1955). Served by the global region's sign-in and `/auth/me`.
  *
  * Returns `null` when the user has registered but not yet completed the
  * slug-setup step. Callers that require a studio to exist (project
@@ -274,42 +277,11 @@ export async function updateStudio(
  * @param userId - User UUID
  * @returns The user's personal studio, or `null` if none exists
  */
-export async function getPersonalStudio(userId: string): Promise<Studio | null> {
-  return studioRepo.getPersonalByCreator(userId);
-}
-
-/**
- * Resolve the display `name` + `avatarUrl` of each user's personal studio in
- * one query.
- *
- * Backs the `/users` batch display-info endpoint — name and avatar both live
- * on the personal studio now (pointer model; avatar moved off `users`
- * 2026-07-22, #1808). Users without a personal studio (mid-onboarding) are
- * simply absent from the returned map; callers fall back to the email
- * local-part (and a null avatar).
- * @param userIds - User UUIDs to resolve (deduped + capped by the caller)
- * @returns Map of `userId → { name, avatarUrl }` (missing for users with no studio)
- */
-export async function getPersonalStudioIdentitiesByUserIds(
-  userIds: string[],
-): Promise<Map<string, { name: string; avatarUrl: string | null }>> {
-  return studioRepo.getPersonalIdentitiesByCreators(userIds);
-}
-
-/**
- * Resolve the display `name` + URL `slug` (handle) of each user's personal
- * studio in one query.
- *
- * The bell notification actor-identity source: the slug is the `@handle` shown
- * beside the name and the `/studio/{slug}` link target. Users mid-onboarding
- * (no personal studio) are absent from the map; callers fall back.
- * @param userIds - User UUIDs to resolve (deduped + capped by the caller)
- * @returns Map of `userId → { name, slug }` (missing for users with no studio)
- */
-export async function getPersonalStudioProfilesByUserIds(
-  userIds: string[],
-): Promise<Map<string, { name: string; slug: string }>> {
-  return studioRepo.getPersonalProfilesByCreators(userIds);
+export async function getPersonalStudio(
+  userId: string,
+): Promise<{ id: string; name: string; slug: string; avatarUrl: string | null } | null> {
+  const row = await studioDirectoryRepo.findPersonalByCreator(userId);
+  return row === null ? null : { id: row.studioId, name: row.name, slug: row.slug, avatarUrl: row.avatarUrl };
 }
 
 /**

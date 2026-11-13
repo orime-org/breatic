@@ -22,7 +22,14 @@ import {
   type MembershipLimits,
 } from "@breatic/core";
 import type { ProjectCreditsView } from "@breatic/shared";
-import { changeDirectoryAdmin, type AdminChange, type AdminChangeResult } from "@domain/region/studioDirectory.service.js";
+import * as usersRepo from "@domain/auth/user.repo.js";
+import {
+  changeDirectoryAdmin,
+  getProfiles,
+  type AdminChange,
+  type AdminChangeResult,
+  type Profile,
+} from "@domain/region/studioDirectory.service.js";
 import { releaseSlug, reserveSlug } from "@domain/region/directory-writes.js";
 import { applyRegionEvent } from "@domain/region/regionOutboxApply.service.js";
 import type { OutboxEvent } from "@domain/region/regionOutbox.service.js";
@@ -34,6 +41,27 @@ import {
   type RegionalChargeRequest,
 } from "@domain/credit/creditLot.service.js";
 import { positionHere, releaseHere, reserveHere, type HoldFields, type ReserveOutcome } from "@domain/credit/creditHold.service.js";
+
+/** An account as other regions read it. */
+export interface Account {
+  id: string;
+  email: string;
+  emailVerified: boolean;
+  locale: string;
+}
+
+/**
+ * The account fields other regions read.
+ * @param user - The account.
+ * @param user.id - Its id.
+ * @param user.email - Its address.
+ * @param user.emailVerified - Whether the address is proven.
+ * @param user.locale - Its language.
+ * @returns Those fields.
+ */
+function accountOf(user: { id: string; email: string; emailVerified: boolean; locale: string }): Account {
+  return { id: user.id, email: user.email, emailVerified: user.emailVerified, locale: user.locale };
+}
 
 /** The global functions, as the global region runs them. */
 export const GLOBAL_FUNCTIONS = {
@@ -123,6 +151,40 @@ export const GLOBAL_FUNCTIONS = {
   claimAccountMilestone: async (kind: FirstMilestone, userId: string): Promise<{ claimed: boolean }> => ({
     claimed: await claimFirstMilestone(kind, userId),
   }),
+  /**
+   * How each of these users is shown.
+   * @param userIds - The users.
+   * @returns Each known user's profile.
+   */
+  getProfiles: (userIds: string[]): Promise<Record<string, Profile>> => getProfiles(userIds),
+  /**
+   * The accounts behind these ids.
+   * @param userIds - The users.
+   * @returns Every live account among them.
+   */
+  getAccounts: async (userIds: string[]): Promise<Account[]> => (await usersRepo.getUsersByIds(userIds)).map(accountOf),
+  /**
+   * The live account registered under an address, in any casing.
+   * @param email - The address.
+   * @returns The account, or null.
+   */
+  findAccountByEmail: async (email: string): Promise<Account | null> => {
+    const user = await usersRepo.getUserByEmail(email);
+    return user === null ? null : accountOf(user);
+  },
+  /**
+   * The Agent model an account last chose.
+   * @param userId - The account.
+   * @returns The model id, or null when none was chosen.
+   */
+  getAgentModel: (userId: string): Promise<string | null> => usersRepo.getAgentModel(userId),
+  /**
+   * Remember the Agent model an account chose.
+   * @param userId - The account.
+   * @param model - The model id.
+   * @returns Once saved.
+   */
+  setAgentModel: (userId: string, model: string): Promise<void> => usersRepo.setAgentModel(userId, model),
   /** Queue an account's ad conversion, credited to its sign-up click; core's own client calls the same. */
   enqueueAdsConversion: enqueueAccountAdsConversion,
 };

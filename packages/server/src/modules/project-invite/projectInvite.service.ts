@@ -33,7 +33,7 @@
  */
 
 import * as projectRepo from "@server/modules/project/project.repo.js";
-import { globalApi, studioRepo } from "@breatic/domain";
+import { globalApi } from "@breatic/domain";
 import * as invitesRepo from "@server/modules/project-invite/projectInvitations.repo.js";
 import { createInvitation } from "@server/modules/invitation/invitation.service.js";
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
@@ -48,6 +48,7 @@ import type {
   InvitableProjectRole,
   PendingProjectInvitationSummary,
 } from "@breatic/shared";
+import { profilesService } from "@breatic/domain";
 
 /**
  * Invite an account or mailbox to a Project through recipient arbitration.
@@ -126,6 +127,7 @@ export async function confirmInvite(
     throw new NotFoundError(t("server.error.not_found"));
   }
   const { project_members: collaboratorLimit } = await globalApi().getLimitsForStudio(targetStudioId);
+  const inviteeProfiles = await profilesService.personalProfiles([receiverUserId]);
   await db.transaction(async (tx) => {
 
     // Taken BEFORE the CAS, and that order is not a preference: `archiveProject`
@@ -190,11 +192,7 @@ export async function confirmInvite(
       );
     }
 
-    const profiles = await studioRepo.getPersonalProfilesByCreators(
-      [accepted.invitedUserId],
-      tx,
-    );
-    const invitee = profiles.get(accepted.invitedUserId);
+    const invitee = inviteeProfiles.get(accepted.invitedUserId);
     await notificationService.createProjectInviteAccepted({
       userId: accepted.invitedBy,
       projectId: accepted.projectId,

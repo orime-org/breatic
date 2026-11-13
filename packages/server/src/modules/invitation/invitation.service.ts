@@ -20,6 +20,7 @@ import {
   buildProjectInvitationMail, buildStudioInvitationMail,
   buildProjectSignupInvitationMail, buildStudioSignupInvitationMail,
 } from "@server/utils/notification-mail.js";
+import { profilesService } from "@breatic/domain";
 
 /** The committed result used by the two membership route adapters. */
 export interface CreatedInvitation {
@@ -113,7 +114,7 @@ export async function getInvitationPreview(token: string): Promise<SignupInvitat
     if (!target || archived || invitation.deletedAt !== null || invitation.status !== "pending" || invitation.expiresAt.getTime() <= Date.now()) {
       return { state: "closed" };
     }
-    const profiles = await studioRepo.getPersonalProfilesByCreators([invitation.invitedBy]);
+    const profiles = await profilesService.personalProfiles([invitation.invitedBy]);
     if (invitation.invitedEmail === null) throw new Error("Mailbox invitation requires an address");
     return {
       state: "open", email: invitation.invitedEmail, inviterName: profiles.get(invitation.invitedBy)?.name ?? "",

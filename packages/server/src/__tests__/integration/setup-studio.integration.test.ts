@@ -47,7 +47,7 @@ vi.mock("ai", () => ({
 
 import postgres from "postgres";
 import { initCore, ConflictError } from "@breatic/core";
-import { studioMembersRepo } from "@breatic/domain";
+import { profilesService, studioMembersRepo } from "@breatic/domain";
 import * as studioService from "@server/modules/studio/studio.service.js";
 
 // @breatic/integration-tests/env injects the container URLs into process.env. Inject
@@ -232,7 +232,7 @@ describe("createPersonalStudio — one personal studio per user (invariant 2)", 
   });
 });
 
-describe("getPersonalStudioProfilesByUserIds — bell actor identity (name + slug)", () => {
+describe("profilesService.personalProfiles — bell actor identity (name + slug)", () => {
   it("resolves name + slug per user; empty input → empty map; absent for no-studio users", async () => {
     const userA = await insertUser();
     const userB = await insertUser();
@@ -244,16 +244,16 @@ describe("getPersonalStudioProfilesByUserIds — bell actor identity (name + slu
     // Give A a display name distinct from its slug — the bell renders the
     // display name beside the @slug handle, so the two must come back separately.
     await sql`
-      UPDATE studios SET name = 'Alice Display'
+      UPDATE studio_directory SET name = 'Alice Display'
       WHERE created_by_user_id = ${userA} AND type = 'personal'
     `;
 
     // Empty input short-circuits to an empty map (no query).
     expect(
-      (await studioService.getPersonalStudioProfilesByUserIds([])).size,
+      (await profilesService.personalProfiles([])).size,
     ).toBe(0);
 
-    const profiles = await studioService.getPersonalStudioProfilesByUserIds([
+    const profiles = await profilesService.personalProfiles([
       userA,
       userB,
       userNoStudio,
@@ -275,11 +275,11 @@ describe("getPersonalStudioProfilesByUserIds — bell actor identity (name + slu
     const slug = freshSlug();
     await studioService.createPersonalStudio(user, slug);
     await sql`
-      UPDATE studios SET deleted_at = now()
+      UPDATE studio_directory SET deleted_at = now()
       WHERE created_by_user_id = ${user} AND type = 'personal'
     `;
 
-    const profiles = await studioService.getPersonalStudioProfilesByUserIds([
+    const profiles = await profilesService.personalProfiles([
       user,
     ]);
     // Soft delete is deactivation, not erasure: the name stays resolvable so a

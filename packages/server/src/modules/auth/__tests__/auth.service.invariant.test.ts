@@ -95,7 +95,6 @@ const mockCreatePersonalStudio = vi.fn();
 vi.mock("@server/modules/studio/studio.service.js", () => ({
   createPersonalStudio: mockCreatePersonalStudio,
   getPersonalStudio: vi.fn(),
-  getPersonalStudioIdentitiesByUserIds: vi.fn(),
 }));
 
 vi.mock("@breatic/shared", async (importOriginal: () => Promise<Record<string, unknown>>) => ({

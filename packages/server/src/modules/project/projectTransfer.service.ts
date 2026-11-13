@@ -71,6 +71,7 @@ import {
 import type { Refused } from "@server/utils/deferred-decision.js";
 import { onProjectOwnerChanged } from "@server/modules/project/projectOwnerChange.service.js";
 import type { RequestFailedReason } from "@breatic/shared";
+import { profilesService } from "@breatic/domain";
 
 /**
  * The current owner offers the project to another collaborator.
@@ -142,7 +143,7 @@ export async function requestProjectTransfer(
   }
 
   const expiresAt = new Date(Date.now() + getDecisionWindowMs());
-  const profiles = await studioRepo.getPersonalProfilesByCreators([fromUserId]);
+  const profiles = await profilesService.personalProfiles([fromUserId]);
   const from = profiles.get(fromUserId);
   // Bound out here because the mail is built after the transaction closes.
   let shareToken = "";
@@ -247,7 +248,7 @@ export async function confirmProjectTransfer(
   // inside a transaction reaches for a SECOND pooled connection while the first
   // is still held, which is how a pool exhausts itself under concurrent
   // decisions.
-  const accepterProfiles = await studioRepo.getPersonalProfilesByCreators([
+  const accepterProfiles = await profilesService.personalProfiles([
     receiverUserId,
   ]);
   const outcome = await db.transaction<

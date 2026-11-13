@@ -53,6 +53,7 @@ import { getDecisionWindowMs } from "@server/config/limits.js";
 import { isUniqueViolation } from "@breatic/core";
 import { isRefused, refusalError } from "@server/utils/deferred-decision.js";
 import type { Refused } from "@server/utils/deferred-decision.js";
+import { profilesService } from "@breatic/domain";
 
 
 /** What the join dialog needs about a project the caller cannot enter. */
@@ -95,11 +96,10 @@ async function loadForStudioMember(
 /**
  * Resolve a user's display name (their personal studio's name).
  * @param userId - The user.
- * @param tx - Enclosing transaction, when the caller is inside one.
  * @returns The name, or an empty string when unresolved.
  */
-async function displayName(userId: string, tx?: DbTx): Promise<string> {
-  const profiles = await studioRepo.getPersonalProfilesByCreators([userId], tx);
+async function displayName(userId: string): Promise<string> {
+  const profiles = await profilesService.personalProfiles([userId]);
   return profiles.get(userId)?.name ?? "";
 }
 
@@ -474,10 +474,7 @@ export async function readdressOnOwnerChange(
   const pending = await requestsRepo.listLivePendingForProject(projectId, tx);
   if (pending.length === 0) return;
   const project = await projectRepo.getProjectById(projectId, tx);
-  const profiles = await studioRepo.getPersonalProfilesByCreators(
-    pending.map((p) => p.requesterUserId),
-    tx,
-  );
+  const profiles = await profilesService.personalProfiles(pending.map((p) => p.requesterUserId));
   for (const req of pending) {
     if (req.notificationId !== null) await notificationRepo.retire(req.notificationId, tx);
     const entry = await notificationService.createProjectJoinRequest({

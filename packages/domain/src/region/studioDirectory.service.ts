@@ -9,6 +9,7 @@
 
 import { db, projectsRepo, regionOutboxRepo, studioDirectoryRepo, type DbTx } from "@breatic/core";
 import * as studioMembersRepo from "@domain/auth/studioMembers.repo.js";
+import * as usersRepo from "@domain/auth/user.repo.js";
 import { releaseDesignations } from "@domain/credit/creditLot.service.js";
 import { inGlobalRegion } from "@domain/region/directory-writes.js";
 import { applySnapshot, type StudioSnapshot } from "@domain/region/regionOutboxApply.service.js";
@@ -90,4 +91,48 @@ export async function emitStudioSnapshot(studioId: string): Promise<void> {
       );
     }
   });
+}
+
+/** How a user is shown: their personal Studio's name, handle and avatar, and their address. */
+export interface Profile {
+  /** The personal Studio's name; null before onboarding. */
+  name: string | null;
+  /** The personal Studio's slug, shown as `@handle`; null before onboarding. */
+  handle: string | null;
+  avatarUrl: string | null;
+  /** The account's address; null when the account is gone. */
+  email: string | null;
+  /** Whether the personal Studio named here was deleted; a live one always wins. */
+  deleted: boolean;
+}
+
+/**
+ * How each of these users is shown, from the directory's personal Studio
+ * rows and the accounts (inner#1955). Runs in the global region.
+ * @param userIds - The users.
+ * @returns Each known user's profile, keyed by user id.
+ */
+export async function getProfiles(userIds: readonly string[]): Promise<Record<string, Profile>> {
+  const ids = [...new Set(userIds)];
+  if (ids.length === 0) return {};
+  const [rows, accounts] = await Promise.all([
+    studioDirectoryRepo.listPersonalByCreators(ids),
+    usersRepo.getUsersByIds(ids),
+  ]);
+  const profiles: Record<string, Profile> = {};
+  for (const account of accounts) {
+    profiles[account.id] = { name: null, handle: null, avatarUrl: null, email: account.email, deleted: false };
+  }
+  for (const row of rows) {
+    const held = profiles[row.createdByUserId];
+    if (held !== undefined && held.name !== null && !held.deleted) continue;
+    profiles[row.createdByUserId] = {
+      name: row.name,
+      handle: row.slug,
+      avatarUrl: row.avatarUrl,
+      email: held?.email ?? null,
+      deleted: row.deletedAt !== null,
+    };
+  }
+  return profiles;
 }

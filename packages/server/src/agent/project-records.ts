@@ -24,10 +24,11 @@ import {
 } from "@breatic/core";
 import { MAX_TURN_INDEX, nodeHistoryService, nodeTaskService, RecordsRefused, type ProjectRecords } from "@breatic/domain";
 import type { ChatSpace, ConversationEntity } from "@breatic/shared";
-import { projectService, studioService } from "@server/modules";
+import { projectService } from "@server/modules";
 import { countProjectActivities, listProjectActivities } from "@server/modules/activity/projectActivity.service.js";
 import * as conversationRepo from "@server/modules/conversation/conversation.repo.js";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
+import { profilesService } from "@breatic/domain";
 
 /**
  * What starts a cursor each list gives, so a cursor passed to another list is
@@ -207,7 +208,7 @@ export function projectRecordsFor(turn: RecordsTurn): ProjectRecords {
         nodeHistoryService.listByNode(projectId, nodeId, { limit: size, offset: opts.versionsOffset ?? 0 }),
       ]);
       const page = tasks.slice(tasksOffset, tasksOffset + size);
-      const names = await studioService.getPersonalStudioIdentitiesByUserIds([
+      const names = await profilesService.personalIdentities([
         ...new Set(page.map((task) => task.startedByUserId)),
       ]);
       return {

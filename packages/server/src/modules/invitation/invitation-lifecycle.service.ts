@@ -17,6 +17,7 @@ import * as notificationRepo from "@server/modules/notification/notification.rep
 import { emailVerificationEnabled } from "@server/config/auth.js";
 import { getDecisionWindowMs } from "@server/config/limits.js";
 import type { InvitationKind, InvitationRole, RecipientInvitation } from "@server/modules/invitation/invitation.types.js";
+import { profilesService } from "@breatic/domain";
 
 /** The membership target held by the current transaction. */
 export interface InvitationTarget {
@@ -72,14 +73,13 @@ async function lockTarget(kind: InvitationKind, id: string, tx: DbTx, allowArchi
 }
 
 /**
- * Read the inviter's current display name in the invitation transaction.
+ * Read the inviter's current display name.
  * @param userId - The inviter.
- * @param tx - The enclosing transaction.
  * @returns Their display name.
- * @throws {Error} When persistence fails.
+ * @throws {Error} When the read fails.
  */
-async function inviterNameOf(userId: string, tx: DbTx): Promise<string> {
-  const profiles = await studioRepo.getPersonalProfilesByCreators([userId], tx);
+async function inviterNameOf(userId: string): Promise<string> {
+  const profiles = await profilesService.personalProfiles([userId]);
   return profiles.get(userId)?.name ?? "";
 }
 
@@ -127,7 +127,7 @@ async function claimLocked(target: InvitationTarget, invite: RecipientInvitation
     invite.id, normalizeEmail(user.email), user.id, getDecisionWindowMs(), tx,
   );
   if (!claimed) return false;
-  await notifyRecipient(target, claimed, await inviterNameOf(invite.invitedBy, tx), tx);
+  await notifyRecipient(target, claimed, await inviterNameOf(invite.invitedBy), tx);
   return true;
 }
 
@@ -205,6 +205,7 @@ export async function prepareInvitation(input: {
 }): Promise<PreparedInvitation> {
   const email = normalizeEmail(input.email);
   const limit = await invitationCeiling(input.kind, input.targetId);
+  const inviterName = await inviterNameOf(input.invitedBy);
   return db.transaction(async (tx) => {
     const target = await lockTarget(input.kind, input.targetId, tx);
     if (!target) throw new NotFoundError(t("server.error.not_found"));
@@ -216,7 +217,6 @@ export async function prepareInvitation(input: {
     const pending = await repo.findPendingForRecipient(target.id, email, user?.id ?? null, tx);
     const ordinary = pending.find((row) => row.invitedUserId !== null);
     const existing = ordinary ?? pending[0];
-    const inviterName = await inviterNameOf(input.invitedBy, tx);
     if (existing) {
       if (existing.invitedUserId === null && user?.emailVerified) await claimLocked(target, existing, user, tx);
       return { duplicate: true, invitation: existing, target, invitee: user, inviterName };
