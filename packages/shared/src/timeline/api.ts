@@ -12,7 +12,7 @@ export interface TimelinePreviewSyncLimits {
   driftHardSyncSeconds: number;
   /** Drift past which a lane is hard-synced however it got there. */
   driftCatastrophicSeconds: number;
-  /** When a wait ends, lanes not waited for are sought only past this offset. */
+  /** While the preview waits, lanes not waited for are sought back to the held frame only past this offset. */
   resumeSeekSeconds: number;
   /** The fraction a steered lane's rate is raised or lowered by. */
   driftSteerRate: number;

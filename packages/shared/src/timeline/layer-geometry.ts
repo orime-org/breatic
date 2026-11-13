@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Where a Timeline layer is drawn, shared by the preview, its hit test and the export, and what a sender sends for it
+ * Where a Timeline layer is drawn, shared by the preview and its hit test, and what a sender sends for it
  * (#1410). A layer occupies its base box (the source contained and centred in the canvas); `transform` offsets the box
  * centre in canvas pixels, scales it around that centre and rotates it clockwise in degrees.
  */

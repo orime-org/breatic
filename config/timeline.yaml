@@ -46,10 +46,10 @@ web_animation:
 preview:
   # Drift past which a lane's playback rate is steered by drift_steer_rate.
   drift_steer_seconds: 0.04
-  # Drift, or a drift jump, past which a lane is hard-synced and the preview waits for it.
+  # Drift past which a lane is hard-synced, when it also jumped by more than this since the last check; the preview waits for it.
   drift_hard_sync_seconds: 0.5
   # Drift past which a lane is hard-synced however gradually it grew.
   drift_catastrophic_seconds: 3
-  # When a wait ends, lanes not waited for are sought only when further off than this.
+  # While the preview waits, lanes not waited for are sought back to the held frame only when further off than this.
   resume_seek_seconds: 0.15
   drift_steer_rate: 0.03

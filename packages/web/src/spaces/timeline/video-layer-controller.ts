@@ -29,7 +29,7 @@ export interface VideoLane {
   readonly clipId: string;
   readonly element: HTMLVideoElement;
   layer: TimelineVideoLayer;
-  /** Placed since it entered or its file changed; the playback seeks it to its target on the next check. */
+  /** Not placed yet since it entered, its file changed or it was retried; the playback seeks it to its target on the next check. */
   fresh: boolean;
   /** The source time the lane is to show, and whether it has not landed there yet. */
   target: number;

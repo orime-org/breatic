@@ -115,7 +115,7 @@ function sameStates(a: ReadonlyMap<string, string>, b: ReadonlyMap<string, strin
 /**
  * Drive the preview over every visible video layer and web-animation copy on one clock (#1410 design §6). The clock is
  * an anchor plus `performance.now()`; each video lane is steered or hard-synced to it by the rules ported from the
- * HyperFrames runtime, and whenever a lane must seek, buffers or newly appears, the whole preview freezes on the
+ * HyperFrames runtime, and whenever a lane must seek, runs dry or appears without being ready, the whole preview freezes on the
  * current frame and goes on from it once every lane is in place.
  * @param input - The document, frame, video layers and web-animation instances.
  * @returns The transport state and user controls.
