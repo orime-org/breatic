@@ -228,6 +228,8 @@ interface Runner {
   answered: string[];
   also: string[];
   drained: string[];
+  /** The messages the run's stored reply holds, which its ack drops. */
+  recorded: string[];
   turn: number;
   ending: EndingKind;
 }
@@ -324,6 +326,7 @@ function adopt(w: World, runId: string, card?: number): void {
     answered: [],
     also: [],
     drained: [],
+    recorded: [],
     turn: card ?? 0,
     ending: "done",
   };
@@ -381,7 +384,7 @@ async function stepRunner(w: World, pick: number): Promise<void> {
       return;
     }
     case "emptyAck":
-      await q.ack(c, r.runId);
+      await q.ack(c, r.runId, []);
       r.at = "emptySettle";
       return;
     case "emptySettle": {
@@ -406,12 +409,19 @@ async function stepRunner(w: World, pick: number): Promise<void> {
         return;
       }
       r.ending = ENDINGS[Math.floor(pick / 3) % ENDINGS.length]!;
-      if (r.ending !== "unsaved") w.store.writeReply(r.turn, [...r.also, ...r.drained]);
+      // A stop can land while the last message drained is being prepared:
+      // the reply then holds every message but that one.
+      const kept = pick % 2 === 0 ? r.drained : r.drained.slice(0, -1);
+      r.recorded = [...r.taken.slice(0, 1), ...r.also, ...kept];
+      if (r.ending !== "unsaved") {
+        if (kept.length < r.drained.length) tally("drained left unrecorded");
+        w.store.writeReply(r.turn, [...r.also, ...kept]);
+      }
       r.at = r.ending === "unsaved" ? "settle" : "ack";
       return;
     }
     case "ack":
-      await q.ack(c, r.runId);
+      await q.ack(c, r.runId, r.recorded);
       r.at = "settle";
       return;
     case "settle": {
@@ -541,7 +551,7 @@ async function staleCall(w: World, op: Extract<Op, { t: "stale" }>): Promise<voi
   let got: unknown;
   if (op.call === "head") got = await q.head(c, runId);
   else if (op.call === "drain") got = await q.drain(c, runId);
-  else if (op.call === "ack") got = await q.ack(c, runId);
+  else if (op.call === "ack") got = await q.ack(c, runId, []);
   else if (op.call === "forget") {
     const taken = await listIds(k.taken);
     got = await q.forget(c, runId, [...taken.filter((_, i) => (op.pick >> i) % 2 === 1), crypto.randomUUID()]);
@@ -621,7 +631,10 @@ function checkStep(pb: Pb, w: World, before: Lists, after: Lists, what: string):
     case "PB-04":
       for (const id of before.taken) {
         if (after.taken.includes(id) || what.startsWith("clear")) continue;
-        expect({ what, id, stored: stored(id) }, "a taken id was dropped before its reply was stored").toMatchObject({ stored: 1 });
+        // Out of taken only stored, or back in the queue when the reply did not record it.
+        expect({ what, id, stored: stored(id), queued: after.queue.includes(id) }, "a taken id was dropped before its reply was stored").toMatchObject(
+          stored(id) === 1 ? { stored: 1 } : { queued: true },
+        );
       }
       if (what.startsWith("crash")) expect({ what, taken: after.taken }).toEqual({ what, taken: before.taken });
       return;
@@ -749,7 +762,7 @@ describe("chat queue properties (inner#1717)", () => {
       "enqueue start", "enqueue queued", "enqueue duplicate", "enqueue full", "claim start", "forget answered",
       "opening reused", "empty settle opened next", "settle opened next", "card run", "give back freed", "give back opened run",
       "crash", "remove removed", "remove taken", "remove gone", "stale head", "stale drain", "stale ack", "stale settle",
-      "stale forget", "ending done", "ending failed", "ending unsaved", "ending awaiting", "ending shutdown",
+      "stale forget", "drained left unrecorded", "ending done", "ending failed", "ending unsaved", "ending awaiting", "ending shutdown",
     ];
     expect(branches.filter((b) => (seen.get(b) ?? 0) === 0), JSON.stringify(Object.fromEntries(seen))).toEqual([]);
   });

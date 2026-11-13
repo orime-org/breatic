@@ -19,7 +19,7 @@ import { tool } from "ai";
 import type { UIMessageChunk } from "ai";
 import { z } from "zod";
 import { FINISHED, FINISHED_ASKING_FOR_A_TOOL, type ModelStreamPart } from "../helpers/model-double.js";
-import type { TakenMessage } from "@server/agent/taken-message.js";
+import type { TakenMessage, TurnEnded } from "@server/agent/taken-message.js";
 
 const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>, _forModel?: unknown) => 1);
 const script = vi.hoisted(() => ({
@@ -261,6 +261,52 @@ describe("a turn that said its piece with something still waiting", () => {
     script.calls = [says("only answer")];
     await runTurn();
     expect(script.prompts).toHaveLength(1);
+  });
+});
+
+describe("a turn stopped while it takes a message in", () => {
+  it("tells the run the message was not recorded, so it is not dropped as answered", async () => {
+    const stop = new AbortController();
+    const ended: TurnEnded[] = [];
+    script.calls = [callsTheTool("tc-1"), says("never asked")];
+    script.onCall[0] = () => waiting.push(taken("m2", "make it blue"));
+    await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
+      const turn = await new MainAgent().chat("open", stop.signal, [], undefined, {}, undefined, {
+        messageId: "m1",
+        // The stop lands after the message left the queue and before the
+        // turn has written it anywhere.
+        drain: async () => {
+          const got = waiting;
+          waiting = [];
+          if (got.length > 0) stop.abort();
+          return got;
+        },
+        onEnded: (e) => ended.push(e),
+      });
+      for await (const _ of turn) void _;
+    });
+    expect(ended).toHaveLength(1);
+    expect(ended[0]?.recorded).toEqual(["m1"]);
+    expect(storedReply().parts.filter((p) => p.type === "user-message")).toEqual([]);
+  });
+
+  it("names every message it recorded, the opening and those it took in", async () => {
+    const ended: TurnEnded[] = [];
+    script.calls = [callsTheTool("tc-1"), says("done")];
+    script.onCall[0] = () => waiting.push(taken("m2", "make it blue"));
+    await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
+      const turn = await new MainAgent().chat("open", undefined, [], undefined, {}, undefined, {
+        messageId: "m1",
+        drain: async () => {
+          const got = waiting;
+          waiting = [];
+          return got;
+        },
+        onEnded: (e) => ended.push(e),
+      });
+      for await (const _ of turn) void _;
+    });
+    expect(ended[0]?.recorded).toEqual(["m1", "m2"]);
   });
 });
 

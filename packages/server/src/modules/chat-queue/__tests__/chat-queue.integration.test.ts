@@ -435,17 +435,27 @@ describe("ack", () => {
     await getRedis().set(k.active, "R1");
     await putList(k.taken, ["x"]);
     await putList(k.queue, ["m1"]);
-    await q.ack(c, "R1");
+    await q.ack(c, "R1", ["x"]);
     expect(await getRedis().exists(k.taken)).toBe(0);
     expect(await listIds(k.queue)).toEqual(["m1"]);
     expect(await getRedis().get(k.active)).toBe("R1");
+  });
+
+  it("puts what the turn did not record back at the head of the queue, in order", async () => {
+    const { c, k } = fresh();
+    await getRedis().set(k.active, "R1");
+    await putList(k.taken, ["m1", "m2", "m3"]);
+    await putList(k.queue, ["m4"]);
+    await q.ack(c, "R1", ["m1"]);
+    expect(await getRedis().exists(k.taken)).toBe(0);
+    expect(await listIds(k.queue)).toEqual(["m2", "m3", "m4"]);
   });
 
   it("leaves another run's taken alone (RQ-24)", async () => {
     const { c, k } = fresh();
     await getRedis().set(k.active, "R2");
     await putList(k.taken, ["x"]);
-    await q.ack(c, "R1");
+    await q.ack(c, "R1", []);
     expect(await listIds(k.taken)).toEqual(["x"]);
   });
 });

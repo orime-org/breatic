@@ -213,7 +213,7 @@ async function runIt(start: RunStart, open: (running: boolean) => void): Promise
       }
     }
     if (taken.length === 0) {
-      await queue.ack(conversationId, runId);
+      await queue.ack(conversationId, runId, []);
       // A message sent since the head was read is handed to the next run.
       const next = await queue.settle(conversationId, runId, { kind: "done" });
       if (next !== null) startRun({ ...start, runId: next, entrance: { kind: "head" } });
@@ -310,7 +310,7 @@ async function runIt(start: RunStart, open: (running: boolean) => void): Promise
       if (!(err instanceof RunNotOpened)) throw err;
       if (entrance.kind !== "card") return SILENT();
       await storeShutdownEnding(conversationId, entrance.turnIndex);
-      ended = { exit: "failed", stored: true, shutdown: true };
+      ended = { exit: "failed", stored: true, recorded: [], shutdown: true };
       return shutdownFrames();
     });
     turnReady(running);
@@ -342,7 +342,7 @@ async function runIt(start: RunStart, open: (running: boolean) => void): Promise
 async function afterTurn(start: RunStart, ended: TurnEnded | undefined): Promise<string | null> {
   const queue = chatQueue();
   const ending = endingOf(ended);
-  if (ending.kind !== "unsaved") await queue.ack(start.conversationId, start.runId);
+  if (ending.kind !== "unsaved") await queue.ack(start.conversationId, start.runId, ended?.recorded ?? []);
   const next = await queue.settle(start.conversationId, start.runId, ending);
   if (next === null) return null;
   const { opened } = startRun({ ...start, runId: next, entrance: { kind: "head" } });

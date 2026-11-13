@@ -1561,6 +1561,7 @@ export class MainAgent {
         hooks.onEnded?.({
           exit,
           stored: !failures.some((f) => f.step === "persist"),
+          recorded: [...(hooks.messageId === undefined ? [] : [hooks.messageId]), ...takenIn.map((t) => t.item.id)],
           ...(awaitingCall === undefined ? {} : { awaitingCall }),
           ...(shutdown ? { shutdown: true } : {}),
         });

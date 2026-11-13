@@ -59,7 +59,8 @@ export interface ChatQueue {
   head(conversationId: string, runId: string): Promise<QueueItem[]>;
   drain(conversationId: string, runId: string): Promise<QueueItem[]>;
   forget(conversationId: string, runId: string, ids: readonly string[]): Promise<QueueItem[]>;
-  ack(conversationId: string, runId: string): Promise<void>;
+  /** Drop what the run's stored reply recorded; anything else it took goes back to the head of the queue, in order. */
+  ack(conversationId: string, runId: string, recorded: readonly string[]): Promise<void>;
   remove(conversationId: string, id: string): Promise<"removed" | "taken" | "gone">;
   settle(conversationId: string, runId: string, ending: RunEnding): Promise<string | null>;
   renew(conversationId: string, runId: string): Promise<boolean>;
@@ -147,9 +148,17 @@ redis.call('del', KEYS[2])
 if #keep > 0 then redis.call('rpush', KEYS[2], unpack(keep)) end
 return keep`;
 
-/** KEYS active, taken; ARGV runId. */
+/** KEYS active, taken, queue; ARGV runId, then the ids the stored reply recorded. */
 const ACK = `
-if redis.call('get', KEYS[1]) == ARGV[1] then redis.call('del', KEYS[2]) end
+if redis.call('get', KEYS[1]) ~= ARGV[1] then return 1 end
+local recorded = {}
+for i = 2, #ARGV do recorded[ARGV[i]] = true end
+local back = {}
+for _, v in ipairs(redis.call('lrange', KEYS[2], 0, -1)) do
+  if not recorded[cjson.decode(v).id] then table.insert(back, v) end
+end
+for i = #back, 1, -1 do redis.call('lpush', KEYS[3], back[i]) end
+redis.call('del', KEYS[2])
 return 1`;
 
 /** KEYS queue, taken; ARGV id. */
@@ -281,9 +290,9 @@ export function createChatQueue(redis: Redis): ChatQueue {
       const k = keysOf(c);
       return items((await redis.eval(FORGET, 2, k.active, k.taken, runId, ...ids)) as string[]);
     },
-    async ack(c, runId) {
+    async ack(c, runId, recorded) {
       const k = keysOf(c);
-      await redis.eval(ACK, 2, k.active, k.taken, runId);
+      await redis.eval(ACK, 3, k.active, k.taken, k.queue, runId, ...recorded);
     },
     async remove(c, id) {
       const k = keysOf(c);

@@ -33,6 +33,12 @@ export interface TurnEnded {
   exit: "aborted" | "failed" | "too_long" | "blocked" | "completed";
   /** Whether the reply row was stored. */
   stored: boolean;
+  /**
+   * The messages the stored reply holds, by id: the opening and each one it
+   * took in. One taken from the queue and not among them was never written
+   * down, so it waits again.
+   */
+  recorded: string[];
   /** The card the turn stopped at, when it did. */
   awaitingCall?: string;
   /** Whether the turn was cut off because the server was shutting down. */
