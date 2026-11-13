@@ -15,9 +15,10 @@ import { expect, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
 import { startNewConversation } from '../helpers/conversation';
 import { openSmokeProject } from '../helpers/project';
+import { projectIdOf } from '../helpers/tab-restore';
 
 /** A request whose answer takes long enough to send something meanwhile. */
-const STORY = 'Write a 600-word short story about a lighthouse keeper. Reply in prose only, make nothing.';
+const STORY = 'Write a 1500-word short story about a lighthouse keeper. Reply in prose only, make nothing.';
 
 /** How long a whole run on the model may take. */
 const RUN_MS = 180_000;
@@ -46,11 +47,23 @@ async function replyWriting(page: Page): Promise<void> {
 }
 
 /**
- * Wait until no run is being read on the page.
+ * Wait until the server holds no run and nothing waiting for the
+ * conversation, and the page reads no run. The page alone can show no stop
+ * button while a run goes on: before it attaches after a reload, and while
+ * a message is being sent.
  * @param page - The page.
+ * @param id - The conversation.
  */
-async function runOver(page: Page): Promise<void> {
-  await expect(page.getByTestId('chat-composer-abort')).toHaveCount(0, { timeout: RUN_MS });
+async function runOver(page: Page, id: string): Promise<void> {
+  const projectId = projectIdOf(page.url());
+  await expect
+    .poll(async () => {
+      const res = await page.request.post(`/api/v1/chat/conversations/${id}/sync`, { data: { project_id: projectId } });
+      const seen = ((await res.json()) as { data: { running: boolean; pending: unknown[] } }).data;
+      return !seen.running && seen.pending.length === 0;
+    }, { timeout: RUN_MS, intervals: [1000] })
+    .toBe(true);
+  await expect(page.getByTestId('chat-composer-abort')).toHaveCount(0, { timeout: 30_000 });
 }
 
 /**
@@ -127,7 +140,7 @@ test('a message sent while the reply runs waits above the box, then is read in t
   await expect(page.getByTestId('chat-composer-abort')).toBeVisible();
 
   await expect(waiting(page)).toHaveCount(0, { timeout: RUN_MS });
-  await runOver(page);
+  await runOver(page, id);
   const at = await placeOf(page, second);
   expect(at.user).toBeGreaterThan(at.firstReply);
   expect(at.firstReply).toBeGreaterThan(-1);
@@ -145,6 +158,7 @@ test('a reload while the reply runs attaches to it again, the message it read st
   test.setTimeout(RUN_MS + 90_000);
   await openSmokeProject(page);
   await startNewConversation(page);
+  const id = await currentConversation(page);
   await send(page, STORY);
   await replyWriting(page);
   const second = 'Make the lighthouse red and white.';
@@ -154,7 +168,7 @@ test('a reload while the reply runs attaches to it again, the message it read st
   await page.reload();
   // The run kept going on the server: the page reads it again, or it is over.
   await expect(page.getByTestId('message-bubble').first()).toBeVisible({ timeout: 30_000 });
-  await runOver(page);
+  await runOver(page, id);
   await expect(waiting(page)).toHaveCount(0, { timeout: 15_000 });
   const before = await bubbles(page);
   const at = await placeOf(page, second);
@@ -188,8 +202,8 @@ test('two pages on one conversation show the same reply and the message one of t
     // The other page learns of it at its next sync.
     await expect(waiting(a)).toHaveCount(1, { timeout: 15_000 });
 
-    await runOver(a);
-    await runOver(b);
+    await runOver(a, id);
+    await runOver(b, id);
     await expect(waiting(a)).toHaveCount(0, { timeout: 15_000 });
     await expect(waiting(b)).toHaveCount(0, { timeout: 15_000 });
     const onA = await placeOf(a, second);
@@ -205,6 +219,7 @@ test('a stop with two messages waiting stops the reply, and a new run answers th
   test.setTimeout(2 * RUN_MS);
   await openSmokeProject(page);
   await startNewConversation(page);
+  const id = await currentConversation(page);
   await send(page, STORY);
   await replyWriting(page);
   const two = 'Say one word: two.';
@@ -218,7 +233,7 @@ test('a stop with two messages waiting stops the reply, and a new run answers th
   await expect(page.getByTestId('message-bubble-interrupted')).toHaveCount(1, { timeout: 30_000 });
   // What waited is the next run's: it opens with the first, in order.
   await expect(waiting(page)).toHaveCount(0, { timeout: 30_000 });
-  await runOver(page);
+  await runOver(page, id);
   const atTwo = await placeOf(page, two);
   const atThree = await placeOf(page, three);
   expect(atTwo.user).toBeGreaterThan(atTwo.firstReply);
@@ -245,7 +260,7 @@ test('switching away mid-reply leaves the run going and marked, and coming back 
   await expect
     .poll(async () => (await page.locator('[data-testid="message-bubble"][data-role="assistant"]').last().innerText().catch(() => '')).length, { timeout: 60_000 })
     .toBeGreaterThan(sofar);
-  await runOver(page);
+  await runOver(page, id);
   await expect(page.getByTestId('message-bubble-interrupted')).toHaveCount(0);
   await page.getByTestId('open-conversation-history').click();
   await expect(page.getByTestId(`conversation-running-${id}`)).toHaveCount(0, { timeout: 15_000 });
@@ -270,7 +285,7 @@ test('closing the page mid-reply does not stop it, and opening it again shows th
     await openSmokeProject(again);
     await openConversation(again, id);
     await expect(again.locator('[data-testid="message-bubble"][data-role="assistant"]')).toHaveCount(1, { timeout: 30_000 });
-    await runOver(again);
+    await runOver(again, id);
     await expect(again.getByTestId('message-bubble-interrupted')).toHaveCount(0);
   } finally {
     await again.close();
