@@ -20,10 +20,7 @@
  * a single `$` for an inline formula, which this product reads as a character.
  */
 
-import { MATH_BLOCK_SOURCE_ATTR, MATH_SOURCE_ATTR } from '@web/lib/formula-source';
-
-/** Both ends of a formula, inline or on a line of its own (user 2026-08-25). */
-const DELIMITER = '$$';
+import { formulaSourceHolder } from '@web/lib/formula-source';
 
 /** What KaTeX marks any rendered formula with. */
 const FORMULA_CLASS = 'katex';
@@ -136,15 +133,11 @@ function replaceFormulaeWithSource(copied: Element): void {
     // KaTeX writes MathML's own way of saying it, and leaves the attribute
     // off an inline formula.
     const onItsOwnLine = formula.querySelector('math')?.getAttribute('display') === 'block';
-    const holder = document.createElement(onItsOwnLine ? 'div' : 'span');
-    holder.setAttribute(onItsOwnLine ? MATH_BLOCK_SOURCE_ATTR : MATH_SOURCE_ATTR, source);
+    const holder = formulaSourceHolder(source, onItsOwnLine);
     // Source, not prose: the line breaks around a formula on its own line are
     // part of what makes it one, and normal white-space handling would fold
     // them into spaces on the way out.
     holder.style.whiteSpace = 'pre';
-    holder.textContent = onItsOwnLine
-      ? `${DELIMITER}\n${source}\n${DELIMITER}`
-      : `${DELIMITER}${source}${DELIMITER}`;
     formula.replaceWith(holder);
   }
 }

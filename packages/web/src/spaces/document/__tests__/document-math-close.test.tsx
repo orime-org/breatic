@@ -170,13 +170,6 @@ function caretInLastLine(editor: Editor): void {
 }
 
 describe('closing a block formula’s box (§6.3)', () => {
-  it('has no close button, only the confirm', async () => {
-    const { editor, root } = open(BLOCK);
-    await openBlock(editor, root);
-    const box = root.querySelector('.bn-preview-with-source-popup[data-open="true"] .bn-source-block-popup')!;
-    expect([...box.querySelectorAll('button')].map((button) => button.textContent)).toEqual([t('spaces.document.math.ok')]);
-  });
-
   it.each(['confirm', 'Enter', 'Escape', 'moving away'] as const)('keeps the edit on %s', async (how) => {
     const { editor, root } = open([...BLOCK, { type: 'paragraph', content: 'after' }]);
     await openBlock(editor, root);

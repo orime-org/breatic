@@ -77,43 +77,21 @@ function source(editor: Editor): string {
   return text;
 }
 
-describe('an open inline formula while a collaborator types beside it (A13)', () => {
-  it('stays open when the collaborator types earlier in the same line', async () => {
+describe('an open inline formula while a collaborator types elsewhere (A13)', () => {
+  it.each([
+    ['earlier in the same line', [{ type: 'paragraph', content: ['x ', { type: 'math', content: 'a+b' }, ' y'] }]],
+    [
+      'in the line above',
+      [
+        { type: 'paragraph', content: 'above' },
+        { type: 'paragraph', content: ['x ', { type: 'math', content: 'a+b' }, ' y'] },
+      ],
+    ],
+  ])('stays open when the collaborator types %s, and what the user types goes on into its source', async (_where, blocks) => {
     const [a, b] = linked();
     const user = mount(a);
     const peer = mount(b);
-    user.editor.replaceBlocks(user.editor.document, [
-      { type: 'paragraph', content: ['x ', { type: 'math', content: 'a+b' }, ' y'] },
-    ] as never);
-    const face = await vi.waitFor(() => {
-      const found = user.root.querySelector<HTMLElement>('.katex');
-      if (found === null) throw new Error('not drawn yet');
-      return found;
-    });
-    fireEvent.mouseDown(face);
-    await vi.waitFor(() => {
-      if (user.root.querySelector('.bn-preview-with-source-popup[data-open="true"]') === null) {
-        throw new Error('not open yet');
-      }
-    });
-
-    const peerView = peer.editor.prosemirrorView!;
-    peerView.dispatch(peerView.state.tr.insertText('ZZZ', 3));
-    await new Promise((resolve) => setTimeout(resolve, 20));
-
-    expect(user.root.querySelector('.bn-preview-with-source-popup[data-open="true"]')).not.toBeNull();
-  });
-});
-
-describe('an open inline formula while a collaborator types above it (A13)', () => {
-  it('stays open, and what the user types goes on into its source', async () => {
-    const [a, b] = linked();
-    const user = mount(a);
-    const peer = mount(b);
-    user.editor.replaceBlocks(user.editor.document, [
-      { type: 'paragraph', content: 'above' },
-      { type: 'paragraph', content: ['x ', { type: 'math', content: 'a+b' }, ' y'] },
-    ] as never);
+    user.editor.replaceBlocks(user.editor.document, blocks as never);
     const face = await vi.waitFor(() => {
       const found = user.root.querySelector<HTMLElement>('.katex');
       if (found === null) throw new Error('not drawn yet');

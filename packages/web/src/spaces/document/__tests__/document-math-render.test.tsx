@@ -9,8 +9,8 @@
  * parse shows the "formula has an error" face once its popup is closed. The
  * popup is BlockNote's `bn-preview-with-source-popup`, open when it carries
  * `data-open="true"`; it is laid out like the AI composer: a title row with
- * the formula's name and a close button, the source, then the confirm button
- * below it. A read-only body never opens it, whether by a click or by a
+ * the formula's name, the source, then the confirm button below it, and no
+ * close button. A read-only body never opens it, whether by a click or by a
  * selection dragged into an inline formula's source.
  */
 

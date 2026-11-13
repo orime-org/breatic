@@ -33,7 +33,7 @@ import type { ResolvedPos } from '@tiptap/pm/model';
 import { Plugin, PluginKey, Selection, TextSelection, type EditorState } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
-import { MATH_BLOCK, MATH_INLINE } from '@web/spaces/document/document-math';
+import { isFormula, MATH_BLOCK, MATH_INLINE } from '@web/spaces/document/document-math';
 import { isTableCell } from '@web/spaces/document/document-table-nodes';
 import { markOwnUndoStep } from '@web/spaces/document/document-undo-step';
 
@@ -48,23 +48,6 @@ type MathEditor = BlockNoteEditor<never, never, never>;
 const CLOSED_FORMULA = /(?<![\\$])\$\$([^\s$￼](?:[^$\n￼]*[^\s$￼])?)\$\$$/;
 
 /**
- * Whether a node type draws a preview with its source in a box.
- * @param editor - The editor.
- * @param name - The node type's name.
- * @returns True for a formula, block or inline.
- */
-function hasPreview(editor: MathEditor, name: string): boolean {
-  const schema = editor.schema as unknown as {
-    blockSpecs: Record<string, { implementation?: { meta?: { hasPreview?: boolean } } } | undefined>;
-    inlineContentSpecs: Record<string, { implementation?: { meta?: { hasPreview?: boolean } } } | undefined>;
-  };
-  return (
-    schema.blockSpecs[name]?.implementation?.meta?.hasPreview === true ||
-    schema.inlineContentSpecs[name]?.implementation?.meta?.hasPreview === true
-  );
-}
-
-/**
  * The id of the block formula whose hidden source a position is in, when its
  * box is closed.
  * @param editor - The editor.
@@ -73,7 +56,7 @@ function hasPreview(editor: MathEditor, name: string): boolean {
  */
 export function closedFormulaBlockAt(editor: MathEditor, $pos: ResolvedPos): string | null {
   const { parent } = $pos;
-  if (!parent.isTextblock || $pos.depth < 1 || !hasPreview(editor, parent.type.name)) return null;
+  if (!parent.isTextblock || $pos.depth < 1 || !isFormula(parent)) return null;
   const id = $pos.node($pos.depth - 1).attrs['id'] as string | undefined;
   if (id === undefined) return null;
   return editor.getExtension(SourceBlockWithPreviewExtension)?.store.state.popupOpen === id ? null : id;
@@ -89,7 +72,7 @@ export function closedFormulaBlockAt(editor: MathEditor, $pos: ResolvedPos): str
  */
 function inHiddenSource(editor: MathEditor, $pos: ResolvedPos, state: EditorState): boolean {
   if (closedFormulaBlockAt(editor, $pos) !== null) return true;
-  if ($pos.parent.isTextblock || !hasPreview(editor, $pos.parent.type.name)) return false;
+  if ($pos.parent.isTextblock || !isFormula($pos.parent)) return false;
   return !state.selection.$from.sameParent($pos);
 }
 
@@ -270,16 +253,16 @@ function deleteByFormula(editor: MathEditor, view: EditorView, back: boolean): b
   const { parent } = $cursor;
   const size = parent.content.size;
   // In an inline formula's source.
-  if (!parent.isTextblock && hasPreview(editor, parent.type.name)) {
+  if (!parent.isTextblock && isFormula(parent)) {
     if (size === 0) return removeInline(view, $cursor);
     // At the start Backspace, at the end Delete, has nothing of the source to
     // delete and would reach the line around the formula.
     return $cursor.parentOffset === (back ? 0 : size);
   }
-  if (!hasPreview(editor, parent.type.name)) {
+  if (!isFormula(parent)) {
     // Beside an inline formula: into its source, deleting nothing unseen.
     const beside = back ? $cursor.nodeBefore : $cursor.nodeAfter;
-    if (beside !== null && hasPreview(editor, beside.type.name) && beside.isInline) {
+    if (beside !== null && isFormula(beside) && beside.isInline) {
       const into = back ? $cursor.pos - 1 : $cursor.pos + 1;
       view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, into)));
       return true;
@@ -304,13 +287,12 @@ function deleteByFormula(editor: MathEditor, view: EditorView, back: boolean): b
  * goes after the formula, the line is not split. BlockNote's own Enter there
  * does the same (`SourceInlineContentWithPreview.ts`); answered here because
  * the quote's, the list's and a stored cell's Enter would reach the key first.
- * @param editor - The editor.
  * @param view - The editor view.
  * @returns Whether the key was taken.
  */
-function confirmInline(editor: MathEditor, view: EditorView): boolean {
+function confirmInline(view: EditorView): boolean {
   const { $from } = view.state.selection;
-  if ($from.parent.isTextblock || !hasPreview(editor, $from.parent.type.name)) return false;
+  if ($from.parent.isTextblock || !isFormula($from.parent)) return false;
   view.dispatch(view.state.tr.setSelection(Selection.near(view.state.doc.resolve($from.after()), 1)));
   return true;
 }
@@ -322,22 +304,21 @@ function confirmInline(editor: MathEditor, view: EditorView): boolean {
  * browser's own caret movement out of it lands one character past the
  * formula; BlockNote places the caret itself for the other keys that leave a
  * source (`moveSelectionOut` in `SourceInlineContentWithPreview.ts`).
- * @param editor - The editor.
  * @param view - The editor view.
  * @param forward - ArrowRight, else ArrowLeft.
  * @returns Whether the key was taken.
  */
-function arrowByFormula(editor: MathEditor, view: EditorView, forward: boolean): boolean {
+function arrowByFormula(view: EditorView, forward: boolean): boolean {
   const { $cursor } = view.state.selection as TextSelection;
   if (!$cursor) return false;
   const { parent } = $cursor;
   let to: number | null = null;
-  if (!parent.isTextblock && hasPreview(editor, parent.type.name)) {
+  if (!parent.isTextblock && isFormula(parent)) {
     if (forward && $cursor.parentOffset === parent.content.size) to = $cursor.after();
     else if (!forward && $cursor.parentOffset === 0) to = $cursor.before();
   } else {
     const beside = forward ? $cursor.nodeAfter : $cursor.nodeBefore;
-    if (beside !== null && beside.isInline && hasPreview(editor, beside.type.name)) {
+    if (beside !== null && beside.isInline && isFormula(beside)) {
       to = forward ? $cursor.pos + 1 : $cursor.pos - 1;
     }
   }
@@ -385,7 +366,7 @@ function visibleText(editor: MathEditor, $from: ResolvedPos, pos: number, dir: -
  */
 function wholeFormulaEdge(editor: MathEditor, end: ResolvedPos, other: ResolvedPos, way: number): number | null {
   const { parent } = end;
-  if (!hasPreview(editor, parent.type.name)) return null;
+  if (!isFormula(parent)) return null;
   if (!parent.isTextblock) {
     const start = end.before();
     const stop = end.after();
@@ -498,10 +479,10 @@ export const documentMathEditingExtension = createExtension(({ editor }: { edito
       'Shift-Backspace': () => rule.takeBack(view()) || deleteByFormula(editor, view(), true),
       Delete: () => deleteByFormula(editor, view(), false),
       'Shift-Delete': () => deleteByFormula(editor, view(), false),
-      Enter: () => confirmInline(editor, view()),
-      'Shift-Enter': () => confirmInline(editor, view()),
-      ArrowRight: () => arrowByFormula(editor, view(), true),
-      ArrowLeft: () => arrowByFormula(editor, view(), false),
+      Enter: () => confirmInline(view()),
+      'Shift-Enter': () => confirmInline(view()),
+      ArrowRight: () => arrowByFormula(view(), true),
+      ArrowLeft: () => arrowByFormula(view(), false),
     },
   } as never;
 });

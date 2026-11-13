@@ -55,7 +55,6 @@ export const MATH_BLOCK = 'mathBlock';
 /** The inline formula's type name. */
 export const MATH_INLINE = 'math';
 
-
 /**
  * Whether a node is a formula, block or inline.
  * @param node - The node.
@@ -104,8 +103,7 @@ export function renderFormula(source: string, display: boolean, output: 'htmlAnd
 function sourceOf(element: HTMLElement, attribute: string): string {
   const own = element.getAttribute(attribute);
   if (own !== null) return own;
-  const annotation = element.matches(TEX_ANNOTATION) ? element : element.querySelector(TEX_ANNOTATION);
-  return annotation?.textContent ?? '';
+  return element.querySelector(TEX_ANNOTATION)?.textContent ?? '';
 }
 
 /**
@@ -128,14 +126,13 @@ function isDisplayMath(element: HTMLElement): boolean {
 }
 
 /**
- * Whether an element from outside carries LaTeX: in our own attribute or in a
- * TeX annotation. MathML without one stays the words it shows; a formula made
- * from it would be empty.
+ * Whether an element from outside holds a TeX annotation. MathML without one
+ * stays the words it shows; a formula made from it would be empty.
  * @param element - The element.
  * @returns True when it does.
  */
 function carriesTex(element: HTMLElement): boolean {
-  return element.matches(TEX_ANNOTATION) || element.querySelector(TEX_ANNOTATION) !== null;
+  return element.querySelector(TEX_ANNOTATION) !== null;
 }
 
 /**
@@ -429,12 +426,10 @@ const MathFace = React.memo(function MathFace({
       >
         <div
           contentEditable={false}
-          className='flex shrink-0 items-center gap-2 border-b border-border px-3 py-1.5'
+          className='flex shrink-0 items-center gap-1.5 border-b border-border px-3 py-1.5 text-sm font-medium'
         >
-          <span className='flex min-w-0 items-center gap-1.5 text-sm font-medium'>
-            <Sigma className='h-3.5 w-3.5 shrink-0 text-muted-foreground' aria-hidden />
-            <span className='truncate'>{t('spaces.document.commands.formula')}</span>
-          </span>
+          <Sigma className='h-3.5 w-3.5 shrink-0 text-muted-foreground' aria-hidden />
+          <span className='truncate'>{t('spaces.document.commands.formula')}</span>
         </div>
         <div className='p-3'>
           <pre

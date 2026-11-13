@@ -13,7 +13,6 @@
  * it.
  */
 
-
 import type { BlockTypeId } from '@web/spaces/document/document-block-ticks';
 import { runBlockType } from '@web/spaces/document/document-block-run';
 import { DIVIDER } from '@web/spaces/document/document-divider';
