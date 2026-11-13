@@ -55,9 +55,9 @@ const DECIMAL = /^-?(\d+(\.\d*)?|\.\d+)$/;
 const { scale } = TIMELINE_LAYER_TRANSFORM_LIMITS;
 
 /**
- * A stored part as the field shows it: whole canvas pixels, a percentage or degrees with one decimal.
+ * A part as the field shows it: whole pixels of the frame, a percentage or degrees with one decimal.
  * @param field - The part.
- * @param value - Its stored value.
+ * @param value - Its value: X and Y in pixels of the frame, the rest as stored.
  * @returns The shown text.
  * @throws {never} Never.
  */
@@ -67,7 +67,8 @@ function shownOf(field: Field, value: number): string {
 }
 
 /**
- * The stored part a field's text means, or null when it is not a value the field takes.
+ * The value a field's text means, X and Y in pixels of the frame and the rest as stored, or null when it is not a
+ * value the field takes.
  * @param field - The part.
  * @param text - The typed text.
  * @returns The value, unrounded.

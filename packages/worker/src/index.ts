@@ -123,8 +123,8 @@ try {
   await exitProcess(1);
 }
 
-// The Timeline config is lazy like the ones above; a default frame outside the presets (#1502) would otherwise
-// surface on the first Timeline request instead of at startup.
+// A default frame outside the presets (#1502) would otherwise throw uncaught from startWorker() when it schedules the
+// Timeline sweep, with no named log line.
 try {
   getTimelineConfig();
 } catch (err) {
