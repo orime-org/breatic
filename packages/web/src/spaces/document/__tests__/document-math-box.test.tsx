@@ -21,7 +21,10 @@ import { t } from '@breatic/shared';
 
 import { open, unmountAll, type Editor } from '@web/spaces/document/__tests__/paste-harness';
 
-afterEach(unmountAll);
+afterEach(() => {
+  unmountAll();
+  vi.restoreAllMocks();
+});
 
 /** The open box. */
 const BOX = '[data-formula-box]';
@@ -139,6 +142,22 @@ describe('the box (A5)', () => {
     expect(sourceIn(editor, 'mathBlock')).toBe('x+1你');
   });
 
+  it.each([
+    ['a block formula, selected whole', BLOCK, '.katex-display', 'mathBlock'],
+    ['an inline formula, the caret right after it', INLINE, '.katex', 'math'],
+  ] as const)('puts the body’s selection on %s when a press opens it, so an undo lands there (§8.2)', async (_label, blocks, selector, name) => {
+    const { editor } = open([{ type: 'paragraph', content: 'far away' }, ...blocks]);
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 1)));
+
+    await openBy(selector);
+
+    const { selection } = view.state;
+    const at = posOf(editor, name);
+    if (name === 'mathBlock') expect(selection instanceof NodeSelection && selection.from === at).toBe(true);
+    else expect(selection.from).toBe(at + 1);
+  });
+
   it('follows a collaborator who changes the source while it is open', async () => {
     const { editor } = open(BLOCK);
     const text = await openBy('.katex-display');
@@ -183,6 +202,37 @@ describe('closing a block formula’s box (§8.2)', () => {
 
     expect(closed()).toBe(true);
     expect(sourceIn(editor, 'mathBlock')).toBe('x+3');
+  });
+
+  it('selects the formula and hands the keyboard to the body when the whole window loses focus (§8.2)', async () => {
+    const { editor } = open(BLOCK);
+    const text = await openBy('.katex-display');
+    vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+
+    fireEvent.blur(text, { relatedTarget: null });
+
+    expect(closed()).toBe(true);
+    const { selection } = editor.prosemirrorView!.state;
+    expect(selection instanceof NodeSelection && selection.node.type.name === 'mathBlock').toBe(true);
+    expect(document.activeElement).toBe(editor.prosemirrorView!.dom);
+  });
+
+  it.each([
+    ['Enter that accepts a candidate', 'Enter', 'x+1'],
+    ['Escape that dismisses the candidates', 'Escape', 'x+1'],
+    ['Backspace that erases the reading', 'Backspace', ''],
+  ] as const)('leaves the %s to the input method (§8.2)', async (_label, key, value) => {
+    const { editor } = open(BLOCK);
+    const text = await openBy('.katex-display');
+    fireEvent.change(text, { target: { value } });
+    fireEvent.compositionStart(text);
+
+    // Chrome ends the composition first, then sends the key with isComposing false.
+    fireEvent.compositionEnd(text, { target: { value } });
+    fireEvent.keyDown(text, { key, keyCode: 229 });
+
+    expect(closed()).toBe(false);
+    expect(posOf(editor, 'mathBlock')).toBeGreaterThanOrEqual(0);
   });
 
   it('leaves Shift+Enter to the field, a new line in the source', async () => {

@@ -22,7 +22,7 @@
 import * as React from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import katex from 'katex';
-import { autoUpdate, offset, shift, useFloating } from '@floating-ui/react';
+import { autoUpdate, flip, offset, shift, useFloating, type Placement } from '@floating-ui/react';
 import { Sigma, TriangleAlert } from 'lucide-react';
 import {
   createBlockSpec,
@@ -42,6 +42,7 @@ import { Textarea } from '@web/components/ui/textarea';
 import { useTranslation } from '@web/i18n/use-translation';
 import { MATH_BLOCK_SOURCE_ATTR, MATH_SOURCE_ATTR, formulaSourceHolder } from '@web/lib/formula-source';
 import { DISPLAY_MATH_SCROLLER, KATEX_OPTIONS } from '@web/lib/katex-options';
+import { compositionEnd, keyBelongsToInputMethod, type CompositionEnd } from '@web/lib/composition-end';
 import { cn } from '@web/lib/utils';
 import { DOC_TABLE, cellDepthOf } from '@web/spaces/document/document-table-nodes';
 
@@ -306,7 +307,7 @@ function FormulaMarkup({ html, className }: { html: string; className?: string }
 
 /** What the face asks of its node view. */
 interface FaceActions {
-  readonly open: (caret: Caret) => void;
+  readonly open: (caret: Caret, press?: boolean) => void;
   readonly close: (leave: Leave) => void;
   readonly write: (source: string) => void;
   readonly remove: (back: boolean) => void;
@@ -320,6 +321,7 @@ interface FaceActions {
  * @param field - The text field.
  * @param inline - Whether the formula sits inside a line.
  * @param actions - The node view's actions.
+ * @param ended - The field's composition ends.
  * @returns Whether the key was taken.
  */
 function boxKey(
@@ -327,8 +329,9 @@ function boxKey(
   field: HTMLTextAreaElement,
   inline: boolean,
   actions: FaceActions,
+  ended: CompositionEnd,
 ): boolean {
-  if (event.nativeEvent.isComposing) return false;
+  if (keyBelongsToInputMethod(event.nativeEvent, ended)) return false;
   const mod = event.metaKey || event.ctrlKey;
   const key = event.key.toLowerCase();
   if (mod && !event.altKey && (key === 'z' || (key === 'y' && event.ctrlKey && !event.metaKey))) {
@@ -395,6 +398,7 @@ const MathFace = React.memo(function MathFace({
   // whenever nothing is being composed.
   const field = React.useRef<HTMLTextAreaElement | null>(null);
   const composing = React.useRef(false);
+  const ended = React.useMemo(compositionEnd, []);
   const [draft, setDraft] = React.useState(source);
   React.useEffect(() => {
     if (!composing.current) setDraft(source);
@@ -415,13 +419,25 @@ const MathFace = React.memo(function MathFace({
     () => host.closest<HTMLElement>('[data-radix-scroll-area-viewport]') ?? undefined,
     [host],
   );
-  const { refs, floatingStyles } = useFloating({
+  // Below the formula, or above it when the window has no room below; the
+  // side is settled as the box appears, so a growing error line does not
+  // flip it (as the AI custom-request box, `DocumentAiDialog.tsx`).
+  const [side, setSide] = React.useState<Placement | null>(null);
+  const middleware = React.useMemo(
+    () => [offset(4), ...(side === null ? [flip({ boundary: viewport })] : []), shift({ boundary: viewport, padding: 8 })],
+    [side, viewport],
+  );
+  const { refs, floatingStyles, placement, isPositioned } = useFloating({
     open: shown,
-    placement: inline ? 'bottom-start' : 'bottom',
+    placement: side ?? (inline ? 'bottom-start' : 'bottom'),
     strategy: inCell ? 'fixed' : 'absolute',
-    middleware: [offset(4), shift({ boundary: viewport, padding: 8 })],
+    middleware,
     whileElementsMounted: shown ? autoUpdate : undefined,
   });
+  React.useEffect(() => {
+    if (!shown) setSide(null);
+    else if (isPositioned && side === null) setSide(placement);
+  }, [shown, isPositioned, placement, side]);
 
   const Wrapper = inline ? 'span' : 'div';
   const face =
@@ -454,7 +470,7 @@ const MathFace = React.memo(function MathFace({
           if (!editable) return;
           event.preventDefault();
           event.stopPropagation();
-          actions.open('end');
+          actions.open('end', true);
         }}
       >
         {inline ? (
@@ -482,7 +498,10 @@ const MathFace = React.memo(function MathFace({
           onBlur={(event) => {
             if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
             actions.focused(false);
-            actions.close('stay');
+            // A switch to another window lands on the formula, as Escape does,
+            // so the keyboard is in the body when the window comes back.
+            const windowLeft = event.relatedTarget === null && !event.currentTarget.ownerDocument.hasFocus();
+            actions.close(windowLeft ? 'after' : 'stay');
           }}
         >
           <div className='flex shrink-0 items-center gap-1.5 border-b border-border px-3 py-1.5 text-sm font-medium'>
@@ -505,10 +524,11 @@ const MathFace = React.memo(function MathFace({
               }}
               onCompositionEnd={(event) => {
                 composing.current = false;
+                ended.mark();
                 actions.write(event.currentTarget.value);
               }}
               onKeyDown={(event) => {
-                if (boxKey(event, event.currentTarget, inline, actions)) event.preventDefault();
+                if (boxKey(event, event.currentTarget, inline, actions, ended)) event.preventDefault();
               }}
             />
             {error !== null && <p className='mt-1.5 text-xs text-status-error-foreground'>{error}</p>}
@@ -653,8 +673,16 @@ function mountFormula(
     view.focus();
   };
   const actions: FaceActions = {
-    open: (caret) => {
-      if (editor.isEditable) store.set({ open: true, caret });
+    open: (caret, press = false) => {
+      if (!editor.isEditable) return;
+      const pos = getPos();
+      // A press leaves the body's selection wherever it was; it goes on the
+      // formula first, so an undo of the edit comes back to the formula.
+      if (press && pos !== undefined) {
+        const { doc } = view.state;
+        view.dispatch(view.state.tr.setSelection(inline ? TextSelection.create(doc, pos + node.nodeSize) : NodeSelection.create(doc, pos)));
+      }
+      store.set({ open: true, caret });
     },
     close: (leave) => {
       store.set({ open: false });

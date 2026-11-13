@@ -255,6 +255,27 @@ test('a formula block in a table cell opens its box on screen', async () => {
   await expect.poll(() => lines(page)).toContain('mathBlock:x^2');
 });
 
+test('a box opened near the bottom of the window opens above its formula, inside the window', async () => {
+  await openFreshDocument(page);
+  await paste(page, { 'text/plain': `${Array.from({ length: 40 }, (_, i) => `line ${i}`).join('\n\n')}\n\n$$\n\\frac{a}{b}\n$$` });
+  const formula = page.locator(`${EDITOR} .doc-math .katex-display`).first();
+  await expect(formula).toBeVisible();
+  // The formula's bottom edge 40px above the window's.
+  await formula.evaluate((element) => {
+    const scroller = element.closest('[data-radix-scroll-area-viewport]')!;
+    scroller.scrollTop += element.getBoundingClientRect().bottom - (window.innerHeight - 40);
+  });
+
+  await formula.click();
+  await expect(page.locator(FIELD)).toBeFocused();
+
+  const box = (await page.locator(BOX).boundingBox())!;
+  const drawn = (await formula.boundingBox())!;
+  expect(box.y).toBeGreaterThanOrEqual(0);
+  expect(box.y + box.height).toBeLessThanOrEqual(page.viewportSize()!.height);
+  expect(box.y + box.height).toBeLessThanOrEqual(drawn.y);
+});
+
 test('typing $$x^2$$ makes an inline formula; undo gives the words back and typing on keeps them', async () => {
   await openFreshDocument(page);
   await page.keyboard.type('area $$x^2$$');
