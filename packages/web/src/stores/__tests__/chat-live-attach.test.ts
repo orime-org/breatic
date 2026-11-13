@@ -108,7 +108,7 @@ describe('a sync that says a run holds the conversation', () => {
     wire.last()!.push({ type: 'text-delta', id: 't1', delta: 'hello' });
     await settle();
     expect(messages().map((m) => m.role)).toEqual(['user', 'assistant']);
-    expect(messages()[1]!.id).not.toBe('server-named');
+    expect(messages()[1]!.id).toBe('server-named');
   });
 });
 
@@ -521,7 +521,7 @@ describe('the history on screen when no run is read', () => {
     expect(messages().map((m) => m.id)).toEqual(['m1', 'a1', 'm2', 'a2']);
   });
 
-  it('keeps a reply read back after its run under the id it was drawn with, so it is not drawn anew', async () => {
+  it('draws a reply under the id the server stores it with, so reading it back draws nothing anew', async () => {
     vi.mocked(chatApi.sync).mockResolvedValueOnce(RUNNING);
     vi.mocked(chatApi.readConversation).mockResolvedValueOnce(page([userRow('m1', 1)]));
     chatLive.show('p1', 'c1');
@@ -531,6 +531,7 @@ describe('the history on screen when no run is read', () => {
     s.push({ type: 'text-delta', id: 't1', delta: 'all done' });
     await settle();
     const drawnAs = messages()[1]!.id;
+    expect(drawnAs).toBe('server-named');
     // The server stores it under the name its stream's `start` gave it.
     vi.mocked(chatApi.readConversation).mockResolvedValue(page([userRow('m1', 1), { ...DONE, id: 'server-named' }]));
     for (const f of replyEnds()) s.push(f);

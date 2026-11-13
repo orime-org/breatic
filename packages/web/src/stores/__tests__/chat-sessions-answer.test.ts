@@ -217,8 +217,8 @@ describe('answering a card', () => {
 
 describe('writing a message instead of answering', () => {
   it('shows the card it closed as replied to and adds one reply for the run when the frames arrive in the order the server writes them', async () => {
-    // A named conversation's run opens with its title, then the cards the
-    // message closed, then the model's reply under the server's own id.
+    // A run opens by naming its reply, then gives the conversation's title
+    // and the cards the message closed, then the model's reply.
     const chat = pausedChat();
     vi.mocked(chatApi.readConversation).mockResolvedValue(
       page([
@@ -231,9 +231,9 @@ describe('writing a message instead of answering', () => {
     await settle();
     const s = wire.last()!;
     storesWhatIsDrawn(() => chat.messages, 'c-1');
+    s.push({ type: 'start', messageId: 'named-by-the-server' });
     s.push({ type: 'data-conversation-titled', data: { title: 'Poster' } });
     s.push({ type: 'data-ask-replied', data: { toolCallId: 'ask-1' } });
-    s.push({ type: 'start', messageId: 'named-by-the-server' });
     s.push({ type: 'text-start', id: 't' });
     s.push({ type: 'text-delta', id: 't', delta: 'Sure.' });
     s.push({ type: 'text-end', id: 't' });
