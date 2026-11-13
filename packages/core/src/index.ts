@@ -353,3 +353,9 @@ export * from "@core/credit/credit-grant-contract.js";
 
 export * as accountActivityRepo from "@core/activity/account-activity.repo.js";
 export * as accountActivityCoverageRepo from "@core/activity/account-activity-coverage.repo.js";
+
+// ── External-agent access (#1488) ────────────────────────────────
+export * as oauthRecordsRepo from "@core/agent-access/oauth-records.repo.js";
+export type { UsableGrant } from "@core/agent-access/oauth-records.repo.js";
+export * as agentAccessService from "@core/agent-access/agent-access.service.js";
+export type { AgentCredential, AgentConnectionView, CreatePersonalAccessTokenResult } from "@core/agent-access/agent-access.service.js";

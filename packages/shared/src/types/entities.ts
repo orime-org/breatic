@@ -1014,3 +1014,40 @@ export interface WebAnimationSourceVersion {
   durationFrames: number;
   createdAt: string;
 }
+
+/** How an external agent connects (#1488): an OAuth client by metadata document or by dynamic registration, or a personal access token. */
+export type AgentConnectionKind = "cimd" | "dcr" | "pat";
+
+/** One connected external agent a user sees and can disconnect (#1488). */
+export interface AgentConnectionEntity {
+  id: string;
+  userId: string;
+  kind: AgentConnectionKind;
+  /** The OAuth client id for `cimd` / `dcr`; the personal access token's id for `pat`. */
+  clientKey: string;
+  displayName: string;
+  lastUsedAt: Date | null;
+  createdAt: Date;
+  deletedAt: Date | null;
+}
+
+/** A personal access token, without its plaintext, which is never stored (#1488). */
+export interface PersonalAccessTokenEntity {
+  id: string;
+  userId: string;
+  name: string;
+  /** The first 8 characters of the plaintext, for telling tokens apart. */
+  tokenPrefix: string;
+  /** Null never expires. */
+  expiresAt: Date | null;
+  lastUsedAt: Date | null;
+  createdAt: Date;
+  deletedAt: Date | null;
+}
+
+/** A record the OAuth authorization server stored, as its adapter reads it back (#1488). */
+export interface OAuthRecordEntity {
+  payload: Record<string, unknown>;
+  consumedAt: Date | null;
+  expiresAt: Date | null;
+}

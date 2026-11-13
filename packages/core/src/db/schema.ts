@@ -36,6 +36,7 @@ import {
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import type {
   AccountActivityKind,
+  AgentConnectionKind,
   Attribution,
   ConsentRecord,
   ConsentSnapshot,
@@ -3636,3 +3637,84 @@ export const accountActivityCoverage = pgTable("account_activity_coverage", {
   check("account_activity_coverage_version_check", sql`${table.version} > 0`),
   check("account_activity_coverage_interval_check", sql`${table.endedAt} IS NULL OR ${table.endedAt} > ${table.startedAt}`),
 ]);
+
+// ── External-agent access (0126, #1488) ──────────────────────────────
+
+/**
+ * What server's OAuth authorization server stores, one row per model and id:
+ * grants, tokens, sessions, interactions. `grant_id`, `account_id`,
+ * `client_id` and `uid` are copied out of `payload` so records can be found by
+ * them. A destroyed record is soft-deleted and frees its (model, id) slot.
+ */
+export const oauthRecords = pgTable(
+  "oauth_records",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    model: text("model").notNull(),
+    recordId: text("record_id").notNull(),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+    grantId: text("grant_id"),
+    accountId: text("account_id"),
+    clientId: text("client_id"),
+    uid: text("uid"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    ...timestamps,
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("oauth_records_live_key").on(table.model, table.recordId).where(sql`${table.deletedAt} IS NULL`),
+    index("oauth_records_grant_idx").on(table.grantId),
+    index("oauth_records_uid_idx").on(table.model, table.uid),
+    index("oauth_records_grant_owner_idx")
+      .on(table.accountId, table.clientId)
+      .where(sql`${table.model} = 'Grant' AND ${table.deletedAt} IS NULL`),
+    check("oauth_records_payload_check", sql`jsonb_typeof(${table.payload}) = 'object'`),
+  ],
+);
+
+/** A personal access token: only its SHA-256 and first 8 characters are stored. `expires_at` null never expires. */
+export const personalAccessTokens = pgTable(
+  "personal_access_tokens",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+    name: text("name").notNull(),
+    tokenHash: text("token_hash").notNull().unique(),
+    tokenPrefix: text("token_prefix").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    ...timestamps,
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("personal_access_tokens_user_idx").on(table.userId).where(sql`${table.deletedAt} IS NULL`),
+    check("personal_access_tokens_hash_check", sql`${table.tokenHash} ~ '^[0-9a-f]{64}$'`),
+  ],
+);
+
+/**
+ * What the user sees as one connected agent: an OAuth client they authorized
+ * (`cimd` / `dcr`, `client_key` = the client id; one live row per user and
+ * client) or one personal access token (`pat`, `client_key` = the token id).
+ */
+export const agentConnections = pgTable(
+  "agent_connections",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+    kind: text("kind").$type<AgentConnectionKind>().notNull(),
+    clientKey: text("client_key").notNull(),
+    displayName: text("display_name").notNull(),
+    lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+    ...timestamps,
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("agent_connections_live_client_key")
+      .on(table.userId, table.clientKey)
+      .where(sql`${table.deletedAt} IS NULL AND ${table.kind} IN ('cimd', 'dcr')`),
+    index("agent_connections_user_idx").on(table.userId).where(sql`${table.deletedAt} IS NULL`),
+    check("agent_connections_kind_check", sql`${table.kind} IN ('cimd', 'dcr', 'pat')`),
+  ],
+);
