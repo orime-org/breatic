@@ -1,0 +1,21 @@
+# ── Regions (inner#1955) ───────────────────────────────
+# Only read when a deployment runs more than one region; a single-region
+# deployment calls everything in process and never waits on these.
+#
+# global_api_timeout_ms: how long a region waits for one call to the global
+#   region's internal API before treating it as failed.
+# region_probe_timeout_ms: how long the global region waits for a region to
+#   answer the probe before creating a Studio there.
+# cross_region_fanout_timeout_ms: how long the global region waits for each
+#   other region when merging recents, notifications and invitation
+#   previews; a region that does not answer in time is reported unavailable.
+# outbox_relay_interval_ms: how often a region relays its outbox to the
+#   global region.
+# profile_cache_ttl_ms: how long a region caches names and avatars read from
+#   the global region. The relay interval plus this stays within sixty
+#   seconds, so a rename reaches every region within a minute.
+global_api_timeout_ms: 5000
+region_probe_timeout_ms: 2000
+cross_region_fanout_timeout_ms: 2000
+outbox_relay_interval_ms: 1000
+profile_cache_ttl_ms: 30000

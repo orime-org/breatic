@@ -80,6 +80,16 @@ export { getStripeWebhookRecordingWriteTimeoutMs } from "@core/config/stripe-web
 export { getMiniToolsConfig, type MiniToolsConfig } from "@core/config/mini-tools.js";
 export { getUnderstandConfig, type UnderstandConfig } from "@core/config/understand.js";
 export { getSceneConfig, type SceneConfig } from "@core/config/scene.js";
+export { getRegionsConfig, type RegionsConfig } from "@core/config/regions.js";
+export { canonicalString, signRequest, type SignedParts } from "@core/region/signature.js";
+export {
+  callRegion,
+  createGlobalApi,
+  GlobalApiError,
+  UNREACHABLE_STATUS,
+  type GlobalApiOptions,
+  type RegionApiOptions,
+} from "@core/region/global-api.js";
 export {
   getUsagePricing,
   parseUsagePricing,

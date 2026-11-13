@@ -4,7 +4,8 @@
 /**
  * Request signing for the internal API (inner#1410 §4.2): the pure half of
  * the check — header formats, the ±300 s window and the HMAC. The nonce step
- * needs Redis and runs in `internal-auth.ts` after these.
+ * needs Redis and runs in `internal-auth.ts` after these. The signed text is
+ * built by `canonicalString` in `@breatic/core`, which signs as well.
  *
  * The signed text is seven lines joined by `\n`: method, path with its query
  * string as sent, timestamp, nonce, admin id, the `Idempotency-Key` header
@@ -13,19 +14,10 @@
  * starting a different one.
  */
 
-import { createHmac } from "node:crypto";
+import { signRequest, type SignedParts } from "@breatic/core";
 import { secretsMatch } from "@server/utils/secrets-match.js";
 
-/** Everything the signature covers. */
-export interface SignedParts {
-  method: string;
-  pathWithQuery: string;
-  timestamp: string;
-  nonce: string;
-  adminId: string;
-  idempotencyKey: string | null;
-  body: string;
-}
+export { canonicalString, signRequest, type SignedParts } from "@breatic/core";
 
 /** The request as the middleware hands it over; header names lower case. */
 export interface InternalRequest {
@@ -47,33 +39,6 @@ const ADMIN_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const NONCE = /^[A-Za-z0-9_-]{16,64}$/;
 const TIMESTAMP = /^[0-9]+$/;
 const SIGNATURE = /^v1=[0-9a-f]{64}$/;
-
-/**
- * The text the signature covers.
- * @param parts - The seven signed values.
- * @returns The seven lines joined by `\n`.
- */
-export function canonicalString(parts: SignedParts): string {
-  return [
-    parts.method,
-    parts.pathWithQuery,
-    parts.timestamp,
-    parts.nonce,
-    parts.adminId,
-    parts.idempotencyKey ?? "",
-    parts.body,
-  ].join("\n");
-}
-
-/**
- * Sign a request the way the back office does.
- * @param secret - The shared secret.
- * @param parts - The seven signed values.
- * @returns `v1=` plus the lowercase hex HMAC-SHA256.
- */
-export function signRequest(secret: string, parts: SignedParts): string {
-  return `v1=${createHmac("sha256", secret).update(canonicalString(parts), "utf8").digest("hex")}`;
-}
 
 /**
  * Check a request's signature headers, timestamp and HMAC, in that order.
