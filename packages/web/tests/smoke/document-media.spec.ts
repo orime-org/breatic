@@ -204,8 +204,10 @@ test('the plus menu offers image, audio and video after the table, and a picked 
   const order = await page
     .locator('[role="menuitem"][data-testid^="doc-block-insert-"]')
     .evaluateAll((items) => items.map((item) => item.getAttribute('data-testid')));
-  expect(order.slice(-4)).toEqual([
+  // The formula row sits right under the table (inner#1423).
+  expect(order.slice(-5)).toEqual([
     'doc-block-insert-table',
+    'doc-block-insert-formula',
     'doc-block-insert-image',
     'doc-block-insert-audio',
     'doc-block-insert-video',

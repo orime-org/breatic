@@ -1452,15 +1452,17 @@ test('offers the insert rows in the block type menu’s own order', async () => 
   );
 
   // Paragraph is the one row insert leaves out: the row it makes is already
-  // one, so offering it would offer nothing. The divider, the table and the
-  // three media come after them: none is a block type, so the block type menu
-  // has no row for any of them (#124, inner#1126, inner#1127).
+  // one, so offering it would offer nothing. The divider, the table, the
+  // formula and the three media come after them: none is a block type, so the
+  // block type menu has no row for any of them (#124, inner#1126, inner#1127,
+  // inner#1423).
   expect(inserts.map((id) => id.replace('doc-block-insert-', ''))).toEqual([
     ...types
       .map((id) => id.replace('doc-block-type-', ''))
       .filter((id) => id !== 'paragraph'),
     'divider',
     'table',
+    'formula',
     'image',
     'audio',
     'video',
