@@ -27,6 +27,21 @@ const DELIMITER = '$$';
 const FORMULA_CLASS = 'katex';
 
 /**
+ * The root of a reply (`MarkdownMessage`): a copy is this handler's only when
+ * it starts or ends inside one, so the document body's own copy never passes
+ * through here (inner#1423).
+ */
+const REPLY = '[data-testid="markdown-body"]';
+
+/**
+ * The attributes the document body reads a pasted formula's source from
+ * (`document-math.tsx`): the copy reads as `$$` text anywhere else, and as the
+ * formula it was in the body.
+ */
+const INLINE_SOURCE = 'data-math';
+const BLOCK_SOURCE = 'data-math-block';
+
+/**
  * What a paste target cannot read outside the element it came from.
  *
  * Measured in Chromium over every parent-dependent element in HTML: there are
@@ -105,6 +120,16 @@ function formulaAround(node: Node): Element | null {
 }
 
 /**
+ * Whether a node sits in a reply.
+ * @param node - Where an end of the selection landed.
+ * @returns True inside one.
+ */
+function inReply(node: Node): boolean {
+  const element = node instanceof Element ? node : node.parentElement;
+  return element?.closest(REPLY) != null;
+}
+
+/**
  * Turn every formula in this copy back into the source it was drawn from.
  * @param copied - The copied selection, modified in place.
  */
@@ -117,7 +142,8 @@ function replaceFormulaeWithSource(copied: Element): void {
     // KaTeX writes MathML's own way of saying it, and leaves the attribute
     // off an inline formula.
     const onItsOwnLine = formula.querySelector('math')?.getAttribute('display') === 'block';
-    const holder = document.createElement('span');
+    const holder = document.createElement(onItsOwnLine ? 'div' : 'span');
+    holder.setAttribute(onItsOwnLine ? BLOCK_SOURCE : INLINE_SOURCE, source);
     // Source, not prose: the line breaks around a formula on its own line are
     // part of what makes it one, and normal white-space handling would fold
     // them into spaces on the way out.
@@ -132,6 +158,8 @@ function replaceFormulaeWithSource(copied: Element): void {
 document.addEventListener('copy', (event: ClipboardEvent): void => {
   const selection = window.getSelection();
   if (!selection || selection.isCollapsed || !event.clipboardData) return;
+  const ranges = Array.from({ length: selection.rangeCount }, (_, index) => selection.getRangeAt(index));
+  if (!ranges.some((range) => inReply(range.startContainer) || inReply(range.endContainer))) return;
 
   // Serialising this by hand is what the browser is for: `textContent` knows
   // nothing of block boundaries, table cells or list markers, and markup

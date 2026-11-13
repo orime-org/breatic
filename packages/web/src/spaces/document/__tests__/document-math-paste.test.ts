@@ -158,6 +158,9 @@ describe('a reply copied from the chat', () => {
       'bulletListItem:two',
       'paragraph:Mass is [math:E=mc^2].',
       'mathBlock:\\int x',
+      // Content ending in a block that is not words leaves the line pasted
+      // into for the caret (document-put.ts, inner#1127 A3).
+      'paragraph:',
     ]);
   });
 });
@@ -192,6 +195,7 @@ describe('formulas from another app', () => {
       'text/plain': 'a y b\ny',
     });
     await settled();
-    expect(lines(editor)).toEqual(['paragraph:a [math:y_1] b', 'mathBlock:\\sqrt{y}']);
+    // The line pasted into stays for the caret after a closing formula block.
+    expect(lines(editor)).toEqual(['paragraph:a [math:y_1] b', 'mathBlock:\\sqrt{y}', 'paragraph:']);
   });
 });

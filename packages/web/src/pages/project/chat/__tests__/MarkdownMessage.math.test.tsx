@@ -71,6 +71,17 @@ function around(node: Node): Range {
   return range;
 }
 
+/**
+ * The words some copied markup shows, attributes left out.
+ * @param html - The markup.
+ * @returns Its text.
+ */
+function shownText(html: string): string {
+  const held = document.createElement('div');
+  held.innerHTML = html;
+  return held.textContent ?? '';
+}
+
 describe('MarkdownMessage — maths', () => {
   it('gives a formula on its own lines a line of its own (A1)', () => {
     draw('$$\nx = 1\n$$');
@@ -145,7 +156,9 @@ describe('MarkdownMessage — maths', () => {
     // The source as the model wrote it, delimiters and line breaks included,
     // so a copied reply pastes back as the same reply.
     expect(html, 'the copy carries the LaTeX the model wrote').toContain('$$\nE = mc^2\n$$');
-    expect(html.match(/E = mc\^2/g) ?? [], 'and carries it once').toHaveLength(1);
+    // Once in what is shown: the element around it also names the source in
+    // `data-math-block`, which the document body reads back (inner#1423).
+    expect(shownText(html).match(/E = mc\^2/g) ?? [], 'and carries it once').toHaveLength(1);
     expect(html, 'and carries nothing the user cannot see').not.toContain('scrollbar-width');
     // What is written only reaches the clipboard if the browser's own copy is
     // stopped, and its own is the three-times-over one this replaces.
@@ -346,6 +359,6 @@ describe('MarkdownMessage — maths', () => {
     const html = copy(first, second).written.get('text/html') ?? '';
 
     expect(html, 'the formula is there').toContain('$$E = mc^2$$');
-    expect(html.match(/E = mc\^2/g) ?? [], 'once').toHaveLength(1);
+    expect(shownText(html).match(/E = mc\^2/g) ?? [], 'once').toHaveLength(1);
   });
 });

@@ -15,9 +15,11 @@
  * medium.
  */
 
-import { audioParse, imageParse, isMarkdown, markdownToHTML, videoParse } from '@blocknote/core';
+import { audioParse, imageParse, isMarkdown, videoParse } from '@blocknote/core';
 import type { Schema, Slice } from '@tiptap/pm/model';
 
+import { MATH_BLOCK_SOURCE_ATTR, MATH_SOURCE_ATTR } from '@web/spaces/document/document-math';
+import { formulaMarkdownToHTML } from '@web/spaces/document/document-math-markdown';
 import { routeAddress } from '@web/spaces/document/document-media-address';
 import { HTML_MEDIA_ELEMENTS, HTML_MEDIA_SELECTOR, isMediaBlockType, type MediaBlockType } from '@web/spaces/document/document-media-types';
 import { readClipboardSlice } from '@web/spaces/document/document-paste-slice';
@@ -63,6 +65,9 @@ export interface Read {
 
 /** Whether a piece of HTML carries an image, a video or an audio. */
 const HTML_MEDIA = new RegExp(`<(${HTML_MEDIA_ELEMENTS.join('|')})\\b`, 'i');
+
+/** A formula as the chat's copy writes it (inner#1423). */
+const FORMULA_COPY = new RegExp(`\\s(?:${MATH_SOURCE_ATTR}|${MATH_BLOCK_SOURCE_ATTR})=`);
 
 /** The marker a medium stands as while BlockNote reads the words around it. */
 const MARKER = /(\d+)/g;
@@ -591,11 +596,14 @@ export function readTransfer(reader: BlockReader, data: Transfer, lands: (url: s
   const markdown = data.types.includes('text/markdown');
   const withMedia = HTML_MEDIA.test(html);
   const codeText = !withMedia && plain !== '' ? plain : null;
-  if (!markdown && !withMedia && html !== '' && !isMarkdown(plain)) {
+  // A chat reply's copy carries its formulas as `data-math*` elements, and its
+  // plain text (a block formula's `$$` lines) reads as Markdown: the HTML holds
+  // the reply's structure, so it is the one read.
+  if (!markdown && !withMedia && html !== '' && (!isMarkdown(plain) || FORMULA_COPY.test(html))) {
     return { source: blocksOf(pastedBlocks(reader, evenPastedTables(html))), lost: 0, plain: null, codeText };
   }
   if (!markdown && plain === '' && html === '') return { source: blocksOf([]), lost: 0, plain: null };
-  const source = markdown ? markdownToHTML(data.getData('text/markdown')) : withMedia ? html : markdownToHTML(plain);
+  const source = markdown ? formulaMarkdownToHTML(data.getData('text/markdown')) : withMedia ? html : formulaMarkdownToHTML(plain);
   const { blocks, lost } = readByMarkers(reader, source, lands);
   return { source: blocksOf(blocks), lost, plain: plainOnly, codeText };
 }

@@ -33,6 +33,8 @@ import {
   type ProposalAdmission,
   undoOf,
 } from '@web/spaces/document/document-proposal-landing';
+import { MATH_BLOCK, MATH_INLINE } from '@web/spaces/document/document-math';
+import { formulaMarkdownToHTML } from '@web/spaces/document/document-math-markdown';
 import { LEGACY_CELL_LINE } from '@web/spaces/document/document-table-legacy';
 import { blocksMarkdown, type BlockLike } from '@web/spaces/document/document-table-markdown';
 import { blockInTableCell, cellDepthOf, DOC_TABLE } from '@web/spaces/document/document-table-nodes';
@@ -58,7 +60,7 @@ const CODE = 'codeBlock';
 const LIST_ITEMS = new Set(['bulletListItem', 'numberedListItem', 'checkListItem', 'toggleListItem']);
 
 /** The punctuation BlockNote 0.56's parser takes a backslash before. */
-const BACKSLASHED = /[\\`*_{}[\]()#+\-.!~|>]/g;
+const BACKSLASHED = /[\\`*_{}[\]()#+\-.!~|>$]/g;
 
 /** One inline piece of a block, loosely typed. */
 interface Inline {
@@ -306,10 +308,12 @@ const BACKSLASH_PAIR = '&aibs;';
  */
 function fixedInline(content: readonly Inline[], code = false): Inline[] {
   if (code) return content.map((c) => (c.type === 'text' ? { ...c, text: decoded(asCode(c.text ?? '')) } : c));
+  // A formula's source went out and came back as written, its `\\` pairs held.
+  const pieces = content.map((c) => (c.type === MATH_INLINE ? { ...c, content: formulaSource(c.content) } : c));
   // A link the parser made from an address keeps every backslash in its
   // address and words; those are taken out here, once.
   const unescaped = new Set<Inline>();
-  const out = content.map((c): Inline => {
+  const out = pieces.map((c): Inline => {
     if (c.type !== 'link') return { ...c };
     const href = decoded(asWords((c.href ?? '').replace(BACKSLASH_ESCAPE, '$1')));
     const bare = (c.content ?? []).map((t) => ({ ...t, text: asWords((t.text ?? '').replace(BACKSLASH_ESCAPE, '$1')) }));
@@ -356,11 +360,23 @@ function asWords(text: string): string {
 }
 
 /**
+ * A formula's parsed source with its held backslash pairs as written.
+ * @param content - The source, as a string or as text pieces.
+ * @returns The same shape, fixed.
+ */
+function formulaSource<T>(content: T): T {
+  if (typeof content === 'string') return asCode(content) as T;
+  if (!Array.isArray(content)) return content;
+  return (content as Inline[]).map((c) => (c.type === 'text' ? { ...c, text: asCode(c.text ?? '') } : c)) as T;
+}
+
+/**
  * A parsed block with its words fixed, children included.
  * @param block - The block.
  * @returns It.
  */
 function fixedBlock(block: Read): Read {
+  if (block.type === MATH_BLOCK) return { ...block, content: formulaSource(block.content), children: (block.children ?? []).map(fixedBlock) };
   const content = Array.isArray(block.content) ? fixedInline(block.content as Inline[], block.type === CODE) : block.content;
   return { ...block, content, children: (block.children ?? []).map(fixedBlock) };
 }
@@ -432,6 +448,8 @@ function escapeCode(text: string): string {
 function escapedForMarkdown(blocks: readonly BlockLike[]): BlockLike[] {
   return (blocks as readonly Read[]).map((block): Read => {
     const children = escapedForMarkdown(block.children ?? []) as Read[];
+    // A formula's source goes out between `$$` as it is.
+    if (block.type === MATH_BLOCK) return { ...block, children };
     if (block.type === CODE && Array.isArray(block.content)) {
       return { ...block, content: (block.content as Inline[]).map((c) => ({ ...c, text: escapeCode(c.text ?? '') })), children };
     }
@@ -460,6 +478,7 @@ function escapedForMarkdown(blocks: readonly BlockLike[]): BlockLike[] {
  */
 function escapedForHtml(blocks: readonly BlockLike[]): BlockLike[] {
   return (blocks as readonly Read[]).map((block) => {
+    if (block.type === MATH_BLOCK) return { ...block, children: escapedForHtml(block.children ?? []) as Read[] };
     const code = block.type === CODE;
     let afterBreak = false;
     /**
@@ -644,7 +663,7 @@ export function aiAnswerEmpty(text: string): boolean {
  */
 function parsed(parser: ViewedEditor, text: string): Read[] {
   const markdown = text.replace(/\\\\/g, BACKSLASH_PAIR);
-  return (parser.tryParseMarkdownToBlocks(markdown) as unknown as Read[]).map(fixedBlock);
+  return (parser.tryParseHTMLToBlocks(formulaMarkdownToHTML(markdown)) as unknown as Read[]).map(fixedBlock);
 }
 
 /**
@@ -655,7 +674,7 @@ function parsed(parser: ViewedEditor, text: string): Read[] {
  * @returns True for one.
  */
 function holdsWords(block: Pick<Read, 'type' | 'content'>): boolean {
-  return Array.isArray(block.content) && block.type !== CODE;
+  return Array.isArray(block.content) && block.type !== CODE && block.type !== MATH_BLOCK;
 }
 
 /**
