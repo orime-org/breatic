@@ -276,6 +276,22 @@ describe('a block formula with its popup open (A5, A7)', () => {
     expect(blocks(editor)[0]!.children[0]!.type).toBe('mathBlock');
   });
 
+  it('Delete at the end of a source does nothing to the line below', () => {
+    const { editor } = open([
+      { type: 'mathBlock', content: 'abc' },
+      { type: 'paragraph', content: 'tail' },
+    ]);
+    const id = openPopupAtStart(editor);
+    const at = posOf(editor, 'mathBlock');
+    select(editor, at + editor.prosemirrorView!.state.doc.nodeAt(at)!.nodeSize - 1);
+    const before = editor.prosemirrorView!.state.doc;
+
+    expect(press(editor, 'Delete')).toBe(true);
+
+    expect(editor.prosemirrorView!.state.doc.eq(before)).toBe(true);
+    expect(popupOpen(editor, id)).toBe(true);
+  });
+
   it('Backspace in an empty source deletes the formula block', () => {
     const { editor } = open([
       { type: 'paragraph', content: 'above' },

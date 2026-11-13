@@ -156,3 +156,47 @@ describe('a selection that reaches into a formula from outside (§6.6)', () => {
     expect(copy(editor)['text/plain']?.trim()).toBe('start $$x^2$$');
   });
 });
+
+describe('a selection that reaches into a closed formula block from outside (§6.6)', () => {
+  /** Words, a formula block whose box is closed, words. */
+  const BODY = [
+    { type: 'paragraph', content: 'hello' },
+    { type: 'mathBlock', content: 'abcdef' },
+    { type: 'paragraph', content: 'tail' },
+  ];
+
+  it('moves an end that lands in the hidden source out past the block', () => {
+    const editor = open(BODY);
+    const math = before(editor, 'mathBlock');
+    select(editor, before(editor, 'paragraph') + 4, math + 4);
+    const { $to } = editor.prosemirrorState.selection;
+    expect($to.parent.type.name).toBe('paragraph');
+    expect($to.parent.textContent).toBe('tail');
+  });
+
+  it('moves it out before the block when the drag runs backwards', () => {
+    const editor = open(BODY);
+    const math = before(editor, 'mathBlock');
+    const view = editor.prosemirrorView;
+    const tail = view.state.doc.content.size - 4;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, tail, math + 4)));
+    const { $head } = editor.prosemirrorState.selection;
+    expect($head.parent.type.name).toBe('paragraph');
+    expect($head.parent.textContent).toBe('hello');
+  });
+
+  it('leaves the formula whole when the range is deleted', () => {
+    const editor = open(BODY);
+    const math = before(editor, 'mathBlock');
+    select(editor, before(editor, 'paragraph') + 4, math + 4);
+    const view = editor.prosemirrorView;
+    view.dispatch(view.state.tr.deleteSelection());
+    const kinds: string[] = [];
+    view.state.doc.descendants((node) => {
+      if (node.type.name === 'mathBlock') kinds.push(`mathBlock:${node.textContent}`);
+      return true;
+    });
+    expect(kinds).not.toContain('mathBlock:def');
+    expect(view.state.doc.textContent).not.toContain('def');
+  });
+});

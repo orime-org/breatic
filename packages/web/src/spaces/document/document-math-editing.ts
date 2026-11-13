@@ -10,11 +10,11 @@
  * | Backspace right after converting | turns it back into the text `$$x$$` |
  * | Backspace / Delete beside an inline formula | the caret goes into its source; nothing the user cannot see is deleted |
  * | Backspace / Delete in an empty source | the formula goes |
- * | Backspace at the start of an open block formula's source | does nothing, or removes the formula when its source is empty |
+ * | Backspace at the start, Delete at the end of an open block formula's source | does nothing, or removes the formula when its source is empty |
  * | Enter in an inline source | confirms, the caret after the formula, whatever block the line is |
  * | ArrowLeft / ArrowRight across an inline formula's edge | the caret goes into its source, or out to right beside the formula |
  * | input into a selected, closed block formula | refused: its source is hidden |
- * | a selection reaching into an inline source from outside | widened to the whole formula |
+ * | a selection reaching into a hidden source from outside | widened to the whole formula |
  *
  * The keys run ahead of `document-enter` and `document-table-keys`, which
  * would otherwise split a quoted line or answer a table cell's edge first.
@@ -228,11 +228,11 @@ function deleteByFormula(editor: MathEditor, view: EditorView, back: boolean): b
     view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, into)));
     return true;
   }
-  // At the start of an open block formula's source.
-  if (back && $cursor.parentOffset === 0 && parent.isTextblock && hasPreview(editor, parent.type.name)) {
-    const id = $cursor.node($cursor.depth - 1).attrs['id'] as string;
-    if (editor.getExtension(SourceBlockWithPreviewExtension)?.store.state.popupOpen !== id) return false;
-    if (parent.content.size === 0) editor.removeBlocks([id]);
+  // At the edge of an open block formula's source: Backspace at its start and
+  // Delete at its end would reach the block beside it.
+  if (parent.isTextblock && hasPreview(editor, parent.type.name) && closedFormulaBlockAt(editor, $cursor) === null) {
+    if ($cursor.parentOffset !== (back ? 0 : parent.content.size)) return false;
+    if (parent.content.size === 0) editor.removeBlocks([$cursor.node($cursor.depth - 1).attrs['id'] as string]);
     return true;
   }
   return false;
@@ -286,9 +286,9 @@ function arrowByFormula(editor: MathEditor, view: EditorView, forward: boolean):
 }
 
 /**
- * Where a selection end that reaches into an inline formula's source from
- * outside it belongs: on the far edge of the formula, so the whole formula is
- * in the range.
+ * Where a selection end that reaches into a formula's hidden source from
+ * outside it belongs: on the far edge of an inline formula, or in the text
+ * past a closed block formula, so the whole formula is in the range.
  * @param editor - The editor.
  * @param end - The end that may be in a source.
  * @param other - The selection's other end.
@@ -296,15 +296,25 @@ function arrowByFormula(editor: MathEditor, view: EditorView, forward: boolean):
  */
 function wholeFormulaEdge(editor: MathEditor, end: ResolvedPos, other: ResolvedPos): number | null {
   const { parent } = end;
-  if (parent.isTextblock || !hasPreview(editor, parent.type.name)) return null;
-  const start = end.before();
-  const stop = end.after();
+  if (!hasPreview(editor, parent.type.name)) return null;
+  if (!parent.isTextblock) {
+    const start = end.before();
+    const stop = end.after();
+    if (other.pos > start && other.pos < stop) return null;
+    return other.pos <= start ? stop : start;
+  }
+  // A block formula whose box is closed: past the whole block, into the
+  // nearest text on the far side.
+  if (closedFormulaBlockAt(editor, end) === null) return null;
+  const start = end.before(end.depth - 1);
+  const stop = end.after(end.depth - 1);
   if (other.pos > start && other.pos < stop) return null;
-  return other.pos <= start ? stop : start;
+  const forward = other.pos <= start;
+  return Selection.near(end.doc.resolve(forward ? stop : start), forward ? 1 : -1).head;
 }
 
 /**
- * Widens a selection that reaches into an inline formula's source from
+ * Widens a selection that reaches into a formula's hidden source from
  * outside it to take in the whole formula. The source is hidden while the
  * box is closed, so a drag that stops on the drawn formula would otherwise
  * copy, cut or delete part of a source nobody can see.
