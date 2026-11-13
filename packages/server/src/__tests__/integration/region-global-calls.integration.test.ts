@@ -38,6 +38,7 @@ import { getMembershipLimits, initCore, loadLocales, signIdentityToken } from "@
 import type { Hono } from "hono";
 import { withPeer } from "../helpers/peer.js";
 import { startRegionStandIn, type RegionStandIn } from "./region-harness.js";
+import { precheckCredits } from "@server/modules/payment/credit-precheck.service.js";
 
 loadLocales();
 
@@ -66,6 +67,9 @@ const LISTED = new Set([
   "applyRegionEvent",
   "enqueueAdsConversion",
   "claimAccountMilestone",
+  "getUnassignedCredits",
+  "getGrantedCredits",
+  "getStudioDebt",
 ]);
 
 const keys = generateKeyPairSync("ed25519");
@@ -100,6 +104,9 @@ beforeAll(async () => {
     GLOBAL_API_URL: global.url,
     IDENTITY_PUBLIC_KEYS: JSON.stringify({ t1: PUBLIC_KEY }),
     INTERNAL_API_SECRET: "region-global-calls-test-secret",
+    PAYMENT_ENABLED: "true",
+    STRIPE_SECRET_KEY: "sk_test_unused_by_this_suite",
+    STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite",
   });
   sql = postgres(inject("DATABASE_URL"), {
     max: 2,
@@ -162,5 +169,21 @@ describe("serving Studio and Project requests in a region", () => {
       expect(call.signed).toBe(true);
       expect([...LISTED], `unlisted global call ${call.fn}`).toContain(call.fn);
     }
+  });
+
+  it("explains a refused run with account figures read from the global region", async () => {
+    const { userId, studioId } = await regionStudio();
+    const [project] = await sql<{ id: string }[]>`
+      INSERT INTO projects (studio_id, created_by_user_id, slug, name)
+      VALUES (${studioId}, ${userId}, ${`gc-p-${crypto.randomBytes(4).toString("hex")}`}, 'Far') RETURNING id
+    `;
+    global.answers.getSpendableCredits = "0.000000";
+    global.answers.getUnassignedCredits = "5.000000";
+    global.received.length = 0;
+
+    const refused = await precheckCredits(project!.id, userId, 1).then(() => null, (err: unknown) => err);
+
+    expect(refused).toMatchObject({ statusCode: 402 });
+    expect(global.received.map((call) => call.fn)).toEqual(["getSpendableCredits", "getUnassignedCredits"]);
   });
 });

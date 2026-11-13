@@ -23,7 +23,7 @@ import {
   type MembershipLimits,
 } from "@breatic/core";
 import { listLedgerByStudio, type StudioLedgerRow } from "@domain/credit/creditLot.repo.js";
-import type { ProjectCreditsView } from "@breatic/shared";
+import type { CreditDecimal, ProjectCreditsView } from "@breatic/shared";
 import * as usersRepo from "@domain/auth/user.repo.js";
 import {
   changeDirectoryAdmin,
@@ -38,8 +38,11 @@ import { getStorageBudget, recordRegionUsage, type RegionUsageReport, type Stora
 import type { OutboxEvent } from "@domain/region/regionOutbox.service.js";
 import {
   getSpendableCredits,
+  grantedCreditsHere,
   hasActiveDesignationsTo,
   readStudioCreditsHere,
+  studioDebtHere,
+  unassignedCreditsHere,
   settleRegionalCharge,
   type StudioCreditsSnapshot,
   type RegionalChargeOutcome,
@@ -119,6 +122,24 @@ export const GLOBAL_FUNCTIONS = {
    * @returns Its spendable credits.
    */
   getSpendableCredits: async (studioId: string): Promise<string> => String(await getSpendableCredits(studioId)),
+  /**
+   * What a Studio owes, for explaining a refused run.
+   * @param studioId - The Studio.
+   * @returns The debt in credits.
+   */
+  getStudioDebt: (studioId: string): Promise<CreditDecimal> => studioDebtHere(studioId),
+  /**
+   * What an account holds that no Studio can spend yet, for explaining a refused run.
+   * @param userId - The account.
+   * @returns The total in credits.
+   */
+  getUnassignedCredits: (userId: string): Promise<CreditDecimal> => unassignedCreditsHere(userId),
+  /**
+   * What an account was granted rather than bought, for explaining a refused run.
+   * @param userId - The account.
+   * @returns The total in credits.
+   */
+  getGrantedCredits: (userId: string): Promise<CreditDecimal> => grantedCreditsHere(userId),
   /**
    * A Studio's credits page from one snapshot, for its admin in the Studio's region.
    * @param studioId - The Studio.

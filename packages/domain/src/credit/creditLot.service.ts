@@ -1299,6 +1299,15 @@ export async function readStudioCreditsHere(
  * @returns The debt in credits; zero when it owes nothing.
  */
 export async function getStudioDebt(studioId: string): Promise<CreditDecimal> {
+  return inGlobalRegion() ? studioDebtHere(studioId) : globalApi().getStudioDebt(studioId);
+}
+
+/**
+ * What a studio owes, read in the region that holds the books.
+ * @param studioId - The studio to read.
+ * @returns The debt in credits.
+ */
+export async function studioDebtHere(studioId: string): Promise<CreditDecimal> {
   return fromMicroCredits(toMicroCredits(await creditLotRepo.readDebt(studioId)));
 }
 
@@ -1308,6 +1317,15 @@ export async function getStudioDebt(studioId: string): Promise<CreditDecimal> {
  * @returns The total in credits.
  */
 export async function getUnassignedCredits(userId: string): Promise<CreditDecimal> {
+  return inGlobalRegion() ? unassignedCreditsHere(userId) : globalApi().getUnassignedCredits(userId);
+}
+
+/**
+ * What an account holds that no studio can spend yet, read where the books are.
+ * @param userId - The account to total.
+ * @returns The total in credits.
+ */
+export async function unassignedCreditsHere(userId: string): Promise<CreditDecimal> {
   return fromMicroCredits(toMicroCredits(await creditLotRepo.sumUnassignedForUser(userId)));
 }
 
@@ -1320,6 +1338,15 @@ export async function getUnassignedCredits(userId: string): Promise<CreditDecima
  * @returns The total in credits.
  */
 export async function getGrantedCredits(userId: string): Promise<CreditDecimal> {
+  return inGlobalRegion() ? grantedCreditsHere(userId) : globalApi().getGrantedCredits(userId);
+}
+
+/**
+ * What an account was granted rather than bought, read where the books are.
+ * @param userId - The account to total.
+ * @returns The total in credits.
+ */
+export async function grantedCreditsHere(userId: string): Promise<CreditDecimal> {
   return fromMicroCredits(toMicroCredits(await creditLotRepo.sumGrantedForUser(userId)));
 }
 
