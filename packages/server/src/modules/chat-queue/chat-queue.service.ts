@@ -21,15 +21,15 @@
 
 import crypto from "node:crypto";
 import { getAgentConfig, getRedis, type Redis } from "@breatic/core";
+import type { ChatMessageInput } from "@breatic/shared";
 
 /** One message waiting for, or taken by, a run; the send request as restored, plus who sent it. */
-export interface QueueItem {
+export type QueueItem = Omit<ChatMessageInput, "id" | "project_id" | "conversation_id"> & {
   id: string;
   sentAt: string;
   userId: string;
   acceptLanguage: string;
-  [field: string]: unknown;
-}
+};
 
 /** What a send did. */
 export type EnqueueResult =

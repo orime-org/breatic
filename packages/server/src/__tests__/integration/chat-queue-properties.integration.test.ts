@@ -96,7 +96,7 @@ function keysOf(c: string): Keys {
  * @returns The item.
  */
 function item(id: string): QueueItem {
-  return { id, sentAt: "2026-11-12T08:00:00.000Z", userId: "u-1", acceptLanguage: "en", message: `words of ${id}` };
+  return { id, sentAt: "2026-11-12T08:00:00.000Z", userId: "u-1", acceptLanguage: "en", message: `words of ${id}`, attached_chips: [] };
 }
 
 /**

@@ -71,26 +71,20 @@ export interface TurnHooks {
  * @returns The message.
  */
 export function takenMessageOf(item: QueueItem): TakenMessage {
-  const body = item as QueueItem & {
-    message?: string;
-    attached_chips?: ChatAttachedChip[];
-    time_zone?: string;
-    current_space?: ChatSpaceContext["current_space"];
-    spaces?: ChatSpaceContext["spaces"];
-    model?: string;
-  };
+  const { current_space: current, spaces, spaces_total: total } = item;
   return {
     id: item.id,
     sentAt: item.sentAt,
-    message: body.message ?? "",
-    chips: body.attached_chips ?? [],
+    message: item.message,
+    chips: item.attached_chips,
     space: {
-      ...(body.current_space === undefined ? {} : { current_space: body.current_space }),
-      ...(body.spaces === undefined ? {} : { spaces: body.spaces }),
+      ...(current === undefined ? {} : { current_space: current }),
+      ...(spaces === undefined ? {} : { spaces }),
+      ...(total === undefined ? {} : { spaces_total: total }),
     },
-    ...(body.time_zone === undefined ? {} : { timeZone: body.time_zone }),
+    ...(item.time_zone === undefined ? {} : { timeZone: item.time_zone }),
     locale: item.acceptLanguage,
-    ...(body.model === undefined ? {} : { model: body.model }),
+    ...(item.model === undefined ? {} : { model: item.model }),
   };
 }
 
