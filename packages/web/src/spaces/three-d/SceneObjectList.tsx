@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { Box, Camera, Lightbulb, Lock, Sun, type LucideIcon } from 'lucide-react';
-import type { SceneObject } from '@breatic/shared';
+import { compareDirectorRecords, isSceneCamera, isSceneLight, isSceneModelFile, type SceneObject } from '@breatic/shared';
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { SceneEditorProps } from '@web/spaces/three-d/SceneEditor';
@@ -34,8 +34,14 @@ export const SceneObjectList = React.memo(function SceneObjectList({ session, sn
   modelStates: ReadonlyMap<string, SceneModelState>; onSelect: () => void;
 }): React.JSX.Element {
   const t = useTranslation();
+  // Models keep document order; cameras, then lights, follow by number (design 4.2).
+  const items = React.useMemo(() => [
+    ...snapshot.objects.filter((object) => isSceneModelFile(object.model)),
+    ...snapshot.objects.filter(isSceneCamera).sort(compareDirectorRecords),
+    ...snapshot.objects.filter(isSceneLight).sort(compareDirectorRecords),
+  ], [snapshot.objects]);
   return <div className='p-2' data-testid='scene-objects-panel'>
-    {snapshot.objects.map((item) => { const Icon = kindIcon(item); return <Button key={item.id} variant={snapshot.selectedIds.includes(item.id) ? 'secondary' : 'ghost'} size={null}
+    {items.map((item) => { const Icon = kindIcon(item); return <Button key={item.id} variant={snapshot.selectedIds.includes(item.id) ? 'secondary' : 'ghost'} size={null}
       className='mb-1 flex w-full items-center gap-2 px-2 py-2 text-left' data-testid={`scene-object-${item.id}`}
       onClick={(event) => { session.select(item.id, event.shiftKey); onSelect(); }}>
       <Icon className='size-4 shrink-0' /><span className='min-w-0 flex-1 truncate text-xs'>{item.name}</span>
