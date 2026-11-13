@@ -38,6 +38,7 @@ import { canPostAnnotations } from '@web/spaces/canvas/annotation/rights';
 import {
   DOCUMENT_COMMENT_DRAFT_RANGE,
   draftRangeIn,
+  mediaDraftIn,
   type Draft,
   type DraftCommand,
 } from '@web/spaces/document/document-comment-draft-range';
@@ -52,7 +53,13 @@ import {
   CARD_READING_OUTLINE,
   CARD_SURFACE,
   CommentQuote,
+  MediaCommentQuote,
 } from '@web/spaces/document/DocumentCommentCard';
+import {
+  mediaQuoteOf,
+  sameMediaQuote,
+  type MediaQuote,
+} from '@web/spaces/document/document-comment-media';
 import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { useCommentWrite } from '@web/spaces/document/use-comment-write';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
@@ -75,11 +82,22 @@ interface DraftCardProps {
 }
 
 /**
+ * The picture, video or audio the open draft is aimed at, as the body stands.
+ * @param editor - The document editor.
+ * @returns It, or null while the draft is not aimed at media.
+ */
+function readDraftMedia(editor: ToolEditor): MediaQuote | null {
+  const state = editor.prosemirrorView?.state;
+  const blockId = state === undefined ? null : mediaDraftIn(state);
+  return blockId === null ? null : mediaQuoteOf(state!.doc, blockId);
+}
+
+/**
  * The words the open draft is aimed at, as the body stands.
  *
  * Blocks are joined by a space, the way a saved card joins its stretches.
  * @param editor - The document editor.
- * @returns Those words, or null while no draft is aimed anywhere.
+ * @returns Those words, or null while no draft is aimed at words.
  */
 function readDraftQuote(editor: ToolEditor): string | null {
   const state = editor.prosemirrorView?.state;
@@ -115,6 +133,7 @@ export function DocumentCommentDraftCard({
   // Read from the body on every change: a rewrite inside the range can leave
   // its two ends where they were.
   const quote = useEditorSnapshot(editor, readDraftQuote);
+  const media = useEditorSnapshot(editor, readDraftMedia, sameMediaQuote);
 
   /**
    * Sends one command to the draft, dropping the selection with it (A30).
@@ -205,9 +224,11 @@ export function DocumentCommentDraftCard({
           className='flex-1 px-1 py-0.5 text-xs text-muted-foreground'
         >
           {t(
-            draft.why === 'targetGone'
-              ? 'spaces.document.comment.targetGone'
-              : 'spaces.document.comment.cannotWrite',
+            draft.why === 'cannotWrite'
+              ? 'spaces.document.comment.cannotWrite'
+              : draft.media === undefined
+                ? 'spaces.document.comment.targetGone'
+                : 'spaces.document.comment.mediaGone',
           )}
         </p>
         <Button
@@ -233,6 +254,7 @@ export function DocumentCommentDraftCard({
       {quote !== null && (
         <CommentQuote words={quote} testId='doc-comment-draft-quote' />
       )}
+      {media !== null && <MediaCommentQuote media={media} testId='doc-comment-draft-quote' />}
       <DocumentCommentWriteBox
         // Mounted afresh on every press of an entry, the first one or one
         // that only moves the draft: each is the user asking to write.

@@ -8,7 +8,7 @@ import { z } from "zod";
 
 import { MONOREPO_ROOT } from "@core/config/env.js";
 
-/** Runtime parameters for the versioned 3D scene controls adapter and the model import budgets. */
+/** Runtime parameters for the versioned 3D scene controls adapter, the model import budgets and the viewfinder capture. */
 export const sceneConfigSchema = z.object({
   scale_sensitivity: z.number().finite().positive().default(0.01),
   import: z.object({
@@ -21,6 +21,11 @@ export const sceneConfigSchema = z.object({
     max_texture_edge: z.number().int().positive().default(8192),
     max_texture_bytes: z.number().int().positive().default(268435456),
     progress_publish_ms: z.number().int().positive().default(1000),
+  }).prefault({}),
+  capture: z.object({
+    long_edge_px: z.number().int().positive().default(2048),
+    min_frame_px: z.number().int().positive().default(120),
+    canvas_sync_timeout_ms: z.number().int().positive().default(10000),
   }).prefault({}),
 });
 

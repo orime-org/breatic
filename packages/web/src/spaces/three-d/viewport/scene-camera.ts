@@ -3,6 +3,7 @@
 
 import { MathUtils, Sphere, Vector3 } from 'three';
 import type { Box3, PerspectiveCamera } from 'three';
+import type { ViewfinderRect } from '@web/spaces/three-d/viewfinder/viewfinder-geometry';
 
 /**
  * Frame loaded content without changing the scene or another user's camera.
@@ -35,4 +36,31 @@ export function updateSceneCameraRange(camera: PerspectiveCamera, bounds: Box3):
   if (camera.far === far) return;
   camera.far = far;
   camera.updateProjectionMatrix();
+}
+
+/**
+ * The camera view offset that renders exactly the frame at the capture size.
+ * @param frame - The frame, in viewport pixels.
+ * @param viewport - The viewport size.
+ * @param viewport.width - Its width.
+ * @param viewport.height - Its height.
+ * @param size - The capture size.
+ * @param size.width - Its width.
+ * @param size.height - Its height.
+ * @returns The arguments for `PerspectiveCamera.setViewOffset`.
+ */
+export function captureViewOffset(
+  frame: ViewfinderRect,
+  viewport: { width: number; height: number },
+  size: { width: number; height: number },
+): { fullWidth: number; fullHeight: number; x: number; y: number; width: number; height: number } {
+  const k = size.width / frame.width;
+  return {
+    fullWidth: viewport.width * k,
+    fullHeight: viewport.height * k,
+    x: frame.x * k,
+    y: frame.y * k,
+    width: size.width,
+    height: size.height,
+  };
 }

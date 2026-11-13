@@ -12,7 +12,7 @@ import * as Y from 'yjs';
 import type { ModelCatalog, ModelEntry, NodeType } from '@breatic/shared';
 
 import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
-import { itemForPick } from '@web/spaces/canvas/attach-nodes';
+import { itemForPick, nodeNameOf } from '@web/spaces/canvas/attach-nodes';
 
 /**
  * A node on the canvas.
@@ -297,6 +297,15 @@ describe('a piece of the canvas handed to the agent', () => {
 
     expect(nodes[0]).toMatchObject({ id: 'i2', position: { x: 1024, y: 1040 }, parentId: 'g2' });
     expect(nodes[1]).toMatchObject({ id: 'i3', position: { x: 1030, y: 1050 } });
+  });
+});
+
+describe('a note named by its own words', () => {
+  it('keeps an emoji whole when it straddles the cut, so the name stays storable text', () => {
+    const name = nodeNameOf('annotation', { content: `${'x'.repeat(39)}😀 and the rest` });
+
+    expect(name).toBe(`${'x'.repeat(39)}😀`);
+    expect(name.isWellFormed()).toBe(true);
   });
 });
 

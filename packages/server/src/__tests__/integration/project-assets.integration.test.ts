@@ -228,6 +228,23 @@ describe("Project registered media HTTP reads", () => {
         premountMs: config.web_animation.preview_premount_ms,
         idleInstancesMax: config.web_animation.preview_idle_instances_max,
       },
+      preview: {
+        driftSteerSeconds: config.preview.drift_steer_seconds,
+        driftHardSyncSeconds: config.preview.drift_hard_sync_seconds,
+        driftCatastrophicSeconds: config.preview.drift_catastrophic_seconds,
+        resumeSeekSeconds: config.preview.resume_seek_seconds,
+        driftSteerRate: config.preview.drift_steer_rate,
+      },
+    });
+  });
+
+  it("gives web the multi-video preview sync thresholds from config/timeline.yaml (#1410 design §6.4)", async () => {
+    const fixture = await seedFixture();
+    const [, , limitsPath] = readPaths(fixture.projectId, randomUUID());
+    const limits = await readData<Record<string, unknown>>(limitsPath!, fixture.cookie);
+    // toEqual against config alone would accept a key missing on both sides; the approved values pin each one.
+    expect(limits["preview"]).toMatchObject({
+      driftSteerSeconds: 0.04, driftHardSyncSeconds: 0.5, driftCatastrophicSeconds: 3, resumeSeekSeconds: 0.15, driftSteerRate: 0.03,
     });
   });
 

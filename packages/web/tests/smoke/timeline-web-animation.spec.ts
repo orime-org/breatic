@@ -16,7 +16,7 @@ import { test } from '../helpers/slot';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 import {
   addProjectTimelineVideo, expectTimelineStart, moveTimelineClip, openTimeline, selectTimelineClip, timelineClipIds,
-  uploadTimelineVideo, watchTimelineErrors, withTimelinePeer,
+  timelineVideoOf, uploadTimelineVideo, watchTimelineErrors, withTimelinePeer,
 } from '../helpers/timeline-media';
 
 /** The shortest prompt whose picture visibly changes over time, so two moments of it look different. */
@@ -144,15 +144,20 @@ async function copiesAnswered(preview: Locator): Promise<void> {
   await expect(preview.locator('hyperframes-player:not([data-web-state="ready"])')).toHaveCount(0, { timeout: 30_000 });
 }
 
+/** Screenshot style that leaves the preview's selection box and handles out of the picture. */
+// react-moveable writes `visibility: visible` on its control box, so the operation layer is taken out of the layout.
+const HIDE_HANDLES = '[data-testid="timeline-layer-overlay"] { display: none !important; }';
+
 /**
  * Screenshot a region once two shots taken apart are identical, so no frame is still being painted.
+ * @param style - Style applied only while the shots are taken.
  * @throws {Error} When the region keeps changing.
  */
-async function settledShot(region: Locator): Promise<Buffer> {
-  let shot = await region.screenshot();
+async function settledShot(region: Locator, style?: string): Promise<Buffer> {
+  let shot = await region.screenshot({ style });
   await expect(async () => {
     await region.page().waitForTimeout(400);
-    const next = await region.screenshot();
+    const next = await region.screenshot({ style });
     const same = next.equals(shot);
     shot = next;
     expect(same).toBe(true);
@@ -203,17 +208,20 @@ async function dragBy(page: Page, handle: Locator, dx: number): Promise<void> {
 interface PlaySample { frame: number; at: number; paused: boolean; time: number; players: { clipId: string; state: string; opacity: string; marked: boolean }[]; notes: number }
 
 /**
- * Press Play, then sample the clock, the video and every web copy on each animation frame until the clock reaches a
- * frame, and press Pause from inside the page on that same frame.
+ * Press Play, then sample the clock, one video placement's element and every web copy on each animation frame until
+ * the clock reaches a frame, and press Pause from inside the page on that same frame. Each video placement has its
+ * own element (#1410), so the sampled one is named by its clip id; while it has no element it reads as paused at -1.
  * @returns The samples, one per animation frame.
  * @throws {Error} When the page cannot be read.
  */
-async function playUntil(page: Page, until: number, nominal: number): Promise<PlaySample[]> {
+async function playUntil(page: Page, until: number, nominal: number, videoClipId: string): Promise<PlaySample[]> {
   const outlet = visibleSpace(page);
   const timecode = await outlet.getByText(/^\d{2}:\d{2}:\d{2}:\d{2} \/ \d{2}:\d{2}:\d{2}:\d{2}$/).elementHandle();
   await outlet.getByTestId('timeline-play').click();
-  const samples = await outlet.getByTestId('timeline-preview').evaluate(async (preview, { clock, until, nominal, limitMs }) => {
+  const samples = await outlet.getByTestId('timeline-preview').evaluate(async (preview, { clock, until, nominal, limitMs, videoClipId }) => {
     const seen: PlaySample[] = [];
+    // Notes sit in the note layer beside the frame, above its operation layer (#1410 design §4.1).
+    const notes = preview.parentElement?.querySelector('[data-testid="timeline-preview-notes"]') ?? null;
     const end = performance.now() + limitMs;
     while (performance.now() < end) {
       const parts = /^(\d{2}):(\d{2}):(\d{2}):(\d{2})/.exec(clock?.textContent ?? '');
@@ -224,8 +232,8 @@ async function playUntil(page: Page, until: number, nominal: number): Promise<Pl
         opacity: player.style.opacity,
         marked: (player.iframeElement as (HTMLIFrameElement & { smokeMark?: boolean }) | null | undefined)?.smokeMark === true,
       }));
-      const video = preview.querySelector('video');
-      seen.push({ frame, at: performance.now(), paused: video?.paused ?? true, time: video?.currentTime ?? -1, players, notes: preview.querySelectorAll('[data-testid^="timeline-web-note-"]').length });
+      const video = preview.querySelector<HTMLVideoElement>(`video[data-clip-id="${videoClipId}"]`);
+      seen.push({ frame, at: performance.now(), paused: video?.paused ?? true, time: video?.currentTime ?? -1, players, notes: notes?.querySelectorAll('[data-testid^="timeline-preview-note-"]').length ?? -1 });
       if (frame >= until) {
         document.querySelector<HTMLElement>('[data-testid="timeline-play"]')?.click();
         break;
@@ -233,15 +241,15 @@ async function playUntil(page: Page, until: number, nominal: number): Promise<Pl
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     }
     return seen;
-  }, { clock: timecode, until, nominal, limitMs: 60_000 });
+  }, { clock: timecode, until, nominal, limitMs: 60_000, videoClipId });
   await expect(outlet.getByTestId('timeline-play')).toHaveText('Play');
   return samples;
 }
 
 /** A web copy's page, loaded by its player's cross-origin iframe from the ingest preview route. */
 const PAGE_LOAD = /\/web-animation\/[^/]+\/index\.html$/;
-/** How long a held-back page load waits: past the seconds play takes to reach the copy, inside the player's 15 s load timeout. */
-const SLOW_PAGE_MS = 8_000;
+/** How long play is left waiting at a held copy's start before its page load is released: several animation frames. */
+const HELD_AT_START_MS = 500;
 
 /**
  * Close the Timeline's tab and open it again, which unloads the preview's pool of web pages.
@@ -391,15 +399,15 @@ test('one real web animation is created, reused as three copies over a video, se
       }
       // Where the video, the first copy and the third copy overlap, both copies stack above the video.
       await seekPreview(page, Math.round(2.5 * nominal));
-      await expect(preview).toHaveAttribute('data-active-clip-id', uploaded.clipId);
-      await expect(preview.locator('video')).toHaveCount(1);
+      await expect(timelineVideoOf(page, uploaded.clipId)).toBeVisible();
+      await expect(timelineVideoOf(page, uploaded.clipId)).toHaveCSS('z-index', '1');
       await expect(playerOf(first)).toHaveCSS('z-index', '2');
       await expect(playerOf(copies[1])).toHaveCSS('z-index', '3');
       // The second copy starts within the premount lead, so its page is loaded ahead of it, hidden.
       await expect(playerOf(copies[0])).toHaveCSS('opacity', '0');
       // A copy notes that it is loading until its page first answers.
       await copiesAnswered(preview);
-      await expect(preview.locator('[data-testid^="timeline-web-note-"]')).toHaveCount(0);
+      await expect(outlet.getByTestId('timeline-preview-notes').locator('[data-testid^="timeline-preview-note-"]')).toHaveCount(0);
     });
 
     await test.step('Viewer: no create button; the list shows the finished row and its result without actions', async () => {
@@ -429,17 +437,23 @@ test('one real web animation is created, reused as three copies over a video, se
       });
     });
 
-    await test.step('hide: a video on a higher track hides the web copy beneath it at the frames it covers', async () => {
+    await test.step('stack: a video on a higher track is drawn above the web copy beneath it at the frames it covers', async () => {
       await selectTimelineClip(page, uploaded.clipId);
       const cover = await addProjectTimelineVideo(page, uploaded.asset.assetId);
       await moveTimelineClip(page, cover, 6 * nominal, uploaded.durationFrames, 'New visual track');
       await seekPreview(page, 5 * nominal);
-      await expect(preview).toHaveAttribute('data-active-clip-id', uploaded.clipId);
+      await expect(timelineVideoOf(page, uploaded.clipId)).toBeVisible();
+      await expect(timelineVideoOf(page, cover)).not.toBeVisible();
       await expect(drawnOf(copies[0])).toHaveCount(1);
       await seekPreview(page, 7 * nominal);
-      await expect(preview).toHaveAttribute('data-active-clip-id', cover);
-      // The covered copies' pages stay loaded in the pool, hidden.
-      await expect(preview.locator(DRAWN)).toHaveCount(0);
+      // Every visible layer is drawn, stacked by track from the bottom (#1410 design §6.1): the main video, the copy on
+      // the first track above it, and the covering video on the new top track over both.
+      await expect(timelineVideoOf(page, uploaded.clipId)).toBeVisible();
+      await expect(timelineVideoOf(page, cover)).toBeVisible();
+      await expect(drawnOf(copies[0])).toHaveCount(1);
+      await expect(timelineVideoOf(page, uploaded.clipId)).toHaveCSS('z-index', '1');
+      await expect(playerOf(copies[0])).toHaveCSS('z-index', '2');
+      await expect(timelineVideoOf(page, cover)).toHaveCSS('z-index', '3');
       // Take the covering video away again so the later steps see the three copies over one video.
       await selectTimelineClip(page, cover);
       await outlet.getByTestId('timeline-delete').click();
@@ -527,17 +541,17 @@ test('one real web animation is created, reused as three copies over a video, se
           return iframe?.smokeMark === true ? iframe.smokeLoads ?? 0 : -1;
         });
         expect(await loadsOf(), 'the copy after the cut must show a page loaded before it, without reloading it').toBe(0);
-        await expect(preview.locator('[data-testid^="timeline-web-note-"]')).toHaveCount(0);
+        await expect(outlet.getByTestId('timeline-preview-notes').locator('[data-testid^="timeline-preview-note-"]')).toHaveCount(0);
 
         // Play from before the cut to past it, still before the overlapping copy starts.
         await stepSlider(slider, to, from);
         await copiesAnswered(preview);
-        const samples = await playUntil(page, to, nominal);
+        const samples = await playUntil(page, to, nominal, uploaded.clipId);
         expect(samples.some((sample) => sample.frame < cut)).toBe(true);
         expect(samples[samples.length - 1].frame).toBeGreaterThanOrEqual(to);
         // Only the copy's own players count: the overlapping copy two seconds in is premounted, hidden.
         const shown = (sample: PlaySample): PlaySample['players'] => sample.players.filter((player) => (player.clipId === first || player.clipId === right) && player.opacity !== '0');
-        const broken = samples.filter((sample) => sample.notes > 0 || shown(sample).length !== 1 || !shown(sample)[0].marked
+        const broken = samples.filter((sample) => sample.notes !== 0 || shown(sample).length !== 1 || !shown(sample)[0].marked
           || shown(sample)[0].state === 'loading' || shown(sample)[0].state === 'failed');
         expect(broken, 'one drawn player with a page loaded before the cut must show the copy on every frame').toEqual([]);
         expect(samples.some((sample) => shown(sample)[0]?.clipId === right && sample.frame >= cut)).toBe(true);
@@ -573,12 +587,17 @@ test('one real web animation is created, reused as three copies over a video, se
       await expect(outlet.getByText('Paused', { exact: true })).toBeVisible();
     });
 
-    await test.step('click: clicking the preview leaves the web picture and the frame alone', async () => {
-      await preview.click();
+    await test.step('click: clicking the preview selects the topmost layer there and leaves the web picture and the frame alone', async () => {
+      // The operation layer above the frame takes the click (#1410 design §4.1); the copy on the highest track at the
+      // frame's centre is the second copy, above the video.
+      await outlet.getByTestId('timeline-layer-hit').click();
+      await expect(clipOf(copies[0])).toHaveAttribute('aria-pressed', 'true');
+      await expect(outlet.getByTestId('timeline-layer-proxy')).toBeVisible();
       await page.waitForTimeout(500);
       await expect(previewSlider(page)).toHaveAttribute('aria-valuenow', String(late));
       await expect(outlet.getByTestId('timeline-play')).toHaveText('Play');
-      expect((await settledShot(preview)).equals(lateShot)).toBe(true);
+      // The selection box is drawn over the frame; the picture under it is unchanged.
+      expect((await settledShot(preview, HIDE_HANDLES)).equals(lateShot)).toBe(true);
     });
 
     await test.step('play: the clock crosses copy starts and ends without stepping back and reaches the sequence end', async () => {
@@ -634,11 +653,14 @@ test('one real web animation is created, reused as three copies over a video, se
       await expectTimelineStart(page, held, later, copyFrames);
       await expect(clipOf(held)).toHaveAttribute('data-state', 'ready');
       // The pool loads a copy's page ahead of it and keeps pages it has shown, so a copy still loading when play reaches
-      // it needs an empty pool and a page that loads slower than play takes to get there. Every page load is held
-      // back for longer than the second before the copy, and the Project is loaded again: that empties the pool and
-      // the page-wide address share, and a page the browser kept in memory would bypass the route.
+      // it needs an empty pool and a page that has not loaded when play gets there. Every page load waits at a gate
+      // the test opens, and the Project is loaded again: that empties the pool and the page-wide address share, and a
+      // page the browser kept in memory would bypass the route. The gate opens once the test has seen play stop at the
+      // copy start with the copy still loading, so the hold does not depend on how fast the page is served.
+      let release = (): void => undefined;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
       await page.route(PAGE_LOAD, async (route) => {
-        await new Promise((resolve) => setTimeout(resolve, SLOW_PAGE_MS));
+        await gate;
         await route.continue();
       });
       const from = later - nominal;
@@ -648,25 +670,44 @@ test('one real web animation is created, reused as three copies over a video, se
         await openTimeline(page, spaceId);
         await expect.poll(async () => (await timelineClipIds(page)).length).toBe(before.length + 1);
         await seekPreview(page, from);
-        await expect(preview).toHaveAttribute('data-active-clip-id', uploaded.clipId);
+        await expect(timelineVideoOf(page, uploaded.clipId)).toBeVisible();
         await expect(playerOf(held)).toHaveAttribute('data-web-state', 'loading');
-        samples = await playUntil(page, later + nominal / 2, nominal);
+        const played = playUntil(page, later + nominal / 2, nominal, uploaded.clipId);
+        // A rejection is rethrown by the await below; this keeps it from going unhandled while the gate is closed.
+        played.catch(() => undefined);
+        // The transport says it is waiting on the copy start frame while the copy has not answered.
+        const timecode = outlet.getByText(/^\d{2}:\d{2}:\d{2}:\d{2} \/ \d{2}:\d{2}:\d{2}:\d{2}$/);
+        await expect.poll(async () => ({
+          clock: (await timecode.innerText()).split(' / ')[0],
+          waiting: await outlet.getByText('Buffering…', { exact: true }).isVisible(),
+          copy: await playerOf(held).getAttribute('data-web-state'),
+        }), { timeout: 30_000 }).toEqual({ clock: timecodeOf(later, nominal), waiting: true, copy: 'loading' });
+        await page.waitForTimeout(HELD_AT_START_MS);
+        release();
+        samples = await played;
       } finally {
+        release();
         await page.unroute(PAGE_LOAD);
       }
       const stateOf = (sample: PlaySample): string => sample.players.find((player) => player.clipId === held)?.state ?? 'absent';
       const reached = samples.findIndex((sample) => sample.frame >= later);
       expect(reached).toBeGreaterThan(0);
-      const answered = samples.findIndex((sample, index) => index >= reached && stateOf(sample) === 'ready');
-      expect(answered, `the copy never answered: ${samples.map((sample) => `${sample.frame}:${stateOf(sample)}`).join(' ')}`).toBeGreaterThan(reached);
+      const history = samples.map((sample) => `${sample.frame}:${stateOf(sample)}`).join(' ');
+      // The measured window is while the copy's page has not answered (`loading`). Between the page's answer and its
+      // drawn frame the preview keeps waiting, which the playback unit tests pin; the player's `data-web-state` is
+      // rendered one React commit after the host's state, so it does not time the frame-ready instant.
+      const answered = samples.findIndex((sample, index) => index >= reached && stateOf(sample) !== 'loading');
+      expect(answered, `the copy never answered: ${history}`).toBeGreaterThan(reached);
       const waiting = samples.slice(reached, answered);
       // Each sample is one animation frame; the copy's page cannot load and answer inside one.
       expect(waiting.length).toBeGreaterThan(0);
       const brief = (list: PlaySample[]): string => list.map((sample) => `${sample.frame}@${sample.time.toFixed(3)}s:${sample.paused ? 'paused' : 'playing'}:${stateOf(sample)}`).join(' ');
-      // The clock never passes the copy's start, and the video never plays into it, while the copy loads.
+      // The clock never passes the copy's start while the copy loads, and the video stays on that frame: a video a little
+      // past it is left to steering once play goes on (#1410 design §6.3), so it never shows the next frame.
       expect(waiting.filter((sample) => sample.frame > later), `the clock passed the copy start: ${brief(waiting)}`).toEqual([]);
-      expect(waiting.filter((sample) => sample.time > later / nominal), `the video played past the copy start: ${brief(waiting)}`).toEqual([]);
-      // Once the copy answered, play went on past its start.
+      expect(waiting.filter((sample) => sample.time >= (later + 1) / nominal), `the video showed a frame past the copy start: ${brief(waiting)}`).toEqual([]);
+      // Once the copy answered, it drew its frame and play went on past its start.
+      expect(samples.slice(answered).some((sample) => stateOf(sample) === 'ready'), `the copy never drew its frame: ${history}`).toBe(true);
       expect(samples[samples.length - 1].frame).toBeGreaterThanOrEqual(later + nominal / 2);
       // The clock stops at the copy's start on one animation frame and the render after it pauses the video, so the video
       // may still be playing for an animation frame or two (it has not reached the start, as asserted above); from about
@@ -702,6 +743,7 @@ test('play enters a web copy, replays into it and reveals it from under a video 
     const nominal = Math.max(1, Math.round(uploaded.fps.num / uploaded.fps.den));
     const copyFrames = SECONDS * nominal;
     const playerOf = (clipId: string): Locator => preview.locator(`hyperframes-player[data-clip-id="${clipId}"]`);
+    const drawnOf = (clipId: string): Locator => preview.locator(`${DRAWN}[data-clip-id="${clipId}"]`);
     const id = await executeWebAnimation(page, false);
     const list = outlet.getByTestId('timeline-executions');
     await expect(list.getByRole('tab', { name: /^Completed/ })).toHaveText(/Completed\s*1/, { timeout: RUN_MS });
@@ -726,10 +768,10 @@ test('play enters a web copy, replays into it and reveals it from under a video 
       await seekPreview(page, entry - 3 * nominal);
       await expect(playerOf(copy)).toHaveCount(0);
       const loads = pageLoads.length;
-      await expect(preview).toHaveAttribute('data-active-clip-id', uploaded.clipId);
+      await expect(timelineVideoOf(page, uploaded.clipId)).toBeVisible();
       // Play on past the copy's end, so the replay below comes back to a copy that has been played through.
-      const samples = await playUntil(page, entry + copyFrames + nominal / 2, nominal);
-      expect(samples.filter((sample) => sample.notes > 0).map((sample) => sample.frame), 'no note while playing into the copy').toEqual([]);
+      const samples = await playUntil(page, entry + copyFrames + nominal / 2, nominal, uploaded.clipId);
+      expect(samples.filter((sample) => sample.notes !== 0).map((sample) => sample.frame), 'no note while playing into the copy').toEqual([]);
       expect(shownFrom(samples.filter((sample) => sample.frame < entry + copyFrames), copy, entry), 'the copy is drawn and ready from its first frame').toEqual([]);
       expectSteadyClock(samples, 'entry');
       expect(pageLoads.length, 'the copy\'s page was loaded during play, ahead of it').toBeGreaterThan(loads);
@@ -740,8 +782,8 @@ test('play enters a web copy, replays into it and reveals it from under a video 
     await test.step('replay: from the start the copy is entered again without a note and without loading its page again', async () => {
       const loads = pageLoads.length;
       await seekPreview(page, 0);
-      const samples = await playUntil(page, entry + nominal, nominal);
-      expect(samples.filter((sample) => sample.notes > 0).map((sample) => sample.frame), 'no note while replaying into the copy').toEqual([]);
+      const samples = await playUntil(page, entry + nominal, nominal, uploaded.clipId);
+      expect(samples.filter((sample) => sample.notes !== 0).map((sample) => sample.frame), 'no note while replaying into the copy').toEqual([]);
       expect(shownFrom(samples, copy, entry), 'the copy is drawn and ready from its first frame').toEqual([]);
       expectSteadyClock(samples, 'replay');
       const moving = samples.slice(samples.findIndex((sample) => sample.frame !== samples[0].frame), -1);
@@ -749,7 +791,7 @@ test('play enters a web copy, replays into it and reveals it from under a video 
       expect(pageLoads.slice(loads), 'replaying must not request the copy\'s index.html again').toEqual([]);
     });
 
-    await test.step('reveal: a copy under a higher video that ends, with no video below, shows without a note or a wait', async () => {
+    await test.step('reveal: a copy under a higher video is drawn beneath it, and when the video ends shows on top without a note or a wait', async () => {
       // A second copy of the same result goes on the first track above the main one; the playhead cannot pass the
       // sequence end, so it is added inside the video and then moved on its track to after the video ends.
       const lower = 20 * nominal;
@@ -762,19 +804,29 @@ test('play enters a web copy, replays into it and reveals it from under a video 
       await selectTimelineClip(page, uploaded.clipId);
       const cover = await addProjectTimelineVideo(page, uploaded.asset.assetId);
       await moveTimelineClip(page, cover, reveal - uploaded.durationFrames, uploaded.durationFrames, 'New visual track');
-      // An empty pool again, so only the premount walking past the video's end can load the copy before the reveal.
+      // Under the video the copy is drawn like any layer (#1410 design §6.1), below the video on the higher track.
+      await seekPreview(page, lower + nominal);
+      await expect(timelineVideoOf(page, cover)).toBeVisible();
+      await expect(drawnOf(revealed)).toHaveCount(1);
+      await expect(playerOf(revealed)).toHaveCSS('z-index', '1');
+      await expect(timelineVideoOf(page, cover)).toHaveCSS('z-index', '2');
+      // An empty pool again; a second before the copy starts it is premounted, so it has its player from the start.
       await reopenTimeline(page, spaceId);
       const from = reveal - 3 * nominal;
       await seekPreview(page, from);
-      await expect(preview).toHaveAttribute('data-active-clip-id', cover);
-      await expect(playerOf(revealed)).toHaveCount(0);
-      const samples = await playUntil(page, reveal + nominal, nominal);
+      await expect(timelineVideoOf(page, cover)).toBeVisible();
+      await expect(playerOf(revealed)).toHaveCount(1);
+      const samples = await playUntil(page, reveal + nominal, nominal, cover);
       expect(samples.some((sample) => sample.frame < reveal)).toBe(true);
-      expect(samples.filter((sample) => sample.notes > 0).map((sample) => sample.frame), 'no note at the reveal').toEqual([]);
+      expect(samples.filter((sample) => sample.notes !== 0).map((sample) => sample.frame), 'no note at the reveal').toEqual([]);
       const waited = samples.filter((sample) => sample.frame >= reveal - 1 && sample.players.some((player) => player.clipId === revealed && player.state === 'waiting'));
       expect(waited.map((sample) => sample.frame), 'the revealed copy never waits for an answer').toEqual([]);
       expect(shownFrom(samples, revealed, reveal), 'the revealed copy is drawn and ready from the reveal').toEqual([]);
       expectSteadyClock(samples, 'reveal');
+      // Past the video's end the copy is the top layer, alone in the frame.
+      await expect(timelineVideoOf(page, cover)).not.toBeVisible();
+      await expect(drawnOf(revealed)).toHaveCount(1);
+      await expect(playerOf(revealed)).toHaveCSS('z-index', '1');
     });
     expect(errors.unexpected).toEqual([]);
   } finally {
@@ -812,11 +864,17 @@ test('a 9:16 web animation on a 16:9 Timeline is shown whole and centred, not st
       if (iframe === null || iframe === undefined) throw new Error('The player has no iframe');
       return { stage: box(element.getBoundingClientRect()), page: box(iframe.getBoundingClientRect()) };
     });
-    // The player covers the 16:9 preview; the portrait page inside it fills its height, keeps 9:16 and sits in the middle.
-    expect(stage.width / stage.height).toBeCloseTo(16 / 9, 1);
+    // The player takes the source's base box (#1410 design §2): the 9:16 viewport contained in the 16:9 frame, as tall
+    // as the frame and centred in it; the portrait page fills the player.
+    const frame = await preview.boundingBox();
+    if (frame === null) throw new Error('The preview has no geometry');
+    expect(frame.width / frame.height).toBeCloseTo(16 / 9, 1);
+    expect(Math.abs(stage.height - frame.height)).toBeLessThanOrEqual(2);
+    expect(stage.width / stage.height).toBeCloseTo(9 / 16, 2);
+    expect(stage.width).toBeLessThan(frame.width / 2);
+    expect(Math.abs((stage.x + stage.width / 2) - (frame.x + frame.width / 2))).toBeLessThanOrEqual(2);
     expect(Math.abs(shown.height - stage.height)).toBeLessThanOrEqual(2);
     expect(shown.width / shown.height).toBeCloseTo(9 / 16, 2);
-    expect(shown.width).toBeLessThan(stage.width / 2);
     expect(Math.abs((shown.x + shown.width / 2) - (stage.x + stage.width / 2))).toBeLessThanOrEqual(2);
     expect(errors.unexpected).toEqual([]);
   } finally {

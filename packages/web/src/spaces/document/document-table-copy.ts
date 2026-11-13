@@ -201,24 +201,31 @@ export function replaceStoredHeld(selection: Selection, tr: Transaction): boolea
 }
 
 /**
- * A selection reaching into a stored (legacy) table: the words of one of its
- * cells as a line of those words, opened into the line at both ends, or the
- * range it acts on (`storedTableRange`).
+ * Words in one cell of a stored (legacy) table, as a line of those words
+ * opened into the line at both ends.
  * @param view - The editor view.
- * @returns The blocks and the slice, or null when the selection reaches no stored table.
+ * @returns The blocks and the slice, or null when the selection is not inside one stored cell.
  */
-function inStoredTable(view: EditorView): ClippedBlocks | null {
-  const { selection, schema, doc } = view.state;
+function inStoredCell(view: EditorView): ClippedBlocks | null {
+  const { selection, schema } = view.state;
   const { $from, $to } = selection;
-  if ($from.sameParent($to) && storedAround($from) !== null) {
-    const words = $from.parent.content.cut($from.parentOffset, $to.parentOffset);
-    const line = schema.nodes['blockContainer'].create(null, schema.nodes['paragraph'].create(null, words));
-    const group = schema.nodes['blockGroup'].create(null, line);
-    return { blocks: fragmentToBlocks(group.content as never) as never[], slice: new Slice(Fragment.from(group), 3, 3) };
-  }
-  const range = storedTableRange(selection);
-  if (range === null) return null;
-  return { blocks: fragmentToBlocks(doc.slice(range.from, range.to, true).content as never) as never[], slice: doc.slice(range.from, range.to) };
+  if (!$from.sameParent($to) || storedAround($from) === null) return null;
+  const words = $from.parent.content.cut($from.parentOffset, $to.parentOffset);
+  const line = schema.nodes['blockContainer'].create(null, schema.nodes['paragraph'].create(null, words));
+  const group = schema.nodes['blockGroup'].create(null, line);
+  return { blocks: fragmentToBlocks(group.content as never) as never[], slice: new Slice(Fragment.from(group), 3, 3) };
+}
+
+/**
+ * The range a selection that takes tables whole acts on: one reaching into a
+ * stored (legacy) table (`storedTableRange`) first, then one leaving a table
+ * of blocks (`heldRange`). The copy and Add to Agent's gate both read it, so
+ * what is judged is what is handed.
+ * @param selection - The selection.
+ * @returns The range, or null when the selection takes no table whole.
+ */
+export function wholeTablesRange(selection: Selection): { from: number; to: number } | null {
+  return storedTableRange(selection) ?? heldRange(selection);
 }
 
 /**
@@ -234,12 +241,12 @@ export function tableClippedBlocks(view: EditorView): ClippedBlocks | null {
   // A node selected in a cell (a picture, a video) is BlockNote's to copy, as
   // in the body: its content carries the node alone, not the levels above.
   if (selection instanceof NodeSelection) return null;
-  const stored = inStoredTable(view);
-  if (stored !== null) return stored;
-  const depth = oneCellDepth(selection);
-  if (depth > 0) return inCellBlocks(view, depth);
-  // A selection leaving a table carries the whole table (inner#1619 T14).
-  const held = heldRange(selection);
+  const storedCell = inStoredCell(view);
+  if (storedCell !== null) return storedCell;
+  // A selection reaching into a stored table, or leaving a table, carries the
+  // whole table (inner#1619 T14). It never stays in one cell, so the order
+  // against the one-cell branch below changes nothing.
+  const held = wholeTablesRange(selection);
   if (held !== null) {
     const slice = view.state.doc.slice(held.from, held.to);
     // The blocks are read with the nodes around the range: when both ends
@@ -248,6 +255,8 @@ export function tableClippedBlocks(view: EditorView): ClippedBlocks | null {
     const whole = view.state.doc.slice(held.from, held.to, true);
     return { blocks: fragmentToBlocks(whole.content as never) as never[], slice };
   }
+  const depth = oneCellDepth(selection);
+  if (depth > 0) return inCellBlocks(view, depth);
   if (!holdsTable(selection)) return null;
   return { blocks: fragmentToBlocks(selection.content().content as never) as never[], slice: null };
 }

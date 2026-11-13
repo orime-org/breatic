@@ -22,3 +22,12 @@ import:
   max_texture_bytes: 268435456
   # Shortest gap between two upload-progress updates an uploader shares with the Space's other members.
   progress_publish_ms: 1000
+
+# Viewfinder capture, served with the import budgets by GET /projects/:id/three-d/config.
+capture:
+  # Long edge of a captured still, in pixels; the short edge follows the chosen frame.
+  long_edge_px: 2048
+  # Shortest edge the viewfinder can be dragged down to, in screen pixels.
+  min_frame_px: 120
+  # How long to wait for a closed canvas to sync before giving up without writing anything.
+  canvas_sync_timeout_ms: 10000

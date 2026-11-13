@@ -42,6 +42,7 @@ import { useCurrentUserStore, useUIStore } from '@web/stores';
 import { resetRunOnceForTests } from '@web/stores/task-actions-in-flight';
 import { useTimelineEditPrefsStore } from '@web/stores/timeline-edit-prefs';
 import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
+import { gesture, moveableMock, resetMoveableMock } from '@web/spaces/timeline/__tests__/helpers/moveable-mock';
 import { TimelineSpace } from '@web/spaces/timeline/TimelineSpace';
 import { MAIN, clip as videoClip, seededDoc, timeline, track } from '@web/data/yjs/__tests__/timeline-document-fixtures';
 import { P_FULL, P_NORMAL, P_OVER, P_UNLIMITED, P_WARNING, type DocSizePushV2 } from '@web/data/yjs/__tests__/helpers/size-v2-fixtures';
@@ -67,6 +68,7 @@ vi.mock('@hyperframes/player', () => {
   if (playerModule.fail) throw new Error('Failed to fetch dynamically imported module');
   return {};
 });
+vi.mock('react-moveable', async () => (await import('@web/spaces/timeline/__tests__/helpers/moveable-mock')).moveableModule);
 vi.mock('@web/lib/toast', () => ({
   toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn(), loading: vi.fn(), dismiss: vi.fn() },
 }));
@@ -226,6 +228,7 @@ async function openCreate(): Promise<HTMLElement> {
 beforeEach(() => {
   _resetForTests();
   resetRunOnceForTests();
+  resetMoveableMock();
   window.localStorage.clear();
   rows = [];
   useTimelineEditPrefsStore.setState({ owner: null });
@@ -808,14 +811,46 @@ describe('preview of web copies', () => {
     expect(timelineApi.previewUrl).toHaveBeenCalledTimes(2);
   });
 
-  it('mounts no player for a copy under a higher video', async () => {
+  it('mounts a player for a copy under a higher video, stacked below that video (breatic#1410 §6.1)', async () => {
     rows = [SOURCE_A_ROW];
-    seed([webClip('30000000-0000-4000-8000-000000000101', 'v2', 0, 48, boundTo(SRC_A)), videoClip('30000000-0000-4000-8000-000000000201', 'v3', 0, 48, { sourceId: VIDEO_SOURCE.id })],
+    const copy = '30000000-0000-4000-8000-000000000101';
+    const video = '30000000-0000-4000-8000-000000000201';
+    seed([webClip(copy, 'v2', 0, 48, boundTo(SRC_A)), videoClip(video, 'v3', 0, 48, { sourceId: VIDEO_SOURCE.id })],
       [track(MAIN, 0), track('v2', 1), track('v3', 2)]);
     showTimeline();
     const preview = await screen.findByTestId('timeline-preview');
-    await waitFor(() => expect(preview.querySelector('video')).not.toBeNull());
-    expect(preview.querySelector('hyperframes-player')).toBeNull();
+    const element = await waitFor(() => {
+      const found = preview.querySelector<HTMLVideoElement>(`video[data-clip-id="${video}"]`);
+      expect(found).not.toBeNull();
+      return found as HTMLVideoElement;
+    });
+    const player = await waitFor(() => {
+      const found = preview.querySelector<HTMLElement>(`hyperframes-player[data-clip-id="${copy}"]`);
+      expect(found).not.toBeNull();
+      return found as HTMLElement;
+    });
+    expect(Number(player.style.zIndex)).toBeLessThan(Number(element.style.zIndex));
+  });
+
+  it('moves a web copy with the same preview handles as a video and writes its transform on release (breatic#1410 §4, item 10)', async () => {
+    rows = [SOURCE_A_ROW];
+    const copy = '30000000-0000-4000-8000-000000000109';
+    seed([webClip(copy, 'v2', 0, 48, boundTo(SRC_A))]);
+    // jsdom lays nothing out: the frame and its layers measure 960 x 540, half the 1920 x 1080 canvas.
+    const parts = new Set(['timeline-preview', 'timeline-layer-overlay', 'timeline-layer-hit', 'timeline-preview-notes']);
+    const rect = Element.prototype.getBoundingClientRect;
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      if (this instanceof HTMLElement && parts.has(this.dataset.testid ?? '')) return { x: 0, y: 0, left: 0, top: 0, right: 960, bottom: 540, width: 960, height: 540, toJSON: () => ({}) } as DOMRect;
+      return rect.call(this);
+    });
+    showTimeline();
+    fireEvent.click(await screen.findByTestId(`timeline-clip-${copy}`));
+    await waitFor(() => expect(moveableMock.mounted).toBe(1));
+    gesture.dragStart();
+    const last = gesture.drag([30, -15]);
+    expect(layout().clips[copy]?.transform).toEqual({ x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 });
+    gesture.dragEnd(last);
+    await waitFor(() => expect(layout().clips[copy]?.transform).toEqual({ x: 60, y: -30, scaleX: 1, scaleY: 1, rotation: 0 }));
   });
 
   it('draws no picture for a placeholder and notes its status instead', async () => {
@@ -823,7 +858,7 @@ describe('preview of web copies', () => {
     const placeholder = '30000000-0000-4000-8000-000000000103';
     seed([webClip(placeholder, 'v2', 0, 48, waitingFor(EXEC_RUNNING))]);
     showTimeline();
-    const note = await screen.findByTestId(`timeline-web-note-${placeholder}`);
+    const note = await screen.findByTestId(`timeline-preview-note-${placeholder}`);
     // The sentence is chosen by the raw status, so each language words the whole note itself.
     expect(note).toHaveTextContent(t('timeline.webAnimation.preview.pending', { track: t('timeline.track', { index: 2 }), status: 'running' }));
     expect(note).toHaveTextContent('creating web animation');
@@ -835,7 +870,7 @@ describe('preview of web copies', () => {
     const failed = '30000000-0000-4000-8000-000000000108';
     seed([webClip(failed, 'v2', 0, 48, waitingFor(EXEC_FAILED))]);
     showTimeline();
-    const note = await screen.findByTestId(`timeline-web-note-${failed}`);
+    const note = await screen.findByTestId(`timeline-preview-note-${failed}`);
     await waitFor(() => expect(note).toHaveTextContent(t('timeline.webAnimation.preview.failed', { track: t('timeline.track', { index: 2 }), status: 'failed' })));
     expect(note).toHaveTextContent('web animation failed');
   });
@@ -847,9 +882,9 @@ describe('preview of web copies', () => {
     seed([webClip(copy, 'v2', 0, 48, boundTo(SRC_A))]);
     showTimeline();
     // The copy notes it is loading while its address is fetched, then that it is unavailable once the fetch fails.
-    await waitFor(() => expect(screen.getByTestId(`timeline-web-note-${copy}`))
+    await waitFor(() => expect(screen.getByTestId(`timeline-preview-note-${copy}`))
       .toHaveTextContent(t('timeline.webAnimation.preview.unavailable', { track: t('timeline.track', { index: 2 }) })));
-    const note = screen.getByTestId(`timeline-web-note-${copy}`);
+    const note = screen.getByTestId(`timeline-preview-note-${copy}`);
     await userEvent.click(within(note).getByTestId(`timeline-web-retry-${copy}`));
     await waitFor(() => expect(timelineApi.previewUrl).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.getByTestId('timeline-preview').querySelector('hyperframes-player')).not.toBeNull());
@@ -867,12 +902,12 @@ describe('preview of web copies', () => {
     // The creation control shows once the Timeline limits, and so the idle cap, have arrived.
     await screen.findByTestId('timeline-create-web-animation');
     const unavailable = t('timeline.webAnimation.preview.unavailable', { track: t('timeline.track', { index: 2 }) });
-    await waitFor(() => expect(screen.getByTestId(`timeline-web-note-${first}`)).toHaveTextContent(unavailable));
+    await waitFor(() => expect(screen.getByTestId(`timeline-preview-note-${first}`)).toHaveTextContent(unavailable));
     const seek = screen.getByRole('slider', { name: t('timeline.seek') });
     // While its copy stays, the instance keeps its note and Retry and asks nothing more.
     fireEvent.keyDown(seek, { key: 'ArrowRight' });
     await act(async () => { await Promise.resolve(); });
-    expect(screen.getByTestId(`timeline-web-note-${first}`)).toHaveTextContent(unavailable);
+    expect(screen.getByTestId(`timeline-preview-note-${first}`)).toHaveTextContent(unavailable);
     expect(screen.getByTestId(`timeline-web-retry-${first}`)).toBeInTheDocument();
     expect(timelineApi.previewUrl).toHaveBeenCalledTimes(1);
 
@@ -963,7 +998,7 @@ describe('play holds for a web copy that has just become visible', () => {
     vi.mocked(timelineApi.previewUrl).mockReturnValue(new Promise((resolve) => { answer = resolve; }));
     seed([webClip(COPY, 'v2', 0, 48, boundTo(SRC_A))]);
     showTimeline();
-    await screen.findByTestId(`timeline-web-note-${COPY}`);
+    await screen.findByTestId(`timeline-preview-note-${COPY}`);
     await waitFor(() => expect(timelineApi.previewUrl).toHaveBeenCalledTimes(1));
 
     await userEvent.click(screen.getByTestId('timeline-play'));
@@ -993,7 +1028,7 @@ describe('play holds for a web copy that has just become visible', () => {
     vi.mocked(timelineApi.previewUrl).mockRejectedValue(new ApiException({ status: 404, message: 'Not found', fromServer: true }));
     seed([webClip(COPY, 'v2', 0, 48, boundTo(SRC_A))]);
     showTimeline();
-    await waitFor(() => expect(screen.getByTestId(`timeline-web-note-${COPY}`))
+    await waitFor(() => expect(screen.getByTestId(`timeline-preview-note-${COPY}`))
       .toHaveTextContent(t('timeline.webAnimation.preview.unavailable', { track: t('timeline.track', { index: 2 }) })));
     await userEvent.click(screen.getByTestId('timeline-play'));
     await waitFor(() => expect(screen.getByText(transport('playing'))).toBeInTheDocument());

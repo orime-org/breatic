@@ -15,6 +15,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tool
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 import type { TimelineTrackLabels } from '@web/spaces/timeline/timeline-track-labels';
+import { TimelineTransformFields } from '@web/spaces/timeline/TimelineTransformFields';
 
 /** The selected clip's editable properties. */
 interface TimelineClipPropertiesProps {
@@ -22,6 +23,8 @@ interface TimelineClipPropertiesProps {
   document: TimelineDocumentV1;
   web?: TimelineWebResolution;
   clip: TimelineClip;
+  /** Whether the clip covers the current frame. */
+  atFrame: boolean;
   name: string;
   /** The request a web-animation copy came from. */
   request?: string | null;
@@ -73,13 +76,14 @@ function syncDrafts(drafts: Drafts | null, clip: TimelineClip, editable: Readonl
 }
 
 /**
- * Track, start, in-point and duration of the selected clip, and its video's length, or for a web-animation copy the
- * request it came from; edits commit on Enter or blur.
+ * Track, start, in-point and duration of the selected clip, its video's length, or for a web-animation copy the
+ * request it came from, and for a video or web copy its position and size; edits commit on Enter or blur.
  * @param props - The clip, its context and the commit callback.
  * @param props.spaceId - The Space, for field ids.
  * @param props.document - The current Timeline, for the clip's source extent.
  * @param props.web - The resolution of web references, for a web copy's extent.
  * @param props.clip - The selected clip.
+ * @param props.atFrame - Whether it covers the current frame.
  * @param props.name - Its display name.
  * @param props.request - The request a web copy came from, when known.
  * @param props.upload - An upload placeholder's status and retry.
@@ -92,7 +96,7 @@ function syncDrafts(drafts: Drafts | null, clip: TimelineClip, editable: Readonl
  * @returns The properties fields.
  * @throws {never} Never.
  */
-export function TimelineClipProperties({ spaceId, document, web = EMPTY_TIMELINE_WEB_RESOLUTION, clip, name, request = null, upload = null, conflict, reason = null, labels, readOnly, placement, onCommit }: TimelineClipPropertiesProps): React.JSX.Element {
+export function TimelineClipProperties({ spaceId, document, web = EMPTY_TIMELINE_WEB_RESOLUTION, clip, atFrame, name, request = null, upload = null, conflict, reason = null, labels, readOnly, placement, onCommit }: TimelineClipPropertiesProps): React.JSX.Element {
   const t = useTranslation();
   const startLocked = placement.magnet && clip.trackId === TIMELINE_MAIN_TRACK_ID;
   const editable = React.useMemo(() => ({ start: !readOnly && !startLocked, in: !readOnly, duration: !readOnly }), [readOnly, startLocked]);
@@ -122,6 +126,9 @@ export function TimelineClipProperties({ spaceId, document, web = EMPTY_TIMELINE
       ? { operation: 'move', parameters: { clipId: clip.id, startFrame: frame }, placement }
       : { operation: 'set_range', parameters: { clipId: clip.id, startFrame: clip.startFrame, sourceInFrame: range.sourceInFrame, durationFrames: range.durationFrames }, placement });
   }, [current, source, fps, clip, onCommit, placement, update]);
+  const commitTransform = React.useCallback((transform: TimelineClip['transform']): void => {
+    onCommit({ operation: 'set_transform', parameters: { clipId: clip.id, transform }, placement });
+  }, [clip.id, onCommit, placement]);
   const changeTrack = React.useCallback((value: string): void => {
     if (value === clip.trackId) return;
     onCommit(value === 'new'
@@ -183,6 +190,7 @@ export function TimelineClipProperties({ spaceId, document, web = EMPTY_TIMELINE
     {field('start', 'timeline.startFrame')}
     {field('in', 'timeline.edit.inPoint')}
     {field('duration', 'timeline.edit.duration')}
+    {clip.kind !== 'upload' && <TimelineTransformFields spaceId={spaceId} transform={clip.transform} atFrame={atFrame} readOnly={readOnly} onCommit={commitTransform} />}
     {source !== undefined && clip.kind === 'video' && <span data-testid='timeline-clip-source' className='text-xs text-muted-foreground'>
       {t('timeline.sourceExtent', { frames: source.extentFrames, fps: Math.round(fps.num / fps.den * 100) / 100 })}</span>}
   </div>;

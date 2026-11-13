@@ -15,7 +15,7 @@ import { catalogEntryOf } from '@breatic/shared/mini-tools';
 import * as Y from 'yjs';
 
 import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
-import { ATTACHMENT_NAME_CHARS, hashOf } from '@web/lib/attachment-naming';
+import { clipAttachmentName, hashOf } from '@web/lib/attachment-naming';
 import type { ContentNodeView } from '@web/data/yjs/node-view';
 import { toAbsolutePosition } from '@web/spaces/canvas/group-geometry';
 import { currentGeneration } from '@web/spaces/canvas/generate/current-generation';
@@ -152,7 +152,7 @@ export function nodeNameOf(type: string, data: { name?: unknown; content?: unkno
   const named = typeof data.name === 'string' ? data.name.trim() : '';
   if (named) return named;
   if (type === 'annotation' && typeof data.content === 'string') {
-    return data.content.trim().slice(0, ATTACHMENT_NAME_CHARS);
+    return clipAttachmentName(data.content.trim());
   }
   return type;
 }

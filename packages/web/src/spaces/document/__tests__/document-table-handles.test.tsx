@@ -549,4 +549,30 @@ describe('copy, cut and paste from the handles (inner#1239)', () => {
     expect(warning).not.toHaveBeenCalled();
     warning.mockRestore();
   });
+  it('hands a row whose only content is an uploaded picture', async () => {
+    attachToChat.mockClear();
+    const editor = buildDocumentEditor({ fragment: documentBodyFragment(new Y.Doc()) });
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    editor.mount(root);
+    mounted.push(editor);
+    const picture = { type: 'image', props: { url: 'https://cdn.test/a.png', name: 'a.png' } };
+    editor.replaceBlocks(editor.document, [tableBlock({ rows: [{ cells: ['a1', 'b1'] }, { cells: ['', { blocks: [picture] }] }] })] as never);
+    side.editor = editor;
+    side.state = { show: true, block: editor.document[0], rowIndex: 1, colIndex: 0, cellPos: cellPosAt(editor, 1, 0) };
+    render(
+      <DocumentProjectProvider projectId='project-1'>
+        <DocumentTableHandle orientation='row' hideOtherElements={() => undefined} />
+      </DocumentProjectProvider>,
+    );
+    fireEvent.click(screen.getByTestId('doc-table-row-handle'));
+
+    expect(screen.getByTestId('doc-table-row-addToAgent').getAttribute('aria-disabled')).toBeNull();
+    fireEvent.click(screen.getByTestId('doc-table-row-addToAgent'));
+
+    await waitFor(() => expect(attachToChat).toHaveBeenCalledOnce());
+    const text = (attachToChat.mock.calls[0][1] as { chip: { data_snapshot: { text: string } } }[])[0].chip.data_snapshot.text;
+    expect(text).toContain('https://cdn.test/a.png');
+    expect(text).not.toContain('a1');
+  });
 });

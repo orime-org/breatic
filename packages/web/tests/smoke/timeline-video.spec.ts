@@ -17,6 +17,7 @@ import {
   selectTimelineClip,
   setTimelineConnection,
   timelineClipIds,
+  timelineVideoOf,
   uploadTimelineVideo,
   watchTimelineErrors,
   withTimelinePeer,
@@ -50,9 +51,10 @@ test('local video and its Project copy play, pause, seek and survive closing the
 
     const outlet = visibleSpace(page);
     const slider = outlet.getByRole('slider', { name: 'Preview frame', exact: true });
-    const video = outlet.getByTestId('timeline-preview').locator('video');
+    // The duplicate starts where this one ends, so near that edge both have an element.
+    const video = timelineVideoOf(page, uploaded.clipId);
     await expect(slider).toHaveAttribute('aria-valuenow', '0');
-    await expectTimelineVideoReady(page, uploaded.asset.fileUrl);
+    await expectTimelineVideoReady(page, uploaded.clipId, uploaded.asset.fileUrl);
     await outlet.getByTestId('timeline-play').click();
     await expect(outlet.getByTestId('timeline-play')).toHaveText('Pause');
     await expect.poll(() => video.evaluate((element: HTMLVideoElement) => !element.paused && element.currentTime > 0)).toBe(true);
@@ -99,7 +101,7 @@ test('local video and its Project copy play, pause, seek and survive closing the
     await expect.poll(() => timelineClipIds(page)).toEqual([uploaded.clipId, duplicateId]);
     await expectTimelineStart(page, uploaded.clipId, 0, uploaded.durationFrames);
     await expectTimelineStart(page, duplicateId, uploaded.durationFrames, uploaded.durationFrames);
-    await expectTimelineVideoReady(page, uploaded.asset.fileUrl);
+    await expectTimelineVideoReady(page, uploaded.clipId, uploaded.asset.fileUrl);
     expect(errors.unexpected).toEqual([]);
   } finally {
     await deleteSpace(page, spaceId);
@@ -122,7 +124,7 @@ test('a real Viewer sees the registered Timeline clips without material or start
       await peer.goto(projectUrl);
       await openTimeline(peer, spaceId);
       await expect.poll(() => timelineClipIds(peer)).toEqual([uploaded.clipId, duplicateId]);
-      await expectTimelineVideoReady(peer, uploaded.asset.fileUrl);
+      await expectTimelineVideoReady(peer, uploaded.clipId, uploaded.asset.fileUrl);
       await expectTimelineStart(peer, uploaded.clipId, 0, uploaded.durationFrames);
       await expectTimelineStart(peer, duplicateId, uploaded.durationFrames, uploaded.durationFrames);
       const outlet = visibleSpace(peer);
@@ -135,9 +137,9 @@ test('a real Viewer sees the registered Timeline clips without material or start
       await expect(outlet.getByTestId('timeline-start-frame')).toHaveCount(0);
       await expect(outlet.getByTestId('timeline-play')).toBeEnabled();
       await outlet.getByTestId('timeline-play').click();
-      await expect.poll(() => outlet.getByTestId('timeline-preview').locator('video').evaluate((element: HTMLVideoElement) => !element.paused && element.currentTime > 0)).toBe(true);
+      await expect.poll(() => timelineVideoOf(peer, uploaded.clipId).evaluate((element: HTMLVideoElement) => !element.paused && element.currentTime > 0)).toBe(true);
       await outlet.getByTestId('timeline-play').click();
-      await expect.poll(() => outlet.getByTestId('timeline-preview').locator('video').evaluate((element: HTMLVideoElement) => element.paused)).toBe(true);
+      await expect.poll(() => timelineVideoOf(peer, uploaded.clipId).evaluate((element: HTMLVideoElement) => element.paused)).toBe(true);
       await expect.poll(() => timelineClipIds(page)).toEqual([uploaded.clipId, duplicateId]);
       expect(errors.unexpected).toEqual([]);
     });
@@ -171,7 +173,7 @@ test('two connected Editors merge concurrent moves into a visible overlap and re
       await openTimeline(peer, spaceId);
       await expect.poll(() => timelineClipIds(peer)).toEqual([uploaded.clipId, secondId]);
       for (const member of [page, peer]) {
-        await expectTimelineVideoReady(member, uploaded.asset.fileUrl);
+        await expectTimelineVideoReady(member, uploaded.clipId, uploaded.asset.fileUrl);
         await expectTimelineStart(member, uploaded.clipId, 0, duration);
         await expectTimelineStart(member, secondId, duration, duration);
         await expectTimelineConnected(member);
@@ -310,7 +312,7 @@ test('a disconnected Editor keeps the Timeline behind the existing workspace cur
       await openTimeline(peer, spaceId);
       await expect.poll(() => timelineClipIds(peer)).toEqual([uploaded.clipId, secondId]);
       for (const member of [page, peer]) {
-        await expectTimelineVideoReady(member, uploaded.asset.fileUrl);
+        await expectTimelineVideoReady(member, uploaded.clipId, uploaded.asset.fileUrl);
         await expectTimelineStart(member, uploaded.clipId, 0, duration);
         await expectTimelineStart(member, secondId, duration, duration);
         await expectTimelineConnected(member);

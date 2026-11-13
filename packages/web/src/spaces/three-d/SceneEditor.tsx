@@ -20,13 +20,17 @@ import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusi
 import { SceneCreationMenu } from '@web/spaces/three-d/SceneCreationMenu';
 import { fillFromTask } from '@web/spaces/three-d/scene-generation';
 import { useSceneProposals } from '@web/stores/scene-proposals';
+import { useConversationRuntime } from '@web/stores/conversation-runtime';
+import { useProjectSpaceList } from '@web/data/yjs/project-meta';
+import { SceneViewfinder } from '@web/spaces/three-d/SceneViewfinder';
+import { INITIAL_VIEWFINDER, viewfinderReducer, type ViewfinderAction } from '@web/spaces/three-d/viewfinder/viewfinder-state';
 import { SceneField, type SceneFieldDraft } from '@web/spaces/three-d/SceneField';
 import { SceneIconButton } from '@web/spaces/three-d/SceneIconButton';
 import { SceneObjectList } from '@web/spaces/three-d/SceneObjectList';
 import { SceneRightPanel } from '@web/spaces/three-d/SceneRightPanel';
 import { SceneViewportToolbar, type ScenePanel } from '@web/spaces/three-d/SceneViewportToolbar';
 import { SceneObjectToolbar } from '@web/spaces/three-d/SceneObjectToolbar';
-import type { SceneModelAcquire, SceneModelState, SceneSkeletonState, SceneTransformMode, SceneView, SceneViewportProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
+import type { SceneFrameCapture, SceneModelAcquire, SceneModelState, SceneSkeletonState, SceneTransformMode, SceneView, SceneViewportProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
 import { getModelImportController } from '@web/spaces/three-d/model-import-controller';
 import type { ModelImportController, PreparedModel } from '@web/spaces/three-d/model-import-controller';
 import type { ModelSource } from '@web/spaces/three-d/model-source';
@@ -92,6 +96,18 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   const [skeletonStates, setSkeletonStates] = React.useState<ReadonlyMap<string, SceneSkeletonState>>(new Map());
   const [jointMode, setJointMode] = React.useState(false);
   const [selectedJoint, setSelectedJoint] = React.useState<string | null>(null);
+  const [viewfinder, dispatchViewfinder] = React.useReducer(viewfinderReducer, INITIAL_VIEWFINDER);
+  const framing = viewfinder.phase !== 'off';
+  // From Capture until Reframe or close the frame holds the still, so the view is locked and the object toolbar is put away.
+  const shotTaken = framing && viewfinder.phase !== 'framing';
+  const viewfinderPhase = React.useRef(viewfinder.phase);
+  viewfinderPhase.current = viewfinder.phase;
+  const [frameCapture, setFrameCapture] = React.useState<SceneFrameCapture | null>(null);
+  /** Hold the viewport's capture while it lives. */
+  const onCapture = React.useCallback((capture: SceneFrameCapture | null): void => setFrameCapture(() => capture), []);
+  const projectSpaces = useProjectSpaceList(projectId);
+  const spaceName = projectSpaces.find((space) => space.id === spaceId)?.name ?? '';
+  const chatSwitching = useConversationRuntime((s) => s.navigatingByProject[projectId] === true);
   /**
    * Turn joint mode on or off; either way no joint is selected yet.
    * @param next - The requested joint mode.
@@ -130,6 +146,10 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   const mutable = snapshot.canEdit && selected.length > 0 && selected.every((object) => !object.locked);
   const allSelectedLocked = selected.length > 0 && selected.every((object) => object.locked);
   const failedModels = snapshot.objects.some((object) => modelStates.get(object.id) === 'failed');
+  const modelsLoading = snapshot.objects.some((object) => {
+    const state = modelStates.get(object.id);
+    return state === undefined || state === 'loading';
+  });
   const failures = snapshot.objects.flatMap((object) => {
     const error = modelStates.get(object.id) === 'failed' ? modelErrors.get(object.id) : undefined;
     return error ? [error] : [];
@@ -184,9 +204,12 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
       if (event.key === 'Escape') {
         if (event.repeat) return;
         event.preventDefault();
-        // One step per press: cancel the drag, then clear the selection. Joint mode lives only
-        // while the properties panel is open, and the panel's own Escape leaves it first.
+        // One step per press: cancel the drag, then step the viewfinder back (#1411 design 3.7; its
+        // canvas list closes itself), then clear the selection. Joint mode lives only while the
+        // properties panel is open, and the panel's own Escape leaves it first.
         if (session.getSnapshot().gestureActive) session.endGesture(false);
+        else if (viewfinderPhase.current === 'picking') return;
+        else if (viewfinderPhase.current !== 'off') dispatchViewfinder({ type: 'escape' });
         else session.select(null, false);
         return;
       }
@@ -363,6 +386,21 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     wasRightOpen.current = rightOpen;
   }, [rightOpen]);
   const [minimap, setMinimap] = React.useState(true);
+  const [stageSize, setStageSize] = React.useState({ width: 0, height: 0 });
+  React.useEffect(() => {
+    const element = stage.current;
+    if (!element) return;
+    /**
+     * Follow the stage's size for the viewfinder's safe area.
+     * @returns Nothing.
+     */
+    const measure = (): void => setStageSize((previous) => previous.width === element.clientWidth && previous.height === element.clientHeight
+      ? previous : { width: element.clientWidth, height: element.clientHeight });
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
   const [overviewHost, setOverviewHost] = React.useState<HTMLDivElement | null>(null);
   const selection = JSON.stringify([...snapshot.selectedIds].sort());
   const lastSelection = React.useRef('[]');
@@ -374,6 +412,8 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     if (keepTasksPanel.current) {
       // A model placed from the task list is selected there; the list stays open for the next one.
       keepTasksPanel.current = false;
+    } else if (viewfinderPhase.current !== 'off') {
+      // While framing, the panel follows only its own buttons, so the frame does not move with a selection (#1411 design 3.2).
     } else if (snapshot.selectedIds.length > 0 && !importOpen) {
       // An open import dialog keeps the overlay slot; a collaborator's change to the selection must not close it.
       automaticPanel.current = true;
@@ -388,6 +428,14 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     // Activity hiding releases the overlay while the editor retains unfinished input.
     wasRightOpen.current = false;
     setRightOpen(false);
+  }, [setRightOpen]);
+  /**
+   * Run a viewfinder action; opening it closes the right panel so the frame has the whole view.
+   * @param action - The action.
+   */
+  const viewfinderAction = React.useCallback((action: ViewfinderAction): void => {
+    if (action.type === 'open') setRightOpen(false);
+    dispatchViewfinder(action);
   }, [setRightOpen]);
   /**
    * Switch a right panel while recording a valid keyboard return target.
@@ -525,15 +573,16 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
                   jointMode={jointMode} selectedJoint={selectedJoint} onJointSelect={setSelectedJoint} onSkeletonState={onSkeletonState}
                   onSelect={onSelect} onGestureStart={onGestureStart}
                   onGestureChange={onGestureChange} onGestureEnd={onGestureEnd}
-                  onViewChange={onViewChange} onError={onError} onModelStateChange={onModelStateChange} resolveAsset={resolveAsset} onResources={onResources} />
+                  onViewChange={onViewChange} onError={onError} onModelStateChange={onModelStateChange} resolveAsset={resolveAsset} onResources={onResources}
+                  onCapture={onCapture} viewLocked={shotTaken} />
               </React.Suspense>}
-      {failedModels ? <div className='absolute left-20 top-3 flex max-w-[calc(100%-6rem)] items-center justify-between gap-2 rounded-chrome border border-border bg-background p-2 text-xs'>
+      {failedModels ? <div className='absolute left-20 top-3 flex max-w-[calc(100%_-_5rem_-_var(--space-5)_-_42px_-_var(--space-2))] items-center justify-between gap-2 rounded-chrome border border-border bg-background p-2 text-xs'>
         <span className='min-w-0'>{t('spaces.threeD.modelFailed')}{cause && <> {t(importErrorKey(cause.code))}{cause.budget && <> {budgetText(t, cause.budget, getLocale())}</>}{cause.detail && <span className='block break-all text-muted-foreground'>{cause.detail}</span>}</>}</span>
         {modelRetryable && <Button size='sm' variant='ghost' onClick={() => setModelRetryRevision((value) => value + 1)}>{t('spaces.threeD.retry')}</Button>}
       </div> : null}
     </div>
-    <SceneCreationMenu projectId={projectId} spaceId={spaceId} myRole={myRole} canEdit={snapshot.canEdit && importController !== null} onAdd={addBuiltin} onImport={showImport}
-      onGenerated={importStarted} />
+    {framing ? null : <SceneCreationMenu projectId={projectId} spaceId={spaceId} myRole={myRole} canEdit={snapshot.canEdit && importController !== null} onAdd={addBuiltin} onImport={showImport}
+      onGenerated={importStarted} />}
     {importController && importLimits && <React.Suspense fallback={null}><SceneModelImportHost controller={importController}
       open={importOpen} onOpenChange={setImportOpen} canEdit={snapshot.canEdit} maxInputBytes={importLimits.maxInputBytes} onStarted={importStarted} /></React.Suspense>}
     <SceneRightPanel open={rightOpen} onOpenChange={setRightOpen} automatic={automaticPanel} stage={stage} returnTarget={returnTarget} cancelGesture={cancelGesture} contentRef={rightPanel}
@@ -542,11 +591,14 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
       {panelContent}
     </SceneRightPanel>
     <div className='absolute bottom-[61px] right-[var(--space-5)] z-10'>
-      {minimap ? <div ref={setOverviewHost} data-testid='scene-map' className='h-[142px] w-[202px] overflow-hidden rounded-overlay border border-border bg-popover shadow' /> : null}
+      {minimap && !framing ? <div ref={setOverviewHost} data-testid='scene-map' className='h-[142px] w-[202px] overflow-hidden rounded-overlay border border-border bg-popover shadow' /> : null}
     </div>
     <SceneViewportToolbar undo={snapshot.canEdit && snapshot.canUndo} redo={snapshot.canEdit && snapshot.canRedo}
-      onHistory={onHistory} hasSelection={selected.length > 0} onPanel={showPanel} minimap={minimap} onMinimap={toggleMinimap} />
-    {selected.length > 0 ? <SceneObjectToolbar mode={mode} jointMode={jointMode} mutable={mutable} canDuplicate={snapshot.canEdit}
+      onHistory={onHistory} hasSelection={selected.length > 0} onPanel={showPanel} minimap={minimap} minimapDisabled={framing} onMinimap={toggleMinimap} />
+    <SceneViewfinder state={viewfinder} dispatch={viewfinderAction} stage={stageSize} rightPanelOpen={rightOpen} capture={frameCapture}
+      modelsLoading={modelsLoading} disabled={myRole === 'viewer' || snapshot.status !== 'ready'} chatSwitching={chatSwitching} projectId={projectId} spaceId={spaceId}
+      spaceName={spaceName} userId={userId} config={controls.data?.capture} spaces={projectSpaces} />
+    {selected.length > 0 && !shotTaken ? <SceneObjectToolbar mode={mode} jointMode={jointMode} mutable={mutable} canDuplicate={snapshot.canEdit}
       onMode={onMode} onFocus={onFocus} onDuplicate={duplicate} onDelete={onDelete} /> : null}
   </div>;
 });

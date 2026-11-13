@@ -16,6 +16,7 @@ import {
   moveTimelineClip,
   openTimeline,
   timelineClipIds,
+  timelineVideoOf,
   uploadTimelineVideo,
   watchTimelineErrors,
   withTimelinePeer,
@@ -46,20 +47,22 @@ interface PlaybackReading {
 test.use({ viewport: { width: 1680, height: 1100 } });
 
 /**
- * Read the visible slider, reported controller state and real media facts over browser frames.
+ * Read the visible slider, reported controller state and one placement's real media facts over browser frames. Each
+ * video placement has its own element (#1410), so `native` is the named placement's, null while it has none or when
+ * no placement is named.
  * @throws {Error} When the page cannot evaluate the playback observations.
  */
-async function observePlayback(page: Page, milliseconds = 0, expectedUrl: string | null = null): Promise<PlaybackReading[]> {
-  return visibleSpace(page).evaluate(async (root, { duration, expected }) => {
+async function observePlayback(page: Page, milliseconds = 0, expectedUrl: string | null = null, clipId: string | null = null): Promise<PlaybackReading[]> {
+  return visibleSpace(page).evaluate(async (root, { duration, expected, clipId }) => {
     const readings: PlaybackReading[] = [];
     const until = performance.now() + duration;
     do {
-      const video = root?.querySelector<HTMLVideoElement>('[data-testid="timeline-preview"] video');
+      const video = clipId === null ? null : root?.querySelector<HTMLVideoElement>(`[data-testid="timeline-preview"] video[data-clip-id="${clipId}"]`);
       const slider = root?.querySelector('[role="slider"]');
       readings.push({
         at: performance.now(), frame: slider === undefined || slider === null ? null : Number(slider.getAttribute('aria-valuenow')),
         playControl: root?.querySelector('[data-testid="timeline-play"]')?.textContent ?? null,
-        reportedStates: Array.from(root?.querySelectorAll('span') ?? []).map((span) => span.textContent ?? '').filter((text) => ['Playing', 'Paused', 'Buffering…', 'Playback failed'].includes(text)),
+        reportedStates: Array.from(root?.querySelectorAll('span') ?? []).map((span) => span.textContent ?? '').filter((text) => ['Playing', 'Paused', 'Buffering…'].includes(text)),
         conflictCount: root?.querySelectorAll('[data-testid^="timeline-conflict-"]').length ?? 0,
         clipCount: root?.querySelectorAll('[data-testid^="timeline-clip-"][data-track-id]').length ?? 0,
         native: video === undefined || video === null ? null : {
@@ -73,7 +76,7 @@ async function observePlayback(page: Page, milliseconds = 0, expectedUrl: string
       await new Promise<void>((accept) => requestAnimationFrame(() => accept()));
     } while (performance.now() < until);
     return readings;
-  }, { duration: milliseconds, expected: expectedUrl });
+  }, { duration: milliseconds, expected: expectedUrl, clipId });
 }
 
 /**
@@ -135,13 +138,13 @@ test('playing continues after seeking inside the same empty gap @needs-storage @
     const outlet = visibleSpace(page);
     const slider = outlet.getByRole('slider', { name: 'Preview frame', exact: true });
     await expect(slider).toHaveAttribute('aria-valuenow', '0');
-    await expect(outlet.getByTestId('timeline-preview').locator('video')).toHaveCount(0);
+    await expect(timelineVideoOf(page, uploaded.clipId)).toHaveCount(0);
     await outlet.getByTestId('timeline-play').click();
     await expect(outlet.getByText('Playing', { exact: true })).toBeVisible();
     await expect.poll(async () => Number(await slider.getAttribute('aria-valuenow'))).toBeGreaterThan(0);
     evidence.beforeSeek = await observePlayback(page, 150);
     await seekWithKeys(page, 30);
-    const afterSeek = await observePlayback(page, 350);
+    const afterSeek = await observePlayback(page, 350, null, uploaded.clipId);
     evidence.afterSeek = afterSeek;
     evidence.errors = errors.unexpected;
     expect(afterSeek.length).toBeGreaterThan(2);
@@ -226,15 +229,15 @@ test('playing crosses concurrent conflicts and reaches the later ready video @ne
         expect(peerErrors.unexpected).toEqual([]);
         expect(crossing.length).toBeGreaterThan(2);
         expect(crossing.at(-1)!.frame, 'conflict presentation must not permanently stop the sequence at frame 240').toBeGreaterThan(240);
-        const video = outlet.getByTestId('timeline-preview').locator('video');
+        const video = timelineVideoOf(page, third);
         const readyStart = duration * 2;
         const reachReadyTimeout = Math.ceil((readyStart - 239) * uploaded.fps.den / uploaded.fps.num * 1000) + 20_000;
         // The original play intent advances across the conflicts into the later valid placement.
         await expect(video).toHaveCount(1, { timeout: reachReadyTimeout });
-        await expectTimelineVideoReady(page, uploaded.asset.fileUrl);
+        await expectTimelineVideoReady(page, third, uploaded.asset.fileUrl);
         await expect(outlet.getByText('Playing', { exact: true })).toBeVisible();
         await expect.poll(() => video.evaluate((element: HTMLVideoElement) => !element.paused && element.currentTime > 0.2)).toBe(true);
-        const ready = await observePlayback(page, 350, uploaded.asset.fileUrl);
+        const ready = await observePlayback(page, 350, uploaded.asset.fileUrl, third);
         evidence.laterReady = ready;
         expect(ready[0].frame).toBeGreaterThanOrEqual(readyStart);
         expect(ready.at(-1)!.frame).toBeLessThan(readyStart + duration);
@@ -263,7 +266,7 @@ test('playing crosses concurrent conflicts and reaches the later ready video @ne
   }
 });
 
-test('Retry reloads and plays the unchanged media URL after a native HTTP error @needs-storage @needs-ingest', async ({ page }) => {
+test('the layer Retry reloads the unchanged media URL after a native HTTP error, keeps the paused intent and plays on Play @needs-storage @needs-ingest', async ({ page }) => {
   let mediaUrl: string | null = null;
   let failing = false;
   let failureWindow = false;
@@ -304,14 +307,16 @@ test('Retry reloads and plays the unchanged media URL after a native HTTP error 
     await page.route(isActualMedia, mediaFailure);
     await openTimeline(page, spaceId);
     const outlet = visibleSpace(page);
-    const video = outlet.getByTestId('timeline-preview').locator('video');
+    const video = timelineVideoOf(page, uploaded.clipId);
     await expect(video).toHaveAttribute('src', uploaded.asset.fileUrl);
     await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.error?.code ?? 0), { timeout: 20_000 }).toBeGreaterThan(0);
-    const retry = outlet.getByTestId('timeline-preview').getByRole('button', { name: 'Retry', exact: true });
+    // The failed layer's own note carries its Retry (#1410 design §6.2); there is no preview-wide failure any more.
+    const retry = outlet.getByTestId('timeline-preview-notes').getByTestId(`timeline-video-retry-${uploaded.clipId}`);
     await expect(retry).toBeVisible();
+    await expect(outlet.getByTestId('timeline-preview-notes')).toContainText('video unavailable');
     expect(observed.failedRequests).toBeGreaterThan(0);
     await expect.poll(() => observed.expectedMediaErrors.length).toBeGreaterThan(0);
-    evidence.failedNative = await observePlayback(page, 0, mediaUrl);
+    evidence.failedNative = await observePlayback(page, 0, mediaUrl, uploaded.clipId);
     const beforeRetry = observed.requests;
     evidence.requestsBeforeRetry = beforeRetry;
     await preserveEvidence(page, 'native-error-before-retry', { ...evidence, observed });
@@ -325,16 +330,22 @@ test('Retry reloads and plays the unchanged media URL after a native HTTP error 
     expect(envelope.data.assetId).toBe(uploaded.asset.assetId);
     expect(envelope.data.fileUrl).toBe(uploaded.asset.fileUrl);
     evidence.authorizationStillSameAssetAndUrl = true;
-    evidence.afterRetry = await observePlayback(page, 350, mediaUrl);
+    evidence.afterRetry = await observePlayback(page, 350, mediaUrl, uploaded.clipId);
     expect(observed.unexpected).toEqual([]);
     await expect.poll(() => observed.requests, { timeout: 8_000 }).toBeGreaterThan(beforeRetry);
     expect(observed.normalRequests).toBeGreaterThan(0);
-    await expectTimelineVideoReady(page, uploaded.asset.fileUrl);
+    await expectTimelineVideoReady(page, uploaded.clipId, uploaded.asset.fileUrl);
     await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.error?.code ?? null)).toBeNull();
     failureWindow = false;
+    await expect(retry).toHaveCount(0);
+    // The Timeline was opened paused, and Retry keeps that intent: it reloads without starting playback.
+    await expect(outlet.getByTestId('timeline-play')).toHaveText('Play');
+    await expect(outlet.getByText('Paused', { exact: true })).toBeVisible();
+    expect(await video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(true);
+    await outlet.getByTestId('timeline-play').click();
     await expect(outlet.getByText('Playing', { exact: true })).toBeVisible();
     await expect.poll(() => video.evaluate((element: HTMLVideoElement) => !element.paused && element.currentTime > 0.2)).toBe(true);
-    const recovered = await observePlayback(page, 350, mediaUrl);
+    const recovered = await observePlayback(page, 350, mediaUrl, uploaded.clipId);
     evidence.recovered = recovered;
     expect(recovered.length).toBeGreaterThan(2);
     expect(recovered.every((reading) => reading.native !== null && reading.native.sameExpectedUrl

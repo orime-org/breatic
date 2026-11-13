@@ -3,7 +3,7 @@
 
 import { z } from 'zod';
 import {
-  TIMELINE_MAIN_TRACK_ID, TimelineOperationReceiptSchema, TimelineRateSchema, TimelineUploadClipSchema, TimelineVideoClipSchema, TimelineVideoSourceSchema,
+  TIMELINE_LAYER_TRANSFORM_LIMITS, TIMELINE_MAIN_TRACK_ID, TimelineOperationReceiptSchema, TimelineRateSchema, TimelineUploadClipSchema, TimelineVideoClipSchema, TimelineVideoSourceSchema,
   type TimelineClip, type TimelineDocumentV1, type TimelineOperationReceipt, type TimelineTrack, type TimelineVideoSource,
   type TimelineWebAnimationClip, type TimelineWebAnimationContentBinding, type TimelineWebResolution,
 } from '@breatic/shared';
@@ -26,6 +26,16 @@ const webExtent = z.union([
 ]);
 const webCopy = { clipId: identity, startFrame: safeFrame, newTrackId: trackIdentity, extent: webExtent };
 const webCopySchema = z.object(webCopy).strict();
+
+const { scale, rotation } = TIMELINE_LAYER_TRANSFORM_LIMITS;
+// Scale and rotation bounds are the command's data boundary; x and y are bounded by the document canvas in planning.
+const transformSchema = z.object({
+  x: z.number(),
+  y: z.number(),
+  scaleX: z.number().min(scale.min).max(scale.max),
+  scaleY: z.number().min(scale.min).max(scale.max),
+  rotation: z.number().min(rotation.min).max(rotation.max),
+}).strict();
 
 /** The rate, gain, mute and transform every newly placed clip starts with. */
 export const TIMELINE_DEFAULT_PLACEMENT = {
@@ -61,6 +71,7 @@ export const TimelineEditCommandSchema = z.discriminatedUnion('operation', [
   z.object({ operation: z.literal('split'), parameters: z.object({ clipId: identity, frame: safeFrame, newClipId: identity }).strict(), placement }).strict(),
   z.object({ operation: z.literal('duplicate'), parameters: z.object({ clipId: identity, newClipId: identity }).strict(), placement }).strict(),
   z.object({ operation: z.literal('delete'), parameters: z.object({ clipId: identity }).strict(), placement }).strict(),
+  z.object({ operation: z.literal('set_transform'), parameters: z.object({ clipId: identity, transform: transformSchema }).strict(), placement }).strict(),
   z.object({ operation: z.literal('delete_track'), parameters: z.object({ trackId: trackIdentity }).strict(), placement }).strict(),
   z.object({
     operation: z.literal('add_web_animation'),
@@ -322,6 +333,16 @@ function planOrThrow(current: TimelineDocumentV1, command: TimelineEditCommand, 
     if (!timelineClipIntervalValid(placed)) throw new Refused('invalid_range');
     clips[clipId] = placed;
     created.push(clipId);
+    return done();
+  }
+
+  if (command.operation === 'set_transform') {
+    const { clipId, transform } = command.parameters;
+    const clip = clips[clipId];
+    if (clip === undefined) throw new Refused('target_missing');
+    const reach = TIMELINE_LAYER_TRANSFORM_LIMITS.offsetCanvasMultiple;
+    if (Math.abs(transform.x) > reach * current.settings.width || Math.abs(transform.y) > reach * current.settings.height) throw new Refused('invalid_range');
+    clips[clipId] = { ...clip, transform };
     return done();
   }
 

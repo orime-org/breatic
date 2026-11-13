@@ -73,7 +73,7 @@ function webCopiesAt(input: WebInstanceAllocationInput, frame: number): Array<{ 
 
 /**
  * The copies wanting an instance: visible ones bottom-up, then those first visible within the lead, walking the
- * playback boundaries so a copy revealed by a higher video ending is found at the frame it is revealed.
+ * playback boundaries so each copy is found at the frame it starts showing.
  * @param input - The allocation input.
  * @returns The wants in allocation order.
  * @throws {never} Never.

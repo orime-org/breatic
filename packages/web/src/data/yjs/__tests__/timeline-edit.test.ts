@@ -11,10 +11,13 @@ import { TIMELINE_MAIN_TRACK_ID, TimelineDocumentV1Schema } from '@breatic/share
 import { TimelineEditCommandSchema } from '@web/data/yjs/timeline-edit';
 import type { TimelineClip, TimelineDocumentV1, TimelineVideoClip } from '@breatic/shared';
 import type { TimelineEditCommand, TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
+import { applyTimelineEdit, readTimelineDocument } from '@web/data/yjs/timeline-document';
 import {
   FPS, LINK_ONLY, MAGNET_ONLY, MAIN, OFF, ON, SHORT_SOURCE, SOURCE, V2, V3, V4,
-  cid, clip, idFactory, overlapSpans, overlappedFrames, referenceOverflow, sourceIdOf, starts, timeline, totalOverflow, track,
+  cid, clip, idFactory, overlapSpans, overlappedFrames, referenceOverflow, seededDoc, sourceIdOf, starts, timeline, totalOverflow, track,
 } from '@web/data/yjs/__tests__/timeline-document-fixtures';
+import { RESOLUTION, webClip } from '@web/data/yjs/__tests__/timeline-web-fixtures';
+import { uploadClip } from '@web/data/yjs/__tests__/timeline-upload-fixtures';
 
 type Accepted = Extract<TimelineEditPlan, { ok: true }>;
 
@@ -932,5 +935,115 @@ describe('planTimelineEdit around a clip whose source is already missing (inner#
       const current = timeline([clip(W, V2, 200, 20), clip(X2, V2, 230, 100, { sourceId: MISSING })]);
       expect(plan(current, setRange(W, 200, 0, 40, OFF))).toEqual({ ok: false, reason: 'covers_missing_source' });
     });
+  });
+});
+
+/**
+ * `set_transform` (breatic#1410 design §3): `{ clipId, transform }` replaces one clip's transform and nothing else.
+ * The command schema bounds scale to [0.01, 100] and rotation to [-180, 180]; the planner refuses an `x` or `y`
+ * beyond ten times the document's canvas width or height as `invalid_range`, and a missing clip as `target_missing`.
+ */
+describe('planTimelineEdit set_transform (breatic#1410)', () => {
+  type Transform = TimelineClip['transform'];
+  const MOVED: Transform = { x: 120.5, y: -40.25, scaleX: 0.5, scaleY: 2, rotation: 33.33 };
+  const setTransform = (clipId: string, transform: Transform, placement: TimelineEditPlacement = OFF): TimelineEditCommand =>
+    ({ operation: 'set_transform', parameters: { clipId, transform }, placement });
+  const IDENTITY: Transform = { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 };
+
+  it('is a strict command the schema accepts at the edges of every range', () => {
+    for (const transform of [
+      MOVED,
+      // Exactly -180 and 180 name one angle; which of the two the bound keeps is left to the implementation.
+      { x: 0, y: 0, scaleX: 0.01, scaleY: 100, rotation: -179.99 },
+      { x: 0, y: 0, scaleX: 100, scaleY: 0.01, rotation: 179.99 },
+    ]) expect(TimelineEditCommandSchema.safeParse(setTransform(A, transform)).success, JSON.stringify(transform)).toBe(true);
+    const strict = TimelineEditCommandSchema.safeParse({ ...setTransform(A, MOVED), parameters: { clipId: A, transform: MOVED, startFrame: 0 } });
+    expect(strict.error?.issues.map((issue) => issue.path.join('.'))).toEqual(['parameters']);
+  });
+
+  it.each([
+    ['scaleX below 0.01', { scaleX: 0.0099 }, 'parameters.transform.scaleX'],
+    ['scaleY above 100', { scaleY: 100.01 }, 'parameters.transform.scaleY'],
+    ['a negative scale (no flip in this task)', { scaleX: -1 }, 'parameters.transform.scaleX'],
+    ['rotation below -180', { rotation: -180.01 }, 'parameters.transform.rotation'],
+    ['rotation above 180', { rotation: 180.01 }, 'parameters.transform.rotation'],
+    ['a non-finite x', { x: Number.POSITIVE_INFINITY }, 'parameters.transform.x'],
+  ] as const)('rejects %s in the command schema, at that field', (_name, field, path) => {
+    const result = TimelineEditCommandSchema.safeParse(setTransform(A, { ...MOVED, ...field }));
+    expect(result.error?.issues.map((issue) => issue.path.join('.'))).toEqual([path]);
+  });
+
+  it('refuses an out-of-range scale or rotation as invalid_range without writing', () => {
+    const doc = seededDoc(base);
+    const before = readTimelineDocument(doc);
+    // An in-range command is written, so the refusals below come from the range and not from an unknown operation.
+    expect(applyTimelineEdit(doc, setTransform(B, MOVED), Symbol('edit'))).toMatchObject({ ok: true });
+    expect(readTimelineDocument(doc).clips[B]?.transform).toEqual(MOVED);
+    for (const field of [{ scaleX: 0 }, { scaleY: 101 }, { rotation: 181 }, { rotation: -540 }]) {
+      expect(applyTimelineEdit(doc, setTransform(B, { ...IDENTITY, ...field }), Symbol('edit')), JSON.stringify(field)).toEqual({ ok: false, reason: 'invalid_range' });
+    }
+    expect(readTimelineDocument(doc)).toEqual({ ...before, clips: { ...before.clips, [B]: { ...before.clips[B], transform: MOVED } } });
+  });
+
+  it('replaces only the target clip\'s transform, leaving ranges, tracks, sources and every other clip alone', () => {
+    // Magnet and linkage on: a transform moves no clip on the main track nor any attached clip.
+    const result = accepted(plan(base, setTransform(B, MOVED, ON)));
+    const target = base.clips[B];
+    if (target === undefined) throw new Error('Expected the fixture clip');
+    expect(result.next).toEqual({ ...base, clips: { ...base.clips, [B]: { ...target, transform: MOVED } } });
+    expect(result.created).toEqual([]);
+    expect(result.bumped).toEqual([]);
+  });
+
+  it('accepts x and y up to ten times the canvas and refuses one hundredth of a pixel beyond (1920 x 1080)', () => {
+    for (const edge of [{ x: 19200 }, { x: -19200 }, { y: 10800 }, { y: -10800 }]) {
+      expect(accepted(plan(base, setTransform(O, { ...IDENTITY, ...edge }))).next.clips[O]?.transform, JSON.stringify(edge)).toEqual({ ...IDENTITY, ...edge });
+    }
+    for (const beyond of [{ x: 19200.01 }, { x: -19200.01 }, { y: 10800.01 }, { y: -10800.01 }]) {
+      expect(plan(base, setTransform(O, { ...IDENTITY, ...beyond })), JSON.stringify(beyond)).toEqual({ ok: false, reason: 'invalid_range' });
+    }
+  });
+
+  it('measures the x and y bound against the document\'s own canvas size', () => {
+    const small: TimelineDocumentV1 = TimelineDocumentV1Schema.parse({ ...base, settings: { ...base.settings, width: 1000, height: 500 } });
+    expect(accepted(plan(small, setTransform(O, { ...IDENTITY, x: 10000, y: -5000 }))).next.clips[O]?.transform).toEqual({ ...IDENTITY, x: 10000, y: -5000 });
+    expect(plan(small, setTransform(O, { ...IDENTITY, x: 10000.01 }))).toEqual({ ok: false, reason: 'invalid_range' });
+    expect(plan(small, setTransform(O, { ...IDENTITY, y: 5000.01 }))).toEqual({ ok: false, reason: 'invalid_range' });
+  });
+
+  it('refuses a clip that is not in the document as target_missing, in the planner and through the writer', () => {
+    expect(plan(base, setTransform(cid(77), MOVED))).toEqual({ ok: false, reason: 'target_missing' });
+    const doc = seededDoc(base);
+    const before = readTimelineDocument(doc);
+    expect(applyTimelineEdit(doc, setTransform(cid(77), MOVED), Symbol('edit'))).toEqual({ ok: false, reason: 'target_missing' });
+    expect(readTimelineDocument(doc)).toEqual(before);
+  });
+
+  it('transforms an upload placeholder and a web-animation copy like a video', () => {
+    const placeholder = uploadClip(cid(81), V3, 0);
+    const copy = webClip(cid(82), V4, 0, 48);
+    const current = timeline([...Object.values(base.clips), placeholder, copy], [track(MAIN, 0), track(V2, 1), track(V3, 2), track(V4, 3)]);
+    expect(accepted(planTimelineEdit(current, setTransform(placeholder.id, MOVED), idFactory(), RESOLUTION)).next.clips[placeholder.id]).toEqual({ ...placeholder, transform: MOVED });
+    expect(accepted(planTimelineEdit(current, setTransform(copy.id, MOVED), idFactory(), RESOLUTION)).next.clips[copy.id]).toEqual({ ...copy, transform: MOVED });
+  });
+
+  it('changes nothing but the one transform for any in-range value on any clip (fast-check)', () => {
+    const transform = fc.record({
+      x: fc.integer({ min: -1_920_000, max: 1_920_000 }).map((value) => value / 100),
+      y: fc.integer({ min: -1_080_000, max: 1_080_000 }).map((value) => value / 100),
+      scaleX: fc.integer({ min: 100, max: 1_000_000 }).map((value) => value / 10_000),
+      scaleY: fc.integer({ min: 100, max: 1_000_000 }).map((value) => value / 10_000),
+      rotation: fc.integer({ min: -17_999, max: 17_999 }).map((value) => value / 100),
+    });
+    fc.assert(fc.property(fc.constantFrom(A, B, C, O), transform, fc.constantFrom(ON, OFF, MAGNET_ONLY, LINK_ONLY), (clipId, value, placement) => {
+      expect(TimelineEditCommandSchema.safeParse(setTransform(clipId, value, placement)).success).toBe(true);
+      const result = accepted(plan(base, setTransform(clipId, value, placement)));
+      for (const [id, item] of Object.entries(base.clips)) {
+        expect(result.next.clips[id]).toEqual(id === clipId ? { ...item, transform: value } : item);
+      }
+      expect(Object.keys(result.next.clips).sort()).toEqual(Object.keys(base.clips).sort());
+      expect(result.next.tracks).toEqual(base.tracks);
+      expect(result.next.sources).toEqual(base.sources);
+    }), { numRuns: 200 });
   });
 });

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { describe, expect, it } from "vitest";
+import { TIMELINE_PREVIEW_DEFAULTS } from "@breatic/shared";
 
 import { getTimelineConfig, timelineConfigSchema } from "@core/config/timeline.js";
 
@@ -57,5 +58,38 @@ describe("web_animation preview instance pool (inner#1711 design §7.4, §10)", 
 
   it("reads 2000 ms and 8 from the tracked yaml", () => {
     expect(getTimelineConfig().web_animation).toMatchObject({ preview_premount_ms: 2000, preview_idle_instances_max: 8 });
+  });
+});
+
+describe("preview multi-video sync (#1410 design §6.4)", () => {
+  const approved = {
+    drift_steer_seconds: 0.04,
+    drift_hard_sync_seconds: 0.5,
+    drift_catastrophic_seconds: 3,
+    resume_seek_seconds: 0.15,
+    drift_steer_rate: 0.03,
+  };
+
+  it("defaults to the approved steering, hard-sync, catastrophic and resume thresholds and the steer rate", () => {
+    expect(timelineConfigSchema.parse({}).preview).toEqual(approved);
+  });
+
+  it("takes its defaults from TIMELINE_PREVIEW_DEFAULTS, so web's pre-limits fallback is the same value", () => {
+    expect(timelineConfigSchema.parse({}).preview).toEqual({
+      drift_steer_seconds: TIMELINE_PREVIEW_DEFAULTS.driftSteerSeconds,
+      drift_hard_sync_seconds: TIMELINE_PREVIEW_DEFAULTS.driftHardSyncSeconds,
+      drift_catastrophic_seconds: TIMELINE_PREVIEW_DEFAULTS.driftCatastrophicSeconds,
+      resume_seek_seconds: TIMELINE_PREVIEW_DEFAULTS.resumeSeekSeconds,
+      drift_steer_rate: TIMELINE_PREVIEW_DEFAULTS.driftSteerRate,
+    });
+  });
+
+  it("keeps values given in the yaml", () => {
+    const given = { drift_steer_seconds: 0.02, drift_hard_sync_seconds: 0.4, drift_catastrophic_seconds: 2, resume_seek_seconds: 0.1, drift_steer_rate: 0.05 };
+    expect(timelineConfigSchema.parse({ preview: given }).preview).toEqual(given);
+  });
+
+  it("reads the approved values from the tracked yaml", () => {
+    expect(getTimelineConfig().preview).toEqual(approved);
   });
 });

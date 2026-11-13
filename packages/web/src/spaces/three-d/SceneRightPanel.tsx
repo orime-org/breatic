@@ -44,7 +44,7 @@ export const SceneRightPanel = React.memo(function SceneRightPanel({ open, onOpe
    */
   const close = React.useCallback((): void => onOpenChange(false), [onOpenChange]);
   return <Popover open={open} onOpenChange={onOpenChange}>
-    <Anchor asChild><div className='pointer-events-none absolute bottom-[calc(61px_+_142px_+_var(--space-5))] right-[var(--space-5)] top-[var(--space-5)] w-0' /></Anchor>
+    <Anchor asChild><div className='pointer-events-none absolute bottom-[calc(61px_+_142px_+_var(--space-5))] right-[var(--space-5)] top-[calc(var(--space-5)_+_42px_+_var(--space-2))] w-0' /></Anchor>
     <PopoverContent ref={contentRef} container={stage.current} side='left' align='start' sideOffset={0} className='flex h-[var(--radix-popover-trigger-height)] w-80 flex-col p-0' data-testid='scene-right-panel'
       onOpenAutoFocus={(event) => { event.preventDefault(); if (!automatic.current) (event.currentTarget as HTMLElement).focus(); }}
       onEscapeKeyDown={(event) => {

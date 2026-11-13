@@ -22,13 +22,14 @@ const icons = {
  * @param root0.hasSelection - Whether properties can be opened.
  * @param root0.onPanel - Opens or toggles the requested right panel.
  * @param root0.minimap - Whether the native overview is visible.
+ * @param root0.minimapDisabled - Whether the minimap cannot be toggled now, as while the viewfinder is open.
  * @param root0.onMinimap - Toggles the native overview allocation.
  * @returns The floating action controls.
  * @throws {never} Actions delegate to the existing scene owner.
  */
-export const SceneViewportToolbar = React.memo(function SceneViewportToolbar({ undo, redo, onHistory, hasSelection, onPanel, minimap, onMinimap }: {
+export const SceneViewportToolbar = React.memo(function SceneViewportToolbar({ undo, redo, onHistory, hasSelection, onPanel, minimap, minimapDisabled = false, onMinimap }: {
   undo: boolean; redo: boolean; onHistory: (step: 'undo' | 'redo') => void; hasSelection: boolean;
-  onPanel: (panel: ScenePanel) => void; minimap: boolean; onMinimap: () => void;
+  onPanel: (panel: ScenePanel) => void; minimap: boolean; minimapDisabled?: boolean; onMinimap: () => void;
 }): React.JSX.Element {
   const t = useTranslation();
   /**
@@ -62,6 +63,6 @@ export const SceneViewportToolbar = React.memo(function SceneViewportToolbar({ u
       <SceneIconButton data-testid='scene-properties-trigger' label={t('spaces.threeD.properties')} disabled={!hasSelection} onClick={showProperties}>{icons.properties}</SceneIconButton>
       <SceneIconButton data-testid='scene-objects-trigger' label={t('spaces.threeD.objects')} onClick={showObjects}>{icons.objects}</SceneIconButton>
       <SceneIconButton data-testid='scene-tasks-trigger' label={t('spaces.threeD.tasks')} onClick={showTasks}>{icons.tasks}</SceneIconButton>
-    </div><div className='flex px-1'><SceneIconButton label={t('spaces.threeD.minimap')} active={minimap} onClick={onMinimap}>{icons.minimap}</SceneIconButton></div>
+    </div><div className='flex px-1'><SceneIconButton label={t('spaces.threeD.minimap')} active={minimap && !minimapDisabled} disabled={minimapDisabled} onClick={onMinimap}>{icons.minimap}</SceneIconButton></div>
   </div>;
 });
