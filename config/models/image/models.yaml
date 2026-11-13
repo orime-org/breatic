@@ -474,7 +474,7 @@ models:
     tier: "optional"
     description: "Photoreal detail, native transparent PNG"
     guide: "Lifelike photographic detail and natural light at a low price per image; it writes short titles and labels exactly in English and Chinese, and can hand back the picture on a transparent background."
-    generation_time: 60
+    generation_time: 90
     icon: "seedream"
     params:
       aspect_ratio:
@@ -708,7 +708,7 @@ models:
     tier: "optional"
     description: "Keeps unedited areas, 7 refs + 3 style"
     guide: "Edits that leave the untouched parts as they were across repeated rounds; takes 7 references plus 3 style images and can cut the subject out onto a transparent background."
-    generation_time: 60
+    generation_time: 90
     icon: "seedream"
     params:
       aspect_ratio:
