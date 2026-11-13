@@ -47,7 +47,7 @@ loadLocales();
 
 let sql: ReturnType<typeof postgres>;
 let seq = 0;
-const BASE_STORAGE = getMembershipLimits("base").storage_bytes!;
+const BASE_STORAGE = getMembershipLimits("base").storage_bytes;
 
 beforeAll(() => {
   initCore({ ...process.env, REGION: "us-west", GLOBAL_REGION: "us-west" });
