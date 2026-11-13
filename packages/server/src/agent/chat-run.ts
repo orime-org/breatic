@@ -168,19 +168,26 @@ async function runIt(start: RunStart, open: (running: boolean) => void): Promise
   let operationKey: string | undefined;
   if (entrance.kind === "head") {
     let taken = await queue.head(conversationId, runId);
-    if (taken.length > 0) {
-      const status = await messageRepo.takenStatus(conversationId, taken.map((t) => t.id));
-      if (status.answered.size > 0) taken = await queue.forget(conversationId, runId, [...status.answered]);
+    let status: Awaited<ReturnType<typeof messageRepo.takenStatus>> | undefined;
+    // What is taken goes until what is left can open the run: one answered
+    // already, and one whose id a row no new message can take already holds
+    // (only a request built by hand can carry one), whose opening would fail
+    // on every run.
+    while (taken.length > 0) {
+      status = await messageRepo.takenStatus(conversationId, taken.map((t) => t.id));
+      const refused: string[] = [];
+      for (const item of taken) if (await messageRepo.messageIdRefused(conversationId, item.id)) refused.push(item.id);
+      if (status.answered.size === 0 && refused.length === 0) break;
+      if (refused.length > 0) logger.warn({ ...ctx, runId, messageIds: refused }, "chat_message_id_refused");
+      taken = await queue.forget(conversationId, runId, [...status.answered, ...refused]);
       if (taken.length === 0) taken = await queue.head(conversationId, runId);
-      const first = taken[0];
-      if (first !== undefined) {
-        const reused = status.unansweredRows.get(first.id);
-        // A row a dead run wrote and never answered: this run answers it,
-        // charged under a key of its own, since the dead run may have been
-        // charged under the turn's (inner#1717).
-        if (reused !== undefined) operationKey = `turn:${conversationId}:${String(reused)}:run:${runId}`;
-      }
     }
+    const first = taken[0];
+    const reused = first === undefined ? undefined : status?.unansweredRows.get(first.id);
+    // A row a dead run wrote and never answered: this run answers it,
+    // charged under a key of its own, since the dead run may have been
+    // charged under the turn's (inner#1717).
+    if (reused !== undefined) operationKey = `turn:${conversationId}:${String(reused)}:run:${runId}`;
     if (taken.length === 0) {
       // A message sent since the head was read is handed to the next run.
       const next = await queue.settle(conversationId, runId, { kind: "done" });

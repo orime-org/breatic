@@ -380,6 +380,27 @@ describe("POST /chat/conversations/:id/sync", () => {
   });
 });
 
+describe("a queued message whose id a stored reply already holds", () => {
+  it("is let go of before the run opens, and what waits behind it is answered", async () => {
+    const who = await seedOwner(sql, app);
+    await send(app, who, { message: "first" });
+    await untilIdle(who.conversationId);
+    const reply = (await rowsOf(who.conversationId)).find((r) => r.role === "assistant")!;
+    const next = crypto.randomUUID();
+    await getRedis().rpush(keysOf(who.conversationId).queue, queued(who, reply.id, "under the reply's id"));
+    await getRedis().rpush(keysOf(who.conversationId).queue, queued(who, next, "next one"));
+    await sync(app, who);
+    await untilIdle(who.conversationId);
+    const k = keysOf(who.conversationId);
+    expect(await listIds(k.taken)).toEqual([]);
+    expect(await listIds(k.queue)).toEqual([]);
+    const rows = await rowsOf(who.conversationId);
+    const nextRow = rows.find((r) => r.id === next);
+    expect(nextRow?.role).toBe("user");
+    expect(rows.filter((r) => r.role === "assistant" && r.turn_index === nextRow!.turn_index)).toHaveLength(1);
+  });
+});
+
 describe("GET /chat/conversations/:id/stream", () => {
   it("answers 204 when no run holds the conversation (RT-21a)", async () => {
     const who = await seedOwner(sql, app);
