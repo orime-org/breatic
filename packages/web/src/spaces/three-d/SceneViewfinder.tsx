@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { Frame } from 'lucide-react';
 
-import type { SceneCaptureConfig } from '@breatic/shared';
+import { VIEWFINDER_RATIOS, type SceneCaptureConfig, type ViewfinderRatio } from '@breatic/shared';
 import { Button } from '@web/components/ui/button';
 import { Anchor as PopoverAnchor } from '@radix-ui/react-popover';
 import { Popover, PopoverContent, PopoverTrigger } from '@web/components/ui/popover';
@@ -19,7 +19,6 @@ import { placeImageOnCanvas } from '@web/spaces/canvas/place-image-on-canvas';
 import { SceneIconButton } from '@web/spaces/three-d/SceneIconButton';
 import { encodeCapturePng } from '@web/spaces/three-d/viewfinder/encode-capture';
 import {
-  VIEWFINDER_RATIOS,
   captureSize,
   largestFrame,
   menuCentre,
@@ -28,7 +27,6 @@ import {
   viewfinderRatioValue,
   viewfinderSafeArea,
   type ViewfinderCorner,
-  type ViewfinderRatio,
   type ViewfinderRect,
 } from '@web/spaces/three-d/viewfinder/viewfinder-geometry';
 import { copyCapture, sendCaptureToAgent } from '@web/spaces/three-d/viewfinder/viewfinder-send';

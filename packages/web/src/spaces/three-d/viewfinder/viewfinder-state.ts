@@ -1,7 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import { DEFAULT_VIEWFINDER_RATIO, type ViewfinderRatio, type ViewfinderRect } from '@web/spaces/three-d/viewfinder/viewfinder-geometry';
+import { DEFAULT_VIEWFINDER_RATIO, type ViewfinderRatio } from '@breatic/shared';
+
+import type { ViewfinderRect } from '@web/spaces/three-d/viewfinder/viewfinder-geometry';
 
 /** Where the viewfinder stands (#1411 design 6.1). */
 export type ViewfinderPhase = 'off' | 'framing' | 'captured' | 'picking' | 'sending';

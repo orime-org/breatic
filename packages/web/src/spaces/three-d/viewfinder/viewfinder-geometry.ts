@@ -1,12 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
+import type { ViewfinderRatio } from '@breatic/shared';
+
 import { captureResize, resizeFromCapture, type CropRect } from '@web/lib/crop-math';
 
-/** The viewfinder's ratios in menu order; `Free` constrains nothing. */
-export const VIEWFINDER_RATIOS = ['Free', '16:9', '9:16', '1:1', '4:3', '3:4', '3:2', '2:3'] as const;
-export type ViewfinderRatio = (typeof VIEWFINDER_RATIOS)[number];
-export const DEFAULT_VIEWFINDER_RATIO: ViewfinderRatio = '16:9';
 export type ViewfinderCorner = 'nw' | 'ne' | 'sw' | 'se';
 export type ViewfinderRect = CropRect;
 

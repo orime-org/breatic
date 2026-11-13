@@ -3,9 +3,8 @@
 
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
+import { DEFAULT_VIEWFINDER_RATIO, VIEWFINDER_RATIOS } from '@breatic/shared';
 import {
-  DEFAULT_VIEWFINDER_RATIO,
-  VIEWFINDER_RATIOS,
   captureSize,
   largestFrame,
   menuCentre,
