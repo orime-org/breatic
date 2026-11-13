@@ -9,8 +9,8 @@
  */
 
 import type { Job } from "bullmq";
-import { assetRepo, callRegion, env, getRegionsConfig, studioDirectoryRepo } from "@breatic/core";
-import { globalApi, regionOutboxService } from "@breatic/domain";
+import { assetRepo, callRegion, env, getRegionsConfig, logger, studioDirectoryRepo } from "@breatic/core";
+import { directoryWrites, globalApi, regionOutboxService, studioRepo } from "@breatic/domain";
 
 /** A sign-in's claims for one other region. */
 export interface InvitationClaimForwardJob {
@@ -30,13 +30,13 @@ export interface IdentityRevocationForwardJob {
  * @param region - The region.
  * @param fn - The function.
  * @param args - Its arguments.
- * @returns Once answered.
+ * @returns The region's answer.
  * @throws {Error} When the region has no address or does not answer.
  */
-async function askRegion(region: string, fn: string, args: unknown[]): Promise<void> {
+async function askRegion(region: string, fn: string, args: unknown[]): Promise<unknown> {
   const url = env.REGION_API_URLS[region];
   if (url === undefined) throw new Error(`no address for region ${region}`);
-  await callRegion(fn, args, {
+  return callRegion(fn, args, {
     callerRegion: env.REGION,
     url,
     secret: env.INTERNAL_API_SECRET,
@@ -87,10 +87,30 @@ export async function forwardRevocation(job: Job<IdentityRevocationForwardJob>):
   await askRegion(job.data.region, "revokeSessions", [job.data.userId, job.data.sids]);
 }
 
+/** How many past-due reservations one sweep settles. */
+const SLUG_SWEEP_BATCH = 50;
+
 /**
- * Let go of slugs held for renames that never reached the global region.
- * @returns How many it let go.
+ * Settle slug reservations past due: ask each Studio's region which slug it
+ * holds, then let the directory take it or let it go. A region that does not
+ * answer keeps its reservations for the next sweep.
+ * @returns How many were settled.
+ * @throws {Error} When the reservations cannot be read.
  */
 export async function sweepSlugReservations(): Promise<number> {
-  return studioDirectoryRepo.releaseStaleSlugReservations(getRegionsConfig().slug_reservation_stale_ms);
+  let settled = 0;
+  for (const due of await studioDirectoryRepo.listDueSlugReservations(SLUG_SWEEP_BATCH)) {
+    const region = due.region ?? env.GLOBAL_REGION;
+    try {
+      const actual = region === env.REGION
+        ? ((await studioRepo.getById(due.studioId))?.slug ?? null)
+        : ((await askRegion(region, "studioSlug", [due.studioId])) as string | null);
+      await directoryWrites.settleSlugReservation(due.slug, due.studioId, actual);
+      settled += 1;
+    } catch (err) {
+      // The reservation stays held; the next sweep asks again.
+      logger.error({ err, studioId: due.studioId, region }, "slug_reservation_settle_failed");
+    }
+  }
+  return settled;
 }

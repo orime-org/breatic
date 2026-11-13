@@ -7,7 +7,7 @@
  */
 
 import type { NotificationListView, RecentItem, SignupInvitationPreview } from "@breatic/shared";
-import { profilesService } from "@breatic/domain";
+import { profilesService, studioRepo } from "@breatic/domain";
 import { getRedis, publishSessionsRevoked, recordRevokedIdentities } from "@breatic/core";
 import { claimEmailInvitations } from "@server/modules/invitation/claim-email-invitations.js";
 import { getInvitationPreview } from "@server/modules/invitation/invitation.service.js";
@@ -50,6 +50,12 @@ export const SERVER_REGION_FUNCTIONS = {
    * @param sids - The ended session ids.
    * @returns Once marked and announced.
    */
+  /**
+   * The slug a Studio in this region holds, for settling a slug reservation.
+   * @param studioId - The Studio.
+   * @returns Its slug, or null when it is gone.
+   */
+  studioSlug: async (studioId: string): Promise<string | null> => (await studioRepo.getById(studioId))?.slug ?? null,
   revokeSessions: async (userId: string, sids: string[]): Promise<void> => {
     await recordRevokedIdentities(getRedis(), sids);
     await publishSessionsRevoked(userId, sids);

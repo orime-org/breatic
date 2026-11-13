@@ -29,8 +29,9 @@
 #   Studios store to the global region.
 # slug_reservation_sweep_interval_ms: how often the global region looks for
 #   slugs held for a rename that never reached it.
-# slug_reservation_stale_ms: how long a rename's slug stays held before the
-#   sweep lets it go.
+# slug_reservation_stale_ms: how long after a rename reserves its slug the
+#   sweep asks the Studio's region which slug it holds, then lets the
+#   directory take it or lets it go.
 global_api_timeout_ms: 5000
 region_probe_timeout_ms: 2000
 cross_region_fanout_timeout_ms: 2000

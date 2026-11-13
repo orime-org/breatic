@@ -10,22 +10,29 @@ const h = vi.hoisted(() => ({
   callRegion: vi.fn(async () => null),
   recordRegionUsage: vi.fn(async () => undefined),
   usagePerStudio: vi.fn(async () => [{ studioId: "s-1", bytes: 10 }]),
+  listDue: vi.fn(async (): Promise<Array<{ slug: string; studioId: string; region: string | null }>> => []),
+  settle: vi.fn(async () => undefined),
+  getById: vi.fn(async (): Promise<{ slug: string } | null> => null),
+  logError: vi.fn(),
 }));
 
 vi.mock("@breatic/core", () => ({
-  env: { REGION: "sg", INTERNAL_API_SECRET: "secret", REGION_API_URLS: { "us-west": "http://global.invalid" } },
+  env: { REGION: "sg", GLOBAL_REGION: "us-west", INTERNAL_API_SECRET: "secret", REGION_API_URLS: { "us-west": "http://global.invalid" } },
+  logger: { error: h.logError },
   getRegionsConfig: () => ({ global_api_timeout_ms: 5000, slug_reservation_stale_ms: 600000 }),
   callRegion: h.callRegion,
   assetRepo: { usagePerStudio: h.usagePerStudio },
-  studioDirectoryRepo: { releaseStaleSlugReservations: vi.fn(async () => 0) },
+  studioDirectoryRepo: { listDueSlugReservations: h.listDue },
 }));
 
 vi.mock("@breatic/domain", () => ({
   globalApi: () => ({ recordRegionUsage: h.recordRegionUsage }),
   regionOutboxService: { relayOutbox: vi.fn() },
+  directoryWrites: { settleSlugReservation: h.settle },
+  studioRepo: { getById: h.getById },
 }));
 
-const { forwardInvitationClaim, forwardRevocation, syncStorageUsage } = await import("@worker/handlers/region-jobs.js");
+const { forwardInvitationClaim, forwardRevocation, sweepSlugReservations, syncStorageUsage } = await import("@worker/handlers/region-jobs.js");
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -47,5 +54,22 @@ describe("region jobs", () => {
     expect(h.recordRegionUsage).toHaveBeenCalledWith(
       expect.objectContaining({ region: "sg", usage: [{ studioId: "s-1", bytes: 10 }] }),
     );
+  });
+
+  it("settles a past-due slug from the slug its region holds, and keeps it when the region does not answer", async () => {
+    h.listDue.mockResolvedValueOnce([
+      { slug: "here", studioId: "s-local", region: "sg" },
+      { slug: "there", studioId: "s-us", region: null },
+      { slug: "lost", studioId: "s-eu", region: "eu" },
+    ]);
+    h.getById.mockResolvedValueOnce({ slug: "here" });
+    h.callRegion.mockResolvedValueOnce("renamed-again" as never);
+
+    expect(await sweepSlugReservations()).toBe(2);
+    expect(h.settle).toHaveBeenCalledWith("here", "s-local", "here");
+    expect(h.callRegion).toHaveBeenCalledWith("studioSlug", ["s-us"], expect.objectContaining({ url: "http://global.invalid" }));
+    expect(h.settle).toHaveBeenCalledWith("there", "s-us", "renamed-again");
+    expect(h.settle).not.toHaveBeenCalledWith("lost", expect.anything(), expect.anything());
+    expect(h.logError).toHaveBeenCalledWith(expect.objectContaining({ studioId: "s-eu" }), "slug_reservation_settle_failed");
   });
 });

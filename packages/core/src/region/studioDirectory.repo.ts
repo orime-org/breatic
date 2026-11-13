@@ -9,6 +9,7 @@
 
 import { and, eq, inArray, isNull, lte, sql } from "drizzle-orm";
 import { db, type DbTx } from "@core/db/client.js";
+import { getRegionsConfig } from "@core/config/regions.js";
 import {
   directoryReconciliations,
   projectDirectory,
@@ -408,9 +409,6 @@ export async function findProject(projectId: string): Promise<{ studioId: string
   return row ?? null;
 }
 
-/** How long a slug reservation stands before the sweep asks the region what became of it. */
-const SLUG_RESERVATION_MS = 10 * 60 * 1000;
-
 /**
  * Hold a new slug for a Studio a region is renaming.
  * @param slug - The slug.
@@ -418,7 +416,7 @@ const SLUG_RESERVATION_MS = 10 * 60 * 1000;
  * @param tx - The transaction holding the slug lock.
  */
 export async function reserveSlug(slug: string, studioId: string, tx: DbTx): Promise<void> {
-  await tx.insert(slugReservations).values({ slug, studioId, expiresAt: new Date(Date.now() + SLUG_RESERVATION_MS) });
+  await tx.insert(slugReservations).values({ slug, studioId, expiresAt: new Date(Date.now() + getRegionsConfig().slug_reservation_stale_ms) });
 }
 
 /**
@@ -560,21 +558,24 @@ export async function sumUsageElsewhere(adminUserId: string, exceptRegion: strin
   return Number(row?.bytes ?? 0);
 }
 
+/** A slug reservation whose rename the sweep should settle. */
+export interface DueSlugReservation {
+  slug: string;
+  studioId: string;
+  region: string | null;
+}
+
 /**
- * Let go of slugs held for renames that never reached the global region.
- * @param olderThanMs - How long a reservation may stay held.
- * @returns How many it let go.
+ * Slug reservations past their `expires_at`, with the Studio's region.
+ * @param limit - The most to return.
+ * @returns Them, oldest first.
  */
-export async function releaseStaleSlugReservations(olderThanMs: number): Promise<number> {
-  const rows = await db
-    .update(slugReservations)
-    .set({ deletedAt: new Date() })
-    .where(
-      and(
-        isNull(slugReservations.deletedAt),
-        sql`${slugReservations.createdAt} < now() - (${olderThanMs} * interval '1 millisecond')`,
-      ),
-    )
-    .returning({ slug: slugReservations.slug });
-  return rows.length;
+export async function listDueSlugReservations(limit: number): Promise<DueSlugReservation[]> {
+  return db
+    .select({ slug: slugReservations.slug, studioId: slugReservations.studioId, region: studioDirectory.region })
+    .from(slugReservations)
+    .innerJoin(studioDirectory, eq(studioDirectory.studioId, slugReservations.studioId))
+    .where(and(isNull(slugReservations.deletedAt), lte(slugReservations.expiresAt, sql`now()`)))
+    .orderBy(slugReservations.expiresAt)
+    .limit(limit);
 }
