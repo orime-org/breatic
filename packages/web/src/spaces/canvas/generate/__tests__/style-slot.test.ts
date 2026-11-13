@@ -25,7 +25,8 @@ function model(style: { max_items: number } | undefined, modes?: string[]): Mode
     generation_time: 60,
     takes_prompt: true,
     mode: 'ref',
-    providers: [],
+    availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: false, envVar: 'WAVESPEED_API_KEY' }] },
+    pricing_rules: undefined,
     params:
       style === undefined
         ? {}

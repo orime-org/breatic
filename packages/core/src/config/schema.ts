@@ -233,14 +233,6 @@ export const coreConfigSchema = z.object({
   // session cookie.
   COOKIE_DOMAIN: z.string().default(""),
 
-  // ── AI Providers (all optional) ──────────────────
-  OPENROUTER_API_KEY: z.string().default(""),
-  ANTHROPIC_API_KEY: z.string().default(""),
-  OPENAI_API_KEY: z.string().default(""),
-  GOOGLE_API_KEY: z.string().default(""),
-  DEEPSEEK_API_KEY: z.string().default(""),
-  WAVESPEED_API_KEY: z.string().default(""),
-
   // ── Error monitoring ─────────────────────────────
   // Blank keeps Sentry off, which is what a self-hosted instance gets. A
   // value that is not a DSN also leaves it off; each service logs that once.

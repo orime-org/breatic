@@ -5,7 +5,7 @@
 ## Package boundary
 **Imports flow one way: `app → pages → spaces → features → stores → data → ui`, and `components`, `theme`, `i18n`, `lib` form one bottom group whose members may import each other.** The `web-layer-*` rules of `lint:dependency-cruiser` fail CI on an upward import; read [docs/ARCHITECTURE.md#layered-architecture](../../docs/ARCHITECTURE.md#layered-architecture) before moving code between layers.
 
-**The only workspace package web source imports is `@breatic/shared`; inside the package every import uses the `@web/*` alias.** Core, server, worker and collab are Node code and cannot run in a browser.
+**The only workspace packages web source imports are `@breatic/shared` and `@breatic/provider/pricing`, the browser-safe estimate ([packages/provider/AGENTS.md#four-entry-points](../provider/AGENTS.md#four-entry-points)); inside the package every import uses the `@web/*` alias.** Core, domain, server, worker and collab are Node code and cannot run in a browser.
 
 **Configuration comes from `import.meta.env` (typed by `src/vite-env.d.ts`).** There is no `process.env` in the browser.
 

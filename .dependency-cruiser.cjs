@@ -206,6 +206,44 @@ module.exports = {
       from: { pathNot: "^packages/(worker|provider)/" },
       to: { path: "@breatic/provider/media|^packages/provider/(src|dist)/media/" },
     },
+    {
+      name: "provider-messages-worker-safe",
+      comment:
+        "@breatic/provider/messages runs in the ingest Cloudflare Worker, which has no " +
+        "provider configuration and no node:dns: the relay and every file it reaches import " +
+        "only one another, zod and node:async_hooks (which nodejs_compat provides). The " +
+        "configuration schema is reached only by `import type` (common.ts, prices.ts), which " +
+        "is erased; the unresolved alias hides that from this tool, so it is listed by path.",
+      severity: "error",
+      from: {
+        path: "^packages/provider/src/(messages/|http/(request|errors)\\.ts$|routing/decide\\.ts$|cost\\.ts$|llm/prices\\.ts$|llm/upstreams/(common|messages|[a-z]+\\.messages)\\.ts$)",
+        pathNot: "/__tests__/",
+      },
+      to: {
+        pathNot: "^@provider/(messages/|http/(request|errors)\\.js$|routing/decide\\.js$|cost\\.js$|llm/prices\\.js$|llm/upstreams/(common|messages|[a-z]+\\.messages)\\.js$)|^@provider/config/schema\\.js$|^zod$|node_modules/zod/|^(node:)?async_hooks$",
+        dependencyTypesNot: ["type-only"],
+      },
+    },
+    {
+      name: "vendor-sdk-only-in-provider",
+      comment:
+        "Every model call goes through @breatic/provider (inner#1743), so a vendor's own SDK " +
+        "is imported only there; web's `ai` and `@ai-sdk/react` drive the chat UI and are " +
+        "not vendor SDKs.",
+      severity: "error",
+      from: { pathNot: "^packages/provider/" },
+      // A package the importer does not declare stays unresolved, so its bare name is matched too.
+      to: { path: "(^|node_modules/)(@ai-sdk/(anthropic|google|openai|deepseek|fal)|@openrouter/|@fal-ai/)" },
+    },
+    {
+      name: "provider-messages-ingest-only",
+      comment:
+        "The Messages relay serves the web-animation container's model calls from the ingest " +
+        "Worker; only packages/ingest imports @breatic/provider/messages.",
+      severity: "error",
+      from: { pathNot: "^packages/(ingest|provider)/" },
+      to: { path: "@breatic/provider/messages|^packages/provider/(src|dist)/messages/" },
+    },
     ...webLayerRules(),
   ],
   options: {

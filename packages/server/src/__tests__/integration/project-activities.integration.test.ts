@@ -222,6 +222,58 @@ describe("generation outcome authority (success wins, failure never overwrites)"
   });
 });
 
+describe("a generation still being billed (inner#1743)", () => {
+  /**
+   * The row's type and payload for a task.
+   * @param taskId - The task.
+   * @returns Its one row.
+   */
+  const rowOf = async (taskId: string): Promise<{ type: string; payload: Record<string, unknown> }> => {
+    const rows = await sql<{ type: string; payload: Record<string, unknown> }[]>`
+      SELECT type, payload FROM project_activities WHERE task_id = ${taskId}
+    `;
+    expect(rows).toHaveLength(1);
+    return rows[0]!;
+  };
+
+  it("writes its pending amount over no row, a failed row or a row still pending", async () => {
+    const { userId } = await insertUserWithStudio("Pending A");
+    const projectId = await insertProject(userId);
+    const taskId = crypto.randomUUID();
+    const row = { projectId, actorUserId: userId, taskId };
+
+    await projectActivitiesRepo.insertGenerationFailedIfAbsent({ ...row, type: "generation:failed", payload: { source: "task", executedOn: "backend", errorMessage: "stalled" } });
+    expect(await projectActivitiesRepo.upsertGenerationSucceeded(
+      { ...row, type: "generation:succeeded", payload: { source: "task", executedOn: "backend", credits: 1, billing: "pending" } },
+      { whilePending: true },
+    )).not.toBeNull();
+    expect(await projectActivitiesRepo.upsertGenerationSucceeded(
+      { ...row, type: "generation:succeeded", payload: { source: "task", executedOn: "backend", credits: 2, billing: "pending" } },
+      { whilePending: true },
+    )).not.toBeNull();
+
+    expect(await rowOf(taskId)).toMatchObject({ type: "generation:succeeded", payload: { credits: 2, billing: "pending" } });
+  });
+
+  it("never covers the final amount with a pending one", async () => {
+    const { userId } = await insertUserWithStudio("Pending B");
+    const projectId = await insertProject(userId);
+    const taskId = crypto.randomUUID();
+    const row = { projectId, actorUserId: userId, taskId, type: "generation:succeeded" as const };
+
+    await projectActivitiesRepo.upsertGenerationSucceeded({ ...row, payload: { source: "task", executedOn: "backend", credits: 18 } });
+    // A stale run that still thinks the task is being billed comes in late.
+    expect(await projectActivitiesRepo.upsertGenerationSucceeded(
+      { ...row, payload: { source: "task", executedOn: "backend", credits: 12.5, billing: "pending" } },
+      { whilePending: true },
+    )).toBeNull();
+
+    const kept = await rowOf(taskId);
+    expect(kept.payload.credits).toBe(18);
+    expect(kept.payload).not.toHaveProperty("billing");
+  });
+});
+
 describe("GET /projects/:id/activities — keyset feed", () => {
   it("pages walk newest-first and stay stable when new rows land mid-walk", async () => {
     const { userId } = await insertUserWithStudio("Feed Author");

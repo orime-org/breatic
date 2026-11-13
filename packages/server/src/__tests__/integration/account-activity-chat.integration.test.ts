@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
+import { initConfiguredProvider } from "@breatic/integration-tests/provider";
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } from "vitest";
 import postgres from "postgres";
@@ -17,16 +18,16 @@ vi.mock("@breatic/domain", async (importOriginal) => {
   const { modelProducing, saying } = await import("../helpers/model-double.js");
   return {
     ...actual,
-    resolveProvider: () => "deepseek",
-    getModel: () => modelProducing(() => {
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider(() => modelProducing(() => {
       if (model.fail) throw new Error("activity model fixture failed");
       return saying("ok");
-    }),
+    })),
   };
 });
 
 initCore(process.env);
 loadLocales();
+initConfiguredProvider();
 
 let sql: ReturnType<typeof postgres>;
 let app: Hono;

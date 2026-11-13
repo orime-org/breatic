@@ -225,11 +225,18 @@ export const projectActivitiesRepo = {
    * retryable attempt writes failed before the winning attempt succeeds.
    * @param activity - The generation row; `taskId` must be set, `type`
    *   must be `generation:succeeded`.
-   * @returns The row id (inserted or overwritten).
+   * @param opts - Write conditions.
+   * @param opts.whilePending - For a row whose credits are still being billed
+   *   (`billing: "pending"`, inner#1743): written only over no row, a failed
+   *   row or a row still pending, so a stale run never covers the final
+   *   amount.
+   * @returns The row id (inserted or overwritten), or null when the condition
+   *   kept an existing row.
    */
   async upsertGenerationSucceeded(
     activity: NewProjectActivity & { taskId: string; type: "generation:succeeded" },
-  ): Promise<string> {
+    opts: { whilePending?: boolean } = {},
+  ): Promise<string | null> {
     const rows = await db
       .insert(projectActivities)
       .values({
@@ -251,11 +258,14 @@ export const projectActivitiesRepo = {
           nodeId: activity.nodeId ?? null,
           payload: activity.payload,
         },
+        ...(opts.whilePending === true && {
+          setWhere: sql`${projectActivities.type} <> 'generation:succeeded' OR ${projectActivities.payload}->>'billing' = 'pending'`,
+        }),
       })
       .returning({ id: projectActivities.id });
     const row = rows[0];
-    if (!row) throw new Error("generation success upsert returned no row");
-    return row.id;
+    if (!row && opts.whilePending !== true) throw new Error("generation success upsert returned no row");
+    return row?.id ?? null;
   },
 
   /**

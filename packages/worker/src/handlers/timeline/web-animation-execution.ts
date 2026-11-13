@@ -9,9 +9,11 @@
  * attempt submits the same job; each pickup reads the job before deciding to submit it. While the job runs the
  * pickup goes back to the queue.
  *
- * Only a terminal report settles: the source version (for a done report whose Manifest matches the accepted input),
- * one usage row per settled model call under `timeline:<executionId>:<seq>` and one for the container, then the
- * `billed_at` gate decides whether this writer charges, then the terminal transition. The job lock is re-checked
+ * The job carries provider's plan of where its model calls go (`messagesPlan`, inner#1743), and each call in the
+ * report names the upstream that served it and the `Cost` provider's relay read. Only a terminal report settles: the
+ * source version (for a done report whose Manifest matches the accepted input), one usage row per priced model call
+ * under `timeline:<executionId>:<seq>` and one for the container, then the `billed_at` gate decides whether this
+ * writer charges, then the lookups of pending costs are queued, then the terminal transition. The job lock is re-checked
  * before each of those four writes, and the terminal transition also needs this attempt's fence, so a writer that
  * lost the job changes nothing more.
  */
@@ -28,16 +30,20 @@ import {
   type TimelineExecutionEvent,
   type TimelineExecutionJobData,
 } from "@breatic/core";
+import { costSchema, NoUpstreamAvailable, type Cost } from "@breatic/provider";
 import {
   containerCostUsd,
   createUsageRecorder,
   creditLotService,
+  handOffLookups,
+  provider,
   sumCreditsByOperationKeys,
   timelineOperationKey,
   toChargeCredits,
   webAnimationSourceRepo,
+  type AwaitedLookup,
 } from "@breatic/domain";
-import type { TimelineExecution } from "@breatic/shared";
+import { t, type TimelineExecution } from "@breatic/shared";
 import {
   TimelineExecutionInputSchema,
   WEB_ANIMATION_CONTAINER_CLASS,
@@ -51,7 +57,7 @@ import {
   type WebAnimationJobRequest,
   type WebAnimationManifest,
 } from "@breatic/shared/space-content";
-import { StillRunning } from "@worker/providers/still-running.js";
+import { StillRunning } from "@worker/handlers/still-running.js";
 import { settleChargeLogged } from "@worker/handlers/settle-charge.js";
 import { move } from "@worker/handlers/timeline/timeline-transition.js";
 import {
@@ -90,6 +96,9 @@ interface ValidResult {
 
 /** How a settled run ends: a terminal event, or the result a done report's Manifest makes. */
 type RunEnd = TimelineExecutionEvent | ({ type: "result" } & ValidResult);
+
+/** One call a report lists. */
+type ReportedCall = WebAnimationJobReport["calls"][number];
 
 /** A report that ended; only these settle. */
 type EndedReport = WebAnimationJobReport & { state: "done" | "failed" | "cancelled" | "expired" | "cancelled_before_submit" };
@@ -139,18 +148,21 @@ function storedStep(steps: unknown[]): JobStep | undefined {
 }
 
 /**
- * The job an execution runs: fixed from its accepted input and the yaml of the attempt that first submits it.
+ * The job an execution runs: fixed from its accepted input, the yaml and provider's plan of the attempt that first
+ * submits it.
  * @param row - The execution.
  * @param input - Its frozen input.
  * @returns The step.
  * @throws {RangeError} When the input's duration does not make a frame count.
+ * @throws {NoUpstreamAvailable} When no upstream of the model takes a Messages call.
  */
 function newStep(row: TimelineExecution, input: TimelineExecutionInput): JobStep {
   const config = getTimelineConfig().web_animation;
   const prefix = `web-animation/${row.projectId}/${row.id}`;
   return {
     kind: "container_job",
-    request: {
+    // Read through its schema as a stored step is, so the first submission sends the same bytes as every later one.
+    request: webAnimationJobRequestSchema.parse({
       containerClass: WEB_ANIMATION_CONTAINER_CLASS,
       jobId: timelineOperationKey(row.id),
       deadlineAt: Date.parse(row.deadlineAt),
@@ -165,8 +177,58 @@ function newStep(row: TimelineExecution, input: TimelineExecutionInput): JobStep
       maxTokens: config.max_tokens,
       callTimeoutMs: config.call_timeout_ms,
       model: config.model,
-    },
+      messagesPlan: provider().llm.messagesPlan(config.model),
+    }),
   };
+}
+
+/**
+ * Who served a call a Worker deployed before the plan reported (inner#1743): that Worker sends every call to
+ * OpenRouter. Remove it with the report's `generationId` and `costUsd`.
+ */
+const LEGACY_WORKER_UPSTREAM = "openrouter";
+
+/**
+ * Who served a call.
+ * @param call - The call.
+ * @returns Its upstream: the one the report names, that of a Worker deployed before the plan, or `unknown` for a call
+ *   that never named one.
+ * @throws {never} Never.
+ */
+function servedBy(call: ReportedCall): string {
+  if (call.upstream !== undefined) return call.upstream ?? "unknown";
+  return LEGACY_WORKER_UPSTREAM;
+}
+
+/**
+ * What one call cost, as its report gives it: provider's `Cost`, read back through `costSchema`, or, from a Worker
+ * deployed before the plan, a dollar figure. A call with no readable cost is missing and logged for reconciliation.
+ * @param row - The execution.
+ * @param call - The call.
+ * @returns Its cost, with the call's counters when the cost carries none.
+ * @throws {never} Never.
+ */
+function costOfCall(row: TimelineExecution, call: ReportedCall): Cost {
+  const tokens = call.tokens === null
+    ? undefined
+    : { input: call.tokens.input, cachedInput: call.tokens.cacheRead, output: call.tokens.output, reasoning: call.tokens.reasoning };
+  const identity = { executionId: row.id, seq: call.seq, messageId: call.messageId ?? call.generationId ?? null, outcome: call.outcome };
+  let cost: Cost;
+  if (call.cost !== undefined && call.cost !== null) {
+    const read = costSchema.safeParse(call.cost);
+    if (read.success) {
+      cost = read.data;
+    } else {
+      logger.error({ ...identity, issues: read.error.issues }, "timeline_model_call_cost_unreadable");
+      cost = { state: "missing", reason: `the call ${String(call.seq)} reported a cost provider cannot read` };
+    }
+  } else if (typeof call.costUsd === "number") {
+    cost = { state: "known", usd: call.costUsd, source: "reported" };
+  } else {
+    cost = { state: "missing", reason: `the call ${String(call.seq)} reported no cost` };
+  }
+  if (cost.state === "missing") logger.error(identity, "timeline_model_call_cost_missing");
+  return cost.state !== "pending" && cost.tokens === undefined && tokens !== undefined ? { ...cost, tokens } : cost;
 }
 
 /**
@@ -206,6 +268,29 @@ async function featureDisabled(pickup: Pickup): Promise<void> {
 }
 
 /**
+ * End the row as not available because the Worker holds no key for any upstream of the job's plan, logging what the
+ * deployment is missing.
+ * @param pickup - The pickup.
+ * @param answer - The Worker's answer.
+ * @param answer.model - The plan's model.
+ * @param answer.envVars - The Worker variables it needs.
+ * @returns Nothing.
+ * @throws {Error} When a write fails.
+ */
+async function notConfigured(pickup: Pickup, answer: { model: string; envVars: string[] }): Promise<void> {
+  logger.error(
+    {
+      executionId: pickup.row.id,
+      model: answer.model,
+      envVars: answer.envVars,
+      reason: t("server.model.not_configured", { model: answer.model, envVars: answer.envVars.join(", ") }),
+    },
+    "timeline_model_not_configured",
+  );
+  return featureDisabled(pickup);
+}
+
+/**
  * Read the Manifest a done report wrote and check it, and the outputs, against the accepted job.
  * @param pickup - The pickup.
  * @param report - The done report.
@@ -238,14 +323,15 @@ async function validated(pickup: Pickup, report: EndedReport): Promise<ValidResu
 }
 
 /**
- * Record one row per settled model call and one for the container. An upstream error made no generation and
- * writes nothing; a call interrupted or cut off by a crash is recorded at zero and logged for reconciliation.
+ * Record one row per priced model call and one for the container. An upstream error made no generation and writes
+ * nothing; a pending cost writes no row and waits for its lookup; a call cut off by a crash is recorded at zero and
+ * logged for reconciliation.
  * @param pickup - The pickup.
  * @param report - The terminal report.
- * @returns Nothing once every row is written.
+ * @returns The lookups of the pending costs and the operation they belong to, once every row is written.
  * @throws {Error} When a write fails.
  */
-async function recordUsage(pickup: Pickup, report: EndedReport): Promise<void> {
+async function recordUsage(pickup: Pickup, report: EndedReport): Promise<{ lookups: readonly AwaitedLookup[]; operation: ReturnType<typeof createUsageRecorder>["operation"] }> {
   const { row, step } = pickup;
   const recorder = createUsageRecorder({
     operationKey: timelineOperationKey(row.id),
@@ -257,23 +343,11 @@ async function recordUsage(pickup: Pickup, report: EndedReport): Promise<void> {
   });
   for (const call of report.calls) {
     if (call.outcome === "upstream_error") continue;
-    if (call.costUsd === null) {
-      logger.error({ executionId: row.id, seq: call.seq, generationId: call.generationId, outcome: call.outcome }, "timeline_model_call_cost_missing");
-    }
-    const tokens = call.tokens;
     recorder.recordModelCall({
       source: "model",
       model: step.request.model,
-      provider: "openrouter",
-      usage: {
-        inputTokens: tokens?.input,
-        inputTokenDetails: { noCacheTokens: tokens === null ? undefined : tokens.input - tokens.cacheRead, cacheReadTokens: tokens?.cacheRead },
-        outputTokens: tokens?.output,
-        outputTokenDetails: { reasoningTokens: tokens?.reasoning },
-      },
-      providerMetadata: call.costUsd === null ? undefined : { openrouter: { usage: { cost: call.costUsd } } },
-      // Only a priced call names its generation: one without a cost is recorded at zero, not looked up later.
-      ...(call.costUsd !== null && call.generationId !== null && { generationId: call.generationId }),
+      upstream: servedBy(call),
+      cost: costOfCall(row, call),
       costIdentity: `${timelineOperationKey(row.id)}:${call.seq}`,
     });
   }
@@ -289,6 +363,7 @@ async function recordUsage(pickup: Pickup, report: EndedReport): Promise<void> {
     });
   }
   await recorder.settle();
+  return { lookups: recorder.awaitingLookup(), operation: recorder.operation };
 }
 
 /**
@@ -296,11 +371,13 @@ async function recordUsage(pickup: Pickup, report: EndedReport): Promise<void> {
  * together, so only the writer whose update lands records a charge, and a run that spent nothing records none. The
  * request is then settled; a settlement that fails stays pending for the worker sweep and does not stop the run from
  * ending. As with an Agent chat turn nothing was held, and the charge may take the balance below zero.
+ * The charge names the upstream that served the run's first served call, as an Agent turn names the one that served it.
  * @param pickup - The pickup.
+ * @param report - The terminal report.
  * @returns Nothing.
  * @throws {Error} When the `billed_at` update or the request cannot be written; neither then commits.
  */
-async function bill(pickup: Pickup): Promise<void> {
+async function bill(pickup: Pickup, report: EndedReport): Promise<void> {
   const { row, step } = pickup;
   const sums = await sumCreditsByOperationKeys([timelineOperationKey(row.id)]);
   const amount = toChargeCredits(Number(sums.get(timelineOperationKey(row.id)) ?? 0));
@@ -316,7 +393,7 @@ async function bill(pickup: Pickup): Promise<void> {
         amount,
         description: "timeline_web_animation",
         model: step.request.model,
-        provider: "openrouter",
+        provider: report.calls.map(servedBy).find((upstream) => upstream !== "unknown") ?? "unknown",
       },
       tx,
     );
@@ -365,9 +442,12 @@ async function settle(pickup: Pickup, report: EndedReport, end: RunEnd): Promise
     event = { type: "success", fence: row.fence, resultSourceVersionId: source.id };
   }
   if (!(await owns(pickup))) return;
-  await recordUsage(pickup, report);
+  const { lookups, operation } = await recordUsage(pickup, report);
   if (!(await owns(pickup))) return;
-  await bill(pickup);
+  await bill(pickup, report);
+  // Queued once the charge is decided, whether or not this writer made it: the charge sums only the rows already
+  // written, each lookup charges its own call, and a second hand-off of a call is the same job.
+  await handOffLookups(lookups, operation, { description: "timeline_web_animation", charge: true });
   if (!(await owns(pickup))) return;
   await move(row, event);
 }
@@ -442,6 +522,7 @@ async function running(pickup: Pickup): Promise<void> {
     if (answer.kind === "unavailable") logger.warn({ executionId: pickup.row.id, jobId: request.jobId }, "web_animation_container_start_refused");
   }
   if (answer.kind === "disabled") return featureDisabled(pickup);
+  if (answer.kind === "unconfigured") return notConfigured(pickup, answer);
   const report = answer.kind === "report" ? answer.report : null;
   if (report !== null && ended(report)) return finish(pickup, report);
   if (Date.now() >= endsAt) {
@@ -476,7 +557,15 @@ async function pickUp(job: Job<TimelineExecutionJobData>, token: string | undefi
   }
   let step = storedStep(row.steps);
   if (step === undefined) {
-    step = newStep(row, input.data);
+    try {
+      step = newStep(row, input.data);
+    } catch (err) {
+      if (!(err instanceof NoUpstreamAvailable)) throw err;
+      // No upstream of the model takes a Messages call: a deployment's configuration, not this run's.
+      logger.error({ executionId: row.id, model: err.model, reasons: err.reasons }, "timeline_model_not_configured");
+      await move(row, { type: "failure", fence: row.fence, reason: "feature_disabled" });
+      return;
+    }
     if (!(await timelineExecutionRepo.recordSteps({ id: row.id, fence: row.fence, steps: [step, ...row.steps] }))) return;
   }
   const pickup: Pickup = {

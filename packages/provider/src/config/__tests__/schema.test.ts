@@ -17,7 +17,7 @@ import { createProvider } from "../../provider.js";
 
 const pricing = { kind: "formula", base_price: 0.1, formula: "", discount_rate: 100 };
 
-// Three upstreams of the one media kind provider speaks to today, under different names.
+// Three upstreams of one media kind provider speaks to, under different names.
 const upstreams = {
   bytedance: { kind: "wavespeed", base_url: "https://ark.example", key_env: "BYTEPLUS_ARK_API_KEY" },
   wavespeed: { kind: "wavespeed", base_url: "https://api.wavespeed.ai/api/v3", key_env: "WAVESPEED_API_KEY" },
@@ -156,6 +156,38 @@ describe("parseProviderConfig", () => {
     expect(problems.join("\n")).toContain("typo");
   });
 
+  // inner#1692: the optional rig after a 3D generation.
+  const rigStep = { kind: "rig", endpoint: "tripo3d/rig", at: "after", for_param: "rig_skeleton", optional: true, pricing };
+
+  it("loads an optional rig step after the model's own call, keeping its optional flag", () => {
+    const config = parseProviderConfig(input([bind("wavespeed", 1, { extra_steps: [rigStep] } as unknown as Partial<MediaBinding>)]));
+    expect(config.models.seedance?.[0]?.extra_steps).toEqual([rigStep]);
+  });
+
+  it.each([
+    ["an optional flag that is not a boolean", { ...rigStep, optional: "yes" }, "optional"],
+    ["a step kind no step runs", { ...rigStep, kind: "rigging" }, "kind"],
+  ])("refuses %s, naming it", (_what, step, key) => {
+    const problems = problemsOf(input([bind("wavespeed", 1, { extra_steps: [step] } as unknown as Partial<MediaBinding>)]));
+    expect(problems.join("\n")).toContain(key);
+  });
+
+  it("refuses a rig step before the model's own call, which has not made the model yet, naming model and upstream", () => {
+    const problems = problemsOf(input([bind("wavespeed", 1, { extra_steps: [{ ...rigStep, at: "before" }] } as unknown as Partial<MediaBinding>)]));
+    expect(problems).toEqual([expect.stringMatching(/seedance.*"wavespeed".*rig/)]);
+  });
+
+  it.each(["upload_reference", "upload_melody", "vocal", "element"])("refuses a %s step after the model's own call, which its id never reaches, naming model and upstream", (kind) => {
+    const step = { kind, endpoint: "x/step", at: "after", for_param: "ref" };
+    const problems = problemsOf(input([bind("wavespeed", 1, { extra_steps: [step] } as unknown as Partial<MediaBinding>)]));
+    expect(problems).toEqual([expect.stringMatching(new RegExp(`seedance.*"wavespeed".*${kind}.*at: after`))]);
+  });
+
+  it.each(["upload_reference", "upload_melody", "vocal", "element"])("loads a %s step before the model's own call", (kind) => {
+    const step = { kind, endpoint: "x/step", at: "before", for_param: "ref" };
+    expect(problemsOf(input([bind("wavespeed", 1, { extra_steps: [step] } as unknown as Partial<MediaBinding>)]))).toEqual([]);
+  });
+
   it("refuses a binding without pricing", () => {
     const problems = problemsOf(input([{ upstream: "wavespeed", weight: 1, model_id: "x" } as MediaBinding]));
     expect(problems).toHaveLength(1);
@@ -292,6 +324,12 @@ describe("assertBindsCatalog", () => {
   it("reports a drop of a param the model does not have", () => {
     const problems = catalogProblems([bind("fal", 2, { params: { duration: { field: "duration" }, aspect_ratio: { field: "aspect_ratio" } }, drops: { colour: "*" } })]);
     expect(problems).toEqual(['seedance: "fal" drops param "colour", which the model does not have']);
+  });
+
+  it("reports a step serving a param the model does not have", () => {
+    const step = { kind: "rig", endpoint: "tripo3d/rig", at: "after", for_param: "rig_skeletn", optional: true, pricing };
+    const problems = catalogProblems([bind("fal", 2, { drops: { duration: "*", aspect_ratio: "*" }, extra_steps: [step] } as unknown as Partial<MediaBinding>)]);
+    expect(problems).toEqual(['seedance: "fal" has a rig step for param "rig_skeletn", which the model does not have']);
   });
 
   it("reports a catalog model that has no binding at all", () => {

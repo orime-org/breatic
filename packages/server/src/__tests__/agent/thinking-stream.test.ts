@@ -57,7 +57,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
     streamTextRetry: actual.streamTextRetry,
     buildAgentConfig: () => ({ modelId: "test", instructions: { base: "system" }, tools: {} }),
     finalizeTurn: async () => [],
-    getModel: () => modelProducing(() => modelSays.parts),
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider(() => modelProducing(() => modelSays.parts)),
   };
 });
 

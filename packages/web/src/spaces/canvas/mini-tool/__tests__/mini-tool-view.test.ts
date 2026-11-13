@@ -41,7 +41,8 @@ function entry(params: Record<string, ParamDescriptor>, takesPrompt = false): Mo
     generation_time: 10,
     takes_prompt: takesPrompt,
     params,
-    providers: [],
+    availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: false, envVar: 'WAVESPEED_API_KEY' }] },
+    pricing_rules: undefined,
   } as ModelEntry;
 }
 

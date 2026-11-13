@@ -103,6 +103,19 @@ describe('NodeHistoryRow (#1619)', () => {
     expect(screen.getByText('3.46')).toBeInTheDocument();
   });
 
+  // inner#1743: delivered before its upstream billed it, the run shows what is known so far.
+  it('marks a generation still being billed, its known part as a lower bound', () => {
+    renderRow(entry({ status: 'success', errorMessage: null, metadata: { credits: 12.5, billing: 'pending' } }));
+    expect(screen.getByText('≥ 12.5')).toBeInTheDocument();
+    expect(screen.getByText('credits.billingPending')).toBeInTheDocument();
+  });
+
+  it('shows a billed generation without the mark', () => {
+    renderRow(entry({ status: 'success', errorMessage: null, metadata: { credits: 18 } }));
+    expect(screen.getByText('18')).toBeInTheDocument();
+    expect(screen.queryByText('credits.billingPending')).toBeNull();
+  });
+
   // #1 (user 2026-07-22): the type chip states ONLY the type (Generated /
   // Upload), never the outcome. Before the fix a FAILED row's chip rendered
   // `canvas.history.failed` ("Can't restore") and the type key was absent —

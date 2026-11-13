@@ -189,11 +189,11 @@ openrouter_quantizations:
   - unknown
 openrouter_prices:
   deepseek/deepseek-v4-pro:
-    input_cache_miss_per_mtok: 0.28054
-    output_per_mtok: 0.56108
+    input_cache_miss_per_mtok: 0.95526
+    output_per_mtok: 1.91052
   deepseek/deepseek-v4.1-flash-1017:
-    input_cache_miss_per_mtok: 0.022
-    output_per_mtok: 0.4
+    input_cache_miss_per_mtok: 0.04
+    output_per_mtok: 0.6
   anthropic/claude-opus-5.5:
     input_cache_miss_per_mtok: 4
     output_per_mtok: 20
@@ -209,4 +209,4 @@ openrouter_prices:
 openrouter_states_quantization:
   - deepseek/deepseek-v4-pro
   - deepseek/deepseek-v4.1-flash-1017
-openrouter_prices_at: 2026-11-08T11:27:09.117Z
+openrouter_prices_at: 2026-11-13T09:33:16.854Z

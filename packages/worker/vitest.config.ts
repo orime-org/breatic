@@ -14,7 +14,7 @@ import { resolve } from "node:path";
 // optional: `--filter` skips turbo's dependency graph, so without it the run
 // resolves `@breatic/*` from whatever dist happens to be on disk.
 // Domain-import plumbing (#1672) — tests that value-import
-// `@worker/providers/shared.js` pull in @breatic/domain (the single model
+// `@worker/handlers/model-params.js` pull in @breatic/domain (the single model
 // config reader). Two pieces make that work under vitest:
 // 1. alias @breatic/domain → its SOURCE entry, so tests never depend on a
 //    stale dist build and the whole chain goes through vite's resolver;

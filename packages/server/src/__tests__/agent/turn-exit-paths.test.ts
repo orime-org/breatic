@@ -64,14 +64,14 @@ vi.mock("@breatic/domain", async () => {
   // Wrapped rather than replaced: what goes into the factory is what these
   // cases read, and what comes out is still the real thing.
   buildAgentConfig.mockImplementation(actual.buildAgentConfig);
+  actual.initProvider((await import("../helpers/fake-provider.js")).assemblyProvider());
   return {
     ...base,
     streamTextRetry: actual.streamTextRetry,
     finalizeTurn: actual.finalizeTurn,
     buildAgentConfig,
     creditLotService: { chargeOnce },
-    resolveProvider: () => "test",
-    getModel: () => {
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider(() => {
       const model = new MockLanguageModelV4({
         doStream: async ({ abortSignal }) => ({
           stream: new ReadableStream({
@@ -94,7 +94,7 @@ vi.mock("@breatic/domain", async () => {
       });
       thisCase.model = model;
       return model;
-    },
+    }),
   };
 });
 

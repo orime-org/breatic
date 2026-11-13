@@ -51,9 +51,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
   return {
     ...base,
     generateTextRetry,
-    getModel: (id: string) => ({ modelId: id }),
-    resolveProvider: () => "test",
-    callOptionsFor: actual.callOptionsFor,
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider((id: string) => ({ modelId: id })),
     memoryTitle: actual.memoryTitle,
     countCharacters: actual.countCharacters,
     memoryContent: actual.memoryContent,

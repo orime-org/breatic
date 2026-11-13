@@ -28,7 +28,7 @@ const h = vi.hoisted(() => {
   }
   return {
     StillRunning,
-    runCatalogTask: vi.fn(),
+    runModelTask: vi.fn(),
     taskDeadline: vi.fn(),
     markFailed: vi.fn(),
     moveToDelayed: vi.fn(),
@@ -47,7 +47,7 @@ const h = vi.hoisted(() => {
   };
 });
 
-vi.mock("@worker/providers/still-running.js", () => ({
+vi.mock("@worker/handlers/still-running.js", () => ({
   StillRunning: h.StillRunning,
 }));
 vi.mock("@worker/handlers/task-deadline.js", () => ({ taskDeadline: h.taskDeadline }));
@@ -55,14 +55,10 @@ vi.mock("@worker/handlers/container/run-container-job.js", () => ({
   ContainerJobFailed: class extends Error {},
   runContainerJob: vi.fn(),
 }));
-vi.mock("@worker/providers/run-steps.js", () => ({ runCatalogTask: h.runCatalogTask }));
+vi.mock("@worker/handlers/model-task.js", () => ({ runModelTask: h.runModelTask, abandonedCosts: async () => [] }));
 vi.mock("@worker/services/project-media.service.js", () => ({
   resolveRegisteredProjectMedia: h.resolveRegisteredProjectMedia,
 }));
-vi.mock("@worker/providers/generate.js", () => ({
-  validateModelParams: (_modality: string, model: string, params: Record<string, unknown>) => [model, params],
-}));
-vi.mock("@worker/handlers/step-deps.js", () => ({ stepDepsFor: () => ({}) }));
 vi.mock("@breatic/core", () => ({
   runWithConsent: (_consent: unknown, fn: () => unknown) => fn(),
   reportCollaboratorFirstAction: vi.fn(async () => undefined),
@@ -89,17 +85,16 @@ vi.mock("@breatic/core", () => ({
 vi.mock("@breatic/domain", async () => ({
   failureOutcome: (await import("@domain/node-task/failure-outcome.js")).failureOutcome,
   buildAgentConfig: vi.fn(),
-  getModel: vi.fn(),
   generateTextRetry: vi.fn(),
   taskService: {
     markFailed: h.markFailed,
     markRunning: h.markRunning,
     getByIdInternal: h.getByIdInternal,
     recordProviderResult: h.recordProviderResult,
-    recordProviderTaskId: vi.fn(),
     markCompletedAndBill: h.markCompletedAndBill,
   },
   upstreamStepRepo: { failOpenSteps: vi.fn() },
+  taskRepo: { clearSending: vi.fn() },
   assetService: { resolveOwnerStudioId: vi.fn(async () => "studio-1") },
   creditLotService: {
     settleCharge: h.settleCharge,
@@ -108,7 +103,6 @@ vi.mock("@breatic/domain", async () => ({
   creditHoldService: { releaseHold: vi.fn(async () => undefined) },
   creditsForUsd: (usd: number) => usd,
   toChargeCredits: (await import("@domain/credit/credit-math.js")).toChargeCredits,
-  resolveActiveProvider: vi.fn(),
   modelCatalog: { getModelCatalog: () => ({ image: [], video: [], audio: [], tts: [], three_d: [] }) },
   nodeHistoryService: { recordGenerationFailure: vi.fn(), recordGenerationSuccess: vi.fn() },
   settleTaskForNode: h.settleTaskForNode,
@@ -120,7 +114,7 @@ vi.mock("@breatic/domain", async () => ({
   readingLimitsUntil: (await import("@domain/understand/limits-until.js")).readingLimitsUntil,
   MediaUnavailable: class extends Error {},
   UnderstandRefused: class extends Error {},
-  createUsageRecorder: () => ({ recordServiceCall: vi.fn(), settle: async () => 0 }),
+  createUsageRecorder: () => ({ recordServiceCall: vi.fn(), awaitingLookup: () => [], settle: async () => 0 }),
   UNDERSTAND_PINS: {},
 }));
 
@@ -192,7 +186,8 @@ beforeEach(() => {
   h.markRunning.mockResolvedValue(new Date());
   h.taskDeadline.mockResolvedValue(DEADLINE);
   h.markCompletedAndBill.mockResolvedValue(true);
-  h.runCatalogTask.mockResolvedValue({ outputs: [{ url: GLB }], cost: 0.24, model: "tripo-h3.1-t23d" });
+  h.markFailed.mockResolvedValue(true);
+  h.runModelTask.mockResolvedValue({ outputs: [{ kind: "url", url: GLB }], costs: [{ state: "known", usd: 0.24, source: "billing" }], servedBy: "wavespeed", passedOverCosts: [] });
   h.resolveRegisteredProjectMedia.mockImplementation(async (_projectId, fileUrl) => ({
     assetId: "asset-glb",
     fileUrl,
@@ -209,19 +204,17 @@ beforeEach(() => {
 });
 
 describe("a 3D generation on the catalog lane (inner#1691)", () => {
-  it("runs through runCatalogTask under the three_d modality", async () => {
+  it("runs as a model run under the three_d modality", async () => {
     await runTask(sceneJob(), "lock-token");
 
-    expect(h.runCatalogTask).toHaveBeenCalledTimes(1);
-    expect(h.runCatalogTask).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.objectContaining({ taskId: "task-1", studioId: "studio-1", deadlineAt: DEADLINE }),
-      "three_d",
-      "a wooden chair",
-      "tripo-h3.1-t23d",
-      { texture: true, pbr: true },
-      1,
-    );
+    expect(h.runModelTask).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      taskId: "task-1",
+      modality: "three_d",
+      model: "tripo-h3.1-t23d",
+      projectId: "proj-1",
+      outputCount: 1,
+      deadlineAt: DEADLINE,
+    }));
   });
 
   it("settles the Space row it names as done with the registered model, and tells the Space to refresh", async () => {
@@ -244,7 +237,7 @@ describe("a 3D generation on the catalog lane (inner#1691)", () => {
 
   it("settles the row as failed with the stored cause once the run is over, and not while a retry is to come", async () => {
     // A retryable attempt: the queue runs it again, so the row stays running.
-    h.runCatalogTask.mockRejectedValueOnce(new Error("upstream 502"));
+    h.runModelTask.mockRejectedValueOnce(new Error("upstream 502"));
     await expect(runTask(sceneJob(0), "lock-token")).rejects.toThrow("upstream 502");
     expect(h.settleSceneRowById).not.toHaveBeenCalled();
 
@@ -266,14 +259,14 @@ describe("a 3D generation on the catalog lane (inner#1691)", () => {
 
     await runTask(sceneJob(), "lock-token");
 
-    expect(h.runCatalogTask).not.toHaveBeenCalled();
+    expect(h.runModelTask).not.toHaveBeenCalled();
     expect(h.settleSceneRowById).toHaveBeenCalledExactlyOnceWith("row-1", { outcome: "done", assetId: "asset-glb", notice: null });
     expect(h.publishSpaceTasksChanged).toHaveBeenCalledWith("proj-1", "space-1");
   });
 });
 
 /**
- * A run whose optional rig step failed (inner#1692, design 6.2): the run
+ * A run whose optional rig step provider gave up: the run
  * hands `notice: 'rig_failed'` up with its outputs, the task row's stored
  * result keeps it, and every path that settles the Space row reads it from
  * there, so the row says the model cannot be posed however it was settled.
@@ -283,12 +276,18 @@ describe("a 3D generation whose rig failed (inner#1692)", () => {
     await runTask(sceneJob(0), "lock-token");
     await runTask(sceneJob(2), "lock-token");
 
-    expect(h.runCatalogTask.mock.calls[0]![1]).toMatchObject({ lastAttempt: false });
-    expect(h.runCatalogTask.mock.calls[1]![1]).toMatchObject({ lastAttempt: true });
+    expect(h.runModelTask.mock.calls[0]![0]).toMatchObject({ lastAttempt: false });
+    expect(h.runModelTask.mock.calls[1]![0]).toMatchObject({ lastAttempt: true });
   });
 
   it("stores the notice on the task's result and settles the row done with it", async () => {
-    h.runCatalogTask.mockResolvedValue({ outputs: [{ url: GLB }], cost: 0.24, model: "tripo-h3.1-t23d", notice: "rig_failed" });
+    h.runModelTask.mockResolvedValue({
+      outputs: [{ kind: "url", url: GLB }],
+      costs: [{ state: "known", usd: 0.24, source: "billing" }],
+      servedBy: "wavespeed",
+      passedOverCosts: [{ state: "known", usd: 0.1, source: "billing" }],
+      notice: "rig_failed",
+    });
 
     const result = await runTask(sceneJob(), "lock-token");
 
@@ -296,6 +295,13 @@ describe("a 3D generation whose rig failed (inner#1692)", () => {
     const stored = h.markCompletedAndBill.mock.calls[0]![1] as Record<string, unknown>;
     expect(stored).toMatchObject({ notice: "rig_failed" });
     expect(h.settleSceneRowById).toHaveBeenCalledExactlyOnceWith("row-1", { outcome: "done", assetId: "asset-glb", notice: "rig_failed" });
+    // The given-up step is not charged; what it cost is kept in the log.
+    expect(h.markCompletedAndBill.mock.calls[0]![2]).toBe(0.24);
+    const { logger } = await import("@breatic/core");
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ taskId: "task-1", notice: "rig_failed", passedOverCosts: [{ state: "known", usd: 0.1, source: "billing" }] }),
+      "optional_step_failed",
+    );
   });
 
   it("settles the row with the notice when a billed job is delivered again", async () => {
@@ -307,12 +313,18 @@ describe("a 3D generation whose rig failed (inner#1692)", () => {
 
     await runTask(sceneJob(), "lock-token");
 
-    expect(h.runCatalogTask).not.toHaveBeenCalled();
+    expect(h.runModelTask).not.toHaveBeenCalled();
     expect(h.settleSceneRowById).toHaveBeenCalledExactlyOnceWith("row-1", { outcome: "done", assetId: "asset-glb", notice: "rig_failed" });
   });
 
   it("settles the same row the same way on the live path and on billed redelivery", async () => {
-    h.runCatalogTask.mockResolvedValue({ outputs: [{ url: GLB }], cost: 0.24, model: "tripo-h3.1-t23d", notice: "rig_failed" });
+    h.runModelTask.mockResolvedValue({
+      outputs: [{ kind: "url", url: GLB }],
+      costs: [{ state: "known", usd: 0.24, source: "billing" }],
+      servedBy: "wavespeed",
+      passedOverCosts: [{ state: "known", usd: 0.1, source: "billing" }],
+      notice: "rig_failed",
+    });
     await runTask(sceneJob(), "lock-token");
     const stored = h.markCompletedAndBill.mock.calls[0]![1] as Record<string, unknown>;
     const live = h.settleSceneRowById.mock.calls[0]![1];

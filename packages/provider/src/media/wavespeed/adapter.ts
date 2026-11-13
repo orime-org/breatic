@@ -172,7 +172,7 @@ function upload(purpose: string): StepCodec {
   };
 }
 
-/** WaveSpeed's extra steps: Mureka uploads and vocal clones, MiniMax voice clones and speech, Kling elements. */
+/** WaveSpeed's extra steps: Mureka uploads and vocal clones, MiniMax voice clones and speech, Kling elements, the Tripo rig. */
 const STEPS: MediaAdapter["steps"] = {
   upload_reference: upload("reference"),
   upload_melody: upload("melody"),
@@ -186,6 +186,11 @@ const STEPS: MediaAdapter["steps"] = {
   },
   speak: {
     body: (context) => ({ text: context.prompt, voice_id: context.voice() }),
+    output: (outputs) => ({ urls: [outputUrls(outputs)[0]!] }),
+  },
+  rig: {
+    // The generated model goes to the rig by its address, asking for VRM bone names (inner#1692).
+    body: (context) => ({ model: context.generated(), rig_type: "auto", spec: "vrm", out_format: "glb" }),
     output: (outputs) => ({ urls: [outputUrls(outputs)[0]!] }),
   },
   element: {

@@ -30,7 +30,9 @@ Check: is the code I changed in a different package from the one I am building o
 
 **tsup, vite and vitest only transpile; types are checked only by `pnpm typecheck`.** CI runs `pnpm turbo typecheck`, which reaches a package only through its own `typecheck` script, so a new package without one is never typechecked.
 
-**A new workspace library that a service imports must be added to the runtime stage of `Dockerfile`.** The runtime stage copies each library's `dist` and `package.json` by name, and the `sentry-cli sourcemaps inject` line lists each `dist`; the build stage copies the whole workspace and does not need it. A missing copy builds locally and fails only in the Docker job.
+**A new workspace library that a service imports must be added to the runtime stage of `Dockerfile`.** The runtime stage copies each library's `dist` and `package.json` by name, and the `sentry-cli sourcemaps inject` line lists each `dist`; the build stage copies the whole workspace and does not need it. `scripts/backend-sourcemaps.mjs` reads the libraries from each service's `dependencies`, so a missing copy or injection builds locally and fails only in the Docker job's image check.
+
+**A new workspace library that web imports must have its `package.json` copied in `Dockerfile.web` before `pnpm install`.** The web image copies package manifests by name and then builds `@breatic/web^...`; without the manifest, pnpm never links the library and vite fails with `Rollup failed to resolve import`.
 
 ## Dependencies
 
@@ -55,6 +57,8 @@ Check: can the mocked module be imported on its own?
 ## Vitest
 
 **A package's `test` script is `vitest run`.** Bare `vitest` starts watch mode and turbo waits on it forever.
+
+**`Error: [vitest-worker]: Timeout calling "onTaskUpdate"` after a few files means one file kept the single fork busy too long, not that the machine is loaded.** Time the file the log printed last on your branch and on `main` (`pnpm exec vitest run <file>` in each); a file several times slower on the branch is the change's own regression, usually per-case setup that redoes expensive work such as parsing every config file before each case.
 
 **Adding an alias to `packages/web/vite.config.mts` means adding the same alias to `packages/web/vitest.config.mts` in the same change.** The vitest config has its own `resolve.alias`; without the mirror every test importing through the alias fails with `Failed to resolve import`.
 

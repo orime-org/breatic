@@ -32,23 +32,16 @@ function fsWith(params: string[]): Record<string, unknown> {
     '  - name: "fixture"',
     '    mode: ["t2v", "i2v"]',
     "    takes_prompt: true",
-    "    providers:",
-    '      - name: "wavespeed"',
-    '        model_id: "fixture/model"',
-    "        priority: 1",
     "    params:",
     ...params,
   ].join("\n");
-  const providers = ["wavespeed:", "  api_key_env: WAVESPEED_API_KEY"].join("\n");
   const named = (path: unknown, file: string): boolean => String(path).endsWith(file);
   return {
     // Only the video bucket holds the fixture: served for every modality it
     // would put a video mode under `image`, which the loader rightly refuses.
     readdirSync: (path: string) => (String(path).endsWith("/video") ? ["fixture.yaml"] : []),
-    existsSync: (path: string) =>
-      named(path, "modes.yaml") || named(path, "providers.yaml"),
-    readFileSync: (path: string) =>
-      named(path, "modes.yaml") ? modes : named(path, "providers.yaml") ? providers : model,
+    existsSync: (path: string) => named(path, "modes.yaml"),
+    readFileSync: (path: string) => (named(path, "modes.yaml") ? modes : model),
   };
 }
 
@@ -63,6 +56,12 @@ async function projected(params: string[], param: string): Promise<Record<string
   vi.doMock("node:fs", () => fsWith(params));
   const { initCore } = await import("@breatic/core");
   initCore({ ...process.env, WAVESPEED_API_KEY: "test-key" });
+  vi.doMock("../../provider/instance.js", () => ({
+    provider: () => ({
+      availability: () => ({ upstreams: [{ upstream: "wavespeed", weight: 1, configured: true, envVar: "WAVESPEED_API_KEY" }] }),
+      pricingRules: (model: string) => ({ model, upstreams: [] }),
+    }),
+  }));
   const mod = await import("../mode-catalog.js");
   const answer = mod.modelsForMode("video", "t2v");
   if (!answer.available) throw new Error("the fixture mode is not available");
@@ -74,6 +73,7 @@ async function projected(params: string[], param: string): Promise<Record<string
 describe("the projection", () => {
   afterEach(() => {
     vi.doUnmock("node:fs");
+    vi.doUnmock("../../provider/instance.js");
     vi.resetModules();
   });
 

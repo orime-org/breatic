@@ -12,6 +12,7 @@ import type { FinishReason } from "ai";
 import { z } from "zod";
 import { deliver, sideBounds, wait, type OutgoingRequest } from "@provider/http/request.js";
 import {
+  bytesOf,
   AnswerUnread,
   assertSucceeded,
   base64Of,
@@ -21,6 +22,7 @@ import {
   wireTypeOf,
   type Answered,
   type UnderstandAdapter,
+  type MediaBytes,
   type UnderstandCall,
   type UploadedFile,
 } from "@provider/llm/understand/adapter.js";
@@ -141,7 +143,7 @@ function sessionOf(session: string | null): string {
  * @throws {UnreadableAnswer} When the start names no session address or the upload no file.
  * @throws {NotSent | NoAnswer | Aborted | BodyTooLarge} As provider's HTTP module classifies a failure.
  */
-async function upload(call: UnderstandCall, media: UnderstandCall["media"][number], index: number, files: UploadedFile[]): Promise<{ entry: UploadedFile; file: GeminiFile }> {
+async function upload(call: UnderstandCall, media: MediaBytes, index: number, files: UploadedFile[]): Promise<{ entry: UploadedFile; file: GeminiFile }> {
   const base = new URL(call.decl.base_url);
   const type = wireTypeOf(media.contentType);
   // The start's promise is its session header; its body says nothing.
@@ -206,6 +208,8 @@ async function activate(call: UnderstandCall, entry: UploadedFile, known?: Gemin
 export const googleUnderstand: UnderstandAdapter = {
   async ask(call) {
     const url = `${call.decl.base_url}/models/${call.modelId}:generateContent`;
+    // Gemini takes bytes, so an image handed over by its address is read first.
+    const media = await bytesOf(call.media, call.signal);
     /**
      * The request with the media in the given parts.
      * @param items - One part per item.
@@ -215,21 +219,21 @@ export const googleUnderstand: UnderstandAdapter = {
       contents: [{ role: "user", parts: [{ text: call.question }, ...items.flatMap((item, index) => [{ text: `Item ${index + 1}` }, item])] }],
       generationConfig: { maxOutputTokens: call.maxOutputTokens },
     });
-    const inline = request(call.media.map((m) => ({ inlineData: { mimeType: wireTypeOf(m.contentType), data: base64Of(m.bytes) } })));
+    const inline = request(media.map((m) => ({ inlineData: { mimeType: wireTypeOf(m.contentType), data: base64Of(m.bytes) } })));
     let body = inline;
     if (Buffer.byteLength(inline) > call.inlineMaxBytes) {
       // Uploaded once per call: a later attempt on this upstream reuses the registered files,
       // asks again about one not yet ready, and uploads from the first item not registered.
       const files = call.session.uploads.get(call.decl.base_url) ?? [];
       call.session.uploads.set(call.decl.base_url, files);
-      for (const [index, media] of call.media.entries()) {
+      for (const [index, item] of media.entries()) {
         const registered = files[index];
         if (registered === undefined) {
-          const { entry, file } = await upload(call, media, index, files);
+          const { entry, file } = await upload(call, item, index, files);
           await activate(call, entry, file);
         } else if (registered.uri === undefined) await activate(call, registered);
       }
-      body = request(call.media.map((m, i) => ({ fileData: { mimeType: wireTypeOf(m.contentType), fileUri: files[i]!.uri } })));
+      body = request(media.map((m, i) => ({ fileData: { mimeType: wireTypeOf(m.contentType), fileUri: files[i]!.uri } })));
     }
     return exchange({ url, method: "POST", headers: headers(call), body }, call);
   },

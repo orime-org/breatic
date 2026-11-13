@@ -350,13 +350,13 @@ export async function answerWaitingAsk(
 }
 
 /**
- * The model the turn that made this call started on, as its reply records it
- * (#1363).
+ * The model the turn that made this call started on (#1363) and the upstream
+ * that served it (inner#1743), as its reply records them.
  * @param id - Conversation UUID.
  * @param toolCallId - A call the reply made.
- * @returns The model id, or undefined when no reply holds the call or its record predates the picker.
+ * @returns Each that the reply records; neither when no reply holds the call.
  */
-export async function getReplyModelId(id: string, toolCallId: string): Promise<string | undefined> {
+export async function getReplyRun(id: string, toolCallId: string): Promise<{ modelId?: string; servedUpstream?: string }> {
   const [row] = await db
     .select({ forModel: conversationMessages.forModel })
     .from(conversationMessages)
@@ -369,8 +369,11 @@ export async function getReplyModelId(id: string, toolCallId: string): Promise<s
       ),
     )
     .limit(1);
-  const modelId = (row?.forModel as { modelId?: unknown } | null | undefined)?.modelId;
-  return typeof modelId === "string" ? modelId : undefined;
+  const kept = row?.forModel as { modelId?: unknown; servedUpstream?: unknown } | null | undefined;
+  return {
+    ...(typeof kept?.modelId === "string" ? { modelId: kept.modelId } : {}),
+    ...(typeof kept?.servedUpstream === "string" ? { servedUpstream: kept.servedUpstream } : {}),
+  };
 }
 
 /**

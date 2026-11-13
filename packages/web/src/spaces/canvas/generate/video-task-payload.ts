@@ -22,7 +22,7 @@ import { poolParams, type ReferenceUrls } from '@web/spaces/canvas/generate/refe
 import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
 import type { VideoSlot, VideoSlotUrls } from '@web/spaces/canvas/generate/video-slots';
 
-/** Video-node generation task type (AIGC_TASK_TYPES key on the worker). */
+/** Video-node generation task type (one of the worker's MODEL_TASK_TYPES). */
 const VIDEO_TASK_TYPE = 'video';
 
 /** Inputs for {@link buildVideoTaskPayload}. */

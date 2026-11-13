@@ -26,21 +26,6 @@ function baseEnv(over: Record<string, string> = {}): Record<string, string> {
   };
 }
 
-describe("parseConfig — provider keys", () => {
-  it("accepts DEEPSEEK_API_KEY and hands it back", () => {
-    // The default model this build calls is `deepseek/deepseek-v4-pro`, and
-    // reaching DeepSeek directly needs its own key. A name the schema has
-    // never heard of resolves to undefined through the `env` proxy however
-    // the process was started, so the direct route would never open.
-    const config = parseConfig(baseEnv({ DEEPSEEK_API_KEY: "sk-ds-test" }));
-    expect(config.DEEPSEEK_API_KEY).toBe("sk-ds-test");
-  });
-
-  it("defaults it to empty so a deployment without one still starts", () => {
-    expect(parseConfig(baseEnv()).DEEPSEEK_API_KEY).toBe("");
-  });
-});
-
 describe("parseConfig — SMTP sender", () => {
   it("preserves a configured sender separately from SMTP credentials", () => {
     const config = parseConfig(baseEnv({ SMTP_FROM: "  Breatic <mail@example.com>  ", SMTP_USER: "relay-account" }));
@@ -262,10 +247,9 @@ describe("parseConfig — REDIS_KEY_PREFIX", () => {
  * The two keys that decide which model runs must name a model.
  *
  * Both ways of failing to name one start clean and break on the first
- * message someone sends: `getModel("")` hands over an empty id, and
- * `getModel("deepseek/")` does the same on a deployment holding the DeepSeek
- * key, because matching a direct route strips the prefix that matched. Every
- * numeric knob in this same object already carries a bound.
+ * message someone sends: an empty id reaches provider as no model, and
+ * `deepseek/` names a route's prefix and no model on it. Every numeric knob in
+ * this same object already carries a bound.
  */
 describe("agent config — the model a run is sent to", () => {
   it.each([

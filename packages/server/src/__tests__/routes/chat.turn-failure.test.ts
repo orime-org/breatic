@@ -45,7 +45,7 @@ vi.mock("@server/modules", async (importOriginal) => {
       ...base.conversationService,
       assertWritable: vi.fn().mockResolvedValue({ id: "conv-1" }),
       modelForMessage: vi.fn().mockResolvedValue("test"),
-      modelForResume: vi.fn().mockResolvedValue("test"),
+      modelForResume: vi.fn().mockResolvedValue({ modelId: "test" }),
     },
   };
 });
