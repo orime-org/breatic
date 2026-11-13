@@ -204,9 +204,9 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
       if (event.key === 'Escape') {
         if (event.repeat) return;
         event.preventDefault();
-        // One step per press: cancel the drag, then clear the selection. Joint mode lives only
-        // while the properties panel is open, and the panel's own Escape leaves it first.
-        // The viewfinder comes after the drag and before the selection (#1411 design 3.7); its canvas list closes itself.
+        // One step per press: cancel the drag, then step the viewfinder back (#1411 design 3.7; its
+        // canvas list closes itself), then clear the selection. Joint mode lives only while the
+        // properties panel is open, and the panel's own Escape leaves it first.
         if (session.getSnapshot().gestureActive) session.endGesture(false);
         else if (viewfinderPhase.current === 'picking') return;
         else if (viewfinderPhase.current !== 'off') dispatchViewfinder({ type: 'escape' });
