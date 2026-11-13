@@ -2450,8 +2450,7 @@
         "placeholder": "Enter LaTeX, e.g. E = mc^2",
         "empty": "Add a formula",
         "error": "Formula has an error",
-        "ok": "OK",
-        "close": "Close"
+        "ok": "OK"
       },
       "versions": {
         "title": "Snapshots",

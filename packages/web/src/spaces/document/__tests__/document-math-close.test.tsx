@@ -2,14 +2,12 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * inner#1423 A5, design §6.3: what closing a formula's box does to what was
- * typed in it.
+ * inner#1423 A5, design §6.3: closing a formula's box keeps what was typed.
  *
- * The box asks for a confirm, like the body's other boxes that take an input
- * and a confirm (the link field, the AI composer): confirming keeps the edit,
- * and the close button, Escape and a press outside the box put the source
- * back to what it was when the box opened. Leaving an inline source with the
- * arrow keys is moving on through the text, and keeps it.
+ * The formula in the body is the live preview, as in Notion, AFFiNE and
+ * BlockNote's own formula: every key shows there as it is typed. Enter, the
+ * confirm button, Escape and moving away all close the box and keep the
+ * edit; Cmd+Z undoes it like any other typing. The box has no close button.
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
@@ -161,121 +159,57 @@ function boxButton(root: HTMLElement, words: string): HTMLElement {
 const BLOCK = [{ type: 'mathBlock', content: 'a+b' }];
 const INLINE = [{ type: 'paragraph', content: ['x ', { type: 'math', content: 'a+b' }, ' y'] }];
 
+/**
+ * Moves the caret into the line after the formula, as a click there does.
+ * @param editor - The editor.
+ */
+function caretInLastLine(editor: Editor): void {
+  const view = editor.prosemirrorView!;
+  const end = view.state.doc.content.size - 3;
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, end)));
+}
+
 describe('closing a block formula’s box (§6.3)', () => {
-  it('keeps the edit on the confirm button', async () => {
+  it('has no close button, only the confirm', async () => {
     const { editor, root } = open(BLOCK);
     await openBlock(editor, root);
-    typeAtEnd(editor, 'mathBlock', 'c');
-    fireEvent.click(boxButton(root, t('spaces.document.math.ok')));
-    await vi.waitFor(() => {
-      expect(allClosed(root)).toBe(true);
-    });
-    expect(sourceOf(editor, 'mathBlock')).toBe('a+bc');
+    const box = root.querySelector('.bn-preview-with-source-popup[data-open="true"] .bn-source-block-popup')!;
+    expect([...box.querySelectorAll('button')].map((button) => button.textContent)).toEqual([t('spaces.document.math.ok')]);
   });
 
-  it('keeps the edit on Enter', async () => {
-    const { editor, root } = open(BLOCK);
-    await openBlock(editor, root);
-    typeAtEnd(editor, 'mathBlock', 'c');
-    press(editor, 'Enter');
-    await vi.waitFor(() => {
-      expect(allClosed(root)).toBe(true);
-    });
-    expect(sourceOf(editor, 'mathBlock')).toBe('a+bc');
-  });
-
-  it('puts the source back on the close button', async () => {
-    const { editor, root } = open(BLOCK);
-    await openBlock(editor, root);
-    typeAtEnd(editor, 'mathBlock', 'c');
-    fireEvent.click(boxButton(root, t('spaces.document.math.close')));
-    await vi.waitFor(() => {
-      expect(allClosed(root)).toBe(true);
-    });
-    expect(sourceOf(editor, 'mathBlock')).toBe('a+b');
-  });
-
-  it('puts the source back on Escape', async () => {
-    const { editor, root } = open(BLOCK);
-    await openBlock(editor, root);
-    typeAtEnd(editor, 'mathBlock', 'c');
-    press(editor, 'Escape');
-    await vi.waitFor(() => {
-      expect(allClosed(root)).toBe(true);
-    });
-    expect(sourceOf(editor, 'mathBlock')).toBe('a+b');
-  });
-
-  it('puts the source back on a press outside the box', async () => {
+  it.each(['confirm', 'Enter', 'Escape', 'moving away'] as const)('keeps the edit on %s', async (how) => {
     const { editor, root } = open([...BLOCK, { type: 'paragraph', content: 'after' }]);
     await openBlock(editor, root);
     typeAtEnd(editor, 'mathBlock', 'c');
-    const outside = [...root.querySelectorAll<HTMLElement>('.bn-inline-content')].find((el) => el.textContent === 'after')!;
-    fireEvent.pointerDown(outside);
-    expect(sourceOf(editor, 'mathBlock')).toBe('a+b');
-  });
-
-  it('empties a formula that opened empty again on Escape', async () => {
-    const { editor, root } = open([{ type: 'mathBlock', content: '' }]);
-    fireEvent.mouseDown(await appear(root, '[role="button"]'));
-    await vi.waitFor(() => {
-      expect(root.querySelector('.bn-preview-with-source-popup[data-open="true"]')).not.toBeNull();
-    });
-    typeAtEnd(editor, 'mathBlock', 'y');
-    press(editor, 'Escape');
+    if (how === 'confirm') fireEvent.click(boxButton(root, t('spaces.document.math.ok')));
+    else if (how === 'moving away') caretInLastLine(editor);
+    else press(editor, how);
     await vi.waitFor(() => {
       expect(allClosed(root)).toBe(true);
     });
-    expect(sourceOf(editor, 'mathBlock')).toBe('');
-  });
-
-  it('leaves the source alone when nothing was typed', async () => {
-    const { editor, root } = open(BLOCK);
-    await openBlock(editor, root);
-    const before = editor.prosemirrorView!.state.doc;
-    press(editor, 'Escape');
-    await vi.waitFor(() => {
-      expect(allClosed(root)).toBe(true);
-    });
-    expect(editor.prosemirrorView!.state.doc.eq(before)).toBe(true);
+    expect(sourceOf(editor, 'mathBlock')).toBe('a+bc');
     expect(editor.getExtension(SourceBlockWithPreviewExtension)?.store.state.popupOpen).toBeUndefined();
   });
 });
 
 describe('closing an inline formula’s box (§6.3)', () => {
-  it('keeps the edit on Enter', async () => {
+  it.each(['Enter', 'Escape', 'ArrowRight'] as const)('keeps the edit on %s', async (key) => {
     const { editor, root } = open(INLINE);
     await openInline(editor, root);
     typeAtEnd(editor, 'math', 'c');
-    press(editor, 'Enter');
+    press(editor, key);
     expect(sourceOf(editor, 'math')).toBe('a+bc');
   });
 
-  it('keeps the edit when the arrow keys walk out of the source', async () => {
+  it('keeps the edit when the confirm button closes it, the caret after the formula', async () => {
     const { editor, root } = open(INLINE);
     await openInline(editor, root);
     typeAtEnd(editor, 'math', 'c');
-    press(editor, 'ArrowRight');
+    fireEvent.click(boxButton(root, t('spaces.document.math.ok')));
     expect(sourceOf(editor, 'math')).toBe('a+bc');
-  });
-
-  it('puts the source back on Escape, the caret after the formula', async () => {
-    const { editor, root } = open(INLINE);
-    await openInline(editor, root);
-    typeAtEnd(editor, 'math', 'c');
-    press(editor, 'Escape');
-    expect(sourceOf(editor, 'math')).toBe('a+b');
     const at = posOf(editor, 'math');
     expect(editor.prosemirrorView!.state.selection.from).toBe(
       at + editor.prosemirrorView!.state.doc.nodeAt(at)!.nodeSize,
     );
-  });
-
-  it('puts the source back on the close button', async () => {
-    const { editor, root } = open(INLINE);
-    await openInline(editor, root);
-    typeAtEnd(editor, 'math', 'c');
-    fireEvent.click(boxButton(root, t('spaces.document.math.close')));
-    expect(sourceOf(editor, 'math')).toBe('a+b');
   });
 });

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * inner#1423 design §10: the six strings the formula puts on screen, in all
+ * inner#1423 design §10: the five strings the formula puts on screen, in all
  * five catalogs. A missing one falls back to English without a sound, so this
  * counts them. `LaTeX` is a format's name and stays in Latin letters in every
  * language.
@@ -18,7 +18,6 @@ const KEYS = [
   'spaces.document.math.empty',
   'spaces.document.math.error',
   'spaces.document.math.ok',
-  'spaces.document.math.close',
 ] as const;
 
 describe('the formula strings', () => {

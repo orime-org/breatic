@@ -12,7 +12,6 @@
  * | Backspace / Delete in an empty source | the formula goes |
  * | Backspace at the start of an open block formula's source | does nothing, or removes the formula when its source is empty |
  * | Enter in an inline source | confirms, the caret after the formula, whatever block the line is |
- * | Escape in an open box | takes back what was typed since it opened and closes it |
  * | ArrowLeft / ArrowRight across an inline formula's edge | the caret goes into its source, or out to right beside the formula |
  * | input into a selected, closed block formula | refused: its source is hidden |
  * | a selection reaching into an inline source from outside | widened to the whole formula |
@@ -30,7 +29,7 @@ import type { ResolvedPos } from '@tiptap/pm/model';
 import { Plugin, PluginKey, Selection, TextSelection, type EditorState } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
-import { cancelOpenFormula, MATH_INLINE } from '@web/spaces/document/document-math';
+import { MATH_INLINE } from '@web/spaces/document/document-math';
 import { markOwnUndoStep } from '@web/spaces/document/document-undo-step';
 
 /** The editor as this file uses it. */
@@ -375,21 +374,13 @@ export const documentMathEditingExtension = createExtension(({ editor }: { edito
   const view = (): EditorView => editor.prosemirrorView!;
   return {
     key: 'document-math',
-    runsBefore: [
-      'document-enter',
-      'document-table-keys',
-      'documentSelectAll',
-      // Escape takes back what was typed before BlockNote's own Escape closes the box.
-      'sourceBlockWithPreview',
-      'sourceInlineContentWithPreview',
-    ],
+    runsBefore: ['document-enter', 'document-table-keys', 'documentSelectAll'],
     prosemirrorPlugins: [rule.plugin, closedInput(editor), wholeFormulaSelection(editor)],
     keyboardShortcuts: {
       Backspace: () => rule.takeBack(view()) || deleteByFormula(editor, view(), true),
       Delete: () => deleteByFormula(editor, view(), false),
       Enter: () => confirmInline(editor, view()),
       'Shift-Enter': () => confirmInline(editor, view()),
-      Escape: () => cancelOpenFormula(editor),
       ArrowRight: () => arrowByFormula(editor, view(), true),
       ArrowLeft: () => arrowByFormula(editor, view(), false),
     },

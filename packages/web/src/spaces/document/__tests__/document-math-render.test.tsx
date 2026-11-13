@@ -140,11 +140,11 @@ describe('the popup', () => {
     });
   });
 
-  it('carries the title, a close button, and the confirm button below the source', async () => {
+  it('carries the title and the confirm button below the source, and no close button', async () => {
     const { root } = open([{ type: 'mathBlock', content: '\\frac{a}{b}' }]);
     const popup = await appear(root, '.bn-source-block-popup');
     expect(popup.textContent).toContain(t('spaces.document.commands.formula'));
-    expect(popup.querySelector(`button[aria-label="${t('spaces.document.math.close')}"]`)).not.toBeNull();
+    expect(popup.querySelectorAll('button')).toHaveLength(1);
     const confirm = [...popup.querySelectorAll('button')].find(
       (button) => button.textContent === t('spaces.document.math.ok'),
     );

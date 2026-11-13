@@ -26,7 +26,7 @@ import * as React from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import katex from 'katex';
 import { autoUpdate, offset, shift, useFloating } from '@floating-ui/react';
-import { Sigma, TriangleAlert, X } from 'lucide-react';
+import { Sigma, TriangleAlert } from 'lucide-react';
 import {
   createBlockSpec,
   createInlineContentSpec,
@@ -39,7 +39,7 @@ import {
 } from '@blocknote/core/extensions';
 import { Fragment, type Node as PMNode, type Schema } from '@tiptap/pm/model';
 import { TextSelection } from '@tiptap/pm/state';
-import type { EditorView, ViewMutationRecord } from '@tiptap/pm/view';
+import type { ViewMutationRecord } from '@tiptap/pm/view';
 
 import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
@@ -275,39 +275,6 @@ function FormulaMarkup({ html, className }: { html: string; className?: string }
 interface FaceActions {
   readonly open: () => void;
   readonly close: () => void;
-  readonly cancel: () => void;
-}
-
-/** What a node view does with an edit the user takes back. */
-interface FormulaEditing {
-  /** Opens the box. */
-  readonly open: () => void;
-  /** Closes the box, keeping what was typed. */
-  readonly close: () => void;
-  /** Writes a source back into the formula. */
-  readonly restore: (source: string) => void;
-}
-
-/** Takes back what was typed in a box and closes it. */
-type Cancel = () => void;
-
-/**
- * Per editor, how to take back the edit in the one box open, for Escape.
- * A box registers itself as it opens and removes itself as it closes.
- */
-const openEdits = new WeakMap<object, Cancel>();
-
-/**
- * Takes back what was typed in the open formula box and closes it, as the
- * close button does.
- * @param editor - The editor.
- * @returns Whether a box was open.
- */
-export function cancelOpenFormula(editor: object): boolean {
-  const cancel = openEdits.get(editor);
-  if (cancel === undefined) return false;
-  cancel();
-  return true;
 }
 
 /**
@@ -368,32 +335,6 @@ const MathFace = React.memo(function MathFace({
     whileElementsMounted: shown ? autoUpdate : undefined,
   });
 
-  // A press outside the open box takes back what was typed, as the body's
-  // other input-and-confirm boxes do (the link field drops its draft).
-  const [wrapper, setWrapper] = React.useState<HTMLElement | null>(null);
-  const holdWrapper = React.useCallback(
-    (element: HTMLElement | null): void => {
-      setWrapper(element);
-      refs.setReference(element);
-    },
-    [refs],
-  );
-  React.useEffect(() => {
-    if (!shown || wrapper === null) return undefined;
-    /**
-     * Takes the edit back when the press lands outside the formula and its box.
-     * @param event - The press.
-     */
-    const onPress = (event: PointerEvent): void => {
-      if (event.target instanceof Node && wrapper.contains(event.target)) return;
-      actions.cancel();
-    };
-    document.addEventListener('pointerdown', onPress, true);
-    return () => {
-      document.removeEventListener('pointerdown', onPress, true);
-    };
-  }, [shown, wrapper, actions]);
-
   const placeSource = React.useCallback(
     (slot: HTMLElement | null): void => {
       if (slot === null || sourceElement.parentElement === slot) return;
@@ -438,7 +379,7 @@ const MathFace = React.memo(function MathFace({
 
   return (
     <Wrapper
-      ref={holdWrapper}
+      ref={refs.setReference}
       className={cn('bn-preview-with-source-popup doc-math', selected && 'ProseMirror-selectednode')}
       data-open={shown ? 'true' : 'false'}
     >
@@ -475,28 +416,12 @@ const MathFace = React.memo(function MathFace({
       >
         <div
           contentEditable={false}
-          className='flex shrink-0 items-center justify-between gap-2 border-b border-border py-1.5 pl-3 pr-1.5'
+          className='flex shrink-0 items-center gap-2 border-b border-border px-3 py-1.5'
         >
           <span className='flex min-w-0 items-center gap-1.5 text-sm font-medium'>
             <Sigma className='h-3.5 w-3.5 shrink-0 text-muted-foreground' aria-hidden />
             <span className='truncate'>{t('spaces.document.commands.formula')}</span>
           </span>
-          <Button
-            variant='ghost'
-            size='compact'
-            aria-label={t('spaces.document.math.close')}
-            className='w-[var(--btn-compact)] px-0 text-muted-foreground'
-            tabIndex={shown ? undefined : -1}
-            onMouseDown={(event) => {
-              event.preventDefault();
-            }}
-            onClick={(event) => {
-              event.stopPropagation();
-              actions.cancel();
-            }}
-          >
-            <X className='h-3.5 w-3.5' />
-          </Button>
         </div>
         <div className='p-3'>
           <pre
@@ -549,26 +474,10 @@ interface FormulaView {
 }
 
 /**
- * Writes a source into the formula node at a position, the caret at its end.
- * @param view - The editor view.
- * @param at - Where the formula node starts.
- * @param source - The LaTeX.
- */
-function replaceSource(view: EditorView, at: number, source: string): void {
-  const { state } = view;
-  const node = state.doc.nodeAt(at);
-  if (node === null) return;
-  const content = source === '' ? [] : [state.schema.text(source)];
-  const tr = state.tr.replaceWith(at + 1, at + node.nodeSize - 1, content);
-  view.dispatch(tr.setSelection(TextSelection.create(tr.doc, at + 1 + source.length)));
-}
-
-/**
  * Mounts a formula's face around the element ProseMirror edits.
  * @param inline - Whether the formula sits inside a line.
  * @param initial - The face's first state.
- * @param editor - The editor, which Escape finds the open box through.
- * @param editing - Opening and closing the box, and writing a source back.
+ * @param actions - Opening and closing the box.
  * @param typeName - The node type the view stays bound to.
  * @param stop - Releases what the caller subscribed to.
  * @returns The node view.
@@ -576,8 +485,7 @@ function replaceSource(view: EditorView, at: number, source: string): void {
 function mountFormula(
   inline: boolean,
   initial: FaceState,
-  editor: AnyEditor,
-  editing: FormulaEditing,
+  actions: FaceActions,
   typeName: string,
   stop: () => void,
 ): FormulaView & { store: FaceStore } {
@@ -593,28 +501,6 @@ function mountFormula(
   // into the box when it commits.
   dom.append(code, chrome);
   const store = faceStore(initial);
-  // The source as the box opened on it, which the close button, Escape and a
-  // press outside put back.
-  let openedWith: string | null = null;
-  /** Puts the source back as it was when the box opened, and closes the box. */
-  const cancel = (): void => {
-    const before = openedWith;
-    if (before !== null && before !== store.get().source) editing.restore(before);
-    editing.close();
-  };
-  const actions: FaceActions = { open: editing.open, close: editing.close, cancel };
-  const stopWatching = store.subscribe(() => {
-    const { open, editable, source } = store.get();
-    if (open && editable) {
-      if (openedWith === null) {
-        openedWith = source;
-        openEdits.set(editor, cancel);
-      }
-      return;
-    }
-    openedWith = null;
-    if (openEdits.get(editor) === cancel) openEdits.delete(editor);
-  });
   const root: Root = createRoot(chrome);
   root.render(<MathFace store={store} actions={actions} inline={inline} source={code} host={dom} />);
   return {
@@ -631,8 +517,6 @@ function mountFormula(
     ignoreMutation: (mutation) => mutation.type !== 'selection' && !code.contains(mutation.target),
     destroy: () => {
       stop();
-      stopWatching();
-      if (openEdits.get(editor) === cancel) openEdits.delete(editor);
       // React refuses a synchronous unmount while it is rendering, and
       // ProseMirror can tear views down from inside a React commit.
       queueMicrotask(() => {
@@ -745,7 +629,6 @@ export function mathBlockSpec(): unknown {
             selected: false,
             editable: editor.isEditable,
           },
-          editor,
           {
             open: () => {
               if (!editor.isEditable) return;
@@ -756,16 +639,6 @@ export function mathBlockSpec(): unknown {
             close: () => {
               preview.store.setState((state) => ({ ...state, popupOpen: undefined }));
               editor.focus();
-            },
-            restore: (source) => {
-              const pmView = editor.prosemirrorView!;
-              let at = -1;
-              pmView.state.doc.descendants((node, pos) => {
-                if (at >= 0) return false;
-                if (node.attrs['id'] === block.id) at = pos + 1;
-                return at < 0;
-              });
-              if (at >= 0) replaceSource(pmView, at, source);
             },
           },
           MATH_BLOCK,
@@ -821,7 +694,6 @@ export function mathInlineSpec(): unknown {
         view = mountFormula(
           true,
           { ...sourcesOf(node), open: false, selected: false, editable: editor.isEditable },
-          editor,
           {
             open: () => {
               const pos = getPos();
@@ -840,10 +712,6 @@ export function mathInlineSpec(): unknown {
                 pmView.state.tr.setSelection(TextSelection.create(pmView.state.doc, pos + current.nodeSize)),
               );
               editor.focus();
-            },
-            restore: (source) => {
-              const pos = getPos();
-              if (pos !== undefined) replaceSource(editor.prosemirrorView!, pos, source);
             },
           },
           MATH_INLINE,

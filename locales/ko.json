@@ -2450,8 +2450,7 @@
         "placeholder": "LaTeX 입력(예: E = mc^2)",
         "empty": "수식 추가",
         "error": "수식에 오류가 있습니다",
-        "ok": "확인",
-        "close": "닫기"
+        "ok": "확인"
       },
       "versions": {
         "title": "스냅샷",

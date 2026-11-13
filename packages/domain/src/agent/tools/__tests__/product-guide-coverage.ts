@@ -1183,7 +1183,6 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "spaces.document.blockHandle.dragTip": { excluded: REASONS.SCREEN_READER, look: /a handle of six dots/ },
   "spaces.document.blockHandle.insertHere": { excluded: REASONS.SCREEN_READER, look: /shows a plus at its left/ },
   "spaces.document.math.placeholder": { excluded: REASONS.SAYS_WHAT_TO_TYPE },
-  "spaces.document.math.close": { excluded: REASONS.SCREEN_READER, look: /the cross at its top right, Esc or a click outside closes it/ },
   "spaces.document.media.uploading": { excluded: REASONS.PASSING },
   "spaces.document.media.uploadingPercent": { excluded: REASONS.PASSING },
   "spaces.document.media.notPasted": { excluded: REASONS.SAYS_WHAT_HAPPENED },

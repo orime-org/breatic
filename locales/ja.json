@@ -2450,8 +2450,7 @@
         "placeholder": "LaTeX を入力（例：E = mc^2）",
         "empty": "数式を追加",
         "error": "数式にエラーがあります",
-        "ok": "OK",
-        "close": "閉じる"
+        "ok": "OK"
       },
       "versions": {
         "title": "スナップショット",

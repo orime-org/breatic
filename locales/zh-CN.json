@@ -2450,8 +2450,7 @@
         "placeholder": "输入 LaTeX，例如 E = mc^2",
         "empty": "添加公式",
         "error": "公式有误",
-        "ok": "确定",
-        "close": "关闭"
+        "ok": "确定"
       },
       "versions": {
         "title": "快照",

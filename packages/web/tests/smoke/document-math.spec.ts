@@ -258,19 +258,18 @@ test('the arrow keys walk into an inline source and out again, and Backspace aft
   expect(await lines(page)).toEqual(['paragraph:a [math:xy]']);
 });
 
-for (const how of ['Escape', 'a click outside', 'the close button', 'the confirm button'] as const) {
+for (const how of ['Escape', 'a click outside', 'the confirm button'] as const) {
   test(`the box closes on ${how}`, async () => {
     await openFreshDocument(page);
     await insertFromPlus(page);
     await page.keyboard.type('y');
     if (how === 'Escape') await page.keyboard.press('Escape');
     else if (how === 'a click outside') await page.mouse.click(5, 5);
-    else if (how === 'the close button') await page.locator(POPUP).getByRole('button', { name: 'Close' }).click();
     else await page.locator(POPUP).getByRole('button', { name: 'OK', exact: true }).click();
     await expect(page.locator(OPEN)).toHaveCount(0);
-    // Only the confirm keeps what was typed; the other three put the source
-    // back as the box opened on it, here empty.
-    expect((await lines(page))[0]).toBe(how === 'the confirm button' ? 'mathBlock:y' : 'mathBlock:');
+    // The formula in the body is the live preview: every way out keeps what
+    // was typed (design §6.3).
+    expect((await lines(page))[0]).toBe('mathBlock:y');
   });
 }
 
@@ -416,7 +415,7 @@ test('clicking a formula puts the caret at the end of its source', async () => {
   await openFreshDocument(page);
   await insertFromPlus(page);
   await page.keyboard.type('pq');
-  // Enter confirms and keeps the source; Escape would take it back.
+  // Enter closes the box and keeps the source.
   await page.keyboard.press('Enter');
   await page.locator(`${EDITOR} .doc-math .bn-preview-container`).first().click();
   await expect(page.locator(OPEN)).toHaveCount(1);
