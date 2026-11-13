@@ -7,7 +7,7 @@
  * the global API.
  */
 
-import { db, projectsRepo, regionOutboxRepo, studioDirectoryRepo, type DbTx } from "@breatic/core";
+import { db, isDeadlock, projectsRepo, regionOutboxRepo, studioDirectoryRepo, type DbTx } from "@breatic/core";
 import * as studioMembersRepo from "@domain/auth/studioMembers.repo.js";
 import * as usersRepo from "@domain/auth/user.repo.js";
 import { releaseDesignations } from "@domain/credit/creditLot.service.js";
@@ -135,4 +135,85 @@ export async function getProfiles(userIds: readonly string[]): Promise<Record<st
     };
   }
   return profiles;
+}
+
+/**
+ * Align the directory with the region tables once, after the global region's
+ * upgrade (inner#1955). Old processes running during the upgrade wrote
+ * Studios, members, Projects, transfers and removals to the region tables
+ * only; once they have all exited, this runs one short transaction per
+ * Studio, in the order every `studio:{id}` writer locks (the Studio row, its
+ * members, then the directory row), and retries only that Studio on a
+ * deadlock. A mismatched admin moves only through
+ * {@link changeDirectoryAdmin}, which releases the old admin's designations;
+ * a Studio with an accepting transfer keeps its directory admin. The
+ * completion mark makes a second run do nothing.
+ * @returns How many Studios it aligned, or 0 when it had already run.
+ */
+export async function reconcileDirectoryAfterUpgrade(): Promise<number> {
+  if (await studioDirectoryRepo.isReconciled()) return 0;
+  // Newest first: the Studios old processes created during the upgrade are
+  // the ones missing from the directory altogether.
+  const studioIds = await studioRepo.listLiveIds();
+  for (const studioId of studioIds) {
+    for (;;) {
+      try {
+        await reconcileStudio(studioId);
+        break;
+      } catch (err) {
+        if (!isDeadlock(err)) throw err;
+      }
+    }
+  }
+  await studioDirectoryRepo.markReconciled();
+  return studioIds.length;
+}
+
+/**
+ * Align one Studio's directory row, members, Projects and open offer with the
+ * region tables.
+ * @param studioId - The Studio.
+ * @returns Once its transaction commits.
+ */
+async function reconcileStudio(studioId: string): Promise<void> {
+  await db.transaction(async (tx) => {
+    await studioRepo.lockStudio(studioId, tx);
+    const studio = await studioRepo.getById(studioId, tx);
+    if (studio === null) return;
+    const members = await studioMembersRepo.lockMembership(studioId, tx);
+    const admin = members.find((member) => member.role === "admin")?.userId ?? studio.createdByUserId;
+    const row = await studioDirectoryRepo.lockRow(studioId, tx);
+    if (row === null) {
+      await studioDirectoryRepo.insertRow(
+        {
+          studioId,
+          slug: studio.slug,
+          region: null,
+          type: studio.type,
+          name: studio.name,
+          adminUserId: admin,
+          createdByUserId: studio.createdByUserId,
+          state: "live",
+        },
+        tx,
+      );
+    }
+    await studioDirectoryRepo.updateProfile(studioId, { name: studio.name, slug: studio.slug, avatarUrl: studio.avatarUrl }, tx);
+    const current = new Set(members.map((member) => member.userId));
+    for (const member of members) await studioDirectoryRepo.upsertMember(studioId, member.userId, member.role, tx);
+    for (const held of await studioDirectoryRepo.listMembers(studioId, tx)) {
+      if (!current.has(held.userId)) await studioDirectoryRepo.removeMember(studioId, held.userId, tx);
+    }
+    for (const projectId of await projectsRepo.listIdsInStudio(studioId, tx)) {
+      await studioDirectoryRepo.recordProject(projectId, studioId, tx);
+    }
+    const offer = await studioTransfersRepo.findLiveForContainer(studioId);
+    await studioDirectoryRepo.setTransferPendingUntil(studioId, offer?.expiresAt ?? null, tx);
+    if (row !== null && row.adminUserId !== admin && !(await studioTransfersRepo.isAccepting(studioId, tx))) {
+      await changeDirectoryAdmin(
+        { studioId, fromUserId: row.adminUserId, toUserId: admin, changeId: `reconcile:${studioId}` },
+        tx,
+      );
+    }
+  });
 }

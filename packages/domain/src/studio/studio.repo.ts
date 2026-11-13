@@ -11,7 +11,7 @@
  * `studios_slug_idx`.
  */
 
-import { and, eq, ne, isNull, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, ne, isNull, inArray, sql } from "drizzle-orm";
 import { db } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { studios, studioMembers } from "@breatic/core";
@@ -357,6 +357,19 @@ export async function getById(
     .where(and(eq(studios.id, id), isNull(studios.deletedAt)))
     .limit(1);
   return rows[0] ? toEntity(rows[0]) : null;
+}
+
+/**
+ * The ids of every live Studio this region holds, newest first.
+ * @returns Them.
+ */
+export async function listLiveIds(): Promise<string[]> {
+  const rows = await db
+    .select({ id: studios.id })
+    .from(studios)
+    .where(isNull(studios.deletedAt))
+    .orderBy(desc(studios.createdAt));
+  return rows.map((row) => row.id);
 }
 
 /**

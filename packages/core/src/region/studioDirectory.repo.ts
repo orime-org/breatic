@@ -9,7 +9,14 @@
 
 import { and, eq, inArray, isNull, lte, sql } from "drizzle-orm";
 import { db, type DbTx } from "@core/db/client.js";
-import { projectDirectory, slugReservations, studioDirectory, studioDirectoryMembers, userRegions } from "@core/db/schema.js";
+import {
+  directoryReconciliations,
+  projectDirectory,
+  slugReservations,
+  studioDirectory,
+  studioDirectoryMembers,
+  userRegions,
+} from "@core/db/schema.js";
 
 /** The directory facts the credit ledger and transfers decide on. */
 export interface DirectoryRow {
@@ -424,4 +431,24 @@ export async function releaseSlugReservation(slug: string, studioId: string, tx:
     .update(slugReservations)
     .set({ deletedAt: new Date() })
     .where(and(eq(slugReservations.slug, slug), eq(slugReservations.studioId, studioId), isNull(slugReservations.deletedAt)));
+}
+
+/**
+ * Whether the reconciliation after the global region's upgrade has finished.
+ * @returns True once its completion mark is written.
+ */
+export async function isReconciled(): Promise<boolean> {
+  const [row] = await db
+    .select({ id: directoryReconciliations.id })
+    .from(directoryReconciliations)
+    .where(isNull(directoryReconciliations.deletedAt))
+    .limit(1);
+  return row !== undefined;
+}
+
+/**
+ * Record that the reconciliation after the upgrade has finished.
+ */
+export async function markReconciled(): Promise<void> {
+  await db.insert(directoryReconciliations).values({});
 }
