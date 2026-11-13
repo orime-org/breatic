@@ -422,6 +422,18 @@ function withRowIds(previous: readonly CutRow[], values: readonly number[]): Cut
 }
 
 /**
+ * The cut a handle writes for a frame: its start taken up to the next whole microsecond, the precision the player keeps a
+ * time in (and so the time Add at cursor writes), which still lies inside that frame.
+ * @param table - The frame table.
+ * @param index - The frame.
+ * @returns The cut in seconds.
+ * @throws {RangeError} When the frame lies outside the table.
+ */
+function frameCut(table: VideoPresentationTable, index: number): number {
+  return Math.ceil(presentationFrameAt(table, index).pts * 1e6 - 1e-6) / 1e6;
+}
+
+/**
  * Edits split cuts on the source clock (demo video-controls.tsx CutEditor and PlaybackStrip cuts): numbered handles on the
  * filmstrip that drag (committed once on release), step one frame with the arrow keys and go with Delete; the count with
  * Add at cursor; one row per cut; and one button per segment that plays exactly that range in the node's player.
@@ -485,7 +497,7 @@ function VideoCutEditor(props: VideoToolControlsProps & { table: VideoPresentati
     const time = box === undefined || box.width <= 0 ? 0 : Math.max(0, Math.min(1, (event.clientX - box.left) / box.width)) * duration;
     const last = presentationFrameCount(table) - 1;
     // A one-frame video has no frame a cut can start, and the release below commits nothing at 0.
-    return last < 1 ? 0 : presentationFrameAt(table, Math.max(1, Math.min(last, presentationCoveringFrame(table, time)))).pts;
+    return last < 1 ? 0 : frameCut(table, Math.max(1, Math.min(last, presentationCoveringFrame(table, time))));
   };
   /**
    * Writes a typed row in place, unsorted and not merged, so the typed text stays on the row being typed.
@@ -522,7 +534,7 @@ function VideoCutEditor(props: VideoToolControlsProps & { table: VideoPresentati
    */
   const step = (index: number, backwards: boolean): void => {
     const neighbour = presentationCoveringFrame(table, cuts[index]!) + (backwards ? -1 : 1);
-    const pts = neighbour >= 0 && neighbour < presentationFrameCount(table) ? presentationFrameAt(table, neighbour).pts : undefined;
+    const pts = neighbour >= 0 && neighbour < presentationFrameCount(table) ? frameCut(table, neighbour) : undefined;
     if (pts !== undefined && pts > 0 && pts < duration) commit(moveTo(index, pts));
   };
   /**

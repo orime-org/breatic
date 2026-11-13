@@ -486,6 +486,27 @@ describe('stepping a handle that is not on a frame start', () => {
   });
 });
 
+describe('a cut a handle writes on a 30 fps video, whose frame starts are not whole microseconds', () => {
+  // 6 s at 30 fps: frame k starts at k/30 s.
+  const thirty = { schemaVersion: 1 as const, timescale: 30, runs: [{ start: 0, count: 180, step: 1, duration: 1 }] };
+
+  it('writes the frame start a step lands on to the next whole microsecond, inside that frame', () => {
+    const { onChange } = mount({ draft: draftWith([2]), frameTable: thirty });
+    fireEvent.keyDown(screen.getByTestId('video-cut-handle-0'), { key: 'ArrowRight' });
+    expect(onChange).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ params: { cuts: [2.033334] } }));
+  });
+
+  it('writes the last frame start a drag past the end lands on to the next whole microsecond', () => {
+    const { onChange } = mount({ draft: draftWith([2]), frameTable: thirty });
+    layOutTrack();
+    const handle = screen.getByTestId('video-cut-handle-0');
+    fireEvent.pointerDown(handle, { button: 0, clientX: 166, pointerId: 1 });
+    fireEvent.pointerMove(handle, { clientX: 340, pointerId: 1 });
+    fireEvent.pointerUp(handle, { clientX: 340, pointerId: 1 });
+    expect(onChange).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ params: { cuts: [5.966667] } }));
+  });
+});
+
 describe('Add at cursor while the source plays', () => {
   let frames: Map<number, FrameRequestCallback>;
   let nextFrame: number;
