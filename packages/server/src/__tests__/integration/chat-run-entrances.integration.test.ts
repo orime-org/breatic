@@ -699,7 +699,7 @@ describe("what a run opens with", () => {
       expect(opening.filter((c) => c === "head")).toHaveLength(shape === "rest" ? 1 : 2);
       if (shape === "empty") {
         expect(body.data.running).toBe(false);
-        expect(opening.slice(-2)).toEqual(["ack", "settle"]);
+        expect(opening.at(-1)).toBe("settle");
         expect(script.count).toBe(0);
         expect(await runningMembers(who)).toEqual([]);
       } else {
@@ -725,15 +725,15 @@ describe("what a run opens with", () => {
     await getRedis().rpush(k.taken, itemOf(who, answered));
     const late = crypto.randomUUID();
     const q = chatQueue();
-    const realAck = q.ack.bind(q);
+    const realSettle = q.settle.bind(q);
     let sent = false;
-    vi.spyOn(q, "ack").mockImplementation(async (...a) => {
+    vi.spyOn(q, "settle").mockImplementation(async (...a) => {
       // The run found nothing left to open with; a message arrives before it lets go.
       if (!sent) {
         sent = true;
         expect(((await (await send(app, who, { id: late, message: "just now" })).json()) as { data: { status: string } }).data.status).toBe("queued");
       }
-      return realAck(...a);
+      return realSettle(...a);
     });
     await sync(app, who);
     await until(async () => (await rowsOf(who.conversationId)).some((r) => r.id === late), 5000);

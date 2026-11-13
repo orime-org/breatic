@@ -75,7 +75,6 @@ describe("a user row written under its message's id", () => {
     const first = await messageRepo.addUserMessage(c, { role: "user", parts: said("hello") }, NO_CARD, { messageId: id });
     const again = await messageRepo.addUserMessage(c, { role: "user", parts: said("hello") }, NO_CARD, { messageId: id });
     expect(again.turnIndex).toBe(first.turnIndex);
-    expect(again.reused).toBe(true);
     const rows = await sql<{ id: string; turn_index: number }[]>`SELECT id, turn_index FROM conversation_messages WHERE conversation_id = ${c}`;
     expect(rows).toEqual([{ id, turn_index: first.turnIndex }]);
   });

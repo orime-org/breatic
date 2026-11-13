@@ -267,7 +267,7 @@ export async function addUserMessage(
   message: MessageInput,
   settle: (toolCallId: string, toolName: string) => AskSettlement,
   opts: { messageId?: string } = {},
-): Promise<{ turnIndex: number; closedAsks: string[]; reused?: true }> {
+): Promise<{ turnIndex: number; closedAsks: string[] }> {
   return db.transaction(async (tx) => {
     if (opts.messageId !== undefined) {
       const [held] = await tx
@@ -277,7 +277,7 @@ export async function addUserMessage(
         .limit(1);
       if (held !== undefined) {
         if (held.conversationId !== id || held.role !== "user") throw new ConflictError(t("server.error.conflict"));
-        return { turnIndex: held.turnIndex, closedAsks: [], reused: true };
+        return { turnIndex: held.turnIndex, closedAsks: [] };
       }
     }
     const turnIndex = await insertIn(tx, id, message, undefined, opts.messageId);

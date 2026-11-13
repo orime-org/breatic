@@ -283,7 +283,6 @@ describe("claim", () => {
     const { c, k } = fresh();
     const out = await q.claim(c);
     expect(out.status).toBe("idle");
-    expect(out.queue).toEqual([]);
     expect(await getRedis().exists(k.active)).toBe(0);
   });
 

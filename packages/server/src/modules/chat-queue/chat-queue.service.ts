@@ -37,9 +37,7 @@ export type EnqueueResult =
   | { status: "queued" | "duplicate" | "full"; queue: QueueItem[] };
 
 /** What a sync found, or the run it opened. */
-export type ClaimResult =
-  | { status: "start"; runId: string; queue: QueueItem[] }
-  | { status: "running" | "awaiting" | "idle"; queue: QueueItem[] };
+export type ClaimResult = { status: "start"; runId: string } | { status: "running" | "awaiting" | "idle" };
 
 /** How a run ended, which decides what happens to its conversation next. */
 export type RunEnding =
@@ -92,12 +90,12 @@ redis.call('set', KEYS[1], ARGV[5], 'PX', ARGV[6])
 return append({'start', ARGV[5]}, KEYS[2])`;
 
 /** KEYS active, awaiting, taken, queue; ARGV newRunId, leaseMs. */
-const CLAIM = `${APPEND}
-if redis.call('exists', KEYS[1]) == 1 then return append({'running', ''}, KEYS[4]) end
-if redis.call('exists', KEYS[2]) == 1 then return append({'awaiting', ''}, KEYS[4]) end
-if redis.call('llen', KEYS[3]) == 0 and redis.call('llen', KEYS[4]) == 0 then return append({'idle', ''}, KEYS[4]) end
+const CLAIM = `
+if redis.call('exists', KEYS[1]) == 1 then return {'running', ''} end
+if redis.call('exists', KEYS[2]) == 1 then return {'awaiting', ''} end
+if redis.call('llen', KEYS[3]) == 0 and redis.call('llen', KEYS[4]) == 0 then return {'idle', ''} end
 redis.call('set', KEYS[1], ARGV[1], 'PX', ARGV[2])
-return append({'start', ARGV[1]}, KEYS[4])`;
+return {'start', ARGV[1]}`;
 
 /**
  * KEYS active, awaiting, taken; ARGV runId, leaseMs. Busy while a run holds
@@ -260,7 +258,7 @@ export function createChatQueue(redis: Redis): ChatQueue {
     },
     async claim(c) {
       const k = keysOf(c);
-      const [status, runId, ...queue] = (await redis.eval(
+      const [status, runId] = (await redis.eval(
         CLAIM,
         4,
         k.active,
@@ -270,8 +268,8 @@ export function createChatQueue(redis: Redis): ChatQueue {
         newRunId(),
         leaseMs(),
       )) as string[];
-      if (status === "start") return { status, runId: runId!, queue: items(queue) };
-      return { status: status as "running" | "awaiting" | "idle", queue: items(queue) };
+      if (status === "start") return { status, runId: runId! };
+      return { status: status as "running" | "awaiting" | "idle" };
     },
     async resume(c, runId) {
       const k = keysOf(c);
