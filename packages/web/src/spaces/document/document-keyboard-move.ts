@@ -18,8 +18,9 @@
  * BlockNote's rule, read through the same editor calls it makes
  * (`getMoveUpPlacement` / `getMoveDownPlacement`): past a sibling with no
  * rows under it; to the end or start of the rows under a sibling that has
- * some; out of the row above when there is no sibling that way. Its column
- * check does not apply — this schema has no columns.
+ * some; out of the row above when there is no sibling that way. Its own
+ * column check names BlockNote's column type; ours is `docColumn`, stopped
+ * here with the cells.
  */
 
 import { createExtension } from '@blocknote/core';
@@ -43,9 +44,8 @@ import {
   DOC_TABLE_CELL,
   DOC_TABLE_HEADER,
   DOC_TABLE_ROW,
-  cellDepthOf,
-  tableAround,
 } from '@web/spaces/document/document-table-nodes';
+import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-nodes';
 
 /** A row as the editor's block calls hand it back. */
 interface BlockLike {
@@ -74,45 +74,45 @@ interface Placement {
   readonly side: 'before' | 'after';
 }
 
-/**
- * The cell and the table a block, a row or a cell stands in.
- * @param doc - The document.
- * @param blockId - The block.
- * @returns The innermost cell's id and the table's id; null where there is none.
- */
-function cellAndTableOf(doc: PMNode, blockId: string): { cell: string | null; table: string | null } {
-  const row = rowById(doc, blockId);
-  if (row === undefined) return { cell: null, table: null };
-  const $row = doc.resolve(row.from);
-  const cell = cellDepthOf($row);
-  const table = tableAround($row);
-  return {
-    cell: cell < 0 ? null : String($row.node(cell).attrs['id']),
-    table: table === null ? null : String(table.node.attrs['id']),
-  };
-}
+/** What a block's own body is: a cell, or a column (inner#1314). */
+const BODIES = new Set<string>([DOC_TABLE_CELL, DOC_TABLE_HEADER, DOC_COLUMN]);
+
+/** What is carried whole, as one block of the body it stands in. */
+const CARRIERS = new Set<string>([DOC_TABLE, DOC_COLUMN_LIST]);
+
+/** Where a block stops: the top or bottom of a cell or a column. */
+const STOPS = new Set<string>([...TABLE_PARTS, DOC_COLUMN]);
 
 /**
- * What a move carries. Blocks all in one cell move as themselves. Otherwise a
- * table any of them is in, or any row or cell among them belongs to, is
- * carried whole, as one block of the body (design 5.3).
+ * What a move carries. Blocks all in one body (the page, a cell, a column)
+ * move as themselves. Otherwise each is carried by the table or column group
+ * it stands in right inside the innermost body holding them all, as one block
+ * of that body (design 5.3; inner#1314 design 5.1).
  * @param editor - The editor.
  * @param blocks - The selected blocks, or the caret's.
  * @returns The blocks to move, in order.
  */
 function unitsOf(editor: MoveEditor, blocks: readonly BlockLike[]): BlockLike[] {
   const doc = editor.prosemirrorView.state.doc;
-  const around = blocks.map((block) => cellAndTableOf(doc, block.id));
-  const firstCell = around[0]?.cell ?? null;
-  const oneCell =
-    firstCell !== null &&
-    blocks.every((block, index) => !TABLE_PARTS.has(block.type) && around[index]!.cell === firstCell);
-  if (oneCell) return [...blocks];
+  const rows = blocks.map((block) => rowById(doc, block.id));
+  if (rows.some((row) => row === undefined)) return [...blocks];
+  const $rows = rows.map((row) => doc.resolve(row!.from));
+  const $first = $rows[0];
+  if ($first === undefined) return [];
+  const shared = Math.min(...$rows.map(($row) => $first.sharedDepth($row.pos)));
+  let body = shared;
+  while (body > 0 && !BODIES.has($first.node(body).type.name)) body -= 1;
   const units: BlockLike[] = [];
   const seen = new Set<string>();
-  blocks.forEach((block, index) => {
-    const tableId = around[index]!.table;
-    const unit = tableId === null ? block : editor.getBlock(tableId);
+  $rows.forEach(($row, index) => {
+    let unit: BlockLike | undefined = blocks[index];
+    for (let depth = body + 1; depth <= $row.depth; depth += 1) {
+      const node = $row.node(depth);
+      if (CARRIERS.has(node.type.name)) {
+        unit = editor.getBlock(String(node.attrs['id']));
+        break;
+      }
+    }
     if (unit !== undefined && !seen.has(unit.id)) {
       seen.add(unit.id);
       units.push(unit);
@@ -122,8 +122,8 @@ function unitsOf(editor: MoveEditor, blocks: readonly BlockLike[]): BlockLike[] 
 }
 
 /**
- * Where the rows go on the way up. A block at the top of a cell stays; a
- * table above is passed as one block.
+ * Where the rows go on the way up. A block at the top of a cell or a column
+ * stays; a table or a column group above is passed as one block.
  * @param editor - The editor.
  * @param first - The first row being moved.
  * @returns The place, or null when nothing is above to move past.
@@ -132,19 +132,19 @@ function placementUp(editor: MoveEditor, first: BlockLike): Placement | null {
   const prev = editor.getPrevBlock(first);
   if (prev === undefined) {
     const parent = editor.getParentBlock(first);
-    return parent === undefined || TABLE_PARTS.has(parent.type)
+    return parent === undefined || STOPS.has(parent.type)
       ? null
       : { referenceId: parent.id, side: 'before' };
   }
-  const under = prev.type === DOC_TABLE ? undefined : prev.children[prev.children.length - 1];
+  const under = CARRIERS.has(prev.type) ? undefined : prev.children[prev.children.length - 1];
   return under === undefined
     ? { referenceId: prev.id, side: 'before' }
     : { referenceId: under.id, side: 'after' };
 }
 
 /**
- * Where the rows go on the way down. A block at the bottom of a cell stays; a
- * table below is passed as one block.
+ * Where the rows go on the way down. A block at the bottom of a cell or a
+ * column stays; a table or a column group below is passed as one block.
  * @param editor - The editor.
  * @param last - The last row being moved.
  * @returns The place, or null when nothing is below to move past.
@@ -153,11 +153,11 @@ function placementDown(editor: MoveEditor, last: BlockLike): Placement | null {
   const next = editor.getNextBlock(last);
   if (next === undefined) {
     const parent = editor.getParentBlock(last);
-    return parent === undefined || TABLE_PARTS.has(parent.type)
+    return parent === undefined || STOPS.has(parent.type)
       ? null
       : { referenceId: parent.id, side: 'after' };
   }
-  const under = next.type === DOC_TABLE ? undefined : next.children[0];
+  const under = CARRIERS.has(next.type) ? undefined : next.children[0];
   return under === undefined
     ? { referenceId: next.id, side: 'after' }
     : { referenceId: under.id, side: 'before' };
