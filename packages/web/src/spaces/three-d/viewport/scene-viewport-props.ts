@@ -72,7 +72,29 @@ export interface SceneViewportProps {
    * every hold, so a placement reuses the template the view will draw.
    */
   onResources?: (acquire: SceneModelAcquire | null) => void;
+  /** Told this view's capture while it lives, and null before it is disposed. */
+  onCapture?: (capture: SceneFrameCapture | null) => void;
+  /** Stops orbiting and zooming while a capture is on screen. */
+  viewLocked?: boolean;
 }
+
+/** A rectangle in viewport pixels. */
+export interface SceneViewportRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** RGBA bytes read back from a capture, rows bottom-up as WebGL reads them. */
+export interface CapturedPixels {
+  width: number;
+  height: number;
+  pixels: Uint8Array;
+}
+
+/** Render one viewport rectangle at a given size, without the editing helpers. */
+export type SceneFrameCapture = (frame: SceneViewportRect, size: { width: number; height: number }) => Promise<CapturedPixels>;
 
 /** Hold one model through the viewport's own cache, measured for placing it. */
 export type SceneModelAcquire = (source: SceneObject['model']) => MeasuredSceneModelLease;

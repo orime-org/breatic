@@ -62,6 +62,7 @@ import {
 } from '@web/pages/project/chrome/left-floating-menu/LeftFloatingMenu';
 import { TopBar, toCreditsReadout } from '@web/pages/project/chrome/top-bar/TopBar';
 import { useDocumentProposalRouting } from '@web/pages/project/use-document-proposal-routing';
+import { useCanvasRevealRouting } from '@web/pages/project/use-canvas-reveal-routing';
 import { useRefreshOnReauth } from '@web/pages/project/use-refresh-on-reauth';
 import { useRenameProject } from '@web/features/project-manage/use-rename-project';
 import {
@@ -382,6 +383,8 @@ function ProjectWorkspace({
     dispatchTabs({ type: 'open', spaceId });
   }, []);
   useDocumentProposalRouting(spaces, tabs.openIds, tabs.activeId, openSpace, metaSynced);
+  // A 3D capture's "View" press opens its canvas here, where the strip is held (#1411).
+  useCanvasRevealRouting(spaces, tabs.activeId, openSpace, metaSynced);
 
   // Hand the strip back to the browser so the next visit opens on it. Held
   // until `ready`, because the strip is empty before the Spaces arrive and
