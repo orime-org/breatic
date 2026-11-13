@@ -22,7 +22,8 @@ vi.mock('@web/data/api/chat', async (importOriginal) => {
     chatApi: {
       openChat: vi.fn(),
       messagesBefore: vi.fn(),
-      readConversation: vi.fn(),
+      // Every conversation here opens empty, and reads back the same.
+      readConversation: vi.fn(async (id: string) => ({ conversation: { id }, messages: [], hasMore: false })),
       createConversation: vi.fn(),
       renameConversation: vi.fn(),
       deleteConversation: vi.fn(),
