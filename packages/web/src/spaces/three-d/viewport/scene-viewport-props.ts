@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import type { SceneImportLimits, SceneObject, ScenePose } from '@breatic/shared';
+import type { SceneImportLimits, SceneModelFile, SceneObject, ScenePose } from '@breatic/shared';
 import type { MeasuredSceneModelLease } from '@web/spaces/three-d/viewport/model-resources';
 
 /** Plain tuples keep the Project shell outside the lazy Three dependency graph. */
@@ -97,4 +97,4 @@ export interface CapturedPixels {
 export type SceneFrameCapture = (frame: SceneViewportRect, size: { width: number; height: number }) => Promise<CapturedPixels>;
 
 /** Hold one model through the viewport's own cache, measured for placing it. */
-export type SceneModelAcquire = (source: SceneObject['model']) => MeasuredSceneModelLease;
+export type SceneModelAcquire = (source: SceneModelFile) => MeasuredSceneModelLease;

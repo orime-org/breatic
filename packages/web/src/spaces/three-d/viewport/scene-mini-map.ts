@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { Box3, Color, DoubleSide, type Group, HemisphereLight, Mesh, MeshBasicMaterial, MeshStandardMaterial, OrthographicCamera, Plane, Raycaster, RingGeometry, Scene, Vector2, Vector3, WebGLRenderer } from 'three';
-import type { SceneObject } from '@breatic/shared';
+import { isSceneModelFile, type SceneObject } from '@breatic/shared';
 import type { ModelResourceCache, SceneModelLease } from '@web/spaces/three-d/viewport/model-resources';
 import { applyPose } from '@web/spaces/three-d/viewport/pose-rig';
 
@@ -91,10 +91,11 @@ export class SceneMiniMapRuntime {
       if (!object || !ready.has(id) || JSON.stringify(object.model) !== item.source) this.remove(id);
     }
     for (const object of objects) {
-      if (!ready.has(object.id)) continue;
+      const { model } = object;
+      if (!ready.has(object.id) || !isSceneModelFile(model)) continue;
       let item = this.items.get(object.id);
       if (!item) {
-        const created: OverviewItem = { source: JSON.stringify(object.model), lease: this.resources.acquire(object.model), root: null };
+        const created: OverviewItem = { source: JSON.stringify(model), lease: this.resources.acquire(model), root: null };
         item = created; this.items.set(object.id, item);
         void created.lease.ready.then((root) => {
           if (this.disposed || this.items.get(object.id) !== created) { created.lease.release(); return; }

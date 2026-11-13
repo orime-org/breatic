@@ -5,7 +5,7 @@ import { Box3, BoxHelper, Color, DirectionalLight, GridHelper, Group, Hemisphere
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControlsGizmo } from 'three/addons/controls/TransformControls.js';
 import type { Bone, Intersection, Object3D } from 'three';
-import type { SceneObject, ScenePose } from '@breatic/shared';
+import { isSceneModelFile, type SceneModelFile, type SceneObject, type ScenePose } from '@breatic/shared';
 import { displayedObjects, previewedObjectIds } from '@web/spaces/three-d/viewport/scene-display';
 import { applyPose, poseRigOf, type PoseRig } from '@web/spaces/three-d/viewport/pose-rig';
 import { SceneMiniMapRuntime } from '@web/spaces/three-d/viewport/scene-mini-map';
@@ -157,7 +157,7 @@ export class SceneViewportRuntime {
    * @returns The bounds and this holder's release.
    * @throws {Error} The bounds reject when the model cannot load.
    */
-  readonly acquireModel = (source: SceneObject['model']): MeasuredSceneModelLease => acquireMeasured(this.resources, source);
+  readonly acquireModel = (source: SceneModelFile): MeasuredSceneModelLease => acquireMeasured(this.resources, source);
   private readonly items = new Map<string, RenderedObject>();
   private overview: SceneMiniMapRuntime | null = null;
   private overviewHost: HTMLDivElement | null = null;
@@ -350,6 +350,7 @@ export class SceneViewportRuntime {
     this.displayed = displayedObjects(props.objects, local, props.remotePeers);
     this.previewed = previewedObjectIds(local, props.remotePeers);
     for (const object of this.displayed) {
+      if (!isSceneModelFile(object.model)) continue;
       const source = JSON.stringify(object.model);
       let item = this.items.get(object.id);
       if (item && (item.source !== source || (item.state === 'failed' && props.modelRetryRevision !== previous.modelRetryRevision))) {
@@ -359,7 +360,7 @@ export class SceneViewportRuntime {
         this.items.delete(object.id);
         item = undefined;
       }
-      if (!item) this.loadObject(object, source);
+      if (!item) this.loadObject(object, object.model, source);
       else if (item.root && !local.has(object.id)) {
         applyObject(item.root, object);
         applyPose(item.root, object.pose, !this.previewed.has(object.id));
@@ -398,11 +399,12 @@ export class SceneViewportRuntime {
   /**
    * Attach a token-owned instance; an old completion cannot attach to a new view.
    * @param object - The visible scene object whose model needs an instance in this viewport.
+   * @param model - Its model file.
    * @param source - The serialized immutable model reference used to detect replacement of this object's source.
    * @throws {never} Load failures are reported through the resource-state callback.
    */
-  private loadObject(object: SceneObject, source: string): void {
-    const item: RenderedObject = { source, lease: this.resources.acquire(object.model), root: null, state: 'loading' };
+  private loadObject(object: SceneObject, model: SceneModelFile, source: string): void {
+    const item: RenderedObject = { source, lease: this.resources.acquire(model), root: null, state: 'loading' };
     this.items.set(object.id, item);
     this.props.onModelStateChange?.(object.id, 'loading');
     void item.lease.ready.then((root) => {
