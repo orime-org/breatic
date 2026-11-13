@@ -39,27 +39,27 @@ export async function startNewConversation(page: Page): Promise<void> {
  * ended on screen.
  * @param page - A page with the Agent column showing.
  * @param text - What the user writes.
- * @param bubbles - How many message bubbles the conversation shows once the reply has begun.
  */
-async function say(page: Page, text: string, bubbles: number): Promise<void> {
+async function say(page: Page, text: string): Promise<void> {
+  const bubbles = page.getByTestId('message-bubble');
+  // The message and the reply each add a bubble once the reply has begun.
+  const shown = (await bubbles.count()) + 2;
   await page.getByTestId('chat-composer-box').fill(text);
   // Attachments still uploading hold the send back; a press before then is
   // ignored, so wait for the button the user would see light up.
   const send = page.getByTestId('chat-composer-send');
   await expect(send).toBeEnabled({ timeout: 60_000 });
   await send.click();
-  await expect(page.getByTestId('message-bubble')).toHaveCount(bubbles, { timeout: 200_000 });
+  await expect(bubbles).toHaveCount(shown, { timeout: 200_000 });
   await expect(page.getByTestId('chat-composer-abort')).toHaveCount(0, { timeout: 600_000 });
 }
 
 /** A part of a stored message, as the conversation endpoint returns it. */
 export interface StoredPart {
-  type?: string;
+  type: string;
   text?: string;
   output?: unknown;
   input?: Record<string, unknown>;
-  /** A data part's payload; on an attachment part, the attached item. */
-  data?: { data_snapshot?: { url?: unknown } };
 }
 
 /** A message of the conversation, as the conversation endpoint returns it. */
@@ -110,10 +110,10 @@ export async function askInNewConversation(page: Page, message: string, options:
     await page.getByTestId('chat-composer-file-input').setInputFiles(options.file);
     await expect(page.getByTestId('chat-composer-chips')).toContainText(basename(options.file, extname(options.file)), { timeout: 30_000 });
   }
-  await say(page, message, 2);
+  await say(page, message);
   // Answering in the chat closes a waiting questionnaire as replied to; a turn
   // that proposed or failed stays as it ended, for the case to judge.
   if (options.reply !== undefined && (await page.getByTestId('questionnaire-submit').count()) > 0) {
-    await say(page, options.reply, (await page.getByTestId('message-bubble').count()) + 2);
+    await say(page, options.reply);
   }
 }

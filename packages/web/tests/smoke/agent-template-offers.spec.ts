@@ -25,7 +25,7 @@
 import { join } from 'node:path';
 
 import { expect, type Page } from 'playwright/test';
-import { ATTACHMENT_DATA_PART, GENERATION_TEMPLATES, feedsOf, proposalMarkSegments, templateAnchor, type CanvasProposal } from '@breatic/shared';
+import { GENERATION_TEMPLATES, chipOfPart, feedsOf, proposalMarkSegments, templateAnchor, type CanvasProposal } from '@breatic/shared';
 import { test } from '../helpers/slot';
 import { askInNewConversation, storedMessages, type StoredPart } from '../helpers/conversation';
 
@@ -50,19 +50,17 @@ function audioGenerations(turn: Turn): number {
 let page: Page;
 let spaceId = '';
 
+// A case can run two agent turns, each given what the conversation helper waits for one.
+test.describe.configure({ timeout: 1_800_000 });
+
 /**
  * The generations in a proposal that draw on a file the user attached,
  * through an edge or a filled slot, directly or through generations between.
  * @param proposal - The proposal, as the agent sent it.
- * @param counts - Which generations to take.
  * @param attached - The addresses of the files the user attached.
  * @returns The generations.
  */
-function generationsCarryingMaterial(
-  proposal: CanvasProposal,
-  counts: (node: CanvasProposal['nodes'][number]) => boolean,
-  attached: ReadonlySet<string>,
-): CanvasProposal['nodes'] {
+function generationsCarryingMaterial(proposal: CanvasProposal, attached: ReadonlySet<string>): CanvasProposal['nodes'] {
   const fed = new Map<number, number[]>();
   for (const { fromIndex, toIndex } of feedsOf(proposal)) fed.set(toIndex, [...(fed.get(toIndex) ?? []), fromIndex]);
   const carries = (at: number, seen: Set<number>): boolean => {
@@ -70,7 +68,7 @@ function generationsCarryingMaterial(
     return (node?.material !== undefined && attached.has(node.material)) ||
       (fed.get(at) ?? []).some((from) => !seen.has(from) && carries(from, new Set([...seen, from])));
   };
-  return proposal.nodes.filter((node, at) => node.role === 'generate' && counts(node) && carries(at, new Set([at])));
+  return proposal.nodes.filter((node, at) => node.role === 'generate' && carries(at, new Set([at])));
 }
 
 /**
@@ -132,7 +130,7 @@ function audioForVideo(
     const model = modelOf(node) ?? '';
     return node.type === 'audio' && counts(model) && takesVideo.has(model) === slotted;
   };
-  const drawing = generationsCarryingMaterial(proposal, (node) => fits(node, true), attached).length;
+  const drawing = generationsCarryingMaterial(proposal, attached).filter((node) => fits(node, true)).length;
   const unslotted = attached.size > 0 ? proposal.nodes.filter((node) => node.role === 'generate' && fits(node, false)).length : 0;
   return drawing + unslotted;
 }
@@ -184,7 +182,10 @@ async function settledTurn(p: Page): Promise<Turn> {
   const messages = await storedMessages(p);
   const parts = messages.filter((m) => m.role === 'assistant').flatMap((m) => m.parts ?? []);
   const attached = messages.filter((m) => m.role === 'user').flatMap((m) => m.parts ?? [])
-    .flatMap((part) => (part.type === ATTACHMENT_DATA_PART && typeof part.data?.data_snapshot?.url === 'string' ? [part.data.data_snapshot.url] : []));
+    .flatMap((part) => {
+      const url = chipOfPart(part)?.data_snapshot.url;
+      return typeof url === 'string' ? [url] : [];
+    });
   const input = (part: StoredPart): { id?: string; nodes?: { template?: { id?: string } }[] } => part.input ?? {};
   // A refused proposal answers { placed: false } and never reaches the canvas.
   const landed = parts.filter(
@@ -225,7 +226,6 @@ test.afterEach(async () => {
 });
 
 test('asked outright for consistent shots of one character, it reads a character template and lands a proposal built on it @needs-model', async () => {
-  test.setTimeout(480_000);
   await ask(
     'I have one photo of my character, a courier in a red coat. Make three shots of her in a row and keep her exactly the same in all of them.',
     'She is Mika, a 25-year-old bicycle courier, cheerful and stubborn. I will put her photo in myself. The shots are for Instagram, vertical.',
@@ -239,7 +239,6 @@ test('asked outright for consistent shots of one character, it reads a character
 });
 
 test('asked outright for a pet video, it reads the pet selfie vlog and lands a proposal built on it @needs-model', async () => {
-  test.setTimeout(480_000);
   await ask('Make a funny vertical pet video of my dog for TikTok.', 'He is Bean, a goofy golden retriever who is always hungry. I will put his photo in myself.');
   const turn = await settledTurn(page);
   expect(turn.templates, `named: ${turn.templates.join(', ')}; tools: ${turn.tools.join(', ')}`).toContain('pet-selfie-vlog');
@@ -248,7 +247,6 @@ test('asked outright for a pet video, it reads the pet selfie vlog and lands a p
 });
 
 test('asked outright for a cheese pull food video, it reads the food money shot and lands the dish @needs-model', async () => {
-  test.setTimeout(480_000);
   await ask('Make a vertical food video of a pizza with a long cheese pull.', 'A margherita pizza from my restaurant, for Instagram Reels. I have no photo of it, so make the pizza too.');
   const turn = await settledTurn(page);
   expect(turn.read, `read: ${turn.read.join(', ')}; tools: ${turn.tools.join(', ')}`).toContain('food-money-shot');
@@ -260,7 +258,6 @@ test('asked outright for a cheese pull food video, it reads the food money shot 
 });
 
 test('asked outright for a festival travel poster, it reads the festival poster and lands a picture @needs-model', async () => {
-  test.setTimeout(480_000);
   await ask('Make a festival travel poster for Kyoto in the autumn maple season, with the title KYOTO AUTUMN.', 'A vertical poster for Instagram; the title is KYOTO AUTUMN exactly as written.');
   const turn = await settledTurn(page);
   expect(turn.read, `read: ${turn.read.join(', ')}; tools: ${turn.tools.join(', ')}`).toContain('destination-festival-poster');
@@ -278,18 +275,16 @@ for (const [what, reply, photo] of [
   ['pet', 'He is Bean, my golden retriever; a funny vertical video for TikTok.', 'pet.jpg'],
 ]) {
   test(`given a ${what} photo and asked only for a video of it, what lands carries that ${what} @needs-model`, async () => {
-    test.setTimeout(480_000);
     await ask('Make a video with this.', reply, photo);
     const turn = await settledTurn(page);
     // Solved when what draws on the photo answers the request for a video;
     // through a template or a setup of the agent's own.
-    const carrying = turn.landed.flatMap((proposal) => generationsCarryingMaterial(proposal, () => true, turn.attached));
+    const carrying = turn.landed.flatMap((proposal) => generationsCarryingMaterial(proposal, turn.attached));
     expect(answersVideoAsk(carrying), `generations drawing on the photo: ${carrying.map((node) => node.type).join(', ')}; templates: ${turn.templates.join(', ')}; said: ${turn.said.slice(0, 600)}`).toBe(true);
   });
 }
 
 test('given a character photo and asked for two videos of her, what lands for both carries that character @needs-model', async () => {
-  test.setTimeout(480_000);
   await ask('This is my character. I want two short videos of her: one walking through a park, one sitting in a café.', 'She is Mika, a 25-year-old bicycle courier, cheerful and stubborn; both videos are vertical, for Instagram.', 'character.jpg');
   const turn = await settledTurn(page);
   // Solved when what lands for each scene draws on her photo: its video, or
@@ -298,7 +293,7 @@ test('given a character photo and asked for two videos of her, what lands for bo
   // Each scene needs a generation of its own: one naming the park and a
   // different one naming the cafe, the two not naming the same places; either
   // may still mention the other place.
-  const words = turn.landed.flatMap((proposal) => generationsCarryingMaterial(proposal, () => true, turn.attached)).map(wordsOf);
+  const words = turn.landed.flatMap((proposal) => generationsCarryingMaterial(proposal, turn.attached)).map(wordsOf);
   const park = (text: string): boolean => /\bparks?\b/i.test(text);
   const cafe = (text: string): boolean => /\bcaf[eé]|\bcoffee ?(shop|house)/i.test(text);
   const seen = `generations drawing on the photo: ${words.join('\n').slice(0, 600)}; templates: ${turn.templates.join(', ')}; said: ${turn.said.slice(0, 600)}`;
@@ -306,7 +301,6 @@ test('given a character photo and asked for two videos of her, what lands for bo
 });
 
 test('given a video and asked outright for background music, it reads a music template and lands music on that template\'s model drawing on the video @needs-model', async () => {
-  test.setTimeout(480_000);
   await ask('Add background music to this video.', 'It is a home workout clip for my fitness channel on YouTube; upbeat music with no vocals.', 'mini-tools/driving.mp4');
   const turn = await settledTurn(page);
   const read = turn.read.filter((id) => MUSIC_FOR_VIDEO.includes(id));
@@ -321,7 +315,6 @@ test('given a video and asked outright for background music, it reads a music te
 });
 
 test('given a video with no sound and asked only to finish it, what lands offers music or foley for it @needs-model', async () => {
-  test.setTimeout(480_000);
   // The clip has no audio stream at all, so the missing sound is what is left to finish.
   await ask('Help me finish this.', 'It is a home workout clip for my fitness channel on YouTube, and it has no sound yet.', 'mini-tools/driving-silent.mp4');
   const turn = await settledTurn(page);
