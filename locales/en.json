@@ -2282,6 +2282,7 @@
         "taskList": "To-do list",
         "divider": "Divider",
         "table": "Table",
+        "columns": "Columns",
         "align": "Alignment",
         "alignLeft": "Left",
         "alignCenter": "Centre",
@@ -2489,6 +2490,9 @@
         "deleteFailed": "The snapshot was not deleted.",
         "folded": "{count, plural, one {# unchanged block · Show} other {# unchanged blocks · Show}}",
         "unavailable": "Snapshots could not load. Refresh the page to use them."
+      },
+      "columns": {
+        "unavailable": "Columns can't go here"
       }
     },
     "readOnlyReconnect": "Reconnect",

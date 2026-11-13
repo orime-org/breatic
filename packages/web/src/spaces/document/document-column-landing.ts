@@ -134,6 +134,26 @@ export function sideDropAllowed(
   return true;
 }
 
+/**
+ * Whether "Columns" in the insert menu is out of reach on a row: in a column
+ * (or in a cell of a table standing in one), in a list's nested group, or on
+ * a row with children (design §5.3).
+ * @param doc - The document.
+ * @param blockId - The pressed row's id.
+ * @returns True when the entry is greyed.
+ */
+export function columnsOutOfReach(doc: PMNode, blockId: string): boolean {
+  const row = rowById(doc, blockId);
+  if (row === undefined) return true;
+  if (row.node.type.name === 'blockContainer' && row.node.childCount > 1) return true;
+  const $row = doc.resolve(row.from);
+  if ($row.parent.type.name === 'blockGroup' && $row.depth > 1) return true;
+  for (let depth = $row.depth; depth > 0; depth -= 1) {
+    if ($row.node(depth).type.name === DOC_COLUMN) return true;
+  }
+  return false;
+}
+
 /** A drop position hook of the drop cursor. */
 type DropPositionHook = (context: ComputeDropPositionContext) => ComputeDropPositionContext['defaultPosition'];
 

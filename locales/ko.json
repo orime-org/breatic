@@ -2282,6 +2282,7 @@
         "taskList": "할 일 목록",
         "divider": "구분선",
         "table": "표",
+        "columns": "열",
         "align": "정렬",
         "alignLeft": "왼쪽",
         "alignCenter": "가운데",
@@ -2489,6 +2490,9 @@
         "deleteFailed": "스냅샷을 삭제하지 못했습니다.",
         "folded": "{count, plural, other {변경 없는 블록 #개 · 펼치기}}",
         "unavailable": "스냅샷을 불러오지 못했습니다. 페이지를 새로고침하면 사용할 수 있습니다."
+      },
+      "columns": {
+        "unavailable": "여기에는 열을 만들 수 없습니다"
       }
     },
     "readOnlyReconnect": "다시 연결",

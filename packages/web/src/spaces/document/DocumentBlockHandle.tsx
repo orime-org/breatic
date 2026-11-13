@@ -77,6 +77,7 @@ import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { useRowNow } from '@web/spaces/document/use-row-now';
 import { bodyLayerMark } from '@web/spaces/document/document-body-focus';
 import { domElementOf } from '@web/spaces/document/document-editor-view';
+import { columnsOutOfReach } from '@web/spaces/document/document-column-landing';
 import { blockInTableCell, DOC_TABLE } from '@web/spaces/document/document-table-nodes';
 
 /**
@@ -129,6 +130,8 @@ interface RowReading {
   readonly table: boolean;
   /** The row stands in a table cell, so the plus menu greys Table. */
   readonly inCell: boolean;
+  /** Whether "Columns" is out of reach on the row (inner#1314 design §5.3). */
+  readonly noColumns: boolean;
 }
 
 /**
@@ -143,7 +146,8 @@ function sameReading(a: RowReading, b: RowReading): boolean {
     a.quoted === b.quoted &&
     a.lone === b.lone &&
     a.table === b.table &&
-    a.inCell === b.inCell
+    a.inCell === b.inCell &&
+    a.noColumns === b.noColumns
   );
 }
 
@@ -230,6 +234,7 @@ export function BlockStrip({ block, hold }: { block: PressedBlock | undefined; h
             (only.type.name !== 'blockContainer' || only.childCount === 1),
           table: live?.type === DOC_TABLE,
           inCell: live !== undefined && blockInTableCell(current.prosemirrorState.doc, live.id),
+          noColumns: live === undefined || columnsOutOfReach(current.prosemirrorState.doc, live.id),
         };
       },
       [rowNow],
@@ -425,6 +430,7 @@ export function BlockStrip({ block, hold }: { block: PressedBlock | undefined; h
                 onPickMedia={onFillMedia}
                 unreachable={row.quoted ? QUOTE_GREYED : undefined}
                 tableUnreachable={row.inCell}
+                columnsUnreachable={row.noColumns}
               />
               {/* The grip menu's delete row, the one command an empty line
                   still needs (A12). Drawn out of reach on the document's only

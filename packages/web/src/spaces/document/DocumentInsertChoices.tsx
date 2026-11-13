@@ -3,14 +3,14 @@
 
 /**
  * The insert menu's rows: the eight block types other than text, then the
- * divider and the table in a group of their own.
+ * divider, the table and columns in a group of their own.
  *
  * Two places open it — the grip menu's insert-below submenu and the plus on an
  * empty paragraph (#1097) — and they differ only in what a pick does, so the
  * list itself is drawn here once.
  */
 
-import { Image as ImageIcon, Minus, Music, Table, Video } from 'lucide-react';
+import { Columns2, Image as ImageIcon, Minus, Music, Table, Video } from 'lucide-react';
 import * as React from 'react';
 
 import {
@@ -29,8 +29,9 @@ import {
 import { blockTypeItem } from '@web/spaces/document/document-block-type';
 import { DIVIDER } from '@web/spaces/document/document-divider';
 import { INSERT_MENU_ROWS } from '@web/spaces/document/document-insert-menu-items';
-import type { InsertChoice, TableSize } from '@web/spaces/document/document-insert-row';
+import { COLUMNS, type InsertChoice, type TableSize } from '@web/spaces/document/document-insert-row';
 import { DocumentTableSizeGrid } from '@web/spaces/document/DocumentTableSizeGrid';
+import { toast } from '@web/lib/toast';
 import type { MediaBlockType } from '@web/spaces/document/document-media-types';
 
 /** The media entries, in the order the menu shows them (inner#1127 A1). */
@@ -50,6 +51,8 @@ interface DocumentInsertChoicesProps {
   unreachable?: ReadonlySet<InsertChoice>;
   /** Whether the table entry is drawn out of reach: a table never goes in a cell. */
   tableUnreachable?: boolean;
+  /** Whether the columns entry is drawn out of reach (inner#1314 design §5.3). */
+  columnsUnreachable?: boolean;
   /** What picking a media entry does; left out, the menu offers none. */
   onPickMedia?: (kind: MediaBlockType) => void;
 }
@@ -60,6 +63,7 @@ interface DocumentInsertChoicesProps {
  * @param props.onPick - What picking an entry does.
  * @param props.unreachable - Entries that would do nothing here.
  * @param props.tableUnreachable - Whether the table entry is out of reach.
+ * @param props.columnsUnreachable - Whether the columns entry is out of reach.
  * @param props.onPickMedia - What picking a media entry does.
  * @returns The rows.
  */
@@ -67,9 +71,16 @@ export const DocumentInsertChoices = React.memo(function DocumentInsertChoices({
   onPick,
   unreachable,
   tableUnreachable = false,
+  columnsUnreachable = false,
   onPickMedia,
 }: DocumentInsertChoicesProps): React.JSX.Element {
   const t = useTranslation();
+  const onPickColumns = React.useCallback((): void => {
+    onPick(COLUMNS);
+  }, [onPick]);
+  const onColumnsRefused = React.useCallback((): void => {
+    toast.warning(t('spaces.document.columns.unavailable'));
+  }, [t]);
   const onPickTable = React.useCallback(
     (table: TableSize): void => {
       onPick({ table });
@@ -121,6 +132,13 @@ export const DocumentInsertChoices = React.memo(function DocumentInsertChoices({
           </DropdownMenuSubContent>
         )}
       </DropdownMenuSub>
+      <DropdownMenuItem
+        data-testid='doc-block-insert-columns'
+        {...itemWithin(!columnsUnreachable, onPickColumns, onColumnsRefused)}
+      >
+        <Columns2 />
+        {t('spaces.document.commands.columns')}
+      </DropdownMenuItem>
       {onPickMedia !== undefined &&
         MEDIA_ENTRIES.map(({ kind, Icon }) => (
           <DropdownMenuItem
