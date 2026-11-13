@@ -94,7 +94,7 @@ export async function storedMessages(page: Page): Promise<StoredMessage[]> {
         const list = await (await fetch('/api/v1/chat/conversations?limit=1', { credentials: 'include' })).json();
         const id = list?.data?.conversations?.[0]?.id as string;
         const read = await (await fetch(`/api/v1/chat/conversations/${id}`, { credentials: 'include' })).json();
-        return (read?.data?.messages ?? []) as { role?: string; parts?: Record<string, unknown>[] }[];
+        return (read?.data?.messages ?? []) as StoredMessage[];
       });
       return messages.at(-1)?.role;
     }, { timeout: 30_000 })
