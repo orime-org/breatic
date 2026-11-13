@@ -45,7 +45,7 @@ projects.use(requireAuth);
 
 /**
  * `GET /projects/:id/three-d/config` — scene controls configuration for a Viewer.
- * @returns The configured scene controls, model import budgets and capture parameters, the same for every Project.
+ * @returns The configured scene controls, model import budgets, capture and director parameters, the same for every Project.
  */
 projects.get(
   "/:id/three-d/config",
@@ -71,6 +71,14 @@ projects.get(
         longEdgePx: config.capture.long_edge_px,
         minFramePx: config.capture.min_frame_px,
         canvasSyncTimeoutMs: config.capture.canvas_sync_timeout_ms,
+      },
+      director: {
+        monitorRefreshMs: config.director.monitor_refresh_ms,
+        maxLights: config.director.max_lights,
+        wheelCommitMs: config.director.wheel_commit_ms,
+        shadowMapPx: config.director.shadow_map_px,
+        pointShadowMapPx: config.director.point_shadow_map_px,
+        shadowGroundReach: config.director.shadow_ground_reach,
       },
     };
     return c.json({ data });
