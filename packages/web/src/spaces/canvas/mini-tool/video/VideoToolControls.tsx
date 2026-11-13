@@ -102,6 +102,8 @@ interface NumericProps {
   onInvalidChange?: (key: string, invalid: boolean) => void;
   /** Called when the field loses focus; with it, Enter also leaves the field. */
   onSettle?: () => void;
+  /** Whether leaving the field (blur or Enter) turns a number outside `[min, max]` into the nearest bound. */
+  clampOnSettle?: boolean;
 }
 
 /**
@@ -114,38 +116,41 @@ export function VideoNumericInput(props: NumericProps): React.JSX.Element {
   const { value: persisted, testId, onInvalidChange } = props;
   const [text, setText] = React.useState(String(props.value));
   const written = React.useRef(props.value);
+  const onChange = React.useRef(props.onChange);
+  onChange.current = props.onChange;
+  const shown = text.trim() === '' ? NaN : Number(text);
+  const invalid = !Number.isFinite(shown) || shown < props.min || (props.exclusiveMin === true && shown === props.min) || (props.max !== undefined && (shown > props.max || props.exclusiveMax === true && shown === props.max));
+  // The one writer: the shown number once it is accepted and not yet written, after a keystroke or after a limit moved
+  // under refused text. Declared before the sync below, so in the commit where the stored value changes elsewhere the
+  // shown text is not written back over it.
+  React.useEffect(() => {
+    if (!invalid && shown !== written.current) {
+      written.current = shown;
+      onChange.current(shown);
+    }
+  }, [invalid, shown]);
   React.useEffect(() => {
     if (persisted !== written.current) {
       written.current = persisted;
       setText(String(persisted));
     }
   }, [persisted]);
-  /**
-   * Whether a typed text is no number the field accepts.
-   * @param typed - The text.
-   * @returns Whether it is refused.
-   * @throws {never} Never.
-   */
-  const refuses = (typed: string): boolean => {
-    const value = typed.trim() === '' ? NaN : Number(typed);
-    return !Number.isFinite(value) || value < props.min || (props.exclusiveMin === true && value === props.min) || (props.max !== undefined && (value > props.max || props.exclusiveMax === true && value === props.max));
-  };
-  const invalid = refuses(text);
   // Reported under the field's current key whenever the shown text, a limit or the key changes, so a row that moves to
   // another position or a limit that moves under the text still blocks the run.
   React.useEffect(() => {
     onInvalidChange?.(testId, invalid);
     return () => onInvalidChange?.(testId, false);
   }, [onInvalidChange, testId, invalid]);
-  return <Input type='text' inputMode='decimal' autoComplete='off' value={text} aria-label={props.label} data-testid={props.testId} aria-invalid={invalid} disabled={props.disabled} className='h-[var(--control-height)] min-w-0 px-2 text-xs tabular-nums md:text-xs' onBlur={props.onSettle} onKeyDown={(event) => { if (event.key === 'Enter' && props.onSettle !== undefined) event.currentTarget.blur(); }} onChange={(event) => {
-    const nextText = event.currentTarget.value;
-    setText(nextText);
-    if (!refuses(nextText)) {
-      const value = Number(nextText);
-      written.current = value;
-      props.onChange(value);
-    }
-  }} />;
+  const settles = props.onSettle !== undefined || props.clampOnSettle === true;
+  /**
+   * Leaves the field: a number outside the limits becomes the nearest bound when the field clamps, then the owner settles.
+   * @throws {never} Never.
+   */
+  const settle = (): void => {
+    if (props.clampOnSettle === true && invalid && Number.isFinite(shown)) setText(String(Math.min(props.max ?? shown, Math.max(props.min, shown))));
+    props.onSettle?.();
+  };
+  return <Input type='text' inputMode='decimal' autoComplete='off' value={text} aria-label={props.label} data-testid={props.testId} aria-invalid={invalid} disabled={props.disabled} className='h-[var(--control-height)] min-w-0 px-2 text-xs tabular-nums md:text-xs' onBlur={settles ? settle : undefined} onKeyDown={(event) => { if (event.key === 'Enter' && settles) event.currentTarget.blur(); }} onChange={(event) => setText(event.currentTarget.value)} />;
 }
 
 /**

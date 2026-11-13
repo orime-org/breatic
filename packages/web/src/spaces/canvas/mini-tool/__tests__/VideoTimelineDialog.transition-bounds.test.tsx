@@ -180,14 +180,50 @@ describe('the transition duration input clamps to the shared bounds (§97; canva
   it.each([
     ['above the maximum', '5', 1.2],
     ['below the minimum', '0.05', 0.2],
-  ])('commits the nearest bound for a value %s', (_name, typed, committed) => {
+  ])('shows a value %s as refused while typed, then commits and shows the nearest bound on leaving the field', (_name, typed, committed) => {
     bounds.mockReturnValue({ min: 0.2, max: 1.2 });
     const onChange = vi.fn();
     open(draftWith('fade', 0.5), onChange);
-    fireEvent.change(screen.getByTestId('video-clip-overlap'), { target: { value: typed } });
-    expect(onChange).toHaveBeenCalled();
+    const field = screen.getByTestId('video-clip-overlap');
+    fireEvent.change(field, { target: { value: typed } });
+    expect(field).toHaveAttribute('aria-invalid', 'true');
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.blur(field);
+    expect(field).toHaveValue(String(committed));
     const last = onChange.mock.calls.at(-1)![0] as VideoToolDraftById['video.transitions'];
     expect(last.params.clips[0].transition).toEqual({ kind: 'fade', duration: committed });
+  });
+
+  /**
+   * The open Dialog over its own draft state, so each commit comes back as the next draft.
+   * @param props - The first draft.
+   * @param props.initial - The draft first shown.
+   * @returns The Dialog.
+   */
+  function StatefulDialog(props: { initial: VideoToolDraftById['video.transitions'] }): React.JSX.Element {
+    const [draft, setDraft] = React.useState(props.initial);
+    const proposed: object = { inputTables };
+    return <VideoTimelineDialog open onOpenChange={vi.fn()} draft={draft} onChange={setDraft} inputNames={new Map([[inputA.inputId, 'A'], [inputB.inputId, 'B']])} disabled={false} onRun={vi.fn()} {...proposed} />;
+  }
+
+  it('keeps every key of a duration typed key by key that starts below the minimum', async () => {
+    bounds.mockReturnValue({ min: 0.2, max: 1.2 });
+    const user = userEvent.setup();
+    render(<StatefulDialog initial={draftWith('fade', 1)} />);
+    await user.tripleClick(screen.getByTestId('video-clip-overlap'));
+    await user.keyboard('0.5');
+    expect(screen.getByTestId('video-clip-overlap')).toHaveValue('0.5');
+    expect(screen.getByTestId('video-clip-overlap')).toHaveAttribute('aria-invalid', 'false');
+  });
+
+  it('shows the bound it commits when the stored duration already sits at that bound', () => {
+    bounds.mockReturnValue({ min: 0.2, max: 1.2 });
+    render(<StatefulDialog initial={draftWith('fade', 1.2)} />);
+    const field = screen.getByTestId('video-clip-overlap');
+    fireEvent.change(field, { target: { value: '3' } });
+    fireEvent.blur(field);
+    expect(field).toHaveValue('1.2');
+    expect(field).toHaveAttribute('aria-invalid', 'false');
   });
 });
 

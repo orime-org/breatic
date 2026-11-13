@@ -336,6 +336,28 @@ describe('an invalid cut row keeps blocking the run wherever it moves (web AGENT
 });
 
 describe('a numeric field reports what it shows', () => {
+  it('writes a refused value once a changed limit accepts it, so the field and the draft agree', () => {
+    const invalid = new Set<string>();
+    const report = (key: string, bad: boolean): void => { if (bad) invalid.add(key); else invalid.delete(key); };
+    const onChange = vi.fn();
+    const view = render(<VideoNumericInput value={0} label='Start' testId='start' min={0} max={3} exclusiveMax disabled={false} onInvalidChange={report} onChange={onChange} />);
+    fireEvent.change(screen.getByTestId('start'), { target: { value: '4' } });
+    expect(onChange).not.toHaveBeenCalled();
+    expect([...invalid]).toEqual(['start']);
+    view.rerender(<VideoNumericInput value={0} label='Start' testId='start' min={0} max={5} exclusiveMax disabled={false} onInvalidChange={report} onChange={onChange} />);
+    expect(onChange).toHaveBeenCalledExactlyOnceWith(4);
+    expect([...invalid]).toEqual([]);
+    expect(screen.getByTestId('start')).toHaveValue('4');
+  });
+
+  it('shows a stored value changed elsewhere and writes nothing back', () => {
+    const onChange = vi.fn();
+    const view = render(<VideoNumericInput value={2} label='Start' testId='start' min={0} max={5} disabled={false} onChange={onChange} />);
+    view.rerender(<VideoNumericInput value={3} label='Start' testId='start' min={0} max={5} disabled={false} onChange={onChange} />);
+    expect(screen.getByTestId('start')).toHaveValue('3');
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it('reports a shown value that a changed limit makes invalid, and clears it when the limit allows it again', () => {
     const invalid = new Set<string>();
     const report = (key: string, bad: boolean): void => { if (bad) invalid.add(key); else invalid.delete(key); };
