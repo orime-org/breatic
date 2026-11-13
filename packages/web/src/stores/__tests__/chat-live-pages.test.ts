@@ -227,8 +227,10 @@ describe('a message sent while a card waits', () => {
     await here.live.chatLive.send({ projectId: 'p1', conversationId: 'c1', words: 'something else', chips: [], spaces: {} });
     await settle();
     const s = wire.last()!;
-    s.push({ type: 'data-ask-replied', data: { toolCallId: 'ask-1' } });
-    for (const f of replyOpens()) s.push(f);
+    // As the server writes a run: the reply named first, then the cards the
+    // message closed.
+    const [beat, start, ...rest] = replyOpens();
+    for (const f of [beat!, start!, { type: 'data-ask-replied', data: { toolCallId: 'ask-1' } }, ...rest]) s.push(f);
     await settle();
     expect(here.messages()[1]!.parts[0]).toMatchObject(CLOSED);
     expect(userMessageOrder(here.messages())).toEqual(['u0', 'm1']);
@@ -247,8 +249,10 @@ describe('a message sent while a card waits', () => {
     await here.live.chatLive.send({ projectId: 'p1', conversationId: 'c1', words: 'said m2', chips: [], spaces: {} });
     await settle();
     const s = wire.last()!;
-    s.push({ type: 'data-ask-replied', data: { toolCallId: 'ask-1' } });
-    for (const f of replyOpens()) s.push(f);
+    // As the server writes a run: the reply named first, then the cards the
+    // message closed.
+    const [beat, start, ...rest] = replyOpens();
+    for (const f of [beat!, start!, { type: 'data-ask-replied', data: { toolCallId: 'ask-1' } }, ...rest]) s.push(f);
     s.push({ type: 'data-user-message', data: { id: 'm2', words: 'said m2', chips: [], sentAt: '2026-11-12T08:01:00.000Z' } });
     s.push({ type: 'text-delta', id: 't1', delta: 'Both, in order.' });
     await settle();
