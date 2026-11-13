@@ -39,7 +39,7 @@ async function holdDebt(studioId: string): Promise<() => Promise<void>> {
 }
 
 describe("operator grant before a later identity change", () => {
-  it.each(["account", "studio", "studio-type", "membership", "membership-deleted"])("P14 commits its original result before a later %s change", async (identity) => {
+  it.each(["account", "studio", "studio-type", "admin"])("P14 commits its original result before a later %s change", async (identity) => {
     const fx = await seedPersonal(suite.sql);
     expect((await call(suite.baseUrl, profilePath(fx.userId), { admin: GRANT_ADMIN })).status).toBe(200);
     await seedDebt(suite.sql, fx, "20.000000");
@@ -47,17 +47,18 @@ describe("operator grant before a later identity change", () => {
     const key = grantKey();
     const pending = postGrant(suite, fx, key);
     const mutation = postgres(inject("DATABASE_URL"), { max: 1, prepare: false });
-    const table = identity === "account" ? "users" : identity.startsWith("studio") ? "studios" : "studio_members";
+    // The personal Studio is judged on its global directory row (inner#1955).
+    const table = identity === "account" ? "users" : "studio_directory";
+    const [other] = await suite.sql<{ id: string }[]>`insert into users(email) values(${`grant-after-${fx.userId}@example.test`}) returning id`;
     let changing: Promise<unknown> | undefined;
     let released = false;
     try {
       await waitUntilBlockedOn(suite.sql, ["studio_credit_debts"]);
       changing = mutation.begin(async (tx) => {
         if (identity === "account") await tx`update users set deleted_at=now() where id=${fx.userId}`;
-        else if (identity === "studio") await tx`update studios set deleted_at=now() where id=${fx.studioId}`;
-        else if (identity === "studio-type") await tx`update studios set type='team' where id=${fx.studioId}`;
-        else if (identity === "membership-deleted") await tx`update studio_members set deleted_at=now() where studio_id=${fx.studioId} and user_id=${fx.userId}`;
-        else await tx`update studio_members set role='maintainer' where studio_id=${fx.studioId} and user_id=${fx.userId}`;
+        else if (identity === "studio") await tx`update studio_directory set deleted_at=now() where studio_id=${fx.studioId}`;
+        else if (identity === "studio-type") await tx`update studio_directory set type='team' where studio_id=${fx.studioId}`;
+        else await tx`update studio_directory set admin_user_id=${other!.id} where studio_id=${fx.studioId}`;
       });
       await waitUntilBlockedOn(suite.sql, ["update", table]);
       await releaseDebt();

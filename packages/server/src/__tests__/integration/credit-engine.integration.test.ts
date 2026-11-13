@@ -1295,7 +1295,6 @@ describe("studio 流水：一次生成一行", () => {
         consumed: "-70.000000",
         owed: "0",
         projectId: fx.projectId,
-        projectName: fx.projectName,
         model: "seedance-1.5-pro",
       }),
     ]);
