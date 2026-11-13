@@ -692,6 +692,23 @@ test('transitions: the preview plays two videos of different sizes, before and a
     await expect(dialog.getByText('Preview unavailable. Try again.')).toHaveCount(0);
     expect(await played()).toBeCloseTo(paused, 2);
     await expect.poll(async () => Math.abs((await cursorLeft()) - before)).toBeLessThan(2);
+    // A crossfade length typed key by key keeps every key.
+    await dialog.getByRole('combobox').filter({ hasNotText: /^\d+\./ }).click();
+    await c.page.getByRole('option', { name: 'Crossfade' }).click();
+    const overlap = dialog.getByTestId('video-clip-overlap');
+    await overlap.click({ clickCount: 3 });
+    await c.page.keyboard.type('0.5');
+    await expect(overlap).toHaveValue('0.5');
+    await expect(overlap).toHaveAttribute('aria-invalid', 'false');
+    // An In refused under its Out is stored once the Out moves past it, and the track shows it.
+    const inField = dialog.getByTestId('video-clip-in');
+    const outField = dialog.getByTestId('video-clip-out');
+    await outField.fill('2');
+    await inField.fill('2.5');
+    await expect(inField).toHaveAttribute('aria-invalid', 'true');
+    await outField.fill('2.8');
+    await expect(inField).toHaveAttribute('aria-invalid', 'false');
+    await expect(dialog.getByText('2.50 s → 2.80 s')).toBeVisible();
     expect(pageErrors).toEqual([]);
   } finally {
     await deleteSpace(page, c.spaceId);
