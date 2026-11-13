@@ -596,6 +596,20 @@ export type {
 } from "@shared/refund-eligibility.js";
 
 export { newId, deriveId } from "@shared/ids.js";
+export { REDIS_KEY_PREFIX_PATTERN, resolveRedisKeyPrefix } from "@shared/redis-key-prefix.js";
+export {
+  AGENT_COMMAND_STREAM_MAXLEN,
+  agentCommandSchema,
+  agentReplySchema,
+  callScopedId,
+  mcpCaptureRequestKey,
+  mcpCommandStreamKey,
+  mcpDoneChannel,
+  mcpInFlightTasksKey,
+  mcpOperationKey,
+  mcpReplyKey,
+} from "@shared/agent-command.js";
+export type { AgentCommand, AgentReply } from "@shared/agent-command.js";
 
 // The three gates on a capped list param — the panel while picking, the server
 // before enqueue, the worker before mapping to vendor names — read one number,

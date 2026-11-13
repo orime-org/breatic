@@ -23,7 +23,7 @@
  */
 
 import { z } from "zod";
-import { DEFAULT_API_PORT, DEFAULT_COLLAB_PORT } from "@breatic/shared";
+import { DEFAULT_API_PORT, DEFAULT_COLLAB_PORT, REDIS_KEY_PREFIX_PATTERN, resolveRedisKeyPrefix } from "@breatic/shared";
 
 /**
  * Normalise a blank env value to undefined so `.default()` / `.optional()` fire.
@@ -209,7 +209,7 @@ export const coreConfigSchema = z.object({
     z
       .string()
       .regex(
-      /^[A-Za-z0-9_-]+$/,
+        REDIS_KEY_PREFIX_PATTERN,
       "REDIS_KEY_PREFIX may contain only letters, digits, '-' and '_' " +
           "(it goes into a Redis PSUBSCRIBE pattern and the session cookie name)",
       )
@@ -368,16 +368,13 @@ export const coreConfigSchema = z.object({
   // fallback repeated at every consumer is a fallback that eventually
   // disagrees with itself. Downstream code reads a plain `string`.
   //
-  // `??` is safe here ONLY because the field itself already ran through
-  // `blankToUndefined` (see the `REDIS_KEY_PREFIX` declaration above), so a
-  // blank `VAR=` arrives as undefined rather than `""`. Without that
-  // preprocess this would need `||`: `.env` templates spell an unset
-  // optional var as `VAR=`, zod keeps `""`, and `?? ` would let it through
-  // — silently building channels named `:hocuspocus:…`, isolated from
-  // nothing. Blank means unset, and the preprocess is what makes it so.
+  // `resolveRedisKeyPrefix` is the rule the MCP service applies too, so both
+  // build the same keys. It treats a blank prefix as unset on its own: `.env`
+  // templates spell an unset optional var as `VAR=`, and a `""` prefix would
+  // silently build channels named `:hocuspocus:…`, isolated from nothing.
   .transform((c) => ({
     ...c,
-    REDIS_KEY_PREFIX: c.REDIS_KEY_PREFIX ?? c.ENV,
+    REDIS_KEY_PREFIX: resolveRedisKeyPrefix(c.REDIS_KEY_PREFIX, c.ENV),
   }));
 
 /** Validated, typed core configuration. */
