@@ -366,14 +366,14 @@ function videoStream(url: string): Probe['streams'][number] {
 }
 
 /**
- * The last frame of a stored video, small and grey, so two encodes of the same picture compare by their mean difference.
+ * The frames of a stored video's last half second, small and grey, so frames of two encodes compare by their mean difference.
  * @param url - The URL.
- * @returns Its 64 x 36 grey pixels.
+ * @returns Each frame's 64 x 36 grey pixels, in order.
  */
-function lastFrame(url: string): Buffer {
+function lastFrames(url: string): Buffer[] {
   const size = 64 * 36;
   const tail = execFileSync('ffmpeg', ['-v', 'error', '-sseof', '-0.5', '-i', url, '-vf', 'scale=64:36,format=gray', '-f', 'rawvideo', 'pipe:']);
-  return tail.subarray(tail.length - size);
+  return Array.from({ length: Math.floor(tail.length / size) }, (_, index) => tail.subarray(index * size, (index + 1) * size));
 }
 
 /**
@@ -687,9 +687,11 @@ test('transitions: a second video at a lower rate keeps every frame, so the pict
     const [joined] = await stored(c, made);
     const whole = duration(await contentOf(c, 'clip6at30.mp4')) + duration(await contentOf(c, 'clip3a.mp4'));
     expect(Math.abs(Number(videoStream(joined!.content).duration) - whole)).toBeLessThanOrEqual(2 * FRAME);
-    // The picture ends on the second video's last frame. Measured on this test pattern: a re-encode of the same frame differs
-    // by about 0.15, the frame before it by about 2.9.
-    expect(pictureDifference(lastFrame(joined!.content), lastFrame(await contentOf(c, 'clip3a.mp4')))).toBeLessThan(1);
+    // The picture ends on the second video's last frame: the export's last frame is nearer to it than to the frame before.
+    // The export's encode shifts every frame by about the same amount, so the frames are compared with each other.
+    const ending = lastFrames(joined!.content).at(-1)!;
+    const [beforeLast, last] = lastFrames(await contentOf(c, 'clip3a.mp4')).slice(-2);
+    expect(pictureDifference(ending, last!)).toBeLessThan(pictureDifference(ending, beforeLast!));
   } finally {
     await deleteSpace(page, c.spaceId);
   }
