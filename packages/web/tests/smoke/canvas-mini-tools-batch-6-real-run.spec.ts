@@ -700,13 +700,23 @@ test('transitions: the preview plays two videos of different sizes, before and a
     await c.page.keyboard.type('0.5');
     await expect(overlap).toHaveValue('0.5');
     await expect(overlap).toHaveAttribute('aria-invalid', 'false');
-    // An In refused under its Out is stored once the Out moves past it, and the track shows it.
+    // An Out typed key by key is written when the field is left, so its keys (Out 2 on the way to 2.9) keep a 1.4 s crossfade.
+    await overlap.fill('1.4');
+    await overlap.press('Enter');
     const inField = dialog.getByTestId('video-clip-in');
     const outField = dialog.getByTestId('video-clip-out');
+    await outField.click({ clickCount: 3 });
+    await c.page.keyboard.type('2.9');
+    await c.page.keyboard.press('Enter');
+    await expect(outField).toHaveValue('2.9');
+    await expect(overlap).toHaveValue('1.4');
+    // An In refused under its Out is stored once the Out moves past it, and the track shows it.
     await outField.fill('2');
+    await outField.press('Enter');
     await inField.fill('2.5');
     await expect(inField).toHaveAttribute('aria-invalid', 'true');
     await outField.fill('2.8');
+    await outField.press('Enter');
     await expect(inField).toHaveAttribute('aria-invalid', 'false');
     await expect(dialog.getByText('2.50 s → 2.80 s')).toBeVisible();
     expect(pageErrors).toEqual([]);
