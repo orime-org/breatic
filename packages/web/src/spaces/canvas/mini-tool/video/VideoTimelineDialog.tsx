@@ -65,7 +65,28 @@ function fpsText(fps: { numerator: string; denominator: string }): string {
  */
 function normalize(clips: readonly VideoToolTimelineClip[], tables: ReadonlyMap<string, VideoPresentationTable> | undefined): VideoToolTimelineClip[] {
   const table = clips[0] === undefined ? undefined : tables?.get(clips[0].inputId);
-  return clampTransitions(clips, table === undefined ? null : presentationOutputFps(table));
+  const fps = table === undefined ? null : presentationOutputFps(table);
+  const clamped = clampTransitions(clips, fps);
+  const bounds = fps === null ? null : transitionDurationBounds(clamped, fps);
+  return bounds === null ? clamped : clamped.map((item, index) => index === 0 && item.transition.kind !== 'cut'
+    ? { ...item, transition: { ...item.transition, duration: onMicrosecondGrid(item.transition.duration, bounds) } } : item);
+}
+
+/**
+ * A transition length on the whole-microsecond grid inside its bounds, so the field shows a short number; a bound that is no
+ * whole number of microseconds (1001/30000 s) is taken up for the minimum and down for the maximum, still inside.
+ * @param seconds - The length.
+ * @param bounds - Its bounds.
+ * @param bounds.min - The shortest length.
+ * @param bounds.max - The longest length.
+ * @returns The length.
+ * @throws {never} Never.
+ */
+function onMicrosecondGrid(seconds: number, bounds: { min: number; max: number }): number {
+  const low = Math.ceil(bounds.min * 1e6 - 1e-6) / 1e6;
+  const high = Math.floor(bounds.max * 1e6 + 1e-6) / 1e6;
+  // A two-frame clip can have both bounds inside one microsecond: the exact length stays.
+  return low > high ? seconds : Math.min(high, Math.max(low, Math.round(seconds * 1e6) / 1e6));
 }
 
 /**

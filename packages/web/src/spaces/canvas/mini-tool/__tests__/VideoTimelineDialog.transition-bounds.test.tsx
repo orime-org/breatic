@@ -248,6 +248,25 @@ describe('the transition duration input clamps to the shared bounds (§97; canva
     expect(Number((screen.getByTestId('video-clip-overlap') as HTMLInputElement).value)).toBeLessThan(1);
   });
 
+  it('shows a duration the Dialog re-fits to a shorter clip on the whole-microsecond grid', async () => {
+    bounds.mockReturnValue({ min: 0.04, max: 1.5 });
+    const user = userEvent.setup();
+    render(<StatefulDialog initial={draftWith('fade', 1.4)} />);
+    // Out 2.85 leaves the first clip 1.85 s, which holds at most half of it on the 30000/1001 frame grid.
+    await user.tripleClick(screen.getByTestId('video-clip-out'));
+    await user.keyboard('2.85{Enter}');
+    expect((screen.getByTestId('video-clip-overlap') as HTMLInputElement).value).toMatch(/^\d+(\.\d{1,6})?$/);
+  });
+
+  it('accepts the exact bound when no whole microsecond lies between the bounds of a two-frame clip', () => {
+    bounds.mockReturnValue({ min: 1001 / 30000, max: 1001 / 30000 });
+    render(<StatefulDialog initial={draftWith('fade', 0.2)} />);
+    const field = screen.getByTestId('video-clip-overlap');
+    fireEvent.change(field, { target: { value: '0.5' } });
+    fireEvent.blur(field);
+    expect(field).toHaveAttribute('aria-invalid', 'false');
+  });
+
   it('shows the bound it commits when the stored duration already sits at that bound', () => {
     bounds.mockReturnValue({ min: 0.2, max: 1.2 });
     render(<StatefulDialog initial={draftWith('fade', 1.2)} />);
