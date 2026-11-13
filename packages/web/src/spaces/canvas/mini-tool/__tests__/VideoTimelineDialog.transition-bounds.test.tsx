@@ -12,7 +12,7 @@
  */
 
 import * as React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { t } from '@breatic/shared';
@@ -258,13 +258,64 @@ describe('the transition duration input clamps to the shared bounds (§97; canva
     expect((screen.getByTestId('video-clip-overlap') as HTMLInputElement).value).toMatch(/^\d+(\.\d{1,6})?$/);
   });
 
-  it('accepts the exact bound when no whole microsecond lies between the bounds of a two-frame clip', () => {
+  it('shows the nearest whole microsecond when no whole microsecond lies between the bounds of a two-frame clip', () => {
     bounds.mockReturnValue({ min: 1001 / 30000, max: 1001 / 30000 });
     render(<StatefulDialog initial={draftWith('fade', 0.2)} />);
     const field = screen.getByTestId('video-clip-overlap');
     fireEvent.change(field, { target: { value: '0.5' } });
     fireEvent.blur(field);
+    expect(field).toHaveValue('0.033367');
     expect(field).toHaveAttribute('aria-invalid', 'false');
+  });
+
+  it('shows the stored bound when the clamp lands on a bound the length already holds', () => {
+    bounds.mockReturnValue({ min: 0.04, max: 1 / 3 });
+    render(<StatefulDialog initial={draftWith('fade', 0.333333)} />);
+    const field = screen.getByTestId('video-clip-overlap');
+    fireEvent.change(field, { target: { value: '5' } });
+    fireEvent.blur(field);
+    expect(field).toHaveValue('0.333333');
+  });
+
+  it('clamps an out-of-range length when Tab is pressed, while the field still holds the focus', () => {
+    bounds.mockReturnValue({ min: 0.2, max: 1.2 });
+    render(<StatefulDialog initial={draftWith('fade', 0.5)} />);
+    const field = screen.getByTestId('video-clip-overlap');
+    act(() => field.focus());
+    fireEvent.change(field, { target: { value: '9' } });
+    fireEvent.keyDown(field, { key: 'Tab' });
+    expect(field).toHaveFocus();
+    expect(field).toHaveValue('1.2');
+    expect(field).toHaveAttribute('aria-invalid', 'false');
+  });
+
+  it('re-fits from the transition the user last set when an In write happened outside an entry', async () => {
+    bounds.mockReturnValue({ min: 0.04, max: 1.5 });
+    const user = userEvent.setup();
+    let setFromOutside: (next: VideoToolDraftById['video.transitions']) => void = () => undefined;
+    /**
+     * The Dialog over its own draft, which the test can also replace as another edit would.
+     * @returns The Dialog.
+     */
+    function Outside(): React.JSX.Element {
+      const [draft, setDraft] = React.useState(draftWith('fade', 1));
+      setFromOutside = setDraft;
+      const proposed: object = { inputTables };
+      return <VideoTimelineDialog open onOpenChange={vi.fn()} draft={draft} onChange={setDraft} inputNames={new Map([[inputA.inputId, 'A'], [inputB.inputId, 'B']])} disabled={false} onRun={vi.fn()} {...proposed} />;
+    }
+    render(<Outside />);
+    // Out 6.5 is refused past the 6 s source; the source then reads as 8 s elsewhere, so the Out writes itself without an entry.
+    fireEvent.change(screen.getByTestId('video-clip-out'), { target: { value: '6.5' } });
+    fireEvent.blur(screen.getByTestId('video-clip-out'));
+    const longer = draftWith('fade', 1);
+    act(() => setFromOutside({ ...longer, inputs: [{ ...inputA, mediaInfo: { ...inputA.mediaInfo, duration: 8 } }, inputB] }));
+    expect(screen.getByTestId('video-clip-out')).toHaveAttribute('aria-invalid', 'false');
+    // The user then sets the length to 0.3 and types a new In.
+    await user.tripleClick(screen.getByTestId('video-clip-overlap'));
+    await user.keyboard('0.3{Enter}');
+    await user.tripleClick(screen.getByTestId('video-clip-in'));
+    await user.keyboard('2{Enter}');
+    expect(Number((screen.getByTestId('video-clip-overlap') as HTMLInputElement).value)).toBeCloseTo(0.3, 2);
   });
 
   it('shows the bound it commits when the stored duration already sits at that bound', () => {

@@ -143,14 +143,26 @@ export function VideoNumericInput(props: NumericProps): React.JSX.Element {
   }, [onInvalidChange, testId, invalid]);
   const settles = props.onSettle !== undefined || props.clampOnSettle === true;
   /**
-   * Leaves the field: a number outside the limits becomes the nearest bound when the field clamps, then the owner settles.
+   * Turns a number outside the limits into the nearest bound when the field clamps. Tab and Enter run it while the field
+   * still holds the focus: the write it causes can remount the owner's other controls, and a remount after focus has left
+   * would send the focus to the dialog instead of the next control.
+   * @throws {never} Never.
+   */
+  const clamp = (): void => {
+    if (props.clampOnSettle === true && invalid && Number.isFinite(shown)) setText(String(Math.min(props.max ?? shown, Math.max(props.min, shown))));
+  };
+  /**
+   * Leaves the field: the number is clamped, then the owner settles.
    * @throws {never} Never.
    */
   const settle = (): void => {
-    if (props.clampOnSettle === true && invalid && Number.isFinite(shown)) setText(String(Math.min(props.max ?? shown, Math.max(props.min, shown))));
+    clamp();
     props.onSettle?.();
   };
-  return <Input type='text' inputMode='decimal' autoComplete='off' value={text} aria-label={props.label} data-testid={props.testId} aria-invalid={invalid} disabled={props.disabled} className='h-[var(--control-height)] min-w-0 px-2 text-xs tabular-nums md:text-xs' onBlur={settles ? settle : undefined} onKeyDown={(event) => { if (event.key === 'Enter' && settles) event.currentTarget.blur(); }} onChange={(event) => setText(event.currentTarget.value)} />;
+  return <Input type='text' inputMode='decimal' autoComplete='off' value={text} aria-label={props.label} data-testid={props.testId} aria-invalid={invalid} disabled={props.disabled} className='h-[var(--control-height)] min-w-0 px-2 text-xs tabular-nums md:text-xs' onBlur={settles ? settle : undefined} onKeyDown={(event) => {
+    if (event.key === 'Tab') clamp();
+    if (event.key === 'Enter' && settles) { clamp(); event.currentTarget.blur(); }
+  }} onChange={(event) => setText(event.currentTarget.value)} />;
 }
 
 /**

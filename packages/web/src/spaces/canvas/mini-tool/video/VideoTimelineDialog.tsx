@@ -68,25 +68,29 @@ function normalize(clips: readonly VideoToolTimelineClip[], tables: ReadonlyMap<
   const fps = table === undefined ? null : presentationOutputFps(table);
   const clamped = clampTransitions(clips, fps);
   const bounds = fps === null ? null : transitionDurationBounds(clamped, fps);
-  return bounds === null ? clamped : clamped.map((item, index) => index === 0 && item.transition.kind !== 'cut'
-    ? { ...item, transition: { ...item.transition, duration: onMicrosecondGrid(item.transition.duration, bounds) } } : item);
+  if (bounds === null) return clamped;
+  const grid = gridBounds(bounds);
+  return clamped.map((item, index) => index === 0 && item.transition.kind !== 'cut'
+    ? { ...item, transition: { ...item.transition, duration: Math.min(grid.max, Math.max(grid.min, Math.round(item.transition.duration * 1e6) / 1e6)) } } : item);
 }
 
 /**
- * A transition length on the whole-microsecond grid inside its bounds, so the field shows a short number; a bound that is no
- * whole number of microseconds (1001/30000 s) is taken up for the minimum and down for the maximum, still inside.
- * @param seconds - The length.
- * @param bounds - Its bounds.
+ * Transition length bounds on the whole-microsecond grid, which both what the Dialog stores and what its field clamps to
+ * use, so the field always shows the stored length: a bound that is no whole number of microseconds (1001/30000 s) is
+ * taken up for the minimum and down for the maximum, and bounds with no whole microsecond between them (a two-frame clip)
+ * become the nearest one, which shared `fitTransitions` accepts.
+ * @param bounds - The exact bounds.
  * @param bounds.min - The shortest length.
  * @param bounds.max - The longest length.
- * @returns The length.
+ * @returns The bounds on the grid.
  * @throws {never} Never.
  */
-function onMicrosecondGrid(seconds: number, bounds: { min: number; max: number }): number {
+function gridBounds(bounds: { min: number; max: number }): { min: number; max: number } {
   const low = Math.ceil(bounds.min * 1e6 - 1e-6) / 1e6;
   const high = Math.floor(bounds.max * 1e6 + 1e-6) / 1e6;
-  // A two-frame clip can have both bounds inside one microsecond: the exact length stays.
-  return low > high ? seconds : Math.min(high, Math.max(low, Math.round(seconds * 1e6) / 1e6));
+  if (low <= high) return { min: low, max: high };
+  const nearest = Math.round(bounds.min * 1e6) / 1e6;
+  return { min: nearest, max: nearest };
 }
 
 /**
@@ -121,7 +125,10 @@ function TimelineWorkspace(props: VideoTimelineDialogProps): React.JSX.Element {
   const junction = clips.length === 2 ? clips[0]! : null;
   const firstTable = clips[0] === undefined ? undefined : props.inputTables?.get(clips[0].inputId);
   // The output grid is the first clip's rate (D13-1); without its table no transition length can be judged yet.
-  const bounds = React.useMemo(() => (junction === null || firstTable === undefined ? null : transitionDurationBounds(clips, presentationOutputFps(firstTable))), [junction, firstTable, clips]);
+  const bounds = React.useMemo(() => {
+    const exact = junction === null || firstTable === undefined ? null : transitionDurationBounds(clips, presentationOutputFps(firstTable));
+    return exact === null ? null : gridBounds(exact);
+  }, [junction, firstTable, clips]);
   const firstInput = clips[0] === undefined ? undefined : draft.inputs.find((item) => item.inputId === clips[0]!.inputId);
   const firstFormat = clips[0] === undefined ? undefined : props.inputFormats?.get(clips[0].inputId);
   const frameWidth = firstFormat?.width ?? firstInput?.mediaInfo?.width;
@@ -164,6 +171,9 @@ function TimelineWorkspace(props: VideoTimelineDialogProps): React.JSX.Element {
     if (props.disabled) cancel();
     return () => window.removeEventListener('blur', cancel);
   }, [props.disabled]);
+  // The transition as it was when an In or Out began to be typed: every key re-fits that one, so a key on the way to a
+  // number (Out 2 on the way to 2.9) cannot shorten the transition or make it a Cut for good.
+  const held = React.useRef<VideoToolTimelineClip['transition'] | null>(null);
   /**
    * Commits one complete editing operation and stops its old preview clock.
    * @throws {never} Never.
@@ -174,11 +184,10 @@ function TimelineWorkspace(props: VideoTimelineDialogProps): React.JSX.Element {
     if (props.disabled) return;
     setPlaying(false);
     setSelected(selection);
+    // Any write ends a held transition; editPoint holds it again for the next key of the same entry.
+    held.current = null;
     props.onChange({ ...draft, params: { clips: normalize(next, props.inputTables) } });
   }
-  // The transition as it was when an In or Out began to be typed: every key re-fits that one, so a key on the way to a
-  // number (Out 2 on the way to 2.9) cannot shorten the transition or make it a Cut for good.
-  const held = React.useRef<VideoToolTimelineClip['transition'] | null>(null);
   /**
    * Edits the selected clip's In or Out, the transition re-fitted from the one held since typing began.
    * @throws {never} Never.
@@ -186,8 +195,9 @@ function TimelineWorkspace(props: VideoTimelineDialogProps): React.JSX.Element {
    */
   function editPoint(partial: Pick<Partial<VideoToolTimelineClip>, 'in' | 'out'>): void {
     if (clip === undefined) return;
-    const base = held.current ??= clips[0]?.transition ?? null;
+    const base = held.current ?? clips[0]?.transition ?? null;
     commit(clips.map((item, index) => ({ ...item, ...(item.clipId === clip.clipId ? partial : {}), ...(index === 0 && base !== null ? { transition: base } : {}) })), clip.clipId);
+    held.current = base;
   }
   /**
    * Ends an In or Out entry: the next one holds the transition as it then is.
