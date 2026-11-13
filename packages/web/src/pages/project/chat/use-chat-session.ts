@@ -432,7 +432,9 @@ export function useChatSession(
       // apart is the session's own error, which is set by the turn that failed
       // and cleared by the next one that starts.
       const justNow = error !== undefined && m === last && m.role === 'assistant';
-      const streaming = status === 'streaming' && m === last && m.role === 'assistant';
+      // From the frame that names the reply, which the SDK draws while it
+      // still says `submitted`, until the run is over.
+      const streaming = readingRun(status) && m === last && m.role === 'assistant';
       const before = rendered.current.get(m);
       const tail = before?.at(-1);
       // The comparisons matter on the message whose situation has just

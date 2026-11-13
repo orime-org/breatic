@@ -84,7 +84,7 @@ import { tell } from '@web/stores/chat-mishaps';
 import { chatSessionFor, evictAllChatSessions } from '@web/stores/chat-sessions';
 import { resetChatLiveForTests } from '@web/stores/chat-live';
 import { resetRunOnceForTests } from '@web/stores/task-actions-in-flight';
-import { replyOpens, storesWhatIsDrawn, stubRunWire } from '@web/test-utils/chat-run-wire';
+import { BEAT, replyOpens, storesWhatIsDrawn, stubRunWire } from '@web/test-utils/chat-run-wire';
 import type { RunWire } from '@web/test-utils/chat-run-wire';
 
 /** The limits the server reads, as `GET /chat/stream-config` answers them. */
@@ -307,6 +307,26 @@ describe('a reply as the panel draws it', () => {
 
     await waitFor(() => {
       expect(panel.result.current.messages.at(-1)?.streaming).toBe(true);
+    });
+  });
+
+  it('is marked as being written from the frame that names it, before a word arrives', async () => {
+    const panel = await anOpenPanel();
+    stored = [...stored, row('sent-1', 'user', 'find a few reference images', 2)];
+    act(() => {
+      void panel.result.current.send('find a few reference images');
+    });
+    await waitFor(() => {
+      expect(wire.streams()).not.toHaveLength(0);
+    });
+    act(() => {
+      wire.last()?.push(BEAT);
+      wire.last()?.push({ type: 'start', messageId: 'server-named' });
+      wire.last()?.push({ type: 'start-step' });
+    });
+
+    await waitFor(() => {
+      expect(panel.result.current.messages.at(-1)).toMatchObject({ role: 'assistant', streaming: true });
     });
   });
 
