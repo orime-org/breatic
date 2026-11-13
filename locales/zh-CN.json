@@ -2686,6 +2686,27 @@
         "more": "加载更多",
         "formats": "PNG、JPEG 或 WebP",
         "chooseFile": "选择文件"
+      },
+      "viewfinder": {
+        "open": "取景框",
+        "ratio": "画幅",
+        "size": "{width} × {height}",
+        "cancel": "取消",
+        "confirm": "确定",
+        "modelsLoading": "模型还在加载，加载完再截图",
+        "captureFailed": "截图失败",
+        "toAgent": "添加到 Agent",
+        "toCanvas": "添加到 Canvas",
+        "copy": "复制",
+        "reframe": "重新取景",
+        "canvasListTitle": "添加到 Canvas",
+        "noCanvas": "这个 Project 还没有 Canvas，先新建一个",
+        "addedToAgent": "已添加到 Agent",
+        "addedToCanvas": "已添加到「{name}」",
+        "view": "查看",
+        "copied": "已复制",
+        "copyFailed": "复制失败",
+        "canvasUnreachable": "连不上「{name}」，请再试一次"
       }
     },
     "sizeCap": {

@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { Box3, Frustum, Matrix4, PerspectiveCamera, Vector3 } from 'three';
-import { focusSceneBounds, updateSceneCameraRange } from '../scene-camera';
+import { captureViewOffset, focusSceneBounds, updateSceneCameraRange } from '../scene-camera';
 
 const bounds = new Box3(new Vector3(-0.5, -0.5, -0.5), new Vector3(10000.5, 0.5, 0.5));
 
@@ -53,5 +53,14 @@ describe('scene camera framing', () => {
     expect(camera.position.toArray()).toEqual([5, 4, 3]);
     expect(target.toArray()).toEqual([1, 2, 3]);
     expect(camera.far).toBe(5000);
+  });
+});
+
+describe('capture view offset', () => {
+  it('maps the frame to a camera view offset at the output scale', () => {
+    const frame = { x: 100, y: 50, width: 400, height: 225 };
+    expect(captureViewOffset(frame, { width: 1000, height: 600 }, { width: 2048, height: 1152 })).toEqual({
+      fullWidth: 5120, fullHeight: 3072, x: 512, y: 256, width: 2048, height: 1152,
+    });
   });
 });
