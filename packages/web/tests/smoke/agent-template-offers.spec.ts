@@ -27,7 +27,7 @@ import { basename, join } from 'node:path';
 import { expect, type Page } from 'playwright/test';
 import { GENERATION_TEMPLATES, feedsOf, templateAnchor, type CanvasProposal } from '@breatic/shared';
 import { test } from '../helpers/slot';
-import { answerIfAsked, say, startNewConversation } from '../helpers/conversation';
+import { answerIfAsked, say, startNewConversation, storedMessages, type StoredPart } from '../helpers/conversation';
 
 import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace } from '../helpers/space';
@@ -51,18 +51,18 @@ let page: Page;
 let spaceId = '';
 
 /**
- * How many generations in a proposal draw on the material it carries,
+ * The generations in a proposal that draw on the material it carries,
  * through an edge or a filled slot, directly or through generations between.
  * @param proposal - The proposal, as the agent sent it.
- * @param counts - Which generations to count.
+ * @param counts - Which generations to take.
  * @param kind - The kind of material they must draw on; any when left out.
- * @returns The count.
+ * @returns The generations.
  */
 function generationsCarryingMaterial(
   proposal: CanvasProposal,
   counts: (node: CanvasProposal['nodes'][number]) => boolean,
   kind?: CanvasProposal['nodes'][number]['type'],
-): number {
+): CanvasProposal['nodes'] {
   const fed = new Map<number, number[]>();
   for (const { fromIndex, toIndex } of feedsOf(proposal)) fed.set(toIndex, [...(fed.get(toIndex) ?? []), fromIndex]);
   const carries = (at: number, seen: Set<number>): boolean => {
@@ -70,7 +70,7 @@ function generationsCarryingMaterial(
     return (node?.material !== undefined && (kind === undefined || node.type === kind)) ||
       (fed.get(at) ?? []).some((from) => !seen.has(from) && carries(from, new Set([...seen, from])));
   };
-  return proposal.nodes.filter((node, at) => node.role === 'generate' && counts(node) && carries(at, new Set([at]))).length;
+  return proposal.nodes.filter((node, at) => node.role === 'generate' && counts(node) && carries(at, new Set([at])));
 }
 
 /**
@@ -125,7 +125,7 @@ function audioForVideo(proposal: CanvasProposal, takesVideo: ReadonlySet<string>
     const model = modelOf(node) ?? '';
     return node.type === 'audio' && counts(model) && takesVideo.has(model) === slotted;
   };
-  const drawing = generationsCarryingMaterial(proposal, (node) => fits(node, true), 'video');
+  const drawing = generationsCarryingMaterial(proposal, (node) => fits(node, true), 'video').length;
   const carried = proposal.nodes.some((node) => node.type === 'video' && node.material !== undefined);
   const beside = carried ? proposal.nodes.filter((node) => node.role === 'generate' && fits(node, false)).length : 0;
   return drawing + beside;
@@ -137,10 +137,10 @@ function audioForVideo(proposal: CanvasProposal, takesVideo: ReadonlySet<string>
  * @returns The count.
  */
 function videosCarryingMaterial(proposal: CanvasProposal): number {
-  return generationsCarryingMaterial(proposal, (node) => node.type === 'video');
+  return generationsCarryingMaterial(proposal, (node) => node.type === 'video').length;
 }
 
-/** What the newest stored conversation's turn did and said. */
+/** What the newest stored conversation's turns did and said. */
 interface Turn {
   /** Each tool it used, in order. */
   tools: string[];
@@ -152,63 +152,30 @@ interface Turn {
   read: string[];
   /** Everything it wrote or asked, as one text. */
   said: string;
-  /** Whether its reply is stored yet. */
-  stored: boolean;
 }
 
 /**
- * Read the newest stored conversation's turn.
+ * What the newest conversation's agent turns did and said, once the reply to
+ * the newest message is stored.
  * @param p - The signed-in page.
- * @returns What the turn did and said.
- */
-async function lastTurn(p: Page): Promise<Turn> {
-  return p.evaluate(async () => {
-    const list = await (await fetch('/api/v1/chat/conversations?limit=1', { credentials: 'include' })).json();
-    const id = list?.data?.conversations?.[0]?.id as string;
-    const read = await (await fetch(`/api/v1/chat/conversations/${id}`, { credentials: 'include' })).json();
-    const messages = (read?.data?.messages ?? []) as {
-      role?: string;
-      parts?: {
-        type?: string;
-        text?: string;
-        output?: unknown;
-        input?: { id?: string; nodes?: { template?: { id?: string } }[] } & Record<string, unknown>;
-      }[];
-    }[];
-    const parts = messages.filter((m) => m.role === 'assistant').flatMap((m) => m.parts ?? []);
-    // A refused proposal answers { placed: false } and never reaches the canvas.
-    const landed = parts.filter(
-      (part) => part.type === 'tool-propose_canvas_action' && (part.output as { placed?: boolean } | undefined)?.placed === true,
-    );
-    return {
-      tools: parts.flatMap((part) => (part.type?.startsWith('tool-') ? [part.type.slice('tool-'.length)] : [])),
-      templates: landed.flatMap((part) => part.input?.nodes ?? []).flatMap((node) => (node.template?.id ? [node.template.id] : [])),
-      landed: landed.map((part) => part.input as unknown as CanvasProposal),
-      read: parts.flatMap((part) =>
-        part.type === 'tool-get_generation_template' && typeof part.output === 'string' && part.input?.id ? [part.input.id] : [],
-      ),
-      said: parts.flatMap((part) => (part.type === 'text' ? [part.text ?? ''] : part.type?.startsWith('tool-ask_user') ? [JSON.stringify(part.input)] : [])).join('\n'),
-      stored: messages.at(-1)?.role === 'assistant',
-    };
-  });
-}
-
-/**
- * The newest turn once its reply is stored: the turn's end on screen can come
- * before the server writes the reply, which it writes whole, while the user's
- * message is stored as the turn starts.
- * @param p - The signed-in page.
- * @returns What the turn did and said.
+ * @returns What the turns did and said.
  */
 async function settledTurn(p: Page): Promise<Turn> {
-  let turn = await lastTurn(p);
-  await expect
-    .poll(async () => {
-      turn = await lastTurn(p);
-      return turn.stored;
-    }, { timeout: 30_000 })
-    .toBe(true);
-  return turn;
+  const parts = (await storedMessages(p)).filter((m) => m.role === 'assistant').flatMap((m) => m.parts ?? []);
+  const input = (part: StoredPart): { id?: string; nodes?: { template?: { id?: string } }[] } => part.input ?? {};
+  // A refused proposal answers { placed: false } and never reaches the canvas.
+  const landed = parts.filter(
+    (part) => part.type === 'tool-propose_canvas_action' && (part.output as { placed?: boolean } | undefined)?.placed === true,
+  );
+  return {
+    tools: parts.flatMap((part) => (part.type?.startsWith('tool-') ? [part.type.slice('tool-'.length)] : [])),
+    templates: landed.flatMap((part) => input(part).nodes ?? []).flatMap((node) => (node.template?.id ? [node.template.id] : [])),
+    landed: landed.map((part) => part.input as unknown as CanvasProposal),
+    read: parts.flatMap((part) =>
+      part.type === 'tool-get_generation_template' && typeof part.output === 'string' && input(part).id ? [input(part).id as string] : [],
+    ),
+    said: parts.flatMap((part) => (part.type === 'text' ? [part.text ?? ''] : part.type?.startsWith('tool-ask_user') ? [JSON.stringify(part.input)] : [])).join('\n'),
+  };
 }
 
 /**
@@ -284,11 +251,12 @@ test('asked outright for a festival travel poster, it reads the festival poster 
   await ask('Make a festival travel poster for Kyoto in the autumn maple season, with the title KYOTO AUTUMN.', 'A vertical poster for Instagram; the title is KYOTO AUTUMN exactly as written.');
   const turn = await settledTurn(page);
   expect(turn.read, `read: ${turn.read.join(', ')}; tools: ${turn.tools.join(', ')}`).toContain('destination-festival-poster');
-  // Solved when a picture lands, whether built on the template or on the agent's own setup drawing on it.
+  // Every brace is answered and the template takes no material, so what lands is built on it.
+  expect(turn.templates, `named: ${turn.templates.join(', ')}; said: ${turn.said.slice(0, 600)}`).toContain('destination-festival-poster');
   const pictures = turn.landed.flatMap((proposal) => proposal.nodes).filter((node) => node.role === 'generate' && node.type === 'image');
-  expect(pictures.length, `named: ${turn.templates.join(', ')}; said: ${turn.said.slice(0, 600)}`).toBeGreaterThanOrEqual(1);
-  // The title the user gave goes into the picture as written.
-  expect(JSON.stringify(pictures), `said: ${turn.said.slice(0, 600)}`).toContain('KYOTO AUTUMN');
+  expect(pictures.length, `said: ${turn.said.slice(0, 600)}`).toBeGreaterThanOrEqual(1);
+  // The title the user gave goes into every version's prompt as written.
+  for (const picture of pictures) expect(JSON.stringify(picture.prompt ?? []), picture.name).toContain('KYOTO AUTUMN');
   await expect(page.getByTestId('proposal-card').last()).toBeVisible({ timeout: 20_000 });
 });
 
@@ -314,11 +282,13 @@ test('given a character photo and asked for two videos of her, what lands for bo
   test.setTimeout(480_000);
   await ask('This is my character. I want two short videos of her: one walking through a park, one sitting in a café.', 'She is Mika, a 25-year-old bicycle courier, cheerful and stubborn; both videos are vertical, for Instagram.', 'character.jpg');
   const turn = await settledTurn(page);
-  // Solved when what lands for both scenes draws on her photo: the two videos,
-  // or takes of each scene's still made first, the videos following from the
-  // picked takes; through a template or a setup of the agent's own.
-  const carrying = turn.landed.reduce((count, proposal) => count + generationsCarryingMaterial(proposal, () => true), 0);
-  expect(carrying, `generations drawing on the photo in landed proposals. Templates: ${turn.templates.join(', ')}; tools: ${turn.tools.join(', ')}; said: ${turn.said.slice(0, 600)}`).toBeGreaterThanOrEqual(2);
+  // Solved when what lands for each scene draws on her photo: its video, or
+  // takes of its still made first, the video following from the picked take;
+  // through a template or a setup of the agent's own.
+  const carrying = turn.landed.flatMap((proposal) => generationsCarryingMaterial(proposal, () => true)).map((node) => JSON.stringify(node.prompt ?? [])).join('\n');
+  const seen = `generations drawing on the photo: ${carrying.slice(0, 600)}; templates: ${turn.templates.join(', ')}; said: ${turn.said.slice(0, 600)}`;
+  expect(carrying, seen).toMatch(/park/i);
+  expect(carrying, seen).toMatch(/caf[eé]/i);
 });
 
 test('given a video and asked outright for background music, it reads a music template and lands music on that template\'s model drawing on the video @needs-model', async () => {
