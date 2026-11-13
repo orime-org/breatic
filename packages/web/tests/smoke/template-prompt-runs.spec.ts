@@ -29,7 +29,7 @@ import { openSmokeProject } from '../helpers/project';
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 import { dropFile } from '../helpers/upload';
-import { answerIfAsked, say, startNewConversation } from '../helpers/conversation';
+import { answerIfAsked, say, startNewConversation, storedMessages } from '../helpers/conversation';
 import { seedNode, wire } from '../helpers/mini-tool';
 
 const OUT = process.env.TEMPLATE_RUN_OUT ?? join(__dirname, '../../test-results/template-runs');
@@ -436,22 +436,8 @@ if (AGENT_ASK !== undefined) test('agent @needs-model', async () => {
   await say(page, AGENT_ASK, 2);
   // The agent asks what only the user knows before it fills a template.
   if (ASK_REPLY !== undefined) await answerIfAsked(page, ASK_REPLY);
-  // The turn's end on screen can come before the server writes the reply,
-  // while the user's message is stored as the turn starts.
-  let turn = '';
-  await expect
-    .poll(async () => {
-      const read = await page.evaluate(async () => {
-        const list = await (await fetch('/api/v1/chat/conversations?limit=1', { credentials: 'include' })).json();
-        const id = list?.data?.conversations?.[0]?.id as string;
-        const conversation = await (await fetch(`/api/v1/chat/conversations/${id}`, { credentials: 'include' })).json();
-        return (conversation?.data?.messages ?? []) as { role?: string; parts?: unknown[] }[];
-      });
-      turn = JSON.stringify(read.filter((m) => m.role === 'assistant').flatMap((m) => m.parts ?? []));
-      return read.at(-1)?.role;
-    }, { timeout: 30_000 })
-    .toBe('assistant');
-  record({ template: 'agent', label: LABEL, ask: AGENT_ASK, reply: ASK_REPLY, parts: JSON.parse(turn) as unknown });
+  const parts = (await storedMessages(page)).filter((m) => m.role === 'assistant').flatMap((m) => m.parts ?? []);
+  record({ template: 'agent', label: LABEL, ask: AGENT_ASK, reply: ASK_REPLY, parts });
   // Recorded first, so a turn that ends without a proposal still shows what it did.
   await expect(page.getByTestId('proposal-card').last()).toBeVisible({ timeout: 30_000 });
   if (process.env.TEMPLATE_RUN_ASK_ONLY !== undefined) return;

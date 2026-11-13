@@ -58,6 +58,46 @@ export async function say(page: Page, text: string, bubbles: number): Promise<vo
  * @param reply - What the user answers.
  */
 export async function answerIfAsked(page: Page, reply: string): Promise<void> {
-  if ((await page.getByTestId('proposal-card').count()) > 0) return;
+  // Only a questionnaire still waiting is answered; a turn that proposed or
+  // failed stays as it ended, for the case to judge.
+  if ((await page.getByTestId('questionnaire-submit').count()) === 0) return;
   await say(page, reply, (await page.getByTestId('message-bubble').count()) + 2);
+}
+
+/** A part of a stored message, as the conversation endpoint returns it. */
+export interface StoredPart {
+  type?: string;
+  text?: string;
+  output?: unknown;
+  input?: Record<string, unknown>;
+}
+
+/** A message of the conversation, as the conversation endpoint returns it. */
+export interface StoredMessage {
+  role?: string;
+  parts?: StoredPart[];
+}
+
+/**
+ * The newest conversation's messages once the reply to its newest message is
+ * stored: the turn's end on screen can come before the server writes the
+ * reply, which it writes whole, while the user's message is stored as the
+ * turn starts.
+ * @param page - The signed-in page.
+ * @returns The messages, oldest first.
+ */
+export async function storedMessages(page: Page): Promise<StoredMessage[]> {
+  let messages: StoredMessage[] = [];
+  await expect
+    .poll(async () => {
+      messages = await page.evaluate(async () => {
+        const list = await (await fetch('/api/v1/chat/conversations?limit=1', { credentials: 'include' })).json();
+        const id = list?.data?.conversations?.[0]?.id as string;
+        const read = await (await fetch(`/api/v1/chat/conversations/${id}`, { credentials: 'include' })).json();
+        return (read?.data?.messages ?? []) as { role?: string; parts?: Record<string, unknown>[] }[];
+      });
+      return messages.at(-1)?.role;
+    }, { timeout: 30_000 })
+    .toBe('assistant');
+  return messages;
 }
