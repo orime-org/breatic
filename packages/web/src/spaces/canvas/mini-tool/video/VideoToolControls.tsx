@@ -147,7 +147,12 @@ export function VideoNumericInput(props: NumericProps): React.JSX.Element {
    * @throws {never} Never.
    */
   const settle = (): void => {
-    if (props.clampOnSettle === true && invalid && Number.isFinite(shown)) setText(String(Math.min(props.max ?? shown, Math.max(props.min, shown))));
+    if (props.clampOnSettle === true && invalid && Number.isFinite(shown)) {
+      // The nearest bound on the whole-microsecond grid the cut handles also write, still inside the limits.
+      const low = Math.ceil(props.min * 1e6 - 1e-6) / 1e6;
+      const high = props.max === undefined ? shown : Math.floor(props.max * 1e6 + 1e-6) / 1e6;
+      setText(String(Math.min(high, Math.max(low, shown))));
+    }
     props.onSettle?.();
   };
   return <Input type='text' inputMode='decimal' autoComplete='off' value={text} aria-label={props.label} data-testid={props.testId} aria-invalid={invalid} disabled={props.disabled} className='h-[var(--control-height)] min-w-0 px-2 text-xs tabular-nums md:text-xs' onBlur={settles ? settle : undefined} onKeyDown={(event) => { if (event.key === 'Enter' && settles) event.currentTarget.blur(); }} onChange={(event) => setText(event.currentTarget.value)} />;

@@ -216,6 +216,20 @@ describe('the transition duration input clamps to the shared bounds (§97; canva
     expect(screen.getByTestId('video-clip-overlap')).toHaveAttribute('aria-invalid', 'false');
   });
 
+  it.each([
+    // One output frame of the first clip's 30000/1001 fps, the minimum the Dialog's own normalisation also holds to.
+    ['the minimum up', { min: 1001 / 30000, max: 1.5 }, '0.01', '0.033367'],
+    ['the maximum down', { min: 0.04, max: 1 / 3 }, '5', '0.333333'],
+  ])('takes %s to a whole microsecond inside the bounds when it clamps', (_name, limits, typed, shown) => {
+    bounds.mockReturnValue(limits);
+    render(<StatefulDialog initial={draftWith('fade', 0.2)} />);
+    const field = screen.getByTestId('video-clip-overlap');
+    fireEvent.change(field, { target: { value: typed } });
+    fireEvent.blur(field);
+    expect(field).toHaveValue(shown);
+    expect(field).toHaveAttribute('aria-invalid', 'false');
+  });
+
   it('shows the bound it commits when the stored duration already sits at that bound', () => {
     bounds.mockReturnValue({ min: 0.2, max: 1.2 });
     render(<StatefulDialog initial={draftWith('fade', 1.2)} />);
