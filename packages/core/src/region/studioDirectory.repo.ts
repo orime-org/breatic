@@ -119,6 +119,39 @@ export async function findPersonalByCreator(userId: string): Promise<DirectoryRo
 }
 
 /**
+ * Lock one user's live personal Studio row for a credit grant. The candidate
+ * is found first and locked by its id; the type, creator and admin are then
+ * judged on the locked row, so a change while it waited is seen.
+ * @param userId - The user.
+ * @param tx - The grant's transaction, holding the account lock.
+ * @returns The row, or null when the user has no live personal Studio they administer.
+ */
+export async function lockPersonalForGrant(userId: string, tx: DbTx): Promise<DirectoryRow | null> {
+  const [candidate] = await tx
+    .select({ studioId: studioDirectory.studioId })
+    .from(studioDirectory)
+    .where(
+      and(
+        eq(studioDirectory.createdByUserId, userId),
+        eq(studioDirectory.type, "personal"),
+        eq(studioDirectory.state, "live"),
+        isNull(studioDirectory.deletedAt),
+      ),
+    )
+    .limit(1);
+  if (!candidate) return null;
+  const [row] = await tx
+    .select(columns)
+    .from(studioDirectory)
+    .where(and(eq(studioDirectory.studioId, candidate.studioId), isNull(studioDirectory.deletedAt)))
+    .for("no key update")
+    .limit(1);
+  const usable = row !== undefined && row.type === "personal" && row.state === "live"
+    && row.createdByUserId === userId && row.adminUserId === userId;
+  return usable ? row : null;
+}
+
+/**
  * Name a new admin, recording which change did it.
  * @param studioId - The Studio, already locked by the caller.
  * @param adminUserId - The new admin.
@@ -421,6 +454,20 @@ export async function findProject(projectId: string): Promise<{ studioId: string
     .where(and(eq(projectDirectory.projectId, projectId), isNull(projectDirectory.deletedAt)))
     .limit(1);
   return row ?? null;
+}
+
+/**
+ * The region of each Project, by the Studio it is in.
+ * @param projectIds - The Projects.
+ * @returns Each known Project's region; null is the global region.
+ */
+export async function listProjectRegions(projectIds: readonly string[]): Promise<{ projectId: string; region: string | null }[]> {
+  if (projectIds.length === 0) return [];
+  return db
+    .select({ projectId: projectDirectory.projectId, region: studioDirectory.region })
+    .from(projectDirectory)
+    .innerJoin(studioDirectory, eq(studioDirectory.studioId, projectDirectory.studioId))
+    .where(inArray(projectDirectory.projectId, [...projectIds]));
 }
 
 /**

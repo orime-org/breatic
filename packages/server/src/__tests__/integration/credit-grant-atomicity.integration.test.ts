@@ -13,7 +13,7 @@ import type { Sql } from "./operator-credit-grant-fixtures.js";
 const suite = useInternalApp("credit-grant-atomicity");
 
 /** Park the specified row on an independent connection until released. */
-async function holdRow(table: "users" | "studios" | "studio_members" | "studio_credit_debts", column: "id" | "studio_id", id: string): Promise<() => Promise<void>> {
+async function holdRow(table: "users" | "studio_directory" | "studio_credit_debts", column: "id" | "studio_id", id: string): Promise<() => Promise<void>> {
   const gate = postgres(inject("DATABASE_URL"), { max: 1, prepare: false, connection: { application_name: "credit-grant-lock-gate" } });
   let unlock: () => void = () => {};
   let acquired: () => void = () => {};
@@ -71,8 +71,8 @@ describe("operator credit grant atomicity and observed locks", () => {
   });
 
   it.each([
-    ["users", "id", "userId"], ["studios", "id", "studioId"],
-    ["studio_members", "studio_id", "studioId"], ["studio_credit_debts", "studio_id", "studioId"],
+    // The personal Studio is judged on its global directory row (inner#1955).
+    ["users", "id", "userId"], ["studio_directory", "studio_id", "studioId"], ["studio_credit_debts", "studio_id", "studioId"],
   ] as const)("P13 waits for the current %s row before granting", async (table, column, identity) => {
     const fx = await seedPersonal(suite.sql);
     expect((await call(suite.baseUrl, profilePath(fx.userId), { admin: GRANT_ADMIN })).status).toBe(200);
@@ -118,11 +118,12 @@ describe("operator credit grant atomicity and observed locks", () => {
     expect(await fundingState(suite.sql, fx)).toMatchObject({ lots: 2, topup: "200.000000", remaining: "150.000000", repaid: "20.000000", debt: "0.000000" });
   });
 
-  it.each(["account", "studio", "studio-type", "membership", "membership-deleted"])("P14 rechecks an identity changed under the %s lock", async (identity) => {
+  it.each(["account", "studio", "studio-type", "admin"])("P14 rechecks an identity changed under the %s lock", async (identity) => {
     const fx = await seedPersonal(suite.sql);
     expect((await call(suite.baseUrl, profilePath(fx.userId), { admin: GRANT_ADMIN })).status).toBe(200);
     await seedDebt(suite.sql, fx, "20.000000");
-    const table = identity === "account" ? "users" : identity.startsWith("studio") ? "studios" : "studio_members";
+    const [other] = await suite.sql<{ id: string }[]>`insert into users(email) values(${`grant-other-${randomUUID()}@example.test`}) returning id`;
+    const table = identity === "account" ? "users" : "studio_directory";
     const gate = postgres(inject("DATABASE_URL"), { max: 1, prepare: false });
     let release: () => void = () => {};
     let acquired: () => void = () => {};
@@ -130,10 +131,9 @@ describe("operator credit grant atomicity and observed locks", () => {
     const allowed = new Promise<void>((resolve) => { release = resolve; });
     const changing = gate.begin(async (tx) => {
       if (identity === "account") await tx`update users set deleted_at=now() where id=${fx.userId}`;
-      else if (identity === "studio") await tx`update studios set deleted_at=now() where id=${fx.studioId}`;
-      else if (identity === "studio-type") await tx`update studios set type='team' where id=${fx.studioId}`;
-      else if (identity === "membership-deleted") await tx`update studio_members set deleted_at=now() where studio_id=${fx.studioId} and user_id=${fx.userId}`;
-      else await tx`update studio_members set role='maintainer' where studio_id=${fx.studioId} and user_id=${fx.userId}`;
+      else if (identity === "studio") await tx`update studio_directory set deleted_at=now() where studio_id=${fx.studioId}`;
+      else if (identity === "studio-type") await tx`update studio_directory set type='team' where studio_id=${fx.studioId}`;
+      else await tx`update studio_directory set admin_user_id=${other!.id} where studio_id=${fx.studioId}`;
       acquired(); await allowed;
     });
     await held;

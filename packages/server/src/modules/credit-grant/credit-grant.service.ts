@@ -1,13 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import { db, env, creditGrantProfileSchema, creditGrantResultSchema } from "@breatic/core";
+import { db, env, creditGrantProfileSchema, creditGrantResultSchema, studioDirectoryRepo } from "@breatic/core";
 import type { CreditGrantProfile, CreditGrantResult, CreditGrantWrite, DbTx } from "@breatic/core";
 import { serializeCreditMicro, parseCreditDecimal } from "@breatic/shared";
-import { creditLotService, creditLotRepo, studioMembersRepo } from "@breatic/domain";
+import { creditLotService, creditLotRepo } from "@breatic/domain";
 import * as operationRepo from "@server/modules/credit-grant/credit-grant.repo.js";
 import { usersRepo as userRepo } from "@breatic/domain";
-import { studioRepo } from "@breatic/domain";
 
 /** The signed original request identity and normalized intent. */
 export interface GrantRequest { userId: string; key: string; hash: string; adminId: string; body: CreditGrantWrite }
@@ -22,15 +21,23 @@ export type GrantAnswer<T> = { status: 200; body: T } | { status: 404; body: { c
  * @throws {Error} When an identity lock cannot be acquired.
  */
 async function lockIdentity(userId: string, tx: DbTx): Promise<
-  { account: NonNullable<Awaited<ReturnType<typeof userRepo.lockGrantAccount>>>; studio: Awaited<ReturnType<typeof studioRepo.lockPersonalForGrant>>; code: "personal_studio_unavailable" | null }
+  { account: NonNullable<Awaited<ReturnType<typeof userRepo.lockGrantAccount>>>; studio: PersonalStudio | null; code: "personal_studio_unavailable" | null }
   | { account: null; studio: null; code: "account_not_found" }
 > {
   const account = await userRepo.lockGrantAccount(userId, tx);
   if (account === null) return { account: null, studio: null, code: "account_not_found" };
-  const studio = await studioRepo.lockPersonalForGrant(userId, tx);
-  if (studio === null) return { account, studio: null, code: "personal_studio_unavailable" };
-  const role = await studioMembersRepo.lockGrantMemberRole(studio.id, userId, tx);
-  return { account, studio: role === "admin" ? studio : null, code: role === "admin" ? null : "personal_studio_unavailable" };
+  // The personal Studio may live in any region; the global directory row is
+  // what a grant locks and judges (inner#1955).
+  const row = await studioDirectoryRepo.lockPersonalForGrant(userId, tx);
+  if (row === null) return { account, studio: null, code: "personal_studio_unavailable" };
+  return { account, studio: { id: row.studioId, name: row.name, slug: row.slug }, code: null };
+}
+
+/** The personal Studio a grant funds, as the directory names it. */
+interface PersonalStudio {
+  id: string;
+  name: string;
+  slug: string;
 }
 
 /**
