@@ -489,7 +489,7 @@ export function sendsUntakenPrompt(model: string | undefined, params: Record<str
  * items in a capped list param than the model's `max_items` allows. The
  * /canvas/tasks route runs this BEFORE enqueue so an over-picked submission is
  * rejected (with a message naming the limit) rather than silently truncated by
- * the worker (providers/shared.ts). Sits at the same gate as
+ * the worker (`cleanParams` in handlers/model-params.ts). Sits at the same gate as
  * {@link violatesSourceRequirementForModel}, reading the model's per-param
  * `max_items` off the wire `ParamDescriptor`. An unknown / absent model
  * passes (existence is not this gate's job).

@@ -67,8 +67,8 @@ function upstreamFieldNames(context: CheckContext): Set<string> {
  * writes that upstream's shape into a catalog every upstream reads.
  *
  * The names are read off the bindings alone: every field a binding sends one of our params as that is not the
- * param's own name, less the names {@link EXCUSED} reviews as ours. ESLint runs per package and never reads `config/`,
- * so this is the check that sees the yaml.
+ * param's own name, less the names {@link EXCUSED} reviews as ours. ESLint lints source files one package at a time and
+ * never lints the catalog or binding yaml, so this is the check that sees it.
  */
 export const noUpstreamFieldInCatalog = {
   name: "no-upstream-field-in-catalog",

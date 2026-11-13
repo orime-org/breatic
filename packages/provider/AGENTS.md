@@ -8,15 +8,16 @@ The model provider layer: every model call (media generation, understanding, LLM
 
 ### Its own HTTP module
 
-**Every outgoing request goes through `src/http/request.ts`: adapters call `send` and the readers beside it, and every AI SDK provider is built with its `aiSdkFetch` (`src/llm/vendors.ts`).** That file is the one non-test file the `breatic/no-naked-fetch` exemption in `eslint.config.ts` names besides `@breatic/shared`'s transport directory (`packages/shared/src/http/`). A submit is sent with `replaySafe: false`; media polls, result and billing queries are replay-safe; every understand request, Gemini Files API steps included, is delivered once (`exchange`).
+**Every outgoing request goes through `src/http/request.ts`: adapters call `send` and the readers beside it, and every AI SDK provider is built with its `aiSdkFetch` (each upstream adapter's `build` in `src/llm/upstreams/`).** That file is the one non-test file the `breatic/no-naked-fetch` exemption in `eslint.config.ts` names besides `@breatic/shared`'s transport directory (`packages/shared/src/http/`). A submit is sent with `replaySafe: false`; media polls, result and billing queries are replay-safe; every understand request, Gemini Files API steps included, is delivered once (`exchange`).
 
-### Three entry points
+### Four entry points
 
 | Entry | Who may import it |
 |---|---|
 | `@breatic/provider` | domain, server, worker: `createProvider`, LLM calls, costs, errors |
 | `@breatic/provider/pricing` | web as well: it runs in the browser, so `src/pricing/` imports only itself, `zod` and `jsonata` (`provider-pricing-browser-safe`) |
 | `@breatic/provider/media` | worker only (`provider-media-worker-only`): media runs happen only in the worker, per [AGENTS.md#aigc-generation-runs-in-the-worker](../../AGENTS.md#aigc-generation-runs-in-the-worker) |
+| `@breatic/provider/messages` | ingest only (`provider-messages-ingest-only`): the web-animation container's Messages relay runs in the ingest Cloudflare Worker, so the relay and every file it reaches import only one another, `zod` and `node:async_hooks` (`provider-messages-worker-safe`) |
 
 ### Configuration is checked whole at load
 
@@ -36,7 +37,7 @@ The model provider layer: every model call (media generation, understanding, LLM
 
 ### One reader per answer shape
 
-**Each upstream answer shape has one reader (`costedOf` for OpenRouter's id and usage, the zod schemas in `src/llm/understand/google.ts` for Gemini, `messageOf` and `errorOf` in `src/llm/vendors.ts` for an error body, `pricingRuleSchema` and `upstreamPricingSchema` for pricing); a field of that shape is read through it, never through a second cast elsewhere.** A second reader drifts from the first, and the field it reads often decides whether a billed answer is recorded or a call moves on.
+**Each upstream answer shape has one reader (`costedOf` for OpenRouter's id and usage, the zod schemas in `src/llm/understand/google.ts` for Gemini, `messageOf` and `errorOf` in `src/llm/upstreams/common.ts` for an error body, `pricingRuleSchema` and `upstreamPricingSchema` for pricing); a field of that shape is read through it, never through a second cast elsewhere.** A second reader drifts from the first, and the field it reads often decides whether a billed answer is recorded or a call moves on.
 
 ### The ticket carries the state
 

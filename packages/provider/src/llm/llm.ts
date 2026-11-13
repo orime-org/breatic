@@ -260,7 +260,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
   const costOf = (finished: FinishedCall): Cost => {
     const breatic = finished.providerMetadata?.breatic as { costRef?: unknown; cacheTtl?: unknown; sentAt?: unknown } | undefined;
     const { usage } = finished;
-    // Split as domain's usage-cost bucketsOf splits it; reasoning is part of output.
+    // Input counts every input token, the cached among them; reasoning is part of output.
     const tokens: TokenBuckets = {
       input: usage.inputTokens ?? 0,
       cachedInput: usage.inputTokenDetails?.cacheReadTokens ?? 0,

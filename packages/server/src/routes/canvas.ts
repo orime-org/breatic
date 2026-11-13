@@ -277,7 +277,7 @@ canvas.post(
       // #1735 reference-count gate: a submission that over-fills a capped list
       // param (e.g. more reference images than the model's `max_items`) is rejected
       // BEFORE enqueue so the user is told, rather than the worker silently
-      // truncating (providers/shared.ts). Same gate location as the source check.
+      // truncating (`cleanParams` in handlers/model-params.ts). Same gate location as the source check.
       const countViolation = violatesReferenceCountForModel(body.model, body.params);
       if (countViolation) {
         logger.warn(

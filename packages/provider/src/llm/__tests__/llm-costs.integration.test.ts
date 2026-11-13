@@ -24,7 +24,7 @@ afterEach(async () => {
   await stopFakes(fakes);
 });
 
-/** The buckets of `usage` below, as domain's bucketsOf splits it. */
+/** The buckets of `usage` below, as `costOf` splits it. */
 const TOKENS = { input: 11, cachedInput: 0, output: 3, reasoning: 0 };
 
 const usage: LanguageModelUsage = {

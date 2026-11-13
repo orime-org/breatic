@@ -24,7 +24,7 @@
 #                          is not sent.
 #   param.max_length     — the most characters a text param takes, counted on
 #                          the cleaned text.
-# Field names and value spellings are WaveSpeed's own pages:
+# Field names and values are taken from WaveSpeed's own pages, in our own spellings:
 # https://wavespeed.ai/models/tripo3d/h3.1/text-to-3d,
 # https://wavespeed.ai/models/tripo3d/h3.1/image-to-3d and
 # https://wavespeed.ai/models/tripo3d/h3.1/multiview-to-3d. Where the runs go

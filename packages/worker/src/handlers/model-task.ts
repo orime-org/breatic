@@ -102,7 +102,8 @@ function generationSent(legacy: LegacyRows): boolean {
  * @throws {StillRunning} When the run is running upstream, or no reading place is free for a description.
  * @throws {MediaRunFailed} When provider answered the run failed.
  * @throws {DeadlinePassed} When the deadline passed before a step could be sent, or cut a call.
- * @throws {Error} When the model is not in the catalog, or a param is longer than its cap.
+ * @throws {Error} When the model is not in the catalog, a text param is longer than its cap or shorter than its least
+ *   length once cleaned, or the task's route is not one `routeSchema` accepts.
  */
 export async function runModelTask(task: ModelTask): Promise<MediaRunDone> {
   const own = { ...task.params };

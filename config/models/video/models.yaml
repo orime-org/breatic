@@ -34,11 +34,11 @@
 #                          `fields` and `max_items`), text (a free text field).
 #                          `values: [true, false]` draws a switch; `min`, `max`
 #                          and `step` draw a slider; other `values` an option group.
-#   param.default        — what the param holds when the user sets nothing;
-#                          a run sends it unless it equals `absent_value`.
-#   param.absent_value   — the value that is sent as nothing: holding it
-#                          leaves the param out of the request (`auto` lets
-#                          the upstream decide).
+#   param.default        — what the param holds when the user sets nothing.
+#   param.absent_value   — the value that stands for "let the upstream decide"
+#                          (`auto`); whether holding it sends nothing is set
+#                          per upstream by the binding's `absent_value` in
+#                          config/provider/media/<type>.yaml.
 #   param.into_prompt    — for an `items` list the endpoint has no field for:
 #                          each entry is written into the prompt with this
 #                          template ({n} its place, {start}/{end} its running
