@@ -29,6 +29,7 @@
  * ProseMirror computes it, so where a row lands does not change.
  */
 
+import { columnsBarredAt, holdsColumns } from '@web/spaces/document/document-column-entry';
 import { Fragment, Slice, type Node as PMNode } from '@tiptap/pm/model';
 import { dropPoint } from '@tiptap/pm/transform';
 import type { EditorView } from '@tiptap/pm/view';
@@ -137,6 +138,10 @@ export function moveRowTo(view: EditorView, blockId: string, at: number): void {
   if (landing >= row.from && landing <= row.to) return;
   if (cellDepthOf(view.state.doc.resolve(landing)) > 0 && carriesTable(row.node)) {
     toast.warning(t('spaces.document.paste.unsupportedInCell'));
+    return;
+  }
+  if (columnsBarredAt(view.state.doc.resolve(landing)) && holdsColumns([row.node])) {
+    toast.warning(t('spaces.document.columns.unavailable'));
     return;
   }
 

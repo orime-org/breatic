@@ -24,6 +24,7 @@
 
 import type { Slice } from '@tiptap/pm/model';
 import type { Transaction } from '@tiptap/pm/state';
+import { columnsBarredAt, holdsColumns } from '@web/spaces/document/document-column-entry';
 import { cellAround } from '@tiptap/pm/tables';
 import type { EditorView } from '@tiptap/pm/view';
 
@@ -82,6 +83,10 @@ export function dropAsPaste(editor: Editor, view: EditorView, event: DragEvent, 
   if (!holdsContent(rows, parsed)) return true;
   if (refusedInCell(cellAround(view.state.doc.resolve(at)) !== null, rows)) {
     toast.warning(t('spaces.document.paste.unsupportedInCell'));
+    return true;
+  }
+  if (columnsBarredAt(view.state.doc.resolve(at)) && holdsColumns(rows)) {
+    toast.warning(t('spaces.document.columns.unavailable'));
     return true;
   }
   if (removes) view.dispatch(tr);

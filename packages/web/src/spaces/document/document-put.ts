@@ -14,6 +14,7 @@
  * content goes into the cell.
  */
 
+import { columnsBarredAt, holdsColumns } from '@web/spaces/document/document-column-entry';
 import { blockToNode, type BlockNoteEditor } from '@blocknote/core';
 import { Fragment, Slice, type Node as PMNode, type ResolvedPos, type Schema } from '@tiptap/pm/model';
 import { NodeSelection, TextSelection, type Transaction } from '@tiptap/pm/state';
@@ -679,6 +680,10 @@ export function putContent(editor: Editor, content: Read, options: PutOptions): 
   }
   if (refusedInCell(inCell, rowsOf(source).rows)) {
     toast.warning(t('spaces.document.paste.unsupportedInCell'));
+    return null;
+  }
+  if (columnsBarredAt($at) && holdsColumns(rowsOf(source).rows)) {
+    toast.warning(t('spaces.document.columns.unavailable'));
     return null;
   }
   options.leaveOut?.(content.lost);
