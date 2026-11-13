@@ -20,7 +20,8 @@ vi.mock('@web/lib/toast', () => ({ toast: { warning: toastSpy.warning, error: vi
 beforeEach(() => {
   toastSpy.warning.mockClear();
 });
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, screen } from '@testing-library/react';
+import { renderWithTooltips as render } from '@web/test-utils/render-with-tooltips';
 import type { Editor } from '@tiptap/core';
 
 // 上限换成一个跟五份文案里都不一样、且带千分位的数。文案自己写死 10,000 时，

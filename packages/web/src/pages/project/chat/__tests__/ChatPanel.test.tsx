@@ -8,7 +8,8 @@ import type { ChatSendAnswer, ChatSyncAnswer } from '@breatic/shared';
 
 const toastSpy = vi.hoisted(() => ({ error: vi.fn(), warning: vi.fn() }));
 vi.mock('@web/lib/toast', () => ({ toast: { error: toastSpy.error, warning: toastSpy.warning, success: vi.fn(), info: vi.fn() } }));
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
+import { renderWithTooltips as render } from '@web/test-utils/render-with-tooltips';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type * as ChatApiModule from '@web/data/api/chat';

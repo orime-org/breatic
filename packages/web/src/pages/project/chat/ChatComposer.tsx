@@ -6,6 +6,7 @@ import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { EditorContent } from '@tiptap/react';
 import { CHAT_MESSAGE_MAX_CHARS, messageLength } from '@breatic/shared';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -294,35 +295,46 @@ function ChatComposerInner({
           ) : (
             <>
               {turnPhase === 'running' ? (
-                <Button
-                  type='button'
-                  variant='destructive'
-                  size={null}
-                  aria-label='Abort'
-                  loading={stopping}
-                  icon={<Square className='h-4 w-4' />}
-                  onClick={abort}
-                  data-testid='chat-composer-abort'
-                  className='inline-flex h-[var(--btn-inline)] w-[var(--btn-inline)] shrink-0 items-center justify-center rounded-chrome'
-                />
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type='button'
+                      variant='destructive'
+                      size={null}
+                      aria-label='Abort'
+                      loading={stopping}
+                      icon={<Square className='h-4 w-4' />}
+                      onClick={abort}
+                      data-testid='chat-composer-abort'
+                      className='inline-flex h-[var(--btn-inline)] w-[var(--btn-inline)] shrink-0 items-center justify-center rounded-chrome'
+                    />
+                  </TooltipTrigger>
+                  <TooltipContent portal>{t('chat.composer.stop')}</TooltipContent>
+                </Tooltip>
               ) : null}
-              <Button
-                type='button'
-                variant={null}
-                size={null}
-                aria-label={t('chat.composer.send')}
-                title={t('chat.composer.send')}
-                disabled={!ready}
-                onClick={submit}
-                data-testid='chat-composer-send'
-                className={`inline-flex h-[var(--btn-inline)] w-[var(--btn-inline)] shrink-0 items-center justify-center rounded-chrome transition-opacity disabled:cursor-not-allowed ${
-                ready
-                  ? 'bg-foreground text-background transition-colors hover:bg-primary-hover'
-                  : 'bg-muted text-muted-foreground hover:bg-accent hover:text-foreground'
-              }`}
-              >
-                <ArrowUp className='h-4 w-4' />
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type='button'
+                    variant={null}
+                    size={null}
+                    aria-label={t('chat.composer.send')}
+                    disabled={!ready}
+                    onClick={submit}
+                    data-testid='chat-composer-send'
+                    className={`inline-flex h-[var(--btn-inline)] w-[var(--btn-inline)] shrink-0 items-center justify-center rounded-chrome transition-opacity disabled:cursor-not-allowed ${
+                    ready
+                      ? 'bg-foreground text-background transition-colors hover:bg-primary-hover'
+                      : 'bg-muted text-muted-foreground hover:bg-accent hover:text-foreground'
+                  }`}
+                  >
+                    <ArrowUp className='h-4 w-4' />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent portal>
+                  {turnPhase === 'running' ? t('chat.composer.sendWhileRunning') : t('chat.composer.send')}
+                </TooltipContent>
+              </Tooltip>
             </>
           )}
         </div>

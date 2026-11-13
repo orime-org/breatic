@@ -435,7 +435,9 @@ export function renderProductGuide(): string {
       "attachment has finished uploading; otherwise Enter does nothing and the button is greyed. While a message " +
       "is on its way the box cannot be changed and a spinner stands in place of the button; once it has gone the " +
       "box empties. While a reply is being written the user can go on writing and sending: a red square left of " +
-      "the send button stops the reply, and a message sent meanwhile is read by the Agent at its next step, " +
+      `the send button (hovering it shows ${quoted(t("chat.composer.stop"))}) stops the reply, and the send button ` +
+      `then shows ${quoted(t("chat.composer.sendWhileRunning"))} on hover. A message sent meanwhile is read by the ` +
+      "Agent at its next step, " +
       "inside the reply being written, where it then shows as the user's message. Until the Agent reads it, it " +
       `waits in a list above the box headed ${quoted(t("chat.waiting.title", { count: 1 }))}, the same on every ` +
       "tab and device; hovering the two buttons on its row shows " +

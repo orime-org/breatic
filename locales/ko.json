@@ -353,6 +353,8 @@
       "placeholder": "질문하거나 Canvas의 항목을 넘겨주세요…",
       "inputAria": "채팅 입력",
       "send": "전송",
+      "sendWhileRunning": "전송 · Agent가 다음 단계에서 읽습니다",
+      "stop": "중지",
       "sending": "보내는 중",
       "atLimit": "{limit, number}자 제한에 도달했습니다",
       "attach": "파일 첨부",

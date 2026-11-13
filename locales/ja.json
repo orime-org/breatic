@@ -353,6 +353,8 @@
       "placeholder": "質問するか、Canvas 上のものを渡してください…",
       "inputAria": "Chat 入力",
       "send": "送信",
+      "sendWhileRunning": "送信 · Agent は次のステップで読み取ります",
+      "stop": "停止",
       "sending": "送信中",
       "atLimit": "{limit, number} 文字の上限に達しました",
       "attach": "ファイルを添付",

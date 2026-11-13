@@ -566,13 +566,14 @@ describe("what the guide says", () => {
     expect(box).toContain("else wiring.onEnter();");
     const chat = section("The chat panel");
     expect(chat).toMatch(/Enter sends the message and Shift\+Enter starts a new line/);
-    expect(chat).toMatch(/the user can go on writing and sending: a red square left of\s+the send button stops the reply/);
+    expect(chat).toMatch(/the user can go on writing and sending: a red square left of\s+the send button \(hovering it shows [^)]+\) stops the reply/);
     expect(chat).toMatch(/Switching to another conversation or leaving the page does not stop a reply/);
   });
 
   it("says a message sent while a reply runs waits above the box, and how to take it back", () => {
     const composer = webSource("pages/project/chat/ChatComposer.tsx");
-    expect(composer).toMatch(/turnPhase === 'running' \? \([\s\S]*data-testid='chat-composer-abort'[\s\S]*\) : null\}\s*<Button/);
+    expect(composer).toMatch(/turnPhase === 'running' \? \([\s\S]*data-testid='chat-composer-abort'[\s\S]*t\('chat\.composer\.stop'\)[\s\S]*\) : null\}\s*<Tooltip>\s*<TooltipTrigger asChild>\s*<Button/);
+    expect(composer).toContain("turnPhase === 'running' ? t('chat.composer.sendWhileRunning') : t('chat.composer.send')");
     expect(webSource("pages/project/chat/ChatPanel.tsx")).toMatch(/<PendingTray[\s\S]*<ChatComposer/);
     const chat = section("The chat panel");
     expect(chat).toMatch(/read by the Agent at its next step,\s+inside the reply being written/);

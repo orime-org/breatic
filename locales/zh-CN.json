@@ -353,6 +353,8 @@
       "placeholder": "问点什么，或者把 Canvas 上的东西交给我…",
       "inputAria": "Chat 输入",
       "send": "发送",
+      "sendWhileRunning": "发送 · Agent 会在下一步读到",
+      "stop": "停止",
       "sending": "发送中",
       "atLimit": "已达 {limit, number} 字上限",
       "attach": "添加文件",

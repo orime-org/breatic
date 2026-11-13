@@ -353,6 +353,8 @@
       "placeholder": "Ask something, or hand me things from the canvas…",
       "inputAria": "Chat input",
       "send": "Send",
+      "sendWhileRunning": "Send · The Agent reads it at its next step",
+      "stop": "Stop",
       "sending": "Sending",
       "atLimit": "At the {limit, number}-character limit",
       "attach": "Attach files",
