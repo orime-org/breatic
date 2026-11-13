@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { accountActivityRepo } from "@breatic/core";
-import { ConflictError, db, ForbiddenError, getLimitsForStudio, NotFoundError, projectMembersRepo } from "@breatic/core";
+import { ConflictError, db, ForbiddenError, NotFoundError, projectMembersRepo, projectsRepo } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
-import { studioMembersRepo } from "@breatic/domain";
+import { globalApi, studioMembersRepo } from "@breatic/domain";
 import { normalizeEmail, t } from "@breatic/shared";
 import type { InvitableProjectRole, UserEntity } from "@breatic/shared";
 import * as projectRepo from "@server/modules/project/project.repo.js";
@@ -148,16 +148,33 @@ async function checkInvitationRecipient(target: InvitationTarget, user: UserEnti
 }
 
 /**
+ * The seat ceiling an invitation counts against, read from the global region
+ * before the inviting transaction (inner#1955): a Project's collaborators or
+ * a Studio's members, by the Studio that pays. A project's studio never
+ * changes.
+ * @param kind - The membership target kind.
+ * @param targetId - The Project or Studio.
+ * @returns The ceiling.
+ * @throws {NotFoundError} When the project is gone.
+ * @throws {Error} When the global region does not answer.
+ */
+async function invitationCeiling(kind: InvitationKind, targetId: string): Promise<number> {
+  const studioId = kind === "project" ? await projectsRepo.findOwnerStudioId(targetId) : targetId;
+  if (studioId === undefined) throw new NotFoundError(t("server.error.not_found"));
+  const limits = await globalApi().getLimitsForStudio(studioId);
+  return kind === "project" ? limits.project_members : limits.studio_members;
+}
+
+/**
  * Check capacity before creating a new invitation under the target lock.
  * @param target - The locked membership target.
+ * @param limit - Its seat ceiling, from {@link invitationCeiling}.
  * @param tx - The enclosing transaction.
  * @returns Once a membership seat is available.
  * @throws {ConflictError} When capacity is exhausted.
  * @throws {Error} When persistence fails.
  */
-async function checkInvitationCapacity(target: InvitationTarget, tx: DbTx): Promise<void> {
-  const limits = await getLimitsForStudio(target.studioId, tx);
-  const limit = target.kind === "project" ? limits.project_members : limits.studio_members;
+async function checkInvitationCapacity(target: InvitationTarget, limit: number, tx: DbTx): Promise<void> {
   const count = target.kind === "project"
     ? await projectMembersRepo.countCollaborators(target.id, tx)
     : (await studioRepo.countMembersByStudioIds([target.id], tx)).get(target.id) ?? 0;
@@ -187,6 +204,7 @@ export async function prepareInvitation(input: {
   invitedBy: string;
 }): Promise<PreparedInvitation> {
   const email = normalizeEmail(input.email);
+  const limit = await invitationCeiling(input.kind, input.targetId);
   return db.transaction(async (tx) => {
     const target = await lockTarget(input.kind, input.targetId, tx);
     if (!target) throw new NotFoundError(t("server.error.not_found"));
@@ -203,7 +221,7 @@ export async function prepareInvitation(input: {
       if (existing.invitedUserId === null && user?.emailVerified) await claimLocked(target, existing, user, tx);
       return { duplicate: true, invitation: existing, target, invitee: user, inviterName };
     }
-    await checkInvitationCapacity(target, tx);
+    await checkInvitationCapacity(target, limit, tx);
     if (!user && !emailVerificationEnabled()) throw new NotFoundError(t(`server.${input.kind}.email_not_registered_no_mail`));
     const expiresAt = new Date(Date.now() + getDecisionWindowMs());
     const common = { invitedBy: input.invitedBy, expiresAt, tx };

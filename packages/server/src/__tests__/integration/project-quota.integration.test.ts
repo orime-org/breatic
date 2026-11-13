@@ -214,6 +214,8 @@ describe("project count per studio — the create path", () => {
       INSERT INTO studio_members (studio_id, user_id, role)
       VALUES (${studio}, ${to}, 'admin')
     `;
+    // And the global directory's admin, which the transfer moves (inner#1955).
+    await sql`UPDATE studio_directory SET admin_user_id = ${to} WHERE studio_id = ${studio}`;
 
     await expect(createProject(to, studio)).rejects.toMatchObject({
       statusCode: 409,

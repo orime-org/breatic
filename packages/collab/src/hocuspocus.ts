@@ -28,7 +28,6 @@ import {
   getRedis,
   getSession,
   getCollabRedis,
-  getProjectConcurrentEditorLimit,
   isIdentityRevoked,
   projectAuthService,
   sendMail,
@@ -36,6 +35,7 @@ import {
 } from "@breatic/core";
 import { createConnectionGate, recordingFailedAuth } from "@collab/infra/connection-gate.js";
 import { createUpgradeSessionGate, readBoundIdentity } from "@collab/infra/upgrade-session-gate.js";
+import { concurrentEditorLimit } from "@collab/infra/region.js";
 import { createFrameAssembler, type FrameMessage, type FramePeer } from "@collab/infra/frame-assembler.js";
 import { filter as filterInbound, forgetSocket as forgetInboundSocket } from "@collab/infra/inbound-filter.js";
 import { createSharedThrottle } from "@collab/infra/shared-throttle.js";
@@ -293,16 +293,16 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   const authenticate = createAuthHook({
     redis: authRedis,
     // The ceiling belongs to the studio that owns this project, read from
-    // its current admin's membership tier (#88). It is looked up per
-    // handshake and deliberately not cached: a stale ceiling would outlive
-    // a tier change or a studio transfer with nothing to invalidate it.
+    // its current admin's membership tier (#88). In the global region it is
+    // looked up per handshake; elsewhere it comes from the global region and
+    // is cached for `limits_cache_ttl_ms` (inner#1955).
     //
     // A handshake is per DOCUMENT, not per socket — one socket carries the
     // meta doc plus every open Space, and `onAuthenticate` fires for each
     // (@hocuspocus/server 4.6.0 keys its hook payloads by document). Meta
     // and viewers skip the ceiling entirely (`auth.ts`), so the real cost
     // is one lookup per Space document opened.
-    resolveConnectionLimit: getProjectConcurrentEditorLimit,
+    resolveConnectionLimit: concurrentEditorLimit,
     // Cluster-wide count via the cross-instance registry (#1421), NOT
     // the local `getConnectionsCount()` (which only sees this process).
     // The count excludes this connection: registration happens later, in

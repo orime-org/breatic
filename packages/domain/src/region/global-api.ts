@@ -8,7 +8,20 @@
  * (`packages/server/src/routes/internal/global.ts`).
  */
 
-import { checkSessions, createGlobalApi, db, env, getRedis, getRegionsConfig } from "@breatic/core";
+import {
+  checkSessions,
+  claimFirstMilestone,
+  createGlobalApi,
+  db,
+  enqueueAccountAdsConversion,
+  env,
+  getLimitsForStudio,
+  getRedis,
+  getRegionsConfig,
+  type FirstMilestone,
+  type MembershipLimits,
+} from "@breatic/core";
+import type { ProjectCreditsView } from "@breatic/shared";
 import { changeDirectoryAdmin, type AdminChange, type AdminChangeResult } from "@domain/region/studioDirectory.service.js";
 import { releaseSlug, reserveSlug } from "@domain/region/directory-writes.js";
 import { applyRegionEvent } from "@domain/region/regionOutboxApply.service.js";
@@ -21,7 +34,6 @@ import {
   type RegionalChargeRequest,
 } from "@domain/credit/creditLot.service.js";
 import { positionHere, releaseHere, reserveHere, type HoldFields, type ReserveOutcome } from "@domain/credit/creditHold.service.js";
-import type { ProjectCreditsView } from "@breatic/shared";
 
 /** The global functions, as the global region runs them. */
 export const GLOBAL_FUNCTIONS = {
@@ -96,6 +108,23 @@ export const GLOBAL_FUNCTIONS = {
    */
   applyRegionEvent: (region: string, event: OutboxEvent): Promise<"applied" | "duplicate" | "permanent_failure"> =>
     applyRegionEvent(region, event),
+  /**
+   * The ceilings that apply to a Studio: its current admin's membership's.
+   * @param studioId - The Studio.
+   * @returns Its six ceilings.
+   */
+  getLimitsForStudio: (studioId: string): Promise<MembershipLimits> => getLimitsForStudio(studioId),
+  /**
+   * Claim an account's first milestone of a kind, once across every region.
+   * @param kind - Which milestone.
+   * @param userId - The account.
+   * @returns Whether this call claimed it.
+   */
+  claimAccountMilestone: async (kind: FirstMilestone, userId: string): Promise<{ claimed: boolean }> => ({
+    claimed: await claimFirstMilestone(kind, userId),
+  }),
+  /** Queue an account's ad conversion, credited to its sign-up click; core's own client calls the same. */
+  enqueueAdsConversion: enqueueAccountAdsConversion,
 };
 
 /** The global functions' API. */

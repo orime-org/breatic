@@ -69,6 +69,7 @@ async function transfer(from: Account, to: Account): Promise<void> {
     await tx`select id from studios where id=${from.studioId} for update`;
     await tx`update studio_members set role='maintainer' where studio_id=${from.studioId} and user_id=${from.id}`;
     await tx`insert into studio_members(studio_id,user_id,role) values(${from.studioId},${to.id},'admin')`;
+    await tx`update studio_directory set admin_user_id=${to.id} where studio_id=${from.studioId}`;
   });
 }
 

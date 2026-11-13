@@ -379,9 +379,9 @@ export async function listLivePendingForProject(
  */
 export async function getDecisionKeys(
   id: string,
-  tx: DbTx,
+  tx?: DbTx,
 ): Promise<{ projectId: string; requesterUserId: string } | null> {
-  const rows = await tx
+  const rows = await (tx ?? db)
     .select({
       projectId: projectJoinRequests.projectId,
       requesterUserId: projectJoinRequests.requesterUserId,

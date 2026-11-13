@@ -129,6 +129,8 @@ vi.mock("@breatic/core", async (importOriginal) => ({
   // ceiling (#88). Nothing here exercises the ceiling, but the wiring reads
   // the export at module scope, so it has to exist.
   getProjectConcurrentEditorLimit: vi.fn(async () => 100),
+  // A single-region deployment: the ceiling is read in process.
+  env: { REGION: "us-west", GLOBAL_REGION: "us-west" },
   projectAuthService: { loadProjectRole: loadProjectRoleStub },
   runWithConsent: <T>(_consent: unknown, fn: () => T): T => fn(),
 }));

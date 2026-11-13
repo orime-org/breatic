@@ -34,9 +34,9 @@ import * as invitesRepo from "@server/modules/studio/studioInvitations.repo.js";
 import { createInvitation } from "@server/modules/invitation/invitation.service.js";
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
-import { db, getLimitsForStudio, trackServerEvent } from "@breatic/core";
+import { db, trackServerEvent } from "@breatic/core";
 import { ConflictError, NotFoundError } from "@breatic/core";
-import { directoryWrites, studioMembersRepo } from "@breatic/domain";
+import { directoryWrites, globalApi, studioMembersRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
 
 /** Roles an admin may invite a user as — admin is granted via transfer only. */
@@ -123,16 +123,18 @@ async function acceptInTransaction(
   invitationId: string,
   receiverUserId: string,
 ): Promise<{ studioId: string; role: string }> {
+  // Which studio this invite is for, read WITHOUT a lock. The id is only
+  // reachable through the invitation row, and the row lock below has to come
+  // before the accept CAS, so it has to be read first. Safe: an invitation's
+  // `studio_id` never changes, and whether this invite may still be accepted
+  // is decided by the CAS, not by this read. Its member ceiling comes from the
+  // global region before the transaction opens (inner#1955).
+  const targetStudioId = await invitesRepo.getTargetStudioId(invitationId);
+  if (targetStudioId === null) {
+    throw new NotFoundError(t("server.error.not_found"));
+  }
+  const { studio_members: memberLimit } = await globalApi().getLimitsForStudio(targetStudioId);
   return db.transaction(async (tx) => {
-    // Which studio this invite is for, read WITHOUT a lock. The id is only
-    // reachable through the invitation row, and the row lock below has to come
-    // before the accept CAS, so it has to be read first. Safe: an invitation's
-    // `studio_id` never changes, and whether this invite may still be accepted
-    // is decided by the CAS, not by this read.
-    const targetStudioId = await invitesRepo.getTargetStudioId(invitationId, tx);
-    if (targetStudioId === null) {
-      throw new NotFoundError(t("server.error.not_found"));
-    }
 
     // Taken BEFORE the CAS, matching the order the project side has to use
     // against `archiveProject` (`projects` first, its invitations second).
@@ -165,10 +167,6 @@ async function acceptInTransaction(
     // The REAL gate. Between sending and accepting the studio may have filled
     // up, and unlike the invite-time hint this one runs behind the row lock
     // above, so two simultaneous confirms cannot both see the same last seat.
-    const { studio_members: memberLimit } = await getLimitsForStudio(
-      accepted.studioId,
-      tx,
-    );
     const memberCount =
       (await studioRepo.countMembersByStudioIds([accepted.studioId], tx)).get(
         accepted.studioId,

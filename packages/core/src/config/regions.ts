@@ -26,6 +26,7 @@ export const regionsConfigSchema = z
     cross_region_fanout_timeout_ms: millis.default(2000),
     outbox_relay_interval_ms: millis.default(1000),
     profile_cache_ttl_ms: millis.default(30000),
+    limits_cache_ttl_ms: millis.default(60000),
     transfer_accepting_sweep_interval_ms: millis.default(60000),
     transfer_accepting_stale_ms: millis.default(60000),
     studio_creation_sweep_interval_ms: millis.default(60000),

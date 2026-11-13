@@ -344,6 +344,7 @@ export {
   adsConversionConfig,
   adsConversionState,
   enqueueAdsConversion,
+  enqueueAccountAdsConversion,
   requeueStaleAdsUploads,
   unscheduleAdsUploadSweep,
   scheduleAdsUploadSweep,

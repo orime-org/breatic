@@ -34,9 +34,9 @@
  */
 
 import { accountActivityRepo } from "@breatic/core";
-import { db, projectMembersRepo, ConflictError, NotFoundError, getLimitsForStudio } from "@breatic/core";
+import { db, projectMembersRepo, projectsRepo, ConflictError, NotFoundError } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
-import { studioMembersRepo } from "@breatic/domain";
+import { globalApi, studioMembersRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
 import type { DecisionGrantRole, RequestFailedReason } from "@breatic/shared";
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
@@ -313,6 +313,22 @@ async function fail(req: OpenRequest, reason: RequestFailedReason, tx: DbTx): Pr
 }
 
 /**
+ * The collaborator ceiling of the studio a request's project belongs to, read
+ * from the global region before the deciding transaction (inner#1955). The
+ * request's project and the project's studio never change.
+ * @param requestId - The request.
+ * @returns The ceiling, or null when the request or its project is gone.
+ * @throws {Error} When the global region does not answer.
+ */
+async function collaboratorCeiling(requestId: string): Promise<number | null> {
+  const keys = await requestsRepo.getDecisionKeys(requestId);
+  if (keys === null) return null;
+  const studioId = await projectsRepo.findOwnerStudioId(keys.projectId);
+  if (studioId === undefined) return null;
+  return (await globalApi().getLimitsForStudio(studioId)).project_members;
+}
+
+/**
  * The owner lets the requester in with the chosen role.
  * @param input - The request, the deciding owner and the role to grant.
  * @param input.requestId - The request.
@@ -329,11 +345,12 @@ export async function approve(input: {
   role: DecisionGrantRole;
 }): Promise<void> {
   const deciderName = await displayName(input.ownerUserId);
+  const limit = await collaboratorCeiling(input.requestId);
   const outcome = await db.transaction<Refused | { projectId: string; requesterUserId: string } | { full: number }>(
     async (tx) => {
       const opened = await openForDecision(tx, input.requestId, input.ownerUserId);
       if (isRefused(opened)) return opened;
-      const { project_members: limit } = await getLimitsForStudio(opened.studioId, tx);
+      if (limit === null) return { refusal: "not_found" };
       if ((await projectMembersRepo.countCollaborators(opened.projectId, tx)) >= limit) {
         return { full: limit };
       }
