@@ -365,6 +365,29 @@ function videoStream(url: string): Probe['streams'][number] {
   return stream;
 }
 
+/**
+ * The last frame of a stored video, small and grey, so two encodes of the same picture compare by their mean difference.
+ * @param url - The URL.
+ * @returns Its 64 x 36 grey pixels.
+ */
+function lastFrame(url: string): Buffer {
+  const size = 64 * 36;
+  const tail = execFileSync('ffmpeg', ['-v', 'error', '-sseof', '-0.5', '-i', url, '-vf', 'scale=64:36,format=gray', '-f', 'rawvideo', 'pipe:']);
+  return tail.subarray(tail.length - size);
+}
+
+/**
+ * How far two grey frames differ, as the mean of their pixel differences.
+ * @param a - One frame.
+ * @param b - The other, of the same size.
+ * @returns The mean difference, 0 to 255.
+ */
+function pictureDifference(a: Buffer, b: Buffer): number {
+  let sum = 0;
+  for (let index = 0; index < a.length; index += 1) sum += Math.abs(a[index]! - b[index]!);
+  return sum / a.length;
+}
+
 /** One frame at 25 fps, the tolerance a duration is held to. */
 const FRAME = 0.04;
 
@@ -664,6 +687,9 @@ test('transitions: a second video at a lower rate keeps every frame, so the pict
     const [joined] = await stored(c, made);
     const whole = duration(await contentOf(c, 'clip6at30.mp4')) + duration(await contentOf(c, 'clip3a.mp4'));
     expect(Math.abs(Number(videoStream(joined!.content).duration) - whole)).toBeLessThanOrEqual(2 * FRAME);
+    // The picture ends on the second video's last frame. Measured on this test pattern: a re-encode of the same frame differs
+    // by about 0.15, the frame before it by about 2.9.
+    expect(pictureDifference(lastFrame(joined!.content), lastFrame(await contentOf(c, 'clip3a.mp4')))).toBeLessThan(1);
   } finally {
     await deleteSpace(page, c.spaceId);
   }
@@ -739,6 +765,13 @@ test('transitions: the preview plays two videos of different sizes, before and a
     await c.page.keyboard.type('2.95');
     await c.page.keyboard.press('Tab');
     await expect(dialog.getByRole('combobox').filter({ hasNotText: /^\d+\./ })).toBeFocused();
+    // A length past the limit is clamped to it, and Tab from it still goes on to a control rather than the dialog.
+    await overlap.click({ clickCount: 3 });
+    await c.page.keyboard.type('9');
+    await c.page.keyboard.press('Tab');
+    await expect(overlap).toHaveAttribute('aria-invalid', 'false');
+    expect(Number(await overlap.inputValue())).toBeLessThan(9);
+    expect(await dialog.evaluate((root, field) => document.activeElement !== field && document.activeElement !== root && root.contains(document.activeElement) && document.activeElement instanceof HTMLElement && document.activeElement.tabIndex >= 0, await overlap.elementHandle())).toBe(true);
     // An In refused under its Out is stored once the Out moves past it, and the track shows it.
     await outField.fill('2');
     await outField.press('Enter');
