@@ -20,8 +20,8 @@
 
 import { dialogueSideOf, dialogueSpeakers, promptTaken, type ModelEntry } from '@breatic/shared';
 
-import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
-import type { AudioSlot, AudioSlotUrls } from '@web/spaces/canvas/generate/audio-slots';
+import { AUDIO_SLOTS } from '@breatic/shared/canvas-model';
+import type { AudioSlot, AudioSlotUrls } from '@breatic/shared/canvas-model';
 import {
   filterModelsByMode,
   pickModelForMode,
@@ -30,18 +30,18 @@ import {
   readSlotThumbnails,
   readSlotDurations,
   readSlotUrls,
-} from '@web/spaces/canvas/generate/slots';
-import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
+} from '@breatic/shared/canvas-model';
+import { resolveModelSwitch } from '@breatic/shared/canvas-model';
 import {
   isVoiceChosen,
   voiceParamName,
 } from '@web/spaces/canvas/generate/voice-param';
-import { asContentView, type NodeRef } from '@web/data/yjs/node-view';
+import { asContentView, type NodeRef } from '@breatic/shared/canvas-model';
 import {
   isStandInOn,
   speakersShort,
   standInOf,
-} from '@web/spaces/canvas/generate/stand-in';
+} from '@breatic/shared/canvas-model';
 
 /** Everything the audio panel and its submit read off the node. */
 export interface AudioPanelViewModel {

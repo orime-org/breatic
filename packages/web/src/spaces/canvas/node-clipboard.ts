@@ -16,19 +16,19 @@ import { NODE_MEDIA_KEYS, newId } from '@breatic/shared';
 import type { CanvasEdge, SnapshotNode } from '@web/data/yjs/canvas-space';
 import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
 import { MENTION_LABEL_ATTR } from '@web/spaces/canvas/generate/reference-mention';
-import { FOCUS_REF_PREFIX } from '@web/spaces/canvas/generate/derive-references';
+import { FOCUS_REF_PREFIX } from '@breatic/shared/canvas-model';
 import { regionOf, regionOwnsKeyboard } from '@web/features/active-region/keyboard-scope';
 
 import {
   createEmptyNode,
   isCreatableNodeType,
   type CreatableNodeType,
-} from '@web/spaces/canvas/node-factory';
+} from '@breatic/shared/canvas-model';
 import { MODALITY_LABEL } from '@web/spaces/canvas/nodes/_shared/modality';
 import {
   EMPTY_NODE_SIZE,
   toAbsolutePosition,
-} from '@web/spaces/canvas/group-geometry';
+} from '@breatic/shared/canvas-model';
 
 /**
  * Prefix prepended to a clone's display name so a copy is visually distinct from

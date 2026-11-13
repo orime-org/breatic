@@ -19,7 +19,7 @@ import { t } from '@breatic/shared';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { yUndoPluginKey } from '@web/features/collab-editor/collab-plugin-keys';
-import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import type { ReferenceRailItem } from '@breatic/shared/canvas-model';
 import { PromptEditor, type PromptEditorHandle } from '@web/spaces/canvas/generate/PromptEditor';
 
 /** The slice of a TipTap editor these cases drive. */

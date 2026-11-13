@@ -5,7 +5,7 @@ import { NodeToolbar, Position } from '@xyflow/react';
 import * as React from 'react';
 
 import type { NodeHistoryEntry } from '@web/data/api/canvas';
-import type { NodeRef } from '@web/data/yjs/node-view';
+import type { NodeRef } from '@breatic/shared/canvas-model';
 import { useCanvasSession } from '@web/spaces/canvas/canvas-context';
 
 import { NodeHistoryPanel } from '@web/spaces/canvas/history/NodeHistoryPanel';

@@ -10,7 +10,7 @@ import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canv
 import { miniToolOpenOn } from '@web/stores/canvas-session';
 import { readOccupants } from '@web/spaces/canvas/attach-occupants';
 import { useCanvasActions } from '@web/spaces/canvas/canvas-actions';
-import type { GroupResizeBound } from '@web/spaces/canvas/group-geometry';
+import type { GroupResizeBound } from '@breatic/shared/canvas-model';
 import { GroupResizer } from '@web/spaces/canvas/nodes/GroupResizer';
 import { MagneticHandle } from '@web/spaces/canvas/nodes/_shared/MagneticHandle';
 import {
@@ -31,7 +31,7 @@ import { NODE_TYPE_LIST, NODE_TYPES } from '@web/spaces/canvas/nodes/registry';
 import {
   cellMeetsTargetSize,
   overlayCounterScale,
-} from '@web/spaces/canvas/overlay-scale';
+} from '@breatic/shared/canvas-model';
 import { NodeCropLayer } from '@web/spaces/canvas/crop/NodeCropLayer';
 import { NodeDrawLayer } from '@web/spaces/canvas/mini-tool/NodeDrawLayer';
 import { NodeAdjustLayer } from '@web/spaces/canvas/mini-tool/NodeAdjustLayer';
@@ -40,7 +40,7 @@ import { NodeGridLayer } from '@web/spaces/canvas/mini-tool/NodeGridLayer';
 import { NodeMarkLayer } from '@web/spaces/canvas/mini-tool/NodeMarkLayer';
 import { TaskCountColumn } from '@web/spaces/canvas/tasks/TaskCountColumn';
 import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
-import { typedViewOf } from '@web/data/yjs/node-view';
+import { typedViewOf } from '@breatic/shared/canvas-model';
 
 /**
  * What a node whose document carries no counts yet reads as. It is the four

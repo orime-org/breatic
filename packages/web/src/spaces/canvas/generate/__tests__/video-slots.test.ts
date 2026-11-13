@@ -27,9 +27,9 @@
 
 import { describe, it, expect } from 'vitest';
 
-import type { SlotSpec } from '@web/spaces/canvas/generate/slots';
-import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
-import type { VideoSlot } from '@web/spaces/canvas/generate/video-slots';
+import type { SlotSpec } from '@breatic/shared/canvas-model';
+import { VIDEO_SLOTS } from '@breatic/shared/canvas-model';
+import type { VideoSlot } from '@breatic/shared/canvas-model';
 import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 
 /**

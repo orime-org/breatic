@@ -25,8 +25,8 @@ import { IMAGE_MODE_OPTIONS } from '@web/spaces/canvas/generate/image-mode-selec
 import { filterAvailableModes } from '@web/spaces/canvas/generate/mode-selection';
 import { modelsForModality } from '@web/spaces/canvas/generate/modality-buckets';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
-import { VIDEO_MODE_OPTIONS } from '@web/spaces/canvas/generate/video-mode-options';
-import { AUDIO_MODE_OPTIONS } from '@web/spaces/canvas/generate/audio-mode-options';
+import { VIDEO_MODE_OPTIONS } from '@breatic/shared/canvas-model';
+import { AUDIO_MODE_OPTIONS } from '@breatic/shared/canvas-model';
 
 /** The panel kinds this frame serves — the node-anchored generate panels. */
 type GeneratePanelKind = 'generate' | 'generateVideo' | 'generateAudio';

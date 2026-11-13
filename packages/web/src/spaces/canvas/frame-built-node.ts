@@ -21,7 +21,7 @@ import {
   groupRectForMembers,
   type Point,
   type Rect,
-} from '@web/spaces/canvas/group-geometry';
+} from '@breatic/shared/canvas-model';
 
 /** Room left around a node framed for a close look, as a fit leaves around the canvas. */
 const INSPECT_PADDING = 0.1;

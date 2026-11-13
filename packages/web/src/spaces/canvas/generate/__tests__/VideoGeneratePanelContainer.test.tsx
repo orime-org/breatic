@@ -55,7 +55,7 @@ import { toast } from 'sonner';
 import en from '@locales/en.json';
 
 import { VideoGeneratePanelContainer } from '@web/spaces/canvas/generate/VideoGeneratePanelContainer';
-import { VIDEO_MODE_OPTIONS } from '@web/spaces/canvas/generate/video-mode-options';
+import { VIDEO_MODE_OPTIONS } from '@breatic/shared/canvas-model';
 import {
   addEdge,
   addNode,
@@ -66,7 +66,7 @@ import {
   nodeDataMap,
 } from '@web/data/yjs/canvas-space';
 import { _resetForTests, docName, getDoc } from '@web/data/yjs/manager';
-import type { VideoNodeView } from '@web/data/yjs/node-view';
+import type { VideoNodeView } from '@breatic/shared/canvas-model';
 import {
   addStoryboardShot,
   enterStoryboardShots,

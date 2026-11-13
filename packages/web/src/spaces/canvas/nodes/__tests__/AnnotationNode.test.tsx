@@ -7,7 +7,7 @@ import { render, screen } from '@testing-library/react';
 import { ReactFlowProvider, useStoreApi } from '@xyflow/react';
 import userEvent from '@testing-library/user-event';
 
-import type { AnnotationNodeView } from '@web/data/yjs/node-view';
+import type { AnnotationNodeView } from '@breatic/shared/canvas-model';
 import { AnnotationNamesContext } from '@web/spaces/canvas/annotation/names';
 import { AnnotationNode } from '@web/spaces/canvas/nodes/AnnotationNode';
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';

@@ -17,7 +17,7 @@ import {
   canGenerate,
 } from '@breatic/shared';
 
-import { MAX_FOCUS_ENTRIES, validFocusImages } from '@web/data/focus-images';
+import { MAX_FOCUS_ENTRIES, validFocusImages } from '@breatic/shared/canvas-model';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
 import { runHistoryStep } from '@web/data/yjs/history-step';
@@ -27,9 +27,9 @@ import {
   type NodeMediaFields,
 } from '@breatic/shared';
 import { bodyFromText, bodyToPlainText, writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
-import type { TypedNodeView } from '@web/data/yjs/node-view';
-import { toNodeView } from '@web/data/yjs/node-view';
-import { fillNestedData, splitSnapshot } from '@web/data/yjs/node-data-snapshot';
+import type { CanvasEdge, NodePlacement, TypedNodeView } from '@breatic/shared/canvas-model';
+import { toNodeView } from '@breatic/shared/canvas-model';
+import { fillNestedData, splitSnapshot } from '@breatic/shared/canvas-model';
 import {
   writeSpaceDoc,
   type SpaceWriteKind,
@@ -78,27 +78,7 @@ export type CanvasNodeView = TypedNodeView & {
   parentId?: string;
 };
 
-/**
- * A canvas connection. Its data meaning IS a reference relationship: an edge
- * `source → target` means `source` is a reference input for `target`'s
- * generation. (The former `kind: 'primary' | 'reference'` discriminant was
- * removed — every connection is a reference; there is no other edge kind.)
- * `toolId` is optional lineage metadata stamped by a mini-tool that created
- * the target node.
- */
-export interface CanvasEdge {
-  id: string;
-  source: string;
-  target: string;
-  toolId?: string;
-  /**
-   * Epoch ms when the connection was drawn (stamped by {@link addEdge}). The
-   * reference rail orders rows by it — Y.Map iteration is struct-store order
-   * (clientID + clock), which diverges from insertion order after reload /
-   * cross-client sync. Absent on legacy edges, which sort as oldest.
-   */
-  createdAt?: number;
-}
+export type { CanvasEdge, NodePlacement };
 
 interface CanvasSpaceState {
   nodes: ReadonlyArray<CanvasNodeView>;
@@ -2341,30 +2321,6 @@ export function readNodes(doc: Y.Doc): ReadonlyArray<CanvasNodeView> {
     });
   });
   return out;
-}
-
-/**
- * What the document says about one node's place and the facts its size
- * follows from: a Group's own rect, a picture's or video's pixel size, a text
- * node's words.
- */
-export interface NodePlacement {
-  id: string;
-  type: string;
-  /** Absolute left edge: a Group member's stored position plus its Group's. */
-  x: number;
-  /** Absolute top edge, likewise. */
-  y: number;
-  /** A Group's own width. */
-  width?: number;
-  /** A Group's own height. */
-  height?: number;
-  /** A picture's or video's pixel width. */
-  mediaWidth?: number;
-  /** A picture's or video's pixel height. */
-  mediaHeight?: number;
-  /** A text node's words, one line per paragraph. */
-  bodyText?: string;
 }
 
 /**

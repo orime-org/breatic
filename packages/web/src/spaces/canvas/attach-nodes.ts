@@ -16,8 +16,8 @@ import * as Y from 'yjs';
 
 import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
 import { clipAttachmentName, hashOf } from '@web/lib/attachment-naming';
-import type { ContentNodeView } from '@web/data/yjs/node-view';
-import { toAbsolutePosition } from '@web/spaces/canvas/group-geometry';
+import type { ContentNodeView } from '@breatic/shared/canvas-model';
+import { toAbsolutePosition } from '@breatic/shared/canvas-model';
 import { currentGeneration } from '@web/spaces/canvas/generate/current-generation';
 import { PROMPT_NOTE_LABEL_ATTR, PROMPT_NOTE_NODE } from '@web/features/prompt-note/prompt-note';
 import {

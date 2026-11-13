@@ -14,7 +14,7 @@ import {
 import { makeReferenceSuggestion } from '@web/spaces/canvas/generate/reference-mention-suggestion';
 import { selectionChipDecorations } from '@web/features/reference-mention/reference-mention-range-decoration';
 import { REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
-import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import type { ReferenceRailItem } from '@breatic/shared/canvas-model';
 
 const chip = (id: string): ReferenceRailItem => ({
   refId: `${id}->x`,

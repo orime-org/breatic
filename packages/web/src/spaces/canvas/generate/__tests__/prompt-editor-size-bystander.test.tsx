@@ -64,7 +64,7 @@ import { dispatchMachineEdit } from '@web/features/reference-mention/reference-m
 import { changeLocale } from '@web/i18n/locale-bootstrap';
 import { toast } from '@web/lib/toast';
 import type { PromptEditorHandle } from '@web/spaces/canvas/generate/PromptEditor';
-import { writeProposalPrompt } from '@web/spaces/canvas/generate/proposal-prompt';
+import { writeProposalPrompt } from '@breatic/shared/canvas-model';
 import { MENTION_LABEL_ATTR } from '@web/spaces/canvas/generate/reference-mention';
 
 const { expectHandshake, resetServer, settle } = h7;

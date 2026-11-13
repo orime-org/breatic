@@ -7,7 +7,7 @@ import * as React from 'react';
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
-import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import type { ReferenceRailItem } from '@breatic/shared/canvas-model';
 import {
   insertRefusal,
   isReferenceMaterial,

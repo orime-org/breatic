@@ -23,9 +23,9 @@ import type * as Y from 'yjs';
 import { useTranslation } from '@web/i18n/use-translation';
 import { PROMPT_NOTE_NODE } from '@web/features/prompt-note/prompt-note';
 import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
-import { FOCUS_REF_PREFIX } from '@web/spaces/canvas/generate/derive-references';
-import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
-import { NO_MENTION_TOKENS, type MentionTokens } from '@web/spaces/canvas/generate/reference-urls';
+import { FOCUS_REF_PREFIX } from '@breatic/shared/canvas-model';
+import type { ReferenceRailItem } from '@breatic/shared/canvas-model';
+import { NO_MENTION_TOKENS, type MentionTokens } from '@breatic/shared/canvas-model';
 import { createReferenceMentionCaret } from '@web/features/reference-mention/reference-mention-caret';
 import { createLocalUserInputTracker } from '@web/features/reference-mention/reference-mention-local-input';
 import { createReferenceMentionRangeHighlight } from '@web/features/reference-mention/reference-mention-range-decoration';
@@ -34,6 +34,7 @@ import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 import type { MediaFullscreenSource } from '@web/spaces/canvas/nodes/_shared/MediaFullscreen';
 import { dialogueText, type NodeType } from '@breatic/shared';
+import { chipWordsReader, MENTION_KIND_ATTR, MENTION_LABEL_ATTR, MENTION_THUMBNAIL_ATTR } from '@breatic/shared/canvas-model';
 import { PreviewImg } from '@web/components/PreviewImg';
 
 /** Options for the {@link ReferenceMention} node. */
@@ -52,12 +53,7 @@ export interface ReferenceMentionOptions {
   getPool?: () => ReferenceRailItem[];
 }
 
-/** Attr key on a reference-mention node carrying the snapshot thumbnail URL. */
-export const MENTION_THUMBNAIL_ATTR = 'thumbnail';
-/** Attr key on a reference-mention node carrying the source node's display name. */
-export const MENTION_LABEL_ATTR = 'label';
-/** Attr key on a reference-mention node carrying the source node modality (icon fallback). */
-export const MENTION_KIND_ATTR = 'kind';
+export { MENTION_KIND_ATTR, MENTION_LABEL_ATTR, MENTION_THUMBNAIL_ATTR, chipWordsReader };
 
 /**
  * A stored reference chip read as the name its pill shows.
@@ -197,30 +193,6 @@ export function serializeDialogueText(
     });
   });
   return dialogueText(lines, names.map((speaker) => ({ speaker })));
-}
-
-/**
- * What a chip reads as in the prompt the model gets: a text chip its source's
- * words, any other chip its token. One rule for every reader of a prompt, the
- * mounted editor and the fragment read at submit alike (#2218).
- * @param pool - The node's reference rows, for what a text chip says.
- * @param tokens - Each media chip's words, by source id.
- * @returns Reads one chip, given its source id and kind.
- */
-export function chipWordsReader(
-  pool: ReadonlyArray<ReferenceRailItem>,
-  tokens: MentionTokens,
-): (id: string | null, kind: string | null) => string {
-  const textById = new Map(
-    pool
-      .filter((r) => r.sourceNodeType === 'text')
-      .map((r) => [r.sourceNodeId, r.textContent ?? '']),
-  );
-  return (id, kind) => {
-    if (id == null) return '';
-    if (kind === 'text') return textById.get(id) ?? '';
-    return Object.hasOwn(tokens, id) ? tokens[id]! : '';
-  };
 }
 
 /**

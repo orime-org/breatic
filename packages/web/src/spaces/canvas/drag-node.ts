@@ -17,11 +17,11 @@
 
 import type { Node } from '@xyflow/react';
 
-import type { Point } from '@web/spaces/canvas/group-geometry';
+import type { Point } from '@breatic/shared/canvas-model';
 import {
   EMPTY_NODE_SIZE,
   toAbsolutePosition,
-} from '@web/spaces/canvas/group-geometry';
+} from '@breatic/shared/canvas-model';
 import type { DragNode, GroupDragOps } from '@web/spaces/canvas/group-drag';
 import { planGroupDrag } from '@web/spaces/canvas/group-drag';
 

@@ -16,18 +16,18 @@
 import { referenceKinds, referencePool, VIDEO_GENERATION_MODES, type ReferencePool } from '@breatic/shared';
 import type { FocusImage, ModelEntry } from '@breatic/shared';
 
-import { validFocusImages } from '@web/data/focus-images';
+import { validFocusImages } from '@breatic/shared/canvas-model';
 import type { CanvasEdge } from '@web/data/yjs/canvas-space';
 import {
   deriveReferences,
   type ReferenceRailItem,
-} from '@web/spaces/canvas/generate/derive-references';
+} from '@breatic/shared/canvas-model';
 import {
   resolveAvailableMode,
   filterModelsByMode,
   pickModelForMode,
 } from '@web/spaces/canvas/generate/mode-selection';
-import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
+import { resolveModelSwitch } from '@breatic/shared/canvas-model';
 import { withStyleImages } from '@web/spaces/canvas/generate/style-picks';
 import {
   mentionDurations,
@@ -37,19 +37,19 @@ import {
   NO_REFERENCE_URLS,
   type MentionTokens,
   type ReferenceUrls,
-} from '@web/spaces/canvas/generate/reference-urls';
+} from '@breatic/shared/canvas-model';
 import {
   readSlotDurations,
   readSlotThumbnails,
   readSlotUrls,
   slotSourceDurations,
-} from '@web/spaces/canvas/generate/slots';
-import { VIDEO_SLOTS, videoSlotsForModel } from '@web/spaces/canvas/generate/video-slots';
+} from '@breatic/shared/canvas-model';
+import { VIDEO_SLOTS, videoSlotsForModel } from '@breatic/shared/canvas-model';
 import type {
   VideoSlot,
   VideoSlotUrls,
-} from '@web/spaces/canvas/generate/video-slots';
-import { asContentView, type NodeRef } from '@web/data/yjs/node-view';
+} from '@breatic/shared/canvas-model';
+import { asContentView, type NodeRef } from '@breatic/shared/canvas-model';
 
 /**
  * The generation modes the video panel offers — the six the user decided

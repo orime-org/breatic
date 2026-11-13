@@ -6,7 +6,7 @@ import { acquireDocProvider, hasDocUnsyncedEdits, readDocFacts, releaseDocProvid
 import { addNode, readNodePlacements, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { stepPastOccupied } from '@web/spaces/canvas/node-clipboard';
-import { createEmptyNode } from '@web/spaces/canvas/node-factory';
+import { createEmptyNode } from '@breatic/shared/canvas-model';
 import { uploadIntoNode } from '@web/spaces/canvas/upload-into-node';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 import { useUploadMarksStore } from '@web/stores/upload-marks';

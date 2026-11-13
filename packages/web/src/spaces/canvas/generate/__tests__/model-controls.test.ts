@@ -29,7 +29,7 @@ import {
   ownControlSummary,
   ownControlValues,
 } from '@web/spaces/canvas/generate/model-controls';
-import { resolveParamsForModel } from '@web/spaces/canvas/generate/model-params';
+import { resolveParamsForModel } from '@breatic/shared/canvas-model';
 
 import { CAMERA_PARAMS, CAMERA_SPECS } from './camera-angle-specs';
 

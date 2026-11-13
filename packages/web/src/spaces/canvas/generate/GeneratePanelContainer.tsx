@@ -17,8 +17,8 @@ import {
 import { docName } from '@web/data/yjs/manager';
 import { checkAdd } from '@web/data/yjs/space-write';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
-import { IMAGE_SLOTS } from '@web/spaces/canvas/generate/image-slots';
-import { slotRefusalKey } from '@web/spaces/canvas/generate/slots';
+import { IMAGE_SLOTS } from '@breatic/shared/canvas-model';
+import { slotRefusalKey } from '@breatic/shared/canvas-model';
 import { useEndPickWhenSlotGone } from '@web/spaces/canvas/generate/use-end-pick-when-slot-gone';
 import { useStyleSlot } from '@web/spaces/canvas/generate/use-style-slot';
 import { useTextBodies } from '@web/data/yjs/use-text-body';
@@ -35,7 +35,7 @@ import {
   CatalogGatedFrame,
   useOpenPanelNode,
 } from '@web/spaces/canvas/generate/generate-panel-frame';
-import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
+import { evaluateNodeGate } from '@breatic/shared/canvas-model';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import type { ImageGenMode } from '@web/spaces/canvas/generate/image-mode-selection';
 import { allGenerationModels, modelsForModality } from '@web/spaces/canvas/generate/modality-buckets';
@@ -48,11 +48,11 @@ import {
   asContentView,
   type ContentNodeView,
   type NodeRef,
-} from '@web/data/yjs/node-view';
+} from '@breatic/shared/canvas-model';
 import {
   resolveModelSwitch,
   resolveParamsEdit,
-} from '@web/spaces/canvas/generate/model-params';
+} from '@breatic/shared/canvas-model';
 import {
   filterAvailableModes,
   resolveModeSwitch,
@@ -67,12 +67,12 @@ import {
   deriveReferences,
   focusToRailItem,
   type ReferenceRailItem,
-} from '@web/spaces/canvas/generate/derive-references';
+} from '@breatic/shared/canvas-model';
 import {
   PromptEditor,
 } from '@web/spaces/canvas/generate/PromptEditor';
-import { buildGenerateTaskPayload, imageEstimateInput } from '@web/spaces/canvas/generate/task-payload';
-import { mentionedReferenceUrls, poolCounts, poolKindOf, poolParams } from '@web/spaces/canvas/generate/reference-urls';
+import { buildGenerateTaskPayload, imageEstimateInput } from '@breatic/shared/canvas-model';
+import { mentionedReferenceUrls, poolCounts, poolKindOf, poolParams } from '@breatic/shared/canvas-model';
 import { useReferenceKinds } from '@web/spaces/canvas/generate/use-reference-kinds';
 import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';

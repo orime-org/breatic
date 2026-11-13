@@ -16,8 +16,8 @@ import {
   pickedSlotDuration,
   pickedSlotUrl,
   type ClickedNode,
-} from '@web/spaces/canvas/generate/slot-pick';
-import { EMPTY_NODE_SIZE } from '@web/spaces/canvas/group-geometry';
+} from '@breatic/shared/canvas-model';
+import { EMPTY_NODE_SIZE } from '@breatic/shared/canvas-model';
 import { isJoinSlot, joinToolFor } from '@web/spaces/canvas/mini-tool/join';
 import type { MiniToolDraft, PickSession } from '@web/stores/canvas-session';
 

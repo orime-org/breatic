@@ -694,7 +694,7 @@ describe("what the guide says", () => {
 
   it("keeps its hand-written list of creatable types in the create menu's order", () => {
     // Read off the web menu's own list, so a type added there fails here.
-    const menu = webSource("spaces/canvas/node-factory.ts");
+    const menu = webSource("../../shared/src/canvas/model/node-factory.ts");
     const listed = /CREATABLE_NODE_TYPES[^=]*=\s*\[([^\]]*)\]/.exec(menu)?.[1] ?? "";
     expect(CREATABLE).toEqual([...listed.matchAll(/'(\w+)'/g)].map((m) => m[1]));
   });

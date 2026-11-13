@@ -13,7 +13,7 @@
 import { MULTI_SHOT_MODE } from '@breatic/shared';
 import type { CanvasNodeFields, ParamDescriptor } from '@breatic/shared';
 
-import type { NodeView } from '@web/data/yjs/node-view';
+import type { NodeView } from '@breatic/shared/canvas-model';
 import { nodeNameOf } from '@web/spaces/canvas/attach-nodes';
 
 /** What a field is to the user: who the node is, what it points at, what it says, or none of these. */

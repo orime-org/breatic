@@ -12,13 +12,13 @@ import { useTranslation } from '@web/i18n/use-translation';
 import type {
   AudioSlot,
   AudioSlotUrls,
-} from '@web/spaces/canvas/generate/audio-slots';
+} from '@breatic/shared/canvas-model';
 import { AudioGenerateToolbar } from '@web/spaces/canvas/generate/AudioGenerateToolbar';
 import {
   AudioSettingsPicker,
   type VoiceSource,
 } from '@web/spaces/canvas/generate/AudioSettingsPicker';
-import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import type { ReferenceRailItem } from '@breatic/shared/canvas-model';
 import {
   isExecuteButtonDisabled,
   type ExecuteRefusal,
@@ -28,7 +28,7 @@ import { ModeToggle, type ModeOption } from '@web/spaces/canvas/generate/ModeTog
 import { PromptGroup, type PromptGroupItem } from '@web/spaces/canvas/generate/PromptGroup';
 import { ReferenceRail } from '@web/spaces/canvas/generate/ReferenceRail';
 import type { VoiceListState } from '@web/spaces/canvas/generate/voice-list-state';
-import { NO_REFERENCE_KINDS } from '@web/spaces/canvas/generate/reference-urls';
+import { NO_REFERENCE_KINDS } from '@breatic/shared/canvas-model';
 import { TemplateMenu } from '@web/spaces/canvas/generate/TemplateMenu';
 import { GENERATE_PANEL_WIDTH_STYLE } from '@web/spaces/canvas/generate/panel-width';
 

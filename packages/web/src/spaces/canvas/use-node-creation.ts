@@ -49,21 +49,21 @@ import { setStoryboardShots } from '@web/data/yjs/node-storyboard';
 import { writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
 import { catalogEntryOf } from '@breatic/shared/mini-tools';
 import { writeProposalFills } from '@web/spaces/canvas/generate/proposal-fills';
-import { withStandInOn } from '@web/spaces/canvas/generate/stand-in';
+import { withStandInOn } from '@breatic/shared/canvas-model';
 import {
   proposalMentionOf,
   writeDialogueLines,
   writeProposalPrompt,
   type MentionOf,
   type ProposalMention,
-} from '@web/spaces/canvas/generate/proposal-prompt';
+} from '@breatic/shared/canvas-model';
 import {
   ROW_GAP_PX,
   planFlowLayout,
   shiftRightPastOccupied,
   withTaskCounts,
   type Spot,
-} from '@web/spaces/canvas/lib/place-flow';
+} from '@breatic/shared/canvas-model';
 import {
   cloneForPaste,
   stepPastOccupied,
@@ -77,15 +77,15 @@ import {
   createEmptyNode,
   createGroupNode,
   type CreatableNodeType,
-} from '@web/spaces/canvas/node-factory';
-import { groupBackgroundFor } from '@web/spaces/canvas/group-background';
+} from '@breatic/shared/canvas-model';
+import { groupBackgroundFor } from '@breatic/shared/canvas-model';
 import {
   EMPTY_NODE_SIZE,
   groupRectForMembers,
   planGroupGrowth,
   toRelativePosition,
   type Rect,
-} from '@web/spaces/canvas/group-geometry';
+} from '@breatic/shared/canvas-model';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { canvasApi } from '@web/data/api/canvas';
 import { ApiException } from '@web/data/api/types';

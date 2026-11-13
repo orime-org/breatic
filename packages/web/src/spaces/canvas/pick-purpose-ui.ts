@@ -23,9 +23,9 @@
 
 import { miniToolById } from '@breatic/shared/mini-tools';
 
-import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
-import { STYLE_SLOT } from '@web/spaces/canvas/generate/style-slot';
-import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
+import { AUDIO_SLOTS } from '@breatic/shared/canvas-model';
+import { STYLE_SLOT } from '@breatic/shared/canvas-model';
+import { VIDEO_SLOTS } from '@breatic/shared/canvas-model';
 import type { PickPurpose, PickSession } from '@web/stores/canvas-session';
 
 /** The panel kinds that own pick tools (the other panel kinds start none). */

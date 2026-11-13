@@ -5,11 +5,11 @@ import { describe, it, expect } from 'vitest';
 import type { ModelEntry, NodeType } from '@breatic/shared';
 
 import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
-import type { NodeRef, NodeViewOf, VideoNodeView } from '@web/data/yjs/node-view';
+import type { NodeRef, NodeViewOf, VideoNodeView } from '@breatic/shared/canvas-model';
 import type { VideoGenMode } from '@web/spaces/canvas/generate/video-panel-view-model';
 import { resolveModeSwitch } from '@web/spaces/canvas/generate/mode-selection';
-import { VIDEO_MODE_OPTIONS } from '@web/spaces/canvas/generate/video-mode-options';
-import { focusRefId } from '@web/spaces/canvas/generate/derive-references';
+import { VIDEO_MODE_OPTIONS } from '@breatic/shared/canvas-model';
+import { focusRefId } from '@breatic/shared/canvas-model';
 import {
   buildVideoPanelViewModel,
   nodeVideoMode,

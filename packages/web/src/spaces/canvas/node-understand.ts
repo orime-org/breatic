@@ -21,7 +21,7 @@ import {
   videoFormatOf,
 } from '@breatic/shared';
 
-import { NODE_STEP } from '@web/spaces/canvas/drop-layout';
+import { NODE_STEP } from '@breatic/shared/canvas-model';
 
 /** The three modalities a node offers Understand on. */
 export type UnderstandableKind = 'image' | 'video' | 'audio';

@@ -11,7 +11,7 @@ import { Crop } from 'lucide-react';
 import * as React from 'react';
 
 import { useTranslation } from '@web/i18n/use-translation';
-import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import type { ReferenceRailItem } from '@breatic/shared/canvas-model';
 import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
 import { PreviewImg } from '@web/components/PreviewImg';
 

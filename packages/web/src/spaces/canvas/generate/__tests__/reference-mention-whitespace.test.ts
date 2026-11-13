@@ -10,7 +10,7 @@ import fc from 'fast-check';
 import { describe, it, expect } from 'vitest';
 
 import { REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
-import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import type { ReferenceRailItem } from '@breatic/shared/canvas-model';
 import {
   ReferenceMention,
   referenceMentionContent,

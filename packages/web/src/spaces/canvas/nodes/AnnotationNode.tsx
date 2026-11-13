@@ -20,7 +20,7 @@
 import * as React from 'react';
 import { useStore } from '@xyflow/react';
 
-import type { AnnotationNodeView } from '@web/data/yjs/node-view';
+import type { AnnotationNodeView } from '@breatic/shared/canvas-model';
 import { AnnotationPin } from '@web/spaces/canvas/annotation/AnnotationPin';
 import { useAnnotationNames } from '@web/spaces/canvas/annotation/names';
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';

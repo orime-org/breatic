@@ -4,7 +4,7 @@
 import { NodeToolbar, Position } from '@xyflow/react';
 import * as React from 'react';
 
-import type { AnnotationNodeView } from '@web/data/yjs/node-view';
+import type { AnnotationNodeView } from '@breatic/shared/canvas-model';
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
 import { toast } from '@web/lib/toast';
 import { useTranslation } from '@web/i18n/use-translation';

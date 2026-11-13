@@ -8,7 +8,7 @@ import {
 } from '@xyflow/react';
 import * as React from 'react';
 
-import type { GroupResizeBound } from '@web/spaces/canvas/group-geometry';
+import type { GroupResizeBound } from '@breatic/shared/canvas-model';
 
 /** The 4 edge-line control positions (the rest are corner handles). */
 const LINE_POSITIONS = new Set<string>(['top', 'right', 'bottom', 'left']);

@@ -13,7 +13,7 @@ import {
   DropdownMenuTrigger,
 } from '@web/components/ui/dropdown-menu';
 import { useTranslation } from '@web/i18n/use-translation';
-import type { CreatableNodeType } from '@web/spaces/canvas/node-factory';
+import type { CreatableNodeType } from '@breatic/shared/canvas-model';
 import { CreatableNodeMenuItems } from '@web/spaces/canvas/nodes/_shared/CreatableNodeMenuItems';
 import { formatShortcut } from '@web/spaces/canvas/format-shortcut';
 import { CANVAS_KEY_SHORTCUTS } from '@web/spaces/canvas/shortcuts/canvas-shortcuts';

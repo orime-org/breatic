@@ -16,7 +16,7 @@ import {
   PeerActivityContext,
 } from '@web/spaces/canvas/nodes/_shared/node-peer-activity-context';
 import { useUploadMark } from '@web/spaces/canvas/nodes/_shared/use-upload-mark';
-import type { Modality } from '@web/data/yjs/node-view';
+import type { Modality } from '@breatic/shared/canvas-model';
 
 interface NodePlaceholderProps {
   modality: Modality;

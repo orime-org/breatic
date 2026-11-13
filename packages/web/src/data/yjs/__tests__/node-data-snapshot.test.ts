@@ -20,7 +20,7 @@ import {
   nodeDataMap,
   writeSnapshotNodes,
 } from '@web/data/yjs/canvas-space';
-import { snapshotNodeData } from '@web/data/yjs/node-data-snapshot';
+import { snapshotNodeData } from '@breatic/shared/canvas-model';
 
 const PID = 'p1';
 const SID = 's1';

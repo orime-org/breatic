@@ -5,11 +5,12 @@ import { Plus } from 'lucide-react';
 import * as React from 'react';
 
 import { useTranslation } from '@web/i18n/use-translation';
-import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
+import { AUDIO_SLOTS } from '@breatic/shared/canvas-model';
+import { SLOT_ICONS } from '@web/spaces/canvas/generate/slot-icons';
 import type {
   AudioSlot,
   AudioSlotUrls,
-} from '@web/spaces/canvas/generate/audio-slots';
+} from '@breatic/shared/canvas-model';
 import {
   SlotTool,
   ToggleTool,
@@ -108,7 +109,7 @@ export const AudioGenerateToolbar = React.memo(function AudioGenerateToolbar({
             testId={spec.testId}
             thumbnailTestId={spec.thumbnailTestId}
             clearTestId={spec.clearTestId}
-            Icon={spec.Icon}
+            Icon={SLOT_ICONS[slot]}
             onPick={() => onPickSlot(slot)}
             active={activeSlot === slot}
             // The asset URL is what makes a slot full — a thumbnail is only

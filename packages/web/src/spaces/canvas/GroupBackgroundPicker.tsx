@@ -16,7 +16,7 @@ import {
   GROUP_BACKGROUND_OPTIONS,
   groupSwatchStyle,
   normalizeGroupBackground,
-} from '@web/spaces/canvas/group-background';
+} from '@breatic/shared/canvas-model';
 
 interface GroupBackgroundPickerProps {
   /** Whether the swatch dropdown is open (controlled, like the context menus). */

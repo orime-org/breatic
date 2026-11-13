@@ -38,7 +38,7 @@ import {
 } from '@web/spaces/canvas/annotation/caps';
 import { useNoteBox } from '@web/spaces/canvas/annotation/note-box-keys';
 import { NoteScroller } from '@web/spaces/canvas/annotation/NoteScroller';
-import type { AnnotationRights } from '@web/spaces/canvas/annotation/rights';
+import type { AnnotationRights } from '@breatic/shared/canvas-model';
 
 export interface AnnotationEntryProps {
   /** The words, as the author typed them. */

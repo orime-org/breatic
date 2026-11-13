@@ -22,9 +22,9 @@ import {
   pickedSlotCover,
   pickedSlotDuration,
   pickedSlotUrl,
-} from '@web/spaces/canvas/generate/slot-pick';
-import type { ClickedNode } from '@web/spaces/canvas/generate/slot-pick';
-import type { SlotSpec } from '@web/spaces/canvas/generate/slots';
+} from '@breatic/shared/canvas-model';
+import type { ClickedNode } from '@breatic/shared/canvas-model';
+import type { SlotSpec } from '@breatic/shared/canvas-model';
 
 /**
  * Copies a clicked node into a slot.

@@ -4,7 +4,7 @@
 import * as React from 'react';
 
 import { Skeleton } from '@web/components/ui/skeleton';
-import type { ImageNodeView } from '@web/data/yjs/node-view';
+import type { ImageNodeView } from '@breatic/shared/canvas-model';
 import { cn } from '@web/lib/utils';
 import { usePreviewSrc } from '@web/lib/preview-src';
 import { ContentNodeFrame } from '@web/spaces/canvas/nodes/_shared/ContentNodeFrame';

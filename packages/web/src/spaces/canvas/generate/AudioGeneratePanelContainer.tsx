@@ -40,38 +40,38 @@ import {
   audioSlotsForModel,
   modelTakesLyrics,
   AUDIO_SLOTS,
-} from '@web/spaces/canvas/generate/audio-slots';
-import { slotForPurpose, slotRefusalKey } from '@web/spaces/canvas/generate/slots';
+} from '@breatic/shared/canvas-model';
+import { slotForPurpose, slotRefusalKey } from '@breatic/shared/canvas-model';
 import { useEndPickWhenSlotGone } from '@web/spaces/canvas/generate/use-end-pick-when-slot-gone';
-import { NO_REFERENCE_KINDS } from '@web/spaces/canvas/generate/reference-urls';
-import type { AudioSlot } from '@web/spaces/canvas/generate/audio-slots';
+import { NO_REFERENCE_KINDS } from '@breatic/shared/canvas-model';
+import type { AudioSlot } from '@breatic/shared/canvas-model';
 import {
   AUDIO_MODE_OPTIONS,
   audioModeOption,
-} from '@web/spaces/canvas/generate/audio-mode-options';
+} from '@breatic/shared/canvas-model';
 import {
   buildAudioPanelViewModel,
   withListDefaultVoice,
 } from '@web/spaces/canvas/generate/audio-panel-view-model';
 import { useCreditText } from '@web/spaces/canvas/generate/use-credit-estimate';
-import { audioEstimateInput, buildAudioTaskPayload } from '@web/spaces/canvas/generate/audio-task-payload';
+import { audioEstimateInput, buildAudioTaskPayload } from '@breatic/shared/canvas-model';
 import { AudioGeneratePanel } from '@web/spaces/canvas/generate/AudioGeneratePanel';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
-import { deriveReferences } from '@web/spaces/canvas/generate/derive-references';
-import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import { deriveReferences } from '@breatic/shared/canvas-model';
+import type { ReferenceRailItem } from '@breatic/shared/canvas-model';
 import {
   checkParamCombination,
   evaluateExecute,
   extractPromptText,
   type ModelEntry,
 } from '@breatic/shared';
-import { wireParams } from '@web/spaces/canvas/generate/stand-in';
+import { wireParams } from '@breatic/shared/canvas-model';
 import {
   CatalogGatedFrame,
   useOpenPanelNode,
 } from '@web/spaces/canvas/generate/generate-panel-frame';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
-import { resolveModelSwitch, resolveParamsEdit } from '@web/spaces/canvas/generate/model-params';
+import { resolveModelSwitch, resolveParamsEdit } from '@breatic/shared/canvas-model';
 import {
   filterAvailableModes,
   filterModelsByMode,
@@ -93,9 +93,9 @@ import { useVoiceList } from '@web/spaces/canvas/generate/use-voice-list';
 import { voiceDisplayName } from '@web/spaces/canvas/generate/voice-list-state';
 import { voiceParamName } from '@web/spaces/canvas/generate/voice-param';
 import { useApplyTemplate, type PlaceTemplate } from '@web/spaces/canvas/generate/use-apply-template';
-import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
+import { evaluateNodeGate } from '@breatic/shared/canvas-model';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
-import { asContentView, type NodeRef } from '@web/data/yjs/node-view';
+import { asContentView, type NodeRef } from '@breatic/shared/canvas-model';
 import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 
 /** Empty text map, for the pass that only needs to know WHICH rows exist. */

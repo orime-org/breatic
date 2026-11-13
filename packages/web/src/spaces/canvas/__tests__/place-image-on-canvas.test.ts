@@ -35,8 +35,8 @@ vi.mock('@web/data/yjs/collab-socket', async (importOriginal) => ({
   subscribeProjectSync: (_projectId: string, listener: Listener) => { h.syncListeners.push(listener); return () => { h.syncListeners.splice(h.syncListeners.indexOf(listener), 1); }; },
 }));
 vi.mock('@web/spaces/canvas/upload-into-node', () => ({ uploadIntoNode: h.uploadIntoNode }));
-vi.mock('@web/spaces/canvas/node-factory', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@web/spaces/canvas/node-factory')>();
+vi.mock('@breatic/shared/canvas-model', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@breatic/shared/canvas-model')>();
   return { ...actual, createEmptyNode: (...args: Parameters<typeof actual.createEmptyNode>) => {
     if (h.failCreate) throw new Error('create failed');
     return actual.createEmptyNode(...args);

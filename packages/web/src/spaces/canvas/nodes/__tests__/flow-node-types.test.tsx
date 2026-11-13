@@ -17,9 +17,9 @@ import { resetPreviewRecords } from '@web/lib/preview-src';
 import { CanvasActionsContext } from '@web/spaces/canvas/canvas-actions';
 import { CanvasContext } from '@web/spaces/canvas/canvas-context';
 import { FLOW_NODE_TYPES } from '@web/spaces/canvas/nodes/flow-node-types';
-import type { AnnotationNodeView } from '@web/data/yjs/node-view';
+import type { AnnotationNodeView } from '@breatic/shared/canvas-model';
 import { NODE_TYPE_LIST } from '@web/spaces/canvas/nodes/registry';
-import type { TextNodeView } from '@web/data/yjs/node-view';
+import type { TextNodeView } from '@breatic/shared/canvas-model';
 
 const PID = 'p1';
 const SID = 's1';

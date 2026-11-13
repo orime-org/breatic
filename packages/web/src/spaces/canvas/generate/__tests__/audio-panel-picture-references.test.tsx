@@ -38,7 +38,7 @@ vi.mock('@web/data/yjs/use-socket', () => ({
 import { modelsApi } from '@web/data/api';
 import { addEdge, addNode, ensureTextBody, getPromptFragment } from '@web/data/yjs/canvas-space';
 import { _resetForTests } from '@web/data/yjs/manager';
-import type { AudioNodeView } from '@web/data/yjs/node-view';
+import type { AudioNodeView } from '@breatic/shared/canvas-model';
 import { toast } from '@web/lib/toast';
 import { CanvasContext, type CanvasContextValue } from '@web/spaces/canvas/canvas-context';
 import { AudioGeneratePanelContainer } from '@web/spaces/canvas/generate/AudioGeneratePanelContainer';

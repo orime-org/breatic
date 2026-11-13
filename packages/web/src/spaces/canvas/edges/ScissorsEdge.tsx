@@ -14,7 +14,7 @@ import * as React from 'react';
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useCanvasActions } from '@web/spaces/canvas/canvas-actions';
-import { overlayCounterScale } from '@web/spaces/canvas/overlay-scale';
+import { overlayCounterScale } from '@breatic/shared/canvas-model';
 
 /**
  * Whether the delete-scissors button should render on an edge: only when the

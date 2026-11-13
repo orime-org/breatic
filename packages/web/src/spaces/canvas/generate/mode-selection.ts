@@ -15,8 +15,8 @@
 
 import type { ModelEntry } from '@breatic/shared';
 
-import type { ParamsStoreSource } from '@web/spaces/canvas/generate/model-params';
-import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
+import type { ParamsStoreSource } from '@breatic/shared/canvas-model';
+import { resolveModelSwitch } from '@breatic/shared/canvas-model';
 
 /**
  * Keeps only the models offerable under a generation mode — those whose `mode`

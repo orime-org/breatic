@@ -8,8 +8,8 @@
 
 import type { ModelEntry } from '@breatic/shared';
 
-import { readSlotPicks } from '@web/spaces/canvas/generate/slots';
-import { STYLE_SLOT, styleCapFor } from '@web/spaces/canvas/generate/style-slot';
+import { readSlotPicks } from '@breatic/shared/canvas-model';
+import { STYLE_SLOT, styleCapFor } from '@breatic/shared/canvas-model';
 
 /** The style slot's part of a view model. */
 export interface StyleRun {

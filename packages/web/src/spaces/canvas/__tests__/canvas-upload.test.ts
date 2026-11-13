@@ -18,10 +18,10 @@ import {
   computeDeletedAssetEntries,
   assetUrlSurvives,
 } from '@web/spaces/canvas/canvas-upload';
-import type { SlotSpec } from '@web/spaces/canvas/generate/slots';
+import type { SlotSpec } from '@breatic/shared/canvas-model';
 import { useUploadMarksStore } from '@web/stores/upload-marks';
-import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
-import type { VideoSlot } from '@web/spaces/canvas/generate/video-slots';
+import { VIDEO_SLOTS } from '@breatic/shared/canvas-model';
+import type { VideoSlot } from '@breatic/shared/canvas-model';
 
 describe('uploadAcceptFor — what the picker offers', () => {
   it('offers every supported media type and alias when selecting all media', () => {

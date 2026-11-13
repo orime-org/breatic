@@ -31,7 +31,7 @@ import { toast } from '@web/lib/toast';
 import { runOnce, spaceTaskIntent, useRunning, type RunOnceOutcome } from '@web/stores/task-actions-in-flight';
 import { refusalClause } from '@web/spaces/canvas/failure-sentence';
 import { tooLargeMessage } from '@web/spaces/canvas/generate/execute-error-message';
-import { createEmptyNode } from '@web/spaces/canvas/node-factory';
+import { createEmptyNode } from '@breatic/shared/canvas-model';
 import {
   understandNodePosition,
   understandRefusal,

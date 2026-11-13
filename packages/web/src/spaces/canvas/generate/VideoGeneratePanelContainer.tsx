@@ -50,12 +50,12 @@ import {
   deriveReferences,
   focusToRailItem,
   type ReferenceRailItem,
-} from '@web/spaces/canvas/generate/derive-references';
+} from '@breatic/shared/canvas-model';
 import { removeReferenceRow } from '@web/spaces/canvas/generate/remove-reference-row';
 import {
   resolveModelSwitch,
   resolveParamsEdit,
-} from '@web/spaces/canvas/generate/model-params';
+} from '@breatic/shared/canvas-model';
 import {
   filterAvailableModes,
   resolveModeSwitch,
@@ -64,39 +64,39 @@ import {
   asContentView,
   type ContentNodeView,
   type NodeRef,
-} from '@web/data/yjs/node-view';
+} from '@breatic/shared/canvas-model';
 import {
   PromptEditor,
   type PromptEditorHandle,
 } from '@web/spaces/canvas/generate/PromptEditor';
 import { AddShotRow, ShotList, addBlockedKey, nextOpenShot } from '@web/spaces/canvas/generate/storyboard-controls';
-import { mentionedSourceIds } from '@web/spaces/canvas/generate/fragment-prompt';
+import { mentionedSourceIds } from '@breatic/shared/canvas-model';
 import { storyboardRun } from '@web/spaces/canvas/generate/storyboard-run';
 import { VideoGeneratePanel } from '@web/spaces/canvas/generate/VideoGeneratePanel';
 import {
   VIDEO_MODE_OPTIONS,
-} from '@web/spaces/canvas/generate/video-mode-options';
+} from '@breatic/shared/canvas-model';
 import { allGenerationModels, modelsForModality } from '@web/spaces/canvas/generate/modality-buckets';
-import { slotForPurpose, slotRefusalKey } from '@web/spaces/canvas/generate/slots';
+import { slotForPurpose, slotRefusalKey } from '@breatic/shared/canvas-model';
 import { useEndPickWhenSlotGone } from '@web/spaces/canvas/generate/use-end-pick-when-slot-gone';
 import { useStyleSlot } from '@web/spaces/canvas/generate/use-style-slot';
-import { styleSlotsFor } from '@web/spaces/canvas/generate/style-slot';
-import { poolCounts, poolKindOf, poolParams } from '@web/spaces/canvas/generate/reference-urls';
+import { styleSlotsFor } from '@breatic/shared/canvas-model';
+import { poolCounts, poolKindOf, poolParams } from '@breatic/shared/canvas-model';
 import { useReferenceKinds } from '@web/spaces/canvas/generate/use-reference-kinds';
 import {
   videoMissing,
   VIDEO_SLOTS,
-} from '@web/spaces/canvas/generate/video-slots';
-import type { VideoSlot } from '@web/spaces/canvas/generate/video-slots';
+} from '@breatic/shared/canvas-model';
+import type { VideoSlot } from '@breatic/shared/canvas-model';
 import { clearSlot } from '@web/spaces/canvas/generate/slot-write';
-import { buildVideoTaskPayload, videoEstimateInput } from '@web/spaces/canvas/generate/video-task-payload';
+import { buildVideoTaskPayload, videoEstimateInput } from '@breatic/shared/canvas-model';
 import {
   buildVideoPanelViewModel,
   nodeVideoMode,
   selectVideoModeModels,
   type VideoGenMode,
 } from '@web/spaces/canvas/generate/video-panel-view-model';
-import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
+import { evaluateNodeGate } from '@breatic/shared/canvas-model';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import { useContentStable } from '@web/spaces/canvas/generate/use-content-stable';

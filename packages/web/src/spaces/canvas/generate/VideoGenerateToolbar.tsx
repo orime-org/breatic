@@ -11,11 +11,12 @@ import {
   ToggleTool,
   ToolRowDivider,
 } from '@web/spaces/canvas/generate/generate-tools';
-import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
+import { VIDEO_SLOTS } from '@breatic/shared/canvas-model';
+import { SLOT_ICONS } from '@web/spaces/canvas/generate/slot-icons';
 import type {
   VideoSlot,
   VideoSlotUrls,
-} from '@web/spaces/canvas/generate/video-slots';
+} from '@breatic/shared/canvas-model';
 
 interface VideoGenerateToolbarProps {
   /** Toggle the "select a reference from the canvas" mode (enter, or exit while active). */
@@ -145,7 +146,7 @@ export const VideoGenerateToolbar = React.memo(function VideoGenerateToolbar({
             testId={spec.testId}
             thumbnailTestId={spec.thumbnailTestId}
             clearTestId={spec.clearTestId}
-            Icon={spec.Icon}
+            Icon={SLOT_ICONS[slot]}
             onPick={() => onPickSlot(slot)}
             active={activeSlot === slot}
             // The asset URL is what makes a slot full — a thumbnail is only

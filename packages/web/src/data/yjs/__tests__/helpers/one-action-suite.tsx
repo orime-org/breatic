@@ -52,7 +52,7 @@ import { enterStoryboardShots, readShots } from '@web/data/yjs/node-storyboard';
 import { evictTimelineEditSession, getTimelineEditSession, type TimelineEditSession } from '@web/data/yjs/timeline-edit-session';
 import type { TimelineEditCommand } from '@web/data/yjs/timeline-edit';
 import { PromptEditor, type PromptEditorHandle } from '@web/spaces/canvas/generate/PromptEditor';
-import { deriveReferences, focusToRailItem, type ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import { deriveReferences, focusToRailItem, type ReferenceRailItem } from '@breatic/shared/canvas-model';
 import { removeReferenceRow } from '@web/spaces/canvas/generate/remove-reference-row';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { asCommentBody, commentsOn } from '@web/spaces/document/document-comment-extension';

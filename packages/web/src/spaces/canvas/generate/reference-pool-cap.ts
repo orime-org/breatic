@@ -14,8 +14,8 @@
  * per-model `images.max_items` payload cap enforced at execute (#1735).
  */
 
-import { validFocusImages } from '@web/data/focus-images';
-import { FOCUS_REF_PREFIX } from '@web/spaces/canvas/generate/derive-references';
+import { validFocusImages } from '@breatic/shared/canvas-model';
+import { FOCUS_REF_PREFIX } from '@breatic/shared/canvas-model';
 
 /** The minimal edge shape the count reads (ReactFlow edge compatible). */
 interface PoolEdge {

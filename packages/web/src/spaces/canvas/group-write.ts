@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { createGroup } from '@web/data/yjs/canvas-space';
-import type { GroupCreationPlan } from '@web/spaces/canvas/group-creation';
-import { createGroupNode } from '@web/spaces/canvas/node-factory';
+import type { GroupCreationPlan } from '@breatic/shared/canvas-model';
+import { createGroupNode } from '@breatic/shared/canvas-model';
 
 /**
  * Write a planned Group and bind its members to it.

@@ -4,7 +4,7 @@
 import * as React from 'react';
 import * as Y from 'yjs';
 import { CANVAS_NODES_KEY, type NodeTaskCounts } from '@breatic/shared';
-import type { Modality } from '@web/data/yjs/node-view';
+import type { Modality } from '@breatic/shared/canvas-model';
 import { docName, getDoc } from '@web/data/yjs/manager';
 
 /** Task badges belong to content views; containers and annotations carry none. */

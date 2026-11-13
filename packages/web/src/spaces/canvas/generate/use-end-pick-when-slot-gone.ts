@@ -6,7 +6,7 @@ import * as React from 'react';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { pickEndToastKey } from '@web/spaces/canvas/generate/pick-end-notice';
-import { slotForPurpose } from '@web/spaces/canvas/generate/slots';
+import { slotForPurpose } from '@breatic/shared/canvas-model';
 import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 
 /**

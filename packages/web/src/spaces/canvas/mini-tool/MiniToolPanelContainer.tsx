@@ -20,7 +20,7 @@ import {
 
 import { getCachedJoinMaxClips } from '@web/data/api/canvas';
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
-import { asContentView } from '@web/data/yjs/node-view';
+import { asContentView } from '@breatic/shared/canvas-model';
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatBytes } from '@web/lib/format-bytes';
 import { toast } from '@web/lib/toast';

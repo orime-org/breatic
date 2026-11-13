@@ -5,7 +5,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import * as Y from 'yjs';
 import type { CanvasNodeFields, NodeType } from '@breatic/shared';
 
-import { validFocusImages } from '@web/data/focus-images';
+import { validFocusImages } from '@breatic/shared/canvas-model';
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import {
   addEdge,

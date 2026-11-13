@@ -4,7 +4,7 @@
 import * as React from 'react';
 
 import { removeNodeSlotItem } from '@web/data/yjs/canvas-space';
-import { STYLE_SLOT } from '@web/spaces/canvas/generate/style-slot';
+import { STYLE_SLOT } from '@breatic/shared/canvas-model';
 import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 
 /** The style area's live state and handlers, as a Generate panel wires them. */

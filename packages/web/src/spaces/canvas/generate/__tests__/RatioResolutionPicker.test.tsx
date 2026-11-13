@@ -6,7 +6,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import type { ModelEntry, ParamDescriptor } from '@breatic/shared';
 
 import { RatioResolutionPicker } from '@web/spaces/canvas/generate/RatioResolutionPicker';
-import { resolveParamsForModel } from '@web/spaces/canvas/generate/model-params';
+import { resolveParamsForModel } from '@breatic/shared/canvas-model';
 import { expectAriaCurrentChosenFill } from '@web/test-utils/selection-fill';
 
 /**

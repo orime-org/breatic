@@ -18,21 +18,21 @@ import {
   type ModelEntry,
 } from '@breatic/shared';
 
-import type { ContentNodeView } from '@web/data/yjs/node-view';
-import { AUDIO_MODE_OPTIONS } from '@web/spaces/canvas/generate/audio-mode-options';
+import type { ContentNodeView } from '@breatic/shared/canvas-model';
+import { AUDIO_MODE_OPTIONS } from '@breatic/shared/canvas-model';
 import { buildAudioPanelViewModel, withListDefaultVoice } from '@web/spaces/canvas/generate/audio-panel-view-model';
 import { IMAGE_MODE_OPTIONS } from '@web/spaces/canvas/generate/image-mode-selection';
 import { modelsForModality } from '@web/spaces/canvas/generate/modality-buckets';
-import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
+import { resolveModelSwitch } from '@breatic/shared/canvas-model';
 import { withStyleImages } from '@web/spaces/canvas/generate/style-picks';
-import { wireParams } from '@web/spaces/canvas/generate/stand-in';
+import { wireParams } from '@breatic/shared/canvas-model';
 import {
   filterAvailableModes,
   filterModelsByMode,
   pickModelForMode,
   resolveAvailableMode,
 } from '@web/spaces/canvas/generate/mode-selection';
-import { VIDEO_MODE_OPTIONS } from '@web/spaces/canvas/generate/video-mode-options';
+import { VIDEO_MODE_OPTIONS } from '@breatic/shared/canvas-model';
 
 /** The generation a node would run if its panel's Generate were pressed now. */
 export interface CurrentGeneration {

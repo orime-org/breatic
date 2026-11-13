@@ -13,7 +13,7 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { AUDIO_MODE_OPTIONS } from '@web/spaces/canvas/generate/audio-mode-options';
+import { AUDIO_MODE_OPTIONS } from '@breatic/shared/canvas-model';
 import { filterAvailableModes } from '@web/spaces/canvas/generate/mode-selection';
 import { AUDIO_GENERATION_MODES, type ModelEntry } from '@breatic/shared';
 

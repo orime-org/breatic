@@ -24,7 +24,7 @@ import {
   COUNTS_CELL_BORDER,
   COUNTS_CELL_MARK,
   COUNTS_CELL_PADDING,
-} from '@web/spaces/canvas/overlay-scale';
+} from '@breatic/shared/canvas-model';
 import { TaskCountColumn } from '@web/spaces/canvas/tasks/TaskCountColumn';
 
 /**

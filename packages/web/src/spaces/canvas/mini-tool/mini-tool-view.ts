@@ -13,7 +13,7 @@ import {
 } from '@breatic/shared';
 import { isExpanded, sourceTooLargeToExpand, type ExpandFrame } from '@web/spaces/canvas/mini-tool/expand-frame';
 import { isJoinTool, joinCrossfadeCap } from '@web/spaces/canvas/mini-tool/join';
-import { keepsSourceSize } from '@web/spaces/canvas/mini-tool/output-placement';
+import { keepsSourceSize } from '@breatic/shared/canvas-model';
 import { markEmpty, type MarkDraft } from '@web/stores/mark-draft';
 import {
   defaultSizeTier,

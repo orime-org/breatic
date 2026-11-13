@@ -1,0 +1,402 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: Elastic-2.0
+
+/**
+ * What a source slot is, how its stored value reads, and which slot a pick fills.
+ *
+ * A slot is a pick-time COPY of one asset, with a role — the first frame, the
+ * driving audio, the voice to clone. It is not a reference: references are a
+ * relationship (an edge), a slot is a value.
+ *
+ * The structure lives here while the entries live in per-panel registries
+ * ({@link ./video-slots} and {@link ./audio-slots}), because a second copy of
+ * `SlotSpec` would be a second place to remember when a slot grows a field.
+ * The lookup below spans BOTH registries for the same reason the registries
+ * exist at all: its callers read `undefined` as "this pick fills no slot" and
+ * carry on — the canvas wires an edge, the candidate highlighting falls back
+ * to what the node's edges accept — so a registry it cannot see is a pick that
+ * silently does the wrong thing, with nothing failing to compile (#1960).
+ */
+
+import { refusalToastKey, type ExecuteVerdict } from '@shared/generate-guards.js';
+import { usableUrls } from '@shared/item-cap.js';
+
+// The two registries are imported for their DATA; each imports only the types
+// declared below, and `import type` is erased at compile time, so there is no
+// cycle at runtime.
+import { AUDIO_SLOTS } from '@shared/canvas/model/audio-slots.js';
+import { IMAGE_SLOTS } from '@shared/canvas/model/image-slots.js';
+import { usableDuration } from '@shared/canvas/model/slot-pick.js';
+import { VIDEO_SLOTS } from '@shared/canvas/model/video-slots.js';
+
+/**
+ * What a canvas node-pick session wires when the user clicks a node:
+ *   - `reference` — an i2i source edge (clicked → target) feeding the reference
+ *     rail (a connection IS a reference).
+ *   - `focus` — opens a crop marquee on the clicked image node (#1782); each
+ *     confirmed crop uploads a standalone copy and APPENDS it to the target's
+ *     `focusImages` (no edge, no source relationship). Continuous like
+ *     reference — the user may crop several regions on the SAME node and
+ *     across nodes — until manual Exit.
+ *   - `firstFrame` — COPIES the clicked image node's asset URL into a video
+ *     node's `firstFrameUrl` (#1896), the image-to-video first frame: a
+ *     pick-time snapshot with NO relationship to the source node, then the
+ *     session auto-exits (single slot, unlike the continuous reference pick).
+ *   - `endFrame` — the same, into `endFrameUrl` (#1904): where the first-last
+ *     frame mode ends. Independent of the first frame in every way — either
+ *     one can be picked or replaced at any time, and only execute asks for
+ *     both (user 2026-08-10).
+ *   - `characterImage` — the same, into `characterImageUrl` (#1918): one
+ *     picture of a person, for both modes that animate one — the figure
+ *     image animation drives, and the portrait the talking head speaks with
+ *     (#1935). Its own slot rather than the first frame's, though both travel
+ *     as `image`, because a pick survives a mode switch and these two mean
+ *     different things.
+ *   - `drivingVideo` — the same, into `drivingVideo` (#1918), but from a
+ *     VIDEO node: the performance whose motion is transferred onto the
+ *     character. The first SLOT pick that takes something other than an image
+ *     (`reference` has always taken any node the edge rules allow), so
+ *     it copies the node's poster alongside the asset — the toolbar shows a
+ *     pick with an `<img>` and a video URL would paint nothing.
+ *   - `drivingAudio` — the same, into `drivingAudio` (#1935), but from an
+ *     AUDIO node: the track the talking head's lips follow. Stored in the
+ *     same one-field shape as `drivingVideo` for the same reason, though an
+ *     audio node has no poster to copy, so the toolbar keeps showing the
+ *     slot's icon.
+ *   - `sourceVideo` / `leftAudio` / `rightAudio` — the same, into their own
+ *     fields (#2156): the clip a lipsync model redoes, and the two speakers'
+ *     tracks of a two-person talking head.
+ *   - `refAudio` — the same, into `refAudio` (#1960 PR2), also from an AUDIO
+ *     node: the voice a cloning model speaks the new lines in. Its own slot
+ *     rather than `drivingAudio`'s, though both travel as `audio`, because
+ *     the two are picked on different panels for different jobs and a pick
+ *     survives a mode switch.
+ *   - `musicSong` / `coverSong` / `musicMelody` / `musicVocal` — more of the
+ *     same into their own slots (#1960, #2156), all from AUDIO nodes: the
+ *     track a new song is written after, a song to cover, a melody, a
+ *     singing voice. One per role because the vendor reads each under its own
+ *     name and a user may give any combination of them.
+ *   - `soundVideo` / `moodImage` — the picture a sound or a score follows,
+ *     from a VIDEO node, and the picture music takes its mood from, from an
+ *     IMAGE node (#2156).
+ */
+export type PickPurpose =
+  | 'reference'
+  | 'focus'
+  | 'firstFrame'
+  | 'endFrame'
+  | 'characterImage'
+  | 'drivingVideo'
+  | 'drivingAudio'
+  | 'sourceVideo'
+  | 'leftAudio'
+  | 'rightAudio'
+  | 'refAudio'
+  | 'musicSong'
+  | 'coverSong'
+  | 'musicMelody'
+  | 'musicVocal'
+  | 'soundVideo'
+  | 'moodImage'
+  | 'style'
+  | 'miniToolSlot';
+
+/** What one slot is made of. */
+export interface SlotSpec {
+  /** Node data field holding this slot's pick — a URL, or `{url, cover}` when `storesCover`. */
+  field: string;
+  /**
+   * Whether this slot stores `{url, cover}` rather than a bare URL string.
+   *
+   * The toolbar draws a filled slot with an `<img>`, which works only while
+   * the picked URL is an image. A video or audio URL there renders nothing —
+   * and with `alt=''` not even a broken-image marker, just a blank square. A
+   * slot taking anything other than an image copies its node's poster
+   * alongside the asset, inside the one field, so the pair converges as a unit.
+   */
+  storesCover?: true;
+  /**
+   * Whether this slot holds a list of files rather than one (inner#826: style
+   * images). The list is a plain array of URLs; how many it holds is the
+   * model's cap for the param, read where the pick starts.
+   */
+  multiple?: true;
+  /** The param the URL travels as, under the vendor's own name. */
+  param: string;
+  /** The pick this slot starts; the canvas dispatches on it. */
+  purpose: PickPurpose;
+  /**
+   * The node type this slot takes. Read by both the candidate highlighting
+   * and the click that fills the slot, so the two cannot disagree.
+   *
+   * Narrower than `NodeType` deliberately: what a slot holds is also what its
+   * button shows and what its hover preview renders (#1946), and those two can
+   * only handle an asset form. Declaring a slot for anything else would fail
+   * to type-check here rather than render an empty card at runtime.
+   */
+  accepts: 'image' | 'video' | 'audio';
+  /** Test id of the slot control. */
+  testId: string;
+  /** Test id of the filled thumbnail. */
+  thumbnailTestId: string;
+  /** Test id of the clear badge. */
+  clearTestId: string;
+  /** Translation key for the slot's label. */
+  labelKey: string;
+  /** Translation key for the one line saying what to go pick — the slot's hover card carries it as the hint while empty (#1946). */
+  tipKey: string;
+  /** Translation key for the clear badge's accessible name. */
+  clearLabelKey: string;
+  /**
+   * Translation key for the refusal shown when execute finds this slot empty,
+   * read by {@link slotRefusalKey}. A slot a run may go without never refuses
+   * and carries none.
+   */
+  errorKey?: string;
+}
+
+/** A registry of slots, keyed by the name its panel calls each one. */
+export type SlotRegistry = Readonly<Record<string, SlotSpec>>;
+
+/**
+ * A stored value that is really a URL.
+ *
+ * An empty string is a string and no URL, and node data is a CRDT map any
+ * client may write, so the type saying `string` proves nothing.
+ * @param value - The raw stored value.
+ * @returns The URL, or undefined when there is not one.
+ */
+function usableUrl(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+/**
+ * Reads a slot's stored pick, in the shape THAT slot keeps it in.
+ *
+ * This function IS the stored contract — a slot keeps a bare URL, or `{url,
+ * cover}` when the picked asset is not its own picture. Stated here rather
+ * than as a type alias nothing is checked against: the wire declaration
+ * (`CanvasNodeFields.data`) and this reader are what a stored value actually
+ * has to satisfy, and a third restatement would be one more thing to drift.
+ *
+ * A video's poster travels WITH it rather than in a field of its own, because
+ * two fields are two independent last-writer-wins registers: two clients
+ * picking different videos at once converge per-key, and the loser's poster
+ * can survive under the winner's video (`canvas-space-slot-concurrency.test`).
+ *
+ * The shape is the slot's, not the value's: a slot storing a bare URL refuses
+ * an object and a slot storing `{url, cover}` refuses a bare string. Slot
+ * values are collaborative Yjs data — untrusted, whatever the type says — so
+ * reading whichever shape happens to be there would let a malformed value
+ * ride the payload as a source param and be refused upstream AFTER the task
+ * was accepted and billed.
+ *
+ * An empty string is a string and no URL. A poster that is missing or
+ * malformed leaves the slot with nothing to paint, so the button keeps its own
+ * icon and label and lights its border (#1946, user 2026-09-06).
+ * @param spec - The slot being read, which states its stored shape.
+ * @param value - The raw node-data value for that slot's field.
+ * @returns The asset URL and what to show for it, or null when there is no pick.
+ */
+export function readSlotPick(
+  spec: SlotSpec,
+  value: unknown,
+): { url: string; thumbnail?: string; duration?: number } | null {
+  if (!spec.storesCover) {
+    const bare = usableUrl(value);
+    return bare ? { url: bare, thumbnail: bare } : null;
+  }
+  if (value === null || typeof value !== 'object') return null;
+  const url = usableUrl((value as { url?: unknown }).url);
+  if (!url) return null;
+  const cover = usableUrl((value as { cover?: unknown }).cover);
+  const duration = usableDuration((value as { duration?: unknown }).duration);
+  return {
+    url,
+    ...(cover ? { thumbnail: cover } : {}),
+    ...(duration !== undefined ? { duration } : {}),
+  };
+}
+
+/**
+ * Reads every file a slot holds, in order: the list of a slot holding several,
+ * or the one pick of any other. Collaborative data, so each entry is checked.
+ * @param spec - The slot being read.
+ * @param value - The raw node-data value for that slot's field.
+ * @returns The picks, empty when there are none.
+ */
+export function readSlotPicks(
+  spec: SlotSpec,
+  value: unknown,
+): Array<{ url: string; thumbnail?: string; duration?: number }> {
+  if (spec.multiple) return usableUrls(value).map((url) => ({ url, thumbnail: url }));
+  const pick = readSlotPick(spec, value);
+  return pick ? [pick] : [];
+}
+
+/**
+ * Reads every slot's picked URL off a node.
+ *
+ * Takes the registry rather than closing over one, because both panels ask
+ * this same question of their own slots and two copies of the loop would be
+ * two places to remember what a stored pick looks like.
+ * @param registry - The panel's slot registry.
+ * @param content - The node's content view, if it has one.
+ * @returns The URLs that are really there, by slot.
+ */
+export function readSlotUrls<K extends string>(
+  registry: Readonly<Record<K, SlotSpec>>,
+  content: unknown,
+): Partial<Record<K, string>> {
+  const urls: Partial<Record<K, string>> = {};
+  for (const slot of Object.keys(registry) as K[]) {
+    // A slot's field is a key on a CRDT map, so it is read as one. That is
+    // the premise `readSlotPick` is built on: whatever the projected type
+    // says, the value came from collaborative data and is checked there.
+    const pick = readSlotPick(
+      registry[slot],
+      (content as Record<string, unknown> | undefined)?.[registry[slot].field],
+    );
+    if (pick) urls[slot] = pick.url;
+  }
+  return urls;
+}
+
+/**
+ * Reads what each slot should SHOW for its pick.
+ *
+ * The same URL as the pick for a slot holding an image, and the copied poster
+ * for one holding something an `<img>` cannot paint. A slot whose poster is
+ * missing is absent from this map rather than falling back to the asset:
+ * handed a video URL the `<img>` draws a blank square, and with `alt=''` not
+ * even a broken-image marker. Absent here does not mean the slot looks empty —
+ * with nothing to paint, the toolbar keeps the slot's own icon and label and
+ * lights its border instead (#1946, user 2026-09-06).
+ * @param registry - The panel's slot registry.
+ * @param content - The node's content view, if it has one.
+ * @returns The URLs to display, by slot.
+ */
+export function readSlotThumbnails<K extends string>(
+  registry: Readonly<Record<K, SlotSpec>>,
+  content: unknown,
+): Partial<Record<K, string>> {
+  const thumbnails: Partial<Record<K, string>> = {};
+  for (const slot of Object.keys(registry) as K[]) {
+    const pick = readSlotPick(
+      registry[slot],
+      (content as Record<string, unknown> | undefined)?.[registry[slot].field],
+    );
+    if (pick?.thumbnail !== undefined) thumbnails[slot] = pick.thumbnail;
+  }
+  return thumbnails;
+}
+
+/**
+ * How long each filled slot's clip or track runs, where its pick recorded it
+ * (#2156, design §14) — what a price by the second reads.
+ * @param registry - The panel's slot registry.
+ * @param content - The node's data; collaborative, so untrusted.
+ * @returns Seconds by slot, for the slots that know theirs.
+ */
+export function readSlotDurations<K extends string>(
+  registry: Readonly<Record<K, SlotSpec>>,
+  content: unknown,
+): Partial<Record<K, number>> {
+  const durations: Partial<Record<K, number>> = {};
+  for (const slot of Object.keys(registry) as K[]) {
+    const pick = readSlotPick(
+      registry[slot],
+      (content as Record<string, unknown> | undefined)?.[registry[slot].field],
+    );
+    if (pick?.duration !== undefined) durations[slot] = pick.duration;
+  }
+  return durations;
+}
+
+/**
+ * The lengths a price by the second reads for the drawn slots, each under the
+ * param its file travels as (#2156, design §14).
+ * @param registry - The panel's slot registry.
+ * @param slots - The slots the toolbar draws for this model and mode.
+ * @param known - Each slot's length, as {@link readSlotDurations} reads it.
+ * @returns Seconds per param, for the drawn slots that know their length.
+ */
+export function slotSourceDurations<K extends string>(
+  registry: Readonly<Record<K, SlotSpec>>,
+  slots: readonly K[],
+  known: Partial<Record<K, number>>,
+): Record<string, number[]> {
+  const durations: Record<string, number[]> = {};
+  for (const slot of slots) {
+    const seconds = known[slot];
+    if (seconds !== undefined) durations[registry[slot].param] = [seconds];
+  }
+  return durations;
+}
+
+/**
+ * The i18n key a refusal speaks with, in the words of the slot it names.
+ *
+ * The gate names only the param that is empty; the toolbar slot drawn for it
+ * calls it a first frame or a voice sample. A refusal no drawn slot answers
+ * for falls back to the gate's own sentence.
+ * @param registry - The panel's slots.
+ * @param drawn - The slots the toolbar draws for this run.
+ * @param verdict - What the gate answered.
+ * @returns The key, or null when the refusal says nothing.
+ */
+export function slotRefusalKey<K extends string>(
+  registry: Readonly<Record<K, SlotSpec>>,
+  drawn: readonly K[],
+  verdict: ExecuteVerdict,
+): string | null {
+  const slot = drawn.find((name) => registry[name].param === verdict.slot);
+  return (slot === undefined ? undefined : registry[slot].errorKey) ?? refusalToastKey(verdict.refusal);
+}
+
+/** Every registry a pick can fill a slot in. */
+const REGISTRIES: readonly SlotRegistry[] = [VIDEO_SLOTS, AUDIO_SLOTS, IMAGE_SLOTS];
+
+/**
+ * Finds the slot a pick is filling, if any.
+ *
+ * Spans every registry. Its callers read `undefined` as "this pick fills no
+ * slot" and carry on — the canvas click handler falls through to the reference
+ * branch and wires an EDGE, the candidate highlighting falls back to what the
+ * node's edges accept — so a registry left out here is a pick that silently
+ * does something else, with nothing failing to compile.
+ * @param purpose - The running pick's purpose.
+ * @returns The slot name that pick fills, or undefined when it fills none.
+ */
+export function slotForPurpose(purpose: PickPurpose): string | undefined {
+  for (const registry of REGISTRIES) {
+    const name = Object.keys(registry).find((slot) => registry[slot]!.purpose === purpose);
+    if (name) return name;
+  }
+  return undefined;
+}
+
+/**
+ * The spec behind a slot name, from whichever registry holds it.
+ * @param slot - The slot name.
+ * @returns Its spec, or undefined when no registry names it.
+ */
+export function slotSpec(slot: string): SlotSpec | undefined {
+  for (const registry of REGISTRIES) {
+    const spec = registry[slot];
+    if (spec) return spec;
+  }
+  return undefined;
+}
+
+/**
+ * Every slot both panels offer.
+ *
+ * The delete accounting walks this to answer "does any node still hold this
+ * asset" (`canvas-upload`). A registry missing from the walk makes a
+ * still-referenced asset look unheld the moment its source node is deleted.
+ * @returns One spec per slot, video first.
+ */
+export function allSlotSpecs(): SlotSpec[] {
+  return REGISTRIES.flatMap((registry) => Object.values(registry));
+}

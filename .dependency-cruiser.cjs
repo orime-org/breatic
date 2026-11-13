@@ -148,6 +148,22 @@ module.exports = {
       to: { path: "^@(server|worker|collab|web|ingest)/" },
     },
     {
+      name: "shared-no-ui-import",
+      comment:
+        "@breatic/shared runs in Node as well as the browser: collab reads the " +
+        "canvas model in @breatic/shared/canvas-model (breatic#1488 §8.1). " +
+        "Nothing under packages/shared/src may import React, lucide-react, " +
+        "@xyflow/react or web source, type-only imports included; UI " +
+        "attachments such as a slot's icon stay in web, keyed by the shared data.",
+      severity: "error",
+      from: { path: "^packages/shared/src/" },
+      to: {
+        path:
+          "node_modules/(react|react-dom|lucide-react|@xyflow/react)/" +
+          "|^(react|react-dom|lucide-react|@xyflow/react)($|/)|^@web/",
+      },
+    },
+    {
       name: "collab-no-domain-import",
       comment:
         "ADR 2026-05-31 second revision (extracting @breatic/domain): collab depends on " +

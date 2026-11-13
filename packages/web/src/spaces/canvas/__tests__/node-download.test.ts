@@ -12,7 +12,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { downloadableAsset } from '@web/spaces/canvas/node-download';
-import type { TypedNodeView } from '@web/data/yjs/node-view';
+import type { TypedNodeView } from '@breatic/shared/canvas-model';
 import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 
 const ASSET = 'https://assets.example.com/image/2026-09-13/a.png';

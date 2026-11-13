@@ -12,7 +12,7 @@ import * as Y from 'yjs';
 
 import type { StoryboardSpec } from '@breatic/shared';
 
-import { serializePromptFragment } from '@web/spaces/canvas/generate/fragment-prompt';
+import { serializePromptFragment } from '@breatic/shared/canvas-model';
 import { storyboardRun } from '@web/spaces/canvas/generate/storyboard-run';
 
 /**

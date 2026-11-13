@@ -15,7 +15,7 @@ import { TextNode } from '@web/spaces/canvas/nodes/TextNode';
 import { ThreeDNode } from '@web/spaces/canvas/nodes/ThreeDNode';
 import { VideoNode } from '@web/spaces/canvas/nodes/VideoNode';
 import { WebNode } from '@web/spaces/canvas/nodes/WebNode';
-import type { NodeView } from '@web/data/yjs/node-view';
+import type { NodeView } from '@breatic/shared/canvas-model';
 
 // Each content node renders the name header (icon + name above the body);
 // blank name falls back to the fixed-English modality label. annotation

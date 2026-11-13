@@ -10,7 +10,7 @@
  * address itself: the item's presence and its target then cannot disagree.
  */
 
-import type { TypedNodeView } from '@web/data/yjs/node-view';
+import type { TypedNodeView } from '@breatic/shared/canvas-model';
 
 /**
  * The asset a node is showing right now, as an address to download.

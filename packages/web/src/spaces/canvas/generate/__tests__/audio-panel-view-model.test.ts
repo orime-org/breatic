@@ -8,8 +8,8 @@ import {
   buildAudioPanelViewModel,
   withListDefaultVoice,
 } from '@web/spaces/canvas/generate/audio-panel-view-model';
-import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
-import type { AudioNodeView, NodeRef } from '@web/data/yjs/node-view';
+import { resolveModelSwitch } from '@breatic/shared/canvas-model';
+import type { AudioNodeView, NodeRef } from '@breatic/shared/canvas-model';
 
 /**
  * A tts model.

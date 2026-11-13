@@ -19,7 +19,7 @@ vi.mock('@web/components/ui/tooltip', () => ({
 
 import { AudioSettingsPicker } from '@web/spaces/canvas/generate/AudioSettingsPicker';
 import { speakerColour } from '@web/spaces/canvas/generate/dialogue-line';
-import { resolveParamsForModel } from '@web/spaces/canvas/generate/model-params';
+import { resolveParamsForModel } from '@breatic/shared/canvas-model';
 import { initialVoiceListState } from '@web/spaces/canvas/generate/voice-list-state';
 
 afterEach(() => {

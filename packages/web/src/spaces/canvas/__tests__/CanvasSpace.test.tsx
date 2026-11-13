@@ -101,7 +101,7 @@ import {
   type ClipboardNodeType,
 } from '@web/spaces/canvas/node-clipboard';
 import { canvasApi } from '@web/data/api/canvas';
-import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
+import { VIDEO_SLOTS } from '@breatic/shared/canvas-model';
 import { useCanvasStore, useUIStore } from '@web/stores';
 import { canvasGraphs } from '@web/stores/canvas-graph';
 import { useCurrentUserStore } from '@web/stores/current-user';
@@ -111,7 +111,7 @@ import { useSocket } from '@web/data/yjs/use-socket';
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import { bodyToPlainText, writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
 import { addNode, getTextBody } from '@web/data/yjs/canvas-space';
-import type { TypedNodeView } from '@web/data/yjs/node-view';
+import type { TypedNodeView } from '@breatic/shared/canvas-model';
 import { runFocusCrop } from '@web/spaces/canvas/focus/run-focus-crop';
 import { clearDocSize } from '@web/data/yjs/doc-size';
 import { toast as sizeToast } from '@web/lib/toast';

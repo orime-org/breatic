@@ -21,7 +21,7 @@ import { ReactRenderer } from '@tiptap/react';
 
 import { makeReferenceSuggestion } from '@web/spaces/canvas/generate/reference-mention-suggestion';
 import { ReferenceMention } from '@web/spaces/canvas/generate/reference-mention';
-import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import type { ReferenceRailItem } from '@breatic/shared/canvas-model';
 
 const EMPTY = 'EMPTY-LABEL';
 

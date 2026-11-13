@@ -17,8 +17,8 @@ import {
   _resetCanvasUndoCacheForTests,
 } from '@web/data/yjs/canvas-space';
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
-import { createGroupNode } from '@web/spaces/canvas/node-factory';
-import { GROUP_PADDING } from '@web/spaces/canvas/group-geometry';
+import { createGroupNode } from '@breatic/shared/canvas-model';
+import { GROUP_PADDING } from '@breatic/shared/canvas-model';
 import { useCanvasStore, useUIStore } from '@web/stores';
 import { CanvasSpace } from '@web/spaces/canvas/CanvasSpace';
 import { canvasGraphs } from '@web/stores/canvas-graph';

@@ -51,7 +51,7 @@ import { DocumentCommentWriteBox } from '@web/spaces/document/DocumentCommentWri
 import {
   annotationRights,
   canPostAnnotations,
-} from '@web/spaces/canvas/annotation/rights';
+} from '@breatic/shared/canvas-model';
 import { openedBy } from '@web/spaces/document/document-comment-auth';
 import { mediaNameOf, type MediaQuote } from '@web/spaces/document/document-comment-media';
 import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';

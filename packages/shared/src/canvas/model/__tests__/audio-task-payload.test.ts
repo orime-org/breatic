@@ -1,0 +1,343 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: Elastic-2.0
+
+import { describe, it, expect } from 'vitest';
+import type { ModelEntry } from '@shared/index.js';
+
+import { audioEstimateInput, buildAudioTaskPayload } from '@shared/canvas/model/audio-task-payload.js';
+import { AUDIO_SLOTS, audioSlotsForModel } from '@shared/canvas/model/audio-slots.js';
+
+/**
+ * A model in the given bucket.
+ * @param name - Model id.
+ * @param modality - The bucket the catalog stamped on it.
+ * @returns A model entry.
+ */
+function model(name: string, modality: ModelEntry['modality']): ModelEntry {
+  return {
+    name,
+    display_name: name,
+    modality,
+    mode: 'tts',
+    description: '',
+    guide: '',
+    tier: 'recommended',
+    generation_time: 0,
+    takes_prompt: true,
+    params: {},
+    providers: [],
+  };
+}
+
+const BASE = {
+  // A mode with no params scoped to other modes: nothing is left behind.
+  generation: { mode: 'tts', declared: {} },
+  nodeId: 'n1',
+  projectId: 'p1',
+  spaceId: 's1',
+  params: {},
+  promptText: 'Good evening.',
+};
+
+describe('buildAudioTaskPayload — the task type comes from the model', () => {
+  it('sends tts for a model out of the tts bucket', () => {
+    // The worker loads a different provider module per task type
+    // (`dispatch.ts` has one case each for tts and audio), and this panel
+    // serves both buckets — so a panel-wide constant would send one of them
+    // to the wrong module.
+    const payload = buildAudioTaskPayload({
+      ...BASE,
+      model: model('elevenlabs-v3', 'tts'),
+    });
+    expect(payload.task_type).toBe('tts');
+  });
+
+  it('sends audio for a model out of the audio bucket', () => {
+    const payload = buildAudioTaskPayload({
+      ...BASE,
+      model: model('some-sfx', 'audio'),
+    });
+    expect(payload.task_type).toBe('audio');
+  });
+
+  it('carries the model id, not the bucket', () => {
+    const payload = buildAudioTaskPayload({
+      ...BASE,
+      model: model('fish-s2-pro', 'tts'),
+    });
+    expect(payload.model).toBe('fish-s2-pro');
+  });
+});
+
+describe('buildAudioTaskPayload — what reaches the vendor', () => {
+  it('sends the model\'s own params alongside the lines to speak', () => {
+    const payload = buildAudioTaskPayload({
+      ...BASE,
+      model: model('elevenlabs-v3', 'tts'),
+      params: { voice_id: 'Alice', stability: 0.5 },
+    });
+    expect(payload.params).toEqual({
+      voice_id: 'Alice',
+      stability: 0.5,
+      prompt: 'Good evening.',
+    });
+  });
+
+  it('lets the typed lines win over a same-named catalog param', () => {
+    // The catalog is untrusted collaborative-adjacent config; what the user
+    // typed must never be silently replaced by it.
+    const payload = buildAudioTaskPayload({
+      ...BASE,
+      model: model('elevenlabs-v3', 'tts'),
+      params: { prompt: 'from the catalog' },
+    });
+    expect(payload.params.prompt).toBe('Good evening.');
+  });
+
+  it('overwrites the node it was launched from', () => {
+    const payload = buildAudioTaskPayload({
+      ...BASE,
+      model: model('elevenlabs-v3', 'tts'),
+    });
+    expect(payload.mode).toBe('overwrite');
+    expect(payload.target_node_id).toBe('n1');
+  });
+});
+
+/**
+ * The picked reference audio, on its way to the vendor (#1960 PR2).
+ *
+ * Nothing carried it before: the video builder has `sourceParams`, this one had
+ * only the model's params and the prompt. A cloning submit therefore reached
+ * the server with no `audio`, and the server-side source gate refuses that
+ * before the task row is even written — every single time, for a user who had
+ * picked one.
+ */
+describe('buildAudioTaskPayload — the picked reference audio', () => {
+  it('sends the slot URL under the name the vendor reads', () => {
+    const payload = buildAudioTaskPayload({
+      ...BASE,
+      model: model('qwen3-tts-voice-clone', 'tts'),
+      slots: ['refAudio'],
+      slotUrls: { refAudio: 'https://cdn.test/sample.m4a' },
+    });
+    expect(payload.params.audio).toBe('https://cdn.test/sample.m4a');
+  });
+
+  it('lets the picked audio win over a same-named catalog param', () => {
+    // Same rule the prompt follows, and the reason the slot merge lands AFTER
+    // the params spread: what the user picked is what gets sent.
+    const payload = buildAudioTaskPayload({
+      ...BASE,
+      model: model('qwen3-tts-voice-clone', 'tts'),
+      params: { audio: 'from the catalog' },
+      slots: ['refAudio'],
+      slotUrls: { refAudio: 'https://cdn.test/sample.m4a' },
+    });
+    expect(payload.params.audio).toBe('https://cdn.test/sample.m4a');
+  });
+
+  it('leaves a pick behind when the active mode does not collect it', () => {
+    // A pick survives a mode switch by design — it lives on the node, not in
+    // the panel — so text to speech reads a reference audio chosen for cloning and
+    // would send it as `params.audio` under a mode that never asked for one.
+    const payload = buildAudioTaskPayload({
+      ...BASE,
+      model: model('elevenlabs-v3', 'tts'),
+      slots: [],
+      slotUrls: { refAudio: 'https://cdn.test/sample.m4a' },
+    });
+    expect(payload.params).not.toHaveProperty('audio');
+  });
+
+  it('sends no audio key at all when nothing is picked', () => {
+    // An `audio: undefined` riding along would read as a present-but-empty
+    // source; the gate tests `typeof value === "string"`, so the key has to be
+    // absent rather than blank.
+    const payload = buildAudioTaskPayload({
+      ...BASE,
+      model: model('qwen3-tts-voice-clone', 'tts'),
+      slotUrls: {},
+    });
+    expect(payload.params).not.toHaveProperty('audio');
+  });
+
+  it('leaves the text-to-speech models untouched', () => {
+    const payload = buildAudioTaskPayload({
+      ...BASE,
+      model: model('elevenlabs-v3', 'tts'),
+      params: { voice_id: 'Alice' },
+    });
+    expect(payload.params).toEqual({ voice_id: 'Alice', prompt: 'Good evening.' });
+  });
+});
+
+/**
+ * The two music models' contracts, measured against the gateway on 2026-09-05
+ * (#1960 A10).
+ *
+ * `minimax/music-3.0` takes a style brief as `prompt` and words as `lyrics`,
+ * and refuses the request outright without the latter — the gateway answered
+ * `invalid params, lyrics is required` for an empty one. `minimax/music-01`
+ * takes up to three reference tracks and accepts a `prompt` alongside them.
+ */
+describe('buildAudioTaskPayload — the music models (#1960)', () => {
+  it('sends the style brief and the lyrics as two separate fields', () => {
+    const payload = buildAudioTaskPayload({
+      ...BASE,
+      model: model('minimax-music-3.0', 'audio'),
+      promptText: 'warm indie folk, fingerpicked guitar, 90 BPM',
+      lyricsText: '[Verse]\nMorning light across the kitchen floor',
+    });
+    expect(payload.params).toMatchObject({
+      prompt: 'warm indie folk, fingerpicked guitar, 90 BPM',
+      lyrics: '[Verse]\nMorning light across the kitchen floor',
+    });
+  });
+
+  it('lets the written lyrics win over a same-named catalog param', () => {
+    const payload = buildAudioTaskPayload({
+      ...BASE,
+      model: model('minimax-music-3.0', 'audio'),
+      params: { lyrics: 'from the catalog' },
+      lyricsText: 'what the user wrote',
+    });
+    expect(payload.params.lyrics).toBe('what the user wrote');
+  });
+
+  it('sends no lyrics key on a mode that has no lyrics box', () => {
+    // Text to speech and sound effects never collect them, so the field must
+    // not appear at all rather than appear empty.
+    const payload = buildAudioTaskPayload({
+      ...BASE,
+      model: model('elevenlabs-v3', 'tts'),
+    });
+    expect(payload.params).not.toHaveProperty('lyrics');
+  });
+
+  it('puts each reference track under its own vendor name', () => {
+    const payload = buildAudioTaskPayload({
+      ...BASE,
+      model: model('mureka-v9.5-generate-song', 'audio'),
+      slots: ['musicSong', 'musicMelody', 'musicVocal'],
+      slotUrls: {
+        musicSong: 'https://cdn/song.mp3',
+        musicMelody: 'https://cdn/melody.mp3',
+        musicVocal: 'https://cdn/vocal.mp3',
+      },
+    });
+    expect(payload.params).toMatchObject({
+      song: 'https://cdn/song.mp3',
+      melody: 'https://cdn/melody.mp3',
+      vocal: 'https://cdn/vocal.mp3',
+    });
+  });
+
+  it('sends only what was picked, on a mode where one is enough', () => {
+    const payload = buildAudioTaskPayload({
+      ...BASE,
+      model: model('mureka-v9.5-generate-song', 'audio'),
+      slots: ['musicSong', 'musicMelody', 'musicVocal'],
+      slotUrls: { musicVocal: 'https://cdn/vocal.mp3' },
+    });
+    expect(payload.params).toMatchObject({ vocal: 'https://cdn/vocal.mp3' });
+    expect(payload.params).not.toHaveProperty('song');
+    expect(payload.params).not.toHaveProperty('melody');
+  });
+
+  it('sends the song to cover as `audio`, leaving the voice sample behind', () => {
+    // Both travel as `audio`. The cloning pick survives a mode switch by
+    // design; it is not drawn under Reference to Music, so it must not ride
+    // in place of the song.
+    const payload = buildAudioTaskPayload({
+      ...BASE,
+      model: model('minimax-music-cover', 'audio'),
+      slots: ['coverSong'],
+      slotUrls: { refAudio: 'https://cdn/sample.mp3', coverSong: 'https://cdn/song.mp3' },
+    });
+    expect(payload.params).toMatchObject({ audio: 'https://cdn/song.mp3' });
+  });
+});
+
+describe('audioEstimateInput — the run the price is quoted for', () => {
+  it('carries the drawn slots\' picks and lengths, and nothing from a slot this mode does not draw', () => {
+    const input = audioEstimateInput(
+      {
+        modelEntry: undefined,
+        params: { model_version: 'v9' },
+        slotUrls: { musicSong: 'https://cdn/song.mp3', refAudio: 'https://cdn/ref.mp3' },
+        slotDurations: { musicSong: 42, refAudio: 9 },
+      },
+      ['musicSong'],
+      'a ballad',
+    );
+    expect(input).toEqual({
+      params: { model_version: 'v9', [AUDIO_SLOTS.musicSong.param]: 'https://cdn/song.mp3' },
+      prompt: 'a ballad',
+      durations: { [AUDIO_SLOTS.musicSong.param]: [42] },
+    });
+  });
+});
+
+describe('audioEstimateInput — a song composing from a melody (breatic#1393)', () => {
+  it('prices the melody and not a vocal picked under style and references', () => {
+    const composer: ModelEntry = {
+      ...model('mureka-v9.5-generate-song', 'audio'),
+      mode: ['t2m', 'a2m'],
+      params: {
+        compose_from: { description: '', default: 'references', values: ['references', 'melody'], fill: 'panel', modes: ['a2m'] },
+        vocal: { description: '', default: null, fill: 'canvas', accepts: 'audio', optional: true, modes: ['a2m'], when: { equals: { compose_from: 'references' } } },
+        melody: { description: '', default: null, fill: 'canvas', accepts: 'audio', optional: true, modes: ['a2m'], when: { equals: { compose_from: 'melody' } } },
+      },
+    };
+    const params = { compose_from: 'melody' };
+    const input = audioEstimateInput(
+      { modelEntry: composer, params, slotUrls: { musicVocal: 'https://cdn/vocal.mp3', musicMelody: 'https://cdn/melody.mp3' }, slotDurations: {} },
+      audioSlotsForModel(composer, 'a2m', params),
+      '',
+    );
+    expect(input.params.melody).toBe('https://cdn/melody.mp3');
+    expect(input.params).not.toHaveProperty('vocal');
+  });
+});
+
+describe('buildAudioTaskPayload — a model that reads a dialogue (#2156)', () => {
+  const gemini: ModelEntry = {
+    ...model('gemini', 'tts'),
+    params: {
+      speakers: { description: '', default: null, type: 'items', replaces: 'voice_id', min_items: 2 },
+      voice_id: { description: '', default: 'Kore', remote_source: 'voices' },
+    },
+  };
+  const pair = [
+    { speaker: 'Ada', voice: 'Kore' },
+    { speaker: 'Bo', voice: 'Puck' },
+  ];
+
+  it('sends the speakers and no voice in a dialogue, and never the switch', () => {
+    const payload = buildAudioTaskPayload({
+      ...BASE,
+      model: gemini,
+      params: { voice_id: 'Kore', speakers: pair, _stand_in_on: true },
+    });
+    expect(payload.params).toEqual({ speakers: pair, prompt: 'Good evening.' });
+  });
+
+  it('sends the voice and not the kept speakers when reading alone', () => {
+    const payload = buildAudioTaskPayload({
+      ...BASE,
+      model: gemini,
+      params: { voice_id: 'Kore', speakers: pair },
+    });
+    expect(payload.params).toEqual({ voice_id: 'Kore', prompt: 'Good evening.' });
+  });
+
+  it('prices what is sent', () => {
+    const input = audioEstimateInput(
+      { modelEntry: gemini, params: { voice_id: 'Kore', speakers: pair, _stand_in_on: true }, slotUrls: {}, slotDurations: {} },
+      [],
+      'hi',
+    );
+    expect(input.params).toEqual({ speakers: pair });
+  });
+});

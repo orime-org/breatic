@@ -4,13 +4,13 @@
 import { describe, it, expect } from 'vitest';
 import type { Node } from '@xyflow/react';
 
-import { batchCentresAt } from '@web/spaces/canvas/drop-layout';
-import { planGroupAround, planGroupCreation } from '@web/spaces/canvas/group-creation';
+import { batchCentresAt } from '@breatic/shared/canvas-model';
+import { planGroupAround, planGroupCreation } from '@breatic/shared/canvas-model';
 import {
   EMPTY_NODE_SIZE,
   GROUP_PADDING,
-} from '@web/spaces/canvas/group-geometry';
-import { centerToTopLeft } from '@web/spaces/canvas/node-factory';
+} from '@breatic/shared/canvas-model';
+import { centerToTopLeft } from '@breatic/shared/canvas-model';
 
 /**
  * Build a flow node with an explicit measured size for deterministic rects.

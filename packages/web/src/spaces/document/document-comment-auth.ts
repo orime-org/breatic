@@ -37,7 +37,7 @@ import {
   annotationRights,
   canPostAnnotations,
   type AnnotationRights,
-} from '@web/spaces/canvas/annotation/rights';
+} from '@breatic/shared/canvas-model';
 
 /** Who is asking. */
 export interface DocumentCommentAuthInput {

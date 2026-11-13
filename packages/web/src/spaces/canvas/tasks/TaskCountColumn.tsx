@@ -32,7 +32,7 @@ import { Button } from '@web/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { cn } from '@web/lib/utils';
 import { useTranslation } from '@web/i18n/use-translation';
-import { TASK_COUNT_ORDER } from '@web/spaces/canvas/overlay-scale';
+import { TASK_COUNT_ORDER } from '@breatic/shared/canvas-model';
 import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
 
 /**

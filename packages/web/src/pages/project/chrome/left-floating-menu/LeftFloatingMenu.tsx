@@ -21,7 +21,7 @@ import { cn } from '@web/lib/utils';
 import { suppressTooltipFocusOpen, useReturnFocus } from '@web/lib/overlay-focus';
 import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusive-overlay';
 import { useTranslation } from '@web/i18n/use-translation';
-import type { CreatableNodeType } from '@web/spaces/canvas/node-factory';
+import type { CreatableNodeType } from '@breatic/shared/canvas-model';
 import { CreatableNodeMenuItems } from '@web/spaces/canvas/nodes/_shared/CreatableNodeMenuItems';
 import { CanvasShortcutsDialog } from '@web/spaces/canvas/shortcuts/CanvasShortcutsDialog';
 

@@ -23,6 +23,7 @@ import type { EditorView } from '@tiptap/pm/view';
 import { SuggestionPluginKey } from '@tiptap/suggestion';
 import { NodeViewContent, NodeViewWrapper, ReactNodeViewRenderer, useEditorState, type NodeViewProps } from '@tiptap/react';
 import { ChevronDown, X } from 'lucide-react';
+import { SPEAKER_ATTR } from '@breatic/shared/canvas-model';
 import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
@@ -35,8 +36,7 @@ import { compositionEnd, type CompositionEnd } from '@web/lib/composition-end';
 import { planDialogueLines, type PlanOptions } from '@web/spaces/canvas/generate/dialogue-lines';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 
-/** The paragraph attribute holding a line's speaker, from 1. */
-export const SPEAKER_ATTR = 'speaker';
+export { SPEAKER_ATTR };
 
 /** The palette hue each speaker's dot takes, by speaker. */
 const SPEAKER_HUES = ['blue', 'orange', 'green', 'violet', 'pink', 'teal'] as const;

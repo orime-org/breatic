@@ -31,8 +31,8 @@ import { PromptDocument, PromptNote } from '@web/features/prompt-note/prompt-not
 import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
 import {
   deriveReferences, focusToRailItem, type ReferenceRailItem,
-} from '@web/spaces/canvas/generate/derive-references';
-import { validFocusImages } from '@web/data/focus-images';
+} from '@breatic/shared/canvas-model';
+import { validFocusImages } from '@breatic/shared/canvas-model';
 import { readEdges, readNodes } from '@web/data/yjs/canvas-space';
 import { useDocSize } from '@web/data/yjs/doc-size';
 import { docNameOf } from '@web/data/yjs/manager';
@@ -52,7 +52,7 @@ import {
   SpeakerParagraph,
 } from '@web/spaces/canvas/generate/dialogue-line';
 import { dispatchMachineEdit } from '@web/features/reference-mention/reference-mention-local-input';
-import { NO_MENTION_TOKENS, type MentionTokens } from '@web/spaces/canvas/generate/reference-urls';
+import { NO_MENTION_TOKENS, type MentionTokens } from '@breatic/shared/canvas-model';
 import { makeReferenceSuggestion } from '@web/spaces/canvas/generate/reference-mention-suggestion';
 import { planCascadeDeletion } from '@web/features/reference-mention/reference-mention-whitespace';
 import { useFocusReturn } from '@web/lib/use-focus-return';

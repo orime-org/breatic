@@ -5,7 +5,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 
 import { resetPreviewRecords } from '@web/lib/preview-src';
-import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import type { ReferenceRailItem } from '@breatic/shared/canvas-model';
 import { ReferenceRail } from '@web/spaces/canvas/generate/ReferenceRail';
 
 // The rail's chips now use the unified HoverPreview (a Radix HoverCard) — no

@@ -14,7 +14,7 @@ import {
   focusRefId,
   focusIdOfRefId,
   focusToRailItem,
-} from '@web/spaces/canvas/generate/derive-references';
+} from '@breatic/shared/canvas-model';
 
 /** No body text for this case — the parameter is required so omitting it cannot be an accident. */
 const NO_TEXT: ReadonlyMap<string, string> = new Map();
@@ -54,7 +54,7 @@ describe('focus pool entries', () => {
 describe('focus: namespace squatting (round-9)', () => {
   it('deriveReferences skips a forged canvas node whose id squats in the focus: namespace', async () => {
     const { deriveReferences } = await import(
-      '@web/spaces/canvas/generate/derive-references'
+      '@breatic/shared/canvas-model'
     );
     const nodes = [
       {
@@ -78,7 +78,7 @@ describe('focus: namespace squatting (round-9)', () => {
 
   it('deriveReferences skips a forged EDGE whose id squats in the focus: namespace (round-12)', async () => {
     const { deriveReferences } = await import(
-      '@web/spaces/canvas/generate/derive-references'
+      '@breatic/shared/canvas-model'
     );
     // The row's refId = the edge id: a forged edge id colliding with a
     // crop's `focus:` pool id would render two rail rows with the same

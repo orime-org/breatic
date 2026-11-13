@@ -14,7 +14,7 @@ import { canConnect } from '@web/spaces/canvas/lib/connection-rules';
 import {
   CREATABLE_NODE_TYPES,
   type CreatableNodeType,
-} from '@web/spaces/canvas/node-factory';
+} from '@breatic/shared/canvas-model';
 
 /**
  * The creatable modalities whose INPUT accepts `sourceKind` (connection rules

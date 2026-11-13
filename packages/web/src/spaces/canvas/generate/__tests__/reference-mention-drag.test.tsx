@@ -39,7 +39,7 @@ import {
   PromptEditor,
   type PromptEditorHandle,
 } from '@web/spaces/canvas/generate/PromptEditor';
-import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import type { ReferenceRailItem } from '@breatic/shared/canvas-model';
 
 beforeAll(() => {
   // jsdom does not implement elementFromPoint; PM's posAtCoords calls it from

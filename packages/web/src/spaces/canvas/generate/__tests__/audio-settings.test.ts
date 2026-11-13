@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import type { ModelEntry, ParamDescriptor } from '@breatic/shared';
 
 import { choiceLabel, hasSettings, settingsLayout } from '@web/spaces/canvas/generate/audio-settings';
-import { STAND_IN_ON } from '@web/spaces/canvas/generate/stand-in';
+import { STAND_IN_ON } from '@breatic/shared/canvas-model';
 
 /**
  * A tts model declaring the given params.

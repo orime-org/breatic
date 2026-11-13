@@ -7,7 +7,7 @@ import {
   GROUP_BACKGROUND_OPTIONS,
   GROUP_BACKGROUND_TINTS,
   groupBackgroundFor,
-} from '@web/spaces/canvas/group-background';
+} from '@breatic/shared/canvas-model';
 
 describe('GROUP_BACKGROUND_TINTS', () => {
   it('is every option the picker offers, without "no colour"', () => {

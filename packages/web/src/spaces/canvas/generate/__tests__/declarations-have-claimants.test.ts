@@ -50,11 +50,11 @@ import { parse } from 'yaml';
 import {
   AUDIO_MODE_OPTIONS,
   audioModeOption,
-} from '@web/spaces/canvas/generate/audio-mode-options';
+} from '@breatic/shared/canvas-model';
 import { PARAMS as AUDIO_PARAMS } from '@web/spaces/canvas/generate/audio-params';
-import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
-import { IMAGE_SLOTS } from '@web/spaces/canvas/generate/image-slots';
-import { STYLE_SLOT } from '@web/spaces/canvas/generate/style-slot';
+import { AUDIO_SLOTS } from '@breatic/shared/canvas-model';
+import { IMAGE_SLOTS } from '@breatic/shared/canvas-model';
+import { STYLE_SLOT } from '@breatic/shared/canvas-model';
 import { CAMERA_PARAMS } from '@web/spaces/canvas/generate/CameraPicker';
 import { IMAGE_MODE_OPTIONS } from '@web/spaces/canvas/generate/image-mode-selection';
 import { modelControls } from '@web/spaces/canvas/generate/model-controls';
@@ -62,8 +62,8 @@ import { RATIO_RESOLUTION_PARAMS } from '@web/spaces/canvas/generate/RatioResolu
 import {
   slotsForMode,
   VIDEO_MODE_OPTIONS,
-} from '@web/spaces/canvas/generate/video-mode-options';
-import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
+} from '@breatic/shared/canvas-model';
+import { VIDEO_SLOTS } from '@breatic/shared/canvas-model';
 import { EDITED_PARAMS } from '@web/spaces/canvas/generate/VideoParamsPicker';
 
 // Both live at the repository root, which is two levels above this package.

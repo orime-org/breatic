@@ -5,7 +5,7 @@ import {
   GROUP_BACKGROUND_TINTS,
   groupBackgroundStyle,
   normalizeGroupBackground,
-} from '@web/spaces/canvas/group-background';
+} from '@breatic/shared/canvas-model';
 import { NODE_TYPE_PALETTE } from '@web/spaces/canvas/node-type-palette';
 
 /** The minimap fill for kinds outside the ratified palette mapping. */

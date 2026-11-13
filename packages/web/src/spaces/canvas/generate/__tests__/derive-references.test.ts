@@ -5,8 +5,8 @@ import { describe, it, expect } from 'vitest';
 
 import type { NodeType } from '@breatic/shared';
 import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
-import type { NodeViewOf } from '@web/data/yjs/node-view';
-import { deriveReferences } from '@web/spaces/canvas/generate/derive-references';
+import type { NodeViewOf } from '@breatic/shared/canvas-model';
+import { deriveReferences } from '@breatic/shared/canvas-model';
 
 /** No body text for this case — the parameter is required so omitting it cannot be an accident. */
 const NO_TEXT: ReadonlyMap<string, string> = new Map();

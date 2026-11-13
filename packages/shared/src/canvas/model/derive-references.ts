@@ -1,0 +1,259 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: Elastic-2.0
+
+/**
+ * Reference rail derivation — "a connection IS a reference".
+ *
+ * A generative node's reference rail is NOT stored separately: it is derived
+ * live from the node's incoming canvas edges (single source of truth =
+ * `edgesMap`, zero drift). Each incoming edge (`edge.target === nodeId`)
+ * yields one rail row; display fields (`sourceNodeName`, `thumbnail`) are read
+ * live from the current source node, so renaming or re-generating the source
+ * updates the rail automatically. Adding a reference = drawing an edge;
+ * removing a reference (rail ✕) or deleting the edge = removing the edge —
+ * both are frontend-owned and never involve the worker.
+ */
+
+import type { CanvasEdge } from '@shared/canvas/model/node-view.js';
+import type { NodeType } from '@shared/types/canvas-node.js';
+import type { NodeRef, NodeView, TypedNodeView } from '@shared/canvas/model/node-view.js';
+
+/** One derived reference rail row (view-model, not stored in Yjs). */
+export interface ReferenceRailItem {
+  /** Stable id for this row = the backing edge id. */
+  refId: string;
+  /** Upstream node feeding this reference = the edge source. */
+  sourceNodeId: string;
+  /** Upstream node modality. */
+  sourceNodeType: NodeType;
+  /** Live display name of the upstream node (updates as it is renamed). */
+  sourceNodeName: string;
+  /** Live thumbnail / preview URL when the upstream carries a visual payload. */
+  thumbnail?: string;
+  /**
+   * Live URL of the asset ITSELF, for a preview that plays it (#1945).
+   *
+   * Separate from {@link ReferenceRailItem.thumbnail} rather than derived from
+   * it, because the two answer different questions: the thumbnail is what a
+   * 24×24 `<img>` in the row can show — a video's cover, and nothing at all
+   * for audio — while this is what the hover card hands to `MediaPlayer`.
+   * Collapsing them is what left audio and video references unplayable: an
+   * `<img>` pointed at an `.mp4` renders a broken image (#1821), so the
+   * thumbnail deliberately refuses to be the media URL.
+   *
+   * Absent for modalities with nothing to play (text / 3d / web / annotation /
+   * group) and while the source has not produced anything yet.
+   */
+  mediaUrl?: string;
+  /**
+   * Live text body when the upstream is a text node (spec §9.1): feeds the
+   * backend-prompt chip substitution and the rail hover preview.
+   */
+  textContent?: string;
+  /**
+   * True for a FOCUS crop pool row (#1782) — a standalone copy, not an edge
+   * projection: its `refId` / `sourceNodeId` live in the `focus:` namespace,
+   * its name / thumbnail are creation-time snapshots that never follow the
+   * source node, and its ✕ removes the crop (never an edge). Absent = a
+   * normal node-reference row.
+   */
+  focus?: true;
+}
+
+/**
+ * The id namespace marking focus-crop pool rows (#1782). Prefixing keeps
+ * crop ids and node ids unmistakable everywhere one set flows through the
+ * other's plumbing (mention attrs, @ extraction, rail removal routing).
+ */
+export const FOCUS_REF_PREFIX = 'focus:';
+
+/**
+ * Builds the namespaced pool id for a focus crop.
+ * @param focusId - The FocusImage id.
+ * @returns The `focus:`-prefixed id used as refId / sourceNodeId.
+ */
+export function focusRefId(focusId: string): string {
+  return `${FOCUS_REF_PREFIX}${focusId}`;
+}
+
+/**
+ * Extracts the FocusImage id from a namespaced pool id.
+ * @param refId - A pool refId / mention sourceNodeId.
+ * @returns The FocusImage id, or null when the id is not in the focus namespace.
+ */
+export function focusIdOfRefId(refId: string): string | null {
+  return refId.startsWith(FOCUS_REF_PREFIX)
+    ? refId.slice(FOCUS_REF_PREFIX.length)
+    : null;
+}
+
+/**
+ * Maps a focus crop to a pool row (#1782) so the rail, the @ mention
+ * suggestion, the chip live-lookup, and the pool-membership cascade all
+ * handle crops through the exact same plumbing as node references. The
+ * row is static by construction (snapshots — F, user 2026-07-16).
+ * @param crop - The stored FocusImage.
+ * @param crop.id - The FocusImage id.
+ * @param crop.url - The crop asset URL (row thumbnail).
+ * @param crop.name - The creation-time source-name snapshot.
+ * @returns The focus pool row.
+ */
+export function focusToRailItem(crop: {
+  id: string;
+  url: string;
+  name: string;
+}): ReferenceRailItem {
+  return {
+    refId: focusRefId(crop.id),
+    sourceNodeId: focusRefId(crop.id),
+    sourceNodeType: 'image',
+    sourceNodeName: crop.name,
+    thumbnail: crop.url,
+    // A crop IS its own asset — one static image, so the row's `<img>` and the
+    // hover card load the same URL. Both fields are set because the rail reads
+    // them for different things, and a row that carried only one of them
+    // previewed as "not generated yet" over a crop that was right there
+    // (#1945 Gate 2 round 1). This function is the row type's second producer;
+    // a field `deriveReferences` sets has to be set here too.
+    mediaUrl: crop.url,
+    focus: true,
+  };
+}
+
+/**
+ * Compares two edge ids by CODE UNIT (ordinal), not locale. The tiebreak must
+ * be identical on every client, and `String.prototype.localeCompare` collates
+ * in the runtime's default locale — under da/nb the 'aa' hex digraph sorts
+ * after 'z', so a Danish client would order tied references differently than
+ * an English one, defeating the cross-client determinism this exists for
+ * (adversarial round-2).
+ * @param a - First edge id.
+ * @param b - Second edge id.
+ * @returns Negative, zero, or positive per ordinal order.
+ */
+function ordinalCompare(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+/**
+ * Reads a source node view's display name. Content and group views carry an
+ * optional `name`; an annotation sticky has none, so it resolves to empty.
+ * @param view - The source node's view.
+ * @returns The display name, or empty string when the view carries none.
+ */
+function nameOf(view: NodeView): string {
+  return ('name' in view ? view.name : undefined) ?? '';
+}
+
+/**
+ * Picks the live thumbnail URL for a source node view: the image asset for an
+ * image, the cover frame for a video (undefined when the video carries no
+ * cover — NEVER the raw video URL, which fed to an `<img>` is a broken image
+ * (#1821); a coverless video degrades to a modality icon downstream), and
+ * nothing for modalities without a visual payload (text / audio / 3d / web /
+ * annotation / group).
+ * @param node - The source node's type and view.
+ * @returns The thumbnail URL, or undefined when there is no usable cover.
+ */
+function thumbnailOf(node: TypedNodeView): string | undefined {
+  switch (node.type) {
+    case 'image':
+      return node.data.content;
+    case 'video':
+      return node.data.coverUrl;
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * Picks the live URL of the asset itself for a source node view — what a
+ * playable preview loads, as opposed to what the row's `<img>` shows. All
+ * three media modalities keep it in the same place (`content`); the cover
+ * frame a video also carries is the thumbnail's business, not this one.
+ * @param node - The source node's type and view.
+ * @returns The asset URL, or undefined when the modality has nothing to play
+ *   or the source has produced nothing yet.
+ */
+function mediaUrlOf(node: TypedNodeView): string | undefined {
+  switch (node.type) {
+    case 'image':
+    case 'audio':
+    case 'video':
+      return node.data.content;
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * Derives a node's reference rail from its incoming edges. Every edge whose
+ * `target` is `nodeId` becomes one rail row resolved against the current node
+ * set; a dangling edge (source node absent) is skipped. Rows are ordered by
+ * connection time (`createdAt` ascending, newest last — batch-2 item 7), NOT
+ * by array position: the edges array mirrors Y.Map struct-store order, which
+ * diverges from insertion order after reload / cross-client sync. A legacy
+ * edge without a stamp sorts as oldest (stable among its peers). Pure —
+ * display fields reflect the source nodes as passed in.
+ * @param nodeId - The generative node whose reference rail to build.
+ * @param nodes - The current canvas node views (source of live display
+ *   fields). Only `id`, `type` and `data` are read, so the stored
+ *   `CanvasNodeView` shape satisfies it.
+ * @param edges - The current canvas edges.
+ * @param textById - Body text per text node, from `useTextBodies`. Passed in
+ *   rather than read off the node view, because the body is a shared fragment
+ *   the view deliberately does not carry (#1774) — this function stays pure,
+ *   and the subscription stays in the component that can hold one. REQUIRED,
+ *   deliberately: a default empty map would let a caller forget it and get
+ *   silently blank text for every reference. Callers that only want the rows
+ *   (ids, types, thumbnails) pass an empty map and say so at the call site.
+ * @returns The reference rail rows, in connection-time order (newest last).
+ */
+export function deriveReferences(
+  nodeId: string,
+  nodes: ReadonlyArray<NodeRef>,
+  edges: ReadonlyArray<CanvasEdge>,
+  textById: ReadonlyMap<string, string>,
+): ReferenceRailItem[] {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  // filter() returns a fresh array, so the in-place sort never mutates the
+  // caller's edges. Ties (all unstamped legacy edges; same-ms stamps) break
+  // by edge id — the input order is Y.Map struct-store order, which DIFFERS
+  // across clients mid-session and flips on reload, so "stable sort keeps
+  // legacy order" would just reproduce the nondeterminism the stamp exists
+  // to remove (adversarial round-1). The id tiebreak gives every client the
+  // identical rail (and i2i payload) order.
+  const incoming = edges
+    // The row's refId = the edge id, so the focus: namespace guard applies
+    // to EDGE ids too (round-12): a forged edge id colliding with a crop's
+    // pool id would render two rail rows with the same React key and
+    // misroute the ✕ removal. Legit edge ids are UUID-based and never
+    // carry the prefix.
+    .filter((e) => e.target === nodeId && !e.id.startsWith(FOCUS_REF_PREFIX))
+    .sort(
+      (a, b) =>
+        (a.createdAt ?? 0) - (b.createdAt ?? 0) || ordinalCompare(a.id, b.id),
+    );
+  const rail: ReferenceRailItem[] = [];
+  for (const edge of incoming) {
+    const source = byId.get(edge.source);
+    if (!source) continue;
+    // The focus: namespace belongs to crops exclusively (round-9): a
+    // forged canvas NODE whose id squats in it would collide with a crop's
+    // pool id — one @-mention would then pull BOTH the crop and the forged
+    // node's content into the payload. Legit node ids are UUIDs and never
+    // carry the prefix.
+    if (source.id.startsWith(FOCUS_REF_PREFIX)) continue;
+    rail.push({
+      refId: edge.id,
+      sourceNodeId: source.id,
+      sourceNodeType: source.type,
+      sourceNodeName: nameOf(source.data),
+      thumbnail: thumbnailOf(source),
+      mediaUrl: mediaUrlOf(source),
+      textContent:
+        source.type === 'text' ? (textById.get(source.id) ?? '') : undefined,
+    });
+  }
+  return rail;
+}

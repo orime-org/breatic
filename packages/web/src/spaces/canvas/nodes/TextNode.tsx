@@ -14,9 +14,9 @@ import {
 } from '@web/spaces/canvas/canvas-context';
 import { flowNodeWrapper } from '@web/spaces/canvas/flow-node-wrapper';
 import { endKeptEditor } from '@web/spaces/canvas/kept-editors';
-import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
+import { evaluateNodeGate } from '@breatic/shared/canvas-model';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
-import type { TextNodeView } from '@web/data/yjs/node-view';
+import type { TextNodeView } from '@breatic/shared/canvas-model';
 import { ContentNodeFrame } from '@web/spaces/canvas/nodes/_shared/ContentNodeFrame';
 import { NodeContent } from '@web/spaces/canvas/nodes/_shared/NodeContent';
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';

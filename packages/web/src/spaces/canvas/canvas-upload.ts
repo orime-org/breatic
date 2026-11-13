@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import { validFocusImages } from '@web/data/focus-images';
+import { validFocusImages } from '@breatic/shared/canvas-model';
 import {
   isUploadableMediaType,
   uploadableSpellings,
@@ -18,7 +18,7 @@ import {
   type MediaUploadDeps,
   type UploadFailure,
 } from '@web/data/upload/media-upload';
-import { allSlotSpecs, readSlotPicks } from '@web/spaces/canvas/generate/slots';
+import { allSlotSpecs, readSlotPicks } from '@breatic/shared/canvas-model';
 import { resolveUploadFailure } from '@web/spaces/canvas/upload-failure';
 import type { TrayNotice } from '@web/stores/chat-attachments';
 import { useUploadMarksStore, type UploadMarkMessage } from '@web/stores/upload-marks';

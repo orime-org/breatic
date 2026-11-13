@@ -22,11 +22,11 @@ import {
   landingCandidates,
 } from '@web/spaces/canvas/doc-geometry-view';
 import type { GestureTable } from '@web/spaces/canvas/gesture-table';
-import { planGroupCreation } from '@web/spaces/canvas/group-creation';
+import { planGroupCreation } from '@breatic/shared/canvas-model';
 import type { DragNode } from '@web/spaces/canvas/group-drag';
 import { toPlacedDragNode } from '@web/spaces/canvas/drag-node';
 import { planGroupDrag } from '@web/spaces/canvas/group-drag';
-import { planResizeJoin } from '@web/spaces/canvas/group-reparent';
+import { planResizeJoin } from '@breatic/shared/canvas-model';
 import { captureClipboard } from '@web/spaces/canvas/node-clipboard';
 
 const GROUP_ID = 'g1';

@@ -34,7 +34,7 @@ import {
   removeReply,
   runCanvasUndoBatch,
 } from '@web/data/yjs/canvas-space';
-import type { AnnotationNodeView } from '@web/data/yjs/node-view';
+import type { AnnotationNodeView } from '@breatic/shared/canvas-model';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useAutosizeTextarea } from '@web/lib/use-autosize-textarea';
 import { cn } from '@web/lib/utils';
@@ -60,7 +60,7 @@ import {
   annotationRights,
   canPostAnnotations,
   type AnnotationRights,
-} from '@web/spaces/canvas/annotation/rights';
+} from '@breatic/shared/canvas-model';
 import { useCanvasActions } from '@web/spaces/canvas/canvas-actions';
 import {
   useCanvasContext,

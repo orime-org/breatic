@@ -7,7 +7,7 @@ import * as React from 'react';
 
 import { MentionList, type MentionListRef } from '@web/features/reference-mention/MentionList';
 import { referenceKey, renderReferenceRow } from '@web/spaces/canvas/generate/reference-mention-list';
-import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import type { ReferenceRailItem } from '@breatic/shared/canvas-model';
 import { resetPreviewRecords } from '@web/lib/preview-src';
 
 const row = (id: string): ReferenceRailItem => ({

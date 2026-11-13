@@ -1,0 +1,75 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: Elastic-2.0
+
+import type { NodeMediaFields } from '@shared/canvas/node-media.js';
+
+import type { NodeHistoryEntry } from '@shared/canvas/model/node-history.js';
+import {
+  evaluateNodeGate,
+  type NodeGateState,
+} from '@shared/canvas/model/node-gate.js';
+import type { HistoryModality } from '@shared/canvas/model/node-history.js';
+
+/**
+ * What a restore attempt resolves to — the pure decision, separated from the
+ * Yjs reads (gate state) and writes (restoreNodeMedia) so the #1619 restore
+ * invariants are unit-testable without a canvas.
+ */
+export type RestoreDecision =
+  | { readonly kind: 'noop' }
+  | { readonly kind: 'blocked'; readonly toastKey: string }
+  | {
+      readonly kind: 'write';
+      readonly content: string;
+      readonly media: NodeMediaFields;
+    };
+
+/**
+ * Decide what a history restore should do (#1619). Pure: the caller reads the
+ * fresh gate state + performs the write. Invariants:
+ * - INV-9: `readOnly` → noop (an editor→viewer downgrade cannot write).
+ * - INV-4: a failed / content-less entry → noop (never restorable).
+ * - INV-1: a locked node → blocked with the gate's toast key. A task running
+ *   on the node does not block: a node takes several tasks at once now, and
+ *   the last write wins (#186).
+ * - INV-8: video restores carry the cover (`thumbnailUrl`, `null` clears a
+ *   stale poster); image / audio carry `null`, as their settle does — their
+ *   row's `thumbnailUrl` is a preview of the content, never a node cover
+ *   (writing it would leak an asset-GC phantom reference).
+ * - INV-3: an allowed restore writes the entry's content back, with the media
+ *   numbers it landed with (#2184).
+ * @param opts - The restore inputs.
+ * @param opts.readOnly - Whether the viewer is read-only.
+ * @param opts.entry - The chosen history row.
+ * @param opts.modality - The host node's modality.
+ * @param opts.gateState - The node's fresh lock state.
+ * @returns The restore decision.
+ */
+export function resolveRestore(opts: {
+  readOnly: boolean;
+  entry: Pick<
+    NodeHistoryEntry,
+    'status' | 'content' | 'thumbnailUrl' | 'mediaWidth' | 'mediaHeight' | 'duration' | 'mimeType' | 'size'
+  >;
+  modality: HistoryModality;
+  gateState: NodeGateState;
+}): RestoreDecision {
+  if (opts.readOnly) return { kind: 'noop' };
+  if (opts.entry.status !== 'success' || opts.entry.content == null) {
+    return { kind: 'noop' };
+  }
+  const block = evaluateNodeGate(opts.gateState);
+  if (block) return { kind: 'blocked', toastKey: block.toastKey };
+  return {
+    kind: 'write',
+    content: opts.entry.content,
+    media: {
+      coverUrl: opts.modality === 'video' ? (opts.entry.thumbnailUrl ?? null) : null,
+      width: opts.entry.mediaWidth,
+      height: opts.entry.mediaHeight,
+      duration: opts.entry.duration,
+      mimeType: opts.entry.mimeType,
+      size: opts.entry.size,
+    },
+  };
+}

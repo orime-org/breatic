@@ -20,7 +20,7 @@ import {
   toPlacedDragNode,
   toScreenDragNode,
 } from '@web/spaces/canvas/drag-node';
-import { EMPTY_NODE_SIZE } from '@web/spaces/canvas/group-geometry';
+import { EMPTY_NODE_SIZE } from '@breatic/shared/canvas-model';
 
 /** A Group as the document has it. */
 const DOC_GROUP: Node = {

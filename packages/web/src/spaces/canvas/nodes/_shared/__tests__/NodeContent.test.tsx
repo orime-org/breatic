@@ -4,7 +4,7 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
-import { PLANNED_BODY_MIN_PX } from '@web/spaces/canvas/group-geometry';
+import { PLANNED_BODY_MIN_PX } from '@breatic/shared/canvas-model';
 import { NodeContent } from '@web/spaces/canvas/nodes/_shared/NodeContent';
 
 describe('NodeContent', () => {

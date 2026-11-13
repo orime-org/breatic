@@ -25,7 +25,7 @@ import { Text } from '@tiptap/extension-text';
 import { ReferenceRail } from '@web/spaces/canvas/generate/ReferenceRail';
 import { makeReferenceSuggestion } from '@web/spaces/canvas/generate/reference-mention-suggestion';
 import { ReferenceMention } from '@web/spaces/canvas/generate/reference-mention';
-import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import type { ReferenceRailItem } from '@breatic/shared/canvas-model';
 
 vi.mock('@web/lib/toast', () => ({
   toast: { warning: vi.fn(), error: vi.fn(), success: vi.fn(), info: vi.fn() },

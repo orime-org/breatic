@@ -12,7 +12,7 @@ import {
   isExecuteButtonDisabled,
   type ExecuteRefusal,
 } from '@breatic/shared';
-import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import type { ReferenceRailItem } from '@breatic/shared/canvas-model';
 import { CameraCommandPicker } from '@web/spaces/canvas/generate/CameraCommandPicker';
 import { ModelPicker } from '@web/spaces/canvas/generate/ModelPicker';
 import { ModeToggle } from '@web/spaces/canvas/generate/ModeToggle';
@@ -23,10 +23,10 @@ import { GENERATE_PANEL_WIDTH_STYLE } from '@web/spaces/canvas/generate/panel-wi
 import type {
   VideoSlot,
   VideoSlotUrls,
-} from '@web/spaces/canvas/generate/video-slots';
+} from '@breatic/shared/canvas-model';
 import {
   type VideoModeOption,
-} from '@web/spaces/canvas/generate/video-mode-options';
+} from '@breatic/shared/canvas-model';
 import {
   VideoParamsPicker,
   videoParamsPickerHasOptions,

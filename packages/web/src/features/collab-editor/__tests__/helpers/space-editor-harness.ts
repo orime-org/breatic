@@ -42,7 +42,7 @@ import { ySyncPluginKey as tiptapSyncKey } from '@web/features/collab-editor/col
 import { PromptDocument, PromptNote } from '@web/features/prompt-note/prompt-note';
 import { toast } from '@web/lib/toast';
 import { buildTextNodeExtensions } from '@web/spaces/canvas/nodes/TextNodeEditor';
-import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import type { ReferenceRailItem } from '@breatic/shared/canvas-model';
 import { ReferenceMention, referenceMentionContent } from '@web/spaces/canvas/generate/reference-mention';
 import { makeReferenceSuggestion } from '@web/spaces/canvas/generate/reference-mention-suggestion';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';

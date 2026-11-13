@@ -12,7 +12,7 @@ import { CANVAS_NODES_KEY, type ModelCatalog } from '@breatic/shared';
 
 import { addEdge, addNode, nodeDataMap, readEdges } from '@web/data/yjs/canvas-space';
 import { _resetForTests, docName, getDoc } from '@web/data/yjs/manager';
-import { snapshotNodeData } from '@web/data/yjs/node-data-snapshot';
+import { snapshotNodeData } from '@breatic/shared/canvas-model';
 import { pastedCanvas } from '@web/pages/project/chat/paste-canvas';
 import {
   captureClipboard,

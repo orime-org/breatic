@@ -60,7 +60,7 @@ import {
   MAX_FOCUS_ENTRIES,
   MAX_FOCUS_NAME,
   validFocusImages,
-} from '@web/data/focus-images';
+} from '@breatic/shared/canvas-model';
 import {
   getCachedReferencePoolCap,
   type NodeHistoryEntry,
@@ -77,9 +77,9 @@ import {
   type FocusCropConfirm,
 } from '@web/spaces/canvas/focus/FocusCropControls';
 import { docGeometryView } from '@web/spaces/canvas/doc-geometry-view';
-import { batchGroupName, batchLayoutAt } from '@web/spaces/canvas/drop-layout';
+import { batchGroupName, batchLayoutAt } from '@breatic/shared/canvas-model';
 import { documentMediaPaste, documentMediaPayload } from '@web/spaces/canvas/document-media-paste';
-import { groupBackgroundFor } from '@web/spaces/canvas/group-background';
+import { groupBackgroundFor } from '@breatic/shared/canvas-model';
 import { writeGroup } from '@web/spaces/canvas/group-write';
 import {
   FRAME_PAN_MS,
@@ -128,7 +128,8 @@ import {
   readNodePlacements,
   nodeDataMap,
 } from '@web/data/yjs/canvas-space';
-import { frameProposal, occupiedRects } from '@web/spaces/canvas/lib/place-flow';
+import { frameProposal } from '@web/spaces/canvas/lib/place-flow';
+import { occupiedRects } from '@breatic/shared/canvas-model';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { handToAgent } from '@web/spaces/canvas/pick-for-agent';
 import { useConversationRuntime } from '@web/stores/conversation-runtime';
@@ -190,11 +191,11 @@ import {
   resolvePanelSelectionAction,
   type PanelSelectionSnapshot,
 } from '@web/spaces/canvas/lib/generate-panel-selection';
-import { asContentView } from '@web/data/yjs/node-view';
-import type { Modality } from '@web/data/yjs/node-view';
+import { asContentView } from '@breatic/shared/canvas-model';
+import type { Modality } from '@breatic/shared/canvas-model';
 import {
   planGroupCreation,
-} from '@web/spaces/canvas/group-creation';
+} from '@breatic/shared/canvas-model';
 import {
   EMPTY_NODE_SIZE,
   MEDIA_FRAME_PX,
@@ -204,7 +205,7 @@ import {
   groupResizeBounds,
   planGroupResize,
   type Rect,
-} from '@web/spaces/canvas/group-geometry';
+} from '@breatic/shared/canvas-model';
 import { planDuplicateGroupGrowth } from '@web/spaces/canvas/duplicate-group-growth';
 import { topoSortByParent } from '@web/spaces/canvas/group-topology';
 import { useStableList } from '@web/spaces/canvas/use-stable-list';
@@ -214,11 +215,11 @@ import {
   groupDeletionIds,
   lockedNodeIds,
   selectionDeletionIds,
-} from '@web/spaces/canvas/group-membership';
+} from '@breatic/shared/canvas-model';
 import {
   evaluateNodeGate,
   NODE_GATE_TOAST_KEY,
-} from '@web/spaces/canvas/node-gate';
+} from '@breatic/shared/canvas-model';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import { downloadableAsset } from '@web/spaces/canvas/node-download';
 import { keepSnapshot } from '@web/spaces/canvas/keep-snapshot';
@@ -247,9 +248,9 @@ import {
   miniToolSlotValue,
 } from '@web/spaces/canvas/mini-tool/mini-tool-slot-pick';
 import { isJoinSlot, isJoinTool, joinFirstClipOf } from '@web/spaces/canvas/mini-tool/join';
-import { pickedSlotUrl } from '@web/spaces/canvas/generate/slot-pick';
-import { readSlotPicks, slotForPurpose, slotSpec } from '@web/spaces/canvas/generate/slots';
-import { planResizeJoin } from '@web/spaces/canvas/group-reparent';
+import { pickedSlotUrl } from '@breatic/shared/canvas-model';
+import { readSlotPicks, slotForPurpose, slotSpec } from '@breatic/shared/canvas-model';
+import { planResizeJoin } from '@breatic/shared/canvas-model';
 import {
   computeGroupToolbar,
   type NodeGroupInfo,
@@ -303,7 +304,7 @@ import {
   HISTORY_MODALITIES,
   type HistoryModality,
 } from '@web/spaces/canvas/history/NodeHistoryRow';
-import { resolveRestore } from '@web/spaces/canvas/history/restore-node-content';
+import { resolveRestore } from '@breatic/shared/canvas-model';
 import type { EmptyImageExecuteOpts } from '@web/spaces/canvas/empty-image/EmptyImagePanel';
 import { generateBlankPng } from '@web/spaces/canvas/empty-image/generate-blank-png';
 import { EdgeContextMenu } from '@web/spaces/canvas/EdgeContextMenu';
@@ -327,12 +328,12 @@ import {
   serializeClipboard,
   type ClipboardPayload,
 } from '@web/spaces/canvas/node-clipboard';
-import { snapshotNodeData } from '@web/data/yjs/node-data-snapshot';
+import { snapshotNodeData } from '@breatic/shared/canvas-model';
 import {
   createAnnotationNode,
   isCreatableNodeType,
   type CreatableNodeType,
-} from '@web/spaces/canvas/node-factory';
+} from '@breatic/shared/canvas-model';
 import { FLOW_NODE_TYPES } from '@web/spaces/canvas/nodes/flow-node-types';
 import { useNodeCreation, type ExistingNode, type PlacedProposal } from '@web/spaces/canvas/use-node-creation';
 import { toCanvasPoint } from '@web/spaces/canvas/canvas-pointers';

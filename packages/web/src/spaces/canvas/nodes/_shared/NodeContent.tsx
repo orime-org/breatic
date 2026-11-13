@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 
-import { PLANNED_BODY_MIN_PX } from '@web/spaces/canvas/group-geometry';
+import { PLANNED_BODY_MIN_PX } from '@breatic/shared/canvas-model';
 import { NodeMediaInset } from '@web/spaces/canvas/nodes/_shared/NodeMediaInset';
 import { NodeUploadMarkOverlay } from '@web/spaces/canvas/nodes/_shared/NodeUploadMarkOverlay';
 

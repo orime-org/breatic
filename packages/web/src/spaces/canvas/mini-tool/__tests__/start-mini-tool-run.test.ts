@@ -29,9 +29,9 @@ import { UploadFailedError } from '@web/data/upload/media-upload';
 import { toast } from '@web/lib/toast';
 import { DrawingEmptyError } from '@web/spaces/canvas/mini-tool/export-drawing';
 import { ImageTooLargeError } from '@web/spaces/canvas/mini-tool/adjust-export';
-import { NODE_STEP } from '@web/spaces/canvas/drop-layout';
-import { EMPTY_NODE_SIZE, mediaNodeHeight } from '@web/spaces/canvas/group-geometry';
-import { outputPlacementOf } from '@web/spaces/canvas/mini-tool/output-placement';
+import { NODE_STEP } from '@breatic/shared/canvas-model';
+import { EMPTY_NODE_SIZE, mediaNodeHeight } from '@breatic/shared/canvas-model';
+import { outputPlacementOf } from '@breatic/shared/canvas-model';
 import {
   miniToolIntent,
   startMiniToolRun,

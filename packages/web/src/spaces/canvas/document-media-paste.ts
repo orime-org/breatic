@@ -12,8 +12,8 @@
 
 import { isStoredObjectUrl, MAX_NODE_NAME_LEN } from '@breatic/shared';
 
-import { batchGroupName, batchLayoutAt } from '@web/spaces/canvas/drop-layout';
-import type { Point } from '@web/spaces/canvas/group-geometry';
+import { batchGroupName, batchLayoutAt } from '@breatic/shared/canvas-model';
+import type { Point } from '@breatic/shared/canvas-model';
 import { CLIPBOARD_VERSION, type ClipboardNode, type ClipboardPayload } from '@web/spaces/canvas/node-clipboard';
 
 /** A media node type the body can hand over. */

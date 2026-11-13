@@ -57,7 +57,7 @@ import {
   readCanvasGraph,
 } from '@web/data/yjs/canvas-space';
 import { _resetForTests, docName, getDoc } from '@web/data/yjs/manager';
-import type { AudioNodeView } from '@web/data/yjs/node-view';
+import type { AudioNodeView } from '@breatic/shared/canvas-model';
 import { canvasApi } from '@web/data/api/canvas';
 import { modelsApi } from '@web/data/api';
 import {

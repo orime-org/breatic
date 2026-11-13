@@ -34,7 +34,7 @@ import { ModelParamControls } from '@web/spaces/canvas/generate/ModelParamContro
 import { OptionList } from '@web/spaces/canvas/generate/OptionList';
 import { ParamOptionGroup } from '@web/spaces/canvas/generate/ParamOptionGroup';
 import { ParamSliderRow } from '@web/spaces/canvas/generate/ParamSliderRow';
-import { isStandInOn, STAND_IN_ON } from '@web/spaces/canvas/generate/stand-in';
+import { isStandInOn, STAND_IN_ON } from '@breatic/shared/canvas-model';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 import { useSamplePlayer } from '@web/spaces/canvas/generate/use-sample-player';
 import { VoiceList } from '@web/spaces/canvas/generate/VoiceList';

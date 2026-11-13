@@ -8,7 +8,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { setLocale, type ProjectRole } from '@breatic/shared';
 
-import type { AnnotationNodeView } from '@web/data/yjs/node-view';
+import type { AnnotationNodeView } from '@breatic/shared/canvas-model';
 import { AnnotationSticky } from '@web/spaces/canvas/annotation/AnnotationSticky';
 import {
   NOTE_BOX_MAX_HEIGHT,

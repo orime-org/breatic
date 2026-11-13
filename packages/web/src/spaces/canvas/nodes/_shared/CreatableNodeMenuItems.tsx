@@ -8,7 +8,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import {
   CREATABLE_NODE_TYPES,
   type CreatableNodeType,
-} from '@web/spaces/canvas/node-factory';
+} from '@breatic/shared/canvas-model';
 import { MODALITY_ICONS } from '@web/spaces/canvas/nodes/_shared/modality';
 
 /**

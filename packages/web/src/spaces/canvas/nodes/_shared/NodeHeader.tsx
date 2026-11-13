@@ -11,7 +11,7 @@ import {
   MODALITY_LABEL,
 } from '@web/spaces/canvas/nodes/_shared/modality';
 import { useInlineRename } from '@web/spaces/canvas/nodes/_shared/use-inline-rename';
-import type { Modality } from '@web/data/yjs/node-view';
+import type { Modality } from '@breatic/shared/canvas-model';
 
 interface NodeHeaderProps {
   modality: Modality;

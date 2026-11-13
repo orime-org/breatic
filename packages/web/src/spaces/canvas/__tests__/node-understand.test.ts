@@ -16,7 +16,7 @@ import {
   understandNodePosition,
   understandRefusal,
 } from '@web/spaces/canvas/node-understand';
-import { NODE_STEP } from '@web/spaces/canvas/drop-layout';
+import { NODE_STEP } from '@breatic/shared/canvas-model';
 import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 
 const LIMIT = 20 * 1024 * 1024;

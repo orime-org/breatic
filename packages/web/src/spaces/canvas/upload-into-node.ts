@@ -13,7 +13,7 @@ import { checkAdd } from '@web/data/yjs/space-write';
 import { toast } from '@web/lib/toast';
 import { checkFileAdmission, fileToNodeSpec, fillNodeFromFile, refusedFormatParams, type UploadNodeSpec } from '@web/spaces/canvas/canvas-upload';
 import { fillActionOf } from '@web/spaces/canvas/node-activity';
-import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
+import { evaluateNodeGate } from '@breatic/shared/canvas-model';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import { extractText } from '@web/spaces/canvas/text-extract';
 import { resolveUploadFailure } from '@web/spaces/canvas/upload-failure';

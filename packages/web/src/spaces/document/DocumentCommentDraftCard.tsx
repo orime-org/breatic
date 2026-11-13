@@ -34,7 +34,7 @@ import type { ProjectRole } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
-import { canPostAnnotations } from '@web/spaces/canvas/annotation/rights';
+import { canPostAnnotations } from '@breatic/shared/canvas-model';
 import {
   DOCUMENT_COMMENT_DRAFT_RANGE,
   draftRangeIn,

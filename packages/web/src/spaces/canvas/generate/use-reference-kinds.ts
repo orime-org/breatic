@@ -4,7 +4,7 @@
 import { referenceKinds, type ReferenceKind, type ReferencePool } from '@breatic/shared';
 import * as React from 'react';
 
-import { NO_REFERENCE_KINDS } from '@web/spaces/canvas/generate/reference-urls';
+import { NO_REFERENCE_KINDS } from '@breatic/shared/canvas-model';
 
 /**
  * The kinds a pool takes, as a list that keeps its identity until the kinds

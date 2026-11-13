@@ -24,7 +24,7 @@ import {
   viewportToShowPlaced,
   ZOOM_STEP,
 } from '@web/spaces/canvas/frame-built-node';
-import type { Rect } from '@web/spaces/canvas/group-geometry';
+import type { Rect } from '@breatic/shared/canvas-model';
 
 const VIEWPORT = { x: 0, y: 0, width: 1000, height: 800 };
 /** A node near the right edge of what the user can see. */

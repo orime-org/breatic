@@ -19,14 +19,11 @@ import { Plugin } from '@tiptap/pm/state';
 import { DecorationSet } from '@tiptap/pm/view';
 
 import { t } from '@breatic/shared';
+import { PROMPT_NOTE_LABEL_ATTR, PROMPT_NOTE_NODE } from '@breatic/shared/canvas-model';
 
 import { coveredNodeDecorations } from '@web/features/reference-mention/reference-mention-range-decoration';
 
-/** The node name a note is stored under, in the editor and in Yjs. */
-export const PROMPT_NOTE_NODE = 'promptNote';
-
-/** The attribute holding a note's words. */
-export const PROMPT_NOTE_LABEL_ATTR = 'label';
+export { PROMPT_NOTE_LABEL_ATTR, PROMPT_NOTE_NODE };
 
 /** Class added to a note a selection covers, picked or swept over (see index.css). */
 export const NOTE_SELECTED_CLASS = 'prompt-note--selected';

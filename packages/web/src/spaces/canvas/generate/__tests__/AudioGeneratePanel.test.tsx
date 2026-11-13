@@ -29,7 +29,7 @@ import { writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
 
 import { AudioGeneratePanel } from '@web/spaces/canvas/generate/AudioGeneratePanel';
 import { PromptEditor } from '@web/spaces/canvas/generate/PromptEditor';
-import { AUDIO_MODE_OPTIONS } from '@web/spaces/canvas/generate/audio-mode-options';
+import { AUDIO_MODE_OPTIONS } from '@breatic/shared/canvas-model';
 import { initialVoiceListState } from '@web/spaces/canvas/generate/voice-list-state';
 import type { ModelEntry } from '@breatic/shared';
 

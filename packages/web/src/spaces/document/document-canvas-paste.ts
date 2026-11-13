@@ -7,7 +7,7 @@
  * order, and how many nodes could not be pasted.
  */
 
-import { EMPTY_NODE_SIZE } from '@web/spaces/canvas/group-geometry';
+import { EMPTY_NODE_SIZE } from '@breatic/shared/canvas-model';
 import type { ClipboardNode, ClipboardPayload } from '@web/spaces/canvas/node-clipboard';
 import { bodyText } from '@web/spaces/canvas/paste-addresses';
 import { routeAddress } from '@web/spaces/document/document-media-address';

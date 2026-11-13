@@ -1,0 +1,49 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: Elastic-2.0
+
+/**
+ * The params picking a generation template in a panel puts on each of its
+ * generate nodes (inner#977, inner#1345): the anchor and every upstream
+ * generation it reuses.
+ *
+ * The same kind of write as the user picking the node's model by hand
+ * (`resolveModelSwitch`), with the template params laid over that model's
+ * record first: every other model keeps its own record (#1948). The prompts
+ * come from the template's expansion.
+ */
+
+import type { GenerationTemplate, TemplateGenerateNode } from '@shared/canvas/generation-templates.js';
+import type { ModelEntry } from '@shared/types/model-catalog.js';
+
+import { paramsStoreOf, resolveModelSwitch, type ParamsStoreSource } from '@shared/canvas/model/model-params.js';
+import { withStandInOn } from '@shared/canvas/model/stand-in.js';
+
+/**
+ * The params a template puts on one of its generate nodes, by model.
+ * @param node - The template's generate node.
+ * @param content - The canvas node's per-model params as they are now.
+ * @param picked - The catalog entry of the template node's model.
+ * @returns Every model's params, the template node's model's resolved with the template's.
+ */
+export function templateParams(
+  node: TemplateGenerateNode,
+  content: ParamsStoreSource | undefined,
+  picked: ModelEntry,
+): Record<string, Record<string, unknown>> {
+  const store = paramsStoreOf(content);
+  return resolveModelSwitch(
+    { paramsByModel: { ...store, [picked.name]: { ...store[picked.name], ...withStandInOn(picked, node.params ?? {}) } } },
+    picked,
+  ).paramsByModel;
+}
+
+/**
+ * Whether a template can be applied here: every one of its generate nodes runs
+ * on a model this deployment serves. The menu and the apply share it.
+ * @param template - The template.
+ * @param served - The names of the models served, across every node type.
+ * @returns Whether it can.
+ */
+export function templateServed(template: GenerationTemplate, served: ReadonlySet<string>): boolean {
+  return template.nodes.every((node) => node.role !== 'generate' || served.has(node.model));
+}

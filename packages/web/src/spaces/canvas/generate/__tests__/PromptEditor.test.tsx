@@ -32,7 +32,7 @@ import {
   PromptEditor,
   type PromptEditorHandle,
 } from '@web/spaces/canvas/generate/PromptEditor';
-import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import type { ReferenceRailItem } from '@breatic/shared/canvas-model';
 import type { ReferenceKind } from '@breatic/shared';
 import { CanvasContext } from '@web/spaces/canvas/canvas-context';
 import { canvasSessions } from '@web/stores/canvas-session';

@@ -5,10 +5,10 @@ import { describe, expect, it } from 'vitest';
 
 import { MAX_NODE_NAME_LEN } from '@breatic/shared';
 
-import { batchLayoutAt } from '@web/spaces/canvas/drop-layout';
+import { batchLayoutAt } from '@breatic/shared/canvas-model';
 import { documentMediaPaste, documentMediaPayload } from '@web/spaces/canvas/document-media-paste';
-import { EMPTY_NODE_SIZE } from '@web/spaces/canvas/group-geometry';
-import { centerToTopLeft } from '@web/spaces/canvas/node-factory';
+import { EMPTY_NODE_SIZE } from '@breatic/shared/canvas-model';
+import { centerToTopLeft } from '@breatic/shared/canvas-model';
 
 const HOST = 'https://resource-dev.breatic.cc';
 const IMAGE = `${HOST}/image/2026-11-09/1794210905555_00437bfa-c5ba-4459-b2cc-29b7ce08db28.png`;

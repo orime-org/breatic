@@ -16,9 +16,9 @@
 import { storyboardSend, type ExecuteGateInput, type StoryboardSpec } from '@breatic/shared';
 import type * as Y from 'yjs';
 
-import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
-import { serializePromptFragment } from '@web/spaces/canvas/generate/fragment-prompt';
-import type { MentionTokens } from '@web/spaces/canvas/generate/reference-urls';
+import type { ReferenceRailItem } from '@breatic/shared/canvas-model';
+import { serializePromptFragment } from '@breatic/shared/canvas-model';
+import type { MentionTokens } from '@breatic/shared/canvas-model';
 
 /** What the shots add to a run. */
 export interface StoryboardRun {

@@ -19,16 +19,16 @@
  * ReactFlow coordinates to absolute and applies the ops in one transaction.
  */
 
-import { canJoinGroup } from '@web/spaces/canvas/group-membership';
+import { canJoinGroup } from '@breatic/shared/canvas-model';
 import {
   expandGroupToWrap,
   toRelativePosition,
   type Rect,
-} from '@web/spaces/canvas/group-geometry';
+} from '@breatic/shared/canvas-model';
 import {
   planGroupDragStop,
   type GroupRef,
-} from '@web/spaces/canvas/group-reparent';
+} from '@breatic/shared/canvas-model';
 
 /** A node in absolute canvas coordinates, for drag-stop planning. */
 export interface DragNode {

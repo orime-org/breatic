@@ -20,15 +20,15 @@ import {
 } from '@breatic/shared';
 
 import { readCanvasGraph, type CanvasNodeView } from '@web/data/yjs/canvas-space';
-import { asContentView } from '@web/data/yjs/node-view';
+import { asContentView } from '@breatic/shared/canvas-model';
 import { toast } from '@web/lib/toast';
-import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
+import { evaluateNodeGate } from '@breatic/shared/canvas-model';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
-import { deriveReferences } from '@web/spaces/canvas/generate/derive-references';
-import type { ProposalMention } from '@web/spaces/canvas/generate/proposal-prompt';
+import { deriveReferences } from '@breatic/shared/canvas-model';
+import type { ProposalMention } from '@breatic/shared/canvas-model';
 import { slotForParam } from '@web/spaces/canvas/generate/proposal-fills';
-import { readSlotPick } from '@web/spaces/canvas/generate/slots';
-import { templateParams, templateServed } from '@web/spaces/canvas/generate/template-writes';
+import { readSlotPick } from '@breatic/shared/canvas-model';
+import { templateParams, templateServed } from '@breatic/shared/canvas-model';
 import type { SpaceRefusal } from '@web/data/yjs/space-write';
 import { standsEmpty, type ExistingNode, type PlacedProposal } from '@web/spaces/canvas/use-node-creation';
 

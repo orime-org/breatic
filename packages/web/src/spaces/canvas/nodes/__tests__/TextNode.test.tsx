@@ -44,7 +44,7 @@ import {
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
 import { TextNode } from '@web/spaces/canvas/nodes/TextNode';
 import { TEXT_BODY_BOX } from '@web/spaces/canvas/nodes/TextNodeEditor';
-import type { TextNodeView } from '@web/data/yjs/node-view';
+import type { TextNodeView } from '@breatic/shared/canvas-model';
 
 vi.mock('sonner', () => ({
   toast: {

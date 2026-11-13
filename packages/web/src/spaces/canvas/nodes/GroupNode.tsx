@@ -10,12 +10,12 @@ import { cn } from '@web/lib/utils';
 import {
   groupBackgroundStyle,
   groupBorderStyle,
-} from '@web/spaces/canvas/group-background';
+} from '@breatic/shared/canvas-model';
 import { useInlineRename } from '@web/spaces/canvas/nodes/_shared/use-inline-rename';
 import { NodeOccupantsContext } from '@web/spaces/canvas/nodes/_shared/node-occupants-context';
 import { NodeOccupantTags } from '@web/spaces/canvas/nodes/_shared/NodeOccupantTags';
 import { ZoomCounterScaled } from '@web/spaces/canvas/nodes/_shared/ZoomCounterScaled';
-import type { GroupNodeView } from '@web/data/yjs/node-view';
+import type { GroupNodeView } from '@breatic/shared/canvas-model';
 
 /** Fixed-English default shown when a group has no explicit name. */
 const GROUP_DEFAULT_NAME = 'Group';

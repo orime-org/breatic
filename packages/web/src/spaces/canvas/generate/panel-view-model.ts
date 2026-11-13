@@ -14,8 +14,8 @@ import type { CanvasEdge } from '@web/data/yjs/canvas-space';
 import {
   deriveReferences,
   type ReferenceRailItem,
-} from '@web/spaces/canvas/generate/derive-references';
-import { validFocusImages } from '@web/data/focus-images';
+} from '@breatic/shared/canvas-model';
+import { validFocusImages } from '@breatic/shared/canvas-model';
 import {
   IMAGE_MODE_OPTIONS,
   resolveMode,
@@ -26,7 +26,7 @@ import {
   filterModelsByMode,
   pickModelForMode,
 } from '@web/spaces/canvas/generate/mode-selection';
-import { resolveModelSwitch } from '@web/spaces/canvas/generate/model-params';
+import { resolveModelSwitch } from '@breatic/shared/canvas-model';
 import { missingSources, referenceKinds, referencePool, type ReferencePool } from '@breatic/shared';
 import {
   mentionTokens,
@@ -36,10 +36,10 @@ import {
   poolParams,
   type MentionTokens,
   type ReferenceUrls,
-} from '@web/spaces/canvas/generate/reference-urls';
-import { asContentView, type NodeRef } from '@web/data/yjs/node-view';
-import type { ImageSlot } from '@web/spaces/canvas/generate/image-slots';
-import { styleSlotsFor } from '@web/spaces/canvas/generate/style-slot';
+} from '@breatic/shared/canvas-model';
+import { asContentView, type NodeRef } from '@breatic/shared/canvas-model';
+import type { ImageSlot } from '@breatic/shared/canvas-model';
+import { styleSlotsFor } from '@breatic/shared/canvas-model';
 import { withStyleImages } from '@web/spaces/canvas/generate/style-picks';
 
 /** Shared empty set for nodes with no `@`-picked references (avoids per-call allocation). */

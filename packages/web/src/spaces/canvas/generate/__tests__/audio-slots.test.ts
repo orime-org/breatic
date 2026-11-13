@@ -20,18 +20,18 @@
 
 import { describe, it, expect } from 'vitest';
 
-import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
-import { IMAGE_SLOTS } from '@web/spaces/canvas/generate/image-slots';
-import type { AudioSlot } from '@web/spaces/canvas/generate/audio-slots';
+import { AUDIO_SLOTS } from '@breatic/shared/canvas-model';
+import { IMAGE_SLOTS } from '@breatic/shared/canvas-model';
+import type { AudioSlot } from '@breatic/shared/canvas-model';
 import {
   refusalToastKey,
   REFUSAL_TOAST_KEY,
   type ExecuteRefusal,
 } from '@breatic/shared';
-import { AUDIO_MODE_OPTIONS } from '@web/spaces/canvas/generate/audio-mode-options';
+import { AUDIO_MODE_OPTIONS } from '@breatic/shared/canvas-model';
 import { PARAMS as AUDIO_PARAMS } from '@web/spaces/canvas/generate/audio-params';
-import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
-import { allSlotSpecs, slotForPurpose, type SlotSpec } from '@web/spaces/canvas/generate/slots';
+import { VIDEO_SLOTS } from '@breatic/shared/canvas-model';
+import { allSlotSpecs, slotForPurpose, type SlotSpec } from '@breatic/shared/canvas-model';
 import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 
 describe('the reference-audio slot', () => {

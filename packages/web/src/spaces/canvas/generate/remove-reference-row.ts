@@ -26,7 +26,7 @@ import {
 import {
   focusIdOfRefId,
   type ReferenceRailItem,
-} from '@web/spaces/canvas/generate/derive-references';
+} from '@breatic/shared/canvas-model';
 
 /**
  * Removes one rail row on behalf of its ✕.

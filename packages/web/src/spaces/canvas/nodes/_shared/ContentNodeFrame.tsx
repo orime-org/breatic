@@ -13,7 +13,7 @@ import {
 } from '@web/spaces/canvas/nodes/_shared/NodeResolutionBadge';
 import { NodeShell } from '@web/spaces/canvas/nodes/_shared/NodeShell';
 import { ZoomCounterScaled } from '@web/spaces/canvas/nodes/_shared/ZoomCounterScaled';
-import type { Modality } from '@web/data/yjs/node-view';
+import type { Modality } from '@breatic/shared/canvas-model';
 
 interface ContentNodeFrameProps {
   /** Modality, selecting the header icon + fixed-English label fallback. */

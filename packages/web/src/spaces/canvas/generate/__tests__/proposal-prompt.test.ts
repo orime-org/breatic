@@ -25,8 +25,8 @@ import { PROMPT_NOTE_LABEL_ATTR, PROMPT_NOTE_NODE, PromptDocument, PromptNote } 
 import { REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
 import { ReferenceMention, serializePromptText } from '@web/spaces/canvas/generate/reference-mention';
 import { makeReferenceSuggestion } from '@web/spaces/canvas/generate/reference-mention-suggestion';
-import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
-import { writeProposalPrompt, type ProposalMention } from '@web/spaces/canvas/generate/proposal-prompt';
+import type { ReferenceRailItem } from '@breatic/shared/canvas-model';
+import { writeProposalPrompt, type ProposalMention } from '@breatic/shared/canvas-model';
 
 /**
  * Write a prompt, then read it back through an editor bound to the fragment.

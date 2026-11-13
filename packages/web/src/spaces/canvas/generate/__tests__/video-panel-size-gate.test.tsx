@@ -46,7 +46,7 @@ import { clearAllDocSizes } from '@web/data/yjs/doc-size';
 import { addNode, getPromptFragment, nodeDataMap, _resetCanvasUndoCacheForTests } from '@web/data/yjs/canvas-space';
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import { enterStoryboardShots, readShots } from '@web/data/yjs/node-storyboard';
-import type { VideoNodeView } from '@web/data/yjs/node-view';
+import type { VideoNodeView } from '@breatic/shared/canvas-model';
 import { CanvasContext, type CanvasContextValue } from '@web/spaces/canvas/canvas-context';
 import { VideoGeneratePanelContainer } from '@web/spaces/canvas/generate/VideoGeneratePanelContainer';
 import { canvasSessions } from '@web/stores/canvas-session';

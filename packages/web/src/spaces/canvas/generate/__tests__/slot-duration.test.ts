@@ -12,8 +12,8 @@ import * as Y from 'yjs';
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import { addNode } from '@web/data/yjs/canvas-space';
 import { fillSlot } from '@web/spaces/canvas/generate/slot-write';
-import { readSlotDurations, slotSourceDurations } from '@web/spaces/canvas/generate/slots';
-import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
+import { readSlotDurations, slotSourceDurations } from '@breatic/shared/canvas-model';
+import { VIDEO_SLOTS } from '@breatic/shared/canvas-model';
 
 const PID = 'p1';
 const SID = 's1';

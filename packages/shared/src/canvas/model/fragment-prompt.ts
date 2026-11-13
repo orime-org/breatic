@@ -1,0 +1,112 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: Elastic-2.0
+
+/**
+ * A prompt read straight off its fragment, with no editor mounted (#2218,
+ * design §5.4).
+ *
+ * The multi-shot mode sends every shot's words and the union of what the
+ * shots mention. Both are read at submit from the shots the node holds right
+ * then, so a shot a collaborator removed a moment ago cannot linger in either
+ * the way it would in a list the editors report into.
+ */
+
+import * as Y from 'yjs';
+
+import { MENTION_KIND_ATTR, MENTION_SOURCE_ID_ATTR, PROMPT_NOTE_NODE, REFERENCE_MENTION_NODE } from '@shared/canvas/model/prompt-nodes.js';
+import type { ReferenceRailItem } from '@shared/canvas/model/derive-references.js';
+import type { MentionTokens } from '@shared/canvas/model/reference-urls.js';
+
+/**
+ * What a chip reads as in the prompt the model gets: a text chip its source's
+ * words, any other chip its token. One rule for every reader of a prompt, the
+ * mounted editor and the fragment read at submit alike (#2218).
+ * @param pool - The node's reference rows, for what a text chip says.
+ * @param tokens - Each media chip's words, by source id.
+ * @returns Reads one chip, given its source id and kind.
+ */
+export function chipWordsReader(
+  pool: ReadonlyArray<ReferenceRailItem>,
+  tokens: MentionTokens,
+): (id: string | null, kind: string | null) => string {
+  const textById = new Map(
+    pool
+      .filter((r) => r.sourceNodeType === 'text')
+      .map((r) => [r.sourceNodeId, r.textContent ?? '']),
+  );
+  return (id, kind) => {
+    if (id == null) return '';
+    if (kind === 'text') return textById.get(id) ?? '';
+    return Object.hasOwn(tokens, id) ? tokens[id]! : '';
+  };
+}
+
+/** What the editor puts between two blocks of a prompt (`serializePromptText`'s default). */
+const BLOCK_SEPARATOR = '\n\n';
+
+/**
+ * Every mention element under a node, in document order.
+ * @param node - A fragment or an element.
+ * @returns The mention elements.
+ */
+function mentionsUnder(node: Y.XmlFragment | Y.XmlElement): Y.XmlElement[] {
+  return node.toArray().flatMap((child) => {
+    if (!(child instanceof Y.XmlElement)) return [];
+    return child.nodeName === REFERENCE_MENTION_NODE ? [child] : mentionsUnder(child);
+  });
+}
+
+/**
+ * The sources a prompt mentions, each once, in the order they first appear.
+ * @param fragment - The prompt.
+ * @returns Their node ids.
+ */
+export function mentionedSourceIds(fragment: Y.XmlFragment): string[] {
+  const ids = mentionsUnder(fragment)
+    .map((element) => element.getAttribute(MENTION_SOURCE_ID_ATTR))
+    .filter((id): id is string => typeof id === 'string');
+  return [...new Set(ids)];
+}
+
+/**
+ * One piece of a prompt as the model reads it: text as written, a chip as
+ * `chipWordsReader` reads it.
+ * @param node - A piece of the prompt.
+ * @param words - Reads one chip.
+ * @returns Its text.
+ */
+function pieceText(
+  node: Y.XmlElement | Y.XmlText | Y.XmlHook,
+  words: ReturnType<typeof chipWordsReader>,
+): string {
+  if (node instanceof Y.XmlText) return node.toJSON();
+  if (!(node instanceof Y.XmlElement)) return '';
+  if (node.nodeName !== REFERENCE_MENTION_NODE) {
+    return node.toArray().map((child) => pieceText(child, words)).join('');
+  }
+  const id = node.getAttribute(MENTION_SOURCE_ID_ATTR);
+  const kind = node.getAttribute(MENTION_KIND_ATTR);
+  return words(typeof id === 'string' ? id : null, typeof kind === 'string' ? kind : null);
+}
+
+/**
+ * A prompt as the model reads it, the same text `serializePromptText` gives
+ * for a mounted editor.
+ * @param fragment - The prompt.
+ * @param pool - The node's reference rows, for what a text chip says.
+ * @param tokens - Each media chip's words, by source id.
+ * @returns The text.
+ */
+export function serializePromptFragment(
+  fragment: Y.XmlFragment,
+  pool: ReadonlyArray<ReferenceRailItem>,
+  tokens: MentionTokens,
+): string {
+  const words = chipWordsReader(pool, tokens);
+  // Notes are never sent; skipped before joining, so none leaves a separator.
+  return fragment
+    .toArray()
+    .filter((block) => !(block instanceof Y.XmlElement && block.nodeName === PROMPT_NOTE_NODE))
+    .map((block) => pieceText(block, words))
+    .join(BLOCK_SEPARATOR);
+}

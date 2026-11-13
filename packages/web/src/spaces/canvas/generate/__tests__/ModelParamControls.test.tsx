@@ -11,7 +11,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { ModelParamControls } from '@web/spaces/canvas/generate/ModelParamControls';
-import { resolveParamsForModel } from '@web/spaces/canvas/generate/model-params';
+import { resolveParamsForModel } from '@breatic/shared/canvas-model';
 
 afterEach(() => {
   vi.restoreAllMocks();

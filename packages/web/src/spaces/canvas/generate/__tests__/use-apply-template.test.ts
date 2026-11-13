@@ -34,7 +34,7 @@ vi.mock('@web/lib/toast', () => ({
 import { addEdge, addNode, createGroup, readCanvasGraph, removeNode, setNodeLocked, setNodeTemplateNode } from '@web/data/yjs/canvas-space';
 import { _resetForTests } from '@web/data/yjs/manager';
 import { toast } from '@web/lib/toast';
-import { createGroupNode } from '@web/spaces/canvas/node-factory';
+import { createGroupNode } from '@breatic/shared/canvas-model';
 import { useApplyTemplate, type PlaceTemplate } from '@web/spaces/canvas/generate/use-apply-template';
 import type { ExistingNode, PlacedProposal } from '@web/spaces/canvas/use-node-creation';
 

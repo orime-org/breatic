@@ -21,7 +21,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { ReferenceKind } from '@breatic/shared';
 import { render, screen, fireEvent } from '@testing-library/react';
 
-import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import type { ReferenceRailItem } from '@breatic/shared/canvas-model';
 import { ReferenceRail } from '@web/spaces/canvas/generate/ReferenceRail';
 
 vi.mock('@web/lib/toast', () => ({

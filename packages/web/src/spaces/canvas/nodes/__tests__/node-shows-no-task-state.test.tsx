@@ -15,7 +15,7 @@ import { afterEach, describe, it, expect } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import type { CanvasNodeFields, NodeTaskCounts } from '@breatic/shared';
 
-import { toNodeView } from '@web/data/yjs/node-view';
+import { toNodeView } from '@breatic/shared/canvas-model';
 import { AudioNode } from '@web/spaces/canvas/nodes/AudioNode';
 import { ImageNode } from '@web/spaces/canvas/nodes/ImageNode';
 import { VideoNode } from '@web/spaces/canvas/nodes/VideoNode';

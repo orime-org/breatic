@@ -9,7 +9,7 @@ import {
   DropdownMenuTrigger,
 } from '@web/components/ui/dropdown-menu';
 import { connectableCreatableTypes } from '@web/spaces/canvas/lib/connect-create';
-import type { CreatableNodeType } from '@web/spaces/canvas/node-factory';
+import type { CreatableNodeType } from '@breatic/shared/canvas-model';
 import { CreatableNodeMenuItems } from '@web/spaces/canvas/nodes/_shared/CreatableNodeMenuItems';
 
 interface ConnectCreateMenuProps {

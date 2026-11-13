@@ -10,6 +10,7 @@ import {
   Sparkles,
   Star,
 } from 'lucide-react';
+import { HISTORY_MODALITIES, type HistoryModality } from '@breatic/shared/canvas-model';
 import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
@@ -35,19 +36,7 @@ import { MINI_TOOL_ICONS } from '@web/spaces/canvas/mini-tool/tool-icons';
 import { KindBadge } from '@web/spaces/canvas/_shared/KindBadge';
 import { PreviewImg } from '@web/components/PreviewImg';
 
-/** The host node's modality — picks the thumbnail treatment. */
-export type HistoryModality = 'image' | 'video' | 'audio' | 'text';
-
-/**
- * The node types a `HistoryModality` covers, for narrowing a node's own type.
- * Beside the union it enumerates, so the two cannot fall out of step.
- */
-export const HISTORY_MODALITIES: ReadonlySet<string> = new Set([
-  'image',
-  'video',
-  'audio',
-  'text',
-]);
+export { HISTORY_MODALITIES, type HistoryModality };
 
 /**
  * What the type chip says a row IS. A read a user asked to keep is neither

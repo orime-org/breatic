@@ -13,7 +13,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { NodeToolbar, Position, useStore } from '@xyflow/react';
 import * as React from 'react';
 
-import type { NodeRef } from '@web/data/yjs/node-view';
+import type { NodeRef } from '@breatic/shared/canvas-model';
 import type { NodeTaskEntry } from '@breatic/shared';
 
 import { canvasApi } from '@web/data/api/canvas';
@@ -27,7 +27,7 @@ import {
   clearRetryFile,
   hasRetryFile,
 } from '@web/spaces/canvas/upload-retry-files';
-import { countsColumnOffset } from '@web/spaces/canvas/overlay-scale';
+import { countsColumnOffset } from '@breatic/shared/canvas-model';
 import { useCanvasSession } from '@web/spaces/canvas/canvas-context';
 import {
   taskActionKey,

@@ -22,8 +22,8 @@ import {
   addNodeFocusImage,
   readCanvasGraph,
 } from '@web/data/yjs/canvas-space';
-import { focusRefId } from '@web/spaces/canvas/generate/derive-references';
-import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import { focusRefId } from '@breatic/shared/canvas-model';
+import type { ReferenceRailItem } from '@breatic/shared/canvas-model';
 import { removeReferenceRow } from '@web/spaces/canvas/generate/remove-reference-row';
 import { assetsApi } from '@web/data/api/assets';
 

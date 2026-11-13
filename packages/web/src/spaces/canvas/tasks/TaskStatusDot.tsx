@@ -22,14 +22,14 @@
  * nothing for a shared primitive to hold (user 2026-09-03).
  */
 
+import type { TaskStatus } from '@breatic/shared/canvas-model';
 import type { JSX } from 'react';
 import { CircleCheck, CircleX, Clock, Loader2 } from 'lucide-react';
 
 import { cn } from '@web/lib/utils';
 import { useTranslation } from '@web/i18n/use-translation';
 
-/** The four states a node task can be in. */
-export type TaskStatus = 'running' | 'done' | 'failed' | 'expired';
+export type { TaskStatus };
 
 /**
  * The shape per state. All four are round outlines so a column of them reads

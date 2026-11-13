@@ -22,7 +22,7 @@ import { render, screen } from '@testing-library/react';
 import {
   focusToRailItem,
   type ReferenceRailItem,
-} from '@web/spaces/canvas/generate/derive-references';
+} from '@breatic/shared/canvas-model';
 import { ReferenceRail } from '@web/spaces/canvas/generate/ReferenceRail';
 
 vi.mock('@web/spaces/canvas/nodes/_shared/HoverPreview', () => ({

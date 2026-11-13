@@ -30,7 +30,7 @@ import {
   wasLastChangeLocalUserInput,
 } from '@web/features/reference-mention/reference-mention-local-input';
 import { REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
-import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import type { ReferenceRailItem } from '@breatic/shared/canvas-model';
 import { resetPreviewRecords } from '@web/lib/preview-src';
 
 /**

@@ -22,7 +22,7 @@ import { renderWithTooltips } from '@web/test-utils/render-with-tooltips';
 
 import { HOVER_OPEN_DELAY_MS } from '@web/spaces/canvas/nodes/_shared/hover-preview-timing';
 
-import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import type { ReferenceRailItem } from '@breatic/shared/canvas-model';
 import { ReferenceRail } from '@web/spaces/canvas/generate/ReferenceRail';
 
 vi.mock('@web/lib/toast', () => ({

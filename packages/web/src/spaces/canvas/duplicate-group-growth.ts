@@ -9,7 +9,7 @@ import {
   type GroupGrowth,
   type GroupGrowthInput,
   type Rect,
-} from '@web/spaces/canvas/group-geometry';
+} from '@breatic/shared/canvas-model';
 
 /**
  * The Group growth needed when a duplicate drops clones into EXISTING Groups

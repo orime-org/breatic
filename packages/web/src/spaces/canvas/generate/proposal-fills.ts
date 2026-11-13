@@ -15,13 +15,13 @@
 import type { ProposalNode } from '@breatic/shared';
 
 import { appendNodeSlotItem } from '@web/data/yjs/canvas-space';
-import { AUDIO_SLOTS } from '@web/spaces/canvas/generate/audio-slots';
-import { audioModeOption } from '@web/spaces/canvas/generate/audio-mode-options';
+import { AUDIO_SLOTS } from '@breatic/shared/canvas-model';
+import { audioModeOption } from '@breatic/shared/canvas-model';
 import { fillSlot } from '@web/spaces/canvas/generate/slot-write';
-import type { SlotSpec } from '@web/spaces/canvas/generate/slots';
-import { STYLE_SLOT } from '@web/spaces/canvas/generate/style-slot';
-import { VIDEO_SLOTS } from '@web/spaces/canvas/generate/video-slots';
-import { slotsForMode } from '@web/spaces/canvas/generate/video-mode-options';
+import type { SlotSpec } from '@breatic/shared/canvas-model';
+import { STYLE_SLOT } from '@breatic/shared/canvas-model';
+import { VIDEO_SLOTS } from '@breatic/shared/canvas-model';
+import { slotsForMode } from '@breatic/shared/canvas-model';
 
 /**
  * The slot a generation of this kind and mode fills under this param.

@@ -20,7 +20,7 @@
 import * as React from 'react';
 
 import type { UserSummary } from '@web/data/api/users';
-import { typedViewOf } from '@web/data/yjs/node-view';
+import { typedViewOf } from '@breatic/shared/canvas-model';
 
 /** A flow node, of which this file reads only what it carries. */
 interface FlowNodeData {

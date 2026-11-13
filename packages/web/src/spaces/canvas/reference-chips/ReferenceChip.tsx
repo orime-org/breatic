@@ -14,7 +14,7 @@ import type * as React from 'react';
 
 import { Badge } from '@web/components/ui/badge';
 import { Button } from '@web/components/ui/button';
-import type { Modality } from '@web/data/yjs/node-view';
+import type { Modality } from '@breatic/shared/canvas-model';
 
 export interface ReferenceChipProps {
   modality: Modality;

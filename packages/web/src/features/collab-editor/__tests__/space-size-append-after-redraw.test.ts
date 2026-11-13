@@ -52,7 +52,7 @@ import {
 } from '@web/features/collab-editor/__tests__/helpers/h7-editors';
 import { planWhitespaceInsertions } from '@web/features/reference-mention/reference-mention-whitespace';
 import { changeLocale } from '@web/i18n/locale-bootstrap';
-import { writeProposalPrompt, type MentionOf } from '@web/spaces/canvas/generate/proposal-prompt';
+import { writeProposalPrompt, type MentionOf } from '@breatic/shared/canvas-model';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import {
   CANVAS_NAME,

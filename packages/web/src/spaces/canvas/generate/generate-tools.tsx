@@ -25,7 +25,8 @@ import {
 } from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
 import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
-import { STYLE_SLOT } from '@web/spaces/canvas/generate/style-slot';
+import { STYLE_SLOT } from '@breatic/shared/canvas-model';
+import { SLOT_ICONS } from '@web/spaces/canvas/generate/slot-icons';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 import type { HoverPreviewKind } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 import { PreviewImg } from '@web/components/PreviewImg';
@@ -451,7 +452,7 @@ export function StyleArea({
           testId={`${spec.testId}-item-${i}`}
           thumbnailTestId={`${spec.thumbnailTestId}-${i}`}
           clearTestId={`${spec.clearTestId}-${i}`}
-          Icon={spec.Icon}
+          Icon={SLOT_ICONS.style}
           onPick={onPick}
           // A running pick adds an image and replaces none, so only the
           // extra place shows it.
@@ -469,7 +470,7 @@ export function StyleArea({
           testId={spec.testId}
           thumbnailTestId={spec.thumbnailTestId}
           clearTestId={spec.clearTestId}
-          Icon={shown.length === 0 ? spec.Icon : Plus}
+          Icon={shown.length === 0 ? SLOT_ICONS.style : Plus}
           onPick={onPick}
           active={active}
           pick={undefined}
