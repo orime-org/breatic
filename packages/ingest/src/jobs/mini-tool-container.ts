@@ -406,7 +406,7 @@ export class MiniToolContainerStd1 extends MiniToolContainer {}
 /** The standard-4 instance. */
 export class MiniToolContainerStd4 extends MiniToolContainer {}
 
-/** The standard-4 instance of the GL image (`Dockerfile.gl`): a transition's overlap windows (frames-split §5.4). */
+/** The standard-4 instance of the GL image (`Dockerfile` with `VARIANT=gl`): a transition's overlap windows (frames-split §5.4). */
 export class MiniToolContainerGl extends MiniToolContainer {}
 
 /**

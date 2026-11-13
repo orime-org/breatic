@@ -7,7 +7,7 @@
  *
  * A separate program, as the analysis runtime is: the container's service loads only Node built-ins and this
  * repository's code, while this process loads headless-gl (`gl`, a native module) and `gl-transition`, installed beside
- * it in /app/gl-renderer by packages/ingest/Dockerfile.gl at the versions web pins. It draws each frame with the same
+ * it in /app/gl-renderer by the gl variant of packages/ingest/Dockerfile at the versions web pins. It draws each frame with the same
  * call the preview makes (packages/web/src/spaces/canvas/mini-tool/video/VideoTimelinePreview.tsx): a WebGL 1 context
  * `{ alpha: true, premultipliedAlpha: false, preserveDrawingBuffer: true }`, a full-screen triangle, LINEAR/CLAMP
  * textures, `createTransition(gl, { glsl, paramsTypes: {}, defaultParams: {} }, { resizeMode: 'contain' })` and the

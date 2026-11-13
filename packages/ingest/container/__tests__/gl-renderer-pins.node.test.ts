@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The GL renderer's own modules (packages/ingest/Dockerfile.gl) install from a committed package.json and lockfile with
+ * The GL renderer's own modules (the `gl` stage of packages/ingest/Dockerfile) install from a committed package.json and lockfile with
  * `npm ci`, so no transitive version floats between image builds; the export draws the preview's shaders only while the
  * renderer pins the `gl-transition` and `gl-transitions` versions web pins.
  */
@@ -41,10 +41,22 @@ describe('the GL renderer modules', () => {
     expect(lock.packages['']?.dependencies).toEqual(renderer.dependencies);
   });
 
-  it('GP03 the image installs the committed lockfile with npm ci', () => {
-    const dockerfile = readFileSync(resolve(HERE, '../../Dockerfile.gl'), 'utf8');
-    expect(dockerfile).toMatch(/^COPY packages\/ingest\/container\/gl-renderer\/package\.json packages\/ingest\/container\/gl-renderer\/package-lock\.json \.\/$/m);
-    expect(dockerfile).toMatch(/npm ci\b/);
-    expect(dockerfile).not.toMatch(/npm install\b/);
+  const dockerfile = readFileSync(resolve(HERE, '../../Dockerfile'), 'utf8');
+
+  it('GP03 the renderer stage installs the committed lockfile with npm ci', () => {
+    const stage = /^FROM [^\n]* AS gl-renderer$([\s\S]*?)^FROM /m.exec(dockerfile)?.[1] ?? '';
+    expect(stage).toMatch(/^COPY packages\/ingest\/container\/gl-renderer\/package\.json packages\/ingest\/container\/gl-renderer\/package-lock\.json \.\/$/m);
+    expect(stage).toMatch(/npm ci\b/);
+    expect(stage).not.toMatch(/npm install\b/);
+  });
+
+  it('GP04 the GL image is the standard image plus the renderer, chosen by VARIANT in the same Dockerfile', () => {
+    // A base image built apart from this Dockerfile carries whatever service it was built with, not this checkout's.
+    expect(dockerfile).not.toMatch(/BASE_IMAGE/);
+    expect(dockerfile).toMatch(/^ARG VARIANT=standard$/m);
+    expect(dockerfile).toMatch(/^FROM \$\{ALPINE_IMAGE\} AS standard$/m);
+    expect(dockerfile).toMatch(/^FROM standard AS gl$/m);
+    const stages = [...dockerfile.matchAll(/^FROM .*$/gm)].map((match) => match[0]);
+    expect(stages.at(-1)).toBe('FROM ${VARIANT}');
   });
 });

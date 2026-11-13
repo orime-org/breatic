@@ -15,29 +15,29 @@
 # DOCKERFILE picks the Dockerfile to build (default packages/ingest/Dockerfile).
 #
 # GL=1 runs the tests in the MiniToolContainerGl image (inner#1306 test plan §97 D20; transitions render DD): it builds
-# GL_DOCKERFILE (default packages/ingest/Dockerfile.gl, the GL image's Dockerfile) into IMAGE (default
-# breatic-ingest-gl-test:local), sets MINI_TOOL_CONTAINER_GL=1 so the GL-only cases run instead of skipping, starts Xvfb
-# on :99 for the headless-gl renderer (xvfb-run hangs on Alpine, per the DD), and installs the test dependencies without
-# running their build scripts, so the image's prebuilt native `gl` module is not rebuilt (the runtime image has no
-# builder toolchain).
+# the `gl` variant of the Dockerfile (VARIANT=gl) into IMAGE (default breatic-ingest-gl-test:local), sets
+# MINI_TOOL_CONTAINER_GL=1 so the GL-only cases run instead of skipping, starts Xvfb on :99 for the headless-gl
+# renderer (xvfb-run hangs on Alpine, per the DD), and installs the test dependencies without running their build
+# scripts, so the image's prebuilt native `gl` module is not rebuilt (the runtime image has no builder toolchain).
 set -euo pipefail
 
 root=$(git rev-parse --show-toplevel)
 platform=${PLATFORM:-linux/amd64}
 gl=${GL:-0}
+dockerfile=${DOCKERFILE:-$root/packages/ingest/Dockerfile}
 if [[ "$gl" == 1 ]]; then
   image=${IMAGE:-breatic-ingest-gl-test:local}
-  dockerfile=${GL_DOCKERFILE:-$root/packages/ingest/Dockerfile.gl}
+  variant=gl
 else
   image=${IMAGE:-breatic-ingest-media-test:local}
-  dockerfile=${DOCKERFILE:-$root/packages/ingest/Dockerfile}
+  variant=standard
 fi
 pnpm_version=$(node -p "require('$root/package.json').packageManager.split('@')[1]")
 filters=("$@")
 [[ ${#filters[@]} -gt 0 ]] || filters=(container/__tests__)
 
 # BUILD=0 reuses an image already built from this Dockerfile (the OpenCV stage takes long under emulation).
-[[ "${BUILD:-1}" == 0 ]] || docker build --platform "$platform" -f "$dockerfile" -t "$image" "$root"
+[[ "${BUILD:-1}" == 0 ]] || docker build --platform "$platform" -f "$dockerfile" --build-arg VARIANT="$variant" -t "$image" "$root"
 
 docker run --rm --platform "$platform" -v "$root:/repo:ro" -e PNPM_VERSION="$pnpm_version" -e MINI_TOOL_CONTAINER_GL="$([[ "$gl" == 1 ]] && echo 1 || echo)" \
   --entrypoint /bin/sh "$image" -c '

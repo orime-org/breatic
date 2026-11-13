@@ -8,7 +8,7 @@ The ingest Worker on Cloudflare. The browser sends file bytes straight to it; it
 
 **Import only `@breatic/shared`.** Core and domain use Node APIs that workerd cannot load, and no lint rule catches that import. The upload ticket and per-part session token are signed and verified in `shared/src/upload/` because both this Worker and the server verify them; moved into this package, the server could not reach them and the two sides would drift apart and reject each other.
 
-**The container's own process loads only Node built-ins and this repo's code, and every module it loads must be listed in `container/tsconfig.json`.** ffmpeg and vips run as separate processes so their GPL-licensed libraries stay out of our process (`THIRD-PARTY.md`); `breatic/media-container-own-code-only` reports a missing entry. The GL renderer `container/gl-renderer/render.mjs`, which `Dockerfile.gl` installs with headless-gl for the `MiniToolContainerGl` image, is such a separate program too: it is not in `container/tsconfig.json`, and the service only spawns it.
+**The container's own process loads only Node built-ins and this repo's code, and every module it loads must be listed in `container/tsconfig.json`.** ffmpeg and vips run as separate processes so their GPL-licensed libraries stay out of our process (`THIRD-PARTY.md`); `breatic/media-container-own-code-only` reports a missing entry. The GL renderer `container/gl-renderer/render.mjs`, which the `gl` variant of `Dockerfile` (`VARIANT=gl`) installs with headless-gl for the `MiniToolContainerGl` image, is such a separate program too: it is not in `container/tsconfig.json`, and the service only spawns it.
 
 ## Endpoints
 

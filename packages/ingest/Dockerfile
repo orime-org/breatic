@@ -17,6 +17,10 @@
 # The analysis process uses the same musl base as the media programs. Its
 # limited OpenCV build has no FFmpeg, GStreamer, GUI or backend plugins.
 ARG ALPINE_IMAGE=alpine:3.23@sha256:ff7f0c727dd796aa36787bfcd9a64bf35a6ce72a73451b3359fde849b6703d63
+# Which image this build ends as: `standard` for the media and mini-tool containers, `gl` for MiniToolContainerGl, the
+# standard image plus the transition renderer. One Dockerfile and one context for both keep the GL image's service, FFmpeg
+# and x264 those of the standard-4 chunks it is stitched with (frames-split design §5.4 dispatch and stitch rows).
+ARG VARIANT=standard
 FROM ${ALPINE_IMAGE} AS opencv-builder
 ARG BUILD_JOBS=2
 RUN apk add --no-cache \
@@ -142,7 +146,7 @@ RUN npm install --no-audit --no-fund --global esbuild@0.25.12 \
 # Alpine rather than a Node base image: the service is that one bundled file,
 # so npm and the rest of a Node distribution would be weight with no reader,
 # and image size is what the cold start is paid in.
-FROM ${ALPINE_IMAGE}
+FROM ${ALPINE_IMAGE} AS standard
 ARG RELEASE_VERSION=0.0.0-dev
 ARG VCS_REF=unknown
 LABEL org.opencontainers.image.version=$RELEASE_VERSION \
@@ -317,6 +321,57 @@ COPY --from=build /out/build-info.json /app/build-info.json
 # container spends waiting.
 EXPOSE 8080
 CMD ["node", "/app/server.mjs"]
+
+# headless-gl publishes no binary for Node 24 (ABI 137) or musl arm64, so it is compiled from source here (node-gyp and
+# its bundled ANGLE); only the installed directory reaches the image. The builder is the Node 24 musl image, the ABI of
+# the standard stage's Alpine nodejs=~24.
+FROM node:24-alpine3.23 AS gl-renderer
+ARG BUILD_JOBS=2
+RUN apk add --no-cache python3 build-base pkgconf libx11-dev libxext-dev libxi-dev mesa-dev
+WORKDIR /app/gl-renderer
+COPY packages/ingest/container/gl-renderer/package.json packages/ingest/container/gl-renderer/package-lock.json ./
+RUN JOBS="$BUILD_JOBS" npm ci --no-audit --no-fund
+COPY packages/ingest/container/gl-renderer/render.mjs ./render.mjs
+
+# The MiniToolContainerGl image: the transitions export's overlap windows (frames-split design §5.4, §7.17
+# transition_window row; transitions render DD of 2026-11-05). It adds one separate program, the headless-gl renderer
+# (container/gl-renderer/render.mjs) with its own node_modules at the versions packages/web/package.json pins
+# (container/__tests__/gl-renderer-pins.node.test.ts); the service still loads only Node built-ins and this
+# repository's code (packages/ingest/AGENTS.md#two-runtimes). WebGL runs on Mesa's llvmpipe under Xvfb, which the image
+# starts itself (`xvfb-run` hangs on Alpine, per the DD).
+FROM standard AS gl
+RUN apk add --no-cache libx11 libxext libxcb libdrm zlib xvfb mesa-gl mesa-dri-gallium
+COPY --from=gl-renderer /app/gl-renderer /app/gl-renderer
+
+# What the renderer brings and under what terms (THIRD-PARTY.md "The transition renderer"), read out of the installed
+# packages and modules while the image is built, beside the media programs' records.
+RUN set -eu; \
+  mkdir -p /usr/share/gl-renderer-source; \
+  for module in gl gl-transition gl-transitions; do \
+    for licence in /app/gl-renderer/node_modules/$module/LICENSE*; do \
+      cp -R "$licence" "/usr/share/gl-renderer-source/$module-$(basename "$licence")"; \
+    done; \
+  done; \
+  { \
+    echo "The transition renderer's modules (npm), with their declared licences:"; \
+    for module in gl gl-transition gl-transitions; do \
+      node -e "const p=require('/app/gl-renderer/node_modules/$module/package.json'); console.log('  ' + p.name + ' ' + p.version + ', ' + p.license)"; \
+    done; \
+    echo; \
+    echo "The Alpine packages this image adds to its base, every one the renderer pulls in (version, licence, exact recipe commit):"; \
+    apk info -vv 2>/dev/null | sed 's/ - .*//' | sort > /tmp/after; \
+    sed 's/ - .*//' /opt/opencv/build-record/runtime-apk-packages.txt | sort > /tmp/before; \
+    comm -13 /tmp/before /tmp/after | while read -r installed; do \
+      p=$(awk -v want="$installed" '/^P:/{name=substr($0,3)} /^V:/{if (name "-" substr($0,3) == want) print name}' /lib/apk/db/installed); \
+      info=$(awk "/^P:$p\$/,/^\$/" /lib/apk/db/installed); \
+      echo "  $p $(printf '%s\n' "$info" | sed -n 's/^V://p'), $(printf '%s\n' "$info" | sed -n 's/^L://p'), aports $(printf '%s\n' "$info" | sed -n 's/^c://p')"; \
+    done; \
+  } > /usr/share/gl-renderer-source/SOURCE
+
+ENV DISPLAY=:99
+CMD ["/bin/sh", "-c", "Xvfb :99 -screen 0 1280x720x24 -nolisten tcp >/dev/null 2>&1 & exec node /app/server.mjs"]
+
+FROM ${VARIANT}
 
 # Which copy of the repository built this image, set by `image_vars` in a
 # local wrangler.toml and empty for a deploy. Copies building the same content

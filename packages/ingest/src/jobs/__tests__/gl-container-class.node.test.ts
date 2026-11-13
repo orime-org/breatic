@@ -8,7 +8,7 @@
  *
  * It sits beside `MiniToolContainerStd4`: the same job container base and outbound handlers, reached through its own
  * binding (chosen here: `MINI_TOOL_GL`, after `MINI_TOOL_STD4`), exported from the Worker entry, and declared in the
- * tracked `wrangler.toml.template` in both environments with the `Dockerfile.gl` image at standard-4. `wrangler.toml` is
+ * tracked `wrangler.toml.template` in both environments with the `gl` variant of `./Dockerfile` at standard-4. `wrangler.toml` is
  * each developer's own untracked copy, so the template is what a deployment is written from.
  */
 import { readFileSync } from "node:fs";
@@ -87,10 +87,13 @@ describe("the MiniToolContainerGl class beside MiniToolContainerStd4 (frames-spl
     });
   });
 
-  it.each(ENVIRONMENTS)("GL05 the template declares MiniToolContainerGl in the $name environment: Dockerfile.gl at standard-4, bound as MINI_TOOL_GL, a SQLite export", ({ prefix }) => {
+  it.each(ENVIRONMENTS)("GL05 the template declares MiniToolContainerGl in the $name environment: the gl variant of ./Dockerfile at standard-4, bound as MINI_TOOL_GL, a SQLite export", ({ prefix }) => {
     const gl = declared(prefix, "MiniToolContainerGl");
+    // One Dockerfile and one build context for both images, so the GL image's service is built from the same code as standard-4's.
+    expect(gl.container?.image_vars).toMatch(/\bVARIANT = "gl"/);
+    expect(gl.container?.image_vars).not.toMatch(/BASE_IMAGE/);
     expect(gl).toEqual({
-      container: expect.objectContaining({ image: "./Dockerfile.gl", instance_type: "standard-4" }),
+      container: expect.objectContaining({ image: "./Dockerfile", instance_type: "standard-4" }),
       bindings: ["MINI_TOOL_GL"],
       exported: { type: "durable-object", storage: "sqlite" },
     });

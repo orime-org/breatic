@@ -22,7 +22,7 @@ renderer's image built on it, carry FFmpeg and vips:
 |---|---|---|---|
 | `ghcr.io/<owner>/breatic` | [Dockerfile](./Dockerfile) | `node:24-bookworm-slim` | no |
 | the media container | [packages/ingest/Dockerfile](./packages/ingest/Dockerfile) | `alpine:3.23` | yes |
-| the MiniToolContainerGl image | [packages/ingest/Dockerfile.gl](./packages/ingest/Dockerfile.gl) | the media container | yes |
+| the MiniToolContainerGl image | [packages/ingest/Dockerfile](./packages/ingest/Dockerfile) with `VARIANT=gl` | the media container | yes |
 | `ghcr.io/<owner>/breatic-web` | [Dockerfile.web](./Dockerfile.web) | `nginx:1.27-alpine` | no — it serves the built front-end and nothing else |
 
 Breatic invokes the `ffmpeg` executable as a separate process and does not link
@@ -137,9 +137,9 @@ analysis runtime leaves the existing media programs' notices in place.
 ### The transition renderer in the MiniToolContainerGl image
 
 The transitions export renders each overlap window with the same `gl-transitions`
-shaders the browser preview draws. It runs in its own image,
-[packages/ingest/Dockerfile.gl](./packages/ingest/Dockerfile.gl), built on the
-media container above, so FFmpeg, x264 and libvpx are the same. That image adds
+shaders the browser preview draws. It runs in its own image, the `gl` variant of
+[packages/ingest/Dockerfile](./packages/ingest/Dockerfile), which is the media
+container above plus the renderer, so FFmpeg, x264 and libvpx are the same. That image adds
 one separate program, `container/gl-renderer/render.mjs`, which the container's
 service starts as a process and hands raw frames through files; the service
 loads none of these modules into its own process.

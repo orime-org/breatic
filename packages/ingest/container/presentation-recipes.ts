@@ -754,7 +754,7 @@ async function transitionStitch(recipe: MiniToolPlanTransitionStitch, files: Rea
   await runPlanCommand("ffmpeg", args, run);
 }
 
-/** The headless-gl renderer of the MiniToolContainerGl image (packages/ingest/Dockerfile.gl), a separate program. */
+/** The headless-gl renderer of the MiniToolContainerGl image (the gl variant of packages/ingest/Dockerfile), a separate program. */
 const GL_RENDERER = "/app/gl-renderer/render.mjs";
 
 /**
