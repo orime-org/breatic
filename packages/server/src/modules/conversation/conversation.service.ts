@@ -632,6 +632,20 @@ export async function modelForMessage(
 }
 
 /**
+ * The model a message that waited in the queue runs on: the one it was sent
+ * with, while the deployment still lists it, else the conversation's own.
+ * Never a refusal: the send was checked when it was accepted, and a release
+ * since may have stopped listing the model.
+ * @param conversation - The conversation, already checked writable.
+ * @param userId - The user.
+ * @param sentWith - The model the message was sent with, if any.
+ * @returns The model id.
+ */
+export async function modelForQueued(conversation: ConversationEntity, userId: string, sentWith: string | undefined): Promise<string> {
+  return modelForMessage(conversation, userId, sentWith !== undefined && listedModel(sentWith) !== undefined ? sentWith : undefined);
+}
+
+/**
  * The model a turn resumed by an answer to its card runs on: the one the turn
  * started on, while the deployment still lists it, else the conversation's
  * own by the usual order, written into the conversation. Never a refusal: the

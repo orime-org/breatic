@@ -350,6 +350,26 @@ describe("POST /chat/message with a model", () => {
   });
 });
 
+describe("a message that waited in the queue", () => {
+  it("runs on the model it was sent with while the deployment lists it", async () => {
+    const { conversationService } = await import("@server/modules");
+    const member = await seedMember();
+    const first = await open(member);
+    await pick(member, first.id, SONNET.id);
+
+    expect(await conversationService.modelForQueued(await conversationService.assertWritable(first.id, member.userId, member.projectId), member.userId, OPUS.id)).toBe(OPUS.id);
+  });
+
+  it("runs on the conversation's model when the one it was sent with is no longer listed, and does not refuse", async () => {
+    const { conversationService } = await import("@server/modules");
+    const member = await seedMember();
+    const first = await open(member);
+    await pick(member, first.id, SONNET.id);
+
+    expect(await conversationService.modelForQueued(await conversationService.assertWritable(first.id, member.userId, member.projectId), member.userId, "retired/model")).toBe(SONNET.id);
+  });
+});
+
 describe("a turn resumed by an answer to its card", () => {
   /**
    * Leave a reply waiting at a questionnaire, recorded as started on a model.

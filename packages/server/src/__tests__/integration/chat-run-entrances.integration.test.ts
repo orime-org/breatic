@@ -719,6 +719,19 @@ describe("what a run opens with", () => {
     expect(said.indexOf("msg b")).toBeLessThan(said.indexOf("msg c"));
   });
 
+  it("answers a waiting message whose model the deployment stopped listing, on the conversation's model", async () => {
+    const who = await seedOwner(sql, app);
+    const m = crypto.randomUUID();
+    await getRedis().rpush(keysOf(who.conversationId).queue, itemOf(who, m, { message: "still answer me", model: "retired/model" }));
+    await sync(app, who);
+    await untilIdle(who.conversationId);
+    const rows = await rowsOf(who.conversationId);
+    expect(rows.filter((r) => r.role === "user").map((r) => r.id)).toEqual([m]);
+    expect(rows.some((r) => r.role === "assistant")).toBe(true);
+    expect(await getRedis().llen(keysOf(who.conversationId).queue)).toBe(0);
+    expect(await getRedis().llen(keysOf(who.conversationId).taken)).toBe(0);
+  });
+
   it("acks the run that ended before the next run opens, so the next one's opening is a new row (SR-16)", async () => {
     const who = await seedOwner(sql, app);
     const order: string[] = [];

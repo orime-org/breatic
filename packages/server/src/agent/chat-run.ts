@@ -298,7 +298,7 @@ async function runIt(start: RunStart, open: (running: boolean) => void): Promise
             opening!.chips,
             opening!.timeZone,
             opening!.space,
-            await conversationService.modelForMessage(conversation, userId, opening!.model),
+            await conversationService.modelForQueued(conversation, userId, opening!.model),
             { ...hooks, messageId: opening!.id, alsoTaken },
           ),
         );
