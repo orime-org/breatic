@@ -33,7 +33,7 @@ export default function StudioRecentPage(): React.JSX.Element {
     queryFn: () => studiosApi.getRecent(),
   });
   const projects = React.useMemo(
-    () => (recentQuery.data ?? []).map(toRecentItemView),
+    () => (recentQuery.data?.items ?? []).map(toRecentItemView),
     [recentQuery.data],
   );
 

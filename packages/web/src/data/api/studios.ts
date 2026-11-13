@@ -80,11 +80,12 @@ export const studiosApi = {
    * `GET /api/v1/studios/recent` — the cross-studio "Recent" landing feed: the
    * projects the current user has opened, newest-first by their OWN last-open
    * time, filtered server-side to the ones they can still access. Backs the
-   * `/studio` default landing.
+   * `/studio` default landing. Projects in other regions are merged in;
+   * `unavailableRegions` names the regions that did not answer (inner#1955).
    * @returns the viewer's accessible recent projects (empty when none opened).
    */
-  getRecent(): Promise<RecentFeedItem[]> {
-    return apiGet<RecentFeedItem[]>('/studios/recent');
+  getRecent(): Promise<{ items: RecentFeedItem[]; unavailableRegions: string[] }> {
+    return apiGet<{ items: RecentFeedItem[]; unavailableRegions: string[] }>('/studios/recent');
   },
   /**
    * `POST /api/v1/studios` — create a team studio (display name + globally

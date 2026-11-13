@@ -15,6 +15,7 @@ import type { Context, Hono } from "hono";
 import { z } from "zod";
 import { AppError, env } from "@breatic/core";
 import { GLOBAL_FUNCTIONS, REGION_FUNCTIONS } from "@breatic/domain";
+import { SERVER_REGION_FUNCTIONS } from "@server/modules/region/region-functions.js";
 import "@server/middleware/internal-auth.js";
 import { validate } from "@server/middleware/validate.js";
 
@@ -59,6 +60,6 @@ export function registerGlobalApiRoutes(app: Hono): void {
   );
   // Only the global region calls a region's functions.
   app.post("/internal/region/:fn", validate("json", bodySchema), (c) =>
-    serve(c, REGION_FUNCTIONS, c.get("internalAdmin") === `region-${env.GLOBAL_REGION}`),
+    serve(c, { ...REGION_FUNCTIONS, ...SERVER_REGION_FUNCTIONS }, c.get("internalAdmin") === `region-${env.GLOBAL_REGION}`),
   );
 }

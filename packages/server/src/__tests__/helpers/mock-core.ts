@@ -405,6 +405,8 @@ export const mocks = {
     listUnread: vi.fn().mockResolvedValue([]),
     listAll: vi.fn().mockResolvedValue([]),
     countUnread: vi.fn().mockResolvedValue(0),
+    listFeed: vi.fn().mockResolvedValue({ items: [], resolved: { users: {}, studios: {}, projects: {} }, unavailableRegions: [] }),
+    countFeed: vi.fn().mockResolvedValue({ count: 0, unavailableRegions: [] }),
     markRead: vi.fn().mockResolvedValue(undefined),
     markAllRead: vi.fn().mockResolvedValue(0),
     createRoleUpgradeRequest: vi.fn().mockResolvedValue({

@@ -121,6 +121,10 @@ async function softDeleteMember(studioId: string, userId: string): Promise<void>
     UPDATE studio_members SET deleted_at = now()
     WHERE studio_id = ${studioId} AND user_id = ${userId}
   `;
+  await sql`
+    UPDATE studio_directory_members SET deleted_at = now()
+    WHERE studio_id = ${studioId} AND user_id = ${userId}
+  `;
 }
 
 describe("getStudioDetail — public shell + viewer role (decision A)", () => {

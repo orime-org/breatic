@@ -13,7 +13,8 @@ import * as recentRepo from "@server/modules/recent/recent.repo.js";
 import * as projectService from "@server/modules/project/project.service.js";
 import * as projectRepo from "@server/modules/project/project.repo.js";
 import { accountActivityRepo, db, ValidationError, serverAnalyticsWanted, trackServerEvent } from "@breatic/core";
-import { newId, t, type AccountActivityEntity, type ProjectVisitReceipt, type ProjectVisitLookup, type RecentItem } from "@breatic/shared";
+import { newId, t, type AccountActivityEntity, type ProjectVisitReceipt, type ProjectVisitLookup, type RecentFeed, type RecentItem } from "@breatic/shared";
+import { askUserRegions } from "@server/modules/region/fanout.js";
 
 /**
  * The landing window — how many recent items `listRecent` returns. A
@@ -109,4 +110,22 @@ async function reportSession(projectId: string, userId: string): Promise<void> {
  */
 export async function listRecent(userId: string): Promise<RecentItem[]> {
   return recentRepo.listRecentForUser(userId, RECENT_LIMIT);
+}
+
+/**
+ * The landing feed across regions (inner#1955): this region's recent Projects
+ * merged with those of every other region the user is recorded in, newest
+ * first, capped at {@link RECENT_LIMIT}, naming the regions that did not answer.
+ * @param userId - The authenticated user's UUID
+ * @returns The merged feed
+ */
+export async function listRecentEverywhere(userId: string): Promise<RecentFeed> {
+  const [here, elsewhere] = await Promise.all([
+    listRecent(userId),
+    askUserRegions<RecentItem[]>(userId, "listRecent", [userId]),
+  ]);
+  const items = [...here, ...elsewhere.answers.flatMap((answer) => answer.result)]
+    .sort((a, b) => new Date(b.lastOpenedAt).getTime() - new Date(a.lastOpenedAt).getTime())
+    .slice(0, RECENT_LIMIT);
+  return { items, unavailableRegions: elsewhere.unavailableRegions };
 }

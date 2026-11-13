@@ -25,17 +25,18 @@ const studioRepoMock = vi.hoisted(() => ({
 // Whether this deployment sells anything decides whether the trial grant's
 // figure is read at all, so the flag is a knob here rather than whatever the
 // developer's own .env happens to say.
-const { envRef, mockTrialGrantCredits, mockFindPersonalByCreator } = vi.hoisted(() => ({
+const { envRef, mockTrialGrantCredits, mockFindPersonalByCreator, mockListStudiosOfUser } = vi.hoisted(() => ({
   envRef: { PAYMENT_ENABLED: true, GLOBAL_REGION: "us-west", REGION_API_URLS: { sg: "http://sg.invalid" } },
   mockTrialGrantCredits: vi.fn(() => 100),
   mockFindPersonalByCreator: vi.fn(),
+  mockListStudiosOfUser: vi.fn(),
 }));
 vi.mock("@breatic/core", async (importOriginal: () => Promise<Record<string, unknown>>) => {
   const actual = await importOriginal();
   return {
     ...actual,
     env: envRef,
-    studioDirectoryRepo: { findPersonalByCreator: mockFindPersonalByCreator },
+    studioDirectoryRepo: { findPersonalByCreator: mockFindPersonalByCreator, listStudiosOfUser: mockListStudiosOfUser },
     db: {
       transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) =>
         cb({ TX: true }),
@@ -68,6 +69,7 @@ vi.mock("@breatic/domain", () => ({
   studioCreationService: { createStudio: mockCreateStudio },
   regionClient: regionClientRef,
   isKnownRegion: (region: string) => region === "us-west" || region === "sg",
+  directoryWrites: { inGlobalRegion: () => true },
 }));
 
 vi.mock("@breatic/shared", async (importOriginal: () => Promise<Record<string, unknown>>) => ({
@@ -90,19 +92,6 @@ const STUDIO: Studio = {
   slug: "alice-handle",
   type: "personal",
   name: "alice-handle",
-  avatarUrl: null,
-  bio: null,
-  createdAt: new Date(),
-  updatedAt: new Date(),
-  deletedAt: null,
-};
-
-const TEAM_STUDIO: Studio = {
-  id: "studio-team",
-  createdByUserId: "user-9",
-  slug: "acme",
-  type: "team",
-  name: "Acme",
   avatarUrl: null,
   bio: null,
   createdAt: new Date(),
@@ -214,6 +203,7 @@ describe("getStudioDetail", () => {
       bio: null,
       memberCount: 3,
       myStudioRole: "admin",
+      region: null,
     });
     expect(studioRepo.getBySlug).toHaveBeenCalledWith("alice-handle");
     // loadStudioRole(userId, studioId) — service flips to the repo's order.
@@ -252,75 +242,80 @@ describe("getStudioDetail", () => {
   });
 });
 
+/**
+ * A Studio the user belongs to, as the directory lists it.
+ * @param studioId - The Studio.
+ * @param type - Personal or team.
+ * @param role - The user's role.
+ * @param region - Where it lives.
+ * @returns The directory row.
+ */
+function directoryStudio(
+  studioId: string,
+  type: "personal" | "team",
+  role: string,
+  region: string | null = null,
+): Record<string, unknown> {
+  return {
+    studioId,
+    slug: `${studioId}-slug`,
+    name: studioId,
+    type,
+    avatarUrl: null,
+    region,
+    role,
+    memberCount: type === "personal" ? 1 : 4,
+    createdAt: new Date(),
+  };
+}
+
 describe("listUserStudios", () => {
-  it("maps the user's studios to summaries with memberCount + myStudioRole", async () => {
-    vi.mocked(studioRepo.listByUser).mockResolvedValueOnce([
-      { ...STUDIO, myStudioRole: "admin" },
-    ]);
-    vi.mocked(studioRepo.countMembersByStudioIds).mockResolvedValueOnce(
-      new Map([["studio-1", 1]]),
-    );
+  it("maps the directory's Studios to summaries with memberCount, role, region and the local bio", async () => {
+    mockListStudiosOfUser.mockResolvedValueOnce([directoryStudio("studio-1", "personal", "admin")]);
+    vi.mocked(studioRepo.listByUser).mockResolvedValueOnce([{ ...STUDIO, bio: "Hello", myStudioRole: "admin" }]);
 
     const result = await listUserStudios("user-1");
 
     expect(result).toEqual([
       {
         id: "studio-1",
-        slug: "alice-handle",
-        name: "alice-handle",
+        slug: "studio-1-slug",
+        name: "studio-1",
         type: "personal",
         avatarUrl: null,
-        bio: null,
+        bio: "Hello",
         memberCount: 1,
         myStudioRole: "admin",
+        region: null,
       },
     ]);
   });
 
-  it("returns the personal studio first even when the repo lists a team studio earlier", async () => {
-    vi.mocked(studioRepo.listByUser).mockResolvedValueOnce([
-      { ...TEAM_STUDIO, myStudioRole: "guest" },
-      { ...STUDIO, myStudioRole: "admin" },
+  it("lists a Studio another region holds, with its region and no bio", async () => {
+    mockListStudiosOfUser.mockResolvedValueOnce([directoryStudio("studio-far", "team", "guest", "sg")]);
+    vi.mocked(studioRepo.listByUser).mockResolvedValueOnce([]);
+
+    const [far] = await listUserStudios("user-1");
+
+    expect(far).toMatchObject({ id: "studio-far", region: "sg", bio: null, myStudioRole: "guest" });
+  });
+
+  it("returns the personal studio first even when the directory lists a team studio earlier", async () => {
+    mockListStudiosOfUser.mockResolvedValueOnce([
+      directoryStudio("studio-team", "team", "guest"),
+      directoryStudio("studio-1", "personal", "admin"),
     ]);
-    vi.mocked(studioRepo.countMembersByStudioIds).mockResolvedValueOnce(
-      new Map([
-        ["studio-team", 4],
-        ["studio-1", 1],
-      ]),
-    );
+    vi.mocked(studioRepo.listByUser).mockResolvedValueOnce([]);
 
     const result = await listUserStudios("user-1");
 
     expect(result.map((s) => s.id)).toEqual(["studio-1", "studio-team"]);
   });
 
-  it("carries each studio's myStudioRole through for the rail ④⑤ split", async () => {
-    // user-1 is admin of their personal STUDIO and only a member of TEAM_STUDIO
-    // — the rail splits 我的 (admin) vs 我加入的 (maintainer/guest) on this role.
-    vi.mocked(studioRepo.listByUser).mockResolvedValueOnce([
-      { ...STUDIO, myStudioRole: "admin" },
-      { ...TEAM_STUDIO, myStudioRole: "guest" },
-    ]);
-    vi.mocked(studioRepo.countMembersByStudioIds).mockResolvedValueOnce(
-      new Map([
-        ["studio-1", 1],
-        ["studio-team", 4],
-      ]),
-    );
-
-    const result = await listUserStudios("user-1");
-    const roleById = new Map(result.map((s) => [s.id, s.myStudioRole]));
-
-    expect(roleById.get("studio-1")).toBe("admin");
-    expect(roleById.get("studio-team")).toBe("guest");
-  });
-
-  it("returns [] (no count query) when the user belongs to no studios", async () => {
+  it("returns [] when the user belongs to no studios", async () => {
+    mockListStudiosOfUser.mockResolvedValueOnce([]);
     vi.mocked(studioRepo.listByUser).mockResolvedValueOnce([]);
 
-    const result = await listUserStudios("user-1");
-
-    expect(result).toEqual([]);
-    expect(studioRepo.countMembersByStudioIds).not.toHaveBeenCalled();
+    expect(await listUserStudios("user-1")).toEqual([]);
   });
 });

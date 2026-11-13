@@ -47,6 +47,7 @@ import type {
   Studio,
   StudioDetail,
   StudioMembersView,
+  StudioRole,
   StudioSummary,
 } from "@breatic/shared";
 
@@ -332,36 +333,40 @@ export async function getStudioDetail(
     bio: studio.bio,
     memberCount: counts.get(studio.id) ?? 0,
     myStudioRole,
+    region: directoryWrites.inGlobalRegion() ? null : env.REGION,
   };
 }
 
 /**
- * List every studio the user is an active member of, for the switcher.
+ * List every studio the user is an active member of, for the switcher, from
+ * the global directory, which holds every region's Studios and names the
+ * region of each (inner#1955); the bio comes from the studios this region
+ * holds.
  *
  * The user's personal studio is always returned first; the remaining
  * studios follow in creation order (the repo orders by `created_at`, and
  * `Array.prototype.sort` is stable, so equal-type entries keep that order).
- * `memberCount` is resolved in a single grouped query (no N+1).
  * @param userId - The authenticated user's UUID
  * @returns The user's studios as summaries, personal-first
  */
 export async function listUserStudios(
   userId: string,
 ): Promise<StudioSummary[]> {
-  const userStudios = await studioRepo.listByUser(userId);
-  if (userStudios.length === 0) return [];
-  const counts = await studioRepo.countMembersByStudioIds(
-    userStudios.map((s) => s.id),
-  );
-  const summaries: StudioSummary[] = userStudios.map((s) => ({
-    id: s.id,
-    slug: s.slug,
-    name: s.name,
-    type: s.type,
-    avatarUrl: s.avatarUrl,
-    bio: s.bio,
-    memberCount: counts.get(s.id) ?? 0,
-    myStudioRole: s.myStudioRole,
+  const [rows, local] = await Promise.all([
+    studioDirectoryRepo.listStudiosOfUser(userId),
+    studioRepo.listByUser(userId),
+  ]);
+  const bios = new Map(local.map((s) => [s.id, s.bio]));
+  const summaries: StudioSummary[] = rows.map((row) => ({
+    id: row.studioId,
+    slug: row.slug,
+    name: row.name,
+    type: row.type,
+    avatarUrl: row.avatarUrl,
+    bio: bios.get(row.studioId) ?? null,
+    memberCount: row.memberCount,
+    myStudioRole: row.role as StudioRole,
+    region: row.region,
   }));
   return summaries.sort((a, b) =>
     a.type === b.type ? 0 : a.type === "personal" ? -1 : 1,

@@ -45,10 +45,10 @@ beforeEach(() => {
 
 describe('StudioRecentPage (fetches + maps the cross-studio recent feed)', () => {
   it('renders a card per fetched recent project (wire row mapped to the view)', async () => {
-    vi.mocked(studiosApi.getRecent).mockResolvedValue([
-      WIRE,
-      { ...WIRE, projectId: 'p2', name: 'Second Project' },
-    ]);
+    vi.mocked(studiosApi.getRecent).mockResolvedValue({
+      items: [WIRE, { ...WIRE, projectId: 'p2', name: 'Second Project' }],
+      unavailableRegions: [],
+    });
     setup();
     // The mapped cards appear once the query resolves; the card link target
     // proves the wire→view mapping (projectId → /project/{slug}-{id}).
@@ -59,7 +59,7 @@ describe('StudioRecentPage (fetches + maps the cross-studio recent feed)', () =>
   });
 
   it('shows the PASSIVE empty state (no cards, no create button) for an empty feed', async () => {
-    vi.mocked(studiosApi.getRecent).mockResolvedValue([]);
+    vi.mocked(studiosApi.getRecent).mockResolvedValue({ items: [], unavailableRegions: [] });
     setup();
     // Wait for the query to settle, then assert the empty state has no CTA.
     expect(
@@ -86,7 +86,7 @@ describe('StudioRecentPage (fetches + maps the cross-studio recent feed)', () =>
   });
 
   it('has no a11y violations (loaded with content)', async () => {
-    vi.mocked(studiosApi.getRecent).mockResolvedValue([WIRE]);
+    vi.mocked(studiosApi.getRecent).mockResolvedValue({ items: [WIRE], unavailableRegions: [] });
     const { container } = setup();
     await screen.findByText('Demo Project');
     await expectNoA11yViolations(container);

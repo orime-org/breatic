@@ -136,6 +136,8 @@ export interface StudioSummary {
    * `GET /studios` (the viewer's own memberships) it is always non-null.
    */
   myStudioRole: StudioRole | null;
+  /** The region that holds the studio; null for the global region (inner#1955). */
+  region: string | null;
 }
 
 /**

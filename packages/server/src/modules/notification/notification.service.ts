@@ -25,7 +25,9 @@ import { NotFoundError } from "@breatic/core";
 import { directoryWrites } from "@breatic/domain";
 import { t } from "@breatic/shared";
 import type { DbTx } from "@server/modules/notification/notification.repo.js";
-import type { BillingPeriod, DecisionGrantRole, NotificationEntity } from "@breatic/shared";
+import type { BillingPeriod, DecisionGrantRole, NotificationCount, NotificationEntity, NotificationFeed, NotificationListView } from "@breatic/shared";
+import { withResolvedRefs } from "@server/modules/notification/notification-refs.js";
+import { askUserRegions } from "@server/modules/region/fanout.js";
 
 /**
  * Write a notification, and record that its recipient now has something in
@@ -694,6 +696,52 @@ export async function listAll(userId: string): Promise<NotificationEntity[]> {
  */
 export async function countUnread(userId: string): Promise<number> {
   return notificationRepo.countUnread(userId);
+}
+
+/**
+ * The bell's list across regions (inner#1955): this region's notifications
+ * merged with those of every other region the user is recorded in, newest
+ * first, each naming its region (null here), and the regions that did not
+ * answer.
+ * @param userId - The user.
+ * @param unreadOnly - Only the unread ones.
+ * @returns The merged list with every region's resolved names.
+ */
+export async function listFeed(userId: string, unreadOnly: boolean): Promise<NotificationFeed> {
+  const [here, elsewhere] = await Promise.all([
+    unreadOnly ? listUnread(userId) : listAll(userId),
+    askUserRegions<NotificationListView>(userId, "listNotifications", [userId, unreadOnly]),
+  ]);
+  const local = await withResolvedRefs(here);
+  const items: NotificationFeed["items"] = [
+    ...local.items.map((item) => ({ ...item, region: null })),
+    ...elsewhere.answers.flatMap((answer) => answer.result.items.map((item) => ({ ...item, region: answer.region }))),
+  ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const resolved = elsewhere.answers.reduce(
+    (merged, answer) => ({
+      users: { ...merged.users, ...answer.result.resolved.users },
+      studios: { ...merged.studios, ...answer.result.resolved.studios },
+      projects: { ...merged.projects, ...answer.result.resolved.projects },
+    }),
+    local.resolved,
+  );
+  return { items, resolved, unavailableRegions: elsewhere.unavailableRegions };
+}
+
+/**
+ * The bell's unread count across regions, and the regions that did not answer.
+ * @param userId - The user.
+ * @returns The summed count.
+ */
+export async function countFeed(userId: string): Promise<NotificationCount> {
+  const [here, elsewhere] = await Promise.all([
+    countUnread(userId),
+    askUserRegions<number>(userId, "countUnread", [userId]),
+  ]);
+  return {
+    count: elsewhere.answers.reduce((sum, answer) => sum + answer.result, here),
+    unavailableRegions: elsewhere.unavailableRegions,
+  };
 }
 
 // ── Mutations ───────────────────────────────────────────────────────

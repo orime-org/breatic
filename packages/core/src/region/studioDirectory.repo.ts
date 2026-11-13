@@ -452,3 +452,63 @@ export async function isReconciled(): Promise<boolean> {
 export async function markReconciled(): Promise<void> {
   await db.insert(directoryReconciliations).values({});
 }
+
+/** A Studio the switcher lists, as the directory holds it. */
+export interface DirectoryStudioOfUser {
+  studioId: string;
+  slug: string;
+  name: string;
+  type: "personal" | "team";
+  avatarUrl: string | null;
+  region: string | null;
+  role: string;
+  memberCount: number;
+  createdAt: Date;
+}
+
+/**
+ * Every live Studio a user is a member of, with its member count, oldest first.
+ * @param userId - The user.
+ * @returns The Studios and the user's role in each.
+ */
+export async function listStudiosOfUser(userId: string): Promise<DirectoryStudioOfUser[]> {
+  return db
+    .select({
+      studioId: studioDirectory.studioId,
+      slug: studioDirectory.slug,
+      name: studioDirectory.name,
+      type: studioDirectory.type,
+      avatarUrl: studioDirectory.avatarUrl,
+      region: studioDirectory.region,
+      role: studioDirectoryMembers.role,
+      memberCount: sql<number>`(
+        SELECT count(*)::int FROM ${studioDirectoryMembers} m
+        WHERE m.studio_id = ${studioDirectory.studioId} AND m.deleted_at IS NULL
+      )`,
+      createdAt: studioDirectory.createdAt,
+    })
+    .from(studioDirectoryMembers)
+    .innerJoin(studioDirectory, eq(studioDirectory.studioId, studioDirectoryMembers.studioId))
+    .where(
+      and(
+        eq(studioDirectoryMembers.userId, userId),
+        isNull(studioDirectoryMembers.deletedAt),
+        isNull(studioDirectory.deletedAt),
+        eq(studioDirectory.state, "live"),
+      ),
+    )
+    .orderBy(studioDirectory.createdAt);
+}
+
+/**
+ * The regions other than the global one where a user has members or notifications.
+ * @param userId - The user.
+ * @returns The region codes.
+ */
+export async function listUserRegions(userId: string): Promise<string[]> {
+  const rows = await db
+    .select({ region: userRegions.region })
+    .from(userRegions)
+    .where(eq(userRegions.userId, userId));
+  return rows.map((row) => row.region);
+}
