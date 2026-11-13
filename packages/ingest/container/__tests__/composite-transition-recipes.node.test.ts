@@ -433,6 +433,19 @@ describe('chunk_encode on the transition profile (§7.17 chunk_encode row; 转�
   });
 });
 
+describe('the last frame of a transition chunk (§7.17 chunk_encode row: every presented frame is kept)', () => {
+  // greys.mp4: ten 25 fps frames of stored luma 16 + 20n, so frame 9 is 196 and frame 8 is 176.
+  it.each([
+    ['on its own rate', PROFILE, 10],
+    ['on a faster profile', { ...PROFILE, fps: r(30), timeBase: r(1, 30) }, 12],
+  ])('CR02 a chunk %s ends on the window\'s last frame, not a repeat of the one before', async (_name, profile, frames) => {
+    const [file] = await produce({ [CLIP_A]: join(dir, 'greys.mp4') }, [{ ...clipChunk(CLIP_A, 0, 10), profile, frames: { start: 0, end: frames } }]);
+    const means = await lumaMeans(file!);
+    expect(means).toHaveLength(frames);
+    expect(Math.abs(means.at(-1)! - 196)).toBeLessThan(4);
+  });
+});
+
 describe('model_composite (§7.17 model_composite and segment rows; execution design §8, §8.1)', () => {
   // The erase shape (mask, grid and matte) is pinned in erase-expand-recipes.node.test.ts EC01–EC07.
   it('MC03 expand: each background mapped back by PTS, the source over it at the frozen position, the overlap blended by presentation time', async () => {
