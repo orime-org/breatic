@@ -2166,6 +2166,10 @@ body {
      `document-column-nodes.tsx`). A picture or video in a column is shown at
      its stored width or the column's, whichever is less. */
   .doc-body .doc-columns {
+    position: relative;
+  }
+
+  .doc-body .doc-columns-row {
     display: flex;
     align-items: flex-start;
     gap: 72px;
@@ -2177,8 +2181,36 @@ body {
     min-width: 0;
   }
 
-  .doc-body .doc-columns[data-stacked] {
+  .doc-body .doc-columns[data-stacked] > .doc-columns-row {
     display: block;
+  }
+
+  /* The divider between two columns (design §5.4): it stands in the middle
+     of the gap the pointer is over, as wide as a table column's resize zone,
+     and draws a 1px line in the colour a table column's handle draws. */
+  .doc-body .doc-column-divider {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 11px;
+    margin-left: -5.5px;
+    cursor: col-resize;
+    display: none;
+  }
+
+  .doc-body .doc-column-divider[data-shown],
+  .doc-body .doc-column-divider[data-dragging] {
+    display: block;
+  }
+
+  .doc-body .doc-column-divider::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 5px;
+    width: 1px;
+    background-color: var(--color-ring);
   }
 
   .doc-body .doc-column [data-media-box] {

@@ -97,7 +97,7 @@ async function dragRowTo(p: Page, words: string, to: { x: number; y: number }): 
 async function groups(p: Page): Promise<string[][]> {
   return p.locator(`${EDITOR} .doc-columns`).evaluateAll((lists) =>
     lists.map((list) =>
-      [...list.querySelectorAll(':scope > .doc-column')].map((column) =>
+      [...list.querySelectorAll(':scope > .doc-columns-row > .doc-column')].map((column) =>
         [...column.querySelectorAll('.bn-inline-content')].map((line) => line.textContent ?? '').join(','),
       ),
     ),
@@ -156,4 +156,30 @@ test('a block in the second column has its handle in the gap, and drags from the
   await page.mouse.up();
   await expect.poll(() => groups(page)).toEqual([]);
   await expect.poll(() => page.locator(`${EDITOR} .bn-inline-content`).allTextContents()).toEqual(['alpha', 'beta', 'gamma']);
+});
+
+test('dragging the divider between two columns changes their widths, and one undo takes it back', async () => {
+  await openWithLines(page, ['alpha', 'beta']);
+  const a = await row(page, 'alpha').boundingBox();
+  if (a === null) throw new Error('no alpha');
+  await dragRowTo(page, 'beta', { x: a.x + a.width - 6, y: a.y + a.height / 2 });
+  await expect.poll(() => groups(page)).toEqual([['alpha', 'beta']]);
+
+  const widths = (): Promise<number[]> =>
+    page.locator(`${EDITOR} .doc-column`).evaluateAll((list) => list.map((column) => Math.round(column.getBoundingClientRect().width)));
+  const before = await widths();
+  const [left, right] = await page.locator(`${EDITOR} .doc-column`).evaluateAll((list) => list.map((column) => column.getBoundingClientRect()).map((r) => ({ x: r.x, right: r.right, y: r.y })));
+  const middle = (left!.right + right!.x) / 2;
+  await page.mouse.move(middle - 40, left!.y + 8);
+  await page.mouse.move(middle, left!.y + 8, { steps: 4 });
+  await expect(page.locator(`${EDITOR} .doc-column-divider`)).toBeVisible();
+  await page.mouse.down();
+  await page.mouse.move(middle + 100, left!.y + 8, { steps: 8 });
+  await page.mouse.up();
+  const after = await widths();
+  expect(after[0]! - before[0]!).toBeGreaterThan(80);
+  expect(before[1]! - after[1]!).toBeGreaterThan(80);
+
+  await page.keyboard.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z');
+  await expect.poll(widths).toEqual(before);
 });

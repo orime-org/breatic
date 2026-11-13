@@ -20,37 +20,21 @@
 import { createBlockSpec } from '@blocknote/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 
+import { columnsFit } from '@web/spaces/document/document-column-geometry';
+import { attachDivider } from '@web/spaces/document/document-column-resize';
+
 /** The column group. */
 export const DOC_COLUMN_LIST = 'docColumnList';
 
 /** One column of a group. */
 export const DOC_COLUMN = 'docColumn';
 
-/** The most columns a group holds. */
-export const MAX_COLUMNS = 4;
-
-/** The narrowest a column may be made: a new column, a dragged divider. */
-export const MIN_COLUMN_WIDTH = 96;
-
-/** The gap between two columns; the divider stands in its middle. */
-export const COLUMN_GAP = 72;
-
-/**
- * Whether a container this wide holds this many columns side by side.
- * @param width - The container's width.
- * @param count - How many columns.
- * @returns True when every column gets the minimum.
- */
-export function columnsFit(width: number, count: number): boolean {
-  return count <= 1 || width >= count * MIN_COLUMN_WIDTH + (count - 1) * COLUMN_GAP;
-}
-
 /**
  * Marks a group stacked while its container is too narrow for its columns.
  * @param element - The group's element.
  */
 function markStacked(element: HTMLElement): void {
-  const count = element.querySelectorAll(':scope > .doc-column').length;
+  const count = element.querySelectorAll(':scope > .doc-columns-row > .doc-column').length;
   const fits = columnsFit(element.getBoundingClientRect().width, count);
   if (fits) delete element.dataset['stacked'];
   else element.dataset['stacked'] = '';
@@ -102,6 +86,9 @@ function flatOutside(): { dom: DocumentFragment } {
   return { dom: document.createDocumentFragment() };
 }
 
+/** The part of the editor the divider writes through. */
+type DividerEditor = Parameters<typeof attachDivider>[2];
+
 /** A column's props as the block API carries them. */
 interface ColumnProps {
   readonly width: number;
@@ -139,22 +126,32 @@ export function docColumnSpecs(): DocColumnSpecs {
     {
       parse: (element: HTMLElement) => (element.dataset['docColumns'] !== undefined ? {} : undefined),
       toExternalHTML: flatOutside,
-      renderFrame: () => {
+      renderFrame(this: { renderType: 'dom' | 'nodeView' }, _block: unknown, editor: DividerEditor) {
         const element = document.createElement('div');
         element.className = 'doc-columns';
         element.dataset['docColumns'] = '';
+        // The columns stand in a row of their own; the divider stands over
+        // the group beside it, outside what the editor holds.
+        const row = document.createElement('div');
+        row.className = 'doc-columns-row';
+        element.appendChild(row);
+        if (this.renderType === 'dom') return { dom: element, slot: row };
+        const detach = attachDivider(element, row, editor);
         // The width the group has decides whether its columns stand side by
         // side; a column added or removed is an update of the group.
         const observer = new ResizeObserver(() => markStacked(element));
         observer.observe(element);
         return {
           dom: element,
-          slot: element,
+          slot: row,
           update: (): boolean => {
             queueMicrotask(() => markStacked(element));
             return true;
           },
-          destroy: (): void => observer.disconnect(),
+          destroy: (): void => {
+            observer.disconnect();
+            detach();
+          },
         };
       },
     } as never,

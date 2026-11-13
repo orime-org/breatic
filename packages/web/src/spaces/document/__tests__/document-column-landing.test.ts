@@ -21,7 +21,7 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
-import { columnsFit } from '@web/spaces/document/document-column-nodes';
+import { columnsFit } from '@web/spaces/document/document-column-geometry';
 import { sideDropAllowed, sideOfPointer } from '@web/spaces/document/document-column-landing';
 import { columnsBlock, para } from '@web/spaces/document/__tests__/column-fixtures';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';

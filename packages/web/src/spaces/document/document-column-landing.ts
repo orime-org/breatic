@@ -10,13 +10,8 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import type { EditorView } from '@tiptap/pm/view';
 
 import type { ColumnSide } from '@web/spaces/document/document-column-drop';
-import {
-  COLUMN_GAP,
-  DOC_COLUMN,
-  DOC_COLUMN_LIST,
-  MAX_COLUMNS,
-  MIN_COLUMN_WIDTH,
-} from '@web/spaces/document/document-column-nodes';
+import { COLUMN_GAP, MAX_COLUMNS, MIN_COLUMN_WIDTH } from '@web/spaces/document/document-column-geometry';
+import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-nodes';
 import { rowById } from '@web/spaces/document/document-row-by-id';
 import { cellDepthOf, DOC_TABLE } from '@web/spaces/document/document-table-nodes';
 

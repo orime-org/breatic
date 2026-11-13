@@ -32,7 +32,7 @@ import { SideMenuExtension } from '@blocknote/core/extensions';
 
 import { domElementOf } from '@web/spaces/document/document-editor-view';
 import { TABLE_STRIP_OUTSET, tableLineOf } from '@web/spaces/document/document-strip-alignment';
-import { COLUMN_GAP } from '@web/spaces/document/document-column-nodes';
+import { COLUMN_GAP } from '@web/spaces/document/document-column-geometry';
 import { DOC_TABLE } from '@web/spaces/document/document-table-nodes';
 
 /** A point in viewport coordinates. */
@@ -120,7 +120,7 @@ function columnBlockAt(block: Element, pointer: Point): string | undefined {
   if (group === null || group.hasAttribute('data-stacked')) return undefined;
   const cell = block.closest('td, th');
   if (cell !== null && group.contains(cell)) return undefined;
-  const columns = [...group.querySelectorAll(':scope > .doc-column')];
+  const columns = [...group.querySelectorAll(':scope > .doc-columns-row > .doc-column')];
   const column = columns.find((candidate, index) => {
     const box = candidate.getBoundingClientRect();
     const from = index === 0 ? -Infinity : box.left - COLUMN_GAP / 2;
