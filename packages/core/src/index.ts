@@ -81,6 +81,16 @@ export { getMiniToolsConfig, type MiniToolsConfig } from "@core/config/mini-tool
 export { getUnderstandConfig, type UnderstandConfig } from "@core/config/understand.js";
 export { getSceneConfig, type SceneConfig } from "@core/config/scene.js";
 export { getRegionsConfig, type RegionsConfig } from "@core/config/regions.js";
+export {
+  IDENTITY_TOKEN_TTL_SECONDS,
+  signIdentityToken,
+  verifyIdentityToken,
+  type IdentityClaims,
+  type IdentityClaimsInput,
+  type IdentityRefusal,
+  type IdentitySigningKey,
+  type IdentityVerdict,
+} from "@core/auth/identity-token.js";
 export { canonicalString, signRequest, type SignedParts } from "@core/region/signature.js";
 export {
   callRegion,
