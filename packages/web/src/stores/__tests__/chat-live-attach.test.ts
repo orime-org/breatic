@@ -190,6 +190,27 @@ describe('the end of a run being read', () => {
     });
   }
 
+  it('reads a run once for an attach asked for while the history before it was read', async () => {
+    vi.mocked(chatApi.sync).mockResolvedValueOnce(RUNNING).mockResolvedValue(IDLE);
+    let land!: (read: ConversationRead) => void;
+    vi.mocked(chatApi.readConversation).mockImplementationOnce(() => new Promise((r) => {
+      land = r;
+    }));
+    chatLive.show('p1', 'c1');
+    await settle();
+    // A send the server answers with the run already reading.
+    vi.spyOn(chatApi, 'sendMessage').mockResolvedValueOnce({ status: 'queued', pending: [], running: true });
+    await chatLive.send({ projectId: 'p1', conversationId: 'c1', words: 'more', chips: [], spaces: {} });
+    land(page([userRow('m1', 1)]));
+    await settle();
+    const s = wire.last()!;
+    for (const f of replyOpens()) s.push(f);
+    for (const f of replyEnds()) s.push(f);
+    s.close();
+    await settle();
+    expect(wire.asked()).toBe(1);
+  });
+
   for (const last of ['read to its end', 'gone before its stream was asked for'] as const) {
     it(`attaches to a run a send opened while the history after the last one was read, with no sync to say so: ${last}`, async () => {
       vi.mocked(chatApi.sync).mockResolvedValueOnce(RUNNING).mockResolvedValue(IDLE);
@@ -346,6 +367,22 @@ describe('switching conversations', () => {
     await settle();
     expect(messages().filter((m) => m.role === 'assistant')).toHaveLength(1);
     expect(order.filter((o) => o === 'read')).toHaveLength(2);
+  });
+
+  it('opens no stream for a conversation switched away from while the history before its run was read', async () => {
+    vi.mocked(chatApi.sync).mockResolvedValueOnce(RUNNING).mockResolvedValue(IDLE);
+    let land!: (read: ConversationRead) => void;
+    vi.mocked(chatApi.readConversation).mockImplementationOnce(() => new Promise((r) => {
+      land = r;
+    }));
+    chatLive.show('p1', 'c1');
+    await settle();
+    chatSessionFor({ projectId: 'p1', conversationId: 'c2', history: [], onTitled: () => {} });
+    chatLive.show('p1', 'c2');
+    await settle();
+    land(page([userRow('m1', 1)]));
+    await settle();
+    expect(wire.streams().filter((x) => x.conversationId === 'c1')).toEqual([]);
   });
 
   it('holds at most one stream, the one of the conversation on screen (WB-37)', async () => {
@@ -539,6 +576,37 @@ describe('the history on screen when no run is read', () => {
     await settle();
     expect(chatApi.readConversation).toHaveBeenCalledTimes(2);
     expect(messages().map((m) => m.id)).toEqual(['m1', drawnAs]);
+  });
+
+  it('is read again at the next sync when the read before a run does not land, and the run ends meanwhile', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.mocked(chatApi.sync).mockResolvedValueOnce(RUNNING).mockResolvedValue(IDLE);
+    vi.mocked(chatApi.readConversation)
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValue(page([userRow('m1', 1), DONE]));
+    chatLive.show('p1', 'c1');
+    await vi.advanceTimersByTimeAsync(10);
+    await vi.advanceTimersByTimeAsync(3_100);
+    expect(messages().map((m) => m.id)).toEqual(['m1', 'a1']);
+  });
+
+  it('is read again at the next sync when the read after a card answer does not land', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    chatLive.show('p1', 'c1');
+    await vi.advanceTimersByTimeAsync(10);
+    vi.spyOn(chatApi, 'sendMessage').mockResolvedValueOnce({ status: 'start', pending: [], running: false });
+    vi.mocked(chatApi.readConversation)
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValue(page([userRow('m1', 1), DONE]));
+    await chatLive.answerCard({
+      projectId: 'p1',
+      conversationId: 'c1',
+      toolCallId: 'ask-1',
+      card: { answer: { toolCallId: 'ask-1', answers: [{ index: 0, selected: ['9:16'] }] } },
+      spaces: {},
+    });
+    await vi.advanceTimersByTimeAsync(3_100);
+    expect(messages().map((m) => m.id)).toEqual(['m1', 'a1']);
   });
 
   it('is read again on showing a conversation whose run ended while it was away', async () => {

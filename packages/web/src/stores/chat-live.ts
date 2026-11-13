@@ -120,7 +120,7 @@ async function syncNow(conversationId: string): Promise<void> {
     const fresh = shown.fresh;
     shown.fresh = false;
     if (seen.running && !isReadingRun(conversationId)) void attach(conversationId);
-    else if (fresh && !seen.running && !attaching.has(conversationId)) void readOrRetry(conversationId);
+    else if (fresh && !seen.running && !attaching.has(conversationId)) void readLatest(conversationId);
   } catch (err) {
     // Asked again at the next interval; a sync that does not land changes
     // nothing on screen, so there is nothing to tell.
@@ -136,7 +136,8 @@ const latestRead = new Map<string, number>();
 
 /**
  * Read the newest page of a conversation's history and lay it on the list,
- * unless a read started after it is already on its way.
+ * unless a read started after it is already on its way. A read that does not
+ * land is read again at the next sync of the conversation on screen.
  * @param conversationId - The conversation.
  * @returns Whether it was read; false when it did not land.
  */
@@ -148,20 +149,12 @@ async function readLatest(conversationId: string): Promise<boolean> {
     read = await chatApi.readConversation(conversationId);
   } catch (err) {
     console.error('[chat] the newest page of history did not land', err);
+    if (showing?.conversationId === conversationId) showing.fresh = true;
     return false;
   }
   if (!isShowing(conversationId) || latestRead.get(conversationId) !== mine) return true;
   if (layLatestPage(conversationId, read.messages) === 'replaced') conversationRuntime.tookLatestPage(conversationId, read);
   return true;
-}
-
-/**
- * Read the newest page of the conversation on screen; when it does not land,
- * the next sync reads it again.
- * @param conversationId - The conversation.
- */
-async function readOrRetry(conversationId: string): Promise<void> {
-  if (!(await readLatest(conversationId)) && showing?.conversationId === conversationId) showing.fresh = true;
 }
 
 /**
@@ -181,27 +174,27 @@ function attach(conversationId: string): Promise<void> {
   const run = (async (): Promise<void> => {
     for (;;) {
       if (!isShowing(conversationId) || isReadingRun(conversationId)) return;
-      if (!(await readLatest(conversationId))) return;
+      // Switched away while it was read: the conversation on screen is the
+      // only one whose run this page reads.
+      if (!(await readLatest(conversationId)) || !isShowing(conversationId)) return;
+      // An attach asked for until now is served by the read that follows.
+      askedAgain.delete(conversationId);
       const ended = await readRun(conversationId, () => noteTurnRunning(conversationId));
-      // No run to read: the one that was there ended since the page was read.
-      if (ended === 'none') {
-        await readOrRetry(conversationId);
-        if (askedAgain.delete(conversationId)) continue;
-        break;
+      // 'none': the run that was there ended since the page was read.
+      if (ended !== 'none') {
+        streamed = true;
+        if (ended === 'let-go') return;
+        if (ended === 'next') continue;
+        if (ended === 'lost' || ended === 'broken') {
+          tell({ projectId: showing?.projectId ?? '', conversationId, kind: 'network' });
+          continue;
+        }
+        if (ended === 'failed') tell({ projectId: showing?.projectId ?? '', conversationId, kind: 'turn' });
       }
-      streamed = true;
-      if (ended === 'let-go') return;
-      if (ended === 'next') continue;
-      if (ended === 'lost' || ended === 'broken') {
-        tell({ projectId: showing?.projectId ?? '', conversationId, kind: 'network' });
-        continue;
-      }
-      if (ended === 'failed') tell({ projectId: showing?.projectId ?? '', conversationId, kind: 'turn' });
       // What the run stored, which a run opened or handed over while this
       // page read the history can hold beyond what was streamed here.
-      await readOrRetry(conversationId);
-      if (askedAgain.delete(conversationId)) continue;
-      break;
+      await readLatest(conversationId);
+      if (!askedAgain.delete(conversationId)) break;
     }
   })().finally(() => {
     attaching.delete(conversationId);
