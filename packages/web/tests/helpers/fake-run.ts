@@ -210,9 +210,10 @@ export async function answerRuns(
       response = await route.fetch();
       read = (await response.json()) as { data: { messages: StoredRow[] } };
     } catch (err) {
-      // The page closed while it read the history again after a run; nobody
-      // is left to answer.
-      if (page.isClosed()) return;
+      // The case ended while the page read the history again after a run:
+      // the page, or the response it would have read, is gone, and nobody is
+      // left to answer.
+      if (page.isClosed() || /has been (closed|disposed)/.test(String(err))) return;
       throw err;
     }
     const have = new Set(read.data.messages.map((m) => m.id));
