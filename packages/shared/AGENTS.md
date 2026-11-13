@@ -28,6 +28,8 @@ The protocol layer used by both web and the backend: zod schemas, types, constan
 
 Check: will web call this module's exports? If yes, put it in the barrel, run `pnpm build && pnpm --filter @breatic/web verify:chunks`, and give the module its own subpath entry if the guard fails. Modules web never calls go in the barrel.
 
+**A module that both the main entry and a subpath entry reach is moved by tsup into a shared `dist/chunk-*.js`, and everything it imports goes with it.** Web then bundles that chunk into the first page that imports it, so a lazy chunk calling the same export imports it from that page chunk and `verify:chunks` reports a second reader (a `timeline/document.ts` import of `layer-geometry` once pulled the layer geometry out of web's entry this way). Keep a module reached through a subpath from importing what web calls from the main entry; write the few lines it needs where they are used.
+
 **Decide with the guard, never by reading the code.** The main entry builds to one file, so every export web reaches from the barrel ships in the entry chunk that every user downloads, even if only a lazy page calls it, and what an export drags along depends on everything it calls. `packages/web/verify-chunks.mjs` names known heavy dependencies in `HEAVY` and caps the total with `ENTRY_BUDGET`; the list lags, so a new heavy dependency shows up only as the total going over.
 
 ## HTTP transport
