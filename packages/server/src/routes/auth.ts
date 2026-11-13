@@ -26,7 +26,7 @@ import { env, NotFoundError, regionOfShareToken, UnauthorizedError, trackServerE
 import { logger } from "@breatic/core";
 import { emailSchema, getActiveLocale, normalizeEmail, parseAttribution, t } from "@breatic/shared";
 import type { PersonalStudioRef, SignupReferralSource } from "@breatic/shared";
-import { writeIdentityCookie, type IdentitySubject } from "@server/middleware/identity-cookie.js";
+import { clearIdentityCookie, writeIdentityCookie, type IdentitySubject } from "@server/middleware/identity-cookie.js";
 import { rateLimitFor, rateLimitForAll } from "@server/middleware/rate-limit.js";
 import {
   setSessionCookie,
@@ -539,6 +539,7 @@ auth.post("/logout", requireAuth, async (c) => {
     logRevocationSignalFailure(signalFailure, c.get("user").id);
   }
   clearSessionCookie(c);
+  clearIdentityCookie(c);
   return c.json({ message: t("server.auth.logout_success") });
 });
 

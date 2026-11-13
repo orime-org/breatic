@@ -173,6 +173,24 @@ describe("identity token issue in the global region", () => {
     expectIssued(identityCookie(res), userId, sessionToken);
   });
 
+  it("is cleared by POST /auth/logout", async () => {
+    const userId = await account();
+    const token = await session(userId);
+
+    const res = await app.request("/api/v1/auth/logout", {
+      method: "POST",
+      headers: { Cookie: `${sessionCookieName()}=${token}` },
+    });
+
+    expect(res.status).toBe(200);
+    const line = identityCookie(res);
+    expect(line).toBeDefined();
+    const attributes = line!.split(";").map((part) => part.trim().toLowerCase());
+    expect(line!.split(";")[0]).toBe("breatic_identity=");
+    expect(attributes).toContain("max-age=0");
+    expect(attributes).toContain("domain=.example.test");
+  });
+
   it("is renewed by POST /auth/identity", async () => {
     const userId = await account();
     const token = await session(userId);

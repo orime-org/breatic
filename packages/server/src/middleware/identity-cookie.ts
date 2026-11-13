@@ -12,7 +12,7 @@
  */
 
 import type { Context } from "hono";
-import { setCookie } from "hono/cookie";
+import { deleteCookie, setCookie } from "hono/cookie";
 import {
   backfillSessionIdIndex,
   env,
@@ -63,6 +63,18 @@ export async function writeIdentityCookie(c: Context, subject: IdentitySubject, 
     secure: true,
     sameSite: "Lax",
     maxAge: IDENTITY_TOKEN_TTL_SECONDS,
+    ...(env.IDENTITY_COOKIE_DOMAIN.trim() !== "" ? { domain: env.IDENTITY_COOKIE_DOMAIN.trim() } : {}),
+  });
+}
+
+/**
+ * Remove the identity token cookie when the session it names ends.
+ * @param c - The request context.
+ */
+export function clearIdentityCookie(c: Context): void {
+  deleteCookie(c, IDENTITY_COOKIE_NAME, {
+    path: "/",
+    secure: true,
     ...(env.IDENTITY_COOKIE_DOMAIN.trim() !== "" ? { domain: env.IDENTITY_COOKIE_DOMAIN.trim() } : {}),
   });
 }
