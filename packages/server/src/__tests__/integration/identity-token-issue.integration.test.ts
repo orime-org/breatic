@@ -47,6 +47,7 @@ import {
 } from "@breatic/core";
 import type { Hono } from "hono";
 import { withPeer } from "../helpers/peer.js";
+import { hashPassword } from "@server/modules/auth/auth.service.js";
 
 const keys = generateKeyPairSync("ed25519");
 const PRIVATE_KEY = keys.privateKey.export({ type: "pkcs8", format: "pem" }).toString();
@@ -152,6 +153,24 @@ describe("identity token issue in the global region", () => {
 
     expect(res.status).toBe(200);
     expectIssued(identityCookie(res), userId, token);
+  });
+
+  it("is written by POST /auth/login for the session it opens", async () => {
+    const userId = await account();
+    const [user] = await sql<{ email: string }[]>`
+      UPDATE users SET hashed_password = ${await hashPassword("Identity-Login-1!")} WHERE id = ${userId} RETURNING email
+    `;
+
+    const res = await app.request("/api/v1/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Real-IP": "203.0.113.9" },
+      body: JSON.stringify({ email: user!.email, password: "Identity-Login-1!" }),
+    });
+
+    expect(res.status).toBe(200);
+    const sessionLine = res.headers.getSetCookie().find((line) => line.startsWith(`${sessionCookieName()}=`));
+    const sessionToken = sessionLine!.split(";")[0]!.slice(`${sessionCookieName()}=`.length);
+    expectIssued(identityCookie(res), userId, sessionToken);
   });
 
   it("is renewed by POST /auth/identity", async () => {

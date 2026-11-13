@@ -208,6 +208,10 @@ auth.post("/register", rateLimitFor("register"), validate("json", registerSchema
   const { user, recoveryCode } = registered;
   const { token } = await authService.loginEmail(email, password);
   setSessionCookie(c, token);
+  // Every session opened here comes with its identity token, so another
+  // region answers the very next request (inner#1955).
+  // A new account holds no subscription yet, so its stored tier is the one in force.
+  await writeIdentityCookie(c, identitySubject(user, null), token);
   // Audit log moved here from auth.service.ts per
   // AGENTS.md#library-packages-do-not-log. The route handler is
   // the application boundary that owns request context.
@@ -273,7 +277,9 @@ auth.post(
     );
     clearSignupTicketCookie(c);
     await invitationService.claimEmailInvitationsOnSignIn(user);
-    setSessionCookie(c, await authService.createSession(user.id));
+    const sessionToken = await authService.createSession(user.id);
+    setSessionCookie(c, sessionToken);
+    await writeIdentityCookie(c, identitySubject(user, null), sessionToken);
     logger.info({ userId: user.id, email: user.email }, "user_registered");
     logger.info({ userId: user.id, method: "email" }, "user_logged_in");
     // Same shape as the created branch of `/register`: the personal studio
@@ -337,6 +343,7 @@ auth.post(
       authService.withTierInForce(user),
       studioService.getPersonalStudio(user.id),
     ]);
+    await writeIdentityCookie(c, identitySubject(shown, studio), token);
     // Audit log moved from auth.service.ts (17B mandate).
     logger.info({ userId: user.id, method: "email" }, "user_logged_in");
     trackServerEvent("login_completed", {
@@ -438,6 +445,7 @@ auth.post("/google", rateLimitFor("google"), validate("json", googleAuthSchema),
     authService.withTierInForce(user),
     studioService.getPersonalStudio(user.id),
   ]);
+  await writeIdentityCookie(c, identitySubject(shown, studio), token);
   // Audit log moved from auth.service.ts (17B mandate).
   logger.info({ userId: user.id, method: "google" }, "user_logged_in");
   // A first Google sign-in is a sign-up, already counted as `signup_completed`.
