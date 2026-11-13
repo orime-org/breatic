@@ -32,6 +32,7 @@ import { SideMenuExtension } from '@blocknote/core/extensions';
 
 import { domElementOf } from '@web/spaces/document/document-editor-view';
 import { TABLE_STRIP_OUTSET, tableLineOf } from '@web/spaces/document/document-strip-alignment';
+import { COLUMN_GAP } from '@web/spaces/document/document-column-nodes';
 import { DOC_TABLE } from '@web/spaces/document/document-table-nodes';
 
 /** A point in viewport coordinates. */
@@ -86,6 +87,50 @@ function firstColumnBlockAt(table: Element, pointer: Point): string | undefined 
 }
 
 /**
+ * The block a column holds at a height, the deepest one whose box reaches it
+ * or else the nearest; a table in the column stands for itself, its cells'
+ * blocks are the table's.
+ * @param column - The column.
+ * @param y - The height.
+ * @returns The block's id, or undefined.
+ */
+function blockInColumnAt(column: Element, y: number): string | undefined {
+  let best: { id: string; distance: number } | undefined;
+  const rows = column.querySelectorAll(`[data-node-type="blockContainer"][data-id], [data-node-type="${DOC_TABLE}"][data-id]`);
+  for (const row of rows) {
+    const inCell = row.closest('td, th');
+    if (row.closest('.doc-column') !== column || (inCell !== null && column.contains(inCell))) continue;
+    const box = row.getBoundingClientRect();
+    const distance = y < box.top ? box.top - y : y > box.bottom ? y - box.bottom : 0;
+    if (best === undefined || distance <= best.distance) best = { id: row.getAttribute('data-id') ?? '', distance };
+  }
+  return best?.id || undefined;
+}
+
+/**
+ * The block of a column group at the pointer: each column takes the gap's
+ * half next to it, the first column the gutter left of the group and the
+ * last the room right of it (inner#1314 design §5.2).
+ * @param block - The element of the block the side menu names.
+ * @param pointer - Where the pointer is.
+ * @returns The block's id, or undefined when no group is in question.
+ */
+function columnBlockAt(block: Element, pointer: Point): string | undefined {
+  const group = block.matches('.doc-columns') ? block : block.closest('.doc-columns');
+  if (group === null || group.hasAttribute('data-stacked')) return undefined;
+  const cell = block.closest('td, th');
+  if (cell !== null && group.contains(cell)) return undefined;
+  const columns = [...group.querySelectorAll(':scope > .doc-column')];
+  const column = columns.find((candidate, index) => {
+    const box = candidate.getBoundingClientRect();
+    const from = index === 0 ? -Infinity : box.left - COLUMN_GAP / 2;
+    const to = index === columns.length - 1 ? Infinity : box.right + COLUMN_GAP / 2;
+    return pointer.x >= from && pointer.x < to;
+  });
+  return column === undefined ? undefined : blockInColumnAt(column, pointer.y);
+}
+
+/**
  * The block the side menu stands for instead of the one it names.
  * @param body - The editable element.
  * @param blockId - The block the side menu names.
@@ -95,6 +140,8 @@ function firstColumnBlockAt(table: Element, pointer: Point): string | undefined 
 export function blockForPointer(body: HTMLElement, blockId: string, pointer: Point): string | undefined {
   const block = body.querySelector(`[data-id="${CSS.escape(blockId)}"]:not([data-node-type="blockOuter"])`);
   if (block === null) return undefined;
+  const inColumn = columnBlockAt(block, pointer);
+  if (inColumn !== undefined) return inColumn === blockId ? undefined : inColumn;
   const isTable = block.matches(`[data-node-type="${DOC_TABLE}"]`);
   const table = isTable ? block : block.closest('td, th')?.closest(`[data-node-type="${DOC_TABLE}"]`);
   if (table === null || table === undefined) return undefined;
@@ -132,17 +179,8 @@ export const documentTableSideMenuExtension = createExtension(({ editor }) => ({
     let pinned: string | undefined;
     // On the window in the capture phase, ahead of the side menu's own
     // listener on the document, so the point is current when its state moves.
-    window.addEventListener(
-      'mousemove',
-      (event) => {
-        pointer = { x: event.clientX, y: event.clientY };
-        const onMenu = event.target instanceof Element && event.target.closest('[data-row-id]') !== null;
-        if (!onMenu) pinned = undefined;
-        else if (pinned === undefined) pinned = sideMenu.store.state?.show === true ? sideMenu.store.state.block.id : undefined;
-      },
-      { signal, capture: true },
-    );
-    const unsubscribe = sideMenu.store.subscribe(() => {
+    /** Hands the menu to the block the pointer stands for, if that is another. */
+    const follow = (): void => {
       const state = sideMenu.store.state;
       if (state?.show !== true || pointer === undefined) return;
       // The menu hides as the editor unmounts, when its view is gone.
@@ -152,7 +190,26 @@ export const documentTableSideMenuExtension = createExtension(({ editor }) => ({
       const next = id === undefined ? undefined : editor.getBlock(id);
       if (next === undefined) return;
       sideMenu.store.setState({ ...state, block: next as never });
-    });
+    };
+    window.addEventListener(
+      'mousemove',
+      (event) => {
+        pointer = { x: event.clientX, y: event.clientY };
+        const onMenu = event.target instanceof Element && event.target.closest('[data-row-id]') !== null;
+        if (!onMenu) pinned = undefined;
+        else if (pinned === undefined) pinned = sideMenu.store.state?.show === true ? sideMenu.store.state.block.id : undefined;
+        // Across a column group's gap the side menu keeps naming the block
+        // it found, so the half of the gap the pointer is on is read on
+        // every move (inner#1314 design §5.2). Not while a button is held: a
+        // press on a handle is a drag about to start, and handing the menu to
+        // another block then swaps the pressed handle out before the browser
+        // starts the drag.
+        const inGroup = event.target instanceof Element && event.target.closest('.doc-columns') !== null;
+        if (!onMenu && inGroup && event.buttons === 0) follow();
+      },
+      { signal, capture: true },
+    );
+    const unsubscribe = sideMenu.store.subscribe(follow);
     signal.addEventListener('abort', () => unsubscribe());
   },
 }));

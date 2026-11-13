@@ -157,7 +157,26 @@ export function stripPlacement(bodyOf: () => HTMLElement | undefined): {
             // the first column where every other block's strip stands, out
             // from the table's left line. The table's own strip stands
             // further out than that.
-            const anchor = elements.reference instanceof Element ? elements.reference : elements.reference.contextElement;
+            // The block's element as the document draws it now: BlockNote's
+            // `BlockPopover` keeps the element it found for the block id
+            // (`useMemo` on the id), and a block moved into a column is drawn
+            // anew under the same id, so the kept one is detached.
+            const kept = elements.reference instanceof Element ? elements.reference : elements.reference.contextElement;
+            const rowId = elements.floating.querySelector('[data-row-id]')?.getAttribute('data-row-id');
+            const drawn =
+              rowId == null ? null : bodyOf()?.querySelector(`[data-id="${CSS.escape(rowId)}"]:not([data-node-type="blockOuter"])`);
+            const anchor = kept?.isConnected === true ? kept : (drawn ?? kept);
+            // A block in a column stands its strip in the gap left of its
+            // column (inner#1314 design §5.1), unless a cell is nearer.
+            const holder = anchor?.closest('.doc-column, td, th');
+            if (holder?.matches('.doc-column') === true && holder.closest('.doc-columns[data-stacked]') === null) {
+              // Placed from the column itself, in the carrier's own offset
+              // parent: the reference rect floating-ui measured can be the one
+              // BlockNote cached before the block was drawn in the column.
+              const parent = elements.floating.offsetParent;
+              const origin = parent === null ? 0 : parent.getBoundingClientRect().left + parent.clientLeft - parent.scrollLeft;
+              return { x: holder.getBoundingClientRect().left - STRIP_OUTSET - rects.floating.width - origin };
+            }
             const cell = anchor?.closest('td, th');
             if (cell != null) {
               const width = rects.floating.width;

@@ -81,7 +81,10 @@ async function dragRowTo(p: Page, words: string, to: { x: number; y: number }): 
   if (grip === null) throw new Error('no handle');
   await p.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2, { steps: 3 });
   await p.mouse.down();
-  await p.mouse.move(grip.x + 10, grip.y + 10, { steps: 3 });
+  // Far enough for the browser to start the drag before the long move: a
+  // drag starting partway through Playwright's stepped move leaves that move
+  // waiting (seen with a handle in a column's gap).
+  await p.mouse.move(grip.x + 20, grip.y + 20, { steps: 3 });
   await p.mouse.move(to.x, to.y, { steps: 12 });
   await p.mouse.up();
 }
@@ -120,4 +123,37 @@ test('dragging a row into the empty space right of a narrow block still lands be
   // Past the body's right edge, in the page margin, level with alpha.
   await dragRowTo(page, 'beta', { x: target.x + target.width + 120, y: target.y + target.height / 2 });
   await expect.poll(() => groups(page)).toEqual([['alpha', 'beta']]);
+});
+
+test('a block in the second column has its handle in the gap, and drags from there', async () => {
+  await openWithLines(page, ['alpha', 'beta', 'gamma']);
+  const a = await row(page, 'alpha').boundingBox();
+  if (a === null) throw new Error('no alpha');
+  await dragRowTo(page, 'gamma', { x: a.x + a.width - 6, y: a.y + a.height / 2 });
+  await expect.poll(() => groups(page)).toEqual([['alpha', 'gamma']]);
+
+  const second = await page.locator(`${EDITOR} .doc-column`).nth(1).boundingBox();
+  const g = await row(page, 'gamma').boundingBox();
+  if (second === null || g === null) throw new Error('no second column');
+  // Coming from the left column across the gap, the pointer reaches the
+  // right half of the gap, which is the second column's row.
+  await page.mouse.move(second.x - 60, g.y + g.height / 2);
+  await page.mouse.move(second.x - 20, g.y + g.height / 2, { steps: 4 });
+  const handle = page.getByTestId('doc-block-handle');
+  await expect(handle).toBeVisible();
+  const grip = await handle.boundingBox();
+  if (grip === null) throw new Error('no handle');
+  expect(grip.x).toBeGreaterThanOrEqual(second.x - 36 - 1);
+  expect(grip.x + grip.width).toBeLessThanOrEqual(second.x - 12 + 1);
+
+  // Dragged from that handle below beta, gamma leaves the columns.
+  const b = await row(page, 'beta').boundingBox();
+  if (b === null) throw new Error('no beta');
+  await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2, { steps: 3 });
+  await page.mouse.down();
+  await page.mouse.move(grip.x + 20, grip.y + 20, { steps: 3 });
+  await page.mouse.move(b.x + 40, b.y + b.height - 2, { steps: 12 });
+  await page.mouse.up();
+  await expect.poll(() => groups(page)).toEqual([]);
+  await expect.poll(() => page.locator(`${EDITOR} .bn-inline-content`).allTextContents()).toEqual(['alpha', 'beta', 'gamma']);
 });

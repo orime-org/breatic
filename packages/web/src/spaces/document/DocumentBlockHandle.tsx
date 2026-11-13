@@ -195,6 +195,8 @@ export function BlockStrip({ block, hold }: { block: PressedBlock | undefined; h
   const [menuFace, setMenuFace] = React.useState<StripFace>('grip');
   // Ends the drag started from this handle, while one is under way.
   const endDrag = React.useRef<(() => void) | null>(null);
+  // A press on the handle holds the strip until it becomes a click or a drag.
+  const pressHeld = React.useRef(false);
   // Whether the drag off this handle is running. The handle IS the drag's
   // source element, so it cannot leave the document while the drag is on —
   // and the drag's own first act is to select the row it moves, which is what
@@ -367,7 +369,29 @@ export function BlockStrip({ block, hold }: { block: PressedBlock | undefined; h
             data-testid={TEST_ID[face]}
             className={drags ? `${STRIP_BUTTON} cursor-grab` : STRIP_BUTTON}
             draggable={drags ? true : undefined}
+            // Held from the press: between the press and the browser starting
+            // the drag the pointer can cross onto another row (a column
+            // group's other column, inner#1314), and the side menu following
+            // it would swap the pressed handle out before the drag starts.
+            onPointerDown={
+              drags
+                ? () => {
+                  pressHeld.current = true;
+                  hold.freeze();
+                }
+                : undefined
+            }
+            onPointerUp={() => {
+              // After the click this press may become: a menu opening, or a
+              // drag, each holds the strip itself.
+              setTimeout(() => {
+                if (!pressHeld.current) return;
+                pressHeld.current = false;
+                hold.unfreeze();
+              }, 0);
+            }}
             onDragStart={(event) => {
+              pressHeld.current = false;
               setDragActive(true);
               setMenuFace(face);
               endDrag.current = startRowDrag(editor as never, event.nativeEvent, block.id);
@@ -386,6 +410,7 @@ export function BlockStrip({ block, hold }: { block: PressedBlock | undefined; h
               endDrag.current = null;
             }}
             onClick={() => {
+              pressHeld.current = false;
               if (!menuOpen) setMenuFace(face);
               onMenuOpenChange(!menuOpen);
             }}
