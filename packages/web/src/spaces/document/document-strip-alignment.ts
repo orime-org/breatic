@@ -162,10 +162,17 @@ export function stripPlacement(bodyOf: () => HTMLElement | undefined): {
             // (`useMemo` on the id), and a block moved into a column is drawn
             // anew under the same id, so the kept one is detached.
             const kept = elements.reference instanceof Element ? elements.reference : elements.reference.contextElement;
-            const rowId = elements.floating.querySelector('[data-row-id]')?.getAttribute('data-row-id');
-            const drawn =
-              rowId == null ? null : bodyOf()?.querySelector(`[data-id="${CSS.escape(rowId)}"]:not([data-node-type="blockOuter"])`);
-            const anchor = kept?.isConnected === true ? kept : (drawn ?? kept);
+            /**
+             * The block's element as drawn now, read through the strip's own row id.
+             * @returns The element, or the kept one when none is found.
+             */
+            const drawn = (): Element | undefined => {
+              const carrier = elements.floating as HTMLElement | undefined;
+              const rowId = carrier?.querySelector('[data-row-id]')?.getAttribute('data-row-id');
+              const found = rowId == null ? null : bodyOf()?.querySelector(`[data-id="${CSS.escape(rowId)}"]:not([data-node-type="blockOuter"])`);
+              return found ?? kept;
+            };
+            const anchor = kept === undefined || kept.isConnected ? kept : drawn();
             // A block in a column stands its strip in the gap left of its
             // column (inner#1314 design §5.1), unless a cell is nearer.
             const holder = anchor?.closest('.doc-column, td, th');
