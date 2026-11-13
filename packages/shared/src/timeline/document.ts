@@ -8,10 +8,12 @@ import {
   TimelineVideoSourceSchema, TIMELINE_MAIN_TRACK_ID, type TimelineDocumentV1, type TimelineOperationReceipt, type TimelineSettings,
   type TimelineVideoSource,
 } from "@shared/timeline/schema.js";
-import { timelineLayerFrameOffset, type TimelineLayerFrame } from "@shared/timeline/layer-geometry.js";
 
 /** The document version new code writes: clip offsets are fractions of the frame (#1502). */
 const FRAME_OFFSET_VERSION = 2;
+
+/** A frame size in pixels. */
+type TimelineFrame = Pick<TimelineSettings, "width" | "height">;
 
 /**
  * Attach a child map before populating it, preserving Yjs field-level merges.
@@ -90,6 +92,9 @@ function isPixelTransform(transform: unknown): transform is Record<string, unkno
 /**
  * A stored transform in the frame-offset format: pixel offsets are divided by the frame size, and pixel fields beside
  * frame fields are dropped. Reading and storing use this one conversion, so storing a converted clip moves nothing.
+ * Version 1 stored `x` and `y` in pixels of the frame, so the division is that format's definition. It is written here
+ * so the layer geometry stays in the main entry's own module, which web's entry chunk carries for the lazy layer
+ * handles (verify:chunks).
  * @param transform - A stored transform value.
  * @param frame - The document's frame size.
  * @param frame.width - Frame width in pixels.
@@ -97,11 +102,11 @@ function isPixelTransform(transform: unknown): transform is Record<string, unkno
  * @returns The transform in the frame-offset format, or the value itself when it is not an object.
  * @throws {never} Never.
  */
-function frameOffsetTransform(transform: unknown, frame: TimelineLayerFrame): unknown {
+function frameOffsetTransform(transform: unknown, frame: TimelineFrame): unknown {
   if (transform === null || typeof transform !== "object") return transform;
   const { x, y, ...rest } = transform as Record<string, unknown>;
   if (!isPixelTransform(transform)) return "frameX" in rest || "frameY" in rest ? rest : transform;
-  return { ...rest, ...timelineLayerFrameOffset(frame, { x: x as number, y: y as number }) };
+  return { ...rest, frameX: (x as number) / frame.width, frameY: (y as number) / frame.height };
 }
 
 /**
@@ -111,7 +116,7 @@ function frameOffsetTransform(transform: unknown, frame: TimelineLayerFrame): un
  * @returns The record to validate.
  * @throws {never} Never.
  */
-function frameOffsetClip(value: unknown, frame: TimelineLayerFrame | undefined): unknown {
+function frameOffsetClip(value: unknown, frame: TimelineFrame | undefined): unknown {
   const json = timelineRecordJson(value);
   if (frame === undefined || json === null || typeof json !== "object" || !("transform" in json)) return json;
   return { ...json, transform: frameOffsetTransform(json.transform, frame) };
