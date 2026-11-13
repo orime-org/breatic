@@ -77,6 +77,7 @@ describe("chatAttachedChipSchema — id", () => {
 
 describe("chatMessageSchema — time_zone", () => {
   const message = {
+    id: "33333333-3333-4333-8333-333333333333",
     message: "what time is it?",
     project_id: "11111111-1111-4111-8111-111111111111",
     conversation_id: "22222222-2222-4222-8222-222222222222",
@@ -99,6 +100,7 @@ describe("chatMessageSchema — time_zone", () => {
 
 describe("chatMessageSchema — the user's Spaces (inner#1413)", () => {
   const message = {
+    id: "33333333-3333-4333-8333-333333333333",
     message: "summarise this",
     project_id: "11111111-1111-4111-8111-111111111111",
     conversation_id: "22222222-2222-4222-8222-222222222222",
@@ -141,6 +143,7 @@ describe("chatMessageSchema — the user's Spaces (inner#1413)", () => {
 
 describe("chatMessageSchema — how much of an open canvas is shown (inner#1413)", () => {
   const message = {
+    id: "33333333-3333-4333-8333-333333333333",
     message: "what is on this canvas",
     project_id: "11111111-1111-4111-8111-111111111111",
     conversation_id: "22222222-2222-4222-8222-222222222222",
@@ -187,6 +190,7 @@ describe("chatMessageSchema — how much of an open canvas is shown (inner#1413)
 
 describe("chatMessageSchema — an open document's blocks (inner#1509)", () => {
   const message = {
+    id: "33333333-3333-4333-8333-333333333333",
     message: "comment on scene 2",
     project_id: "11111111-1111-4111-8111-111111111111",
     conversation_id: "22222222-2222-4222-8222-222222222222",
