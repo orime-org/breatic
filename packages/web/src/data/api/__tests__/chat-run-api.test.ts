@@ -49,6 +49,11 @@ describe('stopping a run', () => {
     await chatApi.stop('c1', 'p1');
     expect(apiPost).toHaveBeenCalledWith('/chat/stop', { conversation_id: 'c1', project_id: 'p1' });
   });
+
+  it('names the run it means when it knows it', async () => {
+    await chatApi.stop('c1', 'p1', 'r1');
+    expect(apiPost).toHaveBeenCalledWith('/chat/stop', { conversation_id: 'c1', project_id: 'p1', run_id: 'r1' });
+  });
 });
 
 describe('taking a waiting message back', () => {

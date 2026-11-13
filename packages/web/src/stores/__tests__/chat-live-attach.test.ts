@@ -112,6 +112,24 @@ describe('a sync that says a run holds the conversation', () => {
   });
 });
 
+describe('stopping the run being read', () => {
+  it('names the run it reads, then the next one once the stream says it opened', async () => {
+    vi.mocked(chatApi.sync).mockResolvedValueOnce(RUNNING);
+    chatLive.show('p1', 'c1');
+    await settle();
+    wire.last()!.push(BEAT);
+    wire.last()!.push({ type: 'data-run', transient: true, data: { runId: 'R1' } });
+    for (const f of replyOpens()) wire.last()!.push(f);
+    await settle();
+    await chatLive.stop('p1', 'c1');
+    expect(chatApi.stop).toHaveBeenLastCalledWith('c1', 'p1', 'R1');
+    wire.last()!.push({ type: 'data-next-run', transient: true, data: { runId: 'R2' } });
+    await settle();
+    await chatLive.stop('p1', 'c1');
+    expect(chatApi.stop).toHaveBeenLastCalledWith('c1', 'p1', 'R2');
+  });
+});
+
 describe('a message a run took in', () => {
   it('leaves the waiting area and stays in the reply where it was read (WB-22)', async () => {
     const m2 = { id: 'm2', sentAt: '2026-11-12T08:00:00.000Z', words: 'blue', chips: [] };

@@ -331,12 +331,14 @@ export const chatApi = {
    * Stop the run that holds a conversation, on whichever server it runs (inner#1717).
    * @param conversationId - The conversation
    * @param projectId - Project it lives in
+   * @param runId - The run the page reads; a stop for it leaves any other run alone
    * @returns Whether a run was there to stop
    */
-  stop(conversationId: string, projectId: string): Promise<ChatStopAnswer> {
-    return apiPost<ChatStopAnswer, { conversation_id: string; project_id: string }>('/chat/stop', {
+  stop(conversationId: string, projectId: string, runId?: string): Promise<ChatStopAnswer> {
+    return apiPost<ChatStopAnswer, { conversation_id: string; project_id: string; run_id?: string }>('/chat/stop', {
       conversation_id: conversationId,
       project_id: projectId,
+      ...(runId === undefined ? {} : { run_id: runId }),
     });
   },
   /**

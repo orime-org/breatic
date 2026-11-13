@@ -24,7 +24,7 @@ import { conversationRuntime } from '@web/stores/conversation-runtime';
 import { noteTurnRunning } from '@web/stores/running-turns';
 import { runOnce } from '@web/stores/task-actions-in-flight';
 import { ApiException } from '@web/data/api/types';
-import { isReadingRun, layLatestPage, letGoOfRun, readRun, runEndedInError, settleAsk, type CardResult } from '@web/stores/chat-sessions';
+import { isReadingRun, layLatestPage, letGoOfRun, readRun, runEndedInError, runNamedIn, settleAsk, type CardResult } from '@web/stores/chat-sessions';
 
 /** The conversation this page shows, and its project. */
 interface Showing {
@@ -355,7 +355,7 @@ export const chatLive = {
   async stop(projectId: string, conversationId: string): Promise<void> {
     markFlag('stopping', conversationId, true);
     try {
-      await chatApi.stop(conversationId, projectId);
+      await chatApi.stop(conversationId, projectId, runNamedIn(conversationId));
     } catch (err) {
       tell({ projectId, conversationId, ...readMishap(err) });
     } finally {

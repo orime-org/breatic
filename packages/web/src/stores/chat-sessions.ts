@@ -73,6 +73,9 @@ const NEXT_RUN = 'data-next-run';
 /** The chunk the server proves a running stream alive with. */
 const BEAT = 'data-heartbeat';
 
+/** The chunk a run's stream names its run with, after its first beat (inner#1717). */
+const RUN = 'data-run';
+
 /**
  * What a card's call ends with: a questionnaire's result, or a request to
  * look at Spaces settled as the server stored it (inner#1552).
@@ -193,6 +196,9 @@ const lettingGo = new Set<string>();
 
 /** The runs that said, before ending, that the next run is already open. */
 const nextRunSaid = new Set<string>();
+
+/** The run each conversation's stream last named, which a stop pressed here means. */
+const runNamed = new Map<string, string>();
 
 /** The conversations this page is reading a run of now. */
 const reading = new Set<string>();
@@ -357,6 +363,15 @@ export async function readRun(conversationId: string, onOpened: () => void): Pro
 }
 
 /**
+ * The run a conversation's stream last named.
+ * @param conversationId - The conversation.
+ * @returns Its id, or undefined before a stream named one.
+ */
+export function runNamedIn(conversationId: string): string | undefined {
+  return runNamed.get(conversationId);
+}
+
+/**
  * Whether this page is reading a conversation's run now.
  * @param conversationId - The conversation.
  * @returns True while it is.
@@ -410,8 +425,10 @@ export function chatSessionFor(init: ChatSessionInit): Chat<StoredUiMessage> {
         noteConsolidating(conversationId);
         return;
       }
-      if (part.type === NEXT_RUN) {
-        nextRunSaid.add(conversationId);
+      if (part.type === RUN || part.type === NEXT_RUN) {
+        const runId = (part.data as { runId?: unknown } | null)?.runId;
+        if (typeof runId === 'string') runNamed.set(conversationId, runId);
+        if (part.type === NEXT_RUN) nextRunSaid.add(conversationId);
         return;
       }
       if (part.type === USER_MESSAGE) {
@@ -467,6 +484,7 @@ export function evictChatSession(conversationId: string): void {
   reading.delete(conversationId);
   lost.delete(conversationId);
   nextRunSaid.delete(conversationId);
+  runNamed.delete(conversationId);
   noteTurnSettled(conversationId);
   chatWaiting.forget(conversationId);
 }
@@ -479,6 +497,7 @@ export function evictAllChatSessions(): void {
   reading.clear();
   lost.clear();
   nextRunSaid.clear();
+  runNamed.clear();
   clearRunningTurns();
   chatWaiting.clearAll();
 }
