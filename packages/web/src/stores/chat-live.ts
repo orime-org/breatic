@@ -57,6 +57,12 @@ let showing: Showing | null = null;
 const attaching = new Map<string, Promise<void>>();
 
 /**
+ * The attaches asked for while one under way was past its run, reading the
+ * history after it: a run opened since, which that one would not read.
+ */
+const askedAgain = new Set<string>();
+
+/**
  * Whether a conversation is the one on screen.
  * @param conversationId - The conversation.
  * @returns True while it is.
@@ -108,11 +114,13 @@ async function syncNow(conversationId: string): Promise<void> {
     shown.intervalMs = seen.next_sync_ms;
     chatWaiting.fromSync(conversationId, { pending: seen.pending, awaiting: seen.awaiting, blocked: seen.blocked === 'credits' });
     // Shown again with no run holding it: a run that ended while it was away
-    // is in the history only.
+    // is in the history only. An attach under way reads it before its run and
+    // again after; a read of ours landing during that run would replace the
+    // reply being drawn.
     const fresh = shown.fresh;
     shown.fresh = false;
     if (seen.running && !isReadingRun(conversationId)) void attach(conversationId);
-    else if (fresh && !seen.running) void readOrRetry(conversationId);
+    else if (fresh && !seen.running && !attaching.has(conversationId)) void readOrRetry(conversationId);
   } catch (err) {
     // Asked again at the next interval; a sync that does not land changes
     // nothing on screen, so there is nothing to tell.
@@ -165,7 +173,10 @@ async function readOrRetry(conversationId: string): Promise<void> {
  */
 function attach(conversationId: string): Promise<void> {
   const under = attaching.get(conversationId);
-  if (under) return under;
+  if (under) {
+    askedAgain.add(conversationId);
+    return under;
+  }
   let streamed = false;
   const run = (async (): Promise<void> => {
     for (;;) {
@@ -175,6 +186,7 @@ function attach(conversationId: string): Promise<void> {
       // No run to read: the one that was there ended since the page was read.
       if (ended === 'none') {
         await readOrRetry(conversationId);
+        if (askedAgain.delete(conversationId)) continue;
         break;
       }
       streamed = true;
@@ -188,10 +200,12 @@ function attach(conversationId: string): Promise<void> {
       // What the run stored, which a run opened or handed over while this
       // page read the history can hold beyond what was streamed here.
       await readOrRetry(conversationId);
+      if (askedAgain.delete(conversationId)) continue;
       break;
     }
   })().finally(() => {
     attaching.delete(conversationId);
+    askedAgain.delete(conversationId);
   });
   attaching.set(conversationId, run);
   // Once a stream is over, however it ended, ask where things stand: a run may
@@ -460,6 +474,7 @@ export const chatLive = {
 export function resetChatLiveForTests(): void {
   if (showing !== null) chatLive.hide(showing.conversationId);
   attaching.clear();
+  askedAgain.clear();
   sendChains.clear();
   latestRead.clear();
   useChatLive.setState({ sending: {}, stopping: {} });

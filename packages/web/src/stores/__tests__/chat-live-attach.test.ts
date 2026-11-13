@@ -190,6 +190,41 @@ describe('the end of a run being read', () => {
     });
   }
 
+  for (const last of ['read to its end', 'gone before its stream was asked for'] as const) {
+    it(`attaches to a run a send opened while the history after the last one was read, with no sync to say so: ${last}`, async () => {
+      vi.mocked(chatApi.sync).mockResolvedValueOnce(RUNNING).mockResolvedValue(IDLE);
+      let landAfter!: (read: ConversationRead) => void;
+      if (last === 'read to its end') {
+        chatLive.show('p1', 'c1');
+        await settle();
+        const s = wire.last()!;
+        for (const f of replyOpens()) s.push(f);
+        for (const f of replyEnds()) s.push(f);
+        vi.mocked(chatApi.readConversation).mockImplementationOnce(() => new Promise((r) => {
+          landAfter = r;
+        }));
+        s.close();
+      } else {
+        wire.noRunNext();
+        vi.mocked(chatApi.readConversation)
+          .mockResolvedValueOnce(page([userRow('m1', 1)]))
+          .mockImplementationOnce(() => new Promise((r) => {
+            landAfter = r;
+          }));
+        chatLive.show('p1', 'c1');
+      }
+      await settle();
+      // The history read after the run is on its way; a send opens the next run.
+      const streamsBefore = wire.streams().length;
+      vi.spyOn(chatApi, 'sendMessage').mockResolvedValueOnce({ status: 'start', pending: [], running: true });
+      await chatLive.send({ projectId: 'p1', conversationId: 'c1', words: 'again', chips: [], spaces: {} });
+      await settle();
+      landAfter(page([userRow('m1', 1)]));
+      await settle();
+      expect(wire.streams()).toHaveLength(streamsBefore + 1);
+    });
+  }
+
   it('attaches again when the sync after it says a run holds the conversation, and not otherwise (WB-44)', async () => {
     vi.mocked(chatApi.sync).mockResolvedValueOnce(RUNNING).mockResolvedValueOnce(RUNNING).mockResolvedValue(IDLE);
     chatLive.show('p1', 'c1');
@@ -420,6 +455,57 @@ describe('the history on screen when no run is read', () => {
     expect(messages().map((m) => m.id).slice(0, 3)).toEqual(['m1', 'a1', 'm2']);
   });
 
+  it('is not laid over a run this page has started reading, whose end reads it again', async () => {
+    let answerSync!: (seen: ChatSyncAnswer) => void;
+    vi.mocked(chatApi.sync).mockImplementationOnce(() => new Promise((r) => {
+      answerSync = r;
+    }));
+    chatLive.show('p1', 'c1');
+    await settle();
+    // Sent before the sync on showing answers; the server opens a run.
+    vi.spyOn(chatApi, 'sendMessage').mockResolvedValueOnce({ status: 'start', pending: [], running: true });
+    vi.mocked(chatApi.readConversation).mockResolvedValue(page([userRow('m1', 1), DONE, userRow('m2', 2)]));
+    await chatLive.send({ projectId: 'p1', conversationId: 'c1', words: 'again', chips: [], spaces: {} });
+    await settle();
+    const s = wire.last()!;
+    s.push(BEAT);
+    for (const f of replyOpens()) s.push(f);
+    s.push({ type: 'text-delta', id: 't1', delta: 'half way' });
+    await settle();
+    // The sync read the state from before the send.
+    answerSync(IDLE);
+    await settle();
+    expect(messages().at(-1)!.parts).toContainEqual(expect.objectContaining({ type: 'text', text: 'half way' }));
+  });
+
+  it('is laid before the run a send opened, the sync on showing answering in between', async () => {
+    let answerSync!: (seen: ChatSyncAnswer) => void;
+    vi.mocked(chatApi.sync).mockImplementationOnce(() => new Promise((r) => {
+      answerSync = r;
+    }));
+    chatLive.show('p1', 'c1');
+    await settle();
+    const lands: Array<(read: ConversationRead) => void> = [];
+    vi.mocked(chatApi.readConversation).mockImplementation(() => new Promise((r) => {
+      lands.push(r);
+    }));
+    vi.spyOn(chatApi, 'sendMessage').mockResolvedValueOnce({ status: 'start', pending: [], running: true });
+    await chatLive.send({ projectId: 'p1', conversationId: 'c1', words: 'again', chips: [], spaces: {} });
+    await settle();
+    // The sync read the state from before the send.
+    answerSync(IDLE);
+    await settle();
+    lands.shift()!(page([userRow('m1', 1)]));
+    await settle();
+    const s = wire.last()!;
+    s.push(BEAT);
+    for (const f of replyOpens()) s.push(f);
+    await settle();
+    for (const land of lands.splice(0)) land(page([userRow('m1', 1)]));
+    await settle();
+    expect(messages().map((m) => m.role)).toEqual(['user', 'assistant']);
+  });
+
   it('is read again once a run read to its end is over', async () => {
     vi.mocked(chatApi.sync).mockResolvedValueOnce(RUNNING);
     vi.mocked(chatApi.readConversation)
@@ -433,6 +519,25 @@ describe('the history on screen when no run is read', () => {
     s.close();
     await settle();
     expect(messages().map((m) => m.id)).toEqual(['m1', 'a1', 'm2', 'a2']);
+  });
+
+  it('keeps a reply read back after its run under the id it was drawn with, so it is not drawn anew', async () => {
+    vi.mocked(chatApi.sync).mockResolvedValueOnce(RUNNING);
+    vi.mocked(chatApi.readConversation).mockResolvedValueOnce(page([userRow('m1', 1)]));
+    chatLive.show('p1', 'c1');
+    await settle();
+    const s = wire.last()!;
+    for (const f of replyOpens()) s.push(f);
+    s.push({ type: 'text-delta', id: 't1', delta: 'all done' });
+    await settle();
+    const drawnAs = messages()[1]!.id;
+    // The server stores it under the name its stream's `start` gave it.
+    vi.mocked(chatApi.readConversation).mockResolvedValue(page([userRow('m1', 1), { ...DONE, id: 'server-named' }]));
+    for (const f of replyEnds()) s.push(f);
+    s.close();
+    await settle();
+    expect(chatApi.readConversation).toHaveBeenCalledTimes(2);
+    expect(messages().map((m) => m.id)).toEqual(['m1', drawnAs]);
   });
 
   it('is read again on showing a conversation whose run ended while it was away', async () => {
@@ -494,6 +599,21 @@ describe('a run resumed after a card', () => {
     expect(messages().map((m) => m.role)).toEqual(['user', 'assistant', 'assistant']);
     expect(messages()[1]).toEqual(PAUSED);
     expect(messages()[2]!.parts.filter((p) => p.type === 'text').map((p) => (p as { text: string }).text)).toEqual(['Going with 9:16.']);
+  });
+
+  it('read back after a stream that drew nothing, keeps the reply under the server name, not the one that asked', async () => {
+    vi.mocked(chatApi.sync).mockResolvedValueOnce(RUNNING);
+    chatLive.show('p1', 'c1');
+    await settle();
+    const s = wire.last()!;
+    s.push(BEAT);
+    s.push({ type: 'start', messageId: 'server-named' });
+    await settle();
+    const stored: StoredUiMessage = { id: 'server-named', role: 'assistant', parts: [{ type: 'text', text: 'Going with 9:16.' }], metadata: { turnIndex: 1 } as never };
+    vi.mocked(chatApi.readConversation).mockResolvedValue(page([userRow('m1', 1), PAUSED, stored]));
+    s.close();
+    await settle();
+    expect(messages().map((m) => m.id)).toEqual(['m1', 'a1', 'server-named']);
   });
 
   it('leaves the history as it is when no run is there to read', async () => {

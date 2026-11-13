@@ -134,15 +134,20 @@ function sayWhenItAnswers(stream: ReadableStream<UIMessageChunk>, onAnswering: (
  * id matches it and pushes a new one otherwise (`ai@7.0.68` `index.js:17977`),
  * so a renamed `start` adds a second copy of the reply so far. Without a name
  * on `start` the SDK keeps the one the stream began under (`index.js:7368`).
+ *
+ * The server's name is kept aside, so the reply read back from the history
+ * once the run is over can be laid under the name it was drawn with.
  * @param stream - A run's stream.
+ * @param conversationId - Its conversation.
  * @returns The same frames, `start` without a name.
  */
-function keepOurNames(stream: ReadableStream<UIMessageChunk>): ReadableStream<UIMessageChunk> {
+function keepOurNames(stream: ReadableStream<UIMessageChunk>, conversationId: string): ReadableStream<UIMessageChunk> {
   return stream.pipeThrough(
     new TransformStream<UIMessageChunk, UIMessageChunk>({
       transform(chunk, controller) {
         if (chunk.type === 'start' && chunk.messageId !== undefined) {
-          const { messageId: _named, ...rest } = chunk;
+          const { messageId: named, ...rest } = chunk;
+          serverNamed.set(conversationId, named);
           controller.enqueue(rest);
           return;
         }
@@ -180,7 +185,7 @@ function transportFor(conversationId: string): ChatTransport<StoredUiMessage> {
       const stream = await wire.reconnectToStream(options);
       if (stream === null) return null;
       streamOpened.get(conversationId)?.();
-      return sayWhenItAnswers(keepOurNames(stream), () => clearConsolidating(conversationId));
+      return sayWhenItAnswers(keepOurNames(stream, conversationId), () => clearConsolidating(conversationId));
     },
   };
 }
@@ -199,6 +204,12 @@ const nextRunSaid = new Set<string>();
 
 /** The run each conversation's stream last named, which a stop pressed here means. */
 const runNamed = new Map<string, string>();
+
+/** The name the server gave the reply of the run each conversation's stream reads. */
+const serverNamed = new Map<string, string>();
+
+/** For each conversation, the replies drawn here: the server's name to the one drawn under. */
+const drawnNames = new Map<string, Map<string, string>>();
 
 /** The conversations this page is reading a run of now. */
 const reading = new Set<string>();
@@ -284,6 +295,23 @@ function turnOf(message: StoredUiMessage): number | undefined {
 }
 
 /**
+ * Messages read back from the history, each reply drawn here under the name it
+ * was drawn with: under the server's it would be drawn anew, closing whatever
+ * the user had open in it.
+ * @param conversationId - The conversation.
+ * @param read - The messages read.
+ * @returns The same messages, renamed where drawn here.
+ */
+function asDrawn(conversationId: string, read: StoredUiMessage[]): StoredUiMessage[] {
+  const names = drawnNames.get(conversationId);
+  if (names === undefined) return read;
+  return read.map((m) => {
+    const drawn = names.get(m.id);
+    return drawn === undefined ? m : { ...m, id: drawn };
+  });
+}
+
+/**
  * Lay the newest page of a conversation's history over its list.
  *
  * Where the page joins the list -- the list holds a turn no earlier than the
@@ -298,6 +326,7 @@ function turnOf(message: StoredUiMessage): number | undefined {
 export function layLatestPage(conversationId: string, page: StoredUiMessage[]): 'joined' | 'replaced' {
   const chat = sessions.get(conversationId);
   if (!chat) return 'replaced';
+  page = asDrawn(conversationId, page);
   const first = page.map(turnOf).find((turn) => turn !== undefined);
   const kept = first === undefined ? [] : chat.messages.filter((m) => (turnOf(m) ?? Infinity) < first);
   const joins = first !== undefined && chat.messages.some((m) => (turnOf(m) ?? -Infinity) >= first);
@@ -339,6 +368,8 @@ export async function readRun(conversationId: string, onOpened: () => void): Pro
   lost.delete(conversationId);
   lettingGo.delete(conversationId);
   nextRunSaid.delete(conversationId);
+  serverNamed.delete(conversationId);
+  const before = new Set(chat.messages.map((m) => m.id));
   let opened = false;
   streamOpened.set(conversationId, () => {
     opened = true;
@@ -356,6 +387,12 @@ export async function readRun(conversationId: string, onOpened: () => void): Pro
     // The run read is over unless it handed over: a stop pressed before the
     // next stream names its run means whichever run holds the conversation.
     if (!nextRunSaid.has(conversationId)) runNamed.delete(conversationId);
+    const named = serverNamed.get(conversationId);
+    const reply = chat.messages.at(-1);
+    if (named !== undefined && reply?.role === 'assistant' && !before.has(reply.id)) {
+      const names = drawnNames.get(conversationId) ?? new Map<string, string>();
+      drawnNames.set(conversationId, names.set(named, reply.id));
+    }
   }
   if (lettingGo.delete(conversationId)) return 'let-go';
   if (lost.delete(conversationId)) return 'lost';
@@ -479,6 +516,8 @@ export function evictChatSession(conversationId: string): void {
   lost.delete(conversationId);
   nextRunSaid.delete(conversationId);
   runNamed.delete(conversationId);
+  serverNamed.delete(conversationId);
+  drawnNames.delete(conversationId);
   noteTurnSettled(conversationId);
   chatWaiting.forget(conversationId);
 }
@@ -492,6 +531,8 @@ export function evictAllChatSessions(): void {
   lost.clear();
   nextRunSaid.clear();
   runNamed.clear();
+  serverNamed.clear();
+  drawnNames.clear();
   clearRunningTurns();
   chatWaiting.clearAll();
 }
