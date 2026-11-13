@@ -434,7 +434,9 @@ for (const theme of ['light', 'dark'] as const) {
       await expect(card).toHaveAttribute('data-state', 'applied');
       await page.screenshot({ path: test.info().outputPath(`cell-${kind}-${theme}.png`) });
       await page.reload();
-      await expect(page.locator(DOCUMENT_EDITOR)).toBeVisible();
+      // A reload loads the whole page again, which the dev server is slow to
+      // serve while other cases run beside this one.
+      await expect(page.locator(DOCUMENT_EDITOR)).toBeVisible({ timeout: 30_000 });
       await expect.poll(async () => (await proposalState(proposal)).at).toEqual(applied.at);
       await expect(page.locator(`${DOCUMENT_EDITOR} p`).filter({ hasText: /^AGENT_CELL$/ })).toHaveCount(1);
       expect(errors).toEqual([]);
