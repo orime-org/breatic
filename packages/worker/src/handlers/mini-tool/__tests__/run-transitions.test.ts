@@ -643,6 +643,34 @@ describe("the frozen chunk boundaries are dispatched as they are (§97 D23-3)", 
   });
 });
 
+// frames-split §7.17 转场输出档 row (每段从输出帧k取覆盖该时刻的源呈现帧) and §5.4 切块 row: a chunk's frames are the output
+// slots k0..k1-1, so its picture starts at slot k0's time in the clip, which can fall inside a source frame.
+describe("a chunk starts at its first output slot's time in the clip (§7.17 转场输出档; §5.4 切块)", () => {
+  // The cut fixture presents frame i (i ≥ 1) over [0.04i − 0.02, 0.04i + 0.02) s, so every 25 fps output slot of it falls
+  // in the middle of a source frame. The second clip starts at output frame 96 and is split at 110.
+  const FROZEN = { encode: [{ start: 0, end: 96 }, { start: 96, end: 110 }, { start: 110, end: 133 }], window: [] };
+
+  it("TS01 each chunk of the second clip opens on the frame covering its first slot's time, shown from that time", async () => {
+    const value = { ...run({ kind: "cut", duration: 0 }, SILENT, 1.48, 48), layout: FROZEN };
+    serve(plan(value));
+    await drive();
+    const second = value.timeline.clips[1]!;
+    const seconds = (time: { numerator: string; denominator: string }): number => Number(time.numerator) / Number(time.denominator);
+    for (const [k, window] of FROZEN.encode.entries()) {
+      if (window.end <= second.startFrame) continue;
+      const recipe = recipeOf(requestOf(encId(k)));
+      const slot = (window.start - second.startFrame + second.inFrame) / 25;
+      // Frame 0 is [0, 0.02) s; frame i ≥ 1 starts at 0.04i − 0.02.
+      const covering = slot < 0.02 ? 0 : Math.floor((slot + 0.02) / 0.04 + 1e-9);
+      expect((recipe.window as FrameWindow).start, `chunk ${k}`).toBe(covering);
+      const [first] = recipe.entries as { kind: string; displayStart: { numerator: string; denominator: string }; clipStart: { numerator: string; denominator: string } }[];
+      expect(seconds(first!.displayStart), `chunk ${k} display start`).toBeCloseTo(slot, 9);
+      // The one edit shows media from 0.1 s at presentation 0.
+      expect(seconds(first!.clipStart), `chunk ${k} clip start`).toBeCloseTo(slot + 0.1, 9);
+    }
+  });
+});
+
 describe("a Cut transition (§5.4 派发: 转场选「直接切换」时不派 transition_window; §97 D23)", () => {
   // The current video, a Cut, then 1.48 s (37 frames) of a source without audio; chunks of at most 48 frames.
   const cut = (): Run => run({ kind: "cut", duration: 0 }, SILENT, 1.48, 48);

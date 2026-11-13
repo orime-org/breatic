@@ -12,11 +12,11 @@
 import { logger } from "@breatic/core";
 import type { AcceptedMiniToolExecution } from "@breatic/domain";
 import { videoPresentationWorkKeyFor, type MiniToolPlanExact, type MiniToolPlanRecipe, type VideoPresentationLedger } from "@breatic/shared";
-import { planVideoTimeline, presentationCoveringFrame, videoContainerJobId, type FrameWindow, type VideoContainerJobSpec, type VideoToolDraftById } from "@breatic/shared/mini-tools";
+import { planVideoTimeline, videoContainerJobId, type FrameWindow, type VideoContainerJobSpec, type VideoToolDraftById } from "@breatic/shared/mini-tools";
 import { advanceChunks, advanceRegistered, type ContainerStep } from "@worker/handlers/mini-tool/model-run-steps.js";
 import { failedResult, type VideoToolPickup } from "@worker/handlers/mini-tool/run-video-tool.js";
 import { planReadUntil } from "@worker/handlers/mini-tool/advance-plan-job.js";
-import { audioOf, chunkInputId, FullLedgerInvalid, readJobLedger, segmentTarget, windowEntries, windowInterval } from "@worker/handlers/video-presentation-recipes.js";
+import { audioOf, chunkInputId, coveringFrame, FullLedgerInvalid, readJobLedger, segmentTarget, windowEntries, windowInterval } from "@worker/handlers/video-presentation-recipes.js";
 import { UpstreamTaskFailed } from "@worker/providers/http.js";
 import { StillRunning } from "@worker/providers/still-running.js";
 
@@ -33,7 +33,23 @@ interface Clip { inputId: string; storageKey: string; ledger: VideoPresentationL
 const clipInputId = (at: number): string => `00000000-0000-4000-8002-${String(at).padStart(12, "0")}`;
 
 /**
- * The source presentation frames a clip shows over output frames `[start, end)`: the frame covering each output frame's middle.
+ * The time in a clip's presentation that output frame `k` shows (§7.17 转场输出档 row: each clip takes, at output frame k, the
+ * source frame covering that moment), exact.
+ * @param clip - The clip.
+ * @param k - The output frame.
+ * @param fps - The output frame rate.
+ * @param fps.numerator - Its numerator.
+ * @param fps.denominator - Its denominator.
+ * @returns The presentation time.
+ * @throws {never} Never.
+ */
+function slotTime(clip: Clip, k: number, fps: { numerator: string; denominator: string }): MiniToolPlanExact {
+  return exact(BigInt(clip.inFrame + k - clip.startFrame) * BigInt(fps.denominator), BigInt(fps.numerator));
+}
+
+/**
+ * The source presentation frames a clip shows over output frames `[start, end)`: from the frame covering the first output
+ * frame's time to the one covering the last's.
  * @param clip - The clip.
  * @param output - The output frames.
  * @param fps - The output frame rate.
@@ -43,16 +59,7 @@ const clipInputId = (at: number): string => `00000000-0000-4000-8002-${String(at
  * @throws {RangeError} When a time lies outside the clip's presentation.
  */
 function sourceWindow(clip: Clip, output: FrameWindow, fps: { numerator: string; denominator: string }): FrameWindow {
-  const seconds = Number(fps.denominator) / Number(fps.numerator);
-  const table = clip.ledger.plan.presentation;
-  /**
-   * The source frame covering an output frame's middle.
-   * @param k - The output frame.
-   * @returns The source frame.
-   * @throws {never} Never.
-   */
-  const at = (k: number): number => presentationCoveringFrame(table, (clip.inFrame + k - clip.startFrame + 0.5) * seconds);
-  return { start: at(output.start), end: at(output.end - 1) + 1 };
+  return { start: coveringFrame(clip.ledger, slotTime(clip, output.start, fps)), end: coveringFrame(clip.ledger, slotTime(clip, output.end - 1, fps)) + 1 };
 }
 
 /**
@@ -120,7 +127,8 @@ export async function runMiniToolTransitions(execution: AcceptedMiniToolExecutio
   const pickup: VideoToolPickup = { results: new Map(), waiting: false };
   const boundary = timeline.window?.startFrame ?? clips[1]!.startFrame;
   /**
-   * A clip's recipe fields over output frames.
+   * A clip's recipe fields over output frames: its picture starts at the first output frame's time, so the chunk's frame
+   * grid lines up with the output's (§5.4 切块 row).
    * @param at - The clip.
    * @param frames - The output frames.
    * @returns Its entries and window.
@@ -128,7 +136,7 @@ export async function runMiniToolTransitions(execution: AcceptedMiniToolExecutio
    */
   const over = (at: number, frames: FrameWindow): { window: FrameWindow; entries: ReturnType<typeof windowEntries> } => {
     const window = sourceWindow(clips[at]!, frames, profile.fps);
-    return { window, entries: windowEntries(clips[at]!.ledger, window) };
+    return { window, entries: windowEntries(clips[at]!.ledger, window, slotTime(clips[at]!, frames.start, profile.fps)) };
   };
   const planned: { window: FrameWindow; step: ContainerStep }[] = [];
   for (const [k, window] of layout.encode.entries()) {

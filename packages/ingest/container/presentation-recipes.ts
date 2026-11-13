@@ -497,6 +497,18 @@ function profileGrid(profile: MiniToolPlanTransitionProfile, count: number): str
 }
 
 /**
+ * The decode clock of a window a transition profile's grid follows: fine enough to keep distinct source frames apart and
+ * to place a chunk that starts at an output frame's time inside a source frame (§7.17 转场输出档 row), which the source's
+ * own timescale cannot.
+ * @param profile - The profile.
+ * @returns Ticks per second.
+ * @throws {RangeError} When the time base is malformed.
+ */
+function profileDecodeClock(profile: MiniToolPlanTransitionProfile): bigint {
+  return rational(profile.timeBase)[1] * 1000n;
+}
+
+/**
  * Render a window into its target (§5.4; §7.17 segment row): the window's frames with the target picture, opening with a
  * keyframe; a model input or a segment adds its interval's audio (§5.3, §91 D3-4, D4-4), a chunk has none. A transition
  * chunk is resampled to its profile's frame grid and encoded with the profile, so its codec headers equal the window chunks'.
@@ -512,7 +524,7 @@ async function renderWindow(recipe: Extract<PresentationRecipe, { kind: "chunk_e
   const { entries } = recipe;
   const profile = recipe.kind === "chunk_encode" ? recipe.profile : undefined;
   const target = profile === undefined ? recipe.target : profileTarget(profile, recipe.target);
-  const clock = BigInt(recipe.timescale);
+  const clock = profile === undefined ? BigInt(recipe.timescale) : profileDecodeClock(profile);
   const transparent = target.format === "webm-vp9" && target.alpha === "straight";
   // A transition profile and a model's resample grid both put the frames on an fps grid after the window; a reversed
   // stream is re-timed frame by frame instead, and a closing frame would come first in it.
@@ -780,8 +792,7 @@ async function renderTransitionWindow(recipe: MiniToolPlanTransitionWindow, file
   const { width, height } = profile;
   const count = frames.end - frames.start;
   const [tick, base] = rational(profile.timeBase);
-  // A fine decode clock keeps distinct source frames apart before the grid takes one per output frame.
-  const clock = base * 1000n;
+  const clock = profileDecodeClock(profile);
   const fill = `black@${profile.alpha ? 0 : 1}`;
   const decoded = await Promise.all(recipe.clips.map(async (clip, at) => {
     // Each clip is decoded with its own plan's matrix and tone mapped as its own chunk_encode would be (§97 D23-4).

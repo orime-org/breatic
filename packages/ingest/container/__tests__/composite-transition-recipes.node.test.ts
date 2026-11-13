@@ -446,6 +446,20 @@ describe('the last frame of a transition chunk (§7.17 chunk_encode row: every p
   });
 });
 
+describe('a chunk that starts inside a source frame (§7.17 转场输出档 row: output frame k shows the source frame covering k / fps)', () => {
+  // greys.mp4: ten 25 fps frames of stored luma 16 + 20n. On a 30 fps profile, output frame k shows frame ⌊k · 25 / 30⌋.
+  it('CR03 a 25 fps clip split at output frame 5 of a 30 fps profile shows, chunk after chunk, the frames one window would', async () => {
+    const thirty = { ...PROFILE, fps: r(30), timeBase: r(1, 30) };
+    const chunk = (frames: { start: number; end: number }, window: { start: number; end: number }, from: Exact): Recipe => ({
+      kind: 'chunk_encode', inputId: CLIP_A, window, timescale: 25, entries: [span(r(0), from, from, r(window.end, 25))], target: TARGET, profile: thirty, frames });
+    // Output frame 5 is at 1/6 s, inside frame 4 (0.16 to 0.2 s): the second chunk starts there, not at frame 4's start.
+    const [first, second] = await produce({ [CLIP_A]: join(dir, 'greys.mp4') }, [chunk({ start: 0, end: 5 }, { start: 0, end: 4 }, r(0)), chunk({ start: 5, end: 12 }, { start: 4, end: 10 }, r(1, 6))]);
+    const shown = [...await lumaMeans(first!), ...await lumaMeans(second!)];
+    expect(shown).toHaveLength(12);
+    shown.forEach((value, k) => expect(Math.abs(value - (16 + 20 * Math.floor((k * 25) / 30))), `output frame ${k}`).toBeLessThan(4));
+  });
+});
+
 describe('model_composite (§7.17 model_composite and segment rows; execution design §8, §8.1)', () => {
   // The erase shape (mask, grid and matte) is pinned in erase-expand-recipes.node.test.ts EC01–EC07.
   it('MC03 expand: each background mapped back by PTS, the source over it at the frozen position, the overlap blended by presentation time', async () => {

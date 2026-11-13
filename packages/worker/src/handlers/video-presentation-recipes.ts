@@ -158,28 +158,55 @@ function presentedFrames(ledger: VideoPresentationLedger): PresentedFrame[] {
  * start to its last frame's end (a held last frame included), shown from the source time at its start, or from its first
  * frame when that comes later; its decode starts at the latest source keyframe whose pts is not after that frame, presented
  * or not, at the keyframe's dts less min(0, the first packet's dts) (§93 D6-1, §7.17 timeline row). Each derived-empty frame
- * is its own entry with the plan's fill.
+ * is its own entry with the plan's fill. With `from`, the first entry starts at that presentation time inside the first
+ * frame instead (a chunk on an output frame grid starts at its first slot's time, §7.17 转场输出档 row).
  * @param ledger - The full ledger.
  * @param window - The window.
+ * @param from - A presentation time in the window's first frame to start from; that frame's start when absent.
  * @returns The entries in presentation order.
- * @throws {RangeError} When the window lies outside the presented frames.
+ * @throws {RangeError} When the window lies outside the presented frames or `from` outside its first frame.
  */
-export function windowEntries(ledger: VideoPresentationLedger, window: FrameWindow): MiniToolPlanEntry[] {
-  return placedEntries(ledger, window).map(({ entry }) => entry);
+export function windowEntries(ledger: VideoPresentationLedger, window: FrameWindow, from?: MiniToolPlanExact): MiniToolPlanEntry[] {
+  return placedEntries(ledger, window, from === undefined ? undefined : q(from)).map(({ entry }) => entry);
+}
+
+/**
+ * The presented frame covering a presentation time: the last frame starting at or before it.
+ * @param ledger - The full ledger.
+ * @param at - The time.
+ * @returns Its ordinal.
+ * @throws {RangeError} When the time lies before the first frame or after the last frame's end.
+ */
+export function coveringFrame(ledger: VideoPresentationLedger, at: MiniToolPlanExact): number {
+  const frames = presentedFrames(ledger);
+  const scale = BigInt(ledger.plan.presentation.timescale);
+  const time = q(at);
+  let found = -1;
+  for (const [ordinal, frame] of frames.entries()) {
+    if (cmp([BigInt(frame.start), scale], time) > 0n) break;
+    found = ordinal;
+  }
+  if (found < 0 || cmp(time, [BigInt(frames[found]!.end), scale]) >= 0n) throw new RangeError('The time lies outside the presented frames');
+  return found;
 }
 
 /**
  * A window's entries, each with the presentation ordinal of its first frame.
  * @param ledger - The full ledger.
  * @param window - The window.
+ * @param from - A presentation time in the window's first frame to start from; that frame's start when absent.
  * @returns The entries in presentation order with their first ordinals.
- * @throws {RangeError} When the window lies outside the presented frames or no source keyframe precedes a span.
+ * @throws {RangeError} When the window lies outside the presented frames, `from` outside its first frame, or no source keyframe precedes a span.
  */
-function placedEntries(ledger: VideoPresentationLedger, window: FrameWindow): { entry: MiniToolPlanEntry; ordinal: number }[] {
+function placedEntries(ledger: VideoPresentationLedger, window: FrameWindow, from?: Q): { entry: MiniToolPlanEntry; ordinal: number }[] {
   const { plan } = ledger;
   const frames = presentedFrames(ledger);
   if (window.start < 0 || window.end > frames.length || window.end <= window.start) throw new RangeError('The window lies outside the presented frames');
   const scale = BigInt(plan.presentation.timescale);
+  const opening = frames[window.start]!;
+  if (from !== undefined && (cmp(from, [BigInt(opening.start), scale]) < 0n || cmp(from, [BigInt(opening.end), scale]) >= 0n)) {
+    throw new RangeError('The start lies outside the window\'s first frame');
+  }
   const base = q(plan.originMapping.timeBase);
   const spans = plan.videoSpans;
   /**
@@ -232,7 +259,7 @@ function placedEntries(ledger: VideoPresentationLedger, window: FrameWindow): { 
     if (open === null) return;
     const first = frames[open.first]!;
     const firstSource = source(first.pts!);
-    const displayStart = time(first.start);
+    const displayStart = open.first === window.start && from !== undefined ? from : time(first.start);
     const shown = sourceAt(displayStart, open.span);
     let keyframe: { pts: Q; dts: Q } | undefined;
     for (const candidate of keyframes) {
@@ -248,7 +275,8 @@ function placedEntries(ledger: VideoPresentationLedger, window: FrameWindow): { 
     const frame = frames[ordinal]!;
     if (frame.pts === null) {
       close();
-      entries.push({ ordinal, entry: { kind: 'empty', fill: plan.policy.emptyFill, window: { start: exact(time(frame.start)), end: exact(time(frame.end)) } } });
+      const start = ordinal === window.start && from !== undefined ? from : time(frame.start);
+      entries.push({ ordinal, entry: { kind: 'empty', fill: plan.policy.emptyFill, window: { start: exact(start), end: exact(time(frame.end)) } } });
       continue;
     }
     const span = spanAt(time(frame.start));
