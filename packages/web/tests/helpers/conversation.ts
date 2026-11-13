@@ -14,6 +14,8 @@
  * Playwright's `fill` waits for the box to be editable, while a dispatched
  * paste or an editor transaction does not.
  */
+import { basename, extname } from 'node:path';
+
 import { expect, type Page } from 'playwright/test';
 
 /**
@@ -100,4 +102,26 @@ export async function storedMessages(page: Page): Promise<StoredMessage[]> {
     }, { timeout: 30_000 })
     .toBe('assistant');
   return messages;
+}
+
+/**
+ * Open a new conversation, attach a file when one is given, send the message
+ * and wait for the turn; when a reply is given and the agent asks first,
+ * answer it the way a user does.
+ * @param page - A page with the Agent column showing.
+ * @param message - What the user writes.
+ * @param options - The file to attach, by path, and the answer to give if asked.
+ */
+export async function askInNewConversation(page: Page, message: string, options: { file?: string; reply?: string } = {}): Promise<void> {
+  await expect(page.getByTestId('chat-composer-box')).toBeVisible({ timeout: 20_000 });
+  await startNewConversation(page);
+  await expect(page.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
+  if (options.file !== undefined) {
+    // Files chosen before the composer can take them are dropped without a word.
+    await expect(page.getByTestId('chat-composer-attach')).toBeEnabled({ timeout: 20_000 });
+    await page.getByTestId('chat-composer-file-input').setInputFiles(options.file);
+    await expect(page.getByTestId('chat-composer-chips')).toContainText(basename(options.file, extname(options.file)), { timeout: 30_000 });
+  }
+  await say(page, message, 2);
+  if (options.reply !== undefined) await answerIfAsked(page, options.reply);
 }

@@ -19,7 +19,7 @@
  * TEMPLATE_RUN_ASK_ONLY stops once the turn is recorded.
  */
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { basename, extname, join } from 'node:path';
+import { extname, join } from 'node:path';
 import { expect, type Locator, type Page } from 'playwright/test';
 import { GENERATION_TEMPLATES, markedSegments, templateAnchor } from '@breatic/shared';
 import { test } from '../helpers/slot';
@@ -29,7 +29,7 @@ import { openSmokeProject } from '../helpers/project';
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 import { dropFile } from '../helpers/upload';
-import { answerIfAsked, say, startNewConversation, storedMessages } from '../helpers/conversation';
+import { askInNewConversation, storedMessages } from '../helpers/conversation';
 import { seedNode, wire } from '../helpers/mini-tool';
 
 const OUT = process.env.TEMPLATE_RUN_OUT ?? join(__dirname, '../../test-results/template-runs');
@@ -425,17 +425,8 @@ const ASK_REPLY = process.env.TEMPLATE_RUN_ASK_REPLY;
 
 if (AGENT_ASK !== undefined) test('agent @needs-model', async () => {
   test.setTimeout(1_800_000);
-  const composer = page.getByTestId('chat-composer-box');
-  await expect(composer).toBeVisible({ timeout: 20_000 });
-  await startNewConversation(page);
-  if (ASK_IMAGE !== undefined) {
-    await expect(page.getByTestId('chat-composer-attach')).toBeEnabled({ timeout: 20_000 });
-    await page.getByTestId('chat-composer-file-input').setInputFiles(ASK_IMAGE);
-    await expect(page.getByTestId('chat-composer-chips')).toContainText(basename(ASK_IMAGE, extname(ASK_IMAGE)), { timeout: 30_000 });
-  }
-  await say(page, AGENT_ASK, 2);
   // The agent asks what only the user knows before it fills a template.
-  if (ASK_REPLY !== undefined) await answerIfAsked(page, ASK_REPLY);
+  await askInNewConversation(page, AGENT_ASK, { file: ASK_IMAGE, reply: ASK_REPLY });
   const parts = (await storedMessages(page)).filter((m) => m.role === 'assistant').flatMap((m) => m.parts ?? []);
   record({ template: 'agent', label: LABEL, ask: AGENT_ASK, reply: ASK_REPLY, parts });
   // Recorded first, so a turn that ends without a proposal still shows what it did.
