@@ -65,7 +65,7 @@ describe('approved scene layout (inner#1724)', () => {
     expect(screen.queryByTestId('scene-object-menu')).toBeNull();
     expect(screen.queryByTestId('scene-right-panel')).toBeNull();
     expect(within(screen.getByTestId('scene-viewport-toolbar')).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual([
-      t('spaces.threeD.undo'), t('spaces.threeD.redo'), t('spaces.threeD.properties'), t('spaces.threeD.objects'), t('spaces.threeD.tasks'), t('spaces.threeD.minimap'),
+      t('spaces.threeD.undo'), t('spaces.threeD.redo'), t('spaces.threeD.properties'), t('spaces.threeD.objects'), t('spaces.threeD.tasks'), t('spaces.threeD.director.open'), t('spaces.threeD.minimap'),
     ]);
   });
   it.each([

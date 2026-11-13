@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import { MathUtils, PerspectiveCamera, Vector3, type Quaternion } from 'three';
+import { MathUtils, PerspectiveCamera, Quaternion, Vector3 } from 'three';
 import { SCENE_FOCAL_LENGTH_MAX, SCENE_FOCAL_LENGTH_MIN } from '@breatic/shared';
 
 import type { ViewfinderRect } from '@web/spaces/three-d/viewfinder/viewfinder-geometry';
@@ -47,4 +47,55 @@ export function cameraFromFrame(view: { position: Vector3; quaternion: Quaternio
   const filmHeight = FILM_GAUGE / Math.max(frame.width / frame.height, 1);
   const focalLength = MathUtils.clamp(filmHeight / (2 * Math.tan(span / 2)), SCENE_FOCAL_LENGTH_MIN, SCENE_FOCAL_LENGTH_MAX);
   return { position: view.position.toArray() as SceneVector3, rotation: aimed.quaternion.toArray() as SceneQuaternion, focalLength };
+}
+
+/**
+ * The rotation of a view that stands at a position and looks at a target, upright.
+ * @param position - Where it stands.
+ * @param target - What it looks at.
+ * @returns The rotation.
+ */
+export function lookRotation(position: SceneVector3, target: SceneVector3): SceneQuaternion {
+  const aimed = new PerspectiveCamera();
+  aimed.position.fromArray(position);
+  aimed.lookAt(new Vector3().fromArray(target));
+  return aimed.quaternion.toArray() as SceneQuaternion;
+}
+
+/** Where a new light goes relative to the orbit centre (inner#1694 design 3.6), in scene units. */
+const LIGHT_ABOVE = 3.5;
+const LIGHT_TOWARD_VIEWER = 2.5;
+const LIGHT_LEFT = 2;
+
+/**
+ * A new light's pose: above the orbit centre, toward the viewer and to their left, aimed at the centre.
+ * @param centre - The orbit centre, or the pivot of the camera being looked through.
+ * @param viewer - Where the view stands.
+ * @returns The light's position and rotation.
+ */
+export function newLightPose(centre: SceneVector3, viewer: SceneVector3): { position: SceneVector3; rotation: SceneQuaternion } {
+  const middle = new Vector3().fromArray(centre);
+  const toward = new Vector3().fromArray(viewer).sub(middle).setY(0);
+  if (toward.lengthSq() === 0) toward.set(0, 0, 1);
+  toward.normalize();
+  const left = new Vector3(0, 1, 0).cross(toward).normalize();
+  const position = middle.clone().addScaledVector(toward, LIGHT_TOWARD_VIEWER).addScaledVector(left, LIGHT_LEFT).setY(middle.y + LIGHT_ABOVE);
+  return { position: position.toArray() as SceneVector3, rotation: lookRotation(position.toArray() as SceneVector3, centre) };
+}
+
+/**
+ * {@link cameraFromFrame} for a view given as its position and orbit target.
+ * @param view - The free view.
+ * @param view.position - Where it stands.
+ * @param view.target - What it orbits.
+ * @param frame - The frame, in viewport pixels.
+ * @param viewport - The viewport size.
+ * @param viewport.width - Its width.
+ * @param viewport.height - Its height.
+ * @returns The camera's position, rotation and focal length.
+ */
+export function cameraFromView(view: { position: SceneVector3; target: SceneVector3 }, frame: ViewfinderRect,
+  viewport: { width: number; height: number }): { position: SceneVector3; rotation: SceneQuaternion; focalLength: number } {
+  const quaternion = new Quaternion().fromArray(lookRotation(view.position, view.target));
+  return cameraFromFrame({ position: new Vector3().fromArray(view.position), quaternion }, frame, viewport);
 }

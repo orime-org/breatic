@@ -106,6 +106,8 @@ export interface ScenePilotControl {
   flush: () => void;
   /** Drop a press in progress; true when there was one, so Escape stops there. */
   escape: () => boolean;
+  /** The pivot of the camera being looked through, where a new light aims. */
+  centre: () => SceneVector3 | null;
 }
 
 /** The main view at the moment a camera still was taken. */
@@ -134,6 +136,8 @@ export interface CapturedPixels {
   width: number;
   height: number;
   pixels: Uint8Array;
+  /** The camera pose the still was taken with, when it was taken through a camera. */
+  pose?: SceneFrozenPose;
 }
 
 /** Render one viewport rectangle at a given size, without the editing helpers. */

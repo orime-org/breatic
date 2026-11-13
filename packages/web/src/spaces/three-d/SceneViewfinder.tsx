@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { Frame } from 'lucide-react';
 
-import { VIEWFINDER_RATIOS, type SceneCaptureConfig, type ViewfinderRatio } from '@breatic/shared';
+import { SCENE_FREE_RATIO_MAX, SCENE_FREE_RATIO_MIN, VIEWFINDER_RATIOS, type SceneCameraObject, type SceneCaptureConfig, type ViewfinderRatio } from '@breatic/shared';
 import { Button } from '@web/components/ui/button';
 import { Anchor as PopoverAnchor } from '@radix-ui/react-popover';
 import { Popover, PopoverContent, PopoverTrigger } from '@web/components/ui/popover';
@@ -47,6 +47,27 @@ const CORNER_POSITION: Readonly<Record<ViewfinderCorner, string>> = {
 // (38 + 8) above the object toolbar (16 + 42 + 8), whether or not it shows;
 // the right edge stops at an open right panel (10 + 320 + 10).
 const INSETS = { top: 62, bottom: 112, side: 20, panel: 340 };
+
+/**
+ * Where the frame may sit on the stage.
+ * @param stage - The 3D stage's size.
+ * @param stage.width - Its width.
+ * @param stage.height - Its height.
+ * @param rightPanelOpen - Whether the right panel covers the stage's right edge.
+ * @returns The safe area.
+ */
+export function sceneViewfinderSafeArea(stage: { width: number; height: number }, rightPanelOpen: boolean): ViewfinderRect {
+  return viewfinderSafeArea(stage, { top: INSETS.top, bottom: INSETS.bottom, left: INSETS.side, right: rightPanelOpen ? INSETS.panel : INSETS.side });
+}
+
+/**
+ * A camera record's frame ratio.
+ * @param camera - The record.
+ * @returns Width over height.
+ */
+export function cameraFrameRatio(camera: SceneCameraObject): number {
+  return camera.frame === 'Free' ? camera.freeRatio : viewfinderRatioValue(camera.frame) ?? camera.freeRatio;
+}
 // The menu sits this far below the frame.
 const MENU_GAP = 8;
 
@@ -69,6 +90,12 @@ export interface SceneViewfinderProps {
   userId: string;
   config: SceneCaptureConfig | undefined;
   spaces: readonly ProjectSpace[];
+  /** The camera being looked through, while it exists (inner#1694 design 3.4). */
+  camera: SceneCameraObject | null;
+  /** Whether this user may edit the scene now. */
+  canEdit: boolean;
+  /** Change the frame of the camera being looked through. */
+  onCameraFrame: (frame: { frame?: ViewfinderRatio; freeRatio?: number }) => void;
 }
 
 /**
@@ -112,13 +139,17 @@ function canvasOrigin(userId: string, projectId: string, canvasId: string): { x:
  * @returns The viewfinder.
  */
 export const SceneViewfinder = React.memo(function SceneViewfinder(props: SceneViewfinderProps): React.JSX.Element {
-  const { state, dispatch, stage, rightPanelOpen, capture, modelsLoading, disabled, chatSwitching, projectId, spaceId, spaceName, userId, config, spaces } = props;
+  const { state, dispatch, stage, rightPanelOpen, capture, modelsLoading, disabled, chatSwitching, projectId, spaceId, spaceName, userId, config, spaces,
+    camera, canEdit, onCameraFrame } = props;
   const t = useTranslation();
   const { phase, frame, ratio, shot, sending } = state;
-  const safe = React.useMemo(() => viewfinderSafeArea(stage, {
-    top: INSETS.top, bottom: INSETS.bottom, left: INSETS.side, right: rightPanelOpen ? INSETS.panel : INSETS.side,
-  }), [stage, rightPanelOpen]);
-  const ratioValue = viewfinderRatioValue(ratio);
+  const throughCamera = state.source.kind === 'camera';
+  // Only an editor may change an unlocked camera's frame.
+  const cameraEditable = camera !== null && canEdit && !camera.locked;
+  const safe = React.useMemo(() => sceneViewfinderSafeArea(stage, rightPanelOpen), [stage, rightPanelOpen]);
+  // A camera holds its own ratio; a Free camera's frame is dragged free and written as its free ratio.
+  const cameraRatio = camera === null ? null : cameraFrameRatio(camera);
+  const ratioValue = throughCamera ? (camera?.frame === 'Free' ? null : cameraRatio) : viewfinderRatioValue(ratio);
   const canvases = React.useMemo(() => spaces.filter((space) => space.type === 'canvas')
     .map((space, index) => ({ space, index }))
     .sort((a, b) => (a.space.createdAt ?? 0) - (b.space.createdAt ?? 0) || a.index - b.index)
@@ -132,6 +163,15 @@ export const SceneViewfinder = React.memo(function SceneViewfinder(props: SceneV
     if (phase === 'off' || (from.width === safe.width && from.height === safe.height && from.x === safe.x && from.y === safe.y)) return;
     if (frame.width > 0 && frame.height > 0) dispatch({ type: 'frame', frame: refitFrame(frame, from, safe, ratioValue) });
   }, [safe, phase, frame, ratioValue, dispatch]);
+
+  // Through a camera, the frame is the largest one of the camera's ratio, again whenever the ratio changes.
+  const shownRatio = React.useRef<number | null>(null);
+  React.useEffect(() => {
+    if (!throughCamera || phase !== 'framing' || cameraRatio === null || drag.current !== null) { shownRatio.current = cameraRatio; return; }
+    if (shownRatio.current === cameraRatio) return;
+    shownRatio.current = cameraRatio;
+    dispatch({ type: 'frame', frame: largestFrame(cameraRatio, safe) });
+  }, [throughCamera, phase, cameraRatio, safe, dispatch]);
 
   // The menu's width, so it can be kept inside the Space (it changes with the state and the locale).
   const [menuWidth, setMenuWidth] = React.useState(0);
@@ -164,13 +204,13 @@ export const SceneViewfinder = React.memo(function SceneViewfinder(props: SceneV
   // React re-renders reads it here, so one press starts one send.
   const pressed = React.useRef(phase);
   pressed.current = phase;
-  // Changes each time the viewfinder opens; a capture is kept only by the opening that started it.
-  const opening = React.useRef(0);
+  // A capture is kept only by the opening that started it: an open, a camera switch or a deletion each start a new one.
+  const opening = React.useRef(state.opening);
+  opening.current = state.opening;
   const capturing = React.useRef(false);
 
   const toggle = React.useCallback((): void => {
     if (phase !== 'off') { dispatch({ type: 'close' }); return; }
-    opening.current += 1;
     placedIn.current = safe;
     dispatch({ type: 'open', frame: largestFrame(ratioValue, safe) });
   }, [phase, safe, ratioValue, dispatch]);
@@ -178,9 +218,10 @@ export const SceneViewfinder = React.memo(function SceneViewfinder(props: SceneV
   const changeRatio = React.useCallback((next: string): void => {
     const value = VIEWFINDER_RATIOS.find((key) => key === next);
     if (value === undefined) return;
+    if (throughCamera) { onCameraFrame({ frame: value }); return; }
     const nextRatio = viewfinderRatioValue(value);
     dispatch({ type: 'ratio', ratio: value, frame: nextRatio === null ? frame : largestFrame(nextRatio, safe) });
-  }, [frame, safe, dispatch]);
+  }, [frame, safe, dispatch, throughCamera, onCameraFrame]);
 
   const drag = React.useRef<{ corner: ViewfinderCorner; start: ViewfinderRect; origin: { x: number; y: number } } | null>(null);
   const onCornerDown = React.useCallback((event: React.PointerEvent<HTMLSpanElement>): void => {
@@ -199,7 +240,16 @@ export const SceneViewfinder = React.memo(function SceneViewfinder(props: SceneV
       y: (corner.includes('s') ? start.y + start.height : start.y) + event.clientY - origin.y };
     dispatch({ type: 'frame', frame: resizeFrame(start, corner, at, safe, ratioValue, config.minFramePx) });
   }, [safe, ratioValue, config, dispatch]);
-  const onCornerUp = React.useCallback((): void => { drag.current = null; }, []);
+  const onCornerUp = React.useCallback((): void => {
+    const dragged = drag.current;
+    drag.current = null;
+    // A Free camera keeps the dragged ratio; the frame then grows back to the largest of that ratio.
+    if (dragged === null || !throughCamera || frame.height === 0) return;
+    const freeRatio = Math.min(SCENE_FREE_RATIO_MAX, Math.max(SCENE_FREE_RATIO_MIN, frame.width / frame.height));
+    shownRatio.current = null;
+    if (camera !== null && Math.abs(freeRatio - camera.freeRatio) > 1e-6) onCameraFrame({ freeRatio });
+    else dispatch({ type: 'frame', frame: largestFrame(freeRatio, safe) });
+  }, [throughCamera, frame, camera, onCameraFrame, dispatch, safe]);
 
   const confirm = React.useCallback(async (): Promise<void> => {
     if (modelsLoading) { toast.warning(t('spaces.threeD.viewfinder.modelsLoading')); return; }
@@ -208,10 +258,11 @@ export const SceneViewfinder = React.memo(function SceneViewfinder(props: SceneV
     const started = opening.current;
     try {
       const size = captureSize(frame, config.longEdgePx);
-      const blob = await encodeCapturePng(await capture(frame, size));
+      const pixels = await capture(frame, size);
+      const blob = await encodeCapturePng(pixels);
       if (opening.current !== started || pressed.current !== 'framing') return;
       const file = new File([blob], captureFileName(spaceName), { type: 'image/png' });
-      dispatch({ type: 'captured', shot: { file, ...size } });
+      dispatch({ type: 'captured', shot: { file, ...size }, ...(pixels.pose ? { pose: pixels.pose } : {}) });
     } catch (err) {
       console.warn('viewfinder capture failed', err);
       toast.error(t('spaces.threeD.viewfinder.captureFailed'));
@@ -298,7 +349,7 @@ export const SceneViewfinder = React.memo(function SceneViewfinder(props: SceneV
     {/* Beneath the floating toolbars (z-10), so they stay readable while the scene is dimmed. */}
     <div className='pointer-events-none absolute inset-0 z-[5] overflow-hidden'>
       <div data-testid='scene-viewfinder-frame' className='absolute border border-active-border' style={{ ...frameStyle, boxShadow: `0 0 0 9999px ${OUTSIDE_DIM}` }}>
-        {framing ? CORNERS.map((corner) => <span key={corner} data-testid={`scene-viewfinder-corner-${corner}`} data-corner={corner}
+        {framing && (!throughCamera || (camera?.frame === 'Free' && cameraEditable)) ? CORNERS.map((corner) => <span key={corner} data-testid={`scene-viewfinder-corner-${corner}`} data-corner={corner}
           data-shape={ratioValue === null ? 'round' : 'square'}
           className={cn('pointer-events-auto absolute size-2.5 touch-none border border-active-border bg-background before:absolute before:-inset-[7px] before:content-[""]', ratioValue === null ? 'rounded-full' : 'rounded-none', CORNER_POSITION[corner])}
           onPointerDown={onCornerDown} onPointerMove={onCornerMove} onPointerUp={onCornerUp} onPointerCancel={onCornerUp} />) : null}
@@ -310,18 +361,23 @@ export const SceneViewfinder = React.memo(function SceneViewfinder(props: SceneV
         <div ref={setMenu} data-testid='scene-viewfinder-menu' className='absolute z-20 flex w-max -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-overlay border border-border bg-popover p-1 text-xs shadow'
           style={{ left: menuCentre(frame, menuWidth, safe.x + safe.width + INSETS.side, INSETS.side), top: menuTop }}>
           {framing ? <React.Fragment key='framing'>
-            <Select value={ratio} onValueChange={changeRatio}>
+            <Select value={throughCamera ? camera?.frame ?? ratio : ratio} onValueChange={changeRatio} disabled={throughCamera && !cameraEditable}>
               <SelectTrigger aria-label={t('spaces.threeD.viewfinder.ratio')} className='h-[var(--btn-inline)] w-auto min-w-16 gap-2 px-2 text-xs'><SelectValue /></SelectTrigger>
               <SelectContent>{VIEWFINDER_RATIOS.map((key: ViewfinderRatio) => <SelectItem key={key} value={key}>{key}</SelectItem>)}</SelectContent>
             </Select>
             {size ? <span className='inline-block min-w-[11ch] px-1 text-center tabular-nums text-muted-foreground'>{t('spaces.threeD.viewfinder.size', { width: size.width, height: size.height })}</span> : null}
-            <Button size='sm' variant='outline' onClick={() => dispatch({ type: 'close' })}>{t('spaces.threeD.viewfinder.cancel')}</Button>
-            <Button size='sm' aria-disabled={modelsLoading || undefined} className={cn(modelsLoading && 'opacity-50')} onClick={() => { void confirm(); }}>{t('spaces.threeD.viewfinder.confirm')}</Button>
+            {throughCamera
+              ? <Button size='sm' variant='outline' onClick={() => dispatch({ type: 'exitCamera' })}>{t('spaces.threeD.director.exitCamera')}</Button>
+              : <Button size='sm' variant='outline' onClick={() => dispatch({ type: 'close' })}>{t('spaces.threeD.viewfinder.cancel')}</Button>}
+            {canEdit ? <Button size='sm' aria-disabled={modelsLoading || undefined} className={cn(modelsLoading && 'opacity-50')} onClick={() => { void confirm(); }}>{t('spaces.threeD.viewfinder.confirm')}</Button> : null}
           </React.Fragment> : <React.Fragment key='captured'>
-            <Button size='sm' variant='outline' loading={sending === 'agent'} disabled={busy || phase === 'picking' || chatSwitching} onClick={toAgent}>{t('spaces.threeD.viewfinder.toAgent')}</Button>
-            <PopoverTrigger asChild>
-              <Button size='sm' variant='outline' loading={sending === 'canvas'} disabled={busy && sending !== 'canvas'}>{t('spaces.threeD.viewfinder.toCanvas')}</Button>
-            </PopoverTrigger>
+            {/* Without edit permission only Copy is left (design 3.8). */}
+            {canEdit ? <>
+              <Button size='sm' variant='outline' loading={sending === 'agent'} disabled={busy || phase === 'picking' || chatSwitching} onClick={toAgent}>{t('spaces.threeD.viewfinder.toAgent')}</Button>
+              <PopoverTrigger asChild>
+                <Button size='sm' variant='outline' loading={sending === 'canvas'} disabled={busy && sending !== 'canvas'}>{t('spaces.threeD.viewfinder.toCanvas')}</Button>
+              </PopoverTrigger>
+            </> : null}
             <Button size='sm' variant='outline' loading={sending === 'copy'} disabled={busy || phase === 'picking'} onClick={copy}>{t('spaces.threeD.viewfinder.copy')}</Button>
             <span className='mx-1 h-4 border-l border-border' />
             <Button size='sm' variant='outline' disabled={busy || phase === 'picking'} onClick={() => dispatch({ type: 'reframe' })}>{t('spaces.threeD.viewfinder.reframe')}</Button>

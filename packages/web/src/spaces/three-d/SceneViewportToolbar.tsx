@@ -2,15 +2,15 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
-import { Layers, MoreHorizontal, PictureInPicture2, Redo2, SlidersHorizontal, Undo2 } from 'lucide-react';
+import { Clapperboard, Layers, MoreHorizontal, PictureInPicture2, Redo2, SlidersHorizontal, Undo2 } from 'lucide-react';
 import { SceneIconButton } from '@web/spaces/three-d/SceneIconButton';
 import { useTranslation } from '@web/i18n/use-translation';
-export type ScenePanel = 'properties' | 'objects' | 'tasks';
+export type ScenePanel = 'properties' | 'objects' | 'tasks' | 'director';
 
 const icons = {
   undo: <Undo2 className='size-3.5' />, redo: <Redo2 className='size-3.5' />,
   properties: <SlidersHorizontal className='size-4' />, objects: <Layers className='size-4' />,
-  tasks: <MoreHorizontal className='size-4' />, minimap: <PictureInPicture2 className='size-3.5' />,
+  tasks: <MoreHorizontal className='size-4' />, director: <Clapperboard className='size-4' />, minimap: <PictureInPicture2 className='size-3.5' />,
 };
 
 /**
@@ -57,12 +57,18 @@ export const SceneViewportToolbar = React.memo(function SceneViewportToolbar({ u
    * @throws {never} Delegates to the host.
    */
   const showTasks = React.useCallback((): void => onPanel('tasks'), [onPanel]);
+  /**
+   * Toggle the director console.
+   * @throws {never} Delegates to the host.
+   */
+  const showDirector = React.useCallback((): void => onPanel('director'), [onPanel]);
   return <div className='absolute bottom-[var(--space-5)] right-[var(--space-5)] z-10 flex rounded-md border border-border bg-popover py-1 shadow' data-testid='scene-viewport-toolbar'>
     <div className='flex items-center gap-0.5 border-r border-border px-1'><SceneIconButton label={t('spaces.threeD.undo')} disabled={!undo} onClick={undoStep}>{icons.undo}</SceneIconButton><SceneIconButton label={t('spaces.threeD.redo')} disabled={!redo} onClick={redoStep}>{icons.redo}</SceneIconButton></div>
     <div className='flex items-center gap-0.5 border-r border-border px-1'>
       <SceneIconButton data-testid='scene-properties-trigger' label={t('spaces.threeD.properties')} disabled={!hasSelection} onClick={showProperties}>{icons.properties}</SceneIconButton>
       <SceneIconButton data-testid='scene-objects-trigger' label={t('spaces.threeD.objects')} onClick={showObjects}>{icons.objects}</SceneIconButton>
       <SceneIconButton data-testid='scene-tasks-trigger' label={t('spaces.threeD.tasks')} onClick={showTasks}>{icons.tasks}</SceneIconButton>
+      <SceneIconButton data-testid='scene-director-trigger' label={t('spaces.threeD.director.open')} onClick={showDirector}>{icons.director}</SceneIconButton>
     </div><div className='flex px-1'><SceneIconButton label={t('spaces.threeD.minimap')} active={minimap && !minimapDisabled} disabled={minimapDisabled} onClick={onMinimap}>{icons.minimap}</SceneIconButton></div>
   </div>;
 });

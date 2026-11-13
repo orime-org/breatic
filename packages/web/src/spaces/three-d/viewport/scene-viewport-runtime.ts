@@ -12,7 +12,7 @@ import {
 import { DISPLAY_LINE_LAYER, DISPLAY_PICK_LAYER, DirectorFigure, applyCameraRecord, cameraAspect } from '@web/spaces/three-d/viewport/director-objects';
 import { directionalShadowRange, localShadowFar, planLights, programSamplers, shadowSlots, type LightsPlan } from '@web/spaces/three-d/viewport/director-lights';
 import { monitorReducer, monitorsDue, type MonitorCards, type MonitorEvent } from '@web/spaces/three-d/viewport/monitor-schedule';
-import { ScenePilot } from '@web/spaces/three-d/viewport/scene-pilot';
+import { ScenePilot, pilotPivotDistance } from '@web/spaces/three-d/viewport/scene-pilot';
 import { displayedObjects, previewedObjectIds } from '@web/spaces/three-d/viewport/scene-display';
 import { applyPose, poseRigOf, type PoseRig } from '@web/spaces/three-d/viewport/pose-rig';
 import { SceneMiniMapRuntime } from '@web/spaces/three-d/viewport/scene-mini-map';
@@ -306,7 +306,7 @@ export class SceneViewportRuntime {
     this.update(props);
     this.onFrame();
     props.onCapture?.(this.capture);
-    props.onPilotControl?.({ flush: () => this.pilot.flush('undo'), escape: () => this.pilot.escape() });
+    props.onPilotControl?.({ flush: () => this.pilot.flush('undo'), escape: () => this.pilot.escape(), centre: () => this.pilotCentre() });
   }
 
   /**
@@ -319,6 +319,9 @@ export class SceneViewportRuntime {
    * @throws {Error} When the pixels cannot be read back.
    */
   private readonly capture: SceneFrameCapture = async (frame, size): Promise<CapturedPixels> => {
+    const looked = this.view?.kind === 'live' ? this.view.id : null;
+    // A wheel step still pending is written first; the still shows where the camera ended up.
+    const draft = looked === null ? null : this.pilot.poseOf(looked);
     this.pilot.flush('confirm');
     const target = new WebGLRenderTarget(size.width, size.height, { samples: 4 });
     target.texture.colorSpace = SRGBColorSpace;
@@ -330,6 +333,7 @@ export class SceneViewportRuntime {
     try {
       if (live) {
         applyCameraRecord(camera, live, size.width / size.height);
+        if (draft) { camera.position.copy(draft.position); camera.quaternion.copy(draft.quaternion); camera.updateMatrixWorld(true); }
         updateSceneCameraRange(camera, this.modelBounds());
       } else {
         const offset = captureViewOffset(frame, { width: this.host.clientWidth, height: this.host.clientHeight }, size);
@@ -346,7 +350,8 @@ export class SceneViewportRuntime {
     try {
       const pixels = new Uint8Array(size.width * size.height * 4);
       await this.renderer.readRenderTargetPixelsAsync(target, 0, 0, size.width, size.height, pixels);
-      return { width: size.width, height: size.height, pixels };
+      const pose = live ? { position: camera.position.toArray(), quaternion: camera.quaternion.toArray(), fov: camera.fov, aspect: camera.aspect } : undefined;
+      return { width: size.width, height: size.height, pixels, ...(pose ? { pose } : {}) };
     } finally {
       target.dispose();
     }
@@ -375,6 +380,19 @@ export class SceneViewportRuntime {
   private cameraRecord(id: string): SceneCameraObject | null {
     const object = this.displayed.find((candidate) => candidate.id === id);
     return object && isSceneCamera(object) ? object : null;
+  }
+
+  /**
+   * The pivot of the camera being looked through: ahead of it at the pilot's pivot distance.
+   * @returns The pivot, or null outside a live camera view.
+   */
+  private pilotCentre(): [number, number, number] | null {
+    const record = this.view?.kind === 'live' ? this.cameraRecord(this.view.id) : null;
+    if (!record) return null;
+    const position = new Vector3().fromArray(record.position);
+    const box = this.modelBounds();
+    const distance = pilotPivotDistance(position, box.isEmpty() ? null : box.getCenter(new Vector3()));
+    return position.addScaledVector(new Vector3(0, 0, -1).applyQuaternion(new Quaternion().fromArray(record.rotation)), distance).toArray();
   }
 
   /**
@@ -580,7 +598,10 @@ export class SceneViewportRuntime {
       const record = this.cameraRecord(view.id);
       if (!record) return;
       const draft = this.pilot.poseOf(view.id);
-      applyCameraRecord(this.camera, record, cameraAspect(record));
+      const frame = this.props.viewFrame;
+      // A Free camera follows the frame being dragged, so the view previews the new ratio before it is written.
+      const aspect = record.frame === 'Free' && frame && frame.height > 0 ? frame.width / frame.height : cameraAspect(record);
+      applyCameraRecord(this.camera, record, aspect);
       if (draft) { this.camera.position.copy(draft.position); this.camera.quaternion.copy(draft.quaternion); }
     } else {
       this.camera.position.fromArray(view.position);
@@ -778,6 +799,8 @@ export class SceneViewportRuntime {
         const pixelHeight = Math.round(cssHeight * ratio);
         if (card.width !== pixelWidth || card.height !== pixelHeight) { card.width = pixelWidth; card.height = pixelHeight; }
         context.drawImage(canvas, 0, canvas.height - pixelHeight, pixelWidth, pixelHeight, 0, 0, pixelWidth, pixelHeight);
+        // The card shows its placeholder until its first picture.
+        card.dataset.drawn = 'true';
         painted.push(id);
       }
       this.renderer.setScissorTest(false);

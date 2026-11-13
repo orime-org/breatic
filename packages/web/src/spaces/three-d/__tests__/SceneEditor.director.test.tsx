@@ -138,7 +138,12 @@ describe('the director console panel (inner#1694 design 3.1, 3.2)', () => {
     const { session } = await setup();
     const opened = await openDirector();
     fireEvent.click(within(opened).getByRole('button', { name: label('saveView') }));
-    const saved = readSceneDocument(session.doc).objects.find((object) => object.model.kind === ('camera' as never)) as unknown as Record<string, unknown> | undefined;
+    // Saving loads the camera geometry on demand, so the camera is written a moment later.
+    const saved = await waitFor(() => {
+      const camera = readSceneDocument(session.doc).objects.find((object) => object.model.kind === ('camera' as never)) as unknown as Record<string, unknown> | undefined;
+      expect(camera).toBeDefined();
+      return camera;
+    });
     expect(saved).toMatchObject({ number: 1, name: t('spaces.threeD.director.cameraName', { n: 1 }), frame: '16:9' });
     const card = await screen.findByTestId(`scene-director-camera-${saved?.id as string}`);
     expect(within(card).getByTestId(`scene-director-monitor-${saved?.id as string}`).querySelector('.skeleton-shimmer')).not.toBeNull();
@@ -207,7 +212,8 @@ describe('looking through a camera from the console (design 3.4, 3.8)', () => {
   });
 
   it('gives a locked camera a view that cannot be piloted', async () => {
-    await setup([camera(CAM, 1, { locked: true })]);
+    const { session } = await setup([camera()]);
+    act(() => { session.execute({ type: 'lock', ids: [CAM], locked: true }); });
     await openDirector();
     fireEvent.click(screen.getByTestId(`scene-director-monitor-${CAM}`));
     expect(h.viewport?.cameraView).toEqual({ kind: 'live', id: CAM, canPilot: false });

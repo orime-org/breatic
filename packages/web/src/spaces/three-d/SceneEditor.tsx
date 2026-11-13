@@ -5,11 +5,11 @@ import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Lock } from 'lucide-react';
 
-import { getLocale, type SceneObject } from '@breatic/shared';
+import { getLocale, isSceneCamera, isSceneLight, isSceneModelFile, SCENE_FREE_RATIO_MAX, SCENE_FREE_RATIO_MIN, SCENE_LIGHT_COLOR_DEFAULT, SCENE_LIGHT_INTENSITY, type SceneLightType, type SceneObject, type ViewfinderRatio } from '@breatic/shared';
 import { Button } from '@web/components/ui/button';
 import { getSceneControls, resolveSceneAsset, type SpaceTask } from '@web/data/api/scene';
 import { docName } from '@web/data/yjs/manager';
-import { isOlderSceneFormat, isSceneSizeRefusal } from '@web/data/yjs/scene-document';
+import { isOlderSceneFormat, isSceneSizeRefusal, type SceneEnvironmentValues } from '@web/data/yjs/scene-document';
 import type { ScenePeer, SceneSession, SceneSessionSnapshot } from '@web/data/yjs/scene-session';
 import type { SocketState } from '@web/data/yjs/use-socket';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -22,15 +22,18 @@ import { fillFromTask } from '@web/spaces/three-d/scene-generation';
 import { useSceneProposals } from '@web/stores/scene-proposals';
 import { useConversationRuntime } from '@web/stores/conversation-runtime';
 import { useProjectSpaceList } from '@web/data/yjs/project-meta';
-import { SceneViewfinder } from '@web/spaces/three-d/SceneViewfinder';
-import { INITIAL_VIEWFINDER, viewfinderReducer, type ViewfinderAction } from '@web/spaces/three-d/viewfinder/viewfinder-state';
+import { SceneViewfinder, cameraFrameRatio, sceneViewfinderSafeArea } from '@web/spaces/three-d/SceneViewfinder';
+import { SceneDirectorPanel } from '@web/spaces/three-d/SceneDirectorPanel';
+import { largestFrame } from '@web/spaces/three-d/viewfinder/viewfinder-geometry';
+import type { LightsPlan } from '@web/spaces/three-d/viewport/director-lights';
+import { INITIAL_VIEWFINDER, cameraViewOf, viewfinderReducer, type ViewfinderAction } from '@web/spaces/three-d/viewfinder/viewfinder-state';
 import { SceneField, type SceneFieldDraft } from '@web/spaces/three-d/SceneField';
 import { SceneIconButton } from '@web/spaces/three-d/SceneIconButton';
 import { SceneObjectList } from '@web/spaces/three-d/SceneObjectList';
 import { SceneRightPanel } from '@web/spaces/three-d/SceneRightPanel';
 import { SceneViewportToolbar, type ScenePanel } from '@web/spaces/three-d/SceneViewportToolbar';
 import { SceneObjectToolbar } from '@web/spaces/three-d/SceneObjectToolbar';
-import type { SceneFrameCapture, SceneModelAcquire, SceneModelState, SceneSkeletonState, SceneTransformMode, SceneView, SceneViewportProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
+import type { SceneCameraView, SceneFrameCapture, SceneModelAcquire, SceneModelState, ScenePilotControl, SceneSkeletonState, SceneTransformMode, SceneView, SceneViewportProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
 import { getModelImportController } from '@web/spaces/three-d/model-import-controller';
 import type { ModelImportController, PreparedModel } from '@web/spaces/three-d/model-import-controller';
 import type { ModelSource } from '@web/spaces/three-d/model-source';
@@ -45,6 +48,9 @@ const SceneModelImportHost = React.lazy(() => import('@web/spaces/three-d/SceneM
 
 
 const lockIcon = <Lock className='size-4' />;
+const LIGHT_LABEL: Readonly<Record<SceneLightType, string>> = { directional: 'lightDirectional', point: 'lightPoint', spot: 'lightSpot' };
+/** The frame a camera saved from the plain view gets (inner#1694 design 3.5). */
+const SAVED_CAMERA_FRAME: ViewfinderRatio = '16:9';
 const stageStyle = { '--color-background': 'var(--color-canvas)' } as React.CSSProperties;
 
 export interface SceneEditorProps extends SpaceBodyProps {
@@ -145,11 +151,37 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   const selected = snapshot.objects.filter((object) => snapshot.selectedIds.includes(object.id));
   const mutable = snapshot.canEdit && selected.length > 0 && selected.every((object) => !object.locked);
   const allSelectedLocked = selected.length > 0 && selected.every((object) => object.locked);
-  const failedModels = snapshot.objects.some((object) => modelStates.get(object.id) === 'failed');
-  const modelsLoading = snapshot.objects.some((object) => {
+  // Cameras and lights keep a unit scale and a point light has no direction (design 3.3).
+  const canScale = selected.every((object) => isSceneModelFile(object.model));
+  const canRotate = selected.every((object) => !(isSceneLight(object) && object.model.type === 'point'));
+  React.useEffect(() => {
+    if ((mode === 'scale' && !canScale) || (mode === 'rotate' && !canRotate)) setMode('translate');
+  }, [mode, canScale, canRotate]);
+  // Cameras and lights load no model file, so only models count as loading or failed (design 5).
+  const models = snapshot.objects.filter((object) => isSceneModelFile(object.model));
+  const failedModels = models.some((object) => modelStates.get(object.id) === 'failed');
+  const modelsLoading = models.some((object) => {
     const state = modelStates.get(object.id);
     return state === undefined || state === 'loading';
   });
+  const director = controls.data?.director;
+  const lookCamera = React.useMemo(() => {
+    const source = viewfinder.source;
+    const found = source.kind === 'camera' ? snapshot.objects.find((object) => object.id === source.id) : undefined;
+    return found && isSceneCamera(found) ? found : null;
+  }, [viewfinder.source, snapshot.objects]);
+  const nextCameraView = cameraViewOf(viewfinder, lookCamera, snapshot.canEdit);
+  const cameraViewKey = JSON.stringify(nextCameraView);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the key holds every field; the value stays the same object while it is unchanged
+  const cameraView = React.useMemo<SceneCameraView | null>(() => nextCameraView, [cameraViewKey]);
+  const cameraViewRef = React.useRef(cameraView);
+  cameraViewRef.current = cameraView;
+  const viewFrame = cameraView === null ? null : viewfinder.frame;
+  const [ambientDraft, setAmbientDraft] = React.useState<Partial<SceneEnvironmentValues> | null>(null);
+  const environment = React.useMemo(() => (ambientDraft ? { ...snapshot.environment, ...ambientDraft } : snapshot.environment), [ambientDraft, snapshot.environment]);
+  const [lightPlan, setLightPlan] = React.useState<LightsPlan | null>(null);
+  const [monitors, setMonitors] = React.useState<ReadonlyMap<string, HTMLCanvasElement>>(new Map());
+  const pilotControl = React.useRef<ScenePilotControl | null>(null);
   const failures = snapshot.objects.flatMap((object) => {
     const error = modelStates.get(object.id) === 'failed' ? modelErrors.get(object.id) : undefined;
     return error ? [error] : [];
@@ -176,12 +208,32 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   }, [session, userId, projectId, spaceId, t]);
 
   React.useEffect(() => {
+    const error = snapshot.commandError;
     // A size refusal is reported by its own warning.
-    if (snapshot.commandError && !isSceneSizeRefusal(snapshot.commandError.reason) && snapshot.commandError !== reportedCommandError.current) {
-      toast.error(t('spaces.threeD.commandFailed'));
+    if (error && !isSceneSizeRefusal(error.reason) && error !== reportedCommandError.current) {
+      if (error.reason === 'lightLimit') toast.warning(t('spaces.threeD.director.lightLimit', { max: director?.maxLights ?? 0 }));
+      else toast.error(t('spaces.threeD.commandFailed'));
     }
-    reportedCommandError.current = snapshot.commandError;
-  }, [snapshot.commandError, t]);
+    reportedCommandError.current = error;
+  }, [snapshot.commandError, director, t]);
+
+  React.useEffect(() => {
+    if (director) session.setLimits({ maxLights: director.maxLights });
+  }, [session, director]);
+
+  // A camera deleted while it is the source: framing closes, a still stays with a free source (design 6.1).
+  const lookSourceId = viewfinder.source.kind === 'camera' ? viewfinder.source.id : null;
+  React.useEffect(() => {
+    if (lookSourceId === null || lookCamera !== null || snapshot.status !== 'ready') return;
+    dispatchViewfinder({ type: 'cameraDeleted', id: lookSourceId });
+    toast.info(t('spaces.threeD.director.cameraDeleted'));
+  }, [lookSourceId, lookCamera, snapshot.status, t]);
+
+  const couldEdit = React.useRef(snapshot.canEdit);
+  React.useEffect(() => {
+    if (couldEdit.current && !snapshot.canEdit) dispatchViewfinder({ type: 'permissionLost' });
+    couldEdit.current = snapshot.canEdit;
+  }, [snapshot.canEdit]);
 
   /** Create independent selected copies of committed objects, including locked sources. */
   const duplicate = React.useCallback((): void => {
@@ -208,14 +260,15 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
         // canvas list closes itself), then clear the selection. Joint mode lives only while the
         // properties panel is open, and the panel's own Escape leaves it first.
         if (session.getSnapshot().gestureActive) session.endGesture(false);
+        else if (pilotControl.current?.escape()) return;
         else if (viewfinderPhase.current === 'picking') return;
         else if (viewfinderPhase.current !== 'off') dispatchViewfinder({ type: 'escape' });
         else session.select(null, false);
         return;
       }
       if (!modifier && !event.altKey && key === 'f') { event.preventDefault(); setFocusRevision((value) => value + 1); return; }
-      if (modifier && !event.altKey && key === 'z') { event.preventDefault(); session.historyStep(event.shiftKey ? 'redo' : 'undo'); return; }
-      if (event.ctrlKey && !event.metaKey && !event.altKey && key === 'y') { event.preventDefault(); session.historyStep('redo'); return; }
+      if (modifier && !event.altKey && key === 'z') { event.preventDefault(); pilotControl.current?.flush(); session.historyStep(event.shiftKey ? 'redo' : 'undo'); return; }
+      if (event.ctrlKey && !event.metaKey && !event.altKey && key === 'y') { event.preventDefault(); pilotControl.current?.flush(); session.historyStep('redo'); return; }
       if (modifier && !event.altKey && !event.shiftKey && key === 'd') { event.preventDefault(); if (!event.repeat) duplicate(); return; }
       if (!modifier && !event.altKey && !event.shiftKey && (event.key === 'Delete' || event.key === 'Backspace')) {
         event.preventDefault();
@@ -412,15 +465,15 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     if (keepTasksPanel.current) {
       // A model placed from the task list is selected there; the list stays open for the next one.
       keepTasksPanel.current = false;
-    } else if (viewfinderPhase.current !== 'off') {
-      // While framing, the panel follows only its own buttons, so the frame does not move with a selection (#1411 design 3.2).
+    } else if (viewfinderPhase.current !== 'off' || (panel === 'director' && rightOpen)) {
+      // While framing or with the director console open, the panel follows only its own buttons (#1411 design 3.2, inner#1694 design 3.2).
     } else if (snapshot.selectedIds.length > 0 && !importOpen) {
       // An open import dialog keeps the overlay slot; a collaborator's change to the selection must not close it.
       automaticPanel.current = true;
       returnTarget.current = stage.current?.querySelector('canvas') ?? null;
       setPanel('properties'); setRightOpen(true);
     } else if (panel === 'properties') setRightOpen(false);
-  }, [selection, snapshot.selectedIds.length, panel, setRightOpen, importOpen, leaveJointMode]);
+  }, [selection, snapshot.selectedIds.length, panel, rightOpen, setRightOpen, importOpen, leaveJointMode]);
   React.useEffect(() => {
     if (!mutable || panel !== 'properties' || !rightOpen) leaveJointMode();
   }, [mutable, panel, rightOpen, leaveJointMode]);
@@ -456,6 +509,9 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
    */
   const cancelGesture = React.useCallback((): boolean => {
     if (session.getSnapshot().gestureActive) session.endGesture(false);
+    else if (pilotControl.current?.escape()) return true;
+    // During a camera view the viewfinder steps back first and the panel stays (design 3.8); its canvas list closes itself.
+    else if (cameraViewRef.current !== null) { if (viewfinderPhase.current !== 'picking') dispatchViewfinder({ type: 'escape' }); }
     else if (jointMode) changeJointMode(false);
     else return false;
     return true;
@@ -509,7 +565,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
    * Apply a personal history step to the current session.
    * @throws {never} Never.
    */
-  const onHistory = React.useCallback((step: 'undo' | 'redo'): void => { session.historyStep(step); }, [session]);
+  const onHistory = React.useCallback((step: 'undo' | 'redo'): void => { pilotControl.current?.flush(); session.historyStep(step); }, [session]);
   /**
    * Toggle the personal minimap.
    * @throws {never} Never.
@@ -530,6 +586,91 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
    * @throws {never} Never.
    */
   const onDelete = React.useCallback((): void => { session.execute({ type: 'delete', ids: session.getSnapshot().selectedIds }); }, [session]);
+  /**
+   * Save what the user sees as a new camera (design 3.5): a copy of the camera being looked through, the open free
+   * frame, or the largest 16:9 frame of the plain view.
+   */
+  const saveView = React.useCallback(async (): Promise<void> => {
+    const current = session.getSnapshot();
+    const number = Math.max(0, ...current.objects.filter(isSceneCamera).map((camera) => camera.number)) + 1;
+    const base = { id: crypto.randomUUID(), name: t('spaces.threeD.director.cameraName', { n: number }), model: { kind: 'camera' as const },
+      scale: [1, 1, 1] as [number, number, number], locked: false, number };
+    if (lookCamera !== null && cameraViewRef.current?.kind === 'live') {
+      pilotControl.current?.flush();
+      const record = session.getSnapshot().objects.find((object) => object.id === lookCamera.id);
+      if (!record || !isSceneCamera(record)) return;
+      session.execute({ type: 'create', objects: [{ ...base, position: record.position, rotation: record.rotation,
+        focalLength: record.focalLength, frame: record.frame, freeRatio: record.freeRatio } as unknown as SceneObject] });
+      return;
+    }
+    const { cameraFromView } = await import('@web/spaces/three-d/viewfinder/camera-from-frame');
+    const freeOpen = viewfinder.phase === 'framing' && viewfinder.source.kind === 'free';
+    const frame = freeOpen ? viewfinder.frame : largestFrame(16 / 9, sceneViewfinderSafeArea(stageSize, rightOpen));
+    if (frame.width <= 0 || frame.height <= 0) return;
+    const pose = cameraFromView(view.current, frame, stageSize);
+    const ratio = freeOpen ? viewfinder.ratio : SAVED_CAMERA_FRAME;
+    session.execute({ type: 'create', objects: [{ ...base, ...pose, frame: ratio,
+      ...(ratio === 'Free' ? { freeRatio: Math.min(SCENE_FREE_RATIO_MAX, Math.max(SCENE_FREE_RATIO_MIN, frame.width / frame.height)) } : {}) } as unknown as SceneObject] });
+  }, [session, t, lookCamera, viewfinder, stageSize, rightOpen]);
+  const onSaveView = React.useCallback((): void => { void saveView(); }, [saveView]);
+  /**
+   * Add a light of one type aimed at the orbit centre (design 3.6).
+   * @param type - The light type.
+   */
+  const addLight = React.useCallback(async (type: SceneLightType): Promise<void> => {
+    const { newLightPose } = await import('@web/spaces/three-d/viewfinder/camera-from-frame');
+    const current = session.getSnapshot();
+    const number = Math.max(0, ...current.objects.filter(isSceneLight).map((light) => light.number)) + 1;
+    const centre = (lookCamera !== null ? pilotControl.current?.centre() : null) ?? view.current.target;
+    const pose = newLightPose(centre, lookCamera?.position ?? view.current.position);
+    session.execute({ type: 'create', objects: [{ id: crypto.randomUUID(), model: { kind: 'light', type }, number,
+      name: t('spaces.threeD.director.lightName', { type: t(`spaces.threeD.director.${LIGHT_LABEL[type]}`), n: number }),
+      position: pose.position, rotation: type === 'point' ? [0, 0, 0, 1] : pose.rotation, scale: [1, 1, 1], locked: false,
+      color: SCENE_LIGHT_COLOR_DEFAULT, intensity: SCENE_LIGHT_INTENSITY[type].initial, castShadow: true } as unknown as SceneObject] });
+  }, [session, t, lookCamera]);
+  const onAddLight = React.useCallback((type: SceneLightType): void => { void addLight(type); }, [addLight]);
+  /**
+   * Look through a camera with the frame of its ratio.
+   * @param id - The camera.
+   */
+  const onLook = React.useCallback((id: string): void => {
+    const camera = session.getSnapshot().objects.find((object) => object.id === id);
+    if (!camera || !isSceneCamera(camera)) return;
+    pilotControl.current?.flush();
+    dispatchViewfinder({ type: 'look', id, view: view.current, frame: largestFrame(cameraFrameRatio(camera), sceneViewfinderSafeArea(stageSize, rightOpen)) });
+  }, [session, stageSize, rightOpen]);
+  /**
+   * Follow a monitor card's canvas.
+   * @param id - The camera.
+   * @param canvas - Its canvas, or null when it unmounts.
+   */
+  const onMonitor = React.useCallback((id: string, canvas: HTMLCanvasElement | null): void => {
+    setMonitors((previous) => {
+      if ((previous.get(id) ?? null) === canvas) return previous;
+      const next = new Map(previous);
+      if (canvas) next.set(id, canvas); else next.delete(id);
+      return next;
+    });
+  }, []);
+  const onAmbientPreview = React.useCallback((values: Partial<SceneEnvironmentValues>): void => setAmbientDraft((previous) => ({ ...previous, ...values })), []);
+  const ambientDraftRef = React.useRef(ambientDraft);
+  ambientDraftRef.current = ambientDraft;
+  const onAmbientCommit = React.useCallback((): void => {
+    const draft = ambientDraftRef.current;
+    setAmbientDraft(null);
+    if (draft) session.execute({ type: 'environment', set: draft });
+  }, [session]);
+  /**
+   * Change the frame of the camera being looked through.
+   * @param frame - The new frame or free ratio.
+   */
+  const onCameraFrame = React.useCallback((frame: { frame?: ViewfinderRatio; freeRatio?: number }): void => {
+    if (lookCamera) session.execute({ type: 'patch', patches: [{ id: lookCamera.id, ...frame }] });
+  }, [session, lookCamera]);
+  const onPilotPreview = React.useCallback<NonNullable<SceneViewportProps['onPilotPreview']>>((id, position, rotation) => session.previewPilot(id, position, rotation), [session]);
+  const onPilotEnd = React.useCallback((commit: boolean): void => session.endPilot(commit), [session]);
+  const onPilotLocked = React.useCallback((): void => { toast.warning(t('spaces.threeD.director.cameraLocked')); }, [t]);
+  const onPilotControl = React.useCallback((control: ScenePilotControl | null): void => { pilotControl.current = control; }, []);
   const unlockedIcon = React.useMemo(() => <UnlockIcon className='size-4' />, [UnlockIcon]);
   const panelActions = React.useMemo(() => panel === 'properties' && selected.length > 0
     ? <SceneIconButton label={allSelectedLocked ? unlockText : lockText} data-testid='scene-selection-lock'
@@ -545,12 +686,17 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
         fieldDrafts={fieldDrafts} onFieldDraftChange={onFieldDraftChange}
         skeletonStates={skeletonStates} jointMode={jointMode} onJointModeChange={changeJointMode} />
     </React.Suspense>
-    : panel === 'objects' ? <SceneObjectList session={session} snapshot={snapshot} modelStates={modelStates} onSelect={showSelectedProperties} />
-      : <SceneTaskList projectId={projectId} spaceId={spaceId} userId={userId} canEdit={snapshot.canEdit} canGenerate={myRole !== 'viewer'} uploads={uploads}
-        remoteUploads={snapshot.remoteUploads} onPlace={placeTask} focusTaskId={focusTaskId} onFocused={taskFocused}
-        onRetryGeneration={retryGeneration} placedAssetIds={placedAssetIds} onLocate={locateAsset} filterHost={filterHost} />,
+    : panel === 'director' ? <SceneDirectorPanel session={session} snapshot={snapshot} spaceId={spaceId} Field={SceneField} fieldDrafts={fieldDrafts}
+      onFieldDraftChange={onFieldDraftChange} lightPlan={lightPlan} maxLights={director?.maxLights} lookingAt={lookCamera?.id ?? null}
+      environment={environment} onSaveView={onSaveView} onAddLight={onAddLight} onLook={onLook} onMonitor={onMonitor}
+      onAmbientPreview={onAmbientPreview} onAmbientCommit={onAmbientCommit} />
+      : panel === 'objects' ? <SceneObjectList session={session} snapshot={snapshot} modelStates={modelStates} onSelect={showSelectedProperties} />
+        : <SceneTaskList projectId={projectId} spaceId={spaceId} userId={userId} canEdit={snapshot.canEdit} canGenerate={myRole !== 'viewer'} uploads={uploads}
+          remoteUploads={snapshot.remoteUploads} onPlace={placeTask} focusTaskId={focusTaskId} onFocused={taskFocused}
+          onRetryGeneration={retryGeneration} placedAssetIds={placedAssetIds} onLocate={locateAsset} filterHost={filterHost} />,
   [panel, inspectorFallback, session, snapshot, readObjects, namedPeers, spaceId, fieldDrafts, onFieldDraftChange, skeletonStates, jointMode, changeJointMode, modelStates, showSelectedProperties,
-    projectId, userId, myRole, uploads, placeTask, focusTaskId, taskFocused, retryGeneration, placedAssetIds, locateAsset, filterHost]);
+    projectId, userId, myRole, uploads, placeTask, focusTaskId, taskFocused, retryGeneration, placedAssetIds, locateAsset, filterHost,
+    lightPlan, director, lookCamera, environment, onSaveView, onAddLight, onLook, onMonitor, onAmbientPreview, onAmbientCommit]);
   // An older-format scene is never opened, so no editing chrome is shown around its message.
   if (snapshot.status === 'unsupported' && isOlderSceneFormat(snapshot.version)) {
     return <div ref={stage} className='relative isolate h-full min-h-0 min-w-0 bg-canvas' data-testid='three-d-space'>
@@ -574,7 +720,9 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
                   onSelect={onSelect} onGestureStart={onGestureStart}
                   onGestureChange={onGestureChange} onGestureEnd={onGestureEnd}
                   onViewChange={onViewChange} onError={onError} onModelStateChange={onModelStateChange} resolveAsset={resolveAsset} onResources={onResources}
-                  onCapture={onCapture} viewLocked={shotTaken} />
+                  onCapture={onCapture} viewLocked={shotTaken} cameraView={cameraView} viewFrame={viewFrame} environment={environment} director={director}
+                  onPilotPreview={onPilotPreview} onPilotEnd={onPilotEnd} onPilotLocked={onPilotLocked} onPilotControl={onPilotControl}
+                  onLightPlan={setLightPlan} monitors={monitors} />
               </React.Suspense>}
       {failedModels ? <div className='absolute left-20 top-3 flex max-w-[calc(100%_-_5rem_-_var(--space-5)_-_42px_-_var(--space-2))] items-center justify-between gap-2 rounded-chrome border border-border bg-background p-2 text-xs'>
         <span className='min-w-0'>{t('spaces.threeD.modelFailed')}{cause && <> {t(importErrorKey(cause.code))}{cause.budget && <> {budgetText(t, cause.budget, getLocale())}</>}{cause.detail && <span className='block break-all text-muted-foreground'>{cause.detail}</span>}</>}</span>
@@ -586,7 +734,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     {importController && importLimits && <React.Suspense fallback={null}><SceneModelImportHost controller={importController}
       open={importOpen} onOpenChange={setImportOpen} canEdit={snapshot.canEdit} maxInputBytes={importLimits.maxInputBytes} onStarted={importStarted} /></React.Suspense>}
     <SceneRightPanel open={rightOpen} onOpenChange={setRightOpen} automatic={automaticPanel} stage={stage} returnTarget={returnTarget} cancelGesture={cancelGesture} contentRef={rightPanel}
-      title={panel === 'properties' ? t('spaces.threeD.properties') : panel === 'objects' ? t('spaces.threeD.objects') : t('spaces.threeD.tasks')}
+      title={panel === 'properties' ? t('spaces.threeD.properties') : panel === 'objects' ? t('spaces.threeD.objects') : panel === 'director' ? t('spaces.threeD.director.open') : t('spaces.threeD.tasks')}
       actions={panelActions}>
       {panelContent}
     </SceneRightPanel>
@@ -597,8 +745,9 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
       onHistory={onHistory} hasSelection={selected.length > 0} onPanel={showPanel} minimap={minimap} minimapDisabled={framing} onMinimap={toggleMinimap} />
     <SceneViewfinder state={viewfinder} dispatch={viewfinderAction} stage={stageSize} rightPanelOpen={rightOpen} capture={frameCapture}
       modelsLoading={modelsLoading} disabled={myRole === 'viewer' || snapshot.status !== 'ready'} chatSwitching={chatSwitching} projectId={projectId} spaceId={spaceId}
-      spaceName={spaceName} userId={userId} config={controls.data?.capture} spaces={projectSpaces} />
-    {selected.length > 0 && !shotTaken ? <SceneObjectToolbar mode={mode} jointMode={jointMode} mutable={mutable} canDuplicate={snapshot.canEdit}
+      spaceName={spaceName} userId={userId} config={controls.data?.capture} spaces={projectSpaces}
+      camera={lookCamera} canEdit={snapshot.canEdit} onCameraFrame={onCameraFrame} />
+    {selected.length > 0 && !shotTaken ? <SceneObjectToolbar mode={mode} jointMode={jointMode} mutable={mutable} canRotate={canRotate} canScale={canScale} canDuplicate={snapshot.canEdit}
       onMode={onMode} onFocus={onFocus} onDuplicate={duplicate} onDelete={onDelete} /> : null}
   </div>;
 });
