@@ -57,6 +57,7 @@ import { documentEnterExtension } from '@web/spaces/document/document-enter';
 import { documentKeyboardMoveExtension } from '@web/spaces/document/document-keyboard-move';
 import { documentTabExtension } from '@web/spaces/document/document-tab';
 import { documentColumnKeysExtension } from '@web/spaces/document/document-column-keys';
+import { columnDropHook } from '@web/spaces/document/document-column-landing';
 import { documentColumnRepairExtension } from '@web/spaces/document/document-column-repair';
 import { documentTableKeysExtension } from '@web/spaces/document/document-table-keys';
 import { documentTableColumnWidthsExtension } from '@web/spaces/document/document-table-column-widths';
@@ -74,7 +75,7 @@ import { documentQuoteInputExtension } from '@web/spaces/document/document-quote
 import { documentSafariImeExtension } from '@web/spaces/document/document-safari-ime';
 import { documentTrailingPressExtension } from '@web/spaces/document/document-trailing-press';
 import { documentLinkEditMarkExtension } from '@web/spaces/document/document-link-edit-mark';
-import { documentDragDropExtension } from '@web/spaces/document/document-drag-drop';
+import { documentDragDropExtension, flyingRowId } from '@web/spaces/document/document-drag-drop';
 import { documentCommentLiveMarkExtension, documentCommentMarkExtension } from '@web/spaces/document/document-comment-mark';
 import { COMMENT_MARK } from '@web/spaces/document/document-comment-extension';
 import {
@@ -252,7 +253,7 @@ export function buildDocumentEditor(
 
   // A table open full screen takes every drop (#1427), so no line says
   // where one would land; a table's own row and column drags draw none either.
-  const tableDrags = holdDropLineInTableDrags(fileDropPosition);
+  const tableDrags = holdDropLineInTableDrags(columnDropHook(fileDropPosition, flyingRowId));
   /**
    * Where the drop line stands, or nowhere while a table is full screen.
    * @param context - The drag the library is asking about.

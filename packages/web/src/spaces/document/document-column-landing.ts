@@ -5,10 +5,18 @@
  * Where a side drop is, and when there is none (inner#1314 design §5.2).
  */
 
+import type { ComputeDropPositionContext } from '@blocknote/core/extensions';
 import type { Node as PMNode } from '@tiptap/pm/model';
+import type { EditorView } from '@tiptap/pm/view';
 
 import type { ColumnSide } from '@web/spaces/document/document-column-drop';
-import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-nodes';
+import {
+  COLUMN_GAP,
+  DOC_COLUMN,
+  DOC_COLUMN_LIST,
+  MAX_COLUMNS,
+  MIN_COLUMN_WIDTH,
+} from '@web/spaces/document/document-column-nodes';
 import { rowById } from '@web/spaces/document/document-row-by-id';
 import { cellDepthOf, DOC_TABLE } from '@web/spaces/document/document-table-nodes';
 
@@ -26,15 +34,6 @@ export interface ColumnRoom {
 
 /** How far in from a visible edge the side zone reaches. */
 const SIDE_ZONE = 24;
-
-/** The most columns a group holds. */
-export const MAX_COLUMNS = 4;
-
-/** The narrowest a new column may be in the body. */
-export const MIN_COLUMN_WIDTH = 96;
-
-/** The gap between two columns. */
-export const COLUMN_GAP = 72;
 
 /** Table nodes: ours, and the stored (legacy) one. */
 const TABLES = new Set([DOC_TABLE, 'table']);
@@ -133,4 +132,89 @@ export function sideDropAllowed(
     if (width < MIN_COLUMN_WIDTH) return false;
   }
   return true;
+}
+
+/** A drop position hook of the drop cursor. */
+type DropPositionHook = (context: ComputeDropPositionContext) => ComputeDropPositionContext['defaultPosition'];
+
+/** The side drop the line last showed. */
+interface SideDrop {
+  readonly draggedId: string;
+  readonly targetId: string;
+  readonly side: ColumnSide;
+}
+
+let shown: SideDrop | undefined;
+
+/**
+ * Takes the side drop the line showed for this drag, if it showed one.
+ * @param draggedId - The row the drag carries.
+ * @returns The side drop, or undefined.
+ */
+export function takeSideDrop(draggedId: string): SideDrop | undefined {
+  const drop = shown;
+  shown = undefined;
+  return drop?.draggedId === draggedId ? drop : undefined;
+}
+
+/** A row under the pointer. */
+interface RowAt {
+  /** Where the row starts. */
+  readonly pos: number;
+  /** Its id. */
+  readonly id: string;
+  /** Its visible horizontal extent. */
+  readonly box: VisibleBox;
+}
+
+/**
+ * The row level with the pointer, the gutter and margin included, and what
+ * of it the user sees: a picture, video or audio by its media box, any other
+ * row by its own content.
+ * @param view - The editor view.
+ * @param x - The pointer's x.
+ * @param y - The pointer's y.
+ * @returns The row, or null.
+ */
+function rowAt(view: EditorView, x: number, y: number): RowAt | null {
+  const surface = view.dom.getBoundingClientRect();
+  const at = view.posAtCoords({ left: Math.min(Math.max(x, surface.left + 1), surface.right - 1), top: y });
+  if (at === null) return null;
+  const $at = view.state.doc.resolve(at.inside >= 0 ? at.inside : at.pos);
+  for (let depth = $at.depth; depth > 0; depth -= 1) {
+    const node = $at.node(depth);
+    if (node.type.name !== 'blockContainer' && node.type.name !== DOC_TABLE) continue;
+    const pos = $at.before(depth);
+    const dom = view.nodeDOM(pos);
+    if (!(dom instanceof HTMLElement)) return null;
+    const own = dom.querySelector(':scope > .bn-block-content') ?? dom;
+    const media = own.querySelector('[data-media-box]');
+    const rect = (media ?? own).getBoundingClientRect();
+    return { pos, id: String(node.attrs['id']), box: { left: rect.left, right: rect.right } };
+  }
+  return null;
+}
+
+/**
+ * The drop cursor hook for row drags beside a row: a vertical line on the
+ * side the pointer is on, where a side drop may land; any other drag is the
+ * next hook's.
+ * @param next - The hook for every other drop.
+ * @param flyingRowId - The row a drag in flight carries, if any.
+ * @returns The hook.
+ */
+export function columnDropHook(next: DropPositionHook, flyingRowId: () => string | undefined): DropPositionHook {
+  return (context) => {
+    shown = undefined;
+    const draggedId = flyingRowId();
+    if (draggedId === undefined) return next(context);
+    const { view, event } = context;
+    const row = rowAt(view, event.clientX, event.clientY);
+    const side = row === null ? null : sideOfPointer(event.clientX, row.box);
+    if (row === null || side === null) return next(context);
+    const room = { bodyWidth: view.dom.clientWidth };
+    if (!sideDropAllowed(view.state.doc, draggedId, row.id, side, room)) return next(context);
+    shown = { draggedId, targetId: row.id, side };
+    return { pos: row.pos, orientation: side === 'left' ? 'block-vertical-left' : 'block-vertical-right' };
+  };
 }

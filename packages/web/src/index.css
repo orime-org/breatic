@@ -2159,6 +2159,32 @@ body {
     width: min(var(--doc-media-width, 100%), 100%) !important;
   }
 
+  /* Column groups (inner#1314 design §5.1): the columns side by side with a
+     72px gap, each taking its weight of the row (`flex-grow` is written
+     inline from the column's width). A group whose container is too narrow
+     for its columns is stacked in reading order (`data-stacked`, measured in
+     `document-column-nodes.tsx`). A picture or video in a column is shown at
+     its stored width or the column's, whichever is less. */
+  .doc-body .doc-columns {
+    display: flex;
+    align-items: flex-start;
+    gap: 72px;
+  }
+
+  .doc-body .doc-column {
+    flex-shrink: 1;
+    flex-basis: 0;
+    min-width: 0;
+  }
+
+  .doc-body .doc-columns[data-stacked] {
+    display: block;
+  }
+
+  .doc-body .doc-column [data-media-box] {
+    width: min(var(--doc-media-width, 100%), 100%) !important;
+  }
+
   /* Selected cells, the cells an open row or column menu acts on, and the
      cells of a table a selection runs out of: one look (inner#1126 A6,
      inner#1619 T14). The library draws this layer for `.selectedCell` only, so

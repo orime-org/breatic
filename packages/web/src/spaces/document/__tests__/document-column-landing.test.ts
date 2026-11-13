@@ -21,6 +21,7 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { columnsFit } from '@web/spaces/document/document-column-nodes';
 import { sideDropAllowed, sideOfPointer } from '@web/spaces/document/document-column-landing';
 import { columnsBlock, para } from '@web/spaces/document/__tests__/column-fixtures';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
@@ -177,5 +178,14 @@ describe('when a side drop is refused (design §5.2)', () => {
   it('allows a table in the body to go beside a body row, into a column', () => {
     const editor = editorWith([tableBlock({ rows: [{ cells: ['t'] }] }), para('p')]);
     expect(sideDropAllowed(editor.prosemirrorState.doc, idOf(editor, 'table:0'), idOf(editor, 'p'), 'right', room)).toBe(true);
+  });
+});
+
+describe('whether a container holds its columns side by side (design §5.1)', () => {
+  it('needs 96px a column and 72px a gap', () => {
+    expect(columnsFit(264, 2)).toBe(true);
+    expect(columnsFit(263, 2)).toBe(false);
+    expect(columnsFit(600, 4)).toBe(true);
+    expect(columnsFit(599, 4)).toBe(false);
   });
 });
