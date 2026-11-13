@@ -102,8 +102,8 @@ interface DocumentBlockMenuProps {
   editor: HandleEditor;
   /** The block the pointer is over. */
   block: PressedBlock;
-  /** Closes the menu. */
-  close: () => void;
+  /** Closes the menu; a formula block made by the pick has its box opened then. */
+  close: (formula?: string) => void;
   /** The rows to draw, in order. */
   rows?: readonly BlockMenuRow[];
 }
@@ -240,7 +240,7 @@ function useFacesOf(editor: HandleEditor, blockId: string): StyleFaces {
  * @param props - See {@link DocumentBlockMenuProps}.
  * @param props.editor - The editor to write to.
  * @param props.block - The block the pointer is over.
- * @param props.close - Closes the menu.
+ * @param props.close - Closes the menu, naming a formula block whose box opens then.
  * @param props.rows - The rows to draw; a block's grip rows when left out.
  * @returns The rows.
  */
@@ -311,10 +311,7 @@ export function DocumentBlockMenu({
   const onInsertBelow = React.useCallback(
     (choice: InsertChoice): void => {
       const live = rowNow();
-      if (live !== undefined) {
-        insertBelow(editor, live, choice);
-      }
-      close();
+      close(live === undefined ? undefined : insertBelow(editor, live, choice));
     },
     [editor, rowNow, close],
   );

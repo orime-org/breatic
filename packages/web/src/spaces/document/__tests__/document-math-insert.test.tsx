@@ -155,6 +155,25 @@ describe('picking the formula', () => {
     expect(types(editor)[1]).toBe('mathBlock');
   });
 
+  it.each([
+    ['on an empty line', (editor: Editor) => fillEmptyRow(editor, rowAt(editor, 1), FORMULA), 1],
+    ['under a row', (editor: Editor) => insertBelow(editor, rowAt(editor, 0), FORMULA), 1],
+  ])('names the new formula, whose box the menu opens once it closes (%s)', (_where, pick, index) => {
+    const { editor } = open(AROUND_EMPTY);
+
+    const made = pick(editor);
+
+    expect(made).toBe(rowAt(editor, index).id);
+    expect(types(editor)[index]).toBe('mathBlock');
+  });
+
+  it('names nothing for a pick that is not a formula', () => {
+    const { editor } = open(AROUND_EMPTY);
+
+    expect(fillEmptyRow(editor, rowAt(editor, 1), 'divider' as unknown as InsertChoice)).toBeUndefined();
+    expect(insertBelow(editor, rowAt(editor, 0), 'divider' as unknown as InsertChoice)).toBeUndefined();
+  });
+
   it('is taken back by one undo on an empty line', () => {
     const { editor, manager } = open(AROUND_EMPTY);
 
