@@ -113,6 +113,20 @@ END $$;
     await expect(migrationStyle.run(migration(sql))).resolves.toEqual([]);
   });
 
+  it("reads a DO block whose body builds a statement to EXECUTE", async () => {
+    // The string an EXECUTE runs is an expression, not a statement; only the
+    // statements inside the body can declare a foreign key.
+    const sql = `DO $$
+DECLARE r record;
+BEGIN
+  FOR r IN SELECT conname FROM pg_constraint WHERE contype = 'f' LOOP
+    EXECUTE 'ALTER TABLE ' || quote_ident('a') || ' DROP CONSTRAINT ' || quote_ident(r.conname);
+  END LOOP;
+END $$;
+`;
+    await expect(migrationStyle.run(migration(sql))).resolves.toEqual([]);
+  });
+
   it("does not count semicolons in prose", async () => {
     // An earlier version did, and reported three historical migrations that
     // each hold one statement.

@@ -77,13 +77,13 @@ BEGIN
   ) AS t(tbl, col, ref) LOOP
     FOR fk IN
       SELECT c.conname FROM pg_constraint c
+      JOIN pg_class owner ON owner.oid = c.conrelid AND owner.relname = target.tbl
+      JOIN pg_namespace ns ON ns.oid = owner.relnamespace AND ns.nspname = 'public'
+      JOIN pg_class referenced ON referenced.oid = c.confrelid AND referenced.relname = target.ref
       JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attname = target.col
-      WHERE c.contype = 'f'
-        AND c.conrelid = format('%I', target.tbl)::regclass
-        AND c.confrelid = format('%I', target.ref)::regclass
-        AND c.conkey = ARRAY[a.attnum]
+      WHERE c.contype = 'f' AND c.conkey = ARRAY[a.attnum]
     LOOP
-      EXECUTE format('ALTER TABLE %I DROP CONSTRAINT %I', target.tbl, fk.conname);
+      EXECUTE 'ALTER TABLE ' || quote_ident(target.tbl) || ' DROP CONSTRAINT ' || quote_ident(fk.conname);
     END LOOP;
   END LOOP;
 END $$;--> statement-breakpoint
