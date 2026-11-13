@@ -433,7 +433,7 @@ export function chatSessionFor(init: ChatSessionInit): Chat<StoredUiMessage> {
       }
       if (part.type === USER_MESSAGE) {
         const id = (part.data as { id?: unknown } | null)?.id;
-        if (typeof id === 'string') chatWaiting.taken(conversationId, id);
+        if (typeof id === 'string') chatWaiting.remove(conversationId, id);
         return;
       }
       if (part.type === ASK_REPLIED) {

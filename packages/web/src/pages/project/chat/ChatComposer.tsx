@@ -147,16 +147,8 @@ function ChatComposerInner({
   });
 
   /**
-   * Submit the draft message when the composer is in a ready state.
-   *
-   * Hands the keyboard to the box on the way out. Whoever pressed this with
-   * the keyboard is standing on a button that is about to be a different
-   * one -- the same element serves send, the wait and stop, which is what
-   * keeps the focus from falling to the body when the phase changes. Left
-   * standing there, their next keypress reaches stop: they would be ending
-   * the answer they just asked for, having aimed at nothing of the sort.
-   * The box is where they act next anyway, and it is the one thing here that
-   * does not change meaning underneath them.
+   * Submit the draft message when the composer is in a ready state, and hand
+   * the keyboard over on the way out.
    */
   const submit = (): void => {
     if (!ready) return;
@@ -165,26 +157,16 @@ function ChatComposerInner({
   };
   submitRef.current = submit;
 
-  /**
-   * Stop the turn, and hand the keyboard over on the way out.
-   *
-   * The same rule as {@link submit} and the same reason: this element is
-   * about to be a different button. Stopping turns it back into Send, and a
-   * user who wrote their next message while waiting would send it with the
-   * very next keypress, having aimed at stop.
-   */
+  /** Stop the turn, and hand the keyboard over on the way out. */
   const abort = (): void => {
     onAbort?.();
     handOverTheKeyboard();
   };
 
   /**
-   * Put the keyboard where nothing changes meaning underneath it.
-   *
-   * The one slot in this row serves send, the wait and stop in turn, which is
-   * what keeps focus from falling to the body when the phase changes -- and
-   * what makes standing there dangerous. The box is where the user acts
-   * next anyway.
+   * Put the keyboard in the box: the button pressed unmounts (send gives way
+   * to the wait, stop leaves when the run ends), and focus would fall to the
+   * body. The box is where the user acts next anyway.
    */
   const handOverTheKeyboard = (): void => {
     // The editor's own focus puts the caret back where the user left it; a

@@ -731,9 +731,9 @@ export function joinContinued(views: readonly ChatMessage[]): ChatMessage[] {
     const view = out[i];
     // A message the user sent while the turn ran is inside the turn.
     if (view !== undefined && (view.role === 'assistant' || view.takenIn === true)) continue;
-    // out[start..i) is one turn's replies and the messages it took in; its
-    // last view is a reply, since a taken message is followed by the reply
-    // that read it.
+    // out[start..i) is one turn's replies and the messages it took in; a
+    // stopped turn can end on a taken message, so the last reply is found,
+    // not assumed to be the last view.
     const replies = out.slice(start, i).map((v, k) => ({ v, at: start + k })).filter(({ v }) => v.role === 'assistant');
     if (replies.length > 1) {
       const said = replies.map(({ v }) => v.content).filter((c) => c !== '');

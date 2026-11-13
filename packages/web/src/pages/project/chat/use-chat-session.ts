@@ -15,7 +15,7 @@ import { toast } from '@web/lib/toast';
 import { chatAttachments } from '@web/stores/chat-attachments';
 import { chatSessionFor } from '@web/stores/chat-sessions';
 import { chatLive, useChatLive } from '@web/stores/chat-live';
-import { useChatWaiting, type WaitingArea } from '@web/stores/chat-waiting';
+import { NOTHING_WAITING, useChatWaiting, type WaitingArea } from '@web/stores/chat-waiting';
 import { chatApi } from '@web/data/api/chat';
 import type { StoredUiMessage } from '@web/data/api/chat';
 import { clipSpaceContext } from '@web/pages/project/chat/space-context';
@@ -150,8 +150,6 @@ const UPDATE_THROTTLE_MS = 50;
 /** What a panel is looking at before the conversation has arrived. */
 const NO_MESSAGES: StoredUiMessage[] = [];
 
-/** The waiting area while nothing waits. */
-const NOTHING_WAITING: WaitingArea = { pending: [], awaiting: false, blocked: false, busy: {} };
 
 /**
  * The list before one has arrived.

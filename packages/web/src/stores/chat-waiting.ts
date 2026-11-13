@@ -29,7 +29,7 @@ interface ChatWaitingState {
 }
 
 /** Nothing waiting, and no reason given. */
-const EMPTY: WaitingArea = { pending: [], awaiting: false, blocked: false, busy: {} };
+export const NOTHING_WAITING: Readonly<WaitingArea> = Object.freeze({ pending: [], awaiting: false, blocked: false, busy: {} });
 
 export const useChatWaiting = create<ChatWaitingState>(() => ({ byConversation: {} }));
 
@@ -40,7 +40,7 @@ export const useChatWaiting = create<ChatWaitingState>(() => ({ byConversation: 
  */
 function update(conversationId: string, change: (area: WaitingArea) => Partial<WaitingArea>): void {
   useChatWaiting.setState((s) => {
-    const area = s.byConversation[conversationId] ?? EMPTY;
+    const area = s.byConversation[conversationId] ?? NOTHING_WAITING;
     return { byConversation: { ...s.byConversation, [conversationId]: { ...area, ...change(area) } } };
   });
 }
@@ -67,19 +67,11 @@ export const chatWaiting = {
     update(conversationId, () => seen);
   },
   /**
-   * A run took a message in.
+   * A message left the queue: a run took it in, or it was taken back here or elsewhere.
    * @param conversationId - The conversation.
    * @param id - The message.
    */
-  taken(conversationId: string, id: string): void {
-    update(conversationId, (area) => ({ pending: area.pending.filter((p) => p.id !== id) }));
-  },
-  /**
-   * A message was taken back, here or elsewhere.
-   * @param conversationId - The conversation.
-   * @param id - The message.
-   */
-  drop(conversationId: string, id: string): void {
+  remove(conversationId: string, id: string): void {
     update(conversationId, (area) => ({ pending: area.pending.filter((p) => p.id !== id) }));
   },
   /**

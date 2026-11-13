@@ -207,18 +207,6 @@ export type SendOutcome = 'sent' | 'refused' | 'unknown';
 const sendChains = new Map<string, Promise<unknown>>();
 
 /**
- * Mark a conversation as sending, or not.
- * @param conversationId - The conversation.
- * @param on - Whether a send is on its way.
- */
-function markSending(conversationId: string, on: boolean): void {
-  useChatLive.setState((s) => {
-    const { [conversationId]: _was, ...rest } = s.sending;
-    return { sending: on ? { ...rest, [conversationId]: true as const } : rest };
-  });
-}
-
-/**
  * Send one message and act on the answer.
  * @param sending - What is sent, and where.
  * @returns How it ended.
@@ -228,20 +216,15 @@ async function sendOne(sending: Sending): Promise<SendOutcome> {
   // Made at the press and carried by every re-send, so the server takes the
   // message once however often it arrives (inner#1717).
   const id = newId();
-  markSending(conversationId, true);
+  markFlag('sending', conversationId, true);
   try {
     const outcome = await runOnce<object, ChatSendAnswer>(`chat-send:${conversationId}:${id}`, {
       scope: 'conversation',
       prepare: () =>
-        bodyOrTransfer(projectId, {
-          ...spaces,
+        chatBody(projectId, conversationId, spaces, {
           id,
           message: words,
-          project_id: projectId,
-          conversation_id: conversationId,
           attached_chips: chips,
-          // Read at each send: the agent is told the time where the user is now.
-          time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           ...(model === undefined ? {} : { model }),
         }),
       send: (key, body) => chatApi.sendMessage(body, key),
@@ -264,7 +247,7 @@ async function sendOne(sending: Sending): Promise<SendOutcome> {
     });
     return outcome.kind === 'done' ? 'sent' : outcome.kind === 'failed' ? 'refused' : 'unknown';
   } finally {
-    markSending(conversationId, false);
+    markFlag('sending', conversationId, false);
   }
 }
 
@@ -292,12 +275,31 @@ function callAlreadyAnswered(err: unknown): CardResult | undefined {
 }
 
 /**
+ * A `/chat/message` body: the Spaces, where it goes and the zone the user is
+ * in now, read at each send so the agent is told the time where they are.
+ * @param projectId - The project.
+ * @param conversationId - The conversation.
+ * @param spaces - The Spaces it carries.
+ * @param fields - What this message or answer says.
+ * @returns The body, or the transfer it went up as when it is too large.
+ */
+function chatBody(projectId: string, conversationId: string, spaces: ChatSpaceContext, fields: object): Promise<object> {
+  return bodyOrTransfer(projectId, {
+    ...spaces,
+    ...fields,
+    project_id: projectId,
+    conversation_id: conversationId,
+    time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+  });
+}
+
+/**
  * Change a flag kept per conversation.
  * @param key - Which flag.
  * @param conversationId - The conversation.
  * @param on - Set or cleared.
  */
-function markFlag(key: 'stopping', conversationId: string, on: boolean): void {
+function markFlag(key: keyof ChatLiveState, conversationId: string, on: boolean): void {
   useChatLive.setState((s) => {
     const { [conversationId]: _was, ...rest } = s[key];
     return { [key]: on ? { ...rest, [conversationId]: true as const } : rest };
@@ -340,22 +342,14 @@ export const chatLive = {
   async answerCard(answering: Answering): Promise<void> {
     const { projectId, conversationId, toolCallId, card, spaces } = answering;
     try {
-      const body = await bodyOrTransfer(projectId, {
-        ...spaces,
-        ...card,
-        message: '',
-        project_id: projectId,
-        conversation_id: conversationId,
-        time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      });
+      const body = await chatBody(projectId, conversationId, spaces, { ...card, message: '' });
       const answered = await chatApi.sendMessage(body, newId());
       if (answered.running) {
         if (isShowing(conversationId) && !isReadingRun(conversationId)) void attach(conversationId);
         return;
       }
       // The run ended before it ran (a shutdown): what it left is in the history.
-      const read = await chatApi.readConversation(conversationId);
-      if (layLatestPage(conversationId, read.messages) === 'replaced') conversationRuntime.tookLatestPage(conversationId, read);
+      await readLatest(conversationId);
     } catch (err) {
       const stands = callAlreadyAnswered(err);
       if (stands !== undefined) {
@@ -396,7 +390,7 @@ export const chatLive = {
       const status = await chatApi.removeQueued(conversationId, item.id, projectId);
       // Taken: a run has it, and it shows in the reply soon.
       if (status === 'taken') return;
-      chatWaiting.drop(conversationId, item.id);
+      chatWaiting.remove(conversationId, item.id);
       // Gone: another page took it back first, so it is not this page's to put back.
       if (status !== 'removed' || how !== 'retract') return;
       // A send under way empties the box once it is answered; the words go in after.

@@ -41,9 +41,9 @@ describe('the waiting area', () => {
 
   it('lets a message go once a run took it in, or it was taken back (WB-22)', () => {
     chatWaiting.fromSend('c1', [item('m1'), item('m2'), item('m3')]);
-    chatWaiting.taken('c1', 'm2');
-    chatWaiting.taken('c1', 'nowhere');
-    chatWaiting.drop('c1', 'm3');
+    chatWaiting.remove('c1', 'm2');
+    chatWaiting.remove('c1', 'nowhere');
+    chatWaiting.remove('c1', 'm3');
     expect(useChatWaiting.getState().byConversation.c1?.pending.map((p) => p.id)).toEqual(['m1']);
   });
 
