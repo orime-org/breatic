@@ -32,7 +32,8 @@ export function playSourceRange(binding: Pick<MediaSurfaceBinding, 'element' | '
   let over = false;
   let frame = 0;
   let settle: (() => void) | undefined;
-  let startRead = start;
+  binding.seek(start);
+  const startRead = element.currentTime;
   /**
    * Ends the playback once, pausing on the end when it was reached.
    * @param reachedEnd - Whether the clock reached the range end.
@@ -84,8 +85,6 @@ export function playSourceRange(binding: Pick<MediaSurfaceBinding, 'element' | '
   function interrupted(): void { finish(false); }
   const done = new Promise<void>((resolve, reject) => {
     settle = resolve;
-    binding.seek(start);
-    startRead = element.currentTime;
     element.addEventListener('seeking', seeking);
     element.addEventListener('timeupdate', reached);
     element.addEventListener('ended', reached);
