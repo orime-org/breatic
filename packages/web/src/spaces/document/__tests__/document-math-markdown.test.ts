@@ -187,12 +187,27 @@ describe('Markdown into the body', () => {
 });
 
 describe('formula sources round-trip through Markdown', () => {
-  it.each(['\\{ \\}', '\\\\', 'a_1 b_2', 'a < b', 'a & b', '\\frac{a}{b}'])('keeps the inline source %s', async (source) => {
+  it.each(['\\{ \\}', '\\\\', 'a_1 b_2', 'a < b', 'a & b', '\\frac{a}{b}'])('keeps the inline source %j', async (source) => {
     const editor = open([inlineIn(source)]);
 
     const again = await read(blocksMarkdown(editor, editor.document as never));
 
     expect(formulas(again)).toEqual([{ kind: 'inline', source }]);
+  });
+
+  // Markdown cannot carry a line break inside a line: the next line could open
+  // a list or a heading. KaTeX draws a line break as a space, and a comment not
+  // at all, so the formula comes back drawn the same.
+  it.each([
+    ['a % c\n+ b', 'a + b'],
+    ['a \\% c\n# b', 'a \\% c # b'],
+    ['a\n\nb', 'a b'],
+  ])('writes the inline source %j on one line without its comments, as %j', async (source, written) => {
+    const editor = open([inlineIn(source)]);
+
+    const again = await read(blocksMarkdown(editor, editor.document as never));
+
+    expect(formulas(again)).toEqual([{ kind: 'inline', source: written }]);
   });
 
   it.each(['\\{ \\}', '\\\\', 'a_1 b_2', 'a < b', 'a & b', 'a\n\nb'])('keeps the block source %j', async (source) => {
