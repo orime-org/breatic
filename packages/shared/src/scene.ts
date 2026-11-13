@@ -251,6 +251,16 @@ export function compareDirectorRecords(a: { number: number; id: string }, b: { n
   return a.number - b.number || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 }
 
+/**
+ * The number a new camera or light takes: one above the highest of its kind, 1 when there is none.
+ * @param objects - The scene's records.
+ * @param kind - Camera or light.
+ * @returns The next number.
+ */
+export function nextDirectorNumber(objects: readonly SceneObject[], kind: 'camera' | 'light'): number {
+  return Math.max(0, ...objects.map((object) => (object.model.kind === kind ? object.number ?? 0 : 0))) + 1;
+}
+
 /** Record keys that commands overwrite after creation; `model` is fixed at creation and a pose is stored as flat `pose.` keys. */
 export type SceneEditableField = Exclude<keyof SceneObjectValues, 'model' | 'pose'>;
 

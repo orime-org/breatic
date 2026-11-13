@@ -8,7 +8,7 @@ import {
   DEFAULT_VIEWFINDER_RATIO, SCENE_AMBIENT_COLOR_DEFAULT, SCENE_AMBIENT_INTENSITY_DEFAULT, SCENE_AMBIENT_INTENSITY_MAX,
   SCENE_FOCAL_LENGTH_DEFAULT, SCENE_FORMAT_VERSION, SCENE_LIGHT_COLOR_DEFAULT, SCENE_LIGHT_INTENSITY, SCENE_POSE_KEY_PREFIX, SCENE_SPOT_ANGLE_DEFAULT,
   SceneColorSchema, SceneObjectSchema, SceneObjectValuesSchema, ScenePoseSchema,
-  expandScenePose, gatherScenePose, getSceneRootMap,
+  expandScenePose, gatherScenePose, getSceneRootMap, isSceneModelFile, nextDirectorNumber,
   type SceneEditableField, type SceneModel, type SceneObject, type SceneObjectValues, type ScenePose,
 } from '@breatic/shared';
 
@@ -16,10 +16,10 @@ import { strongestKind, writeSpaceDoc, type SpaceRefusalReason, type SpaceWriteK
 import { withDestroyListenerCleanup } from '@web/data/yjs/undo-manager-cleanup';
 
 /** Fields a `patch` command may write; a pose is written by `pose` commands, a number and the lock by their own. */
-const PATCH_FIELDS = ['name', 'position', 'rotation', 'scale', 'focalLength', 'frame', 'freeRatio', 'color', 'intensity', 'castShadow', 'angle'] as const;
-const PATCH_SCHEMA = SceneObjectValuesSchema.pick({ name: true, position: true, rotation: true, scale: true,
-  focalLength: true, frame: true, freeRatio: true, color: true, intensity: true, castShadow: true, angle: true })
-  .partial().extend({ id: z.string().uuid() }).strict();
+const PATCH_MASK = { name: true, position: true, rotation: true, scale: true,
+  focalLength: true, frame: true, freeRatio: true, color: true, intensity: true, castShadow: true, angle: true } as const;
+const PATCH_FIELDS = Object.keys(PATCH_MASK) as Array<keyof typeof PATCH_MASK>;
+const PATCH_SCHEMA = SceneObjectValuesSchema.pick(PATCH_MASK).partial().extend({ id: z.string().uuid() }).strict();
 
 /** The ambient light stored on the `scene` root. */
 const SceneEnvironmentSchema = z.object({
@@ -251,20 +251,14 @@ export function planSceneCommand(doc: Y.Doc, _name: string, command: SceneComman
     if (command.type === 'create') creations.push(...command.objects);
     else {
       // Copies of a camera or a light take the next numbers of their kind, one after another.
-      const next = { camera: 0, light: 0 };
-      for (const object of scene.objects) {
-        if ((object.model.kind === 'camera' || object.model.kind === 'light') && object.number !== undefined) {
-          next[object.model.kind] = Math.max(next[object.model.kind], object.number);
-        }
-      }
+      const next = { camera: nextDirectorNumber(scene.objects, 'camera') - 1, light: nextDirectorNumber(scene.objects, 'light') - 1 };
       for (const copy of command.copies) {
         const source = byId.get(copy.sourceId);
         if (!source) return { ok: false, reason: invalidIds.has(copy.sourceId) ? 'invalid' : 'missing' };
         const name = SceneObjectValuesSchema.shape.name.safeParse(`${source.name} copy`);
-        const kind = source.model.kind;
         creations.push({ ...source, id: copy.id, name: name.success ? name.data : source.name,
           position: [source.position[0] + 1, source.position[1], source.position[2] + 1], locked: false,
-          ...(kind === 'camera' || kind === 'light' ? { number: (next[kind] += 1) } : {}) });
+          ...(isSceneModelFile(source.model) ? {} : { number: (next[source.model.kind] += 1) }) });
       }
     }
     for (const creation of creations) {
@@ -283,7 +277,7 @@ export function planSceneCommand(doc: Y.Doc, _name: string, command: SceneComman
     const object = byId.get(command.id);
     if (!object) return { ok: false, reason: invalidIds.has(command.id) ? 'invalid' : 'missing' };
     if (object.locked) return { ok: false, reason: 'locked' };
-    if (object.model.kind === 'camera' || object.model.kind === 'light') return { ok: false, reason: 'invalid' };
+    if (!isSceneModelFile(object.model)) return { ok: false, reason: 'invalid' };
     const set = ScenePoseSchema.safeParse(command.set);
     if (!set.success) return { ok: false, reason: 'invalid' };
     const current: ScenePose = object.pose ?? {};
@@ -311,7 +305,6 @@ export function planSceneCommand(doc: Y.Doc, _name: string, command: SceneComman
       if (!parsed.success) return { ok: false, reason: 'invalid' };
       const object = byId.get(patch.id) as SceneObject;
       const { model } = object;
-      if ((model.kind === 'camera' || model.kind === 'light') && parsed.data.scale !== undefined) return { ok: false, reason: 'invalid' };
       if (model.kind === 'light' && model.type === 'point' && parsed.data.rotation !== undefined) return { ok: false, reason: 'invalid' };
       if (!SceneObjectSchema.safeParse({ ...object, ...parsed.data }).success) return { ok: false, reason: 'invalid' };
       for (const field of PATCH_FIELDS) {

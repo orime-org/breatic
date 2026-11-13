@@ -94,14 +94,15 @@ export class SceneMiniMapRuntime {
       if (!object || !ready.has(id) || JSON.stringify(object.model) !== item.source) this.remove(id);
     }
     for (const [id, icon] of this.icons) {
-      if (existing.get(id)?.model.kind !== 'camera' && existing.get(id)?.model.kind !== 'light') {
+      const model = existing.get(id)?.model;
+      if (!model || isSceneModelFile(model)) {
         icon.removeFromParent(); icon.material.dispose(); this.icons.delete(id);
       }
     }
     for (const object of objects) {
       const { model } = object;
-      if (model.kind === 'camera' || model.kind === 'light') { this.placeIcon(object); continue; }
-      if (!ready.has(object.id) || !isSceneModelFile(model)) continue;
+      if (!isSceneModelFile(model)) { this.placeIcon(object); continue; }
+      if (!ready.has(object.id)) continue;
       let item = this.items.get(object.id);
       if (!item) {
         const created: OverviewItem = { source: JSON.stringify(model), lease: this.resources.acquire(model), root: null };
