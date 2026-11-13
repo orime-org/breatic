@@ -5,7 +5,9 @@
  * Syncs the provider configuration with what each upstream publishes
  * (inner#1775). Run from the repository root with `pnpm provider:prices`,
  * the keys of the upstreams the configuration binds in the environment
- * (each upstream's `key_env` in `config/provider/upstreams.yaml`).
+ * (each upstream's `key_env` in `config/provider/upstreams.yaml`), read from
+ * the repository root's `.env` the way the services read it; a key already in
+ * the environment wins.
  *
  * For every bound model and extra-step endpoint of every media upstream it
  * writes the input schema snapshot to
@@ -73,6 +75,8 @@ interface Binding {
 interface Upstream { kind: string; key_env: string }
 
 const ROOT = resolve(import.meta.dirname, "..");
+const ENV = resolve(ROOT, ".env");
+if (existsSync(ENV)) process.loadEnvFile(ENV);
 const SNAPSHOTS = resolve(ROOT, "packages/provider/test/fixtures/upstream-schemas");
 const PRICES = resolve(ROOT, "packages/provider/test/fixtures/upstream-prices");
 const MODALITIES = ["image", "video", "audio", "tts", "three_d"] as const;
