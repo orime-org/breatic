@@ -440,11 +440,13 @@ chat.get("/conversations/:id/stream", validate("param", idParamSchema), async (c
  */
 chat.post("/stop", rateLimitFor("chat-stop", "user"), validate("json", chatStopSchema), async (c) => {
   const user = c.get("user");
-  const { conversation_id: conversationId, project_id: projectId } = c.req.valid("json");
+  const { conversation_id: conversationId, project_id: projectId, run_id: runId } = c.req.valid("json");
   await projectService.assertAccess(projectId, user.id, "editor");
   await conversationService.assertWritable(conversationId, user.id, projectId);
   const { active } = await chatQueue().peek(conversationId);
-  if (active === null) return c.json({ data: { stopped: false } });
+  // A stop pressed as one run ended can land once the next run holds the
+  // conversation; it was meant for the run that ended.
+  if (active === null || (runId !== undefined && runId !== active)) return c.json({ data: { stopped: false } });
   await getRedis().publish(stopChannel(active), "stop");
   return c.json({ data: { stopped: true } });
 });

@@ -68,6 +68,8 @@ export function runWire(options: RunWireOptions): ReadableStream<string> {
         }
       };
       write(BEAT);
+      // Which run this is, so a page stops the run it reads and no other.
+      write(frame({ type: "data-run", transient: true, data: { runId } }));
       beat = setInterval(() => write(BEAT), getAgentConfig().sse_heartbeat_interval_ms);
       let held: UIMessageChunk | undefined;
       let finish: UIMessageChunk | undefined;

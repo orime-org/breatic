@@ -381,6 +381,48 @@ describe("POST /chat/stop", () => {
     expect(reply?.parts.some((p) => p.type === "interrupted")).toBe(true);
   });
 
+  it("leaves a run alone when the stop names another, as a stop pressed as the run before ended does", async () => {
+    const who = await seedOwner(sql, app);
+    let release!: () => void;
+    script.hold = new Promise((r) => {
+      release = r;
+    });
+    await send(app, who, { message: "first" });
+    const reading = attach(app, who);
+    await new Promise((r) => setTimeout(r, 100));
+    const res = await app.request("/api/v1/chat/stop", {
+      method: "POST",
+      headers: { Cookie: who.cookie, "Content-Type": "application/json" },
+      body: JSON.stringify({ conversation_id: who.conversationId, project_id: who.projectId, run_id: crypto.randomUUID() }),
+    });
+    expect(await res.json()).toEqual({ data: { stopped: false } });
+    release();
+    const { frames } = await reading;
+    expect(frames.filter((f) => f.type === "data-interrupted")).toHaveLength(0);
+    expect(frames.at(-1)?.type).toBe("finish");
+  });
+
+  it("stops the run the stop names", async () => {
+    const who = await seedOwner(sql, app);
+    let release!: () => void;
+    script.hold = new Promise((r) => {
+      release = r;
+    });
+    await send(app, who, { message: "first" });
+    const reading = attach(app, who);
+    await new Promise((r) => setTimeout(r, 100));
+    const runId = (await getRedis().get(keysOf(who.conversationId).active))!;
+    const res = await app.request("/api/v1/chat/stop", {
+      method: "POST",
+      headers: { Cookie: who.cookie, "Content-Type": "application/json" },
+      body: JSON.stringify({ conversation_id: who.conversationId, project_id: who.projectId, run_id: runId }),
+    });
+    expect(await res.json()).toEqual({ data: { stopped: true } });
+    const { frames } = await reading;
+    release();
+    expect(frames.filter((f) => f.type === "data-interrupted")).toHaveLength(1);
+  });
+
   it("answers stopped false when nothing runs (RT-23b)", async () => {
     const who = await seedOwner(sql, app);
     expect(await (await stop(app, who)).json()).toEqual({ data: { stopped: false } });

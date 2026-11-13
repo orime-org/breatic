@@ -75,12 +75,12 @@ async function framesOf(wire: ReadableStream<string>): Promise<Record<string, un
 }
 
 /**
- * The types of frames, beats left out.
+ * The types of frames, beats and the run's name left out.
  * @param frames - The frames.
  * @returns Their types.
  */
 function typesOf(frames: Record<string, unknown>[]): unknown[] {
-  return frames.filter((f) => f.type !== "data-heartbeat").map((f) => f.type);
+  return frames.filter((f) => f.type !== "data-heartbeat" && f.type !== "data-run").map((f) => f.type);
 }
 
 beforeEach(() => {
@@ -97,6 +97,13 @@ describe("the beat", () => {
       runWire({ runId: "R1", ctx: CTX, turn: saying({ type: "finish" }), afterTurn: () => Promise.resolve(null) }),
     );
     expect(frames[0]).toEqual({ type: "data-heartbeat", transient: true, data: {} });
+  });
+
+  it("names its run right after the opening beat, so a page can stop the run it reads", async () => {
+    const frames = await framesOf(
+      runWire({ runId: "R1", ctx: CTX, turn: saying({ type: "finish" }), afterTurn: () => Promise.resolve(null) }),
+    );
+    expect(frames[1]).toEqual({ type: "data-run", transient: true, data: { runId: "R1" } });
   });
 
   it("keeps beating while the turn is silent, and leaves no timer behind (ST-02)", async () => {
