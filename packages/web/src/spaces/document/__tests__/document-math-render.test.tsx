@@ -102,6 +102,14 @@ describe('rendering', () => {
     expect(await appear(root, '.katex-display')).toBeTruthy();
   });
 
+  it('scrolls a formula block sideways in a scroller of its own (§6.1)', async () => {
+    const { root } = open([{ type: 'mathBlock', content: '\\frac{a}{b}' }]);
+    const display = await appear(root, '.katex-display');
+    const viewport = display.closest('[data-radix-scroll-area-viewport]');
+    expect(viewport).not.toBeNull();
+    expect(viewport!.closest('[data-scrollbars="horizontal"]')).not.toBeNull();
+  });
+
   it('draws an inline formula in text mode', async () => {
     const { root } = open([{ type: 'paragraph', content: ['x ', { type: 'math', content: 'E = mc^2' }] }]);
     const katex = await appear(root, '.katex');

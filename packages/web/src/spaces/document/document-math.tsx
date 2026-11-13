@@ -42,6 +42,7 @@ import { TextSelection } from '@tiptap/pm/state';
 import type { ViewMutationRecord } from '@tiptap/pm/view';
 
 import { Button } from '@web/components/ui/button';
+import { ScrollArea } from '@web/components/ui/scroll-area';
 import { useTranslation } from '@web/i18n/use-translation';
 import { KATEX_OPTIONS } from '@web/lib/katex-options';
 import { cn } from '@web/lib/utils';
@@ -383,7 +384,7 @@ const MathFace = React.memo(function MathFace({
       data-open={shown ? 'true' : 'false'}
     >
       <Wrapper
-        className={cn('bn-preview-container', !editable && 'cursor-default')}
+        className={cn('bn-preview-container', !inline && 'overflow-visible', !editable && 'cursor-default')}
         contentEditable={false}
         role={editable && (source === '' || preview === null) ? 'button' : undefined}
         // The body keeps the keyboard: the box opens with the caret in its source.
@@ -394,7 +395,15 @@ const MathFace = React.memo(function MathFace({
           actions.open();
         }}
       >
-        {face}
+        {inline ? (
+          face
+        ) : (
+          // A formula wider than the body scrolls sideways in its own
+          // scroller, as a formula in a chat reply does (`MarkdownMessage.tsx`).
+          <ScrollArea scrollbars='horizontal' className='w-full [&_.katex-display]:my-0'>
+            <div className='flex w-max min-w-full flex-col items-center'>{face}</div>
+          </ScrollArea>
+        )}
       </Wrapper>
       <div
         ref={refs.setFloating}
@@ -498,8 +507,9 @@ function mountFormula(
 ): FormulaView & { store: FaceStore } {
   const dom = document.createElement(inline ? 'span' : 'div');
   // BlockNote's inline-formula rules key on it, and only its React layer adds
-  // it (`ReactInlineContentSpec.tsx`).
-  if (inline) dom.className = 'bn-inline-content-section';
+  // it (`ReactInlineContentSpec.tsx`). A block formula spans its line, which
+  // BlockNote lays out as a flex row.
+  dom.className = inline ? 'bn-inline-content-section' : 'w-full min-w-0';
   const code = document.createElement('code');
   const chrome = document.createElement(inline ? 'span' : 'div');
   chrome.className = 'contents';
