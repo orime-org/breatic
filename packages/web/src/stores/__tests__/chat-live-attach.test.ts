@@ -14,7 +14,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { ChatSyncAnswer } from '@breatic/shared';
 import { chatApi } from '@web/data/api/chat';
 import type { ConversationRead, StoredUiMessage } from '@web/data/api/chat';
-import { chatSessionFor, evictAllChatSessions, runEndedInError } from '@web/stores/chat-sessions';
+import { chatSessionFor, evictAllChatSessions } from '@web/stores/chat-sessions';
 import { chatLive, resetChatLiveForTests } from '@web/stores/chat-live';
 import { useChatWaiting } from '@web/stores/chat-waiting';
 import { watchChatMishaps, type ChatMishap } from '@web/stores/chat-mishaps';
@@ -503,6 +503,6 @@ describe('a run resumed after a card', () => {
     await settle();
     expect(messages()).toEqual([userRow('m1', 1), PAUSED]);
     expect(useRunningTurns.getState().byConversation.c1).toBeUndefined();
-    expect(runEndedInError('c1')).toBe(false);
+    expect(told.filter((m) => m.kind === 'turn')).toEqual([]);
   });
 });

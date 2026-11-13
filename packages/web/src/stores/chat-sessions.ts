@@ -309,8 +309,10 @@ export function layLatestPage(conversationId: string, page: StoredUiMessage[]): 
 export type RunRead =
   /** No run held the conversation by the time the stream was asked for. */
   | 'none'
-  /** The run ended, however it did. */
+  /** The run ended on its own, or stopped. */
   | 'ended'
+  /** The run ended in an error the server reported. */
+  | 'failed'
   /** The run ended and said the next one is already open. */
   | 'next'
   /** The run's beats stopped coming. */
@@ -358,11 +360,9 @@ export async function readRun(conversationId: string, onOpened: () => void): Pro
   if (lettingGo.delete(conversationId)) return 'let-go';
   if (lost.delete(conversationId)) return 'lost';
   if (!opened) return 'none';
-  if (chat.status === 'error') {
-    const broke = chat.error instanceof TypeError;
-    if (broke) return 'broken';
-  }
-  return nextRunSaid.delete(conversationId) ? 'next' : 'ended';
+  if (chat.status === 'error' && chat.error instanceof TypeError) return 'broken';
+  if (nextRunSaid.delete(conversationId)) return 'next';
+  return chat.status === 'error' ? 'failed' : 'ended';
 }
 
 /**
@@ -392,15 +392,6 @@ export function letGoOfRun(conversationId: string): void {
   if (!reading.has(conversationId)) return;
   lettingGo.add(conversationId);
   void sessions.get(conversationId)?.stop();
-}
-
-/**
- * Whether the run being read ended in an error the server reported.
- * @param conversationId - The conversation.
- * @returns True when its last read ended in an error.
- */
-export function runEndedInError(conversationId: string): boolean {
-  return sessions.get(conversationId)?.status === 'error';
 }
 
 /**

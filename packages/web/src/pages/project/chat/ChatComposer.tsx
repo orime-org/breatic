@@ -296,14 +296,14 @@ function ChatComposerInner({
               {turnPhase === 'running' ? (
                 <Button
                   type='button'
-                  variant={null}
+                  variant='destructive'
                   size={null}
                   aria-label='Abort'
                   loading={stopping}
                   icon={<Square className='h-4 w-4' />}
                   onClick={abort}
                   data-testid='chat-composer-abort'
-                  className='inline-flex h-[var(--btn-inline)] w-[var(--btn-inline)] shrink-0 items-center justify-center rounded-chrome border border-status-error-border bg-status-error-bg text-status-error-foreground transition-colors hover:border-status-error'
+                  className='inline-flex h-[var(--btn-inline)] w-[var(--btn-inline)] shrink-0 items-center justify-center rounded-chrome'
                 />
               ) : null}
               <Button

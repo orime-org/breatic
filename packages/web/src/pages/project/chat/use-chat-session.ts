@@ -150,7 +150,6 @@ const UPDATE_THROTTLE_MS = 50;
 /** What a panel is looking at before the conversation has arrived. */
 const NO_MESSAGES: StoredUiMessage[] = [];
 
-
 /**
  * The list before one has arrived.
  *
@@ -158,15 +157,6 @@ const NO_MESSAGES: StoredUiMessage[] = [];
  * every subscriber -- and this one is read on every store change.
  */
 const NO_CONVERSATIONS: ConversationOnTheWire[] = [];
-
-/**
- * How a session reads its conversation's model at each send (#1363).
- * @param conversationId - The conversation.
- * @returns A reader of its model id, as the picker last set it.
- */
-function modelOfConversation(conversationId: string): () => string | undefined {
-  return () => useConversationRuntime.getState().conversations[conversationId]?.agentModel.id;
-}
 
 /**
  * The chat panel's view of the conversation it is showing.
@@ -295,14 +285,14 @@ export function useChatSession(
         chatAttachments.say({ key: 'sendUnavailable' });
         return;
       }
-      const model = modelOfConversation(opened)();
       await chatLive.send({
         projectId,
         conversationId: opened,
         words: said,
         chips: attached,
         spaces: clipSpaceContext(spaces, limits, attached),
-        ...(model === undefined ? {} : { model }),
+        // The model as the picker last set it (#1363).
+        model: useConversationRuntime.getState().conversations[opened]?.agentModel.id,
       });
     },
     [projectId, noteTitle, readSpaces],
@@ -387,7 +377,6 @@ export function useChatSession(
     [projectId],
   );
 
-
   React.useEffect(
     () =>
       watchChatMishaps((told) => {
@@ -433,11 +422,10 @@ export function useChatSession(
   const settledParts = React.useRef(new Map<string, ChatMessage>());
 
   const messages = React.useMemo(() => {
-    const shown = onScreen;
-    const last = shown[shown.length - 1];
+    const last = onScreen[onScreen.length - 1];
     const kept = new Map<StoredUiMessage, ChatMessage[]>();
     const keptParts = new Map<string, ChatMessage>();
-    const out = shown.flatMap((m) => {
+    const out = onScreen.flatMap((m) => {
       // What a user needs announced is a failure they are living through,
       // not every failure the conversation ever had — those come back with the
       // history and would be read out again on every open. What tells the two

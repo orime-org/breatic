@@ -409,7 +409,9 @@ function spaceRequestOf(
 /**
  * A reply as the panel lays it out: whole, or split where each segment that
  * asked a questionnaire ended, once the user answered on the card and the
- * turn went on in the same message (inner#1542).
+ * turn went on in the same message (inner#1542), and around each message the
+ * reply took in while it ran, which becomes a user view of its own
+ * (inner#1717).
  *
  * The server stores the two segments as two rows, so a reload reads them as
  * two messages; splitting the live one the same way keeps the card above what
@@ -419,8 +421,9 @@ function spaceRequestOf(
  * @param options.open - The turn is still writing it: a card answered last
  *   in it opens an empty part below, where what the turn says next arrives
  *   and the wait for it is drawn.
- * @returns It, or its parts, split after each card answered in it; each part
- *   after the first named after the call it follows.
+ * @returns It, or its parts: split after each card answered in it and around
+ *   each message it took in; a part after a card is named after the call, the
+ *   part after a taken message `<its id>~after`.
  */
 export function splitAtAnswer(message: UIMessage, { open = false }: { open?: boolean } = {}): UIMessage[] {
   const views: UIMessage[] = [];
@@ -449,7 +452,7 @@ export function splitAtAnswer(message: UIMessage, { open = false }: { open?: boo
   if (from === 0) return [message];
   // What the reply says after the last split; a reply stopped right after
   // taking a message in has nothing there, unless it is still being written.
-  if (from === message.parts.length && !open && views.at(-1)?.role === 'user') return views;
+  if (from === message.parts.length && !open) return views;
   return [...views, { ...message, id, parts: message.parts.slice(from) }];
 }
 

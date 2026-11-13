@@ -24,7 +24,7 @@ import { conversationRuntime } from '@web/stores/conversation-runtime';
 import { noteTurnRunning } from '@web/stores/running-turns';
 import { runOnce } from '@web/stores/task-actions-in-flight';
 import { ApiException } from '@web/data/api/types';
-import { isReadingRun, layLatestPage, letGoOfRun, readRun, runEndedInError, runNamedIn, settleAsk, type CardResult } from '@web/stores/chat-sessions';
+import { isReadingRun, layLatestPage, letGoOfRun, readRun, runNamedIn, settleAsk, type CardResult } from '@web/stores/chat-sessions';
 
 /** The conversation this page shows, and its project. */
 interface Showing {
@@ -184,9 +184,7 @@ function attach(conversationId: string): Promise<void> {
         tell({ projectId: showing?.projectId ?? '', conversationId, kind: 'network' });
         continue;
       }
-      if (ended === 'ended' && runEndedInError(conversationId)) {
-        tell({ projectId: showing?.projectId ?? '', conversationId, kind: 'turn' });
-      }
+      if (ended === 'failed') tell({ projectId: showing?.projectId ?? '', conversationId, kind: 'turn' });
       // What the run stored, which a run opened or handed over while this
       // page read the history can hold beyond what was streamed here.
       await readOrRetry(conversationId);
