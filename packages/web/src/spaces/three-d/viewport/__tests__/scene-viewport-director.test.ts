@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { HemisphereLight, PerspectiveCamera, Quaternion, Vector3, type Object3D, type Scene, type WebGLRenderTarget } from 'three';
+import { Box3, HemisphereLight, PerspectiveCamera, Quaternion, Vector3, type Object3D, type Scene, type WebGLRenderTarget } from 'three';
 import type { SceneObject } from '@breatic/shared';
 import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
 import { SceneViewportRuntime } from '@web/spaces/three-d/viewport/scene-viewport-runtime';
@@ -191,13 +191,39 @@ describe('looking through a camera (inner#1694 design 3.4, 3.4.3)', () => {
   });
 
   it('holds a frozen view still when the camera record or the window changes', async () => {
-    const frozen = { kind: 'frozen' as const, position: [0, 1.5, 6] as [number, number, number], quaternion: ROLLED.toArray() as [number, number, number, number], fov: 30, aspect: 9 / 16 };
+    const frozen = { kind: 'frozen' as const, id: CAM, position: [0, 1.5, 6] as [number, number, number], quaternion: ROLLED.toArray() as [number, number, number, number], fov: 30, aspect: 9 / 16 };
     const opened = await open(props([camera(CAM)], { cameraView: frozen, viewFrame: { x: 400, y: 20, width: 180, height: 320 } }));
     opened.runtime.update({ ...opened.initial, objects: [CUBE, camera(CAM, { position: [5, 5, 5], focalLength: 85 })], cameraView: frozen, viewFrame: { x: 400, y: 20, width: 180, height: 320 } } as SceneViewportProps);
     const call = opened.frame();
     expect(call.camera.position).toEqual([0, 1.5, 6]);
     expect(call.camera.fov).toBe(30);
     expect(call.camera.aspect).toBeCloseTo(9 / 16, 9);
+  });
+
+  it('keeps the camera a still was taken through hidden while the still is shown', async () => {
+    const frozen = { kind: 'frozen' as const, id: CAM, position: [0, 1.5, 6] as [number, number, number], quaternion: ROLLED.toArray() as [number, number, number, number], fov: 30, aspect: 16 / 9 };
+    const opened = await open(props([camera(CAM), camera(OTHER, { position: [3, 1, 3], number: 2 })], { cameraView: frozen, viewFrame: FRAME }));
+    const call = opened.frame();
+    expect(call.shown[CAM]).toBe(false);
+    expect(call.shown[OTHER]).toBe(true);
+  });
+
+  it('draws no part of a camera icon in front of the camera, so a view standing on a camera is never covered by it', async () => {
+    const opened = await open(props([camera(CAM)]));
+    opened.frame();
+    const scene = (opened.runtime as unknown as { scene: Scene }).scene;
+    let root: Object3D | undefined;
+    scene.traverse((child) => { if (child.userData.sceneObjectId === CAM) root = child; });
+    if (!root) throw new Error('no camera figure');
+    const inverse = root.matrixWorld.clone().invert();
+    const nearest: number[] = [];
+    root.traverse((child) => {
+      if (!(child as { isMesh?: boolean; isSprite?: boolean }).isMesh && !(child as { isSprite?: boolean }).isSprite) return;
+      const box = new Box3().setFromObject(child).applyMatrix4(inverse);
+      nearest.push(box.min.z);
+    });
+    expect(nearest.length).toBeGreaterThan(0);
+    expect(Math.min(...nearest)).toBeGreaterThanOrEqual(-1e-9);
   });
 
   it('starts a rebuilt runtime in the camera view it is given', async () => {

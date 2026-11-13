@@ -97,7 +97,7 @@ describe('the single camera-view value (design 3.4.3)', () => {
   });
 
   it('is frozen after a capture from a camera and after that camera is deleted', () => {
-    expect(cameraViewOf(capturedA, { locked: false }, true)).toEqual({ kind: 'frozen', ...POSE });
-    expect(cameraViewOf(run([{ type: 'cameraDeleted', id: A }], capturedA), null, true)).toEqual({ kind: 'frozen', ...POSE });
+    expect(cameraViewOf(capturedA, { locked: false }, true)).toEqual({ kind: 'frozen', id: A, ...POSE });
+    expect(cameraViewOf(run([{ type: 'cameraDeleted', id: A }], capturedA), null, true)).toEqual({ kind: 'frozen', id: null, ...POSE });
   });
 });

@@ -66,7 +66,7 @@ function numberLabel(): { sprite: Sprite; paint: (text: string, color: string) =
   const texture = new CanvasTexture(canvas);
   const sprite = new Sprite(new SpriteMaterial({ map: texture, depthTest: false, transparent: true }));
   sprite.scale.setScalar(0.3);
-  sprite.position.set(0.25, 0.25, 0);
+  sprite.position.set(0.25, 0.25, 0.3);
   sprite.renderOrder = 900;
   /**
    * Draw the number.
@@ -114,10 +114,12 @@ export class DirectorFigure {
     if (isSceneCamera(object)) {
       const ink = new MeshBasicMaterial();
       this.materials.push(ink);
+      // The whole icon sits behind the camera's origin, so a view standing on the camera never has it in front.
       const body = new Mesh(new BoxGeometry(0.24, 0.18, 0.3), ink);
+      body.position.z = 0.29;
       const lens = new Mesh(new ConeGeometry(0.09, 0.14, 16), ink);
       lens.rotation.x = Math.PI / 2;
-      lens.position.z = -0.2;
+      lens.position.z = 0.07;
       icon.add(body, lens);
       this.guide = new LineSegments(new BufferGeometry(), this.line());
     } else if (isSceneLight(object)) {

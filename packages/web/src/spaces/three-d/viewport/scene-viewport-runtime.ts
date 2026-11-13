@@ -584,7 +584,8 @@ export class SceneViewportRuntime {
       this.orbit.update();
       this.orbit.enabled = this.orbitEnabled();
     }
-    for (const [id, figure] of this.figures) figure.root.visible = !(next?.kind === 'live' && next.id === id);
+    // The camera being looked through, live or as a still, is where the view stands.
+    for (const [id, figure] of this.figures) figure.root.visible = next === null || next.id !== id;
   }
 
   /**

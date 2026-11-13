@@ -118,10 +118,10 @@ export interface SceneFrozenPose {
   aspect: number;
 }
 
-/** What the main view shows: through a camera, or a still taken through one. */
+/** What the main view shows: through a camera, or a still taken through one (the camera's id, null once it is deleted). */
 export type SceneCameraView =
   | { kind: 'live'; id: string; canPilot: boolean }
-  | ({ kind: 'frozen' } & SceneFrozenPose);
+  | ({ kind: 'frozen'; id: string | null } & SceneFrozenPose);
 
 /** A rectangle in viewport pixels. */
 export interface SceneViewportRect {

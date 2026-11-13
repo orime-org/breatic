@@ -157,6 +157,8 @@ export function cameraViewOf(state: ViewfinderState, camera: { locked: boolean }
   if (state.phase === 'framing' && state.source.kind === 'camera') {
     return { kind: 'live', id: state.source.id, canPilot: canEdit && camera !== null && !camera.locked };
   }
-  if (state.phase !== 'off' && state.phase !== 'framing' && state.frozen !== null) return { kind: 'frozen', ...state.frozen };
+  if (state.phase !== 'off' && state.phase !== 'framing' && state.frozen !== null) {
+    return { kind: 'frozen', id: state.source.kind === 'camera' ? state.source.id : null, ...state.frozen };
+  }
   return null;
 }
