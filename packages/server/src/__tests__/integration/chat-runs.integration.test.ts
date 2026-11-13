@@ -87,7 +87,7 @@ import crypto from "node:crypto";
 import postgres from "postgres";
 import { getRedis, initCore, loadLocales, env } from "@breatic/core";
 import type { Hono } from "hono";
-import { attach, keysOf, listIds, seedOwner, send, stop, sync, takeBack, until, untilIdle, type Seeded } from "./chat-run-harness.js";
+import { attach, keysOf, listIds, seedOwner, send, stop, sync, takeBack, until, untilIdle, type Seeded, turnFrames } from "./chat-run-harness.js";
 
 let sql: ReturnType<typeof postgres>;
 let app: Hono;
@@ -507,7 +507,7 @@ describe("a run on its own", () => {
     release();
     await gate;
     const { frames } = await reading;
-    const types = frames.filter((f) => f.type !== "data-heartbeat").map((f) => f.type);
+    const types = turnFrames(frames).map((f) => f.type);
     expect(types).toContain("data-failed");
     expect(types.at(-1)).toBe("error");
     await untilIdle(who.conversationId);

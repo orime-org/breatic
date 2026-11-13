@@ -58,7 +58,7 @@ import { getRedis, initCore, loadLocales, env } from "@breatic/core";
 import type { Hono } from "hono";
 import { FINISHED_ASKING_FOR_A_TOOL } from "../helpers/model-double.js";
 import { markShuttingDown, resetShutdownFlagForTests } from "@server/agent/shutdown-flag.js";
-import { attach, keysOf, seedOwner, send, sync, until, untilIdle, type Seeded } from "./chat-run-harness.js";
+import { attach, keysOf, seedOwner, send, sync, until, untilIdle, type Seeded, turnFrames } from "./chat-run-harness.js";
 
 let sql: ReturnType<typeof postgres>;
 let app: Hono;
@@ -237,7 +237,7 @@ describe("a shutdown", () => {
     markShuttingDown();
     release();
     const { frames } = await reading;
-    const types = frames.filter((f) => f.type !== "data-heartbeat").map((f) => f.type);
+    const types = turnFrames(frames).map((f) => f.type);
     expect(frames.find((f) => f.type === "data-failed")).toEqual({ type: "data-failed", data: { reason: "shutdown" } });
     expect(types.indexOf("data-failed")).toBeLessThan(types.indexOf("error"));
     expect(types).not.toContain("data-next-run");

@@ -261,3 +261,13 @@ async function framesOfText(stream: ReadableStream<string>): Promise<Record<stri
     .filter((block) => block.startsWith("data: "))
     .map((block) => JSON.parse(block.slice("data: ".length)) as Record<string, unknown>);
 }
+
+/**
+ * The frames a turn said, without the ones the run's stream writes itself:
+ * its beats and the frame naming its run.
+ * @param frames - Every frame read.
+ * @returns The turn's own frames.
+ */
+export function turnFrames<F extends { type?: unknown }>(frames: F[]): F[] {
+  return frames.filter((f) => f.type !== "data-heartbeat" && f.type !== "data-run");
+}
