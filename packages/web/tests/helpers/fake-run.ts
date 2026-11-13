@@ -12,8 +12,10 @@
  * each reply written here that has been read. A card's answer is stored on
  * the card, never streamed: a card run's `tool-output-available` frame for
  * that card is applied to the card in the history instead. The run it resumes
- * writes a reply of its own, as the server stores it. A second send then
- * finds the first turn still on screen.
+ * writes a reply of its own, as the server stores it. A message sent instead
+ * closes the cards its run names in `data-ask-replied` as replied to, the way
+ * the server stores them when it takes the message. A second send then finds
+ * the first turn still on screen.
  */
 import { attachmentPart, type ChatAttachedChip } from '@breatic/shared';
 import { readUIMessageStream, type UIMessage, type UIMessageChunk } from 'ai';
@@ -146,6 +148,12 @@ export async function answerRuns(
       });
     }
     let frames = framesFor(body, index);
+    if (!card) {
+      for (const f of frames as Array<{ type?: string; data?: { toolCallId?: string } }>) {
+        if (f.type !== 'data-ask-replied' || f.data?.toolCallId === undefined) continue;
+        settleCard(rowsOf(conversationId), { type: 'tool-output-available', toolCallId: f.data.toolCallId, output: { repliedInChat: true } });
+      }
+    }
     if (card) {
       const answered = ((body.answer ?? body.shared_spaces) as { toolCallId?: string }).toolCallId;
       const isAnswer = (f: object): boolean =>
@@ -183,8 +191,16 @@ export async function answerRuns(
     const conversationId = HISTORY.exec(new URL(route.request().url()).pathname)?.[1] ?? '';
     const rows = kept.get(conversationId) ?? [];
     if (route.request().method() !== 'GET' || rows.length === 0) return route.fallback();
-    const response = await route.fetch();
-    const read = (await response.json()) as { data: { messages: StoredRow[] } };
+    let response;
+    let read: { data: { messages: StoredRow[] } };
+    try {
+      response = await route.fetch();
+      read = (await response.json()) as { data: { messages: StoredRow[] } };
+    } catch {
+      // The page closed while it read the history again after a run; nobody
+      // is left to answer.
+      return;
+    }
     const have = new Set(read.data.messages.map((m) => m.id));
     let turn = Math.max(0, ...read.data.messages.map((m) => m.metadata.turnIndex));
     for (const row of rows) {

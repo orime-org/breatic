@@ -34,13 +34,14 @@ async function send(page: Page, words: string): Promise<void> {
 }
 
 /**
- * Wait until the reply on screen has started writing prose.
+ * Wait until the reply on screen has started writing prose. The model may
+ * think for a minute or more first.
  * @param page - The page.
  */
 async function replyWriting(page: Page): Promise<void> {
   await expect(page.getByTestId('chat-composer-abort')).toBeVisible({ timeout: 30_000 });
   await expect
-    .poll(async () => (await page.locator('[data-testid="message-bubble"][data-role="assistant"] [data-testid="message-bubble-content"]').last().innerText().catch(() => '')).length, { timeout: 60_000 })
+    .poll(async () => (await page.locator('[data-testid="message-bubble"][data-role="assistant"] [data-testid="message-bubble-content"]').last().innerText().catch(() => '')).length, { timeout: RUN_MS })
     .toBeGreaterThan(20);
 }
 
@@ -114,6 +115,7 @@ test('a message sent while the reply runs waits above the box, then is read in t
   test.setTimeout(RUN_MS + 60_000);
   await openSmokeProject(page);
   await startNewConversation(page);
+  const id = await currentConversation(page);
   await send(page, STORY);
   await replyWriting(page);
 
@@ -130,6 +132,13 @@ test('a message sent while the reply runs waits above the box, then is read in t
   expect(at.user).toBeGreaterThan(at.firstReply);
   expect(at.firstReply).toBeGreaterThan(-1);
   await expect(page.getByTestId('message-bubble-interrupted')).toHaveCount(0);
+  // Read in the same reply, not answered by a run of its own: the store holds
+  // it as a part of the reply, and never as a user row.
+  const stored = await page.request.get(`/api/v1/chat/conversations/${id}`);
+  expect(stored.ok()).toBe(true);
+  const rows = ((await stored.json()) as { data: { messages: Array<{ role: string; parts: Array<{ type: string; text?: string; data?: { words?: string } }> }> } }).data.messages;
+  expect(rows.filter((r) => r.role === 'user' && r.parts.some((p) => p.text === second))).toEqual([]);
+  expect(rows.some((r) => r.role === 'assistant' && r.parts.some((p) => p.type === 'data-user-message' && p.data?.words === second))).toBe(true);
 });
 
 test('a reload while the reply runs attaches to it again, the message it read staying where it was (SM-02) @needs-model', async ({ page }) => {
