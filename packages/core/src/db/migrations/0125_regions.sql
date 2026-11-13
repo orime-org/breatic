@@ -15,57 +15,78 @@
 -- pending on these tables, and ALTER TABLE refuses a table with pending
 -- trigger events; run them now.
 SET CONSTRAINTS ALL IMMEDIATE;--> statement-breakpoint
-ALTER TABLE "credit_ledger" DROP CONSTRAINT "credit_ledger_project_id_fk";--> statement-breakpoint
-ALTER TABLE "credit_ledger" DROP CONSTRAINT "credit_ledger_studio_id_fk";--> statement-breakpoint
-ALTER TABLE "credit_lots" DROP CONSTRAINT "credit_lots_designated_studio_id_fk";--> statement-breakpoint
-ALTER TABLE "studio_credit_debts" DROP CONSTRAINT "studio_credit_debts_studio_id_fk";--> statement-breakpoint
-ALTER TABLE "credit_holds" DROP CONSTRAINT "credit_holds_studio_id_fk";--> statement-breakpoint
-ALTER TABLE "credit_compensations" DROP CONSTRAINT "credit_compensations_studio_fk";--> statement-breakpoint
-ALTER TABLE "credit_gifts" DROP CONSTRAINT "credit_gifts_studio_fk";--> statement-breakpoint
-ALTER TABLE "agent_usage_records" DROP CONSTRAINT "agent_usage_records_actor_user_id_users_id_fk";--> statement-breakpoint
-ALTER TABLE "conversation_attachments" DROP CONSTRAINT "conversation_attachments_user_id_users_id_fk";--> statement-breakpoint
-ALTER TABLE "conversation_messages" DROP CONSTRAINT "conversation_messages_user_id_users_id_fk";--> statement-breakpoint
-ALTER TABLE "conversations" DROP CONSTRAINT "conversations_user_id_users_id_fk";--> statement-breakpoint
-ALTER TABLE "node_history" DROP CONSTRAINT "node_history_user_id_users_id_fk";--> statement-breakpoint
-ALTER TABLE "node_tasks" DROP CONSTRAINT "node_tasks_started_by_user_id_users_id_fk";--> statement-breakpoint
-ALTER TABLE "notifications" DROP CONSTRAINT "notifications_user_id_users_id_fk";--> statement-breakpoint
-ALTER TABLE "project_activities" DROP CONSTRAINT "project_activities_actor_user_id_users_id_fk";--> statement-breakpoint
-ALTER TABLE "project_invitations" DROP CONSTRAINT "project_invitations_invited_by_users_id_fk";--> statement-breakpoint
-ALTER TABLE "project_invitations" DROP CONSTRAINT "project_invitations_invited_user_id_users_id_fk";--> statement-breakpoint
-ALTER TABLE "project_join_requests" DROP CONSTRAINT "project_join_requests_decided_by_user_id_users_id_fk";--> statement-breakpoint
-ALTER TABLE "project_join_requests" DROP CONSTRAINT "project_join_requests_requester_user_id_users_id_fk";--> statement-breakpoint
-ALTER TABLE "project_last_opened" DROP CONSTRAINT "project_last_opened_user_id_users_id_fk";--> statement-breakpoint
-ALTER TABLE "project_members" DROP CONSTRAINT "project_members_added_by_users_id_fk";--> statement-breakpoint
-ALTER TABLE "project_members" DROP CONSTRAINT "project_members_user_id_users_id_fk";--> statement-breakpoint
-ALTER TABLE "project_memories" DROP CONSTRAINT "project_memories_user_id_users_id_fk";--> statement-breakpoint
-ALTER TABLE "project_memory_entries" DROP CONSTRAINT "project_memory_entries_author_id_users_id_fk";--> statement-breakpoint
-ALTER TABLE "project_transfers" DROP CONSTRAINT "project_transfers_from_user_id_users_id_fk";--> statement-breakpoint
-ALTER TABLE "project_transfers" DROP CONSTRAINT "project_transfers_to_user_id_users_id_fk";--> statement-breakpoint
-ALTER TABLE "projects" DROP CONSTRAINT "projects_archived_by_user_id_users_id_fk";--> statement-breakpoint
-ALTER TABLE "projects" DROP CONSTRAINT "projects_created_by_user_id_users_id_fk";--> statement-breakpoint
-ALTER TABLE "role_upgrade_requests" DROP CONSTRAINT "role_upgrade_requests_decided_by_user_id_users_id_fk";--> statement-breakpoint
-ALTER TABLE "role_upgrade_requests" DROP CONSTRAINT "role_upgrade_requests_requester_user_id_users_id_fk";--> statement-breakpoint
-ALTER TABLE "studio_assets" DROP CONSTRAINT "studio_assets_produced_by_user_id_users_id_fk";--> statement-breakpoint
-ALTER TABLE "studio_invitations" DROP CONSTRAINT "studio_invitations_invited_by_users_id_fk";--> statement-breakpoint
-ALTER TABLE "studio_invitations" DROP CONSTRAINT "studio_invitations_invited_user_id_users_id_fk";--> statement-breakpoint
-ALTER TABLE "studio_members" DROP CONSTRAINT "studio_members_added_by_users_id_fk";--> statement-breakpoint
-ALTER TABLE "studio_members" DROP CONSTRAINT "studio_members_user_id_users_id_fk";--> statement-breakpoint
-ALTER TABLE "studio_transfers" DROP CONSTRAINT "studio_transfers_from_user_id_users_id_fk";--> statement-breakpoint
-ALTER TABLE "studio_transfers" DROP CONSTRAINT "studio_transfers_to_user_id_users_id_fk";--> statement-breakpoint
-ALTER TABLE "studios" DROP CONSTRAINT "studios_owner_user_id_users_id_fk";--> statement-breakpoint
-ALTER TABLE "tasks" DROP CONSTRAINT "tasks_user_id_users_id_fk";--> statement-breakpoint
-ALTER TABLE "upload_grants" DROP CONSTRAINT "upload_grants_user_id_users_id_fk";--> statement-breakpoint
-ALTER TABLE "media_understanding_operations" DROP CONSTRAINT "media_understanding_operations_actor_user_id_fk";--> statement-breakpoint
-ALTER TABLE "media_understanding_attempts" DROP CONSTRAINT "media_understanding_attempts_approval_actor_fk";--> statement-breakpoint
-ALTER TABLE "usage_settlement_envelopes" DROP CONSTRAINT "usage_settlement_envelopes_actor_user_id_fk";--> statement-breakpoint
-ALTER TABLE "credit_settlement_receipts" DROP CONSTRAINT "credit_settlement_receipts_actor_user_id_fk";--> statement-breakpoint
-ALTER TABLE "account_activity_events" DROP CONSTRAINT "account_activity_events_user_id_fkey";--> statement-breakpoint
-ALTER TABLE "agent_memories" DROP CONSTRAINT "agent_memories_user_id_fkey";--> statement-breakpoint
-ALTER TABLE "timeline_executions" DROP CONSTRAINT "timeline_executions_actor_user_id_fkey";--> statement-breakpoint
-ALTER TABLE "credit_charge_requests" DROP CONSTRAINT "credit_charge_requests_actor_user_id_fk";--> statement-breakpoint
-ALTER TABLE "project_agent_instructions" DROP CONSTRAINT "project_agent_instructions_updated_by_fk";--> statement-breakpoint
-ALTER TABLE "document_versions" DROP CONSTRAINT "document_versions_created_by_user_id_fkey";--> statement-breakpoint
-ALTER TABLE "document_versions" DROP CONSTRAINT "document_versions_deleted_by_user_id_fkey";--> statement-breakpoint
+-- Found by table, column and referenced table: a database whose tables were
+-- built by an earlier draft of a migration names the same key differently.
+DO $$
+DECLARE
+  target record;
+  fk record;
+BEGIN
+  FOR target IN SELECT * FROM (VALUES
+    ('account_activity_events', 'user_id', 'users'),
+    ('agent_memories', 'user_id', 'users'),
+    ('agent_usage_records', 'actor_user_id', 'users'),
+    ('conversation_attachments', 'user_id', 'users'),
+    ('conversation_messages', 'user_id', 'users'),
+    ('conversations', 'user_id', 'users'),
+    ('credit_charge_requests', 'actor_user_id', 'users'),
+    ('credit_compensations', 'personal_studio_id', 'studios'),
+    ('credit_gifts', 'personal_studio_id', 'studios'),
+    ('credit_holds', 'studio_id', 'studios'),
+    ('credit_ledger', 'project_id', 'projects'),
+    ('credit_ledger', 'studio_id', 'studios'),
+    ('credit_lots', 'designated_studio_id', 'studios'),
+    ('credit_settlement_receipts', 'actor_user_id', 'users'),
+    ('document_versions', 'created_by_user_id', 'users'),
+    ('document_versions', 'deleted_by_user_id', 'users'),
+    ('media_understanding_attempts', 'approval_actor_user_id', 'users'),
+    ('media_understanding_operations', 'actor_user_id', 'users'),
+    ('node_history', 'user_id', 'users'),
+    ('node_tasks', 'started_by_user_id', 'users'),
+    ('notifications', 'user_id', 'users'),
+    ('project_activities', 'actor_user_id', 'users'),
+    ('project_agent_instructions', 'updated_by_user_id', 'users'),
+    ('project_invitations', 'invited_by', 'users'),
+    ('project_invitations', 'invited_user_id', 'users'),
+    ('project_join_requests', 'decided_by_user_id', 'users'),
+    ('project_join_requests', 'requester_user_id', 'users'),
+    ('project_last_opened', 'user_id', 'users'),
+    ('project_members', 'added_by', 'users'),
+    ('project_members', 'user_id', 'users'),
+    ('project_memories', 'user_id', 'users'),
+    ('project_memory_entries', 'author_id', 'users'),
+    ('project_transfers', 'from_user_id', 'users'),
+    ('project_transfers', 'to_user_id', 'users'),
+    ('projects', 'archived_by_user_id', 'users'),
+    ('projects', 'created_by_user_id', 'users'),
+    ('role_upgrade_requests', 'decided_by_user_id', 'users'),
+    ('role_upgrade_requests', 'requester_user_id', 'users'),
+    ('studio_assets', 'produced_by_user_id', 'users'),
+    ('studio_credit_debts', 'studio_id', 'studios'),
+    ('studio_invitations', 'invited_by', 'users'),
+    ('studio_invitations', 'invited_user_id', 'users'),
+    ('studio_members', 'added_by', 'users'),
+    ('studio_members', 'user_id', 'users'),
+    ('studio_transfers', 'from_user_id', 'users'),
+    ('studio_transfers', 'to_user_id', 'users'),
+    ('studios', 'created_by_user_id', 'users'),
+    ('tasks', 'user_id', 'users'),
+    ('timeline_executions', 'actor_user_id', 'users'),
+    ('upload_grants', 'user_id', 'users'),
+    ('usage_settlement_envelopes', 'actor_user_id', 'users')
+  ) AS t(tbl, col, ref) LOOP
+    FOR fk IN
+      SELECT c.conname FROM pg_constraint c
+      JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attname = target.col
+      WHERE c.contype = 'f'
+        AND c.conrelid = format('%I', target.tbl)::regclass
+        AND c.confrelid = format('%I', target.ref)::regclass
+        AND c.conkey = ARRAY[a.attnum]
+    LOOP
+      EXECUTE format('ALTER TABLE %I DROP CONSTRAINT %I', target.tbl, fk.conname);
+    END LOOP;
+  END LOOP;
+END $$;--> statement-breakpoint
 
 -- ── 2. Global tables ─────────────────────────────────────────────────
 CREATE TABLE "studio_directory" (
