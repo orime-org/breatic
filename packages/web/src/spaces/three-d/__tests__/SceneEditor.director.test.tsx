@@ -28,6 +28,7 @@ type Viewport = SceneViewportProps & {
 };
 const h = vi.hoisted(() => ({
   viewport: null as null | Viewport,
+  capture: vi.fn(),
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
 }));
 
@@ -43,6 +44,7 @@ vi.mock('@web/spaces/three-d/viewport/SceneViewport', () => ({
   default: function MockViewport(props: SceneViewportProps): React.JSX.Element {
     h.viewport = props as Viewport;
     React.useEffect(() => {
+      props.onCapture?.(h.capture);
       for (const object of props.objects) props.onModelStateChange?.(object.id, 'ready');
       // eslint-disable-next-line react-hooks/exhaustive-deps -- once per mount, like the runtime
     }, []);
@@ -51,6 +53,9 @@ vi.mock('@web/spaces/three-d/viewport/SceneViewport', () => ({
 }));
 vi.mock('@web/lib/scene-view-storage', () => ({ readSceneView: () => null, writeSceneView: () => true }));
 vi.mock('@web/lib/toast', () => ({ toast: h.toast }));
+vi.mock('@web/spaces/three-d/viewfinder/encode-capture', () => ({
+  encodeCapturePng: vi.fn(async () => new Blob(['png'], { type: 'image/png' })),
+}));
 
 const NAME = 'project-p1/3d-s1';
 const BOX = '11111111-1111-4111-8111-111111111111';
@@ -114,6 +119,10 @@ beforeEach(() => {
   vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(800);
   Object.values(h.toast).forEach((fn) => fn.mockReset());
   h.viewport = null;
+  URL.createObjectURL = vi.fn(() => 'blob:still');
+  URL.revokeObjectURL = vi.fn();
+  h.capture.mockReset().mockResolvedValue({ width: 648, height: 1152, pixels: new Uint8Array(4),
+    pose: { position: [3, 2, 7], quaternion: [0, 0.38268343236508984, 0, 0.9238795325112867], fov: 20, aspect: 648 / 1152 } });
 });
 afterEach(() => {
   cleanup();
@@ -254,5 +263,149 @@ describe('the object toolbar with cameras and lights (design 3.3)', () => {
     expect(h.viewport?.mode).toBe('translate');
     act(() => session.select(LAMP, true));
     expect(tool('rotate')).toBeDisabled();
+  });
+});
+
+describe('saving and lighting from what is on screen (round 1 fixes, design 3.5, 3.6)', () => {
+  const FAR = camera(CAM, 1, { position: [3, 2, 7], rotation: [0, 0.38268343236508984, 0, 0.9238795325112867], focalLength: 85, frame: '9:16' });
+  const cameras = (session: SceneSession): Array<Record<string, unknown>> =>
+    readSceneDocument(session.doc).objects.filter((object) => object.model.kind === ('camera' as never)) as unknown as Array<Record<string, unknown>>;
+  const viewfinderButton = (key: string): HTMLElement => within(screen.getByTestId('scene-viewfinder-menu')).getByRole('button', { name: t(`spaces.threeD.viewfinder.${key}`) });
+
+  it('copies the camera a still was taken through when + is pressed', async () => {
+    const { session } = await setup([FAR]);
+    const opened = await openDirector();
+    fireEvent.click(screen.getByTestId(`scene-director-monitor-${CAM}`));
+    fireEvent.click(viewfinderButton('confirm'));
+    await waitFor(() => expect(h.viewport?.cameraView?.kind).toBe('frozen'));
+    fireEvent.click(within(opened).getByRole('button', { name: label('saveView') }));
+    await waitFor(() => expect(cameras(session)).toHaveLength(2));
+    expect(cameras(session)[1]).toMatchObject({ number: 2, position: [3, 2, 7], focalLength: 85, frame: '9:16' });
+  });
+
+  it('saves the pose of the still when its camera was deleted meanwhile', async () => {
+    const { session } = await setup([FAR]);
+    const opened = await openDirector();
+    fireEvent.click(screen.getByTestId(`scene-director-monitor-${CAM}`));
+    fireEvent.click(viewfinderButton('confirm'));
+    await waitFor(() => expect(h.viewport?.cameraView?.kind).toBe('frozen'));
+    act(() => { (applySceneCommand as unknown as (...args: unknown[]) => unknown)(session.doc, { type: 'delete', ids: [CAM] }, Symbol('peer'), true, NAME, { maxLights: 16 }); });
+    await waitFor(() => expect(h.viewport?.cameraView).toMatchObject({ kind: 'frozen', id: null }));
+    fireEvent.click(within(opened).getByRole('button', { name: label('saveView') }));
+    await waitFor(() => expect(cameras(session)).toHaveLength(1));
+    expect(cameras(session)[0]).toMatchObject({ position: [3, 2, 7], frame: '9:16' });
+  });
+
+  it('keeps a Free camera\'s ratio when the right panel closes', async () => {
+    await setup([camera(CAM, 1, { frame: 'Free', freeRatio: 2 })]);
+    await openDirector();
+    fireEvent.click(screen.getByTestId(`scene-director-monitor-${CAM}`));
+    await waitFor(() => expect(h.viewport?.viewFrame?.width).toBeGreaterThan(0));
+    fireEvent.click(directorTrigger());
+    await waitFor(() => expect(screen.queryByTestId('scene-right-panel')).toBeNull());
+    const frame = h.viewport?.viewFrame as { width: number; height: number };
+    expect(frame.width / frame.height).toBeCloseTo(2, 3);
+  });
+
+  it('keeps a still\'s ratio when the right panel closes after its camera was deleted', async () => {
+    const { session } = await setup([FAR]);
+    await openDirector();
+    fireEvent.click(screen.getByTestId(`scene-director-monitor-${CAM}`));
+    fireEvent.click(viewfinderButton('confirm'));
+    await waitFor(() => expect(h.viewport?.cameraView?.kind).toBe('frozen'));
+    act(() => { (applySceneCommand as unknown as (...args: unknown[]) => unknown)(session.doc, { type: 'delete', ids: [CAM] }, Symbol('peer'), true, NAME, { maxLights: 16 }); });
+    await waitFor(() => expect(h.viewport?.cameraView).toMatchObject({ kind: 'frozen', id: null }));
+    fireEvent.click(directorTrigger());
+    await waitFor(() => expect(screen.queryByTestId('scene-right-panel')).toBeNull());
+    const frame = h.viewport?.viewFrame as { width: number; height: number };
+    expect(frame.width / frame.height).toBeCloseTo(648 / 1152, 3);
+  });
+
+  it('refits the frame to a new ratio after a corner drag was cut off by a lock', async () => {
+    const { session } = await setup([camera(CAM, 1, { frame: 'Free', freeRatio: 2 })]);
+    await openDirector();
+    fireEvent.click(screen.getByTestId(`scene-director-monitor-${CAM}`));
+    const corner = await screen.findByTestId('scene-viewfinder-corner-se');
+    corner.setPointerCapture = (): void => undefined;
+    fireEvent.pointerDown(corner, { pointerId: 1, button: 0, buttons: 1, clientX: 900, clientY: 600 });
+    act(() => { session.execute({ type: 'lock', ids: [CAM], locked: true }); });
+    expect(screen.queryByTestId('scene-viewfinder-corner-se')).toBeNull();
+    act(() => { session.execute({ type: 'lock', ids: [CAM], locked: false }); });
+    act(() => { session.execute({ type: 'patch', patches: [{ id: CAM, frame: '1:1' }] }); });
+    await waitFor(() => {
+      const frame = h.viewport?.viewFrame as { width: number; height: number };
+      expect(frame.width / frame.height).toBeCloseTo(1, 3);
+    });
+  });
+});
+
+describe('monitor cards and the object list (round 1 fixes, design 3.7, 4.2)', () => {
+  it('shows the failure text on every card once the renderer fails', async () => {
+    await setup([camera()]);
+    await openDirector();
+    act(() => { h.viewport?.onError?.(new Error('lost context')); });
+    const monitor = await screen.findByTestId(`scene-director-monitor-${CAM}`);
+    expect(monitor).toHaveTextContent(t('spaces.threeD.loadFailed'));
+    expect(monitor.querySelector('.skeleton-shimmer')).toBeNull();
+  });
+
+  it('lists cameras and lights in the object list by number', async () => {
+    const first = '00000000-0000-4000-8000-000000000009';
+    await setup([camera(CAM, 2), camera(first, 1)]);
+    fireEvent.click(screen.getByTestId('scene-objects-trigger'));
+    const list = await screen.findByTestId('scene-objects-panel');
+    const rows = within(list).getAllByTestId(/^scene-object-/).map((row) => row.dataset.testid);
+    expect(rows).toEqual([`scene-object-${BOX}`, `scene-object-${first}`, `scene-object-${CAM}`]);
+  });
+});
+
+describe('continuous controls end on release and on Escape (round 1 fixes, design 3.8)', () => {
+  /** Give jsdom the pointer capture Radix Slider relies on, and a 400 px wide track. */
+  function sliderPointers(): void {
+    const held = new WeakMap<Element, Set<number>>();
+    vi.spyOn(Element.prototype, 'setPointerCapture').mockImplementation(function (this: Element, id: number) { held.set(this, (held.get(this) ?? new Set()).add(id)); });
+    vi.spyOn(Element.prototype, 'hasPointerCapture').mockImplementation(function (this: Element, id: number) { return held.get(this)?.has(id) ?? false; });
+    vi.spyOn(Element.prototype, 'releasePointerCapture').mockImplementation(function (this: Element, id: number) { held.get(this)?.delete(id); });
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 400, height: 10, right: 400, bottom: 10, x: 0, y: 0, toJSON: () => ({}) });
+  }
+  const drag = (thumb: HTMLElement, xs: readonly number[], release = true): void => {
+    fireEvent.pointerDown(thumb, { pointerId: 1, button: 0, buttons: 1, clientX: xs[0] });
+    for (const x of xs.slice(1)) fireEvent.pointerMove(thumb, { pointerId: 1, buttons: 1, clientX: x });
+    if (release) fireEvent.pointerUp(thumb, { pointerId: 1, clientX: xs[xs.length - 1] });
+  };
+
+  it('ends a light slider drag let go where it started', async () => {
+    const { session } = await setup([lamp()]);
+    await openDirector();
+    act(() => session.select(LAMP, false));
+    sliderPointers();
+    const [thumb] = within(screen.getByTestId(`scene-director-fields-${LAMP}`)).getAllByRole('slider');
+    drag(thumb as HTMLElement, [1, 120, 1]);
+    expect(session.getSnapshot().gestureActive).toBe(false);
+  });
+
+  it('drops an ambient drag on Escape and keeps the console open', async () => {
+    const { session } = await setup();
+    const opened = await openDirector();
+    sliderPointers();
+    const before = session.getSnapshot().environment.ambientIntensity;
+    const [thumb] = within(within(opened).getByTestId('scene-director-ambient')).getAllByRole('slider');
+    drag(thumb as HTMLElement, [0, 200], false);
+    expect(h.viewport?.environment?.ambientIntensity).not.toBe(before);
+    fireEvent.keyDown(thumb as HTMLElement, { key: 'Escape' });
+    expect(h.viewport?.environment?.ambientIntensity).toBe(before);
+    expect(screen.getByTestId('scene-right-panel')).toBeInTheDocument();
+  });
+
+  it('takes a three-digit colour typed into the picker as its six-digit form', async () => {
+    const { session } = await setup();
+    const opened = await openDirector();
+    fireEvent.click(within(within(opened).getByTestId('scene-director-ambient')).getAllByRole('button')[0] as HTMLElement);
+    const input = await screen.findByRole('textbox');
+    fireEvent.change(input, { target: { value: '0f0' } });
+    expect(h.viewport?.environment?.ambientColor).toBe('#00ff00');
+    fireEvent.keyDown(input, { key: 'Escape' });
+    await waitFor(() => expect(session.getSnapshot().environment.ambientColor).toBe('#00ff00'));
+    expect(h.toast.error).not.toHaveBeenCalled();
   });
 });

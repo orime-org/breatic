@@ -386,12 +386,14 @@ export class SceneViewportRuntime {
    * @returns The pivot, or null outside a live camera view.
    */
   private pilotCentre(): [number, number, number] | null {
-    const record = this.view?.kind === 'live' ? this.cameraRecord(this.view.id) : null;
-    if (!record) return null;
-    const position = new Vector3().fromArray(record.position);
+    const view = this.view;
+    const record = view?.kind === 'live' ? this.cameraRecord(view.id) : null;
+    const pose = record ? { position: record.position, rotation: record.rotation } : view?.kind === 'frozen' ? { position: view.position, rotation: view.quaternion } : null;
+    if (!pose) return null;
+    const position = new Vector3().fromArray(pose.position);
     const box = this.modelBounds();
     const distance = pilotPivotDistance(position, box.isEmpty() ? null : box.getCenter(new Vector3()));
-    return position.addScaledVector(new Vector3(0, 0, -1).applyQuaternion(new Quaternion().fromArray(record.rotation)), distance).toArray();
+    return position.addScaledVector(new Vector3(0, 0, -1).applyQuaternion(new Quaternion().fromArray(pose.rotation)), distance).toArray();
   }
 
   /**

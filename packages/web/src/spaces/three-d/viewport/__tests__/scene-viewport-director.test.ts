@@ -254,6 +254,15 @@ describe('looking through a camera (inner#1694 design 3.4, 3.4.3)', () => {
     expect(opened.initial.onPilotPreview).not.toHaveBeenCalled();
   });
 
+  it('gives the orbit centre of the camera a still was taken through', async () => {
+    let control: { centre: () => [number, number, number] | null } | null = null;
+    const frozen = { kind: 'frozen' as const, id: null, position: [0, 1, 10] as [number, number, number], quaternion: [0, 0, 0, 1] as [number, number, number, number], fov: 30, aspect: 16 / 9 };
+    await open(props([], { cameraView: frozen, viewFrame: FRAME, onPilotControl: (value: typeof control) => { control = value; } }));
+    const centre = (control as { centre: () => [number, number, number] | null } | null)?.centre();
+    expect(centre?.[0]).toBeCloseTo(0, 9);
+    expect(centre?.[2]).toBeLessThan(10);
+  });
+
   it('draws monitors and stills with the main view near plane', async () => {
     const opened = await open(props([camera(CAM)], { cameraView: { kind: 'live', id: CAM, canPilot: true }, viewFrame: FRAME }));
     await opened.capture()(FRAME, { width: 2048, height: 1152 });

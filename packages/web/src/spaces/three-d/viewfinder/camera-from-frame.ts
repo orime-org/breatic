@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { MathUtils, PerspectiveCamera, Quaternion, Vector3 } from 'three';
-import { SCENE_FOCAL_LENGTH_MAX, SCENE_FOCAL_LENGTH_MIN } from '@breatic/shared';
+import { SCENE_FOCAL_LENGTH_MAX, SCENE_FOCAL_LENGTH_MIN, SCENE_FREE_RATIO_MAX, SCENE_FREE_RATIO_MIN, VIEWFINDER_RATIOS, type ViewfinderRatio } from '@breatic/shared';
 
 import type { ViewfinderRect } from '@web/spaces/three-d/viewfinder/viewfinder-geometry';
 import { CAMERA_FILM_GAUGE } from '@web/spaces/three-d/viewport/director-objects';
 import { SCENE_VIEW_FOV } from '@web/spaces/three-d/viewport/scene-camera';
-import type { SceneQuaternion, SceneVector3 } from '@web/spaces/three-d/viewport/scene-viewport-props';
+import type { SceneFrozenPose, SceneQuaternion, SceneVector3 } from '@web/spaces/three-d/viewport/scene-viewport-props';
+import { viewfinderRatioValue } from '@web/spaces/three-d/viewfinder/viewfinder-geometry';
 
 /**
  * A camera that sees what a frame on the free view shows (inner#1694 design 3.5): from the view's position,
@@ -95,4 +96,17 @@ export function cameraFromView(view: { position: SceneVector3; target: SceneVect
   viewport: { width: number; height: number }): { position: SceneVector3; rotation: SceneQuaternion; focalLength: number } {
   const quaternion = new Quaternion().fromArray(lookRotation(view.position, view.target));
   return cameraFromFrame({ position: new Vector3().fromArray(view.position), quaternion }, frame, viewport);
+}
+
+/**
+ * The camera a still was taken with, for saving it once its camera is gone: its pose, the lens of its vertical field of
+ * view on the 36 mm gauge, and the frame of its width over height (Free when no fixed frame matches).
+ * @param pose - The still's camera pose.
+ * @returns The camera's position, rotation, focal length, frame and free ratio.
+ */
+export function cameraFromStill(pose: SceneFrozenPose): { position: SceneVector3; rotation: SceneQuaternion; focalLength: number; frame: ViewfinderRatio; freeRatio: number } {
+  const filmHeight = CAMERA_FILM_GAUGE / Math.max(pose.aspect, 1);
+  const focalLength = MathUtils.clamp(filmHeight / (2 * Math.tan(MathUtils.degToRad(pose.fov) / 2)), SCENE_FOCAL_LENGTH_MIN, SCENE_FOCAL_LENGTH_MAX);
+  const frame = VIEWFINDER_RATIOS.find((ratio) => ratio !== 'Free' && Math.abs((viewfinderRatioValue(ratio) ?? 0) - pose.aspect) < 1e-3) ?? 'Free';
+  return { position: pose.position, rotation: pose.quaternion, focalLength, frame, freeRatio: MathUtils.clamp(pose.aspect, SCENE_FREE_RATIO_MIN, SCENE_FREE_RATIO_MAX) };
 }

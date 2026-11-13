@@ -179,6 +179,8 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   const viewFrame = cameraView === null ? null : viewfinder.frame;
   const [ambientDraft, setAmbientDraft] = React.useState<Partial<SceneEnvironmentValues> | null>(null);
   const environment = React.useMemo(() => (ambientDraft ? { ...snapshot.environment, ...ambientDraft } : snapshot.environment), [ambientDraft, snapshot.environment]);
+  const ambientDraftRef = React.useRef(ambientDraft);
+  ambientDraftRef.current = ambientDraft;
   const [lightPlan, setLightPlan] = React.useState<LightsPlan | null>(null);
   const [monitors, setMonitors] = React.useState<ReadonlyMap<string, HTMLCanvasElement>>(new Map());
   const pilotControl = React.useRef<ScenePilotControl | null>(null);
@@ -508,7 +510,8 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
    * @throws {never} Cancellation uses the existing session owner.
    */
   const cancelGesture = React.useCallback((): boolean => {
-    if (session.getSnapshot().gestureActive) session.endGesture(false);
+    if (ambientDraftRef.current) setAmbientDraft(null);
+    else if (session.getSnapshot().gestureActive) session.endGesture(false);
     else if (pilotControl.current?.escape()) return true;
     // During a camera view the viewfinder steps back first and the panel stays (design 3.8); its canvas list closes itself.
     else if (cameraViewRef.current !== null) { if (viewfinderPhase.current !== 'picking') dispatchViewfinder({ type: 'escape' }); }
@@ -587,15 +590,15 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
    */
   const onDelete = React.useCallback((): void => { session.execute({ type: 'delete', ids: session.getSnapshot().selectedIds }); }, [session]);
   /**
-   * Save what the user sees as a new camera (design 3.5): a copy of the camera being looked through, the open free
-   * frame, or the largest 16:9 frame of the plain view.
+   * Save what the user sees as a new camera (design 3.5): a copy of the camera being looked through (its still
+   * included), the pose of a still whose camera is gone, the open free frame, or the largest 16:9 frame of the plain view.
    */
   const saveView = React.useCallback(async (): Promise<void> => {
     const current = session.getSnapshot();
     const number = Math.max(0, ...current.objects.filter(isSceneCamera).map((camera) => camera.number)) + 1;
     const base = { id: crypto.randomUUID(), name: t('spaces.threeD.director.cameraName', { n: number }), model: { kind: 'camera' as const },
       scale: [1, 1, 1] as [number, number, number], locked: false, number };
-    if (lookCamera !== null && cameraViewRef.current?.kind === 'live') {
+    if (lookCamera !== null) {
       pilotControl.current?.flush();
       const record = session.getSnapshot().objects.find((object) => object.id === lookCamera.id);
       if (!record || !isSceneCamera(record)) return;
@@ -603,8 +606,12 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
         focalLength: record.focalLength, frame: record.frame, freeRatio: record.freeRatio } as unknown as SceneObject] });
       return;
     }
-    const { cameraFromView } = await import('@web/spaces/three-d/viewfinder/camera-from-frame');
-    const freeOpen = viewfinder.phase === 'framing' && viewfinder.source.kind === 'free';
+    const { cameraFromStill, cameraFromView } = await import('@web/spaces/three-d/viewfinder/camera-from-frame');
+    if (viewfinder.frozen !== null) {
+      session.execute({ type: 'create', objects: [{ ...base, ...cameraFromStill(viewfinder.frozen) } as unknown as SceneObject] });
+      return;
+    }
+    const freeOpen = viewfinder.phase !== 'off';
     const frame = freeOpen ? viewfinder.frame : largestFrame(16 / 9, sceneViewfinderSafeArea(stageSize, rightOpen));
     if (frame.width <= 0 || frame.height <= 0) return;
     const pose = cameraFromView(view.current, frame, stageSize);
@@ -614,15 +621,18 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   }, [session, t, lookCamera, viewfinder, stageSize, rightOpen]);
   const onSaveView = React.useCallback((): void => { void saveView(); }, [saveView]);
   /**
-   * Add a light of one type aimed at the orbit centre (design 3.6).
+   * Add a light of one type aimed at the orbit centre (design 3.6); through a camera, or on its still, the centre and
+   * the viewer are that camera's.
    * @param type - The light type.
    */
   const addLight = React.useCallback(async (type: SceneLightType): Promise<void> => {
     const { newLightPose } = await import('@web/spaces/three-d/viewfinder/camera-from-frame');
     const current = session.getSnapshot();
     const number = Math.max(0, ...current.objects.filter(isSceneLight).map((light) => light.number)) + 1;
-    const centre = (lookCamera !== null ? pilotControl.current?.centre() : null) ?? view.current.target;
-    const pose = newLightPose(centre, lookCamera?.position ?? view.current.position);
+    const shown = cameraViewRef.current;
+    const centre = (shown !== null ? pilotControl.current?.centre() : null) ?? view.current.target;
+    const viewer = shown?.kind === 'frozen' ? shown.position : lookCamera?.position ?? view.current.position;
+    const pose = newLightPose(centre, viewer);
     session.execute({ type: 'create', objects: [{ id: crypto.randomUUID(), model: { kind: 'light', type }, number,
       name: t('spaces.threeD.director.lightName', { type: t(`spaces.threeD.director.${LIGHT_LABEL[type]}`), n: number }),
       position: pose.position, rotation: type === 'point' ? [0, 0, 0, 1] : pose.rotation, scale: [1, 1, 1], locked: false,
@@ -653,8 +663,6 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     });
   }, []);
   const onAmbientPreview = React.useCallback((values: Partial<SceneEnvironmentValues>): void => setAmbientDraft((previous) => ({ ...previous, ...values })), []);
-  const ambientDraftRef = React.useRef(ambientDraft);
-  ambientDraftRef.current = ambientDraft;
   const onAmbientCommit = React.useCallback((): void => {
     const draft = ambientDraftRef.current;
     setAmbientDraft(null);
@@ -689,14 +697,14 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     : panel === 'director' ? <SceneDirectorPanel session={session} snapshot={snapshot} spaceId={spaceId} Field={SceneField} fieldDrafts={fieldDrafts}
       onFieldDraftChange={onFieldDraftChange} lightPlan={lightPlan} maxLights={director?.maxLights} lookingAt={lookCamera?.id ?? null}
       environment={environment} onSaveView={onSaveView} onAddLight={onAddLight} onLook={onLook} onMonitor={onMonitor}
-      onAmbientPreview={onAmbientPreview} onAmbientCommit={onAmbientCommit} />
+      onAmbientPreview={onAmbientPreview} onAmbientCommit={onAmbientCommit} rendererFailed={rendererFailed} />
       : panel === 'objects' ? <SceneObjectList session={session} snapshot={snapshot} modelStates={modelStates} onSelect={showSelectedProperties} />
         : <SceneTaskList projectId={projectId} spaceId={spaceId} userId={userId} canEdit={snapshot.canEdit} canGenerate={myRole !== 'viewer'} uploads={uploads}
           remoteUploads={snapshot.remoteUploads} onPlace={placeTask} focusTaskId={focusTaskId} onFocused={taskFocused}
           onRetryGeneration={retryGeneration} placedAssetIds={placedAssetIds} onLocate={locateAsset} filterHost={filterHost} />,
   [panel, inspectorFallback, session, snapshot, readObjects, namedPeers, spaceId, fieldDrafts, onFieldDraftChange, skeletonStates, jointMode, changeJointMode, modelStates, showSelectedProperties,
     projectId, userId, myRole, uploads, placeTask, focusTaskId, taskFocused, retryGeneration, placedAssetIds, locateAsset, filterHost,
-    lightPlan, director, lookCamera, environment, onSaveView, onAddLight, onLook, onMonitor, onAmbientPreview, onAmbientCommit]);
+    lightPlan, director, lookCamera, environment, onSaveView, onAddLight, onLook, onMonitor, onAmbientPreview, onAmbientCommit, rendererFailed]);
   // An older-format scene is never opened, so no editing chrome is shown around its message.
   if (snapshot.status === 'unsupported' && isOlderSceneFormat(snapshot.version)) {
     return <div ref={stage} className='relative isolate h-full min-h-0 min-w-0 bg-canvas' data-testid='three-d-space'>
