@@ -26,7 +26,7 @@ import { chatSessionFor, evictAllChatSessions } from '@web/stores/chat-sessions'
 import { chatLive, resetChatLiveForTests } from '@web/stores/chat-live';
 import { conversationRuntime } from '@web/stores/conversation-runtime';
 import { watchChatMishaps, type ChatMishap } from '@web/stores/chat-mishaps';
-import { replyEnds, replyOpens, settle, stubRunWire, type RunWire } from '@web/test-utils/chat-run-wire';
+import { replyEnds, replyOpens, settle, storesWhatIsDrawn, stubRunWire, type RunWire } from '@web/test-utils/chat-run-wire';
 
 const IDLE: ChatSyncAnswer = { pending: [], running: false, awaiting: false, next_sync_ms: 3000 };
 const ANSWERS = [{ index: 0, selected: ['9:16'] }];
@@ -177,6 +177,7 @@ describe('answering a card', () => {
     await answerIt();
     await settle();
     const s = wire.last()!;
+    storesWhatIsDrawn(() => chat.messages, 'c-1');
     for (const f of replyOpens('t')) s.push(f);
     s.push({ type: 'text-delta', id: 't', delta: 'Here is the plan.' });
     for (const f of replyEnds('t')) s.push(f);
@@ -229,6 +230,7 @@ describe('writing a message instead of answering', () => {
     await chatLive.send({ projectId: 'p-1', conversationId: 'c-1', words: 'never mind, something else', chips: [], spaces: {} });
     await settle();
     const s = wire.last()!;
+    storesWhatIsDrawn(() => chat.messages, 'c-1');
     s.push({ type: 'data-conversation-titled', data: { title: 'Poster' } });
     s.push({ type: 'data-ask-replied', data: { toolCallId: 'ask-1' } });
     s.push({ type: 'start', messageId: 'named-by-the-server' });

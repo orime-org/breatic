@@ -30,7 +30,7 @@ import {
   noteTurnSettled,
   useRunningTurns,
 } from '@web/stores/running-turns';
-import { BEAT, replyEnds, replyOpens, settle, stubRunWire, type RunWire } from '@web/test-utils/chat-run-wire';
+import { BEAT, replyEnds, replyOpens, settle, storesWhatIsDrawn, stubRunWire, type RunWire } from '@web/test-utils/chat-run-wire';
 
 const BEAT_MS = 1000;
 
@@ -286,6 +286,7 @@ describe('a run this page reads', () => {
   it('is let go when the turn pauses on a questionnaire', async () => {
     const chat = aConversation();
     await attachTo();
+    storesWhatIsDrawn(() => chat.messages, 'c-1');
     for (const chunk of replyOpens()) wire.last()?.push(chunk);
     wire.last()?.push({ type: 'text-delta', id: 't1', delta: 'Two things first.' });
     wire.last()?.push({ type: 'text-end', id: 't1' });

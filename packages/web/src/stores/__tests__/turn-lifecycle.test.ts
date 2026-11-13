@@ -32,7 +32,7 @@ import { chatLive, resetChatLiveForTests } from '@web/stores/chat-live';
 import { conversationRuntime } from '@web/stores/conversation-runtime';
 import { useConsolidating } from '@web/stores/consolidating';
 import { resetRunOnceForTests } from '@web/stores/task-actions-in-flight';
-import { BEAT, replyEnds, replyOpens, settle, stubRunWire, type RunStream, type RunWire } from '@web/test-utils/chat-run-wire';
+import { BEAT, replyEnds, replyOpens, settle, storesWhatIsDrawn, stubRunWire, type RunStream, type RunWire } from '@web/test-utils/chat-run-wire';
 
 const BEAT_MS = 5000;
 
@@ -182,6 +182,7 @@ describe('a run that fails after its reply began', () => {
 describe('a conversation whose last run was answered, then a message refused', () => {
   it('keeps that run as it was and shows nothing of the refused message', async () => {
     const s = await attachToARun();
+    storesWhatIsDrawn(() => aConversation().messages, 'c-1');
     answerAndEnd(s);
     await settle();
     expect(aConversation().messages.map((m) => m.role)).toEqual(['user', 'assistant']);
@@ -370,6 +371,7 @@ describe('the thinking figure on a run that fails', () => {
    */
   async function failedReplyParts(ending: Array<Record<string, unknown>>): Promise<string[]> {
     const s = await attachToARun();
+    storesWhatIsDrawn(() => aConversation().messages, 'c-1');
     s.push(BEAT);
     s.push({ type: 'start', messageId: 'm-reply' });
     s.push({ type: 'start-step' });

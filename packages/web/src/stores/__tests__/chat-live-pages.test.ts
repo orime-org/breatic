@@ -101,6 +101,17 @@ async function openPage(history: StoredUiMessage[], read: StoredUiMessage[], syn
 }
 
 /**
+ * From now on, a page reads the history back as what it drew: the run stored
+ * what it streamed.
+ * @param p - The page.
+ */
+function storesWhatIsDrawnOn(p: Page): void {
+  vi.mocked(p.api.readConversation).mockImplementation(async () =>
+    page(p.messages().map((m) => ({ ...m, metadata: m.metadata ?? ({ turnIndex: 1 } as never) }))),
+  );
+}
+
+/**
  * The ids of the user's messages, in the order the page draws them: rows of
  * their own and those a reply took in.
  * @param messages - The page's messages.
@@ -153,6 +164,8 @@ describe('a stop pressed on one of two pages reading the run', () => {
     expect(streams).toHaveLength(2);
     for (const s of streams) for (const f of replyOpens()) s.push(f);
     await settle();
+    storesWhatIsDrawnOn(a);
+    storesWhatIsDrawnOn(b);
 
     await a.live.chatLive.stop('p1', 'c1');
     expect(a.api.stop).toHaveBeenCalledWith('c1', 'p1', undefined);
@@ -188,6 +201,7 @@ describe('a message sent from one of two idle pages', () => {
     await settle();
     expect(wire.streams()).toHaveLength(2);
     const onA = wire.last()!;
+    storesWhatIsDrawnOn(a);
     for (const f of replyOpens()) onA.push(f);
     onA.push({ type: 'text-delta', id: 't1', delta: 'Blue it is.' });
     for (const f of replyEnds()) onA.push(f);

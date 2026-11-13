@@ -84,7 +84,8 @@ import { tell } from '@web/stores/chat-mishaps';
 import { evictAllChatSessions } from '@web/stores/chat-sessions';
 import { resetChatLiveForTests } from '@web/stores/chat-live';
 import { resetRunOnceForTests } from '@web/stores/task-actions-in-flight';
-import { replyOpens, stubRunWire } from '@web/test-utils/chat-run-wire';
+import { replyOpens, storesWhatIsDrawn, stubRunWire } from '@web/test-utils/chat-run-wire';
+import { chatSessionFor } from '@web/stores/chat-sessions';
 import type { RunWire } from '@web/test-utils/chat-run-wire';
 
 /** The limits the server reads, as `GET /chat/stream-config` answers them. */
@@ -405,6 +406,7 @@ describe('a turn that failed', () => {
     await waitFor(() => {
       expect(panel.result.current.messages).toHaveLength(2);
     });
+    storesWhatIsDrawn(() => chatSessionFor({ projectId: 'p-1', conversationId: 'c-1', history: [], onTitled: () => undefined }).messages, 'c-1');
 
     act(() => {
       wire.last()?.push({ type: 'data-failed', data: { reason: 'model' } });
@@ -476,6 +478,7 @@ describe('a turn the user stopped', () => {
     await waitFor(() => {
       expect(panel.result.current.messages).toHaveLength(2);
     });
+    storesWhatIsDrawn(() => chatSessionFor({ projectId: 'p-1', conversationId: 'c-1', history: [], onTitled: () => undefined }).messages, 'c-1');
 
     act(() => {
       panel.result.current.abort();

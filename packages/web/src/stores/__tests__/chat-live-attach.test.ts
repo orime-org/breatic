@@ -19,7 +19,7 @@ import { chatLive, resetChatLiveForTests } from '@web/stores/chat-live';
 import { useChatWaiting } from '@web/stores/chat-waiting';
 import { watchChatMishaps, type ChatMishap } from '@web/stores/chat-mishaps';
 import { useRunningTurns } from '@web/stores/running-turns';
-import { BEAT, replyEnds, replyOpens, settle, stubRunWire, type RunWire } from '@web/test-utils/chat-run-wire';
+import { BEAT, replyEnds, replyOpens, settle, stubRunWire, type RunWire, storesWhatIsDrawn } from '@web/test-utils/chat-run-wire';
 
 /** What a sync answers when nothing holds the conversation. */
 const IDLE: ChatSyncAnswer = { pending: [], running: false, awaiting: false, next_sync_ms: 3000 };
@@ -58,16 +58,6 @@ const order: string[] = [];
  */
 function messages(): StoredUiMessage[] {
   return chatSessionFor({ projectId: 'p1', conversationId: 'c1', history: [], onTitled: () => {} }).messages;
-}
-
-/**
- * From now on, read the history back as what the page drew: the run stored
- * what it streamed.
- */
-function storedAsDrawn(): void {
-  vi.mocked(chatApi.readConversation).mockImplementation(async () =>
-    page(messages().map((m) => ({ ...m, metadata: m.metadata ?? ({ turnIndex: 1 } as never) }))),
-  );
 }
 
 beforeEach(() => {
@@ -237,7 +227,7 @@ describe('the end of a run being read', () => {
       for (const f of replyOpens()) s.push(f);
       if (said === 'data-failed then an error frame') s.push({ type: 'data-failed', data: {} });
       await settle();
-      storedAsDrawn();
+      storesWhatIsDrawn(messages);
       s.push({ type: 'error', errorText: 'x' });
       s.close();
       await settle();
@@ -498,7 +488,7 @@ describe('a run resumed after a card', () => {
     s.push({ type: 'text-delta', id: 't2', delta: 'Going with 9:16.' });
     for (const f of replyEnds('t2')) s.push(f);
     await settle();
-    storedAsDrawn();
+    storesWhatIsDrawn(messages);
     s.close();
     await settle();
     expect(messages().map((m) => m.role)).toEqual(['user', 'assistant', 'assistant']);

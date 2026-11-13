@@ -10,6 +10,7 @@
  * through axios (`chatApi`), which a case doubles with `vi.spyOn`.
  */
 import { vi } from 'vitest';
+import { chatApi, type StoredUiMessage } from '@web/data/api/chat';
 
 /** One run stream the page opened. */
 export interface RunStream {
@@ -136,4 +137,19 @@ export function replyEnds(textId = 't1'): Array<Record<string, unknown>> {
  */
 export async function settle(times = 5): Promise<void> {
   for (let i = 0; i < times; i += 1) await new Promise((r) => setTimeout(r, 0));
+}
+
+/**
+ * From now on, answer every read of a conversation's history with what the
+ * page drew: a run stores what it streamed, and a page reads it back once the
+ * run is over (inner#1717).
+ * @param drawn - The conversation's messages as the page holds them.
+ * @param conversationId - The conversation.
+ */
+export function storesWhatIsDrawn(drawn: () => StoredUiMessage[], conversationId = 'c1'): void {
+  vi.spyOn(chatApi, 'readConversation').mockImplementation(async () => ({
+    conversation: { id: conversationId } as never,
+    messages: drawn().map((m) => ({ ...m, metadata: m.metadata ?? ({ turnIndex: 1 } as never) })),
+    hasMore: false,
+  }));
 }
