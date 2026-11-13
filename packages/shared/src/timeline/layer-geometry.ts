@@ -4,11 +4,16 @@
 /**
  * Where a Timeline layer is drawn, shared by the preview and its hit test, and what a sender sends for it
  * (#1410). A layer occupies its base box (the source contained and centred in the canvas); `transform` offsets the box
- * centre in canvas pixels, scales it around that centre and rotates it clockwise in degrees.
+ * centre by a fraction of the frame width and height (#1502), scales it around that centre and rotates it clockwise in
+ * degrees. Offsets that follow the frame keep every layer at the same place relative to the frame when the frame size
+ * changes.
  */
 
-/** A clip's stored placement. */
-export interface TimelineLayerTransform { x: number; y: number; scaleX: number; scaleY: number; rotation: number }
+/** A clip's stored placement; `frameX` and `frameY` are the centre offset as fractions of the frame width and height. */
+export interface TimelineLayerTransform { frameX: number; frameY: number; scaleX: number; scaleY: number; rotation: number }
+
+/** A frame size in canvas pixels. */
+export interface TimelineLayerFrame { width: number; height: number }
 
 /** A rectangle in canvas pixels. */
 export interface TimelineLayerBox { left: number; top: number; width: number; height: number }
@@ -16,13 +21,14 @@ export interface TimelineLayerBox { left: number; top: number; width: number; he
 /** A point in canvas pixels. */
 export interface TimelineLayerPoint { x: number; y: number }
 
-/** The values `set_transform` accepts; x and y are bounded by this multiple of the document's canvas size. */
+/** The values `set_transform` accepts; frameX and frameY are bounded by this multiple of the frame size. */
 export const TIMELINE_LAYER_TRANSFORM_LIMITS = {
   scale: { min: 0.01, max: 100 },
   rotation: { min: -180, max: 180 },
   offsetCanvasMultiple: 10,
   /** The step senders round to before sending. */
-  precision: { offset: 0.01, scale: 0.0001, rotation: 0.01 },
+  // The offset step keeps a whole canvas pixel exact at the widest preset, 2520 pixels.
+  precision: { offset: 0.00001, scale: 0.0001, rotation: 0.01 },
 } as const;
 
 /**
@@ -49,45 +55,74 @@ export function timelineLayerBase(
   return { left: (canvas.width - width) / 2, top: (canvas.height - height) / 2, width, height };
 }
 
+/**
+ * A frame offset in canvas pixels from the frame centre.
+ * @param frame - The frame size.
+ * @param offset - The offset as fractions of the frame.
+ * @param offset.frameX - Horizontal offset as a fraction of the frame width.
+ * @param offset.frameY - Vertical offset as a fraction of the frame height.
+ * @returns The offset in canvas pixels.
+ * @throws {never} Never.
+ */
+export function timelineLayerOffsetPixels(frame: TimelineLayerFrame, offset: { frameX: number; frameY: number }): TimelineLayerPoint {
+  return { x: offset.frameX * frame.width, y: offset.frameY * frame.height };
+}
+
+/**
+ * A canvas-pixel offset from the frame centre as fractions of the frame.
+ * @param frame - The frame size.
+ * @param offset - The offset in canvas pixels.
+ * @returns The offset as fractions of the frame.
+ * @throws {never} Never.
+ */
+export function timelineLayerFrameOffset(frame: TimelineLayerFrame, offset: TimelineLayerPoint): { frameX: number; frameY: number } {
+  return { frameX: offset.x / frame.width, frameY: offset.y / frame.height };
+}
+
 /** A placed layer's style in display pixels, for an absolutely positioned element in the preview frame. */
 export interface TimelineLayerStyle { left: string; top: string; width: string; height: string; transform: string; transformOrigin: string }
 
 /**
  * The CSS transform of an element placed on its base box with `transform-origin: center`.
+ * @param frame - The frame size.
  * @param transform - The stored placement.
  * @param factor - Display pixels per canvas pixel.
  * @returns The CSS `transform` value.
  * @throws {never} Never.
  */
-function timelineLayerCss(transform: TimelineLayerTransform, factor: number): string {
-  return `translate(${transform.x * factor}px, ${transform.y * factor}px) rotate(${transform.rotation}deg) scale(${transform.scaleX}, ${transform.scaleY})`;
+function timelineLayerCss(frame: TimelineLayerFrame, transform: TimelineLayerTransform, factor: number): string {
+  const offset = timelineLayerOffsetPixels(frame, transform);
+  return `translate(${offset.x * factor}px, ${offset.y * factor}px) rotate(${transform.rotation}deg) scale(${transform.scaleX}, ${transform.scaleY})`;
 }
 
 /**
  * A layer's box and transform in display pixels.
+ * @param frame - The frame size.
  * @param base - Its base box in canvas pixels.
  * @param transform - Its stored or live placement.
  * @param factor - Display pixels per canvas pixel.
  * @returns The style.
  * @throws {never} Never.
  */
-export function timelineLayerStyle(base: TimelineLayerBox, transform: TimelineLayerTransform, factor: number): TimelineLayerStyle {
+export function timelineLayerStyle(frame: TimelineLayerFrame, base: TimelineLayerBox, transform: TimelineLayerTransform, factor: number): TimelineLayerStyle {
   return {
     left: `${base.left * factor}px`, top: `${base.top * factor}px`, width: `${base.width * factor}px`, height: `${base.height * factor}px`,
-    transform: timelineLayerCss(transform, factor), transformOrigin: "center",
+    transform: timelineLayerCss(frame, transform, factor), transformOrigin: "center",
   };
 }
 
 /**
  * The four corners of a placed layer: top-left, top-right, bottom-right, bottom-left of the unrotated box.
+ * @param frame - The frame size.
  * @param base - The layer's base box.
  * @param transform - The stored placement.
  * @returns The corners in canvas pixels.
  * @throws {never} Never.
  */
-export function timelineLayerCorners(base: TimelineLayerBox, transform: TimelineLayerTransform): TimelineLayerPoint[] {
-  const cx = base.left + base.width / 2 + transform.x;
-  const cy = base.top + base.height / 2 + transform.y;
+export function timelineLayerCorners(frame: TimelineLayerFrame, base: TimelineLayerBox, transform: TimelineLayerTransform): TimelineLayerPoint[] {
+  const offset = timelineLayerOffsetPixels(frame, transform);
+  const cx = base.left + base.width / 2 + offset.x;
+  const cy = base.top + base.height / 2 + offset.y;
   const hw = (base.width * transform.scaleX) / 2;
   const hh = (base.height * transform.scaleY) / 2;
   const angle = (transform.rotation * Math.PI) / 180;
@@ -109,6 +144,16 @@ export function timelineLayerCorners(base: TimelineLayerBox, transform: Timeline
 function roundTo(value: number, step: number): number {
   const factor = Math.round(1 / step);
   return Math.round(value * factor) / factor;
+}
+
+/**
+ * A frame offset rounded to the step senders send.
+ * @param value - The offset as a fraction of the frame.
+ * @returns The rounded offset.
+ * @throws {never} Never.
+ */
+export function roundTimelineFrameOffset(value: number): number {
+  return roundTo(value, TIMELINE_LAYER_TRANSFORM_LIMITS.precision.offset);
 }
 
 /**
@@ -140,8 +185,8 @@ export function clampTimelineScale(value: number): number {
  */
 export function normalizeTimelineLayerTransform(transform: TimelineLayerTransform): TimelineLayerTransform {
   return {
-    x: roundTo(transform.x, TIMELINE_LAYER_TRANSFORM_LIMITS.precision.offset),
-    y: roundTo(transform.y, TIMELINE_LAYER_TRANSFORM_LIMITS.precision.offset),
+    frameX: roundTimelineFrameOffset(transform.frameX),
+    frameY: roundTimelineFrameOffset(transform.frameY),
     scaleX: roundTo(clampTimelineScale(transform.scaleX), TIMELINE_LAYER_TRANSFORM_LIMITS.precision.scale),
     scaleY: roundTo(clampTimelineScale(transform.scaleY), TIMELINE_LAYER_TRANSFORM_LIMITS.precision.scale),
     rotation: roundTo(normalizeTimelineRotation(transform.rotation), TIMELINE_LAYER_TRANSFORM_LIMITS.precision.rotation),
@@ -156,7 +201,7 @@ export function normalizeTimelineLayerTransform(transform: TimelineLayerTransfor
  * @throws {never} Never.
  */
 export function sameTimelineLayerTransform(a: TimelineLayerTransform, b: TimelineLayerTransform): boolean {
-  return a.x === b.x && a.y === b.y && a.scaleX === b.scaleX && a.scaleY === b.scaleY && a.rotation === b.rotation;
+  return a.frameX === b.frameX && a.frameY === b.frameY && a.scaleX === b.scaleX && a.scaleY === b.scaleY && a.rotation === b.rotation;
 }
 
 /**

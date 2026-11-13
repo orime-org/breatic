@@ -6,7 +6,7 @@ import { durationToFrames, type TimelineRate } from "@shared/timeline/time.js";
 
 export type { TimelineRate };
 
-/** The fixed creation viewport and frame rate of one Timeline document. */
+/** The frame size and frame rate of one Timeline document; the size changes with `set_frame` (#1502), the rate never. */
 export interface TimelineSettings { width: number; height: number; fps: TimelineRate }
 
 /** A track identity; presentation libraries do not own this format. */
@@ -35,7 +35,7 @@ export interface TimelineVideoClip {
   rate: TimelineRate;
   gain: number;
   mute: boolean;
-  transform: { x: number; y: number; scaleX: number; scaleY: number; rotation: number };
+  transform: { frameX: number; frameY: number; scaleX: number; scaleY: number; rotation: number };
 }
 
 /** Which execution result a web-animation copy shows: a succeeded source version, an in-progress execution, or both. */
@@ -65,7 +65,8 @@ export const TIMELINE_MAIN_TRACK_ID = "visual-1";
 
 /** Our persisted integer-frame format, independent of any editor library. */
 export interface TimelineDocumentV1 {
-  schemaVersion: 1;
+  /** 2 since #1502 stores clip offsets as fractions of the frame; a version 1 document is read the same way. */
+  schemaVersion: 1 | 2;
   settings: TimelineSettings;
   tracks: Record<string, TimelineTrack>;
   clips: Record<string, TimelineClip>;
@@ -79,7 +80,7 @@ const identity = z.uuid();
 
 /** The rational rate carried in our persisted format. */
 export const TimelineRateSchema = z.object({ num: positiveInteger, den: positiveInteger }).strict();
-/** Creation parameters, fixed in the document after its seed is stored. */
+/** The frame size and rate; only `set_frame` changes the size after the seed, and the rate stays as seeded. */
 export const TimelineSettingsSchema = z.object({ width: positiveInteger, height: positiveInteger, fps: TimelineRateSchema }).strict();
 /** Stable tracks used by both the editor and its serialized snapshots. */
 export const TimelineTrackSchema = z.object({ id: z.string().min(1).max(64), kind: z.enum(["visual", "audio"]), order: safeFrame }).strict();
@@ -111,7 +112,7 @@ const placementFields = {
   gain: z.number().finite().min(0),
   mute: z.boolean(),
   transform: z.object({
-    x: z.number().finite(), y: z.number().finite(),
+    frameX: z.number().finite(), frameY: z.number().finite(),
     scaleX: z.number().finite().refine((value) => value !== 0),
     scaleY: z.number().finite().refine((value) => value !== 0),
     rotation: z.number().finite(),
@@ -148,7 +149,7 @@ export const TimelineOperationReceiptSchema = z.object({
 
 /** Our complete versioned DTO, independent of a presentation library. */
 export const TimelineDocumentV1Schema: z.ZodType<TimelineDocumentV1> = z.object({
-  schemaVersion: z.literal(1),
+  schemaVersion: z.union([z.literal(1), z.literal(2)]),
   settings: TimelineSettingsSchema,
   tracks: z.record(z.string(), TimelineTrackSchema),
   clips: z.record(z.string(), TimelineClipSchema),

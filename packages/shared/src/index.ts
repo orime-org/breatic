@@ -516,13 +516,18 @@ export {
   TIMELINE_LAYER_TRANSFORM_LIMITS,
   clampTimelineScale,
   normalizeTimelineLayerTransform,
+  roundTimelineFrameOffset,
   sameTimelineLayerTransform,
   timelineLayerBase,
   timelineLayerContains,
   timelineLayerCorners,
+  timelineLayerFrameOffset,
+  timelineLayerOffsetPixels,
   timelineLayerStyle,
 } from "@shared/timeline/layer-geometry.js";
-export type { TimelineLayerBox, TimelineLayerStyle, TimelineLayerTransform } from "@shared/timeline/layer-geometry.js";
+export type { TimelineLayerBox, TimelineLayerFrame, TimelineLayerStyle, TimelineLayerTransform } from "@shared/timeline/layer-geometry.js";
+export { TIMELINE_FRAME_PRESETS, TIMELINE_FRAME_PRESET_KEYS, timelineFramePresetOf } from "@shared/timeline/frame-presets.js";
+export type { TimelineFramePreset } from "@shared/timeline/frame-presets.js";
 
 export {
   DOCUMENT_SCHEMA,

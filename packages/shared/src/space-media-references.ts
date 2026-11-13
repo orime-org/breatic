@@ -37,7 +37,8 @@ export function readSpaceMediaReferences(kind: SpaceType, doc: Y.Doc): SpaceMedi
       break;
     }
     case "timeline": {
-      if (existingMap(doc, "timeline")?.get("schemaVersion") !== 1) break;
+      const version = existingMap(doc, "timeline")?.get("schemaVersion");
+      if (version !== 1 && version !== 2) break;
       const sources = existingMap(doc, "sources");
       if (sources === undefined) break;
       for (const value of sources.values()) {
