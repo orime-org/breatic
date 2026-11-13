@@ -71,6 +71,7 @@ export async function getPersonalByCreator(
  * @param slug - The user's URL handle; also the studio's slug
  * @param name - Display name (initially the slug)
  * @param tx - Optional transaction handle
+ * @param id - The id to create it under, when the caller chose one (inner#1955)
  * @returns The freshly created studio entity
  */
 export async function createPersonalStudio(
@@ -78,11 +79,12 @@ export async function createPersonalStudio(
   slug: string,
   name: string,
   tx?: DbTx,
+  id?: string,
 ): Promise<Studio> {
   const runner = tx ?? db;
   const rows = await runner
     .insert(studios)
-    .values({ createdByUserId, slug, name, type: "personal" })
+    .values({ ...(id ? { id } : {}), createdByUserId, slug, name, type: "personal" })
     .returning();
   return toEntity(rows[0]!);
 }
@@ -100,6 +102,7 @@ export async function createPersonalStudio(
  * @param slug - The globally-unique URL handle
  * @param name - The display name (independent of the slug)
  * @param tx - Optional transaction handle
+ * @param id - The id to create it under, when the caller chose one (inner#1955)
  * @returns The freshly created team studio entity
  */
 export async function createTeamStudio(
@@ -107,11 +110,12 @@ export async function createTeamStudio(
   slug: string,
   name: string,
   tx?: DbTx,
+  id?: string,
 ): Promise<Studio> {
   const runner = tx ?? db;
   const rows = await runner
     .insert(studios)
-    .values({ createdByUserId, slug, name, type: "team" })
+    .values({ ...(id ? { id } : {}), createdByUserId, slug, name, type: "team" })
     .returning();
   return toEntity(rows[0]!);
 }
@@ -540,4 +544,15 @@ export async function lockPersonalForGrant(userId: string, tx: DbTx): Promise<St
     .for("no key update").limit(1);
   const row = rows[0];
   return row && row.type === "personal" && row.createdByUserId === userId ? toEntity(row) : null;
+}
+
+/**
+ * Whether a Studio row exists under an id, deleted or not.
+ * @param studioId - The id.
+ * @param tx - The transaction to read in.
+ * @returns True when a row has the id.
+ */
+export async function existsById(studioId: string, tx: DbTx): Promise<boolean> {
+  const rows = await tx.select({ id: studios.id }).from(studios).where(eq(studios.id, studioId)).limit(1);
+  return rows.length > 0;
 }

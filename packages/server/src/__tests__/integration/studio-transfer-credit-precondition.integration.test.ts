@@ -26,10 +26,10 @@ vi.mock("ai", () => ({
 }));
 
 import postgres from "postgres";
+import { mirrorInDirectory } from "./directory-fixtures.js";
 import { initCore } from "@breatic/core";
 import { creditLotService } from "@breatic/domain";
 import * as studioTransferService from "@server/modules/studio/studioTransfer.service.js";
-import * as studioCreditDesignation from "@server/modules/studio/studioCreditDesignation.service.js";
 import { openPaymentSource } from "./payment-source.js";
 
 try {
@@ -80,6 +80,7 @@ async function seedStudio(): Promise<{ studioId: string; slug: string; adminId: 
     INSERT INTO studio_members (studio_id, user_id, role)
     VALUES (${studio!.id}, ${adminId}, 'admin'), (${studio!.id}, ${memberId}, 'maintainer')
   `;
+  await mirrorInDirectory(sql, studio!.id);
   return { studioId: studio!.id, slug, adminId, memberId };
 }
 
@@ -164,14 +165,14 @@ describe("pointing a pack at a studio", () => {
     await studioTransferService.requestTransfer(s.slug, s.adminId, s.memberId);
 
     await expect(
-      studioCreditDesignation.designateLot({ lotId: lot, requestingUserId: s.adminId, studioId: s.studioId }),
+      creditLotService.designateLot({ lotId: lot, requestingUserId: s.adminId, studioId: s.studioId }),
     ).rejects.toMatchObject({ statusCode: 409 });
 
     const [offer] = await sql<{ id: string }[]>`
       SELECT id FROM studio_transfers WHERE studio_id = ${s.studioId}
     `;
     await studioTransferService.withdrawTransfer(offer!.id, s.slug);
-    const lotAfter = await studioCreditDesignation.designateLot({
+    const lotAfter = await creditLotService.designateLot({
       lotId: lot,
       requestingUserId: s.adminId,
       studioId: s.studioId,
@@ -187,7 +188,7 @@ describe("pointing a pack at a studio", () => {
     await studioTransferService.requestTransfer(s.slug, s.adminId, s.memberId);
 
     await expect(
-      studioCreditDesignation.designateLot({ lotId: lot, requestingUserId: s.memberId, studioId: s.studioId }),
+      creditLotService.designateLot({ lotId: lot, requestingUserId: s.memberId, studioId: s.studioId }),
     ).rejects.toMatchObject({ statusCode: 403 });
   });
 
@@ -197,7 +198,7 @@ describe("pointing a pack at a studio", () => {
     await studioTransferService.requestTransfer(s.slug, s.adminId, s.memberId);
     await sql`UPDATE credit_lots SET designated_studio_id = ${s.studioId} WHERE id = ${lot}`;
 
-    const lotAfter = await studioCreditDesignation.designateLot({
+    const lotAfter = await creditLotService.designateLot({
       lotId: lot,
       requestingUserId: s.adminId,
       studioId: null,

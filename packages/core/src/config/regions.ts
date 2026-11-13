@@ -26,6 +26,10 @@ export const regionsConfigSchema = z
     cross_region_fanout_timeout_ms: millis.default(2000),
     outbox_relay_interval_ms: millis.default(1000),
     profile_cache_ttl_ms: millis.default(30000),
+    transfer_accepting_sweep_interval_ms: millis.default(60000),
+    transfer_accepting_stale_ms: millis.default(60000),
+    studio_creation_sweep_interval_ms: millis.default(60000),
+    studio_creation_stale_ms: millis.default(120000),
   })
   .refine((c) => c.outbox_relay_interval_ms + c.profile_cache_ttl_ms <= 60_000, {
     message: "outbox_relay_interval_ms + profile_cache_ttl_ms must stay within 60000 so a rename reaches every region within a minute",

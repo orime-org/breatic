@@ -45,27 +45,6 @@ vi.mock("ai", () => ({
   tool: (config: Record<string, unknown>) => config,
 }));
 
-// Wrap @breatic/domain's `studioMembersRepo.insertAdmin` in a spy that
-// delegates to the REAL implementation by default — so every test runs
-// against real Postgres — while letting the rollback test force a single
-// throw to prove the studio insert is rolled back atomically. (A plain
-// `vi.spyOn` can't redefine the non-configurable ESM export, so the
-// interception has to be installed in the hoisted mock factory.)
-const { insertAdminSpy } = vi.hoisted(() => ({ insertAdminSpy: vi.fn() }));
-vi.mock("@breatic/domain", async (importOriginal: () => Promise<Record<string, unknown>>) => {
-  const actual = await importOriginal();
-  const realRepo = actual.studioMembersRepo as {
-    insertAdmin: (...args: unknown[]) => Promise<void>;
-  };
-  insertAdminSpy.mockImplementation((...args: unknown[]) =>
-    realRepo.insertAdmin(...args),
-  );
-  return {
-    ...actual,
-    studioMembersRepo: { ...realRepo, insertAdmin: insertAdminSpy },
-  };
-});
-
 import postgres from "postgres";
 import { initCore, ConflictError } from "@breatic/core";
 import { studioMembersRepo } from "@breatic/domain";
@@ -175,22 +154,33 @@ describe("createPersonalStudio — studio + admin atomicity (invariant 3, 数据
   it("rolls back the studio insert when the admin insert fails (no orphan studio)", async () => {
     const user = await insertUser();
     const slug = freshSlug();
-    // Force the admin insert (the second write in the transaction) to
-    // throw exactly once. If the studio insert were NOT in the same
-    // transaction, the studio row would leak as an orphan with no admin.
-    insertAdminSpy.mockRejectedValueOnce(new Error("forced admin-insert failure"));
+    // Make the admin insert (a later write in the same transaction) fail for
+    // this user only. If the studio insert were NOT in the same transaction,
+    // the studio row would leak as an orphan with no admin.
+    await sql`CREATE OR REPLACE FUNCTION setup_studio_fail_admin() RETURNS trigger
+      LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'forced admin-insert failure'; END $$`;
+    await sql.unsafe(`CREATE TRIGGER setup_studio_fail_admin BEFORE INSERT ON studio_members
+      FOR EACH ROW WHEN (NEW.user_id = '${user}') EXECUTE FUNCTION setup_studio_fail_admin()`);
+    try {
+      const failure = await studioService.createPersonalStudio(user, slug).then(
+        () => null,
+        (err: unknown) => err as { message: string; cause?: { message?: string } },
+      );
+      expect(failure?.cause?.message ?? failure?.message).toBe("forced admin-insert failure");
+    } finally {
+      await sql`DROP TRIGGER setup_studio_fail_admin ON studio_members`;
+      await sql`DROP FUNCTION setup_studio_fail_admin()`;
+    }
 
-    await expect(
-      studioService.createPersonalStudio(user, slug),
-    ).rejects.toThrow("forced admin-insert failure");
-
-    // The whole transaction rolled back: no studio with that slug, and no
-    // personal studio for the user.
+    // The whole transaction rolled back: no studio with that slug, no
+    // personal studio for the user, and no directory row either.
     const rows = await sql<{ id: string }[]>`
       SELECT id FROM studios WHERE slug = ${slug} AND deleted_at IS NULL
     `;
     expect(rows).toHaveLength(0);
     expect(await countPersonalStudios(user)).toBe(0);
+    const directory = await sql`SELECT 1 FROM studio_directory WHERE slug = ${slug}`;
+    expect(directory).toHaveLength(0);
   });
 });
 

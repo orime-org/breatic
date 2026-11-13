@@ -7,7 +7,7 @@ import { serializeCreditMicro, parseCreditDecimal } from "@breatic/shared";
 import { creditLotService, creditLotRepo, studioMembersRepo } from "@breatic/domain";
 import * as operationRepo from "@server/modules/credit-grant/credit-grant.repo.js";
 import * as userRepo from "@server/modules/auth/user.repo.js";
-import * as studioRepo from "@server/modules/studio/studio.repo.js";
+import { studioRepo } from "@breatic/domain";
 
 /** The signed original request identity and normalized intent. */
 export interface GrantRequest { userId: string; key: string; hash: string; adminId: string; body: CreditGrantWrite }

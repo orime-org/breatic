@@ -283,9 +283,16 @@ auth.post(
  */
 auth.post("/setup-studio", requireAuth, validate("json", setupStudioSchema), async (c) => {
   const user = c.get("user");
-  const { slug } = c.req.valid("json");
-  const studio = await studioService.createPersonalStudio(user.id, slug);
+  const { slug, studioId, region } = c.req.valid("json");
+  const studio = await studioService.createPersonalStudio(user.id, slug, { studioId, region });
   logger.info({ userId: user.id, studioId: studio.id, slug }, "personal_studio_created");
+  // The identity token names the personal Studio, so it is signed again now
+  // that there is one (inner#1955).
+  const token = readSessionCookie(c);
+  if (token) {
+    const shown = await authService.withTierInForce(user);
+    await writeIdentityCookie(c, identitySubject(shown, studio), token);
+  }
   return c.json({ data: { personalStudio: toPersonalStudioRef(studio) } }, 201);
 });
 

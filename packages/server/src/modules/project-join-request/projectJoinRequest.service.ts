@@ -42,7 +42,7 @@ import type { DecisionGrantRole, RequestFailedReason } from "@breatic/shared";
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import * as projectRepo from "@server/modules/project/project.repo.js";
-import * as studioRepo from "@server/modules/studio/studio.repo.js";
+import { studioRepo } from "@breatic/domain";
 import * as userRepo from "@server/modules/auth/user.repo.js";
 import * as requestsRepo from "@server/modules/project-join-request/projectJoinRequests.repo.js";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
@@ -50,7 +50,7 @@ import { buildProjectJoinRequestMail } from "@server/utils/notification-mail.js"
 import { decisionLink } from "@server/utils/decision-link.js";
 import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
 import { getDecisionWindowMs } from "@server/config/limits.js";
-import { isUniqueViolation } from "@server/utils/pg-error.js";
+import { isUniqueViolation } from "@breatic/core";
 import { isRefused, refusalError } from "@server/utils/deferred-decision.js";
 import type { Refused } from "@server/utils/deferred-decision.js";
 

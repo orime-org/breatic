@@ -141,7 +141,7 @@ function charge(
   return {
     region: "sg",
     requestId,
-    kind: "generation",
+    kind: "task",
     actorUserId,
     studioId,
     projectId: crypto.randomUUID(),
@@ -182,7 +182,8 @@ describe("a Studio known only by its directory row", () => {
     const overview = await creditViewService.getOverview(admin);
     const summary = overview.studios.find((studio) => studio.studioId === studioId);
     expect(summary).toBeDefined();
-    expect(Number(summary!.spent)).toBe(8);
+    // What this account's money paid; the rest is the Studio's debt.
+    expect(Number(summary!.spent)).toBe(5);
     expect(Number(summary!.debt)).toBe(3);
 
     const ledger = await creditViewService.listLedger(admin, undefined, undefined, studioId);
@@ -197,13 +198,14 @@ describe("a settlement that stopped after the global commit", () => {
       INSERT INTO studio_directory (studio_id, slug, region, type, name, admin_user_id, created_by_user_id, state)
       VALUES (${fx.studioId}, ${`crash-${crypto.randomBytes(5).toString("hex")}`}, NULL, 'team', 'Crash',
               ${fx.userId}, ${fx.userId}, 'live')
+      ON CONFLICT (studio_id) DO NOTHING
     `;
     const lotId = await purchase(fx.userId, 10, fx.studioId);
     const referenceId = `crash-${crypto.randomUUID()}`;
     const requestId = await db.transaction((tx) =>
       creditLotService.requestCharge(
         {
-          kind: "generation",
+          kind: "task",
           actorUserId: fx.userId,
           projectId: fx.projectId,
           studioId: fx.studioId,
@@ -217,7 +219,7 @@ describe("a settlement that stopped after the global commit", () => {
     await creditLotService.settleRegionalCharge({
       region: "us-west",
       requestId: requestId!,
-      kind: "generation",
+      kind: "task",
       actorUserId: fx.userId,
       studioId: fx.studioId,
       projectId: fx.projectId,
@@ -229,7 +231,7 @@ describe("a settlement that stopped after the global commit", () => {
 
     const [lot] = await sql<{ remaining: string }[]>`SELECT remaining_credits AS remaining FROM credit_lots WHERE id = ${lotId}`;
     expect(Number(lot!.remaining)).toBe(8);
-    const [request] = await sql<{ status: string }[]>`SELECT status FROM credit_charge_requests WHERE id = ${requestId!}`;
+    const [request] = await sql<{ status: string }[]>`SELECT status FROM credit_charge_requests WHERE id = ${requestId}`;
     expect(request!.status).toBe("settled");
   });
 });

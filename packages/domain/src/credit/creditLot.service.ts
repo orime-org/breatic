@@ -26,8 +26,10 @@ import * as creditLotRepo from "@domain/credit/creditLot.repo.js";
 import * as creditSourceRepo from "@domain/credit/creditSource.repo.js";
 import * as creditHoldRepo from "@domain/credit/creditHold.repo.js";
 import * as creditChargeRepo from "@domain/credit/creditCharge.repo.js";
+import * as creditChargeSettlementRepo from "@domain/credit/creditChargeSettlement.repo.js";
+import { inGlobalRegion } from "@domain/region/directory-writes.js";
+import { globalApi } from "@domain/region/global-api.js";
 import type { ChargeRequestKind, NewChargeRequest, SweepableChargeRequest } from "@domain/credit/creditCharge.repo.js";
-import * as studioMembersRepo from "@domain/auth/studioMembers.repo.js";
 import { resolveOwnerStudioId } from "@domain/asset/asset.service.js";
 import {
   toChargeMicro,
@@ -42,8 +44,11 @@ import {
   env,
   publishCreditsChanged,
   AppError,
+  ConflictError,
   NotFoundError,
   ForbiddenError,
+  projectsRepo,
+  studioDirectoryRepo,
   type DbTx,
 } from "@breatic/core";
 import {
@@ -104,6 +109,12 @@ export interface ChargeInput {
    * recorded against nobody's purchase.
    */
   projectId: string | null;
+  /**
+   * The Studio charged, when the caller knows it (inner#1955): a region's
+   * request names it, and the global region charges it without reading the
+   * Project. Absent, the Studio is resolved from the Project.
+   */
+  studioId?: string | null;
   /** Who ran the generation. Recorded as the actor, and as the payer when there is no lot. */
   actorUserId: string;
   /** How many credits it cost. */
@@ -295,12 +306,14 @@ async function applyCharge(input: ChargeInput, tx: DbTx): Promise<ChargeOutcome>
   // studio had nothing to draw from would turn an unknown failure into a
   // settled fact that the caller reads as a normal outcome and logs as a
   // shortfall.
-  const studioId = input.projectId
-    ? await resolveOwnerStudioId(input.projectId).catch((err: unknown) => {
-        if (err instanceof NotFoundError) return null;
-        throw err;
-      })
-    : null;
+  const studioId = input.studioId !== undefined && input.studioId !== null
+    ? input.studioId
+    : input.projectId
+      ? await resolveOwnerStudioId(input.projectId).catch((err: unknown) => {
+          if (err instanceof NotFoundError) return null;
+          throw err;
+        })
+      : null;
 
   const usageEntry = {
     payerUserId: input.actorUserId,
@@ -442,7 +455,14 @@ export type ChargeRequestInput = NewChargeRequest;
  * @returns The request's id, or null when its kind, actor and reference already have one.
  */
 export async function requestCharge(input: ChargeRequestInput, tx: DbTx): Promise<string | null> {
-  return creditChargeRepo.insertPending(input, tx);
+  // The request carries its Studio, so the global region can settle it
+  // without reading this region's Projects (inner#1955).
+  const studioId = input.studioId !== undefined
+    ? input.studioId
+    : input.projectId
+      ? ((await projectsRepo.findOwnerStudioId(input.projectId)) ?? null)
+      : null;
+  return creditChargeRepo.insertPending({ ...input, studioId }, tx);
 }
 
 /**
@@ -466,6 +486,104 @@ export async function settleCharge(requestId: string): Promise<ChargeOutcome | n
   }
 }
 
+/** A charge request filed in another region, as the global region settles it (inner#1955). */
+export interface RegionalChargeRequest {
+  /** The region that filed it. */
+  region: string;
+  /** Its id in that region; with the region, what makes a retry the same charge. */
+  requestId: string;
+  /** What kind of delivery it was, as the region filed it. */
+  kind: ChargeRequestKind;
+  actorUserId: string;
+  /** The Studio charged, read from the Project in the region. */
+  studioId: string | null;
+  projectId: string | null;
+  amount: number;
+  referenceId: string;
+  description?: string;
+  model?: string;
+  provider?: string;
+  tokensUsed?: number;
+  releaseHold?: string;
+}
+
+/** What a regional settlement answers: the outcome without process-local signals. */
+export type RegionalChargeOutcome = Omit<ChargeOutcome, "signalFailure">;
+
+/**
+ * Settle a charge another region filed, at most once per region and request
+ * id. The settlement row is taken first; a request settled before answers
+ * with the outcome recorded then, so a region that retries after losing the
+ * answer is charged nothing more.
+ * @param request - The region's request.
+ * @returns What was charged, the first time and every time after.
+ * @throws {Error} When the charge cannot be applied; nothing is recorded and a retry charges it.
+ */
+export async function settleRegionalCharge(request: RegionalChargeRequest): Promise<RegionalChargeOutcome> {
+  return db.transaction((tx) => settleClaimed(request, tx));
+}
+
+/**
+ * Charge a request once per region and request id, in the caller's
+ * transaction: the settlement row is taken first, and a request already
+ * settled answers with the outcome recorded then.
+ * @param request - The request and the region that filed it.
+ * @param tx - The settlement transaction.
+ * @returns What was charged.
+ * @throws {Error} When the charge cannot be applied; the transaction rolls back.
+ */
+async function settleClaimed(request: RegionalChargeRequest, tx: DbTx): Promise<RegionalChargeOutcome> {
+  const slot = await creditChargeSettlementRepo.claim(request.region, request.requestId, tx);
+  if (!slot.claimed) return slot.outcome as RegionalChargeOutcome;
+  const outcome = await applyCharge(
+    {
+      projectId: request.projectId,
+      studioId: request.studioId,
+      actorUserId: request.actorUserId,
+      amount: request.amount,
+      referenceId: request.referenceId,
+      description: request.description,
+      model: request.model,
+      provider: request.provider,
+      tokensUsed: request.tokensUsed,
+      releaseHold: request.releaseHold,
+    },
+    tx,
+  );
+  const answer: RegionalChargeOutcome = {
+    billed: outcome.billed,
+    charged: outcome.charged,
+    shortfall: outcome.shortfall,
+    studioId: outcome.studioId,
+    lotIds: [...outcome.lotIds],
+  };
+  await creditChargeSettlementRepo.recordOutcome(request.region, request.requestId, { ...answer }, tx);
+  return answer;
+}
+
+/**
+ * A stored request as the global region settles it.
+ * @param request - The request row.
+ * @returns It, named by this region.
+ */
+function asRegional(request: creditChargeRepo.ChargeRequest): RegionalChargeRequest {
+  return {
+    region: env.REGION,
+    requestId: request.id,
+    kind: request.kind,
+    actorUserId: request.actorUserId,
+    studioId: request.studioId,
+    projectId: request.projectId,
+    amount: Number(request.amount),
+    referenceId: request.referenceId,
+    description: request.description ?? undefined,
+    model: request.model ?? undefined,
+    provider: request.provider ?? undefined,
+    tokensUsed: request.tokensUsed ?? undefined,
+    releaseHold: request.releaseHold ?? undefined,
+  };
+}
+
 /**
  * One settlement attempt; see {@link settleCharge}.
  * @param requestId - The request.
@@ -473,26 +591,7 @@ export async function settleCharge(requestId: string): Promise<ChargeOutcome | n
  * @throws {Error} When the charge cannot be applied.
  */
 async function settleOnce(requestId: string): Promise<ChargeOutcome | null> {
-  const settled = await db.transaction(async (tx): Promise<{ outcome: ChargeOutcome; projectId: string | null } | null> => {
-    const request = await creditChargeRepo.lockById(requestId, tx);
-    if (request === null || request.status === "settled") return null;
-    const outcome = await applyCharge(
-      {
-        projectId: request.projectId,
-        actorUserId: request.actorUserId,
-        amount: Number(request.amount),
-        description: request.description ?? undefined,
-        referenceId: request.referenceId,
-        tokensUsed: request.tokensUsed ?? undefined,
-        model: request.model ?? undefined,
-        provider: request.provider ?? undefined,
-        releaseHold: request.releaseHold ?? undefined,
-      },
-      tx,
-    );
-    await creditChargeRepo.markSettled(request.id, tx);
-    return { outcome, projectId: request.projectId };
-  });
+  const settled = inGlobalRegion() ? await settleHere(requestId) : await settleThroughGlobal(requestId);
   if (settled === null) return null;
   const { outcome, projectId } = settled;
   // Only a charge against a studio's pool changes what its users see.
@@ -503,6 +602,42 @@ async function settleOnce(requestId: string): Promise<ChargeOutcome | null> {
   } catch (err) {
     return { ...outcome, signalFailure: err };
   }
+}
+
+/**
+ * Settle a request in the region that holds the books: the request row and
+ * the settlement row in one commit.
+ * @param requestId - The request.
+ * @returns What was charged and for which Project, or null when settled or gone.
+ */
+async function settleHere(requestId: string): Promise<{ outcome: ChargeOutcome; projectId: string | null } | null> {
+  return db.transaction(async (tx) => {
+    const request = await creditChargeRepo.lockById(requestId, tx);
+    if (request === null || request.status === "settled") return null;
+    const outcome = await settleClaimed(asRegional(request), tx);
+    await creditChargeRepo.markSettled(request.id, tx);
+    return { outcome, projectId: request.projectId };
+  });
+}
+
+/**
+ * Settle a request filed in a region that does not hold the books: the
+ * global region charges it once per request id, then the request is marked
+ * here. A process that stops in between leaves it pending for the sweep,
+ * whose retry the global region answers with the first outcome.
+ * @param requestId - The request.
+ * @returns What was charged and for which Project, or null when settled or gone.
+ * @throws {GlobalApiError} When the global region refused or did not answer.
+ */
+async function settleThroughGlobal(requestId: string): Promise<{ outcome: ChargeOutcome; projectId: string | null } | null> {
+  const request = await creditChargeRepo.findById(requestId);
+  if (request === null || request.status === "settled") return null;
+  const outcome = await globalApi().settleCharge(asRegional(request));
+  await db.transaction(async (tx) => {
+    const locked = await creditChargeRepo.lockById(requestId, tx);
+    if (locked !== null && locked.status !== "settled") await creditChargeRepo.markSettled(requestId, tx);
+  });
+  return { outcome, projectId: request.projectId };
 }
 
 /**
@@ -613,28 +748,27 @@ export async function designateLot(input: {
   studioId: string | null;
 }): Promise<CreditLotEntity> {
   return db.transaction(async (tx) => {
-    // The membership row first, under lock, and only then the debt and the
-    // lot. Reading the role outside the transaction answers about a moment
-    // that is already gone by the time this writes: a transfer committing in
-    // the gap leaves a maintainer's lot pointed at a studio that is no longer
-    // theirs, and nothing clears it afterwards. `lockMemberRole`'s predicate
-    // never names `role` — see there for why one that did cannot hold under
-    // concurrency.
+    // The Studio's directory row first, under lock, and only then the debt
+    // and the lot (inner#1955). The directory names who pays for the Studio
+    // in whatever region it lives, and `changeDirectoryAdmin` takes the same
+    // lock, so an admin change committing in the gap cannot leave a lot
+    // pointed at a Studio its buyer no longer administers. While a transfer
+    // offer is open the Studio takes no new pack: the transfer started on the
+    // condition that none pointed at it.
     if (input.studioId !== null) {
-      const role = await studioMembersRepo.lockMemberRole(
-        input.studioId,
-        input.requestingUserId,
-        tx,
-      );
-      if (role !== "admin") {
+      const directory = await studioDirectoryRepo.lockRow(input.studioId, tx);
+      if (directory === null || directory.deletedAt !== null || directory.adminUserId !== input.requestingUserId) {
         throw new ForbiddenError(t("server.credit.not_studio_admin"));
+      }
+      if (directory.transferPendingUntil !== null && directory.transferPendingUntil.getTime() > Date.now()) {
+        throw new ConflictError(t("server.studio.designation_during_transfer"));
       }
     }
 
     // The debt row before the lot, the same order a charge takes them in, so
     // the two queue up rather than deadlocking against each other. With the
-    // membership taken just above, this call runs the whole order:
-    // `studio_members` → `studio_credit_debts` → `credit_lots`.
+    // directory row taken just above, this call runs the whole order:
+    // `studio_directory` → `studio_credit_debts` → `credit_lots`.
     const owedMicro =
       input.studioId === null
         ? parseCreditDecimal("0")
@@ -1032,6 +1166,15 @@ export async function getOverview(userId: string): Promise<CreditOverview> {
  * @returns The total in credits, below zero when the studio owes.
  */
 export async function getSpendableCredits(studioId: string): Promise<CreditDecimal> {
+  return inGlobalRegion() ? spendableHere(studioId) : ((await globalApi().getSpendableCredits(studioId)) as CreditDecimal);
+}
+
+/**
+ * What a Studio can spend, read in the region that holds the books.
+ * @param studioId - The Studio.
+ * @returns Its spendable credits.
+ */
+async function spendableHere(studioId: string): Promise<CreditDecimal> {
   return db.transaction(
     async (tx) => {
       const [lots, debt] = await Promise.all([

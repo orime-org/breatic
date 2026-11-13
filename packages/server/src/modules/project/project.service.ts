@@ -18,11 +18,11 @@
 
 import * as projectRepo from "@server/modules/project/project.repo.js";
 import { pictureUrl } from "@server/modules/asset/picture.service.js";
-import * as studioRepo from "@server/modules/studio/studio.repo.js";
+import { studioRepo } from "@breatic/domain";
 import { projectAuthService, projectAssetReferenceService } from "@breatic/core";
 import * as studioService from "@server/modules/studio/studio.service.js";
 import * as timelineGrantRepo from "@server/modules/timeline/execution-grant.repo.js";
-import { studioAuthService } from "@breatic/domain";
+import { directoryWrites, studioAuthService } from "@breatic/domain";
 import { accountActivityRepo, claimFirstMilestone, db, enqueueAdsConversion, getAccountAttribution, getLimitsForStudio, logger, projectEditsRepo, trackServerEvent } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { adClickFrom, t } from "@breatic/shared";
@@ -132,6 +132,7 @@ export async function create(
       description,
     );
     await accountActivityRepo.recordActivity({ userId, projectId: created.id, kind: "project_action" }, tx);
+    await directoryWrites.projectCreated(created.id, studioId, tx);
     return { project: created, isFirst };
   });
   reportProjectCreated(project, { via: "create", is_first: isFirst, space_type: spaceType });
@@ -596,6 +597,7 @@ export async function duplicate(
     // A copy resolves and previews the web animations its source could (inner#1711).
     await timelineGrantRepo.copyGrants(sourceId, copy.id, tx);
     await accountActivityRepo.recordActivity({ userId, projectId: copy.id, kind: "project_action" }, tx);
+    await directoryWrites.projectCreated(copy.id, source.studioId, tx);
     return { project: copy, isFirst };
   });
   reportProjectCreated(project, { via: "duplicate", is_first: isFirst });

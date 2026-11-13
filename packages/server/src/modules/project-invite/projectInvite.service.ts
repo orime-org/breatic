@@ -33,7 +33,7 @@
  */
 
 import * as projectRepo from "@server/modules/project/project.repo.js";
-import * as studioRepo from "@server/modules/studio/studio.repo.js";
+import { studioRepo } from "@breatic/domain";
 import * as invitesRepo from "@server/modules/project-invite/projectInvitations.repo.js";
 import { createInvitation } from "@server/modules/invitation/invitation.service.js";
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";

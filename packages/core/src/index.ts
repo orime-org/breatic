@@ -233,6 +233,13 @@ export { runWithContext, tryGetContext, getContext } from "@core/infra/request-c
 // @breatic/domain — collab never touches it.
 export * as projectMembersRepo from "@core/auth/projectMembers.repo.js";
 export * as projectsRepo from "@core/project/projects.repo.js";
+export { isUniqueViolation } from "@core/db/pg-error.js";
+export { mintShareToken, regionOfShareToken } from "@core/infra/share-token.js";
+export * as studioDirectoryRepo from "@core/region/studioDirectory.repo.js";
+export * as regionOutboxRepo from "@core/region/regionOutbox.repo.js";
+export * as regionOutboxAppliedRepo from "@core/region/regionOutboxApplied.repo.js";
+export type { OutboxRow } from "@core/region/regionOutbox.repo.js";
+export type { DirectoryRow } from "@core/region/studioDirectory.repo.js";
 export * as projectAssetReferenceService from "@core/asset/project-asset-reference.service.js";
 export * as assetRepo from "@core/asset/asset.repo.js";
 export { StorageKeyRetiredError, type RegisterAssetInput } from "@core/asset/asset.repo.js";

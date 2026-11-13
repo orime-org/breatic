@@ -344,16 +344,18 @@ describe("settleCharge", () => {
     expect(await readRequest(id)).toMatchObject({ status: "settled" });
   });
 
-  it("settles a request whose project was deleted as having no studio", async () => {
+  it("charges the studio a request was recorded in, even after its project is deleted", async () => {
+    // The studio is fixed when the delivery is recorded (inner#1955): the
+    // global region settles without reading the region's projects.
     const fx = await studioWith(100);
     const reference = ref("gone");
     const id = (await request(taskCharge(fx, reference, 15)))!;
     await sql`UPDATE projects SET deleted_at = now() WHERE id = ${fx.projectId}`;
     const outcome = await creditLotService.settleCharge(id);
-    expect(outcome).toMatchObject({ billed: false, charged: "0.000000", shortfall: "15.000000", studioId: null, lotIds: [] });
+    expect(outcome).toMatchObject({ billed: true, charged: "15.000000", shortfall: "0.000000", studioId: fx.studioId });
     expect(await readRequest(id)).toMatchObject({ status: "settled" });
     expect(await ledgerFor(reference)).toEqual([{ entry_type: "spend", amount: "-15.000000" }]);
-    expect(await remaining(fx.lotId)).toBe("100.000000");
+    expect(await remaining(fx.lotId)).toBe("85.000000");
   });
 
   it("settles a request with no project as standalone usage", async () => {

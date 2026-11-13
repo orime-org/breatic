@@ -32,11 +32,11 @@
  *      still be a non-guest member
  */
 
-import * as studioRepo from "@server/modules/studio/studio.repo.js";
+import { studioRepo } from "@breatic/domain";
 import * as userRepo from "@server/modules/auth/user.repo.js";
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
-import * as transfersRepo from "@server/modules/studio/studioTransfers.repo.js";
+import { studioTransfersRepo as transfersRepo } from "@breatic/domain";
 import { buildStudioTransferMail } from "@server/utils/notification-mail.js";
 import { decisionLink } from "@server/utils/decision-link.js";
 import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
@@ -48,12 +48,12 @@ import {
   ValidationError,
 } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
-import { creditLotService, studioMembersRepo } from "@breatic/domain";
+import { creditLotService, directoryWrites, globalApi, studioMembersRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
 import {
   getDecisionWindowMs,
 } from "@server/config/limits.js";
-import { isUniqueViolation } from "@server/utils/pg-error.js";
+import { isUniqueViolation } from "@breatic/core";
 import {
   isRefused,
   refusalError,
@@ -109,10 +109,19 @@ export async function requestTransfer(
   ]);
   const from = profiles.get(fromAdminUserId);
   // Bound out here because the mail is built after the transaction closes.
+  // Outside the global region the credits are asked about before the offer's
+  // transaction opens (inner#1955); a pack pointed at the Studio after that is
+  // released when the transfer is accepted.
+  if (!directoryWrites.inGlobalRegion() && (await globalApi().hasActiveDesignationsTo(studio.id))) {
+    throw new ConflictError(t("server.studio.transfer_credits_designated"));
+  }
   let shareToken = "";
   try {
     shareToken = await db.transaction(async (tx) => {
-      if (await creditLotService.hasActiveDesignationsTo(studio.id, tx)) {
+      // The Studio row first: every transaction writing a `studio:{id}`
+      // directory event takes it first, so their events commit in order.
+      await studioRepo.lockStudio(studio.id, tx);
+      if (directoryWrites.inGlobalRegion() && (await creditLotService.hasActiveDesignationsTo(studio.id, tx))) {
         throw new ConflictError(t("server.studio.transfer_credits_designated"));
       }
       const filed = await transfersRepo.createPending({
@@ -146,6 +155,8 @@ export async function requestTransfer(
           tx,
         });
       await transfersRepo.attachNotification(transferId, notification.id, tx);
+      // No pack may be pointed at the Studio while the offer is open.
+      await directoryWrites.transferOpened(studio.id, expiresAt, tx);
       // The mail is sent outside this transaction, so the token has to travel.
       return filed.shareToken;
     });
@@ -181,37 +192,34 @@ export async function requestTransfer(
 }
 
 /**
- * The recipient accepts — the admin role moves to them.
+ * The recipient accepts — the admin role moves to them, in three steps
+ * (inner#1955).
+ *
+ * First this region checks the offer and the membership and moves the offer
+ * to `accepting`, where the roles hold still. Then the global region moves the
+ * directory admin (`transferAdmin`), which also releases every credit lot the
+ * outgoing admin pointed at the Studio: a Studio spends what its admin
+ * designated to it, so the designation cannot outlive the role. Last this
+ * region swaps the roles and settles the offer. A swap that never ran is
+ * finished by {@link sweepAcceptingTransfers}; a global refusal leaves the
+ * offer invalidated and the roles as they were.
  *
  * Demote the old admin FIRST, promote the recipient SECOND: the reverse order
  * collides with `studio_members_one_admin_per_studio` mid-transaction. The old
  * admin drops ONE rank to maintainer (#1612 / D1), not all the way to guest.
- *
- * Between those two, every credit lot of the outgoing admin's that pointed at
- * this studio stops pointing (#15). A studio spends what its admin designated
- * to it, so the designation cannot outlive the role — and it happens in this
- * transaction because the rule is about the same instant.
  * @param transferId - The `studio_transfers` row id
  * @param receiverUserId - The recipient confirming
  * @throws {NotFoundError} there is no such offer
  * @throws {ForbiddenError} the caller is not the offer's named recipient
  * @throws {ConflictError} the offer was already answered, has timed out, the
  *   recipient no longer qualifies, the initiator no longer administers the
- *   studio, or a role swap finds no row
+ *   studio, or the global region refused the admin change
  */
 export async function confirmTransfer(
   transferId: string,
   receiverUserId: string,
 ): Promise<void> {
-  // Resolved BEFORE the transaction opens: a display field for the outcome
-  // notification, needing no transactional consistency — and a read issued from
-  // inside a transaction reaches for a SECOND pooled connection while the first
-  // is still held, which is how a pool exhausts itself under concurrent
-  // decisions.
-  const accepterProfiles = await studioRepo.getPersonalProfilesByCreators([
-    receiverUserId,
-  ]);
-  const outcome = await db.transaction<Refused | { done: true }>(async (tx) => {
+  const checked = await db.transaction<Refused | OpenOffer>(async (tx) => {
     const opened = await openForDecision(tx, transferId, receiverUserId);
     if (isRefused(opened)) return opened;
     const offer = opened;
@@ -248,56 +256,128 @@ export async function confirmTransfer(
       await fail(offer, "invalidated", tx);
       return { refusal: "conflict" };
     }
+    if (!(await transfersRepo.markAccepting(offer.id, tx))) return { refusal: "conflict" };
+    return offer;
+  });
+  // The refusal is raised only now: its own writes had to commit first.
+  if (isRefused(checked)) throw refusalError(checked.refusal);
 
-    // Both writes are refusals-as-values like every other branch here. Throwing
-    // would abort the transaction — which is survivable today because nothing
-    // has been settled yet at this point, but the rule has no exceptions
-    // precisely so that the next person to add a settle above these lines does
-    // not have to notice.
-    const demoted = await studioMembersRepo.updateRole(
-      studioId,
-      fromUserId,
-      "maintainer",
-      tx,
-    );
-    if (!demoted) return { refusal: "conflict" };
+  const moved = await globalApi().transferAdmin({
+    studioId: checked.studioId,
+    fromUserId: checked.fromUserId,
+    toUserId: receiverUserId,
+    changeId: checked.id,
+  });
+  if (!moved.changed) {
+    await invalidateAccepting(checked.id);
+    throw refusalError("conflict");
+  }
+  await finishAccepted(checked.id);
+}
 
-    // The initiator has stopped administering this studio, so the studio stops
-    // being able to spend their credits. Below the demote because every branch
-    // above it returns — and returning commits — so a release placed higher
-    // would strip someone who never stopped being admin. Inside this
-    // transaction because the rule is about the same instant: run apart, the
-    // studio keeps drawing on their money in the window between.
-    await creditLotService.releaseDesignations({
-      userId: fromUserId,
-      studioId,
-      tx,
+/**
+ * Finish offers left in the accepting window: one whose region step never ran
+ * after the global admin change committed, or whose global call never came
+ * back. The global change is asked for again; it answers as it did the first
+ * time, so the roles are swapped exactly when the directory moved.
+ * @param options - How long an offer may stay accepting first.
+ * @param options.olderThanMs - Offers accepting for longer than this are finished.
+ * @returns How many offers were finished or invalidated.
+ */
+export async function sweepAcceptingTransfers(options: { olderThanMs: number }): Promise<number> {
+  const ids = await transfersRepo.listStaleAccepting(options.olderThanMs);
+  for (const id of ids) {
+    const parties = await transfersRepo.findParties(id);
+    if (!parties) continue;
+    const moved = await globalApi().transferAdmin({
+      studioId: parties.studioId,
+      fromUserId: parties.fromUserId,
+      toUserId: parties.toUserId,
+      changeId: id,
     });
+    if (moved.changed) await finishAccepted(id);
+    else await invalidateAccepting(id);
+  }
+  return ids.length;
+}
 
-    const promoted = await studioMembersRepo.updateRole(
-      studioId,
-      receiverUserId,
-      "admin",
-      tx,
-    );
-    if (!promoted) return { refusal: "conflict" };
+/**
+ * Refuse a Studio change while its transfer is accepting: the global region
+ * may already have moved the admin, and the roles must arrive there as they were.
+ * @param studioId - The Studio, locked by the caller.
+ * @param tx - The changing transaction.
+ * @throws {ConflictError} with reason `studio_transfer_processing` while an offer is accepting.
+ */
+export async function assertNoTransferAccepting(studioId: string, tx: DbTx): Promise<void> {
+  if (await transfersRepo.isAccepting(studioId, tx)) {
+    throw new ConflictError(t("server.studio.transfer_processing"), TRANSFER_PROCESSING_REASON);
+  }
+}
+
+/** The `error.reason` of a change refused while a transfer is accepting. */
+export const TRANSFER_PROCESSING_REASON = "studio_transfer_processing";
+
+/**
+ * Swap the roles for an accepting offer and settle it accepted.
+ * @param transferId - The offer.
+ */
+async function finishAccepted(transferId: string): Promise<void> {
+  const parties = await transfersRepo.findParties(transferId);
+  if (!parties) return;
+  // Resolved BEFORE the transaction opens: a display field for the outcome
+  // notification, needing no transactional consistency — and a read issued from
+  // inside a transaction reaches for a SECOND pooled connection while the first
+  // is still held.
+  const accepterProfiles = await studioRepo.getPersonalProfilesByCreators([parties.toUserId]);
+  await db.transaction(async (tx) => {
+    await studioRepo.lockStudio(parties.studioId, tx);
+    const row = await transfersRepo.lockRequest(transferId, tx);
+    if (!row || row.status !== "accepting") return;
+    const studio = await studioRepo.getById(row.studioId, tx);
+    const offer: OpenOffer = {
+      id: row.id,
+      studioId: row.studioId,
+      studioName: studio?.name ?? "",
+      fromUserId: row.fromUserId,
+      notificationId: row.notificationId,
+    };
+    await studioMembersRepo.lockMembership(row.studioId, tx);
+    await studioMembersRepo.updateRole(row.studioId, row.fromUserId, "maintainer", tx);
+    await studioMembersRepo.updateRole(row.studioId, row.toUserId, "admin", tx);
+    await directoryWrites.memberUpserted(row.studioId, row.fromUserId, "maintainer", tx);
+    await directoryWrites.memberUpserted(row.studioId, row.toUserId, "admin", tx);
     await settle(offer, "accepted", tx);
-
-    const accepter = accepterProfiles.get(receiverUserId);
+    const accepter = accepterProfiles.get(row.toUserId);
     await notificationService.createStudioTransferApproved({
-      userId: fromUserId,
+      userId: row.fromUserId,
       payload: {
         studioName: offer.studioName,
-        studioId,
+        studioId: row.studioId,
         accepterName: accepter?.name ?? "",
-        accepterUserId: receiverUserId,
+        accepterUserId: row.toUserId,
       },
       tx,
     });
-    return { done: true };
   });
-  // The refusal is raised only now: its own writes had to commit first.
-  if (isRefused(outcome)) throw refusalError(outcome.refusal);
+}
+
+/**
+ * End an accepting offer the global region refused; the roles stay as they were.
+ * @param transferId - The offer.
+ */
+async function invalidateAccepting(transferId: string): Promise<void> {
+  const parties = await transfersRepo.findParties(transferId);
+  if (!parties) return;
+  await db.transaction(async (tx) => {
+    await studioRepo.lockStudio(parties.studioId, tx);
+    const row = await transfersRepo.lockRequest(transferId, tx);
+    if (!row || row.status !== "accepting") return;
+    await fail(
+      { id: row.id, studioId: row.studioId, studioName: "", fromUserId: row.fromUserId, notificationId: row.notificationId },
+      "invalidated",
+      tx,
+    );
+  });
 }
 
 /**
@@ -344,6 +424,8 @@ export async function withdrawTransfer(
   if (!studio) throw new NotFoundError(t("server.error.not_found"));
   const studioId = studio.id;
   const outcome = await db.transaction<Refused | { done: true }>(async (tx) => {
+    await studioRepo.lockStudio(studioId, tx);
+    await assertNoTransferAccepting(studioId, tx);
     const withdrawn = await transfersRepo.cancelIfPending(
       transferId,
       studioId,
@@ -353,6 +435,7 @@ export async function withdrawTransfer(
     if (withdrawn.notificationId !== null) {
       await notificationRepo.retire(withdrawn.notificationId, tx);
     }
+    await directoryWrites.transferClosed(studioId, tx);
     return { done: true };
   });
   if (isRefused(outcome)) throw refusalError(outcome.refusal);
@@ -406,6 +489,11 @@ async function openForDecision(
   transferId: string,
   receiverUserId: string,
 ): Promise<OpenOffer | Refused> {
+  // The Studio row before the offer's, the order every transaction writing a
+  // `studio:{id}` directory event takes them in (inner#1955).
+  const parties = await transfersRepo.findParties(transferId, tx);
+  if (!parties) return { refusal: "not_found" };
+  await studioRepo.lockStudio(parties.studioId, tx);
   const row = await transfersRepo.lockRequest(transferId, tx);
   if (!row) return { refusal: "not_found" };
   // Takes the transaction's own handle: a read issued from inside a
@@ -458,10 +546,13 @@ async function settle(
   status: "accepted" | "declined",
   tx: DbTx,
 ): Promise<void> {
-  await transfersRepo.settleIfPending(offer.id, status, tx);
+  const settled = status === "accepted"
+    ? await transfersRepo.settleAccepting(offer.id, tx)
+    : await transfersRepo.settleIfPending(offer.id, status, tx);
   if (offer.notificationId !== null) {
     await notificationRepo.retire(offer.notificationId, tx);
   }
+  if (settled) await directoryWrites.transferClosed(offer.studioId, tx);
 }
 
 /**
@@ -475,8 +566,9 @@ async function fail(
   reason: RequestFailedReason,
   tx: DbTx,
 ): Promise<void> {
-  await transfersRepo.failIfPending(offer.id, reason, tx);
+  const failed = await transfersRepo.failIfPending(offer.id, reason, tx);
   if (offer.notificationId !== null) {
     await notificationRepo.retire(offer.notificationId, tx);
   }
+  if (failed) await directoryWrites.transferClosed(offer.studioId, tx);
 }

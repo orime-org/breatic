@@ -3,7 +3,7 @@
 
 import { describe, it, expect } from "vitest";
 
-import { isUniqueViolation } from "@server/utils/pg-error.js";
+import { isUniqueViolation } from "@core/db/pg-error.js";
 
 describe("isUniqueViolation", () => {
   it("detects a top-level SQLSTATE 23505", () => {

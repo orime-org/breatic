@@ -43,9 +43,6 @@ vi.mock("@server/modules/project/project.repo.js", () => ({
 
 // The gate takes the studio's row before counting it. That row lock is the
 // studio module's; the count itself is stubbed above, in the project repo.
-vi.mock("@server/modules/studio/studio.repo.js", () => ({
-  lockStudio: vi.fn(async () => true),
-}));
 
 // studioAuthService.loadStudioRole is the create-authz source of truth.
 const { mockLoadStudioRole } = vi.hoisted(() => ({
@@ -53,6 +50,8 @@ const { mockLoadStudioRole } = vi.hoisted(() => ({
 }));
 vi.mock("@breatic/domain", () => ({
   studioAuthService: { loadStudioRole: mockLoadStudioRole },
+  studioRepo: { lockStudio: vi.fn(async () => true) },
+  directoryWrites: { projectCreated: vi.fn(async () => undefined) },
 }));
 
 vi.mock("@breatic/core", async (importActual: () => Promise<Record<string, unknown>>) => {

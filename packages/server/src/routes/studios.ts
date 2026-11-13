@@ -143,8 +143,8 @@ studios.post(
   validate("json", createTeamStudioSchema),
   async (c) => {
     const user = c.get("user");
-    const { name, slug } = c.req.valid("json");
-    const data = await studioService.createTeamStudio(user.id, name, slug);
+    const { name, slug, studioId, region } = c.req.valid("json");
+    const data = await studioService.createTeamStudio(user.id, name, slug, { studioId, region });
     return c.json({ data }, 201);
   },
 );

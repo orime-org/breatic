@@ -108,16 +108,20 @@ vi.mock("@server/modules/asset/assetUsage.service.js", async (io) => {
 // 它抛错时铃铛那一行会不会连累窗口被还回去。
 const studioReadCtl = { fail: false };
 
-vi.mock("@server/modules/studio/studio.repo.js", async (io) => {
-  const actual = await io<Record<string, unknown>>();
+vi.mock("@breatic/domain", async (io) => {
+  const actualDomain = await io<Record<string, unknown>>();
+  const actual = actualDomain.studioRepo as Record<string, unknown>;
   return {
-    ...actual,
-    getById: async (id: string, tx?: unknown) => {
-      if (studioReadCtl.fail) throw new Error("synthetic studio read failure");
-      return (actual.getById as (i: string, t?: unknown) => Promise<unknown>)(
-        id,
-        tx,
-      );
+    ...actualDomain,
+    studioRepo: {
+      ...actual,
+      getById: async (id: string, tx?: unknown) => {
+        if (studioReadCtl.fail) throw new Error("synthetic studio read failure");
+        return (actual.getById as (i: string, t?: unknown) => Promise<unknown>)(
+          id,
+          tx,
+        );
+      },
     },
   };
 });

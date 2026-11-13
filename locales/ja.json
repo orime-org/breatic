@@ -65,6 +65,10 @@
       "leave_last_admin": "この Studio を離れる前に Admin 権限を譲渡してください。",
       "transfer_credits_designated": "この Studio にまだクレジットパックが割り当てられています。アバターメニュー →「クレジット」→「割り当て」で解除してから譲渡してください。",
       "designation_during_transfer": "この Studio には承認待ちの譲渡があります。譲渡を取り消すか終了した後に、再びパックを割り当てられます。",
+      "transfer_processing": "Studio の譲渡を処理中です。しばらくしてからもう一度お試しください。",
+      "region_unavailable": "選択したリージョンでは現在 Studio を作成できません。しばらくしてからもう一度お試しいただくか、別のリージョンを選んでください。",
+      "creation_in_progress": "前回の作成をまだ処理中です。しばらくしてからもう一度お試しください。",
+      "creation_abandoned": "この Studio は作成できませんでした。もう一度お試しください。",
       "email_not_registered_no_mail": "このメールアドレスは未登録です。この環境ではメールが無効のため、未登録のアドレスを招待できません。",
       "invite_mail_failed": "メールを送信できませんでした。もう一度お試しください。"
     },

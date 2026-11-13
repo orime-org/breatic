@@ -196,7 +196,7 @@ async function rowIsLockedByAnother(
  * them would pass whenever it happened to pick the other.
  *
  * The chain is walked rather than the top level read, for the reason
- * `utils/pg-error.ts` already documents: a query made through drizzle arrives
+ * `packages/core/src/db/pg-error.ts` already documents: a query made through drizzle arrives
  * as a `DrizzleQueryError` whose own `code` is undefined and whose SQLSTATE
  * sits on `.cause`. Measured here — under a real deadlock the invite side
  * rejected with `code=undefined, cause.code=40P01`, so a flat check reported

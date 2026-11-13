@@ -70,6 +70,10 @@
       "leave_last_admin": "离开这个 Studio 前请先转让 Admin。",
       "transfer_credits_designated": "还有积分包指定给这个 Studio。请先在头像菜单 →「积分」→「指定」里取消指定，再发起转让。",
       "designation_during_transfer": "这个 Studio 有待接受的转让，撤回或转让结束后才能再给它指定积分包。",
+      "transfer_processing": "Studio 转让正在处理，请稍后再试。",
+      "region_unavailable": "所选区域暂时无法创建 Studio，请稍后再试，或改选其他区域。",
+      "creation_in_progress": "上一次创建还在处理，请稍后再试。",
+      "creation_abandoned": "这个 Studio 没有创建成功，请重试。",
       "email_not_registered_no_mail": "该邮箱未注册。这个部署没有开启邮件，无法邀请未注册的邮箱。",
       "invite_mail_failed": "邮件没发出去，请重试。"
     },

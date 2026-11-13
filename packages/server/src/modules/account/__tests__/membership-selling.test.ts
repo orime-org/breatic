@@ -38,8 +38,8 @@ vi.mock("@server/modules/asset/assetUsage.service.js", () => ({
   accountStorageUsage: vi.fn(),
 }));
 
-vi.mock("@server/modules/studio/studio.repo.js", () => ({
-  countTeamStudiosAdministeredBy: vi.fn(),
+vi.mock("@breatic/domain", () => ({
+  studioRepo: { countTeamStudiosAdministeredBy: vi.fn() },
 }));
 
 import {
@@ -47,7 +47,7 @@ import {
 } from "@breatic/core";
 import { readStoredSubscriptionSummary } from "@server/modules/subscription/subscription-panel.js";
 import * as assetUsageService from "@server/modules/asset/assetUsage.service.js";
-import * as studioRepo from "@server/modules/studio/studio.repo.js";
+import { studioRepo } from "@breatic/domain";
 import { readAccountMembership } from "@server/modules/account/membership.service.js";
 
 const LIMITS = {

@@ -44,7 +44,7 @@ import {
   releaseNoticeWindow,
 } from "@server/modules/asset/storage-notice-throttle.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
-import * as studioRepo from "@server/modules/studio/studio.repo.js";
+import { studioRepo } from "@breatic/domain";
 import { getUserById } from "@server/modules/auth/user.repo.js";
 import { buildStorageQuotaExceededMail } from "@server/utils/notification-mail.js";
 import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";

@@ -11,6 +11,14 @@
 #   previews; a region that does not answer in time is reported unavailable.
 # outbox_relay_interval_ms: how often a region relays its outbox to the
 #   global region.
+# transfer_accepting_sweep_interval_ms: how often a region looks for Studio
+#   transfers left between the global admin change and the role swap.
+# transfer_accepting_stale_ms: how long a transfer may stay in that window
+#   before the sweep finishes it.
+# studio_creation_sweep_interval_ms: how often the global region looks for
+#   Studio creations left pending in another region.
+# studio_creation_stale_ms: how long a creation may stay pending before the
+#   sweep asks the region whether it landed.
 # profile_cache_ttl_ms: how long a region caches names and avatars read from
 #   the global region. The relay interval plus this stays within sixty
 #   seconds, so a rename reaches every region within a minute.
@@ -19,3 +27,7 @@ region_probe_timeout_ms: 2000
 cross_region_fanout_timeout_ms: 2000
 outbox_relay_interval_ms: 1000
 profile_cache_ttl_ms: 30000
+transfer_accepting_sweep_interval_ms: 60000
+transfer_accepting_stale_ms: 60000
+studio_creation_sweep_interval_ms: 60000
+studio_creation_stale_ms: 120000

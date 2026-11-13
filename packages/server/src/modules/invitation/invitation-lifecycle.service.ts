@@ -8,7 +8,7 @@ import { studioMembersRepo } from "@breatic/domain";
 import { normalizeEmail, t } from "@breatic/shared";
 import type { InvitableProjectRole, UserEntity } from "@breatic/shared";
 import * as projectRepo from "@server/modules/project/project.repo.js";
-import * as studioRepo from "@server/modules/studio/studio.repo.js";
+import { studioRepo } from "@breatic/domain";
 import * as usersRepo from "@server/modules/auth/user.repo.js";
 import * as projectInvites from "@server/modules/project-invite/projectInvitations.repo.js";
 import * as studioInvites from "@server/modules/studio/studioInvitations.repo.js";

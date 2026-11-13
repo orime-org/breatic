@@ -35,7 +35,7 @@ vi.mock("ai", () => ({
 import postgres from "postgres";
 import { and, eq } from "drizzle-orm";
 import { initCore, db, schema, projectMembersRepo } from "@breatic/core";
-import * as studioRepo from "@server/modules/studio/studio.repo.js";
+import { studioRepo } from "@breatic/domain";
 
 try {
   initCore(process.env);

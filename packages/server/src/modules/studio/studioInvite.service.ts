@@ -29,14 +29,14 @@
  *   - confirm / decline: caller owns the invite (the `invited_user_id` CAS guard)
  */
 
-import * as studioRepo from "@server/modules/studio/studio.repo.js";
+import { studioRepo } from "@breatic/domain";
 import * as invitesRepo from "@server/modules/studio/studioInvitations.repo.js";
 import { createInvitation } from "@server/modules/invitation/invitation.service.js";
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import { db, getLimitsForStudio, trackServerEvent } from "@breatic/core";
 import { ConflictError, NotFoundError } from "@breatic/core";
-import { studioMembersRepo } from "@breatic/domain";
+import { directoryWrites, studioMembersRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
 
 /** Roles an admin may invite a user as — admin is granted via transfer only. */
@@ -189,6 +189,7 @@ async function acceptInTransaction(
       tx,
     );
     if (!inserted) throw new ConflictError(t("server.studio.already_member"));
+    await directoryWrites.memberUpserted(accepted.studioId, accepted.invitedUserId, accepted.role, tx);
 
     let studioName = "";
     let studioId = "";

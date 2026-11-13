@@ -3,9 +3,9 @@
 
 /**
  * Which queues a worker runs depends on its region (inner#1955): the global
- * region alone runs the work on global data (ads conversions, finishing
- * pending Studio creations and slug reservations, forwarding revocations and
- * email-invitation claims to other regions), and only a region that is not
+ * region alone runs the work on global data (ads conversions, settling slug
+ * reservations, forwarding revocations and email-invitation claims to other
+ * regions), and only a region that is not
  * global relays its outbox.
  * Everything that works on a region's own Studios runs in every region.
  */
@@ -16,7 +16,6 @@ import { workerQueuesFor } from "@worker/runtime/region-queues.js";
 
 const GLOBAL_ONLY = [
   ADS_CONVERSION_QUEUE,
-  "studio-creation-sweep",
   "slug-reservation-sweep",
   "identity-revocation-forward",
   "invitation-claim-forward",
@@ -36,7 +35,6 @@ const EVERY_REGION = [
   "timeline",
   "timeline-sweep",
   "credit-charge-sweep",
-  "studio-transfer-accepting-sweep",
 ];
 
 describe("workerQueuesFor", () => {

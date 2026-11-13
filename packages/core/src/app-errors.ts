@@ -12,16 +12,20 @@
 export class AppError extends Error {
   /** HTTP status code to return. */
   public readonly statusCode: number;
+  /** A code the client branches on, sent as `error.reason`; absent when it shows the message alone. */
+  public readonly reason?: string;
 
   /**
    * Build an application error carrying an HTTP status and message.
    * @param statusCode - HTTP status code
    * @param message - Human-readable error message
+   * @param reason - The code the client branches on, if any
    */
-  constructor(statusCode: number, message: string) {
+  constructor(statusCode: number, message: string, reason?: string) {
     super(message);
     this.name = "AppError";
     this.statusCode = statusCode;
+    if (reason !== undefined) this.reason = reason;
   }
 }
 
@@ -42,9 +46,10 @@ export class ConflictError extends AppError {
   /**
    * Construct a 409 error.
    * @param message - human-readable description of the conflicting state
+   * @param reason - the code the client branches on, if any
    */
-  constructor(message: string) {
-    super(409, message);
+  constructor(message: string, reason?: string) {
+    super(409, message, reason);
     this.name = "ConflictError";
   }
 }

@@ -65,6 +65,10 @@
       "leave_last_admin": "Transfer the admin role before leaving this Studio.",
       "transfer_credits_designated": "A credit pack is still assigned to this Studio. Unassign it under avatar menu → Credits → Assign, then start the transfer.",
       "designation_during_transfer": "This Studio has a pending transfer. Credit packs can be assigned to it again once the transfer is withdrawn or ends.",
+      "transfer_processing": "This Studio's transfer is being processed. Please try again later.",
+      "region_unavailable": "Studios can't be created in this region right now. Please try again later, or pick another region.",
+      "creation_in_progress": "Your last Studio is still being created. Please try again later.",
+      "creation_abandoned": "This Studio couldn't be created. Please try again.",
       "email_not_registered_no_mail": "That email is not registered. This deployment has email disabled, so it cannot invite unregistered addresses.",
       "invite_mail_failed": "The email could not be sent. Please try again."
     },

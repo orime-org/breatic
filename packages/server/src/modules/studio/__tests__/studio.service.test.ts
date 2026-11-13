@@ -4,7 +4,7 @@
 /**
  * studio.service unit tests — personal-studio creation + lookup.
  *
- * Mocks studio.repo + studioMembersRepo + the db transaction so the test
+ * Mocks studioRepo + studioMembersRepo + the db transaction so the test
  * runs without Postgres. The atomicity guarantee (studio + admin row in
  * one tx) and the partial-unique-index conflict mapping are covered for
  * real against Postgres in the setup-studio integration suite; these unit
@@ -14,7 +14,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("../studio.repo.js", () => ({
+const studioRepoMock = vi.hoisted(() => ({
   createPersonalStudio: vi.fn(),
   getPersonalByCreator: vi.fn(),
   getPersonalIdentitiesByCreators: vi.fn(),
@@ -29,7 +29,7 @@ vi.mock("../studio.repo.js", () => ({
 // figure is read at all, so the flag is a knob here rather than whatever the
 // developer's own .env happens to say.
 const { envRef, mockTrialGrantCredits } = vi.hoisted(() => ({
-  envRef: { PAYMENT_ENABLED: true },
+  envRef: { PAYMENT_ENABLED: true, GLOBAL_REGION: "us-west", REGION_API_URLS: { sg: "http://sg.invalid" } },
   mockTrialGrantCredits: vi.fn(() => 100),
 }));
 vi.mock("@breatic/core", async (importOriginal: () => Promise<Record<string, unknown>>) => {
@@ -55,16 +55,20 @@ vi.mock("@server/config/pricing.js", () => ({
 // Explicit (no importOriginal) so loading @breatic/domain never pulls the
 // real agent llm and the `ai` SDK behind it.
 // `vi.hoisted` keeps the spy reference valid inside the hoisted factory.
-const { mockInsertAdmin, mockLoadStudioRole, mockGrantTrialCredits } =
+const { mockInsertAdmin, mockLoadStudioRole, mockCreateStudio, regionClientRef } =
   vi.hoisted(() => ({
     mockInsertAdmin: vi.fn().mockResolvedValue(undefined),
     mockLoadStudioRole: vi.fn(),
-    mockGrantTrialCredits: vi.fn().mockResolvedValue(null),
+    mockCreateStudio: vi.fn(),
+    regionClientRef: () => ({}),
   }));
 vi.mock("@breatic/domain", () => ({
+  studioRepo: studioRepoMock,
   studioMembersRepo: { insertAdmin: mockInsertAdmin, getRole: vi.fn() },
   studioAuthService: { loadStudioRole: mockLoadStudioRole },
-  creditLotService: { grantTrialCredits: mockGrantTrialCredits },
+  studioCreationService: { createStudio: mockCreateStudio },
+  regionClient: regionClientRef,
+  isKnownRegion: (region: string) => region === "us-west" || region === "sg",
 }));
 
 vi.mock("@breatic/shared", async (importOriginal: () => Promise<Record<string, unknown>>) => ({
@@ -72,7 +76,7 @@ vi.mock("@breatic/shared", async (importOriginal: () => Promise<Record<string, u
   t: (k: string) => k,
 }));
 
-import * as studioRepo from "../studio.repo.js";
+const studioRepo = studioRepoMock;
 import {
   createPersonalStudio,
   getPersonalStudio,
@@ -116,63 +120,58 @@ beforeEach(() => {
 });
 
 describe("createPersonalStudio", () => {
-  it("creates the studio with slug = name = the chosen slug, type personal, + admin row in one tx", async () => {
-    vi.mocked(studioRepo.createPersonalStudio).mockResolvedValueOnce(STUDIO);
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+  it("creates a personal Studio named by its slug, in the global region, with the price file's trial credits", async () => {
+    mockCreateStudio.mockResolvedValueOnce(STUDIO);
 
     const result = await createPersonalStudio("user-1", "alice-handle");
 
     expect(result).toBe(STUDIO);
-    // slug AND name are both the chosen slug (display name initially = slug).
-    expect(studioRepo.createPersonalStudio).toHaveBeenCalledWith(
-      "user-1",
-      "alice-handle",
-      "alice-handle",
-      { TX: true },
-    );
-    // Admin member row written in the SAME tx (atomic with the studio insert).
-    expect(mockInsertAdmin).toHaveBeenCalledWith("studio-1", "user-1", { TX: true });
-    // And the trial grant in that same tx, aimed at the studio just made: a
-    // grant that committed beside a studio that did not would point nowhere.
     // How much comes from the price file, so it is read from there rather
     // than written here.
-    expect(mockGrantTrialCredits).toHaveBeenCalledWith(
-      { userId: "user-1", studioId: "studio-1", credits: 100 },
-      { TX: true },
+    expect(mockCreateStudio).toHaveBeenCalledWith(
+      {
+        studioId: expect.stringMatching(UUID),
+        userId: "user-1",
+        type: "personal",
+        slug: "alice-handle",
+        name: "alice-handle",
+        region: "us-west",
+      },
+      { regionClient: regionClientRef, trialCredits: 100 },
     );
   });
 
   it("never opens the price file when this deployment sells nothing", async () => {
-    // The grant discards the figure with payments off, and the file it comes
-    // from belongs to a deployment that charges. Reading it anyway would fail
-    // every registration on a self-hosted install over a number about to be
-    // thrown away.
+    // The file belongs to a deployment that charges. Reading it anyway would
+    // fail every registration on a self-hosted install over a number that
+    // grants nothing.
     envRef.PAYMENT_ENABLED = false;
-    vi.mocked(studioRepo.createPersonalStudio).mockResolvedValueOnce(STUDIO);
+    mockCreateStudio.mockResolvedValueOnce(STUDIO);
 
     await createPersonalStudio("user-1", "alice-handle");
 
     expect(mockTrialGrantCredits).not.toHaveBeenCalled();
-    expect(mockGrantTrialCredits).toHaveBeenCalledWith(
-      { userId: "user-1", studioId: "studio-1", credits: 0 },
-      { TX: true },
-    );
+    expect(mockCreateStudio.mock.calls[0]![1]).toMatchObject({ trialCredits: 0 });
   });
 
-  it("maps a unique-violation (SQLSTATE 23505) slug collision to ConflictError, not a raw 500", async () => {
-    const dbErr = Object.assign(new Error("duplicate key"), { code: "23505" });
-    vi.mocked(studioRepo.createPersonalStudio).mockRejectedValueOnce(dbErr);
+  it("creates under the page's id in the region the page named", async () => {
+    mockCreateStudio.mockResolvedValueOnce(STUDIO);
 
-    await expect(createPersonalStudio("user-1", "taken-slug")).rejects.toMatchObject({
-      name: "ConflictError",
-      statusCode: 409,
+    await createPersonalStudio("user-1", "alice-handle", { studioId: "11111111-1111-4111-8111-111111111111", region: "sg" });
+
+    expect(mockCreateStudio.mock.calls[0]![0]).toMatchObject({
+      studioId: "11111111-1111-4111-8111-111111111111",
+      region: "sg",
     });
   });
 
-  it("rethrows a non-unique-violation DB error unchanged (no silent swallow)", async () => {
-    const dbErr = Object.assign(new Error("connection reset"), { code: "08006" });
-    vi.mocked(studioRepo.createPersonalStudio).mockRejectedValueOnce(dbErr);
-
-    await expect(createPersonalStudio("user-1", "some-slug")).rejects.toBe(dbErr);
+  it("refuses a region this deployment has no address for", async () => {
+    await expect(createPersonalStudio("user-1", "alice-handle", { region: "mars" })).rejects.toMatchObject({
+      statusCode: 422,
+    });
+    expect(mockCreateStudio).not.toHaveBeenCalled();
   });
 });
 

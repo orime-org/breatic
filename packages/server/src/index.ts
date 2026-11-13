@@ -36,6 +36,7 @@ import { logger, initLogger } from "@breatic/core";
 import { loadLocales } from "@breatic/core";
 import { startLifecycleRelay } from "@server/modules/project/lifecycle-relay.js";
 import { startRefundLoop } from "@server/modules/credit-refund/refund-loop.js";
+import { startRegionLoops } from "@server/modules/studio/region-loops.js";
 import { settleAfterReply, pendingAfterReply } from "@server/utils/after-reply.js";
 import { agentModelIds, assertModelsPriced, modelCatalog } from "@breatic/domain";
 import { textToolModels } from "@server/config/text-tools.js";
@@ -249,6 +250,8 @@ const lifecycleRelay = startLifecycleRelay();
 // internal API is on, since it finishes every disposition the API accepts.
 const refundLoop = startRefundLoop();
 const maintenanceLoop = startMaintenanceLoop();
+// Work left between the global region and another region (inner#1955).
+const regionLoops = startRegionLoops();
 
 // Health probe - separate port so probe traffic stays off the main
 // hono port and per-port failure semantics in the LB stay clean.
@@ -332,7 +335,7 @@ async function shutdown(signal: string): Promise<void> {
       () =>
         // The loop's last tick can still queue a buyer mail, so it stops
         // before the after-reply work is waited for.
-        Promise.all([refundLoop.stop(), maintenanceLoop.stop()])
+        Promise.all([refundLoop.stop(), maintenanceLoop.stop(), regionLoops.stop()])
           .then(() => settleAfterReply())
           .then(() => Promise.allSettled([flushServerAnalytics(), closeDb(), closeRedis(), closeQueues()])),
     ],

@@ -167,6 +167,7 @@ describe("Auth routes", () => {
       expect(mocks.studioService.createPersonalStudio).toHaveBeenCalledWith(
         "user-1",
         "my-handle",
+        { studioId: undefined, region: undefined },
       );
     });
 

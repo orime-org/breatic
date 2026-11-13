@@ -19,17 +19,21 @@
  * a second consumer actually needs it.
  */
 
-import * as studioRepo from "@server/modules/studio/studio.repo.js";
+import { studioRepo } from "@breatic/domain";
 import * as studioInvitationsRepo from "@server/modules/studio/studioInvitations.repo.js";
-import { isUniqueViolation } from "@server/utils/pg-error.js";
+import { isUniqueViolation } from "@breatic/core";
+import { randomUUID } from "node:crypto";
 import { db } from "@breatic/core";
-import { ConflictError, NotFoundError } from "@breatic/core";
-import { lockLimitsForUser } from "@breatic/core";
+import { ConflictError, NotFoundError, ValidationError } from "@breatic/core";
 import { env } from "@breatic/core";
 import {
-  studioMembersRepo,
+  directoryWrites,
+  globalApi,
+  isKnownRegion,
+  regionClient,
   studioAuthService,
-  creditLotService,
+  studioCreationService,
+  studioMembersRepo,
 } from "@breatic/domain";
 import { getTrialGrantCredits } from "@server/config/pricing.js";
 import {
@@ -46,117 +50,99 @@ import type {
 } from "@breatic/shared";
 
 /**
- * Create the user's personal studio with the slug they chose at
- * onboarding, plus the creator's admin `studio_members` row, atomically.
+ * Create the user's personal studio with the slug they chose at onboarding,
+ * in the region the page placed it (inner#1955), with its trial credits.
  *
- * `slug = name = slug` and `type = 'personal'`. The slug's format must
- * already be validated by the caller (route layer via `setupStudioSchema`)
- * and uniqueness pre-checked; this method still wraps the insert so a
- * concurrent duplicate slug (lost the pre-check race) surfaces as a typed
- * `ConflictError` instead of a raw 500. Both the global-unique slug index
- * (`studios_slug_idx`) and the one-personal-per-user index
- * (`studios_owner_personal_idx`) back the conflict.
+ * `slug = name = slug` and `type = 'personal'`; the slug's format is
+ * validated by the route (`setupStudioSchema`). The global directory decides
+ * whether the slug is free and keeps one personal Studio per user, in every
+ * region (`studioCreationService.createStudio`).
  * @param userId - The authenticated user's UUID (becomes the studio creator + admin)
  * @param slug - The validated, lowercased URL handle the user chose
+ * @param placement - The page's Studio id and region.
  * @returns The freshly created personal studio
- * @throws {ConflictError} if the slug is already taken, or the user
- *   already has a personal studio (unique-index violation)
+ * @throws {ConflictError} `slug_taken`, `studio_creation_in_progress` or `studio_creation_abandoned`
+ * @throws {AppError} 503 `region_unavailable`
+ * @throws {ValidationError} the deployment has no such region
  */
 export async function createPersonalStudio(
   userId: string,
   slug: string,
+  placement: StudioPlacement = {},
 ): Promise<Studio> {
-  try {
-    return await db.transaction(async (tx) => {
-      const studio = await studioRepo.createPersonalStudio(userId, slug, slug, tx);
-      await studioMembersRepo.insertAdmin(studio.id, userId, tx);
-      // In the same transaction, so a grant cannot commit alongside a studio
-      // that did not. How many to give is read here because the file it comes
-      // from is this package's to read; whether to give any at all is the
-      // grant's own question, and it answers silently.
-      //
-      // The read itself is behind the same flag the grant checks, because an
-      // argument is evaluated before the call that discards it: a deployment
-      // that charges nobody has no `config/pricing.yaml` to open, and reading
-      // it anyway would fail registration over a figure about to be thrown
-      // away.
-      await creditLotService.grantTrialCredits(
-        {
-          userId,
-          studioId: studio.id,
-          credits: env.PAYMENT_ENABLED ? getTrialGrantCredits() : 0,
-        },
-        tx,
-      );
-      return studio;
-    });
-  } catch (err) {
-    if (isUniqueViolation(err)) {
-      throw new ConflictError(t("server.studio.slug_taken"));
-    }
-    throw err;
-  }
+  return studioCreationService.createStudio(
+    {
+      studioId: placement.studioId ?? randomUUID(),
+      userId,
+      type: "personal",
+      slug,
+      name: slug,
+      region: placementRegion(placement.region),
+    },
+    // How many to give is read here because the file it comes from is this
+    // package's to read. The read itself is behind the same flag the grant
+    // checks: a deployment that charges nobody has no `config/pricing.yaml`
+    // to open.
+    { regionClient, trialCredits: env.PAYMENT_ENABLED ? getTrialGrantCredits() : 0 },
+  );
 }
 
 
 
 /**
- * Create a team studio with the creator as its sole admin, atomically.
- *
- * Unlike a personal studio, how many active team studios a user may administer
- * comes from their complete membership reading: configured or negotiated
- * limits, with expiry resolved at read time. The studio row +
- * the creator's admin `studio_members` row are written in one transaction
- * (mirrors `createPersonalStudio`); the limit is checked inside the same
- * transaction, on that same handle so the check does not reach for a second
- * pooled connection. Base is zero, so an account on that tier is refused
- * before anything is written.
- *
- * `lockLimitsForUser` takes the account's row for the rest of the
- * transaction, which is what makes the ceiling hold when two requests arrive
- * together: without it both count, both see room, and both insert. That was
- * tolerable while the number was an internal cap of 50; it is not now that it
- * is what somebody paid for. Different accounts lock different rows and never
- * wait on each other.
- *
- * A taken slug (lost the `studios_slug_idx` race) surfaces as a typed
- * `ConflictError` — that one stays a race by design, since global slug
- * uniqueness is the index's job, not this function's.
+ * Create a team studio in the region the page placed it (inner#1955). The
+ * creator becomes its admin. The team quota counts the user's team Studios in
+ * every region, live and still being created, under the account lock, so two
+ * requests arriving together cannot both take the last place.
  * @param userId - The authenticated user's UUID (becomes the studio admin)
  * @param name - The display name (independent of the slug)
  * @param slug - The validated, globally-unique URL handle
+ * @param placement - The page's Studio id and region.
  * @returns The freshly created team studio
- * @throws {ConflictError} if the slug is already taken, or the user has
- *   reached the per-user team-studio limit
+ * @throws {ConflictError} `slug_taken`, `team_limit_reached`,
+ *   `studio_creation_in_progress` or `studio_creation_abandoned`
+ * @throws {AppError} 503 `region_unavailable`
+ * @throws {ValidationError} the deployment has no such region
  */
 export async function createTeamStudio(
   userId: string,
   name: string,
   slug: string,
+  placement: StudioPlacement = {},
 ): Promise<Studio> {
-  try {
-    return await db.transaction(async (tx) => {
-      const { team_studios: limit } = await lockLimitsForUser(userId, tx);
-      const count = await studioRepo.countTeamStudiosAdministeredBy(userId, tx);
-      if (count >= limit) {
-        // The number goes INTO the sentence. It used to be written into the
-        // catalogs ("the limit of 50 team studios"), which was true while the
-        // cap was a constant and became false for every tier the moment it
-        // stopped being one.
-        throw new ConflictError(
-          t("server.studio.team_limit_reached", { limit }),
-        );
-      }
-      const studio = await studioRepo.createTeamStudio(userId, slug, name, tx);
-      await studioMembersRepo.insertAdmin(studio.id, userId, tx);
-      return studio;
-    });
-  } catch (err) {
-    if (isUniqueViolation(err)) {
-      throw new ConflictError(t("server.studio.slug_taken"));
-    }
-    throw err;
-  }
+  return studioCreationService.createStudio(
+    {
+      studioId: placement.studioId ?? randomUUID(),
+      userId,
+      type: "team",
+      slug,
+      name,
+      region: placementRegion(placement.region),
+    },
+    { regionClient },
+  );
+}
+
+/** Where the page asked a new Studio to go (inner#1955). */
+export interface StudioPlacement {
+  /** The id the page generated; one is generated here when absent. */
+  studioId?: string;
+  /** The region the user chose; absent means the global region. */
+  region?: string;
+}
+
+/**
+ * The region a new Studio goes to. A deployment with one region ignores
+ * whatever the page sent; one with several takes only a region it has an
+ * address for.
+ * @param requested - The region the page sent.
+ * @returns The region code.
+ * @throws {ValidationError} When the deployment has no such region.
+ */
+function placementRegion(requested: string | undefined): string {
+  if (requested === undefined || Object.keys(env.REGION_API_URLS).length === 0) return env.GLOBAL_REGION;
+  if (!isKnownRegion(requested)) throw new ValidationError(t("server.error.validation"));
+  return requested;
 }
 
 /**
@@ -239,17 +225,38 @@ export async function updateStudio(
   if (!studio) {
     throw new NotFoundError(t("server.error.not_found"));
   }
+  const newSlug = patch.slug !== undefined && patch.slug !== studio.slug ? patch.slug : undefined;
+  // Slugs are unique across regions (inner#1955). Outside the global region
+  // the new slug is held there first and let go if the rename does not commit.
+  const remote = !directoryWrites.inGlobalRegion();
+  if (newSlug !== undefined && remote && !(await globalApi().reserveSlug(newSlug, studio.id))) {
+    throw new ConflictError(t("server.studio.slug_taken"));
+  }
   try {
-    const updated = await studioRepo.updateStudio(studio.id, {
-      ...(patch.name !== undefined ? { name: patch.name } : {}),
-      ...(patch.slug !== undefined ? { slug: patch.slug } : {}),
-      ...(patch.bio !== undefined ? { bio: patch.bio === "" ? null : patch.bio } : {}),
+    return await db.transaction(async (tx) => {
+      await studioRepo.lockStudio(studio.id, tx);
+      if (newSlug !== undefined && !remote && !(await directoryWrites.slugFreeHere(newSlug, tx))) {
+        throw new ConflictError(t("server.studio.slug_taken"));
+      }
+      const updated = await studioRepo.updateStudio(studio.id, {
+        ...(patch.name !== undefined ? { name: patch.name } : {}),
+        ...(patch.slug !== undefined ? { slug: patch.slug } : {}),
+        ...(patch.bio !== undefined ? { bio: patch.bio === "" ? null : patch.bio } : {}),
+      });
+      if (!updated) {
+        throw new NotFoundError(t("server.error.not_found"));
+      }
+      const changed = {
+        ...(patch.name !== undefined && patch.name !== studio.name ? { name: patch.name } : {}),
+        ...(newSlug !== undefined ? { slug: newSlug } : {}),
+      };
+      if (Object.keys(changed).length > 0) await directoryWrites.profileChanged(studio.id, changed, tx);
+      return updated;
     });
-    if (!updated) {
-      throw new NotFoundError(t("server.error.not_found"));
-    }
-    return updated;
   } catch (err) {
+    if (newSlug !== undefined && remote) {
+      await globalApi().releaseSlug(newSlug, studio.id).catch(() => undefined);
+    }
     if (isUniqueViolation(err)) {
       throw new ConflictError(t("server.studio.slug_taken"));
     }

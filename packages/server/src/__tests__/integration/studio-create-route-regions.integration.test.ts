@@ -96,7 +96,7 @@ function freshSlug(): string {
  * @param body - The JSON body.
  * @returns The response.
  */
-function post(path: string, cookie: string, body: unknown): Promise<Response> {
+async function post(path: string, cookie: string, body: unknown): Promise<Response> {
   return app.request(`/api/v1${path}`, {
     method: "POST",
     headers: { Cookie: cookie, "content-type": "application/json" },

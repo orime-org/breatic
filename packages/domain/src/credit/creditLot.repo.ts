@@ -36,8 +36,7 @@ import {
   creditLots,
   creditLedger,
   studioCreditDebts,
-  studios,
-  studioMembers,
+  studioDirectory,
   projects,
   payments,
 } from "@breatic/core";
@@ -67,7 +66,8 @@ function spendableByStudio(studioId: string): SQL | undefined {
     eq(creditLots.designatedStudioId, studioId),
     eq(creditLots.lifecycle, "active"),
     isNull(creditLots.deletedAt),
-    isNull(studios.deletedAt),
+    isNull(studioDirectory.deletedAt),
+    eq(studioDirectory.state, "live"),
   );
 }
 
@@ -91,7 +91,8 @@ function designatedToStudio(studioId: string): SQL | undefined {
   return and(
     eq(creditLots.designatedStudioId, studioId),
     isNull(creditLots.deletedAt),
-    isNull(studios.deletedAt),
+    isNull(studioDirectory.deletedAt),
+    eq(studioDirectory.state, "live"),
   );
 }
 
@@ -237,7 +238,7 @@ export async function listSpendableLots(
   const rows = await conn
     .select({ lot: creditLots })
     .from(creditLots)
-    .innerJoin(studios, eq(studios.id, creditLots.designatedStudioId))
+    .innerJoin(studioDirectory, eq(studioDirectory.studioId, creditLots.designatedStudioId))
     .where(
       and(spendableByStudio(studioId), sql`${creditLots.remainingCredits} > 0`),
     )
@@ -483,7 +484,7 @@ export async function sumSpendableForStudio(
   const rows = await (tx ?? db)
     .select({ total: sql<string>`COALESCE(SUM(${creditLots.remainingCredits}), 0)::text` })
     .from(creditLots)
-    .innerJoin(studios, eq(studios.id, creditLots.designatedStudioId))
+    .innerJoin(studioDirectory, eq(studioDirectory.studioId, creditLots.designatedStudioId))
     .where(spendableByStudio(studioId));
   return rows[0]?.total ?? "0";
 }
@@ -504,12 +505,12 @@ export async function studiosWithDebtFrom(
   const rows = await db
     .selectDistinct({
       studioId: creditLedger.studioId,
-      studioName: studios.name,
-      studioSlug: studios.slug,
-      deleted: sql<boolean>`${studios.deletedAt} IS NOT NULL`,
+      studioName: studioDirectory.name,
+      studioSlug: studioDirectory.slug,
+      deleted: sql<boolean>`${studioDirectory.deletedAt} IS NOT NULL`,
     })
     .from(creditLedger)
-    .leftJoin(studios, eq(studios.id, creditLedger.studioId))
+    .leftJoin(studioDirectory, eq(studioDirectory.studioId, creditLedger.studioId))
     .where(
       and(
         eq(creditLedger.actorUserId, actorUserId),
@@ -545,11 +546,9 @@ export async function studiosWithDebtFrom(
  */
 export function administeredByUser(userId: string): SQL {
   return sql`EXISTS (
-    SELECT 1 FROM ${studioMembers}
-    WHERE ${studioMembers.studioId} = ${creditLedger.studioId}
-      AND ${studioMembers.userId} = ${userId}
-      AND ${studioMembers.role} = 'admin'
-      AND ${studioMembers.deletedAt} IS NULL
+    SELECT 1 FROM ${studioDirectory}
+    WHERE ${studioDirectory.studioId} = ${creditLedger.studioId}
+      AND ${studioDirectory.adminUserId} = ${userId}
   )`;
 }
 
@@ -569,14 +568,12 @@ export async function studiosAdministeredBy(
 ): Promise<Set<string>> {
   if (studioIds.length === 0) return new Set();
   const rows = await db
-    .select({ studioId: studioMembers.studioId })
-    .from(studioMembers)
+    .select({ studioId: studioDirectory.studioId })
+    .from(studioDirectory)
     .where(
       and(
-        eq(studioMembers.userId, userId),
-        eq(studioMembers.role, "admin"),
-        isNull(studioMembers.deletedAt),
-        inArray(studioMembers.studioId, [...new Set(studioIds)]),
+        eq(studioDirectory.adminUserId, userId),
+        inArray(studioDirectory.studioId, [...new Set(studioIds)]),
       ),
     );
   return new Set(rows.map((row) => row.studioId));
@@ -687,13 +684,13 @@ export async function sumUnassignedForUser(userId: string): Promise<string> {
   const rows = await db
     .select({ total: sql<string>`COALESCE(SUM(${creditLots.remainingCredits}), 0)::text` })
     .from(creditLots)
-    .leftJoin(studios, eq(studios.id, creditLots.designatedStudioId))
+    .leftJoin(studioDirectory, eq(studioDirectory.studioId, creditLots.designatedStudioId))
     .where(
       and(
         eq(creditLots.userId, userId),
         eq(creditLots.lifecycle, "active"),
         isNull(creditLots.deletedAt),
-        or(isNull(creditLots.designatedStudioId), isNotNull(studios.deletedAt)),
+        or(isNull(creditLots.designatedStudioId), isNotNull(studioDirectory.deletedAt)),
       ),
     );
   return rows[0]?.total ?? "0";
@@ -1119,10 +1116,10 @@ export async function listLotsByUser(
       // to a name that no longer exists on another.
       designatedStudioId: sql<
         string | null
-      >`CASE WHEN ${studios.deletedAt} IS NULL THEN ${creditLots.designatedStudioId} END`,
+      >`CASE WHEN ${studioDirectory.deletedAt} IS NULL THEN ${creditLots.designatedStudioId} END`,
       designatedStudioName: sql<
         string | null
-      >`CASE WHEN ${studios.deletedAt} IS NULL THEN ${studios.name} END`,
+      >`CASE WHEN ${studioDirectory.deletedAt} IS NULL THEN ${studioDirectory.name} END`,
       // The raw column, beside the projection above: the refund rule and the
       // constraint behind it both turn on whether anything is pointed at,
       // which stays true after the studio is gone.
@@ -1152,7 +1149,7 @@ export async function listLotsByUser(
     // towards what the account holds and appeared on no screen that could
     // act on them.
     .leftJoin(payments, eq(payments.id, creditLots.sourceId))
-    .leftJoin(studios, eq(studios.id, creditLots.designatedStudioId))
+    .leftJoin(studioDirectory, eq(studioDirectory.studioId, creditLots.designatedStudioId))
     .where(
       and(
         eq(creditLots.userId, userId),
@@ -1210,11 +1207,11 @@ export async function listLotsByStudio(
   studioId: string,
   tx?: DbTx,
 ): Promise<StudioLot[]> {
-  const buyerStudio = alias(studios, "buyer_studio");
+  const buyerStudio = alias(studioDirectory, "buyer_studio");
   const rows = await (tx ?? db)
     .select({ lot: creditLots, buyerName: buyerStudio.name })
     .from(creditLots)
-    .innerJoin(studios, eq(studios.id, creditLots.designatedStudioId))
+    .innerJoin(studioDirectory, eq(studioDirectory.studioId, creditLots.designatedStudioId))
     .leftJoin(
       buyerStudio,
       and(
@@ -1287,8 +1284,8 @@ export async function listLedgerByPayer(
 ): Promise<PayerLedgerRow[]> {
   // Display names live on the personal studio (`users` is the pure auth
   // table), the same place the activity feed reads an actor's name from.
-  const actorStudio = alias(studios, "actor_studio");
-  const spendingStudio = alias(studios, "spending_studio");
+  const actorStudio = alias(studioDirectory, "actor_studio");
+  const spendingStudio = alias(studioDirectory, "spending_studio");
   // Same three expressions `listLedgerByStudio` groups on, and for the same
   // reason: uuid has no min/max aggregate before PostgreSQL 18 and this
   // repository runs 16, and a keyset comparison against a differently-computed
@@ -1335,7 +1332,7 @@ export async function listLedgerByPayer(
     )
     // No liveness condition: a run that happened in a studio since deleted
     // still has to say which studio it was.
-    .leftJoin(spendingStudio, eq(spendingStudio.id, creditLedger.studioId))
+    .leftJoin(spendingStudio, eq(spendingStudio.studioId, creditLedger.studioId))
     .leftJoin(projects, eq(projects.id, creditLedger.projectId))
     .where(
       and(
@@ -1454,7 +1451,7 @@ export async function listLedgerByStudio(
         WHEN BOOL_AND(${creditLedger.entryType} = 'debt_repayment')
         THEN 'debt_repayment' ELSE 'generation' END`,
       actorUserId: sql<string | null>`MAX(${creditLedger.actorUserId}::text)`,
-      actorName: sql<string | null>`MAX(${studios.name})`,
+      actorName: sql<string | null>`MAX(${studioDirectory.name})`,
       projectId: sql<string | null>`MAX(${creditLedger.projectId}::text)`,
       projectName: sql<string | null>`MAX(${projects.name})`,
       model: sql<string | null>`MAX(${creditLedger.model})`,
@@ -1469,11 +1466,11 @@ export async function listLedgerByStudio(
     })
     .from(creditLedger)
     .leftJoin(
-      studios,
+      studioDirectory,
       and(
-        eq(studios.createdByUserId, creditLedger.actorUserId),
-        eq(studios.type, "personal"),
-        isNull(studios.deletedAt),
+        eq(studioDirectory.createdByUserId, creditLedger.actorUserId),
+        eq(studioDirectory.type, "personal"),
+        isNull(studioDirectory.deletedAt),
       ),
     )
     .leftJoin(projects, eq(projects.id, creditLedger.projectId))
@@ -1518,13 +1515,13 @@ export async function sumSpentByStudio(
   const rows = await db
     .select({
       studioId: creditLedger.studioId,
-      studioName: studios.name,
-      studioSlug: studios.slug,
+      studioName: studioDirectory.name,
+      studioSlug: studioDirectory.slug,
       // Read rather than inferred. Whether a studio is gone is a column on the
       // table this already joins, and every other way of telling answers a
       // different question: a studio with no spendable lots left looks exactly
       // like a deleted one from the outside.
-      deleted: sql<boolean>`${studios.deletedAt} IS NOT NULL`,
+      deleted: sql<boolean>`${studioDirectory.deletedAt} IS NOT NULL`,
       spent: sql<string>`(-SUM(${creditLedger.amount}))::text`,
     })
     .from(creditLedger)
@@ -1532,7 +1529,7 @@ export async function sumSpentByStudio(
     // the spending that happened on it: `payer_user_id` says whose money it
     // was and no later event rewrites it. AWS and Google Cloud both keep the
     // cost of resources that are gone for the same reason — the money left.
-    .leftJoin(studios, eq(studios.id, creditLedger.studioId))
+    .leftJoin(studioDirectory, eq(studioDirectory.studioId, creditLedger.studioId))
     .where(
       and(
         eq(creditLedger.payerUserId, payerUserId),
@@ -1552,9 +1549,9 @@ export async function sumSpentByStudio(
     )
     .groupBy(
       creditLedger.studioId,
-      studios.name,
-      studios.slug,
-      studios.deletedAt,
+      studioDirectory.name,
+      studioDirectory.slug,
+      studioDirectory.deletedAt,
     );
   return rows
     .filter(
@@ -1592,8 +1589,8 @@ export async function sumSpendableByStudio(userId: string): Promise<
   const rows = await db
     .select({
       studioId: creditLots.designatedStudioId,
-      studioName: studios.name,
-      studioSlug: studios.slug,
+      studioName: studioDirectory.name,
+      studioSlug: studioDirectory.slug,
       // Only what is still spendable. A spent purchase is still pointed
       // here, and still counted below, but there is nothing left of it.
       spendable: sql<string>`COALESCE(SUM(${creditLots.remainingCredits})
@@ -1605,18 +1602,18 @@ export async function sumSpendableByStudio(userId: string): Promise<
       lotCount: sql<number>`COUNT(*)::int`,
     })
     .from(creditLots)
-    .innerJoin(studios, eq(studios.id, creditLots.designatedStudioId))
+    .innerJoin(studioDirectory, eq(studioDirectory.studioId, creditLots.designatedStudioId))
     .where(
       and(
         eq(creditLots.userId, userId),
         isNull(creditLots.deletedAt),
-        isNull(studios.deletedAt),
+        isNull(studioDirectory.deletedAt),
       ),
     )
     // The name and slug join the key rather than riding along: a column in the
     // select list that is neither grouped nor aggregated makes Postgres refuse
     // the query outright.
-    .groupBy(creditLots.designatedStudioId, studios.name, studios.slug);
+    .groupBy(creditLots.designatedStudioId, studioDirectory.name, studioDirectory.slug);
   return rows
     .filter(
       (

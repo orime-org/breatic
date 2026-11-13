@@ -43,7 +43,7 @@ import * as notificationRepo from "@server/modules/notification/notification.rep
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import * as studioService from "@server/modules/studio/studio.service.js";
 import * as projectRepo from "@server/modules/project/project.repo.js";
-import * as studioRepo from "@server/modules/studio/studio.repo.js";
+import { studioRepo } from "@breatic/domain";
 import * as requestsRepo from "@server/modules/role-upgrade-request/roleUpgradeRequests.repo.js";
 import * as userRepo from "@server/modules/auth/user.repo.js";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
@@ -53,7 +53,7 @@ import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
 import {
   getDecisionWindowMs,
 } from "@server/config/limits.js";
-import { isUniqueViolation } from "@server/utils/pg-error.js";
+import { isUniqueViolation } from "@breatic/core";
 import {
   isRefused,
   refusalError,

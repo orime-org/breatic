@@ -22,9 +22,26 @@
 
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
 import { NotFoundError } from "@breatic/core";
+import { directoryWrites } from "@breatic/domain";
 import { t } from "@breatic/shared";
 import type { DbTx } from "@server/modules/notification/notification.repo.js";
 import type { BillingPeriod, DecisionGrantRole, NotificationEntity } from "@breatic/shared";
+
+/**
+ * Write a notification, and record that its recipient now has something in
+ * this region, so the global region's bell asks it (inner#1955).
+ * @param input - The notification.
+ * @param tx - The business transaction, when there is one.
+ * @returns The notification.
+ */
+async function insertNotification(
+  input: Parameters<typeof notificationRepo.create>[0],
+  tx?: DbTx,
+): Promise<NotificationEntity> {
+  const created = await notificationRepo.create(input, tx);
+  await directoryWrites.userRegionTouched(input.userId, tx);
+  return created;
+}
 
 export type { NotificationEntity };
 
@@ -102,7 +119,7 @@ export async function createRoleUpgradeRequest(input: {
   expiresAt: Date;
   tx?: DbTx;
 }): Promise<NotificationEntity> {
-  return notificationRepo.create(
+  return insertNotification(
     {
       userId: input.ownerUserId,
       type: "access.role_upgrade_request",
@@ -130,7 +147,7 @@ export async function createRoleUpgradeApproved(input: {
   payload: RoleUpgradeDecisionPayload;
   tx?: DbTx;
 }): Promise<NotificationEntity> {
-  return notificationRepo.create(
+  return insertNotification(
     {
       userId: input.requesterUserId,
       type: "access.role_upgrade_approved",
@@ -157,7 +174,7 @@ export async function createRoleUpgradeRejected(input: {
   payload: RoleUpgradeDecisionPayload;
   tx?: DbTx;
 }): Promise<NotificationEntity> {
-  return notificationRepo.create(
+  return insertNotification(
     {
       userId: input.requesterUserId,
       type: "access.role_upgrade_rejected",
@@ -308,7 +325,7 @@ export async function createStudioTransferRequest(input: {
   expiresAt: Date;
   tx?: DbTx;
 }): Promise<NotificationEntity> {
-  return notificationRepo.create(
+  return insertNotification(
     {
       userId: input.userId,
       type: "studio.transfer_request",
@@ -347,7 +364,7 @@ export async function createMembershipEnded(input: {
   payload: MembershipEndedPayload;
   tx?: DbTx;
 }): Promise<NotificationEntity> {
-  return notificationRepo.create(
+  return insertNotification(
     {
       userId: input.userId,
       type: "membership.ended",
@@ -390,7 +407,7 @@ export async function createMembershipUpgradeIncomplete(input: {
   payload: MembershipUpgradeIncompletePayload;
   tx?: DbTx;
 }): Promise<NotificationEntity> {
-  return notificationRepo.create(
+  return insertNotification(
     {
       userId: input.userId,
       type: "membership.upgrade_incomplete",
@@ -414,7 +431,7 @@ export async function createStudioTransferApproved(input: {
   payload: StudioTransferApprovedPayload;
   tx?: DbTx;
 }): Promise<NotificationEntity> {
-  return notificationRepo.create(
+  return insertNotification(
     {
       userId: input.userId,
       type: "studio.transfer_approved",
@@ -440,7 +457,7 @@ export async function createProjectTransferRequest(input: {
   expiresAt: Date;
   tx?: DbTx;
 }): Promise<NotificationEntity> {
-  return notificationRepo.create(
+  return insertNotification(
     {
       userId: input.userId,
       type: "project.transfer_request",
@@ -469,7 +486,7 @@ export async function createProjectTransferApproved(input: {
   payload: ProjectTransferApprovedPayload;
   tx?: DbTx;
 }): Promise<NotificationEntity> {
-  return notificationRepo.create(
+  return insertNotification(
     {
       userId: input.userId,
       type: "project.transfer_approved",
@@ -501,7 +518,7 @@ export async function createStudioInviteRequest(input: {
   expiresAt: Date;
   tx?: DbTx;
 }): Promise<NotificationEntity> {
-  return notificationRepo.create(
+  return insertNotification(
     {
       userId: input.userId,
       type: "studio.invite_request",
@@ -526,7 +543,7 @@ export async function createStudioInviteAccepted(input: {
   payload: StudioInviteAcceptedPayload;
   tx?: DbTx;
 }): Promise<NotificationEntity> {
-  return notificationRepo.create(
+  return insertNotification(
     {
       userId: input.userId,
       type: "studio.invite_accepted",
@@ -597,7 +614,7 @@ export async function createProjectInviteRequest(input: {
   expiresAt: Date;
   tx?: DbTx;
 }): Promise<NotificationEntity> {
-  return notificationRepo.create(
+  return insertNotification(
     {
       userId: input.userId,
       type: "project.invite_request",
@@ -625,7 +642,7 @@ export async function createProjectInviteAccepted(input: {
   payload: ProjectInviteAcceptedPayload;
   tx?: DbTx;
 }): Promise<NotificationEntity> {
-  return notificationRepo.create(
+  return insertNotification(
     {
       userId: input.userId,
       type: "project.invite_accepted",
@@ -734,7 +751,7 @@ export async function createStorageQuotaExceeded(input: {
   payload: StorageQuotaExceededPayload;
   tx?: DbTx;
 }): Promise<NotificationEntity> {
-  return notificationRepo.create(
+  return insertNotification(
     {
       userId: input.userId,
       type: "storage.quota_exceeded",
@@ -777,7 +794,7 @@ export async function createCreditRefundCompleted(input: {
   payload: CreditRefundCompletedPayload;
   tx: DbTx;
 }): Promise<NotificationEntity> {
-  return notificationRepo.create(
+  return insertNotification(
     {
       userId: input.userId,
       type: "credit.refund_completed",
@@ -800,7 +817,7 @@ export async function createCreditRefundRejected(input: {
   payload: CreditRefundRejectedPayload;
   tx: DbTx;
 }): Promise<NotificationEntity> {
-  return notificationRepo.create(
+  return insertNotification(
     {
       userId: input.userId,
       type: "credit.refund_rejected",
@@ -832,7 +849,7 @@ export async function createCreditRefundRestored(input: {
   payload: CreditRefundRestoredPayload;
   tx: DbTx;
 }): Promise<NotificationEntity> {
-  return notificationRepo.create(
+  return insertNotification(
     {
       userId: input.userId,
       type: "credit.refund_restored",
@@ -888,7 +905,7 @@ export async function createProjectJoinRequest(input: {
   expiresAt: Date;
   tx?: DbTx;
 }): Promise<NotificationEntity> {
-  return notificationRepo.create(
+  return insertNotification(
     {
       userId: input.ownerUserId,
       type: "project.join_request",
@@ -917,7 +934,7 @@ export async function createProjectJoinDecision(input: {
   payload: ProjectJoinDecisionPayload;
   tx?: DbTx;
 }): Promise<NotificationEntity> {
-  return notificationRepo.create(
+  return insertNotification(
     {
       userId: input.requesterUserId,
       type: input.outcome === "approved" ? "project.join_approved" : "project.join_rejected",

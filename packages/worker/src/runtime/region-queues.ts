@@ -4,9 +4,9 @@
 /**
  * Which BullMQ queues a worker runs in its region (inner#1955).
  *
- * Work on global data (ads conversions, finishing pending Studio creations
- * and slug reservations, forwarding revocations and email-invitation claims
- * to other regions) runs only in the global region; relaying the outbox runs
+ * Work on global data (ads conversions, settling slug reservations,
+ * forwarding revocations and email-invitation claims to other regions) runs
+ * only in the global region; relaying the outbox runs
  * only where there is a global region to relay to. Everything that works on a
  * region's own Studios runs in every region.
  */
@@ -25,10 +25,6 @@ import { LONG_MEDIA_DISPATCH_QUEUE } from "@worker/handlers/long-media-dispatch.
 export const TIMELINE_SWEEP_QUEUE = "timeline-sweep";
 /** The recurring sweep of charge requests still pending (inner#1617). */
 export const CREDIT_CHARGE_SWEEP_QUEUE = "credit-charge-sweep";
-/** The sweep that finishes transfers stuck between the global and the region step. */
-export const STUDIO_TRANSFER_ACCEPTING_SWEEP_QUEUE = "studio-transfer-accepting-sweep";
-/** The sweep that finishes or abandons Studio creations left pending in another region. */
-export const STUDIO_CREATION_SWEEP_QUEUE = "studio-creation-sweep";
 /** The sweep that settles slug reservations a region's rename left behind. */
 export const SLUG_RESERVATION_SWEEP_QUEUE = "slug-reservation-sweep";
 /** Revoked session ids sent on to every other region. */
@@ -50,12 +46,10 @@ const EVERY_REGION: readonly string[] = [
   TIMELINE_QUEUE,
   TIMELINE_SWEEP_QUEUE,
   CREDIT_CHARGE_SWEEP_QUEUE,
-  STUDIO_TRANSFER_ACCEPTING_SWEEP_QUEUE,
 ];
 
 const GLOBAL_ONLY: readonly string[] = [
   ADS_CONVERSION_QUEUE,
-  STUDIO_CREATION_SWEEP_QUEUE,
   SLUG_RESERVATION_SWEEP_QUEUE,
   IDENTITY_REVOCATION_FORWARD_QUEUE,
   INVITATION_CLAIM_FORWARD_QUEUE,

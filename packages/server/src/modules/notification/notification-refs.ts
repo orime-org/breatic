@@ -22,7 +22,7 @@
  * returns the anonymised value with no special case of its own.
  */
 
-import * as studioRepo from "@server/modules/studio/studio.repo.js";
+import { studioRepo } from "@breatic/domain";
 import * as projectRepo from "@server/modules/project/project.repo.js";
 import type {
   NotificationEntity,

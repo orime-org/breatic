@@ -56,6 +56,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
     // configured layout, and log a failed send; all three are the real ones.
     runWithLocale: actual.runWithLocale,
     getMailLayout: actual.getMailLayout,
+    isUniqueViolation: actual.isUniqueViolation,
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     db: {
       transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) =>

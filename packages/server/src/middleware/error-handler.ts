@@ -75,6 +75,7 @@ export const errorHandler: ErrorHandler = (err, c) => {
           code: err.statusCode,
           message: err.message,
           ...(err instanceof RequestShapeError ? { reason: REQUEST_SHAPE_REASON } : {}),
+          ...(err.reason !== undefined ? { reason: err.reason } : {}),
         },
       },
       err.statusCode as 400,

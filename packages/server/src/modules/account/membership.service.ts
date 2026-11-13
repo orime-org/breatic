@@ -35,7 +35,7 @@ import {
 } from "@breatic/shared";
 
 import * as assetUsageService from "@server/modules/asset/assetUsage.service.js";
-import * as studioRepo from "@server/modules/studio/studio.repo.js";
+import { studioRepo } from "@breatic/domain";
 import { readStoredSubscriptionSummary } from "@server/modules/subscription/subscription-panel.js";
 
 /**

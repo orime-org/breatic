@@ -470,6 +470,8 @@ describe("authorisation table (§4.3)", () => {
         "POST /internal/v1/referral-codes/:id/enable",
         "POST /internal/v1/referral-codes/:id/remove",
         "GET /internal/v1/referral-operations/:key",
+        "POST /internal/global/:fn",
+        "POST /internal/region/:fn",
       ].sort(),
     );
   });

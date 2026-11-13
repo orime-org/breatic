@@ -21,13 +21,16 @@ import * as creditLotRepo from "@domain/credit/creditLot.repo.js";
 import { resolveOwnerStudioId } from "@domain/asset/asset.service.js";
 import { fromMicroCredits, positionFrom, serializeCreditPosition, toChargeMicro, type CreditPositionMicro } from "@domain/credit/credit-math.js";
 import { db, env } from "@breatic/core";
+import { inGlobalRegion } from "@domain/region/directory-writes.js";
+import { globalApi } from "@domain/region/global-api.js";
 import type { DbTx } from "@breatic/core";
 import type { ProjectCreditsView } from "@breatic/shared";
 
-/** One hold asked for. */
-export interface HoldRequest {
-  /** The project the work runs in; its studio's credits are held. */
-  projectId: string;
+/** One hold asked for, against a Studio named directly or through its Project. */
+export type HoldRequest = HoldFields & ({ studioId: string } | { projectId: string });
+
+/** What every hold carries. */
+export interface HoldFields {
   /** Who started the work. */
   actorUserId: string;
   /** The run's task id. Used once. */
@@ -72,7 +75,29 @@ function expiryFor(ttlMs: number): Date {
  */
 export async function reserveCredits(request: HoldRequest): Promise<ReserveOutcome> {
   if (!env.PAYMENT_ENABLED) return { ok: true };
-  const studioId = await resolveOwnerStudioId(request.projectId);
+  // The Project is this region's; the credits are the global region's
+  // (inner#1955). The Studio is read here and the hold taken there.
+  const studioId = "studioId" in request ? request.studioId : await resolveOwnerStudioId(request.projectId);
+  const hold = {
+    studioId,
+    actorUserId: request.actorUserId,
+    referenceId: request.referenceId,
+    amount: request.amount,
+    ttlMs: request.ttlMs,
+  };
+  return inGlobalRegion() ? reserveHere(hold) : globalApi().reserveCredits(hold);
+}
+
+/**
+ * Take a hold in the region that holds the books.
+ * @param request - The hold, against its Studio.
+ * @returns Admitted, or refused with the Studio's position.
+ */
+export async function reserveHere(
+  request: HoldFields & { studioId: string },
+): Promise<ReserveOutcome> {
+  if (!env.PAYMENT_ENABLED) return { ok: true };
+  const { studioId } = request;
   const amount = toChargeMicro(request.amount);
   return db.transaction(async (tx) => {
     const position = await lockedPosition(studioId, tx);
@@ -97,6 +122,15 @@ export async function reserveCredits(request: HoldRequest): Promise<ReserveOutco
  * @throws {Error} When the database fails.
  */
 export async function releaseHold(referenceId: string): Promise<void> {
+  if (inGlobalRegion()) await creditHoldRepo.releaseHold(referenceId);
+  else await globalApi().releaseHold(referenceId);
+}
+
+/**
+ * Release a hold in the region that holds the books.
+ * @param referenceId - Its key.
+ */
+export async function releaseHere(referenceId: string): Promise<void> {
   await creditHoldRepo.releaseHold(referenceId);
 }
 
@@ -107,6 +141,15 @@ export async function releaseHold(referenceId: string): Promise<void> {
  * @returns The three figures, in credits.
  */
 export async function getCreditPosition(studioId: string): Promise<ProjectCreditsView> {
+  return inGlobalRegion() ? positionHere(studioId) : globalApi().getCreditPosition(studioId);
+}
+
+/**
+ * A Studio's position read in the region that holds the books.
+ * @param studioId - The studio.
+ * @returns The three figures, in credits.
+ */
+export async function positionHere(studioId: string): Promise<ProjectCreditsView> {
   return db.transaction(
     async (tx) => {
       const [lots, debt, held] = await Promise.all([

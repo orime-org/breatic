@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Postgres error helpers shared across server services.
+ * Postgres error helpers shared across the backend.
  *
  * One correct unique-violation check instead of each service re-implementing
  * it — several earlier copies only inspected the top-level `code`, which misses

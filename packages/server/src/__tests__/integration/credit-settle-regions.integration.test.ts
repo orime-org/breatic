@@ -66,6 +66,7 @@ async function fundedStudio(credits: number): Promise<{ fx: StudioFixture; lotId
     INSERT INTO studio_directory (studio_id, slug, region, type, name, admin_user_id, created_by_user_id, state)
     VALUES (${fx.studioId}, ${`settle-${crypto.randomBytes(5).toString("hex")}`}, 'sg', 'team', 'Settle',
             ${fx.userId}, ${fx.userId}, 'live')
+    ON CONFLICT (studio_id) DO UPDATE SET region = EXCLUDED.region
   `;
   const lotId = await seedDesignatedLot(sql, fx, credits);
   return { fx, lotId };
@@ -88,7 +89,7 @@ function request(
   return {
     region,
     requestId,
-    kind: "generation",
+    kind: "task",
     actorUserId: fx.userId,
     studioId: fx.studioId,
     projectId: crypto.randomUUID(),

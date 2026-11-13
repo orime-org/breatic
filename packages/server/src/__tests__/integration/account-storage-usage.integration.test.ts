@@ -37,7 +37,7 @@ import crypto from "node:crypto";
 import postgres from "postgres";
 import { initCore, loadLocales } from "@breatic/core";
 import { assetRepo } from "@breatic/domain";
-import * as studioRepo from "@server/modules/studio/studio.repo.js";
+import { studioRepo } from "@breatic/domain";
 import { accountStorageUsage } from "@server/modules/asset/assetUsage.service.js";
 
 try {

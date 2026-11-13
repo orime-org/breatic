@@ -19,7 +19,7 @@ import {
   verifyRecoveryCode,
 } from "@server/modules/auth/recovery-code.service.js";
 import { buildPasswordResetMail } from "@server/modules/auth/auth-mail.js";
-import { isUniqueViolation } from "@server/utils/pg-error.js";
+import { isUniqueViolation } from "@breatic/core";
 import { getRedis } from "@breatic/core";
 import { sendMail, type SendMailResult } from "@breatic/core";
 import {
