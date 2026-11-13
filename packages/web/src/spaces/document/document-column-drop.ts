@@ -2,29 +2,137 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Dropping a dragged row beside another to make or grow a column group
+ * Landing a dragged row beside another to make or grow a column group
  * (inner#1314 design §5.2).
+ *
+ * The move is two transactions, the take-away and then the put-down. Yjs has
+ * no move, and y-prosemirror's `updateYFragment` matches a changed list of
+ * children by identity from both ends and rewrites the middle in place by
+ * position (`sync-plugin.js` `updateYFragment`); a transaction that only
+ * deletes, or only inserts, keeps every untouched column and every block in
+ * between on its own Yjs element, so words a collaborator types there stay.
+ * The two land in one undo step: the undo manager merges changes made within
+ * its capture timeout.
  */
 
 import type { BlockNoteEditor } from '@blocknote/core';
+import type { Node as PMNode, ResolvedPos } from '@tiptap/pm/model';
+
+import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-nodes';
+import { COLUMN_TAKE_AWAY } from '@web/spaces/document/document-column-repair';
+import { rowById, type RowInDocument } from '@web/spaces/document/document-row-by-id';
 
 /** Which side of the target the row lands on. */
 export type ColumnSide = 'left' | 'right';
 
+/** A row's column and group, when it stands directly in a column. */
+interface InColumn {
+  /** The group's start. */
+  readonly groupPos: number;
+  /** The group. */
+  readonly group: PMNode;
+  /** The column's index in the group. */
+  readonly index: number;
+  /** The column. */
+  readonly column: PMNode;
+}
+
+/**
+ * The column a row stands directly in.
+ * @param $row - The position before the row.
+ * @returns Its column and group, or null.
+ */
+function columnAround($row: ResolvedPos): InColumn | null {
+  if ($row.parent.type.name !== DOC_COLUMN || $row.depth < 2) return null;
+  const group = $row.node($row.depth - 1);
+  if (group.type.name !== DOC_COLUMN_LIST) return null;
+  return { groupPos: $row.before($row.depth - 1), group, index: $row.index($row.depth - 1), column: $row.parent };
+}
+
+/**
+ * Whether landing the row there leaves the layout as it is: the row is alone
+ * in its column and lands on the near side of the next column.
+ * @param doc - The document.
+ * @param dragged - The dragged row.
+ * @param target - The target row.
+ * @param side - The side.
+ * @returns True when nothing would change.
+ */
+function landsInPlace(doc: PMNode, dragged: RowInDocument, target: RowInDocument, side: ColumnSide): boolean {
+  const from = columnAround(doc.resolve(dragged.from));
+  const to = columnAround(doc.resolve(target.from));
+  if (from === null || to === null || from.groupPos !== to.groupPos || from.column.childCount !== 1) return false;
+  return side === 'left' ? to.index === from.index + 1 : to.index === from.index - 1;
+}
+
+/**
+ * The mean of the columns' widths, for a new column.
+ * @param group - The group.
+ * @returns The mean weight.
+ */
+function meanWidth(group: PMNode): number {
+  let sum = 0;
+  group.forEach((column) => {
+    const width = Number(column.attrs['width']);
+    sum += Number.isFinite(width) && width > 0 ? width : 1;
+  });
+  return group.childCount === 0 ? 1 : sum / group.childCount;
+}
+
 /**
  * Lands a row beside a target row: wraps the two in a new group, or adds a
  * column to the target's group.
- * @param _editor - The editor.
- * @param _draggedId - The dragged row's id.
- * @param _targetId - The target row's id.
- * @param _side - Which side of the target.
+ * @param editor - The editor.
+ * @param draggedId - The dragged row's id.
+ * @param targetId - The target row's id.
+ * @param side - Which side of the target.
  * @returns Whether anything was written.
  */
 export function dropRowBeside(
-  _editor: BlockNoteEditor<never, never, never>,
-  _draggedId: string,
-  _targetId: string,
-  _side: ColumnSide,
+  editor: BlockNoteEditor<never, never, never>,
+  draggedId: string,
+  targetId: string,
+  side: ColumnSide,
 ): boolean {
-  return false;
+  const view = editor.prosemirrorView;
+  if (draggedId === targetId) return false;
+  const before = view.state.doc;
+  const dragged = rowById(before, draggedId);
+  const target = rowById(before, targetId);
+  if (dragged === undefined || target === undefined) return false;
+  if (target.from >= dragged.from && target.to <= dragged.to) return false;
+  if (landsInPlace(before, dragged, target, side)) return false;
+  const fromGroup = columnAround(before.resolve(dragged.from));
+  const toGroup = columnAround(before.resolve(target.from));
+  const sameGroup = fromGroup !== null && toGroup !== null && fromGroup.groupPos === toGroup.groupPos;
+
+  const take = view.state.tr.delete(dragged.from, dragged.to);
+  if (sameGroup) take.setMeta(COLUMN_TAKE_AWAY, true);
+  view.dispatch(take);
+
+  const { schema } = view.state;
+  const columnType = schema.nodes[DOC_COLUMN]!;
+  const listType = schema.nodes[DOC_COLUMN_LIST]!;
+  const tr = view.state.tr;
+  let landing = rowById(tr.doc, targetId);
+  if (landing === undefined) return true;
+  let around = columnAround(tr.doc.resolve(landing.from));
+  if (around !== null && around.group.childCount === 1 && !sameGroup) {
+    // A group a merge left with one column: it dissolves, and the target is
+    // wrapped on its own.
+    tr.replaceWith(around.groupPos, around.groupPos + around.group.nodeSize, around.column.content);
+    landing = rowById(tr.doc, targetId)!;
+    around = null;
+  }
+  if (around !== null) {
+    const $column = tr.doc.resolve(landing.from);
+    const column = columnType.create({ width: meanWidth(around.group) }, dragged.node);
+    tr.insert(side === 'left' ? $column.before() : $column.after(), column);
+  } else {
+    const ours = columnType.create({ width: 1 }, landing.node);
+    const theirs = columnType.create({ width: 1 }, dragged.node);
+    tr.replaceWith(landing.from, landing.to, listType.create(null, side === 'left' ? [theirs, ours] : [ours, theirs]));
+  }
+  view.dispatch(tr.scrollIntoView());
+  return true;
 }

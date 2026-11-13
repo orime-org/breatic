@@ -260,7 +260,7 @@ describe('the repair rule (design §5.2)', () => {
     expect(shape(editor)).toEqual(['lead', '[b]']);
     caretAt(editor, 'b');
     view.dispatch(view.state.tr.insertText('!'));
-    expect(shape(editor)).toEqual(['lead', 'b!']);
+    expect(shape(editor)).toEqual(['lead', '!b']);
   });
 
   it('deletes a group left with no columns on any local transaction', () => {
@@ -268,12 +268,13 @@ describe('the repair rule (design §5.2)', () => {
     const view = editor.prosemirrorView;
     const group = view.state.doc.firstChild!.child(1);
     const groupPos = 1 + view.state.doc.firstChild!.child(0).nodeSize;
-    const inner = groupPos + 1;
+    // Every column gone at once, as a merge of two people's deletions leaves it.
     view.dispatch(
       view.state.tr
-        .delete(inner + 1, inner + group.firstChild!.nodeSize - 1 + group.lastChild!.nodeSize)
+        .delete(groupPos + 1, groupPos + 1 + group.content.size)
         .setMeta(ySyncPluginKey, { isChangeOrigin: true }),
     );
+    expect(view.state.doc.firstChild!.child(1).childCount).toBe(0);
     caretAt(editor, 'lead');
     view.dispatch(view.state.tr.insertText('x'));
     expect(shape(editor)).toEqual(['xlead']);

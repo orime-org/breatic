@@ -164,7 +164,7 @@ function containerDepth($pos: ResolvedPos): number {
  * @returns False to leave the key to the body, true once the quote is taken
  *   off, undefined for a plain paragraph.
  */
-function firstStepAtStart(view: EditorView, $head: ResolvedPos, depth: number): boolean | undefined {
+export function firstStepAtStart(view: EditorView, $head: ResolvedPos, depth: number): boolean | undefined {
   const content = $head.node(depth).firstChild;
   if (content?.type.name !== 'paragraph') return false;
   if (content.attrs['quoted'] !== true) return undefined;
