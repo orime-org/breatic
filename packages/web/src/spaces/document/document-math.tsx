@@ -74,8 +74,8 @@ type Rendered = { readonly html: string; readonly error: null } | { readonly htm
  * @param source - The LaTeX.
  * @param display - Whether it stands on a line of its own.
  * @param output - What KaTeX writes: both forms for the body, MathML alone for an export.
- * @returns The markup, or KaTeX's message when the source does not parse.
- * @throws {Error} Whatever KaTeX throws that is not a parse error.
+ * @returns The markup, or KaTeX's message when it cannot draw the source,
+ *   whether the source does not parse or runs KaTeX out of stack.
  */
 export function renderFormula(source: string, display: boolean, output: 'htmlAndMathml' | 'mathml' = 'htmlAndMathml'): Rendered {
   try {
@@ -84,8 +84,8 @@ export function renderFormula(source: string, display: boolean, output: 'htmlAnd
       error: null,
     };
   } catch (err) {
-    if (err instanceof katex.ParseError) return { html: null, error: err.message.replace(/^KaTeX parse error: /, '') };
-    throw err;
+    const message = err instanceof Error ? err.message : String(err);
+    return { html: null, error: message.replace(/^KaTeX parse error: /, '') };
   }
 }
 

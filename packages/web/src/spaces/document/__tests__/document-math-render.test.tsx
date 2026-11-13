@@ -22,6 +22,7 @@ import * as Y from 'yjs';
 import { documentBodyFragment, t } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { blocksMarkdown } from '@web/spaces/document/document-table-markdown';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -128,6 +129,24 @@ describe('rendering', () => {
     await vi.waitFor(() => {
       expect(root.textContent).toContain(t('spaces.document.math.error'));
     });
+  });
+});
+
+describe('a source KaTeX cannot finish', () => {
+  /** Nested deep enough that KaTeX runs out of stack, not out of syntax. */
+  const DEEP = `${'\\sqrt{'.repeat(1500)}x${'}'.repeat(1500)}`;
+
+  it('shows the error face instead of taking the formula down', async () => {
+    const { root } = open([{ type: 'mathBlock', content: DEEP }]);
+    await vi.waitFor(() => {
+      expect(root.textContent).toContain(t('spaces.document.math.error'));
+    });
+    expect(root.querySelector('.doc-math-source')).not.toBeNull();
+  });
+
+  it('still lets the body be read as Markdown', () => {
+    const { editor } = open([{ type: 'mathBlock', content: DEEP }]);
+    expect(() => blocksMarkdown(editor as never, editor.document as never)).not.toThrow();
   });
 });
 
