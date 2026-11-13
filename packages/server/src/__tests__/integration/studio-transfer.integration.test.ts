@@ -59,6 +59,7 @@ vi.mock("@server/config/limits.js", async (importOriginal) => ({
 }));
 
 import postgres from "postgres";
+import { mirrorInDirectory } from "./directory-fixtures.js";
 import { initCore } from "@breatic/core";
 import { studioMembersRepo } from "@breatic/domain";
 import * as studioTransferService from "@server/modules/studio/studioTransfer.service.js";
@@ -121,6 +122,7 @@ async function insertStudioWithAdmin(
   `;
   const id = rows[0]!.id;
   await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${id}, ${adminUserId}, 'admin')`;
+  await mirrorInDirectory(sql, id);
   return { id, slug };
 }
 

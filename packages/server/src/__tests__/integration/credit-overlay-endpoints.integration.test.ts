@@ -32,6 +32,7 @@ vi.mock("ai", () => ({
 import crypto from "node:crypto";
 import type { Hono } from "hono";
 import postgres from "postgres";
+import { mirrorInDirectory } from "./directory-fixtures.js";
 import {
   initCore,
   loadLocales,
@@ -104,6 +105,7 @@ async function seedFixture(): Promise<Fixture> {
     INSERT INTO studio_members (studio_id, user_id, role)
     VALUES (${studioId}, ${userId}, 'admin')
   `;
+  await mirrorInDirectory(sql, studioId);
   const [project] = await sql<{ id: string }[]>`
     INSERT INTO projects (studio_id, created_by_user_id, slug, name)
     VALUES (${studioId}, ${userId}, ${`overlay-p-${n}-${stamp}`}, ${`Overlay project ${n}`})
@@ -251,6 +253,7 @@ describe("money spent in a deleted studio stays on the account (plan §4.2)", ()
       provider: "volcengine",
     });
     await sql`UPDATE studios SET deleted_at = now() WHERE id = ${fx.studioId}`;
+    await sql`UPDATE studio_directory SET deleted_at = now() WHERE studio_id = ${fx.studioId}`;
 
     const data = await readOverview(fx.cookie);
     const studios = data['studios'] as Record<string, unknown>[];
@@ -374,6 +377,7 @@ describe("a deleted studio says so on its row", () => {
       provider: "volcengine",
     });
     await sql`UPDATE studios SET deleted_at = now() WHERE id = ${fx.studioId}`;
+    await sql`UPDATE studio_directory SET deleted_at = now() WHERE studio_id = ${fx.studioId}`;
 
     const data = await readOverview(fx.cookie);
     const studios = data['studios'] as Record<string, unknown>[];
@@ -433,11 +437,15 @@ describe("a studio's debt is the studio's, not the user's", () => {
     const asAdmin = await creditLotService.getOverview(fx.userId);
     expect(asAdmin.studios.find((s) => s.studioId === fx.studioId)?.debt).toBe("20.000000");
 
-    // Demoted to maintainer.
+    // Demoted to maintainer; the directory names the new admin (inner#1955).
     await sql`
       UPDATE studio_members SET role = 'maintainer'
       WHERE studio_id = ${fx.studioId} AND user_id = ${fx.userId}
     `;
+    const [successor] = await sql<{ id: string }[]>`
+      INSERT INTO users (email, email_verified) VALUES (${`successor-${Date.now()}@example.test`}, true) RETURNING id
+    `;
+    await sql`UPDATE studio_directory SET admin_user_id = ${successor!.id} WHERE studio_id = ${fx.studioId}`;
 
     const after = await creditLotService.getOverview(fx.userId);
     const row = after.studios.find((s) => s.studioId === fx.studioId);
@@ -469,6 +477,7 @@ describe("the overview reports what is owed and how many purchases point there (
     const fx = await seedFixture();
     await seedLot(fx.userId, 400, 1000, fx.studioId);
     await sql`UPDATE studios SET deleted_at = now() WHERE id = ${fx.studioId}`;
+    await sql`UPDATE studio_directory SET deleted_at = now() WHERE studio_id = ${fx.studioId}`;
 
     const data = await readOverview(fx.cookie);
     const studios = data['studios'] as Record<string, unknown>[];
@@ -631,6 +640,7 @@ describe("a purchase pointed at a studio that is gone reads as unassigned", () =
     const fx = await seedFixture();
     await seedLot(fx.userId, 500, 1000, fx.studioId);
     await sql`UPDATE studios SET deleted_at = now() WHERE id = ${fx.studioId}`;
+    await sql`UPDATE studio_directory SET deleted_at = now() WHERE studio_id = ${fx.studioId}`;
 
     const page = await readLots(fx.cookie);
     const mine = page.items[0];
@@ -879,6 +889,7 @@ describe("every studio row can say why it is there", () => {
       RETURNING id`;
     await sql`INSERT INTO studio_members (studio_id, user_id, role)
       VALUES (${guestStudio!.id}, ${guest!.id}, 'admin')`;
+    await mirrorInDirectory(sql, guestStudio!.id);
     await sql`INSERT INTO studio_members (studio_id, user_id, role)
       VALUES (${fx.studioId}, ${guest!.id}, 'maintainer')`;
     const guestCookie = await loginAs(guest!.id);

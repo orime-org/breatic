@@ -44,6 +44,7 @@ import type { ConfiguredMembershipTier } from "@breatic/shared";
 import { initCore, loadLocales, getMembershipLimits } from "@breatic/core";
 import { projectService } from "@server/modules";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
+import { mirrorInDirectory } from "@server/__tests__/integration/directory-fixtures.js";
 
 try {
   initCore(process.env);
@@ -109,6 +110,7 @@ async function insertStudio(
     INSERT INTO studio_members (studio_id, user_id, role)
     VALUES (${studioId}, ${adminUserId}, 'admin')
   `;
+  await mirrorInDirectory(sql, studioId);
   return studioId;
 }
 

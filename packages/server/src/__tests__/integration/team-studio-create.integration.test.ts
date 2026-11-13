@@ -39,6 +39,7 @@ import { initCore, loadLocales, getMembershipLimits } from "@breatic/core";
 import { studioMembersRepo } from "@breatic/domain";
 import { studioService } from "@server/modules";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
+import { mirrorInDirectory } from "@server/__tests__/integration/directory-fixtures.js";
 
 try {
   initCore(process.env);
@@ -108,6 +109,7 @@ async function seedTeamStudios(userId: string, n: number): Promise<void> {
       INSERT INTO studio_members (studio_id, user_id, role)
       VALUES (${rows[0]!.id}, ${userId}, 'admin')
     `;
+    await mirrorInDirectory(sql, rows[0]!.id);
   }
 }
 
@@ -304,6 +306,7 @@ describe("createTeamStudio", () => {
       INSERT INTO studio_members (studio_id, user_id, role)
       VALUES (${rows[0]!.id}, ${recipient.id}, 'admin')
     `;
+    await mirrorInDirectory(sql, rows[0]!.id);
     // The transferred studio already counts toward the recipient, so seed one
     // fewer to put them exactly at their ceiling.
     await seedTeamStudios(recipient.id, ceilingFor("team") - 1);
