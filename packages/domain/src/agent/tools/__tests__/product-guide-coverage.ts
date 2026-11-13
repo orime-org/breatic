@@ -77,7 +77,6 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.miniTool.videoUI.removeDialogue": { excluded: REASONS.SCREEN_READER, look: /The bin at the end of a dialogue row removes it/ },
   "canvas.miniTool.videoUI.cutSummary": { described: /a line counts the cut points and segments/ },
   "canvas.miniTool.videoUI.segmentPreview": { described: /beside its range while it plays/ },
-  "canvas.miniTool.videoUI.detectionError": { described: /a detection that failed shows a line saying so with a button to detect again/ },
   "canvas.miniTool.videoUI.outputCapExceeded": { described: /with more the panel says the limit in red/ },
   "canvas.miniTool.videoUI.selectedClipEmpty": { excluded: REASONS.EMPTY_OR_SEARCH },
   "canvas.miniTool.videoUI.timelineEmpty": { excluded: REASONS.EMPTY_OR_SEARCH },

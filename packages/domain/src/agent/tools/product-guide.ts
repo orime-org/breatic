@@ -1055,8 +1055,8 @@ export function renderProductGuide(): string {
       "The current-frame mode uses the frame actually shown by the player. One preview of the selected frame fills " +
       "the row below the modes; click it to move the player there. " +
       `In ${quoted(t("canvas.miniTool.video.split.label"))}, ${quoted(t("canvas.miniTool.videoUI.detectScenes"))} ` +
-      `finds candidate cut points within this same tool; after a detection the button reads ${quoted(t("canvas.miniTool.videoUI.detectAgain"))}, and a detection that failed shows a ` +
-      "line saying so with a button to detect again. Below the button, once the video's frames are read, each cut is a numbered " +
+      `finds candidate cut points within this same tool; after a detection the button reads ${quoted(t("canvas.miniTool.videoUI.detectAgain"))}, and a detection that failed shows ` +
+      `${quoted(t("canvas.miniTool.videoUI.detectionError"))} with ${quoted(t("canvas.task.action.retry"))}, which detects again. Below the button, once the video's frames are read, each cut is a numbered ` +
       "handle on the filmstrip: drag it, or click it and move it one frame with the arrow keys or remove it with Delete; " +
       "clicking the strip elsewhere moves the player there. Under the strip a line counts the cut points and segments, " +
       `${quoted(t("canvas.miniTool.videoUI.atCursor"))} adds a cut at the player cursor (greyed where one already is), each cut's ` +
