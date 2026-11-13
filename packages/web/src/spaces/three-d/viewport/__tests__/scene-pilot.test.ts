@@ -135,7 +135,7 @@ describe('camera moves (design 3.4 item 3)', () => {
   it('pans in the camera plane without turning it', () => {
     const before = start();
     const after = pan(before, 4, 30, -20);
-    expect(after.quaternion.angleTo(before.quaternion)).toBeLessThan(1e-12);
+    expect(after.quaternion.toArray()).toEqual(before.quaternion.toArray());
     expect(Math.abs(after.position.clone().sub(before.position).dot(forward(before)))).toBeLessThan(1e-9);
     expect(after.position.distanceTo(before.position)).toBeGreaterThan(0);
   });
@@ -146,7 +146,7 @@ describe('camera moves (design 3.4 item 3)', () => {
     for (let i = 0; i < 500; i += 1) state = dolly(state.pose, state.pivotDistance, 1);
     expect(state.pose.position.distanceTo(pivot)).toBeGreaterThanOrEqual(0.1 - 1e-9);
     expect(state.pivotDistance).toBeGreaterThanOrEqual(0.1 - 1e-9);
-    expect(state.pose.quaternion.angleTo(start().quaternion)).toBeLessThan(1e-12);
+    expect(state.pose.quaternion.toArray()).toEqual(start().quaternion.toArray());
   });
 
   it('places the pivot at the larger of the distance to the model box centre and 2 units', () => {
