@@ -104,6 +104,8 @@ interface NumericProps {
   onSettle?: () => void;
   /** Whether leaving the field (blur or Enter) turns a number outside `[min, max]` into the nearest bound. */
   clampOnSettle?: boolean;
+  /** Whether a typed number is written only when the field is left, so the keys on the way to it write nothing. */
+  commitOnSettle?: boolean;
 }
 
 /**
@@ -115,6 +117,8 @@ interface NumericProps {
 export function VideoNumericInput(props: NumericProps): React.JSX.Element {
   const { value: persisted, testId, onInvalidChange } = props;
   const [text, setText] = React.useState(String(props.value));
+  // While true (a commitOnSettle field being typed into), the shown number waits for the field to be left.
+  const [typing, setTyping] = React.useState(false);
   const written = React.useRef(props.value);
   const onChange = React.useRef(props.onChange);
   onChange.current = props.onChange;
@@ -124,11 +128,11 @@ export function VideoNumericInput(props: NumericProps): React.JSX.Element {
   // under refused text. Declared before the sync below, so in the commit where the stored value changes elsewhere the
   // shown text is not written back over it.
   React.useEffect(() => {
-    if (!invalid && shown !== written.current) {
+    if (!invalid && !typing && shown !== written.current) {
       written.current = shown;
       onChange.current(shown);
     }
-  }, [invalid, shown]);
+  }, [invalid, typing, shown]);
   React.useEffect(() => {
     if (persisted !== written.current) {
       written.current = persisted;
@@ -141,9 +145,10 @@ export function VideoNumericInput(props: NumericProps): React.JSX.Element {
     onInvalidChange?.(testId, invalid);
     return () => onInvalidChange?.(testId, false);
   }, [onInvalidChange, testId, invalid]);
-  const settles = props.onSettle !== undefined || props.clampOnSettle === true;
+  const settles = props.onSettle !== undefined || props.clampOnSettle === true || props.commitOnSettle === true;
   /**
-   * Leaves the field: a number outside the limits becomes the nearest bound when the field clamps, then the owner settles.
+   * Leaves the field: a number outside the limits becomes the nearest bound when the field clamps, a field that commits on
+   * leaving writes what it shows, then the owner settles.
    * @throws {never} Never.
    */
   const settle = (): void => {
@@ -153,9 +158,10 @@ export function VideoNumericInput(props: NumericProps): React.JSX.Element {
       const high = props.max === undefined ? shown : Math.floor(props.max * 1e6 + 1e-6) / 1e6;
       setText(String(Math.min(high, Math.max(low, shown))));
     }
+    setTyping(false);
     props.onSettle?.();
   };
-  return <Input type='text' inputMode='decimal' autoComplete='off' value={text} aria-label={props.label} data-testid={props.testId} aria-invalid={invalid} disabled={props.disabled} className='h-[var(--control-height)] min-w-0 px-2 text-xs tabular-nums md:text-xs' onBlur={settles ? settle : undefined} onKeyDown={(event) => { if (event.key === 'Enter' && settles) event.currentTarget.blur(); }} onChange={(event) => setText(event.currentTarget.value)} />;
+  return <Input type='text' inputMode='decimal' autoComplete='off' value={text} aria-label={props.label} data-testid={props.testId} aria-invalid={invalid} disabled={props.disabled} className='h-[var(--control-height)] min-w-0 px-2 text-xs tabular-nums md:text-xs' onBlur={settles ? settle : undefined} onKeyDown={(event) => { if (event.key === 'Enter' && settles) event.currentTarget.blur(); }} onChange={(event) => { setText(event.currentTarget.value); if (props.commitOnSettle === true) setTyping(true); }} />;
 }
 
 /**
