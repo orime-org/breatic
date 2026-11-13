@@ -320,6 +320,14 @@ describe("resume", () => {
     expect(await q.resume(c, "R2")).toEqual({ status: "start", awaiting: null });
   });
 
+  it("answers busy while a dead run's taken messages wait to be settled, and changes nothing", async () => {
+    const { c, k } = fresh();
+    await putList(k.taken, ["m1", "m2"]);
+    const before = await snapshot(k);
+    expect(await q.resume(c, "R2")).toEqual({ status: "busy" });
+    expect(await snapshot(k)).toEqual(before);
+  });
+
   it("answers busy while a run is going (RQ-16)", async () => {
     const { c, k } = fresh();
     await getRedis().set(k.active, "R1");

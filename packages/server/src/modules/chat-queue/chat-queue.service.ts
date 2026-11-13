@@ -53,7 +53,7 @@ export type RunEnding =
 export interface ChatQueue {
   enqueue(conversationId: string, item: QueueItem): Promise<EnqueueResult>;
   claim(conversationId: string): Promise<ClaimResult>;
-  /** Take the conversation for a card's answer; `awaiting` is the card that was waiting, for `giveBack`. */
+  /** Take the conversation for a card's answer; `awaiting` is the card that was waiting, for `giveBack`. Busy while a run or a dead run's taken messages hold it. */
   resume(conversationId: string, runId: string): Promise<{ status: "start"; awaiting: string | null } | { status: "busy" }>;
   /** Hand back a conversation `resume` took for an answer that was then refused: to a new run when messages came meanwhile, otherwise freed with the card waiting again. */
   giveBack(conversationId: string, runId: string, awaiting: string | null): Promise<string | null>;
@@ -99,9 +99,13 @@ if redis.call('llen', KEYS[3]) == 0 and redis.call('llen', KEYS[4]) == 0 then re
 redis.call('set', KEYS[1], ARGV[1], 'PX', ARGV[2])
 return append({'start', ARGV[1]}, KEYS[4])`;
 
-/** KEYS active, awaiting; ARGV runId, leaseMs. */
+/**
+ * KEYS active, awaiting, taken; ARGV runId, leaseMs. Busy while a run holds
+ * the conversation, or a dead run's taken messages wait: the next claim
+ * settles those against the store first.
+ */
 const RESUME = `
-if redis.call('exists', KEYS[1]) == 1 then return {'busy', ''} end
+if redis.call('exists', KEYS[1]) == 1 or redis.call('llen', KEYS[3]) > 0 then return {'busy', ''} end
 local card = redis.call('get', KEYS[2]) or ''
 redis.call('set', KEYS[1], ARGV[1], 'PX', ARGV[2])
 redis.call('del', KEYS[2])
@@ -271,7 +275,7 @@ export function createChatQueue(redis: Redis): ChatQueue {
     },
     async resume(c, runId) {
       const k = keysOf(c);
-      const [status, card] = (await redis.eval(RESUME, 2, k.active, k.awaiting, runId, leaseMs())) as [string, string];
+      const [status, card] = (await redis.eval(RESUME, 3, k.active, k.awaiting, k.taken, runId, leaseMs())) as [string, string];
       return status === "busy" ? { status: "busy" } : { status: "start", awaiting: card === "" ? null : card };
     },
     async giveBack(c, runId, awaiting) {
