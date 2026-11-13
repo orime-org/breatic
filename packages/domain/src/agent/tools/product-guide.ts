@@ -19,7 +19,7 @@
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 
-import { getAgentConfig, getMiniToolsConfig } from "@breatic/core";
+import { getAgentConfig, getMiniToolsConfig, getSceneConfig } from "@breatic/core";
 import {
   AGENT_INSTRUCTIONS_MAX_CHARS,
   CHAT_MESSAGE_MAX_CHARS,
@@ -74,10 +74,11 @@ const INDEX: readonly { group: string; sections: readonly (readonly [name: strin
     sections: [
       ["Document spaces", "writing, formatting, pasting, comments and media in a document"],
       ["Document proposal cards", "applying a comment, rewrite or insert proposed in this chat"],
+      ["Document snapshots", "saving, previewing, comparing, restoring, renaming and deleting snapshots of a document"],
     ],
   },
   { group: "Timeline", sections: [["Timeline spaces", "adding videos and web animations to a timeline and arranging them"]] },
-  { group: "3D", sections: [["3D spaces", "importing and generating models and their proposal card, objects, transforms, locks and the view in a 3D space"]] },
+  { group: "3D", sections: [["3D spaces", "importing and generating models and their proposal card, objects, transforms, locks, the view and the viewfinder that sends a still to the Agent, a Canvas or the clipboard in a 3D space"]] },
 ];
 
 /** Every section name the index lists. */
@@ -1583,7 +1584,27 @@ export function renderProductGuide(): string {
       "Click one to open its panel on the right; click the same button again to close it, or another to switch content. " +
       `An X with the ${quoted(t("spaces.threeD.closePanel"))} tooltip also closes the panel. Its content scrolls above the minimap. ` +
       "Opening a header menu while the panel is open keeps keyboard focus in that new menu. " +
-      "The minimap button toggles the scene's top view; clicking that map navigates your personal viewing camera.",
+      "The minimap button toggles the scene's top view; clicking that map navigates your personal viewing camera. It is unavailable while the viewfinder is open.",
+    `A frame button at the top right of the 3D Space, ${quoted(t("spaces.threeD.viewfinder.open"))}, takes a still of the scene to use for picture and video generation; it is unavailable to a Viewer. ` +
+      "Clicking it shows a frame over the view with everything outside it dimmed; an open right panel closes and is not reopened when the viewfinder closes (its own buttons still open it meanwhile), the minimap and the left rail are put away until it closes, and selecting an object no longer opens its panel by itself. " +
+      "The frame starts as the largest one of the chosen aspect ratio that fits, and moves back into place when the window, the chat column or the right panel changes the view's size. " +
+      "Dragging any of its four corners resizes it with the opposite corner fixed: square corners keep the ratio, round corners (under Free) change width and height separately. " +
+      "The view still turns and zooms, and objects can still be selected and moved. " +
+      `Under the frame, a menu offers the aspect ratio (Free, 16:9, 9:16, 1:1, 4:3, 3:4, 3:2 and 2:3, starting at 16:9), the still's size in pixels (its long edge is ${String(getSceneConfig().capture.long_edge_px)}), ` +
+      `${quoted(t("spaces.threeD.viewfinder.cancel"))} and ${quoted(t("spaces.threeD.viewfinder.confirm"))}. ` +
+      `${quoted(t("spaces.threeD.viewfinder.confirm"))} takes the still without the grid, handles, selection outlines or joint dots; while a model is loading it says ${quoted(t("spaces.threeD.viewfinder.modelsLoading"))}. ` +
+      `Then the menu shows ${quoted(t("spaces.threeD.viewfinder.toAgent"))}, ${quoted(t("spaces.threeD.viewfinder.toCanvas"))}, ${quoted(t("spaces.threeD.viewfinder.copy"))} and ` +
+      `${quoted(t("spaces.threeD.viewfinder.reframe"))}, and the view stays still; the frame shows the still, and the toolbar of the selected objects is put away until the viewfinder goes back to framing or closes. ` +
+      `${quoted(t("spaces.threeD.viewfinder.toAgent"))} opens the chat column and attaches the still to the conversation on screen, where it uploads like a picture attached by hand, saying ${quoted(t("spaces.threeD.viewfinder.addedToAgent"))}. ` +
+      `${quoted(t("spaces.threeD.viewfinder.toCanvas"))} lists every Canvas of the Project under ${quoted(t("spaces.threeD.viewfinder.canvasListTitle"))}, even when there is one, or says ${quoted(t("spaces.threeD.viewfinder.noCanvas"))}. ` +
+      "Clicking one puts an image node holding the still on that Canvas, beside what is already there, whether or not its tab is open; " +
+      `a message naming that Canvas has ${quoted(t("spaces.threeD.viewfinder.view"))}, which opens that Canvas and selects the node. ` +
+      "The node shows the upload as any upload onto a Canvas does, failures included. When the Canvas cannot be reached a message says so and nothing is placed. " +
+      `${quoted(t("spaces.threeD.viewfinder.copy"))} puts the still on the clipboard as a PNG, saying ${quoted(t("spaces.threeD.viewfinder.copied"))}. ` +
+      "The viewfinder hands the still over and closes as soon as it is in the chat attachments, on the Canvas or on the clipboard; until then its button waits and the others are unavailable. " +
+      "Uploading goes on in the chat attachments or on the Canvas node, which show how it ends. When the still could not be handed over, the viewfinder stays on it to try again. " +
+      `Clicking the frame button or pressing Escape closes the viewfinder; on the still, Escape goes back to framing. Closing it before the hand-over lets the hand-over finish, and its result is told in a message. ` +
+      "Switching to another Space tab and back keeps the viewfinder as it was.",
     `The ${quoted(t("spaces.threeD.tasks"))} panel lists every member's model imports and generations in this Space, newest first, the same for everyone. ` +
       `Its header has ${quoted(t("spaces.threeD.taskList.filter"))}, whose menu offers ${quoted(t("spaces.threeD.taskList.filterRunning"))}; ` +
       `${quoted(t("spaces.threeD.taskList.filterKind"))}: ${quoted(t("spaces.threeD.taskList.filterAll"))}, ${quoted(t("spaces.threeD.taskList.kind"))} or ${quoted(t("spaces.threeD.taskList.kindGeneration"))}; ` +
@@ -1664,7 +1685,8 @@ export function renderProductGuide(): string {
     "With the Space holding keyboard focus and no text box being edited, Cmd/Ctrl+D duplicates, Delete or Backspace deletes, " +
       "Cmd/Ctrl+Z undoes, Cmd/Ctrl+Shift+Z redoes, and Ctrl+Y also redoes on Windows. F focuses the selection. " +
       "Escape in a property box cancels its draft; outside a box each press does the first of these that applies: cancel an active handle or joint drag, " +
-      "turn joint adjustment off, close an open panel, clear the selection. Losing focus, hiding the scene " +
+      "turn joint adjustment off, close an open panel, leave the viewfinder (from a still back to framing, from framing closed; an open Canvas list closes first), " +
+      "clear the selection. Losing focus, hiding the scene " +
       "or losing editing access cancels an unfinished handle gesture. A Viewer can browse and select, but cannot change shared objects.",
     `A refused scene connection says ${quoted(t("spaces.threeD.refused"))} ` +
       "The scene uses the same live collaborative document while its tab stays open, including across Space switches and reconnects. " +
@@ -1949,13 +1971,13 @@ export function renderProductGuide(): string {
       `menu: ${quoted(t("spaces.document.docMenu.comments"))}, which ends in ` +
       `${quoted(t("spaces.document.docMenu.commentsUnresolved", { count: 2 }))} or ` +
       `${quoted(t("spaces.document.docMenu.commentsNone"))} and opens the comments panel, then ` +
-      `${quoted(t("spaces.document.docMenu.saveSnapshot"))} and ` +
-      `${quoted(t("spaces.document.docMenu.restoreSnapshot"))}, both marked ` +
-      `${quoted(t("spaces.document.docMenu.notOpenYet"))}. The three dots are hidden while the comments panel is ` +
-      "open; its X brings them back. A dot on the three dots means some comments are " +
+      `${quoted(t("spaces.document.docMenu.saveSnapshot"))} (not shown to a Viewer) and ` +
+      `${quoted(t("spaces.document.docMenu.restoreSnapshot"))}. The three dots are hidden while the comments panel or the ` +
+      "snapshots panel is open; its X brings them back. A dot on the three dots means some comments are " +
       "unresolved. Other people in the document show as coloured carets " +
       "with their names. Content written by a newer version of the editor shows as a box marked " +
       `${quoted(t("spaces.document.unsupported.label"))} and is kept as it is.`,
+    "- Snapshots: saving, comparing and restoring snapshots of the body are in the Document snapshots section.",
     "- The heading outline: an icon at the top left of the body, level with the three dots, opens and shuts " +
       `it; hovering it says ${quoted(t("spaces.document.outline.show"))} or ${quoted(t("spaces.document.outline.hide"))}. ` +
       "The outline lists the body's level 1–3 headings as a tree, with the same numbers the body shows; headings " +
@@ -1998,6 +2020,28 @@ export function renderProductGuide(): string {
       `was typed is kept. With no comments the panel shows ${quoted(t("spaces.document.comment.empty"))} ` +
       `With only resolved ones, ${quoted(t("spaces.document.comment.filterOpen"))} shows ` +
       `${quoted(t("spaces.document.comment.nothingUnresolved"))}`,
+    "",
+    "## Document snapshots",
+    `${quoted(t("spaces.document.docMenu.saveSnapshot"))} in the document's three-dot menu asks for an optional name and keeps the body ` +
+      "as it is; media not finished uploading is left out and a notice says how many. When snapshots are " +
+      "full, a notice says to delete old ones first. " +
+      `${quoted(t("spaces.document.docMenu.restoreSnapshot"))} opens the ${quoted(t("spaces.document.versions.title"))} ` +
+      `panel on the right: ${quoted(t("spaces.document.versions.current"))} on top, then each ` +
+      "snapshot, newest first, by its name (or save time) and who saved it, and " +
+      `${quoted(t("spaces.document.versions.loadMore"))} at the end if there are more. Clicking one shows it in ` +
+      "the body's place, read-only, under a bar with " +
+      `${quoted(t("spaces.document.versions.compareWithCurrent"))}, ${quoted(t("spaces.document.versions.restore"))} ` +
+      `(not for a Viewer) and ${quoted(t("spaces.document.versions.exitPreview"))}. Hovering a row shows three dots ` +
+      `with ${quoted(t("spaces.document.versions.compareWithShown"))} (not on the one shown), ` +
+      `${quoted(t("spaces.document.versions.rename"))} ` +
+      `and ${quoted(t("spaces.document.versions.delete"))} (the last two not for a Viewer). A comparison marks added ` +
+      "text on a green background, removed text red and struck through, changed formatting on blue, and " +
+      "folds long unchanged " +
+      `stretches into one row that opens on a click; ${quoted(t("spaces.document.versions.exitCompare"))} leaves it. ` +
+      `${quoted(t("spaces.document.versions.restore"))} asks first, then replaces the whole body with the snapshot ` +
+      "for everyone at once; Cmd/Ctrl+Z takes it back. Comments are kept: those the snapshot had go back where they " +
+      "were; later ones lose their place as if their text were deleted. " +
+      "Deleting a snapshot asks first and cannot be undone.",
     "",
     "## When something is wrong",
     `- ${quoted(t("connection.banner.disconnected.text"))} across the top, with ` +

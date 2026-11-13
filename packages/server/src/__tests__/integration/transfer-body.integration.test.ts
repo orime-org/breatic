@@ -96,6 +96,7 @@ initConfiguredProvider();
 const SNAPSHOT = "/canvas/node-history/snapshot";
 const PASTE = "/canvas/paste";
 const CHAT = "/chat/message";
+const DOC_VERSIONS = "/documents/versions";
 
 /** `t0`: `<svg`, `&`, a C0 control, a quote, a backslash, a newline and CJK, then 1.2 MB. */
 const T0 = "<svg onload=1>&\u0001\"\\\n中文" + "x".repeat(1_200_000);
@@ -308,7 +309,7 @@ describe("§4.1 the main path", () => {
     expect(used.status).toBe(201);
   });
 
-  it("T52: a route outside the three ignores the transfer shape", async () => {
+  it("T52: a route outside the four ignores the transfer shape", async () => {
     const w = await world();
 
     const res = await post(app, "/canvas/tasks", w.a.cookie, ref(w.key));
@@ -329,6 +330,27 @@ describe("§4.1 the main path", () => {
     expect(await contents(w.projectId, w.node)).toEqual([T0]);
     expect(read.calls).toEqual([[w.key, Math.min(capSnap(), w.file.length)]]);
     await expectClaimed(w.key);
+    expect(await getRedis().get(lockKey(w.a.id))).toBeNull();
+  });
+
+  it("T53 for document snapshots: a body saved through a transfer is stored exactly", async () => {
+    const w = await bareWorld();
+    const spaceId = crypto.randomUUID();
+    const content = {
+      type: "doc",
+      content: [{ type: "blockGroup", content: [{ type: "blockContainer", attrs: { id: "b1" }, content: [{ type: "paragraph", content: [{ type: "text", text: T0 }] }] }] }],
+    };
+    const file = enc({ project_id: w.projectId, space_id: spaceId, content, schema_version: "v1" });
+    const key = await grant(w, file.length);
+    read.answer = async () => file;
+
+    const res = await post(app, DOC_VERSIONS, w.a.cookie, ref(key));
+
+    expect(res.status).toBe(201);
+    const stored = await sql<{ content: unknown }[]>`SELECT content FROM document_versions WHERE project_id = ${w.projectId} AND space_id = ${spaceId}`;
+    expect(stored.map((row) => row.content)).toEqual([content]);
+    expect(read.calls).toEqual([[key, Math.min(transferConfig().route_max_bytes.document_version_save, file.length)]]);
+    await expectClaimed(key);
     expect(await getRedis().get(lockKey(w.a.id))).toBeNull();
   });
 
@@ -821,9 +843,9 @@ describe("§4.2 refusals and claims", () => {
     expect(read.calls).toHaveLength(60);
   });
 
-  it("T74: a reference without a session answers 401 on all three routes", async () => {
+  it("T74: a reference without a session answers 401 on all four routes", async () => {
     const w = await bareWorld();
-    for (const path of [SNAPSHOT, PASTE, CHAT]) {
+    for (const path of [SNAPSHOT, PASTE, CHAT, DOC_VERSIONS]) {
       const res = await post(app, path, null, ref(w.key));
       expect(res.status).toBe(401);
     }

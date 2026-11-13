@@ -152,6 +152,16 @@ describe("templates in proposals", () => {
     expect(lineOf("retro-found-footage")).not.toContain("It also fits when");
   });
 
+  // inner#1808: the food goal, each of its templates with a case for when it also fits.
+  it("indexes the three food templates under their goal, each saying when it also fits", () => {
+    const lines = String(makeProposeCanvasAction().description ?? "").split(" | ");
+    for (const id of ["food-money-shot", "recipe-process-montage", "dish-hero-still"]) {
+      const line = lines.find((one) => one.includes(`${id} (food,`));
+      expect(line, `${id} indexed`).toBeDefined();
+      expect(line, id).toContain("It also fits when");
+    }
+  });
+
   it("indexes the registry it is given and no other", () => {
     const said = makeProposeCanvasAction(FIXTURES).description ?? "";
     expect(said).toContain("fixture-steps");

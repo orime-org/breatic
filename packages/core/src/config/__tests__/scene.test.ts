@@ -17,21 +17,23 @@ const IMPORT_DEFAULTS = {
   progress_publish_ms: 1000,
 };
 const IMPORT_FIELDS = Object.keys(IMPORT_DEFAULTS) as (keyof typeof IMPORT_DEFAULTS)[];
+const CAPTURE_DEFAULTS = { long_edge_px: 2048, min_frame_px: 120, canvas_sync_timeout_ms: 10000 };
+const CAPTURE_FIELDS = Object.keys(CAPTURE_DEFAULTS) as (keyof typeof CAPTURE_DEFAULTS)[];
 
 describe("3D scene runtime configuration", () => {
   it("loads the shipped uniform-scale sensitivity and caches a frozen value", () => {
     const config = getSceneConfig();
-    expect(config).toEqual({ scale_sensitivity: 0.01, import: IMPORT_DEFAULTS });
+    expect(config).toEqual({ scale_sensitivity: 0.01, import: IMPORT_DEFAULTS, capture: CAPTURE_DEFAULTS });
     expect(getSceneConfig()).toBe(config);
     expect(Object.isFrozen(config)).toBe(true);
   });
 
   it("uses the approved default when the YAML field is absent", () => {
-    expect(sceneConfigSchema.parse({})).toEqual({ scale_sensitivity: 0.01, import: IMPORT_DEFAULTS });
+    expect(sceneConfigSchema.parse({})).toEqual({ scale_sensitivity: 0.01, import: IMPORT_DEFAULTS, capture: CAPTURE_DEFAULTS });
   });
 
   it.each([0.001, 0.01, 0.1, 1])("accepts a positive sensitivity of %s", (value) => {
-    expect(sceneConfigSchema.parse({ scale_sensitivity: value })).toEqual({ scale_sensitivity: value, import: IMPORT_DEFAULTS });
+    expect(sceneConfigSchema.parse({ scale_sensitivity: value })).toEqual({ scale_sensitivity: value, import: IMPORT_DEFAULTS, capture: CAPTURE_DEFAULTS });
   });
 
   it.each([0, -0.01, NaN, Infinity, -Infinity, "0.01", null])(
@@ -62,7 +64,7 @@ describe("scene model import budgets", () => {
     };
 
     expect(sceneConfigSchema.parse({ scale_sensitivity: 0.025, import: configured })).toEqual({
-      scale_sensitivity: 0.025, import: configured,
+      scale_sensitivity: 0.025, import: configured, capture: CAPTURE_DEFAULTS,
     });
   });
 
@@ -89,5 +91,25 @@ describe("scene model import budgets", () => {
     { label: "a number", value: 1 },
   ])("rejects an import section written as $label", ({ value }) => {
     expect(sceneConfigSchema.safeParse({ import: value }).success).toBe(false);
+  });
+});
+
+describe("viewfinder capture parameters (#1411)", () => {
+  it("uses the approved defaults for an omitted or empty capture section", () => {
+    expect(sceneConfigSchema.parse({}).capture).toEqual(CAPTURE_DEFAULTS);
+    expect(sceneConfigSchema.parse({ capture: {} }).capture).toEqual(CAPTURE_DEFAULTS);
+  });
+
+  it.each(CAPTURE_FIELDS)("overrides %s while retaining the other defaults", (field) => {
+    expect(sceneConfigSchema.parse({ capture: { [field]: 9 } }).capture).toEqual({ ...CAPTURE_DEFAULTS, [field]: 9 });
+  });
+
+  it.each(CAPTURE_FIELDS)("rejects invalid values for %s", (field) => {
+    for (const value of [0, -1, 0.5, NaN, Infinity, "1", null, false]) {
+      const result = sceneConfigSchema.safeParse({ capture: { [field]: value } });
+
+      expect(result.success, `Invalid ${field} was accepted: ${String(value)}`).toBe(false);
+      if (!result.success) expect(result.error.issues[0]?.path).toEqual(["capture", field]);
+    }
   });
 });

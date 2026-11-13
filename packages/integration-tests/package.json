@@ -21,6 +21,7 @@
     "@breatic/domain": "workspace:*",
     "@breatic/provider": "workspace:*",
     "@breatic/shared": "workspace:*",
+    "@hocuspocus/extension-redis": "catalog:",
     "@hocuspocus/server": "catalog:",
     "@testcontainers/postgresql": "catalog:",
     "@types/node": "catalog:",

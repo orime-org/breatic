@@ -336,6 +336,11 @@ export {
   understandSchema,
   transcribeSchema,
   nodeHistorySnapshotSchema,
+  DOCUMENT_VERSION_NAME_MAX_CHARS,
+  documentVersionSaveSchema,
+  documentVersionRenameSchema,
+  documentVersionListQuerySchema,
+  documentVersionScopeSchema,
   canvasPasteSchema,
   pastePairSchema,
   pasteHistoryItemSchema,
@@ -1154,7 +1159,7 @@ export {
 } from "@shared/analytics/attribution.js";
 
 export { SCENE_OBJECT_NAME_MAX, SCENE_POSE_KEY_PREFIX, SCENE_POSE_KEY_MAX_LENGTH, SCENE_POSE_HIPS_KEY, SceneVectorSchema, SceneRotationSchema, SceneScaleSchema, SceneModelSchema, ScenePoseSchema, SceneObjectValuesSchema, SceneObjectSchema, gatherScenePose, expandScenePose, isSceneModelMediaType } from "@shared/scene.js";
-export type { SceneVector, SceneRotation, SceneModel, ScenePose, SceneObjectValues, SceneObject, SceneEditableField, SceneImportLimits, SceneControlsConfig } from "@shared/scene.js";
+export type { SceneVector, SceneRotation, SceneModel, ScenePose, SceneObjectValues, SceneObject, SceneEditableField, SceneImportLimits, SceneControlsConfig, SceneCaptureConfig } from "@shared/scene.js";
 export { SCENE_FORMAT_VERSION, getSceneRootMap, initializeSceneDocument } from "@shared/scene-version.js";
 
 export * from "@shared/credit-amount.js";
@@ -1164,6 +1169,6 @@ export { projectVisitRequestSchema, projectVisitReceiptSchema, projectVisitOpene
 export type { ProjectVisitRequest, ProjectVisitReceipt, ProjectVisitOpened, ProjectVisitLookup } from "@shared/project-visit-contract.js";
 export type { AccountActivityEntity, AccountActivityKind, AccountActivityCoverageEntity } from "@shared/types/entities.js";
 export type {
-  TimelineExecution, TimelineExecutionRow, TimelineExecutionStatus, TimelineWebResolution, WebAnimationSourceVersion,
+  TimelineExecution, TimelineExecutionRow, TimelineExecutionStatus, TimelineWebResolution, WebAnimationSourceVersion, DocumentVersion,
 } from "@shared/types/entities.js";
 export { routeSchema, type RunRoute } from "@shared/schemas/route.js";

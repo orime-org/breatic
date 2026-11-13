@@ -132,6 +132,7 @@ describe("storageConfigSchema — the transfer section", () => {
       chat_message: 6291456,
       canvas_paste: 25165824,
       node_history_snapshot: 25165824,
+      document_version_save: 25165824,
     },
     reference_ttl_seconds: 3600,
     read_lock_seconds: 60,

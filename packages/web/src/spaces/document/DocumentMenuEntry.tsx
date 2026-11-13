@@ -34,67 +34,6 @@ import {
 } from '@web/components/ui/dropdown-menu';
 import { useTranslation } from '@web/i18n/use-translation';
 
-/** One not-yet-open command in the menu. */
-interface MenuEntry {
-  id: string;
-  labelKey: string;
-  Icon: typeof Camera;
-}
-
-const ENTRIES: readonly MenuEntry[] = [
-  {
-    id: 'save-snapshot',
-    labelKey: 'spaces.document.docMenu.saveSnapshot',
-    Icon: Camera,
-  },
-  {
-    id: 'restore-snapshot',
-    labelKey: 'spaces.document.docMenu.restoreSnapshot',
-    Icon: History,
-  },
-];
-
-/**
- * A menu entry for a command that is not open yet.
- *
- * Dimmed, announced as disabled, inert on select and on hover, and carrying a
- * note that says why.
- * The `disabled` prop is deliberately absent — Radix takes a disabled item out
- * of the menu's roving focus, so the entry would stop being reachable by moving
- * focus, and an entry meant to be discovered has to stay reachable.
- * @param root0 - Entry props.
- * @param root0.entry - Which command this stands for.
- * @param root0.note - The note saying it is not available.
- * @returns The menu item.
- */
-function ComingCommand({
-  entry,
-  note,
-}: {
-  entry: MenuEntry;
-  note: string;
-}): React.JSX.Element {
-  const t = useTranslation();
-  const Icon = entry.Icon;
-  return (
-    <DropdownMenuItem
-      aria-disabled='true'
-      data-testid={`doc-doc-menu-${entry.id}`}
-      onSelect={(event) => event.preventDefault()}
-      onPointerMove={(event) => event.preventDefault()}
-      className='cursor-not-allowed'
-    >
-      <span className='flex flex-1 items-center gap-2 opacity-50'>
-        <Icon className='h-4 w-4' />
-        {t(entry.labelKey)}
-        <span className='ml-auto rounded-chrome bg-muted px-1 py-0.5 text-2xs font-medium text-muted-foreground'>
-          {note}
-        </span>
-      </span>
-    </DropdownMenuItem>
-  );
-}
-
 interface DocumentMenuEntryProps {
   /** Whether the comment panel is on screen, which takes this row away. */
   commentsOpen: boolean;
@@ -108,6 +47,12 @@ interface DocumentMenuEntryProps {
    * and it is what the row says the panel holds.
    */
   unresolvedComments: number;
+  /** Whether the snapshot panel is on screen, which takes this row away too. */
+  versionsOpen: boolean;
+  /** Opens the dialog that saves a snapshot, or null where the user cannot save (a viewer). */
+  onSaveSnapshot: (() => void) | null;
+  /** Opens the snapshot panel, or null where the document has none. */
+  onRestoreSnapshot: (() => void) | null;
 }
 
 /**
@@ -116,6 +61,9 @@ interface DocumentMenuEntryProps {
  * @param root0.commentsOpen - Whether the comment panel is on screen.
  * @param root0.onOpenComments - Opens it.
  * @param root0.unresolvedComments - How many threads are unresolved.
+ * @param root0.versionsOpen - Whether the snapshot panel is on screen.
+ * @param root0.onSaveSnapshot - Saves a snapshot, when the user may.
+ * @param root0.onRestoreSnapshot - Opens the snapshot panel.
  * @returns The trigger and its menu.
  */
 export const DocumentMenuEntry = React.memo(
@@ -123,6 +71,9 @@ export const DocumentMenuEntry = React.memo(
     commentsOpen,
     onOpenComments,
     unresolvedComments,
+    versionsOpen,
+    onSaveSnapshot,
+    onRestoreSnapshot,
   }: DocumentMenuEntryProps): React.JSX.Element | null {
     const t = useTranslation();
     // The way in stands aside once what it opens is on screen. The room on a
@@ -131,9 +82,8 @@ export const DocumentMenuEntry = React.memo(
     // anything else in here means closing the panel first, which its own
     // button does (user 2026-09-22) — and that holds however many commands
     // this menu grows, the snapshot panel included.
-    if (commentsOpen) return null;
+    if (commentsOpen || versionsOpen) return null;
 
-    const note = t('spaces.document.docMenu.notOpenYet');
     // What the row says the panel holds: how much is waiting in it, else
     // that there is nothing. The row is only drawn while the panel is shut,
     // so it never has to say that it is open.
@@ -204,10 +154,25 @@ export const DocumentMenuEntry = React.memo(
                 </span>
               </span>
             </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            {ENTRIES.map((entry) => (
-              <ComingCommand key={entry.id} entry={entry} note={note} />
-            ))}
+            {(onSaveSnapshot !== null || onRestoreSnapshot !== null) && <DropdownMenuSeparator />}
+            {/* A viewer has nothing to save, so the row is not drawn for one,
+                as with every other writing entry a viewer meets. */}
+            {onSaveSnapshot !== null && (
+              <DropdownMenuItem data-testid='doc-doc-menu-save-snapshot' onSelect={onSaveSnapshot}>
+                <span className='flex flex-1 items-center gap-2'>
+                  <Camera className='h-4 w-4' />
+                  {t('spaces.document.docMenu.saveSnapshot')}
+                </span>
+              </DropdownMenuItem>
+            )}
+            {onRestoreSnapshot !== null && (
+              <DropdownMenuItem data-testid='doc-doc-menu-restore-snapshot' onSelect={onRestoreSnapshot}>
+                <span className='flex flex-1 items-center gap-2'>
+                  <History className='h-4 w-4' />
+                  {t('spaces.document.docMenu.restoreSnapshot')}
+                </span>
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
