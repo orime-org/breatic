@@ -45,6 +45,7 @@ import {
   DOC_TABLE_HEADER,
   DOC_TABLE_ROW,
 } from '@web/spaces/document/document-table-nodes';
+import { bodyDepthBetween, carrierAt } from '@web/spaces/document/document-body-carrier';
 import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-nodes';
 
 /** A row as the editor's block calls hand it back. */
@@ -74,9 +75,6 @@ interface Placement {
   readonly side: 'before' | 'after';
 }
 
-/** What a block's own body is: a cell, or a column (inner#1314). */
-const BODIES = new Set<string>([DOC_TABLE_CELL, DOC_TABLE_HEADER, DOC_COLUMN]);
-
 /** What is carried whole, as one block of the body it stands in. */
 const CARRIERS = new Set<string>([DOC_TABLE, DOC_COLUMN_LIST]);
 
@@ -98,21 +96,15 @@ function unitsOf(editor: MoveEditor, blocks: readonly BlockLike[]): BlockLike[] 
   if (rows.some((row) => row === undefined)) return [...blocks];
   const $rows = rows.map((row) => doc.resolve(row!.from));
   const $first = $rows[0];
-  if ($first === undefined) return [];
-  const shared = Math.min(...$rows.map(($row) => $first.sharedDepth($row.pos)));
-  let body = shared;
-  while (body > 0 && !BODIES.has($first.node(body).type.name)) body -= 1;
+  const $last = $rows[$rows.length - 1];
+  if ($first === undefined || $last === undefined) return [];
+  // The first and last rows' common body holds every row between them.
+  const body = bodyDepthBetween($first, $last);
   const units: BlockLike[] = [];
   const seen = new Set<string>();
   $rows.forEach(($row, index) => {
-    let unit: BlockLike | undefined = blocks[index];
-    for (let depth = body + 1; depth <= $row.depth; depth += 1) {
-      const node = $row.node(depth);
-      if (CARRIERS.has(node.type.name)) {
-        unit = editor.getBlock(String(node.attrs['id']));
-        break;
-      }
-    }
+    const carrier = carrierAt($row, body);
+    const unit = carrier === null ? blocks[index] : editor.getBlock(String(carrier.node.attrs['id']));
     if (unit !== undefined && !seen.has(unit.id)) {
       seen.add(unit.id);
       units.push(unit);
