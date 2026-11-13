@@ -158,3 +158,46 @@ describe('dragging a table holding columns', () => {
     expect(shapeOf(editor.document as never)).toEqual(['[a|c]', 'docTable']);
   });
 });
+
+describe('a copy across columns', () => {
+  /**
+   * Copies a range with the editor's own copy.
+   * @param editor - The editor.
+   * @param from - Where the range starts.
+   * @param to - Where it ends.
+   * @returns The clipboard formats written.
+   */
+  function copied(editor: Editor, from: number, to: number): Record<string, string> {
+    const data: Record<string, string> = {};
+    select(editor, from, to);
+    const event = new Event('copy', { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'clipboardData', {
+      value: { setData: (type: string, value: string) => (data[type] = value), clearData: () => undefined, getData: (type: string) => data[type] ?? '' },
+    });
+    editor.prosemirrorView.dom.dispatchEvent(event);
+    return data;
+  }
+
+  it('pastes in the body as a group of the parts copied', async () => {
+    const source = await openReady([columnsBlock(['alpha', 'beta'], ['gamma', 'delta'])]);
+    const formats = copied(source, positionOf(source, 'beta', 0), positionOf(source, 'gamma', 5));
+    const editor = await openReady([para('lead'), para('')]);
+    select(editor, editor.prosemirrorView.state.doc.content.size - 3);
+    pasteFormats(editor, formats);
+    await settled();
+    // A block pasted on the last line leaves a line to carry on, as a table does.
+    expect(shapeOf(editor.document as never)).toEqual(['lead', '[beta|gamma]', '¶']);
+  });
+
+  it('is refused in a column', async () => {
+    const source = await openReady([columnsBlock(['alpha', 'beta'], ['gamma', 'delta'])]);
+    const formats = copied(source, positionOf(source, 'beta', 0), positionOf(source, 'gamma', 5));
+    const editor = await openReady([columnsBlock(['x'], ['y'])]);
+    const before = editor.prosemirrorView.state.doc;
+    caretAt(editor, 'x');
+    pasteFormats(editor, formats);
+    await settled();
+    expect(editor.prosemirrorView.state.doc.eq(before)).toBe(true);
+    expect(toast.warning).toHaveBeenCalledWith(refusal());
+  });
+});
