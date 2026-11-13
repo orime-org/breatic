@@ -4,8 +4,9 @@
 /**
  * What the document hands the Agent's attachment tray (inner#936,
  * inner#1316): the selection or a block as one Markdown text item, or a
- * picture, video or audio as a media attachment followed by the rows nested
- * under it as text, taken at the moment of the click.
+ * picture, video or audio as a media attachment; from the handle menu, the
+ * rows nested under the media follow as text when they hold content. Taken
+ * at the moment of the click.
  *
  * Ids follow the canvas convention of naming what was picked
  * (`spaces/canvas/attach-nodes.ts`): a block is keyed by its id, so adding it

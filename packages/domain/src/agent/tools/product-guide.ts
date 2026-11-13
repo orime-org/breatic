@@ -1802,7 +1802,7 @@ export function renderProductGuide(): string {
       "Agent's box as an attachment, opening the Agent panel if hidden; greyed when they hold " +
       "neither words (spaces don't count) nor uploaded media. On media it hands " +
       `over the file plus nested lines as text; ${quoted(t("spaces.document.commands.comment"))} covers ` +
-      `the whole item; both stay greyed mid-upload, and pressing either says ` +
+      `the whole item; both stay greyed mid-upload; pressing either says ` +
       `${quoted(t("spaces.document.media.notUploaded"))} ` +
       `${quoted(t("spaces.document.commands.blockType"))}, ` +
       `${quoted(t("spaces.document.blockHandle.insertBelow"))}, ${quoted(t("spaces.document.commands.align"))} ` +
@@ -1843,15 +1843,16 @@ export function renderProductGuide(): string {
       `done, the box says ${quoted(t("spaces.document.media.notFinished"))} and anyone who can edit can ` +
       `${quoted(t("spaces.document.media.remove"))} it. What cannot be pasted (a canvas node with nothing in ` +
       "it yet, an address the page cannot fetch) is left out, and a message says how many. Hovering a picture, video or " +
-      "audio, or clicking it, shows a row of icons above it: left, centre and right alignment (only when the " +
+      "audio, or clicking it, shows a row of icons above it (under it in a table cell at the view's top): " +
+      "left, centre and right alignment (only when the " +
       "picture or video is narrower than the page; audio is always as wide as the page), " +
       `${quoted(t("spaces.document.media.caption"))} (a T), which opens a line under it for a caption, ` +
       `${quoted(t("common.mediaViewer.fullscreen"))} (two arrows pointing out to opposite corners, pictures and videos; ` +
       "double-clicking a picture does the same; a video goes on from where it was, and an X at the top right of the " +
       "screen closes it), " +
       `${quoted(t("spaces.document.media.download"))} (an arrow into a tray), which downloads the file, ` +
-      `${quoted(t("canvas.contextMenu.addToAgent"))} (a speech bubble with a plus), ` +
-      `${quoted(t("spaces.document.commands.comment"))} (a speech bubble with lines; neither in a ` +
+      `${quoted(t("canvas.contextMenu.addToAgent"))} (a bubble with a plus), ` +
+      `${quoted(t("spaces.document.commands.comment"))} (a bubble with lines; neither in a ` +
       "full-screen table), and " +
       `${quoted(t("spaces.document.media.delete"))} (a bin); hovering an icon shows its name. Clicking a picture or video ` +
       "also shows a small square at each " +
@@ -1911,7 +1912,7 @@ export function renderProductGuide(): string {
       `with no table on it a notice says ${quoted(t("spaces.document.table.noTableToPaste"))}. When the browser takes nothing ` +
       `onto the clipboard, a notice says ${quoted(t("spaces.document.table.copyFailed"))} and a cut deletes nothing. ` +
       `${quoted(t("canvas.contextMenu.addToAgent"))} hands the row or column to the Agent, shows only in a ` +
-      "Project and is greyed when its cells hold neither words nor uploaded media. Where a merged cell reaches out of the " +
+      "Project and is greyed when its cells hold no words or uploaded media. Where a merged cell reaches out of the " +
       "row or column, the copy, cut, paste and " +
       `${quoted(t("canvas.contextMenu.addToAgent"))} items are greyed, and choosing one says ` +
       `${quoted(t("spaces.document.table.splitMergedFirst"))}. ` +
