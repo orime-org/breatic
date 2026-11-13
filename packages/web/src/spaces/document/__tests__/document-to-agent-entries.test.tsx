@@ -12,6 +12,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import * as React from 'react';
 import * as Y from 'yjs';
+import { TextSelection } from '@tiptap/pm/state';
 
 import { documentBodyFragment } from '@breatic/shared';
 
@@ -39,6 +40,7 @@ import {
   waitForBar,
 } from '@web/spaces/document/__tests__/bubble-bar-harness';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
+import { addToAgentTool, selectionItem } from '@web/spaces/document/document-to-agent';
 import { blocksMarkdown } from '@web/spaces/document/document-table-markdown';
 
 const attachToChat = vi.hoisted(() =>
@@ -115,6 +117,69 @@ describe('the bubble bar entry', () => {
     // press does nothing.
     fireEvent.click(entry);
     expect(attachToChat).not.toHaveBeenCalled();
+  });
+
+  it('hands a selection of spaces over an uploaded picture, which it holds', () => {
+    const editor = openWith([
+      { type: 'paragraph', content: '  ' },
+      { type: 'image', props: { url: 'https://cdn.test/a.png', name: 'a.png' } },
+      { type: 'paragraph', content: '' },
+    ]);
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 3, view.state.doc.content.size - 3)));
+
+    expect(addToAgentTool.canRun(editor as never)).toBe(true);
+    expect(selectionItem(editor as never).chip?.data_snapshot).toMatchObject({ text: expect.stringContaining('https://cdn.test/a.png') });
+  });
+
+  it('hands a drag from spaces into a table whose only content is an uploaded picture, which takes the table whole', () => {
+    const picture = { type: 'image', props: { url: 'https://cdn.test/a.png', name: 'a.png' } };
+    const editor = openWith([
+      { type: 'paragraph', content: '  ' },
+      tableBlock({ rows: [{ cells: ['', { blocks: [picture] }] }] }),
+      { type: 'paragraph', content: '' },
+    ]);
+    const view = editor.prosemirrorView!;
+    let firstCell = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (firstCell < 0 && node.type.name === 'docTableCell') firstCell = pos;
+      return firstCell < 0;
+    });
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 3, firstCell + 4)));
+
+    expect(selectionItem(editor as never).chip?.data_snapshot).toMatchObject({ text: expect.stringContaining('https://cdn.test/a.png') });
+    expect(addToAgentTool.canRun(editor as never)).toBe(true);
+  });
+
+  it('hands a drag from a stored table\'s empty cell out to a line of spaces, which takes the stored table whole', () => {
+    const editor = openWith([{ type: 'paragraph', content: '  ' }]);
+    const view = editor.prosemirrorView!;
+    const { schema } = view.state;
+    const cell = (words: string): ReturnType<typeof schema.node> =>
+      schema.nodes['tableCell']!.create(null, [schema.nodes['tableParagraph']!.create(null, words === '' ? [] : [schema.text(words)])]);
+    const table = schema.nodes['table']!.create(null, [schema.nodes['tableRow']!.create(null, [cell('old a'), cell('')])]);
+    view.dispatch(view.state.tr.insert(1, schema.nodes['blockContainer']!.create({ id: 'legacy' }, [table])));
+    let lastCell = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'tableParagraph') lastCell = pos;
+      return true;
+    });
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, lastCell + 1, view.state.doc.content.size - 3)));
+
+    expect(selectionItem(editor as never).chip?.data_snapshot).toMatchObject({ text: expect.stringContaining('old a') });
+    expect(addToAgentTool.canRun(editor as never)).toBe(true);
+  });
+
+  it('is unavailable over a selection of spaces over a picture still uploading', () => {
+    const editor = openWith([
+      { type: 'paragraph', content: '  ' },
+      { type: 'image', props: { uploadId: 'up-1', url: '', name: 'a.png' } },
+      { type: 'paragraph', content: '' },
+    ]);
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 3, view.state.doc.content.size - 3)));
+
+    expect(addToAgentTool.canRun(editor as never)).toBe(false);
   });
 
   it('is not shown to a viewer', async () => {
@@ -226,6 +291,54 @@ describe('the block menu row', () => {
     expect(screen.getByTestId('doc-block-row-addToAgent').getAttribute('aria-disabled')).toBe('true');
     expect(screen.getByTestId('doc-block-row-comment').getAttribute('aria-disabled')).toBe('true');
   });
+
+  it('is unavailable over a row of spaces only, as the bubble bar entry is, while Comment works', () => {
+    const editor = openWith([{ type: 'paragraph', content: '   ' }]);
+    openMenuOver(editor, 0);
+
+    expect(screen.getByTestId('doc-block-row-addToAgent').getAttribute('aria-disabled')).toBe('true');
+    expect(screen.getByTestId('doc-block-row-comment').getAttribute('aria-disabled')).not.toBe('true');
+  });
+
+  // The row hands itself with the rows nested under it, so what those rows
+  // hold is something to hand over as well.
+  const NESTED: Record<string, unknown> = {
+    'a list item of spaces with words nested under it': {
+      type: 'bulletListItem',
+      content: '   ',
+      children: [{ type: 'bulletListItem', content: 'Shot list' }],
+    },
+    'an empty heading with words nested under it': {
+      type: 'heading',
+      content: '',
+      children: [{ type: 'paragraph', content: 'Shot list' }],
+    },
+    'a row of spaces with an uploaded picture nested under it': {
+      type: 'paragraph',
+      content: '   ',
+      children: [{ type: 'image', props: { url: 'https://cdn.test/a.png', name: 'a.png' } }],
+    },
+  };
+
+  it.each(Object.entries(NESTED))('hands %s over with what is nested', async (_kind, row) => {
+    const editor = openWith([row]);
+    openMenuOver(editor, 0);
+    const id = (editor.document as unknown as PressedBlock[])[0]!.id;
+
+    expect(screen.getByTestId('doc-block-row-addToAgent').getAttribute('aria-disabled')).not.toBe('true');
+    fireEvent.click(screen.getByTestId('doc-block-row-addToAgent'));
+
+    await waitFor(() => expect(attachToChat).toHaveBeenCalledTimes(1));
+    expect(handed().id).toBe(`document-block-${id}`);
+    expect(handed().chip?.data_snapshot).toEqual({ text: blocksMarkdown(editor, [editor.getBlock(id)!]) });
+  });
+
+  it('is unavailable over an empty row with only empty rows nested under it', () => {
+    const editor = openWith([{ type: 'paragraph', content: ' ', children: [{ type: 'paragraph', content: '  ' }] }]);
+    openMenuOver(editor, 0);
+
+    expect(screen.getByTestId('doc-block-row-addToAgent').getAttribute('aria-disabled')).toBe('true');
+  });
 });
 
 describe('the table entry\'s menu row', () => {
@@ -263,5 +376,25 @@ describe('the table entry\'s menu row', () => {
 
     expect(screen.getByTestId('doc-block-row-addToAgent').getAttribute('aria-disabled')).toBe('true');
     expect(screen.getByTestId('doc-block-row-comment').getAttribute('aria-disabled')).toBe('true');
+  });
+
+  it('hands a table whose only content is an uploaded picture', async () => {
+    const picture = { type: 'image', props: { url: 'https://cdn.test/a.png', name: 'a.png' } };
+    const editor = openWith([tableBlock({ rows: [{ cells: ['', { blocks: [picture] }] }] })]);
+    openMenuOver(editor, 0, TABLE_MENU_ROWS);
+
+    expect(screen.getByTestId('doc-block-row-addToAgent').getAttribute('aria-disabled')).not.toBe('true');
+    fireEvent.click(screen.getByTestId('doc-block-row-addToAgent'));
+
+    await waitFor(() => expect(attachToChat).toHaveBeenCalledTimes(1));
+    expect(handed().chip?.data_snapshot).toMatchObject({ text: expect.stringContaining('https://cdn.test/a.png') });
+  });
+
+  it('is unavailable over a table whose cells hold spaces only, while Comment works', () => {
+    const editor = openWith([table(['   ', ' '])]);
+    openMenuOver(editor, 0, TABLE_MENU_ROWS);
+
+    expect(screen.getByTestId('doc-block-row-addToAgent').getAttribute('aria-disabled')).toBe('true');
+    expect(screen.getByTestId('doc-block-row-comment').getAttribute('aria-disabled')).not.toBe('true');
   });
 });

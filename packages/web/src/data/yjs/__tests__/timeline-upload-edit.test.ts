@@ -260,8 +260,9 @@ describe('placeWebAnimationClip treats a placeholder as a video', () => {
     expect(result.next.clips[cid(1)]?.trackId).toBe(V4);
   });
 
-  it('keeps the web copy visible once the placeholder turns into a video', () => {
-    const doc = timeline([uploadClip(cid(9), V3, 0)], tracks, []);
+  it('keeps the web copy visible above the video once the placeholder turns into a video, with the main clip under both', () => {
+    // A main-track video under the placeholder stays visible too: no layer hides another (breatic#1410 design §6.1).
+    const doc = timeline([clip(cid(8), MAIN, 0, 100), uploadClip(cid(9), V3, 0)], tracks);
     const result = accepted(plan(doc, addResult(cid(1), SRC_A, 10, NEW_TRACK, OFF)));
     // What the upload's conversion writes: the same placement, now a video of the registered asset.
     const placeholder = result.next.clips[cid(9)];
@@ -269,7 +270,8 @@ describe('placeWebAnimationClip treats a placeholder as a video', () => {
     const { kind: _kind, upload: _upload, ...fields } = placeholder;
     const converted: TimelineDocumentV1 = { ...result.next, sources: { [SOURCE.id]: SOURCE }, clips: { ...result.next.clips, [cid(9)]: { ...fields, kind: 'video', sourceId: SOURCE.id } } };
     const ready = new Set(resolveTimelineArrangement(converted, RESOLUTION).readyClipIds);
-    expect(visibleTimelineClipsAt(converted, ready, 20).map((item) => item.id)).toEqual([cid(9), cid(1)]);
+    expect(result.next.clips[cid(1)]?.trackId).toBe(V4);
+    expect(visibleTimelineClipsAt(converted, ready, 20).map((item) => item.id)).toEqual([cid(8), cid(9), cid(1)]);
   });
 
   it('creates a new top track when the placeholder holds the highest track', () => {

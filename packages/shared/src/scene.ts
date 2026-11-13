@@ -138,6 +138,17 @@ export interface SceneControlsConfig {
   import: SceneImportLimits;
   /** Shortest gap between two upload-progress updates shared with the Space's members. */
   progressPublishMs: number;
+  capture: SceneCaptureConfig;
+}
+
+/** The viewfinder's capture parameters. */
+export interface SceneCaptureConfig {
+  /** Long edge of a captured still, in pixels. */
+  longEdgePx: number;
+  /** Shortest edge the viewfinder can be dragged down to, in screen pixels. */
+  minFramePx: number;
+  /** How long a closed canvas may take to sync before nothing is written. */
+  canvasSyncTimeoutMs: number;
 }
 
 /**

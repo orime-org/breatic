@@ -27,6 +27,7 @@ import {
   DOCUMENT_COMMENT_DRAFT_RANGE,
   DRAFT_THREAD_ID,
 } from '@web/spaces/document/document-comment-draft-range';
+import { canCommentOnMedia } from '@web/spaces/document/document-comment-media';
 import { DOCUMENT_COMMENT_SELECTION } from '@web/spaces/document/document-comment-selection';
 import { canCommentOver } from '@web/spaces/document/document-comment-target';
 import type { DraftRange } from '@web/spaces/document/document-comment-draft-range';
@@ -67,6 +68,26 @@ export function openCommentDraft(
   view.dispatch(
     view.state.tr
       .setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, ranges)
+      .setMeta(DOCUMENT_COMMENT_SELECTION, [DRAFT_THREAD_ID]),
+  );
+  return true;
+}
+
+/**
+ * Opens a comment draft aimed at a whole picture, video or audio block, the
+ * way {@link openCommentDraft} opens one on words: metas only, and the draft
+ * is the card being read from the transaction that opens it (inner#1316 §5.3).
+ * @param editor - The document editor.
+ * @param blockId - The media block.
+ * @returns True when a draft opened; false when no uploaded media block has
+ *   that id, in which case nothing happened.
+ */
+export function openMediaCommentDraft(editor: ToolEditor, blockId: string): boolean {
+  const view = editor.prosemirrorView;
+  if (view === null || !canCommentOnMedia(view.state.doc, blockId)) return false;
+  view.dispatch(
+    view.state.tr
+      .setMeta(DOCUMENT_COMMENT_DRAFT_RANGE, { mediaBlockId: blockId })
       .setMeta(DOCUMENT_COMMENT_SELECTION, [DRAFT_THREAD_ID]),
   );
   return true;

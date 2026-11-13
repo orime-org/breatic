@@ -2345,6 +2345,7 @@
       "comment": {
         "placeholder": "Write a comment…",
         "targetGone": "The text was changed or deleted.",
+        "mediaGone": "This media was deleted.",
         "cannotWrite": "You can no longer write here.",
         "railTitle": "Comments",
         "filterOpen": "Unresolved",
@@ -2451,6 +2452,7 @@
         "captionReadOnly": "Read-only. You can copy this draft.",
         "captionRetained": "Media removed. Copy this draft before closing the Space.",
         "notFinished": "Upload not finished",
+        "notUploaded": "The media has not finished uploading.",
         "pendingExport": "{name} (upload not finished)",
         "uploadFailed": "Upload failed",
         "failure": {
@@ -2708,6 +2710,27 @@
         "more": "Load more",
         "formats": "PNG, JPEG or WebP",
         "chooseFile": "Choose file"
+      },
+      "viewfinder": {
+        "open": "Viewfinder",
+        "ratio": "Aspect ratio",
+        "size": "{width} × {height}",
+        "cancel": "Cancel",
+        "confirm": "Capture",
+        "modelsLoading": "Models are still loading. Capture once they have loaded",
+        "captureFailed": "Capture failed",
+        "toAgent": "Add to Agent",
+        "toCanvas": "Add to Canvas",
+        "copy": "Copy",
+        "reframe": "Reframe",
+        "canvasListTitle": "Add to Canvas",
+        "noCanvas": "This Project has no Canvas yet. Create one first",
+        "addedToAgent": "Added to Agent",
+        "addedToCanvas": "Added to {name}",
+        "view": "View",
+        "copied": "Copied",
+        "copyFailed": "Copy failed",
+        "canvasUnreachable": "Couldn't reach {name}. Try again"
       }
     },
     "sizeCap": {
@@ -3668,7 +3691,6 @@
       "missing_source": "Its video is missing",
       "source_unresolved": "Its web animation is unavailable"
     },
-    "loadingMedia": "Loading video…",
     "mediaUnavailable": "This video is unavailable.",
     "retry": "Retry",
     "play": "Play",
@@ -3684,8 +3706,7 @@
     "transport": {
       "paused": "Paused",
       "playing": "Playing",
-      "waiting": "Buffering…",
-      "failed": "Playback failed"
+      "waiting": "Buffering…"
     },
     "material": {
       "description": "Choose a video and confirm its position.",
@@ -3710,6 +3731,8 @@
       "source_unavailable": "This video is unavailable. Choose another or retry.",
       "metadata_unavailable": "Video duration is unavailable. Retry or choose another video.",
       "invalid_range": "Enter a frame range inside the video.",
+      "notNumber": "Enter a number.",
+      "scaleRange": "Enter {min} to {max}.",
       "target_missing": "The target has changed. Check the position and retry.",
       "clip_removed": "This clip was removed by another member.",
       "permission_changed": "Editing permission changed. Confirm again to add this video.",
@@ -3748,7 +3771,15 @@
       "magnetStartHint": "Main track magnet is on. Drag to reorder.",
       "splitOutside": "Move the playhead inside the selected clip to split it.",
       "lowestTrack": "This clip is already on the bottom visual track.",
-      "bumped": "{count, plural, one {# linked clip moved} other {# linked clips moved}} to a track above."
+      "bumped": "{count, plural, one {# linked clip moved} other {# linked clips moved}} to a track above.",
+      "transform": "Position and size",
+      "positionX": "X (px)",
+      "positionY": "Y (px)",
+      "scaleX": "Width scale (%)",
+      "scaleY": "Height scale (%)",
+      "rotation": "Rotation (°)",
+      "lockRatio": "Lock ratio",
+      "offFrame": "This clip is not at the current frame."
     },
     "webAnimation": {
       "create": "Create web animation",
@@ -3820,6 +3851,11 @@
       "waiting": "Uploaded, waiting for edit access",
       "unfinished": "Unfinished",
       "preview": "{track}: {state, select, failed {video upload failed, not shown} unfinished {video unfinished, not shown} other {video uploading…}}"
+    },
+    "preview": {
+      "playBlocked": "The browser blocked playback with sound. Press play to start.",
+      "videoLoading": "{track}: video loading…",
+      "videoUnavailable": "{track}: video unavailable"
     }
   }
 }

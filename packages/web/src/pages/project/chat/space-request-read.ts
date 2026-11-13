@@ -21,7 +21,7 @@ import { HocuspocusProvider } from '@hocuspocus/provider';
 import type { HocuspocusProviderWebsocket } from '@hocuspocus/provider';
 import { yXmlFragmentToBlocks } from '@blocknote/core/yjs';
 import * as Y from 'yjs';
-import { documentBodyFragment, READ_ONLY_COLLAB_TOKEN } from '@breatic/shared';
+import { documentBodyFragment, documentCommentThreads, READ_ONLY_COLLAB_TOKEN } from '@breatic/shared';
 import type { SharedSpace, SpaceRequestInput } from '@breatic/shared';
 
 import { createCollabSocket } from '@web/data/yjs/collab-socket';
@@ -32,6 +32,7 @@ import { spaceContentReadable } from '@web/pages/project/space-type';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { readTopBlocks } from '@web/spaces/document/document-blocks-read';
+import { anchoredMediaIds } from '@web/spaces/document/document-comment-media';
 import type { ReadBlock } from '@web/spaces/document/document-blocks-read';
 import { peekDocumentEditor } from '@web/spaces/document/document-editor-cache';
 
@@ -75,7 +76,7 @@ type Unsynced = 'gone' | 'timed_out';
 function storedBlocks(doc: Y.Doc): ReadBlock[] {
   const editor = buildDocumentEditor({ fragment: documentBodyFragment(new Y.Doc()), extensions: [] });
   editor.replaceBlocks(editor.document, yXmlFragmentToBlocks(editor, documentBodyFragment(doc)));
-  return readTopBlocks(editor);
+  return readTopBlocks(editor, anchoredMediaIds(documentCommentThreads(doc)));
 }
 
 /**
@@ -108,7 +109,7 @@ async function pack(
     return { ...head, part: { node_ids: picked }, ...fitted, nodes_missing: missing };
   }
   const editor = peekDocumentEditor(name)?.editor;
-  const blocks = editor === undefined ? storedBlocks(doc) : readTopBlocks(editor);
+  const blocks = editor === undefined ? storedBlocks(doc) : readTopBlocks(editor, anchoredMediaIds(documentCommentThreads(doc)));
   const range = asked.blocks;
   if (range === undefined) {
     const clipped = clipDocument(blocks, max);

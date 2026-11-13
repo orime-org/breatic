@@ -2345,6 +2345,7 @@
       "comment": {
         "placeholder": "コメントを書く",
         "targetGone": "対象の文章は変更または削除されました。",
+        "mediaGone": "このメディアは削除されました。",
         "cannotWrite": "ここには書き込めなくなりました。",
         "railTitle": "コメント",
         "filterOpen": "未解決",
@@ -2451,6 +2452,7 @@
         "captionReadOnly": "読み取り専用です。この下書きはコピーできます。",
         "captionRetained": "メディアが削除されました。Spaceを閉じる前に下書きをコピーしてください。",
         "notFinished": "アップロードが完了していません",
+        "notUploaded": "メディアのアップロードがまだ完了していません。",
         "pendingExport": "{name}（アップロード未完了）",
         "uploadFailed": "アップロードに失敗しました",
         "failure": {
@@ -2708,6 +2710,27 @@
         "more": "さらに読み込む",
         "formats": "PNG、JPEG、WebP",
         "chooseFile": "ファイルを選択"
+      },
+      "viewfinder": {
+        "open": "ファインダー",
+        "ratio": "アスペクト比",
+        "size": "{width} × {height}",
+        "cancel": "キャンセル",
+        "confirm": "撮影",
+        "modelsLoading": "モデルを読み込み中です。読み込み後に撮影してください",
+        "captureFailed": "撮影に失敗しました",
+        "toAgent": "Agent に追加",
+        "toCanvas": "Canvas に追加",
+        "copy": "コピー",
+        "reframe": "撮り直す",
+        "canvasListTitle": "Canvas に追加",
+        "noCanvas": "この Project にはまだ Canvas がありません。先に作成してください",
+        "addedToAgent": "Agent に追加しました",
+        "addedToCanvas": "「{name}」に追加しました",
+        "view": "表示",
+        "copied": "コピーしました",
+        "copyFailed": "コピーに失敗しました",
+        "canvasUnreachable": "「{name}」に接続できません。もう一度お試しください"
       }
     },
     "sizeCap": {
@@ -3668,7 +3691,6 @@
       "missing_source": "動画が見つかりません",
       "source_unresolved": "ウェブアニメーションを利用できません"
     },
-    "loadingMedia": "動画を読み込み中…",
     "mediaUnavailable": "この動画を利用できません。",
     "retry": "再試行",
     "play": "再生",
@@ -3684,8 +3706,7 @@
     "transport": {
       "paused": "一時停止中",
       "playing": "再生中",
-      "waiting": "バッファリング中…",
-      "failed": "再生に失敗しました"
+      "waiting": "バッファリング中…"
     },
     "material": {
       "description": "動画を選択して追加位置を確認してください。",
@@ -3710,6 +3731,8 @@
       "source_unavailable": "この動画を利用できません。再試行するか別の動画を選択してください。",
       "metadata_unavailable": "動画の長さを取得できません。再試行するか別の動画を選択してください。",
       "invalid_range": "動画の範囲内のフレームを入力してください。",
+      "notNumber": "数値を入力してください。",
+      "scaleRange": "{min}〜{max} を入力してください。",
       "target_missing": "追加先が変更されました。位置を確認して再試行してください。",
       "clip_removed": "このクリップは他のメンバーによって削除されました。",
       "permission_changed": "編集権限が変更されました。動画の追加をもう一度確認してください。",
@@ -3748,7 +3771,15 @@
       "magnetStartHint": "メイントラックのマグネットがオンです。ドラッグで順序を変更します。",
       "splitOutside": "分割するには再生ヘッドを選択中のクリップ内に移動してください。",
       "lowestTrack": "このクリップはすでに一番下の映像トラックにあります。",
-      "bumped": "連動クリップ {count, plural, other {# 件}}を上のトラックに移動しました。"
+      "bumped": "連動クリップ {count, plural, other {# 件}}を上のトラックに移動しました。",
+      "transform": "位置とサイズ",
+      "positionX": "X（px）",
+      "positionY": "Y（px）",
+      "scaleX": "幅の拡大率（%）",
+      "scaleY": "高さの拡大率（%）",
+      "rotation": "回転（°）",
+      "lockRatio": "比率を固定",
+      "offFrame": "このクリップは現在のフレームにありません。"
     },
     "webAnimation": {
       "create": "ウェブアニメーションを作成",
@@ -3820,6 +3851,11 @@
       "waiting": "アップロード済み、編集権限を待っています",
       "unfinished": "未完了",
       "preview": "{track}：{state, select, failed {動画のアップロードに失敗、表示しません} unfinished {動画は未完了、表示しません} other {動画をアップロード中…}}"
+    },
+    "preview": {
+      "playBlocked": "ブラウザが音声付きの再生をブロックしました。再生を押して開始してください。",
+      "videoLoading": "{track}：動画を読み込み中…",
+      "videoUnavailable": "{track}：動画を利用できません"
     }
   }
 }
