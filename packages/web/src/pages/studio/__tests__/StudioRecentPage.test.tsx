@@ -69,6 +69,14 @@ describe('StudioRecentPage (fetches + maps the cross-studio recent feed)', () =>
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
+  it('says only that some Studios are out of reach when a region did not answer an empty feed', async () => {
+    // The feed is empty because a region is down, not because nothing was opened.
+    vi.mocked(studiosApi.getRecent).mockResolvedValue({ items: [], unavailableRegions: ['sg'] });
+    setup();
+    expect(await screen.findByTestId('recent-regions-unavailable')).toBeInTheDocument();
+    expect(screen.queryByText(/Nothing recent yet/i)).not.toBeInTheDocument();
+  });
+
   it('shows a loading spinner while the feed is in flight', () => {
     // A never-resolving promise keeps the query pending.
     vi.mocked(studiosApi.getRecent).mockReturnValue(new Promise(() => {}));

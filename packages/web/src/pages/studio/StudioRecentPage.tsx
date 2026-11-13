@@ -38,6 +38,7 @@ export default function StudioRecentPage(): React.JSX.Element {
     [recentQuery.data],
   );
   const unavailableRegions = recentQuery.data?.unavailableRegions;
+  const regionsMissing = unavailableRegions !== undefined && unavailableRegions.length > 0;
   const reportRegions = useRegionHealthStore((s) => s.report);
   React.useEffect(() => {
     if (unavailableRegions !== undefined) reportRegions('recent', unavailableRegions);
@@ -60,9 +61,9 @@ export default function StudioRecentPage(): React.JSX.Element {
     </div>
   ) : (
     <ScrollArea className='h-full'>
-      <RecentLanding projects={projects} collections={[]} />
-      {unavailableRegions !== undefined && unavailableRegions.length > 0 ? (
-        <p className='px-6 pb-6 text-xs text-muted-foreground' data-testid='recent-regions-unavailable'>
+      <RecentLanding projects={projects} collections={[]} incomplete={regionsMissing} />
+      {regionsMissing ? (
+        <p className='mx-auto w-full max-w-[1100px] px-7 pb-6 text-xs text-muted-foreground' data-testid='recent-regions-unavailable'>
           {t('regions.unavailable.recents')}
         </p>
       ) : null}

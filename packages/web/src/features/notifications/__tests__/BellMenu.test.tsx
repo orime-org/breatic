@@ -116,6 +116,16 @@ describe('BellMenu — empty list', () => {
     expect(await screen.findByTestId('bell-popover')).toBeInTheDocument();
     expect(screen.getByText(/No pending notifications/i)).toBeInTheDocument();
   });
+
+  it('says only that some Studios are out of reach when a region did not answer', async () => {
+    // An empty list here may hide notifications the unreachable region holds.
+    vi.mocked(notificationsApi.list).mockResolvedValue({ items: [], resolved: EMPTY_RESOLVED, unavailableRegions: ['sg'] });
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+    expect(await screen.findByTestId('bell-regions-unavailable')).toBeInTheDocument();
+    expect(screen.queryByText(/No pending notifications/i)).not.toBeInTheDocument();
+  });
 });
 
 describe('BellMenu — auth gate (boot-race, #1261)', () => {

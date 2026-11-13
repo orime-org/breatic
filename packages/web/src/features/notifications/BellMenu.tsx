@@ -106,6 +106,8 @@ export function BellMenu(): React.JSX.Element {
   const count = notifications.length;
 
   const unavailableRegions = inboxQuery.data?.unavailableRegions;
+  // An empty list may hide what an unreachable region holds.
+  const regionsMissing = unavailableRegions !== undefined && unavailableRegions.length > 0;
   const reportRegions = useRegionHealthStore((s) => s.report);
   React.useEffect(() => {
     if (unavailableRegions !== undefined) reportRegions('bell', unavailableRegions);
@@ -196,9 +198,11 @@ export function BellMenu(): React.JSX.Element {
             {t('notifications.loading')}
           </div>
         ) : count === 0 ? (
-          <div className='px-3 py-2 text-sm text-muted-foreground'>
-            {t('notifications.empty')}
-          </div>
+          regionsMissing ? null : (
+            <div className='px-3 py-2 text-sm text-muted-foreground'>
+              {t('notifications.empty')}
+            </div>
+          )
         ) : (
           <ul className='flex flex-col gap-1'>
             {notifications.map((n) => (
@@ -217,7 +221,7 @@ export function BellMenu(): React.JSX.Element {
             ))}
           </ul>
         )}
-        {unavailableRegions !== undefined && unavailableRegions.length > 0 ? (
+        {regionsMissing ? (
           <p className='px-3 py-2 text-2xs text-muted-foreground' data-testid='bell-regions-unavailable'>
             {t('regions.unavailable.bell')}
           </p>

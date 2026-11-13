@@ -12,6 +12,8 @@ import { EmptyState } from '@web/pages/studio/shared/EmptyState';
 interface RecentLandingProps {
   projects: RecentItem[];
   collections: RecentItem[];
+  /** A region did not answer, so an empty feed does not mean nothing was opened. */
+  incomplete?: boolean;
 }
 
 /**
@@ -25,11 +27,13 @@ interface RecentLandingProps {
  * @param root0 - component props
  * @param root0.projects - recent projects across all studios (newest first)
  * @param root0.collections - recent collections across all studios
+ * @param root0.incomplete - a region did not answer; an empty feed then shows no empty state
  * @returns the recent landing (header + content or empty state).
  */
 export function RecentLanding({
   projects,
   collections,
+  incomplete = false,
 }: RecentLandingProps): React.JSX.Element {
   const t = useTranslation();
   const isEmpty = projects.length === 0 && collections.length === 0;
@@ -43,7 +47,7 @@ export function RecentLanding({
           {t('studio.recent.subtitle')}
         </p>
       </div>
-      {isEmpty ? (
+      {isEmpty && incomplete ? null : isEmpty ? (
         <EmptyState
           icon={Clock}
           title={t('studio.recent.emptyTitle')}
