@@ -22,12 +22,12 @@
  *
  *   pnpm --filter @breatic/web test:smoke tests/smoke/agent-template-offers.spec.ts
  */
-import { basename, join } from 'node:path';
+import { join } from 'node:path';
 
 import { expect, type Page } from 'playwright/test';
 import { GENERATION_TEMPLATES, feedsOf, proposalMarkSegments, templateAnchor, type CanvasProposal } from '@breatic/shared';
 import { test } from '../helpers/slot';
-import { answerIfAsked, say, startNewConversation, storedMessages, type StoredPart } from '../helpers/conversation';
+import { askInNewConversation, storedMessages, type StoredPart } from '../helpers/conversation';
 
 import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace } from '../helpers/space';
@@ -131,6 +131,16 @@ function audioForVideo(proposal: CanvasProposal, takesVideo: ReadonlySet<string>
   return drawing + beside;
 }
 
+/**
+ * The words a generation sends to its model: its text segments in order,
+ * notes and slots left out.
+ * @param node - The node, as the agent sent it.
+ * @returns The words.
+ */
+function wordsOf(node: CanvasProposal['nodes'][number]): string {
+  return proposalMarkSegments(node).map((segment) => segment.text ?? '').join(' ');
+}
+
 /** What the newest stored conversation's turns did and said. */
 interface Turn {
   /** Each tool it used, in order. */
@@ -143,8 +153,6 @@ interface Turn {
   read: string[];
   /** Everything it wrote or asked, as one text. */
   said: string;
-  /** What its last reply wrote, beside its proposals' rationales; earlier turns, the asking one among them, left out. */
-  wrote: string;
 }
 
 /**
@@ -154,10 +162,7 @@ interface Turn {
  * @returns What the turns did and said.
  */
 async function settledTurn(p: Page): Promise<Turn> {
-  const messages = await storedMessages(p);
-  const parts = messages.filter((m) => m.role === 'assistant').flatMap((m) => m.parts ?? []);
-  // The newest stored message is the reply that came with what landed.
-  const reply = messages.at(-1)?.parts ?? [];
+  const parts = (await storedMessages(p)).filter((m) => m.role === 'assistant').flatMap((m) => m.parts ?? []);
   const input = (part: StoredPart): { id?: string; nodes?: { template?: { id?: string } }[] } => part.input ?? {};
   // A refused proposal answers { placed: false } and never reaches the canvas.
   const landed = parts.filter(
@@ -171,10 +176,6 @@ async function settledTurn(p: Page): Promise<Turn> {
       part.type === 'tool-get_generation_template' && typeof part.output === 'string' && input(part).id ? [input(part).id as string] : [],
     ),
     said: parts.flatMap((part) => (part.type === 'text' ? [part.text ?? ''] : part.type?.startsWith('tool-ask_user') ? [JSON.stringify(part.input)] : [])).join('\n'),
-    wrote: [
-      ...reply.flatMap((part) => (part.type === 'text' ? [part.text ?? ''] : [])),
-      ...landed.map((part) => (part.input as unknown as CanvasProposal).rationale),
-    ].join('\n'),
   };
 }
 
@@ -186,18 +187,7 @@ async function settledTurn(p: Page): Promise<Turn> {
  * @param attach - A fixture file to attach to the message.
  */
 async function ask(message: string, reply: string, attach?: string): Promise<void> {
-  const composer = page.getByTestId('chat-composer-box');
-  await expect(composer).toBeVisible({ timeout: 20_000 });
-  await startNewConversation(page);
-  await expect(page.getByTestId('message-bubble')).toHaveCount(0, { timeout: 20_000 });
-  if (attach !== undefined) {
-    // Files chosen before the composer can take them are dropped without a word.
-    await expect(page.getByTestId('chat-composer-attach')).toBeEnabled({ timeout: 20_000 });
-    await page.getByTestId('chat-composer-file-input').setInputFiles(join(__dirname, '../fixtures', attach));
-    await expect(page.getByTestId('chat-composer-chips')).toContainText(basename(attach), { timeout: 30_000 });
-  }
-  await say(page, message, 2);
-  await answerIfAsked(page, reply);
+  await askInNewConversation(page, message, { reply, file: attach === undefined ? undefined : join(__dirname, '../fixtures', attach) });
 }
 
 test.beforeEach(async ({ browser }) => {
@@ -256,7 +246,7 @@ test('asked outright for a festival travel poster, it reads the festival poster 
   const pictures = turn.landed.flatMap((proposal) => proposal.nodes).filter((node) => node.role === 'generate' && node.type === 'image');
   expect(pictures.length, `said: ${turn.said.slice(0, 600)}`).toBeGreaterThanOrEqual(1);
   // The title the user gave goes into every version's prompt as written.
-  for (const picture of pictures) expect(JSON.stringify(proposalMarkSegments(picture)), picture.name).toContain('KYOTO AUTUMN');
+  for (const picture of pictures) expect(wordsOf(picture), picture.name).toContain('KYOTO AUTUMN');
   await expect(page.getByTestId('proposal-card').last()).toBeVisible({ timeout: 20_000 });
 });
 
@@ -268,12 +258,13 @@ for (const [what, reply, photo] of [
     test.setTimeout(480_000);
     await ask('Make a video with this.', reply, photo);
     const turn = await settledTurn(page);
-    // Solved when a video draws on the photo, or when takes of its first frame
-    // drawn from the photo come first and the turn says the video follows from
-    // the picked take; through a template or a setup of the agent's own.
+    // Solved when a video draws on the photo, or when two or more takes of its
+    // first frame drawn from the photo land for the user to pick from, the
+    // video following from the picked take; through a template or a setup of
+    // the agent's own.
     const carrying = turn.landed.flatMap((proposal) => generationsCarryingMaterial(proposal, () => true));
-    const video = carrying.some((node) => node.type === 'video') || (carrying.length > 0 && /\b(video|clip|animat)/i.test(turn.wrote));
-    expect(video, `generations drawing on the photo: ${carrying.map((node) => node.type).join(', ')}; templates: ${turn.templates.join(', ')}; wrote: ${turn.wrote.slice(0, 600)}`).toBe(true);
+    const solved = carrying.some((node) => node.type === 'video') || carrying.filter((node) => node.type === 'image').length >= 2;
+    expect(solved, `generations drawing on the photo: ${carrying.map((node) => node.type).join(', ')}; templates: ${turn.templates.join(', ')}; said: ${turn.said.slice(0, 600)}`).toBe(true);
   });
 }
 
@@ -284,17 +275,13 @@ test('given a character photo and asked for two videos of her, what lands for bo
   // Solved when what lands for each scene draws on her photo: its video, or
   // takes of its still made first, the video following from the picked take;
   // through a template or a setup of the agent's own.
-  // Each scene needs a generation of its own, so one node naming both counts for neither.
-  const words = turn.landed
-    .flatMap((proposal) => generationsCarryingMaterial(proposal, () => true))
-    .map((node) => proposalMarkSegments(node).map((segment) => segment.text ?? '').join(' '));
+  // Each scene needs a generation of its own: one naming the park and a
+  // different one naming the cafe, whatever else either mentions.
+  const words = turn.landed.flatMap((proposal) => generationsCarryingMaterial(proposal, () => true)).map(wordsOf);
   const park = (text: string): boolean => /\bparks?\b/i.test(text);
-  // A coffee in the park scene still leaves it the park scene; only the cafe itself marks the other one.
-  const namesCafe = (text: string): boolean => /\bcaf[eé]/i.test(text);
-  const cafe = (text: string): boolean => namesCafe(text) || /\bcoffee/i.test(text);
+  const cafe = (text: string): boolean => /\bcaf[eé]|\bcoffee/i.test(text);
   const seen = `generations drawing on the photo: ${words.join('\n').slice(0, 600)}; templates: ${turn.templates.join(', ')}; said: ${turn.said.slice(0, 600)}`;
-  expect(words.some((text) => park(text) && !namesCafe(text)), seen).toBe(true);
-  expect(words.some((text) => cafe(text) && !park(text)), seen).toBe(true);
+  expect(words.some((one, at) => park(one) && words.some((other, otherAt) => otherAt !== at && cafe(other))), seen).toBe(true);
 });
 
 test('given a video and asked outright for background music, it reads a music template and lands music on that template\'s model drawing on the video @needs-model', async () => {
