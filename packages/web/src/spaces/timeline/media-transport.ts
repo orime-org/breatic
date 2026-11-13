@@ -3,34 +3,8 @@
 
 import type { TimelineRate } from '@breatic/shared';
 
-/** The native state and current preview request observed together. */
-export interface TimelineMediaTransportInput {
-  intent: 'play' | 'pause';
-  generationMatches: boolean;
-  targetReady: boolean;
-  paused: boolean;
-  seeking: boolean;
-  ended: boolean;
-  error: boolean;
-  readyState: number;
-}
-
-/** The current preview state derived from native media facts. */
-export type TimelineMediaTransport = 'failed' | 'paused' | 'waiting' | 'playing';
-
-/**
- * Resolve the current media state for a Timeline preview.
- * @param input - The current request and native element facts.
- * @returns The preview transport state.
- * @throws {never} Never.
- */
-export function resolveTimelineMediaTransport(input: TimelineMediaTransportInput): TimelineMediaTransport {
-  if (input.error) return 'failed';
-  if (input.intent === 'pause') return 'paused';
-  if (!input.generationMatches || !input.targetReady || input.paused
-    || input.seeking || input.ended || input.readyState < 3) return 'waiting';
-  return 'playing';
-}
+/** The preview transport: paused, waiting for every layer to be in place, or playing. */
+export type TimelineMediaTransport = 'paused' | 'waiting' | 'playing';
 
 /**
  * Project monotonic elapsed time onto the Timeline's integer frame clock.

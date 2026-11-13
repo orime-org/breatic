@@ -1457,11 +1457,19 @@ export function renderProductGuide(): string {
     `The central video preview sits above the toolbar and the tracks. ${quoted(t("timeline.play"))} and ` +
       `${quoted(t("timeline.pause"))} control playback; the slider below the preview selects its integer frame. ` +
       `The bottom visual track is ${quoted(t("timeline.mainTrack"))}; tracks above it are named like ` +
-      `${quoted(t("timeline.track", { index: 2 }))}, and the preview shows the video on the highest track at the playhead, with any web animation copies on tracks above it stacked on top. ` +
+      `${quoted(t("timeline.track", { index: 2 }))}, and the preview draws every clip at the playhead, stacked from the bottom track up, each placed by its own position, size and angle. ` +
       "Each clip shows its name and its length as a timecode (hours:minutes:seconds:frames), as does the position beside the play button. Click a clip to select it, or an empty part of a track to clear the selection; " +
       "the panel on the right shows its source name, " +
       `${quoted(t("timeline.edit.track"))}, ${quoted(t("timeline.startFrame"))}, ${quoted(t("timeline.edit.inPoint"))} and ` +
       `${quoted(t("timeline.edit.duration"))}, then its video's length in frames at the Timeline's frame rate. Type a whole frame and press Enter or leave the field to apply it. ` +
+      `For a video or a web animation copy it also shows ${quoted(t("timeline.edit.transform"))}: ${quoted(t("timeline.edit.positionX"))} and ${quoted(t("timeline.edit.positionY"))} in canvas pixels, ` +
+      `${quoted(t("timeline.edit.scaleX"))} and ${quoted(t("timeline.edit.scaleY"))} from 1% to 10000%, and ${quoted(t("timeline.edit.rotation"))}; ` +
+      `the ${quoted(t("timeline.edit.lockRatio"))} switch below them, on by default, makes a change to one scale change the other in proportion; a Viewer sees the values as text and no switch. ` +
+      `For a clip that is not at the playhead the group shows ${quoted(t("timeline.edit.offFrame"))} Its values can still be changed. ` +
+      "In the preview, click a layer to select its clip, the topmost one under the pointer; clicking where no layer is clears the selection. " +
+      "A selected layer showing at the playhead gets a box with handles: drag inside it to move the layer, drag a corner to scale it in proportion, drag the middle of an edge to stretch its width or height, " +
+      "and drag the round handle above it to rotate it around its centre. With snapping on, the layer's edges and centre lines snap to the frame's edges and centre lines and a guide line shows. " +
+      "Playback pauses when a drag starts, each release is one undo step, and Esc cancels a drag without changing anything. A layer can be moved partly or wholly out of the frame; its handles stay reachable. " +
       "Drag a clip to move it, onto another track to change track, or into the dashed row above the top track to create a " +
       "new visual track. Drag the edges of the selected clip to trim it. " +
       `The toolbar has ${quoted(t("timeline.edit.undo"))}, ${quoted(t("timeline.edit.redo"))}, ` +
@@ -1504,8 +1512,12 @@ export function renderProductGuide(): string {
       `${quoted(t("timeline.cancel"))} ends the current material selection. ` +
       "Switching to another Space keeps uploading. Closing the Space while an upload runs uses the existing warning. " +
       "The shared clips are loaded again when the Space reopens. Viewers can inspect and preview the sequence.",
-    `A video that cannot be loaded offers ${quoted(t("timeline.retry"))}. The playback status shows ` +
-      `${quoted(t("timeline.transport.waiting"))} while the current video is getting ready.`,
+    "Several videos play together on one clock. " +
+      "A video still loading is noted at the top right of the preview with its track as loading, " +
+      `and a video that cannot be loaded is noted there with its track as unavailable, with ${quoted(t("timeline.retry"))}; ` +
+      "the other layers keep playing, and a retry reloads only that video, with the preview waiting for it before going on together. " +
+      `The playback status shows ${quoted(t("timeline.transport.waiting"))} while a video it needs is getting ready. ` +
+      `When the browser blocks playback with sound, playback pauses and says ${quoted(t("timeline.preview.playBlocked"))}`,
     `${quoted(t("timeline.webAnimation.create"))}, beside ${quoted(t("timeline.addMedia"))}, opens a dialog to have an animated web page made: ` +
       `${quoted(t("timeline.webAnimation.dialog.prompt"))}, ${quoted(t("timeline.webAnimation.dialog.engine"))} (DeepSeek), ` +
       `${quoted(t("timeline.webAnimation.dialog.aspect"))} (16:9, 9:16 or 1:1), ${quoted(t("timeline.webAnimation.dialog.duration"))} and the switch ` +
@@ -1520,7 +1532,7 @@ export function renderProductGuide(): string {
       `${quoted(t("timeline.webAnimation.retry"))} after a failure, a cancel or an expiry, which opens the dialog filled in as before (${quoted(t("timeline.webAnimation.dialog.retryTitle"))}). ` +
       "Web animation copies are violet with a code icon and are edited like video clips (move, trim, split, duplicate, delete); changing or removing one copy leaves the " +
       "other copies and the execution in the list as they are. The selected copy's panel names the request it came from. " +
-      "In the preview a copy above a video shows on top of it, and one under a higher video is hidden. A copy whose run has not finished, or ended without a result, is noted at the top right of the " +
+      "In the preview copies and videos stack by track, so a copy wholly covered by a higher layer is not seen. A copy whose run has not finished, or ended without a result, is noted at the top right of the " +
       "preview with its track and its run's status, a copy whose page is still loading shows nothing and is noted there as loading, " +
       "and a copy whose page cannot be loaded is noted there as unavailable with " +
       `${quoted(t("timeline.retry"))}. Viewers can open the list and read every row, without ${quoted(t("timeline.webAnimation.create"))} or any of its actions.`,

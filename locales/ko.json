@@ -3669,7 +3669,6 @@
       "missing_source": "동영상을 찾을 수 없습니다",
       "source_unresolved": "웹 애니메이션을 사용할 수 없음"
     },
-    "loadingMedia": "동영상 불러오는 중…",
     "mediaUnavailable": "이 동영상을 사용할 수 없습니다.",
     "retry": "다시 시도",
     "play": "재생",
@@ -3685,8 +3684,7 @@
     "transport": {
       "paused": "일시 정지됨",
       "playing": "재생 중",
-      "waiting": "버퍼링 중…",
-      "failed": "재생 실패"
+      "waiting": "버퍼링 중…"
     },
     "material": {
       "description": "동영상을 선택하고 추가할 위치를 확인하세요.",
@@ -3711,6 +3709,8 @@
       "source_unavailable": "이 동영상을 사용할 수 없습니다. 다시 시도하거나 다른 동영상을 선택하세요.",
       "metadata_unavailable": "동영상 길이를 확인할 수 없습니다. 다시 시도하거나 다른 동영상을 선택하세요.",
       "invalid_range": "동영상 범위 안의 프레임을 입력하세요.",
+      "notNumber": "숫자를 입력하세요.",
+      "scaleRange": "{min}~{max} 사이로 입력하세요.",
       "target_missing": "대상이 변경되었습니다. 위치를 확인하고 다시 시도하세요.",
       "clip_removed": "이 클립은 다른 멤버가 삭제했습니다.",
       "permission_changed": "편집 권한이 변경되었습니다. 동영상 추가를 다시 확인하세요.",
@@ -3749,7 +3749,15 @@
       "magnetStartHint": "메인 트랙 자석이 켜져 있습니다. 드래그하여 순서를 바꾸세요.",
       "splitOutside": "분할하려면 재생 헤드를 선택한 클립 안으로 옮기세요.",
       "lowestTrack": "이 클립은 이미 가장 아래 영상 트랙에 있습니다.",
-      "bumped": "연동 클립 {count, plural, other {#개}}를 위 트랙으로 옮겼습니다."
+      "bumped": "연동 클립 {count, plural, other {#개}}를 위 트랙으로 옮겼습니다.",
+      "transform": "위치 및 크기",
+      "positionX": "X(px)",
+      "positionY": "Y(px)",
+      "scaleX": "너비 배율(%)",
+      "scaleY": "높이 배율(%)",
+      "rotation": "회전(°)",
+      "lockRatio": "비율 고정",
+      "offFrame": "이 클립은 현재 프레임에 없습니다."
     },
     "webAnimation": {
       "create": "웹 애니메이션 만들기",
@@ -3821,6 +3829,11 @@
       "waiting": "업로드됨, 편집 권한 대기 중",
       "unfinished": "미완료",
       "preview": "{track}: {state, select, failed {동영상 업로드 실패, 표시 안 함} unfinished {동영상 미완료, 표시 안 함} other {동영상 업로드 중…}}"
+    },
+    "preview": {
+      "playBlocked": "브라우저가 소리가 있는 재생을 차단했습니다. 재생을 눌러 시작하세요.",
+      "videoLoading": "{track}: 동영상 불러오는 중…",
+      "videoUnavailable": "{track}: 동영상을 사용할 수 없음"
     }
   }
 }

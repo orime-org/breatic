@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 import {
   t, type ProjectRegisteredAsset, type TimelineDocumentV1, type TimelineTrack,
-  type TimelineVideoClip, type TimelineVideoSource,
+  type TimelineVideoClip, type TimelineVideoSource, TIMELINE_PREVIEW_DEFAULTS,
 } from '@breatic/shared';
 import type { TimelineEditCommand } from '@web/data/yjs/timeline-edit';
 import { initializeTimelineDocument } from '@breatic/shared/space-content';
@@ -34,6 +34,8 @@ import { useSpaceOperationsStore } from '@web/stores/space-operations';
 import { useTimelineEditPrefsStore } from '@web/stores/timeline-edit-prefs';
 import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 import { formatShortcut } from '@web/spaces/canvas/format-shortcut';
+import { gesture, moveableMock, resetMoveableMock } from '@web/spaces/timeline/__tests__/helpers/moveable-mock';
+import { timelineAssetKey } from '@web/spaces/timeline/use-timeline-asset';
 
 vi.mock('@web/data/api/timeline', async (importOriginal) => {
   const actual = await importOriginal<typeof TimelineApiModule>();
@@ -42,6 +44,7 @@ vi.mock('@web/data/api/timeline', async (importOriginal) => {
 vi.mock('@web/lib/toast', () => ({
   toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn(), loading: vi.fn(), dismiss: vi.fn() },
 }));
+vi.mock('react-moveable', async () => (await import('@web/spaces/timeline/__tests__/helpers/moveable-mock')).moveableModule);
 vi.mock('@web/data/upload/media-upload', async (importOriginal) => ({
   ...(await importOriginal<typeof MediaUploadModule>()),
   uploadMedia: vi.fn(),
@@ -287,6 +290,18 @@ async function addProjectVideo(): Promise<void> {
 function layout(): TimelineDocumentV1 { return readTimelineDocument(currentDoc()); }
 
 /**
+ * The preview's video element of one clip (breatic#1410 design §6.1: each carries `data-clip-id`).
+ * @param clipId - The clip.
+ * @returns The element.
+ * @throws {Error} When the preview draws no video for it.
+ */
+function previewVideo(clipId: string): HTMLVideoElement {
+  const video = screen.getByTestId('timeline-preview').querySelector<HTMLVideoElement>(`video[data-clip-id="${clipId}"]`);
+  if (video === null) throw new Error(`No preview video for ${clipId}`);
+  return video;
+}
+
+/**
  * Read the canonical result shape returned by the existing uploader.
  * @returns The registered local video's upload outcome.
  * @throws {never} Never.
@@ -341,6 +356,7 @@ beforeEach(() => {
   vi.mocked(timelineApi.limits).mockReset().mockResolvedValue({
     defaults: SETTINGS, assets: { pageSize: 50, pageMax: 100 },
     webAnimation: { promptMaxLength: 4000, durationSeconds: { min: 1, max: 60, default: 4 }, aspects: ['16:9', '9:16', '1:1'], playerLoadTimeoutMs: 15000, sourceRefreshIntervalMs: 10000 },
+    preview: TIMELINE_PREVIEW_DEFAULTS,
   });
   vi.mocked(uploadMedia).mockReset().mockResolvedValue(stored());
   vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});
@@ -746,12 +762,12 @@ describe('TimelineSpace local uploads in the background', () => {
     await waitFor(() => expect(screen.getByTestId(`timeline-clip-${id}`)).toHaveAttribute('data-state', 'failed'));
     // The preview draws nothing for the placeholder at the playhead and notes it by track (design §4.3).
     const note = (state: string): string => t('timeline.upload.preview', { track: t('timeline.mainTrack'), state });
-    expect(screen.getByTestId(`timeline-web-note-${id}`)).toHaveTextContent(note('failed'));
+    expect(screen.getByTestId(`timeline-preview-note-${id}`)).toHaveTextContent(note('failed'));
     fireEvent.click(screen.getByTestId(`timeline-clip-${id}`));
     fireEvent.click(await screen.findByTestId('timeline-upload-retry'));
     await waitFor(() => expect(vi.mocked(uploadMedia).mock.calls.map(([sent]) => sent)).toEqual([file, file]));
     await waitFor(() => expect(screen.getByTestId(`timeline-clip-${id}`)).toHaveAttribute('data-state', 'uploading'));
-    expect(screen.getByTestId(`timeline-web-note-${id}`)).toHaveTextContent(note('uploading'));
+    expect(screen.getByTestId(`timeline-preview-note-${id}`)).toHaveTextContent(note('uploading'));
   });
 
   it('offers no retry when sending the same file again cannot help', async () => {
@@ -908,10 +924,15 @@ describe('TimelineSpace tracks', () => {
     expect(screen.queryByTestId('timeline-track-v3')).toBe(null);
   });
 
-  it('shows the upper layer in the preview where tracks overlap in time', async () => {
+  it('draws every overlapping video in the preview, stacked by track with the upper layer on top (breatic#1410 §6.1)', async () => {
     seedLayout([clipAt(CLIP.id, MAIN, 0, 48), clipAt(X, 'v2', 0, 24)]);
     showTimeline();
-    await waitFor(() => expect(screen.getByTestId('timeline-preview')).toHaveAttribute('data-active-clip-id', X));
+    const preview = screen.getByTestId('timeline-preview');
+    const upper = await waitFor(() => previewVideo(X));
+    const lower = previewVideo(CLIP.id);
+    expect(Number(upper.style.zIndex)).toBeGreaterThan(Number(lower.style.zIndex));
+    expect(preview.querySelectorAll('video')).toHaveLength(2);
+    expect(preview.hasAttribute('data-active-clip-id')).toBe(false);
   });
 });
 
@@ -1865,8 +1886,10 @@ describe('TimelineSpace clips whose source is missing (inner#1708 M2, M3)', () =
     seek.focus();
     for (let step = 0; step < 15; step += 1) fireEvent.keyDown(seek, { key: 'ArrowRight' });
     await waitFor(() => expect(screen.getByText(position(15, 48))).toBeInTheDocument());
-    expect(screen.getByTestId('timeline-preview')).toHaveAttribute('data-active-clip-id', CLIP.id);
-    expect(screen.queryByText(t('timeline.transport.failed'))).toBe(null);
+    // breatic#1410 §6.1: each video element carries its clip id; the clip without a video draws none.
+    await waitFor(() => previewVideo(CLIP.id));
+    expect(screen.getByTestId('timeline-preview').querySelector(`video[data-clip-id="${X}"]`)).toBe(null);
+    expect(screen.getByTestId('timeline-preview').hasAttribute('data-active-clip-id')).toBe(false);
     expect(screen.queryByText(t('timeline.mediaUnavailable'))).toBe(null);
   });
 });
@@ -2712,5 +2735,445 @@ describe('TimelineSpace size cap (inner#1790)', () => {
     await waitFor(() => expect(toast.warning).toHaveBeenCalled());
     expect(vi.mocked(toast.warning).mock.calls.map(([message]) => message)).toEqual([SIZE_COPY_EN.T_ADD]);
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+  });
+});
+
+/**
+ * Selecting, moving and noting layers in the preview (breatic#1410 design §4, §6.2).
+ *
+ * The preview frame (`timeline-preview`) clips the layers; above it the operation layer (`timeline-layer-overlay`,
+ * absent for a Viewer) holds the hit layer (`timeline-layer-hit`, which takes clicks and drag starts) and, for a
+ * selected editable layer that is visible and ready, `TimelineLayerHandles` (loaded on demand; `react-moveable` is
+ * mocked here); above that the note layer (`timeline-preview-notes`) holds every per-layer note, a video's included.
+ * jsdom lays nothing out, so the frame and its layers measure 960 x 540 display pixels here: half the 1920 x 1080
+ * canvas. ASSET is 1280 x 720, so every video's base box is the whole canvas.
+ */
+describe('TimelineSpace preview layers (breatic#1410)', () => {
+  // A picture-in-picture in the top-right quarter: canvas box x 1200..1680, y 135..405; display centre (720, 135).
+  const PIP = { x: 480, y: -270, scaleX: 0.25, scaleY: 0.25, rotation: 0 };
+  const PIP_CENTRE = [720, 135] as const;
+  // Inside the full-frame CLIP only.
+  const BACKGROUND = [100, 400] as const;
+  const PREVIEW_PARTS = new Set(['timeline-preview', 'timeline-layer-overlay', 'timeline-layer-hit', 'timeline-preview-notes']);
+  const SOURCE_B: TimelineVideoSource = { ...SOURCE, id: '10000000-0000-4000-8000-000000000002', assetId: LOCAL_ASSET.assetId };
+
+  beforeEach(() => {
+    resetMoveableMock();
+    const rect = Element.prototype.getBoundingClientRect;
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      if (this instanceof HTMLElement && PREVIEW_PARTS.has(this.dataset.testid ?? '')) {
+        return { x: 0, y: 0, left: 0, top: 0, right: 960, bottom: 540, width: 960, height: 540, toJSON: () => ({}) } as DOMRect;
+      }
+      return rect.call(this);
+    });
+    const sized = (getter: (() => number) | undefined, size: number) => function (this: Element): number {
+      if (this instanceof HTMLElement && PREVIEW_PARTS.has(this.dataset.testid ?? '')) return size;
+      return getter === undefined ? 0 : getter.call(this);
+    };
+    // Each original getter is read before its spy replaces it.
+    for (const [name, size] of [['clientWidth', 960], ['clientHeight', 540]] as const) {
+      const getter = sized(Object.getOwnPropertyDescriptor(Element.prototype, name)?.get, size);
+      vi.spyOn(Element.prototype, name, 'get').mockImplementation(getter);
+    }
+    for (const [name, size] of [['offsetWidth', 960], ['offsetHeight', 540]] as const) {
+      const getter = sized(Object.getOwnPropertyDescriptor(HTMLElement.prototype, name)?.get, size);
+      vi.spyOn(HTMLElement.prototype, name, 'get').mockImplementation(getter);
+    }
+  });
+
+  /**
+   * Seed the full-frame CLIP on the main track and the picture-in-picture X above it, both from frame 0.
+   * @param fields - Overrides for X.
+   * @returns The client document.
+   * @throws {Error} When the fixture is invalid.
+   */
+  function seedPip(fields: Partial<TimelineVideoClip> = {}): Y.Doc {
+    return seedLayout([clipAt(CLIP.id, MAIN, 0, 48), clipAt(X, 'v2', 0, 24, { transform: PIP, ...fields })]);
+  }
+
+  /**
+   * Click the preview's hit layer at display coordinates.
+   * @param point - The point, from the frame's top left.
+   * @throws {Error} When the hit layer is absent.
+   */
+  function clickPreview(point: readonly [number, number]): void {
+    const hit = screen.getByTestId('timeline-layer-hit');
+    const init = { clientX: point[0], clientY: point[1], button: 0, buttons: 1, isPrimary: true, pointerId: 1 };
+    fireEvent.pointerDown(hit, init);
+    fireEvent.mouseDown(hit, init);
+    fireEvent.pointerUp(hit, { ...init, buttons: 0 });
+    fireEvent.mouseUp(hit, { ...init, buttons: 0 });
+    fireEvent.click(hit, { ...init, buttons: 0 });
+  }
+
+  /**
+   * Press a control the way a mouse does.
+   * @param element - The control.
+   * @throws {Error} When a handler throws.
+   */
+  function mouseClick(element: Element): void {
+    const init = { button: 0, buttons: 1, isPrimary: true, pointerId: 1 };
+    fireEvent.pointerDown(element, init);
+    fireEvent.mouseDown(element, init);
+    fireEvent.pointerUp(element, { ...init, buttons: 0 });
+    fireEvent.mouseUp(element, { ...init, buttons: 0 });
+    fireEvent.click(element, { ...init, buttons: 0 });
+  }
+
+  /**
+   * Whether the track shows a clip selected.
+   * @param clipId - The clip.
+   * @returns Its pressed state.
+   * @throws {Error} When the clip is absent.
+   */
+  function selectedOnTrack(clipId: string): string | null {
+    return screen.getByTestId('timeline-clip-' + clipId).getAttribute('aria-pressed');
+  }
+
+  /**
+   * Wait until each video layer is ready: its asset was read and the element got its `src` (design §4.2 makes only a
+   * ready video pickable).
+   * @param clipIds - The clips.
+   * @throws {Error} When one never becomes ready.
+   */
+  async function layersReady(...clipIds: string[]): Promise<void> {
+    await waitFor(() => { for (const clipId of clipIds) expect(previewVideo(clipId).getAttribute('src')).toBeTruthy(); });
+  }
+
+  /**
+   * Wait until the handles of the selected layer are mounted.
+   * @throws {Error} When they never mount.
+   */
+  async function handlesShown(): Promise<void> {
+    await waitFor(() => expect(moveableMock.mounted).toBe(1));
+  }
+
+  /**
+   * Count this client's own writes from now on.
+   * @param doc - The document.
+   * @returns The count so far.
+   * @throws {never} Never.
+   */
+  function countOwnWrites(doc: Y.Doc): () => number {
+    let own = 0;
+    doc.on('update', (_update: Uint8Array, _origin: unknown, _doc: Y.Doc, transaction: Y.Transaction) => { if (transaction.local) own += 1; });
+    return () => own;
+  }
+
+  /**
+   * Delete a clip in another user's copy and deliver it here.
+   * @param doc - This client's document.
+   * @param clipId - The clip.
+   * @throws {Error} When the peer refuses the delete.
+   */
+  function peerDeletes(doc: Y.Doc, clipId: string): void {
+    const peer = new Y.Doc();
+    try {
+      Y.applyUpdate(peer, Y.encodeStateAsUpdate(doc));
+      const vector = Y.encodeStateVector(doc);
+      write(peer, { operation: 'delete', parameters: { clipId }, placement: OFF });
+      act(() => Y.applyUpdate(doc, Y.encodeStateAsUpdate(peer, vector), 'remote-provider'));
+    } finally { peer.destroy(); }
+  }
+
+  it('selects the topmost layer under a click, the same clip the track selects', async () => {
+    seedPip();
+    showTimeline();
+    await layersReady(X, CLIP.id);
+    clickPreview(PIP_CENTRE);
+    await waitFor(() => expect(selectedOnTrack(X)).toBe('true'));
+    expect(selectedOnTrack(CLIP.id)).toBe('false');
+    await handlesShown();
+    clickPreview(BACKGROUND);
+    await waitFor(() => expect(selectedOnTrack(CLIP.id)).toBe('true'));
+    expect(selectedOnTrack(X)).toBe('false');
+  });
+
+  it('clears the selection for a click outside every layer', async () => {
+    seedLayout([clipAt(X, 'v2', 0, 24, { transform: PIP })]);
+    showTimeline();
+    await layersReady(X);
+    clickPreview(PIP_CENTRE);
+    await waitFor(() => expect(selectedOnTrack(X)).toBe('true'));
+    clickPreview(BACKGROUND);
+    await waitFor(() => expect(selectedOnTrack(X)).toBe('false'));
+    expect(screen.getByText(t('timeline.selectClip'))).toBeInTheDocument();
+  });
+
+  it('re-picks the picture-in-picture from a press inside the selected full-frame layer that did not move', async () => {
+    seedPip();
+    showTimeline();
+    await layersReady(X, CLIP.id);
+    clickPreview(BACKGROUND);
+    await waitFor(() => expect(selectedOnTrack(CLIP.id)).toBe('true'));
+    await handlesShown();
+    gesture.click(...PIP_CENTRE);
+    await waitFor(() => expect(selectedOnTrack(X)).toBe('true'));
+    expect(selectedOnTrack(CLIP.id)).toBe('false');
+  });
+
+  it('commits an entry left in the old clip\'s field before a preview click selects another clip', async () => {
+    seedPip();
+    showTimeline();
+    await layersReady(CLIP.id);
+    fireEvent.click(await screen.findByTestId('timeline-clip-' + X));
+    const field = await screen.findByTestId('timeline-clip-x');
+    field.focus();
+    fireEvent.change(field, { target: { value: '0' } });
+    clickPreview(BACKGROUND);
+    await waitFor(() => expect(selectedOnTrack(CLIP.id)).toBe('true'));
+    expect(layout().clips[X]?.transform).toEqual({ ...PIP, x: 0 });
+  });
+
+  it('shows no handles for a clip selected outside the current frame and keeps its fields editable', async () => {
+    seedLayout([clipAt(CLIP.id, MAIN, 0, 48), clipAt(X, 'v2', 30, 14, { transform: PIP })]);
+    showTimeline();
+    fireEvent.click(await screen.findByTestId('timeline-clip-' + X));
+    expect(await screen.findByTestId('timeline-clip-x')).toBeInstanceOf(HTMLInputElement);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)); });
+    expect(moveableMock.mounted).toBe(0);
+    // The handles do load, for a selected clip in the current frame.
+    fireEvent.click(screen.getByTestId('timeline-clip-' + CLIP.id));
+    await handlesShown();
+  });
+
+  it('notes in the properties that a clip selected outside the current frame is not at it, and drops the note for one that is', async () => {
+    seedLayout([clipAt(CLIP.id, MAIN, 0, 48), clipAt(X, 'v2', 30, 14, { transform: PIP })]);
+    showTimeline();
+    await layersReady(CLIP.id);
+    fireEvent.click(await screen.findByTestId('timeline-clip-' + X));
+    expect(await screen.findByTestId('timeline-clip-off-frame')).toHaveTextContent('This clip is not at the current frame.');
+    fireEvent.click(screen.getByTestId('timeline-clip-' + CLIP.id));
+    await waitFor(() => expect(selectedOnTrack(CLIP.id)).toBe('true'));
+    expect(await screen.findByTestId('timeline-clip-x')).toBeInstanceOf(HTMLInputElement);
+    expect(screen.queryByTestId('timeline-clip-off-frame')).toBe(null);
+  });
+
+  it('moves the layer itself while dragging, writes nothing until release, then one set_transform that undo reverts', async () => {
+    const doc = seedPip();
+    showTimeline();
+    await layersReady(X);
+    clickPreview(PIP_CENTRE);
+    await handlesShown();
+    const before = previewVideo(X).style.transform;
+    const own = countOwnWrites(doc);
+    gesture.dragStart();
+    const last = gesture.drag([10, 10], [240, -135]);
+    const proxy = screen.getByTestId('timeline-layer-proxy');
+    expect(previewVideo(X).style.transform).not.toBe(before);
+    expect(previewVideo(X).style.transform).toBe(proxy.style.transform);
+    expect(own()).toBe(0);
+    gesture.dragEnd(last);
+    await waitFor(() => expect(layout().clips[X]?.transform).toEqual({ ...PIP, x: 500, y: -250 }));
+    expect(own()).toBe(1);
+    expect(layout().clips[CLIP.id]?.transform).toEqual(CLIP.transform);
+    fireEvent.click(screen.getByTestId('timeline-undo'));
+    await waitFor(() => expect(layout().clips[X]?.transform).toEqual(PIP));
+  });
+
+  it('does not undo during a preview drag; the drag is one undo step after release', async () => {
+    seedPip();
+    showTimeline();
+    await layersReady(X);
+    clickPreview(PIP_CENTRE);
+    await screen.findByTestId('timeline-clip-rotation');
+    commitField('timeline-clip-rotation', '10');
+    await waitFor(() => expect(layout().clips[X]?.transform).toEqual({ ...PIP, rotation: 10 }));
+    await handlesShown();
+    gesture.dragStart();
+    const last = gesture.drag([10, 10], [240, -135]);
+    act(() => { fireEvent.keyDown(screen.getByTestId('timeline-space'), { key: 'z', metaKey: true }); });
+    act(() => { fireEvent.keyDown(screen.getByTestId('timeline-space'), { key: 'z', ctrlKey: true }); });
+    expect(layout().clips[X]?.transform).toEqual({ ...PIP, rotation: 10 });
+    gesture.dragEnd(last);
+    await waitFor(() => expect(layout().clips[X]?.transform).toEqual({ ...PIP, x: 500, y: -250, rotation: 10 }));
+    fireEvent.click(screen.getByTestId('timeline-undo'));
+    await waitFor(() => expect(layout().clips[X]?.transform).toEqual({ ...PIP, rotation: 10 }));
+    fireEvent.click(screen.getByTestId('timeline-undo'));
+    await waitFor(() => expect(layout().clips[X]?.transform).toEqual(PIP));
+  });
+
+  it('ends the drag without writing and names the removal when a peer deletes the dragged clip; Delete works again', async () => {
+    const doc = seedPip();
+    showTimeline();
+    await layersReady(X);
+    clickPreview(PIP_CENTRE);
+    await handlesShown();
+    gesture.dragStart();
+    gesture.drag([10, 10], [240, -135]);
+    const own = countOwnWrites(doc);
+    peerDeletes(doc, X);
+    await waitFor(() => expect(moveableMock.mounted).toBe(0));
+    expect(vi.mocked(toast.warning).mock.calls.map(([text]) => text)).toContain(t('timeline.errors.clip_removed'));
+    expect(own()).toBe(0);
+    const clip = screen.getByTestId('timeline-clip-' + CLIP.id);
+    fireEvent.click(clip);
+    act(() => { fireEvent.keyDown(clip, { key: 'Delete' }); });
+    await waitFor(() => expect(layout().clips[CLIP.id]).toBe(undefined));
+  });
+
+  it('cancels a drag when the role turns Viewer: the layer returns, nothing is written, and the operation layer goes', async () => {
+    const doc = seedPip();
+    const { view, client } = showTimeline();
+    await layersReady(X);
+    clickPreview(PIP_CENTRE);
+    await handlesShown();
+    const before = previewVideo(X).style.transform;
+    const own = countOwnWrites(doc);
+    gesture.dragStart();
+    gesture.drag([10, 10], [240, -135]);
+    expect(previewVideo(X).style.transform).not.toBe(before);
+    view.rerender(surface(client, { ...CONNECTED, writeAccess: 'denied' }, true));
+    await waitFor(() => expect(screen.queryByTestId('timeline-layer-overlay')).toBe(null));
+    expect(previewVideo(X).style.transform).toBe(before);
+    expect(moveableMock.mounted).toBe(0);
+    expect(own()).toBe(0);
+    // Editing again, the shortcuts are not held by the cancelled drag.
+    view.rerender(surface(client));
+    const clip = screen.getByTestId('timeline-clip-' + CLIP.id);
+    fireEvent.click(clip);
+    act(() => { fireEvent.keyDown(clip, { key: 'Delete' }); });
+    await waitFor(() => expect(layout().clips[CLIP.id]).toBe(undefined));
+  });
+
+  it('gives a Viewer no operation layer and no handles, and shows the placement', async () => {
+    seedPip();
+    showTimeline({ ...CONNECTED, writeAccess: 'denied' }, true);
+    await waitFor(() => previewVideo(X));
+    expect(screen.queryByTestId('timeline-layer-overlay')).toBe(null);
+    expect(screen.queryByTestId('timeline-layer-hit')).toBe(null);
+    const frame = screen.getByTestId('timeline-preview');
+    fireEvent.pointerDown(frame, { clientX: PIP_CENTRE[0], clientY: PIP_CENTRE[1], button: 0, buttons: 1, isPrimary: true, pointerId: 1 });
+    fireEvent.click(frame, { clientX: PIP_CENTRE[0], clientY: PIP_CENTRE[1] });
+    expect(selectedOnTrack(X)).toBe('false');
+    fireEvent.click(screen.getByTestId('timeline-clip-' + X));
+    expect(screen.getByTestId('timeline-clip-x')).not.toBeInstanceOf(HTMLInputElement);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)); });
+    expect(moveableMock.mounted).toBe(0);
+    expect(previewVideo(X).style.transform).toMatch(/translate\(\s*240px,\s*-135px\s*\)/);
+  });
+
+  it('notes a loading or unavailable video by its track in the note layer, retries only it, and keeps the selection', async () => {
+    let localCalls = 0;
+    const pending = deferred<ProjectRegisteredAsset>();
+    vi.mocked(timelineApi.resolveAsset).mockImplementation(async (_projectId, assetId) => {
+      if (assetId !== LOCAL_ASSET.assetId) return ASSET;
+      localCalls += 1;
+      return localCalls === 1 ? pending.promise : LOCAL_ASSET;
+    });
+    const server = seededDoc(timeline([clipAt(CLIP.id, MAIN, 0, 48), clipAt(X, 'v2', 0, 24, { sourceId: SOURCE_B.id, transform: PIP })], [track(MAIN, 0), track('v2', 1)], [SOURCE, SOURCE_B]));
+    try { Y.applyUpdate(currentDoc(), Y.encodeStateAsUpdate(server), 'provider'); } finally { server.destroy(); }
+    showTimeline();
+    fireEvent.click(await screen.findByTestId('timeline-clip-' + CLIP.id));
+    const notes = await screen.findByTestId('timeline-preview-notes');
+    const loading = await waitFor(() => within(notes).getByTestId('timeline-preview-note-' + X));
+    expect(loading).toHaveTextContent(t('timeline.track', { index: 2 }));
+    await act(async () => { pending.reject(new Error('unreachable')); });
+    const retry = await waitFor(() => within(notes).getByTestId('timeline-video-retry-' + X));
+    expect(within(notes).getByTestId('timeline-preview-note-' + X)).toHaveTextContent(t('timeline.track', { index: 2 }));
+    expect(screen.queryByText(t('timeline.mediaUnavailable'))).toBe(null);
+    // The other layer is untouched by the failure.
+    expect(previewVideo(CLIP.id)).toHaveAttribute('src', ASSET.fileUrl);
+    expect(screen.queryByTestId('timeline-layer-overlay')?.contains(retry) ?? false).toBe(false);
+    mouseClick(retry);
+    await waitFor(() => expect(localCalls).toBe(2));
+    await waitFor(() => expect(previewVideo(X)).toHaveAttribute('src', LOCAL_ASSET.fileUrl));
+    expect(selectedOnTrack(CLIP.id)).toBe('true');
+  });
+
+  /**
+   * Seed the full-frame CLIP (the default asset) on the main track and the picture-in-picture X (LOCAL_ASSET) above it.
+   * @param withClip - Whether CLIP is there under X.
+   * @throws {Error} When the fixture is invalid.
+   */
+  function seedPipOwnAsset(withClip = true): void {
+    const pip = clipAt(X, 'v2', 0, 24, { sourceId: SOURCE_B.id, transform: PIP });
+    const server = seededDoc(timeline(withClip ? [clipAt(CLIP.id, MAIN, 0, 48), pip] : [pip], [track(MAIN, 0), track('v2', 1)], [SOURCE, SOURCE_B]));
+    try { Y.applyUpdate(currentDoc(), Y.encodeStateAsUpdate(server), 'provider'); } finally { server.destroy(); }
+  }
+
+  it('picks the lower ready layer, not an upper video whose asset read failed, and gives the failed one no handles (§4.2)', async () => {
+    vi.mocked(timelineApi.resolveAsset).mockImplementation(async (_projectId, assetId) => {
+      if (assetId === LOCAL_ASSET.assetId) throw new Error('unreachable');
+      return ASSET;
+    });
+    seedPipOwnAsset();
+    showTimeline();
+    await waitFor(() => expect(previewVideo(CLIP.id)).toHaveAttribute('src', ASSET.fileUrl));
+    await waitFor(() => screen.getByTestId('timeline-video-retry-' + X));
+    clickPreview(PIP_CENTRE);
+    await waitFor(() => expect(selectedOnTrack(CLIP.id)).toBe('true'));
+    expect(selectedOnTrack(X)).toBe('false');
+    await handlesShown();
+    // Selected from its track, the failed layer still gets no handles.
+    fireEvent.click(screen.getByTestId('timeline-clip-' + X));
+    expect(selectedOnTrack(X)).toBe('true');
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)); });
+    expect(moveableMock.mounted).toBe(0);
+  });
+
+  it('picks the lower ready layer, not an upper video whose element failed to load, and gives the failed one no handles (§4.2)', async () => {
+    seedPip();
+    showTimeline();
+    await layersReady(X, CLIP.id);
+    const failed = previewVideo(X);
+    Object.defineProperty(failed, 'error', { configurable: true, value: { code: 4 } });
+    fireEvent(failed, new Event('error'));
+    await waitFor(() => screen.getByTestId('timeline-video-retry-' + X));
+    clickPreview(PIP_CENTRE);
+    await waitFor(() => expect(selectedOnTrack(CLIP.id)).toBe('true'));
+    expect(selectedOnTrack(X)).toBe('false');
+    await handlesShown();
+    // Selected from its track, the failed layer still gets no handles.
+    fireEvent.click(screen.getByTestId('timeline-clip-' + X));
+    expect(selectedOnTrack(X)).toBe('true');
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)); });
+    expect(moveableMock.mounted).toBe(0);
+  });
+
+  it('selects nothing for a click on a video whose asset is still loading, and gives it no handles (§4.2)', async () => {
+    const pending = deferred<ProjectRegisteredAsset>();
+    vi.mocked(timelineApi.resolveAsset).mockImplementation(async (_projectId, assetId) => assetId === LOCAL_ASSET.assetId ? pending.promise : ASSET);
+    seedPipOwnAsset(false);
+    showTimeline();
+    const notes = await screen.findByTestId('timeline-preview-notes');
+    await waitFor(() => within(notes).getByTestId('timeline-preview-note-' + X));
+    clickPreview(PIP_CENTRE);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)); });
+    expect(selectedOnTrack(X)).toBe('false');
+    expect(screen.getByText(t('timeline.selectClip'))).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('timeline-clip-' + X));
+    expect(selectedOnTrack(X)).toBe('true');
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)); });
+    expect(moveableMock.mounted).toBe(0);
+  });
+
+  it('gives the preview frame its own stacking context, so layer z-indexes stay under the operation and note layers (§4.1)', async () => {
+    seedPip();
+    showTimeline();
+    await waitFor(() => previewVideo(X));
+    expect(screen.getByTestId('timeline-preview')).toHaveClass('isolate');
+  });
+
+  it('keeps a video ready, with no unavailable note, when a refetch of its asset fails while its data is cached (§6.2)', async () => {
+    let localCalls = 0;
+    vi.mocked(timelineApi.resolveAsset).mockImplementation(async (_projectId, assetId) => {
+      if (assetId !== LOCAL_ASSET.assetId) return ASSET;
+      localCalls += 1;
+      if (localCalls === 1) return LOCAL_ASSET;
+      throw new Error('unreachable');
+    });
+    seedPipOwnAsset();
+    const { client } = showTimeline();
+    await waitFor(() => expect(previewVideo(X)).toHaveAttribute('src', LOCAL_ASSET.fileUrl));
+    const key = timelineAssetKey(PROJECT, LOCAL_ASSET.assetId);
+    await act(async () => { await client.refetchQueries({ queryKey: key }); });
+    expect(localCalls).toBe(2);
+    expect(client.getQueryState(key)?.status).toBe('error');
+    expect(client.getQueryData(key)).toEqual(LOCAL_ASSET);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)); });
+    expect(screen.queryByTestId('timeline-preview-note-' + X)).toBe(null);
+    expect(screen.queryByTestId('timeline-video-retry-' + X)).toBe(null);
+    expect(previewVideo(X)).toHaveAttribute('src', LOCAL_ASSET.fileUrl);
   });
 });
