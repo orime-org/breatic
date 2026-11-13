@@ -257,6 +257,22 @@ describe("a turn that said its piece with something still waiting", () => {
     expect(chunks.at(-1)?.type).toBe("finish");
   });
 
+  it("sends the step before it as it was, thinking included, when it carries on", async () => {
+    script.calls = [
+      () => [
+        { type: "reasoning-start", id: "r1" },
+        { type: "reasoning-delta", id: "r1", delta: "weighing it up" },
+        { type: "reasoning-end", id: "r1" },
+        ...says("first answer")(),
+      ],
+      says("second answer"),
+    ];
+    script.onCall[0] = () => waiting.push(taken("m2", "and one more thing"));
+    await runTurn();
+    expect(script.prompts).toHaveLength(2);
+    expect(JSON.stringify(script.prompts[1])).toContain("weighing it up");
+  });
+
   it("ends when nothing waits (PS-06)", async () => {
     script.calls = [says("only answer")];
     await runTurn();

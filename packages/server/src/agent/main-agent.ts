@@ -862,7 +862,8 @@ export class MainAgent {
      * window; past it, the oldest turns are folded first. A call the provider
      * turns away as too long is not shown to the user: the turn folds and a
      * new stream carries on inside the same reply, with the finished steps as
-     * they ran, so no tool runs twice.
+     * they ran, so no tool runs twice. What the user sent during a last step
+     * is read the same way, in one more stream of the same reply.
      * @param writer - The stream the turn is written to.
      * @throws {unknown} When the turn fails; the stream's `onError` records it.
      */
@@ -898,24 +899,26 @@ export class MainAgent {
       if (typeof mainModel === "string") throw new TypeError("The main agent requires an instantiated language model.");
 
       for (let first = true; ; first = false) {
-        const turnedAway = await streamOnce(writer, {
+        // With no fold yet, the steps go on as they were sent, thinking
+        // included, so the request keeps the prefix it had.
+        const outcome = await streamOnce(writer, {
           first,
-          messages: first ? sent.messages : carriedOn(sent),
+          messages: first ? sent.messages : overflowFolds === 0 ? [...sent.messages, ...withTaken(steps)] : carriedOn(sent),
           mainModel,
           watch,
           studioId,
         });
-        if (turnedAway === undefined) return;
+        if (outcome === undefined) return;
         // What the user sent during the last step: the same reply goes on.
-        if (turnedAway === CARRY_ON) continue;
+        if (outcome === CARRY_ON) continue;
 
         overflowFolds += 1;
         const folded = await fold(writer, withTaken(steps.map((step) => stripThinking(step))), {
           kind: "overflow",
-          overflow: turnedAway.overflow,
+          overflow: outcome.overflow,
           known: lastCallTotal,
           attempt: overflowFolds,
-          error: turnedAway.error,
+          error: outcome.error,
         });
         signal?.throwIfAborted();
         if (folded === "too_long") {
@@ -929,7 +932,7 @@ export class MainAgent {
         }
         if (folded !== "moved") {
           // Nothing moved, so what would go out is what was just turned away.
-          throw new Error(`The fold after a context overflow ended ${folded}; the request was not sent again.`, { cause: turnedAway.error });
+          throw new Error(`The fold after a context overflow ended ${folded}; the request was not sent again.`, { cause: outcome.error });
         }
         lastCallTotal = undefined;
         prefixChangedDuringTurn = true;
@@ -955,8 +958,9 @@ export class MainAgent {
      * @param run.mainModel - The model.
      * @param run.watch - The turn's recorder of model calls.
      * @param run.studioId - The studio whose material a proposal may name.
-     * @returns The overflow that cut this stream short, or undefined when the
-     *   stream ended the turn.
+     * @returns The overflow that cut this stream short, CARRY_ON when what the
+     *   user sent during its last step is read in one more stream of the same
+     *   reply, or undefined when the stream ended the turn.
      */
     const streamOnce = async (
       writer: UIMessageStreamWriter,
