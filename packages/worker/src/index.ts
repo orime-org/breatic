@@ -141,28 +141,14 @@ import { runTimelineExecution } from "@worker/handlers/timeline/web-animation-ex
 import { sweepTimelineExecutions } from "@worker/handlers/timeline/timeline-sweep.js";
 import { reportTimelineJobFailed } from "@worker/handlers/timeline/timeline-failed-job.js";
 import { sweepCreditCharges } from "@worker/handlers/credit-charge-sweep.js";
-
-/** Queue holding the recurring sweep of Timeline executions that have not ended (inner#1711). */
-const TIMELINE_SWEEP_QUEUE = "timeline-sweep";
-
-/** Queue holding the recurring sweep of charge requests still pending (inner#1617). */
-const CREDIT_CHARGE_SWEEP_QUEUE = "credit-charge-sweep";
-
-/** Every BullMQ queue this process runs a worker for. */
-const WORKER_QUEUES: readonly string[] = [
-  "tasks",
-  "url-ingest",
-  UPLOAD_FINISH_QUEUE,
-  USAGE_LOOKUP_QUEUE,
-  MEDIA_READ_QUEUE,
-  AUDIO_PEAKS_QUEUE,
-  MAIL_QUEUE,
-  ADS_CONVERSION_QUEUE,
-  LONG_MEDIA_DISPATCH_QUEUE,
-  TIMELINE_QUEUE,
-  TIMELINE_SWEEP_QUEUE,
+import {
   CREDIT_CHARGE_SWEEP_QUEUE,
-];
+  TIMELINE_SWEEP_QUEUE,
+  workerQueuesFor,
+} from "@worker/runtime/region-queues.js";
+
+/** Every BullMQ queue this process runs a worker for, by its region (inner#1955). */
+const WORKER_QUEUES: readonly string[] = workerQueuesFor({ region: env.REGION, globalRegion: env.GLOBAL_REGION });
 
 /** Cap graceful shutdown so a stuck drain can't hold the process. */
 const SHUTDOWN_DEADLINE_MS = 4000;
@@ -393,30 +379,36 @@ export function startWorker(): void {
     );
   });
 
-  // Ad conversions a request or webhook queued (inner#1442 §4.9). The sink is
-  // built on the first job, so a deployment without Google Ads configured
-  // never constructs a client.
-  let adsSink: AdsConversionSink | undefined;
-  const adsConversion = createWorker<AdsConversionJob>(ADS_CONVERSION_QUEUE, (job) =>
-    runAdsConversion(job, (config) => (adsSink ??= googleDataManagerSink(config))),
-  );
-  // Queues again any upload whose job was lost between the claim and the add.
-  (adsConversionConfig() ? scheduleAdsUploadSweep() : unscheduleAdsUploadSweep()).catch((err: unknown) =>
-    logger.error({ err }, "ads_conversion_sweep_schedule_failed"),
-  );
+  // Workers that run only in some regions, closed with the rest on shutdown.
+  const regionWorkers: Array<{ close: () => Promise<void> }> = [];
 
-  adsConversion.on("failed", (job, err) => {
-    logger.error(
-      {
-        err,
-        conversion: job?.data.conversion,
-        transactionId: job?.data.transactionId,
-        attemptsMade: job?.attemptsMade,
-        attemptsAllowed: job?.opts?.attempts,
-      },
-      "ads_conversion_failed",
+  if (WORKER_QUEUES.includes(ADS_CONVERSION_QUEUE)) {
+    // Ad conversions a request or webhook queued (inner#1442 §4.9). The sink is
+    // built on the first job, so a deployment without Google Ads configured
+    // never constructs a client.
+    let adsSink: AdsConversionSink | undefined;
+    const adsConversion = createWorker<AdsConversionJob>(ADS_CONVERSION_QUEUE, (job) =>
+      runAdsConversion(job, (config) => (adsSink ??= googleDataManagerSink(config))),
     );
-  });
+    // Queues again any upload whose job was lost between the claim and the add.
+    (adsConversionConfig() ? scheduleAdsUploadSweep() : unscheduleAdsUploadSweep()).catch((err: unknown) =>
+      logger.error({ err }, "ads_conversion_sweep_schedule_failed"),
+    );
+
+    adsConversion.on("failed", (job, err) => {
+      logger.error(
+        {
+          err,
+          conversion: job?.data.conversion,
+          transactionId: job?.data.transactionId,
+          attemptsMade: job?.attemptsMade,
+          attemptsAllowed: job?.opts?.attempts,
+        },
+        "ads_conversion_failed",
+      );
+    });
+    regionWorkers.push(adsConversion);
+  }
 
   worker.on("completed", (job) => {
     logger.info({ jobId: job.id, taskId: job.data.taskId }, "job_completed");
@@ -562,7 +554,7 @@ export function startWorker(): void {
         () => mediaRead.close(),
         () => audioPeaks.close(),
         () => mail.close(),
-        () => adsConversion.close(),
+        ...regionWorkers.map((regionWorker) => () => regionWorker.close()),
         () => flushServerAnalytics(),
       ],
       deadlineMs: SHUTDOWN_DEADLINE_MS,
