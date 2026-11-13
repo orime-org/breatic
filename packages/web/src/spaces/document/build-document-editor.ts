@@ -60,6 +60,7 @@ import { documentColumnCellWidthExtension } from '@web/spaces/document/document-
 import { documentColumnKeysExtension } from '@web/spaces/document/document-column-keys';
 import { columnDropHook } from '@web/spaces/document/document-column-landing';
 import { documentColumnRepairExtension } from '@web/spaces/document/document-column-repair';
+import { documentColumnSpanSelectionExtension } from '@web/spaces/document/document-column-span-selection';
 import { documentTableKeysExtension } from '@web/spaces/document/document-table-keys';
 import { documentTableColumnWidthsExtension } from '@web/spaces/document/document-table-column-widths';
 import { documentTableTargetExtension } from '@web/spaces/document/document-table-target';
@@ -195,6 +196,7 @@ export function buildDocumentEditor(
       documentColumnKeysExtension(),
       documentTableKeysExtension(),
       documentColumnRepairExtension(),
+      documentColumnSpanSelectionExtension(),
       documentColumnCellWidthExtension(),
       documentTableTargetExtension(),
       documentTableHandlesExtension(),

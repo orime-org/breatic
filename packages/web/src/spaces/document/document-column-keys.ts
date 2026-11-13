@@ -19,6 +19,7 @@ import type { Node as PMNode, ResolvedPos } from '@tiptap/pm/model';
 import { Selection, TextSelection } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
+import { takeAwayColumnSpan } from '@web/spaces/document/document-column-span-selection';
 import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-nodes';
 import { firstStepAtStart } from '@web/spaces/document/document-table-keys';
 
@@ -133,7 +134,24 @@ export const documentColumnKeysExtension = createExtension(() => ({
   key: 'document-column-keys',
   runsBefore: ['document-table-keys'],
   keyboardShortcuts: {
-    Backspace: ({ editor }: { editor: KeysEditor }) => backspaceInColumn(editor.prosemirrorView),
-    Delete: ({ editor }: { editor: KeysEditor }) => deleteInColumn(editor.prosemirrorView),
+    // A selection across columns goes through its own replace first, for
+    // these and the word and line deletes alike (`document-table-keys.ts`).
+    Backspace: ({ editor }: { editor: KeysEditor }) =>
+      takeAwayColumnSpan(editor.prosemirrorView) || backspaceInColumn(editor.prosemirrorView),
+    Delete: ({ editor }: { editor: KeysEditor }) =>
+      takeAwayColumnSpan(editor.prosemirrorView) || deleteInColumn(editor.prosemirrorView),
+    ...Object.fromEntries(
+      [
+        'Mod-Backspace',
+        'Shift-Backspace',
+        'Mod-Delete',
+        'Ctrl-h',
+        'Alt-Backspace',
+        'Ctrl-d',
+        'Ctrl-Alt-Backspace',
+        'Alt-Delete',
+        'Alt-d',
+      ].map((key) => [key, ({ editor }: { editor: KeysEditor }) => takeAwayColumnSpan(editor.prosemirrorView)]),
+    ),
   },
 }));

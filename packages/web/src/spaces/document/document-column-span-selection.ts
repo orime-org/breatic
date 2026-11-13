@@ -1,0 +1,227 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: Elastic-2.0
+
+/**
+ * A text selection whose ends stand in different columns, or one in a column
+ * and the other outside its group (inner#1314 design §5.5). Replacing it
+ * (a delete, a cut, typing, a paste, a drag's move) never runs words from one
+ * column into another: each column keeps what was not selected in it, as a
+ * cell does (`takeAwayCellContent`); a column the selection covers from its
+ * first word to its last goes whole, and the repair rule
+ * (`document-column-repair.ts`) dissolves a group left with one column. What
+ * goes in lands where the selection started, or where it ended when the start
+ * went with a whole column.
+ *
+ * The selection keeps its ends where they are, as `TableSpanSelection` does,
+ * and only its replace differs; a plugin turns a text selection that runs
+ * across columns into one after every change. Typing reaches the replace
+ * through `tr.insertText(text)`, and an input method's composition and the
+ * browser's own deletes take the selection away first, as the table's leave
+ * selection does.
+ */
+
+import { createExtension } from '@blocknote/core';
+import type { Node as PMNode, Slice } from '@tiptap/pm/model';
+import { Plugin, PluginKey, Selection, TextSelection, type EditorState, type Transaction } from '@tiptap/pm/state';
+import type { EditorView } from '@tiptap/pm/view';
+
+import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-nodes';
+import { heldTables } from '@web/spaces/document/document-table-leave-selection';
+
+/** A range taken out of the document. */
+interface Piece {
+  readonly from: number;
+  readonly to: number;
+  /** Whether it is a whole column or group, the selection's start inside it. */
+  readonly whole: boolean;
+}
+
+/**
+ * The id of the innermost column around a position.
+ * @param doc - The document.
+ * @param pos - The position.
+ * @returns The id, or null outside any column.
+ */
+function columnAt(doc: PMNode, pos: number): string | null {
+  const $pos = doc.resolve(pos);
+  for (let depth = $pos.depth; depth > 0; depth -= 1) {
+    const node = $pos.node(depth);
+    if (node.type.name === DOC_COLUMN) return String(node.attrs['id']);
+  }
+  return null;
+}
+
+/**
+ * Whether a selection's ends stand in different columns, or one in a column
+ * and the other outside it.
+ * @param selection - The selection.
+ * @returns True when it runs across columns.
+ */
+export function spansColumns(selection: Selection): boolean {
+  if (selection.empty || !(selection instanceof TextSelection) || heldTables(selection) !== null) return false;
+  const doc = selection.$from.doc;
+  return columnAt(doc, selection.from) !== columnAt(doc, selection.to);
+}
+
+/**
+ * The pieces a selection across columns takes away, in document order: the
+ * selected part of each column it starts or ends in, each column and group it
+ * covers whole, and the body's words around the groups.
+ * @param doc - The document.
+ * @param from - The selection's start.
+ * @param to - The selection's end.
+ * @returns The pieces.
+ */
+function piecesOf(doc: PMNode, from: number, to: number): Piece[] {
+  const pieces: Piece[] = [];
+  let cursor = from;
+  /**
+   * Takes the body's words from the cursor to a position.
+   * @param end - The position.
+   */
+  const bodyTo = (end: number): void => {
+    if (end > cursor) pieces.push({ from: cursor, to: end, whole: false });
+  };
+  doc.nodesBetween(from, to, (node, pos) => {
+    if (node.type.name !== DOC_COLUMN_LIST || pos + node.nodeSize <= from || pos >= to) return true;
+    const groupEnd = pos + node.nodeSize;
+    const parts: Piece[] = [];
+    node.forEach((column, offset) => {
+      const start = pos + 1 + offset;
+      const end = start + column.nodeSize;
+      if (end <= from || start >= to) return;
+      const first = Selection.findFrom(doc.resolve(start + 1), 1, true)?.from ?? start + 1;
+      const last = Selection.findFrom(doc.resolve(end - 1), -1, true)?.to ?? end - 1;
+      if (from <= first && to >= last) parts.push({ from: start, to: end, whole: from > start });
+      else if (from > start) parts.push({ from, to: end - 1, whole: false });
+      else parts.push({ from: start + 1, to, whole: false });
+    });
+    const every = parts.length === node.childCount && parts.every((part) => part.to - part.from === 0 || isWholeColumn(node, pos, part));
+    bodyTo(Math.min(pos, to));
+    if (every) pieces.push({ from: pos, to: groupEnd, whole: from > pos });
+    else pieces.push(...parts);
+    cursor = Math.max(cursor, Math.min(groupEnd, to));
+    return false;
+  });
+  bodyTo(to);
+  return pieces;
+}
+
+/**
+ * Whether a piece is one of a group's columns, whole.
+ * @param group - The group.
+ * @param pos - Where the group starts.
+ * @param piece - The piece.
+ * @returns True when it is.
+ */
+function isWholeColumn(group: PMNode, pos: number, piece: Piece): boolean {
+  let whole = false;
+  group.forEach((column, offset) => {
+    const start = pos + 1 + offset;
+    if (piece.from === start && piece.to === start + column.nodeSize) whole = true;
+  });
+  return whole;
+}
+
+/**
+ * Takes a selection across columns away and puts content in its place.
+ * @param selection - The selection.
+ * @param tr - The transaction.
+ * @param put - Puts the content at a position, or nothing.
+ */
+function replaceAcross(selection: Selection, tr: Transaction, put: ((at: number) => void) | null): void {
+  const pieces = piecesOf(tr.doc, selection.from, selection.to);
+  const startGoes = pieces[0]?.whole === true;
+  const first = tr.steps.length;
+  for (const piece of [...pieces].reverse()) tr.delete(piece.from, piece.to);
+  const after = tr.mapping.slice(first);
+  const at = startGoes ? after.map(selection.to, -1) : after.map(selection.from, -1);
+  const placed = tr.steps.length;
+  put?.(at);
+  let end = after.map(at);
+  tr.mapping.slice(placed).maps.forEach((map) => map.forEach((_from, _to, _newFrom, newTo) => (end = newTo)));
+  if (tr.steps.length === placed) end = at;
+  tr.setSelection(Selection.near(tr.doc.resolve(Math.min(end, tr.doc.content.size)), -1));
+}
+
+/** A text selection across columns. */
+export class ColumnSpanSelection extends TextSelection {
+  /**
+   * Replaces the selection, column by column.
+   * @param tr - The transaction.
+   * @param content - What goes in its place.
+   */
+  override replace(tr: Transaction, content?: Slice): void {
+    replaceAcross(this, tr, content === undefined || content.size === 0 ? null : (at) => tr.replaceRange(at, at, content));
+  }
+
+  /**
+   * Replaces the selection with a node, column by column.
+   * @param tr - The transaction.
+   * @param node - The node.
+   */
+  override replaceWith(tr: Transaction, node: PMNode): void {
+    replaceAcross(this, tr, (at) => tr.replaceRangeWith(at, at, node));
+  }
+}
+
+/**
+ * The selection a text selection across columns becomes.
+ * @param state - The editor state.
+ * @returns It, or null when it is already one or runs across no columns.
+ */
+function columnSpanSelection(state: EditorState): Selection | null {
+  const { selection } = state;
+  // Only a plain text selection: one already across columns, a table's leave
+  // selection and a body-edge selection keep their own kind.
+  if (Object.getPrototypeOf(selection) !== TextSelection.prototype || !spansColumns(selection)) return null;
+  return new ColumnSpanSelection(selection.$anchor, selection.$head);
+}
+
+/**
+ * Takes a selection across columns away, through its own replace: the
+ * body's deletes take a range by position.
+ * @param view - The editor view.
+ * @returns Whether there was one.
+ */
+export function takeAwayColumnSpan(view: EditorView): boolean {
+  if (!(view.state.selection instanceof ColumnSpanSelection)) return false;
+  view.dispatch(view.state.tr.deleteSelection().scrollIntoView());
+  return true;
+}
+
+/**
+ * The extension.
+ * @returns The extension, for the assembly to register.
+ */
+export const documentColumnSpanSelectionExtension = createExtension(() => ({
+  key: 'document-column-span-selection',
+  prosemirrorPlugins: [
+    new Plugin({
+      key: new PluginKey('documentColumnSpanSelection'),
+      appendTransaction: (transactions, _old, state) => {
+        if (!transactions.some((tr) => tr.selectionSet || tr.docChanged)) return null;
+        const span = columnSpanSelection(state);
+        return span === null ? null : state.tr.setSelection(span);
+      },
+      props: {
+        handleTextInput: (view, _from, _to, text) => {
+          if (!(view.state.selection instanceof ColumnSpanSelection)) return false;
+          view.dispatch(view.state.tr.insertText(text).scrollIntoView());
+          return true;
+        },
+        handleDOMEvents: {
+          compositionstart: (view) => {
+            takeAwayColumnSpan(view);
+            return false;
+          },
+          beforeinput: (view, event) => {
+            if (!event.inputType.startsWith('delete') || !takeAwayColumnSpan(view)) return false;
+            event.preventDefault();
+            return true;
+          },
+        },
+      },
+    }),
+  ],
+}));
