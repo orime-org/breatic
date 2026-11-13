@@ -242,6 +242,17 @@ describe('TimelineLayerHandles cancels without writing (§4.3, §7.1)', () => {
     expect(onCommit).not.toHaveBeenCalled();
   });
 
+  it('ends the Moveable gesture on Escape so the handles do not follow the pointer until release', () => {
+    showHandles();
+    const instance = moveableMock.instance;
+    if (instance === null) throw new Error('No Moveable instance is mounted');
+    gesture.dragStart();
+    gesture.drag([100, 50]);
+    expect(instance.stopDrag).not.toHaveBeenCalled();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(instance.stopDrag).toHaveBeenCalledTimes(1);
+  });
+
   it('restores the stored transform when the window loses focus mid-scale', () => {
     const { onOverride, onCommit, onDraggingChange } = showHandles();
     gesture.scaleStart([1, 1]);

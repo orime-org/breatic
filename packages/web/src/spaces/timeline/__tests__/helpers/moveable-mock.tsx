@@ -41,7 +41,7 @@ export interface MoveableMockProps {
 }
 
 /** The instance methods of a mounted handle that tests read. */
-export interface MoveableMockInstance { updateRect: ReturnType<typeof vi.fn> }
+export interface MoveableMockInstance { updateRect: ReturnType<typeof vi.fn>; stopDrag: ReturnType<typeof vi.fn> }
 
 /** What the mounted handles were last given, how many are mounted, and the last mounted instance. */
 export const moveableMock: { props: MoveableMockProps | null; mounted: number; instance: MoveableMockInstance | null } = { props: null, mounted: 0, instance: null };

@@ -1821,6 +1821,18 @@ describe('several video layers playing together (#1410 design §6.3)', () => {
     expect(a.seeks).toEqual([]);
   });
 
+  it('only steers a lane whose drift swings by more than 0.5 s between checks but stays within 0.5 s', async () => {
+    const { hook, a, b } = twoLanes();
+    act(() => hook.result.current.toggle());
+    await settle();
+    tick(1500);
+    // The upper lane goes from 0.3 s behind to 0.3 s ahead: a 0.6 s swing, never more than 0.5 s off.
+    at(1510, [[a, 1.51], [b, 1.21]]);
+    at(1530, [[a, 1.53], [b, 1.83]]);
+    expect(hook.result.current.state).toBe('playing');
+    expect(b.seeks).toEqual([]);
+  });
+
   it('hard-syncs a lane that jumps more than 0.5 s: the preview waits, the lane lands on the frozen frame, and a lane within 0.15 s is left to steering', async () => {
     const { hook, a, b } = twoLanes();
     act(() => hook.result.current.toggle());
@@ -1944,6 +1956,18 @@ describe('several video layers playing together (#1410 design §6.3)', () => {
     expect(hook.result.current.frame).toBe(30);
   });
 
+  it('hard-syncs the lane whose speed a collaborator changed while playing to its new source time', async () => {
+    const { hook, a, b } = twoLanes();
+    act(() => hook.result.current.toggle());
+    await settle();
+    tick(1000);
+    hook.rerender({ ...hook.props, document: timelineDocument([CLIP, { ...LANE_B, rate: { num: 2, den: 1 }, durationFrames: 96 }], [SOURCE, SOURCE_B], TRACKS) });
+    expect(hook.result.current.state).toBe('waiting');
+    // At 1 s into the clip, twice the speed shows 2 s of its source; 96 frames at that speed stay inside the 10 s file.
+    expect(b.seeks).toEqual([2]);
+    expect(a.seeks).toEqual([]);
+  });
+
   it.each([0, 1])('keeps the clock and the playing lane going while a premounted lane has readyState %i', async (readyState) => {
     const later = { ...LANE_B, startFrame: 36, durationFrames: 48 };
     const { hook, a, b } = twoLanes({ readyState }, {}, later);
@@ -1986,6 +2010,24 @@ describe('several video layers playing together (#1410 design §6.3)', () => {
     expect(hook.result.current.state).toBe('playing');
     expect(a.pause).toHaveBeenCalledTimes(pauses);
     expect(a.seeks).toEqual([]);
+  });
+
+  it('pauses a playing lane that is premounted again after a seek before its start while playing, and keeps it paused once the seeks land', async () => {
+    const later = { ...LANE_B, startFrame: 48, durationFrames: 96 };
+    const { hook, a, b } = twoLanes({}, {}, later);
+    act(() => hook.result.current.toggle());
+    await settle();
+    run(2500);
+    await settle();
+    expect(b.facts.paused).toBe(false);
+    // Frame 24 lies before the upper lane's start at 48, inside its premount lead.
+    act(() => hook.result.current.seek(24));
+    expect(b.facts.paused).toBe(true);
+    mediaEvent(a, 'seeked', { seeking: false, readyState: 4 });
+    mediaEvent(b, 'seeked', { seeking: false, readyState: 4 });
+    await settle();
+    expect(hook.result.current.state).toBe('playing');
+    expect(b.facts.paused).toBe(true);
   });
 
   it('holds at a boundary until a new lane lands on its target, and does not hard-sync it on the first checks after', async () => {
@@ -2154,6 +2196,44 @@ describe('several video layers playing together (#1410 design §6.3)', () => {
     expect(a.seeks).toEqual([]);
     tick(1250);
     expect(hook.result.current.frame).toBe(30);
+  });
+
+  it('seeks a lagging lane to its file end again on a second pass into its tail after a seek back, and resumes after another lane stalls', async () => {
+    const a = mediaFixture({ duration: 1 });
+    const b = mediaFixture();
+    const hook = renderPlayback(a, {
+      document: timelineDocument([TAIL_CLIP, LANE_B], [TAIL_SOURCE, SOURCE_B], TRACKS),
+      media: new Map([[TAIL_CLIP.id, a], [LANE_B.id, b]]),
+    });
+    act(() => hook.result.current.toggle());
+    await settle();
+    // First pass: the lane lags 30 ms and gets its one tail seek.
+    at(1000, [[a, 0.97]]);
+    at(1020, [[a, 0.99]]);
+    expect(a.seeks).toEqual([1]);
+    mediaEvent(a, 'seeked', { seeking: false, ended: true, readyState: 2 });
+    tick(1080);
+    // The user seeks back to frame 12 while playing.
+    act(() => hook.result.current.seek(12));
+    mediaEvent(a, 'seeked', { seeking: false, ended: false, readyState: 4 });
+    mediaEvent(b, 'seeked', { seeking: false, readyState: 4 });
+    await settle();
+    expect(hook.result.current.state).toBe('playing');
+    const start = now;
+    const seeks = a.seeks.length;
+    // Second pass: the lane lags again as the clock passes the 1 s file end.
+    at(start + 500, [[a, 0.97]]);
+    at(start + 545, [[a, 0.99]]);
+    expect(hook.result.current.frame).toBe(25);
+    expect(a.seeks.slice(seeks)).toEqual([1]);
+    mediaEvent(a, 'seeked', { seeking: false, ended: true, readyState: 2 });
+    expect(a.facts.paused).toBe(true);
+    mediaEvent(b, 'waiting', { readyState: 2 });
+    expect(hook.result.current.state).toBe('waiting');
+    mediaEvent(b, 'seeked', { seeking: false, readyState: 4 });
+    mediaEvent(b, 'canplay', { readyState: 4 });
+    await settle();
+    expect(hook.result.current.state).toBe('playing');
   });
 
   it('holds a lane that ended 20 ms ahead of a clock still inside its file on its last picture, without seek, play() or waiting', async () => {
@@ -2555,6 +2635,18 @@ describe('video lane rate steering (#1410 design §6.3, §6.4)', () => {
     expect(hook.result.current.frame).toBe(96);
     expect(a.rateWrites.slice(writes)).toEqual([]);
     expect(a.seeks).toEqual([]);
+  });
+
+  it('plays a clip at twice its speed in step with the clock, without a seek', async () => {
+    const fast = { ...CLIP, rate: { num: 2, den: 1 }, durationFrames: 120 };
+    const media = mediaFixture();
+    const hook = renderPlayback(media, { document: timelineDocument([fast]) });
+    act(() => hook.result.current.toggle());
+    await settle();
+    run(4000);
+    expect(hook.result.current.state).toBe('playing');
+    expect(media.facts.playbackRate).toBe(2);
+    expect(media.seeks).toEqual([]);
   });
 
   it.each([[5e-7, []], [2e-6, [1]]] as const)('rewrites a lane rate %d off its target only when it is more than 1e-6 off', async (off, expected) => {
