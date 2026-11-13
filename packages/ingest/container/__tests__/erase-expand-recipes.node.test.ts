@@ -523,6 +523,14 @@ describe('prepare_model_input order and grid (execution design §10.2, §10.4)',
     prepared.forEach((value, j) => expect(Math.abs(value - source[2 * j]!), `slot ${j}`).toBeLessThan(3));
     (await packets(file)).forEach((packet, j) => expect(Number(packet.pts_time)).toBeCloseTo(j / 30, 3));
   });
+
+  it('PG05 a resample grid whose last slot starts on the last frame shows that frame there, not the one before', async () => {
+    // 11 frames at 60 fps on a 30 fps grid: slot 5 is at 10/60, the start of frame 10, the range's last frame.
+    const file = await produce({ [SOURCE]: join(dir, 'greys60.mp4') }, prepare({ start: 0, end: 11 }, 60, r(11, 60), { grid: { mode: 'resample', rate: 30, frameCount: 6 } }));
+    const [source, prepared] = [await lumaMeans(join(dir, 'greys60.mp4')), await lumaMeans(file)];
+    expect(prepared).toHaveLength(6);
+    prepared.forEach((value, j) => expect(Math.abs(value - source[2 * j]!), `slot ${j}`).toBeLessThan(3));
+  });
 });
 
 describe('model_window, model_window_mask and frame_at (execution design §10.5 steps row)', () => {

@@ -514,10 +514,13 @@ async function renderWindow(recipe: Extract<PresentationRecipe, { kind: "chunk_e
   const target = profile === undefined ? recipe.target : profileTarget(profile, recipe.target);
   const clock = BigInt(recipe.timescale);
   const transparent = target.format === "webm-vp9" && target.alpha === "straight";
+  // A transition profile and a model's resample grid both put the frames on an fps grid after the window; a reversed
+  // stream is re-timed frame by frame instead, and a closing frame would come first in it.
+  const grid = profile !== undefined || (recipe.kind === "prepare_model_input" && recipe.grid?.mode === "resample" && recipe.order !== "reverse");
   // Black: a transparent fill packs to black colour and black alpha; a VP9 output with alpha keeps it transparent.
   const window = await windowGraph(entries, clock, source, run, (label) => picture(target, label),
     (entry) => `color=c=black${transparent && entry.fill === "transparent" ? "@0" : ""}:s=${target.width}x${target.height}:r=1:d=1,` +
-      `format=${transparent ? "yuva420p" : "yuv420p"},setsar=1,${BT709_TAGS}`, profile !== undefined);
+      `format=${transparent ? "yuva420p" : "yuv420p"},setsar=1,${BT709_TAGS}`, grid);
   const { args, graph } = window;
   const audio = recipe.kind !== "chunk_encode" && recipe.audio !== null && window.facts.audio ? audioOf(window.inputs, recipe.audio) : null;
   if (audio !== null) {
