@@ -1456,13 +1456,17 @@ export function renderProductGuide(): string {
     "## Timeline spaces",
     `The central video preview sits above the toolbar and the tracks. ${quoted(t("timeline.play"))} and ` +
       `${quoted(t("timeline.pause"))} control playback; the slider below the preview selects its integer frame. ` +
+      "At the right end of that play bar a menu shows the frame's aspect ratio and size, such as 16:9 · 1920×1080, and offers 16:9, 9:16, 1:1, 4:3, 4:5, 2:3 and 21:9; " +
+      "a new Timeline starts at 16:9. Choosing one changes the frame for everyone in the Space and is one undo step: the black preview frame takes that shape within the preview area, " +
+      "and each layer keeps its place relative to the frame, its scale and its rotation. A Timeline whose frame is not one of these sizes shows its size in the menu with no ratio checked. " +
+      "A Viewer sees the menu disabled. " +
       `The bottom visual track is ${quoted(t("timeline.mainTrack"))}; tracks above it are named like ` +
       `${quoted(t("timeline.track", { index: 2 }))}, and the preview draws every clip at the playhead, stacked from the bottom track up, each placed by its own position, size and angle. ` +
       "Each clip shows its name and its length as a timecode (hours:minutes:seconds:frames), as does the position beside the play button. Click a clip to select it, or an empty part of a track to clear the selection; " +
       "the panel on the right shows its source name, " +
       `${quoted(t("timeline.edit.track"))}, ${quoted(t("timeline.startFrame"))}, ${quoted(t("timeline.edit.inPoint"))} and ` +
       `${quoted(t("timeline.edit.duration"))}, then its video's length in frames at the Timeline's frame rate. Type a whole frame and press Enter or leave the field to apply it. ` +
-      `For a video or a web animation copy it also shows ${quoted(t("timeline.edit.transform"))}: ${quoted(t("timeline.edit.positionX"))} and ${quoted(t("timeline.edit.positionY"))} in canvas pixels, ` +
+      `For a video or a web animation copy it also shows ${quoted(t("timeline.edit.transform"))}: ${quoted(t("timeline.edit.positionX"))} and ${quoted(t("timeline.edit.positionY"))} in pixels of the Timeline's frame, ` +
       `${quoted(t("timeline.edit.scaleX"))} and ${quoted(t("timeline.edit.scaleY"))} from 1% to 10000%, and ${quoted(t("timeline.edit.rotation"))}; ` +
       `the ${quoted(t("timeline.edit.lockRatio"))} switch below them, on by default, makes a change to one scale change the other in proportion; a Viewer sees the values as text and no switch. ` +
       `For a clip that is not at the playhead the group shows ${quoted(t("timeline.edit.offFrame"))} Its values can still be changed. ` +
@@ -1516,11 +1520,11 @@ export function renderProductGuide(): string {
       "A video still loading is noted at the top right of the preview with its track as loading, " +
       `and a video that cannot be loaded is noted there with its track as unavailable, with ${quoted(t("timeline.retry"))}; ` +
       "the other layers keep playing, and a retry reloads only that video, with the preview waiting for it before going on together. " +
-      `The playback status shows ${quoted(t("timeline.transport.waiting"))} while a video it needs is getting ready. ` +
+      `While a video it needs is getting ready, small text above the position beside the play button reads ${quoted(t("timeline.transport.waiting"))}, and the slider, the menu and the buttons stay where they are. ` +
       `When the browser blocks playback with sound, playback pauses and says ${quoted(t("timeline.preview.playBlocked"))}`,
     `${quoted(t("timeline.webAnimation.create"))}, beside ${quoted(t("timeline.addMedia"))}, opens a dialog to have an animated web page made: ` +
       `${quoted(t("timeline.webAnimation.dialog.prompt"))}, ${quoted(t("timeline.webAnimation.dialog.engine"))} (DeepSeek), ` +
-      `${quoted(t("timeline.webAnimation.dialog.aspect"))} (16:9, 9:16 or 1:1), ${quoted(t("timeline.webAnimation.dialog.duration"))} and the switch ` +
+      `${quoted(t("timeline.webAnimation.dialog.aspect"))} (16:9, 9:16 or 1:1, starting at the one closest to the Timeline's frame), ${quoted(t("timeline.webAnimation.dialog.duration"))} and the switch ` +
       `${quoted(t("timeline.webAnimation.dialog.addAtPlayhead"))}, which starts on. ${quoted(t("timeline.webAnimation.dialog.execute"))} starts the run; ` +
       "if it is refused, for example because the Studio has no credits left, the dialog keeps what you typed and shows why. Usage is charged when the run ends. " +
       "With the switch on, a dashed placeholder clip goes in at the playhead, above the highest video there or on a new top track, and shows the result once it is ready. " +
