@@ -13,6 +13,7 @@
 
 import type { BlockNoteEditor } from '@blocknote/core';
 import type { Mark, Node as ProseMirrorNode } from '@tiptap/pm/model';
+import { isMediaBlockType } from '@web/spaces/document/document-media-types';
 import { blocksMarkdown } from '@web/spaces/document/document-table-markdown';
 
 /** One top-level block as the Agent is sent it. */
@@ -67,9 +68,10 @@ function attrSet(node: ProseMirrorNode, key: string): boolean {
  * Whether a block holds a colour, an alignment, a width, a comment or any
  * other thing a Markdown rewrite would drop.
  * @param node - The block: its `blockContainer`, or a table's own node, which no container wraps.
+ * @param commentedMedia - The media block ids comments stand on.
  * @returns True when it does.
  */
-function lossyBlock(node: ProseMirrorNode): boolean {
+function lossyBlock(node: ProseMirrorNode, commentedMedia: ReadonlySet<string>): boolean {
   /**
    * Whether one node holds something Markdown drops.
    * @param child - The node.
@@ -77,6 +79,9 @@ function lossyBlock(node: ProseMirrorNode): boolean {
    */
   const drops = (child: ProseMirrorNode): boolean =>
     STAND_INS.has(child.type.name) ||
+    // A comment on media stands on the block's id, which a rewrite replaces
+    // (inner#1316 §5.4).
+    (child.type.name === 'blockContainer' && commentedMedia.has(String(child.attrs.id)) && isMediaBlockType(child.firstChild?.type.name ?? '')) ||
     Object.keys(child.attrs).some((key) => !CARRIED_ATTRS.has(key) && attrSet(child, key)) ||
     child.marks.some((mark: Mark) => !CARRIED_MARKS.has(mark.type.name));
   // The node itself too: a table is a top-level node of its own, its colour
@@ -94,9 +99,14 @@ function lossyBlock(node: ProseMirrorNode): boolean {
  * The top-level blocks of a document that hold something, each with the
  * number the editor shows on an ordered list item so the Markdown says it too.
  * @param editor - The document's editor.
+ * @param commentedMedia - The media block ids comments stand on
+ *   (`anchoredMediaIds`): a block holding one is lossy.
  * @returns The blocks, in order.
  */
-export function readTopBlocks(editor: BlockNoteEditor<never, never, never>): ReadBlock[] {
+export function readTopBlocks(
+  editor: BlockNoteEditor<never, never, never>,
+  commentedMedia: ReadonlySet<string>,
+): ReadBlock[] {
   const nodes = new Map<string, ProseMirrorNode>();
   editor.prosemirrorState.doc.firstChild?.forEach((node) => nodes.set(String(node.attrs.id), node));
   const out: ReadBlock[] = [];
@@ -108,7 +118,7 @@ export function readTopBlocks(editor: BlockNoteEditor<never, never, never>): Rea
     const markdown = blocksMarkdown(editor, [shown]);
     const node = nodes.get(block.id);
     if (markdown === '' || node === undefined) continue;
-    out.push({ id: block.id, type: block.type, markdown, text: blockPlainText(node), lossy: lossyBlock(node) });
+    out.push({ id: block.id, type: block.type, markdown, text: blockPlainText(node), lossy: lossyBlock(node, commentedMedia) });
   }
   return out;
 }

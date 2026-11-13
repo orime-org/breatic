@@ -57,9 +57,11 @@ import {
   resolveThread,
 } from '@web/spaces/document/document-comment-thread-actions';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
-import { useCommentAnchors } from '@web/spaces/document/use-comment-anchors';
+import { useCommentAnchors, type DraftAnchor } from '@web/spaces/document/use-comment-anchors';
 import {
   DRAFT_THREAD_ID,
+  aimedMedia,
+  aimedRange,
   draftIn,
   onDraftChange,
   type Draft,
@@ -71,6 +73,7 @@ import {
   writeReply,
 } from '@web/spaces/document/document-comment-unsent';
 import { DocumentCommentDraftCard } from '@web/spaces/document/DocumentCommentDraftCard';
+import { commentedElement } from '@web/spaces/document/document-comment-media';
 import { revealInTable } from '@web/spaces/document/document-table-reveal';
 import {
   useCommentCards,
@@ -298,11 +301,18 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   // against, so a card's top needs nothing added to it.
   const column = React.useRef<HTMLDivElement>(null);
   // Keyed on the start alone, which is all the hook measures: the card sits
-  // level with where the words begin.
-  const draftFrom = draft?.kind === 'aimed' ? draft.segments[0]!.from : null;
+  // level with where the words begin. A draft on media is keyed on its block,
+  // whose top the hook measures again on every change to the body.
+  const draftFrom = aimedRange(draft)?.segments[0]!.from ?? null;
+  const draftMedia = aimedMedia(draft)?.mediaBlockId ?? null;
   const draftAnchor = React.useMemo(
-    () => (draftFrom === null ? null : { id: DRAFT_THREAD_ID, from: draftFrom }),
-    [draftFrom],
+    (): DraftAnchor | null =>
+      draftFrom !== null
+        ? { id: DRAFT_THREAD_ID, from: draftFrom }
+        : draftMedia !== null
+          ? { id: DRAFT_THREAD_ID, mediaBlockId: draftMedia }
+          : null,
+    [draftFrom, draftMedia],
   );
   const { tops: anchors, measuredFor } = useCommentAnchors(
     editor,
@@ -507,13 +517,13 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     }
     // The words may sit in a wide table scrolled away from them, which
     // scrolling the body up and down does not bring back.
+    const root = domElementOf(editor);
+    const read = reading === null ? undefined : [...cards.unresolved, ...cards.resolved].find((card) => card.id === reading);
     const words =
-      last?.key === reveal || reading === null || reading === DRAFT_THREAD_ID
+      last?.key === reveal || reading === null || reading === DRAFT_THREAD_ID || root === null
         ? null
-        : domElementOf(editor)?.querySelector<HTMLElement>(
-            `.bn-thread-mark[data-bn-thread-id="${CSS.escape(reading)}"]`,
-        );
-    if (words !== null && words !== undefined) revealInTable(words);
+        : commentedElement(root, reading, read?.media?.blockId ?? null);
+    if (words !== null) revealInTable(words);
     const cardTop = top.getBoundingClientRect().top + lifted + readTop;
     const clear = bar.getBoundingClientRect().bottom + CLEARANCE_BELOW_HEADER_PX;
     const floor =
@@ -527,7 +537,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
       scroller.scrollTo({ top: scroller.scrollTop + by, behavior: 'instant' });
     }
     revealed.current = { key: reveal, height: readHeight, top: scroller.scrollTop };
-  }, [reveal, reading, readTop, heights, lifted, scroller, editor]);
+  }, [reveal, reading, readTop, heights, lifted, scroller, editor, cards]);
   /**
    * How far a pushed card, or the most hidden of them, reaches above the
    * header — from the layout, the one reading both the wheel and the focus

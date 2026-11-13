@@ -233,6 +233,13 @@ export function hoveredThreadIn(state: EditorState): string | null {
   return DOCUMENT_COMMENT_SELECTION.getState(state)?.hovered ?? null;
 }
 
+/** The broadcast for the card under the pointer. */
+const hoverWatch = watchPluginState(hoveredThreadIn);
+
+/** Hear about the pointer arriving on a card or leaving it. */
+export const onHoveredThreadChange: (listener: () => void) => () => void =
+  hoverWatch.onChange;
+
 /**
  * Says which card the pointer is resting on, or that it rests on none.
  * @param editor - The document editor.
@@ -484,6 +491,7 @@ function buildSelectionPlugin(
     view: (view) => {
       const broadcast = watch.view(view);
       const commandBroadcast = locationWatch.view(view);
+      const hoverBroadcast = hoverWatch.view(view);
       return {
         /**
          * Keeps the library in step, then tells whoever is watching.
@@ -498,11 +506,13 @@ function buildSelectionPlugin(
           );
           broadcast.update?.(updated, previous);
           commandBroadcast.update?.(updated, previous);
+          hoverBroadcast.update?.(updated, previous);
         },
         /** Hands the broadcast's own teardown back. */
         destroy: (): void => {
           broadcast.destroy?.();
           commandBroadcast.destroy?.();
+          hoverBroadcast.destroy?.();
         },
       };
     },

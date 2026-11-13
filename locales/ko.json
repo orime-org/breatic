@@ -2323,6 +2323,7 @@
       "comment": {
         "placeholder": "댓글 작성",
         "targetGone": "원문이 변경되었거나 삭제되었습니다.",
+        "mediaGone": "이 미디어가 삭제되었습니다.",
         "cannotWrite": "여기에는 더 이상 쓸 수 없습니다.",
         "railTitle": "댓글",
         "filterOpen": "미해결",
@@ -2429,6 +2430,7 @@
         "captionReadOnly": "읽기 전용입니다. 이 초안을 복사할 수 있습니다.",
         "captionRetained": "미디어가 삭제되었습니다. Space를 닫기 전에 초안을 복사하세요.",
         "notFinished": "업로드가 완료되지 않았습니다",
+        "notUploaded": "미디어 업로드가 아직 완료되지 않았습니다.",
         "pendingExport": "{name} (업로드 미완료)",
         "uploadFailed": "업로드 실패",
         "failure": {

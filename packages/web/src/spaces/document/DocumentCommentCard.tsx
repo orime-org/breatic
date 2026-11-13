@@ -43,6 +43,7 @@ import * as React from 'react';
 
 import type { ProjectRole } from '@breatic/shared';
 
+import { PreviewImg } from '@web/components/PreviewImg';
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatRelativeTime } from '@web/lib/format-relative-time';
@@ -52,6 +53,8 @@ import {
   canPostAnnotations,
 } from '@web/spaces/canvas/annotation/rights';
 import { openedBy } from '@web/spaces/document/document-comment-auth';
+import { mediaNameOf, type MediaQuote } from '@web/spaces/document/document-comment-media';
+import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
 import { StudioAvatar } from '@web/ui/StudioAvatar';
 import type {
   CommentCardView,
@@ -94,6 +97,36 @@ export function CommentQuote({
       className='mb-2 truncate border-l border-note-border pl-1.5 text-2xs text-muted-foreground'
     >
       {words}
+    </p>
+  );
+}
+
+/**
+ * The picture, video or audio a card is about, one line at the top of it in
+ * the place of quoted words: a picture's thumbnail or the kind's icon, then
+ * its name (inner#1316 §5.4).
+ * @param root0 - The media and the test hook.
+ * @param root0.media - What the comment is on.
+ * @param root0.testId - Test hook for the line.
+ * @returns The line.
+ */
+export function MediaCommentQuote({ media, testId }: { media: MediaQuote; testId: string }): React.JSX.Element {
+  const t = useTranslation();
+  const Icon = getNodeIcon(media.type);
+  return (
+    <p
+      data-testid={testId}
+      className='mb-2 flex min-w-0 items-center gap-1.5 border-l border-note-border pl-1.5 text-2xs text-muted-foreground'
+    >
+      {media.type === 'image'
+        ? <PreviewImg src={media.url} alt='' className='h-6 w-6 shrink-0 rounded object-cover' />
+        : (
+          // The thumbnail's size, so every card's name starts on one line.
+          <span className='flex h-6 w-6 shrink-0 items-center justify-center rounded bg-muted'>
+            <Icon className='h-3 w-3' aria-hidden='true' />
+          </span>
+        )}
+      <span className='truncate'>{mediaNameOf(media, t)}</span>
     </p>
   );
 }
@@ -314,7 +347,9 @@ export const DocumentCommentCard = React.memo(function DocumentCommentCard({
       data-selected={marked}
       className={`${CARD_SURFACE} ${CARD_READING_OUTLINE} data-[settled=true]:text-muted-foreground`}
     >
-      <CommentQuote words={card.quote} testId='doc-comment-card-quote' />
+      {card.media === null
+        ? <CommentQuote words={card.quote} testId='doc-comment-card-quote' />
+        : <MediaCommentQuote media={card.media} testId='doc-comment-card-quote' />}
 
       {drawn.map((entry, index) => (
         <React.Fragment key={entry.id}>

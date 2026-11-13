@@ -1363,8 +1363,12 @@ test('T7: the toolbar of a picture in the first cell of a table stands whole ove
   });
   expect(corners).toEqual([true, true, true, true]);
 
-  // The pointer goes from the picture up onto the toolbar and it stays up to
-  // be used.
+  // The toolbar sits under the picture. The pointer goes from the picture
+  // straight down onto it, then along it, and it stays up to be used.
+  const bar = (await toolbar.boundingBox())!;
+  expect(bar.y).toBeGreaterThanOrEqual(shown!.y + shown!.height);
+  await page.mouse.move(shown!.x + shown!.width / 2, bar.y + bar.height / 2, { steps: 6 });
+  await expect(toolbar).toHaveAttribute('data-shown', 'true');
   const remove = page.getByTestId('doc-media-delete');
   const target = await remove.boundingBox();
   await page.mouse.move(target!.x + target!.width / 2, target!.y + target!.height / 2, { steps: 6 });

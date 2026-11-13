@@ -2323,6 +2323,7 @@
       "comment": {
         "placeholder": "寫一條批註…",
         "targetGone": "原文已被改動或刪除。",
+        "mediaGone": "這個媒體已被刪除。",
         "cannotWrite": "你已無法在這裡書寫。",
         "railTitle": "批註",
         "filterOpen": "未解決",
@@ -2429,6 +2430,7 @@
         "captionReadOnly": "目前為唯讀，可複製這份草稿。",
         "captionRetained": "媒體已移除，請在關閉 Space 前複製草稿。",
         "notFinished": "上傳沒有完成",
+        "notUploaded": "媒體還沒上傳完成。",
         "pendingExport": "{name}（尚未上傳完成）",
         "uploadFailed": "上傳失敗",
         "failure": {

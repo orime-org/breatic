@@ -1820,7 +1820,11 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.contextMenu.addToAgent"))} and ` +
       `${quoted(t("spaces.document.blockHandle.delete"))}; it acts on that line. ` +
       `${quoted(t("canvas.contextMenu.addToAgent"))} puts that line, with the lines nested under it, into the ` +
-      "Agent's box as an attachment, opening the Agent panel if it is hidden. " +
+      "Agent's box as an attachment, opening the Agent panel if hidden; greyed when they hold " +
+      "neither words (spaces don't count) nor uploaded media. On media it hands " +
+      `over the file plus nested lines as text; ${quoted(t("spaces.document.commands.comment"))} covers ` +
+      `the whole item; both stay greyed mid-upload; pressing either says ` +
+      `${quoted(t("spaces.document.media.notUploaded"))} ` +
       `${quoted(t("spaces.document.commands.blockType"))}, ` +
       `${quoted(t("spaces.document.blockHandle.insertBelow"))}, ${quoted(t("spaces.document.commands.align"))} ` +
       `and ${quoted(t("spaces.document.commands.color"))} open a submenu when hovered; ` +
@@ -1839,9 +1843,8 @@ export function renderProductGuide(): string {
       "puts a table of that size there; the arrow keys and Enter do the same. " +
       "Typing --- at the start of a line puts a divider above that line. Clicking a divider selects it, and " +
       "Backspace or Delete removes it. On a divider's handle menu, " +
-      `${quoted(t("spaces.document.commands.align"))}, ${quoted(t("spaces.document.commands.color"))}, ` +
-      `${quoted(t("spaces.document.commands.comment"))} and ${quoted(t("canvas.contextMenu.addToAgent"))} are ` +
-      "greyed, and in " +
+      `${quoted(t("spaces.document.commands.align"))}, ${quoted(t("spaces.document.commands.color"))} ` +
+      `and ${quoted(t("spaces.document.commands.comment"))} are greyed, and in ` +
       `${quoted(t("spaces.document.commands.blockType"))} only ` +
       `${quoted(t("spaces.document.commands.quote"))} can be picked. For a ` +
       "plain line below, press Enter at the end of the line (Shift+Enter in a code block); if the new line kept " +
@@ -1861,13 +1864,17 @@ export function renderProductGuide(): string {
       `done, the box says ${quoted(t("spaces.document.media.notFinished"))} and anyone who can edit can ` +
       `${quoted(t("spaces.document.media.remove"))} it. What cannot be pasted (a canvas node with nothing in ` +
       "it yet, an address the page cannot fetch) is left out, and a message says how many. Hovering a picture, video or " +
-      "audio, or clicking it, shows a row of icons above it: left, centre and right alignment (only when the " +
+      "audio, or clicking it, shows a row of icons above it (under it in a table cell at the view's top): " +
+      "left, centre and right alignment (only when the " +
       "picture or video is narrower than the page; audio is always as wide as the page), " +
       `${quoted(t("spaces.document.media.caption"))} (a T), which opens a line under it for a caption, ` +
       `${quoted(t("common.mediaViewer.fullscreen"))} (two arrows pointing out to opposite corners, pictures and videos; ` +
       "double-clicking a picture does the same; a video goes on from where it was, and an X at the top right of the " +
       "screen closes it), " +
-      `${quoted(t("spaces.document.media.download"))} (an arrow into a tray), which downloads the file, and ` +
+      `${quoted(t("spaces.document.media.download"))} (an arrow into a tray), which downloads the file, ` +
+      `${quoted(t("canvas.contextMenu.addToAgent"))} (a bubble with a plus), ` +
+      `${quoted(t("spaces.document.commands.comment"))} (a bubble with lines; neither in a ` +
+      "full-screen table), and " +
       `${quoted(t("spaces.document.media.delete"))} (a bin); hovering an icon shows its name. Clicking a picture or video ` +
       "also shows a small square at each " +
       "corner; dragging one changes its width. Dragging the picture, video or audio itself moves it, like its six " +
@@ -1895,7 +1902,7 @@ export function renderProductGuide(): string {
       `the cells from that one. ${quoted(t("spaces.document.blockHandle.indent"))} ` +
       `and ${quoted(t("spaces.document.blockHandle.unindent"))} are greyed when the table cannot move that way, ` +
       `and ${quoted(t("spaces.document.commands.comment"))} and ${quoted(t("canvas.contextMenu.addToAgent"))} ` +
-      "when no cell has words. " +
+      "as on a line. " +
       `${quoted(t("spaces.document.table.fullscreen"))} lays that table alone over the whole window, for editing ` +
       "it with room to see every column: type in its cells and format the words, use the AI menu on selected " +
       "words, add, delete and move rows and columns, drag column widths, and merge or split cells. Escape, or " +
@@ -1926,7 +1933,7 @@ export function renderProductGuide(): string {
       `with no table on it a notice says ${quoted(t("spaces.document.table.noTableToPaste"))}. When the browser takes nothing ` +
       `onto the clipboard, a notice says ${quoted(t("spaces.document.table.copyFailed"))} and a cut deletes nothing. ` +
       `${quoted(t("canvas.contextMenu.addToAgent"))} hands the row or column to the Agent, shows only in a ` +
-      "Project and is greyed when no cell of the row or column has words. Where a merged cell reaches out of the " +
+      "Project and is greyed when its cells hold no words or uploaded media. Where a merged cell reaches out of the " +
       "row or column, the copy, cut, paste and " +
       `${quoted(t("canvas.contextMenu.addToAgent"))} items are greyed, and choosing one says ` +
       `${quoted(t("spaces.document.table.splitMergedFirst"))}. ` +
@@ -1987,8 +1994,8 @@ export function renderProductGuide(): string {
       "this browser and applies to every document. With no headings yet the column says " +
       `${quoted(t("spaces.document.outline.empty"))}.`,
     `- Comments: select text and press the speech bubble, or choose ` +
-      `${quoted(t("spaces.document.commands.comment"))} on a line's handle menu (greyed on a line with no ` +
-      `words). The ${quoted(t("spaces.document.comment.railTitle"))} panel opens beside the text, the words take ` +
+      `${quoted(t("spaces.document.commands.comment"))} on a line's handle menu (greyed on an empty line, ` +
+      `except uploaded media). The ${quoted(t("spaces.document.comment.railTitle"))} panel opens beside the text, the words take ` +
       `a highlight, and a box, ${quoted(t("spaces.document.comment.placeholder"))}, waits next to them. Enter ` +
       `or ${quoted(t("spaces.document.comment.save"))} posts it, Shift+Enter starts a new line, and Esc or ` +
       `${quoted(t("spaces.document.comment.cancel"))} drops it; both buttons appear once something is typed. ` +
@@ -2003,7 +2010,12 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.comment.unknownAuthor"))} when not known, followed by ` +
       `${quoted(t("spaces.document.comment.fromAgent"))} on a comment that came from a document proposal), when, ` +
       "and what they wrote. " +
-      "Clicking highlighted words opens the panel at their comment. Clicking a card opens it; a closed card " +
+      "Clicking highlighted words opens the panel at their comment. A comment on media covers " +
+      "it whole: a bubble at its top right counts open ones (viewers too; not in a " +
+      "full-screen table) and opens them; the item read is outlined; its card has a " +
+      "thumbnail or the kind's icon and name. Deleted mid-comment, " +
+      `the box says ${quoted(t("spaces.document.comment.mediaGone"))} and undo restores both. Copies drop ` +
+      "comments; dragging keeps them. Clicking a card opens it; a closed card " +
       "with more than two comments shows the first and the latest, with " +
       `${quoted(t("spaces.document.comment.folded", { count: 2 }))} between them. An open card has ` +
       `${quoted(t("spaces.document.comment.reply"))} for an answer, ` +
