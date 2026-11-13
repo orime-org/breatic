@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 
-interface Card { visible: boolean; freshness: 'unpainted' | 'stale' | 'fresh'; failed: boolean }
+interface Card { visible: boolean; freshness: 'unpainted' | 'stale' | 'fresh' }
 type Cards = Readonly<Record<string, Card>>;
 type Reduce = (cards: Cards, event: Record<string, unknown>) => Cards;
 type Due = (cards: Cards) => readonly string[];
@@ -34,7 +34,7 @@ describe('monitor cards (inner#1694 design 6.3)', () => {
 
   it('mounts a card unpainted and draws it only once it is visible', () => {
     const one = run([{ type: 'mount', id: 'a' }]);
-    expect(one.a).toEqual({ visible: false, freshness: 'unpainted', failed: false });
+    expect(one.a).toEqual({ visible: false, freshness: 'unpainted' });
     expect(due(one)).toEqual([]);
     expect(due(run([{ type: 'visible', id: 'a', visible: true }], one))).toEqual(['a']);
   });
@@ -51,20 +51,12 @@ describe('monitor cards (inner#1694 design 6.3)', () => {
 
   it('scrolling or switching tabs changes only visibility', () => {
     const hidden = run([{ type: 'visible', id: 'a', visible: false }], painted());
-    expect(hidden.a).toEqual({ visible: false, freshness: 'fresh', failed: false });
+    expect(hidden.a).toEqual({ visible: false, freshness: 'fresh' });
     const staleHidden = run([{ type: 'changed' }], hidden);
     expect(due(staleHidden)).toEqual(['b']);
     expect(due(run([{ type: 'visible', id: 'a', visible: true }], staleHidden))).toEqual(['a', 'b']);
   });
 
-  it('stops drawing every card when the renderer fails and redraws all after a rebuild', () => {
-    const failed = run([{ type: 'failed' }, { type: 'changed' }], painted());
-    expect(failed.a?.failed).toBe(true);
-    expect(due(failed)).toEqual([]);
-    const rebuilt = run([{ type: 'rebuilt' }], run([{ type: 'failed' }], painted()));
-    expect(rebuilt.a).toEqual({ visible: true, freshness: 'stale', failed: false });
-    expect(due(rebuilt)).toEqual(['a', 'b']);
-  });
 
   it('removes the card of a deleted camera and ignores events for unknown cards', () => {
     const removed = run([{ type: 'removed', id: 'a' }], painted());
@@ -78,10 +70,10 @@ describe('monitor cards (inner#1694 design 6.3)', () => {
   });
 
   it('starts a remounted card unpainted again', () => {
-    expect(run([{ type: 'mount', id: 'a' }], painted()).a).toEqual({ visible: false, freshness: 'unpainted', failed: false });
+    expect(run([{ type: 'mount', id: 'a' }], painted()).a).toEqual({ visible: false, freshness: 'unpainted' });
   });
 
-  it('draws exactly the visible, out-of-date, not-failed cards for any event sequence', () => {
+  it('draws exactly the visible, out-of-date cards for any event sequence', () => {
     const id = fc.constantFrom('a', 'b', 'c');
     const event = fc.oneof(
       id.map((value) => ({ type: 'mount', id: value })),
@@ -89,12 +81,10 @@ describe('monitor cards (inner#1694 design 6.3)', () => {
       fc.record({ type: fc.constant('visible'), id, visible: fc.boolean() }),
       fc.record({ type: fc.constant('changed'), ids: fc.option(fc.array(id, { maxLength: 3 }), { nil: undefined }) }),
       fc.record({ type: fc.constant('painted'), ids: fc.array(id, { maxLength: 3 }) }),
-      fc.constant({ type: 'failed' }),
-      fc.constant({ type: 'rebuilt' }),
     );
     fc.assert(fc.property(fc.array(event, { maxLength: 40 }), (events) => {
       const cards = run(events);
-      const expected = Object.entries(cards).filter(([, card]) => card.visible && card.freshness !== 'fresh' && !card.failed).map(([key]) => key).sort();
+      const expected = Object.entries(cards).filter(([, card]) => card.visible && card.freshness !== 'fresh').map(([key]) => key).sort();
       expect([...due(cards)].sort()).toEqual(expected);
     }), { numRuns: 200 });
   });

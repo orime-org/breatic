@@ -1,11 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-/** Three independent facts about one monitor card (inner#1694 design 6.3). */
+/** Two independent facts about one monitor card (inner#1694 design 6.3); a failed renderer is shown by the card itself. */
 export interface MonitorCard {
   visible: boolean;
   freshness: 'unpainted' | 'stale' | 'fresh';
-  failed: boolean;
 }
 export type MonitorCards = Readonly<Record<string, MonitorCard>>;
 
@@ -15,9 +14,7 @@ export type MonitorEvent =
   | { type: 'visible'; id: string; visible: boolean }
   /** A display value changed: for the listed cards, or for every card when none are listed. */
   | { type: 'changed'; ids?: readonly string[] }
-  | { type: 'painted'; ids: readonly string[] }
-  | { type: 'failed' }
-  | { type: 'rebuilt' };
+  | { type: 'painted'; ids: readonly string[] };
 
 /**
  * Change the cards a set of ids names.
@@ -45,7 +42,7 @@ export function monitorReducer(cards: MonitorCards, event: MonitorEvent): Monito
   const all = Object.keys(cards);
   switch (event.type) {
     case 'mount':
-      return { ...cards, [event.id]: { visible: false, freshness: 'unpainted', failed: false } };
+      return { ...cards, [event.id]: { visible: false, freshness: 'unpainted' } };
     case 'removed': {
       const { [event.id]: _removed, ...rest } = cards;
       return rest;
@@ -56,18 +53,14 @@ export function monitorReducer(cards: MonitorCards, event: MonitorEvent): Monito
       return update(cards, event.ids ?? all, (card) => (card.freshness === 'fresh' ? { ...card, freshness: 'stale' } : card));
     case 'painted':
       return update(cards, event.ids, (card) => ({ ...card, freshness: 'fresh' }));
-    case 'failed':
-      return update(cards, all, (card) => ({ ...card, failed: true }));
-    case 'rebuilt':
-      return update(cards, all, (card) => ({ ...card, failed: false, freshness: card.freshness === 'unpainted' ? 'unpainted' : 'stale' }));
   }
 }
 
 /**
- * The cards to draw at the next refresh: visible, out of date and not failed.
+ * The cards to draw at the next refresh: visible and out of date.
  * @param cards - The cards.
  * @returns Their ids in insertion order.
  */
 export function monitorsDue(cards: MonitorCards): string[] {
-  return Object.entries(cards).filter(([, card]) => card.visible && card.freshness !== 'fresh' && !card.failed).map(([id]) => id);
+  return Object.entries(cards).filter(([, card]) => card.visible && card.freshness !== 'fresh').map(([id]) => id);
 }

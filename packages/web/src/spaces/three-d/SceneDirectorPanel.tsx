@@ -60,6 +60,8 @@ export interface SceneDirectorPanelProps extends SceneFieldDraftOwner {
   onMonitor: (id: string, canvas: HTMLCanvasElement | null) => void;
   onAmbientPreview: (values: Partial<SceneEnvironmentValues>) => void;
   onAmbientCommit: () => void;
+  /** The renderer failed: every card shows the failure the main area shows. */
+  rendererFailed: boolean;
 }
 
 /**
@@ -71,12 +73,13 @@ export interface SceneDirectorPanelProps extends SceneFieldDraftOwner {
  * @param root0.session - The command owner.
  * @param root0.onLook - Looks through it.
  * @param root0.onMonitor - Registers its picture's canvas.
+ * @param root0.failed - Whether the renderer failed.
  * @param root0.children - Its fields when selected.
  * @returns The card.
  */
-const MonitorCard = React.memo(function MonitorCard({ camera, active, canEdit, session, onLook, onMonitor, children }: {
+const MonitorCard = React.memo(function MonitorCard({ camera, active, canEdit, session, onLook, onMonitor, failed, children }: {
   camera: SceneCameraObject; active: boolean; canEdit: boolean; session: SceneSession; onLook: (id: string) => void;
-  onMonitor: (id: string, canvas: HTMLCanvasElement | null) => void; children: React.ReactNode;
+  onMonitor: (id: string, canvas: HTMLCanvasElement | null) => void; failed: boolean; children: React.ReactNode;
 }): React.JSX.Element {
   const t = useTranslation();
   const { id } = camera;
@@ -90,7 +93,9 @@ const MonitorCard = React.memo(function MonitorCard({ camera, active, canEdit, s
         <Button variant={null} size={null} data-testid={`scene-director-monitor-${id}`} className='grid w-full place-items-center bg-muted' onClick={() => onLook(id)}>
           <span className='relative block' style={pictureStyle}>
             <canvas ref={canvasRef} className='peer block size-full' />
-            <Skeleton className='absolute inset-0 rounded-none peer-data-[drawn]:hidden' />
+            {failed
+              ? <span className='absolute inset-0 grid place-items-center bg-muted p-2 text-xs text-muted-foreground'>{t('spaces.threeD.loadFailed')}</span>
+              : <Skeleton className='absolute inset-0 rounded-none peer-data-[drawn]:hidden' />}
           </span>
         </Button>
       </TooltipTrigger>
@@ -122,7 +127,7 @@ const MonitorCard = React.memo(function MonitorCard({ camera, active, canEdit, s
  */
 export const SceneDirectorPanel = React.memo(function SceneDirectorPanel(props: SceneDirectorPanelProps): React.JSX.Element {
   const { session, snapshot, spaceId, Field, fieldDrafts, onFieldDraftChange, lightPlan, maxLights, lookingAt, environment,
-    onSaveView, onAddLight, onLook, onMonitor, onAmbientPreview, onAmbientCommit } = props;
+    onSaveView, onAddLight, onLook, onMonitor, onAmbientPreview, onAmbientCommit, rendererFailed } = props;
   const t = useTranslation();
   const ids = React.useId();
   const { canEdit } = snapshot;
@@ -146,7 +151,7 @@ export const SceneDirectorPanel = React.memo(function SceneDirectorPanel(props: 
       </div>
       {cameras.length === 0
         ? <p className='rounded-md border border-dashed border-border p-4 text-center text-xs text-muted-foreground'>{t('spaces.threeD.director.camerasEmpty')}</p>
-        : <div className='space-y-2'>{cameras.map((camera) => <MonitorCard key={camera.id} camera={camera} active={lookingAt === camera.id} canEdit={canEdit}
+        : <div className='space-y-2'>{cameras.map((camera) => <MonitorCard key={camera.id} camera={camera} active={lookingAt === camera.id} canEdit={canEdit} failed={rendererFailed}
           session={session} onLook={onLook} onMonitor={onMonitor}>{fields(camera)}</MonitorCard>)}</div>}
     </section>
     <section className='space-y-2'>
@@ -195,7 +200,7 @@ export const SceneDirectorPanel = React.memo(function SceneDirectorPanel(props: 
         <div className='flex items-center gap-2'>
           <Slider aria-labelledby={`${ids}-ambient-intensity`} className='w-28' min={0} max={SCENE_AMBIENT_INTENSITY_MAX} step={0.1} disabled={!canEdit}
             value={[environment.ambientIntensity]} onValueChange={([ambientIntensity]) => { if (ambientIntensity !== undefined) onAmbientPreview({ ambientIntensity }); }}
-            onValueCommit={onAmbientCommit} />
+            onValueCommit={onAmbientCommit} onPointerUp={onAmbientCommit} />
           <span className='w-10 text-right text-xs tabular-nums text-muted-foreground'>{environment.ambientIntensity.toFixed(1)}</span>
         </div>
       </div>
