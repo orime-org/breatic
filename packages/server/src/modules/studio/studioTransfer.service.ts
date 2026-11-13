@@ -33,7 +33,6 @@
  */
 
 import { studioRepo } from "@breatic/domain";
-import { usersRepo as userRepo } from "@breatic/domain";
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import { studioTransfersRepo as transfersRepo } from "@breatic/domain";
@@ -177,8 +176,8 @@ export async function requestTransfer(
       async () => {
         // Resolve the recipient INSIDE the best-effort boundary — a DB read blip
         // must not fail this request (the offer already committed).
-        const recipient = await userRepo.getUserById(toUserId);
-        if (!recipient) return null;
+        const recipient = (await profilesService.accountsOf([toUserId])).get(toUserId);
+        if (recipient === undefined) return null;
         return buildStudioTransferMail({
           locale: recipient.locale,
           recipientEmail: recipient.email,

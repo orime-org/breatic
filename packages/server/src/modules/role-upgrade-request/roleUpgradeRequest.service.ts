@@ -43,7 +43,6 @@ import * as notificationRepo from "@server/modules/notification/notification.rep
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import * as projectRepo from "@server/modules/project/project.repo.js";
 import * as requestsRepo from "@server/modules/role-upgrade-request/roleUpgradeRequests.repo.js";
-import { usersRepo as userRepo } from "@breatic/domain";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
 import { buildRoleUpgradeRequestMail } from "@server/utils/notification-mail.js";
 import { decisionLink } from "@server/utils/decision-link.js";
@@ -168,8 +167,8 @@ export async function request(
         async () => {
           // Resolve the recipient INSIDE the best-effort boundary: a DB read
           // blip must not fail this request, which already committed.
-          const owner = await userRepo.getUserById(filedRequest.ownerUserId);
-          if (!owner) return null;
+          const owner = (await profilesService.accountsOf([filedRequest.ownerUserId])).get(filedRequest.ownerUserId);
+          if (owner === undefined) return null;
           return buildRoleUpgradeRequestMail({
             locale: owner.locale,
             ownerEmail: owner.email,

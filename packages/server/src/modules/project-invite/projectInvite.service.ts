@@ -36,6 +36,7 @@ import * as projectRepo from "@server/modules/project/project.repo.js";
 import { globalApi } from "@breatic/domain";
 import * as invitesRepo from "@server/modules/project-invite/projectInvitations.repo.js";
 import { createInvitation } from "@server/modules/invitation/invitation.service.js";
+import { withPendingDisplay } from "@server/modules/invitation/pending-display.js";
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
@@ -300,16 +301,16 @@ export async function revokeInvite(
 
 /**
  * List a project's LIVE pending invitations (for the owner's "invited
- * (pending)" section). Thin pass-through to the repo so the route reaches the
- * data layer through the service (prohibition #1). The route gates
- * `requireRole('owner')`, so authorization is enforced before this runs.
+ * (pending)" section), with the invitee's and inviter's display fields. The
+ * route gates `requireRole('owner')`, so authorization is enforced before
+ * this runs.
  * @param projectId - Project UUID
  * @returns Pending invitations with display fields (empty when none)
  */
 export async function listPending(
   projectId: string,
 ): Promise<PendingProjectInvitationSummary[]> {
-  return invitesRepo.listPendingByProject(projectId);
+  return withPendingDisplay(await invitesRepo.listPendingByProject(projectId));
 }
 
 

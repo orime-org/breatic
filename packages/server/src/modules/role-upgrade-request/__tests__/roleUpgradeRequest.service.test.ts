@@ -77,10 +77,9 @@ vi.mock("@breatic/core", async (importOriginal) => {
 // The email is queued for the worker; the job carries the built mail.
 vi.mock("@breatic/domain", () => ({
   enqueueMail: vi.fn(async () => {}),
-  usersRepo: { getUserById: vi.fn() },
   // The request / approve / reject paths resolve the actor's display identity
   // (name + personal-studio slug = @handle) for the bell payload.
-  profilesService: { personalProfiles: vi.fn() },
+  profilesService: { personalProfiles: vi.fn(), accountsOf: vi.fn() },
 }));
 vi.mock("../roleUpgradeRequests.repo.js", () => ({
   createPending: vi.fn(),
@@ -132,7 +131,7 @@ import * as notificationService from "../../notification/notification.service.js
 import * as projectRepo from "../../project/project.repo.js";
 import * as requestsRepo from "../roleUpgradeRequests.repo.js";
 import { projectMembersRepo } from "@breatic/core";
-import { enqueueMail, profilesService, usersRepo as userRepo } from "@breatic/domain";
+import { enqueueMail, profilesService } from "@breatic/domain";
 import * as roleUpgradeRequestService from "../roleUpgradeRequest.service.js";
 import { NotFoundError, ForbiddenError, ConflictError } from "@breatic/core";
 
@@ -160,11 +159,9 @@ beforeEach(() => {
   vi.mocked(projectRepo.lockLiveProject).mockResolvedValue(true);
   vi.mocked(projectMembersRepo.getOwner).mockResolvedValue(OWNER);
   vi.mocked(requestsRepo.getProjectIdOf).mockResolvedValue(PID);
-  vi.mocked(userRepo.getUserById).mockResolvedValue({
-    id: OWNER,
-    email: "olivia@example.com",
-    locale: "en",
-  } as Awaited<ReturnType<typeof userRepo.getUserById>>);
+  vi.mocked(profilesService.accountsOf).mockResolvedValue(
+    new Map([[OWNER, { id: OWNER, email: "olivia@example.com", emailVerified: true, locale: "en" }]]),
+  );
   vi.mocked(projectMembersRepo.getRole).mockImplementation(
     async (_projectId: string, userId: string) =>
       userId === OWNER ? "owner" : "viewer",

@@ -19,8 +19,9 @@
  * a second consumer actually needs it.
  */
 
-import { studioRepo } from "@breatic/domain";
+import { profilesService, studioRepo } from "@breatic/domain";
 import * as studioInvitationsRepo from "@server/modules/studio/studioInvitations.repo.js";
+import { withPendingDisplay } from "@server/modules/invitation/pending-display.js";
 import { isUniqueViolation } from "@breatic/core";
 import { randomUUID } from "node:crypto";
 import { db, studioDirectoryRepo } from "@breatic/core";
@@ -390,21 +391,30 @@ export async function getStudioMembers(
     throw new NotFoundError(t("server.error.not_found"));
   }
   const rows = await studioMembersRepo.listByStudio(studio.id);
-  const members = rows.map((m) => ({
-    userId: m.userId,
-    name: m.name,
-    email: m.email,
-    avatarUrl: m.avatarUrl,
-    role: m.role,
-    addedAt: m.addedAt.toISOString(),
-  }));
+  // Who each member is comes from the global profiles (inner#1955); a member
+  // whose account is gone is left out, and one with no personal Studio shows
+  // their address.
+  const profiles = await profilesService.profilesOf(rows.map((m) => m.userId));
+  const members = rows.flatMap((m) => {
+    const profile = profiles.get(m.userId);
+    if (profile === undefined || profile.email === null) return [];
+    const shown = profile.name !== null && !profile.deleted;
+    return [{
+      userId: m.userId,
+      name: shown ? profile.name! : profile.email,
+      email: profile.email,
+      avatarUrl: shown ? profile.avatarUrl : null,
+      role: m.role,
+      addedAt: m.addedAt.toISOString(),
+    }];
+  });
   const viewerRole = await studioAuthService.loadStudioRole(
     viewerUserId,
     studio.id,
   );
   const pendingInvitations =
     viewerRole === "admin"
-      ? await studioInvitationsRepo.listPendingByStudio(studio.id)
+      ? await withPendingDisplay(await studioInvitationsRepo.listPendingByStudio(studio.id))
       : [];
   return { members, pendingInvitations };
 }

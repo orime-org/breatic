@@ -13,7 +13,7 @@ import { claimInvitation, invitationRepo } from "@server/modules/invitation/invi
  * @param user - The account whose verified mailbox may have invitations.
  * @returns Once the compensation scan has finished.
  */
-export async function claimEmailInvitations(user: UserEntity): Promise<void> {
+export async function claimEmailInvitations(user: Pick<UserEntity, "id" | "email" | "emailVerified">): Promise<void> {
   if (!user.emailVerified) return;
   try {
     for (const kind of ["project", "studio"] as const) {

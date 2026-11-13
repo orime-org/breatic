@@ -5,7 +5,7 @@ import { ConflictError, logger, NotFoundError } from "@breatic/core";
 import { enqueueMail } from "@breatic/domain";
 import { getActiveLocale, normalizeEmail, t } from "@breatic/shared";
 import type { SignupInvitationPreview } from "@breatic/shared";
-import { usersRepo as usersRepo } from "@breatic/domain";
+import { profilesService } from "@breatic/domain";
 import * as projectRepo from "@server/modules/project/project.repo.js";
 import { studioRepo } from "@breatic/domain";
 import { claimEmailInvitations } from "@server/modules/invitation/claim-email-invitations.js";
@@ -20,7 +20,6 @@ import {
   buildProjectInvitationMail, buildStudioInvitationMail,
   buildProjectSignupInvitationMail, buildStudioSignupInvitationMail,
 } from "@server/utils/notification-mail.js";
-import { profilesService } from "@breatic/domain";
 
 /** The committed result used by the two membership route adapters. */
 export interface CreatedInvitation {
@@ -70,7 +69,7 @@ export async function createInvitation(
       }, { userId: invitee.id, subject: `${kind}_invite` });
     }
   } else {
-    const registered = await usersRepo.getUserByEmail(normalizedEmail);
+    const registered = await profilesService.accountByEmail(normalizedEmail);
     if (registered?.emailVerified) await claimEmailInvitations(registered);
     let delivered = false;
     try {

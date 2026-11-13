@@ -6,10 +6,10 @@ import { ConflictError, db, ForbiddenError, NotFoundError, projectMembersRepo, p
 import type { DbTx } from "@breatic/core";
 import { globalApi, studioMembersRepo } from "@breatic/domain";
 import { normalizeEmail, t } from "@breatic/shared";
-import type { InvitableProjectRole, UserEntity } from "@breatic/shared";
+import type { InvitableProjectRole } from "@breatic/shared";
 import * as projectRepo from "@server/modules/project/project.repo.js";
 import { studioRepo } from "@breatic/domain";
-import { usersRepo as usersRepo } from "@breatic/domain";
+import { profilesService, type Account } from "@breatic/domain";
 import * as projectInvites from "@server/modules/project-invite/projectInvitations.repo.js";
 import * as studioInvites from "@server/modules/studio/studioInvitations.repo.js";
 import * as notifications from "@server/modules/notification/notification.service.js";
@@ -17,7 +17,6 @@ import * as notificationRepo from "@server/modules/notification/notification.rep
 import { emailVerificationEnabled } from "@server/config/auth.js";
 import { getDecisionWindowMs } from "@server/config/limits.js";
 import type { InvitationKind, InvitationRole, RecipientInvitation } from "@server/modules/invitation/invitation.types.js";
-import { profilesService } from "@breatic/domain";
 
 /** The membership target held by the current transaction. */
 export interface InvitationTarget {
@@ -33,7 +32,7 @@ export interface PreparedInvitation {
   duplicate: boolean;
   invitation: RecipientInvitation;
   target: InvitationTarget;
-  invitee: UserEntity | null;
+  invitee: Account | null;
   inviterName: string;
 }
 
@@ -121,7 +120,7 @@ async function notifyRecipient(target: InvitationTarget, invite: RecipientInvita
  * @returns Whether this transaction converted the original row.
  * @throws {Error} When persistence fails.
  */
-async function claimLocked(target: InvitationTarget, invite: RecipientInvitation, user: UserEntity, tx: DbTx): Promise<boolean> {
+async function claimLocked(target: InvitationTarget, invite: RecipientInvitation, user: Account, tx: DbTx): Promise<boolean> {
   if (!user.emailVerified || invite.invitedEmail !== normalizeEmail(user.email)) return false;
   const claimed = await invitationRepo(target.kind).claimPendingEmail(
     invite.id, normalizeEmail(user.email), user.id, getDecisionWindowMs(), tx,
@@ -140,7 +139,7 @@ async function claimLocked(target: InvitationTarget, invite: RecipientInvitation
  * @throws {ConflictError} When already a member.
  * @throws {Error} When persistence fails.
  */
-async function checkInvitationRecipient(target: InvitationTarget, user: UserEntity | null, tx: DbTx): Promise<void> {
+async function checkInvitationRecipient(target: InvitationTarget, user: Account | null, tx: DbTx): Promise<void> {
   const role = user === null ? null : target.kind === "project"
     ? await projectMembersRepo.getRole(target.id, user.id, tx)
     : await studioMembersRepo.getRole(target.id, user.id, tx);
@@ -210,7 +209,9 @@ export async function prepareInvitation(input: {
     const target = await lockTarget(input.kind, input.targetId, tx);
     if (!target) throw new NotFoundError(t("server.error.not_found"));
     const repo = invitationRepo(input.kind);
-    const user = await usersRepo.getUserByEmail(email, tx);
+    // Read under the target lock, so an address that registered while this
+    // waited is invited as its account (inner#1955: from the global region).
+    const user = await profilesService.accountByEmail(email);
     await checkInvitationRecipient(target, user, tx);
     await repo.expireStalePendingEmail(target.id, email, tx);
     if (user) await repo.expireStalePending(target.id, user.id, tx);
@@ -241,7 +242,8 @@ export async function prepareInvitation(input: {
 }
 
 /**
- * Claim one candidate after rechecking account identity under its target lock.
+ * Claim one candidate after rechecking account identity under its target lock;
+ * the account is read from the global region (inner#1955).
  * @param kind - Target kind.
  * @param id - Candidate invitation id.
  * @param targetId - Immutable target id.
@@ -253,7 +255,7 @@ export async function claimInvitation(kind: InvitationKind, id: string, targetId
   await db.transaction(async (tx) => {
     const target = await lockTarget(kind, targetId, tx);
     if (!target) return;
-    const user = await usersRepo.getUserById(userId, tx);
+    const user = (await profilesService.accountsOf([userId])).get(userId);
     if (!user?.emailVerified) return;
     const repo = invitationRepo(kind);
     const invite = await repo.findRecipientById(id, tx);
