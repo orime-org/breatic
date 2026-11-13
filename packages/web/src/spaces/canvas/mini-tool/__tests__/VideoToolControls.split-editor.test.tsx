@@ -339,11 +339,11 @@ describe('a numeric field reports what it shows', () => {
   it('reports a shown value that a changed limit makes invalid, and clears it when the limit allows it again', () => {
     const invalid = new Set<string>();
     const report = (key: string, bad: boolean): void => { if (bad) invalid.add(key); else invalid.delete(key); };
-    const view = render(<VideoNumericInput value={2} label='In point' testId='in' min={0} max={5} onInvalidChange={report} onChange={vi.fn()} />);
+    const view = render(<VideoNumericInput value={2} label='In point' testId='in' min={0} max={5} disabled={false} onInvalidChange={report} onChange={vi.fn()} />);
     expect([...invalid]).toEqual([]);
-    view.rerender(<VideoNumericInput value={2} label='In point' testId='in' min={0} max={1} onInvalidChange={report} onChange={vi.fn()} />);
+    view.rerender(<VideoNumericInput value={2} label='In point' testId='in' min={0} max={1} disabled={false} onInvalidChange={report} onChange={vi.fn()} />);
     expect([...invalid]).toEqual(['in']);
-    view.rerender(<VideoNumericInput value={2} label='In point' testId='in' min={0} max={5} onInvalidChange={report} onChange={vi.fn()} />);
+    view.rerender(<VideoNumericInput value={2} label='In point' testId='in' min={0} max={5} disabled={false} onInvalidChange={report} onChange={vi.fn()} />);
     expect([...invalid]).toEqual([]);
   });
 });
