@@ -25,7 +25,7 @@
 import { basename, join } from 'node:path';
 
 import { expect, type Page } from 'playwright/test';
-import { GENERATION_TEMPLATES, feedsOf, templateAnchor, type CanvasProposal } from '@breatic/shared';
+import { GENERATION_TEMPLATES, feedsOf, proposalMarkSegments, templateAnchor, type CanvasProposal } from '@breatic/shared';
 import { test } from '../helpers/slot';
 import { answerIfAsked, say, startNewConversation, storedMessages, type StoredPart } from '../helpers/conversation';
 
@@ -143,6 +143,8 @@ interface Turn {
   read: string[];
   /** Everything it wrote or asked, as one text. */
   said: string;
+  /** What it wrote in its replies and its proposals' rationales, questions left out. */
+  wrote: string;
 }
 
 /**
@@ -166,6 +168,10 @@ async function settledTurn(p: Page): Promise<Turn> {
       part.type === 'tool-get_generation_template' && typeof part.output === 'string' && input(part).id ? [input(part).id as string] : [],
     ),
     said: parts.flatMap((part) => (part.type === 'text' ? [part.text ?? ''] : part.type?.startsWith('tool-ask_user') ? [JSON.stringify(part.input)] : [])).join('\n'),
+    wrote: [
+      ...parts.flatMap((part) => (part.type === 'text' ? [part.text ?? ''] : [])),
+      ...landed.map((part) => (part.input as unknown as CanvasProposal).rationale),
+    ].join('\n'),
   };
 }
 
@@ -247,31 +253,26 @@ test('asked outright for a festival travel poster, it reads the festival poster 
   const pictures = turn.landed.flatMap((proposal) => proposal.nodes).filter((node) => node.role === 'generate' && node.type === 'image');
   expect(pictures.length, `said: ${turn.said.slice(0, 600)}`).toBeGreaterThanOrEqual(1);
   // The title the user gave goes into every version's prompt as written.
-  for (const picture of pictures) expect(JSON.stringify(picture.prompt ?? []), picture.name).toContain('KYOTO AUTUMN');
+  for (const picture of pictures) expect(JSON.stringify(proposalMarkSegments(picture)), picture.name).toContain('KYOTO AUTUMN');
   await expect(page.getByTestId('proposal-card').last()).toBeVisible({ timeout: 20_000 });
 });
 
-test('given a dish photo and asked only for a video of it, what lands carries that dish @needs-model', async () => {
-  test.setTimeout(480_000);
-  await ask('Make a video with this.', 'It is our margherita pizza, for the restaurant\'s Instagram, vertical.', 'dish.jpg');
-  const turn = await settledTurn(page);
-  // Solved when what lands draws on the photo: the video, or takes of its
-  // first frame made first, the video following from the picked take; through
-  // a food template or a setup of the agent's own.
-  const carrying = turn.landed.reduce((count, proposal) => count + generationsCarryingMaterial(proposal, () => true).length, 0);
-  expect(carrying, `generations drawing on the photo. Templates: ${turn.templates.join(', ')}; tools: ${turn.tools.join(', ')}; said: ${turn.said.slice(0, 600)}`).toBeGreaterThanOrEqual(1);
-});
-
-test('given a pet photo and asked only for a video of it, what lands carries that pet @needs-model', async () => {
-  test.setTimeout(480_000);
-  await ask('Make a video with this.', 'He is Bean, my golden retriever; a funny vertical video for TikTok.', 'pet.jpg');
-  const turn = await settledTurn(page);
-  // Solved when what lands draws on the photo: the video, or takes of its
-  // first frame made first, the video following from the picked take; through
-  // the pet template or a setup of the agent's own.
-  const carrying = turn.landed.reduce((count, proposal) => count + generationsCarryingMaterial(proposal, () => true).length, 0);
-  expect(carrying, `generations drawing on the photo. Templates: ${turn.templates.join(', ')}; tools: ${turn.tools.join(', ')}; said: ${turn.said.slice(0, 600)}`).toBeGreaterThanOrEqual(1);
-});
+for (const [what, reply, photo] of [
+  ['dish', 'It is our margherita pizza, for the restaurant\'s Instagram, vertical.', 'dish.jpg'],
+  ['pet', 'He is Bean, my golden retriever; a funny vertical video for TikTok.', 'pet.jpg'],
+]) {
+  test(`given a ${what} photo and asked only for a video of it, what lands carries that ${what} @needs-model`, async () => {
+    test.setTimeout(480_000);
+    await ask('Make a video with this.', reply, photo);
+    const turn = await settledTurn(page);
+    // Solved when a video draws on the photo, or when takes of its first frame
+    // drawn from the photo come first and the turn says the video follows from
+    // the picked take; through a template or a setup of the agent's own.
+    const carrying = turn.landed.flatMap((proposal) => generationsCarryingMaterial(proposal, () => true));
+    const video = carrying.some((node) => node.type === 'video') || (carrying.length > 0 && /\b(video|clip|animat)/i.test(turn.wrote));
+    expect(video, `generations drawing on the photo: ${carrying.map((node) => node.type).join(', ')}; templates: ${turn.templates.join(', ')}; wrote: ${turn.wrote.slice(0, 600)}`).toBe(true);
+  });
+}
 
 test('given a character photo and asked for two videos of her, what lands for both carries that character @needs-model', async () => {
   test.setTimeout(480_000);
@@ -280,10 +281,13 @@ test('given a character photo and asked for two videos of her, what lands for bo
   // Solved when what lands for each scene draws on her photo: its video, or
   // takes of its still made first, the video following from the picked take;
   // through a template or a setup of the agent's own.
-  const carrying = turn.landed.flatMap((proposal) => generationsCarryingMaterial(proposal, () => true)).map((node) => JSON.stringify(node.prompt ?? [])).join('\n');
-  const seen = `generations drawing on the photo: ${carrying.slice(0, 600)}; templates: ${turn.templates.join(', ')}; said: ${turn.said.slice(0, 600)}`;
-  expect(carrying, seen).toMatch(/park/i);
-  expect(carrying, seen).toMatch(/caf[eé]/i);
+  // Each scene needs a generation of its own, so one node naming both counts for neither.
+  const words = turn.landed.flatMap((proposal) => generationsCarryingMaterial(proposal, () => true)).map((node) => JSON.stringify(proposalMarkSegments(node)));
+  const park = (text: string): boolean => /\bparks?\b/i.test(text);
+  const cafe = (text: string): boolean => /\bcaf[eé]|\bcoffee/i.test(text);
+  const seen = `generations drawing on the photo: ${words.join('\n').slice(0, 600)}; templates: ${turn.templates.join(', ')}; said: ${turn.said.slice(0, 600)}`;
+  expect(words.some((text) => park(text) && !cafe(text)), seen).toBe(true);
+  expect(words.some((text) => cafe(text) && !park(text)), seen).toBe(true);
 });
 
 test('given a video and asked outright for background music, it reads a music template and lands music on that template\'s model drawing on the video @needs-model', async () => {
