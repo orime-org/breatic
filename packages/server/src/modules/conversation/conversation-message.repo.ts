@@ -414,6 +414,20 @@ export async function answerWaitingAsk(
 }
 
 /**
+ * The conversation a message row belongs to.
+ * @param messageId - The message's id.
+ * @returns Its conversation's id, or undefined when no row has that id.
+ */
+export async function conversationOfMessage(messageId: string): Promise<string | undefined> {
+  const [row] = await db
+    .select({ conversationId: conversationMessages.conversationId })
+    .from(conversationMessages)
+    .where(eq(conversationMessages.id, messageId))
+    .limit(1);
+  return row?.conversationId;
+}
+
+/**
  * The model the turn that made this call started on, as its reply records it
  * (#1363).
  * @param id - Conversation UUID.

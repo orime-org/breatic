@@ -318,6 +318,10 @@ chat.post("/message", acceptTransferBody("chat_message"), validate("json", chatM
     });
   }
 
+  if (await conversationService.messageIdTakenElsewhere(conversation.id, body.id!)) {
+    logger.warn({ userId: user.id, conversationId: conversation.id, messageId: body.id }, "chat_message_id_taken");
+    return c.json({ error: { code: 409, message: t("server.error.conflict"), reason: "message_id_taken" } }, 409);
+  }
   await accountActivityRepo.recordActivity({ userId: user.id, projectId: body.project_id, kind: "agent_started" });
   const { project_id: _project, conversation_id: _conversation, ...said } = body;
   const item: QueueItem = {

@@ -632,6 +632,19 @@ export async function modelForMessage(
 }
 
 /**
+ * Whether a new message's id already names a message of another
+ * conversation. The page makes a fresh id at each press, so only a request
+ * built by hand can carry one; its run could never write its opening row.
+ * @param conversationId - The conversation it is sent to.
+ * @param messageId - The id it carries.
+ * @returns True when another conversation holds a message with that id.
+ */
+export async function messageIdTakenElsewhere(conversationId: string, messageId: string): Promise<boolean> {
+  const holder = await messageRepo.conversationOfMessage(messageId);
+  return holder !== undefined && holder !== conversationId;
+}
+
+/**
  * The model a message that waited in the queue runs on: the one it was sent
  * with, while the deployment still lists it, else the conversation's own.
  * Never a refusal: the send was checked when it was accepted, and a release

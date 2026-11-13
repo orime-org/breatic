@@ -168,7 +168,7 @@ import { chatQueue } from "@server/modules/chat-queue/chat-queue.service.js";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
 import { pendingAfterReply, settleAfterReply } from "@server/utils/after-reply.js";
 import { runStreams } from "@server/agent/run-stream.js";
-import { attach, keysOf, seedOwner, send, stop, sync, until, untilIdle, type Seeded } from "./chat-run-harness.js";
+import { attach, keysOf, seedOwner, send, stop, sync, until, untilIdle, type Seeded, turnFrames } from "./chat-run-harness.js";
 
 let sql: ReturnType<typeof postgres>;
 let app: Hono;
@@ -600,6 +600,49 @@ describe("a check the opening stage refuses", () => {
     expect(leases.held).toHaveLength(1);
   });
 
+  it("refuses a new message whose id already names a message of another conversation, and queues nothing", async () => {
+    const other = await seedOwner(sql, app);
+    const taken = crypto.randomUUID();
+    await messageRepo.addUserMessage(
+      other.conversationId,
+      { role: "user", parts: [{ type: "text", text: "theirs" }] },
+      () => {
+        throw new Error("no card waits");
+      },
+      { messageId: taken },
+    );
+    const who = await seedOwner(sql, app);
+    const res = await send(app, who, { id: taken, message: "hello" });
+    expect(res.status).toBe(409);
+    const k = keysOf(who.conversationId);
+    expect(await getRedis().exists(k.active)).toBe(0);
+    expect(await idsIn(k.queue)).toEqual([]);
+  });
+
+  it("leaves no rejection unhandled when the opening row cannot be written, and keeps the message", async () => {
+    const who = await seedOwner(sql, app);
+    const unhandled: unknown[] = [];
+    const onUnhandled = (err: unknown): void => {
+      unhandled.push(err);
+    };
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      gate.addUser = () => {
+        gate.addUser = undefined;
+        throw new Error("database write failed");
+      };
+      const id = crypto.randomUUID();
+      await send(app, who, { id, message: "hello" });
+      await untilIdle(who.conversationId);
+      await new Promise((r) => setTimeout(r, 50));
+      expect(unhandled).toEqual([]);
+      const k = keysOf(who.conversationId);
+      expect([...(await idsIn(k.taken)), ...(await idsIn(k.queue))]).toEqual([id]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
+
   it("keeps what waits and opens no run after an error nobody expected (SR-15)", async () => {
     const who = await seedOwner(sql, app);
     gate.writable = (n) => {
@@ -916,7 +959,7 @@ describe("a shutdown before a run's running stage", () => {
           await sync(app, who);
         }
         const frames = await watch.frames();
-        expect(frames.filter((f) => f.type !== "data-heartbeat")).toEqual([]);
+        expect(turnFrames(frames)).toEqual([]);
       } finally {
         runObservers.splice(runObservers.indexOf(watch.observe), 1);
       }
@@ -1001,7 +1044,7 @@ describe("a shutdown during a card's opening", () => {
     try {
       const res = await answerCard(who, card, "sd9");
       expect(((await res.json()) as { data: { running: boolean } }).data.running).toBe(true);
-      const frames = (await watch.frames()).filter((f) => f.type !== "data-heartbeat");
+      const frames = turnFrames(await watch.frames());
       expect(frames.map((f) => f.type)).toEqual(["data-failed", "error"]);
       expect(frames[0]).toEqual({ type: "data-failed", data: { reason: "shutdown" } });
     } finally {

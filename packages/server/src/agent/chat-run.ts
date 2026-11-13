@@ -204,6 +204,9 @@ async function runIt(start: RunStart, open: (running: boolean) => void): Promise
   const turn = new Promise<ReadableStream<UIMessageChunk>>((resolve) => {
     turnReady = resolve;
   });
+  // Read only by the stream, which an opening that throws first never makes;
+  // the throw is handled below, and the stream sees it when it reads.
+  void turn.catch(() => undefined);
   let streamOpened = false;
   let wireDone!: () => void;
   const wireEnded = new Promise<void>((resolve) => {
