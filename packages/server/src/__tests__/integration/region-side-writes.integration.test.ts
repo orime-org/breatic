@@ -18,8 +18,9 @@
  *   1. Inviting an existing account records that account here, and the
  *      invitation's token names this region.
  *   2. Accepting an invitation records the new member here.
- *   3. The global region keeps one `user_regions` row however often it hears.
- *   4. A personal Studio renamed here is the name the global profiles return
+ *   3. A transfer offer's link token names this region too.
+ *   4. The global region keeps one `user_regions` row however often it hears.
+ *   5. A personal Studio renamed here is the name the global profiles return
  *      once the event is applied, and the relay interval plus the profile
  *      cache lifetime stay within sixty seconds.
  */
@@ -47,6 +48,7 @@ import { getMembershipLimits, getRegionsConfig, initCore, loadLocales } from "@b
 import { regionOutboxApplyService, regionOutboxService, studioDirectoryService } from "@breatic/domain";
 import * as studioService from "@server/modules/studio/studio.service.js";
 import * as studioInviteService from "@server/modules/studio/studioInvite.service.js";
+import * as studioTransferService from "@server/modules/studio/studioTransfer.service.js";
 import { startRegionStandIn, type RegionStandIn } from "./region-harness.js";
 
 loadLocales();
@@ -161,6 +163,20 @@ describe("recording who has data in this region", () => {
     await studioInviteService.confirmInvite(invite.invitationId, invitee.userId);
 
     expect(await touchedEvents(invitee.userId)).toBeGreaterThan(0);
+  });
+
+  it("gives a transfer offer a link token naming this region", async () => {
+    const admin = await account();
+    const heir = await account();
+    const { studioId, slug } = await regionStudio(admin.userId);
+    await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${studioId}, ${heir.userId}, 'maintainer')`;
+
+    await studioTransferService.requestTransfer(slug, admin.userId, heir.userId);
+
+    const [row] = await sql<{ token: string }[]>`
+      SELECT share_token AS token FROM studio_transfers WHERE studio_id = ${studioId} AND status = 'pending'
+    `;
+    expect(row!.token.startsWith("sg.")).toBe(true);
   });
 
   it("keeps one user_regions row however often the global region hears", async () => {
