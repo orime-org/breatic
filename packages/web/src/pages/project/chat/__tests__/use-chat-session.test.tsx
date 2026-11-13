@@ -84,7 +84,7 @@ import { tell } from '@web/stores/chat-mishaps';
 import { chatSessionFor, evictAllChatSessions } from '@web/stores/chat-sessions';
 import { resetChatLiveForTests } from '@web/stores/chat-live';
 import { resetRunOnceForTests } from '@web/stores/task-actions-in-flight';
-import { BEAT, replyOpens, storesWhatIsDrawn, stubRunWire } from '@web/test-utils/chat-run-wire';
+import { replyOpens, storesWhatIsDrawn, stubRunWire } from '@web/test-utils/chat-run-wire';
 import type { RunWire } from '@web/test-utils/chat-run-wire';
 
 /** The limits the server reads, as `GET /chat/stream-config` answers them. */
@@ -195,6 +195,7 @@ async function anOpenPanel(): Promise<
 async function aReplyStartsArriving(
   panel: ReturnType<typeof render>,
   said = 'find a few reference images',
+  frames = replyOpens(),
 ): Promise<void> {
   const streamsBefore = wire.streams().length;
   stored = [...stored, row('sent-1', 'user', said, 2)];
@@ -205,7 +206,7 @@ async function aReplyStartsArriving(
     expect(wire.streams().length).toBe(streamsBefore + 1);
   });
   act(() => {
-    for (const chunk of replyOpens()) wire.last()?.push(chunk);
+    for (const chunk of frames) wire.last()?.push(chunk);
   });
   await waitFor(() => {
     expect(panel.result.current.turnPhase).toBe('running');
@@ -312,18 +313,8 @@ describe('a reply as the panel draws it', () => {
 
   it('is marked as being written from the frame that names it, before a word arrives', async () => {
     const panel = await anOpenPanel();
-    stored = [...stored, row('sent-1', 'user', 'find a few reference images', 2)];
-    act(() => {
-      void panel.result.current.send('find a few reference images');
-    });
-    await waitFor(() => {
-      expect(wire.streams()).not.toHaveLength(0);
-    });
-    act(() => {
-      wire.last()?.push(BEAT);
-      wire.last()?.push({ type: 'start', messageId: 'server-named' });
-      wire.last()?.push({ type: 'start-step' });
-    });
+    // The heartbeat, the frame that names the reply and the step's start.
+    await aReplyStartsArriving(panel, undefined, replyOpens().slice(0, 3));
 
     await waitFor(() => {
       expect(panel.result.current.messages.at(-1)).toMatchObject({ role: 'assistant', streaming: true });

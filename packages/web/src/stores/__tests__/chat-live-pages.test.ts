@@ -137,6 +137,17 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+/**
+ * A run opened by a message that closed the card, as the server writes it:
+ * the reply named first, then the card it closed, then the reply.
+ * @returns The frames.
+ */
+function closingTheCard(): Array<Record<string, unknown>> {
+  const frames = replyOpens();
+  frames.splice(2, 0, { type: 'data-ask-replied', data: { toolCallId: 'ask-1' } });
+  return frames;
+}
+
 describe('a card another page answered', () => {
   it('is drawn answered here before the run it resumed is read (WB-19)', async () => {
     const answered = { state: 'output-available', output: { answers: [{ index: 0, selected: ['9:16'] }] } };
@@ -227,10 +238,7 @@ describe('a message sent while a card waits', () => {
     await here.live.chatLive.send({ projectId: 'p1', conversationId: 'c1', words: 'something else', chips: [], spaces: {} });
     await settle();
     const s = wire.last()!;
-    // As the server writes a run: the reply named first, then the cards the
-    // message closed.
-    const [beat, start, ...rest] = replyOpens();
-    for (const f of [beat!, start!, { type: 'data-ask-replied', data: { toolCallId: 'ask-1' } }, ...rest]) s.push(f);
+    for (const f of closingTheCard()) s.push(f);
     await settle();
     expect(here.messages()[1]!.parts[0]).toMatchObject(CLOSED);
     expect(userMessageOrder(here.messages())).toEqual(['u0', 'm1']);
@@ -249,10 +257,7 @@ describe('a message sent while a card waits', () => {
     await here.live.chatLive.send({ projectId: 'p1', conversationId: 'c1', words: 'said m2', chips: [], spaces: {} });
     await settle();
     const s = wire.last()!;
-    // As the server writes a run: the reply named first, then the cards the
-    // message closed.
-    const [beat, start, ...rest] = replyOpens();
-    for (const f of [beat!, start!, { type: 'data-ask-replied', data: { toolCallId: 'ask-1' } }, ...rest]) s.push(f);
+    for (const f of closingTheCard()) s.push(f);
     s.push({ type: 'data-user-message', data: { id: 'm2', words: 'said m2', chips: [], sentAt: '2026-11-12T08:01:00.000Z' } });
     s.push({ type: 'text-delta', id: 't1', delta: 'Both, in order.' });
     await settle();
