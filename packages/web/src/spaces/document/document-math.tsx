@@ -392,6 +392,7 @@ const MathFace = React.memo(function MathFace({
       ref={refs.setReference}
       className={cn('bn-preview-with-source-popup doc-math', selected && 'ProseMirror-selectednode')}
       data-open={shown ? 'true' : 'false'}
+      data-selected={!inline && selected && editable && !shown ? 'true' : undefined}
     >
       <Wrapper
         className={cn('bn-preview-container', !inline && 'overflow-visible', !editable && 'cursor-default')}
@@ -411,7 +412,9 @@ const MathFace = React.memo(function MathFace({
           // A formula wider than the body scrolls sideways in its own
           // scroller, as a formula in a chat reply does (`MarkdownMessage.tsx`).
           <ScrollArea scrollbars='horizontal' className='w-full [&_.katex-display]:my-0'>
-            <div className='flex w-max min-w-full flex-col items-center'>{face}</div>
+            <div className='flex w-max min-w-full flex-col items-center'>
+              <div data-math-frame>{face}</div>
+            </div>
           </ScrollArea>
         )}
       </Wrapper>

@@ -174,6 +174,27 @@ describe('the popup', () => {
   });
 });
 
+describe('a selected, closed formula block (§6.2)', () => {
+  it('is marked selected, as a selected image is', async () => {
+    const { editor, root } = open([
+      { type: 'paragraph', content: 'above' },
+      { type: 'mathBlock', content: '\\frac{a}{b}' },
+    ]);
+    const formula = await appear(root, '.doc-math');
+    editor.setTextCursorPosition((editor.document as { id: string }[])[0]!.id, 'end');
+    await vi.waitFor(() => {
+      expect(formula.dataset['selected']).toBeUndefined();
+    });
+
+    editor.setTextCursorPosition((editor.document as { id: string }[])[1]!.id, 'end');
+
+    await vi.waitFor(() => {
+      expect(formula.dataset['selected']).toBe('true');
+    });
+    expect(anyOpen(root)).toBe(false);
+  });
+});
+
 describe('a read-only body', () => {
   it('does not open the popup on a click', async () => {
     const { editor, root } = open([{ type: 'mathBlock', content: '\\frac{a}{b}' }]);

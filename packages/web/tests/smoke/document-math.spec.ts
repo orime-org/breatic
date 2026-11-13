@@ -339,6 +339,69 @@ test('a formula block emptied with Backspace still takes what is typed next', as
   expect((await lines(page))[0]).toBe('mathBlock:yz');
 });
 
+test('a word deletion and Shift+Home with Backspace in an open formula block stay inside its source', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('hello');
+  await page.keyboard.press('Enter');
+  await paste(page, { 'text/plain': '$$\nab cd\n$$' });
+  await expect.poll(() => lines(page)).toContain('mathBlock:ab cd');
+
+  await page.locator(`${EDITOR} .doc-math .bn-preview-container`).first().click();
+  await expect(page.locator(OPEN)).toHaveCount(1);
+  await page.keyboard.press(process.platform === 'darwin' ? 'Alt+Backspace' : 'Control+Backspace');
+  await expect.poll(() => lines(page)).toContain('mathBlock:ab ');
+  await page.keyboard.press('Shift+Home');
+  await page.keyboard.press('Backspace');
+  await page.keyboard.type('z');
+  await page.keyboard.press('Enter');
+
+  await expect(page.locator(OPEN)).toHaveCount(0);
+  expect((await lines(page)).slice(0, 2)).toEqual(['paragraph:hello', 'mathBlock:z']);
+});
+
+test('Ctrl+K right before an inline formula takes the whole formula with the rest of the line', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('a $$x^2$$ b');
+  await expect.poll(() => lines(page)).toEqual(['paragraph:a [math:x^2] b']);
+  // Right after `a `: `Home` only scrolls on macOS.
+  await selectInBody(page, () => page.evaluate((selector) => {
+    const range = document.createRange();
+    range.setStart(document.querySelector(`${selector} p`)!.firstChild!, 2);
+    range.collapse(true);
+    const selection = window.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }, EDITOR));
+
+  // macOS binds Ctrl+K to this editing command, and Playwright presses keys on
+  // macOS by naming the command the same way; naming it here sends the same
+  // press on every platform.
+  const cdp = await page.context().newCDPSession(page);
+  const key = { key: 'k', code: 'KeyK', windowsVirtualKeyCode: 75, modifiers: 2 };
+  await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...key, commands: ['deleteToEndOfParagraph'] });
+  await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', ...key });
+
+  await expect.poll(() => lines(page)).toEqual(['paragraph:a ']);
+});
+
+test('a formula block selected from the line above is framed on the formula, its box closed', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('hello');
+  await page.keyboard.press('Enter');
+  await paste(page, { 'text/plain': '$$\nabc\n$$' });
+  await expect.poll(() => lines(page)).toContain('mathBlock:abc');
+  const frame = page.locator(`${EDITOR} .doc-math [data-math-frame]`).first();
+  await caretAtEndOfFirstLine(page);
+  expect(await frame.evaluate((element) => getComputedStyle(element).outlineStyle)).toBe('none');
+
+  await page.keyboard.press('Delete');
+
+  await expect(page.locator(OPEN)).toHaveCount(0);
+  await expect.poll(() => frame.evaluate((element) => getComputedStyle(element).outlineStyle)).toBe('solid');
+  expect(await frame.evaluate((element) => getComputedStyle(element).outlineWidth)).toBe('1px');
+  expect((await lines(page)).slice(0, 2)).toEqual(['paragraph:hello', 'mathBlock:abc']);
+});
+
 test('a line holding a formula copies as $$source$$ and pastes back as a formula', async () => {
   await openFreshDocument(page);
   await page.keyboard.type('a $$x^2$$ b');

@@ -9,19 +9,22 @@
  * | `$$x$$` | the closing `$` lands as text; a `$` that came through `handleTextInput` arms the rule, and the conversion follows in a transaction of its own, its own undo step |
  * | Backspace right after converting | turns it back into the text `$$x$$` |
  * | Backspace / Delete beside an inline formula | the caret goes into its source; nothing the user cannot see is deleted |
- * | Backspace at the start, Delete at the end of an inline source | does nothing |
- * | Backspace / Delete in an empty source | the formula goes; a block formula's indented lines stay, lifted into its place |
- * | Backspace at the start, Delete at the end of an open block formula's source | does nothing, or removes the formula when its source is empty |
- * | Backspace / Delete on the last character of an open block formula's source | deleted here, the caret staying in the empty source |
- * | Backspace at the start of a line right under a closed block formula, Delete at the end of one right above it | selects the formula, box closed; the next press deletes it |
+ * | any deletion in an open source, by a key or the browser's own binding (a character, a word, a line) | deleted inside the source only, the caret staying in it |
+ * | a deletion at the edge of an open source | does nothing, or removes the formula when its source is empty; a block formula's indented lines stay, lifted into its place |
+ * | Backspace at the start of the line after a closed block formula, Delete at the end of the line before one, in reading order | selects the formula, box closed; the next press deletes it; from an empty line, the line goes first |
+ * | a word or line deletion that runs over an inline formula | takes the whole formula |
  * | Shift+Backspace / Shift+Delete | as without Shift |
  * | Enter in an inline source | confirms, the caret after the formula, whatever block the line is |
  * | ArrowLeft / ArrowRight across an inline formula's edge | the caret goes into its source, or out to right beside the formula |
  * | input into a selected, closed block formula | refused: its source is hidden |
  * | a selection reaching into a hidden source from outside | widened to the whole formula |
+ * | a selection starting in an open source | ends inside it, as in a text box |
  *
  * The keys run ahead of `document-enter` and `document-table-keys`, which
  * would otherwise split a quoted line or answer a table cell's edge first.
+ * A deletion the browser makes from a binding of its own (Alt+Backspace,
+ * Ctrl+K) never reaches a keymap, so `beforeinput` takes every deletion the
+ * same way.
  * Only a `$` from `handleTextInput` arms the rule (`prosemirror-inputrules`
  * 1.5.1 `index.js:74-85` judges there too), so the text an undo, a redo or a
  * co-editor brings back is never converted again.
@@ -29,16 +32,32 @@
 
 import { createExtension, type BlockNoteEditor } from '@blocknote/core';
 import { SourceBlockWithPreviewExtension } from '@blocknote/core/extensions';
-import type { ResolvedPos } from '@tiptap/pm/model';
+import { isMacOS } from '@tiptap/core';
+import type { Node as PMNode, ResolvedPos } from '@tiptap/pm/model';
 import { Plugin, PluginKey, Selection, TextSelection, type EditorState } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
 import { isFormula, MATH_BLOCK, MATH_INLINE } from '@web/spaces/document/document-math';
-import { isTableCell } from '@web/spaces/document/document-table-nodes';
+import { cellDepthOf } from '@web/spaces/document/document-table-nodes';
 import { markOwnUndoStep } from '@web/spaces/document/document-undo-step';
 
 /** The editor as this file uses it. */
 type MathEditor = BlockNoteEditor<never, never, never>;
+
+/** How much one deletion takes: a line as laid out, or a paragraph up to its edge. */
+type Unit = 'character' | 'word' | 'line' | 'paragraph';
+
+/** The deletions `beforeinput` states with a direction. */
+const DELETION = /^delete(Content|Word|SoftLine|HardLine)(Backward|Forward)$/;
+
+/** How much each of them takes. */
+const UNITS: Readonly<Record<string, Unit>> = { Content: 'character', Word: 'word', SoftLine: 'line', HardLine: 'paragraph' };
+
+/** Characters as the user sees them: an emoji is one, though it is two code units. */
+const GRAPHEMES = new Intl.Segmenter(undefined, { granularity: 'grapheme' });
+
+/** Words, for a word deletion inside a source. */
+const WORDS = new Intl.Segmenter(undefined, { granularity: 'word' });
 
 /**
  * A closing `$$` and what it encloses at the end of the text before the
@@ -74,6 +93,46 @@ function inHiddenSource(editor: MathEditor, $pos: ResolvedPos, state: EditorStat
   if (closedFormulaBlockAt(editor, $pos) !== null) return true;
   if ($pos.parent.isTextblock || !isFormula($pos.parent)) return false;
   return !state.selection.$from.sameParent($pos);
+}
+
+/**
+ * The source a position is in when the user is editing it: an inline
+ * formula's, or a block formula's with its box open.
+ * @param editor - The editor.
+ * @param $pos - The position.
+ * @returns Where the source starts and ends, or null.
+ */
+function openSourceRange(editor: MathEditor, $pos: ResolvedPos): { start: number; end: number } | null {
+  if (!isFormula($pos.parent) || ($pos.parent.isTextblock && closedFormulaBlockAt(editor, $pos) !== null)) return null;
+  return { start: $pos.start(), end: $pos.end() };
+}
+
+/**
+ * Where one deletion from an offset in a text ends: the next character, the
+ * next word with the spaces before it, or the line's edge; a line deletion
+ * at a line's edge takes the line break.
+ * @param text - The text.
+ * @param offset - Where the deletion starts.
+ * @param back - Backward, else forward.
+ * @param unit - How much it takes.
+ * @returns The offset at its other end, `offset` when there is nothing to take.
+ */
+function deletionEdge(text: string, offset: number, back: boolean, unit: Unit): number {
+  if (unit === 'line' || unit === 'paragraph') {
+    const edge = back ? text.lastIndexOf('\n', offset - 1) + 1 : text.indexOf('\n', offset);
+    const at = edge < 0 ? text.length : edge;
+    return at === offset ? Math.min(Math.max(offset + (back ? -1 : 1), 0), text.length) : at;
+  }
+  const segments = [...(unit === 'word' ? WORDS : GRAPHEMES).segment(text)];
+  let at = offset;
+  for (const segment of back ? segments.reverse() : segments) {
+    const end = segment.index + segment.segment.length;
+    if (back ? segment.index >= at : end <= at) continue;
+    at = back ? segment.index : end;
+    // A character is one segment; a word deletion runs over the spaces up to a word and takes it.
+    if (unit === 'character' || segment.isWordLike === true) break;
+  }
+  return at;
 }
 
 /** A conversion just made, which a Backspace right after takes back. */
@@ -205,61 +264,170 @@ function removeInline(view: EditorView, $pos: ResolvedPos): boolean {
 function removeFormulaBlock(editor: MathEditor, view: EditorView, $cursor: ResolvedPos, back: boolean): boolean {
   const at = $cursor.before($cursor.depth - 1);
   const id = $cursor.node($cursor.depth - 1).attrs['id'] as string;
+  // The cell's start lies before the formula, so the removal leaves it where it is.
+  const cell = cellDepthOf($cursor);
+  const cellStart = cell < 0 ? -1 : $cursor.start(cell);
   const children = (editor.getBlock(id) as { children: never[] } | undefined)?.children ?? [];
   if (children.length > 0) editor.replaceBlocks([id], children);
   else editor.removeBlocks([id]);
   const { state } = view;
-  view.dispatch(state.tr.setSelection(Selection.near(state.doc.resolve(Math.min(at, state.doc.content.size)), back ? -1 : 1)));
+  const $at = state.doc.resolve(Math.min(at, state.doc.content.size));
+  let near = Selection.near($at, back ? -1 : 1);
+  if (cellStart >= 0) {
+    const $cell = state.doc.resolve(cellStart);
+    if (near.from < cellStart || near.from > $cell.end()) near = Selection.near($at, back ? 1 : -1);
+  }
+  view.dispatch(state.tr.setSelection(near));
   return true;
 }
 
 /**
- * Backspace with the caret at the start of a plain line right under a
- * closed block formula, or Delete at the end of a line right above one,
- * selects the formula with its box closed; the next press deletes it
- * (`SourceBlockWithPreview.ts:166-171`). Joining the line into the formula
- * would write the line into a source nobody can see. A heading, a list item
- * or a quoted line takes its own first step on Backspace first.
- * @param editor - The editor.
- * @param $cursor - The caret.
- * @param back - Backspace, else Delete.
- * @returns Whether the key was taken.
- */
-function selectFormulaBeside(editor: MathEditor, $cursor: ResolvedPos, back: boolean): boolean {
-  const { parent } = $cursor;
-  if ($cursor.parentOffset !== (back ? 0 : parent.content.size)) return false;
-  if (back && (parent.type.name !== 'paragraph' || parent.attrs['quoted'] === true)) return false;
-  const depth = $cursor.depth - 1;
-  const block = $cursor.node(depth);
-  if (block.type.name !== 'blockContainer') return false;
-  const sibling = $cursor.node(depth - 1).maybeChild($cursor.index(depth - 1) + (back ? -1 : 1));
-  if (sibling?.firstChild?.type.name !== MATH_BLOCK) return false;
-  // The line beside is the formula's own only when no indented line sits between.
-  if ((back ? sibling : block).childCount > 1) return false;
-  editor.setTextCursorPosition(sibling.attrs['id'] as string, 'end');
-  return true;
-}
-
-/**
- * Backspace or Delete by a formula.
+ * Deletes in the open source the selection is in, never past its edges:
+ * the selection, or one character, word or line from the caret. The deletion
+ * is ours rather than the browser's, so the source's element stays in place
+ * when the source empties and the next keystroke lands in it. At an edge
+ * nothing is deleted, unless the source is empty: then the formula goes.
  * @param editor - The editor.
  * @param view - The editor view.
- * @param back - Backspace, else Delete.
- * @returns Whether the key was taken.
+ * @param back - Backward, else forward.
+ * @param unit - How much one deletion takes.
+ * @returns True.
  */
-function deleteByFormula(editor: MathEditor, view: EditorView, back: boolean): boolean {
-  const { $cursor } = view.state.selection as TextSelection;
-  if (!$cursor) return false;
-  const { parent } = $cursor;
-  const size = parent.content.size;
-  // In an inline formula's source.
-  if (!parent.isTextblock && isFormula(parent)) {
-    if (size === 0) return removeInline(view, $cursor);
-    // At the start Backspace, at the end Delete, has nothing of the source to
-    // delete and would reach the line around the formula.
-    return $cursor.parentOffset === (back ? 0 : size);
+function deleteInSource(editor: MathEditor, view: EditorView, back: boolean, unit: Unit): boolean {
+  const { selection } = view.state;
+  const { $from } = selection;
+  const start = $from.start();
+  let from = selection.from;
+  let to = Math.min(selection.to, $from.end());
+  if (selection.empty) {
+    const offset = $from.parentOffset;
+    const edge = deletionEdge($from.parent.textContent, offset, back, unit);
+    if (edge === offset) {
+      if ($from.parent.content.size > 0) return true;
+      return $from.parent.isTextblock ? removeFormulaBlock(editor, view, $from, back) : removeInline(view, $from);
+    }
+    from = start + Math.min(edge, offset);
+    to = start + Math.max(edge, offset);
   }
-  if (!isFormula(parent)) {
+  const tr = view.state.tr.delete(from, to);
+  view.dispatch(tr.setSelection(TextSelection.create(tr.doc, from)));
+  return true;
+}
+
+/**
+ * The block next to the caret's line in reading order, inside its table
+ * cell: before it, the last line of the block above, indented lines
+ * included; after it, the line's own first indented line, else the next
+ * line at the nearest level out. The first line under a block has none
+ * before it, since Backspace there unindents it first.
+ * @param $cursor - The caret.
+ * @param back - Before, else after.
+ * @returns The block, or null.
+ */
+function blockBeside($cursor: ResolvedPos, back: boolean): PMNode | null {
+  const depth = $cursor.depth - 1;
+  const block = $cursor.node(depth);
+  if (block.type.name !== 'blockContainer') return null;
+  if (back) {
+    let node = $cursor.node(depth - 1).maybeChild($cursor.index(depth - 1) - 1);
+    // A block's indented lines are the last child it holds.
+    while (node !== null && node.childCount > 1) node = node.lastChild!.lastChild;
+    return node;
+  }
+  if (block.childCount > 1) return block.lastChild!.firstChild;
+  for (let level = depth; level > 0 && $cursor.node(level).type.name === 'blockContainer'; level -= 2) {
+    const next = $cursor.node(level - 1).maybeChild($cursor.index(level - 1) + 1);
+    if (next !== null) return next;
+  }
+  return null;
+}
+
+/**
+ * The closed block formula the caret's line borders, with the caret at the
+ * line's start for Backspace or its end for Delete.
+ * @param $cursor - The caret.
+ * @param back - Backspace, else Delete.
+ * @returns The formula's block, or null.
+ */
+function formulaBlockBeside($cursor: ResolvedPos, back: boolean): PMNode | null {
+  if ($cursor.parentOffset !== (back ? 0 : $cursor.parent.content.size)) return null;
+  const beside = blockBeside($cursor, back);
+  return beside?.firstChild?.type.name === MATH_BLOCK ? beside : null;
+}
+
+/**
+ * Selects a formula block the caret's line borders, its box closed; the next
+ * press deletes it (`SourceBlockWithPreview.ts:166-171`). Joining the line
+ * into the formula would write the line into a source nobody can see. From
+ * an empty line, the line goes in the same step, as it does under an image.
+ * A heading or a list item takes its own first step on Backspace first.
+ * @param editor - The editor.
+ * @param $cursor - The caret.
+ * @param formula - The formula's block.
+ * @param back - Backspace, else Delete.
+ * @returns Whether the formula was selected.
+ */
+function selectFormula(editor: MathEditor, $cursor: ResolvedPos, formula: PMNode, back: boolean): boolean {
+  const { parent } = $cursor;
+  if (back && parent.type.name !== 'paragraph') return false;
+  const line = $cursor.node($cursor.depth - 1);
+  editor.transact(() => {
+    if (back && parent.content.size === 0 && line.childCount === 1) editor.removeBlocks([line.attrs['id'] as string]);
+    editor.setTextCursorPosition(formula.attrs['id'] as string, 'end');
+  });
+  return true;
+}
+
+/**
+ * Deletes the range a word or line deletion takes, widened to the whole of
+ * every inline formula in it, inside the caret's line.
+ * @param view - The editor view.
+ * @param $cursor - The caret.
+ * @param range - The range the browser would delete, or null when it states none.
+ * @returns Whether the deletion was taken: false when it reaches no formula.
+ */
+function deleteOverFormulas(view: EditorView, $cursor: ResolvedPos, range: readonly [number, number] | null): boolean {
+  if (range === null) return false;
+  let [from, to] = range;
+  let touched = false;
+  view.state.doc.nodesBetween(from, to, (node, pos) => {
+    if (!node.isInline || !isFormula(node)) return true;
+    touched = true;
+    from = Math.min(from, pos);
+    to = Math.max(to, pos + node.nodeSize);
+    return false;
+  });
+  if (!touched) return false;
+  from = Math.max(from, $cursor.start());
+  to = Math.min(to, $cursor.end());
+  const tr = view.state.tr.delete(from, to);
+  view.dispatch(tr.setSelection(TextSelection.create(tr.doc, from)));
+  return true;
+}
+
+/**
+ * A deletion by a formula, from a key or from the browser's `beforeinput`.
+ * @param editor - The editor.
+ * @param view - The editor view.
+ * @param back - Backward, else forward.
+ * @param unit - How much it takes.
+ * @param target - The range the browser would delete, for a word or line deletion it makes itself.
+ * @returns Whether the deletion was taken.
+ */
+function deleteByFormula(
+  editor: MathEditor,
+  view: EditorView,
+  back: boolean,
+  unit: Unit = 'character',
+  target: () => readonly [number, number] | null = () => null,
+): boolean {
+  const { selection } = view.state;
+  if (openSourceRange(editor, selection.$from) !== null) return deleteInSource(editor, view, back, unit);
+  const { $cursor } = selection as TextSelection;
+  // A range is widened over hidden sources already; a selected, closed block
+  // formula is the library's to delete.
+  if (!$cursor || isFormula($cursor.parent)) return false;
+  if (unit === 'character') {
     // Beside an inline formula: into its source, deleting nothing unseen.
     const beside = back ? $cursor.nodeBefore : $cursor.nodeAfter;
     if (beside !== null && isFormula(beside) && beside.isInline) {
@@ -267,19 +435,31 @@ function deleteByFormula(editor: MathEditor, view: EditorView, back: boolean): b
       view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, into)));
       return true;
     }
-    return selectFormulaBeside(editor, $cursor, back);
   }
-  // A selected, closed block formula is the library's to delete.
-  if (closedFormulaBlockAt(editor, $cursor) !== null) return false;
-  // At the edge of an open block formula's source: Backspace at its start and
-  // Delete at its end would reach the block beside it.
-  if ($cursor.parentOffset === (back ? 0 : size)) return size === 0 ? removeFormulaBlock(editor, view, $cursor, back) : true;
-  // Its last character: deleted here, the caret kept in the empty source, so
-  // the browser never takes the source element out with it.
-  if (size !== 1) return false;
-  const tr = view.state.tr.delete($cursor.start(), $cursor.end());
-  view.dispatch(tr.setSelection(TextSelection.create(tr.doc, $cursor.start())));
-  return true;
+  const formula = formulaBlockBeside($cursor, back);
+  // A word or line deletion that cannot select it would join the line into its hidden source.
+  if (formula !== null) return selectFormula(editor, $cursor, formula, back) || unit !== 'character';
+  if (unit === 'character') return false;
+  // A paragraph deletion runs to the line's edge. The browser's own range for
+  // it stops at the source box inside an inline formula, which it takes for a
+  // paragraph's end.
+  const range: readonly [number, number] | null =
+    unit === 'paragraph' ? (back ? [$cursor.start(), $cursor.pos] : [$cursor.pos, $cursor.end()]) : target();
+  return deleteOverFormulas(view, $cursor, range);
+}
+
+/**
+ * The range a deletion the browser makes itself would take.
+ * @param view - The editor view.
+ * @param event - The `beforeinput` event.
+ * @returns The range, or null when the event states none.
+ */
+function targetRange(view: EditorView, event: InputEvent): readonly [number, number] | null {
+  const [range] = 'getTargetRanges' in event ? event.getTargetRanges() : [];
+  if (range === undefined) return null;
+  const from = view.posAtDOM(range.startContainer, range.startOffset);
+  const to = view.posAtDOM(range.endContainer, range.endOffset);
+  return from === to ? null : [Math.min(from, to), Math.max(from, to)];
 }
 
 /**
@@ -330,8 +510,8 @@ function arrowByFormula(view: EditorView, forward: boolean): boolean {
 /**
  * The nearest text a selection end can stand on from a position, going one
  * way, that is no closed block formula's hidden source: such a source is
- * stepped over whole. The search stays inside the table cell, or the
- * isolating block, around the formula it starts from.
+ * stepped over whole. The search stays inside the table cell around the
+ * formula it starts from.
  * @param editor - The editor.
  * @param $from - Where the formula the end leaves starts its search.
  * @param pos - Where to search from.
@@ -339,8 +519,7 @@ function arrowByFormula(view: EditorView, forward: boolean): boolean {
  * @returns The position, or null when there is none inside.
  */
 function visibleText(editor: MathEditor, $from: ResolvedPos, pos: number, dir: -1 | 1): number | null {
-  let depth = $from.depth - 1;
-  while (depth > 0 && !isTableCell($from.node(depth)) && $from.node(depth).type.spec.isolating !== true) depth -= 1;
+  const depth = Math.max(cellDepthOf($from), 0);
   const [low, high] = [$from.start(depth), $from.end(depth)];
   let at = pos;
   for (;;) {
@@ -399,7 +578,9 @@ function wholeFormulaEdge(editor: MathEditor, end: ResolvedPos, other: ResolvedP
  * outside it to take in the whole formula. The source is hidden while the
  * box is closed, so a drag that stops on the drawn formula would otherwise
  * copy, cut or delete part of a source nobody can see. The head goes the way
- * it moved, so Shift+Arrow back over a formula shrinks the selection.
+ * it moved, so Shift+Arrow back over a formula shrinks the selection. A
+ * selection that starts in an open source ends inside it, as one in a text
+ * box does: Shift+Home there would otherwise reach the lines around it.
  * @param editor - The editor.
  * @returns The plugin.
  */
@@ -410,6 +591,11 @@ function wholeFormulaSelection(editor: MathEditor): Plugin {
       if (!transactions.some((tr) => tr.selectionSet || tr.docChanged)) return null;
       const { selection } = state;
       if (!(selection instanceof TextSelection) || selection.empty) return null;
+      const held = openSourceRange(editor, selection.$anchor);
+      if (held !== null) {
+        const head = Math.min(Math.max(selection.head, held.start), held.end);
+        return head === selection.head ? null : state.tr.setSelection(TextSelection.create(state.doc, selection.anchor, head));
+      }
       let { anchor: oldAnchor, head: oldHead } = old.selection;
       for (const tr of transactions) {
         oldAnchor = tr.mapping.map(oldAnchor);
@@ -426,25 +612,34 @@ function wholeFormulaSelection(editor: MathEditor): Plugin {
 
 /**
  * Refuses what would write into a closed block formula's hidden source, and
- * a drop that lands in one.
+ * a drop that lands in one; takes the browser's own deletions by a formula.
  * @param editor - The editor.
  * @returns The plugin.
  */
-function closedInput(editor: MathEditor): Plugin {
+function formulaInput(editor: MathEditor): Plugin {
   /**
    * Whether the selection is in a closed block formula.
    * @param view - The editor view.
    * @returns True when it is.
    */
-  const closed = (view: EditorView): boolean =>
-    editor.isEditable && closedFormulaBlockAt(editor, view.state.selection.$from) !== null;
+  const closed = (view: EditorView): boolean => {
+    const { $from, $to } = view.state.selection;
+    return editor.isEditable && $from.sameParent($to) && closedFormulaBlockAt(editor, $from) !== null;
+  };
   return new Plugin({
     key: new PluginKey('documentMathClosedInput'),
     props: {
       handlePaste: (view): boolean => closed(view),
       handleDOMEvents: {
         beforeinput: (view, event): boolean => {
-          if (!event.cancelable || !closed(view)) return false;
+          if (!event.cancelable || !editor.isEditable) return false;
+          if (!closed(view)) {
+            const deletion = DELETION.exec((event as InputEvent).inputType);
+            if (deletion === null) return false;
+            const unit = UNITS[deletion[1]!]!;
+            const back = deletion[2] === 'Backward';
+            if (!deleteByFormula(editor, view, back, unit, () => targetRange(view, event as InputEvent))) return false;
+          }
           event.preventDefault();
           return true;
         },
@@ -470,15 +665,40 @@ export const documentMathEditingExtension = createExtension(({ editor }: { edito
    * @returns It.
    */
   const view = (): EditorView => editor.prosemirrorView!;
+  const mac = isMacOS();
+  /**
+   * A deletion key's handler.
+   * @param back - Backward, else forward.
+   * @param unit - How much it takes.
+   * @returns The handler.
+   */
+  const remove =
+    (back: boolean, unit: Unit): (() => boolean) =>
+      (): boolean =>
+        deleteByFormula(editor, view(), back, unit);
   return {
     key: 'document-math',
     runsBefore: ['document-enter', 'document-table-keys', 'documentSelectAll'],
-    prosemirrorPlugins: [rule.plugin, closedInput(editor), wholeFormulaSelection(editor)],
+    prosemirrorPlugins: [rule.plugin, formulaInput(editor), wholeFormulaSelection(editor)],
+    // The chords the editor's own keymap deletes with (`DELETE_CHORDS_BASE`,
+    // `DELETE_CHORDS_MAC`): its commands would reach past a source's edge first.
     keyboardShortcuts: {
       Backspace: () => rule.takeBack(view()) || deleteByFormula(editor, view(), true),
       'Shift-Backspace': () => rule.takeBack(view()) || deleteByFormula(editor, view(), true),
-      Delete: () => deleteByFormula(editor, view(), false),
-      'Shift-Delete': () => deleteByFormula(editor, view(), false),
+      Delete: remove(false, 'character'),
+      'Shift-Delete': remove(false, 'character'),
+      'Mod-Backspace': remove(true, mac ? 'line' : 'word'),
+      'Mod-Delete': remove(false, mac ? 'line' : 'word'),
+      ...(mac
+        ? {
+          'Ctrl-h': remove(true, 'character'),
+          'Ctrl-d': remove(false, 'character'),
+          'Alt-Backspace': remove(true, 'word'),
+          'Ctrl-Alt-Backspace': remove(true, 'word'),
+          'Alt-Delete': remove(false, 'word'),
+          'Alt-d': remove(false, 'word'),
+        }
+        : {}),
       Enter: () => confirmInline(view()),
       'Shift-Enter': () => confirmInline(view()),
       ArrowRight: () => arrowByFormula(view(), true),
