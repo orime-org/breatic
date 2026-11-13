@@ -81,11 +81,10 @@ import { ApiException } from '@web/data/api/types';
 import { useChatSession } from '@web/pages/project/chat/use-chat-session';
 import { _resetForTests, conversationRuntime, useConversationRuntime } from '@web/stores/conversation-runtime';
 import { tell } from '@web/stores/chat-mishaps';
-import { evictAllChatSessions } from '@web/stores/chat-sessions';
+import { chatSessionFor, evictAllChatSessions } from '@web/stores/chat-sessions';
 import { resetChatLiveForTests } from '@web/stores/chat-live';
 import { resetRunOnceForTests } from '@web/stores/task-actions-in-flight';
 import { replyOpens, storesWhatIsDrawn, stubRunWire } from '@web/test-utils/chat-run-wire';
-import { chatSessionFor } from '@web/stores/chat-sessions';
 import type { RunWire } from '@web/test-utils/chat-run-wire';
 
 /** The limits the server reads, as `GET /chat/stream-config` answers them. */
@@ -111,6 +110,14 @@ let wire: RunWire;
 
 /** What the server holds for c-1, as both opening the chat and reading it back answer. */
 let stored: StoredUiMessage[] = [];
+
+/**
+ * What the page holds for conversation c-1.
+ * @returns Its messages.
+ */
+function drawnInC1(): StoredUiMessage[] {
+  return chatSessionFor({ projectId: 'p-1', conversationId: 'c-1', history: [], onTitled: () => undefined }).messages;
+}
 
 /**
  * A stored message.
@@ -406,7 +413,7 @@ describe('a turn that failed', () => {
     await waitFor(() => {
       expect(panel.result.current.messages).toHaveLength(2);
     });
-    storesWhatIsDrawn(() => chatSessionFor({ projectId: 'p-1', conversationId: 'c-1', history: [], onTitled: () => undefined }).messages, 'c-1');
+    storesWhatIsDrawn(drawnInC1, 'c-1');
 
     act(() => {
       wire.last()?.push({ type: 'data-failed', data: { reason: 'model' } });
@@ -478,7 +485,7 @@ describe('a turn the user stopped', () => {
     await waitFor(() => {
       expect(panel.result.current.messages).toHaveLength(2);
     });
-    storesWhatIsDrawn(() => chatSessionFor({ projectId: 'p-1', conversationId: 'c-1', history: [], onTitled: () => undefined }).messages, 'c-1');
+    storesWhatIsDrawn(drawnInC1, 'c-1');
 
     act(() => {
       panel.result.current.abort();
