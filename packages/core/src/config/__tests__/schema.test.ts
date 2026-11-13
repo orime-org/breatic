@@ -615,33 +615,27 @@ describe("parseConfig — external-agent access", () => {
     expect(() => parseConfig(baseEnv({ MCP_PUBLIC_URL: "mcp" }))).toThrow();
   });
 
-  it("lets a dev stack start with no client secret", () => {
-    expect(parseConfig(baseEnv({ ENV: "dev" })).MCP_CLIENT_SECRET).toBe("");
+  // The secret only lets the MCP service exchange tokens. Left empty, external
+  // agents cannot connect and everything else runs, in every environment, as
+  // the internal API's secret only matters once that API is enabled.
+  it.each(["dev", "staging", "prod"])("lets a %s stack start with no client secret", (envName) => {
+    expect(parseConfig(baseEnv({ ENV: envName })).MCP_CLIENT_SECRET).toBe("");
   });
 
+  // A secret of only whitespace is a typo, never a deliberate value.
   it.each([
-    ["empty", ""],
-    ["only whitespace", "  \t"],
-  ])("refuses to start outside dev with a client secret that is %s", (_label, secret) => {
-    expect(() =>
-      parseConfig(
-        baseEnv({
-          ENV: "staging",
-          YJS_DATABASE_URL: "postgres://breatic:breatic@localhost:5432/breatic_yjs",
-          MCP_CLIENT_SECRET: secret,
-        }),
-      ),
-    ).toThrow(/^FATAL: .*MCP_CLIENT_SECRET.*Refusing to start\.$/s);
+    ["dev", " "],
+    ["staging", "  \t"],
+    ["prod", "\n"],
+  ])("refuses to start a %s stack with a client secret of only whitespace", (envName, secret) => {
+    expect(() => parseConfig(baseEnv({ ENV: envName, MCP_CLIENT_SECRET: secret }))).toThrow(
+      /^FATAL: .*MCP_CLIENT_SECRET.*Refusing to start\.$/s,
+    );
   });
 
-  it("starts outside dev with a client secret set", () => {
-    const config = parseConfig(
-      baseEnv({
-        ENV: "staging",
-        YJS_DATABASE_URL: "postgres://breatic:breatic@localhost:5432/breatic_yjs",
-        MCP_CLIENT_SECRET: "a-long-random-secret",
-      }),
+  it("keeps a client secret that is set", () => {
+    expect(parseConfig(baseEnv({ ENV: "prod", MCP_CLIENT_SECRET: "a-long-random-secret" })).MCP_CLIENT_SECRET).toBe(
+      "a-long-random-secret",
     );
-    expect(config.MCP_CLIENT_SECRET).toBe("a-long-random-secret");
   });
 });
