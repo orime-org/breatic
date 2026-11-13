@@ -21,7 +21,7 @@ import { z } from "zod";
 import { FINISHED, FINISHED_ASKING_FOR_A_TOOL, type ModelStreamPart } from "../helpers/model-double.js";
 import type { TakenMessage, TurnEnded } from "@server/agent/taken-message.js";
 
-const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>, _forModel?: unknown) => 1);
+const addMessage = vi.fn(async (_id: string, _msg: Record<string, unknown>, _forModel?: unknown, _rowId?: string) => 1);
 const script = vi.hoisted(() => ({
   calls: [] as Array<() => unknown[]>,
   prompts: [] as unknown[][],
@@ -241,6 +241,21 @@ describe("a message sent while the turn runs", () => {
     expect(userAt).toBeGreaterThan(roles.indexOf("tool"));
     expect(JSON.stringify(forModel.messages[userAt])).toContain("make it blue");
     expect(roles.slice(userAt + 1)).toContain("assistant");
+  });
+});
+
+describe("the reply's id", () => {
+  it("opens the stream and names the stored reply, once for a reply that carried on", async () => {
+    script.calls = [says("first answer"), says("second answer")];
+    script.onCall[0] = () => waiting.push(taken("m2", "and one more thing"));
+    const chunks = await runTurn();
+    const starts = chunks.filter((c) => c.type === "start");
+    expect(starts).toHaveLength(1);
+    expect(chunks[0]).toBe(starts[0]);
+    const named = (starts[0] as { messageId?: string }).messageId;
+    expect(named).toMatch(/^[0-9a-f-]{36}$/);
+    const stored = addMessage.mock.calls.filter((c) => (c[1] as { role: string }).role === "assistant").at(-1)!;
+    expect(stored[3]).toBe(named);
   });
 });
 

@@ -216,11 +216,11 @@ describe("a turn cut short by the client", () => {
         const agent = new MainAgent();
         const reader = (await agent.chat("hi")).getReader();
         // Read far enough in to have passed the step the billing figure comes
-        // from, then walk away: the name the turn gave the conversation, the
-        // start of the message, and one piece of prose.
-        await reader.read();
-        await reader.read();
-        await reader.read();
+        // from, then walk away: up to the first piece of prose.
+        for (;;) {
+          const { value } = await reader.read();
+          if ((value as { type?: string } | undefined)?.type === "text-delta") break;
+        }
         // The browser goes away.
         await reader.cancel();
       },

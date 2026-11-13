@@ -178,6 +178,17 @@ describe("POST /chat/message", () => {
     await untilIdle(who.conversationId);
   });
 
+  it("stores the reply under the id its stream opened with, so a page reads it back under the name it drew", async () => {
+    const who = await seedOwner(sql, app);
+    await send(app, who, { message: "first" });
+    const { frames } = await attach(app, who);
+    const opened = turnFrames(frames)[0] as { type?: string; messageId?: string };
+    expect(opened.type).toBe("start");
+    await untilIdle(who.conversationId);
+    const reply = (await rowsOf(who.conversationId)).find((r) => r.role === "assistant");
+    expect(reply?.id).toBe(opened.messageId);
+  });
+
   it("queues behind a running run and answers the queue as the page shows it (RT-03)", async () => {
     const who = await seedOwner(sql, app);
     let release!: () => void;

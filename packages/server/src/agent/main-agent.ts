@@ -8,6 +8,7 @@
  * `streamText()`, whose tool-call loop is bounded by `stopWhen`.
  */
 
+import { randomUUID } from "node:crypto";
 import { parseCreditDecimal } from "@breatic/shared";
 
 import { createUIMessageStream, stepCountIs, wrapLanguageModel } from "ai";
@@ -452,6 +453,8 @@ export class MainAgent {
     let reported: ReportedUsage = {};
     // The assembly the turn sends, once it has been read; a fold replaces it.
     let sent: Assembly | undefined;
+    /** The reply's id, on its `start` frame and on its stored row. */
+    const replyId = randomUUID();
     // Input plus output the provider reported for the conversation's latest
     // call, the count the next call is checked against: the previous turn's
     // until this turn's first call reports. A fold voids it: it measured the
@@ -902,7 +905,6 @@ export class MainAgent {
         // With no fold yet, the steps go on as they were sent, thinking
         // included, so the request keeps the prefix it had.
         const outcome = await streamOnce(writer, {
-          first,
           messages: first ? sent.messages : overflowFolds === 0 ? [...sent.messages, ...withTaken(steps)] : carriedOn(sent),
           mainModel,
           watch,
@@ -953,7 +955,6 @@ export class MainAgent {
      * panel would never read it.
      * @param writer - The stream the turn is written to.
      * @param run - What this stream starts from.
-     * @param run.first - Whether this is the turn's first stream, which opens the reply.
      * @param run.messages - The messages it starts from.
      * @param run.mainModel - The model.
      * @param run.watch - The turn's recorder of model calls.
@@ -965,7 +966,6 @@ export class MainAgent {
     const streamOnce = async (
       writer: UIMessageStreamWriter,
       run: {
-        first: boolean;
         messages: ModelMessage[];
         mainModel: Exclude<ReturnType<typeof getModel>, string>;
         watch: ModelCallWatch;
@@ -1288,7 +1288,7 @@ export class MainAgent {
       // A call turned away to steer the model has no line; what goes out for
       // it says so, and the panel draws nothing.
       const reader = result
-        .toUIMessageStream({ sendStart: run.first, onError: (err) => wireLineOf(endingOf(err)) })
+        .toUIMessageStream({ sendStart: false, onError: (err) => wireLineOf(endingOf(err)) })
         .getReader();
       let finished: UIMessageChunk | undefined;
       let failed: UIMessageChunk | undefined;
@@ -1335,6 +1335,10 @@ export class MainAgent {
 
     const stream = createUIMessageStream({
       execute: async ({ writer }) => {
+        // The reply is named before anything else is written, under the id it
+        // is stored with: a frame ahead of `start` would make the page draw the
+        // reply under a name of its own, then a second copy under this one.
+        writer.write({ type: "start", messageId: replyId });
         // A conversation is named after the first thing said in it, and the
         // name is settled before the model is asked anything. Written ahead
         // of everything below so the panel and the list stop showing a
@@ -1503,6 +1507,7 @@ export class MainAgent {
                 conversationId,
                 { role: "assistant", parts: storedParts, turnIndex },
                 replyForModel,
+                replyId,
               );
             },
             // Runs before `persist` (inner#1617): the charge request is

@@ -5,8 +5,8 @@
  * What a turn says before it has anything to say.
  *
  * A conversation takes its name from the first thing said in it, and that
- * settles before the model is asked anything -- so the name goes out first,
- * while the panel and the list are still showing a placeholder. Nothing else
+ * settles before the model is asked anything -- so the name goes out right
+ * after the frame that opens the reply, while the panel and the list are still showing a placeholder. Nothing else
  * on this stream would ever correct them.
  *
  * The other thing a turn used to open with was the whole stored conversation,
@@ -98,10 +98,11 @@ describe("the name a turn gives its conversation", () => {
   it("goes out before a word of the reply", async () => {
     const chunks = await chunksFromOneTurn();
 
-    // First, and ahead of the model's own stream: the list and the header are
-    // showing a placeholder right now, and this is the only thing that
-    // corrects them.
-    expect(chunks[0]).toEqual({
+    // Right after the reply is named, and ahead of the model's own stream: the
+    // list and the header are showing a placeholder right now, and this is
+    // the only thing that corrects them.
+    expect(chunks[0]?.type).toBe("start");
+    expect(chunks[1]).toEqual({
       type: "data-conversation-titled",
       data: { title: "已经有名字了" },
     });
@@ -144,8 +145,8 @@ describe("the name a turn gives its conversation", () => {
       // gets out while the work above is still unfinished, and a drained turn
       // would say nothing about it.
       const reader = turn.getReader();
-      const first = await reader.read();
-      expect((first.value as { type: string }).type).toBe("data-conversation-titled");
+      expect(((await reader.read()).value as { type: string }).type).toBe("start");
+      expect(((await reader.read()).value as { type: string }).type).toBe("data-conversation-titled");
 
       releaseTheSlowWork();
       await reader.cancel();

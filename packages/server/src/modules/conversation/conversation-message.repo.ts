@@ -112,6 +112,8 @@ function toMessageData(row: StoredRow): MessageData {
  *   turns replay it as it is. Absent on a user message, whose copy
  *   `setUserForModel` writes once the turn has assembled its request, and on
  *   a reply whose turn never asked the model
+ * @param rowId - The id to store it under: a reply keeps the one its stream
+ *   was opened with, so the page that drew it reads it back under that id
  * @returns The turn index this message went into — callers billing by turn
  *   need this exact number and recomputing it later would race
  * @throws {NotFoundError} if the conversation does not exist or is soft-deleted.
@@ -122,8 +124,8 @@ function toMessageData(row: StoredRow): MessageData {
  *   not stop the billing: a failure there is recorded and the turn still settles, having
  *   already spent whatever its finished steps spent.
  */
-export async function addMessage(id: string, message: MessageInput, forModel?: unknown): Promise<number> {
-  return db.transaction(async (tx) => insertIn(tx, id, message, forModel));
+export async function addMessage(id: string, message: MessageInput, forModel?: unknown, rowId?: string): Promise<number> {
+  return db.transaction(async (tx) => insertIn(tx, id, message, forModel, rowId));
 }
 
 /**
