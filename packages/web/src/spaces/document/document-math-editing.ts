@@ -30,6 +30,7 @@ import { Plugin, PluginKey, Selection, TextSelection, type EditorState } from '@
 import type { EditorView } from '@tiptap/pm/view';
 
 import { MATH_INLINE } from '@web/spaces/document/document-math';
+import { isTableCell } from '@web/spaces/document/document-table-nodes';
 import { markOwnUndoStep } from '@web/spaces/document/document-undo-step';
 
 /** The editor as this file uses it. */
@@ -286,50 +287,96 @@ function arrowByFormula(editor: MathEditor, view: EditorView, forward: boolean):
 }
 
 /**
+ * The nearest text a selection end can stand on from a position, going one
+ * way, that is no closed block formula's hidden source: such a source is
+ * stepped over whole. The search stays inside the table cell, or the
+ * isolating block, around the formula it starts from.
+ * @param editor - The editor.
+ * @param $from - Where the formula the end leaves starts its search.
+ * @param pos - Where to search from.
+ * @param dir - Which way.
+ * @returns The position, or null when there is none inside.
+ */
+function visibleText(editor: MathEditor, $from: ResolvedPos, pos: number, dir: -1 | 1): number | null {
+  let depth = $from.depth - 1;
+  while (depth > 0 && !isTableCell($from.node(depth)) && $from.node(depth).type.spec.isolating !== true) depth -= 1;
+  const [low, high] = [$from.start(depth), $from.end(depth)];
+  let at = pos;
+  for (;;) {
+    const found = Selection.findFrom($from.doc.resolve(at), dir, true);
+    if (found === null || found.head < low || found.head > high) return null;
+    if (closedFormulaBlockAt(editor, found.$head) === null) return found.head;
+    at = dir < 0 ? found.$head.before(found.$head.depth - 1) : found.$head.after();
+  }
+}
+
+/**
  * Where a selection end that reaches into a formula's hidden source from
- * outside it belongs: on the far edge of an inline formula, or in the text
- * past a closed block formula, so the whole formula is in the range.
+ * outside it belongs, so the formula is in the range whole or not at all.
+ * An inline formula: its edge on the side the end moves to. A closed block
+ * formula, moving forward from before it: the end of its source, which
+ * leaves the lines indented under it out; otherwise the nearest visible text
+ * on the side the end moves to, or, with none in the cell, on the other.
  * @param editor - The editor.
  * @param end - The end that may be in a source.
  * @param other - The selection's other end.
+ * @param way - The way the end moved; 0 when it did not, and it moves away from the other end.
  * @returns The position the end moves to, or null when it stays.
  */
-function wholeFormulaEdge(editor: MathEditor, end: ResolvedPos, other: ResolvedPos): number | null {
+function wholeFormulaEdge(editor: MathEditor, end: ResolvedPos, other: ResolvedPos, way: number): number | null {
   const { parent } = end;
   if (!hasPreview(editor, parent.type.name)) return null;
   if (!parent.isTextblock) {
     const start = end.before();
     const stop = end.after();
     if (other.pos > start && other.pos < stop) return null;
-    return other.pos <= start ? stop : start;
+    return (way === 0 ? other.pos <= start : way > 0) ? stop : start;
   }
-  // A block formula whose box is closed: past the whole block, into the
-  // nearest text on the far side.
   if (closedFormulaBlockAt(editor, end) === null) return null;
-  const start = end.before(end.depth - 1);
-  const stop = end.after(end.depth - 1);
-  if (other.pos > start && other.pos < stop) return null;
-  const forward = other.pos <= start;
-  return Selection.near(end.doc.resolve(forward ? stop : start), forward ? 1 : -1).head;
+  const from = end.start();
+  const to = end.end();
+  if (other.pos >= from && other.pos <= to) return null;
+  const otherBefore = other.pos < from;
+  /**
+   * The visible text before the formula's line.
+   * @returns Its position, or null.
+   */
+  const before = (): number | null => visibleText(editor, end, end.before(end.depth - 1), -1);
+  /**
+   * The visible text after the formula's own line, its indented lines first.
+   * @returns Its position, or null.
+   */
+  const after = (): number | null => visibleText(editor, end, end.after(), 1);
+  const target = (way === 0 ? otherBefore : way > 0)
+    ? otherBefore ? to : after() ?? before()
+    : before() ?? after();
+  return target === end.pos ? null : target;
 }
 
 /**
  * Widens a selection that reaches into a formula's hidden source from
  * outside it to take in the whole formula. The source is hidden while the
  * box is closed, so a drag that stops on the drawn formula would otherwise
- * copy, cut or delete part of a source nobody can see.
+ * copy, cut or delete part of a source nobody can see. The head goes the way
+ * it moved, so Shift+Arrow back over a formula shrinks the selection.
  * @param editor - The editor.
  * @returns The plugin.
  */
 function wholeFormulaSelection(editor: MathEditor): Plugin {
   return new Plugin({
     key: new PluginKey('documentMathWholeSelection'),
-    appendTransaction: (transactions, _old, state) => {
+    appendTransaction: (transactions, old, state) => {
       if (!transactions.some((tr) => tr.selectionSet || tr.docChanged)) return null;
       const { selection } = state;
       if (!(selection instanceof TextSelection) || selection.empty) return null;
-      const anchor = wholeFormulaEdge(editor, selection.$anchor, selection.$head) ?? selection.anchor;
-      const head = wholeFormulaEdge(editor, selection.$head, selection.$anchor) ?? selection.head;
+      let { anchor: oldAnchor, head: oldHead } = old.selection;
+      for (const tr of transactions) {
+        oldAnchor = tr.mapping.map(oldAnchor);
+        oldHead = tr.mapping.map(oldHead);
+      }
+      const way = oldAnchor === selection.anchor ? Math.sign(selection.head - oldHead) : 0;
+      const anchor = wholeFormulaEdge(editor, selection.$anchor, selection.$head, 0) ?? selection.anchor;
+      const head = wholeFormulaEdge(editor, selection.$head, selection.$anchor, way) ?? selection.head;
       if (anchor === selection.anchor && head === selection.head) return null;
       return state.tr.setSelection(TextSelection.create(state.doc, anchor, head));
     },

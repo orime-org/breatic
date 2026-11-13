@@ -165,13 +165,13 @@ describe('a selection that reaches into a closed formula block from outside (§6
     { type: 'paragraph', content: 'tail' },
   ];
 
-  it('moves an end that lands in the hidden source out past the block', () => {
+  it('moves an end that lands in the hidden source to the end of that source, the line below left out', () => {
     const editor = open(BODY);
     const math = before(editor, 'mathBlock');
     select(editor, before(editor, 'paragraph') + 4, math + 4);
     const { $to } = editor.prosemirrorState.selection;
-    expect($to.parent.type.name).toBe('paragraph');
-    expect($to.parent.textContent).toBe('tail');
+    expect($to.parent.type.name).toBe('mathBlock');
+    expect($to.parentOffset).toBe($to.parent.content.size);
   });
 
   it('moves it out before the block when the drag runs backwards', () => {
