@@ -143,7 +143,7 @@ interface Turn {
   read: string[];
   /** Everything it wrote or asked, as one text. */
   said: string;
-  /** What it wrote in its replies and its proposals' rationales, questions left out. */
+  /** What its last reply wrote, beside its proposals' rationales; earlier turns, the asking one among them, left out. */
   wrote: string;
 }
 
@@ -154,7 +154,10 @@ interface Turn {
  * @returns What the turns did and said.
  */
 async function settledTurn(p: Page): Promise<Turn> {
-  const parts = (await storedMessages(p)).filter((m) => m.role === 'assistant').flatMap((m) => m.parts ?? []);
+  const messages = await storedMessages(p);
+  const parts = messages.filter((m) => m.role === 'assistant').flatMap((m) => m.parts ?? []);
+  // The newest stored message is the reply that came with what landed.
+  const reply = messages.at(-1)?.parts ?? [];
   const input = (part: StoredPart): { id?: string; nodes?: { template?: { id?: string } }[] } => part.input ?? {};
   // A refused proposal answers { placed: false } and never reaches the canvas.
   const landed = parts.filter(
@@ -169,7 +172,7 @@ async function settledTurn(p: Page): Promise<Turn> {
     ),
     said: parts.flatMap((part) => (part.type === 'text' ? [part.text ?? ''] : part.type?.startsWith('tool-ask_user') ? [JSON.stringify(part.input)] : [])).join('\n'),
     wrote: [
-      ...parts.flatMap((part) => (part.type === 'text' ? [part.text ?? ''] : [])),
+      ...reply.flatMap((part) => (part.type === 'text' ? [part.text ?? ''] : [])),
       ...landed.map((part) => (part.input as unknown as CanvasProposal).rationale),
     ].join('\n'),
   };
@@ -282,11 +285,15 @@ test('given a character photo and asked for two videos of her, what lands for bo
   // takes of its still made first, the video following from the picked take;
   // through a template or a setup of the agent's own.
   // Each scene needs a generation of its own, so one node naming both counts for neither.
-  const words = turn.landed.flatMap((proposal) => generationsCarryingMaterial(proposal, () => true)).map((node) => JSON.stringify(proposalMarkSegments(node)));
+  const words = turn.landed
+    .flatMap((proposal) => generationsCarryingMaterial(proposal, () => true))
+    .map((node) => proposalMarkSegments(node).map((segment) => segment.text ?? '').join(' '));
   const park = (text: string): boolean => /\bparks?\b/i.test(text);
-  const cafe = (text: string): boolean => /\bcaf[eé]|\bcoffee/i.test(text);
+  // A coffee in the park scene still leaves it the park scene; only the cafe itself marks the other one.
+  const namesCafe = (text: string): boolean => /\bcaf[eé]/i.test(text);
+  const cafe = (text: string): boolean => namesCafe(text) || /\bcoffee/i.test(text);
   const seen = `generations drawing on the photo: ${words.join('\n').slice(0, 600)}; templates: ${turn.templates.join(', ')}; said: ${turn.said.slice(0, 600)}`;
-  expect(words.some((text) => park(text) && !cafe(text)), seen).toBe(true);
+  expect(words.some((text) => park(text) && !namesCafe(text)), seen).toBe(true);
   expect(words.some((text) => cafe(text) && !park(text)), seen).toBe(true);
 });
 
