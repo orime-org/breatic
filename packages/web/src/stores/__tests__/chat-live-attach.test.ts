@@ -60,6 +60,16 @@ function messages(): StoredUiMessage[] {
   return chatSessionFor({ projectId: 'p1', conversationId: 'c1', history: [], onTitled: () => {} }).messages;
 }
 
+/**
+ * From now on, read the history back as what the page drew: the run stored
+ * what it streamed.
+ */
+function storedAsDrawn(): void {
+  vi.mocked(chatApi.readConversation).mockImplementation(async () =>
+    page(messages().map((m) => ({ ...m, metadata: m.metadata ?? ({ turnIndex: 1 } as never) }))),
+  );
+}
+
 beforeEach(() => {
   wire = stubRunWire();
   order.length = 0;
@@ -127,6 +137,27 @@ describe('stopping the run being read', () => {
     await settle();
     await chatLive.stop('p1', 'c1');
     expect(chatApi.stop).toHaveBeenLastCalledWith('c1', 'p1', 'R2');
+  });
+});
+
+describe('stopping a run whose stream has not named it yet', () => {
+  it('names no run that a read before has already ended', async () => {
+    vi.mocked(chatApi.sync).mockResolvedValueOnce(RUNNING);
+    chatLive.show('p1', 'c1');
+    await settle();
+    const first = wire.last()!;
+    first.push(BEAT);
+    first.push({ type: 'data-run', transient: true, data: { runId: 'R1' } });
+    for (const f of replyOpens()) first.push(f);
+    for (const f of replyEnds()) first.push(f);
+    first.close();
+    await settle();
+    // The page sends again, and the server opens the next run for it.
+    vi.spyOn(chatApi, 'sendMessage').mockResolvedValueOnce({ status: 'start', pending: [], running: true });
+    await chatLive.send({ projectId: 'p1', conversationId: 'c1', words: 'again', chips: [], spaces: {} });
+    await settle();
+    await chatLive.stop('p1', 'c1');
+    expect(chatApi.stop).toHaveBeenLastCalledWith('c1', 'p1', undefined);
   });
 });
 
@@ -205,6 +236,8 @@ describe('the end of a run being read', () => {
       const s = wire.last()!;
       for (const f of replyOpens()) s.push(f);
       if (said === 'data-failed then an error frame') s.push({ type: 'data-failed', data: {} });
+      await settle();
+      storedAsDrawn();
       s.push({ type: 'error', errorText: 'x' });
       s.close();
       await settle();
@@ -368,6 +401,50 @@ describe('the history on screen when no run is read', () => {
     metadata: { turnIndex: 1 } as never,
   };
 
+  it('is read again at the next sync when the read on showing does not land', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.mocked(chatApi.readConversation)
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValue(page([userRow('m1', 1), DONE]));
+    chatLive.show('p1', 'c1');
+    await vi.advanceTimersByTimeAsync(10);
+    await vi.advanceTimersByTimeAsync(3_100);
+    expect(messages().map((m) => m.id)).toEqual(['m1', 'a1']);
+  });
+
+  it('keeps the page read last when an earlier read lands after it', async () => {
+    let landFirst!: (read: ConversationRead) => void;
+    vi.mocked(chatApi.readConversation)
+      .mockImplementationOnce(() => new Promise((r) => {
+        landFirst = r;
+      }))
+      .mockResolvedValue(page([userRow('m1', 1), DONE, userRow('m2', 2)]));
+    chatLive.show('p1', 'c1');
+    await settle();
+    // The page sends; the server opens a run and its history now holds the message.
+    vi.spyOn(chatApi, 'sendMessage').mockResolvedValueOnce({ status: 'start', pending: [], running: true });
+    await chatLive.send({ projectId: 'p1', conversationId: 'c1', words: 'again', chips: [], spaces: {} });
+    await settle();
+    landFirst(page([userRow('m1', 1)]));
+    await settle();
+    expect(messages().map((m) => m.id).slice(0, 3)).toEqual(['m1', 'a1', 'm2']);
+  });
+
+  it('is read again once a run read to its end is over', async () => {
+    vi.mocked(chatApi.sync).mockResolvedValueOnce(RUNNING);
+    vi.mocked(chatApi.readConversation)
+      .mockResolvedValueOnce(page([userRow('m1', 1)]))
+      .mockResolvedValue(page([userRow('m1', 1), DONE, userRow('m2', 2), { ...DONE, id: 'a2', metadata: { turnIndex: 2 } as never }]));
+    chatLive.show('p1', 'c1');
+    await settle();
+    const s = wire.last()!;
+    for (const f of replyOpens()) s.push(f);
+    for (const f of replyEnds()) s.push(f);
+    s.close();
+    await settle();
+    expect(messages().map((m) => m.id)).toEqual(['m1', 'a1', 'm2', 'a2']);
+  });
+
   it('is read again on showing a conversation whose run ended while it was away', async () => {
     vi.mocked(chatApi.readConversation).mockResolvedValue(page([userRow('m1', 1), DONE]));
     chatLive.show('p1', 'c1');
@@ -420,6 +497,8 @@ describe('a run resumed after a card', () => {
     for (const f of replyOpens('t2')) s.push(f);
     s.push({ type: 'text-delta', id: 't2', delta: 'Going with 9:16.' });
     for (const f of replyEnds('t2')) s.push(f);
+    await settle();
+    storedAsDrawn();
     s.close();
     await settle();
     expect(messages().map((m) => m.role)).toEqual(['user', 'assistant', 'assistant']);

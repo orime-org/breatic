@@ -109,9 +109,10 @@ async function syncNow(conversationId: string): Promise<void> {
     chatWaiting.fromSync(conversationId, { pending: seen.pending, awaiting: seen.awaiting, blocked: seen.blocked === 'credits' });
     // Shown again with no run holding it: a run that ended while it was away
     // is in the history only.
-    if (seen.running && !isReadingRun(conversationId)) void attach(conversationId);
-    else if (shown.fresh && !seen.running) void readLatest(conversationId);
+    const fresh = shown.fresh;
     shown.fresh = false;
+    if (seen.running && !isReadingRun(conversationId)) void attach(conversationId);
+    else if (fresh && !seen.running) void readOrRetry(conversationId);
   } catch (err) {
     // Asked again at the next interval; a sync that does not land changes
     // nothing on screen, so there is nothing to tell.
@@ -122,12 +123,18 @@ async function syncNow(conversationId: string): Promise<void> {
   }
 }
 
+/** The last history read started for each conversation; only it is laid. */
+const latestRead = new Map<string, number>();
+
 /**
- * Read the newest page of a conversation's history and lay it on the list.
+ * Read the newest page of a conversation's history and lay it on the list,
+ * unless a read started after it is already on its way.
  * @param conversationId - The conversation.
- * @returns Whether it was read and laid; the next sync asks again when not.
+ * @returns Whether it was read; false when it did not land.
  */
 async function readLatest(conversationId: string): Promise<boolean> {
+  const mine = (latestRead.get(conversationId) ?? 0) + 1;
+  latestRead.set(conversationId, mine);
   let read;
   try {
     read = await chatApi.readConversation(conversationId);
@@ -135,9 +142,18 @@ async function readLatest(conversationId: string): Promise<boolean> {
     console.error('[chat] the newest page of history did not land', err);
     return false;
   }
-  if (!isShowing(conversationId)) return false;
+  if (!isShowing(conversationId) || latestRead.get(conversationId) !== mine) return true;
   if (layLatestPage(conversationId, read.messages) === 'replaced') conversationRuntime.tookLatestPage(conversationId, read);
   return true;
+}
+
+/**
+ * Read the newest page of the conversation on screen; when it does not land,
+ * the next sync reads it again.
+ * @param conversationId - The conversation.
+ */
+async function readOrRetry(conversationId: string): Promise<void> {
+  if (!(await readLatest(conversationId)) && showing?.conversationId === conversationId) showing.fresh = true;
 }
 
 /**
@@ -158,7 +174,7 @@ function attach(conversationId: string): Promise<void> {
       const ended = await readRun(conversationId, () => noteTurnRunning(conversationId));
       // No run to read: the one that was there ended since the page was read.
       if (ended === 'none') {
-        await readLatest(conversationId);
+        await readOrRetry(conversationId);
         break;
       }
       streamed = true;
@@ -171,6 +187,9 @@ function attach(conversationId: string): Promise<void> {
       if (ended === 'ended' && runEndedInError(conversationId)) {
         tell({ projectId: showing?.projectId ?? '', conversationId, kind: 'turn' });
       }
+      // What the run stored, which a run opened or handed over while this
+      // page read the history can hold beyond what was streamed here.
+      await readOrRetry(conversationId);
       break;
     }
   })().finally(() => {
@@ -443,5 +462,6 @@ export function resetChatLiveForTests(): void {
   if (showing !== null) chatLive.hide(showing.conversationId);
   attaching.clear();
   sendChains.clear();
+  latestRead.clear();
   useChatLive.setState({ sending: {}, stopping: {} });
 }

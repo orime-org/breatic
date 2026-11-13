@@ -351,6 +351,9 @@ export async function readRun(conversationId: string, onOpened: () => void): Pro
     stopWatching(conversationId);
     clearConsolidating(conversationId);
     noteTurnSettled(conversationId);
+    // The run read is over unless it handed over: a stop pressed before the
+    // next stream names its run means whichever run holds the conversation.
+    if (!nextRunSaid.has(conversationId)) runNamed.delete(conversationId);
   }
   if (lettingGo.delete(conversationId)) return 'let-go';
   if (lost.delete(conversationId)) return 'lost';
