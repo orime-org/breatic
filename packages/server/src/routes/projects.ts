@@ -79,6 +79,10 @@ projects.get(
         shadowMapPx: config.director.shadow_map_px,
         pointShadowMapPx: config.director.point_shadow_map_px,
         shadowGroundReach: config.director.shadow_ground_reach,
+        shadowBias: config.director.shadow_bias,
+        shadowNormalBias: config.director.shadow_normal_bias,
+        pointShadowBias: config.director.point_shadow_bias,
+        pointShadowNormalBias: config.director.point_shadow_normal_bias,
       },
     };
     return c.json({ data });

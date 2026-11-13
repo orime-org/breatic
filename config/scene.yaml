@@ -46,3 +46,10 @@ director:
   point_shadow_map_px: 512
   # How far a directional shadow may reach along the ground, in multiples of the casters' bounding-box diagonal.
   shadow_ground_reach: 3
+  # Depth offset of directional and spotlight shadows; more negative pushes shadow acne away but detaches shadows from contact points.
+  shadow_bias: -0.0005
+  # Offset along the surface normal for those shadows, in scene units.
+  shadow_normal_bias: 0.02
+  # The same two offsets for point light shadows, which are drawn at a lower resolution.
+  point_shadow_bias: -0.002
+  point_shadow_normal_bias: 0.02

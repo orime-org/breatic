@@ -78,7 +78,7 @@ const lamp = (extra: Record<string, unknown> = {}): SceneObject => ({ id: LAMP, 
 const CUBE: SceneObject = { id: 'cube', model: { kind: 'builtin', id: 'box' }, name: 'Cube', position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false };
 const FRAME = { x: 180, y: 120, width: 640, height: 360 };
 const VIEW = { position: [7, 5, 8] as [number, number, number], target: [0, 1, 0] as [number, number, number] };
-const DIRECTOR = { maxLights: 16, wheelCommitMs: 400, shadowMapPx: 2048, pointShadowMapPx: 512, shadowGroundReach: 3 };
+const DIRECTOR = { monitorRefreshMs: 200, maxLights: 16, wheelCommitMs: 400, shadowMapPx: 2048, pointShadowMapPx: 512, shadowGroundReach: 3, shadowBias: -0.0005, shadowNormalBias: 0.02, pointShadowBias: -0.002, pointShadowNormalBias: 0.03 };
 const owners: Array<() => void> = [];
 afterEach(() => { owners.splice(0).forEach((dispose) => dispose()); document.body.replaceChildren(); renders.length = 0; programs.length = 0; shadowMap.needsUpdate = false; });
 
@@ -357,6 +357,21 @@ describe('lights, ambient and shadows (design 3.6, 6.4)', () => {
     expect(shadowMap.needsUpdate).toBe(false);
     opened.runtime.update({ ...opened.initial, objects: [CUBE, lamp({ position: [2, 3, 1] })] } as SceneViewportProps);
     expect(shadowMap.needsUpdate).toBe(true);
+  });
+
+  it('offsets each light\'s shadow by the configured values for its type', async () => {
+    const SUN = '00000000-0000-4000-8000-000000001002';
+    const opened = await open(props([lamp(), lamp({ id: SUN, name: 'Sun', model: { kind: 'light', type: 'directional' }, number: 2 })]));
+    opened.frame();
+    const biases: Record<string, { bias: number; normalBias: number }> = {};
+    (opened.runtime as unknown as { scene: Scene }).scene.traverse((child) => {
+      const light = child as unknown as { isLight?: boolean; shadow?: { bias: number; normalBias: number }; parent: Object3D | null };
+      if (!light.isLight || !light.shadow) return;
+      const owner = light.parent?.userData.sceneObjectId as string | undefined;
+      if (owner) biases[owner] = { bias: light.shadow.bias, normalBias: light.shadow.normalBias };
+    });
+    expect(biases[LAMP]).toEqual({ bias: -0.002, normalBias: 0.03 });
+    expect(biases[SUN]).toEqual({ bias: -0.0005, normalBias: 0.02 });
   });
 
   it('reports no model state for cameras and lights', async () => {

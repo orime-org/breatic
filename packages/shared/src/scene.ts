@@ -290,6 +290,12 @@ export interface SceneDirectorConfig {
   pointShadowMapPx: number;
   /** How far a directional shadow may reach along the ground, in multiples of the casters' box diagonal. */
   shadowGroundReach: number;
+  /** Depth and normal offsets of directional and spotlight shadows, against shadow acne. */
+  shadowBias: number;
+  shadowNormalBias: number;
+  /** The same offsets for point light shadows. */
+  pointShadowBias: number;
+  pointShadowNormalBias: number;
 }
 
 /** The viewfinder's capture parameters. */

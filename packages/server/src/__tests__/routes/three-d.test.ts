@@ -45,8 +45,8 @@ const IMPORT_CONFIG = {
   max_texture_bytes: 268435456,
 };
 const CAPTURE_CONFIG = { long_edge_px: 2048, min_frame_px: 120, canvas_sync_timeout_ms: 10000 };
-const DIRECTOR_CONFIG = { monitor_refresh_ms: 200, max_lights: 16, wheel_commit_ms: 400, shadow_map_px: 2048, point_shadow_map_px: 512, shadow_ground_reach: 3 };
-const DIRECTOR_WIRE = { monitorRefreshMs: 200, maxLights: 16, wheelCommitMs: 400, shadowMapPx: 2048, pointShadowMapPx: 512, shadowGroundReach: 3 };
+const DIRECTOR_CONFIG = { monitor_refresh_ms: 200, max_lights: 16, wheel_commit_ms: 400, shadow_map_px: 2048, point_shadow_map_px: 512, shadow_ground_reach: 3, shadow_bias: -0.0005, shadow_normal_bias: 0.02, point_shadow_bias: -0.002, point_shadow_normal_bias: 0.02 };
+const DIRECTOR_WIRE = { monitorRefreshMs: 200, maxLights: 16, wheelCommitMs: 400, shadowMapPx: 2048, pointShadowMapPx: 512, shadowGroundReach: 3, shadowBias: -0.0005, shadowNormalBias: 0.02, pointShadowBias: -0.002, pointShadowNormalBias: 0.02 };
 
 beforeEach(() => {
   vi.clearAllMocks();

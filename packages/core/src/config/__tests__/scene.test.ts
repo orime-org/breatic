@@ -20,22 +20,23 @@ const IMPORT_FIELDS = Object.keys(IMPORT_DEFAULTS) as (keyof typeof IMPORT_DEFAU
 const CAPTURE_DEFAULTS = { long_edge_px: 2048, min_frame_px: 120, canvas_sync_timeout_ms: 10000 };
 const CAPTURE_FIELDS = Object.keys(CAPTURE_DEFAULTS) as (keyof typeof CAPTURE_DEFAULTS)[];
 const DIRECTOR_DEFAULTS = { monitor_refresh_ms: 200, max_lights: 16, wheel_commit_ms: 400, shadow_map_px: 2048, point_shadow_map_px: 512, shadow_ground_reach: 3 };
+const DIRECTOR_BIAS_DEFAULTS = { shadow_bias: -0.0005, shadow_normal_bias: 0.02, point_shadow_bias: -0.002, point_shadow_normal_bias: 0.02 };
 const DIRECTOR_FIELDS = Object.keys(DIRECTOR_DEFAULTS) as (keyof typeof DIRECTOR_DEFAULTS)[];
 
 describe("3D scene runtime configuration", () => {
   it("loads the shipped uniform-scale sensitivity and caches a frozen value", () => {
     const config = getSceneConfig();
-    expect(config).toEqual({ scale_sensitivity: 0.01, import: IMPORT_DEFAULTS, capture: CAPTURE_DEFAULTS, director: DIRECTOR_DEFAULTS });
+    expect(config).toEqual({ scale_sensitivity: 0.01, import: IMPORT_DEFAULTS, capture: CAPTURE_DEFAULTS, director: { ...DIRECTOR_DEFAULTS, ...DIRECTOR_BIAS_DEFAULTS } });
     expect(getSceneConfig()).toBe(config);
     expect(Object.isFrozen(config)).toBe(true);
   });
 
   it("uses the approved default when the YAML field is absent", () => {
-    expect(sceneConfigSchema.parse({})).toEqual({ scale_sensitivity: 0.01, import: IMPORT_DEFAULTS, capture: CAPTURE_DEFAULTS, director: DIRECTOR_DEFAULTS });
+    expect(sceneConfigSchema.parse({})).toEqual({ scale_sensitivity: 0.01, import: IMPORT_DEFAULTS, capture: CAPTURE_DEFAULTS, director: { ...DIRECTOR_DEFAULTS, ...DIRECTOR_BIAS_DEFAULTS } });
   });
 
   it.each([0.001, 0.01, 0.1, 1])("accepts a positive sensitivity of %s", (value) => {
-    expect(sceneConfigSchema.parse({ scale_sensitivity: value })).toEqual({ scale_sensitivity: value, import: IMPORT_DEFAULTS, capture: CAPTURE_DEFAULTS, director: DIRECTOR_DEFAULTS });
+    expect(sceneConfigSchema.parse({ scale_sensitivity: value })).toEqual({ scale_sensitivity: value, import: IMPORT_DEFAULTS, capture: CAPTURE_DEFAULTS, director: { ...DIRECTOR_DEFAULTS, ...DIRECTOR_BIAS_DEFAULTS } });
   });
 
   it.each([0, -0.01, NaN, Infinity, -Infinity, "0.01", null])(
@@ -66,7 +67,7 @@ describe("scene model import budgets", () => {
     };
 
     expect(sceneConfigSchema.parse({ scale_sensitivity: 0.025, import: configured })).toEqual({
-      scale_sensitivity: 0.025, import: configured, capture: CAPTURE_DEFAULTS, director: DIRECTOR_DEFAULTS,
+      scale_sensitivity: 0.025, import: configured, capture: CAPTURE_DEFAULTS, director: { ...DIRECTOR_DEFAULTS, ...DIRECTOR_BIAS_DEFAULTS },
     });
   });
 
@@ -118,12 +119,12 @@ describe("viewfinder capture parameters (#1411)", () => {
 
 describe("director console parameters (inner#1694)", () => {
   it("uses the approved defaults for an omitted or empty director section", () => {
-    expect(sceneConfigSchema.parse({}).director).toEqual(DIRECTOR_DEFAULTS);
-    expect(sceneConfigSchema.parse({ director: {} }).director).toEqual(DIRECTOR_DEFAULTS);
+    expect(sceneConfigSchema.parse({}).director).toEqual({ ...DIRECTOR_DEFAULTS, ...DIRECTOR_BIAS_DEFAULTS });
+    expect(sceneConfigSchema.parse({ director: {} }).director).toEqual({ ...DIRECTOR_DEFAULTS, ...DIRECTOR_BIAS_DEFAULTS });
   });
 
   it.each(DIRECTOR_FIELDS)("overrides %s while retaining the other defaults", (field) => {
-    expect(sceneConfigSchema.parse({ director: { [field]: 9 } }).director).toEqual({ ...DIRECTOR_DEFAULTS, [field]: 9 });
+    expect(sceneConfigSchema.parse({ director: { [field]: 9 } }).director).toEqual({ ...DIRECTOR_DEFAULTS, ...DIRECTOR_BIAS_DEFAULTS, [field]: 9 });
   });
 
   it.each(DIRECTOR_FIELDS)("rejects invalid values for %s", (field) => {
@@ -133,5 +134,13 @@ describe("director console parameters (inner#1694)", () => {
       expect(result.success, `Invalid ${field} was accepted: ${String(value)}`).toBe(false);
       if (!result.success) expect(result.error.issues[0]?.path).toEqual(["director", field]);
     }
+  });
+});
+
+describe("director shadow offsets (inner#1694 design 3.6)", () => {
+  it.each(Object.keys(DIRECTOR_BIAS_DEFAULTS))("accepts a finite %s of either sign and rejects a non-number", (field) => {
+    expect(sceneConfigSchema.parse({ director: { [field]: -0.01 } }).director).toMatchObject({ [field]: -0.01 });
+    expect(sceneConfigSchema.parse({ director: { [field]: 0.05 } }).director).toMatchObject({ [field]: 0.05 });
+    for (const value of [NaN, Infinity, "1", null, false]) expect(sceneConfigSchema.safeParse({ director: { [field]: value } }).success).toBe(false);
   });
 });

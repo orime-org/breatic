@@ -34,6 +34,10 @@ export const sceneConfigSchema = z.object({
     shadow_map_px: z.number().int().positive().default(2048),
     point_shadow_map_px: z.number().int().positive().default(512),
     shadow_ground_reach: z.number().finite().positive().default(3),
+    shadow_bias: z.number().finite().default(-0.0005),
+    shadow_normal_bias: z.number().finite().default(0.02),
+    point_shadow_bias: z.number().finite().default(-0.002),
+    point_shadow_normal_bias: z.number().finite().default(0.02),
   }).prefault({}),
 });
 

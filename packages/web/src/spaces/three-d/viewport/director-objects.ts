@@ -227,7 +227,12 @@ export class DirectorFigure {
     target.visible = plan?.enabled ?? false;
     target.castShadow = plan?.castsShadow ?? false;
     if (target instanceof SpotLight) target.angle = MathUtils.degToRad(light.angle ?? SCENE_SPOT_ANGLE_DEFAULT);
-    const edge = target instanceof PointLight ? director?.pointShadowMapPx : director?.shadowMapPx;
+    const point = target instanceof PointLight;
+    if (director) {
+      target.shadow.bias = point ? director.pointShadowBias : director.shadowBias;
+      target.shadow.normalBias = point ? director.pointShadowNormalBias : director.shadowNormalBias;
+    }
+    const edge = point ? director?.pointShadowMapPx : director?.shadowMapPx;
     if (edge !== undefined && target.shadow.mapSize.x !== edge) {
       target.shadow.mapSize.set(edge, edge);
       target.shadow.map?.dispose();
