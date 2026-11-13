@@ -288,6 +288,16 @@ describe("a turn that failed", () => {
     expect(wrapUpMessages()).toHaveLength(1);
   });
 
+  it("logs a failure of its own code once, with what it threw", async () => {
+    const { logger } = await import("@breatic/core");
+    const { buildTurnContext } = await import("@server/agent/turn-context.js");
+    vi.mocked(logger.error).mockClear();
+    vi.mocked(buildTurnContext).mockRejectedValueOnce(new Error("history unreadable"));
+    await runTurn([FINISHED]);
+    const failed = vi.mocked(logger.error).mock.calls.filter(([, message]) => message === "agent_turn_failed");
+    expect(failed.map(([fields]) => (fields as { err: Error }).err.message)).toEqual(["history unreadable"]);
+  });
+
   it("asks about the budget once, before the model and not after it", async () => {
     // Folding belongs in front of the reply, on the turn whose assembled
     // request measured over the budget — that is the turn it can shorten. A

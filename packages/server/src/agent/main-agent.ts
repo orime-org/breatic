@@ -1391,10 +1391,11 @@ export class MainAgent {
       // SDK hands this callback both an error chunk arriving on the stream
       // (which is how a provider failure gets here) and anything the turn's
       // own code throws. Without it the line at the end reports a turn that
-      // finished.
+      // finished. The SDK makes the line returned here into an error chunk
+      // and hands that to this callback too: the first call is the failure.
       onError: (err) => {
-        failure = err;
-        this.logFailure(streamFailure ?? err);
+        if (failure === undefined) this.logFailure(streamFailure ?? err);
+        failure ??= err;
         return FAILED_TEXT;
       },
       onFinish: async ({ responseMessage, isAborted }) => {
