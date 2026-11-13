@@ -148,7 +148,7 @@ const CASES: Readonly<Record<string, readonly PriceCase[]>> = {
   "minimax/music-cover": [{ input: {}, usd: 0.15 }],
   "minimax/speech-2.8-hd": [{ input: { text: text(1000) }, usd: 0.1 }],
   "minimax/voice-clone": [{ input: {}, usd: 1.6 }],
-  "mirelo-ai/sfx-1.6/text-to-audio": [{ input: { duration: 30, num_samples: 1 }, usd: 0.3 }],
+  "mirelo-ai/sfx-1.6/text-to-audio": [{ input: { duration: 30, num_samples: 1 }, usd: 0.6 }],
   "mureka-ai/mureka-v9.5/generate-bgm": [{ input: {}, usd: 0.225 }],
   "mureka-ai/mureka-v9.5/generate-song": [{ input: {}, usd: 0.225 }],
   "openai/gpt-image-2.5-sunburst/edit": [
@@ -159,7 +159,7 @@ const CASES: Readonly<Record<string, readonly PriceCase[]>> = {
     { input: { quality: "medium", resolution: "1k" }, usd: 0.024 },
     { input: { quality: "max", resolution: "4k" }, usd: 1.0 },
   ],
-  "recraft-ai/recraft-v4.1-pro/text-to-vector": [{ input: {}, usd: 0.3 }],
+  "recraft-ai/recraft-v4.1-pro/text-to-vector": [{ input: {}, usd: 0.36 }],
   "wavespeed-ai/krea-v2-large/text-to-image": [
     { input: {}, usd: 0.06 },
     { input: { reference: urls(3) }, usd: 0.065 },
@@ -211,7 +211,7 @@ const CASES: Readonly<Record<string, readonly PriceCase[]>> = {
     { input: { target_resolution: "4k", video: "v" }, durations: { video: [5] }, usd: 0.3 },
   ],
   "wavespeed-ai/wan-2.2/animate-2": [{ input: { resolution: "720p", video: "v" }, durations: { video: [10] }, usd: 0.8 }],
-  "x-ai/grok-imagine-image-v2.0/text-to-image": [{ input: {}, usd: 0.05 }],
+  "x-ai/grok-imagine-image-v2.0/text-to-image": [{ input: {}, usd: 0.08 }, { input: { resolution: "1k" }, usd: 0.06 }],
   // inner#1691: Tripo H3.1's price table, a geometry-only base plus texture by quality and add-ons.
   "tripo3d/h3.1/text-to-3d": [
     { input: tripo({ texture: false, pbr: false }), usd: 0.12 },

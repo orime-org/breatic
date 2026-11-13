@@ -6,7 +6,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { shipped } from "../config/__tests__/shipped.js";
 import { estimateCost, type EstimateInput } from "../pricing/estimate.js";
-import { ADDED_AFTER_FREEZE, holdsRefused, OFF_WAVESPEED, outsideVendor } from "../media/wavespeed/__tests__/departures.js";
+import { ADDED_AFTER_FREEZE, holdsRefused, OFF_WAVESPEED, outsideVendor, REPRICED } from "../media/wavespeed/__tests__/departures.js";
 import { createProvider } from "../provider.js";
 
 interface EstimateFixture {
@@ -59,7 +59,8 @@ describe("estimate — equal to the estimate before provider on every case", () 
   it.each(onWavespeed.filter(([, c]) => !outsideVendor(c.model, c.input) && !holdsRefused(c.model, c.input)))("%s", async (_label, c) => {
     const server = await provider.estimate(c.model, c.input, { mode: "default" });
     expect(server).not.toBeNull();
-    expect(server!.usd).toBeCloseTo(c.usd, 9);
+    // A model WaveSpeed repriced after the freeze is estimated at what WaveSpeed charges now.
+    expect(server!.usd).toBeCloseTo(REPRICED[c.model]?.(c.input) ?? c.usd, 9);
     expect(server!.bound).toBe(c.bound);
     expect(server!.upstream).toBe("wavespeed");
     const browser = await estimateCost(provider.pricingRules(c.model), provider.availability(c.model), c.input, { mode: "default" });
