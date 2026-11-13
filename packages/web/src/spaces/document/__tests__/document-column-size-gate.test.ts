@@ -1,0 +1,109 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: Elastic-2.0
+
+/**
+ * inner#1314 design §5.2 "两段事务": a move into or out of columns is two
+ * transactions, a take-away and a put-down. The size state is asked before
+ * the first one goes: a Space that cannot take an add, or is resyncing,
+ * refuses the whole move with the add's toast, and nothing is written; the
+ * gate never lets the take-away through alone.
+ */
+
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { Awareness } from 'y-protocols/awareness';
+
+vi.mock('@web/lib/toast', () => ({
+  toast: { warning: vi.fn(), error: vi.fn(), success: vi.fn(), info: vi.fn(), loading: vi.fn(), dismiss: vi.fn() },
+  muteToasts: vi.fn(),
+  _unmuteToastsForTests: vi.fn(),
+}));
+
+import { toast } from '@web/lib/toast';
+import { clearAllDocSizes } from '@web/data/yjs/doc-size';
+import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
+import { dropRowBeside } from '@web/spaces/document/document-column-drop';
+import {
+  _resetDocumentEditorCacheForTests,
+  adoptDocumentEditor,
+  getDocumentEditor,
+  type DocumentEditorHandle,
+} from '@web/spaces/document/document-editor-cache';
+import { columnsBlock, para, shapeOf } from '@web/spaces/document/__tests__/column-fixtures';
+import { enterSize, outcomeOf, type SizeCode } from '@web/data/yjs/__tests__/helpers/size-v2-harness';
+
+const NAME = docName.documentSpace('p1', 'd1');
+
+afterEach(() => {
+  clearAllDocSizes();
+  _resetDocumentEditorCacheForTests();
+  _resetForTests();
+  document.body.innerHTML = '';
+  vi.clearAllMocks();
+});
+
+/**
+ * Opens the Space's body holding three lines, in a size state.
+ * @param code - The size state.
+ * @returns The editor handle.
+ */
+function open(code: SizeCode, blocks: unknown[] = [para('alpha'), para('beta'), para('gamma')]): DocumentEditorHandle {
+  const doc = getDoc(NAME);
+  const handle = getDocumentEditor(doc, NAME, {
+    caretProvider: { awareness: new Awareness(doc) },
+    readWho: () => ({ role: 'editor', viewerId: 'u1' }),
+    editable: true,
+  });
+  const root = document.createElement('div');
+  document.body.appendChild(root);
+  adoptDocumentEditor(handle, root);
+  handle.editor.replaceBlocks(handle.editor.document, blocks as never);
+  handle.undoManager.clear();
+  enterSize(NAME, code);
+  return handle;
+}
+
+/**
+ * Drags gamma beside alpha.
+ * @param handle - The editor handle.
+ */
+function dragGammaBesideAlpha(handle: DocumentEditorHandle): void {
+  const ids = (handle.editor.document as unknown as { id: string }[]).map((block) => block.id);
+  dropRowBeside(handle.editor as never, ids[2]!, ids[0]!, 'right');
+}
+
+describe('a move into columns in a Space that cannot take an add', () => {
+  it.each(['F', 'O', 'Z'] as const)('[%s] refuses the whole move and writes nothing', async (code) => {
+    const handle = open(code);
+    dragGammaBesideAlpha(handle);
+    // A delete the gate plans is written after the transaction it refused.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(shapeOf(handle.editor.document as never)).toEqual(['alpha', 'beta', 'gamma']);
+    const want = outcomeOf('add', code);
+    const warnings = vi.mocked(toast.warning).mock.calls.map((call) => call[0]);
+    expect(warnings).toEqual(want.written || want.toast === null ? [] : [want.toast]);
+  });
+
+  it('[W] moves with room left (control)', () => {
+    const handle = open('W');
+    dragGammaBesideAlpha(handle);
+    expect(shapeOf(handle.editor.document as never)).toEqual(['[alpha|gamma]', 'beta']);
+  });
+});
+
+describe('a delete in a full Space that takes a column\'s last block', () => {
+  it.each(['F', 'O'] as const)('[%s] takes the whole column, leaving a valid document', async (code) => {
+    const handle = open(code, [para('lead'), columnsBlock(['a'], ['b'])]);
+    const group = (handle.editor.document as unknown as { children: { children: { id: string }[] }[] }[])[1]!;
+    handle.editor.removeBlocks([group.children[1]!.children[0]!.id] as never);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const { doc } = handle.editor.prosemirrorView.state;
+    expect(() => doc.check()).not.toThrow();
+    let columns = 0;
+    doc.descendants((node) => {
+      if (node.type.name === 'docColumn') columns += 1;
+      return true;
+    });
+    expect(shapeOf(handle.editor.document as never)).toEqual(['lead', '[a]']);
+    expect(columns).toBeLessThanOrEqual(1);
+  });
+});

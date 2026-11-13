@@ -17,7 +17,11 @@
 
 import type { BlockNoteEditor } from '@blocknote/core';
 import type { Node as PMNode, ResolvedPos } from '@tiptap/pm/model';
+import type * as Y from 'yjs';
+import { ySyncPluginKey } from 'y-prosemirror';
 
+import { docNameOf } from '@web/data/yjs/manager';
+import { checkAdd } from '@web/data/yjs/space-write';
 import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-nodes';
 import { COLUMN_TAKE_AWAY } from '@web/spaces/document/document-column-repair';
 import { rowById, type RowInDocument } from '@web/spaces/document/document-row-by-id';
@@ -102,6 +106,12 @@ export function dropRowBeside(
   if (dragged === undefined || target === undefined) return false;
   if (target.from >= dragged.from && target.to <= dragged.to) return false;
   if (landsInPlace(before, dragged, target, side)) return false;
+  // The move is two transactions; the gate is asked once before the first,
+  // so a Space that cannot take the put-down never has the take-away written
+  // alone (design 5.2, as `refusedForSize` asks before a proposal lands).
+  const ydoc = (ySyncPluginKey.getState(view.state) as { doc?: Y.Doc } | undefined)?.doc ?? null;
+  const name = docNameOf(ydoc);
+  if (name !== null && !checkAdd(name).ok) return false;
   const fromGroup = columnAround(before.resolve(dragged.from));
   const toGroup = columnAround(before.resolve(target.from));
   const sameGroup = fromGroup !== null && toGroup !== null && fromGroup.groupPos === toGroup.groupPos;
