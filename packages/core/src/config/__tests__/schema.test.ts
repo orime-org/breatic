@@ -574,3 +574,74 @@ describe("parseConfig — internal API", () => {
     ).toThrow(/^FATAL: .*INTERNAL_API_SECRET_PREVIOUS.*Refusing to start\.$/s);
   });
 });
+
+/**
+ * External-agent access (#1488 §6, §13): the Redis database that holds
+ * external-agent commands, replies and counters, the MCP service's ports
+ * (health on primary + 1, like every other service), the addresses the
+ * OAuth flow and the MCP service hand out, and the secret of the one
+ * confidential client allowed to exchange tokens.
+ */
+describe("parseConfig — external-agent access", () => {
+  it("defaults the external-agent Redis to DB 4 on the local instance", () => {
+    expect(parseConfig(baseEnv()).REDIS_MCP_URL).toBe("redis://localhost:6379/4");
+  });
+
+  it("keeps a configured external-agent Redis address", () => {
+    expect(parseConfig(baseEnv({ REDIS_MCP_URL: "redis://cache:6380/9" })).REDIS_MCP_URL).toBe("redis://cache:6380/9");
+  });
+
+  it("defaults the MCP ports with health on the primary port plus one", () => {
+    const config = parseConfig(baseEnv());
+    expect(config.MCP_PORT).toBe(3003);
+    expect(config.MCP_HEALTH_PORT).toBe(3004);
+  });
+
+  it("reads the MCP ports from the environment, as a second worktree needs", () => {
+    const config = parseConfig(baseEnv({ MCP_PORT: "3103", MCP_HEALTH_PORT: "3104" }));
+    expect(config.MCP_PORT).toBe(3103);
+    expect(config.MCP_HEALTH_PORT).toBe(3104);
+  });
+
+  it("defaults the public addresses to the local stack", () => {
+    const config = parseConfig(baseEnv());
+    expect(config.MCP_PUBLIC_URL).toBe("http://localhost:3003/mcp");
+    expect(config.OAUTH_ISSUER).toBe("http://localhost:3000");
+    expect(config.MCP_API_BASE_URL).toBe("http://localhost:3000/api/v1");
+  });
+
+  it("refuses an address that is not a URL", () => {
+    expect(() => parseConfig(baseEnv({ OAUTH_ISSUER: "not a url" }))).toThrow();
+    expect(() => parseConfig(baseEnv({ MCP_PUBLIC_URL: "mcp" }))).toThrow();
+  });
+
+  it("lets a dev stack start with no client secret", () => {
+    expect(parseConfig(baseEnv({ ENV: "dev" })).MCP_CLIENT_SECRET).toBe("");
+  });
+
+  it.each([
+    ["empty", ""],
+    ["only whitespace", "  \t"],
+  ])("refuses to start outside dev with a client secret that is %s", (_label, secret) => {
+    expect(() =>
+      parseConfig(
+        baseEnv({
+          ENV: "staging",
+          YJS_DATABASE_URL: "postgres://breatic:breatic@localhost:5432/breatic_yjs",
+          MCP_CLIENT_SECRET: secret,
+        }),
+      ),
+    ).toThrow(/^FATAL: .*MCP_CLIENT_SECRET.*Refusing to start\.$/s);
+  });
+
+  it("starts outside dev with a client secret set", () => {
+    const config = parseConfig(
+      baseEnv({
+        ENV: "staging",
+        YJS_DATABASE_URL: "postgres://breatic:breatic@localhost:5432/breatic_yjs",
+        MCP_CLIENT_SECRET: "a-long-random-secret",
+      }),
+    );
+    expect(config.MCP_CLIENT_SECRET).toBe("a-long-random-secret");
+  });
+});
