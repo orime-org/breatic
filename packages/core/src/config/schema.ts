@@ -340,6 +340,11 @@ export const coreConfigSchema = z.object({
   // Parent domain the identity cookie is set on, so every region's API host
   // receives it; empty sets it on the API host alone.
   IDENTITY_COOKIE_DOMAIN: z.string().default(""),
+  // The role the services connect as outside the global region. Migrate,
+  // run as the owning role, grants it every table and takes the global
+  // ones back, so a stray global query fails there instead of reading the
+  // empty copy.
+  DATABASE_APP_ROLE: z.string().default(""),
 
   // ── Storage ──────────────────────────────────────
   // UPLOAD_BASE_URL is the public read base. On R2 it is the r2.dev

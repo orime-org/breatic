@@ -53,6 +53,10 @@
       "dependsOn": ["build"],
       "cache": false
     },
+    "test:region": {
+      "dependsOn": ["build"],
+      "cache": false
+    },
     "lint": {},
     "typecheck": {
       "dependsOn": ["^build"]

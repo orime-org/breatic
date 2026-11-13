@@ -24,6 +24,7 @@ export { onDatabaseWaitTimeout, type DatabaseWaitTimeout } from "@core/db/wait-t
 export { yjsDb, yjsRawPg, closeYjsDb } from "@core/db/client.js";
 export type { DbTx, YjsDbTx } from "@core/db/client.js";
 export { runMigrations, runYjsMigrations } from "@core/db/migrate.js";
+export { applyRegionGrants } from "@core/db/region-grants.js";
 export type { LegacyGiftConfirmation } from "@core/db/legacy-gift-migration.js";
 export { createTestDb, migrateDatabase, migrateYjsDatabase } from "@core/db/test-support.js";
 export type { TestDb } from "@core/db/test-support.js";
