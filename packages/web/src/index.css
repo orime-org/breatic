@@ -805,6 +805,13 @@ body {
     background-color: var(--color-palette-blue-bg);
   }
 
+  /* An inline node added or removed whole also carries a change of its
+     attributes (an inline formula); it shows as added or removed, as words do.
+     The two marks sit an `<ins>` or `<del>` apart. */
+  .doc-body .doc-version-format:has(.doc-version-insert, .doc-version-delete) {
+    background-color: transparent;
+  }
+
   /* The blocks a comparison folds away; the fold row stands in for them. */
   .doc-body .doc-version-folded {
     display: none;

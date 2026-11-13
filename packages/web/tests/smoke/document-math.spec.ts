@@ -610,6 +610,41 @@ test('the snapshot comparison marks a changed formula, and restoring brings the 
   await expect.poll(() => lines(page)).toContain('mathBlock:a+b');
 });
 
+test('the snapshot comparison shows an added inline formula as added, not as changed', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('area');
+  await page.getByTestId('doc-doc-menu-trigger').click();
+  await page.getByTestId('doc-doc-menu-save-snapshot').click();
+  await page.getByTestId('doc-snapshot-name-input').fill('Before');
+  await page.getByTestId('doc-snapshot-name-submit').click();
+  await expect(page.getByTestId('doc-snapshot-name-dialog')).toHaveCount(0, { timeout: 15_000 });
+
+  await caretAtEndOfFirstLine(page);
+  await page.keyboard.type(' $$x^2$$');
+  await expect.poll(() => lines(page)).toEqual(['paragraph:area [math:x^2]']);
+
+  await page.getByTestId('doc-doc-menu-trigger').click();
+  await page.getByTestId('doc-doc-menu-restore-snapshot').click();
+  const row = page.locator('[data-testid^="doc-version-row-"]:not([data-testid="doc-version-row-current"])').first();
+  await expect(row).toContainText('Before', { timeout: 15_000 });
+  await row.click();
+  await page.getByTestId('doc-version-compare-current').click();
+  const preview = page.getByTestId('doc-version-preview-body');
+  const formula = preview.locator('.doc-version-insert .doc-math');
+  await expect(formula).toHaveCount(1, { timeout: 15_000 });
+  const backgrounds = await formula.evaluate((element) => {
+    const out: string[] = [];
+    for (let at: Element | null = element; at !== null && !at.classList.contains('ProseMirror'); at = at.parentElement) {
+      if ([...at.classList].some((name) => name.startsWith('doc-version-'))) {
+        out.push(`${[...at.classList].filter((name) => name.startsWith('doc-version-')).join(' ')}=${getComputedStyle(at).backgroundColor}`);
+      }
+    }
+    return out;
+  });
+  expect(backgrounds.filter((entry) => entry.startsWith('doc-version-format') && !entry.endsWith('rgba(0, 0, 0, 0)'))).toEqual([]);
+  await page.getByTestId('doc-version-close').click();
+});
+
 for (const theme of ['light', 'dark'] as const) {
   test(`the box takes the overlay corner and surface tokens (${theme})`, async () => {
     await openFreshDocument(page);
