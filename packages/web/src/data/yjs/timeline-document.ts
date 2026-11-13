@@ -211,8 +211,9 @@ export function applyTimelineEdit(
     ...plainChangedRecords(doc.getMap<unknown>('clips'), current.clips, next.clips),
   ];
   const written = writeSpaceDoc(name, { kind: editKind(deleting, current, next), notify }, () => {
-    // Pixel clips are stored as the frame offsets the plan was read with, before the frame can change under them.
-    if (plain.length > 0 || timelineDocumentNeedsUpgrade(doc)) {
+    // Pixel clips are stored as the frame offsets the plan was read with, before the frame can change under them. A
+    // delete written while the Space is full stays a pure delete; the next other edit stores them.
+    if (!onlyDelete && (plain.length > 0 || timelineDocumentNeedsUpgrade(doc))) {
       doc.transact(() => {
         upgradeTimelineDocument(doc);
         for (const [parent, id, value] of plain) attachRecord(parent, id, value);

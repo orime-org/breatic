@@ -338,10 +338,10 @@ function planOrThrow(current: TimelineDocumentV1, command: TimelineEditCommand, 
   }
 
   if (command.operation === 'set_frame') {
-    const size = Object.hasOwn(TIMELINE_FRAME_PRESETS, command.parameters.preset) ? TIMELINE_FRAME_PRESETS[command.parameters.preset] : undefined;
-    if (size === undefined) throw new Refused('invalid_range');
-    if (size.width === current.settings.width && size.height === current.settings.height) return done();
-    return { ...done(), next: { ...current, tracks, clips, sources, operationReceipts, settings: { ...current.settings, width: size.width, height: size.height } } };
+    const size = TIMELINE_FRAME_PRESETS[command.parameters.preset];
+    const plan = done();
+    if (size.width === current.settings.width && size.height === current.settings.height) return plan;
+    return { ...plan, next: { ...plan.next, settings: { ...current.settings, width: size.width, height: size.height } } };
   }
 
   if (command.operation === 'set_transform') {

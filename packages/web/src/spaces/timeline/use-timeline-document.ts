@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import type * as Y from 'yjs';
-import { type TimelineDocumentV1 } from '@breatic/shared';
+import { isTimelineSchemaVersion, type TimelineDocumentV1 } from '@breatic/shared';
 import { readTimelineContent, type TimelineDamagedRecords } from '@web/data/yjs/timeline-document';
 
 /** The current supported content or the format error reported by its reader. */
@@ -25,8 +25,8 @@ const NONE: TimelineDamagedRecords = { clips: [] };
 function readState(doc: Y.Doc, enabled: boolean): TimelineDocumentState {
   if (!enabled) return { document: null, damaged: NONE, error: null };
   try {
-    const version = doc.share.has('timeline') ? doc.getMap('timeline').get('schemaVersion') : undefined;
-    if (version !== 1 && version !== 2) {
+    // Checked before reading: reading opens the record roots, which an unsupported document must keep as stored.
+    if (!doc.share.has('timeline') || !isTimelineSchemaVersion(doc.getMap('timeline').get('schemaVersion'))) {
       throw new Error('Unsupported Timeline content');
     }
     const { document, damaged } = readTimelineContent(doc);

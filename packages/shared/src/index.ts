@@ -492,6 +492,8 @@ export {
   TimelineOperationReceiptSchema,
   TimelineDocumentV1Schema,
   TIMELINE_MAIN_TRACK_ID,
+  TIMELINE_SCHEMA_VERSIONS,
+  isTimelineSchemaVersion,
 } from "@shared/timeline/schema.js";
 export type {
   TimelineRate,

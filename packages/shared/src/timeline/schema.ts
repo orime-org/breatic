@@ -60,13 +60,26 @@ export type TimelineClip = TimelineVideoClip | TimelineWebAnimationClip | Timeli
 /** The record that an accepted action has landed in this document, keyed by its action id. */
 export interface TimelineOperationReceipt { executionId: string; inputHash: string; landedAt: string }
 
+/** The Timeline document versions readers accept; 2 stores clip offsets as fractions of the frame (#1502). */
+export const TIMELINE_SCHEMA_VERSIONS = [1, 2] as const;
+
+/**
+ * Whether a stored `schemaVersion` is one readers accept.
+ * @param value - The stored value.
+ * @returns Whether it is a readable version.
+ * @throws {never} Never.
+ */
+export function isTimelineSchemaVersion(value: unknown): value is (typeof TIMELINE_SCHEMA_VERSIONS)[number] {
+  return TIMELINE_SCHEMA_VERSIONS.some((version) => version === value);
+}
+
 /** The seeded bottom visual track; it is magnetic when the editing user turns magnet on. */
 export const TIMELINE_MAIN_TRACK_ID = "visual-1";
 
 /** Our persisted integer-frame format, independent of any editor library. */
 export interface TimelineDocumentV1 {
   /** 2 since #1502 stores clip offsets as fractions of the frame; a version 1 document is read the same way. */
-  schemaVersion: 1 | 2;
+  schemaVersion: (typeof TIMELINE_SCHEMA_VERSIONS)[number];
   settings: TimelineSettings;
   tracks: Record<string, TimelineTrack>;
   clips: Record<string, TimelineClip>;
@@ -149,7 +162,7 @@ export const TimelineOperationReceiptSchema = z.object({
 
 /** Our complete versioned DTO, independent of a presentation library. */
 export const TimelineDocumentV1Schema: z.ZodType<TimelineDocumentV1> = z.object({
-  schemaVersion: z.union([z.literal(1), z.literal(2)]),
+  schemaVersion: z.literal(TIMELINE_SCHEMA_VERSIONS),
   settings: TimelineSettingsSchema,
   tracks: z.record(z.string(), TimelineTrackSchema),
   clips: z.record(z.string(), TimelineClipSchema),
