@@ -427,10 +427,15 @@ describe("personal access tokens", () => {
     }
     let release!: () => void;
     const gate = new Promise<void>((r) => (release = r));
+    let locked!: () => void;
+    const ready = new Promise<void>((r) => (locked = r));
     const holding = sql.begin(async (tx) => {
       await tx`SELECT id FROM users WHERE id = ${user} FOR UPDATE`;
+      locked();
       await gate;
     });
+    // Both creates must start behind the held row, so both park on it.
+    await ready;
     const racing = Promise.all([
       agentAccessService.createPersonalAccessToken({ userId: user, name: "a", expiresAt: null }),
       agentAccessService.createPersonalAccessToken({ userId: user, name: "b", expiresAt: null }),
