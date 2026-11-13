@@ -41,6 +41,9 @@ export const ADDED_AFTER_FREEZE: Readonly<Record<string, readonly string[]>> = {
   "tripo-h3.1-t23d": ["rig_skeleton"],
   "tripo-h3.1-i23d": ["rig_skeleton"],
   "tripo-h3.1-multiview": ["rig_skeleton"],
+  // Models added after the freeze (inner#1809); the transparency toggle's body is checked in `seedream-v5.5.test.ts`.
+  "seedream-v5.5-text-to-image": ["aspect_ratio", "resolution", "transparency"],
+  "seedream-v5.5-edit": ["aspect_ratio", "images", "resolution", "transparency"],
 };
 
 /**
