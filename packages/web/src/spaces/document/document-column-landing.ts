@@ -201,9 +201,11 @@ function rowAt(view: EditorView, x: number, y: number): RowAt | null {
     const pos = $at.before(depth);
     const dom = view.nodeDOM(pos);
     if (!(dom instanceof HTMLElement)) return null;
-    const own = dom.querySelector(':scope > .bn-block-content') ?? dom;
-    const media = own.querySelector('[data-media-box]');
-    const rect = (media ?? own).getBoundingClientRect();
+    // A row's own content sits in its outer element's block (BlockNote
+    // `BlockContainer.ts`); a table has none, and its cells' media are not its own.
+    const own = dom.querySelector(':scope > .bn-block > .bn-block-content');
+    const media = own?.querySelector('[data-media-box]');
+    const rect = (media ?? own ?? dom).getBoundingClientRect();
     return { pos, id: String(node.attrs['id']), box: { left: rect.left, right: rect.right } };
   }
   return null;

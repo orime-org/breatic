@@ -9,6 +9,9 @@
  * user's drag takes through BlockNote's drop cursor and ProseMirror's drop.
  */
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { expect, type Page } from 'playwright/test';
 
 import { test } from '../helpers/slot';
@@ -261,3 +264,36 @@ test('a Shift+click in a column group that ends the body ends the range where it
   expect(selected).not.toContain('gamma');
 });
 
+test('the line beside a narrow picture stands at the picture\'s own edge', async () => {
+  await openWithLines(page, ['alpha', '']);
+  await page.locator(EDITOR).evaluate((element, base64) => {
+    const transfer = new DataTransfer();
+    const raw = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+    transfer.items.add(new File([raw], 'portrait.png', { type: 'image/png' }));
+    element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: transfer }));
+  }, readFileSync(resolve(__dirname, '../fixtures/portrait.png')).toString('base64'));
+  const media = page.locator(`${EDITOR} [data-content-type="image"] [data-media-box]`).first();
+  await expect(media).toBeVisible({ timeout: 60_000 });
+  const picture = (await media.boundingBox())!;
+  const body = (await page.locator(`${EDITOR} .bn-block-group`).first().boundingBox())!;
+  expect(picture.x + picture.width).toBeLessThan(body.x + body.width - 100);
+
+  await page.mouse.move(5, 5);
+  const a = (await row(page, 'alpha').boundingBox())!;
+  await page.mouse.move(a.x + 30, a.y + a.height / 2, { steps: 3 });
+  const grip = (await page.getByTestId('doc-block-handle').boundingBox())!;
+  await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2, { steps: 3 });
+  await page.mouse.down();
+  await page.mouse.move(grip.x + 20, grip.y + 20, { steps: 3 });
+  await page.mouse.move(picture.x + picture.width - 6, picture.y + picture.height / 2, { steps: 12 });
+  const line = page.locator('.prosemirror-dropcursor-block-vertical-right');
+  let drawn: { x: number; width: number } | null;
+  try {
+    await expect(line).toBeVisible();
+    drawn = await line.boundingBox();
+  } finally {
+    await page.mouse.up();
+  }
+  expect(Math.abs(drawn!.x + drawn!.width / 2 - (picture.x + picture.width))).toBeLessThan(8);
+  await expect.poll(() => groups(page)).toHaveLength(1);
+});
