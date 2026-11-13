@@ -429,8 +429,8 @@ describe("a transitions pickup runs its frozen chunks on their container classes
     for (const [k, window] of value.layout.encode.entries()) {
       const request = requestOf(encId(k));
       const recipe = recipeOf(request);
-      expect({ containerClass: request.containerClass, kind: recipe.kind, profile: recipe.profile })
-        .toEqual({ containerClass: "MiniToolContainerStd4", kind: "chunk_encode", profile: value.profile });
+      expect({ containerClass: request.containerClass, kind: recipe.kind, profile: recipe.profile, frames: recipe.frames })
+        .toEqual({ containerClass: "MiniToolContainerStd4", kind: "chunk_encode", profile: value.profile, frames: { start: window.start, end: window.end } });
       // Encode chunks before the window lie in the first clip, the others in the second.
       expect(bound(request, recipe.inputId)).toBe(window.end <= value.timeline.window!.startFrame ? A.key : B.key);
     }
@@ -627,6 +627,7 @@ describe("the frozen chunk boundaries are dispatched as they are (§97 D23-3)", 
       // frame k and the second clip's frame k − its start frame.
       const offset = onFirst ? 0 : second.startFrame - second.inFrame;
       expect(recipe.window).toEqual({ start: window.start - offset, end: window.end - offset });
+      expect(recipe.frames).toEqual({ start: window.start, end: window.end });
     }
     for (const [k, frames] of FROZEN.window.entries()) {
       expect(recipeOf(requestOf(winId(k)))).toMatchObject({ kind: "transition_window", frames, window: { startFrame: 71, frameCount: 25 } });

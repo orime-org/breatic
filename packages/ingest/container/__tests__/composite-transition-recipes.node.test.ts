@@ -138,7 +138,8 @@ function span(decodeStart: Exact, clipStart: Exact, displayStart: Exact, display
  */
 function clipChunk(inputId: string, start: number, end: number, conversion = SDR): Recipe {
   const from = r(start, 25);
-  return { kind: 'chunk_encode', inputId, window: { start, end }, timescale: 25, entries: [span(r(Math.floor(start / 10) * 10, 25), from, from, r(end, 25))], target: { ...TARGET, ...conversion }, profile: PROFILE };
+  // The clip and the profile are both 25 fps here, so the chunk's output frames are its presented frames.
+  return { kind: 'chunk_encode', inputId, window: { start, end }, timescale: 25, entries: [span(r(Math.floor(start / 10) * 10, 25), from, from, r(end, 25))], target: { ...TARGET, ...conversion }, profile: PROFILE, frames: { start, end } };
 }
 
 /**
@@ -419,6 +420,17 @@ beforeEach(() => {
     const bytes = await readFile(path);
     return new Response(bytes, { status: 200, headers: { 'content-length': String(bytes.byteLength) } });
   }));
+});
+
+describe('chunk_encode on the transition profile (§7.17 chunk_encode row; 转场输出档 row: the first clip sets the rate)', () => {
+  it('CR01 a clip at a lower rate than the profile gives one frame per output frame of its chunk, none cut off', async () => {
+    // Clip A is 25 fps; 30 presented frames (1.2 s) on a 30 fps profile are 36 output frames.
+    const thirty = { ...PROFILE, fps: r(30), timeBase: r(1, 30) };
+    const [file] = await produce({ [CLIP_A]: join(dir, 'clip-a.mp4') }, [{ ...clipChunk(CLIP_A, 0, 30), profile: thirty, frames: { start: 0, end: 36 } }]);
+    const frames = await packets(file!);
+    expect(frames).toHaveLength(36);
+    expect(Number(frames.at(-1)!.pts_time) + Number(frames.at(-1)!.duration_time)).toBeCloseTo(1.2, 3);
+  });
 });
 
 describe('model_composite (§7.17 model_composite and segment rows; execution design §8, §8.1)', () => {

@@ -516,7 +516,8 @@ async function renderWindow(recipe: Extract<PresentationRecipe, { kind: "chunk_e
     graph.push(audio.graph);
   }
   let encode: { video: string[]; muxer: string[] };
-  const count = recipe.window.end - recipe.window.start;
+  // A transition chunk is as many frames as the output frames it covers on the profile's grid, not its source frames.
+  const count = recipe.kind === "chunk_encode" && recipe.frames !== undefined ? recipe.frames.end - recipe.frames.start : recipe.window.end - recipe.window.start;
   if (recipe.kind === "prepare_model_input" && (recipe.order === "reverse" || recipe.grid !== undefined)) {
     encode = modelInputTiming(recipe, graph, clock, count, target);
   } else if (profile === undefined) encode = videoOutput(target, clock, roundTimes(minus(span(entries[entries.length - 1]!).end, span(entries[0]!).start), clock));

@@ -136,7 +136,7 @@ export async function runMiniToolTransitions(execution: AcceptedMiniToolExecutio
     planned.push({ window, step: workChunk(execution, (attempt) => ({ kind: "run-chunk", taskId: execution.taskId, output: 0, chunk: k, attempt }), execution.container.containerClass, () => {
       const { window: source, entries } = over(at, window);
       return { recipe: { kind: "chunk_encode", inputId: clipInputId(at), window: source, timescale: clips[at]!.ledger.plan.presentation.timescale, entries,
-        target: segmentTarget(clips[at]!.ledger, execution.container.encode), profile }, inputs: [{ inputId: clipInputId(at), storageKey: clips[at]!.storageKey }] };
+        target: segmentTarget(clips[at]!.ledger, execution.container.encode), profile, frames: { start: window.start, end: window.end } }, inputs: [{ inputId: clipInputId(at), storageKey: clips[at]!.storageKey }] };
     }) });
   }
   for (const [k, frames] of layout.window.entries()) {

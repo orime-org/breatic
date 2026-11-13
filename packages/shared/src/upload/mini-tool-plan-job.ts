@@ -141,7 +141,10 @@ const recipeUnion = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("copy_carrier"), inputId, colorMatrix: z.string().min(1),
     audio: z.union([z.strictObject({ kind: z.literal("copy") }), z.strictObject({ kind: z.literal("encode"), start: time, end: time, origin: time, spans: z.array(editSpan).min(1).nullable() })
       .refine((value) => compare(value.end, value.start) > 0n)]).nullable() }),
-  z.strictObject({ kind: z.literal("chunk_encode"), ...windowRecipe, profile: transitionProfile.optional() }),
+  // A transition chunk names the output frames it covers beside the source window: on the profile's grid a clip at another
+  // rate covers a different number of output frames than presented frames.
+  z.strictObject({ kind: z.literal("chunk_encode"), ...windowRecipe, profile: transitionProfile.optional(), frames: ordinals.optional() })
+    .refine((recipe) => (recipe.profile === undefined) === (recipe.frames === undefined)),
   // Each chunk is a bound job input carrying its plan duration. A single-source stitch names the source its audio comes from
   // and the target; a transition stitch names both clips with their audio, the crossfade window and the profile (§97 D15-7).
   // One object holds both forms so the union keeps one option per kind; the refinement admits exactly one of them.

@@ -179,14 +179,24 @@ describe("transition_window (§97 D15-6; frames-split §7.17)", () => {
 });
 
 describe("chunk_encode with the transition profile (§97 D15-7)", () => {
-  it("BC01 accepts an encode chunk with the profile and keeps one without it", () => {
-    const withProfile = { ...encodeChunk(), profile: OPAQUE };
+  it("BC01 accepts an encode chunk with the profile and its output frames and keeps one without either", () => {
+    const withProfile = { ...encodeChunk(), profile: OPAQUE, frames: { start: 0, end: 30 } };
     expect(miniToolPlanRecipeSchema.parse(withProfile)).toEqual(withProfile);
     expect(miniToolPlanRecipeSchema.parse(encodeChunk())).toEqual(encodeChunk());
   });
 
   it("BC02 refuses an encode chunk with an invalid profile", () => {
-    refuses({ ...encodeChunk(), profile: OPAQUE }, { ...encodeChunk(), profile: { ...OPAQUE, alpha: true } });
+    const control = { ...encodeChunk(), profile: OPAQUE, frames: { start: 0, end: 30 } };
+    refuses(control, { ...control, profile: { ...OPAQUE, alpha: true } });
+  });
+
+  // The output grid is the profile's, so a clip at another rate covers a different number of output frames than source frames.
+  it.each([
+    ["the profile without its output frames", { ...encodeChunk(), profile: OPAQUE }],
+    ["output frames without the profile", { ...encodeChunk(), frames: { start: 0, end: 30 } }],
+    ["empty output frames", { ...encodeChunk(), profile: OPAQUE, frames: { start: 30, end: 30 } }],
+  ])("BC03 refuses %s", (_name, bad) => {
+    expect(miniToolPlanRecipeSchema.safeParse(bad).success).toBe(false);
   });
 });
 
