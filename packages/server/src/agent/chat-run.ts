@@ -18,17 +18,17 @@
  */
 import { env, ForbiddenError, getAgentConfig, logger, NotFoundError, runWithContext, runWithLocale } from "@breatic/core";
 import { SMALLEST_CREDIT } from "@breatic/domain";
-import type { ChatAttachedChip, ChatSpaceContext } from "@breatic/shared";
+import type { ChatSpaceContext } from "@breatic/shared";
 import type { UIMessageChunk } from "ai";
 import { conversationService, precheckCredits, projectService, runningTurnsService } from "@server/modules";
-import { chatQueue, type QueueItem, type RunEnding } from "@server/modules/chat-queue/chat-queue.service.js";
+import { chatQueue, type RunEnding } from "@server/modules/chat-queue/chat-queue.service.js";
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
 import { runAfterReply } from "@server/utils/after-reply.js";
 import { MainAgent } from "@server/agent/main-agent.js";
 import { runWire } from "@server/agent/run-wire.js";
 import { chatSubscriber, runStreams } from "@server/agent/run-stream.js";
 import { isShuttingDown, trackRun } from "@server/agent/shutdown-flag.js";
-import type { TakenMessage, TurnEnded } from "@server/agent/taken-message.js";
+import { takenMessageOf, type TakenMessage, type TurnEnded } from "@server/agent/taken-message.js";
 
 /** How a run was opened. */
 export type RunEntrance =
@@ -74,35 +74,6 @@ export function stopChannel(runId: string): string {
 }
 
 /**
- * A queued message, as the turn reads it.
- * @param item - The queue item.
- * @returns The message.
- */
-function takenMessageOf(item: QueueItem): TakenMessage {
-  const body = item as QueueItem & {
-    message?: string;
-    attached_chips?: ChatAttachedChip[];
-    time_zone?: string;
-    current_space?: ChatSpaceContext["current_space"];
-    spaces?: ChatSpaceContext["spaces"];
-    model?: string;
-  };
-  return {
-    id: item.id,
-    sentAt: item.sentAt,
-    message: body.message ?? "",
-    chips: body.attached_chips ?? [],
-    space: {
-      ...(body.current_space === undefined ? {} : { current_space: body.current_space }),
-      ...(body.spaces === undefined ? {} : { spaces: body.spaces }),
-    },
-    ...(body.time_zone === undefined ? {} : { timeZone: body.time_zone }),
-    locale: item.acceptLanguage,
-    ...(body.model === undefined ? {} : { model: body.model }),
-  };
-}
-
-/**
  * Where the run's own end lands in the queue.
  * @param ended - How the turn ended, or undefined when it never got that far.
  * @returns The ending.
@@ -111,8 +82,6 @@ function endingOf(ended: TurnEnded | undefined): RunEnding {
   if (ended === undefined || !ended.stored) return { kind: "unsaved" };
   if (ended.shutdown === true) return { kind: "shutdown" };
   if (ended.exit === "blocked" && ended.awaitingCall !== undefined) return { kind: "awaiting", toolCallId: ended.awaitingCall };
-  if (ended.exit === "aborted") return { kind: "stopped" };
-  if (ended.exit === "failed" || ended.exit === "too_long") return { kind: "failed" };
   return { kind: "done" };
 }
 
@@ -232,7 +201,7 @@ async function runIt(start: RunStart, open: (running: boolean) => void): Promise
     void held.lease?.renew().catch((err: unknown) => logger.error({ err, ...ctx, runId }, "chat_running_lease_failed"));
   }, getAgentConfig().chat_run_renew_ms);
   let turnReady!: (turn: Promise<ReadableStream<UIMessageChunk>>) => void;
-  const turn = new Promise<Promise<ReadableStream<UIMessageChunk>>>((resolve) => {
+  const turn = new Promise<ReadableStream<UIMessageChunk>>((resolve) => {
     turnReady = resolve;
   });
   let streamOpened = false;
@@ -259,7 +228,7 @@ async function runIt(start: RunStart, open: (running: boolean) => void): Promise
         runWire({
           runId,
           ctx,
-          turn: () => turn.then((t) => t),
+          turn: () => turn,
           afterTurn: async () => {
             try {
               return await afterTurn(start, ended);
@@ -322,7 +291,6 @@ async function runIt(start: RunStart, open: (running: boolean) => void): Promise
       turnReady(SILENT());
       await queue.settle(conversationId, runId, { kind: "unsaved" });
     } else {
-      turnReady(Promise.reject(err));
       await wireEnded;
     }
   } finally {

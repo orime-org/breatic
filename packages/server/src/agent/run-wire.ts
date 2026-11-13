@@ -31,7 +31,7 @@ export interface RunWireOptions {
    * and, when the conversation goes on, opens the next run.
    * @returns The next run's id once its opening stage is done, or null.
    */
-  afterTurn: (outcome: { threw: boolean }) => Promise<string | null>;
+  afterTurn: () => Promise<string | null>;
 }
 
 /**
@@ -93,7 +93,7 @@ export function runWire(options: RunWireOptions): ReadableStream<string> {
       }
       let next: string | null = null;
       try {
-        next = await options.afterTurn({ threw });
+        next = await options.afterTurn();
       } catch (err) {
         if (!threw) logger.error({ err, ...ctx, runId }, "chat_run_settle_failed");
         held ??= { type: "error", errorText: "The turn could not be run." };

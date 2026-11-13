@@ -43,7 +43,8 @@ export type ClaimResult =
 
 /** How a run ended, which decides what happens to its conversation next. */
 export type RunEnding =
-  | { kind: "done" | "stopped" | "failed" | "step_limit" }
+  /** Any other end, finished, stopped or failed alike: what waits opens the next run. */
+  | { kind: "done" }
   | { kind: "unsaved" }
   | { kind: "awaiting"; toolCallId: string }
   | { kind: "shutdown" };

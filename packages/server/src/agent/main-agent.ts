@@ -61,7 +61,7 @@ import { endingOf, endingWithNothingRun } from "@server/agent/tool-ending.js";
 import { askResultForModel, SECOND_QUESTION_TURNED_AWAY, turnedAwayForModel } from "@server/agent/ask-result.js";
 import type { CardResult, TurnedAwayCall } from "@server/agent/ask-result.js";
 import { picturePreparerFor } from "@server/agent/prepare-pictures.js";
-import type { TakenMessage, TurnHooks } from "@server/agent/taken-message.js";
+import { userMessageData, type TakenMessage, type TurnHooks } from "@server/agent/taken-message.js";
 import { prepareUserMessage, type PreparedUserMessage, type PrepareUserMessageWith } from "@server/agent/prepare-user-message.js";
 import { ShutdownAbort, stoppedByShutdown } from "@server/agent/shutdown-flag.js";
 
@@ -553,7 +553,7 @@ export class MainAgent {
         takenIn.push({ item, message: prepared.message, pictures: prepared.pictures, position: steps.length });
         writer.write({
           type: "data-user-message",
-          data: { id: item.id, words: item.message, chips: item.chips, sentAt: item.sentAt },
+          data: userMessageData(item),
         });
         out.push(prepared.message);
       }
@@ -1368,7 +1368,6 @@ export class MainAgent {
           // A shutdown is not the user's stop: the turn failed, and every
           // attached page is told so before the error frame (inner#1717).
           if (stoppedByShutdown(signal)) {
-            sayThoughtFor(writer);
             writer.write({ type: "data-failed", data: { reason: "shutdown" } });
             writer.write({ type: "error", errorText: FAILED_TEXT });
           }
@@ -1673,7 +1672,7 @@ function withTakenParts(
     if (present.has(t.item.id)) continue;
     const part = {
       type: "data-user-message",
-      data: { id: t.item.id, words: t.item.message, chips: t.item.chips, sentAt: t.item.sentAt },
+      data: userMessageData(t.item),
     } as UIMessage["parts"][number];
     let seenSteps = -1;
     const at = out.findIndex((p) => p.type === "step-start" && ++seenSteps === t.position);

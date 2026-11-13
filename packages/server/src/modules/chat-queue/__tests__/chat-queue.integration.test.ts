@@ -525,7 +525,6 @@ describe("forget", () => {
 });
 
 describe("settle", () => {
-  const OTHER = ["done", "stopped", "failed", "step_limit"] as const;
 
   it("leaves another run's conversation alone, whatever the ending (RQ-28)", async () => {
     for (const ending of [
@@ -577,24 +576,20 @@ describe("settle", () => {
   });
 
   it("hands the conversation to a new run when work waits (RQ-32)", async () => {
-    for (const kind of OTHER) {
-      const { c, k } = fresh();
-      await getRedis().set(k.active, "R1");
-      await putList(k.queue, ["m1"]);
-      const next = await q.settle(c, "R1", { kind });
-      expect(next).toEqual(expect.any(String));
-      expect(next).not.toBe("R1");
-      expect(await getRedis().get(k.active)).toBe(next);
-    }
+    const { c, k } = fresh();
+    await getRedis().set(k.active, "R1");
+    await putList(k.queue, ["m1"]);
+    const next = await q.settle(c, "R1", { kind: "done" });
+    expect(next).toEqual(expect.any(String));
+    expect(next).not.toBe("R1");
+    expect(await getRedis().get(k.active)).toBe(next);
   });
 
   it("frees the conversation when nothing waits (RQ-33)", async () => {
-    for (const kind of OTHER) {
-      const { c, k } = fresh();
-      await getRedis().set(k.active, "R1");
-      expect(await q.settle(c, "R1", { kind })).toBeNull();
-      expect(await getRedis().exists(k.active)).toBe(0);
-    }
+    const { c, k } = fresh();
+    await getRedis().set(k.active, "R1");
+    expect(await q.settle(c, "R1", { kind: "done" })).toBeNull();
+    expect(await getRedis().exists(k.active)).toBe(0);
   });
 });
 

@@ -5,7 +5,8 @@
  * A message the run hands a turn, and what the turn is told about its run
  * (inner#1717).
  */
-import type { ChatAttachedChip, ChatSpaceContext } from "@breatic/shared";
+import type { ChatAttachedChip, ChatPendingItem, ChatSpaceContext } from "@breatic/shared";
+import type { QueueItem } from "@server/modules/chat-queue/chat-queue.service.js";
 
 /** One message the user sent, as the run hands it to the turn. */
 export interface TakenMessage {
@@ -62,4 +63,42 @@ export interface TurnHooks {
   beforeStream?: (turnIndex: number) => Promise<void>;
   /** Told how the turn ended, after its reply was written down or failed to be. */
   onEnded?: (ended: TurnEnded) => void;
+}
+
+/**
+ * A queued message, as the turn reads it.
+ * @param item - The queue item.
+ * @returns The message.
+ */
+export function takenMessageOf(item: QueueItem): TakenMessage {
+  const body = item as QueueItem & {
+    message?: string;
+    attached_chips?: ChatAttachedChip[];
+    time_zone?: string;
+    current_space?: ChatSpaceContext["current_space"];
+    spaces?: ChatSpaceContext["spaces"];
+    model?: string;
+  };
+  return {
+    id: item.id,
+    sentAt: item.sentAt,
+    message: body.message ?? "",
+    chips: body.attached_chips ?? [],
+    space: {
+      ...(body.current_space === undefined ? {} : { current_space: body.current_space }),
+      ...(body.spaces === undefined ? {} : { spaces: body.spaces }),
+    },
+    ...(body.time_zone === undefined ? {} : { timeZone: body.time_zone }),
+    locale: item.acceptLanguage,
+    ...(body.model === undefined ? {} : { model: body.model }),
+  };
+}
+
+/**
+ * A message as a page draws it: in the waiting area, and where a run took it in.
+ * @param m - The message.
+ * @returns What the page is given.
+ */
+export function userMessageData(m: TakenMessage): ChatPendingItem {
+  return { id: m.id, words: m.message, chips: m.chips, sentAt: m.sentAt };
 }

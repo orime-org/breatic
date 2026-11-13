@@ -49,6 +49,7 @@ import { SMALLEST_CREDIT } from "@breatic/domain";
 import { startRun, stopChannel } from "@server/agent/chat-run.js";
 import { runStreams } from "@server/agent/run-stream.js";
 import { isShuttingDown } from "@server/agent/shutdown-flag.js";
+import { takenMessageOf, userMessageData } from "@server/agent/taken-message.js";
 import { chatQueue, type QueueItem } from "@server/modules/chat-queue/chat-queue.service.js";
 import { toUiMessages } from "@server/modules/conversation/message-part-mapping.js";
 import { AppError, getRedis, logger, getAgentConfig, NotFoundError, ValidationError } from "@breatic/core";
@@ -151,10 +152,7 @@ function assertSayable(
  * @returns The items a page is given.
  */
 function pendingOf(queue: readonly QueueItem[]): ChatPendingItem[] {
-  return queue.map((item) => {
-    const body = item as QueueItem & { message?: string; attached_chips?: ChatAttachedChip[] };
-    return { id: item.id, sentAt: item.sentAt, words: body.message ?? "", chips: body.attached_chips ?? [] };
-  });
+  return queue.map((item) => userMessageData(takenMessageOf(item)));
 }
 
 /**

@@ -214,8 +214,8 @@ class FakeStore {
 }
 
 /** How a runner's turn ends: reply not stored, stopped at a questionnaire, shutdown, or any other end. */
-type EndingKind = "done" | "failed" | "unsaved" | "awaiting" | "shutdown";
-const ENDINGS: readonly EndingKind[] = ["done", "failed", "unsaved", "awaiting", "shutdown"];
+type EndingKind = "done" | "unsaved" | "awaiting" | "shutdown";
+const ENDINGS: readonly EndingKind[] = ["done", "unsaved", "awaiting", "shutdown"];
 
 /** Where a runner is in `runIt`; each position is one queue call or one store write. */
 type At = "head" | "forget" | "head2" | "emptyAck" | "emptySettle" | "open" | "run" | "ack" | "settle";
@@ -762,7 +762,7 @@ describe("chat queue properties (inner#1717)", () => {
       "enqueue start", "enqueue queued", "enqueue duplicate", "enqueue full", "claim start", "forget answered",
       "opening reused", "empty settle opened next", "settle opened next", "card run", "give back freed", "give back opened run",
       "crash", "remove removed", "remove taken", "remove gone", "stale head", "stale drain", "stale ack", "stale settle",
-      "stale forget", "drained left unrecorded", "ending done", "ending failed", "ending unsaved", "ending awaiting", "ending shutdown",
+      "stale forget", "drained left unrecorded", "ending done", "ending unsaved", "ending awaiting", "ending shutdown",
     ];
     expect(branches.filter((b) => (seen.get(b) ?? 0) === 0), JSON.stringify(Object.fromEntries(seen))).toEqual([]);
   });
