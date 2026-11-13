@@ -522,8 +522,10 @@ describe("a run's end", () => {
     const reading = attach(app, who);
     await new Promise((r) => setTimeout(r, 50));
     await stop(app, who);
-    model.release();
+    // Let go only once the stop has ended the run: a step the model finished
+    // first would take the second message in before the stop lands.
     const { frames } = await reading;
+    model.release();
     expect(frames.some((f) => f.type === "data-next-run")).toBe(false);
     await untilIdle(who.conversationId);
     expect(await idsIn(keysOf(who.conversationId).queue)).toEqual([m2]);
@@ -610,11 +612,13 @@ describe("a run's place in the running list", () => {
       }
     })();
     await stop(app, who);
-    model.release();
+    // Let go only once the next run holds it: a step the model finished
+    // first would take the second message into this run instead.
     await until(async () => {
       const now = await r.get(keysOf(who.conversationId).active);
       return now !== null && now !== r1;
     });
+    model.release();
     const r2 = (await r.get(keysOf(who.conversationId).active))!;
     await untilIdle(who.conversationId);
     watching = false;

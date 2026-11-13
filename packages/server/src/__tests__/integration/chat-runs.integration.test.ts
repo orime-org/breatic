@@ -59,7 +59,10 @@ vi.mock("@breatic/domain", async (importOriginal) => {
           const i = script.count++;
           script.prompts.push(asked.prompt);
           await script.onCall[i]?.();
-          if (script.hold !== undefined) await script.hold;
+          // Ended by a stop as a provider's request is.
+          if (script.hold !== undefined) {
+            await Promise.race([script.hold, new Promise<void>((resolve) => asked.abortSignal?.addEventListener("abort", () => resolve()))]);
+          }
           const parts = (script.calls[i] ?? (() => [
             { type: "text-start", id: "t" },
             { type: "text-delta", id: "t", delta: "done" },
@@ -368,8 +371,10 @@ describe("POST /chat/stop", () => {
     await new Promise((r) => setTimeout(r, 100));
     const res = await stop(app, who);
     expect(await res.json()).toEqual({ data: { stopped: true } });
-    release();
+    // Let go only once the stop has ended the run, which a step the model
+    // finished first would otherwise end on its own.
     const { frames } = await reading;
+    release();
     expect(frames.filter((f) => f.type === "data-interrupted")).toHaveLength(1);
     await untilIdle(who.conversationId);
     const reply = (await rowsOf(who.conversationId)).find((r) => r.role === "assistant");
