@@ -78,7 +78,7 @@ const INDEX: readonly { group: string; sections: readonly (readonly [name: strin
     ],
   },
   { group: "Timeline", sections: [["Timeline spaces", "adding videos and web animations to a timeline and arranging them"]] },
-  { group: "3D", sections: [["3D spaces", "importing and generating models and their proposal card, objects, transforms, locks, the view and the viewfinder that sends a still to the Agent, a Canvas or the clipboard in a 3D space"]] },
+  { group: "3D", sections: [["3D spaces", "importing and generating models and their proposal card, objects, transforms, locks, the view and the viewfinder that sends a still to the Agent, a Canvas or the clipboard, and the director console's cameras, lights and ambient light in a 3D space"]] },
 ];
 
 /** Every section name the index lists. */
@@ -1577,8 +1577,9 @@ export function renderProductGuide(): string {
       "Closing the dialog while the generation is being submitted lets the submission carry on, and its answer still opens the panel on the new row. " +
       "A refusal, such as too few credits or a view that is not a picture of this Project, keeps the dialog open with everything in it and says why in a short message.",
     `The floating bar at the bottom right orders ${quoted(t("spaces.threeD.undo"))}, ${quoted(t("spaces.threeD.redo"))}, ` +
-      `${quoted(t("spaces.threeD.properties"))}, ${quoted(t("spaces.threeD.objects"))}, ${quoted(t("spaces.threeD.tasks"))} and ` +
-      `${quoted(t("spaces.threeD.minimap"))}. The three panel buttons keep their ordinary appearance while open. ` +
+      `${quoted(t("spaces.threeD.properties"))}, ${quoted(t("spaces.threeD.objects"))}, ${quoted(t("spaces.threeD.tasks"))}, ` +
+      `${quoted(t("spaces.threeD.director.open"))} (a clapperboard icon) and ` +
+      `${quoted(t("spaces.threeD.minimap"))}. The four panel buttons keep their ordinary appearance while open. ` +
       "Click one to open its panel on the right; click the same button again to close it, or another to switch content. " +
       `An X with the ${quoted(t("spaces.threeD.closePanel"))} tooltip also closes the panel. Its content scrolls above the minimap. ` +
       "Opening a header menu while the panel is open keeps keyboard focus in that new menu. " +
@@ -1602,7 +1603,36 @@ export function renderProductGuide(): string {
       "The viewfinder hands the still over and closes as soon as it is in the chat attachments, on the Canvas or on the clipboard; until then its button waits and the others are unavailable. " +
       "Uploading goes on in the chat attachments or on the Canvas node, which show how it ends. When the still could not be handed over, the viewfinder stays on it to try again. " +
       `Clicking the frame button or pressing Escape closes the viewfinder; on the still, Escape goes back to framing. Closing it before the hand-over lets the hand-over finish, and its result is told in a message. ` +
-      "Switching to another Space tab and back keeps the viewfinder as it was.",
+      "Switching to another Space tab and back keeps the viewfinder as it was. " +
+      "Looking through a camera from the director console uses the same frame and menu with these differences: the frame has the camera's own aspect ratio, the view shows exactly what the camera sees, " +
+      `and ${quoted(t("spaces.threeD.director.exitCamera"))} replaces ${quoted(t("spaces.threeD.viewfinder.cancel"))} and goes back to the view you had before. ` +
+      "The aspect ratio in the menu is the camera's own and changing it changes the camera for everyone; under Free, dragging a corner changes the camera's free ratio. " +
+      "Dragging anywhere except on a transform handle or a joint dot moves the camera itself: a left drag turns it around a point ahead of it, keeping its tilt, a right drag or Shift with a left drag slides it, and the wheel moves it forward or back. " +
+      "A click still selects. The move is written when you let go, or shortly after the wheel stops. " +
+      `A locked camera does not move, and a drag on it says ${quoted(t("spaces.threeD.director.cameraLocked"))} ` +
+      "A Viewer can look through a camera and leave it, but cannot move it, change its ratio or take a still. " +
+      `If the camera is deleted meanwhile, a still already taken stays, the view otherwise goes back, and a message says ${quoted(t("spaces.threeD.director.cameraDeleted"))} ` +
+      "Escape first stops a drag in progress, then steps the viewfinder back, and only then closes the right panel. " +
+      `${quoted(t("spaces.threeD.viewfinder.confirm"))} takes the still with the camera's own lens. When you cannot edit, the still offers only ${quoted(t("spaces.threeD.viewfinder.copy"))}.`,
+    `The ${quoted(t("spaces.threeD.director.open"))} panel is where cameras and lights are set up; while it is open, selecting an object in the scene keeps it open instead of switching to ${quoted(t("spaces.threeD.properties"))}. ` +
+      `Under ${quoted(t("spaces.threeD.director.cameras"))}, the plus icon ${quoted(t("spaces.threeD.director.saveView"))} saves what you see as a new camera, 16:9, aimed and zoomed to match the largest 16:9 frame of the view; ` +
+      "with the viewfinder open it takes the frame and ratio shown, and while looking through a camera it copies that camera. " +
+      `Each camera has a card with its live picture, a row with its number, name, lens and ratio, a lock icon when locked, and a ${quoted(t("spaces.threeD.director.more"))} menu with ` +
+      `${quoted(t("spaces.threeD.properties"))}, ${quoted(t("spaces.threeD.duplicate"))}, ${quoted(t("spaces.threeD.lock"))} or ${quoted(t("spaces.threeD.unlock"))}, and ${quoted(t("spaces.threeD.delete"))} (unavailable while locked). ` +
+      `Clicking the picture, whose tooltip says ${quoted(t("spaces.threeD.director.look"))}, looks through that camera; that card gets a dark border. ` +
+      `With no camera it says ${quoted(t("spaces.threeD.director.camerasEmpty"))} ` +
+      `Under ${quoted(t("spaces.threeD.director.lights"))}, the plus icon ${quoted(t("spaces.threeD.director.addLight"))} offers ${quoted(t("spaces.threeD.director.lightDirectional"))}, ` +
+      `${quoted(t("spaces.threeD.director.lightPoint"))} and ${quoted(t("spaces.threeD.director.lightSpot"))}; a new light is white, casts shadows and sits above the centre of your view, aimed at it. ` +
+      `A scene holds at most ${String(getSceneConfig().director.max_lights)} lights: at that number the three choices are unavailable and the section says so. ` +
+      `Each light's row has a colour dot, its name, its type and a ${quoted(t("spaces.threeD.castShadow"))} switch; a row may say ${quoted(t("spaces.threeD.director.lightOverLimit"))} ` +
+      `or ${quoted(t("spaces.threeD.director.shadowBudget"))}, when this computer's graphics cannot show another shadow. With no light it says ${quoted(t("spaces.threeD.director.lightsEmpty"))} ` +
+      `Under ${quoted(t("spaces.threeD.director.ambient"))} are a ${quoted(t("spaces.threeD.color"))} swatch and an ${quoted(t("spaces.threeD.intensity"))} slider shared by everyone. ` +
+      "Clicking a camera's or light's icon in the scene, its light row, or its card menu's first item selects it and opens its settings under its card or row: the name, " +
+      `for a camera ${quoted(t("spaces.threeD.focalLength"))} (presets from 14 to 200 mm, ${quoted(t("spaces.threeD.director.customFocal"))}, and a box taking 8 to 300) and ${quoted(t("spaces.threeD.frame"))}, ` +
+      `for a light ${quoted(t("spaces.threeD.color"))}, ${quoted(t("spaces.threeD.intensity"))}, ${quoted(t("spaces.threeD.castShadow"))} and, for a spotlight, ${quoted(t("spaces.threeD.angle"))}, and a ${quoted(t("spaces.threeD.lock"))} switch. ` +
+      `${quoted(t("spaces.threeD.properties"))} shows the same settings with the position and rotation. A slider or colour previews while you drag and is written once when you let go. ` +
+      "Cameras and lights are moved and turned in the scene like objects; they cannot be scaled and a point light cannot be turned. They show up in the object list and on the minimap, but never in a still or a camera's picture. " +
+      "Everyone in the Space sees the same cameras, lights and ambient light; which camera you look through is yours alone. A Viewer can watch the cards and look through cameras but cannot add or change anything.",
     `The ${quoted(t("spaces.threeD.tasks"))} panel lists every member's model imports and generations in this Space, newest first, the same for everyone. ` +
       `Its header has ${quoted(t("spaces.threeD.taskList.filter"))}, whose menu offers ${quoted(t("spaces.threeD.taskList.filterRunning"))}; ` +
       `${quoted(t("spaces.threeD.taskList.filterKind"))}: ${quoted(t("spaces.threeD.taskList.filterAll"))}, ${quoted(t("spaces.threeD.taskList.kind"))} or ${quoted(t("spaces.threeD.taskList.kindGeneration"))}; ` +
