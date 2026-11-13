@@ -157,12 +157,18 @@ describe('A7 the ruler reads seconds (demo getScaleRender)', () => {
     expect(screen.getByText('2s')).toBeInTheDocument();
   });
 
-  it('draws one more scale after the last label, and the editor is wide enough to hold it', () => {
-    // The two clips run 4 s + 2.5 s = 6.5 s, so the last label is 7s and one more scale follows it.
+  it('labels each second up to the one after the end and leaves the right-edge boundary unlabelled', () => {
+    // The two clips run 4 s + 2.5 s = 6.5 s: eight scales (demo timeline-editor.tsx:30), labelled 0s to 7s. The editor also
+    // draws a label on the boundary after the last scale, which is its right edge and would cut that label in half.
     open();
-    expect(track.props?.minScaleCount).toBe(9);
-    expect(track.props?.maxScaleCount).toBe(9);
-    expect((track.props?.style as { width: number }).width).toBe(9 * 100 + 32);
+    expect(track.props?.minScaleCount).toBe(8);
+    expect(track.props?.maxScaleCount).toBe(8);
+    expect((track.props?.style as { width: number }).width).toBe(900);
+    const scale = track.props?.getScaleRender as (value: number) => React.ReactNode;
+    const { container } = render(<>{[0, 7, 8].map((value) => <div key={value} data-value={value}>{scale(value)}</div>)}</>);
+    expect(container.querySelector('[data-value="0"]')).toHaveTextContent('0s');
+    expect(container.querySelector('[data-value="7"]')).toHaveTextContent('7s');
+    expect(container.querySelector('[data-value="8"]')).toBeEmptyDOMElement();
   });
 });
 
