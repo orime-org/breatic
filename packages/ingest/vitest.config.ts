@@ -101,7 +101,9 @@ const node = defineConfig({
   test: {
     name: "node",
     include: [NODE_TESTS],
-    // Node's own clock decides these, so the default 5s is head-room enough.
+    // The media container's tests run real ffmpeg jobs of several seconds; on a machine busy with the other packages' suites
+    // the default 5s cuts them off, as the workers project above and every other package allow for.
+    testTimeout: 30_000,
   },
   resolve: { alias },
 });
