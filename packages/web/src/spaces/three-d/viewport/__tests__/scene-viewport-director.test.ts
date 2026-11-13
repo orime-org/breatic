@@ -340,3 +340,13 @@ describe('lights, ambient and shadows (design 3.6, 6.4)', () => {
     expect(ids).not.toContain(LAMP);
   });
 });
+
+describe('handles during a camera view (design 3.4 item 1)', () => {
+  it('attaches no transform handle while the selection holds the camera being looked through', async () => {
+    const opened = await open(props([camera(CAM), camera(OTHER, { position: [3, 1, 3], number: 2 })], { selectedIds: [CAM, 'cube'], cameraView: { kind: 'live', id: CAM, canPilot: true }, viewFrame: FRAME }));
+    const controls = (opened.runtime as unknown as { controls: { object: unknown } }).controls;
+    expect(controls.object ?? null).toBeNull();
+    opened.runtime.update({ ...opened.initial, selectedIds: [OTHER], cameraView: { kind: 'live', id: CAM, canPilot: true }, viewFrame: FRAME } as SceneViewportProps);
+    expect(controls.object ?? null).not.toBeNull();
+  });
+});
