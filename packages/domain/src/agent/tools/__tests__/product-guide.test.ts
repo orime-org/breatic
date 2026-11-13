@@ -572,7 +572,7 @@ describe("what the guide says", () => {
 
   it("says a message sent while a reply runs waits above the box, and how to take it back", () => {
     const composer = webSource("pages/project/chat/ChatComposer.tsx");
-    expect(composer).toMatch(/turnPhase === 'running' \? \([\s\S]*data-testid='chat-composer-abort'[\s\S]*t\('chat\.composer\.stop'\)[\s\S]*\) : null\}\s*<Tooltip>\s*<TooltipTrigger asChild>\s*<Button/);
+    expect(composer).toMatch(/turnPhase === 'running' \? \([\s\S]*data-testid='chat-composer-abort'[\s\S]*t\('chat\.composer\.stop'\)[\s\S]*\) : null\}\s*(?:\{\/\*[\s\S]*?\*\/\}\s*)?<Tooltip[^>]*>\s*<TooltipTrigger asChild>\s*<Button/);
     expect(composer).toContain("turnPhase === 'running' ? t('chat.composer.sendWhileRunning') : t('chat.composer.send')");
     expect(webSource("pages/project/chat/ChatPanel.tsx")).toMatch(/<PendingTray[\s\S]*<ChatComposer/);
     const chat = section("The chat panel");
