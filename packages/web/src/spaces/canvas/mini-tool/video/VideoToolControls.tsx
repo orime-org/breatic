@@ -539,8 +539,7 @@ function VideoCutEditor(props: VideoToolControlsProps & { table: VideoPresentati
    */
   const step = (index: number, backwards: boolean): void => {
     const neighbour = presentationCoveringFrame(table, cuts[index]!) + (backwards ? -1 : 1);
-    const pts = neighbour >= 0 && neighbour < presentationFrameCount(table) ? frameCut(table, neighbour) : undefined;
-    if (pts !== undefined && pts > 0 && pts < duration) commit(moveTo(index, pts));
+    if (neighbour >= 1 && neighbour < presentationFrameCount(table)) commit(moveTo(index, frameCut(table, neighbour)));
   };
   /**
    * Plays one segment in the node's player and shows it until it ends; a refused play says the media is unavailable.

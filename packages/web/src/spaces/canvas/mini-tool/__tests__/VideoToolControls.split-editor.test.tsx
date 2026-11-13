@@ -508,6 +508,15 @@ describe('stepping a handle that is not on a frame start', () => {
   });
 });
 
+describe('a step keeps a cut off the first frame, as a drag and Add at cursor do', () => {
+  it('does not step back onto the first frame of a table that starts after 0', () => {
+    const late = { schemaVersion: 1 as const, timescale: 100, runs: [{ start: 8, count: 123, step: 4, duration: 4 }] };
+    const { onChange } = mount({ draft: draftWith([0.12]), frameTable: late });
+    fireEvent.keyDown(screen.getByTestId('video-cut-handle-0'), { key: 'ArrowLeft' });
+    expect(onChange).not.toHaveBeenCalled();
+  });
+});
+
 describe('a cut a handle writes on a 30 fps video, whose frame starts are not whole microseconds', () => {
   // 6 s at 30 fps: frame k starts at k/30 s.
   const thirty = { schemaVersion: 1 as const, timescale: 30, runs: [{ start: 0, count: 180, step: 1, duration: 1 }] };
