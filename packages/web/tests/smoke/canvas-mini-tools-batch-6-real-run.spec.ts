@@ -522,6 +522,22 @@ test('split: a 30 fps video previews a segment between frames and keeps typed ro
     await c.page.mouse.move(track.x + track.width * 0.1, box.y + box.height / 2, { steps: 8 });
     await c.page.mouse.up();
     await expect.poll(() => handle.evaluate((el) => (el as HTMLElement).style.left)).not.toBe(before);
+    // A handle dropped past the right end stays on the last frame (179/30 s) and its row shows that frame start.
+    const dragged = (await handle.boundingBox())!;
+    await c.page.mouse.move(dragged.x + dragged.width / 2, dragged.y + dragged.height / 2);
+    await c.page.mouse.down();
+    await c.page.mouse.move(track.x + track.width + 40, dragged.y + dragged.height / 2, { steps: 8 });
+    await c.page.mouse.up();
+    await expect(c.page.getByTestId('video-cut-1')).toHaveValue(/^5\.96666\d$/);
+    // A row left showing text that is no number keeps Run blocked after another row is removed.
+    const runButton = c.page.getByTestId('mini-tool-run');
+    await expect(runButton).toBeEnabled();
+    await c.page.getByTestId('video-cut-1').fill('abc');
+    await expect(runButton).toBeDisabled();
+    await editor.getByRole('button', { name: 'Remove', exact: true }).first().click();
+    await expect(c.page.getByTestId('video-cut-0')).toHaveValue('abc');
+    await expect(c.page.getByText('Enter a valid number.')).toBeVisible();
+    await expect(runButton).toBeDisabled();
   } finally {
     await deleteSpace(page, c.spaceId);
   }
@@ -644,6 +660,15 @@ test('transitions: the preview plays two videos of different sizes, before and a
     await expect(dialog).toBeVisible();
     const readout = dialog.getByText(/^\d+\.\d{3} \/ \d+\.\d{3} s$/);
     const played = async (): Promise<number> => Number((await readout.textContent())!.split(' / ')[0]);
+    // The ruler labels each second up to the one after the composition's end, and no label is cut at the right edge.
+    const total = Number.parseFloat((await readout.textContent())!.split(' / ')[1]!);
+    const labels = await dialog.locator('.timeline-editor-time-unit-scale').evaluateAll((elements) => elements.map((element) => {
+      const editor = element.closest('.timeline-editor')!.getBoundingClientRect();
+      const box = element.getBoundingClientRect();
+      return { text: element.textContent ?? '', inside: box.left >= editor.left && box.right <= editor.right };
+    }).filter((label) => label.text !== ''));
+    expect(labels.at(-1)?.text).toBe(`${String(Math.ceil(total))}s`);
+    expect(labels.filter((label) => !label.inside)).toEqual([]);
     // The 1280 x 720 clip first: each frame costs the most here, where the preview once failed within a second.
     for (const step of ['before swap', 'after swap'] as const) {
       if (step === 'after swap') {
