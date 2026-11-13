@@ -44,6 +44,7 @@ vi.mock("ai", () => ({
 import postgres from "postgres";
 import { initCore, NotFoundError } from "@breatic/core";
 import * as studioService from "@server/modules/studio/studio.service.js";
+import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 // @breatic/integration-tests/env injects the container URLs into process.env. Inject
 // the validated config so the repo's env-bound `db` Proxy resolves to the
@@ -98,6 +99,7 @@ async function insertStudio(
     VALUES (${createdByUserId}, ${slug}, ${type}, ${`Studio ${slug}`})
     RETURNING id
   `;
+  await mirrorAllInDirectory(sql);
   return { id: rows[0]!.id, slug };
 }
 
@@ -111,6 +113,7 @@ async function insertMemberRaw(
     INSERT INTO studio_members (studio_id, user_id, role)
     VALUES (${studioId}, ${userId}, ${role})
   `;
+  await mirrorAllInDirectory(sql);
 }
 
 async function softDeleteMember(studioId: string, userId: string): Promise<void> {
@@ -233,6 +236,9 @@ describe("getStudioMembers — member roster (display name from personal studio)
     // Set one on the guest's personal studio; the owner's stays null.
     await sql`
       UPDATE studios SET avatar_url = ${"https://cdn/m.png"} WHERE id = ${memberPersonal.id}
+    `;
+    await sql`
+      UPDATE studio_directory SET avatar_url = ${"https://cdn/m.png"} WHERE studio_id = ${memberPersonal.id}
     `;
     const team = await insertStudio(owner, "team");
     await insertMemberRaw(team.id, owner, "admin");

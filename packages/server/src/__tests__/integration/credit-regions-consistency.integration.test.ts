@@ -370,9 +370,11 @@ describe("credit conservation across regions", () => {
           SELECT sum(purchased_credits) AS bought, sum(remaining_credits) AS left
           FROM credit_lots WHERE id = ANY(${lots})
         `;
+        // A purchase is drawn on by spending and by repaying the debt a
+        // Studio ran up while nothing was pointed at it.
         const [spent] = await sql<{ total: string | null }[]>`
           SELECT sum(amount) AS total FROM credit_ledger
-          WHERE lot_id = ANY(${lots}) AND entry_type = 'spend'
+          WHERE lot_id = ANY(${lots}) AND entry_type IN ('spend', 'debt_repayment')
         `;
         expect(Number(books!.left) + Math.abs(Number(spent!.total ?? 0))).toBe(Number(books!.bought));
 

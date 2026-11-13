@@ -126,8 +126,8 @@ async function insertStudioMember(
   role: "admin" | "maintainer" | "guest",
 ): Promise<void> {
   await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${studioId}, ${userId}, ${role})`;
-
-  await mirrorAllInDirectory(sql);}
+  await mirrorAllInDirectory(sql);
+}
 
 let projectSeq = 0;
 /** Insert a project in a studio + the owner's project_members row. */

@@ -136,8 +136,8 @@ async function addMember(
       VALUES (${projectId}, ${userId}, ${projectRole}, null)
     `;
   }
-
-  await mirrorAllInDirectory(sql);}
+  await mirrorAllInDirectory(sql);
+}
 
 /** A ledger row in `studioId`; returns its id and URL. */
 async function seedAsset(

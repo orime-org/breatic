@@ -55,7 +55,7 @@ export async function mirrorAllInDirectory(sql: postgres.Sql): Promise<void> {
            s.created_by_user_id, 'live', s.created_at, s.updated_at, s.deleted_at
     FROM studios s
     WHERE NOT EXISTS (SELECT 1 FROM studio_directory d WHERE d.studio_id = s.id)
-    ON CONFLICT DO NOTHING
+    ON CONFLICT (studio_id) DO NOTHING
   `;
   await sql`
     INSERT INTO studio_directory_members (studio_id, user_id, role)

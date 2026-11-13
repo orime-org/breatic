@@ -37,6 +37,7 @@ import { readFileSync } from "node:fs";
 import postgres from "postgres";
 import { initCore } from "@breatic/core";
 import { nodeHistoryService, nodeTaskService } from "@breatic/domain";
+import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 try {
   initCore(process.env);
@@ -77,6 +78,7 @@ async function insertUser(name: string): Promise<string> {
     INSERT INTO studios (created_by_user_id, slug, type, name)
     VALUES (${userId}, ${slug}, 'personal', ${name})
   `;
+  await mirrorAllInDirectory(sql);
   return userId;
 }
 
@@ -93,6 +95,7 @@ async function insertProject(ownerUserId: string): Promise<string> {
     VALUES (${studios[0]!.id}, ${ownerUserId}, ${`P ${pslug}`}, ${pslug})
     RETURNING id
   `;
+  await mirrorAllInDirectory(sql);
   return projects[0]!.id;
 }
 

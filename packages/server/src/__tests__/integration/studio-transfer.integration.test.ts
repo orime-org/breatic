@@ -139,8 +139,8 @@ async function insertMemberRaw(
     INSERT INTO studio_members (studio_id, user_id, role)
     VALUES (${studioId}, ${userId}, ${role})
   `;
-
-  await mirrorAllInDirectory(sql);}
+  await mirrorAllInDirectory(sql);
+}
 
 /** Count active admins on a studio — the transfer invariant. */
 async function activeAdminCount(studioId: string): Promise<number> {
