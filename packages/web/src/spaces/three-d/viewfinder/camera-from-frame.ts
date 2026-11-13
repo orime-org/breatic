@@ -5,12 +5,9 @@ import { MathUtils, PerspectiveCamera, Quaternion, Vector3 } from 'three';
 import { SCENE_FOCAL_LENGTH_MAX, SCENE_FOCAL_LENGTH_MIN } from '@breatic/shared';
 
 import type { ViewfinderRect } from '@web/spaces/three-d/viewfinder/viewfinder-geometry';
+import { CAMERA_FILM_GAUGE } from '@web/spaces/three-d/viewport/director-objects';
+import { SCENE_VIEW_FOV } from '@web/spaces/three-d/viewport/scene-camera';
 import type { SceneQuaternion, SceneVector3 } from '@web/spaces/three-d/viewport/scene-viewport-props';
-
-/** The main view's vertical field of view, in degrees. */
-const VIEW_FOV = 45;
-/** The film gauge a camera's focal length is measured on, in millimetres. */
-const FILM_GAUGE = 36;
 
 /**
  * A camera that sees what a frame on the free view shows (inner#1694 design 3.5): from the view's position,
@@ -26,7 +23,7 @@ const FILM_GAUGE = 36;
  */
 export function cameraFromFrame(view: { position: Vector3; quaternion: Quaternion }, frame: ViewfinderRect,
   viewport: { width: number; height: number }): { position: SceneVector3; rotation: SceneQuaternion; focalLength: number } {
-  const main = new PerspectiveCamera(VIEW_FOV, viewport.width / viewport.height);
+  const main = new PerspectiveCamera(SCENE_VIEW_FOV, viewport.width / viewport.height);
   main.position.copy(view.position);
   main.quaternion.copy(view.quaternion);
   main.updateMatrixWorld(true);
@@ -44,7 +41,7 @@ export function cameraFromFrame(view: { position: Vector3; quaternion: Quaternio
   const aimed = new PerspectiveCamera();
   aimed.position.copy(view.position);
   aimed.lookAt(view.position.clone().add(centre));
-  const filmHeight = FILM_GAUGE / Math.max(frame.width / frame.height, 1);
+  const filmHeight = CAMERA_FILM_GAUGE / Math.max(frame.width / frame.height, 1);
   const focalLength = MathUtils.clamp(filmHeight / (2 * Math.tan(span / 2)), SCENE_FOCAL_LENGTH_MIN, SCENE_FOCAL_LENGTH_MAX);
   return { position: view.position.toArray() as SceneVector3, rotation: aimed.quaternion.toArray() as SceneQuaternion, focalLength };
 }
@@ -78,7 +75,7 @@ export function newLightPose(centre: SceneVector3, viewer: SceneVector3): { posi
   const toward = new Vector3().fromArray(viewer).sub(middle).setY(0);
   if (toward.lengthSq() === 0) toward.set(0, 0, 1);
   toward.normalize();
-  const left = new Vector3(0, 1, 0).cross(toward).normalize();
+  const left = toward.clone().cross(new Vector3(0, 1, 0)).normalize();
   const position = middle.clone().addScaledVector(toward, LIGHT_TOWARD_VIEWER).addScaledVector(left, LIGHT_LEFT).setY(middle.y + LIGHT_ABOVE);
   return { position: position.toArray() as SceneVector3, rotation: lookRotation(position.toArray() as SceneVector3, centre) };
 }
