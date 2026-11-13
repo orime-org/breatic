@@ -25,8 +25,10 @@ import type { ChatMessage } from '@web/pages/project/chat/types';
 
 /**
  * Whether a run is being read, from the status the SDK reports while a
- * stream is resumed: `submitted` until its first frame, then `streaming`.
- * `error` and `ready` are both "nothing is being read".
+ * stream is resumed: `submitted` once the stream exists, which the reply
+ * named by its first frame is drawn under, then `streaming` from the first
+ * frame that writes a part. `error` and `ready` are both "nothing is being
+ * read".
  * @param status - What the chat says it is doing.
  * @returns True while a run is read.
  */
@@ -432,8 +434,6 @@ export function useChatSession(
       // apart is the session's own error, which is set by the turn that failed
       // and cleared by the next one that starts.
       const justNow = error !== undefined && m === last && m.role === 'assistant';
-      // From the frame that names the reply, which the SDK draws while it
-      // still says `submitted`, until the run is over.
       const streaming = readingRun(status) && m === last && m.role === 'assistant';
       const before = rendered.current.get(m);
       const tail = before?.at(-1);
