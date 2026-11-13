@@ -5,7 +5,7 @@ import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Lock } from 'lucide-react';
 
-import { getLocale, isSceneCamera, isSceneLight, isSceneModelFile, SCENE_FREE_RATIO_MAX, SCENE_FREE_RATIO_MIN, SCENE_LIGHT_COLOR_DEFAULT, SCENE_LIGHT_INTENSITY, type SceneLightType, type SceneObject, type ViewfinderRatio } from '@breatic/shared';
+import { getLocale, isSceneCamera, isSceneLight, isSceneModelFile, nextDirectorNumber, SCENE_LIGHT_COLOR_DEFAULT, SCENE_LIGHT_INTENSITY, type SceneLightType, type SceneObject, type ViewfinderRatio } from '@breatic/shared';
 import { Button } from '@web/components/ui/button';
 import { getSceneControls, resolveSceneAsset, type SpaceTask } from '@web/data/api/scene';
 import { docName } from '@web/data/yjs/manager';
@@ -22,9 +22,9 @@ import { fillFromTask } from '@web/spaces/three-d/scene-generation';
 import { useSceneProposals } from '@web/stores/scene-proposals';
 import { useConversationRuntime } from '@web/stores/conversation-runtime';
 import { useProjectSpaceList } from '@web/data/yjs/project-meta';
-import { SceneViewfinder, cameraFrameRatio, sceneViewfinderSafeArea } from '@web/spaces/three-d/SceneViewfinder';
-import { SceneDirectorPanel } from '@web/spaces/three-d/SceneDirectorPanel';
-import { largestFrame } from '@web/spaces/three-d/viewfinder/viewfinder-geometry';
+import { SceneViewfinder, sceneViewfinderSafeArea } from '@web/spaces/three-d/SceneViewfinder';
+import { LIGHT_LABEL, SceneDirectorPanel } from '@web/spaces/three-d/SceneDirectorPanel';
+import { cameraFrameRatio, clampFreeRatio, largestFrame, viewfinderRatioValue } from '@web/spaces/three-d/viewfinder/viewfinder-geometry';
 import type { LightsPlan } from '@web/spaces/three-d/viewport/director-lights';
 import { INITIAL_VIEWFINDER, cameraViewOf, viewfinderReducer, type ViewfinderAction } from '@web/spaces/three-d/viewfinder/viewfinder-state';
 import { SceneField, type SceneFieldDraft } from '@web/spaces/three-d/SceneField';
@@ -48,7 +48,6 @@ const SceneModelImportHost = React.lazy(() => import('@web/spaces/three-d/SceneM
 
 
 const lockIcon = <Lock className='size-4' />;
-const LIGHT_LABEL: Readonly<Record<SceneLightType, string>> = { directional: 'lightDirectional', point: 'lightPoint', spot: 'lightSpot' };
 /** The frame a camera saved from the plain view gets (inner#1694 design 3.5). */
 const SAVED_CAMERA_FRAME: ViewfinderRatio = '16:9';
 const stageStyle = { '--color-background': 'var(--color-canvas)' } as React.CSSProperties;
@@ -595,7 +594,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
    */
   const saveView = React.useCallback(async (): Promise<void> => {
     const current = session.getSnapshot();
-    const number = Math.max(0, ...current.objects.filter(isSceneCamera).map((camera) => camera.number)) + 1;
+    const number = nextDirectorNumber(current.objects, 'camera');
     const base = { id: crypto.randomUUID(), name: t('spaces.threeD.director.cameraName', { n: number }), model: { kind: 'camera' as const },
       scale: [1, 1, 1] as [number, number, number], locked: false, number };
     if (lookCamera !== null) {
@@ -603,21 +602,21 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
       const record = session.getSnapshot().objects.find((object) => object.id === lookCamera.id);
       if (!record || !isSceneCamera(record)) return;
       session.execute({ type: 'create', objects: [{ ...base, position: record.position, rotation: record.rotation,
-        focalLength: record.focalLength, frame: record.frame, freeRatio: record.freeRatio } as unknown as SceneObject] });
+        focalLength: record.focalLength, frame: record.frame, freeRatio: record.freeRatio } satisfies SceneObject] });
       return;
     }
     const { cameraFromStill, cameraFromView } = await import('@web/spaces/three-d/viewfinder/camera-from-frame');
     if (viewfinder.frozen !== null) {
-      session.execute({ type: 'create', objects: [{ ...base, ...cameraFromStill(viewfinder.frozen) } as unknown as SceneObject] });
+      session.execute({ type: 'create', objects: [{ ...base, ...cameraFromStill(viewfinder.frozen) } satisfies SceneObject] });
       return;
     }
     const freeOpen = viewfinder.phase !== 'off';
-    const frame = freeOpen ? viewfinder.frame : largestFrame(16 / 9, sceneViewfinderSafeArea(stageSize, rightOpen));
+    const frame = freeOpen ? viewfinder.frame : largestFrame(viewfinderRatioValue(SAVED_CAMERA_FRAME) ?? 1, sceneViewfinderSafeArea(stageSize, rightOpen));
     if (frame.width <= 0 || frame.height <= 0) return;
     const pose = cameraFromView(view.current, frame, stageSize);
     const ratio = freeOpen ? viewfinder.ratio : SAVED_CAMERA_FRAME;
     session.execute({ type: 'create', objects: [{ ...base, ...pose, frame: ratio,
-      ...(ratio === 'Free' ? { freeRatio: Math.min(SCENE_FREE_RATIO_MAX, Math.max(SCENE_FREE_RATIO_MIN, frame.width / frame.height)) } : {}) } as unknown as SceneObject] });
+      ...(ratio === 'Free' ? { freeRatio: clampFreeRatio(frame.width / frame.height) } : {}) } satisfies SceneObject] });
   }, [session, t, lookCamera, viewfinder, stageSize, rightOpen]);
   const onSaveView = React.useCallback((): void => { void saveView(); }, [saveView]);
   /**
@@ -628,7 +627,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   const addLight = React.useCallback(async (type: SceneLightType): Promise<void> => {
     const { newLightPose } = await import('@web/spaces/three-d/viewfinder/camera-from-frame');
     const current = session.getSnapshot();
-    const number = Math.max(0, ...current.objects.filter(isSceneLight).map((light) => light.number)) + 1;
+    const number = nextDirectorNumber(current.objects, 'light');
     const shown = cameraViewRef.current;
     const centre = (shown !== null ? pilotControl.current?.centre() : null) ?? view.current.target;
     const viewer = shown?.kind === 'frozen' ? shown.position : lookCamera?.position ?? view.current.position;
@@ -636,7 +635,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     session.execute({ type: 'create', objects: [{ id: crypto.randomUUID(), model: { kind: 'light', type }, number,
       name: t('spaces.threeD.director.lightName', { type: t(`spaces.threeD.director.${LIGHT_LABEL[type]}`), n: number }),
       position: pose.position, rotation: type === 'point' ? [0, 0, 0, 1] : pose.rotation, scale: [1, 1, 1], locked: false,
-      color: SCENE_LIGHT_COLOR_DEFAULT, intensity: SCENE_LIGHT_INTENSITY[type].initial, castShadow: true } as unknown as SceneObject] });
+      color: SCENE_LIGHT_COLOR_DEFAULT, intensity: SCENE_LIGHT_INTENSITY[type].initial, castShadow: true } satisfies SceneObject] });
   }, [session, t, lookCamera]);
   const onAddLight = React.useCallback((type: SceneLightType): void => { void addLight(type); }, [addLight]);
   /**

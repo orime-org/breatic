@@ -5,7 +5,7 @@ import * as React from 'react';
 import { Lock, MoreHorizontal, Plus } from 'lucide-react';
 
 import {
-  SCENE_AMBIENT_INTENSITY_MAX, compareDirectorRecords, isSceneCamera, isSceneLight,
+  SCENE_AMBIENT_INTENSITY_MAX, SCENE_LIGHT_TYPES, compareDirectorRecords, isSceneCamera, isSceneLight,
   type SceneCameraObject, type SceneLightObject, type SceneLightType,
 } from '@breatic/shared';
 import { Button } from '@web/components/ui/button';
@@ -21,26 +21,17 @@ import { cn } from '@web/lib/utils';
 import { SceneColorField, SceneDirectorFields } from '@web/spaces/three-d/SceneDirectorFields';
 import type { SceneField, SceneFieldDraftOwner } from '@web/spaces/three-d/SceneField';
 import { SceneIconButton } from '@web/spaces/three-d/SceneIconButton';
+import { cameraFrameRatio } from '@web/spaces/three-d/viewfinder/viewfinder-geometry';
 import type { LightsPlan } from '@web/spaces/three-d/viewport/director-lights';
 
 /** Tallest a monitor picture is drawn, in pixels. */
 const MONITOR_MAX_HEIGHT = 220;
-const LIGHT_TYPES: readonly SceneLightType[] = ['directional', 'point', 'spot'];
-const LIGHT_LABEL: Readonly<Record<SceneLightType, string>> = { directional: 'lightDirectional', point: 'lightPoint', spot: 'lightSpot' };
+/** The `spaces.threeD.director` key naming each light type. */
+export const LIGHT_LABEL: Readonly<Record<SceneLightType, string>> = { directional: 'lightDirectional', point: 'lightPoint', spot: 'lightSpot' };
 const plusIcon = <Plus className='size-4' />;
 const moreIcon = <MoreHorizontal className='size-4' />;
 const lockIcon = <Lock className='size-3.5 text-muted-foreground' />;
 
-/**
- * A camera record's frame ratio.
- * @param camera - The record.
- * @returns Width over height.
- */
-function ratioOf(camera: SceneCameraObject): number {
-  if (camera.frame === 'Free') return camera.freeRatio;
-  const [width, height] = camera.frame.split(':').map(Number);
-  return (width ?? 1) / (height ?? 1);
-}
 
 export interface SceneDirectorPanelProps extends SceneFieldDraftOwner {
   session: SceneSession;
@@ -84,7 +75,7 @@ const MonitorCard = React.memo(function MonitorCard({ camera, active, canEdit, s
   const t = useTranslation();
   const { id } = camera;
   const canvasRef = React.useCallback((canvas: HTMLCanvasElement | null): void => onMonitor(id, canvas), [onMonitor, id]);
-  const ratio = ratioOf(camera);
+  const ratio = cameraFrameRatio(camera);
   const pictureStyle = React.useMemo(() => ({ aspectRatio: String(ratio), width: `min(100%, ${MONITOR_MAX_HEIGHT * ratio}px)` }), [ratio]);
   return <div data-testid={`scene-director-camera-${id}`}
     className={cn('overflow-hidden rounded-md border', active ? 'border-active-border' : 'border-border')}>
@@ -162,7 +153,7 @@ export const SceneDirectorPanel = React.memo(function SceneDirectorPanel(props: 
             <SceneIconButton label={t('spaces.threeD.director.addLight')} disabled={!canEdit}>{plusIcon}</SceneIconButton>
           </DropdownMenuTrigger>
           <DropdownMenuContent align='end'>
-            {LIGHT_TYPES.map((type) => <DropdownMenuItem key={type} disabled={atLimit} onSelect={() => onAddLight(type)}>{t(`spaces.threeD.director.${LIGHT_LABEL[type]}`)}</DropdownMenuItem>)}
+            {SCENE_LIGHT_TYPES.map((type) => <DropdownMenuItem key={type} disabled={atLimit} onSelect={() => onAddLight(type)}>{t(`spaces.threeD.director.${LIGHT_LABEL[type]}`)}</DropdownMenuItem>)}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
