@@ -472,7 +472,7 @@ models:
     mode: "t2i"
     takes_prompt: true
     tier: "optional"
-    description: "Photoreal detail, native transparent PNG"
+    description: "Photoreal detail, transparent background"
     guide: "Lifelike photographic detail and natural light at a low price per image; it writes short titles and labels exactly in English and Chinese, and can hand back the picture on a transparent background."
     generation_time: 230
     icon: "seedream"
