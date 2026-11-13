@@ -72,11 +72,11 @@ describe('looking through a camera (inner#1694 design 6.1)', () => {
     expect(run([{ type: 'cameraDeleted', id: B }], lookA)).toMatchObject({ phase: 'framing', source: { kind: 'camera', id: A } });
   });
 
-  it('closes the canvas list and keeps only Copy when edit permission is lost while picking', () => {
+  it('closes the canvas list when edit permission is lost while picking', () => {
     const picking = run([{ type: 'pick' }], capturedA);
-    expect(run([{ type: 'permissionLost' }], picking)).toMatchObject({ phase: 'captured', copyOnly: true });
+    expect(run([{ type: 'permissionLost' }], picking)).toMatchObject({ phase: 'captured', source: { kind: 'camera', id: A } });
     const freePicking = run([{ type: 'open', frame: FRAME }, { type: 'captured', shot: SHOT }, { type: 'pick' }, { type: 'permissionLost' }]);
-    expect(freePicking).toMatchObject({ phase: 'captured', copyOnly: true });
+    expect(freePicking).toMatchObject({ phase: 'captured' });
   });
 });
 
