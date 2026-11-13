@@ -34,6 +34,15 @@ export async function startNewConversation(page: Page): Promise<void> {
   });
 }
 
+/** How long the send button may take to light up while attachments upload. */
+const SEND_WAIT_MS = 60_000;
+/** How long the reply may take to begin. */
+const REPLY_BEGIN_WAIT_MS = 200_000;
+/** How long the reply may take to end once begun. */
+const REPLY_END_WAIT_MS = 600_000;
+/** The longest one turn sent through the composer may take. */
+export const TURN_BUDGET_MS = SEND_WAIT_MS + REPLY_BEGIN_WAIT_MS + REPLY_END_WAIT_MS;
+
 /**
  * Send a message from the composer and wait until the turn it starts has
  * ended on screen.
@@ -48,10 +57,10 @@ async function say(page: Page, text: string): Promise<void> {
   // Attachments still uploading hold the send back; a press before then is
   // ignored, so wait for the button the user would see light up.
   const send = page.getByTestId('chat-composer-send');
-  await expect(send).toBeEnabled({ timeout: 60_000 });
+  await expect(send).toBeEnabled({ timeout: SEND_WAIT_MS });
   await send.click();
-  await expect(bubbles).toHaveCount(shown, { timeout: 200_000 });
-  await expect(page.getByTestId('chat-composer-abort')).toHaveCount(0, { timeout: 600_000 });
+  await expect(bubbles).toHaveCount(shown, { timeout: REPLY_BEGIN_WAIT_MS });
+  await expect(page.getByTestId('chat-composer-abort')).toHaveCount(0, { timeout: REPLY_END_WAIT_MS });
 }
 
 /** A part of a stored message, as the conversation endpoint returns it. */

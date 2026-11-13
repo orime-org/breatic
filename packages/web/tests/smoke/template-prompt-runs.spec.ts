@@ -29,7 +29,7 @@ import { openSmokeProject } from '../helpers/project';
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 import { dropFile } from '../helpers/upload';
-import { askInNewConversation, storedMessages } from '../helpers/conversation';
+import { TURN_BUDGET_MS, askInNewConversation, storedMessages } from '../helpers/conversation';
 import { seedNode, wire } from '../helpers/mini-tool';
 
 const OUT = process.env.TEMPLATE_RUN_OUT ?? join(__dirname, '../../test-results/template-runs');
@@ -252,6 +252,9 @@ async function cheapestTier(): Promise<void> {
 /** Each node type's Generate button. */
 const EXECUTE: Record<Kind, string> = { image: 'generate-execute', video: 'generate-video-execute', audio: 'generate-audio-execute' };
 
+/** How long one generation may take to land on its node. */
+const GENERATION_WAIT_MS = 1_500_000;
+
 /** Each node type's file extension for a saved result. */
 const EXTENSION: Record<Kind, string> = { image: 'png', video: 'mp4', audio: 'mp3' };
 
@@ -276,7 +279,7 @@ async function generate(nodeId: string, kind: Kind): Promise<string> {
           : content !== '' && content !== before && (node?.data.taskCounts?.running ?? 0) === 0 ? 'done' : 'waiting';
         return state;
       },
-      { timeout: 1_500_000, intervals: [5_000] },
+      { timeout: GENERATION_WAIT_MS, intervals: [5_000] },
     )
     .not.toBe('waiting');
   expect(state).toBe('done');
@@ -424,7 +427,8 @@ const ASK_IMAGE = process.env.TEMPLATE_RUN_ASK_IMAGE === undefined ? CHARACTER :
 const ASK_REPLY = process.env.TEMPLATE_RUN_ASK_REPLY;
 
 if (AGENT_ASK !== undefined) test('agent @needs-model', async () => {
-  test.setTimeout(1_800_000);
+  // Up to two turns, then one generation, plus setup.
+  test.setTimeout(2 * TURN_BUDGET_MS + GENERATION_WAIT_MS + 120_000);
   // The agent asks what only the user knows before it fills a template.
   await askInNewConversation(page, AGENT_ASK, { file: ASK_IMAGE, reply: ASK_REPLY });
   const parts = (await storedMessages(page)).filter((m) => m.role === 'assistant').flatMap((m) => m.parts ?? []);

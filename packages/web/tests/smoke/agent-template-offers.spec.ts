@@ -27,7 +27,7 @@ import { join } from 'node:path';
 import { expect, type Page } from 'playwright/test';
 import { GENERATION_TEMPLATES, chipOfPart, feedsOf, proposalMarkSegments, templateAnchor, type CanvasProposal } from '@breatic/shared';
 import { test } from '../helpers/slot';
-import { askInNewConversation, storedMessages, type StoredPart } from '../helpers/conversation';
+import { TURN_BUDGET_MS, askInNewConversation, storedMessages, type StoredPart } from '../helpers/conversation';
 
 import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace } from '../helpers/space';
@@ -50,8 +50,8 @@ function audioGenerations(turn: Turn): number {
 let page: Page;
 let spaceId = '';
 
-// A case can run two agent turns, each given what the conversation helper waits for one.
-test.describe.configure({ timeout: 1_800_000 });
+// A case can run two agent turns, plus its setup and the read of the stored reply.
+test.describe.configure({ timeout: 2 * TURN_BUDGET_MS + 120_000 });
 
 /**
  * The generations in a proposal that draw on a file the user attached,
@@ -146,14 +146,37 @@ function wordsOf(node: CanvasProposal['nodes'][number]): string {
 }
 
 /**
- * Whether what landed answers a request for a video: a video, or two or more
- * takes of its first frame for the user to pick from, the video following
- * from the picked take.
- * @param made - The generations that landed for it.
+ * The takes among a proposal's generations: pictures nothing in it draws on,
+ * set side by side for the user to pick from. The agent proposes what follows
+ * a take only once one is picked, never alongside the takes.
+ * @param proposal - The proposal, as the agent sent it.
+ * @param made - The generations to look among.
+ * @returns The takes.
+ */
+function takes(proposal: CanvasProposal, made: CanvasProposal['nodes']): CanvasProposal['nodes'] {
+  const drawnOn = new Set(feedsOf(proposal).map(({ fromIndex }) => fromIndex));
+  return made.filter((node) => node.type === 'image' && !drawnOn.has(proposal.nodes.indexOf(node)));
+}
+
+/**
+ * Whether two or more takes landed first, for the user to pick from.
+ * @param landed - The landed proposals.
+ * @param made - The generations of a proposal to look among.
+ * @returns Whether they did.
+ */
+function takesFirst(landed: CanvasProposal[], made: (proposal: CanvasProposal) => CanvasProposal['nodes']): boolean {
+  return landed.flatMap((proposal) => takes(proposal, made(proposal))).length >= 2;
+}
+
+/**
+ * Whether what landed answers a request for a video: a video, or takes of its
+ * first frame landed first, the video following from the picked take.
+ * @param landed - The landed proposals.
+ * @param made - The generations of a proposal that count for it.
  * @returns Whether it answers.
  */
-function answersVideoAsk(made: CanvasProposal['nodes']): boolean {
-  return made.some((node) => node.type === 'video') || made.filter((node) => node.type === 'image').length >= 2;
+function answersVideoAsk(landed: CanvasProposal[], made: (proposal: CanvasProposal) => CanvasProposal['nodes']): boolean {
+  return landed.some((proposal) => made(proposal).some((node) => node.type === 'video')) || takesFirst(landed, made);
 }
 
 /** What the newest stored conversation's turns did and said. */
@@ -252,8 +275,8 @@ test('asked outright for a cheese pull food video, it reads the food money shot 
   expect(turn.read, `read: ${turn.read.join(', ')}; tools: ${turn.tools.join(', ')}`).toContain('food-money-shot');
   // Solved when the dish lands as a video or, with no photo of it, as takes of its look made first; built on
   // the template or on the agent's own setup drawing on it.
-  const made = turn.landed.flatMap((proposal) => proposal.nodes).filter((node) => node.role === 'generate');
-  expect(answersVideoAsk(made), `made: ${made.map((node) => node.type).join(', ')}; named: ${turn.templates.join(', ')}; said: ${turn.said.slice(0, 600)}`).toBe(true);
+  const made = (proposal: CanvasProposal): CanvasProposal['nodes'] => proposal.nodes.filter((node) => node.role === 'generate');
+  expect(answersVideoAsk(turn.landed, made), `made: ${turn.landed.flatMap(made).map((node) => node.type).join(', ')}; named: ${turn.templates.join(', ')}; said: ${turn.said.slice(0, 600)}`).toBe(true);
   await expect(page.getByTestId('proposal-card').last()).toBeVisible({ timeout: 20_000 });
 });
 
@@ -279,28 +302,27 @@ for (const [what, reply, photo] of [
     const turn = await settledTurn(page);
     // Solved when what draws on the photo answers the request for a video;
     // through a template or a setup of the agent's own.
-    const carrying = turn.landed.flatMap((proposal) => generationsCarryingMaterial(proposal, turn.attached));
-    expect(answersVideoAsk(carrying), `generations drawing on the photo: ${carrying.map((node) => node.type).join(', ')}; templates: ${turn.templates.join(', ')}; said: ${turn.said.slice(0, 600)}`).toBe(true);
+    const carrying = (proposal: CanvasProposal): CanvasProposal['nodes'] => generationsCarryingMaterial(proposal, turn.attached);
+    expect(answersVideoAsk(turn.landed, carrying), `generations drawing on the photo: ${turn.landed.flatMap(carrying).map((node) => node.type).join(', ')}; templates: ${turn.templates.join(', ')}; said: ${turn.said.slice(0, 600)}`).toBe(true);
   });
 }
 
-test('given a character photo and asked for two videos of her, what lands for both carries that character @needs-model', async () => {
+test('given a character photo and asked for two videos of her, what lands first carries that character @needs-model', async () => {
   await ask('This is my character. I want two short videos of her: one walking through a park, one sitting in a café.', 'She is Mika, a 25-year-old bicycle courier, cheerful and stubborn; both videos are vertical, for Instagram.', 'character.jpg');
   const turn = await settledTurn(page);
   // Solved either way the agent may start, through a template or a setup of
   // its own: each scene gets a generation of its own drawing on her photo,
   // one naming the park and a different one naming the cafe, the two not
   // naming the same places though either may mention the other; or two or
-  // more takes of her look drawn from the photo land first, the scenes
-  // following from the take the user picks.
-  const carrying = turn.landed.flatMap((proposal) => generationsCarryingMaterial(proposal, turn.attached));
-  const words = carrying.map(wordsOf);
+  // more takes of the first scene's key frame drawn from the photo land
+  // first, the scenes following from the take the user picks.
+  const carrying = (proposal: CanvasProposal): CanvasProposal['nodes'] => generationsCarryingMaterial(proposal, turn.attached);
+  const words = turn.landed.flatMap(carrying).map(wordsOf);
   const park = (text: string): boolean => /\bparks?\b/i.test(text);
   const cafe = (text: string): boolean => /\bcaf[eé]|\bcoffee ?(shop|house)/i.test(text);
   const scenesApart = words.some((one, at) => park(one) && words.some((other, otherAt) => otherAt !== at && cafe(other) && !(cafe(one) && park(other))));
-  const takesOfHerLook = carrying.filter((node) => node.type === 'image').length >= 2;
-  const seen = `generations drawing on the photo: ${carrying.map((node) => `${node.type} ${node.name}`).join('; ')}; templates: ${turn.templates.join(', ')}; said: ${turn.said.slice(0, 600)}`;
-  expect(scenesApart || takesOfHerLook, seen).toBe(true);
+  const seen = `generations drawing on the photo: ${turn.landed.flatMap(carrying).map((node) => `${node.type} ${node.name}`).join('; ')}; templates: ${turn.templates.join(', ')}; said: ${turn.said.slice(0, 600)}`;
+  expect(scenesApart || takesFirst(turn.landed, carrying), seen).toBe(true);
 });
 
 test('given a video and asked outright for background music, it reads a music template and lands music on that template\'s model drawing on the video @needs-model', async () => {
