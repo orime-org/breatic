@@ -41,8 +41,8 @@ function light(n: number, type: 'directional' | 'point' | 'spot' = 'point', extr
 }
 
 /** Apply a command with the director limits. */
-function run(doc: Y.Doc, command: unknown, origin: symbol = Symbol('test')): ReturnType<typeof applySceneCommand> {
-  return (applySceneCommand as unknown as (...args: unknown[]) => ReturnType<typeof applySceneCommand>)(doc, command as SceneCommand, origin, true, NAME, LIMITS);
+function run(doc: Y.Doc, command: unknown, origin: symbol = Symbol('test'), limits = LIMITS): ReturnType<typeof applySceneCommand> {
+  return applySceneCommand(doc, command as SceneCommand, origin, true, NAME, limits);
 }
 
 describe('director records in the scene document (inner#1694 design 4)', () => {
@@ -132,6 +132,8 @@ describe('ambient light in the scene root (design 4.3)', () => {
 
 describe('director commands on two replicas (design 10 property test)', () => {
   it('keeps every record valid or isolated, converges, and never accepts a light past the limit', () => {
+    // A small limit lets random runs reach it.
+    const small = { maxLights: 3 };
     const step = fc.oneof(
       fc.record({ side: fc.constantFrom(0, 1), kind: fc.constant('light' as const), n: fc.integer({ min: 1, max: 30 }) }),
       fc.record({ side: fc.constantFrom(0, 1), kind: fc.constant('camera' as const), n: fc.integer({ min: 1, max: 30 }) }),
@@ -139,25 +141,25 @@ describe('director commands on two replicas (design 10 property test)', () => {
       fc.record({ side: fc.constantFrom(0, 1), kind: fc.constant('undo' as const), n: fc.constant(0) }),
       fc.record({ side: fc.constantFrom(0, 1), kind: fc.constant('sync' as const), n: fc.constant(0) }),
     );
-    fc.assert(fc.property(fc.array(step, { maxLength: 60 }), (steps) => {
+    fc.assert(fc.property(fc.array(step, { minLength: 30, maxLength: 60 }), (steps) => {
       const docs = [sceneDoc(), sceneDoc()];
       const origins = [Symbol('a'), Symbol('b')];
-      const histories = docs.map((doc, i) => createSceneHistory(doc, origins[i]!));
+      const histories = docs.map((doc, i) => createSceneHistory(doc, origins[i]));
       for (const { side, kind, n } of steps) {
-        const doc = docs[side]!;
+        const doc = docs[side];
         const lightsBefore = readSceneDocument(doc).objects.filter((object) => object.model.kind === ('light' as never)).length;
-        if (kind === 'sync') { Y.applyUpdate(docs[1 - side]!, Y.encodeStateAsUpdate(doc)); continue; }
-        if (kind === 'undo') { histories[side]!.undo(); continue; }
-        if (kind === 'delete') { run(doc, { type: 'delete', ids: [uuid(1000 + n)] }, origins[side]); continue; }
-        const result = run(doc, { type: 'create', objects: [kind === 'light' ? light(n + side * 100) : camera(n + side * 100)] }, origins[side]);
-        if (kind === 'light' && result.ok) expect(lightsBefore + 1).toBeLessThanOrEqual(LIMITS.maxLights);
+        if (kind === 'sync') { Y.applyUpdate(docs[1 - side], Y.encodeStateAsUpdate(doc)); continue; }
+        if (kind === 'undo') { histories[side].undo(); continue; }
+        if (kind === 'delete') { run(doc, { type: 'delete', ids: [uuid(1000 + n)] }, origins[side], small); continue; }
+        const result = run(doc, { type: 'create', objects: [kind === 'light' ? light(n + side * 100) : camera(n + side * 100)] }, origins[side], small);
+        if (kind === 'light' && result.ok) expect(lightsBefore + 1).toBeLessThanOrEqual(small.maxLights);
         if (kind === 'camera' && !result.ok) expect(result.reason).not.toBe('lightLimit');
       }
-      Y.applyUpdate(docs[1]!, Y.encodeStateAsUpdate(docs[0]!));
-      Y.applyUpdate(docs[0]!, Y.encodeStateAsUpdate(docs[1]!));
+      Y.applyUpdate(docs[1], Y.encodeStateAsUpdate(docs[0]));
+      Y.applyUpdate(docs[0], Y.encodeStateAsUpdate(docs[1]));
       const [a, b] = docs.map((doc) => readSceneDocument(doc));
-      expect(a!.invalidObjects).toEqual([]);
-      expect(a!.objects.map((object) => object.id).sort()).toEqual(b!.objects.map((object) => object.id).sort());
+      expect(a.invalidObjects).toEqual([]);
+      expect(a.objects.map((object) => object.id).sort()).toEqual(b.objects.map((object) => object.id).sort());
     }), { numRuns: 60 });
   });
 });

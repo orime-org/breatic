@@ -10,7 +10,7 @@ import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
 import { runHistoryStep } from '@web/data/yjs/history-step';
 import {
   applySceneCommand, createSceneHistory, readSceneDocument,
-  type SceneCommand, type SceneCommandResult, type SceneDocumentSnapshot, type ScenePatch,
+  type SceneCommand, type SceneCommandLimits, type SceneCommandResult, type SceneDocumentSnapshot, type ScenePatch,
 } from '@web/data/yjs/scene-document';
 import { PRESENCE_WRITE_INTERVAL_MS, createPublishThrottle } from '@web/lib/publish-throttle';
 import { userPaletteColor } from '@web/lib/user-color';
@@ -73,6 +73,7 @@ export class SceneSession {
   private focused = false;
   private destroyed = false;
   private commandError: Extract<SceneCommandResult, { ok: false }> | null = null;
+  private limits: SceneCommandLimits | undefined;
   private snapshot!: SceneSessionSnapshot;
 
   /**
@@ -364,12 +365,20 @@ export class SceneSession {
   }
 
   /**
+   * Take the configured command limits; until they arrive no light can be added.
+   * @param limits - The scene's configured limits.
+   */
+  setLimits(limits: SceneCommandLimits): void {
+    this.limits = limits;
+  }
+
+  /**
    * Validate against fresh permissions and committed values immediately before writing.
    * @param command - User operation to validate against current committed scene data.
    * @returns Affected identities or a refusal from the fresh command gate.
    */
   execute(command: SceneCommand): SceneCommandResult {
-    const result = applySceneCommand(this.doc, command, this.origin, this.snapshot.canEdit, this.name);
+    const result = applySceneCommand(this.doc, command, this.origin, this.snapshot.canEdit, this.name, this.limits);
     this.commandError = result.ok ? null : result;
     if (result.ok && (command.type === 'create' || command.type === 'duplicate')) this.replaceSelection(result.ids);
     this.refresh();

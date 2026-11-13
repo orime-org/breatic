@@ -60,6 +60,9 @@ export const SCENE_LIGHT_INTENSITY: Readonly<Record<SceneLightType, { initial: n
   spot: { initial: 40, max: 400 },
 };
 
+/** The colour a light without one reads as. */
+export const SCENE_LIGHT_COLOR_DEFAULT = '#ffffff';
+
 /** The ambient light a scene without its own setting reads as, and the strongest it may be. */
 export const SCENE_AMBIENT_COLOR_DEFAULT = '#ffffff';
 export const SCENE_AMBIENT_INTENSITY_DEFAULT = 2.7;
@@ -168,32 +171,31 @@ export const SCENE_CAMERA_KEYS = ['focalLength', 'frame', 'freeRatio'] as const;
 export const SCENE_LIGHT_KEYS = ['color', 'intensity', 'castShadow', 'angle'] as const;
 
 /**
- * Check the keys a record's kind may and must carry.
+ * Find what breaks the keys a record's kind may and must carry.
  * @param values - Values that passed the field checks.
- * @param context - Where issues are reported.
+ * @returns The first broken rule, or null.
  */
-function checkKindKeys(values: z.infer<typeof SceneObjectValuesSchema>, context: z.RefinementCtx): void {
-  const present = (keys: readonly string[]): string[] => keys.filter((key) => (values as Record<string, unknown>)[key] !== undefined);
-  const refuse = (message: string): void => { context.addIssue({ code: z.ZodIssueCode.custom, message }); };
+function kindKeysIssue(values: z.infer<typeof SceneObjectValuesSchema>): string | null {
+  const has = (values as Record<string, unknown>);
   const { model } = values;
   if (model.kind === 'builtin' || model.kind === 'asset') {
-    if (present(['number', ...SCENE_CAMERA_KEYS, ...SCENE_LIGHT_KEYS]).length > 0) refuse('A model carries no camera or light keys');
-    return;
+    return ['number', ...SCENE_CAMERA_KEYS, ...SCENE_LIGHT_KEYS].some((key) => has[key] !== undefined) ? 'A model carries no camera or light keys' : null;
   }
-  if (values.number === undefined) refuse('A camera or light needs a number');
-  if (values.pose !== undefined) refuse('A camera or light has no pose');
-  if (values.scale.some((axis) => axis !== 1)) refuse('A camera or light keeps a unit scale');
-  if (model.kind === 'camera') {
-    if (present(SCENE_LIGHT_KEYS).length > 0) refuse('A camera carries no light keys');
-    return;
-  }
-  if (present(SCENE_CAMERA_KEYS).length > 0) refuse('A light carries no camera keys');
-  if (model.type !== 'spot' && values.angle !== undefined) refuse('Only a spotlight has an angle');
-  if (values.intensity !== undefined && values.intensity > SCENE_LIGHT_INTENSITY[model.type].max) refuse('Intensity is above the light type maximum');
+  if (values.number === undefined) return 'A camera or light needs a number';
+  if (values.pose !== undefined) return 'A camera or light has no pose';
+  if (values.scale.some((axis) => axis !== 1)) return 'A camera or light keeps a unit scale';
+  if (model.kind === 'camera') return SCENE_LIGHT_KEYS.some((key) => has[key] !== undefined) ? 'A camera carries no light keys' : null;
+  if (SCENE_CAMERA_KEYS.some((key) => has[key] !== undefined)) return 'A light carries no camera keys';
+  if (model.type !== 'spot' && values.angle !== undefined) return 'Only a spotlight has an angle';
+  if (values.intensity !== undefined && values.intensity > SCENE_LIGHT_INTENSITY[model.type].max) return 'Intensity is above the light type maximum';
+  return null;
 }
 
 /** A projected object combines its stable document key with plain values its kind allows. */
-export const SceneObjectSchema = SceneObjectValuesSchema.extend({ id: z.string().uuid() }).superRefine(checkKindKeys);
+export const SceneObjectSchema = SceneObjectValuesSchema.extend({ id: z.string().uuid() }).superRefine((values, context) => {
+  const message = kindKeysIssue(values);
+  if (message !== null) context.addIssue({ code: z.ZodIssueCode.custom, message });
+});
 
 export type SceneVector = z.infer<typeof SceneVectorSchema>;
 export type SceneRotation = z.infer<typeof SceneRotationSchema>;
@@ -238,7 +240,11 @@ export function isSceneLight(object: SceneObject): object is SceneLightObject {
 /**
  * The one order of cameras and lights: by number, then by id.
  * @param a - One record.
+ * @param a.number - Its number.
+ * @param a.id - Its id.
  * @param b - The other.
+ * @param b.number - Its number.
+ * @param b.id - Its id.
  * @returns Negative, zero or positive as for `Array.prototype.sort`.
  */
 export function compareDirectorRecords(a: { number: number; id: string }, b: { number: number; id: string }): number {
