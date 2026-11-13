@@ -28,6 +28,7 @@ import {
   createBlockSpec,
   createExtension,
   createInlineContentSpec,
+  getNodeById,
   type BlockNoteEditor,
 } from '@blocknote/core';
 import { ReadOnlyExtension } from '@blocknote/core/extensions';
@@ -411,10 +412,7 @@ const MathFace = React.memo(function MathFace({
     element.setSelectionRange(at, at);
   }, [shown, caret]);
 
-  const [inCell, setInCell] = React.useState(false);
-  React.useLayoutEffect(() => {
-    setInCell(host.closest(`[data-node-type='${DOC_TABLE}']`) !== null);
-  }, [host]);
+  const inCell = React.useMemo(() => host.closest(`[data-node-type='${DOC_TABLE}']`) !== null, [host]);
   const viewport = React.useMemo(
     () => host.closest<HTMLElement>('[data-radix-scroll-area-viewport]') ?? undefined,
     [host],
@@ -584,13 +582,8 @@ type BoxOpener = Pick<AnyEditor, 'prosemirrorView'>;
 export function openFormulaBlock(editor: BoxOpener, id: string): boolean {
   const view = editor.prosemirrorView;
   if (view === undefined) return false;
-  let at = -1;
-  view.state.doc.descendants((node, pos) => {
-    if (at >= 0) return false;
-    if (node.attrs['id'] === id && node.firstChild?.type.name === MATH_BLOCK) at = pos + 1;
-    return at < 0;
-  });
-  return at >= 0 && openFormulaAt(view, at, 'end');
+  const found = getNodeById(id, view.state.doc);
+  return found?.node.firstChild?.type.name === MATH_BLOCK && openFormulaAt(view, found.posBeforeNode + 1, 'end');
 }
 
 /**

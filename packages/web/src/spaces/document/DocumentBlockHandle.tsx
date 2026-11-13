@@ -259,12 +259,12 @@ export function BlockStrip({ block, hold }: { block: PressedBlock | undefined; h
     [hold],
   );
 
-  // Held rather than written inline: the menu hands it to the memoised colour
-  // panel through two callbacks that list it, so a new identity per render
-  // would leave that memo comparing unequal props and unable to bail.
   // A formula block a pick made, whose box opens once the menu has let go of
   // the focus.
   const formulaToOpen = React.useRef<string | undefined>(undefined);
+  // Held rather than written inline: the menu hands it to the memoised colour
+  // panel through two callbacks that list it, so a new identity per render
+  // would leave that memo comparing unequal props and unable to bail.
   const closeMenu = React.useCallback((formula?: string): void => {
     formulaToOpen.current = formula;
     onMenuOpenChange(false);

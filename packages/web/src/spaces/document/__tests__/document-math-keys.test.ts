@@ -226,6 +226,17 @@ describe('a line deletion across an inline formula (§8)', () => {
     expect(editor.prosemirrorView!.state.doc.textContent).toBe('');
   });
 
+  it('leaves a word deletion across an inline formula to the browser', () => {
+    const { editor } = open([between()]);
+    select(editor, posOf(editor, 'math') + 3);
+
+    onOneScreenLine(editor, () => {
+      expect(deletion(editor, 'deleteWordBackward')).toBe(false);
+    });
+
+    expect(editor.prosemirrorView!.state.doc.textContent).toBe('a $$xy$$ b');
+  });
+
   it('leaves a line deletion that holds no formula to the browser', () => {
     const { editor } = open([between()]);
     select(editor, posOf(editor, 'math') + 1);

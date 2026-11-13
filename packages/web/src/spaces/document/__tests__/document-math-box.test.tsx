@@ -235,6 +235,49 @@ describe('closing a block formula’s box (§8.2)', () => {
     expect(posOf(editor, 'mathBlock')).toBeGreaterThanOrEqual(0);
   });
 
+  it.each([
+    ['ArrowUp at the start of the source', 'ArrowUp', 0, 'above', 5],
+    ['ArrowDown at the end of the source', 'ArrowDown', 3, 'below', 0],
+  ] as const)('closes on %s, the caret on the line beside it', async (_label, key, at, line, offset) => {
+    const { editor } = open(BLOCK);
+    const text = await openBy('.katex-display');
+    text.setSelectionRange(at, at);
+
+    fireEvent.keyDown(text, { key });
+
+    expect(closed()).toBe(true);
+    const { $from } = editor.prosemirrorView!.state.selection;
+    expect($from.parent.textContent).toBe(line);
+    expect($from.parentOffset).toBe(offset);
+  });
+
+  it('removes the formula with Delete in an empty source, the caret at the start of the line below', async () => {
+    const { editor } = open(BLOCK);
+    const text = await openBy('.katex-display');
+    fireEvent.change(text, { target: { value: '' } });
+
+    fireEvent.keyDown(text, { key: 'Delete' });
+
+    expect(posOf(editor, 'mathBlock')).toBe(-1);
+    const { $from } = editor.prosemirrorView!.state.selection;
+    expect($from.parent.textContent).toBe('below');
+    expect($from.parentOffset).toBe(0);
+  });
+
+  it('keeps the lines indented under a formula removed from an empty source, lifted into its place', async () => {
+    const { editor } = open([
+      { type: 'paragraph', content: 'above' },
+      { type: 'mathBlock', props: { source: 'x' }, children: [{ type: 'paragraph', content: 'kid' }] },
+    ]);
+    const text = await openBy('.katex-display');
+    fireEvent.change(text, { target: { value: '' } });
+
+    fireEvent.keyDown(text, { key: 'Backspace' });
+
+    expect(posOf(editor, 'mathBlock')).toBe(-1);
+    expect(editor.prosemirrorView!.state.doc.textContent).toBe('abovekid');
+  });
+
   it('leaves Shift+Enter to the field, a new line in the source', async () => {
     open(BLOCK);
     const text = await openBy('.katex-display');
@@ -360,5 +403,11 @@ describe('a read-only body', () => {
     await vi.waitFor(() => {
       expect(closed()).toBe(true);
     });
+    // Closed for good: the box does not come back when the body can be edited again.
+    act(() => {
+      editor.isEditable = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(closed()).toBe(true);
   });
 });

@@ -447,8 +447,6 @@ function escapeCode(text: string): string {
 function escapedForMarkdown(blocks: readonly BlockLike[]): BlockLike[] {
   return (blocks as readonly Read[]).map((block): Read => {
     const children = escapedForMarkdown(block.children ?? []) as Read[];
-    // A formula's source goes out between `$$` as it is.
-    if (block.type === MATH_BLOCK) return { ...block, children };
     if (block.type === CODE && Array.isArray(block.content)) {
       return { ...block, content: (block.content as Inline[]).map((c) => ({ ...c, text: escapeCode(c.text ?? '') })), children };
     }
@@ -477,7 +475,6 @@ function escapedForMarkdown(blocks: readonly BlockLike[]): BlockLike[] {
  */
 function escapedForHtml(blocks: readonly BlockLike[]): BlockLike[] {
   return (blocks as readonly Read[]).map((block) => {
-    if (block.type === MATH_BLOCK) return { ...block, children: escapedForHtml(block.children ?? []) as Read[] };
     const code = block.type === CODE;
     let afterBreak = false;
     /**
@@ -673,7 +670,7 @@ function parsed(parser: ViewedEditor, text: string): Read[] {
  * @returns True for one.
  */
 function holdsWords(block: Pick<Read, 'type' | 'content'>): boolean {
-  return Array.isArray(block.content) && block.type !== CODE && block.type !== MATH_BLOCK;
+  return Array.isArray(block.content) && block.type !== CODE;
 }
 
 /**
