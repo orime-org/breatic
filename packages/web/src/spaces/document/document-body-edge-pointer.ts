@@ -49,6 +49,7 @@ import { bodyScrollerOf, type PointerAt } from '@web/spaces/document/document-bo
 import { autoScrollOf } from '@web/spaces/document/document-drag-autoscroll';
 import { MEDIA_CHROME } from '@web/spaces/document/DocumentMediaBlock';
 import { DOC_TABLE } from '@web/spaces/document/document-table-nodes';
+import { DOC_COLUMN_LIST } from '@web/spaces/document/document-column-nodes';
 import { inTableFullscreen } from '@web/spaces/document/document-table-fullscreen';
 
 /**
@@ -130,17 +131,17 @@ function zoneAt(view: EditorView, y: number): PointerZone {
 }
 
 /**
- * Whether the block at one end of the body is a table. A press over a table
- * is its cells': the browser selects the words in them, and only a press past
- * the table's box reaches for the edge.
+ * Whether the block at one end of the body is a table or a column group. A
+ * press over either is its words': the browser selects the words in it, and
+ * only a press past its box reaches for the edge (inner#1314 design 5.5).
  * @param view - The view.
  * @param edge - Which end.
- * @returns True for a table.
+ * @returns True for a table or a column group.
  */
 function edgeBlockIsTable(view: EditorView, edge: BodyEdge): boolean {
   const pos = bodyEdgeBlockPos(view.state.doc, edge);
   const name = pos === null ? undefined : view.state.doc.nodeAt(pos)?.type.name;
-  return name === 'table' || name === DOC_TABLE;
+  return name === 'table' || name === DOC_TABLE || name === DOC_COLUMN_LIST;
 }
 
 /**

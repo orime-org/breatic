@@ -209,3 +209,55 @@ test('columns made in a cell of a fresh table widen its column to hold them side
   const tops = await page.locator(`${EDITOR} .doc-column`).evaluateAll((list) => list.map((column) => Math.round(column.getBoundingClientRect().top)));
   expect(tops[0]).toBe(tops[1]);
 });
+
+test('a press in a column group that ends the body selects its words, as in a table', async () => {
+  await openWithLines(page, ['alpha', 'beta']);
+  const a = await row(page, 'alpha').boundingBox();
+  if (a === null) throw new Error('no alpha');
+  await dragRowTo(page, 'beta', { x: a.x + a.width - 6, y: a.y + a.height / 2 });
+  await expect.poll(() => groups(page)).toEqual([['alpha', 'beta']]);
+
+  const words = page.locator(`${EDITOR} .bn-inline-content`, { hasText: /^alpha$/ });
+  const box = await words.boundingBox();
+  if (box === null) throw new Error('no words');
+  const text = await words.evaluate((element) => {
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    const rect = range.getBoundingClientRect();
+    return { left: rect.left, right: rect.right };
+  });
+  // From the end of the words back to their start: a press taken as the
+  // body's end would anchor the range at the end of the body instead.
+  await page.mouse.move(text.right + 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(text.left - 2, box.y + box.height / 2, { steps: 6 });
+  await page.mouse.up();
+  await expect.poll(() => page.evaluate(() => window.getSelection()?.toString() ?? '')).toBe('alpha');
+});
+
+test('a Shift+click in a column group that ends the body ends the range where it lands', async () => {
+  await openWithLines(page, ['alpha', 'betagamma']);
+  const a = await row(page, 'alpha').boundingBox();
+  if (a === null) throw new Error('no alpha');
+  await dragRowTo(page, 'betagamma', { x: a.x + a.width - 6, y: a.y + a.height / 2 });
+  await expect.poll(() => groups(page)).toEqual([['alpha', 'betagamma']]);
+
+  const reach = async (words: string): Promise<{ left: number; right: number; y: number }> =>
+    page.locator(`${EDITOR} .bn-inline-content`, { hasText: new RegExp(`^${words}$`) }).evaluate((element) => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      const rect = range.getBoundingClientRect();
+      return { left: rect.left, right: rect.right, y: rect.top + rect.height / 2 };
+    });
+  const first = await reach('alpha');
+  const second = await reach('betagamma');
+  await page.mouse.click(first.left + 1, first.y);
+  await page.keyboard.down('Shift');
+  await page.mouse.click(second.left + (second.right - second.left) * 0.45, second.y);
+  await page.keyboard.up('Shift');
+  const selected = await page.evaluate(() => window.getSelection()?.toString() ?? '');
+  expect(selected).toContain('alpha');
+  expect(selected).toContain('beta');
+  expect(selected).not.toContain('gamma');
+});
+
