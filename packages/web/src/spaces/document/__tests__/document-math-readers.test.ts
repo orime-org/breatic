@@ -95,6 +95,16 @@ describe('the bubble bar over a formula', () => {
 
     expect(hasTextIn(editor.prosemirrorView!.state.doc, at, at + 1)).toBe(true);
   });
+
+  it('finds nothing in a block formula selected whole, as in a picture (design §5.2)', () => {
+    const { editor } = open([
+      { type: 'paragraph', content: 'above' },
+      { type: 'mathBlock', props: { source: 'x+1' } },
+    ]);
+    const at = posOf(editor, 'mathBlock');
+
+    expect(hasTextIn(editor.prosemirrorView!.state.doc, at, at + 1)).toBe(false);
+  });
 });
 
 describe('a range selection over a block formula', () => {

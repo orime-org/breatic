@@ -81,7 +81,7 @@ import {
 
 
 import { commentTool } from '@web/spaces/document/document-comment-entries';
-import { holdsFormula } from '@web/spaces/document/document-math';
+import { holdsFormula, MATH_INLINE } from '@web/spaces/document/document-math';
 import { addToAgentTool } from '@web/spaces/document/document-to-agent';
 import { useTableFullscreen } from '@web/spaces/document/use-table-fullscreen';
 import { mergeCellsTool } from '@web/spaces/document/document-table-tools';
@@ -422,7 +422,8 @@ export function hasTextIn(doc: ProseMirrorNode, from: number, to: number): boole
   let found = false;
   doc.nodesBetween(from, to, (node) => {
     if (found) return false;
-    if ((node.isText && (node.text?.length ?? 0) > 0) || holdsFormula(node)) {
+    // A block formula is a block without words, as a picture is (inner#1423 design §5.2).
+    if ((node.isText && (node.text?.length ?? 0) > 0) || (node.type.name === MATH_INLINE && holdsFormula(node))) {
       found = true;
       return false;
     }
