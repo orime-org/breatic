@@ -224,9 +224,10 @@ export type GoogleAuthInput = z.infer<typeof googleAuthSchema>;
 const ATTACHED_CHIP_ID_MAX = 128;
 
 /**
- * One item attached to a chat message: a piece of the canvas the user added
- * to the agent, or a file picked with the attach button. The snapshot is taken
- * when it is attached; later edits to the canvas do not reach it.
+ * One item attached to a chat message: a piece of the canvas or of a Document
+ * the user added to the agent, or a file picked with the attach button. The
+ * snapshot is taken when it is attached; later edits to the Space do not
+ * reach it.
  */
 export const chatAttachedChipSchema = z.object({
   /** Made up for the item: from the picked node ids, or fresh for a file. */
@@ -234,7 +235,7 @@ export const chatAttachedChipSchema = z.object({
   type: z.enum(["canvas", "image", "video", "audio", "text"]),
   /** Display name for the chip; LLM context renders this as the section title. Same cap as an upload's file name. */
   name: z.string().max(255),
-  /** A canvas piece's `{ nodes, edges }`, or a file's `{ url }` or `{ text }`. */
+  /** A canvas piece's `{ nodes, edges }`; a file's `{ url }` or `{ text }`; a Document's text as `{ text }`, or its picture, video or audio as `{ url, name?, caption? }`. */
   data_snapshot: z.record(z.string(), z.unknown()),
 });
 export type ChatAttachedChip = z.infer<typeof chatAttachedChipSchema>;
