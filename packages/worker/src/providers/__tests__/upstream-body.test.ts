@@ -28,7 +28,8 @@ beforeAll(() => {
  * @param given - The job's params, prompt already lifted out.
  * @param prompt - The cleaned prompt.
  * @returns The upstream body.
- * @throws {Error} When the catalog has no such model.
+ * @throws {Error} When the catalog has no such model, or a text param is
+ *   outside its length bounds once cleaned.
  */
 function catalogBody(modality: CatalogModality, name: string, given: Record<string, unknown>, prompt = ""): Record<string, unknown> {
   const [, validated] = validateModelParams(modality, name, given);

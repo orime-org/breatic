@@ -6,13 +6,18 @@
  * for consistent shots of one character outright, it reads one of the
  * character templates and the proposal built on it lands; when the user
  * attaches a photo of a character and only asks for two videos of it, what
- * lands for both carries that character, whether through a template
- * or a setup of its own. The same for the pet selfie vlog (inner#1816): asked
- * outright for a pet video it builds on that template; given only a pet photo
- * and a request for a video, what lands carries the pet. And sound (inner#1825):
- * given a video and asked outright for background music, it builds on a music
- * template; given the video and asked only to finish it, what lands offers an
- * audio generation.
+ * lands first carries that character: a generation for each scene, or takes
+ * of the first scene's key frame for the user to pick from, whether through a
+ * template or a setup of its own. The same for the pet selfie vlog (inner#1816):
+ * asked outright for a pet video it builds on that template; given only a pet
+ * photo and a request for a video, what lands carries the pet. Food
+ * (inner#1808): asked outright for a cheese pull video it reads the food money
+ * shot; given only a dish photo, what lands carries the dish. Posters
+ * (inner#1809): asked outright for a festival travel poster with a title, it
+ * reads the festival poster, builds on it and writes the title into every
+ * version's prompt as given. And sound (inner#1825): given a video and asked
+ * outright for background music, it builds on a music template; given the
+ * video and asked only to finish it, what lands offers an audio generation.
  *
  * Each message is what a user would write, with nothing forbidding questions:
  * when the agent first asks what only the user knows, the case answers in the

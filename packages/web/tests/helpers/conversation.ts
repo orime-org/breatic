@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Starting a new Agent conversation the way a user does, and waiting until
- * it is open.
+ * Talking to the Agent the way a user does: starting a new conversation and
+ * waiting until it is open, sending a message from the composer and waiting
+ * for its turn to end, answering in the chat when the turn asks first, and
+ * reading the conversation back once the reply is stored.
  *
  * Pressing the header's new-conversation button posts the new conversation
  * and makes the composer read-only until the answer lands
