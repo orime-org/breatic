@@ -11,6 +11,10 @@
 -- global region). An empty database fills nothing.
 
 -- ── 1. Foreign keys across the global / regional line ────────────────
+-- An earlier migration in the same run may leave deferred constraint checks
+-- pending on these tables, and ALTER TABLE refuses a table with pending
+-- trigger events; run them now.
+SET CONSTRAINTS ALL IMMEDIATE;--> statement-breakpoint
 ALTER TABLE "credit_ledger" DROP CONSTRAINT "credit_ledger_project_id_fk";--> statement-breakpoint
 ALTER TABLE "credit_ledger" DROP CONSTRAINT "credit_ledger_studio_id_fk";--> statement-breakpoint
 ALTER TABLE "credit_lots" DROP CONSTRAINT "credit_lots_designated_studio_id_fk";--> statement-breakpoint

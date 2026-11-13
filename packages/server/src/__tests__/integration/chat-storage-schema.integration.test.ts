@@ -125,7 +125,6 @@ describe("conversation_messages — one row per message", () => {
 
   it("holds its references with RESTRICT, so deletes never cascade silently", async () => {
     expect(await deleteRuleOf("conversation_messages", "conversation_id")).toBe("RESTRICT");
-    expect(await deleteRuleOf("conversation_messages", "user_id")).toBe("RESTRICT");
   });
 
   it("defaults parts to an empty array rather than null", async () => {

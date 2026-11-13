@@ -594,11 +594,11 @@ describe("markCompletedAndBill with a charge", () => {
   it("rolls the completion back when the request cannot be written", async () => {
     const fx = await studioWith(100);
     const taskId = await seedTask(fx);
-    // An actor that does not exist fails the request's foreign key.
+    // A Project that does not exist fails the request's foreign key.
     await expect(
       taskService.markCompletedAndBill(taskId, { url: "https://example.test/b.png" }, 12, 900, {
-        actorUserId: randomUUID(),
-        projectId: fx.projectId,
+        actorUserId: fx.userId,
+        projectId: randomUUID(),
         amount: 12,
       }),
     ).rejects.toMatchObject({ cause: expect.objectContaining({ message: expect.stringMatching(/foreign key/) }) });
