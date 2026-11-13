@@ -18,9 +18,11 @@ import {
   getLimitsForStudio,
   getRedis,
   getRegionsConfig,
+  type ActivityCursor,
   type FirstMilestone,
   type MembershipLimits,
 } from "@breatic/core";
+import { listLedgerByStudio, type StudioLedgerRow } from "@domain/credit/creditLot.repo.js";
 import type { ProjectCreditsView } from "@breatic/shared";
 import * as usersRepo from "@domain/auth/user.repo.js";
 import {
@@ -37,7 +39,9 @@ import type { OutboxEvent } from "@domain/region/regionOutbox.service.js";
 import {
   getSpendableCredits,
   hasActiveDesignationsTo,
+  readStudioCreditsHere,
   settleRegionalCharge,
+  type StudioCreditsSnapshot,
   type RegionalChargeOutcome,
   type RegionalChargeRequest,
 } from "@domain/credit/creditLot.service.js";
@@ -115,6 +119,22 @@ export const GLOBAL_FUNCTIONS = {
    * @returns Its spendable credits.
    */
   getSpendableCredits: async (studioId: string): Promise<string> => String(await getSpendableCredits(studioId)),
+  /**
+   * A Studio's credits page from one snapshot, for its admin in the Studio's region.
+   * @param studioId - The Studio.
+   * @param limit - How many ledger lines to take.
+   * @returns The figures, the designated lots and the first ledger lines.
+   */
+  readStudioCredits: (studioId: string, limit: number): Promise<StudioCreditsSnapshot> => readStudioCreditsHere(studioId, limit),
+  /**
+   * A later page of a Studio's ledger.
+   * @param studioId - The Studio.
+   * @param limit - How many lines to take.
+   * @param cursor - The previous page's last line.
+   * @returns The page, newest first.
+   */
+  listStudioLedger: (studioId: string, limit: number, cursor: ActivityCursor): Promise<StudioLedgerRow[]> =>
+    listLedgerByStudio(studioId, limit, cursor),
   /**
    * Hold a new slug for a region's rename.
    * @param slug - The slug.

@@ -286,6 +286,41 @@ describe("the bell", () => {
   });
 });
 
+describe("the credits ledger", () => {
+  it("names a Project in another region from that region, and one here from here", async () => {
+    const { userId, personalId, cookie } = await signedIn(["sg"]);
+    const farStudio = crypto.randomUUID();
+    const farProject = crypto.randomUUID();
+    await sql`
+      INSERT INTO studio_directory (studio_id, slug, region, type, name, admin_user_id, created_by_user_id, state)
+      VALUES (${farStudio}, ${`xr-l-${seq++}-${Date.now()}`}, 'sg', 'team', 'Far', ${userId}, ${userId}, 'live')
+    `;
+    await sql`INSERT INTO studio_directory_members (studio_id, user_id, role) VALUES (${farStudio}, ${userId}, 'admin')`;
+    await sql`INSERT INTO project_directory (project_id, studio_id) VALUES (${farProject}, ${farStudio})`;
+    const [here] = await sql<{ id: string }[]>`
+      INSERT INTO projects (studio_id, created_by_user_id, slug, name)
+      VALUES (${personalId}, ${userId}, ${`xr-lp-${seq++}`}, 'Near project') RETURNING id
+    `;
+    await sql`INSERT INTO project_directory (project_id, studio_id) VALUES (${here!.id}, ${personalId})`;
+    const spends: [string, string][] = [[farStudio, farProject], [personalId, here!.id]];
+    for (const [studioId, projectId] of spends) {
+      await sql`
+        INSERT INTO credit_ledger (payer_user_id, actor_user_id, studio_id, project_id, entry_type, amount, reference_id)
+        VALUES (${userId}, ${userId}, ${studioId}, ${projectId}, 'spend', -5, ${`xr-ref-${seq++}`})
+      `;
+    }
+    regionAnswers.projectNames = { [farProject]: "Far project" };
+
+    const page = await get("/credits/ledger?amountFormat=decimal-v1", cookie);
+
+    const names = Object.fromEntries(
+      (page.body.data as { items: { projectId: string; projectName: string | null }[] }).items.map((item) => [item.projectId, item.projectName]),
+    );
+    expect(names).toEqual({ [farProject]: "Far project", [here!.id]: "Near project" });
+    expect(received).toEqual([{ fn: "projectNames", args: [[farProject]], signed: true }]);
+  });
+});
+
 describe("the directory", () => {
   it("names the region of a Studio by slug and of a Project by id", async () => {
     const { userId, cookie } = await signedIn();

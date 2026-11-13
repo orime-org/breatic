@@ -10,6 +10,7 @@ import type { NotificationListView, RecentItem, SignupInvitationPreview } from "
 import { profilesService, studioRepo } from "@breatic/domain";
 import { getRedis, NotFoundError, publishSessionsRevoked, recordRevokedIdentities } from "@breatic/core";
 import { claimEmailInvitations } from "@server/modules/invitation/claim-email-invitations.js";
+import { projectNamesHere } from "@server/modules/region/project-names.js";
 import { getInvitationPreview } from "@server/modules/invitation/invitation.service.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import { withResolvedRefs } from "@server/modules/notification/notification-refs.js";
@@ -77,6 +78,12 @@ export const SERVER_REGION_FUNCTIONS = {
    * @returns How many were marked.
    */
   markAllNotificationsRead: (userId: string): Promise<number> => notificationService.markAllRead(userId),
+  /**
+   * The names of this region's Projects, for the global region's pages.
+   * @param projectIds - The Projects.
+   * @returns Name by id, for the ones found.
+   */
+  projectNames: (projectIds: string[]): Promise<Record<string, string>> => projectNamesHere(projectIds),
   revokeSessions: async (userId: string, sids: string[]): Promise<void> => {
     await recordRevokedIdentities(getRedis(), sids);
     await publishSessionsRevoked(userId, sids);

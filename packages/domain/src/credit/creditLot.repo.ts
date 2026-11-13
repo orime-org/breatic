@@ -37,7 +37,6 @@ import {
   creditLedger,
   studioCreditDebts,
   studioDirectory,
-  projects,
   payments,
 } from "@breatic/core";
 import { GRANTED_SOURCE_KINDS, IN_FLIGHT_REFUND_LIFECYCLES } from "@breatic/shared";
@@ -1256,7 +1255,6 @@ export interface PayerLedgerRow {
   studioId: string | null;
   studioName: string | null;
   projectId: string | null;
-  projectName: string | null;
   model: string | null;
   provider: string | null;
   /** Which of the three kinds of line this is. */
@@ -1303,7 +1301,6 @@ export async function listLedgerByPayer(
       studioId: sql<string | null>`MAX(${creditLedger.studioId}::text)`,
       studioName: sql<string | null>`MAX(${spendingStudio.name})`,
       projectId: sql<string | null>`MAX(${creditLedger.projectId}::text)`,
-      projectName: sql<string | null>`MAX(${projects.name})`,
       model: sql<string | null>`MAX(${creditLedger.model})`,
       provider: sql<string | null>`MAX(${creditLedger.provider})`,
       // Which of the three this line is. A repayment carries no project and
@@ -1333,7 +1330,6 @@ export async function listLedgerByPayer(
     // No liveness condition: a run that happened in a studio since deleted
     // still has to say which studio it was.
     .leftJoin(spendingStudio, eq(spendingStudio.studioId, creditLedger.studioId))
-    .leftJoin(projects, eq(projects.id, creditLedger.projectId))
     .where(
       and(
         eq(creditLedger.payerUserId, payerUserId),
@@ -1387,7 +1383,6 @@ export interface StudioLedgerRow {
   actorUserId: string | null;
   actorName: string | null;
   projectId: string | null;
-  projectName: string | null;
   model: string | null;
   provider: string | null;
   /** What left the pool: spends and repayments that drew on a lot. */
@@ -1453,7 +1448,6 @@ export async function listLedgerByStudio(
       actorUserId: sql<string | null>`MAX(${creditLedger.actorUserId}::text)`,
       actorName: sql<string | null>`MAX(${studioDirectory.name})`,
       projectId: sql<string | null>`MAX(${creditLedger.projectId}::text)`,
-      projectName: sql<string | null>`MAX(${projects.name})`,
       model: sql<string | null>`MAX(${creditLedger.model})`,
       provider: sql<string | null>`MAX(${creditLedger.provider})`,
       charged: sql<string>`COALESCE(SUM(${creditLedger.amount}) FILTER (
@@ -1473,7 +1467,6 @@ export async function listLedgerByStudio(
         isNull(studioDirectory.deletedAt),
       ),
     )
-    .leftJoin(projects, eq(projects.id, creditLedger.projectId))
     .where(and(eq(creditLedger.studioId, studioId), ne(creditLedger.entryType, "rounding_adjustment")))
     .groupBy(sql`COALESCE(${creditLedger.referenceId}, ${creditLedger.id}::text)`)
     .having(

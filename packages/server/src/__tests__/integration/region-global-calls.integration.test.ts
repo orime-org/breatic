@@ -85,6 +85,9 @@ function answerReads(stand: RegionStandIn): void {
   stand.answers.getProfiles = () => ({});
   stand.answers.getAccounts = () => [];
   stand.answers.claimAccountMilestone = () => ({ claimed: false });
+  stand.answers.readStudioCredits = () => ({
+    spendable: "0.000000", debt: "0.000000", held: "0.000000", available: "0.000000", lots: [], ledger: [],
+  });
 }
 
 beforeAll(async () => {
@@ -149,8 +152,10 @@ describe("serving Studio and Project requests in a region", () => {
     });
     const projectId = ((await created.json()) as { data?: { id?: string } }).data?.id;
     const project = await app.request(`/api/v1/projects/${projectId}`, { headers });
+    const credits = await app.request(`/api/v1/studio/${slug}/credits?amountFormat=decimal-v1`, { headers });
 
-    expect([studioPage.status, members.status, created.status, project.status]).toEqual([200, 200, 201, 200]);
+    expect([studioPage.status, members.status, created.status, project.status, credits.status]).toEqual([200, 200, 201, 200, 200]);
+    expect(global.received.map((call) => call.fn)).toContain("readStudioCredits");
     expect(global.received.length).toBeGreaterThan(0);
     for (const call of global.received) {
       expect(call.side).toBe("global");

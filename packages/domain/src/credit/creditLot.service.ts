@@ -49,6 +49,7 @@ import {
   ForbiddenError,
   projectsRepo,
   studioDirectoryRepo,
+  type ActivityCursor,
   type DbTx,
 } from "@breatic/core";
 import {
@@ -1216,6 +1217,56 @@ export interface StudioCreditsSnapshot {
  * @returns The four figures, all as of the same instant.
  */
 export async function readStudioCredits(
+  studioId: string,
+  limit: number,
+): Promise<StudioCreditsSnapshot> {
+  if (inGlobalRegion()) return readStudioCreditsHere(studioId, limit);
+  const snapshot = await globalApi().readStudioCredits(studioId, limit);
+  return { ...snapshot, lots: snapshot.lots.map(revivedLot), ledger: snapshot.ledger.map(revivedLedgerRow) };
+}
+
+/**
+ * One page of a studio's ledger after the first, read where the books are.
+ * @param studioId - The studio to read.
+ * @param limit - How many lines to take.
+ * @param cursor - The `(created_at, id)` of the previous page's last line.
+ * @returns The page, newest first.
+ */
+export async function listStudioLedger(
+  studioId: string,
+  limit: number,
+  cursor: ActivityCursor,
+): Promise<creditLotRepo.StudioLedgerRow[]> {
+  if (inGlobalRegion()) return creditLotRepo.listLedgerByStudio(studioId, limit, cursor);
+  const rows = await globalApi().listStudioLedger(studioId, limit, cursor);
+  return rows.map(revivedLedgerRow);
+}
+
+/**
+ * A lot as it left the global region, with its instants as dates again.
+ * @param lot - The lot read from JSON.
+ * @returns The lot.
+ */
+function revivedLot(lot: creditLotRepo.StudioLot): creditLotRepo.StudioLot {
+  return { ...lot, createdAt: new Date(lot.createdAt), updatedAt: new Date(lot.updatedAt) };
+}
+
+/**
+ * A ledger line as it left the global region, with its instant as a date again.
+ * @param row - The line read from JSON.
+ * @returns The line.
+ */
+function revivedLedgerRow(row: creditLotRepo.StudioLedgerRow): creditLotRepo.StudioLedgerRow {
+  return { ...row, createdAt: new Date(row.createdAt) };
+}
+
+/**
+ * Read a studio's credits page from one snapshot, in the region that holds the books.
+ * @param studioId - The studio to read.
+ * @param limit - How many ledger lines to take.
+ * @returns The four figures, all as of the same instant.
+ */
+export async function readStudioCreditsHere(
   studioId: string,
   limit: number,
 ): Promise<StudioCreditsSnapshot> {
