@@ -287,6 +287,8 @@ test('asked outright for a festival travel poster, it reads the festival poster 
   // Solved when a picture lands, whether built on the template or on the agent's own setup drawing on it.
   const pictures = turn.landed.flatMap((proposal) => proposal.nodes).filter((node) => node.role === 'generate' && node.type === 'image');
   expect(pictures.length, `named: ${turn.templates.join(', ')}; said: ${turn.said.slice(0, 600)}`).toBeGreaterThanOrEqual(1);
+  // The title the user gave goes into the picture as written.
+  expect(JSON.stringify(pictures), `said: ${turn.said.slice(0, 600)}`).toContain('KYOTO AUTUMN');
   await expect(page.getByTestId('proposal-card').last()).toBeVisible({ timeout: 20_000 });
 });
 
