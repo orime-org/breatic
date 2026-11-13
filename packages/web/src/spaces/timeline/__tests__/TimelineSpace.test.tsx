@@ -3272,6 +3272,55 @@ describe('TimelineSpace frame ratio and play bar (breatic#1502)', () => {
     expect(options.map((option) => option.textContent?.trim())).toEqual(OPTIONS);
   });
 
+  it('shows each preset ratio as text with its size muted in tabular digits, in the list and on the trigger', async () => {
+    seedContent();
+    showTimeline();
+    const user = userEvent.setup();
+    const trigger = await screen.findByTestId('timeline-frame-ratio');
+    /**
+     * The ratio part and the muted size part of a preset label.
+     * @param element - The option or trigger.
+     * @returns Both parts.
+     * @throws {Error} When the label is not split in two.
+     */
+    const parts = (element: HTMLElement): { ratio: Element; size: Element } => {
+      const size = element.querySelector('.text-muted-foreground.tabular-nums');
+      const ratio = size?.previousElementSibling;
+      if (size === null || ratio === null || ratio === undefined) throw new Error('The label has no muted size part');
+      return { ratio, size };
+    };
+    expect(parts(trigger).ratio.textContent).toBe('16:9');
+    expect(parts(trigger).size.textContent).toBe('· 1920×1080');
+    expect(trigger.textContent).toBe('16:9 · 1920×1080');
+    await user.click(trigger);
+    const options = await screen.findAllByRole('option');
+    for (const [index, option] of options.entries()) {
+      const { ratio, size } = parts(option);
+      expect(ratio).toHaveClass('inline-block', 'min-w-[4ch]');
+      expect(ratio).not.toHaveClass('text-muted-foreground');
+      expect(`${ratio.textContent ?? ''} ${size.textContent ?? ''}`).toBe(OPTIONS[index]);
+      expect(option).toHaveAccessibleName(OPTIONS[index]);
+    }
+  });
+
+  it('fills the frame black in every theme, keeps its border and lets the preview use the whole width', async () => {
+    seedContent();
+    showTimeline();
+    const frame = await screen.findByTestId('timeline-preview');
+    expect(frame).toHaveClass('bg-black', 'border', 'border-border');
+    expect(frame).not.toHaveClass('bg-background');
+    expect(screen.getByTestId('timeline-preview-area')).not.toHaveClass('max-w-4xl');
+  });
+
+  it('writes the empty-state text in a colour that stays readable on the black frame in both themes', async () => {
+    seedContent();
+    showTimeline();
+    const empty = await screen.findByTestId('timeline-space-empty');
+    expect(screen.getByTestId('timeline-preview').contains(empty)).toBe(true);
+    expect(empty).toHaveClass('text-white/60');
+    expect(empty).not.toHaveClass('text-muted-foreground');
+  });
+
   it('writes the chosen preset as one step: the frame changes, clips stay, and undo brings the old frame back', async () => {
     seedLayout([CLIP]);
     showTimeline();
@@ -3312,14 +3361,22 @@ describe('TimelineSpace frame ratio and play bar (breatic#1502)', () => {
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
   });
 
-  it('shows nothing for a frame size outside the seven presets, previews it, and changes it to any preset chosen', async () => {
+  it('shows the stored size muted for a frame outside the seven presets, checks no preset, previews it, and changes it to any preset chosen', async () => {
     seedFrame(1280, 720);
     showTimeline();
     const trigger = await screen.findByTestId('timeline-frame-ratio');
-    expect(trigger.textContent?.trim()).toBe('');
+    expect(trigger.textContent?.trim()).toBe('1280×720');
+    expect(trigger).toHaveAttribute('data-placeholder');
+    expect(trigger).toHaveClass('data-[placeholder]:text-muted-foreground');
     expect(screen.getByTestId('timeline-preview')).toBeInTheDocument();
     const user = userEvent.setup();
     await user.click(trigger);
+    const options = await screen.findAllByRole('option');
+    expect(options).toHaveLength(OPTIONS.length);
+    for (const option of options) {
+      expect(option).toHaveAttribute('aria-selected', 'false');
+      expect(option).not.toHaveAttribute('data-state', 'checked');
+    }
     await user.click(await screen.findByRole('option', { name: '1:1 · 1080×1080' }));
     await waitFor(() => expect(layout().settings).toEqual({ ...SETTINGS, width: 1080, height: 1080 }));
   });
@@ -3346,6 +3403,18 @@ describe('TimelineSpace frame ratio and play bar (breatic#1502)', () => {
     expect(within(playBar()).queryByText('Paused')).toBe(null);
     expect(within(playBar()).queryByText('Playing')).toBe(null);
     expect(within(playBar()).queryByText(t('timeline.transport.waiting'))).toBe(null);
+  });
+
+  it('lays the play bar out as play button, timecode, slider and ratio control, with the timecode able to hold the buffering text above it', async () => {
+    seedContent();
+    showTimeline();
+    await screen.findByTestId('timeline-play');
+    const row = playBar();
+    const timecodeBox = within(row).getByTestId('timeline-timecode');
+    expect(timecodeBox).toHaveClass('relative');
+    expect(timecodeBox).toHaveTextContent(position(0, 0));
+    expect([...row.children].map((child) => child.getAttribute('data-testid') ?? child.getAttribute('role') ?? child.querySelector('[role]')?.getAttribute('role')))
+      .toEqual(['timeline-play', 'timeline-timecode', 'slider', 'timeline-frame-ratio']);
   });
 
   it('removes the paused and playing transport strings from every locale', () => {

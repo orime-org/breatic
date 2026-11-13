@@ -1022,12 +1022,17 @@ describe('play holds for a web copy that has just become visible', () => {
   }
 
   /**
-   * Whether the play bar shows the buffering text.
+   * Whether the play bar shows the buffering text. The text sits above the timecode, inside its wrapper and taken out of
+   * the flow, so it never sits between the slider and the ratio control or moves anything in the row.
    * @returns True while it does.
-   * @throws {never} Never.
+   * @throws {Error} When the text is anywhere but above the timecode.
    */
   function buffering(): boolean {
-    return screen.queryByText(t('timeline.transport.waiting')) !== null;
+    const label = screen.queryByText(t('timeline.transport.waiting'));
+    if (label === null) return false;
+    expect(screen.getByTestId('timeline-timecode').contains(label)).toBe(true);
+    expect(label).toHaveClass('absolute', 'bottom-full', 'pointer-events-none', 'whitespace-nowrap');
+    return true;
   }
 
   it('waits at the copy while its preview address is still being fetched, and plays once its page answers', async () => {

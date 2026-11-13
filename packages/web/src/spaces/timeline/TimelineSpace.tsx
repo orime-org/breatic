@@ -884,12 +884,12 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
       <div className='flex min-h-0 flex-1 items-center justify-center bg-muted/40 p-6'>
         {/* The frame clips the layers; the operation layer above it does not, so handles outside the frame stay reachable;
             the note layer is on top and lets clicks through except on its notes (#1410 design §4.1). */}
-        <div ref={setPreviewArea} data-testid='timeline-preview-area' className='flex h-full w-full max-w-4xl items-center justify-center'>
+        <div ref={setPreviewArea} data-testid='timeline-preview-area' className='flex h-full w-full items-center justify-center'>
           <div className='relative shrink-0' style={previewStyle}>
-            <div data-testid='timeline-preview' className='absolute inset-0 isolate flex items-center justify-center overflow-hidden rounded-content-sm border border-border bg-background'>
+            <div data-testid='timeline-preview' className='absolute inset-0 isolate flex items-center justify-center overflow-hidden rounded-content-sm border border-border bg-black'>
               <div ref={videoHost} className='pointer-events-none absolute inset-0' />
               <TimelineWebPreview projectId={projectId} entries={webEntries} states={playback.webStates} sharing={sharing} onPlayer={registerPlayer} onRetry={retryWeb} onUnavailable={reportUnavailable} uploadNotes={uploadNotes} notes={notesLayer} />
-              {clips.length === 0 && <div data-testid='timeline-space-empty' className='flex flex-col items-center gap-3 p-6 text-center text-sm text-muted-foreground'><Film className='size-8' /><p>{t('timeline.empty')}</p></div>}
+              {clips.length === 0 && <div data-testid='timeline-space-empty' className='flex flex-col items-center gap-3 p-6 text-center text-sm text-white/60'><Film className='size-8' /><p>{t('timeline.empty')}</p></div>}
               {inConflict && visible.length === 0 && <p className='p-6 text-center text-sm text-status-error-foreground'>{t('timeline.conflictHelp')}</p>}
             </div>
             {!readOnly && <div data-testid='timeline-layer-overlay' className='absolute inset-px' style={OPERATION_LAYER_STYLE}>
@@ -912,9 +912,12 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
       </div>
       <div data-playback-state={playback.state} className='flex shrink-0 items-center gap-3 border-t border-border px-4 py-2'>
         <Button data-testid='timeline-play' variant='outline' size='sm' className='gap-1.5' disabled={duration === 0} onClick={playback.toggle} icon={playback.intent === 'play' ? <Pause className='size-4' /> : <Play className='size-4' />}>{playback.intent === 'play' ? t('timeline.pause') : t('timeline.play')}</Button>
-        <span className='shrink-0 text-xs tabular-nums'>{`${formatTimelineTimecode(frame, fps)} / ${formatTimelineTimecode(duration, fps)}`}</span>
+        {/* The buffering text sits above the timecode, out of the flow, so nothing in the row moves when it appears. */}
+        <div data-testid='timeline-timecode' className='relative flex shrink-0'>
+          <span className='text-xs tabular-nums'>{`${formatTimelineTimecode(frame, fps)} / ${formatTimelineTimecode(duration, fps)}`}</span>
+          {playback.state === 'waiting' && <span className='pointer-events-none absolute bottom-full left-0 mb-0.5 whitespace-nowrap text-2xs leading-none text-muted-foreground'>{t('timeline.transport.waiting')}</span>}
+        </div>
         <Slider aria-label={t('timeline.seek')} value={seekValue} onValueChange={onSeek} min={0} max={Math.max(1, duration - 1)} step={1} disabled={duration === 0} className='min-w-0 flex-1' />
-        {playback.state === 'waiting' && <span className='shrink-0 text-xs text-muted-foreground'>{t('timeline.transport.waiting')}</span>}
         <TimelineFrameRatio width={canvas.width} height={canvas.height} readOnly={readOnly} onChoose={chooseFrame} />
       </div>
       <div role='toolbar' aria-label={t('timeline.tracks')} className='flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-2'>

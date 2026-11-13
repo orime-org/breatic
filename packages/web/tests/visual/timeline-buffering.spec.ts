@@ -158,6 +158,35 @@ async function withBufferingTimeline(
   }
 }
 
+/** Where the play bar's controls sit, and whether the buffering label, when it shows, sits above the timecode inside the bar. */
+interface PlayBarGeometry { slider: string; ratio: string; play: string; labelAboveTimecode: boolean | null }
+
+/**
+ * Measures the play bar so a playback state change can be shown to leave its controls in place.
+ * @throws {Error} When the play bar is absent.
+ */
+async function playBarGeometry(page: Page): Promise<PlayBarGeometry> {
+  return visibleSpace(page).locator('[data-playback-state]').evaluate((row) => {
+    const box = (element: Element | null): string => {
+      if (element === null) throw new Error('a play bar control is absent');
+      const rect = element.getBoundingClientRect();
+      return `${rect.left},${rect.top},${rect.width},${rect.height}`;
+    };
+    const timecode = row.querySelector('[data-testid="timeline-timecode"]');
+    const label = timecode?.querySelector('span:nth-child(2)') ?? null;
+    return {
+      // The seek slider's root follows the timecode; its thumb moves with playback, the root does not.
+      slider: box(timecode?.nextElementSibling ?? null),
+      ratio: box(row.querySelector('[data-testid="timeline-frame-ratio"]')),
+      play: box(row.querySelector('[data-testid="timeline-play"]')),
+      labelAboveTimecode: label === null || timecode?.firstElementChild === null || timecode?.firstElementChild === undefined
+        ? null
+        : label.getBoundingClientRect().bottom <= timecode.firstElementChild.getBoundingClientRect().top + 0.5
+          && label.getBoundingClientRect().top >= row.getBoundingClientRect().top,
+    };
+  });
+}
+
 /**
  * Play real decoded bytes and wait for native starvation after observable clock advancement.
  * @throws {Error} When native playback, genuine waiting or the Timeline waiting state never appears.
@@ -179,12 +208,17 @@ async function enterNativeWaiting(page: Page, uploaded: TimelineUpload, range: T
   expect(advancing.at(-1)!.time).toBeGreaterThan(advancing[0].time);
   expect(advancing.at(-1)!.frame).toBeGreaterThan(advancing[0].frame);
   const earlierWaitingEvents = advancing.at(-1)!.waitingEvents;
+  const playingBar = await playBarGeometry(page);
   await expect.poll(() => range.heldResponses).toBeGreaterThan(0);
   await expect.poll(() => video.evaluate((element: HTMLVideoElement) => ({
     starved: element.readyState < HTMLMediaElement.HAVE_FUTURE_DATA && !element.ended && element.currentTime > 1,
     waitingEvents: Number(element.getAttribute('data-test-native-waiting')),
   })), { timeout: 20_000 }).toMatchObject({ starved: true, waitingEvents: expect.any(Number) });
   await expect(outlet.getByText('Buffering…', { exact: true })).toBeVisible();
+  // The buffering text hangs above the timecode, so the controls keep their places (#1502 visual review).
+  const waitingBar = await playBarGeometry(page);
+  expect(waitingBar).toEqual({ ...playingBar, labelAboveTimecode: true });
+  await outlet.locator('[data-playback-state]').screenshot({ path: test.info().outputPath('play-bar-waiting.png') });
   const waiting = await sampleTransport(page, uploaded.clipId);
   expect(waiting.length).toBeGreaterThan(2);
   expect(waiting[0].waitingEvents).toBeGreaterThan(earlierWaitingEvents);
