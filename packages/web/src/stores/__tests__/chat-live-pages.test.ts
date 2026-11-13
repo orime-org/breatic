@@ -155,7 +155,7 @@ describe('a stop pressed on one of two pages reading the run', () => {
     await settle();
 
     await a.live.chatLive.stop('p1', 'c1');
-    expect(a.api.stop).toHaveBeenCalledWith('c1', 'p1');
+    expect(a.api.stop).toHaveBeenCalledWith('c1', 'p1', undefined);
     expect(b.api.stop).not.toHaveBeenCalled();
     for (const s of streams) {
       s.push({ type: 'data-interrupted', data: {} });

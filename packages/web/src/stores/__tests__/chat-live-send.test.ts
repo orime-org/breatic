@@ -121,6 +121,8 @@ describe('a message sent', () => {
     vi.mocked(chatApi.sendMessage).mockResolvedValueOnce(answer('start'));
     chatLive.show('p1', 'c1');
     await settle();
+    // Showing it read the history once; what follows is the send's own.
+    order.length = 0;
     await send();
     await settle();
     expect(conversationRuntime.draftOf('c1')).toBe('');

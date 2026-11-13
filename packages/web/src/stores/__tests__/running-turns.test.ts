@@ -218,7 +218,7 @@ describe('a run this page reads', () => {
 
     await chatLive.stop('p-1', 'c-1');
     await settle();
-    expect(chatApi.stop).toHaveBeenCalledWith('c-1', 'p-1');
+    expect(chatApi.stop).toHaveBeenCalledWith('c-1', 'p-1', undefined);
     wire.last()?.push({ type: 'data-interrupted', data: {} });
     wire.last()?.close();
     await settle();
@@ -341,6 +341,7 @@ describe('a questionnaire answered on this page', () => {
         details: { code: 409, call: { status: 'success', output: { repliedInChat: true } } },
       }),
     );
+    vi.mocked(chatApi.readConversation).mockResolvedValue({ conversation: { id: 'c-1' } as never, messages: structuredClone(PAUSED), hasMore: false });
     const chat = aConversation('c-1', structuredClone(PAUSED));
     chatLive.show('p-1', 'c-1');
     await settle();

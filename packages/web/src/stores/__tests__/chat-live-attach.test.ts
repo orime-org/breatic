@@ -359,6 +359,34 @@ describe('the sync of the conversation on screen', () => {
   });
 });
 
+describe('the history on screen when no run is read', () => {
+  /** A reply the server finished storing. */
+  const DONE: StoredUiMessage = {
+    id: 'a1',
+    role: 'assistant',
+    parts: [{ type: 'text', text: 'all done' }],
+    metadata: { turnIndex: 1 } as never,
+  };
+
+  it('is read again on showing a conversation whose run ended while it was away', async () => {
+    vi.mocked(chatApi.readConversation).mockResolvedValue(page([userRow('m1', 1), DONE]));
+    chatLive.show('p1', 'c1');
+    await settle();
+    expect(messages().map((m) => m.id)).toEqual(['m1', 'a1']);
+  });
+
+  it('is read again when the run a sync named ended before its stream was asked for', async () => {
+    vi.mocked(chatApi.sync).mockResolvedValueOnce(RUNNING);
+    vi.mocked(chatApi.readConversation)
+      .mockResolvedValueOnce(page([userRow('m1', 1)]))
+      .mockResolvedValue(page([userRow('m1', 1), DONE]));
+    wire.noRunNext();
+    chatLive.show('p1', 'c1');
+    await settle();
+    expect(messages().map((m) => m.id)).toEqual(['m1', 'a1']);
+  });
+});
+
 describe('a sync that says a run holds it when no stream is there to read', () => {
   it('leaves the next ask to the sync at its interval', async () => {
     vi.mocked(chatApi.sync).mockResolvedValue(RUNNING);

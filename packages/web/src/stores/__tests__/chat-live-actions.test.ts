@@ -178,7 +178,7 @@ describe('pressing stop', () => {
     for (const f of replyOpens()) s.push(f);
     const stopping = chatLive.stop('p1', 'c1');
     await settle();
-    expect(chatApi.stop).toHaveBeenCalledWith('c1', 'p1');
+    expect(chatApi.stop).toHaveBeenCalledWith('c1', 'p1', undefined);
     expect(useChatLive.getState().stopping.c1).toBe(true);
     expect(s.abandoned()).toBe(false);
     answerStop({ stopped: true });

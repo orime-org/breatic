@@ -482,7 +482,7 @@ describe('a turn the user stopped', () => {
     });
 
     await waitFor(() => {
-      expect(chatApi.stop).toHaveBeenCalledWith('c-1', 'p-1');
+      expect(chatApi.stop).toHaveBeenCalledWith('c-1', 'p-1', undefined);
     });
     // The page does not stop reading: the stream goes on to the end the server writes.
     expect(wire.last()?.abandoned()).toBe(false);
