@@ -24,9 +24,10 @@
 import { createExtension } from '@blocknote/core';
 import { Plugin, PluginKey, type EditorState, type Transaction } from '@tiptap/pm/state';
 import { Mapping } from '@tiptap/pm/transform';
-import type { Node as PMNode } from '@tiptap/pm/model';
+import { Fragment, type Node as PMNode } from '@tiptap/pm/model';
 import { ySyncPluginKey } from 'y-prosemirror';
 
+import { columnsBarredAt } from '@web/spaces/document/document-column-entry';
 import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-nodes';
 
 /**
@@ -142,17 +143,31 @@ function repair(
       ...localRanges(transactions).map(([from, to]): Range => [tr.mapping.map(from, -1), tr.mapping.map(to, 1)]),
       ...emptied.map(([from]): Range => [tr.mapping.map(from, -1), tr.mapping.map(from, 1)]),
     ];
-    const groups: { pos: number; node: PMNode }[] = [];
+    // A group where none may stand (design 5.1) unfolds like a one-column
+    // group, every column's blocks in reading order. Inner groups come first,
+    // so each is read again where it stands then.
+    const groups: number[] = [];
     tr.doc.descendants((node, pos) => {
       if (node.type.name !== DOC_COLUMN_LIST) return true;
-      if (node.childCount === 0 || (node.childCount === 1 && meets(touched, pos, pos + node.nodeSize))) {
-        groups.push({ pos, node });
-      }
-      return false;
+      const leftover = node.childCount === 0 || (node.childCount === 1 && meets(touched, pos, pos + node.nodeSize));
+      if (leftover || columnsBarredAt(tr.doc.resolve(pos))) groups.push(pos);
+      return true;
     });
-    for (const { pos, node } of groups.reverse()) {
-      if (node.childCount === 0) tr.delete(pos, pos + node.nodeSize);
-      else tr.replaceWith(pos, pos + node.nodeSize, node.firstChild!.content);
+    for (const pos of groups.reverse()) {
+      const node = tr.doc.nodeAt(pos);
+      if (node === null) continue;
+      if (node.childCount === 0) {
+        tr.delete(pos, pos + node.nodeSize);
+        continue;
+      }
+      const blocks: PMNode[] = [];
+      node.forEach((column) => column.forEach((block) => blocks.push(block)));
+      const $pos = tr.doc.resolve(pos);
+      // A table that cannot stand where the group stood (a cell) waits for
+      // the cell's own rule (`unfoldCellTables`) and the next change.
+      if ($pos.parent.canReplace($pos.index(), $pos.index() + 1, Fragment.from(blocks))) {
+        tr.replaceWith(pos, pos + node.nodeSize, blocks);
+      }
     }
   }
   return tr.docChanged ? tr : null;
