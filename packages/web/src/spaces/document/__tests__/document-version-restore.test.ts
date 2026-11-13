@@ -277,6 +277,49 @@ describe('snapshotOf', () => {
     expect(() => only.pmSchema.nodeFromJSON(alone.content).check()).not.toThrow();
   });
 
+  it('drops a column whose only block was uploading, and lays out a group left with one column (inner#1314)', () => {
+    const { editor } = open([
+      { type: 'paragraph', content: 'lead' },
+      {
+        type: 'docColumnList',
+        children: [
+          { type: 'docColumn', children: [{ type: 'paragraph', content: 'left' }] },
+          { type: 'docColumn', children: [pending] },
+        ],
+      },
+    ]);
+
+    const { content, leftOut } = snapshotOf(editor.prosemirrorState.doc);
+
+    expect(leftOut).toBe(1);
+    const node = editor.pmSchema.nodeFromJSON(content);
+    expect(() => node.check()).not.toThrow();
+    const lines: string[] = [];
+    node.firstChild!.forEach((block) => lines.push(`${block.type.name}:${block.textContent}`));
+    expect(lines).toEqual(['blockContainer:lead', 'blockContainer:left']);
+  });
+
+  it('keeps a group whose other columns stay, without the emptied one (inner#1314)', () => {
+    const { editor } = open([
+      {
+        type: 'docColumnList',
+        children: [
+          { type: 'docColumn', children: [{ type: 'paragraph', content: 'one' }] },
+          { type: 'docColumn', children: [pending] },
+          { type: 'docColumn', children: [{ type: 'paragraph', content: 'three' }] },
+        ],
+      },
+    ]);
+
+    const node = editor.pmSchema.nodeFromJSON(snapshotOf(editor.prosemirrorState.doc).content);
+
+    expect(() => node.check()).not.toThrow();
+    const group = node.firstChild!.firstChild!;
+    expect(group.type.name).toBe('docColumnList');
+    expect(group.childCount).toBe(2);
+    expect(group.textContent).toBe('onethree');
+  });
+
   it('keeps what is nested under a block still uploading, in its place', () => {
     const { editor } = open([
       { type: 'paragraph', content: 'before' },
