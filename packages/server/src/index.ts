@@ -37,7 +37,7 @@ import { loadLocales } from "@breatic/core";
 import { startLifecycleRelay } from "@server/modules/project/lifecycle-relay.js";
 import { startRefundLoop } from "@server/modules/credit-refund/refund-loop.js";
 import { settleAfterReply, pendingAfterReply } from "@server/utils/after-reply.js";
-import { agentModelIds, assertModelsPriced, modelCatalog } from "@breatic/domain";
+import { agentModelIds, initProvider, modelCatalog, provider } from "@breatic/domain";
 import { textToolModels } from "@server/config/text-tools.js";
 
 // Tag this process's logs as "server" (file dir logs/server/, `name:"server"`).
@@ -90,6 +90,30 @@ try {
   await exitProcess(1);
 }
 
+// And config/agent.yaml, which provider reads its retry count from, and
+// which rejects a memory reserve at or above memory_keep_tokens — a fold
+// would have no line to run down to. Lazy like the rest, so without this the
+// first person to say something is the one who finds out, mid-request, with
+// a 500 and a healthy-looking process behind it.
+try {
+  getAgentConfig();
+} catch (err) {
+  logger.error({ err }, "agent_config_invalid");
+  await exitProcess(1);
+}
+
+// Every model call goes through provider (inner#1743); its configuration is
+// checked whole when it is built, so a bad upstream, route or binding fails
+// here, naming every problem, instead of inside the first call that needs it.
+// Built before the catalog below, whose entries carry provider's availability
+// and pricing rules.
+try {
+  initProvider();
+} catch (err) {
+  logger.error({ err }, "provider_config_invalid");
+  await exitProcess(1);
+}
+
 // Same preflight for config/models/*.yaml (#1966). Every model must declare
 // `takes_prompt`, and the catalog is as lazy as the configs above — lazy here
 // means a missing declaration surfaces on the first `GET /api/v1/models`,
@@ -103,24 +127,12 @@ try {
   await exitProcess(1);
 }
 
-// And config/agent.yaml, which rejects a memory reserve at or above
-// memory_keep_tokens — a fold would have no line to run down to. Lazy like
-// the rest, so without this the first person to say something is the one
-// who finds out, mid-request, with a 500 and a healthy-looking process
-// behind it.
-try {
-  getAgentConfig();
-} catch (err) {
-  logger.error({ err }, "agent_config_invalid");
-  await exitProcess(1);
-}
-
 // Every model the agent runs on has to be priceable (#296). One reached
-// directly reports tokens but no cost, and is priced from
-// config/usage-pricing.yaml; lazily, a missing price would surface as the
-// first call that spent money failing to record what it spent.
+// directly reports tokens but no cost, and is priced from its upstream's
+// prices in config/provider/llm.yaml; lazily, a missing price would surface
+// as the first call that spent money failing to record what it spent.
 try {
-  assertModelsPriced([...agentModelIds(), ...textToolModels()]);
+  provider().llm.assertModelsPriced([...agentModelIds(), ...textToolModels()]);
 } catch (err) {
   logger.error({ err }, "usage_pricing_incomplete");
   await exitProcess(1);

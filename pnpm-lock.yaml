@@ -323,6 +323,10 @@ importers:
         version: 2.9.0
 
   eslint-rules:
+    dependencies:
+      yaml:
+        specifier: 'catalog:'
+        version: 2.9.0
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -418,15 +422,6 @@ importers:
 
   packages/core:
     dependencies:
-      '@ai-sdk/anthropic':
-        specifier: 'catalog:'
-        version: 4.0.37(zod@4.4.3)
-      '@ai-sdk/google':
-        specifier: 'catalog:'
-        version: 4.0.41(zod@4.4.3)
-      '@ai-sdk/openai':
-        specifier: 'catalog:'
-        version: 4.0.37(zod@4.4.3)
       '@amplitude/analytics-node':
         specifier: 'catalog:'
         version: 1.5.76
@@ -436,9 +431,6 @@ importers:
       '@breatic/shared':
         specifier: workspace:*
         version: link:../shared
-      ai:
-        specifier: 'catalog:'
-        version: 7.0.68(zod@4.4.3)
       bcryptjs:
         specifier: 'catalog:'
         version: 3.0.3
@@ -491,6 +483,9 @@ importers:
       '@types/nodemailer':
         specifier: 'catalog:'
         version: 8.0.1
+      ai:
+        specifier: 'catalog:'
+        version: 7.0.68(zod@4.4.3)
       dotenv:
         specifier: 'catalog:'
         version: 16.6.1
@@ -512,27 +507,15 @@ importers:
 
   packages/domain:
     dependencies:
-      '@ai-sdk/anthropic':
-        specifier: 'catalog:'
-        version: 4.0.37(zod@4.4.3)
-      '@ai-sdk/deepseek':
-        specifier: 'catalog:'
-        version: 3.0.39(zod@4.4.3)
-      '@ai-sdk/google':
-        specifier: 'catalog:'
-        version: 4.0.41(zod@4.4.3)
-      '@ai-sdk/openai':
-        specifier: 'catalog:'
-        version: 4.0.37(zod@4.4.3)
       '@breatic/core':
         specifier: workspace:*
         version: link:../core
+      '@breatic/provider':
+        specifier: workspace:*
+        version: link:../provider
       '@breatic/shared':
         specifier: workspace:*
         version: link:../shared
-      '@openrouter/ai-sdk-provider':
-        specifier: 'catalog:'
-        version: 3.0.0(ai@7.0.68(zod@4.4.3))(zod@4.4.3)
       ai:
         specifier: 'catalog:'
         version: 7.0.68(zod@4.4.3)
@@ -567,6 +550,9 @@ importers:
 
   packages/ingest:
     dependencies:
+      '@breatic/provider':
+        specifier: workspace:*
+        version: link:../provider
       '@breatic/shared':
         specifier: workspace:*
         version: link:../shared
@@ -640,6 +626,9 @@ importers:
       '@breatic/domain':
         specifier: workspace:*
         version: link:../domain
+      '@breatic/provider':
+        specifier: workspace:*
+        version: link:../provider
       '@breatic/shared':
         specifier: workspace:*
         version: link:../shared
@@ -746,6 +735,9 @@ importers:
       '@breatic/domain':
         specifier: workspace:*
         version: link:../domain
+      '@breatic/provider':
+        specifier: workspace:*
+        version: link:../provider
       '@breatic/shared':
         specifier: workspace:*
         version: link:../shared
@@ -892,6 +884,9 @@ importers:
       '@blocknote/react':
         specifier: 'catalog:'
         version: 0.56.0(@floating-ui/dom@1.8.0)(@types/hast@3.0.5)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(@y/prosemirror@2.0.0-15(@y/protocols@1.0.6-rc.1(@y/y@14.0.0-rc.26))(prosemirror-model@1.25.12)(prosemirror-state@1.4.4)(prosemirror-transform@1.12.2)(prosemirror-view@1.42.6(patch_hash=b5ej5jmfcxeucg3jh365cdjlaa)))(@y/protocols@1.0.6-rc.1(@y/y@14.0.0-rc.26))(@y/y@14.0.0-rc.26)(highlight.js@11.11.2)(lowlight@3.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(y-prosemirror@1.3.7(patch_hash=qqovpfs3tpce6o5etf4b2kkdfi)(prosemirror-model@1.25.12)(prosemirror-state@1.4.4)(prosemirror-view@1.42.6(patch_hash=b5ej5jmfcxeucg3jh365cdjlaa))(y-protocols@1.0.7(yjs@13.6.33))(yjs@13.6.33))(y-protocols@1.0.7(yjs@13.6.33))(yjs@13.6.33)
+      '@breatic/provider':
+        specifier: workspace:*
+        version: link:../provider
       '@breatic/shared':
         specifier: workspace:*
         version: link:../shared
@@ -1388,6 +1383,9 @@ importers:
       '@breatic/domain':
         specifier: workspace:*
         version: link:../domain
+      '@breatic/provider':
+        specifier: workspace:*
+        version: link:../provider
       '@breatic/shared':
         specifier: workspace:*
         version: link:../shared

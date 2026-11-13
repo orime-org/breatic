@@ -9,7 +9,7 @@ import { Aborted, NoAnswer } from "../../http/errors.js";
 import { estimateCost } from "../../pricing/estimate.js";
 import { createProvider } from "../../provider.js";
 import type { Route } from "../../routing/route.js";
-import { createMediaRunner, type MediaAnswer, type MediaClone, type MediaRunner, type MediaTicket, type PlanOptions } from "../runner.js";
+import { createMediaRunner, ticketState, type MediaAnswer, type MediaClone, type MediaRunner, type MediaTicket, type PlanOptions } from "../runner.js";
 import { wavespeedAdapter } from "../wavespeed/adapter.js";
 import { accepted, billedIds, billing, driven, fakeUpstream, finishedAtOnce, result, submits, type FakeUpstream } from "./fake-upstream.js";
 
@@ -173,6 +173,22 @@ const options = (clones: MediaClone[] = []): PlanOptions => ({
   durations: {},
 });
 const video = { prompt: "a fox in snow", params: { duration: 5, aspect_ratio: "16:9" } };
+
+describe("ticketState", () => {
+  it("reads a stored ticket's phase, and the step a send ticket sends next", async () => {
+    a.answer(() => accepted("p1"));
+    const r = runner();
+    const planned = expectState(await r.plan("seedance", video, DEFAULT, options()), "send");
+    expect(ticketState(stored(planned.ticket))).toEqual({ phase: "send", step: "generate" });
+    const running = expectState(await r.send(stored(planned.ticket), live()), "running");
+    expect(ticketState(stored(running.ticket))).toEqual({ phase: "running" });
+  });
+
+  it("refuses what is not a ticket provider wrote", () => {
+    expect(() => ticketState({ version: 1 })).toThrow(/Not a ticket provider wrote/);
+    expect(() => ticketState({ version: 1, phase: "send", steps: [] })).toThrow(/Not a ticket provider wrote/);
+  });
+});
 
 describe("plan", () => {
   it("sends nothing and answers a send ticket for the model's own call", async () => {
@@ -789,7 +805,7 @@ describe("poll — answers that are not the task's ending", () => {
     ["data that is null", { code: 200, data: null }],
     ["a status that is not a string", { code: 200, data: { status: 5 } }],
     ["no status", { code: 200, data: { outputs: [] } }],
-  ])("answers running, as today's poll does, when a 200 answer carries %s", async (_name, body) => {
+  ])("answers running, as the poll before provider did, when a 200 answer carries %s", async (_name, body) => {
     const r = runner();
     const ticket = await sentThen(r, () => ({ status: 200, body }));
     expectState(await r.poll(ticket, live()), "running");

@@ -30,7 +30,7 @@ const h = vi.hoisted(() => {
     ContainerJobFailed,
     warn: vi.fn(),
     runContainerJob: vi.fn(),
-    runCatalogTask: vi.fn(),
+    runModelTask: vi.fn(),
     taskDeadline: vi.fn(),
     markFailed: vi.fn(),
     moveToDelayed: vi.fn(),
@@ -46,7 +46,7 @@ const h = vi.hoisted(() => {
   };
 });
 
-vi.mock("@worker/providers/still-running.js", () => ({
+vi.mock("@worker/handlers/still-running.js", () => ({
   StillRunning: h.StillRunning,
 }));
 vi.mock("@worker/handlers/task-deadline.js", () => ({ taskDeadline: h.taskDeadline }));
@@ -54,22 +54,15 @@ vi.mock("@worker/handlers/container/run-container-job.js", () => ({
   ContainerJobFailed: h.ContainerJobFailed,
   runContainerJob: h.runContainerJob,
 }));
-vi.mock("@worker/providers/run-steps.js", () => ({ runCatalogTask: h.runCatalogTask }));
+vi.mock("@worker/handlers/model-task.js", () => ({ runModelTask: h.runModelTask, abandonedCosts: async () => [] }));
 vi.mock("@worker/services/project-media.service.js", () => ({
   resolveRegisteredProjectMedia: h.resolveRegisteredProjectMedia,
 }));
-vi.mock("@worker/providers/generate.js", () => ({
-  validateModelParams: (_modality: string, model: string, params: Record<string, unknown>) => [model, params],
-}));
-vi.mock("@worker/handlers/step-deps.js", () => ({ stepDepsFor: () => ({}) }));
 vi.mock("@worker/handlers/understand-slots.js", () => ({
   withUnderstandSlot: async <T>(read: () => Promise<T>): Promise<T> => {
     if (h.slotFull.value) throw new h.StillRunning(DEADLINE - 60_000);
     return read();
   },
-}));
-vi.mock("@worker/handlers/prompt-params.js", () => ({
-  takePromptAndValidate: (params: Record<string, unknown>) => ["a cat", undefined, params],
 }));
 vi.mock("@breatic/core", () => ({
   // Product analytics (inner#1442) runs the job under its consent and reports
@@ -99,29 +92,27 @@ vi.mock("@breatic/domain", async () => ({
   // The real judgement: the case below is about the ending it gives.
   failureOutcome: (await import("@domain/node-task/failure-outcome.js")).failureOutcome,
   buildAgentConfig: vi.fn(),
-  getModel: vi.fn(),
   generateTextRetry: vi.fn(),
   taskService: {
     markFailed: h.markFailed,
     markRunning: h.markRunning,
     getByIdInternal: h.getByIdInternal,
     recordProviderResult: vi.fn(),
-    recordProviderTaskId: vi.fn(),
     markCompletedAndBill: h.markCompletedAndBill,
   },
+  taskRepo: { clearSending: vi.fn() },
   upstreamStepRepo: { failOpenSteps: vi.fn() },
   assetService: { resolveOwnerStudioId: vi.fn(async () => "studio-1") },
   creditLotService: {},
   creditHoldService: { releaseHold: vi.fn(async () => undefined) },
   creditsForUsd: vi.fn(() => 0),
   toChargeCredits: (credits: number) => credits,
-  resolveActiveProvider: vi.fn(),
   nodeHistoryService: { recordGenerationFailure: vi.fn() },
   settleTaskForNode: h.settleTaskForNode,
   understandMediaAt: h.understandMediaAt,
   MediaUnavailable: class extends Error {},
   UnderstandRefused: class extends Error {},
-  createUsageRecorder: () => ({ recordServiceCall: vi.fn(), settle: async () => 0 }),
+  createUsageRecorder: () => ({ recordServiceCall: vi.fn(), awaitingLookup: () => [], settle: async () => 0 }),
   UNDERSTAND_PINS: {},
   extractPromptText: vi.fn(),
 }));
@@ -178,6 +169,7 @@ function containerJob(attemptsMade = 0): Job {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.restoreAllMocks();
+  h.markFailed.mockResolvedValue(true);
   h.slotFull.value = false;
   h.getByIdInternal.mockResolvedValue({
     createdAt: CREATED,
@@ -199,7 +191,7 @@ beforeEach(() => {
     sizeBytes: 10,
   }));
   h.runContainerJob.mockRejectedValue(new h.StillRunning(DEADLINE - 60_000));
-  h.runCatalogTask.mockRejectedValue(new h.StillRunning(DEADLINE - 60_000));
+  h.runModelTask.mockRejectedValue(new h.StillRunning(DEADLINE - 60_000));
 });
 
 describe("a container job still running when a pickup ends", () => {
@@ -247,7 +239,7 @@ describe("an upstream prediction still running when a pickup ends", () => {
     await runTask(jobOf({}), "lock-token").catch(() => undefined);
 
     expect(h.taskDeadline).toHaveBeenCalledWith("task-1", CREATED);
-    expect(h.runCatalogTask.mock.calls[0]![1]).toMatchObject({ taskId: "task-1", deadlineAt: DEADLINE });
+    expect(h.runModelTask.mock.calls[0]![0]).toMatchObject({ taskId: "task-1", deadlineAt: DEADLINE });
   });
 
   it("hands the task's deadline to a container job", async () => {
@@ -277,7 +269,7 @@ describe("an upstream prediction still running when a pickup ends", () => {
       () => undefined,
     );
 
-    expect(h.runCatalogTask.mock.calls[0]![1]).toMatchObject({ taskId: "task-1", deadlineAt: DEADLINE });
+    expect(h.runModelTask.mock.calls[0]![0]).toMatchObject({ taskId: "task-1", deadlineAt: DEADLINE });
   });
 
   it("puts a container job back on the queue past the task deadline: the container judges its own, with a grace", async () => {
@@ -292,7 +284,7 @@ describe("an upstream prediction still running when a pickup ends", () => {
 
     await runTask(jobOf({}, 2), "lock-token").catch(() => undefined);
 
-    expect(h.runCatalogTask).not.toHaveBeenCalled();
+    expect(h.runModelTask).not.toHaveBeenCalled();
     expect(h.moveToDelayed).not.toHaveBeenCalled();
     expect(h.markFailed).toHaveBeenCalled();
   });
@@ -300,7 +292,7 @@ describe("an upstream prediction still running when a pickup ends", () => {
 
 describe("a run past its two-hour deadline", () => {
   beforeEach(() => {
-    h.runCatalogTask.mockRejectedValue(new DeadlinePassed());
+    h.runModelTask.mockRejectedValue(new DeadlinePassed());
   });
 
   it("settles on the first attempt that finds it, with attempts still left", async () => {
@@ -334,7 +326,7 @@ describe("a run past its two-hour deadline", () => {
   // failure that ends it there is whatever the cut call threw. The ending is
   // the deadline's all the same.
   it("settles a failure that arrives once the deadline has come as expired", async () => {
-    h.runCatalogTask.mockImplementation(async () => {
+    h.runModelTask.mockImplementation(async () => {
       vi.spyOn(Date, "now").mockReturnValue(DEADLINE);
       throw new Error("http request to https://vendor/ was cancelled by its caller");
     });
@@ -368,7 +360,7 @@ describe("a run past its two-hour deadline", () => {
   });
 
   it("settles any other failure as failed", async () => {
-    h.runCatalogTask.mockRejectedValue(new Error("boom"));
+    h.runModelTask.mockRejectedValue(new Error("boom"));
 
     await runTask(jobOf({}, 2), "lock-token").catch(() => undefined);
 
@@ -513,50 +505,18 @@ describe("the retry log lines", () => {
     expect(h.warn).not.toHaveBeenCalledWith(expect.anything(), "provider_reinvoked_on_retry_potential_duplicate_cost");
   });
 
-  it("logs the stored upstream id on the pickup that starts a retry", async () => {
-    h.getByIdInternal.mockResolvedValue({
-      createdAt: CREATED,
-      billedAt: null,
-      providerResultUrl: null,
-      providerTaskId: "ws-1",
-    });
-
-    await runTask(jobOf({ taskType: "three_d", model: "tripo-h3.1-t23d" }, 1), "lock-token").catch(() => undefined);
-
-    expect(h.info).toHaveBeenCalledWith(expect.anything(), "async_resume_stored_provider_task");
-    expect(h.warn).not.toHaveBeenCalledWith(expect.anything(), "provider_reinvoked_on_retry_potential_duplicate_cost");
-  });
-
-  it("leaves a generation's warning to the step that submits again, and tells the steps a retry starts", async () => {
+  // A model run's sends are guarded by its ticket and its sending mark: a retry asks about what an upstream took
+  // instead of sending it again, so it raises no duplicate-cost warning.
+  it("raises no duplicate-cost warning on a generation's retry", async () => {
     await runTask(retried(), "lock-token").catch(() => undefined);
 
     expect(h.warn).not.toHaveBeenCalledWith(expect.anything(), "provider_reinvoked_on_retry_potential_duplicate_cost");
-    expect(h.runCatalogTask.mock.calls[0]![1]).toMatchObject({ retryStarting: true });
+    expect(h.updateData).toHaveBeenCalledWith(expect.objectContaining({ retryReported: 1 }));
   });
 
-  it("tells a generation's steps no retry starts on a later pickup of the same attempt", async () => {
-    await runTask(retried(1), "lock-token").catch(() => undefined);
-
-    expect(h.runCatalogTask.mock.calls[0]![1]).toMatchObject({ retryStarting: false });
-  });
-
-  it("tells a 3D generation's steps that a retry starts, for the submit to say so", async () => {
+  it("runs a 3D generation as a three_d model run", async () => {
     await runTask(jobOf({ taskType: "three_d", model: "tripo-h3.1-t23d" }, 1), "lock-token").catch(() => undefined);
 
-    expect(h.runCatalogTask.mock.calls[0]![2]).toBe("three_d");
-    expect(h.runCatalogTask.mock.calls[0]![1]).toMatchObject({ retryStarting: true });
-  });
-
-  it("logs a stored upstream id once per attempt, not on every pickup", async () => {
-    h.getByIdInternal.mockResolvedValue({
-      createdAt: CREATED,
-      billedAt: null,
-      providerResultUrl: null,
-      providerTaskId: "ws-1",
-    });
-
-    await runTask(retried(1), "lock-token").catch(() => undefined);
-
-    expect(h.info).not.toHaveBeenCalledWith(expect.anything(), "async_resume_stored_provider_task");
+    expect(h.runModelTask.mock.calls[0]![0]).toMatchObject({ modality: "three_d", model: "tripo-h3.1-t23d", outputCount: 1 });
   });
 });

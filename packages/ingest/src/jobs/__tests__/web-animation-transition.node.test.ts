@@ -20,6 +20,7 @@ import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
 import { webAnimationJobReportSchema, type WebAnimationJobReport, type WebAnimationJobRequest } from "@shared/upload/web-animation-job.js";
+import type { Cost } from "@breatic/provider/messages";
 import {
   reportOfWebAnimationJob,
   transitionWebAnimationJob,
@@ -97,7 +98,14 @@ const begin: WebAnimationJobEvent = { type: "beginModelCall" };
  * @param seq - The call.
  * @returns The event.
  */
-const started = (seq: number): WebAnimationJobEvent => ({ type: "recordModelCallStart", seq, generationId: `gen-${seq}` });
+const started = (seq: number): WebAnimationJobEvent => ({ type: "recordModelCallStart", seq, upstream: "openrouter", messageId: `gen-${seq}` });
+
+/**
+ * What a completed call cost.
+ * @param seq - The call.
+ * @returns Its cost.
+ */
+const known = (seq: number): Cost => ({ state: "known", usd: 0.0001 * seq, source: "reported" });
 
 /**
  * A call's end with counters and cost.
@@ -112,8 +120,9 @@ const ended = (
   type: "endModelCall",
   seq,
   outcome,
+  upstream: outcome === "upstream_error" ? null : "openrouter",
   tokens: outcome === "upstream_error" ? null : TOKENS,
-  costUsd: outcome === "completed" ? 0.0001 * seq : null,
+  cost: outcome === "completed" ? known(seq) : null,
 });
 
 const writtenPackage: WebAnimationJobEvent = { type: "written", key: REQUEST.packageKey, sha256: SHA, bytes: 4_000 };
@@ -205,8 +214,8 @@ describe("beginModelCall", () => {
     const record = after([begin, ended(1, "upstream_error"), begin, started(2), ended(2)]);
 
     expect(report(record).calls).toEqual([
-      { seq: 1, generationId: null, tokens: null, costUsd: null, outcome: "upstream_error" },
-      { seq: 2, generationId: "gen-2", tokens: TOKENS, costUsd: 0.0002, outcome: "completed" },
+      { seq: 1, upstream: null, messageId: null, tokens: null, cost: null, outcome: "upstream_error" },
+      { seq: 2, upstream: "openrouter", messageId: "gen-2", tokens: TOKENS, cost: known(2), outcome: "completed" },
     ]);
   });
 
@@ -227,11 +236,11 @@ describe("beginModelCall", () => {
 });
 
 describe("recordModelCallStart and endModelCall", () => {
-  it("record the generation id, counters, cost and outcome by seq", () => {
+  it("record the upstream, message id, counters, cost and outcome by seq", () => {
     const record = after([begin, started(1), ended(1)]);
 
     expect(report(record).calls).toEqual([
-      { seq: 1, generationId: "gen-1", tokens: TOKENS, costUsd: 0.0001, outcome: "completed" },
+      { seq: 1, upstream: "openrouter", messageId: "gen-1", tokens: TOKENS, cost: known(1), outcome: "completed" },
     ]);
   });
 
@@ -267,7 +276,7 @@ describe("draining on cancel", () => {
     expect(drained!.effects).toContain("destroy");
     const final = report(drained!.record);
     expect(final.state).toBe("cancelled");
-    expect(final.calls).toEqual([{ seq: 1, generationId: "gen-1", tokens: TOKENS, costUsd: 0.0001, outcome: "completed" }]);
+    expect(final.calls).toEqual([{ seq: 1, upstream: "openrouter", messageId: "gen-1", tokens: TOKENS, cost: known(1), outcome: "completed" }]);
     expect(final.container).not.toBeNull();
   });
 
@@ -303,7 +312,7 @@ describe("draining at the deadline", () => {
     expect(report(stopping!.record).state).toBe("stopping");
     expect(drained!.effects).toContain("destroy");
     expect(report(drained!.record).state).toBe("expired");
-    expect(report(drained!.record).calls[0]!.costUsd).toBe(0.0001);
+    expect(report(drained!.record).calls[0]!.cost).toEqual(known(1));
   });
 });
 
@@ -359,8 +368,8 @@ describe("the end of a job", () => {
     const final = report(gone!.record);
     expect(final.state).toBe("failed");
     expect(final.calls).toEqual([
-      { seq: 1, generationId: "gen-1", tokens: TOKENS, costUsd: 0.0001, outcome: "completed" },
-      { seq: 2, generationId: "gen-2", tokens: null, costUsd: null, outcome: "cut_off" },
+      { seq: 1, upstream: "openrouter", messageId: "gen-1", tokens: TOKENS, cost: known(1), outcome: "completed" },
+      { seq: 2, upstream: "openrouter", messageId: "gen-2", tokens: null, cost: null, outcome: "cut_off" },
     ]);
   });
 

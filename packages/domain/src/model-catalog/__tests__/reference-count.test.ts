@@ -6,8 +6,8 @@
  * predicate the execute gate runs to reject a submission that carries MORE
  * items in a capped list param than the model's `max_items` allows. It mirrors
  * exactly the condition the worker silently truncates on
- * (`spec.max_items && Array.isArray(value) && value.length > spec.max_items`,
- * providers/shared.ts) but rejects before enqueue instead of truncating, so the
+ * (`cap !== undefined && Array.isArray(value) && value.length > cap`,
+ * packages/worker/src/handlers/model-params.ts) but rejects before enqueue instead of truncating, so the
  * user gets told rather than silently getting a degraded result. Critical path
  * (AI-tool-call input guard), so every branch is pinned.
  */

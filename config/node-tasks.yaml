@@ -15,3 +15,11 @@
 # Two hours. At a modest 8 MB per minute that is around 960 MB, and a task
 # that has not finished in two hours is not slow, it is broken.
 default_budget_ms: 7200000
+
+# When a generation finishes before its upstream has billed it, the result is
+# delivered and the task waits for the bill: it looks the cost up after
+# cost_wait_delay_ms, then after twice that, and so on, cost_wait_attempts
+# times in all (inner#1743). The credits stay held until it is billed. This is
+# time after the task finished, outside its two-hour budget.
+cost_wait_delay_ms: 30000
+cost_wait_attempts: 6

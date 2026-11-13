@@ -83,7 +83,7 @@ REDIS_COLLAB_URL=redis://redis:6379/3
 
 The bundled nginx refuses request bodies over 1 MiB (`client_max_body_size 1m` in `docker/breatic-locations.conf`), the same limit as `request_body_max_bytes` in `config/limits.yaml`. Change both together.
 
-Replace sample provider keys with your own valid keys; leave unused keys empty. `OPENROUTER_API_KEY` supplies the text-model route when no direct vendor key is configured, subject to model availability and account quota. For image, video and other providers, use the `api_key_env` named in `config/models/<type>/providers.yaml`; WaveSpeed models, for example, need `WAVESPEED_API_KEY`.
+Replace sample provider keys with your own valid keys; leave unused keys empty. `OPENROUTER_API_KEY` supplies the text-model route when no direct vendor key is configured, subject to model availability and account quota. Each upstream reads the variable named by `key_env` in `config/provider/upstreams.yaml`; an image, video or other generation model needs the key of at least one of its upstreams in `config/provider/media/<type>.yaml`, for example `WAVESPEED_API_KEY` or `FAL_KEY`.
 
 <a id="cloudflare"></a>
 ## 4. Deploy the Cloudflare upload service

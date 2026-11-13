@@ -12,7 +12,7 @@
         "quality": "medium",
         "resolution": "1k"
       },
-      "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
+      "prompt": "a red fox running through fresh snow at dawn {{ref:images:1}}",
       "body": {
         "image_size": "square_hd",
         "image_urls": [
@@ -31,7 +31,7 @@
         "quality": "low",
         "resolution": "1k"
       },
-      "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
+      "prompt": "a red fox running through fresh snow at dawn {{ref:images:1}}",
       "body": {
         "image_size": "square_hd",
         "image_urls": [
@@ -50,7 +50,7 @@
         "quality": "high",
         "resolution": "1k"
       },
-      "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
+      "prompt": "a red fox running through fresh snow at dawn {{ref:images:1}}",
       "body": {
         "image_size": "square_hd",
         "image_urls": [
@@ -69,7 +69,7 @@
         "quality": "xhigh",
         "resolution": "1k"
       },
-      "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
+      "prompt": "a red fox running through fresh snow at dawn {{ref:images:1}}",
       "body": {
         "image_size": "square_hd",
         "image_urls": [
@@ -88,7 +88,7 @@
         "quality": "max",
         "resolution": "1k"
       },
-      "prompt": "a red fox running through fresh snow at dawn <<ref:images:1>>",
+      "prompt": "a red fox running through fresh snow at dawn {{ref:images:1}}",
       "body": {
         "image_size": "square_hd",
         "image_urls": [

@@ -8,14 +8,13 @@ import {
   Film,
   Music,
   Sparkles,
-  Star,
 } from 'lucide-react';
 import * as React from 'react';
 
+import { CreditChip } from '@web/components/CreditChip';
 import { Button } from '@web/components/ui/button';
 import type { NodeHistoryEntry } from '@web/data/api/canvas';
 import { useTranslation } from '@web/i18n/use-translation';
-import { formatCreditAmount } from '@web/lib/format-credit-amount';
 import { formatRelativeTime } from '@web/lib/format-relative-time';
 import {
   HoverPreview,
@@ -25,6 +24,7 @@ import type { MediaFullscreenSource } from '@web/spaces/canvas/nodes/_shared/Med
 import { failureSentence } from '@web/spaces/canvas/failure-sentence';
 import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
 import {
+  entryBillingPending,
   entryCredits,
   entryFilename,
   entryModel,
@@ -308,13 +308,7 @@ export const NodeHistoryRow = React.memo(function NodeHistoryRow({
           {!failed &&
           entry.entryType === 'generation' &&
           credits != null ? (
-              <span className='inline-flex shrink-0 items-center gap-0.5 text-xs tabular-nums text-foreground'>
-                <Star
-                  className='h-3 w-3 text-muted-foreground'
-                  aria-hidden='true'
-                />
-                {formatCreditAmount(credits)}
-              </span>
+              <CreditChip credits={credits} billingPending={entryBillingPending(entry)} />
             ) : null}
         </div>
         {/* Time, then who did it (#1619): the operator's personal-studio

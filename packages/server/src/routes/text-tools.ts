@@ -19,7 +19,8 @@ import { textToolSchema } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { precheckCredits, projectService, textToolService } from "@server/modules";
-import { getTextToolsConfig } from "@server/config/text-tools.js";
+import { getModelForTool, getTextToolsConfig } from "@server/config/text-tools.js";
+import { assertLlmServable } from "@server/modules/task/model-servable.js";
 import { SMALLEST_CREDIT } from "@breatic/domain";
 import { ForbiddenError, NotFoundError, ValidationError, logger } from "@breatic/core";
 import { t, TEXT_TOOL_INSTRUCTIONS_MAX } from "@breatic/shared";
@@ -139,6 +140,8 @@ textTools.post(
       throw err;
     }
     await precheckCredits(projectId, user.id, SMALLEST_CREDIT);
+    // A deployment with no upstream for the tool's model refuses before the stream opens, saying what it is missing.
+    assertLlmServable(getModelForTool(tool), "call");
 
     // The key a run is recorded and charged under is minted here for every
     // request. A key from the client would let the same key be sent again,

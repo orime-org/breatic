@@ -338,6 +338,10 @@
       "still_running": "這次生成還在收尾，可能還會出結果，請稍後再試。",
       "has_result": "這次生成已經出了結果，結果已回到任務列表。"
     },
+    "model": {
+      "not_configured": "這個部署還沒設定好 {model}：需要設定 {envVars}。",
+      "upstream_not_bound": "{model} 不透過 {upstream} 提供。"
+    },
     "document": {
       "versions_full": "{limit, plural, other {這個 Document 的快照已滿 # 張。刪掉舊的快照後再儲存。}}"
     }
@@ -891,6 +895,7 @@
       "param": {
         "compose_from": "生成依據",
         "language": "語言",
+        "language_boost": "語言",
         "voice_description": "音色描述",
         "speakers": "說話人",
         "emotion": "情緒",
@@ -3486,6 +3491,7 @@
     "close": "關閉",
     "indexLabel": "點數內容",
     "unit": "點數",
+    "billingPending": "計費中",
     "loadFailed": "無法載入，請關閉後重新開啟。",
     "listEnd": "沒有更多了",
     "listPageFailed": "這一頁未能載入，捲動重試。",

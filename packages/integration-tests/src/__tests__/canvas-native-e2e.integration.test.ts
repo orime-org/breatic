@@ -24,6 +24,7 @@
  * @see packages/worker/src/handlers.ts
  */
 
+import { initConfiguredProvider } from "@breatic/integration-tests/provider";
 import {
   describe,
   it,
@@ -45,7 +46,7 @@ import type { Hocuspocus } from "@hocuspocus/server";
 // network, so this suite needs no API key and the SDK stays out of its
 // module graph. Of the four stubbed exports,
 // @breatic/domain's agent modules import generateText, streamText and tool;
-// the worker providers import stepCountIs. @breatic/core imports none of
+// the worker's prompt rewrite imports stepCountIs. @breatic/core imports none of
 // them — it does not reach the SDK at all.
 
 vi.mock("ai", () => ({
@@ -113,11 +114,10 @@ async function syntheticRun(): Promise<Record<string, unknown>> {
       if (providerCtrl.calls === 1) throw providerCtrl.error;
     }
     if (providerCtrl.mode === "buffer") {
-      // Sync-transport shape: raw bytes (no output URL) → toUnifiedOutputs
-      // routes the buffer into extra.buffer, exercising persistOutputs Case 1.
+      // Raw bytes with no output URL, as a run that answered bytes hands them on (`produced` in dispatch.ts):
+      // persistOutputs stores them through Case 1.
       return {
-        buffer: Buffer.from("synthetic-audio-bytes"),
-        contentType: "audio/mp3",
+        outputs: [{ extra: { buffer: Buffer.from("synthetic-audio-bytes"), contentType: "audio/mp3" } }],
         cost: 0,
       };
     }
@@ -241,7 +241,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       request: Parameters<typeof orig.understandMediaAt>[0],
     ): ReturnType<typeof orig.understandMediaAt> => {
       readingCtrl.requests.push(request);
-      request.onBilled(readingCtrl.costUsd);
+      request.onBilled({ state: "known", usd: readingCtrl.costUsd, source: "reported" }, "openrouter");
       const kind = request.items[0]?.ledgerType === "video/mp4" ? "video" : "audio";
       return {
         text: readingCtrl.text,
@@ -307,6 +307,7 @@ import { eq } from "drizzle-orm";
 import crypto from "node:crypto";
 
 initCore(process.env);
+initConfiguredProvider();
 
 // ── Infrastructure state ─────────────────────────────────────────────────────
 
@@ -1582,7 +1583,6 @@ describe("transcription results and usage cross the real settlement and collabor
         expect(readingCtrl.requests).toHaveLength(1);
         expect(readingCtrl.requests[0]).toMatchObject({
           model: MODEL,
-          backend: "google-vertex",
           items: [{ url: params.source_url, ledgerType: params.source_mime_type }],
         });
 

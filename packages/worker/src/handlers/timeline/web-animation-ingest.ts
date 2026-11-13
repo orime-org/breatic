@@ -5,7 +5,8 @@
  * The ingest Worker's web-animation job routes, as the worker calls them (inner#1711 design §3.7, §6).
  *
  * Each call answers a report or says why there is none: no such job (404), the container could not start (503, the
- * next pickup submits again) or web-animation execution is not configured on this Worker (501, a terminal answer).
+ * next pickup submits again), web-animation execution is not configured on this Worker (501, a terminal answer), or,
+ * on a submit, no upstream of the job's plan has its key there (501 naming the model and the variables, terminal too).
  */
 
 import { env } from "@breatic/core";
@@ -23,7 +24,8 @@ export type IngestAnswer =
   | { kind: "report"; report: WebAnimationJobReport }
   | { kind: "missing" }
   | { kind: "unavailable" }
-  | { kind: "disabled" };
+  | { kind: "disabled" }
+  | { kind: "unconfigured"; model: string; envVars: string[] };
 
 /** An answer the worker cannot act on. */
 export class IngestJobError extends Error {
@@ -36,6 +38,25 @@ export class IngestJobError extends Error {
     super(`The ingest Worker answered ${route} with ${status}`);
     this.name = "IngestJobError";
   }
+}
+
+/**
+ * What a 501 says: the plan's upstreams have no key on the Worker, or the feature is off there.
+ * @param text - The answer's body.
+ * @returns The answer.
+ * @throws {never} Never.
+ */
+function disabledAnswer(text: string): IngestAnswer {
+  let body: unknown;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    // `feature_disabled` is plain text.
+    return { kind: "disabled" };
+  }
+  const named = body as { error?: unknown; model?: unknown; envVars?: unknown } | null;
+  if (named?.error !== "not_configured" || typeof named.model !== "string" || !Array.isArray(named.envVars)) return { kind: "disabled" };
+  return { kind: "unconfigured", model: named.model, envVars: named.envVars.filter((name): name is string => typeof name === "string") };
 }
 
 /**
@@ -55,7 +76,7 @@ async function ask(route: string, url: string, init: RequestInit, endsAt: number
     { replaySafe: true, ...untilDeadlineIfAhead(endsAt) },
   );
   if (res.status === 404) return { kind: "missing" };
-  if (res.status === 501) return { kind: "disabled" };
+  if (res.status === 501) return disabledAnswer(await res.text().catch(() => ""));
   if (res.status === 503) return { kind: "unavailable" };
   if (!res.ok) throw new IngestJobError(res.status, route);
   const report = webAnimationJobReportSchema.safeParse(await res.json());

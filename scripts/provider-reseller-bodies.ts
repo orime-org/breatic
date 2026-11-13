@@ -122,7 +122,7 @@ function promptOf(model: string, binding: MediaBinding, params: Record<string, u
   const when = entries.get(model)?.prompt_when as CatalogGate | undefined;
   if (when !== undefined && !gateHolds(when, params)) return "";
   const carried = Object.keys(binding.mentions ?? {}).filter((param) => isPresent(params[param]));
-  return [SAMPLE_PROMPT, ...carried.map((param) => `<<ref:${param}:1>>`)].join(" ");
+  return [SAMPLE_PROMPT, ...carried.map((param) => `{{ref:${param}:1}}`)].join(" ");
 }
 
 /**

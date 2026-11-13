@@ -72,7 +72,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       },
     }),
     finalizeTurn: async () => [],
-    getModel: () => modelProducing(() => modelSays.parts),
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider(() => modelProducing(() => modelSays.parts)),
   };
 });
 

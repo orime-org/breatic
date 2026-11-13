@@ -18,6 +18,7 @@ import { isModelTool } from "@shared/mini-tools/derive.js";
 import { mostOutputsOf, outputsOf } from "@shared/mini-tools/outputs.js";
 import { MINI_TOOLS } from "@shared/mini-tools/tools.js";
 import type { MiniToolParam, MiniToolSpec } from "@shared/mini-tools/types.js";
+import { routeSchema, type RunRoute } from "@shared/schemas/route.js";
 
 const URL_SCHEMA = z.string().url().max(2048);
 
@@ -149,6 +150,7 @@ function memberObject(spec: MiniToolSpec): z.ZodObject {
     ...(spec.expand === undefined
       ? {}
       : { expand: z.strictObject({ image: URL_SCHEMA, mask: URL_SCHEMA }) }),
+    ...(isModelTool(spec) ? { route: routeSchema.optional() } : {}),
   });
 }
 
@@ -181,6 +183,8 @@ export interface MiniToolRequest {
   drawing?: { mask: string } | { image: string } | undefined;
   /** An expand tool's padded picture and the mask of its new area. */
   expand?: { image: string; mask: string } | undefined;
+  /** How a model tool's run chooses its upstream; the deployment's weights when left out. */
+  route?: RunRoute | undefined;
 }
 
 /**

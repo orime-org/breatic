@@ -21,7 +21,7 @@ beforeEach(() => { httpRequestMock.mockReset(); });
 describe("fetchMedia download remainder", () => {
   it("does not apply a zero AV remainder to an image settled by HEAD", async () => {
     httpRequestMock.mockResolvedValueOnce(new Response(null, { headers: { "content-type": "image/png", "content-length": "9" } }));
-    expect(await fetchMedia({ ...base, url: "https://example.com/source.bin", remainingDownloadBytes: 0 })).toEqual({ kind: "image", url: "https://example.com/source.bin" });
+    expect(await fetchMedia({ ...base, url: "https://example.com/source.bin", remainingDownloadBytes: 0 })).toEqual({ kind: "image", url: "https://example.com/source.bin", contentType: expect.any(String), read: expect.any(Function) });
     expect(httpRequestMock).toHaveBeenCalledTimes(1);
   });
 
@@ -32,7 +32,7 @@ describe("fetchMedia download remainder", () => {
 
   it("does not apply a zero AV remainder to an image settled by GET", async () => {
     httpRequestMock.mockResolvedValueOnce(new Response(null, { status: 405 })).mockResolvedValueOnce(new Response(new Uint8Array(9), { headers: { "content-type": "image/png", "content-length": "9" } }));
-    expect(await fetchMedia({ ...base, url: "https://example.com/source.bin", remainingDownloadBytes: 0 })).toEqual({ kind: "image", url: "https://example.com/source.bin" });
+    expect(await fetchMedia({ ...base, url: "https://example.com/source.bin", remainingDownloadBytes: 0 })).toEqual({ kind: "image", url: "https://example.com/source.bin", contentType: expect.any(String), read: expect.any(Function) });
     expect(httpRequestMock).toHaveBeenCalledTimes(2);
   });
 
@@ -88,7 +88,7 @@ describe("fetchMedia download remainder", () => {
 
   it("accepts an AV body exactly equal to the remaining allowance", async () => {
     httpRequestMock.mockResolvedValueOnce(new Response(null, { headers: { "content-type": "audio/wav", "content-length": "4" } })).mockResolvedValueOnce(new Response(new Uint8Array([1, 2, 3, 4])));
-    expect(await fetchMedia({ ...base, url: "https://example.com/source.bin", remainingDownloadBytes: 4 })).toEqual({ kind: "audio", bytes: new Uint8Array([1, 2, 3, 4]), format: "wav" });
+    expect(await fetchMedia({ ...base, url: "https://example.com/source.bin", remainingDownloadBytes: 4 })).toEqual({ kind: "audio", bytes: new Uint8Array([1, 2, 3, 4]), contentType: "audio/wav" });
   });
 
   it("uses the single-item ceiling when it is smaller than the remaining allowance", async () => {

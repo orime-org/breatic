@@ -8,9 +8,9 @@ import { costsOf } from "../../errors.js";
 import type { Reply } from "../../media/__tests__/fake-upstream.js";
 import { CHAT_REPLY, GENERATE_CONTENT_REPLY, llmProvider, startFakes, stopFakes, type LlmFakes } from "./llm-harness.js";
 
-// Property (critical path): whatever OpenRouter and Google answer, and
-// whether the deadline or the caller's stop ends the call, every answer an upstream billed
-// reaches the caller exactly once, on the answer or on the error.
+// Property (critical path): whatever OpenRouter and Google answer, whether the caller's reader of the
+// image fails when Google needs its bytes, and whether the deadline or the caller's stop ends the call,
+// every answer an upstream billed reaches the caller exactly once, on the answer or on the error.
 
 let fakes: LlmFakes;
 
@@ -71,7 +71,7 @@ describe("understand: every billed answer reaches the caller once (critical path
     await fc.assert(
       fc.asyncProperty(
         fc.array(fc.constantFrom(...NAMES), { minLength: 1, maxLength: 6 }),
-        fc.constantFrom<"served" | "busy">("served", "busy"),
+        fc.constantFrom<"served" | "busy" | "unreadable">("served", "busy", "unreadable"),
         fc.nat(2),
         fc.constantFrom<"deadline" | "signal">("deadline", "signal"),
         async (script, google, maxRetries, ender) => {
@@ -95,7 +95,12 @@ describe("understand: every billed answer reaches the caller once (critical path
             .understand({
               model: "google/gemini-3.8-flash",
               question: "What is in it?",
-              media: [{ bytes: new Uint8Array([137, 80, 78, 71]), contentType: "image/png" }],
+              // OpenRouter is sent the address; Google needs the bytes and reads them, which may fail.
+              media: [{
+                url: "https://media.example/a.png",
+                contentType: "image/png",
+                read: () => (google === "unreadable" ? Promise.reject(new Error("unreachable")) : Promise.resolve(new Uint8Array([137, 80, 78, 71]))),
+              }],
               maxOutputTokens: 50,
               deadlineAt: Date.now() + (ender === "deadline" ? 600 : 60_000),
               ...(ender === "signal" ? { signal: stop.signal } : {}),

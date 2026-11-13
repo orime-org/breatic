@@ -24,7 +24,7 @@ afterEach(async () => {
   await stopFakes(fakes);
 });
 
-/** The buckets of `usage` below, as domain's bucketsOf splits it. */
+/** The buckets of `usage` below, as `costOf` splits it. */
 const TOKENS = { input: 11, cachedInput: 0, output: 3, reasoning: 0 };
 
 const usage: LanguageModelUsage = {
@@ -110,6 +110,21 @@ describe("costOf", () => {
   });
 });
 
+describe("servedBy: the upstream a finished call names", () => {
+  it("answers the upstream that served it", () => {
+    expect(llmProvider(fakes, {}).llm.servedBy({ providerMetadata: { breatic: { upstream: "openrouter" } } })).toBe("openrouter");
+  });
+
+  it.each([
+    ["no metadata", undefined],
+    ["no upstream", { breatic: {} }],
+    ["an upstream the configuration does not declare", { breatic: { upstream: "elsewhere" } }],
+    ["an upstream that is not a name", { breatic: { upstream: 7 } }],
+  ])("answers nothing for %s", (_name, providerMetadata) => {
+    expect(llmProvider(fakes, {}).llm.servedBy({ providerMetadata })).toBeUndefined();
+  });
+});
+
 describe("a direct finish that reports no token usage (critical path)", () => {
   const { usage: _usage, ...WHOLE_WITHOUT_USAGE } = CHAT_REPLY;
   /** A streamed DeepSeek answer that closes after its finish_reason chunk, before the usage chunk. */
@@ -155,13 +170,12 @@ describe("costOf by the price table, to the cent (critical path)", () => {
    * @param cacheTtl - The cache the call asked for.
    * @returns The cost.
    */
-  const priced = (cacheTtl: "5m" | "1h"): unknown => {
+  const priced = (cacheTtl: "5m" | "1h" | undefined, writePrices = true): unknown => {
     const config = llmConfig(fakes);
     config.llm!.prices!["anthropic/claude-priced"] = [{
       input_cache_miss_per_mtok: 3,
       input_cache_hit_per_mtok: 0.3,
-      input_cache_write_5m_per_mtok: 3.75,
-      input_cache_write_1h_per_mtok: 6,
+      ...(writePrices ? { input_cache_write_5m_per_mtok: 3.75, input_cache_write_1h_per_mtok: 6 } : {}),
       output_per_mtok: 15,
     }];
     const provider = createProvider({ config, keyOf: () => "k", llmMaxRetries: 0, cleanText: (t) => t });
@@ -174,7 +188,7 @@ describe("costOf by the price table, to the cent (critical path)", () => {
         outputTokenDetails: { textTokens: 10, reasoningTokens: 0 },
         totalTokens: 110,
       },
-      providerMetadata: { breatic: { upstream: "anthropic", cacheTtl, sentAt: Date.now() } },
+      providerMetadata: { breatic: { upstream: "anthropic", ...(cacheTtl === undefined ? {} : { cacheTtl }), sentAt: Date.now() } },
     });
   };
 
@@ -184,6 +198,14 @@ describe("costOf by the price table, to the cent (critical path)", () => {
 
   it("charges the write at the one-hour price for a one-hour cache", () => {
     expect((priced("1h") as { usd: number }).usd).toBeCloseTo((50 * 3 + 20 * 0.3 + 30 * 6 + 10 * 15) / 1_000_000, 12);
+  });
+
+  it("charges the write at the 5-minute price when the call names no cache duration", () => {
+    expect((priced(undefined) as { usd: number }).usd).toBeCloseTo((50 * 3 + 20 * 0.3 + 30 * 3.75 + 10 * 15) / 1_000_000, 12);
+  });
+
+  it("charges the write at the miss price for a model the table gives no write price", () => {
+    expect((priced("1h", false) as { usd: number }).usd).toBeCloseTo((50 * 3 + 20 * 0.3 + 30 * 3 + 10 * 15) / 1_000_000, 12);
   });
 });
 
@@ -555,6 +577,14 @@ describe("cost.lookup", () => {
     expect(fakes.openrouter.seen).toHaveLength(0);
   });
 
+  it("answers missing at once for a direct upstream, which keeps no generations, and for a lookup with no generation", async () => {
+    const provider = llmProvider(fakes, { OPENROUTER_API_KEY: "or", GOOGLE_API_KEY: "g" });
+    expect(await provider.cost.lookup({ upstream: "google", generationId: "gen-9" }, { lastAttempt: false })).toEqual({ state: "missing", reason: "the lookup names nothing to ask" });
+    expect(await provider.cost.lookup({ upstream: "openrouter" }, { lastAttempt: false })).toEqual({ state: "missing", reason: "the lookup names nothing to ask" });
+    expect(fakes.openrouter.seen).toHaveLength(0);
+    expect(fakes.google.seen).toHaveLength(0);
+  });
+
   it("stays pending while OpenRouter has not recorded it, and is missing on the last attempt", async () => {
     fakes.openrouter.answer(() => ({ status: 404, body: { error: { message: "not found" } } }));
     const provider = llmProvider(fakes, { OPENROUTER_API_KEY: "or" });
@@ -574,6 +604,22 @@ describe("cost.lookup", () => {
       reason: expect.any(String),
       tokens: { input: 11, cachedInput: 2, output: 3, reasoning: 1 },
     });
+  });
+});
+
+describe("cost.fromGeneration: a lookup queued before it named its upstream", () => {
+  it("names the upstream that keeps generations to look a cost up by", () => {
+    expect(llmProvider(fakes, {}).cost.fromGeneration("gen-9")).toEqual({ upstream: "openrouter", generationId: "gen-9" });
+  });
+
+  it("names none when no upstream keeps generations", () => {
+    const config = llmConfig(fakes);
+    delete config.upstreams.openrouter;
+    config.llm!.routes = [{ prefix: "", upstreams: [{ upstream: "google", weight: 0 }] }];
+    config.llm!.understand_routes = [{ prefix: "", upstreams: [{ upstream: "google", weight: 0 }] }];
+    delete config.llm!.openrouter_backends;
+    const provider = createProvider({ config, keyOf: () => undefined, llmMaxRetries: 0, cleanText: (t) => t });
+    expect(provider.cost.fromGeneration("gen-9")).toBeUndefined();
   });
 });
 
@@ -804,6 +850,7 @@ describe("judge (JEV)", () => {
     expect(answer.status).toBe(200);
     expect(JSON.parse(answer.body)).toEqual(body);
     expect(answer.cost).toEqual({ state: "known", usd: 0.002, source: "reported" });
+    expect(answer).toMatchObject({ upstream: "openrouter", model: "typesafe/jev-1.13" });
     expect(posted(fakes.openrouter)[0]).toMatchObject({ model: "typesafe/jev-1.13", state: { a: 1 } });
   });
 
@@ -824,7 +871,16 @@ describe("judge (JEV)", () => {
   it("hands back the refusal's status with no words when its body stops part way", async () => {
     fakes.openrouter.answer(() => ({ status: 400, raw: "{\"error\":", contentType: "application/json", hold: true }));
     const answer = await llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.judge({ ...request, budgetMs: 500 });
-    expect(answer).toEqual({ status: 400, body: "" });
+    expect(answer).toEqual({ status: 400, body: "", upstream: "openrouter", model: "typesafe/jev-1.13" });
+    fakes.openrouter.release();
+  });
+
+  it("hands a refusal back without waiting out the call for words that stall", async () => {
+    fakes.openrouter.answer(() => ({ status: 400, raw: "{\"error\":", contentType: "application/json", hold: true }));
+    const began = Date.now();
+    const answer = await llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.judge({ ...request, budgetMs: 4_000 });
+    expect(answer.status).toBe(400);
+    expect(Date.now() - began).toBeLessThan(1_500);
     fakes.openrouter.release();
   });
 
@@ -833,6 +889,7 @@ describe("judge (JEV)", () => {
     const error = await llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.judge({ ...request, budgetMs: 500 }).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(Error);
     expect(costsOf(error)).toEqual([expect.objectContaining({ state: "missing" })]);
+    expect((error as NoAnswer).cause).toMatchObject({ name: "BilledAnswerLost", served: { upstream: "openrouter", model: "typesafe/jev-1.13" } });
     fakes.openrouter.release();
   });
 
@@ -925,11 +982,70 @@ describe("capabilities", () => {
     expect(listed()).toBe(1);
   });
 
+  it("stops only the asker that was cancelled, and the shared list still fills the cache", async () => {
+    fakes.openrouter.answer(({ path }) => (path === "/api/v1/models" ? { status: 200, raw: JSON.stringify(models), contentType: "application/json", hold: true } : undefined));
+    const llm = llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm;
+    const stop = new AbortController();
+    const first = llm.capabilities("google/gemini-3.8-flash", policy, stop.signal);
+    const stopped = expect(first).rejects.toMatchObject({ name: "AbortError" });
+    const second = llm.capabilities("google/gemini-3.8-flash", policy);
+    await vi.waitFor(() => expect(listed()).toBe(1));
+    stop.abort();
+    await stopped;
+    fakes.openrouter.release();
+    expect(await second).toEqual({ pictures: true });
+    expect(await llm.capabilities("google/gemini-3.8-flash", policy)).toEqual({ pictures: true });
+    expect(listed()).toBe(1);
+  });
+
   it("gives up on a hung list at the timeout and answers false", async () => {
     fakes.openrouter.answer(() => "hang");
     const started = Date.now();
     expect(await llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.capabilities("google/gemini-3.8-flash", { ...policy, timeoutMs: 300 })).toEqual({ pictures: false });
     expect(Date.now() - started).toBeLessThan(3_000);
+  });
+});
+
+describe("capabilities: the context window", () => {
+  const policy: CapabilityPolicy = { override: "auto", timeoutMs: 2_000, ttlMs: 60_000, retryMs: 200 };
+  const PATH = "/api/v1/models/deepseek/deepseek-v4.1-flash-1017/endpoints";
+  const endpoints = { data: { endpoints: [{ context_length: 1_048_576 }, { context_length: 1_000_000 }] } };
+  const asked = (): number => fakes.openrouter.seen.filter((s) => s.path === PATH).length;
+
+  it("reads the smallest endpoint window once per model and serves it from the cache", async () => {
+    fakes.openrouter.answer(({ path }) => (path === PATH ? { status: 200, body: endpoints } : undefined));
+    const llm = llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm;
+    expect((await llm.capabilities("deepseek/deepseek-v4.1-flash-1017", policy)).contextWindow).toBe(1_000_000);
+    expect((await llm.capabilities("deepseek/deepseek-v4.1-flash-1017", policy)).contextWindow).toBe(1_000_000);
+    expect(asked()).toBe(1);
+  });
+
+  it("reads the window when the picture capability is fixed by the deployment", async () => {
+    fakes.openrouter.answer(({ path }) => (path === PATH ? { status: 200, body: endpoints } : undefined));
+    expect(await llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.capabilities("deepseek/deepseek-v4.1-flash-1017", { ...policy, override: "no" }))
+      .toEqual({ pictures: false, contextWindow: 1_000_000 });
+  });
+
+  it("has no window when the list fails, and does not ask again inside the cooldown", async () => {
+    fakes.openrouter.answer(() => ({ status: 503, body: {} }));
+    const llm = llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm;
+    // A cooldown longer than the run, so the second ask always falls inside it.
+    const cooling = { ...policy, retryMs: 60_000 };
+    expect((await llm.capabilities("deepseek/deepseek-v4.1-flash-1017", cooling)).contextWindow).toBeUndefined();
+    const first = asked();
+    expect((await llm.capabilities("deepseek/deepseek-v4.1-flash-1017", cooling)).contextWindow).toBeUndefined();
+    expect(asked()).toBe(first);
+  });
+
+  it("keeps the last window when a later list names none", async () => {
+    fakes.openrouter.answer(({ path }) => (path === PATH ? { status: 200, body: endpoints } : undefined));
+    const llm = llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm;
+    const shortLived = { ...policy, ttlMs: 50 };
+    expect((await llm.capabilities("deepseek/deepseek-v4.1-flash-1017", shortLived)).contextWindow).toBe(1_000_000);
+    fakes.openrouter.answer(({ path }) => (path === PATH ? { status: 200, body: { data: { endpoints: [] } } } : undefined));
+    await new Promise((done) => setTimeout(done, 80));
+    expect((await llm.capabilities("deepseek/deepseek-v4.1-flash-1017", shortLived)).contextWindow).toBe(1_000_000);
+    expect(asked()).toBe(2);
   });
 });
 
@@ -996,7 +1112,7 @@ describe("a refused understand call", () => {
 });
 
 describe("OpenRouter's backend pin", () => {
-  it("is not sent on a prepared call: only understand pins the backend, as today", () => {
+  it("is not sent on a prepared call: only understand pins the backend, as before provider", () => {
     const prepared = llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.prepare("google/gemini-3.8-flash", { thinking: false, cache: false });
     expect(prepared.options.providerOptions.openrouter).not.toHaveProperty("provider");
   });
@@ -1113,10 +1229,10 @@ describe("llm.availability", () => {
   });
 
   it("answers the OpenRouter upstream a judge call uses", () => {
-    expect(llmProvider(fakes, {}).llm.availability("typesafe/jev-1.13", "judge").upstreams).toEqual([
+    expect(llmProvider(fakes, {}).llm.judgeAvailability().upstreams).toEqual([
       { upstream: "openrouter", weight: 0, configured: false, envVar: "OPENROUTER_API_KEY" },
     ]);
-    expect(llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.availability("typesafe/jev-1.13", "judge").upstreams[0]?.configured).toBe(true);
+    expect(llmProvider(fakes, { OPENROUTER_API_KEY: "or" }).llm.judgeAvailability().upstreams[0]?.configured).toBe(true);
   });
 });
 

@@ -5,13 +5,14 @@
  * What this module takes in and hands back.
  *
  * One shape carries the media in both forms it can travel: an image goes as
- * the address it lives at and the backend fetches it, while video and audio go
- * as bytes. That is not a preference — measured against the live endpoint, a
- * video url comes back 400 `Cannot fetch content` and an audio url is read as
- * base64 and fails to decode.
+ * the address it lives at, with a reader for an upstream that needs its bytes,
+ * while video and audio go as bytes. That is not a preference — measured
+ * against the live endpoint, a video url comes back 400 `Cannot fetch content`
+ * and an audio url is read as base64 and fails to decode.
  */
 
-import { UNDERSTAND_MODEL, type AudioFormat, type VideoFormat } from "@breatic/shared";
+import { UNDERSTAND_MODEL } from "@breatic/shared";
+import type { Cost } from "@breatic/provider";
 
 /** Which of the three kinds an address turned out to hold. */
 export type MediaKind = "image" | "video" | "audio";
@@ -25,26 +26,22 @@ export type MediaKind = "image" | "video" | "audio";
  */
 export type Media =
   | {
-      /** An address the backend fetches for itself. */
+      /** An address an upstream may fetch for itself. */
       kind: "image";
       /** Where it lives. */
       url: string;
+      /** The type it was settled as. */
+      contentType: string;
+      /** Reads its bytes, for an upstream that needs them. */
+      read: (signal: AbortSignal) => Promise<Uint8Array>;
     }
   | {
-      /** Bytes that travel inside the request, beside a format name. */
-      kind: "video";
+      /** Bytes that travel inside the request. */
+      kind: "video" | "audio";
       /** The bytes. */
       bytes: Uint8Array;
-      /** What the endpoint calls this format, which is not always its type. */
-      format: VideoFormat;
-    }
-  | {
-      /** Bytes that travel inside the request, beside a format name. */
-      kind: "audio";
-      /** The bytes. */
-      bytes: Uint8Array;
-      /** What the endpoint calls this format, which is not always its subtype. */
-      format: AudioFormat;
+      /** The type they were settled as; provider names it the way each upstream takes it. */
+      contentType: string;
     };
 
 /**
@@ -179,16 +176,8 @@ export type MediaTransport = "address" | "inline" | "mixed";
  * support a sentence about what the caller sent.
  */
 export interface RefusalFacts {
-  /** The code to judge by: the envelope's own where it carries one. */
+  /** The code to judge by: the one inside an error the answer carried, where it carries one. */
   code: number;
-  /** Where the words came from. */
-  source:
-    /** An `error` object the service put in the body. */
-    | "envelope"
-    /** The body as it arrived, which is not the shape an answer takes. */
-    | "body"
-    /** A sentence of ours about a body that said nothing. */
-    | "ours";
   /** Whether all media are addresses, all are inline, or the request mixes both. */
   transport: MediaTransport;
 }
@@ -210,26 +199,26 @@ export class UnderstandRefused extends Error {
   /** What the refusal is about. */
   readonly kind: RefusalKind;
   /**
-   * The service's own name for the failure (`metadata.error_type`), when its
-   * envelope gave one. Reported as it came: the same 403 is a key, a budget
-   * or a content block, and only this tells them apart.
+   * Whether the upstream said it blocked the content. The same 403 is a key,
+   * a budget or a content block, and only the upstream's own word tells them
+   * apart; provider reads it in each upstream's adapter.
    */
-  readonly errorType: string | undefined;
+  readonly blocked: boolean;
 
   /**
    * Build one.
    * @param status - The status this refusal was judged by.
    * @param detail - The words it is stated in, the service's or ours.
    * @param kind - What the refusal is about.
-   * @param errorType - The service's own name for the failure, when it gave one.
+   * @param blocked - Whether the upstream said it blocked the content.
    */
-  constructor(status: number, detail: string, kind: RefusalKind, errorType?: string) {
+  constructor(status: number, detail: string, kind: RefusalKind, blocked = false) {
     super(`understand refused (${status}, ${kind}): ${detail}`);
     this.name = "UnderstandRefused";
     this.status = status;
     this.detail = detail;
     this.kind = kind;
-    this.errorType = errorType;
+    this.blocked = blocked;
   }
 }
 
@@ -239,36 +228,28 @@ export interface UnderstandRequest {
   media: readonly Media[];
   /** What to ask about it. */
   question: string;
-  /** The model to call, named the way the service names models. */
+  /** Our model id. */
   model: string;
-  /** Which backend to pin, or undefined to let the service choose. */
-  backend?: string;
-  /** The credential for the service. */
-  apiKey: string;
-  /** Where the service lives, without a trailing slash. */
-  baseUrl: string;
   /** How much the model may write. */
   maxOutputTokens: number;
-  /** How long one delivery of this call may take. */
+  /** How long this call may take. */
   timeoutMs: number;
   /** Whether anyone still wants the answer. */
   signal?: AbortSignal;
   /** Persist send authority immediately before the model request is issued. */
   onRequestSending?: () => Promise<void>;
   /**
-   * Called once when the service has billed the call: with what its body
-   * says the call cost, or with undefined when a success answer carried no
-   * figure or could not be read. Not called for a refusal status whose body
-   * states no cost, nor for a call that never got an answer.
+   * Called once for each answer an upstream billed, however the call ended:
+   * what it cost and the upstream that billed it.
    */
-  onBilled: (costUsd: number | undefined) => void;
+  onBilled: (cost: Cost, upstream: string) => void;
 }
 
 /** What one understanding call answered with. */
 export interface UnderstandAnswer {
   /** What the model wrote. */
   text: string;
-  /** Why it stopped writing, in the service's own vocabulary. */
+  /** Why it stopped writing, in the AI SDK's words, the same for every upstream. */
   finishReason: string;
 }
 
@@ -317,20 +298,17 @@ export type UnderstandAt = Omit<FetchMediaRequest, "url" | "ledgerType" | "remai
   };
 
 /**
- * Who answers a reading, pinned.
+ * Which model answers a reading, pinned.
  *
  * The user is not choosing a model — they pressed Understand, or an agent
  * called the tool — and one model covers all three media (user 2026-09-19).
  * The agent tool, the canvas route and the worker all read these, so a change
  * reaches every lane at once.
  *
- * Fixed here rather than configured: they are what every measurement behind
- * this capability was taken against. The backend matters on its own — the two
- * that serve this model take different body sizes, and leaving the choice to
- * the deployment means a clip that worked yesterday is refused today.
+ * Fixed here rather than configured: it is what every measurement behind
+ * this capability was taken against. Which backend serves it is provider's
+ * configuration.
  */
 export const UNDERSTAND_PINS = {
   model: UNDERSTAND_MODEL.id,
-  backend: "google-vertex",
-  baseUrl: "https://openrouter.ai/api/v1",
 } as const;

@@ -181,7 +181,7 @@ describe('the pool in a task', () => {
   });
 });
 
-describe('mentionTokens — how each mentioned chip is written into the prompt', () => {
+describe('mentionTokens — how each mentioned chip is written into the prompt, by neutral reference provider respells per upstream', () => {
   /** A pool that names its chips per kind, counted from 1. */
   const h3: ReferencePool = {
     image: { param: 'images', cap: 9, mention: '<Picture {n}>' },
@@ -199,9 +199,9 @@ describe('mentionTokens — how each mentioned chip is written into the prompt',
       nodes,
     });
     expect(tokens).toEqual({
-      a: '<Picture 1>',
-      v: '<Video 1>',
-      b: '<Picture 2>',
+      a: '{{ref:images:1}}',
+      v: '{{ref:videos:1}}',
+      b: '{{ref:images:2}}',
     });
   });
 
@@ -212,10 +212,10 @@ describe('mentionTokens — how each mentioned chip is written into the prompt',
       atMentioned: new Set(['a', focusRefId('c1')]),
       nodes,
     });
-    expect(tokens[focusRefId('c1')]).toBe('<Picture 2>');
+    expect(tokens[focusRefId('c1')]).toBe('{{ref:images:2}}');
   });
 
-  it('counts from 0 where the model says {i}', () => {
+  it('writes the same reference whatever the model spells its mentions as, counted from 1', () => {
     const gemini: ReferencePool = { image: { param: 'images', cap: 10, mention: '<IMAGE_REF_{i}>' } };
     const tokens = mentionTokens(gemini, {
       references: rows('a', 'b'),
@@ -223,7 +223,7 @@ describe('mentionTokens — how each mentioned chip is written into the prompt',
       atMentioned: new Set(['a', 'b']),
       nodes,
     });
-    expect(tokens).toEqual({ a: '<IMAGE_REF_0>', b: '<IMAGE_REF_1>' });
+    expect(tokens).toEqual({ a: '{{ref:images:1}}', b: '{{ref:images:2}}' });
   });
 
   it('writes nothing for what is not sent: unmentioned, not taken, or unnamed', () => {
@@ -239,7 +239,7 @@ describe('mentionTokens — how each mentioned chip is written into the prompt',
       atMentioned: new Set(['b', 'v', 's']),
       nodes,
     });
-    expect(tokens).toEqual({ b: 'image 1' });
+    expect(tokens).toEqual({ b: '{{ref:images:1}}' });
   });
 });
 

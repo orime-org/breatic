@@ -338,6 +338,10 @@
       "still_running": "この生成はまだ終了処理中で、結果が出る可能性があります。しばらくしてからもう一度お試しください。",
       "has_result": "この生成は結果が出ており、タスク一覧に戻りました。"
     },
+    "model": {
+      "not_configured": "このデプロイでは {model} がまだ設定されていません。{envVars} の設定が必要です。",
+      "upstream_not_bound": "{model} は {upstream} 経由では提供されていません。"
+    },
     "document": {
       "versions_full": "{limit, plural, other {この Document のスナップショットは上限の # 件に達しています。古いスナップショットを削除してから保存してください。}}"
     }
@@ -891,6 +895,7 @@
       "param": {
         "compose_from": "生成のもと",
         "language": "言語",
+        "language_boost": "言語",
         "voice_description": "声の説明",
         "speakers": "話者",
         "emotion": "感情",
@@ -3486,6 +3491,7 @@
     "close": "閉じる",
     "indexLabel": "クレジットの項目",
     "unit": "クレジット",
+    "billingPending": "課金処理中",
     "loadFailed": "読み込めませんでした。閉じてから開き直してください。",
     "listEnd": "これ以上ありません",
     "listPageFailed": "このページを読み込めませんでした。スクロールで再試行。",

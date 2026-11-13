@@ -169,9 +169,9 @@ INGEST_SHARED_SECRET=YOUR_GENERATED_SECRET
 
 ## 5. 配置需要使用的 AI 功能
 
-在 `.env` 中填写自己的 `OPENROUTER_API_KEY`，并确认该账户有可用额度、能访问配置中的模型。当前文本模型路由会优先使用已配置的厂商直连密钥，否则走 OpenRouter；不准备使用的 `OPENAI_API_KEY`、`GOOGLE_API_KEY`、`ANTHROPIC_API_KEY`、`DEEPSEEK_API_KEY` 请留空。
+所有模型调用都经过 provider 层：它按权重依次尝试一个模型的各家上游，跳过没配密钥的那家。每家上游读的环境变量名写在 `config/provider/upstreams.yaml` 的 `key_env`。在 `.env` 中填写自己的 `OPENROUTER_API_KEY`，并确认该账户有可用额度、能访问配置中的模型：文本模型配了厂商自己的密钥就走厂商官方 API，否则走 OpenRouter（`config/provider/llm.yaml`）。不准备使用的 `OPENAI_API_KEY`、`GOOGLE_API_KEY`、`ANTHROPIC_API_KEY`、`DEEPSEEK_API_KEY` 请留空。
 
-图像、视频、音频、语音和 3D 不由一个文本密钥全部覆盖。根据界面准备使用的模型，查看 `config/models/<类型>/providers.yaml` 中的 `api_key_env`，在 `.env` 填写那个变量。例如使用 WaveSpeed 对应的模型就配置 `WAVESPEED_API_KEY`。不需要的模型供应商可以不配置，对应功能不作为本次验收项。
+图像、视频、音频、语音和 3D 生成不由一个文本密钥覆盖。这些模型各自的上游列在 `config/provider/media/<类型>.yaml`，至少配上其中一家的密钥，例如 `WAVESPEED_API_KEY` 或 `FAL_KEY`。无论配了什么，模型都会出现在列表里；一家可用上游都没有的模型，发起生成时会被拒绝，并写明缺哪些环境变量。没配的模型不作为本次验收项。
 
 Google 登录、真实 SMTP 邮件、Stripe 支付和 Brave 搜索是独立可选集成，不是启动前置条件。需要这些功能时，再按 `.env.dev` 对应配置段提供凭据；不要通过打开 `PAYMENT_ENABLED` 来解决 AI 供应商额度问题。
 

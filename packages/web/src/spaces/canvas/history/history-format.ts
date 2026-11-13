@@ -75,6 +75,16 @@ export function entryCredits(entry: NodeHistoryEntry): number | undefined {
 }
 
 /**
+ * Whether a generation's credits are what is known so far: its task was delivered before its upstream billed it,
+ * and the billed amount replaces them (inner#1743).
+ * @param entry - The history row.
+ * @returns True while it is still being billed.
+ */
+export function entryBillingPending(entry: NodeHistoryEntry): boolean {
+  return entry.metadata.billing === 'pending';
+}
+
+/**
  * The original filename to render for an upload row, or undefined when it was
  * not recorded (falls back to a generic label in the UI).
  * @param entry - The history row.

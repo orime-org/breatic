@@ -32,6 +32,8 @@ vi.mock("@breatic/core", async (importOriginal) => {
   return { ...base, runWithContext: actual.runWithContext, getContext: actual.getContext };
 });
 
+const MARK = vi.hoisted(() => ({ "test-upstream": { cacheControl: { type: "ephemeral" } } }));
+
 vi.mock("@breatic/domain", async (importOriginal) => {
   const { domainMock } = await import("../helpers/mock-core.js");
   const base = await domainMock();
@@ -40,7 +42,6 @@ vi.mock("@breatic/domain", async (importOriginal) => {
   return {
     ...base,
     streamTextRetry: actual.streamTextRetry,
-    systemFor: actual.systemFor,
     instructionsText: actual.instructionsText,
     buildAgentConfig: () => ({
       modelId: "anthropic/claude-opus-5.5",
@@ -48,11 +49,17 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       tools: {},
     }),
     finalizeTurn: async () => [],
-    getModel: () =>
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider(() =>
       modelProducing(
         () => modelSays.parts as ModelStreamPart[],
         (asked) => modelSays.prompts.push(asked.prompt),
       ),
+      // Marked the way a caching upstream is marked; which parts provider marks is its own, and its tests hold it.
+      (parts) => [
+        { role: "system", content: parts.base, providerOptions: MARK },
+        ...(parts.project === undefined ? [] : [{ role: "system", content: parts.project, providerOptions: MARK }]),
+        ...(parts.conversation === undefined ? [] : [{ role: "system", content: parts.conversation }]),
+      ]),
   };
 });
 
@@ -71,7 +78,7 @@ const { MainAgent } = await import("@server/agent/main-agent.js");
 const { runWithContext } = await import("@breatic/core");
 
 describe("the system prompt a turn sends", () => {
-  it("marks the base prompt and the project's memory and leaves this conversation's memory unmarked", async () => {
+  it("sends the system prompt as provider laid it out for the turn's instructions", async () => {
     modelSays.parts = saying("the reply");
     await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
       const turn = await new MainAgent().chat("hello", undefined, [], "UTC");
@@ -81,8 +88,8 @@ describe("the system prompt a turn sends", () => {
     const prompt = modelSays.prompts.at(-1) as Array<{ role: string; content: unknown; providerOptions?: unknown }>;
     const system = prompt.filter((m) => m.role === "system");
     expect(system.map((m) => m.content)).toEqual(["persona", "## Project Context\np", "## Conversation Memory\nc"]);
-    expect(system[0]!.providerOptions).toMatchObject({ openrouter: { cacheControl: { type: "ephemeral" } } });
-    expect(system[1]!.providerOptions).toMatchObject({ openrouter: { cacheControl: { type: "ephemeral" } } });
+    expect(system[0]!.providerOptions).toMatchObject(MARK);
+    expect(system[1]!.providerOptions).toMatchObject(MARK);
     expect(system[2]!.providerOptions).toBeUndefined();
   });
 });

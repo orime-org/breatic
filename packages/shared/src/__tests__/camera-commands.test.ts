@@ -63,7 +63,7 @@ describe("camera commands on the wire", () => {
           tier: "optional",
           generation_time: 60,
           params: {},
-          providers: [],
+          availability: { upstreams: [] },
           takes_prompt: true,
           camera_commands,
         },

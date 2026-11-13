@@ -17,7 +17,7 @@ import type { EstimateInput } from '@breatic/shared/pricing';
 import { buildOverwriteTaskPayload, type OverwriteTaskInput } from '@web/spaces/canvas/generate/overwrite-task-payload';
 import { poolParams, type ReferenceUrls } from '@web/spaces/canvas/generate/reference-urls';
 
-/** Image-node generation task type (AIGC_TASK_TYPES key on the worker). */
+/** Image-node generation task type (one of the worker's MODEL_TASK_TYPES). */
 const IMAGE_TASK_TYPE = 'image';
 
 /** Inputs for {@link buildGenerateTaskPayload}. */

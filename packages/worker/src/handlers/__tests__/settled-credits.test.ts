@@ -31,7 +31,7 @@ const h = vi.hoisted(() => {
     ContainerJobFailed,
     warn: vi.fn(),
     runContainerJob: vi.fn(),
-    runCatalogTask: vi.fn(),
+    runModelTask: vi.fn(),
     taskDeadline: vi.fn(),
     markFailed: vi.fn(),
     moveToDelayed: vi.fn(),
@@ -52,11 +52,15 @@ const h = vi.hoisted(() => {
     request: { id: null as string | null },
     error: vi.fn(),
     readingCredits: { value: 0 },
+    readingLookups: { value: [] as { lookup: { upstream: string }; source: string; model: string }[] },
+    markCompleted: vi.fn(async () => true),
+    extendHold: vi.fn(),
+    updateCostWait: vi.fn(),
     recordGenerationSuccess: vi.fn(async (_entry: unknown) => ({ id: "history-1" })),
   };
 });
 
-vi.mock("@worker/providers/still-running.js", () => ({
+vi.mock("@worker/handlers/still-running.js", () => ({
   StillRunning: h.StillRunning,
 }));
 vi.mock("@worker/handlers/task-deadline.js", () => ({ taskDeadline: h.taskDeadline }));
@@ -64,22 +68,15 @@ vi.mock("@worker/handlers/container/run-container-job.js", () => ({
   ContainerJobFailed: h.ContainerJobFailed,
   runContainerJob: h.runContainerJob,
 }));
-vi.mock("@worker/providers/run-steps.js", () => ({ runCatalogTask: h.runCatalogTask }));
+vi.mock("@worker/handlers/model-task.js", () => ({ runModelTask: h.runModelTask, abandonedCosts: async () => [] }));
 vi.mock("@worker/services/project-media.service.js", () => ({
   resolveRegisteredProjectMedia: h.resolveRegisteredProjectMedia,
 }));
-vi.mock("@worker/providers/generate.js", () => ({
-  validateModelParams: (_modality: string, model: string, params: Record<string, unknown>) => [model, params],
-}));
-vi.mock("@worker/handlers/step-deps.js", () => ({ stepDepsFor: () => ({}) }));
 vi.mock("@worker/handlers/understand-slots.js", () => ({
   withUnderstandSlot: async <T>(read: () => Promise<T>): Promise<T> => {
     if (h.slotFull.value) throw new h.StillRunning(DEADLINE - 60_000);
     return read();
   },
-}));
-vi.mock("@worker/handlers/prompt-params.js", () => ({
-  takePromptAndValidate: (params: Record<string, unknown>) => ["a cat", undefined, params],
 }));
 vi.mock("@breatic/core", () => ({
   // Product analytics (inner#1442) runs the job under its consent and reports
@@ -102,6 +99,7 @@ vi.mock("@breatic/core", () => ({
   getUnderstandConfig: vi.fn(() => ({})),
   storageKey: vi.fn(),
   env: {},
+  getNodeTaskConfig: () => ({ cost_wait_delay_ms: 1_000, cost_wait_attempts: 3 }),
   NotFoundError: class extends Error {},
   logger: { info: h.info, warn: h.warn, error: h.error, debug: vi.fn() },
 }));
@@ -109,27 +107,26 @@ vi.mock("@breatic/domain", async () => ({
   // The real judgement: the case below is about the ending it gives.
   failureOutcome: (await import("@domain/node-task/failure-outcome.js")).failureOutcome,
   buildAgentConfig: vi.fn(),
-  getModel: vi.fn(),
   generateTextRetry: vi.fn(),
   taskService: {
     markFailed: h.markFailed,
     markRunning: h.markRunning,
     getByIdInternal: h.getByIdInternal,
     recordProviderResult: h.recordProviderResult,
-    recordProviderTaskId: vi.fn(),
     markCompletedAndBill: h.markCompletedAndBill,
+    markCompleted: h.markCompleted,
   },
+  taskRepo: { clearSending: vi.fn(), updateCostWait: h.updateCostWait },
   upstreamStepRepo: { failOpenSteps: vi.fn() },
   assetService: { resolveOwnerStudioId: vi.fn(async () => "studio-1") },
   creditLotService: {
     settleCharge: h.settleCharge,
     pendingChargeRequestId: h.pendingChargeRequestId,
   },
-  creditHoldService: { releaseHold: vi.fn(async () => undefined) },
+  creditHoldService: { releaseHold: vi.fn(async () => undefined), extendHold: h.extendHold },
   // A dollar is a credit here, so each case's cost is the figure to round.
   creditsForUsd: (usd: number) => usd,
   toChargeCredits: (await import("@domain/credit/credit-math.js")).toChargeCredits,
-  resolveActiveProvider: vi.fn(),
   // No model declares an output type here, so the result keeps the stored one.
   modelCatalog: { getModelCatalog: () => ({ image: [], video: [], audio: [], tts: [], three_d: [] }) },
   nodeHistoryService: { recordGenerationFailure: vi.fn(), recordGenerationSuccess: h.recordGenerationSuccess },
@@ -138,8 +135,8 @@ vi.mock("@breatic/domain", async () => ({
   readingLimitsUntil: (await import("@domain/understand/limits-until.js")).readingLimitsUntil,
   MediaUnavailable: class extends Error {},
   UnderstandRefused: class extends Error {},
-  createUsageRecorder: () => ({ recordServiceCall: vi.fn(), settle: async () => h.readingCredits.value }),
-  UNDERSTAND_PINS: {},
+  createUsageRecorder: () => ({ recordServiceCall: vi.fn(), recordModelCall: vi.fn(), awaitingLookup: () => h.readingLookups.value, settle: async () => h.readingCredits.value }),
+  UNDERSTAND_PINS: { model: "google/gemini-3.8-flash" },
   extractPromptText: vi.fn(),
 }));
 
@@ -186,7 +183,8 @@ const LANES: Lane[] = [
   {
     name: "a model generation",
     job: () => jobOf({}),
-    costs: (credits) => h.runCatalogTask.mockResolvedValue({ outputs: [{ url: "https://cdn/out.png" }], cost: credits }),
+    costs: (credits) =>
+      h.runModelTask.mockResolvedValue({ outputs: [{ kind: "url", url: "https://cdn/out.png" }], costs: [{ state: "known", usd: credits, source: "billing" }], servedBy: "fal" }),
   },
   {
     name: "a reading",
@@ -241,6 +239,8 @@ function charged(): number {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  h.readingLookups.value = [];
+  h.markFailed.mockResolvedValue(true);
   h.getByIdInternal.mockResolvedValue({ status: "running", startedAt: new Date(), billedAt: null, providerResultUrl: null, providerTaskId: null });
   h.markRunning.mockResolvedValue(new Date());
   h.taskDeadline.mockResolvedValue(DEADLINE);
@@ -302,6 +302,47 @@ describe.each(LANES)("the credits $name is billed with", (lane) => {
   });
 });
 
+describe("who a charge names", () => {
+  it("names the upstream that served a model generation, and every cost it reported, known parts added", async () => {
+    h.runModelTask.mockResolvedValue({
+      outputs: [{ kind: "url", url: "https://cdn/out.png" }],
+      costs: [{ state: "known", usd: 1, source: "billing" }, { state: "known", usd: 0.5, source: "reported" }, { state: "missing", reason: "no billing" }],
+      servedBy: "sandbase",
+    });
+
+    await runTask(jobOf({}), "lock-token");
+
+    expect(chargeArg()).toEqual(expect.objectContaining({ provider: "sandbase", amount: 1.5, model: "nano-banana-2" }));
+    expect(h.warn).toHaveBeenCalledWith({ taskId: "task-1", reason: "no billing" }, "cost_unavailable");
+  });
+
+  it("names the upstream that billed a reading", async () => {
+    LANES[1]!.costs(2);
+    h.understandMediaAt.mockImplementation(async (request: { onBilled: (cost: unknown, upstream: string) => void }) => {
+      request.onBilled({ state: "known", usd: 2, source: "reported" }, "openrouter");
+      return { text: "a cat", finishReason: "stop" };
+    });
+    await runTask(LANES[1]!.job(), "lock-token");
+    expect(chargeArg()).toEqual(expect.objectContaining({ provider: "openrouter" }));
+  });
+});
+
+describe("a reading whose call's cost is still pending (inner#1743)", () => {
+  it("is delivered and waits on the cost, its lookup kept with how its usage row is written", async () => {
+    LANES[1]!.costs(2);
+    h.readingLookups.value = [{ lookup: { upstream: "openrouter", generationId: "gen-1" } as { upstream: string }, source: "model", model: "google/gemini-3.8-flash" }];
+
+    await expect(runTask(LANES[1]!.job(), "lock-token")).rejects.toThrow();
+
+    expect(h.markCompletedAndBill).not.toHaveBeenCalled();
+    expect((h.markCompleted.mock.calls[0] as unknown[])[1]).toMatchObject({
+      costWait: { credits: 2 },
+      pendingCosts: [{ lookup: { upstream: "openrouter", generationId: "gen-1" }, recordAs: { feature: "canvas_understand", model: "google/gemini-3.8-flash" } }],
+    });
+    expect(h.moveToDelayed).toHaveBeenCalled();
+  });
+});
+
 describe("accepting registered media after the vendor has returned", () => {
   it("fails without billing or vendor replay when accepting the Project relationship fails", async () => {
     const fileUrl = "https://cdn/out.png";
@@ -314,7 +355,7 @@ describe("accepting registered media after the vendor has returned", () => {
       providerTaskId: null,
     };
     h.getByIdInternal.mockResolvedValue(row);
-    h.runCatalogTask.mockResolvedValue({ outputs: [{ url: fileUrl }], cost: 3.075 });
+    h.runModelTask.mockResolvedValue({ outputs: [{ kind: "url", url: fileUrl }], costs: [{ state: "known", usd: 3.075, source: "billing" }], servedBy: "fal" });
     h.recordProviderResult.mockImplementation(async (_taskId: string, url: string) => {
       // The later boundary may run only after the provider fact's write resolves.
       await Promise.resolve();
@@ -331,7 +372,7 @@ describe("accepting registered media after the vendor has returned", () => {
     expect(h.resolveRegisteredProjectMedia).toHaveBeenCalledExactlyOnceWith("proj-1", fileUrl);
     expect(providerFactsAtAcceptance).toEqual([fileUrl]);
     expect(h.markFailed).toHaveBeenCalledExactlyOnceWith("task-1", "internal");
-    expect(h.runCatalogTask).toHaveBeenCalledTimes(1);
+    expect(h.runModelTask).toHaveBeenCalledTimes(1);
     expect(h.markCompletedAndBill).not.toHaveBeenCalled();
     expect(h.settleCharge).not.toHaveBeenCalled();
     expect(h.recordGenerationSuccess).not.toHaveBeenCalled();
@@ -344,7 +385,7 @@ describe("accepting registered media after the vendor has returned", () => {
     expect(h.getByIdInternal).toHaveBeenCalledTimes(2);
     expect(h.getByIdInternal).toHaveBeenNthCalledWith(1, "task-1");
     expect(h.getByIdInternal).toHaveBeenNthCalledWith(2, "task-1");
-    expect(h.runCatalogTask).toHaveBeenCalledTimes(1);
+    expect(h.runModelTask).toHaveBeenCalledTimes(1);
     expect(h.recordProviderResult).toHaveBeenCalledTimes(1);
     expect(h.resolveRegisteredProjectMedia).toHaveBeenCalledTimes(1);
     expect(h.markFailed).toHaveBeenCalledTimes(2);

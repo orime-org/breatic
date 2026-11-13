@@ -8,7 +8,7 @@ A test package that is never built or deployed. It holds integration tests that 
 
 ## Dependencies
 
-**Declare only the library packages (`@breatic/core`, `@breatic/domain`, `@breatic/shared`); read server, worker and collab source by path through the `@server`, `@worker` and `@collab` aliases (`tsconfig.json` paths and `vitest.integration.config.ts`).** Server and collab depend on this package for the container start-up, so declaring them back would create a cycle.
+**Declare only the library packages (`@breatic/core`, `@breatic/domain`, `@breatic/provider`, `@breatic/shared`); read server, worker and collab source by path through the `@server`, `@worker` and `@collab` aliases (`tsconfig.json` paths and `vitest.integration.config.ts`).** Server and collab depend on this package for the container start-up, so declaring them back would create a cycle.
 
 **Because turbo cannot see those path reads, `turbo.json` lists the three services' `src/**` in this package's `typecheck` and `lint` inputs.** When this package starts reading another package's source by path, add it there too, or a stale cache passes after that source changes.
 
