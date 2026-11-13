@@ -39,11 +39,11 @@ O serviço hospedado oferece o plano Starter gratuito. Os créditos de geração
 | **Document Spaces** | Escreva roteiros, descrições de tomadas e listas de produção com texto formatado. |
 | **Canvas Spaces** | Organize referências e mídia em um canvas infinito; gere e refine recursos com prompts, modelos e referências. |
 | **3D (DEV)** | Posicione objetos integrados em uma cena compartilhada e edite posição, rotação e escala. |
-| **Timeline (DEV)** | Adicione vídeos do Project ou envie vídeos locais para uma faixa visual compartilhada, ajuste o quadro inicial e visualize a sequência. |
+| **Timeline (DEV)** | Organize vídeos do Project ou vídeos locais enviados em faixas compartilhadas: mova, recorte, divida, duplique e exclua clipes, desfaça suas próprias edições e visualize a sequência. Descreva uma Web Animation, peça ao DeepSeek para criá-la, acompanhe-a na lista de execuções e adicione o resultado como clipes que tocam no relógio da Timeline. Vídeos e Web Animations de todas as faixas tocam juntos como camadas sobrepostas; selecione uma camada na prévia para movê-la, redimensioná-la, esticá-la ou girá-la, ou digite sua posição e tamanho. Escolha a proporção do quadro entre sete opções (16:9, 9:16, 1:1, 4:3, 4:5, 2:3, 21:9) no fim da barra de reprodução; as camadas mantêm seu lugar no quadro. |
 | **Agente de IA no projeto** | Discuta ideias, forneça contexto de documentos ou do canvas e avalie propostas junto aos seus materiais. |
 | **Colaboração em tempo real** | Convide colaboradores, defina permissões e trabalhe em canvases, documentos, cenas 3D e Timelines sincronizados. |
 
-Os recursos podem ser imagens, vídeos, áudio e arquivos 3D. A geração depende dos provedores configurados e do acesso aos modelos. Canvas e Document estão disponíveis; 3D e Timeline têm a indicação **DEV**. A Timeline atual permite organizar e visualizar vídeos em uma única faixa visual. Edição multifaixa, outros tipos de mídia, Web Animation e exportação de vídeo estão planejados. A geração por modelos e as anotações dentro da cena 3D estão em desenvolvimento.
+Os recursos podem ser imagens, vídeos, áudio e arquivos 3D. A geração depende dos provedores configurados e do acesso aos modelos. Canvas e Document estão disponíveis; 3D e Timeline têm a indicação **DEV**. A Timeline atual permite editar e visualizar vídeos e Web Animations em várias faixas visuais; Web Animation só está disponível nas implantações que a ativam. Outros tipos de mídia e a exportação de vídeo estão planejados. A geração por modelos e as anotações dentro da cena 3D estão em desenvolvimento.
 
 ## Avaliem as alterações juntos
 
