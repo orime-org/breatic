@@ -327,3 +327,49 @@ describe('Mod-a inside an inline source (6.2)', () => {
     expect([from, to]).toEqual([source(editor).start, source(editor).end]);
   });
 });
+
+describe('the arrow keys at an inline formula’s edges (A7)', () => {
+  it('ArrowRight at the end of its source puts the caret right after the formula', () => {
+    const { editor } = open([between('xy')]);
+    select(editor, source(editor).end);
+
+    expect(press(editor, 'ArrowRight')).toBe(true);
+
+    expect(editor.prosemirrorView!.state.selection.from).toBe(source(editor).after);
+  });
+
+  it('ArrowLeft at the start of its source puts the caret right before the formula', () => {
+    const { editor } = open([between('xy')]);
+    select(editor, source(editor).start);
+
+    expect(press(editor, 'ArrowLeft')).toBe(true);
+
+    expect(editor.prosemirrorView!.state.selection.from).toBe(posOf(editor, 'math'));
+  });
+
+  it('ArrowLeft right after the formula puts the caret at the end of its source', () => {
+    const { editor } = open([between('xy')]);
+    select(editor, source(editor).after);
+
+    expect(press(editor, 'ArrowLeft')).toBe(true);
+
+    expect(editor.prosemirrorView!.state.selection.from).toBe(source(editor).end);
+  });
+
+  it('ArrowRight right before the formula puts the caret at the start of its source', () => {
+    const { editor } = open([between('xy')]);
+    select(editor, posOf(editor, 'math'));
+
+    expect(press(editor, 'ArrowRight')).toBe(true);
+
+    expect(editor.prosemirrorView!.state.selection.from).toBe(source(editor).start);
+  });
+
+  it('leaves an arrow inside the source to the browser', () => {
+    const { editor } = open([between('xy')]);
+    select(editor, source(editor).start + 1);
+
+    expect(press(editor, 'ArrowRight')).toBe(false);
+    expect(press(editor, 'ArrowLeft')).toBe(false);
+  });
+});

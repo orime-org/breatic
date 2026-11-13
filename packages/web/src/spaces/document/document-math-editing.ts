@@ -12,6 +12,7 @@
  * | Backspace / Delete in an empty source | the formula goes |
  * | Backspace at the start of an open block formula's source | does nothing, or removes the formula when its source is empty |
  * | Enter in an inline source | confirms, the caret after the formula, whatever block the line is |
+ * | ArrowLeft / ArrowRight across an inline formula's edge | the caret goes into its source, or out to right beside the formula |
  * | input into a selected, closed block formula | refused: its source is hidden |
  *
  * The keys run ahead of `document-enter` and `document-table-keys`, which
@@ -253,6 +254,37 @@ function confirmInline(editor: MathEditor, view: EditorView): boolean {
 }
 
 /**
+ * ArrowLeft or ArrowRight across an inline formula's edge: out of its source
+ * to right before or after the formula, and from right beside it into its
+ * source. The open box draws the source away from the formula, so the
+ * browser's own caret movement out of it lands one character past the
+ * formula; BlockNote places the caret itself for the other keys that leave a
+ * source (`moveSelectionOut` in `SourceInlineContentWithPreview.ts`).
+ * @param editor - The editor.
+ * @param view - The editor view.
+ * @param forward - ArrowRight, else ArrowLeft.
+ * @returns Whether the key was taken.
+ */
+function arrowByFormula(editor: MathEditor, view: EditorView, forward: boolean): boolean {
+  const { $cursor } = view.state.selection as TextSelection;
+  if (!$cursor) return false;
+  const { parent } = $cursor;
+  let to: number | null = null;
+  if (!parent.isTextblock && hasPreview(editor, parent.type.name)) {
+    if (forward && $cursor.parentOffset === parent.content.size) to = $cursor.after();
+    else if (!forward && $cursor.parentOffset === 0) to = $cursor.before();
+  } else {
+    const beside = forward ? $cursor.nodeAfter : $cursor.nodeBefore;
+    if (beside !== null && beside.isInline && hasPreview(editor, beside.type.name)) {
+      to = forward ? $cursor.pos + 1 : $cursor.pos - 1;
+    }
+  }
+  if (to === null) return false;
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, to)));
+  return true;
+}
+
+/**
  * Refuses what would write into a closed block formula's hidden source, and
  * a drop that lands in one.
  * @param editor - The editor.
@@ -307,6 +339,8 @@ export const documentMathEditingExtension = createExtension(({ editor }: { edito
       Delete: () => deleteByFormula(editor, view(), false),
       Enter: () => confirmInline(editor, view()),
       'Shift-Enter': () => confirmInline(editor, view()),
+      ArrowRight: () => arrowByFormula(editor, view(), true),
+      ArrowLeft: () => arrowByFormula(editor, view(), false),
     },
   } as never;
 });
