@@ -14,7 +14,7 @@ export const NAME_AS_WORLD_TYPOGRAPHY: GenerationTemplate = {
   inputs: [],
   steps: [],
   agentNote:
-    "a 3:4 typographic illustration of a name the user gives (a city, a company or an event), each letter or character built as a tiny model and reshaped by what the name is known for, with 6 to 14 short hand-written annotations and one accent colour; the name must stay in the picture spelled exactly right, and no other text appears",
+    "a 3:4 typographic illustration of a name the user gives (a city, a company or an event), each letter or character built as a tiny model and reshaped by what the name is known for, with 6 to 14 short hand-written annotations and one accent colour; the name and the annotations must stay in the picture, the name spelled and shaped exactly right, and no other text appears",
   goal: "posters",
   triggers: {
     asks: ["a typography poster", "lettering design", "a name made into a picture"],

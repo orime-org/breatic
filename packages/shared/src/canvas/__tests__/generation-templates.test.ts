@@ -1178,3 +1178,9 @@ describe('template inputs that go into a slot (inner#1825, CAP-1)', () => {
     }
   });
 });
+
+describe('poster templates (inner#1809)', () => {
+  it('tells the agent that the name and its annotations stay in the picture, not the name alone', () => {
+    expect(byId('name-as-world-typography')?.agentNote).toContain('the name and the annotations must stay in the picture, the name spelled and shaped exactly right, and no other text appears');
+  });
+});
