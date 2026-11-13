@@ -2937,6 +2937,18 @@ describe('TimelineSpace preview layers (breatic#1410)', () => {
     await handlesShown();
   });
 
+  it('notes in the properties that a clip selected outside the current frame is not at it, and drops the note for one that is', async () => {
+    seedLayout([clipAt(CLIP.id, MAIN, 0, 48), clipAt(X, 'v2', 30, 14, { transform: PIP })]);
+    showTimeline();
+    await layersReady(CLIP.id);
+    fireEvent.click(await screen.findByTestId('timeline-clip-' + X));
+    expect(await screen.findByTestId('timeline-clip-off-frame')).toHaveTextContent('This clip is not at the current frame.');
+    fireEvent.click(screen.getByTestId('timeline-clip-' + CLIP.id));
+    await waitFor(() => expect(selectedOnTrack(CLIP.id)).toBe('true'));
+    expect(await screen.findByTestId('timeline-clip-x')).toBeInstanceOf(HTMLInputElement);
+    expect(screen.queryByTestId('timeline-clip-off-frame')).toBe(null);
+  });
+
   it('moves the layer itself while dragging, writes nothing until release, then one set_transform that undo reverts', async () => {
     const doc = seedPip();
     showTimeline();

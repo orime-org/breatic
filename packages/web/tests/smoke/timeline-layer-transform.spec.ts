@@ -354,7 +354,7 @@ test('numbers typed into the properties fields move, scale and rotate the layer 
     expectNear(centreOf(await boxOf(video)).y - frame.y, -50 * factor, PX, 'moved up');
 
     // The ratio lock is on by default: one scale field carries the other.
-    await expect(outlet.getByTestId('timeline-clip-lock-ratio')).toHaveAttribute('aria-pressed', 'true');
+    await expect(outlet.getByTestId('timeline-clip-lock-ratio')).toHaveAttribute('aria-checked', 'true');
     await type('timeline-clip-scale-x', '50');
     await expect.poll(read).toEqual({ ...IDENTITY, x: 100, y: -50, scaleX: 0.5, scaleY: 0.5 });
     await expect(outlet.getByTestId('timeline-clip-scale-y')).toHaveValue('50');
@@ -363,7 +363,7 @@ test('numbers typed into the properties fields move, scale and rotate the layer 
     expectNear((await boxOf(video)).height, original.height * 0.5, PX, 'half height');
 
     await outlet.getByTestId('timeline-clip-lock-ratio').click();
-    await expect(outlet.getByTestId('timeline-clip-lock-ratio')).toHaveAttribute('aria-pressed', 'false');
+    await expect(outlet.getByTestId('timeline-clip-lock-ratio')).toHaveAttribute('aria-checked', 'false');
     await type('timeline-clip-scale-y', '80');
     await expect.poll(read).toEqual({ ...IDENTITY, x: 100, y: -50, scaleX: 0.5, scaleY: 0.8 });
     await type('timeline-clip-rotation', '90');
@@ -425,7 +425,7 @@ test('a Viewer sees the layer an Editor dragged at its new place, and clicking t
       await selectTimelineClip(peer, uploaded.clipId);
       await expect(view.getByTestId('timeline-clip-x')).toHaveText(String(Math.round(moved.x)));
       await expect(view.locator('input[data-testid="timeline-clip-x"]')).toHaveCount(0);
-      await expect(view.getByTestId('timeline-clip-lock-ratio')).toBeDisabled();
+      await expect(view.getByTestId('timeline-clip-lock-ratio')).toHaveCount(0);
       await expect(view.getByTestId('timeline-layer-proxy')).toHaveCount(0);
       expect(peerErrors.unexpected).toEqual([]);
     });

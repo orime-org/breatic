@@ -4,7 +4,7 @@
 /** The selected clip's start, in-point and duration fields (inner#1708 P4). */
 
 import { act, cleanup, fireEvent, screen, within } from '@testing-library/react';
-import { setLocale, t, type TimelineClip, type TimelineDocumentV1, type TimelineVideoClip } from '@breatic/shared';
+import { TIMELINE_LAYER_TRANSFORM_LIMITS, setLocale, t, type TimelineClip, type TimelineDocumentV1, type TimelineVideoClip } from '@breatic/shared';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { TimelineEditCommand, TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
@@ -31,7 +31,7 @@ afterEach(() => {
 function showFields(selected: TimelineVideoClip = SELECTED): ReturnType<typeof vi.fn<(command: TimelineEditCommand) => void>> {
   const onCommit = vi.fn<(command: TimelineEditCommand) => void>();
   renderWithTooltips(<TimelineClipProperties spaceId='space' document={timeline([selected])} clip={selected} name='Clip' conflict={false}
-    labels={LABELS} readOnly={false} placement={OFF} onCommit={onCommit} />);
+    labels={LABELS} readOnly={false} placement={OFF} atFrame onCommit={onCommit} />);
   return onCommit;
 }
 
@@ -53,6 +53,13 @@ describe('TimelineClipProperties field input', () => {
     typeAndBlur(testId, '');
     expect(onCommit).not.toHaveBeenCalled();
     expect(screen.getByTestId('timeline-clip-field-error')).toBeInTheDocument();
+  });
+
+  it.each(['timeline-clip-start', 'timeline-clip-in', 'timeline-clip-duration'])('keeps the frame-range copy for an invalid %s (breatic#1410)', (testId) => {
+    showFields();
+    typeAndBlur(testId, '');
+    expect(t('timeline.errors.invalid_range')).toBe('Enter a frame range inside the video.');
+    expect(screen.getByTestId('timeline-clip-field-error')).toHaveTextContent('Enter a frame range inside the video.');
   });
 
   it.each(['timeline-clip-start', 'timeline-clip-in', 'timeline-clip-duration'])('commits nothing and shows the error for non-digit text in %s', (testId) => {
@@ -134,7 +141,7 @@ function showLive(selected: TimelineVideoClip = SELECTED): { onCommit: ReturnTyp
    * @throws {never} Never.
    */
   const panel = (item: TimelineVideoClip, options: PanelOptions = {}): React.JSX.Element => <TimelineClipProperties key={item.id} spaceId='space' document={timeline([item], undefined, [SOURCE, SHORT_SOURCE])} clip={item} name='Clip' conflict={false}
-    labels={LABELS} readOnly={options.readOnly ?? false} placement={options.placement ?? OFF} onCommit={onCommit} />;
+    labels={LABELS} readOnly={options.readOnly ?? false} placement={options.placement ?? OFF} atFrame onCommit={onCommit} />;
   const view = renderWithTooltips(panel(selected));
   return { onCommit, show: (next, options) => view.rerender(panel(next, options)) };
 }
@@ -417,7 +424,7 @@ describe('TimelineClipProperties names the source length and rate (inner#1708 vi
       sources: { [SOURCE.id]: { ...SOURCE, timebase: ntsc } },
     };
     renderWithTooltips(<TimelineClipProperties spaceId='space' document={document} clip={SELECTED} name='Clip' conflict={false}
-      labels={LABELS} readOnly={false} placement={OFF} onCommit={vi.fn()} />);
+      labels={LABELS} readOnly={false} placement={OFF} atFrame onCommit={vi.fn()} />);
     expect(screen.getByTestId('timeline-clip-source')).toHaveTextContent(t('timeline.sourceExtent', { frames: SOURCE.extentFrames, fps: 29.97 }));
   });
 
@@ -431,7 +438,7 @@ describe('TimelineClipProperties names the source length and rate (inner#1708 vi
 /**
  * The position and size group (breatic#1410 design §5, §3.1). Fields `timeline-clip-x`, `-y` (canvas pixels, whole
  * numbers shown), `-scale-x`, `-scale-y` (percent, one decimal, 1% to 10000%), `-rotation` (degrees, one decimal) and the
- * ratio lock `timeline-clip-lock-ratio` (a Button with `aria-pressed`, on by default). Fields commit like the frame
+ * ratio lock `timeline-clip-lock-ratio` (a labelled Switch with `aria-checked`, on by default, last in the group). Fields commit like the frame
  * fields and SceneField: Enter or blur, only when the text differs from what is shown; an invalid entry is marked
  * (`aria-invalid` and the note beside it) and writes nothing; Escape restores the shown value. A commit is
  * `{ operation: 'set_transform', parameters: { clipId, transform }, placement }` with the other parts as stored and
@@ -448,13 +455,14 @@ describe('TimelineClipProperties position and size (breatic#1410)', () => {
    * Render the panel for one clip.
    * @param selected - The clip.
    * @param readOnly - Whether the user is a Viewer.
+   * @param atFrame - Whether the clip covers the playhead.
    * @returns The commit callback.
    * @throws {Error} When rendering fails.
    */
-  function showPlaced(selected: TimelineClip = PLACED, readOnly = false): ReturnType<typeof vi.fn<(command: TimelineEditCommand) => void>> {
+  function showPlaced(selected: TimelineClip = PLACED, readOnly = false, atFrame = true): ReturnType<typeof vi.fn<(command: TimelineEditCommand) => void>> {
     const onCommit = vi.fn<(command: TimelineEditCommand) => void>();
     renderWithTooltips(<TimelineClipProperties spaceId='space' document={timeline([selected])} web={RESOLUTION} clip={selected} name='Clip' conflict={false}
-      labels={LABELS} readOnly={readOnly} placement={OFF} onCommit={onCommit} />);
+      labels={LABELS} readOnly={readOnly} placement={OFF} atFrame={atFrame} onCommit={onCommit} />);
     return onCommit;
   }
 
@@ -474,7 +482,7 @@ describe('TimelineClipProperties position and size (breatic#1410)', () => {
     expect(fieldText('timeline-clip-scale-x')).toBe('33.3');
     expect(fieldText('timeline-clip-scale-y')).toBe('25.7');
     expect(fieldText('timeline-clip-rotation')).toBe('12.3');
-    expect(screen.getByTestId('timeline-clip-lock-ratio')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('timeline-clip-lock-ratio')).toHaveAttribute('aria-checked', 'true');
   });
 
   it('commits a changed X on Enter as one set_transform carrying the other parts as stored', () => {
@@ -546,7 +554,7 @@ describe('TimelineClipProperties position and size (breatic#1410)', () => {
     const onCommit = showPlaced();
     const lock = screen.getByTestId('timeline-clip-lock-ratio');
     fireEvent.click(lock);
-    expect(lock).toHaveAttribute('aria-pressed', 'false');
+    expect(lock).toHaveAttribute('aria-checked', 'false');
     typeAndEnter('timeline-clip-scale-x', '12.3456');
     expect(onCommit).toHaveBeenCalledTimes(1);
     expect(onCommit).toHaveBeenCalledWith(setTransform({ ...STORED, scaleX: 0.1235 }));
@@ -581,17 +589,15 @@ describe('TimelineClipProperties position and size (breatic#1410)', () => {
     });
   });
 
-  it('shows a Viewer the values as text with no input and no usable ratio lock', () => {
+  it('shows a Viewer the values as text with no input and no ratio lock', () => {
     const onCommit = showPlaced(PLACED, true);
     for (const testId of FIELDS) expect(screen.getByTestId(testId)).not.toBeInstanceOf(HTMLInputElement);
     expect(fieldText('timeline-clip-x')).toBe('100');
     expect(fieldText('timeline-clip-scale-x')).toBe('33.3');
     expect(fieldText('timeline-clip-rotation')).toBe('12.3');
-    const lock = screen.queryByTestId('timeline-clip-lock-ratio');
-    if (lock !== null) {
-      expect(lock).toBeDisabled();
-      fireEvent.click(lock);
-    }
+    expect(screen.queryAllByTestId('timeline-clip-lock-ratio')).toHaveLength(0);
+    expect(screen.queryAllByRole('switch')).toHaveLength(0);
+    expect(screen.queryByText('Lock ratio')).toBe(null);
     expect(onCommit).not.toHaveBeenCalled();
   });
 
@@ -614,5 +620,99 @@ describe('TimelineClipProperties position and size (breatic#1410)', () => {
     const japanese = ['timeline-clip-scale-x', 'timeline-clip-scale-y', 'timeline-clip-rotation'].map(labelOf);
     japanese.forEach((text, index) => expect(text, english[index]).not.toBe(english[index]));
     act(() => { setLocale('en'); });
+  });
+
+  describe('field errors name what each field takes', () => {
+    it.each([
+      ['timeline-clip-scale-x', 'abc'], ['timeline-clip-scale-x', '0'], ['timeline-clip-scale-x', '20000'],
+      ['timeline-clip-scale-y', 'abc'], ['timeline-clip-scale-y', '0'], ['timeline-clip-scale-y', '20000'],
+    ] as const)('shows the scale range beside %s for "%s"', (testId, typed) => {
+      const onCommit = showPlaced();
+      typeAndEnter(testId, typed);
+      expect(onCommit).not.toHaveBeenCalled();
+      const range = { min: TIMELINE_LAYER_TRANSFORM_LIMITS.scale.min * 100, max: TIMELINE_LAYER_TRANSFORM_LIMITS.scale.max * 100 };
+      expect(t('timeline.errors.scaleRange', range)).toBe('Enter 1 to 10000.');
+      expect(noteBeside(testId)).toBe(true);
+      expect(screen.getByTestId('timeline-clip-field-error')).toHaveTextContent('Enter 1 to 10000.');
+    });
+
+    it.each(['timeline-clip-x', 'timeline-clip-y', 'timeline-clip-rotation'] as const)('asks for a number beside %s for "abc"', (testId) => {
+      const onCommit = showPlaced();
+      typeAndEnter(testId, 'abc');
+      expect(onCommit).not.toHaveBeenCalled();
+      expect(t('timeline.errors.notNumber')).toBe('Enter a number.');
+      expect(noteBeside(testId)).toBe(true);
+      expect(screen.getByTestId('timeline-clip-field-error')).toHaveTextContent('Enter a number.');
+    });
+  });
+
+  it('labels the position fields in canvas pixels', () => {
+    showPlaced();
+    const labelOf = (testId: string): string => (screen.getByTestId(testId) as HTMLInputElement).labels?.[0]?.textContent ?? '';
+    expect(labelOf('timeline-clip-x')).toBe('X (px)');
+    expect(labelOf('timeline-clip-y')).toBe('Y (px)');
+  });
+
+  describe('the ratio lock switch', () => {
+    const HALF = clip(cid(25), V2, 10, 14, { transform: { x: 10, y: 20, scaleX: 0.5, scaleY: 0.25, rotation: 5 } });
+
+    it('is a switch labelled Lock ratio, on by default, after the Rotation field and last in the group', () => {
+      showPlaced();
+      const lock = screen.getByTestId('timeline-clip-lock-ratio');
+      expect(lock).toHaveAttribute('role', 'switch');
+      expect(lock).toHaveAttribute('aria-checked', 'true');
+      expect(lock).toHaveAttribute('data-state', 'checked');
+      expect(screen.getByRole('switch', { name: 'Lock ratio' })).toBe(lock);
+      expect(screen.getByText('Lock ratio')).toBeVisible();
+      const follows = (earlier: Element, later: Element): boolean => (earlier.compareDocumentPosition(later) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+      expect(follows(screen.getByTestId('timeline-clip-rotation'), lock)).toBe(true);
+      // The source line follows the group, so nothing of the group comes after the lock.
+      expect(follows(lock, screen.getByTestId('timeline-clip-source'))).toBe(true);
+    });
+
+    it('turns off from its text label, and then a scale edit changes only its own axis', () => {
+      const onCommit = showPlaced(HALF);
+      fireEvent.click(screen.getByText('Lock ratio'));
+      const lock = screen.getByTestId('timeline-clip-lock-ratio');
+      expect(lock).toHaveAttribute('aria-checked', 'false');
+      expect(lock).toHaveAttribute('data-state', 'unchecked');
+      typeAndEnter('timeline-clip-scale-x', '100');
+      expect(onCommit).toHaveBeenLastCalledWith(setTransform({ x: 10, y: 20, scaleX: 1, scaleY: 0.25, rotation: 5 }, HALF.id));
+      typeAndEnter('timeline-clip-scale-y', '50');
+      expect(onCommit).toHaveBeenLastCalledWith(setTransform({ x: 10, y: 20, scaleX: 0.5, scaleY: 0.5, rotation: 5 }, HALF.id));
+    });
+
+    it('carries the other axis again once switched back on', () => {
+      const onCommit = showPlaced(HALF);
+      const lock = screen.getByTestId('timeline-clip-lock-ratio');
+      fireEvent.click(lock);
+      fireEvent.click(lock);
+      expect(lock).toHaveAttribute('aria-checked', 'true');
+      typeAndEnter('timeline-clip-scale-x', '100');
+      expect(onCommit).toHaveBeenLastCalledWith(setTransform({ x: 10, y: 20, scaleX: 1, scaleY: 0.5, rotation: 5 }, HALF.id));
+    });
+  });
+
+  describe('the off-frame note', () => {
+    const NOTE = 'This clip is not at the current frame.';
+
+    it('shows the note in the group when the clip is not at the current frame', () => {
+      showPlaced(PLACED, false, false);
+      expect(screen.getByTestId('timeline-clip-off-frame')).toHaveTextContent(NOTE);
+      expect(screen.getByTestId('timeline-clip-x')).toBeInstanceOf(HTMLInputElement);
+    });
+
+    it('shows no note when the clip is at the current frame', () => {
+      showPlaced(PLACED, false, true);
+      expect(screen.getByTestId('timeline-clip-x')).toBeInTheDocument();
+      expect(screen.queryByTestId('timeline-clip-off-frame')).toBe(null);
+      expect(screen.queryByText(NOTE)).toBe(null);
+    });
+
+    it('shows no note for an upload placeholder, which has no position and size group', () => {
+      showPlaced(uploadClip(cid(26), V2, 0), false, false);
+      expect(screen.queryByTestId('timeline-clip-x')).toBe(null);
+      expect(screen.queryByTestId('timeline-clip-off-frame')).toBe(null);
+    });
   });
 });
