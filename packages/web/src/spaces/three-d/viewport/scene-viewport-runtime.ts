@@ -22,11 +22,9 @@ import type { SceneModelLease } from '@web/spaces/three-d/viewport/model-resourc
 import { createTransformGesture, transformPatches } from '@web/spaces/three-d/viewport/scene-transform';
 import type { SceneTransformGesture } from '@web/spaces/three-d/viewport/scene-transform';
 import { SceneTransformControls173 } from '@web/spaces/three-d/viewport/transform-controls-173';
-import { captureViewOffset, focusSceneBounds, updateSceneCameraRange } from '@web/spaces/three-d/viewport/scene-camera';
+import { SCENE_VIEW_FAR, SCENE_VIEW_FOV, SCENE_VIEW_NEAR, captureViewOffset, focusSceneBounds, updateSceneCameraRange } from '@web/spaces/three-d/viewport/scene-camera';
 import type { CapturedPixels, SceneCameraView, SceneFrameCapture, SceneTransformPatch, SceneViewportProps, SceneView } from '@web/spaces/three-d/viewport/scene-viewport-props';
 
-/** The main view's own vertical field of view, in degrees. */
-const VIEW_FOV = 45;
 /** Width and depth of the ground that shows shadows, matching the grid. */
 const GROUND_SIZE = 200;
 /** How dark a shadow on the ground is. */
@@ -166,12 +164,12 @@ export class SceneViewportRuntime {
   private props: SceneViewportProps;
   private readonly host: HTMLDivElement;
   private readonly scene = new Scene();
-  private readonly camera = new PerspectiveCamera(45, 1, 0.05, 5000);
+  private readonly camera = new PerspectiveCamera(SCENE_VIEW_FOV, 1, SCENE_VIEW_NEAR, SCENE_VIEW_FAR);
   private readonly renderer: WebGLRenderer;
   private readonly orbit: OrbitControls;
   private readonly controls: SceneTransformControls173;
   private readonly pivot = new Group();
-  private readonly grid = new GridHelper(200, 200);
+  private readonly grid = new GridHelper(GROUND_SIZE, GROUND_SIZE);
   private readonly resources: ModelResourceCache;
   /**
    * Hold one model through this view's cache, measured for placing it; the
@@ -218,7 +216,7 @@ export class SceneViewportRuntime {
   private shadowsDirty = true;
   private cards: MonitorCards = {};
   private readonly monitorCanvases = new Map<string, HTMLCanvasElement>();
-  private readonly monitorCamera = new PerspectiveCamera();
+  private readonly monitorCamera = new PerspectiveCamera(SCENE_VIEW_FOV, 1, SCENE_VIEW_NEAR, SCENE_VIEW_FAR);
   private readonly cardVisibility: IntersectionObserver | null;
   private readonly cardSize: ResizeObserver;
   private monitorDrawnAt = 0;
@@ -278,6 +276,7 @@ export class SceneViewportRuntime {
     this.cardSize = new ResizeObserver(this.onCardResize);
     this.pilot = new ScenePilot({
       canvas,
+      active: () => this.view !== null,
       live: () => {
         const view = this.view;
         if (view?.kind !== 'live') return null;
@@ -575,7 +574,7 @@ export class SceneViewportRuntime {
       this.orbit.enableDamping = damping;
     } else if (before !== null && next === null) {
       this.camera.up.set(0, 1, 0);
-      this.camera.fov = VIEW_FOV;
+      this.camera.fov = SCENE_VIEW_FOV;
       this.camera.aspect = this.host.clientWidth / Math.max(1, this.host.clientHeight);
       this.camera.clearViewOffset();
       this.camera.updateProjectionMatrix();
@@ -1162,7 +1161,7 @@ export class SceneViewportRuntime {
    * @throws {never} Never.
    */
   private onDraggingChanged = (event: { value: unknown }): void => {
-    if (typeof event.value === 'boolean') this.orbit.enabled = !event.value && this.view === null && !this.props.viewLocked;
+    if (typeof event.value === 'boolean') this.orbit.enabled = this.orbitEnabled();
   };
 
   /**
@@ -1394,6 +1393,8 @@ export class SceneViewportRuntime {
     this.syncMarkers(this.jointTarget());
     this.rebuildOutlines();
     this.syncOverview();
+    for (const object of this.displayed) if (!isSceneModelFile(object.model)) this.syncFigure(object);
+    this.monitorEvent({ type: 'changed' });
   };
 
   /**
@@ -1486,6 +1487,8 @@ export class SceneViewportRuntime {
     if (this.disposed) return;
     this.props.onCapture?.(null);
     this.props.onPilotControl?.(null);
+    // Hiding the scene writes a wheel step still pausing, as leaving the camera does (design 3.4.1).
+    this.pilot.flush('hide');
     this.pilot.dispose();
     this.disposed = true;
     this.endGesture(false);

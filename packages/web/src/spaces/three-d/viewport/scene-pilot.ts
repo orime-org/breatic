@@ -166,19 +166,12 @@ export function pilotPivotDistance(position: Vector3, modelBoxCentre: Vector3 | 
   return modelBoxCentre === null ? PILOT_MIN_PIVOT : Math.max(position.distanceTo(modelBoxCentre), PILOT_MIN_PIVOT);
 }
 
-/**
- * Whether a pose differs from the record enough to write (design 3.4.1).
- * @param a - One pose.
- * @param b - The other.
- * @returns True past 1e-5 of position or a rotation whose quaternion dot is below 1 − 1e-9.
- */
-export function pilotPoseChanged(a: PilotPose, b: PilotPose): boolean {
-  return a.position.distanceTo(b.position) > 1e-5 || Math.abs(a.quaternion.dot(b.quaternion)) < 1 - 1e-9;
-}
 
 /** What the pilot needs from the viewport it drives. */
 export interface PilotHost {
   readonly canvas: HTMLCanvasElement;
+  /** Whether a camera view is shown, live or still; the browser menu and page scroll stay off throughout. */
+  active(): boolean;
   /** The camera being looked through, or null when the view is not a live camera view. */
   live(): { id: string; canPilot: boolean; locked: boolean } | null;
   /** That camera's committed pose. */
@@ -220,6 +213,7 @@ export class ScenePilot {
     canvas.addEventListener('pointermove', this.onMove);
     canvas.addEventListener('pointerup', this.onUp);
     canvas.addEventListener('pointercancel', this.onPointerCancel);
+    canvas.addEventListener('lostpointercapture', this.onPointerCancel);
     canvas.addEventListener('wheel', this.onWheel, { passive: false });
     canvas.addEventListener('contextmenu', this.onContextMenu);
   }
@@ -239,6 +233,8 @@ export class ScenePilot {
    */
   dispatch(event: PilotEvent): void {
     const before = this.state;
+    // A wheel step taken while the button was down is written at the threshold; the drag goes on from where it left the camera.
+    const carried = this.draft;
     const { state, effects } = pilotStep(before, event);
     this.state = state;
     if (before.wheel === 'pending' && state.wheel === 'idle') this.stopTimer();
@@ -246,7 +242,7 @@ export class ScenePilot {
       if (effect === 'lockedNotice') this.host.notifyLocked();
       else this.finish(effect === 'commit');
     }
-    if (event.type === 'move' && before.pointer === 'held' && state.pointer === 'dragging') this.begin();
+    if (event.type === 'move' && before.pointer === 'held' && state.pointer === 'dragging') this.begin(carried);
   }
 
   /**
@@ -280,12 +276,17 @@ export class ScenePilot {
   }
 
   /**
-   * Begin a draft at the record's pose with this gesture's pivot.
+   * Begin a draft at the record's pose with this gesture's pivot, or where a just-written draft left the camera.
+   * @param from - The draft just written, whose pose the record has not caught up with yet.
    * @returns The draft, or null without a live camera.
    */
-  private begin(): { id: string; pose: PilotPose; pivotDistance: number } | null {
+  private begin(from: { id: string; pose: PilotPose; pivotDistance: number } | null = null): { id: string; pose: PilotPose; pivotDistance: number } | null {
     if (this.draft) return this.draft;
     const live = this.host.live();
+    if (from && live?.id === from.id) {
+      this.draft = { id: from.id, pose: { position: from.pose.position.clone(), quaternion: from.pose.quaternion.clone() }, pivotDistance: from.pivotDistance };
+      return this.draft;
+    }
     const record = this.host.recordPose();
     if (!live || !record) return null;
     const pose = { position: record.position.clone(), quaternion: record.quaternion.clone() };
@@ -312,6 +313,8 @@ export class ScenePilot {
     if (!this.host.live() || (event.button !== 0 && event.button !== 2)) return;
     this.origin = { x: event.clientX, y: event.clientY, id: event.pointerId, pan: event.button === 2 || event.shiftKey };
     this.last = { x: event.clientX, y: event.clientY };
+    // With orbiting off nothing else holds the pointer, and a release over the panel or menu would never reach the canvas.
+    this.host.canvas.setPointerCapture(event.pointerId);
     this.dispatch({ type: 'down' });
   };
 
@@ -323,6 +326,8 @@ export class ScenePilot {
     const origin = this.origin;
     const live = this.host.live();
     if (!origin || event.pointerId !== origin.id || !live) return;
+    // A release the canvas never heard of: no button is down any more.
+    if ((event.buttons & 3) === 0) { this.onUp(event); return; }
     if (this.state.pointer === 'held') {
       this.dispatch({ type: 'move', distance: Math.hypot(event.clientX - origin.x, event.clientY - origin.y),
         objectGesture: this.host.objectGesture(), canPilot: live.canPilot, locked: live.locked });
@@ -365,9 +370,9 @@ export class ScenePilot {
    * @param event - The wheel step.
    */
   private onWheel = (event: WheelEvent): void => {
+    if (this.host.active()) event.preventDefault();
     const live = this.host.live();
     if (!live) return;
-    event.preventDefault();
     this.dispatch({ type: 'wheel', canPilot: live.canPilot });
     if (!live.canPilot || (this.state.wheel !== 'pending' && this.state.pointer !== 'dragging')) return;
     const draft = this.begin();
@@ -384,7 +389,7 @@ export class ScenePilot {
    * @param event - The menu request.
    */
   private onContextMenu = (event: MouseEvent): void => {
-    if (this.host.live()) event.preventDefault();
+    if (this.host.active()) event.preventDefault();
   };
 
   /** Restart the wheel pause. */
@@ -410,6 +415,7 @@ export class ScenePilot {
     canvas.removeEventListener('pointermove', this.onMove);
     canvas.removeEventListener('pointerup', this.onUp);
     canvas.removeEventListener('pointercancel', this.onPointerCancel);
+    canvas.removeEventListener('lostpointercapture', this.onPointerCancel);
     canvas.removeEventListener('wheel', this.onWheel);
     canvas.removeEventListener('contextmenu', this.onContextMenu);
   }

@@ -8,7 +8,7 @@ import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtur
 import { SceneViewportRuntime } from '@web/spaces/three-d/viewport/scene-viewport-runtime';
 import type { SceneFrameCapture, SceneViewportProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
 
-interface CameraState { fov: number; aspect: number; position: number[]; quaternion: number[]; up: number[]; view: { fullWidth: number; fullHeight: number; offsetX: number; offsetY: number; width: number; height: number } | null }
+interface CameraState { fov: number; near: number; aspect: number; position: number[]; quaternion: number[]; up: number[]; view: { fullWidth: number; fullHeight: number; offsetX: number; offsetY: number; width: number; height: number } | null }
 interface LightState { type: string; id: string | null; visible: boolean; intensity: number; castShadow: boolean; color: string }
 interface RenderCall { target: WebGLRenderTarget | null; camera: CameraState; lights: LightState[]; shown: Record<string, boolean> }
 
@@ -19,7 +19,7 @@ const shadowMap = { enabled: false, type: 0, autoUpdate: true, needsUpdate: fals
 /** Plain camera values at the moment of a render. */
 function cameraState(camera: PerspectiveCamera): CameraState {
   const view = camera.view?.enabled ? camera.view : null;
-  return { fov: camera.fov, aspect: camera.aspect, position: camera.position.toArray(), quaternion: camera.quaternion.toArray(), up: camera.up.toArray(),
+  return { fov: camera.fov, near: camera.near, aspect: camera.aspect, position: camera.position.toArray(), quaternion: camera.quaternion.toArray(), up: camera.up.toArray(),
     view: view && { fullWidth: view.fullWidth, fullHeight: view.fullHeight, offsetX: view.offsetX, offsetY: view.offsetY, width: view.width, height: view.height } };
 }
 
@@ -137,8 +137,8 @@ function expectedFov(focalLength: number, aspect: number): number {
   return reference.fov;
 }
 
-const pointer = (type: string, x: number, y: number, extra: Record<string, unknown> = {}): Event =>
-  Object.assign(new MouseEvent(type, { clientX: x, clientY: y, button: 0, buttons: type === 'pointerup' ? 0 : 1, bubbles: true, cancelable: true }), { pointerId: 1, pointerType: 'mouse', ...extra });
+const pointer = (type: string, x: number, y: number, { buttons, ...extra }: Record<string, unknown> = {}): Event =>
+  Object.assign(new MouseEvent(type, { clientX: x, clientY: y, button: 0, buttons: typeof buttons === 'number' ? buttons : type === 'pointerup' ? 0 : 1, bubbles: true, cancelable: true }), { pointerId: 1, pointerType: 'mouse', ...extra });
 
 describe('looking through a camera (inner#1694 design 3.4, 3.4.3)', () => {
   it('shows the camera position, roll, lens and frame ratio, with the frame cut by a view offset', async () => {
@@ -242,6 +242,24 @@ describe('looking through a camera (inner#1694 design 3.4, 3.4.3)', () => {
     expect(wheel.defaultPrevented).toBe(true);
   });
 
+  it('cancels the browser menu and page scroll on a camera still too', async () => {
+    const frozen = { kind: 'frozen' as const, id: CAM, position: [0, 1.5, 6] as [number, number, number], quaternion: ROLLED.toArray() as [number, number, number, number], fov: 30, aspect: 16 / 9 };
+    const opened = await open(props([camera(CAM)], { cameraView: frozen, viewFrame: FRAME }));
+    const menu = new MouseEvent('contextmenu', { bubbles: true, cancelable: true });
+    opened.canvas.dispatchEvent(menu);
+    expect(menu.defaultPrevented).toBe(true);
+    const wheel = new WheelEvent('wheel', { deltaY: 100, bubbles: true, cancelable: true });
+    opened.canvas.dispatchEvent(wheel);
+    expect(wheel.defaultPrevented).toBe(true);
+    expect(opened.initial.onPilotPreview).not.toHaveBeenCalled();
+  });
+
+  it('draws monitors and stills with the main view near plane', async () => {
+    const opened = await open(props([camera(CAM)], { cameraView: { kind: 'live', id: CAM, canPilot: true }, viewFrame: FRAME }));
+    await opened.capture()(FRAME, { width: 2048, height: 1152 });
+    expect(renders.find((call) => call.target !== null)?.camera.near).toBe(opened.main.near);
+  });
+
   it('captures through the camera projection without touching the main view offset', async () => {
     const opened = await open(props([camera(CAM)], { cameraView: { kind: 'live', id: CAM, canPilot: true }, viewFrame: FRAME }));
     opened.frame();
@@ -297,6 +315,57 @@ describe('piloting a camera (design 3.4.1, 6.2)', () => {
     expect(opened.initial.onPilotLocked).toHaveBeenCalledTimes(1);
     expect(opened.initial.onPilotPreview).not.toHaveBeenCalled();
     expect(opened.frame().camera.position).toEqual([0, 1.5, 6]);
+  });
+
+  it('holds the pointer for the whole drag, so a release over the panel still ends it', async () => {
+    const opened = await open(props([camera(CAM)], { cameraView: { kind: 'live', id: CAM, canPilot: true }, viewFrame: FRAME }));
+    const captured = vi.fn();
+    opened.canvas.setPointerCapture = captured;
+    opened.canvas.dispatchEvent(pointer('pointerdown', 500, 300));
+    expect(captured).toHaveBeenCalledWith(1);
+  });
+
+  it('ends a drag whose release never reached the canvas at the next move without a button', async () => {
+    const opened = await open(props([camera(CAM)], { cameraView: { kind: 'live', id: CAM, canPilot: true }, viewFrame: FRAME }));
+    opened.canvas.dispatchEvent(pointer('pointerdown', 500, 300));
+    opened.canvas.dispatchEvent(pointer('pointermove', 560, 300));
+    opened.canvas.dispatchEvent(pointer('pointermove', 580, 300, { buttons: 0 }));
+    expect(opened.initial.onPilotEnd).toHaveBeenCalledTimes(1);
+    expect(opened.initial.onPilotEnd).toHaveBeenCalledWith(true);
+    const previews = vi.mocked(opened.initial.onPilotPreview as (...args: unknown[]) => void).mock.calls.length;
+    opened.canvas.dispatchEvent(pointer('pointermove', 640, 300, { buttons: 0 }));
+    expect(vi.mocked(opened.initial.onPilotPreview as (...args: unknown[]) => void).mock.calls.length).toBe(previews);
+  });
+
+  it('drops a drag whose pointer capture is taken away', async () => {
+    const opened = await open(props([camera(CAM)], { cameraView: { kind: 'live', id: CAM, canPilot: true }, viewFrame: FRAME }));
+    opened.canvas.dispatchEvent(pointer('pointerdown', 500, 300));
+    opened.canvas.dispatchEvent(pointer('pointermove', 560, 300));
+    opened.canvas.dispatchEvent(pointer('lostpointercapture', 560, 300));
+    expect(opened.initial.onPilotEnd).toHaveBeenCalledTimes(1);
+    expect(opened.initial.onPilotEnd).toHaveBeenCalledWith(false);
+  });
+
+  it('carries a wheel step taken while the button was down into the drag that follows', async () => {
+    const opened = await open(props([camera(CAM, { rotation: [0, 0, 0, 1] })], { cameraView: { kind: 'live', id: CAM, canPilot: true }, viewFrame: FRAME }));
+    const preview = vi.mocked(opened.initial.onPilotPreview as (...args: unknown[]) => void);
+    opened.canvas.dispatchEvent(pointer('pointerdown', 500, 300));
+    opened.canvas.dispatchEvent(new WheelEvent('wheel', { deltaY: -300, bubbles: true, cancelable: true }));
+    const pushed = (preview.mock.lastCall as [string, number[], number[]])[1];
+    expect(pushed[2]).toBeLessThan(6);
+    opened.canvas.dispatchEvent(pointer('pointermove', 505, 300));
+    opened.canvas.dispatchEvent(pointer('pointermove', 506, 300));
+    const dragged = (preview.mock.lastCall as [string, number[], number[]])[1];
+    const from = new Vector3().fromArray(dragged);
+    expect(from.distanceTo(new Vector3().fromArray(pushed))).toBeLessThan(from.distanceTo(new Vector3(0, 1.5, 6)));
+  });
+
+  it('writes a wheel step still pausing when the view goes away', async () => {
+    const opened = await open(props([camera(CAM)], { cameraView: { kind: 'live', id: CAM, canPilot: true }, viewFrame: FRAME }));
+    opened.canvas.dispatchEvent(new WheelEvent('wheel', { deltaY: -100, bubbles: true, cancelable: true }));
+    opened.runtime.dispose();
+    expect(opened.initial.onPilotEnd).toHaveBeenCalledTimes(1);
+    expect(opened.initial.onPilotEnd).toHaveBeenCalledWith(true);
   });
 
   it('drops a drag in progress when the camera gets locked, back to the record', async () => {
@@ -372,6 +441,17 @@ describe('lights, ambient and shadows (design 3.6, 6.4)', () => {
     });
     expect(biases[LAMP]).toEqual({ bias: -0.002, normalBias: 0.03 });
     expect(biases[SUN]).toEqual({ bias: -0.0005, normalBias: 0.02 });
+  });
+
+  it('repaints camera and light figures and refreshes the monitors on a theme change', async () => {
+    const opened = await open(props([camera(CAM)]));
+    const inner = opened.runtime as unknown as { figures: Map<string, { materials: Array<{ color: { getHexString: () => string } }> }>; cards: Record<string, { freshness: string }>; monitorEvent: (event: unknown) => void; host: HTMLElement };
+    inner.monitorEvent({ type: 'mount', id: CAM });
+    inner.monitorEvent({ type: 'painted', ids: [CAM] });
+    inner.host.style.setProperty('--color-muted-foreground', '#123456');
+    document.documentElement.classList.toggle('dark');
+    await vi.waitFor(() => expect(inner.cards[CAM]?.freshness).toBe('stale'));
+    expect(inner.figures.get(CAM)?.materials[0]?.color.getHexString()).toBe('123456');
   });
 
   it('reports no model state for cameras and lights', async () => {

@@ -157,15 +157,4 @@ describe('camera moves (design 3.4 item 3)', () => {
     expect(distance(new Vector3(0, 0, 10), null)).toBe(2);
   });
 
-  it('counts a pose as changed only past the write thresholds (design 3.4.1)', () => {
-    const changed = pilot.pilotPoseChanged as (a: Pose, b: Pose) => boolean;
-    expect(typeof changed).toBe('function');
-    const base = start();
-    expect(changed(base, { position: base.position.clone().add(new Vector3(5e-6, 0, 0)), quaternion: base.quaternion.clone() })).toBe(false);
-    expect(changed(base, { position: base.position.clone().add(new Vector3(2e-5, 0, 0)), quaternion: base.quaternion.clone() })).toBe(true);
-    const turned = base.quaternion.clone().multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), 1e-3));
-    expect(changed(base, { position: base.position.clone(), quaternion: turned })).toBe(true);
-    const flipped = new Quaternion(-base.quaternion.x, -base.quaternion.y, -base.quaternion.z, -base.quaternion.w);
-    expect(changed(base, { position: base.position.clone(), quaternion: flipped })).toBe(false);
-  });
 });

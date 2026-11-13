@@ -70,6 +70,20 @@ describe('the pilot draft of a camera (inner#1694 design 6.2)', () => {
     expect(session.history.undoStack).toHaveLength(0);
   });
 
+  it('writes past the thresholds of design 3.4.1 and treats the opposite quaternion as the same turn', () => {
+    const { session } = fixture();
+    session.previewPilot(CAM, [0, 1, 4], [-0, -0, -0, -1]);
+    session.endPilot(true);
+    expect(session.history.undoStack).toHaveLength(0);
+    session.previewPilot(CAM, [0, 1 + 2e-5, 4], [0, 0, 0, 1]);
+    session.endPilot(true);
+    expect(session.history.undoStack).toHaveLength(1);
+    const half = 5e-4;
+    session.previewPilot(CAM, [0, 1 + 2e-5, 4], [0, Math.sin(half), 0, Math.cos(half)]);
+    session.endPilot(true);
+    expect(session.history.undoStack).toHaveLength(2);
+  });
+
   it('ignores a draft for a locked camera or a Viewer', () => {
     const { doc, session } = fixture();
     session.execute({ type: 'lock', ids: [CAM], locked: true });
