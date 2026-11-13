@@ -149,6 +149,50 @@ describe('the keys right beside an inline formula open its box (A7)', () => {
   });
 });
 
+describe('a line deletion across an inline formula (§8)', () => {
+  it.each([
+    ['to the end of the paragraph', 'deleteHardLineForward', 'before', 'a '],
+    ['to the start of the paragraph', 'deleteHardLineBackward', 'end', ''],
+  ] as const)('takes the formula with the rest of the line %s', (_label, inputType, from, left) => {
+    const { editor } = open([between()]);
+    const at = posOf(editor, 'math');
+    select(editor, from === 'before' ? at : at + 3);
+
+    expect(deletion(editor, inputType)).toBe(true);
+
+    expect(editor.prosemirrorView!.state.doc.textContent).toBe(left);
+  });
+
+  it('takes the formula with the rest of the line on screen', () => {
+    const { editor } = open([between()]);
+    const view = editor.prosemirrorView!;
+    select(editor, posOf(editor, 'math'));
+    // jsdom lays nothing out; the line on screen here ends where the paragraph does.
+    const modify = vi.fn(function extend(this: Selection) {
+      const line = view.dom.querySelector('p')!;
+      this.extend(line, line.childNodes.length);
+    });
+    const had = Object.getOwnPropertyDescriptor(Selection.prototype, 'modify');
+    Object.defineProperty(Selection.prototype, 'modify', { value: modify, configurable: true, writable: true });
+    try {
+      expect(deletion(editor, 'deleteSoftLineForward')).toBe(true);
+    } finally {
+      if (had === undefined) delete (Selection.prototype as { modify?: unknown }).modify;
+      else Object.defineProperty(Selection.prototype, 'modify', had);
+    }
+
+    expect(modify).toHaveBeenCalledWith('extend', 'forward', 'lineboundary');
+    expect(view.state.doc.textContent).toBe('a ');
+  });
+
+  it('leaves a line deletion that holds no formula to the browser', () => {
+    const { editor } = open([between()]);
+    select(editor, posOf(editor, 'math') + 1);
+
+    expect(deletion(editor, 'deleteHardLineForward')).toBe(false);
+  });
+});
+
 describe('a line beside a block formula (A7)', () => {
   it.each([
     ['Backspace at the start of the line below', 'Backspace', 'below', 0],
@@ -290,17 +334,23 @@ describe('a line beside a block formula (A7)', () => {
     expect(posOf(editor, name)).toBe(-1);
   });
 
-  it('opens the box of a selected formula on Enter', async () => {
+  it.each([
+    ['a formula', {}],
+    // A quoted line's Enter reads a caret offset no formula holds.
+    ['a quoted formula', { quoted: true }],
+  ])('opens the box of %s selected whole on Enter, changing nothing', async (_label, props) => {
     const { editor } = open([
       { type: 'paragraph', content: 'above' },
-      { type: 'mathBlock', props: { source: 'x+1' } },
+      { type: 'mathBlock', props: { source: 'x+1', ...props } },
     ]);
     const view = editor.prosemirrorView!;
     view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, posOf(editor, 'mathBlock'))));
+    const before = view.state.doc;
 
     expect(press(editor, 'Enter')).toBe(true);
 
     expect((await field()).value).toBe('x+1');
+    expect(view.state.doc.eq(before)).toBe(true);
   });
 });
 

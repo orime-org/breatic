@@ -19,7 +19,8 @@
  * select-all guard, which would otherwise answer a quoted line, a table
  * cell's edge or a deletion first. A deletion the browser makes from a
  * binding of its own (Ctrl+K) never reaches a keymap, so `beforeinput` takes
- * those beside a block formula the same way. Only a `$` from
+ * those beside a block formula the same way, and a line deletion across an
+ * inline formula is made here. Only a `$` from
  * `handleTextInput` arms the rule (`prosemirror-inputrules` 1.5.1
  * `index.js:74-85` judges there too), so the text an undo, a redo or a
  * co-editor brings back is never converted again.
@@ -38,7 +39,7 @@ import { markOwnUndoStep } from '@web/spaces/document/document-undo-step';
 type MathEditor = BlockNoteEditor<never, never, never>;
 
 /** The deletions `beforeinput` states with a direction. */
-const DELETION = /^delete(?:Content|Word|SoftLine|HardLine)(Backward|Forward)$/;
+const DELETION = /^delete(Content|Word|SoftLine|HardLine)(Backward|Forward)$/;
 
 /**
  * A closing `$$` and what it encloses at the end of the text before the
@@ -260,7 +261,43 @@ function openSelected(state: EditorState, view: EditorView): boolean {
 }
 
 /**
- * Takes the browser's own deletions at a line's edge beside a block formula.
+ * Deletes from the caret to the edge of its paragraph, or of its line on
+ * screen, when an inline formula lies in that stretch. Chrome deletes only the
+ * formula there (its target range ends past the paragraph); the line's edge
+ * `Selection.modify` finds is right, as Lexical's `deleteLine` relies on.
+ * @param view - The editor view.
+ * @param forward - Toward the end, else the start.
+ * @param paragraph - To the paragraph's edge, else the line's on screen.
+ * @returns Whether it deleted.
+ */
+function deleteLine(view: EditorView, forward: boolean, paragraph: boolean): boolean {
+  const { $cursor } = view.state.selection as TextSelection;
+  if (!$cursor) return false;
+  let edge = forward ? $cursor.end() : $cursor.start();
+  if (!paragraph) {
+    const selection = view.dom.ownerDocument.getSelection();
+    if (selection?.focusNode == null) return false;
+    const { anchorNode, anchorOffset } = selection;
+    selection.modify('extend', forward ? 'forward' : 'backward', 'lineboundary');
+    const reached = view.posAtDOM(selection.focusNode, selection.focusOffset);
+    selection.collapse(anchorNode, anchorOffset);
+    edge = Math.min(Math.max(reached, $cursor.start()), $cursor.end());
+  }
+  const from = Math.min($cursor.pos, edge);
+  const to = Math.max($cursor.pos, edge);
+  let holds = false;
+  view.state.doc.nodesBetween(from, to, (node) => {
+    holds ||= node.type.name === MATH_INLINE;
+    return !holds;
+  });
+  if (!holds) return false;
+  view.dispatch(view.state.tr.delete(from, to).scrollIntoView());
+  return true;
+}
+
+/**
+ * Takes the browser's own deletions at a line's edge beside a block formula,
+ * and its line deletions across an inline formula.
  * @param editor - The editor.
  * @returns The plugin.
  */
@@ -272,9 +309,12 @@ function besideInput(editor: MathEditor): Plugin {
         beforeinput: (view, event): boolean => {
           const deletion = DELETION.exec((event as InputEvent).inputType);
           if (!event.cancelable || !editor.isEditable || deletion === null) return false;
+          const back = deletion[2] === 'Backward';
           const { $cursor } = view.state.selection as TextSelection;
-          if (!$cursor || formulaBlockBeside($cursor, deletion[1] === 'Backward') === null) return false;
-          deleteBeside(editor, view, deletion[1] === 'Backward', false);
+          if (!$cursor) return false;
+          if (formulaBlockBeside($cursor, back) !== null) deleteBeside(editor, view, back, false);
+          else if (deletion[1] === 'Word' || deletion[1] === 'Content') return false;
+          else if (!deleteLine(view, !back, deletion[1] === 'HardLine')) return false;
           event.preventDefault();
           return true;
         },
@@ -315,7 +355,8 @@ export const documentMathEditingExtension = createExtension(({ editor }: { edito
       'Shift-Backspace': remove(true, true),
       Delete: remove(false, true),
       'Mod-Backspace': remove(true, false),
-      'Mod-Delete': remove(false, false),
+      // Cmd+Delete on Apple platforms deletes to the end of the line on screen.
+      'Mod-Delete': () => remove(false, false)() || (isMacOS() && deleteLine(view(), true, false)),
       ...(isMacOS()
         ? {
           'Ctrl-h': remove(true, true),
