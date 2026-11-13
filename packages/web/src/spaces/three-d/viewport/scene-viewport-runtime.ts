@@ -9,7 +9,8 @@ import {
   SCENE_AMBIENT_COLOR_DEFAULT, SCENE_AMBIENT_INTENSITY_DEFAULT, isSceneCamera, isSceneLight, isSceneModelFile,
   type SceneCameraObject, type SceneModelFile, type SceneObject, type ScenePose,
 } from '@breatic/shared';
-import { DISPLAY_LINE_LAYER, DISPLAY_PICK_LAYER, DirectorFigure, applyCameraRecord, cameraAspect } from '@web/spaces/three-d/viewport/director-objects';
+import { DISPLAY_LINE_LAYER, DISPLAY_PICK_LAYER, DirectorFigure, applyCameraRecord } from '@web/spaces/three-d/viewport/director-objects';
+import { cameraFrameRatio } from '@web/spaces/three-d/viewfinder/viewfinder-geometry';
 import { directionalShadowRange, localShadowFar, planLights, programSamplers, shadowSlots, type LightsPlan } from '@web/spaces/three-d/viewport/director-lights';
 import { monitorReducer, monitorsDue, type MonitorCards, type MonitorEvent } from '@web/spaces/three-d/viewport/monitor-schedule';
 import { ScenePilot, pilotPivotDistance } from '@web/spaces/three-d/viewport/scene-pilot';
@@ -602,7 +603,7 @@ export class SceneViewportRuntime {
       const draft = this.pilot.poseOf(view.id);
       const frame = this.props.viewFrame;
       // A Free camera follows the frame being dragged, so the view previews the new ratio before it is written.
-      const aspect = record.frame === 'Free' && frame && frame.height > 0 ? frame.width / frame.height : cameraAspect(record);
+      const aspect = record.frame === 'Free' && frame && frame.height > 0 ? frame.width / frame.height : cameraFrameRatio(record);
       applyCameraRecord(this.camera, record, aspect);
       if (draft) { this.camera.position.copy(draft.position); this.camera.quaternion.copy(draft.quaternion); }
     } else {
@@ -790,7 +791,7 @@ export class SceneViewportRuntime {
         const cssWidth = Math.min(card.clientWidth, width);
         const cssHeight = Math.min(card.clientHeight, height);
         if (cssWidth === 0 || cssHeight === 0) continue;
-        applyCameraRecord(this.monitorCamera, record, cameraAspect(record));
+        applyCameraRecord(this.monitorCamera, record, cameraFrameRatio(record));
         const draft = this.pilot.poseOf(id);
         if (draft) { this.monitorCamera.position.copy(draft.position); this.monitorCamera.quaternion.copy(draft.quaternion); }
         updateSceneCameraRange(this.monitorCamera, bounds);

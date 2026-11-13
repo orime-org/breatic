@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { Frame } from 'lucide-react';
 
-import { SCENE_FREE_RATIO_MAX, SCENE_FREE_RATIO_MIN, VIEWFINDER_RATIOS, type SceneCameraObject, type SceneCaptureConfig, type ViewfinderRatio } from '@breatic/shared';
+import { VIEWFINDER_RATIOS, type SceneCameraObject, type SceneCaptureConfig, type ViewfinderRatio } from '@breatic/shared';
 import { Button } from '@web/components/ui/button';
 import { Anchor as PopoverAnchor } from '@radix-ui/react-popover';
 import { Popover, PopoverContent, PopoverTrigger } from '@web/components/ui/popover';
@@ -19,7 +19,9 @@ import { placeImageOnCanvas } from '@web/spaces/canvas/place-image-on-canvas';
 import { SceneIconButton } from '@web/spaces/three-d/SceneIconButton';
 import { encodeCapturePng } from '@web/spaces/three-d/viewfinder/encode-capture';
 import {
+  cameraFrameRatio,
   captureSize,
+  clampFreeRatio,
   largestFrame,
   menuCentre,
   refitFrame,
@@ -60,14 +62,6 @@ export function sceneViewfinderSafeArea(stage: { width: number; height: number }
   return viewfinderSafeArea(stage, { top: INSETS.top, bottom: INSETS.bottom, left: INSETS.side, right: rightPanelOpen ? INSETS.panel : INSETS.side });
 }
 
-/**
- * A camera record's frame ratio.
- * @param camera - The record.
- * @returns Width over height.
- */
-export function cameraFrameRatio(camera: SceneCameraObject): number {
-  return camera.frame === 'Free' ? camera.freeRatio : viewfinderRatioValue(camera.frame) ?? camera.freeRatio;
-}
 // The menu sits this far below the frame.
 const MENU_GAP = 8;
 
@@ -250,7 +244,7 @@ export const SceneViewfinder = React.memo(function SceneViewfinder(props: SceneV
     drag.current = null;
     // A Free camera keeps the dragged ratio; the frame then grows back to the largest of that ratio.
     if (dragged === null || !throughCamera || frame.height === 0) return;
-    const freeRatio = Math.min(SCENE_FREE_RATIO_MAX, Math.max(SCENE_FREE_RATIO_MIN, frame.width / frame.height));
+    const freeRatio = clampFreeRatio(frame.width / frame.height);
     shownRatio.current = null;
     if (camera !== null && Math.abs(freeRatio - camera.freeRatio) > 1e-6) onCameraFrame({ freeRatio });
     else dispatch({ type: 'frame', frame: largestFrame(freeRatio, safe) });

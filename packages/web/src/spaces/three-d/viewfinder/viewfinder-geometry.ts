@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import type { ViewfinderRatio } from '@breatic/shared';
+import { SCENE_FREE_RATIO_MAX, SCENE_FREE_RATIO_MIN, type ViewfinderRatio } from '@breatic/shared';
 
 import { captureResize, resizeFromCapture, type CropRect } from '@web/lib/crop-math';
 
@@ -17,6 +17,26 @@ export function viewfinderRatioValue(ratio: ViewfinderRatio): number | null {
   if (ratio === 'Free') return null;
   const [w, h] = ratio.split(':').map(Number);
   return (w ?? 1) / (h ?? 1);
+}
+
+/**
+ * A camera record's frame ratio, width over height.
+ * @param camera - The record's frame and free ratio.
+ * @param camera.frame - Its frame.
+ * @param camera.freeRatio - Its ratio when the frame is Free.
+ * @returns The ratio.
+ */
+export function cameraFrameRatio(camera: { frame: ViewfinderRatio; freeRatio: number }): number {
+  return viewfinderRatioValue(camera.frame) ?? camera.freeRatio;
+}
+
+/**
+ * A free frame's width over height, held to the bounds the scene stores.
+ * @param ratio - The measured ratio.
+ * @returns The stored ratio.
+ */
+export function clampFreeRatio(ratio: number): number {
+  return Math.min(SCENE_FREE_RATIO_MAX, Math.max(SCENE_FREE_RATIO_MIN, ratio));
 }
 
 /**

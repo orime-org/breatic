@@ -8,6 +8,7 @@ import {
 } from 'three';
 import { SCENE_SPOT_ANGLE_DEFAULT, isSceneCamera, isSceneLight, type SceneCameraObject, type SceneDirectorConfig, type SceneLightObject, type SceneObject } from '@breatic/shared';
 
+import { cameraFrameRatio } from '@web/spaces/three-d/viewfinder/viewfinder-geometry';
 import type { LightPlan } from '@web/spaces/three-d/viewport/director-lights';
 
 /** Layer of the camera and light icons: drawn in the main view and picked by a click. */
@@ -19,16 +20,6 @@ export const CAMERA_FILM_GAUGE = 36;
 /** Length of a camera's frustum lines and a light's direction line, in scene units. */
 const GUIDE_LENGTH = 1.5;
 
-/**
- * A camera record's frame ratio, width over height.
- * @param camera - The record.
- * @returns The ratio.
- */
-export function cameraAspect(camera: SceneCameraObject): number {
-  if (camera.frame === 'Free') return camera.freeRatio;
-  const [width, height] = camera.frame.split(':').map(Number);
-  return (width ?? 1) / (height ?? 1);
-}
 
 /**
  * Set a perspective camera to a camera record's lens and pose.
@@ -200,7 +191,7 @@ export class DirectorFigure {
     if (!this.guide) return;
     const lens = new PerspectiveCamera();
     lens.filmGauge = CAMERA_FILM_GAUGE;
-    lens.aspect = cameraAspect(camera);
+    lens.aspect = cameraFrameRatio(camera);
     lens.setFocalLength(camera.focalLength);
     const halfHeight = Math.tan(MathUtils.degToRad(lens.fov) / 2) * GUIDE_LENGTH;
     const halfWidth = halfHeight * lens.aspect;
