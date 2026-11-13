@@ -287,17 +287,20 @@ for (const [what, reply, photo] of [
 test('given a character photo and asked for two videos of her, what lands for both carries that character @needs-model', async () => {
   await ask('This is my character. I want two short videos of her: one walking through a park, one sitting in a café.', 'She is Mika, a 25-year-old bicycle courier, cheerful and stubborn; both videos are vertical, for Instagram.', 'character.jpg');
   const turn = await settledTurn(page);
-  // Solved when what lands for each scene draws on her photo: its video, or
-  // takes of its still made first, the video following from the picked take;
-  // through a template or a setup of the agent's own.
-  // Each scene needs a generation of its own: one naming the park and a
-  // different one naming the cafe, the two not naming the same places; either
-  // may still mention the other place.
-  const words = turn.landed.flatMap((proposal) => generationsCarryingMaterial(proposal, turn.attached)).map(wordsOf);
+  // Solved either way the agent may start, through a template or a setup of
+  // its own: each scene gets a generation of its own drawing on her photo,
+  // one naming the park and a different one naming the cafe, the two not
+  // naming the same places though either may mention the other; or two or
+  // more takes of her look drawn from the photo land first, the scenes
+  // following from the take the user picks.
+  const carrying = turn.landed.flatMap((proposal) => generationsCarryingMaterial(proposal, turn.attached));
+  const words = carrying.map(wordsOf);
   const park = (text: string): boolean => /\bparks?\b/i.test(text);
   const cafe = (text: string): boolean => /\bcaf[eé]|\bcoffee ?(shop|house)/i.test(text);
-  const seen = `generations drawing on the photo: ${words.join('\n').slice(0, 600)}; templates: ${turn.templates.join(', ')}; said: ${turn.said.slice(0, 600)}`;
-  expect(words.some((one, at) => park(one) && words.some((other, otherAt) => otherAt !== at && cafe(other) && !(cafe(one) && park(other)))), seen).toBe(true);
+  const scenesApart = words.some((one, at) => park(one) && words.some((other, otherAt) => otherAt !== at && cafe(other) && !(cafe(one) && park(other))));
+  const takesOfHerLook = carrying.filter((node) => node.type === 'image').length >= 2;
+  const seen = `generations drawing on the photo: ${carrying.map((node) => `${node.type} ${node.name}`).join('; ')}; templates: ${turn.templates.join(', ')}; said: ${turn.said.slice(0, 600)}`;
+  expect(scenesApart || takesOfHerLook, seen).toBe(true);
 });
 
 test('given a video and asked outright for background music, it reads a music template and lands music on that template\'s model drawing on the video @needs-model', async () => {
