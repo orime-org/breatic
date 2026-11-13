@@ -165,8 +165,7 @@ export async function answerRuns(
         if (f.type !== 'data-ask-replied' || f.data?.toolCallId === undefined) continue;
         settleCard(rowsOf(conversationId), { type: 'tool-output-available', toolCallId: f.data.toolCallId, output: { repliedInChat: true } });
       }
-    }
-    if (card) {
+    } else {
       const answered = ((body.answer ?? body.shared_spaces) as { toolCallId?: string }).toolCallId;
       const isAnswer = (f: object): boolean =>
         (f as Partial<Settled>).type === 'tool-output-available' && (f as Partial<Settled>).toolCallId === answered;
