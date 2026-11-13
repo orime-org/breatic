@@ -399,6 +399,8 @@ export const chatLive = {
       chatWaiting.drop(conversationId, item.id);
       // Gone: another page took it back first, so it is not this page's to put back.
       if (status !== 'removed' || how !== 'retract') return;
+      // A send under way empties the box once it is answered; the words go in after.
+      await sendChains.get(conversationId);
       const draft = conversationRuntime.draftOf(conversationId);
       conversationRuntime.setDraft(conversationId, draft === '' ? item.words : `${item.words}\n${draft}`);
       if (item.chips.length > 0) {

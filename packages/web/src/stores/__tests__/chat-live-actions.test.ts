@@ -215,6 +215,22 @@ describe('taking a waiting message back', () => {
     expect(useChatWaiting.getState().byConversation.c1).toMatchObject({ pending: [], busy: {} });
   });
 
+  it('puts a retracted one back in the box after a send still under way has emptied it', async () => {
+    let answerSend!: (a: { status: 'queued'; pending: ChatPendingItem[]; running: boolean }) => void;
+    vi.mocked(chatApi.sendMessage).mockImplementationOnce(() => new Promise((r) => {
+      answerSend = r;
+    }));
+    conversationRuntime.setDraft('c1', 'second thought');
+    const sending = chatLive.send({ projectId: 'p1', conversationId: 'c1', words: 'second thought', chips: [], spaces: {} });
+    await settle();
+    const taking = chatLive.takeBack('p1', 'c1', M1, 'retract');
+    await settle();
+    answerSend({ status: 'queued', pending: [], running: true });
+    await sending;
+    await taking;
+    expect(conversationRuntime.draftOf('c1')).toBe('first thought');
+  });
+
   it('drops a deleted one without touching the box (WB-21 delete)', async () => {
     await chatLive.takeBack('p1', 'c1', M1, 'delete');
     expect(conversationRuntime.draftOf('c1')).toBe('old');
