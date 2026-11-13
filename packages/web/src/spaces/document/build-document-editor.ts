@@ -56,6 +56,7 @@ import { documentSelectionPaintExtension } from '@web/spaces/document/document-s
 import { documentEnterExtension } from '@web/spaces/document/document-enter';
 import { documentKeyboardMoveExtension } from '@web/spaces/document/document-keyboard-move';
 import { documentTabExtension } from '@web/spaces/document/document-tab';
+import { documentColumnCellWidthExtension } from '@web/spaces/document/document-column-cell-width';
 import { documentColumnKeysExtension } from '@web/spaces/document/document-column-keys';
 import { columnDropHook } from '@web/spaces/document/document-column-landing';
 import { documentColumnRepairExtension } from '@web/spaces/document/document-column-repair';
@@ -194,6 +195,7 @@ export function buildDocumentEditor(
       documentColumnKeysExtension(),
       documentTableKeysExtension(),
       documentColumnRepairExtension(),
+      documentColumnCellWidthExtension(),
       documentTableTargetExtension(),
       documentTableHandlesExtension(),
       documentTableCopyExtension(),

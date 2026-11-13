@@ -183,3 +183,29 @@ test('dragging the divider between two columns changes their widths, and one und
   await page.keyboard.press(process.platform === 'darwin' ? 'Meta+z' : 'Control+z');
   await expect.poll(widths).toEqual(before);
 });
+
+test('columns made in a cell of a fresh table widen its column to hold them side by side', async () => {
+  await openWithLines(page, ['lead']);
+  // A 2 × 2 table off the handle's insert menu: no stored widths.
+  await page.mouse.move(5, 5);
+  const lead = await row(page, 'lead').boundingBox();
+  if (lead === null) throw new Error('no lead');
+  await page.mouse.move(lead.x + 30, lead.y + lead.height / 2, { steps: 3 });
+  await page.getByTestId('doc-block-handle').click();
+  await page.getByTestId('doc-block-row-insertBelow').hover();
+  await page.getByTestId('doc-block-insert-table').hover();
+  await page.getByTestId('doc-table-size-2-2').click();
+  await page.keyboard.type('one');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('two');
+  const one = await row(page, 'one').boundingBox();
+  if (one === null) throw new Error('no one');
+  await dragRowTo(page, 'two', { x: one.x + one.width - 4, y: one.y + one.height / 2 });
+  await expect.poll(() => groups(page)).toEqual([['one', 'two']]);
+  const group = page.locator(`${EDITOR} .doc-columns`);
+  await expect(group).not.toHaveAttribute('data-stacked', '');
+  const width = await group.evaluate((element) => element.getBoundingClientRect().width);
+  expect(width).toBeGreaterThanOrEqual(264);
+  const tops = await page.locator(`${EDITOR} .doc-column`).evaluateAll((list) => list.map((column) => Math.round(column.getBoundingClientRect().top)));
+  expect(tops[0]).toBe(tops[1]);
+});
