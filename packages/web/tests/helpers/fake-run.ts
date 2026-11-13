@@ -225,9 +225,25 @@ export async function answerRuns(
     await route.fulfill({ response, json: read });
   };
 
-  await page.route(MESSAGE, onMessage);
-  await page.route(STREAM, onStream);
-  await page.route(HISTORY, onHistory);
+  // The answers on their way, so stopping waits for them: a route taken off
+  // the page while its answer is pending is let through, and the answer that
+  // follows then finds it handled.
+  const pending = new Set<Promise<void>>();
+  const tracked = (handle: (route: Route) => Promise<void>) => async (route: Route): Promise<void> => {
+    const answering = handle(route);
+    pending.add(answering);
+    try {
+      await answering;
+    } finally {
+      pending.delete(answering);
+    }
+  };
+  const routes: Array<[string | RegExp, (route: Route) => Promise<void>]> = [
+    [MESSAGE, tracked(onMessage)],
+    [STREAM, tracked(onStream)],
+    [HISTORY, tracked(onHistory)],
+  ];
+  for (const [path, handle] of routes) await page.route(path, handle);
 
   return {
     bodies,
@@ -237,9 +253,8 @@ export async function answerRuns(
       waiting.set(conversationId, runs);
     },
     stop: async () => {
-      await page.unroute(MESSAGE, onMessage);
-      await page.unroute(STREAM, onStream);
-      await page.unroute(HISTORY, onHistory);
+      while (pending.size > 0) await Promise.allSettled(pending);
+      for (const [path, handle] of routes) await page.unroute(path, handle);
     },
   };
 }
