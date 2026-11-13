@@ -619,6 +619,17 @@ describe("a check the opening stage refuses", () => {
     expect(await idsIn(k.queue)).toEqual([]);
   });
 
+  it("refuses a new message whose id names a reply in the same conversation, and queues nothing", async () => {
+    const who = await seedOwner(sql, app);
+    const reply = crypto.randomUUID();
+    await messageRepo.addMessage(who.conversationId, { role: "assistant", parts: [{ type: "text", text: "an answer" }], turnIndex: 0 }, undefined, reply);
+    const res = await send(app, who, { id: reply, message: "hello" });
+    expect(res.status).toBe(409);
+    const k = keysOf(who.conversationId);
+    expect(await getRedis().exists(k.active)).toBe(0);
+    expect(await idsIn(k.queue)).toEqual([]);
+  });
+
   it("leaves no rejection unhandled when the opening row cannot be written, and keeps the message", async () => {
     const who = await seedOwner(sql, app);
     const unhandled: unknown[] = [];

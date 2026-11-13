@@ -325,7 +325,7 @@ chat.post("/message", acceptTransferBody("chat_message"), validate("json", chatM
     });
   }
 
-  if (await conversationService.messageIdTakenElsewhere(conversation.id, body.id!)) {
+  if (await conversationService.messageIdRefused(conversation.id, body.id!)) {
     logger.warn({ userId: user.id, conversationId: conversation.id, messageId: body.id }, "chat_message_id_taken");
     return c.json({ error: { code: 409, message: t("server.error.conflict"), reason: "message_id_taken" } }, 409);
   }

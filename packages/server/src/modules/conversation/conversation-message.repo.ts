@@ -259,10 +259,10 @@ async function settleInRow(
  *   the row is written under it, and a row already written under it in this
  *   conversation is handed back as it is, so a run that opens again after a
  *   crash answers the row its predecessor wrote instead of writing another.
- * @returns The turn index the message opened, the calls it closed, and whether
- *   the row was already there.
+ * @returns The turn index the message opened, and the calls it closed.
  * @throws {NotFoundError} if the conversation does not exist or is soft-deleted.
- * @throws {ConflictError} if the id names a message of another conversation.
+ * @throws {ConflictError} if the id names a row no new message can take
+ *   (`refusesNewMessageId`).
  */
 export async function addUserMessage(
   id: string,
@@ -278,7 +278,7 @@ export async function addUserMessage(
         .where(eq(conversationMessages.id, opts.messageId))
         .limit(1);
       if (held !== undefined) {
-        if (held.conversationId !== id || held.role !== "user") throw new ConflictError(t("server.error.conflict"));
+        if (refusesNewMessageId(held, id)) throw new ConflictError(t("server.error.conflict"));
         return { turnIndex: held.turnIndex, closedAsks: [] };
       }
     }
@@ -416,17 +416,33 @@ export async function answerWaitingAsk(
 }
 
 /**
- * The conversation a message row belongs to.
- * @param messageId - The message's id.
- * @returns Its conversation's id, or undefined when no row has that id.
+ * Whether a row already written under an id keeps a new message of this
+ * conversation from taking it: only the same message, a user row of this
+ * conversation, may be written again under its own id.
+ * @param held - The row under that id.
+ * @param held.conversationId - Its conversation.
+ * @param held.role - Its role.
+ * @param conversationId - The conversation the new message is sent to.
+ * @returns True when the id is not the new message's to take.
  */
-export async function conversationOfMessage(messageId: string): Promise<string | undefined> {
-  const [row] = await db
-    .select({ conversationId: conversationMessages.conversationId })
+function refusesNewMessageId(held: { conversationId: string; role: string }, conversationId: string): boolean {
+  return held.conversationId !== conversationId || held.role !== "user";
+}
+
+/**
+ * Whether a new message of a conversation cannot be written under this id.
+ * @param conversationId - The conversation it is sent to.
+ * @param messageId - The id it carries.
+ * @returns True when a row of another conversation, or a row that is not a
+ *   user message, already has that id.
+ */
+export async function messageIdRefused(conversationId: string, messageId: string): Promise<boolean> {
+  const [held] = await db
+    .select({ conversationId: conversationMessages.conversationId, role: conversationMessages.role })
     .from(conversationMessages)
     .where(eq(conversationMessages.id, messageId))
     .limit(1);
-  return row?.conversationId;
+  return held !== undefined && refusesNewMessageId(held, conversationId);
 }
 
 /**

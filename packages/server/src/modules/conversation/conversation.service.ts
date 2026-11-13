@@ -632,16 +632,15 @@ export async function modelForMessage(
 }
 
 /**
- * Whether a new message's id already names a message of another
- * conversation. The page makes a fresh id at each press, so only a request
- * built by hand can carry one; its run could never write its opening row.
+ * Whether a new message's id names a row it cannot be written under. The
+ * page makes a fresh id at each press, so only a request built by hand can
+ * carry one; its run could never write its opening row.
  * @param conversationId - The conversation it is sent to.
  * @param messageId - The id it carries.
- * @returns True when another conversation holds a message with that id.
+ * @returns True when the id is not the new message's to take.
  */
-export async function messageIdTakenElsewhere(conversationId: string, messageId: string): Promise<boolean> {
-  const holder = await messageRepo.conversationOfMessage(messageId);
-  return holder !== undefined && holder !== conversationId;
+export async function messageIdRefused(conversationId: string, messageId: string): Promise<boolean> {
+  return messageRepo.messageIdRefused(conversationId, messageId);
 }
 
 /**
