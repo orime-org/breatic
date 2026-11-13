@@ -170,13 +170,12 @@ async function runIt(start: RunStart, open: (running: boolean) => void): Promise
     let taken = await queue.head(conversationId, runId);
     let status: Awaited<ReturnType<typeof messageRepo.takenStatus>> | undefined;
     // What is taken goes until what is left can open the run: one answered
-    // already, and one whose id a row no new message can take already holds
-    // (only a request built by hand can carry one), whose opening would fail
-    // on every run.
+    // already, and an opening whose id a row no new message can take already
+    // holds (only a request built by hand can carry one), which would fail on
+    // every run. Only the opening is written under its own id.
     while (taken.length > 0) {
       status = await messageRepo.takenStatus(conversationId, taken.map((t) => t.id));
-      const refused: string[] = [];
-      for (const item of taken) if (await messageRepo.messageIdRefused(conversationId, item.id)) refused.push(item.id);
+      const refused = (await messageRepo.messageIdRefused(conversationId, taken[0]!.id)) ? [taken[0]!.id] : [];
       if (status.answered.size === 0 && refused.length === 0) break;
       if (refused.length > 0) logger.warn({ ...ctx, runId, messageIds: refused }, "chat_message_id_refused");
       taken = await queue.forget(conversationId, runId, [...status.answered, ...refused]);
