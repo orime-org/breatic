@@ -32,7 +32,7 @@ import { heldTables } from '@web/spaces/document/document-table-leave-selection'
 interface Piece {
   readonly from: number;
   readonly to: number;
-  /** Whether it is a whole column or group, the selection's start inside it. */
+  /** Whether it is a whole column, the selection's start inside it. */
   readonly whole: boolean;
 }
 
@@ -65,8 +65,9 @@ export function spansColumns(selection: Selection): boolean {
 
 /**
  * The pieces a selection across columns takes away, in document order: the
- * selected part of each column it starts or ends in, each column and group it
- * covers whole, and the body's words around the groups.
+ * selected part of each column it starts or ends in, each column it covers
+ * whole, and the body's words around the groups. A group left with one column
+ * or none goes by the repair rule.
  * @param doc - The document.
  * @param from - The selection's start.
  * @param to - The selection's end.
@@ -96,31 +97,13 @@ function piecesOf(doc: PMNode, from: number, to: number): Piece[] {
       else if (from > start) parts.push({ from, to: end - 1, whole: false });
       else parts.push({ from: start + 1, to, whole: false });
     });
-    const every = parts.length === node.childCount && parts.every((part) => part.to - part.from === 0 || isWholeColumn(node, pos, part));
     bodyTo(Math.min(pos, to));
-    if (every) pieces.push({ from: pos, to: groupEnd, whole: from > pos });
-    else pieces.push(...parts);
+    pieces.push(...parts);
     cursor = Math.max(cursor, Math.min(groupEnd, to));
     return false;
   });
   bodyTo(to);
   return pieces;
-}
-
-/**
- * Whether a piece is one of a group's columns, whole.
- * @param group - The group.
- * @param pos - Where the group starts.
- * @param piece - The piece.
- * @returns True when it is.
- */
-function isWholeColumn(group: PMNode, pos: number, piece: Piece): boolean {
-  let whole = false;
-  group.forEach((column, offset) => {
-    const start = pos + 1 + offset;
-    if (piece.from === start && piece.to === start + column.nodeSize) whole = true;
-  });
-  return whole;
 }
 
 /**

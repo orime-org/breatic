@@ -132,6 +132,21 @@ describe('pasting columns', () => {
     expect(sink.onLeftOut).toHaveBeenCalledWith(1);
   });
 
+  it('lands a copied group in a cell of a table nested under a list item', async () => {
+    const editor = await openReady([
+      { type: 'bulletListItem', content: 'item', children: [tableBlock({ rows: [{ cells: [{ blocks: [para('')] }, 'b'] }] })] },
+    ]);
+    let empty = -1;
+    editor.prosemirrorView.state.doc.descendants((node, pos) => {
+      if (empty < 0 && node.type.name === 'paragraph' && node.content.size === 0) empty = pos + 1;
+      return empty < 0;
+    });
+    select(editor, empty);
+    await pasteBlocks(editor, [columnsBlock(['x'], ['y'])]);
+    expect(groups(editor)).toBe(1);
+    expect(toast.warning).not.toHaveBeenCalled();
+  });
+
   it('lands a copied group in a cell', async () => {
     const editor = await openReady([tableBlock({ rows: [{ cells: [{ blocks: [para('')] }, 'b'] }] })]);
     let empty = -1;

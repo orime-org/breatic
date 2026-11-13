@@ -94,10 +94,10 @@ export function sideDropAllowed(
   side: ColumnSide,
   room: ColumnRoom,
 ): boolean {
-  if (draggedId === targetId) return false;
   const dragged = rowById(doc, draggedId);
   const target = rowById(doc, targetId);
   if (dragged === undefined || target === undefined) return false;
+  // The dragged row itself, or a row inside it.
   if (target.from >= dragged.from && target.to <= dragged.to) return false;
   const $target = doc.resolve(target.from);
   // A nested child: its group hangs under a row.
@@ -108,7 +108,6 @@ export function sideDropAllowed(
     if ($target.node(depth).type.name === DOC_COLUMN) return false;
   }
   // A cell takes no table, and a column takes no table holding columns.
-  if (cell > 0 && TABLES.has(dragged.node.type.name)) return false;
   if (cell > 0 && holds(dragged.node, TABLES)) return false;
   if (tableWithColumns(dragged.node) || tableWithColumns(target.node)) return false;
   const $dragged = doc.resolve(dragged.from);

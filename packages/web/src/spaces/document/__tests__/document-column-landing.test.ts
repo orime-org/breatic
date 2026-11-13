@@ -149,6 +149,14 @@ describe('when a side drop is refused (design §5.2)', () => {
     expect(sideDropAllowed(editor.prosemirrorState.doc, idOf(editor, 'table:1'), idOf(editor, 'a'), 'right', room)).toBe(false);
   });
 
+  it('refuses a row holding a nested table going into a cell', () => {
+    const editor = editorWith([
+      tableBlock({ rows: [{ cells: ['a', 'z'] }] }),
+      { type: 'bulletListItem', content: 'item', children: [tableBlock({ rows: [{ cells: ['t'] }] })] },
+    ]);
+    expect(sideDropAllowed(editor.prosemirrorState.doc, idOf(editor, 'item'), idOf(editor, 'a'), 'right', room)).toBe(false);
+  });
+
   it('refuses a table holding columns going into a column, as dragged or as target', () => {
     const editor = editorWith([
       tableBlock({ rows: [{ cells: [{ blocks: [columnsBlock(['x'], ['y'])] }] }] }),
