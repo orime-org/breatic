@@ -67,7 +67,7 @@ interface ProgramUniform { id: string | number; type?: number; size?: number; se
  * @param programs - `renderer.info.programs`.
  * @returns Each program's sampler names.
  */
-export function programSamplers(programs: readonly { getUniforms: () => { seq: readonly ProgramUniform[] } }[]): string[][] {
+export function programSamplers(programs: readonly { getUniforms: () => object }[]): string[][] {
   /**
    * Collect samplers from a uniform sequence.
    * @param seq - The sequence.
@@ -83,7 +83,8 @@ export function programSamplers(programs: readonly { getUniforms: () => { seq: r
     }
     return into;
   };
-  return programs.map((program) => collect(program.getUniforms().seq, []));
+  // three's typings leave out the uniform sequence that `WebGLUniforms` builds (r173 `WebGLUniforms.js`).
+  return programs.map((program) => collect((program.getUniforms() as { seq?: readonly ProgramUniform[] }).seq ?? [], []));
 }
 
 /** A shadow camera's frustum in its own space. */

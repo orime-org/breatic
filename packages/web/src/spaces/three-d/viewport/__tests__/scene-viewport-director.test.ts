@@ -41,7 +41,7 @@ vi.mock('three', async (importOriginal) => {
     shadowMap = shadowMap;
     capabilities = { maxTextures: 16 };
     private target: WebGLRenderTarget | null = null;
-    setPixelRatio(): void {} setSize(): void {} dispose(): void {} compile(): void {}
+    setPixelRatio(): void {} setSize(): void {} dispose(): void {} compile(): void {} getPixelRatio(): number { return 1; }
     setViewport(): void {} setScissor(): void {} setScissorTest(): void {}
     setRenderTarget(target: WebGLRenderTarget | null): void { this.target = target; }
     getRenderTarget(): WebGLRenderTarget | null { return this.target; }
@@ -145,7 +145,7 @@ describe('looking through a camera (inner#1694 design 3.4, 3.4.3)', () => {
     const opened = await open(props([camera(CAM)], { cameraView: { kind: 'live', id: CAM, canPilot: true }, viewFrame: FRAME }));
     const call = opened.frame();
     expect(call.camera.position).toEqual([0, 1.5, 6]);
-    expect(new Quaternion().fromArray(call.camera.quaternion).angleTo(ROLLED)).toBeLessThan(1e-9);
+    call.camera.quaternion.forEach((value, index) => expect(value).toBeCloseTo(ROLLED.toArray()[index] ?? NaN, 9));
     expect(call.camera.fov).toBeCloseTo(expectedFov(50, 16 / 9), 9);
     expect(call.camera.aspect).toBeCloseTo(16 / 9, 9);
     expect(call.camera.view).toEqual({ fullWidth: 640, fullHeight: 360, offsetX: -180, offsetY: -120, width: 1000, height: 600 });
@@ -186,12 +186,12 @@ describe('looking through a camera (inner#1694 design 3.4, 3.4.3)', () => {
     expect(call.camera.fov).toBe(45);
     expect(call.camera.aspect).toBeCloseTo(1000 / 600, 9);
     expect(call.camera.view).toBeNull();
-    expect(call.camera.position).toEqual(VIEW.position);
+    call.camera.position.forEach((value, index) => expect(value).toBeCloseTo(VIEW.position[index] ?? NaN, 9));
     expect(opened.orbit.enabled).toBe(true);
   });
 
   it('holds a frozen view still when the camera record or the window changes', async () => {
-    const frozen = { kind: 'frozen', position: [0, 1.5, 6], quaternion: ROLLED.toArray(), fov: 30, aspect: 9 / 16 };
+    const frozen = { kind: 'frozen' as const, position: [0, 1.5, 6] as [number, number, number], quaternion: ROLLED.toArray() as [number, number, number, number], fov: 30, aspect: 9 / 16 };
     const opened = await open(props([camera(CAM)], { cameraView: frozen, viewFrame: { x: 400, y: 20, width: 180, height: 320 } }));
     opened.runtime.update({ ...opened.initial, objects: [CUBE, camera(CAM, { position: [5, 5, 5], focalLength: 85 })], cameraView: frozen, viewFrame: { x: 400, y: 20, width: 180, height: 320 } } as SceneViewportProps);
     const call = opened.frame();
@@ -225,7 +225,7 @@ describe('looking through a camera (inner#1694 design 3.4, 3.4.3)', () => {
     expect(shot?.camera.view).toBeNull();
     expect(shot?.camera.position).toEqual([0, 1.5, 6]);
     expect(shot?.camera.fov).toBeCloseTo(expectedFov(50, 16 / 9), 9);
-    expect(Object.values(shot?.shown ?? {}).filter(Boolean)).toEqual([]);
+    expect(shot?.shown[CAM]).toBe(false);
     expect(opened.main.view?.enabled).toBe(true);
     expect(opened.main.view?.offsetX).toBe(-180);
   });

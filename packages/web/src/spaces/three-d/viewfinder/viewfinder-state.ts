@@ -4,7 +4,7 @@
 import { DEFAULT_VIEWFINDER_RATIO, type ViewfinderRatio } from '@breatic/shared';
 
 import type { ViewfinderRect } from '@web/spaces/three-d/viewfinder/viewfinder-geometry';
-import type { SceneQuaternion, SceneVector3, SceneView } from '@web/spaces/three-d/viewport/scene-viewport-props';
+import type { SceneCameraView, SceneFrozenPose, SceneView } from '@web/spaces/three-d/viewport/scene-viewport-props';
 
 /** Where the viewfinder stands (#1411 design 6.1). */
 export type ViewfinderPhase = 'off' | 'framing' | 'captured' | 'picking' | 'sending';
@@ -20,19 +20,6 @@ export interface ViewfinderShot {
 /** Where the frame looks from: the user's own view, or a camera (inner#1694 design 6.1). */
 export type ViewfinderSource = { kind: 'free' } | { kind: 'camera'; id: string };
 
-/** The main view at the moment a camera still was taken. */
-export interface ViewfinderFrozenPose {
-  position: SceneVector3;
-  quaternion: SceneQuaternion;
-  fov: number;
-  aspect: number;
-}
-
-/** What the main view shows (design 3.4.3): its own view, through a camera, or a still taken through one. */
-export type SceneCameraView =
-  | { kind: 'live'; id: string; canPilot: boolean }
-  | ({ kind: 'frozen' } & ViewfinderFrozenPose);
-
 export interface ViewfinderState {
   phase: ViewfinderPhase;
   source: ViewfinderSource;
@@ -41,7 +28,7 @@ export interface ViewfinderState {
   /** Changes on every open and every source change; a capture is kept only by the opening that started it. */
   opening: number;
   /** The main view when a camera still was taken. */
-  frozen: ViewfinderFrozenPose | null;
+  frozen: SceneFrozenPose | null;
   /** The free frame's ratio; a camera's frame comes from its record. */
   ratio: ViewfinderRatio;
   frame: ViewfinderRect;
@@ -67,7 +54,7 @@ export type ViewfinderAction =
   | { type: 'escape' }
   | { type: 'frame'; frame: ViewfinderRect }
   | { type: 'ratio'; ratio: ViewfinderRatio; frame: ViewfinderRect }
-  | { type: 'captured'; shot: ViewfinderShot; pose?: ViewfinderFrozenPose }
+  | { type: 'captured'; shot: ViewfinderShot; pose?: SceneFrozenPose }
   | { type: 'reframe' }
   | { type: 'pick' }
   | { type: 'unpick' }

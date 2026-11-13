@@ -175,3 +175,242 @@ export function pilotPivotDistance(position: Vector3, modelBoxCentre: Vector3 | 
 export function pilotPoseChanged(a: PilotPose, b: PilotPose): boolean {
   return a.position.distanceTo(b.position) > 1e-5 || Math.abs(a.quaternion.dot(b.quaternion)) < 1 - 1e-9;
 }
+
+/** What the pilot needs from the viewport it drives. */
+export interface PilotHost {
+  readonly canvas: HTMLCanvasElement;
+  /** The camera being looked through, or null when the view is not a live camera view. */
+  live(): { id: string; canPilot: boolean; locked: boolean } | null;
+  /** That camera's committed pose. */
+  recordPose(): PilotPose | null;
+  /** Whether a handle, joint or object gesture has taken the current press. */
+  objectGesture(): boolean;
+  /** The centre of the models' bounding box, or null when there is no model. */
+  modelBoxCentre(): Vector3 | null;
+  /** The main view's height in pixels and vertical field of view in radians. */
+  viewSize(): { height: number; fov: number };
+  /** How long a wheel pause lasts before it is written, once configured. */
+  wheelCommitMs(): number | undefined;
+  /** Show the current draft, or the record when there is none. */
+  show(): void;
+  preview(id: string, pose: PilotPose): void;
+  end(commit: boolean): void;
+  notifyLocked(): void;
+}
+
+/**
+ * The only thing that moves the main camera during a live camera view, and the only writer of its draft
+ * (inner#1694 design 3.4.1): it turns pointer and wheel input into pilot events and runs their effects.
+ * @throws {never} Never.
+ */
+export class ScenePilot {
+  private state: PilotState = PILOT_IDLE;
+  private draft: { id: string; pose: PilotPose; pivotDistance: number } | null = null;
+  private origin: { x: number; y: number; id: number; pan: boolean } | null = null;
+  private last: { x: number; y: number } | null = null;
+  private timer: ReturnType<typeof setTimeout> | null = null;
+
+  /**
+   * Listen on the viewport canvas.
+   * @param host - The viewport.
+   */
+  constructor(private readonly host: PilotHost) {
+    const { canvas } = host;
+    canvas.addEventListener('pointerdown', this.onDown);
+    canvas.addEventListener('pointermove', this.onMove);
+    canvas.addEventListener('pointerup', this.onUp);
+    canvas.addEventListener('pointercancel', this.onPointerCancel);
+    canvas.addEventListener('wheel', this.onWheel, { passive: false });
+    canvas.addEventListener('contextmenu', this.onContextMenu);
+  }
+
+  /**
+   * The draft pose of a camera, while one is being piloted.
+   * @param id - The camera.
+   * @returns Its draft pose, or null.
+   */
+  poseOf(id: string): PilotPose | null {
+    return this.draft?.id === id ? this.draft.pose : null;
+  }
+
+  /**
+   * Feed one event and run what it calls for.
+   * @param event - The event.
+   */
+  dispatch(event: PilotEvent): void {
+    const before = this.state;
+    const { state, effects } = pilotStep(before, event);
+    this.state = state;
+    if (before.wheel === 'pending' && state.wheel === 'idle') this.stopTimer();
+    for (const effect of effects) {
+      if (effect === 'lockedNotice') this.host.notifyLocked();
+      else this.finish(effect === 'commit');
+    }
+    if (event.type === 'move' && before.pointer === 'held' && state.pointer === 'dragging') this.begin();
+  }
+
+  /**
+   * Write a pending wheel step and drop a drag, before undo, redo or a viewfinder change.
+   * @param reason - What is about to happen.
+   */
+  flush(reason: 'exit' | 'switch' | 'confirm' | 'undo' | 'blur' | 'hide' = 'undo'): void {
+    this.dispatch({ type: reason });
+  }
+
+  /**
+   * Escape: drop a press in progress, or write a pending wheel step.
+   * @returns True when a press was in progress.
+   */
+  escape(): boolean {
+    const pressed = this.state.pointer === 'held' || this.state.pointer === 'dragging';
+    this.dispatch({ type: 'escape' });
+    return pressed;
+  }
+
+  /**
+   * End a draft through one of the two outlets.
+   * @param commit - Write it, or drop it.
+   */
+  private finish(commit: boolean): void {
+    const draft = this.draft;
+    this.draft = null;
+    if (!draft) return;
+    this.host.end(commit);
+    this.host.show();
+  }
+
+  /**
+   * Begin a draft at the record's pose with this gesture's pivot.
+   * @returns The draft, or null without a live camera.
+   */
+  private begin(): { id: string; pose: PilotPose; pivotDistance: number } | null {
+    if (this.draft) return this.draft;
+    const live = this.host.live();
+    const record = this.host.recordPose();
+    if (!live || !record) return null;
+    const pose = { position: record.position.clone(), quaternion: record.quaternion.clone() };
+    this.draft = { id: live.id, pose, pivotDistance: pilotPivotDistance(pose.position, this.host.modelBoxCentre()) };
+    return this.draft;
+  }
+
+  /**
+   * Publish a new draft pose.
+   * @param pose - The pose.
+   */
+  private move(pose: PilotPose): void {
+    if (!this.draft) return;
+    this.draft.pose = pose;
+    this.host.preview(this.draft.id, pose);
+    this.host.show();
+  }
+
+  /**
+   * Start a press on the live camera view.
+   * @param event - The press.
+   */
+  private onDown = (event: PointerEvent): void => {
+    if (!this.host.live() || (event.button !== 0 && event.button !== 2)) return;
+    this.origin = { x: event.clientX, y: event.clientY, id: event.pointerId, pan: event.button === 2 || event.shiftKey };
+    this.last = { x: event.clientX, y: event.clientY };
+    this.dispatch({ type: 'down' });
+  };
+
+  /**
+   * Decide the press at the drag threshold, then turn or slide the camera.
+   * @param event - The move.
+   */
+  private onMove = (event: PointerEvent): void => {
+    const origin = this.origin;
+    const live = this.host.live();
+    if (!origin || event.pointerId !== origin.id || !live) return;
+    if (this.state.pointer === 'held') {
+      this.dispatch({ type: 'move', distance: Math.hypot(event.clientX - origin.x, event.clientY - origin.y),
+        objectGesture: this.host.objectGesture(), canPilot: live.canPilot, locked: live.locked });
+    }
+    if (this.state.pointer !== 'dragging' || !this.draft || !this.last) return;
+    const dx = event.clientX - this.last.x;
+    const dy = event.clientY - this.last.y;
+    this.last = { x: event.clientX, y: event.clientY };
+    const { height, fov } = this.host.viewSize();
+    if (height === 0) return;
+    const { pose, pivotDistance } = this.draft;
+    // OrbitControls' convention: a drag across the view height turns a full circle; a pan follows the pointer.
+    this.move(origin.pan ? panPilot(pose, pivotDistance, dx * fov / height, dy * fov / height)
+      : orbitPilot(pose, pivotDistance, 2 * Math.PI * dx / height, 2 * Math.PI * dy / height));
+  };
+
+  /**
+   * End the press.
+   * @param event - The release.
+   */
+  private onUp = (event: PointerEvent): void => {
+    if (!this.origin || event.pointerId !== this.origin.id) return;
+    this.origin = null;
+    this.last = null;
+    this.dispatch({ type: 'up' });
+  };
+
+  /**
+   * Drop a press the browser took away.
+   * @param event - The cancellation.
+   */
+  private onPointerCancel = (event: PointerEvent): void => {
+    if (!this.origin || event.pointerId !== this.origin.id) return;
+    this.dispatch({ type: 'escape' });
+    this.onUp(event);
+  };
+
+  /**
+   * Dolly the camera; the page never scrolls during a camera view.
+   * @param event - The wheel step.
+   */
+  private onWheel = (event: WheelEvent): void => {
+    const live = this.host.live();
+    if (!live) return;
+    event.preventDefault();
+    this.dispatch({ type: 'wheel', canPilot: live.canPilot });
+    if (!live.canPilot || (this.state.wheel !== 'pending' && this.state.pointer !== 'dragging')) return;
+    const draft = this.begin();
+    if (!draft) return;
+    // One notch of a mouse wheel is 100 pixels of deltaY in Chromium, Firefox and Safari.
+    const moved = dollyPilot(draft.pose, draft.pivotDistance, -event.deltaY / 100);
+    draft.pivotDistance = moved.pivotDistance;
+    this.move(moved.pose);
+    if (this.state.wheel === 'pending') this.startTimer();
+  };
+
+  /**
+   * Keep the browser menu away from a right drag during a camera view.
+   * @param event - The menu request.
+   */
+  private onContextMenu = (event: MouseEvent): void => {
+    if (this.host.live()) event.preventDefault();
+  };
+
+  /** Restart the wheel pause. */
+  private startTimer(): void {
+    this.stopTimer();
+    const delay = this.host.wheelCommitMs();
+    if (delay === undefined) return;
+    this.timer = setTimeout(() => { this.timer = null; this.dispatch({ type: 'pause' }); }, delay);
+  }
+
+  /** Stop the wheel pause. */
+  private stopTimer(): void {
+    if (this.timer !== null) clearTimeout(this.timer);
+    this.timer = null;
+  }
+
+  /** Stop listening; a draft still open is dropped. */
+  dispose(): void {
+    this.stopTimer();
+    this.finish(false);
+    const { canvas } = this.host;
+    canvas.removeEventListener('pointerdown', this.onDown);
+    canvas.removeEventListener('pointermove', this.onMove);
+    canvas.removeEventListener('pointerup', this.onUp);
+    canvas.removeEventListener('pointercancel', this.onPointerCancel);
+    canvas.removeEventListener('wheel', this.onWheel);
+    canvas.removeEventListener('contextmenu', this.onContextMenu);
+  }
+}
