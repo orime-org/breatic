@@ -120,3 +120,39 @@ describe('copying a selection that holds formulas', () => {
     expect(copy(editor)['text/plain']).toBe('^2');
   });
 });
+
+describe('a selection that reaches into a formula from outside (§6.6)', () => {
+  /** A line with words before and after an inline formula. */
+  const LINE = [{ type: 'paragraph', content: ['start ', { type: 'math', content: 'x^2' }, ' end'] }];
+
+  it('takes in the whole formula when dragged from before it into its source', () => {
+    const editor = open(LINE);
+    const math = before(editor, 'math');
+    const node = editor.prosemirrorState.doc.nodeAt(math)!;
+    select(editor, before(editor, 'paragraph') + 1, math + 1);
+    expect(editor.prosemirrorState.selection.to).toBe(math + node.nodeSize);
+  });
+
+  it('takes in the whole formula when dragged backwards from after it into its source', () => {
+    const editor = open(LINE);
+    const math = before(editor, 'math');
+    const node = editor.prosemirrorState.doc.nodeAt(math)!;
+    const view = editor.prosemirrorView;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, math + node.nodeSize + 2, math + 2)));
+    expect(editor.prosemirrorState.selection.from).toBe(math);
+  });
+
+  it('leaves a selection inside one source alone', () => {
+    const editor = open(LINE);
+    const math = before(editor, 'math');
+    select(editor, math + 1, math + 3);
+    expect(editor.prosemirrorState.selection.from).toBe(math + 1);
+    expect(editor.prosemirrorState.selection.to).toBe(math + 3);
+  });
+
+  it('copies the formula whole after a drag that stopped on it', () => {
+    const editor = open(LINE);
+    select(editor, before(editor, 'paragraph') + 1, before(editor, 'math') + 1);
+    expect(copy(editor)['text/plain']?.trim()).toBe('start $$x^2$$');
+  });
+});

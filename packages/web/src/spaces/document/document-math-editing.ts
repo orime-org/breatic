@@ -15,6 +15,7 @@
  * | Escape in an open box | takes back what was typed since it opened and closes it |
  * | ArrowLeft / ArrowRight across an inline formula's edge | the caret goes into its source, or out to right beside the formula |
  * | input into a selected, closed block formula | refused: its source is hidden |
+ * | a selection reaching into an inline source from outside | widened to the whole formula |
  *
  * The keys run ahead of `document-enter` and `document-table-keys`, which
  * would otherwise split a quoted line or answer a table cell's edge first.
@@ -286,6 +287,47 @@ function arrowByFormula(editor: MathEditor, view: EditorView, forward: boolean):
 }
 
 /**
+ * Where a selection end that reaches into an inline formula's source from
+ * outside it belongs: on the far edge of the formula, so the whole formula is
+ * in the range.
+ * @param editor - The editor.
+ * @param end - The end that may be in a source.
+ * @param other - The selection's other end.
+ * @returns The position the end moves to, or null when it stays.
+ */
+function wholeFormulaEdge(editor: MathEditor, end: ResolvedPos, other: ResolvedPos): number | null {
+  const { parent } = end;
+  if (parent.isTextblock || !hasPreview(editor, parent.type.name)) return null;
+  const start = end.before();
+  const stop = end.after();
+  if (other.pos > start && other.pos < stop) return null;
+  return other.pos <= start ? stop : start;
+}
+
+/**
+ * Widens a selection that reaches into an inline formula's source from
+ * outside it to take in the whole formula. The source is hidden while the
+ * box is closed, so a drag that stops on the drawn formula would otherwise
+ * copy, cut or delete part of a source nobody can see.
+ * @param editor - The editor.
+ * @returns The plugin.
+ */
+function wholeFormulaSelection(editor: MathEditor): Plugin {
+  return new Plugin({
+    key: new PluginKey('documentMathWholeSelection'),
+    appendTransaction: (transactions, _old, state) => {
+      if (!transactions.some((tr) => tr.selectionSet || tr.docChanged)) return null;
+      const { selection } = state;
+      if (!(selection instanceof TextSelection) || selection.empty) return null;
+      const anchor = wholeFormulaEdge(editor, selection.$anchor, selection.$head) ?? selection.anchor;
+      const head = wholeFormulaEdge(editor, selection.$head, selection.$anchor) ?? selection.head;
+      if (anchor === selection.anchor && head === selection.head) return null;
+      return state.tr.setSelection(TextSelection.create(state.doc, anchor, head));
+    },
+  });
+}
+
+/**
  * Refuses what would write into a closed block formula's hidden source, and
  * a drop that lands in one.
  * @param editor - The editor.
@@ -341,7 +383,7 @@ export const documentMathEditingExtension = createExtension(({ editor }: { edito
       'sourceBlockWithPreview',
       'sourceInlineContentWithPreview',
     ],
-    prosemirrorPlugins: [rule.plugin, closedInput(editor)],
+    prosemirrorPlugins: [rule.plugin, closedInput(editor), wholeFormulaSelection(editor)],
     keyboardShortcuts: {
       Backspace: () => rule.takeBack(view()) || deleteByFormula(editor, view(), true),
       Delete: () => deleteByFormula(editor, view(), false),
