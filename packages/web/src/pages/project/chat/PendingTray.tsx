@@ -54,14 +54,14 @@ function TrayButton({ label, icon, busy, onPress, testId }: TrayButtonProps): Re
       <TooltipTrigger asChild>
         <Button
           type='button'
-          variant={null}
+          variant='chrome-ghost'
           size={null}
           aria-label={label}
           loading={busy}
           icon={icon}
           onClick={onPress}
           data-testid={testId}
-          className='inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-chrome text-muted-foreground hover-enabled:bg-accent hover-enabled:text-foreground'
+          className='size-[var(--btn-compact)] shrink-0'
         />
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
