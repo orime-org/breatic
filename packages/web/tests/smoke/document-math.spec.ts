@@ -4,13 +4,16 @@
 /**
  * Formulas in the document body end to end (inner#1423).
  *
- * What jsdom cannot show: the source box opening with the real caret in it,
+ * What jsdom cannot show: the box's text field taking the real keyboard,
  * real typing of `$$x$$` with a real Cmd/Ctrl+Z after it, the arrow keys
- * walking into and out of a source the browser lays out, the box drawn in a
- * table cell, a copy and a paste through the browser's own events, a drag
- * that ends on a rendered formula, a second page seeing an edit arrive, the
- * snapshot comparison drawing both versions of a formula, and the box's
- * corners and surface as the two themes compute them.
+ * walking into and out of an inline formula's source, the browser's own word
+ * and line deletion, paste and undo in the field, presses and drags in the
+ * field adding nothing to the body, the box drawn in a table cell, a wide
+ * formula scrolling inside its frame, a copy and a paste through the
+ * browser's own events, a drag that ends on a rendered formula, the
+ * select-all confirmation, a second page seeing an edit arrive, the snapshot
+ * comparison and restore, and the box's corners and surface as the two
+ * themes compute them.
  *
  * Wants dev running:
  *   pnpm --filter @breatic/web test:smoke
@@ -18,9 +21,9 @@
 import { expect, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
 
-import { pressAndSettle, selectInBody } from '../helpers/editor-keys';
+import { selectInBody } from '../helpers/editor-keys';
 import { openSmokeProject } from '../helpers/project';
-import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR, VISIBLE_SPACE, visibleSpace } from '../helpers/space';
+import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR, visibleSpace } from '../helpers/space';
 
 let page: Page;
 
@@ -38,10 +41,16 @@ test.afterEach(async () => {
 });
 
 /** The formula whose box is open. */
-const OPEN = `${EDITOR} .bn-preview-with-source-popup[data-open="true"]`;
+const OPEN = `${EDITOR} .doc-math[data-open="true"]`;
 
-/** The open formula's source box. */
-const POPUP = `${OPEN} .doc-math-popup`;
+/** The open formula's box. */
+const BOX = `${OPEN} [data-formula-box]`;
+
+/** The box's text field, where the source is edited. */
+const FIELD = `${BOX} textarea`;
+
+/** A drawn formula a press opens. */
+const FACE = `${EDITOR} .doc-math [role="button"], ${EDITOR} .doc-math .katex`;
 
 /**
  * Open a freshly made Document Space with the caret in the body.
@@ -69,10 +78,10 @@ async function lines(p: Page): Promise<string[]> {
   return p.evaluate((selector) => {
     type PMNode = {
       type: { name: string };
+      attrs: Record<string, unknown>;
       isText: boolean;
       isTextblock: boolean;
       text?: string;
-      textContent: string;
       forEach: (fn: (child: PMNode) => void) => void;
       descendants: (fn: (node: PMNode) => boolean | void) => void;
     };
@@ -82,14 +91,14 @@ async function lines(p: Page): Promise<string[]> {
     const doc = view.editor.state.doc;
     const out: string[] = [];
     doc.descendants((node) => {
-      if (!node.isTextblock) return true;
       if (node.type.name === 'mathBlock') {
-        out.push(`mathBlock:${node.textContent}`);
+        out.push(`mathBlock:${String(node.attrs['source'])}`);
         return false;
       }
+      if (!node.isTextblock) return true;
       let text = '';
       node.forEach((child) => {
-        text += child.type.name === 'math' ? `[math:${child.textContent}]` : child.isText ? child.text ?? '' : '';
+        text += child.type.name === 'math' ? `[math:${String(child.attrs['source'])}]` : child.isText ? child.text ?? '' : '';
       });
       out.push(`${node.type.name}:${text}`);
       return false;
@@ -103,23 +112,40 @@ async function lines(p: Page): Promise<string[]> {
  * @param p - The page.
  */
 async function insertFromPlus(p: Page): Promise<void> {
-  await p.locator(`${EDITOR} .bn-block-content`).first().hover();
+  await p.locator(`${EDITOR} .bn-block-content`).last().hover();
   await visibleSpace(p).getByTestId('doc-block-plus').click();
   await p.getByTestId('doc-block-insert-formula').click();
-  await expect(p.locator(OPEN)).toHaveCount(1);
+  await expect(p.locator(FIELD)).toBeFocused();
 }
 
 /**
- * Whether the browser's caret is inside the open formula's source.
+ * Opens the first formula's box with a click on what it draws.
+ * @param p - The page.
+ */
+async function openFirst(p: Page): Promise<void> {
+  await p.locator(FACE).first().click();
+  await expect(p.locator(FIELD)).toBeFocused();
+}
+
+/**
+ * Where the caret is in the box's text field.
+ * @param p - The page.
+ * @returns The caret's offset and the field's length.
+ */
+async function caretInField(p: Page): Promise<{ at: number; length: number }> {
+  return p.locator(FIELD).evaluate((field: HTMLTextAreaElement) => ({
+    at: field.selectionStart,
+    length: field.value.length,
+  }));
+}
+
+/**
+ * Whether the body's editor holds the keyboard.
  * @param p - The page.
  * @returns The answer.
  */
-async function caretInSource(p: Page): Promise<boolean> {
-  return p.evaluate((popup) => {
-    const anchor = window.getSelection()?.anchorNode ?? null;
-    const source = document.querySelector(`${popup} code`);
-    return anchor !== null && source !== null && source.contains(anchor);
-  }, POPUP);
+async function bodyFocused(p: Page): Promise<boolean> {
+  return p.evaluate((selector) => document.activeElement === document.querySelector(selector), EDITOR);
 }
 
 /**
@@ -187,15 +213,16 @@ async function caretAtEndOfFirstLine(p: Page): Promise<void> {
 test('a formula block from the plus menu: the box opens with the caret in it, Enter confirms, KaTeX draws it', async () => {
   await openFreshDocument(page);
   await insertFromPlus(page);
-  expect(await caretInSource(page)).toBe(true);
 
   await page.keyboard.type('\\frac{a}{b}');
-  await expect(page.locator(`${EDITOR} .katex-display`)).toBeVisible();
+  // The formula in the body is the live preview.
+  await expect(page.locator(`${EDITOR} .katex-display .mfrac`)).toBeVisible();
   await page.keyboard.press('Enter');
 
   await expect(page.locator(OPEN)).toHaveCount(0);
   expect((await lines(page))[0]).toBe('mathBlock:\\frac{a}{b}');
-  await expect(page.locator(`${EDITOR} .katex-display .mfrac`)).toBeVisible();
+  await expect(page.locator(`${EDITOR} .doc-math[data-selected="true"]`)).toHaveCount(1);
+  expect(await bodyFocused(page)).toBe(true);
 });
 
 test('a formula block in a table cell opens its box on screen', async () => {
@@ -214,17 +241,18 @@ test('a formula block in a table cell opens its box on screen', async () => {
   const plus = page.getByTestId('doc-block-insert-formula');
   if (!(await plus.isVisible())) await page.getByTestId('doc-block-row-insertBelow').hover();
   await page.getByTestId('doc-block-insert-formula').click();
-  await expect(page.locator(OPEN)).toHaveCount(1);
+  await expect(page.locator(FIELD)).toBeFocused();
   await page.keyboard.type('x^2');
   await expect(page.locator(`${EDITOR} table .katex-display`)).toBeVisible();
 
-  const box = await page.locator(POPUP).boundingBox();
+  const box = await page.locator(BOX).boundingBox();
   const viewport = page.viewportSize()!;
   expect(box).not.toBeNull();
   expect(box!.x).toBeGreaterThanOrEqual(0);
   expect(box!.x + box!.width).toBeLessThanOrEqual(viewport.width);
   await page.keyboard.press('Enter');
   await expect(page.locator(OPEN)).toHaveCount(0);
+  await expect.poll(() => lines(page)).toContain('mathBlock:x^2');
 });
 
 test('typing $$x^2$$ makes an inline formula; undo gives the words back and typing on keeps them', async () => {
@@ -246,29 +274,44 @@ test('the arrow keys walk into an inline source and out again, and Backspace aft
   await expect.poll(() => lines(page)).toEqual(['paragraph:a [math:xy]']);
   await expect(page.locator(OPEN)).toHaveCount(0);
 
-  await pressAndSettle(page, 'ArrowLeft');
-  await expect(page.locator(OPEN)).toHaveCount(1);
-  for (let i = 0; i < 3; i += 1) await page.keyboard.press('ArrowLeft');
+  // In from the right: the caret lands at the end of the source. Opening the
+  // box leaves the body's selection where it is.
+  await page.keyboard.press('ArrowLeft');
+  await expect(page.locator(FIELD)).toBeFocused();
+  expect(await caretInField(page)).toEqual({ at: 2, length: 2 });
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('ArrowLeft');
+  expect(await caretInField(page)).toEqual({ at: 0, length: 2 });
+  // Out on the left: the body's caret sits right before the formula.
+  await page.keyboard.press('ArrowLeft');
+  await expect(page.locator(OPEN)).toHaveCount(0);
+  expect(await bodyFocused(page)).toBe(true);
+  await page.keyboard.type('z');
+  await expect.poll(() => lines(page)).toEqual(['paragraph:a z[math:xy]']);
+
+  // In from the left: the caret lands at the start of the source.
+  await page.keyboard.press('ArrowRight');
+  await expect(page.locator(FIELD)).toBeFocused();
+  expect(await caretInField(page)).toEqual({ at: 0, length: 2 });
+  await page.keyboard.press('Escape');
   await expect(page.locator(OPEN)).toHaveCount(0);
 
   await caretAtEndOfFirstLine(page);
-  await expect(page.locator(OPEN)).toHaveCount(0);
-  await pressAndSettle(page, 'Backspace');
-  await expect(page.locator(OPEN)).toHaveCount(1);
-  expect(await lines(page)).toEqual(['paragraph:a [math:xy]']);
+  await page.keyboard.press('Backspace');
+  await expect(page.locator(FIELD)).toBeFocused();
+  expect(await caretInField(page)).toEqual({ at: 2, length: 2 });
+  expect(await lines(page)).toEqual(['paragraph:a z[math:xy]']);
 });
 
-for (const how of ['Escape', 'a click outside', 'the confirm button'] as const) {
-  test(`the box closes on ${how}`, async () => {
+for (const how of ['Enter', 'Escape', 'a click outside', 'the confirm button'] as const) {
+  test(`the box closes on ${how} and keeps what was typed`, async () => {
     await openFreshDocument(page);
     await insertFromPlus(page);
     await page.keyboard.type('y');
-    if (how === 'Escape') await page.keyboard.press('Escape');
+    if (how === 'Enter' || how === 'Escape') await page.keyboard.press(how);
     else if (how === 'a click outside') await page.mouse.click(5, 5);
-    else await page.locator(POPUP).getByRole('button', { name: 'OK', exact: true }).click();
+    else await page.locator(BOX).getByRole('button', { name: 'OK', exact: true }).click();
     await expect(page.locator(OPEN)).toHaveCount(0);
-    // The formula in the body is the live preview: every way out keeps what
-    // was typed (design §6.3).
     expect((await lines(page))[0]).toBe('mathBlock:y');
   });
 }
@@ -279,75 +322,23 @@ test('an empty formula shows its placeholder, and one that does not parse shows 
   await page.keyboard.press('Escape');
   await expect(page.locator(`${EDITOR} .doc-math`).first()).toContainText('Add a formula');
 
-  await page.locator(`${EDITOR} .doc-math .bn-preview-container`).first().click();
-  await expect(page.locator(OPEN)).toHaveCount(1);
+  await openFirst(page);
   await page.keyboard.type('\\frac{a}{b');
-  await expect(page.locator(POPUP)).toContainText('expected \'}\'');
+  await expect(page.locator(BOX)).toContainText('expected \'}\'');
   await page.keyboard.press('Enter');
   await expect(page.locator(OPEN)).toHaveCount(0);
   await expect(page.locator(`${EDITOR} .doc-math`).first()).toContainText('Formula has an error');
-});
-
-test('a symbol deleted in an inline formula and Escape keep the deletion, with the error face', async () => {
-  await openFreshDocument(page);
-  await page.keyboard.type('a $$\\frac{a}{b}$$', { delay: 30 });
-  await expect.poll(() => lines(page)).toEqual(['paragraph:a [math:\\frac{a}{b}]']);
-
-  await page.locator(`${EDITOR} p .katex`).first().click();
-  await expect(page.locator(OPEN)).toHaveCount(1);
-  await page.keyboard.press('Backspace');
-  await expect(page.locator(POPUP)).toContainText('expected \'}\'');
-  await page.keyboard.press('Escape');
-
-  await expect(page.locator(OPEN)).toHaveCount(0);
-  expect(await lines(page)).toEqual(['paragraph:a [math:\\frac{a}{b]']);
-  await expect(page.locator(`${EDITOR} .doc-math`).first()).toContainText('Formula has an error');
-});
-
-test('a symbol deleted in a formula block and Escape keep the deletion, with the error face', async () => {
-  await openFreshDocument(page);
-  await insertFromPlus(page);
-  await page.keyboard.type('\\frac{a}{b}');
-  await page.keyboard.press('Enter');
-  await expect(page.locator(OPEN)).toHaveCount(0);
-
-  await page.locator(`${EDITOR} .doc-math .bn-preview-container`).first().click();
-  await expect(page.locator(OPEN)).toHaveCount(1);
-  await page.keyboard.press('Backspace');
-  await expect(page.locator(POPUP)).toContainText('expected \'}\'');
-  await page.keyboard.press('Escape');
-
-  await expect(page.locator(OPEN)).toHaveCount(0);
   expect((await lines(page))[0]).toBe('mathBlock:\\frac{a}{b');
-  await expect(page.locator(`${EDITOR} .doc-math`).first()).toContainText('Formula has an error');
 });
 
-test('a formula block emptied with Backspace still takes what is typed next', async () => {
-  await openFreshDocument(page);
-  await insertFromPlus(page);
-  await page.keyboard.type('a');
-  await page.keyboard.press('Enter');
-  await expect(page.locator(OPEN)).toHaveCount(0);
-
-  await page.locator(`${EDITOR} .doc-math .bn-preview-container`).first().click();
-  await expect(page.locator(OPEN)).toHaveCount(1);
-  await page.keyboard.press('Backspace');
-  await page.keyboard.type('yz');
-  await page.keyboard.press('Enter');
-
-  await expect(page.locator(OPEN)).toHaveCount(0);
-  expect((await lines(page))[0]).toBe('mathBlock:yz');
-});
-
-test('a word deletion and Shift+Home with Backspace in an open formula block stay inside its source', async () => {
+test('a word deletion and Shift+Home with Backspace in the box change only the source', async () => {
   await openFreshDocument(page);
   await page.keyboard.type('hello');
   await page.keyboard.press('Enter');
   await paste(page, { 'text/plain': '$$\nab cd\n$$' });
   await expect.poll(() => lines(page)).toContain('mathBlock:ab cd');
 
-  await page.locator(`${EDITOR} .doc-math .bn-preview-container`).first().click();
-  await expect(page.locator(OPEN)).toHaveCount(1);
+  await openFirst(page);
   await page.keyboard.press(process.platform === 'darwin' ? 'Alt+Backspace' : 'Control+Backspace');
   await expect.poll(() => lines(page)).toContain('mathBlock:ab ');
   await page.keyboard.press('Shift+Home');
@@ -359,37 +350,97 @@ test('a word deletion and Shift+Home with Backspace in an open formula block sta
   expect((await lines(page)).slice(0, 2)).toEqual(['paragraph:hello', 'mathBlock:z']);
 });
 
-test('Ctrl+K right before an inline formula takes the whole formula with the rest of the line', async () => {
+test('a paste in the box goes into the source, and Cmd+Z there takes it back', async () => {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
   await openFreshDocument(page);
-  await page.keyboard.type('a $$x^2$$ b');
-  await expect.poll(() => lines(page)).toEqual(['paragraph:a [math:x^2] b']);
-  // Right after `a `: `Home` only scrolls on macOS.
-  await selectInBody(page, () => page.evaluate((selector) => {
-    const range = document.createRange();
-    range.setStart(document.querySelector(`${selector} p`)!.firstChild!, 2);
-    range.collapse(true);
-    const selection = window.getSelection()!;
-    selection.removeAllRanges();
-    selection.addRange(range);
-  }, EDITOR));
+  await insertFromPlus(page);
+  await page.keyboard.type('a');
+  await page.keyboard.press('Enter');
+  const before = await lines(page);
+  // Typing that close together is one undo step; the paste is its own.
+  await page.waitForTimeout(600);
 
-  // macOS binds Ctrl+K to this editing command, and Playwright presses keys on
-  // macOS by naming the command the same way; naming it here sends the same
-  // press on every platform.
-  const cdp = await page.context().newCDPSession(page);
-  const key = { key: 'k', code: 'KeyK', windowsVirtualKeyCode: 75, modifiers: 2 };
-  await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...key, commands: ['deleteToEndOfParagraph'] });
-  await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', ...key });
+  await openFirst(page);
+  await page.evaluate(() => navigator.clipboard.writeText('\\sqrt{2}'));
+  await page.keyboard.press('ControlOrMeta+v');
+  await expect.poll(() => lines(page)).toEqual(before.map((line) => line.replace('mathBlock:a', 'mathBlock:a\\sqrt{2}')));
+  await expect(page.locator(FIELD)).toHaveValue('a\\sqrt{2}');
 
-  await expect.poll(() => lines(page)).toEqual(['paragraph:a ']);
+  await page.keyboard.press('ControlOrMeta+z');
+  await expect.poll(() => lines(page)).toEqual(before);
+  await expect(page.locator(FIELD)).toHaveValue('a');
 });
 
-test('a formula block selected from the line above is framed on the formula, its box closed', async () => {
+test('Cmd+Z in the box of a formula just added takes it away and hands the keyboard back to the body', async () => {
   await openFreshDocument(page);
   await page.keyboard.type('hello');
   await page.keyboard.press('Enter');
-  await paste(page, { 'text/plain': '$$\nabc\n$$' });
-  await expect.poll(() => lines(page)).toContain('mathBlock:abc');
+  await page.waitForTimeout(600);
+  await insertFromPlus(page);
+
+  await page.keyboard.press('ControlOrMeta+z');
+
+  await expect(page.locator(`${EDITOR} .doc-math`)).toHaveCount(0);
+  await expect.poll(() => bodyFocused(page)).toBe(true);
+  await page.keyboard.press('ControlOrMeta+Shift+z');
+  await expect(page.locator(`${EDITOR} .doc-math`)).toHaveCount(1);
+});
+
+test('presses and a drag inside the box of a formula that ends the body add no line', async () => {
+  await openFreshDocument(page);
+  await insertFromPlus(page);
+  await page.keyboard.type('abcdef');
+  const before = await lines(page);
+  expect(before[before.length - 1]).toBe('mathBlock:abcdef');
+
+  const field = await page.locator(FIELD).boundingBox();
+  if (field === null) throw new Error('no box for the field');
+  await page.mouse.click(field.x + field.width / 2, field.y + field.height / 2);
+  await page.mouse.move(field.x + 4, field.y + 8);
+  await page.mouse.down();
+  await page.mouse.move(field.x + field.width - 4, field.y + field.height - 4, { steps: 8 });
+  await page.mouse.up();
+
+  await expect(page.locator(FIELD)).toBeFocused();
+  expect(await lines(page)).toEqual(before);
+});
+
+for (const [chord, key, modifiers, command] of [
+  ['Ctrl+K', { key: 'k', code: 'KeyK', windowsVirtualKeyCode: 75 }, 2, 'deleteToEndOfParagraph'],
+  ['Cmd+Delete', { key: 'Delete', code: 'Delete', windowsVirtualKeyCode: 46 }, 4, 'deleteToEndOfLine'],
+] as const) {
+  test(`${chord} right before an inline formula takes the whole formula with the rest of the line`, async () => {
+    await openFreshDocument(page);
+    await page.keyboard.type('a $$x^2$$ b');
+    await expect.poll(() => lines(page)).toEqual(['paragraph:a [math:x^2] b']);
+    // Right after `a `: `Home` only scrolls on macOS.
+    await selectInBody(page, () => page.evaluate((selector) => {
+      const range = document.createRange();
+      range.setStart(document.querySelector(`${selector} p`)!.firstChild!, 2);
+      range.collapse(true);
+      const selection = window.getSelection()!;
+      selection.removeAllRanges();
+      selection.addRange(range);
+    }, EDITOR));
+
+    // macOS binds the chord to this editing command, and Playwright presses
+    // keys on macOS by naming the command the same way; naming it here sends
+    // the same press on every platform.
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Input.dispatchKeyEvent', { type: 'rawKeyDown', ...key, modifiers, commands: [command] });
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', ...key, modifiers });
+
+    await expect.poll(() => lines(page)).toEqual(['paragraph:a ']);
+  });
+}
+
+test('a formula block selected from the line above is framed, and a wide one scrolls inside its frame', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('hello');
+  await page.keyboard.press('Enter');
+  const wide = Array.from({ length: 120 }, (_, i) => `x_{${i}}`).join('+');
+  await paste(page, { 'text/plain': `$$\n${wide}\n$$` });
+  await expect.poll(() => lines(page)).toContain(`mathBlock:${wide}`);
   const frame = page.locator(`${EDITOR} .doc-math [data-math-frame]`).first();
   await caretAtEndOfFirstLine(page);
   expect(await frame.evaluate((element) => getComputedStyle(element).outlineStyle)).toBe('none');
@@ -399,7 +450,19 @@ test('a formula block selected from the line above is framed on the formula, its
   await expect(page.locator(OPEN)).toHaveCount(0);
   await expect.poll(() => frame.evaluate((element) => getComputedStyle(element).outlineStyle)).toBe('solid');
   expect(await frame.evaluate((element) => getComputedStyle(element).outlineWidth)).toBe('1px');
-  expect((await lines(page)).slice(0, 2)).toEqual(['paragraph:hello', 'mathBlock:abc']);
+  expect((await lines(page)).slice(0, 2)).toEqual(['paragraph:hello', `mathBlock:${wide}`]);
+
+  // The frame stays inside the column; the formula scrolls sideways in it.
+  const measured = await frame.evaluate((element, selector) => {
+    const viewport = element.querySelector<HTMLElement>('[data-radix-scroll-area-viewport]')!;
+    const column = document.querySelector(selector)!.getBoundingClientRect();
+    const box = element.getBoundingClientRect();
+    return {
+      inside: box.left >= column.left - 1 && box.right <= column.right + 1,
+      scrolls: viewport.scrollWidth > viewport.clientWidth,
+    };
+  }, EDITOR);
+  expect(measured).toEqual({ inside: true, scrolls: true });
 });
 
 test('a line holding a formula copies as $$source$$ and pastes back as a formula', async () => {
@@ -417,31 +480,53 @@ test('a line holding a formula copies as $$source$$ and pastes back as a formula
   await expect.poll(() => lines(page)).toEqual(['paragraph:a [math:x^2] b', 'paragraph:a [math:x^2] b']);
 });
 
-test('a reply copied from the chat pastes as a heading, a list and its formula', async () => {
+test('a reply copied from the chat pastes as a heading, a list and its formulas', async () => {
   await openFreshDocument(page);
+  const display = '<span class="katex-display"><span class="katex"><math><semantics><mrow></mrow>'
+    + '<annotation encoding="application/x-tex">\\int_0^1 x\\,dx</annotation></semantics></math></span></span>';
   await paste(page, {
-    'text/html': '<h2>Title</h2><ul><li>one</li></ul><p>Mass is <span data-math="E=mc^2">$$E=mc^2$$</span>.</p>',
-    'text/plain': '## Title\n\n- one\n\nMass is $$E=mc^2$$.',
+    'text/html': `<h2>Title</h2><ul><li>one</li></ul><p>Mass is <span data-math="E=mc^2">$$E=mc^2$$</span>.</p>${display}`,
+    'text/plain': '## Title\n\n- one\n\nMass is $$E=mc^2$$.\n\n$$\n\\int_0^1 x\\,dx\n$$',
   });
   await expect.poll(() => lines(page)).toEqual(
-    expect.arrayContaining(['heading:Title', 'bulletListItem:one', 'paragraph:Mass is [math:E=mc^2].']),
+    expect.arrayContaining([
+      'heading:Title',
+      'bulletListItem:one',
+      'paragraph:Mass is [math:E=mc^2].',
+      'mathBlock:\\int_0^1 x\\,dx',
+    ]),
   );
 });
 
-test('a drag that ends on a rendered formula copies its source', async () => {
+test('a drag across a rendered formula copies its source', async () => {
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
   await openFreshDocument(page);
-  await page.keyboard.type('start $$x^2$$');
-  await expect.poll(() => lines(page)).toEqual(['paragraph:start [math:x^2]']);
+  await page.keyboard.type('start $$x^2$$ end');
+  await expect.poll(() => lines(page)).toEqual(['paragraph:start [math:x^2] end']);
 
   const start = await page.locator(`${EDITOR} p`).first().boundingBox();
   const formula = await page.locator(`${EDITOR} p .katex`).first().boundingBox();
   await page.mouse.move(start!.x + 1, start!.y + start!.height / 2);
   await page.mouse.down();
-  await page.mouse.move(formula!.x + formula!.width / 2, formula!.y + formula!.height / 2, { steps: 8 });
+  await page.mouse.move(formula!.x + formula!.width + 4, formula!.y + formula!.height / 2, { steps: 8 });
   await page.mouse.up();
   await page.keyboard.press('ControlOrMeta+c');
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('$$x^2$$');
+});
+
+test('select-all with a formula first asks before Backspace clears the body', async () => {
+  await openFreshDocument(page);
+  await paste(page, { 'text/plain': '$$\na\n$$\n\nwords' });
+  await expect.poll(() => lines(page)).toEqual(['mathBlock:a', 'paragraph:words']);
+  await page.locator(`${EDITOR} p`).first().click();
+
+  // The first press takes the line, the second the whole body.
+  await page.keyboard.press('ControlOrMeta+a');
+  await page.keyboard.press('ControlOrMeta+a');
+  await page.keyboard.press('Backspace');
+
+  await expect(page.getByTestId('document-clear-confirm')).toBeVisible();
+  expect((await lines(page))[0]).toBe('mathBlock:a');
 });
 
 test('two pages on one Space see each other change a formula', async ({ browser }) => {
@@ -458,16 +543,16 @@ test('two pages on one Space see each other change a formula', async ({ browser 
     await peer.getByTestId(home).click();
     await expect.poll(() => lines(peer), { timeout: 20_000 }).toContain('mathBlock:a');
 
-    await peer.locator(`${EDITOR} .doc-math .bn-preview-container`).first().click();
-    await expect(peer.locator(OPEN)).toHaveCount(1);
+    await openFirst(peer);
     await peer.keyboard.type('b');
     await expect.poll(() => lines(page), { timeout: 20_000 }).toContain('mathBlock:ab');
+    await expect(page.locator(`${EDITOR} .katex-display annotation`)).toHaveText('ab');
   } finally {
     await second.close();
   }
 });
 
-test('the snapshot comparison draws a changed formula before and after', async () => {
+test('the snapshot comparison marks a changed formula, and restoring brings the old one back', async () => {
   await openFreshDocument(page);
   await insertFromPlus(page);
   await page.keyboard.type('a+b');
@@ -479,8 +564,7 @@ test('the snapshot comparison draws a changed formula before and after', async (
   await page.getByTestId('doc-snapshot-name-submit').click();
   await expect(page.getByTestId('doc-snapshot-name-dialog')).toHaveCount(0, { timeout: 15_000 });
 
-  await page.locator(`${EDITOR} .doc-math .bn-preview-container`).first().click();
-  await expect(page.locator(OPEN)).toHaveCount(1);
+  await openFirst(page);
   await page.keyboard.press('Backspace');
   await page.keyboard.type('c');
   await page.keyboard.press('Enter');
@@ -494,9 +578,15 @@ test('the snapshot comparison draws a changed formula before and after', async (
   await row.click();
   await page.getByTestId('doc-version-compare-current').click();
   const preview = page.getByTestId('doc-version-preview-body');
-  await expect(preview.locator('.doc-version-delete .katex')).toHaveCount(1, { timeout: 15_000 });
-  await expect(preview.locator('.doc-version-insert .katex')).toHaveCount(1);
-  await page.getByTestId('doc-version-close').click();
+  await expect(preview.locator('[class*="doc-version-format"] .doc-math')).toHaveCount(1, { timeout: 15_000 });
+  await expect(preview.locator('.katex-display annotation')).toHaveText('a+c');
+
+  await page.getByTestId('doc-version-exit-compare').click();
+  await row.click();
+  await page.getByTestId('doc-version-restore').click();
+  await page.getByTestId('doc-version-restore-confirm').click();
+  await expect(page.getByTestId('doc-version-panel')).toHaveCount(0, { timeout: 15_000 });
+  await expect.poll(() => lines(page)).toContain('mathBlock:a+b');
 });
 
 for (const theme of ['light', 'dark'] as const) {
@@ -504,8 +594,8 @@ for (const theme of ['light', 'dark'] as const) {
     await openFreshDocument(page);
     await page.evaluate((value) => document.documentElement.setAttribute('data-theme', value), theme);
     await insertFromPlus(page);
-    const measured = await page.evaluate((popup) => {
-      const element = document.querySelector(popup)!;
+    const measured = await page.evaluate((box) => {
+      const element = document.querySelector(box)!;
       const probe = document.createElement('div');
       probe.style.borderRadius = 'var(--radius-overlay)';
       probe.style.backgroundColor = 'var(--color-popover)';
@@ -518,10 +608,10 @@ for (const theme of ['light', 'dark'] as const) {
       };
       probe.remove();
       return result;
-    }, POPUP);
+    }, BOX);
     expect(measured.radius[0]).toBe(measured.radius[1]);
     expect(measured.surface[0]).toBe(measured.surface[1]);
-    await expect(page.locator(VISIBLE_SPACE).locator('.doc-math-popup button', { hasText: 'OK' })).toBeVisible();
+    await expect(page.locator(BOX).getByRole('button', { name: 'OK', exact: true })).toBeVisible();
   });
 }
 
@@ -529,10 +619,9 @@ test('clicking a formula puts the caret at the end of its source', async () => {
   await openFreshDocument(page);
   await insertFromPlus(page);
   await page.keyboard.type('pq');
-  // Enter closes the box and keeps the source.
   await page.keyboard.press('Enter');
-  await page.locator(`${EDITOR} .doc-math .bn-preview-container`).first().click();
-  await expect(page.locator(OPEN)).toHaveCount(1);
+  await openFirst(page);
+  expect(await caretInField(page)).toEqual({ at: 2, length: 2 });
   await page.keyboard.type('r');
-  expect((await lines(page))[0]).toBe('mathBlock:pqr');
+  await expect.poll(async () => (await lines(page))[0]).toBe('mathBlock:pqr');
 });
