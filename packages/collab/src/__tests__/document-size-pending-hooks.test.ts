@@ -30,6 +30,7 @@ import type * as SizeModuleShape from "@collab/services/document-size.js";
 import type * as FilterModuleShape from "@collab/infra/inbound-filter.js";
 import type * as YjsModuleShape from "yjs";
 import { COLLAB_DOCUMENT_TOO_LARGE_REASON, DocSizeStatusSchema, documentBodyFragment } from "@breatic/shared";
+import { initializeTimelineDocument } from "@breatic/shared/space-content";
 
 import {
   D,
@@ -877,6 +878,17 @@ describe("section 7: lifecycle hooks (design 4.3)", () => {
     expect(rec(DOC)).toMatchObject({ exact: enc(doc), current: enc(doc), heldSum: 0 });
   });
 
+  it("L-01b afterLoadDocument stores a Timeline's pixel transforms as frame offsets and version 2 before recording the exact size (#1502 design §5)", async () => {
+    await boot();
+    collabRedis.set.mockImplementation(async () => "OK");
+    const doc = stored(TL, pixelTimelineDoc());
+    await runLoadHook(doc);
+    expect(logger.error).not.toHaveBeenCalled();
+    expect(doc.getMap("timeline").get("schemaVersion")).toBe(2);
+    expect((doc.getMap("clips").get(TIMELINE_CLIP) as Y.Map<unknown>).get("transform")).toEqual({ frameX: 0.1, frameY: -0.1, scaleX: 1, scaleY: 1, rotation: 0 });
+    expect(rec(TL)).toMatchObject({ exact: enc(doc), current: enc(doc), heldSum: 0 });
+  });
+
   it("L-02 afterLoadDocument installs both transaction listeners; after afterUnloadDocument a transaction measures nothing and does not throw", async () => {
     await boot();
     const doc = stored(CV);
@@ -1440,6 +1452,32 @@ function updateOfLength(bytes: number, clientID: number): Uint8Array {
   const u = insertOf(bytes - overhead);
   if (u.byteLength !== bytes) throw new Error(`update of ${u.byteLength} bytes, wanted ${bytes}`);
   return u;
+}
+
+/** The clip `pixelTimelineDoc` stores in the pixel format. */
+const TIMELINE_CLIP = "30000000-0000-4000-8000-000000000001";
+
+/**
+ * A version 1 Timeline (16:9) holding one clip whose transform is in canvas pixels, the format before #1502, which
+ * the load hook converts.
+ * @returns The document.
+ */
+function pixelTimelineDoc(): Y.Doc {
+  const doc = new Y.Doc();
+  initializeTimelineDocument(doc, { width: 1920, height: 1080, fps: { num: 24, den: 1 } });
+  doc.getMap("timeline").set("schemaVersion", 1);
+  const source = {
+    id: "10000000-0000-4000-8000-000000000001", kind: "video", assetId: "20000000-0000-4000-8000-000000000001",
+    timebase: { num: 24, den: 1 }, extentFrames: 48, durationSeconds: "2", durationOrigin: "registered",
+  };
+  doc.getMap("sources").set(source.id, source);
+  const record = new Y.Map<unknown>();
+  doc.getMap("clips").set(TIMELINE_CLIP, record);
+  for (const [key, value] of Object.entries({
+    id: TIMELINE_CLIP, trackId: "visual-1", kind: "video", sourceId: source.id, startFrame: 0, sourceInFrame: 0,
+    durationFrames: 48, rate: { num: 1, den: 1 }, gain: 1, mute: false, transform: { x: 192, y: -108, scaleX: 1, scaleY: 1, rotation: 0 },
+  })) record.set(key, value);
+  return doc;
 }
 
 /**

@@ -39,3 +39,16 @@ describe("server entry exits", () => {
     for (const prefix of calls) expect(["await", "void"]).toContain(prefix);
   });
 });
+
+describe("server Timeline configuration check (#1502 design §2)", () => {
+  it("reads the Timeline configuration before it serves, and logs and exits when it cannot", () => {
+    const check = code.indexOf("getTimelineConfig();");
+    const failed = code.indexOf('"timeline_config_invalid"');
+    const serving = code.indexOf("const server = serve(");
+    expect(check).toBeGreaterThanOrEqual(0);
+    expect(failed).toBeGreaterThan(check);
+    expect(serving).toBeGreaterThan(failed);
+    expect(code.slice(check, failed)).toMatch(/catch \(err\)[\s\S]*logger\.(error|fatal)\(\{ err\b[^}]*\}, $/);
+    expect(code.slice(failed, failed + 80)).toMatch(/await exitProcess\(1\)/);
+  });
+});

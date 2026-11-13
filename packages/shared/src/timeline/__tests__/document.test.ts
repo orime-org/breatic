@@ -7,11 +7,15 @@
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+import fc from "fast-check";
 import * as Y from "yjs";
 
 import * as spaceContent from "../../space-content.js";
-import { initializeTimelineDocument, readTimelineContent, readTimelineDocument, readTimelineSource } from "../document.js";
-import { TimelineDocumentV1Schema } from "../schema.js";
+import {
+  initializeTimelineDocument, readTimelineContent, readTimelineDocument, readTimelineSource, timelineDocumentNeedsUpgrade,
+  upgradeTimelineDocument,
+} from "../document.js";
+import { TimelineClipSchema, TimelineDocumentV1Schema } from "../schema.js";
 
 const settings = { width: 1920, height: 1080, fps: { num: 24, den: 1 } };
 const source = {
@@ -34,7 +38,7 @@ const clip = {
   rate: { num: 1, den: 1 },
   gain: 1,
   mute: false,
-  transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+  transform: { frameX: 0, frameY: 0, scaleX: 1, scaleY: 1, rotation: 0 },
 };
 const docs: Y.Doc[] = [];
 
@@ -82,10 +86,11 @@ afterEach(() => {
 });
 
 describe("Timeline document ownership and schema", () => {
-  it("seeds a complete V1 with a single stable visual track", () => {
+  it("seeds a complete version 2 document with a single stable visual track (#1502 design §5)", () => {
     const doc = seededDoc();
+    expect(doc.getMap("timeline").get("schemaVersion")).toBe(2);
     expect(readTimelineDocument(doc)).toEqual({
-      schemaVersion: 1,
+      schemaVersion: 2,
       settings,
       tracks: { "visual-1": { id: "visual-1", kind: "visual", order: 0 } },
       clips: {},
@@ -113,7 +118,7 @@ describe("Timeline document ownership and schema", () => {
     expect(() => readTimelineDocument(empty)).toThrow(Error);
     expect(Y.encodeStateAsUpdate(empty)).toEqual(emptyBytes);
     const unsupported = seededDoc();
-    unsupported.getMap("timeline").set("schemaVersion", 2);
+    unsupported.getMap("timeline").set("schemaVersion", 3);
     const unsupportedBytes = Y.encodeStateAsUpdate(unsupported);
     expect(() => readTimelineDocument(unsupported)).toThrow(Error);
     expect(Y.encodeStateAsUpdate(unsupported)).toEqual(unsupportedBytes);
@@ -123,7 +128,7 @@ describe("Timeline document ownership and schema", () => {
     const doc = seededDoc();
     attachClip(doc);
     const value = readTimelineDocument(doc);
-    expect(TimelineDocumentV1Schema.safeParse({ ...value, schemaVersion: 2 }).success).toBe(false);
+    expect(TimelineDocumentV1Schema.safeParse({ ...value, schemaVersion: 3 }).success).toBe(false);
     expect(TimelineDocumentV1Schema.safeParse({ ...value, settings: { ...settings, fps: { num: 24, den: 0 } } }).success).toBe(false);
     expect(TimelineDocumentV1Schema.safeParse({ ...value, clips: { [clip.id]: { ...clip, startFrame: 0.5 } } }).success).toBe(false);
     expect(TimelineDocumentV1Schema.safeParse({ ...value, sources: { [source.id]: { ...source, fileUrl: "https://example.com/video.mp4" } } }).success).toBe(false);
@@ -237,7 +242,7 @@ describe("Timeline content with damaged records (inner#1708 F1b)", () => {
     expect(typeof readTimelineContent).toBe("function");
     expect(() => readTimelineContent(trackedDoc())).toThrow(Error);
     const unsupported = seededDoc();
-    unsupported.getMap("timeline").set("schemaVersion", 2);
+    unsupported.getMap("timeline").set("schemaVersion", 3);
     expect(() => readTimelineContent(unsupported)).toThrow(Error);
   });
 });
@@ -402,5 +407,215 @@ describe("timelineRecordJson reads one stored Timeline value as JSON (inner#1708
       text.insert(0, source.id);
     }, "peer");
     expect(readTimelineContent(doc)).toEqual({ document: expect.objectContaining({ clips: { [clip.id]: clip } }), damaged: { clips: [] } });
+  });
+});
+
+/** The preset sizes of #1502 design §2, written out so this file does not depend on the preset module. */
+const FRAMES = {
+  "16:9": { width: 1920, height: 1080 }, "9:16": { width: 1080, height: 1920 }, "1:1": { width: 1080, height: 1080 },
+  "4:3": { width: 1440, height: 1080 }, "4:5": { width: 1080, height: 1350 }, "2:3": { width: 1080, height: 1620 },
+  "21:9": { width: 2520, height: 1080 },
+} as const;
+
+/** A clip id other than the fixture's. */
+const SECOND_CLIP = "30000000-0000-4000-8000-000000000002";
+
+/**
+ * Store a clip record whose transform is in the given stored format, as a peer's update would.
+ * @param doc - A seeded document.
+ * @param id - The clip id.
+ * @param transform - The stored transform, pixel (`x`, `y`) or fraction (`frameX`, `frameY`) format.
+ * @returns The attached record map.
+ * @throws {Error} When Yjs cannot attach the map.
+ */
+function storeClip(doc: Y.Doc, id: string, transform: Record<string, number>): Y.Map<unknown> {
+  const record = new Y.Map<unknown>();
+  doc.transact(() => {
+    doc.getMap("sources").set(source.id, source);
+    doc.getMap("clips").set(id, record);
+    for (const [key, value] of Object.entries({ ...clip, id, transform })) record.set(key, value);
+  }, "peer");
+  return record;
+}
+
+/**
+ * A seeded document stored as version 1, the format written before #1502, under the given frame size.
+ * @param frame - The stored frame size.
+ * @param frame.width - Frame width.
+ * @param frame.height - Frame height.
+ * @returns The document.
+ * @throws {Error} When seeding fails.
+ */
+function versionOneDoc(frame: { width: number; height: number } = settings): Y.Doc {
+  const doc = trackedDoc();
+  initializeTimelineDocument(doc, { ...settings, ...frame });
+  doc.getMap("timeline").set("schemaVersion", 1);
+  return doc;
+}
+
+const PIXEL_SCALE = { scaleX: 0.5, scaleY: 2, rotation: 30 };
+
+describe("Clip transforms are stored as frame offsets (#1502 design §4)", () => {
+  it("accepts a clip whose transform carries frameX and frameY", () => {
+    expect(TimelineClipSchema.safeParse({ ...clip, transform: { frameX: 0.35, frameY: -0.35, ...PIXEL_SCALE } }).success).toBe(true);
+  });
+
+  it("refuses a clip whose transform carries the pixel x and y, the format before #1502", () => {
+    expect(TimelineClipSchema.safeParse({ ...clip, transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 } }).success).toBe(false);
+  });
+});
+
+describe("Reading version 1 and version 2 documents and pixel-format clips (#1502 design §5)", () => {
+  it("reads a version 1 document, turning a pixel clip into a frame offset of the current frame", () => {
+    const doc = versionOneDoc();
+    storeClip(doc, clip.id, { x: 192, y: -108, ...PIXEL_SCALE });
+    const content = readTimelineContent(doc);
+    expect(content.document.clips[clip.id]!.transform).toEqual({ frameX: 0.1, frameY: -0.1, ...PIXEL_SCALE });
+    expect(content.damaged).toEqual({ clips: [] });
+  });
+
+  it("divides by the stored frame's own width and height, here a 9:16 frame", () => {
+    const doc = versionOneDoc(FRAMES["9:16"]);
+    storeClip(doc, clip.id, { x: 108, y: -192, ...PIXEL_SCALE });
+    expect(readTimelineDocument(doc).clips[clip.id]!.transform).toEqual({ frameX: 0.1, frameY: -0.1, ...PIXEL_SCALE });
+  });
+
+  it("reads a version 2 document holding both pixel and fraction clips, returning every clip as a frame offset", () => {
+    const doc = seededDoc();
+    storeClip(doc, clip.id, { x: 480, y: 270, ...PIXEL_SCALE });
+    storeClip(doc, SECOND_CLIP, { frameX: 0.35, frameY: -0.35, ...PIXEL_SCALE });
+    const clips = readTimelineDocument(doc).clips;
+    expect(clips[clip.id]!.transform).toEqual({ frameX: 0.25, frameY: 0.25, ...PIXEL_SCALE });
+    expect(clips[SECOND_CLIP]!.transform).toEqual({ frameX: 0.35, frameY: -0.35, ...PIXEL_SCALE });
+    for (const read of Object.values(clips)) expect(Object.keys(read.transform).sort()).toEqual(["frameX", "frameY", "rotation", "scaleX", "scaleY"]);
+  });
+
+  it("reads a fraction clip stored in a version 1 document", () => {
+    const doc = versionOneDoc();
+    storeClip(doc, clip.id, { frameX: 0.2, frameY: 0.1, ...PIXEL_SCALE });
+    expect(readTimelineDocument(doc).clips[clip.id]!.transform).toEqual({ frameX: 0.2, frameY: 0.1, ...PIXEL_SCALE });
+  });
+
+  it("reads a transform carrying both frame and pixel fields by its frame fields", () => {
+    const doc = seededDoc();
+    storeClip(doc, clip.id, { frameX: 0.2, frameY: 0.1, x: 960, y: 540, ...PIXEL_SCALE });
+    expect(readTimelineDocument(doc).clips[clip.id]!.transform).toEqual({ frameX: 0.2, frameY: 0.1, ...PIXEL_SCALE });
+  });
+
+  it("writes nothing while reading pixel clips", () => {
+    const doc = versionOneDoc();
+    storeClip(doc, clip.id, { x: 192, y: -108, ...PIXEL_SCALE });
+    const before = Y.encodeStateAsUpdate(doc);
+    const updates = vi.fn();
+    doc.on("update", updates);
+    readTimelineContent(doc);
+    expect(updates).not.toHaveBeenCalled();
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+    expect(doc.getMap("timeline").get("schemaVersion")).toBe(1);
+  });
+
+  it("reads any whole-pixel offset within ten frame sizes as that offset divided by the frame size, in any preset", () => {
+    fc.assert(fc.property(
+      fc.constantFrom(...Object.values(FRAMES)), fc.integer({ min: -10, max: 10 }), fc.integer({ min: -10, max: 10 }),
+      fc.double({ min: -1, max: 1, noNaN: true }), fc.double({ min: -1, max: 1, noNaN: true }), fc.constantFrom(1, 2),
+      (frame, wholeX, wholeY, partX, partY, version) => {
+        const x = Math.round((wholeX + partX) * frame.width);
+        const y = Math.round((wholeY + partY) * frame.height);
+        const doc = versionOneDoc(frame);
+        doc.getMap("timeline").set("schemaVersion", version);
+        storeClip(doc, clip.id, { x, y, ...PIXEL_SCALE });
+        const read = readTimelineDocument(doc).clips[clip.id]!.transform;
+        return Math.abs(read.frameX * frame.width - x) <= 1e-6 && Math.abs(read.frameY * frame.height - y) <= 1e-6
+          && read.scaleX === PIXEL_SCALE.scaleX && read.scaleY === PIXEL_SCALE.scaleY && read.rotation === PIXEL_SCALE.rotation;
+      },
+    ));
+  });
+});
+
+describe("upgradeTimelineDocument: storing pixel clips as frame offsets (#1502 design §5)", () => {
+  it("is exported from @breatic/shared/space-content with its check", () => {
+    expect(spaceContent.upgradeTimelineDocument).toBe(upgradeTimelineDocument);
+    expect(spaceContent.timelineDocumentNeedsUpgrade).toBe(timelineDocumentNeedsUpgrade);
+  });
+
+  it("finds an upgrade needed for a version 1 document, or for any document holding a pixel clip, and none otherwise", () => {
+    expect(timelineDocumentNeedsUpgrade(versionOneDoc())).toBe(true);
+    const latePixel = seededDoc();
+    storeClip(latePixel, clip.id, { x: 10, y: 10, ...PIXEL_SCALE });
+    expect(timelineDocumentNeedsUpgrade(latePixel)).toBe(true);
+    const current = seededDoc();
+    storeClip(current, clip.id, { frameX: 0.1, frameY: 0.1, ...PIXEL_SCALE });
+    expect(timelineDocumentNeedsUpgrade(current)).toBe(false);
+  });
+
+  it("finds no upgrade needed for a document that holds no Timeline content", () => {
+    expect(timelineDocumentNeedsUpgrade(trackedDoc())).toBe(false);
+  });
+
+  it("writes version 2 to a version 1 document that holds no pixel clip, in one update", () => {
+    const doc = versionOneDoc();
+    const updates = vi.fn();
+    doc.on("update", updates);
+    expect(upgradeTimelineDocument(doc)).toBe(0);
+    expect(doc.getMap("timeline").get("schemaVersion")).toBe(2);
+    expect(updates).toHaveBeenCalledTimes(1);
+  });
+
+  it("writes nothing to a version 2 document that holds no pixel clip", () => {
+    const doc = seededDoc();
+    storeClip(doc, clip.id, { frameX: 0.1, frameY: 0.1, ...PIXEL_SCALE });
+    const before = Y.encodeStateAsUpdate(doc);
+    const updates = vi.fn();
+    doc.on("update", updates);
+    expect(upgradeTimelineDocument(doc)).toBe(0);
+    expect(updates).not.toHaveBeenCalled();
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+  });
+
+  it("stores each pixel clip as a frame offset of the current frame, in place, and leaves fraction clips alone", () => {
+    const doc = versionOneDoc(FRAMES["9:16"]);
+    const pixel = storeClip(doc, clip.id, { x: 108, y: -192, ...PIXEL_SCALE });
+    storeClip(doc, SECOND_CLIP, { frameX: 0.35, frameY: -0.35, ...PIXEL_SCALE });
+    const updates = vi.fn();
+    doc.on("update", updates);
+    expect(upgradeTimelineDocument(doc)).toBe(1);
+    expect(updates).toHaveBeenCalledTimes(1);
+    expect(doc.getMap("timeline").get("schemaVersion")).toBe(2);
+    expect(doc.getMap("clips").get(clip.id)).toBe(pixel);
+    expect(pixel.get("transform")).toEqual({ frameX: 0.1, frameY: -0.1, ...PIXEL_SCALE });
+    expect((doc.getMap("clips").get(SECOND_CLIP) as Y.Map<unknown>).get("transform")).toEqual({ frameX: 0.35, frameY: -0.35, ...PIXEL_SCALE });
+    expect(timelineDocumentNeedsUpgrade(doc)).toBe(false);
+  });
+
+  it("writes under the transaction origin of the caller that wraps it", () => {
+    const doc = versionOneDoc();
+    storeClip(doc, clip.id, { x: 192, y: -108, ...PIXEL_SCALE });
+    const origins: unknown[] = [];
+    doc.on("update", (_update: Uint8Array, origin: unknown) => origins.push(origin));
+    doc.transact(() => upgradeTimelineDocument(doc), "timeline-format");
+    expect(origins).toEqual(["timeline-format"]);
+  });
+
+  it("moves no layer and changes nothing the second time, for any mix of clips, versions and presets", () => {
+    const transform = fc.oneof(
+      fc.record({ x: fc.integer({ min: -20000, max: 20000 }), y: fc.integer({ min: -20000, max: 20000 }) }),
+      fc.record({ frameX: fc.double({ min: -10, max: 10, noNaN: true }), frameY: fc.double({ min: -10, max: 10, noNaN: true }) }),
+    );
+    fc.assert(fc.property(
+      fc.constantFrom(...Object.values(FRAMES)), fc.constantFrom(1, 2), fc.array(transform, { maxLength: 5 }),
+      (frame, version, transforms) => {
+        const doc = versionOneDoc(frame);
+        doc.getMap("timeline").set("schemaVersion", version);
+        transforms.forEach((offset, index) => storeClip(doc, `30000000-0000-4000-8000-${String(index).padStart(12, "0")}`, { ...offset, ...PIXEL_SCALE }));
+        const shown = readTimelineDocument(doc).clips;
+        upgradeTimelineDocument(doc);
+        const once = Y.encodeStateAsUpdate(doc);
+        expect(readTimelineDocument(doc).clips).toEqual(shown);
+        expect(doc.getMap("timeline").get("schemaVersion")).toBe(2);
+        expect(timelineDocumentNeedsUpgrade(doc)).toBe(false);
+        expect(upgradeTimelineDocument(doc)).toBe(0);
+        expect(Y.encodeStateAsUpdate(doc)).toEqual(once);
+      },
+    ));
   });
 });

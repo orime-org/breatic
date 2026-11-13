@@ -73,7 +73,7 @@ const SOURCE: TimelineVideoSource = {
 const CLIP: TimelineVideoClip = {
   id: '30000000-0000-4000-8000-000000000001', kind: 'video', trackId: 'visual-1', sourceId: SOURCE.id,
   startFrame: 0, sourceInFrame: 0, durationFrames: 48, rate: { num: 1, den: 1 }, gain: 1, mute: false,
-  transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+  transform: { frameX: 0, frameY: 0, scaleX: 1, scaleY: 1, rotation: 0 },
 };
 const ME = 'user-timeline-editor';
 const ON = { magnet: true, linkage: true } as const;
@@ -420,7 +420,7 @@ describe('TimelineSpace content and permissions', () => {
     expect([...currentDoc().share.keys()]).toEqual([]);
   });
   it('reports an incompatible version while retaining its stored data', () => {
-    currentDoc().getMap('timeline').set('schemaVersion', 2);
+    currentDoc().getMap('timeline').set('schemaVersion', 3);
     const before = Y.encodeStateAsUpdate(currentDoc());
     showTimeline();
     expect(screen.getByTestId('timeline-space-error')).toBeInTheDocument();
@@ -2749,34 +2749,42 @@ describe('TimelineSpace size cap (inner#1790)', () => {
  * canvas. ASSET is 1280 x 720, so every video's base box is the whole canvas.
  */
 describe('TimelineSpace preview layers (breatic#1410)', () => {
-  // A picture-in-picture in the top-right quarter: canvas box x 1200..1680, y 135..405; display centre (720, 135).
-  const PIP = { x: 480, y: -270, scaleX: 0.25, scaleY: 0.25, rotation: 0 };
+  // A picture-in-picture in the top-right quarter: centre a quarter frame right of and above the frame centre, canvas box
+  // x 1200..1680, y 135..405; display centre (720, 135).
+  const PIP = { frameX: 0.25, frameY: -0.25, scaleX: 0.25, scaleY: 0.25, rotation: 0 };
   const PIP_CENTRE = [720, 135] as const;
   // Inside the full-frame CLIP only.
   const BACKGROUND = [100, 400] as const;
   const PREVIEW_PARTS = new Set(['timeline-preview', 'timeline-layer-overlay', 'timeline-layer-hit', 'timeline-preview-notes']);
+  // The area the preview is fitted into, 1px border included on each side: the 1920 x 1080 frame shows at 960 x 540
+  // (breatic#1502 design §6.2).
+  const AREA = { width: 962, height: 542 };
   const SOURCE_B: TimelineVideoSource = { ...SOURCE, id: '10000000-0000-4000-8000-000000000002', assetId: LOCAL_ASSET.assetId };
 
   beforeEach(() => {
     resetMoveableMock();
     const rect = Element.prototype.getBoundingClientRect;
     vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      if (this instanceof HTMLElement && this.dataset.testid === 'timeline-preview-area') {
+        return { x: 0, y: 0, left: 0, top: 0, right: AREA.width, bottom: AREA.height, width: AREA.width, height: AREA.height, toJSON: () => ({}) } as DOMRect;
+      }
       if (this instanceof HTMLElement && PREVIEW_PARTS.has(this.dataset.testid ?? '')) {
         return { x: 0, y: 0, left: 0, top: 0, right: 960, bottom: 540, width: 960, height: 540, toJSON: () => ({}) } as DOMRect;
       }
       return rect.call(this);
     });
-    const sized = (getter: (() => number) | undefined, size: number) => function (this: Element): number {
+    const sized = (getter: (() => number) | undefined, size: number, areaSize: number) => function (this: Element): number {
+      if (this instanceof HTMLElement && this.dataset.testid === 'timeline-preview-area') return areaSize;
       if (this instanceof HTMLElement && PREVIEW_PARTS.has(this.dataset.testid ?? '')) return size;
       return getter === undefined ? 0 : getter.call(this);
     };
     // Each original getter is read before its spy replaces it.
-    for (const [name, size] of [['clientWidth', 960], ['clientHeight', 540]] as const) {
-      const getter = sized(Object.getOwnPropertyDescriptor(Element.prototype, name)?.get, size);
+    for (const [name, size, areaSize] of [['clientWidth', 960, AREA.width], ['clientHeight', 540, AREA.height]] as const) {
+      const getter = sized(Object.getOwnPropertyDescriptor(Element.prototype, name)?.get, size, areaSize);
       vi.spyOn(Element.prototype, name, 'get').mockImplementation(getter);
     }
-    for (const [name, size] of [['offsetWidth', 960], ['offsetHeight', 540]] as const) {
-      const getter = sized(Object.getOwnPropertyDescriptor(HTMLElement.prototype, name)?.get, size);
+    for (const [name, size, areaSize] of [['offsetWidth', 960, AREA.width], ['offsetHeight', 540, AREA.height]] as const) {
+      const getter = sized(Object.getOwnPropertyDescriptor(HTMLElement.prototype, name)?.get, size, areaSize);
       vi.spyOn(HTMLElement.prototype, name, 'get').mockImplementation(getter);
     }
   });
@@ -2922,7 +2930,7 @@ describe('TimelineSpace preview layers (breatic#1410)', () => {
     fireEvent.change(field, { target: { value: '0' } });
     clickPreview(BACKGROUND);
     await waitFor(() => expect(selectedOnTrack(CLIP.id)).toBe('true'));
-    expect(layout().clips[X]?.transform).toEqual({ ...PIP, x: 0 });
+    expect(layout().clips[X]?.transform).toEqual({ ...PIP, frameX: 0 });
   });
 
   it('shows no handles for a clip selected outside the current frame and keeps its fields editable', async () => {
@@ -2964,7 +2972,8 @@ describe('TimelineSpace preview layers (breatic#1410)', () => {
     expect(previewVideo(X).style.transform).toBe(proxy.style.transform);
     expect(own()).toBe(0);
     gesture.dragEnd(last);
-    await waitFor(() => expect(layout().clips[X]?.transform).toEqual({ ...PIP, x: 500, y: -250 }));
+    // 500 x -250 canvas pixels: 500 / 1920 and -250 / 1080 of the frame, rounded to 0.00001.
+    await waitFor(() => expect(layout().clips[X]?.transform).toEqual({ ...PIP, frameX: 0.26042, frameY: -0.23148 }));
     expect(own()).toBe(1);
     expect(layout().clips[CLIP.id]?.transform).toEqual(CLIP.transform);
     fireEvent.click(screen.getByTestId('timeline-undo'));
@@ -2986,7 +2995,7 @@ describe('TimelineSpace preview layers (breatic#1410)', () => {
     act(() => { fireEvent.keyDown(screen.getByTestId('timeline-space'), { key: 'z', ctrlKey: true }); });
     expect(layout().clips[X]?.transform).toEqual({ ...PIP, rotation: 10 });
     gesture.dragEnd(last);
-    await waitFor(() => expect(layout().clips[X]?.transform).toEqual({ ...PIP, x: 500, y: -250, rotation: 10 }));
+    await waitFor(() => expect(layout().clips[X]?.transform).toEqual({ ...PIP, frameX: 0.26042, frameY: -0.23148, rotation: 10 }));
     fireEvent.click(screen.getByTestId('timeline-undo'));
     await waitFor(() => expect(layout().clips[X]?.transform).toEqual({ ...PIP, rotation: 10 }));
     fireEvent.click(screen.getByTestId('timeline-undo'));
@@ -3051,6 +3060,22 @@ describe('TimelineSpace preview layers (breatic#1410)', () => {
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)); });
     expect(moveableMock.mounted).toBe(0);
     expect(previewVideo(X).style.transform).toMatch(/translate\(\s*240px,\s*-135px\s*\)/);
+  });
+
+  it('fits a 9:16 frame into the same area and draws each layer at its frame fractions times the fitted size (breatic#1502 design §4, §6.2)', async () => {
+    seedPip();
+    showTimeline();
+    await layersReady(X);
+    // 16:9 in the 960 x 540 area inside the border: 0.5 display pixels per canvas pixel; 0.25 x 1920 x 0.5 = 240.
+    expect(translateOf(previewVideo(X).style.transform)).toEqual([expect.closeTo(240, 6), expect.closeTo(-135, 6)]);
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId('timeline-frame-ratio'));
+    await user.click(await screen.findByRole('option', { name: '9:16 · 1080×1920' }));
+    await waitFor(() => expect(layout().settings).toMatchObject({ width: 1080, height: 1920 }));
+    // 9:16 fits by height: min(960 / 1080, 540 / 1920) = 0.28125; the centre stays a quarter frame right of and above the
+    // frame centre: 0.25 x 1080 x 0.28125 = 75.9375 and -0.25 x 1920 x 0.28125 = -135.
+    await waitFor(() => expect(translateOf(previewVideo(X).style.transform)).toEqual([expect.closeTo(75.9375, 6), expect.closeTo(-135, 6)]));
+    expect(layout().clips[X]?.transform).toEqual(PIP);
   });
 
   it('notes a loading or unavailable video by its track in the note layer, retries only it, and keeps the selection', async () => {
@@ -3175,5 +3200,159 @@ describe('TimelineSpace preview layers (breatic#1410)', () => {
     expect(screen.queryByTestId('timeline-preview-note-' + X)).toBe(null);
     expect(screen.queryByTestId('timeline-video-retry-' + X)).toBe(null);
     expect(previewVideo(X)).toHaveAttribute('src', LOCAL_ASSET.fileUrl);
+  });
+});
+
+/**
+ * The display translation of a layer CSS transform.
+ * @param css - The `transform` value.
+ * @returns Its x and y in display pixels.
+ * @throws {Error} When it has no translate.
+ */
+function translateOf(css: string): [number, number] {
+  const match = /translate\(\s*(-?[\d.e+-]+)px,\s*(-?[\d.e+-]+)px\s*\)/.exec(css);
+  if (match === null) throw new Error(`No translate in ${css}`);
+  return [Number(match[1]), Number(match[2])];
+}
+
+/**
+ * The frame ratio control and the play bar (breatic#1502 design §6.1, §3.3, §8). The play bar under the preview
+ * carries `data-playback-state` (`paused`, `playing`, `waiting`) and no longer names the paused or playing state in
+ * text; "Buffering…" shows only while waiting. A `Select` (`data-testid="timeline-frame-ratio"`) at its right end lists
+ * the seven presets, each as "ratio · width×height", shows the current one (nothing for a size outside the seven), is
+ * disabled for a Viewer, and choosing a preset writes one `set_frame` that undo takes back.
+ */
+describe('TimelineSpace frame ratio and play bar (breatic#1502)', () => {
+  const OPTIONS = ['16:9 · 1920×1080', '9:16 · 1080×1920', '1:1 · 1080×1080', '4:3 · 1440×1080', '4:5 · 1080×1350', '2:3 · 1080×1620', '21:9 · 2520×1080'];
+
+  /**
+   * Seed a document whose frame is this size.
+   * @param width - Frame width.
+   * @param height - Frame height.
+   * @returns The client document.
+   * @throws {Error} When the seed cannot be applied.
+   */
+  function seedFrame(width: number, height: number): Y.Doc {
+    const server = new Y.Doc();
+    try {
+      initializeTimelineDocument(server, { ...SETTINGS, width, height });
+      Y.applyUpdate(currentDoc(), Y.encodeStateAsUpdate(server), 'provider');
+      return currentDoc();
+    } finally { server.destroy(); }
+  }
+
+  /**
+   * The play bar under the preview.
+   * @returns The row holding the play button.
+   * @throws {Error} When there is none.
+   */
+  function playBar(): HTMLElement {
+    const row = screen.getByTestId('timeline-play').closest<HTMLElement>('[data-playback-state]');
+    if (row === null) throw new Error('The play button is in no row with data-playback-state');
+    return row;
+  }
+
+  it('puts the ratio control at the right end of the play bar, showing the current preset', async () => {
+    seedContent();
+    showTimeline();
+    const trigger = await screen.findByTestId('timeline-frame-ratio');
+    const row = playBar();
+    expect(row.contains(trigger)).toBe(true);
+    expect(row.lastElementChild?.contains(trigger)).toBe(true);
+    expect(trigger).toHaveTextContent('16:9 · 1920×1080');
+    expect(trigger).toBeEnabled();
+  });
+
+  it('lists the seven presets with their sizes, in order', async () => {
+    seedContent();
+    showTimeline();
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId('timeline-frame-ratio'));
+    const options = await screen.findAllByRole('option');
+    expect(options.map((option) => option.textContent?.trim())).toEqual(OPTIONS);
+  });
+
+  it('writes the chosen preset as one step: the frame changes, clips stay, and undo brings the old frame back', async () => {
+    seedLayout([CLIP]);
+    showTimeline();
+    const user = userEvent.setup();
+    const before = layout();
+    await user.click(await screen.findByTestId('timeline-frame-ratio'));
+    await user.click(await screen.findByRole('option', { name: '9:16 · 1080×1920' }));
+    await waitFor(() => expect(layout().settings).toEqual({ ...SETTINGS, width: 1080, height: 1920 }));
+    expect(layout().clips).toEqual(before.clips);
+    expect(screen.getByTestId('timeline-frame-ratio')).toHaveTextContent('9:16 · 1080×1920');
+    fireEvent.click(screen.getByTestId('timeline-undo'));
+    await waitFor(() => expect(layout().settings).toEqual(SETTINGS));
+    expect(screen.getByTestId('timeline-frame-ratio')).toHaveTextContent('16:9 · 1920×1080');
+    expect(screen.getByTestId('timeline-undo')).toBeDisabled();
+  });
+
+  it('writes nothing for the preset already in use', async () => {
+    const doc = seedContent();
+    showTimeline();
+    const user = userEvent.setup();
+    const before = Y.encodeStateAsUpdate(doc);
+    await user.click(await screen.findByTestId('timeline-frame-ratio'));
+    await user.click(await screen.findByRole('option', { name: '16:9 · 1920×1080' }));
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+    expect(screen.getByTestId('timeline-undo')).toBeDisabled();
+  });
+
+  it('shows a Viewer the current preset in a disabled control that writes nothing', async () => {
+    const doc = seedFrame(1080, 1350);
+    showTimeline({ ...CONNECTED, writeAccess: 'denied' }, true);
+    const trigger = await screen.findByTestId('timeline-frame-ratio');
+    expect(trigger).toHaveTextContent('4:5 · 1080×1350');
+    expect(trigger).toBeDisabled();
+    const before = Y.encodeStateAsUpdate(doc);
+    fireEvent.click(trigger);
+    fireEvent.keyDown(trigger, { key: 'Enter' });
+    expect(screen.queryAllByRole('option')).toHaveLength(0);
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+  });
+
+  it('shows nothing for a frame size outside the seven presets, previews it, and changes it to any preset chosen', async () => {
+    seedFrame(1280, 720);
+    showTimeline();
+    const trigger = await screen.findByTestId('timeline-frame-ratio');
+    expect(trigger.textContent?.trim()).toBe('');
+    expect(screen.getByTestId('timeline-preview')).toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.click(trigger);
+    await user.click(await screen.findByRole('option', { name: '1:1 · 1080×1080' }));
+    await waitFor(() => expect(layout().settings).toEqual({ ...SETTINGS, width: 1080, height: 1080 }));
+  });
+
+  it('shows the preset a collaborator chose as soon as it arrives', async () => {
+    const doc = seedContent();
+    const peer = new Y.Doc();
+    try {
+      Y.applyUpdate(peer, Y.encodeStateAsUpdate(doc));
+      showTimeline();
+      expect(await screen.findByTestId('timeline-frame-ratio')).toHaveTextContent('16:9 · 1920×1080');
+      const vector = Y.encodeStateVector(doc);
+      write(peer, { operation: 'set_frame', parameters: { preset: '21:9' }, placement: OFF });
+      act(() => Y.applyUpdate(doc, Y.encodeStateAsUpdate(peer, vector), 'remote-provider'));
+      await waitFor(() => expect(screen.getByTestId('timeline-frame-ratio')).toHaveTextContent('21:9 · 2520×1080'));
+    } finally { peer.destroy(); }
+  });
+
+  it('marks the play bar paused and names neither paused nor playing in text', async () => {
+    seedContent();
+    showTimeline();
+    await screen.findByTestId('timeline-play');
+    expect(playBar()).toHaveAttribute('data-playback-state', 'paused');
+    expect(within(playBar()).queryByText('Paused')).toBe(null);
+    expect(within(playBar()).queryByText('Playing')).toBe(null);
+    expect(within(playBar()).queryByText(t('timeline.transport.waiting'))).toBe(null);
+  });
+
+  it('removes the paused and playing transport strings from every locale', () => {
+    for (const [locale, catalog] of LOCALE_CATALOGS) {
+      expect(readPath(catalog, 'timeline.transport.paused'), locale).toBeUndefined();
+      expect(readPath(catalog, 'timeline.transport.playing'), locale).toBeUndefined();
+      expect(typeof readPath(catalog, 'timeline.transport.waiting'), locale).toBe('string');
+    }
   });
 });

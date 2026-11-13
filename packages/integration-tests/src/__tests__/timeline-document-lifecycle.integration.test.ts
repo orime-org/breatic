@@ -58,7 +58,7 @@ function decode(bytes?: Uint8Array): Y.Doc {
 }
 
 /**
- * Prepare a valid V1 seed with explicit service-owned defaults.
+ * Prepare a valid seed with explicit service-owned defaults.
  * @returns A complete encoded Timeline document.
  * @throws {Error} When settings are invalid.
  */
@@ -121,7 +121,7 @@ describe("Timeline initialization in the real Yjs database", () => {
 
     const loaded = present(await yjsRepo.loadTimelineDocData(name, seed()));
     expect(readTimelineDocument(decode(loaded))).toEqual({
-      schemaVersion: 1, settings: SETTINGS,
+      schemaVersion: 2, settings: SETTINGS,
       tracks: { "visual-1": { id: "visual-1", kind: "visual", order: 0 } },
       clips: {}, sources: {}, operationReceipts: {},
     });
@@ -145,7 +145,7 @@ describe("Timeline initialization in the real Yjs database", () => {
   it("preserves unknown nonempty content without selecting new defaults", async () => {
     const name = own(timelineSpaceDocName(randomUUID(), randomUUID()));
     const unknown = decode();
-    unknown.getMap("timeline").set("schemaVersion", 2);
+    unknown.getMap("timeline").set("schemaVersion", 3);
     unknown.getMap("legacy").set("retained", "original data");
     const bytes = Y.encodeStateAsUpdate(unknown);
     await yjsRepo.seedInitialState(name, bytes);
@@ -162,6 +162,30 @@ describe("Timeline initialization in the real Yjs database", () => {
     const loaded = present(await yjsRepo.loadTimelineDocData(name, seed()));
     expect(Array.from(loaded)).toEqual(Array.from(original));
     expect(readTimelineDocument(decode(loaded)).settings).toEqual(OTHER_SETTINGS);
+  });
+
+  it("keeps a stored version 1 document with a pixel clip as stored, and reads its clip as a frame offset (#1502 design §5)", async () => {
+    const name = own(timelineSpaceDocName(randomUUID(), randomUUID()));
+    const old = decode();
+    initializeTimelineDocument(old, SETTINGS);
+    old.getMap("timeline").set("schemaVersion", 1);
+    const sourceId = randomUUID();
+    old.getMap("sources").set(sourceId, {
+      id: sourceId, kind: "video", assetId: randomUUID(), timebase: SETTINGS.fps, extentFrames: 48, durationSeconds: "2", durationOrigin: "registered",
+    });
+    const clipId = randomUUID();
+    const clip = new Y.Map<unknown>();
+    old.getMap("clips").set(clipId, clip);
+    for (const [key, value] of Object.entries({
+      id: clipId, trackId: "visual-1", kind: "video", sourceId, startFrame: 0, sourceInFrame: 0, durationFrames: 48,
+      rate: { num: 1, den: 1 }, gain: 1, mute: false, transform: { x: 192, y: -108, scaleX: 1, scaleY: 1, rotation: 0 },
+    })) clip.set(key, value);
+    const original = Y.encodeStateAsUpdate(old);
+    await yjsRepo.seedInitialState(name, original);
+
+    const loaded = present(await yjsRepo.loadTimelineDocData(name, seed()));
+    expect(Array.from(loaded)).toEqual(Array.from(original));
+    expect(readTimelineDocument(decode(loaded)).clips[clipId]!.transform).toEqual({ frameX: 0.1, frameY: -0.1, scaleX: 1, scaleY: 1, rotation: 0 });
   });
 
   it.each(["missing", "soft-deleted"] as const)("does not recreate a %s Timeline row", async (state) => {

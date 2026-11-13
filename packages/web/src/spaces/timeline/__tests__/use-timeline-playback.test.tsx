@@ -105,7 +105,7 @@ const CLIP: TimelineVideoClip = {
   rate: { num: 1, den: 1 },
   gain: 1,
   mute: false,
-  transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+  transform: { frameX: 0, frameY: 0, scaleX: 1, scaleY: 1, rotation: 0 },
 };
 // A second and third video stacked over CLIP for its whole span, as after the user shrinks the upper ones.
 const LANE_B: TimelineVideoClip = { ...CLIP, id: '30000000-0000-4000-8000-000000000012', trackId: 'v2', sourceId: SOURCE_B.id };
@@ -240,7 +240,7 @@ function timelineDocument(
   tracks: TimelineTrack[] = [{ id: 'visual-1', kind: 'visual', order: 0 }],
 ): TimelineDocumentV1 {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     settings: { width: 1920, height: 1080, fps: { num: 24, den: 1 } },
     tracks: Object.fromEntries(tracks.map((track) => [track.id, track])),
     clips: Object.fromEntries(clips.map((clip) => [clip.id, clip])),

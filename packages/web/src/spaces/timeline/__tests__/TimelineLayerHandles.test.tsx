@@ -9,11 +9,13 @@
  * - `TimelineLayerHandles` with props
  *   `{ canvas, base, transform, factor, snap, onOverride, onCommit, onDraggingChange, onPick }`:
  *   `canvas` is the document's `settings` size and `base` the layer's base box, both in canvas pixels; `transform` the
- *   stored one; `factor` display pixels per canvas pixel; `snap` the toolbar switch.
+ *   stored one, whose `frameX` and `frameY` are fractions of the frame's width and height (breatic#1502 design §4);
+ *   `factor` display pixels per canvas pixel; `snap` the toolbar switch.
  * - It renders a transparent proxy (`data-testid="timeline-layer-proxy"`) on the layer's base box in display pixels
  *   with the layer's CSS transform, and Moveable acting on it.
- * - During a gesture `onOverride(transform)` reports the live value in canvas pixels (and the proxy follows it);
- *   `onOverride(null)` clears it. On release the value is converted, clamped, normalised and rounded (§3.1) and
+ * - During a gesture `onOverride(transform)` reports the live value already as frame fractions, so the preview
+ *   override, the hit test and the write share one unit (breatic#1502 design §4), and the proxy follows it;
+ *   `onOverride(null)` clears it. On release the value is clamped, normalised and rounded (offsets to 0.00001) and
  *   handed to `onCommit` once, only when it differs from the stored one. Esc, a window blur and unmounting cancel
  *   without committing. `onDraggingChange` is true from the first move of a gesture to its end or cancel (design §7.1:
  *   press and move); a press that never moves reports nothing and hands its input event to `onPick` for the topmost hit
@@ -33,9 +35,10 @@ type Transform = TimelineVideoClip['transform'];
 
 const CANVAS = { width: 1920, height: 1080 };
 const FULL = { left: 0, top: 0, width: 1920, height: 1080 };
-const IDENTITY: Transform = { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 };
+const IDENTITY: Transform = { frameX: 0, frameY: 0, scaleX: 1, scaleY: 1, rotation: 0 };
 // The preview shows the 1920 x 1080 canvas at 960 x 540 display pixels.
 const FACTOR = 0.5;
+const PORTRAIT = { width: 1080, height: 1920 };
 
 /** The callbacks a render hands the handles. */
 interface Callbacks {
@@ -46,7 +49,7 @@ interface Callbacks {
 }
 
 /** What a render may change. */
-interface Options { transform?: Transform; base?: typeof FULL; snap?: boolean }
+interface Options { transform?: Transform; base?: typeof FULL; snap?: boolean; canvas?: typeof CANVAS }
 
 /**
  * Render the handles of a layer filling the canvas.
@@ -56,7 +59,7 @@ interface Options { transform?: Transform; base?: typeof FULL; snap?: boolean }
  */
 function showHandles(options: Options = {}): Callbacks & { rerender: (next: Options) => void; unmount: () => void } {
   const callbacks: Callbacks = { onOverride: vi.fn(), onCommit: vi.fn(), onDraggingChange: vi.fn(), onPick: vi.fn() };
-  const element = (next: Options): React.JSX.Element => <TimelineLayerHandles canvas={CANVAS} base={next.base ?? FULL} transform={next.transform ?? IDENTITY}
+  const element = (next: Options): React.JSX.Element => <TimelineLayerHandles canvas={next.canvas ?? CANVAS} base={next.base ?? FULL} transform={next.transform ?? IDENTITY}
     factor={FACTOR} snap={next.snap ?? true} {...callbacks} />;
   const view = render(element(options));
   return { ...callbacks, rerender: (next) => view.rerender(element(next)), unmount: view.unmount };
@@ -86,18 +89,30 @@ function layerCss(x: number, y: number, rotation: number, scaleX: number, scaleY
   return new RegExp(`translate\\(\\s*${n(x)}px,\\s*${n(y)}px\\s*\\)\\s*rotate\\(\\s*${n(rotation)}deg\\s*\\)\\s*scale\\(\\s*${n(scaleX)},\\s*${n(scaleY)}\\s*\\)`);
 }
 
+/**
+ * The display translation of a layer CSS transform.
+ * @param css - The `transform` value.
+ * @returns Its x and y in display pixels.
+ * @throws {Error} When it has no translate.
+ */
+function translateOf(css: string): [number, number] {
+  const match = /translate\(\s*(-?[\d.e+-]+)px,\s*(-?[\d.e+-]+)px\s*\)/.exec(css);
+  if (match === null) throw new Error(`No translate in ${css}`);
+  return [Number(match[1]), Number(match[2])];
+}
+
 beforeEach(() => { resetMoveableMock(); });
 afterEach(() => { cleanup(); });
 
 describe('TimelineLayerHandles proxy and handles (§4.1, §4.3)', () => {
   it('draws the proxy on the base box in display pixels with the layer transform, and gives Moveable all eight handles and the rotation handle', () => {
-    showHandles({ base: { left: 240, top: 0, width: 1440, height: 1080 }, transform: { x: 100, y: -50, scaleX: 0.5, scaleY: 0.5, rotation: 10 } });
+    showHandles({ base: { left: 240, top: 0, width: 1440, height: 1080 }, transform: { frameX: 0.25, frameY: -0.25, scaleX: 0.5, scaleY: 0.5, rotation: 10 } });
     const proxy = screen.getByTestId('timeline-layer-proxy');
     expect(proxy.style.left).toBe('120px');
     expect(proxy.style.top).toBe('0px');
     expect(proxy.style.width).toBe('720px');
     expect(proxy.style.height).toBe('540px');
-    expect(proxy.style.transform).toMatch(layerCss(50, -25, 10, 0.5, 0.5));
+    expect(proxy.style.transform).toMatch(layerCss(240, -135, 10, 0.5, 0.5));
     const props = handleProps();
     const target = props.target as { current?: unknown } | Element;
     expect(target === proxy || (target as { current?: unknown }).current === proxy).toBe(true);
@@ -125,27 +140,45 @@ describe('TimelineLayerHandles proxy and handles (§4.1, §4.3)', () => {
 });
 
 describe('TimelineLayerHandles move (§4.3, §7.2)', () => {
-  it('follows the drag locally without committing, then commits the canvas-pixel position once on release', () => {
+  it('follows the drag locally without committing, reporting frame fractions while dragging, then commits them once on release', () => {
     const { onOverride, onCommit, onDraggingChange } = showHandles();
     gesture.dragStart();
     expect(onDraggingChange).not.toHaveBeenCalled();
-    const last = gesture.drag([100, 50]);
+    // 96 x 54 display pixels are 192 x 108 canvas pixels: a tenth of the 1920 x 1080 frame each way.
+    const last = gesture.drag([96, 54]);
     expect(onDraggingChange.mock.calls).toEqual([[true]]);
-    expect(onOverride).toHaveBeenLastCalledWith({ x: 200, y: 100, scaleX: 1, scaleY: 1, rotation: 0 });
-    expect(proxyTransform()).toMatch(layerCss(100, 50, 0, 1, 1));
+    expect(onOverride).toHaveBeenLastCalledWith({ frameX: expect.closeTo(0.1, 10), frameY: expect.closeTo(0.1, 10), scaleX: 1, scaleY: 1, rotation: 0 });
+    expect(translateOf(proxyTransform())).toEqual([expect.closeTo(96, 6), expect.closeTo(54, 6)]);
     expect(onCommit).not.toHaveBeenCalled();
     gesture.dragEnd(last);
     expect(onCommit).toHaveBeenCalledTimes(1);
-    expect(onCommit).toHaveBeenCalledWith({ x: 200, y: 100, scaleX: 1, scaleY: 1, rotation: 0 });
+    expect(onCommit).toHaveBeenCalledWith({ frameX: 0.1, frameY: 0.1, scaleX: 1, scaleY: 1, rotation: 0 });
     expect(onOverride).toHaveBeenLastCalledWith(null);
     expect(onDraggingChange).toHaveBeenLastCalledWith(false);
   });
 
-  it('rounds the committed position to 0.01 canvas pixels (§3.1)', () => {
+  it('rounds the committed position to 0.00001 of the frame (breatic#1502 design §4)', () => {
     const { onCommit } = showHandles();
     gesture.dragStart();
+    // 200.246912 / 1920 = 0.104295..., 100.01 / 1080 = 0.092601...
     gesture.dragEnd(gesture.drag([100.123456, 50.005]));
-    expect(onCommit).toHaveBeenCalledWith({ x: 200.25, y: 100.01, scaleX: 1, scaleY: 1, rotation: 0 });
+    expect(onCommit).toHaveBeenCalledWith({ frameX: 0.1043, frameY: 0.0926, scaleX: 1, scaleY: 1, rotation: 0 });
+  });
+
+  it('measures the fractions against the frame it is given: the same canvas pixels are other fractions of a 9:16 frame', () => {
+    const { onOverride, onCommit } = showHandles({ canvas: PORTRAIT, base: { left: 0, top: 0, width: 1080, height: 1920 } });
+    gesture.dragStart();
+    // 54 x 96 display pixels are 108 x 192 canvas pixels: a tenth of the 1080 x 1920 frame each way.
+    const last = gesture.drag([54, 96]);
+    expect(onOverride).toHaveBeenLastCalledWith({ frameX: expect.closeTo(0.1, 10), frameY: expect.closeTo(0.1, 10), scaleX: 1, scaleY: 1, rotation: 0 });
+    gesture.dragEnd(last);
+    expect(onCommit).toHaveBeenCalledWith({ frameX: 0.1, frameY: 0.1, scaleX: 1, scaleY: 1, rotation: 0 });
+  });
+
+  it('draws a stored fraction at the canvas pixels of the frame it is given', () => {
+    showHandles({ canvas: PORTRAIT, base: { left: 0, top: 0, width: 1080, height: 1920 }, transform: { ...IDENTITY, frameX: 0.5, frameY: -0.25 } });
+    // 0.5 x 1080 = 540 and -0.25 x 1920 = -480 canvas pixels, at half size.
+    expect(translateOf(proxyTransform())).toEqual([expect.closeTo(270, 6), expect.closeTo(-240, 6)]);
   });
 
   it('commits nothing when the rounded result equals the stored transform', () => {
@@ -183,9 +216,10 @@ describe('TimelineLayerHandles scale and stretch (§4.3)', () => {
     const { onCommit } = showHandles();
     gesture.scaleStart([-1, -1]);
     expect(handleProps().keepRatio).toBe(true);
+    // The centre moves 240 x 135 canvas pixels: an eighth of the frame each way.
     gesture.scaleEnd(gesture.scale([0.5, 0.5], [-1, -1], [120, 67.5]));
     expect(onCommit).toHaveBeenCalledTimes(1);
-    expect(onCommit).toHaveBeenCalledWith({ x: 240, y: 135, scaleX: 0.5, scaleY: 0.5, rotation: 0 });
+    expect(onCommit).toHaveBeenCalledWith({ frameX: 0.125, frameY: 0.125, scaleX: 0.5, scaleY: 0.5, rotation: 0 });
   });
 
   it('stretches one axis from an edge handle with the ratio unlocked for that gesture only', () => {
@@ -193,25 +227,32 @@ describe('TimelineLayerHandles scale and stretch (§4.3)', () => {
     gesture.scaleStart([1, 0]);
     expect(handleProps().keepRatio).toBe(false);
     gesture.scaleEnd(gesture.scale([1.5, 1], [1, 0], [120, 0]));
-    expect(onCommit).toHaveBeenCalledWith({ x: 240, y: 0, scaleX: 1.5, scaleY: 1, rotation: 0 });
+    expect(onCommit).toHaveBeenCalledWith({ frameX: 0.125, frameY: 0, scaleX: 1.5, scaleY: 1, rotation: 0 });
     expect(handleProps().keepRatio).toBe(true);
+  });
+
+  it('reports the moved centre as frame fractions while scaling', () => {
+    const { onOverride } = showHandles();
+    gesture.scaleStart([-1, -1]);
+    gesture.scale([0.5, 0.5], [-1, -1], [120, 67.5]);
+    expect(onOverride).toHaveBeenLastCalledWith({ frameX: expect.closeTo(0.125, 10), frameY: expect.closeTo(0.125, 10), scaleX: 0.5, scaleY: 0.5, rotation: 0 });
   });
 
   it('clamps the scale to 0.01 and 100 while scaling and on release', () => {
     const { onOverride, onCommit } = showHandles();
     gesture.scaleStart([1, 1]);
     gesture.scale([0.001, 0.001], [1, 1]);
-    expect(onOverride).toHaveBeenLastCalledWith({ x: 0, y: 0, scaleX: 0.01, scaleY: 0.01, rotation: 0 });
+    expect(onOverride).toHaveBeenLastCalledWith({ frameX: 0, frameY: 0, scaleX: 0.01, scaleY: 0.01, rotation: 0 });
     expect(proxyTransform()).toMatch(layerCss(0, 0, 0, 0.01, 0.01));
     gesture.scaleEnd(gesture.scale([250, 250], [1, 1]));
-    expect(onCommit).toHaveBeenCalledWith({ x: 0, y: 0, scaleX: 100, scaleY: 100, rotation: 0 });
+    expect(onCommit).toHaveBeenCalledWith({ frameX: 0, frameY: 0, scaleX: 100, scaleY: 100, rotation: 0 });
   });
 
   it('rounds the committed scale to 0.0001', () => {
     const { onCommit } = showHandles();
     gesture.scaleStart([1, 1]);
     gesture.scaleEnd(gesture.scale([0.123456, 0.123456], [1, 1]));
-    expect(onCommit).toHaveBeenCalledWith({ x: 0, y: 0, scaleX: 0.1235, scaleY: 0.1235, rotation: 0 });
+    expect(onCommit).toHaveBeenCalledWith({ frameX: 0, frameY: 0, scaleX: 0.1235, scaleY: 0.1235, rotation: 0 });
   });
 });
 
@@ -220,10 +261,10 @@ describe('TimelineLayerHandles rotate (§4.3, §3.1)', () => {
     const { onCommit } = showHandles();
     gesture.rotateStart();
     gesture.rotateEnd(gesture.rotate(200));
-    expect(onCommit).toHaveBeenLastCalledWith({ x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: -160 });
+    expect(onCommit).toHaveBeenLastCalledWith({ frameX: 0, frameY: 0, scaleX: 1, scaleY: 1, rotation: -160 });
     gesture.rotateStart();
     gesture.rotateEnd(gesture.rotate(33.3333));
-    expect(onCommit).toHaveBeenLastCalledWith({ x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 33.33 });
+    expect(onCommit).toHaveBeenLastCalledWith({ frameX: 0, frameY: 0, scaleX: 1, scaleY: 1, rotation: 33.33 });
     expect(onCommit).toHaveBeenCalledTimes(2);
   });
 });
