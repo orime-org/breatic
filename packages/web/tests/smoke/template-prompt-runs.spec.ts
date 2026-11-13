@@ -15,7 +15,8 @@
  * TEMPLATE_RUN_DEFAULT_TIER runs at the tier the template leaves in effect, for templates whose text in the picture is judged; the sound templates' words are Chinese, written for
  * TEMPLATE_RUN_LOCALE=zh-CN (their braces come in the same order in every locale). TEMPLATE_RUN_ASK instead sends that request to the
  * Agent with the picture attached (TEMPLATE_RUN_ASK_IMAGE names another fixture, empty for none) and generates the node
- * its proposal places; TEMPLATE_RUN_ASK_ONLY stops once the turn is recorded.
+ * its proposal places; TEMPLATE_RUN_ASK_REPLY is the user's answer when the agent asks first, and
+ * TEMPLATE_RUN_ASK_ONLY stops once the turn is recorded.
  */
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
@@ -420,6 +421,22 @@ const INFO = 'Mika, bicycle courier, 25, cheerful, stubborn, curious, quick; rac
 
 const AGENT_ASK = process.env.TEMPLATE_RUN_ASK;
 const ASK_IMAGE = process.env.TEMPLATE_RUN_ASK_IMAGE === undefined ? CHARACTER : process.env.TEMPLATE_RUN_ASK_IMAGE === '' ? undefined : join(FIXTURES, process.env.TEMPLATE_RUN_ASK_IMAGE);
+const ASK_REPLY = process.env.TEMPLATE_RUN_ASK_REPLY;
+
+/**
+ * Send a chat message and wait for the turn it starts to end.
+ * @param text - What the user writes.
+ * @param bubbles - How many message bubbles the conversation holds once the reply has begun.
+ * @returns Nothing.
+ */
+async function say(text: string, bubbles: number): Promise<void> {
+  await page.getByTestId('chat-composer-box').fill(text);
+  const send = page.getByTestId('chat-composer-send');
+  await expect(send).toBeEnabled({ timeout: 60_000 });
+  await send.click();
+  await expect(page.getByTestId('message-bubble')).toHaveCount(bubbles, { timeout: 200_000 });
+  await expect(page.getByTestId('chat-composer-abort')).toHaveCount(0, { timeout: 600_000 });
+}
 
 if (AGENT_ASK !== undefined) test('agent @needs-model', async () => {
   test.setTimeout(1_800_000);
@@ -431,19 +448,17 @@ if (AGENT_ASK !== undefined) test('agent @needs-model', async () => {
     await page.getByTestId('chat-composer-file-input').setInputFiles(ASK_IMAGE);
     await expect(page.getByTestId('chat-composer-chips')).toContainText(basename(ASK_IMAGE, extname(ASK_IMAGE)), { timeout: 30_000 });
   }
-  await composer.fill(AGENT_ASK);
-  const send = page.getByTestId('chat-composer-send');
-  await expect(send).toBeEnabled({ timeout: 60_000 });
-  await send.click();
-  await expect(page.getByTestId('message-bubble')).toHaveCount(2, { timeout: 200_000 });
-  await expect(page.getByTestId('chat-composer-abort')).toHaveCount(0, { timeout: 600_000 });
+  await say(AGENT_ASK, 2);
+  // The agent asks what only the user knows before it fills a template; the
+  // user answers in the chat, which closes its questionnaire as replied to.
+  if (ASK_REPLY !== undefined && (await page.getByTestId('proposal-card').count()) === 0) await say(ASK_REPLY, 4);
   const turn = await page.evaluate(async () => {
     const list = await (await fetch('/api/v1/chat/conversations?limit=1', { credentials: 'include' })).json();
     const id = list?.data?.conversations?.[0]?.id as string;
     const read = await (await fetch(`/api/v1/chat/conversations/${id}`, { credentials: 'include' })).json();
     return JSON.stringify((read?.data?.messages ?? []).filter((m: { role?: string }) => m.role === 'assistant').flatMap((m: { parts?: unknown[] }) => m.parts ?? []));
   });
-  record({ template: 'agent', label: LABEL, ask: AGENT_ASK, parts: JSON.parse(turn) as unknown });
+  record({ template: 'agent', label: LABEL, ask: AGENT_ASK, reply: ASK_REPLY, parts: JSON.parse(turn) as unknown });
   // Recorded first, so a turn that ends without a proposal still shows what it did.
   await expect(page.getByTestId('proposal-card').last()).toBeVisible({ timeout: 30_000 });
   if (process.env.TEMPLATE_RUN_ASK_ONLY !== undefined) return;
