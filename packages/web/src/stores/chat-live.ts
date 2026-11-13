@@ -416,12 +416,13 @@ export const chatLive = {
       await sendChains.get(conversationId);
       const draft = conversationRuntime.draftOf(conversationId);
       conversationRuntime.setDraft(conversationId, draft === '' ? item.words : `${item.words}\n${draft}`);
+      // They were sent once already, so they go back whole; the limits are
+      // the server's to hold the next send to.
       if (item.chips.length > 0) {
-        const config = await chatApi.streamConfig().catch(() => null);
         chatAttachments.add(
           conversationId,
           item.chips.map((chip) => ({ id: chip.id, name: chip.name, type: chip.type, status: 'ready' as const, chip })),
-          { maxItems: config?.attachmentMaxItems ?? Infinity, maxChars: config?.attachmentMaxChars ?? Infinity },
+          { maxItems: Infinity, maxChars: Infinity },
         );
       }
     } catch (err) {

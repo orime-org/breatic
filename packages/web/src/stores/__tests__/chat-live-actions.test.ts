@@ -22,7 +22,7 @@ import { chatWaiting, useChatWaiting } from '@web/stores/chat-waiting';
 import { conversationRuntime } from '@web/stores/conversation-runtime';
 import { chatAttachments } from '@web/stores/chat-attachments';
 import { watchChatMishaps, type ChatMishap } from '@web/stores/chat-mishaps';
-import { replyOpens, settle, stubRunWire, type RunWire } from '@web/test-utils/chat-run-wire';
+import { replyOpens, settle, stubRunWire, type RunWire, storesWhatIsDrawn } from '@web/test-utils/chat-run-wire';
 
 const IDLE: ChatSyncAnswer = { pending: [], running: false, awaiting: false, next_sync_ms: 3000 };
 
@@ -157,6 +157,8 @@ describe('the answer to a card', () => {
     const s = wire.last()!;
     for (const f of replyOpens()) s.push(f);
     s.push({ type: 'data-failed', data: { reason: 'shutdown' } });
+    await settle();
+    storesWhatIsDrawn(messages);
     s.push({ type: 'error', errorText: 'x' });
     await settle();
     expect(messages().at(-1)!.parts.filter((p) => p.type === 'data-failed')).toHaveLength(1);
@@ -185,6 +187,8 @@ describe('pressing stop', () => {
     await stopping;
     expect(useChatLive.getState().stopping.c1).toBeUndefined();
     s.push({ type: 'data-interrupted', data: {} });
+    await settle();
+    storesWhatIsDrawn(messages);
     s.close();
     await settle();
     expect(messages().at(-1)!.parts.filter((p) => p.type === 'data-interrupted')).toHaveLength(1);
@@ -229,6 +233,19 @@ describe('taking a waiting message back', () => {
     await sending;
     await taking;
     expect(conversationRuntime.draftOf('c1')).toBe('first thought');
+  });
+
+  it('puts the attachments of a retracted one back above the box even past the count a new item may take', async () => {
+    const full = Array.from({ length: 10 }, (_, i) => ({
+      id: `held-${String(i)}`,
+      name: `held ${String(i)}`,
+      type: 'text' as const,
+      status: 'ready' as const,
+      chip: { id: `held-${String(i)}`, type: 'text' as const, name: `held ${String(i)}`, data_snapshot: { text: 'h' } },
+    }));
+    chatAttachments.add('c1', full, { maxItems: 10, maxChars: 200_000 });
+    await chatLive.takeBack('p1', 'c1', M1, 'retract');
+    expect(chatAttachments.trayOf('c1').map((item) => item.id)).toContain('chip-1');
   });
 
   it('drops a deleted one without touching the box (WB-21 delete)', async () => {
