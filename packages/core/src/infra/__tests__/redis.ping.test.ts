@@ -21,7 +21,7 @@ import { pingRedis } from "@core/infra/redis.js";
  * @param pong - The PING reply to resolve, or an Error to reject with
  * @returns A stub typed as `Redis` for {@link pingRedis}
  */
-function fakeClient(pong: string | Error): Redis {
+function fakeClient(pong: string | string[] | Error): Redis {
   return {
     ping: vi.fn(() =>
       pong instanceof Error ? Promise.reject(pong) : Promise.resolve(pong),
@@ -32,6 +32,10 @@ function fakeClient(pong: string | Error): Redis {
 describe("pingRedis", () => {
   it("returns true when PING replies PONG", async () => {
     await expect(pingRedis(fakeClient("PONG"))).resolves.toBe(true);
+  });
+
+  it("returns true when a subscribed connection replies to PING in its own form", async () => {
+    await expect(pingRedis(fakeClient(["pong", ""]))).resolves.toBe(true);
   });
 
   it("returns false when PING replies something other than PONG", async () => {

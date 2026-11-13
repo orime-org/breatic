@@ -33,6 +33,17 @@ describe("the server's health checks", () => {
     for (const c of checks) expect(await c.check()).toBe(true);
   });
 
+  it("pass while a run listens on the chat subscriber", async () => {
+    const subscriber = getChatSubscriberRedis();
+    await subscriber.subscribe("health-probe-run");
+    try {
+      const probe = serverHealthChecks().find((c) => c.name === "redis_chat_subscriber");
+      expect(await probe?.check()).toBe(true);
+    } finally {
+      await subscriber.unsubscribe("health-probe-run");
+    }
+  });
+
   it("fail /healthz once the chat subscriber's connection is closed (RT-28)", async () => {
     const subscriber = getChatSubscriberRedis();
     await subscriber.ping();
