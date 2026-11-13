@@ -32,7 +32,7 @@ import type { Node as PMNode, ResolvedPos } from '@tiptap/pm/model';
 import { NodeSelection, Plugin, PluginKey, TextSelection, type EditorState } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
-import { MATH_BLOCK, MATH_INLINE, openFormulaAt } from '@web/spaces/document/document-math';
+import { MATH_BLOCK, MATH_INLINE, openFormulaAt, removeFormulaBlock } from '@web/spaces/document/document-math';
 import { markOwnUndoStep } from '@web/spaces/document/document-undo-step';
 
 /** The editor as this file uses it. */
@@ -54,7 +54,19 @@ interface Converted {
   readonly from: number;
   readonly to: number;
   readonly text: string;
-  readonly state: EditorState;
+  readonly after: EditorState;
+}
+
+/**
+ * Whether the conversion is still the last thing that happened: nothing has
+ * changed the text or moved the caret since. A collaborator's caret moving
+ * sends transactions that change neither.
+ * @param last - The conversion.
+ * @param state - The editor state now.
+ * @returns True while it is.
+ */
+function stillLast(last: Converted, state: EditorState): boolean {
+  return last.after.doc === state.doc && last.after.selection.eq(state.selection);
 }
 
 /**
@@ -88,7 +100,7 @@ function inputRule(editor: MathEditor): { plugin: Plugin; takeBack: (view: Edito
     const tr = state.tr.replaceWith(from, $cursor.pos, node);
     tr.setSelection(TextSelection.create(tr.doc, from + node.nodeSize));
     view.dispatch(markOwnUndoStep(tr));
-    converted = { from, to: from + node.nodeSize, text: match[0], state: view.state };
+    converted = { from, to: from + node.nodeSize, text: match[0], after: view.state };
   };
 
   const plugin = new Plugin({
@@ -122,7 +134,7 @@ function inputRule(editor: MathEditor): { plugin: Plugin; takeBack: (view: Edito
     },
     view: () => ({
       update: (view, prevState): void => {
-        if (converted !== null && converted.state !== view.state) converted = null;
+        if (converted !== null && !stillLast(converted, view.state)) converted = null;
         if (armed === null) return;
         const at = armed;
         armed = null;
@@ -139,7 +151,7 @@ function inputRule(editor: MathEditor): { plugin: Plugin; takeBack: (view: Edito
     plugin,
     takeBack: (view): boolean => {
       const last = converted;
-      if (last === null || last.state !== view.state) return false;
+      if (last === null || !stillLast(last, view.state)) return false;
       const { state } = view;
       const tr = state.tr.replaceWith(last.from, last.to, state.schema.text(last.text));
       tr.setSelection(TextSelection.create(tr.doc, last.from + last.text.length));
@@ -230,9 +242,26 @@ function openBeside(view: EditorView, back: boolean): boolean {
 }
 
 /**
+ * Deletes a block formula selected whole, whatever the deletion: the lines
+ * indented under it come up into its place, and the lines around it stay
+ * apart.
+ * @param editor - The editor.
+ * @param view - The editor view.
+ * @param back - Backward, else forward.
+ * @returns Whether a formula was selected whole.
+ */
+function removeSelected(editor: MathEditor, view: EditorView, back: boolean): boolean {
+  const { selection } = view.state;
+  if (!(selection instanceof NodeSelection) || selection.node.type.name !== MATH_BLOCK) return false;
+  removeFormulaBlock(editor as never, view, selection.from, back);
+  return true;
+}
+
+/**
  * A deletion beside a formula, from a key or from the browser's `beforeinput`:
- * a character deletion right beside an inline formula opens its box; any
- * deletion at a line's edge that would reach a block formula selects it.
+ * a block formula selected whole goes; a character deletion right beside an
+ * inline formula opens its box; any deletion at a line's edge that would
+ * reach a block formula selects it.
  * @param editor - The editor.
  * @param view - The editor view.
  * @param back - Backward, else forward.
@@ -240,6 +269,7 @@ function openBeside(view: EditorView, back: boolean): boolean {
  * @returns Whether the deletion was taken.
  */
 function deleteBeside(editor: MathEditor, view: EditorView, back: boolean, character: boolean): boolean {
+  if (removeSelected(editor, view, back)) return true;
   const { $cursor } = view.state.selection as TextSelection;
   if (!$cursor) return false;
   if (character && openBeside(view, back)) return true;
@@ -261,6 +291,22 @@ function openSelected(state: EditorState, view: EditorView): boolean {
 }
 
 /**
+ * Whether a stretch of the document holds an inline formula.
+ * @param doc - The document.
+ * @param from - Where the stretch starts.
+ * @param to - Where it ends.
+ * @returns True when it does.
+ */
+function holdsInlineFormula(doc: PMNode, from: number, to: number): boolean {
+  let holds = false;
+  doc.nodesBetween(from, to, (node) => {
+    holds ||= node.type.name === MATH_INLINE;
+    return !holds;
+  });
+  return holds;
+}
+
+/**
  * Deletes from the caret to the edge of its paragraph, or of its line on
  * screen, when an inline formula lies in that stretch. Chrome deletes only the
  * formula there (its target range ends past the paragraph); the line's edge
@@ -274,7 +320,15 @@ function deleteLine(view: EditorView, forward: boolean, paragraph: boolean): boo
   const { $cursor } = view.state.selection as TextSelection;
   if (!$cursor) return false;
   let edge = forward ? $cursor.end() : $cursor.start();
-  if (!paragraph) {
+  if (paragraph) {
+    // A line break inside the paragraph ends the deletion, as it does the browser's.
+    $cursor.parent.forEach((child, offset) => {
+      if (child.type.name !== 'hardBreak') return;
+      const at = $cursor.start() + offset;
+      if (forward && at >= $cursor.pos) edge = Math.min(edge, at);
+      if (!forward && at < $cursor.pos) edge = Math.max(edge, at + child.nodeSize);
+    });
+  } else {
     const selection = view.dom.ownerDocument.getSelection();
     if (selection?.focusNode == null) return false;
     const { anchorNode, anchorOffset } = selection;
@@ -285,19 +339,15 @@ function deleteLine(view: EditorView, forward: boolean, paragraph: boolean): boo
   }
   const from = Math.min($cursor.pos, edge);
   const to = Math.max($cursor.pos, edge);
-  let holds = false;
-  view.state.doc.nodesBetween(from, to, (node) => {
-    holds ||= node.type.name === MATH_INLINE;
-    return !holds;
-  });
-  if (!holds) return false;
+  if (!holdsInlineFormula(view.state.doc, from, to)) return false;
   view.dispatch(view.state.tr.delete(from, to).scrollIntoView());
   return true;
 }
 
 /**
  * Takes the browser's own deletions at a line's edge beside a block formula,
- * and its line deletions across an inline formula.
+ * its line deletions across an inline formula, and an input method's start
+ * over a selection that holds one.
  * @param editor - The editor.
  * @returns The plugin.
  */
@@ -306,11 +356,25 @@ function besideInput(editor: MathEditor): Plugin {
     key: new PluginKey('documentMathBesideInput'),
     props: {
       handleDOMEvents: {
+        // A composition over a selection that holds an inline formula starts
+        // inside the formula's drawing, and Chrome then drops what is composed;
+        // the selection goes first, as typing over it takes it.
+        compositionstart: (view): boolean => {
+          const { from, to, empty } = view.state.selection;
+          if (!empty && editor.isEditable && holdsInlineFormula(view.state.doc, from, to)) {
+            view.dispatch(view.state.tr.deleteSelection());
+          }
+          return false;
+        },
         beforeinput: (view, event): boolean => {
           const deletion = DELETION.exec((event as InputEvent).inputType);
           if (!event.cancelable || !editor.isEditable || deletion === null) return false;
           const back = deletion[2] === 'Backward';
           const { $cursor } = view.state.selection as TextSelection;
+          if (removeSelected(editor, view, back)) {
+            event.preventDefault();
+            return true;
+          }
           if (!$cursor) return false;
           if (formulaBlockBeside($cursor, back) !== null) deleteBeside(editor, view, back, false);
           else if (deletion[1] === 'Word' || deletion[1] === 'Content') return false;
@@ -354,8 +418,9 @@ export const documentMathEditingExtension = createExtension(({ editor }: { edito
       Backspace: () => rule.takeBack(view()) || deleteBeside(editor, view(), true, true),
       'Shift-Backspace': remove(true, true),
       Delete: remove(false, true),
-      'Mod-Backspace': remove(true, false),
-      // Cmd+Delete on Apple platforms deletes to the end of the line on screen.
+      // Cmd+Backspace and Cmd+Delete on Apple platforms delete to the edge of
+      // the line on screen.
+      'Mod-Backspace': () => remove(true, false)() || (isMacOS() && deleteLine(view(), false, false)),
       'Mod-Delete': () => remove(false, false)() || (isMacOS() && deleteLine(view(), true, false)),
       ...(isMacOS()
         ? {

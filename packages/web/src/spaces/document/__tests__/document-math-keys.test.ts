@@ -23,7 +23,10 @@ import { open, positionOf, select, shape, unmountAll, type Editor } from '@web/s
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 import { documentSelectAllExtension } from '@web/spaces/document/document-select-all-guard';
 
-afterEach(unmountAll);
+afterEach(() => {
+  unmountAll();
+  vi.restoreAllMocks();
+});
 
 /**
  * Presses a key through the editor's key handlers.
@@ -101,6 +104,30 @@ function formulaSelected(editor: Editor): boolean {
   return selection instanceof NodeSelection && selection.node.type.name === 'mathBlock';
 }
 
+/**
+ * Runs with `Selection.modify` reaching the edge of the caret's paragraph:
+ * jsdom lays nothing out, and the line on screen here is the whole paragraph.
+ * @param editor - The editor.
+ * @param run - What to run.
+ * @returns The stub, to read its calls.
+ */
+function onOneScreenLine(editor: Editor, run: () => void): ReturnType<typeof vi.fn> {
+  const view = editor.prosemirrorView!;
+  const modify = vi.fn(function extend(this: Selection, _alter: string, direction: string) {
+    const line = view.dom.querySelector('p')!;
+    this.extend(line, direction === 'forward' ? line.childNodes.length : 0);
+  });
+  const had = Object.getOwnPropertyDescriptor(Selection.prototype, 'modify');
+  Object.defineProperty(Selection.prototype, 'modify', { value: modify, configurable: true, writable: true });
+  try {
+    run();
+  } finally {
+    if (had === undefined) delete (Selection.prototype as { modify?: unknown }).modify;
+    else Object.defineProperty(Selection.prototype, 'modify', had);
+  }
+  return modify;
+}
+
 /** A line with an inline formula between two words, with the given type and props. */
 const between = (type = 'paragraph', props: Record<string, unknown> = {}): Record<string, unknown> => ({
   type,
@@ -165,24 +192,38 @@ describe('a line deletion across an inline formula (§8)', () => {
 
   it('takes the formula with the rest of the line on screen', () => {
     const { editor } = open([between()]);
-    const view = editor.prosemirrorView!;
     select(editor, posOf(editor, 'math'));
-    // jsdom lays nothing out; the line on screen here ends where the paragraph does.
-    const modify = vi.fn(function extend(this: Selection) {
-      const line = view.dom.querySelector('p')!;
-      this.extend(line, line.childNodes.length);
-    });
-    const had = Object.getOwnPropertyDescriptor(Selection.prototype, 'modify');
-    Object.defineProperty(Selection.prototype, 'modify', { value: modify, configurable: true, writable: true });
-    try {
+
+    const modify = onOneScreenLine(editor, () => {
       expect(deletion(editor, 'deleteSoftLineForward')).toBe(true);
-    } finally {
-      if (had === undefined) delete (Selection.prototype as { modify?: unknown }).modify;
-      else Object.defineProperty(Selection.prototype, 'modify', had);
-    }
+    });
 
     expect(modify).toHaveBeenCalledWith('extend', 'forward', 'lineboundary');
-    expect(view.state.doc.textContent).toBe('a ');
+    expect(editor.prosemirrorView!.state.doc.textContent).toBe('a ');
+  });
+
+  it('stops a paragraph deletion at the next line break, as the browser does', () => {
+    const { editor } = open([{ type: 'paragraph', content: ['Kab ', { type: 'math', props: { source: 'x' } }, ' cd\nef gh'] }]);
+    const paragraph = () => editor.prosemirrorView!.state.doc.firstChild!.firstChild!.firstChild!;
+    expect(paragraph().textBetween(0, paragraph().content.size, undefined, (leaf) => (leaf.type.name === 'math' ? '[x]' : '⏎'))).toBe('Kab [x] cd⏎ef gh');
+    select(editor, positionOf(editor, 'Kab', 1));
+
+    expect(deletion(editor, 'deleteHardLineForward')).toBe(true);
+
+    expect(paragraph().textBetween(0, paragraph().content.size, undefined, () => '⏎')).toBe('K⏎ef gh');
+  });
+
+  it('takes the line before the caret with Cmd+Backspace right after an inline formula on Apple platforms', () => {
+    vi.spyOn(navigator, 'platform', 'get').mockReturnValue('MacIntel');
+    const { editor } = open([{ type: 'paragraph', content: ['The area is ', { type: 'math', props: { source: 'r^2' } }] }]);
+    select(editor, posOf(editor, 'math') + 1);
+
+    // jsdom's keymap reads Mod as Ctrl, whatever the platform says.
+    onOneScreenLine(editor, () => {
+      expect(press(editor, 'Backspace', { ctrlKey: true })).toBe(true);
+    });
+
+    expect(editor.prosemirrorView!.state.doc.textContent).toBe('');
   });
 
   it('leaves a line deletion that holds no formula to the browser', () => {
@@ -351,6 +392,81 @@ describe('a line beside a block formula (A7)', () => {
 
     expect((await field()).value).toBe('x+1');
     expect(view.state.doc.eq(before)).toBe(true);
+  });
+});
+
+describe('an input method over a selection holding an inline formula', () => {
+  it.each([
+    ['the formula alone', 0, 1, 'a  b'],
+    ['the formula and the words after it', 0, 3, 'a '],
+  ] as const)('clears %s before the composition starts, so what is composed replaces it', (_label, fromOffset, toOffset, left) => {
+    const { editor } = open([between()]);
+    const at = posOf(editor, 'math');
+    select(editor, at + fromOffset, at + toOffset);
+
+    editor.prosemirrorView!.dom.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
+
+    expect(editor.prosemirrorView!.state.doc.textContent).toBe(left);
+    expect(editor.prosemirrorView!.state.selection.empty).toBe(true);
+  });
+
+  it('leaves a selection of words alone to the input method', () => {
+    const { editor } = open([between()]);
+    select(editor, positionOf(editor, 'a ', 0), positionOf(editor, 'a ', 1));
+
+    editor.prosemirrorView!.dom.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
+
+    expect(editor.prosemirrorView!.state.doc.textContent).toBe('a $$xy$$ b');
+  });
+});
+
+describe('a deletion on a block formula selected whole (A7)', () => {
+  /**
+   * Opens a formula between two lines, selected whole.
+   * @returns The editor.
+   */
+  const selectedFormula = (): Editor => {
+    const { editor } = open([
+      { type: 'paragraph', content: 'above' },
+      { type: 'mathBlock', props: { source: 'x^2' } },
+      { type: 'paragraph', content: 'below' },
+    ]);
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, posOf(editor, 'mathBlock'))));
+    return editor;
+  };
+
+  it.each([
+    ['Shift+Backspace', 'Backspace', { shiftKey: true }],
+    ['Mod+Backspace', 'Backspace', { ctrlKey: true }],
+    ['Mod+Delete', 'Delete', { ctrlKey: true }],
+  ] as const)('deletes it on %s, the lines around it kept apart', (_label, key, mods) => {
+    const editor = selectedFormula();
+
+    expect(press(editor, key, mods)).toBe(true);
+
+    expect(posOf(editor, 'mathBlock')).toBe(-1);
+    expect(shape(editor)).toEqual(['paragraph:above', 'paragraph:below']);
+  });
+
+  it.each([['Alt+Backspace', 'Backspace'], ['Alt+Delete', 'Delete']] as const)(
+    'deletes it on %s on Apple platforms',
+    (_label, key) => {
+      vi.spyOn(navigator, 'platform', 'get').mockReturnValue('MacIntel');
+      const editor = selectedFormula();
+
+      expect(press(editor, key, { altKey: true })).toBe(true);
+
+      expect(posOf(editor, 'mathBlock')).toBe(-1);
+    },
+  );
+
+  it('deletes it on the browser’s own paragraph deletion, the lines around it kept apart', () => {
+    const editor = selectedFormula();
+
+    expect(deletion(editor, 'deleteHardLineForward')).toBe(true);
+
+    expect(shape(editor)).toEqual(['paragraph:above', 'paragraph:below']);
   });
 });
 

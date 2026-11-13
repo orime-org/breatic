@@ -13,6 +13,7 @@
  */
 
 import { afterEach, describe, expect, it } from 'vitest';
+import { TextSelection } from '@tiptap/pm/state';
 import type { Node as PMNode } from '@tiptap/pm/model';
 
 import { open, select, settled, unmountAll, type Editor } from '@web/spaces/document/__tests__/paste-harness';
@@ -181,5 +182,28 @@ describe('taking a conversion back (A2)', () => {
 
     expect(press(editor, 'Backspace')).toBe(true);
     expect(line(editor)).toBe('$$x$$');
+  });
+
+  it('keeps the conversion to take back across a transaction that changes neither the text nor the caret', async () => {
+    const { editor } = openAtEnd({ type: 'paragraph', content: '' });
+    await typeWords(editor, '$$x$$');
+    // What a collaborator's caret moving sends (y-prosemirror's cursor plugin).
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.setMeta('cursor-moved', true));
+
+    expect(press(editor, 'Backspace')).toBe(true);
+    expect(line(editor)).toBe('$$x$$');
+  });
+
+  it('forgets the conversion once the caret moves', async () => {
+    const { editor } = openAtEnd({ type: 'paragraph', content: 'a' });
+    await typeWords(editor, '$$x$$');
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, 2)));
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, view.state.selection.$from.end())));
+
+    press(editor, 'Backspace');
+
+    expect(line(editor)).not.toBe('a$$x$$');
   });
 });
