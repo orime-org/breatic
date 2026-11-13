@@ -173,7 +173,7 @@ async function enterNativeWaiting(page: Page, uploaded: TimelineUpload, range: T
     });
   });
   await outlet.getByTestId('timeline-play').click();
-  await expect(outlet.getByText('Playing', { exact: true })).toBeVisible();
+  await expect(outlet.locator('[data-playback-state]')).toHaveAttribute('data-playback-state', 'playing');
   await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.currentTime)).toBeGreaterThan(0.25);
   const advancing = await sampleTransport(page, uploaded.clipId);
   expect(advancing.at(-1)!.time).toBeGreaterThan(advancing[0].time);
@@ -203,7 +203,7 @@ test('native starvation freezes the Timeline clock and releasing the same HTTP r
     const waiting = await enterNativeWaiting(page, uploaded, range);
     range.release();
     const outlet = visibleSpace(page);
-    await expect(outlet.getByText('Playing', { exact: true })).toBeVisible();
+    await expect(outlet.locator('[data-playback-state]')).toHaveAttribute('data-playback-state', 'playing');
     await expect.poll(async () => (await sampleTransport(page, uploaded.clipId, 50)).at(-1)!.time).toBeGreaterThan(waiting.at(-1)!.time + 0.2);
     const resumed = await sampleTransport(page, uploaded.clipId);
     expect(resumed.every((sample) => !sample.paused && sample.readyState >= 3 && sample.error === null)).toBe(true);
@@ -212,7 +212,7 @@ test('native starvation freezes the Timeline clock and releasing the same HTTP r
     expect(resumed.at(-1)!.frame).toBeGreaterThan(resumed[0].frame);
     await saveEvidence('native-resumed', { fps: uploaded.fps, resumed });
     await outlet.getByTestId('timeline-play').click();
-    await expect(outlet.getByText('Paused', { exact: true })).toBeVisible();
+    await expect(outlet.locator('[data-playback-state]')).toHaveAttribute('data-playback-state', 'paused');
   });
 });
 
@@ -224,7 +224,7 @@ test('pausing during native starvation keeps the Timeline paused when held HTTP 
     await expect(outlet.getByTestId('timeline-play')).toHaveText('Pause');
     await outlet.getByTestId('timeline-play').click();
     await expect(outlet.getByTestId('timeline-play')).toHaveText('Play');
-    await expect(outlet.getByText('Paused', { exact: true })).toBeVisible();
+    await expect(outlet.locator('[data-playback-state]')).toHaveAttribute('data-playback-state', 'paused');
     const paused = await sampleTransport(page, uploaded.clipId);
     range.release();
     await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.readyState)).toBeGreaterThanOrEqual(3);
@@ -233,7 +233,7 @@ test('pausing during native starvation keeps the Timeline paused when held HTTP 
     expect(afterRelease.every((sample) => sample.paused && sample.error === null)).toBe(true);
     expect(new Set([...paused, ...afterRelease].map((sample) => sample.frame))).toEqual(new Set([paused[0].frame]));
     expect(afterRelease.at(-1)!.time).toBeCloseTo(paused[0].time, 6);
-    await expect(outlet.getByText('Paused', { exact: true })).toBeVisible();
+    await expect(outlet.locator('[data-playback-state]')).toHaveAttribute('data-playback-state', 'paused');
     await expect(outlet.getByTestId('timeline-play')).toHaveText('Play');
     await saveEvidence('native-paused-across-release', { fps: uploaded.fps, paused, afterRelease });
   });
