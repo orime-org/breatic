@@ -41,4 +41,13 @@ describe("the formula in the product guide", () => {
     expect(doc).toMatch(/\$\$/);
     expect(doc).toMatch(/LaTeX/);
   });
+
+  it("says every way out of the box keeps the change, with no cross to close it", () => {
+    const doc = section("Document spaces");
+    const formula = doc.slice(doc.indexOf("- A formula is LaTeX"));
+    const paragraph = formula.slice(0, formula.indexOf("\n- "));
+    expect(paragraph).toMatch(/keeps? the change/);
+    expect(paragraph).toMatch(/Cmd\+Z/);
+    expect(paragraph).not.toMatch(/cross/);
+  });
 });

@@ -1830,7 +1830,8 @@ export function renderProductGuide(): string {
     "- A formula is LaTeX: $$x$$ typed in a line becomes a formula of x as the closing $$ is typed (a single $ stays " +
       `text, and Cmd+Z takes it back), and ${quoted(t("spaces.document.commands.formula"))} in the insert menu puts ` +
       "one on its own line. Clicking a formula opens a box under it to edit the LaTeX, the formula redrawing as it " +
-      `is typed; Enter, ${quoted(t("spaces.document.math.ok"))}, the cross at its top right, Esc or a click outside closes it. An empty one shows ` +
+      `is typed; Enter, ${quoted(t("spaces.document.math.ok"))}, Esc or a click outside closes the box and keeps the change, and Cmd+Z ` +
+      "undoes it like any typing. An empty one shows " +
       `${quoted(t("spaces.document.math.empty"))}, one that does not parse ${quoted(t("spaces.document.math.error"))}. ` +
       "The Agent, copies and Markdown get it as its LaTeX between $$.",
     "- Images, videos and audio can also be dragged into the document from the computer, landing where the " +
