@@ -150,6 +150,8 @@ export const SceneViewfinder = React.memo(function SceneViewfinder(props: SceneV
   // A camera holds its own ratio; a Free camera's frame is dragged free and written as its free ratio.
   const cameraRatio = camera === null ? null : cameraFrameRatio(camera);
   const ratioValue = throughCamera ? (camera?.frame === 'Free' ? null : cameraRatio) : viewfinderRatioValue(ratio);
+  // A refit keeps what the picture holds: a still's own ratio, else the camera's, else the free frame's.
+  const fitRatio = shot !== null ? shot.width / shot.height : throughCamera ? cameraRatio : ratioValue;
   const canvases = React.useMemo(() => spaces.filter((space) => space.type === 'canvas')
     .map((space, index) => ({ space, index }))
     .sort((a, b) => (a.space.createdAt ?? 0) - (b.space.createdAt ?? 0) || a.index - b.index)
@@ -161,8 +163,8 @@ export const SceneViewfinder = React.memo(function SceneViewfinder(props: SceneV
     const from = placedIn.current;
     placedIn.current = safe;
     if (phase === 'off' || (from.width === safe.width && from.height === safe.height && from.x === safe.x && from.y === safe.y)) return;
-    if (frame.width > 0 && frame.height > 0) dispatch({ type: 'frame', frame: refitFrame(frame, from, safe, ratioValue) });
-  }, [safe, phase, frame, ratioValue, dispatch]);
+    if (frame.width > 0 && frame.height > 0) dispatch({ type: 'frame', frame: refitFrame(frame, from, safe, fitRatio) });
+  }, [safe, phase, frame, fitRatio, dispatch]);
 
   // Through a camera, the frame is the largest one of the camera's ratio, again whenever the ratio changes.
   const shownRatio = React.useRef<number | null>(null);
@@ -224,6 +226,9 @@ export const SceneViewfinder = React.memo(function SceneViewfinder(props: SceneV
   }, [frame, safe, dispatch, throughCamera, onCameraFrame]);
 
   const drag = React.useRef<{ corner: ViewfinderCorner; start: ViewfinderRect; origin: { x: number; y: number } } | null>(null);
+  const cornersShown = phase === 'framing' && (!throughCamera || (camera?.frame === 'Free' && cameraEditable));
+  // Corners taken away mid-drag (a lock, a lost permission) never get their release; the drag ends with them.
+  React.useEffect(() => { if (!cornersShown) drag.current = null; }, [cornersShown]);
   const onCornerDown = React.useCallback((event: React.PointerEvent<HTMLSpanElement>): void => {
     const corner = event.currentTarget.dataset.corner as ViewfinderCorner | undefined;
     if (corner === undefined || config === undefined) return;
@@ -349,7 +354,7 @@ export const SceneViewfinder = React.memo(function SceneViewfinder(props: SceneV
     {/* Beneath the floating toolbars (z-10), so they stay readable while the scene is dimmed. */}
     <div className='pointer-events-none absolute inset-0 z-[5] overflow-hidden'>
       <div data-testid='scene-viewfinder-frame' className='absolute border border-active-border' style={{ ...frameStyle, boxShadow: `0 0 0 9999px ${OUTSIDE_DIM}` }}>
-        {framing && (!throughCamera || (camera?.frame === 'Free' && cameraEditable)) ? CORNERS.map((corner) => <span key={corner} data-testid={`scene-viewfinder-corner-${corner}`} data-corner={corner}
+        {cornersShown ? CORNERS.map((corner) => <span key={corner} data-testid={`scene-viewfinder-corner-${corner}`} data-corner={corner}
           data-shape={ratioValue === null ? 'round' : 'square'}
           className={cn('pointer-events-auto absolute size-2.5 touch-none border border-active-border bg-background before:absolute before:-inset-[7px] before:content-[""]', ratioValue === null ? 'rounded-full' : 'rounded-none', CORNER_POSITION[corner])}
           onPointerDown={onCornerDown} onPointerMove={onCornerMove} onPointerUp={onCornerUp} onPointerCancel={onCornerUp} />) : null}
