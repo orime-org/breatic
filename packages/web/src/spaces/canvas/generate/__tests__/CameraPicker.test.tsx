@@ -74,7 +74,7 @@ describe('CameraPicker — the camera panel the params popover opens (#1788, #22
     expect(onChange).toHaveBeenCalledWith({ camera: 'Sony A7' });
   });
 
-  it('coerces focal_length back to a NUMBER (guards the validateParams silent-reset trap)', () => {
+  it('coerces focal_length back to a NUMBER (guards the validateModelParams silent-reset trap)', () => {
     // The catalog focal_length values are numeric; a string would fail the
     // worker's `spec.values.includes()` check and be silently reset to default.
     const onChange = vi.fn();

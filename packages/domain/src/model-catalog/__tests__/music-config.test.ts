@@ -6,7 +6,7 @@
  *
  * These read the config rather than a fixture because the failure they exist
  * to catch lives between two files: the worker builds its request from the
- * params a model DECLARES (`providers/shared.ts` drops anything else), so a
+ * params a model DECLARES (`handlers/model-params.ts` drops anything else), so a
  * field the panel collects and the yaml does not name reaches the vendor as
  * nothing, and every browser-side test still passes.
  */

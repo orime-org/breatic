@@ -16,7 +16,7 @@ import { costedOf } from "@provider/llm/understand/openrouter.js";
 import { asWritten, cacheControl, isClaude, type ReportedCosts, type Vendor, type VendorOptions } from "@provider/llm/upstreams/common.js";
 import { openRouterRefusal } from "@provider/llm/upstreams/openrouter.messages.js";
 
-/** The decisions endpoint's model (JEV), pinned like domain's `JEV_PINS`. */
+/** The decisions endpoint's model (JEV), pinned to one version. */
 const JEV_MODEL = "typesafe/jev-1.13";
 /** The decisions endpoint, beside the API base. */
 const JEV_PATH = "../alpha/decisions";

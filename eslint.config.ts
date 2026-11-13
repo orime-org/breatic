@@ -414,7 +414,6 @@ export default tseslint.config(
       "**/infra/**",
       "**/*-loader.ts",
       "**/model-catalog/**",
-      "**/providers/shared.ts",
     ],
     rules: {
       "breatic/no-sync-in-request-path": "error",

@@ -180,7 +180,7 @@ permissive licences: `playwright-core` 1.62.1 and `@mozilla/readability` 0.6.0
 | Package | Version | Reached through | Licence | Source |
 |---|---|---|---|---|
 | `@sesamecare-oss/redlock` | `1.4.0` | `packages/collab` → `@hocuspocus/extension-redis` | Reported as **UNLICENSED**, which is what its `package.json` declares. The published tarball carries a `LICENSE.md`, and that file is the MIT licence. The metadata is wrong about the package, not the other way round | https://github.com/sesamecare/redlock |
-| `json-schema` | `0.4.0` | `packages/core` → `@ai-sdk/*` → `@ai-sdk/provider` | AFL-2.1 **or** BSD-3-Clause, at the recipient's option. **Our election: BSD-3-Clause** | https://github.com/kriszyp/json-schema |
+| `json-schema` | `0.4.0` | `packages/provider` → `@ai-sdk/*` → `@ai-sdk/provider` | AFL-2.1 **or** BSD-3-Clause, at the recipient's option. **Our election: BSD-3-Clause** | https://github.com/kriszyp/json-schema |
 | `postgres` | `4.1.0` | Declared by `packages/core`; also the peer `drizzle-orm` resolves | **Unlicense**, a dedication to the public domain, which asks nothing of us | https://github.com/porsager/postgres |
 | `argparse` | `2.0.1` | `packages/server` → `mjml` → `mjml-core` → `htmlnano` → `cosmiconfig` | **Python-2.0**; the tarball's `LICENSE` is the PSF licence text | https://github.com/nodeca/argparse |
 | `caniuse-lite` | `1.0.30001809` | `packages/server` → `mjml` → `mjml-core` → `cssnano` | **CC-BY-4.0**; this entry is the attribution the licence asks for | https://github.com/browserslist/caniuse-lite |
