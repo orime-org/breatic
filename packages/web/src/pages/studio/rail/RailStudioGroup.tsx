@@ -19,6 +19,9 @@ import type { RailSection } from '@web/lib/user-preferences-storage';
 import { useRailCollapse } from '@web/pages/studio/rail/use-rail-collapse';
 import type { StudioSummary } from '@web/pages/studio/shared/studio-types';
 import { StudioAvatar } from '@web/ui/StudioAvatar';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
+import { useTranslation } from '@web/i18n/use-translation';
+import { useRegionUnavailable } from '@web/stores/region-health';
 
 interface RailStudioGroupProps {
   /** Section label (resolved i18n) — e.g. "My studios" / "Joined studios". */
@@ -123,26 +126,7 @@ export function RailStudioGroup({
             <ul className={RAIL_LIST}>
               {studios.map((studio) => (
                 <li key={studio.id}>
-                  <Link
-                    to={`/studio/${studio.slug}`}
-                    aria-current={
-                      studio.slug === activeSlug ? 'page' : undefined
-                    }
-                    className={cn(
-                      RAIL_ROW_NESTED,
-                      studio.slug === activeSlug
-                        ? RAIL_ROW_CURRENT
-                        : RAIL_ROW_IDLE,
-                    )}
-                  >
-                    <StudioAvatar
-                      name={studio.name}
-                      type={studio.type}
-                      avatarUrl={studio.avatarUrl}
-                      size='xs'
-                    />
-                    <span className='flex-1 truncate'>{studio.name}</span>
-                  </Link>
+                  <RailStudioLink studio={studio} current={studio.slug === activeSlug} />
                 </li>
               ))}
             </ul>
@@ -150,5 +134,45 @@ export function RailStudioGroup({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * One Studio row. A Studio whose region did not answer the last gathering is
+ * still listed and still opens, faded, with a mark that says why on hover
+ * (inner#1955).
+ * @param root0 - Props.
+ * @param root0.studio - The Studio.
+ * @param root0.current - Whether it is the open Studio.
+ * @returns The row link.
+ */
+function RailStudioLink({ studio, current }: { studio: StudioSummary; current: boolean }): React.JSX.Element {
+  const t = useTranslation();
+  const unavailable = useRegionUnavailable(studio.region ?? null);
+  return (
+    <Link
+      to={`/studio/${studio.slug}`}
+      aria-current={current ? 'page' : undefined}
+      className={cn(RAIL_ROW_NESTED, current ? RAIL_ROW_CURRENT : RAIL_ROW_IDLE)}
+    >
+      <StudioAvatar
+        name={studio.name}
+        type={studio.type}
+        avatarUrl={studio.avatarUrl}
+        size='xs'
+        className={unavailable ? 'opacity-50' : undefined}
+      />
+      <span className={cn('flex-1 truncate', unavailable && 'opacity-50')}>{studio.name}</span>
+      {unavailable ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className='shrink-0 text-2xs text-muted-foreground' data-testid='rail-studio-unavailable'>
+              {t('regions.unavailable.badge')}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent portal>{t('regions.unavailable.badgeHint')}</TooltipContent>
+        </Tooltip>
+      ) : null}
+    </Link>
   );
 }

@@ -4,7 +4,7 @@
 import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { getLocale, t } from '@breatic/shared';
 
-import { API_BASE_PATH } from '@web/data/api/base-path';
+import { apiBaseForPath, getRegionConfig } from '@web/data/api/regions';
 import { checkStaleRelease } from '@web/data/deployment/stale-release';
 
 /** The content-type of a stream that opened. Anything else is an answer. */
@@ -136,7 +136,7 @@ function classify(err: unknown, opened: boolean): Error {
 }
 
 interface SseOptions<TEvent> {
-  /** Endpoint relative to `API_BASE_PATH` (or an absolute URL). */
+  /** Endpoint relative to the API base (or an absolute URL). */
   url: string;
   /** POST body sent with the open request. */
   body?: unknown;
@@ -163,8 +163,8 @@ interface SseOptions<TEvent> {
  *   - `POST /chat/message` — Agent chat token stream
  *   - `POST /mini-tools/text` — text mini-tool token stream
  *
- * Both are relative: this wrapper puts them under `API_BASE_PATH`, the same
- * prefix the axios instance uses, so the two transports cannot drift apart.
+ * Both are relative: this wrapper puts them under `apiBaseForPath`, the same
+ * choice of base the axios instance makes, so the two transports cannot drift apart.
  *
  * Auth: `credentials: 'include'` makes the browser attach the
  * httpOnly session cookie on the request (2026-05-26
@@ -176,7 +176,7 @@ interface SseOptions<TEvent> {
  * Caller controls cancellation via an `AbortController` passed as
  * `signal` — closing the stream when the user clicks Abort.
  * @param root0 - SSE connection options.
- * @param root0.url - Endpoint relative to `API_BASE_PATH`, or an absolute URL.
+ * @param root0.url - Endpoint relative to the API base, or an absolute URL.
  * @param root0.body - POST body sent with the open request.
  * @param root0.parseEvent - Parses each `data:` payload, with its frame's event name, into a typed event, or null to skip.
  * @param root0.onEvent - Invoked for every successfully parsed event.
@@ -194,7 +194,7 @@ export async function sseStream<TEvent>({
   onError,
   signal,
 }: SseOptions<TEvent>): Promise<void> {
-  const fullUrl = url.startsWith('http') ? url : `${API_BASE_PATH}${url}`;
+  const fullUrl = url.startsWith('http') ? url : `${apiBaseForPath(url, getRegionConfig())}${url}`;
 
   // Set once the response turned out to be a stream, which is what separates
   // "never reached the server" from "died on the way".

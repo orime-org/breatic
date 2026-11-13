@@ -66,6 +66,7 @@ const TEAM: StudioDetail = {
   bio: null,
   memberCount: 3,
   myStudioRole: 'admin',
+  region: null,
 };
 
 const PERSONAL: StudioDetail = {

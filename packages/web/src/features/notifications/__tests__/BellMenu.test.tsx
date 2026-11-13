@@ -105,7 +105,7 @@ beforeEach(() => {
   // A known user — the inbox query is gated on `userId`, so without this the
   // query stays disabled and nothing renders.
   useCurrentUserStore.setState({ user: SELF });
-  vi.mocked(notificationsApi.list).mockResolvedValue({ items: [], resolved: EMPTY_RESOLVED });
+  vi.mocked(notificationsApi.list).mockResolvedValue({ items: [], resolved: EMPTY_RESOLVED, unavailableRegions: [] });
 });
 
 describe('BellMenu — empty list', () => {
@@ -176,6 +176,7 @@ describe('BellMenu — every waiting request is a link, not a decision', () => {
     vi.mocked(notificationsApi.list).mockResolvedValue({
       items: [fakeNotification('n-1', type, payload)],
       resolved: EMPTY_RESOLVED,
+      unavailableRegions: [],
     });
     const user = userEvent.setup();
     setup();
@@ -193,6 +194,7 @@ describe('BellMenu — every waiting request is a link, not a decision', () => {
     vi.mocked(notificationsApi.list).mockResolvedValue({
       items: [fakeNotification('n-1', type, payload)],
       resolved: EMPTY_RESOLVED,
+      unavailableRegions: [],
     });
     const user = userEvent.setup();
     setup();
@@ -231,6 +233,7 @@ describe('BellMenu — every waiting request is a link, not a decision', () => {
     vi.mocked(notificationsApi.list).mockResolvedValue({
       items: SAYS.map((s, i) => fakeNotification(`n-s${i}`, s.type, s.payload)),
       resolved: EMPTY_RESOLVED,
+      unavailableRegions: [],
     });
     const user = userEvent.setup();
     setup();
@@ -281,6 +284,7 @@ describe('BellMenu — every waiting request is a link, not a decision', () => {
     vi.mocked(notificationsApi.list).mockResolvedValue({
       items: EVERY_TYPE.map((type, i) => fakeNotification(`n-g${i}`, type)),
       resolved: EMPTY_RESOLVED,
+      unavailableRegions: [],
     });
     const user = userEvent.setup();
     setup();
@@ -294,6 +298,7 @@ describe('BellMenu — every waiting request is a link, not a decision', () => {
     vi.mocked(notificationsApi.list).mockResolvedValue({
       items: [fakeNotification('n-8', 'studio.transfer_approved', { studioId: N1 })],
       resolved: EMPTY_RESOLVED,
+      unavailableRegions: [],
     });
     const user = userEvent.setup();
     setup();
@@ -307,6 +312,7 @@ describe('BellMenu — every waiting request is a link, not a decision', () => {
     vi.mocked(notificationsApi.list).mockResolvedValue({
       items: [fakeNotification('n-9', 'studio.transfer_approved', { studioId: N1 })],
       resolved: EMPTY_RESOLVED,
+      unavailableRegions: [],
     });
     const user = userEvent.setup();
     setup();
@@ -330,6 +336,7 @@ describe('BellMenu — every waiting request is a link, not a decision', () => {
         }),
       ],
       resolved: EMPTY_RESOLVED,
+      unavailableRegions: [],
     });
     const user = userEvent.setup();
     setup();
@@ -365,6 +372,7 @@ describe('BellMenu — a credit refund outcome is one sentence and mark-read (in
     vi.mocked(notificationsApi.list).mockResolvedValue({
       items: [fakeNotification(id, type, payload)],
       resolved: EMPTY_RESOLVED,
+      unavailableRegions: [],
     });
     const user = userEvent.setup();
     setup();
@@ -392,6 +400,7 @@ describe('BellMenu — a credit refund outcome is one sentence and mark-read (in
     vi.mocked(notificationsApi.list).mockResolvedValue({
       items: [fakeNotification(id, type, payload)],
       resolved: EMPTY_RESOLVED,
+      unavailableRegions: [],
     });
     const user = userEvent.setup();
     setup();
@@ -411,6 +420,7 @@ describe('BellMenu — a credit refund outcome is one sentence and mark-read (in
     vi.mocked(notificationsApi.list).mockResolvedValue({
       items: [fakeNotification('n-me', 'membership.ended')],
       resolved: EMPTY_RESOLVED,
+      unavailableRegions: [],
     });
     const user = userEvent.setup();
     setup();
@@ -426,6 +436,7 @@ describe('BellMenu — a credit refund outcome is one sentence and mark-read (in
     vi.mocked(notificationsApi.list).mockResolvedValue({
       items: OUTCOMES.map((o) => fakeNotification(o.id, o.type, o.payload)),
       resolved: EMPTY_RESOLVED,
+      unavailableRegions: [],
     });
     const user = userEvent.setup();
     setup();
@@ -451,6 +462,7 @@ describe('BellMenu — mark all read', () => {
         fakeNotification(WAITING, 'project.join_request', { shareToken: 'tok' }),
       ],
       resolved: EMPTY_RESOLVED,
+      unavailableRegions: [],
     });
     const user = userEvent.setup();
     setup();
@@ -465,6 +477,7 @@ describe('BellMenu — mark all read', () => {
     vi.mocked(notificationsApi.list).mockResolvedValue({
       items: [fakeNotification(WAITING, 'project.join_request', { shareToken: 'tok' })],
       resolved: EMPTY_RESOLVED,
+      unavailableRegions: [],
     });
     const user = userEvent.setup();
     setup();
@@ -485,6 +498,7 @@ describe('BellMenu — mark all read', () => {
     vi.mocked(notificationsApi.list).mockResolvedValue({
       items: [fakeNotification(NEWS, 'studio.invite_accepted')],
       resolved: EMPTY_RESOLVED,
+      unavailableRegions: [],
     });
     vi.mocked(notificationsApi.markAllRead).mockResolvedValue({ count: 1 });
     const user = userEvent.setup();
@@ -528,6 +542,7 @@ describe('BellMenu — the mark-read buttons spin while the server answers', () 
         fakeNotification(NEWS_B, 'studio.invite_accepted'),
       ],
       resolved: EMPTY_RESOLVED,
+      unavailableRegions: [],
     });
   });
 
@@ -599,5 +614,40 @@ describe('BellMenu — the mark-read buttons spin while the server answers', () 
 
     replyB.resolve({ ok: true });
     await waitFor(() => expect(rowB).not.toHaveAttribute('aria-busy'));
+  });
+});
+
+describe('BellMenu — regions (inner#1955)', () => {
+  it('marks a notification read in the region the list named for it', async () => {
+    vi.mocked(notificationsApi.list).mockResolvedValue({
+      items: [{ ...fakeNotification('n-sg', 'membership.ended'), region: 'sg' }],
+      resolved: EMPTY_RESOLVED,
+      unavailableRegions: [],
+    });
+    vi.mocked(notificationsApi.markRead).mockResolvedValue({ ok: true });
+    const user = userEvent.setup();
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+    await user.click(await screen.findByTestId('bell-mark-read-n-sg'));
+
+    expect(notificationsApi.markRead).toHaveBeenCalledWith('n-sg', 'sg');
+  });
+
+  it('says below the list that some Studios cannot be reached, only while a region did not answer', async () => {
+    vi.mocked(notificationsApi.list).mockResolvedValue({ items: [], resolved: EMPTY_RESOLVED, unavailableRegions: ['sg'] });
+    const user = userEvent.setup();
+    const view = setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+    expect(await screen.findByTestId('bell-regions-unavailable')).toHaveTextContent(
+      'Some Studios can\'t be reached right now. Their notifications will show again later.',
+    );
+    view.unmount();
+
+    vi.mocked(notificationsApi.list).mockResolvedValue({ items: [], resolved: EMPTY_RESOLVED, unavailableRegions: [] });
+    setup();
+    await user.click(screen.getByTestId('bell-trigger'));
+    await screen.findByTestId('bell-popover');
+    await waitFor(() => expect(notificationsApi.list).toHaveBeenCalledTimes(2));
+    expect(screen.queryByTestId('bell-regions-unavailable')).not.toBeInTheDocument();
   });
 });

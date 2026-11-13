@@ -3097,7 +3097,8 @@
         "slugLabelOptional": "Slug(任意)",
         "regionLabel": "リージョン",
         "regionUnavailable": "選択したリージョンでは現在 Studio を作成できません。しばらくしてからもう一度お試しいただくか、別のリージョンを選んでください。",
-        "creationInProgress": "前回の Studio はまだ作成中です。しばらくしてからもう一度お試しください。"
+        "creationInProgress": "前回の Studio はまだ作成中です。しばらくしてからもう一度お試しください。",
+        "regionHelper": "Studio の内容はこのリージョンに保存されます。チームに近いリージョンほど高速です。作成後は変更できません。"
       },
       "toolbar": {
         "sortLabel": "並び替え",
@@ -3814,6 +3815,15 @@
   },
   "regions": {
     "usWest": "米国西部",
-    "sg": "シンガポール"
+    "sg": "シンガポール",
+    "unavailable": {
+      "studioTitle": "この Studio には現在アクセスできません",
+      "projectTitle": "この Project には現在アクセスできません",
+      "body": "保存先のリージョンに現在接続できません。内容は失われていません。しばらくしてからもう一度お試しください。",
+      "recents": "一部の Studio に現在アクセスできません。関連する項目は後で再び表示されます。",
+      "bell": "一部の Studio に現在アクセスできません。関連する通知は後で再び表示されます。",
+      "badge": "現在アクセス不可",
+      "badgeHint": "この Studio のリージョンに現在接続できません。しばらくしてからもう一度お試しください。"
+    }
   }
 }

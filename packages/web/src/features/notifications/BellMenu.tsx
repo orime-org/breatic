@@ -31,6 +31,7 @@ import { EMPTY_RESOLVED } from '@web/data/api/notifications';
 import type { NotificationResolved } from '@web/data/api/notifications';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useCurrentUserStore } from '@web/stores/current-user';
+import { useRegionHealthStore } from '@web/stores/region-health';
 
 /** Groups single-row mark-read requests so each row can find its own. */
 const MARK_READ_KEY = ['notifications', 'mark-read'] as const;
@@ -104,9 +105,16 @@ export function BellMenu(): React.JSX.Element {
   const resolved = inboxQuery.data?.resolved ?? EMPTY_RESOLVED;
   const count = notifications.length;
 
+  const unavailableRegions = inboxQuery.data?.unavailableRegions;
+  const reportRegions = useRegionHealthStore((s) => s.report);
+  React.useEffect(() => {
+    if (unavailableRegions !== undefined) reportRegions('bell', unavailableRegions);
+  }, [unavailableRegions, reportRegions]);
+
   const markReadMutation = useMutation({
     mutationKey: MARK_READ_KEY,
-    mutationFn: (id: string) => notificationsApi.markRead(id),
+    mutationFn: (id: string) =>
+      notificationsApi.markRead(id, notifications.find((n) => n.id === id)?.region),
     onSuccess: async () => {
       await queryClient.invalidateQueries({
         queryKey: ['notifications', 'unread'],
@@ -209,6 +217,11 @@ export function BellMenu(): React.JSX.Element {
             ))}
           </ul>
         )}
+        {unavailableRegions !== undefined && unavailableRegions.length > 0 ? (
+          <p className='px-3 py-2 text-2xs text-muted-foreground' data-testid='bell-regions-unavailable'>
+            {t('regions.unavailable.bell')}
+          </p>
+        ) : null}
       </PopoverContent>
     </Popover>
   );

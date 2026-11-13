@@ -163,7 +163,7 @@ export const authApi = {
   verifySignupCode(body: { code: string; attribution?: Attribution | null }) {
     return apiPost<SignupVerifiedResponse>('/auth/register/verify', body);
   },
-  setupStudio(body: { slug: string }) {
+  setupStudio(body: { slug: string; studioId: string; region?: string }) {
     return apiPost<SetupStudioResponse>('/auth/setup-studio', body);
   },
   login(body: { email: string; password: string }) {
@@ -174,6 +174,10 @@ export const authApi = {
   },
   me() {
     return apiGet<AuthUser>('/auth/me');
+  },
+  // Renews the short-lived identity token other regions read (inner#1955).
+  renewIdentity() {
+    return apiPost<unknown>('/auth/identity');
   },
   logout() {
     return apiPost<void>('/auth/logout');

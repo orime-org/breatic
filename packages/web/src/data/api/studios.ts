@@ -40,6 +40,10 @@ export type RecentFeedItem = Omit<RecentItem, 'lastOpenedAt'> & {
 export interface CreateStudioBody {
   name: string;
   slug: string;
+  /** The id the browser names the Studio by, kept across retries of the same form (inner#1955). */
+  studioId: string;
+  /** The region chosen; omitted when the build has one region. */
+  region?: string;
 }
 
 /** Response of `GET /api/v1/studios/slug-available`. */

@@ -17,6 +17,7 @@ import { projectsApi } from '@web/data/api';
 import type { ProjectDetail } from '@web/data/api/projects';
 import { directoryApi } from '@web/data/api/directory';
 import { getCurrentRegion, getRegionConfig, parseRegionConfig, setCurrentRegion } from '@web/data/api/regions';
+import { ApiException } from '@web/data/api/types';
 import ProjectPage from '../ProjectPage';
 
 vi.mock('@web/data/api', async original => {
@@ -101,5 +102,16 @@ describe('opening a Project in another region', () => {
     await waitFor(() => expect(screen.getByTestId('editor')).toBeInTheDocument());
     expect(directoryApi.project).not.toHaveBeenCalled();
     expect(collabUrls.at(-1)).toBeUndefined();
+  });
+
+  it('says the Project cannot be reached when its region does not answer, and offers a retry', async () => {
+    vi.mocked(getRegionConfig).mockReturnValue(TWO_REGIONS);
+    vi.mocked(directoryApi.project).mockResolvedValue({ region: 'sg' });
+    vi.mocked(projectsApi.get).mockRejectedValue(new ApiException({ status: 0, message: 'offline', fromServer: false, network: true }));
+
+    open();
+
+    expect(await screen.findByText('This Project can\'t be reached right now', {}, { timeout: 5000 })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
   });
 });
