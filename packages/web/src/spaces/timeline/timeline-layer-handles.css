@@ -2,8 +2,10 @@
 /* SPDX-License-Identifier: Elastic-2.0 */
 
 /*
- * The preview handles in the product's tokens (#1410 design §4.3): 8 px square handles on the background with a 1 px
- * active border, a 1 px box line in the active border colour, and snap guides in the selected status colour.
+ * The preview handles in the product's tokens (#1410 design §4.3): 8 px handles on the background with a 1 px active
+ * border inside a 24 px target, a 1 px box line in the active border colour, and 1 px snap guides in the selected
+ * status colour. Corners keep the ratio and are square; edge midpoints stretch one axis and are round, like every
+ * resize knob in the product; the rotation handle is round.
  * react-moveable injects unlayered rules scoped by one generated class at run time, so these rules repeat their class
  * to rank above them; the tokens switch with the theme.
  */
@@ -21,11 +23,33 @@
   background: var(--color-background);
 }
 
+.timeline-layer-handles.timeline-layer-handles .moveable-control::after {
+  content: '';
+  position: absolute;
+  inset: -9px;
+}
+
+.timeline-layer-handles.timeline-layer-handles .moveable-control[data-direction='n'],
+.timeline-layer-handles.timeline-layer-handles .moveable-control[data-direction='s'],
+.timeline-layer-handles.timeline-layer-handles .moveable-control[data-direction='e'],
+.timeline-layer-handles.timeline-layer-handles .moveable-control[data-direction='w'] {
+  border-radius: 50%;
+}
+
 .timeline-layer-handles.timeline-layer-handles .moveable-rotation .moveable-control {
   border-radius: 50%;
+  background: var(--color-background);
 }
 
 .timeline-layer-handles.timeline-layer-handles .moveable-guideline,
 .timeline-layer-handles.timeline-layer-handles .moveable-line.moveable-guideline {
   background: var(--color-status-selected);
+}
+
+.timeline-layer-handles.timeline-layer-handles .moveable-line.moveable-vertical.moveable-bold {
+  width: 1px;
+}
+
+.timeline-layer-handles.timeline-layer-handles .moveable-line.moveable-horizontal.moveable-bold {
+  height: 1px;
 }

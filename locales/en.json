@@ -3607,6 +3607,8 @@
       "source_unavailable": "This video is unavailable. Choose another or retry.",
       "metadata_unavailable": "Video duration is unavailable. Retry or choose another video.",
       "invalid_range": "Enter a frame range inside the video.",
+      "notNumber": "Enter a number.",
+      "scaleRange": "Enter {min} to {max}.",
       "target_missing": "The target has changed. Check the position and retry.",
       "clip_removed": "This clip was removed by another member.",
       "permission_changed": "Editing permission changed. Confirm again to add this video.",
@@ -3647,12 +3649,13 @@
       "lowestTrack": "This clip is already on the bottom visual track.",
       "bumped": "{count, plural, one {# linked clip moved} other {# linked clips moved}} to a track above.",
       "transform": "Position and size",
-      "positionX": "X",
-      "positionY": "Y",
+      "positionX": "X (px)",
+      "positionY": "Y (px)",
       "scaleX": "Width scale (%)",
       "scaleY": "Height scale (%)",
       "rotation": "Rotation (°)",
-      "lockRatio": "Lock ratio"
+      "lockRatio": "Lock ratio",
+      "offFrame": "This clip is not at the current frame."
     },
     "webAnimation": {
       "create": "Create web animation",

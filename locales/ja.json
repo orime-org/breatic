@@ -3607,6 +3607,8 @@
       "source_unavailable": "この動画を利用できません。再試行するか別の動画を選択してください。",
       "metadata_unavailable": "動画の長さを取得できません。再試行するか別の動画を選択してください。",
       "invalid_range": "動画の範囲内のフレームを入力してください。",
+      "notNumber": "数値を入力してください。",
+      "scaleRange": "{min}〜{max} を入力してください。",
       "target_missing": "追加先が変更されました。位置を確認して再試行してください。",
       "clip_removed": "このクリップは他のメンバーによって削除されました。",
       "permission_changed": "編集権限が変更されました。動画の追加をもう一度確認してください。",
@@ -3647,12 +3649,13 @@
       "lowestTrack": "このクリップはすでに一番下の映像トラックにあります。",
       "bumped": "連動クリップ {count, plural, other {# 件}}を上のトラックに移動しました。",
       "transform": "位置とサイズ",
-      "positionX": "X",
-      "positionY": "Y",
+      "positionX": "X（px）",
+      "positionY": "Y（px）",
       "scaleX": "幅の拡大率（%）",
       "scaleY": "高さの拡大率（%）",
       "rotation": "回転（°）",
-      "lockRatio": "比率を固定"
+      "lockRatio": "比率を固定",
+      "offFrame": "このクリップは現在のフレームにありません。"
     },
     "webAnimation": {
       "create": "ウェブアニメーションを作成",

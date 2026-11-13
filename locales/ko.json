@@ -3607,6 +3607,8 @@
       "source_unavailable": "이 동영상을 사용할 수 없습니다. 다시 시도하거나 다른 동영상을 선택하세요.",
       "metadata_unavailable": "동영상 길이를 확인할 수 없습니다. 다시 시도하거나 다른 동영상을 선택하세요.",
       "invalid_range": "동영상 범위 안의 프레임을 입력하세요.",
+      "notNumber": "숫자를 입력하세요.",
+      "scaleRange": "{min}~{max} 사이로 입력하세요.",
       "target_missing": "대상이 변경되었습니다. 위치를 확인하고 다시 시도하세요.",
       "clip_removed": "이 클립은 다른 멤버가 삭제했습니다.",
       "permission_changed": "편집 권한이 변경되었습니다. 동영상 추가를 다시 확인하세요.",
@@ -3647,12 +3649,13 @@
       "lowestTrack": "이 클립은 이미 가장 아래 영상 트랙에 있습니다.",
       "bumped": "연동 클립 {count, plural, other {#개}}를 위 트랙으로 옮겼습니다.",
       "transform": "위치 및 크기",
-      "positionX": "X",
-      "positionY": "Y",
+      "positionX": "X(px)",
+      "positionY": "Y(px)",
       "scaleX": "너비 배율(%)",
       "scaleY": "높이 배율(%)",
       "rotation": "회전(°)",
-      "lockRatio": "비율 고정"
+      "lockRatio": "비율 고정",
+      "offFrame": "이 클립은 현재 프레임에 없습니다."
     },
     "webAnimation": {
       "create": "웹 애니메이션 만들기",

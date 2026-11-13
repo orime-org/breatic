@@ -3607,6 +3607,8 @@
       "source_unavailable": "此视频不可用。请选择其他视频或重试。",
       "metadata_unavailable": "无法获取视频时长。请重试或选择其他视频。",
       "invalid_range": "请输入视频范围内的帧。",
+      "notNumber": "请输入数字。",
+      "scaleRange": "请输入 {min} 到 {max}。",
       "target_missing": "目标已变化。请检查位置后重试。",
       "clip_removed": "该片段已被其他成员移除。",
       "permission_changed": "编辑权限已变化。请再次确认添加此视频。",
@@ -3647,12 +3649,13 @@
       "lowestTrack": "该片段已在最下面的画面轨。",
       "bumped": "{count, plural, other {# 个联动片段}}已移到上方轨道。",
       "transform": "位置与大小",
-      "positionX": "X",
-      "positionY": "Y",
+      "positionX": "X（px）",
+      "positionY": "Y（px）",
       "scaleX": "宽度缩放（%）",
       "scaleY": "高度缩放（%）",
       "rotation": "旋转（°）",
-      "lockRatio": "锁定比例"
+      "lockRatio": "锁定比例",
+      "offFrame": "这个片段不在当前帧。"
     },
     "webAnimation": {
       "create": "制作网页动画",

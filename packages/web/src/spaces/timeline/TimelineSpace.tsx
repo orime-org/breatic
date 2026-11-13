@@ -791,6 +791,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
     pickAt(event.clientX, event.clientY);
   }, [pickAt]);
   const pickFromHandles = React.useCallback((event: MouseEvent): void => pickAt(event.clientX, event.clientY), [pickAt]);
+  const selectedAtFrame = selected !== undefined && frame >= selected.startFrame && frame < selected.startFrame + selected.durationFrames;
   const handled = selected === undefined || readOnly || factor <= 0 ? undefined : pickable.find((item) => item.clip.id === selected.id);
   const handledId = handled?.clip.id ?? null;
   const playbackNow = React.useRef(playback);
@@ -909,7 +910,8 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
           onCancel={cancelExecution} onAdd={addExecution} onRetry={retryExecution} /> : <div className='flex flex-col gap-3'>
           <section className={PANEL}>
             {selected === undefined ? <p className='text-muted-foreground'>{t('timeline.selectClip')}</p>
-              : <TimelineClipProperties key={selected.id} spaceId={spaceId} document={document} web={web} clip={selected} conflict={!readyIds.has(selected.id)} reason={reasons.get(selected.id) ?? null} labels={labels} readOnly={readOnly} placement={placement} onCommit={commitCommand}
+              : <TimelineClipProperties key={selected.id} spaceId={spaceId} document={document} web={web} clip={selected} atFrame={selectedAtFrame} conflict={!readyIds.has(selected.id)} reason={reasons.get(selected.id) ?? null}
+                labels={labels} readOnly={readOnly} placement={placement} onCommit={commitCommand}
                 name={selected.kind === 'web-animation' ? t('timeline.webAnimation.copy') : selected.kind === 'upload' ? selected.upload.name : selectedResource.data?.displayName || t(selectedResource.isError ? 'timeline.mediaUnavailable' : 'timeline.video')}
                 request={selected.kind === 'web-animation' ? webClips.get(selected.id)?.prompt ?? null : null} upload={selectedUpload} />}
           </section>

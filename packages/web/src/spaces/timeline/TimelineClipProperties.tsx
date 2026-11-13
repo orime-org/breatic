@@ -23,6 +23,8 @@ interface TimelineClipPropertiesProps {
   document: TimelineDocumentV1;
   web?: TimelineWebResolution;
   clip: TimelineClip;
+  /** Whether the clip covers the current frame. */
+  atFrame: boolean;
   name: string;
   /** The request a web-animation copy came from. */
   request?: string | null;
@@ -81,6 +83,7 @@ function syncDrafts(drafts: Drafts | null, clip: TimelineClip, editable: Readonl
  * @param props.document - The current Timeline, for the clip's source extent.
  * @param props.web - The resolution of web references, for a web copy's extent.
  * @param props.clip - The selected clip.
+ * @param props.atFrame - Whether it covers the current frame.
  * @param props.name - Its display name.
  * @param props.request - The request a web copy came from, when known.
  * @param props.upload - An upload placeholder's status and retry.
@@ -93,7 +96,7 @@ function syncDrafts(drafts: Drafts | null, clip: TimelineClip, editable: Readonl
  * @returns The properties fields.
  * @throws {never} Never.
  */
-export function TimelineClipProperties({ spaceId, document, web = EMPTY_TIMELINE_WEB_RESOLUTION, clip, name, request = null, upload = null, conflict, reason = null, labels, readOnly, placement, onCommit }: TimelineClipPropertiesProps): React.JSX.Element {
+export function TimelineClipProperties({ spaceId, document, web = EMPTY_TIMELINE_WEB_RESOLUTION, clip, atFrame, name, request = null, upload = null, conflict, reason = null, labels, readOnly, placement, onCommit }: TimelineClipPropertiesProps): React.JSX.Element {
   const t = useTranslation();
   const startLocked = placement.magnet && clip.trackId === TIMELINE_MAIN_TRACK_ID;
   const editable = React.useMemo(() => ({ start: !readOnly && !startLocked, in: !readOnly, duration: !readOnly }), [readOnly, startLocked]);
@@ -187,7 +190,7 @@ export function TimelineClipProperties({ spaceId, document, web = EMPTY_TIMELINE
     {field('start', 'timeline.startFrame')}
     {field('in', 'timeline.edit.inPoint')}
     {field('duration', 'timeline.edit.duration')}
-    {clip.kind !== 'upload' && <TimelineTransformFields spaceId={spaceId} transform={clip.transform} readOnly={readOnly} onCommit={commitTransform} />}
+    {clip.kind !== 'upload' && <TimelineTransformFields spaceId={spaceId} transform={clip.transform} atFrame={atFrame} readOnly={readOnly} onCommit={commitTransform} />}
     {source !== undefined && clip.kind === 'video' && <span data-testid='timeline-clip-source' className='text-xs text-muted-foreground'>
       {t('timeline.sourceExtent', { frames: source.extentFrames, fps: Math.round(fps.num / fps.den * 100) / 100 })}</span>}
   </div>;

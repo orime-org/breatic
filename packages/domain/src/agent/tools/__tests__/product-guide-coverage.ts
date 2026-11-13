@@ -83,6 +83,8 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "timeline.errors.source_unavailable": { excluded: REASONS.SAYS_TRY_AGAIN },
   "timeline.errors.metadata_unavailable": { excluded: REASONS.SAYS_TRY_AGAIN },
   "timeline.errors.invalid_range": { excluded: REASONS.SAYS_WHAT_TO_TYPE },
+  "timeline.errors.notNumber": { excluded: REASONS.SAYS_WHAT_TO_TYPE },
+  "timeline.errors.scaleRange": { excluded: REASONS.SAYS_WHAT_TO_TYPE },
   "timeline.errors.track_missing": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "timeline.errors.id_taken": { excluded: REASONS.SAYS_TRY_AGAIN },
   "timeline.errors.main_track": { excluded: REASONS.SAYS_WHAT_HAPPENED },

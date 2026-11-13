@@ -1463,7 +1463,8 @@ export function renderProductGuide(): string {
       `${quoted(t("timeline.edit.duration"))}, then its video's length in frames at the Timeline's frame rate. Type a whole frame and press Enter or leave the field to apply it. ` +
       `For a video or a web animation copy it also shows ${quoted(t("timeline.edit.transform"))}: ${quoted(t("timeline.edit.positionX"))} and ${quoted(t("timeline.edit.positionY"))} in canvas pixels, ` +
       `${quoted(t("timeline.edit.scaleX"))} and ${quoted(t("timeline.edit.scaleY"))} from 1% to 10000%, and ${quoted(t("timeline.edit.rotation"))}; ` +
-      `the link button beside the group's name, ${quoted(t("timeline.edit.lockRatio"))} on hover and on by default, makes a change to one scale change the other in proportion. ` +
+      `the ${quoted(t("timeline.edit.lockRatio"))} switch below them, on by default, makes a change to one scale change the other in proportion; a Viewer sees the values as text and no switch. ` +
+      `For a clip that is not at the playhead the group shows ${quoted(t("timeline.edit.offFrame"))} Its values can still be changed. ` +
       "In the preview, click a layer to select its clip, the topmost one under the pointer; clicking where no layer is clears the selection. " +
       "A selected layer showing at the playhead gets a box with handles: drag inside it to move the layer, drag a corner to scale it in proportion, drag the middle of an edge to stretch its width or height, " +
       "and drag the round handle above it to rotate it around its centre. With snapping on, the layer's edges and centre lines snap to the frame's edges and centre lines and a guide line shows. " +

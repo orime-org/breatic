@@ -2,20 +2,19 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
-import { Link2, Unlink2 } from 'lucide-react';
 import { TIMELINE_LAYER_TRANSFORM_LIMITS, normalizeTimelineLayerTransform, sameTimelineLayerTransform, type TimelineLayerTransform } from '@breatic/shared';
 
-import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';
 import { Label } from '@web/components/ui/label';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
+import { Switch } from '@web/components/ui/switch';
 import { useTranslation } from '@web/i18n/use-translation';
-import { cn } from '@web/lib/utils';
 
 /** One clip's position, scale and rotation. */
 interface TimelineTransformFieldsProps {
   spaceId: string;
   transform: TimelineLayerTransform;
+  /** Whether the clip covers the current frame. */
+  atFrame: boolean;
   readOnly: boolean;
   /** Writes a changed transform. */
   onCommit: (transform: TimelineLayerTransform) => void;
@@ -92,23 +91,23 @@ function syncDrafts(drafts: Record<Field, FieldDraft> | null, transform: Timelin
 
 /**
  * The "Position and size" group of a video or web-animation copy (#1410 design §5): X and Y in canvas pixels, width and
- * height scale in percent with a ratio lock, and rotation in degrees. A field commits on Enter or blur only when its
+ * height scale in percent, rotation in degrees and a ratio lock switch. A field commits on Enter or blur only when its
  * text changed; an invalid entry is marked and not written, and Escape restores the shown value.
  * @param props - The transform and its commit.
  * @param props.spaceId - The Space, for field ids.
  * @param props.transform - The stored transform.
+ * @param props.atFrame - Whether the clip covers the current frame; when not, a note says so.
  * @param props.readOnly - Whether editing is unavailable.
  * @param props.onCommit - Writes a changed transform.
  * @returns The fields.
  * @throws {never} Never.
  */
-export function TimelineTransformFields({ spaceId, transform, readOnly, onCommit }: TimelineTransformFieldsProps): React.JSX.Element {
+export function TimelineTransformFields({ spaceId, transform, atFrame, readOnly, onCommit }: TimelineTransformFieldsProps): React.JSX.Element {
   const t = useTranslation();
   const [drafts, setDrafts] = React.useState(() => syncDrafts(null, transform));
   const current = syncDrafts(drafts, transform);
   if (current !== drafts) setDrafts(current);
   const [locked, setLocked] = React.useState(true);
-  const toggleLock = React.useCallback((): void => setLocked((value) => !value), []);
   const update = React.useCallback((field: Field, patch: Partial<FieldDraft>): void => {
     setDrafts((previous) => ({ ...previous, [field]: { ...previous[field], ...patch } }));
   }, []);
@@ -126,23 +125,24 @@ export function TimelineTransformFields({ spaceId, transform, readOnly, onCommit
     if (!sameTimelineLayerTransform(sent, transform)) onCommit(sent);
   }, [current, transform, locked, onCommit, update]);
   const restore = React.useCallback((field: Field): void => update(field, { value: current[field].shown, error: false }), [current, update]);
+  /**
+   * The error shown under a field: the accepted range for a scale, otherwise a request for a number.
+   * @param field - The field.
+   * @returns The message.
+   * @throws {never} Never.
+   */
+  const errorOf = (field: Field): string => field === 'scaleX' || field === 'scaleY'
+    ? t('timeline.errors.scaleRange', { min: scale.min * 100, max: scale.max * 100 })
+    : t('timeline.errors.notNumber');
 
   return <div className='flex flex-col gap-2'>
-    <div className='flex items-center justify-between'>
-      <span className='text-xs font-semibold'>{t('timeline.edit.transform')}</span>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button data-testid='timeline-clip-lock-ratio' variant='outline' size='compact' aria-pressed={locked} aria-label={t('timeline.edit.lockRatio')} disabled={readOnly}
-            onClick={toggleLock} icon={locked ? <Link2 className='size-3.5' /> : <Unlink2 className='size-3.5' />} className='aria-pressed:border-active-border' />
-        </TooltipTrigger>
-        <TooltipContent>{t('timeline.edit.lockRatio')}</TooltipContent>
-      </Tooltip>
-    </div>
+    <span className='text-xs font-semibold'>{t('timeline.edit.transform')}</span>
+    {!atFrame && <span data-testid='timeline-clip-off-frame' className={LABEL}>{t('timeline.edit.offFrame')}</span>}
     <div className='grid grid-cols-2 gap-2'>
       {FIELDS.map(({ field, testId, label }) => {
         const id = `${testId}-${spaceId}`;
         const draft = current[field];
-        return <div key={field} className={cn('flex flex-col gap-1', field === 'rotation' && 'col-span-2')}>
+        return <div key={field} className='flex flex-col gap-1'>
           <Label htmlFor={readOnly ? undefined : id} className={LABEL}>{t(label)}</Label>
           {readOnly
             ? <span data-testid={testId} className='flex h-8 items-center text-sm tabular-nums'>{draft.shown}</span>
@@ -152,9 +152,13 @@ export function TimelineTransformFields({ spaceId, transform, readOnly, onCommit
                 if (event.key === 'Enter') { event.preventDefault(); commit(field); }
                 if (event.key === 'Escape') { event.preventDefault(); restore(field); }
               }} />}
-          {draft.error && <span data-testid='timeline-clip-field-error' className='text-xs text-status-error-foreground'>{t('timeline.errors.invalid_range')}</span>}
+          {draft.error && <span data-testid='timeline-clip-field-error' className='text-xs text-status-error-foreground'>{errorOf(field)}</span>}
         </div>;
       })}
     </div>
+    {!readOnly && <div className='flex items-center gap-2'>
+      <Switch id={`timeline-clip-lock-ratio-${spaceId}`} data-testid='timeline-clip-lock-ratio' checked={locked} onCheckedChange={setLocked} />
+      <Label htmlFor={`timeline-clip-lock-ratio-${spaceId}`} className='text-sm'>{t('timeline.edit.lockRatio')}</Label>
+    </div>}
   </div>;
 }
