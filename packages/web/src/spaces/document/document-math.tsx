@@ -39,7 +39,7 @@ import {
 } from '@blocknote/core/extensions';
 import { Fragment, type Node as PMNode, type Schema } from '@tiptap/pm/model';
 import { TextSelection } from '@tiptap/pm/state';
-import type { ViewMutationRecord } from '@tiptap/pm/view';
+import type { EditorView, ViewMutationRecord } from '@tiptap/pm/view';
 
 import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
@@ -549,6 +549,21 @@ interface FormulaView {
 }
 
 /**
+ * Writes a source into the formula node at a position, the caret at its end.
+ * @param view - The editor view.
+ * @param at - Where the formula node starts.
+ * @param source - The LaTeX.
+ */
+function replaceSource(view: EditorView, at: number, source: string): void {
+  const { state } = view;
+  const node = state.doc.nodeAt(at);
+  if (node === null) return;
+  const content = source === '' ? [] : [state.schema.text(source)];
+  const tr = state.tr.replaceWith(at + 1, at + node.nodeSize - 1, content);
+  view.dispatch(tr.setSelection(TextSelection.create(tr.doc, at + 1 + source.length)));
+}
+
+/**
  * Mounts a formula's face around the element ProseMirror edits.
  * @param inline - Whether the formula sits inside a line.
  * @param initial - The face's first state.
@@ -743,8 +758,14 @@ export function mathBlockSpec(): unknown {
               editor.focus();
             },
             restore: (source) => {
-              editor.updateBlock(block.id, { content: source } as never);
-              editor.setTextCursorPosition(block.id, 'end');
+              const pmView = editor.prosemirrorView!;
+              let at = -1;
+              pmView.state.doc.descendants((node, pos) => {
+                if (at >= 0) return false;
+                if (node.attrs['id'] === block.id) at = pos + 1;
+                return at < 0;
+              });
+              if (at >= 0) replaceSource(pmView, at, source);
             },
           },
           MATH_BLOCK,
@@ -822,12 +843,7 @@ export function mathInlineSpec(): unknown {
             },
             restore: (source) => {
               const pos = getPos();
-              if (pos === undefined) return;
-              const pmView = editor.prosemirrorView!;
-              const { state } = pmView;
-              const content = source === '' ? [] : [state.schema.text(source)];
-              const tr = state.tr.replaceWith(pos + 1, pos + current.nodeSize - 1, content);
-              pmView.dispatch(tr.setSelection(TextSelection.create(tr.doc, pos + 1 + source.length)));
+              if (pos !== undefined) replaceSource(editor.prosemirrorView!, pos, source);
             },
           },
           MATH_INLINE,

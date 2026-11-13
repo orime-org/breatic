@@ -215,6 +215,20 @@ describe('closing a block formula’s box (§6.3)', () => {
     expect(sourceOf(editor, 'mathBlock')).toBe('a+b');
   });
 
+  it('empties a formula that opened empty again on Escape', async () => {
+    const { editor, root } = open([{ type: 'mathBlock', content: '' }]);
+    fireEvent.mouseDown(await appear(root, '[role="button"]'));
+    await vi.waitFor(() => {
+      expect(root.querySelector('.bn-preview-with-source-popup[data-open="true"]')).not.toBeNull();
+    });
+    typeAtEnd(editor, 'mathBlock', 'y');
+    press(editor, 'Escape');
+    await vi.waitFor(() => {
+      expect(allClosed(root)).toBe(true);
+    });
+    expect(sourceOf(editor, 'mathBlock')).toBe('');
+  });
+
   it('leaves the source alone when nothing was typed', async () => {
     const { editor, root } = open(BLOCK);
     await openBlock(editor, root);
