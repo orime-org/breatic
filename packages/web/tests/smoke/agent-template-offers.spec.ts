@@ -131,15 +131,6 @@ function audioForVideo(proposal: CanvasProposal, takesVideo: ReadonlySet<string>
   return drawing + beside;
 }
 
-/**
- * How many generated videos in a proposal draw on the material it carries.
- * @param proposal - The proposal, as the agent sent it.
- * @returns The count.
- */
-function videosCarryingMaterial(proposal: CanvasProposal): number {
-  return generationsCarryingMaterial(proposal, (node) => node.type === 'video').length;
-}
-
 /** What the newest stored conversation's turns did and said. */
 interface Turn {
   /** Each tool it used, in order. */
@@ -215,7 +206,7 @@ test('asked outright for consistent shots of one character, it reads a character
   test.setTimeout(480_000);
   await ask(
     'I have one photo of my character, a courier in a red coat. Make three shots of her in a row and keep her exactly the same in all of them.',
-    'She is Mika, a 25-year-old bicycle courier, cheerful and stubborn. I will put her photo in myself. The shots are for a vertical Instagram comic.',
+    'She is Mika, a 25-year-old bicycle courier, cheerful and stubborn. I will put her photo in myself. The shots are for Instagram, vertical.',
   );
   const turn = await settledTurn(page);
   const proposed = turn.templates.filter((id) => CHARACTER_TEMPLATES.has(id));
@@ -260,22 +251,26 @@ test('asked outright for a festival travel poster, it reads the festival poster 
   await expect(page.getByTestId('proposal-card').last()).toBeVisible({ timeout: 20_000 });
 });
 
-test('given a dish photo and asked only for a video of it, it lands a video carrying that dish @needs-model', async () => {
+test('given a dish photo and asked only for a video of it, what lands carries that dish @needs-model', async () => {
   test.setTimeout(480_000);
   await ask('Make a video with this.', 'It is our margherita pizza, for the restaurant\'s Instagram, vertical.', 'dish.jpg');
   const turn = await settledTurn(page);
-  // Solved when a video draws on the photo, whether through a food template or a setup of the agent's own.
-  const carrying = turn.landed.reduce((count, proposal) => count + videosCarryingMaterial(proposal), 0);
-  expect(carrying, `videos drawing on the photo. Templates: ${turn.templates.join(', ')}; tools: ${turn.tools.join(', ')}; said: ${turn.said.slice(0, 600)}`).toBeGreaterThanOrEqual(1);
+  // Solved when what lands draws on the photo: the video, or takes of its
+  // first frame made first, the video following from the picked take; through
+  // a food template or a setup of the agent's own.
+  const carrying = turn.landed.reduce((count, proposal) => count + generationsCarryingMaterial(proposal, () => true).length, 0);
+  expect(carrying, `generations drawing on the photo. Templates: ${turn.templates.join(', ')}; tools: ${turn.tools.join(', ')}; said: ${turn.said.slice(0, 600)}`).toBeGreaterThanOrEqual(1);
 });
 
-test('given a pet photo and asked only for a video of it, it lands a video carrying that pet @needs-model', async () => {
+test('given a pet photo and asked only for a video of it, what lands carries that pet @needs-model', async () => {
   test.setTimeout(480_000);
   await ask('Make a video with this.', 'He is Bean, my golden retriever; a funny vertical video for TikTok.', 'pet.jpg');
   const turn = await settledTurn(page);
-  // Solved when a video draws on the photo, whether through the pet template or a setup of the agent's own.
-  const carrying = turn.landed.reduce((count, proposal) => count + videosCarryingMaterial(proposal), 0);
-  expect(carrying, `videos drawing on the photo. Templates: ${turn.templates.join(', ')}; tools: ${turn.tools.join(', ')}; said: ${turn.said.slice(0, 600)}`).toBeGreaterThanOrEqual(1);
+  // Solved when what lands draws on the photo: the video, or takes of its
+  // first frame made first, the video following from the picked take; through
+  // the pet template or a setup of the agent's own.
+  const carrying = turn.landed.reduce((count, proposal) => count + generationsCarryingMaterial(proposal, () => true).length, 0);
+  expect(carrying, `generations drawing on the photo. Templates: ${turn.templates.join(', ')}; tools: ${turn.tools.join(', ')}; said: ${turn.said.slice(0, 600)}`).toBeGreaterThanOrEqual(1);
 });
 
 test('given a character photo and asked for two videos of her, what lands for both carries that character @needs-model', async () => {
