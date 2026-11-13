@@ -120,7 +120,8 @@ test('a light is added, its shadow turned off, and deleting it brings back defau
     const [light] = await directorRecords(page, id);
     expect(light).toMatchObject({ model: { kind: 'light', type: 'spot' }, number: 1, castShadow: true });
     const row = panel.getByTestId(`scene-director-light-${light!.id}`);
-    await row.getByRole('switch').click();
+    // The new light is selected, so its fields open under the row with a second shadow switch; the row's own comes first.
+    await row.getByRole('switch', { name: 'Cast shadow', exact: true }).first().click();
     await expect.poll(async () => (await directorRecords(page, id))[0]?.castShadow).toBe(false);
     await row.getByRole('button').first().click();
     await visibleSpace(page).getByRole('button', { name: 'Delete', exact: true }).click();
@@ -151,6 +152,7 @@ test('a second account sees the cameras and lights another member sets up', asyn
     await peer.goto(smokeProjectUrl());
     await peer.getByTestId('space-drawer-trigger').click();
     await peer.getByTestId(`space-drawer-row-${id}`).getByRole('button').first().click();
+    await expect(peer.getByTestId('space-drawer')).toHaveCount(0);
     await visibleSpace(peer).getByTestId('scene-director-trigger').click();
     const peerPanel = peer.getByTestId('scene-director-panel');
     for (const record of records) {
