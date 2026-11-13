@@ -90,6 +90,18 @@ export function bodiesOf(node: PMNode): PMNode[] {
   return bodies;
 }
 
+/**
+ * A group's or a column's external HTML: nothing of its own, so its blocks
+ * are laid out flat in reading order (BlockNote appends the children of a
+ * layout block whose export places them nowhere to the outer fragment,
+ * `serializeBlocksExternalHTML.ts`). A reader of the clipboard then finds
+ * them at the top level, as Canvas does pictures (`document-media-paste.ts`).
+ * @returns An empty fragment.
+ */
+function flatOutside(): { dom: DocumentFragment } {
+  return { dom: document.createDocumentFragment() };
+}
+
 /** A column's props as the block API carries them. */
 interface ColumnProps {
   readonly width: number;
@@ -126,6 +138,7 @@ export function docColumnSpecs(): DocColumnSpecs {
     },
     {
       parse: (element: HTMLElement) => (element.dataset['docColumns'] !== undefined ? {} : undefined),
+      toExternalHTML: flatOutside,
       renderFrame: () => {
         const element = document.createElement('div');
         element.className = 'doc-columns';
@@ -157,6 +170,7 @@ export function docColumnSpecs(): DocColumnSpecs {
     },
     {
       experimental_keyboard: { emptyChildEnter: 'stay' },
+      toExternalHTML: flatOutside,
       parse: (element: HTMLElement) => {
         if (element.dataset['docColumn'] === undefined) return undefined;
         const width = Number(element.dataset['width'] ?? '1');
