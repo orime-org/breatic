@@ -245,11 +245,11 @@ export async function findPendingByCreator(userId: string, tx: DbTx): Promise<Di
  * How many team Studios count toward a user's quota in every region: the live
  * ones they administer and the ones they are still creating.
  * @param userId - The user.
- * @param tx - The transaction holding their account lock.
+ * @param tx - The transaction holding their account lock, when deciding a creation.
  * @returns The count.
  */
-export async function countTeamQuota(userId: string, tx: DbTx): Promise<number> {
-  const [row] = await tx
+export async function countTeamQuota(userId: string, tx?: DbTx): Promise<number> {
+  const [row] = await (tx ?? db)
     .select({ n: sql<number>`count(*)::int` })
     .from(studioDirectory)
     .where(

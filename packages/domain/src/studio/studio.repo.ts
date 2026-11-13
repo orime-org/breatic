@@ -130,9 +130,8 @@ export async function createTeamStudio(
  * set fills up. This honours the project rule that mutable ownership is decided
  * by `studio_members.role`, never by the immutable audit field. Personal studios
  * and soft-deleted rows (studio or membership) are excluded. This is the single
- * source of truth for "administered team studios" — {@link countTeamStudiosAdministeredBy}
- * (the per-user creation quota) and the account storage roll-up (#1826 §5.3)
- * both derive from it, so their predicates can never drift apart. Accepts an
+ * source of truth for "administered team studios" in this region; the account
+ * storage roll-up (#1826 §5.3) derives from it. Accepts an
  * optional transaction so it can run inside a create transaction.
  * @param userId - The user UUID whose administered team studios to enumerate
  * @param tx - Optional transaction handle
@@ -157,23 +156,6 @@ export async function listTeamStudioIdsAdministeredBy(
       ),
     );
   return rows.map((r) => r.id);
-}
-
-/**
- * Count the team studios a user **currently administers** (for the per-user
- * creation limit). Delegates to {@link listTeamStudioIdsAdministeredBy} so the
- * quota and the account roll-up share one ownership predicate (the count can
- * never diverge from the enumeration). The administered set is bounded by the
- * per-user cap, so materialising the ids to count them is negligible.
- * @param userId - The user UUID whose administered team studios to count
- * @param tx - Optional transaction handle
- * @returns The number of active team studios the user currently administers
- */
-export async function countTeamStudiosAdministeredBy(
-  userId: string,
-  tx?: DbTx,
-): Promise<number> {
-  return (await listTeamStudioIdsAdministeredBy(userId, tx)).length;
 }
 
 /**

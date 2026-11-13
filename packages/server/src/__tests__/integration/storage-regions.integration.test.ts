@@ -41,6 +41,7 @@ import postgres from "postgres";
 import { getMembershipLimits, initCore, loadLocales } from "@breatic/core";
 import { assetRepo, storageUsageService } from "@breatic/domain";
 import { assertStudioStorageAllowance } from "@server/modules/asset/storageQuota.service.js";
+import { readAccountMembership } from "@server/modules/account/membership.service.js";
 
 loadLocales();
 
@@ -112,6 +113,16 @@ async function seedAsset(studioId: string, userId: string, sizeBytes: number): P
 }
 
 describe("storage across regions", () => {
+  it("shows the membership panel every region's team Studios and storage", async () => {
+    const { userId, hereId, farId } = await adminInTwoRegions();
+    await seedAsset(hereId, userId, 1024);
+    await storageUsageService.recordRegionUsage({ region: "sg", asOf: new Date(), usage: [{ studioId: farId, bytes: 4096 }] });
+
+    const panel = await readAccountMembership(userId);
+
+    expect(panel.usage).toEqual({ teamStudios: 2, storageBytes: 1024 + 4096 });
+  });
+
   it("counts usage another region reported against the same ceiling", async () => {
     const { userId, hereId, farId } = await adminInTwoRegions();
     await seedAsset(hereId, userId, 1024);
