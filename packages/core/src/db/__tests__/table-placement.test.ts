@@ -14,7 +14,7 @@ import { PgTable } from "drizzle-orm/pg-core";
 import * as schema from "@core/db/schema.js";
 import { TABLE_PLACEMENT } from "@core/db/table-placement.js";
 
-const schemaTables = Object.values(schema)
+const schemaTables: string[] = Object.values(schema as Record<string, unknown>)
   .filter((value): value is PgTable => is(value, PgTable))
   .map((table) => getTableName(table));
 
