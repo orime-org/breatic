@@ -75,9 +75,15 @@ const STARTED: ChatSendAnswer = { status: 'start', pending: [], running: true };
 
 /**
  * Answer the run routes the page asks while a conversation is on screen
- * (inner#1717): nothing holds it, and a send opens a run.
+ * (inner#1717): nothing holds it, a send opens a run, and its history read
+ * again is the page the last open answered with.
  */
 function answerRunRoutes(): void {
+  vi.mocked(chatApi.readConversation).mockImplementation(async (id) => {
+    const opened = vi.mocked(chatApi.openChat).mock.results.at(-1);
+    const answer = opened === undefined ? undefined : ((await opened.value) as Awaited<ReturnType<typeof chatApi.openChat>>);
+    return (answer?.current ?? { conversation: { id }, messages: [], hasMore: false }) as Awaited<ReturnType<typeof chatApi.readConversation>>;
+  });
   vi.mocked(chatApi.sync).mockResolvedValue(IDLE);
   vi.mocked(chatApi.sendMessage).mockResolvedValue(STARTED);
   vi.mocked(chatApi.stop).mockResolvedValue({ stopped: true });
@@ -205,11 +211,6 @@ describe('ChatPanel', () => {
     wire = stubRunWire();
     chatOpensWith([]);
     answerRunRoutes();
-    vi.mocked(chatApi.readConversation).mockResolvedValue({
-      conversation: { id: CONV, agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
-      messages: [],
-      hasMore: false,
-    } as unknown as Awaited<ReturnType<typeof chatApi.readConversation>>);
     vi.mocked(chatApi.streamConfig).mockResolvedValue({ heartbeatIntervalMs: 5000, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200, spaceReadTimeoutMs: 20_000, runningPollIntervalMs: 5000, syncIntervalMs: 3_000 });
   });
 

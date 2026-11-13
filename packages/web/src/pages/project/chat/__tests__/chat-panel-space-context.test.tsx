@@ -97,10 +97,10 @@ beforeEach(() => {
   vi.mocked(chatApi.sync).mockResolvedValue({ pending: [], running: false, awaiting: false, next_sync_ms: 3000 });
   vi.mocked(chatApi.sendMessage).mockResolvedValue({ status: 'queued', pending: [], running: false });
   vi.mocked(chatApi.running).mockResolvedValue([]);
-  vi.mocked(chatApi.openChat).mockResolvedValue({
-    conversations: [{ id: 'c1' }],
-    current: { conversation: { id: 'c1', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } }, messages: [], hasMore: false },
-  } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
+  const current = { conversation: { id: 'c1', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } }, messages: [], hasMore: false };
+  vi.mocked(chatApi.openChat).mockResolvedValue({ conversations: [{ id: 'c1' }], current } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
+  // The history read again is what the open answered with.
+  vi.mocked(chatApi.readConversation).mockResolvedValue(current as unknown as Awaited<ReturnType<typeof chatApi.readConversation>>);
   vi.mocked(chatApi.streamConfig).mockResolvedValue({
     heartbeatIntervalMs: 5000,
     attachmentMaxChars: 200_000,
