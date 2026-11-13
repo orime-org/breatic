@@ -422,15 +422,17 @@ describe("the user stopping during a fold", () => {
     expect(stored()).toContainEqual({ type: "interrupted" });
   });
 
-  it("does not say how long it thought live when the user stops an overflow fold, as on any stop", async () => {
+  it("says how long it thought live, as stored, before the stop mark when the user stops an overflow fold", async () => {
     history(2, 30_000);
     world.foldOutcomes = ["aborted"];
     world.script = [callsFetch("c1", 311, 50, true), { reject: h1() }, answers("never asked for")];
 
     const chunks = await sendMessage();
 
-    expect(count(chunks, "data-thinking-time")).toBe(0);
-    expect(stored().filter((part) => part.type === "thinking-time")).toHaveLength(1);
+    const said = chunks.filter((chunk) => chunk.type === "data-thinking-time") as Array<{ data: { ms: number } }>;
+    expect(said).toHaveLength(1);
+    expect(stored().find((part) => part.type === "thinking-time")).toMatchObject({ ms: said[0]?.data.ms });
+    expect(typesOf(chunks).indexOf("data-thinking-time")).toBeLessThan(typesOf(chunks).indexOf("data-interrupted"));
   });
 });
 

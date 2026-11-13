@@ -351,6 +351,8 @@ export class MainAgent {
     let requestPictureFacts: AgentPicture[] = [];
     /** Where the stretch of thinking now open began, if one is. */
     let thinkingOpenedAt: number | undefined;
+    /** The id of the thinking part now open on the wire, if one is. */
+    let openThinkingId: string | undefined;
     /** How long the turn has thought so far, summed over closed stretches. */
     let thoughtForMs = 0;
     /** Count the stretch now open, if one is, and leave none open. */
@@ -368,6 +370,10 @@ export class MainAgent {
      */
     const sayThoughtFor = (writer: UIMessageStreamWriter): void => {
       if (thoughtSaid) return;
+      // A turn ended inside a thought never streams its end, so every page
+      // would keep drawing it as still thinking; the store closes it.
+      if (openThinkingId !== undefined) writer.write({ type: "reasoning-end", id: openThinkingId });
+      openThinkingId = undefined;
       closeThinking();
       if (thoughtForMs > 0) writer.write({ type: "data-thinking-time", data: { ms: thoughtForMs } });
       thoughtSaid = true;
@@ -1293,6 +1299,16 @@ export class MainAgent {
           finished = value;
           continue;
         }
+        if (value.type === "reasoning-start") openThinkingId = value.id;
+        else if (value.type === "reasoning-end") openThinkingId = undefined;
+        else if (value.type === "finish-step" && openThinkingId !== undefined) {
+          // A step the provider broke off inside a thought ends it with no
+          // `reasoning-end`, and the browser's `finish-step` stops tracking
+          // the part and leaves it marked as thinking (`ai@7.0.68`
+          // `process-ui-message-stream.ts:883-887`).
+          writer.write({ type: "reasoning-end", id: openThinkingId });
+          openThinkingId = undefined;
+        }
         writer.write(value);
       }
       if (seen.turnedAway !== undefined) return seen.turnedAway;
@@ -1343,9 +1359,9 @@ export class MainAgent {
           }
         } finally {
           // Whatever ended the turn without saying it: a throw of our own,
-          // which the SDK turns into the error frame after this. Not on a
-          // stop, as on any stop.
-          if (signal?.aborted !== true) sayThoughtFor(writer);
+          // which the SDK turns into the error frame after this, or a stop,
+          // said before its mark as it is stored.
+          sayThoughtFor(writer);
           // The user's stop, said on the wire as the mark it is stored as, so
           // every attached page draws the reply as stopped (inner#1717).
           if (signal?.aborted === true && !stoppedByShutdown(signal)) writer.write({ type: "data-interrupted", data: {} });
