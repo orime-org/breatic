@@ -5,7 +5,8 @@
  * Answer the page's sends with runs written here, the way the server answers
  * them (inner#1717): `POST /chat/message` says the run started, the page reads
  * the newest page of history back, and the run's frames come from
- * `GET /chat/conversations/:id/stream`, opening with a heartbeat.
+ * `GET /chat/conversations/:id/stream`, opening with a heartbeat and the
+ * `start` that names the reply, ahead of every frame a case gives.
  *
  * The message never reaches the server, so reading a conversation's history
  * back adds what the store would hold by then: each message sent to it, and
@@ -77,6 +78,17 @@ function settleCard(rows: KeptRow[], answer: Settled): void {
       .filter((p) => !((p as { type?: string; data?: { toolCallId?: string } }).type === 'data-ask-awaiting' && (p as { data?: { toolCallId?: string } }).data?.toolCallId === answer.toolCallId))
       .map((p) => ((p as { toolCallId?: string }).toolCallId === answer.toolCallId ? { ...(p as object), state: 'output-available', output: answer.output } : p));
   }
+}
+
+/**
+ * A run's frames as the server writes them: the reply named first, by the
+ * case's own `start` or by one made here.
+ * @param frames - The case's frames.
+ * @returns The same frames, `start` first.
+ */
+function namedFirst(frames: RunFrames): RunFrames {
+  const start = frames.find((f) => (f as { type?: string }).type === 'start') ?? { type: 'start', messageId: crypto.randomUUID() };
+  return [start, ...frames.filter((f) => f !== start)];
 }
 
 /**
@@ -174,8 +186,9 @@ export async function answerRuns(
    */
   const onStream = async (route: Route): Promise<void> => {
     const conversationId = STREAM.exec(new URL(route.request().url()).pathname)?.[1] ?? '';
-    const frames = waiting.get(conversationId)?.shift();
-    if (frames === undefined) return route.fulfill({ status: 204 });
+    const queued = waiting.get(conversationId)?.shift();
+    if (queued === undefined) return route.fulfill({ status: 204 });
+    const frames = namedFirst(queued);
     const reply = await replyOf(frames);
     if (reply !== null) rowsOf(conversationId).push({ id: reply.id, role: 'assistant', parts: reply.parts });
     const body = [RUN_BEAT, ...frames].map((f) => `data: ${JSON.stringify(f)}\n\n`).join('');
@@ -196,10 +209,11 @@ export async function answerRuns(
     try {
       response = await route.fetch();
       read = (await response.json()) as { data: { messages: StoredRow[] } };
-    } catch {
+    } catch (err) {
       // The page closed while it read the history again after a run; nobody
       // is left to answer.
-      return;
+      if (page.isClosed()) return;
+      throw err;
     }
     const have = new Set(read.data.messages.map((m) => m.id));
     let turn = Math.max(0, ...read.data.messages.map((m) => m.metadata.turnIndex));
