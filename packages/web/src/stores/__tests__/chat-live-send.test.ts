@@ -164,6 +164,15 @@ describe('a message sent', () => {
   }
 });
 
+describe('text the store cannot hold', () => {
+  it('goes out without a NUL, and with a lone surrogate replaced, wherever it is in the message', async () => {
+    await send('a\u0000b', [{ ...CHIP, data_snapshot: { text: 'x\ud83dy\u0000' } }]);
+    const [sent] = bodies();
+    expect(sent!.message).toBe('ab');
+    expect((sent!.attached_chips as Array<{ data_snapshot: { text: string } }>)[0]!.data_snapshot.text).toBe('x\ufffdy');
+  });
+});
+
 describe('a send whose outcome is unknown', () => {
   it('goes again with the same id within a second, the box read-only meanwhile and emptied once (WB-08)', async () => {
     vi.useFakeTimers();

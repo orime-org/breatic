@@ -299,6 +299,22 @@ function callAlreadyAnswered(err: unknown): CardResult | undefined {
 }
 
 /**
+ * A value with every string in it, keys included, as the store can hold it:
+ * no NUL, and a lone surrogate replaced. Neither is drawn, so what goes out
+ * reads as what was shown; text drawn from a file or a page can carry them.
+ * @param value - The value.
+ * @returns The same value, its strings storable.
+ */
+function storable<T>(value: T): T {
+  if (typeof value === 'string') return value.replaceAll('\u0000', '').toWellFormed() as T;
+  if (Array.isArray(value)) return value.map(storable) as T;
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, field]) => [storable(key), storable(field)])) as T;
+  }
+  return value;
+}
+
+/**
  * A `/chat/message` body: the Spaces, where it goes and the zone the user is
  * in now, read at each send so the agent is told the time where they are.
  * @param projectId - The project.
@@ -308,13 +324,13 @@ function callAlreadyAnswered(err: unknown): CardResult | undefined {
  * @returns The body, or the transfer it went up as when it is too large.
  */
 function chatBody(projectId: string, conversationId: string, spaces: ChatSpaceContext, fields: object): Promise<object> {
-  return bodyOrTransfer(projectId, {
+  return bodyOrTransfer(projectId, storable({
     ...spaces,
     ...fields,
     project_id: projectId,
     conversation_id: conversationId,
     time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-  });
+  }));
 }
 
 /**
