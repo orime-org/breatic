@@ -17,7 +17,7 @@ import type { DbTx, TierChangeReason } from "@breatic/core";
 import { SUBSCRIBABLE_MEMBERSHIP_TIERS } from "@breatic/shared";
 import type { MembershipTier } from "@breatic/shared";
 import * as notificationService from "@server/modules/notification/notification.service.js";
-import * as userRepo from "@server/modules/auth/user.repo.js";
+import { usersRepo as userRepo } from "@breatic/domain";
 import { buildMembershipEndedMail } from "@server/utils/notification-mail.js";
 import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
 

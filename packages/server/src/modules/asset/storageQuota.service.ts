@@ -45,7 +45,7 @@ import {
 } from "@server/modules/asset/storage-notice-throttle.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import { studioRepo } from "@breatic/domain";
-import { getUserById } from "@server/modules/auth/user.repo.js";
+import { usersRepo } from "@breatic/domain";
 import { buildStorageQuotaExceededMail } from "@server/utils/notification-mail.js";
 import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
 
@@ -165,7 +165,7 @@ async function tellTheAdmin(
     // which stops being true the moment the insert succeeds.
     await sendBestEffortMail(async () => {
       const [admin, studio] = await Promise.all([
-        getUserById(adminUserId),
+        usersRepo.getUserById(adminUserId),
         studioRepo.getById(studioId),
       ]);
       if (!admin || !studio) return null;

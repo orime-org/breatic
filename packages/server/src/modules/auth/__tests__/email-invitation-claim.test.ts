@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import type * as MockModule0 from "@breatic/core";
-import type * as MockModule1 from "@server/modules/auth/user.repo.js";
+import type * as MockModule1 from "@breatic/domain";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { UserEntity } from "@breatic/shared";
@@ -36,15 +36,21 @@ vi.mock("@breatic/core", async (importOriginal) => ({
   enqueueAdsConversion: vi.fn().mockResolvedValue(false),
 }));
 
-vi.mock("@server/modules/auth/user.repo.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof MockModule1>()),
-  getUserByEmail: mocks.getUserByEmail,
-  getUserByGoogleId: mocks.getUserByGoogleId,
-  createUser: mocks.createUser,
-  updateUser: mocks.updateUser,
-  linkGoogleIdentity: mocks.linkGoogleIdentity,
-  getHashedPassword: mocks.getHashedPassword,
-}));
+vi.mock("@breatic/domain", async (importOriginal) => {
+  const actual = await importOriginal<typeof MockModule1>();
+  return {
+    ...actual,
+    usersRepo: {
+      ...actual.usersRepo,
+      getUserByEmail: mocks.getUserByEmail,
+      getUserByGoogleId: mocks.getUserByGoogleId,
+      createUser: mocks.createUser,
+      updateUser: mocks.updateUser,
+      linkGoogleIdentity: mocks.linkGoogleIdentity,
+      getHashedPassword: mocks.getHashedPassword,
+    },
+  };
+});
 
 import { createAccount, loginEmail, loginOrCreateGoogle } from "@server/modules/auth/auth.service.js";
 

@@ -43,7 +43,7 @@ import * as notificationRepo from "@server/modules/notification/notification.rep
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import * as projectRepo from "@server/modules/project/project.repo.js";
 import { studioRepo } from "@breatic/domain";
-import * as userRepo from "@server/modules/auth/user.repo.js";
+import { usersRepo as userRepo } from "@breatic/domain";
 import * as requestsRepo from "@server/modules/project-join-request/projectJoinRequests.repo.js";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
 import { buildProjectJoinRequestMail } from "@server/utils/notification-mail.js";

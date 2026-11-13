@@ -45,7 +45,7 @@ import * as studioService from "@server/modules/studio/studio.service.js";
 import * as projectRepo from "@server/modules/project/project.repo.js";
 import { studioRepo } from "@breatic/domain";
 import * as requestsRepo from "@server/modules/role-upgrade-request/roleUpgradeRequests.repo.js";
-import * as userRepo from "@server/modules/auth/user.repo.js";
+import { usersRepo as userRepo } from "@breatic/domain";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
 import { buildRoleUpgradeRequestMail } from "@server/utils/notification-mail.js";
 import { decisionLink } from "@server/utils/decision-link.js";

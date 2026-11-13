@@ -33,7 +33,7 @@
  */
 
 import { studioRepo } from "@breatic/domain";
-import * as userRepo from "@server/modules/auth/user.repo.js";
+import { usersRepo as userRepo } from "@breatic/domain";
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import { studioTransfersRepo as transfersRepo } from "@breatic/domain";

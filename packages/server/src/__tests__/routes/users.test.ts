@@ -27,11 +27,6 @@ vi.mock("@server/modules", async (importOriginal) => {
   return serverModulesMock(importOriginal);
 });
 
-vi.mock("@server/modules/auth/user.repo.js", async () => {
-  const { userRepoMock } = await import("../helpers/mock-core.js");
-  return userRepoMock();
-});
-
 import { createApp } from "../../app.js";
 import { mocks } from "../helpers/mock-core.js";
 

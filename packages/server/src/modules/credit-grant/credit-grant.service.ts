@@ -6,7 +6,7 @@ import type { CreditGrantProfile, CreditGrantResult, CreditGrantWrite, DbTx } fr
 import { serializeCreditMicro, parseCreditDecimal } from "@breatic/shared";
 import { creditLotService, creditLotRepo, studioMembersRepo } from "@breatic/domain";
 import * as operationRepo from "@server/modules/credit-grant/credit-grant.repo.js";
-import * as userRepo from "@server/modules/auth/user.repo.js";
+import { usersRepo as userRepo } from "@breatic/domain";
 import { studioRepo } from "@breatic/domain";
 
 /** The signed original request identity and normalized intent. */

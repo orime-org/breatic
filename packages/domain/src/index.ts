@@ -66,6 +66,7 @@ export type { LotContext, PayerLedgerRow } from "@domain/credit/creditLot.repo.j
 export * as studioAuthService from "@domain/auth/studioAuth.service.js";
 export * as studioMembersRepo from "@domain/auth/studioMembers.repo.js";
 export * as studioRepo from "@domain/studio/studio.repo.js";
+export * as usersRepo from "@domain/auth/user.repo.js";
 export * as studioTransfersRepo from "@domain/studio/studioTransfers.repo.js";
 
 // ── Task (+ markCompletedAndBill: completion and charge request in one commit) ─

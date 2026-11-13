@@ -12,7 +12,7 @@ import * as conversationRepo from "@server/modules/conversation/conversation.rep
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
 import * as projectService from "@server/modules/project/project.service.js";
 import * as projectRepo from "@server/modules/project/project.repo.js";
-import * as userRepo from "@server/modules/auth/user.repo.js";
+import { usersRepo as userRepo } from "@breatic/domain";
 import { answersMismatch, readQuestionnaire, spaceRequestInputSchema, t } from "@breatic/shared";
 import { spaceAnswerMismatch } from "@server/modules/conversation/space-answer-mismatch.js";
 import { db, NotFoundError, ForbiddenError, getAgentConfig, ValidationError } from "@breatic/core";

@@ -38,7 +38,7 @@ import {
 import type { DbTx } from "@breatic/core";
 import type { MembershipTier } from "@breatic/shared";
 import { getStripeClient } from "@server/infra/stripe.js";
-import * as userRepo from "@server/modules/auth/user.repo.js";
+import { usersRepo as userRepo } from "@breatic/domain";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import { readStripeSubscription } from "@server/modules/subscription/read-stripe-subscription.js";
 import type {

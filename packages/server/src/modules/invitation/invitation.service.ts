@@ -5,7 +5,7 @@ import { ConflictError, logger, NotFoundError } from "@breatic/core";
 import { enqueueMail } from "@breatic/domain";
 import { getActiveLocale, normalizeEmail, t } from "@breatic/shared";
 import type { SignupInvitationPreview } from "@breatic/shared";
-import * as usersRepo from "@server/modules/auth/user.repo.js";
+import { usersRepo as usersRepo } from "@breatic/domain";
 import * as projectRepo from "@server/modules/project/project.repo.js";
 import { studioRepo } from "@breatic/domain";
 import { claimEmailInvitations } from "@server/modules/invitation/claim-email-invitations.js";

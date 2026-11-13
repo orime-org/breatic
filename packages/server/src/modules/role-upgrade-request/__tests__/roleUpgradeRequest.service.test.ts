@@ -75,7 +75,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
   };
 });
 // The email is queued for the worker; the job carries the built mail.
-vi.mock("@breatic/domain", () => ({ enqueueMail: vi.fn(async () => {}) }));
+vi.mock("@breatic/domain", () => ({ enqueueMail: vi.fn(async () => {}), usersRepo: { getUserById: vi.fn() } }));
 vi.mock("../roleUpgradeRequests.repo.js", () => ({
   createPending: vi.fn(),
   attachNotification: vi.fn(),
@@ -125,18 +125,14 @@ vi.mock("@server/config/limits.js", () => ({
 // mail is the half of this flow that nothing else observes: the bell entry is
 // visible in the payload assertions, a mail that is never sent is visible
 // nowhere.
-vi.mock("@server/modules/auth/user.repo.js", () => ({
-  getUserById: vi.fn(),
-}));
 
 import * as notificationRepo from "../../notification/notification.repo.js";
 import * as notificationService from "../../notification/notification.service.js";
 import * as studioService from "../../studio/studio.service.js";
 import * as projectRepo from "../../project/project.repo.js";
 import * as requestsRepo from "../roleUpgradeRequests.repo.js";
-import * as userRepo from "@server/modules/auth/user.repo.js";
 import { projectMembersRepo } from "@breatic/core";
-import { enqueueMail } from "@breatic/domain";
+import { enqueueMail, usersRepo as userRepo } from "@breatic/domain";
 import * as roleUpgradeRequestService from "../roleUpgradeRequest.service.js";
 import { NotFoundError, ForbiddenError, ConflictError } from "@breatic/core";
 

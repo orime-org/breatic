@@ -605,6 +605,7 @@ export const domainMock = async () => ({
   trackOpenGeneration: realTrackOpenGeneration,
   isGenerationId: realIsGenerationId,
   handOffLookups: mocks.handOffLookups,
+  usersRepo: mocks.userRepo,
   // The same shape as the real one: every tool in the set gets the recorder.
   usageContextFor: (tools: Record<string, unknown>, usage: unknown) =>
     Object.fromEntries(Object.keys(tools).map((name) => [name, { usage }])),
@@ -703,15 +704,6 @@ export const domainMock = async () => ({
   STOPPED_BY_USER: REAL_STOPPED_BY_USER,
   extractPromptText: vi.fn((s: string) => s),
 });
-
-/**
- * Mock for `@server/modules/auth/user.repo.js` — the identity repo moved from
- * @breatic/core to @server in PR4. Tests that hit a route reading user
- * rows directly (canvas lock-holder lookup, batch /users) mock this path:
- *
- *   vi.mock("@server/modules/auth/user.repo.js", userRepoMock);
- */
-export const userRepoMock = () => mocks.userRepo;
 
 /**
  * Mock for `@server/modules` — the server-private domain (auth /
