@@ -81,7 +81,7 @@ import {
 
 
 import { commentTool } from '@web/spaces/document/document-comment-entries';
-import { MATH_BLOCK, MATH_INLINE } from '@web/spaces/document/document-math';
+import { isFormula } from '@web/spaces/document/document-math';
 import { addToAgentTool } from '@web/spaces/document/document-to-agent';
 import { useTableFullscreen } from '@web/spaces/document/use-table-fullscreen';
 import { mergeCellsTool } from '@web/spaces/document/document-table-tools';
@@ -399,15 +399,6 @@ export function bubbleAnchorRect(
 }
 
 /**
- * Whether a node is a formula's source, which the bar leaves alone.
- * @param node - The node a selection end sits in.
- * @returns Whether it is a block or inline formula.
- */
-function isFormulaSource(node: ProseMirrorNode): boolean {
-  return node.type.name === MATH_BLOCK || node.type.name === MATH_INLINE;
-}
-
-/**
  * Whether a range of the document holds any text at all.
  *
  * `doc.textBetween(from, to)` answers the same question by building the whole
@@ -634,7 +625,7 @@ function BubbleBar({
     if (selection instanceof CellSelection) return true;
     // Inside a formula's source box nothing on the bar applies: its text takes
     // no style, colour, link or comment (inner#1423).
-    if (isFormulaSource(selection.$from.parent) || isFormulaSource(selection.$to.parent)) return false;
+    if (isFormula(selection.$from.parent) || isFormula(selection.$to.parent)) return false;
     return hasTextIn(doc, selection.from, selection.to);
   }, [editor]);
 

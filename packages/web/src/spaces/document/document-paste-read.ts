@@ -18,7 +18,7 @@
 import { audioParse, imageParse, isMarkdown, videoParse } from '@blocknote/core';
 import type { Schema, Slice } from '@tiptap/pm/model';
 
-import { MATH_BLOCK_SOURCE_ATTR, MATH_SOURCE_ATTR } from '@web/spaces/document/document-math';
+import { MATH_BLOCK_SOURCE_ATTR, MATH_SOURCE_ATTR } from '@web/lib/formula-source';
 import { formulaMarkdownToHTML } from '@web/spaces/document/document-math-markdown';
 import { routeAddress } from '@web/spaces/document/document-media-address';
 import { HTML_MEDIA_ELEMENTS, HTML_MEDIA_SELECTOR, isMediaBlockType, type MediaBlockType } from '@web/spaces/document/document-media-types';

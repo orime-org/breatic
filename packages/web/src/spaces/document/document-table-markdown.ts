@@ -18,7 +18,7 @@
 
 import type { BlockNoteEditor } from '@blocknote/core';
 
-import { MATH_INLINE } from '@web/spaces/document/document-math';
+import { formulaText, MATH_INLINE } from '@web/spaces/document/document-math';
 import { formulasAsSourceElements } from '@web/spaces/document/document-math-markdown';
 import { DOC_TABLE, DOC_TABLE_HEADER } from '@web/spaces/document/document-table-nodes';
 
@@ -55,13 +55,9 @@ const AS_THEY_ARE: WordsEscape = (blocks) => [...blocks];
 function holdsEscapedBar(line: BlockLike): boolean {
   const content = (line as { readonly content?: unknown }).content;
   if (!Array.isArray(content)) return false;
-  return (content as { type?: string; content?: unknown }[]).some((piece) => {
-    if (piece.type !== MATH_INLINE) return false;
-    const source = typeof piece.content === 'string'
-      ? piece.content
-      : Array.isArray(piece.content) ? (piece.content as { text?: string }[]).map((text) => text.text ?? '').join('') : '';
-    return source.includes('\\|');
-  });
+  return (content as { type?: string; content?: Parameters<typeof formulaText>[0] }[]).some(
+    (piece) => piece.type === MATH_INLINE && formulaText(piece.content).includes('\\|'),
+  );
 }
 
 /**

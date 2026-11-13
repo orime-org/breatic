@@ -20,6 +20,8 @@
  * a single `$` for an inline formula, which this product reads as a character.
  */
 
+import { MATH_BLOCK_SOURCE_ATTR, MATH_SOURCE_ATTR } from '@web/lib/formula-source';
+
 /** Both ends of a formula, inline or on a line of its own (user 2026-08-25). */
 const DELIMITER = '$$';
 
@@ -31,15 +33,7 @@ const FORMULA_CLASS = 'katex';
  * it starts or ends inside one, so the document body's own copy never passes
  * through here (inner#1423).
  */
-const REPLY = '[data-testid="markdown-body"]';
-
-/**
- * The attributes the document body reads a pasted formula's source from
- * (`document-math.tsx`): the copy reads as `$$` text anywhere else, and as the
- * formula it was in the body.
- */
-const INLINE_SOURCE = 'data-math';
-const BLOCK_SOURCE = 'data-math-block';
+const REPLY = '.chat-markdown';
 
 /**
  * What a paste target cannot read outside the element it came from.
@@ -143,7 +137,7 @@ function replaceFormulaeWithSource(copied: Element): void {
     // off an inline formula.
     const onItsOwnLine = formula.querySelector('math')?.getAttribute('display') === 'block';
     const holder = document.createElement(onItsOwnLine ? 'div' : 'span');
-    holder.setAttribute(onItsOwnLine ? BLOCK_SOURCE : INLINE_SOURCE, source);
+    holder.setAttribute(onItsOwnLine ? MATH_BLOCK_SOURCE_ATTR : MATH_SOURCE_ATTR, source);
     // Source, not prose: the line breaks around a formula on its own line are
     // part of what makes it one, and normal white-space handling would fold
     // them into spaces on the way out.

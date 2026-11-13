@@ -13,7 +13,6 @@
  * it.
  */
 
-import { SourceBlockWithPreviewExtension } from '@blocknote/core/extensions';
 
 import type { BlockTypeId } from '@web/spaces/document/document-block-ticks';
 import { runBlockType } from '@web/spaces/document/document-block-run';
@@ -24,7 +23,7 @@ import {
   type PressedBlock,
 } from '@web/spaces/document/document-handle-commands';
 import { QUOTED } from '@web/spaces/document/document-list-block';
-import { MATH_BLOCK } from '@web/spaces/document/document-math';
+import { MATH_BLOCK, openFormulaBlock } from '@web/spaces/document/document-math';
 import { markOwnUndoStep } from '@web/spaces/document/document-undo-step';
 import { DOC_TABLE, DOC_TABLE_CELL, DOC_TABLE_ROW } from '@web/spaces/document/document-table-nodes';
 
@@ -39,17 +38,6 @@ export const FORMULA = 'formula';
 
 /** One entry of the insert menu: a block type, the divider, a formula, or a table of a size. */
 export type InsertChoice = BlockTypeId | typeof DIVIDER | typeof FORMULA | { readonly table: TableSize };
-
-/**
- * Puts the caret in a formula block and opens its source box, as a click on it
- * does: a formula made from the menu is empty and is written next.
- * @param editor - The editor.
- * @param id - The formula block's id.
- */
-function openFormula(editor: HandleEditor, id: string): void {
-  editor.setTextCursorPosition(id, 'end');
-  editor.getExtension(SourceBlockWithPreviewExtension)?.store.setState((state) => ({ ...state, popupOpen: id }));
-}
 
 /**
  * An empty table of a size.
@@ -141,7 +129,7 @@ export function insertBelow(
     // carry on in, and the box open on the formula.
     const made = insertRowForMenu(editor, row, [{ type: MATH_BLOCK }]);
     const formula = editor.getPrevBlock(made) as { id: string } | undefined;
-    if (formula !== undefined) openFormula(editor, formula.id);
+    if (formula !== undefined) openFormulaBlock(editor, formula.id);
   } else if (typeof choice === 'object') {
     const made = insertRowForMenu(editor, row, [emptyTable(choice.table, false)]);
     const table = editor.getPrevBlock(made) as { id: string } | undefined;
@@ -233,7 +221,7 @@ export function fillEmptyRow(
     } else if (choice === FORMULA) {
       // `updateBlock` keeps the row's id and its quote.
       editor.updateBlock(row.id, { type: MATH_BLOCK } as never);
-      openFormula(editor, row.id);
+      openFormulaBlock(editor, row.id);
       return;
     } else if (choice === DIVIDER) {
       editor.insertBlocks(

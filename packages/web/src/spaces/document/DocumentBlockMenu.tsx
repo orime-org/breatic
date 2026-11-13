@@ -75,7 +75,7 @@ import {
   type PressedBlock,
 } from '@web/spaces/document/document-handle-commands';
 import { openCommentDraft } from '@web/spaces/document/document-comment-entries';
-import { canCommentOver, holdsWordsOver } from '@web/spaces/document/document-comment-target';
+import { canCommentOver, reachesWordsOver } from '@web/spaces/document/document-comment-target';
 import { useDocumentProjectId } from '@web/spaces/document/document-project-context';
 import { blockItem } from '@web/spaces/document/document-to-agent';
 import { attachToChat } from '@web/stores/attach-to-chat';
@@ -181,7 +181,7 @@ function facesFor(editor: HandleEditor, blockId: string): StyleFaces {
       align: alignFaceOver(tr.doc, over),
       colour: colourFaceOver(tr.doc, over),
       canComment: canCommentOver(tr.doc, over),
-      canAttach: holdsWordsOver(tr.doc, over),
+      canAttach: reachesWordsOver(tr.doc, over),
       indent: indentReach(tr.doc, blockId),
       holdsText: blocksUnder(tr.doc, over).length > 0,
       quotable: blocksUnderFor(tr.doc, over, 'quote').length > 0,

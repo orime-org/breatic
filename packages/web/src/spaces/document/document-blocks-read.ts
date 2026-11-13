@@ -98,7 +98,7 @@ export function blockPlainRuns(node: ProseMirrorNode): { text: string; runs: Pla
         return;
       }
       const leaf = child.isLeaf ? '\n' : '';
-      if (child.isBlock && ((child.isLeaf && leaf !== '') || child.isTextblock)) {
+      if (child.isBlock && (child.isLeaf || child.isTextblock)) {
         if (first) first = false;
         else text += '\n';
       }

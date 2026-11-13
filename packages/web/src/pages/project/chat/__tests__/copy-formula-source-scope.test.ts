@@ -69,7 +69,8 @@ function withFormulas(attributes: Record<string, string>): HTMLElement {
 
 describe('the chat formula copy handler', () => {
   it('marks each formula copied from a reply with its source, for the document body to read back', () => {
-    const reply = withFormulas({ 'data-testid': 'markdown-body' });
+    // A reply's root, as `MarkdownMessage` draws it.
+    const reply = withFormulas({ class: 'chat-markdown text-sm', 'data-testid': 'markdown-body' });
     const { data } = copyAll(reply);
     const held = document.createElement('div');
     held.innerHTML = data['text/html'] ?? '';

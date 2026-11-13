@@ -41,7 +41,7 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import type { Selection } from '@tiptap/pm/state';
 
 import { COMMENT_MARK } from '@web/spaces/document/document-comment-extension';
-import { MATH_BLOCK, MATH_INLINE } from '@web/spaces/document/document-math';
+import { isFormula } from '@web/spaces/document/document-math';
 
 import {
   markTypeIn,
@@ -62,7 +62,7 @@ function holdsWordsOutsideFormulas(doc: PMNode, over: Selection): boolean {
   for (const { $from, $to } of over.ranges) {
     doc.nodesBetween($from.pos, $to.pos, (node, _pos, parent) => {
       if (found) return false;
-      if (node.type.name === MATH_BLOCK || node.type.name === MATH_INLINE) return false;
+      if (isFormula(node)) return false;
       if (node.isText && parent !== null) found = true;
       return !found;
     });
@@ -72,14 +72,14 @@ function holdsWordsOutsideFormulas(doc: PMNode, over: Selection): boolean {
 }
 
 /**
- * Whether the range holds any words, formula sources included: what the
- * handle's Add to Agent hands over, since the Agent reads a formula as its
- * `$$` source.
+ * Whether the range holds words a comment mark could land on, formula sources
+ * included: what the handle's Add to Agent hands over, since the Agent reads
+ * a formula as its `$$` source.
  * @param doc - The document.
  * @param over - The user's selection, or the range standing for one row.
- * @returns Whether the range holds text.
+ * @returns Whether some run in the range takes the comment mark.
  */
-export function holdsWordsOver(doc: PMNode, over: Selection): boolean {
+export function reachesWordsOver(doc: PMNode, over: Selection): boolean {
   const mark = markTypeIn(doc, COMMENT_MARK);
   return mark !== undefined && reachesAnyRunOver(doc, over, mark);
 }
@@ -93,5 +93,5 @@ export function holdsWordsOver(doc: PMNode, over: Selection): boolean {
 export function canCommentOver(doc: PMNode, over: Selection): boolean {
   // Either registrar `commentWiring` picks puts the mark on the schema, so
   // a missing mark is only reached by a caller holding some other schema.
-  return holdsWordsOver(doc, over) && holdsWordsOutsideFormulas(doc, over);
+  return reachesWordsOver(doc, over) && holdsWordsOutsideFormulas(doc, over);
 }

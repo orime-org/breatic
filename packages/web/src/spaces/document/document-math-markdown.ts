@@ -24,7 +24,8 @@ import remarkMath from 'remark-math';
 import remarkParse from 'remark-parse';
 import { unified } from 'unified';
 
-import { MATH_BLOCK_SOURCE_ATTR, MATH_SOURCE_ATTR } from '@web/spaces/document/document-math';
+import { MATH_BLOCK_SOURCE_ATTR, MATH_SOURCE_ATTR } from '@web/lib/formula-source';
+import { TEX_ANNOTATION } from '@web/spaces/document/document-math';
 
 /** The placeholder attribute of an inline formula. */
 const INLINE_REF = 'data-math-ref';
@@ -133,7 +134,7 @@ export function formulasAsSourceElements(html: string): string {
   host.innerHTML = html;
   host.content.querySelectorAll('math').forEach((math) => {
     const block = math.getAttribute('display') === 'block';
-    const source = math.querySelector('annotation[encoding="application/x-tex"]')?.textContent ?? '';
+    const source = math.querySelector(TEX_ANNOTATION)?.textContent ?? '';
     const element = document.createElement(block ? 'div' : 'span');
     element.setAttribute(block ? MATH_BLOCK_SOURCE_ATTR : MATH_SOURCE_ATTR, source);
     element.textContent = block ? `$$\n${source}\n$$` : `$$${source}$$`;

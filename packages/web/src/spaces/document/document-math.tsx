@@ -44,6 +44,7 @@ import type { ViewMutationRecord } from '@tiptap/pm/view';
 import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { useTranslation } from '@web/i18n/use-translation';
+import { MATH_BLOCK_SOURCE_ATTR, MATH_SOURCE_ATTR } from '@web/lib/formula-source';
 import { KATEX_OPTIONS } from '@web/lib/katex-options';
 import { cn } from '@web/lib/utils';
 import { DOC_TABLE } from '@web/spaces/document/document-table-nodes';
@@ -54,14 +55,18 @@ export const MATH_BLOCK = 'mathBlock';
 /** The inline formula's type name. */
 export const MATH_INLINE = 'math';
 
-/** The attribute our own copies carry the inline source in. */
-export const MATH_SOURCE_ATTR = 'data-math';
 
-/** The attribute our own copies carry the block source in. */
-export const MATH_BLOCK_SOURCE_ATTR = 'data-math-block';
+/**
+ * Whether a node is a formula, block or inline.
+ * @param node - The node.
+ * @returns True for `mathBlock` and `math`.
+ */
+export function isFormula(node: PMNode): boolean {
+  return node.type.name === MATH_BLOCK || node.type.name === MATH_INLINE;
+}
 
 /** The MathML annotation that holds a formula's LaTeX. */
-const TEX_ANNOTATION = 'annotation[encoding="application/x-tex"]';
+export const TEX_ANNOTATION = 'annotation[encoding="application/x-tex"]';
 
 /** The editor as the node views use it. */
 type AnyEditor = BlockNoteEditor<never, never, never>;
@@ -227,17 +232,8 @@ function faceStore(initial: FaceState): FaceStore {
   return {
     get: () => state,
     set: (patch) => {
-      const next = { ...state, ...patch };
-      if (
-        next.source === state.source &&
-        next.before === state.before &&
-        next.open === state.open &&
-        next.selected === state.selected &&
-        next.editable === state.editable
-      ) {
-        return;
-      }
-      state = next;
+      if ((Object.keys(patch) as (keyof FaceState)[]).every((key) => patch[key] === state[key])) return;
+      state = { ...state, ...patch };
       listeners.forEach((listener) => {
         listener();
       });
@@ -556,11 +552,10 @@ function staticFormula(inline: boolean): { dom: HTMLElement; contentDOM: HTMLEle
   return { dom, contentDOM: code };
 }
 
-/** What `render` sees as `this` inside a node view. */
-interface RenderContext {
-  readonly renderType?: 'nodeView' | 'dom';
-  readonly props?: { readonly node: PMNode };
-}
+/** What `render` sees as `this`: a node view hands it the node it draws. */
+type RenderContext =
+  | { readonly renderType: 'nodeView'; readonly props: { readonly node: PMNode } }
+  | { readonly renderType?: 'dom'; readonly props?: undefined };
 
 /** The block as `render` receives it. */
 interface FormulaBlock {
@@ -573,10 +568,25 @@ interface FormulaBlock {
  * @param content - Its content.
  * @returns The source.
  */
-function textOf(content: FormulaBlock['content']): string {
+export function formulaText(content: FormulaBlock['content']): string {
   if (content === undefined) return '';
   if (typeof content === 'string') return content;
   return content.map((piece) => piece.text ?? '').join('');
+}
+
+/** What opening a block formula's box needs of the editor. */
+type BoxOpener = Pick<AnyEditor, 'setTextCursorPosition' | 'getExtension'>;
+
+/**
+ * Puts the caret at the end of a block formula's source and opens its box, as
+ * a click on it does. The caret goes first: BlockNote closes a box the
+ * selection is not in.
+ * @param editor - The editor.
+ * @param id - The formula block's id.
+ */
+export function openFormulaBlock(editor: BoxOpener, id: string): void {
+  editor.setTextCursorPosition(id, 'end');
+  editor.getExtension(SourceBlockWithPreviewExtension)?.store.setState((state) => ({ ...state, popupOpen: id }));
 }
 
 /**
@@ -641,7 +651,7 @@ export function mathBlockSpec(): unknown {
         view = mountFormula(
           false,
           {
-            ...(this.props === undefined ? { source: textOf(block.content), before: null } : sourcesOf(this.props.node)),
+            ...sourcesOf(this.props.node),
             open: false,
             selected: false,
             editable: editor.isEditable,
@@ -649,8 +659,7 @@ export function mathBlockSpec(): unknown {
           {
             open: () => {
               if (!editor.isEditable) return;
-              preview.store.setState((state) => ({ ...state, popupOpen: block.id }));
-              editor.setTextCursorPosition(block.id, 'end');
+              openFormulaBlock(editor, block.id);
               editor.focus();
             },
             close: () => {
@@ -663,7 +672,7 @@ export function mathBlockSpec(): unknown {
         );
         return view;
       },
-      toExternalHTML: (block: FormulaBlock) => ({ dom: externalFormula(textOf(block.content), true) }),
+      toExternalHTML: (block: FormulaBlock) => ({ dom: externalFormula(formulaText(block.content), true) }),
     } as never,
   )();
 }
@@ -747,7 +756,7 @@ export function mathInlineSpec(): unknown {
         queueMicrotask(sync);
         return view;
       },
-      toExternalHTML: (inlineContent: FormulaBlock) => ({ dom: externalFormula(textOf(inlineContent.content), false) }),
+      toExternalHTML: (inlineContent: FormulaBlock) => ({ dom: externalFormula(formulaText(inlineContent.content), false) }),
     } as never,
   );
 }
