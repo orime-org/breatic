@@ -86,6 +86,14 @@ describe("a junction fits its bounds or becomes a Cut (frames-split §5.4; canva
     expect(api.fitTransitions([{ ...first!, transition: { kind: "wipeLeft", duration } }, last!], fps(25))[0]!.transition).toEqual(cut);
   });
 
+  it("TR09 keeps a length the Dialog wrote to the nearest microsecond of a bound, and still cuts one a frame away", () => {
+    // Two 30000/1001 frames: both bounds are 1001/30000 s, which no whole number of microseconds equals.
+    const [first, last] = clips(2002 / 30000, 3);
+    const rate = fps(30000, 1001);
+    expect(api.fitTransitions([{ ...first!, transition: { kind: "fade", duration: 0.033367 } }, last!], rate)[0]!.transition).toEqual({ kind: "fade", duration: 0.033367 });
+    expect(api.fitTransitions([{ ...first!, transition: { kind: "fade", duration: 0.034 } }, last!], rate)[0]!.transition).toEqual(cut);
+  });
+
   it("TR06 without a frame rate judges by half the shorter clip alone", () => {
     const [first, last] = clips(4, 3);
     expect(api.fitTransitions([{ ...first!, transition: { kind: "fade", duration: 0.02 } }, last!], null)[0]!.transition).toEqual({ kind: "fade", duration: 0.02 });

@@ -250,9 +250,15 @@ export function transitionDurationBounds(clips: readonly VideoToolTimelineClip[]
 export function fitTransitions(clips: readonly VideoToolTimelineClip[], fps: VideoFrameRate | null): VideoToolTimelineClip[] {
   return junctions(clips, fps, (clip, bounds) => {
     const { duration } = clip.transition;
-    return bounds !== null && duration >= bounds.min && duration <= bounds.max ? clip.transition : CUT;
+    return bounds !== null && duration >= bounds.min - ON_MICROSECOND_GRID && duration <= bounds.max + ON_MICROSECOND_GRID ? clip.transition : CUT;
   });
 }
+
+/**
+ * How far a stored length may sit outside its bounds: the Dialog writes lengths to the nearest whole microsecond, and a
+ * bound such as 1001/30000 s is no whole number of them; the frame plan rounds to whole frames either way.
+ */
+const ON_MICROSECOND_GRID = 5e-7 + 1e-9;
 
 /**
  * The clips after an edit inside the timeline Dialog (canvas design §4 transitions row): each junction keeps its type with its duration
