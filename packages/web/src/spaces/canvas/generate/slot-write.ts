@@ -2,27 +2,17 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Filling and clearing a slot — the only place that knows which node fields
- * one slot owns.
+ * Filling and clearing a slot — the only place in web that knows which node
+ * fields one slot owns.
  *
- * A slot owns exactly one node field, and the whole pick lives inside it: a
- * slot taking something an `<img>` cannot paint stores `{url, cover}` rather
- * than putting the poster in a field of its own (#1918). Two fields would be
- * two independent last-writer-wins registers, and two clients picking at once
- * would converge per-field — one client's video wearing the other's poster.
- *
- * Kept apart from the registry itself: that table is data every layer reads,
- * including the toolbar and the payload builder, while this reaches the
- * document. Kept apart from `slot-pick` too — that answers "can this node fill
- * the slot", and this writes the field a slot registry names.
+ * What a fill stores (`slotFillValue`) and the bodies collab writes with live
+ * in `@breatic/shared/canvas-model` (`slot-fill.ts`, breatic#1488 §8.1); these
+ * write through `setNodeSlotValue`, which asks the size cap. A slot owns
+ * exactly one node field, and the whole pick lives inside it (#1918).
  */
 
 import { setNodeSlotValue } from '@web/data/yjs/canvas-space';
-import {
-  pickedSlotCover,
-  pickedSlotDuration,
-  pickedSlotUrl,
-} from '@breatic/shared/canvas-model';
+import { slotFillValue } from '@breatic/shared/canvas-model';
 import type { ClickedNode } from '@breatic/shared/canvas-model';
 import type { SlotSpec } from '@breatic/shared/canvas-model';
 
@@ -47,19 +37,9 @@ export function fillSlot(
   spec: SlotSpec,
   clicked: ClickedNode,
 ): boolean {
-  const url = pickedSlotUrl(clicked, spec.accepts);
-  if (url === null) return false;
-  const cover = spec.storesCover ? pickedSlotCover(clicked) : null;
-  const duration = spec.storesCover ? pickedSlotDuration(clicked) : null;
-  setNodeSlotValue(
-    projectId,
-    spaceId,
-    nodeId,
-    spec.field,
-    spec.storesCover
-      ? { url, ...(cover ? { cover } : {}), ...(duration !== null ? { duration } : {}) }
-      : url,
-  );
+  const value = slotFillValue(spec, clicked);
+  if (value === null) return false;
+  setNodeSlotValue(projectId, spaceId, nodeId, spec.field, value);
   return true;
 }
 

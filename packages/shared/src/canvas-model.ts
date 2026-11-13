@@ -4,7 +4,8 @@
 /**
  * The pure canvas model that a Node process (collab) shares with the browser:
  * node views, geometry and grouping, node creation and placement, the gate,
- * and how a generation's slots, references and payload are read (breatic#1488
+ * how a generation's slots, references and payload are read, the bodies of
+ * every canvas write, and the size-cap decisions a write is judged by (breatic#1488
  * §8.1). It stays out of the main entry because parts of it import yjs.
  */
 
@@ -13,7 +14,10 @@ export * from "@shared/canvas/model/audio-mode-options.js";
 export * from "@shared/canvas/model/audio-slots.js";
 export * from "@shared/canvas/model/audio-task-payload.js";
 export * from "@shared/canvas/model/canvas-filled.js";
+export * from "@shared/canvas/model/canvas-read.js";
+export * from "@shared/canvas/model/canvas-write.js";
 export * from "@shared/canvas/model/derive-references.js";
+export * from "@shared/canvas/model/doc-size-store.js";
 export * from "@shared/canvas/model/drop-layout.js";
 export * from "@shared/canvas/model/focus-images.js";
 export * from "@shared/canvas/model/fragment-prompt.js";
@@ -41,9 +45,12 @@ export * from "@shared/canvas/model/prompt-nodes.js";
 export * from "@shared/canvas/model/proposal-prompt.js";
 export * from "@shared/canvas/model/reference-urls.js";
 export * from "@shared/canvas/model/restore-node-content.js";
+export * from "@shared/canvas/model/slot-fill.js";
 export * from "@shared/canvas/model/slot-pick.js";
 export * from "@shared/canvas/model/slots.js";
+export * from "@shared/canvas/model/space-write-rules.js";
 export * from "@shared/canvas/model/stand-in.js";
+export * from "@shared/canvas/model/storyboard-shots.js";
 export * from "@shared/canvas/model/style-slot.js";
 export * from "@shared/canvas/model/task-payload.js";
 export * from "@shared/canvas/model/template-writes.js";

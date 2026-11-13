@@ -8,28 +8,59 @@ import type {
   AnnotationReply,
   CanvasNodeFields,
   FocusImage,
-  NodeType,
 } from '@breatic/shared';
-import {
-  AUDIO_GENERATION_MODES,
-  CANVAS_NODES_KEY,
-  GENERATION_NODE_MODES,
-  canGenerate,
-} from '@breatic/shared';
+import { CANVAS_NODES_KEY } from '@breatic/shared';
 
-import { MAX_FOCUS_ENTRIES, validFocusImages } from '@breatic/shared/canvas-model';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
 import { runHistoryStep } from '@web/data/yjs/history-step';
+import type { NodeMediaFields } from '@breatic/shared';
+import { bodyToPlainText } from '@breatic/shared/canvas/text-body';
+import type { CanvasEdge, CanvasNodeView, NodePlacement, SnapshotNode } from '@breatic/shared/canvas-model';
 import {
-  usableUrls,
-  writeNodeMedia,
-  type NodeMediaFields,
-} from '@breatic/shared';
-import { bodyFromText, bodyToPlainText, writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
-import type { CanvasEdge, NodePlacement, TypedNodeView } from '@breatic/shared/canvas-model';
-import { toNodeView } from '@breatic/shared/canvas-model';
-import { fillNestedData, splitSnapshot } from '@breatic/shared/canvas-model';
+  CANVAS_EDGES_KEY,
+  addEdgeInDoc,
+  addNodeFocusImageInDoc,
+  addNodeInDoc,
+  addReplyInDoc,
+  annotationEditTarget,
+  appendNodeSlotItemInDoc,
+  createGroupInDoc,
+  editAnnotationBodyInDoc,
+  editReplyInDoc,
+  ensureTextBodyInDoc,
+  expandGroupInDoc,
+  groupEntry,
+  nodeDataMap,
+  positionApplies,
+  readEdges,
+  readNodes,
+  removalKindOf,
+  removeEdgeInDoc,
+  removeElementsInDoc,
+  removeNodeFocusImageInDoc,
+  removeNodeInDoc,
+  removeNodeSlotItemInDoc,
+  removeReplyInDoc,
+  reparentApplies,
+  repliesArray,
+  replyIndex,
+  resizeGroupInDoc,
+  restoreNodeMediaInDoc,
+  setGroupBackgroundInDoc,
+  setNodeExtractedTextInDoc,
+  setNodeLockedInDoc,
+  setNodeModeInDoc,
+  setNodeModelInDoc,
+  setNodeNameInDoc,
+  setNodeParamsInDoc,
+  setNodeParentInDoc,
+  setNodePositionInDoc,
+  setNodeSlotValueInDoc,
+  setNodeTemplateNodeInDoc,
+  slotItemsWithout,
+  writeSnapshotNodesInDoc,
+} from '@breatic/shared/canvas-model';
 import {
   writeSpaceDoc,
   type SpaceWriteKind,
@@ -59,26 +90,16 @@ import {
  * Read side projects each wire node through `toNodeView`, returning
  * ReactFlow-ready `CanvasNodeView`s (only nodes with a dirty / unknown
  * `type` or a missing `data` Y.Map are skipped).
+ *
+ * What each write puts in the document lives in `@breatic/shared/canvas-model`
+ * (`canvas-write.ts`), so collab writes a canvas the same way (breatic#1488
+ * §8.1). Every exported write here is a thin shell around one of those
+ * bodies: it resolves the document, asks the size cap through
+ * `writeSpaceDoc`, and runs the body inside `doc.transact(…, origin)`.
  */
 
-/**
- * A render-ready canvas node: identity, position, and its type paired with the
- * view of that type. `type` is the stored node type and doubles as the
- * ReactFlow node type (the `NODE_TYPES` registry key); checking it narrows
- * `data`.
- */
-export type CanvasNodeView = TypedNodeView & {
-  id: string;
-  position: { x: number; y: number };
-  /**
-   * Containing Group id (group redesign 2026-06-23) — present on a member
-   * node so `toFlowNode` can hand ReactFlow a parented node. Absent for
-   * top-level nodes.
-   */
-  parentId?: string;
-};
-
-export type { CanvasEdge, NodePlacement };
+export type { CanvasEdge, CanvasNodeView, NodePlacement, SnapshotNode };
+export { nodeDataMap, readEdges, readNodes };
 
 interface CanvasSpaceState {
   nodes: ReadonlyArray<CanvasNodeView>;
@@ -128,7 +149,7 @@ interface CanvasSpaceState {
 }
 
 const NODES_KEY = CANVAS_NODES_KEY;
-const EDGES_KEY = 'edgesMap';
+const EDGES_KEY = CANVAS_EDGES_KEY;
 
 /**
  * Tracked transaction origin for canvas undo. Every frontend structural /
@@ -369,44 +390,6 @@ function canvasWrite(
   return { name: docName.canvasSpace(projectId, spaceId), options: { kind } };
 }
 
-/**
- * The fields picking a model writes: the model, every per-model record, and
- * the pick remembered under the mode.
- * @param data - The node's data map.
- * @param mode - The active mode.
- * @param model - The picked model.
- * @param paramsByModel - Every per-model record, written whole.
- * @returns The fields.
- */
-function modelPickFields(
-  data: Y.Map<unknown>,
-  mode: string,
-  model: string,
-  paramsByModel: Record<string, Record<string, unknown>>,
-): { model: string; paramsByModel: Record<string, Record<string, unknown>>; modelByMode: Record<string, string> } {
-  const prev = data.get('modelByMode');
-  const base =
-    prev != null && typeof prev === 'object'
-      ? (prev as Record<string, string>)
-      : {};
-  return { model, paramsByModel, modelByMode: { ...base, [mode]: model } };
-}
-
-/**
- * The map an annotation edit writes: the annotation's data, or one reply.
- * @param doc - The canvas document.
- * @param nodeId - Id of the annotation.
- * @param replyId - The reply, or null for the body.
- * @returns The map, or null when it is gone.
- */
-function annotationEditTarget(doc: Y.Doc, nodeId: string, replyId: string | null): Y.Map<unknown> | null {
-  if (replyId === null) return nodeDataMap(doc, nodeId);
-  const replies = repliesArray(doc, nodeId);
-  if (!replies) return null;
-  const index = replyIndex(replies, replyId);
-  return index === -1 ? null : replies.get(index);
-}
-
 /** Who made a canvas document's writes, as far as the canvas needs to know. */
 interface WriteOrigins {
   /** Whether this client made the newest write to the nodes. */
@@ -591,129 +574,6 @@ export function useCanvasSpace(
 }
 
 /**
- * Build the nested `data` Y.Map for a node from a plain wire data object.
- * Each defined field becomes a Y.Map entry (plain values — strings,
- * numbers, booleans, plain arrays / objects — matching how the backend
- * reads `taskCounts` as a plain object). Undefined fields are omitted.
- *
- * Some keys are exceptions to the plain-values convention, and every one of
- * them is seeded here rather than on demand. A container created on demand is a
- * whole-container race: two clients that both find it missing each mint their
- * own, map-level last-write-wins keeps one, and the loser's content disappears
- * with their container. Born inside the creating transaction the container is
- * a single replicated creation event, every edit inside it commutes, and
- * undoing the creation takes the container along instead of orphaning it.
- *
- * `focusImages` — a `Y.Array` CRDT sequence on EVERY node (concurrent-add
- * safe, see {@link addNodeFocusImage}), seeded from a provided wire value else
- * empty; the two focus writers maintain it (the backend never reads the field,
- * and `toJSON()` serializes both encodings identically).
- *
- * `body` — a text node's shared fragment, what its editor binds to (#1774).
- * Seeded non-empty, because the editor's schema wants at least one block.
- *
- * `prompts` — one Generate prompt fragment per mode, on the modalities that
- * offer Generate (#1880, #2218). Seeded empty; {@link getPromptFragment} only
- * reads.
- *
- * `lyrics` — one lyrics fragment per audio mode, the words to sing beside the
- * style brief (#1960, #2218). Seeded empty; {@link getLyricsFragment} only
- * reads.
- *
- * `shots` — the video node's shots, empty, which only the multi-shot mode
- * uses; `node-storyboard.ts` reads and edits it.
- * @param data - The plain wire data fields to write.
- * @param type - The node's modality, which decides which containers are
- *   seeded: `body` for text, `prompts` for generate-capable modalities,
- *   `lyrics` for audio, `shots` for video, and `replies` for an
- *   annotation.
- * @returns A Y.Map populated with the defined data fields.
- */
-function buildDataMap(
-  data: CanvasNodeFields['data'],
-  type: NodeType,
-): Y.Map<unknown> {
-  const map = new Y.Map<unknown>();
-  // Tracked with a local flag, NOT `map.has()` — reads on a not-yet
-  // integrated Y.Map do not see preliminary content, so `has` would
-  // always answer false here and the eager-seed below would overwrite a
-  // just-seeded array with an empty one.
-  let focusSeeded = false;
-  for (const [key, value] of Object.entries(data)) {
-    if (value === undefined) continue;
-    // A text node's words go into its shared body below, never into a plain
-    // field. Every creation path that arrives with text — a paste, a copied
-    // node, a dropped file — hands it over as `content`, because that is what
-    // fits through a clipboard; this is where it stops being a plain string.
-    if (key === 'content' && type === 'text') continue;
-    if (key === 'focusImages' && Array.isArray(value)) {
-      // Seed the CRDT sequence from a provided wire value AS-IS (no
-      // sanitizing — readers sanitize; a fixture / forged value must be
-      // representable so the read-side defenses stay testable).
-      const arr = new Y.Array<unknown>();
-      arr.push([...value]);
-      map.set(key, arr);
-      focusSeeded = true;
-      continue;
-    }
-    map.set(key, value);
-  }
-  // Eager-seed the crops container at node BIRTH (design adversary
-  // 2026-07-17): creating it lazily on the first append is itself a
-  // whole-container LWW race — two clients cropping a cropless node
-  // concurrently would each create their own Y.Array under the key and
-  // one container would vanish WITH its crop. Born-with-the-node, the
-  // container is a single replicated creation event and every append
-  // everywhere commutes. Readers see `focusImages: []` (inert). A
-  // non-array wire value under the key is overwritten by the empty
-  // container — shape sanitation at birth.
-  if (!focusSeeded) map.set('focusImages', new Y.Array<unknown>());
-  // Non-empty from birth: the editor's schema wants at least one block, and a
-  // body that disagrees loses the redo stack the first time an undo empties it
-  // (`@breatic/shared`'s `document-body` states the same invariant for
-  // document Space bodies).
-  if (type === 'text') {
-    const text = typeof data.content === 'string' ? data.content : '';
-    map.set('body', bodyFromText(text));
-  }
-  // #1880. Replayed against the old lazy-create code through the public API,
-  // the merge kept one client's line and the other's vanished outright — the
-  // race the header describes, observed rather than reasoned about. Only the
-  // modalities that offer Generate get one; on a group or a sticky it would be
-  // a container nothing ever reads.
-  // One prompt per mode (#2218): switching mode switches to that mode's own
-  // words, and every mode's container is born here for the #1880 reason.
-  if (canGenerate(type)) {
-    map.set('prompts', fragmentsFor(GENERATION_NODE_MODES[type as keyof typeof GENERATION_NODE_MODES] ?? []));
-  }
-  // Every audio mode gets lyrics: which modes' models take them is a catalog
-  // fact this birth does not know, and a container born later would race.
-  if (type === 'audio') map.set('lyrics', fragmentsFor(AUDIO_GENERATION_MODES));
-  // The multi-shot mode's shots. Each shot is inserted whole with its own
-  // fragment, so concurrent adds both survive.
-  if (type === 'video') map.set('shots', new Y.Array<Y.Map<unknown>>());
-  // Same reasoning as the crops container, and the same race #1880 recorded:
-  // two people replying to an annotation that has none would each create a
-  // Y.Array under this key and the merge would keep one, taking a reply with
-  // it. Born with the node, every append everywhere commutes. Nothing arrives
-  // over the wire carrying `replies` — annotations are not creatable through
-  // the clipboard, and every other birth path builds its data fresh.
-  if (type === 'annotation') map.set('replies', new Y.Array<Y.Map<unknown>>());
-  return map;
-}
-
-/**
- * One empty fragment per mode, keyed by mode.
- * @param modes - The modes to seed.
- * @returns The map of fragments.
- */
-function fragmentsFor(modes: readonly string[]): Y.Map<Y.XmlFragment> {
-  const out = new Y.Map<Y.XmlFragment>();
-  for (const mode of modes) out.set(mode, new Y.XmlFragment());
-  return out;
-}
-
-/**
  * Add a node — frontend-owned operation. Stores the wire `CanvasNodeFields`
  * shape (a node Y.Map with a nested `data` Y.Map) under `nodesMap`.
  * @param projectId - Project the canvas space belongs to.
@@ -727,49 +587,15 @@ export function addNode(
   node: CanvasNodeFields,
 ): SpaceWriteResult {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
   const { name, options } = canvasWrite(projectId, spaceId, 'add');
   return writeSpaceDoc(name, options, () => {
-    doc.transact(() => {
-      nodesMap.set(node.id, nodeEntry(node, buildDataMap(node.data, node.type)));
-    }, CANVAS_UNDO);
+    doc.transact(() => addNodeInDoc(doc, node), CANVAS_UNDO);
   });
 }
 
 /**
- * One node's entry in `nodesMap`, holding a data map built for its type.
- * @param node - The node's id, type, position and Group link.
- * @param data - Its data map.
- * @returns The entry.
- */
-function nodeEntry(node: Omit<SnapshotNode, 'data'>, data: Y.Map<unknown>): Y.Map<unknown> {
-  const map = new Y.Map<unknown>();
-  map.set('id', node.id);
-  map.set('type', node.type);
-  // Group containment: persist the member→Group link as a top-level field
-  // (alongside position), only when set so top-level nodes carry no key.
-  if (node.parentId !== undefined) map.set('parentId', node.parentId);
-  map.set('position', node.position);
-  map.set('data', data);
-  return map;
-}
-
-/** A node to write from a clipboard snapshot: `data` is `snapshotNodeData`'s output. */
-export interface SnapshotNode {
-  id: string;
-  type: string;
-  position: { x: number; y: number };
-  parentId?: string;
-  data: Record<string, unknown>;
-}
-
-/**
  * Write nodes and edges carried by a clipboard snapshot, in one undo step
- * (inner#1349, design 5.3). Each node is born through the same path as
- * {@link addNode}, so every container a node of its type needs exists from
- * birth; the snapshot's nested structures are then filled into those
- * containers once the node is in the document, where they can be read.
- * Edges whose ends are not both in the document are skipped.
+ * (inner#1349, design 5.3), through the shared body every canvas writer uses.
  * @param doc - The canvas document (a live Space, or a throwaway doc).
  * @param nodes - The nodes, groups before their members.
  * @param edges - The edges, each with its `createdAt`.
@@ -779,67 +605,7 @@ export function writeSnapshotNodes(
   nodes: ReadonlyArray<SnapshotNode>,
   edges: ReadonlyArray<CanvasEdge>,
 ): void {
-  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
-  const edgesMap = doc.getMap<Y.Map<unknown>>(EDGES_KEY);
-  doc.transact(() => {
-    for (const node of nodes) {
-      const { plain, nested } = splitSnapshot(node.data);
-      const type = node.type as NodeType;
-      // A text node's words arrive in its body tree; `content` would seed the
-      // body a second time.
-      if (type === 'text') delete plain.content;
-      const data = buildDataMap(plain as CanvasNodeFields['data'], type);
-      nodesMap.set(node.id, nodeEntry(node, data));
-      fillNestedData(data, nested);
-    }
-    for (const edge of edges) putEdge(nodesMap, edgesMap, edge);
-  }, CANVAS_UNDO);
-}
-
-/**
- * Within an open transaction, release a Group's members before it is deleted:
- * clear each member's `parentId` and convert its parent-relative position back
- * to absolute. Deleting a Group never deletes its members — they become
- * top-level nodes. Members deleted in the same call are skipped: rewriting a
- * node about to go would turn a pure removal into a compound one (design 5.2).
- * No-op when the group has no resolvable position.
- * @param nodesMap - The canvas-space `nodesMap` (call inside a transaction).
- * @param groupId - The Group node being deleted.
- * @param deleted - Every node deleted in the same call.
- */
-function releaseGroupMembers(
-  nodesMap: Y.Map<Y.Map<unknown>>,
-  groupId: string,
-  deleted: ReadonlySet<string>,
-): void {
-  const group = nodesMap.get(groupId);
-  if (!(group instanceof Y.Map)) return;
-  const groupPos = group.get('position') as { x: number; y: number } | undefined;
-  nodesMap.forEach((node, id) => {
-    if (!(node instanceof Y.Map) || node.get('parentId') !== groupId || deleted.has(id)) return;
-    if (groupPos) {
-      const p = node.get('position') as { x: number; y: number } | undefined;
-      if (p) node.set('position', { x: p.x + groupPos.x, y: p.y + groupPos.y });
-    }
-    node.delete('parentId');
-  });
-}
-
-/**
- * What deleting these nodes produces (design 5.2): `compound` when a Group
- * goes while one of its members stays, since that member is rewritten to
- * stand on its own; otherwise `remove`.
- * @param nodesMap - The canvas-space `nodesMap`.
- * @param deleted - The nodes being deleted.
- * @returns The kind.
- */
-function removalKindOf(nodesMap: Y.Map<Y.Map<unknown>>, deleted: ReadonlySet<string>): 'remove' | 'compound' {
-  let kind: 'remove' | 'compound' = 'remove';
-  nodesMap.forEach((node, id) => {
-    const parentId = node instanceof Y.Map ? node.get('parentId') : undefined;
-    if (typeof parentId === 'string' && deleted.has(parentId) && !deleted.has(id)) kind = 'compound';
-  });
-  return kind;
+  doc.transact(() => writeSnapshotNodesInDoc(doc, nodes, edges), CANVAS_UNDO);
 }
 
 /**
@@ -872,16 +638,9 @@ export function removeNode(
 ): SpaceWriteResult {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
-  const deleted = new Set([nodeId]);
-  const { name, options } = canvasWrite(projectId, spaceId, removalKindOf(nodesMap, deleted));
+  const { name, options } = canvasWrite(projectId, spaceId, removalKindOf(nodesMap, new Set([nodeId])));
   return writeSpaceDoc(name, options, () => {
-    doc.transact(() => {
-      const node = nodesMap.get(nodeId);
-      if (node instanceof Y.Map && node.get('type') === 'group') {
-        releaseGroupMembers(nodesMap, nodeId, deleted);
-      }
-      nodesMap.delete(nodeId);
-    }, CANVAS_UNDO);
+    doc.transact(() => removeNodeInDoc(doc, nodeId), CANVAS_UNDO);
   });
 }
 
@@ -905,13 +664,10 @@ export function setNodePosition(
   parentId: string | null,
 ): void {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
-  const node = nodesMap.get(nodeId);
-  if (!node) return;
-  if ((node.get('parentId') ?? null) !== parentId) return;
+  if (!positionApplies(doc, nodeId, parentId)) return;
   const { name, options } = canvasWrite(projectId, spaceId, 'edit');
   writeSpaceDoc(name, options, () => {
-    doc.transact(() => node.set('position', position), CANVAS_UNDO);
+    doc.transact(() => setNodePositionInDoc(doc, nodeId, position, parentId), CANVAS_UNDO);
   });
 }
 
@@ -931,14 +687,10 @@ export function setNodeName(
   name: string,
 ): void {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
-  const node = nodesMap.get(nodeId);
-  if (!node) return;
-  const data = node.get('data');
-  if (!(data instanceof Y.Map)) return;
+  if (!nodeDataMap(doc, nodeId)) return;
   const write = canvasWrite(projectId, spaceId, 'edit');
   writeSpaceDoc(write.name, write.options, () => {
-    doc.transact(() => data.set('name', name), CANVAS_UNDO);
+    doc.transact(() => setNodeNameInDoc(doc, nodeId, name), CANVAS_UNDO);
   });
 }
 
@@ -958,13 +710,10 @@ export function setNodeTemplateNode(
   templateNode: NonNullable<CanvasNodeFields['data']['templateNode']>,
 ): void {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  const node = doc.getMap<Y.Map<unknown>>(NODES_KEY).get(nodeId);
-  if (!node) return;
-  const data = node.get('data');
-  if (!(data instanceof Y.Map)) return;
+  if (!nodeDataMap(doc, nodeId)) return;
   const { name, options } = canvasWrite(projectId, spaceId, 'edit');
   writeSpaceDoc(name, options, () => {
-    doc.transact(() => data.set('templateNode', { ...templateNode }), CANVAS_UNDO);
+    doc.transact(() => setNodeTemplateNodeInDoc(doc, nodeId, templateNode), CANVAS_UNDO);
   });
 }
 
@@ -984,50 +733,13 @@ export function setNodeLocked(
   locked: boolean,
 ): void {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
-  const node = nodesMap.get(nodeId);
-  if (!node) return;
-  const data = node.get('data');
-  if (!(data instanceof Y.Map)) return;
+  if (!nodeDataMap(doc, nodeId)) return;
   // Unlocking deletes the key, a pure removal a full Space still takes;
   // readers treat only `=== true` as locked (design 5.2).
   const { name, options } = canvasWrite(projectId, spaceId, locked ? 'edit' : 'remove');
   writeSpaceDoc(name, options, () => {
-    doc.transact(() => {
-      if (locked) data.set('locked', true);
-      else data.delete('locked');
-    }, CANVAS_UNDO);
+    doc.transact(() => setNodeLockedInDoc(doc, nodeId, locked), CANVAS_UNDO);
   });
-}
-
-/**
- * An annotation's replies sequence.
- *
- * The `Y.Array` check narrows what the document hands back rather than
- * allowing for a sticky without a container: every sticky is born holding one
- * ({@link buildDataMap}) and nothing removes it.
- * @param doc - The canvas-space document.
- * @param nodeId - Id of the annotation node.
- * @returns The sequence, or `null` when the node is gone.
- */
-function repliesArray(
-  doc: Y.Doc,
-  nodeId: string,
-): Y.Array<Y.Map<unknown>> | null {
-  const replies = nodeDataMap(doc, nodeId)?.get('replies');
-  return replies instanceof Y.Array
-    ? (replies as Y.Array<Y.Map<unknown>>)
-    : null;
-}
-
-/**
- * Index of the reply with this id.
- * @param replies - The annotation's replies sequence.
- * @param replyId - Id of the reply to find.
- * @returns Its position, or `-1` when no reply carries that id.
- */
-function replyIndex(replies: Y.Array<Y.Map<unknown>>, replyId: string): number {
-  return replies.toArray().findIndex((reply) => reply.get('id') === replyId);
 }
 
 /**
@@ -1051,18 +763,10 @@ export function addReply(
   reply: AnnotationReply,
 ): boolean {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  const replies = repliesArray(doc, nodeId);
-  if (!replies) return false;
+  if (!repliesArray(doc, nodeId)) return false;
   const { name, options } = canvasWrite(projectId, spaceId, 'add');
   return writeSpaceDoc(name, options, () => {
-    doc.transact(() => {
-      const map = new Y.Map<unknown>();
-      map.set('id', reply.id);
-      map.set('content', reply.content);
-      map.set('createdBy', reply.createdBy);
-      map.set('createdAt', reply.createdAt);
-      replies.push([map]);
-    }, CANVAS_UNDO);
+    doc.transact(() => addReplyInDoc(doc, nodeId, reply), CANVAS_UNDO);
   }).ok;
 }
 
@@ -1090,15 +794,11 @@ export function editAnnotationBody(
   editedAt: number,
 ): boolean {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  const data = annotationEditTarget(doc, nodeId, null);
-  if (!data) return false;
+  if (!annotationEditTarget(doc, nodeId, null)) return false;
   // The body is words the user wrote, of any length: an add (design 5.2).
   const { name, options } = canvasWrite(projectId, spaceId, 'add');
   return writeSpaceDoc(name, options, () => {
-    doc.transact(() => {
-      data.set('content', content);
-      data.set('editedAt', editedAt);
-    }, CANVAS_UNDO);
+    doc.transact(() => editAnnotationBodyInDoc(doc, nodeId, content, editedAt), CANVAS_UNDO);
   }).ok;
 }
 
@@ -1122,14 +822,10 @@ export function editReply(
   editedAt: number,
 ): boolean {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  const reply = annotationEditTarget(doc, nodeId, replyId);
-  if (!reply) return false;
+  if (!annotationEditTarget(doc, nodeId, replyId)) return false;
   const { name, options } = canvasWrite(projectId, spaceId, 'add');
   return writeSpaceDoc(name, options, () => {
-    doc.transact(() => {
-      reply.set('content', content);
-      reply.set('editedAt', editedAt);
-    }, CANVAS_UNDO);
+    doc.transact(() => editReplyInDoc(doc, nodeId, replyId, content, editedAt), CANVAS_UNDO);
   }).ok;
 }
 
@@ -1154,12 +850,10 @@ export function removeReply(
 ): void {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const replies = repliesArray(doc, nodeId);
-  if (!replies) return;
-  const index = replyIndex(replies, replyId);
-  if (index === -1) return;
+  if (!replies || replyIndex(replies, replyId) === -1) return;
   const { name, options } = canvasWrite(projectId, spaceId, 'remove');
   writeSpaceDoc(name, options, () => {
-    doc.transact(() => replies.delete(index, 1), CANVAS_UNDO);
+    doc.transact(() => removeReplyInDoc(doc, nodeId, replyId), CANVAS_UNDO);
   });
 }
 
@@ -1187,14 +881,10 @@ export function setNodeParams(
   paramsByModel: Record<string, Record<string, unknown>>,
 ): void {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
-  const node = nodesMap.get(nodeId);
-  if (!node) return;
-  const data = node.get('data');
-  if (!(data instanceof Y.Map)) return;
+  if (!nodeDataMap(doc, nodeId)) return;
   const { name, options } = canvasWrite(projectId, spaceId, 'edit');
   writeSpaceDoc(name, options, () => {
-    doc.transact(() => data.set('paramsByModel', paramsByModel), CANVAS_UNDO);
+    doc.transact(() => setNodeParamsInDoc(doc, nodeId, paramsByModel), CANVAS_UNDO);
   });
 }
 
@@ -1231,20 +921,10 @@ export function setNodeSlotValue(
   value: string | Readonly<Record<string, string | number>> | null,
 ): void {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
-  const node = nodesMap.get(nodeId);
-  if (!node) return;
-  const data = node.get('data');
-  if (!(data instanceof Y.Map)) return;
+  if (!nodeDataMap(doc, nodeId)) return;
   const { name, options } = canvasWrite(projectId, spaceId, value === null ? 'remove' : 'edit');
   writeSpaceDoc(name, options, () => {
-    doc.transact(() => {
-      if (value === null) {
-        if (data.has(key)) data.delete(key);
-      } else {
-        data.set(key, value);
-      }
-    }, CANVAS_UNDO);
+    doc.transact(() => setNodeSlotValueInDoc(doc, nodeId, key, value), CANVAS_UNDO);
   });
 }
 
@@ -1274,21 +954,11 @@ export function appendNodeSlotItem(
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const data = doc.getMap<Y.Map<unknown>>(NODES_KEY).get(nodeId)?.get('data');
   if (!(data instanceof Y.Map)) return 'node-missing';
-  let result: 'added' | 'filled' | 'present' | 'full' | 'refused' = 'refused';
+  let result: 'added' | 'filled' | 'present' | 'full' | 'node-missing' | 'refused' = 'refused';
   const { name, options } = canvasWrite(projectId, spaceId, 'add');
   writeSpaceDoc(name, options, () => {
     doc.transact(() => {
-      const list = usableUrls(data.get(key));
-      if (list.includes(url)) {
-        result = 'present';
-        return;
-      }
-      if (list.length >= capacity) {
-        result = 'full';
-        return;
-      }
-      data.set(key, [...list, url]);
-      result = list.length + 1 >= capacity ? 'filled' : 'added';
+      result = appendNodeSlotItemInDoc(doc, nodeId, key, url, capacity);
     }, CANVAS_UNDO);
   });
   return result;
@@ -1313,76 +983,17 @@ export function removeNodeSlotItem(
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const data = doc.getMap<Y.Map<unknown>>(NODES_KEY).get(nodeId)?.get('data');
   if (!(data instanceof Y.Map)) return;
-  const next = usableUrls(data.get(key)).filter((u) => u !== url);
   // The last item goes with its key (a removal); any other rewrites the list.
-  const { name, options } = canvasWrite(projectId, spaceId, next.length === 0 ? 'remove' : 'compound');
+  const kind = slotItemsWithout(data, key, url).length === 0 ? 'remove' : 'compound';
+  const { name, options } = canvasWrite(projectId, spaceId, kind);
   writeSpaceDoc(name, options, () => {
-    doc.transact(() => {
-      if (next.length === 0) data.delete(key);
-      else data.set(key, next);
-    }, CANVAS_UNDO);
+    doc.transact(() => removeNodeSlotItemInDoc(doc, nodeId, key, url), CANVAS_UNDO);
   });
 }
 
 /**
- * Read the focusImages value in either encoding — the CRDT `Y.Array`
- * (what the writers below maintain) or a plain array (a first-write-era
- * doc or forged wire data) — as a plain snapshot for the sanitizer.
- * @param raw - The raw `focusImages` value off the data Y.Map.
- * @returns A plain snapshot the shared sanitizer can consume.
- */
-function focusImagesSnapshot(raw: unknown): unknown {
-  return raw instanceof Y.Array ? raw.toArray() : raw;
-}
-
-/**
- * Pure core of {@link addNodeFocusImage} — call inside an open transaction.
- *
- * `focusImages` is a `Y.Array` of plain `FocusImage` objects (design
- * adversary 2026-07-17): a CRDT SEQUENCE, not a whole-array LWW register —
- * two clients cropping the same node concurrently must BOTH keep their
- * crops (the ratified soft-cap model assumes concurrent adds survive as
- * overshoot), and a whole-array `set` made the loser's crop vanish after
- * sync with its asset already uploaded and its ledger row already reported.
- * The wire/JSON shape is unchanged (`dataMap.toJSON()` serializes a
- * `Y.Array` to the same plain array), so every reader stays as-is. A plain
- * array value (first-write-era doc / forged wire) is converted — sanitized
- * through {@link validFocusImages} — into a `Y.Array` on the first write.
- *
- * The appended entry rides the SAME sanitizer (round-5) AND the same COUNT
- * ceiling (round-7): an entry the readers would reject must never be
- * written. The ceiling check reads the local snapshot, so truly concurrent
- * appends at the ceiling can overshoot it — the reader's `slice` hides the
- * tail; accepted as the hard-ceiling analogue of the ratified pool-cap
- * overshoot (reaching it needs the pool knob raised above 200 first).
- * @param data - The node's data Y.Map.
- * @param image - The focus crop to append.
- * @returns 'added' on success; 'invalid-entry' / 'pool-full' refusals.
- */
-function appendFocusImageCore(
-  data: Y.Map<unknown>,
-  image: FocusImage,
-): 'added' | 'invalid-entry' | 'pool-full' {
-  const raw = data.get('focusImages');
-  const list = validFocusImages(focusImagesSnapshot(raw));
-  const appended = validFocusImages([image]);
-  if (appended.length === 0) return 'invalid-entry';
-  if (list.length >= MAX_FOCUS_ENTRIES) return 'pool-full';
-  if (raw instanceof Y.Array) {
-    (raw as Y.Array<FocusImage>).push(appended);
-  } else {
-    // One-time conversion: seed from the sanitized snapshot (heals a
-    // malformed plain value in the same write).
-    const arr = new Y.Array<FocusImage>();
-    arr.push([...list, ...appended]);
-    data.set('focusImages', arr);
-  }
-  return 'added';
-}
-
-/**
  * Append a focus crop to a node's `focusImages` (#1782) — a `Y.Array` on
- * the data Y.Map (concurrent-add safe; see `appendFocusImageCore`, one of the
+ * the data Y.Map (concurrent-add safe; see the shared `appendFocusImageCore`, one of the
  * exceptions to `buildDataMap`'s plain-values convention, and the only one
  * that is a Y.Array — the backend never reads this field). Creates the array
  * on first add.
@@ -1408,65 +1019,15 @@ export function addNodeFocusImage(
   image: FocusImage,
 ): 'added' | 'node-missing' | 'invalid-entry' | 'pool-full' | 'refused' {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
-  const node = nodesMap.get(nodeId);
-  if (!node) return 'node-missing';
-  const data = node.get('data');
-  if (!(data instanceof Y.Map)) return 'node-missing';
-  let result: 'added' | 'invalid-entry' | 'pool-full' | 'refused' = 'refused';
+  if (!nodeDataMap(doc, nodeId)) return 'node-missing';
+  let result: 'added' | 'node-missing' | 'invalid-entry' | 'pool-full' | 'refused' = 'refused';
   const { name, options } = canvasWrite(projectId, spaceId, 'add');
   writeSpaceDoc(name, options, () => {
     doc.transact(() => {
-      result = appendFocusImageCore(data, image);
+      result = addNodeFocusImageInDoc(doc, nodeId, image);
     }, CONTENT_WRITE);
   });
   return result;
-}
-
-/**
- * Pure core of {@link removeNodeFocusImage} — call inside an open
- * transaction. On the `Y.Array` encoding it deletes the target entries
- * in place (commutes with a concurrent append / a concurrent removal of a
- * DIFFERENT crop — both effects survive the merge); malformed remote
- * entries stay in the CRDT and are the readers' problem (every reader
- * sanitizes through {@link validFocusImages}). The array is kept when the
- * last entry goes: deleting the KEY would be a map-level write racing a
- * concurrent push — the pushed crop would land in a deleted subtree and
- * vanish, the exact loss mode this encoding exists to remove. A plain
- * array value (first-write-era doc / forged wire) is converted — sanitized
- * — into a `Y.Array` on the way through.
- * @param data - The node's data Y.Map.
- * @param focusId - Id of the focus crop to remove.
- * @returns True only when the TARGET crop was actually removed.
- */
-function removeFocusImageCore(data: Y.Map<unknown>, focusId: string): boolean {
-  const raw = data.get('focusImages');
-  if (raw instanceof Y.Array) {
-    let removed = false;
-    for (let i = raw.length - 1; i >= 0; i--) {
-      const item: unknown = raw.get(i);
-      if (
-        item !== null &&
-        typeof item === 'object' &&
-        (item as { id?: unknown }).id === focusId
-      ) {
-        raw.delete(i, 1);
-        removed = true;
-      }
-    }
-    return removed;
-  }
-  if (!Array.isArray(raw)) return false;
-  // Sanitize BEFORE dereferencing — a null/primitive entry from a remote
-  // client used to throw on `f.id` here (adversarial 2026-07-16).
-  const list = validFocusImages(raw);
-  const next = list.filter((f) => f.id !== focusId);
-  const removed = next.length !== list.length;
-  if (!removed && list.length === raw.length) return false;
-  const arr = new Y.Array<FocusImage>();
-  arr.push(next);
-  data.set('focusImages', arr);
-  return removed;
 }
 
 /**
@@ -1497,18 +1058,15 @@ export function removeNodeFocusImage(
   focusId: string,
 ): boolean {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
-  const node = nodesMap.get(nodeId);
-  if (!node) return false;
-  const data = node.get('data');
-  if (!(data instanceof Y.Map)) return false;
+  const data = nodeDataMap(doc, nodeId);
+  if (!data) return false;
   let removed = false;
   // Deleting from the Y.Array is a pure delete; the old plain-array form is
   // converted first, which rewrites it.
   const { name, options } = canvasWrite(projectId, spaceId, data.get('focusImages') instanceof Y.Array ? 'delete' : 'compound');
   writeSpaceDoc(name, options, () => {
     doc.transact(() => {
-      removed = removeFocusImageCore(data, focusId);
+      removed = removeNodeFocusImageInDoc(doc, nodeId, focusId);
     }, CONTENT_WRITE);
   });
   return removed;
@@ -1538,20 +1096,10 @@ export function setNodeModel(
   paramsByModel: Record<string, Record<string, unknown>>,
 ): void {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
-  const node = nodesMap.get(nodeId);
-  if (!node) return;
-  const data = node.get('data');
-  if (!(data instanceof Y.Map)) return;
-  const fields = modelPickFields(data, mode, model, paramsByModel);
+  if (!nodeDataMap(doc, nodeId)) return;
   const { name, options } = canvasWrite(projectId, spaceId, 'edit');
   writeSpaceDoc(name, options, () => {
-    doc.transact(() => {
-      data.set('model', model);
-      // Whole, not merged (see setNodeParams for why).
-      data.set('paramsByModel', paramsByModel);
-      data.set('modelByMode', fields.modelByMode);
-    }, CANVAS_UNDO);
+    doc.transact(() => setNodeModelInDoc(doc, nodeId, mode, model, paramsByModel), CANVAS_UNDO);
   });
 }
 
@@ -1579,38 +1127,11 @@ export function setNodeMode(
   paramsByModel: Record<string, Record<string, unknown>>,
 ): void {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
-  const node = nodesMap.get(nodeId);
-  if (!node) return;
-  const data = node.get('data');
-  if (!(data instanceof Y.Map)) return;
+  if (!nodeDataMap(doc, nodeId)) return;
   const { name, options } = canvasWrite(projectId, spaceId, 'edit');
   writeSpaceDoc(name, options, () => {
-    doc.transact(() => {
-      data.set('mode', mode);
-      data.set('model', model);
-      // Whole, not merged (see setNodeParams for why).
-      data.set('paramsByModel', paramsByModel);
-    }, CANVAS_UNDO);
+    doc.transact(() => setNodeModeInDoc(doc, nodeId, mode, model, paramsByModel), CANVAS_UNDO);
   });
-}
-
-/**
- * A node's nested `data` map, or `null` when the node is gone or malformed.
- *
- * Every fragment hanging off a node (the text body, the generation prompt) has
- * to walk this path first, so it lives in one place. Exported for the data
- * layer's own use — subscribing to a body needs the map itself, not a snapshot
- * of what is in it — and not meant to travel above `data/yjs/`.
- * @param doc - The canvas-space document.
- * @param nodeId - Id of the node to look up.
- * @returns The node's data map, or `null`.
- */
-export function nodeDataMap(doc: Y.Doc, nodeId: string): Y.Map<unknown> | null {
-  const node = doc.getMap<Y.Map<unknown>>(NODES_KEY).get(nodeId);
-  if (!node) return null;
-  const data = node.get('data');
-  return data instanceof Y.Map ? data : null;
 }
 
 /**
@@ -1667,7 +1188,7 @@ export function readTextBodies(
  * and every editor-binding caller comes through here rather than pairing a
  * read with a repair of its own (that pairing existed once, drifted, and is
  * what this signature retired). One other place also handles a missing body:
- * {@link landHandlingContent}, which lands a task's words and seeds directly
+ * the shared `landHandlingContent`, which lands a task's words and seeds directly
  * WITH them — a single write, where routing through here would seed empty and
  * overwrite. Same absence check, different write; if the shape of a seeded
  * body ever changes, change both.
@@ -1710,10 +1231,12 @@ export function ensureTextBody(
   if (!data) return null;
   const existing = data.get('body');
   if (existing instanceof Y.XmlFragment) return existing;
-  const body = bodyFromText('');
+  let body: Y.XmlFragment | null = null;
   const { name, options } = canvasWrite(projectId, spaceId, 'add');
   const written = writeSpaceDoc(name, options, () => {
-    doc.transact(() => data.set('body', body), CONTENT_WRITE);
+    doc.transact(() => {
+      body = ensureTextBodyInDoc(doc, nodeId);
+    }, CONTENT_WRITE);
   });
   return written.ok ? body : null;
 }
@@ -1842,17 +1365,11 @@ export function setNodeExtractedText(
   notify = true,
 ): SpaceWriteResult {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
-  const node = nodesMap.get(nodeId);
-  if (!node) return { ok: true };
-  const data = node.get('data');
-  if (!(data instanceof Y.Map)) return { ok: true };
+  if (!nodeDataMap(doc, nodeId)) return { ok: true };
   const name = docName.canvasSpace(projectId, spaceId);
   const options = { kind: 'add' as const, notify };
   return writeSpaceDoc(name, options, () => {
-    doc.transact(() => {
-      landHandlingContent(data, node.get('type'), content);
-    }, CONTENT_WRITE);
+    doc.transact(() => setNodeExtractedTextInDoc(doc, nodeId, content), CONTENT_WRITE);
   });
 }
 
@@ -1889,63 +1406,11 @@ export function restoreNodeMedia(
   },
 ): void {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
-  const node = nodesMap.get(nodeId);
-  if (!node) return;
-  const data = node.get('data');
-  if (!(data instanceof Y.Map)) return;
+  if (!nodeDataMap(doc, nodeId)) return;
   // Restoring puts a result back on the node, new content: an add.
   const { name, options } = canvasWrite(projectId, spaceId, 'add');
-  writeSpaceDoc(name, options, () => doc.transact(() => {
-    // Which field holds a node's content is decided by its type, once, in
-    // `landHandlingContent` — a text node's words live in the body the editor
-    // binds to and would be invisible in the plain field (#1774).
-    landHandlingContent(data, node.get('type'), restored.content);
-    // The same function a settle writes these through, so a restored node
-    // holds what the result held when it first landed. A row written before
-    // #2184 carries none, which removes the previous result's numbers rather
-    // than leaving them to describe a medium the node no longer shows.
-    writeNodeMedia(data, restored.media);
-  }, CONTENT_WRITE));
+  writeSpaceDoc(name, options, () => doc.transact(() => restoreNodeMediaInDoc(doc, nodeId, restored), CONTENT_WRITE));
 }
-
-/**
- * Land a finished handling's content on a node, in the field its type reads.
- *
- * A text node's words live in its shared body, never in `data.content`: the
- * node view deliberately does not carry the body (#1774), so words written to
- * the plain field would be stored, synced, and never shown — the node would
- * come back from a dropped `.txt` looking empty. Every other modality's
- * content IS a plain field (an asset URL), so the split is by type, once,
- * here. Same rule as node creation, which drops `content` for a text node and
- * seeds the body instead.
- *
- * A missing body is created rather than skipped. Losing the words of a file
- * the user just dropped is the worse failure, and the node is by definition
- * not being edited right now — this runs under a lease, and a node a task is
- * writing cannot be opened for editing. The seed here is deliberately NOT
- * routed through {@link ensureTextBody}: that path seeds an empty body for an
- * editor to bind, while this one already holds the words and lands them in a
- * single write. Same absence check, different write; if the shape of a seeded
- * body ever changes, change both.
- * @param data - The node's data map, already verified to be one.
- * @param type - The node's modality, read from its `type` field.
- * @param content - What the handling produced: an asset URL, or extracted text.
- */
-function landHandlingContent(
-  data: Y.Map<unknown>,
-  type: unknown,
-  content: string,
-): void {
-  if (type !== 'text') {
-    data.set('content', content);
-    return;
-  }
-  const body = data.get('body');
-  if (body instanceof Y.XmlFragment) writePlainTextIntoBody(body, content);
-  else data.set('body', bodyFromText(content));
-}
-
 
 /**
  * Set (or clear) a group's background tint — frontend-owned. Passing
@@ -1963,18 +1428,11 @@ export function setGroupBackground(
   color: string | undefined,
 ): void {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
-  const group = nodesMap.get(groupId);
-  if (!(group instanceof Y.Map) || group.get('type') !== 'group') return;
-  const data = group.get('data');
-  if (!(data instanceof Y.Map)) return;
+  if (!groupEntry(doc, groupId)) return;
   // Clearing the tint deletes its key, a pure removal (design 5.2).
   const { name, options } = canvasWrite(projectId, spaceId, color === undefined ? 'remove' : 'edit');
   writeSpaceDoc(name, options, () => {
-    doc.transact(() => {
-      if (color === undefined) data.delete('backgroundColor');
-      else data.set('backgroundColor', color);
-    }, CANVAS_UNDO);
+    doc.transact(() => setGroupBackgroundInDoc(doc, groupId, color), CANVAS_UNDO);
   });
 }
 
@@ -1996,23 +1454,8 @@ export function createGroup(
   members: ReadonlyArray<{ id: string; position: { x: number; y: number } }>,
 ): void {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
   const { name, options } = canvasWrite(projectId, spaceId, 'add');
-  writeSpaceDoc(name, options, () => doc.transact(() => {
-    const map = new Y.Map<unknown>();
-    map.set('id', group.id);
-    map.set('type', group.type);
-    if (group.parentId !== undefined) map.set('parentId', group.parentId);
-    map.set('position', group.position);
-    map.set('data', buildDataMap(group.data, group.type));
-    nodesMap.set(group.id, map);
-    for (const member of members) {
-      const node = nodesMap.get(member.id);
-      if (!(node instanceof Y.Map)) continue;
-      node.set('parentId', group.id);
-      node.set('position', member.position);
-    }
-  }, CANVAS_UNDO));
+  writeSpaceDoc(name, options, () => doc.transact(() => createGroupInDoc(doc, group, members), CANVAS_UNDO));
 }
 
 /**
@@ -2037,20 +1480,13 @@ export function setNodeParent(
   position: { x: number; y: number },
 ): void {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
-  const node = nodesMap.get(nodeId);
-  if (!(node instanceof Y.Map)) return;
   // The Group can go between the frame a caller planned against and this call.
   // Binding the node to it anyway leaves a parent nobody can see and a position
   // measured against an origin that is not there.
-  if (parentId !== null && !(nodesMap.get(parentId) instanceof Y.Map)) return;
+  if (!reparentApplies(doc, nodeId, parentId)) return;
   const { name, options } = canvasWrite(projectId, spaceId, 'edit');
   writeSpaceDoc(name, options, () => {
-    doc.transact(() => {
-      if (parentId === null) node.delete('parentId');
-      else node.set('parentId', parentId);
-      node.set('position', position);
-    }, CANVAS_UNDO);
+    doc.transact(() => setNodeParentInDoc(doc, nodeId, parentId, position), CANVAS_UNDO);
   });
 }
 
@@ -2080,18 +1516,10 @@ export function resizeGroup(
   height: number,
 ): boolean {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
-  const group = nodesMap.get(groupId);
-  if (!(group instanceof Y.Map) || group.get('type') !== 'group') return false;
-  const data = group.get('data');
-  if (!(data instanceof Y.Map)) return false;
+  if (!groupEntry(doc, groupId)) return false;
   const { name, options } = canvasWrite(projectId, spaceId, 'edit');
   return writeSpaceDoc(name, options, () => {
-    doc.transact(() => {
-      group.set('position', position);
-      data.set('width', width);
-      data.set('height', height);
-    }, CANVAS_UNDO);
+    doc.transact(() => resizeGroupInDoc(doc, groupId, position, width, height), CANVAS_UNDO);
   }).ok;
 }
 
@@ -2120,27 +1548,9 @@ export function expandGroup(
   height: number,
 ): void {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
-  const group = nodesMap.get(groupId);
-  if (!(group instanceof Y.Map) || group.get('type') !== 'group') return;
-  const data = group.get('data');
-  if (!(data instanceof Y.Map)) return;
-  const oldPos = group.get('position') as { x: number; y: number } | undefined;
-  const dx = oldPos ? oldPos.x - position.x : 0;
-  const dy = oldPos ? oldPos.y - position.y : 0;
+  if (!groupEntry(doc, groupId)) return;
   const { name, options } = canvasWrite(projectId, spaceId, 'edit');
-  writeSpaceDoc(name, options, () => doc.transact(() => {
-    group.set('position', position);
-    data.set('width', width);
-    data.set('height', height);
-    if (dx !== 0 || dy !== 0) {
-      nodesMap.forEach((node) => {
-        if (!(node instanceof Y.Map) || node.get('parentId') !== groupId) return;
-        const p = node.get('position') as { x: number; y: number } | undefined;
-        if (p) node.set('position', { x: p.x + dx, y: p.y + dy });
-      });
-    }
-  }, CANVAS_UNDO));
+  writeSpaceDoc(name, options, () => doc.transact(() => expandGroupInDoc(doc, groupId, position, width, height), CANVAS_UNDO));
 }
 
 /**
@@ -2162,52 +1572,14 @@ export function addEdge(
   // check up front.
   if (edge.source === edge.target) return false;
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
-  const edgesMap = doc.getMap<Y.Map<unknown>>(EDGES_KEY);
   let added = false;
   const { name, options } = canvasWrite(projectId, spaceId, 'add');
   writeSpaceDoc(name, options, () => {
     doc.transact(() => {
-      added = putEdge(nodesMap, edgesMap, edge);
+      added = addEdgeInDoc(doc, edge);
     }, CANVAS_UNDO);
   });
   return added;
-}
-
-/**
- * Write one edge inside an open transaction. Both endpoints are checked
- * against live Yjs state here — this is the airtight write boundary. A
- * caller's guard reads its React closure, which goes stale the instant a
- * collaborator deletes a node (Yjs applies the deletion before React
- * re-creates the handler), so the only race-free place to reject an orphaned
- * edge is atomically with the write.
- * @param nodesMap - The canvas-space `nodesMap`.
- * @param edgesMap - The canvas-space `edgesMap`.
- * @param edge - The edge.
- * @returns Whether the edge is in the document afterwards, so a caller can
- *   surface feedback (a silently-rejected edge must not read as success).
- */
-function putEdge(
-  nodesMap: Y.Map<Y.Map<unknown>>,
-  edgesMap: Y.Map<Y.Map<unknown>>,
-  edge: CanvasEdge,
-): boolean {
-  if (edge.source === edge.target) return false;
-  if (!nodesMap.has(edge.source) || !nodesMap.has(edge.target)) return false;
-  // Deterministic ids make a duplicate drag map onto the EXISTING entry —
-  // rewriting it would replace createdAt (the reference silently jumps to
-  // the rail's end) and push a spurious undo entry. Idempotent success.
-  if (edgesMap.has(edge.id)) return true;
-  const map = new Y.Map<unknown>();
-  map.set('id', edge.id);
-  map.set('source', edge.source);
-  map.set('target', edge.target);
-  if (edge.toolId) map.set('toolId', edge.toolId);
-  // Connection time drives reference-rail order (undo re-inserts the map
-  // with its original stamp, so an undone+redone edge keeps its place).
-  map.set('createdAt', edge.createdAt ?? Date.now());
-  edgesMap.set(edge.id, map);
-  return true;
 }
 
 /**
@@ -2243,12 +1615,9 @@ export function removeEdge(
   edgeId: string,
 ): void {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  const edgesMap = doc.getMap<Y.Map<unknown>>(EDGES_KEY);
   const { name, options } = canvasWrite(projectId, spaceId, 'remove');
   writeSpaceDoc(name, options, () => {
-    doc.transact(() => {
-      edgesMap.delete(edgeId);
-    }, CANVAS_UNDO);
+    doc.transact(() => removeEdgeInDoc(doc, edgeId), CANVAS_UNDO);
   });
 }
 
@@ -2272,55 +1641,8 @@ export function removeElements(
 ): SpaceWriteResult {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
-  const edgesMap = doc.getMap<Y.Map<unknown>>(EDGES_KEY);
-  const deleted = new Set(nodeIds);
-  const { name, options } = canvasWrite(projectId, spaceId, removalKindOf(nodesMap, deleted));
-  return writeSpaceDoc(name, options, () => doc.transact(() => {
-    nodeIds.forEach((id) => {
-      const node = nodesMap.get(id);
-      if (node instanceof Y.Map && node.get('type') === 'group') {
-        releaseGroupMembers(nodesMap, id, deleted);
-      }
-      nodesMap.delete(id);
-    });
-    edgeIds.forEach((id) => edgesMap.delete(id));
-  }, CANVAS_UNDO));
-}
-
-/**
- * Read all nodes from `nodesMap` into render-ready views. Each node's wire
- * fields are projected through `toNodeView`; nodes with a dirty / unknown
- * `type` or a missing `data` Y.Map are skipped.
- * @param doc - The canvas-space Y.Doc to read from.
- * @returns The current renderable canvas nodes.
- */
-export function readNodes(doc: Y.Doc): ReadonlyArray<CanvasNodeView> {
-  const nodesMap = doc.getMap<Y.Map<unknown>>(NODES_KEY);
-  const out: CanvasNodeView[] = [];
-  nodesMap.forEach((nodeMap) => {
-    if (!(nodeMap instanceof Y.Map)) return;
-    const dataMap = nodeMap.get('data');
-    if (!(dataMap instanceof Y.Map)) return;
-    const fields: CanvasNodeFields = {
-      id: String(nodeMap.get('id') ?? ''),
-      type: nodeMap.get('type') as NodeType,
-      position: (nodeMap.get('position') as { x: number; y: number }) ?? {
-        x: 0,
-        y: 0,
-      },
-      data: dataMap.toJSON() as CanvasNodeFields['data'],
-    };
-    const typed = toNodeView(fields);
-    if (!typed) return;
-    const parentId = nodeMap.get('parentId');
-    out.push({
-      id: fields.id,
-      ...typed,
-      position: fields.position,
-      ...(typeof parentId === 'string' ? { parentId } : {}),
-    });
-  });
-  return out;
+  const { name, options } = canvasWrite(projectId, spaceId, removalKindOf(nodesMap, new Set(nodeIds)));
+  return writeSpaceDoc(name, options, () => doc.transact(() => removeElementsInDoc(doc, nodeIds, edgeIds), CANVAS_UNDO));
 }
 
 /**
@@ -2372,35 +1694,6 @@ export function readNodePlacements(projectId: string, spaceId: string): NodePlac
       mediaWidth: numberIn(data, 'mediaWidth'),
       mediaHeight: numberIn(data, 'mediaHeight'),
       bodyText: body instanceof Y.XmlFragment ? bodyToPlainText(body) : undefined,
-    });
-  });
-  return out;
-}
-
-/**
- * Read all edges from `edgesMap` into a ReactFlow-ready array.
- * @param doc - The canvas-space Y.Doc to read from.
- * @returns The current canvas edges, with defaults applied for missing fields.
- */
-export function readEdges(doc: Y.Doc): ReadonlyArray<CanvasEdge> {
-  const edgesMap = doc.getMap<Y.Map<unknown>>(EDGES_KEY);
-  const out: CanvasEdge[] = [];
-  edgesMap.forEach((map) => {
-    if (!(map instanceof Y.Map)) return;
-    // createdAt is untrusted collaborative data (same convention as
-    // the untrusted-Yjs convention): a corrupt stamp (string / NaN) would make the rail
-    // sort comparator return NaN, which TimSort treats as "equal" — silently
-    // un-sorting HEALTHY edges around it. Drop anything non-finite.
-    const rawCreatedAt = map.get('createdAt');
-    out.push({
-      id: String(map.get('id') ?? ''),
-      source: String(map.get('source') ?? ''),
-      target: String(map.get('target') ?? ''),
-      toolId: (map.get('toolId') as string | undefined) ?? undefined,
-      createdAt:
-        typeof rawCreatedAt === 'number' && Number.isFinite(rawCreatedAt)
-          ? rawCreatedAt
-          : undefined,
     });
   });
   return out;

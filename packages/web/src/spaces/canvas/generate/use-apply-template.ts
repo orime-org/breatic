@@ -26,7 +26,7 @@ import { evaluateNodeGate } from '@breatic/shared/canvas-model';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import { deriveReferences } from '@breatic/shared/canvas-model';
 import type { ProposalMention } from '@breatic/shared/canvas-model';
-import { slotForParam } from '@web/spaces/canvas/generate/proposal-fills';
+import { slotForParam } from '@breatic/shared/canvas-model';
 import { readSlotPick } from '@breatic/shared/canvas-model';
 import { templateParams, templateServed } from '@breatic/shared/canvas-model';
 import type { SpaceRefusal } from '@web/data/yjs/space-write';

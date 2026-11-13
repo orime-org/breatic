@@ -41,8 +41,16 @@ import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import { changeLocale } from '@web/i18n/locale-bootstrap';
 
 const NAME = docName.canvasSpace('p1', 's1');
-const docSizeSource = readFileSync(resolve(import.meta.dirname, '../doc-size.ts'), 'utf8');
-const spaceWriteSource = readFileSync(resolve(import.meta.dirname, '../space-write.ts'), 'utf8');
+// The store and the refusal rules moved to shared's canvas model (breatic#1488 §8.1).
+const SHARED_MODEL = '../../../../../shared/src/canvas/model';
+const docSizeSource = [
+  readFileSync(resolve(import.meta.dirname, '../doc-size.ts'), 'utf8'),
+  readFileSync(resolve(import.meta.dirname, SHARED_MODEL, 'doc-size-store.ts'), 'utf8'),
+].join('\n');
+const spaceWriteSource = [
+  readFileSync(resolve(import.meta.dirname, '../space-write.ts'), 'utf8'),
+  readFileSync(resolve(import.meta.dirname, SHARED_MODEL, 'space-write-rules.ts'), 'utf8'),
+].join('\n');
 const KINDS = ['add', 'edit', 'compound', 'delete', 'remove'] as const;
 
 /** The five fields of the size state every assertion reads. */

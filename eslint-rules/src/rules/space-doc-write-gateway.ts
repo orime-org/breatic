@@ -16,7 +16,7 @@ interface WriteException {
  * The rule's options. An array rather than a one-element tuple so a case list
  * built with `.map` type-checks against `RuleTester`.
  */
-type Options = Array<{ exceptions: WriteException[] }>;
+type Options = Array<{ exceptions: WriteException[]; writeFunctions?: string[] }>;
 
 /** The calls whose callback argument is checked against the size cap. */
 const GATEWAYS = new Set(["writeSpaceDoc", "runCanvasUndoBatch"]);
@@ -96,11 +96,12 @@ function isDocReceiver(node: TSESTree.Node): boolean {
 /**
  * Answers whether a call writes a Space document, by its syntax alone.
  * @param call The call expression.
+ * @param extra Configured write-body names, checked like `WRITE_FUNCTIONS`.
  * @returns Whether the call is one of the write shapes.
  */
-function isSpaceWrite(call: TSESTree.CallExpression): boolean {
+function isSpaceWrite(call: TSESTree.CallExpression, extra: ReadonlySet<string>): boolean {
   const callee = unwrap(call.callee);
-  if (callee.type === AST_NODE_TYPES.Identifier) return WRITE_FUNCTIONS.has(callee.name);
+  if (callee.type === AST_NODE_TYPES.Identifier) return WRITE_FUNCTIONS.has(callee.name) || extra.has(callee.name);
   if (callee.type !== AST_NODE_TYPES.MemberExpression) return false;
   const name = propertyName(callee);
   if (name === "transact" && isDocReceiver(callee.object)) return true;
@@ -170,7 +171,10 @@ const FUNCTIONS = new Set<string>([
  * or on a `history` / `undoManager` chain; `writePlainTextIntoBody` and yjs's
  * standalone `transact` (`applyTimelineEdit` checks the cap itself, inside its
  * own `writeSpaceDoc`). A named function that checks the cap another way is
- * listed in the `exceptions` option with its reason. Aliased imports, member
+ * listed in the `exceptions` option with its reason. The `writeFunctions`
+ * option names write bodies that live outside web (in
+ * `@breatic/shared/canvas-model`, so collab can run them too); a plain call of
+ * one counts as a write (breatic#1488 §8.1). Aliased imports, member
  * calls of the gateway and writes deferred inside its callback are not seen.
  */
 const rule = createRule<Options, "outsideWriteGateway">({
@@ -197,6 +201,10 @@ const rule = createRule<Options, "outsideWriteGateway">({
               additionalProperties: false,
             },
           },
+          writeFunctions: {
+            type: "array",
+            items: { type: "string", minLength: 1 },
+          },
         },
         additionalProperties: false,
       },
@@ -209,13 +217,14 @@ const rule = createRule<Options, "outsideWriteGateway">({
   defaultOptions: [{ exceptions: [] }],
   create(context, [options]) {
     const exceptions = options?.exceptions ?? [];
+    const writeFunctions = new Set(options?.writeFunctions ?? []);
     const filename = context.filename.replace(/\\/g, "/");
     const excepted = new Set(
       exceptions.filter((exception) => filename === exception.file || filename.endsWith(`/${exception.file}`)).map((exception) => exception.function),
     );
     return {
       CallExpression(call: TSESTree.CallExpression): void {
-        if (!isSpaceWrite(call)) return;
+        if (!isSpaceWrite(call, writeFunctions)) return;
         for (let node: TSESTree.Node | undefined = call.parent; node; node = node.parent) {
           if (!FUNCTIONS.has(node.type)) continue;
           if (isGatewayCallback(node)) return;

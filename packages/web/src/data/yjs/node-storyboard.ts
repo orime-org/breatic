@@ -4,27 +4,32 @@
 /**
  * A video node's shots, which only the multi-shot mode uses.
  *
- * The shape, born with the node in `canvas-space.ts`:
+ * The shape, born with the node in `buildDataMap`:
  * `data.shots: Y.Array<Y.Map{ id, prompt, duration }>`.
- * A shot is inserted whole with its own prompt fragment, so two people adding
- * a shot at once both keep theirs (array inserts commute). Durations move
- * through the pure rules in `@breatic/shared`'s `storyboard-durations`, which
- * every edit here applies and writes back in one transaction.
+ * What each edit writes lives in `@breatic/shared/canvas-model`
+ * (`storyboard-shots.ts`), so collab edits shots the same way (breatic#1488
+ * §8.1); each export here is a thin shell that asks the size cap and runs that
+ * body in one `CANVAS_UNDO` transaction.
  */
 
-import * as Y from 'yjs';
-import { addShot, enterCustom, newId, removeShot, retotal, stepShot } from '@breatic/shared';
+import type * as Y from 'yjs';
+import {
+  addStoryboardShotInDoc,
+  enterStoryboardShotsInDoc,
+  removeStoryboardShotInDoc,
+  retotalStoryboardInDoc,
+  setStoryboardShotsInDoc,
+  shotView,
+  shotsIn,
+  stepStoryboardShotInDoc,
+  type StoryboardShotView,
+} from '@breatic/shared/canvas-model';
 
-import { CANVAS_UNDO, nodeDataMap } from '@web/data/yjs/canvas-space';
+import { CANVAS_UNDO } from '@web/data/yjs/canvas-space';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { writeSpaceDoc, type SpaceWriteKind } from '@web/data/yjs/space-write';
 
-/** One shot as read off the document. */
-export interface StoryboardShotView {
-  readonly id: string;
-  readonly prompt: Y.XmlFragment;
-  readonly duration: number;
-}
+export type { StoryboardShotView };
 
 /**
  * The live shots array of a video node, for a reader that follows it.
@@ -34,30 +39,7 @@ export interface StoryboardShotView {
  * @returns The array, or null when the node has none.
  */
 export function shotListOf(projectId: string, spaceId: string, nodeId: string): Y.Array<Y.Map<unknown>> | null {
-  const shots = nodeDataMap(getDoc(docName.canvasSpace(projectId, spaceId)), nodeId)?.get('shots');
-  return shots instanceof Y.Array ? (shots as Y.Array<Y.Map<unknown>>) : null;
-}
-
-/**
- * A shot's seconds, zero when it holds none.
- * @param shot - The shot map.
- * @returns Its seconds.
- */
-function durationOf(shot: Y.Map<unknown>): number {
-  const duration = shot.get('duration');
-  return typeof duration === 'number' ? duration : 0;
-}
-
-/**
- * One shot map read as a view.
- * @param shot - The shot map.
- * @returns The view, or null for a malformed entry.
- */
-function shotView(shot: Y.Map<unknown>): StoryboardShotView | null {
-  const id = shot.get('id');
-  const prompt = shot.get('prompt');
-  if (typeof id !== 'string' || !(prompt instanceof Y.XmlFragment)) return null;
-  return { id, prompt, duration: durationOf(shot) };
+  return shotsIn(getDoc(docName.canvasSpace(projectId, spaceId)), nodeId);
 }
 
 /**
@@ -70,56 +52,6 @@ function shotView(shot: Y.Map<unknown>): StoryboardShotView | null {
 export function readShots(projectId: string, spaceId: string, nodeId: string): StoryboardShotView[] | null {
   const shots = shotListOf(projectId, spaceId, nodeId);
   return shots ? shots.toArray().flatMap((shot) => shotView(shot) ?? []) : null;
-}
-
-/**
- * A new shot map, born with its own prompt fragment.
- * @param duration - Its seconds.
- * @returns The shot map.
- */
-function newShot(duration: number): Y.Map<unknown> {
-  const shot = new Y.Map<unknown>();
-  shot.set('id', newId());
-  shot.set('prompt', new Y.XmlFragment());
-  shot.set('duration', duration);
-  return shot;
-}
-
-/**
- * Applies one edit to a node's shots in one transaction.
- * @param projectId - Project the canvas space belongs to.
- * @param spaceId - Canvas space containing the node.
- * @param nodeId - The video node.
- * @param kind - What the edit produces in Yjs (inner#1790, design 5.2).
- * @param edit - Given the shots array and their durations, applies the change.
- * @returns Whether the node has shots to edit and the size cap let the edit in.
- */
-function editShots(
-  projectId: string,
-  spaceId: string,
-  nodeId: string,
-  kind: SpaceWriteKind,
-  edit: (shots: Y.Array<Y.Map<unknown>>, durations: number[]) => void,
-): boolean {
-  const shots = shotListOf(projectId, spaceId, nodeId);
-  if (!shots) return false;
-  return writeSpaceDoc(docName.canvasSpace(projectId, spaceId), { kind }, () => {
-    shots.doc?.transact(() => {
-      edit(shots, shots.toArray().map(durationOf));
-    }, CANVAS_UNDO);
-  }).ok;
-}
-
-/**
- * Writes durations onto the existing shots, one for one.
- * @param shots - The shots array.
- * @param durations - The new durations, in shot order.
- */
-function writeDurations(shots: Y.Array<Y.Map<unknown>>, durations: readonly number[]): void {
-  shots.toArray().forEach((shot, i) => {
-    const next = durations[i];
-    if (next !== undefined && shot.get('duration') !== next) shot.set('duration', next);
-  });
 }
 
 /**
@@ -144,10 +76,11 @@ export function storyboardEntryKind(projectId: string, spaceId: string, nodeId: 
  * @param total - The model's total seconds.
  */
 export function enterStoryboardShots(projectId: string, spaceId: string, nodeId: string, total: number): void {
-  editShots(projectId, spaceId, nodeId, storyboardEntryKind(projectId, spaceId, nodeId), (shots, durations) => {
-    const next = enterCustom(durations, total);
-    if (shots.length === 0) shots.push(next.map((d) => newShot(d)));
-    else writeDurations(shots, next);
+  const name = docName.canvasSpace(projectId, spaceId);
+  const doc = getDoc(name);
+  if (!shotsIn(doc, nodeId)) return;
+  writeSpaceDoc(name, { kind: storyboardEntryKind(projectId, spaceId, nodeId) }, () => {
+    doc.transact(() => enterStoryboardShotsInDoc(doc, nodeId, total), CANVAS_UNDO);
   });
 }
 
@@ -167,14 +100,14 @@ export function addStoryboardShot(
   total: number,
   maxShots: number,
 ): string | null {
+  const name = docName.canvasSpace(projectId, spaceId);
+  const doc = getDoc(name);
+  if (!shotsIn(doc, nodeId)) return null;
   let added: string | null = null;
-  editShots(projectId, spaceId, nodeId, 'add', (shots, durations) => {
-    const next = addShot(durations, total, maxShots);
-    if (!next) return;
-    writeDurations(shots, next);
-    const shot = newShot(next[next.length - 1] ?? 1);
-    shots.push([shot]);
-    added = shot.get('id') as string;
+  writeSpaceDoc(name, { kind: 'add' }, () => {
+    doc.transact(() => {
+      added = addStoryboardShotInDoc(doc, nodeId, total, maxShots);
+    }, CANVAS_UNDO);
   });
   return added;
 }
@@ -194,10 +127,11 @@ export function stepStoryboardShot(
   shotId: string,
   delta: 1 | -1,
 ): void {
-  editShots(projectId, spaceId, nodeId, 'edit', (shots, durations) => {
-    const index = shots.toArray().findIndex((shot) => shot.get('id') === shotId);
-    const next = index === -1 ? null : stepShot(durations, index, delta);
-    if (next) writeDurations(shots, next);
+  const name = docName.canvasSpace(projectId, spaceId);
+  const doc = getDoc(name);
+  if (!shotsIn(doc, nodeId)) return;
+  writeSpaceDoc(name, { kind: 'edit' }, () => {
+    doc.transact(() => stepStoryboardShotInDoc(doc, nodeId, shotId, delta), CANVAS_UNDO);
   });
 }
 
@@ -216,13 +150,12 @@ export function removeStoryboardShot(
   shotId: string,
   total: number,
 ): void {
+  const name = docName.canvasSpace(projectId, spaceId);
+  const doc = getDoc(name);
+  if (!shotsIn(doc, nodeId)) return;
   // Its seconds go to the previous shot, a rewrite beside the delete.
-  editShots(projectId, spaceId, nodeId, 'compound', (shots, durations) => {
-    const index = shots.toArray().findIndex((shot) => shot.get('id') === shotId);
-    const next = index === -1 ? null : removeShot(durations, index, total);
-    if (!next) return;
-    shots.delete(index, 1);
-    writeDurations(shots, next);
+  writeSpaceDoc(name, { kind: 'compound' }, () => {
+    doc.transact(() => removeStoryboardShotInDoc(doc, nodeId, shotId, total), CANVAS_UNDO);
   });
 }
 
@@ -235,7 +168,12 @@ export function removeStoryboardShot(
  * @param total - The new total seconds.
  */
 export function retotalStoryboard(projectId: string, spaceId: string, nodeId: string, total: number): void {
-  editShots(projectId, spaceId, nodeId, 'edit', (shots, durations) => writeDurations(shots, retotal(durations, total)));
+  const name = docName.canvasSpace(projectId, spaceId);
+  const doc = getDoc(name);
+  if (!shotsIn(doc, nodeId)) return;
+  writeSpaceDoc(name, { kind: 'edit' }, () => {
+    doc.transact(() => retotalStoryboardInDoc(doc, nodeId, total), CANVAS_UNDO);
+  });
 }
 
 /**
@@ -254,10 +192,14 @@ export function setStoryboardShots(
   nodeId: string,
   durations: readonly number[],
 ): Y.XmlFragment[] {
-  const fresh = durations.map((d) => newShot(d));
-  const landed = editShots(projectId, spaceId, nodeId, 'add', (shots) => {
-    shots.delete(0, shots.length);
-    shots.push(fresh);
-  });
-  return landed ? fresh.map((shot) => shot.get('prompt') as Y.XmlFragment) : [];
+  const name = docName.canvasSpace(projectId, spaceId);
+  const doc = getDoc(name);
+  if (!shotsIn(doc, nodeId)) return [];
+  let fresh: Y.XmlFragment[] = [];
+  const landed = writeSpaceDoc(name, { kind: 'add' }, () => {
+    doc.transact(() => {
+      fresh = setStoryboardShotsInDoc(doc, nodeId, durations);
+    }, CANVAS_UNDO);
+  }).ok;
+  return landed ? fresh : [];
 }

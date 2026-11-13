@@ -38,16 +38,14 @@ const TEMPORARY: ReadonlyArray<readonly [string, string]> = [
 ];
 
 /**
- * The five exceptions the table had before the merge, plus the undo/redo copy
- * trial v2 adds (design section 5.2), and the dialogue lines writer that sits
- * beside `writeProposalPrompt` in the same placeProposalAt batch (inner#1825);
- * the final table is a subset.
+ * The exceptions the table had before the merge, less the content lander and
+ * the proposal prompt writers that moved to `@breatic/shared/canvas-model`
+ * (breatic#1488 §8.1),
+ * plus the undo/redo copy trial v2 adds (design section 5.2); the final table
+ * is a subset.
  */
 const LONG_TERM: ReadonlyArray<readonly [string, string]> = [
   ["src/data/yjs/canvas-space.ts", "writeSnapshotNodes"],
-  ["src/data/yjs/canvas-space.ts", "landHandlingContent"],
-  ["src/spaces/canvas/generate/proposal-prompt.ts", "writeProposalPrompt"],
-  ["src/spaces/canvas/generate/proposal-prompt.ts", "writeDialogueLines"],
   ["src/data/yjs/scene-document.ts", "applySceneCommand"],
   ["src/data/yjs/scene-session.ts", "historyStep"],
   ["src/data/yjs/history-step.ts", "copyRedone"],
