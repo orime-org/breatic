@@ -50,4 +50,9 @@ describe("the formula in the product guide", () => {
     expect(paragraph).toMatch(/Cmd\+Z/);
     expect(paragraph).not.toMatch(/cross/);
   });
+
+  it("says a key beside a formula on its own line selects it before a second press deletes it", () => {
+    const doc = section("Document spaces");
+    expect(doc).toMatch(/Backspace right under a formula or Delete right above it selects it; a second press deletes it/);
+  });
 });

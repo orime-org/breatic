@@ -9,8 +9,12 @@
  * | `$$x$$` | the closing `$` lands as text; a `$` that came through `handleTextInput` arms the rule, and the conversion follows in a transaction of its own, its own undo step |
  * | Backspace right after converting | turns it back into the text `$$x$$` |
  * | Backspace / Delete beside an inline formula | the caret goes into its source; nothing the user cannot see is deleted |
- * | Backspace / Delete in an empty source | the formula goes |
+ * | Backspace at the start, Delete at the end of an inline source | does nothing |
+ * | Backspace / Delete in an empty source | the formula goes; a block formula's indented lines stay, lifted into its place |
  * | Backspace at the start, Delete at the end of an open block formula's source | does nothing, or removes the formula when its source is empty |
+ * | Backspace / Delete on the last character of an open block formula's source | deleted here, the caret staying in the empty source |
+ * | Backspace at the start of a line right under a closed block formula, Delete at the end of one right above it | selects the formula, box closed; the next press deletes it |
+ * | Shift+Backspace / Shift+Delete | as without Shift |
  * | Enter in an inline source | confirms, the caret after the formula, whatever block the line is |
  * | ArrowLeft / ArrowRight across an inline formula's edge | the caret goes into its source, or out to right beside the formula |
  * | input into a selected, closed block formula | refused: its source is hidden |
@@ -29,7 +33,7 @@ import type { ResolvedPos } from '@tiptap/pm/model';
 import { Plugin, PluginKey, Selection, TextSelection, type EditorState } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
-import { MATH_INLINE } from '@web/spaces/document/document-math';
+import { MATH_BLOCK, MATH_INLINE } from '@web/spaces/document/document-math';
 import { isTableCell } from '@web/spaces/document/document-table-nodes';
 import { markOwnUndoStep } from '@web/spaces/document/document-undo-step';
 
@@ -205,6 +209,55 @@ function removeInline(view: EditorView, $pos: ResolvedPos): boolean {
 }
 
 /**
+ * Removes an emptied block formula, the lines indented under it lifted into
+ * its place, as an empty paragraph's Backspace does; the caret goes to the
+ * end of what came before it for Backspace, to the start of what follows for
+ * Delete.
+ * @param editor - The editor.
+ * @param view - The editor view.
+ * @param $cursor - The caret, in the formula's source.
+ * @param back - Backspace, else Delete.
+ * @returns True.
+ */
+function removeFormulaBlock(editor: MathEditor, view: EditorView, $cursor: ResolvedPos, back: boolean): boolean {
+  const at = $cursor.before($cursor.depth - 1);
+  const id = $cursor.node($cursor.depth - 1).attrs['id'] as string;
+  const children = (editor.getBlock(id) as { children: never[] } | undefined)?.children ?? [];
+  if (children.length > 0) editor.replaceBlocks([id], children);
+  else editor.removeBlocks([id]);
+  const { state } = view;
+  view.dispatch(state.tr.setSelection(Selection.near(state.doc.resolve(Math.min(at, state.doc.content.size)), back ? -1 : 1)));
+  return true;
+}
+
+/**
+ * Backspace with the caret at the start of a plain line right under a
+ * closed block formula, or Delete at the end of a line right above one,
+ * selects the formula with its box closed; the next press deletes it
+ * (`SourceBlockWithPreview.ts:166-171`). Joining the line into the formula
+ * would write the line into a source nobody can see. A heading, a list item
+ * or a quoted line takes its own first step on Backspace first.
+ * @param editor - The editor.
+ * @param $cursor - The caret.
+ * @param back - Backspace, else Delete.
+ * @returns Whether the key was taken.
+ */
+function selectFormulaBeside(editor: MathEditor, $cursor: ResolvedPos, back: boolean): boolean {
+  const { parent } = $cursor;
+  if ($cursor.parentOffset !== (back ? 0 : parent.content.size)) return false;
+  if (back && (parent.type.name !== 'paragraph' || parent.attrs['quoted'] === true)) return false;
+  const depth = $cursor.depth - 1;
+  const block = $cursor.node(depth);
+  if (block.type.name !== 'blockContainer') return false;
+  const sibling = $cursor.node(depth - 1).maybeChild($cursor.index(depth - 1) + (back ? -1 : 1));
+  if (sibling?.firstChild?.type.name !== MATH_BLOCK) return false;
+  // The line beside is the formula's own only when no indented line sits between.
+  if ((back ? sibling : block).childCount > 1) return false;
+  editor.setTextCursorPosition(sibling.attrs['id'] as string, 'end');
+  return true;
+}
+
+/**
  * Backspace or Delete by a formula.
  * @param editor - The editor.
  * @param view - The editor view.
@@ -215,28 +268,35 @@ function deleteByFormula(editor: MathEditor, view: EditorView, back: boolean): b
   const { $cursor } = view.state.selection as TextSelection;
   if (!$cursor) return false;
   const { parent } = $cursor;
+  const size = parent.content.size;
   // In an inline formula's source.
   if (!parent.isTextblock && hasPreview(editor, parent.type.name)) {
-    if (parent.content.size === 0) return removeInline(view, $cursor);
-    // At the start, Backspace has nothing of the source to delete and would
-    // reach the line around the formula.
-    return back && $cursor.parentOffset === 0;
+    if (size === 0) return removeInline(view, $cursor);
+    // At the start Backspace, at the end Delete, has nothing of the source to
+    // delete and would reach the line around the formula.
+    return $cursor.parentOffset === (back ? 0 : size);
   }
-  // Beside an inline formula: into its source, deleting nothing unseen.
-  const beside = back ? $cursor.nodeBefore : $cursor.nodeAfter;
-  if (beside !== null && hasPreview(editor, beside.type.name) && beside.isInline) {
-    const into = back ? $cursor.pos - 1 : $cursor.pos + 1;
-    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, into)));
-    return true;
+  if (!hasPreview(editor, parent.type.name)) {
+    // Beside an inline formula: into its source, deleting nothing unseen.
+    const beside = back ? $cursor.nodeBefore : $cursor.nodeAfter;
+    if (beside !== null && hasPreview(editor, beside.type.name) && beside.isInline) {
+      const into = back ? $cursor.pos - 1 : $cursor.pos + 1;
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, into)));
+      return true;
+    }
+    return selectFormulaBeside(editor, $cursor, back);
   }
+  // A selected, closed block formula is the library's to delete.
+  if (closedFormulaBlockAt(editor, $cursor) !== null) return false;
   // At the edge of an open block formula's source: Backspace at its start and
   // Delete at its end would reach the block beside it.
-  if (parent.isTextblock && hasPreview(editor, parent.type.name) && closedFormulaBlockAt(editor, $cursor) === null) {
-    if ($cursor.parentOffset !== (back ? 0 : parent.content.size)) return false;
-    if (parent.content.size === 0) editor.removeBlocks([$cursor.node($cursor.depth - 1).attrs['id'] as string]);
-    return true;
-  }
-  return false;
+  if ($cursor.parentOffset === (back ? 0 : size)) return size === 0 ? removeFormulaBlock(editor, view, $cursor, back) : true;
+  // Its last character: deleted here, the caret kept in the empty source, so
+  // the browser never takes the source element out with it.
+  if (size !== 1) return false;
+  const tr = view.state.tr.delete($cursor.start(), $cursor.end());
+  view.dispatch(tr.setSelection(TextSelection.create(tr.doc, $cursor.start())));
+  return true;
 }
 
 /**
@@ -435,7 +495,9 @@ export const documentMathEditingExtension = createExtension(({ editor }: { edito
     prosemirrorPlugins: [rule.plugin, closedInput(editor), wholeFormulaSelection(editor)],
     keyboardShortcuts: {
       Backspace: () => rule.takeBack(view()) || deleteByFormula(editor, view(), true),
+      'Shift-Backspace': () => rule.takeBack(view()) || deleteByFormula(editor, view(), true),
       Delete: () => deleteByFormula(editor, view(), false),
+      'Shift-Delete': () => deleteByFormula(editor, view(), false),
       Enter: () => confirmInline(editor, view()),
       'Shift-Enter': () => confirmInline(editor, view()),
       ArrowRight: () => arrowByFormula(editor, view(), true),

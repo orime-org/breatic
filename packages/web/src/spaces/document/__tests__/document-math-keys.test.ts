@@ -15,7 +15,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { SourceBlockWithPreviewExtension } from '@blocknote/core/extensions';
 
-import { open, select, unmountAll, type Editor } from '@web/spaces/document/__tests__/paste-harness';
+import { open, positionOf, select, shape, type, unmountAll, type Editor } from '@web/spaces/document/__tests__/paste-harness';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 import { documentSelectAllExtension } from '@web/spaces/document/document-select-all-guard';
 
@@ -34,11 +34,12 @@ interface Seen {
  * @param editor - The editor.
  * @param key - The key.
  * @param ctrlKey - Whether Ctrl is held (`Mod` in jsdom, which is not a Mac).
+ * @param shiftKey - Whether Shift is held.
  * @returns Whether a handler took it.
  */
-function press(editor: Editor, key: string, ctrlKey = false): boolean {
+function press(editor: Editor, key: string, ctrlKey = false, shiftKey = false): boolean {
   const view = editor.prosemirrorView!;
-  const event = new KeyboardEvent('keydown', { key, ctrlKey, bubbles: true, cancelable: true });
+  const event = new KeyboardEvent('keydown', { key, ctrlKey, shiftKey, bubbles: true, cancelable: true });
   return view.someProp('handleKeyDown', (handler) => handler(view, event)) ?? false;
 }
 
@@ -128,6 +129,38 @@ describe('an inline formula beside the caret (A7)', () => {
 
     expect(editor.prosemirrorView!.state.doc.eq(before)).toBe(true);
     expect(editor.prosemirrorView!.state.selection.from).toBe(source(editor).start);
+  });
+
+  it.each([
+    ['Shift+Backspace right after it', 'Backspace', 'after', 'end'],
+    ['Shift+Delete right before it', 'Delete', 'before', 'start'],
+  ] as const)('%s moves the caret into its source and deletes nothing', (_label, key, from, into) => {
+    const { editor } = open([between('xy')]);
+    select(editor, from === 'after' ? source(editor).after : posOf(editor, 'math'));
+    const before = editor.prosemirrorView!.state.doc;
+
+    expect(press(editor, key, false, true)).toBe(true);
+
+    expect(editor.prosemirrorView!.state.doc.eq(before)).toBe(true);
+    expect(editor.prosemirrorView!.state.selection.from).toBe(source(editor)[into]);
+  });
+
+  it('Delete at the end of its source does nothing to the line after it', () => {
+    const { editor } = open([between('xy')]);
+    select(editor, source(editor).end);
+    const before = editor.prosemirrorView!.state.doc;
+
+    expect(press(editor, 'Delete')).toBe(true);
+
+    expect(editor.prosemirrorView!.state.doc.eq(before)).toBe(true);
+    expect(editor.prosemirrorView!.state.selection.from).toBe(source(editor).end);
+  });
+
+  it('leaves Delete inside its source to the browser', () => {
+    const { editor } = open([between('xy')]);
+    select(editor, source(editor).start + 1);
+
+    expect(press(editor, 'Delete')).toBe(false);
   });
 
   it.each(['Backspace', 'Delete'])('%s in an empty source deletes the formula', (key) => {
@@ -302,6 +335,98 @@ describe('a block formula with its popup open (A5, A7)', () => {
     expect(press(editor, 'Backspace')).toBe(true);
 
     expect(blocks(editor).map((block) => block.type)).toEqual(['paragraph']);
+  });
+
+  it.each([
+    ['Backspace after its last character', 'Backspace', 1, 1],
+    ['Delete before its last character', 'Delete', 1, 0],
+    ['Backspace over the whole source selected', 'Backspace', 3, 0],
+  ] as const)('%s empties the source itself and keeps the caret in it', (_label, key, length, offset) => {
+    const { editor } = open([
+      { type: 'paragraph', content: 'above' },
+      { type: 'mathBlock', content: 'abc'.slice(0, length) },
+    ]);
+    const id = openPopupAtStart(editor);
+    const start = posOf(editor, 'mathBlock') + 1;
+    if (length === 1) select(editor, start + offset);
+    else select(editor, start, start + length);
+
+    expect(press(editor, key)).toBe(true);
+
+    expect(blocks(editor).map((block) => block.type)).toEqual(['paragraph', 'mathBlock']);
+    const { $from, empty } = editor.prosemirrorView!.state.selection;
+    expect(empty).toBe(true);
+    expect($from.parent.type.name).toBe('mathBlock');
+    expect($from.parent.content.size).toBe(0);
+    expect(popupOpen(editor, id)).toBe(true);
+
+    type(editor, 'yz');
+    expect(editor.prosemirrorView!.state.doc.nodeAt(posOf(editor, 'mathBlock'))!.textContent).toBe('yz');
+  });
+
+  it.each([
+    ['Backspace', 'above'],
+    ['Delete', 'child one'],
+  ])('%s in an empty source keeps the lines indented under the formula', (key, caretIn) => {
+    const { editor } = open([
+      { type: 'paragraph', content: 'above' },
+      {
+        type: 'mathBlock',
+        content: '',
+        children: [
+          { type: 'paragraph', content: 'child one' },
+          { type: 'paragraph', content: 'child two' },
+        ],
+      },
+      { type: 'paragraph', content: 'tail' },
+    ]);
+    openPopupAtStart(editor);
+
+    expect(press(editor, key)).toBe(true);
+
+    expect(shape(editor)).toEqual(['paragraph:above', 'paragraph:child one', 'paragraph:child two', 'paragraph:tail']);
+    const { $from } = editor.prosemirrorView!.state.selection;
+    expect($from.parent.textContent).toBe(caretIn);
+    expect($from.parentOffset).toBe(key === 'Backspace' ? caretIn.length : 0);
+  });
+});
+
+describe('a line beside a closed block formula (A7)', () => {
+  /**
+   * Sends a key the way the browser does, to the listeners on the editor's
+   * element too.
+   * @param editor - The editor.
+   * @param key - The key.
+   */
+  function keyDown(editor: Editor, key: string): void {
+    const view = editor.prosemirrorView!;
+    const event = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+    view.dom.dispatchEvent(event);
+    if (!event.defaultPrevented) view.someProp('handleKeyDown', (handler) => handler(view, event));
+  }
+
+  it.each([
+    ['Backspace at the start of the line below', 'Backspace', 'below'],
+    ['Delete at the end of the line above', 'Delete', 'above'],
+  ] as const)('%s selects the formula, and the next press deletes it', (_label, key, line) => {
+    const { editor } = open([
+      { type: 'paragraph', content: 'above' },
+      { type: 'mathBlock', content: 'x+1' },
+      { type: 'paragraph', content: 'below' },
+    ]);
+    const id = blocks(editor)[1]!.id;
+    select(editor, line === 'below' ? positionOf(editor, 'below', 0) : positionOf(editor, 'above', 5));
+    const before = editor.prosemirrorView!.state.doc;
+
+    expect(press(editor, key)).toBe(true);
+
+    expect(editor.prosemirrorView!.state.doc.eq(before)).toBe(true);
+    expect(editor.prosemirrorView!.state.selection.$from.parent.type.name).toBe('mathBlock');
+    expect(popupOpen(editor, id)).toBe(false);
+
+    keyDown(editor, key);
+
+    expect(shape(editor)).toEqual(['paragraph:above', 'paragraph:below']);
   });
 });
 
