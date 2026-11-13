@@ -804,16 +804,18 @@ and each capture gets a session number that a send's result must match before
 it changes the state. The frame is kept inside a safe area clear of the chrome
 and refitted when that area changes (`viewfinder-geometry.ts`); while it is
 open the minimap and the left rail are put away and selecting an object does
-not open Properties; opening it closes an open right panel, and closing it does
-not reopen the panel (the panel's own buttons still open it while framing). From Capture until Reframe or close the frame holds the still (an object
-URL of the PNG) and the object toolbar is put away. The runtime hands the editor a capture function: it
-renders the frame once into a 4-sample sRGB `WebGLRenderTarget` at the capture
-size (`capture.long_edge_px` on the long edge) through
-`PerspectiveCamera.setViewOffset`, with the grid, transform handles, outlines
-and joint dots hidden for that render, reads the pixels back with
-`readRenderTargetPixelsAsync` and encodes a PNG. Each destination closes the
-viewfinder once the still is handed over: in the tray, written on the canvas or
-on the clipboard; the tray and the canvas node show the upload and how it ends. Add to Agent adds the still to the tray of the conversation on
+not open Properties; opening it closes an open right panel, and closing it
+does not reopen the panel (the panel's own buttons still open it while
+framing). From Capture until Reframe or close the frame holds the still (an
+object URL of the PNG) and the object toolbar is put away. The runtime hands
+the editor a capture function: it renders the frame once into a 4-sample sRGB
+`WebGLRenderTarget` at the capture size (`capture.long_edge_px` on the long
+edge) through `PerspectiveCamera.setViewOffset`, with the grid, transform
+handles, outlines and joint dots hidden for that render, reads the pixels back
+with `readRenderTargetPixelsAsync` and encodes a PNG. Each destination closes
+the viewfinder once the still is handed over: in the tray, written on the
+canvas or on the clipboard; the tray and the canvas node show the upload and
+how it ends. Add to Agent adds the still to the tray of the conversation on
 screen and hands over there, while the tray uploads it as a derived image
 (`uploadTrayItem`, shared with the composer). Add to Canvas works whether or
 not the canvas tab is open (`place-image-on-canvas.ts`): it acquires the
@@ -825,10 +827,10 @@ document it holds, so a rebuilt or torn-down document reads as gone and marks
 the node failed), then uploads into the node through `uploadIntoNode`, the
 picker and Retry path `CanvasSpace` uses too, and releases the document once
 the bytes are sent. The leave guard holds from the acquire until the upload's
-own send. View on the success message goes through the
-`canvas-reveal` store: the project page opens that canvas once, and the canvas,
-once loaded and holding the node, cancels its queued opening fit, centres on
-the node and selects it.
+own send. View on the success message goes through the `canvas-reveal` store:
+the project page opens that canvas once, and the canvas, once loaded and
+holding the node, cancels its queued opening fit, centres on the node and
+selects it.
 
 Opening a registered model checks its registered size, reads at most
 `max_artifact_bytes`, unpacks a ZIP in the worker (a manifest, `files/` paths
