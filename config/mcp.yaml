@@ -1,0 +1,46 @@
+# External-agent access (MCP, #1488). Read by server (OAuth, personal access
+# tokens, task queries, rate limits), collab (command rate limit) and the MCP
+# service (waits, timeouts, captures). Restart those services after editing.
+
+oauth:
+  # How long an access token is accepted.
+  access_token_ttl_seconds: 3600
+  # How long a refresh token is accepted; at most grant_ttl_seconds.
+  refresh_token_ttl_seconds: 2592000
+  # How long one authorization lives before the user must authorize again.
+  grant_ttl_seconds: 31536000
+  # How long a rotated refresh token is still accepted, so a retried refresh
+  # does not sign the agent out. Okta allows 0-60s, default 30.
+  refresh_reuse_grace_seconds: 30
+
+# How long the token the MCP service mints for each downstream API call lives.
+downstream_token_ttl_seconds: 300
+
+# How long a call waits for the first reply to a command; at most call_timeout_ms.
+command_wait_ms: 10000
+# The whole call's limit. Stays under the MCP SDK's 60s default request timeout.
+call_timeout_ms: 45000
+
+# Most task ids one task query may name.
+task_query_max_ids: 50
+# Most nodes one canvas read returns.
+read_canvas_max_nodes: 500
+
+view_capture:
+  # Longest edge of a captured view, in pixels.
+  max_edge_px: 1568
+  # How long a capture may take; below command_wait_ms so it answers inside that wait.
+  timeout_ms: 8000
+  # Largest captured image. Plus the 65536-byte view-data bound it must stay
+  # within limits.yaml request_body_max_bytes.
+  max_bytes: 917504
+
+pat:
+  # Most personal access tokens one user may hold at once.
+  max_active_per_user: 20
+
+rate_limit:
+  # Commands per minute, per user per Studio.
+  commands_per_minute: 180
+  # Calls per minute, per user, for calls that resolve no Studio.
+  user_total_per_minute: 300

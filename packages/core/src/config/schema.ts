@@ -158,6 +158,9 @@ export const coreConfigSchema = z.object({
   // (which stays cross-service Streams) so collab-cluster coordination
   // can later move to its own Redis instance by changing only this URL.
   REDIS_COLLAB_URL: z.string().url().default("redis://localhost:6379/3"),
+  // DB 4: external-agent access (MCP, #1488) — commands, replies, completion
+  // notices, capture requests, in-flight task lists and rate counters.
+  REDIS_MCP_URL: z.string().url().default("redis://localhost:6379/4"),
 
   // Namespace for the two things neither the Redis DB number nor the port
   // split can separate:
@@ -289,6 +292,18 @@ export const coreConfigSchema = z.object({
   // until it is blanked.
   INTERNAL_API_SECRET_PREVIOUS: z.string().default(""),
 
+  // ── External-agent access (MCP, #1488) ───────────
+  // The MCP service's port, its health port (primary+1), the address agents
+  // connect to, the OAuth issuer that address names, the API the service calls,
+  // and the secret it authenticates with to the server. An empty secret turns
+  // external-agent token exchange off; the rest of the product runs.
+  MCP_PORT: numeric(z.coerce.number().int().positive().default(3003)),
+  MCP_HEALTH_PORT: numeric(z.coerce.number().int().positive().default(3004)),
+  MCP_PUBLIC_URL: z.string().url().default("http://localhost:3003/mcp"),
+  OAUTH_ISSUER: z.string().url().default("http://localhost:3000"),
+  MCP_API_BASE_URL: z.string().url().default("http://localhost:3000/api/v1"),
+  MCP_CLIENT_SECRET: z.string().default(""),
+
   // ── Storage ──────────────────────────────────────
   // UPLOAD_BASE_URL is the public read base. On R2 it is the r2.dev
   // address or a custom domain, and it is a different host from
@@ -387,8 +402,9 @@ export type CoreConfig = z.infer<typeof coreConfigSchema>;
  *   function only processes the map it is handed).
  * @returns The validated, typed, default-applied configuration.
  * @throws {z.ZodError} if a required variable is missing / malformed.
- * @throws {Error} if payments are enabled without Stripe secrets, or the
- *   internal API is enabled without its secret.
+ * @throws {Error} if payments are enabled without Stripe secrets, the
+ *   internal API is enabled without its secret, or `MCP_CLIENT_SECRET` is
+ *   only whitespace.
  */
 export function parseConfig(rawEnv: Record<string, string | undefined>): CoreConfig {
   const config = coreConfigSchema.parse(rawEnv);
@@ -449,6 +465,15 @@ export function parseConfig(rawEnv: Record<string, string | undefined>): CoreCon
         "Refusing to start.",
       );
     }
+  }
+
+  // Empty means external-agent token exchange is off; whitespace alone is a
+  // typo that would otherwise sign with a guessable secret.
+  if (config.MCP_CLIENT_SECRET !== "" && !config.MCP_CLIENT_SECRET.trim()) {
+    throw new Error(
+      "FATAL: MCP_CLIENT_SECRET is only whitespace; leave it empty to turn " +
+      "external-agent connections off. Refusing to start.",
+    );
   }
 
   return config;

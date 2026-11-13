@@ -64,6 +64,7 @@ export { assertKnownQueues, getWorkerConfig } from "@core/config/worker.js";
 export type { WorkerConfig } from "@core/config/worker.js";
 export { getStorageConfig } from "@core/config/storage.js";
 export { getTimelineConfig, type TimelineConfig } from "@core/config/timeline.js";
+export { getMcpConfig, mcpConfigSchema, type McpConfig } from "@core/config/mcp.js";
 export { runProjectMediaBackfill } from "@core/asset/project-media-backfill.js";
 export type {
   ProjectMediaBackfillCandidate,
@@ -120,6 +121,8 @@ export {
   closeStreamRedis,
   getCollabRedis,
   closeCollabRedis,
+  getMcpRedis,
+  closeMcpRedis,
   createRedisClient,
   pingRedis,
 } from "@core/infra/redis.js";

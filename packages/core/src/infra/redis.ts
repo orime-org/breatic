@@ -4,7 +4,7 @@
 /**
  * Redis client singletons (ioredis).
  *
- * Four logical connections, each backed by a separate Redis DB:
+ * Five logical connections, each backed by a separate Redis DB:
  *
  * | Singleton        | ENV Key            | DB  | Purpose                              |
  * |------------------|--------------------|-----|--------------------------------------|
@@ -12,11 +12,12 @@
  * | getQueueRedis()  | REDIS_QUEUE_URL    | /1  | BullMQ task queue                    |
  * | getStreamRedis() | REDIS_STREAM_URL   | /2  | Redis Streams (cross-service)        |
  * | getCollabRedis() | REDIS_COLLAB_URL   | /3  | Collab pub/sub + Space count lock   |
+ * | getMcpRedis()    | REDIS_MCP_URL      | /4  | External-agent commands and counters |
  *
- * Early stage: all three can point to the same Redis instance (different DBs).
+ * Early stage: all of them can point to the same Redis instance (different DBs).
  * At scale: swap URLs to independent Redis instances without code changes.
  *
- * All three singletons (and any cross-process consumer such as
+ * All singletons (and any cross-process consumer such as
  * `dev:collab` / `dev:worker`) go through `createRedisClient` so
  * they inherit the same production-grade defaults (TCP keepalive,
  * commandTimeout, READONLY-aware reconnect, error logging).
@@ -227,6 +228,38 @@ export async function closeCollabRedis(): Promise<void> {
   if (_collabRedis) {
     await _collabRedis.quit();
     _collabRedis = null;
+  }
+}
+
+// ── External-agent access (DB 4) ─────────────────────────────────
+
+let _mcpRedis: Redis | null = null;
+
+/**
+ * Get the external-agent access (MCP) Redis client.
+ *
+ * Backs external-agent commands, replies, completion notices, capture
+ * requests, in-flight task lists and rate counters (#1488). Its own DB so it
+ * can move to its own Redis instance by changing only `REDIS_MCP_URL`.
+ * @returns The shared ioredis instance for DB 4
+ */
+export function getMcpRedis(): Redis {
+  if (!_mcpRedis) {
+    _mcpRedis = createRedisClient(env.REDIS_MCP_URL, {
+      name: "mcp",
+    });
+  }
+  return _mcpRedis;
+}
+
+/**
+ * Quit and release the external-agent access (DB 4) Redis client (call on shutdown).
+ * @returns Resolves once the client has quit, or at once when none is open.
+ */
+export async function closeMcpRedis(): Promise<void> {
+  if (_mcpRedis) {
+    await _mcpRedis.quit();
+    _mcpRedis = null;
   }
 }
 
