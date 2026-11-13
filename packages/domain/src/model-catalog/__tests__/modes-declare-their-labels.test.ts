@@ -27,10 +27,6 @@ const VIDEO = [
   '    display_name: "A Model"',
   '    mode: "t2v"',
   "    takes_prompt: true",
-  "    providers:",
-  "      - name: wavespeed",
-  '        model_id: "a"',
-  "        priority: 1",
 ].join("\n");
 
 /** That mode, called something no table anywhere would guess. */

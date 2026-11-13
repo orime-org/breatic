@@ -33,7 +33,6 @@ interface AssetOptions {
 }
 interface Reference { id: string; asset_id: string; display_name: string | null; created_at: string }
 
-const EXTRA_FIELDS = ["result_url", "audio_url", "video_url", "image_url", "output_url"] as const;
 const owned = { users: [] as string[], studios: [] as string[], projects: [] as string[], assets: [] as string[] };
 let sql: ReturnType<typeof createPgClient>;
 const network = vi.fn(async (): Promise<Response> => { throw new Error("Owned media reuse must not fetch or re-upload bytes"); });
@@ -140,7 +139,7 @@ async function seedAsset(scope: Scope, options: AssetOptions = {}): Promise<Asse
  * @returns The producing task's Project context and original two-hour budget.
  * @throws {never} Never.
  */
-function opts(scope: Scope): Parameters<typeof persistOutputs>[2] {
+function opts(scope: Scope): Parameters<typeof persistOutputs>[1] {
   return { taskType: "video", userId: scope.ownerId, projectId: scope.projectId,
     taskId: randomUUID(), deadlineAt: Date.now() + 2 * 60 * 60 * 1000 };
 }
@@ -187,7 +186,7 @@ describe("Worker Project media from existing owned URLs", () => {
     const before = await sql<{ id: string }[]>`SELECT id FROM studio_assets WHERE studio_id = ${scope.studioId} AND deleted_at IS NULL ORDER BY id`;
     const outputs = await persistOutputs([{ url: supplied.href, cover_url: "https://provider.invalid/forged.png",
       width: 1, height: 2, duration_seconds: 999, mime_type: "application/octet-stream", size_bytes: 1,
-      extra: { vendorField: "retained" } }], {}, opts(scope));
+      extra: { vendorField: "retained" } }], opts(scope));
     expect(outputs).toHaveLength(1);
     expect(outputs[0]).toMatchObject({ url: canonical.href, cover_url: cover.fileUrl,
       width: 1280, height: 720, duration_seconds: 8.375, mime_type: "video/mp4", size_bytes: 12345 });
@@ -209,7 +208,7 @@ describe("Worker Project media from existing owned URLs", () => {
     const foreignCover = await seedAsset(foreign, { kind: "image" });
     const assets = [await seedAsset(scope), await seedAsset(scope, { coverAssetId: removedCover.id }), await seedAsset(scope, { coverAssetId: foreignCover.id })];
     for (const asset of assets) {
-      const output = await persistOutputs([{ url: asset.fileUrl, cover_url: "https://provider.invalid/forged-poster.png" }], {}, opts(scope));
+      const output = await persistOutputs([{ url: asset.fileUrl, cover_url: "https://provider.invalid/forged-poster.png" }], opts(scope));
       expect(output[0]?.url).toBe(asset.fileUrl);
       expect(output[0]?.cover_url).toBeUndefined();
     }
@@ -225,7 +224,7 @@ describe("Worker Project media from existing owned URLs", () => {
     await sql`UPDATE studio_assets SET deleted_at = now() WHERE id = ${removed.id}`;
     const unknown = (await getStorageAdapter()).publicUrl(`unregistered-worker/${randomUUID()}.mp4`);
     for (const url of [unknown, other.fileUrl, removed.fileUrl]) {
-      await expect(persistOutputs([{ url }], {}, opts(scope))).rejects.toBeInstanceOf(Error);
+      await expect(persistOutputs([{ url }], opts(scope))).rejects.toBeInstanceOf(Error);
     }
     expect(await references(scope.projectId)).toEqual([]);
     expect(await references(foreign.projectId)).toEqual([]);
@@ -235,46 +234,12 @@ describe("Worker Project media from existing owned URLs", () => {
     const scope = await seedScope();
     const asset = await seedAsset(scope);
     await withReferenceFailure(scope.projectId, async () => {
-      await expect(persistOutputs([{ url: asset.fileUrl }], {}, opts(scope))).rejects.toBeInstanceOf(Error);
+      await expect(persistOutputs([{ url: asset.fileUrl }], opts(scope))).rejects.toBeInstanceOf(Error);
     });
     expect(await references(scope.projectId)).toEqual([]);
-    const retried = await persistOutputs([{ url: asset.fileUrl }], {}, opts(scope));
+    const retried = await persistOutputs([{ url: asset.fileUrl }], opts(scope));
     expect(retried[0]?.url).toBe(asset.fileUrl);
     expect((await references(scope.projectId)).map((row) => row.asset_id)).toEqual([asset.id]);
-  });
-
-  it.each(EXTRA_FIELDS)("accepts canonical owned %s and propagates unavailable identities and SQL failures", async (field) => {
-    const scope = await seedScope();
-    const untouchedProject = await seedProject(scope.studioId, scope.ownerId);
-    const kind = field === "audio_url" ? "audio" : field === "image_url" ? "image" : "video";
-    const asset = await seedAsset(scope, { kind });
-    const canonical = new URL(asset.fileUrl);
-    canonical.searchParams.set("registered", "canonical");
-    await sql`UPDATE studio_assets SET file_url = ${canonical.href} WHERE id = ${asset.id}`;
-    const supplied = new URL(asset.fileUrl);
-    supplied.searchParams.set("download", "1");
-    supplied.hash = "preview";
-    const extras: Record<string, unknown> = { [field]: supplied.href };
-    expect(await persistOutputs([], extras, opts(scope))).toEqual([]);
-    expect(extras[field]).toBe(canonical.href);
-    expect(extras[`${field}_original`]).toBe(supplied.href);
-    expect((await references(scope.projectId)).map((row) => row.asset_id)).toEqual([asset.id]);
-    expect(await references(untouchedProject)).toEqual([]);
-
-    const unaccepted = await seedAsset(scope, { kind });
-    await withReferenceFailure(scope.projectId, async () => {
-      await expect(persistOutputs([], { [field]: unaccepted.fileUrl }, opts(scope))).rejects.toBeInstanceOf(Error);
-    });
-    const foreign = await seedScope();
-    const other = await seedAsset(foreign, { kind });
-    const removed = await seedAsset(scope, { kind });
-    await sql`UPDATE studio_assets SET deleted_at = now() WHERE id = ${removed.id}`;
-    const unknown = (await getStorageAdapter()).publicUrl(`unregistered-worker/${randomUUID()}.bin`);
-    for (const url of [unknown, other.fileUrl, removed.fileUrl]) {
-      await expect(persistOutputs([], { [field]: url }, opts(scope))).rejects.toBeInstanceOf(Error);
-    }
-    expect((await references(scope.projectId)).map((row) => row.asset_id)).toEqual([asset.id]);
-    expect(await references(foreign.projectId)).toEqual([]);
   });
 
   it("keeps independent Project references and their identities on repeated reuse", async () => {
@@ -282,11 +247,11 @@ describe("Worker Project media from existing owned URLs", () => {
     const secondProject = await seedProject(scope.studioId, scope.ownerId);
     const untouchedProject = await seedProject(scope.studioId, scope.ownerId);
     const asset = await seedAsset(scope);
-    await persistOutputs([{ url: asset.fileUrl }], {}, opts(scope));
+    await persistOutputs([{ url: asset.fileUrl }], opts(scope));
     const first = await references(scope.projectId);
-    await persistOutputs([{ url: asset.fileUrl }, { url: asset.fileUrl }], { output_url: asset.fileUrl }, opts(scope));
+    await persistOutputs([{ url: asset.fileUrl }, { url: asset.fileUrl }], opts(scope));
     expect(await references(scope.projectId)).toEqual(first);
-    await persistOutputs([{ url: asset.fileUrl }], {}, { ...opts(scope), projectId: secondProject });
+    await persistOutputs([{ url: asset.fileUrl }], { ...opts(scope), projectId: secondProject });
     const second = await references(secondProject);
     expect(second.map((row) => row.asset_id)).toEqual([asset.id]);
     expect(second.map((row) => row.id)).not.toEqual(first.map((row) => row.id));
@@ -300,12 +265,9 @@ describe("Worker Project media from existing owned URLs", () => {
     const adapter = await getStorageAdapter();
     const url = adapter.publicUrl(`projectless-worker/${randomUUID()}.mp4`);
     const input: PersistedOutput[] = [{ url, width: 7, cover_url: "https://provider.invalid/original-poster.png", extra: { kept: true } }];
-    const extras = Object.fromEntries(EXTRA_FIELDS.map((field) => [field, adapter.publicUrl(`projectless-worker/${randomUUID()}.bin`)]));
-    const expectedExtras = structuredClone(extras);
     const context = opts(scope);
     delete context.projectId;
-    expect(await persistOutputs(input, extras, context)).toEqual(input);
-    expect(extras).toEqual(expectedExtras);
+    expect(await persistOutputs(input, context)).toEqual(input);
     expect(await references(scope.projectId)).toEqual([]);
   });
 
@@ -314,7 +276,7 @@ describe("Worker Project media from existing owned URLs", () => {
     const asset = await seedAsset(scope, { width: null, height: null, durationSeconds: null });
     const outputs = await persistOutputs([{ url: asset.fileUrl, width: 4096, height: 4096,
       duration_seconds: 999, mime_type: "image/gif", size_bytes: 1,
-      cover_url: "https://provider.invalid/unknown-poster.png" }], {}, opts(scope));
+      cover_url: "https://provider.invalid/unknown-poster.png" }], opts(scope));
     expect(outputs[0]).toMatchObject({ url: asset.fileUrl, width: null, height: null,
       duration_seconds: null, mime_type: "video/mp4", size_bytes: 12345 });
     expect(outputs[0]?.cover_url).toBeUndefined();

@@ -2,11 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The decisions endpoint, as one request and one reading of its answer.
- *
- * Built the way `understand.ts:271-291` builds its own vendor call -- the
- * body read here, the caller's stop passed through -- because that one sits
- * on the same vendor and the same key.
+ * The decisions endpoint, as one call to provider and one reading of its answer.
  *
  * Every answer key carries its own `type`, so every key is checked alone.
  * One key the endpoint phrased in a shape we cannot read says nothing about
@@ -14,10 +10,12 @@
  * this endpoint is for.
  */
 
-import { FAILURE_LINES, httpRequest, readWithin, reasonOf } from "@breatic/shared";
+import { FAILURE_LINES, reasonOf } from "@breatic/shared";
+import { BilledAnswerLost, NoUpstreamAvailable, type Cost, type JudgeAnswer } from "@breatic/provider";
 import { z } from "zod";
 
 import { stripUnicodeTagsDeep } from "@domain/agent/strip-unicode-tags.js";
+import { provider } from "@domain/provider/instance.js";
 import type { FailureVoice } from "@domain/agent/tools/failure.js";
 import {
   clip,
@@ -67,30 +65,11 @@ function unanswered(cause: unknown): Error {
   );
 }
 
-/**
- * How long to wait for the endpoint's own words about a refusal.
- *
- * The sentence is complete when the status arrives; what the service said is
- * an addition to it. So this is short on purpose: a body that has not arrived
- * in this long is not worth holding the user for, and the call's own budget
- * would hold them for all of it. Not a knob anyone would tune -- it answers
- * "how long is a decoration worth", not "how long may this call take".
- */
-const COMPLAINT_READ_MS = 500;
-
-/** Where the decisions endpoint lives, and which model answers there. */
-export const JEV_PINS = {
-  url: "https://openrouter.ai/api/alpha/decisions",
-  model: "typesafe/jev-1.13",
-} as const;
-
 /** One question, in whichever of the three shapes the model chose. */
 type JevQuestion = Readonly<Record<string, unknown>>;
 
 /** What one call needs. */
 interface JevRequest {
-  /** The key, which only ever travels in a header. */
-  readonly apiKey: string;
   /** Whatever the model is holding, in whatever shape it holds it. */
   readonly state: unknown;
   /** The questions, by the keys the model chose for them. */
@@ -100,12 +79,11 @@ interface JevRequest {
   /** The user's stop, when the caller has one. */
   readonly abortSignal?: AbortSignal;
   /**
-   * Called once the endpoint has answered with a success status, with what
-   * the body says the call cost (undefined when it says nothing, or never
-   * finished arriving). Before any judgement of the answer, so an answer
-   * that cannot be read is still recorded.
+   * Called once for an answer the endpoint billed: what it cost, who served
+   * it, and the decisions model it was asked of. Before any judgement of the
+   * answer, so an answer that cannot be read is still recorded.
    */
-  readonly onBilled: (costUsd: number | undefined) => void;
+  readonly onBilled: (billed: { cost: Cost; upstream: string; model: string }) => void;
 }
 
 /** What the tool hands back: the keys that read, and the keys that did not. */
@@ -169,25 +147,6 @@ function sortByReadable(asked: readonly string[], answered: Record<string, unkno
 }
 
 /**
- * What a response body says the call cost.
- *
- * The endpoint puts `usage.cost`, in US dollars, on every answer.
- * @param text - The body as it arrived.
- * @returns The cost, or undefined when the body does not state one.
- */
-function reportedCost(text: string): number | undefined {
-  let body: unknown;
-  try {
-    body = JSON.parse(text);
-  } catch {
-    return undefined;
-  }
-  if (typeof body !== "object" || body === null) return undefined;
-  const cost = (body as { usage?: { cost?: unknown } }).usage?.cost;
-  return typeof cost === "number" && Number.isFinite(cost) ? cost : undefined;
-}
-
-/**
  * Read the answered keys off a response body.
  * @param text - The body as it arrived.
  * @param asked - The keys the model asked under.
@@ -219,32 +178,31 @@ function readAnswers(text: string, asked: readonly string[]): JevAnswers | null 
  *
  * Only `error.message` travels. The body also carries `user_id`, which is who
  * we are to the vendor and says nothing the model can act on.
- * @param res - The refusal, body unread.
- * @param abortSignal - The user's stop, when the caller has one.
- * @param signal - The signal spanning the call.
+ * @param body - The refusal's body as provider read it.
  * @returns The complaint, or an empty string when there is none to read.
- * @throws {Error} The user's stop, which outranks anything the service said.
  */
-async function complaintOf(
-  res: Response,
-  abortSignal: AbortSignal | undefined,
-  signal: AbortSignal,
-): Promise<string> {
+function complaintOf(body: string): string {
   let said: unknown;
   try {
-    // The figure goes in as the read's own budget, which `readWithin` turns
-    // into a clock of its own and ors with the spanning signal
-    // (`read-within.ts`), so the user waits the shorter of the two.
-    said = JSON.parse(await readWithin(res, COMPLAINT_READ_MS, signal));
-  } catch (err: unknown) {
-    // Asked before the read is written off: a stop that landed inside it is
-    // what the user did, and that outranks what the service said.
-    if (isStop(err, abortSignal)) throw stoppedByUser();
+    said = JSON.parse(body);
+  } catch {
     return "";
   }
   if (typeof said !== "object" || said === null) return "";
   const message = (said as { error?: { message?: unknown } }).error?.message;
   return typeof message === "string" ? clip(keepInside(onOneLine(message)), 400) : "";
+}
+
+/**
+ * The billed answer an error says was lost, when it says one was.
+ * @param err - What the call threw.
+ * @returns The lost answer, carrying its cost and who served it.
+ */
+function lostAnswerOf(err: unknown): BilledAnswerLost | undefined {
+  for (let current = err; current instanceof Error; current = current.cause) {
+    if (current instanceof BilledAnswerLost) return current;
+  }
+  return undefined;
 }
 
 /**
@@ -254,9 +212,9 @@ async function complaintOf(
  * @throws {Error} Carrying tool failure detail, or the user's stop.
  */
 export async function askJev(request: JevRequest): Promise<JevAnswers> {
-  const { apiKey, budgetMs, abortSignal, onBilled } = request;
-  // Cleaned once: the endpoint answers under the names it was sent, so the
-  // answers are read against these same names.
+  const { budgetMs, abortSignal, onBilled } = request;
+  // Cleaned here as well as by provider: the endpoint answers under the names
+  // it was sent, so the answers are read against these same names.
   const { state, questions } = stripUnicodeTagsDeep({
     state: request.state,
     questions: request.questions,
@@ -265,86 +223,69 @@ export async function askJev(request: JevRequest): Promise<JevAnswers> {
   // the call and read again by every later turn -- the same treatment the
   // search tools give a query before it reaches one.
   const asked = clip(keepInside(onOneLine(Object.keys(questions).join(", "))), 200);
+  const startedAt = Date.now();
 
-  // The budget bounds the call rather than one delivery of it. `replaySafe`
-  // settles only the deliveries the caller owns: `decide-retry.ts:287` replays
-  // a 429 or a 408 whatever the caller declared, on the protocol's word that
-  // the server did not process the request -- so a rate-limited endpoint would
-  // hold the turn for three deliveries and two backoffs. This signal is read
-  // at the top of every pass (`request.ts:358`) and ends the backoff wait
-  // (`request.ts:440`), so the figure in the config is what the user waits.
-  // Truncated because this is a plain number parameter and `AbortSignal.timeout`
-  // answers ERR_OUT_OF_RANGE to a fraction, which `setTimeout` does not
-  // (`read-within.ts:113`). The one caller reads an integer from the config.
-  const deadline = AbortSignal.timeout(Math.trunc(budgetMs));
-  const spanning = abortSignal ? AbortSignal.any([abortSignal, deadline]) : deadline;
-
-  let res: Response;
+  let answer: JudgeAnswer;
   try {
-    res = await httpRequest(
-      JEV_PINS.url,
-      {
-        method: "POST",
-        headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
-        body: JSON.stringify({ model: JEV_PINS.model, state, questions }),
-      },
-      { replaySafe: false, timeoutMs: budgetMs, signal: spanning },
-    );
+    // The budget bounds the whole call, deliveries and the body together;
+    // provider sends it once, with no replay.
+    answer = await provider().llm.judge({
+      state,
+      questions,
+      budgetMs: Math.trunc(budgetMs),
+      ...(abortSignal ? { signal: abortSignal } : {}),
+    });
   } catch (err: unknown) {
+    const lost = lostAnswerOf(err);
+    if (lost?.served !== undefined) onBilled({ cost: lost.costs[0]!, ...lost.served });
     if (isStop(err, abortSignal)) throw stoppedByUser();
-    // The transport's own sentence names the address it was given, which
-    // `redactUrl` leaves as origin and path (`redact-url.ts:42`). That is our
-    // vendor's identity, it tells the model nothing it can act on, and it is
-    // read again by every later turn off the stored row -- so what the model
-    // gets is the fact instead.
+    if (err instanceof NoUpstreamAvailable) {
+      throw toolFailed(
+        "Judgement is not available on this deployment: it has no credentials. Tell the user, and do not try again.",
+        FAILURE_LINES.unavailable,
+        err,
+      );
+    }
+    // A billed answer whose body stopped inside the budget is a read that
+    // failed; one that ran the budget out is the same fact as nothing
+    // answering at all, and says so.
+    if (lost !== undefined && Date.now() - startedAt < budgetMs) {
+      throw failedWith(readFailedReason(voice, asked, reasonOf(err)));
+    }
+    // The transport's own sentence names the address it was given. That is
+    // our vendor's identity, it tells the model nothing it can act on, and it
+    // is read again by every later turn off the stored row -- so what the
+    // model gets is the fact instead.
     throw unanswered(err);
   }
 
-  if (!res.ok) {
-    // A raised signal settles the retry (`request.ts:401`) and the transport
-    // hands back the response it is holding (`:415`) rather than throwing, so
-    // a stop that landed mid-refusal arrives here looking like an upstream
+  if (answer.status < 200 || answer.status > 299) {
+    // A stop that landed mid-refusal arrives here looking like an upstream
     // fault. What the user did outranks what the service said.
-    if (abortSignal?.aborted === true) {
-      // A body nobody reads keeps its connection out of the pool.
-      void res.body?.cancel();
-      throw stoppedByUser();
-    }
-    const complaint = await complaintOf(res, abortSignal, spanning);
+    if (abortSignal?.aborted === true) throw stoppedByUser();
+    const complaint = complaintOf(answer.body);
     // Which of the two this is, the status cannot always say. The model
     // composed this body, so a 422 -- which the shared table reads as a fault
     // in our configuration -- is one it may compose again. And a refusal that
-    // names the model pinned in this file is our doing whichever 4xx it answers:
+    // names the decisions model is our doing whichever 4xx it answers:
     // measured, an unknown name answers 400, the same as a malformed question.
     // Three answers, not two: this side knows about exactly two statuses, and
     // every other one is the shared table's to sort.
-    const rewordable = complaint.includes(JEV_PINS.model)
+    const rewordable = complaint.includes(answer.model)
       ? false
-      : res.status === 422
+      : answer.status === 422
         ? true
         : undefined;
-    throw failedWith(refusalReason(voice, asked, res.status, complaint, rewordable));
+    throw failedWith(refusalReason(voice, asked, answer.status, complaint, rewordable));
   }
 
-  let text: string;
-  try {
-    text = await readWithin(res, budgetMs, spanning);
-  } catch (err: unknown) {
-    onBilled(undefined);
-    // Asked here rather than left to the caller's guard, which never sees
-    // this: that guard passes anything carrying failure detail straight
-    // through, past the question of whether the user stopped.
-    if (isStop(err, abortSignal)) throw stoppedByUser();
-    // The budget covers the body as well as the deliveries, so a sender that
-    // writes its headers and then stops ends here with the whole figure spent.
-    // That is the same fact as nothing answering at all, and says so.
-    if (spanning.aborted) throw unanswered(err);
-    throw failedWith(readFailedReason(voice, asked, reasonOf(err)));
-  }
+  onBilled({
+    cost: answer.cost ?? { state: "missing", reason: "the decisions endpoint answered no cost" },
+    upstream: answer.upstream,
+    model: answer.model,
+  });
 
-  onBilled(reportedCost(text));
-
-  const split = readAnswers(text, Object.keys(questions));
+  const split = readAnswers(answer.body, Object.keys(questions));
   if (split === null) {
     throw failedWith(notOurPayloadReason(voice, asked));
   }

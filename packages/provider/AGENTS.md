@@ -1,6 +1,6 @@
 # @breatic/provider
 
-The model provider layer: every model call (media generation, understanding, LLM chat, the decisions endpoint) is to go through it once the application moves onto it (inner#1743), and it answers which upstream serves it, how our params become that upstream's fields, what a run is estimated to cost and what it actually cost. Until that move the application still calls upstreams itself. These rules apply when you change anything under `packages/provider/`, `config/provider/` or the `scripts/provider-*` generators.
+The model provider layer: every model call (media generation, understanding, LLM chat, the decisions endpoint, the web-animation Messages relay) goes through it (inner#1743), and it answers which upstream serves it, how our params become that upstream's fields, what a run is estimated to cost and what it actually cost. These rules apply when you change anything under `packages/provider/`, `config/provider/` or the `scripts/provider-*` generators.
 
 ### It stands alone
 
@@ -8,15 +8,16 @@ The model provider layer: every model call (media generation, understanding, LLM
 
 ### Its own HTTP module
 
-**Every outgoing request goes through `src/http/request.ts`: adapters call `send` and the readers beside it, and every AI SDK provider is built with its `aiSdkFetch` (`src/llm/vendors.ts`).** That file is the one non-test file the `breatic/no-naked-fetch` exemption in `eslint.config.ts` names besides `@breatic/shared`'s transport directory (`packages/shared/src/http/`). A submit is sent with `replaySafe: false`; media polls, result and billing queries are replay-safe; every understand request, Gemini Files API steps included, is delivered once (`exchange`).
+**Every outgoing request goes through `src/http/request.ts`: adapters call `send` and the readers beside it, and every AI SDK provider is built with its `aiSdkFetch` (each upstream adapter's `build` in `src/llm/upstreams/`).** That file is the one non-test file the `breatic/no-naked-fetch` exemption in `eslint.config.ts` names besides `@breatic/shared`'s transport directory (`packages/shared/src/http/`). A submit is sent with `replaySafe: false`; media polls, result and billing queries are replay-safe; every understand request, Gemini Files API steps included, is delivered once (`exchange`).
 
-### Three entry points
+### Four entry points
 
 | Entry | Who may import it |
 |---|---|
 | `@breatic/provider` | domain, server, worker: `createProvider`, LLM calls, costs, errors |
 | `@breatic/provider/pricing` | web as well: it runs in the browser, so `src/pricing/` imports only itself, `zod` and `jsonata` (`provider-pricing-browser-safe`) |
 | `@breatic/provider/media` | worker only (`provider-media-worker-only`): media runs happen only in the worker, per [AGENTS.md#aigc-generation-runs-in-the-worker](../../AGENTS.md#aigc-generation-runs-in-the-worker) |
+| `@breatic/provider/messages` | ingest only (`provider-messages-ingest-only`): the web-animation container's Messages relay runs in the ingest Cloudflare Worker, so the relay and every file it reaches import only one another, `zod` and `node:async_hooks` (`provider-messages-worker-safe`) |
 
 ### Configuration is checked whole at load
 
@@ -36,7 +37,7 @@ The model provider layer: every model call (media generation, understanding, LLM
 
 ### One reader per answer shape
 
-**Each upstream answer shape has one reader (`costedOf` for OpenRouter's id and usage, the zod schemas in `src/llm/understand/google.ts` for Gemini, `messageOf` and `errorOf` in `src/llm/vendors.ts` for an error body, `pricingRuleSchema` and `upstreamPricingSchema` for pricing); a field of that shape is read through it, never through a second cast elsewhere.** A second reader drifts from the first, and the field it reads often decides whether a billed answer is recorded or a call moves on.
+**Each upstream answer shape has one reader (`costedOf` for OpenRouter's id and usage, the zod schemas in `src/llm/understand/google.ts` for Gemini, `messageOf` and `errorOf` in `src/llm/upstreams/common.ts` for an error body, `pricingRuleSchema` and `upstreamPricingSchema` for pricing); a field of that shape is read through it, never through a second cast elsewhere.** A second reader drifts from the first, and the field it reads often decides whether a billed answer is recorded or a call moves on.
 
 ### The ticket carries the state
 
@@ -46,5 +47,5 @@ The model provider layer: every model call (media generation, understanding, LLM
 
 - **Upstreams are faked with the loopback server in `src/media/__tests__/fake-upstream.ts` (`hold`, `cut`, `reset`, `hang`) and the LLM fakes in `src/llm/__tests__/llm-harness.ts`; nothing in the test suites calls a real upstream.**
 - **`pnpm test:integration` runs both suites in one run under `vitest.coverage.config.ts`, which fails, naming each file and its uncovered lines, below 100% coverage of the files its `include` lists: the estimate and the formula evaluator, routing, the media runner and its adapters, and every reader of an actual cost.** A branch no input can reach (a fallback only the types need) carries `/* v8 ignore next -- @preserve */` under a comment saying why; anything an input can reach gets a test.
-- **`test/fixtures/upstream-*.json` are frozen answers of the code provider replaces, written by `scripts/provider-fixtures.ts`; the `upstream-schemas/` and `upstream-prices/` snapshots are what the upstreams state, written by `pnpm provider:prices`; the `bodies/` samples are what the runner sends each reseller, written by `pnpm provider:reseller-bodies`; never edit any of them by hand.** `scripts/provider-config-migration.ts` regenerates only part of `config/provider/` and merges it into the files already there: each model's WaveSpeed binding (from the `config/models/` catalog), the WaveSpeed upstream, the LLM upstreams and routes (from `packages/domain/src/agent/llm.ts`), the direct LLM `prices` and `routing.yaml.template`; change the script, not the lines it writes. `pnpm provider:prices` writes fal's `base_price` and the OpenRouter fields of `llm.yaml`. Reseller bindings and each model's `rejects` are written by hand.
+- **`test/fixtures/upstream-*.json` are frozen answers of the code provider replaced, written once before the move; the `upstream-schemas/` and `upstream-prices/` snapshots are what the upstreams state, written by `pnpm provider:prices`; the `bodies/` samples are what the runner sends each reseller, written by `pnpm provider:reseller-bodies`; never edit any of them by hand.** `pnpm provider:prices` writes fal's `base_price` and the OpenRouter fields of `llm.yaml`; every other line of `config/provider/` (bindings, routes, direct prices, each model's `rejects`) is written by hand.
 - **The base run of the config tests (`takenRun`, `withDefaults`) and every body sample are resolved as the application resolves them, through `resolvedParams` in `src/config/__tests__/shipped.ts`: defaults, the model's `forces`, then every param whose `when` fails dropped; a body sample also carries the prompt only while the model's `prompt_when` holds (`promptOf` in `scripts/provider-reseller-bodies.ts`); the per-value schema and evaluation checks vary one param on that base unresolved, so a param a condition drops is still checked; a VENDOR row marked `unforced` skips the forces, to reach a vendor limit the catalog's forces keep away from the application, since provider can be given any run.** `resolvedParams` mirrors shared's `resolveParams` and `promptOf` its `promptTaken` (`packages/shared/src/param-resolution.ts`), which provider may not import; a change to that flow changes these copies in the same PR.

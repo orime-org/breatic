@@ -43,6 +43,8 @@ const FINISH: Readonly<Record<string, FinishReason>> = {
  * @throws {Error} For an audio type OpenRouter has no format name for.
  */
 function partOf(media: UnderstandCall["media"][number]): Record<string, unknown> {
+  // An image handed over by its address goes as that address; OpenRouter fetches it.
+  if ("read" in media) return { type: "image_url", image_url: { url: media.url } };
   const data = base64Of(media.bytes);
   if (media.contentType.startsWith("video/")) return { type: "video_url", video_url: { url: `data:${wireTypeOf(media.contentType)};base64,${data}` } };
   if (media.contentType.startsWith("audio/")) {
@@ -128,6 +130,12 @@ export const openRouterUnderstand: UnderstandAdapter = {
     if (text === "" && choice.error !== undefined && choice.error !== null) return { error: choice.error };
     const reason = choice.finish_reason ?? "";
     return { text, finishReason: Object.hasOwn(FINISH, reason) ? FINISH[reason]! : "other" };
+  },
+
+  contentBlocked(error) {
+    // The words its refusal uses for blocked content, which the understand before provider read (domain understand.ts errorType).
+    const type = (error as { metadata?: { error_type?: unknown } } | null | undefined)?.metadata?.error_type;
+    return type === "content_policy_violation" || type === "refusal";
   },
 
   billing(body) {

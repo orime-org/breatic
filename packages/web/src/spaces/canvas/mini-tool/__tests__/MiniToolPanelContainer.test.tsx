@@ -45,7 +45,7 @@ const ERASER = {
     image: { description: '', default: null, accepts: 'image', fill: 'tool' },
     mask_image: { description: '', default: null, accepts: 'image', fill: 'tool' },
   },
-  providers: [],
+  availability: { upstreams: [] },
 } as unknown as ModelEntry;
 
 const CATALOG = {
@@ -462,7 +462,7 @@ describe('an enhance source past the model\'s ceilings', () => {
       audio: { description: '', default: null, accepts: 'audio', fill: 'tool', max_total_duration: 1800, max_bytes: 536_870_912 },
       strength: { description: '', default: 0.85, min: 0, max: 1, step: 0.05, fill: 'tool' },
     },
-    providers: [],
+    availability: { upstreams: [] },
   } as unknown as ModelEntry;
 
   /**

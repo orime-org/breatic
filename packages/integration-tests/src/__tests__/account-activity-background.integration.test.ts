@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
+import { initConfiguredProvider } from "@breatic/integration-tests/provider";
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, inject, it, vi } from "vitest";
 import postgres from "postgres";
@@ -17,11 +18,18 @@ import { activityRows, seedActivityProject } from "@server/__tests__/integration
 // The outside provider's eventual cost response is the only substituted boundary.
 // Its recorder, SQL, queue, worker handler and user-activity reads remain real.
 vi.mock("@breatic/domain", async (importOriginal) => ({
-  ...await importOriginal<typeof Domain>(), lookupGeneration: async () => ({ costUsd: 0.01, tokens: { input: 1, output: 1, cachedInput: 0, reasoning: 0 } }),
+  ...await importOriginal<typeof Domain>(),
+  provider: () => ({
+    cost: {
+      lookup: async () => ({ state: "known", usd: 0.01, source: "billing", tokens: { input: 1, output: 1, cachedInput: 0, reasoning: 0 } }),
+      fromGeneration: (generationId: string) => ({ upstream: "openrouter", generationId }),
+    },
+  }),
 }));
 
 initCore({ ...process.env, PAYMENT_ENABLED: "false", WAVESPEED_API_KEY: "unused_activity_background_fixture" });
 loadLocales();
+initConfiguredProvider();
 let sql: ReturnType<typeof postgres>;
 let app: ReturnType<typeof createApp>;
 beforeAll(async () => { sql = postgres(inject("DATABASE_URL"), { max: 5, prepare: false }); app = (await import("@server/app.js")).createApp(); });
@@ -78,7 +86,7 @@ describe("delayed internal work does not create user return activity (inner#1893
     await nodeTaskService.open({ projectId: project.projectId, spaceId, nodeId, kind: "generation", action: "generate", startedByUserId: project.userId,
       budgetMs: 120_000, label: "flux-schnell", taskId });
     const result = { url: "https://assets.example.test/completed.png" };
-    await taskService.markCompleted(taskId, result, 0, 1000);
+    await taskService.markCompleted(taskId, result, 1000);
     await recordGenerationForNodes(getStreamRedis(), canvasSpaceDocName(project.projectId, spaceId), {
       projectId: project.projectId, userId: project.userId, taskId, taskType: "image", metadata: { model: "flux-schnell", credits: 0, durationMs: 1000 },
     }, [{ nodeId, content: result.url, mimeType: "image/png", width: 100, height: 100 }], { rethrowOnRecordFailure: true });

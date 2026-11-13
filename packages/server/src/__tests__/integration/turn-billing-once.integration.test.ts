@@ -39,11 +39,18 @@ import fc from "fast-check";
 // 连同 `createUIMessageStream` 一起没了，而一轮真的跑完、真的结算正要经过它。
 vi.mock("@breatic/domain", async (importOriginal) => {
   const actual = await importOriginal<typeof DomainModule>();
+  actual.initProvider((await import("../helpers/fake-provider.js")).assemblyProvider());
   const { modelProducing, saying } = await import("../helpers/model-double.js");
+  const fakeProviderModule = await import("../helpers/fake-provider.js");
   return {
     ...actual,
-    resolveProvider: () => "test",
-    getModel: () => modelProducing(() => saying("hi")),
+    // Every call costs a cent, so every turn has a charge to settle.
+    provider: (() => {
+      const { fakeProvider } = fakeProviderModule;
+      const built = fakeProvider(() => modelProducing(() => saying("hi")));
+      built().llm.costOf = () => ({ state: "known", usd: 0.01, source: "reported" });
+      return built;
+    })(),
   };
 });
 

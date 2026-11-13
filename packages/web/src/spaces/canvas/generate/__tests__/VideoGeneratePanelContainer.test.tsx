@@ -117,7 +117,8 @@ const T2V: ModelEntry = {
     aspect_ratio: { description: '', values: ['16:9'], default: '16:9' },
     duration: { description: '', values: [4, 8], default: 8 },
   },
-  providers: [],
+  availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: false, envVar: 'WAVESPEED_API_KEY' }] },
+  pricing_rules: undefined,
 };
 
 /** A picture the run starts from, declared the way the real entries do (#269). */
@@ -1406,7 +1407,7 @@ describe('VideoGeneratePanelContainer', () => {
       await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
       const sent = create.mock.calls[0]![0];
       expect(sent.params.images).toEqual(['https://cdn/a.png', 'https://cdn/c.png']);
-      expect(sent.params.prompt).toMatch(/^the two of them walk into frame\s*image 2\s+image 1\s*$/);
+      expect(sent.params.prompt).toMatch(/^the two of them walk into frame\s*{{ref:images:2}}\s+{{ref:images:1}}\s*$/);
     });
 
     it('stays clickable with nothing mentioned, and says what to do', async () => {
@@ -2314,8 +2315,6 @@ describe('the multi-shot mode', () => {
         label: 'Auto multi-shot',
         default: false,
         values: [true, false],
-        upstream: 'shot_type',
-        upstream_values: { true: 'intelligence' },
         modes: ['t2v'],
         fill: 'panel',
       },

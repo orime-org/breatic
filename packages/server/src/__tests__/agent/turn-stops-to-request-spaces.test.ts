@@ -83,7 +83,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
     }),
     // The real one, so the reply is stored the way production stores it.
     finalizeTurn: actual.finalizeTurn,
-    getModel: () =>
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider(() =>
       new MockLanguageModelV4({
         doStream: async () => {
           const script = modelSays.perCall[modelSays.calls] ?? [FINISHED];
@@ -97,7 +97,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
             }),
           };
         },
-      }),
+      })),
   };
 });
 

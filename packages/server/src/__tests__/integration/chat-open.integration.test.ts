@@ -16,6 +16,7 @@
  * leave a conversation behind in a project they may only look at.
  */
 
+import { initConfiguredProvider } from "@breatic/integration-tests/provider";
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
 
 // `ai` is stubbed: the real SDK is replaced with a double that reaches no
@@ -56,6 +57,7 @@ try {
   // already initialised by a sibling suite in this worker — fine.
 }
 loadLocales();
+initConfiguredProvider();
 
 const PG_DRIVER_LOCAL = "chat-open-test-driver";
 

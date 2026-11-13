@@ -78,6 +78,8 @@ const replyForModel = z.object({
   prefixHash: z.string(),
   /** The model the turn started on (#1363); absent from rows written before the picker. */
   modelId: z.string().optional(),
+  /** The upstream that served the turn's calls, which a segment resumed by an answer to its card stays on (inner#1743). */
+  servedUpstream: z.string().optional(),
   turnTokens: z.number(),
   endTokens: z.number(),
   /**

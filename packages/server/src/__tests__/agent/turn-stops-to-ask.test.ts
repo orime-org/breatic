@@ -105,7 +105,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       },
     }),
     finalizeTurn: async () => [],
-    getModel: () =>
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider(() =>
       new MockLanguageModelV4({
         doStream: async () => {
           const script = modelSays.perCall[modelSays.calls] ?? [FINISHED];
@@ -119,7 +119,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
             }),
           };
         },
-      }),
+      })),
   };
 });
 

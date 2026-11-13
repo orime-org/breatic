@@ -83,7 +83,8 @@ const KLING: ModelEntry = {
       fields: { prompt: { type: 'text', max_chars: 512 }, duration: { values: [1, 2, 3, 4, 5] } },
     },
   },
-  providers: [],
+  availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: false, envVar: 'WAVESPEED_API_KEY' }] },
+  pricing_rules: undefined,
 };
 
 /** A model with a 10-second default total, so switching to it re-splits the shots. */

@@ -29,14 +29,15 @@ const { gate, broken, leaseErrors } = vi.hoisted(() => ({
 
 vi.mock("@breatic/domain", async (importOriginal) => {
   const actual = await importOriginal<typeof DomainModule>();
+  const { assemblyProvider, fakeProvider } = await import("../helpers/fake-provider.js");
+  actual.initProvider(assemblyProvider());
   const { MockLanguageModelV4 } = await import("ai/test");
   const { FINISHED } = await import("../helpers/model-double.js");
   return {
     ...actual,
-    resolveProvider: () => "test",
     // Says its first words at once, then waits for the gate (or the stop)
     // before finishing.
-    getModel: () =>
+    provider: fakeProvider(() =>
       new MockLanguageModelV4({
         doStream: async (asked) => ({
           stream: new ReadableStream({
@@ -59,7 +60,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
             },
           }),
         }),
-      }),
+      })),
   };
 });
 

@@ -338,6 +338,10 @@
       "still_running": "이 생성은 아직 마무리 중이며 결과가 나올 수 있습니다. 잠시 후 다시 시도해 주세요.",
       "has_result": "이 생성은 결과가 나왔으며 작업 목록으로 돌아왔습니다."
     },
+    "model": {
+      "not_configured": "이 배포에는 {model}이(가) 아직 설정되지 않았습니다. {envVars}을(를) 설정해야 합니다.",
+      "upstream_not_bound": "{model}은(는) {upstream}을(를) 통해 제공되지 않습니다."
+    },
     "document": {
       "versions_full": "{limit, plural, other {이 Document의 스냅샷이 최대 #개로 가득 찼습니다. 오래된 스냅샷을 삭제한 뒤 저장하세요.}}"
     }
@@ -891,6 +895,7 @@
       "param": {
         "compose_from": "생성 기준",
         "language": "언어",
+        "language_boost": "언어",
         "voice_description": "음성 설명",
         "speakers": "화자",
         "emotion": "감정",
@@ -3464,6 +3469,7 @@
     "close": "닫기",
     "indexLabel": "크레딧 항목",
     "unit": "크레딧",
+    "billingPending": "정산 중",
     "loadFailed": "불러오지 못했습니다. 닫았다가 다시 열어 주세요.",
     "listEnd": "더 없습니다",
     "listPageFailed": "이 페이지를 불러오지 못했습니다. 스크롤하여 다시 시도하세요.",

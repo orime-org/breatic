@@ -7,10 +7,26 @@
  * Handles task lifecycle tracking with conditional timestamp updates.
  */
 
-import { and, eq, desc, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, desc, inArray, isNull, sql, type SQL } from "drizzle-orm";
 import { db, type DbTx } from "@breatic/core";
 import { tasks } from "@breatic/core";
 import type { GenerationSource, TaskEntity } from "@breatic/shared";
+
+/**
+ * A task completed and waiting on its cost: not yet billed, and marked by `markCompleted` (inner#1743).
+ * @returns The condition.
+ */
+function waitingOnCost(): SQL {
+  return sql`${tasks.billedAt} IS NULL AND ${tasks.result} ? 'costWait'`;
+}
+
+/**
+ * Every task but one waiting on its cost.
+ * @returns The condition.
+ */
+function notWaitingOnCost(): SQL {
+  return sql`NOT (${tasks.billedAt} IS NULL AND coalesce(${tasks.result} ? 'costWait', false))`;
+}
 
 /**
  * Resolve one bounded set of task provenance without guessing from producers.
@@ -172,6 +188,7 @@ export async function createTask(data: {
  * @param options.error - Error message to store on failure.
  * @param options.creditsUsed - Credits consumed by the task.
  * @param options.durationMs - Wall-clock duration of the task in milliseconds.
+ * @returns True when the row was written; false for a task waiting on its cost, which no status write touches.
  */
 export async function updateTaskStatus(
   id: string,
@@ -182,7 +199,7 @@ export async function updateTaskStatus(
     creditsUsed?: number;
     durationMs?: number;
   },
-): Promise<void> {
+): Promise<boolean> {
   const now = new Date();
   const updates: Record<string, unknown> = {
     status,
@@ -194,7 +211,8 @@ export async function updateTaskStatus(
   if (options?.creditsUsed !== undefined) updates.creditsUsed = options.creditsUsed;
   if (options?.durationMs !== undefined) updates.durationMs = options.durationMs;
 
-  await db.update(tasks).set(updates).where(eq(tasks.id, id));
+  const rows = await db.update(tasks).set(updates).where(and(eq(tasks.id, id), notWaitingOnCost())).returning({ id: tasks.id });
+  return rows.length > 0;
 }
 
 /**
@@ -251,22 +269,6 @@ export async function recordProviderResult(
 }
 
 /**
- * Persist the vendor task id for an async generation, right after submit.
- * On a BullMQ retry the Worker resumes by polling this id (#1628).
- * @param id - Task UUID
- * @param providerTaskId - The vendor's task/request id returned by submit
- */
-export async function recordProviderTaskId(
-  id: string,
-  providerTaskId: string,
-): Promise<void> {
-  await db
-    .update(tasks)
-    .set({ providerTaskId, updatedAt: new Date() })
-    .where(eq(tasks.id, id));
-}
-
-/**
  * CAS update: mark the task as completed AND set the billing guard in
  * a single atomic step. Returns `true` if this call was the one that
  * transitioned the task to completed (first winner), `false` if the
@@ -302,6 +304,108 @@ export async function markCompletedAndBill(
       billedCredits: creditsUsed,
       updatedAt: now,
     })
+    .where(and(eq(tasks.id, id), isNull(tasks.billedAt)))
+    .returning({ id: tasks.id });
+  return rows.length > 0;
+}
+
+/** What a task holds of its media run. */
+export interface StoredTicket {
+  /** provider's ticket, opaque here; null before the first one. */
+  ticket: ({ version: number } & Record<string, unknown>) | null;
+  /** When a send of it began, while one is in flight. */
+  sendingAt: Date | null;
+}
+
+/**
+ * The ticket a task holds and whether a send of it is in flight.
+ * @param id - The task.
+ * @returns What it holds; nothing for a missing row.
+ */
+export async function getProviderTicket(id: string): Promise<StoredTicket> {
+  const [row] = await db
+    .select({ ticket: tasks.providerTicket, sendingAt: tasks.providerSendingAt })
+    .from(tasks)
+    .where(eq(tasks.id, id));
+  return { ticket: (row?.ticket as StoredTicket["ticket"] | undefined) ?? null, sendingAt: row?.sendingAt ?? null };
+}
+
+/**
+ * Store a ticket over an older one: a run that kept an older ticket cannot write it back over a newer one.
+ * @param id - The task.
+ * @param ticket - provider's ticket.
+ * @returns True when it was stored.
+ */
+export async function storeTicket(id: string, ticket: { version: number } & Record<string, unknown>): Promise<boolean> {
+  const rows = await db
+    .update(tasks)
+    .set({ providerTicket: ticket, providerTicketVersion: ticket.version, updatedAt: new Date() })
+    .where(and(eq(tasks.id, id), sql`coalesce(${tasks.providerTicketVersion}, -1) < ${ticket.version}`))
+    .returning({ id: tasks.id });
+  return rows.length > 0;
+}
+
+/**
+ * Mark a send of the stored ticket in flight, before the paid request goes out.
+ * @param id - The task.
+ */
+export async function markSending(id: string): Promise<void> {
+  await db.update(tasks).set({ providerSendingAt: new Date(), updatedAt: new Date() }).where(eq(tasks.id, id));
+}
+
+/**
+ * Clear the mark of a send in flight, once its answer is stored.
+ * @param id - The task.
+ */
+export async function clearSending(id: string): Promise<void> {
+  await db.update(tasks).set({ providerSendingAt: null, updatedAt: new Date() }).where(eq(tasks.id, id));
+}
+
+/**
+ * Complete a task whose cost is still being looked up: status, result and duration, `billed_at` left empty. The
+ * result carries `costWait`, which marks the wait.
+ * @param id - The task.
+ * @param result - Its result, with `costWait` and the pending lookups.
+ * @param durationMs - How long the run took from its first start.
+ * @returns True for the call that completed it; false once it is completed and waiting, or billed.
+ */
+export async function markCompleted(id: string, result: Record<string, unknown>, durationMs: number): Promise<boolean> {
+  const now = new Date();
+  const rows = await db
+    .update(tasks)
+    .set({ status: "completed", result, durationMs, completedAt: now, updatedAt: now })
+    .where(and(eq(tasks.id, id), notWaitingOnCost(), isNull(tasks.billedAt)))
+    .returning({ id: tasks.id });
+  return rows.length > 0;
+}
+
+/**
+ * Write back what the lookups of a task waiting on its cost found.
+ * @param id - The task.
+ * @param result - Its result with the lookups' answers.
+ * @returns True when written; false once it is billed.
+ */
+export async function updateCostWait(id: string, result: Record<string, unknown>): Promise<boolean> {
+  const rows = await db
+    .update(tasks)
+    .set({ result, updatedAt: new Date() })
+    .where(and(eq(tasks.id, id), waitingOnCost()))
+    .returning({ id: tasks.id });
+  return rows.length > 0;
+}
+
+/**
+ * CAS: bill a task completed earlier, setting the guard only the first call sets.
+ * @param id - The task.
+ * @param credits - What the run consumed.
+ * @param tx - The billing's transaction, which also records the charge request.
+ * @returns True for the call that billed it.
+ */
+export async function markBilled(id: string, credits: number, tx: DbTx): Promise<boolean> {
+  const now = new Date();
+  const rows = await tx
+    .update(tasks)
+    .set({ billedAt: now, billedCredits: credits, creditsUsed: credits, updatedAt: now })
     .where(and(eq(tasks.id, id), isNull(tasks.billedAt)))
     .returning({ id: tasks.id });
   return rows.length > 0;

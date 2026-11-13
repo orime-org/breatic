@@ -43,9 +43,7 @@ describe("the sound-effect model reaches the wire (#2088 A2)", () => {
   });
 
   it("routes it through WaveSpeed, the upstream whose spend we can read back", () => {
-    expect(audioEntry("sonilo-sfx-v1").providers.map((p) => p.name)).toEqual([
-      "wavespeed",
-    ]);
+    expect(audioEntry("sonilo-sfx-v1").availability.upstreams.map((u) => u.upstream)).toEqual(["wavespeed"]);
   });
 
   // The exact string, not merely a truthy one: `ModelIcon` renders nothing

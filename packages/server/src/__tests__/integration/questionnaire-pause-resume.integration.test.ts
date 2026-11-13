@@ -27,15 +27,15 @@ const model = vi.hoisted(() => ({
 
 vi.mock("@breatic/domain", async (importOriginal) => {
   const actual = await importOriginal<typeof DomainModule>();
+  actual.initProvider((await import("../helpers/fake-provider.js")).assemblyProvider());
   const { modelProducing, saying } = await import("../helpers/model-double.js");
   return {
     ...actual,
-    resolveProvider: () => "deepseek",
-    getModel: () =>
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider(() =>
       modelProducing(
         () => model.queue.shift() ?? saying("ok"),
         (asked) => model.calls.push(asked),
-      ),
+      )),
   };
 });
 

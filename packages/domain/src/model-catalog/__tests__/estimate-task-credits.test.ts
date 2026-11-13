@@ -65,7 +65,7 @@ describe("estimateTaskCredits", () => {
     initCore(env);
     resetModelCatalog();
     try {
-      expect(await estimateTaskCredits("grok-imagine-image-v2.0-text-to-image", { params: {} })).toBeCloseTo(10, 6);
+      expect(await estimateTaskCredits("grok-imagine-image-v2.0-text-to-image", { params: {} })).toBeCloseTo(16, 6);
     } finally {
       useFullCatalog();
     }

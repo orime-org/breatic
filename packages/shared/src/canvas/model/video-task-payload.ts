@@ -23,7 +23,7 @@ import { poolParams, type ReferenceUrls } from '@shared/canvas/model/reference-u
 import { VIDEO_SLOTS } from '@shared/canvas/model/video-slots.js';
 import type { VideoSlot, VideoSlotUrls } from '@shared/canvas/model/video-slots.js';
 
-/** Video-node generation task type (AIGC_TASK_TYPES key on the worker). */
+/** Video-node generation task type (one of the worker's MODEL_TASK_TYPES). */
 const VIDEO_TASK_TYPE = 'video';
 
 /** Inputs for {@link buildVideoTaskPayload}. */

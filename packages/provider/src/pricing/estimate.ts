@@ -91,17 +91,27 @@ export function heldClone<T extends HeldClone>(clones: readonly T[], upstream: s
 }
 
 /**
+ * Whether a param asks for the extra step that names it: supplied, and not a
+ * switch turned off. A switch's `false` is still a value the user set.
+ * @param value - The value of the step's `for_param`.
+ * @returns True when the run takes the step.
+ */
+export function stepRequested(value: unknown): boolean {
+  return isPresent(value) && value !== false;
+}
+
+/**
  * The calls one extra step makes on a run, by item index.
  * @param step - The step.
  * @param step.for_param - The param it serves.
  * @param step.per_item - Whether it runs once per item of that param.
  * @param params - Our params.
- * @returns None when its param carries nothing, each index for a per-item step over a list, else one call (`null`).
+ * @returns None when its param asks for no call (`stepRequested`), each index for a per-item step over a list, else one call (`null`).
  */
 export function stepCalls(step: { for_param?: string; per_item?: boolean }, params: Readonly<Record<string, unknown>>): (number | null)[] {
   if (step.for_param === undefined) return [null];
   const value = params[step.for_param];
-  if (!isPresent(value)) return [];
+  if (!stepRequested(value)) return [];
   return step.per_item === true && Array.isArray(value) ? value.map((_, i) => i) : [null];
 }
 
@@ -223,8 +233,8 @@ const pricingRulesSchema = z.looseObject({ model: z.string(), rejects: z.array(r
 
 const SAMPLE_TEXT = "x".repeat(1000);
 
-/** A neutral reference the application writes into a prompt: `<<ref:{param}:{n}>>`. */
-const REFERENCE = /<<ref:([\w-]+):(\d+)>>/g;
+/** A neutral reference the application writes into a prompt: `{{ref:{param}:{n}}}`. */
+const REFERENCE = /\{\{ref:([\w-]+):(\d+)\}\}/g;
 
 /**
  * The prompt with each neutral reference written the way an upstream names it; a reference to a param it has no template for stays as it is.

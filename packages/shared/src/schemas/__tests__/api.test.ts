@@ -8,8 +8,10 @@ import {
   chatMessageSchema,
   emailSchema,
   projectCreateSchema,
+  sceneGenerationBodySchema,
   taskCreateSchema,
 } from "@shared/schemas/api.js";
+import { REQUEST_SHAPE_PARAMS } from "@shared/api/error-reason.js";
 
 const base = {
   studioId: "11111111-1111-4111-8111-111111111111",
@@ -60,6 +62,32 @@ describe("taskCreateSchema — source", () => {
 
   it("refuses a lane outside the vocabulary", () => {
     expect(() => taskCreateSchema.parse({ ...task, source: "canvas" })).toThrow();
+  });
+});
+
+describe("a run's route is the request's own field, never one of its params", () => {
+  const task = {
+    task_type: "image",
+    params: { prompt: "a cat", route: { mode: "upstream", upstream: "fal" } },
+    project_id: "11111111-1111-4111-8111-111111111111",
+    space_id: "22222222-2222-4222-8222-222222222222",
+    mode: "append" as const,
+  };
+  const scene = { mode: "t23d", model: "tripo-h3.1-t23d", prompt: "a chair", params: { route: "fal" }, origin: "space" };
+
+  it.each([
+    ["a task", taskCreateSchema, task],
+    ["a 3D generation", sceneGenerationBodySchema, scene],
+  ] as const)("refuses %s whose params carry a route, as a request of the wrong shape", (_kind, schema, body) => {
+    const parsed = schema.safeParse(body);
+
+    expect(parsed.success).toBe(false);
+    expect(parsed.error?.issues).toContainEqual(expect.objectContaining({ path: ["params", "route"], params: REQUEST_SHAPE_PARAMS }));
+  });
+
+  it("keeps a task whose route is its own field", () => {
+    const { route, ...params } = task.params;
+    expect(taskCreateSchema.parse({ ...task, params, route }).route).toEqual(route);
   });
 });
 

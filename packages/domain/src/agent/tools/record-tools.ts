@@ -353,7 +353,7 @@ function versionLine(v: NodeHistoryEntity): string {
     ...(str(meta, "toolId") ? [`mini-tool ${String(str(meta, "toolId"))}`] : []),
     ...(prompt === undefined ? [] : [`prompt ${asText(prompt)}`]),
     ...(Object.keys(rest).length > 0 ? [`params ${clip(JSON.stringify(rest), cfg.records_params_max_chars)}`] : []),
-    ...(typeof credits === "number" ? [`${formatCredits(credits, "en-US")} credits`] : []),
+    ...(typeof credits === "number" ? [creditsText(credits, meta["billing"])] : []),
     ...(content === undefined ? [] : [`content ${content}`]),
     ...(v.errorMessage ? [`error ${v.errorMessage}`] : []),
     v.createdAt.toISOString(),
@@ -414,6 +414,18 @@ function nodePage(nodeId: string, recs: NodeRecords, offsets: { tasks: number; v
 }
 
 /**
+ * A run's credits as a record line says them: while its task waits on its upstream's bill, the amount is what is
+ * known so far (inner#1743).
+ * @param credits - The credits the record carries.
+ * @param billing - The record's billing state.
+ * @returns The words.
+ */
+function creditsText(credits: number, billing: unknown): string {
+  const amount = `${formatCredits(credits, "en-US")} credits`;
+  return billing === "pending" ? `${amount} so far, still being billed` : amount;
+}
+
+/**
  * One activity entry, on one line.
  * @param e - The entry.
  * @param records - The turn's records, for a Space the entry does not name.
@@ -435,7 +447,7 @@ function activityLine(e: ProjectActivityEntry, records: ProjectRecords): string 
     ...(e.nodeId === null ? [] : [`node ${e.nodeId}`]),
     ...(str(p, "model") ? [`model ${String(str(p, "model"))}`] : []),
     ...(str(p, "toolName") ? [`mini-tool ${String(str(p, "toolName"))}`] : []),
-    ...(typeof credits === "number" ? [`${formatCredits(credits, "en-US")} credits`] : []),
+    ...(typeof credits === "number" ? [creditsText(credits, p["billing"])] : []),
     ...(str(p, "fileUrl") ? [`result ${String(str(p, "fileUrl"))}`] : []),
     ...(str(p, "errorMessage") ? [`error ${String(str(p, "errorMessage"))}`] : []),
     ...(str(p, "role") ? [`role ${str(p, "previousRole") ? `${String(str(p, "previousRole"))} → ` : ""}${String(str(p, "role"))}`] : []),

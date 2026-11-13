@@ -15,6 +15,7 @@
  * is not reachable); Postgres and Redis are real.
  */
 
+import { initConfiguredProvider } from "@breatic/integration-tests/provider";
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, inject, vi } from "vitest";
 
 vi.mock("ai", () => ({
@@ -90,6 +91,7 @@ try {
   // already initialised by a sibling suite in this worker — fine.
 }
 loadLocales();
+initConfiguredProvider();
 
 const SNAPSHOT = "/canvas/node-history/snapshot";
 const PASTE = "/canvas/paste";

@@ -43,13 +43,13 @@ vi.mock("@breatic/core", async (importOriginal) => {
 // 钉的正是「存下来的东西再交给模型时长什么样」，那段转换必须真跑。
 vi.mock("@breatic/domain", async (importOriginal) => {
   const actual = await importOriginal<typeof DomainModule>();
+  actual.initProvider((await import("../helpers/fake-provider.js")).assemblyProvider());
   const { modelProducing } = await import("../helpers/model-double.js");
   const { tool } = await import("ai");
   const { z } = await import("zod");
   const { makeAskUserTool } = await import("../../../../domain/src/agent/tools/ask-user.js");
   return {
     ...actual,
-    resolveProvider: () => "test",
     // A tool belonging to this file. What these cases check is how any tool's
     // answer reaches the model, and standing that on whichever real tool
     // happens to be registered makes them fail whenever the tool set changes
@@ -83,11 +83,11 @@ vi.mock("@breatic/domain", async (importOriginal) => {
         }),
       },
     }),
-    getModel: () =>
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider(() =>
       modelProducing(
         () => stream.parts,
         (asked) => handedToModel.calls.push(asked),
-      ),
+      )),
   };
 });
 

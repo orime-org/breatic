@@ -18,7 +18,7 @@ import type { EstimateInput } from '@shared/pricing/index.js';
 import { buildOverwriteTaskPayload, type OverwriteTaskInput } from '@shared/canvas/model/overwrite-task-payload.js';
 import { poolParams, type ReferenceUrls } from '@shared/canvas/model/reference-urls.js';
 
-/** Image-node generation task type (AIGC_TASK_TYPES key on the worker). */
+/** Image-node generation task type (one of the worker's MODEL_TASK_TYPES). */
 const IMAGE_TASK_TYPE = 'image';
 
 /** Inputs for {@link buildGenerateTaskPayload}. */

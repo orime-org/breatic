@@ -105,8 +105,8 @@ models:
             field: resolution
         pricing:
           kind: formula
-          base_price: 50000
-          formula: ""
+          base_price: 80000
+          formula: '{"total_price": base_price * (resolution = "1k" ? 0.75 : 1)}'
           discount_rate: 100
       - upstream: fal
         weight: 2
@@ -281,7 +281,7 @@ models:
           kind: formula
           base_price: 70000
           formula: '{"total_price": (resolution = "0.5k" ? 45000 : (resolution = "2k" ? 105000 : (resolution = "4k" ? 140000 : base_price)))}'
-          discount_rate: 100
+          discount_rate: 90
       - upstream: fal
         weight: 2
         model_id: fal-ai/nano-banana-2/edit
@@ -382,7 +382,7 @@ models:
           kind: formula
           base_price: 70000
           formula: '{"total_price": (resolution = "0.5k" ? 45000 : (resolution = "2k" ? 105000 : (resolution = "4k" ? 140000 : base_price)))}'
-          discount_rate: 100
+          discount_rate: 90
       - upstream: fal
         weight: 2
         model_id: fal-ai/nano-banana-2/edit
@@ -456,7 +456,7 @@ models:
             field: image_size
         pricing:
           kind: formula
-          base_price: 300000
+          base_price: 360000
           formula: ""
           discount_rate: 100
       - upstream: fal

@@ -12,6 +12,7 @@
  * suites (`storage-quota-routes`, `conversation-naming`).
  */
 
+import { initConfiguredProvider } from "@breatic/integration-tests/provider";
 import { describe, it, expect, beforeAll, beforeEach, afterAll, inject, vi } from "vitest";
 
 vi.mock("ai", () => ({
@@ -67,6 +68,7 @@ let seq = 0;
 beforeAll(async () => {
   initCore(SUITE_ENV);
   loadLocales();
+  initConfiguredProvider();
   sql = postgres(inject("DATABASE_URL"), {
     max: 2,
     prepare: false,

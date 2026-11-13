@@ -107,7 +107,7 @@ Check: is this really separated by DB number or port? Channels and cookie names 
 
 ### Config is injected and read lazily
 
-**The db, Redis, LLM provider and logger singletons build themselves on first use, so the `@breatic/core` barrel can be imported before `initCore` runs.** Every known key, including the health ports (`SERVER_HEALTH_PORT`, `WORKER_HEALTH_PORT`, `COLLAB_HEALTH_PORT`) and `INTERNAL_API_*`, is in the zod schema in `config/schema.ts` and read through `env` or `getConfig()`; keys outside the schema (`PATH`, `HOME`, a provider's `api_key_env`) are read with `getRawEnvVar()`.
+**The db, Redis and logger singletons build themselves on first use, so the `@breatic/core` barrel can be imported before `initCore` runs.** Every known key, including the health ports (`SERVER_HEALTH_PORT`, `WORKER_HEALTH_PORT`, `COLLAB_HEALTH_PORT`) and `INTERNAL_API_*`, is in the zod schema in `config/schema.ts` and read through `env` or `getConfig()`; keys outside the schema (`PATH`, `HOME`, an upstream's `key_env` in `config/provider/upstreams.yaml`) are read with `getRawEnvVar()`.
 
 ### Logger methods need their instance
 

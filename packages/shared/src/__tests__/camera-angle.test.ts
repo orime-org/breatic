@@ -101,7 +101,7 @@ describe("the catalog schema's camera_angle", () => {
           tier: "optional",
           generation_time: 60,
           params: {},
-          providers: [],
+          availability: { upstreams: [] },
           takes_prompt: true,
           camera_angle: cameraAngle,
         },
