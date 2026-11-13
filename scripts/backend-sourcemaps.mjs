@@ -5,12 +5,23 @@ import { readFileSync, readdirSync, realpathSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-export const packages = ['server', 'worker', 'collab', 'core', 'domain', 'shared'];
+export const services = ['server', 'worker', 'collab'];
+
+/** The workspace libraries a service's runtime dependencies name, read from its package.json. */
+function librariesOf(root, service) {
+  const { dependencies = {} } = JSON.parse(readFileSync(join(root, 'packages', service, 'package.json'), 'utf8'));
+  return Object.keys(dependencies).filter(dep => dep.startsWith('@breatic/')).map(dep => dep.slice('@breatic/'.length));
+}
+
+/** The services and every workspace library they run on, so a library a service adds is checked without a list to update. */
+export function backendPackages(root) {
+  return [...services, ...[...new Set(services.flatMap(service => librariesOf(root, service)))].sort()];
+}
 
 /** Verify emitted code and maps, and optionally their installed workspace copies. */
 export function verify(root, installed = false) {
   let count = 0;
-  for (const name of packages) {
+  for (const name of backendPackages(root)) {
     const folder = join(root, 'packages', name, 'dist');
     const files = readdirSync(folder, { recursive: true }).filter(file => file.endsWith('.js'));
     assert(files.length > 0, `No JavaScript for ${name}`);
@@ -24,8 +35,8 @@ export function verify(root, installed = false) {
     }
   }
   if (installed) {
-    for (const name of ['server', 'worker', 'collab']) {
-      for (const dependency of name === 'collab' ? ['shared', 'core'] : ['shared', 'core', 'domain']) {
+    for (const name of services) {
+      for (const dependency of librariesOf(root, name)) {
         // Follow pnpm's installed package link without using CommonJS resolution
         // for workspace packages whose exports only support ESM imports.
         const installedDist = realpathSync(join(root, 'packages', name, 'node_modules', '@breatic', dependency, 'dist'));

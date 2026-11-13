@@ -38,7 +38,7 @@ RUN node scripts/release.mjs build-info "$RELEASE_VERSION" "$VCS_REF" /app/build
 
 # Inject before pnpm deploy copies workspace libraries into node_modules.
 # No Sentry account or upload token is needed to produce the immutable image.
-RUN pnpm exec sentry-cli sourcemaps inject packages/server/dist packages/worker/dist packages/collab/dist packages/core/dist packages/domain/dist packages/shared/dist
+RUN pnpm exec sentry-cli sourcemaps inject packages/server/dist packages/worker/dist packages/collab/dist packages/core/dist packages/domain/dist packages/provider/dist packages/shared/dist
 RUN node scripts/backend-sourcemaps.mjs /app
 
 # Deploy production-only deps for server, worker, and collab
@@ -73,6 +73,10 @@ COPY --from=builder /app/packages/core/package.json ./packages/core/
 # Domain: built output (server+worker shared AIGC business; consumed via node_modules)
 COPY --from=builder /app/packages/domain/dist ./packages/domain/dist
 COPY --from=builder /app/packages/domain/package.json ./packages/domain/
+
+# Provider: built output (server+worker model calls; consumed via node_modules)
+COPY --from=builder /app/packages/provider/dist ./packages/provider/dist
+COPY --from=builder /app/packages/provider/package.json ./packages/provider/
 
 # Shared: built output
 COPY --from=builder /app/packages/shared/dist ./packages/shared/dist

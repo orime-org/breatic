@@ -535,7 +535,7 @@ web 的 `AppRouter` 经 `RouterProvider.onError` 将路由捕获的异常交给 
 
 协作连接的失败经 `data/yjs/collab-failure-report.ts` 的 `reportCollabFailure` 上报（`console.error` 加 `captureMessage`，标签 `area=collab`、`kind`）。**断线按连接报，不按文档报**：一个标签页的所有文档共用一条 WebSocket，`collab-socket.tsx` 在这条共享连接上监听 `close`，连上过之后断开才报一条（重连期间失败的连接尝试不报），带关闭码、服务端给的 reason（例如 Hocuspocus 超时断开时的 `Connection Timeout`）和当时挂着的文档数，level 是 warning；各文档的 `useSocket` 收到同一个 close 只更新自己的状态。**认证失败按文档报**（level error），带文档名和 reason。
 
-后端镜像的六个包（server / worker / collab / core / domain / shared）构建时生成 source map，在 `pnpm deploy` 之前由锁定版本的 Sentry CLI 注入 Debug ID。构建不上传、不需要令牌；`.map` 随镜像保留，部署仓从已经固定摘要的镜像提取并上传，不能重建一套映射来配旧镜像。`scripts/backend-sourcemaps.mjs` 检查所有 JS 与 map 的 Debug ID，并在镜像 CI 检查生产 node_modules 中的工作区包与注入后的原始产物逐字节一致。镜像不公开提供静态文件，`.map` 不经 HTTP 提供。
+后端镜像的三个服务（server / worker / collab）和它们 `package.json` 的 `dependencies` 里列出的每个工作区库包（现为 core / domain / provider / shared）构建时生成 source map，在 `pnpm deploy` 之前由锁定版本的 Sentry CLI 注入 Debug ID。构建不上传、不需要令牌；`.map` 随镜像保留，部署仓从已经固定摘要的镜像提取并上传，不能重建一套映射来配旧镜像。`scripts/backend-sourcemaps.mjs` 从这三个服务的 `package.json` 读出库包名单，检查所有 JS 与 map 的 Debug ID，并在镜像 CI 检查生产 node_modules 中的工作区包与注入后的原始产物逐字节一致。镜像不公开提供静态文件，`.map` 不经 HTTP 提供。
 
 三端共用 `@breatic/shared` 的 `error-monitoring.ts`:release **只认 40 位小写 commit**,别的值(含 `unknown`)不设 release;environment 只用 `production` / `staging` / `development`(后端由 `ENV` 映射:`prod` → `production`,`dev` → `development`);`dataCollection` 是同一个收紧基线(不收用户信息、cookie、请求体、URL query、标识性请求头)。**用户只附 `id`**(server 的 `requireAuth`、web 的 current-user store)。不开 tracing / replay / profiling。
 
