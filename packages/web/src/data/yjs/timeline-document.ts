@@ -6,7 +6,8 @@ import {
   durationToFrames, newId as createId, TimelineVideoClipSchema, type ProjectRegisteredAsset, type TimelineDocumentV1, type TimelineVideoSource, type TimelineWebResolution,
 } from '@breatic/shared';
 import {
-  attachTimelineRecord as attachRecord, freezeTimelineRecord as freezeRecord, readTimelineDocument, readTimelineSource, timelineRecordJson,
+  attachTimelineRecord as attachRecord, freezeTimelineRecord as freezeRecord, readTimelineDocument, readTimelineSource, timelineDocumentNeedsUpgrade,
+  timelineRecordJson, upgradeTimelineDocument,
 } from '@breatic/shared/space-content';
 
 import { readDocSize } from '@web/data/yjs/doc-size';
@@ -169,9 +170,10 @@ export function reconcileTimelineSources(doc: Y.Doc, values: Readonly<Record<str
 const FORMAT_ORIGIN = Symbol('timeline-record-format');
 
 /**
- * Apply a user-confirmed layout edit to the shared Y.Doc, writing only what changed: the user's fields and any landing
- * receipt in one transaction under `origin`, after an untracked conversion of any plain-object record the edit
- * changes. The receipts map is outside every undo manager's scope, so undoing a landing keeps its receipt. The two
+ * Apply a user-confirmed layout edit to the shared Y.Doc, writing only what changed: the user's fields, the frame size
+ * and any landing receipt in one transaction under `origin`, after an untracked conversion of any plain-object record
+ * the edit changes and of any clip still stored with pixel offsets (#1502), which also marks a version 1 document
+ * version 2. The receipts map is outside every undo manager's scope, so undoing a landing keeps its receipt. The two
  * transactions go through the Space's size check as one write (inner#1790): a new record or receipt is `add`, a
  * changed one `edit`; a deletion whose plan only deletes is `remove`, one that also rewrites a record `compound`.
  * While the size holds writes back a deletion is planned with the magnet off and sweeps no source.
@@ -200,7 +202,8 @@ export function applyTimelineEdit(
   const { next } = plan;
   // An edit that changes no record writes nothing, so it neither sweeps a peer's orphan nor becomes an undo step.
   const layoutSame = sameRecords(current.tracks, next.tracks) && sameRecords(current.clips, next.clips);
-  if (layoutSame && sameRecords(current.operationReceipts, next.operationReceipts)) return plan;
+  const settingsSame = JSON.stringify(current.settings) === JSON.stringify(next.settings);
+  if (layoutSame && settingsSame && sameRecords(current.operationReceipts, next.operationReceipts)) return plan;
   // A peer may have stored a record as a plain value. The ones this edit changes become maps outside the edit's own
   // origin, so undoing the edit reverts only the fields it set.
   const plain = [
@@ -208,8 +211,15 @@ export function applyTimelineEdit(
     ...plainChangedRecords(doc.getMap<unknown>('clips'), current.clips, next.clips),
   ];
   const written = writeSpaceDoc(name, { kind: editKind(deleting, current, next), notify }, () => {
-    if (plain.length > 0) doc.transact(() => { for (const [parent, id, value] of plain) attachRecord(parent, id, value); }, FORMAT_ORIGIN);
+    // Pixel clips are stored as the frame offsets the plan was read with, before the frame can change under them.
+    if (plain.length > 0 || timelineDocumentNeedsUpgrade(doc)) {
+      doc.transact(() => {
+        upgradeTimelineDocument(doc);
+        for (const [parent, id, value] of plain) attachRecord(parent, id, value);
+      }, FORMAT_ORIGIN);
+    }
     doc.transact(() => {
+      if (!settingsSame) doc.getMap<unknown>('timeline').set('settings', freezeRecord(structuredClone(next.settings)));
       // A receipt is one fact written once; it is stored whole.
       for (const [actionId, receipt] of Object.entries(next.operationReceipts)) {
         if (JSON.stringify(current.operationReceipts[actionId]) !== JSON.stringify(receipt)) doc.getMap<unknown>('operationReceipts').set(actionId, freezeRecord(structuredClone(receipt)));

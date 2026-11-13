@@ -3682,8 +3682,6 @@
     "startFrame": "開始影格",
     "cancel": "取消",
     "transport": {
-      "paused": "已暫停",
-      "playing": "播放中",
       "waiting": "緩衝中…"
     },
     "material": {

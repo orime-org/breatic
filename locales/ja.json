@@ -3682,8 +3682,6 @@
     "startFrame": "開始フレーム",
     "cancel": "キャンセル",
     "transport": {
-      "paused": "一時停止中",
-      "playing": "再生中",
       "waiting": "バッファリング中…"
     },
     "material": {

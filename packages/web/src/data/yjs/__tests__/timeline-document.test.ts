@@ -1466,14 +1466,18 @@ describe('applyTimelineEdit writes set_frame and converts leftover pixel clips f
       fc.array(fc.constantFrom(...FRAME_PRESETS.map(([preset]) => preset)), { minLength: 1, maxLength: 6 }),
       (x, y, presets) => {
         const doc = withPixelClip({ ...PIXEL_PIP, x, y });
+        let previous = '16:9';
         try {
           for (const preset of presets) {
             expect(applyTimelineEdit(doc, setFrame(preset), ORIGIN)).toMatchObject({ ok: true });
+            // Choosing the frame already in use is no edit and writes nothing (design §3.1), so only a change stores.
+            const changed = preset !== previous;
+            previous = preset;
             const transform = readTimelineDocument(doc).clips[P]?.transform as { frameX: number; frameY: number } | undefined;
             // Measured against the 1920 x 1080 frame the pixels were placed in, within the 0.00001 offset step.
             expect(Math.abs((transform?.frameX ?? Number.NaN) - x / 1920)).toBeLessThanOrEqual(0.000005 + 1e-12);
             expect(Math.abs((transform?.frameY ?? Number.NaN) - y / 1080)).toBeLessThanOrEqual(0.000005 + 1e-12);
-            expect(storedTransform(doc, P)).toEqual(readTimelineDocument(doc).clips[P]?.transform);
+            if (changed) expect(storedTransform(doc, P)).toEqual(readTimelineDocument(doc).clips[P]?.transform);
           }
         } finally { doc.destroy(); }
       },

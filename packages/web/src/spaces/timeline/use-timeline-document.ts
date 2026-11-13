@@ -25,7 +25,8 @@ const NONE: TimelineDamagedRecords = { clips: [] };
 function readState(doc: Y.Doc, enabled: boolean): TimelineDocumentState {
   if (!enabled) return { document: null, damaged: NONE, error: null };
   try {
-    if (!doc.share.has('timeline') || doc.getMap('timeline').get('schemaVersion') !== 1) {
+    const version = doc.share.has('timeline') ? doc.getMap('timeline').get('schemaVersion') : undefined;
+    if (version !== 1 && version !== 2) {
       throw new Error('Unsupported Timeline content');
     }
     const { document, damaged } = readTimelineContent(doc);

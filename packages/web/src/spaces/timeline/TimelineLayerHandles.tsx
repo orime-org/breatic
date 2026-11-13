@@ -4,7 +4,7 @@
 import * as React from 'react';
 import Moveable, { type OnDrag, type OnRotate, type OnScale, type OnScaleStart } from 'react-moveable';
 import {
-  clampTimelineScale, normalizeTimelineLayerTransform, sameTimelineLayerTransform, timelineLayerStyle, type TimelineLayerBox, type TimelineLayerTransform,
+  clampTimelineScale, normalizeTimelineLayerTransform, sameTimelineLayerTransform, timelineLayerFrameOffset, timelineLayerStyle, type TimelineLayerBox, type TimelineLayerTransform,
 } from '@breatic/shared';
 
 import '@web/spaces/timeline/timeline-layer-handles.css';
@@ -21,7 +21,7 @@ export interface TimelineLayerHandlesProps {
   factor: number;
   /** The toolbar's snap switch. */
   snap: boolean;
-  /** The live value during a gesture, in canvas pixels; null when it ends or is cancelled. */
+  /** The live value during a gesture, with frame offsets like a stored one; null when it ends or is cancelled. */
   onOverride: (transform: TimelineLayerTransform | null) => void;
   /** The value to write on release, already clamped, normalised and rounded, and different from the stored one. */
   onCommit: (transform: TimelineLayerTransform) => void;
@@ -59,8 +59,8 @@ export function TimelineLayerHandles({ canvas, base, transform, factor, snap, on
   const [keepRatio, setKeepRatio] = React.useState(true);
   const moveable = React.useRef<Moveable>(null);
   // Read by the gesture callbacks, which Moveable may keep across renders.
-  const latest = React.useRef({ transform, factor, onOverride, onCommit, onDraggingChange, onPick });
-  latest.current = { transform, factor, onOverride, onCommit, onDraggingChange, onPick };
+  const latest = React.useRef({ canvas, transform, factor, onOverride, onCommit, onDraggingChange, onPick });
+  latest.current = { canvas, transform, factor, onOverride, onCommit, onDraggingChange, onPick };
   const gesture = React.useRef<{ value: TimelineLayerTransform | null; cancelled: boolean } | null>(null);
 
   const show = React.useCallback((value: TimelineLayerTransform): void => {
@@ -122,9 +122,18 @@ export function TimelineLayerHandles({ canvas, base, transform, factor, snap, on
    * @throws {never} Never.
    */
   const current = (): TimelineLayerTransform => gesture.current?.value ?? latest.current.transform;
+  /**
+   * A Moveable translation in display pixels as frame offsets.
+   * @param translate - The translation Moveable reports.
+   * @returns The offsets.
+   * @throws {never} Never.
+   */
+  const frameOffset = (translate: number[]): { frameX: number; frameY: number } => {
+    const { canvas: frame, factor: scale } = latest.current;
+    return timelineLayerFrameOffset(frame, { x: translate[0]! / scale, y: translate[1]! / scale });
+  };
   const onDrag = React.useCallback((event: OnDrag): void => {
-    const scale = latest.current.factor;
-    show({ ...current(), x: event.beforeTranslate[0]! / scale, y: event.beforeTranslate[1]! / scale });
+    show({ ...current(), ...frameOffset(event.beforeTranslate) });
   }, [show]);
   const onScaleStart = React.useCallback((event: OnScaleStart): void => {
     begin();
@@ -132,10 +141,9 @@ export function TimelineLayerHandles({ canvas, base, transform, factor, snap, on
     setKeepRatio(event.direction[0] !== 0 && event.direction[1] !== 0);
   }, [begin]);
   const onScale = React.useCallback((event: OnScale): void => {
-    const scale = latest.current.factor;
     show({
       ...current(), scaleX: clampTimelineScale(event.scale[0]!), scaleY: clampTimelineScale(event.scale[1]!),
-      x: event.drag.beforeTranslate[0]! / scale, y: event.drag.beforeTranslate[1]! / scale,
+      ...frameOffset(event.drag.beforeTranslate),
     });
   }, [show]);
   const onScaleEnd = React.useCallback((): void => {
@@ -152,7 +160,11 @@ export function TimelineLayerHandles({ canvas, base, transform, factor, snap, on
   const shown = live ?? transform;
   // Keyed on the box's values: a parent may hand over an equal box as a new object.
   const { left, top, width: boxWidth, height: boxHeight } = base;
-  const style = React.useMemo(() => timelineLayerStyle({ left, top, width: boxWidth, height: boxHeight }, shown, factor), [left, top, boxWidth, boxHeight, shown, factor]);
+  const { width: frameWidth, height: frameHeight } = canvas;
+  const style = React.useMemo(
+    () => timelineLayerStyle({ width: frameWidth, height: frameHeight }, { left, top, width: boxWidth, height: boxHeight }, shown, factor),
+    [frameWidth, frameHeight, left, top, boxWidth, boxHeight, shown, factor],
+  );
   // Moveable measures its target only when told: a transform written by the panel, a collaborator or undo moves the
   // proxy without a gesture, so the box is measured again whenever the proxy's place changes.
   React.useLayoutEffect(() => { moveable.current?.updateRect(); }, [style]);
