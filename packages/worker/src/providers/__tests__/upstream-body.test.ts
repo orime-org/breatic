@@ -11,10 +11,29 @@
 import { beforeAll, describe, it, expect } from "vitest";
 import { initCore } from "@breatic/core";
 import { dialogueText, extractPromptText } from "@breatic/shared";
-import { getFullModelConfig, type FullModelEntry } from "@breatic/domain";
+import type { FullModelEntry } from "@breatic/domain";
 
 import { upstreamBody } from "@worker/providers/upstream-body.js";
-import { validateModelParams } from "@worker/providers/generate.js";
+import { entryOf, validateModelParams, type CatalogModality } from "@worker/providers/generate.js";
+
+beforeAll(() => {
+  initCore({ DATABASE_URL: "postgres://localhost:5432/breatic_test" });
+});
+
+/**
+ * The body a run of a catalog model sends: its params pass the worker's
+ * validation (which resolves them as `resolveParams` does), then `upstreamBody`.
+ * @param modality - The model's catalog.
+ * @param name - The model.
+ * @param given - The job's params, prompt already lifted out.
+ * @param prompt - The cleaned prompt.
+ * @returns The upstream body.
+ * @throws {Error} When the catalog has no such model.
+ */
+function catalogBody(modality: CatalogModality, name: string, given: Record<string, unknown>, prompt = ""): Record<string, unknown> {
+  const [, validated] = validateModelParams(modality, name, given);
+  return upstreamBody(entryOf(modality, name), validated, prompt);
+}
 
 const REF: FullModelEntry = {
   name: "ref-model",
@@ -185,12 +204,9 @@ describe("upstreamBody", () => {
   });
 
   it("cleans each speaker's name as the script is cleaned, so the names the script reads are the names sent (round 3)", () => {
-    const gemini = getFullModelConfig("tts").models.find((m) => m.name === "gemini-3.1-flash-text-to-speech");
-    if (!gemini) throw new Error("gemini-3.1-flash-text-to-speech missing from the tts catalog");
     const speakers = [{ speaker: "Mary  Ann", voice: "Kore" }, { speaker: "Leo\u200b", voice: "Puck" }];
-    const [, validated] = validateModelParams("tts", gemini.name, { speakers });
     const script = extractPromptText(dialogueText([{ speaker: 1, text: "hi" }, { speaker: 2, text: "hello" }], speakers));
-    const body = upstreamBody(gemini, validated, script) as { speakers: { speaker: string }[]; text?: string; prompt?: string };
+    const body = catalogBody("tts", "gemini-3.1-flash-text-to-speech", { speakers }, script) as { speakers: { speaker: string }[]; text?: string; prompt?: string };
     const said = (body.text ?? body.prompt ?? "").split("\n").map((line) => line.slice(0, line.indexOf(":")));
     expect(body.speakers.map((one) => one.speaker)).toEqual(said);
     expect(body.speakers[1]?.speaker).toBe("Leo");
@@ -252,24 +268,9 @@ describe("upstreamBody", () => {
 });
 
 describe("upstreamBody — Seedance 2.5 image-to-video from the real catalog", () => {
-  beforeAll(() => {
-    initCore({ DATABASE_URL: "postgres://localhost:5432/breatic_test" });
-  });
-
-  /**
-   * The catalog entry the worker builds the request from.
-   * @returns The entry.
-   * @throws {Error} When the catalog has no such model.
-   */
-  function seedance(): FullModelEntry {
-    const found = getFullModelConfig("video").models.find((m) => m.name === "seedance-2.5-image-to-video");
-    if (!found) throw new Error("seedance-2.5-image-to-video missing from the video catalog");
-    return found;
-  }
-
   it("sends the end frame as last_image beside the first frame", () => {
     const body = upstreamBody(
-      seedance(),
+      entryOf("video", "seedance-2.5-image-to-video"),
       { image: "https://a/first.png", end_image: "https://a/last.png", resolution: "720p", duration: 5, generate_audio: true },
       "a pan",
     );
@@ -284,7 +285,7 @@ describe("upstreamBody — Seedance 2.5 image-to-video from the real catalog", (
   });
 
   it("sends no last_image when the run carries no end frame", () => {
-    const body = upstreamBody(seedance(), { image: "https://a/first.png", resolution: "480p", duration: 4 }, "a pan");
+    const body = upstreamBody(entryOf("video", "seedance-2.5-image-to-video"), { image: "https://a/first.png", resolution: "480p", duration: 4 }, "a pan");
     expect(body).not.toHaveProperty("last_image");
     expect(body).toMatchObject({ image: "https://a/first.png", resolution: "480p", duration: 4 });
   });
@@ -300,47 +301,19 @@ describe("upstreamBody — Seedance 2.5 image-to-video from the real catalog", (
  * list; only the addresses go upstream.
  */
 describe("upstreamBody — Tripo H3.1 from the real 3D catalog (inner#1691)", () => {
-  beforeAll(() => {
-    initCore({ DATABASE_URL: "postgres://localhost:5432/breatic_test" });
-  });
-
-  /**
-   * The catalog entry the worker builds the request from.
-   * @param name - The model.
-   * @returns The entry.
-   * @throws {Error} When the 3D catalog has no such model.
-   */
-  function tripo(name: string): FullModelEntry {
-    const found = getFullModelConfig("three_d").models.find((m) => m.name === name);
-    if (!found) throw new Error(`${name} missing from the three_d catalog`);
-    return found;
-  }
-
-  /**
-   * The body a run of this model sends for these params.
-   * @param name - The model.
-   * @param given - The job's params, prompt already lifted out.
-   * @param prompt - The cleaned prompt.
-   * @returns The upstream body.
-   */
-  function bodyFor(name: string, given: Record<string, unknown>, prompt = ""): Record<string, unknown> {
-    const [, validated] = validateModelParams("three_d", name, given);
-    return upstreamBody(tripo(name), validated, prompt);
-  }
-
   const FRONT = "https://cdn.example/image/front.png";
   const LEFT = "https://cdn.example/image/left.png";
   const BACK = "https://cdn.example/image/back.png";
   const RIGHT = "https://cdn.example/image/right.png";
 
   it("sends the single image entry its registered address under image", () => {
-    const body = bodyFor("tripo-h3.1-i23d", { image: FRONT, input_asset_ids: ["asset-front"] });
+    const body = catalogBody("three_d", "tripo-h3.1-i23d", { image: FRONT, input_asset_ids: ["asset-front"] });
     expect(body.image).toBe(FRONT);
     expect(body).not.toHaveProperty("images");
   });
 
   it("sends the multi-view entry its addresses under images in front, left, back, right order", () => {
-    const body = bodyFor("tripo-h3.1-multiview", {
+    const body = catalogBody("three_d", "tripo-h3.1-multiview", {
       images: [FRONT, LEFT, BACK, RIGHT],
       input_asset_ids: ["asset-front", "asset-left", "asset-back", "asset-right"],
     });
@@ -348,14 +321,14 @@ describe("upstreamBody — Tripo H3.1 from the real 3D catalog (inner#1691)", ()
   });
 
   it("keeps the asset ids the task list reads off the wire", () => {
-    const single = bodyFor("tripo-h3.1-i23d", { image: FRONT, input_asset_ids: ["asset-front"] });
-    const multi = bodyFor("tripo-h3.1-multiview", { images: [FRONT, LEFT], input_asset_ids: ["asset-front", "asset-left"] });
+    const single = catalogBody("three_d", "tripo-h3.1-i23d", { image: FRONT, input_asset_ids: ["asset-front"] });
+    const multi = catalogBody("three_d", "tripo-h3.1-multiview", { images: [FRONT, LEFT], input_asset_ids: ["asset-front", "asset-left"] });
     expect(single).not.toHaveProperty("input_asset_ids");
     expect(multi).not.toHaveProperty("input_asset_ids");
   });
 
   it("sends no texture setting when texture is off, whatever quality the job carries", () => {
-    const body = bodyFor(
+    const body = catalogBody("three_d", 
       "tripo-h3.1-t23d",
       { texture: false, pbr: false, texture_quality: "extreme", texture_version: "v3.5", delight: true, auto_size: true },
       "a wooden chair",
@@ -368,7 +341,7 @@ describe("upstreamBody — Tripo H3.1 from the real 3D catalog (inner#1691)", ()
   });
 
   it("sends no integer the user left blank", () => {
-    const body = bodyFor(
+    const body = catalogBody("three_d", 
       "tripo-h3.1-t23d",
       { face_limit: "", model_seed: null, texture_seed: undefined },
       "a wooden chair",
@@ -376,7 +349,7 @@ describe("upstreamBody — Tripo H3.1 from the real 3D catalog (inner#1691)", ()
     expect(body).not.toHaveProperty("face_limit");
     expect(body).not.toHaveProperty("model_seed");
     expect(body).not.toHaveProperty("texture_seed");
-    expect(bodyFor("tripo-h3.1-t23d", { face_limit: 8000, model_seed: 0 }, "a wooden chair")).toMatchObject({
+    expect(catalogBody("three_d", "tripo-h3.1-t23d", { face_limit: 8000, model_seed: 0 }, "a wooden chair")).toMatchObject({
       face_limit: 8000,
       model_seed: 0,
     });
@@ -397,36 +370,19 @@ describe("upstreamBody — Tripo H3.1 from the real 3D catalog (inner#1691)", ()
  * speaks; one that empties it is refused before any body is sent.
  */
 describe("upstreamBody — Qwen3 TTS Voice Design from the real tts catalog (inner#1825)", () => {
-  beforeAll(() => {
-    initCore({ DATABASE_URL: "postgres://localhost:5432/breatic_test" });
-  });
-
-  /**
-   * The body a run of this model sends for these params.
-   * @param given - The job's params, prompt already lifted out.
-   * @param prompt - The cleaned prompt.
-   * @returns The upstream body.
-   */
-  function bodyFor(given: Record<string, unknown>, prompt: string): Record<string, unknown> {
-    const found = getFullModelConfig("tts").models.find((m) => m.name === "qwen3-tts-voice-design");
-    if (!found) throw new Error("qwen3-tts-voice-design missing from the tts catalog");
-    const [, validated] = validateModelParams("tts", "qwen3-tts-voice-design", given);
-    return upstreamBody(found, validated, prompt);
-  }
-
   it("sends the voice description cleaned of markup and invisible characters, as every text setting is (round 2)", () => {
-    expect(bodyFor({ voice_description: "<b>An old man, slow</b>\u200b", language: "English" }, "Hi.")).toMatchObject({
+    expect(catalogBody("tts", "qwen3-tts-voice-design", { voice_description: "<b>An old man, slow</b>\u200b", language: "English" }, "Hi.")).toMatchObject({
       voice_description: "An old man, slow",
     });
   });
 
   it("never sends a body with the voice description emptied (inner#1825)", () => {
-    expect(() => bodyFor({ voice_description: "", language: "English" }, "The night was long.")).toThrow(/voice_description/);
+    expect(() => catalogBody("tts", "qwen3-tts-voice-design", { voice_description: "", language: "English" }, "The night was long.")).toThrow(/voice_description/);
   });
 
   it("sends the line as text, with the described voice and the language", () => {
     expect(
-      bodyFor({ voice_description: "An old man, slow and gravelly", language: "English" }, "The night was long."),
+      catalogBody("tts", "qwen3-tts-voice-design", { voice_description: "An old man, slow and gravelly", language: "English" }, "The night was long."),
     ).toEqual({
       text: "The night was long.",
       voice_description: "An old man, slow and gravelly",
@@ -435,7 +391,7 @@ describe("upstreamBody — Qwen3 TTS Voice Design from the real tts catalog (inn
   });
 
   it("sends the default English description and auto language when the run names neither", () => {
-    const body = bodyFor({}, "Hello there.");
+    const body = catalogBody("tts", "qwen3-tts-voice-design", {}, "Hello there.");
     expect(body.text).toBe("Hello there.");
     expect(body.language).toBe("auto");
     expect(typeof body.voice_description).toBe("string");
@@ -480,12 +436,10 @@ describe("upstreamBody — params that switch on a later call (inner#1692)", () 
   });
 
   it("keeps rig_skeleton off every Tripo entry's body in the real catalog", () => {
-    initCore({ DATABASE_URL: "postgres://localhost:5432/breatic_test" });
     for (const name of ["tripo-h3.1-t23d", "tripo-h3.1-i23d", "tripo-h3.1-multiview"]) {
-      const entry = getFullModelConfig("three_d").models.find((m) => m.name === name);
-      expect(entry, name).toBeDefined();
-      expect(entry!.params?.rig_skeleton, name).toMatchObject({ default: false, fill: "panel" });
-      expect(upstreamBody(entry!, { rig_skeleton: true, image: "https://a/f.png", images: ["https://a/f.png"] }, "x")).not.toHaveProperty("rig_skeleton");
+      const entry = entryOf("three_d", name);
+      expect(entry.params?.rig_skeleton, name).toMatchObject({ default: false, fill: "panel" });
+      expect(upstreamBody(entry, { rig_skeleton: true, image: "https://a/f.png", images: ["https://a/f.png"] }, "x")).not.toHaveProperty("rig_skeleton");
     }
   });
 });
@@ -496,33 +450,15 @@ describe("upstreamBody — params that switch on a later call (inner#1692)", () 
  * prompt, so the toggle sends opaque when off and the off state stays solid.
  */
 describe("upstreamBody — Seedream 5.5 background from the real image catalog (inner#1809)", () => {
-  beforeAll(() => {
-    initCore({ DATABASE_URL: "postgres://localhost:5432/breatic_test" });
-  });
-
-  /**
-   * The body a run of this model sends for these params.
-   * @param name - The model.
-   * @param given - The job's params, prompt already lifted out.
-   * @returns The upstream body.
-   * @throws {Error} When the image catalog has no such model.
-   */
-  function bodyFor(name: string, given: Record<string, unknown>): Record<string, unknown> {
-    const entry = getFullModelConfig("image").models.find((m) => m.name === name);
-    if (!entry) throw new Error(`${name} missing from the image catalog`);
-    const [, validated] = validateModelParams("image", name, given);
-    return upstreamBody(entry, validated, "a sticker of a fox");
-  }
-
   const IMAGE = "https://cdn.example/image/pet.png";
 
   it.each([
     ["seedream-v5.5-text-to-image", {}],
     ["seedream-v5.5-edit", { images: [IMAGE] }],
   ])("%s asks for transparent when on and opaque when off or left alone", (name, base) => {
-    expect(bodyFor(name, { ...base, transparency: true }).background).toBe("transparent");
-    expect(bodyFor(name, { ...base, transparency: false }).background).toBe("opaque");
-    expect(bodyFor(name, base).background).toBe("opaque");
-    expect(bodyFor(name, base)).not.toHaveProperty("transparency");
+    expect(catalogBody("image", name, { ...base, transparency: true }).background).toBe("transparent");
+    expect(catalogBody("image", name, { ...base, transparency: false }).background).toBe("opaque");
+    expect(catalogBody("image", name, base).background).toBe("opaque");
+    expect(catalogBody("image", name, base)).not.toHaveProperty("transparency");
   });
 });
