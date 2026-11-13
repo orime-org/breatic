@@ -101,6 +101,7 @@ import {
   REFUND_CREDITS_VERSION,
 } from "@server/modules/payment/legal-text.js";
 import { openPaymentSource } from "./payment-source.js";
+import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 let sql: ReturnType<typeof postgres>;
 let app: Hono;
@@ -155,6 +156,7 @@ async function seedBuyer(): Promise<Buyer> {
     INSERT INTO studios (created_by_user_id, slug, type, name)
     VALUES (${user!.id}, ${`hist-me-${stamp}`}, 'personal', ${`Me ${stamp}`})
   `;
+  await mirrorAllInDirectory(sql);
   const token = crypto.randomBytes(24).toString("hex");
   await setSession(getRedis(), token, user!.id);
   return {
@@ -264,6 +266,8 @@ async function dropBuyer(userId: string): Promise<void> {
   await sql`DELETE FROM purchase_consents WHERE payment_id IN (SELECT id FROM payments WHERE user_id = ${userId})`;
   await sql`DELETE FROM payments WHERE user_id = ${userId}`;
   await sql`DELETE FROM studio_members WHERE user_id = ${userId}`;
+  await sql`DELETE FROM studio_directory_members WHERE user_id = ${userId}`;
+  await sql`DELETE FROM studio_directory WHERE created_by_user_id = ${userId}`;
   await sql`DELETE FROM studios WHERE created_by_user_id = ${userId}`;
   await sql`DELETE FROM users WHERE id = ${userId}`;
 }
@@ -347,11 +351,30 @@ describe("GET /payment/history — every purchase, landed or not", () => {
     }
   });
 
+  it("names a purchase pointed at a Studio in another region (inner#1955)", async () => {
+    const buyer = await seedBuyer();
+    const farId = crypto.randomUUID();
+    try {
+      await sql`
+        INSERT INTO studio_directory (studio_id, slug, region, type, name, admin_user_id, created_by_user_id, state)
+        VALUES (${farId}, ${`hist-far-${seq}-${Date.now()}`}, 'sg', 'team', 'Far Studio', ${buyer.userId}, ${buyer.userId}, 'live')
+      `;
+      await seedLanded(buyer.userId, farId);
+
+      const [row] = (await history(buyer)).items;
+      expect(row!.designatedStudioId).toBe(farId);
+      expect(row!.designatedStudioName).toBe("Far Studio");
+    } finally {
+      await dropBuyer(buyer.userId);
+    }
+  });
+
   it("reads a purchase pointed at a deleted studio as pointed nowhere", async () => {
     const buyer = await seedBuyer();
     try {
       await seedLanded(buyer.userId, buyer.studioId);
       await sql`UPDATE studios SET deleted_at = now() WHERE id = ${buyer.studioId}`;
+      await sql`UPDATE studio_directory SET deleted_at = now() WHERE studio_id = ${buyer.studioId}`;
 
       const [row] = (await history(buyer)).items;
       // The same predicate the overview uses. One purchase cannot count as
