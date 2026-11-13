@@ -46,7 +46,7 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
 import { t } from '@breatic/shared';
 
-import { QUOTED } from '@web/spaces/document/document-list-block';
+import { QUOTED } from '@breatic/shared/document-model';
 import { ownContentPaints } from '@web/spaces/document/document-row-paints';
 
 /**

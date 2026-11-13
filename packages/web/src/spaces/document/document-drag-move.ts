@@ -41,7 +41,7 @@ import {
   rowById,
   type RowInDocument,
 } from '@web/spaces/document/document-row-by-id';
-import { cellDepthOf, DOC_TABLE, isTableCell } from '@web/spaces/document/document-table-nodes';
+import { cellDepthOf, DOC_TABLE, isTableCell } from '@breatic/shared/document-model';
 
 /** Table nodes: ours, and the stored (legacy) one documents from before hold. */
 const TABLES = new Set([DOC_TABLE, 'table']);

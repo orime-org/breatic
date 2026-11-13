@@ -14,7 +14,7 @@ import {
   columnHandleCentre,
   type Box,
 } from '@web/spaces/document/document-table-control-place';
-import { COLUMN_RESIZE_ZONE } from '@web/spaces/document/document-table-nodes';
+import { COLUMN_RESIZE_ZONE } from '@breatic/shared/document-model';
 
 /**
  * A box from its edges.

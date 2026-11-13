@@ -21,7 +21,7 @@ import { Plugin, PluginKey, type Transaction } from '@tiptap/pm/state';
 import { columnResizingPluginKey, TableMap } from '@tiptap/pm/tables';
 import type { EditorView } from '@tiptap/pm/view';
 
-import { columnCellOf } from '@web/spaces/document/document-table-nodes';
+import { columnCellOf } from '@breatic/shared/document-model';
 import { cellAt } from '@web/spaces/document/document-table-run';
 
 /**

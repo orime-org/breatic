@@ -27,7 +27,7 @@
  * Temporary (#1362): it exists only to convert tables stored before inner#1619.
  * Delete this module, its call in `hocuspocus.ts` and
  * `doc_table_migrate_lock_ms` once no stored document holds a `table` element,
- * and then the legacy nodes in `packages/web/src/spaces/document/document-table-legacy.ts`
+ * and then the legacy nodes in `packages/shared/src/document/model/document-table-legacy.ts`
  * and `packages/shared/src/document-schema.ts`.
  */
 

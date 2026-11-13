@@ -20,7 +20,7 @@ import { moveRowTo } from '@web/spaces/document/document-drag-move';
 import { landedAt, landProposal } from '@web/spaces/document/document-proposal-landing';
 import * as documentMarkdown from '@web/spaces/document/document-markdown';
 import { rowById } from '@web/spaces/document/document-row-by-id';
-import { blockInTableCell } from '@web/spaces/document/document-table-nodes';
+import { blockInTableCell } from '@breatic/shared/document-model';
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 

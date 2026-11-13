@@ -42,7 +42,7 @@ import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 
 import { BodyEdgeSelection } from '@web/spaces/document/document-body-edge-selection';
 import { bodyHolds } from '@web/spaces/document/document-body-focus';
-import { UNSUPPORTED_BLOCK } from '@web/spaces/document/document-unsupported-blocknote';
+import { UNSUPPORTED_BLOCK } from '@breatic/shared/document-model';
 import { DIVIDER } from '@web/spaces/document/document-divider';
 import { heldRange } from '@web/spaces/document/document-table-leave-selection';
 import { MEDIA_BLOCK_TYPES, isMediaBlockType } from '@web/spaces/document/document-media-types';

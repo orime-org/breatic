@@ -23,6 +23,7 @@
  */
 
 import {
+  addNodeAndExtensionsToSpec,
   BlockNoteSchema,
   defaultBlockSpecs,
   defaultInlineContentSpecs,
@@ -33,15 +34,28 @@ import {
   createHeadingBlockSpec,
 } from '@blocknote/core/blocks';
 
-import { BODY_HEADING_LEVELS } from '@web/spaces/document/document-block-type';
-import { buildListItemSpecs } from '@web/spaces/document/document-list-block';
-import { withMediaView } from '@web/spaces/document/document-media-blocknote';
-import { legacyTableSpec } from '@web/spaces/document/document-table-legacy';
-import { docTableSpecs } from '@web/spaces/document/document-table-nodes';
+import { buildListItemSpecs } from '@shared/document/model/document-list-block.js';
+import { legacyTableSpec } from '@shared/document/model/document-table-legacy.js';
+import { docTableSpecs, type DocTableView } from '@shared/document/model/document-table-nodes.js';
 import {
   unsupportedBlockSpec,
   unsupportedInlineSpec,
-} from '@web/spaces/document/document-unsupported-blocknote';
+} from '@shared/document/model/document-unsupported-blocknote.js';
+
+/**
+ * The heading levels the body carries, which is what the menu offers.
+ *
+ * `h3` is already 17px against a 15px paragraph and a fourth has nowhere to
+ * sit; Notion and Feishu stop at three for the same reason. The schema reads
+ * this to narrow BlockNote's six, so the levels a user can reach by typing
+ * `### `, by `Mod-Alt-N` and by this menu are one list.
+ *
+ * Widening it needs a rule in `index.css` for the new level FIRST — preflight
+ * resets `h1..h6` to inherit, so a level with no rule of its own renders at
+ * the paragraph's size and weight. `document-heading-levels` reads the
+ * stylesheet and goes red on a level that has none.
+ */
+export const BODY_HEADING_LEVELS = [1, 2, 3] as const;
 
 /** A prop declaration in BlockNote's shape. */
 type PropDecl = Readonly<Record<string, unknown>>;
@@ -49,6 +63,47 @@ type PropDecl = Readonly<Record<string, unknown>>;
 /** The shape `defaultBlockSpecs` entries share, narrowed to what we extend. */
 interface SpecWithProps {
   readonly config: { readonly propSchema: Record<string, PropDecl> };
+}
+
+/** The parts of a media block spec web's node view reads and rebuilds. */
+export interface MediaBlockSpec {
+  readonly config: {
+    readonly type: string;
+    readonly propSchema: Record<string, { readonly default?: unknown }>;
+  };
+  readonly implementation: {
+    readonly meta?: { readonly fileBlockAccept?: readonly string[] };
+  } & Record<string, unknown>;
+  readonly extensions?: readonly unknown[];
+}
+
+/**
+ * What the browser's editor adds to the block specs, none of which changes
+ * the schema: collab builds it without them (breatic#1488 §11.1).
+ */
+export interface DocumentSchemaViews {
+  /** Gives a media block its node view. */
+  readonly media?: <T extends MediaBlockSpec>(spec: T) => T;
+  /** The table's frame and paste rule. */
+  readonly table?: DocTableView;
+}
+
+/**
+ * A media spec carrying its node, built now as web's media view builds it,
+ * for a schema built with no views. A spec made by `createBlockSpec` has no
+ * node until the schema is built, and the schema places a node it is handed
+ * ahead of the ones it builds, so building it here keeps the node order the
+ * browser's schema has.
+ * @param spec - The spec.
+ * @returns The same spec, carrying its node.
+ */
+function noView<T extends MediaBlockSpec>(spec: T): T {
+  const built = addNodeAndExtensionsToSpec(
+    spec.config as never,
+    spec.implementation as never,
+    spec.extensions as never,
+  ) as unknown as { implementation: { node: unknown } };
+  return { ...spec, implementation: { ...spec.implementation, node: built.implementation.node } };
 }
 
 /** Marks a block as sitting inside a quote. */
@@ -107,10 +162,12 @@ function withProps<T extends SpecWithProps>(
 
 /**
  * Builds the schema: twelve block types, five added props, the rest turned off.
+ * @param views - What the browser's editor adds; nothing by default.
  * @returns The schema to hand `BlockNoteEditor.create`.
  * @throws {Error} Whatever BlockNote throws while validating the specs.
  */
-export function buildDocumentSchema(): ReturnType<typeof BlockNoteSchema.create> {
+export function buildDocumentSchema(views: DocumentSchemaViews = {}): ReturnType<typeof BlockNoteSchema.create> {
+  const withMediaView = views.media ?? noView;
   const {
     // Turned off this version — they reach the fallback path instead of the
     // menu, which could not name them. `quote` goes with them because
@@ -159,7 +216,7 @@ export function buildDocumentSchema(): ReturnType<typeof BlockNoteSchema.create>
     // Stored tables from before cells held blocks, kept as stored
     // (inner#1619).
     table: legacyTableSpec(),
-    ...docTableSpecs(),
+    ...docTableSpecs(views.table),
     // The library's own props: image and video carry a width and an
     // alignment, audio neither (inner#1127 A8, A9).
     image: withMediaView(

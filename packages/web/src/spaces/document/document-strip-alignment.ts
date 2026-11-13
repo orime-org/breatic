@@ -49,7 +49,7 @@ import * as React from 'react';
 
 import { MEDIA_FRAME } from '@web/spaces/document/DocumentMediaBlock';
 import { SCROLL_VIEWPORT } from '@web/spaces/document/document-body-autoscroll';
-import { COLUMN_RESIZE_ZONE, DOC_TABLE } from '@web/spaces/document/document-table-nodes';
+import { COLUMN_RESIZE_ZONE, DOC_TABLE } from '@breatic/shared/document-model';
 
 /**
  * How far the strip stands out from the body's left edge, the same on every

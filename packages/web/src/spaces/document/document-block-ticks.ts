@@ -22,9 +22,8 @@
 import type { Node as PMNode } from '@tiptap/pm/model';
 import type { Selection } from '@tiptap/pm/state';
 
-import { ORDERED_LIST, QUOTED } from '@web/spaces/document/document-list-block';
+import { ORDERED_LIST, QUOTED, DOC_TABLE, tableAround } from '@breatic/shared/document-model';
 import { DIVIDER } from '@web/spaces/document/document-divider';
-import { DOC_TABLE, tableAround } from '@web/spaces/document/document-table-nodes';
 import { heldRange } from '@web/spaces/document/document-table-leave-selection';
 
 /** The table block's content node. */

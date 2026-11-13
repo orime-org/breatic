@@ -18,7 +18,7 @@
 
 import type { BlockNoteEditor } from '@blocknote/core';
 
-import { DOC_TABLE, DOC_TABLE_HEADER } from '@web/spaces/document/document-table-nodes';
+import { DOC_TABLE, DOC_TABLE_HEADER } from '@breatic/shared/document-model';
 
 /** The editor, as far as writing Markdown needs it. */
 type MarkdownEditor = Pick<BlockNoteEditor<never, never, never>, 'blocksToMarkdownLossy' | 'blocksToHTMLLossy'>;

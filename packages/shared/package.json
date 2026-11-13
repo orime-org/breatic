@@ -20,6 +20,11 @@
       "types": "./src/canvas-model.ts",
       "default": "./dist/canvas-model.js"
     },
+    "./document-model": {
+      "import": "./dist/document-model.js",
+      "types": "./src/document-model.ts",
+      "default": "./dist/document-model.js"
+    },
     "./mini-tools": {
       "import": "./dist/mini-tools/index.js",
       "types": "./src/mini-tools/index.ts",
@@ -42,8 +47,8 @@
     }
   },
   "scripts": {
-    "build": "tsup src/index.ts src/canvas-model.ts src/canvas/text-body.ts src/mini-tools/index.ts src/pricing/index.ts src/space-content.ts src/update-shape.ts --format esm --clean --sourcemap",
-    "dev": "tsup src/index.ts src/canvas-model.ts src/canvas/text-body.ts src/mini-tools/index.ts src/pricing/index.ts src/space-content.ts src/update-shape.ts --format esm --watch",
+    "build": "tsup src/index.ts src/canvas-model.ts src/document-model.ts src/canvas/text-body.ts src/mini-tools/index.ts src/pricing/index.ts src/space-content.ts src/update-shape.ts --format esm --clean --sourcemap",
+    "dev": "tsup src/index.ts src/canvas-model.ts src/document-model.ts src/canvas/text-body.ts src/mini-tools/index.ts src/pricing/index.ts src/space-content.ts src/update-shape.ts --format esm --watch",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -51,6 +56,9 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@blocknote/core": "catalog:",
+    "@tiptap/core": "catalog:",
+    "@tiptap/pm": "catalog:",
     "file-type": "^22",
     "intl-messageformat": "^11.2.13",
     "jsonata": "catalog:",

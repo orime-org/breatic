@@ -21,9 +21,8 @@ import {
   type HandleEditor,
   type PressedBlock,
 } from '@web/spaces/document/document-handle-commands';
-import { QUOTED } from '@web/spaces/document/document-list-block';
+import { QUOTED, DOC_TABLE, DOC_TABLE_CELL, DOC_TABLE_ROW } from '@breatic/shared/document-model';
 import { markOwnUndoStep } from '@web/spaces/document/document-undo-step';
-import { DOC_TABLE, DOC_TABLE_CELL, DOC_TABLE_ROW } from '@web/spaces/document/document-table-nodes';
 
 /** How many rows and columns a new table has. */
 export interface TableSize {

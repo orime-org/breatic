@@ -23,7 +23,7 @@ import { Slice, type Node as PMNode } from '@tiptap/pm/model';
 import { Plugin, PluginKey, Selection, TextSelection, type Transaction } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
-import { cellDepthOf } from '@web/spaces/document/document-table-nodes';
+import { cellDepthOf } from '@breatic/shared/document-model';
 
 /**
  * The content of the one cell a selection covers every block of, when

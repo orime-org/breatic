@@ -33,9 +33,8 @@ import {
   type ProposalAdmission,
   undoOf,
 } from '@web/spaces/document/document-proposal-landing';
-import { LEGACY_CELL_LINE } from '@web/spaces/document/document-table-legacy';
+import { LEGACY_CELL_LINE, blockInTableCell, cellDepthOf, DOC_TABLE } from '@breatic/shared/document-model';
 import { blocksMarkdown, type BlockLike } from '@web/spaces/document/document-table-markdown';
-import { blockInTableCell, cellDepthOf, DOC_TABLE } from '@web/spaces/document/document-table-nodes';
 
 /** How a write ended. */
 export type AiWriteResult =

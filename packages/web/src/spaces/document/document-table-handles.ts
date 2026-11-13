@@ -25,7 +25,7 @@ import type { EditorView } from '@tiptap/pm/view';
 
 import { SCROLL_VIEWPORT } from '@web/spaces/document/document-body-autoscroll';
 import { tableStripLeft } from '@web/spaces/document/document-strip-alignment';
-import { cellDepthOf, DOC_TABLE } from '@web/spaces/document/document-table-nodes';
+import { cellDepthOf, DOC_TABLE } from '@breatic/shared/document-model';
 
 /** The cell the handles stand on, and the boxes they are placed by. */
 export interface TableHandlesState {

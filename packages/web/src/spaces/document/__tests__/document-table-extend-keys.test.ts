@@ -17,7 +17,7 @@ import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { tableAtLeavingHead } from '@web/spaces/document/document-table-leave-selection';
-import { tableAround } from '@web/spaces/document/document-table-nodes';
+import { tableAround } from '@breatic/shared/document-model';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;

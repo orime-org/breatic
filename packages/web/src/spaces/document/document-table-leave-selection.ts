@@ -50,7 +50,7 @@ import { CellSelection, __pastedCells as pastedCells } from '@tiptap/pm/tables';
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view';
 
 import { bodyEdgeAt, bodyEdgePos } from '@web/spaces/document/document-body-edge-pos';
-import { DOC_TABLE, isTableCell, tableAround, type TableAt } from '@web/spaces/document/document-table-nodes';
+import { DOC_TABLE, isTableCell, tableAround, type TableAt } from '@breatic/shared/document-model';
 
 /** The class every cell of a table in such a selection carries. */
 export const IN_SELECTION = 'doc-table-in-selection';

@@ -11,7 +11,7 @@
 
 import type { AiAnswer } from '@web/spaces/document/document-ai-text';
 import type { WrittenBlock } from '@web/spaces/document/document-external-media';
-import { DOC_TABLE } from '@web/spaces/document/document-table-nodes';
+import { DOC_TABLE } from '@breatic/shared/document-model';
 
 /** Each column's width in pixels, in the order the storyboard prompt asks for. */
 const SHOT_LIST_COLUMN_WIDTHS = [64, 88, 88, 88, 220, 180, 64, 140] as const;

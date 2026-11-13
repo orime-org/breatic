@@ -92,7 +92,7 @@ import { useDocumentMediaPick } from '@web/spaces/document/DocumentMediaPicker';
 import type { MediaBlockType } from '@web/spaces/document/document-media-types';
 import { DocumentInsertChoices } from '@web/spaces/document/DocumentInsertChoices';
 import { useRowNow } from '@web/spaces/document/use-row-now';
-import { blockInTableCell } from '@web/spaces/document/document-table-nodes';
+import { blockInTableCell } from '@breatic/shared/document-model';
 import { openTableFullscreen } from '@web/spaces/document/document-table-fullscreen';
 import { copyTableLine, cutTableLine, firstCellOf } from '@web/spaces/document/document-table-line-clipboard';
 import { toast } from '@web/lib/toast';

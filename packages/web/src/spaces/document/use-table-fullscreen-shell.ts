@@ -21,7 +21,7 @@ import {
   type TableFullscreen,
 } from '@web/spaces/document/document-table-fullscreen';
 import type { HandleEditor } from '@web/spaces/document/document-handle-commands';
-import { DOC_TABLE } from '@web/spaces/document/document-table-nodes';
+import { DOC_TABLE } from '@breatic/shared/document-model';
 
 /**
  * Scrolls the body back to where full screen was left from.

@@ -89,7 +89,7 @@ export function splitCarryingQuote(
   tr.split(posInBlock, 2, [
     { type: info.block.node.type, attrs: {} },
     {
-      type: keepType ? content.type : schema.nodes['paragraph'],
+      type: keepType ? content.type : schema.nodes['paragraph']!,
       attrs: keepProps
         ? { ...content.attrs }
         : { [QUOTED]: content.attrs[QUOTED] },
@@ -189,7 +189,7 @@ interface ListKind {
  * beside the chords and going through the same table the menu rows do — §3.2
  * is one answer per transition, whichever control asked.
  */
-const LIST_KINDS: readonly ListKind[] = [
+const LIST_KINDS: readonly [ListKind, ListKind, ListKind] = [
   { type: ORDERED_LIST },
   { type: 'bulletListItem' },
   { type: 'checkListItem' },

@@ -30,11 +30,7 @@ import type { Transaction } from '@tiptap/pm/state';
 
 import type { BlockUnder } from '@web/spaces/document/document-block-ticks';
 import { selectionOverBlockContent } from '@web/spaces/document/document-hovered-block';
-import { DOC_TABLE } from '@web/spaces/document/document-table-nodes';
-import {
-  ORDERED_LIST,
-  QUOTED,
-} from '@web/spaces/document/document-list-block';
+import { DOC_TABLE, ORDERED_LIST, QUOTED } from '@breatic/shared/document-model';
 import {
   LEVEL_OF_ROW,
   TYPE_OF_ROW,

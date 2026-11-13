@@ -24,7 +24,7 @@ import { occurrences, type DocumentProposal } from '@breatic/shared';
 import type { WriteAccess } from '@web/data/yjs/collab-socket';
 import { docNameOf } from '@web/data/yjs/manager';
 import { checkAdd, type SpaceRefusal } from '@web/data/yjs/space-write';
-import { BODY_HEADING_LEVELS } from '@web/spaces/document/document-block-type';
+import { BODY_HEADING_LEVELS, blockInTableCell } from '@breatic/shared/document-model';
 import { blockPlainText } from '@web/spaces/document/document-blocks-read';
 import { commentOn, type CommentAim } from '@web/spaces/document/document-comment-post';
 import { asCommentBody, commentsOn } from '@web/spaces/document/document-comment-extension';
@@ -34,7 +34,6 @@ import type { DocumentEditorHandle } from '@web/spaces/document/document-editor-
 import { markdownBlocks, type MarkdownBlock } from '@web/spaces/document/document-markdown';
 import { proposalBlocks, writtenBlockId } from '@web/spaces/document/document-proposal-blocks';
 import { setTableFullscreen } from '@web/spaces/document/document-table-fullscreen';
-import { blockInTableCell } from '@web/spaces/document/document-table-nodes';
 import type { LandingAction } from '@web/stores/document-proposals';
 
 

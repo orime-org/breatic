@@ -3,7 +3,7 @@
 
 import type { Node as PMNode } from '@tiptap/pm/model';
 
-import { BODY_HEADING_LEVELS } from '@web/spaces/document/document-block-type';
+import { BODY_HEADING_LEVELS } from '@breatic/shared/document-model';
 import { computeNumbering } from '@web/spaces/document/document-numbering';
 import { quoteRuns } from '@web/spaces/document/document-quote-runs';
 

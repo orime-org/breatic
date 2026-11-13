@@ -38,7 +38,7 @@ import {
   tableRowsPreviewContent,
 } from '@web/spaces/document/document-drag-preview';
 import { dragSourceOf } from '@web/spaces/document/document-table-drag';
-import { holdsBlocks } from '@web/spaces/document/document-table-nodes';
+import { holdsBlocks } from '@breatic/shared/document-model';
 
 /** A drag this module draws the preview of. */
 export type SelectionDragKind = 'caption' | 'selection';

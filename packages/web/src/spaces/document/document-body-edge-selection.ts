@@ -27,7 +27,7 @@ import type { EditorView } from '@tiptap/pm/view';
 
 import { bodyEdgeAt, bodyEdgePos, type BodyEdge } from '@web/spaces/document/document-body-edge-pos';
 import { replaceHeld, swapHeld, tableEdgeText } from '@web/spaces/document/document-table-leave-selection';
-import { tableAround } from '@web/spaces/document/document-table-nodes';
+import { tableAround } from '@breatic/shared/document-model';
 
 export { bodyEdgeAt, bodyEdgePos, type BodyEdge };
 

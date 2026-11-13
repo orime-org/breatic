@@ -41,21 +41,6 @@ export interface BlockTypeItem {
 }
 
 /**
- * The heading levels the body carries, which is what the menu offers.
- *
- * `h3` is already 17px against a 15px paragraph and a fourth has nowhere to
- * sit; Notion and Feishu stop at three for the same reason. The schema reads
- * this to narrow BlockNote's six, so the levels a user can reach by typing
- * `### `, by `Mod-Alt-N` and by this menu are one list.
- *
- * Widening it needs a rule in `index.css` for the new level FIRST — preflight
- * resets `h1..h6` to inherit, so a level with no rule of its own renders at
- * the paragraph's size and weight. `document-heading-levels` reads the
- * stylesheet and goes red on a level that has none.
- */
-export const BODY_HEADING_LEVELS = [1, 2, 3] as const;
-
-/**
  * The nine, in the order user 2026-09-02 settled: three groups, one per thing
  * a row can set — the seven that set the block's type, then Ordered, then
  * Quote. `DIMENSION_OF_ROW` names those three, and the menu rules the groups

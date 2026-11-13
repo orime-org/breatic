@@ -30,7 +30,7 @@ import { Plugin, type EditorState, type Transaction } from '@tiptap/pm/state';
 import { cellAround } from '@tiptap/pm/tables';
 
 import { landingFor } from '@web/spaces/document/document-drag-move';
-import { QUOTED } from '@web/spaces/document/document-list-block';
+import { QUOTED } from '@breatic/shared/document-model';
 import { HTML_MEDIA_SELECTOR } from '@web/spaces/document/document-media-types';
 
 /** A position between two blocks, where inserted blocks go. */

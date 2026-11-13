@@ -29,7 +29,7 @@ import type { ComputeDropPositionContext } from '@blocknote/core/extensions';
 
 import { followCell, renameCell, type CellName } from '@web/spaces/document/document-table-cell-name';
 import { bodyScrollerOf, SCROLL_VIEWPORT } from '@web/spaces/document/document-body-autoscroll';
-import { columnCellOf } from '@web/spaces/document/document-table-nodes';
+import { columnCellOf } from '@breatic/shared/document-model';
 import { cellAt, moveLineAt } from '@web/spaces/document/document-table-run';
 
 /** Which way a drag moves cells. */

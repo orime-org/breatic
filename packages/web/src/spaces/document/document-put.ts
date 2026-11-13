@@ -26,11 +26,11 @@ import { toast } from '@web/lib/toast';
 
 import { landingSlice, withoutRowIds } from '@web/spaces/document/document-comment-paste';
 import { gapAtDrop, insertAtGapTr, quotedBeside } from '@web/spaces/document/document-file-input';
-import { QUOTED } from '@web/spaces/document/document-list-block';
+import { QUOTED, DOC_TABLE, isTableCell, squareSelectedTable } from '@breatic/shared/document-model';
 import { isMediaBlockType } from '@web/spaces/document/document-media-types';
 import type { Read, ReadBlock } from '@web/spaces/document/document-paste-read';
 import { isWordsLine, rowsOf, WORDS, type Rows } from '@web/spaces/document/document-paste-slice';
-import { DOC_TABLE, isTableCell, keepTablesWhole, squareSelectedTable } from '@web/spaces/document/document-table-nodes';
+import { keepTablesWhole } from '@web/spaces/document/document-table-nodes';
 import { heldTables, swapHeldTables } from '@web/spaces/document/document-table-leave-selection';
 import { HOLD_PRE_EDIT_SELECTION } from '@web/spaces/document/document-undo-selection';
 

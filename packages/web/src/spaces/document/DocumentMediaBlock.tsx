@@ -41,7 +41,7 @@ import { Popover, PopoverTrigger, PopoverContent } from '@web/components/ui/popo
 import { MediaControlsPortal, type VideoControlsTarget } from '@web/spaces/canvas/nodes/_shared/media-video-controls';
 import { documentBarsOf, mediaEvent, mediaPanelShown, useDocumentBars } from '@web/spaces/document/document-bars';
 import { captionDraftsFor } from '@web/spaces/document/document-caption-drafts';
-import { DOC_TABLE } from '@web/spaces/document/document-table-nodes';
+import { DOC_TABLE } from '@breatic/shared/document-model';
 
 /** The media block types. */
 import type { MediaBlockType } from '@web/spaces/document/document-media-types';

@@ -44,7 +44,7 @@ import type { EditorView } from '@tiptap/pm/view';
 import { blocksMarkdown } from '@web/spaces/document/document-table-markdown';
 import { bodyEdgeBetween } from '@web/spaces/document/document-body-edge-selection';
 import { heldRange, replaceHeld, type HeldTables } from '@web/spaces/document/document-table-leave-selection';
-import { cellDepthOf, DOC_TABLE, tableAround, type TableAt } from '@web/spaces/document/document-table-nodes';
+import { cellDepthOf, DOC_TABLE, tableAround, type TableAt } from '@breatic/shared/document-model';
 
 /** The editor, as far as copying reads it. */
 type CopyEditor = BlockNoteEditor<never, never, never>;

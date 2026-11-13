@@ -29,7 +29,7 @@ import {
   TABLE_CONTROL,
   type TableHandlesState,
 } from '@web/spaces/document/document-table-handles';
-import { DOC_TABLE } from '@web/spaces/document/document-table-nodes';
+import { DOC_TABLE } from '@breatic/shared/document-model';
 import { HANDLE_THICKNESS } from '@web/spaces/document/document-table-control-place';
 import { DocumentTableHandle } from '@web/spaces/document/DocumentTableHandle';
 import { BlockStrip, type StripHold } from '@web/spaces/document/DocumentBlockHandle';

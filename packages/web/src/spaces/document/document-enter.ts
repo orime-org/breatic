@@ -41,12 +41,7 @@ import { compositionEnd, type CompositionEnd } from '@web/lib/composition-end';
 import { holdsWholeCell } from '@web/spaces/document/document-cell-content-selection';
 import { BodyEdgeSelection } from '@web/spaces/document/document-body-edge-selection';
 import { heldTables } from '@web/spaces/document/document-table-leave-selection';
-import { inLegacyCell } from '@web/spaces/document/document-table-legacy';
-import {
-  QUOTED,
-  splitCarryingQuote,
-  type ListEditor,
-} from '@web/spaces/document/document-list-block';
+import { inLegacyCell, QUOTED, splitCarryingQuote, type ListEditor } from '@breatic/shared/document-model';
 
 /**
  * The four block types that answer Enter with a handler of their own.

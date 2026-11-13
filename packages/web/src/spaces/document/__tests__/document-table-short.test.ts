@@ -19,7 +19,7 @@ import { documentBodyFragment } from '@breatic/shared';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { holdColumnWidths } from '@web/spaces/document/document-table-column-widths';
 import { canDragFrom, startTableDrag } from '@web/spaces/document/document-table-drag';
-import { squareTable } from '@web/spaces/document/document-table-nodes';
+import { squareTable } from '@breatic/shared/document-model';
 import { canMergeCells, headerOn, insertColumn } from '@web/spaces/document/document-table-run';
 import { blocksMarkdown } from '@web/spaces/document/document-table-markdown';
 import { tableBlock, type TableInput } from '@web/spaces/document/__tests__/table-fixtures';

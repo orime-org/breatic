@@ -45,7 +45,7 @@ import {
   DOC_TABLE_ROW,
   cellDepthOf,
   tableAround,
-} from '@web/spaces/document/document-table-nodes';
+} from '@breatic/shared/document-model';
 
 /** A row as the editor's block calls hand it back. */
 interface BlockLike {

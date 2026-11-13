@@ -22,7 +22,7 @@ import { documentBodyFragment } from '@breatic/shared';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 import { heldTables } from '@web/spaces/document/document-table-leave-selection';
-import { cellDepthOf } from '@web/spaces/document/document-table-nodes';
+import { cellDepthOf } from '@breatic/shared/document-model';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 

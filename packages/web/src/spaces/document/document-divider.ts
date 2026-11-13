@@ -21,7 +21,7 @@ import { blockToNode, createExtension } from '@blocknote/core';
 import { InputRule, inputRules } from '@tiptap/pm/inputrules';
 import { TextSelection } from '@tiptap/pm/state';
 
-import { QUOTED } from '@web/spaces/document/document-list-block';
+import { QUOTED } from '@breatic/shared/document-model';
 
 /** The divider's block type, which is also its node name. */
 export const DIVIDER = 'divider';

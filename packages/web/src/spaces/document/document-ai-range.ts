@@ -48,7 +48,7 @@ import {
 } from '@web/spaces/document/document-local-range';
 import { blockById } from '@web/spaces/document/document-proposal-landing';
 import { noTextPaint } from '@web/spaces/document/document-selection-paint';
-import { cellDepthOf, tableAround } from '@web/spaces/document/document-table-nodes';
+import { cellDepthOf, tableAround } from '@breatic/shared/document-model';
 
 /** What the dialog opens the range on (§4.6). */
 export interface AiCapture {

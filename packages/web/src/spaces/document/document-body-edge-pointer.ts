@@ -48,7 +48,7 @@ import { bodyHolds } from '@web/spaces/document/document-body-focus';
 import { bodyScrollerOf, type PointerAt } from '@web/spaces/document/document-body-autoscroll';
 import { autoScrollOf } from '@web/spaces/document/document-drag-autoscroll';
 import { MEDIA_CHROME } from '@web/spaces/document/DocumentMediaBlock';
-import { DOC_TABLE } from '@web/spaces/document/document-table-nodes';
+import { DOC_TABLE } from '@breatic/shared/document-model';
 import { inTableFullscreen } from '@web/spaces/document/document-table-fullscreen';
 
 /**

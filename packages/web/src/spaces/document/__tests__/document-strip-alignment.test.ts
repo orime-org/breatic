@@ -22,7 +22,7 @@ import {
   stripOffsetFromRowTop,
   TABLE_STRIP_OUTSET,
 } from '@web/spaces/document/document-strip-alignment';
-import { COLUMN_RESIZE_ZONE } from '@web/spaces/document/document-table-nodes';
+import { COLUMN_RESIZE_ZONE } from '@breatic/shared/document-model';
 
 /** The strip's measured height: one 24px handle in a flex wrapper. */
 const STRIP = 24;

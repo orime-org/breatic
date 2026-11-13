@@ -18,7 +18,7 @@ import { blockAround, containerAt, inlineLetter, inOneCell, ownContentEnd, type 
 import { readTopBlocks } from '@web/spaces/document/document-blocks-read';
 import { letterBounds } from '@web/spaces/document/document-local-range';
 import { heldTables } from '@web/spaces/document/document-table-leave-selection';
-import { tableAround } from '@web/spaces/document/document-table-nodes';
+import { tableAround } from '@breatic/shared/document-model';
 
 
 /** The blank line Markdown puts between two blocks. */

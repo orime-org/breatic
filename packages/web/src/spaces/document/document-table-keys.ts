@@ -34,7 +34,13 @@ import type { EditorView } from '@tiptap/pm/view';
 import type { BlockNoteEditor } from '@blocknote/core';
 import type { ResolvedPos } from '@tiptap/pm/model';
 import { takeAwayCellContent } from '@web/spaces/document/document-cell-content-selection';
-import { squareSelectedTable } from '@web/spaces/document/document-table-nodes';
+import {
+  squareSelectedTable,
+  cellDepthOf,
+  isTableCell,
+  tableAround,
+  inLegacyCell,
+} from '@breatic/shared/document-model';
 import { cellAt, wholeEmptyTableSelected } from '@web/spaces/document/document-table-run';
 import {
   addRowAfter,
@@ -44,8 +50,6 @@ import {
   goToNextCell,
   isInTable,
 } from '@tiptap/pm/tables';
-import { cellDepthOf, isTableCell, tableAround } from '@web/spaces/document/document-table-nodes';
-import { inLegacyCell } from '@web/spaces/document/document-table-legacy';
 import { heldTables, tableAtLeavingHead, tableEdgeText, takeAwayHeldTables } from '@web/spaces/document/document-table-leave-selection';
 import { BodyEdgeSelection, bodyEdgeAt, bodyEdgeBetween, headOnEdgeLine, textOrEdge } from '@web/spaces/document/document-body-edge-selection';
 import { inTableFullscreen } from '@web/spaces/document/document-table-fullscreen';

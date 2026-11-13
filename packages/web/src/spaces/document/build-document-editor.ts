@@ -42,7 +42,7 @@ import type * as Y from 'yjs';
 import { docNameOf } from '@web/data/yjs/manager';
 import { spaceSizeFilterPlugin } from '@web/features/collab-editor/space-size-gate';
 
-import { buildDocumentSchema } from '@web/spaces/document/document-schema-blocknote';
+import { buildDocumentSchema, documentCommentMarkExtension } from '@breatic/shared/document-model';
 import { documentNodeCompositionExtension } from '@web/spaces/document/document-node-composition';
 import { documentDividerInputExtension } from '@web/spaces/document/document-divider';
 import { documentBodyEdgePointerExtension } from '@web/spaces/document/document-body-edge-pointer';
@@ -73,7 +73,9 @@ import { documentSafariImeExtension } from '@web/spaces/document/document-safari
 import { documentTrailingPressExtension } from '@web/spaces/document/document-trailing-press';
 import { documentLinkEditMarkExtension } from '@web/spaces/document/document-link-edit-mark';
 import { documentDragDropExtension } from '@web/spaces/document/document-drag-drop';
-import { documentCommentLiveMarkExtension, documentCommentMarkExtension } from '@web/spaces/document/document-comment-mark';
+import { documentCommentLiveMarkExtension } from '@web/spaces/document/document-comment-mark';
+import { withMediaView } from '@web/spaces/document/document-media-blocknote';
+import { documentTableView } from '@web/spaces/document/document-table-nodes';
 import { COMMENT_MARK } from '@web/spaces/document/document-comment-extension';
 import {
   documentCommentsExtension,
@@ -257,7 +259,7 @@ export function buildDocumentEditor(
   const dropLine: typeof tableDrags = (context) => (inTableFullscreen(context.view.state) ? null : tableDrags(context));
 
   return BlockNoteEditor.create({
-    schema: buildDocumentSchema(),
+    schema: buildDocumentSchema({ media: withMediaView, table: documentTableView }),
     links: { onClick: openLinkInANewTab },
     domAttributes: { editor: { class: BODY_SURFACE_CLASS } },
     // The line that says where a dragged block will land. Withholding the

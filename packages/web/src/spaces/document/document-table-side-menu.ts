@@ -32,7 +32,7 @@ import { SideMenuExtension } from '@blocknote/core/extensions';
 
 import { domElementOf } from '@web/spaces/document/document-editor-view';
 import { TABLE_STRIP_OUTSET, tableLineOf } from '@web/spaces/document/document-strip-alignment';
-import { DOC_TABLE } from '@web/spaces/document/document-table-nodes';
+import { DOC_TABLE } from '@breatic/shared/document-model';
 
 /** A point in viewport coordinates. */
 interface Point {

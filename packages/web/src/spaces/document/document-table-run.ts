@@ -47,7 +47,7 @@ import {
   type Alignment,
 } from '@web/spaces/document/document-align-run';
 import type { BlockUnder } from '@web/spaces/document/document-block-ticks';
-import { isTableCell, squareSelectedTable, squareTable } from '@web/spaces/document/document-table-nodes';
+import { isTableCell, squareSelectedTable, squareTable } from '@breatic/shared/document-model';
 
 /** The editor, as far as these commands use it. */
 type TableEditor = BlockNoteEditor<never, never, never>;

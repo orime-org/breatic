@@ -36,7 +36,7 @@ import { documentBarsOf } from '@web/spaces/document/document-bars';
 import { bodyScrollerOf } from '@web/spaces/document/document-body-autoscroll';
 import { PASTED_MEDIA_KEY } from '@web/spaces/document/document-external-media';
 import { watchPluginState } from '@web/spaces/document/document-plugin-watch';
-import { cellDepthOf, DOC_TABLE, tableAround, type TableAt } from '@web/spaces/document/document-table-nodes';
+import { cellDepthOf, DOC_TABLE, tableAround, type TableAt } from '@breatic/shared/document-model';
 import { blockById } from '@web/spaces/document/document-proposal-landing';
 import { compositionEnd, type CompositionEnd } from '@web/lib/composition-end';
 import { fromYjs, undoRedo } from '@web/spaces/document/document-yjs-origin';

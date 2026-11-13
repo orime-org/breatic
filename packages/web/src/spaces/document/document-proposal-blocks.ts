@@ -11,7 +11,7 @@ import { Fragment, type Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { deriveId } from '@breatic/shared';
 
 import type { WrittenBlock } from '@web/spaces/document/document-external-media';
-import { unfoldTables } from '@web/spaces/document/document-table-nodes';
+import { unfoldTables } from '@breatic/shared/document-model';
 
 /**
  * The stable ID of one actual root written by a proposal.

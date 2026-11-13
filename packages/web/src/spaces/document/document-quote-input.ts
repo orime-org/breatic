@@ -17,7 +17,7 @@
 
 import { createExtension } from '@blocknote/core';
 
-import { QUOTED } from '@web/spaces/document/document-list-block';
+import { QUOTED } from '@breatic/shared/document-model';
 
 /**
  * The extension carrying the `> ` shorthand.

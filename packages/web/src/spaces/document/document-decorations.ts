@@ -36,9 +36,8 @@ import { createExtension, isLayoutNode } from '@blocknote/core';
 
 import { computeNumbering } from '@web/spaces/document/document-numbering';
 import { quoteRuns } from '@web/spaces/document/document-quote-runs';
-import { QUOTED } from '@web/spaces/document/document-list-block';
+import { QUOTED, cellDepthOf, isTableCell } from '@breatic/shared/document-model';
 import { CONTENT_DECORATION } from '@web/spaces/document/document-view-state';
-import { cellDepthOf, isTableCell } from '@web/spaces/document/document-table-nodes';
 
 /** The attribute the number is drawn from. */
 const DOC_NUMBER_ATTRIBUTE = 'data-doc-number';

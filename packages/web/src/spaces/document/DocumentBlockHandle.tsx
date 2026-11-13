@@ -67,7 +67,7 @@ import {
 } from '@web/spaces/document/document-insert-row';
 import { useDocumentMediaPick } from '@web/spaces/document/DocumentMediaPicker';
 import type { MediaBlockType } from '@web/spaces/document/document-media-types';
-import { QUOTED } from '@web/spaces/document/document-list-block';
+import { QUOTED, blockInTableCell, DOC_TABLE } from '@breatic/shared/document-model';
 import { useStripOnFirstLine } from '@web/spaces/document/document-strip-alignment';
 import { DocumentBlockMenu } from '@web/spaces/document/DocumentBlockMenu';
 import { DocumentInsertChoices } from '@web/spaces/document/DocumentInsertChoices';
@@ -77,7 +77,6 @@ import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { useRowNow } from '@web/spaces/document/use-row-now';
 import { bodyLayerMark } from '@web/spaces/document/document-body-focus';
 import { domElementOf } from '@web/spaces/document/document-editor-view';
-import { blockInTableCell, DOC_TABLE } from '@web/spaces/document/document-table-nodes';
 
 /**
  * The handle: 24 square, which is the smallest a pointer target may be

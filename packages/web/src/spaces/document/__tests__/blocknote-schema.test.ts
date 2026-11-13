@@ -23,7 +23,7 @@ import { dirname, join, resolve } from 'node:path';
 
 import { describe, it, expect } from 'vitest';
 
-import { buildDocumentSchema } from '@web/spaces/document/document-schema-blocknote';
+import { buildDocumentSchema } from '@breatic/shared/document-model';
 
 /** The types this Space builds. */
 const ENABLED = [
