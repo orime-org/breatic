@@ -412,6 +412,8 @@ export class MainAgent {
     // stream's `onError` below is handed it -- so that one callback covers
     // both a provider that failed and our own code throwing.
     let failure: unknown;
+    /** The provider's own error behind a failed model stream, which the wire carries only as a line. */
+    let providerFailure: unknown;
 
     // How each tool call that came back with nothing ended, by call id.
     //
@@ -1218,6 +1220,8 @@ export class MainAgent {
             if (unknown400 !== undefined) {
               logger.error({ ...unknown400, userId, conversationId, turnIndex, model: modelId }, "agent_unrecognised_400");
             }
+            // What reaches the turn's `onError` is the line the user is shown.
+            providerFailure ??= error;
           } else if (seen.failed !== true) {
             seen.turnedAway = { error, overflow };
             return;
@@ -1387,7 +1391,7 @@ export class MainAgent {
       // finished.
       onError: (err) => {
         failure = err;
-        this.logFailure(err);
+        this.logFailure(providerFailure ?? err);
         return FAILED_TEXT;
       },
       onFinish: async ({ responseMessage, isAborted }) => {
