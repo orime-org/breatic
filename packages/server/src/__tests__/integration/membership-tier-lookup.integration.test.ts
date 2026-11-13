@@ -59,6 +59,7 @@ import {
   getProjectConcurrentEditorLimit,
   getMembershipLimits,
 } from "@breatic/core";
+import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 try {
   initCore(process.env);
@@ -107,6 +108,7 @@ async function insertUser(
     INSERT INTO studio_members (studio_id, user_id, role)
     VALUES (${st!.id}, ${userId}, 'admin')
   `;
+  await mirrorAllInDirectory(sql);
   return { userId, personalStudioId: st!.id };
 }
 
@@ -125,6 +127,7 @@ async function insertTeamStudio(adminUserId: string): Promise<string> {
     INSERT INTO studio_members (studio_id, user_id, role)
     VALUES (${st!.id}, ${adminUserId}, 'admin')
   `;
+  await mirrorAllInDirectory(sql);
   return st!.id;
 }
 
@@ -257,13 +260,10 @@ describe("getStudioStorageQuota", () => {
     expect(quota.storageBytes).toBe(getMembershipLimits("base").storage_bytes);
   });
 
-  it("refuses a studio whose only live member is not an admin", async () => {
-    // This is the case that actually holds the `role = 'admin'` filter in
-    // place, and it holds it without depending on row order: the admin
-    // membership is gone, so the only row the query could possibly reach is
-    // the maintainer's. With the filter, nothing matches and the corruption
-    // surfaces; without it, the maintainer's tier would quietly become the
-    // studio's ceilings.
+  it("reads the admin the directory names, whoever else is a member", async () => {
+    // The directory's admin is the one record of who pays for a Studio,
+    // whichever region holds it (inner#1955); a maintainer on another tier
+    // never becomes the Studio's ceilings.
     const admin = await insertUser("base");
     const member = await insertUser("self_hosted");
     const studioId = await insertTeamStudio(admin.userId);
@@ -271,11 +271,8 @@ describe("getStudioStorageQuota", () => {
       INSERT INTO studio_members (studio_id, user_id, role)
       VALUES (${studioId}, ${member.userId}, 'maintainer')
     `;
-    await sql`
-      UPDATE studio_members SET deleted_at = now()
-      WHERE studio_id = ${studioId} AND user_id = ${admin.userId}
-    `;
-    await expect(getStudioStorageQuota(studioId)).rejects.toThrow();
+    await sql`UPDATE studio_directory SET admin_user_id = ${member.userId} WHERE studio_id = ${studioId}`;
+    expect((await getStudioStorageQuota(studioId)).adminUserId).toBe(member.userId);
   });
 
   it("follows a transfer to the new admin", async () => {
@@ -296,21 +293,20 @@ describe("getStudioStorageQuota", () => {
       INSERT INTO studio_members (studio_id, user_id, role)
       VALUES (${studioId}, ${to.userId}, 'admin')
     `;
+    // And the global directory's admin, which the transfer moves (inner#1955).
+    await sql`UPDATE studio_directory SET admin_user_id = ${to.userId} WHERE studio_id = ${studioId}`;
 
     const after = await getStudioStorageQuota(studioId);
     expect(after.adminUserId).toBe(to.userId);
     expect(after.storageBytes).toBe(getMembershipLimits("base").storage_bytes);
   });
 
-  it("ignores a soft-deleted admin membership", async () => {
+  it("refuses a studio the directory no longer holds", async () => {
     const admin = await insertUser("pro");
     const studioId = await insertTeamStudio(admin.userId);
-    await sql`
-      UPDATE studio_members SET deleted_at = now()
-      WHERE studio_id = ${studioId} AND user_id = ${admin.userId}
-    `;
-    // No live admin left: corrupt, and a fallback tier would silently decide
-    // every ceiling on this studio.
+    await sql`UPDATE studio_directory SET deleted_at = now() WHERE studio_id = ${studioId}`;
+    // No live directory row: corrupt, and a fallback tier would silently
+    // decide every ceiling on this studio.
     await expect(getStudioStorageQuota(studioId)).rejects.toThrow();
   });
 
@@ -350,6 +346,7 @@ describe("getStudioStorageQuota", () => {
       INSERT INTO studio_members (studio_id, user_id, role)
       VALUES (${st!.id}, ${badId}, 'admin')
     `;
+    await mirrorAllInDirectory(sql);
     await expect(getStudioStorageQuota(st!.id)).rejects.toThrow(/plutonium/);
   });
 });
@@ -419,6 +416,8 @@ describe("getLimitsForStudio", () => {
       INSERT INTO studio_members (studio_id, user_id, role)
       VALUES (${studioId}, ${to.userId}, 'admin')
     `;
+    // And the global directory's admin, which the transfer moves (inner#1955).
+    await sql`UPDATE studio_directory SET admin_user_id = ${to.userId} WHERE studio_id = ${studioId}`;
     await expect(getLimitsForStudio(studioId)).resolves.toEqual(
       getMembershipLimits("base"),
     );
@@ -505,6 +504,8 @@ describe("getProjectConcurrentEditorLimit", () => {
       INSERT INTO studio_members (studio_id, user_id, role)
       VALUES (${studioId}, ${to.userId}, 'admin')
     `;
+    // And the global directory's admin, which the transfer moves (inner#1955).
+    await sql`UPDATE studio_directory SET admin_user_id = ${to.userId} WHERE studio_id = ${studioId}`;
 
     expect(await getProjectConcurrentEditorLimit(projectId)).toBe(
       getMembershipLimits("base").concurrent_editors,

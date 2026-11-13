@@ -44,6 +44,7 @@ import { initCore, loadLocales, NotFoundError } from "@breatic/core";
 import * as projectInviteService from "@server/modules/project-invite/projectInvite.service.js";
 import * as studioInviteService from "@server/modules/studio/studioInvite.service.js";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
+import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 try {
   initCore(process.env);
@@ -113,6 +114,7 @@ async function seedStaleInvite(): Promise<{
     VALUES (${project!.id}, ${invitee!.id}, 'viewer', ${admin!.id}, 'pending',
             now() - interval '1 hour', ${`${tag}-token`})
   `;
+  await mirrorAllInDirectory(sql);
   return {
     projectId: project!.id,
     adminId: admin!.id,
@@ -153,6 +155,7 @@ async function seedStudioInvite(): Promise<{
             now() + interval '7 days', ${`${tag}-token`})
     RETURNING id
   `;
+  await mirrorAllInDirectory(sql);
   return {
     studioId: studio!.id,
     invitationId: invite!.id,

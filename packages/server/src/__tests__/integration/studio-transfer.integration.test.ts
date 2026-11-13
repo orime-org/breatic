@@ -63,6 +63,7 @@ import { mirrorInDirectory } from "./directory-fixtures.js";
 import { initCore } from "@breatic/core";
 import { studioMembersRepo } from "@breatic/domain";
 import * as studioTransferService from "@server/modules/studio/studioTransfer.service.js";
+import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 try {
   initCore(process.env);
@@ -105,6 +106,7 @@ async function insertPersonalStudio(
     INSERT INTO studios (created_by_user_id, slug, type, name)
     VALUES (${userId}, ${slug}, 'personal', ${name})
   `;
+  await mirrorAllInDirectory(sql);
   return slug;
 }
 
@@ -123,6 +125,7 @@ async function insertStudioWithAdmin(
   const id = rows[0]!.id;
   await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${id}, ${adminUserId}, 'admin')`;
   await mirrorInDirectory(sql, id);
+  await mirrorAllInDirectory(sql);
   return { id, slug };
 }
 
@@ -136,7 +139,8 @@ async function insertMemberRaw(
     INSERT INTO studio_members (studio_id, user_id, role)
     VALUES (${studioId}, ${userId}, ${role})
   `;
-}
+
+  await mirrorAllInDirectory(sql);}
 
 /** Count active admins on a studio — the transfer invariant. */
 async function activeAdminCount(studioId: string): Promise<number> {

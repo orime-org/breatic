@@ -37,6 +37,7 @@ import {
   coverKeyFor,
 } from "@breatic/core";
 import type { Hono } from "hono";
+import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 try {
   initCore(process.env);
@@ -94,6 +95,7 @@ async function seedEditor(): Promise<{ userId: string; studioId: string; project
   await sql`INSERT INTO project_members (project_id, user_id, role, added_by) VALUES (${projectId}, ${userId}, 'owner', null)`;
   const token = crypto.randomBytes(24).toString("hex");
   await setSession(getRedis(), token, userId);
+  await mirrorAllInDirectory(sql);
   return { userId, studioId, projectId, cookie: `${sessionCookieName()}=${token}` };
 }
 

@@ -174,6 +174,7 @@ import postgres from "postgres";
 import { initCore, loadLocales, getMembershipLimits } from "@breatic/core";
 import { assetRepo } from "@breatic/domain";
 import { assertStorageAllowance } from "@server/modules/asset/storageQuota.service.js";
+import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 try {
   initCore(process.env);
@@ -220,6 +221,7 @@ async function insertUser(
     INSERT INTO studio_members (studio_id, user_id, role)
     VALUES (${st!.id}, ${userId}, 'admin')
   `;
+  await mirrorAllInDirectory(sql);
   return { userId, personalStudioId: st!.id };
 }
 
@@ -238,6 +240,7 @@ async function insertTeamStudio(adminUserId: string): Promise<string> {
     INSERT INTO studio_members (studio_id, user_id, role)
     VALUES (${st!.id}, ${adminUserId}, 'admin')
   `;
+  await mirrorAllInDirectory(sql);
   return st!.id;
 }
 

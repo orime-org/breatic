@@ -85,6 +85,7 @@ import {
 import { closeFinishQueue, runQueuedFinish } from "@server/__tests__/helpers/queued-finish.js";
 import { signSessionToken } from "@breatic/shared";
 import type { Hono } from "hono";
+import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 try {
   initCore(process.env);
@@ -155,6 +156,7 @@ async function seedAdmin(): Promise<{
     INSERT INTO project_members (project_id, user_id, role, added_by)
     VALUES (${projectId}, ${userId}, 'owner', null)
   `;
+  await mirrorAllInDirectory(sql);
   return { userId, cookie: `${sessionCookieName()}=${token}`, studioId, projectId };
 }
 

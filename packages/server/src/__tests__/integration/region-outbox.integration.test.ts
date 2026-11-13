@@ -126,7 +126,7 @@ async function regionStudio(): Promise<{ studioId: string; slug: string; adminId
 async function eventsFor(studioId: string): Promise<{ id: string; type: string; sent: boolean }[]> {
   return sql<{ id: string; type: string; sent: boolean }[]>`
     SELECT id::text, event_type AS type, sent_at IS NOT NULL AS sent FROM region_outbox
-    WHERE aggregate_key LIKE ${`%${studioId}%`} ORDER BY id
+    WHERE aggregate_key LIKE ${`%${studioId}%`} ORDER BY region_outbox.id
   `;
 }
 
@@ -290,7 +290,7 @@ describe("applying in the global region", () => {
     await studioService.updateStudio(slug, { name: "New" });
     const [older] = await sql<{ id: string; aggregate_key: string; event_type: string; payload: unknown }[]>`
       SELECT id::text, aggregate_key, event_type, payload FROM region_outbox
-      WHERE aggregate_key = ${`studio:${studioId}`} ORDER BY id LIMIT 1
+      WHERE aggregate_key = ${`studio:${studioId}`} ORDER BY region_outbox.id LIMIT 1
     `;
     await drain();
 

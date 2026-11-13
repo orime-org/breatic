@@ -43,6 +43,7 @@ import {
   getMembershipLimits,
   getSubscriptionStaleAfterDays,
 } from "@breatic/core";
+import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 try {
   initCore(process.env);
@@ -122,6 +123,8 @@ async function giveSubscription(
 async function dropUser(userId: string): Promise<void> {
   await sql`DELETE FROM subscriptions WHERE user_id = ${userId}`;
   await sql`DELETE FROM studio_members WHERE user_id = ${userId}`;
+  await sql`DELETE FROM studio_directory_members WHERE user_id = ${userId} OR studio_id IN (SELECT studio_id FROM studio_directory WHERE admin_user_id = ${userId} OR created_by_user_id = ${userId})`;
+  await sql`DELETE FROM studio_directory WHERE admin_user_id = ${userId} OR created_by_user_id = ${userId}`;
   await sql`DELETE FROM studios WHERE created_by_user_id = ${userId}`;
   await sql`DELETE FROM users WHERE id = ${userId}`;
 }
@@ -265,6 +268,7 @@ describe("ceilings stop honouring a subscription nobody has heard from", () => {
         INSERT INTO studio_members (studio_id, user_id, role)
         VALUES (${studio!.id}, ${adminId}, 'admin')
       `;
+      await mirrorAllInDirectory(sql);
       expect(await getLimitsForStudio(studio!.id)).toEqual(
         getMembershipLimits("base"),
       );

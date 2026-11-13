@@ -25,6 +25,7 @@ import {
 } from "@breatic/core";
 import { uploadGrantRepo } from "@breatic/domain";
 import { TRANSFER_SIGNATURE, encodeTransferBody } from "@breatic/shared";
+import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 type Sql = ReturnType<typeof postgres>;
 
@@ -83,6 +84,7 @@ export async function seedProject(sql: Sql): Promise<Seeded> {
     INSERT INTO project_members (project_id, user_id, role, added_by)
     VALUES (${project!.id}, ${a.id}, 'owner', null), (${project!.id}, ${b.id}, 'editor', ${a.id})
   `;
+  await mirrorAllInDirectory(sql);
   return { a, b, studioId: studio!.id, projectId: project!.id };
 }
 

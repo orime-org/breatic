@@ -49,6 +49,7 @@ import * as roleUpgradeRequestsRepo from "@server/modules/role-upgrade-request/r
 import * as projectTransfersRepo from "@server/modules/project/projectTransfers.repo.js";
 import { studioTransfersRepo as studioTransfersRepo } from "@breatic/domain";
 import * as projectJoinRequestsRepo from "@server/modules/project-join-request/projectJoinRequests.repo.js";
+import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 let sql: ReturnType<typeof postgres>;
 
@@ -118,6 +119,7 @@ async function seedScene(): Promise<Scene> {
     VALUES (${project!.id}, ${owner!.id}, 'owner', ${owner!.id})
   `;
   if (!owner || !member || !studio || !project) throw new Error("seed failed");
+  await mirrorAllInDirectory(sql);
   return {
     ownerId: owner.id,
     ownerName,

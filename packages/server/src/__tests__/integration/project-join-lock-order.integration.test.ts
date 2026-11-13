@@ -41,6 +41,7 @@ import * as studioMemberService from "@server/modules/studio/studioMember.servic
 import * as roleUpgradeService from "@server/modules/role-upgrade-request/roleUpgradeRequest.service.js";
 import * as projectRepo from "@server/modules/project/project.repo.js";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
+import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 try {
   initCore(process.env);
@@ -138,6 +139,7 @@ async function insertUser(): Promise<string> {
     INSERT INTO studio_members (studio_id, user_id, role)
     VALUES (${personal!.id}, ${user!.id}, 'admin')
   `;
+  await mirrorAllInDirectory(sql);
   return user!.id;
 }
 
@@ -180,6 +182,7 @@ async function scene(): Promise<{
       (${project!.id}, ${ownerId}, 'owner', null),
       (${project!.id}, ${heirId}, 'editor', ${ownerId})
   `;
+  await mirrorAllInDirectory(sql);
   return {
     studioId: studio!.id,
     studioSlug,
@@ -640,6 +643,7 @@ async function pendingUpgrade(s: Awaited<ReturnType<typeof scene>>): Promise<{ v
   await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${s.studioId}, ${viewerId}, 'maintainer')`;
   await sql`INSERT INTO project_members (project_id, user_id, role, added_by) VALUES (${s.projectId}, ${viewerId}, 'viewer', ${s.ownerId})`;
   const filed = await roleUpgradeService.request({ requesterUserId: viewerId, projectId: s.projectId, projectName: "Project" });
+  await mirrorAllInDirectory(sql);
   return { viewerId, requestId: filed.requestId };
 }
 

@@ -64,6 +64,7 @@ import * as projectInviteService from "@server/modules/project-invite/projectInv
 import * as projectTransferService from "@server/modules/project/projectTransfer.service.js";
 import * as projectMembersService from "@server/modules/project/projectMembers.service.js";
 import * as studioMemberService from "@server/modules/studio/studioMember.service.js";
+import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 try {
   initCore(process.env);
@@ -106,6 +107,7 @@ async function insertUser(): Promise<{ id: string; email: string }> {
     INSERT INTO studio_members (studio_id, user_id, role)
     VALUES (${personal!.id}, ${user!.id}, 'admin')
   `;
+  await mirrorAllInDirectory(sql);
   return { id: user!.id, email };
 }
 
@@ -132,6 +134,7 @@ async function insertStudio(): Promise<Fixture> {
     INSERT INTO studio_members (studio_id, user_id, role)
     VALUES (${row!.id}, ${admin.id}, 'admin')
   `;
+  await mirrorAllInDirectory(sql);
   return { studioId: row!.id, studioSlug: slug, admin };
 }
 
@@ -150,6 +153,7 @@ async function addStudioMember(
     INSERT INTO studio_members (studio_id, user_id, role)
     VALUES (${studioId}, ${user.id}, ${role})
   `;
+  await mirrorAllInDirectory(sql);
   return user;
 }
 
