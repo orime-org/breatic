@@ -32,6 +32,7 @@ import type { Read, ReadBlock } from '@web/spaces/document/document-paste-read';
 import { isWordsLine, rowsOf, WORDS, type Rows } from '@web/spaces/document/document-paste-slice';
 import { DOC_TABLE, isTableCell, keepTablesWhole, squareSelectedTable } from '@web/spaces/document/document-table-nodes';
 import { heldTables, swapHeldTables } from '@web/spaces/document/document-table-leave-selection';
+import { leafWords } from '@web/spaces/document/document-math';
 import { HOLD_PRE_EDIT_SELECTION } from '@web/spaces/document/document-undo-selection';
 
 /** How a medium lands: its props as they go in, or null when it is left out. */
@@ -163,7 +164,7 @@ function carriedId(node: PMNode): string | null {
  * @returns The words.
  */
 function wordsIn(textblock: PMNode): string {
-  return textblock.textBetween(0, textblock.content.size, '', (leaf) => (leaf.type.name === 'hardBreak' ? '\n' : ''));
+  return textblock.textBetween(0, textblock.content.size, '', leafWords((leaf) => (leaf.type.name === 'hardBreak' ? '\n' : '')));
 }
 
 /**
@@ -670,19 +671,6 @@ export function putContent(editor: Editor, content: Read, options: PutOptions): 
       if ($drop !== null) view.dispatch(view.state.tr.setMeta(HOLD_PRE_EDIT_SELECTION, false));
     }
   };
-  // Pasted into a formula's source, anything goes in as its words: a source
-  // holds text only (inner#1423). Inserted as text, since the marks' paste
-  // rules would read `**b**` in the line around an inline source. A code
-  // block keeps its own path below.
-  const { $from } = selection;
-  if ($drop === null && $from.parent.type.spec.code === true && $from.sameParent(selection.$to) && $from.parent.type.name !== 'codeBlock') {
-    const words = content.plain ?? wordsOf(rowsOf(source).rows);
-    return atTarget(() => {
-      const from = view.state.selection.from;
-      view.dispatch(view.state.tr.insertText(words).scrollIntoView());
-      return { kind: 'range', from, to: view.state.selection.head };
-    });
-  }
   if (!opened && textOnlyAt($at)?.node.firstChild?.type.name === 'codeBlock' && plain !== null) {
     return atTarget(() => {
       const from = view.state.selection.from;
@@ -935,7 +923,8 @@ export function selectPlaced(view: EditorView, placed: Placed): void {
     if (node.isBlock && node.isAtom && pos >= from && pos + node.nodeSize <= to) atoms.push(pos);
     return true;
   });
-  if (atoms.length === 1 && doc.textBetween(from, to) === '') {
+  // Leaves read as nothing: a formula's `leafText` would count as words here.
+  if (atoms.length === 1 && doc.textBetween(from, to, undefined, () => '') === '') {
     view.dispatch(view.state.tr.setSelection(NodeSelection.create(doc, atoms[0])));
     return;
   }

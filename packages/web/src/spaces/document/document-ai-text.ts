@@ -68,6 +68,7 @@ interface Inline {
   text?: string;
   href?: string;
   styles?: Record<string, unknown>;
+  props?: Record<string, unknown>;
   content?: Inline[];
 }
 
@@ -309,7 +310,7 @@ const BACKSLASH_PAIR = '&aibs;';
 function fixedInline(content: readonly Inline[], code = false): Inline[] {
   if (code) return content.map((c) => (c.type === 'text' ? { ...c, text: decoded(asCode(c.text ?? '')) } : c));
   // A formula's source went out and came back as written, its `\\` pairs held.
-  const pieces = content.map((c) => (c.type === MATH_INLINE ? { ...c, content: formulaSource(c.content) } : c));
+  const pieces = content.map((c) => (c.type === MATH_INLINE ? { ...c, props: formulaSource(c.props) } : c));
   // A link the parser made from an address keeps every backslash in its
   // address and words; those are taken out here, once.
   const unescaped = new Set<Inline>();
@@ -360,14 +361,12 @@ function asWords(text: string): string {
 }
 
 /**
- * A formula's parsed source with its held backslash pairs as written.
- * @param content - The source, as a string or as text pieces.
- * @returns The same shape, fixed.
+ * A formula's props with its parsed source's held backslash pairs as written.
+ * @param props - The props, holding `source`.
+ * @returns The props, fixed.
  */
-function formulaSource<T>(content: T): T {
-  if (typeof content === 'string') return asCode(content) as T;
-  if (!Array.isArray(content)) return content;
-  return (content as Inline[]).map((c) => (c.type === 'text' ? { ...c, text: asCode(c.text ?? '') } : c)) as T;
+function formulaSource(props: Record<string, unknown> | undefined): Record<string, unknown> {
+  return { ...props, source: asCode(String(props?.['source'] ?? '')) };
 }
 
 /**
@@ -376,7 +375,7 @@ function formulaSource<T>(content: T): T {
  * @returns It.
  */
 function fixedBlock(block: Read): Read {
-  if (block.type === MATH_BLOCK) return { ...block, content: formulaSource(block.content), children: (block.children ?? []).map(fixedBlock) };
+  if (block.type === MATH_BLOCK) return { ...block, props: formulaSource(block.props), children: (block.children ?? []).map(fixedBlock) };
   const content = Array.isArray(block.content) ? fixedInline(block.content as Inline[], block.type === CODE) : block.content;
   return { ...block, content, children: (block.children ?? []).map(fixedBlock) };
 }

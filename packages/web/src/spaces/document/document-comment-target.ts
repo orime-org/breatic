@@ -41,7 +41,6 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import type { Selection } from '@tiptap/pm/state';
 
 import { COMMENT_MARK } from '@web/spaces/document/document-comment-extension';
-import { isFormula } from '@web/spaces/document/document-math';
 
 import {
   markTypeIn,
@@ -50,48 +49,15 @@ import {
 
 
 /**
- * Whether the range holds any words outside formulas. A formula's source is
- * hidden behind its rendering, so a comment on it would mark text no one sees
- * (inner#1423, the same as a media block).
- * @param doc - The document.
- * @param over - The range.
- * @returns Whether some text in it sits outside a formula.
- */
-function holdsWordsOutsideFormulas(doc: PMNode, over: Selection): boolean {
-  let found = false;
-  for (const { $from, $to } of over.ranges) {
-    doc.nodesBetween($from.pos, $to.pos, (node, _pos, parent) => {
-      if (found) return false;
-      if (isFormula(node)) return false;
-      if (node.isText && parent !== null) found = true;
-      return !found;
-    });
-    if (found) break;
-  }
-  return found;
-}
-
-/**
- * Whether the range holds words a comment mark could land on, formula sources
- * included: what the handle's Add to Agent hands over, since the Agent reads
- * a formula as its `$$` source.
- * @param doc - The document.
- * @param over - The user's selection, or the range standing for one row.
- * @returns Whether some run in the range takes the comment mark.
- */
-export function reachesWordsOver(doc: PMNode, over: Selection): boolean {
-  const mark = markTypeIn(doc, COMMENT_MARK);
-  return mark !== undefined && reachesAnyRunOver(doc, over, mark);
-}
-
-/**
  * Whether a comment could land anywhere in this range.
  * @param doc - The document.
  * @param over - The user's selection, or the range standing for one row.
  * @returns Whether the range holds text a comment could mark.
  */
 export function canCommentOver(doc: PMNode, over: Selection): boolean {
+  const mark = markTypeIn(doc, COMMENT_MARK);
   // Either registrar `commentWiring` picks puts the mark on the schema, so
-  // a missing mark is only reached by a caller holding some other schema.
-  return reachesWordsOver(doc, over) && holdsWordsOutsideFormulas(doc, over);
+  // this is only reached by a caller holding some other schema.
+  if (mark === undefined) return false;
+  return reachesAnyRunOver(doc, over, mark);
 }

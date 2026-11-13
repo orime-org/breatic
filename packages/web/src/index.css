@@ -2032,20 +2032,13 @@ body {
      the link colour; a band behind it would fill the empty rest of its row
      (inner#1127). The selected one's frame goes with its corner knobs and its
      toolbar, all off the block's own selected state, and like them only in a
-     body the user can edit. */
+     body the user can edit. A selected block formula is framed the same way,
+     around its sideways scroller (inner#1423). */
   .doc-body[contenteditable='true'] [data-media-box][data-selected='true'] [data-media-frame],
+  .doc-body[contenteditable='true'] .doc-math[data-selected='true'] [data-math-frame],
   .doc-body .doc-media-in-selection [data-media-frame],
   .doc-body [data-media-box][data-hovered='true'] [data-media-frame] {
     outline: 1px solid var(--color-content-link);
-  }
-
-  /* A block formula the user selected, its box closed, is framed the same way
-     on the formula itself (inner#1423). The frame sits inside the formula's
-     sideways scroller, which clips anything drawn past its edge, so the line
-     is drawn on the inside. */
-  .doc-body[contenteditable='true'] .doc-math[data-selected='true'] [data-math-frame] {
-    outline: 1px solid var(--color-content-link);
-    outline-offset: -1px;
   }
 
   /* A knob's 8px square, drawn here so the 24px target holds no element of its

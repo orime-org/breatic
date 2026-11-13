@@ -34,7 +34,6 @@ import { createExtension } from '@blocknote/core';
 import { NodeSelection, Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
-import { closedFormulaBlockAt } from '@web/spaces/document/document-math-editing';
 import { fromYjs } from '@web/spaces/document/document-yjs-origin';
 
 /** Whether a composition that began on a node selection is being held. */
@@ -61,7 +60,7 @@ function redraw(view: EditorView): void {
  * The extension that keeps an input method off a selected node.
  * @returns The extension, for the assembly to register.
  */
-export const documentNodeCompositionExtension = createExtension(({ editor }: { editor: Parameters<typeof closedFormulaBlockAt>[0] }) => {
+export const documentNodeCompositionExtension = createExtension(() => {
   return {
     key: 'document-node-composition',
     prosemirrorPlugins: [
@@ -78,10 +77,7 @@ export const documentNodeCompositionExtension = createExtension(({ editor }: { e
           (!tr.docChanged && tr.selection.eq(state.selection)),
         view: (view) => {
           /**
-           * Starts holding when the composition begins on a node selection,
-           * or in a selected block formula whose box is closed: its source is
-           * hidden, and the browser lets no composition be cancelled
-           * (inner#1423).
+           * Starts holding when the composition begins on a node selection.
            *
            * A composition in a field of its own — a media block's caption
            * (inner#1127) — is that field's, not the body's: the characters go
@@ -91,10 +87,7 @@ export const documentNodeCompositionExtension = createExtension(({ editor }: { e
           const onStart = (event: Event): void => {
             const { target } = event;
             if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
-            if (
-              view.state.selection instanceof NodeSelection ||
-              closedFormulaBlockAt(editor, view.state.selection.$from) !== null
-            ) {
+            if (view.state.selection instanceof NodeSelection) {
               view.dispatch(view.state.tr.setMeta(KEY, true));
             }
           };

@@ -27,6 +27,7 @@ import {
 } from '@web/spaces/document/document-editor-cache';
 import type { LocalRange } from '@web/spaces/document/document-local-range';
 import type { ProposalAdmission } from '@web/spaces/document/document-proposal-landing';
+import { sourceOf } from '@web/spaces/document/__tests__/math-fixtures';
 
 /** Our own asset host, so media there is ours and survives a write. */
 const OURS = 'https://assets.example/';
@@ -107,9 +108,9 @@ function wordsOf(content: unknown): string {
 function shape(handle: DocumentEditorHandle): string[] {
   return blocks(handle).map((block) => {
     const inline = Array.isArray(block.content)
-      ? (block.content as Piece[]).filter((piece) => piece.type === 'math').map((piece) => `inline:${wordsOf(piece.content)}`)
+      ? (block.content as Piece[]).filter((piece) => piece.type === 'math').map((piece) => `inline:${sourceOf(piece)}`)
       : [];
-    const own = block.type === 'mathBlock' ? [`block:${wordsOf(block.content)}`] : [];
+    const own = block.type === 'mathBlock' ? [`block:${sourceOf(block)}`] : [];
     return `${block.type}|${wordsOf(block.content)}|${[...own, ...inline].join(',')}`;
   });
 }
@@ -165,7 +166,7 @@ describe('formulas echoed through the AI dialog', () => {
   it.each(SOURCES)('keeps the inline source %s', (source) => {
     const h = openBlocks([
       { type: 'paragraph', content: 'Before' },
-      { type: 'paragraph', content: [{ type: 'text', text: 'Mass ', styles: {} }, { type: 'math', content: source }, { type: 'text', text: ' here', styles: {} }] },
+      { type: 'paragraph', content: [{ type: 'text', text: 'Mass ', styles: {} }, { type: 'math', props: { source: source } }, { type: 'text', text: ' here', styles: {} }] },
       { type: 'paragraph', content: 'After' },
     ]);
     const before = shape(h);
@@ -179,13 +180,13 @@ describe('formulas echoed through the AI dialog', () => {
   it.each(SOURCES)('keeps the block source %s', (source) => {
     const h = openBlocks([
       { type: 'paragraph', content: 'Before' },
-      { type: 'mathBlock', content: source },
+      { type: 'mathBlock', props: { source: source } },
       { type: 'paragraph', content: 'After' },
     ]);
 
     echoAll(h);
 
-    expect(shape(h)).toEqual(['paragraph|Before|', `mathBlock|${source}|block:${source}`, 'paragraph|After|']);
+    expect(shape(h)).toEqual(['paragraph|Before|', `mathBlock||block:${source}`, 'paragraph|After|']);
   });
 
   it('keeps words reading $$x$$ as words, not a formula', () => {

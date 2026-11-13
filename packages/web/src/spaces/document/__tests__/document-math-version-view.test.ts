@@ -4,11 +4,10 @@
 /**
  * inner#1423 A12, design §6.7: a formula in the snapshot comparison.
  *
- * The comparison keeps deleted text in the document beside the inserted text,
- * so a formula whose source changed holds old and new source interleaved.
- * Rendered as is, that is a formula nobody wrote; the view renders the old
- * source and the new source each on its own instead. A formula that did not
- * change renders once.
+ * A formula holds its source in a prop, so a formula whose source changed
+ * renders as the new formula, marked the way any block whose props changed is
+ * (`doc-version-format`). A formula that did not change renders once,
+ * unmarked.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -110,25 +109,40 @@ afterEach(() => {
 });
 
 describe('a formula in the comparison', () => {
-  it('renders the old and the new source of a changed formula', async () => {
-    keep('v1', [{ id: 'block-0', type: 'mathBlock', content: 'a+b' }]);
-    const { preview, versioning } = open([{ id: 'block-0', type: 'mathBlock', content: 'a+c' }]);
+  it('renders a changed formula as the new one, marked as changed', async () => {
+    keep('v1', [{ id: 'block-0', type: 'mathBlock', props: { source: 'a+b' } }]);
+    const { preview, versioning } = open([{ id: 'block-0', type: 'mathBlock', props: { source: 'a+c' } }]);
     await versioning.open();
 
     await versioning.select({ type: 'current' }, { compareTo: 'v1' });
 
     await vi.waitFor(() => {
-      expect(drawnSources(preview)).toEqual(['a+b', 'a+c']);
+      expect(drawnSources(preview)).toEqual(['a+c']);
+    });
+    expect(preview.prosemirrorView!.dom.querySelector('[class*="doc-version-format"] .doc-math')).not.toBeNull();
+  });
+
+  it('marks an inline formula whose source changed', async () => {
+    keep('v1', [{ id: 'block-0', type: 'paragraph', content: ['a ', { type: 'math', props: { source: 'x' } }] }]);
+    const { preview, versioning } = open([
+      { id: 'block-0', type: 'paragraph', content: ['a ', { type: 'math', props: { source: 'y' } }] },
+    ]);
+    await versioning.open();
+
+    await versioning.select({ type: 'current' }, { compareTo: 'v1' });
+
+    await vi.waitFor(() => {
+      expect(preview.prosemirrorView!.dom.querySelector('[class*="doc-version-format"] .doc-math')).not.toBeNull();
     });
   });
 
   it('renders an unchanged formula once', async () => {
     keep('v1', [
-      { id: 'block-0', type: 'mathBlock', content: 'x^2' },
+      { id: 'block-0', type: 'mathBlock', props: { source: 'x^2' } },
       { id: 'block-1', type: 'paragraph', content: 'old words' },
     ]);
     const { preview, versioning } = open([
-      { id: 'block-0', type: 'mathBlock', content: 'x^2' },
+      { id: 'block-0', type: 'mathBlock', props: { source: 'x^2' } },
       { id: 'block-1', type: 'paragraph', content: 'new words' },
     ]);
     await versioning.open();

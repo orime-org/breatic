@@ -13,7 +13,7 @@
 
 import type { BlockNoteEditor } from '@blocknote/core';
 import type { Mark, Node as ProseMirrorNode } from '@tiptap/pm/model';
-import { MATH_BLOCK, MATH_INLINE } from '@web/spaces/document/document-math';
+import { formulaLeafText, isFormula } from '@web/spaces/document/document-math';
 import { isMediaBlockType } from '@web/spaces/document/document-media-types';
 import { blocksMarkdown } from '@web/spaces/document/document-table-markdown';
 
@@ -36,16 +36,10 @@ export interface ReadBlock {
  * (`document-table-markdown.ts`). A stored table goes through BlockNote's
  * export, which splits a merged cell into the cell and empty cells beside it.
  */
-const CARRIED_ATTRS = new Set(['id', 'level', 'checked', 'language', 'start', 'url', 'name', 'caption', 'colspan', 'rowspan']);
+const CARRIED_ATTRS = new Set(['id', 'level', 'checked', 'language', 'start', 'url', 'name', 'caption', 'colspan', 'rowspan', 'source']);
 
 /** Marks Markdown writes out. */
 const CARRIED_MARKS = new Set(['bold', 'italic', 'strike', 'code', 'link']);
-
-/** What a formula's source is written between in the plain text. */
-const FORMULA_FENCES: Readonly<Record<string, readonly [string, string]>> = {
-  [MATH_INLINE]: ['$$', '$$'],
-  [MATH_BLOCK]: ['$$\n', '\n$$'],
-};
 
 /** Stand-ins for content this build cannot represent. */
 const STAND_INS = new Set(['unsupportedBlock', 'unsupportedInline']);
@@ -73,11 +67,8 @@ export interface PlainRun {
  * A block's plain text with where each text node's words sit in it.
  *
  * It reads as `textBetween(0, size, '\n', '\n')` does, except that a formula
- * is written between `$$`, a block formula with `$$` on lines of their own
- * (inner#1423): a proposal quotes it the way the Markdown it is sent writes
- * it. `leafText` would not do it, since ProseMirror reads it only for leaf
- * nodes (`prosemirror-model` 1.25 `Fragment.textBetween`), and a formula holds
- * its source as text.
+ * reads as its text, `$$source$$` (inner#1423): a proposal quotes it the way
+ * the Markdown it is sent writes it.
  * @param node - The block: its `blockContainer`, or a table's own node, which no container wraps.
  * @returns The text and its runs.
  */
@@ -98,16 +89,13 @@ export function blockPlainRuns(node: ProseMirrorNode): { text: string; runs: Pla
         text += child.text ?? '';
         return;
       }
-      const leaf = child.isLeaf ? '\n' : '';
+      const leaf = isFormula(child) ? formulaLeafText(child) : child.isLeaf ? '\n' : '';
       if (child.isBlock && (child.isLeaf || child.isTextblock)) {
         if (first) first = false;
         else text += '\n';
       }
       text += leaf;
-      const formula = FORMULA_FENCES[child.type.name];
-      if (formula !== undefined) text += formula[0];
       walk(child, rel + 1);
-      if (formula !== undefined) text += formula[1];
     });
   };
   walk(node, 0);

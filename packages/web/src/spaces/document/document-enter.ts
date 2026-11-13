@@ -63,8 +63,6 @@ const OWN_ENTER_TYPES = [
   'bulletListItem',
   'checkListItem',
   'codeBlock',
-  // Enter opens and closes its box (BlockNote's `SourceBlockWithPreviewExtension`).
-  'mathBlock',
 ] as const;
 
 /**

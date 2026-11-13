@@ -81,7 +81,7 @@ import {
 
 
 import { commentTool } from '@web/spaces/document/document-comment-entries';
-import { isFormula } from '@web/spaces/document/document-math';
+import { holdsFormula } from '@web/spaces/document/document-math';
 import { addToAgentTool } from '@web/spaces/document/document-to-agent';
 import { useTableFullscreen } from '@web/spaces/document/use-table-fullscreen';
 import { mergeCellsTool } from '@web/spaces/document/document-table-tools';
@@ -408,7 +408,8 @@ export function bubbleAnchorRect(
  * @param doc - The document node.
  * @param from - Range start.
  * @param to - Range end.
- * @returns True when at least one non-empty text node lies in the range.
+ * @returns True when at least one non-empty text node, or a formula with a
+ *   source (inner#1423), lies in the range.
  */
 export function hasTextIn(doc: ProseMirrorNode, from: number, to: number): boolean {
   // An empty range holds nothing, and `nodesBetween` would say otherwise: it
@@ -421,7 +422,7 @@ export function hasTextIn(doc: ProseMirrorNode, from: number, to: number): boole
   let found = false;
   doc.nodesBetween(from, to, (node) => {
     if (found) return false;
-    if (node.isText && (node.text?.length ?? 0) > 0) {
+    if ((node.isText && (node.text?.length ?? 0) > 0) || holdsFormula(node)) {
       found = true;
       return false;
     }
@@ -623,9 +624,6 @@ function BubbleBar({
     // Selected cells are something to act on even with no words in them: the
     // bar is where they are aligned, filled and merged (inner#1126 A9).
     if (selection instanceof CellSelection) return true;
-    // Inside a formula's source box nothing on the bar applies: its text takes
-    // no style, colour, link or comment (inner#1423).
-    if (isFormula(selection.$from.parent) || isFormula(selection.$to.parent)) return false;
     return hasTextIn(doc, selection.from, selection.to);
   }, [editor]);
 

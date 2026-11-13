@@ -15,9 +15,9 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import katex from 'katex';
 import type { Node as PMNode } from '@tiptap/pm/model';
-import { SourceBlockWithPreviewExtension } from '@blocknote/core/extensions';
 
-import { caretIn, open, pasteFormats, select, settled, unmountAll, type Editor } from './paste-harness';
+import { caretIn, open, pasteFormats, settled, unmountAll, type Editor } from './paste-harness';
+import { nodeSource } from '@web/spaces/document/__tests__/math-fixtures';
 
 afterEach(unmountAll);
 
@@ -31,7 +31,7 @@ function label(block: PMNode): string {
   let words = '';
   block.forEach((child) => {
     if (child.isText) words += child.text;
-    else if (child.type.name === 'math') words += `[math:${child.textContent}]`;
+    else if (child.type.name === 'math') words += `[math:${nodeSource(child)}]`;
     else words += `[${child.type.name}]`;
   });
   return `${block.type.name}:${words}`;
@@ -45,35 +45,12 @@ function label(block: PMNode): string {
 function lines(editor: Editor): string[] {
   const out: string[] = [];
   editor.prosemirrorView.state.doc.descendants((node) => {
-    if (!node.isTextblock) return true;
-    out.push(label(node));
+    if (node.type.name === 'mathBlock') out.push(`mathBlock:${nodeSource(node)}`);
+    else if (!node.isTextblock) return true;
+    else out.push(label(node));
     return false;
   });
   return out;
-}
-
-/**
- * The position just inside the end of the first inline formula's source.
- * @param editor - The editor.
- * @returns The position.
- */
-function endOfInlineSource(editor: Editor): number {
-  let at = -1;
-  editor.prosemirrorView.state.doc.descendants((node, pos) => {
-    if (at < 0 && node.type.name === 'math') at = pos + 1 + node.content.size;
-    return at < 0;
-  });
-  return at;
-}
-
-/**
- * Opens the source popup of the block formula the caret is in, as a click on
- * its preview does.
- * @param editor - The editor.
- */
-function openBlockPopup(editor: Editor): void {
-  const { id } = editor.getTextCursorPosition().block as { id: string };
-  editor.getExtension(SourceBlockWithPreviewExtension)!.store.setState({ popupOpen: id, selected: id });
 }
 
 /**
@@ -89,45 +66,6 @@ function ourParagraphAndHeading(editor: Editor): Record<string, string> {
   ] as never);
   return { 'blocknote/html': html, 'text/html': html, 'text/plain': 'one\n\nTwo' };
 }
-
-describe('a paste into an open block formula', () => {
-  it('puts plain text with line breaks and Markdown marks into the source as it is', async () => {
-    const { editor } = open([{ type: 'mathBlock', content: 'a' }, { type: 'paragraph', content: 'tail' }]);
-    caretIn(editor, 0);
-    openBlockPopup(editor);
-    pasteFormats(editor, { 'text/plain': '# T\n**b**\n- c' });
-    await settled();
-    expect(lines(editor)).toEqual(['mathBlock:a# T\n**b**\n- c', 'paragraph:tail']);
-  });
-
-  it('puts the words of a slice copied from the body into the source, not its blocks', async () => {
-    const { editor } = open([{ type: 'mathBlock', content: 'a' }, { type: 'paragraph', content: 'tail' }]);
-    caretIn(editor, 0);
-    openBlockPopup(editor);
-    pasteFormats(editor, ourParagraphAndHeading(editor));
-    await settled();
-    expect(lines(editor)).toEqual(['mathBlock:aone\nTwo', 'paragraph:tail']);
-  });
-});
-
-describe('a paste into an inline formula\'s source', () => {
-  it('puts Markdown-looking plain text into the source as it is', async () => {
-    const { editor } = open([{ type: 'paragraph', content: ['x ', { type: 'math', content: 'a' }, ' y'] }]);
-    select(editor, endOfInlineSource(editor));
-    pasteFormats(editor, { 'text/plain': '# T **b** [l](u)' });
-    await settled();
-    expect(lines(editor)).toEqual(['paragraph:x [math:a# T **b** [l](u)] y']);
-  });
-
-  it('puts the words of a slice copied from the body into the source, not its blocks', async () => {
-    const { editor } = open([{ type: 'paragraph', content: ['x ', { type: 'math', content: 'a' }, ' y'] }]);
-    select(editor, endOfInlineSource(editor));
-    pasteFormats(editor, ourParagraphAndHeading(editor));
-    await settled();
-    expect(lines(editor)).toHaveLength(1);
-    expect(lines(editor)[0]).toMatch(/^paragraph:x \[math:aone\s*Two\] y$/);
-  });
-});
 
 describe('a slice copied from the body, pasted in a code block', () => {
   it('keeps the result a code block has today', async () => {

@@ -4,15 +4,15 @@
 /**
  * inner#1423 A7, design §6.2 and §6.5: the block handle menu over a formula.
  *
- * A formula is not a text block for these rows: it cannot become another type,
- * has no alignment or colour of its own, and holds no words a comment could
- * mark. Those four rows grey the way they do on a media block; duplicate,
- * insert below, add to Agent and delete act on it as on any block.
+ * A formula is not a text block for these rows: like a media block it
+ * cannot become another type or be quoted, has no alignment or colour of its
+ * own and holds no words a comment could mark. Duplicate, insert below, add to
+ * Agent and delete act on it as on any block.
  * `canCommentOver` is the same answer for any range over a formula.
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import * as React from 'react';
 import { TextSelection } from '@tiptap/pm/state';
 import * as Y from 'yjs';
@@ -57,8 +57,8 @@ function open(): Editor {
   editor.mount(root);
   mounted.push(editor);
   editor.replaceBlocks(editor.document, [
-    { type: 'mathBlock', content: '\\frac{a}{b}' },
-    { type: 'paragraph', content: [{ type: 'math', content: 'E = mc^2' }] },
+    { type: 'mathBlock', props: { source: '\\frac{a}{b}' } },
+    { type: 'paragraph', content: [{ type: 'math', props: { source: 'E = mc^2' } }] },
   ] as never);
   return editor;
 }
@@ -97,7 +97,7 @@ function greyed(id: string): boolean {
 }
 
 describe('the handle menu over a formula block', () => {
-  it.each(['blockType', 'align', 'color', 'comment'])('greys %s', (id) => {
+  it.each(['align', 'color', 'comment'])('greys %s', (id) => {
     const editor = open();
     openMenuOver(editor, 0);
     expect(greyed(id)).toBe(true);
@@ -107,6 +107,17 @@ describe('the handle menu over a formula block', () => {
     const editor = open();
     openMenuOver(editor, 0);
     expect(greyed(id)).toBe(false);
+  });
+
+  it('greys every row of the block type submenu, as over a media block', () => {
+    const editor = open();
+    openMenuOver(editor, 0);
+
+    fireEvent.click(screen.getByTestId('doc-block-row-blockType'));
+
+    for (const id of ['paragraph', 'heading-1', 'heading-2', 'heading-3', 'code-block', 'bullet-list', 'task-list', 'ordered-list', 'quote']) {
+      expect(screen.getByTestId(`doc-block-type-${id}`).getAttribute('aria-disabled')).toBe('true');
+    }
   });
 });
 
@@ -121,16 +132,12 @@ describe('a comment over a formula', () => {
   it('cannot land on an inline formula', () => {
     const editor = open();
     const { doc } = editor.prosemirrorState;
-    let from = -1;
-    let to = -1;
+    let at = -1;
     doc.descendants((node, pos) => {
-      if (node.type.name === 'math') {
-        from = pos + 1;
-        to = pos + node.nodeSize - 1;
-      }
+      if (node.type.name === 'math') at = pos;
       return true;
     });
-    expect(from).toBeGreaterThan(0);
-    expect(canCommentOver(doc, TextSelection.create(doc, from, to))).toBe(false);
+    expect(at).toBeGreaterThan(0);
+    expect(canCommentOver(doc, TextSelection.create(doc, at, at + 1))).toBe(false);
   });
 });

@@ -50,13 +50,13 @@ describe('a block\'s plain text with formulas', () => {
   it('writes an inline formula as $$source$$', () => {
     expect(
       plainTexts([
-        { type: 'paragraph', content: [{ type: 'text', text: 'Mass ', styles: {} }, { type: 'math', content: 'E = mc^2' }, { type: 'text', text: ' here', styles: {} }] },
+        { type: 'paragraph', content: [{ type: 'text', text: 'Mass ', styles: {} }, { type: 'math', props: { source: 'E = mc^2' } }, { type: 'text', text: ' here', styles: {} }] },
       ]),
     ).toEqual(['Mass $$E = mc^2$$ here']);
   });
 
   it('writes a formula block with $$ on lines of their own', () => {
-    expect(plainTexts([{ type: 'mathBlock', content: '\\frac{a}{b}' }])).toEqual(['$$\n\\frac{a}{b}\n$$']);
+    expect(plainTexts([{ type: 'mathBlock', props: { source: '\\frac{a}{b}' } }])).toEqual(['$$\n\\frac{a}{b}\n$$']);
   });
 
   it('gives a proposal\'s Markdown the same text as the body', async () => {

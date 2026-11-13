@@ -22,6 +22,7 @@ import { buildDocumentEditor } from '@web/spaces/document/build-document-editor'
 import { markdownBlocks } from '@web/spaces/document/document-markdown';
 import { blocksMarkdown } from '@web/spaces/document/document-table-markdown';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
+import { sourceOf } from '@web/spaces/document/__tests__/math-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -62,17 +63,6 @@ interface Piece {
 }
 
 /**
- * The words of some content: a string, or styled text pieces.
- * @param content - The content.
- * @returns The words.
- */
-function wordsOf(content: unknown): string {
-  if (typeof content === 'string') return content;
-  if (!Array.isArray(content)) return '';
-  return (content as Piece[]).map((piece) => (piece.type === 'text' ? piece.text ?? '' : '')).join('');
-}
-
-/**
  * Every formula in some blocks, in document order, as `kind:source`.
  * @param blocks - The blocks.
  * @returns The formulas.
@@ -80,10 +70,10 @@ function wordsOf(content: unknown): string {
 function formulas(blocks: readonly Seen[]): string[] {
   const out: string[] = [];
   for (const block of blocks) {
-    if (block.type === 'mathBlock') out.push(`block:${wordsOf(block.content)}`);
+    if (block.type === 'mathBlock') out.push(`block:${sourceOf(block)}`);
     else if (Array.isArray(block.content)) {
       for (const piece of block.content as Piece[]) {
-        if (piece.type === 'math') out.push(`inline:${wordsOf(piece.content)}`);
+        if (piece.type === 'math') out.push(`inline:${sourceOf(piece)}`);
       }
     }
     out.push(...formulas(block.children ?? []));
@@ -97,7 +87,7 @@ function formulas(blocks: readonly Seen[]): string[] {
  * @returns The cell.
  */
 function inlineCell(source: string): { blocks: unknown[] } {
-  return { blocks: [{ type: 'paragraph', content: [{ type: 'math', content: source }] }] };
+  return { blocks: [{ type: 'paragraph', content: [{ type: 'math', props: { source: source } }] }] };
 }
 
 /**
@@ -136,8 +126,8 @@ describe('formulas in table cells as Markdown', () => {
         rows: [
           {
             cells: [
-              { blocks: [{ type: 'mathBlock', content: '\\frac{a}{b}' }] },
-              { blocks: [{ type: 'paragraph', content: [{ type: 'text', text: 'r ', styles: {} }, { type: 'math', content: 'x^2' }] }] },
+              { blocks: [{ type: 'mathBlock', props: { source: '\\frac{a}{b}' } }] },
+              { blocks: [{ type: 'paragraph', content: [{ type: 'text', text: 'r ', styles: {} }, { type: 'math', props: { source: 'x^2' } }] }] },
             ],
           },
         ],

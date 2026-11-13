@@ -29,6 +29,7 @@ import { DocumentInsertChoices } from '@web/spaces/document/DocumentInsertChoice
 import type { PressedBlock } from '@web/spaces/document/document-handle-commands';
 import { fillEmptyRow, insertBelow, type InsertChoice } from '@web/spaces/document/document-insert-row';
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
+import { sourceOf } from '@web/spaces/document/__tests__/math-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -143,8 +144,7 @@ describe('picking the formula', () => {
 
     expect(types(editor)).toEqual(['paragraph', 'mathBlock', 'paragraph']);
     expect(rowAt(editor, 1).id).toBe(line.id);
-    // BlockNote hands an empty plain block back as no content items.
-    expect((editor.document[1] as unknown as Seen).content).toEqual([]);
+    expect(sourceOf(editor.document[1])).toBe('');
   });
 
   it('adds an empty formula block under the row', () => {

@@ -24,7 +24,6 @@ import type { Selection } from '@tiptap/pm/state';
 
 import { ORDERED_LIST, QUOTED } from '@web/spaces/document/document-list-block';
 import { DIVIDER } from '@web/spaces/document/document-divider';
-import { MATH_BLOCK } from '@web/spaces/document/document-math';
 import { DOC_TABLE, tableAround } from '@web/spaces/document/document-table-nodes';
 import { heldRange } from '@web/spaces/document/document-table-leave-selection';
 
@@ -264,9 +263,6 @@ function blocksOf(
       const whole =
         node.type.name === TABLE ||
         (node.type.name === DOC_TABLE && from <= pos && pos + node.nodeSize <= to);
-      // A formula block holds its source as text, but no row turns it into
-      // words or quotes it: like a media block, it is none of them (inner#1423).
-      if (node.type.name === MATH_BLOCK) return false;
       if (node.isTextblock || (withWordless && (whole || node.type.name === DIVIDER))) {
         found.push({ node, pos });
         return false;

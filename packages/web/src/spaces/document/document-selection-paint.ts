@@ -80,12 +80,13 @@ export const MEDIA_IN_SELECTION_CLASS = 'doc-media-in-selection';
 
 
 /** The blocks with no text that a range selection paints. */
-const NO_TEXT = new Set<string>([DIVIDER, UNSUPPORTED_BLOCK, ...MEDIA_BLOCK_TYPES]);
+const NO_TEXT = new Set<string>([DIVIDER, UNSUPPORTED_BLOCK, MATH_BLOCK, ...MEDIA_BLOCK_TYPES]);
 
 /**
  * The node selections painted here. A media block the user selected draws
  * its own frame, with its corner knobs and its toolbar, off its own selected
- * state (`DocumentMediaBlock`), so all of it comes and goes together.
+ * state (`DocumentMediaBlock`), so all of it comes and goes together; a
+ * formula block draws its frame the same way (`document-math.tsx`).
  */
 const NODE_SELECTED = new Set([DIVIDER]);
 
@@ -115,13 +116,6 @@ const KEY = new PluginKey('documentSelectionPaint');
 export function noTextPaint(doc: ProseMirrorNode, range: { from: number; to: number }, holdsLines = true): Decoration[] {
   const found: Decoration[] = [];
   doc.nodesBetween(range.from, range.to, (node, pos) => {
-    // A formula block holds its source as text, but the source is hidden
-    // behind the rendered formula, which the browser does not paint
-    // (inner#1423): it is painted like the other blocks without text.
-    if (node.type.name === MATH_BLOCK) {
-      found.push(Decoration.node(pos, pos + node.nodeSize, { class: IN_SELECTION_CLASS }));
-      return false;
-    }
     if (node.isTextblock) {
       if (holdsLines && node.content.size === 0) {
         found.push(Decoration.node(pos, pos + node.nodeSize, { class: EMPTY_LINE_CLASS }));

@@ -16,6 +16,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { Node as PMNode } from '@tiptap/pm/model';
 
 import { open, select, settled, unmountAll, type Editor } from '@web/spaces/document/__tests__/paste-harness';
+import { nodeSource } from '@web/spaces/document/__tests__/math-fixtures';
 
 afterEach(unmountAll);
 
@@ -69,7 +70,7 @@ function line(editor: Editor): string {
   });
   const parts: string[] = [];
   (block as PMNode | null)?.forEach((child) => {
-    parts.push(child.type.name === 'math' ? `[math:${child.textContent}]` : (child.text ?? ''));
+    parts.push(child.type.name === 'math' ? `[math:${nodeSource(child)}]` : (child.text ?? ''));
   });
   return parts.join('');
 }
@@ -143,13 +144,6 @@ describe('typing `$$x$$` (A2)', () => {
     expect(line(editor)).toBe('a$$x$$b');
   });
 
-  it('stays text inside a formula’s own source', async () => {
-    const { editor } = open([{ type: 'paragraph', content: [{ type: 'math', content: 'ab' }] }]);
-    // Inside the source, after its two letters.
-    select(editor, endOf(editor, 'math') - 1);
-    await typeWords(editor, '$$x$$');
-    expect(line(editor)).toBe('[math:ab$$x$$]');
-  });
 });
 
 describe('a single `$` (A3)', () => {

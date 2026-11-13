@@ -17,6 +17,7 @@ import { CellSelection } from '@tiptap/pm/tables';
 import { blockAround, containerAt, inlineLetter, inOneCell, ownContentEnd, type AiCapture } from '@web/spaces/document/document-ai-range';
 import { readTopBlocks } from '@web/spaces/document/document-blocks-read';
 import { letterBounds } from '@web/spaces/document/document-local-range';
+import { leafWords } from '@web/spaces/document/document-math';
 import { heldTables } from '@web/spaces/document/document-table-leave-selection';
 import { tableAround } from '@web/spaces/document/document-table-nodes';
 
@@ -196,7 +197,8 @@ export function aiContextOf(editor: BlockNoteEditor<never, never, never>, budget
   const core = blocks.slice(lo, hi + 1).map((block) => block.markdown).join(BETWEEN_BLOCKS);
 
   if (core.length > budget) {
-    const words = doc.textBetween(selection.from, selection.to, '\n', '\n');
+    // A formula reads as its `$$` text, as the Markdown it is looked for in writes it.
+    const words = doc.textBetween(selection.from, selection.to, '\n', leafWords(() => '\n'));
     const found = core.indexOf(words.split('\n')[0] ?? '');
     // Markdown can spell the words differently from their text (a mark, an
     // escape); then where they sit is told by how far into the blocks they are.

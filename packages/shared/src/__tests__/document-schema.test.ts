@@ -51,7 +51,7 @@ function parse(
  * `publishedAt` is not earlier than the published one, so a change released
  * under an old date would be refused wherever a newer one is published.
  */
-const RELEASED = { version: "26643a24d51e3b81", publishedAt: "2026-11-13T01:33:09Z" };
+const RELEASED = { version: "cc89cb7d5ec9581b", publishedAt: "2026-11-13T10:24:41Z" };
 
 describe("the released vocabulary", () => {
   it("is pinned with its release time: a changed vocabulary needs a later publishedAt", () => {

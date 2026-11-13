@@ -78,6 +78,15 @@ function wordsOf(content: unknown): string {
 }
 
 /**
+ * A formula's source, read off its props.
+ * @param formula - A formula block or inline piece.
+ * @returns The source.
+ */
+function sourceOf(formula: unknown): string {
+  return String((formula as { props?: { source?: string } }).props?.source ?? '');
+}
+
+/**
  * Every formula in some blocks, in document order.
  * @param blocks - The blocks.
  * @returns The formulas.
@@ -85,10 +94,10 @@ function wordsOf(content: unknown): string {
 function formulas(blocks: readonly Seen[]): Formula[] {
   const out: Formula[] = [];
   for (const block of blocks) {
-    if (block.type === 'mathBlock') out.push({ kind: 'block', source: wordsOf(block.content) });
+    if (block.type === 'mathBlock') out.push({ kind: 'block', source: sourceOf(block) });
     else if (Array.isArray(block.content)) {
       for (const piece of block.content as Piece[]) {
-        if (piece.type === 'math') out.push({ kind: 'inline', source: wordsOf(piece.content) });
+        if (piece.type === 'math') out.push({ kind: 'inline', source: sourceOf(piece) });
       }
     }
     out.push(...formulas(block.children ?? []));
@@ -115,7 +124,7 @@ function inlineIn(source: string): unknown {
     type: 'paragraph',
     content: [
       { type: 'text', text: 'Mass ', styles: {} },
-      { type: 'math', content: source },
+      { type: 'math', props: { source: source } },
       { type: 'text', text: ' here', styles: {} },
     ],
   };
@@ -187,7 +196,7 @@ describe('formula sources round-trip through Markdown', () => {
   });
 
   it.each(['\\{ \\}', '\\\\', 'a_1 b_2', 'a < b', 'a & b', 'a\n\nb'])('keeps the block source %j', async (source) => {
-    const editor = open([{ type: 'mathBlock', content: source }]);
+    const editor = open([{ type: 'mathBlock', props: { source: source } }]);
 
     const again = await read(blocksMarkdown(editor, editor.document as never));
 
@@ -203,13 +212,13 @@ describe('the body as Markdown', () => {
   });
 
   it('writes a formula block with $$ on lines of their own', () => {
-    const editor = open([{ type: 'mathBlock', content: '\\frac{a}{b}' }]);
+    const editor = open([{ type: 'mathBlock', props: { source: '\\frac{a}{b}' } }]);
 
     expect(blocksMarkdown(editor, editor.document as never)).toBe('$$\n\\frac{a}{b}\n$$');
   });
 
   it('writes a source KaTeX cannot render the same way', () => {
-    const editor = open([inlineIn('\\frac{a}{b'), { type: 'mathBlock', content: '\\frac{a}{b' }]);
+    const editor = open([inlineIn('\\frac{a}{b'), { type: 'mathBlock', props: { source: '\\frac{a}{b' } }]);
 
     const markdown = blocksMarkdown(editor, editor.document as never);
 
@@ -227,7 +236,7 @@ describe('the body as Markdown', () => {
   });
 
   it('writes each formula once, with none of KaTeX\'s glyph text', () => {
-    const editor = open([inlineIn('x^2'), { type: 'mathBlock', content: 'y^2' }]);
+    const editor = open([inlineIn('x^2'), { type: 'mathBlock', props: { source: 'y^2' } }]);
 
     const markdown = blocksMarkdown(editor, editor.document as never);
 
@@ -237,7 +246,7 @@ describe('the body as Markdown', () => {
   });
 
   it('exports one <math> element per formula as HTML', () => {
-    const editor = open([inlineIn('x^2'), { type: 'mathBlock', content: 'y^2' }, { type: 'mathBlock', content: '\\frac{a}{b' }]);
+    const editor = open([inlineIn('x^2'), { type: 'mathBlock', props: { source: 'y^2' } }, { type: 'mathBlock', props: { source: '\\frac{a}{b' } }]);
 
     const html = editor.blocksToHTMLLossy(editor.document);
 
@@ -256,7 +265,7 @@ describe('formulas handed to the Agent', () => {
   });
 
   it('gives a formula block on $$ lines', () => {
-    const editor = open([{ type: 'mathBlock', content: '\\frac{a}{b}' }]);
+    const editor = open([{ type: 'mathBlock', props: { source: '\\frac{a}{b}' } }]);
 
     const item = blockItem(editor, (editor.document[0] as { id: string }).id);
 

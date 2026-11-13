@@ -5,21 +5,18 @@
  * Formulas in the document body (inner#1423): a block of its own
  * (`mathBlock`) and one inside a line (`math`).
  *
- * Both hold their LaTeX source as plain text and show the rendered formula in
- * its place; the source is edited in a box that opens under the formula. The
- * names and the content model are those of BlockNote's own
- * `@blocknote/math-block`, and the open / selected state is BlockNote's: the
- * two default extensions `SourceBlockWithPreviewExtension` and
- * `SourceInlineContentWithPreviewExtension` drive every spec that declares
- * `meta.hasPreview`.
+ * Both are leaves holding their LaTeX in a `source` prop and draw the
+ * rendered formula in its place; the source is edited in a text field in a
+ * box that opens under the formula, and each change is written straight to
+ * the prop. No text of the formula sits in the body, so the body's caret,
+ * selections and deletions reach a formula only whole. This is the shape
+ * Tiptap's mathematics extension (`latex` attribute), Plate (`texExpression`)
+ * and Lexical (`EquationEditor`) take.
  *
- * The editor is mounted with `editor.mount`, so the React layer's
- * `SourceBlockWithPreview` is out of reach. Each node view mounts a React root
- * of its own, the way the table frame does (`document-table-nodes.tsx`): the
- * source element is attached before ProseMirror reads it, and the box moves
- * that same element into place when it commits. The box stays mounted while
- * closed and only collapses (BlockNote's `Block.css`), so the arrow keys can
- * walk into the source of a formula inside a line.
+ * The editor is mounted with `editor.mount`, so each node view mounts a React
+ * root of its own, the way the table frame does (`document-table-nodes.tsx`).
+ * The box is a control region, as the media block's controls are
+ * (`document-media-blocknote.ts`): its events are the browser's.
  */
 
 import * as React from 'react';
@@ -29,25 +26,27 @@ import { autoUpdate, offset, shift, useFloating } from '@floating-ui/react';
 import { Sigma, TriangleAlert } from 'lucide-react';
 import {
   createBlockSpec,
+  createExtension,
   createInlineContentSpec,
   type BlockNoteEditor,
 } from '@blocknote/core';
-import {
-  ReadOnlyExtension,
-  SourceBlockWithPreviewExtension,
-  SourceInlineContentWithPreviewExtension,
-} from '@blocknote/core/extensions';
-import { Fragment, type Node as PMNode, type Schema } from '@tiptap/pm/model';
-import { TextSelection } from '@tiptap/pm/state';
-import type { ViewMutationRecord } from '@tiptap/pm/view';
+import { ReadOnlyExtension } from '@blocknote/core/extensions';
+import { Extension } from '@tiptap/core';
+import type { Node as PMNode } from '@tiptap/pm/model';
+import { NodeSelection, Selection, TextSelection } from '@tiptap/pm/state';
+import type { EditorView } from '@tiptap/pm/view';
 
 import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
+import { Textarea } from '@web/components/ui/textarea';
 import { useTranslation } from '@web/i18n/use-translation';
-import { MATH_BLOCK_SOURCE_ATTR, MATH_SOURCE_ATTR } from '@web/lib/formula-source';
+import { MATH_BLOCK_SOURCE_ATTR, MATH_SOURCE_ATTR, formulaSourceHolder } from '@web/lib/formula-source';
 import { KATEX_OPTIONS } from '@web/lib/katex-options';
 import { cn } from '@web/lib/utils';
-import { DOC_TABLE } from '@web/spaces/document/document-table-nodes';
+import { DOC_TABLE, cellDepthOf } from '@web/spaces/document/document-table-nodes';
+
+/** The editor as the node views use it. */
+type AnyEditor = BlockNoteEditor<never, never, never>;
 
 /** The block formula's type name. */
 export const MATH_BLOCK = 'mathBlock';
@@ -66,9 +65,6 @@ export function isFormula(node: PMNode): boolean {
 
 /** The MathML annotation that holds a formula's LaTeX. */
 export const TEX_ANNOTATION = 'annotation[encoding="application/x-tex"]';
-
-/** The editor as the node views use it. */
-type AnyEditor = BlockNoteEditor<never, never, never>;
 
 /** A formula rendered, or the reason it could not be. */
 type Rendered = { readonly html: string; readonly error: null } | { readonly html: null; readonly error: string };
@@ -104,16 +100,6 @@ function sourceOf(element: HTMLElement, attribute: string): string {
   const own = element.getAttribute(attribute);
   if (own !== null) return own;
   return element.querySelector(TEX_ANNOTATION)?.textContent ?? '';
-}
-
-/**
- * The source as the node's content.
- * @param source - The LaTeX.
- * @param schema - The editor's schema.
- * @returns A text node, or nothing for an empty source.
- */
-function sourceContent(source: string, schema: Schema): Fragment {
-  return source === '' ? Fragment.empty : Fragment.from(schema.text(source));
 }
 
 /**
@@ -198,15 +184,76 @@ function externalFormula(source: string, display: boolean): HTMLElement {
   return host;
 }
 
+/**
+ * A formula's LaTeX, read off its node.
+ * @param node - A `mathBlock` or `math` node.
+ * @returns The source.
+ */
+export function formulaSource(node: PMNode): string {
+  return String(node.attrs['source'] ?? '');
+}
+
+/**
+ * How a formula reads as text: `$$source$$` inside a line, the source between
+ * two `$$` lines for a block, as the Agent reads it.
+ * @param node - A `mathBlock` or `math` node.
+ * @returns The text.
+ */
+export function formulaLeafText(node: PMNode): string {
+  const source = formulaSource(node);
+  return node.type.name === MATH_BLOCK ? `$$\n${source}\n$$` : `$$${source}$$`;
+}
+
+/**
+ * A leaf reader for `textBetween` that reads a formula as its text and every
+ * other leaf as `other` does: a reader passed to `textBetween` wins over the
+ * node's own `leafText` (`prosemirror-model` 1.25.12 `index.js:122-123`).
+ * @param other - What any other leaf reads as.
+ * @returns The reader.
+ */
+export function leafWords(other: (leaf: PMNode) => string): (leaf: PMNode) => string {
+  return (leaf) => (isFormula(leaf) ? formulaLeafText(leaf) : other(leaf));
+}
+
+/**
+ * Whether a node is a formula with a source, which counts as content for the
+ * Agent and the bubble bar.
+ * @param node - The node.
+ * @returns True for a formula whose source is not empty.
+ */
+export function holdsFormula(node: PMNode): boolean {
+  return isFormula(node) && formulaSource(node) !== '';
+}
+
+/** Gives both formula nodes their text, which `textContent` and `textBetween` read. */
+const FormulaText = Extension.create({
+  name: 'documentFormulaText',
+  extendNodeSchema: (extension) =>
+    extension.name === MATH_BLOCK || extension.name === MATH_INLINE ? { leafText: formulaLeafText } : {},
+});
+
+/** The box's element: a control region of its own (design 5.1). */
+export const FORMULA_BOX = '[data-formula-box]';
+
+/** The attribute on a formula node view's own element. */
+const FORMULA_HOST = 'data-formula-host';
+
+/** Where the caret goes in the source when the box opens. */
+type Caret = 'start' | 'end';
+
+/**
+ * Where the body's selection goes when the box closes: right before or after
+ * an inline formula, onto a block formula whole, to the line above or below a
+ * block formula, or nowhere because the press that closed it took the
+ * keyboard elsewhere.
+ */
+type Leave = 'before' | 'after' | 'above' | 'below' | 'stay';
+
 /** What a formula's face shows. */
 interface FaceState {
   readonly source: string;
-  /**
-   * The source before the change a snapshot comparison shows, when it shows
-   * one; null everywhere else.
-   */
-  readonly before: string | null;
   readonly open: boolean;
+  readonly caret: Caret;
   readonly selected: boolean;
   readonly editable: boolean;
 }
@@ -245,34 +292,10 @@ function faceStore(initial: FaceState): FaceStore {
 }
 
 /**
- * A formula's source, read off its node. In a snapshot comparison the node
- * holds the old and the new source interleaved, the removed characters marked
- * deleted and the added ones inserted (BlockNote `AttributionExtension.ts`);
- * rendered together they would draw a formula neither version has. Without
- * the inserted characters it is the old source, without the deleted ones the
- * new (inner#1423 design §6.7).
- * @param node - The formula's node.
- * @returns The source now, and the one before a change the node shows.
- */
-function sourcesOf(node: PMNode): Pick<FaceState, 'source' | 'before'> {
-  let source = '';
-  let before = '';
-  let changed = false;
-  node.forEach((child) => {
-    const deleted = child.marks.some((mark) => mark.type.name === 'y-attributed-delete');
-    const inserted = child.marks.some((mark) => mark.type.name === 'y-attributed-insert');
-    changed ||= deleted || inserted;
-    if (!deleted) source += child.text ?? '';
-    if (!inserted) before += child.text ?? '';
-  });
-  return { source, before: changed ? before : null };
-}
-
-/**
- * One rendered formula, or the face that stands for it.
+ * One rendered formula.
  * @param props - The preview.
  * @param props.html - KaTeX's markup.
- * @param props.className - Extra classes, such as a comparison's colour.
+ * @param props.className - Extra classes.
  * @returns The preview.
  */
 function FormulaMarkup({ html, className }: { html: string; className?: string }): React.JSX.Element {
@@ -281,10 +304,54 @@ function FormulaMarkup({ html, className }: { html: string; className?: string }
   return <span className={className} dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
-/** What the face does when the user opens or closes the box. */
+/** What the face asks of its node view. */
 interface FaceActions {
-  readonly open: () => void;
-  readonly close: () => void;
+  readonly open: (caret: Caret) => void;
+  readonly close: (leave: Leave) => void;
+  readonly write: (source: string) => void;
+  readonly remove: (back: boolean) => void;
+  readonly history: (redo: boolean) => void;
+  readonly focused: (inside: boolean) => void;
+}
+
+/**
+ * What a key in the box does, before the text field's own handling.
+ * @param event - The key.
+ * @param field - The text field.
+ * @param inline - Whether the formula sits inside a line.
+ * @param actions - The node view's actions.
+ * @returns Whether the key was taken.
+ */
+function boxKey(
+  event: React.KeyboardEvent<HTMLTextAreaElement>,
+  field: HTMLTextAreaElement,
+  inline: boolean,
+  actions: FaceActions,
+): boolean {
+  if (event.nativeEvent.isComposing) return false;
+  const mod = event.metaKey || event.ctrlKey;
+  const key = event.key.toLowerCase();
+  if (mod && !event.altKey && (key === 'z' || (key === 'y' && event.ctrlKey && !event.metaKey))) {
+    actions.history(key === 'y' || event.shiftKey);
+    return true;
+  }
+  if (event.key === 'Escape' || (event.key === 'Enter' && (inline || !event.shiftKey))) {
+    actions.close('after');
+    return true;
+  }
+  const { selectionStart: from, selectionEnd: to, value } = field;
+  if ((event.key === 'Backspace' || event.key === 'Delete') && value === '') {
+    actions.remove(event.key === 'Backspace');
+    return true;
+  }
+  if (event.shiftKey || mod || event.altKey || from !== to) return false;
+  if (event.key === 'ArrowLeft' && inline && from === 0) actions.close('before');
+  else if (event.key === 'ArrowRight' && inline && from === value.length) actions.close('after');
+  else if ((event.key === 'ArrowUp' || event.key === 'ArrowDown') && inline) actions.close('after');
+  else if (event.key === 'ArrowUp' && from === 0) actions.close('above');
+  else if (event.key === 'ArrowDown' && from === value.length) actions.close('below');
+  else return false;
+  return true;
 }
 
 /**
@@ -292,9 +359,8 @@ interface FaceActions {
  * body, and the box it is edited in.
  * @param props - The face.
  * @param props.store - The node view's state.
- * @param props.actions - Opening and closing the box.
+ * @param props.actions - What the face asks of its node view.
  * @param props.inline - Whether the formula sits inside a line.
- * @param props.source - The source element ProseMirror edits.
  * @param props.host - The node view's element, to tell whether it sits in a table cell.
  * @returns The face.
  */
@@ -302,22 +368,17 @@ const MathFace = React.memo(function MathFace({
   store,
   actions,
   inline,
-  source: sourceElement,
   host,
 }: {
   store: FaceStore;
   actions: FaceActions;
   inline: boolean;
-  source: HTMLElement;
   host: HTMLElement;
 }): React.JSX.Element {
   const t = useTranslation();
-  const { source, before, open, selected, editable } = React.useSyncExternalStore(store.subscribe, store.get);
+  const { source, open, caret, selected, editable } = React.useSyncExternalStore(store.subscribe, store.get);
   const shown = open && editable;
-  const rendered = React.useMemo(
-    () => (source === '' ? null : renderFormula(source, !inline)),
-    [source, inline],
-  );
+  const rendered = React.useMemo(() => (source === '' ? null : renderFormula(source, !inline)), [source, inline]);
   // The last formula that rendered stays up while the box is open on a source
   // that does not parse; once the box closes on it, the error face shows until
   // it parses again (BlockNote `SourceWithPreview.tsx`).
@@ -328,6 +389,23 @@ const MathFace = React.memo(function MathFace({
   else if (!shown) errorCommitted.current = true;
   const error = rendered?.error ?? null;
   const preview = rendered?.html ?? (error !== null && !errorCommitted.current ? lastGood.current : null);
+
+  // The field holds what is being typed, so an input method's composition
+  // stays the field's until it ends; the source catches up from the node
+  // whenever nothing is being composed.
+  const field = React.useRef<HTMLTextAreaElement | null>(null);
+  const composing = React.useRef(false);
+  const [draft, setDraft] = React.useState(source);
+  React.useEffect(() => {
+    if (!composing.current) setDraft(source);
+  }, [source]);
+  React.useLayoutEffect(() => {
+    const element = field.current;
+    if (!shown || element === null) return;
+    element.focus({ preventScroll: true });
+    const at = caret === 'start' ? 0 : element.value.length;
+    element.setSelectionRange(at, at);
+  }, [shown, caret]);
 
   const [inCell, setInCell] = React.useState(false);
   React.useLayoutEffect(() => {
@@ -345,35 +423,9 @@ const MathFace = React.memo(function MathFace({
     whileElementsMounted: shown ? autoUpdate : undefined,
   });
 
-  const placeSource = React.useCallback(
-    (slot: HTMLElement | null): void => {
-      if (slot === null || sourceElement.parentElement === slot) return;
-      slot.appendChild(sourceElement);
-    },
-    [sourceElement],
-  );
-
   const Wrapper = inline ? 'span' : 'div';
-  const compared = React.useMemo(
-    () =>
-      before === null || before === source
-        ? null
-        : { before: renderFormula(before, !inline).html, now: renderFormula(source, !inline).html },
-    [before, source, inline],
-  );
   const face =
-    compared !== null ? (
-      // A formula a comparison shows changed: the old one in the deletion's
-      // colours, the new one in the insertion's.
-      <>
-        {compared.before !== null && (
-          <FormulaMarkup html={compared.before} className={cn(!inline && 'block', 'doc-version-delete')} />
-        )}
-        {compared.now !== null && (
-          <FormulaMarkup html={compared.now} className={cn(!inline && 'block', 'doc-version-insert')} />
-        )}
-      </>
-    ) : source === '' ? (
+    source === '' ? (
       <span className='inline-flex items-center gap-1.5 rounded-chrome bg-muted px-2 py-1 text-sm text-muted-foreground'>
         <Sigma className='h-3.5 w-3.5' aria-hidden />
         {t('spaces.document.math.empty')}
@@ -390,144 +442,296 @@ const MathFace = React.memo(function MathFace({
   return (
     <Wrapper
       ref={refs.setReference}
-      className={cn('bn-preview-with-source-popup doc-math', selected && 'ProseMirror-selectednode')}
+      className='doc-math'
       data-open={shown ? 'true' : 'false'}
       data-selected={!inline && selected && editable && !shown ? 'true' : undefined}
     >
       <Wrapper
-        className={cn('bn-preview-container', !inline && 'overflow-visible', !editable && 'cursor-default')}
-        contentEditable={false}
+        className={cn(!editable && 'cursor-default')}
         role={editable && (source === '' || preview === null) ? 'button' : undefined}
-        // The body keeps the keyboard: the box opens with the caret in its source.
+        // The body keeps the keyboard until the box takes it.
         onMouseDown={(event) => {
           if (!editable) return;
           event.preventDefault();
           event.stopPropagation();
-          actions.open();
+          actions.open('end');
         }}
       >
         {inline ? (
           face
         ) : (
           // A formula wider than the body scrolls sideways in its own
-          // scroller, as a formula in a chat reply does (`MarkdownMessage.tsx`).
-          <ScrollArea scrollbars='horizontal' className='w-full [&_.katex-display]:my-0'>
-            <div className='flex w-max min-w-full flex-col items-center'>
-              <div data-math-frame>{face}</div>
-            </div>
-          </ScrollArea>
+          // scroller, as a formula in a chat reply does (`MarkdownMessage.tsx`);
+          // the frame a selection draws sits around that scroller.
+          <div data-math-frame className='mx-auto w-fit max-w-full'>
+            <ScrollArea scrollbars='horizontal' className='w-full [&_.katex-display]:my-0'>
+              <div className='flex w-max min-w-full flex-col items-center'>{face}</div>
+            </ScrollArea>
+          </div>
         )}
       </Wrapper>
-      <div
-        ref={refs.setFloating}
-        style={shown ? floatingStyles : undefined}
-        className={cn(
-          'bn-source-block-popup doc-math-popup',
-          shown &&
-            'z-20 flex w-[min(560px,calc(100vw-2rem))] flex-col rounded-overlay border border-border bg-popover text-left text-popover-foreground shadow-md',
-        )}
-      >
+      {shown && (
         <div
-          contentEditable={false}
-          className='flex shrink-0 items-center gap-1.5 border-b border-border px-3 py-1.5 text-sm font-medium'
+          ref={refs.setFloating}
+          data-formula-box
+          style={floatingStyles}
+          className='z-20 flex w-[min(560px,calc(100vw-2rem))] flex-col rounded-overlay border border-border bg-popover text-left text-popover-foreground shadow-md'
+          onFocus={() => {
+            actions.focused(true);
+          }}
+          onBlur={(event) => {
+            if (event.currentTarget.contains(event.relatedTarget as Node | null)) return;
+            actions.focused(false);
+            actions.close('stay');
+          }}
         >
-          <Sigma className='h-3.5 w-3.5 shrink-0 text-muted-foreground' aria-hidden />
-          <span className='truncate'>{t('spaces.document.commands.formula')}</span>
+          <div className='flex shrink-0 items-center gap-1.5 border-b border-border px-3 py-1.5 text-sm font-medium'>
+            <Sigma className='h-3.5 w-3.5 shrink-0 text-muted-foreground' aria-hidden />
+            <span className='truncate'>{t('spaces.document.commands.formula')}</span>
+          </div>
+          <div className='p-3'>
+            <Textarea
+              ref={field}
+              value={draft}
+              spellCheck={false}
+              placeholder={t('spaces.document.math.placeholder')}
+              className='min-h-[calc(3lh+1rem+2px)] resize-none whitespace-pre-wrap break-all font-mono md:text-sm'
+              onChange={(event) => {
+                setDraft(event.target.value);
+                if (!composing.current) actions.write(event.target.value);
+              }}
+              onCompositionStart={() => {
+                composing.current = true;
+              }}
+              onCompositionEnd={(event) => {
+                composing.current = false;
+                actions.write(event.currentTarget.value);
+              }}
+              onKeyDown={(event) => {
+                if (boxKey(event, event.currentTarget, inline, actions)) event.preventDefault();
+              }}
+            />
+            {error !== null && <p className='mt-1.5 text-xs text-status-error-foreground'>{error}</p>}
+          </div>
+          <div className='flex shrink-0 items-center justify-end gap-2 border-t border-border px-3 py-1.5'>
+            <Button
+              size='sm'
+              onMouseDown={(event) => {
+                event.preventDefault();
+              }}
+              onClick={() => {
+                actions.close('after');
+              }}
+            >
+              {t('spaces.document.math.ok')}
+            </Button>
+          </div>
         </div>
-        <div className='p-3'>
-          <pre
-            ref={placeSource}
-            data-placeholder={t('spaces.document.math.placeholder')}
-            data-empty={source === '' ? 'true' : 'false'}
-            aria-hidden={shown ? undefined : true}
-            className={cn(
-              'doc-math-source relative m-0 min-h-[calc(3lh+1rem+2px)] whitespace-pre-wrap break-all rounded-chrome border border-border bg-transparent px-3 py-2 font-mono text-sm',
-              'focus-within:border-active-border',
-              'data-[empty=true]:before:pointer-events-none data-[empty=true]:before:absolute data-[empty=true]:before:text-muted-foreground data-[empty=true]:before:content-[attr(data-placeholder)]',
-            )}
-          />
-          {shown && error !== null && (
-            <p contentEditable={false} className='mt-1.5 text-xs text-status-error-foreground'>
-              {error}
-            </p>
-          )}
-        </div>
-        <div
-          contentEditable={false}
-          className='flex shrink-0 items-center justify-end gap-2 border-t border-border px-3 py-1.5'
-        >
-          <Button
-            size='sm'
-            tabIndex={shown ? undefined : -1}
-            onMouseDown={(event) => {
-              event.preventDefault();
-            }}
-            onClick={(event) => {
-              event.stopPropagation();
-              actions.close();
-            }}
-          >
-            {t('spaces.document.math.ok')}
-          </Button>
-        </div>
-      </div>
+      )}
     </Wrapper>
   );
 });
 
+/** Opens a formula's box from outside its node view, keyed by the view's element. */
+const openers = new WeakMap<HTMLElement,(caret: Caret) => void>();
+
+/**
+ * Opens the box of the formula at a position, as a click on it does.
+ * @param view - The editor view.
+ * @param pos - Where the `math` or `mathBlock` node starts.
+ * @param caret - Where the caret goes in the source.
+ * @returns Whether a formula's box was there to open.
+ */
+export function openFormulaAt(view: EditorView, pos: number, caret: Caret): boolean {
+  const dom = view.nodeDOM(pos);
+  if (!(dom instanceof HTMLElement)) return false;
+  const host = dom.hasAttribute(FORMULA_HOST) ? dom : dom.querySelector<HTMLElement>(`[${FORMULA_HOST}]`);
+  const open = host === null ? undefined : openers.get(host);
+  if (open === undefined) return false;
+  open(caret);
+  return true;
+}
+
+/** What opening a block formula's box needs of the editor. */
+type BoxOpener = Pick<AnyEditor, 'prosemirrorView'>;
+
+/**
+ * Opens a block formula's box, as a click on it does.
+ * @param editor - The editor.
+ * @param id - The formula block's id.
+ * @returns Whether the box opened.
+ */
+export function openFormulaBlock(editor: BoxOpener, id: string): boolean {
+  const view = editor.prosemirrorView;
+  if (view === undefined) return false;
+  let at = -1;
+  view.state.doc.descendants((node, pos) => {
+    if (at >= 0) return false;
+    if (node.attrs['id'] === id && node.firstChild?.type.name === MATH_BLOCK) at = pos + 1;
+    return at < 0;
+  });
+  return at >= 0 && openFormulaAt(view, at, 'end');
+}
+
+/**
+ * Removes a block formula, the lines indented under it lifted into its place,
+ * as an empty paragraph's Backspace does; the caret goes to the end of what
+ * came before it for Backspace, to the start of what follows for Delete,
+ * inside its table cell when it is in one.
+ * @param editor - The editor.
+ * @param view - The editor view.
+ * @param pos - Where the `mathBlock` node starts.
+ * @param back - Backspace, else Delete.
+ */
+export function removeFormulaBlock(editor: AnyEditor, view: EditorView, pos: number, back: boolean): void {
+  const $pos = view.state.doc.resolve(pos);
+  const at = $pos.before();
+  const id = $pos.parent.attrs['id'] as string;
+  // The cell's start lies before the formula, so the removal leaves it where it is.
+  const cell = cellDepthOf($pos);
+  const cellStart = cell < 0 ? -1 : $pos.start(cell);
+  const children = (editor.getBlock(id) as { children: never[] } | undefined)?.children ?? [];
+  if (children.length > 0) editor.replaceBlocks([id], children);
+  else editor.removeBlocks([id]);
+  const { state } = view;
+  const $at = state.doc.resolve(Math.min(at, state.doc.content.size));
+  let near = Selection.near($at, back ? -1 : 1);
+  if (cellStart >= 0) {
+    const $cell = state.doc.resolve(cellStart);
+    if (near.from < cellStart || near.from > $cell.end()) near = Selection.near($at, back ? 1 : -1);
+  }
+  view.dispatch(state.tr.setSelection(near));
+}
+
 /** A node view as ProseMirror takes it. */
 interface FormulaView {
   dom: HTMLElement;
-  contentDOM: HTMLElement;
   update: (node: PMNode) => boolean;
-  ignoreMutation: (mutation: ViewMutationRecord) => boolean;
+  selectNode: () => void;
+  deselectNode: () => void;
+  stopEvent: (event: Event) => boolean;
+  ignoreMutation: () => boolean;
   destroy: () => void;
 }
 
 /**
- * Mounts a formula's face around the element ProseMirror edits.
+ * Mounts a formula's face and box.
  * @param inline - Whether the formula sits inside a line.
- * @param initial - The face's first state.
- * @param actions - Opening and closing the box.
- * @param typeName - The node type the view stays bound to.
- * @param stop - Releases what the caller subscribed to.
+ * @param initial - The node the view starts with.
+ * @param editor - The editor.
+ * @param view - The editor view.
+ * @param getPos - Where the node starts now.
  * @returns The node view.
  */
 function mountFormula(
   inline: boolean,
-  initial: FaceState,
-  actions: FaceActions,
-  typeName: string,
-  stop: () => void,
-): FormulaView & { store: FaceStore } {
+  initial: PMNode,
+  editor: AnyEditor,
+  view: EditorView,
+  getPos: () => number | undefined,
+): FormulaView {
   const dom = document.createElement(inline ? 'span' : 'div');
-  // BlockNote's inline-formula rules key on it, and only its React layer adds
-  // it (`ReactInlineContentSpec.tsx`). A block formula spans its line, which
-  // BlockNote lays out as a flex row.
-  dom.className = inline ? 'bn-inline-content-section' : 'w-full min-w-0';
-  const code = document.createElement('code');
-  const chrome = document.createElement(inline ? 'span' : 'div');
-  chrome.className = 'contents';
-  // Attached before ProseMirror reads the content element; the face moves it
-  // into the box when it commits.
-  dom.append(code, chrome);
-  const store = faceStore(initial);
-  const root: Root = createRoot(chrome);
-  root.render(<MathFace store={store} actions={actions} inline={inline} source={code} host={dom} />);
+  dom.setAttribute(FORMULA_HOST, '');
+  // A block formula spans its line, which BlockNote lays out as a flex row.
+  if (!inline) dom.className = 'w-full min-w-0';
+  let node = initial;
+  let boxHasFocus = false;
+  const readOnly = editor.getExtension(ReadOnlyExtension)!;
+  const store = faceStore({
+    source: formulaSource(node),
+    open: false,
+    caret: 'end',
+    selected: false,
+    editable: editor.isEditable,
+  });
+  /**
+   * Puts the keyboard back in the body with the selection given.
+   * @param selection - The selection, or null to keep the one there is.
+   */
+  const toBody = (selection: Selection | null): void => {
+    if (selection !== null) view.dispatch(view.state.tr.setSelection(selection));
+    view.focus();
+  };
+  const actions: FaceActions = {
+    open: (caret) => {
+      if (editor.isEditable) store.set({ open: true, caret });
+    },
+    close: (leave) => {
+      store.set({ open: false });
+      const pos = getPos();
+      if (leave === 'stay' || pos === undefined) return;
+      const { doc } = view.state;
+      if (inline) {
+        toBody(TextSelection.create(doc, leave === 'before' ? pos : pos + node.nodeSize));
+        return;
+      }
+      const container = doc.resolve(pos).before();
+      const end = container + doc.resolve(pos).parent.nodeSize;
+      if (leave === 'above') toBody(Selection.near(doc.resolve(container), -1));
+      else if (leave === 'below') toBody(Selection.near(doc.resolve(Math.min(end, doc.content.size)), 1));
+      else toBody(NodeSelection.create(doc, pos));
+    },
+    write: (source) => {
+      const pos = getPos();
+      if (pos === undefined || !editor.isEditable || source === formulaSource(node)) return;
+      view.dispatch(view.state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, source }));
+    },
+    remove: (back) => {
+      const pos = getPos();
+      if (pos === undefined || !editor.isEditable) return;
+      store.set({ open: false });
+      // The text field goes with the formula; the keyboard stays with the body.
+      view.focus();
+      if (!inline) {
+        removeFormulaBlock(editor, view, pos, back);
+        return;
+      }
+      const tr = view.state.tr.delete(pos, pos + node.nodeSize);
+      view.dispatch(tr.setSelection(TextSelection.create(tr.doc, pos)));
+    },
+    history: (redo) => {
+      if (redo) editor.redo();
+      else editor.undo();
+    },
+    focused: (inside) => {
+      boxHasFocus = inside;
+    },
+  };
+  /** Copies whether the body can be edited onto the face, closing the box when it cannot. */
+  const syncEditable = (): void => {
+    const editable = editor.isEditable;
+    store.set(editable ? { editable } : { editable, open: false });
+  };
+  const stopReadOnly = readOnly.store.subscribe(syncEditable);
+  openers.set(dom, actions.open);
+  const root: Root = createRoot(dom);
+  root.render(<MathFace store={store} actions={actions} inline={inline} host={dom} />);
   return {
     dom,
-    contentDOM: code,
-    store,
-    update: (node) => {
-      if (node.type.name !== typeName) return false;
-      store.set(sourcesOf(node));
+    update: (next) => {
+      if (next.type !== node.type) return false;
+      node = next;
+      store.set({ source: formulaSource(next) });
       return true;
     },
-    // Only what happens inside the source is the document's; the face around
-    // it is React's.
-    ignoreMutation: (mutation) => mutation.type !== 'selection' && !code.contains(mutation.target),
+    selectNode: () => {
+      store.set({ selected: true });
+    },
+    deselectNode: () => {
+      store.set({ selected: false });
+    },
+    stopEvent: (event) => event.target instanceof Element && event.target.closest(FORMULA_BOX) !== null,
+    // What React draws inside is not the document's; the node has no content.
+    ignoreMutation: () => true,
     destroy: () => {
-      stop();
+      stopReadOnly();
+      openers.delete(dom);
+      // An undo or a co-editor that takes the formula away takes the focused
+      // text field with it; the keyboard goes back to the body. ProseMirror
+      // destroys the view before it takes the element out, so the field can
+      // still hold the keyboard here.
+      const active = dom.ownerDocument.activeElement;
+      if (boxHasFocus && (active === null || active === dom.ownerDocument.body || dom.contains(active))) view.focus();
       // React refuses a synchronous unmount while it is rendering, and
       // ProseMirror can tear views down from inside a React commit.
       queueMicrotask(() => {
@@ -538,89 +742,31 @@ function mountFormula(
 }
 
 /**
- * A static copy of a formula for BlockNote's own HTML: the source inside an
- * element it can read back.
- * @param inline - Whether the formula sits inside a line.
- * @returns The element and its content element.
+ * A static copy of a formula for BlockNote's own HTML: the source in the
+ * attribute our parse reads back, and as its words the `$$` text.
+ * @param source - The LaTeX.
+ * @param block - Whether the formula stands on a line of its own.
+ * @returns The element.
  */
-function staticFormula(inline: boolean): { dom: HTMLElement; contentDOM: HTMLElement } {
-  const dom = document.createElement(inline ? 'span' : 'div');
-  const code = document.createElement('code');
-  dom.appendChild(code);
-  return { dom, contentDOM: code };
+function staticFormula(source: string, block: boolean): { dom: HTMLElement } {
+  return { dom: formulaSourceHolder(source, block) };
 }
 
-/** What `render` sees as `this`: a node view hands it the node it draws. */
+/** What `render` sees as `this`: a node view hands it its ProseMirror props. */
 type RenderContext =
-  | { readonly renderType: 'nodeView'; readonly props: { readonly node: PMNode } }
+  | {
+      readonly renderType: 'nodeView';
+      readonly props: { readonly node: PMNode; readonly view: EditorView; readonly getPos: () => number | undefined };
+    }
   | { readonly renderType?: 'dom'; readonly props?: undefined };
 
-/** The block as `render` receives it. */
+/** A formula as `render` and the exporters receive it. */
 interface FormulaBlock {
-  readonly id: string;
-  readonly content?: readonly { readonly text?: string }[] | string;
+  readonly props: { readonly source: string };
 }
 
-/**
- * The text of a block or inline formula as BlockNote hands it over.
- * @param content - Its content.
- * @returns The source.
- */
-export function formulaText(content: FormulaBlock['content']): string {
-  if (content === undefined) return '';
-  if (typeof content === 'string') return content;
-  return content.map((piece) => piece.text ?? '').join('');
-}
-
-/** What opening a block formula's box needs of the editor. */
-type BoxOpener = Pick<AnyEditor, 'setTextCursorPosition' | 'getExtension'>;
-
-/**
- * Puts the caret at the end of a block formula's source and opens its box, as
- * a click on it does. The caret goes first: BlockNote closes a box the
- * selection is not in.
- * @param editor - The editor.
- * @param id - The formula block's id.
- */
-export function openFormulaBlock(editor: BoxOpener, id: string): void {
-  editor.setTextCursorPosition(id, 'end');
-  editor.getExtension(SourceBlockWithPreviewExtension)?.store.setState((state) => ({ ...state, popupOpen: id }));
-}
-
-/**
- * Subscribes a block formula's face to who has its box open and whether the
- * body can be edited, and closes the box when the body turns read-only.
- * @param editor - The editor.
- * @param id - The block's id.
- * @param store - Reads the face, once the view holds one.
- * @returns The unsubscriber.
- */
-function followBlock(editor: AnyEditor, id: string, store: () => FaceStore | null): () => void {
-  const preview = editor.getExtension(SourceBlockWithPreviewExtension)!;
-  const readOnly = editor.getExtension(ReadOnlyExtension)!;
-  /** Copies the open, selected and editable state onto the face. */
-  const sync = (): void => {
-    const face = store();
-    if (face === null) return;
-    const editable = editor.isEditable;
-    if (!editable && preview.store.state.popupOpen === id) {
-      preview.store.setState((state) => ({ ...state, popupOpen: undefined }));
-      return;
-    }
-    face.set({
-      open: preview.store.state.popupOpen === id,
-      selected: preview.store.state.selected === id,
-      editable,
-    });
-  };
-  const stopPreview = preview.store.subscribe(sync);
-  const stopReadOnly = readOnly.store.subscribe(sync);
-  queueMicrotask(sync);
-  return () => {
-    stopPreview();
-    stopReadOnly();
-  };
-}
+/** Gives both formula nodes their text; registered with the block spec, so every editor built from the schema has it. */
+const formulaTextExtension = createExtension({ key: 'document-formula-text', tiptapExtensions: [FormulaText] });
 
 /**
  * The block formula.
@@ -630,48 +776,20 @@ export function mathBlockSpec(): unknown {
   return createBlockSpec(
     {
       type: MATH_BLOCK,
-      propSchema: { quoted: { default: false } },
-      content: 'plain',
+      propSchema: { quoted: { default: false }, source: { default: '' } },
+      content: 'none',
     },
     {
-      meta: { hasPreview: true, code: true },
-      // Backspace at the start of an empty source would turn the block into a
-      // paragraph; this keeps it a formula, and our keys handle the rest.
-      experimental_keyboard: { resetsTo: { type: MATH_BLOCK } },
-      parse: (element: HTMLElement) => (isBlockFormula(element) ? {} : undefined),
-      parseContent: ({ el, schema }: { el: HTMLElement; schema: Schema }) =>
-        isBlockFormula(el) ? sourceContent(sourceOf(el, MATH_BLOCK_SOURCE_ATTR), schema) : undefined,
+      parse: (element: HTMLElement) =>
+        isBlockFormula(element) ? { source: sourceOf(element, MATH_BLOCK_SOURCE_ATTR) } : undefined,
       render(this: RenderContext, block: FormulaBlock, editor: AnyEditor) {
-        if (this.renderType !== 'nodeView') return staticFormula(false);
-        let view: (FormulaView & { store: FaceStore }) | null = null;
-        const stop = followBlock(editor, block.id, () => view?.store ?? null);
-        const preview = editor.getExtension(SourceBlockWithPreviewExtension)!;
-        view = mountFormula(
-          false,
-          {
-            ...sourcesOf(this.props.node),
-            open: false,
-            selected: false,
-            editable: editor.isEditable,
-          },
-          {
-            open: () => {
-              if (!editor.isEditable) return;
-              openFormulaBlock(editor, block.id);
-              editor.focus();
-            },
-            close: () => {
-              preview.store.setState((state) => ({ ...state, popupOpen: undefined }));
-              editor.focus();
-            },
-          },
-          MATH_BLOCK,
-          stop,
-        );
-        return view;
+        if (this.renderType !== 'nodeView') return staticFormula(block.props.source, true);
+        const { node, view, getPos } = this.props;
+        return mountFormula(false, node, editor, view, getPos);
       },
-      toExternalHTML: (block: FormulaBlock) => ({ dom: externalFormula(formulaText(block.content), true) }),
+      toExternalHTML: (block: FormulaBlock) => ({ dom: externalFormula(block.props.source, true) }),
     } as never,
+    [formulaTextExtension],
   )();
 }
 
@@ -690,71 +808,18 @@ type InlineRenderArgs = [
  */
 export function mathInlineSpec(): unknown {
   return createInlineContentSpec(
-    { type: MATH_INLINE, propSchema: {}, content: 'plain' },
+    { type: MATH_INLINE, propSchema: { source: { default: '' } }, content: 'none' },
     {
-      meta: { hasPreview: true, code: true },
-      parse: (element: HTMLElement) => (isInlineFormula(element) ? {} : undefined),
-      parseContent: ({ el, schema }: { el: HTMLElement; schema: Schema }) =>
-        isInlineFormula(el) ? sourceContent(sourceOf(el, MATH_SOURCE_ATTR), schema) : undefined,
-      render(this: RenderContext, ...[, , editor, node, getPos]: InlineRenderArgs) {
-        if (this.renderType !== 'nodeView' || getPos === undefined || node === undefined) {
-          return staticFormula(true);
+      parse: (element: HTMLElement) =>
+        isInlineFormula(element) ? { source: sourceOf(element, MATH_SOURCE_ATTR) } : undefined,
+      render(this: RenderContext, ...[inlineContent, , editor, node, getPos]: InlineRenderArgs) {
+        const view = editor.prosemirrorView;
+        if (this.renderType !== 'nodeView' || getPos === undefined || node === undefined || view === undefined) {
+          return staticFormula(inlineContent.props.source, false);
         }
-        const preview = editor.getExtension(SourceInlineContentWithPreviewExtension)!;
-        const readOnly = editor.getExtension(ReadOnlyExtension)!;
-        let current = node;
-        let view: (FormulaView & { store: FaceStore }) | null = null;
-        /** Copies whether the selection is in this source, and editability, onto the face. */
-        const sync = (): void => {
-          const pos = getPos();
-          view?.store.set({
-            selected: pos !== undefined && preview.store.state.selected === pos,
-            open: pos !== undefined && preview.store.state.selected === pos,
-            editable: editor.isEditable,
-          });
-        };
-        const stopPreview = preview.store.subscribe(sync);
-        const stopReadOnly = readOnly.store.subscribe(sync);
-        view = mountFormula(
-          true,
-          { ...sourcesOf(node), open: false, selected: false, editable: editor.isEditable },
-          {
-            open: () => {
-              const pos = getPos();
-              if (!editor.isEditable || pos === undefined) return;
-              const pmView = editor.prosemirrorView!;
-              pmView.dispatch(
-                pmView.state.tr.setSelection(TextSelection.create(pmView.state.doc, pos + current.nodeSize - 1)),
-              );
-              editor.focus();
-            },
-            close: () => {
-              const pos = getPos();
-              if (pos === undefined) return;
-              const pmView = editor.prosemirrorView!;
-              pmView.dispatch(
-                pmView.state.tr.setSelection(TextSelection.create(pmView.state.doc, pos + current.nodeSize)),
-              );
-              editor.focus();
-            },
-          },
-          MATH_INLINE,
-          () => {
-            stopPreview();
-            stopReadOnly();
-          },
-        );
-        const update = view.update;
-        view.update = (next: PMNode): boolean => {
-          if (!update(next)) return false;
-          current = next;
-          sync();
-          return true;
-        };
-        queueMicrotask(sync);
-        return view;
+        return mountFormula(true, node, editor, view, getPos);
       },
-      toExternalHTML: (inlineContent: FormulaBlock) => ({ dom: externalFormula(formulaText(inlineContent.content), false) }),
+      toExternalHTML: (inlineContent: FormulaBlock) => ({ dom: externalFormula(inlineContent.props.source, false) }),
     } as never,
   );
 }

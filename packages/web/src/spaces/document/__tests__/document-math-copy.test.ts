@@ -95,7 +95,7 @@ function copy(editor: Editor): Record<string, string> {
 
 describe('copying a selection that holds formulas', () => {
   it('writes an inline formula into the plain text as $$source$$', () => {
-    const editor = open([{ type: 'paragraph', content: ['x ', { type: 'math', content: 'a^2' }, ' y'] }]);
+    const editor = open([{ type: 'paragraph', content: ['x ', { type: 'math', props: { source: 'a^2' } }, ' y'] }]);
     const paragraph = before(editor, 'paragraph');
     const size = editor.prosemirrorState.doc.nodeAt(paragraph)!.content.size;
     select(editor, paragraph + 1, paragraph + 1 + size);
@@ -105,7 +105,7 @@ describe('copying a selection that holds formulas', () => {
   it('writes a block formula into the plain text as $$ on lines of their own', () => {
     const editor = open([
       { type: 'paragraph', content: 'lead' },
-      { type: 'mathBlock', content: '\\int x' },
+      { type: 'mathBlock', props: { source: '\\int x' } },
       { type: 'paragraph', content: 'tail' },
     ]);
     const { doc } = editor.prosemirrorState;
@@ -113,90 +113,4 @@ describe('copying a selection that holds formulas', () => {
     expect(copy(editor)['text/plain']).toContain('$$\n\\int x\n$$');
   });
 
-  it('copies part of an inline formula\'s source as that raw text', () => {
-    const editor = open([{ type: 'paragraph', content: ['x ', { type: 'math', content: 'a^2_b' }, ' y'] }]);
-    const start = before(editor, 'math') + 1;
-    select(editor, start + 1, start + 3);
-    expect(copy(editor)['text/plain']).toBe('^2');
-  });
-});
-
-describe('a selection that reaches into a formula from outside (§6.6)', () => {
-  /** A line with words before and after an inline formula. */
-  const LINE = [{ type: 'paragraph', content: ['start ', { type: 'math', content: 'x^2' }, ' end'] }];
-
-  it('takes in the whole formula when dragged from before it into its source', () => {
-    const editor = open(LINE);
-    const math = before(editor, 'math');
-    const node = editor.prosemirrorState.doc.nodeAt(math)!;
-    select(editor, before(editor, 'paragraph') + 1, math + 1);
-    expect(editor.prosemirrorState.selection.to).toBe(math + node.nodeSize);
-  });
-
-  it('takes in the whole formula when dragged backwards from after it into its source', () => {
-    const editor = open(LINE);
-    const math = before(editor, 'math');
-    const node = editor.prosemirrorState.doc.nodeAt(math)!;
-    const view = editor.prosemirrorView;
-    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, math + node.nodeSize + 2, math + 2)));
-    expect(editor.prosemirrorState.selection.from).toBe(math);
-  });
-
-  it('leaves a selection inside one source alone', () => {
-    const editor = open(LINE);
-    const math = before(editor, 'math');
-    select(editor, math + 1, math + 3);
-    expect(editor.prosemirrorState.selection.from).toBe(math + 1);
-    expect(editor.prosemirrorState.selection.to).toBe(math + 3);
-  });
-
-  it('copies the formula whole after a drag that stopped on it', () => {
-    const editor = open(LINE);
-    select(editor, before(editor, 'paragraph') + 1, before(editor, 'math') + 1);
-    expect(copy(editor)['text/plain']?.trim()).toBe('start $$x^2$$');
-  });
-});
-
-describe('a selection that reaches into a closed formula block from outside (§6.6)', () => {
-  /** Words, a formula block whose box is closed, words. */
-  const BODY = [
-    { type: 'paragraph', content: 'hello' },
-    { type: 'mathBlock', content: 'abcdef' },
-    { type: 'paragraph', content: 'tail' },
-  ];
-
-  it('moves an end that lands in the hidden source to the end of that source, the line below left out', () => {
-    const editor = open(BODY);
-    const math = before(editor, 'mathBlock');
-    select(editor, before(editor, 'paragraph') + 4, math + 4);
-    const { $to } = editor.prosemirrorState.selection;
-    expect($to.parent.type.name).toBe('mathBlock');
-    expect($to.parentOffset).toBe($to.parent.content.size);
-  });
-
-  it('moves it out before the block when the drag runs backwards', () => {
-    const editor = open(BODY);
-    const math = before(editor, 'mathBlock');
-    const view = editor.prosemirrorView;
-    const tail = view.state.doc.content.size - 4;
-    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, tail, math + 4)));
-    const { $head } = editor.prosemirrorState.selection;
-    expect($head.parent.type.name).toBe('paragraph');
-    expect($head.parent.textContent).toBe('hello');
-  });
-
-  it('leaves the formula whole when the range is deleted', () => {
-    const editor = open(BODY);
-    const math = before(editor, 'mathBlock');
-    select(editor, before(editor, 'paragraph') + 4, math + 4);
-    const view = editor.prosemirrorView;
-    view.dispatch(view.state.tr.deleteSelection());
-    const kinds: string[] = [];
-    view.state.doc.descendants((node) => {
-      if (node.type.name === 'mathBlock') kinds.push(`mathBlock:${node.textContent}`);
-      return true;
-    });
-    expect(kinds).not.toContain('mathBlock:def');
-    expect(view.state.doc.textContent).not.toContain('def');
-  });
 });
