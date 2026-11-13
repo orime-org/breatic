@@ -143,7 +143,8 @@ describe('picking the formula', () => {
 
     expect(types(editor)).toEqual(['paragraph', 'mathBlock', 'paragraph']);
     expect(rowAt(editor, 1).id).toBe(line.id);
-    expect((editor.document[1] as unknown as Seen).content).toBe('');
+    // BlockNote hands an empty plain block back as no content items.
+    expect((editor.document[1] as unknown as Seen).content).toEqual([]);
   });
 
   it('adds an empty formula block under the row', () => {

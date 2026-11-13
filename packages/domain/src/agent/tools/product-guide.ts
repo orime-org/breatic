@@ -1806,10 +1806,11 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.blockHandle.insertBelow"))} lists the block types other than ` +
       `${quoted(t("spaces.document.commands.paragraph"))}, then ${quoted(t("spaces.document.commands.divider"))} ` +
       `and ${quoted(t("spaces.document.commands.table"))} on their own, then ` +
+      `${quoted(t("spaces.document.commands.formula"))}, then ` +
       `${quoted(t("spaces.document.media.image"))}, ${quoted(t("spaces.document.media.audio"))} and ` +
       `${quoted(t("spaces.document.media.video"))}, and puts a new line of the one picked ` +
-      "below; the divider and the table each come with an empty line under them, and a new table puts the caret " +
-      `in its first cell. On a line in a table cell, ${quoted(t("spaces.document.commands.table"))} is greyed: a ` +
+      "below; the divider, the table and the formula each come with an empty line under them, a new table puts the caret " +
+      `in its first cell, and a new formula opens its box. On a line in a table cell, ${quoted(t("spaces.document.commands.table"))} is greyed: a ` +
       "table does not go inside a cell. The last three open the computer's file picker for that kind; the files chosen go " +
       "under the line, above an empty line made for the caret. " +
       `${quoted(t("spaces.document.commands.table"))} opens a grid of squares, nine across and nine down, with ` +
@@ -1826,6 +1827,12 @@ export function renderProductGuide(): string {
       "plain line below, press Enter at the end of the line (Shift+Enter in a code block); if the new line kept " +
       "the list or to-do of the one above, Cmd+Alt+0 makes it plain text, and if it kept the quote, Cmd+Shift+B " +
       "takes the quote off.",
+    "- A formula is LaTeX: $$x$$ typed in a line becomes a formula of x as the closing $$ is typed (a single $ stays " +
+      `text, and Cmd+Z takes it back), and ${quoted(t("spaces.document.commands.formula"))} in the insert menu puts ` +
+      "one on its own line. Clicking a formula opens a box under it to edit the LaTeX, the formula redrawing as it " +
+      `is typed; Enter, ${quoted(t("spaces.document.math.ok"))}, the cross at its top right, Esc or a click outside closes it. An empty one shows ` +
+      `${quoted(t("spaces.document.math.empty"))}, one that does not parse ${quoted(t("spaces.document.math.error"))}. ` +
+      "The Agent, copies and Markdown get it as its LaTeX between $$.",
     "- Images, videos and audio can also be dragged into the document from the computer, landing where the " +
       "drop marker shows (a line between blocks, or a caret in the words of a table cell outside a code " +
       `block), or pasted at the caret, replacing the selection. ${documentPasteRules().map((rule) => rule.sentence).join(" ")} ` +

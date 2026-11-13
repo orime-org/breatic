@@ -75,11 +75,12 @@ import {
   type PressedBlock,
 } from '@web/spaces/document/document-handle-commands';
 import { openCommentDraft } from '@web/spaces/document/document-comment-entries';
-import { canCommentOver } from '@web/spaces/document/document-comment-target';
+import { canCommentOver, holdsWordsOver } from '@web/spaces/document/document-comment-target';
 import { useDocumentProjectId } from '@web/spaces/document/document-project-context';
 import { blockItem } from '@web/spaces/document/document-to-agent';
 import { attachToChat } from '@web/stores/attach-to-chat';
 import { selectionOverBlockContent } from '@web/spaces/document/document-hovered-block';
+import { MATH_BLOCK } from '@web/spaces/document/document-math';
 import {
   insertBelow,
   insertMediaBelow,
@@ -125,10 +126,14 @@ interface StyleFaces {
   readonly colour: ColourFace;
   /** Whether this row holds words a comment could mark (A3). */
   readonly canComment: boolean;
+  /** Whether this row holds anything to hand the Agent, formula sources included. */
+  readonly canAttach: boolean;
   /** Which way the row can be indented. */
   readonly indent: IndentReach;
   /** Whether the eight rows that set a block's type reach this row. */
   readonly holdsText: boolean;
+  /** Whether the row is a formula block, which no type row reaches (inner#1423). */
+  readonly formula: boolean;
   /**
    * Whether the Quote row reaches this row. It reads the quote's own working
    * set, which also holds a divider (#124, A8), so the row greys exactly where
@@ -147,10 +152,12 @@ function sameFaces(a: StyleFaces, b: StyleFaces): boolean {
   return (
     a.align === b.align &&
     a.canComment === b.canComment &&
+    a.canAttach === b.canAttach &&
     a.indent.in === b.indent.in &&
     a.indent.out === b.indent.out &&
     a.holdsText === b.holdsText &&
     a.quotable === b.quotable &&
+    a.formula === b.formula &&
     sameColours(a.colour, b.colour)
   );
 }
@@ -174,9 +181,11 @@ function facesFor(editor: HandleEditor, blockId: string): StyleFaces {
       align: alignFaceOver(tr.doc, over),
       colour: colourFaceOver(tr.doc, over),
       canComment: canCommentOver(tr.doc, over),
+      canAttach: holdsWordsOver(tr.doc, over),
       indent: indentReach(tr.doc, blockId),
       holdsText: blocksUnder(tr.doc, over).length > 0,
       quotable: blocksUnderFor(tr.doc, over, 'quote').length > 0,
+      formula: over.$from.parent.type.name === MATH_BLOCK,
     };
   });
 }
@@ -339,7 +348,10 @@ export function DocumentBlockMenu({
         if (row.id === 'blockType') {
           return (
             <DropdownMenuSub key={row.id}>
-              <DropdownMenuSubTrigger data-testid='doc-block-row-blockType'>
+              <DropdownMenuSubTrigger
+                data-testid='doc-block-row-blockType'
+                {...whenOutOfReach(faces.formula)}
+              >
                 <Icon />
                 {label}
               </DropdownMenuSubTrigger>
@@ -539,15 +551,16 @@ export function DocumentBlockMenu({
 
         if (row.id === 'addToAgent') {
           // Hands the row, children included, to the project's Agent as the
-          // Markdown it reads as now. Greyed where Comment is, off the same
-          // reading: a row with no words has nothing to hand over. Outside a
-          // project there is nowhere to hand it, and the row is not drawn.
+          // Markdown it reads as now. A row with no words has nothing to hand
+          // over; a formula's source counts, though no comment lands on it.
+          // Outside a project there is nowhere to hand it, and the row is not
+          // drawn.
           if (projectId === null) return null;
           return (
             <DropdownMenuItem
               key={row.id}
               data-testid={`doc-block-row-${row.id}`}
-              {...itemWithin(faces.canComment, () => {
+              {...itemWithin(faces.canAttach, () => {
                 const live = rowNow();
                 if (live !== undefined) {
                   void attachToChat(projectId, [blockItem(editor, live.id)]);

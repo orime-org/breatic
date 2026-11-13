@@ -44,6 +44,7 @@ import { BodyEdgeSelection } from '@web/spaces/document/document-body-edge-selec
 import { bodyHolds } from '@web/spaces/document/document-body-focus';
 import { UNSUPPORTED_BLOCK } from '@web/spaces/document/document-unsupported-blocknote';
 import { DIVIDER } from '@web/spaces/document/document-divider';
+import { MATH_BLOCK } from '@web/spaces/document/document-math';
 import { heldRange } from '@web/spaces/document/document-table-leave-selection';
 import { MEDIA_BLOCK_TYPES, isMediaBlockType } from '@web/spaces/document/document-media-types';
 
@@ -114,6 +115,13 @@ const KEY = new PluginKey('documentSelectionPaint');
 export function noTextPaint(doc: ProseMirrorNode, range: { from: number; to: number }, holdsLines = true): Decoration[] {
   const found: Decoration[] = [];
   doc.nodesBetween(range.from, range.to, (node, pos) => {
+    // A formula block holds its source as text, but the source is hidden
+    // behind the rendered formula, which the browser does not paint
+    // (inner#1423): it is painted like the other blocks without text.
+    if (node.type.name === MATH_BLOCK) {
+      found.push(Decoration.node(pos, pos + node.nodeSize, { class: IN_SELECTION_CLASS }));
+      return false;
+    }
     if (node.isTextblock) {
       if (holdsLines && node.content.size === 0) {
         found.push(Decoration.node(pos, pos + node.nodeSize, { class: EMPTY_LINE_CLASS }));

@@ -181,6 +181,11 @@ function externalFormula(source: string, display: boolean): HTMLElement {
 /** What a formula's face shows. */
 interface FaceState {
   readonly source: string;
+  /**
+   * The source before the change a snapshot comparison shows, when it shows
+   * one; null everywhere else.
+   */
+  readonly before: string | null;
   readonly open: boolean;
   readonly selected: boolean;
   readonly editable: boolean;
@@ -207,6 +212,7 @@ function faceStore(initial: FaceState): FaceStore {
       const next = { ...state, ...patch };
       if (
         next.source === state.source &&
+        next.before === state.before &&
         next.open === state.open &&
         next.selected === state.selected &&
         next.editable === state.editable
@@ -225,6 +231,43 @@ function faceStore(initial: FaceState): FaceStore {
       };
     },
   };
+}
+
+/**
+ * A formula's source, read off its node. In a snapshot comparison the node
+ * holds the old and the new source interleaved, the removed characters marked
+ * deleted and the added ones inserted (BlockNote `AttributionExtension.ts`);
+ * rendered together they would draw a formula neither version has. Without
+ * the inserted characters it is the old source, without the deleted ones the
+ * new (inner#1423 design §6.7).
+ * @param node - The formula's node.
+ * @returns The source now, and the one before a change the node shows.
+ */
+function sourcesOf(node: PMNode): Pick<FaceState, 'source' | 'before'> {
+  let source = '';
+  let before = '';
+  let changed = false;
+  node.forEach((child) => {
+    const deleted = child.marks.some((mark) => mark.type.name === 'y-attributed-delete');
+    const inserted = child.marks.some((mark) => mark.type.name === 'y-attributed-insert');
+    changed ||= deleted || inserted;
+    if (!deleted) source += child.text ?? '';
+    if (!inserted) before += child.text ?? '';
+  });
+  return { source, before: changed ? before : null };
+}
+
+/**
+ * One rendered formula, or the face that stands for it.
+ * @param props - The preview.
+ * @param props.html - KaTeX's markup.
+ * @param props.className - Extra classes, such as a comparison's colour.
+ * @returns The preview.
+ */
+function FormulaMarkup({ html, className }: { html: string; className?: string }): React.JSX.Element {
+  // KaTeX's output for a source in our document: with `trust: false` it
+  // writes formula elements only (design §6.1).
+  return <span className={className} dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
 /** What the face does when the user opens or closes the box. */
@@ -258,7 +301,7 @@ const MathFace = React.memo(function MathFace({
   host: HTMLElement;
 }): React.JSX.Element {
   const t = useTranslation();
-  const { source, open, selected, editable } = React.useSyncExternalStore(store.subscribe, store.get);
+  const { source, before, open, selected, editable } = React.useSyncExternalStore(store.subscribe, store.get);
   const shown = open && editable;
   const rendered = React.useMemo(
     () => (source === '' ? null : renderFormula(source, !inline)),
@@ -300,8 +343,26 @@ const MathFace = React.memo(function MathFace({
   );
 
   const Wrapper = inline ? 'span' : 'div';
+  const compared = React.useMemo(
+    () =>
+      before === null || before === source
+        ? null
+        : { before: renderFormula(before, !inline).html, now: renderFormula(source, !inline).html },
+    [before, source, inline],
+  );
   const face =
-    source === '' ? (
+    compared !== null ? (
+      // A formula a comparison shows changed: the old one in the deletion's
+      // colours, the new one in the insertion's.
+      <>
+        {compared.before !== null && (
+          <FormulaMarkup html={compared.before} className={cn(!inline && 'block', 'doc-version-delete')} />
+        )}
+        {compared.now !== null && (
+          <FormulaMarkup html={compared.now} className={cn(!inline && 'block', 'doc-version-insert')} />
+        )}
+      </>
+    ) : source === '' ? (
       <span className='inline-flex items-center gap-1.5 rounded-chrome bg-muted px-2 py-1 text-sm text-muted-foreground'>
         <Sigma className='h-3.5 w-3.5' aria-hidden />
         {t('spaces.document.math.empty')}
@@ -312,9 +373,7 @@ const MathFace = React.memo(function MathFace({
         {t('spaces.document.math.error')}
       </span>
     ) : (
-      // KaTeX's output for a source in our document: with `trust: false` it
-      // writes formula elements only (design §6.1).
-      <span dangerouslySetInnerHTML={{ __html: preview }} />
+      <FormulaMarkup html={preview} />
     );
 
   return (
@@ -456,7 +515,7 @@ function mountFormula(
     store,
     update: (node) => {
       if (node.type.name !== typeName) return false;
-      store.set({ source: node.textContent });
+      store.set(sourcesOf(node));
       return true;
     },
     // Only what happens inside the source is the document's; the face around
@@ -489,6 +548,7 @@ function staticFormula(inline: boolean): { dom: HTMLElement; contentDOM: HTMLEle
 /** What `render` sees as `this` inside a node view. */
 interface RenderContext {
   readonly renderType?: 'nodeView' | 'dom';
+  readonly props?: { readonly node: PMNode };
 }
 
 /** The block as `render` receives it. */
@@ -569,7 +629,12 @@ export function mathBlockSpec(): unknown {
         const preview = editor.getExtension(SourceBlockWithPreviewExtension)!;
         view = mountFormula(
           false,
-          { source: textOf(block.content), open: false, selected: false, editable: editor.isEditable },
+          {
+            ...(this.props === undefined ? { source: textOf(block.content), before: null } : sourcesOf(this.props.node)),
+            open: false,
+            selected: false,
+            editable: editor.isEditable,
+          },
           {
             open: () => {
               if (!editor.isEditable) return;
@@ -613,7 +678,7 @@ export function mathInlineSpec(): unknown {
       parse: (element: HTMLElement) => (isInlineFormula(element) ? {} : undefined),
       parseContent: ({ el, schema }: { el: HTMLElement; schema: Schema }) =>
         isInlineFormula(el) ? sourceContent(sourceOf(el, MATH_SOURCE_ATTR), schema) : undefined,
-      render(this: RenderContext, ...[inlineContent, , editor, node, getPos]: InlineRenderArgs) {
+      render(this: RenderContext, ...[, , editor, node, getPos]: InlineRenderArgs) {
         if (this.renderType !== 'nodeView' || getPos === undefined || node === undefined) {
           return staticFormula(true);
         }
@@ -634,7 +699,7 @@ export function mathInlineSpec(): unknown {
         const stopReadOnly = readOnly.store.subscribe(sync);
         view = mountFormula(
           true,
-          { source: textOf(inlineContent.content), open: false, selected: false, editable: editor.isEditable },
+          { ...sourcesOf(node), open: false, selected: false, editable: editor.isEditable },
           {
             open: () => {
               const pos = getPos();

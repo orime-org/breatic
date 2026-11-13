@@ -27,6 +27,7 @@ import {
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { DocumentBlockMenu } from '@web/spaces/document/DocumentBlockMenu';
 import { canCommentOver } from '@web/spaces/document/document-comment-target';
+import { DocumentProjectProvider } from '@web/spaces/document/document-project-context';
 import type { HandleEditor, PressedBlock } from '@web/spaces/document/document-handle-commands';
 import { selectionOverBlockContent } from '@web/spaces/document/document-hovered-block';
 
@@ -70,16 +71,19 @@ function open(): Editor {
 function openMenuOver(editor: Editor, index: number): void {
   const block = (editor.document as unknown as Seen[])[index]!;
   render(
-    <DropdownMenu open>
-      <DropdownMenuTrigger />
-      <DropdownMenuContent>
-        <DocumentBlockMenu
-          editor={editor as unknown as HandleEditor}
-          block={block as unknown as PressedBlock}
-          close={vi.fn()}
-        />
-      </DropdownMenuContent>
-    </DropdownMenu>,
+    // Add to Agent is drawn only inside a project.
+    <DocumentProjectProvider projectId='project-1'>
+      <DropdownMenu open>
+        <DropdownMenuTrigger />
+        <DropdownMenuContent>
+          <DocumentBlockMenu
+            editor={editor as unknown as HandleEditor}
+            block={block as unknown as PressedBlock}
+            close={vi.fn()}
+          />
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </DocumentProjectProvider>,
   );
 }
 

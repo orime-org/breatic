@@ -13,6 +13,8 @@
  * it.
  */
 
+import { SourceBlockWithPreviewExtension } from '@blocknote/core/extensions';
+
 import type { BlockTypeId } from '@web/spaces/document/document-block-ticks';
 import { runBlockType } from '@web/spaces/document/document-block-run';
 import { DIVIDER } from '@web/spaces/document/document-divider';
@@ -22,6 +24,7 @@ import {
   type PressedBlock,
 } from '@web/spaces/document/document-handle-commands';
 import { QUOTED } from '@web/spaces/document/document-list-block';
+import { MATH_BLOCK } from '@web/spaces/document/document-math';
 import { markOwnUndoStep } from '@web/spaces/document/document-undo-step';
 import { DOC_TABLE, DOC_TABLE_CELL, DOC_TABLE_ROW } from '@web/spaces/document/document-table-nodes';
 
@@ -31,8 +34,22 @@ export interface TableSize {
   readonly cols: number;
 }
 
-/** One entry of the insert menu: a block type, the divider, or a table of a size. */
-export type InsertChoice = BlockTypeId | typeof DIVIDER | { readonly table: TableSize };
+/** The insert menu's formula entry (inner#1423). */
+export const FORMULA = 'formula';
+
+/** One entry of the insert menu: a block type, the divider, a formula, or a table of a size. */
+export type InsertChoice = BlockTypeId | typeof DIVIDER | typeof FORMULA | { readonly table: TableSize };
+
+/**
+ * Puts the caret in a formula block and opens its source box, as a click on it
+ * does: a formula made from the menu is empty and is written next.
+ * @param editor - The editor.
+ * @param id - The formula block's id.
+ */
+function openFormula(editor: HandleEditor, id: string): void {
+  editor.setTextCursorPosition(id, 'end');
+  editor.getExtension(SourceBlockWithPreviewExtension)?.store.setState((state) => ({ ...state, popupOpen: id }));
+}
 
 /**
  * An empty table of a size.
@@ -104,7 +121,8 @@ export function insertRowForMenu(
  * A block type is a new row turned into that type; a divider is a divider with
  * the new row under it (#124 A2); a table is the table with the new row under
  * it and the caret in its first cell (inner#1126 A1), so the user writes in
- * the table and has a line below it to carry on.
+ * the table and has a line below it to carry on. A formula is the formula with
+ * the new row under it and its source box open (inner#1423).
  * @param editor - The editor to write to.
  * @param row - The block the menu was opened on.
  * @param choice - The entry that was picked.
@@ -118,6 +136,12 @@ export function insertBelow(
 ): void {
   if (choice === DIVIDER) {
     insertRowForMenu(editor, row, [{ type: DIVIDER }]);
+  } else if (choice === FORMULA) {
+    // Like the divider and the table: the formula with a line under it to
+    // carry on in, and the box open on the formula.
+    const made = insertRowForMenu(editor, row, [{ type: MATH_BLOCK }]);
+    const formula = editor.getPrevBlock(made) as { id: string } | undefined;
+    if (formula !== undefined) openFormula(editor, formula.id);
   } else if (typeof choice === 'object') {
     const made = insertRowForMenu(editor, row, [emptyTable(choice.table, false)]);
     const table = editor.getPrevBlock(made) as { id: string } | undefined;
@@ -183,8 +207,8 @@ export function isEmptyParagraph(row: PressedBlock | undefined): boolean {
 /**
  * Puts the chosen block on the empty paragraph itself (#1097, A3/A4).
  *
- * A block type becomes the row's own type, so the row keeps its id. The
- * divider goes above the row, which stays the empty paragraph under it — what
+ * A block type, and the formula, become the row's own type, so the row keeps
+ * its id; the formula's source box opens. The divider goes above the row, which stays the empty paragraph under it — what
  * typing `---` at the start of a line leaves. The caret is set into the row in
  * both cases: the handle follows the pointer, so the user's caret can be in
  * any other row, and the menu closing only hands the focus back.
@@ -206,6 +230,11 @@ export function fillEmptyRow(
       // `updateBlock` keeps the row's id and merges its props, so the quote
       // stays on the table it becomes.
       editor.updateBlock(row.id, emptyTable(choice.table, row.props?.[QUOTED] === true) as never);
+    } else if (choice === FORMULA) {
+      // `updateBlock` keeps the row's id and its quote.
+      editor.updateBlock(row.id, { type: MATH_BLOCK } as never);
+      openFormula(editor, row.id);
+      return;
     } else if (choice === DIVIDER) {
       editor.insertBlocks(
         [{ type: DIVIDER, props: { [QUOTED]: row.props?.[QUOTED] === true } }] as never,
