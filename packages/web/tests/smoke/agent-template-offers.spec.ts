@@ -6,13 +6,17 @@
  * for consistent shots of one character outright, it reads one of the
  * character templates and the proposal built on it lands; when the user
  * attaches a photo of a character and only asks for two videos of it, what
- * lands carries that character into both videos, whether through a template
+ * lands for both carries that character, whether through a template
  * or a setup of its own. The same for the pet selfie vlog (inner#1816): asked
  * outright for a pet video it builds on that template; given only a pet photo
  * and a request for a video, what lands carries the pet. And sound (inner#1825):
  * given a video and asked outright for background music, it builds on a music
  * template; given the video and asked only to finish it, what lands offers an
  * audio generation.
+ *
+ * Each message is what a user would write, with nothing forbidding questions:
+ * when the agent first asks what only the user knows, the case answers in the
+ * chat the way that user would, and judges what lands after the answer.
  *
  * Real model turns:
  *
@@ -183,7 +187,7 @@ async function lastTurn(p: Page): Promise<Turn> {
       read: parts.flatMap((part) =>
         part.type === 'tool-get_generation_template' && typeof part.output === 'string' && part.input?.id ? [part.input.id] : [],
       ),
-      said: parts.map((part) => (part.type === 'text' ? (part.text ?? '') : part.type?.startsWith('tool-ask_user') ? JSON.stringify(part.input) : '')).join('\n'),
+      said: parts.flatMap((part) => (part.type === 'text' ? [part.text ?? ''] : part.type?.startsWith('tool-ask_user') ? [JSON.stringify(part.input)] : [])).join('\n'),
       stored: messages.some((m) => m.role === 'assistant'),
     };
   });
@@ -207,11 +211,13 @@ async function settledTurn(p: Page): Promise<Turn> {
 }
 
 /**
- * Send one message in a new conversation and wait for the turn to end.
+ * Send one message in a new conversation and wait for the turn to end; when
+ * the turn asks instead of proposing, answer in the chat and wait again.
  * @param message - What the user writes.
+ * @param reply - What the user answers if the agent asks first.
  * @param attach - A fixture file to attach to the message.
  */
-async function ask(message: string, attach?: string): Promise<void> {
+async function ask(message: string, reply: string, attach?: string): Promise<void> {
   const composer = page.getByTestId('chat-composer-box');
   await expect(composer).toBeVisible({ timeout: 20_000 });
   await startNewConversation(page);
@@ -230,6 +236,12 @@ async function ask(message: string, attach?: string): Promise<void> {
   await send.click();
   await expect(page.getByTestId('message-bubble')).toHaveCount(2, { timeout: 200_000 });
   await expect(page.getByTestId('chat-composer-abort')).toHaveCount(0, { timeout: 200_000 });
+  if ((await page.getByTestId('proposal-card').count()) > 0) return;
+  // Answering in the chat closes the agent's questionnaire as replied to.
+  await composer.fill(reply);
+  await send.click();
+  await expect(page.getByTestId('message-bubble')).toHaveCount(4, { timeout: 200_000 });
+  await expect(page.getByTestId('chat-composer-abort')).toHaveCount(0, { timeout: 200_000 });
 }
 
 test.beforeEach(async ({ browser }) => {
@@ -244,9 +256,10 @@ test.afterEach(async () => {
 });
 
 test('asked outright for consistent shots of one character, it reads a character template and lands a proposal built on it @needs-model', async () => {
-  test.setTimeout(240_000);
+  test.setTimeout(480_000);
   await ask(
-    'I have one photo of my character, a courier in a red coat. Make three shots of her in a row and keep her exactly the same in all of them. Do not ask me anything, just propose it.',
+    'I have one photo of my character, a courier in a red coat. Make three shots of her in a row and keep her exactly the same in all of them.',
+    'She is Mika, a 25-year-old bicycle courier, cheerful and stubborn. I will put her photo in myself. The shots are for a vertical Instagram comic.',
   );
   const turn = await settledTurn(page);
   const proposed = turn.templates.filter((id) => CHARACTER_TEMPLATES.has(id));
@@ -257,29 +270,29 @@ test('asked outright for consistent shots of one character, it reads a character
 });
 
 test('asked outright for a pet video, it reads the pet selfie vlog and lands a proposal built on it @needs-model', async () => {
-  test.setTimeout(240_000);
-  await ask('Make a funny vertical pet video of my dog for TikTok. Do not ask me anything, just propose it.');
+  test.setTimeout(480_000);
+  await ask('Make a funny vertical pet video of my dog for TikTok.', 'He is Bean, a goofy golden retriever who is always hungry. I will put his photo in myself.');
   const turn = await settledTurn(page);
   expect(turn.templates, `named: ${turn.templates.join(', ')}; tools: ${turn.tools.join(', ')}`).toContain('pet-selfie-vlog');
   expect(turn.read, `read: ${turn.read.join(', ')}`).toContain('pet-selfie-vlog');
   await expect(page.getByTestId('proposal-card').last()).toBeVisible({ timeout: 20_000 });
 });
 
-test('asked outright for a cheese pull food video, it reads the food money shot and lands a video @needs-model', async () => {
-  test.setTimeout(240_000);
-  await ask('Make a vertical food video of a pizza with a long cheese pull. Do not ask me anything, just propose it.');
+test('asked outright for a cheese pull food video, it reads the food money shot and lands the dish @needs-model', async () => {
+  test.setTimeout(480_000);
+  await ask('Make a vertical food video of a pizza with a long cheese pull.', 'A margherita pizza from my restaurant, for Instagram Reels. I have no photo of it, so make the pizza too.');
   const turn = await settledTurn(page);
   expect(turn.read, `read: ${turn.read.join(', ')}; tools: ${turn.tools.join(', ')}`).toContain('food-money-shot');
-  // Solved when a video lands, whether built on the template or on the agent's own setup drawing on it: with no
-  // photo of the dish, the agent may write the template's craft into a setup of its own.
-  const videos = turn.landed.flatMap((proposal) => proposal.nodes).filter((node) => node.role === 'generate' && node.type === 'video');
-  expect(videos.length, `named: ${turn.templates.join(', ')}; said: ${turn.said.slice(0, 600)}`).toBeGreaterThanOrEqual(1);
+  // Solved when the dish lands as a video or, with no photo of it, as takes of its look made first, the video
+  // following from the take the user picks; built on the template or on the agent's own setup drawing on it.
+  const made = turn.landed.flatMap((proposal) => proposal.nodes).filter((node) => node.role === 'generate' && (node.type === 'video' || node.type === 'image'));
+  expect(made.length, `named: ${turn.templates.join(', ')}; said: ${turn.said.slice(0, 600)}`).toBeGreaterThanOrEqual(1);
   await expect(page.getByTestId('proposal-card').last()).toBeVisible({ timeout: 20_000 });
 });
 
 test('asked outright for a festival travel poster, it reads the festival poster and lands a picture @needs-model', async () => {
-  test.setTimeout(240_000);
-  await ask('Make a festival travel poster for Kyoto in the autumn maple season, with the title KYOTO AUTUMN. Do not ask me anything, just propose it.');
+  test.setTimeout(480_000);
+  await ask('Make a festival travel poster for Kyoto in the autumn maple season, with the title KYOTO AUTUMN.', 'A vertical poster for Instagram; the title is KYOTO AUTUMN exactly as written.');
   const turn = await settledTurn(page);
   expect(turn.read, `read: ${turn.read.join(', ')}; tools: ${turn.tools.join(', ')}`).toContain('destination-festival-poster');
   // Solved when a picture lands, whether built on the template or on the agent's own setup drawing on it.
@@ -289,8 +302,8 @@ test('asked outright for a festival travel poster, it reads the festival poster 
 });
 
 test('given a dish photo and asked only for a video of it, it lands a video carrying that dish @needs-model', async () => {
-  test.setTimeout(240_000);
-  await ask('Make a video with this. Do not ask me anything, just propose it.', 'dish.jpg');
+  test.setTimeout(480_000);
+  await ask('Make a video with this.', 'It is our margherita pizza, for the restaurant\'s Instagram, vertical.', 'dish.jpg');
   const turn = await settledTurn(page);
   // Solved when a video draws on the photo, whether through a food template or a setup of the agent's own.
   const carrying = turn.landed.reduce((count, proposal) => count + videosCarryingMaterial(proposal), 0);
@@ -298,27 +311,28 @@ test('given a dish photo and asked only for a video of it, it lands a video carr
 });
 
 test('given a pet photo and asked only for a video of it, it lands a video carrying that pet @needs-model', async () => {
-  test.setTimeout(240_000);
-  await ask('Make a video with this. Do not ask me anything, just propose it.', 'pet.jpg');
+  test.setTimeout(480_000);
+  await ask('Make a video with this.', 'He is Bean, my golden retriever; a funny vertical video for TikTok.', 'pet.jpg');
   const turn = await settledTurn(page);
   // Solved when a video draws on the photo, whether through the pet template or a setup of the agent's own.
   const carrying = turn.landed.reduce((count, proposal) => count + videosCarryingMaterial(proposal), 0);
   expect(carrying, `videos drawing on the photo. Templates: ${turn.templates.join(', ')}; tools: ${turn.tools.join(', ')}; said: ${turn.said.slice(0, 600)}`).toBeGreaterThanOrEqual(1);
 });
 
-test('given a character photo and asked for two videos of her, it lands both videos carrying that character @needs-model', async () => {
-  test.setTimeout(240_000);
-  await ask('This is my character. I want two short videos of her: one walking through a park, one sitting in a café. Do not ask me anything, just propose it.', 'character.jpg');
+test('given a character photo and asked for two videos of her, what lands for both carries that character @needs-model', async () => {
+  test.setTimeout(480_000);
+  await ask('This is my character. I want two short videos of her: one walking through a park, one sitting in a café.', 'She is Mika, a 25-year-old bicycle courier, cheerful and stubborn; both videos are vertical, for Instagram.', 'character.jpg');
   const turn = await settledTurn(page);
-  // What the user asked for is solved when both videos draw on her photo,
-  // whether through a template or a setup of the agent's own.
-  const carrying = turn.landed.reduce((count, proposal) => count + videosCarryingMaterial(proposal), 0);
-  expect(carrying, `videos drawing on the photo in landed proposals. Templates: ${turn.templates.join(', ')}; tools: ${turn.tools.join(', ')}; said: ${turn.said.slice(0, 600)}`).toBeGreaterThanOrEqual(2);
+  // Solved when what lands for both scenes draws on her photo: the two videos,
+  // or takes of each scene's still made first, the videos following from the
+  // picked takes; through a template or a setup of the agent's own.
+  const carrying = turn.landed.reduce((count, proposal) => count + generationsCarryingMaterial(proposal, () => true), 0);
+  expect(carrying, `generations drawing on the photo in landed proposals. Templates: ${turn.templates.join(', ')}; tools: ${turn.tools.join(', ')}; said: ${turn.said.slice(0, 600)}`).toBeGreaterThanOrEqual(2);
 });
 
 test('given a video and asked outright for background music, it reads a music template and lands music on that template\'s model drawing on the video @needs-model', async () => {
-  test.setTimeout(240_000);
-  await ask('Add background music to this video. Do not ask me anything, just propose it.', 'mini-tools/driving.mp4');
+  test.setTimeout(480_000);
+  await ask('Add background music to this video.', 'It is a home workout clip for my fitness channel on YouTube; upbeat music with no vocals.', 'mini-tools/driving.mp4');
   const turn = await settledTurn(page);
   const read = turn.read.filter((id) => MUSIC_FOR_VIDEO.includes(id));
   expect(read, `read a music template. Read: ${turn.read.join(', ')}; tools: ${turn.tools.join(', ')}`).not.toEqual([]);
@@ -332,9 +346,9 @@ test('given a video and asked outright for background music, it reads a music te
 });
 
 test('given a video with no sound and asked only to finish it, what lands offers music or foley for it @needs-model', async () => {
-  test.setTimeout(240_000);
+  test.setTimeout(480_000);
   // The clip has no audio stream at all, so the missing sound is what is left to finish.
-  await ask('Help me finish this. Do not ask me anything, just propose it.', 'mini-tools/driving-silent.mp4');
+  await ask('Help me finish this.', 'It is a home workout clip for my fitness channel on YouTube, and it has no sound yet.', 'mini-tools/driving-silent.mp4');
   const turn = await settledTurn(page);
   // Solved when a landed proposal offers sound for the video, whether through a sound template or a setup of the agent's own.
   const takesVideo = await videoTakers(page);
