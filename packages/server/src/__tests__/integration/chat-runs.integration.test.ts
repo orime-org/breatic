@@ -178,6 +178,19 @@ describe("POST /chat/message", () => {
     await untilIdle(who.conversationId);
   });
 
+  for (const [what, body] of [
+    ["words with a NUL", { message: "a\u0000b" }],
+    ["an attachment with a lone surrogate", { message: "see this", attached_chips: [{ id: "c1", type: "text", name: "t.txt", data_snapshot: { text: "x\ud83dy" } }] }],
+  ] as const) {
+    it(`refuses a message whose text the store cannot hold: ${what}`, async () => {
+      const who = await seedOwner(sql, app);
+      const res = await send(app, who, body);
+      expect(res.status).toBe(422);
+      expect(await getRedis().exists(keysOf(who.conversationId).queue)).toBe(0);
+      expect(await getRedis().exists(keysOf(who.conversationId).taken)).toBe(0);
+    });
+  }
+
   it("stores the reply under the id its stream opened with, so a page reads it back under the name it drew", async () => {
     const who = await seedOwner(sql, app);
     await send(app, who, { message: "first" });

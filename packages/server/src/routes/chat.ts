@@ -14,6 +14,7 @@ import { Hono } from "hono";
 import type { Context } from "hono";
 import { randomUUID } from "node:crypto";
 import { runAfterReply } from "@server/utils/after-reply.js";
+import { holdsOnlyStorableText } from "@server/utils/storable-text.js";
 import { validate } from "@server/middleware/validate.js";
 import { runOnce } from "@server/middleware/run-once.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
@@ -235,6 +236,12 @@ chat.post("/message", acceptTransferBody("chat_message"), validate("json", chatM
   );
 
   assertSayable(body.message, body.attached_chips, body, body.shared_spaces);
+  // A message is stored when its run opens, and a run reads what it takes in
+  // as it goes: text the store refuses would fail every run that tried.
+  if (!holdsOnlyStorableText(body)) {
+    logger.warn({ userId: user.id, conversationId: conversation.id }, "chat_message_unstorable");
+    throw new ValidationError(t("server.error.validation"));
+  }
 
   // A turn needs a balance above zero to start (#296). Payments off: no check.
   // Checked before an answer is taken, so a refused answer leaves the card
