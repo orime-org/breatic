@@ -113,8 +113,9 @@ async function videoTakers(p: Page): Promise<Set<string>> {
 /**
  * How many audio generations in a proposal answer for the user's video: on a
  * model with a slot taking a video, one that draws on the video; on a model
- * with none (a background-music model), one standing in a proposal that
- * carries the video.
+ * with none (a background-music model), one made while the user had attached
+ * the video. A group may not hold a source node nothing in it draws on, so
+ * such music lands without the video beside it.
  * @param proposal - The proposal, as the agent sent it.
  * @param takesVideo - The models with a slot taking a video.
  * @param attached - The addresses of the files the user attached: the video.
@@ -132,9 +133,8 @@ function audioForVideo(
     return node.type === 'audio' && counts(model) && takesVideo.has(model) === slotted;
   };
   const drawing = generationsCarryingMaterial(proposal, (node) => fits(node, true), attached).length;
-  const carried = proposal.nodes.some((node) => node.material !== undefined && attached.has(node.material));
-  const beside = carried ? proposal.nodes.filter((node) => node.role === 'generate' && fits(node, false)).length : 0;
-  return drawing + beside;
+  const unslotted = attached.size > 0 ? proposal.nodes.filter((node) => node.role === 'generate' && fits(node, false)).length : 0;
+  return drawing + unslotted;
 }
 
 /**
