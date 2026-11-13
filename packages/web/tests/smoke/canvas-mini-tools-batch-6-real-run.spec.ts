@@ -371,9 +371,31 @@ function videoStream(url: string): Probe['streams'][number] {
  * @returns Each frame's 64 x 36 grey pixels, in order.
  */
 function lastFrames(url: string): Buffer[] {
+  return greyFrames(url, ['-sseof', '-0.5']);
+}
+
+/**
+ * Every frame of a stored video, small and grey.
+ * @param url - The URL.
+ * @param before - Input options, such as where to start reading.
+ * @returns Each frame's 64 x 36 grey pixels, in order.
+ */
+function greyFrames(url: string, before: string[] = []): Buffer[] {
   const size = 64 * 36;
-  const tail = execFileSync('ffmpeg', ['-v', 'error', '-sseof', '-0.5', '-i', url, '-vf', 'scale=64:36,format=gray', '-f', 'rawvideo', 'pipe:']);
-  return Array.from({ length: Math.floor(tail.length / size) }, (_, index) => tail.subarray(index * size, (index + 1) * size));
+  const all = execFileSync('ffmpeg', ['-v', 'error', ...before, '-i', url, '-vf', 'scale=64:36,format=gray', '-f', 'rawvideo', 'pipe:'], { maxBuffer: 1 << 28 });
+  return Array.from({ length: Math.floor(all.length / size) }, (_, index) => all.subarray(index * size, (index + 1) * size));
+}
+
+/**
+ * Which of a source's frames a picture is nearest to, among those around the one expected.
+ * @param picture - The picture.
+ * @param source - The source's frames.
+ * @param expected - The frame it should be.
+ * @returns The nearest frame's index.
+ */
+function nearestFrame(picture: Buffer, source: readonly Buffer[], expected: number): number {
+  const near = [expected - 2, expected - 1, expected, expected + 1, expected + 2].filter((index) => index >= 0 && index < source.length);
+  return near.reduce((best, index) => (pictureDifference(picture, source[index]!) < pictureDifference(picture, source[best]!) ? index : best));
 }
 
 /**
@@ -692,6 +714,67 @@ test('transitions: a second video at a lower rate keeps every frame, so the pict
     const ending = lastFrames(joined!.content).at(-1)!;
     const [beforeLast, last] = lastFrames(await contentOf(c, 'clip3a.mp4')).slice(-2);
     expect(pictureDifference(ending, last!)).toBeLessThan(pictureDifference(ending, beforeLast!));
+  } finally {
+    await deleteSpace(page, c.spaceId);
+  }
+});
+
+test('transitions: after a crossfade from 30 fps into 25 fps, each output frame shows the second video\'s frame at that moment @needs-ingest @needs-storage @needs-ffmpeg', async ({ page }) => {
+  const c = await openCanvas(page, 'transitions-crossfade-rates');
+  try {
+    await upload(c, 'clip6at30.mp4', 'clip3a.mp4');
+    await presented(c, 'clip6at30.mp4');
+    await presented(c, 'clip3a.mp4');
+    await openTool(c, 'clip6at30.mp4', 'video.transitions');
+    await c.page.getByTestId('video-timeline-input').click();
+    await nodeOf(c, 'clip3a.mp4').click();
+    const dialog = c.page.getByTestId('video-timeline-dialog');
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('combobox').nth(1).click();
+    await c.page.getByRole('option', { name: 'Crossfade' }).click();
+    // 0.5 s ends inside the second video's frame 12 (0.48 to 0.52 s), so the chunks after it start inside a source frame.
+    const overlap = dialog.getByTestId('video-clip-overlap');
+    await overlap.fill('0.5');
+    await overlap.press('Enter');
+    const made = await runBuilding(c, () => dialog.getByRole('button', { name: 'Export' }).click(), 1);
+    await expect(dialog).toBeHidden({ timeout: 60_000 });
+    const [joined] = await stored(c, made);
+    const output = greyFrames(joined!.content);
+    const source = greyFrames(await contentOf(c, 'clip3a.mp4'));
+    // 180 frames of the first video less the 15-frame window, then 75 frames of the second at 30 fps: 255.
+    expect(output).toHaveLength(255);
+    // Output frame k after the window shows the second video's frame covering (k − 165) / 30 s.
+    const wrong = output.slice(180).map((picture, at) => ({ k: 180 + at, expected: Math.floor(((15 + at) * 25) / 30) }))
+      .filter(({ k, expected }) => nearestFrame(output[k]!, source, expected) !== expected);
+    expect(wrong).toEqual([]);
+  } finally {
+    await deleteSpace(page, c.spaceId);
+  }
+});
+
+test('transitions: a crossfade one output frame long exports @needs-ingest @needs-storage @needs-ffmpeg', async ({ page }) => {
+  const c = await openCanvas(page, 'transitions-one-frame');
+  try {
+    await upload(c, 'clip3a.mp4', 'clip3b.mp4');
+    await presented(c, 'clip3a.mp4');
+    await presented(c, 'clip3b.mp4');
+    await openTool(c, 'clip3a.mp4', 'video.transitions');
+    await c.page.getByTestId('video-timeline-input').click();
+    await nodeOf(c, 'clip3b.mp4').click();
+    const dialog = c.page.getByTestId('video-timeline-dialog');
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('combobox').nth(1).click();
+    await c.page.getByRole('option', { name: 'Crossfade' }).click();
+    // The shortest length the field allows is one output frame.
+    const overlap = dialog.getByTestId('video-clip-overlap');
+    await overlap.fill('0');
+    await overlap.press('Enter');
+    await expect(overlap).toHaveValue('0.04');
+    const made = await runBuilding(c, () => dialog.getByRole('button', { name: 'Export' }).click(), 1);
+    await expect(dialog).toBeHidden({ timeout: 60_000 });
+    const [joined] = await stored(c, made);
+    // 75 + 75 frames, one of them shared by the crossfade.
+    expect(greyFrames(joined!.content)).toHaveLength(149);
   } finally {
     await deleteSpace(page, c.spaceId);
   }
