@@ -15,6 +15,7 @@
  */
 
 import { columnsBarredAt, holdsColumns } from '@web/spaces/document/document-column-entry';
+import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-nodes';
 import { blockToNode, type BlockNoteEditor } from '@blocknote/core';
 import { Fragment, Slice, type Node as PMNode, type ResolvedPos, type Schema } from '@tiptap/pm/model';
 import { NodeSelection, TextSelection, type Transaction } from '@tiptap/pm/state';
@@ -123,6 +124,10 @@ function judged(nodes: readonly PMNode[], judge: JudgeMedium, schema: Schema): P
     // A nested group left with nothing goes with what it held.
     if (node.type.name === 'blockGroup' && children.length === 0) return [];
     if (isTableCell(node) && children.length === 0) children.push(schema.nodes['blockContainer'].create(null, schema.nodes['paragraph'].create()));
+    // A column left with nothing goes, and a group left with one column or
+    // none lays out what is left (inner#1314 design 5.2).
+    if (node.type.name === DOC_COLUMN && children.length === 0) return [];
+    if (node.type.name === DOC_COLUMN_LIST && children.length <= 1) return children.flatMap((column) => column.children);
     return [node.copy(Fragment.from(children))];
   });
 }

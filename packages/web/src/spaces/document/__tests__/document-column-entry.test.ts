@@ -118,6 +118,20 @@ describe('pasting columns', () => {
     expect(toast.warning).toHaveBeenCalledWith(refusal());
   });
 
+  it('drops a column whose only block is a medium left out, and the group with it', async () => {
+    const { editor, sink } = open([para('lead'), para('')]);
+    await act(async () => {
+      await settled();
+    });
+    select(editor, editor.prosemirrorView.state.doc.content.size - 3);
+    await pasteBlocks(editor, [
+      columnsBlock(['x'], { blocks: [{ type: 'image', props: { url: 'http://elsewhere.example/a.png' } }] }),
+    ]);
+    expect(groups(editor)).toBe(0);
+    expect(editor.prosemirrorView.state.doc.textContent).toContain('x');
+    expect(sink.onLeftOut).toHaveBeenCalledWith(1);
+  });
+
   it('lands a copied group in a cell', async () => {
     const editor = await openReady([tableBlock({ rows: [{ cells: [{ blocks: [para('')] }, 'b'] }] })]);
     let empty = -1;
