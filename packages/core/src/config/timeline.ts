@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
-import { MAX_TIMELINE_ASSET_PAGE_SIZE, TIMELINE_PREVIEW_DEFAULTS } from "@breatic/shared";
+import { MAX_TIMELINE_ASSET_PAGE_SIZE, TIMELINE_FRAME_PRESETS, TIMELINE_PREVIEW_DEFAULTS, timelineFramePresetOf } from "@breatic/shared";
 import { MONOREPO_ROOT } from "@core/config/env.js";
 
 const positiveInt = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
@@ -90,6 +90,11 @@ export const timelineConfigSchema = z.object({
   preview: previewSchema.prefault({}),
 }).superRefine((config, ctx) => {
   if (config.assets.page_size > config.assets.page_max) ctx.addIssue({ code: "custom", path: ["assets", "page_size"], message: "page_size exceeds page_max" });
+  // A new Timeline must open on one of the ratio control's presets (#1502).
+  if (timelineFramePresetOf(config.defaults) === undefined) {
+    const sizes = Object.values(TIMELINE_FRAME_PRESETS).map((size) => `${size.width}x${size.height}`).join(", ");
+    ctx.addIssue({ code: "custom", path: ["defaults"], message: `defaults width and height must be one of ${sizes}` });
+  }
 });
 
 /** Validated runtime Timeline settings. */

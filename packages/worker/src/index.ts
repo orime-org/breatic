@@ -122,6 +122,15 @@ try {
   logger.error({ err }, "model_catalog_invalid");
   await exitProcess(1);
 }
+
+// The Timeline config is lazy like the ones above; a default frame outside the presets (#1502) would otherwise
+// surface on the first Timeline request instead of at startup.
+try {
+  getTimelineConfig();
+} catch (err) {
+  logger.error({ err }, "timeline_config_invalid");
+  await exitProcess(1);
+}
 import { runTask } from "@worker/handlers/dispatch.js";
 import { reclaimFailedJobById } from "@worker/handlers/failed-job-cleanup.js";
 import { runUrlIngest, type UrlIngestJobData } from "@worker/handlers/url-ingest.js";
