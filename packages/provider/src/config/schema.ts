@@ -87,6 +87,17 @@ const extraStepSchema = z.strictObject({
   pricing: pricingRule.optional(),
 });
 
+// Where each kind of step runs: the model's own call sends the ids the steps before it made,
+// and the steps after it read what it made.
+const STEP_AT = {
+  upload_reference: "before",
+  upload_melody: "before",
+  vocal: "before",
+  element: "before",
+  speak: "after",
+  rig: "after",
+} as const satisfies Record<z.infer<typeof extraStepSchema>["kind"], "before" | "after">;
+
 // Every binding carries its price: the cheapest mode and the
 // estimate both read it, and the shipped bindings all have one.
 const bindingSchema = z.strictObject({
@@ -426,7 +437,8 @@ export function parseProviderConfig(input: ProviderConfigInput): ProviderConfig 
     if (vendor !== undefined && vendor.length > 0) rejects[model] = vendor.map(({ source: _source, ...limit }) => limit);
     const bindings = overridden(model, upstreams, raw.routing?.models?.[model]?.weights, problems);
     checkList(model, bindings, raw.upstreams, problems);
-    const sentByWaveSpeed = new Set(bindings.filter((b) => raw.upstreams[b.upstream]?.kind === "wavespeed").flatMap((b) => Object.keys(b.params ?? {})));
+    const sentByWaveSpeed = new Set(bindings.filter((b) => raw.upstreams[b.upstream]?.kind === "wavespeed")
+      .flatMap((b) => [...Object.keys(b.params ?? {}), ...(b.extra_steps ?? []).flatMap((s) => (s.for_param === undefined ? [] : [s.for_param]))]));
     for (const binding of bindings) {
       const { upstream } = binding;
       // An undeclared upstream is already reported by checkList.
@@ -436,8 +448,8 @@ export function parseProviderConfig(input: ProviderConfigInput): ProviderConfig 
       if (adapter !== undefined) {
         for (const step of binding.extra_steps ?? []) {
           if (adapter.steps[step.kind] === undefined) problems.push(`${model}: the binding to "${upstream}" has an extra step of kind "${step.kind}", which the ${kind} adapter does not speak`);
-          if (step.kind === "speak" && (binding.reused_by === undefined || step.at !== "after")) problems.push(`${model}: the binding to "${upstream}" has a speak step that does not follow its own voice call (it needs reused_by and at: after)`);
-          if (step.kind === "rig" && step.at !== "after") problems.push(`${model}: the binding to "${upstream}" has a rig step before its own call, which makes the model it rigs (it needs at: after)`);
+          if (step.at !== STEP_AT[step.kind]) problems.push(`${model}: the binding to "${upstream}" has a ${step.kind} step at: ${step.at}, which runs ${STEP_AT[step.kind]} the model's own call (it needs at: ${STEP_AT[step.kind]})`);
+          else if (step.kind === "speak" && binding.reused_by === undefined) problems.push(`${model}: the binding to "${upstream}" has a speak step with no voice call of its own to follow (it needs reused_by)`);
         }
       }
       if (kind === "fal" && binding.output_field === undefined) problems.push(`${model}: the binding to "${upstream}" has no output_field, which a fal binding needs`);
@@ -569,6 +581,9 @@ function coverageProblems(model: string, binding: MediaBinding, params: CatalogS
   const at = `${model}: "${binding.upstream}"`;
   for (const param of Object.keys(binding.drops ?? {})) {
     if (params[param] === undefined) problems.push(`${at} drops param "${param}", which the model does not have`);
+  }
+  for (const step of binding.extra_steps ?? []) {
+    if (step.for_param !== undefined && params[step.for_param] === undefined) problems.push(`${at} has a ${step.kind} step for param "${step.for_param}", which the model does not have`);
   }
   for (const [param, declared] of Object.entries(params)) {
     const bound = binding.params?.[param];

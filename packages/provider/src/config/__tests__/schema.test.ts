@@ -177,6 +177,17 @@ describe("parseProviderConfig", () => {
     expect(problems).toEqual([expect.stringMatching(/seedance.*"wavespeed".*rig/)]);
   });
 
+  it.each(["upload_reference", "upload_melody", "vocal", "element"])("refuses a %s step after the model's own call, which its id never reaches, naming model and upstream", (kind) => {
+    const step = { kind, endpoint: "x/step", at: "after", for_param: "ref" };
+    const problems = problemsOf(input([bind("wavespeed", 1, { extra_steps: [step] } as unknown as Partial<MediaBinding>)]));
+    expect(problems).toEqual([expect.stringMatching(new RegExp(`seedance.*"wavespeed".*${kind}.*at: after`))]);
+  });
+
+  it.each(["upload_reference", "upload_melody", "vocal", "element"])("loads a %s step before the model's own call", (kind) => {
+    const step = { kind, endpoint: "x/step", at: "before", for_param: "ref" };
+    expect(problemsOf(input([bind("wavespeed", 1, { extra_steps: [step] } as unknown as Partial<MediaBinding>)]))).toEqual([]);
+  });
+
   it("refuses a binding without pricing", () => {
     const problems = problemsOf(input([{ upstream: "wavespeed", weight: 1, model_id: "x" } as MediaBinding]));
     expect(problems).toHaveLength(1);
@@ -313,6 +324,12 @@ describe("assertBindsCatalog", () => {
   it("reports a drop of a param the model does not have", () => {
     const problems = catalogProblems([bind("fal", 2, { params: { duration: { field: "duration" }, aspect_ratio: { field: "aspect_ratio" } }, drops: { colour: "*" } })]);
     expect(problems).toEqual(['seedance: "fal" drops param "colour", which the model does not have']);
+  });
+
+  it("reports a step serving a param the model does not have", () => {
+    const step = { kind: "rig", endpoint: "tripo3d/rig", at: "after", for_param: "rig_skeletn", optional: true, pricing };
+    const problems = catalogProblems([bind("fal", 2, { drops: { duration: "*", aspect_ratio: "*" }, extra_steps: [step] } as unknown as Partial<MediaBinding>)]);
+    expect(problems).toEqual(['seedance: "fal" has a rig step for param "rig_skeletn", which the model does not have']);
   });
 
   it("reports a catalog model that has no binding at all", () => {
