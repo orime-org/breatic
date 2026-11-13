@@ -102,7 +102,7 @@ export interface DocumentSchema {
  * date did not move would be refused wherever an older one is published.
  */
 export const DOCUMENT_SCHEMA: DocumentSchema = {
-  publishedAt: "2026-10-31T04:33:58Z",
+  publishedAt: "2026-11-13T01:33:09Z",
 
   // Attribute names are here because adding an attribute to a node both sides
   // already know (a heading gaining an alignment, say) leaves no trace in the
@@ -170,6 +170,10 @@ export const DOCUMENT_SCHEMA: DocumentSchema = {
       "textAlignment",
       "textColor",
     ],
+    // A formula's LaTeX source is its text (inner#1423): a block of its own,
+    // and one inside a line.
+    math: [],
+    mathBlock: ["quoted"],
     numberedListItem: [
       "backgroundColor",
       "number",
@@ -239,6 +243,8 @@ export const DOCUMENT_SCHEMA: DocumentSchema = {
     hardBreak: "",
     heading: "inline*",
     image: "",
+    math: "text*",
+    mathBlock: "text*",
     numberedListItem: "inline*",
     paragraph: "inline*",
     table: "tableRow+",
