@@ -108,12 +108,29 @@ describe('cut handles on the filmstrip (demo PlaybackStrip cuts)', () => {
     const handle = screen.getByTestId('video-cut-handle-0');
     fireEvent.pointerDown(handle, { button: 0, clientX: 140, pointerId: 1 });
     expect(handle).toHaveFocus();
+    // 2.5 s lies inside frame 62 (2.48 to 2.52 s), so the handle and the stored cut take that frame's start.
     fireEvent.pointerMove(handle, { clientX: 200, pointerId: 1 });
-    expect(screen.getByTestId('video-cut-handle-0').style.left).toBe('50%');
+    expect(screen.getByTestId('video-cut-handle-0').style.left).toBe('49.6%');
     expect(onChange).not.toHaveBeenCalled();
     fireEvent.pointerUp(handle, { clientX: 209, pointerId: 1 });
-    expect(onChange).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ params: { cuts: [2.5, 3] } }));
+    expect(onChange).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ params: { cuts: [2.48, 3] } }));
     expect(onSeek).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['past the end', 340, 4.96],
+    ['onto the end', 300, 4.96],
+    ['past the start', 40, 0.04],
+    ['onto the first frame', 101, 0.04],
+  ])('keeps a handle dragged %s one frame inside the video and commits it there', (_where, clientX, cut) => {
+    const { onChange } = mount({ draft: draftWith([2]) });
+    layOutTrack();
+    const handle = screen.getByTestId('video-cut-handle-0');
+    fireEvent.pointerDown(handle, { button: 0, clientX: 180, pointerId: 1 });
+    fireEvent.pointerMove(handle, { clientX, pointerId: 1 });
+    expect(screen.getByTestId('video-cut-handle-0').style.left).toBe(`${String(cut * 100 / 5)}%`);
+    fireEvent.pointerUp(handle, { clientX, pointerId: 1 });
+    expect(onChange).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ params: { cuts: [cut] } }));
   });
 
   it('leaves the cut where it is when a handle is only clicked to focus it', () => {
@@ -360,9 +377,9 @@ describe('typing a cut row in place (web AGENTS "Inputs send what they show")', 
     const handle = screen.getByTestId('video-cut-handle-0');
     fireEvent.pointerDown(handle, { button: 0, clientX: 160, pointerId: 1 });
     fireEvent.pointerMove(screen.getByTestId('video-cut-handle-0'), { clientX: 200, pointerId: 1 });
-    expect(screen.getByTestId('video-cut-handle-0').style.left).toBe('50%');
+    expect(screen.getByTestId('video-cut-handle-0').style.left).toBe('49.6%');
     fireEvent.pointerUp(screen.getByTestId('video-cut-handle-0'), { clientX: 200, pointerId: 1 });
-    expect(changes.at(-1)).toEqual([2.5, 3]);
+    expect(changes.at(-1)).toEqual([2.48, 3]);
   });
 
   it('keeps the focus and the typed text on the typed row when the bin of another row is pressed', () => {

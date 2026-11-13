@@ -474,14 +474,18 @@ function VideoCutEditor(props: VideoToolControlsProps & { table: VideoPresentati
    */
   const moveTo = (index: number, value: number): CutRow[] => handles.map((row, position) => position === index ? { id: row.id, value } : row);
   /**
-   * The source time under the pointer on the strip a handle sits on, kept inside the video.
+   * The start of the frame under the pointer on the strip a handle sits on, the cut a drag there makes; a drag past either
+   * end keeps one frame on that side, as the demo's drag stays inside the video.
    * @param event - The pointer event on a handle.
-   * @returns The time in seconds.
+   * @returns The frame start in seconds.
    * @throws {never} Never.
    */
-  const timeAt = (event: React.PointerEvent<HTMLElement>): number => {
+  const frameStartAt = (event: React.PointerEvent<HTMLElement>): number => {
     const box = event.currentTarget.parentElement?.getBoundingClientRect();
-    return box === undefined || box.width <= 0 ? 0 : Math.max(0, Math.min(1, (event.clientX - box.left) / box.width)) * duration;
+    const time = box === undefined || box.width <= 0 ? 0 : Math.max(0, Math.min(1, (event.clientX - box.left) / box.width)) * duration;
+    const last = presentationFrameCount(table) - 1;
+    // A one-frame video has no frame a cut can start, and the release below commits nothing at 0.
+    return last < 1 ? 0 : presentationFrameAt(table, Math.max(1, Math.min(last, presentationCoveringFrame(table, time)))).pts;
   };
   /**
    * Writes a typed row in place, unsorted and not merged, so the typed text stays on the row being typed.
@@ -555,7 +559,7 @@ function VideoCutEditor(props: VideoToolControlsProps & { table: VideoPresentati
           gesture.current = draft.revision;
           setDragging({ index, time: snapped[index]!, moved: false });
         }}
-        onPointerMove={(event) => { if (dragging?.index !== index) return; event.stopPropagation(); setDragging({ index, time: timeAt(event), moved: true }); }}
+        onPointerMove={(event) => { if (dragging?.index !== index) return; event.stopPropagation(); setDragging({ index, time: frameStartAt(event), moved: true }); }}
         onPointerUp={(event) => {
           if (dragging?.index !== index) return;
           event.stopPropagation();
