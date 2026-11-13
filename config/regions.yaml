@@ -25,12 +25,21 @@
 # limits_cache_ttl_ms: how long a region caches what the global region says
 #   about a Studio's membership: collab's editor ceiling when a Space opens,
 #   and the storage ceiling with the usage of the admin's other regions.
+# storage_usage_sync_interval_ms: how often each region reports what its
+#   Studios store to the global region.
+# slug_reservation_sweep_interval_ms: how often the global region looks for
+#   slugs held for a rename that never reached it.
+# slug_reservation_stale_ms: how long a rename's slug stays held before the
+#   sweep lets it go.
 global_api_timeout_ms: 5000
 region_probe_timeout_ms: 2000
 cross_region_fanout_timeout_ms: 2000
 outbox_relay_interval_ms: 1000
 profile_cache_ttl_ms: 30000
 limits_cache_ttl_ms: 60000
+storage_usage_sync_interval_ms: 30000
+slug_reservation_sweep_interval_ms: 60000
+slug_reservation_stale_ms: 600000
 transfer_accepting_sweep_interval_ms: 60000
 transfer_accepting_stale_ms: 60000
 studio_creation_sweep_interval_ms: 60000

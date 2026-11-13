@@ -459,6 +459,21 @@ export async function usageByStudios(studioIds: string[]): Promise<number> {
 }
 
 /**
+ * What each Studio in this region uses, for the report sent to the global
+ * region (inner#1955).
+ * @returns Live asset bytes per Studio that holds any.
+ * @throws {Error} When the database query fails.
+ */
+export async function usagePerStudio(): Promise<{ studioId: string; bytes: number }[]> {
+  const rows = await db
+    .select({ studioId: studioAssets.studioId, bytes: sql<string>`COALESCE(SUM(${studioAssets.sizeBytes}), 0)` })
+    .from(studioAssets)
+    .where(isNull(studioAssets.deletedAt))
+    .groupBy(studioAssets.studioId);
+  return rows.map((row) => ({ studioId: row.studioId, bytes: Number(row.bytes) }));
+}
+
+/**
  * Read any global live reference to an exact key using the caller's optional transaction.
  * @param key - Exact candidate key.
  * @param tx - Optional caller transaction.

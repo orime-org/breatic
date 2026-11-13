@@ -559,3 +559,22 @@ export async function sumUsageElsewhere(adminUserId: string, exceptRegion: strin
     );
   return Number(row?.bytes ?? 0);
 }
+
+/**
+ * Let go of slugs held for renames that never reached the global region.
+ * @param olderThanMs - How long a reservation may stay held.
+ * @returns How many it let go.
+ */
+export async function releaseStaleSlugReservations(olderThanMs: number): Promise<number> {
+  const rows = await db
+    .update(slugReservations)
+    .set({ deletedAt: new Date() })
+    .where(
+      and(
+        isNull(slugReservations.deletedAt),
+        sql`${slugReservations.createdAt} < now() - (${olderThanMs} * interval '1 millisecond')`,
+      ),
+    )
+    .returning({ slug: slugReservations.slug });
+  return rows.length;
+}

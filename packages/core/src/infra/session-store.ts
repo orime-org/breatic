@@ -18,6 +18,7 @@ import { createHash } from "node:crypto";
 import type Redis from "ioredis";
 import { env } from "@core/config/env.js";
 import { publishSessionsRevoked } from "@core/infra/control-events.js";
+import { createQueue } from "@core/infra/queue.js";
 import { redactSessionError } from "@core/infra/session-error.js";
 
 /**
@@ -137,12 +138,35 @@ export function sessionId(token: string): string {
  */
 async function announce(userId: string, tokens: string[]): Promise<RevokeOutcome> {
   if (tokens.length === 0) return {};
+  const sids = tokens.map(sessionId);
   try {
-    await publishSessionsRevoked(userId, tokens.map(sessionId));
+    await publishSessionsRevoked(userId, sids);
+    await forwardToRegions(userId, sids);
     return {};
   } catch (err) {
     return { signalFailure: err };
   }
+}
+
+/** The worker queue that carries revocations to the other regions (inner#1955). */
+export const IDENTITY_REVOCATION_FORWARD_QUEUE = "identity-revocation-forward";
+
+let revocationForwardQueue: ReturnType<typeof createQueue> | null = null;
+
+/**
+ * In the global region, queue the revoked session ids for every other region,
+ * whose collab closes the connections they opened.
+ * @param userId - Whose sessions ended.
+ * @param sids - The ended session ids.
+ * @returns Once queued.
+ * @throws {Error} When the queue cannot be written.
+ */
+async function forwardToRegions(userId: string, sids: string[]): Promise<void> {
+  if (env.REGION !== env.GLOBAL_REGION) return;
+  const regions = Object.keys(env.REGION_API_URLS).filter((region) => region !== env.REGION);
+  if (regions.length === 0) return;
+  revocationForwardQueue ??= createQueue(IDENTITY_REVOCATION_FORWARD_QUEUE);
+  for (const region of regions) await revocationForwardQueue.add("revoke", { region, userId, sids });
 }
 
 /**

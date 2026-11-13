@@ -20,6 +20,7 @@ import {
   createQueue,
   createQueueEvents,
   defaultJobOpts,
+  getRegionsConfig,
   checkInfraReady,
   InfraNotReadyError,
   logger,
@@ -143,9 +144,23 @@ import { reportTimelineJobFailed } from "@worker/handlers/timeline/timeline-fail
 import { sweepCreditCharges } from "@worker/handlers/credit-charge-sweep.js";
 import {
   CREDIT_CHARGE_SWEEP_QUEUE,
+  IDENTITY_REVOCATION_FORWARD_QUEUE,
+  INVITATION_CLAIM_FORWARD_QUEUE,
+  REGION_OUTBOX_RELAY_QUEUE,
+  SLUG_RESERVATION_SWEEP_QUEUE,
+  STORAGE_USAGE_SYNC_QUEUE,
   TIMELINE_SWEEP_QUEUE,
   workerQueuesFor,
 } from "@worker/runtime/region-queues.js";
+import {
+  forwardInvitationClaim,
+  forwardRevocation,
+  relayRegionOutbox,
+  sweepSlugReservations,
+  syncStorageUsage,
+  type IdentityRevocationForwardJob,
+  type InvitationClaimForwardJob,
+} from "@worker/handlers/region-jobs.js";
 
 /** Every BullMQ queue this process runs a worker for, by its region (inner#1955). */
 const WORKER_QUEUES: readonly string[] = workerQueuesFor({ region: env.REGION, globalRegion: env.GLOBAL_REGION });
@@ -408,6 +423,46 @@ export function startWorker(): void {
       );
     });
     regionWorkers.push(adsConversion);
+  }
+
+  /**
+   * Run a recurring cross-region job where this region runs its queue.
+   * @param queue - The queue.
+   * @param everyMs - How often.
+   * @param run - The job.
+   */
+  const recurringRegionJob = (queue: string, everyMs: number, run: () => Promise<unknown>): void => {
+    if (!WORKER_QUEUES.includes(queue)) return;
+    const recurring = createWorker<Record<string, never>>(queue, () => run());
+    recurring.on("failed", (job, err) => {
+      logger.error({ err, jobId: job?.id, queue }, "region_job_failed");
+    });
+    void createQueue(queue)
+      .upsertJobScheduler(queue, { every: everyMs }, { name: queue, data: {}, opts: defaultJobOpts() })
+      .catch((err: unknown) => {
+        logger.error({ err, queue }, "region_job_schedule_failed");
+      });
+    regionWorkers.push(recurring);
+  };
+  const regions = getRegionsConfig();
+  recurringRegionJob(REGION_OUTBOX_RELAY_QUEUE, regions.outbox_relay_interval_ms, relayRegionOutbox);
+  recurringRegionJob(STORAGE_USAGE_SYNC_QUEUE, regions.storage_usage_sync_interval_ms, syncStorageUsage);
+  recurringRegionJob(SLUG_RESERVATION_SWEEP_QUEUE, regions.slug_reservation_sweep_interval_ms, sweepSlugReservations);
+
+  // Sign-in claims and revocations the global region hands to each other region.
+  if (WORKER_QUEUES.includes(INVITATION_CLAIM_FORWARD_QUEUE)) {
+    const claimForward = createWorker<InvitationClaimForwardJob>(INVITATION_CLAIM_FORWARD_QUEUE, forwardInvitationClaim);
+    claimForward.on("failed", (job, err) => {
+      logger.error({ err, region: job?.data.region, userId: job?.data.userId }, "invitation_claim_forward_failed");
+    });
+    regionWorkers.push(claimForward);
+  }
+  if (WORKER_QUEUES.includes(IDENTITY_REVOCATION_FORWARD_QUEUE)) {
+    const revocationForward = createWorker<IdentityRevocationForwardJob>(IDENTITY_REVOCATION_FORWARD_QUEUE, forwardRevocation);
+    revocationForward.on("failed", (job, err) => {
+      logger.error({ err, region: job?.data.region, userId: job?.data.userId }, "identity_revocation_forward_failed");
+    });
+    regionWorkers.push(revocationForward);
   }
 
   worker.on("completed", (job) => {

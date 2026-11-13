@@ -33,6 +33,8 @@ export const IDENTITY_REVOCATION_FORWARD_QUEUE = "identity-revocation-forward";
 export const INVITATION_CLAIM_FORWARD_QUEUE = "invitation-claim-forward";
 /** The relay of this region's outbox to the global region. */
 export const REGION_OUTBOX_RELAY_QUEUE = "region-outbox-relay";
+/** This region's storage report to the global region. */
+export const STORAGE_USAGE_SYNC_QUEUE = "storage-usage-sync";
 
 const EVERY_REGION: readonly string[] = [
   "tasks",
@@ -46,6 +48,7 @@ const EVERY_REGION: readonly string[] = [
   TIMELINE_QUEUE,
   TIMELINE_SWEEP_QUEUE,
   CREDIT_CHARGE_SWEEP_QUEUE,
+  STORAGE_USAGE_SYNC_QUEUE,
 ];
 
 const GLOBAL_ONLY: readonly string[] = [

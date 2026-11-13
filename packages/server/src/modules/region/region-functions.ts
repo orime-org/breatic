@@ -8,6 +8,7 @@
 
 import type { NotificationListView, RecentItem, SignupInvitationPreview } from "@breatic/shared";
 import { profilesService } from "@breatic/domain";
+import { getRedis, publishSessionsRevoked, recordRevokedIdentities } from "@breatic/core";
 import { claimEmailInvitations } from "@server/modules/invitation/claim-email-invitations.js";
 import { getInvitationPreview } from "@server/modules/invitation/invitation.service.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
@@ -42,6 +43,17 @@ export const SERVER_REGION_FUNCTIONS = {
    * @returns The preview.
    */
   previewInvitation: (token: string): Promise<SignupInvitationPreview> => getInvitationPreview(token),
+  /**
+   * End sessions the global region revoked: mark them revoked for this
+   * region's identity checks and tell this region's collab to close them.
+   * @param userId - Whose sessions ended.
+   * @param sids - The ended session ids.
+   * @returns Once marked and announced.
+   */
+  revokeSessions: async (userId: string, sids: string[]): Promise<void> => {
+    await recordRevokedIdentities(getRedis(), sids);
+    await publishSessionsRevoked(userId, sids);
+  },
   /**
    * Claim this region's email invitations for an account that signed in.
    * @param userId - The account.
