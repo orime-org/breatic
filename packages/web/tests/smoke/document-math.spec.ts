@@ -288,6 +288,40 @@ test('an empty formula shows its placeholder, and one that does not parse shows 
   await expect(page.locator(`${EDITOR} .doc-math`).first()).toContainText('Formula has an error');
 });
 
+test('a symbol deleted in an inline formula and Escape keep the deletion, with the error face', async () => {
+  await openFreshDocument(page);
+  await page.keyboard.type('a $$\\frac{a}{b}$$', { delay: 30 });
+  await expect.poll(() => lines(page)).toEqual(['paragraph:a [math:\\frac{a}{b}]']);
+
+  await page.locator(`${EDITOR} p .katex`).first().click();
+  await expect(page.locator(OPEN)).toHaveCount(1);
+  await page.keyboard.press('Backspace');
+  await expect(page.locator(POPUP)).toContainText('expected \'}\'');
+  await page.keyboard.press('Escape');
+
+  await expect(page.locator(OPEN)).toHaveCount(0);
+  expect(await lines(page)).toEqual(['paragraph:a [math:\\frac{a}{b]']);
+  await expect(page.locator(`${EDITOR} .doc-math`).first()).toContainText('Formula has an error');
+});
+
+test('a symbol deleted in a formula block and Escape keep the deletion, with the error face', async () => {
+  await openFreshDocument(page);
+  await insertFromPlus(page);
+  await page.keyboard.type('\\frac{a}{b}');
+  await page.keyboard.press('Enter');
+  await expect(page.locator(OPEN)).toHaveCount(0);
+
+  await page.locator(`${EDITOR} .doc-math .bn-preview-container`).first().click();
+  await expect(page.locator(OPEN)).toHaveCount(1);
+  await page.keyboard.press('Backspace');
+  await expect(page.locator(POPUP)).toContainText('expected \'}\'');
+  await page.keyboard.press('Escape');
+
+  await expect(page.locator(OPEN)).toHaveCount(0);
+  expect((await lines(page))[0]).toBe('mathBlock:\\frac{a}{b');
+  await expect(page.locator(`${EDITOR} .doc-math`).first()).toContainText('Formula has an error');
+});
+
 test('a line holding a formula copies as $$source$$ and pastes back as a formula', async () => {
   await openFreshDocument(page);
   await page.keyboard.type('a $$x^2$$ b');
