@@ -199,3 +199,23 @@ describe('formulas from another app', () => {
     expect(lines(editor)).toEqual(['paragraph:a [math:y_1] b', 'mathBlock:\\sqrt{y}', 'paragraph:']);
   });
 });
+
+describe('MathML from another app that carries no LaTeX (A9)', () => {
+  it('keeps what the formulas say as words, and makes no empty formulas', async () => {
+    const { editor } = open([{ type: 'paragraph' }]);
+    caretIn(editor, 0);
+    pasteFormats(editor, {
+      'text/html':
+        '<p>a <math><mi>x</mi><mo>+</mo><mn>1</mn></math> b</p>' +
+        '<math display="block"><mfrac><mi>p</mi><mi>q</mi></mfrac></math>' +
+        '<p>c <mjx-container><mjx-assistive-mml><math><msup><mi>e</mi><mi>z</mi></msup></math></mjx-assistive-mml></mjx-container> d</p>',
+      'text/plain': 'a x+1 b\np/q\nc ez d',
+    });
+    await settled();
+    const all = lines(editor);
+    expect(all.join('\n')).not.toMatch(/\[math:\]|mathBlock:$/m);
+    expect(all.join('\n')).toContain('x+1');
+    expect(all.join('\n')).toContain('pq');
+    expect(all.join('\n')).toContain('ez');
+  });
+});

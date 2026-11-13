@@ -123,26 +123,43 @@ function isDisplayMath(element: HTMLElement): boolean {
 }
 
 /**
+ * Whether an element from outside carries LaTeX: in our own attribute or in a
+ * TeX annotation. MathML without one stays the words it shows; a formula made
+ * from it would be empty.
+ * @param element - The element.
+ * @returns True when it does.
+ */
+function carriesTex(element: HTMLElement): boolean {
+  return element.matches(TEX_ANNOTATION) || element.querySelector(TEX_ANNOTATION) !== null;
+}
+
+/**
  * Whether an element is a formula block from outside: one of our copies, a
- * KaTeX display, or a block MathML formula that KaTeX did not draw.
+ * KaTeX display, or a block MathML formula that KaTeX did not draw, carrying
+ * its LaTeX.
  * @param element - The element.
  * @returns Whether it parses to a `mathBlock`.
  */
 function isBlockFormula(element: HTMLElement): boolean {
   if (element.hasAttribute(MATH_BLOCK_SOURCE_ATTR)) return true;
-  if (element.classList.contains('katex-display')) return true;
-  return isDisplayMath(element) && element.closest('.katex') === null;
+  if (element.classList.contains('katex-display')) return carriesTex(element);
+  return isDisplayMath(element) && element.closest('.katex') === null && carriesTex(element);
 }
 
 /**
- * Whether an element is an inline formula from outside.
+ * Whether an element is an inline formula from outside, carrying its LaTeX.
  * @param element - The element.
  * @returns Whether it parses to a `math`.
  */
 function isInlineFormula(element: HTMLElement): boolean {
   if (element.hasAttribute(MATH_SOURCE_ATTR)) return true;
-  if (element.classList.contains('katex')) return element.closest('.katex-display') === null;
-  return element.tagName.toLowerCase() === 'math' && !isDisplayMath(element) && element.closest('.katex') === null;
+  if (element.classList.contains('katex')) return element.closest('.katex-display') === null && carriesTex(element);
+  return (
+    element.tagName.toLowerCase() === 'math' &&
+    !isDisplayMath(element) &&
+    element.closest('.katex') === null &&
+    carriesTex(element)
+  );
 }
 
 /**
