@@ -33,8 +33,8 @@ function timelineSizeName(doc: Y.Doc): string {
 
 /**
  * Whether the Space's size holds back every write but deletions (full, over its ceiling) or every write
- * (resyncing), inner#1790. Deletions then only delete: no clip moves up and no source is swept or restored; a
- * later normal edit brings the sources back in line.
+ * (resyncing), inner#1790. Deletions then only delete: no clip moves up, no record is converted and no source is
+ * swept or restored; a later normal edit brings the records and sources back in line.
  * @param name - Canonical document name.
  * @returns True while held.
  * @throws {never} Never.
@@ -173,7 +173,8 @@ const FORMAT_ORIGIN = Symbol('timeline-record-format');
  * Apply a user-confirmed layout edit to the shared Y.Doc, writing only what changed: the user's fields, the frame size
  * and any landing receipt in one transaction under `origin`, after an untracked conversion of any plain-object record
  * the edit changes and of any clip still stored with pixel offsets (#1502), which also marks a version 1 document
- * version 2. The receipts map is outside every undo manager's scope, so undoing a landing keeps its receipt. The two
+ * version 2. A deletion while the size holds writes back converts nothing, so it stays a pure delete; undoing it
+ * revives a pixel clip whose offsets are then read under the frame of that moment. The receipts map is outside every undo manager's scope, so undoing a landing keeps its receipt. The two
  * transactions go through the Space's size check as one write (inner#1790): a new record or receipt is `add`, a
  * changed one `edit`; a deletion whose plan only deletes is `remove`, one that also rewrites a record `compound`.
  * While the size holds writes back a deletion is planned with the magnet off and sweeps no source.
@@ -211,8 +212,7 @@ export function applyTimelineEdit(
     ...plainChangedRecords(doc.getMap<unknown>('clips'), current.clips, next.clips),
   ];
   const written = writeSpaceDoc(name, { kind: editKind(deleting, current, next), notify }, () => {
-    // Pixel clips are stored as the frame offsets the plan was read with, before the frame can change under them. A
-    // delete written while the Space is full stays a pure delete; the next other edit stores them.
+    // Pixel clips are stored as the frame offsets the plan was read with, before the frame can change under them.
     if (!onlyDelete && (plain.length > 0 || timelineDocumentNeedsUpgrade(doc))) {
       doc.transact(() => {
         upgradeTimelineDocument(doc);

@@ -5,10 +5,13 @@ import * as Y from "yjs";
 import type { z } from "zod";
 import {
   TimelineClipSchema, TimelineDocumentV1Schema, TimelineOperationReceiptSchema, TimelineSettingsSchema, TimelineTrackSchema,
-  TimelineVideoSourceSchema, TIMELINE_MAIN_TRACK_ID, TIMELINE_SCHEMA_VERSIONS, type TimelineDocumentV1, type TimelineOperationReceipt, type TimelineSettings,
+  TimelineVideoSourceSchema, TIMELINE_MAIN_TRACK_ID, type TimelineDocumentV1, type TimelineOperationReceipt, type TimelineSettings,
   type TimelineVideoSource,
 } from "@shared/timeline/schema.js";
 import { timelineLayerFrameOffset, type TimelineLayerFrame } from "@shared/timeline/layer-geometry.js";
+
+/** The document version new code writes: clip offsets are fractions of the frame (#1502). */
+const FRAME_OFFSET_VERSION = 2;
 
 /**
  * Attach a child map before populating it, preserving Yjs field-level merges.
@@ -51,7 +54,7 @@ export function initializeTimelineDocument(doc: Y.Doc, settings: TimelineSetting
   const normalized = freezeTimelineRecord(TimelineSettingsSchema.parse(settings));
   doc.transact(() => {
     const timeline = doc.getMap("timeline");
-    timeline.set("schemaVersion", 2);
+    timeline.set("schemaVersion", FRAME_OFFSET_VERSION);
     timeline.set("settings", normalized);
     attachTimelineRecord(doc.getMap("tracks"), TIMELINE_MAIN_TRACK_ID, { id: TIMELINE_MAIN_TRACK_ID, kind: "visual", order: 0 });
     doc.getMap("clips");
@@ -71,9 +74,6 @@ export interface TimelineDamagedRecords { clips: string[] }
 export function timelineRecordJson(value: unknown): unknown {
   return value instanceof Y.AbstractType ? value.toJSON() : value;
 }
-
-/** The document version that stores clip offsets as fractions of the frame (#1502). */
-const FRAME_OFFSET_VERSION = TIMELINE_SCHEMA_VERSIONS[TIMELINE_SCHEMA_VERSIONS.length - 1];
 
 /**
  * Whether a stored transform is in the pixel format before #1502: `x` and `y` without `frameX` and `frameY`.
