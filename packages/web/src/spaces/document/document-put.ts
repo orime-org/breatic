@@ -670,6 +670,19 @@ export function putContent(editor: Editor, content: Read, options: PutOptions): 
       if ($drop !== null) view.dispatch(view.state.tr.setMeta(HOLD_PRE_EDIT_SELECTION, false));
     }
   };
+  // Pasted into a formula's source, anything goes in as its words: a source
+  // holds text only (inner#1423). Inserted as text, since the marks' paste
+  // rules would read `**b**` in the line around an inline source. A code
+  // block keeps its own path below.
+  const { $from } = selection;
+  if ($drop === null && $from.parent.type.spec.code === true && $from.sameParent(selection.$to) && $from.parent.type.name !== 'codeBlock') {
+    const words = content.plain ?? wordsOf(rowsOf(source).rows);
+    return atTarget(() => {
+      const from = view.state.selection.from;
+      view.dispatch(view.state.tr.insertText(words).scrollIntoView());
+      return { kind: 'range', from, to: view.state.selection.head };
+    });
+  }
   if (!opened && textOnlyAt($at)?.node.firstChild?.type.name === 'codeBlock' && plain !== null) {
     return atTarget(() => {
       const from = view.state.selection.from;

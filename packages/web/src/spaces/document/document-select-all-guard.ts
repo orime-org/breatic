@@ -129,10 +129,11 @@ function selectTier(tr: Transaction): boolean {
     return true;
   }
   // Only a caret or a range inside ONE textblock gets the first tier —
-  // everything else has already outgrown "the current block".
+  // everything else has already outgrown "the current block". An inline
+  // formula's source holds text too, and is a tier of its own (inner#1423).
   if (selection instanceof TextSelection) {
     const { $from, $to } = selection;
-    if ($from.sameParent($to) && $from.parent.isTextblock) {
+    if ($from.sameParent($to) && $from.parent.inlineContent) {
       const from = $from.start();
       const to = $from.end();
       if (selection.from !== from || selection.to !== to) {
@@ -233,7 +234,9 @@ function guardPlugin(ask: (() => void) | null): Plugin {
       if (!(selection instanceof TextSelection)) {
         return null;
       }
-      if (selection.$from.parent.isTextblock) {
+      // Inside an inline formula's source the parent holds text without being
+      // a textblock, and the caret belongs there (inner#1423).
+      if (selection.$from.parent.inlineContent) {
         return null;
       }
       return newState.tr.setSelection(Selection.near(selection.$from));

@@ -44,6 +44,7 @@ import { spaceSizeFilterPlugin } from '@web/features/collab-editor/space-size-ga
 
 import { buildDocumentSchema } from '@web/spaces/document/document-schema-blocknote';
 import { documentNodeCompositionExtension } from '@web/spaces/document/document-node-composition';
+import { documentMathEditingExtension } from '@web/spaces/document/document-math-editing';
 import { documentDividerInputExtension } from '@web/spaces/document/document-divider';
 import { documentBodyEdgePointerExtension } from '@web/spaces/document/document-body-edge-pointer';
 import { documentDragAutoScrollExtension } from '@web/spaces/document/document-drag-autoscroll';
@@ -186,6 +187,7 @@ export function buildDocumentEditor(
       documentTableFullscreenExtension(),
       sizeFilterExtension(options.fragment),
       documentEnterExtension(),
+      documentMathEditingExtension(),
       documentSafariImeExtension(),
       documentTabExtension(),
       documentTableKeysExtension(),
