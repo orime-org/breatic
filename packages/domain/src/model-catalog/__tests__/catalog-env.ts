@@ -20,13 +20,25 @@ import { readProviderConfig } from "../../provider/provider-config-loader.js";
 
 import { getModelCatalog, resetModelCatalog } from "../model-catalog.js";
 
+let shippedConfig: ReturnType<typeof readProviderConfig> | undefined;
+
+/**
+ * The shipped provider configuration, parsed once per test process: the files do not change during a run, and
+ * parsing every yaml again before each case made the catalog suites several times slower.
+ * @returns The configuration `readProviderConfig` reads.
+ */
+function providerConfig(): ReturnType<typeof readProviderConfig> {
+  shippedConfig ??= readProviderConfig();
+  return shippedConfig;
+}
+
 /**
  * The key variable of every upstream provider's configuration names, read from that configuration rather than a list
  * written here: an upstream added there would be missed by a written list, and its models would read as unconfigured.
  * @returns Every upstream's `key_env`, once each.
  */
 export function allProviderKeyNames(): string[] {
-  return [...new Set(Object.values(readProviderConfig().upstreams).map((upstream) => upstream.key_env))];
+  return [...new Set(Object.values(providerConfig().upstreams).map((upstream) => upstream.key_env))];
 }
 
 /**
@@ -51,7 +63,7 @@ export function useEnvWithKeys(configured: readonly string[]): void {
  * not one provider's configuration binds, and binding the shipped catalog is provider's own tests' to check.
  */
 function rebuildProvider(): void {
-  initProvider(createProvider({ config: readProviderConfig(), keyOf: getRawEnvVar, llmMaxRetries: 0, cleanText: (text) => text }));
+  initProvider(createProvider({ config: providerConfig(), keyOf: getRawEnvVar, llmMaxRetries: 0, cleanText: (text) => text }));
 }
 
 /**
