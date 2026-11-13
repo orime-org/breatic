@@ -345,6 +345,9 @@
     },
     "document": {
       "versions_full": "{limit, plural, other {この Document のスナップショットは上限の # 件に達しています。古いスナップショットを削除してから保存してください。}}"
+    },
+    "region": {
+      "unavailable": "この Studio には現在アクセスできません。しばらくしてからもう一度お試しください。"
     }
   },
   "chat": {
@@ -1993,7 +1996,8 @@
       "helper": "ホームは /studio/… になります。{min}〜{max} 文字、小文字で始め、小文字・数字・ハイフンのみ使え、一意である必要があります。",
       "submit": "続行",
       "submitting": "設定中...",
-      "failed": "Studio を設定できませんでした。もう一度お試しください。"
+      "failed": "Studio を設定できませんでした。もう一度お試しください。",
+      "unavailable": "現在登録を完了できません。しばらくしてからもう一度お試しください。"
     },
     "recovery": {
       "title": "リカバリーコードを保存してください",
@@ -3090,7 +3094,10 @@
         "slugRequired": "Slug を入力してください。",
         "emailRequired": "メールアドレスを入力してください。",
         "slugUnverified": "今は確認できません。送信時にサーバーが判断します。",
-        "slugLabelOptional": "Slug(任意)"
+        "slugLabelOptional": "Slug(任意)",
+        "regionLabel": "リージョン",
+        "regionUnavailable": "選択したリージョンでは現在 Studio を作成できません。しばらくしてからもう一度お試しいただくか、別のリージョンを選んでください。",
+        "creationInProgress": "前回の Studio はまだ作成中です。しばらくしてからもう一度お試しください。"
       },
       "toolbar": {
         "sortLabel": "並び替え",
@@ -3804,5 +3811,9 @@
       "unfinished": "未完了",
       "preview": "{track}：{state, select, failed {動画のアップロードに失敗、表示しません} unfinished {動画は未完了、表示しません} other {動画をアップロード中…}}"
     }
+  },
+  "regions": {
+    "usWest": "米国西部",
+    "sg": "シンガポール"
   }
 }

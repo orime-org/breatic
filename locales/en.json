@@ -345,6 +345,9 @@
     },
     "document": {
       "versions_full": "{limit, plural, one {This document already has 1 snapshot. Delete it to save a new one.} other {This document already has # snapshots. Delete an old one to save a new one.}}"
+    },
+    "region": {
+      "unavailable": "This Studio can't be reached right now. Please try again later."
     }
   },
   "chat": {
@@ -1993,7 +1996,8 @@
       "helper": "Your home will live at /studio/…. {min}–{max} characters, starting with a lowercase letter; lowercase letters, numbers and hyphens only; it must be unique.",
       "submit": "Continue",
       "submitting": "Setting up...",
-      "failed": "Could not set up your Studio. Please try again."
+      "failed": "Could not set up your Studio. Please try again.",
+      "unavailable": "We can't finish signing you up right now. Please try again later."
     },
     "recovery": {
       "title": "Save your recovery code",
@@ -3090,7 +3094,10 @@
         "slugRequired": "Enter a Slug.",
         "emailRequired": "Enter an email address.",
         "slugUnverified": "Couldn't check right now. The server decides when you submit.",
-        "slugLabelOptional": "Slug (optional)"
+        "slugLabelOptional": "Slug (optional)",
+        "regionLabel": "Region",
+        "regionUnavailable": "Studios can't be created in this region right now. Please try again later, or pick another region.",
+        "creationInProgress": "Your last Studio is still being created. Please try again later."
       },
       "toolbar": {
         "sortLabel": "Sort",
@@ -3804,5 +3811,9 @@
       "unfinished": "Unfinished",
       "preview": "{track}: {state, select, failed {video upload failed, not shown} unfinished {video unfinished, not shown} other {video uploading…}}"
     }
+  },
+  "regions": {
+    "usWest": "US West",
+    "sg": "Singapore"
   }
 }

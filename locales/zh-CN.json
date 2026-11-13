@@ -345,6 +345,9 @@
     },
     "document": {
       "versions_full": "{limit, plural, other {这个 Document 的快照已满 # 张。删掉旧的快照后再保存。}}"
+    },
+    "region": {
+      "unavailable": "这个 Studio 暂时无法访问，请稍后再试。"
     }
   },
   "chat": {
@@ -1993,7 +1996,8 @@
       "helper": "你的主页将位于 /studio/…。{min}–{max} 个字符，以小写字母开头，只能用小写字母、数字和连字符；必须唯一。",
       "submit": "继续",
       "submitting": "设置中...",
-      "failed": "无法设置你的 Studio,请重试。"
+      "failed": "无法设置你的 Studio,请重试。",
+      "unavailable": "暂时无法完成注册，请稍后再试。"
     },
     "recovery": {
       "title": "保存你的恢复码",
@@ -3090,7 +3094,10 @@
         "slugRequired": "请填写 Slug。",
         "emailRequired": "请填写邮箱。",
         "slugUnverified": "暂时无法检查，提交时由服务器判断。",
-        "slugLabelOptional": "Slug（选填）"
+        "slugLabelOptional": "Slug（选填）",
+        "regionLabel": "区域",
+        "regionUnavailable": "所选区域暂时无法创建 Studio，请稍后再试，或改选其他区域。",
+        "creationInProgress": "上一次创建还在处理，请稍后再试。"
       },
       "toolbar": {
         "sortLabel": "排序",
@@ -3804,5 +3811,9 @@
       "unfinished": "未完成",
       "preview": "{track}：{state, select, failed {视频上传失败，不显示} unfinished {视频未完成，不显示} other {视频上传中…}}"
     }
+  },
+  "regions": {
+    "usWest": "美国西部",
+    "sg": "新加坡"
   }
 }

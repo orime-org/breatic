@@ -7,7 +7,32 @@
  * answers within `cross_region_fanout_timeout_ms` or is reported unavailable.
  */
 
-import { callRegion, env, getRegionsConfig, logger, studioDirectoryRepo } from "@breatic/core";
+import { AppError, callRegion, env, getRegionsConfig, logger, studioDirectoryRepo } from "@breatic/core";
+
+/** The `error.reason` of a call another region did not answer. */
+export const REGION_UNAVAILABLE_REASON = "region_unavailable";
+
+/**
+ * Ask one other region for a function, within the fan-out wait.
+ * @param region - The region.
+ * @param fn - The region function.
+ * @param args - Its arguments.
+ * @param unavailableMessage - What to tell the user when the region does not answer.
+ * @returns The region's answer.
+ * @throws {AppError} The region's own refusal, or `503` `region_unavailable` when it does not answer.
+ */
+export async function askRegion<T>(region: string, fn: string, args: unknown[], unavailableMessage: string): Promise<T> {
+  const url = env.REGION_API_URLS[region];
+  try {
+    if (url === undefined) throw new Error(`no address for region ${region}`);
+    const timeoutMs = getRegionsConfig().cross_region_fanout_timeout_ms;
+    return (await callRegion(fn, args, { callerRegion: env.REGION, url, secret: env.INTERNAL_API_SECRET, timeoutMs })) as T;
+  } catch (err) {
+    if (err instanceof AppError) throw err;
+    logger.error({ err, ctx: { region, fn } }, "cross_region_call_failed");
+    throw new AppError(503, unavailableMessage, REGION_UNAVAILABLE_REASON);
+  }
+}
 
 /** What the other regions answered, and which did not. */
 export interface RegionAnswers<T> {

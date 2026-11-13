@@ -20,8 +20,9 @@ import { z } from "zod";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { authService, invitationService, signupCodeService, studioService } from "@server/modules";
+import { askRegion } from "@server/modules/region/fanout.js";
 import { randomUUID } from "node:crypto";
-import { AppError, callRegion, env, getRegionsConfig, NotFoundError, regionOfShareToken, UnauthorizedError, trackServerEvent } from "@breatic/core";
+import { env, NotFoundError, regionOfShareToken, UnauthorizedError, trackServerEvent } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { emailSchema, getActiveLocale, normalizeEmail, parseAttribution, t } from "@breatic/shared";
 import type { PersonalStudioRef, SignupReferralSource } from "@breatic/shared";
@@ -61,20 +62,7 @@ auth.get("/invitation", rateLimitFor("invite-preview"), validate("query", invita
  * @throws {AppError} 503 `region_unavailable` when the region has no address or does not answer in time.
  */
 async function previewInRegion(region: string, token: string): Promise<unknown> {
-  const url = env.REGION_API_URLS[region];
-  try {
-    if (url === undefined) throw new Error(`no address for region ${region}`);
-    return await callRegion("previewInvitation", [token], {
-      callerRegion: env.REGION,
-      url,
-      secret: env.INTERNAL_API_SECRET,
-      timeoutMs: getRegionsConfig().cross_region_fanout_timeout_ms,
-    });
-  } catch (err) {
-    if (err instanceof AppError) throw err;
-    logger.error({ err, ctx: { region } }, "invitation_preview_region_unavailable");
-    throw new AppError(503, t("server.auth.invitation_region_unavailable"), "region_unavailable");
-  }
+  return askRegion(region, "previewInvitation", [token], t("server.auth.invitation_region_unavailable"));
 }
 
 /**

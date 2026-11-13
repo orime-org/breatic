@@ -286,6 +286,79 @@ describe("the bell", () => {
   });
 });
 
+describe("the directory", () => {
+  it("names the region of a Studio by slug and of a Project by id", async () => {
+    const { userId, cookie } = await signedIn();
+    const slug = `xr-sg-${crypto.randomBytes(5).toString("hex")}`;
+    const studioId = crypto.randomUUID();
+    await sql`
+      INSERT INTO studio_directory (studio_id, slug, region, type, name, admin_user_id, created_by_user_id, state)
+      VALUES (${studioId}, ${slug}, 'sg', 'team', 'Far', ${userId}, ${userId}, 'live')
+    `;
+    const projectId = crypto.randomUUID();
+    await sql`INSERT INTO project_directory (project_id, studio_id) VALUES (${projectId}, ${studioId})`;
+
+    expect((await get(`/directory/studios/${slug}`, cookie)).body.data).toEqual({ region: "sg" });
+    expect((await get(`/directory/projects/${projectId}`, cookie)).body.data).toEqual({ region: "sg" });
+  });
+
+  it("answers 404 for a slug or Project the directory does not hold", async () => {
+    const { cookie } = await signedIn();
+
+    expect((await get("/directory/studios/no-such-studio-slug", cookie)).status).toBe(404);
+    expect((await get(`/directory/projects/${crypto.randomUUID()}`, cookie)).status).toBe(404);
+  });
+});
+
+describe("marking the bell read", () => {
+  /**
+   * Send one write to the API.
+   * @param method - The HTTP method.
+   * @param path - The path under the API base.
+   * @param cookie - The session cookie.
+   * @returns The status and body.
+   */
+  async function send(method: string, path: string, cookie: string): Promise<{ status: number; body: { data?: unknown; error?: { reason?: string } } }> {
+    const res = await app.request(`/api/v1${path}`, { method, headers: { Cookie: cookie } });
+    return { status: res.status, body: (await res.json()) as { data?: unknown; error?: { reason?: string } } };
+  }
+
+  it("marks a notification read in the region the bell listed it under", async () => {
+    const { userId, cookie } = await signedIn(["sg"]);
+    const remoteId = crypto.randomUUID();
+    regionAnswers.markNotificationRead = true;
+
+    const res = await send("PATCH", `/users/me/notifications/${remoteId}/read?region=sg`, cookie);
+
+    expect(res.status).toBe(200);
+    expect(received).toEqual([{ fn: "markNotificationRead", args: [remoteId, userId], signed: true }]);
+  });
+
+  it("answers 404 when the region has no such notification and 503 when it does not answer", async () => {
+    const { cookie } = await signedIn(["sg"]);
+    regionAnswers.markNotificationRead = false;
+    expect((await send("PATCH", `/users/me/notifications/${crypto.randomUUID()}/read?region=sg`, cookie)).status).toBe(404);
+
+    regionMode = "hang";
+    const hung = await send("PATCH", `/users/me/notifications/${crypto.randomUUID()}/read?region=sg`, cookie);
+    expect(hung.status).toBe(503);
+    expect(hung.body.error?.reason).toBe("region_unavailable");
+  });
+
+  it("marks everything read here and in each other region, counting what answered", async () => {
+    const { userId, cookie } = await signedIn(["sg"]);
+    await sql`
+      INSERT INTO notifications (user_id, type, payload) VALUES (${userId}, 'membership.ended', ${sql.json({})})
+    `;
+    regionAnswers.markAllNotificationsRead = 2;
+
+    const res = await send("POST", "/users/me/notifications/read-all", cookie);
+
+    expect((res.body.data as { count: number }).count).toBe(3);
+    expect(received).toEqual([{ fn: "markAllNotificationsRead", args: [userId], signed: true }]);
+  });
+});
+
 describe("a single-region deployment", () => {
   it("shows a Studio joined through an invitation in GET /studios straight away", async () => {
     initCore(process.env);

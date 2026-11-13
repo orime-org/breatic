@@ -196,6 +196,20 @@ export async function isSlugHeld(slug: string, tx?: DbTx): Promise<boolean> {
 }
 
 /**
+ * The region of the live Studio with this slug.
+ * @param slug - The slug.
+ * @returns Its region (null for the global region), or undefined when no live Studio has it.
+ */
+export async function findRegionBySlug(slug: string): Promise<{ region: string | null } | undefined> {
+  const [row] = await db
+    .select({ region: studioDirectory.region })
+    .from(studioDirectory)
+    .where(and(eq(studioDirectory.slug, slug), eq(studioDirectory.state, "live"), isNull(studioDirectory.deletedAt)))
+    .limit(1);
+  return row;
+}
+
+/**
  * Read a directory row by id, deleted or not.
  * @param studioId - The Studio.
  * @param tx - The transaction to read in.

@@ -1206,6 +1206,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "spaces.document.media.captionPlaceholder": { excluded: REASONS.SAYS_WHAT_TO_TYPE },
   "spaces.document.media.captionReadOnly": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.document.versions_full": { described: /full, a notice says to delete old ones first/ },
+  "server.region.unavailable": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "spaces.document.versions.close": { excluded: REASONS.SCREEN_READER, look: /snapshots panel is open; its X brings them back/ },
   "spaces.document.versions.more": { excluded: REASONS.SCREEN_READER, look: /Hovering a row shows three dots/ },
   "spaces.document.versions.viewing": { described: /shows it in the body's place, read-only, under a bar/ },

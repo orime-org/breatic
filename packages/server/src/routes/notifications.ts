@@ -77,14 +77,17 @@ route.get("/count", async (c) => {
 // there. Marking read is the only thing the bell still does to a row of its
 // own — answering moved to the decision page.
 const notificationParamSchema = z.object({ id: z.string().uuid() });
+const notificationRegionSchema = z.object({ region: z.string().min(1).max(32).optional() });
 
 route.patch(
   "/:id/read",
   validate("param", notificationParamSchema),
+  validate("query", notificationRegionSchema),
   async (c) => {
     const user = c.get("user");
     const id = c.req.param("id");
-    await notificationService.markRead(id, user.id);
+    // The bell names the region that holds each notification (inner#1955).
+    await notificationService.markReadIn(id, user.id, c.req.valid("query").region ?? null);
     return c.json({ data: { ok: true } });
   },
 );
@@ -97,7 +100,7 @@ route.patch(
  */
 route.post("/read-all", async (c) => {
   const user = c.get("user");
-  const count = await notificationService.markAllRead(user.id);
+  const count = await notificationService.markAllReadEverywhere(user.id);
   return c.json({ data: { count } });
 });
 

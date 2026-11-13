@@ -21,13 +21,13 @@
  */
 
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
-import { NotFoundError } from "@breatic/core";
+import { env, NotFoundError } from "@breatic/core";
 import { directoryWrites } from "@breatic/domain";
 import { t } from "@breatic/shared";
 import type { DbTx } from "@server/modules/notification/notification.repo.js";
 import type { BillingPeriod, DecisionGrantRole, NotificationCount, NotificationEntity, NotificationFeed, NotificationListView } from "@breatic/shared";
 import { withResolvedRefs } from "@server/modules/notification/notification-refs.js";
-import { askUserRegions } from "@server/modules/region/fanout.js";
+import { askRegion, askUserRegions } from "@server/modules/region/fanout.js";
 
 /**
  * Write a notification, and record that its recipient now has something in
@@ -759,6 +759,35 @@ export async function markRead(id: string, userId: string): Promise<void> {
   if (!ok) {
     throw new NotFoundError(t("server.error.not_found"));
   }
+}
+
+/**
+ * Mark a notification read in the region that holds it (inner#1955).
+ * @param id - The notification.
+ * @param userId - Its owner.
+ * @param region - The region the bell listed it under; null is this region.
+ * @returns Once marked.
+ * @throws {NotFoundError} When the region has no such unread notification for the user.
+ * @throws {AppError} `503` `region_unavailable` when the region does not answer.
+ */
+export async function markReadIn(id: string, userId: string, region: string | null): Promise<void> {
+  if (region === null || region === env.REGION) return markRead(id, userId);
+  const ok = await askRegion<boolean>(region, "markNotificationRead", [id, userId], t("server.region.unavailable"));
+  if (!ok) throw new NotFoundError(t("server.error.not_found"));
+}
+
+/**
+ * Mark the user's unread news read here and in every other region they are
+ * in; a region that does not answer keeps its notifications unread.
+ * @param userId - The user.
+ * @returns How many were marked, across the regions that answered.
+ */
+export async function markAllReadEverywhere(userId: string): Promise<number> {
+  const [here, elsewhere] = await Promise.all([
+    markAllRead(userId),
+    askUserRegions<number>(userId, "markAllNotificationsRead", [userId]),
+  ]);
+  return elsewhere.answers.reduce((sum, answer) => sum + answer.result, here);
 }
 
 /** Payload for `storage.quota_exceeded` — where the refusal happened. */

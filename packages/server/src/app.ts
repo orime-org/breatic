@@ -39,6 +39,7 @@ import { threeDTasksRoute } from "@server/routes/three-d-tasks.js";
 import { timelineRoute } from "@server/routes/timeline.js";
 import { membersRoute } from "@server/routes/members.js";
 import { usersRoute } from "@server/routes/users.js";
+import { directoryRoute } from "@server/routes/directory.js";
 import { studiosRoute, studioRoute } from "@server/routes/studios.js";
 import { decisionsRoute } from "@server/routes/decisions.js";
 import { projectInvitesRoute } from "@server/routes/project-invitations.js";
@@ -101,6 +102,7 @@ export function createApp(): Hono {
   // Space lifecycle (create / delete / lock / restore) now routes via
   // collab stateless RPC; the server no longer owns the write path.
   app.route("/api/v1/users", usersRoute);
+  app.route("/api/v1/directory", directoryRoute);
   app.route("/api/v1/decisions", decisionsRoute);
   app.route("/api/v1/studios", studiosRoute);
   app.route("/api/v1/studio", studioRoute);

@@ -8,7 +8,7 @@
 
 import type { NotificationListView, RecentItem, SignupInvitationPreview } from "@breatic/shared";
 import { profilesService, studioRepo } from "@breatic/domain";
-import { getRedis, publishSessionsRevoked, recordRevokedIdentities } from "@breatic/core";
+import { getRedis, NotFoundError, publishSessionsRevoked, recordRevokedIdentities } from "@breatic/core";
 import { claimEmailInvitations } from "@server/modules/invitation/claim-email-invitations.js";
 import { getInvitationPreview } from "@server/modules/invitation/invitation.service.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
@@ -56,6 +56,27 @@ export const SERVER_REGION_FUNCTIONS = {
    * @returns Its slug, or null when it is gone.
    */
   studioSlug: async (studioId: string): Promise<string | null> => (await studioRepo.getById(studioId))?.slug ?? null,
+  /**
+   * Mark one of the user's notifications in this region read.
+   * @param id - The notification.
+   * @param userId - Its owner.
+   * @returns Whether it was marked.
+   */
+  markNotificationRead: async (id: string, userId: string): Promise<boolean> => {
+    try {
+      await notificationService.markRead(id, userId);
+      return true;
+    } catch (err) {
+      if (err instanceof NotFoundError) return false;
+      throw err;
+    }
+  },
+  /**
+   * Mark the user's unread news in this region read.
+   * @param userId - The user.
+   * @returns How many were marked.
+   */
+  markAllNotificationsRead: (userId: string): Promise<number> => notificationService.markAllRead(userId),
   revokeSessions: async (userId: string, sids: string[]): Promise<void> => {
     await recordRevokedIdentities(getRedis(), sids);
     await publishSessionsRevoked(userId, sids);
