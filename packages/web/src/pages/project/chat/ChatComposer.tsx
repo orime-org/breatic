@@ -312,7 +312,12 @@ function ChatComposerInner({
                   <TooltipContent portal>{t('chat.composer.stop')}</TooltipContent>
                 </Tooltip>
               ) : null}
-              <Tooltip>
+              {/* disableHoverableContent: while a reply runs this label is
+                  wide enough to sit over the stop button, and a hoverable
+                  tooltip treats the pointer on its way to stop as on its way
+                  to the label -- the label stayed up and stop's never opened
+                  (measured in Chromium). */}
+              <Tooltip disableHoverableContent>
                 <TooltipTrigger asChild>
                   <Button
                     type='button'
