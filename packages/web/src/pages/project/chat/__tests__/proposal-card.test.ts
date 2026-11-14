@@ -404,4 +404,9 @@ describe('the model a flow runs on, by name', () => {
   it('falls back to the id for a model the catalog does not carry', () => {
     expect(nameOf(catalog, 'gone', 'ref')).toBe('gone');
   });
+
+  it('names a retired model in an older proposal as its replacement (#1521)', () => {
+    const tts = { name: 'gemini-3.8-flash-text-to-speech', display_name: 'Gemini 3.8 Flash TTS', modality: 'tts', mode: 'tts' } as unknown as ModelEntry;
+    expect(nameOf({ ...catalog, tts: [tts] } as unknown as ModelCatalog, 'gemini-3.1-flash-text-to-speech', 'tts')).toBe('Gemini 3.8 Flash TTS');
+  });
 });
