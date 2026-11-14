@@ -11,7 +11,7 @@
  * a refusal.
  */
 
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 import { db, type DbTx } from "@breatic/core";
 import { nodeHistory, nodeTasks } from "@breatic/core";
 import type { NodeTaskAction, SceneGenerationOrigin, SceneTaskNotice } from "@breatic/shared";
@@ -236,6 +236,71 @@ export async function harvestExpired(
     )
     .returning({ id: nodeTasks.id });
   return rows.length;
+}
+
+/**
+ * Judge expired the running node rows one user started for these jobs, the
+ * job-keyed counterpart of {@link harvestExpired}.
+ * @param taskIds - The jobs (`tasks.id`) the rows point at.
+ * @param userId - Who started them; other users' rows are left alone.
+ * @returns The project, Space and node of every row this call moved.
+ */
+export async function harvestExpiredByTasks(
+  taskIds: readonly string[],
+  userId: string,
+): Promise<Array<{ projectId: string; spaceId: string; nodeId: string }>> {
+  if (taskIds.length === 0) return [];
+  const rows = await db
+    .update(nodeTasks)
+    .set({ status: "expired", errorMessage: "expired", settledAt: sql`now()` })
+    .where(
+      and(
+        inArray(nodeTasks.taskId, [...taskIds]),
+        eq(nodeTasks.startedByUserId, userId),
+        isNotNull(nodeTasks.nodeId),
+        isNull(nodeTasks.deletedAt),
+        eq(nodeTasks.status, "running"),
+        sql`${nodeTasks.startedAt} + (${nodeTasks.budgetMs} * interval '1 millisecond') < now()`,
+      ),
+    )
+    .returning({ projectId: nodeTasks.projectId, spaceId: nodeTasks.spaceId, nodeId: nodeTasks.nodeId });
+  return rows.flatMap((r) => (r.nodeId === null ? [] : [{ projectId: r.projectId, spaceId: r.spaceId, nodeId: r.nodeId }]));
+}
+
+/** A node row read by its job, with the content its history row holds. */
+export interface JobNodeTaskRow extends NodeTaskRow {
+  /** The job (`tasks.id`) the row runs as. */
+  taskId: string;
+  nodeId: string;
+  content: string | null;
+}
+
+/**
+ * Read the node rows one user started for these jobs, cleared ones included,
+ * since the task still ended the way they say.
+ * @param taskIds - The jobs (`tasks.id`).
+ * @param userId - Who started them; other users' rows are never read.
+ * @returns One entry per row; a job that landed on two nodes has two.
+ */
+export async function listByTasks(taskIds: readonly string[], userId: string): Promise<JobNodeTaskRow[]> {
+  if (taskIds.length === 0) return [];
+  const rows = await db
+    .select({ task: nodeTasks, history: nodeHistory })
+    .from(nodeTasks)
+    .leftJoin(nodeHistory, eq(nodeHistory.id, nodeTasks.nodeHistoryId))
+    .where(
+      and(
+        inArray(nodeTasks.taskId, [...taskIds]),
+        eq(nodeTasks.startedByUserId, userId),
+        isNotNull(nodeTasks.nodeId),
+      ),
+    )
+    .orderBy(sql`${nodeTasks.startedAt} DESC`);
+  return rows.flatMap(({ task, history }) =>
+    task.taskId === null || task.nodeId === null
+      ? []
+      : [{ ...rowOf(task), taskId: task.taskId, nodeId: task.nodeId, content: history?.content ?? null }],
+  );
 }
 
 /**

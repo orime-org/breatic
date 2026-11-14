@@ -21,6 +21,9 @@ command_wait_ms: 10000
 # The whole call's limit. Stays under the MCP SDK's 60s default request timeout.
 call_timeout_ms: 45000
 
+# How long a command's reply, a capture's result included, stays readable.
+reply_ttl_seconds: 600
+
 # Most task ids one task query may name.
 task_query_max_ids: 50
 # Most nodes one canvas read returns.

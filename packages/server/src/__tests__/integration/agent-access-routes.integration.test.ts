@@ -20,7 +20,6 @@ import { describe, it, expect, beforeAll, afterAll, inject } from "vitest";
 import crypto from "node:crypto";
 import postgres from "postgres";
 import type { Hono } from "hono";
-import type Redis from "ioredis";
 import {
   initCore,
   getConfig,
@@ -31,6 +30,7 @@ import {
   sessionCookieName,
   loadLocales,
   agentAccessService,
+  type Redis,
 } from "@breatic/core";
 import type * as TokenStore from "@server/modules/agent-access/agent-token-store.js";
 import type * as DownstreamRoutes from "@server/modules/agent-access/downstream-routes.js";
@@ -478,7 +478,7 @@ describe("GET /canvas/node-tasks?ids=", () => {
   it("refuses more ids than task_query_max_ids", async () => {
     const owner = await seedOwner();
     const ids = Array.from({ length: getMcpConfig().task_query_max_ids + 1 }, () => crypto.randomUUID());
-    expect((await query(ids, { cookie: owner.cookie })).status).toBe(400);
+    expect((await query(ids, { cookie: owner.cookie })).status).toBe(422);
   });
 });
 
@@ -530,7 +530,7 @@ describe("settings page routes for external agents", () => {
     ["a blank name", { name: "   ", expiresInDays: 30 }],
   ])("refuses a token with %s", async (_label, json) => {
     const owner = await seedOwner();
-    expect((await call("/api/v1/agent-access/personal-access-tokens", { method: "POST", cookie: owner.cookie, json })).status).toBe(400);
+    expect((await call("/api/v1/agent-access/personal-access-tokens", { method: "POST", cookie: owner.cookie, json })).status).toBe(422);
   });
 
   it("refuses a new token once the user holds the configured number of live ones", async () => {
@@ -559,7 +559,7 @@ describe("settings page routes for external agents", () => {
     const owner = await seedOwner();
     const agent = await seedAgent(owner.userId);
     const res = await call(`/api/v1/agent-access/connections/${agent.connectionId}`, { method: "PATCH", cookie: owner.cookie, json: { name } });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(422);
   });
 
   it("answers 404 to renaming or disconnecting another user's connection, and leaves it alone", async () => {
@@ -650,7 +650,7 @@ describe("POST /agent/view-captures/:requestId", () => {
       expect(res.status).toBe(200);
       const stored = agentReplySchema.parse(await reply(callId));
       expect(stored).toMatchObject({ callId, status: "done", result: { mimeType: "image/webp", view } });
-      expect(Buffer.from((stored as { result: { imageBase64: string } }).result.imageBase64, "base64")).toHaveLength(2048);
+      expect(Buffer.from((stored as unknown as { result: { imageBase64: string } }).result.imageBase64, "base64")).toHaveLength(2048);
       const ttl = await getMcpRedis().ttl(mcpReplyKey(prefix(), callId));
       expect(ttl).toBeGreaterThan(0);
       expect(ttl).toBeLessThanOrEqual(getMcpConfig().reply_ttl_seconds);

@@ -77,6 +77,12 @@ export function mcpCaptureRequestKey(prefix: string, requestId: string): string 
   return `${prefix}:mcp:capture-request:${requestId}`;
 }
 
+/**
+ * Largest on-screen data one capture upload carries, in bytes. Together with
+ * `view_capture.max_bytes` it must fit under the request body limit.
+ */
+export const VIEW_CAPTURE_VIEW_MAX_BYTES = 65_536;
+
 /** One command the MCP service sends collab. Times are epoch milliseconds. */
 export const agentCommandSchema = z.object({
   callId: z.uuid(),

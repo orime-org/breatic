@@ -17,6 +17,9 @@
  * The client address follows the rule collab uses (`decideClientIdentity`):
  * a request from this machine is not counted, one that did not come through
  * our nginx is refused, and otherwise it is the `x-real-ip` our nginx wrote.
+ *
+ * A request an external agent makes with a downstream token is never counted
+ * here: its counters live in Redis DB 4 (`limitDownstream`, #1488 §6).
  */
 
 import { createHash } from "node:crypto";
@@ -32,6 +35,7 @@ import {
 } from "@breatic/core";
 import { t } from "@breatic/shared";
 import { getRateLimit } from "@server/config/rate-limits.js";
+import { limitDownstream } from "@server/modules/agent-access/downstream-rate-limit.js";
 
 /**
  * A quota's key dimension; `{ userAndParam }` is the signed-in user plus one
@@ -102,10 +106,12 @@ function quotaKey(
  * @param opts.onLimited - The 429 body; the public envelope when absent.
  * @param opts.failClosed - The answer when Redis cannot count; absent, the error goes to the app's error handler.
  * @returns A Hono middleware that answers `403` for a request that did not come
- *   through our proxy, and `429` with `Retry-After` when any quota is full.
+ *   through our proxy, and `429` with `Retry-After` when any quota is full;
+ *   a downstream-token request is judged by `limitDownstream` instead.
  */
 export function rateLimit(opts: { quotas: readonly Quota[] } & RateLimitAnswers): MiddlewareHandler {
   return async (c, next) => {
+    if (c.get("agent")) return limitDownstream(c, next, opts.quotas);
     let peerAddress: { value: string | undefined } | undefined;
     /**
      * The address of the connection the request arrived on, read on first use.

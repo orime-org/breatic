@@ -172,10 +172,12 @@ export function sessionsRevokedChannelName(): string {
 
 /**
  * Tell every collab instance that these sessions ended (inner#1548), so each
- * closes the connections opened with them. Called only by the session store's
- * revoke functions, right after they delete the sessions.
- * @param userId - Whose sessions they were.
- * @param sessionIds - The ended sessions' ids (core `sessionId`).
+ * closes the connections opened with them. Called by the session store's
+ * revoke functions right after they delete the sessions, and by server's
+ * agent-access module after it ends an external agent's credentials (#1488),
+ * which announces the credential ids in place of session ids.
+ * @param userId - Whose sessions or credentials they were.
+ * @param sessionIds - The ended sessions' ids (core `sessionId`), or the ended credentials' ids.
  * @returns Nothing.
  * @throws {Error} When Redis rejects the publish.
  */

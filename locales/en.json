@@ -344,6 +344,12 @@
     },
     "document": {
       "versions_full": "{limit, plural, one {This document already has 1 snapshot. Delete it to save a new one.} other {This document already has # snapshots. Delete an old one to save a new one.}}"
+    },
+    "agent_access": {
+      "token_limit_reached": "You already have {max} active personal access tokens. Revoke one before creating another.",
+      "capture_expired": "This screenshot request has expired.",
+      "capture_too_large": "The screenshot is too large to send.",
+      "capture_answered": "This screenshot request has already been answered."
     }
   },
   "chat": {

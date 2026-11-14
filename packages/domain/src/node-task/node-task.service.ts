@@ -29,6 +29,7 @@ import { t, type NodeTaskAction } from "@breatic/shared";
 import * as repo from "@domain/node-task/node-task.repo.js";
 import { failureOutcome } from "@domain/node-task/failure-outcome.js";
 import type {
+  JobNodeTaskRow,
   NodeTaskCounts,
   NodeTaskListRow,
   NodeTaskRow,
@@ -36,6 +37,7 @@ import type {
 } from "@domain/node-task/node-task.repo.js";
 
 export type {
+  JobNodeTaskRow,
   NodeTaskCounts,
   NodeTaskListRow,
   NodeTaskRow,
@@ -283,10 +285,13 @@ export async function listLive(opts: {
 /**
  * Everything one read of a node's task list does, in the one order that works.
  *
- * Judging a task dead happens here and nowhere else (#186, design §4.6): a row
- * that outran its budget is still `running` in the table until somebody opens
- * this list. So the read starts by harvesting, and only then reports what it
- * found.
+ * Judging a task dead happens in this function and in
+ * {@link harvestAndListByTasks}, and nowhere else (#186, design §4.6): a row
+ * that outran its budget is still `running` in the table until somebody reads
+ * it. Two callers read: the node's task list the user opens
+ * (`GET /canvas/nodes/:nodeId/tasks`, here) and the external agent asking how
+ * the jobs it started ended (`GET /canvas/node-tasks?ids=`, #1488). Each read
+ * starts by harvesting, and only then reports what it found.
  *
  * The order is fixed and lives here rather than at the route, because the
  * three steps are one business rule: harvest, read the rows, recount. Reading
@@ -305,4 +310,33 @@ export async function harvestAndList(opts: {
   const tasks = await repo.listLive(opts.projectId, opts.nodeId);
   const counts = await repo.countsFor(opts.projectId, opts.nodeId);
   return { tasks, counts };
+}
+
+/** A node whose counts a harvest changed, with its new counts. */
+export interface RecountedNode {
+  projectId: string;
+  spaceId: string;
+  nodeId: string;
+  counts: NodeTaskCounts;
+}
+
+/**
+ * {@link harvestAndList} keyed by job instead of node (#1488 §9): harvest the
+ * caller's rows of these jobs, read them, recount the nodes the harvest moved.
+ * @param opts - The jobs and the caller.
+ * @param opts.taskIds - The jobs (`tasks.id`).
+ * @param opts.userId - Who asks; only rows they started are judged or read.
+ * @returns One entry per row, and the counts of every node a row was judged expired on.
+ */
+export async function harvestAndListByTasks(opts: {
+  taskIds: readonly string[];
+  userId: string;
+}): Promise<{ tasks: JobNodeTaskRow[]; recounted: RecountedNode[] }> {
+  const moved = await repo.harvestExpiredByTasks(opts.taskIds, opts.userId);
+  const tasks = await repo.listByTasks(opts.taskIds, opts.userId);
+  const nodes = new Map(moved.map((n) => [`${n.projectId}:${n.nodeId}`, n]));
+  const recounted = await Promise.all(
+    [...nodes.values()].map(async (n) => ({ ...n, counts: await repo.countsFor(n.projectId, n.nodeId) })),
+  );
+  return { tasks, recounted };
 }

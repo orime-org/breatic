@@ -344,6 +344,12 @@
     },
     "document": {
       "versions_full": "{limit, plural, other {這個 Document 的快照已滿 # 張。刪掉舊的快照後再儲存。}}"
+    },
+    "agent_access": {
+      "token_limit_reached": "你已有 {max} 個有效的個人存取權杖，請先撤銷一個再新增。",
+      "capture_expired": "這次截圖請求已失效。",
+      "capture_too_large": "截圖太大，無法傳送。",
+      "capture_answered": "這次截圖請求已經有了回覆。"
     }
   },
   "chat": {

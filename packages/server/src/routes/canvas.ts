@@ -30,6 +30,7 @@ import { requireAuth } from "@server/middleware/auth.js";
 import { acceptTransferBody } from "@server/middleware/transfer-body.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
+import { downstreamRateLimitFor } from "@server/modules/agent-access/downstream-rate-limit.js";
 import { userUrlSchema, voiceSampleUrl } from "@breatic/domain";
 import {
   getCanvasReferencePoolCap,
@@ -66,6 +67,7 @@ import { defaultJobOpts, getMiniToolsConfig } from "@breatic/core";
 import {
   ValidationError,
   NotFoundError,
+  getMcpConfig,
   getUnderstandConfig,
   logger,
 } from "@breatic/core";
@@ -203,9 +205,10 @@ canvas.post(
 
 canvas.post(
   "/tasks",
-  rateLimitFor("generate", "user"),
   validate("header", idempotencyKeyHeaderSchema),
   validate("json", taskCreateSchema),
+  // After validate: an external agent's count reads the project_id (#1488 §6).
+  rateLimitFor("generate", "user"),
   runOnce("generate"),
   async (c) => {
   const user = c.get("user");
@@ -585,9 +588,10 @@ async function startReading(
  */
 canvas.post(
   "/understand",
-  rateLimitFor("understand", "user"),
   validate("header", idempotencyKeyHeaderSchema),
   validate("json", understandSchema),
+  // After validate: an external agent's count reads the project_id (#1488 §6).
+  rateLimitFor("understand", "user"),
   runOnce("understand"),
   async (c) => {
     const body = c.req.valid("json");
@@ -609,9 +613,10 @@ canvas.post(
  */
 canvas.post(
   "/transcribe",
-  rateLimitFor("transcribe", "user"),
   validate("header", idempotencyKeyHeaderSchema),
   validate("json", transcribeSchema),
+  // After validate: an external agent's count reads the project_id (#1488 §6).
+  rateLimitFor("transcribe", "user"),
   runOnce("transcribe"),
   async (c) => {
     const body = c.req.valid("json");
@@ -655,6 +660,7 @@ canvas.get(
   "/nodes/:nodeId/history",
   validate("param", z.object({ nodeId: z.string().uuid() })),
   validate("query", nodeHistoryQuerySchema),
+  downstreamRateLimitFor("agent-node-history"),
   async (c) => {
     const user = c.get("user");
     // nodeId is a canvas node UUID (node_history.node_id is uuid) — validated
@@ -731,6 +737,56 @@ canvas.get(
     );
 
     return c.json({ data: { tasks } });
+  },
+);
+
+/**
+ * `GET /canvas/node-tasks?ids=` — how the jobs the caller started ended
+ * (#1488 §9), for an external agent that started them and was handed back
+ * their `task_id`s.
+ *
+ * `ids` are `tasks.id`s, comma-separated, at most `task_query_max_ids` from
+ * `config/mcp.yaml`. Only rows the caller started are judged or read, so
+ * another user's job reads exactly like one that does not exist. A running
+ * row past its budget is judged expired first, as the node's own list does,
+ * and every node that changes gets its counts republished.
+ * @param c - Hono context; `ids` in the query.
+ * @returns `{ data: [{ taskId, projectId, spaceId, nodeId, status, content, errorMessage }] }`, one item per row.
+ * @throws {ValidationError} 422 when `ids` is not a list of uuids, or names more than `task_query_max_ids`.
+ */
+canvas.get(
+  "/node-tasks",
+  validate(
+    "query",
+    z.object({
+      ids: z
+        .string()
+        .transform((raw) => [...new Set(raw.split(",").map((s) => s.trim()).filter((s) => s.length > 0))])
+        .pipe(z.array(z.string().uuid()).min(1))
+        // Read at validation time: the cap is runtime configuration.
+        .refine((list) => list.length <= getMcpConfig().task_query_max_ids),
+    }),
+  ),
+  async (c) => {
+    const user = c.get("user");
+    const { ids } = c.req.valid("query");
+
+    const { tasks, recounted } = await nodeTaskService.harvestAndListByTasks({ taskIds: ids, userId: user.id });
+    for (const node of recounted) {
+      await publishCountsQuietly(canvasSpaceDocName(node.projectId, node.spaceId), node.nodeId, node.counts);
+    }
+
+    return c.json({
+      data: tasks.map((row) => ({
+        taskId: row.taskId,
+        projectId: row.projectId,
+        spaceId: row.spaceId,
+        nodeId: row.nodeId,
+        status: row.status,
+        content: row.content,
+        errorMessage: row.errorMessage,
+      })),
+    });
   },
 );
 

@@ -344,6 +344,12 @@
     },
     "document": {
       "versions_full": "{limit, plural, other {この Document のスナップショットは上限の # 件に達しています。古いスナップショットを削除してから保存してください。}}"
+    },
+    "agent_access": {
+      "token_limit_reached": "有効なパーソナルアクセストークンがすでに {max} 個あります。新しく作成する前に 1 つ取り消してください。",
+      "capture_expired": "このスクリーンショットのリクエストは期限切れです。",
+      "capture_too_large": "スクリーンショットが大きすぎて送信できません。",
+      "capture_answered": "このスクリーンショットのリクエストにはすでに応答済みです。"
     }
   },
   "chat": {

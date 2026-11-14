@@ -171,6 +171,18 @@ referral-read: { max: 120, window_seconds: 60 }
 referral-bind: { max: 10, window_seconds: 600 }
 promoter-apply: { max: 5, window_seconds: 3600 }
 
+# External agents (#1488, post-auth, user-keyed). Creating a personal access
+# token writes a token and a connection row and hands out a credential; a
+# person sets one up for each tool they connect, so ten an hour is plenty.
+# Renaming a connection is typed by hand, like a studio rename. Looking names
+# up by id is a page load from the browser (one per comment thread shown).
+pat-create: { max: 10, window_seconds: 3600 }
+agent-connection-rename: { max: 30, window_seconds: 3600 }
+agent-connection-names: { max: 120, window_seconds: 60 }
+# An external agent reading a node's history with a downstream token, per user
+# per Studio, counted in Redis DB 4 (#1488 §6); people reading it are not counted.
+agent-node-history: { max: 120, window_seconds: 60 }
+
 # Starting a conversation and creating a project (inner#1490, post-auth,
 # user-keyed). Each call writes a row, and its run-once record is kept in
 # Redis DB0 for a day, so a loop with a fresh key each time would grow that

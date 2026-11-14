@@ -344,6 +344,12 @@
     },
     "document": {
       "versions_full": "{limit, plural, other {这个 Document 的快照已满 # 张。删掉旧的快照后再保存。}}"
+    },
+    "agent_access": {
+      "token_limit_reached": "你已有 {max} 个有效的个人访问令牌，请先吊销一个再新建。",
+      "capture_expired": "这次截图请求已失效。",
+      "capture_too_large": "截图太大，无法发送。",
+      "capture_answered": "这次截图请求已经有了回复。"
     }
   },
   "chat": {

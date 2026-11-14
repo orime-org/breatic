@@ -38,6 +38,8 @@ export const mcpConfigSchema = z.object({
   command_wait_ms: positiveInt.default(10_000),
   /** The whole call's limit. */
   call_timeout_ms: positiveInt.default(45_000),
+  /** How long a command's reply (a capture's result included) stays readable. */
+  reply_ttl_seconds: positiveInt.default(600),
   task_query_max_ids: positiveInt.default(50),
   read_canvas_max_nodes: positiveInt.default(500),
   view_capture: viewCaptureSchema.prefault({}),

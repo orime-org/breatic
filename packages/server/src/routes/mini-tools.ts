@@ -41,9 +41,10 @@ miniTools.use("*", requireAuth);
  */
 miniTools.post(
   "/",
-  rateLimitFor("mini_tool", "user"),
   validate("header", idempotencyKeyHeaderSchema),
   validate("json", miniToolRequestSchema),
+  // After validate: an external agent's count reads the project_id (#1488 §6).
+  rateLimitFor("mini_tool", "user"),
   runOnce("mini-tool"),
   async (c) => {
   const user = c.get("user");

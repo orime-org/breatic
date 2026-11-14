@@ -165,6 +165,7 @@ export {
   publishSpaceTasksChanged,
   publishProjectConnectionsClose,
   projectControlChannelPattern,
+  publishSessionsRevoked,
   sessionsRevokedChannelName,
 } from "@core/infra/control-events.js";
 export {

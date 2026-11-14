@@ -7,11 +7,14 @@
  * Reads the session token from the httpOnly session cookie
  * (`sessionCookieName()` — deployment-scoped, see `@core/infra/session-store`),
  * resolves it via the session store, and sets the user entity on the
- * Hono context.
+ * Hono context. People sign in only this way: the cookie keeps the session
+ * token out of reach of a script on the page.
  *
- * Bearer/Authorization-header auth has been removed (2026-05-26) —
- * the cookie is the single canonical channel so XSS payloads cannot
- * exfiltrate the session token from the page.
+ * A request with no session cookie may instead carry a downstream token in
+ * `Authorization: Bearer` (#1488 §5.5): the short-lived token the MCP service
+ * calls with on an external agent's behalf. It is accepted only on the
+ * routes in `DOWNSTREAM_TOKEN_ROUTES`, and sets `agent` beside `user`. An
+ * agent's own OAuth or personal access token is never accepted here.
  */
 
 import type { MiddlewareHandler } from "hono";
@@ -20,6 +23,7 @@ import { authService } from "@server/modules";
 import { logger } from "@breatic/core";
 import { t, type MembershipTier } from "@breatic/shared";
 import { readSessionCookie } from "@server/middleware/session-cookie.js";
+import { authenticateDownstream, type DownstreamAgent } from "@server/modules/agent-access/downstream-auth.js";
 
 /** Hono context variables set by auth middleware. */
 export interface AuthVariables {
@@ -41,23 +45,22 @@ export interface AuthVariables {
      */
     locale: string;
   };
+  /** The external agent a downstream-token request comes from; absent for people. */
+  agent?: DownstreamAgent;
 }
 
 /**
  * Require authentication — returns 401 if the session cookie is
- * missing or invalid.
+ * invalid, or when there is none and no downstream token is accepted.
  * @param c - The Hono request context; the resolved user (id, email, membershipTier, locale) is set on it.
  * @param next - The downstream handler, invoked only when authentication succeeds.
- * @returns A 401 JSON response when the session cookie is missing or expired; otherwise nothing (control passes to `next`).
+ * @returns A 401 JSON response when the session cookie is expired, or missing with no downstream token accepted; a 429 when a downstream request's total is spent; otherwise nothing (control passes to `next`).
  */
 export const requireAuth: MiddlewareHandler<{
   Variables: AuthVariables;
 }> = async (c, next) => {
   const token = readSessionCookie(c);
-  if (!token) {
-    logger.warn({ reason: "no_token", path: c.req.path }, "auth_rejected");
-    return c.json({ error: { code: 401, message: t("server.auth.not_authenticated") } }, 401);
-  }
+  if (!token) return authenticateDownstream(c, next);
 
   const user = await authService.getUserByToken(token);
   if (!user) {

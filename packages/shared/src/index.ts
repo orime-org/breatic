@@ -606,6 +606,7 @@ export {
   mcpInFlightTasksKey,
   mcpOperationKey,
   mcpReplyKey,
+  VIEW_CAPTURE_VIEW_MAX_BYTES,
 } from "@shared/agent-command.js";
 export type { AgentCommand, AgentReply } from "@shared/agent-command.js";
 

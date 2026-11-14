@@ -370,9 +370,10 @@ const ingestUrlSchema = z.object({
 assets.post(
   "/ingest-url",
   requireAuth,
-  // One window with the canvas lane: both start fetches through our Worker.
-  rateLimitFor("ingest-url", "user"),
   validate("json", ingestUrlSchema),
+  // One window with the canvas lane: both start fetches through our Worker.
+  // After validate: an external agent's count reads the project_id (#1488 §6).
+  rateLimitFor("ingest-url", "user"),
   async (c) => {
     const user = c.get("user");
     const body = c.req.valid("json");
@@ -400,8 +401,9 @@ assets.post(
 assets.post(
   "/upload-ticket",
   requireAuth,
-  rateLimitFor("upload-ticket", "user"),
   validate("json", z.union([uploadTicketSchema, uploadTicketBatchSchema])),
+  // After validate: an external agent's count reads the project_id (#1488 §6).
+  rateLimitFor("upload-ticket", "user"),
   async (c) => {
     const user = c.get("user");
     const body = c.req.valid("json");
@@ -632,8 +634,9 @@ const deletedSchema = z.object({
 assets.post(
   "/deleted",
   requireAuth,
-  rateLimitFor("asset-report", "user"),
   validate("json", deletedSchema),
+  // After validate: an external agent's count reads the project_id (#1488 §6).
+  rateLimitFor("asset-report", "user"),
   async (c) => {
     const user = c.get("user");
     const body = c.req.valid("json");

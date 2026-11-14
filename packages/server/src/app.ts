@@ -43,6 +43,7 @@ import { studiosRoute, studioRoute } from "@server/routes/studios.js";
 import { decisionsRoute } from "@server/routes/decisions.js";
 import { projectInvitesRoute } from "@server/routes/project-invitations.js";
 import { notificationsRoute } from "@server/routes/notifications.js";
+import { agentAccessRoute, agentRoute } from "@server/modules/agent-access/agent-access.routes.js";
 import {
   projectRoleUpgradeRequestsRoute,
   roleUpgradeRequestWithdrawRoute,
@@ -116,6 +117,9 @@ export function createApp(): Hono {
   app.route("/api/v1/projects", projectAssetsRoute);
   app.route("/api/v1/projects", threeDTasksRoute);
   app.route("/api/v1/timeline", timelineRoute);
+  // External agents (#1488): the settings page's connections and the capture upload.
+  app.route("/api/v1/agent-access", agentAccessRoute);
+  app.route("/api/v1/agent", agentRoute);
 
   return app;
 }
