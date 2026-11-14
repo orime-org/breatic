@@ -9,12 +9,13 @@ import {
   type MiniToolPlanTarget, type TaskEntity, type TaskStatusType, type VideoPresentationLedger, type VideoPresentationLedgerReceipt,
 } from "@breatic/shared";
 import {
-  batchVideoRunOutputs, presentationFramesIn, canonicalMiniToolValue, miniToolById, planModelWindows, videoExpandLayout, type ModelGrid, type ModelWindow, type VideoExpandLayout, miniToolPlannedRequestSchema, presentationCoveringFrame, presentationFrameAt, trackingClips, clipJobWindows, videoCarrierGeometry, plannedFailureRetryable, fitTransitions, estimateAudioEncodeSeconds, estimateVideoJobSeconds, lipsyncMonotonicSegments, lipsyncPictureBytes, lipsyncResultSourceFrames, lipsyncSourceSpan, hashMiniToolValue, isHdrTransfer, miniToolExecutionRequestSchema, planVideoEncodeChunks,
+  batchVideoRunOutputs, presentationFramesIn, canonicalMiniToolValue, miniToolById, planModelWindows, videoExpandLayout, type ModelGrid, type ModelWindow, type VideoExpandLayout, miniToolPlannedRequestSchema, presentationFrameAt, trackingClips, clipJobWindows, videoCarrierGeometry, plannedFailureRetryable, fitTransitions, estimateAudioEncodeSeconds, estimateVideoJobSeconds, lipsyncMonotonicSegments, lipsyncPictureBytes, lipsyncResultSourceFrames, lipsyncSourceSpan, hashMiniToolValue, isHdrTransfer, miniToolExecutionRequestSchema, planVideoEncodeChunks,
   plannedStageJobs, planVideoFrames, planVideoSplit, type FrameWindow, type FramesExecutionLayout, type MiniToolExecutionRequest, type MiniToolExecutionRetryRequest, type MiniToolPlannedRequest, type MiniToolPresentationRef, type MiniToolSourceBinding, type MiniToolStageJobs,
   type LipsyncExecutionLayout, type LipsyncTimeline, type TransitionExecutionLayout, type TransitionOutputProfile, planTransitionChunks, planVideoTimeline, transitionOutputProfile, type VideoEncodeChunk, type VideoEncoderRates, type VideoExecutionDialogue, type VideoJobWork, type VideoPresentationTable,
 } from "@breatic/shared/mini-tools";
 import { prepareVideoRemoveBackground, type PreparedVideoRemoveBackground } from "@domain/mini-tool/remove-background-preparation.service.js";
 import { resolveSource } from "@domain/mini-tool/analysis.service.js";
+import { transitionSourceWindow } from "@domain/mini-tool/transition-source-window.js";
 import { lipsyncClipCropBytes, lipsyncCompositeChunks, lipSyncDialogues, lipSyncModel, lipSyncPeople, lipsyncPersonStepKeys, lipsyncRawDiskBytes, lipsyncSharedStepKeys, lipsyncStepKey, lipSyncTimeline, type LipSyncGenerator, type LipSyncPerson } from "@domain/mini-tool/lipsync-admission.js";
 import { eraseTracking, expandBox, type EraseTracking, type ExpandBox } from "@domain/mini-tool/erase-expand-admission.js";
 import { assertOpaqueSource, eraseRangeGrid, trackingClipSeconds } from "@domain/mini-tool/tracking-range.js";
@@ -850,16 +851,9 @@ async function prepareTransitions(request: Extract<MiniToolPlannedRequest, { too
     const high = Math.min(chunk.end, clip.startFrame + clip.frameCount);
     if (high <= low) return total;
     const { ledger } = inputs[at]!;
-    const table = ledger.plan.presentation;
-    /**
-     * The source frame covering an output frame's middle, as the worker cuts the chunk.
-     * @param k - The output frame.
-     * @returns The source frame.
-     * @throws {never} Never.
-     */
-    const covering = (k: number): number => presentationCoveringFrame(table, (clip.inFrame + k - clip.startFrame + 0.5) * fpsSeconds);
-    const first = covering(low);
-    const count = covering(high - 1) + 1 - first;
+    const window = transitionSourceWindow(ledger.plan.presentation, clip, { start: low, end: high }, profile.fps);
+    const first = window.start;
+    const count = window.end - first;
     return total + (count + prerollFrames(ledger, first, count)) * decodeFrame(ledger);
   }, 0);
   const chunks = [...layout.encode, ...layout.window];

@@ -10,13 +10,13 @@
  * both clips' audio and the crossfade window (none for a Cut). Every job carries the frozen profile.
  */
 import { logger } from "@breatic/core";
-import type { AcceptedMiniToolExecution } from "@breatic/domain";
+import { transitionSlotTime, transitionSourceWindow, type AcceptedMiniToolExecution } from "@breatic/domain";
 import { videoPresentationWorkKeyFor, type MiniToolPlanExact, type MiniToolPlanRecipe, type VideoPresentationLedger } from "@breatic/shared";
 import { planVideoTimeline, videoContainerJobId, type FrameWindow, type VideoContainerJobSpec, type VideoToolDraftById } from "@breatic/shared/mini-tools";
 import { advanceChunks, advanceRegistered, type ContainerStep } from "@worker/handlers/mini-tool/model-run-steps.js";
 import { failedResult, type VideoToolPickup } from "@worker/handlers/mini-tool/run-video-tool.js";
 import { planReadUntil } from "@worker/handlers/mini-tool/advance-plan-job.js";
-import { audioOf, chunkInputId, coveringFrame, FullLedgerInvalid, readJobLedger, segmentTarget, windowEntries, windowInterval } from "@worker/handlers/video-presentation-recipes.js";
+import { audioOf, chunkInputId, FullLedgerInvalid, readJobLedger, segmentTarget, windowEntries, windowInterval } from "@worker/handlers/video-presentation-recipes.js";
 import { UpstreamTaskFailed } from "@worker/providers/http.js";
 import { StillRunning } from "@worker/providers/still-running.js";
 
@@ -31,36 +31,6 @@ interface Clip { inputId: string; storageKey: string; ledger: VideoPresentationL
  * @throws {never} Never.
  */
 const clipInputId = (at: number): string => `00000000-0000-4000-8002-${String(at).padStart(12, "0")}`;
-
-/**
- * The time in a clip's presentation that output frame `k` shows (§7.17 transition output profile row: each clip takes, at output frame k, the
- * source frame covering that moment), exact.
- * @param clip - The clip.
- * @param k - The output frame.
- * @param fps - The output frame rate.
- * @param fps.numerator - Its numerator.
- * @param fps.denominator - Its denominator.
- * @returns The presentation time.
- * @throws {never} Never.
- */
-function slotTime(clip: Clip, k: number, fps: { numerator: string; denominator: string }): MiniToolPlanExact {
-  return exact(BigInt(clip.inFrame + k - clip.startFrame) * BigInt(fps.denominator), BigInt(fps.numerator));
-}
-
-/**
- * The source presentation frames a clip shows over output frames `[start, end)`: from the frame covering the first output
- * frame's time to the one covering the last's.
- * @param clip - The clip.
- * @param output - The output frames.
- * @param fps - The output frame rate.
- * @param fps.numerator - Its numerator.
- * @param fps.denominator - Its denominator.
- * @returns The source window.
- * @throws {RangeError} When a time lies outside the clip's presentation.
- */
-function sourceWindow(clip: Clip, output: FrameWindow, fps: { numerator: string; denominator: string }): FrameWindow {
-  return { start: coveringFrame(clip.ledger, slotTime(clip, output.start, fps)), end: coveringFrame(clip.ledger, slotTime(clip, output.end - 1, fps)) + 1 };
-}
 
 /**
  * One unregistered work chunk: a done output is pinned with the run and a failed attempt's output is retired with its result.
@@ -135,8 +105,8 @@ export async function runMiniToolTransitions(execution: AcceptedMiniToolExecutio
    * @throws {RangeError} When the frames lie outside the clip.
    */
   const over = (at: number, frames: FrameWindow): { window: FrameWindow; entries: ReturnType<typeof windowEntries> } => {
-    const window = sourceWindow(clips[at]!, frames, profile.fps);
-    return { window, entries: windowEntries(clips[at]!.ledger, window, slotTime(clips[at]!, frames.start, profile.fps)) };
+    const window = transitionSourceWindow(clips[at]!.ledger.plan.presentation, clips[at]!, frames, profile.fps);
+    return { window, entries: windowEntries(clips[at]!.ledger, window, exact(...transitionSlotTime(clips[at]!, frames.start, profile.fps))) };
   };
   const planned: { window: FrameWindow; step: ContainerStep }[] = [];
   for (const [k, window] of layout.encode.entries()) {
@@ -176,7 +146,7 @@ export async function runMiniToolTransitions(execution: AcceptedMiniToolExecutio
     written = await advanceRegistered({ taskId: execution.taskId, projectId: execution.projectId, sourceKey: execution.sourceKey, container: execution.container, log: "transitions" },
       { stepKey: "out:0:stitch", namePrefix: "TRANSITION", container: profile.alpha ? "webm" : "mp4", retire: chunks.map((chunk) => chunk.key), build: () => {
         // Each clip's audio over the frames it plays; a source with no audio track is played as silence by the stitch (D16-1).
-        const audio = clips.map((clip) => audioOf(clip.ledger, windowInterval(clip.ledger, sourceWindow(clip, { start: clip.startFrame, end: clip.startFrame + clip.frameCount }, profile.fps))));
+        const audio = clips.map((clip) => audioOf(clip.ledger, windowInterval(clip.ledger, transitionSourceWindow(clip.ledger.plan.presentation, clip, { start: clip.startFrame, end: clip.startFrame + clip.frameCount }, profile.fps))));
         return Promise.resolve({ inputs: [...clips.map((clip, at) => ({ inputId: clipInputId(at), storageKey: clip.storageKey })), ...chunks.map((chunk, at) => ({ inputId: chunkInputId(at), storageKey: chunk.key }))],
           recipe: { kind: "stitch", profile,
             chunks: chunks.map((chunk, at) => ({ inputId: chunkInputId(at), duration: exact(BigInt(chunk.end - chunk.start) * fpsDenominator, fpsNumerator) })),

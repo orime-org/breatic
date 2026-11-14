@@ -171,26 +171,6 @@ export function windowEntries(ledger: VideoPresentationLedger, window: FrameWind
 }
 
 /**
- * The presented frame covering a presentation time: the last frame starting at or before it.
- * @param ledger - The full ledger.
- * @param at - The time.
- * @returns Its ordinal.
- * @throws {RangeError} When the time lies before the first frame or after the last frame's end.
- */
-export function coveringFrame(ledger: VideoPresentationLedger, at: MiniToolPlanExact): number {
-  const frames = presentedFrames(ledger);
-  const scale = BigInt(ledger.plan.presentation.timescale);
-  const time = q(at);
-  let found = -1;
-  for (const [ordinal, frame] of frames.entries()) {
-    if (cmp([BigInt(frame.start), scale], time) > 0n) break;
-    found = ordinal;
-  }
-  if (found < 0 || cmp(time, [BigInt(frames[found]!.end), scale]) >= 0n) throw new RangeError('The time lies outside the presented frames');
-  return found;
-}
-
-/**
  * A window's entries, each with the presentation ordinal of its first frame.
  * @param ledger - The full ledger.
  * @param window - The window.

@@ -68,6 +68,7 @@ export {
   type MiniToolExecutionAdmission,
   type MiniToolExecutionTaskParams,
 } from "@domain/mini-tool/execution-admission.service.js";
+export { transitionSlotTime, transitionSourceWindow } from "@domain/mini-tool/transition-source-window.js";
 export * as miniToolSceneAnalysis from "@domain/mini-tool/scene-analysis.js";
 export * as miniToolPeopleAnalysis from "@domain/mini-tool/people-analysis.js";
 export type { MiniToolDisplayPeople, MiniToolPeopleAnalysisResult, MiniToolRegisteredAnalysisJob } from "@domain/mini-tool/people-analysis.js";
