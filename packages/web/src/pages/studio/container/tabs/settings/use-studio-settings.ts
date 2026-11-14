@@ -14,6 +14,7 @@
 
 import * as React from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { rememberStudioRegion } from '@web/data/api/directory';
 import { useNavigate } from 'react-router-dom';
 
 import { studiosApi } from '@web/data/api/studios';
@@ -159,11 +160,14 @@ export function useStudioSettings(
       // address now — so dropping the segment would move them somewhere they
       // did not ask to go, as the last step of an edit they did ask for.
       if (renamed) {
+        // The directory hears of the new slug a moment later; the page about
+        // to open asks for the Studio's region first.
+        rememberStudioRegion(next.slug, studio.region);
         navigate(studioTabPath(next.slug, 'settings'), { replace: true });
       }
       return refetched;
     },
-    [navigate, queryClient, studio.slug, studio.type],
+    [navigate, queryClient, studio.region, studio.slug, studio.type],
   );
 
   const updateMutation = useMutation({

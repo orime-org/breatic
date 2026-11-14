@@ -3,8 +3,12 @@
 
 /**
  * Which region a Studio or Project lives in, from the global directory
- * (inner#1955), remembered in localStorage so a reopened page skips the
- * question.
+ * (inner#1955). The directory hears of a non-global region's new Project or
+ * new slug through that region's outbox a moment after the change, so the tab
+ * that made the change answers from what it already knows. A Project id never
+ * changes, so its region is kept in localStorage and a reopened page skips the
+ * question; a slug can later belong to another Studio, so only this tab's own
+ * rename is remembered, in memory.
  */
 
 import { apiGet } from '@web/data/api/request';
@@ -14,29 +18,31 @@ export interface DirectoryEntry {
   region: string | null;
 }
 
-const CACHE_PREFIX = 'breatic:region:';
+const PROJECT_CACHE_PREFIX = 'breatic:region:project:';
+
+/** Slugs this tab renamed a Studio to, with the Studio's region. */
+const renamedSlugs = new Map<string, string | null>();
 
 /**
- * Read a remembered region, or ask the directory and remember the answer.
- * @param key - The cache key.
- * @param path - The directory path to ask.
- * @returns The entry.
- * @throws {ApiException} When the directory does not answer.
+ * Remember the region of a Project this tab just created.
+ * @param id - The Project id.
+ * @param region - Its region; null is the global region.
  */
-async function lookup(key: string, path: string): Promise<DirectoryEntry> {
+export function rememberProjectRegion(id: string, region: string | null): void {
   try {
-    const remembered = window.localStorage.getItem(CACHE_PREFIX + key);
-    if (remembered !== null) return { region: remembered === '' ? null : remembered };
+    window.localStorage.setItem(PROJECT_CACHE_PREFIX + id, region ?? '');
   } catch {
-    // Storage unavailable: ask the directory.
+    // Storage unavailable: the directory answers once it has heard.
   }
-  const entry = await apiGet<DirectoryEntry>(path);
-  try {
-    window.localStorage.setItem(CACHE_PREFIX + key, entry.region ?? '');
-  } catch {
-    // Storage unavailable: the next open asks again.
-  }
-  return entry;
+}
+
+/**
+ * Remember the region of a Studio this tab just renamed, under its new slug.
+ * @param slug - The new slug.
+ * @param region - The Studio's region; null is the global region.
+ */
+export function rememberStudioRegion(slug: string, region: string | null): void {
+  renamedSlugs.set(slug, region);
 }
 
 export const directoryApi = {
@@ -44,17 +50,29 @@ export const directoryApi = {
    * The region of a Studio.
    * @param slug - The Studio's slug.
    * @returns Its region.
+   * @throws {ApiException} When the directory does not answer.
    */
-  studio(slug: string): Promise<DirectoryEntry> {
-    return lookup(`studio:${slug}`, `/directory/studios/${encodeURIComponent(slug)}`);
+  async studio(slug: string): Promise<DirectoryEntry> {
+    const renamed = renamedSlugs.get(slug);
+    if (renamed !== undefined) return { region: renamed };
+    return apiGet<DirectoryEntry>(`/directory/studios/${encodeURIComponent(slug)}`);
   },
 
   /**
    * The region of a Project.
    * @param id - The Project id.
    * @returns Its region.
+   * @throws {ApiException} When the directory does not answer.
    */
-  project(id: string): Promise<DirectoryEntry> {
-    return lookup(`project:${id}`, `/directory/projects/${encodeURIComponent(id)}`);
+  async project(id: string): Promise<DirectoryEntry> {
+    try {
+      const remembered = window.localStorage.getItem(PROJECT_CACHE_PREFIX + id);
+      if (remembered !== null) return { region: remembered === '' ? null : remembered };
+    } catch {
+      // Storage unavailable: ask the directory.
+    }
+    const entry = await apiGet<DirectoryEntry>(`/directory/projects/${encodeURIComponent(id)}`);
+    rememberProjectRegion(id, entry.region);
+    return entry;
   },
 };

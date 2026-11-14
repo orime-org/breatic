@@ -11,11 +11,16 @@ vi.mock('@web/data/api/projects', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@web/data/api/projects')>()),
   projectsApi: { create: vi.fn() },
 }));
+vi.mock('@web/data/api/directory', () => ({ rememberProjectRegion: vi.fn() }));
 import { projectsApi } from '@web/data/api/projects';
+import { rememberProjectRegion } from '@web/data/api/directory';
 import { useCreateProject } from '@web/pages/studio/container/dialogs/use-create-project';
+import type { StudioSummary } from '@breatic/shared';
+
+let studios: StudioSummary[] = [];
 
 function Harness(): React.JSX.Element {
-  const create = useCreateProject([]);
+  const create = useCreateProject(studios);
   const location = useLocation();
   return (
     <div>
@@ -52,6 +57,7 @@ function setup() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  studios = [];
 });
 
 describe('useCreateProject — navigates INTO the new project (decision B)', () => {
@@ -80,6 +86,7 @@ describe('useCreateProject — navigates INTO the new project (decision B)', () 
     expect(projectsApi.create).toHaveBeenCalledWith(
       expect.objectContaining({ studioId: 's-1', slug: 'my-proj' }),
       expect.any(String),
+      null,
     );
   });
 
@@ -93,5 +100,23 @@ describe('useCreateProject — navigates INTO the new project (decision B)', () 
     screen.getByRole('button', { name: 'go' }).click();
     await new Promise((r) => setTimeout(r, 20));
     expect(projectsApi.create).toHaveBeenCalledTimes(1);
+  });
+
+  // inner#1955: the Project is created where its Studio lives, and its region
+  // is known before the directory hears of it.
+  it('creates the Project in its Studio\'s region and remembers that region before entering it', async () => {
+    studios = [{ id: 's-1', slug: 'far', region: 'sg' } as unknown as StudioSummary];
+    vi.mocked(projectsApi.create).mockResolvedValue({
+      id: 'new-proj', studioId: 's-1', name: 'My Project', description: null, thumbnailUrl: null,
+      createdByUserId: 'u-1', createdAt: '2026-06-16T00:00:00.000Z', updatedAt: '2026-06-16T00:00:00.000Z',
+      deletedAt: null, archivedAt: null, canManageMeta: true, canRestore: false, canLeave: false,
+    });
+    setup();
+
+    screen.getByRole('button', { name: 'go' }).click();
+
+    await waitFor(() => expect(screen.getByTestId('loc')).toHaveTextContent('/project/my-proj-new-proj'));
+    expect(projectsApi.create).toHaveBeenCalledWith(expect.objectContaining({ studioId: 's-1' }), expect.any(String), 'sg');
+    expect(rememberProjectRegion).toHaveBeenCalledWith('new-proj', 'sg');
   });
 });

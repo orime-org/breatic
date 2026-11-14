@@ -294,7 +294,7 @@ describe('StudioContainerPage', () => {
       name: 'Fresh',
       slug: 'fresh-proj',
       spaceType: 'canvas',
-    }, expect.any(String));
+    }, expect.any(String), null);
   });
 
   it('has no a11y violations', async () => {

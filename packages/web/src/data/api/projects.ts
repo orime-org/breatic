@@ -4,6 +4,7 @@
 import type { QueryClient } from '@tanstack/react-query';
 import type { ProjectRole, ProjectVisitOpened, ProjectVisitLookup, SpaceType, StudioProjectSort } from '@breatic/shared';
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut, runOnceRequest } from '@web/data/api/request';
+import { apiBaseFor, getRegionConfig } from '@web/data/api/regions';
 
 /**
  * Shared base shape for a single project (the fields `ProjectDetail` extends).
@@ -157,9 +158,13 @@ export const projectsApi = {
      */
     spaceType: SpaceType;
     description?: string;
-  }, key: string) {
+  }, key: string, region: string | null) {
     // `key` is the press's Idempotency-Key: a re-send with it makes no second project.
-    return apiPost<CreatedProject>('/projects', body, runOnceRequest(key));
+    // Sent to the Studio's own region, whatever page the dialog opened on.
+    return apiPost<CreatedProject>('/projects', body, {
+      ...runOnceRequest(key),
+      baseURL: apiBaseFor(region, getRegionConfig()),
+    });
   },
   duplicate(id: string) {
     return apiPost<CreatedProject>(`/projects/${id}/duplicate`, {});

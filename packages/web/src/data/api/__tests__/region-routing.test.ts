@@ -96,6 +96,17 @@ describe('axios calls', () => {
   });
 });
 
+describe('creating a Project', () => {
+  it('goes to the region of the Studio it is created in, whatever page is open', async () => {
+    setCurrentRegion(null);
+    await projectsApi.create({ studioId: 's-sg', name: 'P', slug: 'pppppp', spaceType: 'canvas' }, 'key-1', 'sg');
+    setCurrentRegion('sg');
+    await projectsApi.create({ studioId: 's-us', name: 'P', slug: 'pppppp', spaceType: 'canvas' }, 'key-2', null);
+
+    expect(seen).toEqual([`${SG}/projects`, `${US}/projects`]);
+  });
+});
+
 describe('the streaming wrapper', () => {
   it('opens a relative stream on the current region', async () => {
     setCurrentRegion('sg');

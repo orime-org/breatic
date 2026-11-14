@@ -53,6 +53,8 @@ const { slugFieldShowsConflict } = vi.hoisted(() => ({
 vi.mock('@web/pages/studio/container/dialogs/use-slug-availability', () => ({
   slugFieldShowsConflict,
 }));
+vi.mock('@web/data/api/directory', () => ({ rememberStudioRegion: vi.fn() }));
+import { rememberStudioRegion } from '@web/data/api/directory';
 vi.mock('@web/lib/toast', () => ({
   toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() },
 }));
@@ -117,6 +119,22 @@ beforeEach(() => {
   vi.clearAllMocks();
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   useCurrentUserStore.getState().clear();
+});
+
+describe('useStudioSettings — a renamed Studio in another region', () => {
+  // inner#1955: the directory hears of the new slug through the region's
+  // outbox a moment later; the page the rename opens must not ask it first.
+  it('remembers the new slug\'s region before opening the renamed Studio', async () => {
+    const far: StudioDetail = { ...TEAM, region: 'sg' };
+    vi.mocked(studiosApi.update).mockResolvedValue(updated(far, { slug: 'acme-renamed' }));
+    const { result } = renderHook(() => useStudioSettings(far), { wrapper });
+
+    result.current.save({ slug: 'acme-renamed' });
+
+    await waitFor(() => expect(navigate).toHaveBeenCalled());
+    expect(rememberStudioRegion).toHaveBeenCalledWith('acme-renamed', 'sg');
+    expect(vi.mocked(rememberStudioRegion).mock.invocationCallOrder[0]).toBeLessThan(navigate.mock.invocationCallOrder[0]!);
+  });
 });
 
 describe('useStudioSettings — telling a rename apart from any other save', () => {
