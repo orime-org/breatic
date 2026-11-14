@@ -16,7 +16,7 @@ import { planVideoTimeline, videoContainerJobId, type FrameWindow, type VideoCon
 import { advanceChunks, advanceRegistered, type ContainerStep } from "@worker/handlers/mini-tool/model-run-steps.js";
 import { failedResult, type VideoToolPickup } from "@worker/handlers/mini-tool/run-video-tool.js";
 import { planReadUntil } from "@worker/handlers/mini-tool/advance-plan-job.js";
-import { audioOf, chunkInputId, FullLedgerInvalid, readJobLedger, segmentTarget, windowEntries, windowInterval } from "@worker/handlers/video-presentation-recipes.js";
+import { audioOf, chunkInputId, FullLedgerInvalid, readJobLedger, segmentTarget, windowEntries } from "@worker/handlers/video-presentation-recipes.js";
 import { UpstreamTaskFailed } from "@worker/providers/http.js";
 import { StillRunning } from "@worker/providers/still-running.js";
 
@@ -145,8 +145,13 @@ export async function runMiniToolTransitions(execution: AcceptedMiniToolExecutio
   try {
     written = await advanceRegistered({ taskId: execution.taskId, projectId: execution.projectId, sourceKey: execution.sourceKey, container: execution.container, log: "transitions" },
       { stepKey: "out:0:stitch", namePrefix: "TRANSITION", container: profile.alpha ? "webm" : "mp4", retire: chunks.map((chunk) => chunk.key), build: () => {
-        // Each clip's audio over the frames it plays; a source with no audio track is played as silence by the stitch (D16-1).
-        const audio = clips.map((clip) => audioOf(clip.ledger, windowInterval(clip.ledger, transitionSourceWindow(clip.ledger.plan.presentation, clip, { start: clip.startFrame, end: clip.startFrame + clip.frameCount }, profile.fps))));
+        // Each clip's audio over exactly the time its output frames show, from its first slot for frameCount / fps, so its sound
+        // starts and ends with its picture; a source with no audio track is played as silence by the stitch (D16-1).
+        const audio = clips.map((clip) => {
+          const [numerator, denominator] = transitionSlotTime(clip, clip.startFrame, profile.fps);
+          const end = exact(numerator * fpsNumerator + BigInt(clip.frameCount) * fpsDenominator * denominator, denominator * fpsNumerator);
+          return audioOf(clip.ledger, { start: exact(numerator, denominator), end });
+        });
         return Promise.resolve({ inputs: [...clips.map((clip, at) => ({ inputId: clipInputId(at), storageKey: clip.storageKey })), ...chunks.map((chunk, at) => ({ inputId: chunkInputId(at), storageKey: chunk.key }))],
           recipe: { kind: "stitch", profile,
             chunks: chunks.map((chunk, at) => ({ inputId: chunkInputId(at), duration: exact(BigInt(chunk.end - chunk.start) * fpsDenominator, fpsNumerator) })),

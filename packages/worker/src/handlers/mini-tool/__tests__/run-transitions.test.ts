@@ -155,6 +155,21 @@ function run(transition: Transition, second: Served, secondOut: number, target: 
 }
 
 /**
+ * Each clip's stitch audio interval, in seconds, beside the interval its output frames show: [In slot, In slot + frames / fps).
+ * @param value - The run.
+ * @param clips - The stitch's clips.
+ * @returns Both, per clip.
+ */
+function audioAgainstVideo(value: Run, clips: { audio: unknown }[]): { audio: [number, number]; video: [number, number] }[] {
+  const seconds = (exact: { numerator: string; denominator: string }): number => Number(exact.numerator) / Number(exact.denominator);
+  const fps = seconds(value.profile.fps);
+  return value.timeline.clips.map((clip, at) => {
+    const audio = clips[at]!.audio as { start: { numerator: string; denominator: string }; end: { numerator: string; denominator: string } };
+    return { audio: [seconds(audio.start), seconds(audio.end)], video: [clip.inFrame / fps, (clip.inFrame + clip.frameCount) / fps] };
+  });
+}
+
+/**
  * The frozen transitions plan (the admission's projection; field names chosen in §97 for this test).
  * @param value - The run.
  * @returns The plan.
@@ -697,6 +712,12 @@ describe("a Cut transition (§5.4 派发: 转场选「直接切换」时不派 t
     // The plan cannot tell a silent source from one with audio (`audioSpans: null` is ambiguous), so the stitch names both
     // clips' audio and the container reads the real file, filling silence where it has no audio track.
     expect(clips.every((clip) => clip.audio !== null && typeof clip.audio === "object")).toBe(true);
+    // Each clip's audio covers exactly the time its output frames show (frames-split §7.17 stitch row), so the second clip's
+    // sound starts with its picture; the silent source's 38 frames over 1.5 s do not end on the 25 fps grid at 1.48 s.
+    for (const { audio, video } of audioAgainstVideo(value, clips)) {
+      expect(audio[0]).toBeCloseTo(video[0], 9);
+      expect(audio[1]).toBeCloseTo(video[1], 9);
+    }
     expect(statuses(completion)).toEqual(["registered"]);
   });
 });
