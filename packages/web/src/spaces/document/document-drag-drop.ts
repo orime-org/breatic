@@ -27,7 +27,7 @@ import {
   type UserPlace,
 } from '@web/spaces/document/document-drag-selection';
 import { dropRowBeside } from '@web/spaces/document/document-column-drop';
-import { takeSideDrop } from '@web/spaces/document/document-column-landing';
+import { forgetSideDrop, takeSideDrop } from '@web/spaces/document/document-column-landing';
 import { moveRowTo } from '@web/spaces/document/document-drag-move';
 import { dropAsPaste } from '@web/spaces/document/document-drop-as-paste';
 
@@ -57,6 +57,7 @@ export function rowIsFlying(
   place: UserPlace | undefined,
 ): void {
   flying = { blockId, place };
+  forgetSideDrop();
 }
 
 /**

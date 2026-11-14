@@ -13,7 +13,7 @@ import { columnAround, landsInPlace, type ColumnSide } from '@web/spaces/documen
 import { holds, LISTS } from '@web/spaces/document/document-column-entry';
 import { DOC_COLUMN, DOC_COLUMN_LIST, MAX_COLUMNS, meanWeight, weightsFit, weightsOf } from '@web/spaces/document/document-column-geometry';
 import { rowById } from '@web/spaces/document/document-row-by-id';
-import { cellDepthOf, DOC_TABLE } from '@web/spaces/document/document-table-nodes';
+import { cellDepthOf, DOC_TABLE, isTableCell } from '@web/spaces/document/document-table-nodes';
 
 /** A target's visible horizontal extent. */
 export interface VisibleBox {
@@ -123,6 +123,15 @@ interface SideDrop {
 let shown: SideDrop | undefined;
 
 /**
+ * Forgets the side drop a line last showed: a drag that ended without a drop
+ * (Escape) leaves it, and a drop with no line shown since (a table full
+ * screen draws none) would take it.
+ */
+export function forgetSideDrop(): void {
+  shown = undefined;
+}
+
+/**
  * Takes the side drop the line showed for this drag, if it showed one.
  * @param draggedId - The row the drag carries.
  * @returns The side drop, or undefined.
@@ -163,33 +172,61 @@ function nearestColumn(group: HTMLElement, x: number): DOMRect | null {
 }
 
 /**
+ * Computed lengths added up, in pixels.
+ * @param lengths - The computed values.
+ * @returns Their sum, a missing one counting 0.
+ */
+function pixelsOf(...lengths: string[]): number {
+  return lengths.reduce((sum, length) => sum + (Number.parseFloat(length) || 0), 0);
+}
+
+/**
+ * The room inside a cell, its padding and border taken off.
+ * @param cell - The cell's element.
+ * @returns Its left and right.
+ */
+function cellRoom(cell: HTMLElement): VisibleBox {
+  const box = cell.getBoundingClientRect();
+  const style = getComputedStyle(cell);
+  return {
+    left: box.left + pixelsOf(style.borderLeftWidth, style.paddingLeft),
+    right: box.right - pixelsOf(style.borderRightWidth, style.paddingRight),
+  };
+}
+
+/**
  * The row level with the pointer, the gutter and margin included, and what
  * of it the user sees: a picture, video or audio by its media box, any other
- * row by its own content.
+ * row by its own content. In the gap between two columns, or in a cell's
+ * padding, the pointer is inside the group or the cell itself: the row is
+ * the one level with it in the nearest column, or in the cell.
  * @param view - The editor view.
  * @param x - The pointer's x.
  * @param y - The pointer's y.
- * @param inColumn - Whether x was already moved into a column.
+ * @param fromMargin - Whether the drag is out in the page margin, held to the
+ *   body's box: the row there is the body's, a table whole.
+ * @param hops - How many times x was already moved in.
  * @returns The row, or null.
  */
-function rowAt(view: EditorView, x: number, y: number, inColumn = false): RowAt | null {
+function rowAt(view: EditorView, x: number, y: number, fromMargin: boolean, hops = 0): RowAt | null {
   const surface = view.dom.getBoundingClientRect();
   const at = view.posAtCoords({ left: Math.min(Math.max(x, surface.left + 1), surface.right - 1), top: y });
   if (at === null) return null;
-  // In the gap between two columns the pointer is inside the group itself;
-  // the row level with it is in the nearest column.
-  const inGroup = !inColumn && at.inside >= 0 && view.state.doc.nodeAt(at.inside)?.type.name === DOC_COLUMN_LIST;
-  const group = inGroup ? view.nodeDOM(at.inside) : null;
-  if (group instanceof HTMLElement) {
-    const nearest = nearestColumn(group, x);
-    return nearest === null ? null : rowAt(view, Math.min(Math.max(x, nearest.left + 1), nearest.right - 1), y, true);
+  const inside = at.inside >= 0 && hops < 2 ? view.state.doc.nodeAt(at.inside) : null;
+  const element = inside === null ? null : view.nodeDOM(at.inside);
+  if (element instanceof HTMLElement) {
+    const room = inside!.type.name === DOC_COLUMN_LIST ? nearestColumn(element, x) : !fromMargin && isTableCell(inside!) ? cellRoom(element) : undefined;
+    if (room === null) return null;
+    if (room !== undefined) return rowAt(view, Math.min(Math.max(x, room.left + 1), room.right - 1), y, fromMargin, hops + 1);
   }
   const $at = view.state.doc.resolve(at.inside >= 0 ? at.inside : at.pos);
   // The node the pointer is inside starts at `inside` (a table level with the
-  // pointer, outside its cells), then come the nodes around it.
+  // pointer, outside its cells), then come the nodes around it; from inside
+  // the body a table around the pointer is no row of its own.
   for (let depth = at.inside >= 0 ? $at.depth + 1 : $at.depth; depth > 0; depth -= 1) {
     const node = depth > $at.depth ? $at.nodeAfter : $at.node(depth);
-    if (node === null || (node.type.name !== 'blockContainer' && node.type.name !== DOC_TABLE)) continue;
+    const table = node?.type.name === DOC_TABLE && (fromMargin || depth > $at.depth);
+    if (node === null || (node.type.name !== 'blockContainer' && !table)) continue;
     const pos = depth > $at.depth ? $at.pos : $at.before(depth);
     const dom = view.nodeDOM(pos);
     if (!(dom instanceof HTMLElement)) return null;
@@ -225,14 +262,15 @@ export function columnDropHook(next: DropPositionHook, flyingRowId: () => string
     const draggedId = flyingRowId();
     if (draggedId === undefined) return next(context);
     const { view, event } = context;
-    const row = rowAt(view, event.clientX, event.clientY);
     // A drag beside the body reaches here re-sent and held to the body's box
     // (BlockNote `SideMenu/blockDropHandling.ts`): held to its left edge, the
     // pointer is out in the gutter; held to its top or bottom edge, it is
     // above or below the body, level with no row.
+    const fromMargin = (event as { synthetic?: boolean }).synthetic === true;
+    const row = rowAt(view, event.clientX, event.clientY, fromMargin);
     const group = view.dom.firstElementChild?.getBoundingClientRect();
     const held =
-      (event as { synthetic?: boolean }).synthetic === true &&
+      fromMargin &&
       (event.clientX <= (row?.holderLeft ?? 0) || (group !== undefined && (event.clientY <= group.top || event.clientY >= group.bottom)));
     const side = row === null || held ? null : sideOfPointer(event.clientX, row.box, row.holderLeft);
     if (row === null || side === null) return next(context);

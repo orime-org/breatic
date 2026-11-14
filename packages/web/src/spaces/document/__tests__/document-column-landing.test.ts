@@ -22,7 +22,8 @@ import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { weightsFit } from '@web/spaces/document/document-column-geometry';
-import { sideDropAllowed, sideOfPointer } from '@web/spaces/document/document-column-landing';
+import { columnDropHook, sideDropAllowed, sideOfPointer, takeSideDrop } from '@web/spaces/document/document-column-landing';
+import { rowIsFlying } from '@web/spaces/document/document-drag-drop';
 import { columnsBlock, para } from '@web/spaces/document/__tests__/column-fixtures';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
@@ -222,5 +223,27 @@ describe('whether a container holds its columns side by side (design §5.1)', ()
     // 72px of gap, then the thin column's sixth of the rest: (552 - 72) / 6 = 80.
     expect(weightsFit(552, [5, 1])).toBe(false);
     expect(weightsFit(648, [5, 1])).toBe(true);
+  });
+});
+
+describe('the side drop a line showed (design §5.2)', () => {
+  it('is forgotten when the next row drag starts', () => {
+    const editor = editorWith([para('a'), para('b')]);
+    const view = editor.prosemirrorView;
+    let inA = -1;
+    view.state.doc.descendants((node: PMNode, pos: number) => {
+      if (inA < 0 && node.isTextblock && node.textContent === 'a') inA = pos + 1;
+      return inA < 0;
+    });
+    // The pointer at a's left edge, in a body wide enough for two columns.
+    view.posAtCoords = () => ({ pos: inA, inside: -1 });
+    Object.defineProperty(view.dom, 'clientWidth', { configurable: true, value: 768 });
+    const dragged = idOf(editor, 'b');
+    const hook = columnDropHook(() => null as never, () => dragged);
+    const orientation = hook({ view, event: new MouseEvent('dragover', { clientX: 0, clientY: 0 }) } as never);
+    expect(orientation).toMatchObject({ orientation: 'block-vertical-left' });
+    // That drag ends with no drop (Escape); the next one starts.
+    rowIsFlying(dragged, undefined);
+    expect(takeSideDrop(dragged)).toBeUndefined();
   });
 });

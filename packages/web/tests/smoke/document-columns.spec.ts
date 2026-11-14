@@ -523,3 +523,16 @@ test('a table in a column opened full screen shows alone, its group\'s other col
   await expect(page.locator('[data-table-fullscreen]')).toHaveCount(0);
   expect(shown.width).toBeGreaterThan(surface.width - 2);
 });
+
+test('dragging a row into a cell\'s left padding lands beside the cell\'s block, inside the cell', async () => {
+  await openWithLines(page, ['lead', 'moved']);
+  await tableUnder(page, 'lead');
+  await page.keyboard.type('one');
+  const cell = page.locator(`${EDITOR} td`).first();
+  const box = (await cell.boundingBox())!;
+  const line = (await row(page, 'one').boundingBox())!;
+  // In the cell's padding, left of its block's words.
+  await dragRowTo(page, 'moved', { x: box.x + 4, y: line.y + line.height / 2 });
+  await expect.poll(() => groups(page)).toEqual([['moved', 'one']]);
+  await expect(cell.locator('.doc-columns')).toHaveCount(1);
+});
