@@ -60,6 +60,7 @@ import { documentColumnCellWidthExtension } from '@web/spaces/document/document-
 import { documentColumnKeysExtension } from '@web/spaces/document/document-column-keys';
 import { columnDropHook } from '@web/spaces/document/document-column-landing';
 import { documentColumnRepairExtension } from '@web/spaces/document/document-column-repair';
+import { documentMarginDropExtension, DROP_MARGIN } from '@web/spaces/document/document-margin-drop';
 import { documentColumnSpanSelectionExtension } from '@web/spaces/document/document-column-span-selection';
 import { documentTableKeysExtension } from '@web/spaces/document/document-table-keys';
 import { documentTableColumnWidthsExtension } from '@web/spaces/document/document-table-column-widths';
@@ -204,6 +205,7 @@ export function buildDocumentEditor(
       ...(options.showsSavedBodies === true ? [] : [documentColumnRepairExtension()]),
       documentColumnSpanSelectionExtension(),
       documentColumnCellWidthExtension(),
+      documentMarginDropExtension(),
       documentTableTargetExtension(),
       documentTableHandlesExtension(),
       documentTableCopyExtension(),
@@ -293,7 +295,7 @@ export function buildDocumentEditor(
     // a strip stands, a table's own being the furthest: it is reached there,
     // level with the table and past its first column's strips, since over its
     // cells the strip belongs to their blocks (inner#1619 design 5.3).
-    sideMenu: { hoverMargin: TABLE_STRIP_OUTSET + STRIP_SIZE },
+    sideMenu: { hoverMargin: TABLE_STRIP_OUTSET + STRIP_SIZE, dropMargin: DROP_MARGIN },
     pasteHandler: pasteChain(options),
     ...collaborative,
   } as never) as BlockNoteEditor<never, never, never>;

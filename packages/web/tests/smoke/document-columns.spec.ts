@@ -306,3 +306,66 @@ test('the line beside a narrow picture stands at the picture\'s own edge', async
   expect(Math.abs(drawn!.x + drawn!.width / 2 - (picture.x + picture.width))).toBeLessThan(8);
   await expect.poll(() => groups(page)).toHaveLength(1);
 });
+
+test('dragging a row into the right page margin level with a table stands it beside the table', async () => {
+  await openWithLines(page, ['lead']);
+  await page.mouse.move(5, 5);
+  const lead = (await row(page, 'lead').boundingBox())!;
+  await page.mouse.move(lead.x + 30, lead.y + lead.height / 2, { steps: 3 });
+  await page.getByTestId('doc-block-handle').click();
+  await page.getByTestId('doc-block-row-insertBelow').hover();
+  await page.getByTestId('doc-block-insert-table').hover();
+  await page.getByTestId('doc-table-size-2-2').click();
+  await page.keyboard.type('one');
+  const table = (await page.locator(`${EDITOR} [data-node-type="docTable"]`).first().boundingBox())!;
+  const body = (await page.locator(`${EDITOR} .bn-block-group`).first().boundingBox())!;
+  await dragRowTo(page, 'lead', { x: body.x + body.width + 120, y: table.y + table.height / 2 });
+  await expect.poll(() => page.locator(`${EDITOR} .doc-column > [data-node-type="docTable"]`).count()).toBe(1);
+  expect(await page.locator(`${EDITOR} td .doc-columns`).count()).toBe(0);
+});
+
+test('in a wide window, the page margin far right of the body still takes a side drop', async () => {
+  await page.setViewportSize({ width: 2600, height: 950 });
+  await openWithLines(page, ['alpha', 'beta']);
+  const alpha = (await row(page, 'alpha').boundingBox())!;
+  const body = (await page.locator(`${EDITOR} .bn-block-group`).first().boundingBox())!;
+  const x = body.x + body.width + 500;
+  expect(x).toBeLessThan(2600 - 20);
+  await dragRowTo(page, 'beta', { x, y: alpha.y + alpha.height / 2 });
+  await expect.poll(() => groups(page)).toEqual([['alpha', 'beta']]);
+});
+
+test('above the body, level with no line, the right margin shows no side line', async () => {
+  await openWithLines(page, ['alpha', 'beta']);
+  const scroller = (await page.locator('[data-testid="document-space"] .doc-body-scroller').first().boundingBox())!;
+  const body = (await page.locator(`${EDITOR} .bn-block-group`).first().boundingBox())!;
+  const x = Math.min(body.x + body.width + 40, page.viewportSize()!.width - 10);
+  await page.mouse.move(5, 5);
+  const alpha = (await row(page, 'alpha').boundingBox())!;
+  const beta = (await row(page, 'beta').boundingBox())!;
+  await page.mouse.move(beta.x + 30, beta.y + beta.height / 2, { steps: 3 });
+  const grip = (await page.getByTestId('doc-block-handle').boundingBox())!;
+  await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2, { steps: 3 });
+  await page.mouse.down();
+  await page.mouse.move(grip.x + 20, grip.y + 20, { steps: 3 });
+  const side = page.locator('.prosemirror-dropcursor-block-vertical-right, .prosemirror-dropcursor-block-vertical-left');
+  let level: number;
+  let above: number;
+  try {
+    // Level with alpha the margin takes a side drop; above the body it does not.
+    await page.mouse.move(x, alpha.y + alpha.height / 2, { steps: 12 });
+    // The drag starts partway through the long move; a few more settle the line.
+    await page.mouse.move(x - 4, alpha.y + alpha.height / 2, { steps: 2 });
+    await page.mouse.move(x, alpha.y + alpha.height / 2, { steps: 2 });
+    await page.waitForTimeout(300);
+    level = await side.count();
+    await page.mouse.move(x, scroller.y - 20, { steps: 6 });
+    await page.waitForTimeout(300);
+    above = await side.count();
+  } finally {
+    await page.keyboard.press('Escape');
+    await page.mouse.up();
+  }
+  expect(level).toBe(1);
+  expect(above).toBe(0);
+});

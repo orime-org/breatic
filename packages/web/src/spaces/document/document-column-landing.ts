@@ -198,10 +198,12 @@ function rowAt(view: EditorView, x: number, y: number): RowAt | null {
   const at = view.posAtCoords({ left: Math.min(Math.max(x, surface.left + 1), surface.right - 1), top: y });
   if (at === null) return null;
   const $at = view.state.doc.resolve(at.inside >= 0 ? at.inside : at.pos);
-  for (let depth = $at.depth; depth > 0; depth -= 1) {
-    const node = $at.node(depth);
-    if (node.type.name !== 'blockContainer' && node.type.name !== DOC_TABLE) continue;
-    const pos = $at.before(depth);
+  // The node the pointer is inside starts at `inside` (a table level with the
+  // pointer, outside its cells), then come the nodes around it.
+  for (let depth = at.inside >= 0 ? $at.depth + 1 : $at.depth; depth > 0; depth -= 1) {
+    const node = depth > $at.depth ? $at.nodeAfter : $at.node(depth);
+    if (node === null || (node.type.name !== 'blockContainer' && node.type.name !== DOC_TABLE)) continue;
+    const pos = depth > $at.depth ? $at.pos : $at.before(depth);
     const dom = view.nodeDOM(pos);
     if (!(dom instanceof HTMLElement)) return null;
     // A row's own content sits in its outer element's block (BlockNote
@@ -238,10 +240,14 @@ export function columnDropHook(next: DropPositionHook, flyingRowId: () => string
     const { view, event } = context;
     const row = rowAt(view, event.clientX, event.clientY);
     // A drag beside the body reaches here re-sent and held to the body's box
-    // (BlockNote `SideMenu/blockDropHandling.ts`); held to its left edge, the
-    // pointer is out in the gutter.
-    const fromGutter = (event as { synthetic?: boolean }).synthetic === true && event.clientX <= (row?.holderLeft ?? 0);
-    const side = row === null || fromGutter ? null : sideOfPointer(event.clientX, row.box, row.holderLeft);
+    // (BlockNote `SideMenu/blockDropHandling.ts`): held to its left edge, the
+    // pointer is out in the gutter; held to its top or bottom edge, it is
+    // above or below the body, level with no row.
+    const group = view.dom.firstElementChild?.getBoundingClientRect();
+    const held =
+      (event as { synthetic?: boolean }).synthetic === true &&
+      (event.clientX <= (row?.holderLeft ?? 0) || (group !== undefined && (event.clientY <= group.top || event.clientY >= group.bottom)));
+    const side = row === null || held ? null : sideOfPointer(event.clientX, row.box, row.holderLeft);
     if (row === null || side === null) return next(context);
     const room = { bodyWidth: view.dom.clientWidth };
     if (!sideDropAllowed(view.state.doc, draggedId, row.id, side, room)) return next(context);
