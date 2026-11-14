@@ -259,6 +259,8 @@ beforeAll(async () => {
     '-vf', 'scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,setparams=colorspace=unknown:color_primaries=unknown:color_trc=unknown',
     '-c:v', 'libx264', '-pix_fmt', 'yuv420p']);
   await make('alpha.mov', ['-f', 'lavfi', '-i', 'testsrc2=s=64x36:r=25:d=0.4,format=rgba,colorchannelmixer=aa=0.25', '-c:v', 'png']);
+  // The same alpha in a VP9 WebM, whose alpha plane only the libvpx decoder reads.
+  await make('alpha.webm', ['-f', 'lavfi', '-i', 'testsrc2=s=64x36:r=25:d=0.4,format=yuva420p,colorchannelmixer=aa=0.25', '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuva420p']);
 });
 afterAll(async () => { await rm(dir, { recursive: true, force: true }); });
 
@@ -357,9 +359,9 @@ describe('chunk_encode (§5.4 切块、块的时间; §7.17)', () => {
     expect(Number(list[4]!.duration_time)).toBeCloseTo(1.04, 6);
   });
 
-  it('CE08 packs an alpha source premultiplied colour left and alpha right on even planes (§3.5 alpha-packed; alpha-presentation.ts packing)', async () => {
+  it.each(['alpha.mov', 'alpha.webm'])('CE08 packs an alpha source premultiplied colour left and alpha right on even planes (§3.5 alpha-packed; alpha-presentation.ts packing): %s', async (name) => {
     const recipe = chunk({ start: 0, end: 10 }, [span(r(0), r(0), r(0), r(2, 5))], { ...TARGET, width: 128, height: 36, alpha: 'packed' });
-    const [file] = await produce({ [SOURCE]: join(dir, 'alpha.mov') }, [recipe]);
+    const [file] = await produce({ [SOURCE]: join(dir, name) }, [recipe]);
     const video = (await probe(file!)).streams[0]!;
     expect([video.codec_name, video.pix_fmt, video.width, video.height]).toEqual(['h264', 'yuv420p', 128, 36]);
     // The right plane is the alpha as grey: 64 stored as limited-range luma 16 + 64 * 219 / 255 ≈ 71.

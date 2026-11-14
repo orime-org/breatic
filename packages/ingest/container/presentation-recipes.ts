@@ -324,8 +324,12 @@ function earlier(left: [bigint, bigint], right: [bigint, bigint]): [bigint, bigi
 // The audio of every user-facing video output, at the bitrate the audio mini-tools write (src/jobs/op-args.ts AUDIO_OUT).
 const AAC = ["-map", "[a]", "-c:a", "aac", "-b:a", "192k", "-ar", "48000"];
 
-/** What the recipes need to know of a source before reading it; `tick` is the first video stream's time base. */
-interface SourceFacts { iso: boolean; audio: boolean; tick: [bigint, bigint] | null }
+/**
+ * What the recipes need to know of a source before reading it; `tick` is the first video stream's time base, `decoder` the
+ * decoder options a VP9 or VP8 stream with alpha needs (FFmpeg's own decoders skip the alpha plane, which Matroska stores as a
+ * BlockAdditional; only libvpx reads it, as alpha-presentation.ts decodes it).
+ */
+interface SourceFacts { iso: boolean; audio: boolean; tick: [bigint, bigint] | null; decoder: string[] }
 
 /**
  * Whether the source is ISO BMFF (its edit lists are ignored so packet times are media time, the recipe's timeline;
@@ -337,12 +341,16 @@ interface SourceFacts { iso: boolean; audio: boolean; tick: [bigint, bigint] | n
  * @throws {Error} When ffprobe fails.
  */
 async function sourceFacts(source: string, run: { signal: AbortSignal; stdoutBytes: number; stderrTailBytes: number }): Promise<SourceFacts> {
-  const answer = JSON.parse((await runPlanCommand("ffprobe", ["-v", "error", "-protocol_whitelist", "file", "-show_entries", "format=format_name:stream=codec_type,time_base", "-of", "json", source], run))
-    .toString("utf8")) as { format?: { format_name?: string }; streams?: { codec_type?: string; time_base?: string }[] };
+  const answer = JSON.parse((await runPlanCommand("ffprobe", ["-v", "error", "-protocol_whitelist", "file", "-show_entries",
+    "format=format_name:stream=codec_type,codec_name,time_base:stream_tags", "-of", "json", source], run))
+    .toString("utf8")) as { format?: { format_name?: string }; streams?: { codec_type?: string; codec_name?: string; time_base?: string; tags?: Record<string, string> }[] };
   const names = (answer.format?.format_name ?? "").split(",");
-  const tick = /^(\d+)\/(\d+)$/u.exec((answer.streams ?? []).find((stream) => stream.codec_type === "video")?.time_base ?? "");
+  const video = (answer.streams ?? []).find((stream) => stream.codec_type === "video");
+  const tick = /^(\d+)\/(\d+)$/u.exec(video?.time_base ?? "");
+  const alpha = Object.entries(video?.tags ?? {}).some(([key, value]) => key.toLowerCase() === "alpha_mode" && value === "1");
+  const decoder = !alpha ? [] : video?.codec_name === "vp9" ? ["-c:v", "libvpx-vp9"] : video?.codec_name === "vp8" ? ["-c:v", "libvpx"] : [];
   return { iso: names.includes("mov") || names.includes("mp4"), audio: (answer.streams ?? []).some((stream) => stream.codec_type === "audio"),
-    tick: tick === null ? null : [BigInt(tick[1]!), BigInt(tick[2]!)] };
+    tick: tick === null ? null : [BigInt(tick[1]!), BigInt(tick[2]!)], decoder };
 }
 
 /**
@@ -535,7 +543,7 @@ export async function windowGraph(entries: readonly MiniToolPlanEntry[], time: b
     const clipEnd = plus([clipNumerator, clipDenominator], times(minus(entry.displayEnd, entry.displayStart), [rateNumerator, rateDenominator]));
     // An edit can start inside a source frame (§7.17 timeline row): that frame is kept and shown from clipStart.
     const first = await frameStartAt(source, facts, entry, run);
-    args.push(...mediaTimeline(facts), "-seek_timestamp", "1", "-noaccurate_seek", "-ss", seconds(rational(entry.decodeStart)), "-i", source);
+    args.push(...mediaTimeline(facts), "-seek_timestamp", "1", "-noaccurate_seek", "-ss", seconds(rational(entry.decodeStart)), ...facts.decoder, "-i", source);
     const ticks = `max(round((PTS-${roundTimes([clipNumerator, clipDenominator], clock)})*${rateDenominator}/${rateNumerator})\\,0)+${roundTimes(offset, clock)}`;
     // On a grid a frame whose stored time is up to `slack` after a slot starts on that slot (§7.17 transition output profile
     // row): its slot is ceil((t − slack) · fps), with 2 · slack · clock a whole number of ticks (the clock holds the source tick).
@@ -1002,7 +1010,7 @@ async function renderFrame(recipe: FrameRecipe, source: string, output: string,
     if (matrix === undefined) throw new RangeError(`No decode matrix for ${target.colorMatrix}`);
     const facts = await sourceFacts(source, run);
     const first = await frameStartAt(source, facts, entry, run);
-    args.push(...mediaTimeline(facts), "-seek_timestamp", "1", "-noaccurate_seek", "-ss", seconds(rational(entry.decodeStart)), "-i", source);
+    args.push(...mediaTimeline(facts), "-seek_timestamp", "1", "-noaccurate_seek", "-ss", seconds(rational(entry.decodeStart)), ...facts.decoder, "-i", source);
     graph = `[0:v:0]trim=start=${seconds(first)},${target.toneMap === "sdr-bt709" ? `${TONE_MAP},` : ""}` +
       `scale=${target.width}:${target.height}:in_color_matrix=${matrix},format=${pixel}${cropped}[v]`;
   }

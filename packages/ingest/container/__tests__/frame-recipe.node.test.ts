@@ -104,6 +104,8 @@ beforeAll(async () => {
   await ff('pq10.mp4', ['-f', 'lavfi', '-i', 'color=c=0x808080:s=160x96:r=25:d=0.4', '-vf', 'scale=out_color_matrix=bt2020:out_range=tv,format=yuv420p10le',
     '-c:v', 'libx264', '-bf', '0', '-pix_fmt', 'yuv420p10le', '-x264-params', 'colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc']);
   await ff('alpha.mov', ['-f', 'lavfi', '-i', 'testsrc2=s=64x36:r=25:d=0.4,format=rgba,colorchannelmixer=aa=0.25', '-c:v', 'png']);
+  // The same alpha in a VP9 WebM: the alpha plane is a BlockAdditional, which only the libvpx decoder reads.
+  await ff('alpha.webm', ['-f', 'lavfi', '-i', 'testsrc2=s=64x36:r=25:d=0.4,format=yuva420p,colorchannelmixer=aa=0.25', '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuva420p']);
   await ff('rot90.mp4', ['-display_rotation', '90', '-i', join(dir, 'flash.mp4'), '-c', 'copy']);
   // A white 20x12 box at (40, 20) on black, every frame a keyframe: FC07's crops are read against its known edges.
   await ff('box.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=160x96:r=25:d=0.2,drawbox=x=40:y=20:w=20:h=12:color=white:t=fill,format=yuv420p",
@@ -159,8 +161,8 @@ describe('frame from a full-ledger entry (§92 D4-3; design §7.17 frame row)', 
     expect((await rgbaMeans(await saved(clear)))[3]).toBe(0);
   });
 
-  it('FC05 a transparent source keeps its alpha in an RGBA PNG', async () => {
-    const png = await frame('alpha.mov', { entry: frameAt([0, 1]), target: { ...OPAQUE, width: 64, height: 36, alpha: 'straight' } });
+  it.each(['alpha.mov', 'alpha.webm'])('FC05 a transparent source keeps its alpha in an RGBA PNG: %s', async (name) => {
+    const png = await frame(name, { entry: frameAt([0, 1]), target: { ...OPAQUE, width: 64, height: 36, alpha: 'straight' } });
     expect(header(png)).toMatchObject({ width: 64, height: 36, colorType: 6 });
     expect(Math.abs((await rgbaMeans(await saved(png)))[3]! - 64)).toBeLessThan(2);
   });
