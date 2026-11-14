@@ -941,6 +941,48 @@ describe('continuous controls end on release and on Escape (round 1 fixes, desig
     expect(session.getSnapshot().gestureActive).toBe(false);
   });
 
+  it('ends a held ambient slider press on Escape before its first change and keeps the console open', async () => {
+    const { session } = await setup([], 'editor', true, { spaceKeyboard: true });
+    act(() => { session.execute({ type: 'environment', set: { ambientIntensity: 2.7 } }); });
+    await openDirector();
+    sliderPointers();
+    const thumb = (): HTMLElement => within(within(screen.getByTestId('scene-right-panel')).getByTestId('scene-director-ambient')).getAllByRole('slider')[0] as HTMLElement;
+    // 2.7 of 10 on a 400 px track: the press lands on the current value.
+    fireEvent.pointerDown(thumb(), { pointerId: 1, button: 0, buttons: 1, clientX: 108 });
+    fireEvent.keyDown(thumb(), { key: 'Escape' });
+    expect(screen.queryByTestId('scene-right-panel')).toBeInTheDocument();
+    fireEvent.pointerUp(thumb(), { pointerId: 1, clientX: 108 });
+    drag(thumb(), [108, 200]);
+    await waitFor(() => expect(session.getSnapshot().environment.ambientIntensity).toBe(5));
+  });
+
+  it('opens no ambient press for a Viewer, so Escape on the slider takes its usual step', async () => {
+    await setup([], 'viewer', true, { spaceKeyboard: true });
+    await openDirector();
+    sliderPointers();
+    const [thumb] = within(within(screen.getByTestId('scene-right-panel')).getByTestId('scene-director-ambient')).getAllByRole('slider');
+    fireEvent.pointerDown(thumb as HTMLElement, { pointerId: 1, button: 0, buttons: 1, clientX: 108 });
+    fireEvent.keyDown(thumb as HTMLElement, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByTestId('scene-right-panel')).toBeNull());
+  });
+
+  it('takes the next ambient press after the console closed during a dropped one', async () => {
+    const { session } = await setup([], 'editor', true, { spaceKeyboard: true });
+    act(() => { session.execute({ type: 'environment', set: { ambientIntensity: 2.7 } }); });
+    await openDirector();
+    sliderPointers();
+    const thumb = (): HTMLElement => within(within(screen.getByTestId('scene-right-panel')).getByTestId('scene-director-ambient')).getAllByRole('slider')[0] as HTMLElement;
+    drag(thumb(), [108, 300], false);
+    const held = thumb();
+    fireEvent.keyDown(held, { key: 'Escape' });
+    // The second Escape closes the console while the button is still held; its release never reaches the slider.
+    fireEvent.keyDown(held, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByTestId('scene-right-panel')).toBeNull());
+    await openDirector();
+    drag(thumb(), [108, 200]);
+    await waitFor(() => expect(session.getSnapshot().environment.ambientIntensity).toBe(5));
+  });
+
   it('drops an ambient picker drag when the browser loses focus', async () => {
     const { session } = await setup();
     const opened = await openDirector();

@@ -12,12 +12,16 @@ export interface ControlPress {
    */
   change: (start: () => boolean) => boolean;
   /**
-   * Open the press when the pointer goes down, so undo or Escape before its first change still ends it.
+   * Open a new press when the pointer goes down, so undo or Escape before its first change still ends it; whatever an
+   * earlier press left behind (its control unmounted before its release) ends here.
    * @param start - Opens the drag; false when it cannot open.
    */
   begin: (start: () => boolean) => void;
-  /** End the drag without writing it; the rest of the press is ignored until release. */
-  drop: () => void;
+  /**
+   * End the drag without writing it; the rest of the press is ignored until release.
+   * @returns Whether a press was open.
+   */
+  drop: () => boolean;
   /**
    * End the press.
    * @returns Whether its drag was still open, so the release writes it.
@@ -32,19 +36,30 @@ export interface ControlPress {
  */
 export function useControlPress(): ControlPress {
   const state = React.useRef<'idle' | 'open' | 'dropped'>('idle');
-  return React.useMemo<ControlPress>(() => ({
-    change: (start) => {
-      if (state.current === 'idle') state.current = start() ? 'open' : 'dropped';
-      return state.current === 'open';
-    },
-    begin: (start) => { if (state.current === 'idle') state.current = start() ? 'open' : 'dropped'; },
-    drop: () => { if (state.current === 'open') state.current = 'dropped'; },
-    release: () => {
-      const open = state.current === 'open';
-      state.current = 'idle';
-      return open;
-    },
-  }), []);
+  return React.useMemo<ControlPress>(() => {
+    /**
+     * Start a new press, ending whatever an earlier one left behind.
+     * @param start - Opens the drag; false when it cannot open.
+     */
+    const begin = (start: () => boolean): void => { state.current = start() ? 'open' : 'dropped'; };
+    return {
+      begin,
+      change: (start) => {
+        if (state.current === 'idle') begin(start);
+        return state.current === 'open';
+      },
+      drop: () => {
+        const open = state.current === 'open';
+        if (open) state.current = 'dropped';
+        return open;
+      },
+      release: () => {
+        const open = state.current === 'open';
+        state.current = 'idle';
+        return open;
+      },
+    };
+  }, []);
 }
 
 /**

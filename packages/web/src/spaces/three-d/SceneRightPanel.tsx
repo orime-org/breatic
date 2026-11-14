@@ -14,6 +14,16 @@ import { SceneIconButton } from '@web/spaces/three-d/SceneIconButton';
 const closeIcon = <X className='size-4' />;
 
 /**
+ * Keep an overlay of the Space open when a Space tab is pressed: Space activation owns hiding, and dismissing on the
+ * tab's pointerdown would end an unfinished edit first.
+ * @param event - Radix's interact-outside event.
+ * @throws {never} Never.
+ */
+export function keepOnSpaceTab(event: Pick<Event, 'target' | 'preventDefault'>): void {
+  if (event.target instanceof Element && event.target.closest('[data-space-tab]')) event.preventDefault();
+}
+
+/**
  * Anchor one non-modal panel to the scene edge and arbitrate its Escape and focus ownership.
  * @param root0 - Scene controls and their current owner bindings.
  * @param root0.open - Whether the shared right panel is open.
@@ -29,15 +39,6 @@ const closeIcon = <X className='size-4' />;
  * @returns The scene-edge shared floating panel.
  * @throws {never} Never directly.
  */
-/**
- * Keep an overlay of the Space open when a Space tab is pressed: Space activation owns hiding, and dismissing on the
- * tab's pointerdown would end an unfinished edit first.
- * @param event - Radix's interact-outside event.
- */
-export function keepOnSpaceTab(event: Pick<Event, 'target' | 'preventDefault'>): void {
-  if (event.target instanceof Element && event.target.closest('[data-space-tab]')) event.preventDefault();
-}
-
 export const SceneRightPanel = React.memo(function SceneRightPanel({ open, onOpenChange, title, automatic, stage, returnTarget, children, cancelGesture, contentRef, actions }: {
   open: boolean; onOpenChange: (open: boolean) => void; title: string; automatic: React.RefObject<boolean>;
   stage: React.RefObject<HTMLDivElement | null>; returnTarget: React.RefObject<HTMLElement | null>; children: React.ReactNode; cancelGesture: () => boolean;

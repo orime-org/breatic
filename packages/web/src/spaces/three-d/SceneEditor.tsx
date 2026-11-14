@@ -189,11 +189,10 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   const pilotControl = React.useRef<ScenePilotControl | null>(null);
   /**
    * End an ambient press without writing it; the rest of the press is ignored until its release.
-   * @returns Whether a press was previewing.
+   * @returns Whether a press was open.
    */
   const dropAmbient = React.useCallback((): boolean => {
-    const open = ambientDraftRef.current !== null;
-    ambientPress.drop();
+    const open = ambientPress.drop();
     ambientDraftRef.current = null;
     setAmbientDraft(null);
     return open;
@@ -706,7 +705,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
    * Open an ambient press when the pointer goes down, so undo or Escape before its first change still ends it.
    * @throws {never} Never.
    */
-  const onAmbientStart = React.useCallback((): void => { ambientPress.begin(() => true); }, [ambientPress]);
+  const onAmbientStart = React.useCallback((): void => { ambientPress.begin(() => session.getSnapshot().canEdit); }, [ambientPress, session]);
   /**
    * Write a typed ambient colour as a command of its own.
    * @param ambientColor - The colour.
