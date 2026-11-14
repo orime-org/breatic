@@ -403,6 +403,9 @@ describe('the voice list samples (#1960 A2)', () => {
     it('keeps the picker while the list loads and when nothing matched, so the search box never moves', () => {
       openGemini(state({ status: 'loading', voices: [] }));
       expect(screen.getByTestId('generate-voice-language')).toBeInTheDocument();
+      cleanup();
+      openGemini(state({ status: 'empty', voices: [] }));
+      expect(screen.getByTestId('generate-voice-language')).toBeInTheDocument();
     });
 
     it('offers no picker for a model whose voices have one sample each', () => {

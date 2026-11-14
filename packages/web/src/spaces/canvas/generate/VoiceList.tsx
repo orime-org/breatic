@@ -13,6 +13,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { readUserPreferences, writeUserPreference } from '@web/lib/user-preferences-storage';
 import { cn } from '@web/lib/utils';
 import { SampleButton } from '@web/spaces/canvas/generate/SampleButton';
+import { LIST_BODY_HEIGHT } from '@web/spaces/canvas/generate/OptionList';
 import { SampleLanguagePicker } from '@web/spaces/canvas/generate/SampleLanguagePicker';
 import type { SamplePlayer } from '@web/spaces/canvas/generate/use-sample-player';
 import type { VoiceListState } from '@web/spaces/canvas/generate/voice-list-state';
@@ -21,36 +22,6 @@ import { sampleLanguageFor, sampleUrlFor } from '@web/spaces/canvas/generate/voi
 
 /** How close to the bottom asking for the next page starts, in pixels. */
 const PAGE_TRIGGER_DISTANCE = 24;
-
-/**
- * How tall the list stands, counted in rows.
- *
- * The height is the same in every state: a full result set scrolls inside it,
- * a short one leaves the space below empty, and the loading and empty lines
- * centre in it. The popover opens upward, so a box that grew and shrank with
- * its contents would take the search box with it, out from under the user's
- * hands — and on every keystroke, since each one restarts the request.
- */
-const LIST_ROWS = 5;
-
-/** A row's height on a real browser: `size='menu-item'` around two lines. */
-const ROW_HEIGHT = 46;
-/** The `gap-0.5` between two rows. */
-const ROW_GAP = 2;
-
-/** The `p-1` the rows sit inside, top and bottom. */
-const LIST_PADDING = 4;
-
-/**
- * The one height every state of this list stands at.
- *
- * Counts the padding as well as the rows: the box is `border-box`, so a height
- * of just the rows has its own inset taken out of that same number and the
- * last row comes up a padding short of a row.
- */
-export const LIST_BODY_HEIGHT = `${
-  LIST_ROWS * ROW_HEIGHT + (LIST_ROWS - 1) * ROW_GAP + 2 * LIST_PADDING
-}px`;
 
 interface VoiceListProps {
   /** Where the list is, owned by the container's reducer. */

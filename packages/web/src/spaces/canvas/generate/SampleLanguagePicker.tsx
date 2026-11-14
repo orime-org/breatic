@@ -25,9 +25,10 @@ interface SampleLanguagePickerProps {
  * The language the voice list plays samples in (#1521): Gemini reads the
  * language from the script, so this only changes what the user hears before
  * picking a voice, never what is generated. The trigger has the shape of the
- * generation panel's single-choice menus (`ChoiceMenu`); the list is the
- * searchable one the panel's language rows use (`OptionList`), languages named
- * in the interface language and sorted by that name.
+ * generation panel's single-choice menus (`ChoiceMenu`) at one fixed width, so
+ * the search box beside it never moves; the list is the searchable, scrolling
+ * one the panel's language rows use (`OptionList`), languages named in the
+ * interface language and sorted by that name.
  * @param root0 - Component props.
  * @param root0.languages - The languages offered.
  * @param root0.value - The language held.
@@ -56,14 +57,14 @@ export const SampleLanguagePicker = React.memo(function SampleLanguagePicker({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button type='button' variant={null} size={null} data-testid='generate-voice-language'
-          className='flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-chrome border border-border bg-background px-2.5 text-xs text-foreground transition-colors hover-enabled:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'>
-          <span className='text-muted-foreground'>{t('canvas.generatePanel.voiceSampleLanguage')}</span>
-          <span>{held?.label ?? value ?? ''}</span>
+        <Button type='button' variant={null} size={null} data-testid='generate-voice-language' title={held?.label}
+          className='flex h-8 w-[168px] shrink-0 items-center gap-1 whitespace-nowrap rounded-chrome border border-border bg-background px-2.5 text-xs text-foreground transition-colors hover-enabled:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'>
+          <span className='shrink-0 text-muted-foreground'>{t('canvas.generatePanel.voiceSampleLanguage')} ·</span>
+          <span className='min-w-0 flex-1 truncate text-left'>{held?.label ?? value ?? ''}</span>
           <ChevronDown className='size-3.5 shrink-0 opacity-60' aria-hidden='true' />
         </Button>
       </PopoverTrigger>
-      <PopoverContent side='bottom' align='end' className='w-64 p-0 shadow-md'>
+      <PopoverContent side='bottom' align='end' avoidCollisions={false} className='w-64 p-0 shadow-md'>
         <OptionList
           options={options}
           value={value}
