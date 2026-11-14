@@ -17,7 +17,7 @@
  * - a selection that takes a table whole copies that table whole
  *   (`heldRange`), from the table's edge;
  * - any other selection that holds a table copies as BlockNote copies it,
- *   with the plain text the Agent reads (`blocksMarkdown`).
+ *   with the Agent's Markdown as the plain text (`blocksPlainText`).
  *
  * A stored (legacy) table copies by the same rules (inner#1351 design §5.4.3
  * "stored tables"): words in one of its cells as those words, a selection
@@ -41,7 +41,7 @@ import { AllSelection, NodeSelection, Plugin, PluginKey, type Transaction } from
 import { CellSelection, deleteCellSelection } from '@tiptap/pm/tables';
 import type { EditorView } from '@tiptap/pm/view';
 
-import { blocksMarkdown } from '@web/spaces/document/document-table-markdown';
+import { blocksPlainText } from '@web/spaces/document/document-table-markdown';
 import { bodyEdgeBetween } from '@web/spaces/document/document-body-edge-selection';
 import { heldRange, replaceHeld, type HeldTables } from '@web/spaces/document/document-table-leave-selection';
 import { cellDepthOf, DOC_TABLE, tableAround, type TableAt } from '@web/spaces/document/document-table-nodes';
@@ -273,7 +273,7 @@ export function tableClipped(editor: CopyEditor, view: EditorView): Clipped | nu
   if (picked === null) return null;
   if (picked.slice === null) {
     const { clipboardHTML, externalHTML } = selectedFragmentToHTML(view, editor);
-    return { internal: clipboardHTML, external: externalHTML, plain: blocksMarkdown(editor, picked.blocks) };
+    return { internal: clipboardHTML, external: externalHTML, plain: blocksPlainText(editor, picked.blocks) };
   }
   return clippedOf(editor, view, { blocks: picked.blocks, slice: picked.slice });
 }
@@ -289,7 +289,7 @@ function clippedOf(editor: CopyEditor, view: EditorView, picked: SlicedBlocks): 
   return {
     internal: internalHTML(view, picked.slice),
     external: editor.blocksToHTMLLossy(picked.blocks),
-    plain: blocksMarkdown(editor, picked.blocks),
+    plain: blocksPlainText(editor, picked.blocks),
   };
 }
 

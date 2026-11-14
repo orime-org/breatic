@@ -19,6 +19,7 @@ import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { markdownBlocks } from '@web/spaces/document/document-markdown';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -121,6 +122,39 @@ describe('copying a selection that holds formulas', () => {
 
     const pieces = (read!.block as unknown as { content: { type: string; props?: { source?: string } }[] }).content;
     expect(pieces.filter((piece) => piece.type === 'math').map((piece) => piece.props?.source)).toEqual(['a', 'b']);
+  });
+
+  // The plain text is for people: where two dollar runs meet, a space parts
+  // them, as a person writes it, in place of the Markdown writer's comment.
+  it.each([
+    ['two formulas side by side', ['x ', { type: 'math', props: { source: 'a' } }, { type: 'math', props: { source: 'b' } }, ' y'], 'x $$a$$ $$b$$ y'],
+    ['a word ending in $ before a formula', ['US$', { type: 'math', props: { source: 'c' } }, ' more'], 'US$ $$c$$ more'],
+  ])('parts %s with a space in the plain text', (_name, content, plain) => {
+    const editor = open([{ type: 'paragraph', content }]);
+    const paragraph = before(editor, 'paragraph');
+    const size = editor.prosemirrorState.doc.nodeAt(paragraph)!.content.size;
+    select(editor, paragraph + 1, paragraph + 1 + size);
+    expect(copy(editor)['text/plain']?.trim()).toBe(plain);
+  });
+
+  it('parts two formulas side by side in a table cell with a space in the plain text', () => {
+    const cell = { blocks: [{ type: 'paragraph', content: ['x ', { type: 'math', props: { source: 'a' } }, { type: 'math', props: { source: 'b' } }, ' y'] }] };
+    const editor = open([tableBlock({ rows: [{ cells: [cell as never, 'other'] }] })]);
+    const paragraph = before(editor, 'paragraph');
+    const size = editor.prosemirrorState.doc.nodeAt(paragraph)!.content.size;
+    select(editor, paragraph + 1, paragraph + 1 + size);
+    const plain = copy(editor)['text/plain'] ?? '';
+    expect(plain).toContain('$$a$$ $$b$$');
+    expect(plain).not.toContain('<!--');
+  });
+
+  it('parts two formulas side by side with a space in the plain text a block drag carries', () => {
+    const editor = open([{ type: 'paragraph', content: ['x ', { type: 'math', props: { source: 'a' } }, { type: 'math', props: { source: 'b' } }, ' y'] }]);
+    const data: Record<string, string> = {};
+    const transfer = { clearData: (): void => undefined, setData: (format: string, value: string): void => { data[format] = value; }, setDragImage: (): void => undefined, effectAllowed: '' };
+    const sideMenu = (editor as unknown as { getExtension: (name: string) => { blockDragStart: (event: unknown, block: unknown) => void } }).getExtension('sideMenu');
+    sideMenu.blockDragStart({ dataTransfer: transfer }, editor.document[0]);
+    expect(data['text/plain']?.trim()).toBe('x $$a$$ $$b$$ y');
   });
 
   it('writes a block formula into the plain text as $$ on lines of their own', () => {

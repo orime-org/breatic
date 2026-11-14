@@ -169,6 +169,19 @@ function indented(markdown: string, width: number): string {
 }
 
 /**
+ * Blocks as the plain text a clipboard carries for people: their Markdown,
+ * where two dollar runs meet parted by a space as a person writes them, in
+ * place of the empty comment the Markdown writer puts there for programs to
+ * read back exactly (BlockNote's copy and block drag do the same in its patch).
+ * @param editor - The editor.
+ * @param blocks - The blocks, as the editor's block API hands them.
+ * @returns The plain text.
+ */
+export function blocksPlainText(editor: MarkdownEditor, blocks: readonly BlockLike[]): string {
+  return blocksMarkdown(editor, blocks).replaceAll('$<!---->$', () => '$ $');
+}
+
+/**
  * Blocks as Markdown, tables written so their cells' blocks survive.
  * @param editor - The editor.
  * @param blocks - The blocks, as the editor's block API hands them.
