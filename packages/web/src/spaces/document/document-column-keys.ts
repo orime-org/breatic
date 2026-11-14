@@ -54,30 +54,19 @@ function columnOf($head: ResolvedPos): ColumnAt | null {
 }
 
 /**
- * Deletes the caret's empty column, dissolving its group when one column is
- * left, and puts the caret beside where the column stood.
+ * Deletes the caret's empty column and puts the caret beside where it stood;
+ * a group left with one column dissolves by the repair rule, the caret
+ * mapped through (`document-column-repair.ts`).
  * @param view - The editor view.
  * @param $head - The caret.
  * @param at - The caret's column.
  * @returns True once done.
  */
 function deleteEmptyColumn(view: EditorView, $head: ResolvedPos, at: ColumnAt): boolean {
-  const { state } = view;
-  const group = $head.node(at.depth - 1);
-  const groupPos = $head.before(at.depth - 1);
   const index = $head.index(at.depth - 1);
-  const tr = state.tr;
-  if (group.childCount === 2) {
-    const other = group.child(index === 0 ? 1 : 0);
-    tr.replaceWith(groupPos, groupPos + group.nodeSize, other.content);
-    const end = index === 0 ? groupPos : groupPos + other.content.size;
-    tr.setSelection(Selection.near(tr.doc.resolve(end), index === 0 ? 1 : -1));
-  } else {
-    const columnPos = $head.before(at.depth);
-    tr.delete(columnPos, columnPos + group.child(index).nodeSize);
-    const near = index === 0 ? columnPos : columnPos - 1;
-    tr.setSelection(Selection.near(tr.doc.resolve(near), index === 0 ? 1 : -1));
-  }
+  const columnPos = $head.before(at.depth);
+  const tr = view.state.tr.delete(columnPos, $head.after(at.depth));
+  tr.setSelection(Selection.near(tr.doc.resolve(index === 0 ? columnPos : columnPos - 1), index === 0 ? 1 : -1));
   view.dispatch(tr.scrollIntoView());
   return true;
 }
@@ -125,11 +114,12 @@ function deleteInColumn(view: EditorView): boolean {
   if ($head.parentOffset !== $head.parent.content.size) return false;
   const at = columnOf($head);
   if (at === null) {
-    // Right above a group, as right above a table, it does nothing: what a
-    // selection can stand on next is in a column only when a group starts
-    // right after the block (`deleteAtEdge`).
+    // Where what a selection can stand on next is in another column than the
+    // caret's, or out of the caret's column, it does nothing, as at a table's
+    // edge (`deleteAtEdge`): right above a group, and at the end of a block
+    // indented in a column's last row.
     const next = Selection.findFrom(doc.resolve($head.after()), 1);
-    return next !== null && columnAt(doc, next.from) !== null && columnAt(doc, next.from) !== columnAt(doc, $head.pos);
+    return (next === null ? null : columnAt(doc, next.from)) !== columnAt(doc, $head.pos);
   }
   const column = $head.node(at.depth);
   if (holdsOneEmptyParagraph(column)) return deleteEmptyColumn(view, $head, at);

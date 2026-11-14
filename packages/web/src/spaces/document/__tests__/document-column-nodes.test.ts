@@ -374,6 +374,16 @@ describe('the keys at a column group\'s edges, as at a table\'s (design §5.5)',
     expect(joined).toBe('AB');
   });
 
+  it('does nothing on Delete at the end of an indented block ending the last column', () => {
+    const editor = editorWith([
+      columnsBlock(['z'], { blocks: [{ type: 'paragraph', content: 'A', children: [para('B')] }] }),
+      para('below'),
+    ]);
+    caretAtEnd(editor, 'B');
+    press(editor, 'Delete');
+    expect(shape(editor)).toEqual(['[z|A]', 'below']);
+  });
+
   it('joins a row\'s child on Delete at its end when the group stands right below the row', () => {
     const editor = editorWith([{ type: 'paragraph', content: 'A', children: [para('B')] }, columnsBlock(['a'], ['b'])]);
     caretAtEnd(editor, 'A');
