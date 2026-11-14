@@ -22,7 +22,7 @@ describe("upgrade session shutdown wiring", () => {
     const shutdown = code.slice(code.indexOf("const shutdown = async"));
     const stop = shutdown.indexOf("stopUpgradeSessions();");
     const close = shutdown.indexOf("server.httpServer.close()");
-    const consumers = shutdown.indexOf("await Promise.all([taskConsumer.stop(), lifecycleConsumer.stop()])");
+    const consumers = shutdown.indexOf("await Promise.all([taskConsumer.stop(), lifecycleConsumer.stop(), agentCommandConsumer?.stop()])");
     expect(stop).toBeGreaterThanOrEqual(0);
     expect(close).toBeGreaterThan(stop);
     expect(consumers).toBeGreaterThan(stop);

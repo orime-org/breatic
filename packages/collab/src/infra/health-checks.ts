@@ -46,6 +46,11 @@ export interface CollabHealthProbes {
    * drifted DB0 reject every auth with a green healthz).
    */
   pingRedisCollab: () => Promise<boolean>;
+  /**
+   * Resolves true when the external-agent Redis (DB4, `REDIS_MCP_URL`)
+   * answers PING. Commands from external agents and their replies live there.
+   */
+  pingRedisMcp: () => Promise<boolean>;
   /** Resolves true when Postgres answers a trivial round-trip query. */
   pingPostgres: () => Promise<boolean>;
   /** Resolves true when the separate yjs-store Postgres answers a round-trip. */
@@ -84,6 +89,7 @@ export function buildCollabHealthChecks(probes: CollabHealthProbes): HealthCheck
     { name: "redis_general", check: probes.pingRedisGeneral },
     { name: "redis_stream", check: probes.pingRedisStream },
     { name: "redis_collab", check: probes.pingRedisCollab },
+    { name: "redis_mcp", check: probes.pingRedisMcp },
     { name: "postgres", check: probes.pingPostgres },
     { name: "postgres_yjs", check: probes.pingYjsPostgres },
     { name: "postgres_member_listen", check: probes.probeMemberListen },

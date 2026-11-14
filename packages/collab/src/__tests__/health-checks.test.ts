@@ -26,6 +26,7 @@ function makeProbes(overrides: Partial<CollabHealthProbes> = {}): CollabHealthPr
     pingRedisGeneral: vi.fn(async () => true),
     pingRedisStream: vi.fn(async () => true),
     pingRedisCollab: vi.fn(async () => true),
+    pingRedisMcp: vi.fn(async () => true),
     pingPostgres: vi.fn(async () => true),
     pingYjsPostgres: vi.fn(async () => true),
     isHocuspocusListening: vi.fn(() => true),
@@ -46,7 +47,7 @@ describe("buildCollabHealthChecks", () => {
     expect(checks.map((c) => c.name)).toContain("redis_general");
   });
 
-  it("probes exactly the eight critical dependencies (three Redis DBs + both PG + the member-change listen + ws socket + end-to-end processing)", () => {
+  it("probes exactly the nine critical dependencies (four Redis DBs + both PG + the member-change listen + ws socket + end-to-end processing)", () => {
     const checks = buildCollabHealthChecks(makeProbes());
     expect(checks.map((c) => c.name).sort()).toEqual([
       "hocuspocus_listening",
@@ -55,6 +56,7 @@ describe("buildCollabHealthChecks", () => {
       "postgres_yjs",
       "redis_collab",
       "redis_general",
+      "redis_mcp",
       "redis_stream",
       "ws_processing",
     ]);
@@ -70,6 +72,13 @@ describe("buildCollabHealthChecks", () => {
     const r = buildCollabHealthChecks(probes).find((c) => c.name === "redis_collab")!;
     expect(await r.check()).toBe(false);
     expect(probes.pingRedisCollab).toHaveBeenCalledOnce();
+  });
+
+  it("the redis_mcp check is wired to the pingRedisMcp probe (DB4 external-agent commands)", async () => {
+    const probes = makeProbes({ pingRedisMcp: vi.fn(async () => false) });
+    const r = buildCollabHealthChecks(probes).find((c) => c.name === "redis_mcp")!;
+    expect(await r.check()).toBe(false);
+    expect(probes.pingRedisMcp).toHaveBeenCalledOnce();
   });
 
   it("the postgres_member_listen check reports whether membership changes are still heard (inner#911)", async () => {

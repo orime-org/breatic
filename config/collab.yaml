@@ -151,6 +151,15 @@ event_stop_deadline_ms: 3000
 # instance ids change on every start, so stopped instances leave names behind.
 event_forget_idle_consumer_ms: 86400000
 
+# ── External-agent commands (breatic#1488) ───────
+# Commands from the MCP service arrive on a stream in the external-agent Redis
+# database (REDIS_MCP_URL) and are read as one consumer group with the
+# event_* settings above; writes take the same document lease as task events.
+# consume: whether this instance takes commands. Turn it off on instances that
+# should serve only browsers once others are started to take commands.
+agent_commands:
+  consume: true
+
 # ── Unload store retry (inner#1497) ──────────────
 # Another instance holding the same document can hold its store lock while
 # this one unloads it; the Redis extension then skips our store. That lock

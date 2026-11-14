@@ -22,6 +22,8 @@ import {
   getStreamRedis,
   getCollabRedis,
   closeCollabRedis,
+  getMcpRedis,
+  closeMcpRedis,
   initLogger,
   pingDb,
   pingRedis,
@@ -45,6 +47,7 @@ import { getCollabConfig, getReassemblyLimits } from "@collab/config.js";
 import { buildCollabHealthChecks } from "@collab/infra/health-checks.js";
 import { createCollabServer } from "@collab/hocuspocus.js";
 import { startTaskListener } from "@collab/services/task-listener.js";
+import { startAgentCommandConsumer } from "@collab/services/agent-commands/consumer.js";
 import { startLifecycleListener } from "@collab/services/lifecycle-listener.js";
 import { startProjectControlSync } from "@collab/services/project-control-sync.js";
 import { startSessionRevocation, type SessionRevocation } from "@collab/services/session-revocation.js";
@@ -146,6 +149,7 @@ process.on("unhandledRejection", (reason) => {
 // the core Redis singletons directly, so it needs no URL args.)
 const REDIS_STREAM_URL = env.REDIS_STREAM_URL;
 const REDIS_COLLAB_URL = env.REDIS_COLLAB_URL;
+const REDIS_MCP_URL = env.REDIS_MCP_URL;
 // Namespace for collab's Redis PUB/SUB CHANNELS only. Resolved by the core
 // schema (unset => ENV), so this is `dev` unless a deployment sharing a Redis
 // instance with another one sets it (#1831).
@@ -169,13 +173,14 @@ async function main(): Promise<void> {
   // InfraNotReadyError per the "process lifecycle (forbidden in the
   // library layer)" mandate - application entry catches, logs with full
   // application context, and exits with code 1. Collab probes the
-  // general (session, DB0) + stream (DB2) + collab-coordination (DB3)
-  // Redis singletons it uses.
+  // general (session, DB0) + stream (DB2) + collab-coordination (DB3) +
+  // external-agent (DB4) Redis singletons it uses.
   try {
     await checkInfraReady({
       general: getRedis(),
       stream: getStreamRedis(),
       collab: getCollabRedis(),
+      mcp: getMcpRedis(),
     });
   } catch (err) {
     if (err instanceof InfraNotReadyError) {
@@ -351,6 +356,22 @@ async function main(): Promise<void> {
     settings: consumerSettings,
   });
 
+  // External-agent commands (MCP service → Space documents, breatic#1488 §6),
+  // unless this instance is set not to take them.
+  const agentCommandConsumer = startAgentCommandConsumer({
+    hocuspocus,
+    redisUrl: REDIS_MCP_URL,
+    prefix: REDIS_KEY_PREFIX,
+    consume: cfg.agent_commands.consume,
+    instanceId,
+    settings: {
+      ...consumerSettings,
+      docLeaseMs: cfg.event_doc_lease_ms,
+      handoffPollMs: cfg.event_handoff_poll_ms,
+      handoffWaitMs: cfg.event_handoff_wait_ms,
+    },
+  });
+
   const stopProjectControlSync = startProjectControlSync(hocuspocus, controlRedis);
 
   // Health probe server - separate port so probe traffic doesn't
@@ -410,6 +431,8 @@ async function main(): Promise<void> {
       // cross-instance sync while everything else looks healthy —
       // healthz must catch it (same class as the DB0-drift gap).
       pingRedisCollab: () => pingRedis(getCollabRedis()),
+      // DB4: external-agent commands and their replies (breatic#1488).
+      pingRedisMcp: () => pingRedis(getMcpRedis()),
       // Single SELECT-1 liveness helper, shared across all services,
       // over the process-wide `db` singleton (same pool collab uses for
       // persistence + auth — no dedicated probe pool).
@@ -461,7 +484,7 @@ async function main(): Promise<void> {
     // sweep at startup, or another instance once its sweep reaches it. A round still running past that
     // keeps running into the drains below; if it cannot finish there, it stays
     // pending and is taken over after `event_claim_idle_ms`.
-    await Promise.all([taskConsumer.stop(), lifecycleConsumer.stop()]);
+    await Promise.all([taskConsumer.stop(), lifecycleConsumer.stop(), agentCommandConsumer?.stop()]);
 
     // Onto disk before the teardown, not after it: if the platform loses
     // patience and kills the process mid-drain, everything logged up to here
@@ -490,6 +513,7 @@ async function main(): Promise<void> {
         () => seatHandover.stop(),
         () => controlRedis.quit(),
         () => closeCollabRedis(),
+        () => closeMcpRedis(),
         // The `timeline` queue a Timeline store enqueues landed executions on (inner#1711).
         () => closeQueues(),
       ],

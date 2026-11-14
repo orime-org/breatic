@@ -105,6 +105,10 @@ const collabConfigSchema = z.object({
   event_max_failures: z.number().int().positive().default(5),
   event_stop_deadline_ms: z.number().int().positive().default(3000),
   event_forget_idle_consumer_ms: z.number().int().positive().default(86_400_000),
+  // External-agent commands (breatic#1488 §6). Read with the `event_*`
+  // consumer settings above; `consume` decides whether this instance takes
+  // them at all, so commands can move to instances serving no browsers.
+  agent_commands: z.object({ consume: z.boolean().default(true) }).prefault({}),
   unload_store_retry_ms: z.number().int().positive().default(1200),
   unload_store_retry_interval_ms: z.number().int().positive().default(200),
   unload_rescue_reserve_ms: z.number().int().nonnegative().default(1000),

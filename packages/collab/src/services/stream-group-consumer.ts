@@ -48,7 +48,7 @@ export interface StreamEntry {
   id: string;
   /** The id of the original entry, on an entry replayed from the dead-letter stream. */
   originId: string | undefined;
-  /** The `payload` field, absent on an entry written without one. */
+  /** The payload field, absent on an entry written without one. */
   payload: string | undefined;
 }
 
@@ -96,8 +96,10 @@ export interface GroupConsumerOptions {
   group: string;
   /** This consumer's name, unique per process. */
   consumer: string;
-  /** Where the single-instance reader kept its position; the group starts there. */
-  legacyCursorKey: string;
+  /** Where the single-instance reader kept its position; the group starts there, or at the stream's start without one. */
+  legacyCursorKey?: string;
+  /** The entry field holding the payload; `payload` unless given. */
+  payloadField?: string;
   /** Hash in the coordination database counting failures per entry id. */
   failuresKey: string;
   /** Coordination database client (DB3). */
@@ -106,6 +108,8 @@ export interface GroupConsumerOptions {
   settings: GroupConsumerSettings;
   /** The key an entry's round is grouped under. */
   keyOf: (entry: StreamEntry) => string;
+  /** Called after an entry went to the dead-letter stream; what it throws is logged. */
+  onDeadLettered?: (entry: StreamEntry) => Promise<void>;
   /** Handle one key's entries, in the order taken; an entry left unanswered counts as `wait`. */
   process: (
     entries: StreamEntry[],
@@ -148,11 +152,12 @@ export function retryDelayMs(failures: number, minMs: number, maxMs: number): nu
  * Build an entry from Redis's flat field list.
  * @param id - Entry id.
  * @param fields - `[name, value, name, value, …]`.
+ * @param payloadField - The field holding the payload.
  * @returns The entry.
  */
-function toEntry(id: string, fields: string[] | null): StreamEntry {
+function toEntry(id: string, fields: string[] | null, payloadField: string): StreamEntry {
   const values = pairs(fields ?? []);
-  return { id, originId: values.get("originId"), payload: values.get("payload") };
+  return { id, originId: values.get("originId"), payload: values.get(payloadField) };
 }
 
 /**
@@ -183,6 +188,7 @@ function describeError(err: unknown): string {
 export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
   const { streamKey, group, consumer, settings, coordination, failuresKey } = opts;
   const deadKey = `${streamKey}:dead`;
+  const payloadField = opts.payloadField ?? "payload";
   // The blocking read must not time out on the client side.
   const reader = createRedisClient(opts.streamUrl, {
     name: `collab-group-read:${group}`,
@@ -215,7 +221,7 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
    * @throws {Error} On any Redis error other than "the group already exists".
    */
   async function ensureGroup(): Promise<void> {
-    const start = (await commands.get(opts.legacyCursorKey)) ?? "0";
+    const start = (opts.legacyCursorKey ? await commands.get(opts.legacyCursorKey) : null) ?? "0";
     try {
       await commands.xgroup("CREATE", streamKey, group, start, "MKSTREAM");
       logger.info({ streamKey, group, start }, "stream_group_created");
@@ -262,7 +268,7 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
         free,
       )) as [string, Array<[string, string[] | null]>, string[] | undefined];
       claimCursor = next;
-      for (const [id, fields] of entries) claimed.push(toEntry(id, fields));
+      for (const [id, fields] of entries) claimed.push(toEntry(id, fields, payloadField));
       if (trimmed && trimmed.length > 0) {
         logger.warn({ streamKey, group, ids: trimmed }, "stream_entries_trimmed_before_handled");
       }
@@ -307,7 +313,7 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
       ">",
     )) as Array<[string, Array<[string, string[] | null]>]> | null;
     if (!reply) return [];
-    return reply.flatMap(([, entries]) => entries.map(([id, fields]) => toEntry(id, fields)));
+    return reply.flatMap(([, entries]) => entries.map(([id, fields]) => toEntry(id, fields, payloadField)));
   }
 
   /**
@@ -342,7 +348,7 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
       "~",
       STREAM_MAXLEN,
       "*",
-      "payload",
+      payloadField,
       entry.payload ?? "",
       "originId",
       entry.originId ?? entry.id,
@@ -353,6 +359,13 @@ export function startGroupConsumer(opts: GroupConsumerOptions): GroupConsumer {
       { err, streamKey, deadKey, id: entry.id, originId: entry.originId ?? entry.id, failures, payload: entry.payload },
       "stream_entry_dead_lettered",
     );
+    if (opts.onDeadLettered) {
+      try {
+        await opts.onDeadLettered(entry);
+      } catch (hookErr) {
+        logger.error({ err: hookErr, streamKey, id: entry.id }, "stream_entry_dead_letter_hook_failed");
+      }
+    }
     return true;
   }
 

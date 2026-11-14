@@ -16,6 +16,8 @@ import * as Y from 'yjs';
 
 import { CANVAS_NODES_KEY, type CanvasNodeFields, type NodeType } from '@shared/types/canvas-node.js';
 import { toNodeView, type CanvasEdge, type TypedNodeView } from '@shared/canvas/model/node-view.js';
+import type { NodePlacement } from '@shared/canvas/model/place-flow.js';
+import { bodyToPlainText } from '@shared/canvas/text-body.js';
 
 /** The top-level map of a canvas document's edges. */
 export const CANVAS_EDGES_KEY = 'edgesMap';
@@ -201,6 +203,57 @@ export function readEdges(doc: Y.Doc): ReadonlyArray<CanvasEdge> {
         typeof rawCreatedAt === 'number' && Number.isFinite(rawCreatedAt)
           ? rawCreatedAt
           : undefined,
+    });
+  });
+  return out;
+}
+
+/**
+ * Where every node of a canvas document sits, with the facts its size follows from.
+ *
+ * Read from the document, so a node written a moment ago counts before it has
+ * rendered. A Group member's stored position is relative to its Group, so its
+ * Group's position is added.
+ * @param doc - The canvas-space document.
+ * @returns One placement per node, in no particular order.
+ */
+export function readNodePlacementsInDoc(doc: Y.Doc): NodePlacement[] {
+  const nodesMap = canvasNodesMap(doc);
+  /**
+   * A node's stored position.
+   * @param node - The node's map, if any.
+   * @returns Its position, or undefined when it has none.
+   */
+  const positionOf = (node: unknown): { x: number; y: number } | undefined =>
+    node instanceof Y.Map ? (node.get('position') as { x: number; y: number } | undefined) : undefined;
+  /**
+   * A number the node's data holds under this key.
+   * @param data - The node's data map, if any.
+   * @param key - The key.
+   * @returns The number, or undefined.
+   */
+  const numberIn = (data: unknown, key: string): number | undefined => {
+    const value = data instanceof Y.Map ? data.get(key) : undefined;
+    return typeof value === 'number' ? value : undefined;
+  };
+  const out: NodePlacement[] = [];
+  nodesMap.forEach((node, id) => {
+    const at = positionOf(node);
+    if (at === undefined) return;
+    const parentId = node.get('parentId');
+    const parent = typeof parentId === 'string' ? positionOf(nodesMap.get(parentId)) : undefined;
+    const data = node.get('data');
+    const body = data instanceof Y.Map ? data.get('body') : undefined;
+    out.push({
+      id,
+      type: String(node.get('type')),
+      x: parent === undefined ? at.x : at.x + parent.x,
+      y: parent === undefined ? at.y : at.y + parent.y,
+      width: numberIn(data, 'width'),
+      height: numberIn(data, 'height'),
+      mediaWidth: numberIn(data, 'mediaWidth'),
+      mediaHeight: numberIn(data, 'mediaHeight'),
+      bodyText: body instanceof Y.XmlFragment ? bodyToPlainText(body) : undefined,
     });
   });
   return out;

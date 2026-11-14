@@ -10,6 +10,7 @@
 
 import { z } from "zod";
 import { deriveId } from "@shared/ids.js";
+import { CREATABLE_NODE_TYPES, type CreatableNodeType } from "@shared/canvas/model/node-factory.js";
 
 /**
  * Approximate length cap of the command stream. Same value as core's
@@ -83,13 +84,22 @@ export function mcpCaptureRequestKey(prefix: string, requestId: string): string 
  */
 export const VIEW_CAPTURE_VIEW_MAX_BYTES = 65_536;
 
+/**
+ * The credential behind a command, the same shape as core's `AgentCredential`:
+ * collab asks core whether it is still usable before it executes the command.
+ */
+export const agentCredentialSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("oauth"), grantId: z.string().min(1) }),
+  z.object({ type: z.literal("pat"), tokenId: z.string().min(1) }),
+]);
+
 /** One command the MCP service sends collab. Times are epoch milliseconds. */
 export const agentCommandSchema = z.object({
   callId: z.uuid(),
   type: z.string(),
   userId: z.uuid(),
   connectionId: z.uuid(),
-  credentialId: z.string().min(1),
+  credential: agentCredentialSchema,
   projectId: z.uuid(),
   spaceId: z.uuid().nullable(),
   params: z.json(),
@@ -105,6 +115,62 @@ export const agentReplySchema = z.discriminatedUnion("status", [
   z.object({ callId: z.uuid(), status: z.literal("unfinished") }),
 ]);
 export type AgentReply = z.infer<typeof agentReplySchema>;
+
+/** Why collab refused a command before or instead of executing it. */
+export const AGENT_COMMAND_REFUSALS = [
+  "read_only",
+  "no_access",
+  "credential_revoked",
+  "rate_limited",
+  "invalid_command",
+  "not_found",
+] as const;
+export const agentCommandRefusalSchema = z.enum(AGENT_COMMAND_REFUSALS);
+export type AgentCommandRefusal = z.infer<typeof agentCommandRefusalSchema>;
+
+/**
+ * A node id an agent names. Not narrowed to a uuid: the canvas writes uuids
+ * today, and an id written under an older scheme must still be addressable;
+ * an id that names no node is answered `not_found`.
+ */
+const nodeIdSchema = z.string().min(1);
+
+/** A node type an agent can create, the same four the node library offers. */
+const creatableNodeTypeSchema = z.custom<CreatableNodeType>(
+  (value) => typeof value === "string" && (CREATABLE_NODE_TYPES as readonly string[]).includes(value),
+);
+
+/**
+ * The parameters of each command type, by type (breatic#1488 §7). A type not
+ * listed here is not a command collab executes.
+ */
+export const agentCommandParamsSchemas = {
+  list_spaces: z.object({}),
+  read_canvas: z.object({ nodeIds: z.array(nodeIdSchema).optional() }),
+  create_canvas_nodes: z.object({
+    nodes: z.array(z.object({ type: creatableNodeTypeSchema, name: z.string().optional() })).min(1),
+  }),
+  // Every field but the id is a change to make, and at least one is given;
+  // later fields join `name` here.
+  update_canvas_node: z
+    .object({ nodeId: nodeIdSchema, name: z.string().optional() })
+    .refine((p) => p.name !== undefined, { message: "nothing to change" }),
+} as const;
+
+/** A command type collab executes. */
+export type AgentCommandType = keyof typeof agentCommandParamsSchemas;
+
+/** The parameters of one command type. */
+export type AgentCommandParams<T extends AgentCommandType> = z.infer<(typeof agentCommandParamsSchemas)[T]>;
+
+/**
+ * Whether a command type is one collab executes.
+ * @param type - The command's `type`.
+ * @returns True for a listed type.
+ */
+export function isAgentCommandType(type: string): type is AgentCommandType {
+  return Object.hasOwn(agentCommandParamsSchemas, type);
+}
 
 /**
  * Deterministic id for one slot of a command, so a re-run of the same call
