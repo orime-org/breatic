@@ -440,15 +440,17 @@ function keepMinimal(node: ProseMirrorNode, pos: number, targets: Targets): void
 }
 
 /**
- * A block that would be left with no blocks, as a target of its own, when
- * what holds it stays valid without it.
+ * A column (inner#1314 design §5.2) that would be left with no blocks, as a
+ * target of its own; its group goes instead when it would be left with no
+ * columns. Each goes only where what holds it stays valid without it. Other
+ * blocks that hold blocks (a table cell) keep their place.
  * @param doc - The document before the deletion.
  * @param pos - The block's position.
  * @param node - The block.
  * @returns The target, or null when it has to stay.
  */
 function holderGoing(doc: ProseMirrorNode, pos: number, node: ProseMirrorNode): Whole | null {
-  if (pos < 0 || !node.type.isInGroup('bnBlock')) return null;
+  if (pos < 0 || (node.type.name !== 'docColumn' && node.type.name !== 'docColumnList')) return null;
   const $pos = doc.resolve(pos);
   const holder = $pos.parent;
   const index = $pos.index();
@@ -456,6 +458,10 @@ function holderGoing(doc: ProseMirrorNode, pos: number, node: ProseMirrorNode): 
   holder.forEach((child, _offset, at) => {
     if (at !== index) rest.push(child);
   });
+  if (node.type.name === 'docColumn' && rest.length === 0) {
+    const group = holderGoing(doc, $pos.before(), holder);
+    if (group !== null) return group;
+  }
   if (!holder.type.validContent(Fragment.fromArray(rest))) return null;
   return { pos, node, parent: holder, parentPos: $pos.depth > 0 ? $pos.before() : -1, index };
 }

@@ -20,6 +20,7 @@ import type { EditorView } from '@tiptap/pm/view';
 
 import { checkAdd, type SpaceRefusal } from '@web/data/yjs/space-write';
 import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-nodes';
+import { SAVED_BODY } from '@web/spaces/document/document-column-repair';
 import { asOneUndoStep, type UndoBoundary } from '@web/spaces/document/document-proposal-landing';
 import { pendingUploadId } from '@web/spaces/document/document-media-types';
 
@@ -75,9 +76,11 @@ function withoutPendingUploads(node: Json, left: { out: number }): Json {
     const next = withoutPendingUploads(child, left);
     // A column left with no blocks goes, and a group left with one column
     // or none lays out what is left, by the repair rule (inner#1314 design 5.2).
-    if (next.type === DOC_COLUMN && (next.content as Json[]).length === 0) continue;
-    if (next.type === DOC_COLUMN_LIST && (next.content as Json[]).length <= 1) {
-      kept.push(...((next.content as Json[])[0]?.content as Json[] | undefined ?? []));
+    // A node with no children carries no `content` in its JSON.
+    const inner = (next.content as Json[] | undefined) ?? [];
+    if (next.type === DOC_COLUMN && inner.length === 0) continue;
+    if (next.type === DOC_COLUMN_LIST && inner.length <= 1) {
+      kept.push(...((inner[0]?.content as Json[] | undefined) ?? []));
       continue;
     }
     if (next.type === 'blockGroup' && (next.content as Json[]).length === 0) {
@@ -158,7 +161,7 @@ export function restoreSnapshot(input: {
     const allowed = checkAdd(input.space, { notify: false });
     if (!allowed.ok) return allowed;
   }
-  const tr = view.state.tr.replaceWith(0, doc.content.size, snapshot.content);
+  const tr = view.state.tr.replaceWith(0, doc.content.size, snapshot.content).setMeta(SAVED_BODY, true);
   asOneUndoStep(input.undoManager, () => view.dispatch(tr));
   return 'restored';
 }

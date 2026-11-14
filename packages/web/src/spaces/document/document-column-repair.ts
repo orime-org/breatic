@@ -36,6 +36,13 @@ import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-colum
  */
 export const COLUMN_TAKE_AWAY = new PluginKey('doc-column-take-away');
 
+/**
+ * Meta on a transaction that writes a body as it was saved (a snapshot
+ * restored or previewed): the repair leaves it as it is. Its column holding
+ * only an empty line is not one emptied by the transaction.
+ */
+export const SAVED_BODY = new PluginKey('doc-saved-body');
+
 /** A range of the document after the transactions. */
 type Range = readonly [number, number];
 
@@ -128,6 +135,7 @@ function repair(
   newState: EditorState,
 ): Transaction | null {
   if (!transactions.some((tr) => tr.docChanged && !isRemote(tr))) return null;
+  if (transactions.some((tr) => tr.getMeta(SAVED_BODY) === true)) return null;
   const takeAway = transactions.some((tr) => tr.getMeta(COLUMN_TAKE_AWAY) === true);
   const before = idsOf(oldState.doc);
   const tr = newState.tr;

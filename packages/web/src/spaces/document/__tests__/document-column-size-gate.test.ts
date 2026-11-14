@@ -28,7 +28,9 @@ import {
   getDocumentEditor,
   type DocumentEditorHandle,
 } from '@web/spaces/document/document-editor-cache';
+import { snapshotOf } from '@web/spaces/document/document-version-restore';
 import { columnsBlock, para, shapeOf } from '@web/spaces/document/__tests__/column-fixtures';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 import { enterSize, outcomeOf, type SizeCode } from '@web/data/yjs/__tests__/helpers/size-v2-harness';
 
 const NAME = docName.documentSpace('p1', 'd1');
@@ -105,5 +107,53 @@ describe('a delete in a full Space that takes a column\'s last block', () => {
     });
     expect(shapeOf(handle.editor.document as never)).toEqual(['lead', '[a]']);
     expect(columns).toBeLessThanOrEqual(1);
+  });
+});
+
+/**
+ * The id of the row whose words are these.
+ * @param handle - The editor handle.
+ * @param words - The words.
+ * @returns The id.
+ * @throws {Error} When no row holds them.
+ */
+function rowId(handle: DocumentEditorHandle, words: string): string {
+  let id: string | undefined;
+  handle.editor.prosemirrorView.state.doc.descendants((node) => {
+    if (node.type.name === 'blockContainer' && node.textContent === words) id = String(node.attrs['id']);
+    return id === undefined;
+  });
+  if (id === undefined) throw new Error(`no row "${words}"`);
+  return id;
+}
+
+describe('deletes in a full Space around columns and cells', () => {
+  it.each(['F', 'O'] as const)('[%s] taking every column one after the other leaves no group, and a version still saves', async (code) => {
+    const handle = open(code, [para('lead'), columnsBlock(['a'], ['b'])]);
+    handle.editor.removeBlocks([rowId(handle, 'a')] as never);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    handle.editor.removeBlocks([rowId(handle, 'b')] as never);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const { doc } = handle.editor.prosemirrorView.state;
+    expect(() => doc.check()).not.toThrow();
+    let groups = 0;
+    doc.descendants((node) => {
+      if (node.type.name === 'docColumnList') groups += 1;
+      return true;
+    });
+    expect(groups).toBe(0);
+    expect(() => snapshotOf(doc)).not.toThrow();
+  });
+
+  it.each(['F', 'O'] as const)('[%s] taking the only block of a table cell keeps the cell', async (code) => {
+    const handle = open(code, [para('lead'), tableBlock({ rows: [{ cells: ['a', 'b'] }, { cells: ['c', 'd'] }] })]);
+    handle.editor.removeBlocks([rowId(handle, 'a')] as never);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const cells: number[] = [];
+    handle.editor.prosemirrorView.state.doc.descendants((node) => {
+      if (node.type.name === 'docTableRow') cells.push(node.childCount);
+      return true;
+    });
+    expect(cells).toEqual([2, 2]);
   });
 });

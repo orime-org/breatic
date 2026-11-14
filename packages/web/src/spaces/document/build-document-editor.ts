@@ -133,6 +133,12 @@ export interface DocumentEditorOptions {
    * canvas clipboard pastes as the plain text it is.
    */
   readonly onCanvasPaste?: CanvasPasteSink;
+  /**
+   * The editor shows bodies as they were saved (the version preview), so the
+   * column repair (inner#1314) stays off: a saved column holding only its
+   * empty line is shown as it was saved.
+   */
+  readonly showsSavedBodies?: boolean;
 }
 
 /**
@@ -195,7 +201,7 @@ export function buildDocumentEditor(
       documentTabExtension(),
       documentColumnKeysExtension(),
       documentTableKeysExtension(),
-      documentColumnRepairExtension(),
+      ...(options.showsSavedBodies === true ? [] : [documentColumnRepairExtension()]),
       documentColumnSpanSelectionExtension(),
       documentColumnCellWidthExtension(),
       documentTableTargetExtension(),

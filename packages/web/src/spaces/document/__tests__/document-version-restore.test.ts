@@ -107,6 +107,24 @@ describe('restoreSnapshot', () => {
     expect(json(editor)).toEqual(json(saved));
   });
 
+  it('restores a column holding only its empty line, though the body has since lost that line (inner#1314)', () => {
+    const group = (second: unknown[]): unknown => ({
+      id: 'g',
+      type: 'docColumnList',
+      children: [
+        { id: 'c1', type: 'docColumn', children: [{ id: 'a', type: 'paragraph', content: 'a' }] },
+        { id: 'c2', type: 'docColumn', children: second },
+      ],
+    });
+    const saved = open([{ id: 'lead', type: 'paragraph', content: 'lead' }, group([{ id: 'p1', type: 'paragraph' }])]).editor;
+    const { content } = snapshotOf(saved.prosemirrorState.doc);
+    const { editor, undo } = open([{ id: 'lead', type: 'paragraph', content: 'lead' }, group([{ id: 'x', type: 'paragraph', content: 'x' }])]);
+
+    expect(restoreSnapshot({ editor, undoManager: undo, space: null, content, threads: NO_THREADS })).toBe('restored');
+
+    expect(json(editor)).toEqual(json(saved));
+  });
+
   it('is one undo step, apart from the typing just before and after it', () => {
     const { editor, undo } = open([{ type: 'paragraph', content: 'before' }]);
     const { content } = snapshotOf(open([{ type: 'paragraph', content: 'snap' }]).editor.prosemirrorState.doc);
@@ -318,6 +336,20 @@ describe('snapshotOf', () => {
     expect(group.type.name).toBe('docColumnList');
     expect(group.childCount).toBe(2);
     expect(group.textContent).toBe('onethree');
+  });
+
+  it('reads a group left with no columns as nothing (inner#1314)', () => {
+    const { editor } = open([{ type: 'paragraph', content: 'lead' }]);
+    const schema = editor.pmSchema;
+    const doc = schema.nodes['doc']!.create(null, schema.nodes['blockGroup']!.create(null, [
+      editor.prosemirrorState.doc.firstChild!.firstChild!,
+      schema.nodes['docColumnList']!.create({ id: 'g' }),
+    ]));
+
+    const node = schema.nodeFromJSON(snapshotOf(doc).content);
+
+    expect(() => node.check()).not.toThrow();
+    expect(node.firstChild!.childCount).toBe(1);
   });
 
   it('keeps what is nested under a block still uploading, in its place', () => {
