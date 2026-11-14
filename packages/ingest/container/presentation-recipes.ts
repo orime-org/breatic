@@ -865,11 +865,13 @@ async function transitionStitch(recipe: MiniToolPlanTransitionStitch, files: Rea
       const length = lengths[at] ?? minusQ(plus(total, overlap), other!);
       const samples = roundTimes(length, 48000n);
       const audio = heard[at] === null ? null : audioOf(inputs, heard[at]!, `c${at}`);
-      if (audio === null) graph.push(`anullsrc=r=48000:cl=mono,atrim=end_sample=${samples}[d${at}]`);
+      // Each clip's audio is stamped by its sample count: apad's padding after a range with no samples carries no timestamps,
+      // and concat would then lay the next clip's audio on top of it.
+      if (audio === null) graph.push(`anullsrc=r=48000:cl=mono,atrim=end_sample=${samples},asetpts=N/SR/TB[d${at}]`);
       else {
         args.push(...audio.args, local(files, clip.inputId));
         inputs += 1;
-        graph.push(audio.graph, `[c${at}]apad=whole_len=${samples},atrim=end_sample=${samples}[d${at}]`);
+        graph.push(audio.graph, `[c${at}]apad=whole_len=${samples},atrim=end_sample=${samples},asetpts=N/SR/TB[d${at}]`);
       }
     });
     graph.push(recipe.crossfade === null ? "[d0][d1]concat=n=2:v=0:a=1[a]" : `[d0][d1]acrossfade=ns=${roundTimes(overlap, 48000n)}:c1=tri:c2=tri[a]`);

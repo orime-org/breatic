@@ -782,6 +782,18 @@ describe('transition stitch audio (§7.17 stitch and 转场输出档 rows: acros
   // Blocks are 20 ms; the first two and last two are skipped for the encoder's onset and tail, and blocks next to a junction for its
   // spread. AAC moves a steady tone's block amplitude by up to about 4 % (FFmpeg 7.1 reference run), hence 8 % for an unchanged
   // clip; a quarter-sine crossfade (qsin) is off the linear gain by over 20 % mid-window, against the 6 % allowed.
+  // A clip whose audio has no edit list (spans null) and does not reach its chosen range yields no samples: its padding must
+  // still advance on the sample clock, or the junction collapses clip B's audio into a few milliseconds.
+  it('TS04 Cut after a clip with no audio over its range: clip A is silence, clip B\'s audio stays whole and in place', async () => {
+    const past = { start: r(5), end: r(33, 5), origin: r(0), spans: null };
+    const file = await transitionStitch([[CLIP_A, 0, 40], [CLIP_B, 0, 40]], [past, CLIP_AUDIO], null);
+    await expectAudio(file, 3.2);
+    const [, b] = await sourceAmplitudes();
+    const ampB = toneAmplitudes(await samples(file), 1500);
+    for (let block = 2; block <= 78; block += 1) expect(ampB[block]! / b, `no B at block ${block}`).toBeLessThan(0.03);
+    for (let block = 81; block <= 157; block += 1) expect(Math.abs(ampB[block]! / b - 1), `B at block ${block}`).toBeLessThan(0.08);
+  });
+
   it('TS01 Cut (crossfade null): clip A\'s audio then clip B\'s, joined directly with no fade', async () => {
     const file = await transitionStitch([[CLIP_A, 0, 40], [CLIP_B, 0, 40]], [CLIP_AUDIO, CLIP_AUDIO], null);
     expect(await packets(file)).toHaveLength(80);
