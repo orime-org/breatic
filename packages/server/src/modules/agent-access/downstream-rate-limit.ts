@@ -20,6 +20,7 @@ import {
   logger,
   projectsRepo,
   type RateLimitQuota,
+  type RateLimitVerdict,
 } from "@breatic/core";
 import { t } from "@breatic/shared";
 import { getRateLimit } from "@server/config/rate-limits.js";
@@ -40,6 +41,16 @@ interface ActionQuota {
  */
 function totalQuota(userId: string): RateLimitQuota {
   return { key: `mcp:rate:${userId}:all`, max: getMcpConfig().rate_limit.user_total_per_minute, windowSeconds: 60 };
+}
+
+/**
+ * Count one call in the user's total, outside any route (the token exchange, §12).
+ * @param userId - The user.
+ * @returns Whether it fits, and when to retry if not.
+ * @throws {Error} When Redis cannot count.
+ */
+export async function takeFromUserTotal(userId: string): Promise<RateLimitVerdict> {
+  return checkRateLimit(getMcpRedis(), [totalQuota(userId)]);
 }
 
 /**

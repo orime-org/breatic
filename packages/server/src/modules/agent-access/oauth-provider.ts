@@ -26,6 +26,7 @@ import { httpRequest } from "@breatic/shared";
 import { authService } from "@server/modules";
 import { OAuthRecordsAdapter } from "@server/modules/agent-access/oauth-adapter.js";
 import { issueDownstreamToken, credentialId } from "@server/modules/agent-access/agent-token-store.js";
+import { takeFromUserTotal } from "@server/modules/agent-access/downstream-rate-limit.js";
 
 /** The MCP service's confidential client, the only one allowed the token exchange. */
 export const MCP_CLIENT_ID = "breatic-mcp";
@@ -104,6 +105,8 @@ async function resolveSubject(provider: Provider, subject: string, now: Date): P
 
 /**
  * The token exchange handler: trade the subject token for a downstream token.
+ * Each usable exchange counts in the user's total (§12); past it the answer
+ * is 429 with `Retry-After` and `temporarily_unavailable`.
  * @param provider - The authorization server.
  * @param ctx - The token endpoint context; the client is already authenticated.
  * @throws {errors.UnauthorizedClient} For any client but the MCP service.
@@ -119,6 +122,14 @@ async function exchangeToken(provider: Provider, ctx: KoaContextWithOIDC): Promi
   const now = new Date();
   const subject = await resolveSubject(provider, params.subject_token, now);
   if (!subject) throw new errors.InvalidGrant("subject token is not usable");
+  const verdict = await takeFromUserTotal(subject.userId);
+  if (!verdict.allowed) {
+    logger.warn({ userId: subject.userId, connectionId: subject.connectionId }, "mcp_rate_limit_hit");
+    ctx.status = 429;
+    ctx.set("Retry-After", String(verdict.retryAfterSeconds));
+    ctx.body = { error: "temporarily_unavailable", error_description: "too many requests; retry later" };
+    return;
+  }
   const ttl = getMcpConfig().downstream_token_ttl_seconds;
   const token = await issueDownstreamToken(subject);
   await agentAccessService.recordUse(subject.connectionId, now);
@@ -354,6 +365,29 @@ export async function interactionView(req: IncomingMessage, res: ServerResponse,
   return { clientName: client.clientName ?? client.clientId, redirectHosts: hosts, localhostOnly: hosts.every(isLoopbackIp) };
 }
 
+/**
+ * Make the authorization server's own browser session follow the user our
+ * session cookie says is signed in. When this browser authorized as someone
+ * else before, that session still names them, and the library's resume would
+ * answer with its logout form (`lib/actions/authorization/resume.js`). The
+ * old session is ended and the interaction unbound from it, so the resume
+ * starts a fresh session and logs the signed-in user in; tokens never expire
+ * with a session (`expiresWithSession` is false), so the other account's
+ * connections are untouched.
+ * @param provider - The authorization server.
+ * @param interaction - The interaction being confirmed.
+ * @param userId - The signed-in user.
+ * @throws {Error} When the database cannot be written.
+ */
+async function followSignedInUser(provider: Provider, interaction: Interaction, userId: string): Promise<void> {
+  const previous = interaction.session;
+  if (!previous?.accountId || previous.accountId === userId) return;
+  interaction.session = undefined;
+  await interaction.save(interaction.exp - Math.floor(Date.now() / 1000));
+  const session = previous.uid ? await provider.Session.findByUid(previous.uid) : undefined;
+  await session?.destroy();
+}
+
 /** What the user allowing an agent did. */
 export interface ConfirmedInteraction {
   /** Where the browser goes next; the authorization server sends it back to the agent. */
@@ -383,6 +417,7 @@ export async function confirmInteraction(
   const interaction = await heldInteraction(req, res, uid);
   if (!interaction) return null;
   const { provider } = server();
+  await followSignedInUser(provider, interaction, userId);
   const clientId = String(interaction.params.client_id);
   const client = await provider.Client.find(clientId);
   if (!client) return null;
