@@ -248,6 +248,32 @@ async function formulaInCellBelowLines(p: Page, columns: number): Promise<Locato
   return formula;
 }
 
+/**
+ * Scrolls the table holding a formula sideways to one end.
+ * @param formula - The rendered formula.
+ * @param to - Which end.
+ */
+async function scrollTableTo(formula: Locator, to: 'start' | 'end'): Promise<void> {
+  await formula.evaluate((element, end) => {
+    const scroller = element.closest<HTMLElement>('[data-radix-scroll-area-viewport]')!;
+    scroller.scrollLeft = end ? scroller.scrollWidth : 0;
+  }, to === 'end');
+}
+
+/**
+ * Whether the open box shows at its middle, where a press would find it.
+ * @param p - The page.
+ * @returns False when no box is open or something else is drawn there.
+ */
+async function boxShows(p: Page): Promise<boolean> {
+  return p.evaluate((selector) => {
+    const box = document.querySelector(selector);
+    if (box === null) return false;
+    const rect = box.getBoundingClientRect();
+    return box.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
+  }, BOX);
+}
+
 test('a formula block from the plus menu: the box opens with the caret in it, Enter confirms, KaTeX draws it', async () => {
   await openFreshDocument(page);
   await insertFromPlus(page);
@@ -344,22 +370,20 @@ test('a box open in a table cell stays inside the body when the body scrolls', a
   expect(covered).toBe(false);
 });
 
-test('a box open in a table cell hides when the table scrolls its formula out of sight', async () => {
+test('a box open in a table cell hides while the table scrolls its formula away, and keeps the typing', async () => {
   await openFreshDocument(page);
   const formula = await formulaInCellBelowLines(page, 12);
   await formula.click();
-  await expect(page.locator(BOX)).toBeVisible();
+  await expect(page.locator(FIELD)).toBeFocused();
 
-  await formula.evaluate((element) => {
-    const scroller = element.closest<HTMLElement>('[data-radix-scroll-area-viewport]')!;
-    scroller.scrollLeft = scroller.scrollWidth;
-  });
+  await scrollTableTo(formula, 'end');
+  await expect.poll(() => boxShows(page)).toBe(false);
+  await expect(page.locator(FIELD)).toBeFocused();
+  await page.keyboard.type('+1');
 
-  await expect.poll(() => formula.evaluate((element) => {
-    const scroller = element.closest<HTMLElement>('[data-radix-scroll-area-viewport]')!;
-    return element.getBoundingClientRect().right <= scroller.getBoundingClientRect().left;
-  })).toBe(true);
-  await expect(page.locator(BOX)).toBeHidden();
+  await scrollTableTo(formula, 'start');
+  await expect.poll(() => boxShows(page)).toBe(true);
+  await expect(page.locator(FIELD)).toHaveValue('x^2+1');
 });
 
 test('a box opened in a body column narrower than the box stays inside the column', async () => {

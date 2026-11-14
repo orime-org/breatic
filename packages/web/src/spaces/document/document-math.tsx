@@ -360,19 +360,24 @@ function boxKey(
 }
 
 /**
- * Clips a fixed box to a scroller's rectangle, so only the part over the
- * scroller shows; placed last, it reads the box's final place.
+ * Clips a fixed box to a scroller's rectangle, its shadow included, so only
+ * the part over the scroller shows, and clips it whole while `hide()` finds
+ * its formula out of sight: a clipped box keeps the focus, which
+ * `visibility: hidden` would take, and closing the box with it. Placed last,
+ * after `hide()`, it reads the box's final place.
  * @param scroller - The scroller.
  * @returns The middleware.
  */
 function clipTo(scroller: HTMLElement): Middleware {
   return {
     name: 'clipTo',
-    fn: ({ x, y, rects, elements }) => {
+    fn: ({ x, y, rects, elements, middlewareData }) => {
       const room = scroller.getBoundingClientRect();
       const { width, height } = rects.floating;
       const inset = [room.top - y, x + width - room.right, y + height - room.bottom, room.left - x];
-      elements.floating.style.clipPath = `inset(${inset.map((side) => `${Math.max(0, side)}px`).join(' ')})`;
+      elements.floating.style.clipPath = middlewareData.hide?.referenceHidden === true
+        ? 'inset(50%)'
+        : `inset(${inset.map((side) => `${side}px`).join(' ')})`;
       return {};
     },
   };
@@ -457,13 +462,13 @@ const MathFace = React.memo(function MathFace({
         },
       }),
       // A box in a cell sits outside the body's clip, so it is clipped to the
-      // body here and hidden once the table scrolls its formula out of sight,
-      // as a box under a paragraph formula is by the body itself.
+      // body here, and away once its formula is out of sight, as a box under
+      // a paragraph formula is by the body itself.
       ...(inCell && viewport !== undefined ? [hide(), clipTo(viewport)] : []),
     ],
     [side, viewport, inCell],
   );
-  const { refs, floatingStyles, placement, isPositioned, middlewareData } = useFloating({
+  const { refs, floatingStyles, placement, isPositioned } = useFloating({
     open: shown,
     placement: side ?? (inline ? 'bottom-start' : 'bottom'),
     strategy: inCell ? 'fixed' : 'absolute',
@@ -526,7 +531,7 @@ const MathFace = React.memo(function MathFace({
         <div
           ref={refs.setFloating}
           data-formula-box
-          style={middlewareData.hide?.referenceHidden === true ? { ...floatingStyles, visibility: 'hidden' } : floatingStyles}
+          style={floatingStyles}
           className='z-20 flex w-[min(560px,calc(100vw-2rem))] flex-col rounded-overlay border border-border bg-popover text-left text-popover-foreground shadow-md'
           onFocus={() => {
             actions.focused(true);
