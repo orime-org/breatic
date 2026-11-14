@@ -8,7 +8,7 @@
  * never apply is set aside so the ones after it still flow.
  */
 
-import { regionOutboxRepo } from "@breatic/core";
+import { getRegionsConfig, regionOutboxRepo } from "@breatic/core";
 
 /** An event as it travels to the global region. */
 export interface OutboxEvent {
@@ -33,8 +33,6 @@ export interface RelayResult {
   stoppedBy?: unknown;
 }
 
-const BATCH = 100;
-
 /**
  * Send the unsent events, oldest first, until none are left or one fails.
  * @param options - How to deliver.
@@ -43,7 +41,7 @@ const BATCH = 100;
  */
 export async function relayOutbox(options: { deliver: Deliver }): Promise<RelayResult> {
   const result: RelayResult = { delivered: 0, deadLettered: 0 };
-  for (const row of await regionOutboxRepo.listUnsent(BATCH)) {
+  for (const row of await regionOutboxRepo.listUnsent(getRegionsConfig().outbox_relay_batch)) {
     let answer: Awaited<ReturnType<Deliver>>;
     try {
       answer = await options.deliver({ id: String(row.id), aggregateKey: row.aggregateKey, type: row.eventType, payload: row.payload });

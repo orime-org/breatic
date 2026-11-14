@@ -33,7 +33,7 @@ class FakeGlobalApiError extends Error {
 vi.mock("@breatic/core", () => ({
   env: { REGION: "sg", GLOBAL_REGION: "us-west", INTERNAL_API_SECRET: "secret", REGION_API_URLS: { "us-west": "http://global.invalid" }, DIRECTORY_RECONCILE_ON_START: true },
   logger: { error: h.logError },
-  getRegionsConfig: () => ({ global_api_timeout_ms: 5000, slug_reservation_stale_ms: 600000, slug_reservation_sweep_batch: 50 }),
+  getRegionsConfig: () => ({ global_api_timeout_ms: 5000, slug_reservation_stale_ms: 600000, slug_reservation_sweep_batch: 50, storage_usage_report_batch: 500 }),
   callRegion: h.callRegion,
   GlobalApiError: FakeGlobalApiError,
   isRegionUnavailable: h.isRegionUnavailable,

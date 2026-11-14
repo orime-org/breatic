@@ -35,6 +35,8 @@ export const regionsConfigSchema = z
     studio_creation_sweep_interval_ms: millis.default(60000),
     studio_creation_stale_ms: millis.default(120000),
     slug_reservation_sweep_batch: z.number().int().positive().default(50),
+    outbox_relay_batch: z.number().int().positive().default(100),
+    storage_usage_report_batch: z.number().int().positive().default(500),
     region_api_body_max_bytes: z.number().int().positive().default(4 * 1024 * 1024),
   })
   .refine((c) => c.outbox_relay_interval_ms + c.profile_cache_ttl_ms <= 60_000, {

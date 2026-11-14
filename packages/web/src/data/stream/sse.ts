@@ -167,9 +167,10 @@ interface SseOptions<TEvent> {
  * Both are relative: this wrapper puts them under `apiBaseForPath`, the same
  * choice of base the axios instance makes, so the two transports cannot drift apart.
  *
- * Auth: `credentials: 'include'` makes the browser attach the
- * httpOnly session cookie on the request (2026-05-26
- * cookie migration). No Bearer token is read from JS.
+ * Auth: `credentials: 'include'` makes the browser attach the httpOnly
+ * cookies on the request: the session cookie for the global region, the
+ * identity token cookie for any other region, made fresh first. No Bearer
+ * token is read from JS.
  *
  * Throws an immediate error if 4xx auth fails; otherwise retries on
  * transient network errors (handled by fetch-event-source defaults).

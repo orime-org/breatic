@@ -24,7 +24,7 @@
 
 import { z } from "zod";
 import { DEFAULT_API_PORT, DEFAULT_COLLAB_PORT } from "@breatic/shared";
-import { isMultiRegion, otherRegionsOf } from "@core/region/placement.js";
+import { isGlobalRegion, isMultiRegion } from "@core/region/placement.js";
 
 /**
  * Normalise a blank env value to undefined so `.default()` / `.optional()` fire.
@@ -506,7 +506,7 @@ export function parseConfig(rawEnv: Record<string, string | undefined>): CoreCon
 
   // A region without the global data reaches it only over the global API
   // and only verifies identity tokens; signing stays with the global region.
-  if (config.REGION !== config.GLOBAL_REGION) {
+  if (!isGlobalRegion(config)) {
     if (config.GLOBAL_API_URL === "") {
       throw new Error(
         `FATAL: REGION=${config.REGION} is not GLOBAL_REGION=${config.GLOBAL_REGION}, so GLOBAL_API_URL ` +
@@ -527,7 +527,6 @@ export function parseConfig(rawEnv: Record<string, string | undefined>): CoreCon
     }
   }
   // Every call between regions is signed with the internal API secret.
-  const otherRegions = otherRegionsOf(config).length > 0;
   if (isMultiRegion(config) && !config.INTERNAL_API_SECRET.trim()) {
     throw new Error(
       "FATAL: a deployment with more than one region signs its calls between regions with " +
@@ -536,7 +535,7 @@ export function parseConfig(rawEnv: Record<string, string | undefined>): CoreCon
   }
   // The global region with other regions must issue identity tokens they can
   // read. A blank cookie domain stays allowed: regions on one host share it.
-  if (config.REGION === config.GLOBAL_REGION && otherRegions && config.IDENTITY_SIGNING_KEY.trim() === "") {
+  if (isGlobalRegion(config) && isMultiRegion(config) && config.IDENTITY_SIGNING_KEY.trim() === "") {
     throw new Error(
       "FATAL: the global region of a deployment with other regions needs IDENTITY_SIGNING_KEY to " +
       "issue identity tokens. Refusing to start.",

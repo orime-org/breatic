@@ -22,9 +22,10 @@ export const IDENTITY_TOKEN_TTL_SECONDS = 60;
 
 /**
  * The cookie the token travels in, set on the parent domain so every region's
- * API host receives it. Named per deployment, like the session cookie: every
- * region of one deployment shares `ENV`, while a staging deployment under the
- * production parent domain gets a cookie of its own.
+ * API host receives it. Named by `ENV`, which every region of one deployment
+ * shares and a staging deployment under the production parent domain does
+ * not. The session cookie is named by `REDIS_KEY_PREFIX`, which differs
+ * between a deployment's regions, so it cannot name this one.
  * @returns The cookie name, e.g. `breatic_identity_prod`.
  */
 export function identityCookieName(): string {

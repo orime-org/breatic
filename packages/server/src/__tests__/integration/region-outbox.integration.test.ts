@@ -139,7 +139,7 @@ async function eventsFor(studioId: string): Promise<{ id: string; type: string; 
 async function directoryView(studioId: string): Promise<{ name: string; members: Record<string, string> }> {
   const [row] = await sql<{ name: string }[]>`SELECT name FROM studio_directory WHERE studio_id = ${studioId}`;
   const members = await sql<{ user_id: string; role: string }[]>`
-    SELECT user_id, role FROM studio_directory_members WHERE studio_id = ${studioId}
+    SELECT user_id, role FROM studio_directory_members WHERE studio_id = ${studioId} AND deleted_at IS NULL
   `;
   return { name: row!.name, members: Object.fromEntries(members.map((m) => [m.user_id, m.role])) };
 }
@@ -152,7 +152,7 @@ async function directoryView(studioId: string): Promise<{ name: string; members:
 async function regionView(studioId: string): Promise<{ name: string; members: Record<string, string> }> {
   const [row] = await sql<{ name: string }[]>`SELECT name FROM studios WHERE id = ${studioId}`;
   const members = await sql<{ user_id: string; role: string }[]>`
-    SELECT user_id, role FROM studio_members WHERE studio_id = ${studioId}
+    SELECT user_id, role FROM studio_members WHERE studio_id = ${studioId} AND deleted_at IS NULL
   `;
   return { name: row!.name, members: Object.fromEntries(members.map((m) => [m.user_id, m.role])) };
 }

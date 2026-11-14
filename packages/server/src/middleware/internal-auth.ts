@@ -25,7 +25,7 @@ const NONCE_TTL_SECONDS = 2 * WINDOW_SECONDS + 2;
 
 declare module "hono" {
   interface ContextVariableMap {
-    /** The back office admin an internal API request acts for. */
+    /** Who signed an internal API request: a back-office admin, or `region-<code>`. */
     internalAdmin: string;
     /** The operator's reason a write request gave, for its log line. */
     internalReason: string;
@@ -33,8 +33,9 @@ declare module "hono" {
 }
 
 /**
- * Refuse any request that is not signed by the back office, or that repeats
- * a nonce. Sets `internalAdmin` for the handlers.
+ * Refuse any request that is not signed with the internal API secret (by
+ * the back office or another region), or that repeats a nonce. Sets
+ * `internalAdmin` for the handlers.
  * @returns The middleware.
  */
 export function internalAuth(): MiddlewareHandler {

@@ -4,10 +4,12 @@
 /**
  * Authentication middleware.
  *
- * Reads the session token from the httpOnly session cookie
- * (`sessionCookieName()` — deployment-scoped, see `@core/infra/session-store`),
- * resolves it via the session store, and sets the user entity on the
- * Hono context.
+ * In the global region it reads the session token from the httpOnly session
+ * cookie (`sessionCookieName()` — deployment-scoped, see
+ * `@core/infra/session-store`) and resolves it via the session store; in any
+ * other region it reads the identity token cookie (`identityCookieName()`)
+ * and verifies it with `IDENTITY_PUBLIC_KEYS` (inner#1955). Either way it
+ * sets the user entity on the Hono context.
  *
  * Bearer/Authorization-header auth has been removed (2026-05-26) —
  * the cookie is the single canonical channel so XSS payloads cannot
@@ -48,11 +50,11 @@ export interface AuthVariables {
 }
 
 /**
- * Require authentication — returns 401 if the session cookie is
- * missing or invalid.
+ * Require authentication — returns 401 if the session cookie (the identity
+ * cookie outside the global region) is missing or invalid.
  * @param c - The Hono request context; the resolved user (id, email, membershipTier, locale) is set on it.
  * @param next - The downstream handler, invoked only when authentication succeeds.
- * @returns A 401 JSON response when the session cookie is missing or expired; otherwise nothing (control passes to `next`).
+ * @returns A 401 JSON response when the cookie is missing or expired; otherwise nothing (control passes to `next`).
  */
 export const requireAuth: MiddlewareHandler<{
   Variables: AuthVariables;

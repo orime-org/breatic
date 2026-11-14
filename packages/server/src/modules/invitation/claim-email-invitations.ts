@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import { createQueue, defaultJobOpts, env, logger } from "@breatic/core";
+import { createQueue, defaultJobOpts, env, logger, otherRegionsOf } from "@breatic/core";
 import { normalizeEmail } from "@breatic/shared";
 import type { UserEntity } from "@breatic/shared";
 import { claimInvitation, invitationRepo } from "@server/modules/invitation/invitation-lifecycle.service.js";
@@ -47,7 +47,7 @@ let claimForwardQueue: ReturnType<typeof createQueue> | null = null;
 export async function claimEmailInvitationsOnSignIn(user: Pick<UserEntity, "id" | "email" | "emailVerified">): Promise<void> {
   if (!user.emailVerified) return;
   await claimEmailInvitations(user);
-  const regions = Object.keys(env.REGION_API_URLS).filter((region) => region !== env.REGION);
+  const regions = otherRegionsOf(env);
   if (regions.length === 0) return;
   claimForwardQueue ??= createQueue(INVITATION_CLAIM_FORWARD_QUEUE);
   for (const region of regions) {

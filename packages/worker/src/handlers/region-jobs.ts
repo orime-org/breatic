@@ -74,9 +74,6 @@ export async function relayRegionOutbox(): Promise<{ delivered: number; deadLett
   return { delivered: result.delivered, deadLettered: result.deadLettered };
 }
 
-/** Studios per usage report: each stays well under the internal API's body limit. */
-const USAGE_REPORT_BATCH = 500;
-
 /**
  * Report what this region's Studios store to the global region, in batches
  * measured at one instant.
@@ -88,8 +85,9 @@ export async function syncStorageUsage(): Promise<number> {
   // later always carries the later stamp, and the global region keeps it.
   const asOf = new Date();
   const usage = await assetRepo.usagePerStudio();
-  for (let start = 0; start < usage.length; start += USAGE_REPORT_BATCH) {
-    await globalApi().recordRegionUsage({ region: env.REGION, asOf, usage: usage.slice(start, start + USAGE_REPORT_BATCH) });
+  const batch = getRegionsConfig().storage_usage_report_batch;
+  for (let start = 0; start < usage.length; start += batch) {
+    await globalApi().recordRegionUsage({ region: env.REGION, asOf, usage: usage.slice(start, start + batch) });
   }
   return usage.length;
 }

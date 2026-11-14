@@ -18,9 +18,10 @@ import { checkStaleRelease } from '@web/data/deployment/stale-release';
  * Singleton axios instance configured for the breatic API.
  *
  * Auth: `withCredentials: true` makes the browser attach the
- * httpOnly session cookie on every cross-origin XHR. The
- * cookie is the single authentication channel since 2026-05-26 — no
- * Bearer token is read from JS, no Authorization header is set.
+ * httpOnly cookies on every cross-origin XHR: the session cookie for the
+ * global region, the identity token cookie for any other region. Cookies
+ * are the only authentication channel — no Bearer token is read from JS,
+ * no Authorization header is set.
  * That removes the XSS exfiltration surface entirely (a JS payload
  * cannot read an httpOnly cookie).
  *

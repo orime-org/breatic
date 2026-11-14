@@ -22,7 +22,7 @@
 import { profilesService, studioRepo } from "@breatic/domain";
 import * as studioInvitationsRepo from "@server/modules/studio/studioInvitations.repo.js";
 import { withPendingDisplay } from "@server/modules/invitation/pending-display.js";
-import { isUniqueViolation, isGlobalRegion, logger } from "@breatic/core";
+import { isGlobalRegion, isMultiRegion, isUniqueViolation, logger } from "@breatic/core";
 import { randomUUID } from "node:crypto";
 import { db, studioDirectoryRepo } from "@breatic/core";
 import { ConflictError, NotFoundError, ValidationError } from "@breatic/core";
@@ -143,7 +143,7 @@ export interface StudioPlacement {
  * @throws {ValidationError} When the deployment has no such region.
  */
 function placementRegion(requested: string | undefined): string {
-  if (requested === undefined || Object.keys(env.REGION_API_URLS).length === 0) return env.GLOBAL_REGION;
+  if (requested === undefined || !isMultiRegion(env)) return env.GLOBAL_REGION;
   if (!isKnownRegion(requested)) throw new ValidationError(t("server.error.validation"));
   return requested;
 }

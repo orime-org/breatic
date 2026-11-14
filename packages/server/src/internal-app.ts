@@ -3,12 +3,14 @@
 
 /**
  * The internal API (inner#1410 §4): a second Hono app on its own port, for
- * the back office alone. Nothing here is mounted on the public app.
+ * the back office and for the calls between regions (inner#1955). Nothing
+ * here is mounted on the public app.
  *
  * Every request passes, in order: one log line for it, the rate limit by
  * connection address (fail closed), the body size limit, the signature and
- * nonce, a 403 for HEAD, then the authorisation table; whatever the table
- * does not list is 403.
+ * nonce, a 403 for a region signer outside `/internal/(global|region)/`, a
+ * 403 for HEAD, then the authorisation table; whatever the table does not
+ * list is 403.
  */
 
 import { Hono, type Context, type MiddlewareHandler } from "hono";
