@@ -132,6 +132,10 @@ export const AGENT_COMMAND_REFUSALS = [
   "cannot_connect",
   "reference_pool_full",
   "space_full",
+  // A document edit whose words appear more than once in the block.
+  "ambiguous_text",
+  // The project publishes a document format this build does not write.
+  "schema_mismatch",
 ] as const;
 export const agentCommandRefusalSchema = z.enum(AGENT_COMMAND_REFUSALS);
 export type AgentCommandRefusal = z.infer<typeof agentCommandRefusalSchema>;
@@ -159,6 +163,9 @@ const newEdgeEndSchema = z.union([
   z.object({ new: z.number().int().min(0) }).strict(),
   z.object({ id: nodeIdSchema }).strict(),
 ]);
+
+/** One BlockNote block as JSON: its type, and whatever else BlockNote reads. */
+const documentBlockSchema = z.looseObject({ type: z.string().min(1) });
 
 /** A list of node ids, at least one. */
 const nodeIdsSchema = z.array(nodeIdSchema).min(1);
@@ -226,6 +233,26 @@ export const agentCommandParamsSchemas = {
       size: z.number().nullable(),
     }),
   }),
+  read_document: z.object({}),
+  // Blocks as BlockNote block JSON (the MCP service converts Markdown);
+  // whether the document schema can build one is collab's to judge.
+  insert_document_blocks: z.object({
+    afterBlockId: z.string().min(1).nullable().optional(),
+    blocks: z.array(documentBlockSchema).min(1),
+  }),
+  edit_document_text: z.object({ blockId: z.string().min(1), find: z.string().min(1), replace: z.string() }),
+  delete_document_blocks: z.object({ blockIds: z.array(z.string().min(1)).min(1) }),
+  // A new thread on a block (on the words `find` names, or its whole text),
+  // or a reply to a thread; exactly one of `blockId` and `threadId`.
+  comment_on_document: z
+    .object({
+      text: z.string().min(1),
+      blockId: z.string().min(1).optional(),
+      find: z.string().min(1).optional(),
+      threadId: z.string().min(1).optional(),
+    })
+    .refine((p) => (p.blockId === undefined) !== (p.threadId === undefined), { message: "name exactly one of blockId and threadId" })
+    .refine((p) => p.find === undefined || p.blockId !== undefined, { message: "find names words in a block" }),
 } as const;
 
 /** A command type collab executes. */
