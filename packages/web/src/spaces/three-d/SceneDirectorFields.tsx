@@ -16,6 +16,7 @@ import { Switch } from '@web/components/ui/switch';
 import type { ScenePatch } from '@web/data/yjs/scene-document';
 import type { SceneSession } from '@web/data/yjs/scene-session';
 import { useTranslation } from '@web/i18n/use-translation';
+import { whenBlurLeaves } from '@web/lib/blur-left';
 import type { SceneField, SceneFieldDraftOwner } from '@web/spaces/three-d/SceneField';
 import { commitAfterChange, useControlPress } from '@web/spaces/three-d/use-control-press';
 
@@ -71,13 +72,14 @@ const HEX_TEXT = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i;
  * @param root0.value - The current colour.
  * @param root0.disabled - Whether it can be changed.
  * @param root0.labelId - What names it.
+ * @param root0.spaceId - The Space the field belongs to.
  * @param root0.onPreview - Shows a colour while picking.
  * @param root0.onCommit - Writes the previewed colour and ends the press.
  * @param root0.onCancel - Ends the press without writing it; no release of it follows.
  * @returns The swatch and its picker.
  */
-export const SceneColorField = React.memo(function SceneColorField({ value, disabled, labelId, onPreview, onCommit, onCancel }: {
-  value: string; disabled: boolean; labelId: string; onPreview: (hex: string) => void; onCommit: () => void; onCancel: () => void;
+export const SceneColorField = React.memo(function SceneColorField({ value, disabled, labelId, spaceId, onPreview, onCommit, onCancel }: {
+  value: string; disabled: boolean; labelId: string; spaceId: string; onPreview: (hex: string) => void; onCommit: () => void; onCancel: () => void;
 }): React.JSX.Element {
   // Only this opening of the popover feeds the scene: its exit animation still shows the picker after Escape.
   const live = React.useRef(false);
@@ -95,6 +97,9 @@ export const SceneColorField = React.memo(function SceneColorField({ value, disa
     released.current = true;
     React.startTransition(() => setReleases((count) => count + 1));
   }, []);
+  // react-colorful ends a press only after a change it has already reported, which a press starting on the current
+  // colour and let go right after its first move never has: a mouse press ends at the mouse release itself.
+  const onPress = React.useCallback((): void => { window.addEventListener('mouseup', release, { once: true }); }, [release]);
   const settle = React.useCallback((): void => {
     const text = edited.current?.value ?? '';
     edited.current = null;
@@ -110,30 +115,24 @@ export const SceneColorField = React.memo(function SceneColorField({ value, disa
     settle();
     live.current = false;
   }, [settle]);
-  const onEscapeKeyDown = React.useCallback((): void => {
-    edited.current = null;
-    released.current = false;
-    live.current = false;
-    onCancel();
-  }, [onCancel]);
-  // A change event bubbles from the hex input with what the box shows; HexColorInput reports valid colours only.
-  const onEdit = React.useCallback((event: React.FormEvent<HTMLDivElement>): void => {
-    if (event.target instanceof HTMLInputElement) edited.current = event.target;
-  }, []);
+  const onEscapeKeyDown = React.useCallback((): void => { edited.current = null; onCancel(); }, [onCancel]);
+  // HexColorInput reports valid colours only; the box's own input event carries what it shows.
+  const onInput = React.useCallback((event: React.FormEvent<HTMLInputElement>): void => { edited.current = event.currentTarget; }, []);
   const onBlur = React.useCallback((event: React.FocusEvent<HTMLInputElement>): void => {
-    if (!(event.relatedTarget instanceof Node) || !picker.current?.contains(event.relatedTarget)) { settle(); return; }
+    if (!(event.relatedTarget instanceof Node) || !picker.current?.contains(event.relatedTarget)) { whenBlurLeaves(spaceId, settle); return; }
     // A press on the picker decides the colour: the box drops its text and shows the colour again.
     if (edited.current) { edited.current = null; setInputKey((key) => key + 1); }
-  }, [settle]);
+  }, [spaceId, settle]);
   const onKeyDown = React.useCallback((event: React.KeyboardEvent<HTMLInputElement>): void => { if (event.key === 'Enter') settle(); }, [settle]);
   return <Popover onOpenChange={onOpenChange}>
     <PopoverTrigger asChild>
       <Button variant={null} size={null} aria-labelledby={labelId} disabled={disabled}
         className='size-6 rounded-full border border-border disabled:cursor-not-allowed disabled:opacity-50' style={{ backgroundColor: value }} />
     </PopoverTrigger>
-    <PopoverContent side='left' align='start' className='w-auto space-y-2 p-2' onEscapeKeyDown={onEscapeKeyDown} onChange={onEdit}>
-      <div ref={picker}><HexColorPicker color={value} onChange={pick} onChangeEnd={release} /></div>
-      <HexColorInput key={inputKey} color={value} onBlur={onBlur} onKeyDown={onKeyDown} prefixed autoComplete='off' className='h-[var(--btn-inline)] w-full rounded-md border border-input bg-background px-2 text-xs' />
+    {/* Portalled to the body, it stays in the Space's keyboard region so undo and redo reach a drag in progress. */}
+    <PopoverContent data-region='space' side='left' align='start' className='w-auto space-y-2 p-2' onEscapeKeyDown={onEscapeKeyDown}>
+      <div ref={picker}><HexColorPicker color={value} onChange={pick} onChangeEnd={release} onMouseDown={onPress} /></div>
+      <HexColorInput key={inputKey} color={value} onInput={onInput} onBlur={onBlur} onKeyDown={onKeyDown} prefixed autoComplete='off' className='h-[var(--btn-inline)] w-full rounded-md border border-input bg-background px-2 text-xs' />
     </PopoverContent>
   </Popover>;
 });
@@ -224,7 +223,7 @@ export const SceneDirectorFields = React.memo(function SceneDirectorFields(props
   return <div className='space-y-2' data-testid={`scene-director-fields-${object.id}`}>
     {head}
     <Row label={t('spaces.threeD.color')} labelId={`${ids}-color`}>
-      <SceneColorField value={object.color} disabled={disabled} labelId={`${ids}-color`}
+      <SceneColorField value={object.color} disabled={disabled} labelId={`${ids}-color`} spaceId={spaceId}
         onPreview={previewColor} onCommit={continuous.commit} onCancel={continuous.cancel} />
     </Row>
     <Row label={t('spaces.threeD.intensity')} labelId={`${ids}-intensity`}>

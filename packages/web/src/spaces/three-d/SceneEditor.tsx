@@ -199,7 +199,8 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     return open;
   }, [ambientPress]);
   /**
-   * Apply a personal history step; it ends any press in progress without writing it (design 3.8).
+   * Apply a personal history step (design 3.8): a pending pilot wheel step is written first, and every press in
+   * progress ends without writing it.
    * @param step - Undo or redo.
    * @throws {never} Never.
    */

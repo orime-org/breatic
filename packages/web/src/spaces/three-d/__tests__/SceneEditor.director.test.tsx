@@ -22,6 +22,8 @@ import { SceneSession } from '@web/data/yjs/scene-session';
 import type { SceneViewportProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
 import SceneEditor from '@web/spaces/three-d/SceneEditor';
 import { useUIStore } from '@web/stores/ui';
+import { regionOwnsKeyboard } from '@web/features/active-region/keyboard-scope';
+import { isEditableTarget } from '@web/lib/is-editable-target';
 
 type Viewport = SceneViewportProps & {
   cameraView?: { kind: string; id?: string; canPilot?: boolean } | null;
@@ -75,27 +77,32 @@ const owners: Array<{ doc: Y.Doc; session: SceneSession; client: QueryClient }> 
  * @param root0.myRole - The member's role.
  * @returns The editor.
  */
-function Bound({ session, myRole }: { session: SceneSession; myRole: 'editor' | 'viewer' }): React.JSX.Element {
+function Bound({ session, myRole, ownsKeyboard }: { session: SceneSession; myRole: 'editor' | 'viewer'; ownsKeyboard: (target: EventTarget | null) => boolean }): React.JSX.Element {
   const snapshot = React.useSyncExternalStore(session.subscribe, session.getSnapshot);
   return <SceneEditor projectId='project' spaceId='scene' myRole={myRole} userId='alice' session={session} snapshot={snapshot}
     connection={{ status: 'connected', synced: true }} namedPeers={[]}
-    readObjects={() => readSceneDocument(session.doc).objects} ownsKeyboard={() => true} UnlockIcon={Unlock} />;
+    readObjects={() => readSceneDocument(session.doc).objects} ownsKeyboard={ownsKeyboard} UnlockIcon={Unlock} />;
 }
+/** The Space host's keyboard rule (ThreeDSpace), for tests where an overlay outside the editor holds focus. */
+const spaceOwnsKeyboard = (target: EventTarget | null): boolean => regionOwnsKeyboard(target, 'space') && !isEditableTarget(target instanceof Element ? target : null);
 
 /**
  * Render the editor with a box and the given director records.
  * @param records - Cameras and lights to start with.
  * @param myRole - The member's role.
+ * @param viewport - Whether to wait for the viewport.
+ * @param spaceKeyboard - Route keys through the Space host's region rule inside a Space region.
  * @returns The session.
  */
-async function setup(records: readonly SceneObject[] = [], myRole: 'editor' | 'viewer' = 'editor', viewport = true): Promise<{ session: SceneSession }> {
+async function setup(records: readonly SceneObject[] = [], myRole: 'editor' | 'viewer' = 'editor', viewport = true, spaceKeyboard = false): Promise<{ session: SceneSession }> {
   const doc = new Y.Doc(); doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
   const objects: SceneObject[] = [{ id: BOX, name: 'Box', model: { kind: 'builtin', id: 'box' }, position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false }, ...records];
   (applySceneCommand as unknown as (...args: unknown[]) => unknown)(doc, { type: 'create', objects }, Symbol('fixture'), true, NAME, { maxLights: 64 });
   const session = new SceneSession(doc, NAME);
   session.setEnvironment({ readOnly: myRole === 'viewer', connected: true, hasEverSynced: true, writeAccess: myRole === 'viewer' ? 'denied' : 'granted', refused: false, awareness: null });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } }); owners.push({ doc, session, client });
-  render(<QueryClientProvider client={client}><TooltipProvider><div data-space-outlet='scene'><Bound session={session} myRole={myRole} /></div></TooltipProvider></QueryClientProvider>);
+  const bound = <div data-space-outlet='scene'><Bound session={session} myRole={myRole} ownsKeyboard={spaceKeyboard ? spaceOwnsKeyboard : () => true} /></div>;
+  render(<QueryClientProvider client={client}><TooltipProvider>{spaceKeyboard ? <div data-region='space'>{bound}</div> : bound}</TooltipProvider></QueryClientProvider>);
   if (viewport) await screen.findByTestId('scene-native-boundary');
   return { session };
 }
@@ -505,7 +512,7 @@ describe('continuous controls end on release and on Escape (round 1 fixes, desig
     const fields = screen.getByTestId(`scene-director-fields-${LAMP}`);
     fireEvent.click(within(fields).getByRole('button', { name: t('spaces.threeD.color') }));
     await screen.findByRole('slider', { name: 'Color' });
-    fireEvent.change(screen.getAllByRole('textbox').at(-1) as HTMLElement, { target: { value: 'ff0000' } });
+    fireEvent.input(screen.getAllByRole('textbox').at(-1) as HTMLElement, { target: { value: 'ff0000' } });
     const [thumb] = within(fields).getAllByRole('slider');
     const track = (thumb as HTMLElement).parentElement?.parentElement as HTMLElement;
     fireEvent.pointerDown(track, { pointerId: 1, button: 0, buttons: 1, clientX: 200 });
@@ -554,16 +561,16 @@ describe('continuous controls end on release and on Escape (round 1 fixes, desig
     const input = hexInput();
     fireEvent.focus(input);
     const writes = vi.spyOn(session, 'endGesture');
-    fireEvent.change(input, { target: { value: '' } });
+    fireEvent.input(input, { target: { value: '' } });
     // Each key goes at the end of what the box shows by then, as typing does.
-    for (const key of 'ff0000') fireEvent.change(input, { target: { value: input.value + key } });
+    for (const key of 'ff0000') fireEvent.input(input, { target: { value: input.value + key } });
     // A digit put into the middle of a full colour: the box keeps six digits.
-    fireEvent.change(input, { target: { value: '#ff10000' } });
+    fireEvent.input(input, { target: { value: '#ff10000' } });
     expect(input.value).toBe('#ff1000');
     expect(lampValue(session, 'color')).toBe('#ffffff');
     expect(h.viewport?.objects.find((object) => object.id === LAMP)?.['color' as never]).toBe('#ffffff');
     fireEvent.blur(input);
-    expect(lampValue(session, 'color')).toBe('#ff1000');
+    await waitFor(() => expect(lampValue(session, 'color')).toBe('#ff1000'));
     expect(writes.mock.calls.filter(([commit]) => commit)).toHaveLength(1);
   });
 
@@ -585,7 +592,7 @@ describe('continuous controls end on release and on Escape (round 1 fixes, desig
     fireEvent.click(ambientSwatch(opened));
     const input = await screen.findByRole('textbox');
     fireEvent.focus(input);
-    fireEvent.change(input, { target: { value: '0f0' } });
+    fireEvent.input(input, { target: { value: '0f0' } });
     expect(input).toHaveValue('#0f0');
     expect(h.viewport?.environment?.ambientColor).not.toBe('#00ff00');
     fireEvent.click(ambientSwatch(opened));
@@ -602,7 +609,7 @@ describe('continuous controls end on release and on Escape (round 1 fixes, desig
     fireEvent.click(ambientSwatch(opened));
     const input = await screen.findByRole('textbox');
     fireEvent.focus(input);
-    fireEvent.change(input, { target: { value: '0f0' } });
+    fireEvent.input(input, { target: { value: '0f0' } });
     leave(input);
     await waitFor(() => expect(ambientColor(session)).toBe('#00ff00'));
     expect(input).toHaveValue('#00ff00');
@@ -615,7 +622,7 @@ describe('continuous controls end on release and on Escape (round 1 fixes, desig
     fireEvent.click(ambientSwatch(opened));
     const input = await screen.findByRole('textbox');
     fireEvent.focus(input);
-    fireEvent.change(input, { target: { value: '00ff00' } });
+    fireEvent.input(input, { target: { value: '00ff00' } });
     fireEvent.keyDown(input, { key: 'Escape' });
     await pickerClosed();
     expect(ambientColor(session)).toBe('#ffffff');
@@ -630,7 +637,7 @@ describe('continuous controls end on release and on Escape (round 1 fixes, desig
     fireEvent.click(ambientSwatch(opened));
     const input = await screen.findByRole('textbox');
     fireEvent.focus(input);
-    fireEvent.change(input, { target: { value: '0f0' } });
+    fireEvent.input(input, { target: { value: '0f0' } });
     fireEvent.click(ambientSwatch(opened));
     await waitFor(() => expect(ambientColor(session)).toBe('#00ff00'));
     await pickerClosed();
@@ -652,7 +659,7 @@ describe('continuous controls end on release and on Escape (round 1 fixes, desig
     fireEvent.click(within(props).getByRole('button', { name: t('spaces.threeD.color') }));
     await screen.findByRole('slider', { name: 'Color' });
     fireEvent.focus(hexInput());
-    fireEvent.change(hexInput(), { target: { value: '0f0' } });
+    fireEvent.input(hexInput(), { target: { value: '0f0' } });
     fireEvent.click(within(props).getByRole('button', { name: t('spaces.threeD.color') }));
     await waitFor(() => expect(lampValue(session, 'color')).toBe('#00ff00'));
     act(() => session.select(LAMP2, false));
@@ -671,7 +678,7 @@ describe('continuous controls end on release and on Escape (round 1 fixes, desig
     fireEvent.click(ambientSwatch(opened));
     const input = (await screen.findByRole('textbox')) as HTMLInputElement;
     act(() => input.focus());
-    fireEvent.change(input, { target: { value: '0f0' } });
+    fireEvent.input(input, { target: { value: '0f0' } });
     const writes = vi.spyOn(session, 'execute');
     fireEvent.mouseDown(await screen.findByRole('slider', { name: 'Color' }), { button: 0, buttons: 1, pageX: 200, pageY: 2, clientX: 200, clientY: 2 });
     fireEvent.mouseUp(window);
@@ -742,5 +749,74 @@ describe('continuous controls end on release and on Escape (round 1 fixes, desig
     const shown = h.viewport?.objects.find((object) => object.id === LAMP)?.['color' as never];
     expect(lampValue(session, 'color')).toBe(shown);
     expect(session.getSnapshot().gestureActive).toBe(false);
+  });
+
+  it.each([
+    ['the ambient light', false],
+    ['a light', true],
+  ])('writes a picker drag of %s that starts on the current colour and is released right after its first move', async (_, light) => {
+    const { session } = await setup([lamp()]);
+    const opened = await openDirector();
+    if (light) act(() => session.select(LAMP, false));
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({ left: 0, top: 0, width: 400, height: 300, right: 400, bottom: 300, x: 0, y: 0, toJSON: () => ({}) });
+    vi.spyOn(MouseEvent.prototype, 'pageX', 'get').mockImplementation(function (this: MouseEvent) { return this.clientX; });
+    vi.spyOn(MouseEvent.prototype, 'pageY', 'get').mockImplementation(function (this: MouseEvent) { return this.clientY; });
+    fireEvent.click(light ? lightSwatch() : ambientSwatch(opened));
+    const saturation = (await screen.findByRole('slider', { name: 'Color' })) as HTMLElement;
+    // The knob reaches past the picker's corner; a press there is the white the picker already shows.
+    fireEvent.mouseDown(saturation.querySelector('.react-colorful__pointer') as HTMLElement, { button: 0, buttons: 1, clientX: -6, clientY: -6 });
+    const scope = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean };
+    const actEnvironment = scope.IS_REACT_ACT_ENVIRONMENT;
+    scope.IS_REACT_ACT_ENVIRONMENT = false;
+    try {
+      window.dispatchEvent(new MouseEvent('mousemove', { buttons: 1, clientX: 120, clientY: 40 }));
+      window.dispatchEvent(new MouseEvent('mouseup', {}));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    } finally { scope.IS_REACT_ACT_ENVIRONMENT = actEnvironment; }
+    const shown = light ? h.viewport?.objects.find((object) => object.id === LAMP)?.['color' as never] : h.viewport?.environment?.ambientColor;
+    expect(shown).not.toBe('#ffffff');
+    expect(light ? lampValue(session, 'color') : ambientColor(session)).toBe(shown);
+    expect(session.getSnapshot().gestureActive).toBe(false);
+  });
+
+  it.each([
+    ['the ambient light', false],
+    ['a light', true],
+  ])('ends a held picker drag of %s on undo while the picker has focus', async (_, light) => {
+    const { session } = await setup([lamp()], 'editor', true, true);
+    const intensity = (): unknown => (light ? lampValue(session, 'intensity') : session.getSnapshot().environment.ambientIntensity);
+    const before = intensity();
+    act(() => { session.execute(light ? { type: 'patch', patches: [{ id: LAMP, intensity: 3 }] } : { type: 'environment', set: { ambientIntensity: 2.7 } }); });
+    const opened = await openDirector();
+    if (light) act(() => session.select(LAMP, false));
+    sliderPointers();
+    fireEvent.click(light ? lightSwatch() : ambientSwatch(opened));
+    const saturation = await screen.findByRole('slider', { name: 'Color' });
+    fireEvent.mouseDown(saturation, { button: 0, buttons: 1, pageX: 200, pageY: 2, clientX: 200, clientY: 2 });
+    expect(document.activeElement).toBe(saturation);
+    fireEvent.keyDown(saturation, { key: 'z', ctrlKey: true });
+    expect(intensity()).toBe(before);
+    fireEvent.mouseMove(window, { buttons: 1, pageX: 300, pageY: 2, clientX: 300, clientY: 2 });
+    fireEvent.mouseUp(window);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(light ? lampValue(session, 'color') : ambientColor(session)).toBe('#ffffff');
+    expect(session.getSnapshot().gestureActive).toBe(false);
+  });
+
+  it('keeps typed text in the box when the browser loses focus', async () => {
+    const { session } = await setup();
+    const opened = await openDirector();
+    fireEvent.click(ambientSwatch(opened));
+    const input = await screen.findByRole('textbox');
+    fireEvent.focus(input);
+    fireEvent.input(input, { target: { value: '0f0' } });
+    const focused = vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+    fireEvent.blur(input);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(ambientColor(session)).toBe('#ffffff');
+    expect(input).toHaveValue('#0f0');
+    focused.mockReturnValue(true);
+    fireEvent.blur(input);
+    await waitFor(() => expect(ambientColor(session)).toBe('#00ff00'));
   });
 });

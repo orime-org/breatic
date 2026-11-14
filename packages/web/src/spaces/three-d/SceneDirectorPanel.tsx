@@ -188,7 +188,7 @@ export const SceneDirectorPanel = React.memo(function SceneDirectorPanel(props: 
       <h3 className='text-xs font-medium text-muted-foreground'>{t('spaces.threeD.director.ambient')}</h3>
       <div className='flex items-center justify-between gap-3'>
         <span id={`${ids}-ambient-color`} className='text-xs'>{t('spaces.threeD.color')}</span>
-        <SceneColorField value={environment.ambientColor} disabled={!canEdit} labelId={`${ids}-ambient-color`}
+        <SceneColorField value={environment.ambientColor} disabled={!canEdit} labelId={`${ids}-ambient-color`} spaceId={spaceId}
           onPreview={onAmbientColor} onCommit={onAmbientCommit} onCancel={onAmbientCancel} />
       </div>
       <div className='flex items-center justify-between gap-3'>
