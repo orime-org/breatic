@@ -2051,7 +2051,7 @@ export function renderProductGuide(): string {
       "caret in the first. It is greyed on a line in a column, on a line nested under another line and on a line " +
       `with lines nested under it, and pressing it there says ${quoted(t("spaces.document.columns.unavailable"))}`,
     "Dragging a line by its six dots (or a picture, video or audio by itself) onto the left or right " +
-      "edge of another line, or into the empty space beside it, the page margin included, shows a vertical line " +
+      "edge of another line, or into the empty space beside it, the right page margin included, shows a vertical line " +
       "on that side; dropping puts the two lines side by side in two columns, or adds a column beside that line " +
       "when it is already in columns, up to four. A line in a column shows its six dots in the gap left of its " +
       "column; dragging it below a line outside the columns takes it out. Hovering the middle of the gap between " +
