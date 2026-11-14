@@ -42,9 +42,9 @@ function Row({ label, labelId, children }: { label: string; labelId: string; chi
  * A drag that previews and is written once on release, as one undo step (design 3.8).
  * @param session - The command owner.
  * @param id - The object being changed.
- * @returns Preview and commit callbacks, and the commit a Slider's `onValueCommit` takes.
+ * @returns Preview, commit and cancel callbacks, and the commit a Slider's `onValueCommit` takes.
  */
-function useContinuousPatch(session: SceneSession, id: string): { preview: (patch: Omit<ScenePatch, 'id'>) => void; commit: () => void; commitAfterChange: () => void } {
+function useContinuousPatch(session: SceneSession, id: string): { preview: (patch: Omit<ScenePatch, 'id'>) => void; commit: () => void; cancel: () => void; commitAfterChange: () => void } {
   const press = useControlPress();
   // The session owns whether the drag is still open: Escape, a lock or an undo may have ended it.
   const preview = React.useCallback((patch: Omit<ScenePatch, 'id'>): void => {
@@ -54,44 +54,86 @@ function useContinuousPatch(session: SceneSession, id: string): { preview: (patc
   const commit = React.useCallback((): void => {
     if (press.release() && session.getSnapshot().gestureActive) session.endGesture(true);
   }, [session, press]);
+  const cancel = React.useCallback((): void => {
+    if (press.release() && session.getSnapshot().gestureActive) session.endGesture(false);
+  }, [session, press]);
   const commitLater = React.useMemo(() => commitAfterChange(commit), [commit]);
-  return { preview, commit, commitAfterChange: commitLater };
+  return { preview, commit, cancel, commitAfterChange: commitLater };
 }
 
+const HEX_TEXT = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i;
+
 /**
- * A colour chosen in a react-colorful picker inside a Popover; written on each release of the picker, on each
- * six-digit colour typed into the hex input, and when the input is left or the picker closes (design 3.8).
+ * A colour chosen in a react-colorful picker inside a Popover (design 3.8). Each press of the picker previews and is
+ * written once on release; text typed into the hex input is written once, as shown, on Enter or when the input or the
+ * popover is left, the way `SceneField` commits; Escape drops both.
  * @param root0 - Props.
  * @param root0.value - The current colour.
  * @param root0.disabled - Whether it can be changed.
  * @param root0.labelId - What names it.
  * @param root0.onPreview - Shows a colour while picking.
- * @param root0.onCommit - Writes the picked colour.
+ * @param root0.onCommit - Writes the previewed colour and ends the press.
+ * @param root0.onCancel - Ends the press without writing it; no release of it follows.
  * @returns The swatch and its picker.
  */
-export const SceneColorField = React.memo(function SceneColorField({ value, disabled, labelId, onPreview, onCommit }: {
-  value: string; disabled: boolean; labelId: string; onPreview: (hex: string) => void; onCommit: () => void;
+export const SceneColorField = React.memo(function SceneColorField({ value, disabled, labelId, onPreview, onCommit, onCancel }: {
+  value: string; disabled: boolean; labelId: string; onPreview: (hex: string) => void; onCommit: () => void; onCancel: () => void;
 }): React.JSX.Element {
-  const input = React.useRef<HTMLInputElement | null>(null);
-  // The hex input accepts three digits as well as six; the scene stores six.
-  const pick = React.useCallback((hex: string): void => onPreview((hex.length === 4 ? `#${[...hex.slice(1)].map((digit) => digit + digit).join('')}` : hex).toLowerCase()), [onPreview]);
-  // Three digits are also the start of six: applying them while typing would reset the input under the user's keys.
-  const type = React.useCallback((hex: string): void => { if (hex.length === 7) { pick(hex); onCommit(); } }, [pick, onCommit]);
+  // Only this opening of the popover feeds the scene: its exit animation still shows the picker after Escape.
+  const live = React.useRef(false);
+  const edited = React.useRef<HTMLInputElement | null>(null);
+  const picker = React.useRef<HTMLDivElement>(null);
+  const [inputKey, setInputKey] = React.useState(0);
+  const released = React.useRef(false);
+  const [releases, setReleases] = React.useState(0);
+  // react-colorful reports a move from an effect, and a release that follows at once arrives first: the commit runs
+  // as a transition, which React renders after flushing the move and its effects.
+  React.useEffect(() => { if (released.current) { released.current = false; onCommit(); } }, [releases, onCommit]);
+  const pick = React.useCallback((hex: string): void => { if (live.current) onPreview(hex); }, [onPreview]);
+  const release = React.useCallback((): void => {
+    if (!live.current) return;
+    released.current = true;
+    React.startTransition(() => setReleases((count) => count + 1));
+  }, []);
   const settle = React.useCallback((): void => {
-    if (input.current?.value.length === 4) pick(input.current.value);
+    const text = edited.current?.value ?? '';
+    edited.current = null;
+    const digits = HEX_TEXT.exec(text)?.[1]?.toLowerCase();
+    if (!digits) return;
+    const hex = `#${digits.length === 3 ? [...digits].map((digit) => digit + digit).join('') : digits}`;
+    if (hex === value) return;
+    onPreview(hex);
     onCommit();
-  }, [pick, onCommit]);
-  const onOpenChange = React.useCallback((open: boolean): void => { if (!open) settle(); }, [settle]);
-  const onFocus = React.useCallback((event: React.FocusEvent<HTMLInputElement>): void => { input.current = event.currentTarget; }, []);
+  }, [value, onPreview, onCommit]);
+  const onOpenChange = React.useCallback((open: boolean): void => {
+    if (open) { live.current = true; return; }
+    settle();
+    live.current = false;
+  }, [settle]);
+  const onEscapeKeyDown = React.useCallback((): void => {
+    edited.current = null;
+    released.current = false;
+    live.current = false;
+    onCancel();
+  }, [onCancel]);
+  // A change event bubbles from the hex input with what the box shows; HexColorInput reports valid colours only.
+  const onEdit = React.useCallback((event: React.FormEvent<HTMLDivElement>): void => {
+    if (event.target instanceof HTMLInputElement) edited.current = event.target;
+  }, []);
+  const onBlur = React.useCallback((event: React.FocusEvent<HTMLInputElement>): void => {
+    if (!(event.relatedTarget instanceof Node) || !picker.current?.contains(event.relatedTarget)) { settle(); return; }
+    // A press on the picker decides the colour: the box drops its text and shows the colour again.
+    if (edited.current) { edited.current = null; setInputKey((key) => key + 1); }
+  }, [settle]);
   const onKeyDown = React.useCallback((event: React.KeyboardEvent<HTMLInputElement>): void => { if (event.key === 'Enter') settle(); }, [settle]);
   return <Popover onOpenChange={onOpenChange}>
     <PopoverTrigger asChild>
       <Button variant={null} size={null} aria-labelledby={labelId} disabled={disabled}
         className='size-6 rounded-full border border-border disabled:cursor-not-allowed disabled:opacity-50' style={{ backgroundColor: value }} />
     </PopoverTrigger>
-    <PopoverContent side='left' align='start' className='w-auto space-y-2 p-2'>
-      <HexColorPicker color={value} onChange={pick} onChangeEnd={onCommit} />
-      <HexColorInput color={value} onChange={type} onFocus={onFocus} onBlur={settle} onKeyDown={onKeyDown} prefixed autoComplete='off'className='h-[var(--btn-inline)] w-full rounded-md border border-input bg-background px-2 text-xs' />
+    <PopoverContent side='left' align='start' className='w-auto space-y-2 p-2' onEscapeKeyDown={onEscapeKeyDown} onChange={onEdit}>
+      <div ref={picker}><HexColorPicker color={value} onChange={pick} onChangeEnd={release} /></div>
+      <HexColorInput key={inputKey} color={value} onBlur={onBlur} onKeyDown={onKeyDown} prefixed autoComplete='off' className='h-[var(--btn-inline)] w-full rounded-md border border-input bg-background px-2 text-xs' />
     </PopoverContent>
   </Popover>;
 });
@@ -118,6 +160,8 @@ export const SceneDirectorFields = React.memo(function SceneDirectorFields(props
   const ids = React.useId();
   const disabled = !canEdit || object.locked;
   const continuous = useContinuousPatch(session, object.id);
+  const { preview } = continuous;
+  const previewColor = React.useCallback((color: string): void => preview({ color }), [preview]);
   /**
    * Write one field change.
    * @param patch - The fields.
@@ -181,7 +225,7 @@ export const SceneDirectorFields = React.memo(function SceneDirectorFields(props
     {head}
     <Row label={t('spaces.threeD.color')} labelId={`${ids}-color`}>
       <SceneColorField value={object.color} disabled={disabled} labelId={`${ids}-color`}
-        onPreview={(color) => continuous.preview({ color })} onCommit={continuous.commit} />
+        onPreview={previewColor} onCommit={continuous.commit} onCancel={continuous.cancel} />
     </Row>
     <Row label={t('spaces.threeD.intensity')} labelId={`${ids}-intensity`}>
       <Slider aria-labelledby={`${ids}-intensity`} className='w-28' min={0} max={max} step={step} value={[object.intensity]} disabled={disabled}

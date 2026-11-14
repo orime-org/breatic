@@ -52,6 +52,8 @@ export interface SceneDirectorPanelProps extends SceneFieldDraftOwner {
   onMonitor: (id: string, canvas: HTMLCanvasElement | null) => void;
   onAmbientPreview: (values: Partial<SceneEnvironmentValues>) => void;
   onAmbientCommit: () => void;
+  /** Ends an ambient press that gets no release, as when its picker closes on Escape. */
+  onAmbientCancel: () => void;
   /** The view failed to load: every card shows the failure the main area shows. */
   viewFailed: boolean;
 }
@@ -119,7 +121,7 @@ const MonitorCard = React.memo(function MonitorCard({ camera, active, canEdit, s
  */
 export const SceneDirectorPanel = React.memo(function SceneDirectorPanel(props: SceneDirectorPanelProps): React.JSX.Element {
   const { session, snapshot, spaceId, Field, fieldDrafts, onFieldDraftChange, lightPlan, maxLights, lookingAt, environment,
-    onSaveView, onAddLight, onLook, onMonitor, onAmbientPreview, onAmbientCommit, viewFailed } = props;
+    onSaveView, onAddLight, onLook, onMonitor, onAmbientPreview, onAmbientCommit, onAmbientCancel, viewFailed } = props;
   const t = useTranslation();
   const ids = React.useId();
   const { canEdit } = snapshot;
@@ -128,6 +130,7 @@ export const SceneDirectorPanel = React.memo(function SceneDirectorPanel(props: 
   const selectedId = snapshot.selectedIds.length === 1 ? snapshot.selectedIds[0] : undefined;
   const atLimit = maxLights === undefined || lights.length >= maxLights;
   const onAmbientCommitAfterChange = React.useMemo(() => commitAfterChange(onAmbientCommit), [onAmbientCommit]);
+  const onAmbientColor = React.useCallback((ambientColor: string): void => onAmbientPreview({ ambientColor }), [onAmbientPreview]);
   /**
    * The fields of a selected camera or light.
    * @param object - The record.
@@ -186,7 +189,7 @@ export const SceneDirectorPanel = React.memo(function SceneDirectorPanel(props: 
       <div className='flex items-center justify-between gap-3'>
         <span id={`${ids}-ambient-color`} className='text-xs'>{t('spaces.threeD.color')}</span>
         <SceneColorField value={environment.ambientColor} disabled={!canEdit} labelId={`${ids}-ambient-color`}
-          onPreview={(ambientColor) => onAmbientPreview({ ambientColor })} onCommit={onAmbientCommit} />
+          onPreview={onAmbientColor} onCommit={onAmbientCommit} onCancel={onAmbientCancel} />
       </div>
       <div className='flex items-center justify-between gap-3'>
         <span id={`${ids}-ambient-intensity`} className='text-xs'>{t('spaces.threeD.intensity')}</span>

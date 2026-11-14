@@ -62,6 +62,7 @@ const NAME = 'project-p1/3d-s1';
 const BOX = '11111111-1111-4111-8111-111111111111';
 const CAM = '00000000-0000-4000-8000-000000000001';
 const LAMP = '00000000-0000-4000-8000-000000001001';
+const LAMP2 = '00000000-0000-4000-8000-000000001002';
 const POSE = { position: [0, 1, 4] as [number, number, number], rotation: [0, 0, 0, 1] as [number, number, number, number], scale: [1, 1, 1] as [number, number, number], locked: false };
 const camera = (id = CAM, n = 1, extra: Record<string, unknown> = {}): SceneObject => ({ id, name: `Camera ${n}`, model: { kind: 'camera' }, ...POSE, number: n, focalLength: 35, frame: '16:9', ...extra } as unknown as SceneObject);
 const lamp = (id = LAMP, n = 1, type = 'point', extra: Record<string, unknown> = {}): SceneObject => ({ id, name: `Light ${n}`, model: { kind: 'light', type }, ...POSE, number: n, color: '#ffffff', intensity: 1, castShadow: true, ...(type === 'spot' ? { angle: 30 } : {}), ...extra } as unknown as SceneObject);
@@ -538,19 +539,31 @@ describe('continuous controls end on release and on Escape (round 1 fixes, desig
     await waitFor(() => expect(lampValue(session, 'color')).not.toBe(first));
   });
 
-  it('writes a six-digit colour typed key by key once, as typed', async () => {
+  const ambientSwatch = (opened: HTMLElement): HTMLElement => within(within(opened).getByTestId('scene-director-ambient')).getAllByRole('button')[0] as HTMLElement;
+  const lightSwatch = (id = LAMP): HTMLElement => within(screen.getByTestId(`scene-director-fields-${id}`)).getByRole('button', { name: t('spaces.threeD.color') });
+  const hexInput = (): HTMLInputElement => screen.getAllByRole('textbox').at(-1) as HTMLInputElement;
+  const pickerClosed = async (): Promise<void> => { await waitFor(() => expect(screen.queryByRole('slider', { name: 'Color' })).toBeNull()); };
+  const ambientColor = (session: SceneSession): string => session.getSnapshot().environment.ambientColor;
+
+  it('writes a colour typed key by key once, as shown, when the input is left', async () => {
     const { session } = await setup([lamp()]);
     await openDirector();
     act(() => session.select(LAMP, false));
-    fireEvent.click(within(screen.getByTestId(`scene-director-fields-${LAMP}`)).getByRole('button', { name: t('spaces.threeD.color') }));
+    fireEvent.click(lightSwatch());
     await screen.findByRole('slider', { name: 'Color' });
-    const input = screen.getAllByRole('textbox').at(-1) as HTMLInputElement;
+    const input = hexInput();
+    fireEvent.focus(input);
     const writes = vi.spyOn(session, 'endGesture');
     fireEvent.change(input, { target: { value: '' } });
     // Each key goes at the end of what the box shows by then, as typing does.
     for (const key of 'ff0000') fireEvent.change(input, { target: { value: input.value + key } });
-    expect(input.value).toBe('#ff0000');
-    expect(lampValue(session, 'color')).toBe('#ff0000');
+    // A digit put into the middle of a full colour: the box keeps six digits.
+    fireEvent.change(input, { target: { value: '#ff10000' } });
+    expect(input.value).toBe('#ff1000');
+    expect(lampValue(session, 'color')).toBe('#ffffff');
+    expect(h.viewport?.objects.find((object) => object.id === LAMP)?.['color' as never]).toBe('#ffffff');
+    fireEvent.blur(input);
+    expect(lampValue(session, 'color')).toBe('#ff1000');
     expect(writes.mock.calls.filter(([commit]) => commit)).toHaveLength(1);
   });
 
@@ -558,7 +571,7 @@ describe('continuous controls end on release and on Escape (round 1 fixes, desig
     const { session } = await setup([lamp()]);
     await openDirector();
     act(() => session.select(LAMP, false));
-    fireEvent.click(within(screen.getByTestId(`scene-director-fields-${LAMP}`)).getByRole('button', { name: t('spaces.threeD.color') }));
+    fireEvent.click(lightSwatch());
     const saturation = await screen.findByRole('slider', { name: 'Color' });
     fireEvent.keyDown(saturation, { key: 'ArrowRight', keyCode: 39 });
     fireEvent.keyUp(saturation, { key: 'ArrowRight', keyCode: 39 });
@@ -566,18 +579,17 @@ describe('continuous controls end on release and on Escape (round 1 fixes, desig
     expect(session.getSnapshot().gestureActive).toBe(false);
   });
 
-  it('takes a three-digit colour typed into the picker as its six-digit form when the picker closes', async () => {
+  it('takes a three-digit colour as its six-digit form when the picker closes', async () => {
     const { session } = await setup();
     const opened = await openDirector();
-    fireEvent.click(within(within(opened).getByTestId('scene-director-ambient')).getAllByRole('button')[0] as HTMLElement);
+    fireEvent.click(ambientSwatch(opened));
     const input = await screen.findByRole('textbox');
     fireEvent.focus(input);
     fireEvent.change(input, { target: { value: '0f0' } });
-    // Three digits are also the start of six, so they wait until the user leaves the input.
     expect(input).toHaveValue('#0f0');
     expect(h.viewport?.environment?.ambientColor).not.toBe('#00ff00');
-    fireEvent.keyDown(input, { key: 'Escape' });
-    await waitFor(() => expect(session.getSnapshot().environment.ambientColor).toBe('#00ff00'));
+    fireEvent.click(ambientSwatch(opened));
+    await waitFor(() => expect(ambientColor(session)).toBe('#00ff00'));
     expect(h.toast.error).not.toHaveBeenCalled();
   });
 
@@ -587,13 +599,148 @@ describe('continuous controls end on release and on Escape (round 1 fixes, desig
   ])('takes a three-digit colour on %s', async (_, leave) => {
     const { session } = await setup();
     const opened = await openDirector();
-    fireEvent.click(within(within(opened).getByTestId('scene-director-ambient')).getAllByRole('button')[0] as HTMLElement);
+    fireEvent.click(ambientSwatch(opened));
     const input = await screen.findByRole('textbox');
     fireEvent.focus(input);
     fireEvent.change(input, { target: { value: '0f0' } });
     leave(input);
-    await waitFor(() => expect(session.getSnapshot().environment.ambientColor).toBe('#00ff00'));
+    await waitFor(() => expect(ambientColor(session)).toBe('#00ff00'));
     expect(input).toHaveValue('#00ff00');
+    expect(session.getSnapshot().gestureActive).toBe(false);
+  });
+
+  it('drops typed text on Escape', async () => {
+    const { session } = await setup();
+    const opened = await openDirector();
+    fireEvent.click(ambientSwatch(opened));
+    const input = await screen.findByRole('textbox');
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: '00ff00' } });
+    fireEvent.keyDown(input, { key: 'Escape' });
+    await pickerClosed();
+    expect(ambientColor(session)).toBe('#ffffff');
+    fireEvent.click(ambientSwatch(opened));
+    expect(await screen.findByRole('textbox')).toHaveValue('#ffffff');
+  });
+
+  it('takes typed text only in the picker it was typed in', async () => {
+    const { session } = await setup();
+    const opened = await openDirector();
+    sliderPointers();
+    fireEvent.click(ambientSwatch(opened));
+    const input = await screen.findByRole('textbox');
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: '0f0' } });
+    fireEvent.click(ambientSwatch(opened));
+    await waitFor(() => expect(ambientColor(session)).toBe('#00ff00'));
+    await pickerClosed();
+    fireEvent.click(ambientSwatch(opened));
+    const saturation = await screen.findByRole('slider', { name: 'Color' });
+    fireEvent.mouseDown(saturation, { button: 0, buttons: 1, pageX: 40, pageY: 2, clientX: 40, clientY: 2 });
+    fireEvent.mouseUp(window);
+    await waitFor(() => expect(ambientColor(session)).not.toBe('#00ff00'));
+    const picked = ambientColor(session);
+    fireEvent.click(ambientSwatch(opened));
+    await pickerClosed();
+    expect(ambientColor(session)).toBe(picked);
+  });
+
+  it('takes typed text only for the light it was typed for', async () => {
+    const { session } = await setup([lamp(), lamp(LAMP2, 2)]);
+    act(() => session.select(LAMP, false));
+    const props = await screen.findByTestId('scene-properties-panel');
+    fireEvent.click(within(props).getByRole('button', { name: t('spaces.threeD.color') }));
+    await screen.findByRole('slider', { name: 'Color' });
+    fireEvent.focus(hexInput());
+    fireEvent.change(hexInput(), { target: { value: '0f0' } });
+    fireEvent.click(within(props).getByRole('button', { name: t('spaces.threeD.color') }));
+    await waitFor(() => expect(lampValue(session, 'color')).toBe('#00ff00'));
+    act(() => session.select(LAMP2, false));
+    const next = await screen.findByTestId(`scene-director-fields-${LAMP2}`);
+    fireEvent.click(within(next).getByRole('button', { name: t('spaces.threeD.color') }));
+    await screen.findByRole('slider', { name: 'Color' });
+    fireEvent.click(within(next).getByRole('button', { name: t('spaces.threeD.color') }));
+    await pickerClosed();
+    expect((readSceneDocument(session.doc).objects.find((object) => object.id === LAMP2) as unknown as Record<string, unknown>).color).toBe('#ffffff');
+  });
+
+  it('lets a click on the picker decide the colour after typing', async () => {
+    const { session } = await setup();
+    const opened = await openDirector();
+    sliderPointers();
+    fireEvent.click(ambientSwatch(opened));
+    const input = (await screen.findByRole('textbox')) as HTMLInputElement;
+    act(() => input.focus());
+    fireEvent.change(input, { target: { value: '0f0' } });
+    const writes = vi.spyOn(session, 'execute');
+    fireEvent.mouseDown(await screen.findByRole('slider', { name: 'Color' }), { button: 0, buttons: 1, pageX: 200, pageY: 2, clientX: 200, clientY: 2 });
+    fireEvent.mouseUp(window);
+    await waitFor(() => expect(ambientColor(session)).toBe('#cc6666'));
+    expect(writes.mock.calls.filter(([command]) => command.type === 'environment')).toHaveLength(1);
+    expect(hexInput()).toHaveValue('#cc6666');
+  });
+
+  it.each([
+    ['the ambient light', false],
+    ['a light', true],
+  ])('drops a held picker drag of %s on Escape', async (_, light) => {
+    const { session } = await setup([lamp()]);
+    const opened = await openDirector();
+    if (light) act(() => session.select(LAMP, false));
+    sliderPointers();
+    fireEvent.click(light ? lightSwatch() : ambientSwatch(opened));
+    const saturation = await screen.findByRole('slider', { name: 'Color' });
+    fireEvent.mouseDown(saturation, { button: 0, buttons: 1, pageX: 200, pageY: 2, clientX: 200, clientY: 2 });
+    fireEvent.mouseMove(window, { buttons: 1, pageX: 300, pageY: 2, clientX: 300, clientY: 2 });
+    fireEvent.keyDown(saturation, { key: 'Escape' });
+    fireEvent.mouseUp(window);
+    await pickerClosed();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(light ? lampValue(session, 'color') : ambientColor(session)).toBe('#ffffff');
+    expect(session.getSnapshot().gestureActive).toBe(false);
+    // The next pick is a press of its own.
+    fireEvent.click(light ? lightSwatch() : ambientSwatch(opened));
+    fireEvent.mouseDown(await screen.findByRole('slider', { name: 'Color' }), { button: 0, buttons: 1, pageX: 40, pageY: 2, clientX: 40, clientY: 2 });
+    fireEvent.mouseUp(window);
+    await waitFor(() => expect(light ? lampValue(session, 'color') : ambientColor(session)).not.toBe('#ffffff'));
+  });
+
+  it('drops an ambient slider drag on undo', async () => {
+    const { session } = await setup();
+    act(() => { session.execute({ type: 'environment', set: { ambientIntensity: 2.7 } }); });
+    const opened = await openDirector();
+    sliderPointers();
+    const [thumb] = within(within(opened).getByTestId('scene-director-ambient')).getAllByRole('slider');
+    drag(thumb as HTMLElement, [0, 200], false);
+    fireEvent.keyDown(thumb as HTMLElement, { key: 'z', ctrlKey: true });
+    const undone = session.getSnapshot().environment.ambientIntensity;
+    expect(h.viewport?.environment?.ambientIntensity).toBe(undone);
+    fireEvent.pointerMove(thumb as HTMLElement, { pointerId: 1, buttons: 1, clientX: 300 });
+    fireEvent.pointerUp(thumb as HTMLElement, { pointerId: 1, clientX: 300 });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(session.getSnapshot().environment.ambientIntensity).toBe(undone);
+  });
+
+  it('writes the last colour of a picker drag released right after its last move', async () => {
+    const { session } = await setup([lamp()]);
+    await openDirector();
+    act(() => session.select(LAMP, false));
+    sliderPointers();
+    vi.spyOn(MouseEvent.prototype, 'pageX', 'get').mockImplementation(function (this: MouseEvent) { return this.clientX; });
+    fireEvent.click(lightSwatch());
+    const saturation = (await screen.findByRole('slider', { name: 'Color' })) as HTMLElement;
+    fireEvent.mouseDown(saturation, { button: 0, buttons: 1, clientX: 380, clientY: 2 });
+    const scope = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean };
+    const actEnvironment = scope.IS_REACT_ACT_ENVIRONMENT;
+    // Outside act React schedules the move's render, as a browser does when the release follows at once.
+    scope.IS_REACT_ACT_ENVIRONMENT = false;
+    try {
+      window.dispatchEvent(new MouseEvent('mousemove', { buttons: 1, clientX: 40, clientY: 2 }));
+      window.dispatchEvent(new MouseEvent('mouseup', {}));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    } finally { scope.IS_REACT_ACT_ENVIRONMENT = actEnvironment; }
+    const shown = h.viewport?.objects.find((object) => object.id === LAMP)?.['color' as never];
+    expect(lampValue(session, 'color')).toBe(shown);
     expect(session.getSnapshot().gestureActive).toBe(false);
   });
 });

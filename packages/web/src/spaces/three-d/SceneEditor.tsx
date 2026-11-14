@@ -187,6 +187,27 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   const [lightPlan, setLightPlan] = React.useState<LightsPlan | null>(null);
   const [monitors, setMonitors] = React.useState<ReadonlyMap<string, HTMLCanvasElement>>(new Map());
   const pilotControl = React.useRef<ScenePilotControl | null>(null);
+  /**
+   * End an ambient press without writing it; the rest of the press is ignored until its release.
+   * @returns Whether a press was previewing.
+   */
+  const dropAmbient = React.useCallback((): boolean => {
+    const open = ambientDraftRef.current !== null;
+    ambientPress.drop();
+    ambientDraftRef.current = null;
+    setAmbientDraft(null);
+    return open;
+  }, [ambientPress]);
+  /**
+   * Apply a personal history step; it ends any press in progress without writing it (design 3.8).
+   * @param step - Undo or redo.
+   * @throws {never} Never.
+   */
+  const onHistory = React.useCallback((step: 'undo' | 'redo'): void => {
+    pilotControl.current?.flush();
+    dropAmbient();
+    session.historyStep(step);
+  }, [session, dropAmbient]);
   const failures = snapshot.objects.flatMap((object) => {
     const error = modelStates.get(object.id) === 'failed' ? modelErrors.get(object.id) : undefined;
     return error ? [error] : [];
@@ -272,8 +293,8 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
         return;
       }
       if (!modifier && !event.altKey && key === 'f') { event.preventDefault(); setFocusRevision((value) => value + 1); return; }
-      if (modifier && !event.altKey && key === 'z') { event.preventDefault(); pilotControl.current?.flush(); session.historyStep(event.shiftKey ? 'redo' : 'undo'); return; }
-      if (event.ctrlKey && !event.metaKey && !event.altKey && key === 'y') { event.preventDefault(); pilotControl.current?.flush(); session.historyStep('redo'); return; }
+      if (modifier && !event.altKey && key === 'z') { event.preventDefault(); onHistory(event.shiftKey ? 'redo' : 'undo'); return; }
+      if (event.ctrlKey && !event.metaKey && !event.altKey && key === 'y') { event.preventDefault(); onHistory('redo'); return; }
       if (modifier && !event.altKey && !event.shiftKey && key === 'd') { event.preventDefault(); if (!event.repeat) duplicate(); return; }
       if (!modifier && !event.altKey && !event.shiftKey && (event.key === 'Delete' || event.key === 'Backspace')) {
         event.preventDefault();
@@ -282,7 +303,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     };
     window.addEventListener('keydown', onKeyDown);
     return (): void => window.removeEventListener('keydown', onKeyDown);
-  }, [session, duplicate, ownsKeyboard]);
+  }, [session, duplicate, ownsKeyboard, onHistory]);
 
   /** Resolve one registered model through the same Project's access boundary. */
   const resolveAsset = React.useCallback((assetId: string, signal: AbortSignal): Promise<{ url: string; mimeType: string; sizeBytes: number }> =>
@@ -513,15 +534,15 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
    * @throws {never} Cancellation uses the existing session owner.
    */
   const cancelGesture = React.useCallback((): boolean => {
-    if (ambientDraftRef.current) { ambientPress.drop(); ambientDraftRef.current = null; setAmbientDraft(null); }
-    else if (session.getSnapshot().gestureActive) session.endGesture(false);
+    if (dropAmbient()) return true;
+    if (session.getSnapshot().gestureActive) session.endGesture(false);
     else if (pilotControl.current?.escape()) return true;
     // During a camera view the viewfinder steps back first and the panel stays (design 3.8); its canvas list closes itself.
     else if (cameraViewRef.current !== null) { if (viewfinderPhase.current !== 'picking') dispatchViewfinder({ type: 'escape' }); }
     else if (jointMode) changeJointMode(false);
     else return false;
     return true;
-  }, [session, jointMode, changeJointMode, ambientPress]);
+  }, [session, jointMode, changeJointMode, dropAmbient]);
   /**
    * Keep keyboard ownership in the persistent panel before its selected row unmounts.
    * @throws {never} Never directly.
@@ -567,11 +588,6 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
    * @throws {never} Never.
    */
   const onError = React.useCallback((): void => setRendererFailed(true), []);
-  /**
-   * Apply a personal history step to the current session.
-   * @throws {never} Never.
-   */
-  const onHistory = React.useCallback((step: 'undo' | 'redo'): void => { pilotControl.current?.flush(); session.historyStep(step); }, [session]);
   /**
    * Toggle the personal minimap.
    * @throws {never} Never.
@@ -677,6 +693,11 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     if (open && draft) session.execute({ type: 'environment', set: draft });
   }, [session, ambientPress]);
   /**
+   * End an ambient press whose control will not release it, as a picker closed on Escape.
+   * @throws {never} Never.
+   */
+  const onAmbientCancel = React.useCallback((): void => { dropAmbient(); ambientPress.release(); }, [dropAmbient, ambientPress]);
+  /**
    * Change the frame of the camera being looked through.
    * @param frame - The new frame or free ratio.
    */
@@ -705,14 +726,14 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     : panel === 'director' ? <SceneDirectorPanel session={session} snapshot={snapshot} spaceId={spaceId} Field={SceneField} fieldDrafts={fieldDrafts}
       onFieldDraftChange={onFieldDraftChange} lightPlan={lightPlan} maxLights={director?.maxLights} lookingAt={lookCamera?.id ?? null}
       environment={environment} onSaveView={onSaveView} onAddLight={onAddLight} onLook={onLook} onMonitor={onMonitor}
-      onAmbientPreview={onAmbientPreview} onAmbientCommit={onAmbientCommit} viewFailed={viewFailed} />
+      onAmbientPreview={onAmbientPreview} onAmbientCommit={onAmbientCommit} onAmbientCancel={onAmbientCancel} viewFailed={viewFailed} />
       : panel === 'objects' ? <SceneObjectList session={session} snapshot={snapshot} modelStates={modelStates} onSelect={showSelectedProperties} />
         : <SceneTaskList projectId={projectId} spaceId={spaceId} userId={userId} canEdit={snapshot.canEdit} canGenerate={myRole !== 'viewer'} uploads={uploads}
           remoteUploads={snapshot.remoteUploads} onPlace={placeTask} focusTaskId={focusTaskId} onFocused={taskFocused}
           onRetryGeneration={retryGeneration} placedAssetIds={placedAssetIds} onLocate={locateAsset} filterHost={filterHost} />,
   [panel, inspectorFallback, session, snapshot, readObjects, namedPeers, spaceId, fieldDrafts, onFieldDraftChange, skeletonStates, jointMode, changeJointMode, modelStates, showSelectedProperties,
     projectId, userId, myRole, uploads, placeTask, focusTaskId, taskFocused, retryGeneration, placedAssetIds, locateAsset, filterHost,
-    lightPlan, director, lookCamera, environment, onSaveView, onAddLight, onLook, onMonitor, onAmbientPreview, onAmbientCommit, viewFailed]);
+    lightPlan, director, lookCamera, environment, onSaveView, onAddLight, onLook, onMonitor, onAmbientPreview, onAmbientCommit, onAmbientCancel, viewFailed]);
   // An older-format scene is never opened, so no editing chrome is shown around its message.
   if (snapshot.status === 'unsupported' && isOlderSceneFormat(snapshot.version)) {
     return <div ref={stage} className='relative isolate h-full min-h-0 min-w-0 bg-canvas' data-testid='three-d-space'>
