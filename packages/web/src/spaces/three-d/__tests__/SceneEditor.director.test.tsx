@@ -397,6 +397,36 @@ describe('continuous controls end on release and on Escape (round 1 fixes, desig
     expect(screen.getByTestId('scene-right-panel')).toBeInTheDocument();
   });
 
+  it('ignores the rest of an ambient press after Escape', async () => {
+    const { session } = await setup();
+    const opened = await openDirector();
+    sliderPointers();
+    const before = session.getSnapshot().environment.ambientIntensity;
+    const [thumb] = within(within(opened).getByTestId('scene-director-ambient')).getAllByRole('slider');
+    drag(thumb as HTMLElement, [0, 200], false);
+    fireEvent.keyDown(thumb as HTMLElement, { key: 'Escape' });
+    fireEvent.pointerMove(thumb as HTMLElement, { pointerId: 1, buttons: 1, clientX: 300 });
+    fireEvent.pointerUp(thumb as HTMLElement, { pointerId: 1, clientX: 300 });
+    expect(session.getSnapshot().environment.ambientIntensity).toBe(before);
+    expect(h.viewport?.environment?.ambientIntensity).toBe(before);
+  });
+
+  it('ignores the rest of a light slider press after Escape', async () => {
+    const { session } = await setup([lamp()]);
+    await openDirector();
+    act(() => session.select(LAMP, false));
+    sliderPointers();
+    const intensity = (): unknown => session.getSnapshot().objects.find((object) => object.id === LAMP)?.['intensity' as never];
+    const before = intensity();
+    const [thumb] = within(screen.getByTestId(`scene-director-fields-${LAMP}`)).getAllByRole('slider');
+    drag(thumb as HTMLElement, [0, 200], false);
+    fireEvent.keyDown(thumb as HTMLElement, { key: 'Escape' });
+    fireEvent.pointerMove(thumb as HTMLElement, { pointerId: 1, buttons: 1, clientX: 300 });
+    fireEvent.pointerUp(thumb as HTMLElement, { pointerId: 1, clientX: 300 });
+    expect(intensity()).toBe(before);
+    expect(session.getSnapshot().gestureActive).toBe(false);
+  });
+
   it('takes a three-digit colour typed into the picker as its six-digit form', async () => {
     const { session } = await setup();
     const opened = await openDirector();

@@ -40,6 +40,7 @@ import type { ModelSource } from '@web/spaces/three-d/model-source';
 import { budgetText, importErrorKey } from '@web/spaces/three-d/model-import-error-text';
 import { pageSceneUploads } from '@web/spaces/three-d/scene-uploads';
 import { SceneTaskList } from '@web/spaces/three-d/SceneTaskList';
+import { useControlPress } from '@web/spaces/three-d/use-control-press';
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 
 const SceneViewport = React.lazy(() => import('@web/spaces/three-d/viewport/SceneViewport'));
@@ -180,6 +181,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   const environment = React.useMemo(() => (ambientDraft ? { ...snapshot.environment, ...ambientDraft } : snapshot.environment), [ambientDraft, snapshot.environment]);
   const ambientDraftRef = React.useRef(ambientDraft);
   ambientDraftRef.current = ambientDraft;
+  const ambientPress = useControlPress();
   const [lightPlan, setLightPlan] = React.useState<LightsPlan | null>(null);
   const [monitors, setMonitors] = React.useState<ReadonlyMap<string, HTMLCanvasElement>>(new Map());
   const pilotControl = React.useRef<ScenePilotControl | null>(null);
@@ -509,7 +511,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
    * @throws {never} Cancellation uses the existing session owner.
    */
   const cancelGesture = React.useCallback((): boolean => {
-    if (ambientDraftRef.current) setAmbientDraft(null);
+    if (ambientDraftRef.current) { ambientPress.drop(); ambientDraftRef.current = null; setAmbientDraft(null); }
     else if (session.getSnapshot().gestureActive) session.endGesture(false);
     else if (pilotControl.current?.escape()) return true;
     // During a camera view the viewfinder steps back first and the panel stays (design 3.8); its canvas list closes itself.
@@ -517,7 +519,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     else if (jointMode) changeJointMode(false);
     else return false;
     return true;
-  }, [session, jointMode, changeJointMode]);
+  }, [session, jointMode, changeJointMode, ambientPress]);
   /**
    * Keep keyboard ownership in the persistent panel before its selected row unmounts.
    * @throws {never} Never directly.
@@ -661,12 +663,19 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
       return next;
     });
   }, []);
-  const onAmbientPreview = React.useCallback((values: Partial<SceneEnvironmentValues>): void => setAmbientDraft((previous) => ({ ...previous, ...values })), []);
+  const onAmbientPreview = React.useCallback((values: Partial<SceneEnvironmentValues>): void => {
+    if (!ambientPress.change(() => true)) return;
+    // The ref leads the state so a commit in the same event (a key press) reads the change it follows.
+    ambientDraftRef.current = { ...ambientDraftRef.current, ...values };
+    setAmbientDraft(ambientDraftRef.current);
+  }, [ambientPress]);
   const onAmbientCommit = React.useCallback((): void => {
     const draft = ambientDraftRef.current;
+    const open = ambientPress.release();
+    ambientDraftRef.current = null;
     setAmbientDraft(null);
-    if (draft) session.execute({ type: 'environment', set: draft });
-  }, [session]);
+    if (open && draft) session.execute({ type: 'environment', set: draft });
+  }, [session, ambientPress]);
   /**
    * Change the frame of the camera being looked through.
    * @param frame - The new frame or free ratio.

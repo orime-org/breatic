@@ -17,6 +17,7 @@ import type { ScenePatch } from '@web/data/yjs/scene-document';
 import type { SceneSession } from '@web/data/yjs/scene-session';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { SceneField, SceneFieldDraftOwner } from '@web/spaces/three-d/SceneField';
+import { useControlPress } from '@web/spaces/three-d/use-control-press';
 
 /** Lens presets in millimetres (inner#1694 design 3.2). */
 const FOCAL_PRESETS = [14, 24, 35, 50, 70, 100, 200] as const;
@@ -44,13 +45,15 @@ function Row({ label, labelId, children }: { label: string; labelId: string; chi
  * @returns Preview and commit callbacks.
  */
 function useContinuousPatch(session: SceneSession, id: string): { preview: (patch: Omit<ScenePatch, 'id'>) => void; commit: () => void } {
-  // The session owns whether the drag is open: Escape, undo or leaving the window may have ended it.
+  const press = useControlPress();
+  // The session owns whether the drag is still open: Escape, a lock or an undo may have ended it.
   const preview = React.useCallback((patch: Omit<ScenePatch, 'id'>): void => {
-    if (session.getSnapshot().gestureActive || session.beginGesture()) session.previewGesture([{ ...patch, id }]);
-  }, [session, id]);
+    if (press.change(() => session.beginGesture()) && session.getSnapshot().gestureActive) session.previewGesture([{ ...patch, id }]);
+    else press.drop();
+  }, [session, id, press]);
   const commit = React.useCallback((): void => {
-    if (session.getSnapshot().gestureActive) session.endGesture(true);
-  }, [session]);
+    if (press.release() && session.getSnapshot().gestureActive) session.endGesture(true);
+  }, [session, press]);
   return { preview, commit };
 }
 
