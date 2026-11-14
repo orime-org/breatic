@@ -8,6 +8,7 @@
  */
 
 import { z } from 'zod';
+import { GLOBAL_API_PATHS } from '@breatic/shared';
 
 import { API_BASE_PATH } from '@web/data/api/base-path';
 import { ApiException } from '@web/data/api/types';
@@ -124,9 +125,6 @@ export function getCurrentRegion(): string | null {
   return currentRegion;
 }
 
-/** Paths whose data lives only in the global region. */
-const GLOBAL_PATHS = /^\/(auth|users|studios|credits|payment|account|directory)(\/|\?|$)/;
-
 /**
  * The API base for one request path: global data goes to the global region,
  * everything else to the region of the open Studio or Project.
@@ -137,7 +135,7 @@ const GLOBAL_PATHS = /^\/(auth|users|studios|credits|payment|account|directory)(
  */
 export function apiBaseForPath(path: string, config: RegionConfig | null): string {
   if (config === null) return API_BASE_PATH;
-  return apiBaseFor(GLOBAL_PATHS.test(path) ? null : currentRegion, config);
+  return apiBaseFor(GLOBAL_API_PATHS.test(path) ? null : currentRegion, config);
 }
 
 /**

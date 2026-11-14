@@ -505,6 +505,29 @@ describe("authorisation table (§4.3)", () => {
   });
 });
 
+describe("a region's signature reaches only the calls between regions (inner#1955)", () => {
+  it("is 403 on a back-office route and writes nothing", async () => {
+    const lot = await pendingLot();
+    const before = await worldOf(sql, lot);
+
+    const res = await call(running.baseUrl, paths.reject(lot.lotId), {
+      admin: "region-sg",
+      body: { reason: "probe" },
+      idempotencyKey: freshKey("region-reject"),
+    });
+
+    expect(res.status).toBe(403);
+    expect(res.json).toEqual({ code: "forbidden" });
+    expect(await worldOf(sql, lot)).toEqual(before);
+  });
+
+  it("still reaches the global functions", async () => {
+    const res = await call(running.baseUrl, "/internal/global/getProfiles", { admin: "region-sg", body: { args: [[]] } });
+
+    expect(res.status).not.toBe(403);
+  });
+});
+
 describe("rate limit by connection address (§4.4)", () => {
   it("answers 429 { code: rate_limited } with Retry-After once the window's budget is spent, counting unsigned requests too", async () => {
     const { max, windowSeconds } = getRateLimit("internal-api");

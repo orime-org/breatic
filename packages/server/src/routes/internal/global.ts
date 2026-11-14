@@ -16,13 +16,10 @@ import { z } from "zod";
 import { AppError, env } from "@breatic/core";
 import { GLOBAL_FUNCTIONS, REGION_FUNCTIONS } from "@breatic/domain";
 import { SERVER_REGION_FUNCTIONS } from "@server/modules/region/region-functions.js";
-import "@server/middleware/internal-auth.js";
+import { REGION_ADMIN } from "@server/middleware/internal-auth.js";
 import { validate } from "@server/middleware/validate.js";
 
 const bodySchema = z.object({ args: z.array(z.unknown()) }).strict();
-
-/** Admin ids other regions sign with. */
-const REGION_ADMIN = /^region-[A-Za-z0-9-]+$/;
 
 /** A set of functions served to other regions by name. */
 type Served = Record<string, (...args: never[]) => Promise<unknown>>;

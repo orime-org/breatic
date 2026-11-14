@@ -12,6 +12,9 @@ import type { MiddlewareHandler } from "hono";
 import { env, getRedis, logger } from "@breatic/core";
 import { WINDOW_SECONDS, verifyInternalRequest } from "@server/middleware/internal-signature.js";
 
+/** Admin ids other regions sign with (inner#1955). */
+export const REGION_ADMIN = /^region-[A-Za-z0-9-]+$/;
+
 /**
  * How long a nonce is remembered. The window compares whole seconds and
  * includes both ends, so a timestamp `ts` is accepted from `ts - 300` until

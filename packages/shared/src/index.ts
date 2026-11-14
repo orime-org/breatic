@@ -588,6 +588,7 @@ export type {
 } from "@shared/refund-eligibility.js";
 
 export { newId, deriveId } from "@shared/ids.js";
+export { GLOBAL_API_PATHS } from "@shared/global-api-paths.js";
 
 // The three gates on a capped list param — the panel while picking, the server
 // before enqueue, the worker before mapping to vendor names — read one number,

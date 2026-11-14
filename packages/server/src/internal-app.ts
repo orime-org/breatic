@@ -15,7 +15,7 @@ import { Hono, type Context, type MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { getRegionsConfig, logger } from "@breatic/core";
 import { closeAfterRefusal } from "@server/middleware/close-after-refusal.js";
-import { internalAuth } from "@server/middleware/internal-auth.js";
+import { internalAuth, REGION_ADMIN } from "@server/middleware/internal-auth.js";
 import { internalErrorHandler } from "@server/middleware/internal-errors.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import { registerInternalRoutes } from "@server/routes/internal/index.js";
@@ -107,6 +107,12 @@ export function createInternalApp(): Hono {
   const backOfficeBody = bodyLimit({ maxSize: MAX_BODY_BYTES, onError: tooLarge });
   app.use("*", (c, next) => (REGION_PATH.test(c.req.path) ? regionBody(c, next) : backOfficeBody(c, next)));
   app.use("*", internalAuth());
+  // A region holds the shared secret only to call the global and region
+  // functions; the back office's routes (refunds, credit grants) are not its.
+  app.use("*", async (c, next) => {
+    if (!REGION_PATH.test(c.req.path) && REGION_ADMIN.test(c.get("internalAdmin"))) return c.json({ code: "forbidden" }, 403);
+    await next();
+  });
   app.use("*", refuseHead);
   registerInternalRoutes(app);
   return app;
