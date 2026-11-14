@@ -96,9 +96,14 @@ Full Docker deployment: `cp .env.docker .env`, follow [self-host/LOCAL.md](self-
 | in the browser | hash in the browser first; a dedup hit skips the upload |
 | in our process (provider-returned audio) | upload first without hashing locally; dedup after the Worker reports |
 | only a URL (AIGC temporary link, user link via `POST /canvas/ingest-url` or, for a document's pending media, `POST /assets/ingest-url`) | hand the URL to the ingest Worker to fetch; never download and re-upload; a user URL is untrusted and is validated and rate-limited first |
+| on the user's machine (an external agent's own file, a download it made, a result it processed) | the agent processes it there and uploads it through the same upload path (`begin_upload`); our containers and the ingest Worker are not asked to do what that machine can |
 | produced in a container we started | the container writes through the ingest Worker and registers like an upload; a web-animation package and its Manifest stay under the private `web-animation/` prefix as a `timeline_web_animation_sources` row, never a studio asset, read only through the signed preview route |
 
 Upload and generation paths only insert objects, never delete them (dedup losers are queued for offline reclaim); every URL a consumer stores comes from the registered record (`publicUrl(record.storage_key)`), never from a freshly written key; a failed registration is a failed upload; hash, size and content type come from the Worker's report on the stored bytes, never from client claims. Mechanism, thumbnails, covers and avatars: the storage paragraph of [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) "Canvas collaboration".
+
+### External agents work on the user's machine
+**Before holding an external agent (MCP) to a rule written for the browser or our servers, check why that rule exists: the agent runs on the user's own machine with the user's tools, so a rule that answers a browser's or a server's limit (manual steps, browser capability, our server capacity, which is why heavy work went to Cloudflare containers) does not bind it, while a rule about our data (every asset lives in our storage through the upload path, permissions, credits) does.** The agent exists to make creating faster and cheaper for the user, and work the user's machine can do costs us nothing and the user no credits.
+Check: does the reason behind this rule still hold when the work happens on the user's machine?
 
 ### Cloudflare Worker environments
 **Breatic has two Worker environments: each worktree runs its own local development Worker, and the production Worker serves users; there is no shared development Worker.** A development stack points `INGEST_BASE_URL` at its own local Worker, so a merged Worker PR needs no development redeploy. Production deployments belong to the deploy Agent, and every handoff must explicitly name the production Worker as its target.
