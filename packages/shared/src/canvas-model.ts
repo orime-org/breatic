@@ -43,6 +43,7 @@ export * from "@shared/canvas/model/overwrite-task-payload.js";
 export * from "@shared/canvas/model/panel-width.js";
 export * from "@shared/canvas/model/place-flow.js";
 export * from "@shared/canvas/model/prompt-nodes.js";
+export * from "@shared/canvas/model/prompt-pieces.js";
 export * from "@shared/canvas/model/proposal-prompt.js";
 export * from "@shared/canvas/model/reference-urls.js";
 export * from "@shared/canvas/model/reference-pool-cap.js";
