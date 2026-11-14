@@ -107,7 +107,7 @@ async function groups(p: Page): Promise<string[][]> {
   );
 }
 
-test('dragging a row onto the right edge of another stands them in two columns', async () => {
+test('dragging a row onto the right edge of another stands them in two columns, where the first row stood', async () => {
   await openWithLines(page, ['alpha', 'beta', 'gamma']);
   const target = await row(page, 'alpha').boundingBox();
   if (target === null) throw new Error('no alpha');
@@ -117,6 +117,10 @@ test('dragging a row onto the right edge of another stands them in two columns',
     list.map((column) => column.getBoundingClientRect().left),
   );
   expect(columns[1]! - columns[0]!).toBeGreaterThan(200);
+  // The group opens the body, so its lines sit at the top as alpha did.
+  for (const words of ['alpha', 'gamma']) {
+    expect(Math.round((await row(page, words).boundingBox())!.y)).toBe(Math.round(target.y));
+  }
 });
 
 test('dragging a row into the empty space right of a narrow block still lands beside it', async () => {
@@ -211,6 +215,11 @@ test('columns made in a cell of a fresh table widen its column to hold them side
   expect(width).toBeGreaterThanOrEqual(264);
   const tops = await page.locator(`${EDITOR} .doc-column`).evaluateAll((list) => list.map((column) => Math.round(column.getBoundingClientRect().top)));
   expect(tops[0]).toBe(tops[1]);
+  // The group opens its cell, so its lines sit level with the next cell's first line.
+  const firsts = await group.evaluate((element) =>
+    [...element.closest('tr')!.children].map((cell) => Math.round(cell.querySelector('.bn-block-content')!.getBoundingClientRect().top)),
+  );
+  expect(firsts[0]).toBe(firsts[1]);
 });
 
 test('a press in a column group that ends the body selects its words, as in a table', async () => {

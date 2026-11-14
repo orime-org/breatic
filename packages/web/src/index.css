@@ -1408,6 +1408,13 @@ body {
     --doc-block-lift: 0px;
   }
 
+  /* A column group opening the document or a cell: the first block of each
+     column stands flush, as the first block there does (inner#1314). */
+  .doc-body > .bn-block-group > .doc-columns:first-child > .doc-columns-row > .doc-column > .bn-block-outer:first-child > .bn-block > .bn-block-content,
+  .doc-body [data-node-type='docTable'] :is(td, th) > .doc-columns:first-child > .doc-columns-row > .doc-column > .bn-block-outer:first-child > .bn-block > .bn-block-content {
+    --doc-block-lift: 0px;
+  }
+
   /* TWO BLOCKS OF ONE LIST SIT CLOSER THAN TWO KINDS OF BLOCK DO. One margin
      for every relationship read as a single undifferentiated column: a
      paragraph stood no further from the list beneath it than the list's own
