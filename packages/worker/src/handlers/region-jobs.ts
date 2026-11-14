@@ -84,8 +84,10 @@ const USAGE_REPORT_BATCH = 500;
  * @throws {Error} When the usage cannot be read or the global region does not answer.
  */
 export async function syncStorageUsage(): Promise<number> {
-  const usage = await assetRepo.usagePerStudio();
+  // Stamped before measuring: of two overlapping runs, the one that measured
+  // later always carries the later stamp, and the global region keeps it.
   const asOf = new Date();
+  const usage = await assetRepo.usagePerStudio();
   for (let start = 0; start < usage.length; start += USAGE_REPORT_BATCH) {
     await globalApi().recordRegionUsage({ region: env.REGION, asOf, usage: usage.slice(start, start + USAGE_REPORT_BATCH) });
   }

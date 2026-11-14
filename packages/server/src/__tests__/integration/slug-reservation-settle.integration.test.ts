@@ -85,3 +85,20 @@ describe("settling a past-due slug reservation", () => {
     expect(await state(r.studioId, r.newSlug)).toEqual({ directorySlug: r.oldSlug, held: false });
   });
 });
+
+describe("reserving a slug for a rename", () => {
+  it("answers a Studio's retry of its own reservation as held, with no second reservation", async () => {
+    const r = await reserved(-5);
+
+    expect(await directoryWrites.reserveSlug(r.newSlug, r.studioId)).toBe(true);
+    const rows = await sql`SELECT 1 FROM slug_reservations WHERE slug = ${r.newSlug} AND deleted_at IS NULL`;
+    expect(rows).toHaveLength(1);
+  });
+
+  it("refuses a slug another Studio holds", async () => {
+    const r = await reserved(-5);
+    const other = await reserved(-5);
+
+    expect(await directoryWrites.reserveSlug(r.newSlug, other.studioId)).toBe(false);
+  });
+});

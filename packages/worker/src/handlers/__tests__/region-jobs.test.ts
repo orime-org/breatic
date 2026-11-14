@@ -83,6 +83,19 @@ describe("region jobs", () => {
     expect(instants.size).toBe(1);
   });
 
+  it("stamps the report with when the measurement started", async () => {
+    let started = 0;
+    h.usagePerStudio.mockImplementationOnce(async () => {
+      started = Date.now();
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      return [{ studioId: "s-1", bytes: 10 }];
+    });
+
+    await syncStorageUsage();
+    const [report] = h.recordRegionUsage.mock.calls[0]!;
+    expect((report.asOf as Date).getTime()).toBeLessThanOrEqual(started);
+  });
+
   it("throws what stopped the relay, so the job is logged as failed", async () => {
     const down = new Error("global region down");
     h.relayOutbox.mockResolvedValueOnce({ delivered: 2, deadLettered: 0, stoppedBy: down });
