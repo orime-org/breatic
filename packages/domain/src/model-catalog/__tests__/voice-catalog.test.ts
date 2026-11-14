@@ -10,12 +10,13 @@
  * and travels back out on the next generation.
  */
 
-import { describe, it, expect, afterAll } from "vitest";
+import { describe, it, expect, afterAll, beforeEach } from "vitest";
 import { initCore } from "@breatic/core";
 
 import { listVoices, getVoice } from "../voice-catalog.js";
-import { getFullModelConfig, resetModelCatalog } from "../model-catalog.js";
+import { getFullModelConfig, getModelCatalog, resetModelCatalog } from "../model-catalog.js";
 import { getVoiceSampleConfig } from "../voice-sample-config.js";
+import { restoreProcessEnv, useFullCatalog } from "./catalog-env.js";
 
 initCore({ DATABASE_URL: "postgres://localhost:5432/breatic_test" });
 resetModelCatalog();
@@ -63,7 +64,7 @@ describe("listVoices", () => {
   // names the key, config/voice-samples.json names the address.
   it("gives every voice of the models without a vendor sample one of ours", async () => {
     const base = getVoiceSampleConfig().base_url.replace(/[.]/g, "\\.");
-    for (const model of ["realtime-tts-2", "gemini-3.1-flash-text-to-speech", "minimax-speech-2.8-hd"]) {
+    for (const model of ["realtime-tts-2", "gemini-3.8-flash-text-to-speech", "minimax-speech-2.8-hd"]) {
       const page = await listVoices(model, {});
       for (const voice of page.voices) {
         expect(voice.previewUrl, `${model}/${voice.id}`).toMatch(
@@ -84,15 +85,27 @@ describe("listVoices", () => {
     expect(inworld.voices.find((v) => v.id === "Hyunwoo")?.previewUrl).toContain("/ko/");
   });
 
-  it("gives every Gemini voice a sample in every language the model declares", async () => {
-    // Gemini's voices speak whichever language the user picks in the panel.
-    const model = getFullModelConfig("tts").models.find((m) => m.name === "gemini-3.1-flash-text-to-speech");
-    const languages = model?.params?.language?.values ?? [];
-    expect(languages.length).toBeGreaterThan(0);
-    const page = await listVoices("gemini-3.1-flash-text-to-speech", {});
-    for (const voice of page.voices) {
-      expect(Object.keys(voice.previewUrls ?? {}).sort(), voice.id).toEqual([...languages].sort());
-    }
+  describe("on the model list", () => {
+    // The model list asks provider for each model's availability.
+    beforeEach(useFullCatalog);
+    afterAll(restoreProcessEnv);
+
+    it("gives every Gemini voice a sample in each of the model's 24 sample languages", async () => {
+      // Gemini 3.8 speaks the language the script is written in; the voice list
+      // offers its samples by language (#1521).
+      const entry = getModelCatalog().tts.find((m) => m.name === "gemini-3.8-flash-text-to-speech");
+      const languages = entry?.sample_languages ?? [];
+      expect([...languages].sort()).toEqual(["ar", "bn", "de", "en", "es", "fr", "hi", "id", "it", "ja", "ko", "mr", "nl", "pl", "pt", "ro", "ru", "ta", "te", "th", "tr", "uk", "vi", "zh"]);
+      const page = await listVoices("gemini-3.8-flash-text-to-speech", {});
+      expect(page.voices.length).toBe(30);
+      for (const voice of page.voices) {
+        expect(Object.keys(voice.previewUrls ?? {}).sort(), voice.id).toEqual([...languages].sort());
+      }
+    });
+
+    it("sends no sample languages for a model whose voices have one sample each", () => {
+      expect(getModelCatalog().tts.find((m) => m.name === "minimax-speech-2.8-hd")?.sample_languages).toBeUndefined();
+    });
   });
 
   it("filters that table by the search term", async () => {

@@ -163,7 +163,7 @@ export interface FullModelEntry {
     sample_url?: string | null;
     /** A sample we generated, as a path under config/voice-samples.json's `base_url` (#2156, #2239). */
     sample_key?: string;
-    /** Generated samples by language value, for a voice that speaks any of them. */
+    /** Generated samples by language tag, for a voice that speaks any of them (#1521). */
     sample_keys?: Record<string, string>;
   }>;
   [extra: string]: unknown;
@@ -236,6 +236,19 @@ export function getFullModelConfig(modality: string): FullModalityConfig {
 }
 
 /**
+ * The languages a model's voices have samples in, from the keys of their
+ * `sample_keys`, in first-seen order (#1521).
+ * @param m - Full model entry.
+ * @returns The language tags, or undefined when no voice has samples by language.
+ * @throws {never} Never.
+ */
+function sampleLanguagesOf(m: FullModelEntry): string[] | undefined {
+  const tags = new Set<string>();
+  for (const voice of m.voices ?? []) for (const tag of Object.keys(voice.sample_keys ?? {})) tags.add(tag);
+  return tags.size > 0 ? [...tags] : undefined;
+}
+
+/**
  * Project a full yaml model entry onto the shared wire {@link ModelEntry},
  * dropping `note` (it is for whoever ships the yaml),
  * with provider's availability and pricing rules of the model.
@@ -276,6 +289,8 @@ function projectModelEntry(m: FullModelEntry, modality: Modality): ModelEntry {
     // sending text the upstream will reject. Absent on models whose upstream
     // publishes no cap.
     max_input_chars: m.max_input_chars,
+    // #1521: the languages the voices' samples speak, for the voice list.
+    sample_languages: sampleLanguagesOf(m),
     // The longest side the expand tool may grow a picture to (inner#1303).
     max_output_side: m.max_output_side,
     output_type: m.output_type,

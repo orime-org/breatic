@@ -292,6 +292,12 @@ export interface ModelEntry {
    */
   max_input_chars?: number;
   /**
+   * The languages this model's voice samples speak, as language tags (#1521):
+   * the voice list offers them as the sample language. Absent on a model whose
+   * voices have one sample each.
+   */
+  sample_languages?: readonly string[];
+  /**
    * The longest side, in pixels, of a picture this model is known to take and
    * answer at its own size (inner#1303), so the expand tool stops a picture
    * growing past it. Absent when none was measured, and absent means uncapped.
@@ -629,6 +635,9 @@ const modelEntrySchema = z.object({
   // malformed one degrades to absent for the same reason a bad rate does: a
   // number this side invented would refuse text the vendor accepts.
   max_input_chars: z.number().optional().catch(undefined),
+  // A malformed list degrades to absent: the voice list then offers no sample
+  // language, where a half-parsed one would offer tags with no sample (#1521).
+  sample_languages: z.array(z.string()).optional().catch(undefined),
   // The longest side the expand tool may grow to (inner#1303); a malformed one
   // degrades to absent, as a bad text cap does.
   max_output_side: z.number().optional().catch(undefined),
