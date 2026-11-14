@@ -187,9 +187,10 @@ describe('Markdown into the body', () => {
 });
 
 describe('formula sources round-trip through Markdown', () => {
-  // A % on the last line runs to the closing $$, and a % inside \\verb is a
-  // character, so a one-line source is written as it is.
-  it.each(['\\{ \\}', '\\\\', 'a_1 b_2', 'a < b', 'a & b', '\\frac{a}{b}', '\\verb|a%b|', 'a\\ % c', 'a\\ '])('keeps the inline source %j', async (source) => {
+  // A % on the last line runs to the closing $$, and a % inside \verb is a
+  // character, so a one-line source is written as it is; one starting or
+  // ending with $ is padded with a space each side, which Markdown strips.
+  it.each(['\\{ \\}', '\\\\', 'a_1 b_2', 'a < b', 'a & b', '\\frac{a}{b}', '\\verb|a%b|', 'a\\ % c', 'a\\ ', '10\\$', '\\$', '$x'])('keeps the inline source %j', async (source) => {
     const editor = open([inlineIn(source)]);
 
     const again = await read(blocksMarkdown(editor, editor.document as never));

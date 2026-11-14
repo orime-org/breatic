@@ -102,6 +102,14 @@ describe('copying a selection that holds formulas', () => {
     expect(copy(editor)['text/plain']?.trim()).toBe('x $$a^2$$ y');
   });
 
+  it('writes a multi-line inline formula into the plain text on one line, without its comments', () => {
+    const editor = open([{ type: 'paragraph', content: ['x ', { type: 'math', props: { source: 'a % c\nb' } }, ' y'] }]);
+    const paragraph = before(editor, 'paragraph');
+    const size = editor.prosemirrorState.doc.nodeAt(paragraph)!.content.size;
+    select(editor, paragraph + 1, paragraph + 1 + size);
+    expect(copy(editor)['text/plain']?.trim()).toBe('x $$a b$$ y');
+  });
+
   it('writes a block formula into the plain text as $$ on lines of their own', () => {
     const editor = open([
       { type: 'paragraph', content: 'lead' },

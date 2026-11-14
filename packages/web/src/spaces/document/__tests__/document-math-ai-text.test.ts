@@ -160,7 +160,7 @@ function echoAll(handle: DocumentEditorHandle): void {
   echo(handle, { from: rangeOf(handle, 'Before').from, to: rangeOf(handle, 'After').to });
 }
 
-const SOURCES = ['\\frac{a}{b}', 'a\\,b', '50\\%', '\\begin{pmatrix}a\\\\b\\end{pmatrix}'];
+const SOURCES = ['\\frac{a}{b}', 'a\\,b', '50\\%', '\\begin{pmatrix}a\\\\b\\end{pmatrix}', '10\\$'];
 
 describe('formulas echoed through the AI dialog', () => {
   it.each(SOURCES)('keeps the inline source %s', (source) => {
