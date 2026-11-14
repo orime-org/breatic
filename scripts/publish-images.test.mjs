@@ -7,13 +7,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
-for (const failure of ['', 'wrong-index', 'missing-digest', 'media-digest']) {
+for (const failure of ['', 'wrong-index', 'missing-digest', 'media-digest', 'gl-digest']) {
   test(`publication validates the exact tested digests: ${failure || 'success'}`, () => {
     const dir = mkdtempSync(join(tmpdir(), 'publish-images-'));
     try {
       mkdirSync(join(dir, 'bin')); mkdirSync(join(dir, 'digests')); mkdirSync(join(dir, 'scripts'));
       for (const file of ['release.mjs', 'publish-images.sh']) cpSync(new URL(file, import.meta.url), join(dir, 'scripts', file));
-      for (const [i, name] of ['backend-amd64', 'backend-arm64', 'web-amd64', 'web-arm64', 'ingestMedia-amd64'].entries()) {
+      for (const [i, name] of ['backend-amd64', 'backend-arm64', 'web-amd64', 'web-arm64', 'ingestMedia-amd64', 'ingestGl-amd64'].entries()) {
         if (failure !== 'missing-digest' || name !== 'web-arm64') writeFileSync(join(dir, 'digests', name), `sha256:${String(i + 1).repeat(64)}`);
       }
       const executable = `#!${process.execPath}\n` + `
@@ -21,11 +21,11 @@ import fs from 'node:fs';
 const args=process.argv.slice(2);
 fs.appendFileSync('calls', JSON.stringify([process.argv[1].split('/').at(-1).replace('.mjs',''), ...args])+'\\n');
 if(args[0]==='buildx' && args[2]==='inspect') {
-  const media=args[3].includes('ingest-media'), web=args[3].includes('-web');
+  const media=args[3].includes('ingest-media'), gl=args[3].includes('ingest-gl'), web=args[3].includes('-web');
   if(args.includes('--raw')) {
     const start=web?3:1;
     console.log(JSON.stringify({manifests:['amd64','arm64'].map((architecture,i)=>({platform:{os:'linux',architecture},digest:'sha256:'+String(start+i+(process.env.FAILURE==='wrong-index'?1:0)).repeat(64)}))}));
-  } else console.log('sha256:'+(media?(process.env.FAILURE==='media-digest'?'9':'5'):web?'7':'6').repeat(64));
+  } else console.log('sha256:'+(media?(process.env.FAILURE==='media-digest'?'9':'5'):gl?(process.env.FAILURE==='gl-digest'?'9':'6'):web?'7':'6').repeat(64));
 }
 `;
       // .mjs wrappers keep behavior independent of the invoking Node's module defaults.
@@ -46,6 +46,7 @@ if(args[0]==='buildx' && args[2]==='inspect') {
         const manifest=JSON.parse(readFileSync(join(dir,'release.json'),'utf8'));
         assert.equal(manifest.schemaVersion,2);
         assert.equal(manifest.images.backend,'ghcr.io/orime-org/breatic@sha256:'+'6'.repeat(64));
+        assert.equal(manifest.images.ingestGl,'ghcr.io/orime-org/breatic-ingest-gl@sha256:'+'6'.repeat(64));
         const calls=readFileSync(join(dir,'calls'),'utf8').trim().split('\n').map(JSON.parse);
         assert.deepEqual(calls.slice(-2),[['gh','release','upload','v0.2.0','release.json'],['gh','release','edit','v0.2.0','--draft=false','--latest=false']]);
       }

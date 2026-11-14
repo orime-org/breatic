@@ -336,6 +336,7 @@ jobs:
           - {image: web, arch: amd64, runner: ubuntu-24.04, file: Dockerfile.web, suffix: '-web'}
           - {image: web, arch: arm64, runner: ubuntu-24.04-arm, file: Dockerfile.web, suffix: '-web'}
           - {image: ingestMedia, arch: amd64, runner: ubuntu-24.04, file: packages/ingest/Dockerfile, suffix: '-ingest-media'}
+          - {image: ingestGl, arch: amd64, runner: ubuntu-24.04, file: packages/ingest/Dockerfile, suffix: '-ingest-gl', variant: gl}
     permissions:
       contents: read
       packages: write
@@ -384,6 +385,7 @@ jobs:
             VCS_REF=${{ github.sha }}
             VITE_RELEASE_VERSION=${{ steps.release.outputs.version }}
             VITE_APP_VERSION=${{ github.sha }}
+            VARIANT=${{ matrix.variant || 'standard' }}
           labels: |
             org.opencontainers.image.version=${{ steps.release.outputs.version }}
             org.opencontainers.image.revision=${{ github.sha }}
