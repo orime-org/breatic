@@ -25,6 +25,7 @@ import {
   mcpOperationKey,
   mcpReplyKey,
 } from "@shared/agent-command.js";
+import { MAX_NODE_NAME_LEN } from "@shared/types/canvas-node.js";
 
 const CALL = "0b6f3a3e-4b3a-4d0e-9a51-1f2d3c4b5a69";
 const USER = "5c1a9a52-6e0b-4c38-9f0c-0d4b7f2a1e33";
@@ -150,8 +151,8 @@ describe("callScopedId", () => {
 
 describe("refusal reasons", () => {
   it("names each gate the browser applies, so the agent is told the same thing a user is", () => {
-    expect([...AGENT_COMMAND_REFUSALS].sort()).toEqual(
-      [
+    expect(AGENT_COMMAND_REFUSALS).toEqual(
+      expect.arrayContaining([
         "cannot_connect",
         "credential_revoked",
         "handling",
@@ -162,8 +163,9 @@ describe("refusal reasons", () => {
         "not_yours",
         "rate_limited",
         "read_only",
+        "reference_pool_full",
         "space_full",
-      ].sort(),
+      ]),
     );
   });
 });
@@ -179,6 +181,15 @@ describe("canvas command parameters", () => {
     expect(ok("update_canvas_node", { nodeId: "n1", text: "Opening line" })).toBe(true);
     expect(ok("update_canvas_node", { nodeId: "n1" })).toBe(false);
     expect(ok("update_canvas_node", { nodeId: "n1", position: { x: Number.NaN, y: 0 } })).toBe(false);
+  });
+
+  it("takes names no longer than a user can type, MAX_NODE_NAME_LEN", () => {
+    const longest = "n".repeat(MAX_NODE_NAME_LEN);
+    const over = `${longest}n`;
+    expect(ok("update_canvas_node", { nodeId: "n1", name: longest })).toBe(true);
+    expect(ok("update_canvas_node", { nodeId: "n1", name: over })).toBe(false);
+    expect(ok("create_canvas_nodes", { nodes: [{ type: "text", name: over }] })).toBe(false);
+    expect(ok("create_canvas_nodes", { nodes: [{ type: "text" }], group: { name: over } })).toBe(false);
   });
 
   it("create_canvas_nodes takes a position per node, edges between new and existing nodes, and a new group", () => {

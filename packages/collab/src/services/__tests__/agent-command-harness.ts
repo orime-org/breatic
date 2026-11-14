@@ -284,6 +284,17 @@ export async function call(world: World, type: string, params: unknown): Promise
 }
 
 /**
+ * The result of a reply that must be done.
+ * @param reply - The reply.
+ * @returns Its result, typed as the caller reads it.
+ * @throws {Error} When the reply is missing or not done.
+ */
+export function resultOf<T>(reply: AgentReply | null): T {
+  if (reply?.status !== "done") throw new Error(`expected a done reply, got ${JSON.stringify(reply)}`);
+  return reply.result as unknown as T;
+}
+
+/**
  * Read a canvas through a fresh direct connection.
  * @param hocuspocus - Which instance reads.
  * @param world - Whose canvas.

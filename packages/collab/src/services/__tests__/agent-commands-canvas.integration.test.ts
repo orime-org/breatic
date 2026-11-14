@@ -15,7 +15,7 @@ import { randomUUID } from "node:crypto";
 import * as Y from "yjs";
 import { sql as dsql } from "drizzle-orm";
 
-import { getMcpConfig } from "@breatic/core";
+import { getCanvasReferencePoolCap, getMcpConfig } from "@breatic/core";
 import { callScopedId } from "@breatic/shared";
 import { bodyToPlainText } from "@breatic/shared/canvas/text-body";
 import {
@@ -39,6 +39,7 @@ import {
   seedWorld,
   send,
   replyOf,
+  resultOf,
   useAgentCommandHarness,
   type World,
 } from "@collab/services/__tests__/agent-command-harness.js";
@@ -136,7 +137,7 @@ describe("create_canvas_nodes", () => {
     expect((await nodeOf(world, callScopedId(command.callId, "node:0")))?.position).toEqual({ x: 1200, y: 40 });
   });
 
-  it("connects new nodes to each other and to existing ones, with ids derived from the call", async () => {
+  it("connects new nodes to each other and to existing ones, with the ids the browser gives a connection", async () => {
     const world = await seedWorld();
     consumeOn(world, harness.instanceA);
     const command = await send(world, "create_canvas_nodes", {
@@ -148,7 +149,7 @@ describe("create_canvas_nodes", () => {
     });
     const first = callScopedId(command.callId, "node:0");
     const second = callScopedId(command.callId, "node:1");
-    const edgeIds = [callScopedId(command.callId, "edge:0"), callScopedId(command.callId, "edge:1")];
+    const edgeIds = [`${first}->${second}`, `${world.nodeId}->${second}`];
     expect(await replyOf(world, command.callId)).toMatchObject({ status: "done", result: { nodeIds: [first, second], edgeIds } });
     const edges = await canvasEdges(harness.instanceB, world);
     expect(edges.filter((e) => edgeIds.includes(e.id)).map((e) => [e.source, e.target]).sort()).toEqual(
@@ -270,7 +271,7 @@ describe("delete_canvas_nodes", () => {
     consumeOn(world, harness.instanceA);
     const reply = await call(world, "delete_canvas_nodes", { nodeIds: [lockedId, runningId, noteId, world.nodeId] });
     expect(reply).toMatchObject({ status: "done", result: { deleted: [world.nodeId] } });
-    const kept = (reply as { result: { kept: Array<{ nodeId: string; reason: string }> } }).result.kept;
+    const { kept } = resultOf<{ kept: Array<{ nodeId: string; reason: string }> }>(reply);
     expect([...kept].sort((a, b) => a.nodeId.localeCompare(b.nodeId))).toEqual(
       [
         { nodeId: lockedId, reason: "locked" },
@@ -294,19 +295,47 @@ describe("delete_canvas_nodes", () => {
 });
 
 describe("connect_nodes and disconnect_nodes", () => {
-  it("connects two nodes, a locked one included, and disconnects them", async () => {
+  it("connects two nodes, a locked one included, with the id the browser gives it, and disconnects them", async () => {
     const imageId = randomUUID();
     const world = await seedWorld("owner", (canvas, uid) => {
       const image = createEmptyNode("image", { x: 400, y: 0 }, uid);
       addNodeInDoc(canvas, { ...image, id: imageId, data: { ...image.data, locked: true } });
     });
     consumeOn(world, harness.instanceA);
-    const command = await send(world, "connect_nodes", { edges: [{ source: world.nodeId, target: imageId }] });
-    const edgeId = callScopedId(command.callId, "edge:0");
-    expect(await replyOf(world, command.callId)).toMatchObject({ status: "done", result: { edgeIds: [edgeId] } });
+    const edgeId = `${world.nodeId}->${imageId}`;
+    expect(await call(world, "connect_nodes", { edges: [{ source: world.nodeId, target: imageId }] })).toMatchObject({ status: "done", result: { edgeIds: [edgeId] } });
     expect((await canvasEdges(harness.instanceB, world)).map((e) => [e.id, e.source, e.target])).toEqual([[edgeId, world.nodeId, imageId]]);
     expect(await call(world, "disconnect_nodes", { edgeIds: [edgeId] })).toMatchObject({ status: "done" });
     expect(await canvasEdges(harness.instanceB, world)).toEqual([]);
+  });
+
+  it("lands a second connection between the same two nodes on the first, as a second drag in the browser does", async () => {
+    const imageId = randomUUID();
+    const world = await seedWorld("owner", (canvas, uid) => {
+      addNodeInDoc(canvas, { ...createEmptyNode("image", { x: 400, y: 0 }, uid), id: imageId });
+    });
+    consumeOn(world, harness.instanceA);
+    expect(await call(world, "connect_nodes", { edges: [{ source: world.nodeId, target: imageId }] })).toMatchObject({ status: "done" });
+    expect(await call(world, "connect_nodes", { edges: [{ source: world.nodeId, target: imageId }] })).toMatchObject({ status: "done" });
+    expect(await canvasEdges(harness.instanceB, world)).toHaveLength(1);
+  });
+
+  it("refuses a connection into a node whose reference pool is at canvas_reference_pool_cap", async () => {
+    const imageId = randomUUID();
+    const extraId = randomUUID();
+    const cap = getCanvasReferencePoolCap();
+    const world = await seedWorld("owner", (canvas, uid) => {
+      addNodeInDoc(canvas, { ...createEmptyNode("image", { x: 400, y: 0 }, uid), id: imageId });
+      addNodeInDoc(canvas, { ...createEmptyNode("text", { x: 0, y: 900 }, uid), id: extraId });
+      for (let i = 0; i < cap; i++) {
+        const source = createEmptyNode("text", { x: i * 10, y: 600 }, uid);
+        addNodeInDoc(canvas, source);
+        addEdgeInDoc(canvas, { id: `${source.id}->${imageId}`, source: source.id, target: imageId });
+      }
+    });
+    consumeOn(world, harness.instanceA);
+    expect(await call(world, "connect_nodes", { edges: [{ source: extraId, target: imageId }] })).toMatchObject({ status: "rejected", reason: "reference_pool_full" });
+    expect(await canvasEdges(harness.instanceB, world)).toHaveLength(cap);
   });
 
   it("refuses a connection canConnect forbids", async () => {
@@ -459,21 +488,28 @@ describe("limits", () => {
     consumeOn(world, harness.instanceA);
     const reply = await call(world, "read_canvas", {});
     expect(reply).toMatchObject({ status: "done", result: { truncated: true, total: max + 1 } });
-    expect((reply as { result: { nodes: unknown[] } }).result.nodes).toHaveLength(max);
+    expect(resultOf<{ nodes: unknown[] }>(reply).nodes).toHaveLength(max);
   });
 
-  it("refuses everything but deletions on a Space past max_document_bytes", async () => {
+  it("on a Space past max_document_bytes takes only what removes content, as the browser's refusalOf does", async () => {
     const big = "x".repeat(getCollabConfig().max_document_bytes + 1024);
     const bigId = randomUUID();
-    const world = await seedWorld("owner", (canvas, uid) => {
+    const lockedId = randomUUID();
+    const world = await seedWorld("owner", (canvas, uid, _ownerId, textId) => {
       const node = createEmptyNode("text", { x: 400, y: 0 }, uid);
       addNodeInDoc(canvas, { ...node, id: bigId, data: { ...node.data, name: big } });
+      const locked = createEmptyNode("image", { x: 800, y: 0 }, uid);
+      addNodeInDoc(canvas, { ...locked, id: lockedId, data: { ...locked.data, locked: true } });
+      addEdgeInDoc(canvas, { id: `${textId}->${lockedId}`, source: textId, target: lockedId });
     });
     consumeOn(world, harness.instanceA);
     expect(await call(world, "create_canvas_nodes", { nodes: [{ type: "text" }] })).toMatchObject({ status: "rejected", reason: "space_full" });
     expect(await call(world, "update_canvas_node", { nodeId: world.nodeId, name: "x" })).toMatchObject({ status: "rejected", reason: "space_full" });
+    expect(await call(world, "lock_canvas_nodes", { nodeIds: [world.nodeId] })).toMatchObject({ status: "rejected", reason: "space_full" });
+    expect(await call(world, "unlock_canvas_nodes", { nodeIds: [lockedId] })).toMatchObject({ status: "done" });
+    expect(await call(world, "disconnect_nodes", { edgeIds: [`${world.nodeId}->${lockedId}`] })).toMatchObject({ status: "done" });
     expect(await call(world, "delete_canvas_nodes", { nodeIds: [bigId] })).toMatchObject({ status: "done", result: { deleted: [bigId] } });
-  }, 30_000);
+  }, 60_000);
 });
 
 describe("whose edit it is", () => {
