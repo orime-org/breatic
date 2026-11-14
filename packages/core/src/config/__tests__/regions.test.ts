@@ -41,6 +41,10 @@ describe("parseConfig — regions", () => {
       baseEnv({
         REGION: "us-west",
         REGION_API_URLS: '{"sg":"http://10.1.0.5:3002"}',
+        INTERNAL_API_SECRET: "secret",
+        IDENTITY_SIGNING_KEY: "PEM",
+        IDENTITY_SIGNING_KEY_ID: "k1",
+        IDENTITY_COOKIE_DOMAIN: ".example.test",
       }),
     );
     expect(config.REGION_API_URLS).toEqual({ sg: "http://10.1.0.5:3002" });
@@ -59,10 +63,43 @@ describe("parseConfig — regions", () => {
         GLOBAL_REGION: "us-west",
         GLOBAL_API_URL: "http://10.0.0.5:3002",
         IDENTITY_PUBLIC_KEYS: '{"k1":"PEM"}',
+        INTERNAL_API_SECRET: "secret",
       }),
     );
     expect(config.REGION).toBe("sg");
     expect(config.GLOBAL_API_URL).toBe("http://10.0.0.5:3002");
+  });
+
+  // A misconfigured second region must not start and answer every request
+  // with 401 or a failed cross-region call (inner#1955).
+  it("refuses a non-global region with no internal API secret to sign its calls with", () => {
+    expect(() =>
+      parseConfig(
+        baseEnv({ REGION: "sg", GLOBAL_REGION: "us-west", GLOBAL_API_URL: "http://10.0.0.5:3002", IDENTITY_PUBLIC_KEYS: '{"k1":"PEM"}' }),
+      ),
+    ).toThrow(/INTERNAL_API_SECRET/);
+  });
+
+  it.each([
+    ["INTERNAL_API_SECRET", { IDENTITY_SIGNING_KEY: "PEM", IDENTITY_SIGNING_KEY_ID: "k1" }],
+    ["IDENTITY_SIGNING_KEY", { INTERNAL_API_SECRET: "secret" }],
+  ])("refuses a global region with other regions and no %s", (missing, rest) => {
+    expect(() =>
+      parseConfig(baseEnv({ REGION: "us-west", REGION_API_URLS: '{"sg":"http://10.1.0.5:3002"}', ...rest })),
+    ).toThrow(new RegExp(missing));
+  });
+
+  it("accepts regions on one host, whose cookie needs no parent domain", () => {
+    const config = parseConfig(
+      baseEnv({
+        REGION: "us-west",
+        REGION_API_URLS: '{"sg":"http://127.0.0.1:3362"}',
+        INTERNAL_API_SECRET: "secret",
+        IDENTITY_SIGNING_KEY: "PEM",
+        IDENTITY_SIGNING_KEY_ID: "k1",
+      }),
+    );
+    expect(config.IDENTITY_COOKIE_DOMAIN).toBe("");
   });
 
   it("refuses a region code with characters outside letters, digits and '-'", () => {
@@ -98,9 +135,10 @@ describe("parseConfig — identity token keys", () => {
           IDENTITY_PUBLIC_KEYS: '{"k1":"PEM"}',
           IDENTITY_SIGNING_KEY: "PEM",
           IDENTITY_SIGNING_KEY_ID: "k1",
+          INTERNAL_API_SECRET: "secret",
         }),
       ),
-    ).toThrow(/IDENTITY_SIGNING_KEY/);
+    ).toThrow(/IDENTITY_SIGNING_KEY is set outside/);
   });
 
   it("refuses a non-global region with no public key to check tokens with", () => {

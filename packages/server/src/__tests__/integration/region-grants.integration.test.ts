@@ -60,6 +60,8 @@ describe("applyRegionGrants", () => {
     expect(await readAs("users")).toBe("42501");
     expect(await readAs("credit_lots")).toBe("42501");
     expect(await readAs("studio_directory")).toBe("42501");
+    // Renamed by 0062 and never dropped: still in the database, out of the schema.
+    expect(await readAs("credit_transactions_archived")).toBe("42501");
   });
 
   it("covers a table added after the last grant once migrate grants again", async () => {

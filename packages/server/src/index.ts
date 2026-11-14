@@ -18,6 +18,7 @@ import { env,
   getAgentConfig,
   getSubscriptionPlans,
 } from "@breatic/core";
+import { lacksRegionListener } from "@server/utils/region-listener.js";
 import { onDatabaseWaitTimeout } from "@breatic/core";
 import { getPricingTiers } from "@server/config/pricing.js";
 import { getMaintenanceConfig } from "@server/config/maintenance.js";
@@ -28,7 +29,7 @@ import { closeRedis } from "@breatic/core";
 import { closeQueues } from "@breatic/core";
 import { getRedis, getQueueRedis, getStreamRedis, pingDb, pingRedis, yjsRawPg } from "@breatic/core";
 import { checkInfraReady, InfraNotReadyError } from "@breatic/core";
-import { installDeadlineBoundDispatcher, startHealthServer } from "@breatic/core";
+import { globalApiHealthChecks, installDeadlineBoundDispatcher, startHealthServer } from "@breatic/core";
 import { getStorageConfig } from "@breatic/core";
 import { runGracefulShutdown } from "@breatic/core";
 import { renderMetrics } from "@server/infra/metrics.js";
@@ -150,6 +151,12 @@ if (env.PAYMENT_ENABLED) {
     logger.error({ err }, "payment_config_invalid");
     await exitProcess(1);
   }
+}
+
+// Calls between regions arrive on the internal listener (inner#1955).
+if (lacksRegionListener(env)) {
+  logger.error({ region: env.REGION, globalRegion: env.GLOBAL_REGION }, "region_internal_api_disabled");
+  await exitProcess(1);
 }
 
 // The refund time limits are read lazily by the internal API and the refund
@@ -304,6 +311,8 @@ const health = startHealthServer({
       // Single PING liveness helper, shared across all services.
       check: () => pingRedis(getRedis()),
     },
+    // Outside the global region: whether the global region answers (design 6.14).
+    ...globalApiHealthChecks(),
   ],
 });
 

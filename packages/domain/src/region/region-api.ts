@@ -5,12 +5,13 @@
  * The calls between the global region and the other regions (inner#1955).
  *
  * `REGION_FUNCTIONS` is what a region serves at `/internal/region/<fn>`
- * (`packages/server/src/routes/internal/region.ts`); {@link regionClient} is
+ * (`packages/server/src/routes/internal/global.ts`); {@link regionClient} is
  * how the global region reaches one region's.
  */
 
 import { callRegion, env, getRegionsConfig } from "@breatic/core";
 import type { RegionClient, RegionClientFactory } from "@domain/region/studioCreation.service.js";
+import { emitStudioSnapshot } from "@domain/region/studioDirectory.service.js";
 import {
   abandonStudioInRegion,
   createStudioInRegion,
@@ -36,6 +37,12 @@ export const REGION_FUNCTIONS = {
    * @returns `exists` or `abandoned`.
    */
   abandonStudio: (studioId: string): Promise<"exists" | "abandoned"> => abandonStudioInRegion(studioId),
+  /**
+   * Send this Studio's whole state to the directory, to repair its row.
+   * @param studioId - A Studio in this region.
+   * @returns Once the snapshot is in the outbox.
+   */
+  emitStudioSnapshot: (studioId: string): Promise<void> => emitStudioSnapshot(studioId),
 };
 
 /**
@@ -53,27 +60,14 @@ export function isKnownRegion(region: string): boolean {
  * @returns Its calls; each fails when the region has no address or does not answer.
  */
 export const regionClient: RegionClientFactory = (region: string): RegionClient => {
-  const url = env.REGION_API_URLS[region];
   const config = getRegionsConfig();
-  /**
-   * Call one of the region's functions.
-   * @param fn - The function.
-   * @param args - Its arguments.
-   * @param timeoutMs - How long to wait.
-   * @returns The answer.
-   * @throws {Error} When the region has no address.
-   */
-  const call = (fn: keyof typeof REGION_FUNCTIONS, args: unknown[], timeoutMs: number): Promise<unknown> => {
-    if (url === undefined) return Promise.reject(new Error(`no address for region ${region}`));
-    return callRegion(fn, args, { callerRegion: env.REGION, url, secret: env.INTERNAL_API_SECRET, timeoutMs });
-  };
   return {
     probe: async () => {
-      await call("probe", [], config.region_probe_timeout_ms);
+      await callRegion(region, "probe", [], config.region_probe_timeout_ms);
     },
     createStudio: async (input) =>
-      (await call("createStudio", [input], config.global_api_timeout_ms)) as "created" | "exists" | "abandoned",
+      (await callRegion(region, "createStudio", [input], config.global_api_timeout_ms)) as "created" | "exists" | "abandoned",
     abandonStudio: async (studioId) =>
-      (await call("abandonStudio", [studioId], config.global_api_timeout_ms)) as "exists" | "abandoned",
+      (await callRegion(region, "abandonStudio", [studioId], config.global_api_timeout_ms)) as "exists" | "abandoned",
   };
 };

@@ -340,6 +340,14 @@ export const coreConfigSchema = z.object({
   // Parent domain the identity cookie is set on, so every region's API host
   // receives it; empty sets it on the API host alone.
   IDENTITY_COOKIE_DOMAIN: z.string().default(""),
+  // The global region's worker aligns the Studio directory once at start.
+  // Only for a deployment that starts it after every process of the previous
+  // release has stopped, as the bundled docker-compose.yml does; elsewhere
+  // the operator runs `pnpm db:reconcile-directory` after the rollout.
+  DIRECTORY_RECONCILE_ON_START: z
+    .string()
+    .default("false")
+    .transform((v) => v === "true"),
   // The role the services connect as outside the global region. Migrate,
   // run as the owning role, grants it every table and takes the global
   // ones back, so a stray global query fails there instead of reading the
@@ -516,6 +524,22 @@ export function parseConfig(rawEnv: Record<string, string | undefined>): CoreCon
         "signs identity tokens. Refusing to start.",
       );
     }
+  }
+  // Every call between regions is signed with the internal API secret.
+  const otherRegions = Object.keys(config.REGION_API_URLS).some((region) => region !== config.REGION);
+  if ((config.REGION !== config.GLOBAL_REGION || otherRegions) && !config.INTERNAL_API_SECRET.trim()) {
+    throw new Error(
+      "FATAL: a deployment with more than one region signs its calls between regions with " +
+      "INTERNAL_API_SECRET; set it. Refusing to start.",
+    );
+  }
+  // The global region with other regions must issue identity tokens they can
+  // read. A blank cookie domain stays allowed: regions on one host share it.
+  if (config.REGION === config.GLOBAL_REGION && otherRegions && config.IDENTITY_SIGNING_KEY.trim() === "") {
+    throw new Error(
+      "FATAL: the global region of a deployment with other regions needs IDENTITY_SIGNING_KEY to " +
+      "issue identity tokens. Refusing to start.",
+    );
   }
   if (config.IDENTITY_SIGNING_KEY.trim() !== "" && config.IDENTITY_SIGNING_KEY_ID.trim() === "") {
     throw new Error(

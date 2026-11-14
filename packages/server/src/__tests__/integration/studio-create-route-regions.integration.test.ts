@@ -33,6 +33,7 @@ vi.mock("ai", () => ({
 
 import crypto from "node:crypto";
 import postgres from "postgres";
+import { GLOBAL_REGION_SETTINGS } from "./global-region-env.js";
 import { getRedis, initCore, loadLocales, sessionCookieName, setSession } from "@breatic/core";
 import type { Hono } from "hono";
 import { withPeer } from "../helpers/peer.js";
@@ -41,6 +42,7 @@ const TWO_REGIONS = {
   REGION: "us-west",
   GLOBAL_REGION: "us-west",
   REGION_API_URLS: JSON.stringify({ sg: "http://sg.invalid:3002" }),
+  ...GLOBAL_REGION_SETTINGS,
 };
 
 loadLocales();

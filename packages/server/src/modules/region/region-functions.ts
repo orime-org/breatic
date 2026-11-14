@@ -45,13 +45,6 @@ export const SERVER_REGION_FUNCTIONS = {
    */
   previewInvitation: (token: string): Promise<SignupInvitationPreview> => getInvitationPreview(token),
   /**
-   * End sessions the global region revoked: mark them revoked for this
-   * region's identity checks and tell this region's collab to close them.
-   * @param userId - Whose sessions ended.
-   * @param sids - The ended session ids.
-   * @returns Once marked and announced.
-   */
-  /**
    * The slug a Studio in this region holds, for settling a slug reservation.
    * @param studioId - The Studio.
    * @returns Its slug, or null when it is gone.
@@ -84,6 +77,13 @@ export const SERVER_REGION_FUNCTIONS = {
    * @returns Name by id, for the ones found.
    */
   projectNames: (projectIds: string[]): Promise<Record<string, string>> => projectNamesHere(projectIds),
+  /**
+   * End sessions the global region revoked: mark them revoked for this
+   * region's identity checks and tell this region's collab to close them.
+   * @param userId - Whose sessions ended.
+   * @param sids - The ended session ids.
+   * @returns Once marked and announced.
+   */
   revokeSessions: async (userId: string, sids: string[]): Promise<void> => {
     await recordRevokedIdentities(getRedis(), sids);
     await publishSessionsRevoked(userId, sids);

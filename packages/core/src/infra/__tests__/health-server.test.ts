@@ -90,6 +90,23 @@ describe("startHealthServer", () => {
     await stop();
   });
 
+  it("reports a failing informational check without making the instance unhealthy", async () => {
+    const { server, stop } = startHealthServer({
+      port: pickPort(),
+      serviceName: "test",
+      checks: [
+        { name: "pg", check: async () => true },
+        { name: "global_api", informational: true, check: async () => false },
+      ],
+    });
+    await new Promise((r) => server.once("listening", r));
+    const port = (server.address() as AddressInfo).port;
+    const { status, body } = await fetchJson(port, "/healthz");
+    expect(status).toBe(200);
+    expect(body).toMatchObject({ status: "ok", checks: { global_api: { ok: false } } });
+    await stop();
+  });
+
   it("returns 503 + per-check timeout when a check hangs past the timeout window", async () => {
     const { server, stop } = startHealthServer({
       port: pickPort(),

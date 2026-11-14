@@ -9,9 +9,17 @@
 
 import { createHmac } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { GlobalApiError, createGlobalApi } from "@core/region/global-api.js";
+const testEnv = vi.hoisted(() => ({
+  REGION: "us-west",
+  GLOBAL_REGION: "us-west",
+  INTERNAL_API_SECRET: "test-internal-secret",
+  REGION_API_URLS: { sg: "http://10.0.0.9:3002/" },
+}));
+vi.mock("@core/config/env.js", () => ({ env: testEnv }));
 
-const SECRET = "test-internal-secret";
+import { GlobalApiError, callRegion, createGlobalApi, globalApiHealthChecks, lastGlobalCallSucceeded } from "@core/region/global-api.js";
+
+const SECRET = vi.hoisted(() => "test-internal-secret");
 
 /**
  * The global functions a test hands to the API.
@@ -48,6 +56,7 @@ describe("createGlobalApi", () => {
       globalRegion: "us-west",
       globalApiUrl: "",
       secret: SECRET,
+      timeoutMs: 5000,
     });
 
     await expect(api.readUserName("u1")).resolves.toBe("local:u1");
@@ -63,6 +72,7 @@ describe("createGlobalApi", () => {
       globalRegion: "us-west",
       globalApiUrl: "http://10.0.0.5:3002",
       secret: SECRET,
+      timeoutMs: 5000,
     });
 
     await expect(api.readUserName("u1")).resolves.toBe("remote:u1");
@@ -81,6 +91,7 @@ describe("createGlobalApi", () => {
       globalRegion: "us-west",
       globalApiUrl: "http://10.0.0.5:3002",
       secret: SECRET,
+      timeoutMs: 5000,
     });
 
     await api.readUserName("u1");
@@ -113,6 +124,7 @@ describe("createGlobalApi", () => {
       globalRegion: "us-west",
       globalApiUrl: "http://10.0.0.5:3002",
       secret: SECRET,
+      timeoutMs: 5000,
     });
 
     await api.readUserName("u1");
@@ -130,6 +142,7 @@ describe("createGlobalApi", () => {
       globalRegion: "us-west",
       globalApiUrl: "http://10.0.0.5:3002",
       secret: SECRET,
+      timeoutMs: 5000,
     });
 
     const failure = await api.readUserName("u1").catch((err: unknown) => err);
@@ -147,8 +160,68 @@ describe("createGlobalApi", () => {
       globalRegion: "us-west",
       globalApiUrl: "http://10.0.0.5:3002",
       secret: SECRET,
+      timeoutMs: 5000,
     });
 
     await expect(api.readUserName("u1")).rejects.toThrow();
+  });
+});
+
+describe("callRegion", () => {
+  it("calls the named region at its configured address, signed as this region", async () => {
+    const fetchMock = answerWith(200, { result: "ok" });
+
+    expect(await callRegion("sg", "probe", [], 1000)).toBe("ok");
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("http://10.0.0.9:3002/internal/region/probe");
+    expect(new Headers(init.headers).get("x-internal-admin")).toBe("region-us-west");
+  });
+
+  it("refuses a region with no address without sending anything", async () => {
+    const fetchMock = answerWith(200, { result: "ok" });
+
+    const failure = await callRegion("eu", "probe", [], 1000).catch((err: unknown) => err);
+    expect(failure).toBeInstanceOf(GlobalApiError);
+    expect((failure as GlobalApiError).message).toBe("no address for region eu");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("lastGlobalCallSucceeded", () => {
+  it("follows the outcome of the latest call to the global region", async () => {
+    const api = createGlobalApi(localFunctions(), {
+      region: "sg", globalRegion: "us-west", globalApiUrl: "http://10.0.0.5:3002", secret: SECRET, timeoutMs: 5000,
+    });
+
+    answerWith(200, { result: "remote" });
+    await api.readUserName("u1");
+    expect(lastGlobalCallSucceeded()).toBe(true);
+
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      throw new TypeError("Failed to fetch");
+    }));
+    await api.readUserName("u1").catch(() => undefined);
+    expect(lastGlobalCallSucceeded()).toBe(false);
+
+    answerWith(409, { code: "refused" });
+    await api.readUserName("u1").catch(() => undefined);
+    expect(lastGlobalCallSucceeded()).toBe(true);
+  });
+});
+
+describe("globalApiHealthChecks", () => {
+  it("adds no check in the region that holds the global data", () => {
+    expect(globalApiHealthChecks()).toEqual([]);
+  });
+
+  it("adds one informational check elsewhere, following the latest global call", async () => {
+    testEnv.REGION = "sg";
+    try {
+      const [check] = globalApiHealthChecks();
+      expect(check).toMatchObject({ name: "global_api", informational: true });
+      expect(await check!.check()).toBe(lastGlobalCallSucceeded());
+    } finally {
+      testEnv.REGION = "us-west";
+    }
   });
 });

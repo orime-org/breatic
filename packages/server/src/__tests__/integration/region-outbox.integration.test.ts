@@ -56,6 +56,7 @@ const SINGAPORE = {
   GLOBAL_REGION: "us-west",
   GLOBAL_API_URL: "http://global.invalid:3002",
   IDENTITY_PUBLIC_KEYS: JSON.stringify({ k1: "unused" }),
+  INTERNAL_API_SECRET: "region-outbox-test-secret",
 };
 
 loadLocales();

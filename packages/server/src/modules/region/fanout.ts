@@ -22,11 +22,8 @@ export const REGION_UNAVAILABLE_REASON = "region_unavailable";
  * @throws {AppError} The region's own refusal, or `503` `region_unavailable` when it does not answer.
  */
 export async function askRegion<T>(region: string, fn: string, args: unknown[], unavailableMessage: string): Promise<T> {
-  const url = env.REGION_API_URLS[region];
   try {
-    if (url === undefined) throw new Error(`no address for region ${region}`);
-    const timeoutMs = getRegionsConfig().cross_region_fanout_timeout_ms;
-    return (await callRegion(fn, args, { callerRegion: env.REGION, url, secret: env.INTERNAL_API_SECRET, timeoutMs })) as T;
+    return (await callRegion(region, fn, args, getRegionsConfig().cross_region_fanout_timeout_ms)) as T;
   } catch (err) {
     if (err instanceof AppError) throw err;
     logger.error({ err, ctx: { region, fn } }, "cross_region_call_failed");
@@ -53,10 +50,8 @@ export async function askUserRegions<T>(userId: string, fn: string, args: unknow
   const timeoutMs = getRegionsConfig().cross_region_fanout_timeout_ms;
   const settled = await Promise.all(
     regions.map(async (region) => {
-      const url = env.REGION_API_URLS[region];
       try {
-        if (url === undefined) throw new Error(`no address for region ${region}`);
-        const result = (await callRegion(fn, args, { callerRegion: env.REGION, url, secret: env.INTERNAL_API_SECRET, timeoutMs })) as T;
+        const result = (await callRegion(region, fn, args, timeoutMs)) as T;
         return { region, answered: true as const, result };
       } catch (err) {
         logger.error({ err, ctx: { userId, region, fn } }, "cross_region_read_failed");

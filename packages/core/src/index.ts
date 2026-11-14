@@ -99,9 +99,9 @@ export {
   callRegion,
   createGlobalApi,
   GlobalApiError,
+  globalApiHealthChecks,
+  lastGlobalCallSucceeded,
   UNREACHABLE_STATUS,
-  type GlobalApiOptions,
-  type RegionApiOptions,
 } from "@core/region/global-api.js";
 export {
   getUsagePricing,

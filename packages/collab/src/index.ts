@@ -28,6 +28,7 @@ import {
   yjsRawPg,
   checkInfraReady,
   startHealthServer,
+  globalApiHealthChecks,
   runGracefulShutdown,
   closeQueues,
   InfraNotReadyError,
@@ -428,7 +429,7 @@ async function main(): Promise<void> {
       // failure mode that the infra probes above all miss).
       probeWsProcessing: probeDocProcessing,
       probeMemberListen: () => memberChanges.probe(MEMBER_LISTEN_PROBE_TIMEOUT_MS),
-    }),
+    }).concat(globalApiHealthChecks()),
   });
 
   // Graceful shutdown

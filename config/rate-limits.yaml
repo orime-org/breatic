@@ -197,6 +197,12 @@ project-join-request: { max: 20, window_seconds: 3600 }
 # off before it spends HMAC work or Redis nonce writes.
 internal-api: { max: 120, window_seconds: 60 }
 
+# Calls between regions on the same internal listener (inner#1955): every
+# credit admission, settlement, profile read and outbox event of another
+# region arrives from that region's few addresses, so it has a budget of its
+# own. Still applied before the signature check.
+region-api: { max: 6000, window_seconds: 60 }
+
 # Outbound invitations share one per-account daily budget across both targets.
 invite: { max: 50, window_seconds: 86400 }
 # Registration-link previews are public and counted by client address.

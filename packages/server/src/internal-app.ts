@@ -11,7 +11,7 @@
  * does not list is 403.
  */
 
-import { Hono, type MiddlewareHandler } from "hono";
+import { Hono, type Context, type MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { logger } from "@breatic/core";
 import { closeAfterRefusal } from "@server/middleware/close-after-refusal.js";
@@ -19,6 +19,9 @@ import { internalAuth } from "@server/middleware/internal-auth.js";
 import { internalErrorHandler } from "@server/middleware/internal-errors.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import { registerInternalRoutes } from "@server/routes/internal/index.js";
+
+/** The calls between regions (inner#1955), counted apart from the back office. */
+const REGION_PATH = /^\/internal\/(global|region)\//;
 
 /** The largest legitimate body is about 26 KiB (§4.6). */
 const MAX_BODY_BYTES = 64 * 1024;
@@ -82,13 +85,15 @@ export function createInternalApp(): Hono {
   app.onError(internalErrorHandler);
   app.notFound((c) => c.json({ code: "forbidden" }, 403));
   app.use("*", logRequest);
-  app.use(
-    "*",
-    rateLimitFor("internal-api", "socket", {
-      onLimited: (c) => c.json({ code: "rate_limited" }, 429),
-      failClosed: (c) => c.json({ code: "unavailable" }, 503),
-    }),
-  );
+  const limits = {
+    onLimited: (c: Context) => c.json({ code: "rate_limited" }, 429),
+    failClosed: (c: Context) => c.json({ code: "unavailable" }, 503),
+  };
+  // Other regions send every credit admission, settlement and outbox event
+  // here, at a rate no person at the back office reaches: two budgets.
+  const regionLimit = rateLimitFor("region-api", "socket", limits);
+  const backOfficeLimit = rateLimitFor("internal-api", "socket", limits);
+  app.use("*", (c, next) => (REGION_PATH.test(c.req.path) ? regionLimit(c, next) : backOfficeLimit(c, next)));
   app.use(
     "*",
     bodyLimit({

@@ -37,6 +37,7 @@ vi.mock("ai", () => ({
 
 import crypto from "node:crypto";
 import postgres from "postgres";
+import { GLOBAL_REGION_SETTINGS } from "./global-region-env.js";
 import { createQueue, initCore, loadLocales } from "@breatic/core";
 import type { Hono } from "hono";
 import { hashPassword } from "@server/modules/auth/auth.service.js";
@@ -57,6 +58,7 @@ beforeAll(async () => {
     REGION: "us-west",
     GLOBAL_REGION: "us-west",
     REGION_API_URLS: JSON.stringify({ sg: sg.url }),
+    ...GLOBAL_REGION_SETTINGS,
     INTERNAL_API_SECRET: "invitation-regions-test-secret",
   });
   sql = postgres(inject("DATABASE_URL"), {
@@ -148,6 +150,11 @@ describe("signing in", () => {
     expect(res.status).toBe(200);
     expect(Date.now() - started).toBeLessThan(3_000);
     const jobs = await createQueue("invitation-claim-forward").getJobs(["waiting", "delayed", "active"]);
-    expect(jobs.some((job) => job.data?.region === "sg" && job.data?.userId === user!.id)).toBe(true);
+    const job = jobs.find((queued) => queued.data?.region === "sg" && queued.data?.userId === user!.id);
+    expect(job).toBeDefined();
+    // Retried and cleaned up like every other job.
+    expect(job!.opts.attempts).toBeGreaterThan(1);
+    expect(job!.opts.removeOnComplete).toBeTruthy();
+    expect(job!.opts.removeOnFail).toBeTruthy();
   });
 });

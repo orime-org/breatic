@@ -44,6 +44,7 @@ import crypto from "node:crypto";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import postgres from "postgres";
+import { GLOBAL_REGION_SETTINGS } from "./global-region-env.js";
 import { getRedis, initCore, loadLocales, sessionCookieName, setSession } from "@breatic/core";
 import type { Hono } from "hono";
 import * as studioInviteService from "@server/modules/studio/studioInvite.service.js";
@@ -86,6 +87,7 @@ beforeAll(async () => {
     REGION: "us-west",
     GLOBAL_REGION: "us-west",
     REGION_API_URLS: JSON.stringify({ sg: `http://127.0.0.1:${port}` }),
+    ...GLOBAL_REGION_SETTINGS,
     INTERNAL_API_SECRET: "cross-region-test-secret",
   });
   sql = postgres(inject("DATABASE_URL"), {
@@ -423,6 +425,7 @@ describe("a single-region deployment", () => {
         REGION: "us-west",
         GLOBAL_REGION: "us-west",
         REGION_API_URLS: JSON.stringify({ sg: `http://127.0.0.1:${(regionServer.address() as AddressInfo).port}` }),
+        ...GLOBAL_REGION_SETTINGS,
         INTERNAL_API_SECRET: "cross-region-test-secret",
       });
     }

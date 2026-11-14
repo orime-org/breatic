@@ -16,8 +16,17 @@
 /** Where a table's rows live. */
 export type TablePlacement = "global" | "regional" | "both";
 
+/**
+ * Tables a migration renamed out of use but never dropped: they are still in
+ * every database, so they are placed too, though the schema no longer
+ * defines them.
+ */
+export const RETIRED_TABLES: readonly string[] = ["credit_transactions_archived"];
+
 /** Each product table's placement, by table name. */
 export const TABLE_PLACEMENT: Readonly<Record<string, TablePlacement>> = {
+  // Retired by 0062: the old credit transactions, renamed and kept.
+  credit_transactions_archived: "global",
   // Accounts, membership and subscriptions
   users: "global",
   membership_tier_changes: "global",

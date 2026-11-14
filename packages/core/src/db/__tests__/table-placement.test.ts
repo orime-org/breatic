@@ -12,7 +12,7 @@ import { describe, it, expect } from "vitest";
 import { getTableName, is } from "drizzle-orm";
 import { PgTable } from "drizzle-orm/pg-core";
 import * as schema from "@core/db/schema.js";
-import { TABLE_PLACEMENT } from "@core/db/table-placement.js";
+import { RETIRED_TABLES, TABLE_PLACEMENT } from "@core/db/table-placement.js";
 
 const schemaTables: string[] = Object.values(schema as Record<string, unknown>)
   .filter((value): value is PgTable => is(value, PgTable))
@@ -24,9 +24,16 @@ describe("table placement", () => {
     expect(unplaced).toEqual([]);
   });
 
-  it("places no table that the schema does not define", () => {
-    const unknown = Object.keys(TABLE_PLACEMENT).filter((name) => !schemaTables.includes(name));
+  it("places no table that the schema does not define, besides the retired ones", () => {
+    const unknown = Object.keys(TABLE_PLACEMENT).filter((name) => !schemaTables.includes(name) && !RETIRED_TABLES.includes(name));
     expect(unknown).toEqual([]);
+  });
+
+  it("keeps every retired table out of the schema and away from other regions", () => {
+    for (const name of RETIRED_TABLES) {
+      expect(schemaTables).not.toContain(name);
+      expect(TABLE_PLACEMENT[name]).toBe("global");
+    }
   });
 
   it("uses only the three placements", () => {

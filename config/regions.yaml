@@ -1,6 +1,6 @@
 # ── Regions (inner#1955) ───────────────────────────────
-# Only read when a deployment runs more than one region; a single-region
-# deployment calls everything in process and never waits on these.
+# Read by every deployment; a single-region deployment calls everything in
+# process and never waits on these timeouts.
 #
 # global_api_timeout_ms: how long a region waits for one call to the global
 #   region's internal API before treating it as failed.

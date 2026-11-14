@@ -52,14 +52,17 @@ vi.mock("ai", () => ({
 
 import crypto from "node:crypto";
 import postgres from "postgres";
+import { GLOBAL_REGION_SETTINGS } from "./global-region-env.js";
 import { initCore, loadLocales } from "@breatic/core";
 import { studioCreationService, studioRegionService } from "@breatic/domain";
+import { studioService } from "@server/modules";
 import { waitUntilBlockedOn } from "./lock-probe.js";
 
 const REGION_ENV = {
   REGION: "us-west",
   GLOBAL_REGION: "us-west",
   REGION_API_URLS: JSON.stringify({ sg: "http://sg.invalid:3002" }),
+  ...GLOBAL_REGION_SETTINGS,
 };
 
 loadLocales();
@@ -415,7 +418,7 @@ describe("creating a Studio in another region", () => {
       ),
     );
 
-    expect(await studioCreationService.isSlugAvailable(slug)).toBe(false);
+    expect(await studioService.checkStudioSlug(slug)).toEqual({ available: false, reason: "taken" });
   });
 });
 

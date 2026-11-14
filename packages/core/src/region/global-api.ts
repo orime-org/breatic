@@ -18,6 +18,8 @@
 
 import { randomBytes } from "node:crypto";
 import { httpRequest } from "@breatic/shared";
+import { env } from "@core/config/env.js";
+import type { HealthCheck } from "@core/infra/health-server.js";
 import { signRequest } from "@core/region/signature.js";
 
 /** A global function as the API exposes it: async, JSON in and out. */
@@ -29,17 +31,8 @@ export interface GlobalApiOptions {
   globalRegion: string;
   globalApiUrl: string;
   secret: string;
-  /** How long one remote call may take; defaults to five seconds. */
-  timeoutMs?: number;
-}
-
-/** Where a region lives and how this process signs for it. */
-export interface RegionApiOptions {
-  callerRegion: string;
-  url: string;
-  secret: string;
-  /** How long one call may take; defaults to five seconds. */
-  timeoutMs?: number;
+  /** How long one remote call may take. */
+  timeoutMs: number;
 }
 
 /** The status a call gets when no answer came back at all. */
@@ -66,7 +59,28 @@ export class GlobalApiError extends Error {
   }
 }
 
-const DEFAULT_TIMEOUT_MS = 5000;
+/** Whether the latest call to the global region got an answer from it. */
+let lastGlobalCallOk = true;
+
+/**
+ * Whether the latest call to the global region was answered: a refusal
+ * counts, no answer or a server error does not. True before any call.
+ * @returns The outcome, for a region's health report.
+ */
+export function lastGlobalCallSucceeded(): boolean {
+  return lastGlobalCallOk;
+}
+
+/**
+ * The `/healthz` item a region outside the global region reports: whether
+ * its latest global call was answered. It never makes the instance
+ * unhealthy, since replacing the instance does not bring the global region back.
+ * @returns The check, or none in the global region.
+ */
+export function globalApiHealthChecks(): HealthCheck[] {
+  if (env.REGION === env.GLOBAL_REGION) return [];
+  return [{ name: "global_api", informational: true, check: async () => lastGlobalCallSucceeded() }];
+}
 
 /**
  * Post one signed call and read its result.
@@ -137,30 +151,37 @@ async function postSigned(
  */
 export function createGlobalApi<T extends Record<string, RemoteFunction>>(local: T, options: GlobalApiOptions): T {
   if (options.region === options.globalRegion) return local;
-  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const { timeoutMs } = options;
   const remote: Record<string, RemoteFunction> = {};
   for (const name of Object.keys(local)) {
-    remote[name] = (...args: never[]) =>
-      postSigned(options.globalApiUrl, `/internal/global/${name}`, args, options.region, options.secret, timeoutMs);
+    remote[name] = async (...args: never[]) => {
+      try {
+        const result = await postSigned(options.globalApiUrl, `/internal/global/${name}`, args, options.region, options.secret, timeoutMs);
+        lastGlobalCallOk = true;
+        return result;
+      } catch (err) {
+        lastGlobalCallOk = err instanceof GlobalApiError && err.status !== UNREACHABLE_STATUS && err.status < 500;
+        throw err;
+      }
+    };
   }
   return remote as T;
 }
 
 /**
- * Call a function another region serves.
+ * Call a function another region serves, at the address `REGION_API_URLS`
+ * gives it, signed as this region.
+ * @param region - The region's code.
  * @param fn - The function's name.
  * @param args - Its arguments.
- * @param options - The region's address and how to sign.
+ * @param timeoutMs - How long the call may take.
  * @returns What the region answered.
- * @throws {GlobalApiError} When the region refused or did not answer.
+ * @throws {GlobalApiError} When the region has no address, refused or did not answer.
  */
-export function callRegion(fn: string, args: unknown[], options: RegionApiOptions): Promise<unknown> {
-  return postSigned(
-    options.url.replace(/\/+$/, ""),
-    `/internal/region/${fn}`,
-    args,
-    options.callerRegion,
-    options.secret,
-    options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
-  );
+export function callRegion(region: string, fn: string, args: unknown[], timeoutMs: number): Promise<unknown> {
+  const url = env.REGION_API_URLS[region];
+  if (url === undefined) {
+    return Promise.reject(new GlobalApiError(UNREACHABLE_STATUS, "unreachable", `no address for region ${region}`));
+  }
+  return postSigned(url.replace(/\/+$/, ""), `/internal/region/${fn}`, args, env.REGION, env.INTERNAL_API_SECRET, timeoutMs);
 }
