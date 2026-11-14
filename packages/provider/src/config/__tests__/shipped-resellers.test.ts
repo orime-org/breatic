@@ -56,7 +56,8 @@ const RESELLERS: Readonly<Record<string, { fal?: string; sandbase?: string }>> =
   "tripo-h3.1-i23d": { fal: "tripo3d/h3.1/image-to-3d", sandbase: "tripo3d/tripo-h3.1/image-to-3d" },
   "tripo-h3.1-multiview": { fal: "tripo3d/h3.1/multiview-to-3d", sandbase: "tripo3d/tripo-h3.1/multiview-to-3d" },
   "realtime-tts-2": {},
-  "gemini-3.8-flash-text-to-speech": { fal: "google/gemini-3.8-flash-tts", sandbase: "google/gemini-3.8-flash-tts" },
+  // WaveSpeed only until fal and SandBase are enabled (#1521).
+  "gemini-3.8-flash-text-to-speech": {},
   "minimax-speech-2.8-hd": { fal: "fal-ai/minimax/speech-2.8-hd", sandbase: "minimax/speech/2.8/hd" },
   "elevenlabs-v3": { fal: "fal-ai/elevenlabs/tts/eleven-v3", sandbase: "elevenlabs/v3" },
   "qwen3-tts-voice-design": {},
