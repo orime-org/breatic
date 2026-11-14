@@ -4,8 +4,9 @@
 /**
  * Chat routes — conversational AI with SSE streaming.
  *
- * Provides endpoints for chat messages and conversation CRUD.
- * Streaming responses use Server-Sent Events via Hono's streaming helper.
+ * Provides endpoints for chat messages and conversation CRUD. A run's frames
+ * are read as Server-Sent Events from `GET /chat/conversations/:id/stream`,
+ * which replays the run's resumable stream (inner#1717).
  */
 
 import { accountActivityRepo } from "@breatic/core";
