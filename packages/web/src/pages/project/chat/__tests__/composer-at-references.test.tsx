@@ -767,6 +767,20 @@ describe('@ in the chat box', () => {
     expect(onChange).toHaveBeenLastCalledWith(plain);
   });
 
+  it('lands a dropped page text where it is dropped, the caret right after it', () => {
+    const { onChange } = setup({ draft: 'hello' });
+    act(() => box().commands.focus('end'));
+    const view = box().view;
+    // Between "he" and "llo": jsdom lays nothing out, so the point is given.
+    view.posAtCoords = (): { pos: number; inside: number } => ({ pos: 3, inside: -1 });
+    fireEvent.drop(view.dom, {
+      dataTransfer: { files: [], types: ['text/html', 'text/plain'], getData: (type: string) => (type === 'text/plain' ? 'X' : type === 'text/html' ? '<p>X</p>' : '') },
+    });
+
+    expect(onChange).toHaveBeenLastCalledWith('heXllo');
+    expect(box().state.selection.from).toBe(4);
+  });
+
   it('leaves a drag inside the box to ProseMirror', () => {
     const { onChange } = setup({ draft: 'one' });
     act(() => box().commands.focus('end'));
