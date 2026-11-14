@@ -7,15 +7,28 @@
  * release that one undo takes back.
  */
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 import { Awareness } from 'y-protocols/awareness';
 
 import { resizedWeights, writeColumnWidths } from '@web/spaces/document/document-column-resize';
 import { adoptDocumentEditor, getDocumentEditor } from '@web/spaces/document/document-editor-cache';
 import { columnsBlock, para } from '@web/spaces/document/__tests__/column-fixtures';
+import { clearAllDocSizes } from '@web/data/yjs/doc-size';
+import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
+import { enterSize } from '@web/data/yjs/__tests__/helpers/size-v2-harness';
+import { _resetDocumentEditorCacheForTests } from '@web/spaces/document/document-editor-cache';
+
+vi.mock('@web/lib/toast', () => ({
+  toast: { warning: vi.fn(), error: vi.fn(), success: vi.fn(), info: vi.fn(), loading: vi.fn(), dismiss: vi.fn() },
+  muteToasts: vi.fn(),
+  _unmuteToastsForTests: vi.fn(),
+}));
 
 afterEach(() => {
+  clearAllDocSizes();
+  _resetDocumentEditorCacheForTests();
+  _resetForTests();
   document.body.innerHTML = '';
 });
 
@@ -59,5 +72,36 @@ describe('writing the widths on release', () => {
     expect(widths()).toEqual([1.2, 0.8, 1]);
     handle.undoManager.undo();
     expect(widths()).toEqual([1, 1, 1]);
+  });
+});
+
+describe('a divider drag the Space refuses to write', () => {
+  it.each(['F', 'Z'] as const)('[%s] puts the columns back to the widths the document keeps', (code) => {
+    const name = docName.documentSpace('p1', 'd1');
+    const doc = getDoc(name);
+    const handle = getDocumentEditor(doc, name, {
+      caretProvider: { awareness: new Awareness(doc) },
+      readWho: () => ({ role: 'editor', viewerId: 'user-1' }),
+      editable: true,
+    });
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    adoptDocumentEditor(handle, root);
+    handle.editor.replaceBlocks(handle.editor.document, [para('lead'), columnsBlock(['a'], ['b'])] as never);
+    enterSize(name, code);
+    const group = root.querySelector('.doc-columns') as HTMLElement;
+    const columns = [...group.querySelectorAll<HTMLElement>(':scope > .doc-columns-row > .doc-column')];
+    for (const [index, column] of columns.entries()) {
+      column.getBoundingClientRect = () => ({ left: index * 372, right: index * 372 + 300, width: 300, top: 0, bottom: 20, height: 20, x: index * 372, y: 0, toJSON: () => ({}) });
+    }
+    const divider = group.querySelector('.doc-column-divider') as HTMLElement;
+    divider.dataset['index'] = '1';
+    divider.dispatchEvent(new MouseEvent('pointerdown', { clientX: 336, bubbles: true, cancelable: true }));
+    divider.dispatchEvent(new MouseEvent('pointermove', { clientX: 396, bubbles: true }));
+    expect(columns[0]!.style.flexGrow).not.toBe('1');
+
+    divider.dispatchEvent(new MouseEvent('pointerup', { clientX: 396, bubbles: true }));
+
+    expect(columns.map((column) => column.style.flexGrow)).toEqual(['1', '1']);
   });
 });

@@ -121,13 +121,48 @@ function columnBlockAt(block: Element, pointer: Point): string | undefined {
   const cell = block.closest('td, th');
   if (cell !== null && group.contains(cell)) return undefined;
   const columns = [...group.querySelectorAll(':scope > .doc-columns-row > .doc-column')];
-  const column = columns.find((candidate, index) => {
+  const index = columns.findIndex((candidate, at) => {
     const box = candidate.getBoundingClientRect();
-    const from = index === 0 ? -Infinity : box.left - COLUMN_GAP / 2;
-    const to = index === columns.length - 1 ? Infinity : box.right + COLUMN_GAP / 2;
+    const from = at === 0 ? -Infinity : box.left - COLUMN_GAP / 2;
+    const to = at === columns.length - 1 ? Infinity : box.right + COLUMN_GAP / 2;
     return pointer.x >= from && pointer.x < to;
   });
-  return column === undefined ? undefined : blockInColumnAt(column, pointer.y);
+  if (index < 0) return undefined;
+  // The gap's left half is a table's where the next column holds one at the
+  // pointer's height: its whole-table strip stands there.
+  const next = columns[index + 1];
+  const table = next === undefined ? null : tableInColumnAt(next, pointer);
+  return table ?? blockInColumnAt(columns[index]!, pointer.y);
+}
+
+/**
+ * The table whose strip stands where the pointer is in a group's gap: in the
+ * gap's left half, level with a table in the column right of it.
+ * @param row - The group's row of columns.
+ * @param pointer - Where the pointer is.
+ * @returns The table's element, or null.
+ */
+function tableBesideGap(row: Element, pointer: Point): Element | null {
+  const next = [...row.querySelectorAll(':scope > .doc-column')].find((column) => column.getBoundingClientRect().left > pointer.x);
+  const id = next === undefined ? null : tableInColumnAt(next, pointer);
+  return id === null ? null : row.querySelector(`[data-id="${CSS.escape(id)}"][data-node-type="${DOC_TABLE}"]`);
+}
+
+/**
+ * The table standing directly in a column at the pointer's height, when the
+ * pointer is in the gap's half next to that column's left.
+ * @param column - The column right of the gap.
+ * @param pointer - Where the pointer is.
+ * @returns The table's id, or null.
+ */
+function tableInColumnAt(column: Element, pointer: Point): string | null {
+  const left = column.getBoundingClientRect().left;
+  if (pointer.x < left - COLUMN_GAP || pointer.x >= left - COLUMN_GAP / 2) return null;
+  for (const table of column.querySelectorAll(`:scope > [data-node-type="${DOC_TABLE}"][data-id]`)) {
+    const box = table.getBoundingClientRect();
+    if (pointer.y >= box.top && pointer.y <= box.bottom) return table.getAttribute('data-id');
+  }
+  return null;
 }
 
 /**
@@ -138,10 +173,16 @@ function columnBlockAt(block: Element, pointer: Point): string | undefined {
  * @returns The block's id, or undefined to leave the menu as it is.
  */
 export function blockForPointer(body: HTMLElement, blockId: string, pointer: Point): string | undefined {
-  const block = body.querySelector(`[data-id="${CSS.escape(blockId)}"]:not([data-node-type="blockOuter"])`);
+  let block = body.querySelector(`[data-id="${CSS.escape(blockId)}"]:not([data-node-type="blockOuter"])`);
   if (block === null) return undefined;
   const inColumn = columnBlockAt(block, pointer);
-  if (inColumn !== undefined) return inColumn === blockId ? undefined : inColumn;
+  if (inColumn !== undefined) {
+    // A table in a column reads its cells and the room left of it as a table
+    // in the body does.
+    const table = body.querySelector(`[data-id="${CSS.escape(inColumn)}"][data-node-type="${DOC_TABLE}"]`);
+    if (table === null) return inColumn === blockId ? undefined : inColumn;
+    block = table;
+  }
   const isTable = block.matches(`[data-node-type="${DOC_TABLE}"]`);
   const table = isTable ? block : block.closest('td, th')?.closest(`[data-node-type="${DOC_TABLE}"]`);
   if (table === null || table === undefined) return undefined;
@@ -157,7 +198,8 @@ export function blockForPointer(body: HTMLElement, blockId: string, pointer: Poi
   const id =
     (cell === undefined ? undefined : blockInCellAt(cell, pointer.y)) ??
     firstColumnBlockAt(table, pointer) ??
-    (isTable ? undefined : (table.getAttribute('data-id') ?? undefined));
+    table.getAttribute('data-id') ??
+    undefined;
   return id === blockId ? undefined : id;
 }
 
@@ -177,15 +219,28 @@ export const documentTableSideMenuExtension = createExtension(({ editor }) => ({
     // while it stays there: a block's handle in a cell is drawn over the cell
     // to its left (inner#1619 T13), and its drag starts from there.
     let pinned: string | undefined;
+    // The gap of a column group the pointer is over, where BlockNote finds no
+    // block and hides the menu.
+    let gap: Element | null = null;
     // On the window in the capture phase, ahead of the side menu's own
     // listener on the document, so the point is current when its state moves.
     /** Hands the menu to the block the pointer stands for, if that is another. */
     const follow = (): void => {
       const state = sideMenu.store.state;
-      if (state?.show !== true || pointer === undefined) return;
+      if (pointer === undefined) return;
       // The menu hides as the editor unmounts, when its view is gone.
       const body = domElementOf(ours);
       if (body === null) return;
+      if (state?.show !== true) {
+        // The gap's left half is the strip of a table in the next column,
+        // shown as BlockNote's own `showMenu` shows a block.
+        const table = gap === null ? null : tableBesideGap(gap, pointer);
+        const block = table === null ? undefined : editor.getBlock(table.getAttribute('data-id') ?? '');
+        if (table !== null && block !== undefined) {
+          sideMenu.store.setState({ show: true, referencePos: table.getBoundingClientRect(), block: block as never });
+        }
+        return;
+      }
       const id = pinned === undefined ? blockForPointer(body, state.block.id, pointer) : pinned === state.block.id ? undefined : pinned;
       const next = id === undefined ? undefined : editor.getBlock(id);
       if (next === undefined) return;
@@ -205,6 +260,7 @@ export const documentTableSideMenuExtension = createExtension(({ editor }) => ({
         // another block then swaps the pressed handle out before the browser
         // starts the drag.
         const inGroup = event.target instanceof Element && event.target.closest('.doc-columns') !== null;
+        gap = event.target instanceof Element && event.target.matches('.doc-columns-row') && event.buttons === 0 ? event.target : null;
         if (!onMenu && inGroup && event.buttons === 0) follow();
       },
       { signal, capture: true },

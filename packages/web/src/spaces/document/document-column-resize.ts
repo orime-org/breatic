@@ -207,6 +207,10 @@ export function attachDivider(group: HTMLElement, row: HTMLElement, editor: Divi
         { id: rightId, width: last.right },
       ]);
     }
+    // What the document holds now: the widths written, or the old ones when
+    // the Space refused the write.
+    left.style.flexGrow = String(weightOf(left));
+    right.style.flexGrow = String(weightOf(right));
   };
   /** Puts the two columns back when the drag is cancelled. */
   const onCancel = (): void => {

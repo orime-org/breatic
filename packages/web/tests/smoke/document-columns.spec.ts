@@ -394,3 +394,118 @@ test('one undo takes back columns made in a narrow cell together with the widene
   await expect.poll(() => groups(page)).toEqual([]);
   expect(await widths()).toEqual(before);
 });
+
+/**
+ * Inserts a 2 × 2 table under a line off the handle's insert menu.
+ * @param p - The page.
+ * @param words - The line's words.
+ */
+async function tableUnder(p: Page, words: string): Promise<void> {
+  await p.mouse.move(5, 5);
+  const line = (await row(p, words).boundingBox())!;
+  await p.mouse.move(line.x + 30, line.y + line.height / 2, { steps: 3 });
+  await p.getByTestId('doc-block-handle').click();
+  await p.getByTestId('doc-block-row-insertBelow').hover();
+  await p.getByTestId('doc-block-insert-table').hover();
+  await p.getByTestId('doc-table-size-2-2').click();
+}
+
+test('a block in a cell of a table in a column has its handle in the gap\'s right half', async () => {
+  await openWithLines(page, ['alpha', 'lead']);
+  await tableUnder(page, 'lead');
+  await page.keyboard.type('one');
+  // The table's own handle, from the gutter level with its first row.
+  await page.mouse.move(5, 5);
+  const first = (await page.locator(`${EDITOR} tr`).first().boundingBox())!;
+  await page.mouse.move(first.x - 52, first.y + first.height / 2, { steps: 3 });
+  const tableGrip = page.getByTestId('doc-block-table-handle');
+  await expect(tableGrip).toBeVisible();
+  const grip = (await tableGrip.boundingBox())!;
+  const alpha = (await row(page, 'alpha').boundingBox())!;
+  await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2, { steps: 3 });
+  await page.mouse.down();
+  await page.mouse.move(grip.x + 20, grip.y + 20, { steps: 3 });
+  await page.mouse.move(alpha.x + alpha.width - 6, alpha.y + alpha.height / 2, { steps: 12 });
+  await page.mouse.up();
+  await expect.poll(() => page.locator(`${EDITOR} .doc-column > [data-node-type="docTable"]`).count()).toBe(1);
+  await row(page, 'alpha').click();
+
+  const column = (await page.locator(`${EDITOR} .doc-column`).nth(1).boundingBox())!;
+  await page.mouse.move(5, 5);
+  const words = (await page.locator(`${EDITOR} .doc-column td .bn-inline-content`).filter({ hasText: /^one$/ }).boundingBox())!;
+  await page.mouse.move(words.x + 4, words.y + words.height / 2, { steps: 3 });
+  const blockGrip = page.getByTestId('doc-block-handle');
+  await expect(blockGrip).toBeVisible();
+  const own = (await blockGrip.boundingBox())!;
+  expect(own.x).toBeGreaterThanOrEqual(column.x - 36 - 1);
+  expect(own.x + own.width).toBeLessThanOrEqual(column.x);
+});
+
+test('in a cell, the handle of a block in a group\'s first column keeps off the cell line', async () => {
+  await openWithLines(page, ['lead']);
+  await tableUnder(page, 'lead');
+  await page.keyboard.press('Tab');
+  await page.keyboard.type('p');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('q');
+  const p = (await row(page, 'p').boundingBox())!;
+  await dragRowTo(page, 'q', { x: p.x + p.width - 4, y: p.y + p.height / 2 });
+  await expect.poll(() => groups(page)).toEqual([['p', 'q']]);
+  const cell = (await page.locator(`${EDITOR} td`).filter({ has: page.locator('.doc-columns') }).boundingBox())!;
+  await page.mouse.move(5, 5);
+  const words = (await row(page, 'p').boundingBox())!;
+  await page.mouse.move(words.x + 4, words.y + words.height / 2, { steps: 3 });
+  const grip = page.getByTestId('doc-block-handle');
+  await expect(grip).toBeVisible();
+  const box = (await grip.boundingBox())!;
+  // The cell line's resize zone reaches 5px either side of it.
+  expect(box.x + box.width).toBeLessThanOrEqual(cell.x - 5);
+});
+
+test('a press on the handle that ends just off it lets the handle follow the pointer again', async () => {
+  await openWithLines(page, ['alpha', 'beta', 'gamma']);
+  await page.mouse.move(5, 5);
+  const alpha = (await row(page, 'alpha').boundingBox())!;
+  await page.mouse.move(alpha.x + 30, alpha.y + alpha.height / 2, { steps: 3 });
+  const handle = page.getByTestId('doc-block-handle');
+  await expect(handle).toBeVisible();
+  const grip = (await handle.boundingBox())!;
+  // Pressed at its right edge and let go a pixel past it: no click, no drag.
+  await page.mouse.move(grip.x + grip.width - 0.5, grip.y + grip.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(grip.x + grip.width + 0.6, grip.y + grip.height / 2);
+  await page.mouse.up();
+  const gamma = (await row(page, 'gamma').boundingBox())!;
+  await page.mouse.move(gamma.x + 30, gamma.y + gamma.height / 2, { steps: 6 });
+  await expect.poll(async () => {
+    const box = await handle.boundingBox();
+    return box === null ? null : Math.abs(box.y + box.height / 2 - (gamma.y + gamma.height / 2)) < 8;
+  }).toBe(true);
+});
+
+test('a table in a column opened full screen shows alone, its group\'s other column gone', async () => {
+  await openWithLines(page, ['lead', 'alpha']);
+  await tableUnder(page, 'lead');
+  await page.keyboard.type('one');
+  const table = (await page.locator(`${EDITOR} [data-node-type="docTable"]`).first().boundingBox())!;
+  const body = (await page.locator(`${EDITOR} .bn-block-group`).first().boundingBox())!;
+  await dragRowTo(page, 'alpha', { x: body.x + body.width + 40, y: table.y + table.height / 2 });
+  await expect.poll(() => page.locator(`${EDITOR} .doc-column > [data-node-type="docTable"]`).count()).toBe(1);
+  await row(page, 'lead').click();
+  await page.mouse.move(5, 5);
+  const first = (await page.locator(`${EDITOR} tr`).first().boundingBox())!;
+  await page.mouse.move(first.x - 52, first.y + first.height / 2, { steps: 3 });
+  await page.getByTestId('doc-block-table-handle').click();
+  await page.getByTestId('doc-block-row-fullscreen').click();
+
+  await expect(page.locator('[data-table-fullscreen]')).toBeVisible();
+  await expect(row(page, 'alpha')).toBeHidden();
+  await expect(row(page, 'lead')).toBeHidden();
+  await expect(page.locator(`${EDITOR} td .bn-inline-content`).filter({ hasText: /^one$/ })).toBeVisible();
+  // The table takes the body's width, not its column's.
+  const shown = (await page.locator(`${EDITOR} [data-node-type="docTable"]`).first().boundingBox())!;
+  const surface = (await page.locator(`${EDITOR} .bn-block-group`).first().boundingBox())!;
+  await page.keyboard.press('Escape');
+  await expect(page.locator('[data-table-fullscreen]')).toHaveCount(0);
+  expect(shown.width).toBeGreaterThan(surface.width - 2);
+});

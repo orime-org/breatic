@@ -375,21 +375,26 @@ export function BlockStrip({ block, hold }: { block: PressedBlock | undefined; h
             // it would swap the pressed handle out before the drag starts.
             onPointerDown={
               drags
-                ? () => {
+                ? (event) => {
                   pressHeld.current = true;
                   hold.freeze();
+                  // Released wherever it is released, on the button or just
+                  // off it; after the click this press may become (a menu
+                  // opening, or a drag), each of which holds the strip itself.
+                  event.currentTarget.ownerDocument.defaultView?.addEventListener(
+                    'pointerup',
+                    () => {
+                      setTimeout(() => {
+                        if (!pressHeld.current) return;
+                        pressHeld.current = false;
+                        hold.unfreeze();
+                      }, 0);
+                    },
+                    { once: true, capture: true },
+                  );
                 }
                 : undefined
             }
-            onPointerUp={() => {
-              // After the click this press may become: a menu opening, or a
-              // drag, each holds the strip itself.
-              setTimeout(() => {
-                if (!pressHeld.current) return;
-                pressHeld.current = false;
-                hold.unfreeze();
-              }, 0);
-            }}
             onDragStart={(event) => {
               pressHeld.current = false;
               setDragActive(true);

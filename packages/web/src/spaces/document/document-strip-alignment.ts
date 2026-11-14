@@ -174,15 +174,20 @@ export function stripPlacement(bodyOf: () => HTMLElement | undefined): {
             };
             const anchor = kept === undefined || kept.isConnected ? kept : drawn();
             // A block in a column stands its strip in the gap left of its
-            // column (inner#1314 design §5.1), unless a cell is nearer.
+            // column, a table its own further out, in the gap's left half
+            // (inner#1314 design §5.1), unless a cell is nearer. A group's
+            // first column in a cell has no gap: its blocks' strips follow
+            // the cell's rule.
             const holder = anchor?.closest('.doc-column, td, th');
-            if (holder?.matches('.doc-column') === true && holder.closest('.doc-columns[data-stacked]') === null) {
+            const firstInCell = holder?.previousElementSibling === null && holder.closest('td, th') !== null;
+            if (holder?.matches('.doc-column') === true && !firstInCell && holder.closest('.doc-columns[data-stacked]') === null) {
               // Placed from the column itself, in the carrier's own offset
               // parent: the reference rect floating-ui measured can be the one
               // BlockNote cached before the block was drawn in the column.
               const parent = elements.floating.offsetParent;
               const origin = parent === null ? 0 : parent.getBoundingClientRect().left + parent.clientLeft - parent.scrollLeft;
-              return { x: holder.getBoundingClientRect().left - STRIP_OUTSET - rects.floating.width - origin };
+              const outset = anchor?.matches(`[data-node-type="${DOC_TABLE}"]`) === true ? TABLE_STRIP_OUTSET : STRIP_OUTSET;
+              return { x: holder.getBoundingClientRect().left - outset - rects.floating.width - origin };
             }
             const cell = anchor?.closest('td, th');
             if (cell != null) {
