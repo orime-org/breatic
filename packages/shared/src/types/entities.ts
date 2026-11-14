@@ -252,7 +252,7 @@ export type MessagePart =
    * A message the user sent while this turn ran, taken in at the step
    * where the model first read it (inner#1717). It sits in the reply at that
    * place, so the conversation reads back in the order things happened; its
-   * id is the id the page sent it with, and `sentAt` when the user pressed send.
+   * id is the id the page sent it with, and `sentAt` when the server accepted it.
    */
   | {
     type: "user-message";

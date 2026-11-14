@@ -2,13 +2,14 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Work a route starts after deciding its reply and does not wait for (#286).
+ * Work a shutdown must wait for before it closes the pools (#286): mostly work
+ * a route starts after deciding its reply and does not wait for, and an Agent
+ * chat run, whose opening stage the route does wait for (inner#1717).
  *
  * Forgot-password must answer the same thing at the same speed whether or not
  * the address is registered, so the lookup, the token and the send all run
- * here, after the reply. An Agent chat run runs here from its first line
- * (inner#1717), and so do the refund mails and reports. Shutdown waits for
- * what is still running (`settleAfterReply`) before closing the pools this
+ * here, after the reply; so do the refund mails and reports. Shutdown waits
+ * for what is still running (`settleAfterReply`) before closing the pools this
  * work needs, and logs whatever the deadline cut off (`pendingAfterReply`).
  */
 

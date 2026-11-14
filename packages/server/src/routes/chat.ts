@@ -445,8 +445,9 @@ chat.get("/conversations/:id/stream", validate("param", idParamSchema), async (c
 /**
  * `POST /chat/stop` — stop the run that holds the conversation (inner#1717).
  *
- * The one way a run is stopped: published to the run, on whichever instance it
- * runs; the run ends as stopped and every attached page reads the mark.
+ * The user's way to stop a run (deleting the conversation and a shutdown stop
+ * it too): published to the run, on whichever instance it runs; the run ends
+ * as stopped and every attached page reads the mark.
  * @param c - Hono context with `{ conversation_id, project_id }`
  * @returns Whether a run was there to stop.
  */

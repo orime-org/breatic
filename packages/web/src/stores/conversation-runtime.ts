@@ -12,8 +12,8 @@
  *
  * The history read here is the starting point a `Chat` is built from. After
  * that the `Chat` is where the messages live, and this does not follow them:
- * a reply being written exists nowhere but in that session until the turn ends
- * and the server stores it.
+ * a reply being written lives in that session as this page reads it from the
+ * run's stream on the server, until the run ends and the server stores it.
  */
 
 import { create } from 'zustand';
@@ -577,9 +577,9 @@ async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined>
  *
  * Rebuilds the entry rather than merging into it: this is an answer describing
  * the whole conversation, so what it does describe replaces what was held.
- * A turn still running here is the exception, and the reason is the same one
- * -- it is the part of this conversation the answer does not describe, because
- * it has not reached the server yet. It is carried across, along with the
+ * A turn still running is the exception, and the reason is the same one --
+ * the reply it is writing is the part of this conversation the answer does not
+ * describe, because the server has not stored it yet. It is carried across, along with the
  * reply being written and the failures shown beside it. That is also why
  * callers must not reach here with an answer to a visit that is over -- see
  * {@link visits} -- and why every one of them checks first.

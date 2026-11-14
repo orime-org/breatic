@@ -109,7 +109,7 @@ const FAILED_TEXT = "The assistant could not finish this turn.";
  * Main Agent for streaming chat interactions.
  *
  * Reads who is speaking and where -- userId, conversationId, projectId -- from
- * the AsyncLocalStorage request context (set by the route handler). What the
+ * the AsyncLocalStorage context (set by the chat run, `chat-run.ts`). What the
  * turn runs against is not in there: the memories and the history
  * are read here, after the turn has said what it holds, because they are this
  * turn's own working rather than anything about the request.
@@ -127,8 +127,9 @@ export class MainAgent {
   /**
    * Run a streaming chat turn with the user.
    * @param userMessage - The user's text message
-   * @param signal - Raised when the user stops the turn or the client goes
-   *   away. Absent means this caller has no way to stop the turn.
+   * @param signal - Raised when the user stops the run, the conversation is
+   *   deleted or the server shuts down.
+   *   Absent means this caller has no way to stop the turn.
    * @param attached - What the user attached to the message, in order.
    * @param timeZone - The zone the user's browser reported, if any.
    * @param space - The project's Spaces and the one the user has open.
@@ -152,7 +153,8 @@ export class MainAgent {
    * Everything a turn does before the model is called.
    * @param said - What the user typed
    * @param attached - What the user attached, stored beside the typed words
-   * @param signal - Raised when the user stops the turn or the client leaves
+   * @param signal - Raised when the user stops the run, the conversation is
+   *   deleted or the server shuts down.
    * @param timeZone - The zone the user's browser reported, if any
    * @param space - The project's Spaces and the one the user has open
    * @param modelId - The model the route resolved for this turn
@@ -237,7 +239,8 @@ export class MainAgent {
    * @param output - The call's output as the store now holds it, which is
    *   what the card draws; the model's copy of the result is in the store.
    * @param turnIndex - The turn that asked.
-   * @param signal - Raised when the user stops the turn or the client goes away.
+   * @param signal - Raised when the user stops the run, the conversation is
+   *   deleted or the server shuts down.
    * @param timeZone - The zone the user's browser reported, if any.
    * @param space - The project's Spaces and the one the user has open.
    * @param modelId - The model the turn started on, as the route resolved it (#1363).
@@ -304,7 +307,8 @@ export class MainAgent {
    *   showing a placeholder after the turn that named it.
    * @param openDocument - The document the user has open, which a document
    *   proposal goes to, or null when none can be read.
-   * @param signal - Raised when the user stops the turn or the client goes away.
+   * @param signal - Raised when the user stops the run, the conversation is
+   *   deleted or the server shuts down.
    * @param requestedModel - The model the route resolved for this turn (#1363).
    * @param hooks - What the run lends the turn (inner#1717).
    * @returns The turn's chunks, in the SDK's own protocol.
@@ -1102,11 +1106,11 @@ export class MainAgent {
         // answer with no ceiling is carried whole by every later turn's
         // history.
         maxOutputTokens: agentCfg.max_output_tokens,
-        // The middle ring of the stop chain. Without it the route can notice
-        // the client leaving and the end of the stream can settle up, and the
-        // model keeps running regardless: a signal handed in here ends the
-        // stream within milliseconds, makes no further model call, and is
-        // passed on to every tool the turn invokes.
+        // The run's stop reaches the model here. Without it a stop would end
+        // only the reading and the settling, and the model would keep
+        // running: a signal handed in here ends the stream within
+        // milliseconds, makes no further model call, and is passed on to
+        // every tool the turn invokes.
         abortSignal: signal,
         // How long the model thought, summed across the stretches it thought
         // in. The provider says when each one opens and closes, so this is

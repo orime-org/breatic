@@ -15,8 +15,7 @@
  * Every operation is one Lua script: deciding who runs and moving messages
  * between the lists has to happen in one step, or two instances (or a send
  * racing the end of a run) each see the conversation free and both, or
- * neither, start a run. Keys carry no deployment prefix, like the other plain
- * DB 0 keys.
+ * neither, start a run. Keys carry no deployment prefix.
  */
 
 import crypto from "node:crypto";

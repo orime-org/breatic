@@ -421,7 +421,8 @@ export const chatMessageSchema = z.object({
   /**
    * The message's id, made by the page when the user pressed send and sent
    * again unchanged on a resend (inner#1717): the queue answers a resend it
-   * has seen as a duplicate, and the user row is written under it. Required
+   * has seen as a duplicate, and the user row it opens a run with, or the
+   * reply part it is taken in as, is keyed by it. Required
    * on a new message; a card's answer carries none.
    */
   id: z.string().uuid().optional(),

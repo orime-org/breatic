@@ -12,7 +12,7 @@ import type { QueueItem } from "@server/modules/chat-queue/chat-queue.service.js
 export interface TakenMessage {
   /** The id the page sent it with; the row or part it becomes is keyed by it. */
   id: string;
-  /** When the user pressed send, ISO. */
+  /** When the server accepted it, ISO. */
   sentAt: string;
   /** What the user typed. */
   message: string;
