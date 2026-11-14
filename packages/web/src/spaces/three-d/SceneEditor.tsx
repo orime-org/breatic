@@ -220,7 +220,11 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   React.useEffect(() => {
     session.setVisible(true);
     /** Re-evaluate focus and page visibility from the browser's current facts. */
-    const syncFocus = (): void => { session.setFocused(document.hasFocus() && document.visibilityState === 'visible'); };
+    const syncFocus = (): void => {
+      const focused = document.hasFocus() && document.visibilityState === 'visible';
+      if (!focused) dropAmbient();
+      session.setFocused(focused);
+    };
     syncFocus();
     window.addEventListener('focus', syncFocus);
     window.addEventListener('blur', syncFocus);
@@ -232,7 +236,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
       window.removeEventListener('blur', syncFocus);
       document.removeEventListener('visibilitychange', syncFocus);
     };
-  }, [session, userId, projectId, spaceId, t]);
+  }, [session, userId, projectId, spaceId, t, dropAmbient]);
 
   React.useEffect(() => {
     const error = snapshot.commandError;
@@ -699,6 +703,17 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
    */
   const onAmbientCancel = React.useCallback((): void => { dropAmbient(); ambientPress.release(); }, [dropAmbient, ambientPress]);
   /**
+   * Open an ambient press when the pointer goes down, so undo or Escape before its first change still ends it.
+   * @throws {never} Never.
+   */
+  const onAmbientStart = React.useCallback((): void => { ambientPress.begin(() => true); }, [ambientPress]);
+  /**
+   * Write a typed ambient colour as a command of its own.
+   * @param ambientColor - The colour.
+   * @throws {never} Never.
+   */
+  const onAmbientWrite = React.useCallback((ambientColor: string): void => { session.execute({ type: 'environment', set: { ambientColor } }); }, [session]);
+  /**
    * Change the frame of the camera being looked through.
    * @param frame - The new frame or free ratio.
    */
@@ -727,14 +742,14 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     : panel === 'director' ? <SceneDirectorPanel session={session} snapshot={snapshot} spaceId={spaceId} Field={SceneField} fieldDrafts={fieldDrafts}
       onFieldDraftChange={onFieldDraftChange} lightPlan={lightPlan} maxLights={director?.maxLights} lookingAt={lookCamera?.id ?? null}
       environment={environment} onSaveView={onSaveView} onAddLight={onAddLight} onLook={onLook} onMonitor={onMonitor}
-      onAmbientPreview={onAmbientPreview} onAmbientCommit={onAmbientCommit} onAmbientCancel={onAmbientCancel} viewFailed={viewFailed} />
+      onAmbientPreview={onAmbientPreview} onAmbientCommit={onAmbientCommit} onAmbientCancel={onAmbientCancel} onAmbientStart={onAmbientStart} onAmbientWrite={onAmbientWrite} viewFailed={viewFailed} />
       : panel === 'objects' ? <SceneObjectList session={session} snapshot={snapshot} modelStates={modelStates} onSelect={showSelectedProperties} />
         : <SceneTaskList projectId={projectId} spaceId={spaceId} userId={userId} canEdit={snapshot.canEdit} canGenerate={myRole !== 'viewer'} uploads={uploads}
           remoteUploads={snapshot.remoteUploads} onPlace={placeTask} focusTaskId={focusTaskId} onFocused={taskFocused}
           onRetryGeneration={retryGeneration} placedAssetIds={placedAssetIds} onLocate={locateAsset} filterHost={filterHost} />,
   [panel, inspectorFallback, session, snapshot, readObjects, namedPeers, spaceId, fieldDrafts, onFieldDraftChange, skeletonStates, jointMode, changeJointMode, modelStates, showSelectedProperties,
     projectId, userId, myRole, uploads, placeTask, focusTaskId, taskFocused, retryGeneration, placedAssetIds, locateAsset, filterHost,
-    lightPlan, director, lookCamera, environment, onSaveView, onAddLight, onLook, onMonitor, onAmbientPreview, onAmbientCommit, onAmbientCancel, viewFailed]);
+    lightPlan, director, lookCamera, environment, onSaveView, onAddLight, onLook, onMonitor, onAmbientPreview, onAmbientCommit, onAmbientCancel, onAmbientStart, onAmbientWrite, viewFailed]);
   // An older-format scene is never opened, so no editing chrome is shown around its message.
   if (snapshot.status === 'unsupported' && isOlderSceneFormat(snapshot.version)) {
     return <div ref={stage} className='relative isolate h-full min-h-0 min-w-0 bg-canvas' data-testid='three-d-space'>

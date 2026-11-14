@@ -11,6 +11,11 @@ export interface ControlPress {
    * @returns Whether the change belongs to an open drag.
    */
   change: (start: () => boolean) => boolean;
+  /**
+   * Open the press when the pointer goes down, so undo or Escape before its first change still ends it.
+   * @param start - Opens the drag; false when it cannot open.
+   */
+  begin: (start: () => boolean) => void;
   /** End the drag without writing it; the rest of the press is ignored until release. */
   drop: () => void;
   /**
@@ -32,6 +37,7 @@ export function useControlPress(): ControlPress {
       if (state.current === 'idle') state.current = start() ? 'open' : 'dropped';
       return state.current === 'open';
     },
+    begin: (start) => { if (state.current === 'idle') state.current = start() ? 'open' : 'dropped'; },
     drop: () => { if (state.current === 'open') state.current = 'dropped'; },
     release: () => {
       const open = state.current === 'open';

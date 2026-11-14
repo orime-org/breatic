@@ -54,6 +54,10 @@ export interface SceneDirectorPanelProps extends SceneFieldDraftOwner {
   onAmbientCommit: () => void;
   /** Ends an ambient press that gets no release, as when its picker closes on Escape. */
   onAmbientCancel: () => void;
+  /** Opens an ambient press when the pointer goes down. */
+  onAmbientStart: () => void;
+  /** Writes a typed ambient colour as a command of its own. */
+  onAmbientWrite: (ambientColor: string) => void;
   /** The view failed to load: every card shows the failure the main area shows. */
   viewFailed: boolean;
 }
@@ -124,7 +128,7 @@ const MonitorCard = React.memo(function MonitorCard({ camera, active, canEdit, s
  */
 export const SceneDirectorPanel = React.memo(function SceneDirectorPanel(props: SceneDirectorPanelProps): React.JSX.Element {
   const { session, snapshot, spaceId, Field, fieldDrafts, onFieldDraftChange, lightPlan, maxLights, lookingAt, environment,
-    onSaveView, onAddLight, onLook, onMonitor, onAmbientPreview, onAmbientCommit, onAmbientCancel, viewFailed } = props;
+    onSaveView, onAddLight, onLook, onMonitor, onAmbientPreview, onAmbientCommit, onAmbientCancel, onAmbientStart, onAmbientWrite, viewFailed } = props;
   const t = useTranslation();
   const ids = React.useId();
   const { canEdit } = snapshot;
@@ -192,14 +196,14 @@ export const SceneDirectorPanel = React.memo(function SceneDirectorPanel(props: 
       <div className='flex items-center justify-between gap-3'>
         <span id={`${ids}-ambient-color`} className='text-xs'>{t('spaces.threeD.color')}</span>
         <SceneColorField value={environment.ambientColor} disabled={!canEdit} labelId={`${ids}-ambient-color`} spaceId={spaceId}
-          onPreview={onAmbientColor} onCommit={onAmbientCommit} onCancel={onAmbientCancel} />
+          onPressStart={onAmbientStart} onPreview={onAmbientColor} onCommit={onAmbientCommit} onCancel={onAmbientCancel} onWrite={onAmbientWrite} />
       </div>
       <div className='flex items-center justify-between gap-3'>
         <span id={`${ids}-ambient-intensity`} className='text-xs'>{t('spaces.threeD.intensity')}</span>
         <div className='flex items-center gap-2'>
           <Slider aria-labelledby={`${ids}-ambient-intensity`} className='w-28' min={0} max={SCENE_AMBIENT_INTENSITY_MAX} step={0.1} disabled={!canEdit}
             value={[environment.ambientIntensity]} onValueChange={([ambientIntensity]) => { if (ambientIntensity !== undefined) onAmbientPreview({ ambientIntensity }); }}
-            onValueCommit={onAmbientCommitAfterChange} onPointerUp={onAmbientCommit} />
+            onValueCommit={onAmbientCommitAfterChange} onPointerDown={onAmbientStart} onPointerUp={onAmbientCommit} />
           <span className='w-10 text-right text-xs tabular-nums text-muted-foreground'>{environment.ambientIntensity.toFixed(1)}</span>
         </div>
       </div>

@@ -29,6 +29,15 @@ const closeIcon = <X className='size-4' />;
  * @returns The scene-edge shared floating panel.
  * @throws {never} Never directly.
  */
+/**
+ * Keep an overlay of the Space open when a Space tab is pressed: Space activation owns hiding, and dismissing on the
+ * tab's pointerdown would end an unfinished edit first.
+ * @param event - Radix's interact-outside event.
+ */
+export function keepOnSpaceTab(event: Pick<Event, 'target' | 'preventDefault'>): void {
+  if (event.target instanceof Element && event.target.closest('[data-space-tab]')) event.preventDefault();
+}
+
 export const SceneRightPanel = React.memo(function SceneRightPanel({ open, onOpenChange, title, automatic, stage, returnTarget, children, cancelGesture, contentRef, actions }: {
   open: boolean; onOpenChange: (open: boolean) => void; title: string; automatic: React.RefObject<boolean>;
   stage: React.RefObject<HTMLDivElement | null>; returnTarget: React.RefObject<HTMLElement | null>; children: React.ReactNode; cancelGesture: () => boolean;
@@ -63,8 +72,7 @@ export const SceneRightPanel = React.memo(function SceneRightPanel({ open, onOpe
       }}
       onInteractOutside={(event) => {
         if (event.target instanceof Node && stage.current?.contains(event.target)) event.preventDefault();
-        // Space activation owns hiding; dismissing on its pointerdown would end an unfinished edit first.
-        if (event.target instanceof Element && event.target.closest('[data-space-tab]')) event.preventDefault();
+        keepOnSpaceTab(event);
         if (!event.defaultPrevented) interactedOutside.current = true;
       }}>
       <div className='flex shrink-0 items-center justify-between gap-2 border-b border-border p-3' data-testid='scene-panel-header'><h2 className='min-w-0 truncate text-sm font-medium'>{title}</h2>
