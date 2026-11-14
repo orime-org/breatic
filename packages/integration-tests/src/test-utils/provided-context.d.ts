@@ -20,5 +20,6 @@ declare module "vitest" {
     REDIS_QUEUE_URL: string;
     REDIS_STREAM_URL: string;
     REDIS_COLLAB_URL: string;
+    REDIS_MCP_URL: string;
   }
 }

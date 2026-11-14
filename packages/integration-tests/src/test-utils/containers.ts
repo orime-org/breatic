@@ -62,6 +62,9 @@ export async function setup({ provide }: ProvideContext): Promise<void> {
     // instances needs it to be the same Redis for both, which is what makes
     // cross-instance behaviour observable at all.
     REDIS_COLLAB_URL: `${redisBase}/3`,
+    // DB4 carries external-agent commands, replies, counters and the
+    // in-flight task lists (#1488).
+    REDIS_MCP_URL: `${redisBase}/4`,
   };
 
   // Inject into THIS process's env so any synchronous module imports
@@ -72,6 +75,7 @@ export async function setup({ provide }: ProvideContext): Promise<void> {
   process.env.REDIS_QUEUE_URL = urls.REDIS_QUEUE_URL;
   process.env.REDIS_STREAM_URL = urls.REDIS_STREAM_URL;
   process.env.REDIS_COLLAB_URL = urls.REDIS_COLLAB_URL;
+  process.env.REDIS_MCP_URL = urls.REDIS_MCP_URL;
   // The rest of what the config schema wants, needed because the migration step
   // below imports core. The R2 settings live in `env.ts` instead: they are
   // read when a storage adapter is built, and nothing here builds one.
@@ -115,6 +119,7 @@ export async function setup({ provide }: ProvideContext): Promise<void> {
   provide("REDIS_QUEUE_URL", urls.REDIS_QUEUE_URL);
   provide("REDIS_STREAM_URL", urls.REDIS_STREAM_URL);
   provide("REDIS_COLLAB_URL", urls.REDIS_COLLAB_URL);
+  provide("REDIS_MCP_URL", urls.REDIS_MCP_URL);
 }
 
 /**

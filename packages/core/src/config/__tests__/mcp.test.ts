@@ -51,6 +51,10 @@ describe("mcpConfigSchema defaults", () => {
     });
   });
 
+  it("keeps command replies and capture results for ten minutes", () => {
+    expect(mcpConfigSchema.parse({}).reply_ttl_seconds).toBe(600);
+  });
+
   it("fills the personal access token cap and the rate limits", () => {
     const config = mcpConfigSchema.parse({});
     expect(config.pat.max_active_per_user).toBe(20);
@@ -94,6 +98,7 @@ describe("mcpConfigSchema relations", () => {
     ["a zero token cap", { pat: { max_active_per_user: 0 } }],
     ["a zero rate limit", { rate_limit: { commands_per_minute: 0 } }],
     ["a zero capture size", { view_capture: { max_bytes: 0 } }],
+    ["a zero reply lifetime", { reply_ttl_seconds: 0 }],
   ])("refuses %s", (_label, body) => {
     expect(accepts(body)).toBe(false);
   });
@@ -108,6 +113,7 @@ describe("getMcpConfig", () => {
     expect(config.command_wait_ms).toBe(10_000);
     expect(config.call_timeout_ms).toBe(45_000);
     expect(config.view_capture.max_bytes).toBe(917_504);
+    expect(config.reply_ttl_seconds).toBe(600);
   });
 
   it("parses the file once and hands back the same frozen object", () => {
