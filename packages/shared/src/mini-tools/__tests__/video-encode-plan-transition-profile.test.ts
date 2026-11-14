@@ -144,26 +144,34 @@ describe("the output frame rate of a presentation table (frames-split §7.17)", 
   });
 
   it("FPS02 a table with uneven frame spacing takes the standard rate nearest its frames over its duration", () => {
-    // Averages of 2000/847 and 3/2 fps are below the lowest standard rate.
+    // From its second frame on, 3 frames over 1.624 s: below the lowest standard rate.
     expect(same(api.presentationOutputFps(vfrPlan().presentation as Table), r(12))).toBe(true);
-    expect(same(api.presentationOutputFps(transparentPlan().presentation as Table), r(12))).toBe(true);
+  });
+
+  it("FPS05 the first frame's length does not count either: a CFR clip whose first frame is held as a lead keeps its rate", () => {
+    // 25 fps on 1/50: frame 0 held over the 0.3 s lead plus its own 0.04 s, the last frame held 0.24 s for the audio.
+    const led: Table = { schemaVersion: 1, timescale: 50, runs: [{ start: 0, count: 1, step: 17, duration: 17 }, { start: 17, count: 48, step: 2, duration: 2 }, { start: 113, count: 1, step: 12, duration: 12 }] };
+    expect(api.presentationOutputFps(led)).toEqual(r(25));
+    // Three frames, a derived lead, an empty frame and a hold: the one spacing left is 1/4 s.
+    expect(api.presentationOutputFps(transparentPlan().presentation as Table)).toEqual(r(4));
   });
 
   it("FPS03 a single-frame table takes the standard rate nearest one frame over its duration", () => {
     expect(same(api.presentationOutputFps({ schemaVersion: 1, timescale: 1000, runs: [{ start: 0, count: 1, step: 5000, duration: 5000 }] }), r(12))).toBe(true);
   });
 
-  // A first frame of `first` ticks, then `frames − 1` frames `step` ticks apart: two spacings, so the table is VFR.
+  // Frames `step` ticks apart with the second one lasting `odd` ticks: two spacings after the first frame, so the table is VFR.
   it.each([
-    ["30000/991 (a 1/1000 clock of 33 and 34 ms frames)", 1000, 30, 34, 33, r(30)],
-    ["9000000/301980 ≈ 29.80 (a phone clip on 1/90000)", 90000, 100, 3000, 3020, r(30000, 1001)],
-    ["9000000/375940 ≈ 23.94", 90000, 100, 3700, 3760, r(24000, 1001)],
-    ["10000/410 ≈ 24.39", 1000, 10, 50, 40, r(24)],
-    ["9000000/150297 ≈ 59.88", 90000, 100, 1500, 1503, r(60000, 1001)],
-    ["10000/745 ≈ 13.42", 1000, 10, 70, 75, r(12)],
-    ["9000000/44950 ≈ 200.2, above the highest", 90000, 100, 400, 450, r(120)],
-  ] as const)("FPS04 a VFR average of %s takes the nearest standard rate", (_name, timescale, frames, first, step, expected) => {
-    const table: Table = { schemaVersion: 1, timescale, runs: [{ start: 0, count: 1, step: first, duration: first }, { start: first, count: frames - 1, step, duration: step }] };
+    ["29000/958 (a 1/1000 clock of 33 and 34 ms frames)", 1000, 30, 34, 33, r(30)],
+    ["8910000/298960 ≈ 29.80 (a phone clip on 1/90000)", 90000, 100, 3000, 3020, r(30000, 1001)],
+    ["8910000/372180 ≈ 23.94", 90000, 100, 3700, 3760, r(24000, 1001)],
+    ["9000/370 ≈ 24.32", 1000, 10, 50, 40, r(24)],
+    ["8910000/148794 ≈ 59.88", 90000, 100, 1500, 1503, r(60000, 1001)],
+    ["9000/670 ≈ 13.43", 1000, 10, 70, 75, r(12)],
+    ["8910000/44500 ≈ 200.2, above the highest", 90000, 100, 400, 450, r(120)],
+  ] as const)("FPS04 a VFR average of %s takes the nearest standard rate", (_name, timescale, frames, odd, step, expected) => {
+    const table: Table = { schemaVersion: 1, timescale, runs: [{ start: 0, count: 1, step, duration: step }, { start: step, count: 1, step: odd, duration: odd },
+      { start: step + odd, count: frames - 2, step, duration: step }] };
     const fps = api.presentationOutputFps(table);
     expect(fps, JSON.stringify(fps)).toEqual(expected);
   });

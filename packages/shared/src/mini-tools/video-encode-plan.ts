@@ -582,9 +582,10 @@ function nearestStandardRate(numerator: bigint, denominator: bigint): ExactRatio
 /**
  * A presentation table's output frame rate (frames-split §7.17 transition output profile row), the one rule the profile,
  * the panel and the timeline Dialog read: timescale over the frame spacing when consecutive frames start the same number of
- * ticks apart (the last frame's own length does not count, so a stream cut short in its last frame stays CFR), otherwise
- * the standard rate nearest the frames over the presented duration. The table tiles [0, display.duration) (§7.16), so that
- * duration is its end.
+ * ticks apart, otherwise the standard rate nearest the frames over the presented duration. Neither the first frame's nor the
+ * last frame's own length counts, and the average runs from the second frame on: the first frame is held from 0 when the
+ * picture starts after the audio (§7.17 timeline row), and a stream cut short in its last frame stays CFR. The table tiles
+ * [0, display.duration) (§7.16), so that duration is its end.
  * @param table - The compact presentation table.
  * @returns The rate, exact and reduced.
  * @throws {RangeError} When the table presents no frame.
@@ -593,15 +594,25 @@ export function presentationOutputFps(table: VideoPresentationTable): ExactRatio
   const { runs, timescale } = table;
   const frames = runs.reduce((total, run) => total + run.count, 0);
   if (frames === 0) throw new RangeError("A presentation table presents at least one frame");
-  const spacings = new Set<number>();
+  // Each spacing with how many frame pairs it separates; the first pair (frame 0 to frame 1) is left out.
+  const spacings = new Map<number, number>();
+  /**
+   * Count a spacing for some frame pairs.
+   * @param spacing - The ticks between two frame starts.
+   * @param pairs - How many consecutive pairs it separates.
+   * @throws {never} Never.
+   */
+  const add = (spacing: number, pairs: number): void => { if (pairs > 0) spacings.set(spacing, (spacings.get(spacing) ?? 0) + pairs); };
   runs.forEach((run, index) => {
-    if (run.count > 1) spacings.add(run.step);
+    add(run.step, index === 0 ? run.count - 2 : run.count - 1);
     const next = runs[index + 1];
-    if (next !== undefined) spacings.add(next.start - (run.start + (run.count - 1) * run.step));
+    if (next !== undefined) add(next.start - (run.start + (run.count - 1) * run.step), index === 0 && run.count === 1 ? 0 : 1);
   });
-  if (spacings.size === 1) return reduced(BigInt(timescale), BigInt([...spacings][0]!));
+  if (spacings.size === 1) return reduced(BigInt(timescale), BigInt([...spacings.keys()][0]!));
   const last = runs.at(-1)!;
-  return nearestStandardRate(BigInt(frames) * BigInt(timescale), BigInt(last.start + (last.count - 1) * last.step + last.duration - runs[0]!.start));
+  const end = last.start + (last.count - 1) * last.step + last.duration;
+  const second = runs[0]!.count > 1 ? runs[0]!.start + runs[0]!.step : runs[1]?.start;
+  return second === undefined ? nearestStandardRate(BigInt(timescale), BigInt(end - runs[0]!.start)) : nearestStandardRate(BigInt(frames - 1) * BigInt(timescale), BigInt(end - second));
 }
 
 /**
