@@ -324,8 +324,8 @@ function earlier(left: [bigint, bigint], right: [bigint, bigint]): [bigint, bigi
 // The audio of every user-facing video output, at the bitrate the audio mini-tools write (src/jobs/op-args.ts AUDIO_OUT).
 const AAC = ["-map", "[a]", "-c:a", "aac", "-b:a", "192k", "-ar", "48000"];
 
-/** What the recipes need to know of a source before reading it. */
-interface SourceFacts { iso: boolean; audio: boolean }
+/** What the recipes need to know of a source before reading it; `tick` is the first video stream's time base. */
+interface SourceFacts { iso: boolean; audio: boolean; tick: [bigint, bigint] | null }
 
 /**
  * Whether the source is ISO BMFF (its edit lists are ignored so packet times are media time, the recipe's timeline;
@@ -337,10 +337,12 @@ interface SourceFacts { iso: boolean; audio: boolean }
  * @throws {Error} When ffprobe fails.
  */
 async function sourceFacts(source: string, run: { signal: AbortSignal; stdoutBytes: number; stderrTailBytes: number }): Promise<SourceFacts> {
-  const answer = JSON.parse((await runPlanCommand("ffprobe", ["-v", "error", "-protocol_whitelist", "file", "-show_entries", "format=format_name:stream=codec_type", "-of", "json", source], run))
-    .toString("utf8")) as { format?: { format_name?: string }; streams?: { codec_type?: string }[] };
+  const answer = JSON.parse((await runPlanCommand("ffprobe", ["-v", "error", "-protocol_whitelist", "file", "-show_entries", "format=format_name:stream=codec_type,time_base", "-of", "json", source], run))
+    .toString("utf8")) as { format?: { format_name?: string }; streams?: { codec_type?: string; time_base?: string }[] };
   const names = (answer.format?.format_name ?? "").split(",");
-  return { iso: names.includes("mov") || names.includes("mp4"), audio: (answer.streams ?? []).some((stream) => stream.codec_type === "audio") };
+  const tick = /^(\d+)\/(\d+)$/u.exec((answer.streams ?? []).find((stream) => stream.codec_type === "video")?.time_base ?? "");
+  return { iso: names.includes("mov") || names.includes("mp4"), audio: (answer.streams ?? []).some((stream) => stream.codec_type === "audio"),
+    tick: tick === null ? null : [BigInt(tick[1]!), BigInt(tick[2]!)] };
 }
 
 /**
@@ -387,32 +389,139 @@ async function frameStartAt(source: string, facts: SourceFacts, entry: Extract<M
 /** The inputs and filter graph presenting a window's frames, ending at `[v]`. */
 interface WindowGraph { args: string[]; graph: string[]; inputs: number; facts: SourceFacts }
 
+/** A frame rate as a reduced numerator and denominator. */
+type FrameRate = readonly [bigint, bigint];
+
+/**
+ * The greatest common divisor.
+ * @param left - One integer.
+ * @param right - The other.
+ * @returns The divisor, non-negative.
+ * @throws {never} Never.
+ */
+function gcd(left: bigint, right: bigint): bigint {
+  let [a, b] = [left < 0n ? -left : left, right < 0n ? -right : right];
+  while (b !== 0n) [a, b] = [b, a % b];
+  return a;
+}
+
+/**
+ * The least common multiple of two positive integers.
+ * @param left - One integer.
+ * @param right - The other.
+ * @returns The multiple.
+ * @throws {never} Never.
+ */
+function lcm(left: bigint, right: bigint): bigint {
+  return (left / gcd(left, right)) * right;
+}
+
+/**
+ * The denominator of an exact value in lowest terms.
+ * @param value - The numerator and denominator.
+ * @returns The reduced denominator.
+ * @throws {never} Never.
+ */
+function lowestDenominator([numerator, denominator]: readonly [bigint, bigint]): bigint {
+  return denominator / gcd(numerator, denominator);
+}
+
+/**
+ * A frame rate in lowest terms.
+ * @param rate - The plan's rate.
+ * @returns The reduced rate.
+ * @throws {RangeError} When the rate is malformed.
+ */
+function frameRate(rate: MiniToolPlanExact): FrameRate {
+  const [numerator, denominator] = rational(rate);
+  const divisor = gcd(numerator, denominator);
+  return [numerator / divisor, denominator / divisor];
+}
+
+/**
+ * The grid slot a frame starting at a time takes: the first slot at or after it (`fps` rounding up).
+ * @param time - The time from the window start, exact.
+ * @param rate - The grid's rate.
+ * @returns The slot.
+ * @throws {RangeError} When the time is negative.
+ */
+function slotAtOrAfter([numerator, denominator]: [bigint, bigint], rate: FrameRate): bigint {
+  if (numerator < 0n) throw new RangeError("Presentation entries run forward from the window start");
+  const top = numerator * rate[0];
+  const bottom = denominator * rate[1];
+  return (top + bottom - 1n) / bottom;
+}
+
+// FFmpeg evaluates setpts in doubles, which are exact for integers below 2^53; a frame's slot is exact below 2^52.
+const EXACT_TICKS = 1n << 52n;
+
+/**
+ * The clock on which every source frame time of a window, after its clip start and rate, and every slot of a frame grid
+ * is a whole number of ticks, so each frame can be put on its slot exactly.
+ * @param entries - The window's entries.
+ * @param origin - The window start.
+ * @param tick - The source's video time base.
+ * @param rate - The grid's rate.
+ * @returns Ticks per second.
+ * @throws {RangeError} When a time is malformed or the clock is too fine for exact timestamp arithmetic.
+ */
+function exactClock(entries: readonly MiniToolPlanEntry[], origin: MiniToolPlanExact, tick: [bigint, bigint] | null, rate: FrameRate): bigint {
+  let clock = rate[0];
+  let reach = 0n;
+  for (const entry of entries) {
+    clock = lcm(clock, lowestDenominator(minus(span(entry).start, origin)));
+    if (entry.kind === "empty") continue;
+    if (tick === null) throw new RangeError("A source span needs a video time base");
+    const [rateNumerator, rateDenominator] = frameRate(entry.rate);
+    const clip = rational(entry.clipStart);
+    clock = lcm(clock, lcm(lowestDenominator(tick), lowestDenominator(clip)) * rateNumerator);
+    const end = plus(clip, times(minus(entry.displayEnd, entry.displayStart), rational(entry.rate)));
+    const ticks = ((end[0] + end[1] - 1n) / end[1] + 1n) * rateDenominator;
+    if (ticks > reach) reach = ticks;
+  }
+  if (reach * clock >= EXACT_TICKS) throw new RangeError("The window's exact clock is too fine for exact timestamps");
+  return clock;
+}
+
 /**
  * Present a window's entries as frames (§5.4 chunking and chunk time; §7.17 entries): each source span decodes from its
- * keyframe on the media timeline and shows from its clip start at its rate, each derived-empty entry is one composed frame,
- * all on a `1/timescale` clock from 0, one output frame per presented frame.
+ * keyframe on the media timeline and shows from its clip start at its rate, each derived-empty entry is one composed frame.
+ * Without a grid the frames run on a `1/clock` clock from 0, one output frame per presented frame. With a grid each frame
+ * is put on the first grid slot at or after its start (§7.17 transition output profile row: output frame k shows the
+ * source frame covering k / fps) before the inputs are interleaved, whose microsecond times would otherwise move a frame to
+ * the next slot, and a closing frame on the slot at the window end lets the grid that follows keep the last frame.
  * @param entries - The window's entries.
- * @param clock - The timescale.
+ * @param time - The timescale, or the rate of the frame grid that follows; the frames then run on a `rate⁻¹` time base.
  * @param source - The downloaded source.
  * @param run - The lifetime and IO bounds.
  * @param frame - The chain after a source span's timing, given a unique label prefix.
  * @param empty - The source of one composed frame for a derived-empty entry.
- * @param closed - Whether a frame grid follows, which needs the stream to end at the window's end.
  * @returns The inputs and graph.
  * @throws {RangeError} When a time is malformed.
  * @throws {Error} When ffprobe fails.
  */
-export async function windowGraph(entries: readonly MiniToolPlanEntry[], clock: bigint, source: string, run: Run,
-  frame: (label: string) => string, empty: (entry: Extract<MiniToolPlanEntry, { kind: "empty" }>) => string, closed = false): Promise<WindowGraph> {
+export async function windowGraph(entries: readonly MiniToolPlanEntry[], time: bigint | FrameRate, source: string, run: Run,
+  frame: (label: string) => string, empty: (entry: Extract<MiniToolPlanEntry, { kind: "empty" }>) => string): Promise<WindowGraph> {
   const origin = span(entries[0]!).start;
   const args = ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-protocol_whitelist", "file", "-copyts"];
   const graph: string[] = [];
   const facts = await sourceFacts(source, run);
+  const grid = typeof time === "bigint" ? null : time;
+  const clock = grid === null ? time as bigint : exactClock(entries, origin, facts.tick, grid);
+  const slot = grid === null ? null : (clock * grid[1]) / grid[0];
+  const base = grid === null ? `1/${clock}` : `${grid[1]}/${grid[0]}`;
+  /**
+   * The timing of a frame placed at a time from the window start: its clock ticks, or its grid slot.
+   * @param at - The time from the window start.
+   * @returns The filter text.
+   * @throws {RangeError} When the time is negative.
+   */
+  const placed = (at: [bigint, bigint]): string => `settb=${base},setpts=${grid === null ? roundTimes(at, clock) : slotAtOrAfter(at, grid)}`;
   let inputs = 0;
   for (const [at, entry] of entries.entries()) {
-    const offset = roundTimes(minus(span(entry).start, origin), clock);
+    const offset = minus(span(entry).start, origin);
     if (entry.kind === "empty") {
-      graph.push(`${empty(entry)},settb=1/${clock},setpts=${offset}[e${at}]`);
+      graph.push(`${empty(entry)},${placed(offset)}[e${at}]`);
       continue;
     }
     // At rate a/b the span shows media [clipStart, clipStart + length·a/b), each frame for its media duration·b/a (§7.17).
@@ -422,19 +531,20 @@ export async function windowGraph(entries: readonly MiniToolPlanEntry[], clock: 
     // An edit can start inside a source frame (§7.17 timeline row): that frame is kept and shown from clipStart.
     const first = await frameStartAt(source, facts, entry, run);
     args.push(...mediaTimeline(facts), "-seek_timestamp", "1", "-noaccurate_seek", "-ss", seconds(rational(entry.decodeStart)), "-i", source);
+    const ticks = `max(round((PTS-${roundTimes([clipNumerator, clipDenominator], clock)})*${rateDenominator}/${rateNumerator})\\,0)+${roundTimes(offset, clock)}`;
     graph.push(`[${inputs}:v:0]trim=start=${seconds(first)}:end=${seconds(clipEnd)},settb=1/${clock},` +
-      `setpts=max(round((PTS-${roundTimes([clipNumerator, clipDenominator], clock)})*${rateDenominator}/${rateNumerator})\\,0)+${offset},${frame(`p${at}`)}[e${at}]`);
+      `${slot === null ? `setpts=${ticks}` : `setpts=ceil((${ticks})/${slot})*${slot},settb=${base}`},${frame(`p${at}`)}[e${at}]`);
     inputs += 1;
   }
-  // interleave ends the stream at its last frame's start, so a frame grid after it never gives that frame its slot and
-  // repeats the one before; a closed window adds one frame at its end, which the grid's trim then drops.
+  // interleave ends the stream at its last frame's start, so a grid after it never gives that frame its slot and repeats
+  // the one before; the closing frame takes the slot at the window end, which the grid's trim then drops.
   const labels = entries.map((_entry, at) => `[e${at}]`);
-  if (closed) {
+  if (grid !== null) {
     const last = span(entries[entries.length - 1]!);
-    graph.push(`${empty({ kind: "empty", fill: "black", window: last })},settb=1/${clock},setpts=${roundTimes(minus(last.end, origin), clock)}[end]`);
+    graph.push(`${empty({ kind: "empty", fill: "black", window: last })},${placed(minus(last.end, origin))}[end]`);
     labels.push("[end]");
   }
-  graph.push(`${labels.join("")}interleave=nb_inputs=${labels.length},settb=1/${clock}[v]`);
+  graph.push(`${labels.join("")}interleave=nb_inputs=${labels.length},settb=${base}[v]`);
   return { args, graph, inputs, facts };
 }
 
@@ -497,15 +607,17 @@ function profileGrid(profile: MiniToolPlanTransitionProfile, count: number): str
 }
 
 /**
- * The decode clock of a window a transition profile's grid follows: fine enough to keep distinct source frames apart and
- * to place a chunk that starts at an output frame's time inside a source frame (§7.17 transition output profile row), which the source's
- * own timescale cannot.
- * @param profile - The profile.
- * @returns Ticks per second.
- * @throws {RangeError} When the time base is malformed.
+ * The rate of the frame grid a window's frames go on: a transition profile's, or a model input's resample grid; a reversed
+ * stream is re-timed frame by frame instead.
+ * @param recipe - The chunk, model-input or segment recipe.
+ * @returns The rate, or null without a grid.
+ * @throws {RangeError} When a resample grid's rate is not a whole number of frames per second.
  */
-function profileDecodeClock(profile: MiniToolPlanTransitionProfile): bigint {
-  return rational(profile.timeBase)[1] * 1000n;
+function gridRate(recipe: Extract<PresentationRecipe, { kind: "chunk_encode" | "prepare_model_input" }> | SegmentRecipe): FrameRate | null {
+  if (recipe.kind === "chunk_encode" && recipe.profile !== undefined) return frameRate(recipe.profile.fps);
+  if (recipe.kind !== "prepare_model_input" || recipe.grid?.mode !== "resample" || recipe.order === "reverse") return null;
+  if (!Number.isInteger(recipe.grid.rate)) throw new RangeError("A resample grid runs at a whole frame rate");
+  return [BigInt(recipe.grid.rate), 1n];
 }
 
 /**
@@ -524,15 +636,12 @@ async function renderWindow(recipe: Extract<PresentationRecipe, { kind: "chunk_e
   const { entries } = recipe;
   const profile = recipe.kind === "chunk_encode" ? recipe.profile : undefined;
   const target = profile === undefined ? recipe.target : profileTarget(profile, recipe.target);
-  const clock = profile === undefined ? BigInt(recipe.timescale) : profileDecodeClock(profile);
+  const clock = BigInt(recipe.timescale);
   const transparent = target.format === "webm-vp9" && target.alpha === "straight";
-  // A transition profile and a model's resample grid both put the frames on an fps grid after the window; a reversed
-  // stream is re-timed frame by frame instead, and a closing frame would come first in it.
-  const grid = profile !== undefined || (recipe.kind === "prepare_model_input" && recipe.grid?.mode === "resample" && recipe.order !== "reverse");
   // Black: a transparent fill packs to black colour and black alpha; a VP9 output with alpha keeps it transparent.
-  const window = await windowGraph(entries, clock, source, run, (label) => picture(target, label),
+  const window = await windowGraph(entries, gridRate(recipe) ?? clock, source, run, (label) => picture(target, label),
     (entry) => `color=c=black${transparent && entry.fill === "transparent" ? "@0" : ""}:s=${target.width}x${target.height}:r=1:d=1,` +
-      `format=${transparent ? "yuva420p" : "yuv420p"},setsar=1,${BT709_TAGS}`, grid);
+      `format=${transparent ? "yuva420p" : "yuv420p"},setsar=1,${BT709_TAGS}`);
   const { args, graph } = window;
   const audio = recipe.kind !== "chunk_encode" && recipe.audio !== null && window.facts.audio ? audioOf(window.inputs, recipe.audio) : null;
   if (audio !== null) {
@@ -558,15 +667,15 @@ async function renderWindow(recipe: Extract<PresentationRecipe, { kind: "chunk_e
 /**
  * Re-time a model input's frames (execution design §10.2, §10.4): a reversed tracking clip plays the window's frames backwards
  * from 0, one window frame step each; a `frames` grid keeps every frame and stamps frame N at N / rate; a `resample` grid shows
- * at slot j the frame covering j / rate (`fps` rounding up gives each frame the first slot at or after its start) and holds
- * the last frame to exactly the grid's count. Rewrites the graph's last chain to end on the re-timed `[v]`.
+ * at slot j the frame covering j / rate (the window graph already put each frame on its slot) and holds the last frame to
+ * exactly the grid's count. Rewrites the graph's last chain to end on the re-timed `[v]`.
  * @param recipe - The model input recipe.
  * @param graph - The window graph, whose last chain ends on `[v]`.
  * @param clock - The window's timescale.
  * @param count - The window's frame count.
  * @param target - The encode target.
  * @returns The encoder and muxer arguments for the re-timed frames.
- * @throws {RangeError} When a resample grid's rate is not a whole number of frames per second.
+ * @throws {never} Never.
  */
 function modelInputTiming(recipe: Extract<PresentationRecipe, { kind: "prepare_model_input" }>, graph: string[], clock: bigint, count: number, target: MiniToolPlanTarget): { video: string[]; muxer: string[] } {
   const relabel = (chain: string): void => { graph.push(`${graph.pop()!.replace(/\[v\]$/u, "[w]")};[w]${chain}[v]`); };
@@ -582,7 +691,6 @@ function modelInputTiming(recipe: Extract<PresentationRecipe, { kind: "prepare_m
     relabel(`settb=1/${base},setpts=round(N*${base}/${grid.rate})`);
     return videoOutput(target, base, BigInt(Math.round((grid.frameCount * Number(base)) / grid.rate)));
   }
-  if (!Number.isInteger(grid.rate)) throw new RangeError("A resample grid runs at a whole frame rate");
   relabel(`fps=fps=${grid.rate}:round=up,tpad=stop_mode=clone:stop=${grid.frameCount},trim=end_frame=${grid.frameCount}`);
   return videoOutput(target, BigInt(grid.rate), BigInt(grid.frameCount));
 }
@@ -792,7 +900,6 @@ async function renderTransitionWindow(recipe: MiniToolPlanTransitionWindow, file
   const { width, height } = profile;
   const count = frames.end - frames.start;
   const [tick, base] = rational(profile.timeBase);
-  const clock = profileDecodeClock(profile);
   const fill = `black@${profile.alpha ? 0 : 1}`;
   const decoded = await Promise.all(recipe.clips.map(async (clip, at) => {
     // Each clip is decoded with its own plan's matrix and tone mapped as its own chunk_encode would be (§97 D23-4).
@@ -802,9 +909,9 @@ async function renderTransitionWindow(recipe: MiniToolPlanTransitionWindow, file
     // the chunk_encode chunks with no colour jump.
     const convert = `${clip.toneMap === "sdr-bt709" ? `${TONE_MAP},` : ""}scale=${width}:${height}:force_original_aspect_ratio=decrease:in_color_matrix=${matrix}`
       + ":out_color_matrix=bt709:out_range=tv,format=yuv444p,scale=in_color_matrix=bt709:in_range=tv:out_range=pc";
-    const window = await windowGraph(clip.entries, clock, local(files, clip.inputId), run,
+    const window = await windowGraph(clip.entries, frameRate(profile.fps), local(files, clip.inputId), run,
       () => `${convert},format=rgba,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${fill},setsar=1`,
-      (entry) => `color=c=black${entry.fill === "transparent" ? "@0" : ""}:s=${width}x${height}:r=1:d=1,format=rgba`, true);
+      (entry) => `color=c=black${entry.fill === "transparent" ? "@0" : ""}:s=${width}x${height}:r=1:d=1,format=rgba`);
     const file = join(directory, `transition-${at}.rgba`);
     await runPlanCommand("ffmpeg", [...window.args, "-filter_complex", `${window.graph.join(";").replace(/\[v\]$/u, "[w]")};[w]${profileGrid(profile, count)},format=rgba[v]`,
       "-map", "[v]", "-fps_mode", "passthrough", "-f", "rawvideo", "-pix_fmt", "rgba", file], run);

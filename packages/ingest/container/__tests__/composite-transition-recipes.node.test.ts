@@ -379,6 +379,10 @@ beforeAll(async () => {
   const h264 = ['-c:v', 'libx264', '-bf', '0', '-pix_fmt', 'yuv420p', ...tagged];
   // Ten frames at 25 fps, each a different grey (stored luma 16 + 20n), keyframes at frames 0 and 5.
   await make('greys.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=64x36:r=25:d=0.4,format=yuv420p,geq=lum='16+20*N':cb=128:cr=128", ...h264, '-g', '5', '-video_track_timescale', '25']);
+  await make('greys-ntsc.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=64x36:r=30000/1001:d=0.7,format=yuv420p,geq=lum='16+10*N':cb=128:cr=128,trim=end_frame=20",
+    ...h264, '-g', '30', '-video_track_timescale', '30000']);
+  await make('late-edge.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=64x36:r=25:d=0.16,format=yuv420p,geq=lum='16+40*N':cb=128:cr=128,settb=1/90000,setpts='if(eq(N,2),3601,N*1800)'",
+    ...h264, '-g', '4', '-fps_mode', 'passthrough', '-enc_time_base', '1/90000', '-video_track_timescale', '90000']);
   // Expand backgrounds in the 128x72 target geometry at 50 fps (twice the source rate, so a frame-index mapping shows):
   // window 0 is 16 frames of luma 40 + 8n, window 1 is 12 frames of luma 150 + 6n.
   await make('bg0.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=128x72:r=50:d=0.32,format=yuv420p,geq=lum='40+8*N':cb=128:cr=128", ...h264, '-g', '16', '-video_track_timescale', '50']);
@@ -457,6 +461,30 @@ describe('a chunk that starts inside a source frame (§7.17 transition output pr
     const shown = [...await lumaMeans(first!), ...await lumaMeans(second!)];
     expect(shown).toHaveLength(12);
     shown.forEach((value, k) => expect(Math.abs(value - (16 + 20 * Math.floor((k * 25) / 30))), `output frame ${k}`).toBeLessThan(4));
+  });
+
+  // greys-ntsc.mp4: twenty 30000/1001 fps frames of stored luma 16 + 10n on a 1/30000 clock; frame n starts at n · 1001 ticks.
+  it('CR04 a 29.97 fps clip split at output frame 7 of its own 29.97 fps profile shows every frame once, none repeated', async () => {
+    const ntsc = { ...PROFILE, fps: r(30000, 1001), timeBase: r(1001, 30000) };
+    const chunk = (frames: { start: number; end: number }, from: Exact): Recipe => ({
+      kind: 'chunk_encode', inputId: CLIP_A, window: frames, timescale: 30000, entries: [span(r(0), from, from, r(frames.end * 1001, 30000))], target: TARGET, profile: ntsc, frames });
+    const [first, second] = await produce({ [CLIP_A]: join(dir, 'greys-ntsc.mp4') }, [chunk({ start: 0, end: 7 }, r(0)), chunk({ start: 7, end: 20 }, r(7 * 1001, 30000))]);
+    const shown = [...await lumaMeans(first!), ...await lumaMeans(second!)];
+    expect(shown).toHaveLength(20);
+    shown.forEach((value, k) => expect(Math.abs(value - (16 + 10 * k)), `output frame ${k}`).toBeLessThan(4));
+  });
+
+  // late-edge.mp4: four frames on a 1/90000 clock at 0, 1800, 3601 and 5400 ticks, stored luma 16, 56, 96, 136. Frame 1
+  // ends 1 tick after output slot 2 of a 25 fps profile (3600 ticks), so it is the frame shown at slot 1 and only there.
+  it.each([
+    ['two frames from slot 0', { start: 0, end: 2 }, r(0), [16, 56]],
+    ['one frame at slot 1', { start: 1, end: 2 }, r(1, 25), [56]],
+  ])('CR05 a chunk of %s whose last frame ends just after the next slot keeps that frame', async (_name, frames, from, expected) => {
+    const recipe = { kind: 'chunk_encode', inputId: CLIP_A, window: frames, timescale: 90000, entries: [span(r(0), from, from, r(3601, 90000))], target: TARGET, profile: PROFILE, frames };
+    const [file] = await produce({ [CLIP_A]: join(dir, 'late-edge.mp4') }, [recipe]);
+    const means = await lumaMeans(file!);
+    expect(means).toHaveLength(expected.length);
+    means.forEach((value, k) => expect(Math.abs(value - expected[k]!), `output frame ${k}`).toBeLessThan(4));
   });
 });
 
