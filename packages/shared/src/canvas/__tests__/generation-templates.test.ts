@@ -977,7 +977,7 @@ describe('sound, music and voice templates (inner#1825)', () => {
   const ANCHORS: Record<string, Settings> = {
     'ambience-sfx-bed': { type: 'audio', mode: 'sfx', model: 'sfx-1.6-text-to-audio', params: { loop: true, duration: 30 } },
     'voice-line': { type: 'audio', mode: 'tts', model: 'minimax-speech-2.8-hd' },
-    'two-voice-dialogue': { type: 'audio', mode: 'tts', model: 'gemini-3.1-flash-text-to-speech' },
+    'two-voice-dialogue': { type: 'audio', mode: 'tts', model: 'gemini-3.8-flash-text-to-speech' },
     'underscore-bgm': { type: 'audio', mode: 't2m', model: MUREKA_BGM },
     'voice-from-descriptor': { type: 'audio', mode: 'tts', model: 'qwen3-tts-voice-design' },
     'song-cover': { type: 'audio', mode: 'a2m', model: 'minimax-music-cover' },

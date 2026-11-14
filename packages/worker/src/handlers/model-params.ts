@@ -8,7 +8,7 @@
  */
 
 import { logger } from "@breatic/core";
-import { checkParamCombination, extractPromptText, itemCap, resolveParams, type ResolvableModel } from "@breatic/shared";
+import { checkParamCombination, currentModelName, extractPromptText, itemCap, resolveParams, type ResolvableModel } from "@breatic/shared";
 import { getFullModelConfig, type FullModelEntry } from "@breatic/domain";
 
 /** The catalog modalities a model run serves. */
@@ -22,7 +22,9 @@ export type CatalogModality = "image" | "video" | "audio" | "tts" | "three_d";
  * @throws {Error} when the catalog has no such model.
  */
 export function entryOf(modality: CatalogModality, modelName: string): FullModelEntry {
-  const entry = getFullModelConfig(modality).models.find((m) => m.name === modelName);
+  // A task queued under a retired model runs on its replacement (#1521).
+  const current = currentModelName(modelName);
+  const entry = getFullModelConfig(modality).models.find((m) => m.name === current);
   if (!entry) throw new Error(`Model '${modelName}' not found`);
   return entry;
 }

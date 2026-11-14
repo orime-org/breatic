@@ -123,3 +123,13 @@ describe('withCurrentModelNames', () => {
     }));
   });
 });
+
+describe('a run asked for under a retired name', () => {
+  it('is asked for under the replacement by the time the server reads it', () => {
+    const body = entry.taskCreateSchema.parse({
+      task_type: 'audio', model: OLD, params: {}, mode: 'append',
+      project_id: '00000000-0000-4000-8000-000000000000', space_id: '00000000-0000-4000-8000-000000000001',
+    });
+    expect(body.model).toBe(NEW);
+  });
+});

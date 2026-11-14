@@ -18,6 +18,10 @@ beforeAll(() => {
 });
 
 describe("the shipped catalog", () => {
+  it("runs a task queued under a retired model on its replacement (#1521)", () => {
+    expect(entryOf("tts", "gemini-3.1-flash-text-to-speech").name).toBe("gemini-3.8-flash-text-to-speech");
+  });
+
   it("keeps the talking-head model to its two sources", () => {
     const [, cleaned] = validateModelParams("video", "omnihuman-1.5", {
       image: "https://cdn/portrait.png",

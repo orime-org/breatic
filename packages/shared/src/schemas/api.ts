@@ -28,6 +28,7 @@ import { REQUEST_SHAPE_PARAMS } from "@shared/api/error-reason.js";
 import { THREE_D_GENERATION_MODES } from "@shared/types/model-catalog.js";
 import { SCENE_GENERATION_ORIGINS } from "@shared/types/scene-generation-proposal.js";
 import type { NodeMediaFields } from "@shared/canvas/node-media.js";
+import { currentModelName } from "@shared/canvas/retired-models.js";
 
 // ── Auth ─────────────────────────────────────────────────────────────
 
@@ -538,8 +539,8 @@ export const taskCreateSchema = z
   .object({
     /** `tasks.task_type` is varchar(50). */
     task_type: z.string().max(50),
-    /** `tasks.model` is varchar(100). */
-    model: z.string().max(100).optional(),
+    /** `tasks.model` is varchar(100). A retired model is asked for under its replacement (#1521). */
+    model: z.string().max(100).optional().transform((name) => (name === undefined ? name : currentModelName(name))),
     params: z.record(z.string(), z.unknown()),
     /**
      * Result nodes this task will update on completion (1..N).
