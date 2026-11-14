@@ -221,8 +221,16 @@ export const SceneViewfinder = React.memo(function SceneViewfinder(props: SceneV
 
   const drag = React.useRef<{ corner: ViewfinderCorner; start: ViewfinderRect; origin: { x: number; y: number } } | null>(null);
   const cornersShown = phase === 'framing' && (!throughCamera || (camera?.frame === 'Free' && cameraEditable));
-  // Corners taken away mid-drag (a lock, a lost permission) never get their release; the drag ends with them.
-  React.useEffect(() => { if (!cornersShown) drag.current = null; }, [cornersShown]);
+  // The one exit for a drag that ends without its release: the frame goes back to the camera's recorded ratio.
+  const dropCornerDrag = React.useCallback((): void => {
+    if (drag.current === null) return;
+    drag.current = null;
+    if (!throughCamera || phase !== 'framing' || cameraRatio === null) return;
+    shownRatio.current = cameraRatio;
+    dispatch({ type: 'frame', frame: largestFrame(cameraRatio, safe) });
+  }, [throughCamera, phase, cameraRatio, safe, dispatch]);
+  // Corners taken away mid-drag (a lock, a lost permission, a fixed frame) never get their release.
+  React.useEffect(() => { if (!cornersShown) dropCornerDrag(); }, [cornersShown, dropCornerDrag]);
   const onCornerDown = React.useCallback((event: React.PointerEvent<HTMLSpanElement>): void => {
     const corner = event.currentTarget.dataset.corner as ViewfinderCorner | undefined;
     if (corner === undefined || config === undefined) return;
@@ -233,12 +241,12 @@ export const SceneViewfinder = React.memo(function SceneViewfinder(props: SceneV
   const onCornerMove = React.useCallback((event: React.PointerEvent<HTMLSpanElement>): void => {
     const gesture = drag.current;
     // A drag the viewfinder closed during never got its pointerup; a move without the button held ends it.
-    if (gesture === null || config === undefined || (event.buttons & 1) === 0) { drag.current = null; return; }
+    if (gesture === null || config === undefined || (event.buttons & 1) === 0) { dropCornerDrag(); return; }
     const { corner, start, origin } = gesture;
     const at = { x: (corner.includes('e') ? start.x + start.width : start.x) + event.clientX - origin.x,
       y: (corner.includes('s') ? start.y + start.height : start.y) + event.clientY - origin.y };
     dispatch({ type: 'frame', frame: resizeFrame(start, corner, at, safe, ratioValue, config.minFramePx) });
-  }, [safe, ratioValue, config, dispatch]);
+  }, [safe, ratioValue, config, dispatch, dropCornerDrag]);
   const onCornerUp = React.useCallback((): void => {
     const dragged = drag.current;
     drag.current = null;
@@ -351,7 +359,7 @@ export const SceneViewfinder = React.memo(function SceneViewfinder(props: SceneV
         {cornersShown ? CORNERS.map((corner) => <span key={corner} data-testid={`scene-viewfinder-corner-${corner}`} data-corner={corner}
           data-shape={ratioValue === null ? 'round' : 'square'}
           className={cn('pointer-events-auto absolute size-2.5 touch-none border border-active-border bg-background before:absolute before:-inset-[7px] before:content-[""]', ratioValue === null ? 'rounded-full' : 'rounded-none', CORNER_POSITION[corner])}
-          onPointerDown={onCornerDown} onPointerMove={onCornerMove} onPointerUp={onCornerUp} onPointerCancel={onCornerUp} />) : null}
+          onPointerDown={onCornerDown} onPointerMove={onCornerMove} onPointerUp={onCornerUp} onPointerCancel={dropCornerDrag} />) : null}
         {!framing && stillUrl !== null ? <img data-testid='scene-viewfinder-still' src={stillUrl} alt='' draggable={false} className='absolute inset-0 size-full' /> : null}
       </div>
     </div>

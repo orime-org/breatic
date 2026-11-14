@@ -342,6 +342,41 @@ describe('saving and lighting from what is on screen (round 1 fixes, design 3.5,
   });
 });
 
+describe('a Free camera corner drag that never gets its release (round 2 fixes, design 3.4 item 1)', () => {
+  const ratio = (): number => { const frame = h.viewport?.viewFrame as { width: number; height: number }; return frame.width / frame.height; };
+  /** Look through a Free 2:1 camera and drag its se corner to a wider shape without letting go. */
+  async function dragWider(): Promise<{ session: SceneSession; corner: HTMLElement }> {
+    const { session } = await setup([camera(CAM, 1, { frame: 'Free', freeRatio: 2 })]);
+    await openDirector();
+    fireEvent.click(screen.getByTestId(`scene-director-monitor-${CAM}`));
+    const corner = await screen.findByTestId('scene-viewfinder-corner-se');
+    corner.setPointerCapture = (): void => undefined;
+    fireEvent.pointerDown(corner, { pointerId: 1, button: 0, buttons: 1, clientX: 900, clientY: 600 });
+    fireEvent.pointerMove(corner, { pointerId: 1, buttons: 1, clientX: 1000, clientY: 520 });
+    await waitFor(() => expect(ratio()).toBeGreaterThan(2.2));
+    return { session, corner };
+  }
+
+  it('puts the frame back to the record when a lock takes the corners away', async () => {
+    const { session } = await dragWider();
+    act(() => { session.execute({ type: 'lock', ids: [CAM], locked: true }); });
+    await waitFor(() => expect(ratio()).toBeCloseTo(2, 3));
+  });
+
+  it('puts the frame back to the new frame when the camera leaves Free mid-drag', async () => {
+    const { session } = await dragWider();
+    act(() => { (applySceneCommand as unknown as (...args: unknown[]) => unknown)(session.doc, { type: 'patch', patches: [{ id: CAM, frame: '1:1' }] }, Symbol('peer'), true, NAME, { maxLights: 16 }); });
+    await waitFor(() => expect(ratio()).toBeCloseTo(1, 3));
+  });
+
+  it('puts the frame back to the record at a move without the button held', async () => {
+    const { session, corner } = await dragWider();
+    fireEvent.pointerMove(corner, { pointerId: 1, buttons: 0, clientX: 1010, clientY: 510 });
+    await waitFor(() => expect(ratio()).toBeCloseTo(2, 3));
+    expect(readSceneDocument(session.doc).objects.find((object) => object.id === CAM)).toMatchObject({ freeRatio: 2 });
+  });
+});
+
 describe('monitor cards and the object list (round 1 fixes, design 3.7, 4.2)', () => {
   it('shows the failure text on every card once the renderer fails', async () => {
     await setup([camera()]);
