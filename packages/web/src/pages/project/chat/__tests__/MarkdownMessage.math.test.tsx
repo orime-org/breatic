@@ -165,6 +165,26 @@ describe('MarkdownMessage — maths', () => {
     expect(event.defaultPrevented, 'and the browser writes nothing over it').toBe(true);
   });
 
+  it('gives a drag of a reply the formula source a copy gives, and lets the drag go on (A8)', () => {
+    const body = draw('area $$a^2+b$$ end').querySelector('[data-testid="markdown-body"]');
+    const range = around(body as Element);
+    const copied = copy(range).written.get('text/html');
+
+    const held = { isCollapsed: false, rangeCount: 1, getRangeAt: (): Range => range } as unknown as Selection;
+    const realSelection = window.getSelection.bind(window);
+    window.getSelection = (): Selection => held;
+    const written = new Map<string, string>();
+    const event = new Event('dragstart', { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'dataTransfer', {
+      value: { setData: (type: string, data: string): Map<string, string> => written.set(type, data) },
+    });
+    document.dispatchEvent(event);
+    window.getSelection = realSelection;
+
+    expect(written.get('text/html'), 'the drag carries what a copy writes').toBe(copied);
+    expect(event.defaultPrevented, 'and the drag is not cancelled').toBe(false);
+  });
+
   it('leaves a copy with no formula in it to the browser (A8)', () => {
     // This handler is on the document, so every copy anywhere in the app comes
     // through it. A reply with no formula has nothing for it to do, and the

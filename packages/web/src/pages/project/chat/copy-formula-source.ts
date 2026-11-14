@@ -142,11 +142,18 @@ function replaceFormulaeWithSource(copied: Element): void {
   }
 }
 
-document.addEventListener('copy', (event: ClipboardEvent): void => {
+/**
+ * Writes a selection that reaches into a reply, its formulae turned back into
+ * source, onto a copy's clipboard or a drag's data.
+ * @param data - Where the copy or the drag puts what it carries.
+ * @returns Whether anything was written; nothing is for a selection outside a
+ *   reply or holding no formula, which the browser serialises itself.
+ */
+function writeWithSource(data: DataTransfer | null): boolean {
   const selection = window.getSelection();
-  if (!selection || selection.isCollapsed || !event.clipboardData) return;
+  if (!selection || selection.isCollapsed || !data) return false;
   const ranges = Array.from({ length: selection.rangeCount }, (_, index) => selection.getRangeAt(index));
-  if (!ranges.some((range) => inReply(range.startContainer) || inReply(range.endContainer))) return;
+  if (!ranges.some((range) => inReply(range.startContainer) || inReply(range.endContainer))) return false;
 
   // Serialising this by hand is what the browser is for: `textContent` knows
   // nothing of block boundaries, table cells or list markers, and markup
@@ -200,7 +207,7 @@ document.addEventListener('copy', (event: ClipboardEvent): void => {
     }
   }
 
-  if (!host.querySelector(`.${FORMULA_CLASS}`)) return;
+  if (!host.querySelector(`.${FORMULA_CLASS}`)) return false;
 
   // Neither of these belongs in something a person pastes, and a stylesheet
   // pasted into a rich-text target would apply itself there.
@@ -208,9 +215,17 @@ document.addEventListener('copy', (event: ClipboardEvent): void => {
   replaceFormulaeWithSource(host);
 
   document.body.append(host);
-  event.clipboardData.setData('text/html', host.innerHTML);
-  event.clipboardData.setData('text/plain', host.innerText);
+  data.setData('text/html', host.innerHTML);
+  data.setData('text/plain', host.innerText);
   host.remove();
+  return true;
+}
 
-  event.preventDefault();
+// The browser's own copy is stopped once this one is written. A drag carries
+// the same data and goes on: a drop reads it as a paste reads the clipboard.
+document.addEventListener('copy', (event: ClipboardEvent): void => {
+  if (writeWithSource(event.clipboardData)) event.preventDefault();
+});
+document.addEventListener('dragstart', (event: DragEvent): void => {
+  writeWithSource(event.dataTransfer);
 });
