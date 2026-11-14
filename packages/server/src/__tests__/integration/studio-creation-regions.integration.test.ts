@@ -331,6 +331,22 @@ describe("creating a Studio in another region", () => {
     expect(region.createCalls).toBe(calls);
   });
 
+  it("keeps the cause of a creation the region refused, and the sweep names each row it could not settle", async () => {
+    const userId = await account("team");
+    const studioId = crypto.randomUUID();
+    const region = healthy();
+    const input = { studioId, userId, type: "team" as const, slug: freshSlug(), name: "Far", region: "sg" };
+    region.createTimesOut = true;
+    const refused = await studioCreationService.createStudio(input, { regionClient: standInRegion(region) }).catch((err: unknown) => err);
+    expect((refused as Error).cause).toEqual(new Error("timeout"));
+
+    const swept = await studioCreationService.sweepPendingStudios({
+      olderThanMs: 0,
+      regionClient: standInRegion({ ...healthy(), reachable: false }),
+    });
+    expect(swept.unreachable).toContainEqual({ studioId, region: "sg", err: new Error("connect ECONNREFUSED") });
+  });
+
   it("answers studio_creation_abandoned to a retry after the sweep gave the row up", async () => {
     const userId = await account("team");
     const studioId = crypto.randomUUID();

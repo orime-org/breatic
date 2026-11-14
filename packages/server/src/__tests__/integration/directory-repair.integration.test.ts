@@ -16,10 +16,25 @@
  */
 
 import crypto from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { ADMIN, call, useInternalApp } from "./internal-api-harness.js";
+import { GLOBAL_REGION_SETTINGS } from "./global-region-env.js";
+import { StandInRefusal, startRegionStandIn } from "./region-harness.js";
 
-const suite = useInternalApp("directory-repair");
+const sg = await startRegionStandIn();
+const suite = useInternalApp("directory-repair", {
+  REGION_API_URLS: JSON.stringify({ sg: sg.url }),
+  IDENTITY_SIGNING_KEY: GLOBAL_REGION_SETTINGS.IDENTITY_SIGNING_KEY,
+  IDENTITY_SIGNING_KEY_ID: GLOBAL_REGION_SETTINGS.IDENTITY_SIGNING_KEY_ID,
+});
+
+afterEach(() => {
+  sg.reset();
+});
+
+afterAll(async () => {
+  await sg.close();
+});
 
 /**
  * A team Studio whose directory row has gone stale.
@@ -73,6 +88,27 @@ describe("repairing a Studio's directory row", () => {
 
     expect(answer.status).toBe(404);
     expect(answer.json).toMatchObject({ code: "not_found" });
+  });
+
+  it("asks the Studio's own region to emit its snapshot", async () => {
+    const { studioId } = await staleStudio("sg");
+
+    const answer = await repair(studioId);
+
+    expect(answer.status).toBe(200);
+    expect(sg.received).toEqual([{ side: "region", fn: "emitStudioSnapshot", args: [studioId], signed: true }]);
+  });
+
+  it("answers a region's refusal as a failure of ours, never as region_unavailable", async () => {
+    const { studioId } = await staleStudio("sg");
+    sg.answers.emitStudioSnapshot = () => {
+      throw new StandInRefusal(400, "invalid_body");
+    };
+
+    const answer = await repair(studioId);
+
+    expect(answer.status).toBe(500);
+    expect(answer.json).not.toMatchObject({ code: "region_unavailable" });
   });
 
   it("answers 503 when the Studio's region cannot be reached", async () => {

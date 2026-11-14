@@ -22,7 +22,7 @@
 import { profilesService, studioRepo } from "@breatic/domain";
 import * as studioInvitationsRepo from "@server/modules/studio/studioInvitations.repo.js";
 import { withPendingDisplay } from "@server/modules/invitation/pending-display.js";
-import { isUniqueViolation, isGlobalRegion } from "@breatic/core";
+import { isUniqueViolation, isGlobalRegion, logger } from "@breatic/core";
 import { randomUUID } from "node:crypto";
 import { db, studioDirectoryRepo } from "@breatic/core";
 import { ConflictError, NotFoundError, ValidationError } from "@breatic/core";
@@ -259,7 +259,10 @@ export async function updateStudio(
     });
   } catch (err) {
     if (newSlug !== undefined && remote) {
-      await globalApi().releaseSlug(newSlug, studio.id).catch(() => undefined);
+      // The sweep lets the reservation go after slug_reservation_stale_ms anyway.
+      await globalApi().releaseSlug(newSlug, studio.id).catch((releaseErr: unknown) => {
+        logger.error({ err: releaseErr, ctx: { studioId: studio.id, slug: newSlug } }, "slug_release_failed");
+      });
     }
     if (isUniqueViolation(err)) {
       throw new ConflictError(t("server.studio.slug_taken"));

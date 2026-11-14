@@ -17,7 +17,7 @@ const testEnv = vi.hoisted(() => ({
   REGION_API_URLS: { sg: "http://10.0.0.9:3002/" },
 }));
 vi.mock("@core/config/env.js", () => ({ env: testEnv }));
-vi.mock("@core/config/regions.js", () => ({ getRegionsConfig: () => ({ global_api_timeout_ms: 5000 }) }));
+vi.mock("@core/config/regions.js", () => ({ getRegionsConfig: () => ({ global_api_timeout_ms: 300 }) }));
 
 import {
   GlobalApiError,
@@ -154,6 +154,20 @@ describe("createGlobalApi", () => {
     const failure = await api.readUserName("u1").catch((err: unknown) => err);
     expect(failure).toBeInstanceOf(GlobalApiError);
     expect((failure as GlobalApiError).status).toBe(UNREACHABLE_STATUS);
+  });
+});
+
+describe("reading a remote answer", () => {
+  it("gives up on a body that does not arrive within the wait, as no answer", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(new ReadableStream({ start: () => undefined }), { status: 200 })));
+    testEnv.REGION = "sg";
+    const api = createGlobalApi(localFunctions());
+
+    const started = Date.now();
+    const failure = await api.readUserName("u1").catch((err: unknown) => err);
+    expect(failure).toBeInstanceOf(GlobalApiError);
+    expect((failure as GlobalApiError).status).toBe(UNREACHABLE_STATUS);
+    expect(Date.now() - started).toBeLessThan(2_000);
   });
 });
 

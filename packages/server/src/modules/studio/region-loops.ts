@@ -55,7 +55,9 @@ export function startRegionLoops(): RegionLoops {
           regionClient,
           trialCredits: env.PAYMENT_ENABLED ? getTrialGrantCredits() : 0,
         });
-        if (swept.unreachable > 0) logger.warn({ unreachable: swept.unreachable }, "studio_creation_sweep_region_unreachable");
+        for (const { studioId, region, err } of swept.unreachable) {
+          logger.warn({ err, studioId, region }, "studio_creation_sweep_region_unreachable");
+        }
         return swept.finished + swept.abandoned;
       },
     });

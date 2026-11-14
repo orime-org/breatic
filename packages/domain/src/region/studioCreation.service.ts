@@ -71,10 +71,11 @@ export const STUDIO_CREATION_REASONS = {
 
 /**
  * The refusal for a creation still waiting on its region.
+ * @param cause - The failure that left it waiting, if there was one.
  * @returns The error.
  */
-function inProgress(): ConflictError {
-  return new ConflictError(t("server.studio.creation_in_progress"), STUDIO_CREATION_REASONS.inProgress);
+function inProgress(cause?: unknown): ConflictError {
+  return new ConflictError(t("server.studio.creation_in_progress"), STUDIO_CREATION_REASONS.inProgress, { cause });
 }
 
 /**
@@ -139,8 +140,8 @@ export async function createStudio(input: CreateStudioInput, options: CreateStud
   const client = options.regionClient(region);
   try {
     await client.probe();
-  } catch {
-    throw new AppError(503, t("server.studio.region_unavailable"), STUDIO_CREATION_REASONS.regionUnavailable);
+  } catch (err) {
+    throw new AppError(503, t("server.studio.region_unavailable"), STUDIO_CREATION_REASONS.regionUnavailable, { cause: err });
   }
 
   const reserved = await slugConflictsAsTaken(() => db.transaction(async (tx) => reserve(input, region, tx)));
@@ -155,8 +156,8 @@ export async function createStudio(input: CreateStudioInput, options: CreateStud
       type: input.type,
       adminUserId: input.userId,
     });
-  } catch {
-    throw inProgress();
+  } catch (err) {
+    throw inProgress(err);
   }
   if (answer === "abandoned") {
     await db.transaction((tx) => studioDirectoryRepo.abandonPending(input.studioId, tx));
@@ -307,21 +308,21 @@ async function finish(studioId: string, trialCredits: number): Promise<Studio> {
  * @param options.olderThanMs - Pending rows older than this are settled.
  * @param options.regionClient - The region client factory.
  * @param options.trialCredits - The trial credits of a personal Studio.
- * @returns How many rows were finished and how many given up.
+ * @returns How many rows were finished and given up, and each one whose region did not answer, with why.
  */
 export async function sweepPendingStudios(options: {
   olderThanMs: number;
   regionClient: RegionClientFactory;
   trialCredits?: number;
-}): Promise<{ finished: number; abandoned: number; unreachable: number }> {
-  const result = { finished: 0, abandoned: 0, unreachable: 0 };
+}): Promise<{ finished: number; abandoned: number; unreachable: Array<{ studioId: string; region: string; err: unknown }> }> {
+  const result = { finished: 0, abandoned: 0, unreachable: [] as Array<{ studioId: string; region: string; err: unknown }> };
   for (const row of await studioDirectoryRepo.listStalePending(options.olderThanMs)) {
     if (row.region === null) continue;
     let answer: "exists" | "abandoned";
     try {
       answer = await options.regionClient(row.region).abandonStudio(row.studioId);
-    } catch {
-      result.unreachable++;
+    } catch (err) {
+      result.unreachable.push({ studioId: row.studioId, region: row.region, err });
       continue;
     }
     if (answer === "exists") {

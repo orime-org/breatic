@@ -277,6 +277,24 @@ describe("a request refused until a wait is over", () => {
 // inner#1955: outside the global region a request may need the global
 // region, and when it does not answer the user is told the Studio cannot be
 // reached now, not that something broke.
+describe("a refusal built over a failure underneath", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("logs the failure it carries and still answers the refusal", async () => {
+    const underneath = new Error("signature refused");
+    const { status } = await answerFor(new AppError(503, "unavailable", "region_unavailable", { cause: underneath }));
+
+    expect(status).toBe(503);
+    expect(logged.error).toHaveBeenCalledWith(expect.objectContaining({ cause: underneath }), "app_error_with_cause");
+  });
+
+  it("logs nothing for a refusal with no failure underneath", async () => {
+    await answerFor(new AppError(409, "taken", "slug_taken"));
+
+    expect(logged.error).not.toHaveBeenCalled();
+  });
+});
+
 describe("a global region that did not answer", () => {
   beforeEach(() => vi.clearAllMocks());
 

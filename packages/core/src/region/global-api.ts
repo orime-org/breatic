@@ -17,7 +17,7 @@
  */
 
 import { randomBytes } from "node:crypto";
-import { httpRequest } from "@breatic/shared";
+import { httpRequest, readWithin } from "@breatic/shared";
 import { env } from "@core/config/env.js";
 import { isGlobalRegion } from "@core/region/placement.js";
 import { getRegionsConfig } from "@core/config/regions.js";
@@ -121,6 +121,7 @@ async function postSigned(
     idempotencyKey: null,
     body,
   });
+  const startedAt = Date.now();
   let response: Response;
   try {
     response = await httpRequest(
@@ -141,15 +142,18 @@ async function postSigned(
   } catch (err) {
     throw new GlobalApiError(UNREACHABLE_STATUS, "unreachable", `${path} did not answer: ${(err as Error).message}`);
   }
+  // The transport's deadline ends at the headers; the body is read within
+  // what is left of the same wait.
+  const budgetMs = Math.max(1, timeoutMs - (Date.now() - startedAt));
   if (!response.ok) {
-    const refusal = (await response.json().catch(() => ({}))) as { code?: unknown };
+    const refusal = (await readWithin(response, budgetMs).then((text) => JSON.parse(text) as unknown).catch(() => ({}))) as { code?: unknown };
     const code = typeof refusal.code === "string" ? refusal.code : `http_${response.status}`;
     throw new GlobalApiError(response.status, code, `${path} refused with ${code}`);
   }
   try {
-    return ((await response.json()) as { result?: unknown }).result ?? null;
+    return (JSON.parse(await readWithin(response, budgetMs)) as { result?: unknown }).result ?? null;
   } catch (err) {
-    // A body cut off by the deadline is no answer, never a null result.
+    // A body that is cut off, late or not JSON is no answer, never a null result.
     throw new GlobalApiError(UNREACHABLE_STATUS, "unreachable", `${path} answer could not be read: ${(err as Error).message}`);
   }
 }

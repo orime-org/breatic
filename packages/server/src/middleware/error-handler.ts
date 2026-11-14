@@ -51,6 +51,11 @@ export const errorHandler: ErrorHandler = (err, c) => {
     // security-relevant rejections — surface them as structured warns
     // per the "security monitoring" mandate. Other AppErrors (404 /
     // 409 / validation) are normal business outcomes, not logged here.
+    // A refusal built over a failure underneath (a region that did not
+    // answer a Studio creation) keeps that failure for the log.
+    if (err.cause !== undefined) {
+      logger.error({ err, cause: err.cause, path: c.req.path }, "app_error_with_cause");
+    }
     if (err.statusCode === 401 || err.statusCode === 403) {
       logger.warn(
         { status: err.statusCode, name: err.name, path: c.req.path },

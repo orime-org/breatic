@@ -439,7 +439,9 @@ export function startWorker(): void {
    */
   const recurringRegionJob = (queue: string, everyMs: number, run: () => Promise<unknown>): void => {
     if (!WORKER_QUEUES.includes(queue)) return;
-    const recurring = createWorker<Record<string, never>>(queue, () => run());
+    // One at a time: the scheduler queues the next run as this one starts,
+    // so a slow run would otherwise overlap the next and repeat its work.
+    const recurring = createWorker<Record<string, never>>(queue, () => run(), { concurrency: 1 });
     recurring.on("failed", (job, err) => {
       logger.error({ err, jobId: job?.id, queue }, "region_job_failed");
     });
