@@ -96,7 +96,7 @@ function speakerNames(dialogue: NonNullable<MediaBinding["dialogue"]>, params: R
   if (!Array.isArray(speakers)) return [];
   return speakers.flatMap((item: unknown) => {
     const name = typeof item === "object" && item !== null ? (item as Record<string, unknown>)[dialogue.name] : undefined;
-    return typeof name === "string" && name.trim() !== "" ? [name.trim()] : [];
+    return typeof name === "string" && name !== "" ? [name] : [];
   });
 }
 

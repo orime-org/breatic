@@ -166,11 +166,6 @@ describe("buildBody — a dialogue script sent as turns (#1521)", () => {
     ]);
   });
 
-  it("matches the speakers' names as trimmed", () => {
-    const speakers = [{ speaker: " Ava ", voice: "Kore" }, { speaker: "Leo", voice: "Puck" }];
-    expect(buildBody(binding, { prompt: "Ava: Hi.", params: { speakers } }).turns).toEqual([{ speaker_id: "Ava", text: "Hi." }]);
-  });
-
   it("sends the prompt as it is when the run names no speakers", () => {
     expect(buildBody(binding, { prompt: "Hello.", params: { voice_id: "Kore" } })).toEqual({ text: "Hello.", voice: "Kore" });
     expect(buildBody(binding, { prompt: "Hello.", params: { speakers: [], voice_id: "Kore" } })).toEqual({ text: "Hello.", voice: "Kore" });

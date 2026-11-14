@@ -69,9 +69,15 @@ describe("Gemini 3.8 Flash TTS", () => {
     expect(await refused("wavespeed", { prompt: "Al ice: Hi.", params: { speakers: [{ speaker: "Al ice", voice: "Kore" }, { speaker: "李·明", voice: "Puck" }] } })).toBeUndefined();
   });
 
-  it("keeps a script over 8000 characters off WaveSpeed, whose text field caps there", async () => {
-    expect(await refused("wavespeed", { prompt: "x".repeat(8001) })).toEqual({ reason: expect.stringContaining("8000") });
+  it("keeps a single-voice script over 8000 characters off WaveSpeed, whose text field caps there", async () => {
+    expect(await refused("wavespeed", { prompt: "x".repeat(8001) })).toEqual({ reason: "WaveSpeed text maxLength 8000" });
     expect(await refused("wavespeed", { prompt: "x".repeat(8000) })).toBeUndefined();
+  });
+
+  it("takes a dialogue longer than 8000 characters in all, and keeps one with a line over 8000 off WaveSpeed", async () => {
+    const long = `Ava: ${"x".repeat(5000)}\nLeo: ${"y".repeat(5000)}`;
+    expect(await refused("wavespeed", { prompt: long, params: { speakers: PAIR } })).toBeUndefined();
+    expect(await refused("wavespeed", { prompt: `Ava: ${"x".repeat(7996)}`, params: { speakers: PAIR } })).toEqual({ reason: "WaveSpeed turns[].text maxLength 8000" });
   });
 
   it("keeps a dialogue of more than 100 lines off WaveSpeed, whose turns cap there, and counts only lines with words", async () => {

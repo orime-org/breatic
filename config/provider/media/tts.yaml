@@ -68,8 +68,10 @@ models:
           speaker_field: speaker_id
           text_field: text
         rejects:
-          - when: $length(text) > 8000
+          - when: '$not($exists(speakers[0])) and $length(text) > 8000'
             reason: WaveSpeed text maxLength 8000
+          - when: '$exists(speakers[0]) and $max($split(text, "\n").$length($)) > 8000'
+            reason: WaveSpeed turns[].text maxLength 8000
           - when: '$exists(speakers[0]) and $count($split(text, "\n")[$trim($) != ""]) > 100'
             reason: WaveSpeed turns maxItems 100
         pricing:
