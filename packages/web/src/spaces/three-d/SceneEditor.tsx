@@ -96,6 +96,8 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   const [modelRetryRevision, setModelRetryRevision] = React.useState(0);
   const [rendererRevision, setRendererRevision] = React.useState(0);
   const [rendererFailed, setRendererFailed] = React.useState(false);
+  // The main area and every monitor card show the same failure.
+  const viewFailed = controls.isError || rendererFailed;
   const [modelStates, setModelStates] = React.useState<ReadonlyMap<string, SceneModelState>>(new Map());
   const [modelErrors, setModelErrors] = React.useState<ReadonlyMap<string, Error>>(new Map());
   const [fieldDrafts, setFieldDrafts] = React.useState<ReadonlyMap<string, SceneFieldDraft>>(new Map());
@@ -591,15 +593,15 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
    */
   const onDelete = React.useCallback((): void => { session.execute({ type: 'delete', ids: session.getSnapshot().selectedIds }); }, [session]);
   /**
-   * Save what the user sees as a new camera (design 3.5): a copy of the camera being looked through (its still
-   * included), the pose of a still whose camera is gone, the open free frame, or the largest 16:9 frame of the plain view.
+   * Save what the user sees as a new camera (design 3.5): the pose of the still on screen, a copy of the camera being
+   * looked through live, the open free frame, or the largest 16:9 frame of the plain view.
    */
   const saveView = React.useCallback(async (): Promise<void> => {
     const current = session.getSnapshot();
     const number = nextDirectorNumber(current.objects, 'camera');
     const base = { id: crypto.randomUUID(), name: t('spaces.threeD.director.cameraName', { n: number }), model: { kind: 'camera' as const },
       scale: [1, 1, 1] as [number, number, number], locked: false, number };
-    if (lookCamera !== null) {
+    if (viewfinder.frozen === null && lookCamera !== null) {
       pilotControl.current?.flush();
       const record = session.getSnapshot().objects.find((object) => object.id === lookCamera.id);
       if (!record || !isSceneCamera(record)) return;
@@ -705,14 +707,14 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     : panel === 'director' ? <SceneDirectorPanel session={session} snapshot={snapshot} spaceId={spaceId} Field={SceneField} fieldDrafts={fieldDrafts}
       onFieldDraftChange={onFieldDraftChange} lightPlan={lightPlan} maxLights={director?.maxLights} lookingAt={lookCamera?.id ?? null}
       environment={environment} onSaveView={onSaveView} onAddLight={onAddLight} onLook={onLook} onMonitor={onMonitor}
-      onAmbientPreview={onAmbientPreview} onAmbientCommit={onAmbientCommit} rendererFailed={rendererFailed} />
+      onAmbientPreview={onAmbientPreview} onAmbientCommit={onAmbientCommit} viewFailed={viewFailed} />
       : panel === 'objects' ? <SceneObjectList session={session} snapshot={snapshot} modelStates={modelStates} onSelect={showSelectedProperties} />
         : <SceneTaskList projectId={projectId} spaceId={spaceId} userId={userId} canEdit={snapshot.canEdit} canGenerate={myRole !== 'viewer'} uploads={uploads}
           remoteUploads={snapshot.remoteUploads} onPlace={placeTask} focusTaskId={focusTaskId} onFocused={taskFocused}
           onRetryGeneration={retryGeneration} placedAssetIds={placedAssetIds} onLocate={locateAsset} filterHost={filterHost} />,
   [panel, inspectorFallback, session, snapshot, readObjects, namedPeers, spaceId, fieldDrafts, onFieldDraftChange, skeletonStates, jointMode, changeJointMode, modelStates, showSelectedProperties,
     projectId, userId, myRole, uploads, placeTask, focusTaskId, taskFocused, retryGeneration, placedAssetIds, locateAsset, filterHost,
-    lightPlan, director, lookCamera, environment, onSaveView, onAddLight, onLook, onMonitor, onAmbientPreview, onAmbientCommit, rendererFailed]);
+    lightPlan, director, lookCamera, environment, onSaveView, onAddLight, onLook, onMonitor, onAmbientPreview, onAmbientCommit, viewFailed]);
   // An older-format scene is never opened, so no editing chrome is shown around its message.
   if (snapshot.status === 'unsupported' && isOlderSceneFormat(snapshot.version)) {
     return <div ref={stage} className='relative isolate h-full min-h-0 min-w-0 bg-canvas' data-testid='three-d-space'>
@@ -724,7 +726,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
       {snapshot.status === 'unsupported' ? <div className='flex h-full flex-col items-center justify-center gap-3 p-4 text-sm'>
         <p>{t('spaces.threeD.unsupported')}</p><Button onClick={() => window.location.reload()}>{t('spaces.threeD.reload')}</Button></div>
         : snapshot.status === 'loading' ? <div className='grid h-full place-items-center p-4 text-sm'>{connection.status === 'authFailed' ? t('spaces.threeD.refused') : t('spaces.threeD.loading')}</div>
-          : controls.isError || rendererFailed ? <div className='flex h-full flex-col items-center justify-center gap-3 p-4 text-sm'><p>{t('spaces.threeD.loadFailed')}</p><Button onClick={() => {
+          : viewFailed ? <div className='flex h-full flex-col items-center justify-center gap-3 p-4 text-sm'><p>{t('spaces.threeD.loadFailed')}</p><Button onClick={() => {
             setRendererFailed(false); setRendererRevision((value) => value + 1); void controls.refetch();
           }}>{t('spaces.threeD.retry')}</Button></div>
             : controls.isPending ? <div className='grid h-full place-items-center text-sm'>{t('spaces.threeD.loading')}</div>

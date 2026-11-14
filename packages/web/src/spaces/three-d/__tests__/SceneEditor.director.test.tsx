@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { t, SCENE_FORMAT_VERSION, type SceneObject } from '@breatic/shared';
 import { TooltipProvider } from '@web/components/ui/tooltip';
+import { getSceneControls } from '@web/data/api/scene';
 import { applySceneCommand, readSceneDocument } from '@web/data/yjs/scene-document';
 import { SceneSession } from '@web/data/yjs/scene-session';
 import type { SceneViewportProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
@@ -86,7 +87,7 @@ function Bound({ session, myRole }: { session: SceneSession; myRole: 'editor' | 
  * @param myRole - The member's role.
  * @returns The session.
  */
-async function setup(records: readonly SceneObject[] = [], myRole: 'editor' | 'viewer' = 'editor'): Promise<{ session: SceneSession }> {
+async function setup(records: readonly SceneObject[] = [], myRole: 'editor' | 'viewer' = 'editor', viewport = true): Promise<{ session: SceneSession }> {
   const doc = new Y.Doc(); doc.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
   const objects: SceneObject[] = [{ id: BOX, name: 'Box', model: { kind: 'builtin', id: 'box' }, position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false }, ...records];
   (applySceneCommand as unknown as (...args: unknown[]) => unknown)(doc, { type: 'create', objects }, Symbol('fixture'), true, NAME, { maxLights: 64 });
@@ -94,7 +95,7 @@ async function setup(records: readonly SceneObject[] = [], myRole: 'editor' | 'v
   session.setEnvironment({ readOnly: myRole === 'viewer', connected: true, hasEverSynced: true, writeAccess: myRole === 'viewer' ? 'denied' : 'granted', refused: false, awareness: null });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } }); owners.push({ doc, session, client });
   render(<QueryClientProvider client={client}><TooltipProvider><div data-space-outlet='scene'><Bound session={session} myRole={myRole} /></div></TooltipProvider></QueryClientProvider>);
-  await screen.findByTestId('scene-native-boundary');
+  if (viewport) await screen.findByTestId('scene-native-boundary');
   return { session };
 }
 
@@ -272,15 +273,17 @@ describe('saving and lighting from what is on screen (round 1 fixes, design 3.5,
     readSceneDocument(session.doc).objects.filter((object) => object.model.kind === ('camera' as never)) as unknown as Array<Record<string, unknown>>;
   const viewfinderButton = (key: string): HTMLElement => within(screen.getByTestId('scene-viewfinder-menu')).getByRole('button', { name: t(`spaces.threeD.viewfinder.${key}`) });
 
-  it('copies the camera a still was taken through when + is pressed', async () => {
+  it('saves the still on screen, not the camera record moved after it, when + is pressed', async () => {
     const { session } = await setup([FAR]);
     const opened = await openDirector();
     fireEvent.click(screen.getByTestId(`scene-director-monitor-${CAM}`));
     fireEvent.click(viewfinderButton('confirm'));
     await waitFor(() => expect(h.viewport?.cameraView?.kind).toBe('frozen'));
+    act(() => { (applySceneCommand as unknown as (...args: unknown[]) => unknown)(session.doc, { type: 'patch', patches: [{ id: CAM, position: [9, 9, 9], focalLength: 35 }] }, Symbol('peer'), true, NAME, { maxLights: 16 }); });
     fireEvent.click(within(opened).getByRole('button', { name: label('saveView') }));
     await waitFor(() => expect(cameras(session)).toHaveLength(2));
-    expect(cameras(session)[1]).toMatchObject({ number: 2, position: [3, 2, 7], focalLength: 85, frame: '9:16' });
+    expect(cameras(session)[1]).toMatchObject({ number: 2, position: [3, 2, 7], frame: '9:16' });
+    expect(cameras(session)[1]?.focalLength).toBeCloseTo(36 / (2 * Math.tan((10 * Math.PI) / 180)), 6);
   });
 
   it('saves the pose of the still when its camera was deleted meanwhile', async () => {
@@ -344,6 +347,16 @@ describe('monitor cards and the object list (round 1 fixes, design 3.7, 4.2)', (
     await setup([camera()]);
     await openDirector();
     act(() => { h.viewport?.onError?.(new Error('lost context')); });
+    const monitor = await screen.findByTestId(`scene-director-monitor-${CAM}`);
+    expect(monitor).toHaveTextContent(t('spaces.threeD.loadFailed'));
+    expect(monitor.querySelector('.skeleton-shimmer')).toBeNull();
+  });
+
+  it('shows the failure text on every card when the scene controls fail to load', async () => {
+    vi.mocked(getSceneControls).mockRejectedValueOnce(new Error('offline'));
+    await setup([camera()], 'editor', false);
+    await screen.findByText(t('spaces.threeD.retry'));
+    await openDirector();
     const monitor = await screen.findByTestId(`scene-director-monitor-${CAM}`);
     expect(monitor).toHaveTextContent(t('spaces.threeD.loadFailed'));
     expect(monitor.querySelector('.skeleton-shimmer')).toBeNull();

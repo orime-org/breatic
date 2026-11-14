@@ -51,8 +51,8 @@ export interface SceneDirectorPanelProps extends SceneFieldDraftOwner {
   onMonitor: (id: string, canvas: HTMLCanvasElement | null) => void;
   onAmbientPreview: (values: Partial<SceneEnvironmentValues>) => void;
   onAmbientCommit: () => void;
-  /** The renderer failed: every card shows the failure the main area shows. */
-  rendererFailed: boolean;
+  /** The view failed to load: every card shows the failure the main area shows. */
+  viewFailed: boolean;
 }
 
 /**
@@ -64,7 +64,7 @@ export interface SceneDirectorPanelProps extends SceneFieldDraftOwner {
  * @param root0.session - The command owner.
  * @param root0.onLook - Looks through it.
  * @param root0.onMonitor - Registers its picture's canvas.
- * @param root0.failed - Whether the renderer failed.
+ * @param root0.failed - Whether the view failed to load.
  * @param root0.children - Its fields when selected.
  * @returns The card.
  */
@@ -118,7 +118,7 @@ const MonitorCard = React.memo(function MonitorCard({ camera, active, canEdit, s
  */
 export const SceneDirectorPanel = React.memo(function SceneDirectorPanel(props: SceneDirectorPanelProps): React.JSX.Element {
   const { session, snapshot, spaceId, Field, fieldDrafts, onFieldDraftChange, lightPlan, maxLights, lookingAt, environment,
-    onSaveView, onAddLight, onLook, onMonitor, onAmbientPreview, onAmbientCommit, rendererFailed } = props;
+    onSaveView, onAddLight, onLook, onMonitor, onAmbientPreview, onAmbientCommit, viewFailed } = props;
   const t = useTranslation();
   const ids = React.useId();
   const { canEdit } = snapshot;
@@ -142,7 +142,7 @@ export const SceneDirectorPanel = React.memo(function SceneDirectorPanel(props: 
       </div>
       {cameras.length === 0
         ? <p className='rounded-md border border-dashed border-border p-4 text-center text-xs text-muted-foreground'>{t('spaces.threeD.director.camerasEmpty')}</p>
-        : <div className='space-y-2'>{cameras.map((camera) => <MonitorCard key={camera.id} camera={camera} active={lookingAt === camera.id} canEdit={canEdit} failed={rendererFailed}
+        : <div className='space-y-2'>{cameras.map((camera) => <MonitorCard key={camera.id} camera={camera} active={lookingAt === camera.id} canEdit={canEdit} failed={viewFailed}
           session={session} onLook={onLook} onMonitor={onMonitor}>{fields(camera)}</MonitorCard>)}</div>}
     </section>
     <section className='space-y-2'>
