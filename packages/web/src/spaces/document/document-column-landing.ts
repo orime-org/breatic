@@ -34,16 +34,19 @@ const SIDE_ZONE = 24;
 const TABLES = new Set([DOC_TABLE, 'table']);
 
 /**
- * The side of the target the pointer is on: within the zone of the visible
- * left edge or further left, within the zone of the visible right edge or
- * further right; the zone is at most a quarter of the visible width.
+ * The side of the target the pointer is on: from the left edge of the body,
+ * cell or column holding it to within the zone of its visible left edge, or
+ * within the zone of its visible right edge and anything further right; the
+ * zone is at most a quarter of the visible width. Left of that holder sits
+ * the block handle, and a drag straight down from it reorders.
  * @param x - The pointer's x.
  * @param box - The target's visible box.
+ * @param holderLeft - The left edge of the body, cell or column holding it.
  * @returns The side, or null.
  */
-export function sideOfPointer(x: number, box: VisibleBox): ColumnSide | null {
+export function sideOfPointer(x: number, box: VisibleBox, holderLeft: number): ColumnSide | null {
   const zone = Math.min(SIDE_ZONE, (box.right - box.left) / 4);
-  if (x <= box.left + zone) return 'left';
+  if (x <= box.left + zone) return x >= holderLeft ? 'left' : null;
   if (x >= box.right - zone) return 'right';
   return null;
 }
@@ -179,6 +182,8 @@ interface RowAt {
   readonly id: string;
   /** Its visible horizontal extent. */
   readonly box: VisibleBox;
+  /** The left edge of the body, cell or column holding it. */
+  readonly holderLeft: number;
 }
 
 /**
@@ -206,7 +211,15 @@ function rowAt(view: EditorView, x: number, y: number): RowAt | null {
     const own = dom.querySelector(':scope > .bn-block > .bn-block-content');
     const media = own?.querySelector('[data-media-box]');
     const rect = (media ?? own ?? dom).getBoundingClientRect();
-    return { pos, id: String(node.attrs['id']), box: { left: rect.left, right: rect.right } };
+    // The body's own group, a cell or a column; the editor surface itself
+    // reaches out over the gutter.
+    const holder = dom.parentElement?.closest('.doc-column, td, th, .bn-block-group') ?? dom;
+    return {
+      pos,
+      id: String(node.attrs['id']),
+      box: { left: rect.left, right: rect.right },
+      holderLeft: holder.getBoundingClientRect().left,
+    };
   }
   return null;
 }
@@ -226,7 +239,11 @@ export function columnDropHook(next: DropPositionHook, flyingRowId: () => string
     if (draggedId === undefined) return next(context);
     const { view, event } = context;
     const row = rowAt(view, event.clientX, event.clientY);
-    const side = row === null ? null : sideOfPointer(event.clientX, row.box);
+    // A drag beside the body reaches here re-sent and held to the body's box
+    // (BlockNote `SideMenu/blockDropHandling.ts`); held to its left edge, the
+    // pointer is out in the gutter.
+    const fromGutter = (event as { synthetic?: boolean }).synthetic === true && event.clientX <= (row?.holderLeft ?? 0);
+    const side = row === null || fromGutter ? null : sideOfPointer(event.clientX, row.box, row.holderLeft);
     if (row === null || side === null) return next(context);
     const room = { bodyWidth: view.dom.clientWidth };
     if (!sideDropAllowed(view.state.doc, draggedId, row.id, side, room)) return next(context);

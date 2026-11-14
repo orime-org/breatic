@@ -80,26 +80,36 @@ function idOf(editor: Editor, words: string): string {
 describe('the side of a target the pointer is on (design §5.2)', () => {
   const box = { left: 100, right: 580 };
 
-  it('is the left within 24px of the visible left edge and anywhere further left', () => {
-    expect(sideOfPointer(100 + 23, box)).toBe('left');
-    expect(sideOfPointer(40, box)).toBe('left');
+  it('is the left within 24px of the visible left edge, back to the edge of the container', () => {
+    expect(sideOfPointer(100 + 23, box, 100)).toBe('left');
+    expect(sideOfPointer(100, box, 100)).toBe('left');
+  });
+
+  it('is the left across the room between a narrow target and its container', () => {
+    expect(sideOfPointer(40, box, 20)).toBe('left');
+    expect(sideOfPointer(20, box, 20)).toBe('left');
+  });
+
+  it('is no side left of the container, where the handle sits', () => {
+    expect(sideOfPointer(99, box, 100)).toBeNull();
+    expect(sideOfPointer(40, box, 100)).toBeNull();
   });
 
   it('is the right within 24px of the visible right edge and anywhere further right', () => {
-    expect(sideOfPointer(580 - 23, box)).toBe('right');
-    expect(sideOfPointer(580 + 200, box)).toBe('right');
+    expect(sideOfPointer(580 - 23, box, 100)).toBe('right');
+    expect(sideOfPointer(580 + 200, box, 100)).toBe('right');
   });
 
   it('is no side in between', () => {
-    expect(sideOfPointer(100 + 25, box)).toBeNull();
-    expect(sideOfPointer(340, box)).toBeNull();
+    expect(sideOfPointer(100 + 25, box, 100)).toBeNull();
+    expect(sideOfPointer(340, box, 100)).toBeNull();
   });
 
   it('narrows the zone to a quarter of a narrow target', () => {
     const narrow = { left: 0, right: 40 };
-    expect(sideOfPointer(9, narrow)).toBe('left');
-    expect(sideOfPointer(11, narrow)).toBeNull();
-    expect(sideOfPointer(31, narrow)).toBe('right');
+    expect(sideOfPointer(9, narrow, 0)).toBe('left');
+    expect(sideOfPointer(11, narrow, 0)).toBeNull();
+    expect(sideOfPointer(31, narrow, 0)).toBe('right');
   });
 });
 
