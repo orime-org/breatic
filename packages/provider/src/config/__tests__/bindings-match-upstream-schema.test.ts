@@ -266,7 +266,8 @@ const SAME_EFFECT: Readonly<Record<string, string>> = {
 const config = shipped();
 const catalogModels = new Map(catalog().models.map((m) => [m.name, m]));
 const models = new Map([...catalogModels].map(([name, m]) => [name, m.params as Record<string, CatalogParam>]));
-const cases = Object.entries(config.media.models).flatMap(([model, { upstreams }]) => upstreams.map((binding) => ({ model, binding })));
+// A retired model's bindings are checked only for staying bound (gemini-3.8-tts.test.ts): the catalog no longer has its params.
+const cases = Object.entries(config.media.models).filter(([model]) => catalogModels.has(model)).flatMap(([model, { upstreams }]) => upstreams.map((binding) => ({ model, binding })));
 const provider = createProvider({ config, keyOf: () => "k", llmMaxRetries: 0, cleanText: (t) => t });
 /**
  * The longest text the model's vendor takes in one of our params (`prompt` for the prompt), from its limits.

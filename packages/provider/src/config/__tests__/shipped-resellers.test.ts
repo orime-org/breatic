@@ -56,7 +56,7 @@ const RESELLERS: Readonly<Record<string, { fal?: string; sandbase?: string }>> =
   "tripo-h3.1-i23d": { fal: "tripo3d/h3.1/image-to-3d", sandbase: "tripo3d/tripo-h3.1/image-to-3d" },
   "tripo-h3.1-multiview": { fal: "tripo3d/h3.1/multiview-to-3d", sandbase: "tripo3d/tripo-h3.1/multiview-to-3d" },
   "realtime-tts-2": {},
-  "gemini-3.1-flash-text-to-speech": { fal: "fal-ai/gemini-3.1-flash-tts", sandbase: "google/gemini-3.1-flash-tts" },
+  "gemini-3.8-flash-text-to-speech": { fal: "google/gemini-3.8-flash-tts", sandbase: "google/gemini-3.8-flash-tts" },
   "minimax-speech-2.8-hd": { fal: "fal-ai/minimax/speech-2.8-hd", sandbase: "minimax/speech/2.8/hd" },
   "elevenlabs-v3": { fal: "fal-ai/elevenlabs/tts/eleven-v3", sandbase: "elevenlabs/v3" },
   "qwen3-tts-voice-design": {},
@@ -101,8 +101,9 @@ const RESELLERS: Readonly<Record<string, { fal?: string; sandbase?: string }>> =
 };
 
 const config = shipped();
-const models = config.media.models;
 const catalogModels = new Map(catalog().models.map((m) => [m.name, m]));
+// A retired model's bindings are checked only for staying bound (gemini-3.8-tts.test.ts).
+const models = Object.fromEntries(Object.entries(config.media.models).filter(([model]) => catalogModels.has(model)));
 
 /** What a condition names besides params: JSONata's operators and literals, `get_duration` and its keyword args. */
 const CONDITION_WORDS = new Set(["and", "or", "not", "in", "true", "false", "null", "get_duration", "min", "max", "total"]);
@@ -476,10 +477,8 @@ describe("the limits a reseller states beyond its schema", () => {
     ["lyria-3-pro-music", "fal", { prompt: "x".repeat(5001) }, { prompt: "x".repeat(5000) }, "maxLength 5000"],
     ["sfx-1.6-text-to-audio", "wavespeed", { prompt: "x".repeat(3) }, { prompt: "x".repeat(4) }, "minLength 4"],
     ["sfx-1.6-text-to-audio", "fal", { prompt: "x".repeat(3) }, { prompt: "x".repeat(4) }, "minLength 4"],
-    ["gemini-3.1-flash-text-to-speech", "fal", { prompt: "x".repeat(50001) }, { prompt: "x".repeat(50000) }, "maxLength 50000"],
-    ["gemini-3.1-flash-text-to-speech", "fal", { prompt: "Host: hi.", params: { speakers: [{ speaker: "Al ice", voice: "Charon" }] } }, { prompt: "Host: hi.", params: { speakers: [{ speaker: "Host_1", voice: "Charon" }] } }, "speaker"],
-    ["gemini-3.1-flash-text-to-speech", "sandbase", { prompt: "x".repeat(50001) }, { prompt: "x".repeat(50000) }, "maxLength 50000"],
-    ["gemini-3.1-flash-text-to-speech", "sandbase", { prompt: "Host: hi.", params: { speakers: [{ speaker: "Al ice", voice: "Charon" }] } }, { prompt: "Host: hi.", params: { speakers: [{ speaker: "Host_1", voice: "Charon" }] } }, "speaker"],
+    ["gemini-3.8-flash-text-to-speech", "wavespeed", { prompt: "x".repeat(8001) }, { prompt: "x".repeat(8000) }, "maxLength 8000"],
+    ["gemini-3.8-flash-text-to-speech", "wavespeed", { prompt: Array.from({ length: 101 }, (_, i) => `${i % 2 === 0 ? "Ava" : "Leo"}: line ${i}.`).join("\n"), params: { speakers: [{ speaker: "Ava", voice: "Kore" }, { speaker: "Leo", voice: "Puck" }] } }, { prompt: Array.from({ length: 100 }, (_, i) => `${i % 2 === 0 ? "Ava" : "Leo"}: line ${i}.`).join("\n"), params: { speakers: [{ speaker: "Ava", voice: "Kore" }, { speaker: "Leo", voice: "Puck" }] } }, "maxItems 100"],
     ["minimax-speech-2.8-hd", "sandbase", { prompt: "x".repeat(5001) }, { prompt: "x".repeat(5000) }, "maxLength 5000"],
     ["tripo-h3.1-t23d", "wavespeed", { prompt: "a fox", params: { face_limit: 47 } }, { prompt: "a fox", params: { face_limit: 48 } }, "minimum 48"],
     ["tripo-h3.1-t23d", "fal", { prompt: "a fox", params: { face_limit: 999 } }, { prompt: "a fox", params: { face_limit: 1000 } }, "minimum 1000"],
@@ -930,31 +929,6 @@ describe("the limits a reseller states beyond its schema", () => {
     const minute = await estimateCost(rules, provider.availability("veed-clean-audio"), run({ params: { audio: URL_A }, durations: { audio: [60] } }), { mode: "upstream", upstream: "fal" });
     const estimate = await estimateCost(rules, provider.availability("veed-clean-audio"), input, { mode: "upstream", upstream: "fal" });
     expect(estimate?.usd).toBeCloseTo((minute?.usd ?? Number.NaN) * minutes, 9);
-  });
-
-  describe.each(["fal", "sandbase"])("Gemini speaker ids on %s", (upstream) => {
-    /**
-     * A two-speaker run whose first speaker is named so.
-     * @param first - The first speaker item.
-     * @returns The run.
-     */
-    const speakers = (first: Record<string, unknown>): Partial<EstimateInput> => ({ prompt: "Host: hi. Guest: hello.", params: { speakers: [first, { speaker: "Guest", voice: "Kore" }] } });
-
-    // The upstream checks ^\w+$ with Unicode word characters: SandBase takes 主持人 and refuses 李·明.
-    it.each([["ASCII", "Host_1"], ["CJK", "主持人"], ["kana", "ミク"], ["Hangul", "김민수"], ["Greek", "Ελένη"], ["accented", "José"], ["combining accent", "Jose\u0301"], ["Arabic-Indic digit", "٣"]])(
-      "takes a %s speaker",
-      async (_label, name) => {
-        expect(await refused("gemini-3.1-flash-text-to-speech", upstream, speakers({ speaker: name, voice: "Charon" }))).toBeUndefined();
-      },
-    );
-
-    it.each([["empty", ""], ["space", "Al ice"], ["middle dot", "李·明"], ["full-width comma", "张，三"], ["ideographic space", "张\u3000三"], ["no-break space", "a\u00a0b"], ["hyphen", "A-B"], ["emoji", "😀"], ["number", 5], ["missing", undefined]])(
-      "keeps a %s speaker off, without failing the check",
-      async (_label, name) => {
-        const first = name === undefined ? { voice: "Charon" } : { speaker: name, voice: "Charon" };
-        expect(await refused("gemini-3.1-flash-text-to-speech", upstream, speakers(first))).toEqual({ reason: expect.stringContaining("speaker") });
-      },
-    );
   });
 
   it("prices a Krea run without style images at WaveSpeed's flat price and keeps the tie on WaveSpeed", async () => {

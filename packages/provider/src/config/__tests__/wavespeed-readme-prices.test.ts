@@ -113,6 +113,12 @@ const CASES: Readonly<Record<string, readonly PriceCase[]>> = {
     { input: { text: text(50) }, usd: 0.01 },
     { input: { text: text(1000) }, usd: 0.2 },
   ],
+  // $0.05 per 1,000 characters, $0.05 at least (wavespeed.ai/models/google/gemini-3.8-flash/text-to-speech).
+  "google/gemini-3.8-flash/text-to-speech": [
+    { input: { text: text(50) }, usd: 0.05 },
+    { input: { text: text(1000) }, usd: 0.05 },
+    { input: { text: text(3000) }, usd: 0.15 },
+  ],
   "google/gemini-omni-1.1-flash/image-to-video": [{ input: { resolution: "720p", duration: 5 }, usd: 0.5 }],
   "google/gemini-omni-1.1-flash/reference-to-video": [{ input: { resolution: "720p", duration: 8 }, usd: 0.8 }],
   "google/gemini-omni-1.1-flash/text-to-video": [{ input: { resolution: "4k", duration: 10 }, usd: 3.0 }],
