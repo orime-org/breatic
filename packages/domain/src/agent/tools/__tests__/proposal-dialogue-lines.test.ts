@@ -38,7 +38,7 @@ afterAll(() => {
 /** What the model sends, as the tool's input. */
 type Sent = Parameters<typeof verdictFor>[0];
 
-const DUO = "gemini-3.1-flash-text-to-speech";
+const DUO = "gemini-3.8-flash-text-to-speech";
 const PAIR = [{ speaker: "Ava", voice: "Kore" }, { speaker: "Leo", voice: "Puck" }];
 const NO_MATERIAL: MaterialTable = new Map();
 
@@ -83,8 +83,9 @@ describe("a dialogue sent as lines", () => {
 
 describe("the price of a dialogue read back", () => {
   it("is priced on the script the model is sent: each line after its speaker's name", async () => {
-    const first = "We should leave before the tide comes in over the causeway.";
-    const second = "Then pack the lamps and the rope, and leave the rest behind.";
+    // Long enough to be priced past the upstream's per-run minimum, so the names show in the price.
+    const first = "We should leave before the tide comes in over the causeway. ".repeat(10).trim();
+    const second = "Then pack the lamps and the rope, and leave the rest behind. ".repeat(10).trim();
     const sent = dialogue([{ speaker: 1, prompt: [{ text: first }] }, { speaker: 2, prompt: [{ text: second }] }]);
     const answer = answerFor(inputSchema.parse(sent));
     if (!answer.placed) throw new Error(answer.reason);

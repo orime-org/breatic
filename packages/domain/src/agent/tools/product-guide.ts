@@ -1061,7 +1061,10 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.generatePanel.voicePlaceholder"))} until a voice is picked; clicking it opens rows such ` +
       `as ${quoted(t("canvas.generatePanel.audioVoice"))}, which opens the voice list beside it with ` +
       `${quoted(t("canvas.generatePanel.voiceSearchPlaceholder"))} and a play button on each voice that has a ` +
-      "sample; " +
+      "sample; on a model whose samples come in several languages a menu marked " +
+      `${quoted(t("canvas.generatePanel.voiceSampleLanguage"))} beside the search box picks the language the samples ` +
+      "play in, starting from the interface language; it changes only what the user hears there, and the speech " +
+      "generated is in the language of the script; " +
       `sliders such as ${quoted(t("canvas.generatePanel.voiceSpeed"))}, ` +
       `${quoted(t("canvas.generatePanel.voiceVolume"))}, ${quoted(t("canvas.generatePanel.voiceSimilarity"))} ` +
       `and ${quoted(t("canvas.generatePanel.voiceStability"))} (marked ` +
