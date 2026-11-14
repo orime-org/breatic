@@ -172,7 +172,9 @@ export function assembleVideoPresentationPlan(input: VideoPresentationPlanInput)
 }
 
 /**
- * Whether the edits are one rate-1 span from the media start over the whole media, which presents the media unedited.
+ * Whether the edits are one rate-1 span from the media start over the whole media from movie time 0, which presents the media
+ * unedited and which a stream copy keeps: an edit that starts later (after an empty edit) moves the media by that much, which
+ * the origin alone does not carry.
  * @param spans - The video edits.
  * @param mediaStart - Where the media starts in source time.
  * @param mediaDuration - The video track's media duration.
@@ -181,10 +183,11 @@ export function assembleVideoPresentationPlan(input: VideoPresentationPlanInput)
  */
 function coversWholeMedia(spans: readonly VideoEditSpan[], mediaStart: PresentationRational, mediaDuration: PresentationRational): boolean {
   if (spans.length !== 1) return false;
-  const [start, end, rate] = [rational(spans[0]!.sourceStart), rational(spans[0]!.sourceEnd), rational(spans[0]!.rate)];
+  const [start, end, rate, at] = [rational(spans[0]!.sourceStart), rational(spans[0]!.sourceEnd), rational(spans[0]!.rate), rational(spans[0]!.presentationStart)];
   const [from, media] = [rational(mediaStart), rational(mediaDuration)];
-  // start = from and end = from + media, compared as exact fractions.
-  return start[0] * from[1] === from[0] * start[1] && end[0] * from[1] * media[1] === (from[0] * media[1] + media[0] * from[1]) * end[1] && rate[0] === rate[1];
+  // start = from, end = from + media and presentationStart = 0, compared as exact fractions.
+  return start[0] * from[1] === from[0] * start[1] && end[0] * from[1] * media[1] === (from[0] * media[1] + media[0] * from[1]) * end[1] && rate[0] === rate[1]
+    && at[0] === 0n;
 }
 
 /**

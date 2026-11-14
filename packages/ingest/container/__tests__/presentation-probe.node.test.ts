@@ -47,7 +47,9 @@ interface Plan {
   output: { toneMap: string; framePngBitDepth: number };
   policy: { singleFrameDurationMs: number; emptyFill: string };
   presentation: { schemaVersion: 1; timescale: number; runs: { start: number; count: number; step: number; duration: number }[] };
-  originMapping: { origin: Rational; entries: { kind: string }[]; lastSource: { support: string; supportEnd: Rational; hold: { kind: string; end: Rational } | null } };
+  originMapping: { origin: Rational; entries: { kind: string }[]; firstSource: { supportStart: Rational; lead: { kind: string; start: Rational } | null };
+    lastSource: { support: string; supportEnd: Rational; hold: { kind: string; end: Rational } | null } };
+  videoSpans: { sourceStart: Rational; sourceEnd: Rational; presentationStart: Rational; rate: Rational }[] | null;
 }
 interface Planned {
   kind: 'planned'; toolInputId: string; planSha256: string; plan: Plan;
@@ -110,6 +112,9 @@ beforeAll(async () => {
   await make('edit-base.mp4', ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=25:d=2', '-c:v', 'libx264', '-g', '10', '-bf', '0', '-pix_fmt', 'yuv420p', ...tagged]);
   // A 250 ms leading empty edit, as in the 2026-11-01 evidence clip (no audio).
   await make('empty-edit.mp4', ['-itsoffset', '0.25', '-i', join(dir, 'edit-base.mp4'), '-c', 'copy', '-use_editlist', '1']);
+  // The picture 0.3 s after the audio: an empty edit before media 0 on the video track, AAC from 0.
+  await make('late-video.mp4', ['-itsoffset', '0.3', '-i', join(dir, 'edit-base.mp4'), '-f', 'lavfi', '-i', 'sine=f=440:sample_rate=48000:d=2.5',
+    '-map', '0:v', '-map', '1:a', '-c:v', 'copy', '-c:a', 'aac', '-use_editlist', '1']);
   files.set('hevc-alpha.mov', new URL('hevc-alpha.mov', COMMITTED).pathname);
   files.set('noelst-ctts.mp4', new URL('noelst-ctts.mp4', COMMITTED).pathname);
   // A stream-copy cut at 0.5 s: packets start at the 0.4 s keyframe and one edit starts 0.1 s (1280 of 12800) later.
@@ -358,6 +363,17 @@ describe('timeline rules applied by the probe (design §4.2.1 开头行)', () =>
     expect(equals(answer.plan.display.duration, 2)).toBe(true);
     expect(presentationFrameCount(answer.plan.presentation as never)).toBe(50);
     expect(answer.plan.originMapping.entries.every((entry) => entry.kind === 'source')).toBe(true);
+    // The edit moves the media 1/4 s later, so it stays: presentation 0 shows media 0, not media 1/4 (the origin).
+    const at = (numerator: number, denominator = 1): Rational => ({ numerator: String(numerator), denominator: String(denominator) });
+    expect(answer.plan.videoSpans).toEqual([{ sourceStart: at(0), sourceEnd: at(2), presentationStart: at(0), rate: at(1) }]);
+  });
+
+  it('PT02 the picture 0.3 s after the audio: origin 0, the first frame held from 0 as derived-lead, and the edit kept at 3/10', async () => {
+    const { plan } = planned(await probed('late-video.mp4'));
+    const at = (numerator: number, denominator = 1): Rational => ({ numerator: String(numerator), denominator: String(denominator) });
+    expect(plan.originMapping.origin).toEqual(at(0));
+    expect(plan.originMapping.firstSource).toEqual({ supportStart: at(3, 10), lead: { kind: 'derived-lead', start: at(0) } });
+    expect(plan.videoSpans).toEqual([{ sourceStart: at(0), sourceEnd: at(2), presentationStart: at(3, 10), rate: at(1) }]);
   });
 });
 
