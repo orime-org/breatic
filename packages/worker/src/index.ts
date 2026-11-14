@@ -47,6 +47,7 @@ import {
   unscheduleAdsUploadSweep,
   adsConversionConfig,
   type AdsConversionJob,
+  otherRegionsOf,
 } from "@breatic/core";
 import { onDatabaseWaitTimeout } from "@breatic/core";
 import { googleDataManagerSink, runAdsConversion, type AdsConversionSink } from "@worker/handlers/ads-conversion.js";
@@ -167,7 +168,7 @@ import {
 const WORKER_QUEUES: readonly string[] = workerQueuesFor({
   region: env.REGION,
   globalRegion: env.GLOBAL_REGION,
-  otherRegions: Object.keys(env.REGION_API_URLS).filter((region) => region !== env.REGION),
+  otherRegions: otherRegionsOf(env),
 });
 
 /** Cap graceful shutdown so a stuck drain can't hold the process. */

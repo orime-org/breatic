@@ -24,6 +24,7 @@
 
 import { z } from "zod";
 import { DEFAULT_API_PORT, DEFAULT_COLLAB_PORT } from "@breatic/shared";
+import { isMultiRegion, otherRegionsOf } from "@core/region/placement.js";
 
 /**
  * Normalise a blank env value to undefined so `.default()` / `.optional()` fire.
@@ -526,8 +527,8 @@ export function parseConfig(rawEnv: Record<string, string | undefined>): CoreCon
     }
   }
   // Every call between regions is signed with the internal API secret.
-  const otherRegions = Object.keys(config.REGION_API_URLS).some((region) => region !== config.REGION);
-  if ((config.REGION !== config.GLOBAL_REGION || otherRegions) && !config.INTERNAL_API_SECRET.trim()) {
+  const otherRegions = otherRegionsOf(config).length > 0;
+  if (isMultiRegion(config) && !config.INTERNAL_API_SECRET.trim()) {
     throw new Error(
       "FATAL: a deployment with more than one region signs its calls between regions with " +
       "INTERNAL_API_SECRET; set it. Refusing to start.",

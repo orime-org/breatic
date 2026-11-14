@@ -4,8 +4,8 @@
 /**
  * What the global region of a deployment with other regions must be
  * configured with before it starts (inner#1955): a signing key for identity
- * tokens, the parent domain their cookie is written on, and the secret calls
- * between regions are signed with.
+ * tokens and the secret calls between regions are signed with. The suites
+ * also write the cookie on a parent domain, as a production deployment does.
  */
 
 import { generateKeyPairSync } from "node:crypto";

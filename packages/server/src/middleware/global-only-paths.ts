@@ -10,7 +10,7 @@
  */
 
 import type { MiddlewareHandler } from "hono";
-import { env, logger, NotFoundError } from "@breatic/core";
+import { env, logger, NotFoundError, inGlobalRegion } from "@breatic/core";
 import { GLOBAL_API_PATHS, t } from "@breatic/shared";
 
 const API_PREFIX = "/api/v1";
@@ -24,7 +24,7 @@ const API_PREFIX = "/api/v1";
  */
 export const refuseGlobalOnlyPaths: MiddlewareHandler = async (c, next) => {
   const path = c.req.path;
-  if (env.REGION !== env.GLOBAL_REGION && path.startsWith(API_PREFIX) && GLOBAL_API_PATHS.test(path.slice(API_PREFIX.length))) {
+  if (!inGlobalRegion() && path.startsWith(API_PREFIX) && GLOBAL_API_PATHS.test(path.slice(API_PREFIX.length))) {
     logger.warn({ path, method: c.req.method, region: env.REGION }, "global_only_path_refused");
     throw new NotFoundError(t("server.error.not_found"));
   }

@@ -94,6 +94,7 @@ export {
   type IdentityVerdict,
 } from "@core/auth/identity-token.js";
 export { canonicalString, signRequest, type SignedParts } from "@core/region/signature.js";
+export { inGlobalRegion, isMultiRegion, otherRegionsOf, type RegionPlacement } from "@core/region/placement.js";
 export {
   callRegion,
   createGlobalApi,

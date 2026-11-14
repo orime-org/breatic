@@ -39,7 +39,7 @@ import { studioTransfersRepo as transfersRepo } from "@breatic/domain";
 import { buildStudioTransferMail } from "@server/utils/notification-mail.js";
 import { decisionLink } from "@server/utils/decision-link.js";
 import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
-import { db, GlobalApiError } from "@breatic/core";
+import { db, GlobalApiError, inGlobalRegion } from "@breatic/core";
 import {
   ConflictError,
   ForbiddenError,
@@ -112,7 +112,7 @@ export async function requestTransfer(
   // Outside the global region the credits are asked about before the offer's
   // transaction opens (inner#1955); a pack pointed at the Studio after that is
   // released when the transfer is accepted.
-  if (!directoryWrites.inGlobalRegion() && (await globalApi().hasActiveDesignationsTo(studio.id))) {
+  if (!inGlobalRegion() && (await globalApi().hasActiveDesignationsTo(studio.id))) {
     throw new ConflictError(t("server.studio.transfer_credits_designated"));
   }
   let shareToken = "";
@@ -121,7 +121,7 @@ export async function requestTransfer(
       // The Studio row first: every transaction writing a `studio:{id}`
       // directory event takes it first, so their events commit in order.
       await studioRepo.lockStudio(studio.id, tx);
-      if (directoryWrites.inGlobalRegion() && (await creditLotService.hasActiveDesignationsTo(studio.id, tx))) {
+      if (inGlobalRegion() && (await creditLotService.hasActiveDesignationsTo(studio.id, tx))) {
         throw new ConflictError(t("server.studio.transfer_credits_designated"));
       }
       const filed = await transfersRepo.createPending({

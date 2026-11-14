@@ -154,11 +154,6 @@ describe("region jobs", () => {
 
   // inner#1955: a self-hosted upgrade swaps every container in one
   // `docker compose up`; the worker starts last, so it aligns the directory.
-  it("leaves the directory alignment to the global region", async () => {
-    expect(await reconcileDirectoryOnStart()).toBe(0);
-    expect(h.reconcile).not.toHaveBeenCalled();
-  });
-
   it("leaves it alone in a deployment that runs it by hand after the rollout", async () => {
     const { env } = await import("@breatic/core");
     const mutable = env as { REGION: string; DIRECTORY_RECONCILE_ON_START: boolean };

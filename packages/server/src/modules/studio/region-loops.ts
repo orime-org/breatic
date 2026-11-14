@@ -15,7 +15,7 @@
  * the same work do it once.
  */
 
-import { env, getRegionsConfig, logger } from "@breatic/core";
+import { env, getRegionsConfig, logger, inGlobalRegion, otherRegionsOf } from "@breatic/core";
 import { regionClient, studioCreationService } from "@breatic/domain";
 import { getTrialGrantCredits } from "@server/config/pricing.js";
 import { sweepAcceptingTransfers } from "@server/modules/studio/studioTransfer.service.js";
@@ -45,7 +45,7 @@ export function startRegionLoops(): RegionLoops {
       run: () => sweepAcceptingTransfers({ olderThanMs: config.transfer_accepting_stale_ms }),
     },
   ];
-  if (env.REGION === env.GLOBAL_REGION && Object.keys(env.REGION_API_URLS).length > 0) {
+  if (inGlobalRegion() && otherRegionsOf(env).length > 0) {
     loops.push({
       name: "studio_creation_sweep",
       intervalMs: config.studio_creation_sweep_interval_ms,

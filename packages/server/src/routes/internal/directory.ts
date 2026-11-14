@@ -8,7 +8,7 @@
 
 import type { Hono } from "hono";
 import { z } from "zod";
-import { env, GlobalApiError, logger } from "@breatic/core";
+import { GlobalApiError, inGlobalRegion, logger } from "@breatic/core";
 import { validate } from "@server/middleware/validate.js";
 import { repairStudioDirectory } from "@server/modules/region/directory-repair.js";
 
@@ -19,7 +19,7 @@ const params = z.object({ studioId: z.string().uuid() });
  * @param app - The internal app, after its rate limit and authentication.
  */
 export function registerDirectoryRoutes(app: Hono): void {
-  if (env.REGION !== env.GLOBAL_REGION) return;
+  if (!inGlobalRegion()) return;
   app.post("/internal/v1/directory/studios/:studioId/snapshot", validate("param", params), async (c) => {
     const { studioId } = c.req.valid("param");
     try {

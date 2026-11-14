@@ -7,11 +7,10 @@
  * the global API.
  */
 
-import { db, isDeadlock, projectsRepo, regionOutboxRepo, studioDirectoryRepo, type DbTx } from "@breatic/core";
+import { db, isDeadlock, projectsRepo, regionOutboxRepo, studioDirectoryRepo, type DbTx, inGlobalRegion } from "@breatic/core";
 import * as studioMembersRepo from "@domain/auth/studioMembers.repo.js";
 import * as usersRepo from "@domain/auth/user.repo.js";
 import { releaseDesignations } from "@domain/credit/creditLot.service.js";
-import { inGlobalRegion } from "@domain/region/directory-writes.js";
 import { applySnapshot, type StudioSnapshot } from "@domain/region/regionOutboxApply.service.js";
 import * as studioRepo from "@domain/studio/studio.repo.js";
 import * as studioTransfersRepo from "@domain/studio/studioTransfers.repo.js";
@@ -148,11 +147,12 @@ export async function getProfiles(userIds: readonly string[]): Promise<Record<st
  * deadlock. A mismatched admin moves only through
  * {@link changeDirectoryAdmin}, which releases the old admin's designations;
  * a Studio with an accepting transfer keeps its directory admin. The
- * completion mark makes a second run do nothing.
- * @returns How many Studios it aligned, or 0 when it had already run.
+ * completion mark makes a second run do nothing, and it does nothing outside
+ * the global region, whose directory tables are the only ones in use.
+ * @returns How many Studios it aligned, or 0 when it had already run or runs outside the global region.
  */
 export async function reconcileDirectoryAfterUpgrade(): Promise<number> {
-  if (await studioDirectoryRepo.isReconciled()) return 0;
+  if (!inGlobalRegion() || (await studioDirectoryRepo.isReconciled())) return 0;
   // Newest first: the Studios old processes created during the upgrade are
   // the ones missing from the directory altogether.
   const studioIds = await studioRepo.listLiveIds();

@@ -54,16 +54,18 @@ loadLocales();
 let sql: ReturnType<typeof postgres>;
 let seq = 0;
 
+const SUITE_ENV = {
+  ...process.env,
+  PAYMENT_ENABLED: "true",
+  // Only the start-up check reads these; no Stripe call is made here.
+  STRIPE_SECRET_KEY: "sk_test_unused_by_this_suite",
+  STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite",
+  REGION: "us-west",
+  GLOBAL_REGION: "us-west",
+};
+
 beforeAll(async () => {
-  initCore({
-    ...process.env,
-    PAYMENT_ENABLED: "true",
-    // Only the start-up check reads these; no Stripe call is made here.
-    STRIPE_SECRET_KEY: "sk_test_unused_by_this_suite",
-    STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite",
-    REGION: "us-west",
-    GLOBAL_REGION: "us-west",
-  });
+  initCore(SUITE_ENV);
   sql = postgres(inject("DATABASE_URL"), {
     max: 4,
     prepare: false,
@@ -259,6 +261,25 @@ describe("reconcileDirectoryAfterUpgrade", () => {
     const { studioId } = await oldCodeStudio();
 
     await studioDirectoryService.reconcileDirectoryAfterUpgrade();
+
+    expect((await directory(studioId)).admin).toBeUndefined();
+  });
+
+  it("does nothing outside the global region, whose directory tables are not in use", async () => {
+    await freshUpgrade();
+    const { studioId } = await oldCodeStudio();
+    initCore({
+      ...SUITE_ENV,
+      REGION: "sg",
+      GLOBAL_API_URL: "http://global.invalid",
+      IDENTITY_PUBLIC_KEYS: JSON.stringify({ k1: "unused" }),
+      INTERNAL_API_SECRET: "reconcile-test-secret",
+    });
+    try {
+      expect(await studioDirectoryService.reconcileDirectoryAfterUpgrade()).toBe(0);
+    } finally {
+      initCore(SUITE_ENV);
+    }
 
     expect((await directory(studioId)).admin).toBeUndefined();
   });

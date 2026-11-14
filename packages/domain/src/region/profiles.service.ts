@@ -9,8 +9,7 @@
  * `profile_cache_ttl_ms`.
  */
 
-import { env, getRedis, getRegionsConfig } from "@breatic/core";
-import { inGlobalRegion } from "@domain/region/directory-writes.js";
+import { env, getRedis, getRegionsConfig, inGlobalRegion } from "@breatic/core";
 import { globalApi, type Account } from "@domain/region/global-api.js";
 import { getProfiles, type Profile } from "@domain/region/studioDirectory.service.js";
 

@@ -19,6 +19,7 @@
 import { randomBytes } from "node:crypto";
 import { httpRequest } from "@breatic/shared";
 import { env } from "@core/config/env.js";
+import { inGlobalRegion } from "@core/region/placement.js";
 import { getRegionsConfig } from "@core/config/regions.js";
 import type { HealthCheck } from "@core/infra/health-server.js";
 import { signRequest } from "@core/region/signature.js";
@@ -84,7 +85,7 @@ export function lastGlobalCallSucceeded(): boolean {
  * @returns The check, or none in the global region.
  */
 export function globalApiHealthChecks(): HealthCheck[] {
-  if (env.REGION === env.GLOBAL_REGION) return [];
+  if (inGlobalRegion()) return [];
   return [{ name: "global_api", informational: true, check: async () => lastGlobalCallSucceeded() }];
 }
 
@@ -160,7 +161,7 @@ async function postSigned(
  *   region, signed requests to it everywhere else.
  */
 export function createGlobalApi<T extends Record<string, RemoteFunction>>(local: T): T {
-  if (env.REGION === env.GLOBAL_REGION) return local;
+  if (inGlobalRegion()) return local;
   const remote: Record<string, RemoteFunction> = {};
   for (const name of Object.keys(local)) {
     remote[name] = async (...args: never[]) => {

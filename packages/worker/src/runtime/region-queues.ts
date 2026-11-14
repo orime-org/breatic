@@ -51,14 +51,19 @@ const EVERY_REGION: readonly string[] = [
   CREDIT_CHARGE_SWEEP_QUEUE,
 ];
 
-const GLOBAL_ONLY: readonly string[] = [
-  ADS_CONVERSION_QUEUE,
+/** Work on global data, run by the global region of any deployment. */
+const GLOBAL_ONLY: readonly string[] = [ADS_CONVERSION_QUEUE];
+
+/** What the global region does for the other regions, run only when there are any. */
+const GLOBAL_WITH_REGIONS: readonly string[] = [
   SLUG_RESERVATION_SWEEP_QUEUE,
   IDENTITY_REVOCATION_FORWARD_QUEUE,
   INVITATION_CLAIM_FORWARD_QUEUE,
+  STORAGE_USAGE_SYNC_QUEUE,
 ];
 
-const REGIONAL_ONLY: readonly string[] = [REGION_OUTBOX_RELAY_QUEUE];
+/** What every other region does for the global region. */
+const REGIONAL_ONLY: readonly string[] = [REGION_OUTBOX_RELAY_QUEUE, STORAGE_USAGE_SYNC_QUEUE];
 
 /**
  * The queues a worker in this region runs.
@@ -69,7 +74,6 @@ const REGIONAL_ONLY: readonly string[] = [REGION_OUTBOX_RELAY_QUEUE];
  * @returns The queue names.
  */
 export function workerQueuesFor(where: { region: string; globalRegion: string; otherRegions: readonly string[] }): string[] {
-  const own = where.region === where.globalRegion ? GLOBAL_ONLY : REGIONAL_ONLY;
-  const report = where.region !== where.globalRegion || where.otherRegions.length > 0 ? [STORAGE_USAGE_SYNC_QUEUE] : [];
-  return [...EVERY_REGION, ...own, ...report];
+  if (where.region !== where.globalRegion) return [...EVERY_REGION, ...REGIONAL_ONLY];
+  return [...EVERY_REGION, ...GLOBAL_ONLY, ...(where.otherRegions.length > 0 ? GLOBAL_WITH_REGIONS : [])];
 }

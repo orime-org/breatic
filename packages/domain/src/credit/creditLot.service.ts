@@ -27,7 +27,6 @@ import * as creditSourceRepo from "@domain/credit/creditSource.repo.js";
 import * as creditHoldRepo from "@domain/credit/creditHold.repo.js";
 import * as creditChargeRepo from "@domain/credit/creditCharge.repo.js";
 import * as creditChargeSettlementRepo from "@domain/credit/creditChargeSettlement.repo.js";
-import { inGlobalRegion } from "@domain/region/directory-writes.js";
 import { globalApi } from "@domain/region/global-api.js";
 import type { ChargeRequestKind, NewChargeRequest, SweepableChargeRequest } from "@domain/credit/creditCharge.repo.js";
 import { resolveOwnerStudioId } from "@domain/asset/asset.service.js";
@@ -51,6 +50,7 @@ import {
   studioDirectoryRepo,
   type ActivityCursor,
   type DbTx,
+  inGlobalRegion,
 } from "@breatic/core";
 import {
   t,

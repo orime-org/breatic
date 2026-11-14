@@ -144,10 +144,10 @@ export async function sweepSlugReservations(): Promise<number> {
  * upgrade, once: a deployment that has done it before does nothing. Run by
  * the global region's worker at start when `DIRECTORY_RECONCILE_ON_START` is
  * set, as the bundled docker-compose.yml does after the new server is up.
- * @returns How many Studios were aligned; 0 when not asked, outside the global region, or already done.
+ * @returns How many Studios were aligned; 0 when not asked, outside the global region (the alignment's own check), or already done.
  * @throws {Error} When the tables cannot be read or written.
  */
 export async function reconcileDirectoryOnStart(): Promise<number> {
-  if (!env.DIRECTORY_RECONCILE_ON_START || env.REGION !== env.GLOBAL_REGION) return 0;
+  if (!env.DIRECTORY_RECONCILE_ON_START) return 0;
   return studioDirectoryService.reconcileDirectoryAfterUpgrade();
 }

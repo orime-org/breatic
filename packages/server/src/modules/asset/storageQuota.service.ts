@@ -35,9 +35,9 @@
  * only guess.
  */
 
-import { AppError, env, getRedis, getRegionsConfig, logger } from "@breatic/core";
+import { AppError, env, getRedis, getRegionsConfig, logger, inGlobalRegion } from "@breatic/core";
 import { t } from "@breatic/shared";
-import { assetService, directoryWrites, globalApi, profilesService } from "@breatic/domain";
+import { assetService, globalApi, profilesService } from "@breatic/domain";
 import type { StorageBudget } from "@breatic/domain";
 import { accountStorageUsage } from "@server/modules/asset/assetUsage.service.js";
 import {
@@ -91,7 +91,7 @@ export async function assertStorageAllowance(
  * @throws {Error} When the studio has no live admin, or the global region does not answer.
  */
 async function storageBudget(studioId: string): Promise<StorageBudget> {
-  if (directoryWrites.inGlobalRegion()) return globalApi().getStorageBudget(studioId, env.REGION);
+  if (inGlobalRegion()) return globalApi().getStorageBudget(studioId, env.REGION);
   const redis = getRedis();
   const key = `${env.ENV}:storage-budget:${studioId}`;
   const cached = await redis.get(key);

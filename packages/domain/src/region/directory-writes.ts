@@ -10,15 +10,7 @@
  * write it describes.
  */
 
-import { db, env, regionOutboxRepo, studioDirectoryRepo, type DbTx } from "@breatic/core";
-
-/**
- * Whether this process runs where the directory lives.
- * @returns True in the global region.
- */
-export function inGlobalRegion(): boolean {
-  return env.REGION === env.GLOBAL_REGION;
-}
+import { db, inGlobalRegion, regionOutboxRepo, studioDirectoryRepo, type DbTx } from "@breatic/core";
 
 /**
  * Record that a Studio's transfer offer opened, until its expiry.

@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
+import { isMultiRegion } from "@breatic/core";
+
 /**
  * Whether a server of a deployment with more than one region would start
  * without the internal listener that the calls between regions arrive on
@@ -19,7 +21,5 @@ export function lacksRegionListener(config: {
   REGION_API_URLS: Record<string, string>;
   INTERNAL_API_ENABLED: boolean;
 }): boolean {
-  const multiRegion =
-    config.REGION !== config.GLOBAL_REGION || Object.keys(config.REGION_API_URLS).some((region) => region !== config.REGION);
-  return multiRegion && !config.INTERNAL_API_ENABLED;
+  return isMultiRegion(config) && !config.INTERNAL_API_ENABLED;
 }

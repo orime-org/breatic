@@ -22,7 +22,7 @@
 import { profilesService, studioRepo } from "@breatic/domain";
 import * as studioInvitationsRepo from "@server/modules/studio/studioInvitations.repo.js";
 import { withPendingDisplay } from "@server/modules/invitation/pending-display.js";
-import { isUniqueViolation } from "@breatic/core";
+import { isUniqueViolation, inGlobalRegion } from "@breatic/core";
 import { randomUUID } from "node:crypto";
 import { db, studioDirectoryRepo } from "@breatic/core";
 import { ConflictError, NotFoundError, ValidationError } from "@breatic/core";
@@ -232,7 +232,7 @@ export async function updateStudio(
   const newSlug = patch.slug !== undefined && patch.slug !== studio.slug ? patch.slug : undefined;
   // Slugs are unique across regions (inner#1955). Outside the global region
   // the new slug is held there first and let go if the rename does not commit.
-  const remote = !directoryWrites.inGlobalRegion();
+  const remote = !inGlobalRegion();
   if (newSlug !== undefined && remote && !(await globalApi().reserveSlug(newSlug, studio.id))) {
     throw new ConflictError(t("server.studio.slug_taken"));
   }
@@ -334,7 +334,7 @@ export async function getStudioDetail(
     bio: studio.bio,
     memberCount: counts.get(studio.id) ?? 0,
     myStudioRole,
-    region: directoryWrites.inGlobalRegion() ? null : env.REGION,
+    region: inGlobalRegion() ? null : env.REGION,
   };
 }
 
