@@ -28,7 +28,7 @@ export type SlotKind = NonNullable<PromptSegment["slot"]>["kind"];
  * @ of another node in the proposal by its index (inner#1315), which lands as
  * the same mention the user would insert by hand.
  */
-const promptSegmentSchema = z.union([
+export const promptSegmentSchema = z.union([
   z.object({ text: z.string(), slot: z.undefined().optional(), ref: z.undefined().optional() }),
   z.object({
     text: z.undefined().optional(),

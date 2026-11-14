@@ -12,6 +12,7 @@ import { z } from "zod";
 import { deriveId } from "@shared/ids.js";
 import { CREATABLE_NODE_TYPES, type CreatableNodeType } from "@shared/canvas/model/node-factory.js";
 import { MAX_NODE_NAME_LEN } from "@shared/types/canvas-node.js";
+import { promptSegmentSchema } from "@shared/types/canvas-proposal.js";
 
 /**
  * Approximate length cap of the command stream. Same value as core's
@@ -136,6 +137,8 @@ export const AGENT_COMMAND_REFUSALS = [
   "ambiguous_text",
   // The project publishes a document format this build does not write.
   "schema_mismatch",
+  // A prompt @'ing a node that is not connected in as one of the node's references.
+  "not_a_reference",
 ] as const;
 export const agentCommandRefusalSchema = z.enum(AGENT_COMMAND_REFUSALS);
 export type AgentCommandRefusal = z.infer<typeof agentCommandRefusalSchema>;
@@ -163,6 +166,49 @@ const newEdgeEndSchema = z.union([
   z.object({ new: z.number().int().min(0) }).strict(),
   z.object({ id: nodeIdSchema }).strict(),
 ]);
+
+/**
+ * A model's catalog entry, as the MCP service read it from `GET /api/v1/models`.
+ * collab resolves a mode or model switch against it; it is not collab's to
+ * hold the catalog, so only what that switch reads is required.
+ */
+const modelEntrySchema = z.looseObject({
+  name: z.string().min(1),
+  mode: z.union([z.string(), z.array(z.string())]),
+  params: z.record(z.string(), z.unknown()),
+});
+
+/**
+ * A change to a node's generation settings (breatic#1488 §8.1, §9): mode and
+ * model with the model's catalog entry, params for the model in use, a
+ * prompt, lyrics and storyboard shots whose refs index `mentions`, and slot
+ * picks by field, each naming the node a click would fill it from (`null`
+ * empties it).
+ */
+const generationChangeSchema = z
+  .object({
+    mode: z.string().min(1).optional(),
+    model: z.string().min(1).optional(),
+    modelEntry: modelEntrySchema.optional(),
+    params: z.record(z.string(), z.json()).optional(),
+    prompt: z.array(promptSegmentSchema).optional(),
+    lyrics: z.array(promptSegmentSchema).optional(),
+    shots: z.array(z.object({ duration: z.number().positive(), prompt: z.array(promptSegmentSchema) })).optional(),
+    mentions: z.array(nodeIdSchema).optional(),
+    slots: z.record(z.string(), z.union([nodeIdSchema, z.array(nodeIdSchema), z.null()])).optional(),
+  })
+  .refine((g) => Object.values(g).some((v) => v !== undefined), { message: "nothing to change" })
+  .refine((g) => (g.mode === undefined && g.model === undefined) || g.modelEntry !== undefined, {
+    message: "a mode or a model comes with the model's catalog entry",
+  })
+  .refine((g) => g.model === undefined || g.modelEntry?.name === g.model, { message: "the catalog entry is another model's" })
+  .refine(
+    (g) =>
+      [...(g.prompt ?? []), ...(g.lyrics ?? []), ...(g.shots ?? []).flatMap((shot) => shot.prompt)].every(
+        (s) => s.ref === undefined || s.ref < (g.mentions ?? []).length,
+      ),
+    { message: "a ref indexes past its mentions" },
+  );
 
 /** One BlockNote block as JSON: its type, and whatever else BlockNote reads. */
 const documentBlockSchema = z.looseObject({ type: z.string().min(1) });
@@ -197,10 +243,12 @@ export const agentCommandParamsSchemas = {
       position: pointSchema.optional(),
       parentId: nodeIdSchema.nullable().optional(),
       text: z.string().optional(),
+      generation: generationChangeSchema.optional(),
     })
-    .refine((p) => p.name !== undefined || p.position !== undefined || p.parentId !== undefined || p.text !== undefined, {
-      message: "nothing to change",
-    }),
+    .refine(
+      (p) => p.name !== undefined || p.position !== undefined || p.parentId !== undefined || p.text !== undefined || p.generation !== undefined,
+      { message: "nothing to change" },
+    ),
   lock_canvas_nodes: z.object({ nodeIds: nodeIdsSchema }),
   unlock_canvas_nodes: z.object({ nodeIds: nodeIdsSchema }),
   delete_canvas_nodes: z.object({ nodeIds: nodeIdsSchema }),
@@ -233,6 +281,8 @@ export const agentCommandParamsSchemas = {
       size: z.number().nullable(),
     }),
   }),
+  // What the generation panel's view model is built from, read before a run.
+  read_generation_inputs: z.object({ nodeId: nodeIdSchema }),
   read_document: z.object({}),
   // Blocks as BlockNote block JSON (the MCP service converts Markdown);
   // whether the document schema can build one is collab's to judge.
