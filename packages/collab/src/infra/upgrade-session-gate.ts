@@ -9,7 +9,7 @@ import {
   createLogger,
   decideClientIdentity,
   getSession,
-  IDENTITY_COOKIE_NAME,
+  identityCookieName,
   isIdentityRevoked,
   redactSessionError,
   sessionCookieName,
@@ -335,7 +335,7 @@ export function createUpgradeSessionGate(options: UpgradeSessionOptions): Upgrad
     function admitIdentity(identityOptions: NonNullable<UpgradeSessionOptions["identity"]>): void {
       let cookie: string | null = null;
       try {
-        cookie = readCookie(cookieHeader, IDENTITY_COOKIE_NAME);
+        cookie = readCookie(cookieHeader, identityCookieName());
       } catch (err) {
         finish({ kind: "rejected", reason: "cookie_malformed", status: 401, error: err, errorEvent: "collab_upgrade_cookie_error" });
         return;

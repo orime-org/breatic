@@ -10,7 +10,8 @@ import axios, {
 import { getLocale } from '@breatic/shared';
 
 import { ApiException, type ApiEnvelope, type ApiError } from '@web/data/api/types';
-import { apiBaseFor, apiBaseForPath, getRegionConfig } from '@web/data/api/regions';
+import { renewIdentityNow } from '@web/data/api/identity-renewal';
+import { apiBaseForPath, getRegionConfig } from '@web/data/api/regions';
 import { checkStaleRelease } from '@web/data/deployment/stale-release';
 
 /**
@@ -66,7 +67,7 @@ function createClient(): AxiosInstance {
     async (err: unknown) => {
       const retry = identityRetryOf(err);
       if (retry) {
-        await instance.post('/auth/identity', undefined, { baseURL: apiBaseFor(null, getRegionConfig()) });
+        await renewIdentityNow();
         return instance.request(retry);
       }
       const apiErr = normalizeError(err);

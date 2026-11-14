@@ -15,15 +15,21 @@
 import { createPrivateKey, createPublicKey, sign, verify, type KeyObject } from "node:crypto";
 import { MEMBERSHIP_TIERS } from "@breatic/shared";
 import { z } from "zod";
+import { env } from "@core/config/env.js";
 
 /** How long a token is good for after it is signed. */
 export const IDENTITY_TOKEN_TTL_SECONDS = 60;
 
 /**
  * The cookie the token travels in, set on the parent domain so every region's
- * API host receives it.
+ * API host receives it. Named per deployment, like the session cookie: every
+ * region of one deployment shares `ENV`, while a staging deployment under the
+ * production parent domain gets a cookie of its own.
+ * @returns The cookie name, e.g. `breatic_identity_prod`.
  */
-export const IDENTITY_COOKIE_NAME = "breatic_identity";
+export function identityCookieName(): string {
+  return `breatic_identity_${env.ENV}`;
+}
 
 const personalStudioSchema = z
   .object({

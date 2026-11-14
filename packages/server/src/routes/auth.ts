@@ -491,7 +491,7 @@ auth.get("/me", requireAuth, async (c) => {
  * (inner#1955). A build with several regions calls it every 45 seconds, and
  * again when a region answers 401 `identity_expired`.
  * @param c - Hono context with authenticated user
- * @returns `200` with `{ data: { ok: true } }` and the `breatic_identity`
+ * @returns `200` with `{ data: { ok: true } }` and the `breatic_identity_<ENV>`
  *   cookie; `401` without a session
  */
 auth.post("/identity", requireAuth, async (c) => {

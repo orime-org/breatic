@@ -84,7 +84,7 @@ export { getSceneConfig, type SceneConfig } from "@core/config/scene.js";
 export { getRegionsConfig, type RegionsConfig } from "@core/config/regions.js";
 export { TABLE_PLACEMENT, type TablePlacement } from "@core/db/table-placement.js";
 export {
-  IDENTITY_COOKIE_NAME,
+  identityCookieName,
   signIdentityToken,
   verifyIdentityToken,
   type IdentityClaims,

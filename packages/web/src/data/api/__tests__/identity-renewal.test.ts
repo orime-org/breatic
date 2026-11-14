@@ -43,7 +43,7 @@ function adapter(answers: Record<string, Array<{ status: number; reason?: string
     const url = `${config.baseURL ?? ''}${config.url ?? ''}`;
     seen.push(url);
     const key = Object.keys(answers).find((suffix) => url.endsWith(suffix));
-    const next = key === undefined ? { status: 200 } : (answers[key]!.shift() ?? { status: 200 });
+    const next = key === undefined ? { status: 200 } : (answers[key].shift() ?? { status: 200 });
     const response = {
       data: next.status < 400 ? { data: { ok: true } } : { error: { code: next.status, message: 'no', reason: next.reason } },
       status: next.status,
@@ -161,6 +161,12 @@ describe('startIdentityRenewal', () => {
 });
 
 describe('retrying after identity_expired', () => {
+  let stop: () => void = () => undefined;
+  beforeEach(() => {
+    stop = startIdentityRenewal(() => request.post('/auth/identity', undefined, { baseURL: 'https://us.example.test/api/v1' }), TWO_REGIONS);
+  });
+  afterEach(() => stop());
+
   it('renews at the global region once and retries the same request', async () => {
     request.defaults.adapter = adapter({ '/projects/p1': [{ status: 401, reason: 'identity_expired' }, { status: 200 }] });
 
@@ -183,6 +189,20 @@ describe('retrying after identity_expired', () => {
     });
 
     await expect(request.get('/projects/p1', { baseURL: 'https://sg.example.test/api/v1' })).rejects.toBeDefined();
+    expect(seen.filter((url) => url.endsWith('/auth/identity'))).toHaveLength(1);
+  });
+
+  it('shares one renewal among requests refused together', async () => {
+    request.defaults.adapter = adapter({
+      '/projects/p1': [{ status: 401, reason: 'identity_expired' }, { status: 200 }],
+      '/projects/p2': [{ status: 401, reason: 'identity_expired' }, { status: 200 }],
+    });
+
+    await Promise.all([
+      request.get('/projects/p1', { baseURL: 'https://sg.example.test/api/v1' }),
+      request.get('/projects/p2', { baseURL: 'https://sg.example.test/api/v1' }),
+    ]);
+
     expect(seen.filter((url) => url.endsWith('/auth/identity'))).toHaveLength(1);
   });
 

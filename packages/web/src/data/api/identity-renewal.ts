@@ -18,11 +18,12 @@ let renewedAt = 0;
 let inFlight: Promise<void> | null = null;
 
 /**
- * Renew now, sharing one request among everyone who asks while it runs. A
- * failed renewal is left to the next tick or the next sender.
+ * Renew now, sharing one request among everyone who asks while it runs: the
+ * timer, a stream about to open, and every request a region refused with
+ * `identity_expired`. A failed renewal is left to the next tick or sender.
  * @returns Once the renewal has answered.
  */
-function renewNow(): Promise<void> {
+export function renewIdentityNow(): Promise<void> {
   const renew = renewer;
   if (renew === null) return Promise.resolve();
   inFlight ??= renew().then(
@@ -44,7 +45,7 @@ function renewNow(): Promise<void> {
  */
 export async function ensureFreshIdentity(): Promise<void> {
   if (renewer === null || Date.now() - renewedAt < IDENTITY_RENEW_INTERVAL_MS) return;
-  await renewNow();
+  await renewIdentityNow();
 }
 
 /**
@@ -59,7 +60,7 @@ export function startIdentityRenewal(renew: () => Promise<unknown>, config: Regi
   renewer = renew;
   renewedAt = Date.now();
   const timer = setInterval(() => {
-    void renewNow();
+    void renewIdentityNow();
   }, IDENTITY_RENEW_INTERVAL_MS);
   /** Renew a stale token as soon as the tab or the network is back. */
   const onBack = (): void => {

@@ -27,9 +27,10 @@ vi.mock("@breatic/core", async (importOriginal) => ({
   createLogger: () => logs,
   getSession: sessionLookup,
   isIdentityRevoked: revokedLookup,
+  identityCookieName: () => "breatic_identity_dev",
 }));
 
-import { signIdentityToken } from "@breatic/core";
+import { identityCookieName, signIdentityToken } from "@breatic/core";
 import {
   BOUND_IDENTITY_HEADER,
   createUpgradeSessionGate,
@@ -127,7 +128,7 @@ afterEach(() => {
 describe("upgrade gate in a non-global region", () => {
   it("admits a valid identity token, binds its user and session id, and reads no session", async () => {
     const gate = regionGate();
-    const { request, socket } = upgrade(`breatic_identity=${identityToken(NOW - 10)}`);
+    const { request, socket } = upgrade(`${identityCookieName()}=${identityToken(NOW - 10)}`);
 
     expect(await admitted(gate.onUpgrade({ request, socket }))).toBe(true);
     expect(gate.identityOf(request)).toEqual({ userId: USER, sid: SID });
@@ -146,7 +147,7 @@ describe("upgrade gate in a non-global region", () => {
 
   it("refuses an expired identity token with 401", async () => {
     const gate = regionGate();
-    const { request, socket } = upgrade(`breatic_identity=${identityToken(NOW - 120)}`);
+    const { request, socket } = upgrade(`${identityCookieName()}=${identityToken(NOW - 120)}`);
 
     expect(await admitted(gate.onUpgrade({ request, socket }))).toBe(false);
     expect(socket.chunks.join("")).toContain("401");
@@ -155,7 +156,7 @@ describe("upgrade gate in a non-global region", () => {
   it("refuses a token whose session this region has a revocation tombstone for", async () => {
     revokedLookup.mockResolvedValue(true);
     const gate = regionGate();
-    const { request, socket } = upgrade(`breatic_identity=${identityToken(NOW - 10)}`);
+    const { request, socket } = upgrade(`${identityCookieName()}=${identityToken(NOW - 10)}`);
 
     expect(await admitted(gate.onUpgrade({ request, socket }))).toBe(false);
     expect(socket.chunks.join("")).toContain("401");
@@ -169,7 +170,7 @@ describe("upgrade gate in a non-global region", () => {
       NOW - 10,
     );
     const gate = regionGate();
-    const { request, socket } = upgrade(`breatic_identity=${forged}`);
+    const { request, socket } = upgrade(`${identityCookieName()}=${forged}`);
 
     expect(await admitted(gate.onUpgrade({ request, socket }))).toBe(false);
     expect(socket.chunks.join("")).toContain("401");
@@ -177,7 +178,7 @@ describe("upgrade gate in a non-global region", () => {
 
   it("hands the bound identity to document authentication through the request headers", async () => {
     const gate = regionGate();
-    const { request, socket } = upgrade(`breatic_identity=${identityToken(NOW - 10)}`);
+    const { request, socket } = upgrade(`${identityCookieName()}=${identityToken(NOW - 10)}`);
 
     await gate.onUpgrade({ request, socket });
 

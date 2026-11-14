@@ -12,7 +12,7 @@
  *
  * The pins:
  *
- *   1. `/auth/me` and `/auth/identity` set `breatic_identity` with the
+ *   1. `/auth/me` and `/auth/identity` set `breatic_identity_<ENV>` with the
  *      parent domain, HttpOnly, Secure, SameSite=Lax and the session cookie's
  *      30-day Max-Age (an expired token still reaches a region, which then
  *      answers identity_expired), holding
@@ -40,6 +40,7 @@ import postgres from "postgres";
 import {
   env,
   getRedis,
+  identityCookieName,
   initCore,
   loadLocales,
   sessionCookieName,
@@ -115,12 +116,12 @@ async function session(userId: string): Promise<string> {
 }
 
 /**
- * The `breatic_identity` Set-Cookie line of a response, if any.
+ * The `breatic_identity_<ENV>` Set-Cookie line of a response, if any.
  * @param res - The response.
  * @returns The line, or undefined.
  */
 function identityCookie(res: Response): string | undefined {
-  return res.headers.getSetCookie().find((line) => line.startsWith("breatic_identity="));
+  return res.headers.getSetCookie().find((line) => line.startsWith(`${identityCookieName()}=`));
 }
 
 /**
@@ -137,7 +138,7 @@ function expectIssued(line: string | undefined, userId: string, sessionToken: st
   expect(attributes).toContain("secure");
   expect(attributes).toContain("samesite=lax");
   expect(attributes).toContain("max-age=2592000");
-  const value = line!.split(";")[0]!.slice("breatic_identity=".length);
+  const value = line!.split(";")[0]!.slice(`${identityCookieName()}=`.length);
   const verdict = verifyIdentityToken(value, { k1: PUBLIC_KEY }, Math.floor(Date.now() / 1000));
   expect(verdict.ok).toBe(true);
   if (verdict.ok) {
@@ -188,7 +189,7 @@ describe("identity token issue in the global region", () => {
     const line = identityCookie(res);
     expect(line).toBeDefined();
     const attributes = line!.split(";").map((part) => part.trim().toLowerCase());
-    expect(line!.split(";")[0]).toBe("breatic_identity=");
+    expect(line!.split(";")[0]).toBe(`${identityCookieName()}=`);
     expect(attributes).toContain("max-age=0");
     expect(attributes).toContain("domain=.example.test");
   });
@@ -225,6 +226,21 @@ describe("identity token issue in the global region", () => {
     });
 
     expect(await getRedis().get(`${env.ENV}:session-id:${sessionId(token)}`)).toBe(userId);
+  });
+
+  it("is named per deployment: the same in every region of one, different between two", () => {
+    try {
+      initCore({ ...process.env, ...SIGNING_ENV, ENV: "staging", REGION: "us-west" });
+      const stagingGlobal = identityCookieName();
+      initCore({ ...process.env, ...SIGNING_ENV, ENV: "staging", REGION: "sg" });
+      const stagingRegion = identityCookieName();
+      initCore({ ...process.env, ...SIGNING_ENV, ENV: "prod", REGION: "us-west" });
+
+      expect(stagingRegion).toBe(stagingGlobal);
+      expect(identityCookieName()).not.toBe(stagingGlobal);
+    } finally {
+      initCore({ ...process.env, ...SIGNING_ENV });
+    }
   });
 
   it("is not written by a deployment with no signing key", async () => {

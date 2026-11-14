@@ -4,7 +4,7 @@
 /**
  * The identity token cookie (inner#1955).
  *
- * The global region signs who the user is into `breatic_identity` whenever it
+ * The global region signs who the user is into `breatic_identity_<ENV>` whenever it
  * resolves a session for the page (`GET /auth/me`, `POST /auth/identity`);
  * regions that do not hold the sessions read the cookie in `requireAuth` and
  * verify it with the public keys alone. A deployment without a signing key
@@ -17,7 +17,7 @@ import {
   backfillSessionIdIndex,
   env,
   getRedis,
-  IDENTITY_COOKIE_NAME,
+  identityCookieName,
   sessionId,
   signIdentityToken,
   type IdentityClaimsInput,
@@ -57,7 +57,7 @@ export async function writeIdentityCookie(c: Context, subject: IdentitySubject, 
     { kid: env.IDENTITY_SIGNING_KEY_ID, privateKey: env.IDENTITY_SIGNING_KEY },
     Math.floor(Date.now() / 1000),
   );
-  setCookie(c, IDENTITY_COOKIE_NAME, token, {
+  setCookie(c, identityCookieName(), token, {
     path: "/",
     httpOnly: true,
     secure: true,
@@ -75,7 +75,7 @@ export async function writeIdentityCookie(c: Context, subject: IdentitySubject, 
  * @param c - The request context.
  */
 export function clearIdentityCookie(c: Context): void {
-  deleteCookie(c, IDENTITY_COOKIE_NAME, {
+  deleteCookie(c, identityCookieName(), {
     path: "/",
     secure: true,
     ...(env.IDENTITY_COOKIE_DOMAIN.trim() !== "" ? { domain: env.IDENTITY_COOKIE_DOMAIN.trim() } : {}),

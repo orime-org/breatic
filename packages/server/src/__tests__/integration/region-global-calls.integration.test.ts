@@ -36,7 +36,7 @@ vi.mock("ai", () => ({
 
 import crypto, { generateKeyPairSync } from "node:crypto";
 import postgres from "postgres";
-import { getMembershipLimits, initCore, loadLocales, signIdentityToken } from "@breatic/core";
+import { identityCookieName, getMembershipLimits, initCore, loadLocales, signIdentityToken } from "@breatic/core";
 import type { Hono } from "hono";
 import { withPeer } from "../helpers/peer.js";
 import { startRegionStandIn, type RegionStandIn } from "./region-harness.js";
@@ -146,7 +146,7 @@ async function regionStudio(): Promise<{ userId: string; studioId: string; slug:
     { kid: "t1", privateKey: PRIVATE_KEY },
     Math.floor(Date.now() / 1000),
   );
-  return { userId: user!.id, studioId: studio!.id, slug, cookie: `breatic_identity=${token}` };
+  return { userId: user!.id, studioId: studio!.id, slug, cookie: `${identityCookieName()}=${token}` };
 }
 
 describe("serving Studio and Project requests in a region", () => {

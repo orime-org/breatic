@@ -18,7 +18,7 @@ import type { Context, MiddlewareHandler } from "hono";
 import { getCookie } from "hono/cookie";
 import * as Sentry from "@sentry/node";
 import { authService } from "@server/modules";
-import { env, getRedis, IDENTITY_COOKIE_NAME, isIdentityRevoked, logger, verifyIdentityToken } from "@breatic/core";
+import { env, getRedis, identityCookieName, isIdentityRevoked, logger, verifyIdentityToken } from "@breatic/core";
 import { t, type MembershipTier } from "@breatic/shared";
 import { readSessionCookie } from "@server/middleware/session-cookie.js";
 
@@ -99,7 +99,7 @@ export const requireAuth: MiddlewareHandler<{
  */
 export async function requestUserId(c: Context): Promise<string | null> {
   if (env.REGION !== env.GLOBAL_REGION) {
-    const cookie = getCookie(c, IDENTITY_COOKIE_NAME);
+    const cookie = getCookie(c, identityCookieName());
     if (!cookie) return null;
     const verdict = verifyIdentityToken(cookie, env.IDENTITY_PUBLIC_KEYS, Math.floor(Date.now() / 1000));
     return verdict.ok ? verdict.claims.sub : null;
@@ -118,7 +118,7 @@ export async function requestUserId(c: Context): Promise<string | null> {
  * @throws {Error} When Redis cannot be read for the tombstone.
  */
 async function userFromIdentityToken(c: Context): Promise<AuthVariables["user"] | Response> {
-  const cookie = getCookie(c, IDENTITY_COOKIE_NAME);
+  const cookie = getCookie(c, identityCookieName());
   if (!cookie) {
     logger.warn({ reason: "no_identity", path: c.req.path }, "auth_rejected");
     return c.json({ error: { code: 401, message: t("server.auth.not_authenticated") } }, 401);

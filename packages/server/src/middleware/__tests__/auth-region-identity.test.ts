@@ -33,6 +33,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
     getRedis: () => ({}),
     isIdentityRevoked: revoked.isIdentityRevoked,
+    identityCookieName: () => "breatic_identity_dev",
     env: new Proxy(
       {},
       {
@@ -47,7 +48,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
   };
 });
 
-import { loadLocales, signIdentityToken } from "@breatic/core";
+import { identityCookieName, loadLocales, signIdentityToken } from "@breatic/core";
 import { requireAuth } from "@server/middleware/auth.js";
 
 const keys = generateKeyPairSync("ed25519");
@@ -90,7 +91,7 @@ beforeEach(() => {
 
 describe("requireAuth outside the global region", () => {
   it("resolves the user from a valid identity token without reading a session", async () => {
-    const res = await app().request("/me", { headers: { cookie: `breatic_identity=${token(5)}` } });
+    const res = await app().request("/me", { headers: { cookie: `${identityCookieName()}=${token(5)}` } });
 
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
@@ -114,7 +115,7 @@ describe("requireAuth outside the global region", () => {
   });
 
   it("answers 401 identity_expired for an expired token so the page renews and retries", async () => {
-    const res = await app().request("/me", { headers: { cookie: `breatic_identity=${token(90)}` } });
+    const res = await app().request("/me", { headers: { cookie: `${identityCookieName()}=${token(90)}` } });
 
     expect(res.status).toBe(401);
     const body = (await res.json()) as { error: { reason?: string } };
@@ -124,7 +125,7 @@ describe("requireAuth outside the global region", () => {
   it("answers 401 for a token whose session has a revocation tombstone here", async () => {
     revoked.isIdentityRevoked.mockResolvedValue(true);
 
-    const res = await app().request("/me", { headers: { cookie: `breatic_identity=${token(5)}` } });
+    const res = await app().request("/me", { headers: { cookie: `${identityCookieName()}=${token(5)}` } });
 
     expect(res.status).toBe(401);
     const body = (await res.json()) as { error: { reason?: string } };
@@ -133,7 +134,7 @@ describe("requireAuth outside the global region", () => {
 
   it("answers 401 for a token that does not verify", async () => {
     const [header, payload] = token(5).split(".");
-    const res = await app().request("/me", { headers: { cookie: `breatic_identity=${header}.${payload}.AAAA` } });
+    const res = await app().request("/me", { headers: { cookie: `${identityCookieName()}=${header}.${payload}.AAAA` } });
 
     expect(res.status).toBe(401);
     expect(revoked.isIdentityRevoked).not.toHaveBeenCalled();

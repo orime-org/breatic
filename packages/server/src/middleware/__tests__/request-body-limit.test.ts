@@ -35,7 +35,7 @@ vi.mock("@breatic/core", async (importOriginal) => ({
   logger: logged,
 }));
 
-import { MONOREPO_ROOT, decideClientIdentity, initCore, loadLocales, runWithLocale } from "@breatic/core";
+import { identityCookieName, MONOREPO_ROOT, decideClientIdentity, initCore, loadLocales, runWithLocale } from "@breatic/core";
 import { t } from "@breatic/shared";
 import { getRequestBodyMaxBytes } from "@server/config/limits.js";
 import { localeMiddleware } from "@server/middleware/i18n.js";
@@ -270,7 +270,7 @@ describe("the user logged for a refused body outside the global region", () => {
       const app = withPeer(await appUnderTest());
       const res = await app.request("/x", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "Content-Length": String(L + 1), Cookie: `breatic_identity=${token}` },
+        headers: { "Content-Type": "application/json", "Content-Length": String(L + 1), Cookie: `${identityCookieName()}=${token}` },
         body: " ".repeat(L + 1),
       });
 
