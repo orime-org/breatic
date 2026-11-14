@@ -120,7 +120,7 @@ function createdIds(command: AgentCommand, count: number): string[] {
  * @param target - The target node.
  * @returns The edge id.
  */
-function edgeIdOf(source: string, target: string): string {
+export function edgeIdOf(source: string, target: string): string {
   return `${source}->${target}`;
 }
 
@@ -155,7 +155,7 @@ function poolFull(doc: Y.Doc, pairs: ReadonlyArray<{ source: string; target: str
  * @param nodeId - The node.
  * @returns Its type, or undefined when the node is not there.
  */
-function typeOf(doc: Y.Doc, nodeId: string): string | undefined {
+export function typeOf(doc: Y.Doc, nodeId: string): string | undefined {
   const type = canvasNodesMap(doc).get(nodeId)?.get("type");
   return typeof type === "string" ? type : undefined;
 }
@@ -177,7 +177,7 @@ function parentOf(doc: Y.Doc, nodeId: string): string | null {
  * @param nodeId - The node.
  * @returns True when it is locked.
  */
-function ownLocked(doc: Y.Doc, nodeId: string): boolean {
+export function ownLocked(doc: Y.Doc, nodeId: string): boolean {
   return nodeDataMap(doc, nodeId)?.get("locked") === true;
 }
 
@@ -221,6 +221,19 @@ function growToWrap(doc: Y.Doc, groupId: string): void {
 }
 
 /**
+ * What new nodes are aimed at when the agent names no place and the user's
+ * view is not known (§8.2): the centre of what the canvas holds, or the
+ * origin on an empty canvas; and what they must not cover.
+ * @param doc - The canvas document.
+ * @returns The point aimed at and every node's footprint.
+ */
+export function newNodesAim(doc: Y.Doc): { centre: { x: number; y: number }; occupied: Rect[] } {
+  const occupied = occupiedRects(readNodePlacementsInDoc(doc), () => undefined);
+  const all = groupRectForMembers(occupied, 0);
+  return { centre: all ? centerOf(all) : { x: 0, y: 0 }, occupied };
+}
+
+/**
  * Where new nodes go when the agent names no place and the user's view is
  * not known (§8.2): aimed at the centre of what the canvas holds, or the
  * origin on an empty canvas, laid out as the browser lays out a placed batch,
@@ -235,14 +248,13 @@ function placeNewNodes(
   nodes: AgentCommandParams<"create_canvas_nodes">["nodes"],
   edges: CanvasProposal["edges"],
 ): Array<{ x: number; y: number }> {
-  const occupied = occupiedRects(readNodePlacementsInDoc(doc), () => undefined);
-  const all = groupRectForMembers(occupied, 0);
+  const { centre, occupied } = newNodesAim(doc);
   const proposal: CanvasProposal = {
     nodes: nodes.map((node) => ({ role: "source", type: node.type, name: node.name ?? "" })),
     edges,
     rationale: "",
   };
-  const aimed = planFlowLayout(proposal, all ? centerOf(all) : { x: 0, y: 0 });
+  const aimed = planFlowLayout(proposal, centre);
   const searched = groupRectForMembers(aimed.map(withTaskCounts), 0);
   const dx = searched ? shiftRightPastOccupied(searched, occupied, ROW_GAP_PX) : 0;
   return aimed.map((spot) => ({ x: spot.x + dx, y: spot.y }));
@@ -258,7 +270,7 @@ function placeNewNodes(
  * @param targetType - Its type.
  * @returns True when the edge may be drawn.
  */
-function connectable(sourceId: string, sourceType: string, targetId: string, targetType: string): boolean {
+export function connectable(sourceId: string, sourceType: string, targetId: string, targetType: string): boolean {
   if (sourceId === targetId) return false;
   if (UNCONNECTABLE.has(sourceType) || UNCONNECTABLE.has(targetType)) return false;
   return canConnect(sourceType, targetType);

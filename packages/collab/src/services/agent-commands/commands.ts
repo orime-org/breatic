@@ -36,6 +36,13 @@ import {
 } from "@collab/services/agent-commands/canvas-commands.js";
 import { generationKind, readGenerationInputs } from "@collab/services/agent-commands/generation-commands.js";
 import {
+  checkUploadTarget,
+  createMiniToolResults,
+  createReadingNode,
+  createUploadNodes,
+  placedLate,
+} from "@collab/services/agent-commands/result-commands.js";
+import {
   commentOnDocument,
   deleteBlocks,
   editText,
@@ -209,6 +216,42 @@ const COMMANDS: CommandTable = {
     size: null,
     space: "canvas",
     run: (doc, { nodeId }) => readGenerationInputs(doc, nodeId),
+    late: unfinished,
+  },
+  create_mini_tool_results: {
+    params: agentCommandParamsSchemas.create_mini_tool_results,
+    write: true,
+    size: "add",
+    space: "canvas",
+    run: (doc, params, command) => createMiniToolResults(doc, params, command),
+    late: (doc, _params, command) => placedLate(doc, command, (i) => `result:${String(i)}`, (nodeIds) => ({ nodeIds })),
+  },
+  create_reading_node: {
+    params: agentCommandParamsSchemas.create_reading_node,
+    write: true,
+    size: "add",
+    space: "canvas",
+    run: (doc, params, command) => createReadingNode(doc, params, command),
+    late: (doc, _params, command) => placedLate(doc, command, ["reading"], ([nodeId]) => ({ nodeId: nodeId! })),
+  },
+  create_upload_nodes: {
+    params: agentCommandParamsSchemas.create_upload_nodes,
+    write: true,
+    size: "add",
+    space: "canvas",
+    run: (doc, params, command) => createUploadNodes(doc, params, command),
+    late: (doc, { files }, command) => {
+      const grouped = files.length >= 2;
+      const slots = [...files.map((_, i) => `upload:${String(i)}`), ...(grouped ? ["group"] : [])];
+      return placedLate(doc, command, slots, (ids): Json => (grouped ? { nodeIds: ids.slice(0, -1), groupId: ids.at(-1)! } : { nodeIds: ids }));
+    },
+  },
+  check_upload_target: {
+    params: agentCommandParamsSchemas.check_upload_target,
+    write: false,
+    size: null,
+    space: "canvas",
+    run: (doc, params) => checkUploadTarget(doc, params),
     late: unfinished,
   },
   read_document: {
