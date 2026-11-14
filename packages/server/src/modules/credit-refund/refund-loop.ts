@@ -9,7 +9,7 @@
  * lot's lock and leases decide whose answer counts.
  */
 
-import { db, env, logger, inGlobalRegion } from "@breatic/core";
+import { db, env, logger, isGlobalRegion } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { creditLotRepo } from "@breatic/domain";
 import { getCreditRefundConfig } from "@server/config/credit-refund.js";
@@ -67,7 +67,7 @@ export async function runRefundLoopOnce(isStopped: () => boolean = () => false):
  * @returns The handle to stop it.
  */
 export function startRefundLoop(): RefundLoop {
-  if (!env.INTERNAL_API_ENABLED || !inGlobalRegion()) return { stop: async () => {} };
+  if (!env.INTERNAL_API_ENABLED || !isGlobalRegion(env)) return { stop: async () => {} };
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let running: Promise<void> | null = null;

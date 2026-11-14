@@ -40,7 +40,7 @@ import {
   listenProjectMemberChanges,
   projectAuthService,
   type MemberChangeListener,
-  inGlobalRegion,
+  isGlobalRegion,
 } from "@breatic/core";
 import { onDatabaseWaitTimeout } from "@breatic/core";
 import { getCollabConfig, getReassemblyLimits } from "@collab/config.js";
@@ -203,7 +203,7 @@ async function main(): Promise<void> {
     port: env.COLLAB_PORT,
     redisKeyPrefix: REDIS_KEY_PREFIX,
     shutdownDeadline: () => shutdownDeadlineAt,
-    ...(!inGlobalRegion() ? { identityPublicKeys: env.IDENTITY_PUBLIC_KEYS } : {}),
+    ...(!isGlobalRegion(env) ? { identityPublicKeys: env.IDENTITY_PUBLIC_KEYS } : {}),
   });
 
   /**
@@ -297,7 +297,7 @@ async function main(): Promise<void> {
     sessionRevocation = await startSessionRevocation(hocuspocus, {
       source: controlRedis,
       readSession: (token) => getSession(getRedis(), token),
-      ...(!inGlobalRegion() ? { checkSessionIds: (sids: readonly string[]) => collabGlobalApi().checkSessions(sids) } : {}),
+      ...(!isGlobalRegion(env) ? { checkSessionIds: (sids: readonly string[]) => collabGlobalApi().checkSessions(sids) } : {}),
       recheckIntervalMs: getCollabConfig().session_recheck_interval_ms,
     });
   } catch (err) {

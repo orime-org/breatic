@@ -9,7 +9,7 @@
  * `profile_cache_ttl_ms`.
  */
 
-import { env, getRedis, getRegionsConfig, inGlobalRegion } from "@breatic/core";
+import { env, getRedis, getRegionsConfig, isGlobalRegion } from "@breatic/core";
 import { globalApi, type Account } from "@domain/region/global-api.js";
 import { getProfiles, type Profile } from "@domain/region/studioDirectory.service.js";
 
@@ -31,7 +31,7 @@ function profileKey(userId: string): string {
 export async function profilesOf(userIds: readonly string[]): Promise<Map<string, Profile>> {
   const ids = [...new Set(userIds)];
   if (ids.length === 0) return new Map();
-  if (inGlobalRegion()) return new Map(Object.entries(await getProfiles(ids)));
+  if (isGlobalRegion(env)) return new Map(Object.entries(await getProfiles(ids)));
   const redis = getRedis();
   const cached = await redis.mget(...ids.map(profileKey));
   const profiles = new Map<string, Profile>();

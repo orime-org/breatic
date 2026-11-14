@@ -17,7 +17,7 @@
 
 import { randomBytes } from "node:crypto";
 import { env } from "@core/config/env.js";
-import { inGlobalRegion } from "@core/region/placement.js";
+import { isGlobalRegion } from "@core/region/placement.js";
 
 /** The column width every request table stores tokens in. */
 const TOKEN_WIDTH = 64;
@@ -33,7 +33,7 @@ const TOKEN_WIDTH = 64;
  * @returns At most 64 characters: the optional region prefix, then lowercase hex.
  */
 export function mintShareToken(): string {
-  const prefix = inGlobalRegion() ? "" : `${env.REGION}.`;
+  const prefix = isGlobalRegion(env) ? "" : `${env.REGION}.`;
   return prefix + randomBytes(Math.floor((TOKEN_WIDTH - prefix.length) / 2)).toString("hex");
 }
 

@@ -50,7 +50,7 @@ import {
   studioDirectoryRepo,
   type ActivityCursor,
   type DbTx,
-  inGlobalRegion,
+  isGlobalRegion,
 } from "@breatic/core";
 import {
   t,
@@ -592,7 +592,7 @@ function asRegional(request: creditChargeRepo.ChargeRequest): RegionalChargeRequ
  * @throws {Error} When the charge cannot be applied.
  */
 async function settleOnce(requestId: string): Promise<ChargeOutcome | null> {
-  const settled = inGlobalRegion() ? await settleHere(requestId) : await settleThroughGlobal(requestId);
+  const settled = isGlobalRegion(env) ? await settleHere(requestId) : await settleThroughGlobal(requestId);
   if (settled === null) return null;
   const { outcome, projectId } = settled;
   // Only a charge against a studio's pool changes what its users see.
@@ -1220,7 +1220,7 @@ export async function readStudioCredits(
   studioId: string,
   limit: number,
 ): Promise<StudioCreditsSnapshot> {
-  if (inGlobalRegion()) return readStudioCreditsHere(studioId, limit);
+  if (isGlobalRegion(env)) return readStudioCreditsHere(studioId, limit);
   const snapshot = await globalApi().readStudioCredits(studioId, limit);
   return { ...snapshot, lots: snapshot.lots.map(revivedLot), ledger: snapshot.ledger.map(revivedLedgerRow) };
 }
@@ -1237,7 +1237,7 @@ export async function listStudioLedger(
   limit: number,
   cursor: ActivityCursor,
 ): Promise<creditLotRepo.StudioLedgerRow[]> {
-  if (inGlobalRegion()) return creditLotRepo.listLedgerByStudio(studioId, limit, cursor);
+  if (isGlobalRegion(env)) return creditLotRepo.listLedgerByStudio(studioId, limit, cursor);
   const rows = await globalApi().listStudioLedger(studioId, limit, cursor);
   return rows.map(revivedLedgerRow);
 }

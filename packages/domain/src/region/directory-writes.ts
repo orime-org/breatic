@@ -10,7 +10,7 @@
  * write it describes.
  */
 
-import { db, inGlobalRegion, regionOutboxRepo, studioDirectoryRepo, type DbTx } from "@breatic/core";
+import { db, env, isGlobalRegion, regionOutboxRepo, studioDirectoryRepo, type DbTx } from "@breatic/core";
 
 /**
  * Record that a Studio's transfer offer opened, until its expiry.
@@ -19,7 +19,7 @@ import { db, inGlobalRegion, regionOutboxRepo, studioDirectoryRepo, type DbTx } 
  * @param tx - The transaction the offer is filed in.
  */
 export async function transferOpened(studioId: string, until: Date, tx: DbTx): Promise<void> {
-  if (inGlobalRegion()) {
+  if (isGlobalRegion(env)) {
     await studioDirectoryRepo.setTransferPendingUntil(studioId, until, tx);
     return;
   }
@@ -35,7 +35,7 @@ export async function transferOpened(studioId: string, until: Date, tx: DbTx): P
  * @param tx - The transaction the offer ends in.
  */
 export async function transferClosed(studioId: string, tx: DbTx): Promise<void> {
-  if (inGlobalRegion()) {
+  if (isGlobalRegion(env)) {
     await studioDirectoryRepo.setTransferPendingUntil(studioId, null, tx);
     return;
   }
@@ -61,7 +61,7 @@ async function change(
   tx: DbTx,
   here: () => Promise<void>,
 ): Promise<void> {
-  if (inGlobalRegion()) await here();
+  if (isGlobalRegion(env)) await here();
   else await regionOutboxRepo.append({ aggregateKey, eventType, payload }, tx);
 }
 
@@ -130,7 +130,7 @@ export async function projectCreated(projectId: string, studioId: string, tx: Db
  * @param tx - The writing transaction, when there is one.
  */
 export async function userRegionTouched(userId: string, tx?: DbTx): Promise<void> {
-  if (inGlobalRegion()) return;
+  if (isGlobalRegion(env)) return;
   await regionOutboxRepo.append({ aggregateKey: `user:${userId}`, eventType: "user_region.touched", payload: { userId } }, tx);
 }
 

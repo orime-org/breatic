@@ -18,7 +18,7 @@ import type { Context, MiddlewareHandler } from "hono";
 import { getCookie } from "hono/cookie";
 import * as Sentry from "@sentry/node";
 import { authService } from "@server/modules";
-import { env, getRedis, identityCookieName, isIdentityRevoked, logger, verifyIdentityToken, inGlobalRegion } from "@breatic/core";
+import { env, getRedis, identityCookieName, isIdentityRevoked, logger, verifyIdentityToken, isGlobalRegion } from "@breatic/core";
 import { t, type MembershipTier } from "@breatic/shared";
 import { readSessionCookie } from "@server/middleware/session-cookie.js";
 
@@ -57,7 +57,7 @@ export interface AuthVariables {
 export const requireAuth: MiddlewareHandler<{
   Variables: AuthVariables;
 }> = async (c, next) => {
-  if (!inGlobalRegion()) {
+  if (!isGlobalRegion(env)) {
     const user = await userFromIdentityToken(c);
     if (user instanceof Response) return user;
     c.set("user", user);
@@ -98,7 +98,7 @@ export const requireAuth: MiddlewareHandler<{
  * @throws {Error} When the session or tombstone store cannot be read.
  */
 export async function requestUserId(c: Context): Promise<string | null> {
-  if (!inGlobalRegion()) {
+  if (!isGlobalRegion(env)) {
     const cookie = getCookie(c, identityCookieName());
     if (!cookie) return null;
     const verdict = verifyIdentityToken(cookie, env.IDENTITY_PUBLIC_KEYS, Math.floor(Date.now() / 1000));

@@ -17,7 +17,7 @@
 import { createHash } from "node:crypto";
 import type Redis from "ioredis";
 import { env } from "@core/config/env.js";
-import { inGlobalRegion, otherRegionsOf } from "@core/region/placement.js";
+import { isGlobalRegion, otherRegionsOf } from "@core/region/placement.js";
 import { publishSessionsRevoked } from "@core/infra/control-events.js";
 import { createQueue, defaultJobOpts } from "@core/infra/queue.js";
 import { redactSessionError } from "@core/infra/session-error.js";
@@ -163,7 +163,7 @@ let revocationForwardQueue: ReturnType<typeof createQueue> | null = null;
  * @throws {Error} When the queue cannot be written.
  */
 async function forwardToRegions(userId: string, sids: string[]): Promise<void> {
-  if (!inGlobalRegion()) return;
+  if (!isGlobalRegion(env)) return;
   const regions = otherRegionsOf(env);
   if (regions.length === 0) return;
   revocationForwardQueue ??= createQueue(IDENTITY_REVOCATION_FORWARD_QUEUE);

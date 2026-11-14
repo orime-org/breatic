@@ -26,7 +26,7 @@ const studioRepoMock = vi.hoisted(() => ({
 // figure is read at all, so the flag is a knob here rather than whatever the
 // developer's own .env happens to say.
 const { envRef, mockTrialGrantCredits, mockFindPersonalByCreator, mockListStudiosOfUser } = vi.hoisted(() => ({
-  envRef: { PAYMENT_ENABLED: true, GLOBAL_REGION: "us-west", REGION_API_URLS: { sg: "http://sg.invalid" } },
+  envRef: { PAYMENT_ENABLED: true, REGION: "us-west", GLOBAL_REGION: "us-west", REGION_API_URLS: { sg: "http://sg.invalid" } },
   mockTrialGrantCredits: vi.fn(() => 100),
   mockFindPersonalByCreator: vi.fn(),
   mockListStudiosOfUser: vi.fn(),
@@ -69,7 +69,6 @@ vi.mock("@breatic/domain", () => ({
   studioCreationService: { createStudio: mockCreateStudio },
   regionClient: regionClientRef,
   isKnownRegion: (region: string) => region === "us-west" || region === "sg",
-  directoryWrites: { inGlobalRegion: () => true },
 }));
 
 vi.mock("@breatic/shared", async (importOriginal: () => Promise<Record<string, unknown>>) => ({

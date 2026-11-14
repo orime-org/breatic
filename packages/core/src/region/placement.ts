@@ -2,12 +2,11 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Where this process runs among the deployment's regions (inner#1955): the
- * one place that answers whether it is the global region and whether the
- * deployment has other regions at all.
+ * Where a process runs among the deployment's regions (inner#1955): the one
+ * place that answers whether it is the global region and whether the
+ * deployment has other regions at all. Each answer reads the settings it is
+ * given, so a caller passes its own `env`.
  */
-
-import { env } from "@core/config/env.js";
 
 /** The region settings these answers read. */
 export interface RegionPlacement {
@@ -17,11 +16,12 @@ export interface RegionPlacement {
 }
 
 /**
- * Whether this process runs in the region that holds the global data.
+ * Whether a process runs in the region that holds the global data.
+ * @param config - Its region settings, usually `env`.
  * @returns True in the global region, and in every single-region deployment.
  */
-export function inGlobalRegion(): boolean {
-  return env.REGION === env.GLOBAL_REGION;
+export function isGlobalRegion(config: Pick<RegionPlacement, "REGION" | "GLOBAL_REGION">): boolean {
+  return config.REGION === config.GLOBAL_REGION;
 }
 
 /**

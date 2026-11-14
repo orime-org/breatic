@@ -7,7 +7,7 @@
  * the global API.
  */
 
-import { db, isDeadlock, projectsRepo, regionOutboxRepo, studioDirectoryRepo, type DbTx, inGlobalRegion } from "@breatic/core";
+import { db, env, isDeadlock, isGlobalRegion, projectsRepo, regionOutboxRepo, studioDirectoryRepo, type DbTx } from "@breatic/core";
 import * as studioMembersRepo from "@domain/auth/studioMembers.repo.js";
 import * as usersRepo from "@domain/auth/user.repo.js";
 import { releaseDesignations } from "@domain/credit/creditLot.service.js";
@@ -83,7 +83,7 @@ export async function emitStudioSnapshot(studioId: string): Promise<void> {
       projectIds: await projectsRepo.listIdsInStudio(studioId, tx),
       transferPendingUntil: offer === null ? null : offer.expiresAt.toISOString(),
     };
-    if (inGlobalRegion()) await applySnapshot(snapshot, tx);
+    if (isGlobalRegion(env)) await applySnapshot(snapshot, tx);
     else {
       await regionOutboxRepo.append(
         { aggregateKey: `studio:${studioId}`, eventType: "studio.snapshot", payload: { ...snapshot } },
@@ -152,7 +152,7 @@ export async function getProfiles(userIds: readonly string[]): Promise<Record<st
  * @returns How many Studios it aligned, or 0 when it had already run or runs outside the global region.
  */
 export async function reconcileDirectoryAfterUpgrade(): Promise<number> {
-  if (!inGlobalRegion() || (await studioDirectoryRepo.isReconciled())) return 0;
+  if (!isGlobalRegion(env) || (await studioDirectoryRepo.isReconciled())) return 0;
   // Newest first: the Studios old processes created during the upgrade are
   // the ones missing from the directory altogether.
   const studioIds = await studioRepo.listLiveIds();

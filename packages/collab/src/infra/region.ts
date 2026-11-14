@@ -17,7 +17,7 @@ import {
   getRegionsConfig,
   projectsRepo,
   type MembershipLimits,
-  inGlobalRegion,
+  isGlobalRegion,
 } from "@breatic/core";
 
 /** The global functions collab calls. */
@@ -51,7 +51,7 @@ export function collabGlobalApi(): CollabGlobalApi {
  * @throws {Error} When no live project has that id, or the global region does not answer.
  */
 export async function concurrentEditorLimit(projectId: string): Promise<number> {
-  if (inGlobalRegion()) return getProjectConcurrentEditorLimit(projectId);
+  if (isGlobalRegion(env)) return getProjectConcurrentEditorLimit(projectId);
   const studioId = await projectsRepo.findOwnerStudioId(projectId);
   if (studioId === undefined) throw new Error(`No live project ${projectId}`);
   const redis = getRedis();
