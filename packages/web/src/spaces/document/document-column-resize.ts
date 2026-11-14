@@ -32,7 +32,18 @@ export interface DividerStart {
 }
 
 /**
- * The two columns' weights after the divider moved.
+ * A weight rounded up to four places; a weight already on four places stays.
+ * @param weight - The weight.
+ * @returns It, rounded up.
+ */
+function roundedUp(weight: number): number {
+  return Math.ceil(weight * 10_000 - 1e-6) / 10_000;
+}
+
+/**
+ * The two columns' weights after the divider moved. The narrower one is
+ * rounded up, so a column held at 96px is stored at no less and its group
+ * still holds it side by side.
  * @param start - The columns at the start and the move.
  * @returns The two weights.
  */
@@ -41,8 +52,10 @@ export function resizedWeights(start: DividerStart): { left: number; right: numb
   const weights = start.leftWeight + start.rightWeight;
   if (total < 2 * MIN_COLUMN_WIDTH) return { left: start.leftWeight, right: start.rightWeight };
   const leftPx = Math.min(Math.max(start.leftPx + start.dx, MIN_COLUMN_WIDTH), total - MIN_COLUMN_WIDTH);
-  const left = rounded((weights * leftPx) / total);
-  return { left, right: rounded(weights - left) };
+  const leftThinner = leftPx * 2 <= total;
+  const thin = roundedUp((weights * (leftThinner ? leftPx : total - leftPx)) / total);
+  const thick = rounded(weights - thin);
+  return leftThinner ? { left: thin, right: thick } : { left: thick, right: thin };
 }
 
 /**

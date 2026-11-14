@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 import { Awareness } from 'y-protocols/awareness';
 
+import { COLUMN_GAP, weightsFit } from '@web/spaces/document/document-column-geometry';
 import { resizedWeights, writeColumnWidths } from '@web/spaces/document/document-column-resize';
 import { adoptDocumentEditor, getDocumentEditor } from '@web/spaces/document/document-editor-cache';
 import { columnsBlock, para } from '@web/spaces/document/__tests__/column-fixtures';
@@ -40,6 +41,18 @@ describe('the widths a divider drag gives (design §5.4)', () => {
   it('stops each column at 96px', () => {
     expect(resizedWeights({ leftPx: 300, rightPx: 300, leftWeight: 1, rightWeight: 1, dx: 400 })).toEqual({ left: 1.68, right: 0.32 });
     expect(resizedWeights({ leftPx: 300, rightPx: 300, leftWeight: 1, rightWeight: 1, dx: -400 })).toEqual({ left: 0.32, right: 1.68 });
+  });
+
+  it('keeps a column dragged to 96px side by side, whatever the room', () => {
+    const stacked: number[] = [];
+    for (let width = 300; width <= 1200; width += 1) {
+      const half = (width - COLUMN_GAP) / 2;
+      for (const dx of [-10_000, 10_000]) {
+        const { left, right } = resizedWeights({ leftPx: half, rightPx: half, leftWeight: 1, rightWeight: 1, dx });
+        if (!weightsFit(width, [left, right])) stacked.push(width);
+      }
+    }
+    expect(stacked).toEqual([]);
   });
 
   it('leaves a pair already at the minimum where it is', () => {
