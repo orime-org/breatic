@@ -18,7 +18,7 @@
  * Wants dev running:
  *   pnpm --filter @breatic/web test:smoke
  */
-import { expect, type Page } from 'playwright/test';
+import { expect, type Locator, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
 
 import { selectInBody } from '../helpers/editor-keys';
@@ -210,6 +210,44 @@ async function caretAtEndOfFirstLine(p: Page): Promise<void> {
   }, EDITOR));
 }
 
+/**
+ * Scrolls the body, and only the body, until a formula sits where asked: its
+ * bottom edge 40px above the window's, or its top edge 10px below the body's.
+ * Each pass measures again, since the page can still settle after a scroll.
+ * @param formula - The rendered formula.
+ * @param at - Where it is to sit.
+ */
+async function scrollFormulaTo(formula: Locator, at: 'window-bottom' | 'body-top'): Promise<void> {
+  await expect.poll(() => formula.evaluate((element, where) => {
+    const scroller = element.closest<HTMLElement>('.doc-body-scroller > [data-radix-scroll-area-viewport]')!;
+    const rect = element.getBoundingClientRect();
+    const off = where === 'window-bottom'
+      ? rect.bottom - (window.innerHeight - 40)
+      : rect.top - (scroller.getBoundingClientRect().top + 10);
+    scroller.scrollTop += off;
+    return Math.abs(Math.round(off));
+  }, at)).toBeLessThanOrEqual(1);
+}
+
+/**
+ * Pastes a table between forty lines above and forty below, then types an
+ * inline formula at the end of the table's first cell.
+ * @param p - The page.
+ * @param columns - How many columns the table has.
+ * @returns The rendered formula.
+ */
+async function formulaInCellBelowLines(p: Page, columns: number): Promise<Locator> {
+  const filler = Array.from({ length: 40 }, (_, i) => `<p>line ${i}</p>`).join('');
+  const row = (first: string): string => `<tr><td>${first}</td>${'<td>more words here</td>'.repeat(columns - 1)}</tr>`;
+  await paste(p, { 'text/html': `${filler}<table><tbody>${row('cell')}${row('c')}</tbody></table>${filler}` });
+  await p.locator(`${EDITOR} table td`, { hasText: 'cell' }).click();
+  await p.keyboard.press('End');
+  await p.keyboard.type(' $$x^2$$');
+  const formula = p.locator(`${EDITOR} table .doc-math .katex`).first();
+  await expect(formula).toBeVisible();
+  return formula;
+}
+
 test('a formula block from the plus menu: the box opens with the caret in it, Enter confirms, KaTeX draws it', async () => {
   await openFreshDocument(page);
   await insertFromPlus(page);
@@ -260,11 +298,7 @@ test('a box opened near the bottom of the window opens above its formula, inside
   await paste(page, { 'text/plain': `${Array.from({ length: 40 }, (_, i) => `line ${i}`).join('\n\n')}\n\n$$\n\\frac{a}{b}\n$$` });
   const formula = page.locator(`${EDITOR} .doc-math .katex-display`).first();
   await expect(formula).toBeVisible();
-  // The formula's bottom edge 40px above the window's.
-  await formula.evaluate((element) => {
-    const scroller = element.closest('[data-radix-scroll-area-viewport]')!;
-    scroller.scrollTop += element.getBoundingClientRect().bottom - (window.innerHeight - 40);
-  });
+  await scrollFormulaTo(formula, 'window-bottom');
 
   await formula.click();
   await expect(page.locator(FIELD)).toBeFocused();
@@ -278,20 +312,8 @@ test('a box opened near the bottom of the window opens above its formula, inside
 
 test('a box opened in a table cell near the bottom of the window opens above its formula, inside the window', async () => {
   await openFreshDocument(page);
-  const filler = Array.from({ length: 40 }, (_, i) => `<p>line ${i}</p>`).join('');
-  await paste(page, {
-    'text/html': `${filler}<table><tbody><tr><td>cell</td><td>b</td></tr><tr><td>c</td><td>d</td></tr></tbody></table><p>after</p>`,
-  });
-  await page.locator(`${EDITOR} table td`, { hasText: 'cell' }).click();
-  await page.keyboard.press('End');
-  await page.keyboard.type(' $$x^2$$');
-  const formula = page.locator(`${EDITOR} table .doc-math .katex`).first();
-  await expect(formula).toBeVisible();
-  // The formula's bottom edge 40px above the window's, scrolled by the body.
-  await formula.evaluate((element) => {
-    const scroller = element.closest('.doc-body-scroller > [data-radix-scroll-area-viewport]')!;
-    scroller.scrollTop += element.getBoundingClientRect().bottom - (window.innerHeight - 40);
-  });
+  const formula = await formulaInCellBelowLines(page, 2);
+  await scrollFormulaTo(formula, 'window-bottom');
 
   await formula.click();
   await expect(page.locator(FIELD)).toBeFocused();
@@ -301,6 +323,43 @@ test('a box opened in a table cell near the bottom of the window opens above its
   expect(box.y).toBeGreaterThanOrEqual(0);
   expect(box.y + box.height).toBeLessThanOrEqual(page.viewportSize()!.height);
   expect(box.y + box.height).toBeLessThanOrEqual(drawn.y);
+});
+
+test('a box open in a table cell stays inside the body when the body scrolls', async () => {
+  await openFreshDocument(page);
+  const formula = await formulaInCellBelowLines(page, 2);
+  await scrollFormulaTo(formula, 'window-bottom');
+  await formula.click();
+  await expect(page.locator(FIELD)).toBeFocused();
+
+  // The box sits above the formula; the formula now goes up to the body's top.
+  await scrollFormulaTo(formula, 'body-top');
+
+  const box = (await page.locator(BOX).boundingBox())!;
+  const body = (await page.locator('.doc-body-scroller').boundingBox())!;
+  expect(box.y).toBeLessThan(body.y);
+  // A point of the box above the body, inside the window: the top bar's.
+  const above = { x: box.x + box.width / 2, y: (Math.max(box.y, 0) + body.y) / 2 };
+  const covered = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('[data-formula-box]') != null, above);
+  expect(covered).toBe(false);
+});
+
+test('a box open in a table cell hides when the table scrolls its formula out of sight', async () => {
+  await openFreshDocument(page);
+  const formula = await formulaInCellBelowLines(page, 12);
+  await formula.click();
+  await expect(page.locator(BOX)).toBeVisible();
+
+  await formula.evaluate((element) => {
+    const scroller = element.closest<HTMLElement>('[data-radix-scroll-area-viewport]')!;
+    scroller.scrollLeft = scroller.scrollWidth;
+  });
+
+  await expect.poll(() => formula.evaluate((element) => {
+    const scroller = element.closest<HTMLElement>('[data-radix-scroll-area-viewport]')!;
+    return element.getBoundingClientRect().right <= scroller.getBoundingClientRect().left;
+  })).toBe(true);
+  await expect(page.locator(BOX)).toBeHidden();
 });
 
 test('a box opened in a body column narrower than the box stays inside the column', async () => {
