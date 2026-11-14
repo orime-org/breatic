@@ -62,6 +62,7 @@ import {
   runUrlIngest,
   type UrlIngestJobData,
 } from "@worker/handlers/url-ingest.js";
+import { mirrorInDirectory } from "@server/__tests__/integration/directory-fixtures.js";
 
 try {
   initCore(process.env);
@@ -114,6 +115,7 @@ async function seedEditor(): Promise<{
     INSERT INTO studio_members (studio_id, user_id, role)
     VALUES (${studioId}, ${userId}, 'admin')
   `;
+  await mirrorInDirectory(sql, studioId);
   const slug = `uiw-proj-${seq++}`;
   const projects = await sql<{ id: string }[]>`
     INSERT INTO projects (studio_id, created_by_user_id, name, slug)
