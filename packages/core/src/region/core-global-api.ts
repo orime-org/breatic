@@ -8,8 +8,6 @@
  */
 
 import { enqueueAccountAdsConversion } from "@core/ads/ads-conversion.js";
-import { env } from "@core/config/env.js";
-import { getRegionsConfig } from "@core/config/regions.js";
 import { createGlobalApi } from "@core/region/global-api.js";
 
 /** The global functions core calls. */
@@ -24,15 +22,6 @@ let api: CoreGlobalApi | null = null;
  * @returns In process in the global region, signed requests elsewhere.
  */
 export function coreGlobalApi(): CoreGlobalApi {
-  api ??= createGlobalApi<CoreGlobalApi>(
-    { enqueueAdsConversion: enqueueAccountAdsConversion },
-    {
-      region: env.REGION,
-      globalRegion: env.GLOBAL_REGION,
-      globalApiUrl: env.GLOBAL_API_URL,
-      secret: env.INTERNAL_API_SECRET,
-      timeoutMs: getRegionsConfig().global_api_timeout_ms,
-    },
-  );
+  api ??= createGlobalApi<CoreGlobalApi>({ enqueueAdsConversion: enqueueAccountAdsConversion });
   return api;
 }

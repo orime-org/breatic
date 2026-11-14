@@ -9,7 +9,7 @@
  */
 
 import type { Job } from "bullmq";
-import { assetRepo, callRegion, env, getRegionsConfig, GlobalApiError, logger, studioDirectoryRepo } from "@breatic/core";
+import { assetRepo, callRegion, env, getRegionsConfig, GlobalApiError, isRegionUnavailable, logger, studioDirectoryRepo } from "@breatic/core";
 import { directoryWrites, globalApi, regionOutboxService, studioDirectoryService, studioRepo } from "@breatic/domain";
 
 /** A sign-in's claims for one other region. */
@@ -37,14 +37,11 @@ async function askRegion(region: string, fn: string, args: unknown[]): Promise<u
   return callRegion(region, fn, args, getRegionsConfig().global_api_timeout_ms);
 }
 
-/** The HTTP statuses the global region may answer differently on a retry. */
-const RETRYABLE_STATUSES = new Set([408, 429]);
-
 /**
- * Send one event to the global region. A refusal of the request itself (a
- * 4xx other than timeout or rate limit, such as a body over the internal
- * limit) can never succeed, so the event is set aside like one the global
- * region cannot apply; anything else throws and the relay stops to retry.
+ * Send one event to the global region. A refusal of the request itself
+ * (such as a body over the internal limit) can never succeed, so the event
+ * is set aside like one the global region cannot apply; an unavailable
+ * global region throws and the relay stops to retry.
  * @param event - The event.
  * @returns How the global region took it.
  * @throws {Error} When the global region did not answer or failed for now.
@@ -53,7 +50,7 @@ async function deliverEvent(event: regionOutboxService.OutboxEvent): Promise<"ap
   try {
     return await globalApi().applyRegionEvent(env.REGION, event);
   } catch (err) {
-    if (err instanceof GlobalApiError && err.status >= 400 && err.status < 500 && !RETRYABLE_STATUSES.has(err.status)) {
+    if (err instanceof GlobalApiError && !isRegionUnavailable(err)) {
       logger.error({ err, region: env.REGION, eventId: event.id }, "region_outbox_event_refused");
       return "permanent_failure";
     }

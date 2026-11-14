@@ -40,19 +40,10 @@ let api: CollabGlobalApi | null = null;
  * @returns The API: in process in the global region, signed requests elsewhere.
  */
 export function collabGlobalApi(): CollabGlobalApi {
-  api ??= createGlobalApi<CollabGlobalApi>(
-    {
-      checkSessions: (sids) => checkSessions(getRedis(), sids),
-      getLimitsForStudio: (studioId) => getLimitsForStudio(studioId),
-    },
-    {
-      region: env.REGION,
-      globalRegion: env.GLOBAL_REGION,
-      globalApiUrl: env.GLOBAL_API_URL,
-      secret: env.INTERNAL_API_SECRET,
-      timeoutMs: getRegionsConfig().global_api_timeout_ms,
-    },
-  );
+  api ??= createGlobalApi<CollabGlobalApi>({
+    checkSessions: (sids) => checkSessions(getRedis(), sids),
+    getLimitsForStudio: (studioId) => getLimitsForStudio(studioId),
+  });
   return api;
 }
 

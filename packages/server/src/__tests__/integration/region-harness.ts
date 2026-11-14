@@ -21,6 +21,17 @@ export interface ReceivedCall {
   signed: boolean;
 }
 
+/** A refusal a stand-in function throws, answered with its status the way `serve()` answers an `AppError`. */
+export class StandInRefusal extends Error {
+  /**
+   * @param status - The HTTP status to answer with.
+   * @param code - The refusal code.
+   */
+  constructor(readonly status: number, readonly code: string) {
+    super(code);
+  }
+}
+
 /** How a function answers: a fixed result or one computed from the arguments. */
 export type Answer = unknown | ((...args: unknown[]) => unknown);
 
@@ -71,14 +82,16 @@ export async function startRegionStandIn(): Promise<RegionStandIn> {
       });
       if (standIn.mode === "hang") return;
       const answer = match === null ? null : standIn.answers[match[2]!];
-      void Promise.resolve(typeof answer === "function" ? (answer as (...args: unknown[]) => unknown)(...parsed.args) : answer ?? null)
+      void Promise.resolve()
+        .then(() => (typeof answer === "function" ? (answer as (...args: unknown[]) => unknown)(...parsed.args) : answer ?? null))
         .then((result) => {
           res.writeHead(200, { "content-type": "application/json" });
           res.end(JSON.stringify({ result }));
         })
         .catch((err: unknown) => {
-          res.writeHead(500, { "content-type": "application/json" });
-          res.end(JSON.stringify({ code: "stand_in_failed", message: String(err) }));
+          const refusal = err instanceof StandInRefusal ? err : null;
+          res.writeHead(refusal?.status ?? 500, { "content-type": "application/json" });
+          res.end(JSON.stringify({ code: refusal?.code ?? "stand_in_failed", message: String(err) }));
         });
     });
   });

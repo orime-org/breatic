@@ -14,10 +14,8 @@ import {
   createGlobalApi,
   db,
   enqueueAccountAdsConversion,
-  env,
   getLimitsForStudio,
   getRedis,
-  getRegionsConfig,
   type ActivityCursor,
   type FirstMilestone,
   type MembershipLimits,
@@ -254,13 +252,7 @@ let api: GlobalApi | null = null;
  * @returns In process in the global region, signed requests elsewhere.
  */
 export function globalApi(): GlobalApi {
-  api ??= createGlobalApi(GLOBAL_FUNCTIONS, {
-    region: env.REGION,
-    globalRegion: env.GLOBAL_REGION,
-    globalApiUrl: env.GLOBAL_API_URL,
-    secret: env.INTERNAL_API_SECRET,
-    timeoutMs: getRegionsConfig().global_api_timeout_ms,
-  });
+  api ??= createGlobalApi(GLOBAL_FUNCTIONS);
   return api;
 }
 

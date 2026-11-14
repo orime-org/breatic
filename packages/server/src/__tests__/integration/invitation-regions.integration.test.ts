@@ -16,9 +16,11 @@
  *
  *   1. A prefixed token's preview is answered by its region.
  *   2. A token with no prefix is answered here and asks no region.
- *   3. A region that does not answer turns the preview into 503
+ *   3. A region that answers the invitation does not exist turns the
+ *      preview into 404, never region_unavailable.
+ *   4. A region that does not answer turns the preview into 503
  *      region_unavailable within the timeout.
- *   4. Signing in answers at once while the other region hangs, and leaves
+ *   5. Signing in answers at once while the other region hangs, and leaves
  *      a claim job for that region.
  */
 
@@ -42,7 +44,7 @@ import { createQueue, initCore, loadLocales } from "@breatic/core";
 import type { Hono } from "hono";
 import { hashPassword } from "@server/modules/auth/auth.service.js";
 import { withPeer } from "../helpers/peer.js";
-import { startRegionStandIn, type RegionStandIn } from "./region-harness.js";
+import { StandInRefusal, startRegionStandIn, type RegionStandIn } from "./region-harness.js";
 
 loadLocales();
 
@@ -108,6 +110,17 @@ describe("previewing an invitation", () => {
     await preview(crypto.randomBytes(20).toString("hex"));
 
     expect(sg.received).toEqual([]);
+  });
+
+  it("answers 404 when the region says the invitation does not exist", async () => {
+    sg.answers.previewInvitation = () => {
+      throw new StandInRefusal(404, "refused");
+    };
+
+    const { status, body } = await preview(`sg.${crypto.randomBytes(20).toString("hex")}`);
+
+    expect(status).toBe(404);
+    expect((body.error as { reason?: string }).reason).not.toBe("region_unavailable");
   });
 
   it("answers 503 region_unavailable within the timeout when the region does not answer", async () => {

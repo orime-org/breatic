@@ -7,7 +7,18 @@
  * answers within `cross_region_fanout_timeout_ms` or is reported unavailable.
  */
 
-import { AppError, callRegion, env, getRegionsConfig, logger, studioDirectoryRepo } from "@breatic/core";
+import {
+  AppError,
+  callRegion,
+  env,
+  getRegionsConfig,
+  GlobalApiError,
+  isRegionUnavailable,
+  logger,
+  NotFoundError,
+  studioDirectoryRepo,
+} from "@breatic/core";
+import { t } from "@breatic/shared";
 
 /** The `error.reason` of a call another region did not answer. */
 export const REGION_UNAVAILABLE_REASON = "region_unavailable";
@@ -19,13 +30,17 @@ export const REGION_UNAVAILABLE_REASON = "region_unavailable";
  * @param args - Its arguments.
  * @param unavailableMessage - What to tell the user when the region does not answer.
  * @returns The region's answer.
- * @throws {AppError} The region's own refusal, or `503` `region_unavailable` when it does not answer.
+ * @throws {NotFoundError} When the region answers that the thing asked for does not exist.
+ * @throws {GlobalApiError} Any other refusal, a bug of ours the error handler logs.
+ * @throws {AppError} `503` `region_unavailable` when the region is unavailable.
  */
 export async function askRegion<T>(region: string, fn: string, args: unknown[], unavailableMessage: string): Promise<T> {
   try {
     return (await callRegion(region, fn, args, getRegionsConfig().cross_region_fanout_timeout_ms)) as T;
   } catch (err) {
-    if (err instanceof AppError) throw err;
+    if (err instanceof GlobalApiError && !isRegionUnavailable(err)) {
+      throw err.status === 404 ? new NotFoundError(t("server.error.not_found")) : err;
+    }
     logger.error({ err, ctx: { region, fn } }, "cross_region_call_failed");
     throw new AppError(503, unavailableMessage, REGION_UNAVAILABLE_REASON);
   }

@@ -19,21 +19,12 @@
 import { randomBytes } from "node:crypto";
 import { httpRequest } from "@breatic/shared";
 import { env } from "@core/config/env.js";
+import { getRegionsConfig } from "@core/config/regions.js";
 import type { HealthCheck } from "@core/infra/health-server.js";
 import { signRequest } from "@core/region/signature.js";
 
 /** A global function as the API exposes it: async, JSON in and out. */
 type RemoteFunction = (...args: never[]) => Promise<unknown>;
-
-/** Where this process runs and how it reaches the global region. */
-export interface GlobalApiOptions {
-  region: string;
-  globalRegion: string;
-  globalApiUrl: string;
-  secret: string;
-  /** How long one remote call may take. */
-  timeoutMs: number;
-}
 
 /** The status a call gets when no answer came back at all. */
 export const UNREACHABLE_STATUS = 0;
@@ -59,12 +50,27 @@ export class GlobalApiError extends Error {
   }
 }
 
+/**
+ * Whether a failed call means the other side is unavailable for now: no
+ * answer, a server error, a timeout or rate limit, or a refused signature
+ * (a secret or clock out of step between the regions). Anything else is the
+ * other side's own answer to this request.
+ * @param err - What the call threw.
+ * @returns True when a later attempt may succeed unchanged.
+ */
+export function isRegionUnavailable(err: unknown): boolean {
+  if (!(err instanceof GlobalApiError)) return false;
+  const { status } = err;
+  return status === UNREACHABLE_STATUS || status === 401 || status === 403 || status === 408 || status === 429 || status >= 500;
+}
+
 /** Whether the latest call to the global region got an answer from it. */
 let lastGlobalCallOk = true;
 
 /**
  * Whether the latest call to the global region was answered: a refusal
- * counts, no answer or a server error does not. True before any call.
+ * counts, an unavailable global region ({@link isRegionUnavailable}) does
+ * not. True before any call.
  * @returns The outcome, for a region's health report.
  */
 export function lastGlobalCallSucceeded(): boolean {
@@ -134,33 +140,43 @@ async function postSigned(
   } catch (err) {
     throw new GlobalApiError(UNREACHABLE_STATUS, "unreachable", `${path} did not answer: ${(err as Error).message}`);
   }
-  const answer = (await response.json().catch(() => ({}))) as { result?: unknown; code?: unknown };
   if (!response.ok) {
-    const code = typeof answer.code === "string" ? answer.code : `http_${response.status}`;
+    const refusal = (await response.json().catch(() => ({}))) as { code?: unknown };
+    const code = typeof refusal.code === "string" ? refusal.code : `http_${response.status}`;
     throw new GlobalApiError(response.status, code, `${path} refused with ${code}`);
   }
-  return answer.result ?? null;
+  try {
+    return ((await response.json()) as { result?: unknown }).result ?? null;
+  } catch (err) {
+    // A body cut off by the deadline is no answer, never a null result.
+    throw new GlobalApiError(UNREACHABLE_STATUS, "unreachable", `${path} answer could not be read: ${(err as Error).message}`);
+  }
 }
 
 /**
  * The API of the global functions for this process.
  * @param local - The global functions, as the global region runs them.
- * @param options - This region and how it reaches the global region.
  * @returns An object with the same functions: in process in the global
  *   region, signed requests to it everywhere else.
  */
-export function createGlobalApi<T extends Record<string, RemoteFunction>>(local: T, options: GlobalApiOptions): T {
-  if (options.region === options.globalRegion) return local;
-  const { timeoutMs } = options;
+export function createGlobalApi<T extends Record<string, RemoteFunction>>(local: T): T {
+  if (env.REGION === env.GLOBAL_REGION) return local;
   const remote: Record<string, RemoteFunction> = {};
   for (const name of Object.keys(local)) {
     remote[name] = async (...args: never[]) => {
       try {
-        const result = await postSigned(options.globalApiUrl, `/internal/global/${name}`, args, options.region, options.secret, timeoutMs);
+        const result = await postSigned(
+          env.GLOBAL_API_URL,
+          `/internal/global/${name}`,
+          args,
+          env.REGION,
+          env.INTERNAL_API_SECRET,
+          getRegionsConfig().global_api_timeout_ms,
+        );
         lastGlobalCallOk = true;
         return result;
       } catch (err) {
-        lastGlobalCallOk = err instanceof GlobalApiError && err.status !== UNREACHABLE_STATUS && err.status < 500;
+        lastGlobalCallOk = !isRegionUnavailable(err);
         throw err;
       }
     };

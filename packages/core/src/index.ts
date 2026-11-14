@@ -85,7 +85,6 @@ export { getRegionsConfig, type RegionsConfig } from "@core/config/regions.js";
 export { TABLE_PLACEMENT, type TablePlacement } from "@core/db/table-placement.js";
 export {
   IDENTITY_COOKIE_NAME,
-  IDENTITY_TOKEN_TTL_SECONDS,
   signIdentityToken,
   verifyIdentityToken,
   type IdentityClaims,
@@ -100,7 +99,7 @@ export {
   createGlobalApi,
   GlobalApiError,
   globalApiHealthChecks,
-  lastGlobalCallSucceeded,
+  isRegionUnavailable,
   UNREACHABLE_STATUS,
 } from "@core/region/global-api.js";
 export {

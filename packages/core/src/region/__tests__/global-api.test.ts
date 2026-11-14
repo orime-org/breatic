@@ -13,11 +13,21 @@ const testEnv = vi.hoisted(() => ({
   REGION: "us-west",
   GLOBAL_REGION: "us-west",
   INTERNAL_API_SECRET: "test-internal-secret",
+  GLOBAL_API_URL: "http://10.0.0.5:3002",
   REGION_API_URLS: { sg: "http://10.0.0.9:3002/" },
 }));
 vi.mock("@core/config/env.js", () => ({ env: testEnv }));
+vi.mock("@core/config/regions.js", () => ({ getRegionsConfig: () => ({ global_api_timeout_ms: 5000 }) }));
 
-import { GlobalApiError, callRegion, createGlobalApi, globalApiHealthChecks, lastGlobalCallSucceeded } from "@core/region/global-api.js";
+import {
+  GlobalApiError,
+  callRegion,
+  createGlobalApi,
+  globalApiHealthChecks,
+  isRegionUnavailable,
+  lastGlobalCallSucceeded,
+  UNREACHABLE_STATUS,
+} from "@core/region/global-api.js";
 
 const SECRET = vi.hoisted(() => "test-internal-secret");
 
@@ -45,19 +55,14 @@ function answerWith(status: number, body: unknown): ReturnType<typeof vi.fn> {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  testEnv.REGION = "us-west";
 });
 
 describe("createGlobalApi", () => {
   it("calls the global function in process when this region holds the global data", async () => {
     const fetchMock = answerWith(200, { result: "remote" });
     const local = localFunctions();
-    const api = createGlobalApi(local, {
-      region: "us-west",
-      globalRegion: "us-west",
-      globalApiUrl: "",
-      secret: SECRET,
-      timeoutMs: 5000,
-    });
+    const api = createGlobalApi(local);
 
     await expect(api.readUserName("u1")).resolves.toBe("local:u1");
     expect(local.readUserName).toHaveBeenCalledWith("u1");
@@ -67,13 +72,8 @@ describe("createGlobalApi", () => {
   it("posts the arguments to the global region and returns its result", async () => {
     const fetchMock = answerWith(200, { result: "remote:u1" });
     const local = localFunctions();
-    const api = createGlobalApi(local, {
-      region: "sg",
-      globalRegion: "us-west",
-      globalApiUrl: "http://10.0.0.5:3002",
-      secret: SECRET,
-      timeoutMs: 5000,
-    });
+    testEnv.REGION = "sg";
+    const api = createGlobalApi(local);
 
     await expect(api.readUserName("u1")).resolves.toBe("remote:u1");
     expect(local.readUserName).not.toHaveBeenCalled();
@@ -86,13 +86,8 @@ describe("createGlobalApi", () => {
 
   it("signs the request the way the internal listener checks it", async () => {
     const fetchMock = answerWith(200, { result: "remote:u1" });
-    const api = createGlobalApi(localFunctions(), {
-      region: "sg",
-      globalRegion: "us-west",
-      globalApiUrl: "http://10.0.0.5:3002",
-      secret: SECRET,
-      timeoutMs: 5000,
-    });
+    testEnv.REGION = "sg";
+    const api = createGlobalApi(localFunctions());
 
     await api.readUserName("u1");
     const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
@@ -119,13 +114,8 @@ describe("createGlobalApi", () => {
 
   it("uses a fresh nonce for every request", async () => {
     const fetchMock = answerWith(200, { result: "remote" });
-    const api = createGlobalApi(localFunctions(), {
-      region: "sg",
-      globalRegion: "us-west",
-      globalApiUrl: "http://10.0.0.5:3002",
-      secret: SECRET,
-      timeoutMs: 5000,
-    });
+    testEnv.REGION = "sg";
+    const api = createGlobalApi(localFunctions());
 
     await api.readUserName("u1");
     await api.readUserName("u1");
@@ -137,13 +127,8 @@ describe("createGlobalApi", () => {
 
   it("rejects with the code the global region answered when it refuses", async () => {
     answerWith(409, { code: "studio_creation_in_progress" });
-    const api = createGlobalApi(localFunctions(), {
-      region: "sg",
-      globalRegion: "us-west",
-      globalApiUrl: "http://10.0.0.5:3002",
-      secret: SECRET,
-      timeoutMs: 5000,
-    });
+    testEnv.REGION = "sg";
+    const api = createGlobalApi(localFunctions());
 
     const failure = await api.readUserName("u1").catch((err: unknown) => err);
     expect(failure).toBeInstanceOf(GlobalApiError);
@@ -155,15 +140,34 @@ describe("createGlobalApi", () => {
     vi.stubGlobal("fetch", vi.fn(async () => {
       throw new TypeError("Failed to fetch");
     }));
-    const api = createGlobalApi(localFunctions(), {
-      region: "sg",
-      globalRegion: "us-west",
-      globalApiUrl: "http://10.0.0.5:3002",
-      secret: SECRET,
-      timeoutMs: 5000,
-    });
+    testEnv.REGION = "sg";
+    const api = createGlobalApi(localFunctions());
 
     await expect(api.readUserName("u1")).rejects.toThrow();
+  });
+
+  it("treats a 200 whose body cannot be read as no answer, never as a null result", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{\"result\":", { status: 200 })));
+    testEnv.REGION = "sg";
+    const api = createGlobalApi(localFunctions());
+
+    const failure = await api.readUserName("u1").catch((err: unknown) => err);
+    expect(failure).toBeInstanceOf(GlobalApiError);
+    expect((failure as GlobalApiError).status).toBe(UNREACHABLE_STATUS);
+  });
+});
+
+describe("isRegionUnavailable", () => {
+  it.each([UNREACHABLE_STATUS, 401, 403, 408, 429, 500, 503])("counts %s as unavailable for now", (status) => {
+    expect(isRegionUnavailable(new GlobalApiError(status, "x", "x"))).toBe(true);
+  });
+
+  it.each([400, 404, 409, 413, 422])("counts %s as the other side's own answer", (status) => {
+    expect(isRegionUnavailable(new GlobalApiError(status, "x", "x"))).toBe(false);
+  });
+
+  it("does not judge errors that are not a cross-region call's", () => {
+    expect(isRegionUnavailable(new Error("boom"))).toBe(false);
   });
 });
 
@@ -189,9 +193,8 @@ describe("callRegion", () => {
 
 describe("lastGlobalCallSucceeded", () => {
   it("follows the outcome of the latest call to the global region", async () => {
-    const api = createGlobalApi(localFunctions(), {
-      region: "sg", globalRegion: "us-west", globalApiUrl: "http://10.0.0.5:3002", secret: SECRET, timeoutMs: 5000,
-    });
+    testEnv.REGION = "sg";
+    const api = createGlobalApi(localFunctions());
 
     answerWith(200, { result: "remote" });
     await api.readUserName("u1");
@@ -206,6 +209,10 @@ describe("lastGlobalCallSucceeded", () => {
     answerWith(409, { code: "refused" });
     await api.readUserName("u1").catch(() => undefined);
     expect(lastGlobalCallSucceeded()).toBe(true);
+
+    answerWith(401, { code: "invalid_signature" });
+    await api.readUserName("u1").catch(() => undefined);
+    expect(lastGlobalCallSucceeded()).toBe(false);
   });
 });
 

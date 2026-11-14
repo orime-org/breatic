@@ -17,6 +17,7 @@ const h = vi.hoisted(() => ({
   relayOutbox: vi.fn(),
   reconcile: vi.fn(async () => 3),
   applyRegionEvent: vi.fn(),
+  isRegionUnavailable: vi.fn((err: unknown) => (err as { status: number }).status >= 500),
 }));
 
 class FakeGlobalApiError extends Error {
@@ -35,6 +36,7 @@ vi.mock("@breatic/core", () => ({
   getRegionsConfig: () => ({ global_api_timeout_ms: 5000, slug_reservation_stale_ms: 600000 }),
   callRegion: h.callRegion,
   GlobalApiError: FakeGlobalApiError,
+  isRegionUnavailable: h.isRegionUnavailable,
   assetRepo: { usagePerStudio: h.usagePerStudio },
   studioDirectoryRepo: { listDueSlugReservations: h.listDue },
 }));
@@ -104,11 +106,15 @@ describe("region jobs", () => {
     await relayRegionOutbox();
 
     h.applyRegionEvent.mockRejectedValueOnce(new FakeGlobalApiError(413));
+    h.isRegionUnavailable.mockReturnValueOnce(false);
     expect(await deliver({ id: "1" })).toBe("permanent_failure");
-    h.applyRegionEvent.mockRejectedValueOnce(new FakeGlobalApiError(429));
-    await expect(deliver({ id: "2" })).rejects.toBeInstanceOf(FakeGlobalApiError);
-    h.applyRegionEvent.mockRejectedValueOnce(new FakeGlobalApiError(503));
-    await expect(deliver({ id: "3" })).rejects.toBeInstanceOf(FakeGlobalApiError);
+    const unavailable = new FakeGlobalApiError(401);
+    h.applyRegionEvent.mockRejectedValueOnce(unavailable);
+    h.isRegionUnavailable.mockReturnValueOnce(true);
+    await expect(deliver({ id: "2" })).rejects.toBe(unavailable);
+    expect(h.isRegionUnavailable).toHaveBeenLastCalledWith(unavailable);
+    h.applyRegionEvent.mockRejectedValueOnce(new Error("socket hang up"));
+    await expect(deliver({ id: "3" })).rejects.toThrow("socket hang up");
     h.applyRegionEvent.mockResolvedValueOnce("applied");
     expect(await deliver({ id: "4" })).toBe("applied");
   });

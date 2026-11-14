@@ -280,7 +280,7 @@ describe("a request refused until a wait is over", () => {
 describe("a global region that did not answer", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it.each([UNREACHABLE_STATUS, 429, 502, 503])("answers 503 region_unavailable for a call that got %s", async (status) => {
+  it.each([UNREACHABLE_STATUS, 401, 403, 429, 502, 503])("answers 503 region_unavailable for a call that got %s", async (status) => {
     const { status: answered, body } = await answerFor(new GlobalApiError(status, "unreachable", "did not answer"));
 
     expect(answered).toBe(503);
