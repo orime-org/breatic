@@ -390,9 +390,9 @@ describe('chunk_encode (§5.4 切块、块的时间; §7.17)', () => {
   });
 
   // A picture that starts 0.3 s late holds its first frame from 0 as derived-lead (§7.17 timeline row): the worker gives that
-  // frame its own entry whose rate, 0.04 s of source over 0.34 s, keeps the next frames out of it.
-  it('CE14 a derived-lead first frame at rate 2/17 fills the lead alone, and the frames after it follow at their own times', async () => {
-    const recipe = { ...chunk({ start: 0, end: 4 }, [{ ...span(r(0), r(0), r(0), r(17, 50)), rate: r(2, 17) }, span(r(0), r(1, 25), r(17, 50), r(23, 50))]), timescale: 50 };
+  // frame its own entry at rate 1/9 (0.34 s of display over at most 0.04 s of source), which keeps the next frames out of it.
+  it('CE14 a derived-lead first frame at rate 1/9 fills the lead alone, and the frames after it follow at their own times', async () => {
+    const recipe = { ...chunk({ start: 0, end: 4 }, [{ ...span(r(0), r(0), r(0), r(17, 50)), rate: r(1, 9) }, span(r(0), r(1, 25), r(17, 50), r(23, 50))]), timescale: 50 };
     const [file] = await produce({ [SOURCE]: join(dir, 'greys.mp4') }, [recipe]);
     const list = await packets(file!);
     expect(list.map(packet => [Number(packet.pts_time), Number(packet.duration_time)])).toEqual([[0, 0.34], [0.34, 0.04], [0.38, 0.04], [0.42, 0.04]]);

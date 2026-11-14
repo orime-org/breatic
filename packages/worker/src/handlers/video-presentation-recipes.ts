@@ -155,8 +155,8 @@ function presentedFrames(ledger: VideoPresentationLedger): PresentedFrame[] {
 
 /**
  * A window's entries (§7.17, §91 D3-1): consecutive real frames of one edit form a source span from its first frame's
- * start to its last frame's end (a held last frame included), shown from the source time at its start, or from its first
- * frame when that comes later; its decode starts at the latest source keyframe whose pts is not after that frame, presented
+ * start to its last frame's end (a held last frame included), shown from its first frame's pts (or the edit start when the
+ * edit cuts into that frame) plus its display offset at the span's rate; a derived-lead first frame is its own entry; its decode starts at the latest source keyframe whose pts is not after that frame, presented
  * or not, at the keyframe's dts less min(0, the first packet's dts) (§93 D6-1, §7.17 timeline row). Each derived-empty frame
  * is its own entry with the plan's fill. With `from`, the first entry starts at that presentation time inside the first
  * frame instead (a chunk on an output frame grid starts at its first slot's time, §7.17 transition output profile row).
@@ -214,30 +214,24 @@ function placedEntries(ledger: VideoPresentationLedger, window: FrameWindow, fro
     const end = plus(q(span.presentationStart), times(minus(q(span.sourceEnd), q(span.sourceStart)), [rateDenominator, rateNumerator]));
     return cmp(at, q(span.presentationStart)) >= 0n && cmp(at, end) < 0n;
   });
-  /**
-   * The source time a presentation time shows.
-   * @param at - The presentation time.
-   * @param span - Its edit, -1 without edits.
-   * @returns The source time.
-   * @throws {never} Never.
-   */
-  const sourceAt = (at: Q, span: number): Q => {
-    if (span < 0) return plus(at, q(plan.originMapping.origin));
-    const edit = spans![span]!;
-    return plus(q(edit.sourceStart), times(minus(at, q(edit.presentationStart)), q(edit.rate)));
-  };
   const keyframes = ledger.encoding.sourceKeyframes.map(({ pts, dts }) => ({ pts: q(pts), dts: q(dts) }));
   const firstDts = q(ledger.encoding.firstPacketDts);
   const shift: Q = cmp(firstDts, [0n, 1n]) < 0n ? minus([0n, 1n], firstDts) : [0n, 1n];
   // A derived-lead first frame shows its one source frame from the lead start (§7.17 timeline row), longer than that frame
-  // lasts, so it is its own entry whose rate fits the frame's source duration (to the next source pts) into its display.
+  // lasts: it is its own entry from its own pts at rate 1/n, n the lead over the frame's own source length, so the trim ends
+  // within that frame and the clock gains no factor beyond the source tick.
   const leadOrdinal = plan.originMapping.firstSource.lead === null ? -1 : frames.findIndex((frame) => frame.pts !== null);
   let leadRate: Q = [1n, 1n];
   if (leadOrdinal >= 0) {
     const lead = frames[leadOrdinal]!;
-    let next: bigint | null = null;
-    for (const frame of frames) if (frame.pts !== null && frame.pts > lead.pts! && (next === null || frame.pts < next)) next = frame.pts;
-    if (next !== null) leadRate = times(source(next - lead.pts!), [scale, BigInt(lead.end - lead.start)]);
+    const last = frames.findLastIndex((frame) => frame.pts !== null) === leadOrdinal;
+    const supportStart = q(plan.originMapping.firstSource.supportStart);
+    const span = spanAt(supportStart);
+    // The frame shows itself from its support start to its end, or to the support end when it is also the last frame.
+    const shown = minus(last ? q(plan.originMapping.lastSource.supportEnd) : time(lead.end), supportStart);
+    const length = times(shown, span < 0 ? [1n, 1n] : q(spans![span]!.rate));
+    const [display, own] = [BigInt(lead.end - lead.start) * length[1], scale * length[0]];
+    if (own > 0n) leadRate = [1n, (display + own - 1n) / own];
   }
   const entries: { entry: MiniToolPlanEntry; ordinal: number }[] = [];
   let open: { span: number; first: number; end: number } | null = null;
@@ -250,7 +244,6 @@ function placedEntries(ledger: VideoPresentationLedger, window: FrameWindow, fro
     const first = frames[open.first]!;
     const firstSource = source(first.pts!);
     const displayStart = open.first === window.start && from !== undefined ? from : time(first.start);
-    const shown = sourceAt(displayStart, open.span);
     let keyframe: { pts: Q; dts: Q } | undefined;
     for (const candidate of keyframes) {
       if (cmp(candidate.pts, firstSource) <= 0n && (keyframe === undefined || cmp(candidate.pts, keyframe.pts) > 0n)) keyframe = candidate;
@@ -258,8 +251,12 @@ function placedEntries(ledger: VideoPresentationLedger, window: FrameWindow, fro
     if (keyframe === undefined) throw new RangeError('No source keyframe precedes the span');
     const decode = plus(keyframe.dts, shift);
     const lead = open.first === leadOrdinal;
-    const clipStart = lead ? plus(firstSource, times(minus(displayStart, time(first.start)), leadRate)) : cmp(shown, firstSource) > 0n ? shown : firstSource;
-    const rate: Q = lead ? leadRate : open.span < 0 ? [1n, 1n] : q(spans![open.span]!.rate);
+    const edit = open.span < 0 ? null : spans![open.span]!;
+    const rate: Q = lead ? leadRate : edit === null ? [1n, 1n] : q(edit.rate);
+    // The span's first frame shows its source from its pts, or from the edit start when the edit cuts into it, advancing at the
+    // span's rate from the frame's display start; the held lead frame always shows from its pts.
+    const from0 = edit !== null && cmp(q(edit.sourceStart), firstSource) > 0 ? q(edit.sourceStart) : firstSource;
+    const clipStart = lead ? firstSource : plus(from0, times(minus(displayStart, time(first.start)), rate));
     entries.push({ ordinal: open.first, entry: { kind: 'source', decodeStart: exact(decode), clipStart: exact(clipStart),
       displayStart: exact(displayStart), displayEnd: exact(time(open.end)), rate: exact(rate) } });
     open = null;

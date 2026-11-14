@@ -381,6 +381,12 @@ beforeAll(async () => {
   await make('greys.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=64x36:r=25:d=0.4,format=yuv420p,geq=lum='16+20*N':cb=128:cr=128", ...h264, '-g', '5', '-video_track_timescale', '25']);
   await make('greys-ntsc.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=64x36:r=30000/1001:d=0.7,format=yuv420p,geq=lum='16+10*N':cb=128:cr=128,trim=end_frame=20",
     ...h264, '-g', '30', '-video_track_timescale', '30000']);
+  // 30000/1001 fps greys of stored luma 16 + 6n on a 1/90000 clock from pts 0, B-frames on (a late picture's media).
+  await make('greys-90k.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=64x36:r=30000/1001:d=1,format=yuv420p,geq=lum='16+6*N':cb=128:cr=128",
+    '-c:v', 'libx264', '-qp', '0', '-bf', '2', '-g', '30', '-pix_fmt', 'yuv420p', '-video_track_timescale', '90000', '-use_editlist', '0']);
+  // 25 fps greys of stored luma 16 + 6n as FFmpeg's default x265 MP4 writes them: media pts from 1024/12800, one whole-media edit.
+  await make('greys-x265.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=64x36:r=25:d=1,format=yuv420p,geq=lum='16+6*N':cb=128:cr=128",
+    '-c:v', 'libx265', '-x265-params', 'lossless=1:bframes=2:log-level=error', '-g', '25', '-pix_fmt', 'yuv420p']);
   // The greys of greys.mp4 on a 1/15360 clock, FFmpeg's default MP4 video timescale for 25 fps.
   await make('greys-15360.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=64x36:r=25:d=0.4,format=yuv420p,geq=lum='16+20*N':cb=128:cr=128", ...h264, '-g', '10', '-video_track_timescale', '15360']);
   await make('late-edge.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=64x36:r=25:d=0.16,format=yuv420p,geq=lum='16+40*N':cb=128:cr=128,settb=1/90000,setpts='if(eq(N,2),3601,N*1800)'",
@@ -436,6 +442,27 @@ describe('chunk_encode on the transition profile (§7.17 chunk_encode row; 转�
     const frames = await packets(file!);
     expect(frames).toHaveLength(36);
     expect(Number(frames.at(-1)!.pts_time) + Number(frames.at(-1)!.duration_time)).toBeCloseTo(1.2, 3);
+  });
+});
+
+describe('the entries the worker writes for late pictures and media that start after the origin (§7.17 timeline row)', () => {
+  // A 0.3 s lead on greys-90k.mp4: frame 0 held over [0, 10001/30000) at rate 1/10 from its own pts, then frame 1 on.
+  it('CR07 a 25 fps chunk starting inside a 29.97 fps lead on 1/90000 encodes the held frame, then each slot\'s covering frame', async () => {
+    const recipe = { kind: 'chunk_encode', inputId: CLIP_A, window: { start: 0, end: 7 }, timescale: 30000, target: TARGET, profile: PROFILE, frames: { start: 3, end: 12 },
+      entries: [{ ...span(r(0), r(0), r(3, 25), r(10001, 30000)), rate: r(1, 10) }, span(r(0), r(1001, 30000), r(10001, 30000), r(16007, 30000))] };
+    const [file] = await produce({ [CLIP_A]: join(dir, 'greys-90k.mp4') }, [recipe]);
+    // Slots 3..8 (0.12 to 0.32 s) lie in the lead; slot 9 (0.36 s) in frame 1; slot 10 (0.40 s) in frame 2; slot 11 (0.44 s) in frame 4.
+    const shown = (await lumaMeans(file!)).map((mean) => Math.round((mean - 16) / 6));
+    expect(shown).toEqual([0, 0, 0, 0, 0, 0, 1, 2, 4]);
+  });
+
+  it('CR08 a 30 fps chunk starting inside a frame of an x265 clip whose media starts at 2/25 s shows the frame covering each slot', async () => {
+    // Output frames 16..23 at k/30 s show clip frames floor(k · 25 / 30); frame 13 starts at 13/25 s, media pts 3/5.
+    const recipe = { kind: 'chunk_encode', inputId: CLIP_A, window: { start: 13, end: 20 }, timescale: 25, target: TARGET, profile: { ...PROFILE, fps: r(30), timeBase: r(1, 30) },
+      frames: { start: 16, end: 24 }, entries: [span(r(2, 25), r(46, 75), r(8, 15), r(4, 5))] };
+    const [file] = await produce({ [CLIP_A]: join(dir, 'greys-x265.mp4') }, [recipe]);
+    const shown = (await lumaMeans(file!)).map((mean) => Math.round((mean - 16) / 6));
+    expect(shown).toEqual([13, 14, 15, 15, 16, 17, 18, 19]);
   });
 });
 
