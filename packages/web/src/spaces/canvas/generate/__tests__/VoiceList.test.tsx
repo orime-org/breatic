@@ -384,30 +384,30 @@ describe('the voice list samples (#1960 A2)', () => {
 
     it('plays a voice in the interface language until the user picks another', () => {
       openGemini();
-      expect(screen.getByTestId('generate-voice-sample-language')).toBeInTheDocument();
+      expect(screen.getByTestId('generate-voice-language')).toBeInTheDocument();
       fireEvent.click(screen.getByTestId('generate-voice-sample-kore'));
       expect((play.mock.contexts[0] as HTMLAudioElement).src).toBe('https://example.test/ja/kore.mp3');
     });
 
     it('plays the picked language, and keeps the pick for the next time the list opens', async () => {
       openGemini();
-      fireEvent.click(screen.getByTestId('generate-voice-sample-language'));
-      fireEvent.click(await screen.findByTestId('generate-voice-sample-language-zh'));
+      fireEvent.click(screen.getByTestId('generate-voice-language'));
+      fireEvent.click(await screen.findByTestId('generate-voice-language-zh'));
       fireEvent.click(screen.getByTestId('generate-voice-sample-kore'));
       expect((play.mock.contexts.at(-1) as HTMLAudioElement).src).toBe('https://example.test/zh/kore.mp3');
       cleanup();
       openGemini();
-      expect(screen.getByTestId('generate-voice-sample-language')).toHaveTextContent(new Intl.DisplayNames(['ja'], { type: 'language', languageDisplay: 'standard' }).of('zh')!);
+      expect(screen.getByTestId('generate-voice-language')).toHaveTextContent(new Intl.DisplayNames(['ja'], { type: 'language', languageDisplay: 'standard' }).of('zh')!);
     });
 
     it('keeps the picker while the list loads and when nothing matched, so the search box never moves', () => {
       openGemini(state({ status: 'loading', voices: [] }));
-      expect(screen.getByTestId('generate-voice-sample-language')).toBeInTheDocument();
+      expect(screen.getByTestId('generate-voice-language')).toBeInTheDocument();
     });
 
     it('offers no picker for a model whose voices have one sample each', () => {
       open();
-      expect(screen.queryByTestId('generate-voice-sample-language')).toBeNull();
+      expect(screen.queryByTestId('generate-voice-language')).toBeNull();
     });
   });
 

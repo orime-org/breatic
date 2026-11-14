@@ -56,7 +56,7 @@ export const SampleLanguagePicker = React.memo(function SampleLanguagePicker({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button type='button' variant={null} size={null} data-testid='generate-voice-sample-language'
+        <Button type='button' variant={null} size={null} data-testid='generate-voice-language'
           className='flex h-8 shrink-0 items-center gap-1 whitespace-nowrap rounded-chrome border border-border bg-background px-2.5 text-xs text-foreground transition-colors hover-enabled:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'>
           <span className='text-muted-foreground'>{t('canvas.generatePanel.voiceSampleLanguage')}</span>
           <span>{held?.label ?? value ?? ''}</span>
@@ -69,7 +69,7 @@ export const SampleLanguagePicker = React.memo(function SampleLanguagePicker({
           value={value}
           onPick={pick}
           searchPlaceholder={t('canvas.generatePanel.audioLanguageSearch')}
-          testIdPrefix='generate-voice-sample-language'
+          testIdPrefix='generate-voice-language'
         />
       </PopoverContent>
     </Popover>

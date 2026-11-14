@@ -349,14 +349,16 @@ test.describe('reference to music in a window tall enough for its settings', () 
   });
 });
 
-test('Gemini keeps its reading mode, language and speakers in the settings pill', async ({ page }) => {
+test('Gemini keeps its reading mode and speakers in the settings pill, and its voices a sample language', async ({ page }) => {
   // Design §16: the pill opens a first panel over it, a row there opens a
-  // second panel beside it, and the rows read reading mode, language, voice.
+  // second panel beside it, and the rows read reading mode, then voice.
+  // Gemini 3.8 reads the language from the script, so there is no language
+  // row; the voice list offers the language its samples play in (#1521).
   const nodeId = crypto.randomUUID();
   await seedNode(nodeId, 'audio', undefined, -350);
   await openGenerate(nodeId);
   await page.getByTestId('generate-model-trigger').click();
-  await page.getByTestId('generate-model-option-gemini-3.1-flash-text-to-speech').click();
+  await page.getByTestId('generate-model-option-gemini-3.8-flash-text-to-speech').click();
 
   const pill = page.getByTestId('generate-audio-settings-trigger');
   await expect(pill).toBeVisible({ timeout: 15_000 });
@@ -364,33 +366,39 @@ test('Gemini keeps its reading mode, language and speakers in the settings pill'
   await pill.click();
 
   const reading = page.getByTestId('generate-audio-reading-single');
-  const language = page.getByTestId('generate-audio-row-language');
   const voice = page.getByTestId('generate-audio-row-voice_id');
-  await expect(language).toBeVisible();
-  const [r, l, v, p] = await Promise.all([reading, language, voice, pill].map((el) => el.boundingBox()));
-  expect(r!.y).toBeLessThan(l!.y);
-  expect(l!.y).toBeLessThan(v!.y);
+  await expect(voice).toBeVisible();
+  await expect(page.getByTestId('generate-audio-row-language')).toHaveCount(0);
+  const [r, v, p] = await Promise.all([reading, voice, pill].map((el) => el.boundingBox()));
+  expect(r!.y).toBeLessThan(v!.y);
   // The first panel opens over the pill.
   expect(v!.y + v!.height).toBeLessThanOrEqual(p!.y);
 
-  // Language: a searchable list beside the first panel, one row per language.
-  await language.click();
+  // Voice: a searchable list beside the first panel, its sample language beside the search box.
+  await voice.click();
   const second = page.getByTestId('generate-audio-second-panel');
   await expect(second).toBeVisible();
   // Beside the first panel, on whichever side the window has room for it.
-  const [lb, sb] = await Promise.all([language.boundingBox(), second.boundingBox()]);
+  const [vb, sb] = await Promise.all([voice.boundingBox(), second.boundingBox()]);
   const width = page.viewportSize()!.width;
-  expect(sb!.x >= lb!.x + lb!.width || sb!.x + sb!.width <= lb!.x).toBe(true);
+  expect(sb!.x >= vb!.x + vb!.width || sb!.x + sb!.width <= vb!.x).toBe(true);
   expect(sb!.x).toBeGreaterThanOrEqual(0);
   expect(sb!.x + sb!.width).toBeLessThanOrEqual(width);
-  const options = page.locator('[data-testid^="generate-audio-option-language-"]:not([data-testid$="-search"])');
+  const sampleLanguage = page.getByTestId('generate-voice-language');
+  await expect(sampleLanguage).toBeVisible();
+  const [search, picker] = await Promise.all([page.getByTestId('generate-voice-search').boundingBox(), sampleLanguage.boundingBox()]);
+  expect(Math.abs(search!.y - picker!.y)).toBeLessThan(2);
+  expect(picker!.x).toBeGreaterThan(search!.x);
+  await sampleLanguage.click();
+  const options = page.locator('[data-testid^="generate-voice-language-"]:not([data-testid$="-search"])');
   await expect(options).toHaveCount(24);
   // Chosen by fill alone, no tick (design §16.1).
-  const chosen = page.locator('[data-testid^="generate-audio-option-language-"][aria-pressed="true"]');
+  const chosen = page.locator('[data-testid^="generate-voice-language-"][aria-pressed="true"]');
   await expect(chosen).toHaveCount(1);
   await expect(chosen.locator('svg')).toHaveCount(0);
+  const pickedLanguage = (await options.nth(10).innerText()).trim();
   await options.nth(10).click();
-  await expect(second).toBeHidden();
+  await expect(sampleLanguage).toContainText(pickedLanguage);
 
   // Dialogue: the voice row gives way to one voice row per speaker (#2256).
   await page.getByTestId('generate-audio-reading-dialogue').click();
@@ -443,7 +451,7 @@ test('a Gemini dialogue is written one line per turn, the speaker picked, and se
   await seedNode(nodeId, 'audio', undefined, -350);
   await openGenerate(nodeId);
   await page.getByTestId('generate-model-trigger').click();
-  await page.getByTestId('generate-model-option-gemini-3.1-flash-text-to-speech').click();
+  await page.getByTestId('generate-model-option-gemini-3.8-flash-text-to-speech').click();
 
   const pill = page.getByTestId('generate-audio-settings-trigger');
   await expect(pill).toBeVisible({ timeout: 15_000 });
@@ -619,7 +627,7 @@ test('every voice of the default model plays its sample from the list', async ({
 
 test('a sample speaks the language of its voice, or the one picked for a Gemini voice', async ({ page }) => {
   // User 2026-09-29: a Mandarin voice's sample is in Mandarin; a Gemini voice
-  // speaks whichever language the panel has picked, and so does its sample.
+  // plays its sample in the sample language picked in its voice list (#1521).
   const nodeId = crypto.randomUUID();
   await seedNode(nodeId, 'audio', undefined, -350);
   await openGenerate(nodeId);
@@ -641,14 +649,14 @@ test('a sample speaks the language of its voice, or the one picked for a Gemini 
   }).toPass({ timeout: 5_000 });
 
   await page.getByTestId('generate-model-trigger').click();
-  await page.getByTestId('generate-model-option-gemini-3.1-flash-text-to-speech').click();
+  await page.getByTestId('generate-model-option-gemini-3.8-flash-text-to-speech').click();
   await pill.click();
-  await page.getByTestId('generate-audio-row-language').click();
-  await page.getByTestId('generate-audio-option-language-Japanese (Japan)').click();
   await page.getByTestId('generate-audio-row-voice_id').click();
+  await page.getByTestId('generate-voice-language').click();
+  await page.getByTestId('generate-voice-language-ja').click();
   const sample = page.locator('[data-testid^="generate-voice-sample-"]').first();
   await expect(sample).toBeVisible({ timeout: 20_000 });
   const heardJa = page.waitForRequest((r) => r.url().includes('/voice-samples/'));
   await sample.click();
-  expect((await heardJa).url()).toContain('/gemini-3.1-flash-text-to-speech/ja/');
+  expect((await heardJa).url()).toContain('/gemini-3.8-flash-text-to-speech/ja/');
 });
