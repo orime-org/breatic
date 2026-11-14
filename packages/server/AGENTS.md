@@ -50,13 +50,15 @@ Check: will a user read this sentence? Then it must come from `t()`.
 
 ## Streaming and chat
 
-### SSE streams are private and stop on abort
+### SSE streams carry no ownership ids
 
-**SSE is used only by agent chat (`routes/chat.ts`, `/message`) and the text mini-tool (`routes/text-tools.ts`); each request gets its own private stream, and event `data` carries no ownership ids.** Ownership is held by the `conversations` row (`user_id`, `project_id`); per-operation audit goes to the application logger, not onto the wire.
+**SSE is used only by agent chat (`GET /chat/conversations/:id/stream` in `routes/chat.ts`) and the text mini-tool (`routes/text-tools.ts`), and event `data` carries no ownership ids.** Ownership is held by the `conversations` row (`user_id`, `project_id`); per-operation audit goes to the application logger, not onto the wire.
 
-**Every SSE entry opens its stream with `streamUntilClientLeaves` (`src/utils/sse-stream.ts`) and passes the signal it hands `run` down to the layer doing the work.** When the client leaves, `StreamingApi.write` swallows the write error, so a loop that only watches its own writes never notices and keeps calling the model, running tools and charging the user; and on Node `s.onAbort` alone never hears a client that left before the body began (a read-lock wait), whose writes then hang.
+**A chat run belongs to its conversation, not to a request: it runs to its end on the server whoever reads, its resumable stream (`src/agent/run-stream.ts`) replays every frame to each page that attaches, and only `POST /chat/stop`, deleting the conversation or a shutdown stops it.** A page that leaves only lets go of its read, so the answer the user pays for is still there when they come back.
 
-Check: will this stream's producer stop by itself when nobody is listening? If not, it must receive the signal.
+**The text mini-tool opens its stream with `streamUntilClientLeaves` (`src/utils/sse-stream.ts`) and passes the signal it hands `run` down to the layer doing the work.** When the client leaves, `StreamingApi.write` swallows the write error, so a loop that only watches its own writes never notices and keeps calling the model, running tools and charging the user; and on Node `s.onAbort` alone never hears a client that left before the body began (a read-lock wait), whose writes then hang.
+
+Check: is this stream tied to the request that opened it? Then its producer must receive the signal and stop when nobody is listening.
 
 ### SSE finalization is a plain async function
 
