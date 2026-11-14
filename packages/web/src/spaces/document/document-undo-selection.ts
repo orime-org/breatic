@@ -138,6 +138,8 @@ interface YTransactionLike {
  *   the transaction that pushed it, or null to keep none.
  * @param restore - Takes the value kept on the item being undone or redone, or
  *   undefined when it has none; called on every undo and redo transaction.
+ * @param begin - Called as every Yjs transaction begins
+ *   (`beforeAllTransactions`), before the body changes under it.
  * @returns A function that stops keeping and handing back.
  */
 function keepOnUndoStack(
@@ -146,6 +148,7 @@ function keepOnUndoStack(
   key: unknown,
   capture: (origin: unknown) => unknown,
   restore: (stored: unknown) => void,
+  begin: () => void,
 ): () => void {
   /**
    * Keeps the captured value on the item just pushed.
@@ -167,9 +170,11 @@ function keepOnUndoStack(
   };
   undoManager.on('stack-item-added', onAdded);
   doc.on('beforeObserverCalls', onBeforeObserverCalls);
+  doc.on('beforeAllTransactions', begin);
   return (): void => {
     undoManager.off('stack-item-added', onAdded);
     doc.off('beforeObserverCalls', onBeforeObserverCalls);
+    doc.off('beforeAllTransactions', begin);
   };
 }
 
@@ -208,18 +213,18 @@ export function namesOnUndoStack<T>(current: (state: EditorState) => T | null): 
       const stack = undoStackOf(view.state);
       if (stack === null) return () => undefined;
       const { doc } = stack.binding;
-      const stopKeeping = keepOnUndoStack(doc, stack.undoManager, {}, () => before, (stored) => {
-        handed = (stored as T | undefined) ?? null;
-      });
-      /** Takes the names as they stand before a Yjs transaction. */
-      const onBeforeAll = (): void => {
-        before = current(view.state);
-      };
-      doc.on('beforeAllTransactions', onBeforeAll);
-      return () => {
-        stopKeeping();
-        doc.off('beforeAllTransactions', onBeforeAll);
-      };
+      return keepOnUndoStack(
+        doc,
+        stack.undoManager,
+        {},
+        () => before,
+        (stored) => {
+          handed = (stored as T | undefined) ?? null;
+        },
+        () => {
+          before = current(view.state);
+        },
+      );
     },
   };
 }
@@ -311,11 +316,6 @@ export function documentUndoSelectionPlugin(): Plugin<PreEditState> {
       // under the old selection, and its `prevSel` lands off by the words the
       // undo took out.
       let atUndoRedo: unknown = null;
-      /** Takes the selection as it stands before a Yjs transaction. */
-      const onBeforeAll = (): void => {
-        atUndoRedo = getRelativeSelection(binding as never, view.state);
-      };
-      binding.doc.on('beforeAllTransactions', onBeforeAll);
       // Keyed by the binding, which is where upstream keeps the selection, so
       // this overwrites what it stored.
       const stop = keepOnUndoStack(
@@ -326,13 +326,11 @@ export function documentUndoSelectionPlugin(): Plugin<PreEditState> {
         (stored) => {
           if (stored != null) binding.beforeTransactionSelection = stored;
         },
-      );
-      return {
-        destroy: (): void => {
-          stop();
-          binding.doc.off('beforeAllTransactions', onBeforeAll);
+        () => {
+          atUndoRedo = getRelativeSelection(binding as never, view.state);
         },
-      };
+      );
+      return { destroy: stop };
     },
   });
 }

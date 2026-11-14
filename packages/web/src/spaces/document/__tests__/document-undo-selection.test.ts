@@ -205,3 +205,22 @@ describe('undo restores the selection, not only the text', () => {
     expect({ from, to }).toEqual({ from: at + 2, to: at + 2 });
   });
 });
+
+describe('the selection kept for undo and redo', () => {
+  it('leaves no Yjs transaction listener on the document once the editor is gone', () => {
+    const doc = new Y.Doc();
+    const { extension } = createDocumentUndo(doc);
+    const listeners = (): number =>
+      (doc as unknown as { _observers: Map<string, Set<unknown>> })._observers.get('beforeAllTransactions')?.size ?? 0;
+    const before = listeners();
+    const editor = buildDocumentEditor({ fragment: documentBodyFragment(doc), extensions: [extension] });
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    editor.mount(root);
+    expect(listeners()).toBeGreaterThan(before);
+
+    editor.unmount();
+
+    expect(listeners()).toBe(before);
+  });
+});
