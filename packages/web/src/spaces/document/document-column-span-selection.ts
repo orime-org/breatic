@@ -26,7 +26,7 @@ import { Plugin, PluginKey, Selection, TextSelection, type EditorState, type Tra
 import type { EditorView } from '@tiptap/pm/view';
 
 import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-nodes';
-import { heldTables } from '@web/spaces/document/document-table-leave-selection';
+import { heldRange, heldTables, TableSpanSelection, tableEdgeText } from '@web/spaces/document/document-table-leave-selection';
 
 /** A range taken out of the document. */
 interface Piece {
@@ -58,7 +58,7 @@ function columnAt(doc: PMNode, pos: number): string | null {
  * @returns True when it runs across columns.
  */
 export function spansColumns(selection: Selection): boolean {
-  if (selection.empty || !(selection instanceof TextSelection) || heldTables(selection) !== null) return false;
+  if (selection.empty || !(selection instanceof TextSelection)) return false;
   const doc = selection.$from.doc;
   return columnAt(doc, selection.from) !== columnAt(doc, selection.to);
 }
@@ -113,7 +113,9 @@ function piecesOf(doc: PMNode, from: number, to: number): Piece[] {
  * @param put - Puts the content at a position, or nothing.
  */
 function replaceAcross(selection: Selection, tr: Transaction, put: ((at: number) => void) | null): void {
-  const pieces = piecesOf(tr.doc, selection.from, selection.to);
+  // A table at an end goes whole, as a selection leaving a table takes it.
+  const range = heldRange(selection) ?? selection;
+  const pieces = piecesOf(tr.doc, range.from, range.to);
   const startGoes = pieces[0]?.whole === true;
   const first = tr.steps.length;
   for (const piece of [...pieces].reverse()) tr.delete(piece.from, piece.to);
@@ -146,6 +148,23 @@ export class ColumnSpanSelection extends TextSelection {
   override replaceWith(tr: Transaction, node: PMNode): void {
     replaceAcross(this, tr, (at) => tr.replaceRangeWith(at, at, node));
   }
+
+  /**
+   * This selection with its ends in the tables it takes whole moved onto
+   * those tables' outer words, as a selection leaving a table has them
+   * (`document-table-leave-selection.ts`).
+   * @returns It, or null when its ends are there already.
+   */
+  wholeTables(): Selection | null {
+    const tables = heldTables(this);
+    if (tables === null) return null;
+    const doc = this.$anchor.doc;
+    const from = tables.from === null ? this.from : tableEdgeText(doc, tables.from, -1);
+    const to = tables.to === null ? this.to : tableEdgeText(doc, tables.to, 1);
+    if (from === this.from && to === this.to) return null;
+    const [anchor, head] = this.anchor <= this.head ? [from, to] : [to, from];
+    return new ColumnSpanSelection(doc.resolve(anchor), doc.resolve(head));
+  }
 }
 
 /**
@@ -155,9 +174,11 @@ export class ColumnSpanSelection extends TextSelection {
  */
 function columnSpanSelection(state: EditorState): Selection | null {
   const { selection } = state;
-  // Only a plain text selection: one already across columns, a table's leave
-  // selection and a body-edge selection keep their own kind.
-  if (Object.getPrototypeOf(selection) !== TextSelection.prototype || !spansColumns(selection)) return null;
+  // A plain text selection, or a table's leave selection whose ends stand in
+  // different columns; one already across columns and a body-edge selection
+  // keep their own kind.
+  const plain = Object.getPrototypeOf(selection) === TextSelection.prototype || selection instanceof TableSpanSelection;
+  if (!plain || !spansColumns(selection)) return null;
   return new ColumnSpanSelection(selection.$anchor, selection.$head);
 }
 

@@ -86,6 +86,17 @@ function flatOutside(): { dom: DocumentFragment } {
   return { dom: document.createDocumentFragment() };
 }
 
+/**
+ * Whether a column holds only one empty paragraph.
+ * @param column - The column.
+ * @returns True when it does.
+ */
+export function holdsOneEmptyParagraph(column: PMNode): boolean {
+  if (column.childCount !== 1) return false;
+  const row = column.firstChild!;
+  return row.type.name === 'blockContainer' && row.childCount === 1 && row.firstChild!.type.name === 'paragraph' && row.firstChild!.content.size === 0;
+}
+
 /** The part of the editor the divider writes through. */
 type DividerEditor = Parameters<typeof attachDivider>[2];
 

@@ -18,6 +18,7 @@ import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { columnsBlock, para, shapeOf } from '@web/spaces/document/__tests__/column-fixtures';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -143,5 +144,27 @@ describe('a selection across columns, replaced', () => {
     select(editor, ['gamma', 2], ['tail', 2]);
     press(editor, 'Backspace');
     expect(shapeOf(editor.document as never)).toEqual(['[alpha|ga]', 'il']);
+  });
+});
+
+describe('a selection from a table in one column into another column (design §5.5)', () => {
+  const blocks = (): unknown[] => [
+    columnsBlock({ blocks: [para('before'), tableBlock({ rows: [{ cells: ['t1', 't2'] }] })] }, ['bee bop', 'more']),
+  ];
+
+  it('takes the table whole and keeps each column\'s other blocks there on Backspace', () => {
+    const editor = open(blocks());
+    select(editor, ['t2', 1], ['bee bop', 3]);
+    press(editor, 'Backspace');
+    expect(shapeOf(editor.document as never)).toEqual(['[before| bop,more]']);
+  });
+
+  it('keeps the group when a letter is typed over it', () => {
+    const editor = open(blocks());
+    select(editor, ['t2', 1], ['bee bop', 3]);
+    typeWords(editor, 'X');
+    const shape = shapeOf(editor.document as never);
+    expect(shape).toHaveLength(1);
+    expect(shape[0]).toMatch(/^\[.*\|.*\]$/);
   });
 });

@@ -28,7 +28,7 @@ import { Fragment, type Node as PMNode } from '@tiptap/pm/model';
 import { ySyncPluginKey } from 'y-prosemirror';
 
 import { columnsBarredAt } from '@web/spaces/document/document-column-entry';
-import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-nodes';
+import { DOC_COLUMN, DOC_COLUMN_LIST, holdsOneEmptyParagraph } from '@web/spaces/document/document-column-nodes';
 
 /**
  * Meta on the take-away half of a two-step move: the emptied column is
@@ -80,13 +80,8 @@ function idsOf(doc: PMNode): Set<string> {
  */
 function emptiedColumn(column: PMNode, before: ReadonlySet<string>): boolean {
   const columnId = column.attrs['id'];
-  if (typeof columnId !== 'string' || !before.has(columnId)) return false;
-  if (column.childCount !== 1) return false;
-  const row = column.firstChild!;
-  if (row.type.name !== 'blockContainer' || row.childCount !== 1) return false;
-  const content = row.firstChild!;
-  if (content.type.name !== 'paragraph' || content.content.size > 0) return false;
-  const rowId = row.attrs['id'];
+  if (typeof columnId !== 'string' || !before.has(columnId) || !holdsOneEmptyParagraph(column)) return false;
+  const rowId = column.firstChild!.attrs['id'];
   return typeof rowId !== 'string' || !before.has(rowId);
 }
 

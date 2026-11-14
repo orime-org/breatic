@@ -12,15 +12,19 @@
  *   column's last block, Delete does nothing. BlockNote's own keys would
  *   move the block out of the column instead (`KeyboardShortcutsExtension.ts`
  *   `moveBlockOutAndPlaceCaret`).
+ * - Right under a group, Backspace moves the caret to the end of its last
+ *   column; right above one, Delete does nothing: a table's edges
+ *   (`document-table-keys.ts`), where BlockNote's own keys would move the
+ *   block into the group or a block out of it.
  */
 
 import { createExtension } from '@blocknote/core';
-import type { Node as PMNode, ResolvedPos } from '@tiptap/pm/model';
+import type { ResolvedPos } from '@tiptap/pm/model';
 import { Selection, TextSelection } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
 import { takeAwayColumnSpan } from '@web/spaces/document/document-column-span-selection';
-import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-nodes';
+import { DOC_COLUMN, DOC_COLUMN_LIST, holdsOneEmptyParagraph } from '@web/spaces/document/document-column-nodes';
 import { firstStepAtStart } from '@web/spaces/document/document-table-keys';
 
 /** The part of the editor the keys use. */
@@ -50,14 +54,15 @@ function columnOf($head: ResolvedPos): ColumnAt | null {
 }
 
 /**
- * Whether a column holds only one empty paragraph.
- * @param column - The column.
- * @returns True when it does.
+ * The depth of the caret's block container.
+ * @param $head - The caret.
+ * @returns The depth, or -1 outside any block.
  */
-function holdsOneEmptyParagraph(column: PMNode): boolean {
-  if (column.childCount !== 1) return false;
-  const row = column.firstChild!;
-  return row.childCount === 1 && row.firstChild!.type.name === 'paragraph' && row.firstChild!.content.size === 0;
+function containerOf($head: ResolvedPos): number {
+  for (let depth = $head.depth; depth > 0; depth -= 1) {
+    if ($head.node(depth).type.name === 'blockContainer') return depth;
+  }
+  return -1;
 }
 
 /**
@@ -95,16 +100,27 @@ function deleteEmptyColumn(view: EditorView, $head: ResolvedPos, at: ColumnAt): 
  * @returns Whether the key was claimed.
  */
 function backspaceInColumn(view: EditorView): boolean {
-  const { selection } = view.state;
+  const { selection, doc } = view.state;
   if (!(selection instanceof TextSelection) || !selection.empty) return false;
   const { $head } = selection;
   if ($head.parentOffset !== 0) return false;
   const at = columnOf($head);
-  if (at === null) return false;
-  const column = $head.node(at.depth);
-  if (holdsOneEmptyParagraph(column) && $head.node(at.depth - 1).type.name === DOC_COLUMN_LIST) {
-    return deleteEmptyColumn(view, $head, at);
+  if (at === null) {
+    // Right under a group, as right under a table: the caret goes to the end
+    // of the last column and nothing joins.
+    const container = containerOf($head);
+    if (container < 1) return false;
+    const $before = doc.resolve($head.before(container));
+    if ($before.nodeBefore?.type.name !== DOC_COLUMN_LIST) return false;
+    const step = firstStepAtStart(view, $head, container);
+    if (step !== undefined) return step;
+    const end = Selection.findFrom($before, -1);
+    if (end === null) return false;
+    view.dispatch(view.state.tr.setSelection(end).scrollIntoView());
+    return true;
   }
+  const column = $head.node(at.depth);
+  if (holdsOneEmptyParagraph(column)) return deleteEmptyColumn(view, $head, at);
   if ($head.index(at.depth) !== 0) return false;
   return firstStepAtStart(view, $head, at.container) ?? true;
 }
@@ -115,15 +131,21 @@ function backspaceInColumn(view: EditorView): boolean {
  * @returns Whether the key was claimed.
  */
 function deleteInColumn(view: EditorView): boolean {
-  const { selection } = view.state;
+  const { selection, doc } = view.state;
   if (!(selection instanceof TextSelection) || !selection.empty) return false;
   const { $head } = selection;
   if ($head.parentOffset !== $head.parent.content.size) return false;
   const at = columnOf($head);
-  if (at === null) return false;
+  if (at === null) {
+    // Right above a group, as right above a table, it does nothing.
+    const container = containerOf($head);
+    return container > 0 && doc.resolve($head.after(container)).nodeAfter?.type.name === DOC_COLUMN_LIST;
+  }
   const column = $head.node(at.depth);
   if (holdsOneEmptyParagraph(column)) return deleteEmptyColumn(view, $head, at);
-  return $head.index(at.depth) === column.childCount - 1;
+  // At the column's end it does nothing, as at a cell's (`deleteAtEdge`).
+  const next = Selection.findFrom(doc.resolve($head.after()), 1);
+  return next === null || next.from > $head.end(at.depth);
 }
 
 /**

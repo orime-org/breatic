@@ -294,3 +294,64 @@ describe('the repair rule (design §5.2)', () => {
     expect(editor.prosemirrorState.doc.textContent).toBe('bz');
   });
 });
+
+/**
+ * Puts the caret at the end of the first block reading these words.
+ * @param editor - The editor.
+ * @param words - The words.
+ */
+function caretAtEnd(editor: Editor, words: string): void {
+  const view = editor.prosemirrorView;
+  let at: number | undefined;
+  view.state.doc.descendants((node: PMNode, pos: number) => {
+    if (at !== undefined) return false;
+    if (node.isTextblock && node.textContent === words) {
+      at = pos + 1 + node.content.size;
+      return false;
+    }
+    return true;
+  });
+  if (at === undefined) throw new Error(`no textblock reads "${words}"`);
+  view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, at)));
+}
+
+describe('the keys at a column group\'s edges, as at a table\'s (design §5.5)', () => {
+  it('moves the caret to the end of the last column on Backspace under the group, joining nothing', () => {
+    const editor = editorWith([columnsBlock(['a'], ['b']), para('below')]);
+    caretAt(editor, 'below');
+    press(editor, 'Backspace');
+    expect(shape(editor)).toEqual(['[a|b]', 'below']);
+    const { $head } = editor.prosemirrorState.selection;
+    expect($head.parent.textContent).toBe('b');
+    expect($head.parentOffset).toBe(1);
+  });
+
+  it('keeps an empty line under the group on Backspace, and moves the caret into the last column', () => {
+    const editor = editorWith([columnsBlock(['a'], ['b']), para('')]);
+    caretAt(editor, '', 0);
+    press(editor, 'Backspace');
+    expect(shape(editor)).toEqual(['[a|b]', '¶']);
+    expect(editor.prosemirrorState.selection.$head.parent.textContent).toBe('b');
+  });
+
+  it('does nothing on Delete at the end of the line above the group', () => {
+    const editor = editorWith([para('above'), columnsBlock(['a'], ['b'])]);
+    caretAtEnd(editor, 'above');
+    press(editor, 'Delete');
+    expect(shape(editor)).toEqual(['above', '[a|b]']);
+  });
+
+  it('joins a list item\'s child on Delete at its end when it is the column\'s last row', () => {
+    const editor = editorWith([
+      columnsBlock({ blocks: [{ type: 'bulletListItem', content: 'A', children: [para('B')] }] }, ['z']),
+    ]);
+    caretAtEnd(editor, 'A');
+    press(editor, 'Delete');
+    let joined = '';
+    editor.prosemirrorState.doc.descendants((node) => {
+      if (node.type.name === 'bulletListItem') joined = node.textContent;
+      return true;
+    });
+    expect(joined).toBe('AB');
+  });
+});
