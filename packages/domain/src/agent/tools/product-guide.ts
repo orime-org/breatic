@@ -1406,7 +1406,7 @@ export function renderProductGuide(): string {
       `${quoted(t("chat.documentProposal.addComment"))} puts the rewritten words on the passage as a comment, and ` +
       `${quoted(t("chat.documentProposal.apply"))} replaces the passage with them; a passage with no words, such ` +
       "as an empty code block, an image, a video or an audio block, has only the second. When the passage holds something " +
-      `Markdown cannot write, such as colours, an alignment, underlining, column widths or comments, a rewrite card adds ${quoted(t("chat.documentProposal.lossy"))} ` +
+      `Markdown cannot write, such as colours, an alignment, underlining, table column widths, columns side by side or comments, a rewrite card adds ${quoted(t("chat.documentProposal.lossy"))} ` +
       "An insert card that goes after a passage first shows that passage under " +
       `${quoted(t("chat.documentProposal.insertAfter"))}, naming a passage with no words by its kind, such as ` +
       `${quoted(t("spaces.document.media.image"))} or ${quoted(t("chat.documentProposal.headingBlock"))}; it ` +
@@ -2062,7 +2062,8 @@ export function renderProductGuide(): string {
       `under a nested line: pasting or dropping columns there says ${quoted(t("spaces.document.columns.unavailable"))}. ` +
       "Tab and the six dots' indenting work inside a column. Deleting or typing over a selection that runs across " +
       "columns removes only what is selected in each column, and the AI dialog over such a selection takes the " +
-      "whole columns.",
+      "whole columns. A rewrite you propose over columns puts their lines one under another, column after column, " +
+      `since Markdown has no columns, and its card adds ${quoted(t("chat.documentProposal.lossy"))}`,
     "",
     "## Document snapshots",
     `${quoted(t("spaces.document.docMenu.saveSnapshot"))} in the document's three-dot menu asks for an optional name and keeps the body ` +
