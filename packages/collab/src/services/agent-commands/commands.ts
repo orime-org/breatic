@@ -20,7 +20,7 @@ import {
   type AgentReply,
   type ProjectRole,
 } from "@breatic/shared";
-import type { SpaceWriteKind } from "@breatic/shared/canvas-model";
+import { strongestKind, type SpaceWriteKind } from "@breatic/shared/canvas-model";
 import {
   comment,
   connectNodes,
@@ -34,6 +34,7 @@ import {
   setLocked,
   updateNode,
 } from "@collab/services/agent-commands/canvas-commands.js";
+import { generationKind, readGenerationInputs } from "@collab/services/agent-commands/generation-commands.js";
 import {
   commentOnDocument,
   deleteBlocks,
@@ -135,7 +136,11 @@ const COMMANDS: CommandTable = {
   update_canvas_node: {
     params: agentCommandParamsSchemas.update_canvas_node,
     write: true,
-    size: "edit",
+    size: (_doc, { generation, ...rest }) =>
+      strongestKind(
+        ...(Object.keys(rest).some((key) => key !== "nodeId" && rest[key as keyof typeof rest] !== undefined) ? (["edit"] as const) : []),
+        ...(generation ? [generationKind(generation)] : []),
+      ),
     space: "canvas",
     run: (doc, params) => updateNode(doc, params),
     late: unfinished,
@@ -196,6 +201,14 @@ const COMMANDS: CommandTable = {
     size: "add",
     space: "canvas",
     run: (doc, params) => restore(doc, params),
+    late: unfinished,
+  },
+  read_generation_inputs: {
+    params: agentCommandParamsSchemas.read_generation_inputs,
+    write: false,
+    size: null,
+    space: "canvas",
+    run: (doc, { nodeId }) => readGenerationInputs(doc, nodeId),
     late: unfinished,
   },
   read_document: {

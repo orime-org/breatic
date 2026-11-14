@@ -77,6 +77,7 @@ import {
 import { writePlainTextIntoBody } from "@breatic/shared/canvas/text-body";
 import { getCanvasReferencePoolCap, getMcpConfig } from "@breatic/core";
 import type { Actor, Answer, Json } from "@collab/services/agent-commands/commands.js";
+import { generationWordsOf, planGeneration } from "@collab/services/agent-commands/generation-commands.js";
 
 /** How far inside a node's top-left corner a thread started on it puts its pin's tip. */
 const PIN_INSET_PX = 16;
@@ -385,15 +386,16 @@ export function createNodes(doc: Y.Doc, params: AgentCommandParams<"create_canva
 }
 
 /**
- * Change a node's name, place, Group or words, gated as the browser gates a
- * user: its own lock freezes every change, and a locked Group freezes where
- * its members are and who they are.
+ * Change a node's name, place, Group, words or generation settings, gated as
+ * the browser gates a user: its own lock freezes every change, and a locked
+ * Group freezes where its members are and who they are. Nothing is written
+ * unless every part may be.
  * @param doc - The canvas document.
  * @param params - The command's parameters.
  * @returns The answer.
  */
 export function updateNode(doc: Y.Doc, params: AgentCommandParams<"update_canvas_node">): Answer {
-  const { nodeId, name, position, parentId, text } = params;
+  const { nodeId, name, position, parentId, text, generation } = params;
   const type = typeOf(doc, nodeId);
   if (type === undefined || nodeDataMap(doc, nodeId) === null) return refuse("not_found");
   if (text !== undefined && type !== "text") return refuse("invalid_command");
@@ -406,6 +408,8 @@ export function updateNode(doc: Y.Doc, params: AgentCommandParams<"update_canvas
   if (ownLocked(doc, nodeId)) return refuse("locked");
   if (reparent && (lockedGroup(doc, current) || lockedGroup(doc, parentId))) return refuse("locked");
   if (!reparent && position !== undefined && lockedGroup(doc, current)) return refuse("locked");
+  const writeGeneration = generation === undefined ? undefined : planGeneration(doc, nodeId, type, generation);
+  if (typeof writeGeneration === "object") return writeGeneration;
 
   if (name !== undefined) setNodeNameInDoc(doc, nodeId, name);
   if (text !== undefined) writePlainTextIntoBody(ensureTextBodyInDoc(doc, nodeId)!, text);
@@ -422,6 +426,7 @@ export function updateNode(doc: Y.Doc, params: AgentCommandParams<"update_canvas
   }
   const finalParent = reparent ? parentId : current;
   if (finalParent !== null && (reparent || position !== undefined)) growToWrap(doc, finalParent);
+  writeGeneration?.();
   return done({ nodeId });
 }
 
@@ -586,7 +591,10 @@ export function disconnectNodes(doc: Y.Doc, ids: string[]): Answer {
 export function readCanvas(doc: Y.Doc, nodeIds: string[] | undefined): Answer {
   const wanted = nodeIds ? new Set(nodeIds) : null;
   const all = readNodes(doc).filter((node) => !wanted || wanted.has(node.id));
-  const nodes = wanted ? all : all.slice(0, getMcpConfig().read_canvas_max_nodes);
+  const nodes = (wanted ? all : all.slice(0, getMcpConfig().read_canvas_max_nodes)).map((node) => ({
+    ...node,
+    ...generationWordsOf(doc, node.id),
+  }));
   const kept = new Set(nodes.map((node) => node.id));
   const edges = readEdges(doc).filter((edge) => kept.has(edge.source) || kept.has(edge.target));
   const cut = nodes.length < all.length ? { truncated: true, total: all.length } : {};
