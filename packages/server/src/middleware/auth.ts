@@ -126,7 +126,9 @@ async function userFromIdentityToken(c: Context): Promise<AuthVariables["user"] 
   const verdict = verifyIdentityToken(cookie, env.IDENTITY_PUBLIC_KEYS, Math.floor(Date.now() / 1000));
   if (!verdict.ok) {
     logger.warn({ reason: `identity_${verdict.reason}`, path: c.req.path }, "auth_rejected");
-    if (verdict.reason === "expired") {
+    // A key this region no longer holds is a token from before a rotation;
+    // renewing it still takes the user's real session at the global region.
+    if (verdict.reason === "expired" || verdict.reason === "unknown_key") {
       return c.json(
         { error: { code: 401, message: t("server.auth.token_expired"), reason: IDENTITY_EXPIRED_REASON } },
         401,

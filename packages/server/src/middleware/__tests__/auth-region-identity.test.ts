@@ -122,6 +122,22 @@ describe("requireAuth outside the global region", () => {
     expect(body.error.reason).toBe("identity_expired");
   });
 
+  // After a key rotation a tab that slept may still hold a token signed with
+  // a key this region dropped; renewing gives it one signed with the new key.
+  it("answers 401 identity_expired for a token signed with a key this region no longer holds", async () => {
+    const retired = signIdentityToken(
+      { sub: USER, sid: SID, email: "user@example.test", tier: "base", locale: "de", personalStudio: null },
+      { kid: "k0", privateKey: pair.privateKey },
+      Math.floor(Date.now() / 1000) - 5,
+    );
+
+    const res = await app().request("/me", { headers: { cookie: `${identityCookieName()}=${retired}` } });
+
+    expect(res.status).toBe(401);
+    const body = (await res.json()) as { error: { reason?: string } };
+    expect(body.error.reason).toBe("identity_expired");
+  });
+
   it("answers 401 for a token whose session has a revocation tombstone here", async () => {
     revoked.isIdentityRevoked.mockResolvedValue(true);
 
@@ -137,6 +153,8 @@ describe("requireAuth outside the global region", () => {
     const res = await app().request("/me", { headers: { cookie: `${identityCookieName()}=${header}.${payload}.AAAA` } });
 
     expect(res.status).toBe(401);
+    const body = (await res.json()) as { error: { reason?: string } };
+    expect(body.error.reason).not.toBe("identity_expired");
     expect(revoked.isIdentityRevoked).not.toHaveBeenCalled();
   });
 });

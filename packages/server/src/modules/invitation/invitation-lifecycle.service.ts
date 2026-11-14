@@ -111,6 +111,9 @@ async function notifyRecipient(target: InvitationTarget, invite: RecipientInvita
   await invitationRepo(target.kind).attachNotification(invite.id, notification.id, tx);
 }
 
+/** The account fields a claim checks against the invitation. */
+type ClaimingAccount = Pick<Account, "id" | "email" | "emailVerified">;
+
 /**
  * Convert a matching mailbox row and attach its notification atomically.
  * @param target - The locked membership target.
@@ -120,7 +123,7 @@ async function notifyRecipient(target: InvitationTarget, invite: RecipientInvita
  * @returns Whether this transaction converted the original row.
  * @throws {Error} When persistence fails.
  */
-async function claimLocked(target: InvitationTarget, invite: RecipientInvitation, user: Account, tx: DbTx): Promise<boolean> {
+async function claimLocked(target: InvitationTarget, invite: RecipientInvitation, user: ClaimingAccount, tx: DbTx): Promise<boolean> {
   if (!user.emailVerified || invite.invitedEmail !== normalizeEmail(user.email)) return false;
   const claimed = await invitationRepo(target.kind).claimPendingEmail(
     invite.id, normalizeEmail(user.email), user.id, getDecisionWindowMs(), tx,
@@ -242,21 +245,21 @@ export async function prepareInvitation(input: {
 }
 
 /**
- * Claim one candidate after rechecking account identity under its target lock;
- * the account is read from the global region (inner#1955).
+ * Claim one candidate after rechecking the account against it under its
+ * target lock. The account is read by the caller before the transaction, so
+ * no call to the global region waits while the lock is held (inner#1955).
  * @param kind - Target kind.
  * @param id - Candidate invitation id.
  * @param targetId - Immutable target id.
- * @param userId - Account requesting conversion.
+ * @param user - The account requesting conversion.
  * @returns Once the candidate has been decided.
  * @throws {Error} When persistence fails.
  */
-export async function claimInvitation(kind: InvitationKind, id: string, targetId: string, userId: string): Promise<void> {
+export async function claimInvitation(kind: InvitationKind, id: string, targetId: string, user: ClaimingAccount): Promise<void> {
+  if (!user.emailVerified) return;
   await db.transaction(async (tx) => {
     const target = await lockTarget(kind, targetId, tx);
     if (!target) return;
-    const user = (await profilesService.accountsOf([userId])).get(userId);
-    if (!user?.emailVerified) return;
     const repo = invitationRepo(kind);
     const invite = await repo.findRecipientById(id, tx);
     if (!invite || invite.targetId !== targetId || invite.invitedEmail !== normalizeEmail(user.email)) return;
