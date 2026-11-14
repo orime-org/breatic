@@ -145,6 +145,22 @@ describe('deletes in a full Space around columns and cells', () => {
     expect(() => snapshotOf(doc)).not.toThrow();
   });
 
+  it.each(['F', 'O'] as const)('[%s] taking every block of the body\'s only group at once keeps an empty line in each column', async (code) => {
+    const handle = open(code, [columnsBlock(['a'], ['b'])]);
+    handle.editor.removeBlocks([rowId(handle, 'a'), rowId(handle, 'b')] as never);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(shapeOf(handle.editor.document as never)).toEqual(['[¶|¶]']);
+  });
+
+  it.each(['F', 'O'] as const)('[%s] taking a line and a one-column group\'s last block at once goes through', async (code) => {
+    const handle = open(code, [para('lead'), columnsBlock(['a'], ['b'])]);
+    handle.editor.removeBlocks([rowId(handle, 'b')] as never);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    handle.editor.removeBlocks([rowId(handle, 'lead'), rowId(handle, 'a')] as never);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(shapeOf(handle.editor.document as never)).toEqual(['[¶]']);
+  });
+
   it.each(['F', 'O'] as const)('[%s] taking the only block of a table cell keeps the cell', async (code) => {
     const handle = open(code, [para('lead'), tableBlock({ rows: [{ cells: ['a', 'b'] }, { cells: ['c', 'd'] }] })]);
     handle.editor.removeBlocks([rowId(handle, 'a')] as never);

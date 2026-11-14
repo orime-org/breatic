@@ -442,26 +442,26 @@ function keepMinimal(node: ProseMirrorNode, pos: number, targets: Targets): void
 /**
  * A column (inner#1314 design §5.2) that would be left with no blocks, as a
  * target of its own; its group goes instead when it would be left with no
- * columns. Each goes only where what holds it stays valid without it. Other
- * blocks that hold blocks (a table cell) keep their place.
+ * columns. Each goes only where what holds it stays valid without it and
+ * without what else this deletion takes; a column whose group can neither
+ * keep another column nor go stays, emptied to a line. Other blocks that
+ * hold blocks (a table cell) keep their place.
  * @param doc - The document before the deletion.
  * @param pos - The block's position.
  * @param node - The block.
+ * @param going - Where the blocks this deletion takes, or empties, start.
  * @returns The target, or null when it has to stay.
  */
-function holderGoing(doc: ProseMirrorNode, pos: number, node: ProseMirrorNode): Whole | null {
+function holderGoing(doc: ProseMirrorNode, pos: number, node: ProseMirrorNode, going: ReadonlySet<number>): Whole | null {
   if (pos < 0 || (node.type.name !== 'docColumn' && node.type.name !== 'docColumnList')) return null;
   const $pos = doc.resolve(pos);
   const holder = $pos.parent;
   const index = $pos.index();
   const rest: ProseMirrorNode[] = [];
-  holder.forEach((child, _offset, at) => {
-    if (at !== index) rest.push(child);
+  holder.forEach((child, offset, at) => {
+    if (at !== index && !going.has($pos.start() + offset)) rest.push(child);
   });
-  if (node.type.name === 'docColumn' && rest.length === 0) {
-    const group = holderGoing(doc, $pos.before(), holder);
-    if (group !== null) return group;
-  }
+  if (node.type.name === 'docColumn' && rest.length === 0) return holderGoing(doc, $pos.before(), holder, going);
   if (!holder.type.validContent(Fragment.fromArray(rest))) return null;
   return { pos, node, parent: holder, parentPos: $pos.depth > 0 ? $pos.before() : -1, index };
 }
@@ -482,16 +482,23 @@ function keepRequired(targets: Targets, doc: ProseMirrorNode): void {
     targets.nodes.delete(whole.pos);
     whole.node.forEach((_block, offset, index) => addChild(targets, whole.node, whole.pos, index, offset));
   }
-  const groups = byParent(targets);
-  for (const group of groups.values()) {
-    const { parent } = group[0]!;
+  const groups = [...byParent(targets).values()].map((group) => {
     const gone = new Set(group.map((whole) => whole.index));
     const left: ProseMirrorNode[] = [];
-    parent.forEach((child, _offset, index) => {
+    group[0]!.parent.forEach((child, _offset, index) => {
       if (!gone.has(index)) left.push(child);
     });
+    return { group, left };
+  });
+  // What this deletion takes, and every parent it leaves with no child.
+  const going = new Set([
+    ...targets.nodes.keys(),
+    ...groups.filter(({ left }) => left.length === 0).map(({ group }) => group[0]!.parentPos),
+  ]);
+  for (const { group, left } of groups) {
+    const { parent } = group[0]!;
     if (parent.type.validContent(Fragment.fromArray(left))) continue;
-    const holder = left.length === 0 ? holderGoing(doc, group[0]!.parentPos, parent) : null;
+    const holder = left.length === 0 ? holderGoing(doc, group[0]!.parentPos, parent, going) : null;
     if (holder !== null) {
       targets.nodes.set(holder.pos, holder);
       continue;
