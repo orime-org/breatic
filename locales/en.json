@@ -624,7 +624,7 @@
     },
     "waiting": {
       "title": "Waiting for the Agent ({count})",
-      "awaitingCard": "Answer the card above to go on, or just send a message",
+      "awaitingCard": "Answer the card above to go on, or just send a message.",
       "blocked": "Not enough credits. Add credits to continue.",
       "retract": "Back to the box",
       "delete": "Delete",

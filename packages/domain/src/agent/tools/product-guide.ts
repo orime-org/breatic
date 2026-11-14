@@ -443,7 +443,7 @@ export function renderProductGuide(): string {
       "tab and device; hovering the two buttons on its row shows " +
       `${quoted(t("chat.waiting.retract"))}, which puts its words and attachments back in the box, and ` +
       `${quoted(t("chat.waiting.delete"))}. While a questionnaire or Space request waits for an answer the list ` +
-      `adds ${quoted(t("chat.waiting.awaitingCard"))}, and the messages go on once it is answered. With no ` +
+      `adds ${quoted(t("chat.waiting.awaitingCard"))} The messages go on once it is answered. With no ` +
       `credits the list adds ${quoted(t("chat.waiting.blocked"))} The messages go on once credits are added. ` +
       "Switching to another conversation or " +
       "leaving the page does not stop a reply: it goes on, and coming back shows it caught up. A " +
