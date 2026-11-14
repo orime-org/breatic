@@ -17,7 +17,7 @@ import type { ScenePatch } from '@web/data/yjs/scene-document';
 import type { SceneSession } from '@web/data/yjs/scene-session';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { SceneField, SceneFieldDraftOwner } from '@web/spaces/three-d/SceneField';
-import { useControlPress } from '@web/spaces/three-d/use-control-press';
+import { commitAfterChange, useControlPress } from '@web/spaces/three-d/use-control-press';
 
 /** Lens presets in millimetres (inner#1694 design 3.2). */
 const FOCAL_PRESETS = [14, 24, 35, 50, 70, 100, 200] as const;
@@ -42,9 +42,9 @@ function Row({ label, labelId, children }: { label: string; labelId: string; chi
  * A drag that previews and is written once on release, as one undo step (design 3.8).
  * @param session - The command owner.
  * @param id - The object being changed.
- * @returns Preview and commit callbacks.
+ * @returns Preview and commit callbacks, and the commit a Slider's `onValueCommit` takes.
  */
-function useContinuousPatch(session: SceneSession, id: string): { preview: (patch: Omit<ScenePatch, 'id'>) => void; commit: () => void } {
+function useContinuousPatch(session: SceneSession, id: string): { preview: (patch: Omit<ScenePatch, 'id'>) => void; commit: () => void; commitAfterChange: () => void } {
   const press = useControlPress();
   // The session owns whether the drag is still open: Escape, a lock or an undo may have ended it.
   const preview = React.useCallback((patch: Omit<ScenePatch, 'id'>): void => {
@@ -54,11 +54,13 @@ function useContinuousPatch(session: SceneSession, id: string): { preview: (patc
   const commit = React.useCallback((): void => {
     if (press.release() && session.getSnapshot().gestureActive) session.endGesture(true);
   }, [session, press]);
-  return { preview, commit };
+  const commitLater = React.useMemo(() => commitAfterChange(commit), [commit]);
+  return { preview, commit, commitAfterChange: commitLater };
 }
 
 /**
- * A colour chosen in a react-colorful picker inside a Popover; written when the picker closes.
+ * A colour chosen in a react-colorful picker inside a Popover; written on each release of the picker, on each colour
+ * typed into the hex input, and when the picker closes (design 3.8).
  * @param root0 - Props.
  * @param root0.value - The current colour.
  * @param root0.disabled - Whether it can be changed.
@@ -73,14 +75,17 @@ export const SceneColorField = React.memo(function SceneColorField({ value, disa
   const onOpenChange = React.useCallback((open: boolean): void => { if (!open) onCommit(); }, [onCommit]);
   // The hex input accepts three digits as well as six; the scene stores six.
   const pick = React.useCallback((hex: string): void => onPreview((hex.length === 4 ? `#${[...hex.slice(1)].map((digit) => digit + digit).join('')}` : hex).toLowerCase()), [onPreview]);
+  const type = React.useCallback((hex: string): void => { pick(hex); onCommit(); }, [pick, onCommit]);
+  // react-colorful follows the drag on the window, so its release is caught there too.
+  const press = React.useCallback((): void => { window.addEventListener('pointerup', onCommit, { once: true }); }, [onCommit]);
   return <Popover onOpenChange={onOpenChange}>
     <PopoverTrigger asChild>
       <Button variant={null} size={null} aria-labelledby={labelId} disabled={disabled}
         className='size-6 rounded-full border border-border disabled:cursor-not-allowed disabled:opacity-50' style={{ backgroundColor: value }} />
     </PopoverTrigger>
     <PopoverContent side='left' align='start' className='w-auto space-y-2 p-2'>
-      <HexColorPicker color={value} onChange={pick} />
-      <HexColorInput color={value} onChange={pick} prefixed autoComplete='off' className='h-[var(--btn-inline)] w-full rounded-md border border-input bg-background px-2 text-xs' />
+      <div onPointerDown={press}><HexColorPicker color={value} onChange={pick} /></div>
+      <HexColorInput color={value} onChange={type} prefixed autoComplete='off' className='h-[var(--btn-inline)] w-full rounded-md border border-input bg-background px-2 text-xs' />
     </PopoverContent>
   </Popover>;
 });
@@ -174,7 +179,7 @@ export const SceneDirectorFields = React.memo(function SceneDirectorFields(props
     </Row>
     <Row label={t('spaces.threeD.intensity')} labelId={`${ids}-intensity`}>
       <Slider aria-labelledby={`${ids}-intensity`} className='w-28' min={0} max={max} step={step} value={[object.intensity]} disabled={disabled}
-        onValueChange={([value]) => { if (value !== undefined) continuous.preview({ intensity: value }); }} onValueCommit={continuous.commit} onPointerUp={continuous.commit} />
+        onValueChange={([value]) => { if (value !== undefined) continuous.preview({ intensity: value }); }} onValueCommit={continuous.commitAfterChange} onPointerUp={continuous.commit} />
       <span className='w-10 text-right text-xs tabular-nums text-muted-foreground'>{Number(object.intensity.toFixed(1))}</span>
     </Row>
     <Row label={t('spaces.threeD.castShadow')} labelId={`${ids}-shadow`}>
@@ -182,7 +187,7 @@ export const SceneDirectorFields = React.memo(function SceneDirectorFields(props
     </Row>
     {object.model.type === 'spot' ? <Row label={t('spaces.threeD.angle')} labelId={`${ids}-angle`}>
       <Slider aria-labelledby={`${ids}-angle`} className='w-28' min={SCENE_SPOT_ANGLE_MIN} max={SCENE_SPOT_ANGLE_MAX} step={1} value={[object.angle ?? SCENE_SPOT_ANGLE_DEFAULT]}
-        disabled={disabled} onValueChange={([value]) => { if (value !== undefined) continuous.preview({ angle: value }); }} onValueCommit={continuous.commit} onPointerUp={continuous.commit} />
+        disabled={disabled} onValueChange={([value]) => { if (value !== undefined) continuous.preview({ angle: value }); }} onValueCommit={continuous.commitAfterChange} onPointerUp={continuous.commit} />
       <span className='w-10 text-right text-xs tabular-nums text-muted-foreground'>{`${Math.round(object.angle ?? SCENE_SPOT_ANGLE_DEFAULT)}°`}</span>
     </Row> : null}
     {lock}

@@ -475,6 +475,69 @@ describe('continuous controls end on release and on Escape (round 1 fixes, desig
     expect(session.getSnapshot().gestureActive).toBe(false);
   });
 
+  const lampValue = (session: SceneSession, key: string): unknown => (readSceneDocument(session.doc).objects.find((object) => object.id === LAMP) as unknown as Record<string, unknown> | undefined)?.[key];
+
+  it('writes a light slider key step as one undo step', async () => {
+    const { session } = await setup([lamp()]);
+    await openDirector();
+    act(() => session.select(LAMP, false));
+    const [thumb] = within(screen.getByTestId(`scene-director-fields-${LAMP}`)).getAllByRole('slider');
+    fireEvent.keyDown(thumb as HTMLElement, { key: 'ArrowRight' });
+    await waitFor(() => expect(lampValue(session, 'intensity')).toBe(2));
+    expect(session.getSnapshot().gestureActive).toBe(false);
+  });
+
+  it('writes an ambient slider key step', async () => {
+    const { session } = await setup();
+    const opened = await openDirector();
+    const before = session.getSnapshot().environment.ambientIntensity;
+    const [thumb] = within(within(opened).getByTestId('scene-director-ambient')).getAllByRole('slider');
+    fireEvent.keyDown(thumb as HTMLElement, { key: 'ArrowRight' });
+    await waitFor(() => expect(session.getSnapshot().environment.ambientIntensity).toBeCloseTo(before + 0.1, 9));
+  });
+
+  it('keeps a typed light colour when the intensity slider is pressed next', async () => {
+    const { session } = await setup([lamp()]);
+    await openDirector();
+    act(() => session.select(LAMP, false));
+    sliderPointers();
+    const fields = screen.getByTestId(`scene-director-fields-${LAMP}`);
+    fireEvent.click(within(fields).getByRole('button', { name: t('spaces.threeD.color') }));
+    await screen.findByRole('slider', { name: 'Color' });
+    fireEvent.change(screen.getAllByRole('textbox').at(-1) as HTMLElement, { target: { value: 'ff0000' } });
+    const [thumb] = within(fields).getAllByRole('slider');
+    const track = (thumb as HTMLElement).parentElement?.parentElement as HTMLElement;
+    fireEvent.pointerDown(track, { pointerId: 1, button: 0, buttons: 1, clientX: 200 });
+    fireEvent.pointerMove(track, { pointerId: 1, buttons: 1, clientX: 260 });
+    fireEvent.pointerUp(track, { pointerId: 1, clientX: 260 });
+    expect(lampValue(session, 'intensity')).not.toBe(1);
+    await waitFor(() => expect(lampValue(session, 'color')).toBe('#ff0000'));
+  });
+
+  it('writes a colour on each release of the picker, also after the window lost focus', async () => {
+    const { session } = await setup([lamp()]);
+    await openDirector();
+    act(() => session.select(LAMP, false));
+    sliderPointers();
+    fireEvent.click(within(screen.getByTestId(`scene-director-fields-${LAMP}`)).getByRole('button', { name: t('spaces.threeD.color') }));
+    const saturation = (await screen.findByRole('slider', { name: 'Color' })) as HTMLElement;
+    const pickAt = (x: number): void => {
+      fireEvent.pointerDown(saturation, { pointerId: 1, buttons: 1 });
+      fireEvent.mouseDown(saturation, { button: 0, pageX: x, pageY: 2, clientX: x, clientY: 2 });
+      fireEvent.mouseUp(window);
+      fireEvent.pointerUp(window, { pointerId: 1 });
+    };
+    const shown = (): unknown => (h.viewport?.objects.find((object) => object.id === LAMP) as unknown as Record<string, unknown> | undefined)?.color;
+    pickAt(380);
+    expect(shown()).not.toBe('#ffffff');
+    await waitFor(() => expect(lampValue(session, 'color')).not.toBe('#ffffff'));
+    const first = lampValue(session, 'color');
+    act(() => session.setFocused(false));
+    act(() => session.setFocused(true));
+    pickAt(40);
+    await waitFor(() => expect(lampValue(session, 'color')).not.toBe(first));
+  });
+
   it('takes a three-digit colour typed into the picker as its six-digit form', async () => {
     const { session } = await setup();
     const opened = await openDirector();

@@ -665,7 +665,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   }, []);
   const onAmbientPreview = React.useCallback((values: Partial<SceneEnvironmentValues>): void => {
     if (!ambientPress.change(() => true)) return;
-    // The ref leads the state so a commit in the same event (a key press) reads the change it follows.
+    // The ref leads the state so a commit queued right after this change reads it before React renders.
     ambientDraftRef.current = { ...ambientDraftRef.current, ...values };
     setAmbientDraft(ambientDraftRef.current);
   }, [ambientPress]);

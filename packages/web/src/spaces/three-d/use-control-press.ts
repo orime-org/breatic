@@ -40,3 +40,13 @@ export function useControlPress(): ControlPress {
     },
   }), []);
 }
+
+/**
+ * A Slider `onValueCommit` that runs after the change it commits: on a key step Radix Slider calls `onValueCommit`
+ * before `onValueChange`, so the commit waits for the change of the same event.
+ * @param commit - Ends the press and writes it.
+ * @returns The handler.
+ */
+export function commitAfterChange(commit: () => void): () => void {
+  return () => { queueMicrotask(commit); };
+}
