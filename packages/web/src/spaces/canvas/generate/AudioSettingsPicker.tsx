@@ -143,10 +143,6 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
 
   const layout = React.useMemo(() => settingsLayout(model, mode, value), [model, mode, value]);
   const standIn = layout.standIn;
-  // The language the user picked, for a voice that has a sample in each: the
-  // model's param whose values name languages.
-  const languageParam = Object.keys(model.params).find((name) => model.params[name]?.value_locales !== undefined);
-  const language = languageParam === undefined ? undefined : asChoice(value[languageParam]);
   const dialogue = standIn !== null && isStandInOn(value);
   const shared = React.useMemo(() => audioParamControls(model), [model]);
 
@@ -397,7 +393,7 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
                 onLoadMore={voice.onLoadMore}
                 onRetry={() => voice.onOpenChange(true)}
                 player={player}
-                language={language}
+                sampleLanguages={model.sample_languages}
               />
             ) : openRow.kind === 'choice' ? (
               <OptionList
@@ -436,7 +432,7 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
                   onLoadMore={voice.onLoadMore}
                   onRetry={() => voice.onOpenChange(true)}
                   player={player}
-                  language={language}
+                  sampleLanguages={model.sample_languages}
                 />
               </>
             ) : (

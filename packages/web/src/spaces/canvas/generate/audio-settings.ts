@@ -122,7 +122,7 @@ export function choiceLabel(
  * @param locale - The language to name it in.
  * @returns The name, or undefined when the runtime cannot name it.
  */
-function languageName(tag: string, locale: string): string | undefined {
+export function languageName(tag: string, locale: string): string | undefined {
   try {
     return new Intl.DisplayNames([locale], { type: 'language', languageDisplay: 'standard' }).of(tag);
   } catch {

@@ -741,6 +741,7 @@
       "mentionEmpty": "沒有可引用的內容",
       "voicePlaceholder": "未選音色",
       "voiceSearchPlaceholder": "搜尋音色…",
+      "voiceSampleLanguage": "試聽",
       "voiceLoading": "正在載入音色…",
       "voiceEmpty": "沒有匹配的音色",
       "voiceError": "音色暫不可用",

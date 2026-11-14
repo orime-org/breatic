@@ -44,6 +44,7 @@ describe('user preferences storage', () => {
       timelineSnap: true,
       timelineLinkage: true,
       documentOutlineVisible: true,
+      voiceSampleLanguage: null,
     });
     expect(DEFAULT_USER_PREFERENCES).toEqual(readUserPreferences(ALICE));
   });
@@ -103,6 +104,7 @@ describe('user preferences storage', () => {
       timelineSnap: true,
       timelineLinkage: true,
       documentOutlineVisible: true,
+      voiceSampleLanguage: null,
     });
   });
 

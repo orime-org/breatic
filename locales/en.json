@@ -754,6 +754,7 @@
       "mentionEmpty": "No references available",
       "voicePlaceholder": "No voice chosen",
       "voiceSearchPlaceholder": "Search voices…",
+      "voiceSampleLanguage": "Sample",
       "voiceLoading": "Loading voices…",
       "voiceEmpty": "No matching voices",
       "voiceError": "Voices unavailable",

@@ -1320,7 +1320,7 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
 describe('AudioGeneratePanelContainer — a dialogue written line by line (inner#1825)', () => {
   const GEMINI: ModelEntry = {
     ...ELEVEN,
-    name: 'gemini-3.1-flash-text-to-speech',
+    name: 'gemini-3.8-flash-text-to-speech',
     display_name: 'Gemini 3.1 Flash TTS',
     params: {
       speakers: {

@@ -69,11 +69,12 @@ function recordsRenamed(records: Record<string, unknown>): Record<string, unknow
 /**
  * A node's data with every model name it holds read as the current one: its
  * model, the models it remembers per mode and the keys of its param records.
- * @param data - A node's data; untrusted collaborative data.
+ * @param node - A node's data; untrusted collaborative data.
  * @returns The data under current names, or the same object when none was retired.
  * @throws {never} Never.
  */
-export function withCurrentModelNames<T extends NodeModelFields>(data: T): T {
+export function withCurrentModelNames<T extends object>(node: T): T {
+  const data = node as NodeModelFields;
   const model = typeof data.model === "string" ? currentModelName(data.model) : data.model;
   const byMode = isRecord(data.modelByMode)
     ? Object.entries(data.modelByMode).some(([, name]) => typeof name === "string" && currentModelName(name) !== name)
@@ -81,8 +82,8 @@ export function withCurrentModelNames<T extends NodeModelFields>(data: T): T {
       : data.modelByMode
     : data.modelByMode;
   const records = isRecord(data.paramsByModel) ? recordsRenamed(data.paramsByModel) : data.paramsByModel;
-  if (model === data.model && byMode === data.modelByMode && records === data.paramsByModel) return data;
-  const out: T = { ...data };
+  if (model === data.model && byMode === data.modelByMode && records === data.paramsByModel) return node;
+  const out = { ...node } as T & NodeModelFields;
   if (model !== data.model) out.model = model;
   if (byMode !== data.modelByMode) out.modelByMode = byMode;
   if (records !== data.paramsByModel) out.paramsByModel = records;
