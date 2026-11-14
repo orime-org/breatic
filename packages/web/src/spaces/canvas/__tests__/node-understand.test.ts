@@ -12,11 +12,8 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import {
-  understandNodePosition,
-  understandRefusal,
-} from '@web/spaces/canvas/node-understand';
-import { NODE_STEP } from '@breatic/shared/canvas-model';
+import { understandRefusal } from '@web/spaces/canvas/node-understand';
+import { NODE_STEP, understandNodePosition } from '@breatic/shared/canvas-model';
 import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 
 const LIMIT = 20 * 1024 * 1024;

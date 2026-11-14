@@ -48,6 +48,7 @@ export * from "@shared/canvas/model/proposal-prompt.js";
 export * from "@shared/canvas/model/reference-urls.js";
 export * from "@shared/canvas/model/reference-pool-cap.js";
 export * from "@shared/canvas/model/restore-node-content.js";
+export * from "@shared/canvas/model/result-nodes.js";
 export * from "@shared/canvas/model/slot-fill.js";
 export * from "@shared/canvas/model/slot-pick.js";
 export * from "@shared/canvas/model/slots.js";

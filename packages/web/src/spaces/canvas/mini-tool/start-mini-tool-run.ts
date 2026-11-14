@@ -25,19 +25,16 @@ import { UploadFailedError } from '@web/data/upload/media-upload';
 import { addEdge, addNode, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';
 import { toast } from '@web/lib/toast';
 import { runOnce, spaceTaskIntent, useRunning, type RunOnceOutcome } from '@web/stores/task-actions-in-flight';
-import { NODE_STEP } from '@breatic/shared/canvas-model';
 import { ImageTooLargeError } from '@web/spaces/canvas/mini-tool/adjust-export';
 import { DrawingEmptyError, type DrawingExport } from '@web/spaces/canvas/mini-tool/export-drawing';
 import { isJoinTool } from '@web/spaces/canvas/mini-tool/join';
 import { exportsBeforeRun } from '@web/spaces/canvas/mini-tool/mini-tool-view';
-import { outputPlacementOf, plannedOutputSizes, type PlacedOutput } from '@breatic/shared/canvas-model';
+import { planMiniToolResultGroup, planMiniToolResults, resultBaseOf, type PlacedOutput } from '@breatic/shared/canvas-model';
 import { groupBackgroundFor } from '@breatic/shared/canvas-model';
-import { planGroupAround } from '@breatic/shared/canvas-model';
 import { writeGroup } from '@web/spaces/canvas/group-write';
-import { MODALITY_LABEL } from '@web/spaces/canvas/nodes/_shared/modality';
 import type { DrawingKind } from '@web/spaces/canvas/mini-tool/paint-drawing';
 import type { ExpandFrame, PixelSize } from '@web/spaces/canvas/mini-tool/expand-frame';
-import { createEmptyNode, type CreatableNodeType } from '@breatic/shared/canvas-model';
+import type { CreatableNodeType } from '@breatic/shared/canvas-model';
 import { tooLargeMessage } from '@web/spaces/canvas/generate/execute-error-message';
 import { resolveUploadFailure } from '@web/spaces/canvas/upload-failure';
 import type { DrawOp } from '@web/stores/drawing-draft';
@@ -345,27 +342,10 @@ function groupResults(
   nodes: readonly { id: string; type: string; position: { x: number; y: number } }[],
   placements: readonly PlacedOutput[],
 ): BuiltGroup | undefined {
-  const plan = planGroupAround(
-    nodes.map((node, index) => ({
-      id: node.id,
-      type: node.type,
-      position: node.position,
-      width: placements[index]?.width,
-      height: placements[index]?.height,
-      data: {},
-    })),
-    newId(),
-  );
-  if (plan === null) return undefined;
-  const output = outputTemplateOf(run.spec);
-  writeGroup(
-    run.projectId,
-    run.spaceId,
-    plan,
-    run.userId,
-    groupBackgroundFor(Math.random()),
-    `${output.namePrefix}-${run.source.name ?? MODALITY_LABEL[output.modality]}`,
-  );
+  const planned = planMiniToolResultGroup(run.spec, nodes, placements, run.source.name, newId());
+  if (planned === null) return undefined;
+  const { plan, name } = planned;
+  writeGroup(run.projectId, run.spaceId, plan, run.userId, groupBackgroundFor(Math.random()), name);
   return { id: plan.groupId, position: plan.position, width: plan.width, height: plan.height };
 }
 
@@ -469,24 +449,8 @@ async function buildMiniToolRun(run: MiniToolRun, onSent: (settle: Settle) => vo
     (best, clip) => (absoluteX(clip) > absoluteX(best) ? clip : best),
     wiredFrom[0] ?? source,
   );
-  const base = {
-    x: absoluteX(furthest) + NODE_STEP.x,
-    y: furthest.position.y + (furthest.groupOrigin?.y ?? 0),
-  };
-  const placements = outputPlacementOf(
-    spec,
-    run.snapshot.params,
-    plannedOutputSizes(spec, run.snapshot.params, source),
-    source.name,
-  );
-  // A result whose size is planned is built with it, so it holds its place at
-  // the size it will have, for everyone (inner#1303 §6.7); the result's own
-  // media fields replace it when it lands (`writeNodeMedia`).
-  const nodes = placements.map((placed) => {
-    const built = createEmptyNode(placed.output.modality, { x: base.x + placed.x, y: base.y + placed.y }, userId);
-    const size = placed.size === undefined ? {} : { mediaWidth: placed.size.width, mediaHeight: placed.size.height };
-    return { ...built, data: { ...built.data, name: placed.name, ...size } };
-  });
+  // The nodes are planned as collab plans an external agent's (#1488).
+  const { nodes, placements } = planMiniToolResults(spec, run.snapshot.params, source, resultBaseOf(furthest), userId);
   let group: BuiltGroup | undefined;
   // The results, their edges and their Group are one add for the size cap,
   // judged before anything is sent: a Space without room runs nothing.
