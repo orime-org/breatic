@@ -69,6 +69,9 @@ export function isFormula(node: PMNode): boolean {
 /** The MathML annotation that holds a formula's LaTeX. */
 export const TEX_ANNOTATION = 'annotation[encoding="application/x-tex"]';
 
+/** KaTeX's drawn part when it draws nothing at all. */
+const DRAWS_NOTHING = '<span class="katex-html" aria-hidden="true"></span>';
+
 /** A formula rendered, or the reason it could not be. */
 type Rendered = { readonly html: string; readonly error: null } | { readonly html: null; readonly error: string };
 
@@ -222,17 +225,38 @@ export function leafWords(other: (leaf: PMNode) => string): (leaf: PMNode) => st
  * Whether a node is a formula with a source, which counts as content for the
  * Agent and the bubble bar.
  * @param node - The node.
- * @returns True for a formula whose source is not empty.
+ * @returns True for a formula whose source is not only white space.
  */
 export function holdsFormula(node: PMNode): boolean {
-  return isFormula(node) && formulaSource(node) !== '';
+  return isFormula(node) && formulaSource(node).trim() !== '';
 }
 
-/** Gives both formula nodes their text, which `textContent` and `textBetween` read. */
+/**
+ * How a formula reads in plain text people take with a selection drag: its
+ * text, parted by a space from a neighbour's `$`, as a copy parts them.
+ * @param props - Where the formula sits.
+ * @param props.node - The formula.
+ * @param props.parent - The node holding it.
+ * @param props.index - Its index there.
+ * @returns The text.
+ */
+function formulaPlainText({ node, parent, index }: { node: PMNode; parent: PMNode; index: number }): string {
+  const before = index > 0 ? parent.child(index - 1) : null;
+  const after = index + 1 < parent.childCount ? parent.child(index + 1) : null;
+  const touchesBefore = before !== null && (isFormula(before) || (before.text ?? '').endsWith('$'));
+  const touchesAfter = after !== null && (after.text ?? '').startsWith('$');
+  return `${touchesBefore ? ' ' : ''}${formulaLeafText(node)}${touchesAfter ? ' ' : ''}`;
+}
+
+/**
+ * Gives both formula nodes their text: `leafText`, which `textContent` and
+ * `textBetween` read, and `toText`, which Tiptap's plain text for a selection
+ * drag reads.
+ */
 const FormulaText = Extension.create({
   name: 'documentFormulaText',
   extendNodeSchema: (extension) =>
-    extension.name === MATH_BLOCK || extension.name === MATH_INLINE ? { leafText: formulaLeafText } : {},
+    extension.name === MATH_BLOCK || extension.name === MATH_INLINE ? { leafText: formulaLeafText, toText: formulaPlainText } : {},
 });
 
 /** The box's element: a control region of its own (design 5.1). */
@@ -407,9 +431,10 @@ const MathFace = React.memo(function MathFace({
   const t = useTranslation();
   const { source, open, caret, selected, editable } = React.useSyncExternalStore(store.subscribe, store.get);
   const shown = open && editable;
-  // KaTeX draws nothing for white space: such a source shows the placeholder.
-  const blank = source.trim() === '';
-  const rendered = React.useMemo(() => (blank ? null : renderFormula(source, !inline)), [blank, source, inline]);
+  const rendered = React.useMemo(() => (source.trim() === '' ? null : renderFormula(source, !inline)), [source, inline]);
+  // KaTeX draws nothing for white space, a comment or a lone style command:
+  // such a source shows the placeholder.
+  const blank = rendered === null || (rendered.html?.includes(DRAWS_NOTHING) ?? false);
   // The last formula that rendered stays up while the box is open on a source
   // that does not parse; once the box closes on it, the error face shows until
   // it parses again (BlockNote `SourceWithPreview.tsx`).
@@ -507,7 +532,7 @@ const MathFace = React.memo(function MathFace({
     >
       <Wrapper
         className={cn(!editable && 'cursor-default')}
-        role={editable && preview === null ? 'button' : undefined}
+        role={editable && (blank || preview === null) ? 'button' : undefined}
         // The body keeps the keyboard until the box takes it.
         onMouseDown={(event) => {
           if (!editable) return;

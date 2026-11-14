@@ -157,6 +157,18 @@ describe('copying a selection that holds formulas', () => {
     expect(data['text/plain']?.trim()).toBe('x $$a$$ $$b$$ y');
   });
 
+  it.each([
+    ['two formulas side by side', ['x ', { type: 'math', props: { source: 'a' } }, { type: 'math', props: { source: 'b' } }, ' y'], 'x $$a$$ $$b$$ y'],
+    ['words ending and starting with $ around a formula', ['US$', { type: 'math', props: { source: 'c' } }, '$5'], 'US$ $$c$$ $5'],
+  ])('writes %s into the plain text a selection drag carries', (_name, content, plain) => {
+    const editor = open([{ type: 'paragraph', content }]);
+    const paragraph = before(editor, 'paragraph');
+    const size = editor.prosemirrorState.doc.nodeAt(paragraph)!.content.size;
+    select(editor, paragraph + 1, paragraph + 1 + size);
+    const view = editor.prosemirrorView;
+    expect(view.serializeForClipboard(view.state.selection.content()).text).toBe(plain);
+  });
+
   it('writes a block formula into the plain text as $$ on lines of their own', () => {
     const editor = open([
       { type: 'paragraph', content: 'lead' },

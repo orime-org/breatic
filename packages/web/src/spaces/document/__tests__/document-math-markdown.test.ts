@@ -12,14 +12,14 @@
 
 import { afterEach, describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
-import { TextSelection } from '@tiptap/pm/state';
+import { AllSelection, TextSelection } from '@tiptap/pm/state';
 
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { markdownBlocks } from '@web/spaces/document/document-markdown';
 import { blocksMarkdown } from '@web/spaces/document/document-table-markdown';
-import { blockItem, selectionItem } from '@web/spaces/document/document-to-agent';
+import { blockItem, selectionHoldsContent, selectionItem } from '@web/spaces/document/document-to-agent';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -310,6 +310,35 @@ describe('formulas handed to the Agent', () => {
     const item = blockItem(editor, (editor.document[0] as { id: string }).id);
 
     expect(item.chip?.data_snapshot).toEqual({ text: '$$\n\\frac{a}{b}\n$$' });
+  });
+
+  // The Agent reads the Markdown writer's own parting of two dollar runs,
+  // which reads back exactly; only people's plain text has a space there.
+  it('gives a selection across blocks its formulas side by side as the writer parts them', () => {
+    const editor = open([
+      { type: 'paragraph', content: [{ type: 'text', text: 'x ', styles: {} }, { type: 'math', props: { source: 'a' } }, { type: 'math', props: { source: 'b' } }] },
+      { type: 'paragraph', content: 'next' },
+    ]);
+    const view = editor.prosemirrorView!;
+    view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
+
+    expect(selectionItem(editor).chip?.data_snapshot).toEqual({ text: 'x $$a$$<!---->$$b$$\n\nnext' });
+  });
+
+  it.each([
+    ['only white space', '  ', false],
+    ['a source', 'x', true],
+  ])('counts a formula holding %s as content: %s', (_name, source, holds) => {
+    const editor = open([inlineIn(source)]);
+    const view = editor.prosemirrorView!;
+    let at = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (at < 0 && node.type.name === 'math') at = pos;
+      return at < 0;
+    });
+    const selection = TextSelection.create(view.state.doc, at, at + 1);
+
+    expect(selectionHoldsContent(view.state.doc, selection)).toBe(holds);
   });
 
   it('gives a selection inside one block with its formula as $$source$$', () => {

@@ -88,12 +88,15 @@ describe('rendering', () => {
     });
   });
 
-  // KaTeX draws nothing for white space, so such a formula would have no
-  // width to see or press.
+  // KaTeX draws nothing for white space, a comment or a lone style command,
+  // so such a formula would have no width to see or press.
   it.each([
-    ['an inline formula', { type: 'paragraph', content: ['x ', { type: 'math', props: { source: '  ' } }, ' y'] }],
-    ['a formula block', { type: 'mathBlock', props: { source: ' \t\n ' } }],
-  ])('shows the placeholder, to press, for %s whose source is only white space', async (_name, block) => {
+    ['an inline formula of white space', { type: 'paragraph', content: ['x ', { type: 'math', props: { source: '  ' } }, ' y'] }],
+    ['a formula block of white space', { type: 'mathBlock', props: { source: ' \t\n ' } }],
+    ['an inline formula holding only a comment', { type: 'paragraph', content: ['x ', { type: 'math', props: { source: '% todo' } }, ' y'] }],
+    ['a formula block holding only a style command', { type: 'mathBlock', props: { source: '\\color{red}' } }],
+    ['an inline formula holding only \\displaystyle', { type: 'paragraph', content: ['x ', { type: 'math', props: { source: '\\displaystyle' } }, ' y'] }],
+  ])('shows the placeholder, to press, for %s, which KaTeX draws as nothing', async (_name, block) => {
     const { root } = open([block]);
     await vi.waitFor(() => {
       expect(root.textContent).toContain(t('spaces.document.math.empty'));
