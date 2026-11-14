@@ -17,7 +17,7 @@
  * - a selection that takes a table whole copies that table whole
  *   (`heldRange`), from the table's edge;
  * - any other selection that holds a table copies as BlockNote copies it,
- *   with the Agent's Markdown as the plain text (`blocksPlainText`).
+ *   with the plain text people read (`blocksPlainText`).
  *
  * A stored (legacy) table copies by the same rules (inner#1351 design §5.4.3
  * "stored tables"): words in one of its cells as those words, a selection
