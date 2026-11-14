@@ -23,6 +23,7 @@ import {
   env,
   getMcpConfig,
   getMcpRedis,
+  oauthRecordsRepo,
   publishSessionsRevoked,
   type AgentCredential,
 } from "@breatic/core";
@@ -102,6 +103,42 @@ export async function disconnect(connectionId: string, userId: string): Promise<
     return { revoked: outcome.revoked };
   } catch (err) {
     return { revoked: outcome.revoked, signalFailure: err };
+  }
+}
+
+/** What ending one OAuth grant did. */
+export interface EndGrantOutcome {
+  /** Who gave the grant; null when no such grant was left. */
+  userId: string | null;
+  /** The grant's connection row, when it had one. */
+  connectionId: string | null;
+  /** Whether that row was deleted. */
+  connectionDeleted: boolean;
+  /** Why announcing the grant to collab failed, when it did; the caller logs it. */
+  signalFailure?: unknown;
+}
+
+/**
+ * End one OAuth grant the authorization server revoked (#1488 §5.2): its
+ * tokens and record, its connection row as `agentAccessService.revokeGrant`
+ * decides by `source`, every downstream token traded for it, and then the
+ * announcement on `sessions:revoked`, as {@link disconnect} does.
+ * @param grantId - The grant.
+ * @param source - `client_revoked` from `/oauth/revoke`, `reuse_detected` from the token endpoint.
+ * @returns Who it belonged to, what happened to its row, and whether announcing it failed.
+ * @throws {Error} When the database or Redis cannot be written.
+ */
+export async function endGrant(grantId: string, source: "client_revoked" | "reuse_detected"): Promise<EndGrantOutcome> {
+  const owner = await oauthRecordsRepo.grantOwner(grantId);
+  const { connectionId, connectionDeleted } = await agentAccessService.revokeGrant(grantId, source);
+  await revokeDownstreamTokens({ type: "oauth", grantId });
+  const userId = owner?.accountId ?? null;
+  if (userId === null) return { userId, connectionId, connectionDeleted };
+  try {
+    await publishSessionsRevoked(userId, [grantId]);
+    return { userId, connectionId, connectionDeleted };
+  } catch (err) {
+    return { userId, connectionId, connectionDeleted, signalFailure: err };
   }
 }
 

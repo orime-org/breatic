@@ -73,9 +73,20 @@ export async function isCredentialUsable(credential: AgentCredential, now: Date 
     if (!(await tokensRepo.isActive(credential.tokenId, now))) return false;
     return (await connectionsRepo.findLivePat(credential.tokenId)) !== undefined;
   }
-  const [grant] = await oauthRecordsRepo.usableGrants({ grantId: credential.grantId }, now);
-  if (!grant?.accountId || !grant.clientId) return false;
-  return (await connectionsRepo.findLiveOAuth(grant.accountId, grant.clientId)) !== undefined;
+  return (await findUsableOAuthConnection(credential.grantId, now)) !== null;
+}
+
+/**
+ * The live connection row of a usable OAuth grant.
+ * @param grantId - The grant.
+ * @param now - The caller's clock.
+ * @returns The row, or null unless the grant is usable and its row live.
+ * @throws {Error} When the database read fails.
+ */
+export async function findUsableOAuthConnection(grantId: string, now: Date = new Date()): Promise<AgentConnectionEntity | null> {
+  const [grant] = await oauthRecordsRepo.usableGrants({ grantId }, now);
+  if (!grant?.accountId || !grant.clientId) return null;
+  return (await connectionsRepo.findLiveOAuth(grant.accountId, grant.clientId)) ?? null;
 }
 
 /**

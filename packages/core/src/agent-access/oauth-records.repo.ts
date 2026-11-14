@@ -144,15 +144,21 @@ export async function destroy(model: string, id: string): Promise<void> {
 }
 
 /**
- * Soft-deletes every record of a grant, the Grant record included.
+ * Soft-deletes every record of a grant, the Grant record included, or only
+ * the grant's records of one model.
  * @param grantId - The grant id.
+ * @param model - Limit to this adapter model; omitted ends every record.
  * @throws {Error} When the database write fails.
  */
-export async function revokeByGrantId(grantId: string): Promise<void> {
+export async function revokeByGrantId(grantId: string, model?: string): Promise<void> {
   await db
     .update(oauthRecords)
     .set({ deletedAt: sql`now()` })
-    .where(and(eq(oauthRecords.grantId, grantId), isNull(oauthRecords.deletedAt)));
+    .where(and(
+      eq(oauthRecords.grantId, grantId),
+      model === undefined ? undefined : eq(oauthRecords.model, model),
+      isNull(oauthRecords.deletedAt),
+    ));
 }
 
 /**

@@ -349,7 +349,8 @@
       "token_limit_reached": "유효한 개인 액세스 토큰이 이미 {max}개 있습니다. 새로 만들기 전에 하나를 취소하세요.",
       "capture_expired": "이 스크린샷 요청은 만료되었습니다.",
       "capture_too_large": "스크린샷이 너무 커서 보낼 수 없습니다.",
-      "capture_answered": "이 스크린샷 요청에는 이미 응답했습니다."
+      "capture_answered": "이 스크린샷 요청에는 이미 응답했습니다.",
+      "oauth_request_expired": "이 승인 요청이 만료되었습니다. Agent에서 다시 연결을 시작하세요."
     }
   },
   "chat": {

@@ -349,7 +349,8 @@
       "token_limit_reached": "You already have {max} active personal access tokens. Revoke one before creating another.",
       "capture_expired": "This screenshot request has expired.",
       "capture_too_large": "The screenshot is too large to send.",
-      "capture_answered": "This screenshot request has already been answered."
+      "capture_answered": "This screenshot request has already been answered.",
+      "oauth_request_expired": "This authorization request has expired. Start connecting again from your agent."
     }
   },
   "chat": {

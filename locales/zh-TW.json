@@ -349,7 +349,8 @@
       "token_limit_reached": "你已有 {max} 個有效的個人存取權杖，請先撤銷一個再新增。",
       "capture_expired": "這次截圖請求已失效。",
       "capture_too_large": "截圖太大，無法傳送。",
-      "capture_answered": "這次截圖請求已經有了回覆。"
+      "capture_answered": "這次截圖請求已經有了回覆。",
+      "oauth_request_expired": "這次授權請求已失效，請回到你的 Agent 重新發起連線。"
     }
   },
   "chat": {
