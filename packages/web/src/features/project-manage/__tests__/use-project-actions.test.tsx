@@ -69,13 +69,19 @@ describe('useProjectActions', () => {
 
   // inner#1955: the directory hears of the copy a moment later, and opening it
   // asks the directory for its region first.
-  it('remembers the copy in the region the duplicate request went to', async () => {
-    vi.mocked(projectsApi.duplicate).mockResolvedValue({ id: 'p-copy', name: 'Copy' } as never);
+  it('remembers the copy in the region the duplicate request went to, even after the user moved on', async () => {
+    let answer: (copy: unknown) => void = () => undefined;
+    vi.mocked(projectsApi.duplicate).mockReturnValue(new Promise((resolve) => {
+      answer = resolve;
+    }) as never);
     setCurrentRegion('sg');
     try {
       const { result } = setup();
 
       act(() => result.current.duplicate());
+      await waitFor(() => expect(projectsApi.duplicate).toHaveBeenCalled());
+      setCurrentRegion(null);
+      answer({ id: 'p-copy', name: 'Copy' });
 
       await waitFor(() => expect(rememberProjectRegion).toHaveBeenCalledWith('p-copy', 'sg'));
     } finally {

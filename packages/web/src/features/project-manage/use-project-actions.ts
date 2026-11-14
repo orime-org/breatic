@@ -44,11 +44,15 @@ export function useProjectActions(projectId: string): ProjectActions {
   const queryClient = useQueryClient();
 
   const duplicate = useMutation({
-    mutationFn: () => projectsApi.duplicate(projectId),
+    mutationFn: async () => {
+      // The copy lives where this request goes, read as it is sent; the
+      // directory hears of it a moment later (inner#1955).
+      const region = getCurrentRegion();
+      const copy = await projectsApi.duplicate(projectId);
+      rememberProjectRegion(copy.id, region);
+      return copy;
+    },
     onSuccess: (copy) => {
-      // The copy lives where this request went; the directory hears of it a
-      // moment later (inner#1955).
-      rememberProjectRegion(copy.id, getCurrentRegion());
       if (copy.isFirst === true) reportConversion('first_project', `first-project:${copy.createdByUserId}`);
       void invalidateProjectListings(queryClient, projectId);
       toast.success(t('studio.container.card.duplicated', { name: copy.name }));

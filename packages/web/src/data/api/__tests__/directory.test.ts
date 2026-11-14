@@ -15,7 +15,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const apiGet = vi.hoisted(() => vi.fn());
 vi.mock('@web/data/api/request', () => ({ apiGet }));
 
-import { directoryApi, rememberProjectRegion, rememberStudioRegion } from '@web/data/api/directory';
+import { directoryApi, rememberProjectRegion } from '@web/data/api/directory';
 
 beforeEach(() => {
   apiGet.mockReset();
@@ -37,15 +37,6 @@ describe('the region of a Project', () => {
 });
 
 describe('the region of a Studio', () => {
-  it('answers this tab\'s renamed slug without asking', async () => {
-    apiGet.mockRejectedValue(new Error('the directory has not heard of it yet'));
-
-    rememberStudioRegion('renamed-slug', 'sg');
-
-    expect(await directoryApi.studio('renamed-slug')).toEqual({ region: 'sg' });
-    expect(apiGet).not.toHaveBeenCalled();
-  });
-
   it('asks the directory for any other slug and keeps nothing across page loads', async () => {
     apiGet.mockResolvedValue({ region: 'sg' });
 

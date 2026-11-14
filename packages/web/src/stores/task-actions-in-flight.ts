@@ -25,6 +25,7 @@ import {
   type IdempotencyScope,
 } from '@breatic/shared';
 
+import { getCurrentRegion } from '@web/data/api/regions';
 import { ApiException } from '@web/data/api/types';
 import { toast } from '@web/lib/toast';
 import { useCurrentUserStore } from '@web/stores/current-user';
@@ -326,6 +327,10 @@ async function drive<B, R>(
   }
   const key = newId();
   const stopAt = idempotencyRetryDeadline(spec.scope, Date.now());
+  // Each send goes to the region of the page open at the time (inner#1955);
+  // once the user moved to another region, a resend would reach a server
+  // that never saw the press.
+  const region = getCurrentRegion();
   for (let attempt = 0; ; attempt += 1) {
     try {
       const result = await spec.send(key, body);
@@ -349,7 +354,7 @@ async function drive<B, R>(
       // Wall clock, checked as the re-send goes out: a laptop asleep in
       // between fires this timer on waking, and the server may have
       // forgotten the press by then.
-      if (Date.now() >= stopAt) {
+      if (Date.now() >= stopAt || getCurrentRegion() !== region) {
         release(intentId, press);
         toast.error(t('common.runOnce.unknownResult'));
         return RELEASED;

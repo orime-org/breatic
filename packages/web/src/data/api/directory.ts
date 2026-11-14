@@ -7,8 +7,9 @@
  * new slug through that region's outbox a moment after the change, so the tab
  * that made the change answers from what it already knows. A Project id never
  * changes, so its region is kept in localStorage and a reopened page skips the
- * question; a slug can later belong to another Studio, so only this tab's own
- * rename is remembered, in memory.
+ * question. A slug can later belong to another Studio and is always asked;
+ * this tab's own rename is written into the switcher's list, which the
+ * Studio page reads first.
  */
 
 import { apiGet } from '@web/data/api/request';
@@ -19,9 +20,6 @@ export interface DirectoryEntry {
 }
 
 const PROJECT_CACHE_PREFIX = 'breatic:region:project:';
-
-/** Slugs this tab renamed a Studio to, with the Studio's region. */
-const renamedSlugs = new Map<string, string | null>();
 
 /**
  * Remember the region of a Project this tab just created.
@@ -36,15 +34,6 @@ export function rememberProjectRegion(id: string, region: string | null): void {
   }
 }
 
-/**
- * Remember the region of a Studio this tab just renamed, under its new slug.
- * @param slug - The new slug.
- * @param region - The Studio's region; null is the global region.
- */
-export function rememberStudioRegion(slug: string, region: string | null): void {
-  renamedSlugs.set(slug, region);
-}
-
 export const directoryApi = {
   /**
    * The region of a Studio.
@@ -53,8 +42,6 @@ export const directoryApi = {
    * @throws {ApiException} When the directory does not answer.
    */
   async studio(slug: string): Promise<DirectoryEntry> {
-    const renamed = renamedSlugs.get(slug);
-    if (renamed !== undefined) return { region: renamed };
     return apiGet<DirectoryEntry>(`/directory/studios/${encodeURIComponent(slug)}`);
   },
 
