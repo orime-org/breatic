@@ -11,7 +11,7 @@ import type { EditorView } from '@tiptap/pm/view';
 
 import { columnAround, landsInPlace, type ColumnSide } from '@web/spaces/document/document-column-drop';
 import { holds, LISTS } from '@web/spaces/document/document-column-entry';
-import { DOC_COLUMN, MAX_COLUMNS, meanWeight, weightsFit, weightsOf } from '@web/spaces/document/document-column-geometry';
+import { DOC_COLUMN, DOC_COLUMN_LIST, MAX_COLUMNS, meanWeight, weightsFit, weightsOf } from '@web/spaces/document/document-column-geometry';
 import { rowById } from '@web/spaces/document/document-row-by-id';
 import { cellDepthOf, DOC_TABLE } from '@web/spaces/document/document-table-nodes';
 
@@ -146,18 +146,44 @@ interface RowAt {
 }
 
 /**
+ * The box of a group's column nearest a point across.
+ * @param group - The group's element.
+ * @param x - The point's x.
+ * @returns The box, or null for a group with no column drawn.
+ */
+function nearestColumn(group: HTMLElement, x: number): DOMRect | null {
+  let nearest: DOMRect | null = null;
+  let distance = Infinity;
+  for (const column of group.querySelectorAll(':scope > .doc-columns-row > .doc-column')) {
+    const box = column.getBoundingClientRect();
+    const away = Math.max(box.left - x, 0, x - box.right);
+    if (away < distance) [nearest, distance] = [box, away];
+  }
+  return nearest;
+}
+
+/**
  * The row level with the pointer, the gutter and margin included, and what
  * of it the user sees: a picture, video or audio by its media box, any other
  * row by its own content.
  * @param view - The editor view.
  * @param x - The pointer's x.
  * @param y - The pointer's y.
+ * @param inColumn - Whether x was already moved into a column.
  * @returns The row, or null.
  */
-function rowAt(view: EditorView, x: number, y: number): RowAt | null {
+function rowAt(view: EditorView, x: number, y: number, inColumn = false): RowAt | null {
   const surface = view.dom.getBoundingClientRect();
   const at = view.posAtCoords({ left: Math.min(Math.max(x, surface.left + 1), surface.right - 1), top: y });
   if (at === null) return null;
+  // In the gap between two columns the pointer is inside the group itself;
+  // the row level with it is in the nearest column.
+  const inGroup = !inColumn && at.inside >= 0 && view.state.doc.nodeAt(at.inside)?.type.name === DOC_COLUMN_LIST;
+  const group = inGroup ? view.nodeDOM(at.inside) : null;
+  if (group instanceof HTMLElement) {
+    const nearest = nearestColumn(group, x);
+    return nearest === null ? null : rowAt(view, Math.min(Math.max(x, nearest.left + 1), nearest.right - 1), y, true);
+  }
   const $at = view.state.doc.resolve(at.inside >= 0 ? at.inside : at.pos);
   // The node the pointer is inside starts at `inside` (a table level with the
   // pointer, outside its cells), then come the nodes around it.

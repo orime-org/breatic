@@ -132,6 +132,20 @@ test('dragging a row into the empty space right of a narrow block still lands be
   await expect.poll(() => groups(page)).toEqual([['alpha', 'beta']]);
 });
 
+test('dragging a row into the left half of the gap between two columns lands right of the left column', async () => {
+  await openWithLines(page, ['alpha', 'beta', 'gamma']);
+  const alpha = (await row(page, 'alpha').boundingBox())!;
+  await dragRowTo(page, 'beta', { x: alpha.x + alpha.width - 6, y: alpha.y + alpha.height / 2 });
+  await expect.poll(() => groups(page)).toEqual([['alpha', 'beta']]);
+  const [left, right] = await page.locator(`${EDITOR} .doc-column`).evaluateAll((list) =>
+    list.map((column) => column.getBoundingClientRect().toJSON() as DOMRect),
+  );
+  const line = (await row(page, 'alpha').boundingBox())!;
+  // A quarter of the way across the gap, short of the second column's handle.
+  await dragRowTo(page, 'gamma', { x: left!.right + (right!.left - left!.right) / 4, y: line.y + line.height / 2 });
+  await expect.poll(() => groups(page)).toEqual([['alpha', 'gamma', 'beta']]);
+});
+
 test('a block in the second column has its handle in the gap, and drags from there', async () => {
   await openWithLines(page, ['alpha', 'beta', 'gamma']);
   const a = await row(page, 'alpha').boundingBox();
