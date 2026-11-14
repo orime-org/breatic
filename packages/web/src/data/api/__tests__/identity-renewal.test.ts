@@ -17,7 +17,7 @@ const checkStaleRelease = vi.hoisted(() => vi.fn((_reason: unknown) => Promise.r
 vi.mock('@web/data/deployment/stale-release', () => ({ checkStaleRelease }));
 
 import { request } from '@web/data/api/request';
-import { IDENTITY_RENEW_INTERVAL_MS, startIdentityRenewal } from '@web/data/api/identity-renewal';
+import { IDENTITY_RENEW_INTERVAL_MS, ensureFreshIdentity, startIdentityRenewal } from '@web/data/api/identity-renewal';
 import { parseRegionConfig } from '@web/data/api/regions';
 
 const TWO_REGIONS = parseRegionConfig(
@@ -83,6 +83,69 @@ describe('startIdentityRenewal', () => {
     stop();
     await vi.advanceTimersByTimeAsync(45_000 * 2);
     expect(renew).toHaveBeenCalledTimes(3);
+  });
+
+  it('renews at once when the tab comes back after the token went stale, and not when it is fresh', async () => {
+    vi.useFakeTimers();
+    const renew = vi.fn(async () => undefined);
+    const stop = startIdentityRenewal(renew, TWO_REGIONS);
+
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(renew).not.toHaveBeenCalled();
+
+    // A hidden tab's interval never fired: the clock moved, the timer did not.
+    vi.setSystemTime(Date.now() + 2 * IDENTITY_RENEW_INTERVAL_MS);
+    document.dispatchEvent(new Event('visibilitychange'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(renew).toHaveBeenCalledTimes(1);
+    stop();
+  });
+
+  it('renews at once when the network comes back after the token went stale', async () => {
+    vi.useFakeTimers();
+    const renew = vi.fn(async () => undefined);
+    const stop = startIdentityRenewal(renew, TWO_REGIONS);
+
+    vi.setSystemTime(Date.now() + 2 * IDENTITY_RENEW_INTERVAL_MS);
+    window.dispatchEvent(new Event('online'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(renew).toHaveBeenCalledTimes(1);
+    stop();
+    window.dispatchEvent(new Event('online'));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(renew).toHaveBeenCalledTimes(1);
+  });
+
+  it('makes a sender wait for one shared renewal only when the token is stale', async () => {
+    vi.useFakeTimers();
+    let release: () => void = () => undefined;
+    const renew = vi.fn(() => new Promise<void>((resolve) => { release = resolve; }));
+    const stop = startIdentityRenewal(renew, TWO_REGIONS);
+
+    await ensureFreshIdentity();
+    expect(renew).not.toHaveBeenCalled();
+
+    vi.setSystemTime(Date.now() + 2 * IDENTITY_RENEW_INTERVAL_MS);
+    let done = 0;
+    const waits = [ensureFreshIdentity().then(() => { done += 1; }), ensureFreshIdentity().then(() => { done += 1; })];
+    await vi.advanceTimersByTimeAsync(0);
+    expect(renew).toHaveBeenCalledTimes(1);
+    expect(done).toBe(0);
+    release();
+    await Promise.all(waits);
+    expect(done).toBe(2);
+    await ensureFreshIdentity();
+    expect(renew).toHaveBeenCalledTimes(1);
+    stop();
+  });
+
+  it('never makes a sender wait in a build with one region', async () => {
+    const renew = vi.fn(async () => undefined);
+    const stop = startIdentityRenewal(renew, null);
+    await ensureFreshIdentity();
+    expect(renew).not.toHaveBeenCalled();
+    stop();
   });
 
   it('never renews in a build with one region', async () => {

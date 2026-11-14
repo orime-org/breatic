@@ -4,6 +4,7 @@
 import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { getLocale, t } from '@breatic/shared';
 
+import { ensureFreshIdentity } from '@web/data/api/identity-renewal';
 import { apiBaseForPath, getRegionConfig } from '@web/data/api/regions';
 import { checkStaleRelease } from '@web/data/deployment/stale-release';
 
@@ -201,6 +202,8 @@ export async function sseStream<TEvent>({
   let opened = false;
 
   try {
+    // A stream does not go through the axios retry on `identity_expired`.
+    await ensureFreshIdentity();
     await fetchEventSource(fullUrl, {
       method: 'POST',
       headers: {

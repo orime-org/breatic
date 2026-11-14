@@ -36,7 +36,8 @@ import { env, sessionCookieName } from "@breatic/core";
 // it so existing `@server/middleware` importers keep their import path.
 export { sessionCookieName };
 
-const THIRTY_DAYS_SECONDS = 30 * 24 * 60 * 60;
+/** How long the session cookie, and the identity cookie beside it, are kept. */
+export const SESSION_COOKIE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
 
 /**
  * Cookie options assembled from env. `secure` is auto-derived from
@@ -60,7 +61,7 @@ function baseOptions(): {
     secure: env.ENV !== "dev",
     sameSite: "Lax",
     path: "/",
-    maxAge: THIRTY_DAYS_SECONDS,
+    maxAge: SESSION_COOKIE_MAX_AGE_SECONDS,
     ...(domain ? { domain } : {}),
   };
 }

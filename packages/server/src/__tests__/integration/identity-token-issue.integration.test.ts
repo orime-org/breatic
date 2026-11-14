@@ -13,7 +13,9 @@
  * The pins:
  *
  *   1. `/auth/me` and `/auth/identity` set `breatic_identity` with the
- *      parent domain, HttpOnly, Secure, SameSite=Lax and Max-Age 60, holding
+ *      parent domain, HttpOnly, Secure, SameSite=Lax and the session cookie's
+ *      30-day Max-Age (an expired token still reaches a region, which then
+ *      answers identity_expired), holding
  *      a token that verifies and names this user and this session.
  *   2. `/auth/identity` without a session is 401 and sets nothing.
  *   3. Issuing backfills the session id index of a session made before it.
@@ -134,7 +136,7 @@ function expectIssued(line: string | undefined, userId: string, sessionToken: st
   expect(attributes).toContain("httponly");
   expect(attributes).toContain("secure");
   expect(attributes).toContain("samesite=lax");
-  expect(attributes).toContain("max-age=60");
+  expect(attributes).toContain("max-age=2592000");
   const value = line!.split(";")[0]!.slice("breatic_identity=".length);
   const verdict = verifyIdentityToken(value, { k1: PUBLIC_KEY }, Math.floor(Date.now() / 1000));
   expect(verdict.ok).toBe(true);

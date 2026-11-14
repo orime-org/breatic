@@ -18,11 +18,11 @@ import {
   env,
   getRedis,
   IDENTITY_COOKIE_NAME,
-  IDENTITY_TOKEN_TTL_SECONDS,
   sessionId,
   signIdentityToken,
   type IdentityClaimsInput,
 } from "@breatic/core";
+import { SESSION_COOKIE_MAX_AGE_SECONDS } from "@server/middleware/session-cookie.js";
 
 /** Who the token says the user is, besides the session it came from. */
 export interface IdentitySubject {
@@ -62,7 +62,10 @@ export async function writeIdentityCookie(c: Context, subject: IdentitySubject, 
     httpOnly: true,
     secure: true,
     sameSite: "Lax",
-    maxAge: IDENTITY_TOKEN_TTL_SECONDS,
+    // The cookie outlives the token, so a region still receives a token that
+    // expired while the tab slept and answers `identity_expired`, the answer
+    // the web client renews on; logout clears it.
+    maxAge: SESSION_COOKIE_MAX_AGE_SECONDS,
     ...(env.IDENTITY_COOKIE_DOMAIN.trim() !== "" ? { domain: env.IDENTITY_COOKIE_DOMAIN.trim() } : {}),
   });
 }

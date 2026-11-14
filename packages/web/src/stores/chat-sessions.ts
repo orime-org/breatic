@@ -25,6 +25,7 @@ import type { ChatTransport, UIMessageChunk } from 'ai';
 import { SSE_HEARTBEAT_MISSES_ALLOWED, attachmentPart, chipOfPart, getLocale } from '@breatic/shared';
 import type { AskUserAnswer, AskUserResult, ChatAttachedChip, ChatSpaceContext, SpaceRequestAnswer } from '@breatic/shared';
 import { apiBaseForPath, getRegionConfig } from '@web/data/api/regions';
+import { ensureFreshIdentity } from '@web/data/api/identity-renewal';
 import { chatApi } from '@web/data/api/chat';
 import { clearConsolidating, noteConsolidating } from '@web/stores/consolidating';
 import { clearRunningTurns, noteTurnRunning, noteTurnSettled } from '@web/stores/running-turns';
@@ -315,6 +316,9 @@ function transportFor(
         // Read at the press, so a pick made a moment before goes with it.
         ...(model === undefined ? {} : { model }),
       };
+      // The message goes to the Project's region, which reads only the
+      // identity token, and this request is not retried after an expired one.
+      await ensureFreshIdentity();
       // A body over the request limit goes through storage first (inner#1006).
       // No beat can come before the request goes out, so the watch on this
       // turn is paused for the upload and counts again from the send.

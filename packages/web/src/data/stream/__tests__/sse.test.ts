@@ -25,6 +25,8 @@ vi.mock('@microsoft/fetch-event-source', () => ({
 }));
 const checkStaleRelease = vi.hoisted(() => vi.fn((_reason: unknown) => Promise.resolve(false)));
 vi.mock('@web/data/deployment/stale-release', () => ({ checkStaleRelease }));
+const ensureFreshIdentity = vi.hoisted(() => vi.fn(() => Promise.resolve()));
+vi.mock('@web/data/api/identity-renewal', () => ({ ensureFreshIdentity }));
 
 import { sseStream, StreamDroppedError, StreamRefusedError } from '@web/data/stream/sse';
 import { API_BASE_PATH } from '@web/data/api/base-path';
@@ -70,6 +72,19 @@ beforeEach(() => {
 
 afterEach(() => {
   setLocale('en');
+});
+
+describe('the identity token on a streaming request', () => {
+  it('opens the stream only after the token is fresh (inner#1955)', async () => {
+    let freshen: () => void = () => undefined;
+    ensureFreshIdentity.mockImplementationOnce(() => new Promise<void>((resolve) => { freshen = resolve; }));
+    const streaming = sseStream({ url: '/mini-tools/text', parseEvent: (d) => d, onEvent: () => undefined });
+    await Promise.resolve();
+    expect(fetchEventSourceMock).not.toHaveBeenCalled();
+    freshen();
+    await streaming;
+    expect(fetchEventSourceMock).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('where a streaming request is sent', () => {
