@@ -66,7 +66,7 @@ Check: was the element still moving when I took this number?
 
 ## Fake data
 
-**A faked agent stream must open exactly like the server's.** The real stream opens with a transient heartbeat, then the non-transient `data-conversation-titled` frame, then a `start` with an id; the SDK pushes the reply message on the title frame. Build the opening with `turnOpens()` from `packages/web/src/test-utils/chat-wire.ts`, in unit tests and smoke alike.
+**A faked agent stream must open exactly like the server's.** A run's stream (`GET /chat/conversations/:id/stream`) opens with the transient heartbeat and `data-run`, then the `start` that names the reply, ahead of every frame that writes into it, the conversation title included; `Chat` replaces the last message only when the id matches. Unit tests build the opening with `replyOpens()` from `packages/web/src/test-utils/chat-run-wire.ts`; smoke specs answer through `answerRuns` in `packages/web/tests/helpers/fake-run.ts`, which writes the heartbeat and puts the `start` ahead of the frames a case gives. Neither writes `data-run`, so a stop from such a run carries no run id and stops whatever run holds the conversation.
 
 Check: are the first frames of my fake stream the ones the server sends?
 

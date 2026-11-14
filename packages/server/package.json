@@ -33,6 +33,7 @@
     "mdast-util-to-markdown": "^2.1.2",
     "mjml": "5.4.1",
     "prom-client": "^14.2.0",
+    "resumable-stream": "2.2.13",
     "stripe": "catalog:",
     "yaml": "catalog:",
     "zod": "catalog:"

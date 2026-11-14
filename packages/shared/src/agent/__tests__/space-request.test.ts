@@ -241,7 +241,9 @@ describe("a chat request carries words, an answer, or shared Spaces: exactly one
   });
 
   it("still takes words alone and an answer alone", () => {
-    expect(chatMessageSchema.safeParse({ ...base, message: "hello" }).success).toBe(true);
+    expect(chatMessageSchema.safeParse({ ...base, id: "33333333-3333-4333-8333-333333333333", message: "hello" }).success).toBe(true);
+    // Words are a new message, which carries the id the page made at the press.
+    expect(chatMessageSchema.safeParse({ ...base, message: "hello" }).success).toBe(false);
     expect(chatMessageSchema.safeParse({ ...base, message: "", answer }).success).toBe(true);
     expect(chatMessageSchema.safeParse({ ...base, message: "" }).success).toBe(false);
   });

@@ -182,7 +182,10 @@
       "ask_not_found": "This question card is not in this conversation.",
       "ask_already_answered": "This question card has already been answered.",
       "model_unavailable": "The selected model is no longer available.",
-      "answer_mismatch": "These answers do not fit the questions on the card."
+      "answer_mismatch": "These answers do not fit the questions on the card.",
+      "queue_full": "Too many messages are waiting. Wait for the Agent to read them, or take one back.",
+      "turn_busy": "The Agent is still working on this conversation. Try again once it finishes.",
+      "shutting_down": "The server is restarting. Try again in a moment."
     },
     "mail": {
       "studio_invite": {
@@ -357,6 +360,8 @@
       "placeholder": "Ask something, or hand me things from the canvas…",
       "inputAria": "Chat input",
       "send": "Send",
+      "sendWhileRunning": "Send · The Agent reads it at its next step",
+      "stop": "Stop",
       "sending": "Sending",
       "atLimit": "At the {limit, number}-character limit",
       "attach": "Attach files",
@@ -623,6 +628,14 @@
       "cleared": "Project instructions cleared",
       "readFailed": "Couldn't load the Project instructions",
       "saveFailed": "Couldn't save the Project instructions"
+    },
+    "waiting": {
+      "title": "Waiting for the Agent ({count})",
+      "awaitingCard": "Answer the card above to go on, or just send a message.",
+      "blocked": "Not enough credits. Add credits to continue.",
+      "retract": "Back to the box",
+      "delete": "Delete",
+      "listAria": "Messages waiting for the Agent"
     }
   },
   "canvas": {

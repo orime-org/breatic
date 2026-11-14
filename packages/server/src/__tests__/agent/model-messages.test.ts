@@ -209,7 +209,7 @@ describe("history on its way to the model", () => {
     ];
 
     const [, note] = toModelMessages(history);
-    expect(String((note as { content: string }).content)).toMatch(/connection to the user/i);
+    expect(String((note as { content: string }).content)).toMatch(/the user pressed stop/i);
   });
 
   it("keeps what a stopped turn managed to say, and marks it as cut off", () => {
@@ -396,7 +396,7 @@ describe("history on its way to the model", () => {
       ]),
     ]);
 
-    const notes = JSON.stringify(messages).match(/connection to the user closed/g) ?? [];
+    const notes = JSON.stringify(messages).match(/the user pressed stop/g) ?? [];
     expect(notes).toHaveLength(1);
   });
 
@@ -410,7 +410,7 @@ describe("history on its way to the model", () => {
 
     const note = String((messages[messages.length - 1] as { content: string }).content);
     expect(note).toMatch(/broke off/i);
-    expect(note).not.toMatch(/connection to the user closed/i);
+    expect(note).not.toMatch(/the user pressed stop/i);
   });
 
   it("leaves out a call whose arguments never finished arriving", () => {

@@ -79,7 +79,7 @@ Check: can this state change? Then it cannot come from an immutable field.
 
 ### Redis databases and keys
 
-**Redis is split by database: DB0 sessions, locks and rate limits (`getRedis`); DB1 BullMQ (`getQueueRedis`); DB2 cross-service streams (`getStreamRedis`); DB3 collab instance coordination (`getCollabRedis`).** Keys start with `{env}:` and then their kind (`{env}:session:{token}`, `{env}:stream:task-events`), every key has a TTL, and streams are trimmed to `STREAM_MAXLEN` in `infra/event-stream.ts`.
+**Redis is split by database: DB0 sessions, locks and rate limits (`getRedis`); DB1 BullMQ (`getQueueRedis`); DB2 cross-service streams (`getStreamRedis`); DB3 collab instance coordination (`getCollabRedis`).** Keys start with `{env}:` and then their kind (`{env}:session:{token}`, `{env}:stream:task-events`), every key has a TTL except the Agent chat queue's `queue`, `taken` and `awaiting` (`packages/server/src/modules/chat-queue/chat-queue.service.ts`), which hold what the user sent and the card waiting for their answer until they are answered, withdrawn, refused or the conversation is deleted, and streams are trimmed to `STREAM_MAXLEN` in `infra/event-stream.ts`.
 
 **Pub/sub channels and the session cookie are separated between deployments on one host only by `REDIS_KEY_PREFIX`.** `SUBSCRIBE` ignores the DB number and a browser shares cookies across ports of one host; the cookie name is built only by `sessionCookieName()` in `infra/session-store.ts`.
 

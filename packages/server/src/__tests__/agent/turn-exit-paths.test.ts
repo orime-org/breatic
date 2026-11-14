@@ -12,8 +12,9 @@
  * say -- unless the record says otherwise.
  *
  * Stopping is driven by a signal here rather than by anything the model
- * produces, because that is how it happens: the user presses stop or the
- * page goes, the route raises the signal, and the SDK ends the turn. There is
+ * produces, because that is how it happens: the user presses stop (or the
+ * conversation is deleted, or the server shuts down), the run raises the
+ * signal, and the SDK ends the turn. There is
  * no part a model can send that means "the user left".
  */
 
@@ -172,6 +173,7 @@ async function runAndStop(parts: ModelStreamPart[], stopOnce?: string): Promise<
   const { runWithContext } = await import("@breatic/core");
   thisCase.parts = parts;
   thisCase.endsOnItsOwn = false;
+  sent.length = 0;
 
   const stop = new AbortController();
   await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
@@ -183,6 +185,7 @@ async function runAndStop(parts: ModelStreamPart[], stopOnce?: string): Promise<
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
+        sent.push(value);
         if ((value as { type: string }).type === stopOnce) break;
       }
     }
@@ -190,8 +193,9 @@ async function runAndStop(parts: ModelStreamPart[], stopOnce?: string): Promise<
     // Read on to the end: the stream is ending because of the stop, and what
     // the turn does about it happens as it finishes.
     for (;;) {
-      const { done } = await reader.read();
+      const { done, value } = await reader.read();
       if (done) break;
+      sent.push(value);
     }
   });
 }
@@ -283,6 +287,16 @@ describe("a turn that failed", () => {
     await runTurn([{ type: "error", error: new Error("401 expired key") }, FINISHED]);
 
     expect(wrapUpMessages()).toHaveLength(1);
+  });
+
+  it("logs a failure of its own code once, with what it threw", async () => {
+    const { logger } = await import("@breatic/core");
+    const { buildTurnContext } = await import("@server/agent/turn-context.js");
+    vi.mocked(logger.error).mockClear();
+    vi.mocked(buildTurnContext).mockRejectedValueOnce(new Error("history unreadable"));
+    await runTurn([FINISHED]);
+    const failed = vi.mocked(logger.error).mock.calls.filter(([, message]) => message === "agent_turn_failed");
+    expect(failed.map(([fields]) => (fields as { err: Error }).err.message)).toEqual(["history unreadable"]);
   });
 
   it("asks about the budget once, before the model and not after it", async () => {
@@ -401,6 +415,97 @@ describe("a turn the user stopped", () => {
   });
 });
 
+
+describe("how long a turn thought, on the wire as in the store", () => {
+  /**
+   * Make every reading of the clock a second after the last, so a stretch of
+   * thinking that opens and closes within one tick still lasts.
+   * @returns A function that puts the clock back.
+   */
+  const tickingClock = (): (() => void) => {
+    let now = 0;
+    const spy = vi.spyOn(Date, "now").mockImplementation(() => (now += 1_000));
+    return () => spy.mockRestore();
+  };
+
+  /**
+   * The thinking time the turn stored.
+   * @returns Its milliseconds, if it stored one.
+   */
+  const storedMs = (): number | undefined =>
+    (wrapUpMessages().at(-1)?.parts as Array<{ type: string; ms?: number }> | undefined)?.find((p) => p.type === "thinking-time")?.ms;
+
+  /**
+   * Where a frame of this type went out, the first time.
+   * @param type - The frame's type.
+   * @returns Its position, -1 when it never went out.
+   */
+  const at = (type: string): number => sent.findIndex((chunk) => chunk.type === type);
+
+  it("closes the thinking still open, then says how long, then the stop, when the user stops mid-thought", async () => {
+    const restore = tickingClock();
+    try {
+      await runAndStop(
+        [
+          { type: "reasoning-start", id: "r1" },
+          { type: "reasoning-delta", id: "r1", delta: "weighing it up" },
+        ],
+        "reasoning-delta",
+      );
+    } finally {
+      restore();
+    }
+
+    const opened = sent.find((chunk) => chunk.type === "reasoning-start") as { id: string } | undefined;
+    const closed = sent.find((chunk) => chunk.type === "reasoning-end") as { id: string } | undefined;
+    expect(closed?.id).toBe(opened?.id);
+    const said = sent.find((chunk) => chunk.type === "data-thinking-time") as { data: { ms: number } } | undefined;
+    expect(said?.data.ms).toBe(storedMs());
+    expect(at("reasoning-end")).toBeLessThan(at("data-thinking-time"));
+    expect(at("data-thinking-time")).toBeLessThan(at("data-interrupted"));
+  });
+
+  it("says how long it thought before the stop when the user stops while it writes", async () => {
+    const restore = tickingClock();
+    try {
+      await runAndStop(
+        [
+          { type: "reasoning-start", id: "r1" },
+          { type: "reasoning-delta", id: "r1", delta: "weighing it up" },
+          { type: "reasoning-end", id: "r1" },
+          { type: "text-start", id: "t1" },
+          { type: "text-delta", id: "t1", delta: "half a s" },
+        ],
+        "text-delta",
+      );
+    } finally {
+      restore();
+    }
+
+    expect(sent.filter((chunk) => chunk.type === "reasoning-end")).toHaveLength(1);
+    const said = sent.find((chunk) => chunk.type === "data-thinking-time") as { data: { ms: number } } | undefined;
+    expect(said?.data.ms).toBe(storedMs());
+    expect(at("data-thinking-time")).toBeLessThan(at("data-interrupted"));
+  });
+
+  it("closes the thinking still open before it says the turn failed", async () => {
+    const restore = tickingClock();
+    try {
+      await runTurn([
+        { type: "reasoning-start", id: "r1" },
+        { type: "reasoning-delta", id: "r1", delta: "weighing it up" },
+        { type: "error", error: new Error("401 expired key") },
+        FINISHED,
+      ]);
+    } finally {
+      restore();
+    }
+
+    expect(at("reasoning-end")).toBeGreaterThan(-1);
+    expect(at("reasoning-end")).toBeLessThan(at("data-thinking-time"));
+    expect(at("data-thinking-time")).toBeLessThan(at("data-failed"));
+  });
+});
 
 describe("decimal shortfall consumption", () => {
   it("M20 keeps a zero decimal shortfall silent", async () => {

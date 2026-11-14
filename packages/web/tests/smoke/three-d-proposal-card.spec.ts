@@ -10,10 +10,11 @@
  * submitted: what is under test is the path from the card to the dialog.
  */
 
-import { expect, type Locator, type Page, type Route } from 'playwright/test';
+import { expect, type Locator, type Page } from 'playwright/test';
 import type { SceneGenerationProposal } from '@breatic/shared';
 import { test } from '../helpers/slot';
 import { startNewConversation } from '../helpers/conversation';
+import { answerRuns } from '../helpers/fake-run';
 import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 
@@ -40,23 +41,15 @@ test.afterEach(async ({ page }) => {
  * @param page - The Project page.
  */
 async function answerWithProposal(page: Page): Promise<void> {
-  await page.route('**/chat/message', async (route: Route) => {
-    const chunks = [
-      { type: 'data-heartbeat', transient: true, data: {} },
-      { type: 'data-conversation-titled', data: { title: '3D proposal' } },
-      { type: 'start', messageId: 'm-reply' },
-      { type: 'start-step' },
-      { type: 'tool-input-available', toolCallId: 'call-1', toolName: 'propose_scene_generation', input: {} },
-      { type: 'tool-output-available', toolCallId: 'call-1', output: PROPOSAL },
-      { type: 'finish-step' },
-      { type: 'finish' },
-    ];
-    await route.fulfill({
-      status: 200,
-      headers: { 'content-type': 'text/event-stream' },
-      body: chunks.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join(''),
-    });
-  });
+  await answerRuns(page, () => [
+    { type: 'data-conversation-titled', data: { title: '3D proposal' } },
+    { type: 'start', messageId: 'm-reply' },
+    { type: 'start-step' },
+    { type: 'tool-input-available', toolCallId: 'call-1', toolName: 'propose_scene_generation', input: {} },
+    { type: 'tool-output-available', toolCallId: 'call-1', output: PROPOSAL },
+    { type: 'finish-step' },
+    { type: 'finish' },
+  ]);
 }
 
 /**

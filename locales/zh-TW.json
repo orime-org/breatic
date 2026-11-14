@@ -182,7 +182,10 @@
       "ask_not_found": "這段對話裡沒有這張問題卡片。",
       "ask_already_answered": "這張問題卡片已經回答過了。",
       "model_unavailable": "所選模型已無法使用。",
-      "answer_mismatch": "這些答案和卡片上的問題對不上。"
+      "answer_mismatch": "這些答案和卡片上的問題對不上。",
+      "queue_full": "等待中的訊息太多了。等 Agent 讀完，或撤回一則。",
+      "turn_busy": "Agent 還在處理這個對話，等它完成後再試。",
+      "shutting_down": "伺服器正在重新啟動，請稍後再試。"
     },
     "mail": {
       "studio_invite": {
@@ -357,6 +360,8 @@
       "placeholder": "問點什麼，或者把 Canvas 上的東西交給我…",
       "inputAria": "Chat 輸入",
       "send": "傳送",
+      "sendWhileRunning": "傳送 · Agent 會在下一步讀到",
+      "stop": "停止",
       "sending": "傳送中",
       "atLimit": "已達 {limit, number} 字上限",
       "attach": "新增檔案",
@@ -623,6 +628,14 @@
       "cleared": "已清空 Project 指令",
       "readFailed": "Project 指令讀取失敗",
       "saveFailed": "Project 指令儲存失敗"
+    },
+    "waiting": {
+      "title": "等待 Agent 讀取（{count}）",
+      "awaitingCard": "回答上方的卡片後繼續，或直接傳送訊息。",
+      "blocked": "點數不足，請先儲值。",
+      "retract": "撤回到輸入框",
+      "delete": "刪除",
+      "listAria": "等待 Agent 讀取的訊息"
     }
   },
   "canvas": {

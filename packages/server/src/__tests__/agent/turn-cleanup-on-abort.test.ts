@@ -14,10 +14,11 @@
  * catches and discards the error a dead socket produces, so the route's
  * `for await` keeps going and never calls `.return()` — a probe had the
  * generator 357 iterations further along two seconds after the client left,
- * with `finally` never entered. A disconnect now travels the other way, by
- * `s.onAbort` raising the turn's signal so the SDK ends the stream and the
- * loop leaves through its own `abort` branch; `routes/chat.stop.test.ts`
- * covers that ring and `turn-exit-paths.test.ts` covers what the turn then
+ * with `finally` never entered. A disconnect no longer reaches the turn at
+ * all: the run belongs to its conversation and runs to its end whoever reads
+ * it (inner#1717). A stop, a delete or a shutdown raises the turn's signal so
+ * the SDK ends the stream and the loop leaves through its own `abort` branch;
+ * `turn-exit-paths.test.ts` covers what the turn then
  * owes.
  *
  * What is left here is the language's own mechanism, which any consumer that
@@ -215,11 +216,11 @@ describe("a turn cut short by the client", () => {
         const agent = new MainAgent();
         const reader = (await agent.chat("hi")).getReader();
         // Read far enough in to have passed the step the billing figure comes
-        // from, then walk away: the name the turn gave the conversation, the
-        // start of the message, and one piece of prose.
-        await reader.read();
-        await reader.read();
-        await reader.read();
+        // from, then walk away: up to the first piece of prose.
+        for (;;) {
+          const { value } = await reader.read();
+          if ((value as { type?: string } | undefined)?.type === "text-delta") break;
+        }
         // The browser goes away.
         await reader.cancel();
       },

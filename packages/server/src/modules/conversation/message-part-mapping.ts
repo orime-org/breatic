@@ -19,7 +19,7 @@
 import { getToolName, isToolUIPart } from "ai";
 import type { UIMessage } from "ai";
 import { NOTHING_SAID_WHY, attachmentPart, wireLineOf } from "@breatic/shared";
-import type { MessageData, MessagePart, StoredMessageMetadata, ToolFailure } from "@breatic/shared";
+import type { ChatAttachedChip, MessageData, MessagePart, StoredMessageMetadata, ToolFailure } from "@breatic/shared";
 import { NOTHING_OF_IT_RAN } from "@server/agent/tool-ending.js";
 
 /** What one message's parts look like on the wire. */
@@ -48,6 +48,9 @@ const ASK_AWAITING = "data-ask-awaiting";
 
 /** How long the turn thought, as the wire names it. */
 const THINKING_TIME = "data-thinking-time";
+
+/** A message the user sent while the turn ran, taken in at a step (inner#1717). */
+const USER_MESSAGE = "data-user-message";
 
 /**
  * How far a tool got, from the state the SDK last reported.
@@ -117,6 +120,26 @@ function storedTool(part: Extract<UiPart, { toolCallId: string }>): MessagePart 
 }
 
 /**
+ * A message the user sent mid-turn, as the store keeps it: what was attached,
+ * then the words, the order a message the user opened a turn with is kept in.
+ * @param data - The data part's payload, as the wire carried it.
+ * @returns The stored part, or undefined when the payload is not one.
+ */
+function storedUserMessage(data: unknown): MessagePart | undefined {
+  const { id, words, chips, sentAt } = (data ?? {}) as { id?: unknown; words?: unknown; chips?: unknown; sentAt?: unknown };
+  if (typeof id !== "string" || typeof words !== "string" || typeof sentAt !== "string") return undefined;
+  return {
+    type: "user-message",
+    id,
+    sentAt,
+    parts: [
+      ...(Array.isArray(chips) ? chips : []).map((chip) => ({ type: "attachment" as const, chip: chip as ChatAttachedChip })),
+      { type: "text", text: words },
+    ],
+  };
+}
+
+/**
  * Turn what a finished turn streamed into what gets written down.
  * @param parts - The parts the SDK assembled for this message.
  * @returns The same message in the shape the store keeps.
@@ -133,7 +156,11 @@ export function toStoredParts(parts: UiParts): MessagePart[] {
     else if (part.type === INTERRUPTED) stored.push({ type: "interrupted" });
     else if (part.type === FAILED) {
       const reason = (part as { data?: { reason?: unknown } }).data?.reason;
-      stored.push(reason === "too_long" ? { type: "failed", reason } : { type: "failed" });
+      stored.push(reason === "too_long" || reason === "shutdown" ? { type: "failed", reason } : { type: "failed" });
+    }
+    else if (part.type === USER_MESSAGE) {
+      const said = storedUserMessage((part as { data?: unknown }).data);
+      if (said !== undefined) stored.push(said);
     }
     else if (part.type === TRUNCATED) stored.push({ type: "truncated" });
     else if (part.type === THINKING_TIME) {
@@ -199,6 +226,11 @@ function toUiPart(part: MessagePart): UiPart {
   if (part.type === "blocked") return { type: BLOCKED, data: {} };
   if (part.type === "thinking-time") return { type: THINKING_TIME, data: { ms: part.ms } };
   if (part.type === "attachment") return attachmentPart(part.chip);
+  if (part.type === "user-message") {
+    const words = part.parts.flatMap((one) => (one.type === "text" ? [one.text] : [])).join("");
+    const chips = part.parts.flatMap((one) => (one.type === "attachment" ? [one.chip] : []));
+    return { type: USER_MESSAGE, data: { id: part.id, words, chips, sentAt: part.sentAt } };
+  }
 
 
   const base = {

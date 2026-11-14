@@ -44,6 +44,8 @@ import { initCore, loadLocales, getAgentConfig, getStorageAdapter, ObjectTooLarg
 import { attachmentSection, SPACE_NAME_MAX_LEN, type ChatAttachedChip } from "@breatic/shared";
 import type { Hono } from "hono";
 import { SECOND_QUESTION_TURNED_AWAY } from "@server/agent/ask-result.js";
+import { runObservers } from "@server/agent/chat-run.js";
+import { runStreams } from "@server/agent/run-stream.js";
 import { FINISHED_ASKING_FOR_A_TOOL } from "../helpers/model-double.js";
 import type { ModelStreamPart } from "../helpers/model-double.js";
 import {
@@ -55,6 +57,7 @@ import {
   transferGrant,
   type Seeded,
 } from "./transfer-fixtures.js";
+import { sendAndRead, untilIdle, type SentAndRead } from "./chat-run-harness.js";
 
 try {
   initCore(process.env);
@@ -168,49 +171,63 @@ async function newChat(): Promise<Chat> {
   return { ...seeded, conversationId: body.data.current.conversation.id };
 }
 
-/** What a post answered. */
-interface Answered {
-  status: number;
-  chunks: Array<Record<string, unknown>>;
-  json: Record<string, unknown> | null;
-}
-
 /**
- * Read a response: the stream's chunks when it streamed, the body otherwise.
- * @param res - The response.
- * @returns What it said.
- */
-async function read(res: Response): Promise<Answered> {
-  const text = await res.text();
-  if (res.headers.get("content-type")?.includes("text/event-stream") !== true) {
-    return { status: res.status, chunks: [], json: text ? (JSON.parse(text) as Record<string, unknown>) : null };
-  }
-  const chunks = text
-    .split("\n")
-    .filter((line) => line.startsWith("data: ") && line !== "data: [DONE]")
-    .map((line) => JSON.parse(line.slice(6)) as Record<string, unknown>);
-  return { status: res.status, chunks, json: null };
-}
-
-/**
- * Post to `/chat/message` as A, with the Space list every message carries.
+ * Post to `/chat/message` as A, with the Space list every message carries,
+ * and read the run it opens to its end.
  * @param chat - Where.
  * @param body - What, beyond the conversation, project and Space list.
  * @returns What it answered.
  */
-async function post(chat: Chat, body: Record<string, unknown>): Promise<Answered> {
-  const res = await app.request("/api/v1/chat/message", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Cookie: chat.a.cookie },
-    body: JSON.stringify({
-      project_id: chat.projectId,
-      conversation_id: chat.conversationId,
-      spaces: SPACES,
-      spaces_total: SPACES.length,
-      ...body,
-    }),
+async function post(chat: Chat, body: Record<string, unknown>): Promise<SentAndRead> {
+  return sendAndRead(app, chat.a.cookie, {
+    project_id: chat.projectId,
+    conversation_id: chat.conversationId,
+    spaces: SPACES,
+    spaces_total: SPACES.length,
+    ...body,
   });
-  return read(res);
+}
+
+/**
+ * Post a transfer reference to `/chat/message` as A and read the run it opens,
+ * the way `sendAndRead` reads a direct send: a reference body holds nothing
+ * but its key, so the conversation to attach to is named here.
+ * @param chat - Where the referenced body lands.
+ * @param key - The transfer's key.
+ * @returns What it answered, and the run's frames.
+ */
+async function postReference(chat: Chat, key: string): Promise<SentAndRead> {
+  let reading: Promise<Array<Record<string, unknown>>> | undefined;
+  // Set before the observer yields: the send's answer can come back as soon
+  // as the run's stream exists, which is when observers are called.
+  const observe = async (run: { conversationId: string; runId: string }): Promise<void> => {
+    if (run.conversationId !== chat.conversationId || reading !== undefined) return;
+    reading = runStreams()
+      .resumeExistingStream(run.runId)
+      .then((stream) => (stream ? new Response(stream.pipeThrough(new TextEncoderStream())).text().then(framesOf) : []));
+  };
+  runObservers.push(observe);
+  try {
+    const res = await postRaw(app, "/chat/message", chat.a.cookie, ref(key));
+    const text = await res.text();
+    const chunks = reading === undefined ? [] : await reading;
+    await untilIdle(chat.conversationId);
+    return { status: res.status, json: text ? (JSON.parse(text) as Record<string, unknown>) : null, chunks };
+  } finally {
+    runObservers.splice(runObservers.indexOf(observe), 1);
+  }
+}
+
+/**
+ * Parse a run's SSE text into its frames.
+ * @param text - The stream's text.
+ * @returns Each frame's chunk, in order.
+ */
+function framesOf(text: string): Array<Record<string, unknown>> {
+  return text
+    .split("\n\n")
+    .filter((block) => block.startsWith("data: "))
+    .map((block) => JSON.parse(block.slice("data: ".length)) as Record<string, unknown>);
 }
 
 /**
@@ -351,9 +368,7 @@ describe("sharing the Spaces on the card", () => {
     const { status, chunks } = await post(chat, { message: "", shared_spaces: shared("req-2") });
 
     expect(status).toBe(200);
-    const firstOutput = chunks.findIndex((c) => c.type === "tool-output-available");
-    expect(chunks[firstOutput]).toEqual({ type: "tool-output-available", toolCallId: "req-2", output: SUMMARY });
-    expect(firstOutput).toBeLessThan(chunks.findIndex((c) => c.type === "text-delta"));
+    expect(chunks.some((c) => c.type === "tool-output-available")).toBe(false);
     expect(JSON.stringify(chunks)).not.toContain("THE CAST LIST");
 
     const result = promptParts().find((p) => p.type === "tool-result" && p.toolCallId === "req-2");
@@ -405,7 +420,7 @@ describe("sharing the Spaces on the card", () => {
     const again = await post(chat, { message: "", shared_spaces: { toolCallId: "req-4", decision: "declined" } });
 
     expect(again.status).toBe(409);
-    expect(again.json).toMatchObject({ error: { code: 409 }, call: { status: "success", output: SUMMARY } });
+    expect(again.json).toMatchObject({ error: { code: 409, call: { status: "success", output: SUMMARY } } });
     expect(model.calls).toHaveLength(0);
   });
 
@@ -420,7 +435,7 @@ describe("sharing the Spaces on the card", () => {
     const late = await post(chat, { message: "", shared_spaces: shared("req-away") });
 
     expect(late.status).toBe(409);
-    expect(late.json).toMatchObject({ error: { code: 409 }, call: { status: "error" } });
+    expect(late.json).toMatchObject({ error: { code: 409, call: { status: "error" } } });
     expect(model.calls).toHaveLength(0);
   });
 
@@ -458,11 +473,7 @@ describe("declining on the card", () => {
     const { status, chunks } = await post(chat, { message: "", shared_spaces: { toolCallId: "req-8", decision: "declined" } });
 
     expect(status).toBe(200);
-    expect(chunks.find((c) => c.type === "tool-output-available")).toEqual({
-      type: "tool-output-available",
-      toolCallId: "req-8",
-      output: { declined: true },
-    });
+    expect(chunks.some((c) => c.type === "tool-output-available")).toBe(false);
     const result = promptParts().find((p) => p.type === "tool-result" && p.toolCallId === "req-8");
     expect(result).toMatchObject({ toolName: "request_space_content", output: { type: "json", value: { declined: true } } });
     expect(partOf(await storedRows(chat.conversationId), "req-8")).toMatchObject({ status: "success", output: { declined: true } });
@@ -495,7 +506,7 @@ describe("writing a message instead", () => {
     const late = await post(chat, { message: "", shared_spaces: shared("req-10") });
 
     expect(late.status).toBe(409);
-    expect(late.json).toMatchObject({ call: { status: "success", output: { repliedInChat: true } } });
+    expect(late.json).toMatchObject({ error: { call: { status: "success", output: { repliedInChat: true } } } });
   });
 });
 
@@ -551,19 +562,13 @@ describe("the largest answer a browser can send", () => {
         input: { reason: "To read them all.", spaces: requested.map(({ id, nodeIds }) => ({ id, node_ids: nodeIds })) },
       }),
     ];
-    const asked = await read(
-      await app.request("/api/v1/chat/message", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Cookie: chat.a.cookie },
-        body: JSON.stringify({
-          project_id: chat.projectId,
-          conversation_id: chat.conversationId,
-          message: "read them all",
-          spaces: listed,
-          spaces_total: listed.length,
-        }),
-      }),
-    );
+    const asked = await sendAndRead(app, chat.a.cookie, {
+      project_id: chat.projectId,
+      conversation_id: chat.conversationId,
+      message: "read them all",
+      spaces: listed,
+      spaces_total: listed.length,
+    });
     expect(asked.chunks).toContainEqual(expect.objectContaining({ type: "data-ask-awaiting", data: { toolCallId: "req-max" } }));
 
     const body = {
@@ -602,10 +607,10 @@ describe("the largest answer a browser can send", () => {
     const key = await transferGrant({ userId: chat.a.id, studioId: chat.studioId, projectId: chat.projectId, declaredSize: file.length });
     stored.file = file;
     model.calls = [];
-    const res = await read(await postRaw(app, "/chat/message", chat.a.cookie, ref(key)));
+    const res = await postReference(chat, key);
 
     expect(res.status).toBe(200);
-    expect(res.chunks.find((c) => c.type === "tool-output-available")).toMatchObject({ toolCallId: "req-max" });
+    expect(res.chunks.some((c) => c.type === "text-delta")).toBe(true);
     expect(model.calls).toHaveLength(1);
   }, 120_000);
 });

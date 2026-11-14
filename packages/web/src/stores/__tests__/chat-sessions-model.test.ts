@@ -2,104 +2,74 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Every message carries the model of its conversation (#1363), read when it
- * is sent, so a pick made a moment before goes with the next message. A send
- * the server refuses is told, so the picker asks for the list of models
- * again: a page that predates a model being taken off is told so by the
- * refusal. The session is opened the way the chat panel opens it, reading the
- * model from the runtime store and counting a refusal there.
+ * Every message carries the model of its conversation (#1363). The chat
+ * panel reads it at the press (`use-chat-session.ts`) and hands it to the
+ * send, which puts it in the body. A send the server refuses is counted, so
+ * the picker asks for the list of models again: a page that predates a model
+ * being taken off is told so by the refusal.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('@web/data/api/chat', () => ({
-  chatApi: {
-    streamConfig: vi.fn(async () => ({
-      heartbeatIntervalMs: 60_000,
-      attachmentMaxChars: 200_000,
-      attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200,
-    })),
-  },
+vi.mock('@web/data/upload/transfer-body', () => ({
+  bodyOrTransfer: async (_projectId: string, body: unknown) => body,
 }));
 
-const { chatSessionFor, evictAllChatSessions, sendInSession } = await import('@web/stores/chat-sessions');
-const { useConversationRuntime, conversationRuntime } = await import('@web/stores/conversation-runtime');
-
-/** A stream that opens a turn and ends it. */
-const OPENS_AND_ENDS = 'data: {"type":"start"}\n\ndata: {"type":"finish"}\n\ndata: [DONE]\n\n';
-
-let sent: Array<RequestInit | undefined> = [];
-let answer: () => Response;
-const original = globalThis.fetch;
+import { chatApi } from '@web/data/api/chat';
+import { ApiException } from '@web/data/api/types';
+import { chatLive, resetChatLiveForTests } from '@web/stores/chat-live';
+import { chatSessionFor, evictAllChatSessions } from '@web/stores/chat-sessions';
+import { useConversationRuntime } from '@web/stores/conversation-runtime';
+import { resetRunOnceForTests } from '@web/stores/task-actions-in-flight';
 
 beforeEach(() => {
-  evictAllChatSessions();
-  sent = [];
-  answer = () => new Response(OPENS_AND_ENDS, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
-  globalThis.fetch = ((_url: string, init?: RequestInit) => {
-    sent.push(init);
-    return Promise.resolve(answer());
-  }) as typeof globalThis.fetch;
-  useConversationRuntime.setState({
-    conversations: {
-      'c-1': {
-        projectId: 'p-1',
-        messages: [],
-        hasMore: false,
-        oldestLoadedTurn: null,
-        title: null,
-        agentModel: { id: 'anthropic/claude-opus-5.5', name: 'Claude Opus 5.5' },
-      },
-    },
-  });
+  vi.spyOn(chatApi, 'sendMessage').mockResolvedValue({ status: 'queued', pending: [], running: false });
+  chatSessionFor({ projectId: 'p-1', conversationId: 'c-1', history: [], onTitled: () => undefined });
 });
 
 afterEach(() => {
-  globalThis.fetch = original;
-  useConversationRuntime.setState({ conversations: {} });
+  resetChatLiveForTests();
+  resetRunOnceForTests();
+  evictAllChatSessions();
   vi.restoreAllMocks();
 });
 
 /**
- * Open a session for the conversation.
- * @throws {never} Never.
+ * Send "hello" to c-1.
+ * @param model - The model handed to the send.
+ * @returns How the send ended.
  */
-function openSession(): void {
-  chatSessionFor({
-    projectId: 'p-1',
-    conversationId: 'c-1',
-    history: [],
-    onTitled: () => undefined,
-    onFirstFrame: () => undefined,
-    modelOf: () => useConversationRuntime.getState().conversations['c-1']?.agentModel.id,
-    onRefused: conversationRuntime.askModelListAgain,
-  });
+function send(model?: string): ReturnType<typeof chatLive.send> {
+  return chatLive.send({ projectId: 'p-1', conversationId: 'c-1', words: 'hello', chips: [], spaces: {}, ...(model === undefined ? {} : { model }) });
+}
+
+/**
+ * The body of the last message sent.
+ * @returns That body.
+ */
+function lastBody(): Record<string, unknown> {
+  return vi.mocked(chatApi.sendMessage).mock.calls.at(-1)?.[0] as Record<string, unknown>;
 }
 
 describe('the model on a message', () => {
-  it('sends the model of the conversation as it stands when the message is sent', async () => {
-    openSession();
-    useConversationRuntime.setState((s) => ({
-      conversations: {
-        ...s.conversations,
-        'c-1': { ...s.conversations['c-1']!, agentModel: { id: 'anthropic/claude-sonnet-5.5', name: 'Claude Sonnet 5.5' } },
-      },
-    }));
+  it('sends the model the send was handed', async () => {
+    await send('anthropic/claude-sonnet-5.5');
 
-    await sendInSession('c-1', 'hello');
+    expect(lastBody()).toMatchObject({ model: 'anthropic/claude-sonnet-5.5' });
+  });
 
-    expect(JSON.parse(String(sent.at(-1)?.body))).toMatchObject({ model: 'anthropic/claude-sonnet-5.5' });
+  it('names no model when the conversation has none yet', async () => {
+    await send();
+
+    expect(lastBody()).not.toHaveProperty('model');
   });
 
   it('counts a send the server refused', async () => {
-    answer = () =>
-      new Response(JSON.stringify({ error: { code: 422, message: 'The selected model is no longer available.' } }), {
-        status: 422,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    openSession();
+    vi.mocked(chatApi.sendMessage).mockRejectedValueOnce(
+      new ApiException({ status: 422, message: 'The selected model is no longer available.', fromServer: true }),
+    );
     const before = useConversationRuntime.getState().modelListAsks;
 
-    await sendInSession('c-1', 'hello').catch(() => undefined);
+    await send('anthropic/claude-opus-5.5');
 
     expect(useConversationRuntime.getState().modelListAsks).toBe(before + 1);
   });

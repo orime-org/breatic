@@ -224,6 +224,10 @@ export function messageText(parts: MessagePart[]): string {
           return [`[attached: ${part.chip.name}]`];
         case "tool":
           return toolLines(part);
+        // A message the user sent while the turn ran is the user's line
+        // inside the reply, where the model read it (inner#1717).
+        case "user-message":
+          return [`user: ${messageText(part.parts)}`];
         default:
           return [];
       }

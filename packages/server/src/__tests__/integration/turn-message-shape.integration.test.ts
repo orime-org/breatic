@@ -105,6 +105,7 @@ import {
   loadLocales,
 } from "@breatic/core";
 import type { Hono } from "hono";
+import { sendAndRead } from "./chat-run-harness.js";
 
 try {
   initCore(process.env);
@@ -196,12 +197,12 @@ async function openConversation(projectId: string, cookie: string): Promise<stri
 }
 
 /**
- * Send one message and read its stream to the end, so the turn finishes.
+ * Send one message and read the run it opens to the end, so the turn finishes.
  * @param conversationId - Conversation to append to.
  * @param projectId - Project the conversation belongs to.
  * @param cookie - Caller's session cookie.
  * @param text - What the user says.
- * @throws {Error} When the endpoint does not open a stream.
+ * @throws {Error} When the endpoint refuses the message.
  */
 async function sendAndDrain(
   conversationId: string,
@@ -209,20 +210,12 @@ async function sendAndDrain(
   cookie: string,
   text: string,
 ): Promise<void> {
-  const res = await app.request("/api/v1/chat/message", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Cookie: cookie,
-    },
-    body: JSON.stringify({
-      message: text,
-      project_id: projectId,
-      conversation_id: conversationId,
-    }),
+  const res = await sendAndRead(app, cookie, {
+    message: text,
+    project_id: projectId,
+    conversation_id: conversationId,
   });
   if (res.status !== 200) throw new Error(`send failed: ${res.status}`);
-  await res.text();
 }
 
 /**
@@ -380,6 +373,7 @@ describe("the language an error about the request comes back in", () => {
         "Accept-Language": "zh-CN",
       },
       body: JSON.stringify({
+        id: crypto.randomUUID(),
         message: "x".repeat(100_000),
         project_id: projectId,
         conversation_id: conversationId,

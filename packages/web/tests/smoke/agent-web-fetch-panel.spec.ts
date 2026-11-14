@@ -7,9 +7,9 @@
  *
  * A real model decides for itself whether to read, which pages, and whether a
  * page it found by search comes back under a second spelling, so none of
- * these can be made to happen on demand. The turn request is answered with a
- * stream that opens the way the server's does (heartbeat, title, `start` with
- * an id; `routes/chat.ts`, `main-agent.ts`) and carries the parts `web_search`
+ * these can be made to happen on demand. The send is answered with a run
+ * whose stream opens the way the server's does (heartbeat, `start` with an id,
+ * then the title; `helpers/fake-run.ts`, `main-agent.ts`) and carries the parts `web_search`
  * and `web_fetch` answer with (`FetchAnswer` in
  * `packages/domain/src/agent/tools/web-fetch.ts`). Every address is under a
  * reserved `.example` name: nothing here is fetched.
@@ -17,16 +17,15 @@
 import { expect, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
 import { startNewConversation } from '../helpers/conversation';
-
+import { answerRuns, holdRunStreams } from '../helpers/fake-run';
 import { openSmokeProject } from '../helpers/project';
 
 test.use({ viewport: { width: 1500, height: 900 } });
 
-/** How the server opens every turn. */
+/** How the server opens every run, after the heartbeat. */
 const OPENING = [
-  { type: 'data-heartbeat', transient: true, data: {} },
-  { type: 'data-conversation-titled', data: { title: 'page reads' } },
   { type: 'start', messageId: 'm-reply' },
+  { type: 'data-conversation-titled', data: { title: 'page reads' } },
 ];
 
 /** What `web_fetch` declares for its running line (`metadata` in `makeFetchTool`). */
@@ -41,49 +40,9 @@ const BETA = 'https://beta.example/notes/page';
  * @param chunks - What the turn streams.
  */
 async function answerWith(page: Page, chunks: object[]): Promise<void> {
-  const body = [...OPENING, ...chunks].map((c) => `data: ${JSON.stringify(c)}\n\n`).join('');
-  await page.route('**/chat/message', (route) =>
-    route.fulfill({ status: 200, headers: { 'content-type': 'text/event-stream' }, body }),
-  );
+  await answerRuns(page, () => [...OPENING, ...chunks]);
 }
 
-/**
- * Hold every turn's stream right after its first `tool-input-available`
- * frame until the case lets it go, so the line drawn while the call runs can
- * be looked at.
- *
- * `route.fulfill` hands the page the whole body at once, and the running line
- * is up only between the call going out and its answer, so with the body
- * unsplit it is never drawn. The routed response is re-streamed in two parts
- * by the page's own `fetch`, which the chat transport calls.
- * @param page - The page, before it loads.
- */
-async function holdWhileTheCallRuns(page: Page): Promise<void> {
-  await page.addInitScript(() => {
-    const held = window as unknown as { releaseCall?: () => void };
-    const real = window.fetch.bind(window);
-    window.fetch = async (input, init) => {
-      const res = await real(input, init);
-      const url = input instanceof Request ? input.url : String(input);
-      if (!url.includes('/chat/message')) return res;
-      const text = await res.text();
-      const cut = text.indexOf('\n\n', text.indexOf('"tool-input-available"')) + 2;
-      const released = new Promise<void>((resolve) => {
-        held.releaseCall = resolve;
-      });
-      const encoder = new TextEncoder();
-      const body = new ReadableStream<Uint8Array>({
-        async start(controller) {
-          controller.enqueue(encoder.encode(text.slice(0, cut)));
-          await released;
-          controller.enqueue(encoder.encode(text.slice(cut)));
-          controller.close();
-        },
-      });
-      return new Response(body, { status: res.status, headers: res.headers });
-    };
-  });
-}
 
 /**
  * Open a fresh conversation and send one message.
@@ -236,7 +195,7 @@ test('a page read that failed says which step and why', async ({ page }) => {
 });
 
 test('while several pages are read, the running line counts them', async ({ page }) => {
-  await holdWhileTheCallRuns(page);
+  const release = await holdRunStreams(page, '"tool-input-available"');
   await answerWith(page, [
     { type: 'start-step' },
     fetchCall('f1', ['https://gamma.example/doc', 'https://beta.example/notes/page']),
@@ -249,13 +208,13 @@ test('while several pages are read, the running line counts them', async ({ page
 
   await expect(page.getByTestId('tool-run-line')).toHaveText('Reading 2 web pages');
 
-  await page.evaluate(() => (window as unknown as { releaseCall?: () => void }).releaseCall?.());
+  await release();
   await settled(page);
   await expect(page.getByTestId('tool-run-line')).toHaveCount(0);
 });
 
 test('while one page is read, the running line names its site', async ({ page }) => {
-  await holdWhileTheCallRuns(page);
+  const release = await holdRunStreams(page, '"tool-input-available"');
   await answerWith(page, [
     { type: 'start-step' },
     fetchCall('f1', ['https://gamma.example/doc']),
@@ -268,7 +227,7 @@ test('while one page is read, the running line names its site', async ({ page })
 
   await expect(page.getByTestId('tool-run-line')).toHaveText('Reading gamma.example');
 
-  await page.evaluate(() => (window as unknown as { releaseCall?: () => void }).releaseCall?.());
+  await release();
   await settled(page);
   await expect(page.getByTestId('tool-run-line')).toHaveCount(0);
 });

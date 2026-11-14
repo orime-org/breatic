@@ -44,6 +44,11 @@ export const limitsConfigSchema = z.object({
   request_body_max_bytes: z.number().int().positive().default(1048576),
   // At most Node's own requestTimeout default; a timer cannot hold more than 2^31-1 ms.
   request_body_linger_seconds: z.number().int().positive().max(300).default(30),
+  /**
+   * How long a shutdown waits for in-flight work, Agent chat runs included,
+   * before it closes the pools anyway (inner#1717).
+   */
+  server_shutdown_deadline_ms: z.number().int().positive().default(4000),
 });
 
 /** Hours per day × minutes per hour × seconds per minute — written once. */
@@ -103,6 +108,15 @@ export function getCreditPageLimits(): { default: number; max: number } {
  */
 export function getCanvasReferencePoolCap(): number {
   return loadConfig().canvas_reference_pool_cap;
+}
+
+/**
+ * How long a shutdown waits for in-flight work before it closes the pools
+ * (inner#1717).
+ * @returns The deadline in milliseconds.
+ */
+export function getServerShutdownDeadlineMs(): number {
+  return loadConfig().server_shutdown_deadline_ms;
 }
 
 /**

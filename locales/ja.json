@@ -182,7 +182,10 @@
       "ask_not_found": "この会話にこの質問カードはありません。",
       "ask_already_answered": "この質問カードにはすでに回答済みです。",
       "model_unavailable": "選択したモデルは利用できなくなりました。",
-      "answer_mismatch": "これらの回答はカードの質問と合いません。"
+      "answer_mismatch": "これらの回答はカードの質問と合いません。",
+      "queue_full": "待機中のメッセージが多すぎます。Agent が読み終えるのを待つか、1 件取り消してください。",
+      "turn_busy": "Agent はまだこの会話を処理中です。終わってからもう一度お試しください。",
+      "shutting_down": "サーバーを再起動しています。しばらくしてからもう一度お試しください。"
     },
     "mail": {
       "studio_invite": {
@@ -357,6 +360,8 @@
       "placeholder": "質問するか、Canvas 上のものを渡してください…",
       "inputAria": "Chat 入力",
       "send": "送信",
+      "sendWhileRunning": "送信 · Agent は次のステップで読み取ります",
+      "stop": "停止",
       "sending": "送信中",
       "atLimit": "{limit, number} 文字の上限に達しました",
       "attach": "ファイルを添付",
@@ -623,6 +628,14 @@
       "cleared": "Project の指示をクリアしました",
       "readFailed": "Project の指示を読み込めませんでした",
       "saveFailed": "Project の指示を保存できませんでした"
+    },
+    "waiting": {
+      "title": "Agent の読み取り待ち（{count}）",
+      "awaitingCard": "上のカードに答えると続きます。そのままメッセージを送ることもできます。",
+      "blocked": "クレジットが不足しています。チャージしてください。",
+      "retract": "入力欄に戻す",
+      "delete": "削除",
+      "listAria": "Agent の読み取りを待っているメッセージ"
     }
   },
   "canvas": {

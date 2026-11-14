@@ -11,7 +11,7 @@
  * for those tools when asked in plain words, and answers in a new
  * conversation from what it saved rather than by reading the old one. The
  * word is made up for each run, so the memory and the other conversation are
- * the only places a reply can have it from, and the turn's stream says which
+ * the only places a reply can have it from, and the run's stream says which
  * tools it called.
  */
 import crypto from 'node:crypto';
@@ -28,7 +28,11 @@ import { openSmokeProject } from '../helpers/project';
  */
 async function ask(page: Page, words: string): Promise<{ reply: string; tools: string[] }> {
   const before = await page.getByTestId('message-bubble').count();
-  const turn = page.waitForResponse((r) => new URL(r.url()).pathname === '/api/v1/chat/message', { timeout: 200_000 });
+  // The send answers JSON; the run's frames, tool calls included, are read
+  // from the conversation's stream (inner#1717).
+  const turn = page.waitForResponse((r) => /\/chat\/conversations\/[^/]+\/stream$/.test(new URL(r.url()).pathname) && r.status() === 200, {
+    timeout: 200_000,
+  });
   const composer = page.getByTestId('chat-composer-box');
   await composer.fill(words);
   await composer.press('Enter');

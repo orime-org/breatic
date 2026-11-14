@@ -32,6 +32,7 @@ import crypto from "node:crypto";
 import postgres from "postgres";
 import { initCore, getRedis, setSession, sessionCookieName, loadLocales, getAgentConfig } from "@breatic/core";
 import type { Hono } from "hono";
+import { sendAndRead } from "./chat-run-harness.js";
 
 try {
   initCore(process.env);
@@ -273,13 +274,13 @@ describe("POST /chat/message with a model", () => {
     const member = await seedMember();
     const first = await open(member);
 
-    const res = await call(member, "POST", "/chat/message", {
+    const res = await sendAndRead(app, member.cookie, {
       project_id: member.projectId,
       conversation_id: first.id,
       message: "hello",
       model: "retired/model",
-    });
-    const body = (await res.json()) as { error: { message: string } };
+    }, { "Idempotency-Key": crypto.randomUUID() });
+    const body = res.json as { error: { message: string } };
     const [count] = await sql<{ n: number }[]>`
       SELECT count(*)::int AS n FROM conversation_messages WHERE conversation_id = ${first.id}
     `;
@@ -294,13 +295,12 @@ describe("POST /chat/message with a model", () => {
     const first = await open(member);
     await sql`UPDATE conversations SET agent_model = NULL WHERE id = ${first.id}`;
 
-    const res = await call(member, "POST", "/chat/message", {
+    await sendAndRead(app, member.cookie, {
       project_id: member.projectId,
       conversation_id: first.id,
       message: "hello",
       model: SONNET.id,
-    });
-    await res.text();
+    }, { "Idempotency-Key": crypto.randomUUID() });
 
     expect((await stored(member, first.id)).conversation).toBe(SONNET.id);
   });
@@ -347,6 +347,26 @@ describe("POST /chat/message with a model", () => {
 
     expect(answeredBy).toBe(SONNET.id);
     expect((await stored(member, first.id)).conversation).toBe(SONNET.id);
+  });
+});
+
+describe("a message that waited in the queue", () => {
+  it("runs on the model it was sent with while the deployment lists it", async () => {
+    const { conversationService } = await import("@server/modules");
+    const member = await seedMember();
+    const first = await open(member);
+    await pick(member, first.id, SONNET.id);
+
+    expect(await conversationService.modelForQueued(await conversationService.assertWritable(first.id, member.userId, member.projectId), member.userId, OPUS.id)).toBe(OPUS.id);
+  });
+
+  it("runs on the conversation's model when the one it was sent with is no longer listed, and does not refuse", async () => {
+    const { conversationService } = await import("@server/modules");
+    const member = await seedMember();
+    const first = await open(member);
+    await pick(member, first.id, SONNET.id);
+
+    expect(await conversationService.modelForQueued(await conversationService.assertWritable(first.id, member.userId, member.projectId), member.userId, "retired/model")).toBe(SONNET.id);
   });
 });
 

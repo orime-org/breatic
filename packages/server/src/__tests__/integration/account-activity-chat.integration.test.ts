@@ -11,6 +11,7 @@ import { getAgentConfig, initCore, loadLocales } from "@breatic/core";
 import { activityRows, rejectActivityWrites, seedActivityProject, seedActivityUser } from "./helpers/account-activity-fixture.js";
 import type { ActivityProject } from "./helpers/account-activity-fixture.js";
 import { waitUntilBlockedOn } from "./lock-probe.js";
+import { sendAndRead, type SentAndRead } from "./chat-run-harness.js";
 
 const model = vi.hoisted(() => ({ fail: false }));
 vi.mock("@breatic/domain", async (importOriginal) => {
@@ -89,19 +90,30 @@ async function seedCard(chat: Chat, kind: "questionnaire" | "space"): Promise<{ 
 }
 
 /**
- * Drive a real chat request and finish reading its stream or error response.
+ * Drive a real chat request and, when it opens a run, read the run to its end.
  * @param chat - The real authenticated caller.
  * @param body - The message or card answer.
- * @returns The actual status and response text.
+ * @returns The actual status of the send.
  * @throws {Error} When the request cannot run.
  */
-async function post(chat: Chat, body: Record<string, unknown>): Promise<{ status: number; text: string }> {
-  const response = await app.request("/api/v1/chat/message", {
+async function post(chat: Chat, body: Record<string, unknown>): Promise<SentAndRead> {
+  return sendAndRead(app, chat.cookie, { project_id: chat.projectId, conversation_id: chat.conversationId, message: "", ...body });
+}
+
+/**
+ * Send a card answer and read only what the send answered, without waiting
+ * for the conversation to go idle.
+ * @param chat - The real authenticated caller.
+ * @param body - The card answer.
+ * @returns The status and the JSON body.
+ */
+async function answerAtOnce(chat: Chat, body: Record<string, unknown>): Promise<SentAndRead> {
+  const res = await app.request("/api/v1/chat/message", {
     method: "POST",
-    headers: { Cookie: chat.cookie, "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Cookie: chat.cookie },
     body: JSON.stringify({ project_id: chat.projectId, conversation_id: chat.conversationId, message: "", ...body }),
   });
-  return { status: response.status, text: await response.text() };
+  return { status: res.status, json: (await res.json()) as Record<string, unknown>, chunks: [] };
 }
 
 /**
@@ -249,7 +261,7 @@ describe("Agent activity acceptance and card transactions (inner#1893)", () => {
       expect((await activityRows(sql, chat.userId)).map((row) => row.kind)).toEqual(["agent_started"]);
     });
 
-    it(`P17 serializes two real ${kind} answers at the conversation lock`, async () => {
+    it(`P17 takes one of two real ${kind} answers and refuses the other while the first holds the conversation`, async () => {
       const chat = await seedChat();
       const card = await seedCard(chat, kind);
       let release = (): void => {};
@@ -264,16 +276,21 @@ describe("Agent activity acceptance and card transactions (inner#1893)", () => {
       });
       void holder.catch(fail);
       await ready;
+      // The first answer holds the run and waits at the conversation's row
+      // lock; the second finds the conversation held and is refused before
+      // it reaches the card (inner#1717).
       const first = post(chat, card.answer);
-      const second = post(chat, card.answer);
+      let second: SentAndRead;
       try {
-        await waitUntilBlockedOn(sql, ["conversations", "for update"], 2);
+        await waitUntilBlockedOn(sql, ["conversations", "for update"], 1);
+        second = await answerAtOnce(chat, card.answer);
       } finally {
         release();
         await holder;
       }
-      const responses = await Promise.all([first, second]);
-      expect(responses.map((response) => response.status).sort()).toEqual([200, 409]);
+      expect(second.status).toBe(409);
+      expect((second.json as { error: { reason?: string } }).error.reason).toBe("turn_busy");
+      expect((await first).status).toBe(200);
       expect(await cardStatus(chat, card.callId)).toBe("success");
       expect((await activityRows(sql, chat.userId)).map((row) => row.kind)).toEqual(["agent_started"]);
     });
@@ -336,7 +353,7 @@ describe("Agent activity acceptance and card transactions (inner#1893)", () => {
   });
 
 
-  it("P14 refuses an ordinary turn before opening SSE when activity persistence fails", async () => {
+  it("P14 refuses an ordinary turn before opening a run when activity persistence fails", async () => {
     const chat = await seedChat();
     const restore = await rejectActivityWrites(sql, chat.userId);
     try {

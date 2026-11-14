@@ -162,11 +162,10 @@ describe("the resumed segment", () => {
     expect(prompt).toContain('"type":"tool-result"');
   });
 
-  it("tells the browser the call is answered before anything else it says", async () => {
+  it("sends the browser no copy of the answer; the page reads it from the history (ST-14)", async () => {
     const chunks = await resume();
-    const first = chunks.findIndex((c) => c.type === "tool-output-available");
-    expect(chunks[first]).toMatchObject({ toolCallId: "ask-1", output: { answers: [] } });
-    expect(first).toBeLessThan(chunks.findIndex((c) => c.type === "text-delta"));
+    expect(chunks.some((c) => c.type === "tool-output-available")).toBe(false);
+    expect(JSON.stringify(modelSays.prompts[0])).toContain('"toolCallId":"ask-1"');
   });
 
   it("files its reply under the turn that asked, with the clock ahead of it and the hash of everything before", async () => {
