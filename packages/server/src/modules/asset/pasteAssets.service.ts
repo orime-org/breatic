@@ -21,6 +21,7 @@ import type { CanvasPasteAnswer, NodeMediaFields, PasteHistoryItem, PastePair, S
 import { assetRepo, assetService, ingestReportService, materialFacts, nodeHistoryService } from "@breatic/domain";
 
 import { assertStudioStorageAllowance } from "@server/modules/asset/storageQuota.service.js";
+import { findElsewhereByKey } from "@server/modules/region/asset-lookup.js";
 
 /** What a paste asks for. */
 export interface PasteInput {
@@ -54,13 +55,14 @@ export async function pasteAssets(input: PasteInput): Promise<CanvasPasteAnswer>
   const map: Record<string, string | null> = {};
 
   /**
-   * The live row an address names, from any Studio.
+   * The live row an address names, from any Studio in any region.
    * @param address - A storage address.
    * @returns The row, or null.
    */
   const sourceOf = async (address: string): Promise<StudioAssetEntity | null> => {
     const key = storage.keyFromUrl(address);
-    return key === null ? null : assetRepo.findLiveByStorageKey(key);
+    if (key === null) return null;
+    return (await assetRepo.findLiveByStorageKey(key)) ?? findElsewhereByKey("findAssetByKey", key);
   };
 
   // Read everything first; nothing is written until the storage gate passed.
@@ -73,7 +75,7 @@ export async function pasteAssets(input: PasteInput): Promise<CanvasPasteAnswer>
   const paired = new Set(pairs.flatMap((pair) => [pair.url, pair.cover]));
   for (const address of new Set(input.urls)) {
     const key = paired.has(address) ? null : storage.keyFromUrl(address);
-    const cover = key === null ? null : await assetRepo.findCoverUnderKey(key);
+    const cover = key === null ? null : ((await assetRepo.findCoverUnderKey(key)) ?? (await findElsewhereByKey("findCoverUnderKey", key)));
     if (cover !== null) pairs.push({ url: address, cover: cover.fileUrl });
   }
   for (const pair of pairs) {

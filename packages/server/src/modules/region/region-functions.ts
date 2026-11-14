@@ -6,10 +6,11 @@
  * lists (inner#1955), beside domain's `REGION_FUNCTIONS`.
  */
 
-import type { NotificationListView, RecentItem, SignupInvitationPreview } from "@breatic/shared";
-import { profilesService, studioRepo } from "@breatic/domain";
+import type { NotificationListView, RecentItem, SignupInvitationPreview, StudioAssetEntity } from "@breatic/shared";
+import { assetRepo, profilesService, studioRepo } from "@breatic/domain";
 import { getRedis, NotFoundError, publishSessionsRevoked, recordRevokedIdentities } from "@breatic/core";
 import { claimEmailInvitations } from "@server/modules/invitation/claim-email-invitations.js";
+import * as maintenanceService from "@server/modules/maintenance/maintenance.service.js";
 import { projectNamesHere } from "@server/modules/region/project-names.js";
 import { getInvitationPreview } from "@server/modules/invitation/invitation.service.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
@@ -18,6 +19,68 @@ import * as recentService from "@server/modules/recent/recent.service.js";
 
 /** The server's region functions. */
 export const SERVER_REGION_FUNCTIONS = {
+  /**
+   * This region's storage-reclaim queue, for the back office through the global region.
+   * @returns The answer the maintenance route sends.
+   */
+  maintenanceQueue: (): Promise<maintenanceService.MaintenanceAnswer<unknown>> => maintenanceService.queue(),
+  /**
+   * A page of this region's reclaim candidates.
+   * @param pageSize - How many.
+   * @param cursor - The previous page's last id.
+   * @returns The answer the maintenance route sends.
+   */
+  maintenanceCandidates: (pageSize: number, cursor?: string): Promise<maintenanceService.MaintenanceAnswer<unknown>> =>
+    maintenanceService.candidates(pageSize, cursor ?? undefined),
+  /**
+   * Preview a reclaim of these rows in this region.
+   * @param ids - The rows.
+   * @param requestedBy - The back-office admin.
+   * @returns The answer the maintenance route sends.
+   */
+  maintenancePreview: (ids: string[], requestedBy: string): Promise<maintenanceService.MaintenanceAnswer<unknown>> =>
+    maintenanceService.preview(ids, requestedBy),
+  /**
+   * Submit a previewed reclaim in this region.
+   * @param submission - The submission.
+   * @returns The answer the maintenance route sends.
+   */
+  maintenanceSubmit: (submission: maintenanceService.MaintenanceSubmission): Promise<maintenanceService.MaintenanceAnswer<unknown>> =>
+    maintenanceService.submit(submission),
+  /**
+   * One reclaim operation in this region, with a page of its runs.
+   * @param key - The operation.
+   * @param runsPageSize - How many runs.
+   * @param runsCursor - The previous page's last run.
+   * @returns The answer the maintenance route sends.
+   */
+  maintenanceOperation: (key: string, runsPageSize: number, runsCursor?: string): Promise<maintenanceService.MaintenanceAnswer<unknown>> =>
+    maintenanceService.operation(key, runsPageSize, runsCursor ?? undefined),
+  /**
+   * Pause or resume a reclaim operation in this region.
+   * @param request - The control request.
+   * @returns The answer the maintenance route sends.
+   */
+  maintenanceControl: (request: maintenanceService.MaintenanceControlRequest): Promise<maintenanceService.MaintenanceAnswer<unknown>> =>
+    maintenanceService.control(request),
+  /**
+   * The result of a control request in this region.
+   * @param key - The control request.
+   * @returns The answer the maintenance route sends.
+   */
+  maintenanceControlResult: (key: string): Promise<maintenanceService.MaintenanceAnswer<unknown>> => maintenanceService.controlResult(key),
+  /**
+   * The live row a storage key names in this region, for a paste in the global region.
+   * @param storageKey - The key.
+   * @returns The row, or null.
+   */
+  findAssetByKey: (storageKey: string): Promise<StudioAssetEntity | null> => assetRepo.findLiveByStorageKey(storageKey),
+  /**
+   * The cover row under a video's storage key in this region, for a paste in the global region.
+   * @param storageKey - The video's key.
+   * @returns The cover row, or null.
+   */
+  findCoverUnderKey: (storageKey: string): Promise<StudioAssetEntity | null> => assetRepo.findCoverUnderKey(storageKey),
   /**
    * The Projects in this region the user opened, newest first.
    * @param userId - The user.
