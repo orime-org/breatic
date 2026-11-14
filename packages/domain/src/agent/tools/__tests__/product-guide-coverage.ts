@@ -540,6 +540,16 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.template.photo-paper-diorama.input.photo.name": { described: /an empty node is placed to the left, connected and @'d/ },
   "canvas.template.photo-paper-diorama.input.photo.note": { described: /a note at the top of the prompt says what to put in it/ },
   "canvas.template.photo-paper-diorama.prompt": { described: /replaces that mode's prompt with the template's/ },
+  // inner#1810: the motion and speed templates.
+  "canvas.template.vehicle-speed-cutlist.input.vehicle.name": { described: /an empty node is placed to the left, connected and @'d/ },
+  "canvas.template.vehicle-speed-cutlist.input.vehicle.note": { described: /a note at the top of the prompt says what to put in it/ },
+  "canvas.template.vehicle-speed-cutlist.prompt": { described: /replaces that mode's prompt with the template's/ },
+  "canvas.template.sports-live-coverage.input.athlete.name": { described: /an empty node is placed to the left, connected and @'d/ },
+  "canvas.template.sports-live-coverage.input.athlete.note": { described: /a note at the top of the prompt says what to put in it/ },
+  "canvas.template.sports-live-coverage.prompt": { described: /replaces that mode's prompt with the template's/ },
+  "canvas.template.extreme-sports-run.input.rider.name": { described: /an empty node is placed to the left, connected and @'d/ },
+  "canvas.template.extreme-sports-run.input.rider.note": { described: /a note at the top of the prompt says what to put in it/ },
+  "canvas.template.extreme-sports-run.prompt": { described: /replaces that mode's prompt with the template's/ },
   // inner#1808: the food templates.
   "canvas.template.food-money-shot.input.dish.name": { described: /an empty node is placed to the left, connected and @'d/ },
   "canvas.template.food-money-shot.input.dish.note": { described: /a note at the top of the prompt says what to put in it/ },
