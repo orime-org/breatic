@@ -41,7 +41,7 @@ function command(over: Record<string, unknown> = {}): Record<string, unknown> {
     type: "read_canvas",
     userId: USER,
     connectionId: CONNECTION,
-    credentialId: "grant_123",
+    credential: { type: "oauth", grantId: "grant_123" },
     projectId: PROJECT,
     spaceId: SPACE,
     params: { nodeIds: ["n1"] },
@@ -91,8 +91,12 @@ describe("agentCommandSchema", () => {
     }
   });
 
-  it("rejects an empty credential id", () => {
-    expect(agentCommandSchema.safeParse(command({ credentialId: "" })).success).toBe(false);
+  it("carries the credential as core's AgentCredential: a grant or a personal access token", () => {
+    expect(agentCommandSchema.safeParse(command({ credential: { type: "pat", tokenId: CONNECTION } })).success).toBe(true);
+    expect(agentCommandSchema.safeParse(command({ credential: { type: "oauth", grantId: "" } })).success).toBe(false);
+    expect(agentCommandSchema.safeParse(command({ credential: { type: "pat", tokenId: "" } })).success).toBe(false);
+    expect(agentCommandSchema.safeParse(command({ credential: { type: "session", id: "x" } })).success).toBe(false);
+    expect(agentCommandSchema.safeParse(command({ credential: undefined })).success).toBe(false);
   });
 });
 
