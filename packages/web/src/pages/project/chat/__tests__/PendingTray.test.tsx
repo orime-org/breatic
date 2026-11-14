@@ -83,6 +83,24 @@ describe('the waiting area', () => {
     expect(screen.getAllByTestId('chat-waiting-delete')).toHaveLength(2);
   });
 
+  it.each([
+    ['a card waits', { awaiting: true }, 'chat.waiting.awaitingCard'],
+    ['the balance is short', { blocked: true }, 'chat.waiting.blocked'],
+  ] as const)('puts why they wait on a line of its own under the title when %s, so the title stays whole', (_, props, key) => {
+    setup(props);
+    const title = screen.getByTestId('chat-waiting-title');
+    const note = screen.getByTestId('chat-waiting-note');
+    expect(title).toHaveTextContent(t('chat.waiting.title', { count: 2 }));
+    expect(title).not.toContainElement(note);
+    expect(note).toHaveTextContent(t(key));
+    expect(title.compareDocumentPosition(note) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('draws no note line while nothing holds the messages', () => {
+    setup();
+    expect(screen.queryByTestId('chat-waiting-note')).toBeNull();
+  });
+
   it('draws nothing while nothing waits', () => {
     setup({ items: [] });
     expect(screen.queryByTestId('chat-waiting-tray')).toBeNull();

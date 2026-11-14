@@ -85,10 +85,13 @@ function PendingTrayInner({ items, awaiting, blocked, busy, onTakeBack }: Pendin
   const note = blocked ? t('chat.waiting.blocked') : awaiting ? t('chat.waiting.awaitingCard') : null;
   return (
     <div data-testid='chat-waiting-tray' className='mx-[var(--space-5)] -mb-[var(--space-3)] rounded-chrome border border-border bg-card'>
-      <div className='flex items-center gap-1.5 px-2.5 pb-1 pt-2 text-xs text-muted-foreground'>
-        <Clock className='h-3.5 w-3.5 shrink-0' aria-hidden='true' />
-        <span>{t('chat.waiting.title', { count: items.length })}</span>
-        {note === null ? null : <span className='ml-1 text-foreground'>{`· ${note}`}</span>}
+      <div className='px-2.5 pb-1 pt-2 text-xs'>
+        <div data-testid='chat-waiting-title' className='flex items-center gap-1.5 text-muted-foreground'>
+          <Clock className='h-3.5 w-3.5 shrink-0' aria-hidden='true' />
+          <span className='min-w-0 truncate'>{t('chat.waiting.title', { count: items.length })}</span>
+        </div>
+        {/* Indented by the clock and the gap, so it starts under the title's words. */}
+        {note === null ? null : <p data-testid='chat-waiting-note' className='mt-0.5 pl-5 text-foreground'>{note}</p>}
       </div>
       <ul aria-label={t('chat.waiting.listAria')}>
         {items.map((item) => {
