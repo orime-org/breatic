@@ -40,7 +40,14 @@ vi.mock("@breatic/core", async (importOriginal) => {
 import crypto from "node:crypto";
 import fc from "fast-check";
 import { getRedis, initCore } from "@breatic/core";
-import { createChatQueue, type ChatQueue, type QueueItem, type RunEnding } from "@server/modules/chat-queue/chat-queue.service.js";
+import {
+  chatQueueKeys as keysOf,
+  createChatQueue,
+  type ChatQueue,
+  type ChatQueueKeys as Keys,
+  type QueueItem,
+  type RunEnding,
+} from "@server/modules/chat-queue/chat-queue.service.js";
 
 const NUM_RUNS = 200;
 
@@ -65,30 +72,6 @@ beforeAll(() => {
   }
   q = createChatQueue(getRedis());
 });
-
-/** The five keys of one conversation. */
-interface Keys {
-  active: string;
-  queue: string;
-  taken: string;
-  ids: string;
-  awaiting: string;
-}
-
-/**
- * The key names of a conversation.
- * @param c - Conversation id.
- * @returns Its five keys.
- */
-function keysOf(c: string): Keys {
-  return {
-    active: `chat:active:${c}`,
-    queue: `chat:queue:${c}`,
-    taken: `chat:taken:${c}`,
-    ids: `chat:queue-ids:${c}`,
-    awaiting: `chat:awaiting:${c}`,
-  };
-}
 
 /**
  * A queue item with the given id.

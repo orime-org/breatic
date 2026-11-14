@@ -194,12 +194,21 @@ if redis.call('get', KEYS[1]) ~= ARGV[1] then return 0 end
 redis.call('pexpire', KEYS[1], ARGV[2])
 return 1`;
 
+/** The five keys of one conversation's queue. */
+export interface ChatQueueKeys {
+  active: string;
+  queue: string;
+  taken: string;
+  ids: string;
+  awaiting: string;
+}
+
 /**
  * The key names of one conversation.
  * @param c - Conversation id.
  * @returns Its five keys.
  */
-function keysOf(c: string): { active: string; queue: string; taken: string; ids: string; awaiting: string } {
+export function chatQueueKeys(c: string): ChatQueueKeys {
   return {
     active: `chat:active:${c}`,
     queue: `chat:queue:${c}`,
@@ -236,7 +245,7 @@ export function createChatQueue(redis: Redis): ChatQueue {
   const newRunId = (): string => crypto.randomUUID();
   return {
     async enqueue(c, item) {
-      const k = keysOf(c);
+      const k = chatQueueKeys(c);
       const cfg = getAgentConfig();
       const [status, runId, ...queue] = (await redis.eval(
         ENQUEUE,
@@ -256,7 +265,7 @@ export function createChatQueue(redis: Redis): ChatQueue {
       return { status: status as "queued" | "duplicate" | "full", queue: items(queue) };
     },
     async claim(c) {
-      const k = keysOf(c);
+      const k = chatQueueKeys(c);
       const [status, runId] = (await redis.eval(
         CLAIM,
         4,
@@ -271,37 +280,37 @@ export function createChatQueue(redis: Redis): ChatQueue {
       return { status: status as "running" | "awaiting" | "idle" };
     },
     async resume(c, runId) {
-      const k = keysOf(c);
+      const k = chatQueueKeys(c);
       const [status, card] = (await redis.eval(RESUME, 3, k.active, k.awaiting, k.taken, runId, leaseMs())) as [string, string];
       return status === "busy" ? { status: "busy" } : { status: "start", awaiting: card === "" ? null : card };
     },
     async giveBack(c, runId, awaiting) {
-      const k = keysOf(c);
+      const k = chatQueueKeys(c);
       const next = (await redis.eval(GIVE_BACK, 4, k.active, k.awaiting, k.taken, k.queue, runId, awaiting ?? "", newRunId(), leaseMs())) as string | null;
       return next ?? null;
     },
     async head(c, runId) {
-      const k = keysOf(c);
+      const k = chatQueueKeys(c);
       return items((await redis.eval(HEAD, 3, k.active, k.taken, k.queue, runId)) as string[]);
     },
     async drain(c, runId) {
-      const k = keysOf(c);
+      const k = chatQueueKeys(c);
       return items((await redis.eval(DRAIN, 3, k.active, k.taken, k.queue, runId)) as string[]);
     },
     async forget(c, runId, ids) {
-      const k = keysOf(c);
+      const k = chatQueueKeys(c);
       return items((await redis.eval(FORGET, 2, k.active, k.taken, runId, ...ids)) as string[]);
     },
     async ack(c, runId, recorded) {
-      const k = keysOf(c);
+      const k = chatQueueKeys(c);
       await redis.eval(ACK, 3, k.active, k.taken, k.queue, runId, ...recorded);
     },
     async remove(c, id) {
-      const k = keysOf(c);
+      const k = chatQueueKeys(c);
       return (await redis.eval(REMOVE, 2, k.queue, k.taken, id)) as "removed" | "taken" | "gone";
     },
     async settle(c, runId, ending) {
-      const k = keysOf(c);
+      const k = chatQueueKeys(c);
       const toolCallId = ending.kind === "awaiting" ? ending.toolCallId : "";
       const next = (await redis.eval(
         SETTLE,
@@ -318,18 +327,18 @@ export function createChatQueue(redis: Redis): ChatQueue {
       return next ?? null;
     },
     async renew(c, runId) {
-      const k = keysOf(c);
+      const k = chatQueueKeys(c);
       return (await redis.eval(RENEW, 1, k.active, runId, leaseMs())) === 1;
     },
     async clear(c) {
-      const k = keysOf(c);
+      const k = chatQueueKeys(c);
       await redis.del(k.active, k.queue, k.taken, k.ids, k.awaiting);
     },
     async pending(c) {
-      return items(await redis.lrange(keysOf(c).queue, 0, -1));
+      return items(await redis.lrange(chatQueueKeys(c).queue, 0, -1));
     },
     async peek(c) {
-      const k = keysOf(c);
+      const k = chatQueueKeys(c);
       const [active, awaiting, queued, taken] = await Promise.all([
         redis.get(k.active),
         redis.exists(k.awaiting),

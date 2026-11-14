@@ -16,6 +16,7 @@ import type { Hono } from "hono";
 import { getRedis, sessionCookieName, setSession } from "@breatic/core";
 import { runObservers } from "@server/agent/chat-run.js";
 import { runStreams } from "@server/agent/run-stream.js";
+import { chatQueueKeys } from "@server/modules/chat-queue/chat-queue.service.js";
 
 /** One signed-in owner and their open conversation. */
 export interface Seeded {
@@ -57,16 +58,9 @@ export async function seedOwner(sql: ReturnType<typeof postgres>, app: Hono): Pr
   return { userId: user!.id, projectId: project!.id, conversationId: body.data.current.conversation.id, cookie };
 }
 
-/** The five plain keys of a conversation's queue. */
-export function keysOf(c: string): { active: string; queue: string; taken: string; ids: string; awaiting: string } {
-  return {
-    active: `chat:active:${c}`,
-    queue: `chat:queue:${c}`,
-    taken: `chat:taken:${c}`,
-    ids: `chat:queue-ids:${c}`,
-    awaiting: `chat:awaiting:${c}`,
-  };
-}
+/** The five keys of a conversation's queue, as the server names them. */
+export const keysOf = chatQueueKeys;
+
 
 /**
  * The ids in one of a conversation's lists.

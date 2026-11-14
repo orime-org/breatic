@@ -87,7 +87,7 @@ import {
   type Seeded,
 } from "./transfer-fixtures.js";
 import { getRequestBodyMaxBytes } from "@server/config/limits.js";
-import { sendAndRead, untilIdle } from "./chat-run-harness.js";
+import { keysOf, sendAndRead, untilIdle } from "./chat-run-harness.js";
 
 try {
   initCore(process.env);
@@ -455,12 +455,13 @@ describe("§4.1 the main path", () => {
     const key = await grant(w, file.length);
     read.answer = async () => file;
     // A run holds the conversation, so the message waits where the next step reads it.
-    await getRedis().set(`chat:active:${conversationId}`, "R-held");
+    const k = keysOf(conversationId);
+    await getRedis().set(k.active, "R-held");
     try {
       const res = await post(app, CHAT, w.a.cookie, ref(key));
       expect(res.status).toBe(200);
       expect(((await res.json()) as { data: { status: string } }).data.status).toBe("queued");
-      const [raw] = await getRedis().lrange(`chat:queue:${conversationId}`, 0, -1);
+      const [raw] = await getRedis().lrange(k.queue, 0, -1);
       const item = JSON.parse(raw!) as Record<string, unknown>;
       expect(item).toMatchObject({
         id: body.id,
@@ -470,7 +471,7 @@ describe("§4.1 the main path", () => {
         spaces: body.spaces,
       });
     } finally {
-      await getRedis().del(`chat:active:${conversationId}`, `chat:queue:${conversationId}`, `chat:queue-ids:${conversationId}`);
+      await getRedis().del(k.active, k.queue, k.ids);
     }
   });
 
