@@ -381,6 +381,8 @@ beforeAll(async () => {
   await make('greys.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=64x36:r=25:d=0.4,format=yuv420p,geq=lum='16+20*N':cb=128:cr=128", ...h264, '-g', '5', '-video_track_timescale', '25']);
   await make('greys-ntsc.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=64x36:r=30000/1001:d=0.7,format=yuv420p,geq=lum='16+10*N':cb=128:cr=128,trim=end_frame=20",
     ...h264, '-g', '30', '-video_track_timescale', '30000']);
+  // The greys of greys.mp4 on a 1/15360 clock, FFmpeg's default MP4 video timescale for 25 fps.
+  await make('greys-15360.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=64x36:r=25:d=0.4,format=yuv420p,geq=lum='16+20*N':cb=128:cr=128", ...h264, '-g', '10', '-video_track_timescale', '15360']);
   await make('late-edge.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=64x36:r=25:d=0.16,format=yuv420p,geq=lum='16+40*N':cb=128:cr=128,settb=1/90000,setpts='if(eq(N,2),3601,N*1800)'",
     ...h264, '-g', '4', '-fps_mode', 'passthrough', '-enc_time_base', '1/90000', '-video_track_timescale', '90000']);
   // Expand backgrounds in the 128x72 target geometry at 50 fps (twice the source rate, so a frame-index mapping shows):
@@ -434,6 +436,18 @@ describe('chunk_encode on the transition profile (§7.17 chunk_encode row; 转�
     const frames = await packets(file!);
     expect(frames).toHaveLength(36);
     expect(Number(frames.at(-1)!.pts_time) + Number(frames.at(-1)!.duration_time)).toBeCloseTo(1.2, 3);
+  });
+});
+
+describe('a frame grid FFmpeg cannot carry (FFmpeg filter time bases are int rationals)', () => {
+  // On a 34650000/1154957 fps grid (an exact VFR average) a 1/15360 clip needs a 1/2217600000 clock, past 2^31 − 1, which
+  // settb would clamp to 1/2147483647 and so move frames to the wrong slots.
+  it('CR06 a chunk whose exact clock exceeds 2^31 − 1 fails with that reason instead of encoding moved frames', async () => {
+    const profile = { ...PROFILE, fps: r(34650000, 1154957), timeBase: r(1154957, 34650000) };
+    const recipe = { kind: 'chunk_encode', inputId: CLIP_A, window: { start: 0, end: 10 }, timescale: 25, entries: [span(r(0), r(0), r(0), r(2, 5))], target: TARGET, profile, frames: { start: 0, end: 12 } };
+    const { report } = await runJob({ [CLIP_A]: join(dir, 'greys-15360.mp4') }, [recipe]);
+    expect(report.ok).toBe(false);
+    expect(JSON.stringify(logged)).toContain('time base range');
   });
 });
 

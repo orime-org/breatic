@@ -401,6 +401,14 @@ describe('chunk_encode (§5.4 切块、块的时间; §7.17)', () => {
     [0, 1, 2, 3].forEach((frame, n) => expect(Math.abs(encoded[n]! - source[frame]!)).toBeLessThan(5));
   });
 
+  // FFmpeg filter time bases are int rationals: settb would clamp a 1/2^31 clock to 1/(2^31 − 1) and move every frame.
+  it('CE15 a chunk on a clock past 2^31 − 1 ticks per second fails with that reason instead of encoding moved frames', async () => {
+    const recipe = { ...chunk({ start: 0, end: 2 }, [span(r(0), r(0), r(0), r(2, 25))]), timescale: 2 ** 31 };
+    const { report } = await runJob({ [SOURCE]: join(dir, 'greys.mp4') }, [recipe]);
+    expect(report.ok).toBe(false);
+    expect(JSON.stringify(vi.mocked(console.error).mock.calls)).toContain('time base range');
+  });
+
   // §4.3 HDR row: the carrier is the D05 chain's picture with BT.709 tags; the reference is that chain run here on the same source.
   it('CE11 the tone-mapped picture is the §4.3 chain\'s picture, not a plain matrix conversion', async () => {
     const recipe = chunk({ start: 0, end: 10 }, [span(r(0), r(0), r(0), r(2, 5))], { ...TARGET, width: 64, height: 36, colorMatrix: 'bt2020nc', toneMap: 'sdr-bt709' });

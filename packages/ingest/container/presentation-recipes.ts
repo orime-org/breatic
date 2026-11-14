@@ -454,6 +454,8 @@ function slotAtOrAfter([numerator, denominator]: [bigint, bigint], rate: FrameRa
 
 // FFmpeg evaluates setpts in doubles, which are exact for integers below 2^53; a frame's slot is exact below 2^52.
 const EXACT_TICKS = 1n << 52n;
+// FFmpeg filter time bases are int rationals: settb clamps a larger denominator to this without an error.
+const MAX_TIME_BASE_DENOMINATOR = 2147483647n;
 
 /**
  * The clock on which every source frame time of a window, after its clip start and rate, and every slot of a frame grid
@@ -497,7 +499,7 @@ function exactClock(entries: readonly MiniToolPlanEntry[], origin: MiniToolPlanE
  * @param frame - The chain after a source span's timing, given a unique label prefix.
  * @param empty - The source of one composed frame for a derived-empty entry.
  * @returns The inputs and graph.
- * @throws {RangeError} When a time is malformed.
+ * @throws {RangeError} When a time is malformed or the clock is beyond FFmpeg's time base range.
  * @throws {Error} When ffprobe fails.
  */
 export async function windowGraph(entries: readonly MiniToolPlanEntry[], time: bigint | FrameRate, source: string, run: Run,
@@ -508,6 +510,7 @@ export async function windowGraph(entries: readonly MiniToolPlanEntry[], time: b
   const facts = await sourceFacts(source, run);
   const grid = typeof time === "bigint" ? null : time;
   const clock = grid === null ? time as bigint : exactClock(entries, origin, facts.tick, grid);
+  if (clock > MAX_TIME_BASE_DENOMINATOR) throw new RangeError("The window's clock is beyond FFmpeg's time base range");
   const slot = grid === null ? null : (clock * grid[1]) / grid[0];
   const base = grid === null ? `1/${clock}` : `${grid[1]}/${grid[0]}`;
   /**
