@@ -402,6 +402,9 @@ beforeAll(async () => {
   await make('bg-frame.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=416x240:r=50:d=0.4,format=yuv420p,geq=lum='if(between(X,96,351)*between(Y,40,183),60+6*N,235)':cb=128:cr=128",
     ...h264, '-g', '20', '-video_track_timescale', '50']);
   // The two transition clips: 1.6 s at 25 fps, flat greys 0x404040 and 0xC0C0C0, with 500 Hz and 1500 Hz ALAC tones at 48 kHz.
+  // Clip B with stereo sound: the 1500 Hz tone in the left channel only, silence on the right.
+  await make('clip-b-stereo.mp4', ['-f', 'lavfi', '-i', 'color=c=0xC0C0C0:s=64x36:r=25:d=1.6', '-f', 'lavfi', '-i', 'sine=f=1500:r=48000:d=1.6',
+    '-filter_complex', '[1:a]pan=stereo|c0=c0|c1=0*c0[a]', '-map', '0:v', '-map', '[a]', '-c:v', 'libx264', '-bf', '0', '-pix_fmt', 'yuv420p', '-g', '10', '-video_track_timescale', '25', '-c:a', 'alac', '-shortest']);
   for (const [name, grey, tone] of [['clip-a.mp4', '0x404040', 500], ['clip-b.mp4', '0xC0C0C0', 1500]] as const) {
     await make(name, ['-f', 'lavfi', '-i', `color=c=${grey}:s=64x36:r=25:d=1.6`, '-f', 'lavfi', '-i', `sine=f=${tone}:r=48000:d=1.6`,
       ...h264, '-g', '10', '-video_track_timescale', '25', '-c:a', 'alac', '-shortest']);
@@ -803,6 +806,26 @@ describe('transition stitch audio (§7.17 stitch and 转场输出档 rows: acros
     const ampB = toneAmplitudes(await samples(file), 1500);
     for (let block = 2; block <= 78; block += 1) expect(ampB[block]! / b, `no B at block ${block}`).toBeLessThan(0.03);
     for (let block = 81; block <= 157; block += 1) expect(Math.abs(ampB[block]! / b - 1), `B at block ${block}`).toBeLessThan(0.08);
+  });
+
+  // The junction keeps one stereo layout, as the preview plays it: a first clip that is silent or mono does not fold the
+  // second clip's stereo into mono (concat and acrossfade take the first input's layout).
+  it('TS05 Cut after a silent clip: the output is stereo and clip B\'s left-only tone stays on the left', async () => {
+    const inputs = { [CLIP_A]: join(dir, 'clip-a.mp4'), [CLIP_B]: join(dir, 'clip-b-stereo.mp4') };
+    const files = await produce(inputs, [clipChunk(CLIP_A, 0, 40), clipChunk(CLIP_B, 0, 40)]);
+    const [file] = await produce({ ...inputs, [CHUNKS[0]!]: files[0]!, [CHUNKS[1]!]: files[1]! }, [{
+      kind: 'stitch', chunks: [{ inputId: CHUNKS[0], duration: r(40, 25) }, { inputId: CHUNKS[1], duration: r(40, 25) }],
+      clips: [{ inputId: CLIP_A, audio: null }, { inputId: CLIP_B, audio: CLIP_AUDIO }], crossfade: null, profile: PROFILE,
+    }]);
+    const audio = (await probe(file!)).streams.filter(stream => stream.codec_type === 'audio') as unknown as { channels: number }[];
+    expect(audio.map(stream => stream.channels)).toEqual([2]);
+    const level = async (path: string, from: number, channel: string): Promise<number> => {
+      const { stderr } = await run('ffmpeg', ['-v', 'info', '-ss', String(from), '-t', '1', '-i', path, '-af', `pan=mono|c0=${channel},astats=metadata=0:reset=0`, '-f', 'null', '-'], { maxBuffer: 1 << 24 });
+      return Number(/RMS level dB: (-?[\d.]+|-inf)/u.exec(String(stderr))?.[1]?.replace('-inf', '-200') ?? '0');
+    };
+    // Clip B plays from 1.6 s; its left channel keeps the source's level, unboosted, and its right stays silent.
+    expect(Math.abs(await level(file!, 2, 'c0') - await level(join(dir, 'clip-b-stereo.mp4'), 0.4, 'c0'))).toBeLessThan(1);
+    expect(await level(file!, 2, 'c1')).toBeLessThan(-60);
   });
 
   it('TS01 Cut (crossfade null): clip A\'s audio then clip B\'s, joined directly with no fade', async () => {
