@@ -10,6 +10,7 @@
  * definitions. It stays out of the main entry because it imports BlockNote.
  */
 
+export * from "@shared/document/model/document-comment-body.js";
 export * from "@shared/document/model/document-comment-mark.js";
 export * from "@shared/document/model/document-list-block.js";
 export * from "@shared/document/model/document-pm-schema.js";

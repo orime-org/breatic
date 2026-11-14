@@ -20,7 +20,7 @@ import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
-import { asCommentBody } from '@web/spaces/document/document-comment-extension';
+import { asCommentBody } from '@breatic/shared/document-model';
 import { commentedElement } from '@web/spaces/document/document-comment-media';
 import { commentOn } from '@web/spaces/document/document-comment-post';
 import { domElementOf } from '@web/spaces/document/document-editor-view';

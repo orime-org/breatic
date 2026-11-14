@@ -20,7 +20,8 @@ import * as Y from 'yjs';
 import { documentBodyFragment } from '@breatic/shared';
 import { planSpaceDelete } from '@web/features/collab-editor/space-delete-executor';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
-import { COMMENT_MARK, asCommentBody, commentsOn } from '@web/spaces/document/document-comment-extension';
+import { COMMENT_MARK, commentsOn } from '@web/spaces/document/document-comment-extension';
+import { asCommentBody } from '@breatic/shared/document-model';
 import {
   DOCUMENT_NAME,
   backspaceChar,

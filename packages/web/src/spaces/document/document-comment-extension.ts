@@ -135,17 +135,3 @@ interface Extensible {
 export function commentsOn(editor: Extensible): CommentsApi | undefined {
   return editor.getExtension(CommentsExtension) as CommentsApi | undefined;
 }
-
-/**
- * The user's words in the shape a comment body takes.
- *
- * A comment body is a BlockNote document, so one paragraph holding one text
- * run is the whole of a plain-text comment. Written here because an opening
- * comment and a reply are the same kind of thing and go through two different
- * modules to reach the same Y.Map.
- * @param text - What the user wrote.
- * @returns That text as a comment body.
- */
-export function asCommentBody(text: string): unknown {
-  return [{ type: 'paragraph', content: [{ type: 'text', text, styles: {} }] }];
-}

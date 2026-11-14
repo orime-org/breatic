@@ -44,8 +44,8 @@ import {
 } from '@web/spaces/document/document-comment-selection';
 import {
   COMMENT_MARK,
-  asCommentBody,
 } from '@web/spaces/document/document-comment-extension';
+import { asCommentBody } from '@breatic/shared/document-model';
 import { openCommentDraft } from '@web/spaces/document/document-comment-entries';
 import { moveRowTo } from '@web/spaces/document/document-drag-move';
 import { rowById } from '@web/spaces/document/document-row-by-id';

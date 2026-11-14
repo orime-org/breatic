@@ -55,7 +55,8 @@ import { PromptEditor, type PromptEditorHandle } from '@web/spaces/canvas/genera
 import { deriveReferences, focusToRailItem, type ReferenceRailItem } from '@breatic/shared/canvas-model';
 import { removeReferenceRow } from '@web/spaces/canvas/generate/remove-reference-row';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
-import { asCommentBody, commentsOn } from '@web/spaces/document/document-comment-extension';
+import { commentsOn } from '@web/spaces/document/document-comment-extension';
+import { asCommentBody } from '@breatic/shared/document-model';
 import { commentOn } from '@web/spaces/document/document-comment-post';
 import {
   removeReply, removeThread, reopenThread, replyToThread, resolveThread,

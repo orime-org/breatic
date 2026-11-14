@@ -13,10 +13,8 @@
  * thread into the store, and that pairing is what `commentOn` owns.
  */
 
-import {
-  asCommentBody,
-  commentsOn,
-} from '@web/spaces/document/document-comment-extension';
+import { asCommentBody } from '@breatic/shared/document-model';
+import { commentsOn } from '@web/spaces/document/document-comment-extension';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
 
 

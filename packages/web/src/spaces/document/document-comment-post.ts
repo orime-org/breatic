@@ -31,11 +31,12 @@
 import { CommentsExtension, type ThreadData } from '@blocknote/core/comments';
 import type { EditorState } from '@tiptap/pm/state';
 
+import { asCommentBody } from '@breatic/shared/document-model';
+
 import type { SpaceRefusal } from '@web/data/yjs/space-write';
 import { draftRangeIn, mediaDraftIn } from '@web/spaces/document/document-comment-draft-range';
 import {
   COMMENT_MARK,
-  asCommentBody,
   commentsOn,
 } from '@web/spaces/document/document-comment-extension';
 import { MEDIA_BLOCK_ID, canCommentOnMedia } from '@web/spaces/document/document-comment-media';

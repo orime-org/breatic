@@ -18,7 +18,7 @@ import {
 } from '@web/spaces/document/document-editor-cache';
 import { openCommentDraft } from '@web/spaces/document/document-comment-entries';
 import { DRAFT_THREAD_ID } from '@web/spaces/document/document-comment-draft-range';
-import { asCommentBody } from '@web/spaces/document/document-comment-extension';
+import { asCommentBody } from '@breatic/shared/document-model';
 import { commentOn } from '@web/spaces/document/document-comment-post';
 import {
   commentLocationIn,

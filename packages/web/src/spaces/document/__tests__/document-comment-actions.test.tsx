@@ -39,8 +39,8 @@ import { selectThreads } from '@web/spaces/document/document-comment-selection';
 import { replyToThread } from '@web/spaces/document/document-comment-thread-actions';
 import {
   COMMENT_MARK,
-  asCommentBody,
 } from '@web/spaces/document/document-comment-extension';
+import { asCommentBody } from '@breatic/shared/document-model';
 import { useDocumentEditor } from '@web/spaces/document/use-document-editor';
 import { toast } from '@web/lib/toast';
 import { useCurrentUserStore } from '@web/stores/current-user';

@@ -51,7 +51,8 @@ vi.mock('@web/spaces/document/document-comment-auth', async (importOriginal) => 
 import { clearAllDocSizes } from '@web/data/yjs/doc-size';
 import { _resetForTests, docName, getDoc } from '@web/data/yjs/manager';
 import type { SpaceWriteKind } from '@web/data/yjs/space-write';
-import { COMMENT_MARK, asCommentBody, commentsOn } from '@web/spaces/document/document-comment-extension';
+import { COMMENT_MARK, commentsOn } from '@web/spaces/document/document-comment-extension';
+import { asCommentBody } from '@breatic/shared/document-model';
 import { SpaceFullError } from '@web/spaces/document/document-comment-thread-store';
 import {
   _resetDocumentEditorCacheForTests, adoptDocumentEditor, getDocumentEditor,

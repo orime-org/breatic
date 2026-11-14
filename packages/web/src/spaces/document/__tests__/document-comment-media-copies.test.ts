@@ -19,7 +19,8 @@ import * as Y from 'yjs';
 import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
-import { asCommentBody, commentsOn } from '@web/spaces/document/document-comment-extension';
+import { commentsOn } from '@web/spaces/document/document-comment-extension';
+import { asCommentBody } from '@breatic/shared/document-model';
 import { mediaThreadPositions } from '@web/spaces/document/document-comment-media';
 import { commentOn } from '@web/spaces/document/document-comment-post';
 import { moveRowTo } from '@web/spaces/document/document-drag-move';

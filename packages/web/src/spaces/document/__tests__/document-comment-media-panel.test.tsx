@@ -14,7 +14,7 @@ import * as Y from 'yjs';
 import { Awareness } from 'y-protocols/awareness';
 
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
-import { asCommentBody } from '@web/spaces/document/document-comment-extension';
+import { asCommentBody } from '@breatic/shared/document-model';
 import { commentOn } from '@web/spaces/document/document-comment-post';
 import { selectThreads } from '@web/spaces/document/document-comment-selection';
 import { _resetDocumentEditorCacheForTests, type DocumentEditorHandle } from '@web/spaces/document/document-editor-cache';

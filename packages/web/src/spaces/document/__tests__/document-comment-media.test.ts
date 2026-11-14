@@ -19,7 +19,8 @@ import { documentBodyFragment, documentCommentThreads } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
-import { asCommentBody, commentsOn } from '@web/spaces/document/document-comment-extension';
+import { commentsOn } from '@web/spaces/document/document-comment-extension';
+import { asCommentBody } from '@breatic/shared/document-model';
 import {
   MEDIA_BLOCK_ID,
   anchoredMediaIds,
