@@ -98,6 +98,20 @@ const STEP_AT = {
   rig: "after",
 } as const satisfies Record<z.infer<typeof extraStepSchema>["kind"], "before" | "after">;
 
+/** How a `Name: line` script becomes the upstream's list of turns when the run names its speakers. */
+const dialogueSchema = z.strictObject({
+  /** Our items param listing the speakers; the script becomes turns only when it holds at least one named speaker. */
+  speakers: z.string().min(1),
+  /** The sub-field of a speaker holding the name the script's lines start with. */
+  name: z.string().min(1),
+  /** The upstream field the turns go under. */
+  field: z.string().min(1),
+  /** The sub-field of a turn naming its speaker. */
+  speaker_field: z.string().min(1),
+  /** The sub-field of a turn holding its words. */
+  text_field: z.string().min(1),
+});
+
 // Every binding carries its price: the cheapest mode and the
 // estimate both read it, and the shipped bindings all have one.
 const bindingSchema = z.strictObject({
@@ -114,6 +128,8 @@ const bindingSchema = z.strictObject({
   mentions: z.record(z.string(), z.string()).optional(),
   /** Per param holding voices: our voice id to this upstream's; a voice not listed keeps the upstream out of the candidates. */
   voice_map: z.record(z.string(), z.record(z.string(), z.string())).optional(),
+  /** A dialogue run's script is sent as turns, the prompt field left out. */
+  dialogue: dialogueSchema.optional(),
   /** Upstream fields sent with the same value on every call. */
   fixed: z.record(z.string(), z.unknown()).optional(),
   /**
