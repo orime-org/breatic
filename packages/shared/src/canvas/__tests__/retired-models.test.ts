@@ -78,7 +78,7 @@ describe('withCurrentModelNames', () => {
   });
 
   it('leaves a node without model fields alone', () => {
-    const data = { content: 'text' };
+    const data: { content: string; model?: string } = { content: 'text' };
     expect(withCurrentModelNames(data)).toBe(data);
   });
 
