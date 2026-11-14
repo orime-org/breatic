@@ -205,11 +205,12 @@ describe("the covering slack of a presentation table (frames-split §7.17)", () 
     const starts = Array.from({ length: count }, (_unused, k) => Math.round((k * 1000) / rate));
     return { schemaVersion: 1, timescale: 1000, runs: starts.map((start, k) => ({ start, count: 1, step: (starts[k + 1] ?? start + 33) - start, duration: (starts[k + 1] ?? start + 33) - start })) };
   };
-  it.each([
+  const exact25: Table = { schemaVersion: 1, timescale: 25, runs: [{ start: 0, count: 50, step: 1, duration: 1 }] };
+  it.each<[string, Table, ReturnType<typeof r> | null]>([
     ["a 30 fps WebM on its 1 ms clock", webm(30, 30), r(1, 2000)],
-    ["an exact 25 fps table on a 1/25 clock", { schemaVersion: 1, timescale: 25, runs: [{ start: 0, count: 50, step: 1, duration: 1 }] }, null],
+    ["an exact 25 fps table on a 1/25 clock", exact25, null],
     ["a VFR table", vfrPlan().presentation as Table, null],
-  ] as const)("PS01 %s", (_name, table, expected) => {
+  ])("PS01 %s", (_name, table, expected) => {
     expect(api.presentationSlack(table, r(1, table.timescale === 25 ? 25 : 1000))).toEqual(expected);
   });
 });
