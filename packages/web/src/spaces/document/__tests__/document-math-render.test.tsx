@@ -88,6 +88,19 @@ describe('rendering', () => {
     });
   });
 
+  // KaTeX draws nothing for white space, so such a formula would have no
+  // width to see or press.
+  it.each([
+    ['an inline formula', { type: 'paragraph', content: ['x ', { type: 'math', props: { source: '  ' } }, ' y'] }],
+    ['a formula block', { type: 'mathBlock', props: { source: ' \t\n ' } }],
+  ])('shows the placeholder, to press, for %s whose source is only white space', async (_name, block) => {
+    const { root } = open([block]);
+    await vi.waitFor(() => {
+      expect(root.textContent).toContain(t('spaces.document.math.empty'));
+    });
+    expect(root.querySelector('.doc-math [role="button"]')).not.toBeNull();
+  });
+
   it('shows the error face for a source that does not parse, once closed', async () => {
     const { root } = open([{ type: 'mathBlock', props: { source: '\\frac{a}{b' } }]);
     await vi.waitFor(() => {

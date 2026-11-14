@@ -407,7 +407,9 @@ const MathFace = React.memo(function MathFace({
   const t = useTranslation();
   const { source, open, caret, selected, editable } = React.useSyncExternalStore(store.subscribe, store.get);
   const shown = open && editable;
-  const rendered = React.useMemo(() => (source === '' ? null : renderFormula(source, !inline)), [source, inline]);
+  // KaTeX draws nothing for white space: such a source shows the placeholder.
+  const blank = source.trim() === '';
+  const rendered = React.useMemo(() => (blank ? null : renderFormula(source, !inline)), [blank, source, inline]);
   // The last formula that rendered stays up while the box is open on a source
   // that does not parse; once the box closes on it, the error face shows until
   // it parses again (BlockNote `SourceWithPreview.tsx`).
@@ -482,7 +484,7 @@ const MathFace = React.memo(function MathFace({
 
   const Wrapper = inline ? 'span' : 'div';
   const face =
-    source === '' ? (
+    blank ? (
       <span className='inline-flex items-center gap-1.5 rounded-chrome bg-muted px-2 py-1 text-sm text-muted-foreground'>
         <Sigma className='h-3.5 w-3.5' aria-hidden />
         {t('spaces.document.math.empty')}
@@ -505,7 +507,7 @@ const MathFace = React.memo(function MathFace({
     >
       <Wrapper
         className={cn(!editable && 'cursor-default')}
-        role={editable && (source === '' || preview === null) ? 'button' : undefined}
+        role={editable && preview === null ? 'button' : undefined}
         // The body keeps the keyboard until the box takes it.
         onMouseDown={(event) => {
           if (!editable) return;
