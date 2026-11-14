@@ -319,8 +319,9 @@ async function shutdown(signal: string): Promise<void> {
         lifecycleRelay.stop();
         return Promise.resolve();
       },
-      // Work a route left running after its reply (a password-reset send)
-      // still needs the pools, so they close once it has finished.
+      // Work a route left running after its reply (an Agent chat run, a
+      // password-reset send) still needs the pools, so they close once it has
+      // finished.
       () =>
         // The loop's last tick can still queue a buyer mail, so it stops
         // before the after-reply work is waited for.

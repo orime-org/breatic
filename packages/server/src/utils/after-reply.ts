@@ -4,11 +4,12 @@
 /**
  * Work a route starts after deciding its reply and does not wait for (#286).
  *
- * Forgot-password is the one user: it must answer the same thing at the same
- * speed whether or not the address is registered, so the lookup, the token and
- * the send all run here, after the reply. Shutdown waits for what is still
- * running (`settleAfterReply`) before closing the pools this work needs, and
- * logs whatever the deadline cut off (`pendingAfterReply`).
+ * Forgot-password must answer the same thing at the same speed whether or not
+ * the address is registered, so the lookup, the token and the send all run
+ * here, after the reply. An Agent chat run runs here from its first line
+ * (inner#1717), and so do the refund mails and reports. Shutdown waits for
+ * what is still running (`settleAfterReply`) before closing the pools this
+ * work needs, and logs whatever the deadline cut off (`pendingAfterReply`).
  */
 
 import { logger } from "@breatic/core";

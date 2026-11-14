@@ -173,7 +173,9 @@ export class MainAgent {
     // Save what the user said. The turn it opened is what the rest of this
     // run is filed under: the reply goes in it, and billing builds a stable
     // refKey from it (`turn:${conversationId}:${turnIndex}`) that survives
-    // retries — see domain/src/credit/creditLot.service.ts `chargeOnce`.
+    // retries — see domain/src/credit/creditLot.service.ts `chargeOnce`. A run
+    // that answers a row a dead run left is charged under a key of its own
+    // (`hooks.operationKey`, `chat-run.ts`).
     //
     // Every card still waiting is closed by this message, in the same
     // transaction: its result says the user wrote a message instead, and is
@@ -384,8 +386,8 @@ export class MainAgent {
     // each (#296); the turn is charged what those rows add up to. Model calls
     // are recorded as each one's response arrives, never from `result.usage`:
     // that getter calls `consumeStream()`, and on the exit that matters most --
-    // the user leaving mid-loop -- reading it would drive the rest of the
-    // loop after everyone has gone.
+    // a stop mid-loop -- reading it would drive the rest of the loop after
+    // the turn was stopped.
     const usage = createUsageRecorder({
       // A segment resumed after a card is charged on its own: the
       // charge below is taken once per key, and the segment that asked has
