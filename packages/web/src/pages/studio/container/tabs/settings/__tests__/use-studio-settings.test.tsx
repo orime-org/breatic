@@ -232,7 +232,36 @@ describe('useStudioSettings — editing name and bio', () => {
         client.getQueryState(['studio', 'acme'])?.isInvalidated,
       ).toBe(true),
     );
-    expect(client.getQueryState(['studios', 'user'])?.isInvalidated).toBe(true);
+    expect(client.getQueryData<StudioDetail[]>(['studios', 'user'])?.[0]?.name).toBe('Acme Inc');
+  });
+
+  // inner#1955: the switcher reads the global directory, which hears of a
+  // change in another region only once the outbox delivers it.
+  it('writes a rename into the switcher from the answer and does not refetch it', async () => {
+    const far: StudioDetail = { ...TEAM, region: 'sg' };
+    client.setQueryData(['studios', 'user'], [far, PERSONAL]);
+    vi.mocked(studiosApi.update).mockResolvedValue(updated(far, { slug: 'acme-renamed', name: 'Acme Inc' }));
+    const { result } = renderHook(() => useStudioSettings(far), { wrapper });
+
+    result.current.save({ slug: 'acme-renamed', name: 'Acme Inc' });
+
+    await waitFor(() => expect(navigate).toHaveBeenCalled());
+    const rows = client.getQueryData<StudioDetail[]>(['studios', 'user']);
+    expect(rows?.[0]).toMatchObject({ id: far.id, slug: 'acme-renamed', name: 'Acme Inc', region: 'sg' });
+    expect(rows?.[1]).toEqual(PERSONAL);
+    expect(client.getQueryState(['studios', 'user'])?.isInvalidated).toBe(false);
+  });
+
+  it('takes a Studio the user left out of the switcher and does not refetch it', async () => {
+    client.setQueryData(['studios', 'user'], [TEAM, PERSONAL]);
+    vi.mocked(studiosApi.leave).mockResolvedValue(undefined as never);
+    const { result } = renderHook(() => useStudioSettings(TEAM), { wrapper });
+
+    result.current.leave();
+
+    await waitFor(() => expect(navigate).toHaveBeenCalled());
+    expect(client.getQueryData<StudioDetail[]>(['studios', 'user'])).toEqual([PERSONAL]);
+    expect(client.getQueryState(['studios', 'user'])?.isInvalidated).toBe(false);
   });
 });
 

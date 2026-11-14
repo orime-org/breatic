@@ -8,6 +8,7 @@
  * new one when the form changes or the region gave the creation up.
  */
 
+import { newId } from '@breatic/shared';
 import * as React from 'react';
 
 import { ApiException } from '@web/data/api/types';
@@ -39,11 +40,11 @@ export function useStudioCreationId(form: string): { idFor: () => string; renew:
   return React.useMemo(
     () => ({
       idFor: () => {
-        if (held.current?.form !== form) held.current = { form, id: crypto.randomUUID() };
+        if (held.current?.form !== form) held.current = { form, id: newId() };
         return held.current.id;
       },
       renew: () => {
-        held.current = { form, id: crypto.randomUUID() };
+        held.current = { form, id: newId() };
       },
     }),
     [form],
