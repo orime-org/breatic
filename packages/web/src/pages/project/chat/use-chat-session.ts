@@ -4,17 +4,18 @@
 import * as React from 'react';
 import { useChat } from '@ai-sdk/react';
 
-import type { AskUserAnswer, ChatAttachedChip, ChatSpaceContext, SpaceRequestAnswer } from '@breatic/shared';
+import type { AskUserAnswer, ChatPendingItem, ChatSpaceContext, SpaceRequestAnswer } from '@breatic/shared';
 
 import { joinContinued, splitAtAnswer, toChatMessage } from '@web/pages/project/chat/to-chat-message';
-import { visibleMessages } from '@web/pages/project/chat/visible-messages';
 
 import { conversationRuntime, useConversationRuntime } from '@web/stores/conversation-runtime';
 import type { OpenStatus, TurnPhase } from '@web/stores/conversation-runtime';
 import { mishapLine, watchChatMishaps } from '@web/stores/chat-mishaps';
 import { toast } from '@web/lib/toast';
 import { chatAttachments } from '@web/stores/chat-attachments';
-import { answerInSession, chatSessionFor, sendInSession, shareSpacesInSession, stopChatSession } from '@web/stores/chat-sessions';
+import { chatSessionFor } from '@web/stores/chat-sessions';
+import { chatLive, useChatLive } from '@web/stores/chat-live';
+import { NOTHING_WAITING, useChatWaiting, type WaitingArea } from '@web/stores/chat-waiting';
 import { chatApi } from '@web/data/api/chat';
 import type { StoredUiMessage } from '@web/data/api/chat';
 import { clipSpaceContext } from '@web/pages/project/chat/space-context';
@@ -23,19 +24,16 @@ import type { ConversationOnTheWire } from '@web/data/api/chat';
 import type { ChatMessage } from '@web/pages/project/chat/types';
 
 /**
- * How far along the turn is, from the status the SDK reports.
- *
- * Three of ours against four of theirs, and the join is deliberate: `error`
- * and `ready` are both "nothing is happening", which is what the composer
- * needs to know. What went wrong is said in a line of its own, not by leaving
- * the box unusable.
+ * Whether a run is being read, from the status the SDK reports while a
+ * stream is resumed: `submitted` once the stream exists, which the reply
+ * named by its first frame is drawn under, then `streaming` from the first
+ * frame that writes a part. `error` and `ready` are both "nothing is being
+ * read".
  * @param status - What the chat says it is doing.
- * @returns The phase the panel works in.
+ * @returns True while a run is read.
  */
-function phaseOf(status: string): TurnPhase {
-  if (status === 'submitted') return 'sending';
-  if (status === 'streaming') return 'running';
-  return 'idle';
+function readingRun(status: string): boolean {
+  return status === 'submitted' || status === 'streaming';
 }
 
 export interface ChatSession {
@@ -96,8 +94,14 @@ export interface ChatSession {
    * over.
    */
   shareSpaces: (answer: SpaceRequestAnswer) => Promise<void>;
-  /** Stop the turn in flight. */
+  /** Stop the run the conversation on screen is running. */
   abort: () => void;
+  /** A stop is on its way to the server. */
+  stopping: boolean;
+  /** The messages the server holds for the Agent to read, and why they wait. */
+  waiting: WaitingArea;
+  /** Take a waiting message back into the box, or delete it. */
+  takeBack: (item: ChatPendingItem, how: 'retract' | 'delete') => void;
   /** The conversations fetched so far here, most recently used first. */
   conversations: ConversationOnTheWire[];
   /** The project has conversations older than the ones listed. */
@@ -157,15 +161,6 @@ const NO_MESSAGES: StoredUiMessage[] = [];
 const NO_CONVERSATIONS: ConversationOnTheWire[] = [];
 
 /**
- * How a session reads its conversation's model at each send (#1363).
- * @param conversationId - The conversation.
- * @returns A reader of its model id, as the picker last set it.
- */
-function modelOfConversation(conversationId: string): () => string | undefined {
-  return () => useConversationRuntime.getState().conversations[conversationId]?.agentModel.id;
-}
-
-/**
  * The chat panel's view of the conversation it is showing.
  *
  * Reading only. What is happening in the conversation — the messages, and the
@@ -202,47 +197,24 @@ export function useChatSession(
     [projectId],
   );
 
-  // The box is emptied when the first frame lands, and the session is what
-  // says so. What separates the press from the first frame is whether
-  // anything of this turn exists anywhere but in this browser: before, the
-  // words are only in the box the user typed them into, and a turn the
-  // server refuses leaves them exactly there with nothing to put back.
-  //
-  // Told rather than watched, because this panel is not always here to watch:
-  // collapsing the column or switching conversations unmounts it while the
-  // turn goes on. A render-time watch would miss the turns whose first frame
-  // lands in that gap, and empty the box a second time for the turns it comes
-  // back to — over whatever the user has typed since.
-  const emptyTheBox = React.useCallback(
-    (id: string) =>
-      (sent: readonly ChatAttachedChip[]): void => {
-        conversationRuntime.setDraft(id, '');
-        // The items the turn carried leave with the words, and only they: an
-        // item attached after the press is for the next message.
-        chatAttachments.removeSent(id, sent);
-      },
-    [],
-  );
-
   const chat = chatSessionFor({
     projectId,
     conversationId,
     history,
     onTitled: noteTitle(conversationId ?? ''),
-    onFirstFrame: emptyTheBox(conversationId ?? ''),
-    modelOf: modelOfConversation(conversationId ?? ''),
-    onRefused: conversationRuntime.askModelListAgain,
   });
   const { messages: onScreen, status, error } = useChat({
     chat,
     throttle: UPDATE_THROTTLE_MS,
   });
-  // The stretch of a send with no turn to carry the wait: the first message in
-  // a project opens a conversation first, and that is a whole request during
-  // which the SDK has not been asked for anything and says it is ready. Left
-  // out, the composer draws a live send button through it.
+  // From the press until the server answered: the first message in a project
+  // opens a conversation first (held by the runtime), and every message waits
+  // for its own answer (held by the live store).
   const sendHeld = useConversationRuntime((s) => s.sendingByProject[projectId] === true);
-  const turnPhase = sendHeld ? 'sending' : phaseOf(status);
+  const sending = useChatLive((s) => (conversationId === undefined ? false : s.sending[conversationId] === true));
+  const stopping = useChatLive((s) => (conversationId === undefined ? false : s.stopping[conversationId] === true));
+  const waiting = useChatWaiting((s) => (conversationId === undefined ? undefined : s.byConversation[conversationId])) ?? NOTHING_WAITING;
+  const turnPhase: TurnPhase = sendHeld || sending ? 'sending' : readingRun(status) ? 'running' : 'idle';
   const navigating = useConversationRuntime((s) => s.navigatingByProject[projectId] === true);
   const loadingMore = useConversationRuntime((s) => s.listLoadingMore[projectId] === true);
   const hasMore = useConversationRuntime((s) =>
@@ -267,6 +239,15 @@ export function useChatSession(
   React.useEffect(() => {
     void conversationRuntime.ensureLoaded(projectId);
   }, [projectId]);
+
+  // The conversation on screen is the one kept in step with the server: it is
+  // synced, and whatever run holds it is read (inner#1717). Collapsing the
+  // column or switching away lets go of it; its run goes on on the server.
+  React.useEffect(() => {
+    if (conversationId === undefined) return undefined;
+    chatLive.show(projectId, conversationId);
+    return (): void => chatLive.hide(conversationId);
+  }, [projectId, conversationId]);
 
   const send = React.useCallback(
     async (draft: string): Promise<void> => {
@@ -295,14 +276,7 @@ export function useChatSession(
         conversationId: opened,
         history: NO_MESSAGES,
         onTitled: noteTitle(opened),
-        onFirstFrame: emptyTheBox(opened),
-        modelOf: modelOfConversation(opened),
-        onRefused: conversationRuntime.askModelListAgain,
       });
-      // Through the session rather than straight at the `Chat`: what a running
-      // turn needs looking after -- the wait for the next beat, and giving up
-      // when none comes -- lives with the session, and a send that went round
-      // it would be a turn nobody was watching.
       // What is above the box goes with it, all of it or not at all: an item
       // still uploading or one that failed holds the send, so what is sent is
       // what the user sees there.
@@ -313,9 +287,17 @@ export function useChatSession(
         chatAttachments.say({ key: 'sendUnavailable' });
         return;
       }
-      await sendInSession(opened, said, attached, clipSpaceContext(spaces, limits, attached));
+      await chatLive.send({
+        projectId,
+        conversationId: opened,
+        words: said,
+        chips: attached,
+        spaces: clipSpaceContext(spaces, limits, attached),
+        // The model as the picker last set it (#1363).
+        model: useConversationRuntime.getState().conversations[opened]?.agentModel.id,
+      });
     },
-    [projectId, noteTitle, emptyTheBox, readSpaces],
+    [projectId, noteTitle, readSpaces],
   );
 
   const answerCard = React.useCallback(
@@ -337,19 +319,30 @@ export function useChatSession(
 
   const answer = React.useCallback(
     (toolCallId: string, answers: AskUserAnswer['answers']): Promise<void> =>
-      answerCard((opened, spaces) => answerInSession(opened, toolCallId, answers, spaces)),
-    [answerCard],
+      answerCard((opened, spaces) =>
+        chatLive.answerCard({ projectId, conversationId: opened, toolCallId, card: { answer: { toolCallId, answers } }, spaces }),
+      ),
+    [answerCard, projectId],
   );
 
   const shareSpaces = React.useCallback(
     (shared: SpaceRequestAnswer): Promise<void> =>
-      answerCard((opened, spaces) => shareSpacesInSession(opened, shared, spaces)),
-    [answerCard],
+      answerCard((opened, spaces) =>
+        chatLive.answerCard({ projectId, conversationId: opened, toolCallId: shared.toolCallId, card: { shared_spaces: shared }, spaces }),
+      ),
+    [answerCard, projectId],
   );
 
   const abort = React.useCallback((): void => {
-    if (conversationId) stopChatSession(conversationId);
-  }, [conversationId]);
+    if (conversationId) void chatLive.stop(projectId, conversationId);
+  }, [projectId, conversationId]);
+
+  const takeBack = React.useCallback(
+    (item: ChatPendingItem, how: 'retract' | 'delete'): void => {
+      if (conversationId) void chatLive.takeBack(projectId, conversationId, item, how);
+    },
+    [projectId, conversationId],
+  );
 
   const loadEarlier = React.useCallback(async (): Promise<void> => {
     if (conversationId) await conversationRuntime.loadEarlier(conversationId);
@@ -385,7 +378,6 @@ export function useChatSession(
     (id: string): Promise<void> => conversationRuntime.remove(projectId, id),
     [projectId],
   );
-
 
   React.useEffect(
     () =>
@@ -432,22 +424,17 @@ export function useChatSession(
   const settledParts = React.useRef(new Map<string, ChatMessage>());
 
   const messages = React.useMemo(() => {
-    // The one the user just sent is held back until the answer starts: the
-    // SDK pushes it and only then says the turn is under way, so a list that
-    // drew everything would put the message up during the wait it is supposed
-    // to be waiting through.
-    const shown = visibleMessages(onScreen, status);
-    const last = shown[shown.length - 1];
+    const last = onScreen[onScreen.length - 1];
     const kept = new Map<StoredUiMessage, ChatMessage[]>();
     const keptParts = new Map<string, ChatMessage>();
-    const out = shown.flatMap((m) => {
+    const out = onScreen.flatMap((m) => {
       // What a user needs announced is a failure they are living through,
       // not every failure the conversation ever had — those come back with the
       // history and would be read out again on every open. What tells the two
       // apart is the session's own error, which is set by the turn that failed
       // and cleared by the next one that starts.
       const justNow = error !== undefined && m === last && m.role === 'assistant';
-      const streaming = status === 'streaming' && m === last && m.role === 'assistant';
+      const streaming = readingRun(status) && m === last && m.role === 'assistant';
       const before = rendered.current.get(m);
       const tail = before?.at(-1);
       // The comparisons matter on the message whose situation has just
@@ -487,6 +474,9 @@ export function useChatSession(
     answer,
     shareSpaces,
     abort,
+    stopping,
+    waiting,
+    takeBack,
     conversations,
     hasMoreConversations,
     loadMoreConversations,

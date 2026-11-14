@@ -5,33 +5,28 @@
  * #1394: the conversation list marks the conversations whose Agent turn is
  * still running, and the mark goes when the turn ends.
  *
- * The first case holds this page's own turn at the network, so the mark comes
- * from the page alone. The second runs a real turn on one page and reads the
- * list on another page of the same user, so the mark comes from the server.
+ * The first case serves this page's own run and holds its stream open, so
+ * the mark comes from the page alone. The second runs a real turn on one page
+ * and reads the list on another page of the same user, so the mark comes from
+ * the server.
  */
-import { expect, type Page, type Route } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
 import { startNewConversation } from '../helpers/conversation';
+import { answerRuns, holdRunStreams } from '../helpers/fake-run';
 import { openSmokeProject } from '../helpers/project';
 
-/**
- * A finished turn the way the server writes one.
- * @returns The response body.
- */
-function finishedTurn(): string {
-  return [
-    { type: 'data-heartbeat', transient: true, data: {} },
-    { type: 'start', messageId: 'm-running-mark' },
-    { type: 'start-step' },
-    { type: 'text-start', id: 't0' },
-    { type: 'text-delta', id: 't0', delta: 'Done.' },
-    { type: 'text-end', id: 't0' },
-    { type: 'finish-step' },
-    { type: 'finish' },
-  ]
-    .map((c) => `data: ${JSON.stringify(c)}\n\n`)
-    .join('');
-}
+/** A finished run the way the server writes one, after its heartbeat. */
+const FINISHED_RUN = [
+  { type: 'start', messageId: 'm-running-mark' },
+  { type: 'start-step' },
+  { type: 'text-start', id: 't0' },
+  { type: 'text-delta', id: 't0', delta: 'Done.' },
+  { type: 'text-end', id: 't0' },
+  { type: 'finish-step' },
+  { type: 'finish' },
+];
+
 
 /**
  * Open the conversation list and read which row is the conversation on screen.
@@ -48,17 +43,10 @@ async function openListAndReadCurrent(page: Page): Promise<string> {
 test('a turn running on this page spins its row in the list and stops when the turn ends', async ({ browser }) => {
   const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
   try {
+    const release = await holdRunStreams(page);
     await openSmokeProject(page);
     await startNewConversation(page);
-
-    let release: (() => void) | undefined;
-    const held = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    await page.route('**/chat/message', async (route: Route) => {
-      await held;
-      await route.fulfill({ status: 200, headers: { 'content-type': 'text/event-stream' }, body: finishedTurn() });
-    });
+    await answerRuns(page, () => FINISHED_RUN);
 
     const composer = page.getByTestId('chat-composer-box');
     await composer.fill('hello');
@@ -67,7 +55,7 @@ test('a turn running on this page spins its row in the list and stops when the t
     const id = await openListAndReadCurrent(page);
     await expect(page.getByTestId(`conversation-running-${id}`)).toBeVisible();
 
-    release?.();
+    await release();
     await expect(page.getByTestId(`conversation-running-${id}`)).toHaveCount(0, { timeout: 10_000 });
   } finally {
     await page.unrouteAll({ behavior: 'ignoreErrors' });

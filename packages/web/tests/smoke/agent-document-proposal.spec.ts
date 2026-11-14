@@ -12,13 +12,14 @@
  * read at the press to the card and back into the document.
  */
 
-import { expect, type Page, type Route } from 'playwright/test';
+import { expect, type Page } from 'playwright/test';
 import type { DocumentProposal } from '@breatic/shared';
 import type { DocumentEditorHandle } from '../../src/spaces/document/document-editor-cache';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { test } from '../helpers/slot';
 import { pressAndSettle } from '../helpers/editor-keys';
 import { startNewConversation } from '../helpers/conversation';
+import { answerRuns, type FakeRuns } from '../helpers/fake-run';
 import { openCommentRail } from '../helpers/document-body';
 import { openSmokeProject } from '../helpers/project';
 import { liveModuleUrl } from '../helpers/live-module';
@@ -36,9 +37,12 @@ interface SentBlock {
 type Propose = (blocks: SentBlock[], spaceId: string) => Record<string, unknown>;
 
 let page: Page;
+/** The fake answering this case's sends. */
+let answering: FakeRuns | undefined;
 const created: string[] = [];
 
 test.beforeEach(async ({ browser }) => {
+  answering = undefined;
   page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
   // Keep late document modules in Resource Timing for liveModuleUrl; a cold
   // editor load exceeds the browser's default resource-entry capacity.
@@ -87,12 +91,11 @@ async function sendTheOpenSpace(): Promise<void> {
  * @param propose - Builds the proposal.
  */
 async function answerWith(propose: Propose): Promise<void> {
-  await page.route('**/chat/message', async (route: Route) => {
-    const sent = route.request().postDataJSON() as { current_space?: { id: string; blocks?: SentBlock[] } };
+  answering = await answerRuns(page, (body) => {
+    const sent = body as { current_space?: { id: string; blocks?: SentBlock[] } };
     const blocks = sent.current_space?.blocks ?? [];
     const output = { placed: true, ...propose(blocks, sent.current_space?.id ?? '') };
-    const chunks = [
-      { type: 'data-heartbeat', transient: true, data: {} },
+    return [
       { type: 'data-conversation-titled', data: { title: 'document proposal' } },
       { type: 'start', messageId: 'm-reply' },
       { type: 'start-step' },
@@ -101,12 +104,16 @@ async function answerWith(propose: Propose): Promise<void> {
       { type: 'finish-step' },
       { type: 'finish' },
     ];
-    await route.fulfill({
-      status: 200,
-      headers: { 'content-type': 'text/event-stream' },
-      body: chunks.map((c) => `data: ${JSON.stringify(c)}\n\n`).join(''),
-    });
   });
+}
+
+/**
+ * Stops answering sends, before the case asks again in a new conversation
+ * with another answer.
+ */
+async function stopAnswering(): Promise<void> {
+  await answering?.stop();
+  answering = undefined;
 }
 
 /**
@@ -264,7 +271,7 @@ test('a comment in a column of a wide table scrolled out of view is scrolled int
   await insert.getByRole('button').last().click();
   await expect(insert).toHaveAttribute('data-state', 'applied');
 
-  await page.unroute('**/chat/message');
+  await stopAnswering();
   await answerWith((blocks, spaceId) => {
     const table = blocks.find((b) => b.type === 'docTable')!;
     return {
@@ -317,7 +324,7 @@ test('a comment in a column of a wide table scrolled out of view is scrolled int
 
   // A cell cut off on the left comes clear of the left edge the same way.
   await rail.getByTestId('doc-comment-rail-close').click();
-  await page.unroute('**/chat/message');
+  await stopAnswering();
   await answerWith((blocks, spaceId) => {
     const table = blocks.find((b) => b.type === 'docTable')!;
     return { ...onSecondBlock({})(blocks, spaceId), kind: 'comment', blockId: table.id, original: table.text, blockType: 'docTable', quote: 'MIDCELL', body: 'Why this shot?' };
@@ -427,7 +434,9 @@ for (const theme of ['light', 'dark'] as const) {
       await expect(card).toHaveAttribute('data-state', 'applied');
       await page.screenshot({ path: test.info().outputPath(`cell-${kind}-${theme}.png`) });
       await page.reload();
-      await expect(page.locator(DOCUMENT_EDITOR)).toBeVisible();
+      // A reload loads the whole page again, which the dev server is slow to
+      // serve while other cases run beside this one.
+      await expect(page.locator(DOCUMENT_EDITOR)).toBeVisible({ timeout: 30_000 });
       await expect.poll(async () => (await proposalState(proposal)).at).toEqual(applied.at);
       await expect(page.locator(`${DOCUMENT_EDITOR} p`).filter({ hasText: /^AGENT_CELL$/ })).toHaveCount(1);
       expect(errors).toEqual([]);
@@ -647,7 +656,7 @@ test('Locate brings a comment\'s quoted words in a long, wide table into view an
   await insert.getByRole('button', { name: 'Insert' }).click();
   await expect(insert).toHaveAttribute('data-state', 'applied');
 
-  await page.unroute('**/chat/message');
+  await stopAnswering();
   await answerWith((blocks, spaceId) => {
     const table = blocks.find((b) => b.type === 'docTable')!;
     return { ...onSecondBlock({})(blocks, spaceId), kind: 'comment', blockId: table.id, original: table.text, blockType: 'docTable', quote: 'DEEPCELL', body: 'Hold this shot longer.' };

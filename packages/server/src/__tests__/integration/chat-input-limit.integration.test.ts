@@ -18,13 +18,16 @@
 import { initConfiguredProvider } from "@breatic/integration-tests/provider";
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
 
-// `ai` is stubbed: the real SDK is replaced with a double that reaches no
-// network, so this suite needs no API key and the SDK stays out of its
-// module graph.
-vi.mock("ai", () => ({
+// `ai`'s model calls are stubbed with a double that reaches no network, so
+// this suite needs no API key.
+vi.mock("ai", async (importOriginal) => ({
+  // The run builds its stream with the SDK's own `createUIMessageStream`, so
+  // only the model calls are replaced (inner#1717).
+  ...(await importOriginal<Record<string, unknown>>()),
   generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
   streamText: () => ({
     fullStream: (async function* () {})(),
+    toUIMessageStream: () => new ReadableStream({ start: (c) => c.close() }),
     text: Promise.resolve(""),
     usage: Promise.resolve({ totalTokens: 0 }),
     totalUsage: Promise.resolve({ totalTokens: 0 }),
@@ -45,6 +48,7 @@ import {
 } from "@breatic/core";
 import type { Hono } from "hono";
 import { attachmentMarker, attachmentSection } from "@breatic/shared";
+import { sendAndRead, type SentAndRead } from "./chat-run-harness.js";
 
 try {
   initCore(process.env);
@@ -118,22 +122,18 @@ async function seedOwner(): Promise<Seeded> {
 }
 
 /**
- * Post to the chat entrance.
- * @param path - The entrance.
+ * Post to the chat entrance and read the run it opens to its end.
+ * @param _path - The entrance.
  * @param body - The request body.
  * @param cookie - The session cookie.
- * @returns The raw response.
+ * @returns The status, the JSON answer and the run's frames.
  */
 async function post(
-  path: "/api/v1/chat/message",
+  _path: "/api/v1/chat/message",
   body: Record<string, unknown>,
   cookie: string,
-): Promise<Response> {
-  return app.request(path, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Cookie: cookie },
-    body: JSON.stringify(body),
-  });
+): Promise<SentAndRead> {
+  return sendAndRead(app, cookie, body);
 }
 
 /**
@@ -402,7 +402,7 @@ describe("what one turn may carry of the user's Spaces (inner#1413)", () => {
     // Named by its length, so this is the limit refusing it and not the
     // request's shape.
     expect(res.status).toBe(422);
-    const body = (await res.json()) as { error: { message: string } };
+    const body = res.json as { error: { message: string } };
     expect(body.error.message).toContain(new Intl.NumberFormat("en").format(getAgentConfig().current_space_max_chars + 1));
   });
 
@@ -438,7 +438,7 @@ describe("what one turn may carry of the user's Spaces (inner#1413)", () => {
     );
 
     expect(res.status).toBe(422);
-    const body = (await res.json()) as { error: { message: string } };
+    const body = res.json as { error: { message: string } };
     expect(body.error.message).toContain(String(getAgentConfig().space_list_max_items + 1));
   });
 });
@@ -496,7 +496,7 @@ describe("what one turn may carry of an open document's blocks (inner#1509)", ()
     );
 
     expect(res.status).toBe(422);
-    const body = (await res.json()) as { error: { message: string } };
+    const body = res.json as { error: { message: string } };
     expect(body.error.message).toContain(new Intl.NumberFormat("en").format(getAgentConfig().current_space_max_chars + 1));
   });
 });

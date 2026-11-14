@@ -10,6 +10,9 @@ import { resetProjectUiStores } from '@web/stores/reset-project-ui';
 import { useUIStore } from '@web/stores/ui';
 import { canvasSessions } from '@web/stores/canvas-session';
 import { toast } from '@web/lib/toast';
+import { chatApi } from '@web/data/api/chat';
+import { chatLive, resetChatLiveForTests } from '@web/stores/chat-live';
+import { settle, stubRunWire } from '@web/test-utils/chat-run-wire';
 
 /**
  * #1771 — leaving a project must clear its per-user UI session state so re-entry
@@ -100,24 +103,25 @@ describe('resetProjectUiStores (#1771)', () => {
 
   /**
    * The conversation runtime is not one of the four above: what it holds is a
-   * turn that may be running and a list of messages, neither of which is
-   * panel state. It is torn down from the same place because leaving is the
-   * same act -- and because this one line is the only thing that stops a turn
-   * for a project the user has walked away from. What the runtime does when
-   * it is told to is pinned in its own file; what is pinned here is that it
-   * gets told at all.
+   * run's stream that may be being read and a list of messages, neither of
+   * which is panel state. It is torn down from the same place because leaving
+   * is the same act. The run itself is the server's and goes on there
+   * (inner#1717); what leaving owes is to let go of its stream without a stop
+   * request and to forget the conversation. What the runtime does when it is
+   * told to is pinned in its own file; what is pinned here is that it gets
+   * told at all.
    */
   it('tells the conversation runtime the project is being left', async () => {
     _resetForTests();
     evictAllChatSessions();
-    let sent: AbortSignal | undefined;
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (_url: string, init?: RequestInit) => {
-        sent = init?.signal ?? undefined;
-        return new Promise<Response>(() => {});
-      }),
-    );
+    const wire = stubRunWire();
+    vi.spyOn(chatApi, 'streamConfig').mockResolvedValue({
+      heartbeatIntervalMs: 5000, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000,
+      spaceListMaxItems: 200, spaceReadTimeoutMs: 20_000, runningPollIntervalMs: 5000, syncIntervalMs: 3000,
+    });
+    vi.spyOn(chatApi, 'sync').mockResolvedValue({ pending: [], running: true, awaiting: false, next_sync_ms: 3000 });
+    vi.spyOn(chatApi, 'readConversation').mockResolvedValue({ conversation: { id: 'c-1' } as never, messages: [], hasMore: false });
+    vi.spyOn(chatApi, 'stop').mockResolvedValue({ stopped: true });
     useConversationRuntime.setState({
       conversations: {
         'c-1': {
@@ -132,24 +136,25 @@ describe('resetProjectUiStores (#1771)', () => {
       currentByProject: { 'project-1': 'c-1' },
       openStatus: { 'project-1': 'ready' },
     });
-    void chatSessionFor({
-      projectId: 'project-1',
-      conversationId: 'c-1',
-      history: [],
-      onTitled: () => undefined,
-      onFirstFrame: () => undefined,
-    }).sendMessage({ text: '在跑的一轮' });
-    await vi.waitFor(() => {
-      expect(sent).toBeDefined();
-    });
+    chatSessionFor({ projectId: 'project-1', conversationId: 'c-1', history: [], onTitled: () => undefined });
+    chatLive.show('project-1', 'c-1');
+    await settle();
+    expect(wire.streams()).toHaveLength(1);
 
     resetProjectUiStores('project-1');
+    // Read before the panel's own cleanup, which lets go of the stream too:
+    // what is pinned is that leaving the project does, by itself.
+    const abandoned = wire.last()?.abandoned();
+    // The chat panel unmounts in the same commit, and stops showing it.
+    chatLive.hide('c-1');
+    await settle();
 
-    // Stopped, because once the project is off the screen there is no stop
-    // button anywhere for this turn.
-    expect(sent?.aborted).toBe(true);
+    expect(abandoned).toBe(true);
+    expect(chatApi.stop).not.toHaveBeenCalled();
     expect(useConversationRuntime.getState().conversations['c-1']).toBeUndefined();
     expect(useConversationRuntime.getState().openStatus['project-1']).toBeUndefined();
+    resetChatLiveForTests();
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
 });

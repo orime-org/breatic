@@ -155,16 +155,10 @@ beforeEach(() => {
 });
 
 describe("the segment resumed by shared Spaces", () => {
-  it("tells the browser the call is answered with what the store holds, ahead of the reply", async () => {
+  it("sends the browser no copy of the answer and none of the shared content (ST-14)", async () => {
     const chunks = await resume(SUMMARY);
-    const first = chunks.findIndex((c) => c.type === "tool-output-available");
-    expect(chunks[first]).toEqual({
-      type: "tool-output-available",
-      toolCallId: "req-1",
-      output: SUMMARY,
-    });
+    expect(chunks.some((c) => c.type === "tool-output-available")).toBe(false);
     expect(JSON.stringify(chunks)).not.toContain("THE CAST LIST");
-    expect(first).toBeLessThan(chunks.findIndex((c) => c.type === "text-delta"));
   });
 
   it("sends the model the shared content, from the paused reply's kept copy", async () => {
@@ -181,12 +175,8 @@ describe("the segment resumed by shared Spaces", () => {
 });
 
 describe("the segment resumed by a refusal", () => {
-  it("tells the browser the call is answered as declined", async () => {
+  it("sends the browser no copy of the refusal (ST-14)", async () => {
     const chunks = await resume({ declined: true });
-    expect(chunks.find((c) => c.type === "tool-output-available")).toEqual({
-      type: "tool-output-available",
-      toolCallId: "req-1",
-      output: { declined: true },
-    });
+    expect(chunks.some((c) => c.type === "tool-output-available")).toBe(false);
   });
 });

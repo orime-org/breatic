@@ -420,6 +420,14 @@ export const spaceRequestAnswerSchema = z.discriminatedUnion("decision", [
 ]);
 
 export const chatMessageSchema = z.object({
+  /**
+   * The message's id, made by the page when the user pressed send and sent
+   * again unchanged on a resend (inner#1717): the queue answers a resend it
+   * has seen as a duplicate, and the user row it opens a run with, or the
+   * reply part it is taken in as, is keyed by it. Required
+   * on a new message; a card's answer carries none.
+   */
+  id: z.string().uuid().optional(),
   /** What the user wrote; empty when the request carries `answer` instead. */
   message: z.string(),
   project_id: z.string().uuid(),
@@ -474,6 +482,9 @@ export const chatMessageSchema = z.object({
 }).superRefine((value, ctx) => {
   if (value.answer === undefined && value.shared_spaces === undefined && value.message.length === 0) {
     ctx.addIssue({ code: "custom", path: ["message"], message: "A message needs words." });
+  }
+  if (value.answer === undefined && value.shared_spaces === undefined && value.id === undefined) {
+    ctx.addIssue({ code: "custom", path: ["id"], message: "A new message carries its id.", params: REQUEST_SHAPE_PARAMS });
   }
   if (value.answer !== undefined && value.message.length > 0) {
     ctx.addIssue({ code: "custom", path: ["message"], message: "An answer to a questionnaire carries no message." });
@@ -1002,6 +1013,52 @@ export const chatRunningQuerySchema = z.object({
 export interface ChatRunningAnswer {
   /** Each conversation once, in no particular order. */
   conversation_ids: string[];
+}
+
+/** One message waiting in a conversation's queue, as the waiting area draws it (inner#1717). */
+export interface ChatPendingItem {
+  id: string;
+  /** When the user sent it. */
+  sentAt: string;
+  /** What they typed. */
+  words: string;
+  /** What they attached, which taking it back puts back above the box. */
+  chips: ChatAttachedChip[];
+}
+
+/** What `POST /chat/message` answers once a message or a card's answer is in (inner#1717). */
+export interface ChatSendAnswer {
+  /** `start`: it opened a run; `queued`: a run holds the conversation; `duplicate`: it was in already. */
+  status: "start" | "queued" | "duplicate";
+  /** The messages still waiting, the one a run opened with not among them. */
+  pending: ChatPendingItem[];
+  /** Whether a run holds the conversation, so there is a stream to attach to. */
+  running: boolean;
+}
+
+/** What `POST /chat/conversations/:id/sync` answers (inner#1717). */
+export interface ChatSyncAnswer {
+  pending: ChatPendingItem[];
+  running: boolean;
+  /** A card waits for the user's answer. */
+  awaiting: boolean;
+  /** Present when what waits could not open a run because the balance cannot pay for it. */
+  blocked?: "credits";
+  /** When to ask again, in milliseconds. */
+  next_sync_ms: number;
+}
+
+/** What `POST /chat/stop` answers: whether a run was there to stop (inner#1717). */
+export interface ChatStopAnswer {
+  stopped: boolean;
+}
+
+/**
+ * What taking a waiting message back answers (inner#1717): `removed` while it
+ * waited, `taken` once a run has read it, `gone` when it is nowhere.
+ */
+export interface ChatQueueRemoveAnswer {
+  status: "removed" | "taken" | "gone";
 }
 
 /**

@@ -25,6 +25,7 @@ import {
   db,
   conversations,
   conversationMessages,
+  ConflictError,
   getAgentConfig,
   NotFoundError,
   type ActivityCursor,
@@ -32,6 +33,7 @@ import {
 import type { DbTx } from "@breatic/core";
 import { ASK_USER, RECORD_TOOL_NAMES } from "@breatic/domain";
 import { t } from "@breatic/shared";
+import { asStorable } from "@server/utils/storable-text.js";
 import type { MessageData, MessageInput, MessagePart } from "@breatic/shared";
 
 /** Trusted HTTP identity accompanying a first accepted card answer. */
@@ -111,6 +113,8 @@ function toMessageData(row: StoredRow): MessageData {
  *   turns replay it as it is. Absent on a user message, whose copy
  *   `setUserForModel` writes once the turn has assembled its request, and on
  *   a reply whose turn never asked the model
+ * @param rowId - The id to store it under: a reply keeps the one its stream
+ *   was opened with, so the page that drew it reads it back under that id
  * @returns The turn index this message went into — callers billing by turn
  *   need this exact number and recomputing it later would race
  * @throws {NotFoundError} if the conversation does not exist or is soft-deleted.
@@ -121,8 +125,8 @@ function toMessageData(row: StoredRow): MessageData {
  *   not stop the billing: a failure there is recorded and the turn still settles, having
  *   already spent whatever its finished steps spent.
  */
-export async function addMessage(id: string, message: MessageInput, forModel?: unknown): Promise<number> {
-  return db.transaction(async (tx) => insertIn(tx, id, message, forModel));
+export async function addMessage(id: string, message: MessageInput, forModel?: unknown, rowId?: string): Promise<number> {
+  return db.transaction(async (tx) => insertIn(tx, id, message, forModel, rowId));
 }
 
 /**
@@ -135,10 +139,11 @@ export async function addMessage(id: string, message: MessageInput, forModel?: u
  * @param id - Conversation UUID.
  * @param message - The message.
  * @param forModel - The reply as it was sent to the model.
+ * @param rowId - The id to write the row under, when it has one of its own.
  * @returns The turn index the message went into.
  * @throws {NotFoundError} if the conversation does not exist or is soft-deleted.
  */
-async function insertIn(tx: DbTx, id: string, message: MessageInput, forModel?: unknown): Promise<number> {
+async function insertIn(tx: DbTx, id: string, message: MessageInput, forModel?: unknown, rowId?: string): Promise<number> {
   const owner = await tx
     .select({ userId: conversations.userId })
     .from(conversations)
@@ -183,13 +188,14 @@ async function insertIn(tx: DbTx, id: string, message: MessageInput, forModel?: 
   const seq = seqRows[0]?.maxSeq == null ? 0 : seqRows[0].maxSeq + 1;
 
   await tx.insert(conversationMessages).values({
+    ...(rowId === undefined ? {} : { id: rowId }),
     conversationId: id,
     userId: owner[0].userId,
     role: message.role,
     turnIndex,
     seq,
-    parts: message.parts,
-    ...(forModel === undefined ? {} : { forModel }),
+    parts: asStorable(message.parts),
+    ...(forModel === undefined ? {} : { forModel: asStorable(forModel) }),
   });
 
   await tx
@@ -228,11 +234,11 @@ async function settleInRow(
   settlement: AskSettlement,
 ): Promise<{ id: string; parts: MessagePart[]; forModel: unknown }> {
   const parts = row.parts.map((part) =>
-    part.type === "tool" && part.toolCallId === toolCallId ? { ...part, status: "success" as const, output: settlement.output } : part,
+    part.type === "tool" && part.toolCallId === toolCallId ? { ...part, status: "success" as const, output: asStorable(settlement.output) } : part,
   );
   const kept = row.forModel as { messages?: unknown[] } | null;
   const forModel =
-    kept && Array.isArray(kept.messages) ? { ...kept, messages: [...kept.messages, settlement.forModel] } : kept;
+    kept && Array.isArray(kept.messages) ? { ...kept, messages: [...kept.messages, asStorable(settlement.forModel)] } : kept;
   await tx.update(conversationMessages).set({ parts, forModel }).where(eq(conversationMessages.id, row.id));
   return { id: row.id, parts, forModel };
 }
@@ -249,16 +255,35 @@ async function settleInRow(
  * @param message - The user's message.
  * @param settle - The settlement for a waiting call, given its id and its
  *   tool's name, which the result the model reads is filed under.
+ * @param opts - How the row is written.
+ * @param opts.messageId - The id the page sent the message with (inner#1717):
+ *   the row is written under it, and a row already written under it in this
+ *   conversation is handed back as it is, so a run that opens again after a
+ *   crash answers the row its predecessor wrote instead of writing another.
  * @returns The turn index the message opened, and the calls it closed.
  * @throws {NotFoundError} if the conversation does not exist or is soft-deleted.
+ * @throws {ConflictError} if the id names a row no new message can take
+ *   (`refusesNewMessageId`).
  */
 export async function addUserMessage(
   id: string,
   message: MessageInput,
   settle: (toolCallId: string, toolName: string) => AskSettlement,
+  opts: { messageId?: string } = {},
 ): Promise<{ turnIndex: number; closedAsks: string[] }> {
   return db.transaction(async (tx) => {
-    const turnIndex = await insertIn(tx, id, message);
+    if (opts.messageId !== undefined) {
+      const [held] = await tx
+        .select({ conversationId: conversationMessages.conversationId, role: conversationMessages.role, turnIndex: conversationMessages.turnIndex })
+        .from(conversationMessages)
+        .where(eq(conversationMessages.id, opts.messageId))
+        .limit(1);
+      if (held !== undefined) {
+        if (refusesNewMessageId(held, id)) throw new ConflictError(t("server.error.conflict"));
+        return { turnIndex: held.turnIndex, closedAsks: [] };
+      }
+    }
+    const turnIndex = await insertIn(tx, id, message, undefined, opts.messageId);
     const asking = await tx
       .select({ id: conversationMessages.id, parts: conversationMessages.parts, forModel: conversationMessages.forModel })
       .from(conversationMessages)
@@ -283,6 +308,48 @@ export async function addUserMessage(
     }
     return { turnIndex, closedAsks };
   });
+}
+
+/**
+ * Which of the messages a dead run left taken a stored reply already
+ * answered, and the turn of each that has a user row and no reply
+ * (inner#1717). Answered is one the conversation's newest reply holds as a
+ * message taken in mid-turn, or one whose user row's turn has a reply.
+ * @param id - Conversation UUID.
+ * @param ids - The taken messages' ids.
+ * @returns The answered ids, and the unanswered ones' turns by id.
+ */
+export async function takenStatus(
+  id: string,
+  ids: readonly string[],
+): Promise<{ answered: Set<string>; unansweredRows: Map<string, number> }> {
+  const answered = new Set<string>();
+  const unansweredRows = new Map<string, number>();
+  if (ids.length === 0) return { answered, unansweredRows };
+  const [newest] = await db
+    .select({ parts: conversationMessages.parts })
+    .from(conversationMessages)
+    .where(and(eq(conversationMessages.conversationId, id), eq(conversationMessages.role, "assistant"), isNull(conversationMessages.deletedAt)))
+    .orderBy(desc(conversationMessages.turnIndex), desc(conversationMessages.seq))
+    .limit(1);
+  const inNewest = new Set((newest?.parts ?? []).flatMap((p) => (p.type === "user-message" ? [p.id] : [])));
+  const rows = await db.execute<{ id: string; turn_index: number; replied: boolean }>(sql`
+    SELECT u.id, u.turn_index,
+           EXISTS (
+             SELECT 1 FROM conversation_messages r
+             WHERE r.conversation_id = u.conversation_id AND r.turn_index = u.turn_index
+               AND r.role = 'assistant' AND r.deleted_at IS NULL
+           ) AS replied
+    FROM conversation_messages u
+    WHERE u.conversation_id = ${id} AND u.role = 'user' AND u.deleted_at IS NULL
+      AND u.id = ANY(${textArray(ids)}::uuid[])
+  `);
+  for (const taken of ids) if (inNewest.has(taken)) answered.add(taken);
+  for (const row of rows) {
+    if (row.replied) answered.add(row.id);
+    else if (!answered.has(row.id)) unansweredRows.set(row.id, row.turn_index);
+  }
+  return { answered, unansweredRows };
 }
 
 /** How an answer to a waiting question was taken. */
@@ -350,6 +417,36 @@ export async function answerWaitingAsk(
 }
 
 /**
+ * Whether a row already written under an id keeps a new message of this
+ * conversation from taking it: only the same message, a user row of this
+ * conversation, may be written again under its own id.
+ * @param held - The row under that id.
+ * @param held.conversationId - Its conversation.
+ * @param held.role - Its role.
+ * @param conversationId - The conversation the new message is sent to.
+ * @returns True when the id is not the new message's to take.
+ */
+function refusesNewMessageId(held: { conversationId: string; role: string }, conversationId: string): boolean {
+  return held.conversationId !== conversationId || held.role !== "user";
+}
+
+/**
+ * Whether a new message of a conversation cannot be written under this id.
+ * @param conversationId - The conversation it is sent to.
+ * @param messageId - The id it carries.
+ * @returns True when a row of another conversation, or a row that is not a
+ *   user message, already has that id.
+ */
+export async function messageIdRefused(conversationId: string, messageId: string): Promise<boolean> {
+  const [held] = await db
+    .select({ conversationId: conversationMessages.conversationId, role: conversationMessages.role })
+    .from(conversationMessages)
+    .where(eq(conversationMessages.id, messageId))
+    .limit(1);
+  return held !== undefined && refusesNewMessageId(held, conversationId);
+}
+
+/**
  * The model the turn that made this call started on (#1363) and the upstream
  * that served it (inner#1743), as its reply records them.
  * @param id - Conversation UUID.
@@ -389,7 +486,7 @@ export async function getReplyRun(id: string, toolCallId: string): Promise<{ mod
 export async function setUserForModel(id: string, turnIndex: number, forModel: unknown): Promise<void> {
   await db
     .update(conversationMessages)
-    .set({ forModel })
+    .set({ forModel: asStorable(forModel) })
     .where(
       and(
         eq(conversationMessages.conversationId, id),
@@ -635,8 +732,17 @@ function searchable(scope: {
   turnIndex: number;
   conversationId?: string;
 }): SQL {
+  const where = sql`
+    c.user_id = ${scope.userId} AND c.project_id = ${scope.projectId}
+      AND c.deleted_at IS NULL AND m.deleted_at IS NULL
+      AND NOT (m.conversation_id = ${scope.currentConversationId} AND m.turn_index >= ${scope.turnIndex})
+      ${scope.conversationId === undefined ? sql`` : sql`AND m.conversation_id = ${scope.conversationId}`}`;
+  // A message the user sent while a turn ran is kept inside the reply that
+  // read it, and found as a message of its own: the user's, at the time they
+  // sent it, under its own id, which is what the page's keyset orders by
+  // (inner#1717). The reply's own words leave it out (`searchableWords`).
   return sql`
-    SELECT m.id, m.conversation_id, m.turn_index, m.role, m.created_at, c.title,
+    SELECT m.id, m.conversation_id, m.turn_index, m.role::text AS role, m.created_at, c.title,
            coalesce((
              SELECT string_agg(w.words, ' ' ORDER BY w.ord)
              FROM (
@@ -647,10 +753,21 @@ function searchable(scope: {
            ), '') AS body
     FROM conversation_messages m
     JOIN conversations c ON c.id = m.conversation_id
-    WHERE c.user_id = ${scope.userId} AND c.project_id = ${scope.projectId}
-      AND c.deleted_at IS NULL AND m.deleted_at IS NULL
-      AND NOT (m.conversation_id = ${scope.currentConversationId} AND m.turn_index >= ${scope.turnIndex})
-      ${scope.conversationId === undefined ? sql`` : sql`AND m.conversation_id = ${scope.conversationId}`}
+    WHERE ${where}
+    UNION ALL
+    SELECT (u.part->>'id')::uuid AS id, m.conversation_id, m.turn_index, 'user' AS role,
+           (u.part->>'sentAt')::timestamptz AS created_at, c.title,
+           coalesce((
+             SELECT string_agg(w.words, ' ' ORDER BY w.ord)
+             FROM (
+               SELECT q.ord, ${searchableWords(sql`q.part`)} AS words
+               FROM jsonb_array_elements(u.part->'parts') WITH ORDINALITY AS q(part, ord)
+             ) w
+           ), '') AS body
+    FROM conversation_messages m
+    JOIN conversations c ON c.id = m.conversation_id
+    CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(m.parts) = 'array' THEN m.parts END) AS u(part)
+    WHERE ${where} AND u.part->>'type' = 'user-message'
   `;
 }
 

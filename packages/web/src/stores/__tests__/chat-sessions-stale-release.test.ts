@@ -2,22 +2,12 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * A turn the server refuses for its shape is checked against the live build
- * before the panel says anything about it, so an out-of-date page has
- * silenced the panel's toast by the time the turn settles.
+ * A message the server refuses for its shape is checked against the live
+ * build before the panel says anything about it, so an out-of-date page has
+ * silenced the panel's toast by the time the send settles.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as AssetsApiModule from '@web/data/api/assets';
-
-vi.mock('@web/data/api/chat', () => ({
-  chatApi: {
-    streamConfig: vi.fn(async () => ({
-      heartbeatIntervalMs: 60_000,
-      attachmentMaxChars: 200_000,
-      attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200,
-    })),
-  },
-}));
 
 // Chat sends every body through bodyOrTransfer, which first asks for the
 // upload config. Answer it here with the shipped request-body limit, so the
@@ -46,26 +36,40 @@ const order: string[] = [];
 const checkStaleRelease = vi.hoisted(() => vi.fn());
 vi.mock('@web/data/deployment/stale-release', () => ({ checkStaleRelease }));
 
-const { chatSessionFor, evictAllChatSessions, sendInSession } = await import(
-  '@web/stores/chat-sessions'
-);
+const { AxiosError } = await import('axios');
+const { request } = await import('@web/data/api/request');
+const { chatSessionFor, evictAllChatSessions } = await import('@web/stores/chat-sessions');
+const { chatLive, resetChatLiveForTests } = await import('@web/stores/chat-live');
+const { resetRunOnceForTests } = await import('@web/stores/task-actions-in-flight');
 const { watchChatMishaps } = await import('@web/stores/chat-mishaps');
 
-const original = globalThis.fetch;
+const originalAdapter = request.defaults.adapter;
 let stopWatching = (): void => undefined;
 
 /**
- * Answer every request with an error envelope.
+ * Answer every request through axios with an error envelope, so the send
+ * meets the response interceptor that checks the build.
  * @param error - The envelope's `error` object.
  */
 function refuseWith(error: Record<string, unknown>): void {
-  globalThis.fetch = (() =>
-    Promise.resolve(
-      new Response(JSON.stringify({ error }), {
+  request.defaults.adapter = (config) =>
+    Promise.reject(
+      new AxiosError('Request failed', 'ERR_BAD_REQUEST', config, null, {
         status: Number(error.code),
-        headers: { 'Content-Type': 'application/json' },
+        statusText: 'Unprocessable Entity',
+        headers: {},
+        config,
+        data: { error },
       }),
-    )) as typeof globalThis.fetch;
+    );
+}
+
+/**
+ * Send "hello" to c-1.
+ * @returns How the send ended.
+ */
+function send(): ReturnType<typeof chatLive.send> {
+  return chatLive.send({ projectId: 'p-1', conversationId: 'c-1', words: 'hello', chips: [], spaces: {} });
 }
 
 beforeEach(() => {
@@ -82,20 +86,22 @@ beforeEach(() => {
     conversationId: 'c-1',
     history: [],
     onTitled: () => undefined,
-    onFirstFrame: () => undefined,
   });
 });
 
 afterEach(() => {
   stopWatching();
-  globalThis.fetch = original;
+  request.defaults.adapter = originalAdapter;
+  resetChatLiveForTests();
+  resetRunOnceForTests();
+  evictAllChatSessions();
   vi.restoreAllMocks();
 });
 
-describe('a refused turn on a page that may be out of date', () => {
+describe('a refused message on a page that may be out of date', () => {
   it('checks the build with the mark the server set, before telling the user', async () => {
     refuseWith({ code: 422, message: 'Invalid input', reason: 'request_shape' });
-    await sendInSession('c-1', 'hello');
+    await send();
     await vi.waitFor(() => expect(order).toContain('told'));
     expect(checkStaleRelease).toHaveBeenCalledWith('request_shape');
     expect(order).toEqual(['checked', 'told']);
@@ -103,7 +109,7 @@ describe('a refused turn on a page that may be out of date', () => {
 
   it('hands a business refusal to the check unmarked', async () => {
     refuseWith({ code: 422, message: 'Message too long' });
-    await sendInSession('c-1', 'hello');
+    await send();
     await vi.waitFor(() => expect(order).toContain('told'));
     expect(checkStaleRelease).toHaveBeenCalledWith(undefined);
   });

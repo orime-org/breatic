@@ -4,20 +4,19 @@
 /**
  * Which of a user's conversations have an Agent turn running (#1394).
  *
- * A turn runs inside one SSE request on whichever server instance took it, so
+ * A run goes on in the background on whichever server instance opened it, so
  * other tabs and devices of the same user can only learn of it from Redis.
- * Each running turn holds one member of a sorted set keyed by user and
- * project, scored by the moment it stops counting; the turn renews it on every
- * heartbeat and removes it when it ends. A process that dies stops renewing,
- * and its member runs out within one lease.
+ * Each run holds one member of a sorted set keyed by user and project, named
+ * `conversation id:run id` and scored by the moment it stops counting; the run
+ * holds it from its opening stage, renews it with its hold on the conversation
+ * and removes it once settled, whoever is reading (inner#1717). A process that
+ * dies stops renewing, and its member runs out within one lease.
  *
- * The lease is the heartbeat interval times the beats a browser lets go
- * missing: the same span after which a browser declares the stream gone.
+ * The lease is `chat_run_lease_ms`, the same span a run holds its
+ * conversation for.
  */
 
-import { randomUUID } from "node:crypto";
 import { env, getAgentConfig, getRedis } from "@breatic/core";
-import { SSE_HEARTBEAT_MISSES_ALLOWED } from "@breatic/shared";
 
 /** One running turn's hold on its conversation's place in the set. */
 export interface RunningLease {
@@ -39,7 +38,7 @@ interface RunningScope {
  * @throws {never} Never.
  */
 function leaseMs(): number {
-  return getAgentConfig().sse_heartbeat_interval_ms * SSE_HEARTBEAT_MISSES_ALLOWED;
+  return getAgentConfig().chat_run_lease_ms;
 }
 
 /**
@@ -76,14 +75,15 @@ async function writeLease(key: string, member: string, onlyExisting: boolean): P
  * @param scope.userId - The user the turn belongs to.
  * @param scope.projectId - The project the conversation is in.
  * @param scope.conversationId - The conversation.
- * @returns The lease, to renew on every heartbeat and release when the turn ends.
+ * @param scope.runId - The run that holds it.
+ * @returns The lease, to renew with the run's hold and release once it is settled.
  * @throws {Error} When Redis refuses or cannot be reached.
  */
-export async function holdRunning(scope: RunningScope & { conversationId: string }): Promise<RunningLease> {
+export async function holdRunning(scope: RunningScope & { conversationId: string; runId: string }): Promise<RunningLease> {
   const key = keyOf(scope);
-  // One member per turn: two tabs running the same conversation hold two, and
-  // the first to finish does not take the other's mark away.
-  const member = `${scope.conversationId}:${randomUUID()}`;
+  // One member per run: a run that goes straight on to the next holds the
+  // next one's before letting its own go, and neither takes the other's away.
+  const member = `${scope.conversationId}:${scope.runId}`;
   await writeLease(key, member, false);
   return {
     renew: () => writeLease(key, member, true),

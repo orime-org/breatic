@@ -15,16 +15,22 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type * as ChatApiModule from '@web/data/api/chat';
 
-vi.mock('@web/data/api/chat', async (importOriginal) => ({
-  ...(await importOriginal<typeof ChatApiModule>()),
-  chatApi: {
-    streamConfig: vi.fn(async () => ({ heartbeatIntervalMs: 5000, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200 })),
-    openChat: vi.fn(),
-    messagesBefore: vi.fn(),
-    readConversation: vi.fn(),
-    listConversations: vi.fn(),
-  },
-}));
+vi.mock('@web/data/api/chat', async (importOriginal) => {
+  const actual = await importOriginal<typeof ChatApiModule>();
+  return {
+    ...actual,
+    chatApi: {
+      streamPath: actual.chatApi.streamPath,
+      streamConfig: vi.fn(async () => ({ heartbeatIntervalMs: 5000, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200 })),
+      openChat: vi.fn(),
+      messagesBefore: vi.fn(),
+      readConversation: vi.fn(),
+      listConversations: vi.fn(),
+      sync: vi.fn(async () => ({ pending: [], running: false, awaiting: false, next_sync_ms: 3000 })),
+      stop: vi.fn(async () => ({ stopped: true })),
+    },
+  };
+});
 
 const toastSpy = vi.hoisted(() => ({ error: vi.fn() }));
 vi.mock('@web/lib/toast', () => ({ toast: { error: toastSpy.error, warning: vi.fn(), success: vi.fn(), info: vi.fn() } }));
@@ -39,27 +45,33 @@ import {
 } from '@web/stores/conversation-runtime';
 import { watchChatMishaps } from '@web/stores/chat-mishaps';
 import type { ChatMishap } from '@web/stores/chat-mishaps';
-import { chatSessionFor, evictAllChatSessions, sendInSession } from '@web/stores/chat-sessions';
+import { chatSessionFor, evictAllChatSessions } from '@web/stores/chat-sessions';
+import { chatLive, resetChatLiveForTests } from '@web/stores/chat-live';
+import { settle, stubRunWire, type RunWire } from '@web/test-utils/chat-run-wire';
 
-/** 这一轮请求拿到的中止信号。 */
-let sent: AbortSignal | null | undefined;
+/** The run streams the page reads. */
+let wire: RunWire;
 
 /**
- * 在一条会话里开一轮，并等到请求真的出去了。
- * @param conversationId - 哪一条。
+ * Attach to a run that holds a conversation, as the page does for the one on
+ * screen (inner#1717), and wait until its stream is being read. The history
+ * read back before attaching is what the store already holds, so it joins
+ * onto the list and changes nothing there.
+ * @param conversationId - Which one.
  */
-async function aTurnIsRunningIn(conversationId: string): Promise<void> {
-  chatSessionFor({
-    projectId: 'p-1',
-    conversationId,
-    history: [],
-    onTitled: () => undefined,
-    onFirstFrame: () => undefined,
-  });
-  void sendInSession(conversationId, '一个要答很久的问题');
-  await vi.waitFor(() => {
-    expect(sent).toBeDefined();
-  });
+async function aRunIsReadIn(conversationId: string): Promise<void> {
+  const held = useConversationRuntime.getState().conversations[conversationId];
+  const history = held?.messages ?? [];
+  chatSessionFor({ projectId: 'p-1', conversationId, history, onTitled: () => undefined });
+  vi.mocked(chatApi.readConversation).mockResolvedValueOnce({
+    conversation: { id: conversationId },
+    messages: history,
+    hasMore: held?.hasMore ?? false,
+  } as unknown as Awaited<ReturnType<typeof chatApi.readConversation>>);
+  vi.mocked(chatApi.sync).mockResolvedValueOnce({ pending: [], running: true, awaiting: false, next_sync_ms: 3000 });
+  chatLive.show('p-1', conversationId);
+  await settle();
+  expect(wire.streams().filter((x) => x.conversationId === conversationId)).toHaveLength(1);
 }
 
 /**
@@ -97,22 +109,12 @@ beforeEach(() => {
   vi.clearAllMocks();
   _resetForTests();
   evictAllChatSessions();
-  sent = undefined;
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async (_url: string, init?: RequestInit) => {
-      sent = init?.signal;
-      // 永不结束，跟真的那条一样：socket 不关它就不结束。一调用就 resolve 的
-      // 替身会当场跑完这一轮的收尾，而收尾正是这些用例要看的东西。
-      return new Response(new ReadableStream<Uint8Array>({ start() {} }), {
-        status: 200,
-        headers: { 'Content-Type': 'text/event-stream' },
-      });
-    }),
-  );
+  wire = stubRunWire();
 });
 
 afterEach(() => {
+  resetChatLiveForTests();
+  evictAllChatSessions();
   vi.unstubAllGlobals();
   vi.useRealTimers();
 });
@@ -266,17 +268,17 @@ describe('an answer that did not come from our server', () => {
 });
 
 describe('leaving the project', () => {
-  it('stops the turn and forgets the conversation', async () => {
+  it('lets go of the run it was reading, without stopping it, and forgets the conversation (WB-39)', async () => {
     openChatAnswers();
     await conversationRuntime.ensureLoaded('p-1');
-    await aTurnIsRunningIn('c-1');
+    await aRunIsReadIn('c-1');
 
     conversationRuntime.leaveProject('p-1');
 
-    // Stopped, not abandoned: once the project is off the screen there is no
-    // stop button anywhere for this turn, so leaving it running would keep
-    // the model going on the user's account with the switch out of reach.
-    expect(sent?.aborted).toBe(true);
+    // Let go of, not stopped: the run is the server's and goes on there
+    // (inner#1717); this page only stops reading it.
+    expect(wire.last()?.abandoned()).toBe(true);
+    expect(chatApi.stop).not.toHaveBeenCalled();
     // And forgotten, because nothing keyed by conversation ever drops itself
     // -- the messages would sit in memory until the page closed, and loading
     // earlier lets a user make that list as long as they like.
@@ -331,10 +333,10 @@ describe('loading what came before', () => {
     await conversationRuntime.switchTo('p-1', 'c-1');
   }
 
-  it('puts it at the head, leaving the turn in flight alone', async () => {
+  it('puts it at the head, leaving the run being read alone', async () => {
     openChatAnswers({ hasMore: true });
     await conversationRuntime.ensureLoaded('p-1');
-    await aTurnIsRunningIn('c-1');
+    await aRunIsReadIn('c-1');
 
     vi.mocked(chatApi.messagesBefore).mockResolvedValue({
       messages: [
@@ -353,21 +355,23 @@ describe('loading what came before', () => {
     // newest end: the cursor is the oldest turn on screen.
     expect(chatApi.messagesBefore).toHaveBeenCalledWith('c-1', 7, expect.any(AbortSignal));
 
-    // 两个写者,两端。更早的那一页接在头上,而尾端那一轮在会话实例里照常跑
-    // 着 —— 这一页落地不该碰它。
+    // Two writers, two ends. The earlier page goes on at the head, while the
+    // run at the tail is read on as before: this page landing must not touch it.
     expect(conversation()?.messages.map((m) => m.id)).toEqual(['m0', 'm1']);
     expect(conversation()?.hasMore).toBe(false);
-    expect(sent?.aborted).toBe(false);
+    expect(wire.last()?.abandoned()).toBe(false);
   });
 
-  it('会话实例还在时，重新读它不许把「还能往前翻吗」覆盖回去', async () => {
-    // 这三样(列表、还能不能往前翻、翻到哪一轮了)是一体的:用户已经把这条
-    // 会话翻到了头,而服务端交回来的永远是最新那一页、它自己那份 `hasMore`
-    // 说的是「这一页之前还有」。只保住列表、让这一个跟着服务端走,屏幕上就
-    // 会重新出现一个「加载更早」按钮,按下去请求的是列表里已经有的那一页。
+  it('does not put back whether more can be loaded when the conversation is read again while its session is held', async () => {
+    // The list, whether more can be loaded and how far back it reaches belong
+    // together: the user has paged this conversation back to its start, while
+    // the server always hands back the newest page, whose own `hasMore` says
+    // "there is more before this page". Keeping only the list and letting this
+    // one follow the server would bring a "load earlier" button back on
+    // screen, whose press asks for a page the list already holds.
     openChatAnswers({ hasMore: true });
     await conversationRuntime.ensureLoaded('p-1');
-    await aTurnIsRunningIn('c-1');
+    await aRunIsReadIn('c-1');
 
     vi.mocked(chatApi.messagesBefore).mockResolvedValue({
       messages: [
@@ -385,7 +389,7 @@ describe('loading what came before', () => {
     await conversationRuntime.loadEarlier('c-1');
     expect(conversation()?.hasMore).toBe(false);
 
-    // 服务端这次交回来的那一页自称还有更早的。
+    // The page the server hands back this time says there is more before it.
     await theConversationIsReadAgainFrom(60);
 
     expect(conversation()?.hasMore).toBe(false);
@@ -592,16 +596,18 @@ describe('a request left over from a previous visit to the project', () => {
     vi.mocked(chatApi.openChat).mockResolvedValueOnce(answer(['hello again']));
     await conversationRuntime.ensureLoaded('p-1');
 
-    await aTurnIsRunningIn('c-1');
+    await aRunIsReadIn('c-1');
 
     landFirstVisit(answer(['hello again', 'my question']));
     await firstVisit;
 
-    // 落地会把这条会话整个重建一遍。放它进来,用户这一次访问读到的那一页就
-    // 被上一次访问的答复顶掉了 —— 而那一页是上一次访问的,用户已经离开过。
+    // Landing rebuilds the whole conversation. Let in, it would replace the
+    // page this visit read with the answer to the previous visit, which the
+    // user has already left.
     expect(conversation()?.messages.map((m) => m.id)).toEqual(['srv-hello again']);
-    // 那一轮不在这个 store 里,所以它连碰都碰不到 —— 请求照常跑着。
-    expect(sent?.aborted).toBe(false);
+    // The run is not in this store, so the answer cannot touch it: its stream
+    // is read on as before.
+    expect(wire.last()?.abandoned()).toBe(false);
   });
 
   it('does not take the next visit\'s request off the books when it lands', async () => {

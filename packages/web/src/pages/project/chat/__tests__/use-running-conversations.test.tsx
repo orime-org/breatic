@@ -35,7 +35,7 @@ vi.mock('@web/data/api/chat', () => ({
       currentSpaceMaxChars: 100_000,
       spaceListMaxItems: 200,
       spaceReadTimeoutMs: 10_000,
-      runningPollIntervalMs: POLL_MS,
+      runningPollIntervalMs: POLL_MS, syncIntervalMs: 3_000,
     }),
   },
 }));

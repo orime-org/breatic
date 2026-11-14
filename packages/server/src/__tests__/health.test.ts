@@ -2,68 +2,70 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Server `/healthz` integration test.
+ * Server `/healthz` check wiring.
  *
- * Health moved from hono `GET /api/health` (port 3000, removed in
- * `feat/2026-05-28-server-healthz-unify`) to an independent http server
- * `GET /healthz` on port 3001, matching worker (9101) and collab (1235).
- * Source of truth contract test lives in
- * `packages/core/src/infra/__tests__/health-server.test.ts`; this file
- * just asserts the server entry's check wiring (PG + Redis singletons)
- * returns the expected discriminant when fed mock implementations.
- *
- * The Postgres probe delegates to core's single `pingDb()` liveness
- * helper (shared by server / worker / collab + the boot connectivity
- * check) — the SELECT-1 logic itself is unit-tested in
- * `packages/core/src/db/client.ping.test.ts`; here we only pin that the
- * postgres check forwards to it.
+ * The contract of the health server itself lives in
+ * `packages/core/src/infra/__tests__/health-server.test.ts`; this file pins
+ * that each of the server's checks (`serverHealthChecks`, which the entry
+ * hands the health server) forwards what its connection's probe answers.
+ * The probes are core's shared `pingDb()` and `pingRedis()`; what they do
+ * against a real connection is pinned in core and in
+ * `integration/server-health-checks.integration.test.ts`.
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// Re-importable function-under-test: the check array shape used by
-// `index.ts`. Inlining here avoids loading the full entry module
-// (which would also bind the real port + register signal handlers).
-type Check = {
-  name: string;
-  check: () => Promise<boolean>;
-};
+const probes = vi.hoisted(() => ({
+  db: vi.fn(async (_client?: unknown) => true),
+  redis: vi.fn(async (_client: unknown) => true),
+}));
 
-const buildServerChecks = (
-  pingDb: () => Promise<boolean>,
-  redis: { ping: () => Promise<string> },
-): Check[] => [
-  {
-    name: "postgres",
-    check: () => pingDb(),
-  },
-  {
-    name: "redis_general",
-    check: async () => (await redis.ping()) === "PONG",
-  },
-];
+vi.mock("@breatic/core", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  pingDb: probes.db,
+  pingRedis: probes.redis,
+  getRedis: () => "general",
+  yjsRawPg: "yjs",
+}));
+
+vi.mock("@server/agent/run-stream.js", () => ({ getChatSubscriberRedis: () => "subscriber" }));
+
+const { serverHealthChecks } = await import("@server/health-checks.js");
+
+/**
+ * Run one of the server's checks by name.
+ * @param name - The check.
+ * @returns What it answered.
+ */
+async function run(name: string): Promise<boolean> {
+  return serverHealthChecks().find((c) => c.name === name)!.check();
+}
+
+beforeEach(() => {
+  probes.db.mockReset().mockResolvedValue(true);
+  probes.redis.mockReset().mockResolvedValue(true);
+});
 
 describe("server healthz check wiring", () => {
-  it("postgres check forwards pingDb's true result", async () => {
-    const pingDb = vi.fn(() => Promise.resolve(true));
-    const ping = vi.fn(() => Promise.resolve("PONG"));
-    const [pgCheck, redisCheck] = buildServerChecks(pingDb, { ping });
-    await expect(pgCheck!.check()).resolves.toBe(true);
-    await expect(redisCheck!.check()).resolves.toBe(true);
-    expect(pingDb).toHaveBeenCalledTimes(1);
+  it("probes the product database, then the Yjs one, with core's shared helper", async () => {
+    await expect(run("postgres")).resolves.toBe(true);
+    await expect(run("postgres_yjs")).resolves.toBe(true);
+    expect(probes.db.mock.calls).toEqual([[], ["yjs"]]);
   });
 
-  it("postgres check forwards pingDb's false result", async () => {
-    const pingDb = vi.fn(() => Promise.resolve(false));
-    const ping = vi.fn(() => Promise.resolve("PONG"));
-    const [pgCheck] = buildServerChecks(pingDb, { ping });
-    await expect(pgCheck!.check()).resolves.toBe(false);
+  it("answers false when a database probe does", async () => {
+    probes.db.mockResolvedValue(false);
+    await expect(run("postgres")).resolves.toBe(false);
   });
 
-  it("redis check returns false when ping yields non-PONG", async () => {
-    const pingDb = vi.fn(() => Promise.resolve(true));
-    const ping = vi.fn(() => Promise.resolve("ERROR"));
-    const [, redisCheck] = buildServerChecks(pingDb, { ping });
-    await expect(redisCheck!.check()).resolves.toBe(false);
+  it("probes the general Redis and the chat subscriber's own connection", async () => {
+    await expect(run("redis_general")).resolves.toBe(true);
+    await expect(run("redis_chat_subscriber")).resolves.toBe(true);
+    expect(probes.redis.mock.calls).toEqual([["general"], ["subscriber"]]);
+  });
+
+  it("answers false when a Redis probe does", async () => {
+    probes.redis.mockResolvedValue(false);
+    await expect(run("redis_chat_subscriber")).resolves.toBe(false);
   });
 });

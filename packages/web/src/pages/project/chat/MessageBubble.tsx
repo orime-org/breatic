@@ -39,6 +39,13 @@ interface MessageBubbleProps {
    * this is the only press inside a bubble that causes any.
    */
   onThinkingOpen?: () => void;
+  /**
+   * A message the run took in, drawn right under the part of the reply it
+   * cut into. That part shows no action line, so the message gets the room
+   * one leaves (`TurnActions`: `mt-3` and a `--btn-compact` row) to read as
+   * a message of its own rather than the end of the paragraph above.
+   */
+  afterReply?: boolean;
 }
 
 /**
@@ -54,12 +61,14 @@ interface MessageBubbleProps {
  * @param root0.message - The chat message to render.
  * @param root0.consolidating - Whether this turn stopped to fold memory.
  * @param root0.onThinkingOpen - Called as the thinking block opens.
+ * @param root0.afterReply - A message taken in right under a part of the reply.
  * @returns The message bubble with optional thinking fold and tool-call cards.
  */
 export const MessageBubble = React.memo(function MessageBubble({
   message,
   consolidating,
   onThinkingOpen,
+  afterReply,
 }: MessageBubbleProps): React.JSX.Element {
   const t = useTranslation();
   const isUser = message.role === 'user';
@@ -87,6 +96,7 @@ export const MessageBubble = React.memo(function MessageBubble({
       className={cn(
         'flex w-full',
         isUser ? 'justify-end' : 'justify-start',
+        afterReply === true && 'mt-[calc(--spacing(3)+var(--btn-compact))]',
       )}
     >
       <div

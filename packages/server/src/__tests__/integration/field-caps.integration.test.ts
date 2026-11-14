@@ -207,6 +207,7 @@ describe("F09: chat refuses an attachment name past 255 characters", () => {
     const res = await post(
       "/api/v1/chat/message",
       {
+        id: crypto.randomUUID(),
         message: "hello",
         project_id: a.projectId,
         conversation_id: a.conversationId,

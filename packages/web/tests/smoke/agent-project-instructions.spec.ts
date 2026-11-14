@@ -73,13 +73,19 @@ async function askInNewConversation(api: APIRequestContext, projectId: string, m
     await api.post('/api/v1/chat/conversations', { headers: { 'Idempotency-Key': randomUUID() }, data: { project_id: projectId } }),
     'create conversation',
   );
-  const res = await api.post('/api/v1/chat/message', {
-    headers: { accept: 'text/event-stream', 'Accept-Language': 'zh-CN' },
-    data: { project_id: projectId, conversation_id: conversation.id, message, attached_chips: [], time_zone: 'Asia/Shanghai', ...(model === undefined ? {} : { model }) },
-    timeout: 300_000,
-  });
-  expect(res.ok(), `chat message: ${String(res.status())}`).toBe(true);
-  await res.text();
+  const sent = await dataOf<{ running: boolean }>(await api.post('/api/v1/chat/message', {
+    headers: { 'Accept-Language': 'zh-CN' },
+    data: {
+      id: randomUUID(), project_id: projectId, conversation_id: conversation.id, message, attached_chips: [], time_zone: 'Asia/Shanghai',
+      ...(model === undefined ? {} : { model }),
+    },
+  }), 'chat message');
+  expect(sent.running, 'the send opened a run').toBe(true);
+  // The send answers once the run has opened; the reply is written by the
+  // time the run's stream ends (inner#1717).
+  const run = await api.get(`/api/v1/chat/conversations/${conversation.id}/stream`, { timeout: 300_000 });
+  expect(run.status(), 'the run stream').toBe(200);
+  await run.text();
   const read = await dataOf<{ messages: { role: string; parts?: { type?: string; text?: string }[] }[] }>(
     await api.get(`/api/v1/chat/conversations/${conversation.id}`), 'read conversation',
   );

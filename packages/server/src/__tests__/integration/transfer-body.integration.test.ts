@@ -18,10 +18,14 @@
 import { initConfiguredProvider } from "@breatic/integration-tests/provider";
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, inject, vi } from "vitest";
 
-vi.mock("ai", () => ({
+vi.mock("ai", async (importOriginal) => ({
+  // The run builds its stream with the SDK's own `createUIMessageStream`, so
+  // only the model calls are replaced (inner#1717).
+  ...(await importOriginal<Record<string, unknown>>()),
   generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
   streamText: () => ({
     fullStream: (async function* () {})(),
+    toUIMessageStream: () => new ReadableStream({ start: (c) => c.close() }),
     text: Promise.resolve(""),
     usage: Promise.resolve({ totalTokens: 0 }),
     totalUsage: Promise.resolve({ totalTokens: 0 }),
@@ -84,6 +88,7 @@ import {
   type Seeded,
 } from "./transfer-fixtures.js";
 import { getRequestBodyMaxBytes } from "@server/config/limits.js";
+import { keysOf, sendAndRead, untilIdle } from "./chat-run-harness.js";
 
 try {
   initCore(process.env);
@@ -404,6 +409,7 @@ describe("§4.1 the main path", () => {
      * @returns The body.
      */
     const body = (conversationId: string): Record<string, unknown> => ({
+      id: crypto.randomUUID(),
       message: "m".repeat(200),
       project_id: w.projectId,
       conversation_id: conversationId,
@@ -426,13 +432,12 @@ describe("§4.1 the main path", () => {
     const key = await grant(w, file.length);
     read.answer = async () => file;
 
-    const sent = await post(app, CHAT, w.a.cookie, JSON.stringify(body(direct)));
+    const sent = await sendAndRead(app, w.a.cookie, body(direct), { "Idempotency-Key": crypto.randomUUID() });
     expect(sent.status).toBe(200);
-    await sent.text();
     const res = await post(app, CHAT, w.a.cookie, ref(key));
     expect(res.status).toBe(200);
-    expect(res.headers.get("content-type")).toBe("text/event-stream");
-    await res.text();
+    expect(((await res.json()) as { data: { status: string } }).data.status).toBe("start");
+    await untilIdle(viaTransfer);
 
     /**
      * The user message stored in a conversation.
@@ -447,6 +452,51 @@ describe("§4.1 the main path", () => {
     expect(directParts).toHaveLength(1);
     expect(await userParts(viaTransfer)).toEqual(directParts);
     expect(read.calls).toEqual([[key, Math.min(transferConfig().route_max_bytes.chat_message, file.length)]]);
+  });
+
+  it("T55b / RT-07: a chat message through a transfer waits in the queue as the original body", async () => {
+    const w = await world();
+    const conversationId = await seedConversation(sql, w.a.id, w.projectId);
+    const body = {
+      id: crypto.randomUUID(),
+      message: "m".repeat(200),
+      project_id: w.projectId,
+      conversation_id: conversationId,
+      attached_chips: [{ id: "file-1", type: "text", name: "notes.txt", data_snapshot: { text: "中".repeat(150_000) } }],
+      current_space: {
+        id: "space-1",
+        name: "Doc",
+        kind: "document",
+        state: "loaded",
+        content: "中".repeat(50_000),
+        total_chars: 50_000,
+        blocks: [{ id: "b1", type: "paragraph", text: "中".repeat(50_000), lossy: false, partial: false }],
+      },
+      spaces: [{ id: "space-1", name: "Doc", kind: "document" }],
+      spaces_total: 1,
+    };
+    const file = enc(body);
+    const key = await grant(w, file.length);
+    read.answer = async () => file;
+    // A run holds the conversation, so the message waits where the next step reads it.
+    const k = keysOf(conversationId);
+    await getRedis().set(k.active, "R-held");
+    try {
+      const res = await post(app, CHAT, w.a.cookie, ref(key));
+      expect(res.status).toBe(200);
+      expect(((await res.json()) as { data: { status: string } }).data.status).toBe("queued");
+      const [raw] = await getRedis().lrange(k.queue, 0, -1);
+      const item = JSON.parse(raw!) as Record<string, unknown>;
+      expect(item).toMatchObject({
+        id: body.id,
+        message: body.message,
+        attached_chips: body.attached_chips,
+        current_space: body.current_space,
+        spaces: body.spaces,
+      });
+    } finally {
+      await getRedis().del(k.active, k.queue, k.ids);
+    }
   });
 
   it("T56: validate sees the original body; a body that fails it still used the transfer", async () => {
@@ -490,7 +540,7 @@ describe("§4.1 the main path", () => {
   it("T58: assertSayable still applies to a chat body read back from a transfer", async () => {
     const w = await world();
     const conversationId = await seedConversation(sql, w.a.id, w.projectId);
-    const file = enc({ message: "y".repeat(15_001), project_id: w.projectId, conversation_id: conversationId, attached_chips: [] });
+    const file = enc({ id: crypto.randomUUID(), message: "y".repeat(15_001), project_id: w.projectId, conversation_id: conversationId, attached_chips: [] });
     const key = await grant(w, file.length);
     read.answer = async () => file;
 
@@ -915,7 +965,7 @@ describe("§4.2 refusals and claims", () => {
   it("T77: the chat read cap counts the signature", async () => {
     const w = await world();
     const conversationId = await seedConversation(sql, w.a.id, w.projectId);
-    const json = JSON.stringify({ message: "hi", project_id: w.projectId, conversation_id: conversationId, attached_chips: [] });
+    const json = JSON.stringify({ id: crypto.randomUUID(), message: "hi", project_id: w.projectId, conversation_id: conversationId, attached_chips: [] });
     // Whitespace after the value keeps it valid JSON while filling the file to the cap.
     const padded = json + " ".repeat(4_194_285 - new TextEncoder().encode(json).length);
     const exact = bytes(sig(), padded);
@@ -927,6 +977,7 @@ describe("§4.2 refusals and claims", () => {
     expect(read.calls).toEqual([[okKey, 4_194_304]]);
     expect(a.status).toBe(200);
     await a.text();
+    await untilIdle(conversationId);
 
     read.calls.length = 0;
     const bigKey = await grant(w, 4_194_304);

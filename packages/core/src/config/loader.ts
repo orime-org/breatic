@@ -140,6 +140,16 @@ const agentConfigSchema = z.object({
    * (#1394). Served to the browser through `GET /chat/stream-config`.
    */
   running_poll_interval_ms: z.number().int().positive().default(5000),
+  /** How many messages one conversation may hold waiting while a turn runs (inner#1717). */
+  chat_queue_max: z.number().int().positive().default(10),
+  /** How long a conversation remembers queued message ids for re-send dedupe, in milliseconds (inner#1717). */
+  chat_queue_ids_ttl_ms: z.number().int().positive().default(172_800_000),
+  /** How long a running turn holds its conversation and running-list lease without renewing, in milliseconds (inner#1717). */
+  chat_run_lease_ms: z.number().int().positive().default(60_000),
+  /** How often a running turn renews that lease, in milliseconds (inner#1717). */
+  chat_run_renew_ms: z.number().int().positive().default(20_000),
+  /** How often the shown conversation's page syncs with the server, in milliseconds (inner#1717). */
+  chat_sync_interval_ms: z.number().int().positive().default(3000),
   /**
    * How many memory entries the system prompt lists, newest first (#1363).
    * The rest are counted in one line and found through `read_memory`.

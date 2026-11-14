@@ -242,11 +242,13 @@ export async function closeCollabRedis(): Promise<void> {
  * by role (general / queue / stream / subscriber — each needs its own
  * socket), so the caller passes the specific client it wants to probe.
  * @param client - ioredis client to ping
- * @returns `true` when `PING` returns `"PONG"`
+ * @returns `true` when `PING` returns `"PONG"`, or `["pong", ""]` from a
+ *   connection in subscribe mode, which is how Redis answers it there
  * @throws {Error} Whatever ioredis throws when the connection is
  *   unreachable — callers that want fail-fast semantics (boot
  *   connectivity checks) catch it and wrap in `InfraNotReadyError`.
  */
 export async function pingRedis(client: Redis): Promise<boolean> {
-  return (await client.ping()) === "PONG";
+  const reply: unknown = await client.ping();
+  return reply === "PONG" || (Array.isArray(reply) && reply[0] === "pong");
 }

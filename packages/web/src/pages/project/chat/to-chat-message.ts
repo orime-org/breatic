@@ -18,6 +18,7 @@ import { getToolName, isToolUIPart } from 'ai';
 import type { UIMessage } from 'ai';
 import type { z } from 'zod';
 import {
+  attachmentPart,
   canvasProposalSchema,
   chipOfPart,
   documentProposalSchema,
@@ -59,6 +60,27 @@ const BLOCKED = 'data-blocked';
 
 /** The mark naming the questionnaire a turn stopped at (inner#1542). */
 const ASK_AWAITING = 'data-ask-awaiting';
+
+/** The part a reply carries a message the user sent while it ran on (inner#1717). */
+const USER_MESSAGE = 'data-user-message';
+
+/**
+ * The user's message a reply took in, as a message of its own.
+ * @param reply - The reply.
+ * @param part - The part carrying it.
+ * @returns The message, or null when the part is not one.
+ */
+function takenMessageOf(reply: UIMessage, part: UIMessage['parts'][number]): UIMessage | null {
+  const data = (part as { data?: { id?: unknown; words?: unknown; chips?: unknown; sentAt?: unknown } }).data;
+  if (typeof data?.id !== 'string' || typeof data.words !== 'string') return null;
+  const chips = Array.isArray(data.chips) ? (data.chips as ChatAttachedChip[]) : [];
+  return {
+    id: `${reply.id}~${data.id}`,
+    role: 'user',
+    parts: [...chips.map(attachmentPart), { type: 'text', text: data.words }],
+    metadata: { ...(typeof data.sentAt === 'string' ? { ts: data.sentAt } : {}), takenIn: true },
+  };
+}
 
 /** The tool that puts a questionnaire to the user. */
 const ASK_TOOL = 'ask_user';
@@ -387,7 +409,9 @@ function spaceRequestOf(
 /**
  * A reply as the panel lays it out: whole, or split where each segment that
  * asked a questionnaire ended, once the user answered on the card and the
- * turn went on in the same message (inner#1542).
+ * turn went on in the same message (inner#1542), and around each message the
+ * reply took in while it ran, which becomes a user view of its own
+ * (inner#1717).
  *
  * The server stores the two segments as two rows, so a reload reads them as
  * two messages; splitting the live one the same way keeps the card above what
@@ -397,14 +421,24 @@ function spaceRequestOf(
  * @param options.open - The turn is still writing it: a card answered last
  *   in it opens an empty part below, where what the turn says next arrives
  *   and the wait for it is drawn.
- * @returns It, or its parts, split after each card answered in it; each part
- *   after the first named after the call it follows.
+ * @returns It, or its parts: split after each card answered in it and around
+ *   each message it took in; a part after a card is named after the call, the
+ *   part after a taken message `<its id>~after`.
  */
 export function splitAtAnswer(message: UIMessage, { open = false }: { open?: boolean } = {}): UIMessage[] {
   const views: UIMessage[] = [];
   let from = 0;
   let id = message.id;
   for (const [at, part] of message.parts.entries()) {
+    if (part.type === USER_MESSAGE) {
+      const taken = takenMessageOf(message, part);
+      if (taken === null) continue;
+      if (at > from) views.push({ ...message, id, parts: message.parts.slice(from, at) });
+      views.push(taken);
+      from = at + 1;
+      id = `${taken.id}~after`;
+      continue;
+    }
     if (part.type !== ASK_AWAITING || (!open && at === message.parts.length - 1)) continue;
     const callId = (part as { data?: { toolCallId?: unknown } }).data?.toolCallId;
     const answered = message.parts.some(
@@ -416,6 +450,9 @@ export function splitAtAnswer(message: UIMessage, { open = false }: { open?: boo
     id = `${message.id}~${callId}`;
   }
   if (from === 0) return [message];
+  // What the reply says after the last split; a reply stopped right after
+  // taking a message in has nothing there, unless it is still being written.
+  if (from === message.parts.length && !open) return views;
   return [...views, { ...message, id, parts: message.parts.slice(from) }];
 }
 
@@ -494,6 +531,8 @@ export function toChatMessage(
   // only just sent is not stored yet and carries none.
   const written = (message.metadata as { ts?: unknown } | undefined)?.ts;
   const sentAt = typeof written === 'string' ? written : undefined;
+  // A message the user sent while a reply ran, drawn inside that reply's turn.
+  const takenIn = (message.metadata as { takenIn?: unknown } | undefined)?.takenIn === true;
 
   // Read before the loop because a tool part can come before the mark. A call
   // this turn cut short has nothing on it saying so — the SDK client leaves it
@@ -646,6 +685,7 @@ export function toChatMessage(
     content,
     ...(failureLines.length > 0 ? { body, failureLines } : {}),
     ...(sentAt === undefined ? {} : { sentAt }),
+    ...(takenIn ? { takenIn: true as const } : {}),
     ...(thinking !== '' ? { thinking } : {}),
     ...(thinkingMs === undefined ? {} : { thinkingMs }),
     ...(thinkingNow ? { thinkingNow: true as const } : {}),
@@ -692,11 +732,16 @@ export function joinContinued(views: readonly ChatMessage[]): ChatMessage[] {
   let start = 0;
   for (let i = 0; i <= out.length; i += 1) {
     const view = out[i];
-    if (view !== undefined && view.role === 'assistant') continue;
-    // out[start..i) is a run of replies; a run of one is an ordinary turn.
-    if (i - start > 1) {
-      const said = out.slice(start, i).map((v) => v.content).filter((c) => c !== '');
-      for (let j = start; j < i - 1; j += 1) {
+    // A message the user sent while the turn ran is inside the turn.
+    if (view !== undefined && (view.role === 'assistant' || view.takenIn === true)) continue;
+    // out[start..i) is one turn's replies and the messages it took in; a
+    // stopped turn can end on a taken message, so the last reply is found,
+    // not assumed to be the last view.
+    const replies = out.slice(start, i).map((v, k) => ({ v, at: start + k })).filter(({ v }) => v.role === 'assistant');
+    if (replies.length > 1) {
+      const said = replies.map(({ v }) => v.content).filter((c) => c !== '');
+      const lastAt = replies.at(-1)!.at;
+      for (const { at: j } of replies.slice(0, -1)) {
         const earlier = out[j]!;
         let marked = continuedViews.get(earlier);
         if (marked === undefined) {
@@ -705,15 +750,15 @@ export function joinContinued(views: readonly ChatMessage[]): ChatMessage[] {
         }
         out[j] = marked;
       }
-      const last = out[i - 1]!;
+      const last = out[lastAt]!;
       const text = said.join('\n\n');
       const cached = endedViews.get(last);
       if (cached?.text === text) {
-        out[i - 1] = cached.view;
+        out[lastAt] = cached.view;
       } else {
         const ended = { ...last, copyText: text };
         endedViews.set(last, { text, view: ended });
-        out[i - 1] = ended;
+        out[lastAt] = ended;
       }
     }
     start = i + 1;

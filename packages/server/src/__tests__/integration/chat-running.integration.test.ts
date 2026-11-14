@@ -5,12 +5,10 @@
  * A running turn is visible to the user's other tabs while it runs (#1394),
  * driven through the real app against real Postgres and Redis.
  *
- * `GET /chat/running` answers the conversations whose turn holds a lease. The
- * lease is taken when the turn's stream opens and released before it closes,
- * however the turn ended -- answered, or the client gone mid-turn. A lease
- * that runs out on its own lasts one heartbeat interval times the misses a
- * browser allows (15 s with the shipped config), so every "gone" asserted
- * here is checked well inside that: what removes it has to be the release.
+ * `GET /chat/running` answers the conversations whose run holds a lease. The
+ * lease is taken in the run's opening stage and released once the run has
+ * settled, however it ended; a page that stops reading leaves it in place,
+ * since the run goes on without it (inner#1717).
  *
  * The model is doubled at the model layer and held open behind a gate, so a
  * case can look at the list while a turn is truly in progress.
@@ -140,8 +138,9 @@ vi.mock("@breatic/core", async (importOriginal) => {
 import type * as DomainModule from "@breatic/domain";
 import crypto from "node:crypto";
 import postgres from "postgres";
-import { env, getRedis, initCore, loadLocales, sessionCookieName, setSession } from "@breatic/core";
+import { env, getAgentConfig, getRedis, initCore, loadLocales, sessionCookieName, setSession } from "@breatic/core";
 import type { Hono } from "hono";
+import { keysOf, send, sendAndRead, until, untilIdle } from "./chat-run-harness.js";
 
 try {
   initCore(process.env);
@@ -250,23 +249,6 @@ async function seedOwner(): Promise<Seeded> {
 }
 
 /**
- * Start a turn without reading its stream.
- * @param who - The owner and their conversation.
- * @returns The response, its body unread.
- */
-async function startTurn(who: Seeded): Promise<Response> {
-  return app.request("/api/v1/chat/message", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Cookie: who.cookie },
-    body: JSON.stringify({
-      message: "hello",
-      project_id: who.projectId,
-      conversation_id: who.conversationId,
-    }),
-  });
-}
-
-/**
  * Ask which conversations are running.
  * @param projectId - The project to ask about.
  * @param cookie - Whose session asks.
@@ -277,38 +259,6 @@ async function running(projectId: string, cookie: string): Promise<{ status: num
   if (res.status !== 200) return { status: res.status, ids: undefined };
   const body = (await res.json()) as { data: { conversation_ids: string[] } };
   return { status: res.status, ids: body.data.conversation_ids };
-}
-
-/**
- * Read a stream until a chunk of the named type has arrived.
- * @param reader - The response body's reader.
- * @param type - The chunk type to wait for.
- * @returns Everything read so far.
- * @throws {Error} When the stream ends first.
- */
-async function readUntil(reader: ReadableStreamDefaultReader<Uint8Array>, type: string): Promise<string> {
-  const decoder = new TextDecoder();
-  let wire = "";
-  while (!wire.includes(`"type":"${type}"`)) {
-    const { done, value } = await reader.read();
-    if (done) throw new Error(`stream ended before a ${type} chunk; got: ${wire}`);
-    wire += decoder.decode(value, { stream: true });
-  }
-  return wire;
-}
-
-/**
- * The chunks on a stream, in arrival order.
- * @param wire - The whole response body.
- * @returns One parsed chunk per `data:` frame.
- */
-function frames(wire: string): Array<Record<string, unknown>> {
-  return wire
-    .split("\n")
-    .filter((line) => line.startsWith("data: "))
-    .map((line) => line.slice("data: ".length).trim())
-    .filter((body) => body !== "[DONE]")
-    .map((body) => JSON.parse(body) as Record<string, unknown>);
 }
 
 /**
@@ -348,65 +298,68 @@ describe("GET /chat/running", () => {
   });
 });
 
-describe("a turn in progress", () => {
-  it("is listed while it runs and gone as soon as it has answered", async () => {
+describe("a run in progress", () => {
+  it("is listed from its opening for the length of its lease, and gone once it has settled (LS-01, LS-03)", async () => {
     const owner = await seedOwner();
     closeGate();
-    const res = await startTurn(owner);
-    expect(res.status).toBe(200);
-    const reader = res.body!.getReader();
-    await readUntil(reader, "text-delta");
-
+    const from = Date.now();
+    expect((await send(app, owner, { message: "hello" })).status).toBe(200);
+    const runId = await getRedis().get(keysOf(owner.conversationId).active);
+    const key = `${env.REDIS_KEY_PREFIX}:server:chat-running:${owner.userId}:${owner.projectId}`;
+    const [member, score] = await getRedis().zrange(key, 0, -1, "WITHSCORES");
+    expect(member).toBe(`${owner.conversationId}:${runId}`);
+    expect(Math.abs(Number(score) - (from + getAgentConfig().chat_run_lease_ms))).toBeLessThan(1000);
     expect(await running(owner.projectId, owner.cookie)).toEqual({ status: 200, ids: [owner.conversationId] });
 
     gate.open();
-    while (!(await reader.read()).done) {
-      // Drain: the release happens before the stream closes.
-    }
-
-    expect(await running(owner.projectId, owner.cookie)).toEqual({ status: 200, ids: [] });
+    await untilIdle(owner.conversationId);
+    expect(await untilNoneRunning(owner.projectId, owner.cookie, 2_000)).toEqual({ status: 200, ids: [] });
   });
 
-  it("is gone soon after the client leaves mid-turn, long before a lease would run out", async () => {
+  it("stays listed after the page reading it leaves, until the run settles (LS-08)", async () => {
     const owner = await seedOwner();
     closeGate();
-    const res = await startTurn(owner);
-    expect(res.status).toBe(200);
+    await send(app, owner, { message: "hello" });
+    const res = await app.request(`/api/v1/chat/conversations/${owner.conversationId}/stream`, { headers: { Cookie: owner.cookie } });
     const reader = res.body!.getReader();
-    await readUntil(reader, "text-delta");
+    await reader.read();
+    await reader.cancel();
+    await new Promise((r) => setTimeout(r, 300));
     expect(await running(owner.projectId, owner.cookie)).toEqual({ status: 200, ids: [owner.conversationId] });
 
-    await reader.cancel();
-
-    // Five seconds against a fifteen-second lease: only the release clears it
-    // this soon.
-    expect(await untilNoneRunning(owner.projectId, owner.cookie, 5_000)).toEqual({ status: 200, ids: [] });
+    gate.open();
+    await untilIdle(owner.conversationId);
+    expect(await untilNoneRunning(owner.projectId, owner.cookie, 2_000)).toEqual({ status: 200, ids: [] });
   });
 });
 
 describe("a lease Redis will not take", () => {
-  it("is logged, and the turn still answers in full", async () => {
+  it("is logged, and the run still answers in full (LS-06)", async () => {
     const owner = await seedOwner();
     const errors = vi.fn();
     leaseErrors.spy = errors;
     broken.on = true;
 
-    const res = await startTurn(owner);
-    const chunks = frames(await res.text());
+    const { status, chunks } = await sendAndRead(app, owner.cookie, {
+      message: "hello",
+      project_id: owner.projectId,
+      conversation_id: owner.conversationId,
+    });
     broken.on = false;
 
-    expect(res.status).toBe(200);
+    expect(status).toBe(200);
     expect(chunks.some((c) => c.type === "text-delta" && c.delta === "hi")).toBe(true);
     expect(chunks.some((c) => c.type === "finish")).toBe(true);
     expect(chunks.some((c) => c.type === "error")).toBe(false);
     expect(errors).toHaveBeenCalledWith(
-      {
+      expect.objectContaining({
         err: expect.any(Error),
         userId: owner.userId,
         conversationId: owner.conversationId,
         projectId: owner.projectId,
-      },
+      }),
       "chat_running_lease_failed",
     );
+    await until(async () => (await getRedis().exists(keysOf(owner.conversationId).active)) === 0);
   });
 });

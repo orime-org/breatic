@@ -40,7 +40,7 @@ pnpm --filter @breatic/web test:smoke tests/smoke/a.spec.ts:12      # right
 
 **Specs driven by a real model rarely reach a rejection or error branch.** A model that gets it right first time never exercises the refusal path, so running such a spec for a change to that path spends minutes and model calls and proves nothing.
 
-**When the change sits after the model's answer (where a proposal lands, how a card renders), verify the flow with a spec that intercepts `**/chat/message`.** Several specs do this with `page.route('**/chat/message', …)`; a real-model case is related only when the change is on the path to that external service.
+**When the change sits after the model's answer (where a proposal lands, how a card renders), verify the flow with a spec that fakes the run.** `answerRuns` in `tests/helpers/fake-run.ts` answers the send, the history read and the run's stream the way the server does, and several specs use it; a real-model case is related only when the change is on the path to that external service.
 
 ## Reading results
 
