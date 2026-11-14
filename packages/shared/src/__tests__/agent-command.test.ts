@@ -12,7 +12,9 @@
 import { describe, it, expect } from "vitest";
 
 import {
+  AGENT_COMMAND_REFUSALS,
   AGENT_COMMAND_STREAM_MAXLEN,
+  agentCommandParamsSchemas,
   agentCommandSchema,
   agentReplySchema,
   callScopedId,
@@ -143,5 +145,92 @@ describe("callScopedId", () => {
   it("gives different ids for the same slot of different calls", () => {
     const other = "1c2d3e4f-5a6b-4c7d-8e9f-0a1b2c3d4e5f";
     expect(callScopedId(CALL, "node:0")).not.toBe(callScopedId(other, "node:0"));
+  });
+});
+
+describe("refusal reasons", () => {
+  it("names each gate the browser applies, so the agent is told the same thing a user is", () => {
+    expect([...AGENT_COMMAND_REFUSALS].sort()).toEqual(
+      [
+        "cannot_connect",
+        "credential_revoked",
+        "handling",
+        "invalid_command",
+        "locked",
+        "no_access",
+        "not_found",
+        "not_yours",
+        "rate_limited",
+        "read_only",
+        "space_full",
+      ].sort(),
+    );
+  });
+});
+
+describe("canvas command parameters", () => {
+  const ok = (type: keyof typeof agentCommandParamsSchemas, params: unknown): boolean =>
+    agentCommandParamsSchemas[type].safeParse(params).success;
+
+  it("update_canvas_node takes a name, a position, a group or a text body, and at least one of them", () => {
+    expect(ok("update_canvas_node", { nodeId: "n1", position: { x: 10, y: -4 } })).toBe(true);
+    expect(ok("update_canvas_node", { nodeId: "n1", parentId: "g1" })).toBe(true);
+    expect(ok("update_canvas_node", { nodeId: "n1", parentId: null })).toBe(true);
+    expect(ok("update_canvas_node", { nodeId: "n1", text: "Opening line" })).toBe(true);
+    expect(ok("update_canvas_node", { nodeId: "n1" })).toBe(false);
+    expect(ok("update_canvas_node", { nodeId: "n1", position: { x: Number.NaN, y: 0 } })).toBe(false);
+  });
+
+  it("create_canvas_nodes takes a position per node, edges between new and existing nodes, and a new group", () => {
+    expect(
+      ok("create_canvas_nodes", {
+        nodes: [{ type: "text", position: { x: 0, y: 0 } }, { type: "image" }],
+        edges: [{ source: { new: 0 }, target: { new: 1 } }, { source: { id: "old" }, target: { new: 1 } }],
+        group: { name: "Shots", include: ["old"] },
+      }),
+    ).toBe(true);
+    expect(ok("create_canvas_nodes", { nodes: [{ type: "text" }], edges: [{ source: { new: -1 }, target: { new: 0 } }] })).toBe(false);
+    expect(ok("create_canvas_nodes", { nodes: [{ type: "group" }] })).toBe(false);
+  });
+
+  it("lock, unlock and delete take at least one node id", () => {
+    for (const type of ["lock_canvas_nodes", "unlock_canvas_nodes", "delete_canvas_nodes"] as const) {
+      expect(ok(type, { nodeIds: ["n1", "n2"] })).toBe(true);
+      expect(ok(type, { nodeIds: [] })).toBe(false);
+    }
+  });
+
+  it("connect_nodes takes source and target ids; disconnect_nodes takes edge ids", () => {
+    expect(ok("connect_nodes", { edges: [{ source: "a", target: "b" }] })).toBe(true);
+    expect(ok("connect_nodes", { edges: [] })).toBe(false);
+    expect(ok("disconnect_nodes", { edgeIds: ["e1"] })).toBe(true);
+    expect(ok("disconnect_nodes", { edgeIds: [] })).toBe(false);
+  });
+
+  it("comment_on_canvas starts a thread at a point or on a node, or replies to one, and says something", () => {
+    expect(ok("comment_on_canvas", { text: "Shorter", position: { x: 1, y: 2 } })).toBe(true);
+    expect(ok("comment_on_canvas", { text: "Shorter", nodeId: "n1" })).toBe(true);
+    expect(ok("comment_on_canvas", { text: "Done", annotationId: "a1" })).toBe(true);
+    expect(ok("comment_on_canvas", { text: "", annotationId: "a1" })).toBe(false);
+    expect(ok("comment_on_canvas", { text: "Where?" })).toBe(false);
+    expect(ok("comment_on_canvas", { text: "Both", annotationId: "a1", nodeId: "n1" })).toBe(false);
+  });
+
+  it("restore_node_version carries a successful history row the MCP service read for the node", () => {
+    const entry = {
+      status: "success",
+      content: "https://cdn.example/v1.png",
+      thumbnailUrl: null,
+      mediaWidth: 1024,
+      mediaHeight: 768,
+      duration: null,
+      mimeType: "image/png",
+      size: 2048,
+    };
+    expect(ok("restore_node_version", { nodeId: "n1", entry })).toBe(true);
+    // The history panel offers no restore on a failed row, so neither does the agent.
+    expect(ok("restore_node_version", { nodeId: "n1", entry: { ...entry, status: "failed" } })).toBe(false);
+    expect(ok("restore_node_version", { nodeId: "n1", entry: { ...entry, content: null } })).toBe(false);
+    expect(ok("restore_node_version", { nodeId: "n1" })).toBe(false);
   });
 });
