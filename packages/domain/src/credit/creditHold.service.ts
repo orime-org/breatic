@@ -21,7 +21,6 @@ import * as creditLotRepo from "@domain/credit/creditLot.repo.js";
 import { resolveOwnerStudioId } from "@domain/asset/asset.service.js";
 import { fromMicroCredits, positionFrom, serializeCreditPosition, toChargeMicro, type CreditPositionMicro } from "@domain/credit/credit-math.js";
 import { db, env } from "@breatic/core";
-import { inGlobalRegion } from "@domain/region/directory-writes.js";
 import { globalApi } from "@domain/region/global-api.js";
 import type { DbTx } from "@breatic/core";
 import type { ProjectCreditsView } from "@breatic/shared";
@@ -85,7 +84,7 @@ export async function reserveCredits(request: HoldRequest): Promise<ReserveOutco
     amount: request.amount,
     ttlMs: request.ttlMs,
   };
-  return inGlobalRegion() ? reserveHere(hold) : globalApi().reserveCredits(hold);
+  return globalApi().reserveCredits(hold);
 }
 
 /**
@@ -122,8 +121,7 @@ export async function reserveHere(
  * @throws {Error} When the database fails.
  */
 export async function releaseHold(referenceId: string): Promise<void> {
-  if (inGlobalRegion()) await creditHoldRepo.releaseHold(referenceId);
-  else await globalApi().releaseHold(referenceId);
+  await globalApi().releaseHold(referenceId);
 }
 
 /**
@@ -141,7 +139,7 @@ export async function releaseHere(referenceId: string): Promise<void> {
  * @returns The three figures, in credits.
  */
 export async function getCreditPosition(studioId: string): Promise<ProjectCreditsView> {
-  return inGlobalRegion() ? positionHere(studioId) : globalApi().getCreditPosition(studioId);
+  return globalApi().getCreditPosition(studioId);
 }
 
 /**

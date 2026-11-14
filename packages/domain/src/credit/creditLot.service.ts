@@ -1167,7 +1167,7 @@ export async function getOverview(userId: string): Promise<CreditOverview> {
  * @returns The total in credits, below zero when the studio owes.
  */
 export async function getSpendableCredits(studioId: string): Promise<CreditDecimal> {
-  return inGlobalRegion() ? spendableHere(studioId) : ((await globalApi().getSpendableCredits(studioId)) as CreditDecimal);
+  return (await globalApi().getSpendableCredits(studioId)) as CreditDecimal;
 }
 
 /**
@@ -1175,7 +1175,7 @@ export async function getSpendableCredits(studioId: string): Promise<CreditDecim
  * @param studioId - The Studio.
  * @returns Its spendable credits.
  */
-async function spendableHere(studioId: string): Promise<CreditDecimal> {
+export async function spendableHere(studioId: string): Promise<CreditDecimal> {
   return db.transaction(
     async (tx) => {
       const [lots, debt] = await Promise.all([
@@ -1299,7 +1299,7 @@ export async function readStudioCreditsHere(
  * @returns The debt in credits; zero when it owes nothing.
  */
 export async function getStudioDebt(studioId: string): Promise<CreditDecimal> {
-  return inGlobalRegion() ? studioDebtHere(studioId) : globalApi().getStudioDebt(studioId);
+  return globalApi().getStudioDebt(studioId);
 }
 
 /**
@@ -1317,7 +1317,7 @@ export async function studioDebtHere(studioId: string): Promise<CreditDecimal> {
  * @returns The total in credits.
  */
 export async function getUnassignedCredits(userId: string): Promise<CreditDecimal> {
-  return inGlobalRegion() ? unassignedCreditsHere(userId) : globalApi().getUnassignedCredits(userId);
+  return globalApi().getUnassignedCredits(userId);
 }
 
 /**
@@ -1338,7 +1338,7 @@ export async function unassignedCreditsHere(userId: string): Promise<CreditDecim
  * @returns The total in credits.
  */
 export async function getGrantedCredits(userId: string): Promise<CreditDecimal> {
-  return inGlobalRegion() ? grantedCreditsHere(userId) : globalApi().getGrantedCredits(userId);
+  return globalApi().getGrantedCredits(userId);
 }
 
 /**

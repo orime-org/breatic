@@ -37,10 +37,10 @@ import { applyRegionEvent } from "@domain/region/regionOutboxApply.service.js";
 import { getStorageBudget, recordRegionUsage, type RegionUsageReport, type StorageBudget } from "@domain/region/storageUsage.service.js";
 import type { OutboxEvent } from "@domain/region/regionOutbox.service.js";
 import {
-  getSpendableCredits,
   grantedCreditsHere,
   hasActiveDesignationsTo,
   readStudioCreditsHere,
+  spendableHere,
   studioDebtHere,
   unassignedCreditsHere,
   settleRegionalCharge,
@@ -121,7 +121,7 @@ export const GLOBAL_FUNCTIONS = {
    * @param studioId - The Studio.
    * @returns Its spendable credits.
    */
-  getSpendableCredits: async (studioId: string): Promise<string> => String(await getSpendableCredits(studioId)),
+  getSpendableCredits: async (studioId: string): Promise<string> => String(await spendableHere(studioId)),
   /**
    * What a Studio owes, for explaining a refused run.
    * @param studioId - The Studio.
