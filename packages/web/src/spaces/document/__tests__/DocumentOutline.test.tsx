@@ -457,6 +457,32 @@ describe('DocumentOutline', () => {
       expect(itemOf('Three')).toHaveClass('bg-accent-strong');
     });
 
+    it('reads the lowest heading past the reading line when two columns hold headings (inner#1314 design §5.5)', async () => {
+      renderWith([
+        {
+          type: 'docColumnList',
+          children: [
+            { type: 'docColumn', children: [h('a', 2, 'Left top'), { type: 'paragraph', content: 'words' }, h('b', 2, 'Left lower')] },
+            { type: 'docColumn', children: [h('c', 2, 'Right top')] },
+          ],
+        },
+        { type: 'paragraph', content: 'tail' },
+      ]);
+      const viewport = bodyViewport();
+      placeAt(viewport, 100);
+      Object.defineProperty(viewport, 'scrollHeight', { configurable: true, value: 5000 });
+      Object.defineProperty(viewport, 'clientHeight', { configurable: true, value: 800 });
+      const lineIn = (text: string): Element => [...document.querySelectorAll('.bn-block-content')].find((line) => line.textContent === text)!;
+      // All three are past the reading line; the left column's second sits lowest.
+      placeAt(lineIn('Left top'), 104);
+      placeAt(lineIn('Left lower'), 118);
+      placeAt(lineIn('Right top'), 104);
+      viewport.scrollTop = 50;
+      await scrolled(viewport);
+
+      expect(itemOf('Left lower')).toHaveClass('bg-accent-strong');
+    });
+
     it('keeps the clicked heading in a body too short to scroll', async () => {
       renderWith(DOC);
       const viewport = layOutForPin(800);

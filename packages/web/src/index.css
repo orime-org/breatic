@@ -1357,6 +1357,19 @@ body {
     margin-left: 0;
   }
 
+  /* A table in a column (inner#1314): the group's other columns and the
+     blocks beside the table in its column go, and the group lays its one
+     column out at the body's width. Columns inside the table's own cells
+     stay as they are. */
+  [data-table-fullscreen] .doc-body .doc-column:not([data-fullscreen-table] *):not(:has([data-fullscreen-table])),
+  [data-table-fullscreen] .doc-body .doc-column:not([data-fullscreen-table] *) > :not([data-fullscreen-table]):not(:has([data-fullscreen-table])) {
+    display: none;
+  }
+
+  [data-table-fullscreen] .doc-body .doc-columns-row:not([data-fullscreen-table] *):has([data-fullscreen-table]) {
+    display: block;
+  }
+
   /* The exit button takes the top-right corner the way the whole-document
      entry takes the right gutter, so the table starts one gutter down and its
      header never shares a line with the button. */
