@@ -31,15 +31,14 @@
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
-import type { Node as PMNode, ResolvedPos } from '@tiptap/pm/model';
+import type { Node as PMNode } from '@tiptap/pm/model';
 import { createExtension, isLayoutNode } from '@blocknote/core';
 
-import { DOC_COLUMN } from '@web/spaces/document/document-column-nodes';
+import { bodyDepthBetween } from '@web/spaces/document/document-body-carrier';
 import { computeNumbering } from '@web/spaces/document/document-numbering';
 import { quoteRuns } from '@web/spaces/document/document-quote-runs';
 import { QUOTED } from '@web/spaces/document/document-list-block';
 import { CONTENT_DECORATION } from '@web/spaces/document/document-view-state';
-import { isTableCell } from '@web/spaces/document/document-table-nodes';
 
 /** The attribute the number is drawn from. */
 const DOC_NUMBER_ATTRIBUTE = 'data-doc-number';
@@ -92,21 +91,8 @@ const decorationsKey = new PluginKey<DecorationSet>('documentDecorations');
 function indentDepth(doc: PMNode, pos: number): number {
   const $pos = doc.resolve(pos);
   // A table cell is a body of its own: its blocks count their levels from it.
-  const body = bodyDepthOf($pos);
+  const body = bodyDepthBetween($pos, $pos);
   return ($pos.depth - (body > 0 ? body : 1)) / 2;
-}
-
-/**
- * The innermost cell or column around a position: a body of its own.
- * @param $pos - The position.
- * @returns Its depth, or -1 in the body.
- */
-function bodyDepthOf($pos: ResolvedPos): number {
-  for (let depth = $pos.depth; depth > 0; depth -= 1) {
-    const node = $pos.node(depth);
-    if (isTableCell(node) || node.type.name === DOC_COLUMN) return depth;
-  }
-  return -1;
 }
 
 /** How many shapes a bulleted list cycles through before repeating. */
@@ -129,9 +115,8 @@ function bulletLevel(doc: PMNode, pos: number): number {
   // A container says what kind of block it is through its own content node,
   // the first child. A table cell holds a body of its own (inner#1619), so a
   // list in it counts from there, as the quote's depth does.
-  for (let depth = at.depth; depth > 0; depth -= 1) {
+  for (let depth = at.depth; depth > bodyDepthBetween(at, at); depth -= 1) {
     const node = at.node(depth);
-    if (isTableCell(node) || node.type.name === DOC_COLUMN) break;
     if (node.type.name !== 'blockContainer') continue;
     if (node.firstChild?.type.name !== 'bulletListItem') break;
     run += 1;

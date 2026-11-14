@@ -10,8 +10,8 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import type { EditorView } from '@tiptap/pm/view';
 
 import { columnAround, landsInPlace, type ColumnSide } from '@web/spaces/document/document-column-drop';
-import { columnWeight, MAX_COLUMNS, meanWeight, weightsFit } from '@web/spaces/document/document-column-geometry';
-import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-nodes';
+import { holds, LISTS } from '@web/spaces/document/document-column-entry';
+import { columnWeight, DOC_COLUMN, MAX_COLUMNS, meanWeight, weightsFit } from '@web/spaces/document/document-column-geometry';
 import { rowById } from '@web/spaces/document/document-row-by-id';
 import { cellDepthOf, DOC_TABLE } from '@web/spaces/document/document-table-nodes';
 
@@ -52,33 +52,17 @@ export function sideOfPointer(x: number, box: VisibleBox, holderLeft: number): C
 }
 
 /**
- * Whether a node, or any node inside it, is of one of these types.
+ * Whether a node is a table holding a column group, or holds one.
  * @param node - The node.
- * @param types - The type names.
- * @returns True when one is found.
+ * @returns True when it is or does.
  */
-function holds(node: PMNode, types: ReadonlySet<string>): boolean {
-  if (types.has(node.type.name)) return true;
-  let found = false;
+function tableWithColumns(node: PMNode): boolean {
+  let found = TABLES.has(node.type.name) && holds(node, LISTS);
   node.descendants((child) => {
-    if (types.has(child.type.name)) found = true;
+    if (!found && TABLES.has(child.type.name)) found = holds(child, LISTS);
     return !found;
   });
   return found;
-}
-
-/**
- * Whether a node is a table holding a column group.
- * @param node - The node.
- * @returns True when it is.
- */
-function tableWithColumns(node: PMNode): boolean {
-  let found = false;
-  node.descendants((child) => {
-    if (TABLES.has(child.type.name) && holds(child, new Set([DOC_COLUMN_LIST]))) found = true;
-    return !found;
-  });
-  return found || (TABLES.has(node.type.name) && holds(node, new Set([DOC_COLUMN_LIST])));
 }
 
 /**
@@ -127,26 +111,6 @@ export function sideDropAllowed(
   if (weights.length > MAX_COLUMNS) return false;
   if (cell < 0 && !weightsFit(room.bodyWidth, weights)) return false;
   return true;
-}
-
-/**
- * Whether "Columns" in the insert menu is out of reach on a row: in a column
- * (or in a cell of a table standing in one), in a list's nested group, or on
- * a row with children (design §5.3).
- * @param doc - The document.
- * @param blockId - The pressed row's id.
- * @returns True when the entry is greyed.
- */
-export function columnsOutOfReach(doc: PMNode, blockId: string): boolean {
-  const row = rowById(doc, blockId);
-  if (row === undefined) return true;
-  if (row.node.type.name === 'blockContainer' && row.node.childCount > 1) return true;
-  const $row = doc.resolve(row.from);
-  if ($row.parent.type.name === 'blockGroup' && $row.depth > 1) return true;
-  for (let depth = $row.depth; depth > 0; depth -= 1) {
-    if ($row.node(depth).type.name === DOC_COLUMN) return true;
-  }
-  return false;
 }
 
 /** A drop position hook of the drop cursor. */

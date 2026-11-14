@@ -15,7 +15,7 @@
 
 import type { BlockTypeId } from '@web/spaces/document/document-block-ticks';
 import { runBlockType } from '@web/spaces/document/document-block-run';
-import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-nodes';
+import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-geometry';
 import { DIVIDER } from '@web/spaces/document/document-divider';
 import { quotedAs, type BlockSpec } from '@web/spaces/document/document-file-input';
 import {
@@ -32,10 +32,10 @@ export interface TableSize {
   readonly cols: number;
 }
 
-/** One entry of the insert menu: a block type, the divider, or a table of a size. */
 /** The insert menu's columns entry (inner#1314 design §5.3). */
 export const COLUMNS = 'columns';
 
+/** One entry of the insert menu: a block type, the divider, columns, or a table of a size. */
 export type InsertChoice = BlockTypeId | typeof DIVIDER | typeof COLUMNS | { readonly table: TableSize };
 
 /**

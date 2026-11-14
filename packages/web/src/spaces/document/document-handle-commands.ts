@@ -17,7 +17,7 @@ import type { BlockNoteEditor } from '@blocknote/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 
 import { selectionOverBlockContent } from '@web/spaces/document/document-hovered-block';
-import { DOC_COLUMN_LIST } from '@web/spaces/document/document-column-nodes';
+import { DOC_COLUMN_LIST } from '@web/spaces/document/document-column-geometry';
 
 /** The editor these commands work on. */
 export type HandleEditor = BlockNoteEditor<never, never, never>;

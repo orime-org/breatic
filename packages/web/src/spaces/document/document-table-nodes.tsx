@@ -43,7 +43,7 @@ import { createRoot, type Root } from 'react-dom/client';
 
 import { DocumentTableScroller } from '@web/spaces/document/DocumentTableScroller';
 import { heldTables } from '@web/spaces/document/document-table-leave-selection';
-import { DOC_COLUMN } from '@web/spaces/document/document-column-nodes';
+import { DOC_COLUMN } from '@web/spaces/document/document-column-geometry';
 
 /** The narrowest a column can be dragged. */
 const CELL_MIN_WIDTH = 35;

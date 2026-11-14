@@ -18,16 +18,9 @@
  */
 
 import { createBlockSpec } from '@blocknote/core';
-import type { Node as PMNode } from '@tiptap/pm/model';
 
-import { columnsFit, columnWeight } from '@web/spaces/document/document-column-geometry';
-import { attachDivider } from '@web/spaces/document/document-column-resize';
-
-/** The column group. */
-export const DOC_COLUMN_LIST = 'docColumnList';
-
-/** One column of a group. */
-export const DOC_COLUMN = 'docColumn';
+import { columnsFit, columnWeight, DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-geometry';
+import { attachDivider, type DividerEditor } from '@web/spaces/document/document-column-resize';
 
 /**
  * Marks a group stacked while its container is too narrow for its columns.
@@ -41,40 +34,6 @@ function markStacked(element: HTMLElement): void {
 }
 
 /**
- * Whether a node is a column.
- * @param node - The node.
- * @returns True for a `docColumn`.
- */
-export function isColumn(node: PMNode): boolean {
-  return node.type.name === DOC_COLUMN;
-}
-
-/**
- * Whether a node is a column group.
- * @param node - The node.
- * @returns True for a `docColumnList`.
- */
-export function isColumnList(node: PMNode): boolean {
-  return node.type.name === DOC_COLUMN_LIST;
-}
-
-/**
- * The bodies a layout block holds, each a run of blocks of its own: a column
- * group's columns, or a table's cells.
- * @param node - The layout block.
- * @returns Its bodies, in reading order.
- */
-export function bodiesOf(node: PMNode): PMNode[] {
-  const bodies: PMNode[] = [];
-  if (node.type.name === DOC_COLUMN_LIST) {
-    node.forEach((column) => bodies.push(column));
-  } else {
-    node.forEach((row) => row.forEach((cell) => bodies.push(cell)));
-  }
-  return bodies;
-}
-
-/**
  * A group's or a column's external HTML: nothing of its own, so its blocks
  * are laid out flat in reading order (BlockNote appends the children of a
  * layout block whose export places them nowhere to the outer fragment,
@@ -85,20 +44,6 @@ export function bodiesOf(node: PMNode): PMNode[] {
 function flatOutside(): { dom: DocumentFragment } {
   return { dom: document.createDocumentFragment() };
 }
-
-/**
- * Whether a column holds only one empty paragraph.
- * @param column - The column.
- * @returns True when it does.
- */
-export function holdsOneEmptyParagraph(column: PMNode): boolean {
-  if (column.childCount !== 1) return false;
-  const row = column.firstChild!;
-  return row.type.name === 'blockContainer' && row.childCount === 1 && row.firstChild!.type.name === 'paragraph' && row.firstChild!.content.size === 0;
-}
-
-/** The part of the editor the divider writes through. */
-type DividerEditor = Parameters<typeof attachDivider>[2];
 
 /** A column's props as the block API carries them. */
 interface ColumnProps {

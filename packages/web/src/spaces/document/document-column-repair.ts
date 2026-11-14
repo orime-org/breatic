@@ -25,10 +25,10 @@ import { createExtension } from '@blocknote/core';
 import { Plugin, PluginKey, type EditorState, type Transaction } from '@tiptap/pm/state';
 import { Mapping } from '@tiptap/pm/transform';
 import { Fragment, type Node as PMNode } from '@tiptap/pm/model';
-import { ySyncPluginKey } from 'y-prosemirror';
 
 import { columnsBarredAt } from '@web/spaces/document/document-column-entry';
-import { DOC_COLUMN, DOC_COLUMN_LIST, holdsOneEmptyParagraph } from '@web/spaces/document/document-column-nodes';
+import { fromYjs } from '@web/spaces/document/document-yjs-origin';
+import { DOC_COLUMN, DOC_COLUMN_LIST, holdsOneEmptyParagraph } from '@web/spaces/document/document-column-geometry';
 
 /**
  * Meta on the take-away half of a two-step move: the emptied column is
@@ -45,17 +45,6 @@ export const SAVED_BODY = new PluginKey('doc-saved-body');
 
 /** A range of the document after the transactions. */
 type Range = readonly [number, number];
-
-/**
- * Whether a transaction came from a collaborator, or from undo and redo,
- * which y-prosemirror replays from Yjs.
- * @param tr - The transaction.
- * @returns True when the binding made it.
- */
-function isRemote(tr: Transaction): boolean {
-  const meta = tr.getMeta(ySyncPluginKey) as { isChangeOrigin?: boolean } | undefined;
-  return meta?.isChangeOrigin === true;
-}
 
 /**
  * The ids of every node carrying one, in a document.
@@ -93,7 +82,7 @@ function emptiedColumn(column: PMNode, before: ReadonlySet<string>): boolean {
  */
 function localRanges(transactions: readonly Transaction[]): Range[] {
   const maps = transactions.flatMap((tr) => tr.mapping.maps);
-  const local = transactions.flatMap((tr) => tr.mapping.maps.map(() => !isRemote(tr)));
+  const local = transactions.flatMap((tr) => tr.mapping.maps.map(() => !fromYjs(tr)));
   const mapping = new Mapping(maps);
   const ranges: Range[] = [];
   maps.forEach((map, index) => {
@@ -129,7 +118,7 @@ function repair(
   oldState: EditorState,
   newState: EditorState,
 ): Transaction | null {
-  if (!transactions.some((tr) => tr.docChanged && !isRemote(tr))) return null;
+  if (!transactions.some((tr) => tr.docChanged && !fromYjs(tr))) return null;
   if (transactions.some((tr) => tr.getMeta(SAVED_BODY) === true)) return null;
   const takeAway = transactions.some((tr) => tr.getMeta(COLUMN_TAKE_AWAY) === true);
   const before = idsOf(oldState.doc);

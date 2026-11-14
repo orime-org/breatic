@@ -46,7 +46,7 @@ import {
   DOC_TABLE_ROW,
 } from '@web/spaces/document/document-table-nodes';
 import { bodyDepthBetween, carrierAt } from '@web/spaces/document/document-body-carrier';
-import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-nodes';
+import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-geometry';
 
 /** A row as the editor's block calls hand it back. */
 interface BlockLike {

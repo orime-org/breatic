@@ -14,7 +14,7 @@
 
 import type { Node as PMNode, ResolvedPos } from '@tiptap/pm/model';
 
-import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-nodes';
+import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-geometry';
 import { DOC_TABLE, isTableCell, type TableAt } from '@web/spaces/document/document-table-nodes';
 
 /**

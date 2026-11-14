@@ -19,7 +19,7 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import type { EditorView } from '@tiptap/pm/view';
 
 import { checkAdd, type SpaceRefusal } from '@web/data/yjs/space-write';
-import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-nodes';
+import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-geometry';
 import { SAVED_BODY } from '@web/spaces/document/document-column-repair';
 import { asOneUndoStep, type UndoBoundary } from '@web/spaces/document/document-proposal-landing';
 import { pendingUploadId } from '@web/spaces/document/document-media-types';

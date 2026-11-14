@@ -15,7 +15,7 @@
  */
 
 import { columnsBarredAt, holdsColumns } from '@web/spaces/document/document-column-entry';
-import { DOC_COLUMN } from '@web/spaces/document/document-column-nodes';
+import { DOC_COLUMN } from '@web/spaces/document/document-column-geometry';
 import { blockToNode, type BlockNoteEditor } from '@blocknote/core';
 import { Fragment, Slice, type Node as PMNode, type ResolvedPos, type Schema } from '@tiptap/pm/model';
 import { NodeSelection, TextSelection, type Transaction } from '@tiptap/pm/state';

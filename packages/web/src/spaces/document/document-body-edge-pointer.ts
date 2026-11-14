@@ -49,7 +49,7 @@ import { bodyScrollerOf, type PointerAt } from '@web/spaces/document/document-bo
 import { autoScrollOf } from '@web/spaces/document/document-drag-autoscroll';
 import { MEDIA_CHROME } from '@web/spaces/document/DocumentMediaBlock';
 import { DOC_TABLE } from '@web/spaces/document/document-table-nodes';
-import { DOC_COLUMN_LIST } from '@web/spaces/document/document-column-nodes';
+import { DOC_COLUMN_LIST } from '@web/spaces/document/document-column-geometry';
 import { inTableFullscreen } from '@web/spaces/document/document-table-fullscreen';
 
 /**

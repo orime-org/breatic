@@ -25,7 +25,7 @@ import type { Node as PMNode, Slice } from '@tiptap/pm/model';
 import { Plugin, PluginKey, Selection, TextSelection, type EditorState, type Transaction } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
-import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-nodes';
+import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-geometry';
 import { heldRange, heldTables, TableSpanSelection, tableEdgeText } from '@web/spaces/document/document-table-leave-selection';
 
 /** A range taken out of the document. */

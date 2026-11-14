@@ -22,8 +22,7 @@ import { ySyncPluginKey } from 'y-prosemirror';
 
 import { docNameOf } from '@web/data/yjs/manager';
 import { checkAdd } from '@web/data/yjs/space-write';
-import { columnWeight, meanWeight } from '@web/spaces/document/document-column-geometry';
-import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-nodes';
+import { columnWeight, DOC_COLUMN, DOC_COLUMN_LIST, meanWeight } from '@web/spaces/document/document-column-geometry';
 import { COLUMN_TAKE_AWAY } from '@web/spaces/document/document-column-repair';
 import { rangeToLift } from '@web/spaces/document/document-drag-move';
 import { rowById, type RowInDocument } from '@web/spaces/document/document-row-by-id';

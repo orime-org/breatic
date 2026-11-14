@@ -13,7 +13,7 @@
 
 import type { BlockNoteEditor } from '@blocknote/core';
 import type { Mark, Node as ProseMirrorNode } from '@tiptap/pm/model';
-import { DOC_COLUMN_LIST } from '@web/spaces/document/document-column-nodes';
+import { DOC_COLUMN_LIST } from '@web/spaces/document/document-column-geometry';
 import { isMediaBlockType } from '@web/spaces/document/document-media-types';
 import { blocksMarkdown } from '@web/spaces/document/document-table-markdown';
 

@@ -18,8 +18,7 @@ import { TableMap } from '@tiptap/pm/tables';
 import type { EditorView } from '@tiptap/pm/view';
 import { ySyncPluginKey } from 'y-prosemirror';
 
-import { columnsFit, columnsWidth } from '@web/spaces/document/document-column-geometry';
-import { DOC_COLUMN_LIST } from '@web/spaces/document/document-column-nodes';
+import { columnsFit, columnsWidth, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-geometry';
 import { rowById } from '@web/spaces/document/document-row-by-id';
 import { drawnColumns, holdColumnWidths } from '@web/spaces/document/document-table-column-widths';
 import { isTableCell } from '@web/spaces/document/document-table-nodes';

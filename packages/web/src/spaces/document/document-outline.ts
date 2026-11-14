@@ -4,7 +4,7 @@
 import type { Node as PMNode } from '@tiptap/pm/model';
 
 import { BODY_HEADING_LEVELS } from '@web/spaces/document/document-block-type';
-import { bodiesOf, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-nodes';
+import { bodiesOf, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-geometry';
 import { computeNumbering } from '@web/spaces/document/document-numbering';
 import { quoteRuns } from '@web/spaces/document/document-quote-runs';
 

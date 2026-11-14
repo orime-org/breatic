@@ -24,7 +24,7 @@ import { Selection, TextSelection } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
 import { takeAwayColumnSpan } from '@web/spaces/document/document-column-span-selection';
-import { DOC_COLUMN, DOC_COLUMN_LIST, holdsOneEmptyParagraph } from '@web/spaces/document/document-column-nodes';
+import { DOC_COLUMN, DOC_COLUMN_LIST, holdsOneEmptyParagraph } from '@web/spaces/document/document-column-geometry';
 import { firstStepAtStart } from '@web/spaces/document/document-table-keys';
 
 /** The part of the editor the keys use. */

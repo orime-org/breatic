@@ -77,7 +77,7 @@ import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { useRowNow } from '@web/spaces/document/use-row-now';
 import { bodyLayerMark } from '@web/spaces/document/document-body-focus';
 import { domElementOf } from '@web/spaces/document/document-editor-view';
-import { columnsOutOfReach } from '@web/spaces/document/document-column-landing';
+import { columnsOutOfReach } from '@web/spaces/document/document-column-entry';
 import { blockInTableCell, DOC_TABLE } from '@web/spaces/document/document-table-nodes';
 
 /**

@@ -44,8 +44,8 @@ import type { EditorView } from '@tiptap/pm/view';
 import { blocksMarkdown } from '@web/spaces/document/document-table-markdown';
 import { bodyEdgeBetween } from '@web/spaces/document/document-body-edge-selection';
 import { heldRange, replaceHeld, type HeldTables } from '@web/spaces/document/document-table-leave-selection';
-import { DOC_COLUMN } from '@web/spaces/document/document-column-nodes';
-import { DOC_TABLE, isTableCell, tableAround, type TableAt } from '@web/spaces/document/document-table-nodes';
+import { bodyDepthBetween } from '@web/spaces/document/document-body-carrier';
+import { DOC_TABLE, tableAround, type TableAt } from '@web/spaces/document/document-table-nodes';
 
 /** The editor, as far as copying reads it. */
 type CopyEditor = BlockNoteEditor<never, never, never>;
@@ -64,13 +64,9 @@ export interface Clipped {
  */
 function oneCellDepth(selection: Selection): number {
   const { $from, $to } = selection;
-  let depth = -1;
   // The innermost cell or column (inner#1314): a column in a cell is a body
   // of its own inside the cell's.
-  for (let d = $from.depth; d > 0 && depth < 0; d -= 1) {
-    const node = $from.node(d);
-    if (isTableCell(node) || node.type.name === DOC_COLUMN) depth = d;
-  }
+  const depth = bodyDepthBetween($from, $from);
   return depth > 0 && $to.depth >= depth && $to.node(depth) === $from.node(depth) ? depth : -1;
 }
 

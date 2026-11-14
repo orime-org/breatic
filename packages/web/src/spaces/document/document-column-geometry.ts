@@ -2,9 +2,18 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The geometry of a column group (inner#1314 design §5.1), read by the node,
- * the drop, the divider and the side menu alike.
+ * A column group's node names, shape and geometry (inner#1314 design §5.1),
+ * read by the nodes, the walkers, the drop, the divider and the side menu
+ * alike. It imports nothing of the editor, so any module can read it.
  */
+
+import type { Node as PMNode } from '@tiptap/pm/model';
+
+/** The column group. */
+export const DOC_COLUMN_LIST = 'docColumnList';
+
+/** One column of a group. */
+export const DOC_COLUMN = 'docColumn';
 
 /** The most columns a group holds. */
 export const MAX_COLUMNS = 4;
@@ -65,4 +74,31 @@ export function weightsFit(width: number, weights: readonly number[]): boolean {
  */
 export function meanWeight(weights: readonly number[]): number {
   return weights.length === 0 ? 1 : weights.reduce((total, weight) => total + weight, 0) / weights.length;
+}
+
+/**
+ * The bodies a layout block holds, each a run of blocks of its own: a column
+ * group's columns, or a table's cells.
+ * @param node - The layout block.
+ * @returns Its bodies, in reading order.
+ */
+export function bodiesOf(node: PMNode): PMNode[] {
+  const bodies: PMNode[] = [];
+  if (node.type.name === DOC_COLUMN_LIST) {
+    node.forEach((column) => bodies.push(column));
+  } else {
+    node.forEach((row) => row.forEach((cell) => bodies.push(cell)));
+  }
+  return bodies;
+}
+
+/**
+ * Whether a column holds only one empty paragraph.
+ * @param column - The column.
+ * @returns True when it does.
+ */
+export function holdsOneEmptyParagraph(column: PMNode): boolean {
+  if (column.childCount !== 1) return false;
+  const row = column.firstChild!;
+  return row.type.name === 'blockContainer' && row.childCount === 1 && row.firstChild!.type.name === 'paragraph' && row.firstChild!.content.size === 0;
 }

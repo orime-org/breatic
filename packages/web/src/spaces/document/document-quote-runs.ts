@@ -18,7 +18,7 @@
 
 import type { Node as PMNode } from '@tiptap/pm/model';
 
-import { bodiesOf } from '@web/spaces/document/document-column-nodes';
+import { bodiesOf } from '@web/spaces/document/document-column-geometry';
 
 import { QUOTED } from '@web/spaces/document/document-list-block';
 

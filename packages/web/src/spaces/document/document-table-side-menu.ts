@@ -222,8 +222,6 @@ export const documentTableSideMenuExtension = createExtension(({ editor }) => ({
     // The gap of a column group the pointer is over, where BlockNote finds no
     // block and hides the menu.
     let gap: Element | null = null;
-    // On the window in the capture phase, ahead of the side menu's own
-    // listener on the document, so the point is current when its state moves.
     /** Hands the menu to the block the pointer stands for, if that is another. */
     const follow = (): void => {
       const state = sideMenu.store.state;
@@ -246,6 +244,8 @@ export const documentTableSideMenuExtension = createExtension(({ editor }) => ({
       if (next === undefined) return;
       sideMenu.store.setState({ ...state, block: next as never });
     };
+    // On the window in the capture phase, ahead of the side menu's own
+    // listener on the document, so the point is current when its state moves.
     window.addEventListener(
       'mousemove',
       (event) => {

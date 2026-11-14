@@ -10,8 +10,28 @@
 
 import type { Node as PMNode, ResolvedPos } from '@tiptap/pm/model';
 
-import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-nodes';
+import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-geometry';
+import { rowById } from '@web/spaces/document/document-row-by-id';
 import { isTableCell } from '@web/spaces/document/document-table-nodes';
+
+/** The column group's type, as a set to search for. */
+export const LISTS: ReadonlySet<string> = new Set([DOC_COLUMN_LIST]);
+
+/**
+ * Whether a node, or any node inside it, is of one of these types.
+ * @param node - The node.
+ * @param types - The type names.
+ * @returns True when one is found.
+ */
+export function holds(node: PMNode, types: ReadonlySet<string>): boolean {
+  if (types.has(node.type.name)) return true;
+  let found = false;
+  node.descendants((child) => {
+    if (types.has(child.type.name)) found = true;
+    return !found;
+  });
+  return found;
+}
 
 /**
  * Whether any of these nodes is a column group or holds one.
@@ -19,16 +39,7 @@ import { isTableCell } from '@web/spaces/document/document-table-nodes';
  * @returns True when one does.
  */
 export function holdsColumns(nodes: readonly PMNode[]): boolean {
-  let found = false;
-  for (const node of nodes) {
-    if (node.type.name === DOC_COLUMN_LIST) return true;
-    node.descendants((child) => {
-      if (child.type.name === DOC_COLUMN_LIST) found = true;
-      return !found;
-    });
-    if (found) return true;
-  }
-  return false;
+  return nodes.some((node) => holds(node, LISTS));
 }
 
 /**
@@ -45,4 +56,18 @@ export function columnsBarredAt($pos: ResolvedPos): boolean {
     if (!inCell && node.type.name === 'blockGroup' && $pos.node(depth - 1).type.name === 'blockContainer') return true;
   }
   return false;
+}
+
+/**
+ * Whether "Columns" in the insert menu is out of reach on a row: where a
+ * group may not go, or on a row with children (design §5.3).
+ * @param doc - The document.
+ * @param blockId - The pressed row's id.
+ * @returns True when the entry is greyed.
+ */
+export function columnsOutOfReach(doc: PMNode, blockId: string): boolean {
+  const row = rowById(doc, blockId);
+  if (row === undefined) return true;
+  if (row.node.type.name === 'blockContainer' && row.node.childCount > 1) return true;
+  return columnsBarredAt(doc.resolve(row.from));
 }
