@@ -43,6 +43,16 @@ export const COLUMN_TAKE_AWAY = new PluginKey('doc-column-take-away');
  */
 export const SAVED_BODY = new PluginKey('doc-saved-body');
 
+/**
+ * Whether transactions hold a change of this user's own, other than a body
+ * written as it was saved: what the column plugins answer.
+ * @param transactions - The transactions just applied.
+ * @returns True when they do.
+ */
+export function localEdit(transactions: readonly Transaction[]): boolean {
+  return transactions.some((tr) => tr.docChanged && !fromYjs(tr)) && !transactions.some((tr) => tr.getMeta(SAVED_BODY) === true);
+}
+
 /** A range of the document after the transactions. */
 type Range = readonly [number, number];
 
@@ -118,8 +128,7 @@ function repair(
   oldState: EditorState,
   newState: EditorState,
 ): Transaction | null {
-  if (!transactions.some((tr) => tr.docChanged && !fromYjs(tr))) return null;
-  if (transactions.some((tr) => tr.getMeta(SAVED_BODY) === true)) return null;
+  if (!localEdit(transactions)) return null;
   const takeAway = transactions.some((tr) => tr.getMeta(COLUMN_TAKE_AWAY) === true);
   const before = idsOf(oldState.doc);
   const tr = newState.tr;

@@ -11,8 +11,8 @@
  *
  * The widths are read off the table as drawn before the change and appended
  * to the transaction that made the columns, so they land in its undo step
- * whatever event dispatched it. A body written as it was saved
- * ({@link SAVED_BODY}) keeps the widths it was saved with.
+ * whatever event dispatched it. A body written as it was saved keeps the
+ * widths it was saved with ({@link localEdit}).
  */
 
 import { createExtension } from '@blocknote/core';
@@ -22,11 +22,10 @@ import { TableMap } from '@tiptap/pm/tables';
 import type { EditorView } from '@tiptap/pm/view';
 
 import { DOC_COLUMN_LIST, weightsFit, weightsOf, weightsWidth } from '@web/spaces/document/document-column-geometry';
-import { SAVED_BODY } from '@web/spaces/document/document-column-repair';
+import { localEdit } from '@web/spaces/document/document-column-repair';
 import { rowById } from '@web/spaces/document/document-row-by-id';
 import { drawnColumns, holdColumnWidths } from '@web/spaces/document/document-table-column-widths';
 import { isTableCell } from '@web/spaces/document/document-table-nodes';
-import { fromYjs } from '@web/spaces/document/document-yjs-origin';
 
 /**
  * How many columns each group in a cell holds, by the group's id.
@@ -133,9 +132,7 @@ export const documentColumnCellWidthExtension = createExtension(() => {
         },
         appendTransaction: (transactions, before, after) => {
           const view = drawing;
-          if (view === null || !view.editable) return null;
-          if (!transactions.some((tr) => tr.docChanged && !fromYjs(tr))) return null;
-          if (transactions.some((tr) => tr.getMeta(SAVED_BODY) === true)) return null;
+          if (view === null || !view.editable || !localEdit(transactions)) return null;
           const grown = grownGroups(before.doc, after.doc);
           if (grown.length === 0) return null;
           const tr = after.tr;
