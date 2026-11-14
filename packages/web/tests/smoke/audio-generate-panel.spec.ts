@@ -398,6 +398,7 @@ test('Gemini keeps its reading mode and speakers in the settings pill, and its v
   await expect(chosen.locator('svg')).toHaveCount(0);
   const pickedLanguage = (await options.nth(10).innerText()).trim();
   await options.nth(10).click();
+  await expect(page.getByTestId('generate-voice-language-search')).toHaveCount(0);
   await expect(sampleLanguage).toContainText(pickedLanguage);
 
   // Dialogue: the voice row gives way to one voice row per speaker (#2256).
@@ -654,6 +655,8 @@ test('a sample speaks the language of its voice, or the one picked for a Gemini 
   await page.getByTestId('generate-audio-row-voice_id').click();
   await page.getByTestId('generate-voice-language').click();
   await page.getByTestId('generate-voice-language-ja').click();
+  // A pick closes the language list; its exit runs before the next key reaches the panel.
+  await expect(page.getByTestId('generate-voice-language-search')).toHaveCount(0);
   const sample = page.locator('[data-testid^="generate-voice-sample-"]').first();
   await expect(sample).toBeVisible({ timeout: 20_000 });
   const heardJa = page.waitForRequest((r) => r.url().includes('/voice-samples/'));
