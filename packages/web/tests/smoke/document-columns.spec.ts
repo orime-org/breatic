@@ -369,3 +369,28 @@ test('above the body, level with no line, the right margin shows no side line', 
   expect(level).toBe(1);
   expect(above).toBe(0);
 });
+
+test('one undo takes back columns made in a narrow cell together with the widened column', async () => {
+  await openWithLines(page, ['lead']);
+  await page.mouse.move(5, 5);
+  const lead = (await row(page, 'lead').boundingBox())!;
+  await page.mouse.move(lead.x + 30, lead.y + lead.height / 2, { steps: 3 });
+  await page.getByTestId('doc-block-handle').click();
+  await page.getByTestId('doc-block-row-insertBelow').hover();
+  await page.getByTestId('doc-block-insert-table').hover();
+  await page.getByTestId('doc-table-size-2-2').click();
+  await page.keyboard.type('one');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('two');
+  const widths = (): Promise<number[]> =>
+    page.locator(`${EDITOR} tr`).first().locator('td').evaluateAll((cells) => cells.map((cell) => Math.round(cell.getBoundingClientRect().width)));
+  const before = await widths();
+  const one = (await row(page, 'one').boundingBox())!;
+  await dragRowTo(page, 'two', { x: one.x + one.width - 4, y: one.y + one.height / 2 });
+  await expect.poll(() => groups(page)).toEqual([['one', 'two']]);
+  await expect.poll(widths).not.toEqual(before);
+  await row(page, 'one').click();
+  await page.keyboard.press('ControlOrMeta+z');
+  await expect.poll(() => groups(page)).toEqual([]);
+  expect(await widths()).toEqual(before);
+});

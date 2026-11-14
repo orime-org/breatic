@@ -8,8 +8,7 @@
  * narrow for its columns, the table's drawn widths are written down
  * (`holdColumnWidths`, as a column drag starts) and that column is widened.
  * Only then: a column the user narrows afterwards stacks its groups instead.
- * The write lands in the same undo step as the change that caused it, within
- * the undo manager's capture timeout.
+ * The write lands in the same undo step as the change that caused it.
  */
 
 import { createExtension } from '@blocknote/core';
@@ -21,6 +20,7 @@ import { ySyncPluginKey } from 'y-prosemirror';
 
 import { columnsFit, columnsWidth } from '@web/spaces/document/document-column-geometry';
 import { DOC_COLUMN_LIST } from '@web/spaces/document/document-column-nodes';
+import { rowById } from '@web/spaces/document/document-row-by-id';
 import { drawnColumns, holdColumnWidths } from '@web/spaces/document/document-table-column-widths';
 import { isTableCell } from '@web/spaces/document/document-table-nodes';
 
@@ -43,15 +43,15 @@ function groupsInCells(doc: PMNode): Map<string, number> {
  * The groups in cells that gained a column, or came in, since a state.
  * @param before - The state before.
  * @param doc - The document now.
- * @returns Their positions.
+ * @returns Their ids.
  */
-function grownGroups(before: EditorState, doc: PMNode): number[] {
+function grownGroups(before: EditorState, doc: PMNode): string[] {
   const was = groupsInCells(before.doc);
-  const grown: number[] = [];
+  const grown: string[] = [];
   doc.descendants((node, pos) => {
     if (node.type.name !== DOC_COLUMN_LIST) return true;
     const id = String(node.attrs['id']);
-    if (isTableCell(doc.resolve(pos).parent) && node.childCount > (was.get(id) ?? 0)) grown.push(pos);
+    if (isTableCell(doc.resolve(pos).parent) && node.childCount > (was.get(id) ?? 0)) grown.push(id);
     return false;
   });
   return grown;
@@ -61,17 +61,20 @@ function grownGroups(before: EditorState, doc: PMNode): number[] {
  * Widens the table column a group's cell stands in, when the cell is too
  * narrow for the group's columns.
  * @param view - The editor view.
- * @param groupPos - Where the group starts.
+ * @param groupId - The group's id.
  */
-function widenFor(view: EditorView, groupPos: number): void {
+function widenFor(view: EditorView, groupId: string): void {
   const { doc } = view.state;
-  const group = doc.nodeAt(groupPos);
+  const found = rowById(doc, groupId);
+  if (found?.node.type.name !== DOC_COLUMN_LIST || !isTableCell(doc.resolve(found.from).parent)) return;
+  const groupPos = found.from;
+  const group = found.node;
   const $group = doc.resolve(groupPos);
   const cellDepth = $group.depth;
   const tableDepth = cellDepth - 2;
   const element = view.nodeDOM(groupPos);
   const cellDom = view.nodeDOM($group.before(cellDepth));
-  if (group === null || tableDepth < 1 || !(element instanceof HTMLElement) || !(cellDom instanceof HTMLElement)) return;
+  if (tableDepth < 1 || !(element instanceof HTMLElement) || !(cellDom instanceof HTMLElement)) return;
   const count = group.childCount;
   const room = element.getBoundingClientRect().width;
   if (columnsFit(room, count)) return;
@@ -109,10 +112,13 @@ export const documentColumnCellWidthExtension = createExtension(() => ({
           const sync = ySyncPluginKey.getState(view.state) as { isChangeOrigin?: boolean } | undefined;
           if (sync?.isChangeOrigin === true || !view.editable) return;
           const grown = grownGroups(before, view.state.doc);
-          // Measured once the browser has drawn the new columns.
+          // Written once the event that made the change is handled: a drop's
+          // or a paste's two halves have both landed, and the undo step they
+          // open is closed only after (`ownStepPlugin`, `document-undo-blocknote.ts`).
+          // The new columns are in the DOM already; measuring lays them out.
           if (grown.length > 0) {
-            requestAnimationFrame(() => {
-              for (const pos of grown.reverse()) widenFor(view, pos);
+            queueMicrotask(() => {
+              for (const id of grown) widenFor(view, id);
             });
           }
         },
