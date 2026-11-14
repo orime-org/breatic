@@ -632,15 +632,13 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     const { newLightPose } = await import('@web/spaces/three-d/viewfinder/camera-from-frame');
     const current = session.getSnapshot();
     const number = nextDirectorNumber(current.objects, 'light');
-    const shown = cameraViewRef.current;
-    const centre = (shown !== null ? pilotControl.current?.centre() : null) ?? view.current.target;
-    const viewer = shown?.kind === 'frozen' ? shown.position : lookCamera?.position ?? view.current.position;
-    const pose = newLightPose(centre, viewer);
+    const anchor = pilotControl.current?.lightAnchor() ?? null;
+    const pose = newLightPose(anchor?.centre ?? view.current.target, anchor?.viewer ?? view.current.position);
     session.execute({ type: 'create', objects: [{ id: crypto.randomUUID(), model: { kind: 'light', type }, number,
       name: t('spaces.threeD.director.lightName', { type: t(`spaces.threeD.director.${LIGHT_LABEL[type]}`), n: number }),
       position: pose.position, rotation: type === 'point' ? [0, 0, 0, 1] : pose.rotation, scale: [1, 1, 1], locked: false,
       color: SCENE_LIGHT_COLOR_DEFAULT, intensity: SCENE_LIGHT_INTENSITY[type].initial, castShadow: true } satisfies SceneObject] });
-  }, [session, t, lookCamera]);
+  }, [session, t]);
   const onAddLight = React.useCallback((type: SceneLightType): void => { void addLight(type); }, [addLight]);
   /**
    * Look through a camera with the frame of its ratio.

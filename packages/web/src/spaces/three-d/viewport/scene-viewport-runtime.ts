@@ -311,7 +311,7 @@ export class SceneViewportRuntime {
     this.update(props);
     this.onFrame();
     props.onCapture?.(this.capture);
-    props.onPilotControl?.({ flush: () => this.pilot.flush('undo'), escape: () => this.pilot.escape(), centre: () => this.pilotCentre() });
+    props.onPilotControl?.({ flush: () => this.pilot.flush('undo'), escape: () => this.pilot.escape(), lightAnchor: () => this.lightAnchor() });
   }
 
   /**
@@ -390,10 +390,11 @@ export class SceneViewportRuntime {
   }
 
   /**
-   * The pivot of the camera being looked through: ahead of it at the pilot's pivot distance.
-   * @returns The pivot, or null outside a live camera view.
+   * Where a new light goes from the camera on screen (design 3.6): its pose is the record's while live and the still's
+   * when frozen; the light aims at the pivot ahead of it, at the pilot's pivot distance, and sits beside its position.
+   * @returns The pivot and the viewer, or null outside a camera view.
    */
-  private pilotCentre(): [number, number, number] | null {
+  private lightAnchor(): { centre: [number, number, number]; viewer: [number, number, number] } | null {
     const view = this.view;
     const record = view?.kind === 'live' ? this.cameraRecord(view.id) : null;
     const pose = record ? { position: record.position, rotation: record.rotation } : view?.kind === 'frozen' ? { position: view.position, rotation: view.quaternion } : null;
@@ -401,8 +402,10 @@ export class SceneViewportRuntime {
     const position = new Vector3().fromArray(pose.position);
     const box = this.modelBounds();
     const distance = pilotPivotDistance(position, box.isEmpty() ? null : box.getCenter(new Vector3()));
-    return position.addScaledVector(new Vector3(0, 0, -1).applyQuaternion(new Quaternion().fromArray(pose.rotation)), distance).toArray();
+    const centre = position.clone().addScaledVector(new Vector3(0, 0, -1).applyQuaternion(new Quaternion().fromArray(pose.rotation)), distance);
+    return { centre: centre.toArray(), viewer: position.toArray() };
   }
+
 
   /**
    * The bounding box of the loaded models, without camera and light figures.
