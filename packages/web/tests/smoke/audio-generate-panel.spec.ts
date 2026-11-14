@@ -659,7 +659,8 @@ test('a sample speaks the language of its voice, or the one picked for a Gemini 
   await expect(page.getByTestId('generate-voice-language-search')).toHaveCount(0);
   const sample = page.locator('[data-testid^="generate-voice-sample-"]').first();
   await expect(sample).toBeVisible({ timeout: 20_000 });
-  const heardJa = page.waitForResponse((r) => r.url().includes('/voice-samples/'));
+  // Only this model's samples: the Mandarin one above may still be answering.
+  const heardJa = page.waitForResponse((r) => r.url().includes('/voice-samples/gemini-3.8-flash-text-to-speech/'));
   await sample.click();
   const answer = await heardJa;
   expect(answer.url()).toContain('/gemini-3.8-flash-text-to-speech/ja/');
