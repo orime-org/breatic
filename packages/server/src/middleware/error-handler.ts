@@ -33,10 +33,11 @@
 
 import type { ErrorHandler } from "hono";
 import { HTTPException } from "hono/http-exception";
-import { AppError, TooManyRequestsError } from "@breatic/core";
+import { AppError, GlobalApiError, TooManyRequestsError, UNREACHABLE_STATUS } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { REQUEST_SHAPE_REASON, t } from "@breatic/shared";
 import { RequestShapeError } from "@server/middleware/validate.js";
+import { REGION_UNAVAILABLE_REASON } from "@server/modules/region/fanout.js";
 
 /**
  * Global error handler for the Hono app.
@@ -106,6 +107,17 @@ export const errorHandler: ErrorHandler = (err, c) => {
     );
   }
 
+  // Outside the global region a request may need it (inner#1955). One that
+  // did not answer, was busy or failed on its side is not the user's doing:
+  // say the Studio cannot be reached now. A 4xx refusal is a bug of ours.
+  if (err instanceof GlobalApiError && isGlobalRegionUnavailable(err.status)) {
+    logger.error({ err, status: err.status, path: c.req.path }, "global_region_unavailable");
+    return c.json(
+      { error: { code: 503, message: t("server.region.unavailable"), reason: REGION_UNAVAILABLE_REASON } },
+      503,
+    );
+  }
+
   // Everything else is ours until proven otherwise, including a bare
   // `ZodError` or `SyntaxError` — those name a failed parse without naming
   // whose input failed, and the ones that actually occur here come from our
@@ -116,3 +128,13 @@ export const errorHandler: ErrorHandler = (err, c) => {
     500,
   );
 };
+
+/**
+ * Whether a global call's status means the global region could not serve it
+ * now, as opposed to refusing what we sent.
+ * @param status - The status the call got, or `UNREACHABLE_STATUS`.
+ * @returns True for no answer, a timeout, a rate limit or a server error.
+ */
+function isGlobalRegionUnavailable(status: number): boolean {
+  return status === UNREACHABLE_STATUS || status === 408 || status === 429 || status >= 500;
+}

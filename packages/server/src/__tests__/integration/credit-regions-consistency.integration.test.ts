@@ -45,8 +45,8 @@ vi.mock("ai", () => ({
 import crypto from "node:crypto";
 import fc from "fast-check";
 import postgres from "postgres";
-import { db, initCore, loadLocales } from "@breatic/core";
-import { creditHoldService, creditLotService, studioDirectoryService } from "@breatic/domain";
+import { db, GlobalApiError, initCore, loadLocales, UNREACHABLE_STATUS } from "@breatic/core";
+import { creditHoldService, creditLotService, globalApi, studioDirectoryService } from "@breatic/domain";
 import * as creditViewService from "@server/modules/credit/credit-view.service.js";
 import * as studioTransferService from "@server/modules/studio/studioTransfer.service.js";
 import { openPaymentSource } from "./payment-source.js";
@@ -290,6 +290,27 @@ describe("a transfer across the global and region steps", () => {
     expect(directory!.until).toBeNull();
     expect(await role(studioId, adminId)).toBe("admin");
     expect(await role(studioId, memberId)).toBe("maintainer");
+  });
+
+  it("tells the recipient the transfer is being processed when the global region does not answer, and the sweep finishes it", async () => {
+    const { studioId, slug, adminId, memberId } = await localStudio();
+    await studioTransferService.requestTransfer(slug, adminId, memberId);
+    const [offer] = await sql<{ id: string }[]>`SELECT id FROM studio_transfers WHERE studio_id = ${studioId} AND status = 'pending'`;
+    vi.spyOn(globalApi(), "transferAdmin").mockRejectedValueOnce(new GlobalApiError(UNREACHABLE_STATUS, "unreachable", "timed out"));
+
+    await expect(studioTransferService.confirmTransfer(offer!.id, memberId)).rejects.toMatchObject({
+      statusCode: 409,
+      reason: "studio_transfer_processing",
+    });
+    const [during] = await sql<{ status: string }[]>`SELECT status FROM studio_transfers WHERE id = ${offer!.id}`;
+    expect(during!.status).toBe("accepting");
+
+    await sql`UPDATE studio_transfers SET updated_at = now() - interval '5 minutes' WHERE id = ${offer!.id}`;
+    await studioTransferService.sweepAcceptingTransfers({ olderThanMs: 60_000 });
+
+    const [after] = await sql<{ status: string }[]>`SELECT status FROM studio_transfers WHERE id = ${offer!.id}`;
+    expect(after!.status).toBe("accepted");
+    expect(await role(studioId, memberId)).toBe("admin");
   });
 
   it("is finished by the sweep when the global change committed and the region step did not", async () => {

@@ -17,6 +17,8 @@
  *   1. Opening a Studio, listing its members, creating a Project in it and
  *      opening that Project all succeed in the region.
  *   2. Every call they make to the global region is a listed interface.
+ *   3. A storage refusal tells the admin, reading the admin's account from
+ *      the global region.
  */
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
@@ -38,7 +40,9 @@ import { getMembershipLimits, initCore, loadLocales, signIdentityToken } from "@
 import type { Hono } from "hono";
 import { withPeer } from "../helpers/peer.js";
 import { startRegionStandIn, type RegionStandIn } from "./region-harness.js";
+import { assetRepo } from "@breatic/domain";
 import { precheckCredits } from "@server/modules/payment/credit-precheck.service.js";
+import { assertStudioStorageAllowance } from "@server/modules/asset/storageQuota.service.js";
 
 loadLocales();
 
@@ -185,5 +189,28 @@ describe("serving Studio and Project requests in a region", () => {
 
     expect(refused).toMatchObject({ statusCode: 402 });
     expect(global.received.map((call) => call.fn)).toEqual(["getSpendableCredits", "getUnassignedCredits"]);
+  });
+
+  it("reads the admin's account from the global region to mail a storage refusal", async () => {
+    const { userId, studioId } = await regionStudio();
+    await assetRepo.registerWithDedup({
+      studioId,
+      producedByUserId: userId,
+      contentHash: crypto.randomBytes(32).toString("hex"),
+      storageKey: `image/2026-11-14/${crypto.randomUUID()}.png`,
+      fileUrl: `https://cdn/${crypto.randomUUID()}.png`,
+      sizeBytes: 10,
+      mimeType: "image/png",
+      kind: "image",
+      source: "upload",
+    });
+    global.answers.getStorageBudget = { adminUserId: userId, storageBytes: 1, elsewhereBytes: 0 };
+    global.received.length = 0;
+
+    await expect(assertStudioStorageAllowance(studioId, "upload")).rejects.toMatchObject({ statusCode: 507 });
+
+    await vi.waitFor(() => expect(global.received.map((call) => call.fn)).toContain("getAccounts"));
+    const accounts = global.received.find((call) => call.fn === "getAccounts");
+    expect(accounts?.args).toEqual([[userId]]);
   });
 });

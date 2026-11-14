@@ -37,7 +37,7 @@
 
 import { AppError, env, getRedis, getRegionsConfig, logger } from "@breatic/core";
 import { t } from "@breatic/shared";
-import { assetService, directoryWrites, globalApi } from "@breatic/domain";
+import { assetService, directoryWrites, globalApi, profilesService } from "@breatic/domain";
 import type { StorageBudget } from "@breatic/domain";
 import { accountStorageUsage } from "@server/modules/asset/assetUsage.service.js";
 import {
@@ -46,7 +46,6 @@ import {
 } from "@server/modules/asset/storage-notice-throttle.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import { studioRepo } from "@breatic/domain";
-import { usersRepo } from "@breatic/domain";
 import { buildStorageQuotaExceededMail } from "@server/utils/notification-mail.js";
 import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
 
@@ -186,10 +185,12 @@ async function tellTheAdmin(
     // that catch gives the window back on the grounds that nobody was told —
     // which stops being true the moment the insert succeeds.
     await sendBestEffortMail(async () => {
-      const [admin, studio] = await Promise.all([
-        usersRepo.getUserById(adminUserId),
+      // The account lives in the global region; the Studio in this one.
+      const [accounts, studio] = await Promise.all([
+        profilesService.accountsOf([adminUserId]),
         studioRepo.getById(studioId),
       ]);
+      const admin = accounts.get(adminUserId);
       if (!admin || !studio) return null;
       return buildStorageQuotaExceededMail({
         locale: admin.locale,

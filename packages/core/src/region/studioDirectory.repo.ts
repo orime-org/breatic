@@ -7,7 +7,7 @@
  * offer is open on it. Only the global region reads or writes these rows.
  */
 
-import { and, eq, inArray, isNull, lte, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lte, ne, sql } from "drizzle-orm";
 import { db, type DbTx } from "@core/db/client.js";
 import { getRegionsConfig } from "@core/config/regions.js";
 import {
@@ -210,20 +210,29 @@ export async function lockSlug(slug: string, tx: DbTx): Promise<void> {
  * created, or reserved for a rename.
  * @param slug - The slug.
  * @param tx - The transaction to read in, when there is one.
- * @returns True when nobody may take it.
+ * @param exceptStudioId - A Studio whose own hold does not count: the one being renamed.
+ * @returns True when nobody else may take it.
  */
-export async function isSlugHeld(slug: string, tx?: DbTx): Promise<boolean> {
+export async function isSlugHeld(slug: string, tx?: DbTx, exceptStudioId?: string): Promise<boolean> {
   const runner = tx ?? db;
   const [directory] = await runner
     .select({ id: studioDirectory.studioId })
     .from(studioDirectory)
-    .where(and(eq(studioDirectory.slug, slug), isNull(studioDirectory.deletedAt)))
+    .where(and(
+      eq(studioDirectory.slug, slug),
+      isNull(studioDirectory.deletedAt),
+      exceptStudioId === undefined ? undefined : ne(studioDirectory.studioId, exceptStudioId),
+    ))
     .limit(1);
   if (directory) return true;
   const [reserved] = await runner
     .select({ id: slugReservations.id })
     .from(slugReservations)
-    .where(and(eq(slugReservations.slug, slug), isNull(slugReservations.deletedAt)))
+    .where(and(
+      eq(slugReservations.slug, slug),
+      isNull(slugReservations.deletedAt),
+      exceptStudioId === undefined ? undefined : ne(slugReservations.studioId, exceptStudioId),
+    ))
     .limit(1);
   return reserved !== undefined;
 }

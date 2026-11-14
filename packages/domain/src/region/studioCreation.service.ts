@@ -335,12 +335,3 @@ export async function sweepPendingStudios(options: {
   return result;
 }
 
-/**
- * Whether nobody holds a slug in any region: no live Studio, no creation in
- * progress, no rename reservation.
- * @param slug - The slug.
- * @returns True when it is free.
- */
-export async function isSlugAvailable(slug: string): Promise<boolean> {
-  return !(await studioDirectoryRepo.isSlugHeld(slug));
-}

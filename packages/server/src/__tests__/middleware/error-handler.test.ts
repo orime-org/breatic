@@ -53,7 +53,9 @@ import { HTTPException } from "hono/http-exception";
 import { z } from "zod";
 import {
   AppError,
+  GlobalApiError,
   NotFoundError,
+  UNREACHABLE_STATUS,
   TooManyRequestsError,
   ValidationError,
   loadLocales,
@@ -269,5 +271,26 @@ describe("a request refused until a wait is over", () => {
     const app = appThrowing(new TooManyRequestsError("Wait a moment", 36.2));
     const res = await runWithLocale("en", () => app.request("/boom"));
     expect(res.headers.get("Retry-After")).toBe("37");
+  });
+});
+
+// inner#1955: outside the global region a request may need the global
+// region, and when it does not answer the user is told the Studio cannot be
+// reached now, not that something broke.
+describe("a global region that did not answer", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it.each([UNREACHABLE_STATUS, 429, 502, 503])("answers 503 region_unavailable for a call that got %s", async (status) => {
+    const { status: answered, body } = await answerFor(new GlobalApiError(status, "unreachable", "did not answer"));
+
+    expect(answered).toBe(503);
+    expect(body.error).toMatchObject({ code: 503, reason: "region_unavailable", message: "This Studio can't be reached right now. Please try again later." });
+    expect(logged.error).toHaveBeenCalled();
+  });
+
+  it("still answers 500 for a global refusal that is a bug of ours", async () => {
+    const { status } = await answerFor(new GlobalApiError(400, "invalid_body", "refused"));
+
+    expect(status).toBe(500);
   });
 });

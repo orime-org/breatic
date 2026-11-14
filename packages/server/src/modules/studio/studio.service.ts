@@ -186,7 +186,8 @@ export async function checkStudioSlug(
   if (RESERVED_STUDIO_SLUGS.has(slug)) {
     return { available: false, reason: "reserved" };
   }
-  const taken = await studioRepo.isSlugTaken(slug, excludeStudioId);
+  // Slugs are unique across regions, so the global directory answers.
+  const taken = await studioDirectoryRepo.isSlugHeld(slug, undefined, excludeStudioId);
   return taken ? { available: false, reason: "taken" } : { available: true };
 }
 

@@ -337,6 +337,31 @@ describe("checkStudioSlug", () => {
     });
   });
 
+  // inner#1955: a slug is unique across regions, so the check reads the
+  // global directory and its reservations, not this region's Studios.
+  it("returns taken for a slug a Studio in another region holds", async () => {
+    const user = await insertUser();
+    const slug = uniqueSlug();
+    await sql`
+      INSERT INTO studio_directory (studio_id, slug, region, type, name, admin_user_id, created_by_user_id, state)
+      VALUES (gen_random_uuid(), ${slug}, 'sg', 'team', 'Far', ${user.id}, ${user.id}, 'live')
+    `;
+    expect(await studioService.checkStudioSlug(slug)).toEqual({ available: false, reason: "taken" });
+  });
+
+  it("returns taken for a slug reserved for a rename in progress", async () => {
+    const user = await insertUser();
+    const studioId = (await sql<{ id: string }[]>`SELECT gen_random_uuid() AS id`)[0]!.id;
+    const slug = uniqueSlug();
+    await sql`
+      INSERT INTO studio_directory (studio_id, slug, region, type, name, admin_user_id, created_by_user_id, state)
+      VALUES (${studioId}, ${uniqueSlug()}, 'sg', 'team', 'Far', ${user.id}, ${user.id}, 'live')
+    `;
+    await sql`INSERT INTO slug_reservations (slug, studio_id, expires_at) VALUES (${slug}, ${studioId}, now() + interval '10 minutes')`;
+    expect(await studioService.checkStudioSlug(slug)).toEqual({ available: false, reason: "taken" });
+    expect(await studioService.checkStudioSlug(slug, studioId)).toEqual({ available: true });
+  });
+
   it("returns format for a malformed slug", async () => {
     expect(await studioService.checkStudioSlug("Bad Slug!")).toEqual({
       available: false,

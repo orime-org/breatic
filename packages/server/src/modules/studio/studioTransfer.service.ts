@@ -39,7 +39,7 @@ import { studioTransfersRepo as transfersRepo } from "@breatic/domain";
 import { buildStudioTransferMail } from "@server/utils/notification-mail.js";
 import { decisionLink } from "@server/utils/decision-link.js";
 import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
-import { db } from "@breatic/core";
+import { db, GlobalApiError } from "@breatic/core";
 import {
   ConflictError,
   ForbiddenError,
@@ -262,12 +262,22 @@ export async function confirmTransfer(
   // The refusal is raised only now: its own writes had to commit first.
   if (isRefused(checked)) throw refusalError(checked.refusal);
 
-  const moved = await globalApi().transferAdmin({
-    studioId: checked.studioId,
-    fromUserId: checked.fromUserId,
-    toUserId: receiverUserId,
-    changeId: checked.id,
-  });
+  let moved: { changed: boolean };
+  try {
+    moved = await globalApi().transferAdmin({
+      studioId: checked.studioId,
+      fromUserId: checked.fromUserId,
+      toUserId: receiverUserId,
+      changeId: checked.id,
+    });
+  } catch (err) {
+    // The global change may or may not have committed; the offer stays
+    // accepting and `sweepAcceptingTransfers` asks again and finishes it.
+    if (err instanceof GlobalApiError) {
+      throw new ConflictError(t("server.studio.transfer_processing"), TRANSFER_PROCESSING_REASON);
+    }
+    throw err;
+  }
   if (!moved.changed) {
     await invalidateAccepting(checked.id);
     throw refusalError("conflict");

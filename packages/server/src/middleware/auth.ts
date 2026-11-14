@@ -90,6 +90,26 @@ export const requireAuth: MiddlewareHandler<{
 };
 
 /**
+ * The id of the user a request carries, read the way `requireAuth` reads it:
+ * the identity token outside the global region, the session in it. For logs
+ * about a request refused before authentication; it never answers.
+ * @param c - The request context.
+ * @returns The user id, or null when the request carries no valid one.
+ * @throws {Error} When the session or tombstone store cannot be read.
+ */
+export async function requestUserId(c: Context): Promise<string | null> {
+  if (env.REGION !== env.GLOBAL_REGION) {
+    const cookie = getCookie(c, IDENTITY_COOKIE_NAME);
+    if (!cookie) return null;
+    const verdict = verifyIdentityToken(cookie, env.IDENTITY_PUBLIC_KEYS, Math.floor(Date.now() / 1000));
+    return verdict.ok ? verdict.claims.sub : null;
+  }
+  const token = readSessionCookie(c);
+  if (!token) return null;
+  return (await authService.getUserByToken(token))?.id ?? null;
+}
+
+/**
  * Who is asking, in a region that does not hold the sessions: the identity
  * token cookie checked with the public keys and this region's revocation
  * tombstones, with no call to the global region.
