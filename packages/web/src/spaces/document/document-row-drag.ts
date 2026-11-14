@@ -65,6 +65,8 @@ export function startRowDrag(
   previewRowDrag(view, event.dataTransfer, blockId);
 
   let ended = false;
+  // Whether the row was dropped in the body; null when no drop came.
+  let landedHere: boolean | null = null;
   /** Ends the drag, once. */
   const end = (): void => {
     if (ended) return;
@@ -76,15 +78,19 @@ export function startRowDrag(
     // selection the library put on the row at dragstart is still there, and
     // the bubble bar comes up for any selection that is not empty.
     restoreAfterRowDrag(view, held, blockId);
-    // A key pressed after the drag has to land in the document. The body stays
+    // A key pressed after the drag has to land where the row did: in the
+    // document when it was dropped there or the drag was called off, and in
+    // a field that took the drop (the chat box) otherwise. The body stays
     // where the drag left it (the prosemirror-view patch, design §5.5).
-    editor.focus();
+    if (landedHere !== false) editor.focus();
   };
   /**
    * Seen in the capture phase, before the editor handles the drop; the end
    * waits until that handling is done, since it reads the row in flight.
+   * @param drop - The drop.
    */
-  const onDrop = (): void => {
+  const onDrop = (drop: DragEvent): void => {
+    landedHere = drop.target instanceof Node && view.dom.contains(drop.target);
     setTimeout(end, 0);
   };
   page.addEventListener('drop', onDrop, true);
