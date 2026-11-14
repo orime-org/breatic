@@ -2,13 +2,12 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { MathUtils, PerspectiveCamera, Quaternion, Vector3 } from 'three';
-import { SCENE_FOCAL_LENGTH_MAX, SCENE_FOCAL_LENGTH_MIN, SCENE_FREE_RATIO_MAX, SCENE_FREE_RATIO_MIN, VIEWFINDER_RATIOS, type ViewfinderRatio } from '@breatic/shared';
+import { SCENE_FOCAL_LENGTH_MAX, SCENE_FOCAL_LENGTH_MIN, VIEWFINDER_RATIOS, type ViewfinderRatio } from '@breatic/shared';
 
-import type { ViewfinderRect } from '@web/spaces/three-d/viewfinder/viewfinder-geometry';
+import { clampFreeRatio, viewfinderRatioValue, type ViewfinderRect } from '@web/spaces/three-d/viewfinder/viewfinder-geometry';
 import { CAMERA_FILM_GAUGE } from '@web/spaces/three-d/viewport/director-objects';
 import { SCENE_VIEW_FOV } from '@web/spaces/three-d/viewport/scene-camera';
 import type { SceneFrozenPose, SceneQuaternion, SceneVector3 } from '@web/spaces/three-d/viewport/scene-viewport-props';
-import { viewfinderRatioValue } from '@web/spaces/three-d/viewfinder/viewfinder-geometry';
 
 /**
  * A camera that sees what a frame on the free view shows (inner#1694 design 3.5): from the view's position,
@@ -42,9 +41,19 @@ export function cameraFromFrame(view: { position: Vector3; quaternion: Quaternio
   const aimed = new PerspectiveCamera();
   aimed.position.copy(view.position);
   aimed.lookAt(view.position.clone().add(centre));
-  const filmHeight = CAMERA_FILM_GAUGE / Math.max(frame.width / frame.height, 1);
-  const focalLength = MathUtils.clamp(filmHeight / (2 * Math.tan(span / 2)), SCENE_FOCAL_LENGTH_MIN, SCENE_FOCAL_LENGTH_MAX);
-  return { position: view.position.toArray() as SceneVector3, rotation: aimed.quaternion.toArray() as SceneQuaternion, focalLength };
+  return { position: view.position.toArray() as SceneVector3, rotation: aimed.quaternion.toArray() as SceneQuaternion,
+    focalLength: focalLengthOf(span, frame.width / frame.height) };
+}
+
+/**
+ * The lens that spans a vertical field of view on the 36 mm gauge, the gauge laid along the long edge (design 3.5).
+ * @param verticalFov - The vertical field of view, in radians.
+ * @param aspect - Width over height.
+ * @returns The focal length in millimetres, within the lens range.
+ */
+function focalLengthOf(verticalFov: number, aspect: number): number {
+  const filmHeight = CAMERA_FILM_GAUGE / Math.max(aspect, 1);
+  return MathUtils.clamp(filmHeight / (2 * Math.tan(verticalFov / 2)), SCENE_FOCAL_LENGTH_MIN, SCENE_FOCAL_LENGTH_MAX);
 }
 
 /**
@@ -105,8 +114,7 @@ export function cameraFromView(view: { position: SceneVector3; target: SceneVect
  * @returns The camera's position, rotation, focal length, frame and free ratio.
  */
 export function cameraFromStill(pose: SceneFrozenPose): { position: SceneVector3; rotation: SceneQuaternion; focalLength: number; frame: ViewfinderRatio; freeRatio: number } {
-  const filmHeight = CAMERA_FILM_GAUGE / Math.max(pose.aspect, 1);
-  const focalLength = MathUtils.clamp(filmHeight / (2 * Math.tan(MathUtils.degToRad(pose.fov) / 2)), SCENE_FOCAL_LENGTH_MIN, SCENE_FOCAL_LENGTH_MAX);
   const frame = VIEWFINDER_RATIOS.find((ratio) => ratio !== 'Free' && Math.abs((viewfinderRatioValue(ratio) ?? 0) - pose.aspect) < 1e-3) ?? 'Free';
-  return { position: pose.position, rotation: pose.quaternion, focalLength, frame, freeRatio: MathUtils.clamp(pose.aspect, SCENE_FREE_RATIO_MIN, SCENE_FREE_RATIO_MAX) };
+  return { position: pose.position, rotation: pose.quaternion, focalLength: focalLengthOf(MathUtils.degToRad(pose.fov), pose.aspect), frame,
+    freeRatio: clampFreeRatio(pose.aspect) };
 }
