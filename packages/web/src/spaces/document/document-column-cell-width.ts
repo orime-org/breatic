@@ -88,8 +88,11 @@ function holdFor(view: EditorView, tr: Transaction, groupId: string): void {
   if (top >= drawnMap.height || column >= drawnMap.width) return;
   const cellDom = view.nodeDOM(drawn.from + 1 + drawnMap.map[top * drawnMap.width + column]!);
   if (!(cellDom instanceof HTMLElement)) return;
+  // The room inside the cell as drawn, to the fraction of a pixel, as the
+  // group's own width decides whether it stacks (`document-column-nodes.tsx`).
   const style = getComputedStyle(cellDom);
-  const room = cellDom.clientWidth - pixels(style.paddingLeft) - pixels(style.paddingRight);
+  const edges = ['borderLeftWidth', 'borderRightWidth', 'paddingLeft', 'paddingRight'] as const;
+  const room = edges.reduce((width, edge) => width - pixels(style[edge]), cellDom.getBoundingClientRect().width);
   const widths = drawnColumns(view, drawn.node, drawn.from + 1);
   const weights = weightsOf(found.node);
   if (weightsFit(room, weights)) {
@@ -99,11 +102,17 @@ function holdFor(view: EditorView, tr: Transaction, groupId: string): void {
   const target = Math.ceil((widths[column] ?? cellDom.offsetWidth) + weightsWidth(weights) - room);
   holdColumnWidths(tr, tablePos, widths.map((width, k) => (k === column ? target : width)));
   // A cell that already held its width keeps it in `holdColumnWidths`; the
-  // column widened here is written on every cell of the column.
+  // column widened here is written on every cell covering it, a merged one's
+  // entry for this column included, so the table reads one width for it
+  // (the table plugin's `fixTables` settles a column on the width most of
+  // its cells hold).
   for (const rel of map.cellsInRect({ left: column, top: 0, right: column + 1, bottom: map.height })) {
-    const cell = table.nodeAt(rel)!;
-    if (Number(cell.attrs['colspan'] ?? 1) !== 1) continue;
-    tr.setNodeMarkup(tablePos + 1 + rel, undefined, { ...cell.attrs, colwidth: [target] });
+    const cell = tr.doc.nodeAt(tablePos + 1 + rel)!;
+    const colwidth = [...((cell.attrs['colwidth'] as (number | null)[] | null) ?? [])];
+    const span = Number(cell.attrs['colspan'] ?? 1);
+    for (let k = colwidth.length; k < span; k += 1) colwidth.push(widths[map.colCount(rel) + k] ?? null);
+    colwidth[column - map.colCount(rel)] = target;
+    tr.setNodeMarkup(tablePos + 1 + rel, undefined, { ...cell.attrs, colwidth });
   }
 }
 
