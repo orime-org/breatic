@@ -120,6 +120,14 @@ beforeAll(async () => {
   // to the 1 ms TimestampScale (0, 33, 67, 100 ms, each lasting 33 ms).
   await make('w30.webm', ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=30:d=2', '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuv420p']);
   await make('w2997.webm', ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=30000/1001:d=2', '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuv420p']);
+  // A screen recording's held frames on a 1/600 clock, then FFmpeg's default WebM of it: frames that outlast DefaultDuration
+  // carry a BlockDuration rounded to 1 ms, which can end one tick past the next block.
+  await make('screen.mp4', ['-f', 'lavfi', '-i', "testsrc2=s=160x96:r=60:d=2,settb=1/600,setpts='N*10+floor(N/4)*30'", '-fps_mode', 'passthrough',
+    '-enc_time_base', '1/600', '-c:v', 'libx264', '-bf', '0', '-pix_fmt', 'yuv420p', '-video_track_timescale', '600']);
+  await make('screen.webm', ['-i', join(dir, 'screen.mp4'), '-c:v', 'libvpx-vp9', '-deadline', 'realtime', '-cpu-used', '8']);
+  // A VFR clip with B-frames written as fragmented MP4, which has no edit list: ffprobe's durations are the decode-order deltas.
+  await make('frag-vfr.mp4', ['-f', 'lavfi', '-i', "testsrc2=s=160x96:r=30:d=2,settb=1/90000,setpts='N*3000+if(mod(N\\,3)\\,600\\,0)'", '-fps_mode', 'passthrough',
+    '-enc_time_base', '1/90000', '-c:v', 'libx264', '-bf', '2', '-pix_fmt', 'yuv420p', '-video_track_timescale', '90000', '-movflags', 'frag_keyframe+empty_moov']);
   // The picture 0.3 s after the audio: an empty edit before media 0 on the video track, AAC from 0.
   await make('late-video.mp4', ['-itsoffset', '0.3', '-i', join(dir, 'edit-base.mp4'), '-f', 'lavfi', '-i', 'sine=f=440:sample_rate=48000:d=2.5',
     '-map', '0:v', '-map', '1:a', '-c:v', 'copy', '-c:a', 'aac', '-use_editlist', '1']);
@@ -383,6 +391,12 @@ describe('timeline rules applied by the probe (design §4.2.1 开头行)', () =>
       expect(presentationFrameCount(plan.presentation as never)).toBe(count);
       expect(presentationOutputFps(plan.presentation as never)).toEqual(fps);
     });
+
+  it.each([['screen.webm', 120], ['frag-vfr.mp4', 60]] as const)('PT04 %s: a middle frame ends at the next frame, whatever its packet duration says', async (name, count) => {
+    const { plan } = planned(await probed(name));
+    expect(plan.originMapping.entries.every((entry) => entry.kind === 'source')).toBe(true);
+    expect(presentationFrameCount(plan.presentation as never)).toBe(count);
+  });
 
   it('PT02 the picture 0.3 s after the audio: origin 0, the first frame held from 0 as derived-lead, and the edit kept at 3/10', async () => {
     const { plan } = planned(await probed('late-video.mp4'));

@@ -158,24 +158,27 @@ function containerOf(format: Record<string, unknown>): string {
 }
 
 /**
- * Plan frames from packets without an edit list: presentation order by pts, each declared to end after its own duration, or
- * at the next frame when that duration falls short of it by at most one tick of rounding.
+ * Plan frames from packets without an edit list, in presentation order by pts (§3.1 中间帧行: a middle frame's window runs
+ * to the next frame's start). An ISO sample's duration is its decode-order delta, not its own display time, so an ISO middle
+ * frame always ends at the next frame. A Matroska block's time and declared duration are each rounded to the container clock,
+ * so a declared end within one tick of the next frame, before or after it, is that rounding and ends there too; a larger gap
+ * stays a gap. The last frame keeps its declared duration.
  * @param packets - The selected stream's packets.
  * @param base - Their time base.
+ * @param iso - Whether the source is an ISO file.
  * @returns The frames in presentation order.
  * @throws {ProbeFailure} When two packets share a pts.
  */
-function framesOf(packets: readonly PhysicalVideoPacket[], base: [bigint, bigint]): VideoPresentationPlanInput['frames'][number][] {
+function framesOf(packets: readonly PhysicalVideoPacket[], base: [bigint, bigint], iso: boolean): VideoPresentationPlanInput['frames'][number][] {
   const sorted = [...packets].sort((left, right) => (BigInt(left.ptsTicks) < BigInt(right.ptsTicks) ? -1 : BigInt(left.ptsTicks) > BigInt(right.ptsTicks) ? 1 : 0));
   if (sorted.some((packet, index) => index > 0 && packet.ptsTicks === sorted[index - 1]!.ptsTicks)) throw new ProbeFailure('clock_unknown');
   return sorted.map((packet, index) => {
     const pts = BigInt(packet.ptsTicks);
-    if (packet.durationTicks === null) return { sourcePtsTicks: packet.ptsTicks, start: at(pts, base), declaredEnd: null };
-    // Block times and declared durations are each rounded to the container clock (Matroska's 1 ms TimestampScale), so a
-    // declared end one tick or less before the next frame is that rounding: the frame shows until the next one (§3.1 中间帧行).
-    const end = pts + BigInt(packet.durationTicks);
     const next = index + 1 < sorted.length ? BigInt(sorted[index + 1]!.ptsTicks) : null;
-    return { sourcePtsTicks: packet.ptsTicks, start: at(pts, base), declaredEnd: at(next !== null && end < next && next - end <= 1n ? next : end, base) };
+    if (packet.durationTicks === null) return { sourcePtsTicks: packet.ptsTicks, start: at(pts, base), declaredEnd: iso && next !== null ? at(next, base) : null };
+    const end = pts + BigInt(packet.durationTicks);
+    const rounding = next !== null && (iso || (end > next ? end - next : next - end) <= 1n);
+    return { sourcePtsTicks: packet.ptsTicks, start: at(pts, base), declaredEnd: at(rounding ? next : end, base) };
   });
 }
 
@@ -318,7 +321,7 @@ async function plan(body: PresentationProbeRequest, input: string, directory: st
   const packetBytes = await runPlanCommand('ffprobe', videoPacketProbeArgs({ input, streamIndex: Number(video.index), iso }), { ...options, stdoutBytes: ledger.probeStdoutBytes });
   const { packets, sourceTimeBase } = parsePhysicalVideoPackets(raw, packetBytes);
   const base: [bigint, bigint] = [BigInt(sourceTimeBase.numerator), BigInt(sourceTimeBase.denominator)];
-  let frames = framesOf(packets, base);
+  let frames = framesOf(packets, base, iso);
   let emptyEdits: VideoPresentationPlanInput['emptyEdits'] = [];
   let videoSpans: VideoPresentationPlanInput['videoSpans'] = null;
   // The media's presented range on the media timeline: the first pts to the latest frame end.
