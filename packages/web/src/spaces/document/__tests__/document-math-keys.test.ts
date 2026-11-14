@@ -202,15 +202,18 @@ describe('a line deletion across an inline formula (§8)', () => {
     expect(editor.prosemirrorView!.state.doc.textContent).toBe('a ');
   });
 
-  it('stops a paragraph deletion at the next line break, as the browser does', () => {
-    const { editor } = open([{ type: 'paragraph', content: ['Kab ', { type: 'math', props: { source: 'x' } }, ' cd\nef gh'] }]);
+  it.each([
+    ['forward', 'deleteHardLineForward', 'cd', 0],
+    ['backward', 'deleteHardLineBackward', ' ef gh', 6],
+  ] as const)('stops a %s paragraph deletion at the line break, as the browser does', (_label, inputType, word, at) => {
+    const { editor } = open([{ type: 'paragraph', content: ['Kab\ncd ', { type: 'math', props: { source: 'x' } }, ' ef gh\nij'] }]);
     const paragraph = () => editor.prosemirrorView!.state.doc.firstChild!.firstChild!.firstChild!;
-    expect(paragraph().textBetween(0, paragraph().content.size, undefined, (leaf) => (leaf.type.name === 'math' ? '[x]' : '⏎'))).toBe('Kab [x] cd⏎ef gh');
-    select(editor, positionOf(editor, 'Kab', 1));
+    expect(paragraph().textBetween(0, paragraph().content.size, undefined, (leaf) => (leaf.type.name === 'math' ? '[x]' : '⏎'))).toBe('Kab⏎cd [x] ef gh⏎ij');
+    select(editor, positionOf(editor, word, at));
 
-    expect(deletion(editor, 'deleteHardLineForward')).toBe(true);
+    expect(deletion(editor, inputType)).toBe(true);
 
-    expect(paragraph().textBetween(0, paragraph().content.size, undefined, () => '⏎')).toBe('K⏎ef gh');
+    expect(paragraph().textBetween(0, paragraph().content.size, undefined, () => '⏎')).toBe('Kab⏎⏎ij');
   });
 
   it('takes the line before the caret with Cmd+Backspace right after an inline formula on Apple platforms', () => {

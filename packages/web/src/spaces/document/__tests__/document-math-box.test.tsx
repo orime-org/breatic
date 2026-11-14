@@ -218,18 +218,20 @@ describe('closing a block formula’s box (§8.2)', () => {
   });
 
   it.each([
-    ['Enter that accepts a candidate', 'Enter', 'x+1'],
-    ['Escape that dismisses the candidates', 'Escape', 'x+1'],
-    ['Backspace that erases the reading', 'Backspace', ''],
-  ] as const)('leaves the %s to the input method (§8.2)', async (_label, key, value) => {
+    ['Enter that accepts a candidate', 'Enter', 13, 'x+1'],
+    ['Escape that dismisses the candidates', 'Escape', 27, 'x+1'],
+    ['Backspace that erases the reading', 'Backspace', 8, ''],
+  ] as const)('leaves the %s to the input method (§8.2)', async (_label, key, keyCode, value) => {
     const { editor } = open(BLOCK);
     const text = await openBy('.katex-display');
     fireEvent.change(text, { target: { value } });
     fireEvent.compositionStart(text);
 
-    // Chrome ends the composition first, then sends the key with isComposing false.
+    // Chrome ends the composition first, then sends the key with isComposing
+    // false, once as 229 and again with its own code.
     fireEvent.compositionEnd(text, { target: { value } });
     fireEvent.keyDown(text, { key, keyCode: 229 });
+    fireEvent.keyDown(text, { key, keyCode });
 
     expect(closed()).toBe(false);
     expect(posOf(editor, 'mathBlock')).toBeGreaterThanOrEqual(0);

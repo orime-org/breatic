@@ -253,7 +253,7 @@ function openBeside(view: EditorView, back: boolean): boolean {
 function removeSelected(editor: MathEditor, view: EditorView, back: boolean): boolean {
   const { selection } = view.state;
   if (!(selection instanceof NodeSelection) || selection.node.type.name !== MATH_BLOCK) return false;
-  removeFormulaBlock(editor as never, view, selection.from, back);
+  removeFormulaBlock(editor, view, selection.from, back);
   return true;
 }
 
