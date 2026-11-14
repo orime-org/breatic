@@ -695,6 +695,14 @@ describe('generation template registry checks', () => {
   });
 });
 
+describe('motion and speed templates (inner#1810)', () => {
+  it('tells the agent the user’s vehicle photo goes straight into the video, which takes only the vehicle from it', () => {
+    expect(byId('vehicle-speed-cutlist')?.agentNote).toContain(
+      "the user's photo goes straight into the video's pool, which takes only the vehicle from it, so its background needs no edit first",
+    );
+  });
+});
+
 describe('social hook templates (inner#1816)', () => {
   it('feeds each its user inputs and wires the carried object through two scenes into the first and last frame', () => {
     const expected: Record<string, { inputs: Array<{ key: string; type: string; feeds: readonly string[] }>; edges: GenerationTemplate['edges'] }> = {
