@@ -189,6 +189,21 @@ describe('formulas echoed through the AI dialog', () => {
     expect(shape(h)).toEqual(['paragraph|Before|', `mathBlock||block:${source}`, 'paragraph|After|']);
   });
 
+  it.each([
+    ['two formulas side by side', [{ type: 'math', props: { source: 'x' } }, { type: 'math', props: { source: 'y' } }], 'paragraph|Mass  here|inline:x,inline:y'],
+    ['an empty formula', [{ type: 'math', props: { source: '' } }], 'paragraph|Mass  here|inline:'],
+  ])('keeps %s', (_name, formulas, written) => {
+    const h = openBlocks([
+      { type: 'paragraph', content: 'Before' },
+      { type: 'paragraph', content: [{ type: 'text', text: 'Mass ', styles: {} }, ...formulas, { type: 'text', text: ' here', styles: {} }] },
+      { type: 'paragraph', content: 'After' },
+    ]);
+
+    echoAll(h);
+
+    expect(shape(h)[1]).toBe(written);
+  });
+
   it('keeps words reading $$x$$ as words, not a formula', () => {
     const h = openBlocks([
       { type: 'paragraph', content: 'Before' },

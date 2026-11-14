@@ -65,7 +65,8 @@ function collect(node: MdNode, inCell: boolean, found: Found[]): void {
     // GFM splits a row at every unescaped `|` before it reads a cell, so a
     // formula in a cell carries its bars as `\|`; mdast-util-gfm-table takes
     // the backslash off only for inline code.
-    const value = node.value ?? '';
+    // An empty inline formula is written `$$  $$`, since `$$$$` reads as words.
+    const value = node.type === 'inlineMath' && (node.value ?? '').trim() === '' ? '' : node.value ?? '';
     found.push({ start, end, source: inCell ? value.replace(/\\\|/g, '|') : value, block: node.type === 'math' });
     return;
   }

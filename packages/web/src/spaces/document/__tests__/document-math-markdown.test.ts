@@ -225,6 +225,25 @@ describe('formula sources round-trip through Markdown', () => {
   });
 });
 
+describe('formulas next to a dollar sign, through Markdown', () => {
+  // Inline math closes only on a run of exactly as many dollars as opened it,
+  // so a dollar right outside a formula, or the other delimiter when the
+  // source is empty, must not touch its own.
+  it.each([
+    ['two formulas side by side', [{ type: 'text', text: 'p', styles: {} }, { type: 'math', props: { source: 'x' } }, { type: 'math', props: { source: 'y' } }, { type: 'text', text: 'q', styles: {} }], 'pq', ['x', 'y']],
+    ['words ending and starting with $ around a formula', [{ type: 'text', text: 'a$', styles: {} }, { type: 'math', props: { source: 'x' } }, { type: 'text', text: '$b', styles: {} }], 'a$$b', ['x']],
+    ['an empty formula among words', [{ type: 'text', text: 'Mass ', styles: {} }, { type: 'math', props: { source: '' } }, { type: 'text', text: ' here', styles: {} }], 'Mass  here', ['']],
+    ['an empty formula alone', [{ type: 'math', props: { source: '' } }], '', ['']],
+  ])('keeps %s', async (_name, content, words, sources) => {
+    const editor = open([{ type: 'paragraph', content }]);
+
+    const again = await read(blocksMarkdown(editor, editor.document as never));
+
+    expect(again.map((b) => [b.type, wordsOf(b.content)])).toEqual([['paragraph', words]]);
+    expect(formulas(again)).toEqual(sources.map((source) => ({ kind: 'inline', source })));
+  });
+});
+
 describe('the body as Markdown', () => {
   it('writes an inline formula as $$source$$', () => {
     const editor = open([inlineIn('E = mc^2')]);

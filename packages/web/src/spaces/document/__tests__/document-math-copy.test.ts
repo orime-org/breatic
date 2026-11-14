@@ -18,6 +18,7 @@ import { TextSelection } from '@tiptap/pm/state';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { markdownBlocks } from '@web/spaces/document/document-markdown';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -108,6 +109,18 @@ describe('copying a selection that holds formulas', () => {
     const size = editor.prosemirrorState.doc.nodeAt(paragraph)!.content.size;
     select(editor, paragraph + 1, paragraph + 1 + size);
     expect(copy(editor)['text/plain']?.trim()).toBe('x $$a b$$ y');
+  });
+
+  it('writes two formulas side by side into the plain text so they read back as two', async () => {
+    const editor = open([{ type: 'paragraph', content: ['x ', { type: 'math', props: { source: 'a' } }, { type: 'math', props: { source: 'b' } }, ' y'] }]);
+    const paragraph = before(editor, 'paragraph');
+    const size = editor.prosemirrorState.doc.nodeAt(paragraph)!.content.size;
+    select(editor, paragraph + 1, paragraph + 1 + size);
+
+    const [read] = await markdownBlocks(copy(editor)['text/plain'] ?? '');
+
+    const pieces = (read!.block as unknown as { content: { type: string; props?: { source?: string } }[] }).content;
+    expect(pieces.filter((piece) => piece.type === 'math').map((piece) => piece.props?.source)).toEqual(['a', 'b']);
   });
 
   it('writes a block formula into the plain text as $$ on lines of their own', () => {
