@@ -151,10 +151,10 @@ export async function reserveForRun(
       ttlMs: getNodeTaskConfig().default_budget_ms,
     })
     .catch(async (err: unknown) => {
-      // The global region may have taken the hold and lost only its answer
-      // (inner#1955). Releasing does nothing when nothing was held, so a
-      // failed admission never keeps the credits for the whole budget.
-      await creditHoldService.releaseHold(referenceId).catch((releaseErr: unknown) => {
+      // The global region may have taken the hold and lost only its answer,
+      // or may still be taking it (inner#1955): give the key up so neither
+      // keeps the credits for the whole budget.
+      await creditHoldService.abandonHold({ projectId, actorUserId: userId, referenceId }).catch((releaseErr: unknown) => {
         logger.error({ err: releaseErr, referenceId }, "credit_hold_release_failed");
       });
       throw err;

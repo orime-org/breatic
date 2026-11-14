@@ -101,4 +101,14 @@ describe("reserving a slug for a rename", () => {
 
     expect(await directoryWrites.reserveSlug(r.newSlug, other.studioId)).toBe(false);
   });
+
+  // inner#1955: renamed a → b and straight back to a, before the outbox
+  // moved the directory to b. The directory row's own a is about to go.
+  it("reserves a slug the Studio's own directory row still shows", async () => {
+    const r = await reserved(-5);
+
+    expect(await directoryWrites.reserveSlug(r.oldSlug, r.studioId)).toBe(true);
+    const rows = await sql`SELECT 1 FROM slug_reservations WHERE slug = ${r.oldSlug} AND studio_id = ${r.studioId} AND deleted_at IS NULL`;
+    expect(rows).toHaveLength(1);
+  });
 });

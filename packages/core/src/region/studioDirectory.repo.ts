@@ -490,6 +490,22 @@ export async function reserveSlug(slug: string, studioId: string, tx: DbTx): Pro
 }
 
 /**
+ * Whether a Studio holds a live reservation of a slug.
+ * @param slug - The slug.
+ * @param studioId - The Studio.
+ * @param tx - The reading transaction.
+ * @returns True when it does.
+ */
+export async function hasReservation(slug: string, studioId: string, tx: DbTx): Promise<boolean> {
+  const [row] = await tx
+    .select({ id: slugReservations.id })
+    .from(slugReservations)
+    .where(and(eq(slugReservations.slug, slug), eq(slugReservations.studioId, studioId), isNull(slugReservations.deletedAt)))
+    .limit(1);
+  return row !== undefined;
+}
+
+/**
  * Let go of a Studio's reservation of a slug.
  * @param slug - The slug.
  * @param studioId - The Studio.

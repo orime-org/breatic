@@ -304,6 +304,15 @@ describe("a transfer across the global and region steps", () => {
     });
     const [during] = await sql<{ status: string }[]>`SELECT status FROM studio_transfers WHERE id = ${offer!.id}`;
     expect(during!.status).toBe("accepting");
+    // Answering again while it is under way is told the same.
+    await expect(studioTransferService.confirmTransfer(offer!.id, memberId)).rejects.toMatchObject({
+      statusCode: 409,
+      reason: "studio_transfer_processing",
+    });
+    await expect(studioTransferService.declineTransfer(offer!.id, memberId)).rejects.toMatchObject({
+      statusCode: 409,
+      reason: "studio_transfer_processing",
+    });
 
     await sql`UPDATE studio_transfers SET updated_at = now() - interval '5 minutes' WHERE id = ${offer!.id}`;
     await studioTransferService.sweepAcceptingTransfers({ olderThanMs: 60_000 });
@@ -311,6 +320,9 @@ describe("a transfer across the global and region steps", () => {
     const [after] = await sql<{ status: string }[]>`SELECT status FROM studio_transfers WHERE id = ${offer!.id}`;
     expect(after!.status).toBe("accepted");
     expect(await role(studioId, memberId)).toBe("admin");
+    // Confirming once more after it finished is done; declining it is too late.
+    await expect(studioTransferService.confirmTransfer(offer!.id, memberId)).resolves.toBeUndefined();
+    await expect(studioTransferService.declineTransfer(offer!.id, memberId)).rejects.toMatchObject({ statusCode: 409 });
   });
 
   it("is finished by the sweep when the global change committed and the region step did not", async () => {

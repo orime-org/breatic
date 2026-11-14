@@ -138,7 +138,9 @@ export async function userRegionTouched(userId: string, tx?: DbTx): Promise<void
  * Hold a new slug in the global directory for a rename. In the global region
  * the rename's own transaction checks the slug (see {@link slugFreeHere}).
  * A retry of a rename whose first answer was lost finds the Studio's own
- * reservation and is answered held again.
+ * reservation and is answered held again. The Studio's own directory row
+ * showing the slug is no hold: it may be a rename the outbox has not
+ * carried yet, about to move off the slug.
  * @param slug - The new slug.
  * @param studioId - The Studio being renamed.
  * @returns Whether the slug is now held for the Studio.
@@ -147,7 +149,7 @@ export async function reserveSlug(slug: string, studioId: string): Promise<boole
   return db.transaction(async (tx) => {
     await studioDirectoryRepo.lockSlug(slug, tx);
     if (await studioDirectoryRepo.isSlugHeld(slug, tx, studioId)) return false;
-    if (!(await studioDirectoryRepo.isSlugHeld(slug, tx))) await studioDirectoryRepo.reserveSlug(slug, studioId, tx);
+    if (!(await studioDirectoryRepo.hasReservation(slug, studioId, tx))) await studioDirectoryRepo.reserveSlug(slug, studioId, tx);
     return true;
   });
 }

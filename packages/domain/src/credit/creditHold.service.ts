@@ -125,6 +125,32 @@ export async function releaseHold(referenceId: string): Promise<void> {
 }
 
 /**
+ * Give up a hold after its reserve call failed: the books may have taken it
+ * and lost only the answer, or may still be taking it.
+ * @param request - The hold that was asked for.
+ * @returns Once the key can hold nothing.
+ * @throws {NotFoundError} When the project has no live studio.
+ */
+export async function abandonHold(
+  request: Pick<HoldFields, "actorUserId" | "referenceId"> & ({ studioId: string } | { projectId: string }),
+): Promise<void> {
+  if (!env.PAYMENT_ENABLED) return;
+  const studioId = "studioId" in request ? request.studioId : await resolveOwnerStudioId(request.projectId);
+  await globalApi().abandonHold({ studioId, actorUserId: request.actorUserId, referenceId: request.referenceId });
+}
+
+/**
+ * Give up a hold in the region that holds the books.
+ * @param hold - The hold's Studio, actor and key.
+ * @param hold.studioId - The Studio.
+ * @param hold.actorUserId - Who started the work.
+ * @param hold.referenceId - Its key.
+ */
+export async function abandonHere(hold: { studioId: string; actorUserId: string; referenceId: string }): Promise<void> {
+  await creditHoldRepo.abandonHold(hold);
+}
+
+/**
  * Release a hold in the region that holds the books.
  * @param referenceId - Its key.
  */

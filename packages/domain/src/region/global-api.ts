@@ -47,7 +47,7 @@ import {
   type RegionalChargeOutcome,
   type RegionalChargeRequest,
 } from "@domain/credit/creditLot.service.js";
-import { positionHere, releaseHere, reserveHere, type HoldFields, type ReserveOutcome } from "@domain/credit/creditHold.service.js";
+import { abandonHere, positionHere, releaseHere, reserveHere, type HoldFields, type ReserveOutcome } from "@domain/credit/creditHold.service.js";
 
 /** An account as other regions read it. */
 export interface Account {
@@ -102,6 +102,15 @@ export const GLOBAL_FUNCTIONS = {
    * @returns Once released.
    */
   releaseHold: (referenceId: string): Promise<void> => releaseHere(referenceId),
+  /**
+   * Give up a hold whose reserve call failed, so a late reserve holds nothing.
+   * @param hold - The hold's Studio, actor and key.
+   * @param hold.studioId - The Studio.
+   * @param hold.actorUserId - Who started the work.
+   * @param hold.referenceId - Its key.
+   * @returns Once given up.
+   */
+  abandonHold: (hold: { studioId: string; actorUserId: string; referenceId: string }): Promise<void> => abandonHere(hold),
   /**
    * A Studio's balance, holds and what is left, for a Project's top bar.
    * @param studioId - The Studio.

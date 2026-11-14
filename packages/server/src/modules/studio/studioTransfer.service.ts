@@ -219,9 +219,9 @@ export async function confirmTransfer(
   transferId: string,
   receiverUserId: string,
 ): Promise<void> {
-  const checked = await db.transaction<Refused | OpenOffer>(async (tx) => {
+  const checked = await db.transaction<Refused | OpenOffer | AlreadyAccepted>(async (tx) => {
     const opened = await openForDecision(tx, transferId, receiverUserId);
-    if (isRefused(opened)) return opened;
+    if (isRefused(opened) || "alreadyAccepted" in opened) return opened;
     const offer = opened;
     const { studioId, fromUserId } = offer;
 
@@ -261,6 +261,11 @@ export async function confirmTransfer(
   });
   // The refusal is raised only now: its own writes had to commit first.
   if (isRefused(checked)) throw refusalError(checked.refusal);
+  // The recipient answering again: done is done, under way is still under way.
+  if ("alreadyAccepted" in checked) {
+    if (checked.alreadyAccepted === "accepted") return;
+    throw new ConflictError(t("server.studio.transfer_processing"), TRANSFER_PROCESSING_REASON);
+  }
 
   let moved: { changed: boolean };
   try {
@@ -326,6 +331,11 @@ export async function assertNoTransferAccepting(studioId: string, tx: DbTx): Pro
 
 /** The `error.reason` of a change refused while a transfer is accepting. */
 export const TRANSFER_PROCESSING_REASON = "studio_transfer_processing";
+
+/** The recipient's own acceptance of an offer, already under way or done. */
+interface AlreadyAccepted {
+  alreadyAccepted: "accepting" | "accepted";
+}
 
 /**
  * Swap the roles for an accepting offer and settle it accepted.
@@ -403,13 +413,17 @@ export async function declineTransfer(
   transferId: string,
   receiverUserId: string,
 ): Promise<void> {
-  const outcome = await db.transaction<Refused | { done: true }>(async (tx) => {
+  const outcome = await db.transaction<Refused | AlreadyAccepted | { done: true }>(async (tx) => {
     const opened = await openForDecision(tx, transferId, receiverUserId);
-    if (isRefused(opened)) return opened;
+    if (isRefused(opened) || "alreadyAccepted" in opened) return opened;
     await settle(opened, "declined", tx);
     return { done: true };
   });
   if (isRefused(outcome)) throw refusalError(outcome.refusal);
+  if ("alreadyAccepted" in outcome) {
+    if (outcome.alreadyAccepted === "accepted") throw refusalError("conflict");
+    throw new ConflictError(t("server.studio.transfer_processing"), TRANSFER_PROCESSING_REASON);
+  }
 }
 
 /**
@@ -491,14 +505,14 @@ interface OpenOffer {
  * Refusals come back as VALUES, not exceptions: the timed-out branch settles
  * the row before refusing, and throwing here would abort the transaction that
  * write lives in. The caller raises them after the commit.
- * @returns The locked offer with the studio's display name, or why the
- *   decision is refused.
+ * @returns The locked offer with the studio's display name, the recipient's
+ *   own acceptance already under way or done, or why the decision is refused.
  */
 async function openForDecision(
   tx: DbTx,
   transferId: string,
   receiverUserId: string,
-): Promise<OpenOffer | Refused> {
+): Promise<OpenOffer | Refused | AlreadyAccepted> {
   // The Studio row before the offer's, the order every transaction writing a
   // `studio:{id}` directory event takes them in (inner#1955).
   const parties = await transfersRepo.findParties(transferId, tx);
@@ -535,6 +549,7 @@ async function openForDecision(
     notificationId: row.notificationId,
   };
   if (row.toUserId !== receiverUserId) return { refusal: "forbidden" };
+  if (row.status === "accepting" || row.status === "accepted") return { alreadyAccepted: row.status };
   if (row.status !== "pending") return { refusal: "conflict" };
   if (row.expired) {
     // Nobody answered in time. Somebody has to write that down, or the row
