@@ -58,6 +58,9 @@ export interface SceneDirectorPanelProps extends SceneFieldDraftOwner {
   viewFailed: boolean;
 }
 
+/** A camera card's caption and a light's row: one height, so the two kinds of row line up in the console. */
+const DIRECTOR_ROW = 'flex h-10 items-center gap-2 px-2 text-xs';
+
 /**
  * One camera's card: its live picture, a row with its number, name, lens and frame, and its menu.
  * @param root0 - Props.
@@ -95,7 +98,7 @@ const MonitorCard = React.memo(function MonitorCard({ camera, active, canEdit, s
       </TooltipTrigger>
       <TooltipContent>{t('spaces.threeD.director.look')}</TooltipContent>
     </Tooltip>
-    <div className='flex items-center gap-2 px-2 py-1 text-xs'>
+    <div className={DIRECTOR_ROW}>
       <span className='grid size-5 shrink-0 place-items-center rounded-full bg-foreground text-2xs text-background'>{camera.number}</span>
       <span className='min-w-0 flex-1 truncate'>{camera.name}</span>
       <span className='shrink-0 tabular-nums text-muted-foreground'>{`${Number(camera.focalLength.toFixed(1))}mm · ${camera.frame === 'Free' ? camera.freeRatio.toFixed(2) : camera.frame}`}</span>
@@ -137,7 +140,7 @@ export const SceneDirectorPanel = React.memo(function SceneDirectorPanel(props: 
    * @returns Its fields under a rule, or nothing when it is not the selection.
    */
   const fields = (object: SceneCameraObject | SceneLightObject): React.ReactNode => object.id === selectedId
-    ? <div className='border-t border-border p-2'><SceneDirectorFields object={object} session={session} canEdit={canEdit} spaceId={spaceId}
+    ? <div className='border-t border-border px-2 pb-3 pt-2.5'><SceneDirectorFields object={object} session={session} canEdit={canEdit} spaceId={spaceId}
       Field={Field} compact fieldDrafts={fieldDrafts} onFieldDraftChange={onFieldDraftChange} /></div> : null;
   return <div className='space-y-4 p-3' data-testid='scene-director-panel'>
     <section className='space-y-2'>
@@ -169,7 +172,7 @@ export const SceneDirectorPanel = React.memo(function SceneDirectorPanel(props: 
         : <div className='space-y-1'>{lights.map((light) => {
           const note = lightPlan?.lights[light.id]?.note ?? null;
           return <div key={light.id} data-testid={`scene-director-light-${light.id}`} className={cn('rounded-md', light.id === selectedId && 'bg-accent')}>
-            <div className='flex items-center gap-2 px-2 py-1 text-xs'>
+            <div className={DIRECTOR_ROW}>
               <Button variant={null} size={null} className='flex min-w-0 flex-1 items-center gap-2 text-left' onClick={() => session.select(light.id, false)}>
                 <span className='size-3 shrink-0 rounded-full border border-border' style={{ backgroundColor: light.color }} />
                 <span className='min-w-0 flex-1 truncate'>{light.name}</span>
