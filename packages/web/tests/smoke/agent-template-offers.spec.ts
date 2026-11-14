@@ -276,27 +276,21 @@ test('asked outright for a pet video, it reads the pet selfie vlog and lands a p
   await expect(page.getByTestId('proposal-card').last()).toBeVisible({ timeout: 20_000 });
 });
 
-test('asked outright for a cheese pull food video, it reads the food money shot and lands the dish @needs-model', async () => {
-  await ask('Make a vertical food video of a pizza with a long cheese pull.', 'A margherita pizza from my restaurant, for Instagram Reels. I have no photo of it, so make the pizza too.');
-  const turn = await settledTurn(page);
-  expect(turn.read, `read: ${turn.read.join(', ')}; tools: ${turn.tools.join(', ')}`).toContain('food-money-shot');
-  // Solved when the dish lands as a video or, with no photo of it, as takes of its look made first; built on
-  // the template or on the agent's own setup drawing on it.
-  const made = (proposal: CanvasProposal): CanvasProposal['nodes'] => proposal.nodes.filter((node) => node.role === 'generate');
-  expect(answersVideoAsk(turn.landed, made), `made: ${turn.landed.flatMap(made).map((node) => node.type).join(', ')}; named: ${turn.templates.join(', ')}; said: ${turn.said.slice(0, 600)}`).toBe(true);
-  await expect(page.getByTestId('proposal-card').last()).toBeVisible({ timeout: 20_000 });
-});
-
-test('asked outright for a car commercial, it reads the vehicle speed cut list and lands the car @needs-model', async () => {
-  await ask('Make a car commercial of a red sports car racing along a mountain road.', 'A red two-door sports coupe, landscape for YouTube, with someone driving. I have no photo of it, so make the car too.');
-  const turn = await settledTurn(page);
-  expect(turn.read, `read: ${turn.read.join(', ')}; tools: ${turn.tools.join(', ')}`).toContain('vehicle-speed-cutlist');
-  // Solved when the car lands as a video or, with no photo of it, as takes of its look made first; built on
-  // the template or on the agent's own setup drawing on it.
-  const made = (proposal: CanvasProposal): CanvasProposal['nodes'] => proposal.nodes.filter((node) => node.role === 'generate');
-  expect(answersVideoAsk(turn.landed, made), `made: ${turn.landed.flatMap(made).map((node) => node.type).join(', ')}; named: ${turn.templates.join(', ')}; said: ${turn.said.slice(0, 600)}`).toBe(true);
-  await expect(page.getByTestId('proposal-card').last()).toBeVisible({ timeout: 20_000 });
-});
+for (const [request, template, id, what, message, reply] of [
+  ['a cheese pull food video', 'food money shot', 'food-money-shot', 'dish', 'Make a vertical food video of a pizza with a long cheese pull.', 'A margherita pizza from my restaurant, for Instagram Reels. I have no photo of it, so make the pizza too.'],
+  ['a car commercial', 'vehicle speed cut list', 'vehicle-speed-cutlist', 'car', 'Make a car commercial of a red sports car racing along a mountain road.', 'A red two-door sports coupe, landscape for YouTube, with someone driving. I have no photo of it, so make the car too.'],
+]) {
+  test(`asked outright for ${request}, it reads the ${template} and lands the ${what} @needs-model`, async () => {
+    await ask(message, reply);
+    const turn = await settledTurn(page);
+    expect(turn.read, `read: ${turn.read.join(', ')}; tools: ${turn.tools.join(', ')}`).toContain(id);
+    // Solved when the subject lands as a video or, with no photo of it, as takes of its look made first; built
+    // on the template or on the agent's own setup drawing on it.
+    const made = (proposal: CanvasProposal): CanvasProposal['nodes'] => proposal.nodes.filter((node) => node.role === 'generate');
+    expect(answersVideoAsk(turn.landed, made), `made: ${turn.landed.flatMap(made).map((node) => node.type).join(', ')}; named: ${turn.templates.join(', ')}; said: ${turn.said.slice(0, 600)}`).toBe(true);
+    await expect(page.getByTestId('proposal-card').last()).toBeVisible({ timeout: 20_000 });
+  });
+}
 
 test('asked outright for a festival travel poster, it reads the festival poster and lands a picture @needs-model', async () => {
   await ask('Make a festival travel poster for Kyoto in the autumn maple season, with the title KYOTO AUTUMN.', 'A vertical poster for Instagram; the title is KYOTO AUTUMN exactly as written.');
