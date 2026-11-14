@@ -170,7 +170,7 @@ describe("the output frame rate of a presentation table (frames-split §7.17)", 
   it.each([
     ["two 10 fps frames", { schemaVersion: 1, timescale: 10, runs: [{ start: 0, count: 2, step: 1, duration: 1 }] }, r(10)],
     ["two 25 fps frames, the last held for longer audio", { schemaVersion: 1, timescale: 25, runs: [{ start: 0, count: 1, step: 1, duration: 1 }, { start: 1, count: 1, step: 50, duration: 50 }] }, r(25)],
-  ] as const)("FPS07 %s keep the rate of their one spacing", (_name, table, expected) => {
+  ])("FPS07 %s keep the rate of their one spacing", (_name, table, expected) => {
     expect(api.presentationOutputFps(table as Table)).toEqual(expected);
   });
 
