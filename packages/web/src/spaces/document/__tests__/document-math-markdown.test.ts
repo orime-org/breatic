@@ -187,7 +187,9 @@ describe('Markdown into the body', () => {
 });
 
 describe('formula sources round-trip through Markdown', () => {
-  it.each(['\\{ \\}', '\\\\', 'a_1 b_2', 'a < b', 'a & b', '\\frac{a}{b}'])('keeps the inline source %j', async (source) => {
+  // A % on the last line runs to the closing $$, and a % inside \\verb is a
+  // character, so a one-line source is written as it is.
+  it.each(['\\{ \\}', '\\\\', 'a_1 b_2', 'a < b', 'a & b', '\\frac{a}{b}', '\\verb|a%b|', 'a\\ % c', 'a\\ '])('keeps the inline source %j', async (source) => {
     const editor = open([inlineIn(source)]);
 
     const again = await read(blocksMarkdown(editor, editor.document as never));
@@ -202,6 +204,9 @@ describe('formula sources round-trip through Markdown', () => {
     ['a % c\n+ b', 'a + b'],
     ['a \\% c\n# b', 'a \\% c # b'],
     ['a\n\nb', 'a b'],
+    ['a % c\nb % d', 'a b % d'],
+    ['\\verb|5%|\nb', '\\verb|5%| b'],
+    ['\\verb*|%|x % c\ny', '\\verb*|%|x y'],
   ])('writes the inline source %j on one line without its comments, as %j', async (source, written) => {
     const editor = open([inlineIn(source)]);
 
@@ -210,7 +215,7 @@ describe('formula sources round-trip through Markdown', () => {
     expect(formulas(again)).toEqual([{ kind: 'inline', source: written }]);
   });
 
-  it.each(['\\{ \\}', '\\\\', 'a_1 b_2', 'a < b', 'a & b', 'a\n\nb'])('keeps the block source %j', async (source) => {
+  it.each(['\\{ \\}', '\\\\', 'a_1 b_2', 'a < b', 'a & b', 'a\n\nb', 'a\\ '])('keeps the block source %j', async (source) => {
     const editor = open([{ type: 'mathBlock', props: { source: source } }]);
 
     const again = await read(blocksMarkdown(editor, editor.document as never));
