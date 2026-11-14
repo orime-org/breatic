@@ -139,7 +139,7 @@ async function eventsFor(studioId: string): Promise<{ id: string; type: string; 
 async function directoryView(studioId: string): Promise<{ name: string; members: Record<string, string> }> {
   const [row] = await sql<{ name: string }[]>`SELECT name FROM studio_directory WHERE studio_id = ${studioId}`;
   const members = await sql<{ user_id: string; role: string }[]>`
-    SELECT user_id, role FROM studio_directory_members WHERE studio_id = ${studioId} AND deleted_at IS NULL
+    SELECT user_id, role FROM studio_directory_members WHERE studio_id = ${studioId}
   `;
   return { name: row!.name, members: Object.fromEntries(members.map((m) => [m.user_id, m.role])) };
 }
@@ -152,7 +152,7 @@ async function directoryView(studioId: string): Promise<{ name: string; members:
 async function regionView(studioId: string): Promise<{ name: string; members: Record<string, string> }> {
   const [row] = await sql<{ name: string }[]>`SELECT name FROM studios WHERE id = ${studioId}`;
   const members = await sql<{ user_id: string; role: string }[]>`
-    SELECT user_id, role FROM studio_members WHERE studio_id = ${studioId} AND deleted_at IS NULL
+    SELECT user_id, role FROM studio_members WHERE studio_id = ${studioId}
   `;
   return { name: row!.name, members: Object.fromEntries(members.map((m) => [m.user_id, m.role])) };
 }
@@ -323,6 +323,19 @@ describe("snapshots", () => {
     expect(view.members).toEqual({ [adminId]: "admin", [memberId]: "maintainer" });
     const [row] = await sql<{ admin: string }[]>`SELECT admin_user_id AS admin FROM studio_directory WHERE studio_id = ${studioId}`;
     expect(row!.admin).toBe(stranger);
+  });
+
+  it("records the sending region for every member, as a lost user_region.touched would have", async () => {
+    const { studioId, adminId, memberId } = await regionStudio();
+    await sql`DELETE FROM user_regions WHERE user_id IN (${adminId}, ${memberId})`;
+
+    await studioDirectoryService.emitStudioSnapshot(studioId);
+    await drain();
+
+    const rows = await sql<{ userId: string; region: string }[]>`
+      SELECT user_id AS "userId", region FROM user_regions WHERE user_id IN (${adminId}, ${memberId})
+    `;
+    expect(rows.map((row) => `${row.userId}:${row.region}`).sort()).toEqual([`${adminId}:sg`, `${memberId}:sg`].sort());
   });
 });
 

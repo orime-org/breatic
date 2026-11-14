@@ -104,7 +104,7 @@ async function apply(region: string, event: OutboxEvent, tx: DbTx): Promise<bool
       await studioDirectoryRepo.touchUserRegion(String(p.userId), region, tx);
       return true;
     case "studio.snapshot":
-      await applySnapshot(p as unknown as StudioSnapshot, tx);
+      await applySnapshot(p as unknown as StudioSnapshot, tx, region);
       return true;
     default:
       return false;
@@ -113,11 +113,14 @@ async function apply(region: string, event: OutboxEvent, tx: DbTx): Promise<bool
 
 /**
  * Rewrite a Studio's directory rows from its region's snapshot, all but the
- * admin, which only `changeDirectoryAdmin` writes.
+ * admin, which only `changeDirectoryAdmin` writes. A snapshot another region
+ * sent also records that region for each member, as each member's own
+ * `user_region.touched` did.
  * @param snapshot - The Studio as its region holds it.
  * @param tx - The applying transaction.
+ * @param region - The region that sent it, or none in the global region.
  */
-export async function applySnapshot(snapshot: StudioSnapshot, tx: DbTx): Promise<void> {
+export async function applySnapshot(snapshot: StudioSnapshot, tx: DbTx, region?: string): Promise<void> {
   await studioDirectoryRepo.updateProfile(
     snapshot.studioId,
     { name: snapshot.name, slug: snapshot.slug, avatarUrl: snapshot.avatarUrl },
@@ -134,6 +137,7 @@ export async function applySnapshot(snapshot: StudioSnapshot, tx: DbTx): Promise
   }
   for (const member of snapshot.members) {
     await studioDirectoryRepo.upsertMember(snapshot.studioId, member.userId, member.role, tx);
+    if (region !== undefined) await studioDirectoryRepo.touchUserRegion(member.userId, region, tx);
   }
   for (const projectId of snapshot.projectIds) {
     await studioDirectoryRepo.recordProject(projectId, snapshot.studioId, tx);

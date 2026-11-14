@@ -13,7 +13,7 @@
 
 import { Hono, type Context, type MiddlewareHandler } from "hono";
 import { bodyLimit } from "hono/body-limit";
-import { logger } from "@breatic/core";
+import { getRegionsConfig, logger } from "@breatic/core";
 import { closeAfterRefusal } from "@server/middleware/close-after-refusal.js";
 import { internalAuth } from "@server/middleware/internal-auth.js";
 import { internalErrorHandler } from "@server/middleware/internal-errors.js";
@@ -23,7 +23,7 @@ import { registerInternalRoutes } from "@server/routes/internal/index.js";
 /** The calls between regions (inner#1955), counted apart from the back office. */
 const REGION_PATH = /^\/internal\/(global|region)\//;
 
-/** The largest legitimate body is about 26 KiB (§4.6). */
+/** The back office's largest legitimate body is about 26 KiB (§4.6). */
 const MAX_BODY_BYTES = 64 * 1024;
 
 /**
@@ -94,16 +94,18 @@ export function createInternalApp(): Hono {
   const regionLimit = rateLimitFor("region-api", "socket", limits);
   const backOfficeLimit = rateLimitFor("internal-api", "socket", limits);
   app.use("*", (c, next) => (REGION_PATH.test(c.req.path) ? regionLimit(c, next) : backOfficeLimit(c, next)));
-  app.use(
-    "*",
-    bodyLimit({
-      maxSize: MAX_BODY_BYTES,
-      onError: (c) => {
-        closeAfterRefusal(c);
-        return c.json({ code: "invalid_body" }, 413);
-      },
-    }),
-  );
+  /**
+   * Refuse a body over a limit and close the connection behind it.
+   * @param c - The request context.
+   * @returns The 413 answer.
+   */
+  const tooLarge = (c: Context): Response => {
+    closeAfterRefusal(c);
+    return c.json({ code: "invalid_body" }, 413);
+  };
+  const regionBody = bodyLimit({ maxSize: getRegionsConfig().region_api_body_max_bytes, onError: tooLarge });
+  const backOfficeBody = bodyLimit({ maxSize: MAX_BODY_BYTES, onError: tooLarge });
+  app.use("*", (c, next) => (REGION_PATH.test(c.req.path) ? regionBody(c, next) : backOfficeBody(c, next)));
   app.use("*", internalAuth());
   app.use("*", refuseHead);
   registerInternalRoutes(app);

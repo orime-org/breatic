@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Region timing loader (inner#1955): reads `config/regions.yaml`, the waits
- * and intervals of the calls between regions.
+ * Region settings loader (inner#1955): reads `config/regions.yaml`, the
+ * waits, intervals and sizes of the calls between regions.
  */
 
 import { readFileSync } from "node:fs";
@@ -34,12 +34,14 @@ export const regionsConfigSchema = z
     transfer_accepting_stale_ms: millis.default(60000),
     studio_creation_sweep_interval_ms: millis.default(60000),
     studio_creation_stale_ms: millis.default(120000),
+    slug_reservation_sweep_batch: z.number().int().positive().default(50),
+    region_api_body_max_bytes: z.number().int().positive().default(4 * 1024 * 1024),
   })
   .refine((c) => c.outbox_relay_interval_ms + c.profile_cache_ttl_ms <= 60_000, {
     message: "outbox_relay_interval_ms + profile_cache_ttl_ms must stay within 60000 so a rename reaches every region within a minute",
   });
 
-/** The region waits and intervals, in milliseconds. */
+/** The region waits and intervals in milliseconds, and the sizes in items or bytes. */
 export type RegionsConfig = z.infer<typeof regionsConfigSchema>;
 
 let cached: RegionsConfig | null = null;

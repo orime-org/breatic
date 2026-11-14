@@ -77,7 +77,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import http from "node:http";
 import { resolve } from "node:path";
-import { getRedis } from "@breatic/core";
+import { getRedis, getRegionsConfig } from "@breatic/core";
 import { t } from "@breatic/shared";
 import { getRateLimit } from "@server/config/rate-limits.js";
 import { fakeStripe } from "./fake-stripe-refunds.js";
@@ -624,6 +624,17 @@ describe("request body size (§4.6): over 64 KiB is 413 before the signature is 
     expect(res.json).toEqual({ code: "invalid_body" });
     expect(await getRedis().exists(nonceKey(nonce))).toBe(0);
     await expectEnterpriseUntouched(userId, key);
+  });
+
+  it("a call between regions over 64 KiB gets past the size gate, and one over the region limit does not", async () => {
+    const regionPath = "/internal/global/getProfiles";
+    const passes = await call(running.baseUrl, regionPath, { rawBody: OVERSIZE, unsigned: true });
+    expect(passes.status).not.toBe(413);
+
+    const regionOversize = `{"args":["${"x".repeat(getRegionsConfig().region_api_body_max_bytes)}"]}`;
+    const refused = await call(running.baseUrl, regionPath, { rawBody: regionOversize, unsigned: true });
+    expect(refused.status).toBe(413);
+    expect(refused.json).toEqual({ code: "invalid_body" });
   });
 
   // The largest honest body: a 500-character reason and 100 refund ids of 255

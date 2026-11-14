@@ -112,9 +112,6 @@ export async function forwardRevocation(job: Job<IdentityRevocationForwardJob>):
   await askRegion(job.data.region, "revokeSessions", [job.data.userId, job.data.sids]);
 }
 
-/** How many past-due reservations one sweep settles. */
-const SLUG_SWEEP_BATCH = 50;
-
 /**
  * Settle slug reservations past due: ask each Studio's region which slug it
  * holds, then let the directory take it or let it go. A region that does not
@@ -124,7 +121,7 @@ const SLUG_SWEEP_BATCH = 50;
  */
 export async function sweepSlugReservations(): Promise<number> {
   let settled = 0;
-  for (const due of await studioDirectoryRepo.listDueSlugReservations(SLUG_SWEEP_BATCH)) {
+  for (const due of await studioDirectoryRepo.listDueSlugReservations(getRegionsConfig().slug_reservation_sweep_batch)) {
     const region = due.region ?? env.GLOBAL_REGION;
     try {
       const actual = region === env.REGION

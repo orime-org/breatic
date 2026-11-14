@@ -32,6 +32,12 @@
 # slug_reservation_stale_ms: how long after a rename reserves its slug the
 #   sweep asks the Studio's region which slug it holds, then lets the
 #   directory take it or lets it go.
+# slug_reservation_sweep_batch: how many past-due reservations one sweep
+#   settles.
+# region_api_body_max_bytes: the largest request body one region accepts
+#   from another. A Studio snapshot carries every member and Project id and a
+#   collab session recheck every session id an instance holds, so this is
+#   sized for them; the back office's own calls keep their smaller limit.
 global_api_timeout_ms: 5000
 region_probe_timeout_ms: 2000
 cross_region_fanout_timeout_ms: 2000
@@ -45,3 +51,5 @@ transfer_accepting_sweep_interval_ms: 60000
 transfer_accepting_stale_ms: 60000
 studio_creation_sweep_interval_ms: 60000
 studio_creation_stale_ms: 120000
+slug_reservation_sweep_batch: 50
+region_api_body_max_bytes: 4194304
