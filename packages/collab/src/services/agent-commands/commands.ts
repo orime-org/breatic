@@ -5,43 +5,46 @@
  * What each external-agent command does to its document (breatic#1488 §7,
  * §8): one entry per command type. The consumer decides who may run a
  * command and when; an entry only reads or writes the document it is handed,
- * through the same shared readers and writers the browser uses.
+ * through the same shared readers and writers the browser uses. The canvas
+ * commands live in `canvas-commands.ts`.
  */
 
 import * as Y from "yjs";
 import type { z } from "zod";
 import {
   agentCommandParamsSchemas,
-  callScopedId,
   type AgentCommand,
   type AgentCommandParams,
   type AgentCommandType,
   type AgentReply,
-  type CanvasProposal,
+  type ProjectRole,
 } from "@breatic/shared";
+import type { SpaceWriteKind } from "@breatic/shared/canvas-model";
 import {
-  ROW_GAP_PX,
-  addNodeInDoc,
-  canvasNodesMap,
-  centerOf,
-  createEmptyNode,
-  groupRectForMembers,
-  nodeDataMap,
-  occupiedRects,
-  planFlowLayout,
-  readEdges,
-  readNodePlacementsInDoc,
-  readNodes,
-  setNodeNameInDoc,
-  shiftRightPastOccupied,
-  withTaskCounts,
-} from "@breatic/shared/canvas-model";
+  comment,
+  connectNodes,
+  createLate,
+  createNodes,
+  deleteNodes,
+  deletionKind,
+  disconnectNodes,
+  readCanvas,
+  restore,
+  setLocked,
+  updateNode,
+} from "@collab/services/agent-commands/canvas-commands.js";
 
 /** A reply without its call id. */
 export type Answer = AgentReply extends infer R ? (R extends AgentReply ? Omit<R, "callId"> : never) : never;
 
 /** A JSON value, as a reply's result carries it. */
-type Json = Extract<AgentReply, { status: "done" }>["result"];
+export type Json = Extract<AgentReply, { status: "done" }>["result"];
+
+/** Who runs a command, as the gates that depend on the person read it. */
+export interface Actor {
+  /** The user's role on the Project. */
+  role: ProjectRole;
+}
 
 /** One command type. */
 interface CommandSpec<T extends AgentCommandType> {
@@ -49,10 +52,15 @@ interface CommandSpec<T extends AgentCommandType> {
   params: z.ZodType<AgentCommandParams<T>>;
   /** Whether it writes: writes take the document lease and are refused to viewers. */
   write: boolean;
+  /**
+   * The size kind its write is judged by, the one the browser's equivalent
+   * write uses (`canvasWrite` in web's `canvas-space.ts`); null for a read.
+   */
+  size: SpaceWriteKind | ((doc: Y.Doc, params: AgentCommandParams<T>) => SpaceWriteKind) | null;
   /** The Space document it works on; `null` for the Project's meta document. */
   space: "canvas" | null;
   /** Read or write the document. A write runs inside one transaction. */
-  run: (doc: Y.Doc, params: AgentCommandParams<T>, command: AgentCommand) => Answer;
+  run: (doc: Y.Doc, params: AgentCommandParams<T>, command: AgentCommand, actor: Actor) => Answer;
   /** A write's answer once its deadline has passed; writes nothing. */
   late: (doc: Y.Doc, params: AgentCommandParams<T>, command: AgentCommand) => Answer;
 }
@@ -64,8 +72,9 @@ type CommandTable = { [T in AgentCommandType]: CommandSpec<T> };
 export interface AnyCommandSpec {
   params: z.ZodType<unknown>;
   write: boolean;
+  size: SpaceWriteKind | ((doc: Y.Doc, params: unknown) => SpaceWriteKind) | null;
   space: "canvas" | null;
-  run: (doc: Y.Doc, params: unknown, command: AgentCommand) => Answer;
+  run: (doc: Y.Doc, params: unknown, command: AgentCommand, actor: Actor) => Answer;
   late: (doc: Y.Doc, params: unknown, command: AgentCommand) => Answer;
 }
 
@@ -77,43 +86,11 @@ function unfinished(): Answer {
   return { status: "unfinished" };
 }
 
-/**
- * The ids a create command's nodes take, derived from its call id.
- * @param command - The command.
- * @param count - How many nodes it creates.
- * @returns One id per node, in order.
- */
-function createdIds(command: AgentCommand, count: number): string[] {
-  return Array.from({ length: count }, (_, i) => callScopedId(command.callId, `node:${String(i)}`));
-}
-
-/**
- * Where new nodes go when the agent names no place and the user's view is
- * not known (§8.2): aimed at the centre of what the canvas holds, or the
- * origin on an empty canvas, laid out as the browser lays out a placed batch,
- * then moved right until it covers nothing.
- * @param doc - The canvas document.
- * @param nodes - The nodes to place.
- * @returns One top-left position per node.
- */
-function placeNewNodes(doc: Y.Doc, nodes: AgentCommandParams<"create_canvas_nodes">["nodes"]): Array<{ x: number; y: number }> {
-  const occupied = occupiedRects(readNodePlacementsInDoc(doc), () => undefined);
-  const all = groupRectForMembers(occupied, 0);
-  const proposal: CanvasProposal = {
-    nodes: nodes.map((node) => ({ role: "source", type: node.type, name: node.name ?? "" })),
-    edges: [],
-    rationale: "",
-  };
-  const aimed = planFlowLayout(proposal, all ? centerOf(all) : { x: 0, y: 0 });
-  const searched = groupRectForMembers(aimed.map(withTaskCounts), 0);
-  const dx = searched ? shiftRightPastOccupied(searched, occupied, ROW_GAP_PX) : 0;
-  return aimed.map((spot) => ({ x: spot.x + dx, y: spot.y }));
-}
-
 const COMMANDS: CommandTable = {
   list_spaces: {
     params: agentCommandParamsSchemas.list_spaces,
     write: false,
+    size: null,
     space: null,
     run: (meta) => {
       const spaces: Array<{ id: string; type: string; name: string; order: number }> = [];
@@ -133,53 +110,83 @@ const COMMANDS: CommandTable = {
   read_canvas: {
     params: agentCommandParamsSchemas.read_canvas,
     write: false,
+    size: null,
     space: "canvas",
-    run: (doc, { nodeIds }) => {
-      const wanted = nodeIds ? new Set(nodeIds) : null;
-      const nodes = readNodes(doc).filter((node) => !wanted || wanted.has(node.id));
-      const edges = readEdges(doc).filter((edge) => !wanted || wanted.has(edge.source) || wanted.has(edge.target));
-      // The views hold no value JSON cannot carry except `undefined`, which
-      // the round trip drops.
-      return { status: "done", result: JSON.parse(JSON.stringify({ nodes, edges })) as Json };
-    },
+    run: (doc, { nodeIds }) => readCanvas(doc, nodeIds),
     late: unfinished,
   },
   create_canvas_nodes: {
     params: agentCommandParamsSchemas.create_canvas_nodes,
     write: true,
+    size: "add",
     space: "canvas",
-    run: (doc, { nodes }, command) => {
-      const ids = createdIds(command, nodes.length);
-      const existing = canvasNodesMap(doc);
-      const missing = nodes.flatMap((node, i) => (existing.has(ids[i]!) ? [] : [{ node, id: ids[i]! }]));
-      // A node already there was written by an earlier delivery of this call;
-      // writing it again would replace it with an empty one.
-      const spots = placeNewNodes(doc, missing.map((m) => m.node));
-      missing.forEach(({ node, id }, i) => {
-        const empty = createEmptyNode(node.type, spots[i]!, command.userId);
-        addNodeInDoc(doc, {
-          ...empty,
-          id,
-          data: { ...empty.data, ...(node.name !== undefined ? { name: node.name } : {}) },
-        });
-      });
-      return { status: "done", result: { nodeIds: ids } };
-    },
-    late: (doc, { nodes }, command) => {
-      const ids = createdIds(command, nodes.length);
-      const existing = canvasNodesMap(doc);
-      return ids.every((id) => existing.has(id)) ? { status: "done", result: { nodeIds: ids } } : unfinished();
-    },
+    run: (doc, params, command) => createNodes(doc, params, command),
+    late: createLate,
   },
   update_canvas_node: {
     params: agentCommandParamsSchemas.update_canvas_node,
     write: true,
+    size: "edit",
     space: "canvas",
-    run: (doc, { nodeId, name }) => {
-      if (nodeDataMap(doc, nodeId) === null) return { status: "rejected", reason: "not_found" };
-      if (name !== undefined) setNodeNameInDoc(doc, nodeId, name);
-      return { status: "done", result: { nodeId } };
-    },
+    run: (doc, params) => updateNode(doc, params),
+    late: unfinished,
+  },
+  lock_canvas_nodes: {
+    params: agentCommandParamsSchemas.lock_canvas_nodes,
+    write: true,
+    size: "edit",
+    space: "canvas",
+    run: (doc, { nodeIds }) => setLocked(doc, nodeIds, true),
+    late: unfinished,
+  },
+  unlock_canvas_nodes: {
+    params: agentCommandParamsSchemas.unlock_canvas_nodes,
+    write: true,
+    // Unlocking deletes the key, a pure removal.
+    size: "remove",
+    space: "canvas",
+    run: (doc, { nodeIds }) => setLocked(doc, nodeIds, false),
+    late: unfinished,
+  },
+  delete_canvas_nodes: {
+    params: agentCommandParamsSchemas.delete_canvas_nodes,
+    write: true,
+    size: (doc, { nodeIds }) => deletionKind(doc, nodeIds),
+    space: "canvas",
+    run: (doc, { nodeIds }, command, actor) => deleteNodes(doc, nodeIds, command, actor),
+    late: unfinished,
+  },
+  connect_nodes: {
+    params: agentCommandParamsSchemas.connect_nodes,
+    write: true,
+    size: "add",
+    space: "canvas",
+    run: (doc, { edges }) => connectNodes(doc, edges),
+    late: unfinished,
+  },
+  disconnect_nodes: {
+    params: agentCommandParamsSchemas.disconnect_nodes,
+    write: true,
+    size: "remove",
+    space: "canvas",
+    run: (doc, { edgeIds }) => disconnectNodes(doc, edgeIds),
+    late: unfinished,
+  },
+  comment_on_canvas: {
+    params: agentCommandParamsSchemas.comment_on_canvas,
+    write: true,
+    size: "add",
+    space: "canvas",
+    run: (doc, params, command) => comment(doc, params, command),
+    late: unfinished,
+  },
+  restore_node_version: {
+    params: agentCommandParamsSchemas.restore_node_version,
+    write: true,
+    // Restoring puts a result back on the node, new content.
+    size: "add",
+    space: "canvas",
+    run: (doc, params) => restore(doc, params),
     late: unfinished,
   },
 };

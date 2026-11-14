@@ -23,6 +23,7 @@
 import type { Hocuspocus } from "@hocuspocus/server";
 import type * as Y from "yjs";
 import {
+  accountActivityRepo,
   agentAccessService,
   checkRateLimit,
   createLogger,
@@ -45,6 +46,7 @@ import {
   type AgentCommand,
   type AgentCommandType,
   type AgentReply,
+  type ProjectRole,
 } from "@breatic/shared";
 import { createDocLease, type DocLeaseSettings } from "@collab/services/doc-lease.js";
 import {
@@ -55,6 +57,9 @@ import {
   type StreamEntry,
 } from "@collab/services/stream-group-consumer.js";
 import { commandSpec, type Answer } from "@collab/services/agent-commands/commands.js";
+import { measure, readDocSizeRecord } from "@collab/services/document-size.js";
+import { getCollabConfig } from "@collab/config.js";
+import { sizeRefusalOf, type SpaceWriteKind } from "@breatic/shared/canvas-model";
 
 const logger = createLogger("agent-commands");
 
@@ -144,6 +149,25 @@ function keyOf(entry: StreamEntry): string {
 }
 
 /**
+ * Whether a Space document's size refuses a write of this kind, judged by
+ * the browser's rule (shared `sizeRefusalOf`): at its limit only deletions
+ * and removals run, past the hard ceiling only removals. The size record is
+ * read when the document has one; otherwise the document is measured.
+ * @param docName - The document.
+ * @param doc - The loaded document.
+ * @param kind - The write's size kind.
+ * @returns True when the write is refused.
+ * @throws {Error} When the collab YAML is missing or invalid.
+ */
+function refusedBySize(docName: string, doc: Y.Doc, kind: SpaceWriteKind): boolean {
+  const cfg = getCollabConfig();
+  if (cfg.max_document_bytes === 0) return false;
+  const size = readDocSizeRecord(docName)?.current ?? measure(doc);
+  const ceiling = cfg.max_document_bytes + cfg.document_size_delete_headroom_bytes;
+  return sizeRefusalOf(size >= cfg.max_document_bytes, size >= ceiling, kind) !== null;
+}
+
+/**
  * Start taking external-agent commands, unless this instance is set not to.
  * @param deps - Server, database, names, switch and settings.
  * @returns The running consumer, or null when `consume` is off.
@@ -166,13 +190,14 @@ export function startAgentCommandConsumer(deps: AgentCommandConsumerDeps): Group
   /**
    * Run a read on a document without the lease.
    * @param docName - The document.
+   * @param userId - Who reads, named in the connection's context.
    * @param read - What to read.
    * @returns What it read.
    * @throws {Error} When the document cannot be opened.
    */
-  async function readDoc<T>(docName: string, read: (doc: Y.Doc) => T): Promise<T> {
+  async function readDoc<T>(docName: string, userId: string, read: (doc: Y.Doc) => T): Promise<T> {
     const connection = await hocuspocus.openDirectConnection(docName, {
-      context: { user: { id: "system" }, source: SOURCE },
+      context: { user: { id: userId }, source: SOURCE },
     });
     try {
       return read(connection.document!);
@@ -216,24 +241,24 @@ export function startAgentCommandConsumer(deps: AgentCommandConsumerDeps): Group
    * Whether the user may run this command now; counts it against the rate
    * limit when every other check passes.
    * @param item - The command.
-   * @returns The refusal, or null when it may run.
+   * @returns The refusal, or the user's Project role when it may run.
    * @throws {Error} When the database or Redis read fails.
    */
-  async function refusalOf(item: Item): Promise<Answer | null> {
+  async function refusalOf(item: Item): Promise<{ refused: Answer } | { role: ProjectRole }> {
     const { command } = item;
     const spec = commandSpec(item.type);
     if (!(await agentAccessService.isCredentialUsable(command.credential))) {
-      return { status: "rejected", reason: "credential_revoked" };
+      return { refused: { status: "rejected", reason: "credential_revoked" } };
     }
     const role = await projectAuthService.loadProjectRole(command.userId, command.projectId);
     const studioId = role === null ? undefined : await projectsRepo.findOwnerStudioId(command.projectId);
-    if (role === null || studioId === undefined) return { status: "rejected", reason: "no_access" };
-    if (spec.write && role === "viewer") return { status: "rejected", reason: "read_only" };
+    if (role === null || studioId === undefined) return { refused: { status: "rejected", reason: "no_access" } };
+    if (spec.write && role === "viewer") return { refused: { status: "rejected", reason: "read_only" } };
     if (spec.space === "canvas") {
-      const listed = await readDoc(projectMetaDocName(command.projectId), (meta) =>
+      const listed = await readDoc(projectMetaDocName(command.projectId), command.userId, (meta) =>
         listedContentDocNames(command.projectId, meta.getMap("spaces")).has(docNameOf(item)),
       );
-      if (!listed) return { status: "rejected", reason: "not_found" };
+      if (!listed) return { refused: { status: "rejected", reason: "not_found" } };
     }
     const verdict = await checkRateLimit(mcp, [
       {
@@ -242,7 +267,7 @@ export function startAgentCommandConsumer(deps: AgentCommandConsumerDeps): Group
         windowSeconds: 60,
       },
     ]);
-    return verdict.allowed ? null : { status: "rejected", reason: "rate_limited" };
+    return verdict.allowed ? { role } : { refused: { status: "rejected", reason: "rate_limited" } };
   }
 
   /**
@@ -253,21 +278,38 @@ export function startAgentCommandConsumer(deps: AgentCommandConsumerDeps): Group
   async function runRead(item: Item): Promise<EntryOutcome> {
     const spec = commandSpec(item.type);
     try {
-      const refused = await refusalOf(item);
-      if (refused) {
-        await reply(item.command.callId, refused, item);
+      const verdict = await refusalOf(item);
+      if ("refused" in verdict) {
+        await reply(item.command.callId, verdict.refused, item);
         return "done";
       }
       if (Date.now() >= item.command.deadlineAt) {
         await reply(item.command.callId, { status: "unfinished" }, item);
         return "done";
       }
-      const answer = await readDoc(docNameOf(item), (doc) => spec.run(doc, item.params, item.command));
+      const answer = await readDoc(docNameOf(item), item.command.userId, (doc) =>
+        spec.run(doc, item.params, item.command, verdict),
+      );
       await reply(item.command.callId, answer, item);
       return "done";
     } catch (err) {
       logger.error({ err, ctx: { callId: item.command.callId, type: item.type, projectId: item.command.projectId } }, "agent_command_failed");
       return { failed: err };
+    }
+  }
+
+  /**
+   * Record a write as the user's edit of the Project, the account activity a
+   * browser's sync records (`hooks/account-activity.ts`). A failure is logged
+   * and does not fail the command, whose write is already stored.
+   * @param item - The command that wrote.
+   */
+  async function recordEdit(item: Item): Promise<void> {
+    const { userId, projectId, callId } = item.command;
+    try {
+      await accountActivityRepo.recordActivity({ userId, projectId, kind: "project_edit" });
+    } catch (err) {
+      logger.error({ err, ctx: { operation: "record_agent_edit", callId, type: item.type, userId, projectId } }, "agent_command_activity_failed");
     }
   }
 
@@ -285,19 +327,23 @@ export function startAgentCommandConsumer(deps: AgentCommandConsumerDeps): Group
       for (const item of items) {
         if (stopping() || signal.aborted) break;
         try {
-          const refused = await refusalOf(item);
-          if (refused) {
-            answers.set(item.entry.id, refused);
+          const verdict = await refusalOf(item);
+          if ("refused" in verdict) {
+            answers.set(item.entry.id, verdict.refused);
             continue;
           }
           const spec = commandSpec(item.type);
           let answer: Answer = { status: "unfinished" };
+          // The write is the user's own edit, so the transaction names them.
+          connection.context = { user: { id: item.command.userId }, source: SOURCE };
           // The deadline is compared inside the transaction, on every
           // delivery: past it, nothing is written (§6, gRPC deadlines).
           await connection.transact((doc) => {
-            answer = Date.now() >= item.command.deadlineAt
-              ? spec.late(doc, item.params, item.command)
-              : spec.run(doc, item.params, item.command);
+            if (Date.now() >= item.command.deadlineAt) answer = spec.late(doc, item.params, item.command);
+            else if (spec.size !== null && refusedBySize(docName, doc, typeof spec.size === "string" ? spec.size : spec.size(doc, item.params))) {
+              answer = { status: "rejected", reason: "space_full" };
+            }
+            else answer = spec.run(doc, item.params, item.command, verdict);
           });
           answers.set(item.entry.id, answer);
         } catch (err) {
@@ -323,6 +369,7 @@ export function startAgentCommandConsumer(deps: AgentCommandConsumerDeps): Group
         try {
           await reply(item.command.callId, answer, item);
           outcomes.set(item.entry.id, "done");
+          if (answer.status === "done") await recordEdit(item);
         } catch (err) {
           logger.error({ err, ctx: { callId: item.command.callId, type: item.type, docName } }, "agent_command_reply_failed");
           outcomes.set(item.entry.id, { failed: err });
