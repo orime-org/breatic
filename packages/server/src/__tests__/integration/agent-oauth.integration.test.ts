@@ -390,6 +390,24 @@ describe("authorization code flow", () => {
   });
 });
 
+describe("switching accounts in one browser", () => {
+  it("authorizes as whoever is signed in now, leaving the previous account's connection alone", async () => {
+    const first = await seedUser();
+    const clientId = await registerClient("Cursor");
+    await codeFlow(first.jar, clientId);
+    const second = await seedUser();
+    const token = crypto.randomBytes(24).toString("hex");
+    await setSession(getRedis(), token, second.userId);
+    first.jar.set(sessionCookieName(), token);
+    const tokens = await codeFlow(first.jar, clientId);
+    expect(tokens.access_token).toBeTruthy();
+    expect(await agentAccessService.listConnections(second.userId)).toHaveLength(1);
+    expect(await agentAccessService.listConnections(first.userId)).toHaveLength(1);
+    const res = await exchange(tokens.access_token);
+    expect(await downstreamWorks(((await res.json()) as { access_token: string }).access_token, second.userId)).toBe(true);
+  });
+});
+
 describe("consent API", () => {
   /**
    * Open an interaction for a client.
@@ -593,6 +611,23 @@ function expectConsentError(res: Response, reason: "client_invalid" | "redirect_
   expect(location.pathname).toBe("/connect/error");
   expect(location.searchParams.get("reason")).toBe(reason);
 }
+
+describe("token exchange rate limit", () => {
+  it("counts every exchange in the user's total and answers 429 with Retry-After once it is spent", async () => {
+    const { userId } = await seedUser();
+    const created = await agentAccessService.createPersonalAccessToken({ userId, name: "busy", expiresAt: null });
+    if (!created.ok) throw new Error("cap");
+    const total = getMcpConfig().rate_limit.user_total_per_minute;
+    for (let i = 0; i < total; i++) {
+      const res = await exchange(created.token);
+      expect(res.status, `exchange ${i + 1}`).toBe(200);
+    }
+    const refused = await exchange(created.token);
+    expect(refused.status).toBe(429);
+    expect(Number(refused.headers.get("Retry-After"))).toBeGreaterThan(0);
+    expect(((await refused.json()) as { error: string }).error).toBe("temporarily_unavailable");
+  });
+});
 
 describe("error pages", () => {
   it("sends the browser to the consent page's error state for an unknown client", async () => {
