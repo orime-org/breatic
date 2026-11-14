@@ -472,6 +472,7 @@ describe("authorisation table (§4.3)", () => {
         "GET /internal/v1/referral-operations/:key",
         "POST /internal/global/:fn",
         "POST /internal/region/:fn",
+        "POST /internal/v1/directory/studios/:studioId/snapshot",
       ].sort(),
     );
   });

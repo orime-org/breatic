@@ -18,7 +18,7 @@ import { createHash } from "node:crypto";
 import type Redis from "ioredis";
 import { env } from "@core/config/env.js";
 import { publishSessionsRevoked } from "@core/infra/control-events.js";
-import { createQueue } from "@core/infra/queue.js";
+import { createQueue, defaultJobOpts } from "@core/infra/queue.js";
 import { redactSessionError } from "@core/infra/session-error.js";
 
 /**
@@ -139,13 +139,13 @@ export function sessionId(token: string): string {
 async function announce(userId: string, tokens: string[]): Promise<RevokeOutcome> {
   if (tokens.length === 0) return {};
   const sids = tokens.map(sessionId);
-  try {
-    await publishSessionsRevoked(userId, sids);
-    await forwardToRegions(userId, sids);
-    return {};
-  } catch (err) {
-    return { signalFailure: err };
-  }
+  // Two independent signals: one failing must not hold back the other.
+  const [published, forwarded] = await Promise.allSettled([
+    publishSessionsRevoked(userId, sids),
+    forwardToRegions(userId, sids),
+  ]);
+  const failed = [published, forwarded].find((outcome) => outcome.status === "rejected");
+  return failed === undefined ? {} : { signalFailure: failed.reason };
 }
 
 /** The worker queue that carries revocations to the other regions (inner#1955). */
@@ -166,7 +166,7 @@ async function forwardToRegions(userId: string, sids: string[]): Promise<void> {
   const regions = Object.keys(env.REGION_API_URLS).filter((region) => region !== env.REGION);
   if (regions.length === 0) return;
   revocationForwardQueue ??= createQueue(IDENTITY_REVOCATION_FORWARD_QUEUE);
-  for (const region of regions) await revocationForwardQueue.add("revoke", { region, userId, sids });
+  for (const region of regions) await revocationForwardQueue.add("revoke", { region, userId, sids }, defaultJobOpts());
 }
 
 /**

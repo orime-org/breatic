@@ -9,8 +9,8 @@
  */
 
 import type { Job } from "bullmq";
-import { assetRepo, callRegion, env, getRegionsConfig, logger, studioDirectoryRepo } from "@breatic/core";
-import { directoryWrites, globalApi, regionOutboxService, studioRepo } from "@breatic/domain";
+import { assetRepo, callRegion, env, getRegionsConfig, GlobalApiError, logger, studioDirectoryRepo } from "@breatic/core";
+import { directoryWrites, globalApi, regionOutboxService, studioDirectoryService, studioRepo } from "@breatic/domain";
 
 /** A sign-in's claims for one other region. */
 export interface InvitationClaimForwardJob {
@@ -34,36 +34,64 @@ export interface IdentityRevocationForwardJob {
  * @throws {Error} When the region has no address or does not answer.
  */
 async function askRegion(region: string, fn: string, args: unknown[]): Promise<unknown> {
-  const url = env.REGION_API_URLS[region];
-  if (url === undefined) throw new Error(`no address for region ${region}`);
-  return callRegion(fn, args, {
-    callerRegion: env.REGION,
-    url,
-    secret: env.INTERNAL_API_SECRET,
-    timeoutMs: getRegionsConfig().global_api_timeout_ms,
-  });
+  return callRegion(region, fn, args, getRegionsConfig().global_api_timeout_ms);
+}
+
+/** The HTTP statuses the global region may answer differently on a retry. */
+const RETRYABLE_STATUSES = new Set([408, 429]);
+
+/**
+ * Send one event to the global region. A refusal of the request itself (a
+ * 4xx other than timeout or rate limit, such as a body over the internal
+ * limit) can never succeed, so the event is set aside like one the global
+ * region cannot apply; anything else throws and the relay stops to retry.
+ * @param event - The event.
+ * @returns How the global region took it.
+ * @throws {Error} When the global region did not answer or failed for now.
+ */
+async function deliverEvent(event: regionOutboxService.OutboxEvent): Promise<"applied" | "duplicate" | "permanent_failure"> {
+  try {
+    return await globalApi().applyRegionEvent(env.REGION, event);
+  } catch (err) {
+    if (err instanceof GlobalApiError && err.status >= 400 && err.status < 500 && !RETRYABLE_STATUSES.has(err.status)) {
+      logger.error({ err, region: env.REGION, eventId: event.id }, "region_outbox_event_refused");
+      return "permanent_failure";
+    }
+    throw err;
+  }
 }
 
 /**
- * Relay this region's outbox to the global region, in id order.
+ * Relay this region's outbox to the global region, in id order. Events set
+ * aside raise an alert; a pass stopped by a failure throws it, so the job is
+ * recorded as failed and the next pass resumes where this one stopped.
  * @returns What was delivered and set aside.
- * @throws {Error} When the outbox cannot be read.
+ * @throws {Error} When the outbox cannot be read or the global region stopped the pass.
  */
 export async function relayRegionOutbox(): Promise<{ delivered: number; deadLettered: number }> {
-  const result = await regionOutboxService.relayOutbox({
-    deliver: (event) => globalApi().applyRegionEvent(env.REGION, event),
-  });
+  const result = await regionOutboxService.relayOutbox({ deliver: deliverEvent });
+  if (result.deadLettered > 0) {
+    logger.error({ region: env.REGION, deadLettered: result.deadLettered }, "region_outbox_dead_lettered");
+  }
+  if (result.stoppedBy !== undefined) throw result.stoppedBy;
   return { delivered: result.delivered, deadLettered: result.deadLettered };
 }
 
+/** Studios per usage report: each stays well under the internal API's body limit. */
+const USAGE_REPORT_BATCH = 500;
+
 /**
- * Report what this region's Studios store to the global region.
+ * Report what this region's Studios store to the global region, in batches
+ * measured at one instant.
  * @returns How many Studios were reported.
  * @throws {Error} When the usage cannot be read or the global region does not answer.
  */
 export async function syncStorageUsage(): Promise<number> {
   const usage = await assetRepo.usagePerStudio();
-  await globalApi().recordRegionUsage({ region: env.REGION, asOf: new Date(), usage });
+  const asOf = new Date();
+  for (let start = 0; start < usage.length; start += USAGE_REPORT_BATCH) {
+    await globalApi().recordRegionUsage({ region: env.REGION, asOf, usage: usage.slice(start, start + USAGE_REPORT_BATCH) });
+  }
   return usage.length;
 }
 
@@ -113,4 +141,17 @@ export async function sweepSlugReservations(): Promise<number> {
     }
   }
   return settled;
+}
+
+/**
+ * Align the Studio directory with the global region's tables after an
+ * upgrade, once: a deployment that has done it before does nothing. Run by
+ * the global region's worker at start when `DIRECTORY_RECONCILE_ON_START` is
+ * set, as the bundled docker-compose.yml does after the new server is up.
+ * @returns How many Studios were aligned; 0 when not asked, outside the global region, or already done.
+ * @throws {Error} When the tables cannot be read or written.
+ */
+export async function reconcileDirectoryOnStart(): Promise<number> {
+  if (!env.DIRECTORY_RECONCILE_ON_START || env.REGION !== env.GLOBAL_REGION) return 0;
+  return studioDirectoryService.reconcileDirectoryAfterUpgrade();
 }

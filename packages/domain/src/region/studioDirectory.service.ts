@@ -61,8 +61,9 @@ export async function changeDirectoryAdmin(change: AdminChange, tx?: DbTx): Prom
  * Send a Studio's whole current state to the directory (inner#1955): its
  * profile, members, Projects and open transfer offer, as one `studio.snapshot`
  * event on the same ordered channel as every other change, so a change after
- * it still wins. Used to repair a directory row and by the upgrade
- * reconciliation; the directory admin is left to `changeDirectoryAdmin`.
+ * it still wins. The back office repairs a directory row with it, through
+ * the global region's internal API; the directory admin is left to
+ * `changeDirectoryAdmin`.
  * @param studioId - A Studio in this region.
  * @returns Once the snapshot is written.
  */

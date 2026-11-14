@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import { createQueue, env, logger } from "@breatic/core";
+import { createQueue, defaultJobOpts, env, logger } from "@breatic/core";
 import { normalizeEmail } from "@breatic/shared";
 import type { UserEntity } from "@breatic/shared";
 import { claimInvitation, invitationRepo } from "@server/modules/invitation/invitation-lifecycle.service.js";
@@ -52,7 +52,7 @@ export async function claimEmailInvitationsOnSignIn(user: Pick<UserEntity, "id" 
   claimForwardQueue ??= createQueue(INVITATION_CLAIM_FORWARD_QUEUE);
   for (const region of regions) {
     try {
-      await claimForwardQueue.add("claim", { region, userId: user.id });
+      await claimForwardQueue.add("claim", { region, userId: user.id }, defaultJobOpts());
     } catch (err) {
       logger.error({ err, ctx: { userId: user.id, region } }, "email_invitation_claim_forward_enqueue_failed");
     }

@@ -155,6 +155,7 @@ import {
 import {
   forwardInvitationClaim,
   forwardRevocation,
+  reconcileDirectoryOnStart,
   relayRegionOutbox,
   sweepSlugReservations,
   syncStorageUsage,
@@ -163,7 +164,11 @@ import {
 } from "@worker/handlers/region-jobs.js";
 
 /** Every BullMQ queue this process runs a worker for, by its region (inner#1955). */
-const WORKER_QUEUES: readonly string[] = workerQueuesFor({ region: env.REGION, globalRegion: env.GLOBAL_REGION });
+const WORKER_QUEUES: readonly string[] = workerQueuesFor({
+  region: env.REGION,
+  globalRegion: env.GLOBAL_REGION,
+  otherRegions: Object.keys(env.REGION_API_URLS).filter((region) => region !== env.REGION),
+});
 
 /** Cap graceful shutdown so a stuck drain can't hold the process. */
 const SHUTDOWN_DEADLINE_MS = 4000;
@@ -448,6 +453,16 @@ export function startWorker(): void {
   recurringRegionJob(REGION_OUTBOX_RELAY_QUEUE, regions.outbox_relay_interval_ms, relayRegionOutbox);
   recurringRegionJob(STORAGE_USAGE_SYNC_QUEUE, regions.storage_usage_sync_interval_ms, syncStorageUsage);
   recurringRegionJob(SLUG_RESERVATION_SWEEP_QUEUE, regions.slug_reservation_sweep_interval_ms, sweepSlugReservations);
+
+  // A self-hosted upgrade aligns the Studio directory once (inner#1955).
+  void reconcileDirectoryOnStart().then(
+    (aligned) => {
+      if (aligned > 0) logger.info({ aligned }, "directory_reconciled");
+    },
+    (err: unknown) => {
+      logger.error({ err }, "directory_reconcile_failed");
+    },
+  );
 
   // Sign-in claims and revocations the global region hands to each other region.
   if (WORKER_QUEUES.includes(INVITATION_CLAIM_FORWARD_QUEUE)) {

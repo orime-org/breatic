@@ -7,8 +7,9 @@
  * Work on global data (ads conversions, settling slug reservations,
  * forwarding revocations and email-invitation claims to other regions) runs
  * only in the global region; relaying the outbox runs
- * only where there is a global region to relay to. Everything that works on a
- * region's own Studios runs in every region.
+ * only where there is a global region to relay to; reporting storage use runs
+ * only where another region exists to read it. Everything else that works on
+ * a region's own Studios runs in every region.
  */
 
 import { ADS_CONVERSION_QUEUE, TIMELINE_QUEUE } from "@breatic/core";
@@ -48,7 +49,6 @@ const EVERY_REGION: readonly string[] = [
   TIMELINE_QUEUE,
   TIMELINE_SWEEP_QUEUE,
   CREDIT_CHARGE_SWEEP_QUEUE,
-  STORAGE_USAGE_SYNC_QUEUE,
 ];
 
 const GLOBAL_ONLY: readonly string[] = [
@@ -62,12 +62,14 @@ const REGIONAL_ONLY: readonly string[] = [REGION_OUTBOX_RELAY_QUEUE];
 
 /**
  * The queues a worker in this region runs.
- * @param where - This region and the global region.
+ * @param where - This region, the global region and the other regions.
  * @param where.region - The region the worker runs in.
  * @param where.globalRegion - The region that holds the global data.
+ * @param where.otherRegions - The regions this deployment reaches besides its own.
  * @returns The queue names.
  */
-export function workerQueuesFor(where: { region: string; globalRegion: string }): string[] {
+export function workerQueuesFor(where: { region: string; globalRegion: string; otherRegions: readonly string[] }): string[] {
   const own = where.region === where.globalRegion ? GLOBAL_ONLY : REGIONAL_ONLY;
-  return [...EVERY_REGION, ...own];
+  const report = where.region !== where.globalRegion || where.otherRegions.length > 0 ? [STORAGE_USAGE_SYNC_QUEUE] : [];
+  return [...EVERY_REGION, ...own, ...report];
 }

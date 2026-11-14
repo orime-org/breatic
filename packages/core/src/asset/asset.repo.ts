@@ -460,15 +460,18 @@ export async function usageByStudios(studioIds: string[]): Promise<number> {
 
 /**
  * What each Studio in this region uses, for the report sent to the global
- * region (inner#1955).
- * @returns Live asset bytes per Studio that holds any.
+ * region (inner#1955). Every Studio that ever held an asset is listed, with
+ * zero once all of them are deleted, so the global row drops back too.
+ * @returns Live asset bytes per Studio.
  * @throws {Error} When the database query fails.
  */
 export async function usagePerStudio(): Promise<{ studioId: string; bytes: number }[]> {
   const rows = await db
-    .select({ studioId: studioAssets.studioId, bytes: sql<string>`COALESCE(SUM(${studioAssets.sizeBytes}), 0)` })
+    .select({
+      studioId: studioAssets.studioId,
+      bytes: sql<string>`COALESCE(SUM(${studioAssets.sizeBytes}) FILTER (WHERE ${studioAssets.deletedAt} IS NULL), 0)`,
+    })
     .from(studioAssets)
-    .where(isNull(studioAssets.deletedAt))
     .groupBy(studioAssets.studioId);
   return rows.map((row) => ({ studioId: row.studioId, bytes: Number(row.bytes) }));
 }

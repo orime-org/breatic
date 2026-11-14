@@ -39,20 +39,27 @@ const EVERY_REGION = [
 
 describe("workerQueuesFor", () => {
   it("runs the global work and no outbox relay in the region that holds the global data", () => {
-    const queues = workerQueuesFor({ region: "us-west", globalRegion: "us-west" });
+    const queues = workerQueuesFor({ region: "us-west", globalRegion: "us-west", otherRegions: ["sg"] });
     for (const queue of [...GLOBAL_ONLY, ...EVERY_REGION]) expect(queues).toContain(queue);
     for (const queue of REGIONAL_ONLY) expect(queues).not.toContain(queue);
   });
 
   it("runs the outbox relay and none of the global work in any other region", () => {
-    const queues = workerQueuesFor({ region: "sg", globalRegion: "us-west" });
+    const queues = workerQueuesFor({ region: "sg", globalRegion: "us-west", otherRegions: ["us-west"] });
     for (const queue of [...REGIONAL_ONLY, ...EVERY_REGION]) expect(queues).toContain(queue);
     for (const queue of GLOBAL_ONLY) expect(queues).not.toContain(queue);
   });
 
-  it("treats a single-region deployment as the global region", () => {
-    expect(workerQueuesFor({ region: "default", globalRegion: "default" })).toEqual(
-      workerQueuesFor({ region: "us-west", globalRegion: "us-west" }),
+  it("reports storage use to the global region wherever another region exists", () => {
+    expect(workerQueuesFor({ region: "us-west", globalRegion: "us-west", otherRegions: ["sg"] })).toContain("storage-usage-sync");
+    expect(workerQueuesFor({ region: "sg", globalRegion: "us-west", otherRegions: ["us-west"] })).toContain("storage-usage-sync");
+  });
+
+  it("treats a single-region deployment as the global region, with no storage report nobody reads", () => {
+    const single = workerQueuesFor({ region: "default", globalRegion: "default", otherRegions: [] });
+    expect(single).not.toContain("storage-usage-sync");
+    expect(single).toEqual(
+      workerQueuesFor({ region: "us-west", globalRegion: "us-west", otherRegions: ["sg"] }).filter((queue) => queue !== "storage-usage-sync"),
     );
   });
 });

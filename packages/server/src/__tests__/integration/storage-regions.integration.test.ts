@@ -17,6 +17,8 @@
  *   2. Within this region, the first write past the ceiling is refused,
  *      because this region's usage is read live.
  *   3. A newer report replaces an older one and an older one is ignored.
+ *   4. A Studio whose assets were all deleted reports zero, so the global
+ *      row drops back instead of keeping its last bytes.
  */
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
@@ -38,7 +40,7 @@ vi.mock("@server/utils/send-best-effort-mail.js", () => ({
 
 import crypto from "node:crypto";
 import postgres from "postgres";
-import { getMembershipLimits, initCore, loadLocales } from "@breatic/core";
+import { assetRepo as regionUsage, getMembershipLimits, initCore, loadLocales } from "@breatic/core";
 import { assetRepo, storageUsageService } from "@breatic/domain";
 import { assertStudioStorageAllowance } from "@server/modules/asset/storageQuota.service.js";
 import { readAccountMembership } from "@server/modules/account/membership.service.js";
@@ -163,5 +165,15 @@ describe("storage across regions", () => {
       SELECT bytes::text FROM studio_storage_usage_global WHERE studio_id = ${farId} AND region = 'sg'
     `;
     expect(Number(row!.bytes)).toBe(10);
+  });
+
+  it("reports zero for a Studio whose assets were all deleted", async () => {
+    const { userId, hereId } = await adminInTwoRegions();
+    await seedAsset(hereId, userId, 2048);
+    expect((await regionUsage.usagePerStudio()).find((row) => row.studioId === hereId)?.bytes).toBe(2048);
+
+    await sql`UPDATE studio_assets SET deleted_at = now() WHERE studio_id = ${hereId}`;
+
+    expect((await regionUsage.usagePerStudio()).find((row) => row.studioId === hereId)).toEqual({ studioId: hereId, bytes: 0 });
   });
 });
