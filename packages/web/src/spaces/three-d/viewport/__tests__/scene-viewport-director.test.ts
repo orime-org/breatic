@@ -284,6 +284,26 @@ describe('looking through a camera (inner#1694 design 3.4, 3.4.3)', () => {
   });
 });
 
+describe('stills and repaints (round 2 fixes)', () => {
+  it('keeps the pose a still was rendered with when the monitors reuse their camera during the readback', async () => {
+    const opened = await open(props([camera(CAM)], { cameraView: { kind: 'live', id: CAM, canPilot: true }, viewFrame: FRAME }));
+    const inner = opened.runtime as unknown as { renderer: { readRenderTargetPixelsAsync: (...args: unknown[]) => Promise<unknown> }; monitorCamera: PerspectiveCamera };
+    inner.renderer.readRenderTargetPixelsAsync = async (): Promise<unknown> => { inner.monitorCamera.position.set(99, 99, 99); return null; };
+    const still = await opened.capture()(FRAME, { width: 2048, height: 1152 });
+    expect(still.pose?.position).toEqual([0, 1.5, 6]);
+  });
+
+  it('syncs each camera figure and refreshes the monitors once per props update', async () => {
+    const opened = await open(props([camera(CAM)]));
+    const inner = opened.runtime as unknown as { syncFigure: (object: unknown) => void; monitorEvent: (event: { type: string }) => void };
+    const sync = vi.spyOn(inner, 'syncFigure');
+    const events = vi.spyOn(inner, 'monitorEvent');
+    opened.runtime.update({ ...opened.initial, selectedIds: ['cube'] });
+    expect(sync).toHaveBeenCalledTimes(1);
+    expect(events.mock.calls.filter(([event]) => event.type === 'changed')).toHaveLength(1);
+  });
+});
+
 describe('piloting a camera (design 3.4.1, 6.2)', () => {
   it('turns the camera with a drag past 4 px, keeps its roll and ends once on release', async () => {
     const opened = await open(props([camera(CAM)], { cameraView: { kind: 'live', id: CAM, canPilot: true }, viewFrame: FRAME }));
@@ -472,6 +492,16 @@ describe('lights, ambient and shadows (design 3.6, 6.4)', () => {
 });
 
 describe('handles during a camera view (design 3.4 item 1)', () => {
+  it('draws no selection box, own or a collaborator\'s, around the camera being looked through', async () => {
+    const peer = { clientId: 7, userId: 'u2', name: 'Peer', color: '#00aa00', selectedIds: [CAM], gesture: null };
+    const base = props([camera(CAM)], { selectedIds: [CAM], remotePeers: [peer] as never });
+    const opened = await open({ ...base, cameraView: { kind: 'live', id: CAM, canPilot: true }, viewFrame: FRAME } as SceneViewportProps);
+    const inner = opened.runtime as unknown as { outlines: Array<{ object: Object3D }>; figures: Map<string, { root: Object3D }> };
+    const root = inner.figures.get(CAM)?.root;
+    expect(inner.outlines.filter((outline) => outline.object === root)).toHaveLength(0);
+    opened.runtime.update({ ...base, cameraView: null } as SceneViewportProps);
+    expect(inner.outlines.filter((outline) => outline.object === root)).toHaveLength(2);
+  });
   it('attaches no transform handle while the selection holds the camera being looked through', async () => {
     const opened = await open(props([camera(CAM), camera(OTHER, { position: [3, 1, 3], number: 2 })], { selectedIds: [CAM, 'cube'], cameraView: { kind: 'live', id: CAM, canPilot: true }, viewFrame: FRAME }));
     const controls = (opened.runtime as unknown as { controls: { object: unknown } }).controls;

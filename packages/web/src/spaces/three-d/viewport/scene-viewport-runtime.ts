@@ -271,7 +271,12 @@ export class SceneViewportRuntime {
     document.addEventListener('visibilitychange', this.onVisibilityChange);
     this.resize = new ResizeObserver(this.onResize);
     this.resize.observe(host);
-    this.theme = new MutationObserver(this.onThemeChange);
+    this.theme = new MutationObserver(() => {
+      this.onThemeChange();
+      // Props updates and model loads repaint figures and refresh the monitors themselves; only a theme change needs it here.
+      for (const object of this.displayed) if (!isSceneModelFile(object.model)) this.syncFigure(object);
+      this.monitorEvent({ type: 'changed' });
+    });
     this.theme.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-theme', 'style'] });
     this.cardVisibility = typeof IntersectionObserver === 'undefined' ? null : new IntersectionObserver(this.onCardVisibility);
     this.cardSize = new ResizeObserver(this.onCardResize);
@@ -330,6 +335,7 @@ export class SceneViewportRuntime {
     // Through a camera the still is the camera's own projection; the main view and its offset stay as they are.
     const camera = live ? this.monitorCamera : this.camera;
     const layers = camera.layers.mask;
+    let pose: CapturedPixels['pose'];
     try {
       if (live) {
         applyCameraRecord(camera, live, size.width / size.height);
@@ -342,6 +348,8 @@ export class SceneViewportRuntime {
       camera.layers.set(0);
       this.renderer.setRenderTarget(target);
       this.withoutHelpers(() => this.renderer.render(this.scene, camera));
+      // Read now: the monitors reuse this camera on the frames that run during the readback.
+      pose = live ? { position: camera.position.toArray(), quaternion: camera.quaternion.toArray(), fov: camera.fov, aspect: camera.aspect } : undefined;
     } finally {
       camera.layers.mask = layers;
       if (!live) camera.clearViewOffset();
@@ -350,7 +358,6 @@ export class SceneViewportRuntime {
     try {
       const pixels = new Uint8Array(size.width * size.height * 4);
       await this.renderer.readRenderTargetPixelsAsync(target, 0, 0, size.width, size.height, pixels);
-      const pose = live ? { position: camera.position.toArray(), quaternion: camera.quaternion.toArray(), fov: camera.fov, aspect: camera.aspect } : undefined;
       return { width: size.width, height: size.height, pixels, ...(pose ? { pose } : {}) };
     } finally {
       target.dispose();
@@ -586,8 +593,8 @@ export class SceneViewportRuntime {
       this.orbit.update();
       this.orbit.enabled = this.orbitEnabled();
     }
-    // The camera being looked through, live or as a still, is where the view stands.
-    for (const [id, figure] of this.figures) figure.root.visible = next === null || next.id !== id;
+    const hidden = this.hiddenCamera();
+    for (const [id, figure] of this.figures) figure.root.visible = id !== hidden;
   }
 
   /**
@@ -893,15 +900,24 @@ export class SceneViewportRuntime {
   }
 
   /**
+   * The camera whose icon, frustum, selection box and handles the main view hides: the one looked through or whose
+   * still is shown (design 3.4 item 1).
+   * @returns Its id, or null.
+   */
+  private hiddenCamera(): string | null {
+    return this.view?.id ?? null;
+  }
+
+  /**
    * Return the whole eligible selection, or none while one item cannot mutate.
    * @returns The selected objects in selection order, or an empty array when editing is denied or any selected object is locked, absent or not loaded.
    * @throws {never} Never.
    */
   private mutableObjects(): SceneObject[] {
     if (this.props.readOnly || this.props.selectedIds.length === 0) return [];
-    const looked = this.view?.kind === 'live' ? this.view.id : null;
+    const hidden = this.hiddenCamera();
     // The camera being looked through moves only by piloting or by its fields.
-    if (looked !== null && this.props.selectedIds.includes(looked)) return [];
+    if (hidden !== null && this.props.selectedIds.includes(hidden)) return [];
     const objects = this.props.selectedIds.map((id) => this.props.objects.find((object) => object.id === id));
     if (objects.some((object) => !object || object.locked || !this.items.get(object.id)?.root)) return [];
     return objects.filter((object): object is SceneObject => object !== undefined);
@@ -1319,13 +1335,14 @@ export class SceneViewportRuntime {
       this.scene.remove(outline);
     }
     this.outlines = [];
+    const hidden = this.hiddenCamera();
     for (const id of this.props.selectedIds) {
-      const root = this.items.get(id)?.root;
+      const root = id === hidden ? undefined : this.items.get(id)?.root;
       if (root) this.addOutline(root, this.token('--color-status-selected'));
     }
     for (const peer of this.props.remotePeers) {
       for (const id of peer.selectedIds) {
-        const root = this.items.get(id)?.root;
+        const root = id === hidden ? undefined : this.items.get(id)?.root;
         if (root) this.addOutline(root, peer.color);
       }
     }
@@ -1396,8 +1413,6 @@ export class SceneViewportRuntime {
     this.syncMarkers(this.jointTarget());
     this.rebuildOutlines();
     this.syncOverview();
-    for (const object of this.displayed) if (!isSceneModelFile(object.model)) this.syncFigure(object);
-    this.monitorEvent({ type: 'changed' });
   };
 
   /**
