@@ -1066,6 +1066,28 @@ describe('continuous controls end on release and on Escape (round 1 fixes, desig
     await waitFor(() => expect(light ? lampValue(session, 'color') : ambientColor(session)).not.toBe('#ffffff'));
   });
 
+  it.each([
+    ['the ambient light', 'Hue', false, 'ArrowRight', 39],
+    ['the ambient light', 'Color', false, 'ArrowUp', 38],
+    ['a light', 'Hue', true, 'ArrowRight', 39],
+    ['a light', 'Color', true, 'ArrowUp', 38],
+  ])('leaves no press open after a picker key of %s on %s that changes nothing', async (_, control, light, key, keyCode) => {
+    const { session } = await setup([lamp()], 'editor', true, { spaceKeyboard: true });
+    const opened = await openDirector();
+    if (light) act(() => session.select(LAMP, false));
+    const swatch = (): HTMLElement => (light ? lightSwatch() : ambientSwatch(opened));
+    fireEvent.click(swatch());
+    // On white the hue moves without changing the colour, and the saturation area is already at its top.
+    const picker = await screen.findByRole('slider', { name: control });
+    fireEvent.keyDown(picker, { key, keyCode });
+    fireEvent.keyUp(picker, { key, keyCode });
+    fireEvent.click(swatch());
+    await pickerClosed();
+    expect(session.getSnapshot().gestureActive).toBe(false);
+    fireEvent.keyDown(swatch(), { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByTestId('scene-right-panel')).toBeNull());
+  });
+
   it('drops an ambient picker drag when the browser loses focus', async () => {
     const { session } = await setup();
     const opened = await openDirector();

@@ -20,15 +20,12 @@ export interface ControlPress {
    */
   stepKey: (event: Pick<KeyboardEvent, 'key'>, commit: () => void) => void;
   /**
-   * End the drag without writing it; the rest of the press is ignored until the next press starts.
-   * @returns Whether its drag was still open; false for one already ended, so a second Escape takes its usual step.
+   * End the press, by its release or by Escape, an undo or focus loss; its later changes are ignored until the next
+   * press starts.
+   * @returns Whether its drag was still open: a release then writes it, and an Escape stops there; false for a press
+   * already ended, so a second Escape takes its usual step.
    */
-  drop: () => boolean;
-  /**
-   * End the press.
-   * @returns Whether its drag was still open, so the release writes it.
-   */
-  release: () => boolean;
+  end: () => boolean;
 }
 
 /** Keys that move a Radix Slider by themselves. */
@@ -61,8 +58,7 @@ export function useControlPress(open: () => boolean): ControlPress {
       change: () => held.current,
       // Radix applies the step in the same keydown, after this handler: the press ends once that has run.
       stepKey: (event, commit) => { if (STEP_KEYS.has(event.key)) { begin(); queueMicrotask(commit); } },
-      drop: end,
-      release: end,
+      end,
     };
   }, [open]);
 }

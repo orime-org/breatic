@@ -189,11 +189,11 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   const [monitors, setMonitors] = React.useState<ReadonlyMap<string, HTMLCanvasElement>>(new Map());
   const pilotControl = React.useRef<ScenePilotControl | null>(null);
   /**
-   * End an ambient press without writing it; the rest of the press is ignored until its release.
+   * End an ambient press without writing it; its later changes are ignored until the next press starts.
    * @returns Whether its drag was still open.
    */
   const dropAmbient = React.useCallback((): boolean => {
-    const open = ambientPress.drop();
+    const open = ambientPress.end();
     ambientDraftRef.current = null;
     setAmbientDraft(null);
     return open;
@@ -692,16 +692,11 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   }, [ambientPress]);
   const onAmbientCommit = React.useCallback((): void => {
     const draft = ambientDraftRef.current;
-    const open = ambientPress.release();
+    const open = ambientPress.end();
     ambientDraftRef.current = null;
     setAmbientDraft(null);
     if (open && draft) session.execute({ type: 'environment', set: draft });
   }, [session, ambientPress]);
-  /**
-   * End an ambient press whose control will not release it, as a picker closed on Escape.
-   * @throws {never} Never.
-   */
-  const onAmbientCancel = React.useCallback((): void => { dropAmbient(); ambientPress.release(); }, [dropAmbient, ambientPress]);
   /**
    * Write a typed ambient colour as a command of its own.
    * @param ambientColor - The colour.
@@ -737,14 +732,14 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     : panel === 'director' ? <SceneDirectorPanel session={session} snapshot={snapshot} spaceId={spaceId} Field={SceneField} fieldDrafts={fieldDrafts}
       onFieldDraftChange={onFieldDraftChange} lightPlan={lightPlan} maxLights={director?.maxLights} lookingAt={lookCamera?.id ?? null}
       environment={environment} onSaveView={onSaveView} onAddLight={onAddLight} onLook={onLook} onMonitor={onMonitor}
-      onAmbientPreview={onAmbientPreview} onAmbientCommit={onAmbientCommit} onAmbientCancel={onAmbientCancel} ambientPress={ambientPress} onAmbientWrite={onAmbientWrite} viewFailed={viewFailed} />
+      onAmbientPreview={onAmbientPreview} onAmbientCommit={onAmbientCommit} onAmbientCancel={dropAmbient} ambientPress={ambientPress} onAmbientWrite={onAmbientWrite} viewFailed={viewFailed} />
       : panel === 'objects' ? <SceneObjectList session={session} snapshot={snapshot} modelStates={modelStates} onSelect={showSelectedProperties} />
         : <SceneTaskList projectId={projectId} spaceId={spaceId} userId={userId} canEdit={snapshot.canEdit} canGenerate={myRole !== 'viewer'} uploads={uploads}
           remoteUploads={snapshot.remoteUploads} onPlace={placeTask} focusTaskId={focusTaskId} onFocused={taskFocused}
           onRetryGeneration={retryGeneration} placedAssetIds={placedAssetIds} onLocate={locateAsset} filterHost={filterHost} />,
   [panel, inspectorFallback, session, snapshot, readObjects, namedPeers, spaceId, fieldDrafts, onFieldDraftChange, skeletonStates, jointMode, changeJointMode, modelStates, showSelectedProperties,
     projectId, userId, myRole, uploads, placeTask, focusTaskId, taskFocused, retryGeneration, placedAssetIds, locateAsset, filterHost,
-    lightPlan, director, lookCamera, environment, onSaveView, onAddLight, onLook, onMonitor, onAmbientPreview, onAmbientCommit, onAmbientCancel, ambientPress, onAmbientWrite, viewFailed]);
+    lightPlan, director, lookCamera, environment, onSaveView, onAddLight, onLook, onMonitor, onAmbientPreview, onAmbientCommit, dropAmbient, ambientPress, onAmbientWrite, viewFailed]);
   // An older-format scene is never opened, so no editing chrome is shown around its message.
   if (snapshot.status === 'unsupported' && isOlderSceneFormat(snapshot.version)) {
     return <div ref={stage} className='relative isolate h-full min-h-0 min-w-0 bg-canvas' data-testid='three-d-space'>

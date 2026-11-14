@@ -53,13 +53,13 @@ function useContinuousPatch(session: SceneSession, id: string): { press: Control
   // The session owns whether the drag is still open: Escape, a lock or an undo may have ended it.
   const preview = React.useCallback((patch: Omit<ScenePatch, 'id'>): void => {
     if (press.change() && session.getSnapshot().gestureActive) session.previewGesture([{ ...patch, id }]);
-    else press.drop();
+    else press.end();
   }, [session, id, press]);
   const commit = React.useCallback((): void => {
-    if (press.release() && session.getSnapshot().gestureActive) session.endGesture(true);
+    if (press.end() && session.getSnapshot().gestureActive) session.endGesture(true);
   }, [session, press]);
   const cancel = React.useCallback((): void => {
-    if (press.release() && session.getSnapshot().gestureActive) session.endGesture(false);
+    if (press.end() && session.getSnapshot().gestureActive) session.endGesture(false);
   }, [session, press]);
   const stepKey = React.useCallback((event: React.KeyboardEvent): void => { press.stepKey(event, commit); }, [press, commit]);
   return { press, preview, commit, cancel, stepKey };
@@ -68,15 +68,15 @@ function useContinuousPatch(session: SceneSession, id: string): { press: Control
 const HEX_TEXT = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
 
 /**
- * A colour chosen in a react-colorful picker inside a Popover (design 3.8). Each press of the picker previews and is
- * written once on release; text typed into the hex box is written once, as shown, as a command of its own on Enter or
+ * A colour chosen in a react-colorful picker inside a Popover (design 3.8). Each press of the picker, by the mouse or an
+ * arrow key, previews and is written once on release; text typed into the hex box is written once, as shown, as a command of its own on Enter or
  * when the box or the popover is left, the way `SceneField` commits; Escape drops both.
  * @param root0 - Props.
  * @param root0.value - The current colour.
  * @param root0.disabled - Whether it can be changed.
  * @param root0.labelId - What names it.
  * @param root0.spaceId - The Space the field belongs to.
- * @param root0.onPressStart - Opens a picker press when the mouse goes down.
+ * @param root0.onPressStart - Opens a picker press when the mouse or an arrow key goes down.
  * @param root0.onPreview - Shows a colour while picking.
  * @param root0.onCommit - Writes the previewed colour and ends the press.
  * @param root0.onCancel - Ends the press without writing it; no release of it follows.
@@ -111,10 +111,12 @@ export const SceneColorField = React.memo(function SceneColorField({ value, disa
     onPressStart();
     window.addEventListener('mouseup', release, { once: true });
   }, [onPressStart, release]);
-  // A picker arrow key is a press of its own; react-colorful ends it on the key's release.
+  // A picker arrow key is a press of its own, ended on the key's release: react-colorful reports no end for a step that
+  // changed nothing.
   const onPickerKey = React.useCallback((event: React.KeyboardEvent): void => {
     if (live.current && event.key.startsWith('Arrow')) onPressStart();
   }, [onPressStart]);
+  const onPickerKeyUp = React.useCallback((event: React.KeyboardEvent): void => { if (event.key.startsWith('Arrow')) release(); }, [release]);
   const settle = React.useCallback((): void => {
     setTyped(null);
     const digits = typed === null ? undefined : HEX_TEXT.exec(typed)?.[1]?.toLowerCase();
@@ -148,7 +150,7 @@ export const SceneColorField = React.memo(function SceneColorField({ value, disa
         className='size-6 rounded-full border border-border disabled:cursor-not-allowed disabled:opacity-50' style={{ backgroundColor: value }} />
     </PopoverTrigger>
     <PopoverContent container={container} side='left' align='start' className='w-auto space-y-2 p-2' onEscapeKeyDown={onEscapeKeyDown} onInteractOutside={keepOnSpaceTab}>
-      <div ref={picker}><HexColorPicker color={value} onChange={pick} onChangeEnd={release} onMouseDown={onPress} onKeyDown={onPickerKey} /></div>
+      <div ref={picker}><HexColorPicker color={value} onChange={pick} onChangeEnd={release} onMouseDown={onPress} onKeyDown={onPickerKey} onKeyUp={onPickerKeyUp} /></div>
       <Input value={typed ?? value} onChange={onType} onBlur={onBlur} onKeyDown={onKeyDown} spellCheck={false} autoComplete='off'
         className='h-[var(--btn-inline)] rounded-md bg-background px-2 text-xs md:text-xs' />
     </PopoverContent>
