@@ -62,6 +62,9 @@ function prepareMedia(): string {
   // 30 fps, so most frame starts are not whole microseconds, which the browser rounds a seek target to.
   ffmpeg('-f', 'lavfi', '-i', 'testsrc2=size=640x360:rate=30:duration=6', '-f', 'lavfi', '-i', 'sine=frequency=370:duration=6',
     ...mp4, join(dir, 'clip6at30.mp4'));
+  // 30000/1001 fps: frame starts fall between whole microseconds, so frame times must stay exact through the export.
+  ffmpeg('-f', 'lavfi', '-i', 'testsrc2=size=640x360:rate=30000/1001:duration=6', '-f', 'lavfi', '-i', 'sine=frequency=390:duration=6',
+    ...mp4, join(dir, 'clip6at2997.mp4'));
   clip('clip3a.mp4', '640x360', 3, 440);
   clip('clip3b.mp4', '640x360', 3, 550);
   clip('square3.mp4', '480x480', 3, 660);
@@ -746,6 +749,35 @@ test('transitions: after a crossfade from 30 fps into 25 fps, each output frame 
     // Output frame k after the window shows the second video's frame covering (k − 165) / 30 s.
     const wrong = output.slice(180).map((picture, at) => ({ k: 180 + at, expected: Math.floor(((15 + at) * 25) / 30) }))
       .filter(({ k, expected }) => nearestFrame(output[k]!, source, expected) !== expected);
+    expect(wrong).toEqual([]);
+  } finally {
+    await deleteSpace(page, c.spaceId);
+  }
+});
+
+test('transitions: a crossfade from a 29.97 fps video shows every one of its frames once before the window @needs-ingest @needs-storage @needs-ffmpeg', async ({ page }) => {
+  const c = await openCanvas(page, 'transitions-crossfade-ntsc');
+  try {
+    await upload(c, 'clip6at2997.mp4', 'clip6at30.mp4');
+    await presented(c, 'clip6at2997.mp4');
+    await presented(c, 'clip6at30.mp4');
+    await openTool(c, 'clip6at2997.mp4', 'video.transitions');
+    await c.page.getByTestId('video-timeline-input').click();
+    await nodeOf(c, 'clip6at30.mp4').click();
+    const dialog = c.page.getByTestId('video-timeline-dialog');
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('combobox').nth(1).click();
+    await c.page.getByRole('option', { name: 'Crossfade' }).click();
+    const overlap = dialog.getByTestId('video-clip-overlap');
+    await overlap.fill('0.5');
+    await overlap.press('Enter');
+    const made = await runBuilding(c, () => dialog.getByRole('button', { name: 'Export' }).click(), 1);
+    await expect(dialog).toBeHidden({ timeout: 60_000 });
+    const [joined] = await stored(c, made);
+    const output = greyFrames(joined!.content);
+    const source = greyFrames(await contentOf(c, 'clip6at2997.mp4'));
+    // The output runs on the first video's 29.97 fps grid, so before the window output frame k is its frame k.
+    const wrong = output.slice(0, 150).map((picture, k) => ({ k, shown: nearestFrame(picture, source, k) })).filter(({ k, shown }) => shown !== k);
     expect(wrong).toEqual([]);
   } finally {
     await deleteSpace(page, c.spaceId);
