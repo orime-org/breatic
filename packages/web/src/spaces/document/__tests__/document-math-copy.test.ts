@@ -13,7 +13,7 @@
 
 import { afterEach, describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
-import { TextSelection } from '@tiptap/pm/state';
+import { NodeSelection, TextSelection } from '@tiptap/pm/state';
 
 import { documentBodyFragment } from '@breatic/shared';
 
@@ -169,16 +169,38 @@ describe('copying a selection that holds formulas', () => {
     expect(data['text/plain']?.trim()).toBe('x $$a$$ $$b$$ y');
   });
 
-  it.each([
-    ['two formulas side by side', ['x ', { type: 'math', props: { source: 'a' } }, { type: 'math', props: { source: 'b' } }, ' y'], 'x $$a$$ $$b$$ y'],
-    ['words ending and starting with $ around a formula', ['US$', { type: 'math', props: { source: 'c' } }, '$5'], 'US$ $$c$$ $5'],
-  ])('writes %s into the plain text a selection drag carries', (_name, content, plain) => {
-    const editor = open([{ type: 'paragraph', content }]);
+  // A drag carries what a copy of the same selection writes, as ProseMirror
+  // hands both the same serialisation; the chat box reads a drop's plain text.
+  const sideBySide = { type: 'paragraph', content: ['x ', { type: 'math', props: { source: 'a' } }, { type: 'math', props: { source: 'b' } }, ' y'] };
+  const wholeLine = (editor: Editor): void => {
     const paragraph = before(editor, 'paragraph');
-    const size = editor.prosemirrorState.doc.nodeAt(paragraph)!.content.size;
-    select(editor, paragraph + 1, paragraph + 1 + size);
+    select(editor, paragraph + 1, paragraph + 1 + editor.prosemirrorState.doc.nodeAt(paragraph)!.content.size);
+  };
+  const toTheEnd = (editor: Editor): void => select(editor, before(editor, 'paragraph') + 1, editor.prosemirrorState.doc.content.size - 3);
+  it.each([
+    ['two formulas side by side', [sideBySide], wholeLine],
+    ['words ending and starting with $ around a formula', [{ type: 'paragraph', content: ['US$', { type: 'math', props: { source: 'c' } }, '$5'] }], wholeLine],
+    ['a formula alone beside a $ word', [{ type: 'paragraph', content: ['US$', { type: 'math', props: { source: 'c' } }, ' each'] }], (editor: Editor): void => {
+      const at = before(editor, 'math');
+      select(editor, at, at + 1);
+    }],
+    ['a formula block between paragraphs', [{ type: 'paragraph', content: 'above' }, { type: 'mathBlock', props: { source: '\\frac{a}{b}' } }, { type: 'paragraph', content: 'below' }], toTheEnd],
+    ['a range through a table', [sideBySide, tableBlock({ rows: [{ cells: ['one', 'two'] }] }), { type: 'paragraph', content: 'end' }], toTheEnd],
+  ])('gives a selection drag the plain text a copy writes, for %s', (_name, blocks, pick) => {
+    const editor = open(blocks);
+    pick(editor);
     const view = editor.prosemirrorView;
-    expect(view.serializeForClipboard(view.state.selection.content()).text).toBe(plain);
+    const dragged = view.serializeForClipboard(view.state.selection.content()).text;
+    expect(dragged).toBe(copy(editor)['text/plain']);
+  });
+
+  it('leaves the selection alone when a selected block is serialised', () => {
+    const editor = open([{ type: 'paragraph', content: 'lead' }, { type: 'mathBlock', props: { source: 'x' } }]);
+    const view = editor.prosemirrorView;
+    view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, before(editor, 'mathBlock'))));
+    const selected = view.state.selection;
+    view.serializeForClipboard(selected.content());
+    expect(view.state.selection.eq(selected)).toBe(true);
   });
 
   it('writes a block formula into the plain text as $$ on lines of their own', () => {

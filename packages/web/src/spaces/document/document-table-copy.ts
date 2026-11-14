@@ -279,6 +279,18 @@ export function tableClipped(editor: CopyEditor, view: EditorView): Clipped | nu
 }
 
 /**
+ * The plain text a copy of the selection writes for people, which a drag of
+ * the same selection carries too: ProseMirror serialises both alike, and the
+ * chat box takes a drop's plain text.
+ * @param editor - The editor.
+ * @param view - The editor view.
+ * @returns The plain text.
+ */
+export function copiedPlainText(editor: CopyEditor, view: EditorView): string {
+  return tableClipped(editor, view)?.plain ?? selectedFragmentToHTML(view, editor).plain;
+}
+
+/**
  * What a copy of some blocks and their slice puts on the clipboard.
  * @param editor - The editor.
  * @param view - The editor view.

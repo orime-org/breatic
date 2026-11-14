@@ -231,32 +231,11 @@ export function holdsFormula(node: PMNode): boolean {
   return isFormula(node) && formulaSource(node).trim() !== '';
 }
 
-/**
- * How a formula reads in plain text people take with a selection drag: its
- * text, parted by a space from a neighbour's `$`, as a copy parts them.
- * @param props - Where the formula sits.
- * @param props.node - The formula.
- * @param props.parent - The node holding it.
- * @param props.index - Its index there.
- * @returns The text.
- */
-function formulaPlainText({ node, parent, index }: { node: PMNode; parent: PMNode; index: number }): string {
-  const before = index > 0 ? parent.child(index - 1) : null;
-  const after = index + 1 < parent.childCount ? parent.child(index + 1) : null;
-  const touchesBefore = before !== null && (isFormula(before) || (before.text ?? '').endsWith('$'));
-  const touchesAfter = after !== null && (after.text ?? '').startsWith('$');
-  return `${touchesBefore ? ' ' : ''}${formulaLeafText(node)}${touchesAfter ? ' ' : ''}`;
-}
-
-/**
- * Gives both formula nodes their text: `leafText`, which `textContent` and
- * `textBetween` read, and `toText`, which Tiptap's plain text for a selection
- * drag reads.
- */
+/** Gives both formula nodes their text, which `textContent` and `textBetween` read. */
 const FormulaText = Extension.create({
   name: 'documentFormulaText',
   extendNodeSchema: (extension) =>
-    extension.name === MATH_BLOCK || extension.name === MATH_INLINE ? { leafText: formulaLeafText, toText: formulaPlainText } : {},
+    extension.name === MATH_BLOCK || extension.name === MATH_INLINE ? { leafText: formulaLeafText } : {},
 });
 
 /** The box's element: a control region of its own (design 5.1). */
