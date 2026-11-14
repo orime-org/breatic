@@ -20,7 +20,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { whenBlurLeaves } from '@web/lib/blur-left';
 import type { SceneField, SceneFieldDraftOwner } from '@web/spaces/three-d/SceneField';
 import { keepOnSpaceTab } from '@web/spaces/three-d/SceneRightPanel';
-import { commitAfterChange, useControlPress } from '@web/spaces/three-d/use-control-press';
+import { commitAfterChange, useControlPress, type ControlPress } from '@web/spaces/three-d/use-control-press';
 
 /** Lens presets in millimetres (inner#1694 design 3.2). */
 const FOCAL_PRESETS = [14, 24, 35, 50, 70, 100, 200] as const;
@@ -45,14 +45,14 @@ function Row({ label, labelId, children }: { label: string; labelId: string; chi
  * A drag that previews and is written once on release, as one undo step (design 3.8).
  * @param session - The command owner.
  * @param id - The object being changed.
- * @returns Start, preview, commit and cancel callbacks, and the commit a Slider's `onValueCommit` takes.
+ * @returns The press, preview, commit and cancel callbacks, and the commit a Slider's `onValueCommit` takes.
  */
-function useContinuousPatch(session: SceneSession, id: string): { start: () => void; preview: (patch: Omit<ScenePatch, 'id'>) => void; commit: () => void; cancel: () => void; commitAfterChange: () => void } {
-  const press = useControlPress();
-  const start = React.useCallback((): void => { press.begin(() => session.beginGesture()); }, [session, press]);
+function useContinuousPatch(session: SceneSession, id: string): { press: ControlPress; preview: (patch: Omit<ScenePatch, 'id'>) => void; commit: () => void; cancel: () => void; commitAfterChange: () => void } {
+  const open = React.useCallback((): boolean => session.beginGesture(), [session]);
+  const press = useControlPress(open);
   // The session owns whether the drag is still open: Escape, a lock or an undo may have ended it.
   const preview = React.useCallback((patch: Omit<ScenePatch, 'id'>): void => {
-    if (press.change(() => session.beginGesture()) && session.getSnapshot().gestureActive) session.previewGesture([{ ...patch, id }]);
+    if (press.change() && session.getSnapshot().gestureActive) session.previewGesture([{ ...patch, id }]);
     else press.drop();
   }, [session, id, press]);
   const commit = React.useCallback((): void => {
@@ -62,7 +62,7 @@ function useContinuousPatch(session: SceneSession, id: string): { start: () => v
     if (press.release() && session.getSnapshot().gestureActive) session.endGesture(false);
   }, [session, press]);
   const commitLater = React.useMemo(() => commitAfterChange(commit), [commit]);
-  return { start, preview, commit, cancel, commitAfterChange: commitLater };
+  return { press, preview, commit, cancel, commitAfterChange: commitLater };
 }
 
 const HEX_TEXT = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
@@ -239,11 +239,11 @@ export const SceneDirectorFields = React.memo(function SceneDirectorFields(props
     {head}
     <Row label={t('spaces.threeD.color')} labelId={`${ids}-color`}>
       <SceneColorField value={object.color} disabled={disabled} labelId={`${ids}-color`} spaceId={spaceId}
-        onPressStart={continuous.start} onPreview={previewColor} onCommit={continuous.commit} onCancel={continuous.cancel} onWrite={writeColor} />
+        onPressStart={continuous.press.begin} onPreview={previewColor} onCommit={continuous.commit} onCancel={continuous.cancel} onWrite={writeColor} />
     </Row>
     <Row label={t('spaces.threeD.intensity')} labelId={`${ids}-intensity`}>
       <Slider aria-labelledby={`${ids}-intensity`} className='w-28' min={0} max={max} step={step} value={[object.intensity]} disabled={disabled}
-        onValueChange={([value]) => { if (value !== undefined) continuous.preview({ intensity: value }); }} onValueCommit={continuous.commitAfterChange} onPointerDown={continuous.start} onPointerUp={continuous.commit} />
+        onValueChange={([value]) => { if (value !== undefined) continuous.preview({ intensity: value }); }} onValueCommit={continuous.commitAfterChange} onPointerDown={continuous.press.begin} onKeyDown={continuous.press.beginOnStepKey} onPointerUp={continuous.commit} />
       <span className='w-10 text-right text-xs tabular-nums text-muted-foreground'>{Number(object.intensity.toFixed(1))}</span>
     </Row>
     <Row label={t('spaces.threeD.castShadow')} labelId={`${ids}-shadow`}>
@@ -251,7 +251,7 @@ export const SceneDirectorFields = React.memo(function SceneDirectorFields(props
     </Row>
     {object.model.type === 'spot' ? <Row label={t('spaces.threeD.angle')} labelId={`${ids}-angle`}>
       <Slider aria-labelledby={`${ids}-angle`} className='w-28' min={SCENE_SPOT_ANGLE_MIN} max={SCENE_SPOT_ANGLE_MAX} step={1} value={[object.angle ?? SCENE_SPOT_ANGLE_DEFAULT]}
-        disabled={disabled} onValueChange={([value]) => { if (value !== undefined) continuous.preview({ angle: value }); }} onValueCommit={continuous.commitAfterChange} onPointerDown={continuous.start} onPointerUp={continuous.commit} />
+        disabled={disabled} onValueChange={([value]) => { if (value !== undefined) continuous.preview({ angle: value }); }} onValueCommit={continuous.commitAfterChange} onPointerDown={continuous.press.begin} onKeyDown={continuous.press.beginOnStepKey} onPointerUp={continuous.commit} />
       <span className='w-10 text-right text-xs tabular-nums text-muted-foreground'>{`${Math.round(object.angle ?? SCENE_SPOT_ANGLE_DEFAULT)}°`}</span>
     </Row> : null}
     {lock}

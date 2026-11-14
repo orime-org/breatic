@@ -183,13 +183,14 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   const environment = React.useMemo(() => (ambientDraft ? { ...snapshot.environment, ...ambientDraft } : snapshot.environment), [ambientDraft, snapshot.environment]);
   const ambientDraftRef = React.useRef(ambientDraft);
   ambientDraftRef.current = ambientDraft;
-  const ambientPress = useControlPress();
+  const ambientOpen = React.useCallback((): boolean => session.getSnapshot().canEdit, [session]);
+  const ambientPress = useControlPress(ambientOpen);
   const [lightPlan, setLightPlan] = React.useState<LightsPlan | null>(null);
   const [monitors, setMonitors] = React.useState<ReadonlyMap<string, HTMLCanvasElement>>(new Map());
   const pilotControl = React.useRef<ScenePilotControl | null>(null);
   /**
    * End an ambient press without writing it; the rest of the press is ignored until its release.
-   * @returns Whether a press was open.
+   * @returns Whether its drag was still open.
    */
   const dropAmbient = React.useCallback((): boolean => {
     const open = ambientPress.drop();
@@ -261,9 +262,9 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
 
   const couldEdit = React.useRef(snapshot.canEdit);
   React.useEffect(() => {
-    if (couldEdit.current && !snapshot.canEdit) dispatchViewfinder({ type: 'permissionLost' });
+    if (couldEdit.current && !snapshot.canEdit) { dispatchViewfinder({ type: 'permissionLost' }); dropAmbient(); }
     couldEdit.current = snapshot.canEdit;
-  }, [snapshot.canEdit]);
+  }, [snapshot.canEdit, dropAmbient]);
 
   /** Create independent selected copies of committed objects, including locked sources. */
   const duplicate = React.useCallback((): void => {
@@ -684,7 +685,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     });
   }, []);
   const onAmbientPreview = React.useCallback((values: Partial<SceneEnvironmentValues>): void => {
-    if (!ambientPress.change(() => true)) return;
+    if (!ambientPress.change()) return;
     // The ref leads the state so a commit queued right after this change reads it before React renders.
     ambientDraftRef.current = { ...ambientDraftRef.current, ...values };
     setAmbientDraft(ambientDraftRef.current);
@@ -701,11 +702,6 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
    * @throws {never} Never.
    */
   const onAmbientCancel = React.useCallback((): void => { dropAmbient(); ambientPress.release(); }, [dropAmbient, ambientPress]);
-  /**
-   * Open an ambient press when the pointer goes down, so undo or Escape before its first change still ends it.
-   * @throws {never} Never.
-   */
-  const onAmbientStart = React.useCallback((): void => { ambientPress.begin(() => session.getSnapshot().canEdit); }, [ambientPress, session]);
   /**
    * Write a typed ambient colour as a command of its own.
    * @param ambientColor - The colour.
@@ -741,14 +737,14 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     : panel === 'director' ? <SceneDirectorPanel session={session} snapshot={snapshot} spaceId={spaceId} Field={SceneField} fieldDrafts={fieldDrafts}
       onFieldDraftChange={onFieldDraftChange} lightPlan={lightPlan} maxLights={director?.maxLights} lookingAt={lookCamera?.id ?? null}
       environment={environment} onSaveView={onSaveView} onAddLight={onAddLight} onLook={onLook} onMonitor={onMonitor}
-      onAmbientPreview={onAmbientPreview} onAmbientCommit={onAmbientCommit} onAmbientCancel={onAmbientCancel} onAmbientStart={onAmbientStart} onAmbientWrite={onAmbientWrite} viewFailed={viewFailed} />
+      onAmbientPreview={onAmbientPreview} onAmbientCommit={onAmbientCommit} onAmbientCancel={onAmbientCancel} ambientPress={ambientPress} onAmbientWrite={onAmbientWrite} viewFailed={viewFailed} />
       : panel === 'objects' ? <SceneObjectList session={session} snapshot={snapshot} modelStates={modelStates} onSelect={showSelectedProperties} />
         : <SceneTaskList projectId={projectId} spaceId={spaceId} userId={userId} canEdit={snapshot.canEdit} canGenerate={myRole !== 'viewer'} uploads={uploads}
           remoteUploads={snapshot.remoteUploads} onPlace={placeTask} focusTaskId={focusTaskId} onFocused={taskFocused}
           onRetryGeneration={retryGeneration} placedAssetIds={placedAssetIds} onLocate={locateAsset} filterHost={filterHost} />,
   [panel, inspectorFallback, session, snapshot, readObjects, namedPeers, spaceId, fieldDrafts, onFieldDraftChange, skeletonStates, jointMode, changeJointMode, modelStates, showSelectedProperties,
     projectId, userId, myRole, uploads, placeTask, focusTaskId, taskFocused, retryGeneration, placedAssetIds, locateAsset, filterHost,
-    lightPlan, director, lookCamera, environment, onSaveView, onAddLight, onLook, onMonitor, onAmbientPreview, onAmbientCommit, onAmbientCancel, onAmbientStart, onAmbientWrite, viewFailed]);
+    lightPlan, director, lookCamera, environment, onSaveView, onAddLight, onLook, onMonitor, onAmbientPreview, onAmbientCommit, onAmbientCancel, ambientPress, onAmbientWrite, viewFailed]);
   // An older-format scene is never opened, so no editing chrome is shown around its message.
   if (snapshot.status === 'unsupported' && isOlderSceneFormat(snapshot.version)) {
     return <div ref={stage} className='relative isolate h-full min-h-0 min-w-0 bg-canvas' data-testid='three-d-space'>

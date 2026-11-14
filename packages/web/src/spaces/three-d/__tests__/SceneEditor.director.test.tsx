@@ -983,6 +983,46 @@ describe('continuous controls end on release and on Escape (round 1 fixes, desig
     await waitFor(() => expect(session.getSnapshot().environment.ambientIntensity).toBe(5));
   });
 
+  it('drops a held ambient slider press silently when editing access is lost', async () => {
+    const { session } = await setup([], 'editor', true, { spaceKeyboard: true });
+    act(() => { session.execute({ type: 'environment', set: { ambientIntensity: 2.7 } }); });
+    await openDirector();
+    sliderPointers();
+    const thumb = (): HTMLElement => within(within(screen.getByTestId('scene-right-panel')).getByTestId('scene-director-ambient')).getAllByRole('slider')[0] as HTMLElement;
+    fireEvent.pointerDown(thumb(), { pointerId: 1, button: 0, buttons: 1, clientX: 108 });
+    fireEvent.pointerMove(thumb(), { pointerId: 1, buttons: 1, clientX: 200 });
+    act(() => session.setEnvironment({ readOnly: true, connected: true, hasEverSynced: true, writeAccess: 'denied', refused: false, awareness: null }));
+    expect(h.viewport?.environment?.ambientIntensity).toBe(2.7);
+    fireEvent.pointerUp(thumb(), { pointerId: 1, clientX: 200 });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(session.getSnapshot().environment.ambientIntensity).toBe(2.7);
+    expect(h.toast.error).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['the ambient light', false],
+    ['a light', true],
+  ])('writes the first key step of %s after a press whose release never came', async (_, light) => {
+    const { session } = await setup([lamp()], 'editor', true, { spaceKeyboard: true });
+    act(() => { session.execute(light ? { type: 'patch', patches: [{ id: LAMP, intensity: 100 }] } : { type: 'environment', set: { ambientIntensity: 2.7 } }); });
+    await openDirector();
+    if (light) act(() => session.select(LAMP, false));
+    sliderPointers();
+    const thumb = (): HTMLElement => (light
+      ? within(screen.getByTestId(`scene-director-fields-${LAMP}`)).getAllByRole('slider')[0]
+      : within(within(screen.getByTestId('scene-right-panel')).getByTestId('scene-director-ambient')).getAllByRole('slider')[0]) as HTMLElement;
+    const value = (): unknown => (light ? lampValue(session, 'intensity') : session.getSnapshot().environment.ambientIntensity);
+    fireEvent.pointerDown(thumb(), { pointerId: 1, button: 0, buttons: 1, clientX: light ? 100 : 108 });
+    fireEvent.pointerMove(thumb(), { pointerId: 1, buttons: 1, clientX: 300 });
+    // The browser loses focus and the button is let go outside it: no pointerup arrives.
+    const focused = vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+    act(() => { window.dispatchEvent(new Event('blur')); });
+    focused.mockReturnValue(true);
+    act(() => { window.dispatchEvent(new Event('focus')); });
+    fireEvent.keyDown(thumb(), { key: 'ArrowRight' });
+    await waitFor(() => expect(value()).toBe(light ? 101 : 2.8));
+  });
+
   it('drops an ambient picker drag when the browser loses focus', async () => {
     const { session } = await setup();
     const opened = await openDirector();
