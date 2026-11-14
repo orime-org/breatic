@@ -582,10 +582,10 @@ function nearestStandardRate(numerator: bigint, denominator: bigint): ExactRatio
 /**
  * A presentation table's output frame rate (frames-split §7.17 transition output profile row), the one rule the profile,
  * the panel and the timeline Dialog read: timescale over the frame spacing when consecutive frames start the same number of
- * ticks apart, otherwise the standard rate nearest the frames over the presented duration. Neither the first frame's nor the
- * last frame's own length counts, and the average runs from the second frame on: the first frame is held from 0 when the
- * picture starts after the audio (§7.17 timeline row), and a stream cut short in its last frame stays CFR. The table tiles
- * [0, display.duration) (§7.16), so that duration is its end.
+ * ticks apart, otherwise the standard rate nearest the average spacing. Neither the first frame's nor the last frame's own
+ * length counts: the average runs from the second frame's start to the last frame's start, since the first frame is held
+ * from 0 when the picture starts after the audio (§7.17 timeline row) and the last is held to the end when the audio runs
+ * longer, or is cut short at the end of its stream. Two frames take their one spacing; one frame its duration.
  * @param table - The compact presentation table.
  * @returns The rate, exact and reduced.
  * @throws {RangeError} When the table presents no frame.
@@ -608,11 +608,14 @@ export function presentationOutputFps(table: VideoPresentationTable): ExactRatio
     const next = runs[index + 1];
     if (next !== undefined) add(next.start - (run.start + (run.count - 1) * run.step), index === 0 && run.count === 1 ? 0 : 1);
   });
+  const first = runs[0]!;
+  const second = first.count > 1 ? first.start + first.step : runs[1]?.start;
+  if (second === undefined) return nearestStandardRate(BigInt(timescale), BigInt(first.duration));
+  // Two frames have only the one spacing between them.
+  if (frames === 2) return reduced(BigInt(timescale), BigInt(second - first.start));
   if (spacings.size === 1) return reduced(BigInt(timescale), BigInt([...spacings.keys()][0]!));
   const last = runs.at(-1)!;
-  const end = last.start + (last.count - 1) * last.step + last.duration;
-  const second = runs[0]!.count > 1 ? runs[0]!.start + runs[0]!.step : runs[1]?.start;
-  return second === undefined ? nearestStandardRate(BigInt(timescale), BigInt(end - runs[0]!.start)) : nearestStandardRate(BigInt(frames - 1) * BigInt(timescale), BigInt(end - second));
+  return nearestStandardRate(BigInt(frames - 2) * BigInt(timescale), BigInt(last.start + (last.count - 1) * last.step - second));
 }
 
 /**

@@ -160,6 +160,20 @@ describe("the output frame rate of a presentation table (frames-split §7.17)", 
     expect(same(api.presentationOutputFps({ schemaVersion: 1, timescale: 1000, runs: [{ start: 0, count: 1, step: 5000, duration: 5000 }] }), r(12))).toBe(true);
   });
 
+  it("FPS06 a VFR clip's average runs between frame starts, so a last frame held for longer audio does not lower it", () => {
+    // A 30 fps WebM on a 1/1000 clock (frames at 0, 33, 67, 100 ms...), 2 s of picture, the last frame held to 3 s of audio.
+    const starts = Array.from({ length: 60 }, (_unused, k) => Math.round((k * 1000) / 30));
+    const runs = starts.map((start, k) => ({ start, count: 1, step: (starts[k + 1] ?? 3000) - start, duration: (starts[k + 1] ?? 3000) - start }));
+    expect(api.presentationOutputFps({ schemaVersion: 1, timescale: 1000, runs })).toEqual(r(30));
+  });
+
+  it.each([
+    ["two 10 fps frames", { schemaVersion: 1, timescale: 10, runs: [{ start: 0, count: 2, step: 1, duration: 1 }] }, r(10)],
+    ["two 25 fps frames, the last held for longer audio", { schemaVersion: 1, timescale: 25, runs: [{ start: 0, count: 1, step: 1, duration: 1 }, { start: 1, count: 1, step: 50, duration: 50 }] }, r(25)],
+  ] as const)("FPS07 %s keep the rate of their one spacing", (_name, table, expected) => {
+    expect(api.presentationOutputFps(table as Table)).toEqual(expected);
+  });
+
   // Frames `step` ticks apart with the second one lasting `odd` ticks: two spacings after the first frame, so the table is VFR.
   it.each([
     ["29000/958 (a 1/1000 clock of 33 and 34 ms frames)", 1000, 30, 34, 33, r(30)],
