@@ -283,6 +283,16 @@ export const agentCommandParamsSchemas = {
   }),
   // What the generation panel's view model is built from, read before a run.
   read_generation_inputs: z.object({ nodeId: nodeIdSchema }),
+  // The nodes a composite tool's result lands on, placed before the MCP
+  // service asks the server for the run (§10.2).
+  create_mini_tool_results: z.object({ toolId: z.string().min(1), sourceNodeId: nodeIdSchema, params: z.record(z.string(), z.json()) }),
+  create_reading_node: z.object({ sourceNodeId: nodeIdSchema, reading: z.enum(["understand", "transcribe"]) }),
+  create_upload_nodes: z.object({
+    files: z.array(z.object({ type: creatableNodeTypeSchema, name: z.string().min(1).optional() })).min(1),
+    afterNodeId: nodeIdSchema.optional(),
+  }),
+  // Whether a file may go into a node already on the canvas: read only.
+  check_upload_target: z.object({ nodeId: nodeIdSchema, type: creatableNodeTypeSchema }),
   read_document: z.object({}),
   // Blocks as BlockNote block JSON (the MCP service converts Markdown);
   // whether the document schema can build one is collab's to judge.
