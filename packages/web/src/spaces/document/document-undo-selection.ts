@@ -298,7 +298,7 @@ export function documentUndoSelectionPlugin(): Plugin<PreEditState> {
     },
 
     /**
-     * Subscribes the two handlers for as long as the editor lives.
+     * Subscribes its handlers for as long as the editor lives.
      * @param view - The editor view.
      * @returns The plugin view, whose destroy unsubscribes them.
      */
