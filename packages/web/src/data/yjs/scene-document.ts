@@ -251,14 +251,14 @@ export function planSceneCommand(doc: Y.Doc, _name: string, command: SceneComman
     if (command.type === 'create') creations.push(...command.objects);
     else {
       // Copies of a camera or a light take the next numbers of their kind, one after another.
-      const next = { camera: nextDirectorNumber(scene.objects, 'camera') - 1, light: nextDirectorNumber(scene.objects, 'light') - 1 };
+      const next = { camera: nextDirectorNumber(scene.objects, 'camera'), light: nextDirectorNumber(scene.objects, 'light') };
       for (const copy of command.copies) {
         const source = byId.get(copy.sourceId);
         if (!source) return { ok: false, reason: invalidIds.has(copy.sourceId) ? 'invalid' : 'missing' };
         const name = SceneObjectValuesSchema.shape.name.safeParse(`${source.name} copy`);
         creations.push({ ...source, id: copy.id, name: name.success ? name.data : source.name,
           position: [source.position[0] + 1, source.position[1], source.position[2] + 1], locked: false,
-          ...(isSceneModelFile(source.model) ? {} : { number: (next[source.model.kind] += 1) }) });
+          ...(isSceneModelFile(source.model) ? {} : { number: next[source.model.kind]++ }) });
       }
     }
     for (const creation of creations) {
