@@ -14,15 +14,18 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
+    "@blocknote/core": "catalog:",
     "@breatic/core": "workspace:*",
     "@breatic/shared": "workspace:*",
     "@hocuspocus/extension-redis": "catalog:",
     "@hocuspocus/server": "catalog:",
     "@sentry/node": "catalog:",
     "@sesamecare-oss/redlock": "^1.4.0",
+    "@tiptap/pm": "catalog:",
     "dotenv": "catalog:",
     "drizzle-orm": "catalog:",
     "lib0": "catalog:",
+    "y-prosemirror": "catalog:",
     "y-protocols": "catalog:",
     "yaml": "catalog:",
     "yjs": "catalog:",

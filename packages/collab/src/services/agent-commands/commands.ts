@@ -6,7 +6,8 @@
  * §8): one entry per command type. The consumer decides who may run a
  * command and when; an entry only reads or writes the document it is handed,
  * through the same shared readers and writers the browser uses. The canvas
- * commands live in `canvas-commands.ts`.
+ * commands live in `canvas-commands.ts`, the document commands in
+ * `document-commands.ts`.
  */
 
 import * as Y from "yjs";
@@ -33,6 +34,14 @@ import {
   setLocked,
   updateNode,
 } from "@collab/services/agent-commands/canvas-commands.js";
+import {
+  commentOnDocument,
+  deleteBlocks,
+  editText,
+  insertBlocks,
+  insertLate,
+  readDocument,
+} from "@collab/services/agent-commands/document-commands.js";
 
 /** A reply without its call id. */
 export type Answer = AgentReply extends infer R ? (R extends AgentReply ? Omit<R, "callId"> : never) : never;
@@ -57,8 +66,8 @@ interface CommandSpec<T extends AgentCommandType> {
    * write uses (`canvasWrite` in web's `canvas-space.ts`); null for a read.
    */
   size: SpaceWriteKind | ((doc: Y.Doc, params: AgentCommandParams<T>) => SpaceWriteKind) | null;
-  /** The Space document it works on; `null` for the Project's meta document. */
-  space: "canvas" | null;
+  /** The type of Space whose document it works on; `null` for the Project's meta document. */
+  space: "canvas" | "document" | null;
   /** Read or write the document. A write runs inside one transaction. */
   run: (doc: Y.Doc, params: AgentCommandParams<T>, command: AgentCommand, actor: Actor) => Answer;
   /** A write's answer once its deadline has passed; writes nothing. */
@@ -73,7 +82,7 @@ export interface AnyCommandSpec {
   params: z.ZodType<unknown>;
   write: boolean;
   size: SpaceWriteKind | ((doc: Y.Doc, params: unknown) => SpaceWriteKind) | null;
-  space: "canvas" | null;
+  space: "canvas" | "document" | null;
   run: (doc: Y.Doc, params: unknown, command: AgentCommand, actor: Actor) => Answer;
   late: (doc: Y.Doc, params: unknown, command: AgentCommand) => Answer;
 }
@@ -187,6 +196,49 @@ const COMMANDS: CommandTable = {
     size: "add",
     space: "canvas",
     run: (doc, params) => restore(doc, params),
+    late: unfinished,
+  },
+  read_document: {
+    params: agentCommandParamsSchemas.read_document,
+    write: false,
+    size: null,
+    space: "document",
+    run: (doc, _params, command) => readDocument(doc, command),
+    late: unfinished,
+  },
+  // The document kinds are those collab's size gate gives the editor's own
+  // updates: new blocks and comments add, a text change edits, and removing
+  // whole blocks deletes whole Yjs types, which a Space past its ceiling still takes.
+  insert_document_blocks: {
+    params: agentCommandParamsSchemas.insert_document_blocks,
+    write: true,
+    size: "add",
+    space: "document",
+    run: (doc, params, command) => insertBlocks(doc, params, command),
+    late: insertLate,
+  },
+  edit_document_text: {
+    params: agentCommandParamsSchemas.edit_document_text,
+    write: true,
+    size: "edit",
+    space: "document",
+    run: (doc, params) => editText(doc, params),
+    late: unfinished,
+  },
+  delete_document_blocks: {
+    params: agentCommandParamsSchemas.delete_document_blocks,
+    write: true,
+    size: "remove",
+    space: "document",
+    run: (doc, { blockIds }) => deleteBlocks(doc, blockIds),
+    late: unfinished,
+  },
+  comment_on_document: {
+    params: agentCommandParamsSchemas.comment_on_document,
+    write: true,
+    size: "add",
+    space: "document",
+    run: (doc, params, command) => commentOnDocument(doc, params, command),
     late: unfinished,
   },
 };

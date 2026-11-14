@@ -37,7 +37,11 @@ import {
 } from "@breatic/core";
 import {
   agentCommandSchema,
+  DOCUMENT_SCHEMA_META_KEY,
+  DOCUMENT_SCHEMA_VERSION,
   canvasSpaceDocName,
+  documentSchemaDiffers,
+  documentSpaceDocName,
   isAgentCommandType,
   mcpCommandStreamKey,
   mcpDoneChannel,
@@ -120,7 +124,7 @@ function readEntry(entry: StreamEntry): Item | { callId: string; refused: Answer
   const command = parsed.data;
   if (!isAgentCommandType(command.type)) return invalid;
   const spec = commandSpec(command.type);
-  if (spec.space === "canvas" && command.spaceId === null) return invalid;
+  if (spec.space !== null && command.spaceId === null) return invalid;
   const params = spec.params.safeParse(command.params);
   if (!params.success) return invalid;
   return { entry, command, type: command.type, params: params.data, startedAt: Date.now() };
@@ -133,7 +137,10 @@ function readEntry(entry: StreamEntry): Item | { callId: string; refused: Answer
  */
 function docNameOf(item: Item): string {
   const { projectId, spaceId } = item.command;
-  return commandSpec(item.type).space === "canvas" ? canvasSpaceDocName(projectId, spaceId!) : projectMetaDocName(projectId);
+  const space = commandSpec(item.type).space;
+  if (space === "canvas") return canvasSpaceDocName(projectId, spaceId!);
+  if (space === "document") return documentSpaceDocName(projectId, spaceId!);
+  return projectMetaDocName(projectId);
 }
 
 /**
@@ -254,11 +261,22 @@ export function startAgentCommandConsumer(deps: AgentCommandConsumerDeps): Group
     const studioId = role === null ? undefined : await projectsRepo.findOwnerStudioId(command.projectId);
     if (role === null || studioId === undefined) return { refused: { status: "rejected", reason: "no_access" } };
     if (spec.write && role === "viewer") return { refused: { status: "rejected", reason: "read_only" } };
-    if (spec.space === "canvas") {
-      const listed = await readDoc(projectMetaDocName(command.projectId), command.userId, (meta) =>
-        listedContentDocNames(command.projectId, meta.getMap("spaces")).has(docNameOf(item)),
-      );
+    if (spec.space !== null) {
+      // The Space's document name carries its type, so a Space of another
+      // type is not listed under it.
+      const { listed, schemaDiffers } = await readDoc(projectMetaDocName(command.projectId), command.userId, (meta) => {
+        const published = meta.getMap(DOCUMENT_SCHEMA_META_KEY);
+        return {
+          listed: listedContentDocNames(command.projectId, meta.getMap("spaces")).has(docNameOf(item)),
+          schemaDiffers: documentSchemaDiffers(DOCUMENT_SCHEMA_VERSION, published.size === 0 ? undefined : published.toJSON()),
+        };
+      });
       if (!listed) return { refused: { status: "rejected", reason: "not_found" } };
+      // As web's `use-document-schema-intercept.ts`: a build whose document
+      // format is not the published one writes nothing; reads still run.
+      if (spec.space === "document" && spec.write && schemaDiffers) {
+        return { refused: { status: "rejected", reason: "schema_mismatch" } };
+      }
     }
     const verdict = await checkRateLimit(mcp, [
       {
