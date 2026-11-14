@@ -624,7 +624,7 @@
     },
     "waiting": {
       "title": "等待 Agent 讀取（{count}）",
-      "awaitingCard": "回答問卷後繼續，或直接傳送訊息",
+      "awaitingCard": "回答上方的卡片後繼續，或直接傳送訊息",
       "blocked": "點數不足，請先儲值。",
       "retract": "撤回到輸入框",
       "delete": "刪除",

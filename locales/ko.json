@@ -624,7 +624,7 @@
     },
     "waiting": {
       "title": "Agent가 읽기를 기다리는 중 ({count})",
-      "awaitingCard": "설문에 답하면 이어집니다. 바로 메시지를 보내도 됩니다",
+      "awaitingCard": "위 카드에 답하면 이어집니다. 바로 메시지를 보내도 됩니다",
       "blocked": "크레딧이 부족합니다. 충전해 주세요.",
       "retract": "입력창으로 되돌리기",
       "delete": "삭제",

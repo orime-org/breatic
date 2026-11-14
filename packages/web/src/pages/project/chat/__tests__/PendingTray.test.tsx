@@ -70,9 +70,10 @@ describe('the waiting area', () => {
     expect(onTakeBack).not.toHaveBeenCalled();
   });
 
-  it('says a card waits for an answer first (WB-14)', () => {
+  it('says a card waits for an answer first, in words that fit a questionnaire and a Space request alike (WB-14)', () => {
     setup({ awaiting: true });
     expect(screen.getByTestId('chat-waiting-tray')).toHaveTextContent(t('chat.waiting.awaitingCard'));
+    expect(screen.getByTestId('chat-waiting-tray')).toHaveTextContent('Answer the card above to go on, or just send a message');
   });
 
   it('says the balance is short, and still lets each message be taken back (WB-15)', () => {
