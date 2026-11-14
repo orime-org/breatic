@@ -148,6 +148,18 @@ describe('copying a selection that holds formulas', () => {
     expect(plain).not.toContain('<!--');
   });
 
+  it('parts two formulas side by side with a space in the plain text of a range through a table', () => {
+    const editor = open([
+      { type: 'paragraph', content: ['x ', { type: 'math', props: { source: 'a' } }, { type: 'math', props: { source: 'b' } }, ' y'] },
+      tableBlock({ rows: [{ cells: ['one', 'two'] }] }),
+      { type: 'paragraph', content: 'end' },
+    ]);
+    select(editor, before(editor, 'paragraph') + 1, editor.prosemirrorState.doc.content.size - 3);
+    const plain = copy(editor)['text/plain'] ?? '';
+    expect(plain).toContain('$$a$$ $$b$$');
+    expect(plain).not.toContain('<!--');
+  });
+
   it('parts two formulas side by side with a space in the plain text a block drag carries', () => {
     const editor = open([{ type: 'paragraph', content: ['x ', { type: 'math', props: { source: 'a' } }, { type: 'math', props: { source: 'b' } }, ' y'] }]);
     const data: Record<string, string> = {};
