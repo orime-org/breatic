@@ -65,6 +65,22 @@ export type { WorkerConfig } from "@core/config/worker.js";
 export { getStorageConfig } from "@core/config/storage.js";
 export { getTimelineConfig, type TimelineConfig } from "@core/config/timeline.js";
 export { getMcpConfig, mcpConfigSchema, type McpConfig } from "@core/config/mcp.js";
+export {
+  limitsConfigSchema,
+  getActivityFeedPageLimits,
+  getStudioProjectPageLimits,
+  getCreditPageLimits,
+  getCanvasReferencePoolCap,
+  getNodeHistoryPageSize,
+  getDocumentVersionLimits,
+  MS_PER_DAY,
+  getDecisionWindowDays,
+  getDecisionWindowMs,
+  getDecisionWindowSeconds,
+  getStorageNoticeWindowSeconds,
+  getRequestBodyMaxBytes,
+  getRequestBodyLingerSeconds,
+} from "@core/config/limits.js";
 export { runProjectMediaBackfill } from "@core/asset/project-media-backfill.js";
 export type {
   ProjectMediaBackfillCandidate,

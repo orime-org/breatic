@@ -12,7 +12,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
 import { ZodError } from "zod";
-import { MONOREPO_ROOT } from "@breatic/core";
+import { MONOREPO_ROOT } from "@core/config/runtime.js";
 import {
   limitsConfigSchema,
   getRequestBodyMaxBytes,
@@ -24,7 +24,7 @@ import {
   getDecisionWindowMs,
   getDecisionWindowSeconds,
   MS_PER_DAY,
-} from "@server/config/limits.js";
+} from "@core/config/limits.js";
 
 describe("limits config — schema", () => {
   it("accepts explicit positive integers", () => {
