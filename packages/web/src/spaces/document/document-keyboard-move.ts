@@ -115,12 +115,15 @@ function unitsOf(editor: MoveEditor, blocks: readonly BlockLike[]): BlockLike[] 
 
 /**
  * Where the rows go on the way up. A block at the top of a cell or a column
- * stays; a table or a column group above is passed as one block.
+ * stays; a table or a column group above is passed as one block, and so is
+ * every block when the rows carry a column group, which never hangs under a
+ * row (inner#1314 design §5.1).
  * @param editor - The editor.
  * @param first - The first row being moved.
+ * @param whole - Whether to pass the block above as one block.
  * @returns The place, or null when nothing is above to move past.
  */
-function placementUp(editor: MoveEditor, first: BlockLike): Placement | null {
+function placementUp(editor: MoveEditor, first: BlockLike, whole: boolean): Placement | null {
   const prev = editor.getPrevBlock(first);
   if (prev === undefined) {
     const parent = editor.getParentBlock(first);
@@ -128,7 +131,7 @@ function placementUp(editor: MoveEditor, first: BlockLike): Placement | null {
       ? null
       : { referenceId: parent.id, side: 'before' };
   }
-  const under = CARRIERS.has(prev.type) ? undefined : prev.children[prev.children.length - 1];
+  const under = whole || CARRIERS.has(prev.type) ? undefined : prev.children[prev.children.length - 1];
   return under === undefined
     ? { referenceId: prev.id, side: 'before' }
     : { referenceId: under.id, side: 'after' };
@@ -136,12 +139,14 @@ function placementUp(editor: MoveEditor, first: BlockLike): Placement | null {
 
 /**
  * Where the rows go on the way down. A block at the bottom of a cell or a
- * column stays; a table or a column group below is passed as one block.
+ * column stays; a table or a column group below is passed as one block, and
+ * so is every block when the rows carry a column group.
  * @param editor - The editor.
  * @param last - The last row being moved.
+ * @param whole - Whether to pass the block below as one block.
  * @returns The place, or null when nothing is below to move past.
  */
-function placementDown(editor: MoveEditor, last: BlockLike): Placement | null {
+function placementDown(editor: MoveEditor, last: BlockLike, whole: boolean): Placement | null {
   const next = editor.getNextBlock(last);
   if (next === undefined) {
     const parent = editor.getParentBlock(last);
@@ -149,7 +154,7 @@ function placementDown(editor: MoveEditor, last: BlockLike): Placement | null {
       ? null
       : { referenceId: parent.id, side: 'after' };
   }
-  const under = CARRIERS.has(next.type) ? undefined : next.children[0];
+  const under = whole || CARRIERS.has(next.type) ? undefined : next.children[0];
   return under === undefined
     ? { referenceId: next.id, side: 'after' }
     : { referenceId: under.id, side: 'before' };
@@ -233,10 +238,11 @@ export function moveRowsFromKeyboard(
   const first = blocks[0];
   const last = blocks[blocks.length - 1];
   if (first === undefined || last === undefined) return;
+  const whole = blocks.some((block) => block.type === DOC_COLUMN_LIST);
   const place =
     direction === 'up'
-      ? placementUp(editor, first)
-      : placementDown(editor, last);
+      ? placementUp(editor, first, whole)
+      : placementDown(editor, last, whole);
   if (place === null) return;
 
   const { doc, selection } = view.state;

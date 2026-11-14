@@ -9,8 +9,8 @@ import type { ComputeDropPositionContext } from '@blocknote/core/extensions';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import type { EditorView } from '@tiptap/pm/view';
 
-import type { ColumnSide } from '@web/spaces/document/document-column-drop';
-import { COLUMN_GAP, MAX_COLUMNS, MIN_COLUMN_WIDTH } from '@web/spaces/document/document-column-geometry';
+import { columnAround, landsInPlace, type ColumnSide } from '@web/spaces/document/document-column-drop';
+import { columnWeight, MAX_COLUMNS, meanWeight, weightsFit } from '@web/spaces/document/document-column-geometry';
 import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-nodes';
 import { rowById } from '@web/spaces/document/document-row-by-id';
 import { cellDepthOf, DOC_TABLE } from '@web/spaces/document/document-table-nodes';
@@ -113,21 +113,19 @@ export function sideDropAllowed(
   // A cell takes no table, and a column takes no table holding columns.
   if (cell > 0 && holds(dragged.node, TABLES)) return false;
   if (tableWithColumns(dragged.node) || tableWithColumns(target.node)) return false;
-  const $dragged = doc.resolve(dragged.from);
-  const into = $target.parent.type.name === DOC_COLUMN ? $target.node($target.depth - 1) : null;
-  const fromSameGroup =
-    into !== null && $dragged.parent.type.name === DOC_COLUMN && $dragged.before($dragged.depth - 1) === $target.before($target.depth - 1);
-  if (fromSameGroup && $dragged.parent.childCount === 1) {
-    const from = $dragged.index($dragged.depth - 1);
-    const to = $target.index($target.depth - 1);
-    if (side === 'left' ? to === from + 1 : to === from - 1) return false;
-  }
-  const columns = into === null ? 2 : into.childCount + (fromSameGroup && $dragged.parent.childCount === 1 ? 0 : 1);
-  if (columns > MAX_COLUMNS) return false;
-  if (cell < 0) {
-    const width = (room.bodyWidth - (columns - 1) * COLUMN_GAP) / columns;
-    if (width < MIN_COLUMN_WIDTH) return false;
-  }
+  if (landsInPlace(doc, dragged, target, side)) return false;
+  const from = columnAround(doc.resolve(dragged.from));
+  const to = columnAround($target);
+  // A lone block moving within its group takes its column along.
+  const leaving = from !== null && to !== null && from.groupPos === to.groupPos && from.column.childCount === 1 ? from.index : -1;
+  const kept: number[] = [];
+  to?.group.forEach((column, _offset, index) => {
+    if (index !== leaving) kept.push(columnWeight(column.attrs['width']));
+  });
+  // The new column takes the mean, as the drop writes it; a new group is even.
+  const weights = to === null ? [1, 1] : [...kept, meanWeight(kept)];
+  if (weights.length > MAX_COLUMNS) return false;
+  if (cell < 0 && !weightsFit(room.bodyWidth, weights)) return false;
   return true;
 }
 

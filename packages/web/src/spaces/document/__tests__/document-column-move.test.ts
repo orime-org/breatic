@@ -16,6 +16,7 @@ import { TextSelection } from '@tiptap/pm/state';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { dropRowBeside } from '@web/spaces/document/document-column-drop';
 import { columnsBlock, para, shapeOf } from '@web/spaces/document/__tests__/column-fixtures';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
@@ -149,5 +150,52 @@ describe('moving blocks in and around columns', () => {
     select(editor, 'x', 'y');
     move(editor, 'ArrowUp');
     expect(shape(editor)).toEqual(['[docTable,a|c]']);
+  });
+});
+
+/**
+ * The id of the block whose own words are these.
+ * @param editor - The editor.
+ * @param words - The words.
+ * @returns The id.
+ * @throws {Error} When no block reads them.
+ */
+function idOf(editor: Editor, words: string): string {
+  let id: string | undefined;
+  editor.prosemirrorState.doc.descendants((node) => {
+    if (node.type.name === 'blockContainer' && node.firstChild?.textContent === words) id = String(node.attrs['id']);
+    return id === undefined;
+  });
+  if (id === undefined) throw new Error(`no block reads "${words}"`);
+  return id;
+}
+
+describe('a side drop of a nested child (inner#1314 A1)', () => {
+  it('takes the child out without leaving a blank child line under its list item', () => {
+    const editor = open([{ type: 'bulletListItem', content: 'parent', children: [para('kid')] }, para('other')]);
+    dropRowBeside(editor as never, idOf(editor, 'kid'), idOf(editor, 'other'), 'right');
+    const top = editor.document as unknown as { children: unknown[] }[];
+    expect(top[0]!.children).toHaveLength(0);
+    expect(shape(editor)).toEqual(['bulletListItem', '[other|kid]']);
+  });
+});
+
+describe('a column group moved past a list item with children (inner#1314 design §5.1)', () => {
+  it('goes below the whole list item on the way down', () => {
+    const editor = open([columnsBlock(['a'], ['c']), { type: 'bulletListItem', content: 'L', children: [para('child')] }, para('tail')]);
+    select(editor, 'a', 'c');
+    move(editor, 'ArrowDown');
+    const top = editor.document as unknown as { type: string; children: unknown[] }[];
+    expect(top.map((block) => block.type)).toEqual(['bulletListItem', 'docColumnList', 'paragraph']);
+    expect(top[0]!.children).toHaveLength(1);
+  });
+
+  it('goes above the whole list item on the way up', () => {
+    const editor = open([para('lead'), { type: 'bulletListItem', content: 'L', children: [para('child')] }, columnsBlock(['a'], ['c'])]);
+    select(editor, 'a', 'c');
+    move(editor, 'ArrowUp');
+    const top = editor.document as unknown as { type: string; children: unknown[] }[];
+    expect(top.map((block) => block.type)).toEqual(['paragraph', 'docColumnList', 'bulletListItem']);
+    expect(top[2]!.children).toHaveLength(1);
   });
 });

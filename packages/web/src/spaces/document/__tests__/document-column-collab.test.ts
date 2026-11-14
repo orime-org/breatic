@@ -20,6 +20,7 @@ import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { dropRowBeside } from '@web/spaces/document/document-column-drop';
+import { moveRowTo } from '@web/spaces/document/document-drag-move';
 import { adoptDocumentEditor, getDocumentEditor } from '@web/spaces/document/document-editor-cache';
 import { columnsBlock, para, shapeOf } from '@web/spaces/document/__tests__/column-fixtures';
 
@@ -198,6 +199,63 @@ describe('concurrent edits around a column group (A10)', () => {
     expect(agreed(p)).toEqual(['[b|c|a]']);
     const group = p.theirs.document[0] as unknown as { children: { props: { width: number } }[] };
     expect(group.children.slice(0, 2).map((column) => column.props.width)).toEqual([1, 1]);
+  });
+});
+
+/**
+ * The position right after a block, where a block dropped under it lands.
+ * @param editor - The editor.
+ * @param words - The block's words.
+ * @returns The position.
+ */
+function under(editor: Editor, words: string): number {
+  let at = -1;
+  editor.prosemirrorState.doc.descendants((node: PMNode, pos: number) => {
+    if (at >= 0) return false;
+    if (node.type.name === 'blockContainer' && node.firstChild?.textContent === words) {
+      at = pos + node.nodeSize;
+      return false;
+    }
+    return true;
+  });
+  if (at < 0) throw new Error(`no block reads "${words}"`);
+  return at;
+}
+
+describe('moves into and out of a column above or below a block (design §5.2)', () => {
+  it('keeps words typed in the other column when a body block moves under a column\'s block', () => {
+    const p = pair([columnsBlock(['a'], ['b']), para('x')]);
+    moveRowTo(p.ours.prosemirrorView, idOf(p.ours, 'x'), under(p.ours, 'b'));
+    typeAfter(p.theirs, 'a', '+typed');
+    p.sync();
+    expect(agreed(p)).toEqual(['[a+typed|b,x]']);
+  });
+
+  it('keeps words typed in the other column when a column\'s block moves under a body block', () => {
+    const p = pair([para('lead'), columnsBlock(['a', 'a2'], ['b']), para('tail')]);
+    moveRowTo(p.ours.prosemirrorView, idOf(p.ours, 'a2'), under(p.ours, 'tail'));
+    typeAfter(p.theirs, 'b', '+typed');
+    p.sync();
+    expect(agreed(p)).toEqual(['lead', '[a|b+typed]', 'tail', 'a2']);
+  });
+
+  it('keeps words typed in every untouched column when a block above the group moves into its last column', () => {
+    const p = pair([para('x'), para('mid'), columnsBlock(['a'], ['b'], ['c'])]);
+    moveRowTo(p.ours.prosemirrorView, idOf(p.ours, 'x'), under(p.ours, 'c'));
+    typeAfter(p.theirs, 'a', '+1');
+    typeAfter(p.theirs, 'b', '+2');
+    typeAfter(p.theirs, 'mid', '+3');
+    p.sync();
+    expect(agreed(p)).toEqual(['mid+3', '[a+1|b+2|c,x]']);
+  });
+
+  it('keeps words typed in the body and other columns when a column block moves to the top', () => {
+    const p = pair([para('top'), para('mid'), columnsBlock(['a', 'a2'], ['b'])]);
+    moveRowTo(p.ours.prosemirrorView, idOf(p.ours, 'a2'), 0 + 1);
+    typeAfter(p.theirs, 'mid', '+1');
+    typeAfter(p.theirs, 'b', '+2');
+    p.sync();
+    expect(agreed(p)).toEqual(['a2', 'top', 'mid+1', '[a|b+2]']);
   });
 });
 

@@ -19,7 +19,7 @@ import { TableMap } from '@tiptap/pm/tables';
 import type { EditorView } from '@tiptap/pm/view';
 import { ySyncPluginKey } from 'y-prosemirror';
 
-import { COLUMN_GAP, MIN_COLUMN_WIDTH } from '@web/spaces/document/document-column-geometry';
+import { columnsFit, columnsWidth } from '@web/spaces/document/document-column-geometry';
 import { DOC_COLUMN_LIST } from '@web/spaces/document/document-column-nodes';
 import { drawnColumns, holdColumnWidths } from '@web/spaces/document/document-table-column-widths';
 import { isTableCell } from '@web/spaces/document/document-table-nodes';
@@ -73,9 +73,9 @@ function widenFor(view: EditorView, groupPos: number): void {
   const cellDom = view.nodeDOM($group.before(cellDepth));
   if (group === null || tableDepth < 1 || !(element instanceof HTMLElement) || !(cellDom instanceof HTMLElement)) return;
   const count = group.childCount;
-  const needed = count * MIN_COLUMN_WIDTH + (count - 1) * COLUMN_GAP;
   const room = element.getBoundingClientRect().width;
-  if (room >= needed) return;
+  if (columnsFit(room, count)) return;
+  const needed = columnsWidth(count);
   const table = $group.node(tableDepth);
   const tablePos = $group.before(tableDepth);
   const map = TableMap.get(table);

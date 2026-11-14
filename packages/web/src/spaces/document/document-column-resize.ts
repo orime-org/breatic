@@ -7,7 +7,7 @@
 
 import type { EditorView } from '@tiptap/pm/view';
 
-import { MIN_COLUMN_WIDTH } from '@web/spaces/document/document-column-geometry';
+import { columnWeight, MIN_COLUMN_WIDTH } from '@web/spaces/document/document-column-geometry';
 import { COLUMN_RESIZE_ZONE } from '@web/spaces/document/document-table-nodes';
 import { rowById } from '@web/spaces/document/document-row-by-id';
 
@@ -79,8 +79,7 @@ interface DividerDrag extends Omit<DividerStart, 'dx'> {
  * @returns Its weight.
  */
 function weightOf(column: HTMLElement): number {
-  const weight = Number(column.dataset['width'] ?? '1');
-  return Number.isFinite(weight) && weight > 0 ? weight : 1;
+  return columnWeight(column.dataset['width']);
 }
 
 /**

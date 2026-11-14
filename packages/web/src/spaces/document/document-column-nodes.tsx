@@ -20,7 +20,7 @@
 import { createBlockSpec } from '@blocknote/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
 
-import { columnsFit } from '@web/spaces/document/document-column-geometry';
+import { columnsFit, columnWeight } from '@web/spaces/document/document-column-geometry';
 import { attachDivider } from '@web/spaces/document/document-column-resize';
 
 /** The column group. */
@@ -100,8 +100,7 @@ interface ColumnProps {
  * @param width - Its weight among its siblings.
  */
 function applyWidth(element: HTMLElement, width: number): void {
-  const weight = Number.isFinite(width) && width > 0 ? width : 1;
-  element.style.flexGrow = String(weight);
+  element.style.flexGrow = String(columnWeight(width));
 }
 
 /** The two specs, keyed by type. */
@@ -170,8 +169,7 @@ export function docColumnSpecs(): DocColumnSpecs {
       toExternalHTML: flatOutside,
       parse: (element: HTMLElement) => {
         if (element.dataset['docColumn'] === undefined) return undefined;
-        const width = Number(element.dataset['width'] ?? '1');
-        return { width: Number.isFinite(width) && width > 0 ? width : 1 };
+        return { width: columnWeight(element.dataset['width']) };
       },
       renderFrame: (block: { props: ColumnProps }) => {
         const element = document.createElement('div');

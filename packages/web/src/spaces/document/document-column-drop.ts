@@ -22,8 +22,10 @@ import { ySyncPluginKey } from 'y-prosemirror';
 
 import { docNameOf } from '@web/data/yjs/manager';
 import { checkAdd } from '@web/data/yjs/space-write';
+import { columnWeight, meanWeight } from '@web/spaces/document/document-column-geometry';
 import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-nodes';
 import { COLUMN_TAKE_AWAY } from '@web/spaces/document/document-column-repair';
+import { rangeToLift } from '@web/spaces/document/document-drag-move';
 import { rowById, type RowInDocument } from '@web/spaces/document/document-row-by-id';
 
 /** Which side of the target the row lands on. */
@@ -46,7 +48,7 @@ interface InColumn {
  * @param $row - The position before the row.
  * @returns Its column and group, or null.
  */
-function columnAround($row: ResolvedPos): InColumn | null {
+export function columnAround($row: ResolvedPos): InColumn | null {
   if ($row.parent.type.name !== DOC_COLUMN || $row.depth < 2) return null;
   const group = $row.node($row.depth - 1);
   if (group.type.name !== DOC_COLUMN_LIST) return null;
@@ -62,7 +64,7 @@ function columnAround($row: ResolvedPos): InColumn | null {
  * @param side - The side.
  * @returns True when nothing would change.
  */
-function landsInPlace(doc: PMNode, dragged: RowInDocument, target: RowInDocument, side: ColumnSide): boolean {
+export function landsInPlace(doc: PMNode, dragged: RowInDocument, target: RowInDocument, side: ColumnSide): boolean {
   const from = columnAround(doc.resolve(dragged.from));
   const to = columnAround(doc.resolve(target.from));
   if (from === null || to === null || from.groupPos !== to.groupPos || from.column.childCount !== 1) return false;
@@ -70,17 +72,14 @@ function landsInPlace(doc: PMNode, dragged: RowInDocument, target: RowInDocument
 }
 
 /**
- * The mean of the columns' widths, for a new column.
+ * The weight a new column in this group takes.
  * @param group - The group.
  * @returns The mean weight.
  */
 function meanWidth(group: PMNode): number {
-  let sum = 0;
-  group.forEach((column) => {
-    const width = Number(column.attrs['width']);
-    sum += Number.isFinite(width) && width > 0 ? width : 1;
-  });
-  return group.childCount === 0 ? 1 : sum / group.childCount;
+  const weights: number[] = [];
+  group.forEach((column) => weights.push(columnWeight(column.attrs['width'])));
+  return meanWeight(weights);
 }
 
 /**
@@ -99,7 +98,6 @@ export function dropRowBeside(
   side: ColumnSide,
 ): boolean {
   const view = editor.prosemirrorView;
-  if (draggedId === targetId) return false;
   const before = view.state.doc;
   const dragged = rowById(before, draggedId);
   const target = rowById(before, targetId);
@@ -116,7 +114,9 @@ export function dropRowBeside(
   const toGroup = columnAround(before.resolve(target.from));
   const sameGroup = fromGroup !== null && toGroup !== null && fromGroup.groupPos === toGroup.groupPos;
 
-  const take = view.state.tr.delete(dragged.from, dragged.to);
+  // A nested child leaves with its group when it is the group's only child.
+  const leaving = rangeToLift(before, dragged);
+  const take = view.state.tr.delete(leaving.from, leaving.to);
   if (sameGroup) take.setMeta(COLUMN_TAKE_AWAY, true);
   view.dispatch(take);
 

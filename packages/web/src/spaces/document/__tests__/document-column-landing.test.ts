@@ -146,6 +146,17 @@ describe('when a side drop is refused (design §5.2)', () => {
     expect(sideDropAllowed(editor.prosemirrorState.doc, idOf(editor, 'd'), idOf(editor, 'c'), 'right', { bodyWidth: 500 })).toBe(false);
   });
 
+  it('refuses a new body column that the stored widths would squeeze under 96px', () => {
+    const editor = editorWith([columnsBlock({ blocks: [para('a')], width: 5 }, { blocks: [para('b')], width: 1 }), para('d')]);
+    // Widths 5, 1 and the new column's mean 3 share 768 - 2 * 72: the thin one gets 69px.
+    expect(sideDropAllowed(editor.prosemirrorState.doc, idOf(editor, 'd'), idOf(editor, 'b'), 'right', { bodyWidth: 768 })).toBe(false);
+  });
+
+  it('allows the same new column when the stored widths leave every column 96px or more', () => {
+    const editor = editorWith([columnsBlock({ blocks: [para('a')], width: 2 }, { blocks: [para('b')], width: 1 }), para('d')]);
+    expect(sideDropAllowed(editor.prosemirrorState.doc, idOf(editor, 'd'), idOf(editor, 'b'), 'right', { bodyWidth: 768 })).toBe(true);
+  });
+
   it('allows a new column in a cell however narrow, since the table column widens', () => {
     const editor = editorWith([tableBlock({ rows: [{ cells: [{ blocks: [para('a'), para('b')] }, 'z'] }] })]);
     expect(sideDropAllowed(editor.prosemirrorState.doc, idOf(editor, 'b'), idOf(editor, 'a'), 'right', { bodyWidth: 100 })).toBe(true);
