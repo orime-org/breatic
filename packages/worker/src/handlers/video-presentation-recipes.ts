@@ -229,6 +229,16 @@ function placedEntries(ledger: VideoPresentationLedger, window: FrameWindow, fro
   const keyframes = ledger.encoding.sourceKeyframes.map(({ pts, dts }) => ({ pts: q(pts), dts: q(dts) }));
   const firstDts = q(ledger.encoding.firstPacketDts);
   const shift: Q = cmp(firstDts, [0n, 1n]) < 0n ? minus([0n, 1n], firstDts) : [0n, 1n];
+  // A derived-lead first frame shows its one source frame from the lead start (§7.17 timeline row), longer than that frame
+  // lasts, so it is its own entry whose rate fits the frame's source duration (to the next source pts) into its display.
+  const leadOrdinal = plan.originMapping.firstSource.lead === null ? -1 : frames.findIndex((frame) => frame.pts !== null);
+  let leadRate: Q = [1n, 1n];
+  if (leadOrdinal >= 0) {
+    const lead = frames[leadOrdinal]!;
+    let next: bigint | null = null;
+    for (const frame of frames) if (frame.pts !== null && frame.pts > lead.pts! && (next === null || frame.pts < next)) next = frame.pts;
+    if (next !== null) leadRate = times(source(next - lead.pts!), [scale, BigInt(lead.end - lead.start)]);
+  }
   const entries: { entry: MiniToolPlanEntry; ordinal: number }[] = [];
   let open: { span: number; first: number; end: number } | null = null;
   /**
@@ -247,8 +257,11 @@ function placedEntries(ledger: VideoPresentationLedger, window: FrameWindow, fro
     }
     if (keyframe === undefined) throw new RangeError('No source keyframe precedes the span');
     const decode = plus(keyframe.dts, shift);
-    entries.push({ ordinal: open.first, entry: { kind: 'source', decodeStart: exact(decode), clipStart: exact(cmp(shown, firstSource) > 0n ? shown : firstSource),
-      displayStart: exact(displayStart), displayEnd: exact(time(open.end)), rate: open.span < 0 ? { numerator: '1', denominator: '1' } : exact(q(spans![open.span]!.rate)) } });
+    const lead = open.first === leadOrdinal;
+    const clipStart = lead ? plus(firstSource, times(minus(displayStart, time(first.start)), leadRate)) : cmp(shown, firstSource) > 0n ? shown : firstSource;
+    const rate: Q = lead ? leadRate : open.span < 0 ? [1n, 1n] : q(spans![open.span]!.rate);
+    entries.push({ ordinal: open.first, entry: { kind: 'source', decodeStart: exact(decode), clipStart: exact(clipStart),
+      displayStart: exact(displayStart), displayEnd: exact(time(open.end)), rate: exact(rate) } });
     open = null;
   };
   for (let ordinal = window.start; ordinal < window.end; ordinal += 1) {
@@ -260,7 +273,7 @@ function placedEntries(ledger: VideoPresentationLedger, window: FrameWindow, fro
       continue;
     }
     const span = spanAt(time(frame.start));
-    if (open !== null && open.span === span) { open.end = frame.end; continue; }
+    if (open !== null && open.span === span && open.first !== leadOrdinal) { open.end = frame.end; continue; }
     close();
     open = { span, first: ordinal, end: frame.end };
   }

@@ -389,6 +389,18 @@ describe('chunk_encode (§5.4 切块、块的时间; §7.17)', () => {
     [0, 1, 6, 7, 8, 9].forEach((frame, n) => expect(Math.abs(encoded[n]! - source[frame]!)).toBeLessThan(5));
   });
 
+  // A picture that starts 0.3 s late holds its first frame from 0 as derived-lead (§7.17 timeline row): the worker gives that
+  // frame its own entry whose rate, 0.04 s of source over 0.34 s, keeps the next frames out of it.
+  it('CE14 a derived-lead first frame at rate 2/17 fills the lead alone, and the frames after it follow at their own times', async () => {
+    const recipe = { ...chunk({ start: 0, end: 4 }, [{ ...span(r(0), r(0), r(0), r(17, 50)), rate: r(2, 17) }, span(r(0), r(1, 25), r(17, 50), r(23, 50))]), timescale: 50 };
+    const [file] = await produce({ [SOURCE]: join(dir, 'greys.mp4') }, [recipe]);
+    const list = await packets(file!);
+    expect(list.map(packet => [Number(packet.pts_time), Number(packet.duration_time)])).toEqual([[0, 0.34], [0.34, 0.04], [0.38, 0.04], [0.42, 0.04]]);
+    const [source, encoded] = [await lumaMeans(join(dir, 'greys.mp4')), await lumaMeans(file!)];
+    expect(encoded).toHaveLength(4);
+    [0, 1, 2, 3].forEach((frame, n) => expect(Math.abs(encoded[n]! - source[frame]!)).toBeLessThan(5));
+  });
+
   // §4.3 HDR row: the carrier is the D05 chain's picture with BT.709 tags; the reference is that chain run here on the same source.
   it('CE11 the tone-mapped picture is the §4.3 chain\'s picture, not a plain matrix conversion', async () => {
     const recipe = chunk({ start: 0, end: 10 }, [span(r(0), r(0), r(0), r(2, 5))], { ...TARGET, width: 64, height: 36, colorMatrix: 'bt2020nc', toneMap: 'sdr-bt709' });

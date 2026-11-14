@@ -224,3 +224,69 @@ describe('decodeStart from the selected source keyframe (§93 D6-1; design §7.1
     expect(builder<FrameBuilder>('frameRecipeOf')(BF2, { frameIndex: 16, pts: 0.64 }, INPUT)).toMatchObject({ entry: { decodeStart: at(10), clipStart: at(18) } });
   });
 });
+
+describe('edits that start the picture late (§7.17 timeline row; design §4.2.1 开头行)', () => {
+  const windows = recipes as unknown as { windowEntries: (ledger: unknown, window: { start: number; end: number }, from?: Exact) => Record<string, unknown>[] };
+  /**
+   * A 50-frame 25 fps ledger on a 1/50 display clock, with the plan's mapping and edits given.
+   * @param plan - The presentation table, origin mapping and edits.
+   * @param keyframe - The one source keyframe.
+   * @returns The ledger.
+   */
+  function late(plan: { presentation: unknown; origin: Exact; entries: readonly unknown[]; timeBase: Exact; lead: Exact | null; spans: unknown }, keyframe: Exact): Record<string, unknown> {
+    const ledger = cfr96((edited) => {
+      edited.presentation = plan.presentation as never;
+      edited.originMapping = { ...edited.originMapping, timeBase: plan.timeBase, origin: plan.origin, entries: plan.entries,
+        firstSource: { supportStart: r(3, 10), lead: plan.lead === null ? null : { kind: 'derived-lead', start: plan.lead } }, lastSource: { support: 'declared', supportEnd: r(23, 10), hold: null } };
+      edited.videoSpans = plan.spans as never;
+    });
+    ledger.encoding = { keyframeOrdinals: [0], codedWidth: 320, codedHeight: 180, sourceKeyframes: [{ pts: keyframe, dts: keyframe }], firstPacketDts: keyframe };
+    return ledger;
+  }
+  const EVEN = { schemaVersion: 1, timescale: 50, runs: [{ start: 0, count: 50, step: 2, duration: 2 }] };
+  // Frame 0 is held from 0 to where frame 1 starts, 0.34 s: the 0.3 s lead plus its own 0.04 s.
+  const LEAD = { schemaVersion: 1, timescale: 50, runs: [{ start: 0, count: 1, step: 1, duration: 17 }, { start: 17, count: 49, step: 2, duration: 2 }] };
+
+  it('LV01 a leading empty edit kept in the plan maps presentation 0 to the media start, not the origin past it', () => {
+    // empty-edit.mp4: 250 ms empty edit, then media 0 to 2 s; origin 1/4 and the edit rebased onto it.
+    const ledger = late({ presentation: EVEN, origin: r(1, 4), entries: [{ kind: 'source', start: 0, count: 50, step: 1 }], timeBase: r(1, 25), lead: null,
+      spans: [{ sourceStart: r(0), sourceEnd: r(2), presentationStart: r(0), rate: r(1) }] }, r(0));
+    expect(windows.windowEntries(ledger, { start: 0, end: 2 })).toEqual([{ kind: 'source', decodeStart: r(0), clipStart: r(0), displayStart: r(0), displayEnd: r(2, 25), rate: r(1) }]);
+  });
+
+  it.each([
+    // latevid.mp4: a 0.3 s empty edit before media 0, with audio from 0.
+    ['an empty edit before the media', { origin: r(0), entries: [{ kind: 'source', start: 0, count: 50, step: 1 }], timeBase: r(1, 25),
+      spans: [{ sourceStart: r(0), sourceEnd: r(2), presentationStart: r(3, 10), rate: r(1) }] }, r(0)],
+    // The same picture without an edit list: media starts at 0.3 s, audio at 0.
+    ['no edit list, the media starting at 0.3 s', { origin: r(0), entries: [{ kind: 'source', start: 15, count: 50, step: 2 }], timeBase: r(1, 50), spans: null }, r(3, 10)],
+  ] as const)('LV02 %s: the held first frame is its own entry whose rate fits its one source frame into the lead', (_name, plan, start) => {
+    const ledger = late({ presentation: LEAD, lead: r(0), ...plan }, start);
+    const next = { numerator: String(BigInt(start.numerator) * 25n + BigInt(start.denominator)), denominator: String(BigInt(start.denominator) * 25n) };
+    const reduced = (value: Exact): Exact => {
+      let [a, b] = [BigInt(value.numerator), BigInt(value.denominator)]; while (b !== 0n) [a, b] = [b, a % b];
+      return { numerator: String(BigInt(value.numerator) / a), denominator: String(BigInt(value.denominator) / a) };
+    };
+    expect(windows.windowEntries(ledger, { start: 0, end: 3 })).toEqual([
+      { kind: 'source', decodeStart: start, clipStart: start, displayStart: r(0), displayEnd: r(17, 50), rate: r(2, 17) },
+      { kind: 'source', decodeStart: start, clipStart: reduced(next), displayStart: r(17, 50), displayEnd: r(21, 50), rate: r(1) },
+    ]);
+  });
+
+  it('LV03 a window starting inside the lead shows the first frame from the matching point of its source frame', () => {
+    const ledger = late({ presentation: LEAD, lead: r(0), origin: r(0), entries: [{ kind: 'source', start: 0, count: 50, step: 1 }], timeBase: r(1, 25),
+      spans: [{ sourceStart: r(0), sourceEnd: r(2), presentationStart: r(3, 10), rate: r(1) }] }, r(0));
+    // 1/10 s into the 17/50 s lead is 1/10 · 2/17 = 1/85 s into the frame's 1/25 s.
+    expect(windows.windowEntries(ledger, { start: 0, end: 1 }, r(1, 10))).toEqual([
+      { kind: 'source', decodeStart: r(0), clipStart: r(1, 85), displayStart: r(1, 10), displayEnd: r(17, 50), rate: r(2, 17) },
+    ]);
+  });
+
+  it('LV04 a lone held frame keeps rate 1', () => {
+    const ledger = late({ presentation: { schemaVersion: 1, timescale: 50, runs: [{ start: 0, count: 1, step: 1, duration: 17 }] }, lead: r(0), origin: r(0),
+      entries: [{ kind: 'source', start: 15, count: 1, step: 1 }], timeBase: r(1, 50), spans: null }, r(3, 10));
+    expect(windows.windowEntries(ledger, { start: 0, end: 1 })).toEqual([
+      { kind: 'source', decodeStart: r(3, 10), clipStart: r(3, 10), displayStart: r(0), displayEnd: r(17, 50), rate: r(1) },
+    ]);
+  });
+});
