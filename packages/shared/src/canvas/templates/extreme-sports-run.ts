@@ -12,7 +12,7 @@ export const EXTREME_SPORTS_RUN: GenerationTemplate = {
   ],
   edges: [],
   inputs: [
-    { key: "rider", type: "image" },
+    { key: "person", type: "image" },
   ],
   steps: [],
   agentNote:
