@@ -26,7 +26,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import * as runOwner from '@ingest/container/presentation-run.js';
 import * as contractOwner from '@ingest/presentation-run-contract.js';
 import { presentationFrameCount } from '@shared/mini-tools/video-presentation-table.js';
-import { chooseVideoCarrierRoute } from '@shared/mini-tools/video-encode-plan.js';
+import { chooseVideoCarrierRoute, presentationOutputFps } from '@shared/mini-tools/video-encode-plan.js';
 import { videoPresentationPlanSha256, videoPresentationToolInputId } from '@shared/upload/video-presentation-version.js';
 
 const run = promisify(execFile);
@@ -116,6 +116,10 @@ beforeAll(async () => {
   // edit duration is rounded to the 1/1000 movie timescale (234 of 1000 for 7007 of 30000).
   await make('bf2.mov', ['-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=25:d=2', '-c:v', 'libx264', '-g', '10', '-bf', '2', '-pix_fmt', 'yuv420p', ...tagged]);
   await make('ntsc7.mp4', ['-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=30000/1001', '-frames:v', '7', '-c:v', 'libx264', '-bf', '0', '-pix_fmt', 'yuv420p', ...tagged]);
+  // FFmpeg's WebM at rates that are no whole number of milliseconds: block times and the declared duration are each rounded
+  // to the 1 ms TimestampScale (0, 33, 67, 100 ms, each lasting 33 ms).
+  await make('w30.webm', ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=30:d=2', '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuv420p']);
+  await make('w2997.webm', ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=30000/1001:d=2', '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuv420p']);
   // The picture 0.3 s after the audio: an empty edit before media 0 on the video track, AAC from 0.
   await make('late-video.mp4', ['-itsoffset', '0.3', '-i', join(dir, 'edit-base.mp4'), '-f', 'lavfi', '-i', 'sine=f=440:sample_rate=48000:d=2.5',
     '-map', '0:v', '-map', '1:a', '-c:v', 'copy', '-c:a', 'aac', '-use_editlist', '1']);
@@ -371,6 +375,14 @@ describe('timeline rules applied by the probe (design §4.2.1 开头行)', () =>
     const at = (numerator: number, denominator = 1): Rational => ({ numerator: String(numerator), denominator: String(denominator) });
     expect(answer.plan.videoSpans).toEqual([{ sourceStart: at(0), sourceEnd: at(2), presentationStart: at(0), rate: at(1) }]);
   });
+
+  it.each([['w30.webm', 60, { numerator: '30', denominator: '1' }], ['w2997.webm', 60, { numerator: '30000', denominator: '1001' }]] as const)(
+    'PT03 %s: a declared end one container tick short of the next frame is rounding, not a gap: every frame runs to the next, no derived-empty frame', async (name, count, fps) => {
+      const { plan } = planned(await probed(name));
+      expect(plan.originMapping.entries.every((entry) => entry.kind === 'source')).toBe(true);
+      expect(presentationFrameCount(plan.presentation as never)).toBe(count);
+      expect(presentationOutputFps(plan.presentation as never)).toEqual(fps);
+    });
 
   it('PT02 the picture 0.3 s after the audio: origin 0, the first frame held from 0 as derived-lead, and the edit kept at 3/10', async () => {
     const { plan } = planned(await probed('late-video.mp4'));

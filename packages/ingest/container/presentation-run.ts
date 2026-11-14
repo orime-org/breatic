@@ -158,7 +158,8 @@ function containerOf(format: Record<string, unknown>): string {
 }
 
 /**
- * Plan frames from packets without an edit list: presentation order by pts, each declared to end after its own duration.
+ * Plan frames from packets without an edit list: presentation order by pts, each declared to end after its own duration, or
+ * at the next frame when that duration falls short of it by at most one tick of rounding.
  * @param packets - The selected stream's packets.
  * @param base - Their time base.
  * @returns The frames in presentation order.
@@ -167,9 +168,14 @@ function containerOf(format: Record<string, unknown>): string {
 function framesOf(packets: readonly PhysicalVideoPacket[], base: [bigint, bigint]): VideoPresentationPlanInput['frames'][number][] {
   const sorted = [...packets].sort((left, right) => (BigInt(left.ptsTicks) < BigInt(right.ptsTicks) ? -1 : BigInt(left.ptsTicks) > BigInt(right.ptsTicks) ? 1 : 0));
   if (sorted.some((packet, index) => index > 0 && packet.ptsTicks === sorted[index - 1]!.ptsTicks)) throw new ProbeFailure('clock_unknown');
-  return sorted.map((packet) => {
+  return sorted.map((packet, index) => {
     const pts = BigInt(packet.ptsTicks);
-    return { sourcePtsTicks: packet.ptsTicks, start: at(pts, base), declaredEnd: packet.durationTicks === null ? null : at(pts + BigInt(packet.durationTicks), base) };
+    if (packet.durationTicks === null) return { sourcePtsTicks: packet.ptsTicks, start: at(pts, base), declaredEnd: null };
+    // Block times and declared durations are each rounded to the container clock (Matroska's 1 ms TimestampScale), so a
+    // declared end one tick or less before the next frame is that rounding: the frame shows until the next one (§3.1 中间帧行).
+    const end = pts + BigInt(packet.durationTicks);
+    const next = index + 1 < sorted.length ? BigInt(sorted[index + 1]!.ptsTicks) : null;
+    return { sourcePtsTicks: packet.ptsTicks, start: at(pts, base), declaredEnd: at(next !== null && end < next && next - end <= 1n ? next : end, base) };
   });
 }
 
