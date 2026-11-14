@@ -175,6 +175,21 @@ describe('taking a conversion back (A2)', () => {
     expect(line(editor)).toBe('$$x$$ ');
   });
 
+  it('redo after undoing a conversion puts the caret back after the formula', async () => {
+    const { editor, manager } = openAtEnd({ type: 'paragraph', content: 'ab ' });
+    await typeWords(editor, '$$q$$');
+    manager.stopCapturing();
+
+    editor.undo();
+    await settled();
+    expect(line(editor)).toBe('ab $$q$$');
+    editor.redo();
+    await settled();
+
+    expect(line(editor)).toBe('ab [math:q]');
+    expect(editor.prosemirrorView!.state.selection.from).toBe(endOf(editor, 'math'));
+  });
+
   it('Backspace right after converting turns it back into the text `$$x$$`', async () => {
     const { editor } = openAtEnd({ type: 'paragraph', content: '' });
     await typeWords(editor, '$$x$$');

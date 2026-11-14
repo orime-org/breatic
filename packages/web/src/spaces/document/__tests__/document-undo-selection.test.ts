@@ -181,4 +181,27 @@ describe('undo restores the selection, not only the text', () => {
     const { from, to } = view.state.selection;
     expect({ from, to }).toEqual({ from: splitAt, to: splitAt });
   });
+
+  it('puts the caret after the redone words on redo', async () => {
+    // Redo puts the caret where it was when the user pressed undo, as
+    // prosemirror-history does (it stores the selection at undo time for the
+    // redo branch): after the words the redo brings back.
+    const { editor, manager } = await openWithSentence();
+    const view = editor.prosemirrorView!;
+    const at = rangeOf(editor, 'alpha').to;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, at, at)));
+    view.dispatch(view.state.tr.insertText('XY'));
+    await settle();
+    manager.stopCapturing();
+
+    editor.undo();
+    await settle();
+    expect(view.state.doc.textContent).toBe(SENTENCE);
+    editor.redo();
+    await settle();
+
+    expect(view.state.doc.textContent).toBe('alphaXY beta gamma');
+    const { from, to } = view.state.selection;
+    expect({ from, to }).toEqual({ from: at + 2, to: at + 2 });
+  });
 });
