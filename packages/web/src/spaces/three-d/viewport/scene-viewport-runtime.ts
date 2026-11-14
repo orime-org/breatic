@@ -271,12 +271,7 @@ export class SceneViewportRuntime {
     document.addEventListener('visibilitychange', this.onVisibilityChange);
     this.resize = new ResizeObserver(this.onResize);
     this.resize.observe(host);
-    this.theme = new MutationObserver(() => {
-      this.onThemeChange();
-      // Props updates and model loads repaint figures and refresh the monitors themselves; only a theme change needs it here.
-      for (const object of this.displayed) if (!isSceneModelFile(object.model)) this.syncFigure(object);
-      this.monitorEvent({ type: 'changed' });
-    });
+    this.theme = new MutationObserver(this.onThemeChange);
     this.theme.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-theme', 'style'] });
     this.cardVisibility = typeof IntersectionObserver === 'undefined' ? null : new IntersectionObserver(this.onCardVisibility);
     this.cardSize = new ResizeObserver(this.onCardResize);
@@ -537,7 +532,7 @@ export class SceneViewportRuntime {
     this.markShadows();
     this.monitorEvent({ type: 'changed' });
     this.showCameraView();
-    this.onThemeChange();
+    this.restyle();
     this.inspect();
   }
 
@@ -880,7 +875,7 @@ export class SceneViewportRuntime {
       this.props.onSkeletonState(object.id, rig === null ? 'none' : rig.kind);
       this.syncControls();
       if (this.pendingFocus) this.focus();
-      this.onThemeChange();
+      this.restyle();
       this.inspect();
     }).catch((error: unknown) => {
       if (this.disposed || this.items.get(object.id) !== item) return;
@@ -1397,10 +1392,21 @@ export class SceneViewportRuntime {
   };
 
   /**
-   * Resolve theme tokens for canvas content as well as surrounding React chrome.
+   * Repaint after a theme change: the restyle, plus the camera and light figures and every monitor card, which props
+   * updates and model loads refresh on their own.
    * @throws {never} Never directly.
    */
   private onThemeChange = (): void => {
+    this.restyle();
+    for (const object of this.displayed) if (!isSceneModelFile(object.model)) this.syncFigure(object);
+    this.monitorEvent({ type: 'changed' });
+  };
+
+  /**
+   * Resolve theme tokens for canvas content as well as surrounding React chrome.
+   * @throws {never} Never directly.
+   */
+  private restyle = (): void => {
     this.scene.background = new Color(this.token('--color-background'));
     applySceneGridTheme(this.grid, this.token('--color-muted-foreground'));
     const color = this.token('--color-muted-foreground');
