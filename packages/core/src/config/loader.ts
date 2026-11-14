@@ -492,9 +492,6 @@ const agentConfigSchema = z.object({
 /** Validated agent configuration type. */
 export type AgentConfig = z.infer<typeof agentConfigSchema>;
 
-/** How long a cached prompt prefix lives. */
-export type PromptCacheTtl = AgentConfig["prompt_cache_ttl"];
-
 /**
  * The agent config shape, for tests that assert on its bounds.
  *

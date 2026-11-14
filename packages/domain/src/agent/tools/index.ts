@@ -6,6 +6,8 @@
  */
 import type { Tool } from "ai";
 import { env } from "@breatic/core";
+import { UNDERSTAND_MODEL } from "@breatic/shared";
+import { provider } from "@domain/provider/instance.js";
 
 import { makeAskUserTool, type AskUserContext } from "@domain/agent/tools/ask-user.js";
 import { makeRequestSpaceContentTool, type RequestSpaceContentContext } from "@domain/agent/tools/request-space-content.js";
@@ -214,16 +216,25 @@ export {
  * Only genuinely required configuration goes here. Something a tool merely
  * prefers would silently remove the tool on a deployment that works fine.
  */
-const TOOL_REQUIREMENTS: Readonly<Record<string, string>> = {
-  web_search: "BRAVE_SEARCH_API_KEY",
+const TOOL_REQUIREMENTS: Readonly<Record<string, () => boolean>> = {
+  web_search: () => hasEnv("BRAVE_SEARCH_API_KEY"),
   // The same key, which the service accepts on the image endpoint too
   // (measured 2026-09-11).
-  search_images: "BRAVE_SEARCH_API_KEY",
-  [UNDERSTAND_MEDIA]: "OPENROUTER_API_KEY",
-  // The same key: the decisions endpoint sits on the same host and accepts it
-  // (measured 2026-09-23).
-  [JUDGE_LIKELIHOOD]: "OPENROUTER_API_KEY",
+  search_images: () => hasEnv("BRAVE_SEARCH_API_KEY"),
+  // Model calls are reachable when provider has an upstream for them with its key.
+  [UNDERSTAND_MEDIA]: () => provider().llm.availability(UNDERSTAND_MODEL.id, "understand").upstreams.some((u) => u.configured),
+  [JUDGE_LIKELIHOOD]: () => provider().llm.judgeAvailability().upstreams.some((u) => u.configured),
 };
+
+/**
+ * Whether the deployment sets an environment variable.
+ * @param name - The variable.
+ * @returns True when it holds a value.
+ */
+function hasEnv(name: string): boolean {
+  const value = (env as unknown as Record<string, unknown>)[name];
+  return typeof value === "string" && value.length > 0;
+}
 
 /**
  * Whether a tool has what it needs to run.
@@ -231,10 +242,7 @@ const TOOL_REQUIREMENTS: Readonly<Record<string, string>> = {
  * @returns True when the tool needs no configuration, or has it.
  */
 function isConfigured(name: string): boolean {
-  const required = TOOL_REQUIREMENTS[name];
-  if (!required) return true;
-  const value = (env as unknown as Record<string, unknown>)[required];
-  return typeof value === "string" && value.length > 0;
+  return TOOL_REQUIREMENTS[name]?.() ?? true;
 }
 
 /**

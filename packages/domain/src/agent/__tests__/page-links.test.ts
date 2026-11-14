@@ -281,7 +281,8 @@ describe("pageLinksIn: links longer than a page address may be", () => {
 
   it("trims the closing parentheses of links within the cap in linear time, keeping each one balanced pair", () => {
     // Each link is 2015 characters. A trim that re-counts the parentheses for
-    // every one it drops took about 9 s on this text; a linear one about 10 ms.
+    // every one it drops took about 9 s on this text; a linear one takes about
+    // 50 ms, and 415 ms on a loaded CI runner. The limit sits between the two.
     const link = `https://a.com/(${")".repeat(2000)}`;
     expect(link.length).toBeLessThan(READ_PAGE_MAX_URL_CHARS);
     const text = Array.from({ length: 500 }, () => link).join(" ");
@@ -290,7 +291,7 @@ describe("pageLinksIn: links longer than a page address may be", () => {
     const elapsed = performance.now() - started;
 
     expect(found).toEqual(Array.from({ length: 500 }, () => "https://a.com/()"));
-    expect(elapsed).toBeLessThan(300);
+    expect(elapsed).toBeLessThan(3_000);
   });
 });
 

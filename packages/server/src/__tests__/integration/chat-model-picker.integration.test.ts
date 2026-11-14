@@ -377,7 +377,7 @@ describe("a turn resumed by an answer to its card", () => {
    * @param modelId - The model the turn started on, as its reply records it.
    * @returns The waiting call's id.
    */
-  async function pausedAt(conversationId: string, modelId: string): Promise<string> {
+  async function pausedAt(conversationId: string, modelId: string, servedUpstream?: string): Promise<string> {
     const toolCallId = `call-${crypto.randomUUID()}`;
     const messageRepo = await import("@server/modules/conversation/conversation-message.repo.js");
     await messageRepo.addMessage(
@@ -387,7 +387,7 @@ describe("a turn resumed by an answer to its card", () => {
         parts: [{ type: "tool", toolCallId, toolName: "ask_user", input: { questions: [] }, status: "awaiting" }],
         turnIndex: 1,
       },
-      { messages: [], prefixHash: "h", turnTokens: 0, endTokens: 0, modelId },
+      { messages: [], prefixHash: "h", turnTokens: 0, endTokens: 0, modelId, ...(servedUpstream === undefined ? {} : { servedUpstream }) },
     );
     return toolCallId;
   }
@@ -399,7 +399,26 @@ describe("a turn resumed by an answer to its card", () => {
     const toolCallId = await pausedAt(first.id, OPUS.id);
     await pick(member, first.id, SONNET.id);
 
-    expect(await conversationService.modelForResume(await conversationService.assertWritable(first.id, member.userId, member.projectId), member.userId, toolCallId)).toBe(OPUS.id);
+    expect(await conversationService.modelForResume(await conversationService.assertWritable(first.id, member.userId, member.projectId), member.userId, toolCallId)).toEqual({ modelId: OPUS.id });
+  });
+
+  it("stays on the upstream that served the paused segment", async () => {
+    const { conversationService } = await import("@server/modules");
+    const member = await seedMember();
+    const first = await open(member);
+    const toolCallId = await pausedAt(first.id, OPUS.id, "anthropic");
+
+    expect(await conversationService.modelForResume(await conversationService.assertWritable(first.id, member.userId, member.projectId), member.userId, toolCallId)).toEqual({ modelId: OPUS.id, upstream: "anthropic" });
+  });
+
+  it("does not keep the paused segment's upstream once the turn moves to another model", async () => {
+    const { conversationService } = await import("@server/modules");
+    const member = await seedMember();
+    const first = await open(member);
+    const toolCallId = await pausedAt(first.id, "retired/model", "anthropic");
+    await pick(member, first.id, SONNET.id);
+
+    expect(await conversationService.modelForResume(await conversationService.assertWritable(first.id, member.userId, member.projectId), member.userId, toolCallId)).toEqual({ modelId: SONNET.id });
   });
 
   it("runs on the conversation's model when the one it started on is no longer listed, and does not refuse", async () => {
@@ -409,6 +428,6 @@ describe("a turn resumed by an answer to its card", () => {
     const toolCallId = await pausedAt(first.id, "retired/model");
     await pick(member, first.id, SONNET.id);
 
-    expect(await conversationService.modelForResume(await conversationService.assertWritable(first.id, member.userId, member.projectId), member.userId, toolCallId)).toBe(SONNET.id);
+    expect(await conversationService.modelForResume(await conversationService.assertWritable(first.id, member.userId, member.projectId), member.userId, toolCallId)).toEqual({ modelId: SONNET.id });
   });
 });

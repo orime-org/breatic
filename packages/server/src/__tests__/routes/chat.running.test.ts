@@ -105,7 +105,7 @@ vi.mock("@server/modules", async (importOriginal) => {
       ...base.conversationService,
       assertWritable: vi.fn().mockResolvedValue({ id: CONVERSATION_ID }),
       modelForMessage: vi.fn().mockResolvedValue("test"),
-      modelForResume: vi.fn().mockResolvedValue("test"),
+      modelForResume: vi.fn().mockResolvedValue({ modelId: "test" }),
       getConversation: vi.fn().mockResolvedValue({ id: CONVERSATION_ID, lastConsolidatedTurn: 0 }),
       getMessagesForLlm: vi.fn().mockResolvedValue([]),
     },

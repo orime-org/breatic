@@ -29,7 +29,7 @@ import { closeQueues } from "@breatic/core";
 import { getRedis, getQueueRedis, getStreamRedis } from "@breatic/core";
 import { checkInfraReady, InfraNotReadyError } from "@breatic/core";
 import { installDeadlineBoundDispatcher, startHealthServer } from "@breatic/core";
-import { getStorageConfig } from "@breatic/core";
+import { getStorageConfig, getTimelineConfig } from "@breatic/core";
 import { runGracefulShutdown } from "@breatic/core";
 import { renderMetrics } from "@server/infra/metrics.js";
 import { logger, initLogger } from "@breatic/core";
@@ -41,7 +41,7 @@ import { getServerShutdownDeadlineMs } from "@server/config/limits.js";
 import { markShuttingDown } from "@server/agent/shutdown-flag.js";
 import { closeChatSubscriberRedis, getChatSubscriberRedis } from "@server/agent/run-stream.js";
 import { serverHealthChecks } from "@server/health-checks.js";
-import { agentModelIds, assertModelsPriced, modelCatalog } from "@breatic/domain";
+import { agentModelIds, initProvider, modelCatalog, provider } from "@breatic/domain";
 import { textToolModels } from "@server/config/text-tools.js";
 
 // Tag this process's logs as "server" (file dir logs/server/, `name:"server"`).
@@ -94,6 +94,30 @@ try {
   await exitProcess(1);
 }
 
+// And config/agent.yaml, which provider reads its retry count from, and
+// which rejects a memory reserve at or above memory_keep_tokens — a fold
+// would have no line to run down to. Lazy like the rest, so without this the
+// first person to say something is the one who finds out, mid-request, with
+// a 500 and a healthy-looking process behind it.
+try {
+  getAgentConfig();
+} catch (err) {
+  logger.error({ err }, "agent_config_invalid");
+  await exitProcess(1);
+}
+
+// Every model call goes through provider (inner#1743); its configuration is
+// checked whole when it is built, so a bad upstream, route or binding fails
+// here, naming every problem, instead of inside the first call that needs it.
+// Built before the catalog below, whose entries carry provider's availability
+// and pricing rules.
+try {
+  initProvider();
+} catch (err) {
+  logger.error({ err }, "provider_config_invalid");
+  await exitProcess(1);
+}
+
 // Same preflight for config/models/*.yaml (#1966). Every model must declare
 // `takes_prompt`, and the catalog is as lazy as the configs above — lazy here
 // means a missing declaration surfaces on the first `GET /api/v1/models`,
@@ -107,24 +131,21 @@ try {
   await exitProcess(1);
 }
 
-// And config/agent.yaml, which rejects a memory reserve at or above
-// memory_keep_tokens — a fold would have no line to run down to. Lazy like
-// the rest, so without this the first person to say something is the one
-// who finds out, mid-request, with a 500 and a healthy-looking process
-// behind it.
+// The Timeline config is lazy like the ones above; a default frame outside the presets (#1502) would otherwise
+// surface on the first Timeline request instead of at startup.
 try {
-  getAgentConfig();
+  getTimelineConfig();
 } catch (err) {
-  logger.error({ err }, "agent_config_invalid");
+  logger.error({ err }, "timeline_config_invalid");
   await exitProcess(1);
 }
 
 // Every model the agent runs on has to be priceable (#296). One reached
-// directly reports tokens but no cost, and is priced from
-// config/usage-pricing.yaml; lazily, a missing price would surface as the
-// first call that spent money failing to record what it spent.
+// directly reports tokens but no cost, and is priced from its upstream's
+// prices in config/provider/llm.yaml; lazily, a missing price would surface
+// as the first call that spent money failing to record what it spent.
 try {
-  assertModelsPriced([...agentModelIds(), ...textToolModels()]);
+  provider().llm.assertModelsPriced([...agentModelIds(), ...textToolModels()]);
 } catch (err) {
   logger.error({ err }, "usage_pricing_incomplete");
   await exitProcess(1);

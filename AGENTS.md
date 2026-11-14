@@ -102,7 +102,7 @@ Upload and generation paths only insert objects, never delete them (dedup losers
 
 ### Cloudflare Worker environments
 **Breatic has two Worker environments: each worktree runs its own local development Worker, and the production Worker serves users; there is no shared development Worker.** A development stack points `INGEST_BASE_URL` at its own local Worker, so a merged Worker PR needs no development redeploy. Production deployments belong to the deploy Agent, and every handoff must explicitly name the production Worker as its target.
-**Transfer uploads are the other exception to registration: on the three routes that mount `acceptTransferBody` (`/canvas/paste`, `/canvas/node-history/snapshot`, `/chat/message`), a JSON request body over `request_body_max_bytes` (`config/limits.yaml`) goes up through `POST /assets/transfer-ticket` under the `transfer/` prefix in our own `application/vnd.breatic.transfer` format, and the route is sent `{ "transfer": key }` instead; every other route answers such a body with 413.** The finish marks the grant complete with no `studio_assets` row and no storage usage, and each reference is read once. The deployment must keep the prefix off the public asset domain and give the bucket a one-day lifecycle rule for it ([self-host/LOCAL.md](self-host/LOCAL.md)).
+**Transfer uploads are the other exception to registration: on the four routes that mount `acceptTransferBody` (`/canvas/paste`, `/canvas/node-history/snapshot`, `/chat/message`, `/documents/versions`), a JSON request body over `request_body_max_bytes` (`config/limits.yaml`) goes up through `POST /assets/transfer-ticket` under the `transfer/` prefix in our own `application/vnd.breatic.transfer` format, and the route is sent `{ "transfer": key }` instead; every other route answers such a body with 413.** The finish marks the grant complete with no `studio_assets` row and no storage usage, and each reference is read once. The deployment must keep the prefix off the public asset domain and give the bucket a one-day lifecycle rule for it ([self-host/LOCAL.md](self-host/LOCAL.md)).
 
 ## Server production standards
 
@@ -172,7 +172,7 @@ Each is a rule above, enforced by lint where it can be: business logic in routes
 | [packages/server/AGENTS.md](packages/server/AGENTS.md) | HTTP API, auth routes, SSE, agent |
 | [packages/shared/AGENTS.md](packages/shared/AGENTS.md) | browser-safe shared code and entry points |
 | [packages/web/AGENTS.md](packages/web/AGENTS.md) | React front end |
-| [packages/worker/AGENTS.md](packages/worker/AGENTS.md) | BullMQ jobs and providers |
+| [packages/worker/AGENTS.md](packages/worker/AGENTS.md) | BullMQ jobs and their handlers |
 
 | Invoke | Before |
 |---|---|

@@ -13,17 +13,10 @@
  */
 
 import { env, getUsagePricing, type UsagePricing } from "@breatic/core";
+import type { Cost, CostLookup } from "@breatic/provider";
 import { insertUsageRecord } from "@domain/credit/agentUsage.repo.js";
-import { isGenerationId } from "@domain/credit/open-generation.js";
 import { toChargeCredits } from "@domain/credit/credit-math.js";
-import {
-  costOfModelCall,
-  creditsForUsd,
-  openRouterCost,
-  type CostSource,
-  type ModelCall,
-  type TokenBuckets,
-} from "@domain/credit/usage-cost.js";
+import { creditsForUsd, type CostSource } from "@domain/credit/usage-cost.js";
 
 /** Which operation a row belongs to. */
 export type UsageFeature =
@@ -82,11 +75,16 @@ export interface ServiceCall {
   costSource?: CostSource;
 }
 
-/** A model call as a recorder receives it. */
-export interface RecordedModelCall extends ModelCall {
+/** A model call as a recorder receives it: what provider said it cost. */
+export interface RecordedModelCall {
   source: UsageSource;
-  /** The OpenRouter generation id, when the caller has one. */
-  generationId?: string;
+  /** Our model id. */
+  model: string;
+  /** The upstream that served the call. */
+  upstream: string;
+  cost: Cost;
+  /** The requests the row counts, for a call recorded as one request (an understand or decisions call). */
+  requests?: number;
   /**
    * A stable identity for the call (a Timeline execution's `timeline:<executionId>:<seq>`), so settling the same
    * call again writes nothing.
@@ -94,14 +92,19 @@ export interface RecordedModelCall extends ModelCall {
   costIdentity?: string;
 }
 
-/** An OpenRouter call whose cost was not in hand, once its generation was looked up. */
+/** A call whose cost was pending, once provider looked it up: known, or missing on the last attempt. */
 export interface LookedUpCall {
   source: UsageSource;
   model: string;
-  /** What OpenRouter answered; undefined when it never found the generation. */
-  costUsd: number | undefined;
-  /** The token buckets OpenRouter answered, when it found the generation. */
-  tokens?: TokenBuckets;
+  upstream: string;
+  cost: Cost;
+}
+
+/** A pending call's lookup, with what made the call and the model it called, which its row is written under. */
+export interface AwaitedLookup {
+  lookup: CostLookup;
+  source: UsageSource;
+  model: string;
 }
 
 /** The operation a recorder writes its rows under. */
@@ -117,18 +120,20 @@ export interface UsageRecorder {
   /** What its rows are recorded under; charges for them use the same key. */
   readonly operation: RecordedOperation;
   /**
-   * Record a model call. An OpenRouter call that reported no cost and carries
-   * its generation id writes no row; the id waits in `awaitingLookup`.
+   * Record a model call. A pending cost writes no row; its lookup waits in `awaitingLookup`.
    */
   recordModelCall(call: RecordedModelCall): void;
   recordServiceCall(call: ServiceCall): void;
   recordLookedUpCall(call: LookedUpCall): void;
-  /** The generation ids of the OpenRouter calls to look up, for the caller to queue. */
-  awaitingLookup(): readonly string[];
-  /** Wait for every row, then answer what to charge: their credits rounded up to whole cents. Each row keeps its exact figure. */
+  /** The lookups of the pending costs, each with its call's source and model, for the caller to queue. */
+  awaitingLookup(): readonly AwaitedLookup[];
+  /**
+   * Wait for every row, then answer their exact credits, unrounded: a caller that adds what a lookup finds rounds the
+   * sum once, when it charges.
+   */
   settle(): Promise<number>;
   /**
-   * Wait for every row, then answer what to charge and which row writes failed.
+   * Wait for every row, then answer what to charge, rounded up to the cent once, and which row writes failed.
    * The credits are counted before a row is written, so a failed write leaves
    * the figure whole: the caller charges it and logs the failures.
    */
@@ -167,15 +172,19 @@ function serviceCost(
   pricing: UsagePricing,
 ): { costUsd: number; costSource: CostSource } {
   if (call.costUsd !== undefined) return { costUsd: call.costUsd, costSource: call.costSource ?? "provider" };
-  // OpenRouter reports what it charged on every answer and has no table of
-  // ours to fall back on, the same rule `costOfModelCall` applies.
-  if (call.provider === "openrouter") return { costUsd: 0, costSource: "missing" };
   const price = pricing.services[call.service as PricedService];
   if (!price) {
     throw new Error(`No price for service ${call.service} in config/usage-pricing.yaml`);
   }
   return { costUsd: price.per_request * call.requests, costSource: "price_table" };
 }
+
+/** Where a known cost came from, in the words of `agent_usage_records.cost_source`. */
+const SOURCE_OF: Readonly<Record<Extract<Cost, { state: "known" }>["source"], CostSource>> = {
+  reported: "provider",
+  price_table: "price_table",
+  billing: "generation_lookup",
+};
 
 /**
  * Open a recorder for one operation.
@@ -191,7 +200,7 @@ export function createUsageRecorder(options: UsageRecorderOptions): UsageRecorde
   // surfaces as an unhandled rejection; `settle` throws the first one.
   const failures: unknown[] = [];
   let credits = 0;
-  const lookups = new Set<string>();
+  const lookups = new Map<string, AwaitedLookup>();
 
   const base = {
     operationKey: options.operationKey,
@@ -211,33 +220,43 @@ export function createUsageRecorder(options: UsageRecorderOptions): UsageRecorde
     if (row.costSource === "missing") options.onMissingCost(row);
   };
 
+  /**
+   * Write the row of a call whose cost is in hand: known at its amount, missing at zero.
+   * @param call - The call.
+   * @param call.source - What made it.
+   * @param call.model - The model it called.
+   * @param call.upstream - The upstream that served it.
+   * @param cost - Its cost, known or missing.
+   * @param requestCount - The requests the row counts, or null.
+   * @param costIdentity - Its stable identity, or null.
+   */
+  const appendCall = (call: { source: UsageSource; model: string; upstream: string }, cost: Exclude<Cost, { state: "pending" }>, requestCount: number | null, costIdentity: string | null): void => {
+    const costUsd = cost.state === "known" ? cost.usd : 0;
+    append({
+      ...base,
+      source: call.source,
+      model: call.model,
+      provider: call.upstream,
+      inputTokens: cost.tokens?.input ?? null,
+      cachedInputTokens: cost.tokens?.cachedInput ?? null,
+      outputTokens: cost.tokens?.output ?? null,
+      reasoningTokens: cost.tokens?.reasoning ?? null,
+      requestCount,
+      costUsd,
+      costSource: cost.state === "known" ? SOURCE_OF[cost.source] : "missing",
+      credits: creditsForUsd(costUsd, multiplier),
+      costIdentity,
+    });
+  };
+
   return {
     operation: base,
     recordModelCall(call) {
-      if (
-        call.provider === "openrouter" &&
-        isGenerationId(call.generationId) &&
-        openRouterCost(call.providerMetadata) === undefined
-      ) {
-        lookups.add(call.generationId);
+      if (call.cost.state === "pending") {
+        lookups.set(JSON.stringify(call.cost.lookup), { lookup: call.cost.lookup, source: call.source, model: call.model });
         return;
       }
-      const cost = costOfModelCall(call, pricing);
-      append({
-        ...base,
-        source: call.source,
-        model: call.model,
-        provider: call.provider,
-        inputTokens: cost.tokens.input,
-        cachedInputTokens: cost.tokens.cachedInput,
-        outputTokens: cost.tokens.output,
-        reasoningTokens: cost.tokens.reasoning,
-        requestCount: null,
-        costUsd: cost.costUsd,
-        costSource: cost.costSource,
-        credits: creditsForUsd(cost.costUsd, multiplier),
-        costIdentity: call.costIdentity ?? null,
-      });
+      appendCall(call, call.cost, call.requests ?? null, call.costIdentity ?? null);
     },
     recordServiceCall(call) {
       const cost = serviceCost(call, pricing);
@@ -258,30 +277,17 @@ export function createUsageRecorder(options: UsageRecorderOptions): UsageRecorde
       });
     },
     recordLookedUpCall(call) {
-      const costUsd = call.costUsd ?? 0;
-      append({
-        ...base,
-        source: call.source,
-        model: call.model,
-        provider: "openrouter",
-        inputTokens: call.tokens?.input ?? null,
-        cachedInputTokens: call.tokens?.cachedInput ?? null,
-        outputTokens: call.tokens?.output ?? null,
-        reasoningTokens: call.tokens?.reasoning ?? null,
-        requestCount: 1,
-        costUsd,
-        costSource: call.costUsd === undefined ? "missing" : "generation_lookup",
-        credits: creditsForUsd(costUsd, multiplier),
-        costIdentity: null,
-      });
+      // A lookup answers only after its last attempt, so a pending answer is one that never came: missing.
+      const cost = call.cost.state === "pending" ? { state: "missing" as const, reason: "the lookup never answered" } : call.cost;
+      appendCall(call, cost, 1, null);
     },
     awaitingLookup() {
-      return [...lookups];
+      return [...lookups.values()];
     },
     async settle() {
       await Promise.all(pending);
       if (failures.length > 0) throw failures[0];
-      return toChargeCredits(credits);
+      return credits;
     },
     async settleForCharge() {
       await Promise.all(pending);

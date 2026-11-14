@@ -340,6 +340,13 @@
       "view_not_image": "第 {index} 个视图槽（{slot, select, front {正面} left {左侧} back {背面} right {右侧} other {多余}}）：这个文件是{kind, select, video {视频} audio {音频} other {模型或其他文件}}，不是图片。",
       "still_running": "这次生成还在收尾，可能还会出结果，请稍后再试。",
       "has_result": "这次生成已经出了结果，结果已回到任务列表。"
+    },
+    "model": {
+      "not_configured": "这个部署还没配置好 {model}：需要设置 {envVars}。",
+      "upstream_not_bound": "{model} 不通过 {upstream} 提供。"
+    },
+    "document": {
+      "versions_full": "{limit, plural, other {这个 Document 的快照已满 # 张。删掉旧的快照后再保存。}}"
     }
   },
   "chat": {
@@ -901,6 +908,7 @@
       "param": {
         "compose_from": "生成依据",
         "language": "语言",
+        "language_boost": "语言",
         "voice_description": "音色描述",
         "speakers": "说话人",
         "emotion": "情绪",
@@ -1503,7 +1511,9 @@
       "goal": {
         "character": "角色设定与一致性",
         "comics-storyboards": "漫画与分镜",
+        "food": "美食",
         "social-hooks": "社媒钩子",
+        "posters": "海报与平面",
         "sound": "配乐、音效与配音"
       },
       "storyboard-grid-25": {
@@ -1605,6 +1615,39 @@
           "reference": {
             "name": "角色",
             "note": "先放入角色参考图，再生成"
+          }
+        }
+      },
+      "food-money-shot": {
+        "name": "美食诱人瞬间",
+        "description": "特写一路推进到这道菜最诱人的那一刻",
+        "prompt": "一段竖屏美食特写视频，拍的是 [📎 菜品]：食物、摆盘和餐具都跟照片一样，照片里的其他东西都不要。0–2 秒钩子：慢动作微距镜头，第一帧已经在动，{✏️ 第一个细节，例如融化的芝士冒着热气}。2–5 秒：镜头慢慢推近掠过质感，焦皮、油光和碎屑都清楚。5–8 秒最诱人的瞬间：{✏️ 那一刻，例如夹起一块披萨，芝士拉出长丝}，停在最高点。光从背后和侧面打过来，让热气和油光发亮，只有一个暖色光源。用声音代替味道：近距离的食物本身的声音，{✏️ 例如滋滋声和清脆的咔嚓声}，没有音乐。画面里不出现文字。",
+        "input": {
+          "dish": {
+            "name": "菜品",
+            "note": "先放入一张清楚的菜品或饮品照片，再生成"
+          }
+        }
+      },
+      "recipe-process-montage": {
+        "name": "菜谱制作过程",
+        "description": "固定机位，一步一步做出这道菜",
+        "prompt": "一段竖屏做菜视频，最后做出 [📎 菜品]，食物、摆盘和餐具都跟照片一样。全程不变：一个固定机位{✏️ 角度，例如从正上方俯拍台面}，同一个台面、同一套厨具、同一双手，别的都不变。每一步的状态只往前走：切开的一直是切开的，做熟的一直是熟的。0–3 秒：{✏️ 第 1 步，例如把面团压成圆饼}。3–6 秒：{✏️ 第 2 步，例如把番茄酱抹到边缘}。6–9 秒：{✏️ 第 3 步，例如把马苏里拉撕碎铺在上面}。9–12 秒：{✏️ 第 4 步，例如从烤箱里滑出来，还在冒泡}。12–15 秒：做好的菜端上桌，一只手拿起第一块，有生活气息的一刻。一扇窗户进来的日光。声音：每一步的现场声，切、煎、倒，没有音乐。画面里不出现文字。",
+        "input": {
+          "dish": {
+            "name": "菜品",
+            "note": "先放入一张做好的菜品照片，再生成"
+          }
+        }
+      },
+      "dish-hero-still": {
+        "name": "菜品棚拍图",
+        "description": "随手拍的菜品照重拍成菜单棚拍图",
+        "prompt": "一张菜单用的棚拍照片，拍的是 [📎 菜品]：食物、配料、摆盘和餐具都跟照片完全一样，只换拍摄方式。暖色主光从前方 45 度打过来，逆光让热气和油光发亮，侧光拉出质感。颜色鲜艳但自然，不过饱和。台面和背景：{✏️ 例如深色石板桌面配一块亚麻餐巾}。背景柔和虚化，菜本身从前到后都清楚。真实照片，不是插画。没有文字。",
+        "input": {
+          "dish": {
+            "name": "菜品",
+            "note": "先放入一张清楚的菜品照片，再生成"
           }
         }
       },
@@ -1765,6 +1808,27 @@
       },
       "applyFailed": "模板应用失败。",
       "groupLocked": "编组已锁定，解锁后才能放入新节点。",
+      "name-as-world-typography": {
+        "name": "名字微缩世界",
+        "description": "把一个名字搭成微缩世界，字形由它最有名的事物改变",
+        "prompt": "一张文字插画。名字 {✏️ 名字，例如 成都} 搭成一座微缩世界：每个字母，或中文、日文、韩文名字里的每个字，都是一座立在浅色素净地面上的微缩建筑模型，整个名字清楚可读，每个字的写法和字形都完全正确。这个名字最有名的事物改变字形：{✏️ 它以什么出名、怎样改变某个字，例如 熊猫趴在「成」字的横上，火锅的红汤流过「都」字}。模型比例的小人、车和树。6 到 14 条简短的手写技术标注，用细线指向细节，每条几个词，用这段提示词的语言写。点缀色：{✏️ 一种点缀色，例如 砖红}，其他都用柔和的中性色。柔和的日光从左上方照下，阴影很淡。不出现其他文字。"
+      },
+      "destination-festival-poster": {
+        "name": "节日旅行海报",
+        "description": "一张某地在节日或季节里的手绘旅行海报",
+        "prompt": "一张手绘旅行海报，画的是 {✏️ 地点，例如 京都} 的 {✏️ 节日或季节，例如 秋季红叶季}。丝网印和 risograph 的质感：4 到 6 种平涂油墨色，套色略有错位，看得见颗粒和网点。这个地方的标志性建筑或景色占满海报，中景里有人在过节。画面里唯一的文字是标题 {✏️ 标题，例如 京都·红叶}，大号手写字放在顶部，写法跟给的完全一致。不出现其他文字、标志或小字。"
+      },
+      "photo-paper-diorama": {
+        "name": "照片纸艺拼贴",
+        "description": "照片下半撕成手工纸艺，配两行手写字",
+        "prompt": "[📎 照片] 的上半部分保持原样。下半部分变成撕开的手工纸，边缘是粗糙的纤维，像拼贴一样层层叠起，照片里的 {✏️ 哪个元素，例如 那只狗} 从纸里立起来，变成用彩色纸剪折成的纸艺浮雕，投下细小真实的影子。纸上用墨水手写两行短句：{✏️ 两行字，例如 周日的散步 / 有青草的味道}，写法跟给的完全一致。柔和的日光。不出现其他文字。",
+        "input": {
+          "photo": {
+            "name": "照片",
+            "note": "先放入这张照片，再生成"
+          }
+        }
+      },
       "ambience-sfx-bed": {
         "name": "环境声床加拟音",
         "description": "循环的环境声，加几个拟音点",
@@ -2299,6 +2363,7 @@
       "comment": {
         "placeholder": "写一条批注…",
         "targetGone": "原文已被改动或删除。",
+        "mediaGone": "这个媒体已被删除。",
         "cannotWrite": "你已不能在这里写了。",
         "railTitle": "批注",
         "filterOpen": "未解决",
@@ -2335,7 +2400,6 @@
         "label": "整个 Document 的命令",
         "saveSnapshot": "保存快照",
         "restoreSnapshot": "恢复快照",
-        "notOpenYet": "未开放",
         "comments": "批注",
         "commentsUnresolved": "{count} 条未解决",
         "commentsNone": "无"
@@ -2406,6 +2470,7 @@
         "captionReadOnly": "当前为只读，可复制这份草稿。",
         "captionRetained": "媒体已移除，请在关闭 Space 前复制草稿。",
         "notFinished": "上传没有完成",
+        "notUploaded": "媒体还没上传完成。",
         "pendingExport": "{name}（尚未上传完成）",
         "uploadFailed": "上传失败",
         "failure": {
@@ -2421,6 +2486,49 @@
         "notWrittenYet": "已上传，还没写进正文",
         "notPasted": "{count} 项没有粘贴进来。",
         "stillUploading": "{count} 个图片、视频或音频还在上传，没有粘贴进来。上传完成后重新复制。"
+      },
+      "versions": {
+        "title": "快照",
+        "close": "关闭快照",
+        "current": "当前内容",
+        "empty": "还没有快照",
+        "loadMore": "加载更多",
+        "loadFailed": "快照列表没有加载出来。",
+        "retry": "重试",
+        "more": "更多",
+        "compareWithShown": "与正在查看的对比",
+        "rename": "改名",
+        "delete": "删除",
+        "viewing": "正在查看快照：{name}",
+        "comparing": "对比：{from} → {to}",
+        "legendInsert": "新增",
+        "legendDelete": "删除",
+        "legendFormat": "格式变化",
+        "compareWithCurrent": "和当前内容对比",
+        "restore": "找回",
+        "exitPreview": "退出预览",
+        "exitCompare": "退出对比",
+        "renameTitle": "快照改名",
+        "namePlaceholder": "名字（可不填）",
+        "save": "保存",
+        "restoreTitle": "找回这张快照？",
+        "restoreBody": "当前正文会变成这张快照的内容，所有协作者会立即看到。可以按 Cmd/Ctrl+Z 撤销。",
+        "deleteTitle": "删除这张快照？",
+        "deleteBody": "「{name}」删除后找不回来。",
+        "saved": "快照已保存",
+        "renamed": "已改名",
+        "restored": "已找回快照。按 Cmd/Ctrl+Z 可以撤销。",
+        "unchanged": "正文已经和这张快照相同。",
+        "restoreFailed": "没能找回快照。",
+        "deleted": "快照已删除",
+        "leftOut": "{count, plural, other {# 个图片、视频或音频还没上传完成，没有存进这张快照。}}",
+        "contentFailed": "快照内容没有加载出来。",
+        "gone": "这张快照已经不在了。",
+        "saveFailed": "快照没有保存。",
+        "renameFailed": "没能改名。",
+        "deleteFailed": "没能删除快照。",
+        "folded": "{count, plural, other {# 个块未改动 · 展开}}",
+        "unavailable": "快照加载失败，刷新页面后可用"
       }
     },
     "readOnlyReconnect": "重新连接",
@@ -2620,6 +2728,27 @@
         "more": "加载更多",
         "formats": "PNG、JPEG 或 WebP",
         "chooseFile": "选择文件"
+      },
+      "viewfinder": {
+        "open": "取景框",
+        "ratio": "画幅",
+        "size": "{width} × {height}",
+        "cancel": "取消",
+        "confirm": "确定",
+        "modelsLoading": "模型还在加载，加载完再截图",
+        "captureFailed": "截图失败",
+        "toAgent": "添加到 Agent",
+        "toCanvas": "添加到 Canvas",
+        "copy": "复制",
+        "reframe": "重新取景",
+        "canvasListTitle": "添加到 Canvas",
+        "noCanvas": "这个 Project 还没有 Canvas，先新建一个",
+        "addedToAgent": "已添加到 Agent",
+        "addedToCanvas": "已添加到「{name}」",
+        "view": "查看",
+        "copied": "已复制",
+        "copyFailed": "复制失败",
+        "canvasUnreachable": "连不上「{name}」，请再试一次"
       }
     },
     "sizeCap": {
@@ -3375,6 +3504,7 @@
     "close": "关闭",
     "indexLabel": "积分内容",
     "unit": "积分",
+    "billingPending": "计费中",
     "loadFailed": "无法加载，请关闭后重新打开。",
     "listEnd": "没有更多了",
     "listPageFailed": "这一页没能加载，滚动重试。",
@@ -3580,7 +3710,6 @@
       "missing_source": "所用视频已丢失",
       "source_unresolved": "网页动画不可用"
     },
-    "loadingMedia": "正在加载视频…",
     "mediaUnavailable": "此视频不可用。",
     "retry": "重试",
     "play": "播放",
@@ -3594,10 +3723,7 @@
     "startFrame": "开始帧",
     "cancel": "取消",
     "transport": {
-      "paused": "已暂停",
-      "playing": "播放中",
-      "waiting": "缓冲中…",
-      "failed": "播放失败"
+      "waiting": "缓冲中…"
     },
     "material": {
       "description": "选择视频并确认添加位置。",
@@ -3622,6 +3748,8 @@
       "source_unavailable": "此视频不可用。请选择其他视频或重试。",
       "metadata_unavailable": "无法获取视频时长。请重试或选择其他视频。",
       "invalid_range": "请输入视频范围内的帧。",
+      "notNumber": "请输入数字。",
+      "scaleRange": "请输入 {min} 到 {max}。",
       "target_missing": "目标已变化。请检查位置后重试。",
       "clip_removed": "该片段已被其他成员移除。",
       "permission_changed": "编辑权限已变化。请再次确认添加此视频。",
@@ -3660,7 +3788,15 @@
       "magnetStartHint": "主轨磁吸已开启，拖动调整顺序。",
       "splitOutside": "请把播放头移到选中片段内再分割。",
       "lowestTrack": "该片段已在最下面的画面轨。",
-      "bumped": "{count, plural, other {# 个联动片段}}已移到上方轨道。"
+      "bumped": "{count, plural, other {# 个联动片段}}已移到上方轨道。",
+      "transform": "位置与大小",
+      "positionX": "X（px）",
+      "positionY": "Y（px）",
+      "scaleX": "宽度缩放（%）",
+      "scaleY": "高度缩放（%）",
+      "rotation": "旋转（°）",
+      "lockRatio": "锁定比例",
+      "offFrame": "这个片段不在当前帧。"
     },
     "webAnimation": {
       "create": "制作网页动画",
@@ -3732,6 +3868,11 @@
       "waiting": "已上传，等待编辑权限",
       "unfinished": "未完成",
       "preview": "{track}：{state, select, failed {视频上传失败，不显示} unfinished {视频未完成，不显示} other {视频上传中…}}"
+    },
+    "preview": {
+      "playBlocked": "浏览器阻止了有声播放，请按播放开始。",
+      "videoLoading": "{track}：视频加载中…",
+      "videoUnavailable": "{track}：视频不可用"
     }
   }
 }

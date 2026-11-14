@@ -83,7 +83,7 @@ REDIS_COLLAB_URL=redis://redis:6379/3
 
 The bundled nginx refuses request bodies over 1 MiB (`client_max_body_size 1m` in `docker/breatic-locations.conf`), the same limit as `request_body_max_bytes` in `config/limits.yaml`. Change both together.
 
-Replace sample provider keys with your own valid keys; leave unused keys empty. `OPENROUTER_API_KEY` supplies the text-model route when no direct vendor key is configured, subject to model availability and account quota. For image, video and other providers, use the `api_key_env` named in `config/models/<type>/providers.yaml`; WaveSpeed models, for example, need `WAVESPEED_API_KEY`.
+Replace sample provider keys with your own valid keys; leave unused keys empty. `OPENROUTER_API_KEY` supplies the text-model route when no direct vendor key is configured, subject to model availability and account quota. Each upstream reads the variable named by `key_env` in `config/provider/upstreams.yaml`; an image, video or other generation model needs the key of at least one of its upstreams in `config/provider/media/<type>.yaml`, for example `WAVESPEED_API_KEY` or `FAL_KEY`.
 
 <a id="cloudflare"></a>
 ## 4. Deploy the Cloudflare upload service
@@ -98,7 +98,7 @@ The canvas node menu's **Download** opens the file's own address with `download=
 
 Assets are currently read through public URLs. A private Breatic instance does not automatically make R2 files private. Do not put files requiring authenticated access into this public-read setup.
 
-Text too large for one request (a long pasted text node, its history snapshot, an Agent message with large attachments) is uploaded as a temporary transfer file under the `transfer/` prefix and read back by the server with the S3 credentials. Add an R2 lifecycle rule to the bucket that deletes objects with the prefix `transfer/` after 1 day. On a custom asset domain, also add a Cloudflare WAF custom rule that blocks requests whose path starts with `/transfer/`; an `r2.dev` address cannot carry this rule. See [Object lifecycles](https://developers.cloudflare.com/r2/buckets/object-lifecycles/).
+Text too large for one request (a long pasted text node, its history snapshot, an Agent message with large attachments, a snapshot of a long Document) is uploaded as a temporary transfer file under the `transfer/` prefix and read back by the server with the S3 credentials. Add an R2 lifecycle rule to the bucket that deletes objects with the prefix `transfer/` after 1 day. On a custom asset domain, also add a Cloudflare WAF custom rule that blocks requests whose path starts with `/transfer/`; an `r2.dev` address cannot carry this rule. See [Object lifecycles](https://developers.cloudflare.com/r2/buckets/object-lifecycles/).
 
 Timeline web animation is optional and off unless you enable it ([packages/ingest/README.md](../packages/ingest/README.md#web-animation)). Its packages are stored under the private `web-animation/` prefix and are read only through the Worker's signed preview route. If you enable it on a custom asset domain, add a Cloudflare WAF custom rule that blocks requests whose path starts with `/web-animation/`; an `r2.dev` address cannot carry this rule.
 

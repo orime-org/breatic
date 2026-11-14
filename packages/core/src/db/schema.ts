@@ -786,6 +786,17 @@ export const tasks = pgTable(
      */
     providerTaskId: text("provider_task_id"),
     /**
+     * provider's ticket for this task's media run (inner#1743): opaque to us,
+     * stored before every paid request and handed back on every pickup.
+     * Never read by anything but the worker's dispatch, and never sent to a
+     * browser.
+     */
+    providerTicket: jsonb("provider_ticket").$type<Record<string, unknown>>(),
+    /** The stored ticket's version: a ticket is written only over an older one. */
+    providerTicketVersion: integer("provider_ticket_version"),
+    /** Set while a send of the stored ticket is in flight; a pickup that finds it set recovers instead of sending. */
+    providerSendingAt: timestamp("provider_sending_at", { withTimezone: true }),
+    /**
      * Set by the CAS that completes the task once its file is persisted.
      * Only the attempt that sets it records the task's charge request
      * (`credit_charge_requests`), in the same transaction, so BullMQ retries,
@@ -857,7 +868,7 @@ export const taskUpstreamSteps = pgTable(
  * source they were cloned from (#2156): the first run on a source clones it,
  * every later run reuses the id. Read and written only by the worker.
  *
- * At most one live row per (studio, kind, source): the partial unique index
+ * At most one live row per (studio, upstream, kind, source): the partial unique index
  * is what settles two runs cloning the same source at once — the first insert
  * wins and the second keeps its own id for its own run.
  */
@@ -868,6 +879,8 @@ export const studioUpstreamClones = pgTable(
     studioId: uuid("studio_id")
       .notNull()
       .references(() => studios.id, { onDelete: "restrict" }),
+    /** The upstream that made the clone; a source has at most one live clone on each. */
+    upstream: text("upstream").notNull(),
     kind: varchar("kind", { length: 16 }).notNull(),
     /** The source asset's sha256; an element adds its name after a colon. */
     sourceKey: text("source_key").notNull(),
@@ -877,7 +890,7 @@ export const studioUpstreamClones = pgTable(
   },
   (table) => [
     uniqueIndex("studio_upstream_clones_live_key")
-      .on(table.studioId, table.kind, table.sourceKey)
+      .on(table.studioId, table.upstream, table.kind, table.sourceKey)
       .where(sql`${table.deletedAt} IS NULL`),
   ],
 );
@@ -1971,8 +1984,9 @@ export const creditRefundReconcileStatus = pgTable("credit_refund_reconcile_stat
  * `operation_key` groups a turn, a consolidation, a text-tool run or a task;
  * it is the same key handed to the credit engine, so what was charged for an
  * operation is the `credit_ledger` rows whose `reference_id` equals it, plus
- * one row per later-looked-up OpenRouter call under
- * `<operation_key>:gen:<generation id>`. This
+ * one row per later-looked-up model call under
+ * `<operation_key>:lookup:<sha256 of its lookup>` (a job queued before
+ * provider keeps `<operation_key>:gen:<generation id>`). This
  * table records cost; it does not record whether a charge was made.
  *
  * `created_at` only, and no `deleted_at`: an append-only usage record, the
@@ -2356,6 +2370,39 @@ export const timelineWebAnimationSources = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
+);
+
+/**
+ * A snapshot a user keeps of a document Space's body (0124, inner#1129).
+ *
+ * `content` is the editor's ProseMirror JSON with comment marks, so a restore
+ * puts comments back where they stood. `space_id` has no foreign key: Spaces
+ * live in Yjs. The list index is declared in 0124, which is what runs.
+ */
+export const documentVersions = pgTable(
+  "document_versions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    projectId: uuid("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "restrict" }),
+    spaceId: uuid("space_id").notNull(),
+    createdByUserId: uuid("created_by_user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "restrict" }),
+    name: text("name"),
+    content: jsonb("content").$type<Record<string, unknown>>().notNull(),
+    schemaVersion: text("schema_version").notNull(),
+    contentBytes: integer("content_bytes").notNull(),
+    ...timestamps,
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    deletedByUserId: uuid("deleted_by_user_id").references(() => users.id, { onDelete: "restrict" }),
+  },
+  (table) => [
+    index("document_versions_space_list_idx")
+      .on(table.projectId, table.spaceId, table.createdAt, table.id)
+      .where(sql`${table.deletedAt} IS NULL`),
+  ],
 );
 
 /**

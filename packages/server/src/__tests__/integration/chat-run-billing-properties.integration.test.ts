@@ -33,6 +33,9 @@ const gate = vi.hoisted(() => ({
 /** Output tokens each call reports: enough that every call costs well above the smallest charge. */
 const SPENT = vi.hoisted(() => 200_000);
 
+/** What each call costs, as the test model reports it to provider: well above the smallest charge. */
+const CALL_USD = vi.hoisted(() => 1);
+
 /**
  * Whether this is the crash the run is to die at; arms nothing further once it is.
  * @param point - The crash point being passed.
@@ -53,16 +56,17 @@ const forever = vi.hoisted(() => (): Promise<never> => new Promise<never>(() => 
 
 vi.mock("@breatic/domain", async (importOriginal) => {
   const actual = await importOriginal<typeof DomainModule>();
+  const { assemblyProvider, fakeProvider } = await import("../helpers/fake-provider.js");
+  actual.initProvider(assemblyProvider());
   const { MockLanguageModelV4 } = await import("ai/test");
   const { saying, finishedSpending } = await import("../helpers/model-double.js");
   return {
     ...actual,
-    resolveProvider: () => "test",
-    getModel: () =>
+    provider: fakeProvider(() =>
       new MockLanguageModelV4({
         doStream: async () => {
           if (dieHere("inModelCall")) await forever();
-          const parts = [...saying("hi").slice(0, -1), finishedSpending(SPENT)];
+          const parts = [...saying("hi").slice(0, -1), { ...finishedSpending(SPENT), providerMetadata: { test: { costUsd: CALL_USD } } }];
           return {
             stream: new ReadableStream({
               start(controller) {
@@ -72,7 +76,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
             }),
           };
         },
-      }),
+      })),
   };
 });
 

@@ -29,7 +29,8 @@ function model(name: string): ModelEntry {
       aspect_ratio: { description: '', values: ['16:9', '9:16'], default: '16:9' },
       duration: { description: '', values: [4, 8], default: 8 },
     },
-    providers: [],
+    availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: false, envVar: 'WAVESPEED_API_KEY' }] },
+    pricing_rules: undefined,
   };
 }
 

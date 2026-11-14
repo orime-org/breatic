@@ -39,7 +39,7 @@ interface ClipFixture {
   rate: { num: number; den: number };
   gain: number;
   mute: boolean;
-  transform: { x: number; y: number; scaleX: number; scaleY: number; rotation: number };
+  transform: { frameX: number; frameY: number; scaleX: number; scaleY: number; rotation: number };
 }
 
 interface PlacementFixture {
@@ -89,7 +89,7 @@ function trackedDocument(bytes?: Uint8Array): Y.Doc {
  */
 function initialTimeline(): Y.Doc {
   const document = trackedDocument();
-  document.getMap("timeline").set("schemaVersion", 1);
+  document.getMap("timeline").set("schemaVersion", 2);
   document.getMap("timeline").set("settings", {
     width: 1920,
     height: 1080,
@@ -130,7 +130,7 @@ function addPlacement(document: Y.Doc, startFrame: number, clipId: string = rand
     rate: { num: 1, den: 1 },
     gain: 1,
     mute: false,
-    transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+    transform: { frameX: 0, frameY: 0, scaleX: 1, scaleY: 1, rotation: 0 },
   };
   document.transact(() => {
     const storedClip = new Y.Map<unknown>();

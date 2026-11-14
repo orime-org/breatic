@@ -178,6 +178,12 @@ describe('TL-02 commands that change existing clip records are edit', () => {
     written: (plan) => { expect(plan.ok).toBe(true); },
     refused: refusedPlan,
   });
+  kindRows<TimelineEditPlan>({
+    id: 'TL-02', title: 'set_frame 9:16', kind: 'edit', name: NAME, seed: () => seed(),
+    run: () => session.edit(command('set_frame', { preset: '9:16' })),
+    written: (plan) => { expect(plan.ok).toBe(true); expect(readTimelineDocument(doc).settings).toMatchObject({ width: 1080, height: 1920 }); },
+    refused: (plan, target, code) => { refusedPlan(plan, target, code); expect(readTimelineDocument(target).settings).toMatchObject({ width: 1920, height: 1080 }); },
+  });
 });
 
 describe('TL-03 deleting below the limit packs and sweeps as before', () => {
@@ -400,5 +406,42 @@ describe('TL-11 back below the limit, the next transaction writes the source bac
     Y.applyUpdate(doc, Y.encodeStateAsUpdate(peer, vector), 'remote');
     peer.destroy();
     expect(doc.getMap('sources').has(S1.id)).toBe(true);
+  });
+});
+
+// A transform as an earlier web build stored it: pixel offsets on the 1920 x 1080 frame (#1502).
+const PIXEL_TRANSFORM = { x: 480, y: -270, scaleX: 0.25, scaleY: 0.25, rotation: 0 };
+
+/**
+ * Turns the loaded document into a version-1 one on a peer: c3's transform in pixels, `schemaVersion` 1, delivered as
+ * a remote update.
+ * @param target - The document.
+ */
+function peerStoresC3InPixels(target: Y.Doc): void {
+  const peer = new Y.Doc();
+  Y.applyUpdate(peer, Y.encodeStateAsUpdate(target));
+  const vector = Y.encodeStateVector(target);
+  peer.transact(() => {
+    (peer.getMap('clips').get(C3) as Y.Map<unknown>).set('transform', PIXEL_TRANSFORM);
+    peer.getMap('timeline').set('schemaVersion', 1);
+  });
+  Y.applyUpdate(target, Y.encodeStateAsUpdate(peer, vector), 'remote');
+  peer.destroy();
+}
+
+describe('TL-12 deleting from a version-1 document on a full Space only deletes: the pixel conversion waits', () => {
+  it.each(['F', 'O'] as const)('TL-12 at %s delete c1 writes a pure delete and leaves c3 in pixels and the version at 1', (code) => {
+    seed();
+    peerStoresC3InPixels(doc);
+    enterSize(NAME, code);
+    toast.warning.mockClear();
+    const captured = captureWrite(doc, () => session.edit(command('delete', { clipId: C1 })));
+    expect(captured.result.ok).toBe(true);
+    expect(doc.getMap('clips').has(C1)).toBe(false);
+    expect(Y.decodeUpdate(captured.update!).structs).toHaveLength(0);
+    expect(captured.shape).toBe('R');
+    expect((doc.getMap('clips').get(C3) as Y.Map<unknown>).get('transform')).toEqual(PIXEL_TRANSFORM);
+    expect(doc.getMap('timeline').get('schemaVersion')).toBe(1);
+    expectSizeToast(null);
   });
 });

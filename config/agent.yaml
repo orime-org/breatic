@@ -322,9 +322,8 @@ records_tool_text_max_chars: 600
 # would have to be wrong for one of the two.
 #
 # A call that has a preference states it where it makes the call, by passing
-# `thinking` to `callOptionsFor` in `@breatic/domain`, which turns that into
-# whatever the provider on the other end takes. Chat and memory consolidation
-# do that today; the rest take whatever their provider does by default.
+# `thinking` to `provider().llm.prepare` (`@breatic/provider`), which turns that
+# into whatever the upstream on the other end takes. Every call states one.
 
 # ── LLM resilience ────────────────────────────────────────
 # Retry budget (maxRetries) for every LLM call, injected by the model-call

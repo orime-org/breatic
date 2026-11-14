@@ -32,12 +32,13 @@ import { CommentsExtension, type ThreadData } from '@blocknote/core/comments';
 import type { EditorState } from '@tiptap/pm/state';
 
 import type { SpaceRefusal } from '@web/data/yjs/space-write';
-import { draftRangeIn } from '@web/spaces/document/document-comment-draft-range';
+import { draftRangeIn, mediaDraftIn } from '@web/spaces/document/document-comment-draft-range';
 import {
   COMMENT_MARK,
   asCommentBody,
   commentsOn,
 } from '@web/spaces/document/document-comment-extension';
+import { MEDIA_BLOCK_ID, canCommentOnMedia } from '@web/spaces/document/document-comment-media';
 import { checkCommentAdd, SpaceFullError } from '@web/spaces/document/document-comment-thread-store';
 
 /** The editor surface this needs. */
@@ -56,6 +57,11 @@ interface CommentableEditor {
 
 /** Where a comment goes, read off the body as it stands. */
 export type CommentAim = (state: EditorState) => ReadonlyArray<{ from: number; to: number }> | null;
+
+/** A comment on a whole picture, video or audio block, by its id (inner#1316 §5.2). */
+export interface MediaAim {
+  readonly mediaBlockId: string;
+}
 
 /** What a comment carries beside its words: on the thread, and on its first comment. */
 export interface CommentMetadata {
@@ -83,9 +89,13 @@ function somewhere(ranges: ReturnType<CommentAim>): ranges is NonNullable<Return
  *
  * A full Space creates nothing (inner#1790): the thread is an `add`, asked
  * for before anything is written.
+ *
+ * A media aim writes the block id on the thread and nothing on the body
+ * (`document-comment-media.ts`); it needs an uploaded media block with that id.
  * @param editor - The document editor, with the comments extension registered.
  * @param body - The first comment, as a comment body.
- * @param aim - Where the comment goes, read off the body as it stands.
+ * @param aim - Where the comment goes: words read off the body as it stands,
+ *   or a media block by id.
  * @param metadata - What the thread and its first comment carry, if anything.
  * @param options - Options.
  * @param options.notify - Show the size refusal toast (default true).
@@ -96,25 +106,29 @@ function somewhere(ranges: ReturnType<CommentAim>): ranges is NonNullable<Return
 export async function commentOn(
   editor: CommentableEditor,
   body: unknown,
-  aim: CommentAim,
+  aim: CommentAim | MediaAim,
   metadata: CommentMetadata = {},
   { notify = true }: { notify?: boolean } = {},
 ): Promise<ThreadData | SpaceRefusal | null> {
   const view = editor.prosemirrorView;
-  const aimed = view === null ? null : aim(view.state);
-  if (view === null || !somewhere(aimed)) return null;
+  if (view === null) return null;
+  if (typeof aim === 'function' ? !somewhere(aim(view.state)) : !canCommentOnMedia(view.state.doc, aim.mediaBlockId)) {
+    return null;
+  }
 
   const comments = commentsOn(editor);
   if (comments === undefined) return null;
 
+  const threadMetadata = typeof aim === 'function' ? metadata.thread : { ...metadata.thread, [MEDIA_BLOCK_ID]: aim.mediaBlockId };
   const options = {
     initialComment: { body, ...(metadata.comment === undefined ? {} : { metadata: metadata.comment }) },
-    ...(metadata.thread === undefined ? {} : { metadata: metadata.thread }),
+    ...(threadMetadata === undefined ? {} : { metadata: threadMetadata }),
   };
   const room = checkCommentAdd(comments.threadStore, notify);
   if (!room.ok) return room;
   // Asked just now in this same task, so the store's own check lets it in.
   const thread = (await comments.threadStore.createThread(options)) as ThreadData;
+  if (typeof aim !== 'function') return thread;
 
   const landing = aim(view.state);
   if (!somewhere(landing)) return thread;
@@ -141,7 +155,13 @@ export async function commentOn(
  * @throws {Error} Whatever the thread store throws while creating the thread.
  */
 export async function postComment(editor: CommentableEditor, body: string): Promise<ThreadData | null> {
-  const posted = await commentOn(editor, asCommentBody(body), (state) => draftRangeIn(state)?.segments ?? null);
+  const state = editor.prosemirrorView?.state;
+  const media = state === undefined ? null : mediaDraftIn(state);
+  const posted = await commentOn(
+    editor,
+    asCommentBody(body),
+    media === null ? (now) => draftRangeIn(now)?.segments ?? null : { mediaBlockId: media },
+  );
   if (posted !== null && 'ok' in posted) throw new SpaceFullError();
   return posted;
 }

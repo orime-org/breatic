@@ -24,8 +24,10 @@ vi.mock("@server/config/rate-limits.js", async (importOriginal) => {
 
 vi.mock("@breatic/domain", async (importOriginal) => {
   const actual = await importOriginal<typeof DomainModule>();
+  const { assemblyProvider, fakeProvider } = await import("../helpers/fake-provider.js");
+  actual.initProvider(assemblyProvider());
   const { modelProducing, saying } = await import("../helpers/model-double.js");
-  return { ...actual, resolveProvider: () => "test", getModel: () => modelProducing(() => saying("hi")) };
+  return { ...actual, provider: fakeProvider(() => modelProducing(() => saying("hi")) )};
 });
 
 import type * as DomainModule from "@breatic/domain";

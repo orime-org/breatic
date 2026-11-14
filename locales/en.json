@@ -340,6 +340,13 @@
       "view_not_image": "View slot {index} ({slot, select, front {front} left {left} back {back} right {right} other {extra}}): this file is {kind, select, video {a video} audio {an audio file} other {a model or another file}}, not an image.",
       "still_running": "This generation is still finishing and may still produce a result. Try again in a moment.",
       "has_result": "This generation finished with a result, which is now on the task list."
+    },
+    "model": {
+      "not_configured": "{model} is not set up on this deployment: it needs {envVars}.",
+      "upstream_not_bound": "{model} is not offered through {upstream}."
+    },
+    "document": {
+      "versions_full": "{limit, plural, one {This document already has 1 snapshot. Delete it to save a new one.} other {This document already has # snapshots. Delete an old one to save a new one.}}"
     }
   },
   "chat": {
@@ -914,6 +921,7 @@
       "param": {
         "compose_from": "Compose from",
         "language": "Language",
+        "language_boost": "Language",
         "voice_description": "Voice description",
         "speakers": "Speakers",
         "emotion": "Emotion",
@@ -1503,7 +1511,9 @@
       "goal": {
         "character": "Character design & consistency",
         "comics-storyboards": "Comics & storyboards",
+        "food": "Food",
         "social-hooks": "Social hooks",
+        "posters": "Posters & graphics",
         "sound": "Sound, music & voice"
       },
       "storyboard-grid-25": {
@@ -1605,6 +1615,39 @@
           "reference": {
             "name": "Character",
             "note": "Add the character reference first, then generate."
+          }
+        }
+      },
+      "food-money-shot": {
+        "name": "Food money shot",
+        "description": "A close-up build to the dish's most tempting moment",
+        "prompt": "A vertical close-up food video of [📎 Dish]: the same food, plating and tableware as in the picture, nothing else taken from it. 0–2 s hook: a slow-motion macro shot already moving, {✏️ the first detail, e.g. steam rising off the melted cheese}. 2–5 s: the camera slowly pushes in across its texture, the crust, gloss and crumbs sharp. 5–8 s money shot: {✏️ the most tempting moment, e.g. a slice lifted with a long cheese pull}, held at its peak. Light from behind and to the side so the steam and the gloss shine, one warm light source. Sound in place of taste: close sounds of the food itself, {✏️ e.g. sizzling and a crisp crunch}, no music. No text on screen.",
+        "input": {
+          "dish": {
+            "name": "Dish",
+            "note": "Add a clear photo of the dish or drink first, then generate."
+          }
+        }
+      },
+      "recipe-process-montage": {
+        "name": "Recipe process montage",
+        "description": "A dish made step by step from one fixed camera",
+        "prompt": "A vertical cooking video that ends with [📎 Dish], the same food, plating and tableware as in the picture. Throughout: one fixed camera {✏️ the angle, e.g. top-down over the counter}, the same counter, the same cookware and the same pair of hands, nothing else changes. Each state only moves forward: what is cut stays cut, what is cooked stays cooked. 0–3 s: {✏️ step 1, e.g. dough pressed out into a round}. 3–6 s: {✏️ step 2, e.g. tomato sauce spread to the edge}. 6–9 s: {✏️ step 3, e.g. mozzarella torn over the top}. 9–12 s: {✏️ step 4, e.g. it slides out of the oven, bubbling}. 12–15 s: the finished dish is served and a hand takes the first piece, a lived-in moment. Daylight from one window. Sound: the live sounds of each step, chopping, sizzling and pouring, no music. No text on screen.",
+        "input": {
+          "dish": {
+            "name": "Dish",
+            "note": "Add a photo of the finished dish first, then generate."
+          }
+        }
+      },
+      "dish-hero-still": {
+        "name": "Dish hero still",
+        "description": "A casual dish photo reshot as a studio menu picture",
+        "prompt": "A studio menu photo of [📎 Dish]: exactly the same food, ingredients, plating and tableware as in the picture, only the photography changes. Warm key light from 45 degrees in front, back light making the steam and the gloss glow, side light bringing out the texture. Colours vivid but natural, nothing oversaturated. Surface and background: {✏️ e.g. a dark slate table with a linen napkin}. The background softly out of focus, the dish itself sharp from front to back. Real photo, not illustrated. No text.",
+        "input": {
+          "dish": {
+            "name": "Dish",
+            "note": "Add a clear photo of the dish first, then generate."
           }
         }
       },
@@ -1765,6 +1808,27 @@
       },
       "applyFailed": "Couldn't apply the template.",
       "groupLocked": "The group is locked. Unlock it to add nodes.",
+      "name-as-world-typography": {
+        "name": "Name as a tiny world",
+        "description": "A name built as a miniature world, its letters shaped by what it is known for",
+        "prompt": "A typographic illustration. The name {✏️ the name, e.g. ROME} is built as a miniature world: every letter, or every character for a name in Chinese, Japanese or Korean, is a tiny architectural model standing on a plain light ground, and the whole name reads clearly with every letter spelled and shaped exactly right. What the name is known for reshapes its letters: {✏️ what it is known for and how it bends a letter, e.g. the Colosseum forms the O, aqueduct arches run through the M}. Tiny people, vehicles and trees at model scale. 6 to 14 short hand-written technical annotations in thin lines point at the details, a few words each, in the language of this prompt. Accent colour: {✏️ one accent colour, e.g. terracotta red}; everything else in soft neutral tones. Soft daylight from the upper left, gentle shadows. No other text."
+      },
+      "destination-festival-poster": {
+        "name": "Festival travel poster",
+        "description": "A hand-drawn travel poster of a place in its festival or season",
+        "prompt": "A hand-drawn travel poster of {✏️ the place, e.g. Kyoto} during {✏️ the festival or season, e.g. the autumn maple season}. Screen print and risograph look: 4 to 6 flat ink colours, slightly misregistered layers, visible grain and halftone dots. A bold landmark or scene of the place fills the poster, with people celebrating in the middle ground. The only text is the title {✏️ the title, e.g. KYOTO · AUTUMN}, in large hand-lettered type at the top, spelled exactly as given. No other words, logos or small print."
+      },
+      "photo-paper-diorama": {
+        "name": "Photo to paper diorama",
+        "description": "The photo's lower half torn into paper craft, with two hand-written lines",
+        "prompt": "Keep the top half of [📎 Photo] exactly as it is. The bottom half becomes torn handmade paper with rough fibrous edges, layered like a collage, and {✏️ which element of the photo, e.g. the dog} rises out of it as a paper-craft relief, cut and folded from coloured paper and casting small real shadows. Across the paper, two short hand-written lines in ink: {✏️ the two lines, e.g. Sunday walks / smell like grass}, spelled exactly as given. Soft daylight. No other text.",
+        "input": {
+          "photo": {
+            "name": "Photo",
+            "note": "Add the photo first, then generate."
+          }
+        }
+      },
       "ambience-sfx-bed": {
         "name": "Ambience bed with foley",
         "description": "A looping place sound with a few foley hits",
@@ -2299,6 +2363,7 @@
       "comment": {
         "placeholder": "Write a comment…",
         "targetGone": "The text was changed or deleted.",
+        "mediaGone": "This media was deleted.",
         "cannotWrite": "You can no longer write here.",
         "railTitle": "Comments",
         "filterOpen": "Unresolved",
@@ -2335,7 +2400,6 @@
         "label": "Whole-document commands",
         "saveSnapshot": "Save snapshot",
         "restoreSnapshot": "Restore snapshot",
-        "notOpenYet": "Not open yet",
         "comments": "Comments",
         "commentsUnresolved": "{count} unresolved",
         "commentsNone": "None"
@@ -2406,6 +2470,7 @@
         "captionReadOnly": "Read-only. You can copy this draft.",
         "captionRetained": "Media removed. Copy this draft before closing the Space.",
         "notFinished": "Upload not finished",
+        "notUploaded": "The media has not finished uploading.",
         "pendingExport": "{name} (upload not finished)",
         "uploadFailed": "Upload failed",
         "failure": {
@@ -2421,6 +2486,49 @@
         "notWrittenYet": "Uploaded, not added yet",
         "notPasted": "{count, plural, one {# item was not pasted.} other {# items were not pasted.}}",
         "stillUploading": "{count, plural, one {# image, video or audio is still uploading and was not pasted. Copy it again once the upload finishes.} other {# images, videos or audio are still uploading and were not pasted. Copy them again once the upload finishes.}}"
+      },
+      "versions": {
+        "title": "Snapshots",
+        "close": "Close snapshots",
+        "current": "Current content",
+        "empty": "No snapshots yet",
+        "loadMore": "Load more",
+        "loadFailed": "The snapshot list did not load.",
+        "retry": "Retry",
+        "more": "More",
+        "compareWithShown": "Compare with the one shown",
+        "rename": "Rename",
+        "delete": "Delete",
+        "viewing": "Viewing snapshot: {name}",
+        "comparing": "Comparing: {from} → {to}",
+        "legendInsert": "Added",
+        "legendDelete": "Removed",
+        "legendFormat": "Formatting changed",
+        "compareWithCurrent": "Compare with current content",
+        "restore": "Restore",
+        "exitPreview": "Exit preview",
+        "exitCompare": "Exit comparison",
+        "renameTitle": "Rename snapshot",
+        "namePlaceholder": "Name (optional)",
+        "save": "Save",
+        "restoreTitle": "Restore this snapshot?",
+        "restoreBody": "The current text will become this snapshot, and everyone in the document will see it at once. Press Cmd/Ctrl+Z to undo.",
+        "deleteTitle": "Delete this snapshot?",
+        "deleteBody": "“{name}” cannot be recovered once deleted.",
+        "saved": "Snapshot saved",
+        "renamed": "Renamed",
+        "restored": "Snapshot restored. Press Cmd/Ctrl+Z to undo.",
+        "unchanged": "The text already matches this snapshot.",
+        "restoreFailed": "The snapshot could not be restored.",
+        "deleted": "Snapshot deleted",
+        "leftOut": "{count, plural, one {# image, video or audio has not finished uploading and was not saved in this snapshot.} other {# images, videos or audio have not finished uploading and were not saved in this snapshot.}}",
+        "contentFailed": "The snapshot did not load.",
+        "gone": "This snapshot is no longer there.",
+        "saveFailed": "The snapshot was not saved.",
+        "renameFailed": "The snapshot was not renamed.",
+        "deleteFailed": "The snapshot was not deleted.",
+        "folded": "{count, plural, one {# unchanged block · Show} other {# unchanged blocks · Show}}",
+        "unavailable": "Snapshots could not load. Refresh the page to use them."
       }
     },
     "readOnlyReconnect": "Reconnect",
@@ -2620,6 +2728,27 @@
         "more": "Load more",
         "formats": "PNG, JPEG or WebP",
         "chooseFile": "Choose file"
+      },
+      "viewfinder": {
+        "open": "Viewfinder",
+        "ratio": "Aspect ratio",
+        "size": "{width} × {height}",
+        "cancel": "Cancel",
+        "confirm": "Capture",
+        "modelsLoading": "Models are still loading. Capture once they have loaded",
+        "captureFailed": "Capture failed",
+        "toAgent": "Add to Agent",
+        "toCanvas": "Add to Canvas",
+        "copy": "Copy",
+        "reframe": "Reframe",
+        "canvasListTitle": "Add to Canvas",
+        "noCanvas": "This Project has no Canvas yet. Create one first",
+        "addedToAgent": "Added to Agent",
+        "addedToCanvas": "Added to {name}",
+        "view": "View",
+        "copied": "Copied",
+        "copyFailed": "Copy failed",
+        "canvasUnreachable": "Couldn't reach {name}. Try again"
       }
     },
     "sizeCap": {
@@ -3375,6 +3504,7 @@
     "close": "Close",
     "indexLabel": "Credit sections",
     "unit": "credits",
+    "billingPending": "Billing",
     "loadFailed": "Could not load. Close and open again.",
     "listEnd": "No more",
     "listPageFailed": "Could not load this page. Scroll to retry.",
@@ -3580,7 +3710,6 @@
       "missing_source": "Its video is missing",
       "source_unresolved": "Its web animation is unavailable"
     },
-    "loadingMedia": "Loading video…",
     "mediaUnavailable": "This video is unavailable.",
     "retry": "Retry",
     "play": "Play",
@@ -3594,10 +3723,7 @@
     "startFrame": "Start frame",
     "cancel": "Cancel",
     "transport": {
-      "paused": "Paused",
-      "playing": "Playing",
-      "waiting": "Buffering…",
-      "failed": "Playback failed"
+      "waiting": "Buffering…"
     },
     "material": {
       "description": "Choose a video and confirm its position.",
@@ -3622,6 +3748,8 @@
       "source_unavailable": "This video is unavailable. Choose another or retry.",
       "metadata_unavailable": "Video duration is unavailable. Retry or choose another video.",
       "invalid_range": "Enter a frame range inside the video.",
+      "notNumber": "Enter a number.",
+      "scaleRange": "Enter {min} to {max}.",
       "target_missing": "The target has changed. Check the position and retry.",
       "clip_removed": "This clip was removed by another member.",
       "permission_changed": "Editing permission changed. Confirm again to add this video.",
@@ -3660,7 +3788,15 @@
       "magnetStartHint": "Main track magnet is on. Drag to reorder.",
       "splitOutside": "Move the playhead inside the selected clip to split it.",
       "lowestTrack": "This clip is already on the bottom visual track.",
-      "bumped": "{count, plural, one {# linked clip moved} other {# linked clips moved}} to a track above."
+      "bumped": "{count, plural, one {# linked clip moved} other {# linked clips moved}} to a track above.",
+      "transform": "Position and size",
+      "positionX": "X (px)",
+      "positionY": "Y (px)",
+      "scaleX": "Width scale (%)",
+      "scaleY": "Height scale (%)",
+      "rotation": "Rotation (°)",
+      "lockRatio": "Lock ratio",
+      "offFrame": "This clip is not at the current frame."
     },
     "webAnimation": {
       "create": "Create web animation",
@@ -3732,6 +3868,11 @@
       "waiting": "Uploaded, waiting for edit access",
       "unfinished": "Unfinished",
       "preview": "{track}: {state, select, failed {video upload failed, not shown} unfinished {video unfinished, not shown} other {video uploading…}}"
+    },
+    "preview": {
+      "playBlocked": "The browser blocked playback with sound. Press play to start.",
+      "videoLoading": "{track}: video loading…",
+      "videoUnavailable": "{track}: video unavailable"
     }
   }
 }

@@ -32,7 +32,8 @@ const QWEN: ModelEntry = {
   generation_time: 120,
   takes_prompt: true,
   params: CAMERA_SPECS,
-  providers: [],
+  availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: false, envVar: 'WAVESPEED_API_KEY' }] },
+  pricing_rules: undefined,
   camera_angle: { azimuth: 'horizontal_angle', elevation: 'vertical_angle', distance: 'distance' },
 };
 

@@ -47,6 +47,8 @@ export class UpstreamRequestRejected extends Error {
   readonly costs: Cost[];
   /** The upstream's status for the refusal (an error carried in an answer gives its code). */
   readonly status?: number;
+  /** What the refusal was about, in words that are the same for every upstream, when the upstream said. */
+  readonly reason?: "content_blocked";
 
   /**
    * Record what the error carries.
@@ -57,14 +59,16 @@ export class UpstreamRequestRejected extends Error {
    * @param refusal - The upstream's status and its own error, when an upstream refused.
    * @param refusal.status - The status.
    * @param refusal.cause - The upstream's error.
+   * @param refusal.reason - What the refusal was about, when the upstream said.
    */
-  constructor(model: string, upstream: string, message: string, costs: Cost[] = [], refusal: { status?: number; cause?: unknown } = {}) {
+  constructor(model: string, upstream: string, message: string, costs: Cost[] = [], refusal: { status?: number; cause?: unknown; reason?: "content_blocked" } = {}) {
     super(message, refusal.cause === undefined ? undefined : { cause: refusal.cause });
     this.name = "UpstreamRequestRejected";
     this.model = model;
     this.upstream = upstream;
     this.costs = costs;
     if (refusal.status !== undefined) this.status = refusal.status;
+    if (refusal.reason !== undefined) this.reason = refusal.reason;
   }
 }
 
@@ -109,6 +113,12 @@ export function costsOf(error: unknown): Cost[] {
   return costs;
 }
 
+/** Who billed an answer: the upstream, and the model it was asked of. */
+export interface ServedBy {
+  upstream: string;
+  model: string;
+}
+
 /**
  * A billed 2xx answer whose body could not be read (cut, not JSON, or missing what it
  * promised): it rides as the cause of the error that ends the call, carrying one missing
@@ -116,16 +126,20 @@ export function costsOf(error: unknown): Cost[] {
  */
 export class BilledAnswerLost extends Error {
   readonly costs: Cost[];
+  /** Who billed it, where the error is the only thing the caller gets back (a decisions call). */
+  readonly served?: ServedBy;
 
   /**
    * Record what the error carries.
    * @param reason - What could not be read.
    * @param cause - The read's own failure, when there was one.
+   * @param served - Who billed it, when the caller learns it from nothing else.
    */
-  constructor(reason: string, cause?: unknown) {
+  constructor(reason: string, cause?: unknown, served?: ServedBy) {
     super(reason, cause === undefined ? undefined : { cause });
     this.name = "BilledAnswerLost";
     this.costs = [{ state: "missing", reason }];
+    if (served !== undefined) this.served = served;
   }
 }
 

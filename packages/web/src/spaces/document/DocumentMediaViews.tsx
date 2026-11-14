@@ -11,7 +11,16 @@ import { createPortal } from 'react-dom';
 
 import { captionDraftsFor } from '@web/spaces/document/document-caption-drafts';
 import { useTranslation } from '@web/i18n/use-translation';
-import { DocumentMediaBlock } from '@web/spaces/document/DocumentMediaBlock';
+import { DocumentMediaBlock, type MediaCommentActions } from '@web/spaces/document/DocumentMediaBlock';
+import { commentsOn } from '@web/spaces/document/document-comment-extension';
+import { openMediaCommentDraft } from '@web/spaces/document/document-comment-entries';
+import { selectThreads } from '@web/spaces/document/document-comment-selection';
+import { useDocumentProjectId } from '@web/spaces/document/document-project-context';
+import { mediaItem } from '@web/spaces/document/document-to-agent';
+import type { ToolEditor } from '@web/spaces/document/document-tool-button';
+import { useMediaComments } from '@web/spaces/document/use-media-comments';
+import { useTableFullscreen } from '@web/spaces/document/use-table-fullscreen';
+import { attachToChat } from '@web/stores/attach-to-chat';
 import { mediaBarShown, setHoveredMedia, useDocumentBars } from '@web/spaces/document/document-bars';
 import { pendingUploadId } from '@web/spaces/document/document-media-types';
 import { DocumentPendingMediaBlock } from '@web/spaces/document/document-pending-uploads';
@@ -56,6 +65,33 @@ export function DocumentMediaViews({ editor, readOnly = false, viewport = null }
       if (draft.exists && !present.has(draft.blockId)) drafts.event(draft.blockId, { type: 'sync', caption: draft.shared, readOnly, exists: false });
     }
   }, [views, drafts, readOnly]);
+  // The document editor, which every caller hands in; typed loosely above
+  // for the media views it shares with the editor's own extensions.
+  const documentEditor = editor as unknown as ToolEditor;
+  const projectId = useDocumentProjectId();
+  const fullscreen = useTableFullscreen(documentEditor).table !== null;
+  const mediaComments = useMediaComments(documentEditor);
+  const openComments = React.useRef(mediaComments.open);
+  openComments.current = mediaComments.open;
+  const hasComments = commentsOn(documentEditor) !== undefined;
+  const commentActions = React.useMemo(
+    (): MediaCommentActions => ({
+      comment: hasComments
+        ? (blockId) => {
+          openMediaCommentDraft(documentEditor, blockId);
+        }
+        : null,
+      read: (blockId) => {
+        selectThreads(documentEditor, openComments.current.get(blockId) ?? []);
+      },
+      addToAgent: projectId === null
+        ? null
+        : (blockId) => {
+          void attachToChat(projectId, [mediaItem(documentEditor, blockId)]);
+        },
+    }),
+    [documentEditor, hasComments, projectId],
+  );
   const onHover = React.useCallback(
     (host: HTMLElement, on: boolean): void => {
       setHoveredMedia(editor, host, on);
@@ -82,6 +118,10 @@ export function DocumentMediaViews({ editor, readOnly = false, viewport = null }
               host={host}
               onHover={onHover}
               actions={entry.actions}
+              commentActions={commentActions}
+              commentCount={mediaComments.open.get(entry.blockId)?.length ?? 0}
+              commentReading={mediaComments.reading.has(entry.blockId)}
+              tableFullscreen={fullscreen}
             />
           ),
           host,

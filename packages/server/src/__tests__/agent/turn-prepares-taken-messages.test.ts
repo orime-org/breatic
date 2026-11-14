@@ -106,7 +106,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       await steps.persist();
       return [];
     },
-    getModel: () =>
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider(() =>
       new MockLanguageModelV4({
         // Read pictures by their URL, as the real providers do.
         supportedUrls: { "image/*": [/^https:\/\//] },
@@ -124,7 +124,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
             }),
           };
         },
-      }),
+      })),
     __resetCalls: () => {
       call = 0;
     },

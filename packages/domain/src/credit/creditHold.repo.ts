@@ -9,7 +9,7 @@
  * first; releasing only shrinks what is held and takes none.
  */
 
-import { and, eq, gt, sql } from "drizzle-orm";
+import { and, eq, gt, lt, sql } from "drizzle-orm";
 import { db, creditHolds } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 
@@ -64,4 +64,16 @@ export async function releaseHold(referenceId: string, tx?: DbTx): Promise<void>
     .update(creditHolds)
     .set({ status: "released", releasedAt: now, updatedAt: now })
     .where(and(eq(creditHolds.referenceId, referenceId), eq(creditHolds.status, "held")));
+}
+
+/**
+ * Keep a held hold alive until a later moment; an earlier one, or a released hold, is left alone.
+ * @param referenceId - Its key.
+ * @param until - The new expiry.
+ */
+export async function extendHold(referenceId: string, until: Date): Promise<void> {
+  await db
+    .update(creditHolds)
+    .set({ expiresAt: until, updatedAt: new Date() })
+    .where(and(eq(creditHolds.referenceId, referenceId), eq(creditHolds.status, "held"), lt(creditHolds.expiresAt, until)));
 }

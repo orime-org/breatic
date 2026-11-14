@@ -44,11 +44,12 @@ const IMPORT_CONFIG = {
   max_texture_edge: 8192,
   max_texture_bytes: 268435456,
 };
+const CAPTURE_CONFIG = { long_edge_px: 2048, min_frame_px: 120, canvas_sync_timeout_ms: 10000 };
 
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.projectAuthService.loadProjectRole.mockResolvedValue("viewer");
-  getSceneConfig.mockReturnValue({ scale_sensitivity: 0.025, import: IMPORT_CONFIG });
+  getSceneConfig.mockReturnValue({ scale_sensitivity: 0.025, import: IMPORT_CONFIG, capture: CAPTURE_CONFIG });
   resolveSceneAsset.mockResolvedValue({
     url: "https://assets.example.test/registered-model.glb",
     mimeType: "model/gltf-binary",
@@ -73,6 +74,7 @@ describe("3D Space project read routes", () => {
         maxTextureEdge: 8192,
         maxTextureBytes: 268435456,
       },
+      capture: { longEdgePx: 2048, minFramePx: 120, canvasSyncTimeoutMs: 10000 },
     } });
     expect(mocks.projectAuthService.loadProjectRole).toHaveBeenCalledWith("user-1", PROJECT);
     expect(getSceneConfig).toHaveBeenCalledTimes(1);
@@ -89,7 +91,7 @@ describe("3D Space project read routes", () => {
       decoder_worker_limit: 2,
       max_texture_edge: 4096,
       max_texture_bytes: 100663296,
-    } });
+    }, capture: { long_edge_px: 1024, min_frame_px: 80, canvas_sync_timeout_ms: 5000 } });
 
     const response = await createApp().request(`/api/v1/projects/${PROJECT}/three-d/config`, { headers: AUTH });
 
@@ -106,6 +108,7 @@ describe("3D Space project read routes", () => {
         maxTextureEdge: 4096,
         maxTextureBytes: 100663296,
       },
+      capture: { longEdgePx: 1024, minFramePx: 80, canvasSyncTimeoutMs: 5000 },
     } });
     expect(getSceneConfig).toHaveBeenCalledTimes(1);
   });

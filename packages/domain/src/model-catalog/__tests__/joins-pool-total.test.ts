@@ -20,6 +20,7 @@ const UPSTREAM_TOTAL: Readonly<Record<string, number>> = {
   "gpt-image-2.5-sunburst-edit": 16,
   "nano-banana-pro-edit-ultra": 14,
   "muse-image-edit": 10,
+  "seedream-v5.5-edit": 10,
 };
 
 describe("a style slot joining an image pool", () => {
@@ -60,16 +61,17 @@ describe("what the Agent reads for a joining model", () => {
 
 /**
  * The video models whose style slot joins their image pool (inner#828): what
- * each upstream takes in that list, the mode the panel offers it under, and
- * how the second file in the list is named in the prompt.
+ * each upstream takes in that list and the mode the panel offers it under.
+ * The prompt names the joined file by neutral reference; how an upstream
+ * spells it is provider's (inner#1743).
  */
-const VIDEO_JOINING: Readonly<Record<string, { total: number; mode: string; second: string }>> = {
-  "seedance-2.5-text-to-video": { total: 30, mode: "t2v", second: "@image2" },
-  "wan-3.0-reference-to-video": { total: 10, mode: "ref", second: "Image 2" },
-  "minimax-h3-reference-to-video": { total: 9, mode: "ref", second: "<Picture 2>" },
+const VIDEO_JOINING: Readonly<Record<string, { total: number; mode: string }>> = {
+  "seedance-2.5-text-to-video": { total: 30, mode: "t2v" },
+  "wan-3.0-reference-to-video": { total: 10, mode: "ref" },
+  "minimax-h3-reference-to-video": { total: 9, mode: "ref" },
   // Google: from 2026-12-03 every 1.1 request runs on 1.2, which "supports up to 6 reference images per request".
-  "gemini-omni-1.1-flash-reference-to-video": { total: 6, mode: "ref", second: "<IMAGE_REF_1>" },
-  "happyhorse-1.1-reference-to-video": { total: 9, mode: "ref", second: "[Image 2]" },
+  "gemini-omni-1.1-flash-reference-to-video": { total: 6, mode: "ref" },
+  "happyhorse-1.1-reference-to-video": { total: 9, mode: "ref" },
 };
 
 describe("a video style slot joining an image pool", () => {
@@ -89,11 +91,11 @@ describe("a video style slot joining an image pool", () => {
     expect(pool + style).toBe(total);
   });
 
-  it.each(Object.entries(VIDEO_JOINING))("names %s's style file after the one mentioned picture", (name, { second }) => {
+  it.each(Object.entries(VIDEO_JOINING))("names %s's style file after the one mentioned picture", (name) => {
     const model = joining.find((m) => m.name === name);
     const run = joinSlotFiles(model?.params ?? {}, { images: ["a"], style_images: ["s"] }, "Go.");
     expect(run.params).toEqual({ images: ["a", "s"] });
-    expect(run.prompt).toBe(`Go. Style references: ${second}. Apply their style to the result.`);
+    expect(run.prompt).toBe(`Go. Style references: {{ref:images:2}}. Apply their style to the result.`);
   });
 });
 

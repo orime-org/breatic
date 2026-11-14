@@ -235,7 +235,10 @@ function renderModel(model: PricedModelInfo): string {
     model.takesPrompt && !mediaToAt
       ? " Nothing wired in but a text node can be @'d here, so a ref can only @ words."
       : "";
-  const head = `- ${model.displayName} (${model.name}) (${price}up to ${model.seconds}s${cap}): ${model.what}${prompt}${unreachable}${also}${routing}${renderNeeds(model)}${wordsOnly}${renderStoryboard(model)}${renderDialogue(model)}${renderCameraCommands(model)}`;
+  const notHere = model.missingKeys === undefined
+    ? ""
+    : ` Not set up on this deployment: a run of it is refused until ${model.missingKeys.join(" or ")} is set.`;
+  const head = `- ${model.displayName} (${model.name}) (${price}up to ${model.seconds}s${cap}): ${model.what}${notHere}${prompt}${unreachable}${also}${routing}${renderNeeds(model)}${wordsOnly}${renderStoryboard(model)}${renderDialogue(model)}${renderCameraCommands(model)}`;
   const params = Object.entries(model.params).filter(([, spec]) => !spec.fromStoryboard).map(([name, spec]) => {
     // Shape and cap belong to the parameter, so they are stated whatever else
     // it says about itself -- including for a slot, where together they are

@@ -9,12 +9,12 @@ import { readTimelineDocument } from "../document.js";
 const SETTINGS = { width: 2560, height: 1440, fps: { num: 30000, den: 1001 } };
 
 describe("Timeline content seeds", () => {
-  it("encodes complete V1 content using the creation settings supplied by the service", () => {
+  it("encodes complete version 2 content using the creation settings supplied by the service (#1502 design §5)", () => {
     const document = new Y.Doc();
     try {
       Y.applyUpdate(document, encodeInitialSpaceContent("timeline", SETTINGS));
       expect(readTimelineDocument(document)).toEqual({
-        schemaVersion: 1,
+        schemaVersion: 2,
         settings: SETTINGS,
         tracks: { "visual-1": { id: "visual-1", kind: "visual", order: 0 } },
         clips: {},

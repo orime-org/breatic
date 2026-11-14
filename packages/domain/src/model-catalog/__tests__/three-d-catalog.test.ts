@@ -33,15 +33,6 @@ const FORCES = [
   },
 ];
 
-/** The rigging step every entry declares (inner#1692, design 6.1). */
-const RIG_STEP = {
-  endpoint: "tripo3d/rig",
-  at: "after",
-  for_param: "rig_skeleton",
-  optional: true,
-  pricing: { base_price: 300_000, formula: "", discount_rate: 100 },
-};
-
 /** Each entry's sources and its default generation price in US cents (Standard texture with PBR). */
 const DEFAULT_RUNS: readonly { name: string; params: Record<string, unknown>; cents: number }[] = [
   { name: T23D, params: {}, cents: 24 },
@@ -78,7 +69,7 @@ describe("the 3D model catalog", () => {
     expect(stale).toEqual([]);
   });
 
-  it("gives each entry its mode, variant and WaveSpeed endpoint", () => {
+  it("gives each entry its mode and variant", () => {
     expect(
       [T23D, I23D, MULTIVIEW].map((name) => {
         const m = declared(name);
@@ -87,18 +78,16 @@ describe("the 3D model catalog", () => {
           display_name: m.display_name,
           mode: m.mode,
           variant: m.variant,
-          endpoint: m.providers?.find((p) => p.name === "wavespeed")?.model_id,
         };
       }),
     ).toEqual([
-      { name: T23D, display_name: "Tripo H3.1", mode: "t23d", variant: undefined, endpoint: "tripo3d/h3.1/text-to-3d" },
-      { name: I23D, display_name: "Tripo H3.1", mode: "i23d", variant: "Single image", endpoint: "tripo3d/h3.1/image-to-3d" },
+      { name: T23D, display_name: "Tripo H3.1", mode: "t23d", variant: undefined },
+      { name: I23D, display_name: "Tripo H3.1", mode: "i23d", variant: "Single image" },
       {
         name: MULTIVIEW,
         display_name: "Tripo H3.1",
         mode: "i23d",
         variant: "Multi-view",
-        endpoint: "tripo3d/h3.1/multiview-to-3d",
       },
     ]);
   });
@@ -182,17 +171,10 @@ describe("rigging a generated 3D model (inner#1692)", () => {
     }
   });
 
-  it("declares exactly one extra step on every entry: the optional rig after generation", () => {
-    for (const name of [T23D, I23D, MULTIVIEW]) {
-      expect(declared(name).extra_steps, name).toEqual([RIG_STEP]);
-    }
-  });
-
-  it("ships the rig toggle and the optional rig step to the panel intact", () => {
+  it("ships the rig toggle to the panel intact", () => {
     const wire = sanitizeModelCatalog(JSON.parse(JSON.stringify(getModelCatalog())));
     expect(wire.three_d).toHaveLength(3);
     for (const entry of wire.three_d) {
-      expect(entry.extra_steps, entry.name).toEqual([RIG_STEP]);
       expect(entry.params.rig_skeleton, entry.name).toMatchObject({ default: false, values: [true, false], fill: "panel" });
     }
   });

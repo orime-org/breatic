@@ -43,6 +43,8 @@ export type RunEntrance =
       timeZone?: string;
       space: ChatSpaceContext;
       modelId?: string;
+      /** The upstream that served the paused segment, which the resumed one stays on (inner#1743). */
+      upstream?: string;
       locale: string;
     };
 
@@ -266,7 +268,7 @@ async function runIt(start: RunStart, open: (running: boolean) => void): Promise
     const started =
       entrance.kind === "card"
         ? runWithLocale(entrance.locale, () =>
-          agent.answer(entrance.toolCallId, entrance.output, entrance.turnIndex, stop.signal, entrance.timeZone, entrance.space, entrance.modelId, hooks),
+          agent.answer(entrance.toolCallId, entrance.output, entrance.turnIndex, stop.signal, entrance.timeZone, entrance.space, entrance.modelId, entrance.upstream, hooks),
         )
         : runWithLocale(opening!.locale ?? "en", async () =>
           agent.chat(

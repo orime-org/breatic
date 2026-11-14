@@ -5,7 +5,7 @@
  * Sending what the backend produced to R2 (#181, lanes ② and ③).
  *
  * A generation leaves its output in one of two places: in our own process, as
- * a buffer a synchronous transport answered with or ffmpeg wrote, or behind a
+ * the bytes of a file an upstream answered inline or ffmpeg wrote, or behind a
  * temporary link the provider handed back. Both end up in R2 the same way the
  * browser's files do — through the ingest Worker, which hashes what actually
  * landed — because the hash is what the ledger keys on and a second way of

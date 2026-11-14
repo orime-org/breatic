@@ -17,7 +17,6 @@
 import { blockToNode, inlineContentToNodes, nodeToBlock } from '@blocknote/core';
 import { Fragment, type Node as ProseMirrorNode, type Schema } from '@tiptap/pm/model';
 import type { EditorState, Transaction } from '@tiptap/pm/state';
-import { yUndoPluginKey } from 'y-prosemirror';
 
 import { aiCoverIn, BN_BLOCK } from '@web/spaces/document/document-ai-range';
 import { leaveFullscreenForWrite } from '@web/spaces/document/document-table-fullscreen';
@@ -32,7 +31,7 @@ import {
   keepWritable,
   writeRefusal,
   type ProposalAdmission,
-  type UndoBoundary,
+  undoOf,
 } from '@web/spaces/document/document-proposal-landing';
 import { LEGACY_CELL_LINE } from '@web/spaces/document/document-table-legacy';
 import { blocksMarkdown, type BlockLike } from '@web/spaces/document/document-table-markdown';
@@ -412,16 +411,6 @@ function flattened(blocks: readonly Read[]): Inline[] {
   return joined(out);
 }
 
-
-/**
- * The body's undo manager, as the undo plugin holds it.
- * @param handle - The document.
- * @returns It, or null for a body built without one.
- */
-function undoOf(handle: Pick<DocumentEditorHandle, 'editor'>): UndoBoundary | null {
-  const state = yUndoPluginKey.getState(handle.editor.prosemirrorState) as { undoManager?: UndoBoundary } | undefined;
-  return state?.undoManager ?? null;
-}
 
 /**
  * A code block's words for the request: `&`, `<` and backticks as
@@ -996,7 +985,7 @@ export function replaceAiAnswer(
   const { editor } = handle;
   // A table open full screen shows only its cells (#1427 §5.3).
   leaveFullscreenForWrite(editor, cover, cover.from);
-  asOneUndoStep(undoOf(handle), () => {
+  asOneUndoStep(undoOf(handle.editor), () => {
     editor.transact((tr) => {
       writeOver(tr, spanOf(tr.doc, cover), answer.preview);
     });
@@ -1028,7 +1017,7 @@ export function insertAiAnswer(
   const end = below.pos + below.node.nodeSize;
   // A table open full screen shows only its cells (#1427 §5.3).
   leaveFullscreenForWrite(handle.editor, { from: below.pos, to: end }, end);
-  asOneUndoStep(undoOf(handle), () => {
+  asOneUndoStep(undoOf(handle.editor), () => {
     handle.editor.insertBlocks(blocks as never, blockId, 'after');
   });
   return written(answer);

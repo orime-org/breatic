@@ -38,21 +38,14 @@ describe("planCameraPreviews", () => {
       {
         model: "h3-t2v",
         key: "camera-previews/h3/pan-left.mp4",
-        body: { prompt: `${CAMERA_PREVIEW_SCENE} [Pan left]`, aspect_ratio: "16:9", duration: 5 },
+        input: { prompt: `${CAMERA_PREVIEW_SCENE} [Pan left]`, params: { aspect_ratio: "16:9", duration: 5 } },
       },
       {
         model: "h3-t2v",
         key: "camera-previews/h3/static-shot.mp4",
-        body: { prompt: `${CAMERA_PREVIEW_SCENE} [Static shot]`, aspect_ratio: "16:9", duration: 5 },
+        input: { prompt: `${CAMERA_PREVIEW_SCENE} [Static shot]`, params: { aspect_ratio: "16:9", duration: 5 } },
       },
     ]);
-  });
-
-  it("sends the scene under the field the entry names for its prompt", () => {
-    const named = { ...entry("h3-t2v", ["t2v"], COMMANDS), prompt_upstream: "text" } as FullModelEntry;
-    const [job] = planCameraPreviews([named]);
-    expect(job?.body.text).toBe(`${CAMERA_PREVIEW_SCENE} [Pan left]`);
-    expect(job?.body).not.toHaveProperty("prompt");
   });
 
   it("refuses commands no text-to-video entry can make, naming the key", () => {

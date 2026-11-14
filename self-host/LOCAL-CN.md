@@ -83,7 +83,7 @@ REDIS_COLLAB_URL=redis://redis:6379/3
 
 自带的 Nginx 拒收超过 1 MiB 的请求体（`docker/breatic-locations.conf` 的 `client_max_body_size 1m`），与 `config/limits.yaml` 的 `request_body_max_bytes` 是同一个上限，两处要一起改。
 
-供应商密钥必须替换为自己的有效值；不使用的密钥留空。配置 `OPENROUTER_API_KEY` 可以为未配置厂商直连密钥的文本模型提供调用入口，具体仍受模型可用性和账户额度限制。图像、视频等按 `config/models/<类型>/providers.yaml` 的 `api_key_env` 配置；例如 WaveSpeed 对应模型需要 `WAVESPEED_API_KEY`。
+供应商密钥必须替换为自己的有效值；不使用的密钥留空。配置 `OPENROUTER_API_KEY` 可以为未配置厂商直连密钥的文本模型提供调用入口，具体仍受模型可用性和账户额度限制。每家上游读的环境变量名写在 `config/provider/upstreams.yaml` 的 `key_env`；图像、视频等生成模型至少要配上它在 `config/provider/media/<类型>.yaml` 里列出的一家上游的密钥，例如 `WAVESPEED_API_KEY` 或 `FAL_KEY`。
 
 <a id="cloudflare"></a>
 ## 4. 正式部署 Cloudflare 上传服务
@@ -98,7 +98,7 @@ REDIS_COLLAB_URL=redis://redis:6379/3
 
 当前资产通过公开 URL 读取；Breatic 实例私有并不自动使 R2 文件私有。不要把需要私密访问控制的素材放入这套公开读取配置。
 
-一次请求装不下的大段文字（很长的粘贴文本节点、它的历史快照、带大附件的 Agent 消息）会作为临时传输文件上传到 `transfer/` 前缀下，由服务端用 S3 凭据读回。在 bucket 上加一条 R2 生命周期规则：前缀 `transfer/` 的对象 1 天后删除。使用自己的资产域名时，再加一条 Cloudflare WAF 自定义规则，拦掉路径以 `/transfer/` 开头的请求；`r2.dev` 地址配不了这条规则。参考 [对象生命周期](https://developers.cloudflare.com/r2/buckets/object-lifecycles/)。
+一次请求装不下的大段文字（很长的粘贴文本节点、它的历史快照、带大附件的 Agent 消息、长 Document 的快照）会作为临时传输文件上传到 `transfer/` 前缀下，由服务端用 S3 凭据读回。在 bucket 上加一条 R2 生命周期规则：前缀 `transfer/` 的对象 1 天后删除。使用自己的资产域名时，再加一条 Cloudflare WAF 自定义规则，拦掉路径以 `/transfer/` 开头的请求；`r2.dev` 地址配不了这条规则。参考 [对象生命周期](https://developers.cloudflare.com/r2/buckets/object-lifecycles/)。
 
 Timeline 网页动画是可选功能，默认关闭，开启方法见 [packages/ingest/README.md](../packages/ingest/README.md#web-animation)。它的源包存放在私有的 `web-animation/` 前缀下，只能经 Worker 的签名预览路由读取。在自己的资产域名上开启时，再加一条 Cloudflare WAF 自定义规则，拦掉路径以 `/web-animation/` 开头的请求；`r2.dev` 地址配不了这条规则。
 

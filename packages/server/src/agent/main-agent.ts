@@ -12,10 +12,9 @@ import { randomUUID } from "node:crypto";
 import { parseCreditDecimal } from "@breatic/shared";
 
 import { createUIMessageStream, stepCountIs, wrapLanguageModel } from "ai";
-import { streamTextRetry } from "@breatic/domain";
+import { provider, streamTextRetry } from "@breatic/domain";
 import type { ModelMessage, Tool, ToolSet, UIMessage, UIMessageChunk, UIMessageStreamWriter } from "ai";
-
-import { callOptionsFor, getModel, resolveProvider, systemFor } from "@breatic/domain";
+import type { PreparedCall } from "@breatic/provider";
 import {
   buildAgentConfig,
   finalizeTurn,
@@ -49,9 +48,9 @@ import * as conversationService from "@server/modules/conversation/conversation.
 import { foldIfTooLong } from "@server/agent/turn-fold.js";
 import { knownTokensAtStart, requestTokens } from "@server/agent/request-size.js";
 import type { Assembly, FoldResult, FoldTrigger, TurnIdentity } from "@server/agent/turn-fold.js";
-import { readContextOverflow, unrecognised400, type ContextOverflow } from "@server/agent/context-overflow.js";
 import { claimFirstMilestone, currentConsent, getContext, serverAnalyticsWanted, trackServerEvent } from "@breatic/core";
 import { logger } from "@breatic/core";
+import { readContextOverflow, unrecognised400, type ContextOverflow } from "@breatic/provider";
 import { lastFullSnapshotKey, pictureFactsOfRows, prefixHash, replayRows, stripThinking } from "@server/agent/history-replay.js";
 import type { ReplyForModel, UserForModel } from "@server/agent/history-replay.js";
 import { endingNote } from "@server/agent/model-messages.js";
@@ -225,7 +224,7 @@ export class MainAgent {
       closedAsks,
     };
     await hooks.beforeStream?.(turnIndex);
-    return this.runStream(opening, turnIndex, title, openDocumentOf(space), signal, modelId, hooks);
+    return this.runStream(opening, turnIndex, title, openDocumentOf(space), signal, modelId, undefined, hooks);
   }
 
   /**
@@ -244,6 +243,8 @@ export class MainAgent {
    * @param timeZone - The zone the user's browser reported, if any.
    * @param space - The project's Spaces and the one the user has open.
    * @param modelId - The model the turn started on, as the route resolved it (#1363).
+   * @param upstream - The upstream that served the paused segment, which the
+   *   resumed one stays on so the turn's thinking reaches the same backend.
    * @param hooks - What the run lends the turn (inner#1717).
    * @returns The segment, as the SDK's own message chunks.
    */
@@ -255,6 +256,7 @@ export class MainAgent {
     timeZone?: string,
     space: ChatSpaceContext = {},
     modelId?: string,
+    upstream?: string,
     hooks: TurnHooks = {},
   ): Promise<ReadableStream<UIMessageChunk>> {
     const opening: Opening = {
@@ -265,7 +267,7 @@ export class MainAgent {
       output,
     };
     await hooks.beforeStream?.(turnIndex);
-    return this.runStream(opening, turnIndex, null, openDocumentOf(space), signal, modelId, hooks);
+    return this.runStream(opening, turnIndex, null, openDocumentOf(space), signal, modelId, upstream, hooks);
   }
 
   /**
@@ -310,6 +312,7 @@ export class MainAgent {
    * @param signal - Raised when the user stops the run, the conversation is
    *   deleted or the server shuts down.
    * @param requestedModel - The model the route resolved for this turn (#1363).
+   * @param resumeOn - The upstream a resumed segment stays on.
    * @param hooks - What the run lends the turn (inner#1717).
    * @returns The turn's chunks, in the SDK's own protocol.
    */
@@ -320,6 +323,7 @@ export class MainAgent {
     openDocument: OpenDocument | null,
     signal?: AbortSignal,
     requestedModel?: string,
+    resumeOn?: string,
     hooks: TurnHooks = {},
   ): ReadableStream<UIMessageChunk> {
     const { userId, conversationId, projectId } = this.ctx;
@@ -640,8 +644,10 @@ export class MainAgent {
         messages,
         prefixHash: prefixHash(sent.agentConfig, ahead),
         // The model this turn started on, which a segment resumed by an
-        // answer to its card runs on too (#1363).
+        // answer to its card runs on too (#1363), and the upstream that
+        // served it, which the resumed segment stays on (inner#1743).
         modelId: sent.agentConfig.modelId,
+        ...(calls?.served() === undefined ? {} : { servedUpstream: calls.served() }),
         steps: keptSteps,
         ...(pictureFacts.length === 0 ? {} : { pictures: pictureFacts }),
         countCoverage: {
@@ -903,18 +909,21 @@ export class MainAgent {
       // which is also where a saved picture is charged.
       const studioId = await assetService.resolveOwnerStudioId(projectId);
       turnStudioId = studioId;
-      const watch = watchModelCalls(usage, {
-        model: agentConfig.modelId,
-        description: "Agent chat",
-        cacheTtl: agentCfg.prompt_cache_ttl,
-      });
+      // Chat is the one call site that asks for reasoning: it plans,
+      // searches and decides between tools, and shows its working. It is
+      // also the one whose prefix repeats -- every step of a turn and every
+      // later turn resends it -- so it is the one that asks for caching.
+      const prepared = provider().llm.prepare(
+        agentConfig.modelId,
+        { thinking: true, cache: agentCfg.prompt_cache_ttl, session: conversationId },
+        resumeOn === undefined ? undefined : { mode: "upstream", upstream: resumeOn },
+      );
+      const watch = watchModelCalls(usage, { model: agentConfig.modelId, description: "Agent chat" }, prepared.pendingCosts);
       calls = watch;
-      const mainModel = getModel(agentConfig.modelId);
-      if (typeof mainModel === "string") throw new TypeError("The main agent requires an instantiated language model.");
 
       let messages = sent.messages;
       for (;;) {
-        const outcome = await streamOnce(writer, { messages, mainModel, watch, studioId });
+        const outcome = await streamOnce(writer, { messages, prepared, watch, studioId });
         if (outcome === undefined) return;
         // What the user sent during the last step: the same reply goes on from
         // the request that step sent, as the SDK goes on to its next step, so
@@ -966,7 +975,7 @@ export class MainAgent {
      * @param writer - The stream the turn is written to.
      * @param run - What this stream starts from.
      * @param run.messages - The messages it starts from.
-     * @param run.mainModel - The model.
+     * @param run.prepared - The model, as provider prepared it for the turn.
      * @param run.watch - The turn's recorder of model calls.
      * @param run.studioId - The studio whose material a proposal may name.
      * @returns The overflow that cut this stream short, CARRY_ON when what the
@@ -977,12 +986,12 @@ export class MainAgent {
       writer: UIMessageStreamWriter,
       run: {
         messages: ModelMessage[];
-        mainModel: Exclude<ReturnType<typeof getModel>, string>;
+        prepared: PreparedCall;
         watch: ModelCallWatch;
         studioId: string;
       },
     ): Promise<{ error: unknown; overflow: ContextOverflow } | typeof CARRY_ON | undefined> => {
-      const { watch, studioId } = run;
+      const { prepared, watch, studioId } = run;
       // Whether this stream ended its last step with nothing left to run,
       // under the step ceiling, so what the user sent meanwhile is read in
       // one more stream of the same reply instead of waiting for the next run.
@@ -1016,17 +1025,9 @@ export class MainAgent {
         }) as never;
       };
       const result = streamTextRetry({
-        model: wrapLanguageModel({ model: run.mainModel, middleware: pictureMiddleware }),
-        // Chat is the one call site that asks for reasoning: it plans,
-        // searches and decides between tools, and shows its working. It is
-        // also the one whose prefix repeats -- every step of a turn and every
-        // later turn resends it -- so it is the one that asks for caching.
-        ...callOptionsFor(modelId, {
-          thinking: true,
-          cache: agentCfg.prompt_cache_ttl,
-          session: conversationId,
-        }),
-        system: systemFor(modelId, sent!.agentConfig.instructions, agentCfg.prompt_cache_ttl),
+        model: wrapLanguageModel({ model: prepared.model, middleware: pictureMiddleware }),
+        ...prepared.options,
+        system: prepared.system(sent!.agentConfig.instructions),
         messages: run.messages,
         prepareStep: async ({ messages: stepMessages }) => {
           signal?.throwIfAborted();
@@ -1034,7 +1035,7 @@ export class MainAgent {
           // Keep its omissions for this run; raw response steps remain separate
           // so the next turn can reconstruct all original picture facts.
           let logical = stepMessages;
-          let instructions: ReturnType<typeof systemFor> | undefined;
+          let instructions: ReturnType<PreparedCall["system"]> | undefined;
           // Checked against the provider's count for this turn's previous call
           // (the first call was checked before the stream); a fold voids it
           // until the next call reports, so two folds always have a call
@@ -1051,7 +1052,7 @@ export class MainAgent {
               prefixChangedDuringTurn = true;
               const next = await reassemble();
               logical = carriedOn(next);
-              instructions = systemFor(modelId, next.agentConfig.instructions, agentCfg.prompt_cache_ttl);
+              instructions = prepared.system(next.agentConfig.instructions);
             }
           }
           // What the user sent meanwhile goes at the end of this step's request,
@@ -1117,9 +1118,7 @@ export class MainAgent {
         // measured rather than inferred from what came after it -- the gap
         // between a stretch ending and the next part starting is a tool call
         // and a round trip, which is not thinking.
-        includeRawChunks: watch.streamOptions.includeRawChunks,
         onChunk: ({ chunk }) => {
-          watch.streamOptions.onChunk({ chunk });
           if (chunk.type === "reasoning-start") thinkingOpenedAt = Date.now();
           else if (chunk.type === "reasoning-end" && thinkingOpenedAt !== undefined) {
             thoughtForMs += Date.now() - thinkingOpenedAt;
@@ -1527,8 +1526,8 @@ export class MainAgent {
             // recorded as soon as the turn's usage rows are in, before the
             // reply is saved.
             bill: async () => {
-              // An OpenRouter call whose cost is not in hand is looked up and
-              // charged later, under a key of its own.
+              // A call whose cost is not in hand is looked up and charged
+              // later, under a key of its own.
               await calls?.handOff().catch((err: unknown) =>
                 logger.error({ err, userId, conversationId, turnIndex }, "usage_lookup_enqueue_failed"),
               );
@@ -1550,7 +1549,7 @@ export class MainAgent {
                   amount: creditsUsed,
                   description: "Agent chat",
                   model: modelId,
-                  provider: resolveProvider(modelId),
+                  provider: calls?.served(),
                 },
               );
               if (outcome && parseCreditDecimal(outcome.shortfall) > 0n) {

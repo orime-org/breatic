@@ -31,7 +31,6 @@ vi.mock("@breatic/core", () => ({
 vi.mock("@breatic/domain", () => ({
   taskService: {},
   nodeHistoryService: {},
-  getModel: vi.fn(),
   buildToolSet: vi.fn(),
   extractPromptText: vi.fn(),
 }));

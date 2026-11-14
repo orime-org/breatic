@@ -57,6 +57,7 @@ import { toUiMessages } from "@server/modules/conversation/message-part-mapping.
 import { AppError, getRedis, logger, getAgentConfig, NotFoundError, ValidationError } from "@breatic/core";
 import { attachmentSection, getActiveLocale, messageLength, referenceCount, t } from "@breatic/shared";
 import type { ChatAttachedChip, ChatPendingItem, ChatSpaceContext, SpaceRequestAnswer } from "@breatic/shared";
+import { assertLlmServable } from "@server/modules/task/model-servable.js";
 
 /**
  * Refuse a message whose words, attachments or Spaces are past their limits.
@@ -261,10 +262,13 @@ chat.post("/message", acceptTransferBody("chat_message"), validate("json", chatM
   // refuse a request after the card's answer is already gone (#1363). A
   // resumed turn runs on the model it started on.
   const resumed = answer?.toolCallId ?? sharedSpaces?.toolCallId;
-  const modelId =
+  const { modelId, upstream } =
     resumed === undefined
-      ? await conversationService.modelForMessage(conversation, user.id, body.model)
+      ? { modelId: await conversationService.modelForMessage(conversation, user.id, body.model), upstream: undefined }
       : await conversationService.modelForResume(conversation, user.id, resumed);
+  // A deployment with no upstream for the model, or none for the upstream a resumed turn stays on, refuses before
+  // the card's answer is taken, saying what it is missing.
+  assertLlmServable(modelId, "call", upstream === undefined ? undefined : { mode: "upstream", upstream });
   const card =
     answer !== undefined
       ? { toolCallId: answer.toolCallId, take: () => conversationService.answerAsk(conversation.id, answer, { userId: user.id, projectId: body.project_id }) }
@@ -319,6 +323,7 @@ chat.post("/message", acceptTransferBody("chat_message"), validate("json", chatM
           ...(body.time_zone === undefined ? {} : { timeZone: body.time_zone }),
           space: body,
           ...(modelId === undefined ? {} : { modelId }),
+          ...(upstream === undefined ? {} : { upstream }),
           locale: getActiveLocale(),
         },
       }).opened;

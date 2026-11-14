@@ -147,7 +147,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       await opts.steps.persist?.();
       return [];
     },
-    getModel: () =>
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider(() =>
       modelProducing(() => {
         thisCase.modelCalls += 1;
         const later = thisCase.laterParts as ModelStreamPart[] | undefined;
@@ -155,7 +155,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
         return thisCase.parts as ModelStreamPart[];
       },
       undefined,
-      thisCase.stopOnChunk !== undefined),
+      thisCase.stopOnChunk !== undefined)),
   };
 });
 

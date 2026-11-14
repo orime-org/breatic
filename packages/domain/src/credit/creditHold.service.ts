@@ -101,6 +101,17 @@ export async function releaseHold(referenceId: string): Promise<void> {
 }
 
 /**
+ * Keep a task's hold alive while its cost is looked up after delivery (inner#1743): moved to a later expiry, never an
+ * earlier one; a released hold stays released.
+ * @param referenceId - Its key, the task id.
+ * @param until - The new expiry.
+ * @throws {Error} When the database fails.
+ */
+export async function extendHold(referenceId: string, until: Date): Promise<void> {
+  await creditHoldRepo.extendHold(referenceId, until);
+}
+
+/**
  * A Studio's designated lot balance less debt, its counted holds, and what is left, as of
  * one instant.
  * @param studioId - The studio.

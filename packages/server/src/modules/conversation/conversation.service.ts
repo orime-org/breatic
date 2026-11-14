@@ -661,13 +661,20 @@ export async function modelForQueued(conversation: ConversationEntity, userId: s
  * The model a turn resumed by an answer to its card runs on: the one the turn
  * started on, while the deployment still lists it, else the conversation's
  * own by the usual order, written into the conversation. Never a refusal: the
- * answer must be able to resume the turn.
+ * answer must be able to resume the turn. On the model it started on, the
+ * resumed segment also stays on the upstream that served the paused one.
  * @param conversation - The conversation, already checked writable.
  * @param userId - The user.
  * @param toolCallId - The call being answered.
- * @returns The model id.
+ * @returns The model id, and the upstream to stay on when there is one.
  */
-export async function modelForResume(conversation: ConversationEntity, userId: string, toolCallId: string): Promise<string> {
-  const started = listedModel((await messageRepo.getReplyModelId(conversation.id, toolCallId)) ?? null);
-  return started?.id ?? modelForMessage(conversation, userId, undefined);
+export async function modelForResume(
+  conversation: ConversationEntity,
+  userId: string,
+  toolCallId: string,
+): Promise<{ modelId: string; upstream?: string }> {
+  const run = await messageRepo.getReplyRun(conversation.id, toolCallId);
+  const started = listedModel(run.modelId ?? null);
+  if (started === undefined) return { modelId: await modelForMessage(conversation, userId, undefined) };
+  return { modelId: started.id, ...(run.servedUpstream === undefined ? {} : { upstream: run.servedUpstream }) };
 }

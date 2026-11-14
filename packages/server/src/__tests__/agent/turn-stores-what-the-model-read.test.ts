@@ -101,13 +101,13 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       }
       return [];
     },
-    getModel: () =>
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider(() =>
       modelProducing(() => {
         thisCase.modelCalls += 1;
         const later = thisCase.laterParts as ModelStreamPart[] | undefined;
         if (thisCase.modelCalls > 1 && later !== undefined) return later;
         return thisCase.parts as ModelStreamPart[];
-      }),
+      })),
   };
 });
 

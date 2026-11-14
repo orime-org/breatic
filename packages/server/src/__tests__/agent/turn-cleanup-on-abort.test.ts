@@ -98,8 +98,7 @@ vi.mock("@breatic/domain", async () => {
       tools: {},
     }),
     creditLotService: { chargeOnce },
-    resolveProvider: () => "test",
-    getModel: () => new MockLanguageModelV4({}),
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider(() => new MockLanguageModelV4({})),
   };
 });
 

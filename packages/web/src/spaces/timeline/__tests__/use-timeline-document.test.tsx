@@ -27,12 +27,12 @@ const CLIP: TimelineVideoClip = {
   kind: 'video', trackId: 'visual-1', sourceId: SOURCE.id,
   startFrame: 0, sourceInFrame: 0, durationFrames: 48,
   rate: { num: 1, den: 1 }, gain: 1, mute: false,
-  transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+  transform: { frameX: 0, frameY: 0, scaleX: 1, scaleY: 1, rotation: 0 },
 };
 /** No damaged records. */
 const NONE = { clips: [] };
 const EMPTY: TimelineDocumentV1 = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   settings: SETTINGS,
   tracks: { 'visual-1': { id: 'visual-1', kind: 'visual', order: 0 } },
   clips: {}, sources: {}, operationReceipts: {},
@@ -138,7 +138,7 @@ describe('useTimelineDocument content ownership', () => {
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
   });
 
-  it.each([0, 2, '1', null])('preserves unknown version %s and its existing root set', (version) => {
+  it.each([0, 3, '1', '2', null])('preserves unknown version %s and its existing root set', (version) => {
     const doc = makeDoc();
     doc.getMap('timeline').set('schemaVersion', version);
     const before = Y.encodeStateAsUpdate(doc);
@@ -258,11 +258,36 @@ describe('useTimelineDocument content ownership', () => {
     expect(result.current.error).toBe(null);
   });
 
+  it('reads the version-2 seed (breatic#1502 design §5)', () => {
+    const doc = seededDoc();
+    expect(doc.getMap('timeline').get('schemaVersion')).toBe(2);
+    const { result } = renderHook(() => useTimelineDocument(doc, true));
+    expect(result.current).toEqual({ document: EMPTY, damaged: NONE, error: null });
+  });
+
+  it('reads a version-1 document and projects its pixel-format clip as frame fractions of the stored settings, writing nothing (breatic#1502 design §5)', () => {
+    const doc = makeDoc();
+    initializeTimelineDocument(doc, { width: 1080, height: 1920, fps: SETTINGS.fps });
+    doc.transact(() => {
+      doc.getMap('timeline').set('schemaVersion', 1);
+      doc.getMap('sources').set(SOURCE.id, SOURCE);
+      const record = new Y.Map<unknown>();
+      doc.getMap('clips').set(CLIP.id, record);
+      for (const [key, value] of Object.entries({ ...CLIP, transform: { x: 270, y: -480, scaleX: 0.5, scaleY: 0.5, rotation: 0 } })) record.set(key, value);
+    }, 'provider');
+    const before = Y.encodeStateAsUpdate(doc);
+    const { result } = renderHook(() => useTimelineDocument(doc, true));
+    expect(result.current.error).toBe(null);
+    expect(result.current.document?.settings).toEqual({ width: 1080, height: 1920, fps: SETTINGS.fps });
+    expect(result.current.document?.clips[CLIP.id]).toEqual({ ...CLIP, transform: { frameX: 0.25, frameY: -0.25, scaleX: 0.5, scaleY: 0.5, rotation: 0 } });
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+  });
+
   it('clears an existing projection when a later update makes its schema invalid', () => {
     const doc = seededDoc();
     const { result } = renderHook(() => useTimelineDocument(doc, true));
     expect(result.current).toEqual({ document: EMPTY, damaged: NONE, error: null });
-    act(() => doc.getMap('timeline').set('schemaVersion', 2));
+    act(() => doc.getMap('timeline').set('schemaVersion', 3));
     const before = Y.encodeStateAsUpdate(doc);
     expect(result.current.document).toBe(null);
     expect(result.current.error).toBeInstanceOf(Error);
@@ -291,7 +316,7 @@ describe('useTimelineDocument subscription lifecycle', () => {
     expect(result.current.document?.clips[CLIP.id]).toEqual(CLIP);
     rerender({ doc: second });
     expect(result.current).toEqual({ document: EMPTY, damaged: NONE, error: null });
-    act(() => first.getMap('timeline').set('schemaVersion', 2));
+    act(() => first.getMap('timeline').set('schemaVersion', 3));
     expect(result.current).toEqual({ document: EMPTY, damaged: NONE, error: null });
     act(() => addVideo(second));
     expect(result.current.document?.clips[CLIP.id]).toEqual(CLIP);

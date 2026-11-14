@@ -21,6 +21,18 @@ const script = vi.hoisted(() => ({
 /** Output tokens each prose call reports: enough that every call costs well above the smallest charge. */
 const SPENT = vi.hoisted(() => 200_000);
 
+/** What each call costs, as the test model reports it to provider: well above the smallest charge. */
+const CALL_USD = vi.hoisted(() => 1);
+
+/**
+ * A stream part as the test model sends it: a finish carries the call's cost, which provider reads from it.
+ * @param part - The part a case scripted.
+ * @returns The part, costed when it is a finish.
+ */
+const costed = vi.hoisted(() => (part: unknown): unknown =>
+  (part as { type?: unknown }).type === "finish" ? { ...(part as object), providerMetadata: { test: { costUsd: CALL_USD } } } : part,
+);
+
 /** Hooks into the reply's persist; pass-through by default. */
 const gate = vi.hoisted(() => ({
   persist: undefined as undefined | (() => Promise<void> | void),
@@ -28,12 +40,13 @@ const gate = vi.hoisted(() => ({
 
 vi.mock("@breatic/domain", async (importOriginal) => {
   const actual = await importOriginal<typeof DomainModule>();
+  const { assemblyProvider, fakeProvider } = await import("../helpers/fake-provider.js");
+  actual.initProvider(assemblyProvider());
   const { MockLanguageModelV4 } = await import("ai/test");
   const { saying, finishedSpending } = await import("../helpers/model-double.js");
   return {
     ...actual,
-    resolveProvider: () => "test",
-    getModel: () =>
+    provider: fakeProvider(() =>
       new MockLanguageModelV4({
         doStream: async (asked) => {
           const step = script.at[script.count++];
@@ -49,13 +62,13 @@ vi.mock("@breatic/domain", async (importOriginal) => {
               start(controller) {
                 // A call stopped while it was answering reports nothing, as a
                 // provider's aborted response does.
-                if (asked.abortSignal?.aborted !== true) for (const p of parts) controller.enqueue(p as never);
+                if (asked.abortSignal?.aborted !== true) for (const p of parts) controller.enqueue(costed(p) as never);
                 controller.close();
               },
             }),
           };
         },
-      }),
+      })),
   };
 });
 

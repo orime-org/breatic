@@ -23,17 +23,19 @@
  * word, and its card belongs beside that word.
  */
 
+import type { EditorView } from '@tiptap/pm/view';
 import * as React from 'react';
 
+import { commentsOn } from '@web/spaces/document/document-comment-extension';
+import { mediaRowById, mediaThreadPositions } from '@web/spaces/document/document-comment-media';
 import { threadRangesByThread } from '@web/spaces/document/document-comment-ranges';
 import { domElementOf } from '@web/spaces/document/document-editor-view';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
 
-/** The draft card's id and where it is aimed. */
-export interface DraftAnchor {
-  readonly id: string;
-  readonly from: number;
-}
+/** The draft card's id and where it is aimed: at words, or at a media block. */
+export type DraftAnchor =
+  | { readonly id: string; readonly from: number }
+  | { readonly id: string; readonly mediaBlockId: string };
 
 /** What the hook measured, and for which draft. */
 export interface CommentAnchors {
@@ -90,7 +92,13 @@ export function useCommentAnchors(
       const top = origin.getBoundingClientRect().top;
       const next = new Map<string, number>();
       const stale: string[] = [];
-      if (draft !== null) {
+      if (draft !== null && 'mediaBlockId' in draft) {
+        // Read off the body on every measure: text added above the block
+        // moves it without the draft changing.
+        const block = blockElement(view, draft.mediaBlockId);
+        if (block === null) stale.push(draft.id);
+        else next.set(draft.id, block.getBoundingClientRect().top - top);
+      } else if (draft !== null) {
         try {
           next.set(draft.id, view.coordsAtPos(draft.from).top - top);
         } catch {
@@ -101,14 +109,22 @@ export function useCommentAnchors(
       // One walk for every thread: this runs on each settle, and per-thread
       // it was one full walk of the document each.
       const ranges = threadRangesByThread(view.state.doc);
+      let onMedia: ReadonlyMap<string, { from: number; to: number }> | undefined;
       key
         .split(',')
         .filter((id) => id.length > 0)
         .forEach((id) => {
           const at = ranges.get(id)?.[0];
-          // Absent from the ranges means no words left; such a thread is
-          // not on the panel (A13).
-          if (at === undefined) return;
+          if (at === undefined) {
+            // No words: a comment on media stands level with its block's top;
+            // any other such thread is not on the panel (A13). The media
+            // threads are placed in one walk, the first time one is needed.
+            onMedia ??= mediaThreadPositions(view.state.doc, commentsOn(editor)?.threadStore.getThreads().values() ?? []);
+            const row = onMedia.get(id);
+            const block = row === undefined ? null : view.nodeDOM(row.from);
+            if (block instanceof HTMLElement) next.set(id, block.getBoundingClientRect().top - top);
+            return;
+          }
           try {
             next.set(id, view.coordsAtPos(at.from).top - top);
           } catch {
@@ -155,6 +171,18 @@ export function useCommentAnchors(
   }, [editor, key, column, draft]);
 
   return anchors;
+}
+
+/**
+ * The rendered row of a media block.
+ * @param view - The editor view.
+ * @param blockId - The block.
+ * @returns Its element, or null when the body holds no media block with that id.
+ */
+function blockElement(view: EditorView, blockId: string): HTMLElement | null {
+  const row = mediaRowById(view.state.doc, blockId);
+  const element = row === undefined ? null : view.nodeDOM(row.from);
+  return element instanceof HTMLElement ? element : null;
 }
 
 /**

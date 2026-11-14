@@ -144,7 +144,7 @@ describe("the element step's description", () => {
   it("is a public describe step; its send reads the image and asks the understand model, and nothing goes to the media upstream", async () => {
     const r = runner();
     const planned = expectState(
-      await r.plan("kling-elements", { prompt: "<<ref:elements:1>> walks", params: { elements: [imageUrl] } }, { mode: "default" }, {
+      await r.plan("kling-elements", { prompt: "{{ref:elements:1}} walks", params: { elements: [imageUrl] } }, { mode: "default" }, {
         idempotencyKey: "task-1",
         sourceKeys: { [imageUrl]: "sha-img" },
         clones: [],
@@ -169,7 +169,7 @@ describe("the element step's description", () => {
       return result("p-gen", "completed", ["https://out.example/v.mp4"]);
     });
     const planned = expectState(
-      await r.plan("kling-elements", { prompt: "<<ref:elements:1>> walks", params: { elements: [imageUrl] } }, { mode: "default" }, {
+      await r.plan("kling-elements", { prompt: "{{ref:elements:1}} walks", params: { elements: [imageUrl] } }, { mode: "default" }, {
         idempotencyKey: "task-1",
         sourceKeys: { [imageUrl]: "sha-img" },
         clones: [],
@@ -275,7 +275,7 @@ describe("cached elements", () => {
     wavespeed.answer(({ method }) => (method === "POST" ? accepted("p-gen") : result("p-gen", "processing")));
     const cached: MediaClone[] = [{ upstream: "wavespeed", kind: "element", sourceKey: "sha-img:Element 1", upstreamId: "el-cached" }];
     const planned = expectState(
-      await r.plan("kling-elements", { prompt: "<<ref:elements:1>> walks", params: { elements: [imageUrl] } }, { mode: "default" }, {
+      await r.plan("kling-elements", { prompt: "{{ref:elements:1}} walks", params: { elements: [imageUrl] } }, { mode: "default" }, {
         idempotencyKey: "task-1",
         sourceKeys: { [imageUrl]: "sha-img" },
         clones: cached,
@@ -421,7 +421,7 @@ describe("a describe step followed by a switch", () => {
       const r = runner(twoUpstreams(second));
       wavespeed.answer(() => ({ status: 503, body: {} }));
       const planned = expectState(
-        await r.plan("kling-elements", { prompt: "<<ref:elements:1>> walks", params: { elements: [imageUrl] } }, { mode: "default" }, {
+        await r.plan("kling-elements", { prompt: "{{ref:elements:1}} walks", params: { elements: [imageUrl] } }, { mode: "default" }, {
           idempotencyKey: "task-1",
           sourceKeys: { [imageUrl]: "sha-img" },
           clones: [],

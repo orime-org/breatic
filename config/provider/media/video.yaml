@@ -1499,7 +1499,7 @@ models:
           kind: formula
           base_price: 1100000
           formula: '{"total_price": $max([4, $min([$ceil(get_duration(audio)), 120])]) / 5 * base_price * (resolution = "480p" ? 1 : 2)}'
-          discount_rate: 100
+          discount_rate: 90
   sync-lipsync-3:
     upstreams:
       - upstream: wavespeed

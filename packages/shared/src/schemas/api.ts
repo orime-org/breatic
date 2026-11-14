@@ -14,6 +14,7 @@
 import { creditAmountFormatQuerySchema } from "@shared/credit-amount.js";
 
 import { z } from "zod";
+import { routeSchema } from "@shared/schemas/route.js";
 import {
   BILLING_PERIODS,
   SUBSCRIBABLE_MEMBERSHIP_TIERS,
@@ -224,9 +225,10 @@ export type GoogleAuthInput = z.infer<typeof googleAuthSchema>;
 const ATTACHED_CHIP_ID_MAX = 128;
 
 /**
- * One item attached to a chat message: a piece of the canvas the user added
- * to the agent, or a file picked with the attach button. The snapshot is taken
- * when it is attached; later edits to the canvas do not reach it.
+ * One item attached to a chat message: a piece of the canvas or of a Document
+ * the user added to the agent, or a file picked with the attach button. The
+ * snapshot is taken when it is attached; later edits to the Space do not
+ * reach it.
  */
 export const chatAttachedChipSchema = z.object({
   /** Made up for the item: from the picked node ids, or fresh for a file. */
@@ -234,7 +236,7 @@ export const chatAttachedChipSchema = z.object({
   type: z.enum(["canvas", "image", "video", "audio", "text"]),
   /** Display name for the chip; LLM context renders this as the section title. Same cap as an upload's file name. */
   name: z.string().max(255),
-  /** A canvas piece's `{ nodes, edges }`, or a file's `{ url }` or `{ text }`. */
+  /** A canvas piece's `{ nodes, edges }`; a file's `{ url }` or `{ text }`; a Document's text as `{ text }`, or its picture, video or audio as `{ url, name?, caption? }`. */
   data_snapshot: z.record(z.string(), z.unknown()),
 });
 export type ChatAttachedChip = z.infer<typeof chatAttachedChipSchema>;
@@ -521,6 +523,17 @@ export type SpaceRequestAnswer = z.infer<typeof spaceRequestAnswerSchema>;
 
 // ── Canvas ───────────────────────────────────────────────────────────
 
+/**
+ * Refuse a run's params that carry `route`: the worker reads the route the server wrote there from the request's
+ * own field, after checking, pricing and holding against it, so one a caller put there itself would skip all three.
+ * @param params - The run's params.
+ * @param ctx - The refinement context.
+ */
+function refuseRouteInParams(params: Readonly<Record<string, unknown>>, ctx: z.RefinementCtx): void {
+  if (!("route" in params)) return;
+  ctx.addIssue({ code: z.ZodIssueCode.custom, message: "a run's route is its own field, not a param", path: ["params", "route"], params: REQUEST_SHAPE_PARAMS });
+}
+
 export const taskCreateSchema = z
   .object({
     /** `tasks.task_type` is varchar(50). */
@@ -567,8 +580,11 @@ export const taskCreateSchema = z
      *     want from the node's task list.
      */
     mode: z.enum(["append", "overwrite"]),
+    /** How the run chooses its upstream; the deployment's weights when left out. Written into the task's params. */
+    route: routeSchema.optional(),
   })
   .superRefine((val, ctx) => {
+    refuseRouteInParams(val.params, ctx);
     if (val.mode === "overwrite" && !val.target_node_id) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -667,6 +683,54 @@ export const nodeHistorySnapshotSchema = z.object({
 export type NodeHistorySnapshotInput = z.infer<
   typeof nodeHistorySnapshotSchema
 >;
+
+/** The longest name a document snapshot may carry (inner#1129). */
+export const DOCUMENT_VERSION_NAME_MAX_CHARS = 100;
+
+/** A snapshot name as typed; blank reads as no name. */
+const documentVersionNameSchema = z
+  .string()
+  .max(DOCUMENT_VERSION_NAME_MAX_CHARS)
+  .transform((name) => name.trim());
+
+/**
+ * The body a snapshot keeps: the editor's ProseMirror JSON, comment marks and
+ * all, since those are where the comments stood when it was taken.
+ */
+const documentVersionContentSchema = z.object({ type: z.literal("doc") }).passthrough();
+
+/** The project and document a snapshot belongs to. */
+const documentVersionScope = {
+  project_id: z.string().uuid(),
+  space_id: z.string().uuid(),
+};
+
+/** `POST /documents/versions`. */
+export const documentVersionSaveSchema = z.object({
+  ...documentVersionScope,
+  name: documentVersionNameSchema.optional().transform((name) => (name ? name : undefined)),
+  content: documentVersionContentSchema,
+  schema_version: z.string().min(1).max(200),
+});
+export type DocumentVersionSaveInput = z.infer<typeof documentVersionSaveSchema>;
+
+/** `PATCH /documents/versions/:id`; null or blank clears the name. */
+export const documentVersionRenameSchema = z.object({
+  ...documentVersionScope,
+  name: documentVersionNameSchema.nullable().transform((name) => (name ? name : null)),
+});
+export type DocumentVersionRenameInput = z.infer<typeof documentVersionRenameSchema>;
+
+/** `GET /documents/versions`, one page at a time. */
+export const documentVersionListQuerySchema = z.object({
+  ...documentVersionScope,
+  cursor: z.string().max(512).optional(),
+});
+export type DocumentVersionListQuery = z.infer<typeof documentVersionListQuerySchema>;
+
+/** The scope every read, rename and delete of one snapshot names. */
+export const documentVersionScopeSchema = z.object(documentVersionScope);
+export type DocumentVersionScope = z.infer<typeof documentVersionScopeSchema>;
 
 /** A storage address a paste names: a stored object's public URL. */
 const pasteAddressSchema = z.string().url().max(2048);
@@ -1070,7 +1134,7 @@ export const sceneGenerationBodySchema = z.object({
   // its rule, said with its name when broken; the cap here only bounds work.
   image_asset_ids: z.array(z.string().uuid()).max(16).optional(),
   origin: z.enum(SCENE_GENERATION_ORIGINS),
-});
+}).superRefine((val, ctx) => refuseRouteInParams(val.params, ctx));
 
 /** A submission, as {@link sceneGenerationBodySchema} describes it. */
 export type SceneGenerationBody = z.infer<typeof sceneGenerationBodySchema>;

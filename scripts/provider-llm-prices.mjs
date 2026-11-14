@@ -48,7 +48,7 @@ function pinnedTo(tag, only) {
  * @param {ReadonlyMap<string, readonly { tag?: unknown; service_tier?: unknown; quantization?: unknown; pricing?: { prompt?: unknown; completion?: unknown } }[]>} endpoints - The endpoints OpenRouter lists, by OpenRouter's model id; a model it does not list is absent.
  * @param {ReadonlyMap<string, string>} ids - Our model id to the id OpenRouter lists it under.
  * @param {readonly string[]} quantizations - `openrouter_quantizations`, which `levels` narrows per model; an endpoint naming none is `unknown`.
- * @param {(quantizations: readonly string[], statesQuantization: boolean) => readonly string[]} levels - A model's levels, `openRouterLevels` of the provider's schema.
+ * @param {(quantizations: readonly string[], statesQuantization: boolean) => readonly string[]} levels - A model's levels, `openRouterLevels` of the provider's OpenRouter adapter.
  * @param {Readonly<Record<string, { only: readonly string[]; allow_fallbacks: boolean }>>} [backends] - `openrouter_backends` as llm.yaml writes it: by our model id, the providers it is pinned to.
  * @returns {{ prices: Record<string, { input_cache_miss_per_mtok: number; output_per_mtok: number }>; statesQuantization: string[]; problems: string[] }} The prices by our model id, the models that state a level in the order of `ids`, and a problem for each model given no price.
  */
@@ -87,7 +87,7 @@ export function openRouterPrices(endpoints, ids, quantizations, levels, backends
  * The direct prices whose off-peak holidays run out: a model whose price in effect at `now`, or one taking effect later,
  * has an off-peak discount whose holidays list no date in the current UTC year or after it, or, from 1 December, none
  * in the next year or after it, since the vendor's holidays are announced a year at a time, by the end of the year
- * before. The dates belong in the migration, which rewrites llm.yaml's `prices`.
+ * before. The dates are written by hand in llm.yaml.
  * @param {Readonly<Record<string, readonly { from?: string; off_peak?: { holidays?: readonly string[] } }[]>>} prices - `prices` as llm.yaml writes it, by our model id.
  * @param {number} now - The run's moment, in epoch ms.
  * @returns {string[]} A problem for each such model.
@@ -99,7 +99,7 @@ export function offPeakHolidayProblems(prices, now) {
     .filter(([, entries]) => entries
       .filter((e, i) => i + 1 === entries.length || Date.parse(entries[i + 1].from) > now)
       .some((e) => e.off_peak !== undefined && !(e.off_peak.holidays ?? []).some((d) => Number(d.slice(0, 4)) >= year)))
-    .map(([model]) => `${model}: off-peak holidays list no date in ${year} (add them to the holidays of deepseekOffPeak in scripts/provider-config-migration.ts and rerun it)`);
+    .map(([model]) => `${model}: off-peak holidays list no date in ${year} (add them to its off_peak.holidays in config/provider/llm.yaml)`);
 }
 
 /**
@@ -126,7 +126,7 @@ export function directPriceChangeNotices(prices, now) {
  * them.
  * @param {string} text - The file as it is.
  * @param {(raw: unknown) => { prices: Record<string, readonly { from?: string; off_peak?: { holidays?: readonly string[] } }[]>; vendor_ids: Record<string, Record<string, string>>; openrouter_quantizations: readonly string[]; openrouter_backends: Record<string, { only: readonly string[]; allow_fallbacks: boolean }> }} parse - Reads the file's values as createProvider does.
- * @param {(quantizations: readonly string[], statesQuantization: boolean) => readonly string[]} levels - A model's levels, `openRouterLevels` of the provider's schema.
+ * @param {(quantizations: readonly string[], statesQuantization: boolean) => readonly string[]} levels - A model's levels, `openRouterLevels` of the provider's OpenRouter adapter.
  * @param {(id: string) => Promise<readonly object[] | undefined>} fetchEndpoints - OpenRouter's endpoints of one model by its id there; undefined when it lists none (404).
  * @param {number} [now] - The run's moment, in epoch ms: when OpenRouter's prices are read, and for `offPeakHolidayProblems` and `directPriceChangeNotices`.
  * @returns {Promise<{ text: string; priced: number; asked: number; problems: string[]; notices: string[] }>} The file's new text, how many models were priced of how many asked, a problem for each model given no price or whose off-peak holidays run out, and a notice for each model whose direct price changes later.

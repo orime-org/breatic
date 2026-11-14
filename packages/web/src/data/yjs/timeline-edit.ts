@@ -3,7 +3,7 @@
 
 import { z } from 'zod';
 import {
-  TIMELINE_MAIN_TRACK_ID, TimelineOperationReceiptSchema, TimelineRateSchema, TimelineUploadClipSchema, TimelineVideoClipSchema, TimelineVideoSourceSchema,
+  TIMELINE_FRAME_PRESETS, TIMELINE_FRAME_PRESET_KEYS, TIMELINE_LAYER_TRANSFORM_LIMITS, TIMELINE_MAIN_TRACK_ID, TimelineOperationReceiptSchema, TimelineRateSchema, TimelineUploadClipSchema, TimelineVideoClipSchema, TimelineVideoSourceSchema,
   type TimelineClip, type TimelineDocumentV1, type TimelineOperationReceipt, type TimelineTrack, type TimelineVideoSource,
   type TimelineWebAnimationClip, type TimelineWebAnimationContentBinding, type TimelineWebResolution,
 } from '@breatic/shared';
@@ -27,9 +27,19 @@ const webExtent = z.union([
 const webCopy = { clipId: identity, startFrame: safeFrame, newTrackId: trackIdentity, extent: webExtent };
 const webCopySchema = z.object(webCopy).strict();
 
+const { scale, rotation } = TIMELINE_LAYER_TRANSFORM_LIMITS;
+// Scale and rotation bounds are the command's data boundary; frame offsets are bounded in planning.
+const transformSchema = z.object({
+  frameX: z.number(),
+  frameY: z.number(),
+  scaleX: z.number().min(scale.min).max(scale.max),
+  scaleY: z.number().min(scale.min).max(scale.max),
+  rotation: z.number().min(rotation.min).max(rotation.max),
+}).strict();
+
 /** The rate, gain, mute and transform every newly placed clip starts with. */
 export const TIMELINE_DEFAULT_PLACEMENT = {
-  rate: { num: 1, den: 1 }, gain: 1, mute: false, transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+  rate: { num: 1, den: 1 }, gain: 1, mute: false, transform: { frameX: 0, frameY: 0, scaleX: 1, scaleY: 1, rotation: 0 },
 } as const;
 
 /** The editing user's local placement switches, carried with each command. */
@@ -61,7 +71,9 @@ export const TimelineEditCommandSchema = z.discriminatedUnion('operation', [
   z.object({ operation: z.literal('split'), parameters: z.object({ clipId: identity, frame: safeFrame, newClipId: identity }).strict(), placement }).strict(),
   z.object({ operation: z.literal('duplicate'), parameters: z.object({ clipId: identity, newClipId: identity }).strict(), placement }).strict(),
   z.object({ operation: z.literal('delete'), parameters: z.object({ clipId: identity }).strict(), placement }).strict(),
+  z.object({ operation: z.literal('set_transform'), parameters: z.object({ clipId: identity, transform: transformSchema }).strict(), placement }).strict(),
   z.object({ operation: z.literal('delete_track'), parameters: z.object({ trackId: trackIdentity }).strict(), placement }).strict(),
+  z.object({ operation: z.literal('set_frame'), parameters: z.object({ preset: z.enum(TIMELINE_FRAME_PRESET_KEYS) }).strict(), placement }).strict(),
   z.object({
     operation: z.literal('add_web_animation'),
     parameters: z.object({
@@ -322,6 +334,23 @@ function planOrThrow(current: TimelineDocumentV1, command: TimelineEditCommand, 
     if (!timelineClipIntervalValid(placed)) throw new Refused('invalid_range');
     clips[clipId] = placed;
     created.push(clipId);
+    return done();
+  }
+
+  if (command.operation === 'set_frame') {
+    const size = TIMELINE_FRAME_PRESETS[command.parameters.preset];
+    const plan = done();
+    if (size.width === current.settings.width && size.height === current.settings.height) return plan;
+    return { ...plan, next: { ...plan.next, settings: { ...current.settings, width: size.width, height: size.height } } };
+  }
+
+  if (command.operation === 'set_transform') {
+    const { clipId, transform } = command.parameters;
+    const clip = clips[clipId];
+    if (clip === undefined) throw new Refused('target_missing');
+    const reach = TIMELINE_LAYER_TRANSFORM_LIMITS.offsetCanvasMultiple;
+    if (Math.abs(transform.frameX) > reach || Math.abs(transform.frameY) > reach) throw new Refused('invalid_range');
+    clips[clipId] = { ...clip, transform };
     return done();
   }
 

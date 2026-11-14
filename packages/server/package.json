@@ -17,6 +17,7 @@
   "dependencies": {
     "@breatic/core": "workspace:*",
     "@breatic/domain": "workspace:*",
+    "@breatic/provider": "workspace:*",
     "@breatic/shared": "workspace:*",
     "@hono/node-server": "^2.1.0",
     "@hono/zod-validator": "^0.7.6",

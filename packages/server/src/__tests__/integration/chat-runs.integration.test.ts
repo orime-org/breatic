@@ -48,12 +48,13 @@ const script = vi.hoisted(() => ({
 
 vi.mock("@breatic/domain", async (importOriginal) => {
   const actual = await importOriginal<typeof DomainModule>();
+  const { assemblyProvider, fakeProvider } = await import("../helpers/fake-provider.js");
+  actual.initProvider(assemblyProvider());
   const { MockLanguageModelV4 } = await import("ai/test");
   const { FINISHED } = await import("../helpers/model-double.js");
   return {
     ...actual,
-    resolveProvider: () => "test",
-    getModel: () =>
+    provider: fakeProvider(() =>
       new MockLanguageModelV4({
         doStream: async (asked) => {
           const i = script.count++;
@@ -78,7 +79,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
             }),
           };
         },
-      }),
+      })),
   };
 });
 
