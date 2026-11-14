@@ -145,7 +145,37 @@ describe('a selection across columns, replaced', () => {
     press(editor, 'Backspace');
     expect(shapeOf(editor.document as never)).toEqual(['[alpha|ga]', 'il']);
   });
+
+  it('keeps an unselected picture at the top of the column the selection starts in', () => {
+    const editor = open([columnsBlock({ blocks: [picture, para('hello')] }, ['world'])]);
+    select(editor, ['hello', 0], ['world', 2]);
+    press(editor, 'Backspace');
+    expect(pictures(editor)).toBe(1);
+  });
+
+  it('keeps an unselected picture at the bottom of the column the selection ends in', () => {
+    const editor = open([para('lead'), columnsBlock(['alpha'], { blocks: [para('world'), picture] })]);
+    select(editor, ['alpha', 0], ['world', 5]);
+    press(editor, 'Backspace');
+    expect(pictures(editor)).toBe(1);
+  });
 });
+
+const picture = { type: 'image', props: { url: 'https://example.com/a.png' } };
+
+/**
+ * How many pictures the document holds.
+ * @param editor - The editor.
+ * @returns The count.
+ */
+function pictures(editor: Editor): number {
+  let count = 0;
+  editor.prosemirrorState.doc.descendants((node) => {
+    if (node.type.name === 'image') count += 1;
+    return true;
+  });
+  return count;
+}
 
 describe('a selection from a table in one column into another column (design §5.5)', () => {
   const blocks = (): unknown[] => [

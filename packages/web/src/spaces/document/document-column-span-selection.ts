@@ -42,7 +42,7 @@ interface Piece {
  * @param pos - The position.
  * @returns The id, or null outside any column.
  */
-function columnAt(doc: PMNode, pos: number): string | null {
+export function columnAt(doc: PMNode, pos: number): string | null {
   const $pos = doc.resolve(pos);
   for (let depth = $pos.depth; depth > 0; depth -= 1) {
     const node = $pos.node(depth);
@@ -91,8 +91,9 @@ function piecesOf(doc: PMNode, from: number, to: number): Piece[] {
       const start = pos + 1 + offset;
       const end = start + column.nodeSize;
       if (end <= from || start >= to) return;
-      const first = Selection.findFrom(doc.resolve(start + 1), 1, true)?.from ?? start + 1;
-      const last = Selection.findFrom(doc.resolve(end - 1), -1, true)?.to ?? end - 1;
+      // Its first and last content, a picture or a divider as much as words.
+      const first = Selection.findFrom(doc.resolve(start + 1), 1)?.from ?? start + 1;
+      const last = Selection.findFrom(doc.resolve(end - 1), -1)?.to ?? end - 1;
       if (from <= first && to >= last) parts.push({ from: start, to: end, whole: from > start });
       else if (from > start) parts.push({ from, to: end - 1, whole: false });
       else parts.push({ from: start + 1, to, whole: false });
@@ -123,9 +124,8 @@ function replaceAcross(selection: Selection, tr: Transaction, put: ((at: number)
   const at = startGoes ? after.map(selection.to, -1) : after.map(selection.from, -1);
   const placed = tr.steps.length;
   put?.(at);
-  let end = after.map(at);
+  let end = at;
   tr.mapping.slice(placed).maps.forEach((map) => map.forEach((_from, _to, _newFrom, newTo) => (end = newTo)));
-  if (tr.steps.length === placed) end = at;
   tr.setSelection(Selection.near(tr.doc.resolve(Math.min(end, tr.doc.content.size)), -1));
 }
 
