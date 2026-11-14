@@ -375,8 +375,12 @@ test('a box open in a table cell hides while the table scrolls its formula away,
   const formula = await formulaInCellBelowLines(page, 12);
   await formula.click();
   await expect(page.locator(FIELD)).toBeFocused();
-  // Inside the body the clip reaches past each edge, so the shadow shows.
-  expect(await page.locator(BOX).evaluate((box) => (box as HTMLElement).style.clipPath)).toMatch(/^inset\(-[\d.]+px -[\d.]+px -[\d.]+px -[\d.]+px\)$/);
+  // Inside the body the clip reaches past each edge, so the shadow shows. The
+  // browser writes equal sides once, so every side it lists is read.
+  const clip = await page.locator(BOX).evaluate((box) => (box as HTMLElement).style.clipPath);
+  const sides = (/^inset\((.*)\)$/.exec(clip)?.[1] ?? '').split(' ').map((side) => Number.parseFloat(side));
+  expect(sides.length).toBeGreaterThan(0);
+  expect(sides.every((side) => side < 0)).toBe(true);
 
   await scrollTableTo(formula, 'end');
   await expect.poll(() => boxShows(page)).toBe(false);
