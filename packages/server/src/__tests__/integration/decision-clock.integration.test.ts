@@ -177,7 +177,7 @@ describe("request failure reasons use the execution clock after Project lock wai
           if (recipient === "converted") {
             const user = await users.createUser({ termsVersion: "test-terms", locale: "en", email: fixture.email, emailVerified: true });
             userId = user.id;
-            await claimInvitation("project", invitationId, fixture.projectId, user);
+            await claimInvitation("project", invitationId, fixture.projectId, user.id);
           }
         }
         const original = (await invitationRows(sql, "project", fixture))[0]!;

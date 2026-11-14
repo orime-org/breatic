@@ -20,7 +20,7 @@ export async function claimEmailInvitations(user: Pick<UserEntity, "id" | "email
       const candidates = await invitationRepo(kind).findPendingEmailCandidates(normalizeEmail(user.email));
       for (const candidate of candidates) {
         try {
-          await claimInvitation(kind, candidate.id, candidate.targetId, user);
+          await claimInvitation(kind, candidate.id, candidate.targetId, user.id);
         } catch (err) {
           logger.error({ err, ctx: { userId: user.id, kind, invitationId: candidate.id } }, "email_invitation_claim_failed");
         }
