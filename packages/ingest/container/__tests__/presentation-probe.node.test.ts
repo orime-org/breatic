@@ -112,6 +112,10 @@ beforeAll(async () => {
   await make('edit-base.mp4', ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=25:d=2', '-c:v', 'libx264', '-g', '10', '-bf', '0', '-pix_fmt', 'yuv420p', ...tagged]);
   // A 250 ms leading empty edit, as in the 2026-11-01 evidence clip (no audio).
   await make('empty-edit.mp4', ['-itsoffset', '0.25', '-i', join(dir, 'edit-base.mp4'), '-c', 'copy', '-use_editlist', '1']);
+  // Whole-media edits FFmpeg writes that no mdhd sum states exactly: x264 B-frames in MOV, and a 7-frame 29.97 fps clip whose
+  // edit duration is rounded to the 1/1000 movie timescale (234 of 1000 for 7007 of 30000).
+  await make('bf2.mov', ['-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=25:d=2', '-c:v', 'libx264', '-g', '10', '-bf', '2', '-pix_fmt', 'yuv420p', ...tagged]);
+  await make('ntsc7.mp4', ['-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=30000/1001', '-frames:v', '7', '-c:v', 'libx264', '-bf', '0', '-pix_fmt', 'yuv420p', ...tagged]);
   // The picture 0.3 s after the audio: an empty edit before media 0 on the video track, AAC from 0.
   await make('late-video.mp4', ['-itsoffset', '0.3', '-i', join(dir, 'edit-base.mp4'), '-f', 'lavfi', '-i', 'sine=f=440:sample_rate=48000:d=2.5',
     '-map', '0:v', '-map', '1:a', '-c:v', 'copy', '-c:a', 'aac', '-use_editlist', '1']);
@@ -421,6 +425,14 @@ describe('whether a stream copy keeps the plan timeline (design §4.1 row 2; §9
   // edit is the media start and the plan is unaltered (design line 282, inner f446990c).
   it.each(['cfr.mp4', 'hevc.mp4'])('CT01 an unaltered plan with one video track whose codec the MP4 carrier can hold copies: %s', async (name) => {
     expect(planned(await probed(name)).routeInput.copyPreservesTimeline).toBe(true);
+  });
+
+  // One rate-1 edit from movie 0 over exactly the presented frames, the media's first pts to its last frame's end (within one
+  // movie tick, the precision elst durations are written in), is no edit (design §5.3 row): the plan is unaltered and copies.
+  it.each(['bf2.mp4', 'bf2.mov', 'ntsc7.mp4'])('CT05 a whole-media edit that differs from mdhd or is rounded to the movie timescale is no edit: %s', async (name) => {
+    const answer = planned(await probed(name));
+    expect(answer.plan.videoSpans).toBeNull();
+    expect(answer.routeInput.copyPreservesTimeline).toBe(true);
   });
 
   it('CT04 a single edit starting later than the track\'s first CTS is a cut, not the media start: the plan is altered and does not copy', async () => {

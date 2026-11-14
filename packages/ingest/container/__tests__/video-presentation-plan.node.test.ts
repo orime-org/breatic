@@ -37,7 +37,8 @@ interface PlanInput {
   emptyEdits: Interval[];
   segmentDuration: Rational | null;
   videoSpans: EditSpan[] | null;
-  mediaDuration: Rational;
+  mediaEnd: Rational;
+  editTick?: Rational;
   audio: { start: Rational; end: Rational; spans: EditSpan[] | null } | null;
   display: { width: number; height: number };
   colorMatrix: string;
@@ -215,7 +216,7 @@ const POLICY = { singleFrameDurationMs: 5000, emptyFill: 'black' as const };
  */
 function input(frames: PlanInput['frames'], overrides: Partial<PlanInput> = {}): PlanInput {
   return {
-    frames, sourceTimeBase: r(1, 1000), emptyEdits: [], segmentDuration: null, videoSpans: null, mediaDuration: r(100), audio: null,
+    frames, sourceTimeBase: r(1, 1000), emptyEdits: [], segmentDuration: null, videoSpans: null, mediaEnd: r(100), audio: null,
     display: { width: 64, height: 48 }, colorMatrix: 'bt601', source: { transfer: null, bitDepth: 8 }, policy: POLICY, ...overrides,
   };
 }
@@ -351,7 +352,7 @@ describe('PA §4.2.1 and §7.16 plan assembly', () => {
 
   it('PA10 a single rate-1 edit from the media start covering the whole media is recorded as no edit', () => {
     const frames = [{ sourcePtsTicks: '0', start: r(0), declaredEnd: r(1, 8) }, { sourcePtsTicks: '125', start: r(1, 8), declaredEnd: r(1, 4) }];
-    const plan = assemble()(input(frames, { mediaDuration: r(1, 4), videoSpans: [{ sourceStart: r(0), sourceEnd: r(1, 4), presentationStart: r(0), rate: r(1) }] }));
+    const plan = assemble()(input(frames, { mediaEnd: r(1, 4), videoSpans: [{ sourceStart: r(0), sourceEnd: r(1, 4), presentationStart: r(0), rate: r(1) }] }));
     expect(plan).toMatchObject({ videoSpans: null });
     expect(videoPresentationLedgerSchema.safeParse(ledger(plan)).success).toBe(true);
   });
@@ -360,11 +361,22 @@ describe('PA §4.2.1 and §7.16 plan assembly', () => {
     ['ending before the media ends', { sourceStart: r(0), sourceEnd: r(1, 4), presentationStart: r(0), rate: r(1) }, r(3, 8)],
     ['starting after the media start', { sourceStart: r(1, 8), sourceEnd: r(3, 8), presentationStart: r(0), rate: r(1) }, r(3, 8)],
     ['at another rate', { sourceStart: r(0), sourceEnd: r(1, 2), presentationStart: r(0), rate: r(2) }, r(1, 2)],
-  ])('PA11 a single edit %s stays recorded', (_, span, mediaDuration) => {
+  ])('PA11 a single edit %s stays recorded', (_, span, mediaEnd) => {
     const frames = [{ sourcePtsTicks: '0', start: r(0), declaredEnd: r(1, 8) }, { sourcePtsTicks: '125', start: r(1, 8), declaredEnd: r(1, 4) }];
-    const plan = assemble()(input(frames, { mediaDuration, videoSpans: [span] }));
+    const plan = assemble()(input(frames, { mediaEnd, videoSpans: [span] }));
     expect(plan).toMatchObject({ videoSpans: [span] });
     expect(videoPresentationLedgerSchema.safeParse(ledger(plan)).success).toBe(true);
+  });
+
+  it.each([
+    ['within one movie tick of the media end is no edit', r(1251, 5000), null],
+    ['more than one movie tick short of the media end stays recorded', r(62, 250), 'kept'],
+  ] as const)('PA12 a whole-media edit ending %s', (_, sourceEnd, expected) => {
+    // Edit durations are written on a 1/1000 movie timescale; the media ends at 1/4 s.
+    const frames = [{ sourcePtsTicks: '0', start: r(0), declaredEnd: r(1, 8) }, { sourcePtsTicks: '125', start: r(1, 8), declaredEnd: r(1, 4) }];
+    const span = { sourceStart: r(0), sourceEnd, presentationStart: r(0), rate: r(1) };
+    const plan = assemble()(input(frames, { mediaEnd: r(1, 4), editTick: r(1, 1000), videoSpans: [span] }));
+    expect(plan.videoSpans).toEqual(expected === null ? null : [span]);
   });
 
   it('PA07 any declared frames, gaps and audio window assemble into a schema-valid plan taken from the S6a timeline (property)', () => {

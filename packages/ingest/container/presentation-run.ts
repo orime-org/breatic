@@ -315,8 +315,13 @@ async function plan(body: PresentationProbeRequest, input: string, directory: st
   let frames = framesOf(packets, base);
   let emptyEdits: VideoPresentationPlanInput['emptyEdits'] = [];
   let videoSpans: VideoPresentationPlanInput['videoSpans'] = null;
-  let mediaDuration = frames.at(-1)!.declaredEnd ?? frames.at(-1)!.start;
-  let mediaStart = frames[0]!.start;
+  // The media's presented range on the media timeline: the first pts to the latest frame end.
+  const mediaStart = frames[0]!.start;
+  const mediaEnd = frames.reduce((latest, frame) => {
+    const end = frame.declaredEnd ?? frame.start;
+    return BigInt(end.numerator) * BigInt(latest.denominator) > BigInt(latest.numerator) * BigInt(end.denominator) ? end : latest;
+  }, mediaStart);
+  let editTick: PresentationRational | undefined;
   const audio = streams.find((stream) => stream.codec_type === 'audio');
   let audioSpans: VideoPresentationPlanInput['videoSpans'] = null;
   if (iso) {
@@ -325,8 +330,7 @@ async function plan(body: PresentationProbeRequest, input: string, directory: st
     const tracks = metadata.tracks.filter((track) => track.trackId === trackId);
     if (tracks.length !== 1) throw new ProbeFailure('source_ledger_selection_unknown');
     const track = tracks[0]!;
-    mediaDuration = exactPresentationTime(BigInt(track.mediaDurationTicks), BigInt(track.mediaTimescale));
-    mediaStart = frames[0]!.start;
+    editTick = exactPresentationTime(1n, BigInt(metadata.movieTimescale));
     if (track.edits !== null) {
       // The edit list maps the presentation-ordered frames onto movie time; plan frames take those windows.
       const presented = planEditListPresentation({ movieTimescale: metadata.movieTimescale, mediaTimescale: track.mediaTimescale, sourceTimeBase,
@@ -351,7 +355,7 @@ async function plan(body: PresentationProbeRequest, input: string, directory: st
   const transfer = typeof video.color_transfer === 'string' && video.color_transfer !== '' && video.color_transfer !== 'unknown' ? video.color_transfer : null;
   const display = videoDisplayGeometry(video);
   const assembled = assembleVideoPresentationPlan({
-    frames, sourceTimeBase, emptyEdits, segmentDuration: null, videoSpans, mediaDuration, mediaStart,
+    frames, sourceTimeBase, emptyEdits, segmentDuration: null, videoSpans, mediaEnd, mediaStart, ...(editTick === undefined ? {} : { editTick }),
     audio: window === null ? null : { ...window, spans: audioSpans }, display, colorMatrix: resolveVideoColorMatrix(video),
     source: { transfer, bitDepth: depth.bitDepth },
     policy: { singleFrameDurationMs: body.probe.singleFrameDurationMs, emptyFill: alpha === 'confirmed_alpha' ? 'transparent' : 'black' },

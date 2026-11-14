@@ -76,8 +76,10 @@ export interface VideoPresentationPlanInput {
   emptyEdits: readonly { start: PresentationRational; end: PresentationRational }[];
   segmentDuration: PresentationRational | null;
   videoSpans: readonly VideoEditSpan[] | null;
-  /** The video track's media duration, which decides whether a single edit is no edit. */
-  mediaDuration: PresentationRational;
+  /** Where the media's last frame ends in source time, which decides whether a single edit is no edit. */
+  mediaEnd: PresentationRational;
+  /** One tick of the clock edit durations are written on (the ISO movie timescale), 0 when omitted. */
+  editTick?: PresentationRational;
   /**
    * Where the media starts in source time: its first composition time, 0 when omitted. An edit that only removes the
    * composition delay of reordered frames starts there.
@@ -165,29 +167,34 @@ export function assembleVideoPresentationPlan(input: VideoPresentationPlanInput)
       firstSource: { supportStart: first.support.start, lead: first.derivedLead === null ? null : { kind: "derived-lead", start: first.derivedLead.start } },
       lastSource: { support: last.support.rule, supportEnd: last.support.end, hold: last.derivedHold === null ? null : { kind: "derived-hold", end: last.derivedHold.end } },
     },
-    videoSpans: input.videoSpans === null || coversWholeMedia(input.videoSpans, input.mediaStart ?? { numerator: "0", denominator: "1" }, input.mediaDuration) ? null : rebase(input.videoSpans),
+    videoSpans: input.videoSpans === null || coversWholeMedia(input.videoSpans, input.mediaStart ?? ZERO, input.mediaEnd, input.editTick ?? ZERO) ? null : rebase(input.videoSpans),
     audioSpans: input.audio === null || input.audio.spans === null ? null : rebase(input.audio.spans),
     segmentDuration: input.segmentDuration,
   };
 }
 
+const ZERO: PresentationRational = { numerator: "0", denominator: "1" };
+
 /**
- * Whether the edits are one rate-1 span from the media start over the whole media from movie time 0, which presents the media
- * unedited and which a stream copy keeps: an edit that starts later (after an empty edit) moves the media by that much, which
- * the origin alone does not carry.
+ * Whether the edits are one rate-1 span from movie time 0 over exactly the presented media, its first frame's pts to its
+ * last frame's end, which presents the media unedited and which a stream copy keeps (design §5.3 row). The edit's end may
+ * differ from the media end by up to one edit tick, since ISO edit durations are written on the movie timescale. An edit that
+ * starts later (after an empty edit) moves the media by that much, which the origin alone does not carry.
  * @param spans - The video edits.
- * @param mediaStart - Where the media starts in source time.
- * @param mediaDuration - The video track's media duration.
+ * @param mediaStart - Where the media's first frame starts in source time.
+ * @param mediaEnd - Where the media's last frame ends in source time.
+ * @param tick - One tick of the clock the edit durations are written on.
  * @returns Whether the edits are no edit.
  * @throws {RangeError} When a time is not an exact rational.
  */
-function coversWholeMedia(spans: readonly VideoEditSpan[], mediaStart: PresentationRational, mediaDuration: PresentationRational): boolean {
+function coversWholeMedia(spans: readonly VideoEditSpan[], mediaStart: PresentationRational, mediaEnd: PresentationRational, tick: PresentationRational): boolean {
   if (spans.length !== 1) return false;
   const [start, end, rate, at] = [rational(spans[0]!.sourceStart), rational(spans[0]!.sourceEnd), rational(spans[0]!.rate), rational(spans[0]!.presentationStart)];
-  const [from, media] = [rational(mediaStart), rational(mediaDuration)];
-  // start = from, end = from + media and presentationStart = 0, compared as exact fractions.
-  return start[0] * from[1] === from[0] * start[1] && end[0] * from[1] * media[1] === (from[0] * media[1] + media[0] * from[1]) * end[1] && rate[0] === rate[1]
-    && at[0] === 0n;
+  const [from, to, slack] = [rational(mediaStart), rational(mediaEnd), rational(tick)];
+  // |end − to| · end.d · to.d · slack.d ≤ slack.n · end.d · to.d, all exact.
+  const gap = end[0] * to[1] - to[0] * end[1];
+  return start[0] * from[1] === from[0] * start[1] && rate[0] === rate[1] && at[0] === 0n
+    && (gap < 0n ? -gap : gap) * slack[1] <= slack[0] * end[1] * to[1];
 }
 
 /**
