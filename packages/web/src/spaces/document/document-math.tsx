@@ -22,7 +22,7 @@
 import * as React from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import katex from 'katex';
-import { autoUpdate, flip, offset, shift, useFloating, type Placement } from '@floating-ui/react';
+import { autoUpdate, flip, offset, shift, size, useFloating, type Placement } from '@floating-ui/react';
 import { Sigma, TriangleAlert } from 'lucide-react';
 import {
   createBlockSpec,
@@ -45,6 +45,7 @@ import { MATH_BLOCK_SOURCE_ATTR, MATH_SOURCE_ATTR, formulaSourceHolder } from '@
 import { DISPLAY_MATH_SCROLLER, KATEX_OPTIONS } from '@web/lib/katex-options';
 import { compositionEnd, keyBelongsToInputMethod, type CompositionEnd } from '@web/lib/composition-end';
 import { cn } from '@web/lib/utils';
+import { BODY_SCROLLER_CLASS } from '@web/spaces/document/document-body-scroller';
 import { DOC_TABLE, cellDepthOf } from '@web/spaces/document/document-table-nodes';
 
 /** The editor as the node views use it. */
@@ -413,8 +414,10 @@ const MathFace = React.memo(function MathFace({
   }, [shown, caret]);
 
   const inCell = React.useMemo(() => host.closest(`[data-node-type='${DOC_TABLE}']`) !== null, [host]);
+  // The body's own scroller: a table cell sits inside the table's sideways
+  // scroller too, and the box belongs to the window's room, not the table's.
   const viewport = React.useMemo(
-    () => host.closest<HTMLElement>('[data-radix-scroll-area-viewport]') ?? undefined,
+    () => host.closest<HTMLElement>(`.${BODY_SCROLLER_CLASS} > [data-radix-scroll-area-viewport]`) ?? undefined,
     [host],
   );
   // Below the formula, or above it when the window has no room below; the
@@ -422,7 +425,19 @@ const MathFace = React.memo(function MathFace({
   // flip it (as the AI custom-request box, `DocumentAiDialog.tsx`).
   const [side, setSide] = React.useState<Placement | null>(null);
   const middleware = React.useMemo(
-    () => [offset(4), ...(side === null ? [flip({ boundary: viewport })] : []), shift({ boundary: viewport, padding: 8 })],
+    () => [
+      offset(4),
+      ...(side === null ? [flip({ boundary: viewport })] : []),
+      shift({ boundary: viewport, padding: 8 }),
+      // A body column narrower than the box narrows the box to the column.
+      size({
+        boundary: viewport,
+        padding: 8,
+        apply: ({ availableWidth, elements }) => {
+          elements.floating.style.maxWidth = `${availableWidth}px`;
+        },
+      }),
+    ],
     [side, viewport],
   );
   const { refs, floatingStyles, placement, isPositioned } = useFloating({

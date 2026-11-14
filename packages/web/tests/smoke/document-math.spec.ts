@@ -276,6 +276,49 @@ test('a box opened near the bottom of the window opens above its formula, inside
   expect(box.y + box.height).toBeLessThanOrEqual(drawn.y);
 });
 
+test('a box opened in a table cell near the bottom of the window opens above its formula, inside the window', async () => {
+  await openFreshDocument(page);
+  const filler = Array.from({ length: 40 }, (_, i) => `<p>line ${i}</p>`).join('');
+  await paste(page, {
+    'text/html': `${filler}<table><tbody><tr><td>cell</td><td>b</td></tr><tr><td>c</td><td>d</td></tr></tbody></table><p>after</p>`,
+  });
+  await page.locator(`${EDITOR} table td`, { hasText: 'cell' }).click();
+  await page.keyboard.press('End');
+  await page.keyboard.type(' $$x^2$$');
+  const formula = page.locator(`${EDITOR} table .doc-math .katex`).first();
+  await expect(formula).toBeVisible();
+  // The formula's bottom edge 40px above the window's, scrolled by the body.
+  await formula.evaluate((element) => {
+    const scroller = element.closest('.doc-body-scroller > [data-radix-scroll-area-viewport]')!;
+    scroller.scrollTop += element.getBoundingClientRect().bottom - (window.innerHeight - 40);
+  });
+
+  await formula.click();
+  await expect(page.locator(FIELD)).toBeFocused();
+
+  const box = (await page.locator(BOX).boundingBox())!;
+  const drawn = (await formula.boundingBox())!;
+  expect(box.y).toBeGreaterThanOrEqual(0);
+  expect(box.y + box.height).toBeLessThanOrEqual(page.viewportSize()!.height);
+  expect(box.y + box.height).toBeLessThanOrEqual(drawn.y);
+});
+
+test('a box opened in a body column narrower than the box stays inside the column', async () => {
+  await page.setViewportSize({ width: 1024, height: 800 });
+  await openFreshDocument(page);
+  await page.keyboard.type(`${'word '.repeat(40)}$$a+b$$`);
+  await expect.poll(() => lines(page)).toEqual([`paragraph:${'word '.repeat(40)}[math:a+b]`]);
+  const column = (await page.locator('.doc-body-scroller').boundingBox())!;
+  expect(column.width).toBeLessThan(560);
+
+  await page.locator(`${EDITOR} .doc-math .katex`).first().click();
+  await expect(page.locator(FIELD)).toBeFocused();
+
+  const box = (await page.locator(BOX).boundingBox())!;
+  expect(box.x).toBeGreaterThanOrEqual(column.x);
+  expect(box.x + box.width).toBeLessThanOrEqual(column.x + column.width);
+});
+
 test('typing $$x^2$$ makes an inline formula; undo gives the words back and typing on keeps them', async () => {
   await openFreshDocument(page);
   await page.keyboard.type('area $$x^2$$');
