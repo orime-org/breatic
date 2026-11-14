@@ -148,8 +148,6 @@ export interface World {
   tokenId: string;
 }
 
-let seq = 0;
-
 /**
  * A user who belongs to a Project with one canvas Space holding one text node
  * at the origin, and a personal access token for their agent.
@@ -162,7 +160,9 @@ export async function seedWorld(
   role: "owner" | "editor" | "viewer" = "owner",
   seed?: (canvas: Y.Doc, userId: string, ownerId: string, textNodeId: string) => void,
 ): Promise<World & { nodeId: string }> {
-  const tag = `agent-cmd-${process.pid}-${seq++}`;
+  // Random, not a counter: test files share one process and each starts its
+  // own module copy, so a counter would repeat the previous file's emails.
+  const tag = `agent-cmd-${randomUUID().slice(0, 12)}`;
   const [owner] = await run<{ id: string }>(dsql`
     INSERT INTO users (email, email_verified) VALUES (${`${tag}-o@example.com`}, true) RETURNING id`);
   const [studio] = await run<{ id: string }>(dsql`
