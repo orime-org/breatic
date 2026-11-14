@@ -35,7 +35,7 @@ The ingest Worker on Cloudflare. The browser sends file bytes straight to it; it
 
 **The upload path keeps no state between requests: the R2 `uploadId` and each part's etag travel with the caller and come back on every request.** This package also does not judge whether an upload is dead (the server computes task deadlines when a node's task list is read) or whether a key is already being finished (the server takes that grant from the ledger before calling).
 
-**It binds container Durable Object classes: `MediaContainer` (one per storage key, idles after answering), `MiniToolContainerStd1` / `MiniToolContainerStd4` (`src/jobs/mini-tool-container.ts`, same image, one class per instance size, one instance per job id, destroyed at the job deadline), and `LongMediaContainer` (`src/jobs/long-media-container.ts`, durable long-media jobs).** The mini-tool class is selected by `config/mini-tools.yaml`; long-media jobs use the `LONG_MEDIA` binding.
+**It binds container Durable Object classes: `MediaContainer` (one per storage key, idles after answering), `MiniToolContainerStd1` / `MiniToolContainerStd4` (`src/jobs/mini-tool-container.ts`, same image, one class per instance size, one instance per job id, destroyed at the job deadline), `MiniToolContainerGl` (the same class shape on the `gl` image, for transition windows), and `LongMediaContainer` (`src/jobs/long-media-container.ts`, durable long-media jobs).** The mini-tool class is selected by `config/mini-tools.yaml`; long-media jobs use the `LONG_MEDIA` binding.
 
 **A container cannot reach the internet; downloading the source, writing results back and reporting all go through the Worker's outbound handler, which only allows the keys the job names (`src/jobs/mini-tool-container.ts`).**
 
