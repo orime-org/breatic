@@ -61,7 +61,6 @@ export async function seedOwner(sql: ReturnType<typeof postgres>, app: Hono): Pr
 /** The five keys of a conversation's queue, as the server names them. */
 export const keysOf = chatQueueKeys;
 
-
 /**
  * The ids in one of a conversation's lists.
  * @param key - The list.

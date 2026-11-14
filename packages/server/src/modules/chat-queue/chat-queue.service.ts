@@ -7,17 +7,19 @@
  * A conversation has at most one Agent run at a time, named by the run id in
  * its `active` key. Messages sent while it runs wait in its `queue`; each step
  * of the run moves what waits into `taken` and hands it to the model, and the
- * taken list is dropped only once the reply that answers them is stored. A run that dies keeps its taken messages, and whichever
- * instance opens the next run reads them first, so a sent message is answered
- * or withdrawn and never silently lost.
+ * taken list is dropped only once the reply that answers them is stored. A
+ * run that dies keeps its taken messages, and whichever instance opens the
+ * next run reads them first, so a sent message is answered or withdrawn and
+ * never silently lost.
  *
  * Every operation is one Lua script: deciding who runs and moving messages
  * between the lists has to happen in one step, or two instances (or a send
  * racing the end of a run) each see the conversation free and both, or
  * neither, start a run. Every key starts with `REDIS_KEY_PREFIX`. `queue`,
  * `taken` and `awaiting` never expire: they hold what the user sent and the
- * card waiting for their answer, and are emptied only once answered, taken
- * back or the conversation is deleted.
+ * card waiting for their answer, and are emptied only once answered,
+ * withdrawn, refused (the conversation is gone or no longer the owner's to
+ * run) or the conversation is deleted.
  */
 
 import crypto from "node:crypto";
