@@ -11,16 +11,6 @@ import { columnWeight, MIN_COLUMN_WIDTH } from '@web/spaces/document/document-co
 import { COLUMN_RESIZE_ZONE } from '@web/spaces/document/document-table-nodes';
 import { rowById } from '@web/spaces/document/document-row-by-id';
 
-/**
- * A weight rounded to four places, so repeated drags do not grow float noise
- * into the stored document.
- * @param weight - The weight.
- * @returns It, rounded.
- */
-function rounded(weight: number): number {
-  return Math.round(weight * 10_000) / 10_000;
-}
-
 /** The two columns either side of a divider when the drag started. */
 export interface DividerStart {
   readonly leftPx: number;
@@ -32,18 +22,22 @@ export interface DividerStart {
 }
 
 /**
- * A weight rounded up to four places; a weight already on four places stays.
+ * A weight rounded to four places, up or down, so repeated drags do not grow
+ * float noise into the stored document; a weight already on four places
+ * stays.
  * @param weight - The weight.
- * @returns It, rounded up.
+ * @param up - Whether it rounds up.
+ * @returns It, rounded.
  */
-function roundedUp(weight: number): number {
-  return Math.ceil(weight * 10_000 - 1e-6) / 10_000;
+function roundedToward(weight: number, up: boolean): number {
+  return up ? Math.ceil(weight * 10_000 - 1e-6) / 10_000 : Math.floor(weight * 10_000 + 1e-6) / 10_000;
 }
 
 /**
  * The two columns' weights after the divider moved. The narrower one is
- * rounded up, so a column held at 96px is stored at no less and its group
- * still holds it side by side.
+ * rounded up and the wider one down, so the pair's weight never grows and a
+ * column held at 96px is stored at no less: its group still holds it side
+ * by side.
  * @param start - The columns at the start and the move.
  * @returns The two weights.
  */
@@ -53,8 +47,8 @@ export function resizedWeights(start: DividerStart): { left: number; right: numb
   if (total < 2 * MIN_COLUMN_WIDTH) return { left: start.leftWeight, right: start.rightWeight };
   const leftPx = Math.min(Math.max(start.leftPx + start.dx, MIN_COLUMN_WIDTH), total - MIN_COLUMN_WIDTH);
   const leftThinner = leftPx * 2 <= total;
-  const thin = roundedUp((weights * (leftThinner ? leftPx : total - leftPx)) / total);
-  const thick = rounded(weights - thin);
+  const thin = roundedToward((weights * (leftThinner ? leftPx : total - leftPx)) / total, true);
+  const thick = roundedToward(weights - thin, false);
   return leftThinner ? { left: thin, right: thick } : { left: thick, right: thin };
 }
 

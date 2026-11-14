@@ -55,6 +55,19 @@ describe('the widths a divider drag gives (design §5.4)', () => {
     expect(stacked).toEqual([]);
   });
 
+  it('keeps a column dragged to 96px side by side when the pair\'s weights are off four places', () => {
+    // A swap gives the new column the mean weight, 0.98785.
+    const weights = [0.9757, 1, 0.98785];
+    const sum = weights.reduce((total, weight) => total + weight, 0);
+    const stacked: number[] = [];
+    for (let width = 600; width <= 900; width += 0.25) {
+      const px = weights.map((weight) => ((width - 2 * COLUMN_GAP) * weight) / sum);
+      const { left, right } = resizedWeights({ leftPx: px[1]!, rightPx: px[2]!, leftWeight: 1, rightWeight: 0.98785, dx: 10_000 });
+      if (!weightsFit(width, [weights[0]!, left, right])) stacked.push(width);
+    }
+    expect(stacked).toEqual([]);
+  });
+
   it('leaves a pair already at the minimum where it is', () => {
     expect(resizedWeights({ leftPx: 96, rightPx: 96, leftWeight: 1, rightWeight: 1, dx: 50 })).toEqual({ left: 1, right: 1 });
   });
