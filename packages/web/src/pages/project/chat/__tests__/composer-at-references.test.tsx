@@ -751,6 +751,33 @@ describe('@ in the chat box', () => {
     expect(onChange).toHaveBeenLastCalledWith(plain);
   });
 
+  it('drops the plain text of a web page, as a paste of it takes it', () => {
+    const { onChange } = setup({ draft: '' });
+    act(() => box().commands.focus('end'));
+    const plain = 'x $$a$$ $$b$$ y';
+    fireEvent.drop(box().view.dom, {
+      dataTransfer: {
+        files: [],
+        types: ['text/html', 'text/plain'],
+        getData: (type: string) =>
+          type === 'text/plain' ? plain : type === 'text/html' ? '<p>x <span>$$a$$</span><span>$$b$$</span> y</p>' : '',
+      },
+    });
+
+    expect(onChange).toHaveBeenLastCalledWith(plain);
+  });
+
+  it('leaves a drag inside the box to ProseMirror', () => {
+    const { onChange } = setup({ draft: 'one' });
+    act(() => box().commands.focus('end'));
+    (box().view as unknown as { dragging: unknown }).dragging = { slice: box().state.selection.content(), move: true };
+    fireEvent.drop(box().view.dom, {
+      dataTransfer: { files: [], types: ['text/html', 'text/plain'], getData: (type: string) => (type === 'text/plain' ? 'two' : type === 'text/html' ? '<p>two</p>' : '') },
+    });
+
+    expect(onChange).not.toHaveBeenCalledWith('onetwo');
+  });
+
   it('copies lines out one line break apart and pastes them back as they were', () => {
     const { onChange } = setup({ draft: 'one\ntwo' });
     act(() => box().commands.selectAll());
