@@ -16,7 +16,7 @@ export const VEHICLE_SPEED_CUTLIST: GenerationTemplate = {
   ],
   steps: [],
   agentNote:
-    "a 12-second 16:9 speed film of the user's car or motorbike in exactly 12 cuts, one a second on purpose, keep that rhythm: the vehicle stays the same model, colour and wheels in every cut while the camera does the moving, close-ups on tyres, suspension and exhaust, never on badges or dials; engine and road sound; the user's photo goes straight into the video's pool, which takes only the vehicle from it, so its background needs no edit first",
+    "a 12-second 16:9 speed film of the user's car or motorbike in exactly 12 cuts, one a second on purpose, keep that rhythm: the vehicle stays the same model, colour and wheels in every cut while the camera does the moving, close-ups on tyres, suspension and exhaust (the wheel hub on an electric vehicle), never on badges or dials; the number plate as in the photo; engine or motor and road sound; the user's photo goes straight into the video's pool, which takes only the vehicle from it, so its background needs no edit first",
   goal: "speed",
   triggers: {
     asks: ["a car commercial", "a street racing video", "a motorcycle speed clip"],
