@@ -6,7 +6,7 @@
  * config)` in shared `video-encode-plan.ts` takes each clip's selected full `VideoPresentationPlan`, in timeline order:
  * width and height from the first plan's display, odd sides of an opaque output taken down to even (1 up to 2, §4.3 and the
  * D05 row), a transparent output keeping them; fps from the first plan's presentation, timescale ÷ frame duration when CFR,
- * else frame count ÷ display duration, as an exact rational; alpha when either plan's `policy.emptyFill` is transparent;
+ * else the standard rate nearest frame count ÷ display duration, as an exact rational; alpha when either plan's `policy.emptyFill` is transparent;
  * codec vp9 with alpha, else h264. §97 D15-5: `timeBase` is the inverse of `fps`; `pixFmt` is derived, `yuv420p` opaque and
  * `yuva420p` with alpha; `color` is the SDR BT.709 constant; the config supplies only `encode: { crf, preset }` (the
  * presentation crf and preset). Read from the mini-tools entry by name so this compiles before the function exists.
@@ -103,11 +103,11 @@ describe("the transition output profile (§97 D13-1; frames-split §7.17)", () =
     expect(same(profile.timeBase, r(1, 8))).toBe(true);
   });
 
-  it("TP02 a VFR first clip gives its average frame rate: frame count over display duration", () => {
+  it("TP02 a VFR first clip gives the standard frame rate nearest its average: 2000/847 fps gives 12", () => {
     const profile = api.transitionOutputProfile(vfrPlan(), cfrPlan(), CONFIG);
     expect(profile).toMatchObject({ width: 320, height: 240, alpha: false, codec: "h264", pixFmt: "yuv420p" });
-    expect(same(profile.fps, r(2000, 847))).toBe(true);
-    expect(same(profile.timeBase, r(847, 2000))).toBe(true);
+    expect(same(profile.fps, r(12))).toBe(true);
+    expect(same(profile.timeBase, r(1, 12))).toBe(true);
   });
 
   it.each([
@@ -143,12 +143,28 @@ describe("the output frame rate of a presentation table (frames-split §7.17)", 
     expect(same(api.transitionOutputProfile(plan, cfrPlan(), CONFIG).fps, r(25))).toBe(true);
   });
 
-  it("FPS02 a table with uneven frame spacing averages its frames over its duration", () => {
-    expect(same(api.presentationOutputFps(vfrPlan().presentation as Table), r(2000, 847))).toBe(true);
-    expect(same(api.presentationOutputFps(transparentPlan().presentation as Table), r(3, 2))).toBe(true);
+  it("FPS02 a table with uneven frame spacing takes the standard rate nearest its frames over its duration", () => {
+    // Averages of 2000/847 and 3/2 fps are below the lowest standard rate.
+    expect(same(api.presentationOutputFps(vfrPlan().presentation as Table), r(12))).toBe(true);
+    expect(same(api.presentationOutputFps(transparentPlan().presentation as Table), r(12))).toBe(true);
   });
 
-  it("FPS03 a single-frame table is one frame over its duration", () => {
-    expect(same(api.presentationOutputFps({ schemaVersion: 1, timescale: 1000, runs: [{ start: 0, count: 1, step: 5000, duration: 5000 }] }), r(1, 5))).toBe(true);
+  it("FPS03 a single-frame table takes the standard rate nearest one frame over its duration", () => {
+    expect(same(api.presentationOutputFps({ schemaVersion: 1, timescale: 1000, runs: [{ start: 0, count: 1, step: 5000, duration: 5000 }] }), r(12))).toBe(true);
+  });
+
+  // A first frame of `first` ticks, then `frames − 1` frames `step` ticks apart: two spacings, so the table is VFR.
+  it.each([
+    ["30000/991 (a 1/1000 clock of 33 and 34 ms frames)", 1000, 30, 34, 33, r(30)],
+    ["9000000/301980 ≈ 29.80 (a phone clip on 1/90000)", 90000, 100, 3000, 3020, r(30000, 1001)],
+    ["9000000/375940 ≈ 23.94", 90000, 100, 3700, 3760, r(24000, 1001)],
+    ["10000/410 ≈ 24.39", 1000, 10, 50, 40, r(24)],
+    ["9000000/150297 ≈ 59.88", 90000, 100, 1500, 1503, r(60000, 1001)],
+    ["10000/745 ≈ 13.42", 1000, 10, 70, 75, r(12)],
+    ["9000000/44950 ≈ 200.2, above the highest", 90000, 100, 400, 450, r(120)],
+  ] as const)("FPS04 a VFR average of %s takes the nearest standard rate", (_name, timescale, frames, first, step, expected) => {
+    const table: Table = { schemaVersion: 1, timescale, runs: [{ start: 0, count: 1, step: first, duration: first }, { start: first, count: frames - 1, step, duration: step }] };
+    const fps = api.presentationOutputFps(table);
+    expect(fps, JSON.stringify(fps)).toEqual(expected);
   });
 });

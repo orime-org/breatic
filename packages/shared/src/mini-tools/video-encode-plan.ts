@@ -549,11 +549,42 @@ function reduced(numerator: bigint, denominator: bigint): ExactRational {
   return { numerator: String(numerator / a), denominator: String(denominator / a) };
 }
 
+// The standard frame rates a VFR clip is conformed to, as editors conform one to the project's constant rate; each is a
+// frame rate FFmpeg's int rationals carry with room for any clip's time base.
+const STANDARD_FRAME_RATES: readonly (readonly [bigint, bigint])[] = [
+  [12n, 1n], [15n, 1n], [24000n, 1001n], [24n, 1n], [25n, 1n], [30000n, 1001n], [30n, 1n], [48n, 1n], [50n, 1n], [60000n, 1001n], [60n, 1n], [120n, 1n],
+];
+
+/**
+ * The standard frame rate nearest a rate, the lower one on a tie.
+ * @param numerator - The rate's numerator.
+ * @param denominator - The rate's positive denominator.
+ * @returns The standard rate.
+ * @throws {never} Never.
+ */
+function nearestStandardRate(numerator: bigint, denominator: bigint): ExactRational {
+  // |n/d − a/b| = |n·b − a·d| / (d·b); d is shared, so candidates compare by |n·b − a·d| / b.
+  /**
+   * The distance to a candidate, times the shared denominator and the candidate's.
+   * @param rate - The candidate as a numerator and denominator.
+   * @returns |n·b − a·d|.
+   * @throws {never} Never.
+   */
+  const gap = (rate: readonly [bigint, bigint]): bigint => {
+    const [a, b] = rate;
+    return numerator * b > a * denominator ? numerator * b - a * denominator : a * denominator - numerator * b;
+  };
+  let best = STANDARD_FRAME_RATES[0]!;
+  for (const rate of STANDARD_FRAME_RATES) if (gap(rate) * best[1] < gap(best) * rate[1]) best = rate;
+  return { numerator: String(best[0]), denominator: String(best[1]) };
+}
+
 /**
  * A presentation table's output frame rate (frames-split §7.17 transition output profile row), the one rule the profile,
  * the panel and the timeline Dialog read: timescale over the frame spacing when consecutive frames start the same number of
  * ticks apart (the last frame's own length does not count, so a stream cut short in its last frame stays CFR), otherwise
- * the frames over the presented duration. The table tiles [0, display.duration) (§7.16), so that duration is its end.
+ * the standard rate nearest the frames over the presented duration. The table tiles [0, display.duration) (§7.16), so that
+ * duration is its end.
  * @param table - The compact presentation table.
  * @returns The rate, exact and reduced.
  * @throws {RangeError} When the table presents no frame.
@@ -570,13 +601,14 @@ export function presentationOutputFps(table: VideoPresentationTable): ExactRatio
   });
   if (spacings.size === 1) return reduced(BigInt(timescale), BigInt([...spacings][0]!));
   const last = runs.at(-1)!;
-  return reduced(BigInt(frames) * BigInt(timescale), BigInt(last.start + (last.count - 1) * last.step + last.duration - runs[0]!.start));
+  return nearestStandardRate(BigInt(frames) * BigInt(timescale), BigInt(last.start + (last.count - 1) * last.step + last.duration - runs[0]!.start));
 }
 
 /**
  * The transition output profile from the two clips' selected plans, in timeline order (§97 D13-1, D15-5): the first
  * clip's display size, odd sides of an opaque output taken down to even (one up to two) and a transparent one kept; the
- * first clip's frame rate, timescale over frame duration when constant, else frames over display duration; alpha when
+ * first clip's frame rate, timescale over frame duration when constant, else the standard rate nearest frames over display
+ * duration; alpha when
  * either clip is transparent, then VP9 and yuva420p, else H.264 and yuv420p; time base 1/fps; SDR BT.709 colour.
  * @param first - The first clip's plan.
  * @param second - The second clip's plan.
