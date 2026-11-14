@@ -48,8 +48,22 @@ export interface SpaceWriteOptions {
 export function refusalOf(name: string, kind: SpaceWriteKind): SpaceRefusalReason | null {
   const state = readDocSize(name);
   if (state.phase === 'resyncing') return 'resyncing';
-  if (state.phase !== 'full') return null;
-  if (state.overCeiling) return kind === 'remove' ? null : 'over_ceiling';
+  return sizeRefusalOf(state.phase === 'full', state.overCeiling, kind);
+}
+
+/**
+ * Why a write of this kind is refused by a document's size: a full Space
+ * takes only `delete` and `remove`, one past the hard ceiling only `remove`.
+ * The browser judges its own copy of the size through {@link refusalOf};
+ * collab judges an external agent's writes through this with the size it holds.
+ * @param full - Whether the document is at or over its limit.
+ * @param overCeiling - Whether it is at or over the hard ceiling.
+ * @param kind - The kind.
+ * @returns The reason, or null when the write may run.
+ */
+export function sizeRefusalOf(full: boolean, overCeiling: boolean, kind: SpaceWriteKind): 'full' | 'over_ceiling' | null {
+  if (!full) return null;
+  if (overCeiling) return kind === 'remove' ? null : 'over_ceiling';
   return kind === 'delete' || kind === 'remove' ? null : 'full';
 }
 

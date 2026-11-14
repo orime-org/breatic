@@ -11,7 +11,7 @@ import { describe, it, expect } from 'vitest';
 import {
   referencePoolCount,
   isReferencePoolFull,
-} from '@web/spaces/canvas/generate/reference-pool-cap';
+} from '@shared/canvas/model/reference-pool-cap.js';
 
 const edge = (source: string, target: string) => ({
   id: `${source}->${target}`,

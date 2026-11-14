@@ -65,7 +65,6 @@ import {
   getCachedReferencePoolCap,
   type NodeHistoryEntry,
 } from '@web/data/api/canvas';
-import { referencePoolCount } from '@web/spaces/canvas/generate/reference-pool-cap';
 import { fillSlot } from '@web/spaces/canvas/generate/slot-write';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
@@ -166,12 +165,15 @@ import {
   refusedFormatParams,
   markedSinks,
   fillNodesFromFiles,
-  computeDeletedAssetEntries,
   type UploadNodeSpec,
-  assetUrlSurvives,
-  isReportableAssetUrl,
   TEXT_REFUSAL_MARK,
 } from '@web/spaces/canvas/canvas-upload';
+import {
+  assetUrlSurvives,
+  computeDeletedAssetEntries,
+  isReportableAssetUrl,
+  referencePoolCount,
+} from '@breatic/shared/canvas-model';
 import { checkAdd, checkWrite, type SpaceRefusal } from '@web/data/yjs/space-write';
 import {
   runMediaUpload,

@@ -9,15 +9,13 @@ vi.mock('@web/data/upload/upload-status', () => ({ waitForUploadEnding: () => ne
 import { isUploadableMediaType, uploadableSpellings } from '@breatic/shared';
 
 import {
-  isReportableAssetUrl,
   fileToNodeSpec,
   checkFileAdmission,
   uploadAcceptFor,
   refusedFormatParams,
   fillNodeFromFile,
-  computeDeletedAssetEntries,
-  assetUrlSurvives,
 } from '@web/spaces/canvas/canvas-upload';
+import { assetUrlSurvives, computeDeletedAssetEntries, isReportableAssetUrl } from '@breatic/shared/canvas-model';
 import type { SlotSpec } from '@breatic/shared/canvas-model';
 import { useUploadMarksStore } from '@web/stores/upload-marks';
 import { VIDEO_SLOTS } from '@breatic/shared/canvas-model';

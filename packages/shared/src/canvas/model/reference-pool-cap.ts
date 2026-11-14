@@ -7,15 +7,16 @@
  * One node's reference pool = its incoming reference edges (a connection
  * IS a reference) + its focus crops (`data.focusImages`) combined. The
  * pool is capped per node by the `canvas_reference_pool_cap` knob
- * (config/limits.yaml → GET /canvas/limits) — a UI sanity cap enforced by
- * the frontend at ADD time (connect / pick click / focus confirm); the
- * pool lives in Yjs, so the server never gates collaborative writes and a
- * concurrent-add overshoot is accepted (soft cap). Distinct from the
+ * (config/limits.yaml → GET /canvas/limits) — a UI sanity cap enforced at
+ * ADD time by the frontend (connect / pick click / focus confirm) and by
+ * collab for an external agent's connections (breatic#1488); the pool lives
+ * in Yjs, so collaborative writes are not gated and a concurrent-add
+ * overshoot is accepted (soft cap). Distinct from the
  * per-model `images.max_items` payload cap enforced at execute (#1735).
  */
 
-import { validFocusImages } from '@breatic/shared/canvas-model';
-import { FOCUS_REF_PREFIX } from '@breatic/shared/canvas-model';
+import { validFocusImages } from '@shared/canvas/model/focus-images.js';
+import { FOCUS_REF_PREFIX } from '@shared/canvas/model/derive-references.js';
 
 /** The minimal edge shape the count reads (ReactFlow edge compatible). */
 interface PoolEdge {

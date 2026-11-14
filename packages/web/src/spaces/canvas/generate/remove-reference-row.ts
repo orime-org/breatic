@@ -21,10 +21,8 @@ import {
 } from '@web/data/yjs/canvas-space';
 import {
   assetUrlSurvives,
-  isReportableAssetUrl,
-} from '@web/spaces/canvas/canvas-upload';
-import {
   focusIdOfRefId,
+  isReportableAssetUrl,
   type ReferenceRailItem,
 } from '@breatic/shared/canvas-model';
 

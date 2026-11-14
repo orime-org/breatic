@@ -69,7 +69,7 @@ describe('focus: namespace squatting (round-9)', () => {
 
   it('referencePoolCount does not let the squatter edge occupy a cap slot', async () => {
     const { referencePoolCount } = await import(
-      '@web/spaces/canvas/generate/reference-pool-cap'
+      '@breatic/shared/canvas-model'
     );
     const nodes = [{ id: 'focus:f1' }, { id: 'gen' }];
     const edges = [{ id: 'e', source: 'focus:f1', target: 'gen' }];
@@ -96,7 +96,7 @@ describe('focus: namespace squatting (round-9)', () => {
 
   it('referencePoolCount does not let a forged focus:-id edge occupy a cap slot (round-12)', async () => {
     const { referencePoolCount } = await import(
-      '@web/spaces/canvas/generate/reference-pool-cap'
+      '@breatic/shared/canvas-model'
     );
     // The rail refuses to render it (test above) — so it must not occupy a
     // cap slot either (the round-2 invariant: uncountable = unrenderable).
