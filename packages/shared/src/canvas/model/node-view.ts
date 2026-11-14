@@ -32,7 +32,7 @@
  * view), and writes back to the wire through the canvas-space setters.
  */
 
-import type { AnnotationReply, CanvasNodeFields, FocusImage, NodeTaskCounts, NodeType } from '@shared/types/canvas-node.js';
+import type { AnnotationAssignment, AnnotationReply, CanvasNodeFields, FocusImage, NodeTaskCounts, NodeType } from '@shared/types/canvas-node.js';
 
 /** The 6 content modalities that own a renderable payload. */
 export type Modality = 'text' | 'image' | 'audio' | 'video' | '3d' | 'web';
@@ -246,6 +246,8 @@ export interface AnnotationNodeView extends NodeViewCommon {
   editedAt?: number;
   /** The replies under it, oldest first. Empty on a sticky nobody answered. */
   replies: AnnotationReply[];
+  /** Who the thread is handed to; absent when it is handed to nobody. */
+  assignment?: AnnotationAssignment;
 }
 
 /**
@@ -432,6 +434,7 @@ export function toNodeView(fields: CanvasNodeFields): TypedNodeView | null {
           replies: [...(data.replies ?? [])].sort(
             (a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : 1),
           ),
+          assignment: data.assignment,
           locked,
         },
       };

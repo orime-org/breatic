@@ -194,9 +194,9 @@ export interface FocusImage {
  * would be a second copy of what the project roster already answers, and it
  * would keep saying whatever was true the day the reply was written.
  *
- * Frontend-owned, like {@link FocusImage}: the backend never reads or writes
- * it. It lives here because it is part of the wire shape of a node's data, and
- * that shape is described in one place.
+ * Written by the browser, and by collab when a user's external agent replies
+ * on their behalf (breatic#1488). It lives here because it is part of the wire
+ * shape of a node's data, and that shape is described in one place.
  */
 export interface AnnotationReply {
   /** Stable id, minted by the client that posts it. */
@@ -209,6 +209,23 @@ export interface AnnotationReply {
   createdAt: number;
   /** When it was last rewritten. Absent until someone edits it. */
   editedAt?: number;
+  /** The external-agent connection that wrote it for its author; absent when the author typed it. */
+  via?: string;
+  /** The hand-over this reply answers: the thread's `assignment.assignedAt` when it was written. */
+  answers?: number;
+}
+
+/**
+ * A thread handed to one of a user's external-agent connections to answer
+ * (breatic#1488): stored on the annotation's data, plain value.
+ */
+export interface AnnotationAssignment {
+  /** The connection the thread is handed to. */
+  connectionId: string;
+  /** Who handed it over. */
+  assignedBy: string;
+  /** When, epoch milliseconds; a reply that answers it carries this. */
+  assignedAt: number;
 }
 
 // ── Content-node Generate: references + prompt ───────────
@@ -601,6 +618,8 @@ export interface CanvasNodeFields {
      * Annotation-only; `toJSON()` serializes it to this plain array.
      */
     replies?: AnnotationReply[];
+    /** Who the thread is handed to, when it is handed to an external agent. */
+    assignment?: AnnotationAssignment;
 
     // ─── Group (Group) node fields ──────────────────────────
     // A Group's authoritative size lives in `width`/`height` above; its members

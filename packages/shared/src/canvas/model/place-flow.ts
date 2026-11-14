@@ -294,7 +294,7 @@ export function withTaskCounts(rect: Rect): Rect {
  * @returns Its width and height in flow coordinates.
  * @throws {never} Never.
  */
-function footprintOf(
+export function footprintOf(
   p: NodePlacement,
   measuredOf: (id: string) => { width: number; height: number } | undefined,
 ): { width: number; height: number } {

@@ -394,6 +394,8 @@ export function addReplyInDoc(doc: Y.Doc, nodeId: string, reply: AnnotationReply
   map.set('content', reply.content);
   map.set('createdBy', reply.createdBy);
   map.set('createdAt', reply.createdAt);
+  if (reply.via !== undefined) map.set('via', reply.via);
+  if (reply.answers !== undefined) map.set('answers', reply.answers);
   replies.push([map]);
   return true;
 }

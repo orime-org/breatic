@@ -11,6 +11,7 @@
 import { z } from "zod";
 import { deriveId } from "@shared/ids.js";
 import { CREATABLE_NODE_TYPES, type CreatableNodeType } from "@shared/canvas/model/node-factory.js";
+import { MAX_NODE_NAME_LEN } from "@shared/types/canvas-node.js";
 
 /**
  * Approximate length cap of the command stream. Same value as core's
@@ -124,6 +125,13 @@ export const AGENT_COMMAND_REFUSALS = [
   "rate_limited",
   "invalid_command",
   "not_found",
+  // The gates the browser applies to a user's own edit (§8.3).
+  "locked",
+  "handling",
+  "not_yours",
+  "cannot_connect",
+  "reference_pool_full",
+  "space_full",
 ] as const;
 export const agentCommandRefusalSchema = z.enum(AGENT_COMMAND_REFUSALS);
 export type AgentCommandRefusal = z.infer<typeof agentCommandRefusalSchema>;
@@ -135,10 +143,25 @@ export type AgentCommandRefusal = z.infer<typeof agentCommandRefusalSchema>;
  */
 const nodeIdSchema = z.string().min(1);
 
+/** A node or Group name, no longer than the rename input lets a user type. */
+const nodeNameSchema = z.string().max(MAX_NODE_NAME_LEN);
+
 /** A node type an agent can create, the same four the node library offers. */
 const creatableNodeTypeSchema = z.custom<CreatableNodeType>(
   (value) => typeof value === "string" && (CREATABLE_NODE_TYPES as readonly string[]).includes(value),
 );
+
+/** A point in flow coordinates. `z.number()` refuses NaN and the infinities. */
+const pointSchema = z.object({ x: z.number(), y: z.number() });
+
+/** One end of an edge a create command writes: a node of this batch, by index, or one on the canvas. */
+const newEdgeEndSchema = z.union([
+  z.object({ new: z.number().int().min(0) }).strict(),
+  z.object({ id: nodeIdSchema }).strict(),
+]);
+
+/** A list of node ids, at least one. */
+const nodeIdsSchema = z.array(nodeIdSchema).min(1);
 
 /**
  * The parameters of each command type, by type (breatic#1488 §7). A type not
@@ -147,14 +170,62 @@ const creatableNodeTypeSchema = z.custom<CreatableNodeType>(
 export const agentCommandParamsSchemas = {
   list_spaces: z.object({}),
   read_canvas: z.object({ nodeIds: z.array(nodeIdSchema).optional() }),
-  create_canvas_nodes: z.object({
-    nodes: z.array(z.object({ type: creatableNodeTypeSchema, name: z.string().optional() })).min(1),
-  }),
-  // Every field but the id is a change to make, and at least one is given;
-  // later fields join `name` here.
+  create_canvas_nodes: z
+    .object({
+      nodes: z
+        .array(z.object({ type: creatableNodeTypeSchema, name: nodeNameSchema.optional(), position: pointSchema.optional() }))
+        .min(1),
+      edges: z.array(z.object({ source: newEdgeEndSchema, target: newEdgeEndSchema })).optional(),
+      group: z.object({ name: nodeNameSchema.optional(), include: z.array(nodeIdSchema).optional() }).optional(),
+    })
+    .refine(
+      (p) => (p.edges ?? []).every((e) => [e.source, e.target].every((end) => !("new" in end) || end.new < p.nodes.length)),
+      { message: "an edge names a new node the batch does not have" },
+    ),
+  // Every field but the id is a change to make, and at least one is given.
   update_canvas_node: z
-    .object({ nodeId: nodeIdSchema, name: z.string().optional() })
-    .refine((p) => p.name !== undefined, { message: "nothing to change" }),
+    .object({
+      nodeId: nodeIdSchema,
+      name: nodeNameSchema.optional(),
+      position: pointSchema.optional(),
+      parentId: nodeIdSchema.nullable().optional(),
+      text: z.string().optional(),
+    })
+    .refine((p) => p.name !== undefined || p.position !== undefined || p.parentId !== undefined || p.text !== undefined, {
+      message: "nothing to change",
+    }),
+  lock_canvas_nodes: z.object({ nodeIds: nodeIdsSchema }),
+  unlock_canvas_nodes: z.object({ nodeIds: nodeIdsSchema }),
+  delete_canvas_nodes: z.object({ nodeIds: nodeIdsSchema }),
+  connect_nodes: z.object({ edges: z.array(z.object({ source: nodeIdSchema, target: nodeIdSchema })).min(1) }),
+  disconnect_nodes: z.object({ edgeIds: z.array(z.string().min(1)).min(1) }),
+  // Where the thread goes: a point (the pin's tip), a node, or an existing
+  // thread to reply to; exactly one of them.
+  comment_on_canvas: z
+    .object({
+      text: z.string().min(1),
+      position: pointSchema.optional(),
+      nodeId: nodeIdSchema.optional(),
+      annotationId: nodeIdSchema.optional(),
+    })
+    .refine((p) => [p.position, p.nodeId, p.annotationId].filter((v) => v !== undefined).length === 1, {
+      message: "name exactly one of position, nodeId and annotationId",
+    }),
+  // A history row the MCP service read for the node; only a successful one
+  // with content is restorable, as in the history panel.
+  restore_node_version: z.object({
+    nodeId: nodeIdSchema,
+    entry: z.object({
+      status: z.literal("success"),
+      content: z.string().min(1),
+      thumbnailUrl: z.string().nullable(),
+      mediaWidth: z.number().nullable(),
+      mediaHeight: z.number().nullable(),
+      duration: z.number().nullable(),
+      mimeType: z.string().nullable(),
+      size: z.number().nullable(),
+    }),
+  }),
 } as const;
 
 /** A command type collab executes. */
