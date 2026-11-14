@@ -1023,6 +1023,49 @@ describe('continuous controls end on release and on Escape (round 1 fixes, desig
     await waitFor(() => expect(value()).toBe(light ? 101 : 2.8));
   });
 
+  it.each([
+    ['the ambient light', false],
+    ['a light', true],
+  ])('leaves no press open after a key step of %s at its bound, so Escape closes the console', async (_, light) => {
+    const { session } = await setup([lamp(LAMP, 1, 'point', { intensity: 400 })], 'editor', true, { spaceKeyboard: true });
+    act(() => { session.execute({ type: 'environment', set: { ambientIntensity: 10 } }); });
+    await openDirector();
+    if (light) act(() => session.select(LAMP, false));
+    const [thumb] = light
+      ? within(screen.getByTestId(`scene-director-fields-${LAMP}`)).getAllByRole('slider')
+      : within(within(screen.getByTestId('scene-right-panel')).getByTestId('scene-director-ambient')).getAllByRole('slider');
+    fireEvent.keyDown(thumb as HTMLElement, { key: 'ArrowRight' });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(session.getSnapshot().gestureActive).toBe(false);
+    fireEvent.keyDown(thumb as HTMLElement, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByTestId('scene-right-panel')).toBeNull());
+  });
+
+  it.each([
+    ['the ambient light', false],
+    ['a light', true],
+  ])('writes the first picker key step of %s after a press whose release never came', async (_, light) => {
+    const { session } = await setup([lamp()], 'editor', true, { spaceKeyboard: true });
+    const opened = await openDirector();
+    if (light) act(() => session.select(LAMP, false));
+    sliderPointers();
+    const [thumb] = light
+      ? within(screen.getByTestId(`scene-director-fields-${LAMP}`)).getAllByRole('slider')
+      : within(within(opened).getByTestId('scene-director-ambient')).getAllByRole('slider');
+    fireEvent.pointerDown(thumb as HTMLElement, { pointerId: 1, button: 0, buttons: 1, clientX: 100 });
+    fireEvent.pointerMove(thumb as HTMLElement, { pointerId: 1, buttons: 1, clientX: 300 });
+    // The browser loses focus and the button is let go outside it: no pointerup arrives.
+    const focused = vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+    act(() => { window.dispatchEvent(new Event('blur')); });
+    focused.mockReturnValue(true);
+    act(() => { window.dispatchEvent(new Event('focus')); });
+    fireEvent.click(light ? lightSwatch() : ambientSwatch(opened));
+    const saturation = await screen.findByRole('slider', { name: 'Color' });
+    fireEvent.keyDown(saturation, { key: 'ArrowRight', keyCode: 39 });
+    fireEvent.keyUp(saturation, { key: 'ArrowRight', keyCode: 39 });
+    await waitFor(() => expect(light ? lampValue(session, 'color') : ambientColor(session)).not.toBe('#ffffff'));
+  });
+
   it('drops an ambient picker drag when the browser loses focus', async () => {
     const { session } = await setup();
     const opened = await openDirector();

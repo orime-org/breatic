@@ -21,7 +21,7 @@ import { cn } from '@web/lib/utils';
 import { SceneColorField, SceneDirectorFields } from '@web/spaces/three-d/SceneDirectorFields';
 import type { SceneField, SceneFieldDraftOwner } from '@web/spaces/three-d/SceneField';
 import { SceneIconButton } from '@web/spaces/three-d/SceneIconButton';
-import { commitAfterChange, type ControlPress } from '@web/spaces/three-d/use-control-press';
+import type { ControlPress } from '@web/spaces/three-d/use-control-press';
 import { cameraFrameRatio } from '@web/spaces/three-d/viewfinder/viewfinder-geometry';
 import type { LightsPlan } from '@web/spaces/three-d/viewport/director-lights';
 
@@ -136,7 +136,7 @@ export const SceneDirectorPanel = React.memo(function SceneDirectorPanel(props: 
   const lights = React.useMemo(() => snapshot.objects.filter(isSceneLight).sort(compareDirectorRecords), [snapshot.objects]);
   const selectedId = snapshot.selectedIds.length === 1 ? snapshot.selectedIds[0] : undefined;
   const atLimit = maxLights === undefined || lights.length >= maxLights;
-  const onAmbientCommitAfterChange = React.useMemo(() => commitAfterChange(onAmbientCommit), [onAmbientCommit]);
+  const onAmbientStepKey = React.useCallback((event: React.KeyboardEvent): void => { ambientPress.stepKey(event, onAmbientCommit); }, [ambientPress, onAmbientCommit]);
   const onAmbientColor = React.useCallback((ambientColor: string): void => onAmbientPreview({ ambientColor }), [onAmbientPreview]);
   /**
    * The fields of a selected camera or light.
@@ -203,7 +203,7 @@ export const SceneDirectorPanel = React.memo(function SceneDirectorPanel(props: 
         <div className='flex items-center gap-2'>
           <Slider aria-labelledby={`${ids}-ambient-intensity`} className='w-28' min={0} max={SCENE_AMBIENT_INTENSITY_MAX} step={0.1} disabled={!canEdit}
             value={[environment.ambientIntensity]} onValueChange={([ambientIntensity]) => { if (ambientIntensity !== undefined) onAmbientPreview({ ambientIntensity }); }}
-            onValueCommit={onAmbientCommitAfterChange} onPointerDown={ambientPress.begin} onKeyDown={ambientPress.beginOnStepKey} onPointerUp={onAmbientCommit} />
+            onPointerDown={ambientPress.begin} onKeyDown={onAmbientStepKey} onPointerUp={onAmbientCommit} />
           <span className='w-10 text-right text-xs tabular-nums text-muted-foreground'>{environment.ambientIntensity.toFixed(1)}</span>
         </div>
       </div>

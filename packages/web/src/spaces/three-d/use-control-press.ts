@@ -7,19 +7,21 @@ import * as React from 'react';
 export interface ControlPress {
   /**
    * Take a change of the control.
-   * @returns Whether the change belongs to an open drag; a change with no press yet (a picker key step) opens one.
+   * @returns Whether the change belongs to an open press; a change never opens one.
    */
   change: () => boolean;
-  /** Start a new press when the pointer goes down, so undo or Escape before its first change still ends it. */
+  /** Start a new press when the pointer or a picker arrow key goes down, ending whatever an earlier press left. */
   begin: () => void;
   /**
-   * Start a new press when a key that steps a Slider goes down, so a step never lands in what an earlier press left.
+   * Take a key on a Slider: a step key is one press of its own, started now and ended once the key's change, if
+   * any, has run (Radix reports no change and no commit at a bound).
    * @param event - The key event.
+   * @param commit - Ends the press and writes it.
    */
-  beginOnStepKey: (event: Pick<KeyboardEvent, 'key'>) => void;
+  stepKey: (event: Pick<KeyboardEvent, 'key'>, commit: () => void) => void;
   /**
-   * End the drag without writing it; the rest of the press is ignored until release.
-   * @returns Whether its drag was still open; false for a press already dropped, so a second Escape takes its usual step.
+   * End the drag without writing it; the rest of the press is ignored until the next press starts.
+   * @returns Whether its drag was still open; false for one already ended, so a second Escape takes its usual step.
    */
   drop: () => boolean;
   /**
@@ -34,44 +36,33 @@ const STEP_KEYS = new Set(['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'H
 
 /**
  * Track one press of a continuous control: once Escape, a lock or an undo ends its drag, every later change of the same
- * press is ignored until release (design 3.8 and 6.2, the same rule the camera pilot follows). A pointer down or a step
- * key always starts a new press, ending whatever an earlier one left behind (its control unmounted, or its release came
- * outside the browser).
+ * press is ignored (design 3.8 and 6.2, the same rule the camera pilot follows). Every press has an explicit start (a
+ * pointer down, a step key, a picker arrow key), which ends whatever an earlier press left behind (its control
+ * unmounted, or its release came outside the browser).
  * @param open - Opens the drag of a new press; false when it cannot open (no edit access, a locked object).
  * @returns The press.
  */
 export function useControlPress(open: () => boolean): ControlPress {
-  const state = React.useRef<'idle' | 'open' | 'dropped'>('idle');
+  const held = React.useRef(false);
   return React.useMemo<ControlPress>(() => {
     /** Start a new press, ending whatever an earlier one left behind. */
-    const begin = (): void => { state.current = open() ? 'open' : 'dropped'; };
+    const begin = (): void => { held.current = open(); };
+    /**
+     * End the press.
+     * @returns Whether its drag was still open.
+     */
+    const end = (): boolean => {
+      const was = held.current;
+      held.current = false;
+      return was;
+    };
     return {
       begin,
-      beginOnStepKey: (event) => { if (STEP_KEYS.has(event.key)) begin(); },
-      change: () => {
-        if (state.current === 'idle') begin();
-        return state.current === 'open';
-      },
-      drop: () => {
-        const was = state.current === 'open';
-        if (was) state.current = 'dropped';
-        return was;
-      },
-      release: () => {
-        const was = state.current === 'open';
-        state.current = 'idle';
-        return was;
-      },
+      change: () => held.current,
+      // Radix applies the step in the same keydown, after this handler: the press ends once that has run.
+      stepKey: (event, commit) => { if (STEP_KEYS.has(event.key)) { begin(); queueMicrotask(commit); } },
+      drop: end,
+      release: end,
     };
   }, [open]);
-}
-
-/**
- * A Slider `onValueCommit` that runs after the change it commits: on a key step Radix Slider calls `onValueCommit`
- * before `onValueChange`, so the commit waits for the change of the same event.
- * @param commit - Ends the press and writes it.
- * @returns The handler.
- */
-export function commitAfterChange(commit: () => void): () => void {
-  return () => { queueMicrotask(commit); };
 }

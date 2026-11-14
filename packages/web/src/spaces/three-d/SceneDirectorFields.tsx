@@ -20,7 +20,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { whenBlurLeaves } from '@web/lib/blur-left';
 import type { SceneField, SceneFieldDraftOwner } from '@web/spaces/three-d/SceneField';
 import { keepOnSpaceTab } from '@web/spaces/three-d/SceneRightPanel';
-import { commitAfterChange, useControlPress, type ControlPress } from '@web/spaces/three-d/use-control-press';
+import { useControlPress, type ControlPress } from '@web/spaces/three-d/use-control-press';
 
 /** Lens presets in millimetres (inner#1694 design 3.2). */
 const FOCAL_PRESETS = [14, 24, 35, 50, 70, 100, 200] as const;
@@ -45,9 +45,9 @@ function Row({ label, labelId, children }: { label: string; labelId: string; chi
  * A drag that previews and is written once on release, as one undo step (design 3.8).
  * @param session - The command owner.
  * @param id - The object being changed.
- * @returns The press, preview, commit and cancel callbacks, and the commit a Slider's `onValueCommit` takes.
+ * @returns The press, preview, commit and cancel callbacks, and a Slider's key handler.
  */
-function useContinuousPatch(session: SceneSession, id: string): { press: ControlPress; preview: (patch: Omit<ScenePatch, 'id'>) => void; commit: () => void; cancel: () => void; commitAfterChange: () => void } {
+function useContinuousPatch(session: SceneSession, id: string): { press: ControlPress; preview: (patch: Omit<ScenePatch, 'id'>) => void; commit: () => void; cancel: () => void; stepKey: (event: React.KeyboardEvent) => void } {
   const open = React.useCallback((): boolean => session.beginGesture(), [session]);
   const press = useControlPress(open);
   // The session owns whether the drag is still open: Escape, a lock or an undo may have ended it.
@@ -61,8 +61,8 @@ function useContinuousPatch(session: SceneSession, id: string): { press: Control
   const cancel = React.useCallback((): void => {
     if (press.release() && session.getSnapshot().gestureActive) session.endGesture(false);
   }, [session, press]);
-  const commitLater = React.useMemo(() => commitAfterChange(commit), [commit]);
-  return { press, preview, commit, cancel, commitAfterChange: commitLater };
+  const stepKey = React.useCallback((event: React.KeyboardEvent): void => { press.stepKey(event, commit); }, [press, commit]);
+  return { press, preview, commit, cancel, stepKey };
 }
 
 const HEX_TEXT = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
@@ -111,6 +111,10 @@ export const SceneColorField = React.memo(function SceneColorField({ value, disa
     onPressStart();
     window.addEventListener('mouseup', release, { once: true });
   }, [onPressStart, release]);
+  // A picker arrow key is a press of its own; react-colorful ends it on the key's release.
+  const onPickerKey = React.useCallback((event: React.KeyboardEvent): void => {
+    if (live.current && event.key.startsWith('Arrow')) onPressStart();
+  }, [onPressStart]);
   const settle = React.useCallback((): void => {
     setTyped(null);
     const digits = typed === null ? undefined : HEX_TEXT.exec(typed)?.[1]?.toLowerCase();
@@ -144,7 +148,7 @@ export const SceneColorField = React.memo(function SceneColorField({ value, disa
         className='size-6 rounded-full border border-border disabled:cursor-not-allowed disabled:opacity-50' style={{ backgroundColor: value }} />
     </PopoverTrigger>
     <PopoverContent container={container} side='left' align='start' className='w-auto space-y-2 p-2' onEscapeKeyDown={onEscapeKeyDown} onInteractOutside={keepOnSpaceTab}>
-      <div ref={picker}><HexColorPicker color={value} onChange={pick} onChangeEnd={release} onMouseDown={onPress} /></div>
+      <div ref={picker}><HexColorPicker color={value} onChange={pick} onChangeEnd={release} onMouseDown={onPress} onKeyDown={onPickerKey} /></div>
       <Input value={typed ?? value} onChange={onType} onBlur={onBlur} onKeyDown={onKeyDown} spellCheck={false} autoComplete='off'
         className='h-[var(--btn-inline)] rounded-md bg-background px-2 text-xs md:text-xs' />
     </PopoverContent>
@@ -243,7 +247,7 @@ export const SceneDirectorFields = React.memo(function SceneDirectorFields(props
     </Row>
     <Row label={t('spaces.threeD.intensity')} labelId={`${ids}-intensity`}>
       <Slider aria-labelledby={`${ids}-intensity`} className='w-28' min={0} max={max} step={step} value={[object.intensity]} disabled={disabled}
-        onValueChange={([value]) => { if (value !== undefined) continuous.preview({ intensity: value }); }} onValueCommit={continuous.commitAfterChange} onPointerDown={continuous.press.begin} onKeyDown={continuous.press.beginOnStepKey} onPointerUp={continuous.commit} />
+        onValueChange={([value]) => { if (value !== undefined) continuous.preview({ intensity: value }); }} onPointerDown={continuous.press.begin} onKeyDown={continuous.stepKey} onPointerUp={continuous.commit} />
       <span className='w-10 text-right text-xs tabular-nums text-muted-foreground'>{Number(object.intensity.toFixed(1))}</span>
     </Row>
     <Row label={t('spaces.threeD.castShadow')} labelId={`${ids}-shadow`}>
@@ -251,7 +255,7 @@ export const SceneDirectorFields = React.memo(function SceneDirectorFields(props
     </Row>
     {object.model.type === 'spot' ? <Row label={t('spaces.threeD.angle')} labelId={`${ids}-angle`}>
       <Slider aria-labelledby={`${ids}-angle`} className='w-28' min={SCENE_SPOT_ANGLE_MIN} max={SCENE_SPOT_ANGLE_MAX} step={1} value={[object.angle ?? SCENE_SPOT_ANGLE_DEFAULT]}
-        disabled={disabled} onValueChange={([value]) => { if (value !== undefined) continuous.preview({ angle: value }); }} onValueCommit={continuous.commitAfterChange} onPointerDown={continuous.press.begin} onKeyDown={continuous.press.beginOnStepKey} onPointerUp={continuous.commit} />
+        disabled={disabled} onValueChange={([value]) => { if (value !== undefined) continuous.preview({ angle: value }); }} onPointerDown={continuous.press.begin} onKeyDown={continuous.stepKey} onPointerUp={continuous.commit} />
       <span className='w-10 text-right text-xs tabular-nums text-muted-foreground'>{`${Math.round(object.angle ?? SCENE_SPOT_ANGLE_DEFAULT)}°`}</span>
     </Row> : null}
     {lock}
