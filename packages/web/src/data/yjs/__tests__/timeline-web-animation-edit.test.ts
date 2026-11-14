@@ -199,7 +199,7 @@ describe('add_web_animation', () => {
     expect(createdCopy(result, cid(1))).toEqual({
       id: cid(1), trackId: V2, kind: 'web-animation', contentBinding: boundTo(SRC_A),
       startFrame: 12, sourceInFrame: 0, durationFrames: 48, rate: { num: 1, den: 1 }, gain: 1, mute: false,
-      transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+      transform: { frameX: 0, frameY: 0, scaleX: 1, scaleY: 1, rotation: 0 },
     });
     expect(result.created).toEqual([cid(1)]);
   });

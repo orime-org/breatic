@@ -158,6 +158,35 @@ async function withBufferingTimeline(
   }
 }
 
+/** Where the play bar's controls sit, and whether the buffering label, when it shows, sits above the timecode inside the bar. */
+interface PlayBarGeometry { slider: string; ratio: string; play: string; labelAboveTimecode: boolean | null }
+
+/**
+ * Measures the play bar so a playback state change can be shown to leave its controls in place.
+ * @throws {Error} When the play bar is absent.
+ */
+async function playBarGeometry(page: Page): Promise<PlayBarGeometry> {
+  return visibleSpace(page).locator('[data-playback-state]').evaluate((row) => {
+    const box = (element: Element | null): string => {
+      if (element === null) throw new Error('a play bar control is absent');
+      const rect = element.getBoundingClientRect();
+      return `${rect.left},${rect.top},${rect.width},${rect.height}`;
+    };
+    const timecode = row.querySelector('[data-testid="timeline-timecode"]');
+    const label = timecode?.querySelector('span:nth-child(2)') ?? null;
+    return {
+      // The seek slider's root follows the timecode; its thumb moves with playback, the root does not.
+      slider: box(timecode?.nextElementSibling ?? null),
+      ratio: box(row.querySelector('[data-testid="timeline-frame-ratio"]')),
+      play: box(row.querySelector('[data-testid="timeline-play"]')),
+      labelAboveTimecode: label === null || timecode?.firstElementChild === null || timecode?.firstElementChild === undefined
+        ? null
+        : label.getBoundingClientRect().bottom <= timecode.firstElementChild.getBoundingClientRect().top + 0.5
+          && label.getBoundingClientRect().top >= row.getBoundingClientRect().top,
+    };
+  });
+}
+
 /**
  * Play real decoded bytes and wait for native starvation after observable clock advancement.
  * @throws {Error} When native playback, genuine waiting or the Timeline waiting state never appears.
@@ -173,18 +202,23 @@ async function enterNativeWaiting(page: Page, uploaded: TimelineUpload, range: T
     });
   });
   await outlet.getByTestId('timeline-play').click();
-  await expect(outlet.getByText('Playing', { exact: true })).toBeVisible();
+  await expect(outlet.locator('[data-playback-state]')).toHaveAttribute('data-playback-state', 'playing');
   await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.currentTime)).toBeGreaterThan(0.25);
   const advancing = await sampleTransport(page, uploaded.clipId);
   expect(advancing.at(-1)!.time).toBeGreaterThan(advancing[0].time);
   expect(advancing.at(-1)!.frame).toBeGreaterThan(advancing[0].frame);
   const earlierWaitingEvents = advancing.at(-1)!.waitingEvents;
+  const playingBar = await playBarGeometry(page);
   await expect.poll(() => range.heldResponses).toBeGreaterThan(0);
   await expect.poll(() => video.evaluate((element: HTMLVideoElement) => ({
     starved: element.readyState < HTMLMediaElement.HAVE_FUTURE_DATA && !element.ended && element.currentTime > 1,
     waitingEvents: Number(element.getAttribute('data-test-native-waiting')),
   })), { timeout: 20_000 }).toMatchObject({ starved: true, waitingEvents: expect.any(Number) });
   await expect(outlet.getByText('Buffering…', { exact: true })).toBeVisible();
+  // The buffering text hangs above the timecode, so the controls keep their places (#1502 visual review).
+  const waitingBar = await playBarGeometry(page);
+  expect(waitingBar).toEqual({ ...playingBar, labelAboveTimecode: true });
+  await outlet.locator('[data-playback-state]').screenshot({ path: test.info().outputPath('play-bar-waiting.png') });
   const waiting = await sampleTransport(page, uploaded.clipId);
   expect(waiting.length).toBeGreaterThan(2);
   expect(waiting[0].waitingEvents).toBeGreaterThan(earlierWaitingEvents);
@@ -203,7 +237,7 @@ test('native starvation freezes the Timeline clock and releasing the same HTTP r
     const waiting = await enterNativeWaiting(page, uploaded, range);
     range.release();
     const outlet = visibleSpace(page);
-    await expect(outlet.getByText('Playing', { exact: true })).toBeVisible();
+    await expect(outlet.locator('[data-playback-state]')).toHaveAttribute('data-playback-state', 'playing');
     await expect.poll(async () => (await sampleTransport(page, uploaded.clipId, 50)).at(-1)!.time).toBeGreaterThan(waiting.at(-1)!.time + 0.2);
     const resumed = await sampleTransport(page, uploaded.clipId);
     expect(resumed.every((sample) => !sample.paused && sample.readyState >= 3 && sample.error === null)).toBe(true);
@@ -212,7 +246,7 @@ test('native starvation freezes the Timeline clock and releasing the same HTTP r
     expect(resumed.at(-1)!.frame).toBeGreaterThan(resumed[0].frame);
     await saveEvidence('native-resumed', { fps: uploaded.fps, resumed });
     await outlet.getByTestId('timeline-play').click();
-    await expect(outlet.getByText('Paused', { exact: true })).toBeVisible();
+    await expect(outlet.locator('[data-playback-state]')).toHaveAttribute('data-playback-state', 'paused');
   });
 });
 
@@ -224,7 +258,7 @@ test('pausing during native starvation keeps the Timeline paused when held HTTP 
     await expect(outlet.getByTestId('timeline-play')).toHaveText('Pause');
     await outlet.getByTestId('timeline-play').click();
     await expect(outlet.getByTestId('timeline-play')).toHaveText('Play');
-    await expect(outlet.getByText('Paused', { exact: true })).toBeVisible();
+    await expect(outlet.locator('[data-playback-state]')).toHaveAttribute('data-playback-state', 'paused');
     const paused = await sampleTransport(page, uploaded.clipId);
     range.release();
     await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.readyState)).toBeGreaterThanOrEqual(3);
@@ -233,7 +267,7 @@ test('pausing during native starvation keeps the Timeline paused when held HTTP 
     expect(afterRelease.every((sample) => sample.paused && sample.error === null)).toBe(true);
     expect(new Set([...paused, ...afterRelease].map((sample) => sample.frame))).toEqual(new Set([paused[0].frame]));
     expect(afterRelease.at(-1)!.time).toBeCloseTo(paused[0].time, 6);
-    await expect(outlet.getByText('Paused', { exact: true })).toBeVisible();
+    await expect(outlet.locator('[data-playback-state]')).toHaveAttribute('data-playback-state', 'paused');
     await expect(outlet.getByTestId('timeline-play')).toHaveText('Play');
     await saveEvidence('native-paused-across-release', { fps: uploaded.fps, paused, afterRelease });
   });

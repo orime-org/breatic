@@ -27,7 +27,7 @@ interface PlaybackReading {
   at: number;
   frame: number | null;
   playControl: string | null;
-  reportedStates: string[];
+  reportedState: string | null;
   conflictCount: number;
   clipCount: number;
   native: null | {
@@ -62,7 +62,7 @@ async function observePlayback(page: Page, milliseconds = 0, expectedUrl: string
       readings.push({
         at: performance.now(), frame: slider === undefined || slider === null ? null : Number(slider.getAttribute('aria-valuenow')),
         playControl: root?.querySelector('[data-testid="timeline-play"]')?.textContent ?? null,
-        reportedStates: Array.from(root?.querySelectorAll('span') ?? []).map((span) => span.textContent ?? '').filter((text) => ['Playing', 'Paused', 'Buffering…'].includes(text)),
+        reportedState: root?.querySelector('[data-playback-state]')?.getAttribute('data-playback-state') ?? null,
         conflictCount: root?.querySelectorAll('[data-testid^="timeline-conflict-"]').length ?? 0,
         clipCount: root?.querySelectorAll('[data-testid^="timeline-clip-"][data-track-id]').length ?? 0,
         native: video === undefined || video === null ? null : {
@@ -140,7 +140,7 @@ test('playing continues after seeking inside the same empty gap @needs-storage @
     await expect(slider).toHaveAttribute('aria-valuenow', '0');
     await expect(timelineVideoOf(page, uploaded.clipId)).toHaveCount(0);
     await outlet.getByTestId('timeline-play').click();
-    await expect(outlet.getByText('Playing', { exact: true })).toBeVisible();
+    await expect(outlet.locator('[data-playback-state]')).toHaveAttribute('data-playback-state', 'playing');
     await expect.poll(async () => Number(await slider.getAttribute('aria-valuenow'))).toBeGreaterThan(0);
     evidence.beforeSeek = await observePlayback(page, 150);
     await seekWithKeys(page, 30);
@@ -151,7 +151,7 @@ test('playing continues after seeking inside the same empty gap @needs-storage @
     expect(errors.unexpected).toEqual([]);
     expect(afterSeek.at(-1)!.frame, 'the gap clock must advance beyond the explicit seek target').toBeGreaterThan(30);
     expect(afterSeek.at(-1)!.frame).toBeGreaterThan(afterSeek[0].frame!);
-    expect(afterSeek.every((reading) => reading.native === null && reading.reportedStates.includes('Playing'))).toBe(true);
+    expect(afterSeek.every((reading) => reading.native === null && reading.reportedState === 'playing')).toBe(true);
     expect(afterSeek.at(-1)!.frame).toBeLessThan(240);
   } finally {
     try { await preserveEvidence(page, 'same-gap-seek-final', evidence); }
@@ -220,7 +220,7 @@ test('playing crosses concurrent conflicts and reaches the later ready video @ne
         await expect(outlet.getByRole('slider', { name: 'Preview frame', exact: true })).toHaveAttribute('aria-valuenow', '239');
         await expect(outlet.getByTestId('timeline-play')).toHaveText('Play');
         await outlet.getByTestId('timeline-play').click();
-        await expect(outlet.getByText('Playing', { exact: true })).toBeVisible();
+        await expect(outlet.locator('[data-playback-state]')).toHaveAttribute('data-playback-state', 'playing');
         const crossing = await observePlayback(page, 350);
         evidence.crossing = crossing;
         evidence.ownerErrors = errors.unexpected;
@@ -235,7 +235,7 @@ test('playing crosses concurrent conflicts and reaches the later ready video @ne
         // The original play intent advances across the conflicts into the later valid placement.
         await expect(video).toHaveCount(1, { timeout: reachReadyTimeout });
         await expectTimelineVideoReady(page, third, uploaded.asset.fileUrl);
-        await expect(outlet.getByText('Playing', { exact: true })).toBeVisible();
+        await expect(outlet.locator('[data-playback-state]')).toHaveAttribute('data-playback-state', 'playing');
         await expect.poll(() => video.evaluate((element: HTMLVideoElement) => !element.paused && element.currentTime > 0.2)).toBe(true);
         const ready = await observePlayback(page, 350, uploaded.asset.fileUrl, third);
         evidence.laterReady = ready;
@@ -340,10 +340,10 @@ test('the layer Retry reloads the unchanged media URL after a native HTTP error,
     await expect(retry).toHaveCount(0);
     // The Timeline was opened paused, and Retry keeps that intent: it reloads without starting playback.
     await expect(outlet.getByTestId('timeline-play')).toHaveText('Play');
-    await expect(outlet.getByText('Paused', { exact: true })).toBeVisible();
+    await expect(outlet.locator('[data-playback-state]')).toHaveAttribute('data-playback-state', 'paused');
     expect(await video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(true);
     await outlet.getByTestId('timeline-play').click();
-    await expect(outlet.getByText('Playing', { exact: true })).toBeVisible();
+    await expect(outlet.locator('[data-playback-state]')).toHaveAttribute('data-playback-state', 'playing');
     await expect.poll(() => video.evaluate((element: HTMLVideoElement) => !element.paused && element.currentTime > 0.2)).toBe(true);
     const recovered = await observePlayback(page, 350, mediaUrl, uploaded.clipId);
     evidence.recovered = recovered;

@@ -29,7 +29,7 @@ import { closeQueues } from "@breatic/core";
 import { getRedis, getQueueRedis, getStreamRedis, pingDb, pingRedis, yjsRawPg } from "@breatic/core";
 import { checkInfraReady, InfraNotReadyError } from "@breatic/core";
 import { installDeadlineBoundDispatcher, startHealthServer } from "@breatic/core";
-import { getStorageConfig } from "@breatic/core";
+import { getStorageConfig, getTimelineConfig } from "@breatic/core";
 import { runGracefulShutdown } from "@breatic/core";
 import { renderMetrics } from "@server/infra/metrics.js";
 import { logger, initLogger } from "@breatic/core";
@@ -124,6 +124,15 @@ try {
   modelCatalog.getModelCatalog();
 } catch (err) {
   logger.error({ err }, "model_catalog_invalid");
+  await exitProcess(1);
+}
+
+// The Timeline config is lazy like the ones above; a default frame outside the presets (#1502) would otherwise
+// surface on the first Timeline request instead of at startup.
+try {
+  getTimelineConfig();
+} catch (err) {
+  logger.error({ err }, "timeline_config_invalid");
   await exitProcess(1);
 }
 

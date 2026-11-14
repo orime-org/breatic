@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
-import { TIMELINE_LAYER_TRANSFORM_LIMITS, normalizeTimelineLayerTransform, sameTimelineLayerTransform, type TimelineLayerTransform } from '@breatic/shared';
+import {
+  TIMELINE_LAYER_TRANSFORM_LIMITS, normalizeTimelineLayerTransform, sameTimelineLayerTransform, timelineLayerOffsetPixels, type TimelineLayerTransform,
+} from '@breatic/shared';
 
 import { Input } from '@web/components/ui/input';
 import { Label } from '@web/components/ui/label';
@@ -13,6 +15,8 @@ import { useTranslation } from '@web/i18n/use-translation';
 interface TimelineTransformFieldsProps {
   spaceId: string;
   transform: TimelineLayerTransform;
+  /** The document's frame size; X and Y are shown and typed in its canvas pixels. */
+  frame: { width: number; height: number };
   /** Whether the clip covers the current frame. */
   atFrame: boolean;
   readOnly: boolean;
@@ -21,6 +25,23 @@ interface TimelineTransformFieldsProps {
 }
 
 type Field = 'x' | 'y' | 'scaleX' | 'scaleY' | 'rotation';
+
+/** The parts the fields show: the offset in canvas pixels of the frame, the rest as stored. */
+type FieldValues = Record<Field, number>;
+
+/**
+ * The values the fields show for a stored transform.
+ * @param transform - The stored transform.
+ * @param frame - The frame size.
+ * @param frame.width - Frame width in canvas pixels.
+ * @param frame.height - Frame height in canvas pixels.
+ * @returns The shown values.
+ * @throws {never} Never.
+ */
+function fieldValuesOf(transform: TimelineLayerTransform, frame: { width: number; height: number }): FieldValues {
+  const { x, y } = timelineLayerOffsetPixels(frame, transform);
+  return { x, y, scaleX: transform.scaleX, scaleY: transform.scaleY, rotation: transform.rotation };
+}
 
 const FIELDS: ReadonlyArray<{ field: Field; testId: string; label: string }> = [
   { field: 'x', testId: 'timeline-clip-x', label: 'timeline.edit.positionX' },
@@ -34,9 +55,9 @@ const DECIMAL = /^-?(\d+(\.\d*)?|\.\d+)$/;
 const { scale } = TIMELINE_LAYER_TRANSFORM_LIMITS;
 
 /**
- * A stored part as the field shows it: whole canvas pixels, a percentage or degrees with one decimal.
+ * A part as the field shows it: whole pixels of the frame, a percentage or degrees with one decimal.
  * @param field - The part.
- * @param value - Its stored value.
+ * @param value - Its value: X and Y in pixels of the frame, the rest as stored.
  * @returns The shown text.
  * @throws {never} Never.
  */
@@ -46,7 +67,8 @@ function shownOf(field: Field, value: number): string {
 }
 
 /**
- * The stored part a field's text means, or null when it is not a value the field takes.
+ * The value a field's text means, X and Y in pixels of the frame and the rest as stored, or null when it is not a
+ * value the field takes.
  * @param field - The part.
  * @param text - The typed text.
  * @returns The value, unrounded.
@@ -70,15 +92,15 @@ interface FieldDraft { shown: string; value: string; error: boolean }
 /**
  * The drafts for the stored transform: a field keeps the user's text while its stored value is unchanged.
  * @param drafts - The current drafts, if any.
- * @param transform - The stored transform.
+ * @param values - The values the fields show for the stored transform.
  * @returns The same drafts when nothing restarts, else new ones.
  * @throws {never} Never.
  */
-function syncDrafts(drafts: Record<Field, FieldDraft> | null, transform: TimelineLayerTransform): Record<Field, FieldDraft> {
+function syncDrafts(drafts: Record<Field, FieldDraft> | null, values: FieldValues): Record<Field, FieldDraft> {
   let changed = drafts === null;
   const next = {} as Record<Field, FieldDraft>;
   for (const { field } of FIELDS) {
-    const shown = shownOf(field, transform[field]);
+    const shown = shownOf(field, values[field]);
     const kept = drafts?.[field];
     if (kept?.shown === shown) next[field] = kept;
     else {
@@ -90,22 +112,26 @@ function syncDrafts(drafts: Record<Field, FieldDraft> | null, transform: Timelin
 }
 
 /**
- * The "Position and size" group of a video or web-animation copy (#1410 design §5): X and Y in canvas pixels, width and
+ * The "Position and size" group of a video or web-animation copy (#1410 design §5): X and Y in canvas pixels of the
+ * document's frame, stored as fractions of it (#1502), width and
  * height scale in percent, rotation in degrees and a ratio lock switch. A field commits on Enter or blur only when its
  * text changed; an invalid entry is marked and not written, and Escape restores the shown value.
  * @param props - The transform and its commit.
  * @param props.spaceId - The Space, for field ids.
  * @param props.transform - The stored transform.
+ * @param props.frame - The document's frame size.
  * @param props.atFrame - Whether the clip covers the current frame; when not, a note says so.
  * @param props.readOnly - Whether editing is unavailable.
  * @param props.onCommit - Writes a changed transform.
  * @returns The fields.
  * @throws {never} Never.
  */
-export function TimelineTransformFields({ spaceId, transform, atFrame, readOnly, onCommit }: TimelineTransformFieldsProps): React.JSX.Element {
+export function TimelineTransformFields({ spaceId, transform, frame, atFrame, readOnly, onCommit }: TimelineTransformFieldsProps): React.JSX.Element {
   const t = useTranslation();
-  const [drafts, setDrafts] = React.useState(() => syncDrafts(null, transform));
-  const current = syncDrafts(drafts, transform);
+  const { width: frameWidth, height: frameHeight } = frame;
+  const values = React.useMemo(() => fieldValuesOf(transform, { width: frameWidth, height: frameHeight }), [transform, frameWidth, frameHeight]);
+  const [drafts, setDrafts] = React.useState(() => syncDrafts(null, values));
+  const current = syncDrafts(drafts, values);
   if (current !== drafts) setDrafts(current);
   const [locked, setLocked] = React.useState(true);
   const update = React.useCallback((field: Field, patch: Partial<FieldDraft>): void => {
@@ -117,13 +143,16 @@ export function TimelineTransformFields({ spaceId, transform, atFrame, readOnly,
     const value = parsedOf(field, draft.value);
     if (value === null) { update(field, { error: true }); return; }
     update(field, { value: draft.shown, error: false });
-    const next = { ...transform, [field]: value };
+    const next: TimelineLayerTransform = { ...transform };
+    if (field === 'x') next.frameX = value / frameWidth;
+    else if (field === 'y') next.frameY = value / frameHeight;
+    else next[field] = value;
     // Locked, a scale edit carries the other axis by the same ratio; any other edit changes only its own part.
     if (locked && field === 'scaleX' && transform.scaleX !== 0) next.scaleY = transform.scaleY * value / transform.scaleX;
     if (locked && field === 'scaleY' && transform.scaleY !== 0) next.scaleX = transform.scaleX * value / transform.scaleY;
     const sent = normalizeTimelineLayerTransform(next);
     if (!sameTimelineLayerTransform(sent, transform)) onCommit(sent);
-  }, [current, transform, locked, onCommit, update]);
+  }, [current, transform, frameWidth, frameHeight, locked, onCommit, update]);
   const restore = React.useCallback((field: Field): void => update(field, { value: current[field].shown, error: false }), [current, update]);
   /**
    * The error shown under a field: the accepted range for a scale, otherwise a request for a number.

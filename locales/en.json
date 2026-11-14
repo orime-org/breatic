@@ -3688,8 +3688,6 @@
     "startFrame": "Start frame",
     "cancel": "Cancel",
     "transport": {
-      "paused": "Paused",
-      "playing": "Playing",
       "waiting": "Buffering…"
     },
     "material": {

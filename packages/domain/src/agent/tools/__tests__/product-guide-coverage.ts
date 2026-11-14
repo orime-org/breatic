@@ -67,8 +67,6 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "timeline.selectClip": { excluded: REASONS.SAYS_WHAT_TO_PICK },
   "timeline.clipFrames": { excluded: REASONS.FILLS_A_VALUE },
   "timeline.sourceExtent": { excluded: REASONS.FILLS_A_VALUE },
-  "timeline.transport.paused": { excluded: REASONS.SAYS_WHAT_HAPPENED },
-  "timeline.transport.playing": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "timeline.material.description": { excluded: REASONS.SAYS_WHAT_TO_PICK },
   "timeline.material.duration": { excluded: REASONS.FILLS_A_VALUE },
   "timeline.material.durationPending": { excluded: REASONS.PASSING },

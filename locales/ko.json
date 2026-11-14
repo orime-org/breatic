@@ -3688,8 +3688,6 @@
     "startFrame": "시작 프레임",
     "cancel": "취소",
     "transport": {
-      "paused": "일시 정지됨",
-      "playing": "재생 중",
       "waiting": "버퍼링 중…"
     },
     "material": {

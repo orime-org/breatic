@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
+import { encodeStateAsUpdate } from 'yjs';
 
 import { planTimelineEdit } from '@web/data/yjs/timeline-edit';
 import { timelineSourceOverflow, validateTimelineRange } from '@web/data/yjs/timeline-time';
@@ -87,6 +88,13 @@ const deleteTrack = (trackId: string, placement: TimelineEditPlacement = ON): Ti
   ({ operation: 'delete_track', parameters: { trackId }, placement });
 const addVideo = (added: TimelineVideoClip, placement: TimelineEditPlacement, newTrackId?: string, source = SOURCE): TimelineEditCommand =>
   ({ operation: 'add_video', parameters: { source, clip: added, ...(newTrackId === undefined ? {} : { newTrackId }) }, placement });
+// The seven frame presets and their sizes (breatic#1502 design §2), written out so the expectation is not read from the code under test.
+const FRAME_PRESETS = [
+  ['16:9', 1920, 1080], ['9:16', 1080, 1920], ['1:1', 1080, 1080], ['4:3', 1440, 1080], ['4:5', 1080, 1350], ['2:3', 1080, 1620], ['21:9', 2520, 1080],
+] as const;
+type FramePreset = (typeof FRAME_PRESETS)[number][0];
+const setFrame = (preset: FramePreset, placement: TimelineEditPlacement = OFF): TimelineEditCommand =>
+  ({ operation: 'set_frame', parameters: { preset }, placement });
 
 // The model check's base document: a, b, c packed on the main track and o on v2 attached to b.
 const A = cid(1);
@@ -670,7 +678,7 @@ describe('planTimelineEdit invariants over random documents', () => {
     sourceInFrame: fc.oneof(fc.integer({ min: 0, max: 100 }), fc.integer({ min: 900, max: 990 })),
   });
   const commandArbitrary = fc.record({
-    operation: fc.integer({ min: 0, max: 6 }),
+    operation: fc.integer({ min: 0, max: 7 }),
     pick: fc.nat(),
     frame: fc.integer({ min: 0, max: 400 }),
     inPoint: fc.integer({ min: 0, max: 60 }),
@@ -716,6 +724,7 @@ describe('planTimelineEdit invariants over random documents', () => {
       };
       case 4: return { command: duplicate(subjectId, newClipId, placement), touchesMain: onMain };
       case 5: return { command: remove(subjectId, placement), touchesMain: onMain };
+      case 7: return { command: setFrame(FRAME_PRESETS[seed.pick % FRAME_PRESETS.length]?.[0] ?? '16:9', placement), touchesMain: false };
       default: return { command: deleteTrack([V2, V3, MAIN, 'gone'][seed.pick % 4] ?? V2, placement), touchesMain: false };
     }
   }
@@ -731,7 +740,15 @@ describe('planTimelineEdit invariants over random documents', () => {
   function checkAccepted(before: TimelineDocumentV1, command: TimelineEditCommand, touchesMain: boolean, result: Accepted): void {
     const next = result.next;
     expect(TimelineDocumentV1Schema.safeParse(next).success).toBe(true);
-    expect(next.settings).toEqual(before.settings);
+    // Only set_frame changes the settings, and then only the width and height (breatic#1502 design §3.1).
+    if (command.operation === 'set_frame') {
+      const [, width, height] = FRAME_PRESETS.find(([key]) => key === command.parameters.preset) ?? [];
+      expect(next.settings).toEqual({ ...before.settings, width, height });
+      expect(next.tracks).toEqual(before.tracks);
+      expect(next.clips).toEqual(before.clips);
+    } else {
+      expect(next.settings).toEqual(before.settings);
+    }
     // The planner leaves sources to the writer (inner#1708 Q1): the current ones, plus an added source it does not hold.
     const added = command.operation === 'add_video' && before.sources[command.parameters.source.id] === undefined
       ? { [command.parameters.source.id]: command.parameters.source } : {};
@@ -939,26 +956,34 @@ describe('planTimelineEdit around a clip whose source is already missing (inner#
 });
 
 /**
- * `set_transform` (breatic#1410 design §3): `{ clipId, transform }` replaces one clip's transform and nothing else.
- * The command schema bounds scale to [0.01, 100] and rotation to [-180, 180]; the planner refuses an `x` or `y`
- * beyond ten times the document's canvas width or height as `invalid_range`, and a missing clip as `target_missing`.
+ * `set_transform` (breatic#1410 design §3, breatic#1502 design §4): `{ clipId, transform }` replaces one clip's transform
+ * and nothing else. The transform is `{ frameX, frameY, scaleX, scaleY, rotation }`: `frameX` and `frameY` are the base
+ * box centre's offset from the frame centre as a fraction of the frame's width and height, bounded to ±10 frames
+ * whatever the frame size; scale is bounded to [0.01, 100] and rotation to [-180, 180]. A value out of any bound is
+ * refused as `invalid_range` and a missing clip as `target_missing`.
  */
-describe('planTimelineEdit set_transform (breatic#1410)', () => {
+describe('planTimelineEdit set_transform (breatic#1410, breatic#1502)', () => {
   type Transform = TimelineClip['transform'];
-  const MOVED: Transform = { x: 120.5, y: -40.25, scaleX: 0.5, scaleY: 2, rotation: 33.33 };
+  const MOVED: Transform = { frameX: 0.0628, frameY: -0.03727, scaleX: 0.5, scaleY: 2, rotation: 33.33 };
   const setTransform = (clipId: string, transform: Transform, placement: TimelineEditPlacement = OFF): TimelineEditCommand =>
     ({ operation: 'set_transform', parameters: { clipId, transform }, placement });
-  const IDENTITY: Transform = { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 };
+  const IDENTITY: Transform = { frameX: 0, frameY: 0, scaleX: 1, scaleY: 1, rotation: 0 };
 
   it('is a strict command the schema accepts at the edges of every range', () => {
     for (const transform of [
       MOVED,
       // Exactly -180 and 180 name one angle; which of the two the bound keeps is left to the implementation.
-      { x: 0, y: 0, scaleX: 0.01, scaleY: 100, rotation: -179.99 },
-      { x: 0, y: 0, scaleX: 100, scaleY: 0.01, rotation: 179.99 },
+      { frameX: 0, frameY: 0, scaleX: 0.01, scaleY: 100, rotation: -179.99 },
+      { frameX: 0, frameY: 0, scaleX: 100, scaleY: 0.01, rotation: 179.99 },
+      { frameX: 10, frameY: -10, scaleX: 1, scaleY: 1, rotation: 0 },
     ]) expect(TimelineEditCommandSchema.safeParse(setTransform(A, transform)).success, JSON.stringify(transform)).toBe(true);
     const strict = TimelineEditCommandSchema.safeParse({ ...setTransform(A, MOVED), parameters: { clipId: A, transform: MOVED, startFrame: 0 } });
     expect(strict.error?.issues.map((issue) => issue.path.join('.'))).toEqual(['parameters']);
+  });
+
+  it('refuses the pixel-format transform { x, y } in the command schema', () => {
+    const pixel = { x: 120, y: -40, scaleX: 1, scaleY: 1, rotation: 0 };
+    expect(TimelineEditCommandSchema.safeParse({ operation: 'set_transform', parameters: { clipId: A, transform: pixel }, placement: OFF }).success).toBe(false);
   });
 
   it.each([
@@ -967,7 +992,7 @@ describe('planTimelineEdit set_transform (breatic#1410)', () => {
     ['a negative scale (no flip in this task)', { scaleX: -1 }, 'parameters.transform.scaleX'],
     ['rotation below -180', { rotation: -180.01 }, 'parameters.transform.rotation'],
     ['rotation above 180', { rotation: 180.01 }, 'parameters.transform.rotation'],
-    ['a non-finite x', { x: Number.POSITIVE_INFINITY }, 'parameters.transform.x'],
+    ['a non-finite frameX', { frameX: Number.POSITIVE_INFINITY }, 'parameters.transform.frameX'],
   ] as const)('rejects %s in the command schema, at that field', (_name, field, path) => {
     const result = TimelineEditCommandSchema.safeParse(setTransform(A, { ...MOVED, ...field }));
     expect(result.error?.issues.map((issue) => issue.path.join('.'))).toEqual([path]);
@@ -985,7 +1010,7 @@ describe('planTimelineEdit set_transform (breatic#1410)', () => {
     expect(readTimelineDocument(doc)).toEqual({ ...before, clips: { ...before.clips, [B]: { ...before.clips[B], transform: MOVED } } });
   });
 
-  it('replaces only the target clip\'s transform, leaving ranges, tracks, sources and every other clip alone', () => {
+  it('replaces only the target clip\'s transform, leaving settings, ranges, tracks, sources and every other clip alone', () => {
     // Magnet and linkage on: a transform moves no clip on the main track nor any attached clip.
     const result = accepted(plan(base, setTransform(B, MOVED, ON)));
     const target = base.clips[B];
@@ -995,20 +1020,26 @@ describe('planTimelineEdit set_transform (breatic#1410)', () => {
     expect(result.bumped).toEqual([]);
   });
 
-  it('accepts x and y up to ten times the canvas and refuses one hundredth of a pixel beyond (1920 x 1080)', () => {
-    for (const edge of [{ x: 19200 }, { x: -19200 }, { y: 10800 }, { y: -10800 }]) {
+  it('accepts frameX and frameY up to ten frames and refuses anything beyond, as invalid_range, through the writer', () => {
+    for (const edge of [{ frameX: 10 }, { frameX: -10 }, { frameY: 10 }, { frameY: -10 }]) {
       expect(accepted(plan(base, setTransform(O, { ...IDENTITY, ...edge }))).next.clips[O]?.transform, JSON.stringify(edge)).toEqual({ ...IDENTITY, ...edge });
     }
-    for (const beyond of [{ x: 19200.01 }, { x: -19200.01 }, { y: 10800.01 }, { y: -10800.01 }]) {
-      expect(plan(base, setTransform(O, { ...IDENTITY, ...beyond })), JSON.stringify(beyond)).toEqual({ ok: false, reason: 'invalid_range' });
+    const doc = seededDoc(base);
+    const before = readTimelineDocument(doc);
+    for (const beyond of [{ frameX: 10.00001 }, { frameX: -10.00001 }, { frameY: 10.00001 }, { frameY: -10.00001 }]) {
+      expect(applyTimelineEdit(doc, setTransform(O, { ...IDENTITY, ...beyond }), Symbol('edit')), JSON.stringify(beyond)).toEqual({ ok: false, reason: 'invalid_range' });
     }
+    expect(readTimelineDocument(doc)).toEqual(before);
   });
 
-  it('measures the x and y bound against the document\'s own canvas size', () => {
-    const small: TimelineDocumentV1 = TimelineDocumentV1Schema.parse({ ...base, settings: { ...base.settings, width: 1000, height: 500 } });
-    expect(accepted(plan(small, setTransform(O, { ...IDENTITY, x: 10000, y: -5000 }))).next.clips[O]?.transform).toEqual({ ...IDENTITY, x: 10000, y: -5000 });
-    expect(plan(small, setTransform(O, { ...IDENTITY, x: 10000.01 }))).toEqual({ ok: false, reason: 'invalid_range' });
-    expect(plan(small, setTransform(O, { ...IDENTITY, y: 5000.01 }))).toEqual({ ok: false, reason: 'invalid_range' });
+  it('bounds frameX and frameY in frames, whatever the frame size', () => {
+    for (const [, width, height] of FRAME_PRESETS) {
+      const sized: TimelineDocumentV1 = TimelineDocumentV1Schema.parse({ ...base, settings: { ...base.settings, width, height } });
+      expect(accepted(plan(sized, setTransform(O, { ...IDENTITY, frameX: 10, frameY: -10 }))).next.clips[O]?.transform, `${width}x${height}`)
+        .toEqual({ ...IDENTITY, frameX: 10, frameY: -10 });
+      const doc = seededDoc(sized);
+      expect(applyTimelineEdit(doc, setTransform(O, { ...IDENTITY, frameX: 10.001 }), Symbol('edit')), `${width}x${height}`).toEqual({ ok: false, reason: 'invalid_range' });
+    }
   });
 
   it('refuses a clip that is not in the document as target_missing, in the planner and through the writer', () => {
@@ -1029,8 +1060,8 @@ describe('planTimelineEdit set_transform (breatic#1410)', () => {
 
   it('changes nothing but the one transform for any in-range value on any clip (fast-check)', () => {
     const transform = fc.record({
-      x: fc.integer({ min: -1_920_000, max: 1_920_000 }).map((value) => value / 100),
-      y: fc.integer({ min: -1_080_000, max: 1_080_000 }).map((value) => value / 100),
+      frameX: fc.integer({ min: -1_000_000, max: 1_000_000 }).map((value) => value / 100_000),
+      frameY: fc.integer({ min: -1_000_000, max: 1_000_000 }).map((value) => value / 100_000),
       scaleX: fc.integer({ min: 100, max: 1_000_000 }).map((value) => value / 10_000),
       scaleY: fc.integer({ min: 100, max: 1_000_000 }).map((value) => value / 10_000),
       rotation: fc.integer({ min: -17_999, max: 17_999 }).map((value) => value / 100),
@@ -1044,6 +1075,80 @@ describe('planTimelineEdit set_transform (breatic#1410)', () => {
       expect(Object.keys(result.next.clips).sort()).toEqual(Object.keys(base.clips).sort());
       expect(result.next.tracks).toEqual(base.tracks);
       expect(result.next.sources).toEqual(base.sources);
+      expect(result.next.settings).toEqual(base.settings);
     }), { numRuns: 200 });
+  });
+});
+
+/**
+ * `set_frame` (breatic#1502 design §3.1): `{ preset }` names one of the seven frame presets; the plan replaces only the
+ * width and height of `settings` with the preset's size. The frame rate, tracks, clips (their fractional transforms
+ * included), sources and receipts stay as they are. A preset outside the seven is refused as `invalid_range`; the
+ * current preset plans no change.
+ */
+describe('planTimelineEdit set_frame (breatic#1502)', () => {
+  const placed = timeline([
+    clip(A, MAIN, 0, 48),
+    clip(O, V2, 10, 20, { transform: { frameX: 0.35, frameY: -0.35, scaleX: 0.3, scaleY: 0.3, rotation: 12 } }),
+  ]);
+
+  it('is a strict command the schema accepts for each of the seven presets', () => {
+    for (const [preset] of FRAME_PRESETS) expect(TimelineEditCommandSchema.safeParse(setFrame(preset)).success, preset).toBe(true);
+    const strict = TimelineEditCommandSchema.safeParse({ operation: 'set_frame', parameters: { preset: '9:16', width: 1080 }, placement: OFF });
+    expect(strict.success).toBe(false);
+  });
+
+  it.each(FRAME_PRESETS)('sets the frame to %s as %i x %i and changes nothing else', (preset, width, height) => {
+    const current = preset === '16:9' ? TimelineDocumentV1Schema.parse({ ...placed, settings: { ...placed.settings, width: 1080, height: 1920 } }) : placed;
+    const result = accepted(plan(current, setFrame(preset, ON)));
+    expect(result.next).toEqual({ ...current, settings: { width, height, fps: FPS } });
+    expect(result.created).toEqual([]);
+    expect(result.bumped).toEqual([]);
+  });
+
+  it('keeps a fractional frame rate', () => {
+    const ntsc = { num: 30000, den: 1001 };
+    const current = TimelineDocumentV1Schema.parse({ ...timeline([]), settings: { width: 1920, height: 1080, fps: ntsc } });
+    expect(accepted(plan(current, setFrame('4:5'))).next.settings).toEqual({ width: 1080, height: 1350, fps: ntsc });
+  });
+
+  it('plans no change for the current preset', () => {
+    const result = accepted(plan(placed, setFrame('16:9', ON)));
+    expect(result.next).toEqual(placed);
+    expect(result.created).toEqual([]);
+  });
+
+  it.each([
+    ['an unknown ratio', '3:2'],
+    ['a size instead of a key', '1920x1080'],
+    ['an empty preset', ''],
+    ['a number', 16 / 9],
+    ['a key with spaces', ' 16:9'],
+  ] as const)('refuses %s as invalid_range without writing', (_name, preset) => {
+    const command = { operation: 'set_frame', parameters: { preset }, placement: OFF } as unknown as TimelineEditCommand;
+    expect(TimelineEditCommandSchema.safeParse(command).success).toBe(false);
+    const doc = seededDoc(placed);
+    const before = encodeStateAsUpdate(doc);
+    expect(applyTimelineEdit(doc, command, Symbol('edit'))).toEqual({ ok: false, reason: 'invalid_range' });
+    expect(encodeStateAsUpdate(doc)).toEqual(before);
+  });
+
+  it('sets the preset over a frame size outside the seven, which reads as no preset', () => {
+    const odd = TimelineDocumentV1Schema.parse({ ...placed, settings: { ...placed.settings, width: 1280, height: 720 } });
+    expect(accepted(plan(odd, setFrame('16:9'))).next.settings).toEqual({ width: 1920, height: 1080, fps: FPS });
+  });
+
+  it('keeps every clip, transform included, and every track and source for any sequence of presets (fast-check)', () => {
+    fc.assert(fc.property(fc.array(fc.constantFrom(...FRAME_PRESETS.map(([preset]) => preset)), { minLength: 1, maxLength: 10 }), (presets) => {
+      let current = placed;
+      for (const preset of presets) {
+        current = accepted(plan(current, setFrame(preset))).next;
+        const [, width, height] = FRAME_PRESETS.find(([key]) => key === preset) ?? [];
+        expect(current.settings).toEqual({ width, height, fps: FPS });
+        expect(current.clips).toEqual(placed.clips);
+        expect(current.tracks).toEqual(placed.tracks);
+        expect(current.sources).toEqual(placed.sources);
+      }
+    }), { numRuns: 100 });
   });
 });

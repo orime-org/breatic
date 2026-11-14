@@ -584,7 +584,7 @@ test('one real web animation is created, reused as three copies over a video, se
       await copiesAnswered(preview);
       await expect.poll(async () => (await preview.screenshot()).equals(lateShot), { timeout: 30_000 }).toBe(true);
       expect((await settledShot(preview)).equals(lateShot)).toBe(true);
-      await expect(outlet.getByText('Paused', { exact: true })).toBeVisible();
+      await expect(outlet.locator('[data-playback-state]')).toHaveAttribute('data-playback-state', 'paused');
     });
 
     await test.step('click: clicking the preview selects the topmost layer there and leaves the web picture and the frame alone', async () => {

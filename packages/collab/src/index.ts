@@ -40,7 +40,7 @@ import {
   projectAuthService,
   type MemberChangeListener,
 } from "@breatic/core";
-import { onDatabaseWaitTimeout } from "@breatic/core";
+import { getTimelineConfig, onDatabaseWaitTimeout } from "@breatic/core";
 import { getCollabConfig, getReassemblyLimits } from "@collab/config.js";
 import { buildCollabHealthChecks } from "@collab/infra/health-checks.js";
 import { createCollabServer } from "@collab/hocuspocus.js";
@@ -297,6 +297,17 @@ async function main(): Promise<void> {
     });
   } catch (err) {
     logger.error({ err }, "session_revocation_listen_failed");
+    await flushLogger();
+    await exitProcess(1);
+    return;
+  }
+
+  // The Timeline config is lazy like the ones above; a default frame outside the presets (#1502) would otherwise
+  // surface on the first Timeline request instead of at startup.
+  try {
+    getTimelineConfig();
+  } catch (err) {
+    logger.error({ err }, "timeline_config_invalid");
     await flushLogger();
     await exitProcess(1);
     return;
