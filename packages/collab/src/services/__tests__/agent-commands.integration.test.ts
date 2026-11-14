@@ -33,7 +33,9 @@ import {
 } from "@breatic/shared";
 import { addNodeInDoc, createEmptyNode, readNodes } from "@breatic/shared/canvas-model";
 import * as yjsRepo from "@collab/services/yjs-documents.repo.js";
-import { createPersistenceExtension } from "@collab/services/persistence.js";
+import { createPersistenceExtension, staysLoaded, storeDocumentNow } from "@collab/services/persistence.js";
+import { createUnloadGate } from "@collab/hooks/unload-gate.js";
+import { createChangeTrackingExtension } from "@collab/services/change-tracking.js";
 import { getCollabConfig } from "@collab/config.js";
 import type { GroupConsumer } from "@collab/services/stream-group-consumer.js";
 import {
@@ -73,11 +75,15 @@ const servers: Server[] = [];
 const consumers: GroupConsumer[] = [];
 
 /**
- * One collab server with persistence and the Redis extension, as production wires them.
+ * One collab server wired as production wires it: change tracking,
+ * persistence, the Redis extension, and the unload gate that stores a
+ * document before it leaves memory (persistence writes only when the timed
+ * loop or the unload gate grants a store).
  * @param name - Distinguishes the server's Redis clients.
  * @returns Its Hocuspocus instance.
  */
 async function startInstance(name: string): Promise<Hocuspocus> {
+  const storeGate: { current?: ReturnType<typeof createUnloadGate> } = {};
   const server = new Server({
     port: 0,
     quiet: true,
@@ -85,13 +91,30 @@ async function startInstance(name: string): Promise<Hocuspocus> {
     debounce: 50,
     unloadImmediately: true,
     extensions: [
+      createChangeTrackingExtension(),
       createPersistenceExtension(),
       new RedisExtension({
         createClient: () => createRedisClient(process.env.REDIS_COLLAB_URL!, { name }),
         prefix: "itest:agent-commands",
       }),
+      {
+        beforeUnloadDocument: async (payload: { documentName: string; document: Y.Doc }): Promise<void> => {
+          await storeGate.current?.beforeUnloadDocument(payload);
+        },
+      },
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ] as any[],
+  });
+  storeGate.current = createUnloadGate({
+    instanceId: name,
+    encode: (document: Y.Doc): Uint8Array => Y.encodeStateAsUpdate(document),
+    staysLoaded: (docName) => staysLoaded(server.hocuspocus, docName),
+    storeNow: ({ name: docName }) => storeDocumentNow(server.hocuspocus, docName),
+    writeRescue: async () => "itest-rescue",
+    writeRescueNote: async () => {},
+    alert: async () => {},
+    retry: { windowMs: 1500, intervalMs: 100, rescueReserveMs: 0 },
+    shutdownDeadline: () => undefined,
   });
   await server.listen();
   servers.push(server);
@@ -261,6 +284,27 @@ async function canvasNodes(hocuspocus: Hocuspocus, world: World): Promise<Return
   }
 }
 
+/**
+ * A node's name; stickies carry none.
+ * @param node - A node as `readNodes` reads it.
+ * @returns Its name, or undefined.
+ */
+function nameOf(node: ReturnType<typeof readNodes>[number]): string | undefined {
+  return (node.data as { name?: string }).name;
+}
+
+/**
+ * The name of one node, as an instance serves it.
+ * @param hocuspocus - Which instance reads.
+ * @param world - Whose canvas.
+ * @param nodeId - The node.
+ * @returns Its name, or undefined.
+ */
+async function nodeName(hocuspocus: Hocuspocus, world: World, nodeId: string): Promise<string | undefined> {
+  const node = (await canvasNodes(hocuspocus, world)).find((n) => n.id === nodeId);
+  return node ? nameOf(node) : undefined;
+}
+
 describe("configuration", () => {
   it("takes commands on every instance unless agent_commands.consume turns it off", () => {
     expect(getCollabConfig().agent_commands.consume).toBe(true);
@@ -320,7 +364,7 @@ describe("writes", () => {
     consumeOn(world, instanceA);
     const reply = await replyOf(world, (await send(world, "update_canvas_node", { nodeId: world.nodeId, name: "Hero shot" })).callId);
     expect(reply).toMatchObject({ status: "done" });
-    await expect.poll(async () => (await canvasNodes(instanceB, world)).find((n) => n.id === world.nodeId)?.data.name).toBe("Hero shot");
+    await expect.poll(() => nodeName(instanceB, world, world.nodeId)).toBe("Hero shot");
   });
 
   it("creates nodes with ids derived from the call id", async () => {
@@ -355,7 +399,7 @@ describe("writes", () => {
     const second = await send(world, "create_canvas_nodes", { nodes: [{ type: "text", name: "Two" }] });
     expect(await replyOf(world, first.callId)).toMatchObject({ status: "done" });
     expect(await replyOf(world, second.callId)).toMatchObject({ status: "done" });
-    await expect.poll(async () => (await canvasNodes(instanceA, world)).map((n) => n.data.name).sort()).toEqual(expect.arrayContaining(["One", "Two"]));
+    await expect.poll(async () => (await canvasNodes(instanceA, world)).map(nameOf).sort()).toEqual(expect.arrayContaining(["One", "Two"]));
   });
 });
 
@@ -365,7 +409,7 @@ describe("deadlines", () => {
     const command = await send(world, "update_canvas_node", { nodeId: world.nodeId, name: "Too late" }, { deadlineAt: Date.now() - 1 });
     consumeOn(world, instanceA);
     expect(await replyOf(world, command.callId)).toEqual({ callId: command.callId, status: "unfinished" });
-    expect((await canvasNodes(instanceA, world)).find((n) => n.id === world.nodeId)?.data.name).not.toBe("Too late");
+    expect(await nodeName(instanceA, world, world.nodeId)).not.toBe("Too late");
   });
 
   it("answers done for a late create whose nodes the first run already wrote", async () => {
@@ -414,7 +458,7 @@ describe("refusals", () => {
     await agentAccessService.disconnect(world.connectionId, world.userId);
     consumeOn(world, instanceA);
     expect(await replyOf(world, command.callId)).toMatchObject({ status: "rejected", reason: "credential_revoked" });
-    expect((await canvasNodes(instanceA, world)).find((n) => n.id === world.nodeId)?.data.name).not.toBe("After revoke");
+    expect(await nodeName(instanceA, world, world.nodeId)).not.toBe("After revoke");
   });
 
   it("refuses a command that does not match the command format as invalid_command", async () => {
