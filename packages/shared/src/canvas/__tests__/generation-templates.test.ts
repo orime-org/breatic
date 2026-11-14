@@ -566,6 +566,17 @@ describe('generation template registry checks', () => {
     }
   });
 
+  it('writes no space between a fill-in mark and the Chinese or Japanese words around it, as the user’s words take its place', () => {
+    // A [📎] reference keeps its spaces: they belong to the chip's caret rules.
+    const cjk = '[\\u3040-\\u30ff\\u3400-\\u9fff\\u3000-\\u303f\\uff00-\\uffef]';
+    const spaced = new RegExp(`${cjk} \\{✏️|\\} ${cjk}`, 'u');
+    for (const template of GENERATION_TEMPLATES) {
+      for (const key of generateNodes(template).flatMap((node) => wordKeysOf(template, node).map((rest) => textKey(template, rest)))) {
+        for (const locale of ['zh-CN', 'zh-TW', 'ja']) expect(raw(locale, key) ?? '', `${key} ${locale}`).not.toMatch(spaced);
+      }
+    }
+  });
+
   it('names no frame in a template\'s agent note but the one its aspect ratio gives', () => {
     for (const template of GENERATION_TEMPLATES) {
       const anchor = template.nodes.find((node) => node.key === template.anchor);
