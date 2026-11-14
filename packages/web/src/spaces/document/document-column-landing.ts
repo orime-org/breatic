@@ -10,8 +10,9 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import type { EditorView } from '@tiptap/pm/view';
 
 import { columnAround, landsInPlace, type ColumnSide } from '@web/spaces/document/document-column-drop';
+import { columnAt } from '@web/spaces/document/document-column-span-selection';
 import { holds, LISTS } from '@web/spaces/document/document-column-entry';
-import { DOC_COLUMN, DOC_COLUMN_LIST, MAX_COLUMNS, meanWeight, roomInside, weightsFit, weightsOf } from '@web/spaces/document/document-column-geometry';
+import { DOC_COLUMN_LIST, MAX_COLUMNS, meanWeight, roomInside, weightsFit, weightsOf } from '@web/spaces/document/document-column-geometry';
 import { rowById } from '@web/spaces/document/document-row-by-id';
 import { cellDepthOf, DOC_TABLE, isTableCell } from '@web/spaces/document/document-table-nodes';
 
@@ -19,12 +20,6 @@ import { cellDepthOf, DOC_TABLE, isTableCell } from '@web/spaces/document/docume
 export interface VisibleBox {
   readonly left: number;
   readonly right: number;
-}
-
-/** The room a new column has. */
-export interface ColumnRoom {
-  /** The body's content width, for groups in the body. */
-  readonly bodyWidth: number;
 }
 
 /** How far in from a visible edge the side zone reaches. */
@@ -71,7 +66,8 @@ function tableWithColumns(node: PMNode): boolean {
  * @param draggedId - The dragged row's id.
  * @param targetId - The target row's id.
  * @param side - The side.
- * @param room - The room a new column has.
+ * @param bodyWidth - The body's content width, the room a new column in the
+ *   body has.
  * @returns True when it may.
  */
 export function sideDropAllowed(
@@ -79,7 +75,7 @@ export function sideDropAllowed(
   draggedId: string,
   targetId: string,
   side: ColumnSide,
-  room: ColumnRoom,
+  bodyWidth: number,
 ): boolean {
   const dragged = rowById(doc, draggedId);
   const target = rowById(doc, targetId);
@@ -91,9 +87,7 @@ export function sideDropAllowed(
   if ($target.parent.type.name === 'blockGroup' && $target.depth > 1) return false;
   // The target's cell stands in a column.
   const cell = cellDepthOf($target);
-  for (let depth = cell - 1; cell > 0 && depth > 0; depth -= 1) {
-    if ($target.node(depth).type.name === DOC_COLUMN) return false;
-  }
+  if (cell > 0 && columnAt(doc, $target.before(cell)) !== null) return false;
   // A cell takes no table, and a column takes no table holding columns.
   if (cell > 0 && holds(dragged.node, TABLES)) return false;
   if (tableWithColumns(dragged.node) || tableWithColumns(target.node)) return false;
@@ -106,8 +100,7 @@ export function sideDropAllowed(
   // The new column takes the mean, as the drop writes it; a new group is even.
   const weights = to === null ? [1, 1] : [...kept, meanWeight(kept)];
   if (weights.length > MAX_COLUMNS) return false;
-  if (cell < 0 && !weightsFit(room.bodyWidth, weights)) return false;
-  return true;
+  return cell >= 0 || weightsFit(bodyWidth, weights);
 }
 
 /** A drop position hook of the drop cursor. */
@@ -251,8 +244,7 @@ export function columnDropHook(next: DropPositionHook, flyingRowId: () => string
       (event.clientX <= (row?.holderLeft ?? 0) || (group !== undefined && (event.clientY <= group.top || event.clientY >= group.bottom)));
     const side = row === null || held ? null : sideOfPointer(event.clientX, row.box, row.holderLeft);
     if (row === null || side === null) return next(context);
-    const room = { bodyWidth: view.dom.clientWidth };
-    if (!sideDropAllowed(view.state.doc, draggedId, row.id, side, room)) return next(context);
+    if (!sideDropAllowed(view.state.doc, draggedId, row.id, side, view.dom.clientWidth)) return next(context);
     shown = { draggedId, targetId: row.id, side };
     return { pos: row.pos, orientation: side === 'left' ? 'block-vertical-left' : 'block-vertical-right' };
   };

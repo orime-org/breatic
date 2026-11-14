@@ -46,11 +46,8 @@ interface ColumnAt {
  * @returns The column and container depths, or null outside a column.
  */
 function columnOf($head: ResolvedPos): ColumnAt | null {
-  for (let depth = $head.depth; depth > 1; depth -= 1) {
-    if ($head.node(depth).type.name !== 'blockContainer') continue;
-    return $head.node(depth - 1).type.name === DOC_COLUMN ? { depth: depth - 1, container: depth } : null;
-  }
-  return null;
+  const container = containerDepth($head);
+  return container > 1 && $head.node(container - 1).type.name === DOC_COLUMN ? { depth: container - 1, container } : null;
 }
 
 /**
@@ -113,19 +110,12 @@ function deleteInColumn(view: EditorView): boolean {
   const { $head } = selection;
   if ($head.parentOffset !== $head.parent.content.size) return false;
   const at = columnOf($head);
-  if (at === null) {
-    // Where what a selection can stand on next is in another column than the
-    // caret's, or out of the caret's column, it does nothing, as at a table's
-    // edge (`deleteAtEdge`): right above a group, and at the end of a block
-    // indented in a column's last row.
-    const next = Selection.findFrom(doc.resolve($head.after()), 1);
-    return (next === null ? null : columnAt(doc, next.from)) !== columnAt(doc, $head.pos);
-  }
-  const column = $head.node(at.depth);
-  if (holdsOneEmptyParagraph(column)) return deleteEmptyColumn(view, $head, at);
-  // At the column's end it does nothing, as at a cell's (`deleteAtEdge`).
+  if (at !== null && holdsOneEmptyParagraph($head.node(at.depth))) return deleteEmptyColumn(view, $head, at);
+  // Where what a selection can stand on next is in another column than the
+  // caret's, or out of the caret's column, it does nothing, as at a cell's or
+  // a table's edge (`deleteAtEdge`): at a column's end, and right above a group.
   const next = Selection.findFrom(doc.resolve($head.after()), 1);
-  return next === null || next.from > $head.end(at.depth);
+  return (next === null ? null : columnAt(doc, next.from)) !== columnAt(doc, $head.pos);
 }
 
 /**

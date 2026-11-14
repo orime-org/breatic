@@ -44,8 +44,9 @@ export const COLUMN_TAKE_AWAY = new PluginKey('doc-column-take-away');
 export const SAVED_BODY = new PluginKey('doc-saved-body');
 
 /**
- * Whether transactions hold a change of this user's own, other than a body
- * written as it was saved: what the column plugins answer.
+ * Whether transactions hold a change made in this editor itself, other than
+ * a body written as it was saved: what the column plugins answer. A change
+ * the Yjs binding writes (a collaborator's, an undo or a redo) is not one.
  * @param transactions - The transactions just applied.
  * @returns True when they do.
  */
