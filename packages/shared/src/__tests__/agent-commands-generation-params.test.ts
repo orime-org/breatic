@@ -47,6 +47,13 @@ describe("update_canvas_node generation", () => {
     expect(ok("update_canvas_node", { nodeId: "n1", generation: { slots: { firstFrameUrl: "img-1", styleImageUrls: ["img-2", "img-3"], endFrameUrl: null } } })).toBe(true);
   });
 
+  it("takes lyrics and storyboard shots, whose refs index the same mentions", () => {
+    expect(ok("update_canvas_node", { nodeId: "n1", generation: { lyrics: [{ text: "La la" }, { ref: 0 }], mentions: ["txt-1"] } })).toBe(true);
+    expect(ok("update_canvas_node", { nodeId: "n1", generation: { shots: [{ duration: 3, prompt: [{ text: "Wide" }] }, { duration: 2, prompt: [{ ref: 0 }] }], mentions: ["img-1"] } })).toBe(true);
+    expect(ok("update_canvas_node", { nodeId: "n1", generation: { shots: [{ duration: 0, prompt: [] }] } })).toBe(false);
+    expect(ok("update_canvas_node", { nodeId: "n1", generation: { shots: [{ duration: 2, prompt: [{ ref: 0 }] }] } })).toBe(false);
+  });
+
   it("refuses a prompt ref that indexes past its mentions, and an empty change", () => {
     expect(ok("update_canvas_node", { nodeId: "n1", generation: { prompt: [{ ref: 1 }], mentions: ["img-1"] } })).toBe(false);
     expect(ok("update_canvas_node", { nodeId: "n1", generation: {} })).toBe(false);

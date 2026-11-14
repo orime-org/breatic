@@ -6,9 +6,10 @@
  * holds the fragment and reads it into pieces (words and mentions, notes left
  * out), and the MCP service, which holds the model catalog and so knows each
  * chip's words, joins the pieces into the text the model reads. The two steps
- * must give exactly what `serializePromptFragment` gives in one. The same
- * pieces also give the text an external agent reads, a mention written as
- * `@[name](node id)`.
+ * must give exactly what `serializePromptFragment` gives in one, so the
+ * pieces carry every stretch of text the fragment holds, the space the editor
+ * keeps after a line's last mention included. The same pieces also give the
+ * text an external agent reads, a mention written as `@[name](node id)`.
  */
 
 import { describe, expect, it } from "vitest";
@@ -67,9 +68,13 @@ describe("promptPieces and serializePromptPieces", () => {
     expect(serializePromptPieces(promptPieces(fragment), POOL, TOKENS)).toBe(serializePromptFragment(fragment, POOL, TOKENS));
   });
 
-  it("carry each mention's node and kind and each line's speaker, and leave notes out", () => {
+  it("carry each mention's node and kind, every stretch of text as stored, each line's speaker, and leave notes out", () => {
     const fragment = FIXTURES[2]![1];
-    expect(promptPieces(fragment)).toEqual([{ pieces: [{ text: "Portrait of " }, { mention: { sourceNodeId: "img-1", kind: "image" } }] }]);
+    // writeProposalPrompt keeps a space after a line's last mention, as the
+    // editor does; the model reads it, so the pieces keep it too.
+    expect(promptPieces(fragment)).toEqual([
+      { pieces: [{ text: "Portrait of " }, { mention: { sourceNodeId: "img-1", kind: "image" } }, { text: " " }] },
+    ]);
     expect(promptPieces(FIXTURES[3]![1]).map((block) => block.speaker)).toEqual([1, 2]);
   });
 
@@ -82,7 +87,7 @@ describe("promptPieces and serializePromptPieces", () => {
 
 describe("promptMarkup", () => {
   it("writes each mention as @[its label](its node id), notes in their marked form, lines apart", () => {
-    expect(promptMarkup(FIXTURES[1]![1])).toBe("Make @[Hero](img-1) brighter\n\nin @[Script](txt-1)");
+    expect(promptMarkup(FIXTURES[1]![1])).toBe("Make @[Hero](img-1) brighter\n\nin @[Script](txt-1) ");
     expect(promptMarkup(FIXTURES[2]![1])).toContain("Portrait of @[Hero](img-1)");
     expect(promptMarkup(FIXTURES[2]![1])).toContain("Pick a style first");
   });

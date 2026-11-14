@@ -148,7 +148,8 @@ describe("update_canvas_node generation", () => {
     });
     expect(mentioned).toEqual([world.heroId, world.scriptId]);
     const read = resultOf<{ nodes: Array<{ id: string; prompts?: Record<string, string> }> }>(await call(world, "read_canvas", { nodeIds: [world.genId] }));
-    expect(read.nodes[0]!.prompts?.i2i).toBe(`Make @[Hero](${world.heroId}) brighter, in the mood of @[Script](${world.scriptId})`);
+    // The space after the last mention is the one the editor keeps there.
+    expect(read.nodes[0]!.prompts?.i2i).toBe(`Make @[Hero](${world.heroId}) brighter, in the mood of @[Script](${world.scriptId}) `);
   });
 
   it("refuses an @ of a node that is not connected in as a reference, and writes nothing", async () => {
@@ -193,6 +194,54 @@ describe("update_canvas_node generation", () => {
   });
 });
 
+describe("lyrics and storyboard shots", () => {
+  const SONG = { ...NANO, name: "song", display_name: "Song", modality: "audio", mode: ["t2m"], params: {} };
+  const SHOTS = { ...NANO, name: "shots", display_name: "Shots", modality: "video", mode: ["multi_shot"], params: {} };
+
+  it("writes lyrics into the audio mode's lyrics box, and read_canvas and read_generation_inputs show them", async () => {
+    const world = await seedGeneration();
+    const audioId = randomUUID();
+    await readCanvas(harness.instanceA, world, (doc) => addNodeInDoc(doc, { ...createEmptyNode("audio", { x: 1800, y: 0 }, world.userId), id: audioId }));
+    consumeOn(world, harness.instanceA);
+    expect(
+      await call(world, "update_canvas_node", { nodeId: audioId, generation: { mode: "t2m", model: "song", modelEntry: SONG, lyrics: [{ text: "Morning tide, carry me home" }] } }),
+    ).toMatchObject({ status: "done" });
+    const read = resultOf<{ nodes: Array<{ lyrics?: Record<string, string> }> }>(await call(world, "read_canvas", { nodeIds: [audioId] }));
+    expect(read.nodes[0]!.lyrics?.t2m).toBe("Morning tide, carry me home");
+    const inputs = resultOf<{ lyrics: Record<string, Array<{ pieces: unknown[] }>> }>(await call(world, "read_generation_inputs", { nodeId: audioId }));
+    expect(inputs.lyrics.t2m).toEqual([{ pieces: [{ text: "Morning tide, carry me home" }] }]);
+  });
+
+  it("replaces a video node's shots with the ones given, each with its seconds and prompt", async () => {
+    const world = await seedGeneration();
+    await readCanvas(harness.instanceA, world, (doc) => addEdgeInDoc(doc, { id: `${world.heroId}->${world.videoId}`, source: world.heroId, target: world.videoId }));
+    consumeOn(world, harness.instanceA);
+    expect(
+      await call(world, "update_canvas_node", {
+        nodeId: world.videoId,
+        generation: {
+          mode: "multi_shot",
+          model: "shots",
+          modelEntry: SHOTS,
+          shots: [
+            { duration: 3, prompt: [{ text: "Wide shot of the harbour" }] },
+            { duration: 2, prompt: [{ text: "Close on " }, { ref: 0 }] },
+          ],
+          mentions: [world.heroId],
+        },
+      }),
+    ).toMatchObject({ status: "done" });
+    const read = resultOf<{ nodes: Array<{ shots?: Array<{ duration: number; prompt: string }> }> }>(await call(world, "read_canvas", { nodeIds: [world.videoId] }));
+    expect(read.nodes[0]!.shots).toEqual([
+      { duration: 3, prompt: "Wide shot of the harbour" },
+      { duration: 2, prompt: `Close on @[Hero](${world.heroId}) ` },
+    ]);
+    const inputs = resultOf<{ shots: Array<{ duration: number; prompt: Array<{ pieces: unknown[] }> }> }>(await call(world, "read_generation_inputs", { nodeId: world.videoId }));
+    expect(inputs.shots.map((s) => s.duration)).toEqual([3, 2]);
+    expect(inputs.shots[1]!.prompt).toEqual([{ pieces: [{ text: "Close on " }, { mention: { sourceNodeId: world.heroId, kind: "image" } }, { text: " " }] }]);
+  });
+});
+
 describe("read_generation_inputs", () => {
   it("reads the node, its references, their edges, the text a text reference holds, and the prompt as pieces", async () => {
     const world = await seedGeneration();
@@ -215,7 +264,7 @@ describe("read_generation_inputs", () => {
       ].sort(),
     );
     expect(inputs.textById).toEqual({ [world.scriptId]: "a quiet harbour at dawn" });
-    expect(inputs.prompts.i2i).toEqual([{ pieces: [{ text: "Make " }, { mention: { sourceNodeId: world.heroId, kind: "image" } }] }]);
+    expect(inputs.prompts.i2i).toEqual([{ pieces: [{ text: "Make " }, { mention: { sourceNodeId: world.heroId, kind: "image" } }, { text: " " }] }]);
   });
 
   it("answers not_found for a node that is not on the canvas", async () => {
