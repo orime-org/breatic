@@ -11,7 +11,7 @@ import type { EditorView } from '@tiptap/pm/view';
 
 import { columnAround, landsInPlace, type ColumnSide } from '@web/spaces/document/document-column-drop';
 import { holds, LISTS } from '@web/spaces/document/document-column-entry';
-import { columnWeight, DOC_COLUMN, MAX_COLUMNS, meanWeight, weightsFit } from '@web/spaces/document/document-column-geometry';
+import { DOC_COLUMN, MAX_COLUMNS, meanWeight, weightsFit, weightsOf } from '@web/spaces/document/document-column-geometry';
 import { rowById } from '@web/spaces/document/document-row-by-id';
 import { cellDepthOf, DOC_TABLE } from '@web/spaces/document/document-table-nodes';
 
@@ -102,10 +102,7 @@ export function sideDropAllowed(
   const to = columnAround($target);
   // A lone block moving within its group takes its column along.
   const leaving = from !== null && to !== null && from.groupPos === to.groupPos && from.column.childCount === 1 ? from.index : -1;
-  const kept: number[] = [];
-  to?.group.forEach((column, _offset, index) => {
-    if (index !== leaving) kept.push(columnWeight(column.attrs['width']));
-  });
+  const kept = to === null ? [] : weightsOf(to.group).filter((_weight, index) => index !== leaving);
   // The new column takes the mean, as the drop writes it; a new group is even.
   const weights = to === null ? [1, 1] : [...kept, meanWeight(kept)];
   if (weights.length > MAX_COLUMNS) return false;

@@ -22,7 +22,7 @@ import { ySyncPluginKey } from 'y-prosemirror';
 
 import { docNameOf } from '@web/data/yjs/manager';
 import { checkAdd } from '@web/data/yjs/space-write';
-import { columnWeight, DOC_COLUMN, DOC_COLUMN_LIST, meanWeight } from '@web/spaces/document/document-column-geometry';
+import { DOC_COLUMN, DOC_COLUMN_LIST, meanWeight, weightsOf } from '@web/spaces/document/document-column-geometry';
 import { COLUMN_TAKE_AWAY } from '@web/spaces/document/document-column-repair';
 import { rangeToLift } from '@web/spaces/document/document-drag-move';
 import { rowById, type RowInDocument } from '@web/spaces/document/document-row-by-id';
@@ -68,17 +68,6 @@ export function landsInPlace(doc: PMNode, dragged: RowInDocument, target: RowInD
   const to = columnAround(doc.resolve(target.from));
   if (from === null || to === null || from.groupPos !== to.groupPos || from.column.childCount !== 1) return false;
   return side === 'left' ? to.index === from.index + 1 : to.index === from.index - 1;
-}
-
-/**
- * The weight a new column in this group takes.
- * @param group - The group.
- * @returns The mean weight.
- */
-function meanWidth(group: PMNode): number {
-  const weights: number[] = [];
-  group.forEach((column) => weights.push(columnWeight(column.attrs['width'])));
-  return meanWeight(weights);
 }
 
 /**
@@ -135,7 +124,7 @@ export function dropRowBeside(
   }
   if (around !== null) {
     const $column = tr.doc.resolve(landing.from);
-    const column = columnType.create({ width: meanWidth(around.group) }, dragged.node);
+    const column = columnType.create({ width: meanWeight(weightsOf(around.group)) }, dragged.node);
     tr.insert(side === 'left' ? $column.before() : $column.after(), column);
   } else {
     const ours = columnType.create({ width: 1 }, landing.node);

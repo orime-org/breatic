@@ -19,16 +19,18 @@
 
 import { createBlockSpec } from '@blocknote/core';
 
-import { columnsFit, columnWeight, DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-geometry';
+import { columnWeight, DOC_COLUMN, DOC_COLUMN_LIST, weightsFit } from '@web/spaces/document/document-column-geometry';
 import { attachDivider, type DividerEditor } from '@web/spaces/document/document-column-resize';
 
 /**
- * Marks a group stacked while its container is too narrow for its columns.
+ * Marks a group stacked while its container is too narrow to give each of
+ * its columns, at its weight, the minimum width.
  * @param element - The group's element.
  */
 function markStacked(element: HTMLElement): void {
-  const count = element.querySelectorAll(':scope > .doc-columns-row > .doc-column').length;
-  const fits = columnsFit(element.getBoundingClientRect().width, count);
+  const columns = element.querySelectorAll<HTMLElement>(':scope > .doc-columns-row > .doc-column');
+  const weights = [...columns].map((column) => columnWeight(column.dataset['width']));
+  const fits = weightsFit(element.getBoundingClientRect().width, weights);
   if (fits) delete element.dataset['stacked'];
   else element.dataset['stacked'] = '';
 }

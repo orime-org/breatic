@@ -21,7 +21,7 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
-import { columnsFit } from '@web/spaces/document/document-column-geometry';
+import { weightsFit } from '@web/spaces/document/document-column-geometry';
 import { sideDropAllowed, sideOfPointer } from '@web/spaces/document/document-column-landing';
 import { columnsBlock, para } from '@web/spaces/document/__tests__/column-fixtures';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
@@ -212,9 +212,15 @@ describe('when a side drop is refused (design §5.2)', () => {
 
 describe('whether a container holds its columns side by side (design §5.1)', () => {
   it('needs 96px a column and 72px a gap', () => {
-    expect(columnsFit(264, 2)).toBe(true);
-    expect(columnsFit(263, 2)).toBe(false);
-    expect(columnsFit(600, 4)).toBe(true);
-    expect(columnsFit(599, 4)).toBe(false);
+    expect(weightsFit(264, [1, 1])).toBe(true);
+    expect(weightsFit(263, [1, 1])).toBe(false);
+    expect(weightsFit(600, [1, 1, 1, 1])).toBe(true);
+    expect(weightsFit(599, [1, 1, 1, 1])).toBe(false);
+  });
+
+  it('needs 96px for the thinnest column at its weight', () => {
+    // 72px of gap, then the thin column's sixth of the rest: (552 - 72) / 6 = 80.
+    expect(weightsFit(552, [5, 1])).toBe(false);
+    expect(weightsFit(648, [5, 1])).toBe(true);
   });
 });

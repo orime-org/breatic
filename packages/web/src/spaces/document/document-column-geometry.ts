@@ -36,22 +36,25 @@ export function columnWeight(value: unknown): number {
 }
 
 /**
- * The narrowest container that holds this many columns side by side.
- * @param count - How many columns.
- * @returns Its width.
+ * A group's columns' weights, in order.
+ * @param group - The group.
+ * @returns The weights.
  */
-export function columnsWidth(count: number): number {
-  return count * MIN_COLUMN_WIDTH + (count - 1) * COLUMN_GAP;
+export function weightsOf(group: PMNode): number[] {
+  const weights: number[] = [];
+  group.forEach((column) => weights.push(columnWeight(column.attrs['width'])));
+  return weights;
 }
 
 /**
- * Whether a container this wide holds this many columns side by side.
- * @param width - The container's width.
- * @param count - How many columns.
- * @returns True when every column gets the minimum.
+ * The narrowest container that holds columns of these weights side by side,
+ * the thinnest given the minimum width.
+ * @param weights - The columns' weights.
+ * @returns Its width.
  */
-export function columnsFit(width: number, count: number): boolean {
-  return count <= 1 || width >= columnsWidth(count);
+export function weightsWidth(weights: readonly number[]): number {
+  const sum = weights.reduce((total, weight) => total + weight, 0);
+  return (weights.length - 1) * COLUMN_GAP + (MIN_COLUMN_WIDTH * sum) / Math.min(...weights);
 }
 
 /**
@@ -62,9 +65,7 @@ export function columnsFit(width: number, count: number): boolean {
  * @returns True when every column gets the minimum.
  */
 export function weightsFit(width: number, weights: readonly number[]): boolean {
-  const room = width - (weights.length - 1) * COLUMN_GAP;
-  const sum = weights.reduce((total, weight) => total + weight, 0);
-  return weights.every((weight) => (weight / sum) * room >= MIN_COLUMN_WIDTH);
+  return weights.length <= 1 || width >= weightsWidth(weights);
 }
 
 /**
