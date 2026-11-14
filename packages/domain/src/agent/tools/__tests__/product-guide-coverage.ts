@@ -534,6 +534,12 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.template.character-showcase-orbit.input.reference.name": { described: /an empty node is placed to the left, connected and @'d/ },
   "canvas.template.character-showcase-orbit.input.reference.note": { described: /a note at the top of the prompt says what to put in it/ },
   "canvas.template.character-showcase-orbit.prompt": { described: /replaces that mode's prompt with the template's/ },
+  // inner#1809: the poster templates.
+  "canvas.template.name-as-world-typography.prompt": { described: /replaces that mode's prompt with the template's/ },
+  "canvas.template.destination-festival-poster.prompt": { described: /replaces that mode's prompt with the template's/ },
+  "canvas.template.photo-paper-diorama.input.photo.name": { described: /an empty node is placed to the left, connected and @'d/ },
+  "canvas.template.photo-paper-diorama.input.photo.note": { described: /a note at the top of the prompt says what to put in it/ },
+  "canvas.template.photo-paper-diorama.prompt": { described: /replaces that mode's prompt with the template's/ },
   // inner#1808: the food templates.
   "canvas.template.food-money-shot.input.dish.name": { described: /an empty node is placed to the left, connected and @'d/ },
   "canvas.template.food-money-shot.input.dish.note": { described: /a note at the top of the prompt says what to put in it/ },

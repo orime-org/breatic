@@ -194,6 +194,9 @@ const SOCIAL_HOOKS = [
 /** The social hook templates a video panel lists. */
 const SOCIAL_HOOK_VIDEOS = SOCIAL_HOOKS.filter((id) => id !== 'fisheye-clone-pov' && id !== 'flash-photo-dump-grid');
 
+/** The poster and graphics templates (inner#1809), in registry order. */
+const POSTERS = ['name-as-world-typography', 'destination-festival-poster', 'photo-paper-diorama'];
+
 /** The sound, music and voice templates (inner#1825), in registry order. */
 const SOUND = [
   'ambience-sfx-bed',
@@ -212,8 +215,8 @@ const SOUND = [
 /** The sound templates an audio panel lists: all but the one anchored on its video. */
 const SOUND_AUDIO = SOUND.filter((id) => id !== 'clip-ambience-foley');
 
-/** The templates the plan's G13 and G19 give no case for offering unasked. */
-const NEVER_OFFERED_UNASKED = ['retro-found-footage', 'pov-continuous-shot', 'fisheye-clone-pov', 'flash-photo-dump-grid', 'game-ui-livestream', 'song-cover'];
+/** The templates the plan's G13, G15 and G19 give no case for offering unasked. */
+const NEVER_OFFERED_UNASKED = ['retro-found-footage', 'pov-continuous-shot', 'fisheye-clone-pov', 'flash-photo-dump-grid', 'game-ui-livestream', 'photo-paper-diorama', 'song-cover'];
 
 /**
  * The template nodes a generate node's words carry a note for, counted the
@@ -300,6 +303,7 @@ describe('generation templates', () => {
       'dish-hero-still',
       'fisheye-clone-pov',
       'flash-photo-dump-grid',
+      ...POSTERS,
     ]);
     expect(templatesFor('video').map((t) => t.id)).toEqual([
       'single-view-refs-scene',
@@ -370,6 +374,9 @@ describe('generation templates', () => {
       'game-ui-livestream': t2v(12, '9:16'),
       'travel-city-walk': t2v(24),
       'twist-comedy-skit': t2v(15),
+      'name-as-world-typography': { result: { type: 'image', mode: 't2i', model: 'gpt-image-2.5-sunburst-text-to-image', params: { aspect_ratio: '3:4' } } },
+      'destination-festival-poster': { result: { type: 'image', mode: 't2i', model: 'seedream-v5.5-text-to-image', params: { aspect_ratio: '3:4' } } },
+      'photo-paper-diorama': { result: { type: 'image', mode: 'i2i', model: 'gpt-image-2.5-sunburst-edit', params: { aspect_ratio: '3:4' } } },
       'vertical-15s-quick-tip': {
         result: {
           type: 'video',
@@ -472,13 +479,14 @@ describe('generation templates', () => {
 
 describe('creative goals and triggers', () => {
   it('lists the goals the registry uses, in panel order', () => {
-    expect([...TEMPLATE_GOALS]).toEqual(['character', 'comics-storyboards', 'food', 'social-hooks', 'sound']);
+    expect([...TEMPLATE_GOALS]).toEqual(['character', 'comics-storyboards', 'food', 'social-hooks', 'posters', 'sound']);
   });
 
   it('gives every template a known goal and words the user asks for it with, and words for when to offer it unless it has none', () => {
     const goals: Record<string, string> = {
       ...Object.fromEntries(FOOD.map((id) => [id, 'food'])),
       ...Object.fromEntries(SOCIAL_HOOKS.map((id) => [id, 'social-hooks'])),
+      ...Object.fromEntries(POSTERS.map((id) => [id, 'posters'])),
       ...Object.fromEntries(SOUND.map((id) => [id, 'sound'])),
       'storyboard-grid-25': 'comics-storyboards',
       'costume-sheet': 'character',
@@ -492,7 +500,7 @@ describe('creative goals and triggers', () => {
     for (const template of GENERATION_TEMPLATES) {
       expect(template.goal, template.id).toBe(goals[template.id]);
       expect(template.triggers.asks.length, `${template.id} asks`).toBeGreaterThan(0);
-      // The plan's G13 and G19 write "none" for when to offer these unasked.
+      // The plan's G13, G15 and G19 write "none" for when to offer these unasked.
       expect(template.triggers.offerWhen.length === 0, `${template.id} offerWhen`).toBe(NEVER_OFFERED_UNASKED.includes(template.id));
       for (const words of [...template.triggers.asks, ...template.triggers.offerWhen]) {
         expect(words.trim().length, template.id).toBeGreaterThan(0);
@@ -527,6 +535,7 @@ describe('creative goals and triggers', () => {
       ['comics-storyboards', ['storyboard-grid-25']],
       ['food', ['dish-hero-still']],
       ['social-hooks', ['fisheye-clone-pov', 'flash-photo-dump-grid']],
+      ['posters', POSTERS],
     ]);
     expect(templateGoalsFor('video').map(({ goal, templates }) => [goal, templates.map((one) => one.id)])).toEqual([
       ['character', ['single-view-refs-scene', 'identity-locked-sequence', 'character-showcase-orbit']],
@@ -1167,5 +1176,11 @@ describe('template inputs that go into a slot (inner#1825, CAP-1)', () => {
         }
       }
     }
+  });
+});
+
+describe('poster templates (inner#1809)', () => {
+  it('tells the agent that the name and its annotations stay in the picture, not the name alone', () => {
+    expect(byId('name-as-world-typography')?.agentNote).toContain('the name and the annotations must stay in the picture, the name spelled and shaped exactly right, and no other text appears');
   });
 });

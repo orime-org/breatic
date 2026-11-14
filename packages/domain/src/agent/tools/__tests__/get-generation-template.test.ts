@@ -135,8 +135,8 @@ describe("get_generation_template", () => {
     expect(bible).not.toContain(TEMPLATE_CRAFT.video);
   });
 
-  it("lets a template that asks for labels put them in the picture, and keeps out any other text", () => {
-    expect(TEMPLATE_CRAFT.picture).toContain("put no text in the picture unless the template asks for labels");
+  it("lets a template put the text it asks for in the picture, labels, a title or lines of verse, and keeps out any other text", () => {
+    expect(TEMPLATE_CRAFT.picture).toContain("put no text in the picture unless the template asks for it (labels, a title, lines of verse)");
   });
 
   it("has words in every craft section", () => {

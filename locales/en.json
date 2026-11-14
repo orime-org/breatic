@@ -1500,6 +1500,7 @@
         "comics-storyboards": "Comics & storyboards",
         "food": "Food",
         "social-hooks": "Social hooks",
+        "posters": "Posters & graphics",
         "sound": "Sound, music & voice"
       },
       "storyboard-grid-25": {
@@ -1794,6 +1795,27 @@
       },
       "applyFailed": "Couldn't apply the template.",
       "groupLocked": "The group is locked. Unlock it to add nodes.",
+      "name-as-world-typography": {
+        "name": "Name as a tiny world",
+        "description": "A name built as a miniature world, its letters shaped by what it is known for",
+        "prompt": "A typographic illustration. The name {✏️ the name, e.g. ROME} is built as a miniature world: every letter, or every character for a name in Chinese, Japanese or Korean, is a tiny architectural model standing on a plain light ground, and the whole name reads clearly with every letter spelled and shaped exactly right. What the name is known for reshapes its letters: {✏️ what it is known for and how it bends a letter, e.g. the Colosseum forms the O, aqueduct arches run through the M}. Tiny people, vehicles and trees at model scale. 6 to 14 short hand-written technical annotations in thin lines point at the details, a few words each, in the language of this prompt. Accent colour: {✏️ one accent colour, e.g. terracotta red}; everything else in soft neutral tones. Soft daylight from the upper left, gentle shadows. No other text."
+      },
+      "destination-festival-poster": {
+        "name": "Festival travel poster",
+        "description": "A hand-drawn travel poster of a place in its festival or season",
+        "prompt": "A hand-drawn travel poster of {✏️ the place, e.g. Kyoto} during {✏️ the festival or season, e.g. the autumn maple season}. Screen print and risograph look: 4 to 6 flat ink colours, slightly misregistered layers, visible grain and halftone dots. A bold landmark or scene of the place fills the poster, with people celebrating in the middle ground. The only text is the title {✏️ the title, e.g. KYOTO · AUTUMN}, in large hand-lettered type at the top, spelled exactly as given. No other words, logos or small print."
+      },
+      "photo-paper-diorama": {
+        "name": "Photo to paper diorama",
+        "description": "The photo's lower half torn into paper craft, with two hand-written lines",
+        "prompt": "Keep the top half of [📎 Photo] exactly as it is. The bottom half becomes torn handmade paper with rough fibrous edges, layered like a collage, and {✏️ which element of the photo, e.g. the dog} rises out of it as a paper-craft relief, cut and folded from coloured paper and casting small real shadows. Across the paper, two short hand-written lines in ink: {✏️ the two lines, e.g. Sunday walks / smell like grass}, spelled exactly as given. Soft daylight. No other text.",
+        "input": {
+          "photo": {
+            "name": "Photo",
+            "note": "Add the photo first, then generate."
+          }
+        }
+      },
       "ambience-sfx-bed": {
         "name": "Ambience bed with foley",
         "description": "A looping place sound with a few foley hits",

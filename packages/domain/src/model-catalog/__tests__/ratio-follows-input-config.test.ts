@@ -21,6 +21,7 @@ const FOLLOWS_INPUT = [
   { category: "image", name: "gpt-image-2.5-sunburst-edit" },
   { category: "image", name: "muse-image-edit" },
   { category: "image", name: "nano-banana-pro-edit-ultra" },
+  { category: "image", name: "seedream-v5.5-edit" },
   { category: "video", name: "wan-3.0-image-to-video" },
   { category: "video", name: "flux-3-start-end-to-video" },
 ] as const;

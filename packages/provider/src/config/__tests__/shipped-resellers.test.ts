@@ -37,10 +37,12 @@ const RESELLERS: Readonly<Record<string, { fal?: string; sandbase?: string }>> =
   "krea-v2-large-text-to-image": { fal: "krea/v2/large/text-to-image" },
   // fal turns MagicPrompt on or off; WaveSpeed and SandBase leave it to Ideogram's AUTO (inner#1859).
   "ideogram-v3-quality": {},
+  "seedream-v5.5-text-to-image": {},
   "recraft-v4-style-text-to-image": { fal: "recraft/v4/style/text-to-image" },
   "gpt-image-2.5-sunburst-edit": { fal: "openai/gpt-image-2.5/sunburst/edit", sandbase: "openai/gpt-image-2.5-sunburst/edit" },
   "muse-image-edit": { fal: "meta/muse-image/edit" },
   "nano-banana-pro-edit-ultra": {},
+  "seedream-v5.5-edit": {},
   // fal bills it per output megapixel at the source's size, which an estimate cannot know (inner#1859).
   // SandBase runs it on fal's endpoint, whose steps, guidance and LoRA scale WaveSpeed states no counterpart of (inner#1859).
   "qwen-image-edit-multiple-angles": {},

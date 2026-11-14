@@ -20,6 +20,7 @@ const UPSTREAM_TOTAL: Readonly<Record<string, number>> = {
   "gpt-image-2.5-sunburst-edit": 16,
   "nano-banana-pro-edit-ultra": 14,
   "muse-image-edit": 10,
+  "seedream-v5.5-edit": 10,
 };
 
 describe("a style slot joining an image pool", () => {
