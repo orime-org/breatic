@@ -11,7 +11,7 @@ import type { EditorView } from '@tiptap/pm/view';
 
 import { columnAround, landsInPlace, type ColumnSide } from '@web/spaces/document/document-column-drop';
 import { holds, LISTS } from '@web/spaces/document/document-column-entry';
-import { DOC_COLUMN, DOC_COLUMN_LIST, MAX_COLUMNS, meanWeight, weightsFit, weightsOf } from '@web/spaces/document/document-column-geometry';
+import { DOC_COLUMN, DOC_COLUMN_LIST, MAX_COLUMNS, meanWeight, roomInside, weightsFit, weightsOf } from '@web/spaces/document/document-column-geometry';
 import { rowById } from '@web/spaces/document/document-row-by-id';
 import { cellDepthOf, DOC_TABLE, isTableCell } from '@web/spaces/document/document-table-nodes';
 
@@ -172,29 +172,6 @@ function nearestColumn(group: HTMLElement, x: number): DOMRect | null {
 }
 
 /**
- * Computed lengths added up, in pixels.
- * @param lengths - The computed values.
- * @returns Their sum, a missing one counting 0.
- */
-function pixelsOf(...lengths: string[]): number {
-  return lengths.reduce((sum, length) => sum + (Number.parseFloat(length) || 0), 0);
-}
-
-/**
- * The room inside a cell, its padding and border taken off.
- * @param cell - The cell's element.
- * @returns Its left and right.
- */
-function cellRoom(cell: HTMLElement): VisibleBox {
-  const box = cell.getBoundingClientRect();
-  const style = getComputedStyle(cell);
-  return {
-    left: box.left + pixelsOf(style.borderLeftWidth, style.paddingLeft),
-    right: box.right - pixelsOf(style.borderRightWidth, style.paddingRight),
-  };
-}
-
-/**
  * The row level with the pointer, the gutter and margin included, and what
  * of it the user sees: a picture, video or audio by its media box, any other
  * row by its own content. In the gap between two columns, or in a cell's
@@ -215,7 +192,7 @@ function rowAt(view: EditorView, x: number, y: number, fromMargin: boolean, hops
   const inside = at.inside >= 0 && hops < 2 ? view.state.doc.nodeAt(at.inside) : null;
   const element = inside === null ? null : view.nodeDOM(at.inside);
   if (element instanceof HTMLElement) {
-    const room = inside!.type.name === DOC_COLUMN_LIST ? nearestColumn(element, x) : !fromMargin && isTableCell(inside!) ? cellRoom(element) : undefined;
+    const room = inside!.type.name === DOC_COLUMN_LIST ? nearestColumn(element, x) : !fromMargin && isTableCell(inside!) ? roomInside(element) : undefined;
     if (room === null) return null;
     if (room !== undefined) return rowAt(view, Math.min(Math.max(x, room.left + 1), room.right - 1), y, fromMargin, hops + 1);
   }

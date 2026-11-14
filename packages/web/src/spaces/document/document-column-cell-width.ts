@@ -21,7 +21,7 @@ import { Plugin, PluginKey, type Transaction } from '@tiptap/pm/state';
 import { TableMap } from '@tiptap/pm/tables';
 import type { EditorView } from '@tiptap/pm/view';
 
-import { DOC_COLUMN_LIST, weightsFit, weightsOf, weightsWidth } from '@web/spaces/document/document-column-geometry';
+import { DOC_COLUMN_LIST, roomInside, weightsFit, weightsOf, weightsWidth } from '@web/spaces/document/document-column-geometry';
 import { localEdit } from '@web/spaces/document/document-column-repair';
 import { rowById } from '@web/spaces/document/document-row-by-id';
 import { drawnColumns, holdColumnWidths } from '@web/spaces/document/document-table-column-widths';
@@ -54,15 +54,6 @@ function grownGroups(before: PMNode, after: PMNode): string[] {
 }
 
 /**
- * A length in pixels a computed style gives.
- * @param value - The computed value.
- * @returns The pixels, 0 for none.
- */
-function pixels(value: string): number {
-  return Number.parseFloat(value) || 0;
-}
-
-/**
  * Writes down the widths of the table a group's cell stands in, as drawn,
  * widening the cell's column when the cell is too narrow for the group.
  * @param view - The editor view, still drawing the document before the change.
@@ -89,16 +80,21 @@ function holdFor(view: EditorView, tr: Transaction, groupId: string): void {
   if (!(cellDom instanceof HTMLElement)) return;
   // The room inside the cell as drawn, to the fraction of a pixel, as the
   // group's own width decides whether it stacks (`document-column-nodes.tsx`).
-  const style = getComputedStyle(cellDom);
-  const edges = ['borderLeftWidth', 'borderRightWidth', 'paddingLeft', 'paddingRight'] as const;
-  const room = edges.reduce((width, edge) => width - pixels(style[edge]), cellDom.getBoundingClientRect().width);
+  const inside = roomInside(cellDom);
+  const room = inside.right - inside.left;
   const widths = drawnColumns(view, drawn.node, drawn.from + 1);
   const weights = weightsOf(found.node);
   if (weightsFit(room, weights)) {
     holdColumnWidths(tr, tablePos, widths);
     return;
   }
-  const target = Math.ceil((widths[column] ?? cellDom.offsetWidth) + weightsWidth(weights) - room);
+  // Once held, the cell is drawn as wide as the whole-pixel widths of the
+  // columns it covers: the deficit is counted from them.
+  const span = Number($group.parent.attrs['colspan'] ?? 1);
+  const covered = widths.slice(column, column + span);
+  const coveredWidth = covered.every((width) => width !== null) ? covered.reduce((sum, width) => sum + width!, 0) : cellDom.offsetWidth;
+  const edges = cellDom.getBoundingClientRect().width - room;
+  const target = (widths[column] ?? cellDom.offsetWidth) + Math.ceil(weightsWidth(weights) + edges - coveredWidth);
   holdColumnWidths(tr, tablePos, widths.map((width, k) => (k === column ? target : width)));
   // A cell that already held its width keeps it in `holdColumnWidths`; the
   // column widened here is written on every cell covering it, a merged one's

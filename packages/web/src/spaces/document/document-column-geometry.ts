@@ -103,3 +103,27 @@ export function holdsOneEmptyParagraph(column: PMNode): boolean {
   const row = column.firstChild!;
   return row.type.name === 'blockContainer' && row.childCount === 1 && row.firstChild!.type.name === 'paragraph' && row.firstChild!.content.size === 0;
 }
+
+/**
+ * Computed lengths added up, in pixels.
+ * @param lengths - The computed values.
+ * @returns Their sum, a missing one counting 0.
+ */
+function pixelsOf(...lengths: string[]): number {
+  return lengths.reduce((sum, length) => sum + (Number.parseFloat(length) || 0), 0);
+}
+
+/**
+ * The room inside an element as drawn, to the fraction of a pixel: its box
+ * with its border and padding taken off, as a group standing in it measures.
+ * @param element - The element (a cell).
+ * @returns Its left and right.
+ */
+export function roomInside(element: HTMLElement): { left: number; right: number } {
+  const box = element.getBoundingClientRect();
+  const style = getComputedStyle(element);
+  return {
+    left: box.left + pixelsOf(style.borderLeftWidth, style.paddingLeft),
+    right: box.right - pixelsOf(style.borderRightWidth, style.paddingRight),
+  };
+}

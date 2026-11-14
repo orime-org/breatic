@@ -118,12 +118,23 @@ describe('columns made in a cell (design §5.1)', () => {
     expect(storedWidths(editor)).toEqual([[266, 120], [266, 120], [266], [120]]);
   });
 
-  it('widen a cell drawn a fraction short of its columns', () => {
-    // The cell rounds to 266 whole pixels and is drawn at 265.6: 263.6 inside.
+  it('hold a cell drawn a fraction short of its columns at whole pixels that fit them', () => {
+    // The cell rounds to 266 whole pixels and is drawn at 265.6: 263.6 inside,
+    // short of 264. Held at 266, it is drawn at 266: 264 inside.
     drawEverythingAt(266, 265.6);
     const editor = open([tableBlock({ rows: [{ cells: [{ blocks: [para('a'), para('b')] }, 'z'] }] })]);
     dropRowBeside(editor as never, idOf(editor, 'b'), idOf(editor, 'a'), 'right');
-    expect(storedWidths(editor)).toEqual([[267], [266]]);
+    expect(storedWidths(editor)).toEqual([[266], [266]]);
+  });
+
+  it('widen a cell to hold uneven columns that come in, counting from the widths it stores', () => {
+    // Drawn at 201.4, stored at 201 whole pixels; columns 1.3517 : 0.6483 need 368.159.
+    drawEverythingAt(201, 201.4);
+    const editor = open([tableBlock({ rows: [{ cells: ['a', 'z'] }] })]);
+    const uneven = columnsBlock({ blocks: [para('x')], width: 1.3517 }, { blocks: [para('y')], width: 0.6483 });
+    editor.replaceBlocks([idOf(editor, 'a')], [uneven] as never);
+    // 368.159 inside, plus the cell's 1px padding each side, up to whole pixels.
+    expect(storedWidths(editor)).toEqual([[371], [201]]);
   });
 
   it('write down the drawn widths when the cell already holds them', () => {
