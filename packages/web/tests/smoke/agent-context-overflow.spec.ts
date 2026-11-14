@@ -7,8 +7,8 @@
  * Two endings a real model cannot be made to produce on demand: the server
  * folds memory partway through a reply and carries on, or it cannot make the
  * request fit and ends the turn as too long. The send is answered here with a
- * run whose stream opens the way the server's does (heartbeat, title, `start`
- * with an id; `helpers/fake-run.ts`, `main-agent.ts`). The too-long ending
+ * run whose stream opens the way the server's does (heartbeat, `start` with an
+ * id, then the title; `helpers/fake-run.ts`, `main-agent.ts`). The too-long ending
  * is a `data-failed` frame carrying `reason: "too_long"` followed by an
  * ordinary `finish`, with no error frame.
  */
@@ -22,8 +22,8 @@ test.use({ viewport: { width: 1500, height: 900 } });
 
 /** How the server opens every run, after the heartbeat. */
 const OPENING = [
-  { type: 'data-conversation-titled', data: { title: 'overflow' } },
   { type: 'start', messageId: 'm-reply' },
+  { type: 'data-conversation-titled', data: { title: 'overflow' } },
 ];
 
 /** The English line for a turn ended as too long (`chat.error.turnTooLong`). */

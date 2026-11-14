@@ -8,8 +8,8 @@
  * A real model decides for itself whether to read, which pages, and whether a
  * page it found by search comes back under a second spelling, so none of
  * these can be made to happen on demand. The send is answered with a run
- * whose stream opens the way the server's does (heartbeat, title, `start` with
- * an id; `helpers/fake-run.ts`, `main-agent.ts`) and carries the parts `web_search`
+ * whose stream opens the way the server's does (heartbeat, `start` with an id,
+ * then the title; `helpers/fake-run.ts`, `main-agent.ts`) and carries the parts `web_search`
  * and `web_fetch` answer with (`FetchAnswer` in
  * `packages/domain/src/agent/tools/web-fetch.ts`). Every address is under a
  * reserved `.example` name: nothing here is fetched.
@@ -24,8 +24,8 @@ test.use({ viewport: { width: 1500, height: 900 } });
 
 /** How the server opens every run, after the heartbeat. */
 const OPENING = [
-  { type: 'data-conversation-titled', data: { title: 'page reads' } },
   { type: 'start', messageId: 'm-reply' },
+  { type: 'data-conversation-titled', data: { title: 'page reads' } },
 ];
 
 /** What `web_fetch` declares for its running line (`metadata` in `makeFetchTool`). */

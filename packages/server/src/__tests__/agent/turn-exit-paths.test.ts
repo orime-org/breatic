@@ -12,8 +12,9 @@
  * say -- unless the record says otherwise.
  *
  * Stopping is driven by a signal here rather than by anything the model
- * produces, because that is how it happens: the user presses stop or the
- * page goes, the route raises the signal, and the SDK ends the turn. There is
+ * produces, because that is how it happens: the user presses stop (or the
+ * conversation is deleted, or the server shuts down), the run raises the
+ * signal, and the SDK ends the turn. There is
  * no part a model can send that means "the user left".
  */
 

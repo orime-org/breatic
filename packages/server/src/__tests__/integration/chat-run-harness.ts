@@ -3,7 +3,7 @@
 
 /**
  * What the chat-run suites share (inner#1717): a signed-in owner with a
- * project and a conversation, the four ways a page talks to a run (send, sync,
+ * project and a conversation, the five ways a page talks to a run (send, sync,
  * attach, stop, take back), and reading a conversation's queue keys off Redis.
  *
  * A run is no longer the response to the send that started it: a send answers

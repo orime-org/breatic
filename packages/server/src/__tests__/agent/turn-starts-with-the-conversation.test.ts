@@ -11,10 +11,9 @@
  *
  * The other thing a turn used to open with was the whole stored conversation,
  * as a settling-up for anything an earlier dropped connection had left
- * mismatched. That is gone: the client's own message list is what
- * `POST /chat/open` gave it, and a connection that drops mid-reply leaves the
- * screen out of step with a server whose records are intact -- which the
- * user gets out of by reloading.
+ * mismatched. That is gone: the page reads the newest page of history before
+ * it attaches to a run, and a connection that drops mid-reply is read again
+ * and re-attached to, the run replaying from its start (inner#1717).
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import type * as CoreModule from "@breatic/core";

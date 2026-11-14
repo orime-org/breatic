@@ -4,12 +4,10 @@
 /**
  * Which conversations are running, as the routes see it (#1394).
  *
- * Two halves. `GET /chat/running` answers the caller's own running
- * conversations in one project and nobody else's. A chat turn holds a lease
- * for as long as it runs: taken when the stream opens, renewed with every
- * heartbeat, released before the stream closes, however the turn ended. A
- * lease that cannot be written costs only the mark in other tabs, so a Redis
- * failure is logged and the turn goes on.
+ * `GET /chat/running` answers the caller's own running conversations in one
+ * project and nobody else's. A run holds its lease from its opening stage
+ * until it has settled, renewed with its hold on the conversation; that half
+ * is pinned in `integration/chat-running.integration.test.ts`.
  *
  * A query `validate()` refuses is answered 422 (`middleware/validate.ts`), as on
  * every other route.

@@ -6,7 +6,7 @@
  *
  * A real model cannot be made to end any of these ways on demand, so the turn
  * send is answered here with a run whose stream opens the way the server's
- * does: the heartbeat, the conversation's title, then `start` with an id
+ * does: the heartbeat, `start` with an id, then the conversation's title
  * (`helpers/fake-run.ts`). What each case checks is that the line
  * is on screen once the turn has settled and is still there after the toast
  * has gone. That the same lines come back when the
@@ -24,8 +24,8 @@ test.use({ viewport: { width: 1500, height: 900 } });
 
 /** How the server opens every run, after the heartbeat. */
 const OPENING = [
-  { type: 'data-conversation-titled', data: { title: 'outcome' } },
   { type: 'start', messageId: 'm-reply' },
+  { type: 'data-conversation-titled', data: { title: 'outcome' } },
 ];
 
 /** How long a toast stays up (the Toaster's `duration` in `App.tsx`), plus room to settle. */
