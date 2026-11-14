@@ -43,3 +43,23 @@ describe("presentationFrameCovering", () => {
     expect(() => presentationFrameCovering(TABLE, [141n, 60n])).toThrow(RangeError);
   });
 });
+
+// A 30 fps WebM stores frame starts rounded to its 1 ms clock (0, 33, 67, 100 ms...): frame 2 truly starts at 66.67 ms.
+const WEBM30: VideoPresentationTable = { schemaVersion: 1, timescale: 1000, runs: Array.from({ length: 30 }, (_unused, k) => {
+  const [start, next] = [Math.round((k * 1000) / 30), Math.round(((k + 1) * 1000) / 30)];
+  return { start, count: 1, step: next - start, duration: next - start };
+}) };
+const HALF_MS: readonly [bigint, bigint] = [1n, 2000n];
+
+describe("frames whose starts are rounded to the source clock (frames-split §7.17; round 26)", () => {
+  it("TSW06 a start at most half a source tick after the slot time covers that slot", () => {
+    expect(presentationFrameCovering(WEBM30, [2n, 30n], HALF_MS)).toBe(2);
+    expect(presentationFrameCovering(WEBM30, [2n, 30n])).toBe(1);
+  });
+
+  it("TSW07 a 30 fps WebM on a 30 fps grid shows every frame once", () => {
+    const shown = Array.from({ length: 30 }, (_unused, k) => transitionSourceWindow(WEBM30, { inFrame: 0, startFrame: 0 }, { start: k, end: k + 1 }, { numerator: "30", denominator: "1" }, HALF_MS).start);
+    expect(shown).toEqual(Array.from({ length: 30 }, (_unused, k) => k));
+  });
+});
+

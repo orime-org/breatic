@@ -498,12 +498,14 @@ function exactClock(entries: readonly MiniToolPlanEntry[], origin: MiniToolPlanE
  * @param run - The lifetime and IO bounds.
  * @param frame - The chain after a source span's timing, given a unique label prefix.
  * @param empty - The source of one composed frame for a derived-empty entry.
+ * @param slack - Half a source tick when the source's clock rounded its frame times (`presentationSlack`): on a grid, a frame
+ * stored up to this after a slot time starts on that slot.
  * @returns The inputs and graph.
  * @throws {RangeError} When a time is malformed or the clock is beyond FFmpeg's time base range.
  * @throws {Error} When ffprobe fails.
  */
 export async function windowGraph(entries: readonly MiniToolPlanEntry[], time: bigint | FrameRate, source: string, run: Run,
-  frame: (label: string) => string, empty: (entry: Extract<MiniToolPlanEntry, { kind: "empty" }>) => string): Promise<WindowGraph> {
+  frame: (label: string) => string, empty: (entry: Extract<MiniToolPlanEntry, { kind: "empty" }>) => string, slack?: MiniToolPlanExact): Promise<WindowGraph> {
   const origin = span(entries[0]!).start;
   const args = ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-protocol_whitelist", "file", "-copyts"];
   const graph: string[] = [];
@@ -535,8 +537,11 @@ export async function windowGraph(entries: readonly MiniToolPlanEntry[], time: b
     const first = await frameStartAt(source, facts, entry, run);
     args.push(...mediaTimeline(facts), "-seek_timestamp", "1", "-noaccurate_seek", "-ss", seconds(rational(entry.decodeStart)), "-i", source);
     const ticks = `max(round((PTS-${roundTimes([clipNumerator, clipDenominator], clock)})*${rateDenominator}/${rateNumerator})\\,0)+${roundTimes(offset, clock)}`;
+    // On a grid a frame whose stored time is up to `slack` after a slot starts on that slot (§7.17 transition output profile
+    // row): its slot is ceil((t − slack) · fps), with 2 · slack · clock a whole number of ticks (the clock holds the source tick).
+    const tick = slot === null || slack === undefined ? 0n : (2n * clock * BigInt(slack.numerator)) / BigInt(slack.denominator);
     graph.push(`[${inputs}:v:0]trim=start=${seconds(first)}:end=${seconds(clipEnd)},settb=1/${clock},` +
-      `${slot === null ? `setpts=${ticks}` : `setpts=ceil((${ticks})/${slot})*${slot},settb=${base}`},${frame(`p${at}`)}[e${at}]`);
+      `${slot === null ? `setpts=${ticks}` : `setpts=ceil((2*(${ticks})-${tick})/${2n * slot})*${slot},settb=${base}`},${frame(`p${at}`)}[e${at}]`);
     inputs += 1;
   }
   // interleave ends the stream at its last frame's start, so a grid after it never gives that frame its slot and repeats
@@ -644,7 +649,7 @@ async function renderWindow(recipe: Extract<PresentationRecipe, { kind: "chunk_e
   // Black: a transparent fill packs to black colour and black alpha; a VP9 output with alpha keeps it transparent.
   const window = await windowGraph(entries, gridRate(recipe) ?? clock, source, run, (label) => picture(target, label),
     (entry) => `color=c=black${transparent && entry.fill === "transparent" ? "@0" : ""}:s=${target.width}x${target.height}:r=1:d=1,` +
-      `format=${transparent ? "yuva420p" : "yuv420p"},setsar=1,${BT709_TAGS}`);
+      `format=${transparent ? "yuva420p" : "yuv420p"},setsar=1,${BT709_TAGS}`, recipe.slack);
   const { args, graph } = window;
   const audio = recipe.kind !== "chunk_encode" && recipe.audio !== null && window.facts.audio ? audioOf(window.inputs, recipe.audio) : null;
   if (audio !== null) {
@@ -694,7 +699,8 @@ function modelInputTiming(recipe: Extract<PresentationRecipe, { kind: "prepare_m
     relabel(`settb=1/${base},setpts=round(N*${base}/${grid.rate})`);
     return videoOutput(target, base, BigInt(Math.round((grid.frameCount * Number(base)) / grid.rate)));
   }
-  relabel(`fps=fps=${grid.rate}:round=up,tpad=stop_mode=clone:stop=${grid.frameCount},trim=end_frame=${grid.frameCount}`);
+  // A frame stored up to the grid's slack after a slot starts on it (§7.17), as gridSlotFrame reads the same grid.
+  relabel(`${grid.slack === undefined || grid.slack === 0 ? "" : `setpts=PTS-${grid.slack}/TB,`}fps=fps=${grid.rate}:round=up,tpad=stop_mode=clone:stop=${grid.frameCount},trim=end_frame=${grid.frameCount}`);
   return videoOutput(target, BigInt(grid.rate), BigInt(grid.frameCount));
 }
 
@@ -916,7 +922,7 @@ async function renderTransitionWindow(recipe: MiniToolPlanTransitionWindow, file
       + ":out_color_matrix=bt709:out_range=tv,format=yuv444p,scale=in_color_matrix=bt709:in_range=tv:out_range=pc";
     const window = await windowGraph(clip.entries, frameRate(profile.fps), local(files, clip.inputId), run,
       () => `${convert},format=rgba,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${fill},setsar=1`,
-      (entry) => `color=c=black${entry.fill === "transparent" ? "@0" : ""}:s=${width}x${height}:r=1:d=1,format=rgba`);
+      (entry) => `color=c=black${entry.fill === "transparent" ? "@0" : ""}:s=${width}x${height}:r=1:d=1,format=rgba`, clip.slack);
     const file = join(directory, `transition-${at}.rgba`);
     await runPlanCommand("ffmpeg", [...window.args, "-filter_complex", `${window.graph.join(";").replace(/\[v\]$/u, "[w]")};[w]${profileGrid(profile, count)},format=rgba[v]`,
       "-map", "[v]", "-fps_mode", "passthrough", "-f", "rawvideo", "-pix_fmt", "rgba", file], run);

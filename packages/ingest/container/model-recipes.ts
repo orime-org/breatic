@@ -177,11 +177,13 @@ async function modelWindow(recipe: MiniToolPlanModelWindow, request: ModelRecipe
   // The span can start or end between the window clock's ticks, so it is placed on a 1/90000 clock.
   const fine = 90000n;
   const shift = roundTimes(minus(recipe.span.start, origin), fine);
+  // A frame stored up to the grid's slack after a slot starts on it (§7.17).
+  const slack = BigInt(Math.round((grid.slack ?? 0) * Number(fine)));
   const end = roundTimes(minus(recipe.span.end, origin), fine);
   // The window's frames up to the span's end, then one clone placed at the end so `fps` emits the slot the last frames fall
   // into; frames before the span's start all land on 0, so slot 0 shows the one covering the start.
   window.graph.push(`${window.graph.pop()!.replace(/\[v\]$/u, "[w]")};[w]settb=1/${fine},trim=end=${seconds([end, fine])},tpad=stop_mode=clone:stop=1,` +
-    `setpts=if(lte(PTS\\,PREV_INPTS)\\,${end - shift}\\,max(PTS-${shift}\\,0)),` +
+    `setpts=if(lte(PTS\\,PREV_INPTS)\\,${end - shift}\\,max(PTS-${shift + slack}\\,0)),` +
     `fps=fps=${grid.fps}:round=up,tpad=stop_mode=clone:stop=${grid.frameCount},trim=end_frame=${grid.frameCount},format=yuv420p,setsar=1,${BT709_TAGS}[v]`);
   const lossless: MiniToolPlanTarget = { ...recipe.target, width: frame.width, height: frame.height, displayRect: null, crf: 0, alpha: "none", format: undefined };
   const { video, muxer } = videoOutput(lossless, BigInt(grid.fps), BigInt(grid.frameCount));

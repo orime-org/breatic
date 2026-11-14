@@ -15,7 +15,7 @@ import {
 } from "@breatic/shared/mini-tools";
 import { prepareVideoRemoveBackground, type PreparedVideoRemoveBackground } from "@domain/mini-tool/remove-background-preparation.service.js";
 import { resolveSource } from "@domain/mini-tool/analysis.service.js";
-import { transitionSourceWindow } from "@domain/mini-tool/transition-source-window.js";
+import { planSlack, transitionSourceWindow } from "@domain/mini-tool/transition-source-window.js";
 import { lipsyncClipCropBytes, lipsyncCompositeChunks, lipSyncDialogues, lipSyncModel, lipSyncPeople, lipsyncPersonStepKeys, lipsyncRawDiskBytes, lipsyncSharedStepKeys, lipsyncStepKey, lipSyncTimeline, type LipSyncGenerator, type LipSyncPerson } from "@domain/mini-tool/lipsync-admission.js";
 import { eraseTracking, expandBox, type EraseTracking, type ExpandBox } from "@domain/mini-tool/erase-expand-admission.js";
 import { assertOpaqueSource, eraseRangeGrid, trackingClipSeconds } from "@domain/mini-tool/tracking-range.js";
@@ -851,7 +851,7 @@ async function prepareTransitions(request: Extract<MiniToolPlannedRequest, { too
     const high = Math.min(chunk.end, clip.startFrame + clip.frameCount);
     if (high <= low) return total;
     const { ledger } = inputs[at]!;
-    const window = transitionSourceWindow(ledger.plan.presentation, clip, { start: low, end: high }, profile.fps);
+    const window = transitionSourceWindow(ledger.plan.presentation, clip, { start: low, end: high }, profile.fps, planSlack(ledger.plan));
     const first = window.start;
     const count = window.end - first;
     return total + (count + prerollFrames(ledger, first, count)) * decodeFrame(ledger);

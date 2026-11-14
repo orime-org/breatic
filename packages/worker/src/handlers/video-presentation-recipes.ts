@@ -14,7 +14,7 @@ import {
   type MiniToolPlanDetectorProfile, type MiniToolPlanFrameCrop, type MiniToolPlanFrameTarget, type MiniToolPlanRecipe,
   type VideoPresentationLedger, type VideoPresentationLedgerReceipt,
 } from '@breatic/shared';
-import { videoCarrierGeometry } from '@breatic/shared/mini-tools';
+import { presentationSlack, videoCarrierGeometry } from '@breatic/shared/mini-tools';
 
 /** An exact rational as numerator and positive denominator. */
 type Q = [bigint, bigint];
@@ -174,16 +174,21 @@ export function windowEntries(ledger: VideoPresentationLedger, window: FrameWind
  * A window's entries, each with the presentation ordinal of its first frame.
  * @param ledger - The full ledger.
  * @param window - The window.
- * @param from - A presentation time in the window's first frame to start from; that frame's start when absent.
+ * @param requested - A presentation time in the window's first frame to start from; that frame's start when absent.
  * @returns The entries in presentation order with their first ordinals.
  * @throws {RangeError} When the window lies outside the presented frames, `from` outside its first frame, or no source keyframe precedes a span.
  */
-function placedEntries(ledger: VideoPresentationLedger, window: FrameWindow, from?: Q): { entry: MiniToolPlanEntry; ordinal: number }[] {
+function placedEntries(ledger: VideoPresentationLedger, window: FrameWindow, requested?: Q): { entry: MiniToolPlanEntry; ordinal: number }[] {
   const { plan } = ledger;
   const frames = presentedFrames(ledger);
   if (window.start < 0 || window.end > frames.length || window.end <= window.start) throw new RangeError('The window lies outside the presented frames');
   const scale = BigInt(plan.presentation.timescale);
   const opening = frames[window.start]!;
+  // A start up to half a source tick before the first frame is the rounding of that frame's stored time (§7.17): it shows from
+  // the frame's own start.
+  const slack = presentationSlack(plan.presentation, plan.originMapping.timeBase);
+  const openingStart: Q = [BigInt(opening.start), scale];
+  const from = requested !== undefined && slack !== null && cmp(requested, openingStart) < 0n && cmp(plus(requested, q(slack)), openingStart) >= 0n ? openingStart : requested;
   if (from !== undefined && (cmp(from, [BigInt(opening.start), scale]) < 0n || cmp(from, [BigInt(opening.end), scale]) >= 0n)) {
     throw new RangeError('The start lies outside the window\'s first frame');
   }
@@ -276,6 +281,18 @@ function placedEntries(ledger: VideoPresentationLedger, window: FrameWindow, fro
   }
   close();
   return entries;
+}
+
+/**
+ * Half a tick of the ledger's source time base in seconds, the rounding of the frame times the source stores; model grids
+ * carry it so the container and the grid functions put a frame on the slot it truly starts on (§7.17).
+ * @param ledger - The full ledger.
+ * @returns The half tick.
+ * @throws {never} Never.
+ */
+export function gridSlack(ledger: VideoPresentationLedger): number {
+  const slack = presentationSlack(ledger.plan.presentation, ledger.plan.originMapping.timeBase);
+  return slack === null ? 0 : Number(slack.numerator) / Number(slack.denominator);
 }
 
 /**

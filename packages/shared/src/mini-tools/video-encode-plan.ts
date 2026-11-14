@@ -580,21 +580,13 @@ function nearestStandardRate(numerator: bigint, denominator: bigint): ExactRatio
 }
 
 /**
- * A presentation table's output frame rate (frames-split §7.17 transition output profile row), the one rule the profile,
- * the panel and the timeline Dialog read: timescale over the frame spacing when consecutive frames start the same number of
- * ticks apart, otherwise the standard rate nearest the average spacing. Neither the first frame's nor the last frame's own
- * length counts: the average runs from the second frame's start to the last frame's start, since the first frame is held
- * from 0 when the picture starts after the audio (§7.17 timeline row) and the last is held to the end when the audio runs
- * longer, or is cut short at the end of its stream. Two frames take their one spacing; one frame its duration.
- * @param table - The compact presentation table.
- * @returns The rate, exact and reduced.
- * @throws {RangeError} When the table presents no frame.
+ * Each frame spacing of a table with how many frame pairs it separates, the first pair (frame 0 to frame 1) left out: the
+ * first frame is held from 0 when the picture starts after the audio (§7.17 timeline row).
+ * @param runs - The table's runs.
+ * @returns The spacings.
+ * @throws {never} Never.
  */
-export function presentationOutputFps(table: VideoPresentationTable): ExactRational {
-  const { runs, timescale } = table;
-  const frames = runs.reduce((total, run) => total + run.count, 0);
-  if (frames === 0) throw new RangeError("A presentation table presents at least one frame");
-  // Each spacing with how many frame pairs it separates; the first pair (frame 0 to frame 1) is left out.
+function frameSpacings(runs: VideoPresentationTable["runs"]): Map<number, number> {
   const spacings = new Map<number, number>();
   /**
    * Count a spacing for some frame pairs.
@@ -608,12 +600,75 @@ export function presentationOutputFps(table: VideoPresentationTable): ExactRatio
     const next = runs[index + 1];
     if (next !== undefined) add(next.start - (run.start + (run.count - 1) * run.step), index === 0 && run.count === 1 ? 0 : 1);
   });
+  return spacings;
+}
+
+/**
+ * Half a tick of the source's time base when the table is a constant-rate source whose clock rounded its frame times (no
+ * single spacing, yet one standard rate's grid within the rounding): a frame then truly starts up to half a tick before its
+ * stored time, so a frame stored at most this after a slot time starts on that slot (§7.17). Null for exact tables.
+ * @param table - The presentation table.
+ * @param timeBase - The source's time base.
+ * @returns The half tick in seconds, or null.
+ * @throws {never} Never.
+ */
+export function presentationSlack(table: VideoPresentationTable, timeBase: ExactRational): ExactRational | null {
+  const frames = table.runs.reduce((total, run) => total + run.count, 0);
+  if (frames < 3 || frameSpacings(table.runs).size <= 1 || roundedConstantRate(table.runs, BigInt(table.timescale)) === null) return null;
+  return reduced(BigInt(timeBase.numerator), 2n * BigInt(timeBase.denominator));
+}
+
+/**
+ * The standard rate whose exact frame grid every frame start from the second on matches within the clock's rounding (half a
+ * tick either side of one grid, so the starts' offsets from the grid spread over at most one tick): a constant-rate source
+ * whose clock rounds its frame times, such as a 30 fps WebM on its 1 ms clock. The rate with the least spread wins; null when
+ * none fits.
+ * @param runs - The table's runs.
+ * @param timescale - The table's ticks per second.
+ * @returns The rate, or null.
+ * @throws {never} Never.
+ */
+function roundedConstantRate(runs: VideoPresentationTable["runs"], timescale: bigint): ExactRational | null {
+  const starts: bigint[] = [];
+  for (const run of runs) for (let k = 0; k < run.count; k += 1) starts.push(BigInt(run.start + k * run.step));
+  const later = starts.slice(1);
+  let best: { rate: readonly [bigint, bigint]; spread: bigint } | null = null;
+  for (const rate of STANDARD_FRAME_RATES) {
+    const [numerator, denominator] = rate;
+    // Offsets from the grid in ticks times n: s_k · n − k · timescale · d.
+    const offsets = later.map((start, k) => start * numerator - BigInt(k) * timescale * denominator);
+    const spread = offsets.reduce((max, value) => (value > max ? value : max)) - offsets.reduce((min, value) => (value < min ? value : min));
+    // Compare spreads across rates per tick: spread / n.
+    if (spread <= numerator && (best === null || spread * best.rate[0] < best.spread * numerator)) best = { rate, spread };
+  }
+  return best === null ? null : { numerator: String(best.rate[0]), denominator: String(best.rate[1]) };
+}
+
+/**
+ * A presentation table's output frame rate (frames-split §7.17 transition output profile row), the one rule the profile,
+ * the panel and the timeline Dialog read: timescale over the frame spacing when consecutive frames start the same number of
+ * ticks apart, or the standard rate whose grid every start matches within the clock's rounding, otherwise the standard rate
+ * nearest the average spacing. Neither the first frame's nor the last frame's own
+ * length counts: the average runs from the second frame's start to the last frame's start, since the first frame is held
+ * from 0 when the picture starts after the audio (§7.17 timeline row) and the last is held to the end when the audio runs
+ * longer, or is cut short at the end of its stream. Two frames take their one spacing; one frame its duration.
+ * @param table - The compact presentation table.
+ * @returns The rate, exact and reduced.
+ * @throws {RangeError} When the table presents no frame.
+ */
+export function presentationOutputFps(table: VideoPresentationTable): ExactRational {
+  const { runs, timescale } = table;
+  const frames = runs.reduce((total, run) => total + run.count, 0);
+  if (frames === 0) throw new RangeError("A presentation table presents at least one frame");
   const first = runs[0]!;
   const second = first.count > 1 ? first.start + first.step : runs[1]?.start;
   if (second === undefined) return nearestStandardRate(BigInt(timescale), BigInt(first.duration));
   // Two frames have only the one spacing between them.
   if (frames === 2) return reduced(BigInt(timescale), BigInt(second - first.start));
+  const spacings = frameSpacings(runs);
   if (spacings.size === 1) return reduced(BigInt(timescale), BigInt([...spacings.keys()][0]!));
+  const rounded = roundedConstantRate(runs, BigInt(timescale));
+  if (rounded !== null) return rounded;
   const last = runs.at(-1)!;
   return nearestStandardRate(BigInt(frames - 2) * BigInt(timescale), BigInt(last.start + (last.count - 1) * last.step - second));
 }
@@ -621,8 +676,7 @@ export function presentationOutputFps(table: VideoPresentationTable): ExactRatio
 /**
  * The transition output profile from the two clips' selected plans, in timeline order (§97 D13-1, D15-5): the first
  * clip's display size, odd sides of an opaque output taken down to even (one up to two) and a transparent one kept; the
- * first clip's frame rate, timescale over frame duration when constant, else the standard rate nearest frames over display
- * duration; alpha when
+ * first clip's frame rate, `presentationOutputFps` of its table; alpha when
  * either clip is transparent, then VP9 and yuva420p, else H.264 and yuv420p; time base 1/fps; SDR BT.709 colour.
  * @param first - The first clip's plan.
  * @param second - The second clip's plan.

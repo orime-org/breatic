@@ -387,6 +387,8 @@ beforeAll(async () => {
   // 25 fps greys of stored luma 16 + 6n as FFmpeg's default x265 MP4 writes them: media pts from 1024/12800, one whole-media edit.
   await make('greys-x265.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=64x36:r=25:d=1,format=yuv420p,geq=lum='16+6*N':cb=128:cr=128",
     '-c:v', 'libx265', '-x265-params', 'lossless=1:bframes=2:log-level=error', '-g', '25', '-pix_fmt', 'yuv420p']);
+  // Thirty 30 fps frames of stored luma 16 + 6n in a lossless VP9 WebM, whose 1 ms clock stores them at 0, 33, 67, 100 ms...
+  await make('greys-30.webm', ['-f', 'lavfi', '-i', "color=c=black:s=64x36:r=30:d=1,format=yuv420p,geq=lum='16+6*N':cb=128:cr=128", '-c:v', 'libvpx-vp9', '-lossless', '1', '-pix_fmt', 'yuv420p']);
   // The greys of greys.mp4 on a 1/15360 clock, FFmpeg's default MP4 video timescale for 25 fps.
   await make('greys-15360.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=64x36:r=25:d=0.4,format=yuv420p,geq=lum='16+20*N':cb=128:cr=128", ...h264, '-g', '10', '-video_track_timescale', '15360']);
   await make('late-edge.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=64x36:r=25:d=0.16,format=yuv420p,geq=lum='16+40*N':cb=128:cr=128,settb=1/90000,setpts='if(eq(N,2),3601,N*1800)'",
@@ -463,6 +465,15 @@ describe('the entries the worker writes for late pictures and media that start a
     const [file] = await produce({ [CLIP_A]: join(dir, 'greys-x265.mp4') }, [recipe]);
     const shown = (await lumaMeans(file!)).map((mean) => Math.round((mean - 16) / 6));
     expect(shown).toEqual([13, 14, 15, 15, 16, 17, 18, 19]);
+  });
+});
+
+describe('frame times a source stores rounded to its clock (§7.17 transition output profile row; round 26)', () => {
+  it('CR09 a 30 fps WebM on its own 30 fps grid shows every frame once: a frame stored at 67 ms takes the slot at 66.67 ms', async () => {
+    const recipe = { kind: 'chunk_encode', inputId: CLIP_A, window: { start: 0, end: 30 }, timescale: 1000, target: TARGET, profile: { ...PROFILE, fps: r(30), timeBase: r(1, 30) },
+      frames: { start: 0, end: 30 }, entries: [span(r(0), r(0), r(0), r(1))], slack: r(1, 2000) };
+    const [file] = await produce({ [CLIP_A]: join(dir, 'greys-30.webm') }, [recipe]);
+    expect((await lumaMeans(file!)).map((mean) => Math.round((mean - 16) / 6))).toEqual(Array.from({ length: 30 }, (_unused, n) => n));
   });
 });
 

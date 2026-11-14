@@ -1,8 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-/** The model input's frame grid: the range frame for frame at its average rate, or resampled at the model's top rate. */
-export interface ModelGrid { mode: "frames" | "resample"; rate: number; frameCount: number }
+/**
+ * The model input's frame grid: the range frame for frame at its average rate, or resampled at the model's top rate. `slack`
+ * is half a tick of the source's time base in seconds: a source stores frame times rounded to its clock, so a frame starting
+ * up to `slack` after a slot time starts on that slot.
+ */
+export interface ModelGrid { mode: "frames" | "resample"; rate: number; frameCount: number; slack?: number }
 
 /** A presented frame's interval in seconds. */
 interface GridFrame { start: number; end: number }
@@ -41,7 +45,7 @@ export function gridSlotFrame(grid: ModelGrid, frames: readonly GridFrame[], slo
   let high = frames.length - 1;
   while (low < high) {
     const middle = Math.ceil((low + high) / 2);
-    if (frames[middle]!.start <= time + EPSILON) low = middle;
+    if (frames[middle]!.start <= time + (grid.slack ?? 0) + EPSILON) low = middle;
     else high = middle - 1;
   }
   return low;
@@ -57,7 +61,7 @@ export function gridSlotFrame(grid: ModelGrid, frames: readonly GridFrame[], slo
  */
 export function gridFrameSlot(grid: ModelGrid, frames: readonly GridFrame[], frame: number): number {
   if (grid.mode === "frames") return frame;
-  return Math.min(grid.frameCount - 1, Math.floor((frames[frame]!.start - frames[0]!.start) * grid.rate + EPSILON));
+  return Math.min(grid.frameCount - 1, Math.floor((frames[frame]!.start - frames[0]!.start + (grid.slack ?? 0)) * grid.rate + EPSILON));
 }
 
 /**

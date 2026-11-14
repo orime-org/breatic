@@ -19,7 +19,7 @@ type Rational = { numerator: string; denominator: string };
 type Plan = Record<string, unknown> & { display: { width: number; height: number; duration: Rational }; policy: { singleFrameDurationMs: number; emptyFill: "black" | "transparent" } };
 interface Profile { width: number; height: number; fps: Rational; timeBase: Rational; alpha: boolean; codec: string; encode: unknown; pixFmt: string; color: unknown }
 type Table = { schemaVersion: 1; timescale: number; runs: { start: number; count: number; step: number; duration: number }[] };
-const api = miniTools as unknown as { transitionOutputProfile: (first: Plan, second: Plan, config: unknown) => Profile; presentationOutputFps: (table: Table) => Rational };
+const api = miniTools as unknown as { transitionOutputProfile: (first: Plan, second: Plan, config: unknown) => Profile; presentationOutputFps: (table: Table) => Rational; presentationSlack: (table: Table, timeBase: Rational) => Rational | null };
 const r = (numerator: number, denominator = 1): Rational => ({ numerator: String(numerator), denominator: String(denominator) });
 const CONFIG = { encode: { crf: 18, preset: "medium" } };
 const BT709 = { matrix: "bt709", range: "tv", primaries: "bt709", transfer: "bt709" };
@@ -174,6 +174,14 @@ describe("the output frame rate of a presentation table (frames-split §7.17)", 
     expect(api.presentationOutputFps(table as Table)).toEqual(expected);
   });
 
+  it.each([["30", 30, r(30)], ["30000/1001", 30000 / 1001, r(30000, 1001)], ["24", 24, r(24)], ["24000/1001", 24000 / 1001, r(24000, 1001)], ["60000/1001", 60000 / 1001, r(60000, 1001)]] as const)(
+    "FPS08 a 1 s WebM at %s fps, its starts rounded to 1 ms, is that rate", (_name, rate, expected) => {
+      const count = Math.round(rate);
+      const starts = Array.from({ length: count }, (_unused, k) => Math.round((k * 1000) / rate));
+      const runs = starts.map((start, k) => ({ start, count: 1, step: (starts[k + 1] ?? 1000) - start, duration: (starts[k + 1] ?? 1000) - start }));
+      expect(api.presentationOutputFps({ schemaVersion: 1, timescale: 1000, runs })).toEqual(expected);
+    });
+
   // Frames `step` ticks apart with the second one lasting `odd` ticks: two spacings after the first frame, so the table is VFR.
   it.each([
     ["29000/958 (a 1/1000 clock of 33 and 34 ms frames)", 1000, 30, 34, 33, r(30)],
@@ -190,3 +198,19 @@ describe("the output frame rate of a presentation table (frames-split §7.17)", 
     expect(fps, JSON.stringify(fps)).toEqual(expected);
   });
 });
+
+// frames-split §7.17 (round 26): only a table whose clock rounded a constant rate's frame times gets covering slack.
+describe("the covering slack of a presentation table (frames-split §7.17)", () => {
+  const webm = (rate: number, count: number): Table => {
+    const starts = Array.from({ length: count }, (_unused, k) => Math.round((k * 1000) / rate));
+    return { schemaVersion: 1, timescale: 1000, runs: starts.map((start, k) => ({ start, count: 1, step: (starts[k + 1] ?? start + 33) - start, duration: (starts[k + 1] ?? start + 33) - start })) };
+  };
+  it.each([
+    ["a 30 fps WebM on its 1 ms clock", webm(30, 30), r(1, 2000)],
+    ["an exact 25 fps table on a 1/25 clock", { schemaVersion: 1, timescale: 25, runs: [{ start: 0, count: 50, step: 1, duration: 1 }] }, null],
+    ["a VFR table", vfrPlan().presentation as Table, null],
+  ] as const)("PS01 %s", (_name, table, expected) => {
+    expect(api.presentationSlack(table, r(1, table.timescale === 25 ? 25 : 1000))).toEqual(expected);
+  });
+});
+

@@ -22,7 +22,7 @@ import {
   advanceChunks, advanceContainer, advanceGenerate, advanceRegistered, catalogModel, eachSubmitted, exactSeconds, expandFailureReason, modelRunFailure, modelStepCategory, providerModel, runLedger,
   type ExpandWindowState, type ModelRunAt, type ModelRunPosition, type ModelStepRun,
 } from "@worker/handlers/mini-tool/model-run-steps.js";
-import { audioOf, chunkInputId, segmentTarget, SOURCE_INPUT_ID, windowDuration, windowEntries } from "@worker/handlers/video-presentation-recipes.js";
+import { audioOf, chunkInputId, gridSlack, segmentTarget, SOURCE_INPUT_ID, windowDuration, windowEntries } from "@worker/handlers/video-presentation-recipes.js";
 import { UpstreamTaskFailed } from "@worker/providers/http.js";
 import { StillRunning } from "@worker/providers/still-running.js";
 import { upstreamBody } from "@worker/providers/upstream-body.js";
@@ -115,7 +115,7 @@ export async function runMiniToolExpand(execution: unknown, userId: string, dead
       // The frames the window's span touches; the span is the grid's origin and length.
       const first = presentationCoveringFrame(table, window.span.start);
       const frames = { start: first, end: first + Math.max(1, presentationFramesIn(table, { start: presentationFrameAt(table, first).pts, end: window.span.end }).count) };
-      const grid = { fps: plan.modelFps, frameCount: plan.modelFps * window.duration };
+      const grid = { fps: plan.modelFps, frameCount: plan.modelFps * window.duration, slack: gridSlack(ledger) };
       const layer: MiniToolPlanTarget = { ...encoded, width: plan.sourceRoi.width, height: plan.sourceRoi.height, displayRect: null, format: undefined };
       // Each step names itself just before it runs, so a step that throws leaves the run standing at it (§10.5).
       const [input, mask, condition] = await eachSubmitted([

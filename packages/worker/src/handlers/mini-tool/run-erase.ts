@@ -21,7 +21,7 @@ import {
   advanceChunks, advanceContainer, advanceGenerate, advanceRegistered, catalogModel, eraseContainerCategory, modelRunFailure, modelStepCategory, providerModel, runLedger, type ModelRunAt,
   type ModelRunPosition, type ModelStepRun,
 } from "@worker/handlers/mini-tool/model-run-steps.js";
-import { audioOf, chunkInputId, modelInputTarget, segmentTarget, SOURCE_INPUT_ID, windowDuration, windowEntries } from "@worker/handlers/video-presentation-recipes.js";
+import { audioOf, chunkInputId, gridSlack, modelInputTarget, segmentTarget, SOURCE_INPUT_ID, windowDuration, windowEntries } from "@worker/handlers/video-presentation-recipes.js";
 import { UpstreamTaskFailed } from "@worker/providers/http.js";
 import { StillRunning } from "@worker/providers/still-running.js";
 import { upstreamBody } from "@worker/providers/upstream-body.js";
@@ -82,11 +82,11 @@ export async function runMiniToolErase(execution: unknown, userId: string, deadl
     const range = { startFrame: plan.range.start, frameCount: plan.range.end - plan.range.start };
     const prepared = await advanceContainer(run, { stepKey: keyOf(plan, "prepare"), contentType: "video/mp4", failed: (reason) => ({ failed: eraseContainerCategory(reason) }),
       build: () => Promise.resolve({ recipe: { kind: "prepare_model_input", inputId: SOURCE_INPUT_ID, window: plan.range, timescale: table.timescale,
-        entries: windowEntries(ledger, plan.range), target, audio: null, grid: plan.grid }, inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: plan.sourceKey }] }) }, deadlineAt);
+        entries: windowEntries(ledger, plan.range), target, audio: null, grid: { ...plan.grid, slack: gridSlack(ledger) } }, inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: plan.sourceKey }] }) }, deadlineAt);
     if (!("key" in prepared)) return fail("prepare", prepared.failed as EraseFailureReason["category"], prepared.expired);
     position.step = "mask";
     const mask = await advanceContainer(run, { stepKey: keyOf(plan, "mask"), contentType: "video/mp4", failed: (reason) => ({ failed: eraseContainerCategory(reason) }),
-      build: () => Promise.resolve({ recipe: { kind: "bria_mask", inputId: RLE, table, range, grid: plan.grid, target: { width: target.width, height: target.height } },
+      build: () => Promise.resolve({ recipe: { kind: "bria_mask", inputId: RLE, table, range, grid: { ...plan.grid, slack: gridSlack(ledger) }, target: { width: target.width, height: target.height } },
         inputs: [{ inputId: RLE, storageKey: plan.tracking.rleKey }] }) }, deadlineAt);
     if (!("key" in mask)) return fail("mask", mask.failed as EraseFailureReason["category"], mask.expired);
     position.step = "generate";
@@ -102,7 +102,7 @@ export async function runMiniToolErase(execution: unknown, userId: string, deadl
     const chunks = await advanceChunks(run, plan.composite.map((window, k) => ({ stepKey: keyOf(plan, `composite:${k}`), contentType: "video/mp4",
       failed: (reason) => ({ failed: eraseContainerCategory(reason) }),
       build: () => Promise.resolve({ recipe: { kind: "model_composite", mode: "erase", inputId: SOURCE_INPUT_ID, window, timescale: table.timescale, entries: windowEntries(ledger, window),
-        target: { ...output, format: undefined }, result: RESULT, rle: RLE, table, range, grid: plan.grid, matte: plan.matte, rleSize: { width: target.width, height: target.height } },
+        target: { ...output, format: undefined }, result: RESULT, rle: RLE, table, range, grid: { ...plan.grid, slack: gridSlack(ledger) }, matte: plan.matte, rleSize: { width: target.width, height: target.height } },
       inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: plan.sourceKey }, { inputId: RESULT, storageKey: result.key }, { inputId: RLE, storageKey: plan.tracking.rleKey }] }) })), deadlineAt);
     if (!("keys" in chunks)) return fail("composite", chunks.failed as EraseFailureReason["category"], chunks.expired);
     position.step = "stitch";

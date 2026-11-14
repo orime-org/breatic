@@ -57,6 +57,8 @@ interface MiniToolPlanWindowRecipe {
   inputId: string;
   window: { start: number; end: number };
   timescale: number;
+  /** Half a source tick when the source's clock rounded its frame times (`presentationSlack`). */
+  slack?: MiniToolPlanExact;
   entries: MiniToolPlanEntry[];
   target: MiniToolPlanTarget;
 }
@@ -128,7 +130,7 @@ export interface MiniToolPlanTransitionStitch {
   profile: MiniToolPlanTransitionProfile;
 }
 /** One clip of a transition window: its entries and the matrix and tone mapping of its own plan (§97 D23-4). */
-export interface MiniToolPlanWindowClip { inputId: string; entries: MiniToolPlanEntry[]; colorMatrix: string; toneMap: "none" | "sdr-bt709" }
+export interface MiniToolPlanWindowClip { inputId: string; entries: MiniToolPlanEntry[]; colorMatrix: string; toneMap: "none" | "sdr-bt709"; slack?: MiniToolPlanExact }
 /** One chunk `frames` of a transition's overlap window, composed from both clips' entries (§97 D15-6). */
 export interface MiniToolPlanTransitionWindow {
   kind: "transition_window";
@@ -140,7 +142,7 @@ export interface MiniToolPlanTransitionWindow {
   profile: MiniToolPlanTransitionProfile;
 }
 /** The erase model's frame grid (execution design §10.4): frame for frame at `rate`, or resampled on a `rate` grid. */
-export interface MiniToolPlanModelGrid { mode: "frames" | "resample"; rate: number; frameCount: number }
+export interface MiniToolPlanModelGrid { mode: "frames" | "resample"; rate: number; frameCount: number; slack?: number }
 /** A range of presentation frame ordinals by its first frame and count. */
 export interface MiniToolPlanFrameRange { startFrame: number; frameCount: number }
 /**
@@ -160,7 +162,7 @@ export interface MiniToolPlanBriaMask {
   kind: "bria_mask"; inputId: string; table: VideoPresentationTable; range: MiniToolPlanFrameRange; grid: MiniToolPlanModelGrid; target: { width: number; height: number };
 }
 /** The expand model's frame grid for one window: `frameCount` frames at `fps` from the span's start (§10.5). */
-export interface MiniToolPlanWindowGrid { fps: number; frameCount: number }
+export interface MiniToolPlanWindowGrid { fps: number; frameCount: number; slack?: number }
 /** One expand window's model input (§10.5): each grid slot's covering frame scaled into `sourceRoi` over `fill`, lossless. */
 export type MiniToolPlanModelWindow = {
   kind: "model_window"; grid: MiniToolPlanWindowGrid; frame: { width: number; height: number }; sourceRoi: MiniToolPlanPixelRect;

@@ -103,3 +103,18 @@ describe("model grid (execution design §10.4)", () => {
     expect(gridSecondsAllowed(modelGrid(cfr(23, 24), 30), bounds)).toBe(false);
   });
 });
+
+// A 60 fps WebM's frame starts are rounded to 1 ms (0, 17, 33, 50, 67 ms...): frame 4 truly starts at 66.67 ms, slot 2 of a
+// 30 fps grid. The grid's slack (half a source tick) lets that frame cover the slot it truly starts on.
+describe("a resample grid over starts rounded to the source clock", () => {
+  const frames = Array.from({ length: 60 }, (_unused, k) => ({ start: Math.round((k * 1000) / 60) / 1000, end: Math.round(((k + 1) * 1000) / 60) / 1000 }));
+  const grid = { mode: "resample" as const, rate: 30, frameCount: 30, slack: 0.0005 };
+
+  it("MG09 every slot shows the frame starting on it: 0, 2, 4, ...", () => {
+    expect(Array.from({ length: 30 }, (_unused, slot) => gridSlotFrame(grid, frames, slot))).toEqual(Array.from({ length: 30 }, (_unused, slot) => slot * 2));
+  });
+
+  it("MG10 each frame starting on a slot is placed on that slot", () => {
+    expect(Array.from({ length: 30 }, (_unused, k) => gridFrameSlot(grid, frames, k * 2))).toEqual(Array.from({ length: 30 }, (_unused, k) => k));
+  });
+});

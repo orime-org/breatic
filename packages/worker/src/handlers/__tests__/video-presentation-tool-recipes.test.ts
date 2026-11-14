@@ -320,3 +320,21 @@ describe('a plan without edits whose media starts after the origin (§7.17 timel
     ]);
   });
 });
+
+describe('a chunk start within half a source tick before its first frame (§7.17; round 26)', () => {
+  const windows = recipes as unknown as { windowEntries: (ledger: unknown, window: { start: number; end: number }, from?: Exact) => Record<string, unknown>[] };
+  it('LV07 a WebM frame stored at 67 ms shows from its own start for the slot at 66.67 ms it truly starts on', () => {
+    const ledger = cfr96((plan) => {
+      const starts = Array.from({ length: 30 }, (_unused, k) => Math.round((k * 1000) / 30));
+      plan.presentation = { schemaVersion: 1, timescale: 1000, runs: starts.map((start, k) => ({ start, count: 1, step: (starts[k + 1] ?? 1000) - start, duration: (starts[k + 1] ?? 1000) - start })) };
+      plan.originMapping = { ...plan.originMapping, timeBase: r(1, 1000), origin: r(0), entries: starts.map((start) => ({ kind: 'source', start, count: 1, step: 0 })),
+        firstSource: { supportStart: r(0), lead: null }, lastSource: { support: 'declared', supportEnd: r(1), hold: null } };
+      plan.videoSpans = null as never;
+    });
+    ledger.encoding = { keyframeOrdinals: [0], codedWidth: 320, codedHeight: 180, sourceKeyframes: [{ pts: r(0), dts: r(0) }], firstPacketDts: r(0) };
+    expect(windows.windowEntries(ledger, { start: 2, end: 3 }, r(1, 15))).toEqual([
+      { kind: 'source', decodeStart: r(0), clipStart: r(67, 1000), displayStart: r(67, 1000), displayEnd: r(1, 10), rate: r(1) },
+    ]);
+  });
+});
+
