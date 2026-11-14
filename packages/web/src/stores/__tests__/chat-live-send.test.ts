@@ -190,6 +190,26 @@ describe('a send whose outcome is unknown', () => {
     expect(useChatLive.getState().sending.c1).toBeUndefined();
   });
 
+  it('keeps going again with the same id through repeated 503s, each wait within its doubling bound (WB-08c)', async () => {
+    vi.useFakeTimers();
+    vi.mocked(chatApi.sendMessage)
+      .mockRejectedValueOnce(refused(503))
+      .mockRejectedValueOnce(refused(503))
+      .mockRejectedValueOnce(refused(503))
+      .mockResolvedValueOnce(answer('queued'));
+    const sent = send();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(bodies()).toHaveLength(1);
+    for (let n = 1; n <= 3; n += 1) {
+      await vi.advanceTimersByTimeAsync(Math.min(30_000, 1000 * 2 ** Math.min(n, 5)));
+      expect(bodies().length).toBeGreaterThanOrEqual(n + 1);
+    }
+    await sent;
+    expect(bodies()).toHaveLength(4);
+    expect(new Set(bodies().map((body) => body.id)).size).toBe(1);
+    expect(conversationRuntime.draftOf('c1')).toBe('');
+  });
+
   it('waits as long as a 429 says before going again (WB-08b)', async () => {
     vi.useFakeTimers();
     vi.mocked(chatApi.sendMessage).mockRejectedValueOnce(refused(429, { retryAfterSeconds: 2 })).mockResolvedValueOnce(answer('queued'));
