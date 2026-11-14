@@ -32,8 +32,8 @@ import { heldRange, heldTables, TableSpanSelection, tableEdgeText } from '@web/s
 interface Piece {
   readonly from: number;
   readonly to: number;
-  /** Whether it is a whole column, the selection's start inside it. */
-  readonly whole: boolean;
+  /** Whether it is the whole column the selection starts in, which goes with it. */
+  readonly startGoes: boolean;
 }
 
 /**
@@ -81,7 +81,7 @@ function piecesOf(doc: PMNode, from: number, to: number): Piece[] {
    * @param end - The position.
    */
   const bodyTo = (end: number): void => {
-    if (end > cursor) pieces.push({ from: cursor, to: end, whole: false });
+    if (end > cursor) pieces.push({ from: cursor, to: end, startGoes: false });
   };
   doc.nodesBetween(from, to, (node, pos) => {
     if (node.type.name !== DOC_COLUMN_LIST || pos + node.nodeSize <= from || pos >= to) return true;
@@ -94,9 +94,9 @@ function piecesOf(doc: PMNode, from: number, to: number): Piece[] {
       // Its first and last content, a picture or a divider as much as words.
       const first = Selection.findFrom(doc.resolve(start + 1), 1)?.from ?? start + 1;
       const last = Selection.findFrom(doc.resolve(end - 1), -1)?.to ?? end - 1;
-      if (from <= first && to >= last) parts.push({ from: start, to: end, whole: from > start });
-      else if (from > start) parts.push({ from, to: end - 1, whole: false });
-      else parts.push({ from: start + 1, to, whole: false });
+      if (from <= first && to >= last) parts.push({ from: start, to: end, startGoes: from > start });
+      else if (from > start) parts.push({ from, to: end - 1, startGoes: false });
+      else parts.push({ from: start + 1, to, startGoes: false });
     });
     bodyTo(Math.min(pos, to));
     pieces.push(...parts);
@@ -117,7 +117,7 @@ function replaceAcross(selection: Selection, tr: Transaction, put: ((at: number)
   // A table at an end goes whole, as a selection leaving a table takes it.
   const range = heldRange(selection) ?? selection;
   const pieces = piecesOf(tr.doc, range.from, range.to);
-  const startGoes = pieces[0]?.whole === true;
+  const startGoes = pieces[0]?.startGoes === true;
   const first = tr.steps.length;
   for (const piece of [...pieces].reverse()) tr.delete(piece.from, piece.to);
   const after = tr.mapping.slice(first);

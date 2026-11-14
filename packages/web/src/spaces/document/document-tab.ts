@@ -51,9 +51,9 @@ import { Plugin, PluginKey } from '@tiptap/pm/state';
 import type { EditorState } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { EditorView } from '@tiptap/pm/view';
-import type { Node as PMNode } from '@tiptap/pm/model';
+import type { NodeRange, Node as PMNode } from '@tiptap/pm/model';
 
-import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-geometry';
+import { DOC_COLUMN_LIST } from '@web/spaces/document/document-column-geometry';
 
 /** The attribute the stylesheet animates. */
 const BLOCKED_ATTRIBUTE = 'data-tab-blocked';
@@ -81,11 +81,10 @@ interface TabEditor {
 /**
  * Where the first block Tab would have moved begins.
  *
- * Read through the range `nestBlock` itself acts on, so the block that is
- * marked is the block that would have moved: `nestBlock.ts` takes
- * `$from.blockRange($to, node => node.childCount > 0 && (blockGroup ||
- * column))`, gives up when `range.startIndex === 0`, and otherwise moves from
- * `range.start`; our column is `docColumn` (inner#1314).
+ * Read through the range `nestBlock` itself acts on ({@link nestRange}), so
+ * the block that is marked is the block that would have moved: `nestBlock.ts`
+ * gives up when `range.startIndex === 0`, and otherwise moves from
+ * `range.start`.
  *
  * Walking the document for the first `blockContainer` instead named the wrong
  * block. Blocks nest inside one another, so the containers reached on the way
@@ -109,13 +108,7 @@ interface TabEditor {
  * @returns That position, or null for a document holding no block.
  */
 function topmostBlockPos(view: EditorView): number | null {
-  const { $from, $to } = view.state.selection;
-  const range = $from.blockRange(
-    $to,
-    (node: PMNode) =>
-      node.childCount > 0 &&
-      (node.type.name === 'blockGroup' || node.type.name === DOC_COLUMN),
-  );
+  const range = nestRange(view.state);
   if (range !== null) return range.start;
 
   // The body's first block, a table too (inner#1619), stands right inside
@@ -124,20 +117,30 @@ function topmostBlockPos(view: EditorView): number | null {
 }
 
 /**
- * Whether Tab would move a column group: the range `nestBlock` acts on
- * (`holdsItems` in its `nestBlock.ts`) holds one, as when the selection runs
- * across columns. Columns never stand under another block (inner#1314 A1).
+ * The range `nestBlock` acts on: the blocks the selection covers, in the
+ * innermost container holding blocks (`holdsItems` in its `nestBlock.ts`).
  * @param state - The editor state.
- * @returns True when it would.
+ * @returns The range, or null when none holds the selection.
  */
-function wouldNestColumns(state: EditorState): boolean {
+function nestRange(state: EditorState): NodeRange | null {
   const { $from, $to } = state.selection;
   const item = state.schema.nodes['blockContainer'];
-  const range = $from.blockRange(
+  return $from.blockRange(
     $to,
     (node: PMNode) =>
       node.childCount > 0 && node.type.isInGroup('childContainer') && item !== undefined && node.type.contentMatch.matchType(item) !== null,
   );
+}
+
+/**
+ * Whether Tab would move a column group: the range `nestBlock` acts on holds
+ * one, as when the selection runs across columns. Columns never stand under
+ * another block (inner#1314 A1).
+ * @param state - The editor state.
+ * @returns True when it would.
+ */
+function wouldNestColumns(state: EditorState): boolean {
+  const range = nestRange(state);
   if (range === null) return false;
   for (let index = range.startIndex; index < range.endIndex; index += 1) {
     if (range.parent.child(index).type.name === DOC_COLUMN_LIST) return true;

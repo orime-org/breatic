@@ -52,6 +52,23 @@ function contains(box: DOMRect, at: Point): boolean {
 }
 
 /**
+ * Of some blocks, the deepest whose box reaches a height, or else the nearest.
+ * @param blocks - The blocks' elements, in document order.
+ * @param y - The height.
+ * @returns The block's id, or undefined for none.
+ */
+function blockNearest(blocks: Iterable<Element>, y: number): string | undefined {
+  let best: { id: string; distance: number } | undefined;
+  for (const block of blocks) {
+    const box = block.getBoundingClientRect();
+    const distance = y < box.top ? box.top - y : y > box.bottom ? y - box.bottom : 0;
+    // Later in document order is deeper, so it wins a tie.
+    if (best === undefined || distance <= best.distance) best = { id: block.getAttribute('data-id') ?? '', distance };
+  }
+  return best?.id || undefined;
+}
+
+/**
  * The block in a cell at a height: the deepest one whose box reaches it, or
  * else the nearest.
  * @param cell - The cell.
@@ -59,16 +76,7 @@ function contains(box: DOMRect, at: Point): boolean {
  * @returns The block's id, or undefined when the cell holds none.
  */
 function blockInCellAt(cell: Element, y: number): string | undefined {
-  let best: { id: string; distance: number } | undefined;
-  for (const block of cell.querySelectorAll('[data-node-type="blockContainer"][data-id]')) {
-    const box = block.getBoundingClientRect();
-    const distance = y < box.top ? box.top - y : y > box.bottom ? y - box.bottom : 0;
-    // Later in document order is deeper, so it wins a tie.
-    if (best === undefined || distance <= best.distance) {
-      best = { id: block.getAttribute('data-id') ?? '', distance };
-    }
-  }
-  return best?.id || undefined;
+  return blockNearest(cell.querySelectorAll('[data-node-type="blockContainer"][data-id]'), y);
 }
 
 /**
@@ -95,16 +103,12 @@ function firstColumnBlockAt(table: Element, pointer: Point): string | undefined 
  * @returns The block's id, or undefined.
  */
 function blockInColumnAt(column: Element, y: number): string | undefined {
-  let best: { id: string; distance: number } | undefined;
   const rows = column.querySelectorAll(`[data-node-type="blockContainer"][data-id], [data-node-type="${DOC_TABLE}"][data-id]`);
-  for (const row of rows) {
+  const own = [...rows].filter((row) => {
     const inCell = row.closest('td, th');
-    if (row.closest('.doc-column') !== column || (inCell !== null && column.contains(inCell))) continue;
-    const box = row.getBoundingClientRect();
-    const distance = y < box.top ? box.top - y : y > box.bottom ? y - box.bottom : 0;
-    if (best === undefined || distance <= best.distance) best = { id: row.getAttribute('data-id') ?? '', distance };
-  }
-  return best?.id || undefined;
+    return row.closest('.doc-column') === column && (inCell === null || !column.contains(inCell));
+  });
+  return blockNearest(own, y);
 }
 
 /**
