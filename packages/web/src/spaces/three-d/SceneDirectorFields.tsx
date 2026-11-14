@@ -59,8 +59,8 @@ function useContinuousPatch(session: SceneSession, id: string): { preview: (patc
 }
 
 /**
- * A colour chosen in a react-colorful picker inside a Popover; written on each release of the picker, on each colour
- * typed into the hex input, and when the picker closes (design 3.8).
+ * A colour chosen in a react-colorful picker inside a Popover; written on each release of the picker, on each
+ * six-digit colour typed into the hex input, and when the input is left or the picker closes (design 3.8).
  * @param root0 - Props.
  * @param root0.value - The current colour.
  * @param root0.disabled - Whether it can be changed.
@@ -72,20 +72,26 @@ function useContinuousPatch(session: SceneSession, id: string): { preview: (patc
 export const SceneColorField = React.memo(function SceneColorField({ value, disabled, labelId, onPreview, onCommit }: {
   value: string; disabled: boolean; labelId: string; onPreview: (hex: string) => void; onCommit: () => void;
 }): React.JSX.Element {
-  const onOpenChange = React.useCallback((open: boolean): void => { if (!open) onCommit(); }, [onCommit]);
+  const input = React.useRef<HTMLInputElement | null>(null);
   // The hex input accepts three digits as well as six; the scene stores six.
   const pick = React.useCallback((hex: string): void => onPreview((hex.length === 4 ? `#${[...hex.slice(1)].map((digit) => digit + digit).join('')}` : hex).toLowerCase()), [onPreview]);
-  const type = React.useCallback((hex: string): void => { pick(hex); onCommit(); }, [pick, onCommit]);
-  // react-colorful follows the drag on the window, so its release is caught there too.
-  const press = React.useCallback((): void => { window.addEventListener('pointerup', onCommit, { once: true }); }, [onCommit]);
+  // Three digits are also the start of six: applying them while typing would reset the input under the user's keys.
+  const type = React.useCallback((hex: string): void => { if (hex.length === 7) { pick(hex); onCommit(); } }, [pick, onCommit]);
+  const settle = React.useCallback((): void => {
+    if (input.current?.value.length === 4) pick(input.current.value);
+    onCommit();
+  }, [pick, onCommit]);
+  const onOpenChange = React.useCallback((open: boolean): void => { if (!open) settle(); }, [settle]);
+  const onFocus = React.useCallback((event: React.FocusEvent<HTMLInputElement>): void => { input.current = event.currentTarget; }, []);
+  const onKeyDown = React.useCallback((event: React.KeyboardEvent<HTMLInputElement>): void => { if (event.key === 'Enter') settle(); }, [settle]);
   return <Popover onOpenChange={onOpenChange}>
     <PopoverTrigger asChild>
       <Button variant={null} size={null} aria-labelledby={labelId} disabled={disabled}
         className='size-6 rounded-full border border-border disabled:cursor-not-allowed disabled:opacity-50' style={{ backgroundColor: value }} />
     </PopoverTrigger>
     <PopoverContent side='left' align='start' className='w-auto space-y-2 p-2'>
-      <div onPointerDown={press}><HexColorPicker color={value} onChange={pick} /></div>
-      <HexColorInput color={value} onChange={type} prefixed autoComplete='off' className='h-[var(--btn-inline)] w-full rounded-md border border-input bg-background px-2 text-xs' />
+      <HexColorPicker color={value} onChange={pick} onChangeEnd={onCommit} />
+      <HexColorInput color={value} onChange={type} onFocus={onFocus} onBlur={settle} onKeyDown={onKeyDown} prefixed autoComplete='off'className='h-[var(--btn-inline)] w-full rounded-md border border-input bg-background px-2 text-xs' />
     </PopoverContent>
   </Popover>;
 });

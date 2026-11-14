@@ -538,15 +538,62 @@ describe('continuous controls end on release and on Escape (round 1 fixes, desig
     await waitFor(() => expect(lampValue(session, 'color')).not.toBe(first));
   });
 
-  it('takes a three-digit colour typed into the picker as its six-digit form', async () => {
+  it('writes a six-digit colour typed key by key once, as typed', async () => {
+    const { session } = await setup([lamp()]);
+    await openDirector();
+    act(() => session.select(LAMP, false));
+    fireEvent.click(within(screen.getByTestId(`scene-director-fields-${LAMP}`)).getByRole('button', { name: t('spaces.threeD.color') }));
+    await screen.findByRole('slider', { name: 'Color' });
+    const input = screen.getAllByRole('textbox').at(-1) as HTMLInputElement;
+    const writes = vi.spyOn(session, 'endGesture');
+    fireEvent.change(input, { target: { value: '' } });
+    // Each key goes at the end of what the box shows by then, as typing does.
+    for (const key of 'ff0000') fireEvent.change(input, { target: { value: input.value + key } });
+    expect(input.value).toBe('#ff0000');
+    expect(lampValue(session, 'color')).toBe('#ff0000');
+    expect(writes.mock.calls.filter(([commit]) => commit)).toHaveLength(1);
+  });
+
+  it('writes a picker arrow-key step when the key is released', async () => {
+    const { session } = await setup([lamp()]);
+    await openDirector();
+    act(() => session.select(LAMP, false));
+    fireEvent.click(within(screen.getByTestId(`scene-director-fields-${LAMP}`)).getByRole('button', { name: t('spaces.threeD.color') }));
+    const saturation = await screen.findByRole('slider', { name: 'Color' });
+    fireEvent.keyDown(saturation, { key: 'ArrowRight', keyCode: 39 });
+    fireEvent.keyUp(saturation, { key: 'ArrowRight', keyCode: 39 });
+    await waitFor(() => expect(lampValue(session, 'color')).not.toBe('#ffffff'));
+    expect(session.getSnapshot().gestureActive).toBe(false);
+  });
+
+  it('takes a three-digit colour typed into the picker as its six-digit form when the picker closes', async () => {
     const { session } = await setup();
     const opened = await openDirector();
     fireEvent.click(within(within(opened).getByTestId('scene-director-ambient')).getAllByRole('button')[0] as HTMLElement);
     const input = await screen.findByRole('textbox');
+    fireEvent.focus(input);
     fireEvent.change(input, { target: { value: '0f0' } });
-    expect(h.viewport?.environment?.ambientColor).toBe('#00ff00');
+    // Three digits are also the start of six, so they wait until the user leaves the input.
+    expect(input).toHaveValue('#0f0');
+    expect(h.viewport?.environment?.ambientColor).not.toBe('#00ff00');
     fireEvent.keyDown(input, { key: 'Escape' });
     await waitFor(() => expect(session.getSnapshot().environment.ambientColor).toBe('#00ff00'));
     expect(h.toast.error).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['leaving the input', (input: HTMLElement): void => { fireEvent.blur(input); }],
+    ['pressing Enter', (input: HTMLElement): void => { fireEvent.keyDown(input, { key: 'Enter' }); }],
+  ])('takes a three-digit colour on %s', async (_, leave) => {
+    const { session } = await setup();
+    const opened = await openDirector();
+    fireEvent.click(within(within(opened).getByTestId('scene-director-ambient')).getAllByRole('button')[0] as HTMLElement);
+    const input = await screen.findByRole('textbox');
+    fireEvent.focus(input);
+    fireEvent.change(input, { target: { value: '0f0' } });
+    leave(input);
+    await waitFor(() => expect(session.getSnapshot().environment.ambientColor).toBe('#00ff00'));
+    expect(input).toHaveValue('#00ff00');
+    expect(session.getSnapshot().gestureActive).toBe(false);
   });
 });
