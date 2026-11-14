@@ -398,7 +398,7 @@ function greyFrames(url: string, before: string[] = []): Buffer[] {
  */
 function nearestFrame(picture: Buffer, source: readonly Buffer[], expected: number): number {
   const near = [expected - 2, expected - 1, expected, expected + 1, expected + 2].filter((index) => index >= 0 && index < source.length);
-  return near.reduce((best, index) => (pictureDifference(picture, source[index]!) < pictureDifference(picture, source[best]!) ? index : best));
+  return near.reduce((best, index) => (pictureDifference(picture, source[index]) < pictureDifference(picture, source[best]) ? index : best));
 }
 
 /**
@@ -409,7 +409,7 @@ function nearestFrame(picture: Buffer, source: readonly Buffer[], expected: numb
  */
 function pictureDifference(a: Buffer, b: Buffer): number {
   let sum = 0;
-  for (let index = 0; index < a.length; index += 1) sum += Math.abs(a[index]! - b[index]!);
+  for (let index = 0; index < a.length; index += 1) sum += Math.abs(a[index] - b[index]);
   return sum / a.length;
 }
 
@@ -431,8 +431,8 @@ test('extract frames: first, last and current frame each give one image @needs-i
       const made = await run(c, 1);
       await c.page.keyboard.press('Escape');
       const [node] = await stored(c, made);
-      expect(node!.type).toBe('image');
-      results.push(node!);
+      expect(node.type).toBe('image');
+      results.push(node);
     }
     for (const node of results) {
       const frame = videoStream(node.content);
@@ -633,11 +633,11 @@ test('transitions: two videos and a crossfade give one video as long as both les
       const [first, second] = [...root.querySelectorAll('.timeline-editor-action')];
       const at = (el: Element, x: number, y: number): boolean => el.contains(document.elementFromPoint(x, y));
       const middle = (el: Element): [number, number] => { const box = el.getBoundingClientRect(); return [box.x + box.width / 2, box.y + box.height / 2]; };
-      const [a, b] = [first!.getBoundingClientRect(), second!.getBoundingClientRect()];
+      const [a, b] = [first.getBoundingClientRect(), second.getBoundingClientRect()];
       return {
-        overlap: at(first!, (b.x + a.x + a.width) / 2, a.y + 4),
-        firstEnd: at(first!, ...middle(first!.querySelector('.timeline-editor-action-right-stretch')!)),
-        secondStart: at(second!, ...middle(second!.querySelector('.timeline-editor-action-left-stretch')!)),
+        overlap: at(first, (b.x + a.x + a.width) / 2, a.y + 4),
+        firstEnd: at(first, ...middle(first.querySelector('.timeline-editor-action-right-stretch')!)),
+        secondStart: at(second, ...middle(second.querySelector('.timeline-editor-action-left-stretch')!)),
       };
     });
     // With the first clip selected, it is drawn on top where the clips overlap, so its whole range stays visible, and the
@@ -688,7 +688,7 @@ test('transitions: two videos and a crossfade give one video as long as both les
     await expect(dialog).toBeHidden({ timeout: 60_000 });
     const [joined] = await stored(c, made);
     const b = duration(await contentOf(c, 'clip3b.mp4'));
-    expect(Math.abs(duration(joined!.content) - (firstLength + b - finalOverlap))).toBeLessThanOrEqual(2 * FRAME);
+    expect(Math.abs(duration(joined.content) - (firstLength + b - finalOverlap))).toBeLessThanOrEqual(2 * FRAME);
   } finally {
     await deleteSpace(page, c.spaceId);
   }
@@ -711,12 +711,12 @@ test('transitions: a second video at a lower rate keeps every frame, so the pict
     await expect(dialog).toBeHidden({ timeout: 60_000 });
     const [joined] = await stored(c, made);
     const whole = duration(await contentOf(c, 'clip6at30.mp4')) + duration(await contentOf(c, 'clip3a.mp4'));
-    expect(Math.abs(Number(videoStream(joined!.content).duration) - whole)).toBeLessThanOrEqual(2 * FRAME);
+    expect(Math.abs(Number(videoStream(joined.content).duration) - whole)).toBeLessThanOrEqual(2 * FRAME);
     // The picture ends on the second video's last frame: the export's last frame is nearer to it than to the frame before.
     // The export's encode shifts every frame by about the same amount, so the frames are compared with each other.
-    const ending = lastFrames(joined!.content).at(-1)!;
+    const ending = lastFrames(joined.content).at(-1)!;
     const [beforeLast, last] = lastFrames(await contentOf(c, 'clip3a.mp4')).slice(-2);
-    expect(pictureDifference(ending, last!)).toBeLessThan(pictureDifference(ending, beforeLast!));
+    expect(pictureDifference(ending, last)).toBeLessThan(pictureDifference(ending, beforeLast));
   } finally {
     await deleteSpace(page, c.spaceId);
   }
@@ -742,13 +742,13 @@ test('transitions: after a crossfade from 30 fps into 25 fps, each output frame 
     const made = await runBuilding(c, () => dialog.getByRole('button', { name: 'Export' }).click(), 1);
     await expect(dialog).toBeHidden({ timeout: 60_000 });
     const [joined] = await stored(c, made);
-    const output = greyFrames(joined!.content);
+    const output = greyFrames(joined.content);
     const source = greyFrames(await contentOf(c, 'clip3a.mp4'));
     // 180 frames of the first video less the 15-frame window, then 75 frames of the second at 30 fps: 255.
     expect(output).toHaveLength(255);
     // Output frame k after the window shows the second video's frame covering (k − 165) / 30 s.
     const wrong = output.slice(180).map((picture, at) => ({ k: 180 + at, expected: Math.floor(((15 + at) * 25) / 30) }))
-      .filter(({ k, expected }) => nearestFrame(output[k]!, source, expected) !== expected);
+      .filter(({ k, expected }) => nearestFrame(output[k], source, expected) !== expected);
     expect(wrong).toEqual([]);
   } finally {
     await deleteSpace(page, c.spaceId);
@@ -774,7 +774,7 @@ test('transitions: a crossfade from a 29.97 fps video shows every one of its fra
     const made = await runBuilding(c, () => dialog.getByRole('button', { name: 'Export' }).click(), 1);
     await expect(dialog).toBeHidden({ timeout: 60_000 });
     const [joined] = await stored(c, made);
-    const output = greyFrames(joined!.content);
+    const output = greyFrames(joined.content);
     const source = greyFrames(await contentOf(c, 'clip6at2997.mp4'));
     // The output runs on the first video's 29.97 fps grid, so before the window output frame k is its frame k.
     const wrong = output.slice(0, 150).map((picture, k) => ({ k, shown: nearestFrame(picture, source, k) })).filter(({ k, shown }) => shown !== k);
@@ -806,7 +806,7 @@ test('transitions: a crossfade one output frame long exports @needs-ingest @need
     await expect(dialog).toBeHidden({ timeout: 60_000 });
     const [joined] = await stored(c, made);
     // 75 + 75 frames, one of them shared by the crossfade.
-    expect(greyFrames(joined!.content)).toHaveLength(149);
+    expect(greyFrames(joined.content)).toHaveLength(149);
   } finally {
     await deleteSpace(page, c.spaceId);
   }
@@ -828,7 +828,7 @@ test('transitions: the preview plays two videos of different sizes, before and a
     const readout = dialog.getByText(/^\d+\.\d{3} \/ \d+\.\d{3} s$/);
     const played = async (): Promise<number> => Number((await readout.textContent())!.split(' / ')[0]);
     // The ruler labels each second up to the one after the composition's end, and no label is cut at the right edge.
-    const total = Number.parseFloat((await readout.textContent())!.split(' / ')[1]!);
+    const total = Number.parseFloat((await readout.textContent())!.split(' / ')[1]);
     const labels = await dialog.locator('.timeline-editor-time-unit-scale').evaluateAll((elements) => elements.map((element) => {
       const editor = element.closest('.timeline-editor')!.getBoundingClientRect();
       const box = element.getBoundingClientRect();
@@ -913,7 +913,7 @@ test('remove background: the result carries an alpha channel @needs-model @needs
     const made = await run(c, 1);
     await c.page.keyboard.press('Escape');
     const [matte] = await stored(c, made);
-    const stream = videoStream(matte!.content);
+    const stream = videoStream(matte.content);
     // An alpha plane in the pixel format, or WebM's side-channel alpha (its ALPHA_MODE tag).
     const tags = Object.fromEntries(Object.entries(stream.tags ?? {}).map(([key, value]) => [key.toLowerCase(), value]));
     const alpha = /a/.test((stream.pix_fmt ?? '').replace(/^yuv/, '').replace(/^gbr/, '')) || tags.alpha_mode === '1';
@@ -951,9 +951,9 @@ async function lipSync(c: Canvas, video: string): Promise<DocNode> {
   const [synced] = await stored(c, made);
   // Cut off, the panel's default: the result lasts until the shorter of the video and the dialogue ends.
   const expected = Math.min(duration(await contentOf(c, video)), duration(await contentOf(c, 'speech2.mp3')));
-  expect(synced!.type).toBe('video');
-  expect(Math.abs(duration(synced!.content) - expected)).toBeLessThanOrEqual(2 * FRAME);
-  return synced!;
+  expect(synced.type).toBe('video');
+  expect(Math.abs(duration(synced.content) - expected)).toBeLessThanOrEqual(2 * FRAME);
+  return synced;
 }
 
 // Execution design §9: an odd-sized source's masks and faces are read at the prepared video's size and laid onto the output.
@@ -1010,7 +1010,7 @@ test('erase: a tracked region is erased into one video that keeps its sound @nee
     const made = await run(c, 1);
     await c.page.keyboard.press('Escape');
     const [erased] = await stored(c, made);
-    expect(probe(erased!.content).streams.map((s) => s.codec_type)).toEqual(expect.arrayContaining(['video', 'audio']));
+    expect(probe(erased.content).streams.map((s) => s.codec_type)).toEqual(expect.arrayContaining(['video', 'audio']));
   } finally {
     await deleteSpace(page, c.spaceId);
   }
@@ -1027,7 +1027,7 @@ test('expand: a widened frame gives one video larger than the source @needs-mode
     await c.page.keyboard.press('Escape');
     const [expanded] = await stored(c, made);
     const before = videoStream(await contentOf(c, 'square3.mp4'));
-    const after = videoStream(expanded!.content);
+    const after = videoStream(expanded.content);
     expect(after.width! * after.height!).toBeGreaterThan(before.width! * before.height!);
     expect(after.width! / after.height!).toBeCloseTo(16 / 9, 1);
   } finally {
