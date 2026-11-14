@@ -5,21 +5,23 @@
  * One run per conversation, and the messages waiting for it (inner#1717).
  *
  * A conversation has at most one Agent run at a time, named by the run id in
- * `chat:active:{c}`. Messages sent while it runs wait in `chat:queue:{c}`;
- * each step of the run moves what waits into `chat:taken:{c}` and hands it to
- * the model, and the taken list is dropped only once the reply that answers
- * them is stored. A run that dies keeps its taken messages, and whichever
+ * its `active` key. Messages sent while it runs wait in its `queue`; each step
+ * of the run moves what waits into `taken` and hands it to the model, and the
+ * taken list is dropped only once the reply that answers them is stored. A run that dies keeps its taken messages, and whichever
  * instance opens the next run reads them first, so a sent message is answered
  * or withdrawn and never silently lost.
  *
  * Every operation is one Lua script: deciding who runs and moving messages
  * between the lists has to happen in one step, or two instances (or a send
  * racing the end of a run) each see the conversation free and both, or
- * neither, start a run. Keys carry no deployment prefix.
+ * neither, start a run. Every key starts with `REDIS_KEY_PREFIX`. `queue`,
+ * `taken` and `awaiting` never expire: they hold what the user sent and the
+ * card waiting for their answer, and are emptied only once answered, taken
+ * back or the conversation is deleted.
  */
 
 import crypto from "node:crypto";
-import { getAgentConfig, getRedis, type Redis } from "@breatic/core";
+import { env, getAgentConfig, getRedis, type Redis } from "@breatic/core";
 import type { ChatMessageInput } from "@breatic/shared";
 
 /** One message waiting for, or taken by, a run; the send request as restored, plus who sent it. */
@@ -210,11 +212,11 @@ export interface ChatQueueKeys {
  */
 export function chatQueueKeys(c: string): ChatQueueKeys {
   return {
-    active: `chat:active:${c}`,
-    queue: `chat:queue:${c}`,
-    taken: `chat:taken:${c}`,
-    ids: `chat:queue-ids:${c}`,
-    awaiting: `chat:awaiting:${c}`,
+    active: `${env.REDIS_KEY_PREFIX}:server:chat-active:${c}`,
+    queue: `${env.REDIS_KEY_PREFIX}:server:chat-queue:${c}`,
+    taken: `${env.REDIS_KEY_PREFIX}:server:chat-taken:${c}`,
+    ids: `${env.REDIS_KEY_PREFIX}:server:chat-queue-ids:${c}`,
+    awaiting: `${env.REDIS_KEY_PREFIX}:server:chat-awaiting:${c}`,
   };
 }
 

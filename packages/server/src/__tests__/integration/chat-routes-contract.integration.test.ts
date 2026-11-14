@@ -437,7 +437,7 @@ describe("GET /chat/conversations/:id/stream", () => {
 });
 
 describe("POST /chat/stop", () => {
-  it("publishes to the run that holds the conversation, under the deployment's prefix (RT-23, ST-23)", async () => {
+  it("publishes to the run that holds the conversation, and names its keys, under the deployment's prefix (RT-23, ST-23)", async () => {
     const who = await seedOwner(sql, app);
     await getRedis().set(keysOf(who.conversationId).active, "R1");
     const stops = await listenForStops();
@@ -445,7 +445,15 @@ describe("POST /chat/stop", () => {
       expect(await (await stop(app, who)).json()).toEqual({ data: { stopped: true } });
       await until(() => stops.heard.length > 0);
       expect(stops.heard).toEqual([`${env.REDIS_KEY_PREFIX}:chat:stop:R1`]);
-      expect(keysOf(who.conversationId).active).toBe(`chat:active:${who.conversationId}`);
+      const c = who.conversationId;
+      const at = `${env.REDIS_KEY_PREFIX}:server`;
+      expect(keysOf(c)).toEqual({
+        active: `${at}:chat-active:${c}`,
+        queue: `${at}:chat-queue:${c}`,
+        taken: `${at}:chat-taken:${c}`,
+        ids: `${at}:chat-queue-ids:${c}`,
+        awaiting: `${at}:chat-awaiting:${c}`,
+      });
     } finally {
       await stops.close();
       await getRedis().del(keysOf(who.conversationId).active);
