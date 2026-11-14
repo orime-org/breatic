@@ -23,8 +23,8 @@
 
 import { createExtension } from '@blocknote/core';
 import { Plugin, PluginKey, type EditorState, type Transaction } from '@tiptap/pm/state';
-import { Mapping } from '@tiptap/pm/transform';
-import { Fragment, type Node as PMNode } from '@tiptap/pm/model';
+import { Mapping, ReplaceAroundStep } from '@tiptap/pm/transform';
+import { Fragment, Slice, type Node as PMNode } from '@tiptap/pm/model';
 
 import { columnsBarredAt } from '@web/spaces/document/document-column-entry';
 import { fromYjs } from '@web/spaces/document/document-yjs-origin';
@@ -157,9 +157,12 @@ function repair(
       const $pos = tr.doc.resolve(pos);
       // A table that cannot stand where the group stood (a cell) waits for
       // the cell's own rule (`unfoldCellTables`) and the next change.
-      if ($pos.parent.canReplace($pos.index(), $pos.index() + 1, Fragment.from(blocks))) {
-        tr.replaceWith(pos, pos + node.nodeSize, blocks);
-      }
+      if (!$pos.parent.canReplace($pos.index(), $pos.index() + 1, Fragment.from(blocks))) continue;
+      const end = pos + node.nodeSize;
+      // One column's blocks are lifted out where they stand, so the caret
+      // and every position inside them map through unchanged.
+      if (node.childCount === 1) tr.step(new ReplaceAroundStep(pos, end, pos + 2, end - 2, Slice.empty, 0, true));
+      else tr.replaceWith(pos, end, blocks);
     }
   }
   return tr.docChanged ? tr : null;

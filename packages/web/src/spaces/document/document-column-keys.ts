@@ -23,9 +23,9 @@ import type { ResolvedPos } from '@tiptap/pm/model';
 import { Selection, TextSelection } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
-import { takeAwayColumnSpan } from '@web/spaces/document/document-column-span-selection';
+import { columnAt, takeAwayColumnSpan } from '@web/spaces/document/document-column-span-selection';
 import { DOC_COLUMN, DOC_COLUMN_LIST, holdsOneEmptyParagraph } from '@web/spaces/document/document-column-geometry';
-import { firstStepAtStart } from '@web/spaces/document/document-table-keys';
+import { containerDepth, firstStepAtStart } from '@web/spaces/document/document-table-keys';
 
 /** The part of the editor the keys use. */
 interface KeysEditor {
@@ -51,18 +51,6 @@ function columnOf($head: ResolvedPos): ColumnAt | null {
     return $head.node(depth - 1).type.name === DOC_COLUMN ? { depth: depth - 1, container: depth } : null;
   }
   return null;
-}
-
-/**
- * The depth of the caret's block container.
- * @param $head - The caret.
- * @returns The depth, or -1 outside any block.
- */
-function containerOf($head: ResolvedPos): number {
-  for (let depth = $head.depth; depth > 0; depth -= 1) {
-    if ($head.node(depth).type.name === 'blockContainer') return depth;
-  }
-  return -1;
 }
 
 /**
@@ -108,7 +96,7 @@ function backspaceInColumn(view: EditorView): boolean {
   if (at === null) {
     // Right under a group, as right under a table: the caret goes to the end
     // of the last column and nothing joins.
-    const container = containerOf($head);
+    const container = containerDepth($head);
     if (container < 1) return false;
     const $before = doc.resolve($head.before(container));
     if ($before.nodeBefore?.type.name !== DOC_COLUMN_LIST) return false;
@@ -137,9 +125,11 @@ function deleteInColumn(view: EditorView): boolean {
   if ($head.parentOffset !== $head.parent.content.size) return false;
   const at = columnOf($head);
   if (at === null) {
-    // Right above a group, as right above a table, it does nothing.
-    const container = containerOf($head);
-    return container > 0 && doc.resolve($head.after(container)).nodeAfter?.type.name === DOC_COLUMN_LIST;
+    // Right above a group, as right above a table, it does nothing: what a
+    // selection can stand on next is in a column only when a group starts
+    // right after the block (`deleteAtEdge`).
+    const next = Selection.findFrom(doc.resolve($head.after()), 1);
+    return next !== null && columnAt(doc, next.from) !== null && columnAt(doc, next.from) !== columnAt(doc, $head.pos);
   }
   const column = $head.node(at.depth);
   if (holdsOneEmptyParagraph(column)) return deleteEmptyColumn(view, $head, at);

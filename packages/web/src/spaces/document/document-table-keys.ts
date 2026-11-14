@@ -147,7 +147,7 @@ function breakLine(view: EditorView): boolean {
  * @param $pos - The position.
  * @returns The depth, or -1 outside any block.
  */
-function containerDepth($pos: ResolvedPos): number {
+export function containerDepth($pos: ResolvedPos): number {
   for (let depth = $pos.depth; depth > 0; depth -= 1) {
     if ($pos.node(depth).type.name === 'blockContainer') return depth;
   }

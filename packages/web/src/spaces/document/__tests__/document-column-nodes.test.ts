@@ -263,6 +263,25 @@ describe('the repair rule (design §5.2)', () => {
     expect(shape(editor)).toEqual(['lead', '!b']);
   });
 
+  it('keeps the caret where it is while typing dissolves a one-column group around it', () => {
+    const editor = editorWith([para('lead'), columnsBlock(['x'], ['abc']), para('tail')]);
+    const view = editor.prosemirrorView;
+    let colFrom = -1;
+    let colTo = -1;
+    view.state.doc.descendants((node: PMNode, pos: number) => {
+      if (node.type.name === DOC_COLUMN && node.textContent === 'x') {
+        colFrom = pos;
+        colTo = pos + node.nodeSize;
+        return false;
+      }
+      return true;
+    });
+    view.dispatch(view.state.tr.delete(colFrom, colTo).setMeta(ySyncPluginKey, { isChangeOrigin: true }));
+    caretAt(editor, 'abc');
+    for (const key of ['1', '2', '3']) view.dispatch(view.state.tr.insertText(key));
+    expect(shape(editor)).toEqual(['lead', '123abc', 'tail']);
+  });
+
   it('deletes a group left with no columns on any local transaction', () => {
     const editor = editorWith([para('lead'), columnsBlock(['a'], ['b'])]);
     const view = editor.prosemirrorView;
@@ -353,5 +372,13 @@ describe('the keys at a column group\'s edges, as at a table\'s (design §5.5)',
       return true;
     });
     expect(joined).toBe('AB');
+  });
+
+  it('joins a row\'s child on Delete at its end when the group stands right below the row', () => {
+    const editor = editorWith([{ type: 'paragraph', content: 'A', children: [para('B')] }, columnsBlock(['a'], ['b'])]);
+    caretAtEnd(editor, 'A');
+    press(editor, 'Delete');
+    expect(editor.prosemirrorState.doc.firstChild!.firstChild!.firstChild!.textContent).toBe('AB');
+    expect(shape(editor)).toEqual(['AB', '[a|b]']);
   });
 });
