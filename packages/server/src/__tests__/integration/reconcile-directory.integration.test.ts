@@ -255,6 +255,27 @@ describe("reconcileDirectoryAfterUpgrade", () => {
     expect((await directory(studioId)).admin).toBe(adminId);
   });
 
+  it("aligns a slug that moved between two Studios during the window", async () => {
+    await freshUpgrade();
+    const older = await oldCodeStudio();
+    await directoryBeforeWindow(older.studioId, older.adminId, [older.memberId]);
+    // Old code renamed the older Studio, then a newer Studio took its slug.
+    const moved = `${older.slug}-moved`;
+    await sql`UPDATE studios SET slug = ${moved} WHERE id = ${older.studioId}`;
+    const newer = await oldCodeStudio();
+    await sql`UPDATE studios SET slug = ${older.slug} WHERE id = ${newer.studioId}`;
+
+    await studioDirectoryService.reconcileDirectoryAfterUpgrade();
+
+    const slugs = await sql<{ studio_id: string; slug: string }[]>`
+      SELECT studio_id, slug FROM studio_directory WHERE studio_id IN (${older.studioId}, ${newer.studioId})
+    `;
+    expect(Object.fromEntries(slugs.map((row) => [row.studio_id, row.slug]))).toEqual({
+      [older.studioId]: moved,
+      [newer.studioId]: older.slug,
+    });
+  });
+
   it("does nothing on a second run", async () => {
     await freshUpgrade();
     await studioDirectoryService.reconcileDirectoryAfterUpgrade();

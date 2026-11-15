@@ -7,7 +7,7 @@
  * the global API.
  */
 
-import { db, env, isDeadlock, isGlobalRegion, projectsRepo, regionOutboxRepo, studioDirectoryRepo, type DbTx } from "@breatic/core";
+import { db, env, isDeadlock, isGlobalRegion, isUniqueViolation, projectsRepo, regionOutboxRepo, studioDirectoryRepo, type DbTx } from "@breatic/core";
 import * as studioMembersRepo from "@domain/auth/studioMembers.repo.js";
 import * as usersRepo from "@domain/auth/user.repo.js";
 import { releaseDesignations } from "@domain/credit/creditLot.service.js";
@@ -151,21 +151,35 @@ export async function getProfiles(userIds: readonly string[]): Promise<Record<st
  * completion mark makes a second run do nothing, and it does nothing outside
  * the global region, whose directory tables are the only ones in use.
  * @returns How many Studios it aligned, or 0 when it had already run or runs outside the global region.
+ * @throws {Error} When a Studio cannot be aligned, or a pass aligns none of the Studios whose slug collided.
  */
 export async function reconcileDirectoryAfterUpgrade(): Promise<number> {
   if (!isGlobalRegion(env) || (await studioDirectoryRepo.isReconciled())) return 0;
   // Newest first: the Studios old processes created during the upgrade are
   // the ones missing from the directory altogether.
   const studioIds = await studioRepo.listLiveIds();
-  for (const studioId of studioIds) {
-    for (;;) {
-      try {
-        await reconcileStudio(studioId);
-        break;
-      } catch (err) {
-        if (!isDeadlock(err)) throw err;
+  // A slug that moved between two Studios during the window is still held by
+  // the stale row of the Studio that let it go: a Studio whose slug collides
+  // waits for the next pass, after the others freed theirs. A pass that
+  // aligns none of the waiting Studios ends the run with its first collision.
+  let pending = studioIds;
+  while (pending.length > 0) {
+    const collided: Array<{ studioId: string; err: unknown }> = [];
+    for (const studioId of pending) {
+      for (;;) {
+        try {
+          await reconcileStudio(studioId);
+          break;
+        } catch (err) {
+          if (isDeadlock(err)) continue;
+          if (!isUniqueViolation(err)) throw err;
+          collided.push({ studioId, err });
+          break;
+        }
       }
     }
+    if (collided.length === pending.length) throw collided[0]!.err;
+    pending = collided.map((entry) => entry.studioId);
   }
   await studioDirectoryRepo.markReconciled();
   return studioIds.length;
