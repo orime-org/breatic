@@ -438,6 +438,7 @@ export {
   documentSpaceDocName,
   timelineSpaceDocName,
   threeDSpaceDocName,
+  webAnimationSpaceDocName,
   spaceContentDocName,
   parseDocName,
   isProjectScopedDocName,
@@ -480,6 +481,8 @@ export {
 export {
   documentBodyFragment,
   documentCommentThreads,
+  webAnimationAnnotationThreads,
+  WEB_ANIMATION_ANNOTATIONS_KEY,
   encodeInitialSpaceContent,
 } from "@shared/document-body.js";
 
@@ -1192,6 +1195,6 @@ export { projectVisitRequestSchema, projectVisitReceiptSchema, projectVisitOpene
 export type { ProjectVisitRequest, ProjectVisitReceipt, ProjectVisitOpened, ProjectVisitLookup } from "@shared/project-visit-contract.js";
 export type { AccountActivityEntity, AccountActivityKind, AccountActivityCoverageEntity } from "@shared/types/entities.js";
 export type {
-  TimelineExecution, TimelineExecutionRow, TimelineExecutionStatus, TimelineWebResolution, WebAnimationSourceVersion, DocumentVersion,
+  TimelineExecution, TimelineExecutionRow, TimelineExecutionStatus, TimelineWebResolution, TimelineWebResolutionOrigin, WebAnimationSourceVersion, DocumentVersion,
 } from "@shared/types/entities.js";
 export { routeSchema, type RunRoute } from "@shared/schemas/route.js";

@@ -9,14 +9,19 @@ export {
 } from "@shared/timeline/document.js";
 export { readSpaceMediaReferences, type SpaceMediaReferences } from "@shared/space-media-references.js";
 export {
-  WEB_ANIMATION_RUNTIME, WebAnimationManifestSchema, matchWebAnimationManifest, TimelineExecutionCreateInputSchema,
-  encodePreviewToken, decodePreviewToken, TimelineExecutionInputSchema, webAnimationDurationFrames, WEB_ANIMATION_MANIFEST_MAX_BYTES,
-  TimelineExecutionStatusSchema, timelineExecutionEnded, timelineExecutionFailed,
-  type WebAnimationManifest, type WebAnimationExpectation, type WebAnimationManifestMismatch, type TimelineExecutionCreateInput,
-  type TimelineExecutionInput,
+  WEB_ANIMATION_RUNTIME, WebAnimationManifestSchema, matchWebAnimationManifest, encodePreviewToken, decodePreviewToken,
+  webAnimationDurationFrames, WEB_ANIMATION_MANIFEST_MAX_BYTES, WebAnimationExecutionStatusSchema, webAnimationExecutionEnded,
+  webAnimationExecutionFailed, WebAnimationExecutionKindSchema, WebAnimationExecutionRequestSchema, WebAnimationExecutionInputSchema,
+  executionInputOf, WebAnimationPhaseSchema, WebAnimationRowViewSchema, WebAnimationAnchorSchema, readWebAnimationAnchor, anchorTimeWithin,
+  type WebAnimationManifest, type WebAnimationExpectation, type WebAnimationManifestMismatch, type WebAnimationExecutionStatus,
+  type WebAnimationExecutionKind, type WebAnimationExecutionOrigin, type WebAnimationExecutionRequest, type WebAnimationExecutionInput,
+  type WebAnimationRowView, type WebAnimationAnchor,
 } from "@shared/timeline/web-animation.js";
+export { unpackWebAnimationSource } from "@shared/timeline/web-animation-source.js";
 export {
-  WEB_ANIMATION_CONTAINER_CLASS, webAnimationJobRequestSchema, webAnimationJobCancelSchema, webAnimationJobReportSchema,
+  WEB_ANIMATION_CONTAINER_CLASS, WEB_ANIMATION_RENDER_CONTAINER_CLASS, webAnimationJobRequestSchema, webAnimationJobCancelSchema,
+  webAnimationJobReportSchema, webAnimationRenderJobRequestSchema, webAnimationRenderJobReportSchema,
   type WebAnimationJobRequest, type WebAnimationJobCancel, type WebAnimationJobReport, type WebAnimationJobCall,
+  type WebAnimationRenderJobRequest, type WebAnimationRenderJobReport,
 } from "@shared/upload/web-animation-job.js";
 export { WEB_ANIMATION_BRIDGE_SCRIPT } from "@shared/timeline/web-animation-bridge.js";

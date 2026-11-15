@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Web-animation contracts both sides compute the same way (inner#1711): the source Manifest the runner writes, the
- * create-execution input the dialog submits and the preview path token.
+ * Web-animation contracts both sides compute the same way (inner#1711, #1490): the source Manifest the runner writes,
+ * the three execution kinds a client asks for and the input acceptance freezes, the row view every route answers,
+ * where an annotation points, and the preview path token.
  */
 
 import { z } from "zod";
@@ -17,10 +18,16 @@ export { WEB_ANIMATION_RUNTIME };
 
 const positiveInteger = z.number().int().min(1).max(Number.MAX_SAFE_INTEGER);
 
-/** Where a Timeline execution is (inner#1711); only `timelineExecutionRepo.transition` moves it. */
-export const TimelineExecutionStatusSchema = z.enum(["awaiting_landing", "queued", "running", "cancelling", "succeeded", "failed", "cancelled", "expired"]);
+/**
+ * Where a web-animation execution is (inner#1711, #1490); only `timelineExecutionRepo.transition` moves it.
+ * `awaiting_landing` is held only by rows written before #1490 and by the previous server during its deploy window.
+ */
+export const WebAnimationExecutionStatusSchema = z.enum(["awaiting_landing", "queued", "running", "cancelling", "succeeded", "failed", "cancelled", "expired"]);
 
-const ENDED: ReadonlySet<z.infer<typeof TimelineExecutionStatusSchema>> = new Set(["succeeded", "failed", "cancelled", "expired"]);
+/** A web-animation execution's status. */
+export type WebAnimationExecutionStatus = z.infer<typeof WebAnimationExecutionStatusSchema>;
+
+const ENDED: ReadonlySet<WebAnimationExecutionStatus> = new Set(["succeeded", "failed", "cancelled", "expired"]);
 
 /**
  * Whether an execution has ended: it succeeded, failed, was cancelled or expired.
@@ -28,7 +35,7 @@ const ENDED: ReadonlySet<z.infer<typeof TimelineExecutionStatusSchema>> = new Se
  * @returns True once it can no longer change.
  * @throws {never} Never.
  */
-export function timelineExecutionEnded(status: z.infer<typeof TimelineExecutionStatusSchema>): boolean {
+export function webAnimationExecutionEnded(status: WebAnimationExecutionStatus): boolean {
   return ENDED.has(status);
 }
 
@@ -38,7 +45,7 @@ export function timelineExecutionEnded(status: z.infer<typeof TimelineExecutionS
  * @returns True when it ended and did not succeed.
  * @throws {never} Never.
  */
-export function timelineExecutionFailed(status: z.infer<typeof TimelineExecutionStatusSchema>): boolean {
+export function webAnimationExecutionFailed(status: WebAnimationExecutionStatus): boolean {
   return status !== "succeeded" && ENDED.has(status);
 }
 const viewport = z.object({ width: positiveInteger, height: positiveInteger }).strict();
@@ -88,34 +95,176 @@ export function matchWebAnimationManifest(
   return null;
 }
 
-/** The creation dialog's frozen input; `fps` is the target document's frame rate. */
-export const TimelineExecutionCreateInputSchema = z.object({
-  spaceId: z.uuid(),
-  actionId: z.uuid(),
-  prompt: z.string().min(1),
-  engine: z.literal("deepseek"),
-  aspect: z.enum(["16:9", "9:16", "1:1"]),
-  durationSeconds: positiveInteger,
+const CREATE = "web_animation_create";
+const MODIFY = "web_animation_modify";
+const EXPORT = "web_animation_export";
+
+/** The three kinds of web-animation execution. */
+export const WebAnimationExecutionKindSchema = z.enum([CREATE, MODIFY, EXPORT]);
+
+/** One kind of web-animation execution. */
+export type WebAnimationExecutionKind = z.infer<typeof WebAnimationExecutionKindSchema>;
+
+/** Where an execution was asked for: a Motion Space, or a Timeline before #1490 (and an older tab still open). */
+export type WebAnimationExecutionOrigin = "timeline" | "web_animation_space";
+
+const engine = z.literal("deepseek");
+const aspect = z.enum(["16:9", "9:16", "1:1"]);
+const keyed = { spaceId: z.uuid(), actionId: z.uuid() };
+const createFields = { prompt: z.string().min(1), engine, aspect, durationSeconds: positiveInteger };
+const modifyFields = { baseSourceVersionId: z.uuid(), instruction: z.string().min(1), engine, aspect, durationSeconds: positiveInteger };
+const exportFields = { sourceVersionId: z.uuid() };
+
+const kindedRequest = z.discriminatedUnion("kind", [
+  z.object({ ...keyed, kind: z.literal(CREATE), ...createFields }).strict(),
+  z.object({ ...keyed, kind: z.literal(MODIFY), ...modifyFields }).strict(),
+  z.object({ ...keyed, kind: z.literal(EXPORT), ...exportFields }).strict(),
+]);
+
+/**
+ * What an older Timeline tab still submits: a create without `kind`, with the Timeline document's frame rate.
+ * Accepted only through the deploy window; the next release requires `kind` (#1490 design §4.1, §12).
+ */
+const legacyCreateRequest = z.object({ ...keyed, ...createFields, fps: TimelineRateSchema }).strict();
+
+/**
+ * What a client asks to run, read with where it was asked from. An older tab's kind-less body is a Timeline create
+ * and its frame rate is dropped: the server freezes the configured one.
+ */
+export const WebAnimationExecutionRequestSchema = z.union([
+  kindedRequest.transform((request) => ({ ...request, origin: "web_animation_space" as const })),
+  legacyCreateRequest.transform(({ fps: _fps, ...request }) => ({ ...request, kind: CREATE, origin: "timeline" as const })),
+]);
+
+/** A read execution request. */
+export type WebAnimationExecutionRequest = z.infer<typeof WebAnimationExecutionRequestSchema>;
+
+const frozenCreate = z.object({ ...createFields, fps: TimelineRateSchema }).strict();
+const frozenModify = z.object({ ...modifyFields, fps: TimelineRateSchema }).strict();
+const frozenExport = z.object({
+  ...exportFields,
+  width: positiveInteger,
+  height: positiveInteger,
   fps: TimelineRateSchema,
+  durationFrames: positiveInteger,
+  /** The key acceptance minted for the video; the cover's is `coverKeyFor(videoKey)`. */
+  videoKey: z.string().min(1).max(500),
 }).strict();
 
-/** A parsed create-execution input. */
-export type TimelineExecutionCreateInput = z.infer<typeof TimelineExecutionCreateInputSchema>;
+/** The input acceptance freezes, by kind; the row stores it without `kind`, which lives in its own column. */
+export const WebAnimationExecutionInputSchema = z.discriminatedUnion("kind", [
+  frozenCreate.extend({ kind: z.literal(CREATE) }),
+  frozenModify.extend({ kind: z.literal(MODIFY) }),
+  frozenExport.extend({ kind: z.literal(EXPORT) }),
+]);
 
-/** The input an accepted execution freezes: the dialog's fields without the Space and action that key it. */
-export const TimelineExecutionInputSchema = TimelineExecutionCreateInputSchema.omit({ spaceId: true, actionId: true });
+/** A frozen execution input, with its kind. */
+export type WebAnimationExecutionInput = z.infer<typeof WebAnimationExecutionInputSchema>;
 
-/** A frozen execution input. */
-export type TimelineExecutionInput = z.infer<typeof TimelineExecutionInputSchema>;
+/**
+ * The one reader of a stored row's input: the kind column decides, whatever the jsonb holds.
+ * @param row - The row's kind and stored input.
+ * @param row.kind - Its kind column.
+ * @param row.input - Its input jsonb.
+ * @returns The input with its kind.
+ * @throws {z.ZodError} When the stored input does not fit its kind.
+ */
+export function executionInputOf(row: { kind: WebAnimationExecutionKind; input: unknown }): WebAnimationExecutionInput {
+  return WebAnimationExecutionInputSchema.parse({ ...(row.input as Record<string, unknown>), kind: row.kind });
+}
+
+/** The phases a running execution reports. */
+export const WebAnimationPhaseSchema = z.enum(["writing", "validating", "saving", "rendering"]);
+
+const requestRef = z.object({ executionId: z.uuid(), request: z.string() }).strict();
+const exportRef = z.object({ executionId: z.uuid(), status: WebAnimationExecutionStatusSchema }).strict();
+const isoTime = z.string().min(1);
+
+const rowCommon = {
+  id: z.uuid(),
+  projectId: z.uuid(),
+  spaceId: z.uuid(),
+  actorUserId: z.string().min(1),
+  actionId: z.string().min(1),
+  inputHash: z.string().min(1),
+  attempt: z.number().int().nonnegative(),
+  fence: z.string().nullable(),
+  billedCredits: z.string().nullable(),
+  billedAt: isoTime.nullable(),
+  origin: z.enum(["timeline", "web_animation_space"]),
+  status: WebAnimationExecutionStatusSchema,
+  phase: WebAnimationPhaseSchema.nullable(),
+  steps: z.array(z.unknown()),
+  failureReason: z.string().nullable(),
+  ownProject: z.boolean(),
+  usageCredits: z.number().nonnegative(),
+  deadlineAt: isoTime,
+  createdAt: isoTime,
+  updatedAt: isoTime,
+  resultSourceVersionId: z.uuid().nullable(),
+  resultAssetId: z.uuid().nullable(),
+};
+
+/**
+ * The one shape every route answers a web-animation execution in (#1490 design §4.4): the execution row with its
+ * request text, the base a modification started from, the source an export renders, and, on routes that name the
+ * Motion Space the user is in, the export this result already has there.
+ */
+export const WebAnimationRowViewSchema = z.discriminatedUnion("kind", [
+  z.object({ ...rowCommon, kind: z.literal(CREATE), engine, input: frozenCreate, request: z.string(), export: exportRef.nullable().optional() }).strict(),
+  z.object({ ...rowCommon, kind: z.literal(MODIFY), engine, input: frozenModify, request: z.string(), base: requestRef, export: exportRef.nullable().optional() }).strict(),
+  z.object({
+    ...rowCommon, kind: z.literal(EXPORT), engine: z.null(), input: frozenExport,
+    source: z.object({ executionId: z.uuid(), request: z.string(), base: requestRef.optional() }).strict(),
+  }).strict(),
+]);
+
+/** One execution as the routes answer it. */
+export type WebAnimationRowView = z.infer<typeof WebAnimationRowViewSchema>;
+
+/** Where a Motion annotation points: a time in a result, and optionally a point on its frame as fractions. */
+export const WebAnimationAnchorSchema = z.object({
+  executionId: z.uuid(),
+  timeSeconds: z.number().finite().min(0),
+  point: z.object({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) }).strict().nullable(),
+}).strict();
+
+/** A Motion annotation's anchor. */
+export type WebAnimationAnchor = z.infer<typeof WebAnimationAnchorSchema>;
+
+/**
+ * Read the anchor out of a thread's metadata.
+ * @param metadata - The thread's metadata, as stored.
+ * @returns The anchor, or null when there is no valid one.
+ * @throws {never} Never.
+ */
+export function readWebAnimationAnchor(metadata: unknown): WebAnimationAnchor | null {
+  if (typeof metadata !== "object" || metadata === null) return null;
+  const parsed = WebAnimationAnchorSchema.safeParse((metadata as Record<string, unknown>).webAnimationAnchor);
+  return parsed.success ? parsed.data : null;
+}
+
+/**
+ * Keep the playhead's time inside a result, as an anchor stores it.
+ * @param timeSeconds - The playhead's time.
+ * @param durationSeconds - The result's length.
+ * @returns The time, held between 0 and the length.
+ * @throws {never} Never.
+ */
+export function anchorTimeWithin(timeSeconds: number, durationSeconds: number): number {
+  return Math.min(Math.max(timeSeconds, 0), durationSeconds);
+}
 
 /**
  * The frames an accepted input asks for: its seconds at its frozen frame rate. A placeholder clip is this long and the
  * Manifest must say the same.
  * @param input - The frozen input.
+ * @param input.durationSeconds - Its length in seconds.
+ * @param input.fps - Its frozen frame rate.
  * @returns The frame count.
  * @throws {RangeError} When the rate or the resulting count is invalid.
  */
-export function webAnimationDurationFrames(input: Pick<TimelineExecutionInput, "durationSeconds" | "fps">): number {
+export function webAnimationDurationFrames(input: { durationSeconds: number; fps: TimelineRate }): number {
   return durationToFrames(input.durationSeconds, input.fps);
 }
 

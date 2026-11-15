@@ -15,7 +15,7 @@ import type { CreditSourceKind } from "@shared/types/credit.js";
 import type { MembershipTier } from "@shared/types/membership.js";
 import type { ProjectRole } from "@shared/types/role.js";
 import type { TimelineRate } from "@shared/timeline/time.js";
-import type { TimelineExecutionStatusSchema } from "@shared/timeline/web-animation.js";
+import type { WebAnimationExecutionKind, WebAnimationExecutionOrigin, WebAnimationExecutionStatusSchema } from "@shared/timeline/web-animation.js";
 import type { z } from "zod";
 
 /** User entity (excludes hashed_password for safety). */
@@ -943,25 +943,31 @@ export interface AccountActivityCoverageEntity {
   createdAt: Date;
 }
 
-/** Where a Timeline execution is (inner#1711), as `TimelineExecutionStatusSchema` lists it. */
-export type TimelineExecutionStatus = z.infer<typeof TimelineExecutionStatusSchema>;
+/** Where a web-animation execution is (inner#1711), as `WebAnimationExecutionStatusSchema` lists it. */
+export type TimelineExecutionStatus = z.infer<typeof WebAnimationExecutionStatusSchema>;
 
-/** One Timeline execution the user accepted (inner#1711). Timestamps are UTC ISO strings at microsecond precision. */
+/**
+ * One web-animation execution the user accepted (inner#1711, #1490), as `timeline_executions` stores it. Timestamps are
+ * UTC ISO strings at microsecond precision.
+ */
 export interface TimelineExecution {
   id: string;
   projectId: string;
   spaceId: string;
   actorUserId: string;
-  kind: "web_animation_create";
+  kind: WebAnimationExecutionKind;
+  /** Where it was asked for: a Motion Space, or a Timeline before #1490. */
+  origin: WebAnimationExecutionOrigin;
   /** The client's idempotency key, unique per Project and Space. */
   actionId: string;
   /** The accepted input, frozen at acceptance. */
   input: Record<string, unknown>;
   inputHash: string;
-  engine: "deepseek";
+  /** The model engine; null for an export, which renders and calls no model. */
+  engine: "deepseek" | null;
   status: TimelineExecutionStatus;
   /** The stage a running attempt reports to the user. */
-  phase: "writing" | "validating" | "saving" | null;
+  phase: "writing" | "validating" | "saving" | "rendering" | null;
   steps: unknown[];
   /** How many attempts have claimed it. */
   attempt: number;
@@ -970,6 +976,8 @@ export interface TimelineExecution {
   /** The two-hour budget's end, set once at acceptance. */
   deadlineAt: string;
   resultSourceVersionId: string | null;
+  /** An export's registered video. */
+  resultAssetId: string | null;
   failureReason: string | null;
   /** Credits charged, as Postgres renders the numeric. */
   billedCredits: string | null;
@@ -987,8 +995,28 @@ export type TimelineExecutionRow = TimelineExecution & { usageCredits: number };
  * grant for them. A reference it leaves out is unresolved.
  */
 export interface TimelineWebResolution {
-  sources: Record<string, { durationFrames: number; fps: TimelineRate; viewport: { width: number; height: number } }>;
-  executions: Record<string, { status: TimelineExecutionStatus; resultSourceVersionId: string | null; acceptedDurationFrames: number; fps: TimelineRate }>;
+  sources: Record<string, TimelineWebResolutionOrigin & { durationFrames: number; fps: TimelineRate; viewport: { width: number; height: number } }>;
+  executions: Record<string, TimelineWebResolutionOrigin & {
+    status: TimelineExecutionStatus;
+    resultSourceVersionId: string | null;
+    acceptedDurationFrames: number;
+    fps: TimelineRate;
+    /** The stage a running attempt reported. */
+    phase: TimelineExecution["phase"];
+    failureReason: string | null;
+  }>;
+}
+
+/** What made a resolved reference (#1490 design §4.4): the Timeline names a copy and shows its request from it. */
+export interface TimelineWebResolutionOrigin {
+  executionId: string;
+  /** The Space that made it: a Motion Space, or a Timeline before #1490. */
+  spaceId: string;
+  kind: "web_animation_create" | "web_animation_modify";
+  /** The whole prompt or modification instruction. */
+  request: string;
+  /** For a modification, the result it started from. */
+  base?: { executionId: string; request: string };
 }
 
 /**
