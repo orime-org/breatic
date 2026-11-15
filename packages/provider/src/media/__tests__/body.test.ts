@@ -159,6 +159,14 @@ describe("buildBody — a dialogue script sent as turns (#1521)", () => {
     ]);
   });
 
+  it("matches a name with spaces around it as the script writes it, trimmed, and sends it as the speakers list carries it", () => {
+    const speakers = [{ speaker: "Ava", voice: "Kore" }, { speaker: " Leo ", voice: "Puck" }];
+    expect(buildBody(binding, { prompt: "Ava: Hi.\nLeo: Hello.", params: { speakers } }).turns).toEqual([
+      { speaker_id: "Ava", text: "Hi." },
+      { speaker_id: " Leo ", text: "Hello." },
+    ]);
+  });
+
   it("skips blank lines and gives a line naming no speaker to the first one, whole", () => {
     expect(buildBody(binding, { prompt: "\nAva: Hi.\n  \nSomeone: who?\n", params: { speakers: pair } }).turns).toEqual([
       { speaker_id: "Ava", text: "Hi." },

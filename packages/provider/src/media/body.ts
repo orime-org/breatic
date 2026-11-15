@@ -86,7 +86,7 @@ function written(bound: ParamBinding, value: unknown, sendEmpty: boolean): unkno
 }
 
 /**
- * The names of the run's speakers, as trimmed, when the binding sends dialogue as turns.
+ * The names of the run's speakers, as the run sends them, when the binding sends dialogue as turns.
  * @param dialogue - The binding's dialogue rule.
  * @param params - The run's params; untrusted collaborative data.
  * @returns The names in order, empty when the run names none.
@@ -103,19 +103,20 @@ function speakerNames(dialogue: NonNullable<MediaBinding["dialogue"]>, params: R
 /**
  * A `Name: line` script as the upstream's turns: each non-blank line goes to the speaker whose name and a
  * half-width colon start it (the longest such name), else whole to the first speaker. The script is the one
- * `dialogueText` in `@breatic/shared` writes: one line per turn, no line break inside a line.
+ * `dialogueText` in `@breatic/shared` writes: one line per turn, no line break inside a line, each name trimmed;
+ * a turn names its speaker as the speakers list does, so the upstream pairs the two.
  * @param dialogue - The binding's dialogue rule.
  * @param script - The prompt.
  * @param names - The speakers' names, at least one.
  * @returns The turns, in order.
  */
 function turnsOf(dialogue: NonNullable<MediaBinding["dialogue"]>, script: string, names: readonly string[]): Record<string, string>[] {
-  const longestFirst = [...names].sort((a, b) => b.length - a.length);
+  const longestFirst = [...names].sort((a, b) => b.trim().length - a.trim().length);
   return script.split("\n").flatMap((raw) => {
     const line = raw.trim();
     if (line === "") return [];
-    const name = longestFirst.find((each) => line.startsWith(`${each}: `));
-    const text = name === undefined ? line : line.slice(name.length + 2).trim();
+    const name = longestFirst.find((each) => line.startsWith(`${each.trim()}: `));
+    const text = name === undefined ? line : line.slice(name.trim().length + 2).trim();
     return [{ [dialogue.speaker_field]: name ?? names[0]!, [dialogue.text_field]: text }];
   });
 }
