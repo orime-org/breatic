@@ -72,7 +72,9 @@ const INDEX: readonly { group: string; sections: readonly (readonly [name: strin
   {
     group: "Document",
     sections: [
-      ["Document spaces", "writing, formatting, pasting, comments and media in a document"],
+      ["Document spaces", "writing, formatting, pasting and media in a document"],
+      ["Document formulas", "typing, inserting and editing LaTeX formulas in a document"],
+      ["Document comments", "leaving, answering, resolving and deleting comments in a document"],
       ["Document proposal cards", "applying a comment, rewrite or insert proposed in this chat"],
       ["Document snapshots", "saving, previewing, comparing, restoring, renaming and deleting snapshots of a document"],
     ],
@@ -1863,14 +1865,6 @@ export function renderProductGuide(): string {
       "plain line below, press Enter at the end of the line (Shift+Enter in a code block); if the new line kept " +
       "the list or to-do of the one above, Cmd+Alt+0 makes it plain text, and if it kept the quote, Cmd+Shift+B " +
       "takes the quote off.",
-    "- A formula is LaTeX: $$x$$ typed in a line becomes a formula of x as the closing $$ is typed (a single $ stays " +
-      `text, and Cmd+Z takes it back), and ${quoted(t("spaces.document.commands.formula"))} in the insert menu puts ` +
-      "one on its own line. Clicking a formula opens a box under it to edit the LaTeX, the formula redrawing as it " +
-      `is typed; Enter, ${quoted(t("spaces.document.math.ok"))}, Esc or a click outside closes the box and keeps the change, and Cmd+Z ` +
-      "undoes it like any typing. Backspace right under a formula or Delete right above it selects it; a second press " +
-      "deletes it. An empty one shows " +
-      `${quoted(t("spaces.document.math.empty"))}, one that does not parse ${quoted(t("spaces.document.math.error"))}. ` +
-      "The Agent, copies and Markdown get it as its LaTeX between $$.",
     "- Images, videos and audio can also be dragged into the document from the computer, landing where the " +
       "drop marker shows (a line between blocks, or a caret in the words of a table cell outside a code " +
       `block), or pasted at the caret, replacing the selection. ${documentPasteRules().map((rule) => rule.sentence).join(" ")} ` +
@@ -2004,6 +1998,8 @@ export function renderProductGuide(): string {
       "with their names. Content written by a newer version of the editor shows as a box marked " +
       `${quoted(t("spaces.document.unsupported.label"))} and is kept as it is.`,
     "- Snapshots: saving, comparing and restoring snapshots of the body are in the Document snapshots section.",
+    "- Formulas: typing, inserting and editing LaTeX formulas are in the Document formulas section.",
+    "- Comments: leaving, answering, resolving and deleting comments are in the Document comments section.",
     "- The heading outline: an icon at the top left of the body, level with the three dots, opens and shuts " +
       `it; hovering it says ${quoted(t("spaces.document.outline.show"))} or ${quoted(t("spaces.document.outline.hide"))}. ` +
       "The outline lists the body's level 1–3 headings as a tree, with the same numbers the body shows; headings " +
@@ -2014,7 +2010,19 @@ export function renderProductGuide(): string {
       "until the outline icon is clicked again. Whether the outline is shown is remembered for each account in " +
       "this browser and applies to every document. With no headings yet the column says " +
       `${quoted(t("spaces.document.outline.empty"))}.`,
-    `- Comments: select text and press the speech bubble, or choose ` +
+    "",
+    "## Document formulas",
+    "A formula is LaTeX: $$x$$ typed in a line becomes a formula of x as the closing $$ is typed (a single $ stays " +
+      `text, and Cmd+Z takes it back), and ${quoted(t("spaces.document.commands.formula"))} in the insert menu puts ` +
+      "one on its own line. Clicking a formula opens a box under it to edit the LaTeX, the formula redrawing as it " +
+      `is typed; Enter, ${quoted(t("spaces.document.math.ok"))}, Esc or a click outside closes the box and keeps the change, and Cmd+Z ` +
+      "undoes it like any typing. Backspace right under a formula or Delete right above it selects it; a second press " +
+      "deletes it. An empty one shows " +
+      `${quoted(t("spaces.document.math.empty"))}, one that does not parse ${quoted(t("spaces.document.math.error"))}. ` +
+      "The Agent, copies and Markdown get it as its LaTeX between $$.",
+    "",
+    "## Document comments",
+    `Select text and press the speech bubble, or choose ` +
       `${quoted(t("spaces.document.commands.comment"))} on a line's handle menu (greyed on an empty line, ` +
       `except uploaded media). The ${quoted(t("spaces.document.comment.railTitle"))} panel opens beside the text, the words take ` +
       `a highlight, and a box, ${quoted(t("spaces.document.comment.placeholder"))}, waits next to them. Enter ` +
