@@ -50,7 +50,7 @@ export interface SceneDirectorPanelProps extends SceneFieldDraftOwner {
   onAddLight: (type: SceneLightType) => void;
   onLook: (id: string) => void;
   onMonitor: (id: string, canvas: HTMLCanvasElement | null) => void;
-  onAmbientPreview: (values: Partial<SceneEnvironmentValues>) => void;
+  onAmbientPreview: (values: Partial<SceneEnvironmentValues>) => boolean;
   onAmbientCommit: () => void;
   /** Ends an ambient press that gets no release, as when its picker closes on Escape. */
   onAmbientCancel: () => void;
@@ -137,7 +137,7 @@ export const SceneDirectorPanel = React.memo(function SceneDirectorPanel(props: 
   const selectedId = snapshot.selectedIds.length === 1 ? snapshot.selectedIds[0] : undefined;
   const atLimit = maxLights === undefined || lights.length >= maxLights;
   const onAmbientStepKey = React.useCallback((event: React.KeyboardEvent): void => { ambientPress.stepKey(event, onAmbientCommit); }, [ambientPress, onAmbientCommit]);
-  const onAmbientColor = React.useCallback((ambientColor: string): void => onAmbientPreview({ ambientColor }), [onAmbientPreview]);
+  const onAmbientColor = React.useCallback((ambientColor: string): boolean => onAmbientPreview({ ambientColor }), [onAmbientPreview]);
   /**
    * The fields of a selected camera or light.
    * @param object - The record.

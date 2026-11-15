@@ -20,7 +20,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { whenBlurLeaves } from '@web/lib/blur-left';
 import type { SceneField, SceneFieldDraftOwner } from '@web/spaces/three-d/SceneField';
 import { keepOnSpaceTab } from '@web/spaces/three-d/SceneRightPanel';
-import { useControlPress, type ControlPress } from '@web/spaces/three-d/use-control-press';
+import { takeStepKey } from '@web/spaces/three-d/use-control-press';
 
 /** Lens presets in millimetres (inner#1694 design 3.2). */
 const FOCAL_PRESETS = [14, 24, 35, 50, 70, 100, 200] as const;
@@ -45,24 +45,28 @@ function Row({ label, labelId, children }: { label: string; labelId: string; chi
  * A drag that previews and is written once on release, as one undo step (design 3.8).
  * @param session - The command owner.
  * @param id - The object being changed.
- * @returns The press, preview, commit and cancel callbacks, and a Slider's key handler.
+ * @returns The begin, preview, commit and cancel callbacks, and a Slider's key handler.
  */
-function useContinuousPatch(session: SceneSession, id: string): { press: ControlPress; preview: (patch: Omit<ScenePatch, 'id'>) => void; commit: () => void; cancel: () => void; stepKey: (event: React.KeyboardEvent) => void } {
-  const open = React.useCallback((): boolean => session.beginGesture(), [session]);
-  const press = useControlPress(open);
-  // The session owns whether the drag is still open: Escape, a lock or an undo may have ended it.
-  const preview = React.useCallback((patch: Omit<ScenePatch, 'id'>): void => {
-    if (press.change() && session.getSnapshot().gestureActive) session.previewGesture([{ ...patch, id }]);
-    else press.end();
-  }, [session, id, press]);
-  const commit = React.useCallback((): void => {
-    if (press.end() && session.getSnapshot().gestureActive) session.endGesture(true);
-  }, [session, press]);
-  const cancel = React.useCallback((): void => {
-    if (press.end() && session.getSnapshot().gestureActive) session.endGesture(false);
-  }, [session, press]);
-  const stepKey = React.useCallback((event: React.KeyboardEvent): void => { press.stepKey(event, commit); }, [press, commit]);
-  return { press, preview, commit, cancel, stepKey };
+function useContinuousPatch(session: SceneSession, id: string): { begin: () => void; preview: (patch: Omit<ScenePatch, 'id'>) => boolean; commit: () => void; cancel: () => void; stepKey: (event: React.KeyboardEvent) => void } {
+  // The session owns the press: beginGesture ends whatever an earlier press left, and Escape, a lock, an undo or a loss
+  // of focus end its drag, after which its changes preview nothing and its release writes nothing.
+  return React.useMemo(() => {
+    /** Start a press, refused without edit access or on a locked object. */
+    const begin = (): void => { session.beginGesture(); };
+    /** End the press and write what it previewed. */
+    const commit = (): void => { session.endGesture(true); };
+    return {
+      begin,
+      preview: (patch: Omit<ScenePatch, 'id'>): boolean => {
+        if (!session.getSnapshot().gestureActive) return false;
+        session.previewGesture([{ ...patch, id }]);
+        return true;
+      },
+      commit,
+      cancel: (): void => { session.endGesture(false); },
+      stepKey: (event: React.KeyboardEvent): void => { takeStepKey(event, begin, commit); },
+    };
+  }, [session, id]);
 }
 
 const HEX_TEXT = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
@@ -77,14 +81,14 @@ const HEX_TEXT = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
  * @param root0.labelId - What names it.
  * @param root0.spaceId - The Space the field belongs to.
  * @param root0.onPressStart - Opens a picker press when the mouse or an arrow key first goes down.
- * @param root0.onPreview - Shows a colour while picking.
+ * @param root0.onPreview - Shows a colour while picking; false when the press it belongs to has ended.
  * @param root0.onCommit - Writes the previewed colour and ends the press.
  * @param root0.onCancel - Ends the press without writing it; no release of it follows.
  * @param root0.onWrite - Writes a typed colour.
  * @returns The swatch and its picker.
  */
 export const SceneColorField = React.memo(function SceneColorField({ value, disabled, labelId, spaceId, onPressStart, onPreview, onCommit, onCancel, onWrite }: {
-  value: string; disabled: boolean; labelId: string; spaceId: string; onPressStart: () => void; onPreview: (hex: string) => void;
+  value: string; disabled: boolean; labelId: string; spaceId: string; onPressStart: () => void; onPreview: (hex: string) => boolean;
   onCommit: () => void; onCancel: () => void; onWrite: (hex: string) => void;
 }): React.JSX.Element {
   // Only this opening of the popover feeds the scene: its exit animation still shows the picker after Escape.
@@ -95,10 +99,17 @@ export const SceneColorField = React.memo(function SceneColorField({ value, disa
   const [container, setContainer] = React.useState<HTMLElement | null>(null);
   const released = React.useRef(false);
   const [releases, setReleases] = React.useState(0);
+  // react-colorful follows its own pointer and shows `value` again only when `value` changes: a change refused because
+  // its press has ended remounts the picker, which ends its drag and shows the stored colour.
+  const [resyncs, setResyncs] = React.useState(0);
+  // The arrow keys held on the picker: one press lasts from the first going down to the last coming up.
+  const arrows = React.useRef(new Set<string>());
   // react-colorful reports a move from an effect, and a release that follows at once arrives first: the commit runs
   // as a transition, which React renders after flushing the move and its effects.
   React.useEffect(() => { if (released.current) { released.current = false; onCommit(); } }, [releases, onCommit]);
-  const pick = React.useCallback((hex: string): void => { if (live.current) onPreview(hex); }, [onPreview]);
+  const pick = React.useCallback((hex: string): void => {
+    if (live.current && !onPreview(hex)) setResyncs((count) => count + 1);
+  }, [onPreview]);
   const release = React.useCallback((): void => {
     if (!live.current) return;
     released.current = true;
@@ -111,12 +122,18 @@ export const SceneColorField = React.memo(function SceneColorField({ value, disa
     onPressStart();
     window.addEventListener('mouseup', release, { once: true });
   }, [onPressStart, release]);
-  // A picker arrow key is a press of its own, from its first keydown (a held key's auto-repeats belong to it) to its
-  // release: react-colorful reports no end for a step that changed nothing.
+  // Arrow keys on the picker are a press of their own, ended on the release of the last one held (auto-repeats and a
+  // second key belong to it): react-colorful reports no end for a step that changed nothing.
   const onPickerKey = React.useCallback((event: React.KeyboardEvent): void => {
-    if (live.current && !event.repeat && event.key.startsWith('Arrow')) onPressStart();
+    if (!live.current || !event.key.startsWith('Arrow')) return;
+    if (arrows.current.size === 0) onPressStart();
+    arrows.current.add(event.key);
   }, [onPressStart]);
-  const onPickerKeyUp = React.useCallback((event: React.KeyboardEvent): void => { if (event.key.startsWith('Arrow')) release(); }, [release]);
+  const onPickerKeyUp = React.useCallback((event: React.KeyboardEvent): void => {
+    if (arrows.current.delete(event.key) && arrows.current.size === 0) release();
+  }, [release]);
+  // react-colorful also ends a change on each arrow key's release, before this field sees which keys are still held.
+  const endChange = React.useCallback((): void => { if (arrows.current.size === 0) release(); }, [release]);
   const settle = React.useCallback((): void => {
     setTyped(null);
     const digits = typed === null ? undefined : HEX_TEXT.exec(typed)?.[1]?.toLowerCase();
@@ -132,6 +149,7 @@ export const SceneColorField = React.memo(function SceneColorField({ value, disa
       return;
     }
     settle();
+    arrows.current.clear();
     live.current = false;
   }, [spaceId, settle]);
   const onEscapeKeyDown = React.useCallback((): void => { setTyped(null); onCancel(); }, [onCancel]);
@@ -150,7 +168,7 @@ export const SceneColorField = React.memo(function SceneColorField({ value, disa
         className='size-6 rounded-full border border-border disabled:cursor-not-allowed disabled:opacity-50' style={{ backgroundColor: value }} />
     </PopoverTrigger>
     <PopoverContent container={container} side='left' align='start' className='w-auto space-y-2 p-2' onEscapeKeyDown={onEscapeKeyDown} onInteractOutside={keepOnSpaceTab}>
-      <div ref={picker}><HexColorPicker color={value} onChange={pick} onChangeEnd={release} onMouseDown={onPress} onKeyDown={onPickerKey} onKeyUp={onPickerKeyUp} /></div>
+      <div ref={picker}><HexColorPicker key={resyncs} color={value} onChange={pick} onChangeEnd={endChange} onMouseDown={onPress} onKeyDown={onPickerKey} onKeyUp={onPickerKeyUp} /></div>
       <Input value={typed ?? value} onChange={onType} onBlur={onBlur} onKeyDown={onKeyDown} spellCheck={false} autoComplete='off'
         className='h-[var(--btn-inline)] rounded-md bg-background px-2 text-xs md:text-xs' />
     </PopoverContent>
@@ -180,7 +198,7 @@ export const SceneDirectorFields = React.memo(function SceneDirectorFields(props
   const disabled = !canEdit || object.locked;
   const continuous = useContinuousPatch(session, object.id);
   const { preview } = continuous;
-  const previewColor = React.useCallback((color: string): void => preview({ color }), [preview]);
+  const previewColor = React.useCallback((color: string): boolean => preview({ color }), [preview]);
   /**
    * Write one field change.
    * @param patch - The fields.
@@ -245,11 +263,11 @@ export const SceneDirectorFields = React.memo(function SceneDirectorFields(props
     {head}
     <Row label={t('spaces.threeD.color')} labelId={`${ids}-color`}>
       <SceneColorField value={object.color} disabled={disabled} labelId={`${ids}-color`} spaceId={spaceId}
-        onPressStart={continuous.press.begin} onPreview={previewColor} onCommit={continuous.commit} onCancel={continuous.cancel} onWrite={writeColor} />
+        onPressStart={continuous.begin} onPreview={previewColor} onCommit={continuous.commit} onCancel={continuous.cancel} onWrite={writeColor} />
     </Row>
     <Row label={t('spaces.threeD.intensity')} labelId={`${ids}-intensity`}>
       <Slider aria-labelledby={`${ids}-intensity`} className='w-28' min={0} max={max} step={step} value={[object.intensity]} disabled={disabled}
-        onValueChange={([value]) => { if (value !== undefined) continuous.preview({ intensity: value }); }} onPointerDown={continuous.press.begin} onKeyDown={continuous.stepKey} onPointerUp={continuous.commit} />
+        onValueChange={([value]) => { if (value !== undefined) continuous.preview({ intensity: value }); }} onPointerDown={continuous.begin} onKeyDown={continuous.stepKey} onPointerUp={continuous.commit} />
       <span className='w-10 text-right text-xs tabular-nums text-muted-foreground'>{Number(object.intensity.toFixed(1))}</span>
     </Row>
     <Row label={t('spaces.threeD.castShadow')} labelId={`${ids}-shadow`}>
@@ -257,7 +275,7 @@ export const SceneDirectorFields = React.memo(function SceneDirectorFields(props
     </Row>
     {object.model.type === 'spot' ? <Row label={t('spaces.threeD.angle')} labelId={`${ids}-angle`}>
       <Slider aria-labelledby={`${ids}-angle`} className='w-28' min={SCENE_SPOT_ANGLE_MIN} max={SCENE_SPOT_ANGLE_MAX} step={1} value={[object.angle ?? SCENE_SPOT_ANGLE_DEFAULT]}
-        disabled={disabled} onValueChange={([value]) => { if (value !== undefined) continuous.preview({ angle: value }); }} onPointerDown={continuous.press.begin} onKeyDown={continuous.stepKey} onPointerUp={continuous.commit} />
+        disabled={disabled} onValueChange={([value]) => { if (value !== undefined) continuous.preview({ angle: value }); }} onPointerDown={continuous.begin} onKeyDown={continuous.stepKey} onPointerUp={continuous.commit} />
       <span className='w-10 text-right text-xs tabular-nums text-muted-foreground'>{`${Math.round(object.angle ?? SCENE_SPOT_ANGLE_DEFAULT)}°`}</span>
     </Row> : null}
     {lock}

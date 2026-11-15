@@ -45,8 +45,8 @@ const CORNER_POSITION: Readonly<Record<ViewfinderCorner, string>> = {
   sw: '-bottom-[5px] -left-[5px] cursor-nesw-resize',
   se: '-bottom-[5px] -right-[5px] cursor-nwse-resize',
 };
-// What the chrome around the frame covers, in pixels: the top and sides keep the
-// stage margin; the bottom keeps the menu under the frame
+// What the chrome around the frame covers, in pixels: the top and sides keep
+// 20px from the stage edge; the bottom keeps the menu under the frame
 // (38 + 8) above the object toolbar (16 + 42 + 8), whether or not it shows;
 // the right edge stops at an open right panel (10 + 320 + 10).
 const INSETS = { top: 20, bottom: 112, side: 20, panel: 340 };

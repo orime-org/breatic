@@ -15,6 +15,7 @@ import type { SocketState } from '@web/data/yjs/use-socket';
 import { useTranslation } from '@web/i18n/use-translation';
 import { readSceneView, writeSceneView } from '@web/lib/scene-view-storage';
 import { toast } from '@web/lib/toast';
+import { cn } from '@web/lib/utils';
 import type { SpaceBodyProps } from '@web/spaces';
 import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusive-overlay';
 import { SceneCreationMenu } from '@web/spaces/three-d/SceneCreationMenu';
@@ -685,19 +686,17 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
       return next;
     });
   }, []);
-  const onAmbientPreview = React.useCallback((values: Partial<SceneEnvironmentValues>): void => {
-    if (!ambientPress.change()) return;
+  const onAmbientPreview = React.useCallback((values: Partial<SceneEnvironmentValues>): boolean => {
+    if (!ambientPress.change()) return false;
     // The ref leads the state so a commit queued right after this change reads it before React renders.
     ambientDraftRef.current = { ...ambientDraftRef.current, ...values };
     setAmbientDraft(ambientDraftRef.current);
+    return true;
   }, [ambientPress]);
   const onAmbientCommit = React.useCallback((): void => {
     const draft = ambientDraftRef.current;
-    const open = ambientPress.end();
-    ambientDraftRef.current = null;
-    setAmbientDraft(null);
-    if (open && draft) session.execute({ type: 'environment', set: draft });
-  }, [session, ambientPress]);
+    if (dropAmbient() && draft) session.execute({ type: 'environment', set: draft });
+  }, [session, dropAmbient]);
   /**
    * Write a typed ambient colour as a command of its own.
    * @param ambientColor - The colour.
@@ -768,7 +767,9 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
                   onPilotPreview={onPilotPreview} onPilotEnd={onPilotEnd} onPilotLocked={onPilotLocked} onPilotControl={onPilotControl}
                   onLightPlan={setLightPlan} monitors={monitors} />
               </React.Suspense>}
-      {failedModels ? <div className='absolute left-20 top-3 flex max-w-[calc(100%_-_5rem_-_var(--space-5))] items-center justify-between gap-2 rounded-chrome border border-border bg-background p-2 text-xs'>
+      {/* An open right panel covers the stage's right edge from its top (10 + 320 + 10, as the viewfinder's INSETS.panel). */}
+      {failedModels ? <div className={cn('absolute left-20 top-3 flex items-center justify-between gap-2 rounded-chrome border border-border bg-background p-2 text-xs',
+        rightOpen ? 'max-w-[calc(100%_-_5rem_-_340px)]' : 'max-w-[calc(100%_-_5rem_-_var(--space-5))]')}>
         <span className='min-w-0'>{t('spaces.threeD.modelFailed')}{cause && <> {t(importErrorKey(cause.code))}{cause.budget && <> {budgetText(t, cause.budget, getLocale())}</>}{cause.detail && <span className='block break-all text-muted-foreground'>{cause.detail}</span>}</>}</span>
         {modelRetryable && <Button size='sm' variant='ghost' onClick={() => setModelRetryRevision((value) => value + 1)}>{t('spaces.threeD.retry')}</Button>}
       </div> : null}

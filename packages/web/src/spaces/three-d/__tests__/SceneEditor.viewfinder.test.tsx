@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The viewfinder in the 3D Space (#1411): the persistent top-right button,
+ * The viewfinder in the 3D Space (#1411): its button in the bottom-right toolbar,
  * framing with the minimap and creation menu put away, the capture, and the
  * three destinations with the states of design 6.1.
  */
@@ -26,7 +26,7 @@ import { useConversationRuntime } from '@web/stores/conversation-runtime';
 import { useUIStore } from '@web/stores/ui';
 
 const h = vi.hoisted(() => ({
-  modelState: 'ready' as 'ready' | 'loading',
+  modelState: 'ready' as 'ready' | 'loading' | 'failed',
   viewport: null as null | { viewLocked?: boolean },
   capture: vi.fn(),
   spaces: [] as Array<{ id: string; name: string; type: string; createdAt?: number }>,
@@ -160,7 +160,7 @@ afterEach(() => {
 });
 
 describe('the viewfinder entry (acceptance 1)', () => {
-  it('sits top-right whether or not anything is selected, and is unavailable to a Viewer', async () => {
+  it('sits in the bottom-right toolbar whether or not anything is selected, and is unavailable to a Viewer', async () => {
     const { session } = await setup();
     expect(trigger()).toBeEnabled();
     act(() => session.select(ID, false));
@@ -253,6 +253,19 @@ describe('framing (acceptance 2)', () => {
     fireEvent.keyDown(screen.getByTestId('scene-native-boundary'), { key: 'Escape' });
     expect(screen.queryByTestId('scene-viewfinder-frame')).toBeNull();
     expect(session.getSnapshot().selectedIds).toEqual([ID]);
+  });
+});
+
+describe('the failed-model notice', () => {
+  it('stops before an open right panel and spans to the stage margin otherwise', async () => {
+    h.modelState = 'failed';
+    await setup();
+    const notice = (await screen.findByText(t('spaces.threeD.modelFailed'))).closest('div') as HTMLElement;
+    expect(notice.className).toContain('max-w-[calc(100%_-_5rem_-_var(--space-5))]');
+    fireEvent.click(screen.getByTestId('scene-objects-trigger'));
+    await screen.findByTestId('scene-right-panel');
+    expect(notice.className).toContain('max-w-[calc(100%_-_5rem_-_340px)]');
+    expect(notice.className).not.toContain('max-w-[calc(100%_-_5rem_-_var(--space-5))]');
   });
 });
 

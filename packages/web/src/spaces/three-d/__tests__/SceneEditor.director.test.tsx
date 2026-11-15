@@ -1115,6 +1115,69 @@ describe('continuous controls end on release and on Escape (round 1 fixes, desig
     expect(stored()).toBe('#ff0000');
   });
 
+  it.each([
+    ['the ambient light', 'focus loss', false],
+    ['a light', 'focus loss', true],
+    ['a light', 'a lock', true],
+  ])('puts the picker of %s back on the stored colour when %s ends its drag', async (_, how, light) => {
+    const { session } = await setup([lamp()], 'editor', true, { spaceKeyboard: true });
+    const opened = await openDirector();
+    if (light) act(() => session.select(LAMP, false));
+    pickerArea();
+    const stored = (): unknown => (light ? lampValue(session, 'color') : ambientColor(session));
+    fireEvent.click(light ? lightSwatch() : ambientSwatch(opened));
+    const saturation = (): HTMLElement => screen.getByRole('slider', { name: 'Color' });
+    await screen.findByRole('slider', { name: 'Color' });
+    const white = saturation().getAttribute('aria-valuetext');
+    fireEvent.mouseDown(saturation(), { button: 0, buttons: 1, clientX: 100, clientY: 50 });
+    fireEvent.mouseMove(window, { buttons: 1, clientX: 150, clientY: 60 });
+    if (how === 'a lock') act(() => { session.execute({ type: 'lock', ids: [LAMP], locked: true }); });
+    else {
+      const focused = vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+      act(() => { window.dispatchEvent(new Event('blur')); });
+      focused.mockReturnValue(true);
+      act(() => { window.dispatchEvent(new Event('focus')); });
+    }
+    // The mouse is still held and keeps moving: the picker stays on what is stored.
+    fireEvent.mouseMove(window, { buttons: 1, clientX: 250, clientY: 70 });
+    fireEvent.mouseUp(window);
+    await waitFor(() => expect(saturation().getAttribute('aria-valuetext')).toBe(white));
+    expect(stored()).toBe('#ffffff');
+    if (how === 'a lock') return;
+    // A press on the point the pointer was let go writes that colour.
+    fireEvent.mouseDown(saturation(), { button: 0, buttons: 1, clientX: 250, clientY: 70 });
+    fireEvent.mouseUp(window);
+    await waitFor(() => expect(stored()).not.toBe('#ffffff'));
+  });
+
+  it.each([
+    ['the ambient light', false],
+    ['a light', true],
+  ])('takes two picker arrow keys held together on %s as one press, written as the picker shows it', async (_, light) => {
+    const { session } = await setup([lamp(LAMP, 1, 'point', { color: '#804040' })], 'editor', true, { spaceKeyboard: true });
+    if (!light) act(() => { session.execute({ type: 'environment', set: { ambientColor: '#804040' } }); });
+    const opened = await openDirector();
+    if (light) act(() => session.select(LAMP, false));
+    const stored = (): unknown => (light ? lampValue(session, 'color') : ambientColor(session));
+    const swatch = (): HTMLElement => (light ? lightSwatch() : ambientSwatch(opened));
+    fireEvent.click(swatch());
+    const area = await screen.findByRole('slider', { name: 'Color' });
+    for (let step = 0; step < 4; step += 1) fireEvent.keyDown(area, { key: 'ArrowRight', keyCode: 39, repeat: step > 0 });
+    for (let step = 0; step < 4; step += 1) fireEvent.keyDown(area, { key: 'ArrowUp', keyCode: 38, repeat: step > 0 });
+    fireEvent.keyUp(area, { key: 'ArrowRight', keyCode: 39 });
+    for (let step = 0; step < 4; step += 1) fireEvent.keyDown(area, { key: 'ArrowUp', keyCode: 38, repeat: true });
+    expect(stored()).toBe('#804040');
+    fireEvent.keyUp(area, { key: 'ArrowUp', keyCode: 38 });
+    await waitFor(() => expect(stored()).not.toBe('#804040'));
+    const shown = area.getAttribute('aria-valuetext');
+    fireEvent.click(swatch());
+    await pickerClosed();
+    fireEvent.click(swatch());
+    expect((await screen.findByRole('slider', { name: 'Color' })).getAttribute('aria-valuetext')).toBe(shown);
+    act(() => session.historyStep('undo'));
+    expect(stored()).toBe('#804040');
+  });
+
   it('drops an ambient picker drag when the browser loses focus', async () => {
     const { session } = await setup();
     const opened = await openDirector();

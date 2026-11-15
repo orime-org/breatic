@@ -20,7 +20,7 @@ test('scene floating panels preserve the approved stage, Escape and development 
     await expect(viewport).toBeVisible();
     const stage = await scene.getByTestId('scene-stage').boundingBox();
     expect(await viewport.boundingBox()).toEqual(stage);
-    expect(await scene.getByTestId('scene-viewport-toolbar').getByRole('button').evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label')))).toEqual(['Undo', 'Redo', 'Properties', 'Objects', 'Tasks', 'Scene minimap']);
+    expect(await scene.getByTestId('scene-viewport-toolbar').getByRole('button').evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label')))).toEqual(['Undo', 'Redo', 'Properties', 'Objects', 'Tasks', 'Director', 'Viewfinder', 'Scene minimap']);
     await scene.getByRole('button', { name: 'Add', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Add figure', exact: true }).click();
     const name = page.getByTestId('scene-properties-panel').getByLabel('Name', { exact: true });

@@ -46,7 +46,7 @@ describe('looking through a camera (inner#1694 design 6.1)', () => {
     expect(switched.opening).toBeGreaterThan(lookA.opening);
   });
 
-  it('closes and clears the remembered view on exit, Escape while framing, or the top-right button', () => {
+  it('closes and clears the remembered view on exit, Escape while framing, or its toolbar button', () => {
     for (const action of [{ type: 'exitCamera' }, { type: 'escape' }, { type: 'close' }]) {
       expect(run([action], lookA)).toMatchObject({ phase: 'off', source: { kind: 'free' }, returnView: null });
     }
