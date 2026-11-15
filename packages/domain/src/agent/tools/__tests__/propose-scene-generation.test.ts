@@ -17,6 +17,7 @@ import { resolveParams, type ModelEntry } from "@breatic/shared";
 import { TOOL_MAP } from "@domain/agent/tools/index.js";
 import { makeProposeSceneGeneration } from "@domain/agent/tools/propose-scene-generation.js";
 import { getModelCatalog, estimateModelCredits, inputRefusalFor } from "@domain/model-catalog/model-catalog.js";
+import type * as ModelCatalog from "@domain/model-catalog/model-catalog.js";
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 import { resolveProjectImageInputs } from "@domain/asset/project-image-inputs.js";
 import * as creditHoldService from "@domain/credit/creditHold.service.js";
@@ -26,7 +27,7 @@ import * as sceneTaskService from "@domain/node-task/scene-task.service.js";
 vi.mock("@domain/asset/project-image-inputs.js", () => ({ resolveProjectImageInputs: vi.fn() }));
 
 vi.mock("@domain/model-catalog/model-catalog.js", async (importOriginal) => {
-  const real = await importOriginal<typeof import("@domain/model-catalog/model-catalog.js")>();
+  const real = await importOriginal<typeof ModelCatalog>();
   return { ...real, inputRefusalFor: vi.fn(real.inputRefusalFor) };
 });
 
