@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * inner#1423 design 6.6 "formulas in table cells": formulas in table cells through
+ * inner#1423 design 6.6: formulas in table cells through
  * Markdown.
  *
  * A pipe table escapes a formula's pipes as it escapes any cell's, since GFM

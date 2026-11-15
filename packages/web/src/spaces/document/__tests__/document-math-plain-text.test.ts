@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * inner#1423 A11, design 6.6 "lossy check and plain text": a block's plain text, which
+ * inner#1423 A11, design 6.6: a block's plain text, which
  * proposals are located by and their cards compare, carries formulas as
  * `$$source$$` inline and `$$` lines around a block's source.
  *

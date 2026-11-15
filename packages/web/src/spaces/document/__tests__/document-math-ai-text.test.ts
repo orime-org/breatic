@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * inner#1423 A10, design 6.6 "the escape layer of the AI conversation": formulas through the AI
+ * inner#1423 A10, design 6.6: formulas through the AI
  * dialog's text layer.
  *
  * A formula's source is exempt from the escaping on the way out and the

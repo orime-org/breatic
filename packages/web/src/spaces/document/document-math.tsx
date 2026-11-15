@@ -233,7 +233,9 @@ export function holdsFormula(node: PMNode): boolean {
 
 /**
  * Gives both formula nodes their text, which `textContent` and `textBetween`
- * read, and a block formula its words in the HTML a selection drag carries.
+ * read, and a block formula its `$$` words in the HTML ProseMirror writes for
+ * the clipboard (a copy's and a block drag's `blocknote/html`, a selection
+ * drag's `text/html`).
  */
 const FormulaText = Extension.create({
   name: 'documentFormulaText',
@@ -243,23 +245,22 @@ const FormulaText = Extension.create({
   addProseMirrorPlugins() {
     // ProseMirror writes that HTML through each node's `toDOM`, which BlockNote
     // leaves empty for a block without content (`blocks-COYcDVg7.js:1303-1317`),
-    // and a text field the drag lands in reads the HTML's words. The element
-    // gets what a copy writes, which BlockNote serialises through `render`.
+    // and a text field a drag lands in reads the HTML's words. The element is
+    // the one `render` draws for BlockNote's own HTML.
     const base = DOMSerializer.fromSchema(this.editor.schema);
-    const toDOM = base.nodes[MATH_BLOCK];
-    if (toDOM === undefined) return [];
+    const toDOM = base.nodes[MATH_BLOCK]!;
     const serializer = new DOMSerializer(
       {
         ...base.nodes,
         [MATH_BLOCK]: (node) => {
           const html = toDOM(node) as { dom: HTMLElement };
-          html.dom.firstElementChild?.append(formulaSourceHolder(formulaSource(node), true));
+          html.dom.firstElementChild?.append(staticFormula(formulaSource(node), true).dom);
           return html;
         },
       },
       base.marks,
     );
-    return [new Plugin({ key: new PluginKey('documentFormulaDragHTML'), props: { clipboardSerializer: serializer } })];
+    return [new Plugin({ key: new PluginKey('documentFormulaClipboardHTML'), props: { clipboardSerializer: serializer } })];
   },
 });
 
