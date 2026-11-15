@@ -200,7 +200,8 @@ export function createGlobalApi<T extends Record<string, RemoteFunction>>(local:
  * @throws {GlobalApiError} When the region has no address, refused or did not answer.
  */
 export function callRegion(region: string, fn: string, args: unknown[], timeoutMs: number): Promise<unknown> {
-  const url = env.REGION_API_URLS[region];
+  // Own keys only: a region name from a token must not reach an inherited property.
+  const url = Object.hasOwn(env.REGION_API_URLS, region) ? env.REGION_API_URLS[region] : undefined;
   if (url === undefined) {
     return Promise.reject(new GlobalApiError(UNREACHABLE_STATUS, "unreachable", `no address for region ${region}`));
   }

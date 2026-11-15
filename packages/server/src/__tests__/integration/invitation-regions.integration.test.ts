@@ -112,6 +112,14 @@ describe("previewing an invitation", () => {
     expect(sg.received).toEqual([]);
   });
 
+  it("answers 404 for a prefix that names no region, asking none", async () => {
+    for (const prefix of ["mars", "__proto__", "constructor"]) {
+      const { status } = await preview(`${prefix}.${crypto.randomBytes(20).toString("hex")}`);
+      expect(status).toBe(404);
+    }
+    expect(sg.received).toEqual([]);
+  });
+
   it("answers 404 when the region says the invitation does not exist", async () => {
     sg.answers.previewInvitation = () => {
       throw new StandInRefusal(404, "refused");

@@ -203,6 +203,16 @@ describe("callRegion", () => {
     expect((failure as GlobalApiError).message).toBe("no address for region eu");
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it("finds no address under an object's inherited names", async () => {
+    const fetchMock = answerWith(200, { result: "ok" });
+
+    for (const region of ["__proto__", "constructor", "toString"]) {
+      const failure = await callRegion(region, "probe", [], 1000).catch((err: unknown) => err);
+      expect(failure).toBeInstanceOf(GlobalApiError);
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });
 
 describe("lastGlobalCallSucceeded", () => {

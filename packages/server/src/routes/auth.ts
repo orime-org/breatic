@@ -23,6 +23,7 @@ import { authService, invitationService, signupCodeService, studioService } from
 import { askRegion } from "@server/modules/region/fanout.js";
 import { randomUUID } from "node:crypto";
 import { env, NotFoundError, regionOfShareToken, UnauthorizedError, trackServerEvent } from "@breatic/core";
+import { isKnownRegion } from "@breatic/domain";
 import { logger } from "@breatic/core";
 import { emailSchema, getActiveLocale, normalizeEmail, parseAttribution, t } from "@breatic/shared";
 import type { PersonalStudioRef, SignupReferralSource } from "@breatic/shared";
@@ -48,6 +49,8 @@ auth.get("/invitation", rateLimitFor("invite-preview"), validate("query", invita
   const { token } = c.req.valid("query");
   // A token issued in another region names it; that region answers (inner#1955).
   const region = regionOfShareToken(token);
+  // A prefix that names no region of this deployment names no invitation.
+  if (region !== null && region !== env.REGION && !isKnownRegion(region)) throw new NotFoundError(t("server.error.not_found"));
   const data = region === null || region === env.REGION
     ? await invitationService.getInvitationPreview(token)
     : await previewInRegion(region, token);
