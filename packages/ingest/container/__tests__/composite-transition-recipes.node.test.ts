@@ -311,12 +311,13 @@ async function planeMeans(path: string, filters?: string): Promise<number[][]> {
 }
 
 /**
- * The first audio stream decoded to mono 32-bit float samples at 48 kHz.
+ * The first audio stream's first channel as 32-bit float samples at 48 kHz: the mono test tones play on both channels of the
+ * stitched output at their own level.
  * @param path - The file.
  * @returns Its samples.
  */
 async function samples(path: string): Promise<Float32Array> {
-  const { stdout } = await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-i', path, '-map', '0:a:0', '-ac', '1', '-ar', '48000', '-f', 'f32le', '-'], { encoding: 'buffer', maxBuffer: 1 << 28 });
+  const { stdout } = await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-i', path, '-map', '0:a:0', '-af', 'pan=mono|c0=c0', '-ar', '48000', '-f', 'f32le', '-'], { encoding: 'buffer', maxBuffer: 1 << 28 });
   const bytes = stdout as unknown as Buffer;
   return new Float32Array(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
 }
@@ -405,6 +406,9 @@ beforeAll(async () => {
     ...h264, '-g', '20', '-video_track_timescale', '50']);
   // The two transition clips: 1.6 s at 25 fps, flat greys 0x404040 and 0xC0C0C0, with 500 Hz and 1500 Hz ALAC tones at 48 kHz.
   // Clip B with stereo sound: the 1500 Hz tone in the left channel only, silence on the right.
+  // Clip B's grey with a mono tone, as a meeting recording or a voice-over carries.
+  await make('clip-b-mono.mp4', ['-f', 'lavfi', '-i', 'color=c=0xC0C0C0:s=64x36:r=25:d=1.6', '-f', 'lavfi', '-i', 'sine=f=1500:r=48000:d=1.6',
+    '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-ac', '1', '-shortest']);
   await make('clip-b-stereo.mp4', ['-f', 'lavfi', '-i', 'color=c=0xC0C0C0:s=64x36:r=25:d=1.6', '-f', 'lavfi', '-i', 'sine=f=1500:r=48000:d=1.6',
     '-filter_complex', '[1:a]pan=stereo|c0=c0|c1=0*c0[a]', '-map', '0:v', '-map', '[a]', '-c:v', 'libx264', '-bf', '0', '-pix_fmt', 'yuv420p', '-g', '10', '-video_track_timescale', '25', '-c:a', 'alac', '-shortest']);
   // A transparent clip: 2 s of grey at alpha 64 in a VP9 WebM, which stores its alpha in BlockAdditional.
@@ -852,6 +856,22 @@ describe('transition stitch audio (§7.17 stitch and 转场输出档 rows: acros
     // Clip B plays from 1.6 s; its left channel keeps the source's level, unboosted, and its right stays silent.
     expect(Math.abs(await level(file!, 2, 'c0') - await level(join(dir, 'clip-b-stereo.mp4'), 0.4, 'c0'))).toBeLessThan(1);
     expect(await level(file!, 2, 'c1')).toBeLessThan(-60);
+  });
+
+  it('TS06 a mono clip plays at its own level on both channels, as the preview plays it', async () => {
+    const inputs = { [CLIP_A]: join(dir, 'clip-a.mp4'), [CLIP_B]: join(dir, 'clip-b-mono.mp4') };
+    const files = await produce(inputs, [clipChunk(CLIP_A, 0, 40), clipChunk(CLIP_B, 0, 40)]);
+    const [file] = await produce({ ...inputs, [CHUNKS[0]!]: files[0]!, [CHUNKS[1]!]: files[1]! }, [{
+      kind: 'stitch', chunks: [{ inputId: CHUNKS[0], duration: r(40, 25) }, { inputId: CHUNKS[1], duration: r(40, 25) }],
+      clips: [{ inputId: CLIP_A, audio: CLIP_AUDIO }, { inputId: CLIP_B, audio: CLIP_AUDIO }], crossfade: null, profile: PROFILE,
+    }]);
+    const level = async (path: string, from: number, channel: string): Promise<number> => {
+      const { stderr } = await run('ffmpeg', ['-v', 'info', '-ss', String(from), '-t', '1', '-i', path, '-af', `pan=mono|c0=${channel},astats=metadata=0:reset=0`, '-f', 'null', '-'], { maxBuffer: 1 << 24 });
+      return Number(/RMS level dB: (-?[\d.]+|-inf)/u.exec(String(stderr))?.[1]?.replace('-inf', '-200') ?? '0');
+    };
+    const source = await level(join(dir, 'clip-b-mono.mp4'), 0.4, 'c0');
+    expect(Math.abs(await level(file!, 2, 'c0') - source)).toBeLessThan(1);
+    expect(Math.abs(await level(file!, 2, 'c1') - source)).toBeLessThan(1);
   });
 
   it('TS01 Cut (crossfade null): clip A\'s audio then clip B\'s, joined directly with no fade', async () => {

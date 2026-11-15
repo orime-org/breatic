@@ -330,7 +330,7 @@ const AAC = ["-map", "[a]", "-c:a", "aac", "-b:a", "192k", "-ar", "48000"];
  * decoder options a VP9 or VP8 stream with alpha needs (FFmpeg's own decoders skip the alpha plane, which Matroska stores as a
  * BlockAdditional; only libvpx reads it, as alpha-presentation.ts decodes it).
  */
-interface SourceFacts { iso: boolean; audio: boolean; tick: [bigint, bigint] | null; decoder: string[] }
+interface SourceFacts { iso: boolean; audio: boolean; mono: boolean; tick: [bigint, bigint] | null; decoder: string[] }
 
 /**
  * Whether the source is ISO BMFF (its edit lists are ignored so packet times are media time, the recipe's timeline;
@@ -343,13 +343,14 @@ interface SourceFacts { iso: boolean; audio: boolean; tick: [bigint, bigint] | n
  */
 async function sourceFacts(source: string, run: { signal: AbortSignal; stdoutBytes: number; stderrTailBytes: number }): Promise<SourceFacts> {
   const answer = JSON.parse((await runPlanCommand("ffprobe", ["-v", "error", "-protocol_whitelist", "file", "-show_entries",
-    "format=format_name:stream=codec_type,codec_name,time_base:stream_tags", "-of", "json", source], run))
-    .toString("utf8")) as { format?: { format_name?: string }; streams?: { codec_type?: string; codec_name?: string; time_base?: string; tags?: Record<string, string> }[] };
+    "format=format_name:stream=codec_type,codec_name,time_base,channels:stream_tags", "-of", "json", source], run))
+    .toString("utf8")) as { format?: { format_name?: string }; streams?: { codec_type?: string; codec_name?: string; time_base?: string; channels?: number; tags?: Record<string, string> }[] };
   const names = (answer.format?.format_name ?? "").split(",");
   const video = (answer.streams ?? []).find((stream) => stream.codec_type === "video");
   const tick = /^(\d+)\/(\d+)$/u.exec(video?.time_base ?? "");
   const decoder = alphaDecoderArgs(video?.codec_name, Object.entries(video?.tags ?? {}).find(([key]) => key.toLowerCase() === "alpha_mode")?.[1]);
-  return { iso: names.includes("mov") || names.includes("mp4"), audio: (answer.streams ?? []).some((stream) => stream.codec_type === "audio"),
+  const audio = (answer.streams ?? []).find((stream) => stream.codec_type === "audio");
+  return { iso: names.includes("mov") || names.includes("mp4"), audio: audio !== undefined, mono: audio?.channels === 1,
     tick: tick === null ? null : [BigInt(tick[1]!), BigInt(tick[2]!)], decoder };
 }
 
@@ -869,7 +870,8 @@ async function transitionStitch(recipe: MiniToolPlanTransitionStitch, files: Rea
   const total = recipe.chunks.reduce<[bigint, bigint]>((sum, chunk) => plus(sum, rational(chunk.duration)), [0n, 1n]);
   const [fpsNumerator, fpsDenominator] = rational(recipe.profile.fps);
   const overlap: [bigint, bigint] = recipe.crossfade === null ? [0n, 1n] : [BigInt(recipe.crossfade.frameCount) * fpsDenominator, fpsNumerator];
-  const heard = await Promise.all(recipe.clips.map(async (clip) => (clip.audio !== null && (await sourceFacts(local(files, clip.inputId), run)).audio ? clip.audio : null)));
+  const facts = await Promise.all(recipe.clips.map(async (clip) => (clip.audio === null ? null : sourceFacts(local(files, clip.inputId), run))));
+  const heard = recipe.clips.map((clip, at) => (facts[at]?.audio === true ? clip.audio : null));
   const lengths = heard.map((audio) => (audio === null ? null : minusQ(rational(audio.end), rational(audio.start))));
   const graph: string[] = [];
   let inputs = 1;
@@ -881,12 +883,13 @@ async function transitionStitch(recipe: MiniToolPlanTransitionStitch, files: Rea
       const audio = heard[at] === null ? null : audioOf(inputs, heard[at]!, `c${at}`);
       // Each clip's audio is stamped by its sample count: apad's padding after a range with no samples carries no timestamps,
       // and concat would then lay the next clip's audio on top of it. Both clips meet in stereo, the layout the preview plays:
-      // concat and acrossfade take the first input's layout, so a silent or mono first clip would fold the second to mono.
+      // concat and acrossfade take the first input's layout, so a silent or mono first clip would fold the second to mono. A
+      // mono clip plays on both channels at its own level, as the Web Audio up-mix the preview goes through does.
       if (audio === null) graph.push(`anullsrc=r=48000:cl=stereo,atrim=end_sample=${samples},asetpts=N/SR/TB[d${at}]`);
       else {
         args.push(...audio.args, local(files, clip.inputId));
         inputs += 1;
-        graph.push(audio.graph, `[c${at}]aformat=channel_layouts=stereo,apad=whole_len=${samples},atrim=end_sample=${samples},asetpts=N/SR/TB[d${at}]`);
+        graph.push(audio.graph, `[c${at}]${facts[at]!.mono ? "pan=stereo|c0=c0|c1=c0" : "aformat=channel_layouts=stereo"},apad=whole_len=${samples},atrim=end_sample=${samples},asetpts=N/SR/TB[d${at}]`);
       }
     });
     graph.push(recipe.crossfade === null ? "[d0][d1]concat=n=2:v=0:a=1[a]" : `[d0][d1]acrossfade=ns=${roundTimes(overlap, 48000n)}:c1=tri:c2=tri[a]`);
