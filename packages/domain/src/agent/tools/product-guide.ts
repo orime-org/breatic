@@ -2058,7 +2058,7 @@ export function renderProductGuide(): string {
       "two columns shows a thin line; dragging it changes the widths of those two columns, and one Cmd+Z puts " +
       "them back. When a column's last line goes the column goes with it, and when one column is left its lines " +
       "become ordinary lines again. On a page too narrow for them, columns stand one under another in reading " +
-      "order. Columns made in a table cell widen that column of the table. Columns never go inside a column or " +
+      "order. Columns made in a table cell widen that column of the table when it is too narrow to hold them side by side. Columns never go inside a column or " +
       `under a nested line: pasting or dropping columns there says ${quoted(t("spaces.document.columns.unavailable"))}. ` +
       "Tab and the six dots' indenting work inside a column. Deleting or typing over a selection that runs across " +
       "columns removes only what is selected in each column, and the AI dialog over such a selection takes the " +

@@ -155,8 +155,8 @@ function drawsAHeadingNumber(block: Block): boolean {
 
 /**
  * Walks one `blockGroup` and everything nested under it, in reading order,
- * the cells of a table in it included.
- * @param group - The group to walk, or a table cell.
+ * the cells of a table and the columns of a column group in it included.
+ * @param group - The group to walk, a table cell or a column.
  * @param parentKey - Identifies the list this group's blocks share.
  * @param walk - The running state, advanced in place.
  */

@@ -140,8 +140,9 @@ export const DOCUMENT_SCHEMA: DocumentSchema = {
     codeBlock: ["language", "quoted"],
     divider: ["quoted"],
     doc: [],
-    // The table whose cells hold blocks (inner#1619). Each is a layout block:
-    // its node holds its children directly and carries the block id itself.
+    // The column group and its columns (inner#1314), and the table whose cells
+    // hold blocks (inner#1619). Each is a layout block: its node holds its
+    // children directly and carries the block id itself.
     docColumn: ["id", "width"],
     docColumnList: ["id"],
     docTable: ["id", "quoted", "textColor"],

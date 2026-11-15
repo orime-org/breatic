@@ -29,7 +29,8 @@ import { DOC_COLUMN, DOC_COLUMN_LIST, holdsOneEmptyParagraph } from '@web/spaces
 
 /**
  * Meta on a transaction that writes a body as it was saved (a snapshot
- * restored or previewed): the repair leaves it as it is. Its column holding
+ * restored): the repair leaves it as it is. The version preview has no
+ * repair at all (`showsSavedBodies` in `build-document-editor.ts`). Its column holding
  * only an empty line is not one emptied by the transaction.
  */
 export const SAVED_BODY = new PluginKey('doc-saved-body');

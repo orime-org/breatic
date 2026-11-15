@@ -83,14 +83,15 @@ const decorationsKey = new PluginKey<DecorationSet>('documentDecorations');
  * The shape is `doc > blockGroup > blockContainer`, and each level of
  * indentation adds a `blockGroup` and a `blockContainer` under the block above
  * — so a container's depth counts two per level, starting at one. In a table
- * cell the count starts at the cell.
+ * cell or a column the count starts at that body.
  * @param doc - The document the position belongs to.
  * @param pos - The position before the block's container.
  * @returns Zero for a top-level block, one for a block indented under it.
  */
 function indentDepth(doc: PMNode, pos: number): number {
   const $pos = doc.resolve(pos);
-  // A table cell is a body of its own: its blocks count their levels from it.
+  // A table cell or a column is a body of its own: its blocks count their
+  // levels from it.
   const body = bodyDepthBetween($pos, $pos);
   return ($pos.depth - (body > 0 ? body : 1)) / 2;
 }
@@ -113,8 +114,9 @@ function bulletLevel(doc: PMNode, pos: number): number {
   const at = doc.resolve(pos);
   let run = 0;
   // A container says what kind of block it is through its own content node,
-  // the first child. A table cell holds a body of its own (inner#1619), so a
-  // list in it counts from there, as the quote's depth does.
+  // the first child. A table cell or a column holds a body of its own
+  // (inner#1619, inner#1314), so a list in it counts from there, as the
+  // indent depth does.
   for (let depth = at.depth; depth > bodyDepthBetween(at, at); depth -= 1) {
     const node = at.node(depth);
     if (node.type.name !== 'blockContainer') continue;

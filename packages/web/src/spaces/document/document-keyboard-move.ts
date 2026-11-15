@@ -15,12 +15,13 @@
  * row is (`document-drag-move.ts`): each one is taken out where it is, an
  * emptied nested group going with it, and all of them go back in, in order,
  * at the one place BlockNote would have put them. Where that place is is
- * BlockNote's rule, read through the same editor calls it makes
- * (`getMoveUpPlacement` / `getMoveDownPlacement`): past a sibling with no
- * rows under it; to the end or start of the rows under a sibling that has
- * some; out of the row above when there is no sibling that way. Its own
- * column check names BlockNote's column type; ours is `docColumn`, stopped
- * here with the cells.
+ * BlockNote's rule, read through the same editor calls its `getMovePlacement`
+ * makes: past a sibling with no rows under it; to the end or start of the
+ * rows under a sibling that has some; out of the row above when there is no
+ * sibling that way. Its own check asks the schema whether the block fits
+ * (`getInsertionPos`), which would carry a block from one column into the
+ * next; here a block stops at the top or bottom of a cell or a `docColumn`
+ * (`STOPS`).
  */
 
 import { createExtension } from '@blocknote/core';

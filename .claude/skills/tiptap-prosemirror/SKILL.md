@@ -103,7 +103,7 @@ y-prosemirror hands the pre-edit selection over on `stack-item-popped`, which yj
 
 ### A move between siblings is two transactions
 
-**A change that takes a block away from one place among its siblings and puts it in another goes out as two transactions, one that only inserts and one that only deletes (`spaces/document/document-column-drop.ts`).** y-prosemirror's `updateYFragment` pairs a changed list of children by identity from both ends only and rewrites the middle in place by position, so one transaction that both inserts and deletes rewrites every sibling between the two places and drops the words a collaborator is typing in them. The undo manager's capture timeout merges the two into one undo step.
+**A change that takes a block away from one place among its siblings and puts it in another goes out as two transactions, each touching one place: one that puts the block down (inserting it, or wrapping the target where it stands) and one that only deletes the original (`spaces/document/document-column-drop.ts`).** y-prosemirror's `updateYFragment` pairs a changed list of children by identity from both ends only and rewrites the middle in place by position, so one transaction that both inserts and deletes rewrites every sibling between the two places and drops the words a collaborator is typing in them. The undo manager's capture timeout merges the two into one undo step.
 
 ### BlockNote keeps a collaborator's ids
 

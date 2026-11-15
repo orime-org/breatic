@@ -205,8 +205,8 @@ export function holdsContent(rows: readonly PMNode[], parsed: boolean): boolean 
   });
 }
 
-/** A stored table's type, as a set to search for. */
-const STORED_TABLES: ReadonlySet<string> = new Set([DOC_TABLE]);
+/** Our table's type, the one a stored table is read as, as a set to search for. */
+const DOC_TABLES: ReadonlySet<string> = new Set([DOC_TABLE]);
 
 /**
  * The one table alone, ignoring lines around it that show no words: a line
@@ -242,7 +242,7 @@ export function judgedTable(content: Read, judge: JudgeMedium, schema: Schema): 
  * @returns True when it is refused there.
  */
 export function refusedInCell(inCell: boolean, rows: readonly PMNode[]): boolean {
-  return inCell && holds(Fragment.from(rows), STORED_TABLES) && onlyTable(rows) === null;
+  return inCell && holds(Fragment.from(rows), DOC_TABLES) && onlyTable(rows) === null;
 }
 
 /**
@@ -633,7 +633,7 @@ export function putContent(editor: Editor, content: Read, options: PutOptions): 
   const startsInCode = $drop !== null ? $drop.parent.type.spec.code === true : selection.$from.parent.type.spec.code === true && selection.$from.sameParent(selection.$to);
   const source = content.source.kind === 'slice' ? content.source.slice : blocksSlice(content.source.blocks, schema);
   // A table in a cell goes by the cell's table rules (A12–A14) even from a code block.
-  const plain = content.plain ?? (startsInCode && !(inCell && holds(source.content, STORED_TABLES)) ? content.codeText ?? null : null);
+  const plain = content.plain ?? (startsInCode && !(inCell && holds(source.content, DOC_TABLES)) ? content.codeText ?? null : null);
   /**
    * Places content at its target, all of it or none: a placement that fails
    * part way leaves the body and the selection as they were. A drop's point is aimed first and its

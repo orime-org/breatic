@@ -93,10 +93,12 @@ function wordEdges(doc: ProseMirrorNode, block: BlockAt): { start: number; end: 
  * in reading order, and a start at the end of a block other than the end's
  * steps on one; what is then inside one line of words is the selected
  * words, and anything else takes the whole blocks it runs from and to, a
- * table it runs into whole. An end outside any line (select-all, a block
+ * table or column group it runs out of a cell or column of whole
+ * (`document-body-carrier.ts`). An end outside any line (select-all, a block
  * selected) takes the blocks the selection holds. The insert block (§5.4)
- * is the range's last block: the whole table for a range that takes one in,
- * the block in the cell for words inside a single cell.
+ * is the range's last block: the whole table or column group for a range
+ * that takes one in, the block in the cell or column for words inside a
+ * single cell or column.
  * @param state - The editor state, holding the selection.
  * @returns The range, or null when it holds no words.
  */

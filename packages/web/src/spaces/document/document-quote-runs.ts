@@ -24,11 +24,11 @@ import { QUOTED } from '@web/spaces/document/document-list-block';
 
 /**
  * Every block id in one body, in reading order, with whether it is quoted. A
- * table is one block of the body it stands in; its cells are bodies of their
- * own, gathered to be read after it.
- * @param group - A `blockGroup` to walk, or a table cell.
+ * table or a column group is one block of the body it stands in; its cells or
+ * columns are bodies of their own, gathered to be read after it.
+ * @param group - A `blockGroup` to walk, a table cell or a column.
  * @param out - The blocks found so far, appended to in place.
- * @param cells - The cells of the tables met, appended to in place.
+ * @param cells - The cells and columns met, appended to in place.
  */
 function walkGroup(
   group: PMNode,

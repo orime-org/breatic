@@ -58,9 +58,10 @@ export interface Clipped {
 }
 
 /**
- * The cell both ends of a selection are in, when they are in one.
+ * The innermost cell or column (inner#1314) both ends of a selection are in,
+ * when they are in one.
  * @param selection - The selection.
- * @returns The cell's depth, or -1.
+ * @returns Its depth, or -1.
  */
 function oneCellDepth(selection: Selection): number {
   const { $from, $to } = selection;

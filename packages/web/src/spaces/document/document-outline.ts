@@ -31,10 +31,11 @@ interface Building {
 }
 
 /**
- * The body's headings in reading order. Only `blockContainer`s are walked into,
- * so a layout table's cells are passed over; a stored table's cells hold words
- * only, so they hold no heading to find.
- * @param group - A `blockGroup` to walk.
+ * The body's headings in reading order. `blockContainer`s and column groups are
+ * walked into, a group column by column (inner#1314), so a layout table's cells
+ * are passed over; a stored table's cells hold words only, so they hold no
+ * heading to find.
+ * @param group - A `blockGroup` or a column to walk.
  * @param found - Where headings are collected, in order.
  */
 function collect(group: PMNode, found: PMNode[]): void {

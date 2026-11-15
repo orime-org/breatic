@@ -154,7 +154,8 @@ function tableBesideGap(row: Element, pointer: Point): Element | null {
 
 /**
  * The table standing directly in a column at the pointer's height, when the
- * pointer is in the gap's half next to that column's left.
+ * pointer is in the left half of the gap before that column, next to the
+ * previous column, where the table's strip stands.
  * @param column - The column right of the gap.
  * @param pointer - Where the pointer is.
  * @returns The table's id, or null.

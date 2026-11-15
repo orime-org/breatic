@@ -36,8 +36,8 @@ import { readClipboardSlice, rowsOf } from '@web/spaces/document/document-paste-
 import { replaceStoredHeld, storedTableRange } from '@web/spaces/document/document-table-copy';
 import { holdsContent, putContent, refusedInCell, selectPlaced, type Placed } from '@web/spaces/document/document-put';
 
-/** The type a table read from the clipboard has, as a set to search for. */
-const PARSED_TABLES: ReadonlySet<string> = new Set(['table']);
+/** A stored (legacy) table's type, as a set to search the dragged content for. */
+const STORED_TABLES: ReadonlySet<string> = new Set(['table']);
 
 /** The editor a drop is put by. */
 type Editor = Parameters<typeof putContent>[0];
@@ -79,7 +79,7 @@ export function dropAsPaste(editor: Editor, view: EditorView, event: DragEvent, 
   // A stored table, whole or left, is read as its copy is, as a table whose
   // cells hold blocks (temporary, with #1362's stored tables), before its
   // comments and row ids are settled, which the HTML would not carry.
-  const parsed = holds(dragged.content, PARSED_TABLES);
+  const parsed = holds(dragged.content, STORED_TABLES);
   const read = parsed ? readClipboardSlice(view.state.schema, view.serializeForClipboard(dragged).dom.innerHTML, '') : dragged;
   const content = withoutRowIdsIn(removes ? read : landingSlice(read, view, true), tr.doc);
   const { rows } = rowsOf(content);
