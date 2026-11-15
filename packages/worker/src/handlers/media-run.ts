@@ -13,7 +13,7 @@
  */
 
 import { logger } from "@breatic/core";
-import { assertBeforeDeadline, DeadlinePassed, t } from "@breatic/shared";
+import { assertBeforeDeadline, DeadlinePassed, inputRefusalText, t } from "@breatic/shared";
 import {
   DeadlinePassed as ProviderDeadlinePassed,
   NoUpstreamAvailable,
@@ -92,7 +92,8 @@ export interface MediaRunDone {
 /**
  * What the task row and the node say about a failed run: an upstream's failure as it read before provider, its own
  * words after the upstream's name; a model none of whose upstreams has its key in the sentence the server refuses
- * such a run with, naming the variables; anything else in provider's words.
+ * such a run with, naming the variables; a run every upstream here with its key refused for its input in the
+ * sentence the panel and the server give, naming the limit (#1521); anything else in provider's words.
  * @param reason - provider's reason.
  * @param displayName - What the user knows the model as.
  * @returns The sentence.
@@ -102,6 +103,10 @@ function failureMessage(reason: Error, displayName: string): string {
   if (reason instanceof NoUpstreamAvailable && reason.reasons.length > 0 && reason.reasons.every((r) => r.kind === "missing_key")) {
     const envVars = reason.reasons.map((r) => (r.kind === "missing_key" ? r.envVar : ""));
     return t("server.model.not_configured", { model: displayName, envVars: envVars.join(", ") });
+  }
+  if (reason instanceof NoUpstreamAvailable && reason.reasons.every((r) => r.kind !== "failed")) {
+    const refused = reason.reasons.find((r) => r.kind === "unsupported_input");
+    if (refused !== undefined) return inputRefusalText(refused, displayName);
   }
   return reason.message;
 }

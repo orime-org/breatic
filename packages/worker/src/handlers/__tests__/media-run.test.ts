@@ -393,6 +393,27 @@ describe("how a run ends", () => {
     });
   });
 
+  it("says which limit the run broke when the upstreams here refused its input, in the user's language (#1521)", async () => {
+    setLocaleMessages("en", JSON.parse(readFileSync(resolve(import.meta.dirname, "../../../../../locales/en.json"), "utf8")) as Record<string, unknown>);
+    setLocale("en");
+    const reason = new NoUpstreamAvailable("voice-model", [
+      { upstream: "wavespeed", kind: "unsupported_input", reason: "WaveSpeed text maxLength 8000", limit: { field: "prompt", measure: "characters", max: 8000 } },
+      { upstream: "fal", kind: "missing_key", envVar: "FAL_KEY" },
+    ]);
+    const { run, deps } = setup({ ticket: ticket(3, "running") }, { poll: vi.fn(async (): Promise<MediaAnswer> => ({ state: "failed", reason, costs: [], ...NONE })) });
+
+    await expect(runMedia(run, deps)).rejects.toMatchObject({ reason, message: "Voice Model takes at most 8,000 characters in the text." });
+  });
+
+  it("gives the general sentence when the refusal names no count", async () => {
+    setLocaleMessages("en", JSON.parse(readFileSync(resolve(import.meta.dirname, "../../../../../locales/en.json"), "utf8")) as Record<string, unknown>);
+    setLocale("en");
+    const reason = new NoUpstreamAvailable("voice-model", [{ upstream: "wavespeed", kind: "unsupported_input", param: "voice_id", value: "Nobody" }]);
+    const { run, deps } = setup({ ticket: ticket(3, "running") }, { poll: vi.fn(async (): Promise<MediaAnswer> => ({ state: "failed", reason, costs: [], ...NONE })) });
+
+    await expect(runMedia(run, deps)).rejects.toMatchObject({ message: "Voice Model can’t take this run as set up. Change the settings or pick another model." });
+  });
+
   it("keeps provider's words when an upstream that had its key failed too", async () => {
     const reason = new NoUpstreamAvailable("voice-model", [
       { upstream: "wavespeed", kind: "missing_key", envVar: "WAVESPEED_API_KEY" },
