@@ -14,8 +14,7 @@ import { AllSelection } from '@tiptap/pm/state';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
-
-type Editor = ReturnType<typeof buildDocumentEditor>;
+import { written, type Editor } from '@web/spaces/document/__tests__/paste-harness';
 
 const mounted: Editor[] = [];
 
@@ -42,29 +41,6 @@ function openAllSelected(blocks: unknown[]): Editor {
   return editor;
 }
 
-/**
- * Fires a copy and reads what it put on the clipboard.
- * @param editor - The editor.
- * @returns The clipboard.
- */
-function copy(editor: Editor): Record<string, string> {
-  const data: Record<string, string> = {};
-  const event = new Event('copy', { bubbles: true, cancelable: true });
-  Object.defineProperty(event, 'clipboardData', {
-    value: {
-      setData: (format: string, value: string) => {
-        data[format] = value;
-      },
-      clearData: () => {
-        Object.keys(data).forEach((key) => delete data[key]);
-      },
-      getData: (format: string) => data[format] ?? '',
-    },
-  });
-  editor.prosemirrorView.dom.dispatchEvent(event);
-  return data;
-}
-
 describe('a selection holding a stand-in block', () => {
   const body = [
     { type: 'paragraph', content: 'before' },
@@ -75,7 +51,7 @@ describe('a selection holding a stand-in block', () => {
   it('copies the words around it', () => {
     const editor = openAllSelected(body);
 
-    const plain = copy(editor)['text/plain'] ?? '';
+    const plain = written(editor.prosemirrorView.dom, 'copy')['text/plain'] ?? '';
 
     expect(plain).toContain('before');
     expect(plain).toContain('after');
@@ -83,15 +59,9 @@ describe('a selection holding a stand-in block', () => {
 
   it('gives a drag of it the plain text a copy writes', () => {
     const editor = openAllSelected(body);
-    const data: Record<string, string> = {};
-    const event = new Event('dragstart', { bubbles: true, cancelable: true });
-    Object.defineProperty(event, 'dataTransfer', {
-      value: { files: [], effectAllowed: '', setData: (format: string, value: string) => { data[format] = value; }, clearData: (): void => undefined, setDragImage: (): void => undefined, getData: (format: string) => data[format] ?? '' },
-    });
+    const dragged = written(editor.prosemirrorView.dom, 'dragstart');
 
-    editor.prosemirrorView.dom.dispatchEvent(event);
-
-    expect(data['text/plain']).toBe(copy(editor)['text/plain']);
+    expect(dragged['text/plain']).toBe(written(editor.prosemirrorView.dom, 'copy')['text/plain']);
   });
 });
 

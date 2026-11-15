@@ -19,9 +19,9 @@ import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { markdownBlocks } from '@web/spaces/document/document-markdown';
+import { written, type Editor } from '@web/spaces/document/__tests__/paste-harness';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
-type Editor = ReturnType<typeof buildDocumentEditor>;
 
 const mounted: Editor[] = [];
 
@@ -72,65 +72,13 @@ function select(editor: Editor, from: number, to: number): void {
   view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, from, to)));
 }
 
-/**
- * Fires a copy and reads what it put on the clipboard.
- * @param editor - The editor.
- * @returns The clipboard, by format.
- */
-function copy(editor: Editor): Record<string, string> {
-  const data: Record<string, string> = {};
-  const event = new Event('copy', { bubbles: true, cancelable: true });
-  Object.defineProperty(event, 'clipboardData', {
-    value: {
-      setData: (format: string, value: string) => {
-        data[format] = value;
-      },
-      clearData: () => {
-        Object.keys(data).forEach((key) => delete data[key]);
-      },
-      getData: (format: string) => data[format] ?? '',
-    },
-  });
-  editor.prosemirrorView.dom.dispatchEvent(event);
-  return data;
-}
-
-/**
- * Starts a drag of the selection the way the browser does, and reads what
- * it carries.
- * @param editor - The editor.
- * @param format - The format to read.
- * @returns The data in that format.
- */
-function dragText(editor: Editor, format = 'text/plain'): string {
-  const data: Record<string, string> = {};
-  const event = new Event('dragstart', { bubbles: true, cancelable: true });
-  Object.defineProperty(event, 'dataTransfer', {
-    value: {
-      files: [],
-      effectAllowed: '',
-      setData: (format: string, value: string) => {
-        data[format] = value;
-      },
-      clearData: () => {
-        Object.keys(data).forEach((key) => delete data[key]);
-      },
-      setDragImage: (): void => undefined,
-      // BlockNote's own listener on the page reads the drag back.
-      getData: (type: string) => data[type] ?? '',
-    },
-  });
-  editor.prosemirrorView.dom.dispatchEvent(event);
-  return data[format] ?? '';
-}
-
 describe('copying a selection that holds formulas', () => {
   it('writes an inline formula into the plain text as $$source$$', () => {
     const editor = open([{ type: 'paragraph', content: ['x ', { type: 'math', props: { source: 'a^2' } }, ' y'] }]);
     const paragraph = before(editor, 'paragraph');
     const size = editor.prosemirrorState.doc.nodeAt(paragraph)!.content.size;
     select(editor, paragraph + 1, paragraph + 1 + size);
-    expect(copy(editor)['text/plain']?.trim()).toBe('x $$a^2$$ y');
+    expect(written(editor.prosemirrorView.dom, 'copy')['text/plain']?.trim()).toBe('x $$a^2$$ y');
   });
 
   it('writes a multi-line inline formula into the plain text on one line, without its comments', () => {
@@ -138,7 +86,7 @@ describe('copying a selection that holds formulas', () => {
     const paragraph = before(editor, 'paragraph');
     const size = editor.prosemirrorState.doc.nodeAt(paragraph)!.content.size;
     select(editor, paragraph + 1, paragraph + 1 + size);
-    expect(copy(editor)['text/plain']?.trim()).toBe('x $$a b$$ y');
+    expect(written(editor.prosemirrorView.dom, 'copy')['text/plain']?.trim()).toBe('x $$a b$$ y');
   });
 
   it('writes two formulas side by side into the plain text so they read back as two', async () => {
@@ -147,7 +95,7 @@ describe('copying a selection that holds formulas', () => {
     const size = editor.prosemirrorState.doc.nodeAt(paragraph)!.content.size;
     select(editor, paragraph + 1, paragraph + 1 + size);
 
-    const [read] = await markdownBlocks(copy(editor)['text/plain'] ?? '');
+    const [read] = await markdownBlocks(written(editor.prosemirrorView.dom, 'copy')['text/plain'] ?? '');
 
     const pieces = (read!.block as unknown as { content: { type: string; props?: { source?: string } }[] }).content;
     expect(pieces.filter((piece) => piece.type === 'math').map((piece) => piece.props?.source)).toEqual(['a', 'b']);
@@ -163,7 +111,7 @@ describe('copying a selection that holds formulas', () => {
     const paragraph = before(editor, 'paragraph');
     const size = editor.prosemirrorState.doc.nodeAt(paragraph)!.content.size;
     select(editor, paragraph + 1, paragraph + 1 + size);
-    expect(copy(editor)['text/plain']?.trim()).toBe(plain);
+    expect(written(editor.prosemirrorView.dom, 'copy')['text/plain']?.trim()).toBe(plain);
   });
 
   it('parts two formulas side by side in a table cell with a space in the plain text', () => {
@@ -172,7 +120,7 @@ describe('copying a selection that holds formulas', () => {
     const paragraph = before(editor, 'paragraph');
     const size = editor.prosemirrorState.doc.nodeAt(paragraph)!.content.size;
     select(editor, paragraph + 1, paragraph + 1 + size);
-    const plain = copy(editor)['text/plain'] ?? '';
+    const plain = written(editor.prosemirrorView.dom, 'copy')['text/plain'] ?? '';
     expect(plain).toContain('$$a$$ $$b$$');
     expect(plain).not.toContain('<!--');
   });
@@ -184,7 +132,7 @@ describe('copying a selection that holds formulas', () => {
       { type: 'paragraph', content: 'end' },
     ]);
     select(editor, before(editor, 'paragraph') + 1, editor.prosemirrorState.doc.content.size - 3);
-    const plain = copy(editor)['text/plain'] ?? '';
+    const plain = written(editor.prosemirrorView.dom, 'copy')['text/plain'] ?? '';
     expect(plain).toContain('$$a$$ $$b$$');
     expect(plain).not.toContain('<!--');
   });
@@ -224,18 +172,18 @@ describe('copying a selection that holds formulas', () => {
   ])('gives a selection drag the plain text a copy writes, for %s', (_name, blocks, pick) => {
     const editor = open(blocks);
     pick(editor);
-    const dragged = dragText(editor);
-    expect(dragged).toBe(copy(editor)['text/plain']);
+    const dragged = written(editor.prosemirrorView.dom, 'dragstart')['text/plain'];
+    expect(dragged).toBe(written(editor.prosemirrorView.dom, 'copy')['text/plain']);
   });
 
   it('leaves a serialising after a drag, and the selection it reads, to Tiptap', async () => {
     const editor = open([{ type: 'paragraph', content: 'lead' }, { type: 'mathBlock', props: { source: 'x' } }, { type: 'paragraph', content: 'tail' }]);
     select(editor, before(editor, 'paragraph') + 1, editor.prosemirrorState.doc.content.size - 3);
-    dragText(editor);
+    written(editor.prosemirrorView.dom, 'dragstart');
     await Promise.resolve();
     const view = editor.prosemirrorView;
 
-    expect(view.serializeForClipboard(view.state.selection.content()).text).not.toBe(copy(editor)['text/plain']);
+    expect(view.serializeForClipboard(view.state.selection.content()).text).not.toBe(written(editor.prosemirrorView.dom, 'copy')['text/plain']);
     view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, before(editor, 'mathBlock'))));
     const selected = view.state.selection;
     view.serializeForClipboard(selected.content());
@@ -246,7 +194,7 @@ describe('copying a selection that holds formulas', () => {
     const editor = open([{ type: 'paragraph', content: 'lead' }, { type: 'mathBlock', props: { source: 'x^2' } }, { type: 'paragraph', content: 'tail' }]);
     select(editor, before(editor, 'paragraph') + 1, editor.prosemirrorState.doc.content.size - 3);
     const host = document.createElement('div');
-    host.innerHTML = dragText(editor, 'text/html');
+    host.innerHTML = written(editor.prosemirrorView.dom, 'dragstart')['text/html'] ?? '';
     // A text field the drag lands in reads the HTML's words.
     expect(host.querySelector('[data-content-type="mathBlock"]')?.textContent).toBe('$$\nx^2\n$$');
   });
@@ -259,7 +207,7 @@ describe('copying a selection that holds formulas', () => {
     ]);
     const { doc } = editor.prosemirrorState;
     select(editor, before(editor, 'paragraph') + 1, doc.content.size - 3);
-    expect(copy(editor)['text/plain']).toContain('$$\n\\int x\n$$');
+    expect(written(editor.prosemirrorView.dom, 'copy')['text/plain']).toContain('$$\n\\int x\n$$');
   });
 
 });
@@ -273,7 +221,7 @@ describe('pasting a copy that holds a formula block into a code block', () => {
       { type: 'paragraph', content: 'tail' },
     ]);
     select(editor, before(editor, 'paragraph') + 1, editor.prosemirrorState.doc.content.size - 3);
-    const formats = copy(editor);
+    const formats = written(editor.prosemirrorView.dom, 'copy');
     const code = before(editor, 'codeBlock');
     const end = code + 1 + editor.prosemirrorState.doc.nodeAt(code)!.content.size;
     select(editor, end, end);

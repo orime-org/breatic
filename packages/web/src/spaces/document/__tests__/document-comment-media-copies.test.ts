@@ -26,10 +26,9 @@ import { moveRowTo } from '@web/spaces/document/document-drag-move';
 import { duplicateRow } from '@web/spaces/document/document-handle-commands';
 import { rowById } from '@web/spaces/document/document-row-by-id';
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
-import { OURS, settled } from '@web/spaces/document/__tests__/paste-harness';
+import { OURS, settled, type Editor } from '@web/spaces/document/__tests__/paste-harness';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
-type Editor = ReturnType<typeof buildDocumentEditor>;
 
 const mounted: Editor[] = [];
 

@@ -29,6 +29,7 @@ import {
   tableLineItem,
   tableLineSelection,
 } from '@web/spaces/document/document-table-line-clipboard';
+import { written } from '@web/spaces/document/__tests__/paste-harness';
 import { tableBlock, type TableInput } from '@web/spaces/document/__tests__/table-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
@@ -53,19 +54,7 @@ beforeEach(() => {
     configurable: true,
     value: vi.fn((command: string) => {
       if (command !== 'copy') return false;
-      const event = new Event('copy', { bubbles: true, cancelable: true });
-      Object.defineProperty(event, 'clipboardData', {
-        value: {
-          setData: (format: string, value: string) => {
-            copied[format] = value;
-          },
-          clearData: () => {
-            copied = {};
-          },
-          getData: (format: string) => copied[format] ?? '',
-        },
-      });
-      document.dispatchEvent(event);
+      copied = written(document, 'copy');
       return true;
     }),
   });
@@ -191,21 +180,9 @@ function cellOf(editor: Editor, words: string): number {
  * @returns The clipboard, by type.
  */
 function cmdC(editor: Editor): Record<string, string> {
-  const data: Record<string, string> = {};
-  const event = new Event('copy', { bubbles: true, cancelable: true });
-  Object.defineProperty(event, 'clipboardData', {
-    value: {
-      setData: (format: string, value: string) => {
-        data[format] = value;
-      },
-      clearData: () => undefined,
-      getData: (format: string) => data[format] ?? '',
-    },
-  });
   // A copy in the body lands while it holds the focus.
   editor.prosemirrorView.focus();
-  editor.prosemirrorView.dom.dispatchEvent(event);
-  return data;
+  return written(editor.prosemirrorView.dom, 'copy');
 }
 
 /**

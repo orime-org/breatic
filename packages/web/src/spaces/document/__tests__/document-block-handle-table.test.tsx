@@ -16,6 +16,7 @@ import * as Y from 'yjs';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { written } from '@web/spaces/document/__tests__/paste-harness';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
@@ -135,21 +136,11 @@ describe('the strip on a table (A5)', () => {
   });
 
   it('copy puts the whole table on the clipboard (inner#1239)', async () => {
-    const written: Record<string, string> = {};
+    const clip: Record<string, string> = {};
     Object.defineProperty(document, 'execCommand', {
       configurable: true,
       value: vi.fn(() => {
-        const event = new Event('copy', { bubbles: true, cancelable: true });
-        Object.defineProperty(event, 'clipboardData', {
-          value: {
-            setData: (format: string, value: string) => {
-              written[format] = value;
-            },
-            clearData: () => undefined,
-            getData: (format: string) => written[format] ?? '',
-          },
-        });
-        document.dispatchEvent(event);
+        Object.assign(clip, written(document, 'copy'));
         return true;
       }),
     });
@@ -159,8 +150,8 @@ describe('the strip on a table (A5)', () => {
 
     fireEvent.click(screen.getByTestId('doc-block-row-copy'));
 
-    await waitFor(() => expect(written['text/html']).toContain('<table'));
-    expect(written['text/html']).not.toContain('above');
+    await waitFor(() => expect(clip['text/html']).toContain('<table'));
+    expect(clip['text/html']).not.toContain('above');
     expect((editor.document as { type: string }[]).some((block) => block.type === 'docTable')).toBe(true);
   });
 

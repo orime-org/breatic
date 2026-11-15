@@ -12,10 +12,9 @@ import { act } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { TextSelection } from '@tiptap/pm/state';
 
-import { OURS, open, paste, positionOf, settled } from './paste-harness';
+import { OURS, open, paste, positionOf, settled, type Editor } from './paste-harness';
 import { tableBlock } from './table-fixtures';
 
-type Editor = ReturnType<typeof open>['editor'];
 
 /**
  * A body with a two-row table whose first cell holds a heading and a paragraph,

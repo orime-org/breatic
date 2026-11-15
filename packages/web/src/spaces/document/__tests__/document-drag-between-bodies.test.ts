@@ -11,32 +11,18 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { AllSelection } from '@tiptap/pm/state';
 
-import { caretIn, drop, open, paste, pasteFormats, select, unmountAll } from '@web/spaces/document/__tests__/paste-harness';
+import { caretIn, drop, open, paste, pasteFormats, select, unmountAll, written, type Editor } from '@web/spaces/document/__tests__/paste-harness';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 afterEach(unmountAll);
 
-type Editor = ReturnType<typeof open>['editor'];
-
 /**
- * Fires an event that writes a data transfer on the body, and reads what it wrote.
- * @param editor - The editor holding the selection.
- * @param type - `copy` or `dragstart`.
- * @returns Each format written, with its data.
+ * Blocks as JSON with their ids left out, which differ between two bodies.
+ * @param blocks - The blocks.
+ * @returns The JSON.
  */
-function written(editor: Editor, type: 'copy' | 'dragstart'): Record<string, string> {
-  const data: Record<string, string> = {};
-  const transfer = {
-    types: [], files: [], effectAllowed: '',
-    setData: (format: string, value: string): void => { data[format] = value; },
-    getData: (format: string): string => data[format] ?? '',
-    clearData: (): void => undefined,
-    setDragImage: (): void => undefined,
-  };
-  const event = new Event(type, { bubbles: true, cancelable: true });
-  Object.defineProperty(event, type === 'copy' ? 'clipboardData' : 'dataTransfer', { value: transfer });
-  editor.prosemirrorView!.dom.dispatchEvent(event);
-  return data;
+function withoutIds(blocks: unknown): string {
+  return JSON.stringify(blocks, (key, value: unknown) => (key === 'id' ? undefined : value));
 }
 
 describe('a selection dragged in from another body', () => {
@@ -58,18 +44,7 @@ describe('a selection dragged in from another body', () => {
       .map((piece) => `${piece.text}:${Object.keys(piece.styles!).join(',')}`);
     expect(styled).toEqual(['red:textColor', ' words:underline']);
   });
-});
 
-/**
- * Blocks as JSON with their ids left out, which differ between two bodies.
- * @param blocks - The blocks.
- * @returns The JSON.
- */
-function withoutIds(blocks: unknown): string {
-  return JSON.stringify(blocks, (key, value: unknown) => (key === 'id' ? undefined : value));
-}
-
-describe('a selection dragged in from another body', () => {
   const formulas = [
     { type: 'paragraph', content: [{ type: 'text', text: 'bold', styles: { bold: true } }, ' x ', { type: 'math', props: { source: 'a^2' } }] },
     { type: 'mathBlock', props: { source: 'x^2' } },
@@ -92,8 +67,8 @@ describe('a selection dragged in from another body', () => {
   ])('lands as a paste of its copy does, for %s onto a %s', (_name, target, blocks) => {
     const source = open(blocks).editor;
     select(source, 3, source.prosemirrorView!.state.doc.content.size - 3);
-    const dragged = written(source, 'dragstart');
-    const copied = written(source, 'copy');
+    const dragged = written(source.prosemirrorView!.dom, 'dragstart');
+    const copied = written(source.prosemirrorView!.dom, 'copy');
     const dropped = open([{ type: target, content: 'let x = 1' }]).editor;
     const pasted = open([{ type: target, content: 'let x = 1' }]).editor;
     const end = (editor: Editor): number => editor.prosemirrorView!.state.doc.content.size - 3;

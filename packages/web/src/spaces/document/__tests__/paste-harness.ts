@@ -158,6 +158,35 @@ export function paste(editor: Editor, html: string, text: string): void {
 }
 
 /**
+ * Fires a copy or a drag start, as a browser does, and reads what the
+ * handlers wrote into its data transfer.
+ * @param target - Where the event fires.
+ * @param type - `copy` or `dragstart`.
+ * @returns Each format written, with its data.
+ */
+export function written(target: EventTarget, type: 'copy' | 'dragstart'): Record<string, string> {
+  const data: Record<string, string> = {};
+  const transfer = {
+    types: [],
+    files: [],
+    effectAllowed: '',
+    setData: (format: string, value: string): void => {
+      data[format] = value;
+    },
+    // BlockNote's own listener on the page reads a drag back.
+    getData: (format: string): string => data[format] ?? '',
+    clearData: (): void => {
+      Object.keys(data).forEach((format) => delete data[format]);
+    },
+    setDragImage: (): void => undefined,
+  };
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperty(event, type === 'copy' ? 'clipboardData' : 'dataTransfer', { value: transfer });
+  target.dispatchEvent(event);
+  return data;
+}
+
+/**
  * Drops web content at a document position, the way a drop from another
  * page delivers it.
  * @param editor - The editor.
