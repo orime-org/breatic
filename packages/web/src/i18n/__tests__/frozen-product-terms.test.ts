@@ -212,6 +212,9 @@ describe('frozen product terms (#1336)', () => {
    */
   const DOCUMENT_FORMS = ['文档', '文件', 'ドキュメント', '문서'];
 
+  /** Motion, the web animation Space type (#1490), translated as a common word. */
+  const MOTION_FORMS = ['动效', '动画', '動畫', '動效', 'モーション', '모션'];
+
   /** Each collision key paired with its English term + the localized forms that must be absent. */
   const COLLISION_FROZEN: ReadonlyArray<
     readonly [key: string, term: string, forbidden: readonly string[]]
@@ -227,6 +230,9 @@ describe('frozen product terms (#1336)', () => {
     ['spaces.document.docMenu.label', 'Document', DOCUMENT_FORMS],
     ['membership.quota.concurrentEditors', 'Document', DOCUMENT_FORMS],
     ['membership.card.connections', 'Document', DOCUMENT_FORMS],
+    ['spaces.kind.webAnimation', 'Motion', MOTION_FORMS],
+    ['timeline.webAnimation.goMake', 'Motion', MOTION_FORMS],
+    ['timeline.webAnimation.openInMotion', 'Motion', MOTION_FORMS],
   ];
 
   // The freeze applies to the four non-English locales; en is the source and
