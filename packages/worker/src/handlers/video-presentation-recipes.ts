@@ -14,7 +14,7 @@ import {
   type MiniToolPlanDetectorProfile, type MiniToolPlanFrameCrop, type MiniToolPlanFrameTarget, type MiniToolPlanRecipe,
   type VideoPresentationLedger, type VideoPresentationLedgerReceipt,
 } from '@breatic/shared';
-import { presentationSlack, videoCarrierGeometry } from '@breatic/shared/mini-tools';
+import { conformedTime, presentationConform, videoCarrierGeometry } from '@breatic/shared/mini-tools';
 
 /** An exact rational as numerator and positive denominator. */
 type Q = [bigint, bigint];
@@ -160,40 +160,35 @@ function presentedFrames(ledger: VideoPresentationLedger): PresentedFrame[] {
  * or not, at the keyframe's dts less min(0, the first packet's dts) (§93 D6-1, §7.17 timeline row). Each derived-empty frame
  * is its own entry with the plan's fill. With `from`, the first entry starts at that presentation time inside the first
  * frame instead (a chunk on an output frame grid starts at its first slot's time, §7.17 transition output profile row).
+ * Entries for an output frame grid (`grid`) of a table whose clock rounded a constant rate's frame times (§7.17 rounding
+ * clock row) put every frame from the second on at its exact grid point, and each source span carries that grid in source
+ * time for the container to snap the stored frame times to.
  * @param ledger - The full ledger.
  * @param window - The window.
  * @param from - A presentation time in the window's first frame to start from; that frame's start when absent.
+ * @param grid - Whether the entries are placed on an output frame grid.
  * @returns The entries in presentation order.
  * @throws {RangeError} When the window lies outside the presented frames or `from` outside its first frame.
  */
-export function windowEntries(ledger: VideoPresentationLedger, window: FrameWindow, from?: MiniToolPlanExact): MiniToolPlanEntry[] {
-  return placedEntries(ledger, window, from === undefined ? undefined : q(from)).map(({ entry }) => entry);
+export function windowEntries(ledger: VideoPresentationLedger, window: FrameWindow, from?: MiniToolPlanExact, grid = false): MiniToolPlanEntry[] {
+  return placedEntries(ledger, window, from === undefined ? undefined : q(from), grid).map(({ entry }) => entry);
 }
 
 /**
  * A window's entries, each with the presentation ordinal of its first frame.
  * @param ledger - The full ledger.
  * @param window - The window.
- * @param requested - A presentation time in the window's first frame to start from; that frame's start when absent.
+ * @param from - A presentation time in the window's first frame to start from; that frame's start when absent.
+ * @param grid - Whether the entries are placed on an output frame grid.
  * @returns The entries in presentation order with their first ordinals.
  * @throws {RangeError} When the window lies outside the presented frames, `from` outside its first frame, or no source keyframe precedes a span.
  */
-function placedEntries(ledger: VideoPresentationLedger, window: FrameWindow, requested?: Q): { entry: MiniToolPlanEntry; ordinal: number }[] {
+function placedEntries(ledger: VideoPresentationLedger, window: FrameWindow, from: Q | undefined, grid: boolean): { entry: MiniToolPlanEntry; ordinal: number }[] {
   const { plan } = ledger;
   const frames = presentedFrames(ledger);
   if (window.start < 0 || window.end > frames.length || window.end <= window.start) throw new RangeError('The window lies outside the presented frames');
   const scale = BigInt(plan.presentation.timescale);
-  const opening = frames[window.start]!;
-  // A start up to half a source tick before the first frame is the rounding of that frame's stored time (§7.17): it shows from
-  // the frame's own start.
-  const slack = presentationSlack(plan.presentation, plan.originMapping.timeBase);
-  const openingStart: Q = [BigInt(opening.start), scale];
-  const from = requested !== undefined && slack !== null && cmp(requested, openingStart) < 0n && cmp(plus(requested, q(slack)), openingStart) >= 0n ? openingStart : requested;
-  if (from !== undefined && (cmp(from, [BigInt(opening.start), scale]) < 0n || cmp(from, [BigInt(opening.end), scale]) >= 0n)) {
-    throw new RangeError('The start lies outside the window\'s first frame');
-  }
-  const base = q(plan.originMapping.timeBase);
-  const spans = plan.videoSpans;
+  const conform = grid ? presentationConform(plan.presentation) : null;
   /**
    * A display tick as time.
    * @param tick - The tick.
@@ -201,6 +196,25 @@ function placedEntries(ledger: VideoPresentationLedger, window: FrameWindow, req
    * @throws {never} Never.
    */
   const time = (tick: number): Q => [BigInt(tick), scale];
+  /**
+   * Where a frame starts: its stored start, or on a conform grid its grid point (the first frame keeps the presentation start).
+   * @param ordinal - The frame.
+   * @returns The time.
+   * @throws {never} Never.
+   */
+  const startOf = (ordinal: number): Q => (conform === null || ordinal === 0 ? time(frames[ordinal]!.start) : conformedTime(conform, time(frames[ordinal]!.start)));
+  /**
+   * Where a frame ends: its stored end, or on a conform grid where the next frame starts (the last frame keeps its end).
+   * @param ordinal - The frame.
+   * @returns The time.
+   * @throws {never} Never.
+   */
+  const endOf = (ordinal: number): Q => (conform === null || ordinal + 1 === frames.length ? time(frames[ordinal]!.end) : startOf(ordinal + 1));
+  if (from !== undefined && (cmp(from, startOf(window.start)) < 0n || cmp(from, endOf(window.start)) >= 0n)) {
+    throw new RangeError('The start lies outside the window\'s first frame');
+  }
+  const base = q(plan.originMapping.timeBase);
+  const spans = plan.videoSpans;
   /**
    * A source pts as time.
    * @param pts - Source ticks.
@@ -239,7 +253,7 @@ function placedEntries(ledger: VideoPresentationLedger, window: FrameWindow, req
     if (own > 0n) leadRate = [1n, (display + own - 1n) / own];
   }
   const entries: { entry: MiniToolPlanEntry; ordinal: number }[] = [];
-  let open: { span: number; first: number; end: number } | null = null;
+  let open: { span: number; first: number; last: number } | null = null;
   /**
    * Close the open source span into an entry.
    * @throws {never} Never.
@@ -248,7 +262,7 @@ function placedEntries(ledger: VideoPresentationLedger, window: FrameWindow, req
     if (open === null) return;
     const first = frames[open.first]!;
     const firstSource = source(first.pts!);
-    const displayStart = open.first === window.start && from !== undefined ? from : time(first.start);
+    const displayStart = open.first === window.start && from !== undefined ? from : startOf(open.first);
     let keyframe: { pts: Q; dts: Q } | undefined;
     for (const candidate of keyframes) {
       if (cmp(candidate.pts, firstSource) <= 0n && (keyframe === undefined || cmp(candidate.pts, keyframe.pts) > 0n)) keyframe = candidate;
@@ -261,38 +275,36 @@ function placedEntries(ledger: VideoPresentationLedger, window: FrameWindow, req
     // The span's first frame shows its source from its pts, or from the edit start when the edit cuts into it, advancing at the
     // span's rate from the frame's display start; the held lead frame always shows from its pts.
     const from0 = edit !== null && cmp(q(edit.sourceStart), firstSource) > 0 ? q(edit.sourceStart) : firstSource;
-    const clipStart = lead ? firstSource : plus(from0, times(minus(displayStart, time(first.start)), rate));
+    /**
+     * A presentation time in the span's source time: the frame's stored start is its source start, advancing at the rate.
+     * @param at - The presentation time.
+     * @returns The source time.
+     * @throws {never} Never.
+     */
+    const sourceOf = (at: Q): Q => plus(from0, times(minus(at, time(first.start)), rate));
+    const clipStart = lead ? firstSource : sourceOf(displayStart);
+    // The conform grid in the span's source time, which the container snaps the stored frame times to; a held lead frame is one
+    // frame shown from its pts.
+    const snap = conform === null || lead ? {} : { conform: { origin: exact(sourceOf(q(conform.origin))), period: exact(times(q(conform.period), rate)) } };
     entries.push({ ordinal: open.first, entry: { kind: 'source', decodeStart: exact(decode), clipStart: exact(clipStart),
-      displayStart: exact(displayStart), displayEnd: exact(time(open.end)), rate: exact(rate) } });
+      displayStart: exact(displayStart), displayEnd: exact(endOf(open.last)), rate: exact(rate), ...snap } });
     open = null;
   };
   for (let ordinal = window.start; ordinal < window.end; ordinal += 1) {
     const frame = frames[ordinal]!;
     if (frame.pts === null) {
       close();
-      const start = ordinal === window.start && from !== undefined ? from : time(frame.start);
-      entries.push({ ordinal, entry: { kind: 'empty', fill: plan.policy.emptyFill, window: { start: exact(start), end: exact(time(frame.end)) } } });
+      const start = ordinal === window.start && from !== undefined ? from : startOf(ordinal);
+      entries.push({ ordinal, entry: { kind: 'empty', fill: plan.policy.emptyFill, window: { start: exact(start), end: exact(endOf(ordinal)) } } });
       continue;
     }
     const span = spanAt(time(frame.start));
-    if (open !== null && open.span === span && open.first !== leadOrdinal) { open.end = frame.end; continue; }
+    if (open !== null && open.span === span && open.first !== leadOrdinal) { open.last = ordinal; continue; }
     close();
-    open = { span, first: ordinal, end: frame.end };
+    open = { span, first: ordinal, last: ordinal };
   }
   close();
   return entries;
-}
-
-/**
- * Half a tick of the ledger's source time base in seconds, the rounding of the frame times the source stores; model grids
- * carry it so the container and the grid functions put a frame on the slot it truly starts on (§7.17).
- * @param ledger - The full ledger.
- * @returns The half tick.
- * @throws {never} Never.
- */
-export function gridSlack(ledger: VideoPresentationLedger): number {
-  const slack = presentationSlack(ledger.plan.presentation, ledger.plan.originMapping.timeBase);
-  return slack === null ? 0 : Number(slack.numerator) / Number(slack.denominator);
 }
 
 /**
@@ -552,7 +564,7 @@ export function sceneCutsRecipeOf(ledger: VideoPresentationLedger, range: { star
   const { plan } = ledger;
   const window = rangeWindow(ledger, range);
   return { kind: 'scene_cuts', inputId, window, timescale: plan.presentation.timescale, profile,
-    entries: placedEntries(ledger, window).map(({ entry, ordinal }) => ({ ...entry, ordinalOffset: ordinal })),
+    entries: placedEntries(ledger, window, undefined, false).map(({ entry, ordinal }) => ({ ...entry, ordinalOffset: ordinal })),
     target: { width: plan.display.width, height: plan.display.height, colorMatrix: plan.colorMatrix, toneMap: plan.output.toneMap } };
 }
 

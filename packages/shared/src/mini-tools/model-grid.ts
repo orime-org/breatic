@@ -1,12 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-/**
- * The model input's frame grid: the range frame for frame at its average rate, or resampled at the model's top rate. `slack`
- * is half a tick of the source's time base in seconds: a source stores frame times rounded to its clock, so a frame starting
- * up to `slack` after a slot time starts on that slot.
- */
-export interface ModelGrid { mode: "frames" | "resample"; rate: number; frameCount: number; slack?: number }
+import { conformedTime, presentationConform } from "@shared/mini-tools/video-encode-plan.js";
+import { presentationRunOffsets, type VideoPresentationTable } from "@shared/mini-tools/video-presentation-projection.js";
+
+/** The model input's frame grid: the range frame for frame at its average rate, or resampled at the model's top rate. */
+export interface ModelGrid { mode: "frames" | "resample"; rate: number; frameCount: number }
 
 /** A presented frame's interval in seconds. */
 interface GridFrame { start: number; end: number }
@@ -45,7 +44,7 @@ export function gridSlotFrame(grid: ModelGrid, frames: readonly GridFrame[], slo
   let high = frames.length - 1;
   while (low < high) {
     const middle = Math.ceil((low + high) / 2);
-    if (frames[middle]!.start <= time + (grid.slack ?? 0) + EPSILON) low = middle;
+    if (frames[middle]!.start <= time + EPSILON) low = middle;
     else high = middle - 1;
   }
   return low;
@@ -61,7 +60,7 @@ export function gridSlotFrame(grid: ModelGrid, frames: readonly GridFrame[], slo
  */
 export function gridFrameSlot(grid: ModelGrid, frames: readonly GridFrame[], frame: number): number {
   if (grid.mode === "frames") return frame;
-  return Math.min(grid.frameCount - 1, Math.floor((frames[frame]!.start - frames[0]!.start + (grid.slack ?? 0)) * grid.rate + EPSILON));
+  return Math.min(grid.frameCount - 1, Math.floor((frames[frame]!.start - frames[0]!.start) * grid.rate + EPSILON));
 }
 
 /**
@@ -76,4 +75,51 @@ export function gridFrameSlot(grid: ModelGrid, frames: readonly GridFrame[], fra
 export function gridSecondsAllowed(grid: ModelGrid, bounds: { minSeconds: number; maxSeconds: number }): boolean {
   const seconds = grid.frameCount / grid.rate;
   return seconds >= bounds.minSeconds - EPSILON && seconds <= bounds.maxSeconds + EPSILON;
+}
+
+/**
+ * A table's frames as a grid reads them (§7.17 rounding clock row): on a table whose clock rounded a constant rate's frame
+ * times, every frame from the second on starts on its conform grid point and ends where the next one starts; the first
+ * frame keeps the presentation's start and the last frame its end.
+ * @param table - The presentation table.
+ * @param startFrame - The first frame.
+ * @param count - How many frames.
+ * @returns The frames' intervals in seconds.
+ * @throws {RangeError} When the frames lie outside the table.
+ */
+export function presentationGridFrames(table: VideoPresentationTable, startFrame: number, count: number): GridFrame[] {
+  const offsets = presentationRunOffsets(table);
+  const total = offsets.at(-1)!;
+  if (startFrame < 0 || startFrame + count > total) throw new RangeError("Frames lie outside the presentation table");
+  const conform = presentationConform(table);
+  const scale = BigInt(table.timescale);
+  // The stored starts and ends of the frames and of the one after them, walking the runs once.
+  const starts: number[] = [];
+  const ends: number[] = [];
+  let run = 0;
+  while (offsets[run + 1]! <= startFrame) run += 1;
+  for (let index = startFrame; index <= startFrame + count && index < total; index += 1) {
+    while (offsets[run + 1]! <= index) run += 1;
+    const entry = table.runs[run]!;
+    const start = entry.start + (index - offsets[run]!) * entry.step;
+    starts.push(start);
+    ends.push(start + entry.duration);
+  }
+  /**
+   * Where a frame starts on the grid.
+   * @param index - The frame.
+   * @param start - Its stored start in ticks.
+   * @returns The time in seconds.
+   * @throws {never} Never.
+   */
+  const bound = (index: number, start: number): number => {
+    if (conform === null || index === 0) return start / table.timescale;
+    const [numerator, denominator] = conformedTime(conform, [BigInt(start), scale]);
+    return Number(numerator) / Number(denominator);
+  };
+  return Array.from({ length: count }, (_unused, at) => {
+    const index = startFrame + at;
+    const start = bound(index, starts[at]!);
+    return { start, end: conform === null || index + 1 === total ? ends[at]! / table.timescale : bound(index + 1, starts[at + 1]!) };
+  });
 }

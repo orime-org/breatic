@@ -19,7 +19,7 @@ type Rational = { numerator: string; denominator: string };
 type Plan = Record<string, unknown> & { display: { width: number; height: number; duration: Rational }; policy: { singleFrameDurationMs: number; emptyFill: "black" | "transparent" } };
 interface Profile { width: number; height: number; fps: Rational; timeBase: Rational; alpha: boolean; codec: string; encode: unknown; pixFmt: string; color: unknown }
 type Table = { schemaVersion: 1; timescale: number; runs: { start: number; count: number; step: number; duration: number }[] };
-const api = miniTools as unknown as { transitionOutputProfile: (first: Plan, second: Plan, config: unknown) => Profile; presentationOutputFps: (table: Table) => Rational; presentationSlack: (table: Table, timeBase: Rational) => Rational | null };
+const api = miniTools as unknown as { transitionOutputProfile: (first: Plan, second: Plan, config: unknown) => Profile; presentationOutputFps: (table: Table) => Rational; presentationConform: (table: Table) => { origin: Rational; period: Rational } | null; conformedTime: (conform: { origin: Rational; period: Rational }, at: readonly [bigint, bigint]) => [bigint, bigint] };
 const r = (numerator: number, denominator = 1): Rational => ({ numerator: String(numerator), denominator: String(denominator) });
 const CONFIG = { encode: { crf: 18, preset: "medium" } };
 const BT709 = { matrix: "bt709", range: "tv", primaries: "bt709", transfer: "bt709" };
@@ -187,7 +187,7 @@ describe("the output frame rate of a presentation table (frames-split §7.17)", 
     ["29000/958 (a 1/1000 clock of 33 and 34 ms frames)", 1000, 30, 34, 33, r(30)],
     ["8910000/298960 ≈ 29.80 (a phone clip on 1/90000)", 90000, 100, 3000, 3020, r(30000, 1001)],
     ["8910000/372180 ≈ 23.94", 90000, 100, 3700, 3760, r(24000, 1001)],
-    ["9000/370 ≈ 24.32", 1000, 10, 50, 40, r(24)],
+    ["8000/333 ≈ 24.02", 1000, 10, 53, 40, r(24)],
     ["8910000/148794 ≈ 59.88", 90000, 100, 1500, 1503, r(60000, 1001)],
     ["9000/670 ≈ 13.43", 1000, 10, 70, 75, r(12)],
     ["8910000/44500 ≈ 200.2, above the highest", 90000, 100, 400, 450, r(120)],
@@ -199,19 +199,58 @@ describe("the output frame rate of a presentation table (frames-split §7.17)", 
   });
 });
 
-// frames-split §7.17 (round 26): only a table whose clock rounded a constant rate's frame times gets covering slack.
-describe("the covering slack of a presentation table (frames-split §7.17)", () => {
-  const webm = (rate: number, count: number): Table => {
-    const starts = Array.from({ length: count }, (_unused, k) => Math.round((k * 1000) / rate));
-    return { schemaVersion: 1, timescale: 1000, runs: starts.map((start, k) => ({ start, count: 1, step: (starts[k + 1] ?? start + 33) - start, duration: (starts[k + 1] ?? start + 33) - start })) };
+// frames-split §7.17 rounding clock row: a table whose clock rounded a constant rate's frame times has an exact grid.
+describe("the conform grid of a presentation table (frames-split §7.17)", () => {
+  /**
+   * A table of CFR frames whose starts are rounded to a clock.
+   * @param rate - The true rate as numerator and denominator.
+   * @param timescale - The table's ticks per second.
+   * @param granularity - The rounding clock in table ticks.
+   * @param count - The frames.
+   * @returns The table.
+   */
+  const rounded = (rate: readonly [number, number], timescale: number, granularity: number, count: number): Table => {
+    const starts = Array.from({ length: count + 1 }, (_unused, k) => Math.round((k * rate[1] * timescale) / rate[0] / granularity) * granularity);
+    return { schemaVersion: 1, timescale, runs: starts.slice(0, count).map((start, k) => ({ start, count: 1, step: starts[k + 1]! - start, duration: starts[k + 1]! - start })) };
   };
-  const exact25: Table = { schemaVersion: 1, timescale: 25, runs: [{ start: 0, count: 50, step: 1, duration: 1 }] };
-  it.each<[string, Table, ReturnType<typeof r> | null]>([
-    ["a 30 fps WebM on its 1 ms clock", webm(30, 30), r(1, 2000)],
-    ["an exact 25 fps table on a 1/25 clock", exact25, null],
+  it.each<[string, Table, Rational | null]>([
+    ["a 30 fps WebM on its 1 ms clock", rounded([30, 1], 1000, 1, 60), r(1, 30)],
+    ["a 29.97 fps WebM on its 1 ms clock", rounded([30000, 1001], 1000, 1, 60), r(1001, 30000)],
+    ["a 59.94 fps MKV on its 1 ms clock", rounded([60000, 1001], 1000, 1, 120), r(1001, 60000)],
+    ["a 29.97 fps iPhone clip on 1/600 in a 1/3000 table", rounded([30000, 1001], 3000, 5, 60), r(1001, 30000)],
+    ["a 29.97 fps iPhone clip remuxed to 1/19200", rounded([30000, 1001], 19200, 32, 60), r(1001, 30000)],
+    ["an exact 25 fps table on a 1/25 clock", { schemaVersion: 1, timescale: 25, runs: [{ start: 0, count: 50, step: 1, duration: 1 }] }, null],
     ["a VFR table", vfrPlan().presentation as Table, null],
-  ])("PS01 %s", (_name, table, expected) => {
-    expect(api.presentationSlack(table, r(1, table.timescale === 25 ? 25 : 1000))).toEqual(expected);
+  ])("CF01 %s", (_name, table, period) => {
+    const conform = api.presentationConform(table);
+    expect(conform?.period ?? null).toEqual(period);
+    // The grid passes through the first frame's start, 0.
+    if (period !== null) expect(same(conform!.origin, period), JSON.stringify(conform)).toBe(true);
+  });
+
+  it("CF02 every stored start rounds to its own exact grid point, and so does the output rate", () => {
+    const table = rounded([30000, 1001], 19200, 32, 300);
+    const conform = api.presentationConform(table)!;
+    table.runs.slice(1).forEach((run, k) => {
+      const [numerator, denominator] = api.conformedTime(conform, [BigInt(run.start), 19200n]);
+      // Frame k + 1 truly starts at (k + 1) · 1001/30000 s.
+      expect(numerator * 30000n).toBe(BigInt(k + 1) * 1001n * denominator);
+    });
+    expect(api.presentationOutputFps(table)).toEqual(r(30000, 1001));
+  });
+
+  it("CF03 a picture that starts after a held first frame takes the grid through the middle of its offsets", () => {
+    // A 30 fps WebM whose picture starts at 250 ms (the first frame held from 0): 250, 283, 317, 350... ms.
+    const starts = [0, ...Array.from({ length: 61 }, (_unused, k) => Math.round(250 + (k * 1000) / 30))];
+    const table: Table = { schemaVersion: 1, timescale: 1000, runs: starts.slice(0, 61).map((start, k) => ({ start, count: 1, step: starts[k + 1]! - start, duration: starts[k + 1]! - start })) };
+    const conform = api.presentationConform(table)!;
+    expect(conform.period).toEqual(r(1, 30));
+    // The second frame's grid point is 250 ms within the clock's rounding: the offsets of 250 + k · 33.3 ms span ±1/3 ms.
+    const [numerator, denominator] = [BigInt(conform.origin.numerator), BigInt(conform.origin.denominator)];
+    expect(Number(numerator) / Number(denominator)).toBeCloseTo(0.25, 3);
+    // Each later frame lands on its own grid point, 33.3 ms apart.
+    const placed = table.runs.slice(1).map((run) => { const [n, d] = api.conformedTime(conform, [BigInt(run.start), 1000n]); return Number(n) / Number(d); });
+    placed.forEach((at, k) => expect(at - placed[0]!).toBeCloseTo(k / 30, 12));
   });
 });
 

@@ -604,44 +604,121 @@ function frameSpacings(runs: VideoPresentationTable["runs"]): Map<number, number
 }
 
 /**
- * Half a tick of the source's time base when the table is a constant-rate source whose clock rounded its frame times (no
- * single spacing, yet one standard rate's grid within the rounding): a frame then truly starts up to half a tick before its
- * stored time, so a frame stored at most this after a slot time starts on that slot (§7.17). Null for exact tables.
- * @param table - The presentation table.
- * @param timeBase - The source's time base.
- * @returns The half tick in seconds, or null.
+ * The exact frame grid of a constant-rate source whose clock rounded its frame times (§7.17 rounding clock row): a 30 fps
+ * WebM on its 1 ms clock, a 29.97 fps iPhone clip on 1/600 s (or that clock times 32 after a remux). Every frame from the
+ * second on truly starts on `origin + j · period`, the grid point its stored start rounds to; the first frame keeps the
+ * presentation's start and the last frame its end.
+ */
+export interface PresentationConform { origin: ExactRational; period: ExactRational }
+
+const conforms = new WeakMap<VideoPresentationTable, { conform: PresentationConform | null; rate: ExactRational | null }>();
+
+/**
+ * The greatest common divisor of two non-negative integers.
+ * @param left - One.
+ * @param right - The other.
+ * @returns The divisor.
  * @throws {never} Never.
  */
-export function presentationSlack(table: VideoPresentationTable, timeBase: ExactRational): ExactRational | null {
-  const frames = table.runs.reduce((total, run) => total + run.count, 0);
-  if (frames < 3 || frameSpacings(table.runs).size <= 1 || roundedConstantRate(table.runs, BigInt(table.timescale)) === null) return null;
-  return reduced(BigInt(timeBase.numerator), 2n * BigInt(timeBase.denominator));
+function divisor(left: bigint, right: bigint): bigint {
+  let [a, b] = [left, right];
+  while (b !== 0n) [a, b] = [b, a % b];
+  return a;
 }
 
 /**
- * The standard rate whose exact frame grid every frame start from the second on matches within the clock's rounding (half a
- * tick either side of one grid, so the starts' offsets from the grid spread over at most one tick): a constant-rate source
- * whose clock rounds its frame times, such as a 30 fps WebM on its 1 ms clock. The rate with the least spread wins; null when
- * none fits.
- * @param runs - The table's runs.
- * @param timescale - The table's ticks per second.
- * @returns The rate, or null.
+ * The integer nearest a quotient, halves up.
+ * @param numerator - The dividend.
+ * @param denominator - The positive divisor.
+ * @returns The integer.
  * @throws {never} Never.
  */
-function roundedConstantRate(runs: VideoPresentationTable["runs"], timescale: bigint): ExactRational | null {
-  const starts: bigint[] = [];
-  for (const run of runs) for (let k = 0; k < run.count; k += 1) starts.push(BigInt(run.start + k * run.step));
-  const later = starts.slice(1);
-  let best: { rate: readonly [bigint, bigint]; spread: bigint } | null = null;
-  for (const rate of STANDARD_FRAME_RATES) {
-    const [numerator, denominator] = rate;
-    // Offsets from the grid in ticks times n: s_k · n − k · timescale · d.
-    const offsets = later.map((start, k) => start * numerator - BigInt(k) * timescale * denominator);
-    const spread = offsets.reduce((max, value) => (value > max ? value : max)) - offsets.reduce((min, value) => (value < min ? value : min));
-    // Compare spreads across rates per tick: spread / n.
-    if (spread <= numerator && (best === null || spread * best.rate[0] < best.spread * numerator)) best = { rate, spread };
+function nearestInteger(numerator: bigint, denominator: bigint): bigint {
+  const twice = 2n * numerator + denominator;
+  const bottom = 2n * denominator;
+  return twice >= 0n ? twice / bottom : -((-twice + bottom - 1n) / bottom);
+}
+
+/**
+ * The rounded constant rate of a table and its grid, computed once per table: the standard rate whose exact grid every
+ * frame start from the second on matches within the clock's rounding granularity g (the greatest common divisor of those
+ * starts' distances from the second start), with g under half a frame so each start rounds to one grid point. The starts'
+ * offsets from the grid then spread over at most g; the rate with the least spread wins. The grid passes through the first
+ * frame's start when that start fits it too (a start of 0 is stored exactly), else through the middle of the offsets, on a
+ * half-tick of the table clock. Null for a table with fewer than three frames or one frame spacing (exact already) and for
+ * one no standard grid fits (VFR).
+ * @param table - The presentation table.
+ * @returns The grid and its rate, or nulls.
+ * @throws {never} Never.
+ */
+function roundedConstant(table: VideoPresentationTable): { conform: PresentationConform | null; rate: ExactRational | null } {
+  const cached = conforms.get(table);
+  if (cached !== undefined) return cached;
+  let found: { conform: PresentationConform | null; rate: ExactRational | null } = { conform: null, rate: null };
+  const frames = table.runs.reduce((total, run) => total + run.count, 0);
+  if (frames >= 3 && frameSpacings(table.runs).size > 1) {
+    const timescale = BigInt(table.timescale);
+    const later: bigint[] = [];
+    table.runs.forEach((run, index) => { for (let k = index === 0 ? 1 : 0; k < run.count; k += 1) later.push(BigInt(run.start + k * run.step)); });
+    const granularity = later.reduce((g, start) => divisor(g, start - later[0]!), 0n);
+    const first = BigInt(table.runs[0]!.start);
+    let best: { rate: readonly [bigint, bigint]; spread: bigint; low: bigint; high: bigint } | null = null;
+    for (const rate of STANDARD_FRAME_RATES) {
+      const [numerator, denominator] = rate;
+      // Offsets from the grid in ticks times n: s_k · n − k · timescale · d.
+      let [low, high] = [0n, 0n];
+      later.forEach((start, k) => {
+        const offset = (start - later[0]!) * numerator - BigInt(k) * timescale * denominator;
+        if (offset < low) low = offset;
+        if (offset > high) high = offset;
+      });
+      const spread = high - low;
+      // Within the granularity, which is under half a frame (2 · g · n < timescale · d); spreads compare per tick: spread / n.
+      if (spread <= granularity * numerator && 2n * granularity * numerator < timescale * denominator
+        && (best === null || spread * best.rate[0] < best.spread * numerator)) best = { rate, spread, low, high };
+    }
+    if (best !== null) {
+      const [numerator, denominator] = best.rate;
+      const limit = granularity * numerator;
+      // The first frame's offset, one frame before the second: (s_0 − s_1) · n + timescale · d.
+      const lead = (first - later[0]!) * numerator + timescale * denominator;
+      // The grid point of the second frame in table ticks: through the first frame, or the offsets' middle on a half tick.
+      const origin = lead >= best.high - limit && lead <= best.low + limit
+        ? reduced((first * numerator + timescale * denominator), timescale * numerator)
+        : reduced(2n * later[0]! + nearestInteger(best.low + best.high, numerator), 2n * timescale);
+      found = { rate: reduced(numerator, denominator), conform: { origin, period: reduced(denominator, numerator) } };
+    }
   }
-  return best === null ? null : { numerator: String(best.rate[0]), denominator: String(best.rate[1]) };
+  conforms.set(table, found);
+  return found;
+}
+
+/**
+ * The exact frame grid of a table whose clock rounded a constant rate's frame times (`roundedConstant`), or null.
+ * @param table - The presentation table.
+ * @returns The grid.
+ * @throws {never} Never.
+ */
+export function presentationConform(table: VideoPresentationTable): PresentationConform | null {
+  return roundedConstant(table).conform;
+}
+
+/**
+ * A stored time on a conform grid: the grid point it rounds to, origin + round((t − origin) / period) · period, exact.
+ * @param conform - The grid.
+ * @param at - The time in seconds as a numerator and a positive denominator.
+ * @returns The grid time as a numerator and denominator.
+ * @throws {never} Never.
+ */
+export function conformedTime(conform: PresentationConform, at: readonly [bigint, bigint]): [bigint, bigint] {
+  const [an, ad] = [BigInt(conform.origin.numerator), BigInt(conform.origin.denominator)];
+  const [pn, pd] = [BigInt(conform.period.numerator), BigInt(conform.period.denominator)];
+  // j = floor((t − a) / p + 1/2) = floor((2 · (t − a) + p) / (2p)), with t − a = (tn · ad − an · td) / (td · ad).
+  const [tn, td] = at;
+  const top = 2n * (tn * ad - an * td) * pd + pn * td * ad;
+  const bottom = 2n * pn * td * ad;
+  const j = top >= 0n ? top / bottom : -((-top + bottom - 1n) / bottom);
+  return [an * pd + j * pn * ad, ad * pd];
 }
 
 /**
@@ -667,7 +744,7 @@ export function presentationOutputFps(table: VideoPresentationTable): ExactRatio
   if (frames === 2) return reduced(BigInt(timescale), BigInt(second - first.start));
   const spacings = frameSpacings(runs);
   if (spacings.size === 1) return reduced(BigInt(timescale), BigInt([...spacings.keys()][0]!));
-  const rounded = roundedConstantRate(runs, BigInt(timescale));
+  const rounded = roundedConstant(table).rate;
   if (rounded !== null) return rounded;
   const last = runs.at(-1)!;
   return nearestStandardRate(BigInt(frames - 2) * BigInt(timescale), BigInt(last.start + (last.count - 1) * last.step - second));

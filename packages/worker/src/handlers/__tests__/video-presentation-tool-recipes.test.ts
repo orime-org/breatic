@@ -321,9 +321,10 @@ describe('a plan without edits whose media starts after the origin (§7.17 timel
   });
 });
 
-describe('a chunk start within half a source tick before its first frame (§7.17; round 26)', () => {
-  const windows = recipes as unknown as { windowEntries: (ledger: unknown, window: { start: number; end: number }, from?: Exact) => Record<string, unknown>[] };
-  it('LV07 a WebM frame stored at 67 ms shows from its own start for the slot at 66.67 ms it truly starts on', () => {
+describe('entries on an output grid over a rounding clock (§7.17 rounding clock row)', () => {
+  const windows = recipes as unknown as { windowEntries: (ledger: unknown, window: { start: number; end: number }, from?: Exact, grid?: boolean) => Record<string, unknown>[] };
+  // A 30 fps WebM: frame starts stored rounded to 1 ms (0, 33, 67, 100 ms...).
+  const webm = (): unknown => {
     const ledger = cfr96((plan) => {
       const starts = Array.from({ length: 30 }, (_unused, k) => Math.round((k * 1000) / 30));
       plan.presentation = { schemaVersion: 1, timescale: 1000, runs: starts.map((start, k) => ({ start, count: 1, step: (starts[k + 1] ?? 1000) - start, duration: (starts[k + 1] ?? 1000) - start })) };
@@ -331,10 +332,25 @@ describe('a chunk start within half a source tick before its first frame (§7.17
         firstSource: { supportStart: r(0), lead: null }, lastSource: { support: 'declared', supportEnd: r(1), hold: null } };
       plan.videoSpans = null as never;
     });
-    ledger.encoding = { keyframeOrdinals: [0], codedWidth: 320, codedHeight: 180, sourceKeyframes: [{ pts: r(0), dts: r(0) }], firstPacketDts: r(0) };
-    expect(windows.windowEntries(ledger, { start: 2, end: 3 }, r(1, 15))).toEqual([
-      { kind: 'source', decodeStart: r(0), clipStart: r(67, 1000), displayStart: r(67, 1000), displayEnd: r(1, 10), rate: r(1) },
+    (ledger as { encoding: unknown }).encoding = { keyframeOrdinals: [0], codedWidth: 320, codedHeight: 180, sourceKeyframes: [{ pts: r(0), dts: r(0) }], firstPacketDts: r(0) };
+    return ledger;
+  };
+
+  it('LV07 the frame stored at 67 ms shows from its grid point 66.67 ms, with the grid in source time for the container', () => {
+    expect(windows.windowEntries(webm(), { start: 2, end: 4 }, r(1, 15), true)).toEqual([
+      { kind: 'source', decodeStart: r(0), clipStart: r(1, 15), displayStart: r(1, 15), displayEnd: r(2, 15), rate: r(1), conform: { origin: r(1, 30), period: r(1, 30) } },
     ]);
   });
-});
 
+  it('LV08 entries off a grid keep the stored times and carry no grid', () => {
+    expect(windows.windowEntries(webm(), { start: 2, end: 3 })).toEqual([
+      { kind: 'source', decodeStart: r(0), clipStart: r(67, 1000), displayStart: r(67, 1000), displayEnd: r(1, 10), rate: r(1) },
+    ]);
+    expect(() => windows.windowEntries(webm(), { start: 2, end: 3 }, r(1, 15))).toThrow(RangeError);
+  });
+
+  it('LV09 the first frame keeps the presentation start and the last its stored end on a grid', () => {
+    const [entry] = windows.windowEntries(webm(), { start: 0, end: 30 }, undefined, true);
+    expect(entry).toMatchObject({ displayStart: r(0), displayEnd: r(1) });
+  });
+});

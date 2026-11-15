@@ -342,6 +342,8 @@ beforeAll(async () => {
   await lossless('greys25.mp4', '16+20*N', { fps: '25', frames: 10, timescale: 25 });
   await lossless('greys60.mp4', '16+15*N', { fps: '60', frames: 12, timescale: 60 });
   await lossless('greys2997.mp4', '16+12*N', { fps: '30000/1001', frames: 15, timescale: 1000 });
+  // 60 fps greys (16 + 8n) in a lossless VP9 WebM, whose 1 ms clock stores them at 0, 17, 33, 50, 67 ms...
+  await make('greys60.webm', ['-f', 'lavfi', '-i', `color=c=black:s=${W}x${H}:r=60,format=yuv420p,geq=lum='16+8*N':cb=128:cr=128`, '-frames:v', '24', '-c:v', 'libvpx-vp9', '-lossless', '1', '-pix_fmt', 'yuv420p']);
   // Nine stored frames so the eighth ends at 332 ms; the table and every recipe use the first eight. FFmpeg 8's setpts keeps
   // the 30 fps rate, so without the explicit encoder time base the timestamps are quantized to 1/30 s.
   await make('vfr.mp4', ['-f', 'lavfi', '-i', `color=c=black:s=${W}x${H}:r=30,format=yuv420p,geq=lum='40+20*N':cb=128:cr=128,settb=1/1000,setpts='floor(N/2)*83+mod(N,2)*50'`,
@@ -522,6 +524,15 @@ describe('prepare_model_input order and grid (execution design §10.2, §10.4)',
     expect(prepared).toHaveLength(6);
     prepared.forEach((value, j) => expect(Math.abs(value - source[2 * j]!), `slot ${j}`).toBeLessThan(3));
     (await packets(file)).forEach((packet, j) => expect(Number(packet.pts_time)).toBeCloseTo(j / 30, 3));
+  });
+
+  it('PG06 a 60 fps WebM resampled on a 30 fps grid: slot j shows frame 2j, as the mask and the composite read it', async () => {
+    const recipe = { ...prepare({ start: 0, end: 24 }, 1000, r(2, 5), { grid: { mode: 'resample', rate: 30, frameCount: 12 } }),
+      entries: [{ ...span(r(0), r(2, 5)), conform: { origin: r(1, 60), period: r(1, 60) } }] };
+    const file = await produce({ [SOURCE]: join(dir, 'greys60.webm') }, recipe);
+    const [source, prepared] = [await lumaMeans(join(dir, 'greys60.webm')), await lumaMeans(file)];
+    expect(prepared).toHaveLength(12);
+    prepared.forEach((value, j) => expect(Math.abs(value - source[2 * j]!), `slot ${j}`).toBeLessThan(3));
   });
 
   it('PG05 a resample grid whose last slot starts on the last frame shows that frame there, not the one before', async () => {

@@ -33,10 +33,11 @@ export interface MiniToolPlanEditSpan { sourceStart: MiniToolPlanExact; sourceEn
 export interface MiniToolPlanAudio extends MiniToolPlanInterval { origin: MiniToolPlanExact; spans: MiniToolPlanEditSpan[] | null }
 /**
  * One presentation entry of a window (§7.17): a source clip span, decoded from its keyframe at `decodeStart` and shown from
- * `clipStart` over its presentation interval at `rate`, the last frame held to `displayEnd`; or a derived-empty frame.
+ * `clipStart` over its presentation interval at `rate`, the last frame held to `displayEnd`; or a derived-empty frame. On an
+ * output grid, `conform` is the exact frame grid in source time the stored frame times of a rounding clock snap to.
  */
 export type MiniToolPlanEntry =
-  | { kind: "source"; decodeStart: MiniToolPlanExact; clipStart: MiniToolPlanExact; displayStart: MiniToolPlanExact; displayEnd: MiniToolPlanExact; rate: MiniToolPlanExact }
+  | { kind: "source"; decodeStart: MiniToolPlanExact; clipStart: MiniToolPlanExact; displayStart: MiniToolPlanExact; displayEnd: MiniToolPlanExact; rate: MiniToolPlanExact; conform?: { origin: MiniToolPlanExact; period: MiniToolPlanExact } }
   | { kind: "empty"; fill: "black" | "transparent"; window: MiniToolPlanInterval };
 /** The carrier an encode writes (§91 D-2): even coded size, where the picture sits, the plan matrix and conversion. */
 export interface MiniToolPlanTarget {
@@ -57,8 +58,6 @@ interface MiniToolPlanWindowRecipe {
   inputId: string;
   window: { start: number; end: number };
   timescale: number;
-  /** Half a source tick when the source's clock rounded its frame times (`presentationSlack`). */
-  slack?: MiniToolPlanExact;
   entries: MiniToolPlanEntry[];
   target: MiniToolPlanTarget;
 }
@@ -130,7 +129,7 @@ export interface MiniToolPlanTransitionStitch {
   profile: MiniToolPlanTransitionProfile;
 }
 /** One clip of a transition window: its entries and the matrix and tone mapping of its own plan (§97 D23-4). */
-export interface MiniToolPlanWindowClip { inputId: string; entries: MiniToolPlanEntry[]; colorMatrix: string; toneMap: "none" | "sdr-bt709"; slack?: MiniToolPlanExact }
+export interface MiniToolPlanWindowClip { inputId: string; entries: MiniToolPlanEntry[]; colorMatrix: string; toneMap: "none" | "sdr-bt709" }
 /** One chunk `frames` of a transition's overlap window, composed from both clips' entries (§97 D15-6). */
 export interface MiniToolPlanTransitionWindow {
   kind: "transition_window";
@@ -142,7 +141,7 @@ export interface MiniToolPlanTransitionWindow {
   profile: MiniToolPlanTransitionProfile;
 }
 /** The erase model's frame grid (execution design §10.4): frame for frame at `rate`, or resampled on a `rate` grid. */
-export interface MiniToolPlanModelGrid { mode: "frames" | "resample"; rate: number; frameCount: number; slack?: number }
+export interface MiniToolPlanModelGrid { mode: "frames" | "resample"; rate: number; frameCount: number }
 /** A range of presentation frame ordinals by its first frame and count. */
 export interface MiniToolPlanFrameRange { startFrame: number; frameCount: number }
 /**
@@ -162,7 +161,7 @@ export interface MiniToolPlanBriaMask {
   kind: "bria_mask"; inputId: string; table: VideoPresentationTable; range: MiniToolPlanFrameRange; grid: MiniToolPlanModelGrid; target: { width: number; height: number };
 }
 /** The expand model's frame grid for one window: `frameCount` frames at `fps` from the span's start (§10.5). */
-export interface MiniToolPlanWindowGrid { fps: number; frameCount: number; slack?: number }
+export interface MiniToolPlanWindowGrid { fps: number; frameCount: number }
 /** One expand window's model input (§10.5): each grid slot's covering frame scaled into `sourceRoi` over `fill`, lossless. */
 export type MiniToolPlanModelWindow = {
   kind: "model_window"; grid: MiniToolPlanWindowGrid; frame: { width: number; height: number }; sourceRoi: MiniToolPlanPixelRect;

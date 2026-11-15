@@ -44,22 +44,53 @@ describe("presentationFrameCovering", () => {
   });
 });
 
-// A 30 fps WebM stores frame starts rounded to its 1 ms clock (0, 33, 67, 100 ms...): frame 2 truly starts at 66.67 ms.
-const WEBM30: VideoPresentationTable = { schemaVersion: 1, timescale: 1000, runs: Array.from({ length: 30 }, (_unused, k) => {
-  const [start, next] = [Math.round((k * 1000) / 30), Math.round(((k + 1) * 1000) / 30)];
-  return { start, count: 1, step: next - start, duration: next - start };
-}) };
-const HALF_MS: readonly [bigint, bigint] = [1n, 2000n];
+/**
+ * A CFR table whose frame starts are rounded to a 1 ms clock, as a WebM stores them.
+ * @param rate - The true rate as numerator and denominator.
+ * @param count - The frames.
+ * @returns The table.
+ */
+function webm(rate: readonly [number, number], count: number): VideoPresentationTable {
+  const starts = Array.from({ length: count + 1 }, (_unused, k) => Math.round((k * rate[1] * 1000) / rate[0]));
+  return { schemaVersion: 1, timescale: 1000, runs: starts.slice(0, count).map((start, k) => ({ start, count: 1, step: starts[k + 1]! - start, duration: starts[k + 1]! - start })) };
+}
 
-describe("frames whose starts are rounded to the source clock (frames-split §7.17; round 26)", () => {
-  it("TSW06 a start at most half a source tick after the slot time covers that slot", () => {
-    expect(presentationFrameCovering(WEBM30, [2n, 30n], HALF_MS)).toBe(2);
-    expect(presentationFrameCovering(WEBM30, [2n, 30n])).toBe(1);
+/**
+ * The frames a clip at In 0 shows on an output grid, one per output frame.
+ * @param table - The clip's table.
+ * @param fps - The output rate.
+ * @param count - The output frames.
+ * @returns The shown frames.
+ */
+function shown(table: VideoPresentationTable, fps: { numerator: string; denominator: string }, count: number): number[] {
+  return Array.from({ length: count }, (_unused, k) => transitionSourceWindow(table, { inFrame: 0, startFrame: 0 }, { start: k, end: k + 1 }, fps).start);
+}
+
+// A WebM stores frame starts rounded to its 1 ms clock (30 fps: 0, 33, 67, 100 ms...); each frame truly starts on its exact
+// grid point, and that is where it covers output frames (§7.17 rounding clock row).
+describe("frames whose starts are rounded to the source clock (frames-split §7.17)", () => {
+  it("TSW06 a time just before a rounded start still shows the frame before; the exact grid point shows the frame", () => {
+    const table = webm([30, 1], 30);
+    expect(presentationFrameCovering(table, [2n, 30n])).toBe(2);
+    expect(presentationFrameCovering(table, [2n * 1000n - 1n, 30_000n])).toBe(1);
   });
 
   it("TSW07 a 30 fps WebM on a 30 fps grid shows every frame once", () => {
-    const shown = Array.from({ length: 30 }, (_unused, k) => transitionSourceWindow(WEBM30, { inFrame: 0, startFrame: 0 }, { start: k, end: k + 1 }, { numerator: "30", denominator: "1" }, HALF_MS).start);
-    expect(shown).toEqual(Array.from({ length: 30 }, (_unused, k) => k));
+    expect(shown(webm([30, 1], 30), { numerator: "30", denominator: "1" }, 30)).toEqual(Array.from({ length: 30 }, (_unused, k) => k));
+  });
+
+  it.each<[string, readonly [number, number], { numerator: string; denominator: string }, (k: number) => number]>([
+    ["a 29.97 fps WebM on a 30 fps grid", [30000, 1001], { numerator: "30", denominator: "1" }, (k) => Math.floor((k * 1000) / 1001)],
+    ["a 30 fps WebM on a 29.97 fps grid", [30, 1], { numerator: "30000", denominator: "1001" }, (k) => Math.floor((k * 1001) / 1000)],
+    ["a 23.976 fps WebM on a 24 fps grid", [24000, 1001], { numerator: "24", denominator: "1" }, (k) => Math.floor((k * 1000) / 1001)],
+    ["a 59.94 fps WebM on a 29.97 fps grid", [60000, 1001], { numerator: "30000", denominator: "1001" }, (k) => 2 * k],
+  ])("TSW08 %s shows the frame truly covering each output frame", (_name, rate, fps, expected) => {
+    expect(shown(webm(rate, 1200), fps, 590)).toEqual(Array.from({ length: 590 }, (_unused, k) => expected(k)));
+  });
+
+  it("TSW09 the last frame still ends at its stored end", () => {
+    const table = webm([30, 1], 30);
+    expect(presentationFrameCovering(table, [999n, 1000n])).toBe(29);
+    expect(() => presentationFrameCovering(table, [1n, 1n])).toThrow(RangeError);
   });
 });
-

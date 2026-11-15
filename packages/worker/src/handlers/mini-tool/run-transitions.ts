@@ -10,9 +10,9 @@
  * both clips' audio and the crossfade window (none for a Cut). Every job carries the frozen profile.
  */
 import { logger } from "@breatic/core";
-import { planSlack, transitionSlotTime, transitionSourceWindow, type AcceptedMiniToolExecution } from "@breatic/domain";
+import { transitionSlotTime, transitionSourceWindow, type AcceptedMiniToolExecution } from "@breatic/domain";
 import { videoPresentationWorkKeyFor, type MiniToolPlanExact, type MiniToolPlanRecipe, type VideoPresentationLedger } from "@breatic/shared";
-import { planVideoTimeline, presentationSlack, videoContainerJobId, type FrameWindow, type VideoContainerJobSpec, type VideoToolDraftById } from "@breatic/shared/mini-tools";
+import { planVideoTimeline, videoContainerJobId, type FrameWindow, type VideoContainerJobSpec, type VideoToolDraftById } from "@breatic/shared/mini-tools";
 import { advanceChunks, advanceRegistered, type ContainerStep } from "@worker/handlers/mini-tool/model-run-steps.js";
 import { failedResult, type VideoToolPickup } from "@worker/handlers/mini-tool/run-video-tool.js";
 import { planReadUntil } from "@worker/handlers/mini-tool/advance-plan-job.js";
@@ -104,17 +104,16 @@ export async function runMiniToolTransitions(execution: AcceptedMiniToolExecutio
    * @returns Its entries and window.
    * @throws {RangeError} When the frames lie outside the clip.
    */
-  const over = (at: number, frames: FrameWindow): { window: FrameWindow; entries: ReturnType<typeof windowEntries>; slack?: MiniToolPlanExact } => {
-    const window = transitionSourceWindow(clips[at]!.ledger.plan.presentation, clips[at]!, frames, profile.fps, planSlack(clips[at]!.ledger.plan));
-    const slack = presentationSlack(clips[at]!.ledger.plan.presentation, clips[at]!.ledger.plan.originMapping.timeBase);
-    return { window, entries: windowEntries(clips[at]!.ledger, window, exact(...transitionSlotTime(clips[at]!, frames.start, profile.fps))), ...(slack === null ? {} : { slack }) };
+  const over = (at: number, frames: FrameWindow): { window: FrameWindow; entries: ReturnType<typeof windowEntries> } => {
+    const window = transitionSourceWindow(clips[at]!.ledger.plan.presentation, clips[at]!, frames, profile.fps);
+    return { window, entries: windowEntries(clips[at]!.ledger, window, exact(...transitionSlotTime(clips[at]!, frames.start, profile.fps)), true) };
   };
   const planned: { window: FrameWindow; step: ContainerStep }[] = [];
   for (const [k, window] of layout.encode.entries()) {
     const at = window.end <= boundary ? 0 : 1;
     planned.push({ window, step: workChunk(execution, (attempt) => ({ kind: "run-chunk", taskId: execution.taskId, output: 0, chunk: k, attempt }), execution.container.containerClass, () => {
-      const { window: source, entries, slack } = over(at, window);
-      return { recipe: { kind: "chunk_encode", inputId: clipInputId(at), window: source, timescale: clips[at]!.ledger.plan.presentation.timescale, entries, ...(slack === undefined ? {} : { slack }),
+      const { window: source, entries } = over(at, window);
+      return { recipe: { kind: "chunk_encode", inputId: clipInputId(at), window: source, timescale: clips[at]!.ledger.plan.presentation.timescale, entries,
         target: segmentTarget(clips[at]!.ledger, execution.container.encode), profile, frames: { start: window.start, end: window.end } }, inputs: [{ inputId: clipInputId(at), storageKey: clips[at]!.storageKey }] };
     }) });
   }
@@ -124,8 +123,8 @@ export async function runMiniToolTransitions(execution: AcceptedMiniToolExecutio
       recipe: { kind: "transition_window", frames: { start: frames.start, end: frames.end }, window: { startFrame: window.startFrame, frameCount: window.frameCount },
         transition: window.kind, profile,
         clips: [0, 1].map((at) => {
-          const { entries, slack } = over(at, frames);
-          return { inputId: clipInputId(at), entries, ...(slack === undefined ? {} : { slack }), colorMatrix: clips[at]!.ledger.plan.colorMatrix, toneMap: clips[at]!.ledger.plan.output.toneMap };
+          const { entries } = over(at, frames);
+          return { inputId: clipInputId(at), entries, colorMatrix: clips[at]!.ledger.plan.colorMatrix, toneMap: clips[at]!.ledger.plan.output.toneMap };
         }) as [never, never] },
       inputs: clips.map((clip, at) => ({ inputId: clipInputId(at), storageKey: clip.storageKey })),
     })) });

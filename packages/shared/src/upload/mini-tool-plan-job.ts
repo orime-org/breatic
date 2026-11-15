@@ -35,7 +35,9 @@ const editSpan = z.strictObject({ sourceStart: time, sourceEnd: time, presentati
   .refine((span) => compare(span.sourceEnd, span.sourceStart) > 0n);
 // §91 D3b-11: the interval in presentation time with the plan's origin and audio spans (null when the track has no edit).
 const audio = z.strictObject({ start: time, end: time, origin: time, spans: z.array(editSpan).min(1).nullable() }).refine((value) => compare(value.end, value.start) > 0n);
-const sourceShape = { kind: z.literal("source"), decodeStart: time, clipStart: time, displayStart: time, displayEnd: time, rate: positiveTime };
+// `conform`: on an output grid, the exact frame grid in source time a rounding clock's stored frame times snap to (§7.17).
+const conformGrid = z.strictObject({ origin: exactTime, period: positiveTime });
+const sourceShape = { kind: z.literal("source"), decodeStart: time, clipStart: time, displayStart: time, displayEnd: time, rate: positiveTime, conform: conformGrid.optional() };
 const emptyShape = { kind: z.literal("empty"), fill: z.enum(["black", "transparent"]), window: interval };
 
 /**
@@ -92,8 +94,7 @@ const target = z.strictObject({
   .refine((value) => value.format === "webm-vp9" || (value.width % 2 === 0 && value.height % 2 === 0), "An H.264 target has even sides")
   .refine((value) => value.alpha !== "straight" || value.format === "webm-vp9", "Straight alpha is a VP9 output's")
   .refine((value) => value.alpha !== "packed" || value.format === undefined, "A packed carrier is no split output");
-// `slack`: half a tick of the source's time base when its clock rounded its frame times (`presentationSlack`, §7.17).
-const windowRecipe = { inputId, window: ordinals, timescale: z.number().int().positive(), entries, target, slack: positiveTime.optional() };
+const windowRecipe = { inputId, window: ordinals, timescale: z.number().int().positive(), entries, target };
 // The transition output profile (§97 D15-5): alpha with VP9 and yuva420p, none with H.264 and yuv420p, even H.264 sides, timeBase 1/fps.
 const transitionProfile = z.strictObject({
   width: side, height: side, fps: positiveTime, timeBase: positiveTime, pixFmt: z.enum(["yuv420p", "yuva420p"]),
@@ -110,12 +111,10 @@ const positiveSeconds = z.number().finite().positive();
 const lipsyncTimeline = z.strictObject({ duration: positiveSeconds, videoDuration: positiveSeconds, syncMode: z.enum(VIDEO_TOOL_SYNC_MODES) });
 const cropSize = z.number().int().positive();
 const windowRef = z.strictObject({ startFrame: index, frameCount: z.number().int().positive() });
-const windowClip = z.strictObject({ inputId, entries, colorMatrix: z.string().min(1), toneMap: z.enum(["none", "sdr-bt709"]), slack: positiveTime.optional() });
+const windowClip = z.strictObject({ inputId, entries, colorMatrix: z.string().min(1), toneMap: z.enum(["none", "sdr-bt709"]) });
 // The erase model's grid and an expand window's grid (execution design §10.4, §10.5).
-// `slack`: half a tick of the source's time base in seconds, the rounding of the frame times the source stores (§7.17).
-const gridSlack = z.number().finite().nonnegative().optional();
-const modelGrid = z.strictObject({ mode: z.enum(["frames", "resample"]), rate: z.number().finite().positive(), frameCount: z.number().int().positive(), slack: gridSlack });
-const windowGrid = z.strictObject({ fps: z.number().int().positive(), frameCount: z.number().int().positive(), slack: gridSlack });
+const modelGrid = z.strictObject({ mode: z.enum(["frames", "resample"]), rate: z.number().finite().positive(), frameCount: z.number().int().positive() });
+const windowGrid = z.strictObject({ fps: z.number().int().positive(), frameCount: z.number().int().positive() });
 const frameSize = z.strictObject({ width: side, height: side });
 
 /** Output and diagnostic byte ceilings frozen from the task's runtime configuration. */

@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
-import { gridFrameSlot, gridSecondsAllowed, gridSlotFrame, modelGrid } from "../model-grid.js";
+import { gridFrameSlot, gridSecondsAllowed, gridSlotFrame, modelGrid, presentationGridFrames } from "../model-grid.js";
 
 /** Presentation frames of a constant-rate clip, as [displayStart, displayEnd) seconds. */
 function cfr(count: number, rate: number, from = 0): { start: number; end: number }[] {
@@ -105,10 +105,12 @@ describe("model grid (execution design §10.4)", () => {
 });
 
 // A 60 fps WebM's frame starts are rounded to 1 ms (0, 17, 33, 50, 67 ms...): frame 4 truly starts at 66.67 ms, slot 2 of a
-// 30 fps grid. The grid's slack (half a source tick) lets that frame cover the slot it truly starts on.
-describe("a resample grid over starts rounded to the source clock", () => {
-  const frames = Array.from({ length: 60 }, (_unused, k) => ({ start: Math.round((k * 1000) / 60) / 1000, end: Math.round(((k + 1) * 1000) / 60) / 1000 }));
-  const grid = { mode: "resample" as const, rate: 30, frameCount: 30, slack: 0.0005 };
+// 30 fps grid. Read through presentationGridFrames, every frame from the second on starts on its exact 60 fps grid point.
+describe("a resample grid over starts rounded to the source clock (frames-split §7.17)", () => {
+  const starts = Array.from({ length: 61 }, (_unused, k) => Math.round((k * 1000) / 60));
+  const table = { schemaVersion: 1 as const, timescale: 1000, runs: starts.slice(0, 60).map((start, k) => ({ start, count: 1, step: starts[k + 1]! - start, duration: starts[k + 1]! - start })) };
+  const frames = presentationGridFrames(table, 0, 60);
+  const grid = { mode: "resample" as const, rate: 30, frameCount: 30 };
 
   it("MG09 every slot shows the frame starting on it: 0, 2, 4, ...", () => {
     expect(Array.from({ length: 30 }, (_unused, slot) => gridSlotFrame(grid, frames, slot))).toEqual(Array.from({ length: 30 }, (_unused, slot) => slot * 2));
@@ -116,5 +118,18 @@ describe("a resample grid over starts rounded to the source clock", () => {
 
   it("MG10 each frame starting on a slot is placed on that slot", () => {
     expect(Array.from({ length: 30 }, (_unused, k) => gridFrameSlot(grid, frames, k * 2))).toEqual(Array.from({ length: 30 }, (_unused, k) => k));
+  });
+
+  it("MG11 the first frame keeps the presentation start, the last its end, and each frame ends where the next starts", () => {
+    expect(frames[0]!.start).toBe(0);
+    expect(frames[59]!.end).toBe(1);
+    for (let k = 1; k < 60; k += 1) {
+      expect(frames[k]!.start).toBeCloseTo(k / 60, 12);
+      expect(frames[k - 1]!.end).toBe(frames[k]!.start);
+    }
+  });
+
+  it("MG12 a range in the middle reads the same grid points as the whole table", () => {
+    expect(presentationGridFrames(table, 20, 10)).toEqual(frames.slice(20, 30));
   });
 });
