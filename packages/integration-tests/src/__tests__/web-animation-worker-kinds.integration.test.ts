@@ -109,7 +109,7 @@ async function pickUp(fx: ExecutionFixture): Promise<void> {
 }
 
 /**
- * Seed an export of a fresh result, with the video and cover uploads acceptance opens.
+ * Seed an export of a fresh result, with the video upload acceptance opens; its cover rides with it.
  * @param state - Where the export starts.
  * @returns The export, its source and its video key.
  */
@@ -120,10 +120,6 @@ async function seedExport(state: "queued" | "running"): Promise<{ fx: ExecutionF
   const grant = await uploadGrantService.issueUploadGrant({
     projectId: holder.projectId, actingUserId: holder.userId, declaredSize: 1, taskType: "web_animation_export", ext: ".mp4",
     expiresAt: new Date(Date.now() + 7_200_000), context: { assetSource: "ai", derived: true, generationTaskId: null },
-  });
-  await uploadGrantService.issueUploadGrant({
-    projectId: holder.projectId, actingUserId: holder.userId, declaredSize: 1, taskType: "web_animation_export", ext: ".png",
-    expiresAt: new Date(Date.now() + 7_200_000), context: { assetSource: "cover", derived: true, generationTaskId: null },
   });
   const fx = await seedExecution(sql, state, {
     kind: "web_animation_export",

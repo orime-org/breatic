@@ -21,7 +21,7 @@ import { pictureUrl } from "@server/modules/asset/picture.service.js";
 import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import { projectAuthService, projectAssetReferenceService } from "@breatic/core";
 import * as studioService from "@server/modules/studio/studio.service.js";
-import * as timelineGrantRepo from "@server/modules/timeline/execution-grant.repo.js";
+import * as timelineGrantRepo from "@server/modules/web-animation/execution-grant.repo.js";
 import { studioAuthService } from "@breatic/domain";
 import { accountActivityRepo, claimFirstMilestone, db, enqueueAdsConversion, getAccountAttribution, getLimitsForStudio, logger, projectEditsRepo, trackServerEvent } from "@breatic/core";
 import type { DbTx } from "@breatic/core";

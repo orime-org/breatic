@@ -5,7 +5,9 @@
  * The three list reads keep the same cost on a late page as on the first (#1490 design §4.4): a Motion Space's own
  * executions through `timeline_executions_space_order_idx` and a grant check, the Timeline-made group and the Project's
  * results from the grant table through its two ordered indexes. Each read is run under `EXPLAIN (ANALYZE)` on page 1
- * and on page 10 of a Project with 400 rows, and the rows the scans read are compared.
+ * and on page 10 of a Project with 400 rows, and the rows the scans read are compared. Another Project holds 20,000
+ * rows, as every other Project's rows sit beside a Project's own in production; without them the planner reads the
+ * two small tables whole, which says nothing about how the reads scale.
  */
 
 import { randomUUID } from "node:crypto";
@@ -13,7 +15,8 @@ import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { db, initCore, loadLocales } from "@breatic/core";
 import { sql as drizzleSql } from "drizzle-orm";
-import { webAnimationListRepo, type ListScope } from "@server/modules/web-animation/web-animation-list.repo.js";
+import * as webAnimationListRepo from "@server/modules/web-animation/web-animation-list.repo.js";
+import type { ListScope } from "@server/modules/web-animation/web-animation-list.repo.js";
 
 let pg: ReturnType<typeof postgres>;
 const ROWS = 400;
@@ -39,6 +42,13 @@ beforeAll(async () => {
            now() - make_interval(secs => n)
     FROM generate_series(1, ${ROWS}) AS n`;
   await pg`INSERT INTO timeline_execution_grants (execution_id, project_id) SELECT id, project_id FROM timeline_executions WHERE project_id = ${projectId}`;
+  const [other] = await pg<{ id: string }[]>`INSERT INTO projects (studio_id, created_by_user_id, name, slug) VALUES (${studio!.id}, ${user!.id}, 'Others', ${randomUUID()}) RETURNING id`;
+  await pg`
+    INSERT INTO timeline_executions (project_id, space_id, actor_user_id, kind, engine, action_id, input, input_hash, deadline_at, status, origin, created_at)
+    SELECT ${other!.id}, gen_random_uuid(), ${user!.id}, 'web_animation_create', 'deepseek', gen_random_uuid(), '{}'::jsonb, 'sha256:other',
+           now() + interval '2 hours', 'succeeded', CASE WHEN n % 2 = 0 THEN 'web_animation_space' ELSE 'timeline' END, now() - make_interval(secs => n)
+    FROM generate_series(1, 20000) AS n`;
+  await pg`INSERT INTO timeline_execution_grants (execution_id, project_id) SELECT id, project_id FROM timeline_executions WHERE project_id = ${other!.id}`;
   await pg`ANALYZE timeline_executions`;
   await pg`ANALYZE timeline_execution_grants`;
 });
@@ -81,7 +91,7 @@ async function rowsRead(scope: ListScope, cursor: string | null): Promise<number
 async function tenthPageCursor(scope: ListScope): Promise<string> {
   let cursor: string | null = null;
   for (let page = 1; page < 10; page += 1) {
-    const result = await webAnimationListRepo.listPage({ projectId, spaceId: motionSpace, scope, group: "done", cursor, limit: LIMIT });
+    const result: webAnimationListRepo.ListPage = await webAnimationListRepo.listPage({ projectId, spaceId: motionSpace, scope, group: "done", cursor, limit: LIMIT });
     expect(result.rows).toHaveLength(LIMIT);
     cursor = result.nextCursor;
     if (cursor === null) throw new Error(`${scope} ran out before page 10`);

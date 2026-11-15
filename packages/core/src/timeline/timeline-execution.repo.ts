@@ -66,7 +66,8 @@ function iso<T extends string | null = string>(column: PgColumn): SQL<T> {
   return sql<T>`to_char(${column} AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')`;
 }
 
-const columns = {
+/** The columns an execution is read with; a repository that joins the table selects these and maps them with {@link toEntity}. */
+export const columns = {
   id: t.id,
   projectId: t.projectId,
   spaceId: t.spaceId,
@@ -93,7 +94,7 @@ const columns = {
 };
 
 /** A selected row before its text columns are narrowed to the entity's unions. */
-type Row = Omit<TimelineExecution, "kind" | "origin" | "engine" | "status" | "phase"> & {
+export type Row = Omit<TimelineExecution, "kind" | "origin" | "engine" | "status" | "phase"> & {
   kind: string;
   origin: string;
   engine: string | null;
@@ -107,7 +108,7 @@ type Row = Omit<TimelineExecution, "kind" | "origin" | "engine" | "status" | "ph
  * @returns The entity.
  * @throws {never} Never.
  */
-function toEntity(row: Row): TimelineExecution {
+export function toEntity(row: Row): TimelineExecution {
   return {
     ...row,
     kind: row.kind as TimelineExecution["kind"],

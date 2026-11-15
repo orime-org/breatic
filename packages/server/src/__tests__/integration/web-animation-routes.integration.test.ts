@@ -257,7 +257,7 @@ describe("POST /timeline/executions — modify", () => {
 });
 
 describe("POST /timeline/executions — export", () => {
-  it("freezes the source's frame and length, opens the video and cover uploads, and answers its source", async () => {
+  it("freezes the source's frame and length, opens the video upload its cover rides with, and answers its source", async () => {
     const fx = await seedProject();
     const { execution, versionId } = await finishedCreate(fx, fx.spaceId, { width: 1080, height: 1920, durationFrames: 144 });
     const data = await acceptRow(fx.editor.cookie, exportBody(fx, versionId), 201);
@@ -268,12 +268,12 @@ describe("POST /timeline/executions — export", () => {
     expect(data).not.toHaveProperty("export");
     const input = data.input as { videoKey: string };
     expect(input).toEqual({ sourceVersionId: versionId, width: 1080, height: 1920, fps: { num: 24, den: 1 }, durationFrames: 144, videoKey: expect.stringMatching(/\.mp4$/) });
+    // The cover is written beside the video at `coverKeyFor(videoKey)` and filed by the video's own report, as a
+    // mini-tool's video output is (`container-outputs.service.ts`), so only the video holds a grant.
     const grants = await sql<{ storage_key: string; project_id: string; derived: boolean; asset_source: string; generation_task_id: string | null }[]>`
       SELECT storage_key, project_id, derived, asset_source, generation_task_id FROM upload_grants
-      WHERE storage_key IN (${input.videoKey}, ${coverKeyFor(input.videoKey)}) ORDER BY storage_key`;
-    expect(grants).toEqual([input.videoKey, coverKeyFor(input.videoKey)].sort().map((key) => ({
-      storage_key: key, project_id: fx.projectId, derived: true, asset_source: "ai", generation_task_id: null,
-    })));
+      WHERE storage_key IN (${input.videoKey}, ${coverKeyFor(input.videoKey)})`;
+    expect(grants).toEqual([{ storage_key: input.videoKey, project_id: fx.projectId, derived: true, asset_source: "ai", generation_task_id: null }]);
   });
 
   it("answers the live export of the same source in this Space instead of making a second", async () => {
@@ -350,8 +350,9 @@ describe("POST /timeline/executions — export", () => {
     await Promise.race([rowWritten, competitor.then(() => { throw new Error("The competing export ended before writing its row"); })]);
     try {
       const pending = accept(fx.editor.cookie, exportBody(fx, versionId));
-      const answeredFirst = pending.then(async (res) => { throw new Error(`Answered ${res.status} before waiting on the insert: ${await res.text()}`); });
-      await Promise.race([waitUntilBlockedOn(sql, ["timeline_executions", "insert"], 1), answeredFirst]);
+      let blocked = false;
+      const answeredFirst = pending.then((res) => { if (!blocked) throw new Error(`Answered ${res.status} before waiting on the insert`); });
+      await Promise.race([waitUntilBlockedOn(sql, ["timeline_executions", "insert"], 1).then(() => { blocked = true; }), answeredFirst]);
       release();
       await competitor;
       const res = await pending;

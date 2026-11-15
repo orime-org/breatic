@@ -1,0 +1,212 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: Elastic-2.0
+
+/**
+ * The reads that list web-animation executions through a Project's grants (#1490 design §4.4).
+ *
+ * A Motion Space's own list walks `timeline_executions_space_order_idx` and checks each row against the grant; the
+ * Timeline-made group and the Project's results walk the grant table through its two ordered indexes, which carry each
+ * execution's creation time and origin. Every list pages by creation time then id, with a cursor carrying the time at
+ * full precision, so a late page reads as many rows as the first.
+ */
+
+import { and, desc, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
+import { db, timelineExecutionGrants as g, timelineExecutions as t, timelineExecutionRepo } from "@breatic/core";
+import type { TimelineExecution, TimelineExecutionStatus } from "@breatic/shared";
+
+/** Which list: a Motion Space's own, the Timeline-made group, or the Project's results for the Timeline picker. */
+export type ListScope = "space" | "timeline" | "results";
+
+/** Ended rows, or rows still in progress. */
+export type ListGroup = "done" | "running";
+
+/** One page's request. */
+export interface ListParams {
+  projectId: string;
+  /** The Motion Space asking; read by the `space` scope only. */
+  spaceId: string | null;
+  scope: ListScope;
+  /** Read by the `space` and `timeline` scopes; the results list is its own fixed set. */
+  group: ListGroup;
+  cursor: string | null;
+  limit: number;
+}
+
+/** One page. */
+export interface ListPage {
+  rows: TimelineExecution[];
+  nextCursor: string | null;
+}
+
+const DONE: readonly TimelineExecutionStatus[] = ["succeeded", "failed", "cancelled", "expired"];
+const RUNNING: readonly TimelineExecutionStatus[] = ["awaiting_landing", "queued", "running", "cancelling"];
+/** What the Timeline picker offers: a create or a modification that finished or may still finish. */
+const RESULT_STATUSES: readonly TimelineExecutionStatus[] = ["queued", "running", "cancelling", "succeeded"];
+const RESULT_KINDS: readonly TimelineExecution["kind"][] = ["web_animation_create", "web_animation_modify"];
+
+/** The cursor could not be read. */
+export class BadCursorError extends Error {
+  /** The marker. */
+  constructor() {
+    super("web animation list cursor unreadable");
+    this.name = "BadCursorError";
+  }
+}
+
+/**
+ * Where the next page starts: the last row's creation time at full precision and its id.
+ * @param row - The last row of a page.
+ * @returns The opaque cursor.
+ * @throws {never} Never.
+ */
+function cursorAfter(row: TimelineExecution): string {
+  return Buffer.from(JSON.stringify([row.createdAt, row.id]), "utf8").toString("base64url");
+}
+
+/**
+ * Read a cursor back.
+ * @param cursor - The opaque cursor.
+ * @returns The time text and id it carries.
+ * @throws {BadCursorError} When it is not one this repository wrote.
+ */
+function readCursor(cursor: string): { createdAt: string; id: string } {
+  try {
+    const parsed = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")) as unknown;
+    if (Array.isArray(parsed) && typeof parsed[0] === "string" && typeof parsed[1] === "string"
+      && /^[0-9a-f-]{36}$/.test(parsed[1]) && !Number.isNaN(Date.parse(parsed[0]))) {
+      return { createdAt: parsed[0], id: parsed[1] };
+    }
+  } catch {
+    // Not base64url JSON: not a cursor of ours.
+  }
+  throw new BadCursorError();
+}
+
+/**
+ * The live grant of an execution to a Project, as an `EXISTS` condition on the executions table.
+ * @param projectId - The Project.
+ * @returns The condition.
+ * @throws {never} Never.
+ */
+function grantedTo(projectId: string): SQL {
+  return sql`EXISTS (SELECT 1 FROM ${g} WHERE ${g.executionId} = ${t.id} AND ${g.projectId} = ${projectId} AND ${g.deletedAt} IS NULL)`;
+}
+
+/**
+ * The statuses one group holds.
+ * @param group - The group.
+ * @returns Its statuses.
+ * @throws {never} Never.
+ */
+function statusesOf(group: ListGroup): readonly TimelineExecutionStatus[] {
+  return group === "done" ? DONE : RUNNING;
+}
+
+/**
+ * Build one page's query: the newest `limit + 1` rows after the cursor, so a page knows whether another follows.
+ * @param params - The page.
+ * @returns The query, not yet run.
+ * @throws {BadCursorError} When the cursor is not one this repository wrote.
+ */
+function pageQuery(params: ListParams): PromiseLike<timelineExecutionRepo.Row[]> & { getSQL(): SQL } {
+  const after = params.cursor === null ? null : readCursor(params.cursor);
+  const take = params.limit + 1;
+  if (params.scope === "space") {
+    // A row comparison, so the index range starts at the cursor instead of filtering from the newest row.
+    const cursorCondition = after === null ? undefined : sql`(${t.createdAt}, ${t.id}) < (${after.createdAt}::timestamptz, ${after.id}::uuid)`;
+    return db.select(timelineExecutionRepo.columns).from(t)
+      .where(and(
+        eq(t.spaceId, params.spaceId ?? ""),
+        isNull(t.deletedAt),
+        inArray(t.status, [...statusesOf(params.group)]),
+        grantedTo(params.projectId),
+        cursorCondition,
+      ))
+      .orderBy(desc(t.createdAt), desc(t.id))
+      .limit(take);
+  }
+  const cursorCondition = after === null ? undefined : sql`(${g.executionCreatedAt}, ${g.executionId}) < (${after.createdAt}::timestamptz, ${after.id}::uuid)`;
+  const scoped = params.scope === "timeline"
+    ? and(eq(g.executionOrigin, "timeline"), eq(t.kind, "web_animation_create"), inArray(t.status, [...statusesOf(params.group)]))
+    : and(inArray(t.kind, [...RESULT_KINDS]), inArray(t.status, [...RESULT_STATUSES]));
+  return db.select(timelineExecutionRepo.columns).from(g)
+    .innerJoin(t, eq(t.id, g.executionId))
+    .where(and(eq(g.projectId, params.projectId), isNull(g.deletedAt), isNull(t.deletedAt), scoped, cursorCondition))
+    .orderBy(desc(g.executionCreatedAt), desc(g.executionId))
+    .limit(take);
+}
+
+/**
+ * The query of one page as SQL, for reading its plan.
+ * @param params - The page.
+ * @returns The query.
+ * @throws {BadCursorError} When the cursor is not one this repository wrote.
+ */
+export function listQuery(params: ListParams): SQL {
+  return pageQuery(params).getSQL();
+}
+
+/**
+ * Read one page.
+ * @param params - The page.
+ * @returns Its rows, newest first, and where the next starts.
+ * @throws {BadCursorError} When the cursor is not one this repository wrote.
+ * @throws {Error} When the read fails.
+ */
+export async function listPage(params: ListParams): Promise<ListPage> {
+  const rows = (await pageQuery(params)).map(timelineExecutionRepo.toEntity);
+  const more = rows.length > params.limit;
+  const page = more ? rows.slice(0, params.limit) : rows;
+  return { rows: page, nextCursor: more ? cursorAfter(page[page.length - 1]!) : null };
+}
+
+/**
+ * How many rows each group of a list holds.
+ * @param params - The list; its cursor and limit are not read.
+ * @param params.projectId - The Project.
+ * @param params.spaceId - The Motion Space, for the `space` scope.
+ * @param params.scope - Which list.
+ * @returns The ended and the in-progress counts.
+ * @throws {Error} When the read fails.
+ */
+export async function countGroups(params: Pick<ListParams, "projectId" | "spaceId" | "scope">): Promise<{ done: number; inProgress: number }> {
+  const ended = sql<number>`count(*) FILTER (WHERE ${t.status} IN ('succeeded', 'failed', 'cancelled', 'expired'))::int`;
+  const open = sql<number>`count(*) FILTER (WHERE ${t.status} NOT IN ('succeeded', 'failed', 'cancelled', 'expired'))::int`;
+  const [counts] = params.scope === "space"
+    ? await db.select({ done: ended, inProgress: open }).from(t)
+      .where(and(eq(t.spaceId, params.spaceId ?? ""), isNull(t.deletedAt), grantedTo(params.projectId)))
+    : await db.select({ done: ended, inProgress: open }).from(g)
+      .innerJoin(t, eq(t.id, g.executionId))
+      .where(and(
+        eq(g.projectId, params.projectId), isNull(g.deletedAt), isNull(t.deletedAt),
+        params.scope === "timeline"
+          ? and(eq(g.executionOrigin, "timeline"), eq(t.kind, "web_animation_create"))
+          : and(inArray(t.kind, [...RESULT_KINDS]), inArray(t.status, [...RESULT_STATUSES])),
+      ));
+  return { done: counts?.done ?? 0, inProgress: counts?.inProgress ?? 0 };
+}
+
+/**
+ * The live exports of these source versions in a Motion Space that a Project holds a grant for: in the Space's own
+ * Project, and, in a duplicated Project, the ones its source made in the same Space.
+ * @param key - Where to look.
+ * @param key.projectId - The Project asking.
+ * @param key.spaceId - The Motion Space.
+ * @param key.sourceVersionIds - The source versions.
+ * @returns The exports, at most one per source version.
+ * @throws {Error} When the read fails.
+ */
+export async function findLiveExports(key: { projectId: string; spaceId: string; sourceVersionIds: readonly string[] }): Promise<TimelineExecution[]> {
+  if (key.sourceVersionIds.length === 0) return [];
+  const rows = await db.select(timelineExecutionRepo.columns).from(t)
+    .where(and(
+      eq(t.spaceId, key.spaceId),
+      eq(t.kind, "web_animation_export"),
+      sql`${t.status} NOT IN ('failed', 'cancelled', 'expired')`,
+      isNull(t.deletedAt),
+      inArray(sql`${t.input}->>'sourceVersionId'`, [...key.sourceVersionIds]),
+      grantedTo(key.projectId),
+    ))
+    .orderBy(desc(t.createdAt), desc(t.id));
+  return rows.map(timelineExecutionRepo.toEntity);
+}

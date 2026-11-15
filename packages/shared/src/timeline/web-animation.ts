@@ -133,7 +133,7 @@ const legacyCreateRequest = z.object({ ...keyed, ...createFields, fps: TimelineR
  */
 export const WebAnimationExecutionRequestSchema = z.union([
   kindedRequest.transform((request) => ({ ...request, origin: "web_animation_space" as const })),
-  legacyCreateRequest.transform(({ fps: _fps, ...request }) => ({ ...request, kind: CREATE, origin: "timeline" as const })),
+  legacyCreateRequest.transform(({ fps: _fps, ...request }) => ({ ...request, kind: CREATE as typeof CREATE, origin: "timeline" as const })),
 ]);
 
 /** A read execution request. */

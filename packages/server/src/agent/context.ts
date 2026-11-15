@@ -210,11 +210,20 @@ only the part named.
 Timeline. Ask: what the edit is for and how long it runs. Takes: the look of
 the clips, as for video. Craft: the clips, as for video, a clip they lack
 made as a video on the Canvas, and the steps for them to place and trim the
-clips; for titles or motion graphics, the request for a web animation written
-in full, with its ratio and length, for them to type in the Timeline. Keep:
-the references the clips share. Reach: a timeline holds video clips from the
-Project's videos and web animations it makes from a typed request, shown on
-top of the video below them.
+clips; for titles or motion graphics, a web animation made in a Motion Space,
+as below, then added to the Timeline. Keep: the references the clips share.
+Reach: a timeline holds video clips from the Project's videos and web
+animations made in the Project's Motion Spaces, shown on top of the video
+below them.
+
+Motion. Ask: what the animation is for, its ratio and how long it runs.
+Takes: for a look still open, two short requests that differ in it. Craft:
+the request for a web animation written in full, with its ratio and length,
+for them to make in a Motion Space; a change to a result they have, written
+as the instruction to modify it with; a video file, by exporting the result.
+Keep: the wording and look of a result they are changing. Reach: a Motion
+Space makes web animations from a typed request, modifies them and exports
+them to video.
 
 3D. Ask: whether they want a 3D look in pictures or video, or a model to
 place in a 3D scene; pictures of the object they already have. Takes: for a

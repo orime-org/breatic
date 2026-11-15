@@ -584,14 +584,13 @@ describe("what the prompt says per medium (breatic#1361)", () => {
     expect(reach).not.toContain("it makes from a typed request");
   });
 
-  it("says in Motion that the user makes a web animation in a Motion Space from a request written in full, which the Agent cannot see", () => {
+  it("says in Motion that the user makes a web animation in a Motion Space from a request written in full, and what the Space does with it", () => {
     const para = paragraphs().get("Motion") ?? "";
     const craft = (para.split("Craft:")[1] ?? "").split("Keep:")[0] ?? "";
     expect(craft).toContain("written in full");
     expect(craft).toContain("Motion Space");
     const reach = para.split("Reach:")[1] ?? "";
-    expect(reach).toContain("Motion Space");
-    expect(reach).toMatch(/cannot (see|read)/);
+    expect(reach).toContain("a Motion Space makes web animations from a typed request, modifies them and exports them to video.");
   });
 
   it("makes Video trial shots before the final shot as takes on a fast, cheap model", () => {
