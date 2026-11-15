@@ -58,12 +58,13 @@ function fromLocale(key: string): string {
 }
 
 /**
- * A prompt cut at every chip and brace into the literal pieces the editor must show in order.
+ * A prompt cut at every chip, brace and line break into the literal pieces the editor must show in order.
  * @param key - The prompt's key.
  * @returns The pieces.
  */
 function draftPieces(key: string): string[] {
-  return markedSegments(fromLocale(key)).flatMap((segment) => (segment.text?.trim() ? [segment.text.trim()] : []));
+  // A line break starts a new paragraph in the editor, so the pieces are cut at it too.
+  return markedSegments(fromLocale(key)).flatMap((segment) => (segment.text ?? '').split('\n').map((piece) => piece.trim()).filter((piece) => piece !== ''));
 }
 
 /**
