@@ -52,6 +52,7 @@ import {
 import { onDatabaseWaitTimeout } from "@breatic/core";
 import { googleDataManagerSink, runAdsConversion, type AdsConversionSink } from "@worker/handlers/ads-conversion.js";
 import {
+  creditHoldService,
   modelCatalog,
   USAGE_LOOKUP_QUEUE,
   MEDIA_READ_QUEUE,
@@ -145,6 +146,7 @@ import { reportTimelineJobFailed } from "@worker/handlers/timeline/timeline-fail
 import { sweepCreditCharges } from "@worker/handlers/credit-charge-sweep.js";
 import {
   CREDIT_CHARGE_SWEEP_QUEUE,
+  CREDIT_HOLD_RELEASE_QUEUE,
   IDENTITY_REVOCATION_FORWARD_QUEUE,
   INVITATION_CLAIM_FORWARD_QUEUE,
   REGION_OUTBOX_RELAY_QUEUE,
@@ -474,6 +476,16 @@ export function startWorker(): void {
       logger.error({ err, region: job?.data.region, userId: job?.data.userId }, "invitation_claim_forward_failed");
     });
     regionWorkers.push(claimForward);
+  }
+  // Hold releases the global region could not take at the time (inner#1955).
+  if (WORKER_QUEUES.includes(CREDIT_HOLD_RELEASE_QUEUE)) {
+    const holdRelease = createWorker<creditHoldService.HoldReleaseJob>(CREDIT_HOLD_RELEASE_QUEUE, (job) =>
+      creditHoldService.runQueuedHoldRelease(job.data),
+    );
+    holdRelease.on("failed", (job, err) => {
+      logger.error({ err, referenceId: job?.data.referenceId, attempts: job?.attemptsMade }, "credit_hold_release_retry_failed");
+    });
+    regionWorkers.push(holdRelease);
   }
   if (WORKER_QUEUES.includes(IDENTITY_REVOCATION_FORWARD_QUEUE)) {
     const revocationForward = createWorker<IdentityRevocationForwardJob>(IDENTITY_REVOCATION_FORWARD_QUEUE, forwardRevocation);

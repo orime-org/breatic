@@ -20,7 +20,7 @@ import * as creditHoldRepo from "@domain/credit/creditHold.repo.js";
 import * as creditLotRepo from "@domain/credit/creditLot.repo.js";
 import { resolveOwnerStudioId } from "@domain/asset/asset.service.js";
 import { fromMicroCredits, positionFrom, serializeCreditPosition, toChargeMicro, type CreditPositionMicro } from "@domain/credit/credit-math.js";
-import { db, env } from "@breatic/core";
+import { createQueue, db, defaultJobOpts, env, isGlobalRegion, isRegionUnavailable } from "@breatic/core";
 import { globalApi } from "@domain/region/global-api.js";
 import type { DbTx } from "@breatic/core";
 import type { ProjectCreditsView } from "@breatic/shared";
@@ -115,13 +115,43 @@ export async function reserveHere(
   });
 }
 
+/** The queue that retries, in a region outside the global one, a release the global region could not take (inner#1955). */
+export const CREDIT_HOLD_RELEASE_QUEUE = "credit-hold-release";
+
+/** A queued release. */
+export interface HoldReleaseJob {
+  referenceId: string;
+}
+
+let releaseQueue: ReturnType<typeof createQueue> | null = null;
+
 /**
  * Release a hold. Releasing one that is gone or already released does nothing.
+ * Outside the global region a release that finds the global region
+ * unavailable is queued and retried, so the Studio's credits are not held
+ * until the hold expires.
  * @param referenceId - Its key.
- * @throws {Error} When the database fails.
+ * @throws {Error} When the database fails, the global region refuses, or the retry cannot be queued.
  */
 export async function releaseHold(referenceId: string): Promise<void> {
-  await globalApi().releaseHold(referenceId);
+  try {
+    await globalApi().releaseHold(referenceId);
+  } catch (err) {
+    if (isGlobalRegion(env) || !isRegionUnavailable(err)) throw err;
+    releaseQueue ??= createQueue(CREDIT_HOLD_RELEASE_QUEUE);
+    await releaseQueue.add("release", { referenceId } satisfies HoldReleaseJob, { ...defaultJobOpts(), jobId: referenceId });
+  }
+}
+
+/**
+ * Run one queued release; a throw makes the queue retry it.
+ * @param job - The release.
+ * @param job.referenceId - The hold's key.
+ * @returns Once released.
+ * @throws {Error} When the global region still does not take it.
+ */
+export async function runQueuedHoldRelease(job: HoldReleaseJob): Promise<void> {
+  await globalApi().releaseHold(job.referenceId);
 }
 
 /**

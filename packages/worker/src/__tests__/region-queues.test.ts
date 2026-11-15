@@ -18,7 +18,7 @@ const GLOBAL_ONLY = [ADS_CONVERSION_QUEUE];
 
 const GLOBAL_WITH_REGIONS = ["slug-reservation-sweep", "identity-revocation-forward", "invitation-claim-forward"];
 
-const REGIONAL_ONLY = ["region-outbox-relay"];
+const REGIONAL_ONLY = ["region-outbox-relay", "credit-hold-release"];
 
 const EVERY_REGION = [
   "tasks",

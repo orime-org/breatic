@@ -6,8 +6,8 @@
  *
  * Work on global data (ads conversions, settling slug reservations,
  * forwarding revocations and email-invitation claims to other regions) runs
- * only in the global region; relaying the outbox runs
- * only where there is a global region to relay to; reporting storage use runs
+ * only in the global region; relaying the outbox and retrying hold releases
+ * run only where there is a global region to call; reporting storage use runs
  * only where another region exists to read it. Everything else that works on
  * a region's own Studios runs in every region.
  */
@@ -15,6 +15,7 @@
 import { ADS_CONVERSION_QUEUE, IDENTITY_REVOCATION_FORWARD_QUEUE, INVITATION_CLAIM_FORWARD_QUEUE, TIMELINE_QUEUE } from "@breatic/core";
 import {
   AUDIO_PEAKS_QUEUE,
+  creditHoldService,
   MAIL_QUEUE,
   MEDIA_READ_QUEUE,
   UPLOAD_FINISH_QUEUE,
@@ -59,8 +60,11 @@ const GLOBAL_WITH_REGIONS: readonly string[] = [
   STORAGE_USAGE_SYNC_QUEUE,
 ];
 
+/** Hold releases the global region could not take when they were made. */
+export const CREDIT_HOLD_RELEASE_QUEUE = creditHoldService.CREDIT_HOLD_RELEASE_QUEUE;
+
 /** What every other region does for the global region. */
-const REGIONAL_ONLY: readonly string[] = [REGION_OUTBOX_RELAY_QUEUE, STORAGE_USAGE_SYNC_QUEUE];
+const REGIONAL_ONLY: readonly string[] = [REGION_OUTBOX_RELAY_QUEUE, STORAGE_USAGE_SYNC_QUEUE, CREDIT_HOLD_RELEASE_QUEUE];
 
 /**
  * The queues a worker in this region runs.
