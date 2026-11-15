@@ -35,12 +35,6 @@ import { DOC_COLUMN, DOC_COLUMN_LIST, holdsOneEmptyParagraph } from '@web/spaces
 export const SAVED_BODY = new PluginKey('doc-saved-body');
 
 /**
- * Meta on the put-down half of a move within one group (design 5.2): the id
- * of the column its take-away empties, which the group to come leaves out.
- */
-export const LEAVING_COLUMN = new PluginKey('doc-column-leaving');
-
-/**
  * Whether transactions hold a change made in this editor itself, other than
  * a body written as it was saved: what the column plugins answer. A change
  * the Yjs binding writes (a collaborator's, an undo or a redo) is not one.

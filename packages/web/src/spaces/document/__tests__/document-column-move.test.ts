@@ -196,6 +196,22 @@ describe('a side drop leaves the scroll where the user dropped (inner#1314 A1)',
   });
 });
 
+describe('a side drop of a row whose id stands twice (inner#1314 A1)', () => {
+  it('moves the row it was given and leaves the other alone', () => {
+    const editor = open([para('X'), para('T'), para('Y')]);
+    const view = editor.prosemirrorView;
+    const id = idOf(editor, 'X');
+    let y = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (node.type.name === 'blockContainer' && node.firstChild?.textContent === 'Y') y = pos;
+      return y < 0;
+    });
+    view.dispatch(view.state.tr.setNodeAttribute(y, 'id', id));
+    dropRowBeside(editor as never, id, idOf(editor, 'T'), 'right');
+    expect(shape(editor)).toEqual(['[T|X]', 'Y']);
+  });
+});
+
 describe('a column group moved past a list item with children (inner#1314 design §5.1)', () => {
   it('goes below the whole list item on the way down', () => {
     const editor = open([columnsBlock(['a'], ['c']), { type: 'bulletListItem', content: 'L', children: [para('child')] }, para('tail')]);

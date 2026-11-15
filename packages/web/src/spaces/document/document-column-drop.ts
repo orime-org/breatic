@@ -23,6 +23,7 @@
 
 import type { BlockNoteEditor } from '@blocknote/core';
 import { Fragment, Node as PMNode, Slice, type ResolvedPos } from '@tiptap/pm/model';
+import { PluginKey } from '@tiptap/pm/state';
 import { ReplaceAroundStep } from '@tiptap/pm/transform';
 import type * as Y from 'yjs';
 import { ySyncPluginKey } from 'y-prosemirror';
@@ -30,9 +31,15 @@ import { ySyncPluginKey } from 'y-prosemirror';
 import { docNameOf } from '@web/data/yjs/manager';
 import { checkAdd } from '@web/data/yjs/space-write';
 import { DOC_COLUMN, DOC_COLUMN_LIST, meanWeight, weightsOf } from '@web/spaces/document/document-column-geometry';
-import { LEAVING_COLUMN, liftOnlyColumn } from '@web/spaces/document/document-column-repair';
+import { liftOnlyColumn } from '@web/spaces/document/document-column-repair';
 import { rangeToLift } from '@web/spaces/document/document-drag-move';
 import { rowById, type RowInDocument } from '@web/spaces/document/document-row-by-id';
+
+/**
+ * Meta on the put-down of a lone block's move within its group: the id of
+ * the column the take-away empties, which the group to come leaves out.
+ */
+export const LEAVING_COLUMN = new PluginKey('doc-column-leaving');
 
 /** Which side of the target the row lands on. */
 export type ColumnSide = 'left' | 'right';
@@ -124,33 +131,30 @@ export function dropRowBeside(
     landing = rowById(put.doc, targetId)!;
     around = null;
   }
-  let copyAt: number;
   if (around !== null) {
     const $column = put.doc.resolve(landing.from);
-    copyAt = side === 'left' ? $column.before() : $column.after();
-    put.insert(copyAt, columnType.create({ width }, copy));
+    put.insert(side === 'left' ? $column.before() : $column.after(), columnType.create({ width }, copy));
     // The column the take-away empties is no column of the group to come.
     if (sameGroup && fromGroup.column.childCount === 1) put.setMeta(LEAVING_COLUMN, String(fromGroup.column.attrs['id']));
   } else {
     // The target is wrapped where it stands, so everything inside it maps
     // through, a block nested under it included.
-    const theirs = columnType.create({ width: 1 }, copy);
-    const ours = columnType.create({ width: 1 });
-    const list = listType.create(null, side === 'left' ? [theirs, ours] : [ours, theirs]);
-    const gap = side === 'left' ? theirs.nodeSize + 2 : 2;
-    copyAt = side === 'left' ? landing.from : landing.to;
+    const moved = columnType.create({ width }, copy);
+    const targets = columnType.create({ width });
+    const list = listType.create(null, side === 'left' ? [moved, targets] : [targets, moved]);
+    const gap = side === 'left' ? moved.nodeSize + 2 : 2;
     put.step(new ReplaceAroundStep(landing.from, landing.to, landing.from, landing.to, new Slice(Fragment.from(list), 0, 0), gap, true));
   }
-  const copyFirst = copyAt <= put.mapping.map(dragged.from, 1);
+  // The put-down only inserts and lifts, and what is appended to it only
+  // changes markup: the original stands where the row maps to.
+  const at = put.mapping.map(dragged.from, 1);
   view.dispatch(put);
 
-  // The row stands twice now, the original on its side of the copy.
-  const rows = rowsById(view.state.doc, draggedId);
-  const original = rows.length === 2 ? rows[copyFirst ? 1 : 0]! : undefined;
-  if (original === undefined) return true;
+  const original = view.state.doc.nodeAt(at);
+  if (original?.attrs['id'] !== draggedId) return true;
   // A row that is the only child of its nested group, or of its column,
   // leaves with it.
-  const leaving = rangeToLift(view.state.doc, original);
+  const leaving = rangeToLift(view.state.doc, { node: original, from: at, to: at + original.nodeSize });
   view.dispatch(view.state.tr.delete(leaving.from, leaving.to));
   return true;
 }
@@ -170,20 +174,4 @@ export function weightsAfterDrop(from: InColumn | null, to: InColumn | null): nu
   const leaving = same && from.column.childCount === 1 ? from.index : -1;
   const kept = weightsOf(to.group).filter((_weight, index) => index !== leaving);
   return [...kept, meanWeight(kept)];
-}
-
-/**
- * Every row carrying that id, in document order.
- * @param doc - The document.
- * @param blockId - The id.
- * @returns The rows.
- */
-function rowsById(doc: PMNode, blockId: string): RowInDocument[] {
-  const rows: RowInDocument[] = [];
-  doc.descendants((node, pos) => {
-    if (node.attrs['id'] !== blockId) return true;
-    rows.push({ node, from: pos, to: pos + node.nodeSize });
-    return false;
-  });
-  return rows;
 }

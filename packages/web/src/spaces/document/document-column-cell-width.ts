@@ -22,7 +22,8 @@ import { TableMap } from '@tiptap/pm/tables';
 import type { EditorView } from '@tiptap/pm/view';
 
 import { DOC_COLUMN_LIST, roomInside, weightsOf, weightsWidth } from '@web/spaces/document/document-column-geometry';
-import { LEAVING_COLUMN, localEdit } from '@web/spaces/document/document-column-repair';
+import { LEAVING_COLUMN } from '@web/spaces/document/document-column-drop';
+import { localEdit } from '@web/spaces/document/document-column-repair';
 import { rowById } from '@web/spaces/document/document-row-by-id';
 import { drawnColumns, holdColumnWidths } from '@web/spaces/document/document-table-column-widths';
 import { isTableCell } from '@web/spaces/document/document-table-nodes';
@@ -61,7 +62,7 @@ function grownGroups(before: PMNode, after: PMNode): string[] {
  * @param groupId - The group's id.
  * @param leaving - The id of a column the move's take-away empties next.
  */
-function holdFor(view: EditorView, tr: Transaction, groupId: string, leaving: unknown): void {
+function holdFor(view: EditorView, tr: Transaction, groupId: string, leaving: string | undefined): void {
   const found = rowById(tr.doc, groupId);
   if (found?.node.type.name !== DOC_COLUMN_LIST) return;
   const $group = tr.doc.resolve(found.from);
@@ -132,7 +133,7 @@ export const documentColumnCellWidthExtension = createExtension(() => {
           const grown = grownGroups(before.doc, after.doc);
           if (grown.length === 0) return null;
           const tr = after.tr;
-          const leaving = transactions.map((transaction) => transaction.getMeta(LEAVING_COLUMN) as unknown).find((id) => id !== undefined);
+          const leaving = transactions.map((transaction) => transaction.getMeta(LEAVING_COLUMN) as string | undefined).find((id) => id !== undefined);
           for (const id of grown) holdFor(view, tr, id, leaving);
           return tr.docChanged ? tr : null;
         },

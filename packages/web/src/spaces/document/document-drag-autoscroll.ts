@@ -125,7 +125,6 @@ export class DragWindow {
   }
 }
 
-
 /** Each view's session loop. */
 const sessions = new WeakMap<EditorView, BodyAutoScroll>();
 
