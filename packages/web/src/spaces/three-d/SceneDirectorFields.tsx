@@ -76,7 +76,7 @@ const HEX_TEXT = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
  * @param root0.disabled - Whether it can be changed.
  * @param root0.labelId - What names it.
  * @param root0.spaceId - The Space the field belongs to.
- * @param root0.onPressStart - Opens a picker press when the mouse or an arrow key goes down.
+ * @param root0.onPressStart - Opens a picker press when the mouse or an arrow key first goes down.
  * @param root0.onPreview - Shows a colour while picking.
  * @param root0.onCommit - Writes the previewed colour and ends the press.
  * @param root0.onCancel - Ends the press without writing it; no release of it follows.
@@ -111,10 +111,10 @@ export const SceneColorField = React.memo(function SceneColorField({ value, disa
     onPressStart();
     window.addEventListener('mouseup', release, { once: true });
   }, [onPressStart, release]);
-  // A picker arrow key is a press of its own, ended on the key's release: react-colorful reports no end for a step that
-  // changed nothing.
+  // A picker arrow key is a press of its own, from its first keydown (a held key's auto-repeats belong to it) to its
+  // release: react-colorful reports no end for a step that changed nothing.
   const onPickerKey = React.useCallback((event: React.KeyboardEvent): void => {
-    if (live.current && event.key.startsWith('Arrow')) onPressStart();
+    if (live.current && !event.repeat && event.key.startsWith('Arrow')) onPressStart();
   }, [onPressStart]);
   const onPickerKeyUp = React.useCallback((event: React.KeyboardEvent): void => { if (event.key.startsWith('Arrow')) release(); }, [release]);
   const settle = React.useCallback((): void => {

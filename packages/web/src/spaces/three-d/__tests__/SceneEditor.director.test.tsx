@@ -1088,6 +1088,33 @@ describe('continuous controls end on release and on Escape (round 1 fixes, desig
     await waitFor(() => expect(screen.queryByTestId('scene-right-panel')).toBeNull());
   });
 
+  it.each([
+    ['the ambient light', false],
+    ['a light', true],
+  ])('takes a held picker arrow key on %s as one press, written on its release', async (_, light) => {
+    const { session } = await setup([lamp(LAMP, 1, 'point', { color: '#ff0000' })], 'editor', true, { spaceKeyboard: true });
+    if (!light) act(() => { session.execute({ type: 'environment', set: { ambientColor: '#ff0000' } }); });
+    const opened = await openDirector();
+    if (light) act(() => session.select(LAMP, false));
+    const stored = (): unknown => (light ? lampValue(session, 'color') : ambientColor(session));
+    fireEvent.click(light ? lightSwatch() : ambientSwatch(opened));
+    const hue = await screen.findByRole('slider', { name: 'Hue' });
+    const shown: number[] = [];
+    // The first keydown, then the browser's auto-repeats while the key is held.
+    for (let step = 0; step < 5; step += 1) {
+      fireEvent.keyDown(hue, { key: 'ArrowRight', keyCode: 39, repeat: step > 0 });
+      shown.push(Number(hue.getAttribute('aria-valuenow')));
+    }
+    expect(shown).toEqual([...shown].sort((a, b) => a - b));
+    expect(new Set(shown).size).toBe(5);
+    expect(stored()).toBe('#ff0000');
+    fireEvent.keyUp(hue, { key: 'ArrowRight', keyCode: 39 });
+    await waitFor(() => expect(stored()).toBe('#80ff00'));
+    expect(session.getSnapshot().gestureActive).toBe(false);
+    act(() => session.historyStep('undo'));
+    expect(stored()).toBe('#ff0000');
+  });
+
   it('drops an ambient picker drag when the browser loses focus', async () => {
     const { session } = await setup();
     const opened = await openDirector();

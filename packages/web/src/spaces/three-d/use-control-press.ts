@@ -10,7 +10,7 @@ export interface ControlPress {
    * @returns Whether the change belongs to an open press; a change never opens one.
    */
   change: () => boolean;
-  /** Start a new press when the pointer or a picker arrow key goes down, ending whatever an earlier press left. */
+  /** Start a new press when the pointer or a picker arrow key first goes down, ending whatever an earlier press left. */
   begin: () => void;
   /**
    * Take a key on a Slider: a step key is one press of its own, started now and ended once the key's change, if
@@ -20,10 +20,11 @@ export interface ControlPress {
    */
   stepKey: (event: Pick<KeyboardEvent, 'key'>, commit: () => void) => void;
   /**
-   * End the press, by its release or by Escape, an undo or focus loss; its later changes are ignored until the next
-   * press starts.
-   * @returns Whether its drag was still open: a release then writes it, and an Escape stops there; false for a press
-   * already ended, so a second Escape takes its usual step.
+   * End the press: its release, or for the ambient light also an Escape, an undo, or a loss of focus or edit access;
+   * its later changes are ignored until the next press starts.
+   * @returns Whether the press was still held: a release then writes it, and an Escape stops there; false for a press
+   * already ended, so a second Escape takes its usual step. A light's drag may already have been ended by its session,
+   * which its callers check.
    */
   end: () => boolean;
 }
