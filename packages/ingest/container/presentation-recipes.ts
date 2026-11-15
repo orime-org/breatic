@@ -62,16 +62,20 @@ export interface PresentationRecipeRequest {
   limits: PlanLimits;
 }
 
+// §4.3 colour/HDR/bit-depth row: the D05 tone-map chain, then the BT.709 tags written on the frames.
+const TONE_MAP = "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv";
+
 /**
- * §4.3 colour/HDR/bit-depth row: the D05 tone-map chain, then the BT.709 tags written on the frames. The frames reach zscale as
- * float RGB with alpha, converted with the plan matrix by swscale, which keeps alpha full range (zscale reads a YUVA source's
- * alpha as limited range, which moved alpha 64 to 56).
- * @param matrix - The plan matrix as the scale filter spells it.
- * @returns The filter chain text.
+ * The D05 tone map, keeping the frames' alpha when `label` names the graph-unique labels to carry it on: the alpha plane is
+ * extracted beside the chain and merged back after it (the chain's float RGB has none, and zscale reads a YUVA source's alpha
+ * as limited range). An opaque frame gets an opaque alpha.
+ * @param label - A label prefix unique within the graph, when the alpha is kept.
+ * @returns The filter chain text, ending on tone-mapped frames.
  * @throws {never} Never.
  */
-function toneMap(matrix: string): string {
-  return `scale=in_color_matrix=${matrix}:out_range=pc,format=gbrapf32le,zscale=t=linear:npl=100,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv`;
+function toneMap(label?: string): string {
+  if (label === undefined) return TONE_MAP;
+  return `split[${label}tc][${label}ta];[${label}ta]format=yuva444p,alphaextract[${label}tm];[${label}tc]${TONE_MAP}[${label}tt];[${label}tt][${label}tm]alphamerge`;
 }
 export const BT709_TAGS = "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv";
 // The plan's matrix names (physical-video-probe.ts) as the scale filter spells them.
@@ -144,10 +148,10 @@ export function placement(target: MiniToolPlanTarget): { rect: MiniToolPlanPixel
  * @returns The filter chain text.
  * @throws {RangeError} When the plan matrix has no decode value.
  */
-export function decodedPicture(source: { colorMatrix: string; toneMap: "none" | "sdr-bt709" }, width: number, height: number): string {
+export function decodedPicture(source: { colorMatrix: string; toneMap: "none" | "sdr-bt709" }, width: number, height: number, alphaLabel?: string): string {
   const matrix = SCALE_MATRICES[source.colorMatrix];
   if (matrix === undefined) throw new RangeError(`No decode matrix for ${source.colorMatrix}`);
-  return `${source.toneMap === "sdr-bt709" ? `${toneMap(matrix)},` : ""}scale=${width}:${height}:in_color_matrix=${matrix}`;
+  return `${source.toneMap === "sdr-bt709" ? `${toneMap(alphaLabel)},` : ""}scale=${width}:${height}:in_color_matrix=${matrix}`;
 }
 
 /**
@@ -191,7 +195,7 @@ export async function probeModelResultDecode(file: string, run: { signal: AbortS
  */
 export function picture(target: MiniToolPlanTarget, label: string): string {
   const { rect, planeWidth } = placement(target);
-  const head = decodedPicture(target, rect.width, rect.height);
+  const head = decodedPicture(target, rect.width, rect.height, target.alpha === "none" ? undefined : `${label}a`);
   const pad = `pad=${planeWidth}:${target.height}:${rect.x}:${rect.y}:color=black`;
   // The frames are already upright; a display matrix left on them would be written to the output and rotate it again.
   const unrotated = `${BT709_TAGS},sidedata=mode=delete:type=DISPLAYMATRIX`;
@@ -953,10 +957,16 @@ async function renderTransitionWindow(recipe: MiniToolPlanTransitionWindow, file
     if (matrix === undefined) throw new RangeError(`No decode matrix for ${clip.colorMatrix}`);
     // The chunk's own conversion to limited-range BT.709 first, then full-range RGBA for the renderer, so the window meets
     // the chunk_encode chunks with no colour jump; a transparent profile keeps each clip's alpha through it.
-    const convert = `${clip.toneMap === "sdr-bt709" ? `${toneMap(matrix)},` : ""}scale=${clip.fit.width}:${clip.fit.height}:in_color_matrix=${matrix}`
+    /**
+     * The clip's conversion for one span of the window graph.
+     * @param label - The span's label prefix, unique within the graph.
+     * @returns The filter chain text.
+     * @throws {never} Never.
+     */
+    const convert = (label: string): string => `${clip.toneMap === "sdr-bt709" ? `${toneMap(profile.alpha ? label : undefined)},` : ""}scale=${clip.fit.width}:${clip.fit.height}:in_color_matrix=${matrix}`
       + `:out_color_matrix=bt709:out_range=tv,format=${profile.alpha ? "yuva444p" : "yuv444p"},scale=in_color_matrix=bt709:in_range=tv:out_range=pc`;
     const window = await windowGraph(clip.entries, frameRate(profile.fps), local(files, clip.inputId), run,
-      () => `${convert},format=rgba,pad=${width}:${height}:${clip.fit.x}:${clip.fit.y}:color=${fill},setsar=1`,
+      (label) => `${convert(label)},format=rgba,pad=${width}:${height}:${clip.fit.x}:${clip.fit.y}:color=${fill},setsar=1`,
       (entry) => `color=c=black${entry.fill === "transparent" ? "@0" : ""}:s=${width}x${height}:r=1:d=1,format=rgba`);
     const file = join(directory, `transition-${at}.rgba`);
     await runPlanCommand("ffmpeg", [...window.args, "-filter_complex", `${window.graph.join(";").replace(/\[v\]$/u, "[w]")};[w]${profileGrid(profile, count)},format=rgba[v]`,
@@ -1038,7 +1048,7 @@ async function renderFrame(recipe: FrameRecipe, source: string, output: string,
     const facts = await sourceFacts(source, run);
     const first = await frameStartAt(source, facts, entry, run);
     args.push(...mediaTimeline(facts), "-seek_timestamp", "1", "-noaccurate_seek", "-ss", seconds(rational(entry.decodeStart)), ...facts.decoder, "-i", source);
-    graph = `[0:v:0]trim=start=${seconds(first)},${target.toneMap === "sdr-bt709" ? `${toneMap(matrix)},` : ""}` +
+    graph = `[0:v:0]trim=start=${seconds(first)},${target.toneMap === "sdr-bt709" ? `${toneMap(keep ? "f" : undefined)},` : ""}` +
       `scale=${target.width}:${target.height}:in_color_matrix=${matrix},format=${pixel}${cropped}[v]`;
   }
   await runPlanCommand("ffmpeg", [...args, "-filter_complex", graph, "-map", "[v]", "-frames:v", "1", "-c:v", "png", "-f", "image2", output], run);
@@ -1124,7 +1134,7 @@ async function detectScenes(recipe: SceneRecipe, source: string, output: string,
   const matrix = SCALE_MATRICES[colorMatrix];
   if (matrix === undefined) throw new RangeError(`No decode matrix for ${colorMatrix}`);
   const window = await windowGraph(recipe.entries, BigInt(recipe.timescale), source, run,
-    () => `${tone === "sdr-bt709" ? `${toneMap(matrix)},` : ""}scale=${width}:${height}:in_color_matrix=${matrix},format=bgr24,setsar=1,sidedata=mode=delete:type=DISPLAYMATRIX`,
+    () => `${tone === "sdr-bt709" ? `${toneMap()},` : ""}scale=${width}:${height}:in_color_matrix=${matrix},format=bgr24,setsar=1,sidedata=mode=delete:type=DISPLAYMATRIX`,
     () => `color=c=black:s=${width}x${height}:r=1:d=1,format=bgr24,setsar=1`);
   const count = recipe.window.end - recipe.window.start;
   const result = await detect("scene_cuts", recipe.profile, { width, height, count,

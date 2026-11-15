@@ -814,6 +814,15 @@ describe('transition_window (§7.17 transition_window and 转场输出档 rows; 
     expect([alpha(6), alpha(7), alpha(54), alpha(55)]).toEqual([0, 255, 255, 0]);
   });
 
+  it(`TW13 an HDR clip's encode chunk carries the D05 tone map's colours: zscale converts it from YUV, as the chain was measured`, async () => {
+    const hdr = join(dir, 'clip-hdr.mp4');
+    const [chunk] = await produce({ [CLIP_A]: hdr }, [clipChunk(CLIP_A, 30, 32, HDR)]);
+    const d05 = 'zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv';
+    const reference = (await planeMeans(hdr, `${d05},scale=64:36:in_color_matrix=bt2020:out_color_matrix=bt709:out_range=tv`))[30]!;
+    const got = (await planeMeans(chunk!))[0]!;
+    got.forEach((mean, plane) => expect(Math.abs(mean - reference[plane]!), `${'YUV'[plane]}: chunk ${mean.toFixed(2)}, D05 ${reference[plane]!.toFixed(2)}`).toBeLessThan(0.6));
+  });
+
   it(`TW11 a transparent HDR clip keeps its alpha through the tone map, in the window and in its encode chunk (§4.3; renderer stand-in)`, async () => {
     renderer.fake = true;
     const transparent = { ...PROFILE, codec: 'vp9', pixFmt: 'yuva420p', alpha: true };
