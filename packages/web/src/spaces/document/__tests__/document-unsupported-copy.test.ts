@@ -86,7 +86,7 @@ describe('a selection holding a stand-in block', () => {
     const data: Record<string, string> = {};
     const event = new Event('dragstart', { bubbles: true, cancelable: true });
     Object.defineProperty(event, 'dataTransfer', {
-      value: { files: [], effectAllowed: '', setData: (format: string, value: string) => { data[format] = value; }, clearData: (): void => undefined, setDragImage: (): void => undefined },
+      value: { files: [], effectAllowed: '', setData: (format: string, value: string) => { data[format] = value; }, clearData: (): void => undefined, setDragImage: (): void => undefined, getData: (format: string) => data[format] ?? '' },
     });
 
     editor.prosemirrorView.dom.dispatchEvent(event);
