@@ -470,8 +470,9 @@ function holderGoing(doc: ProseMirrorNode, pos: number, node: ProseMirrorNode, g
  * Step 5's repairs, for each parent losing children: one that would lose a
  * child its schema requires keeps that child, emptied; one that would lose
  * every child keeps one, the first whose content is text when there is one,
- * in its smallest form. A block left with no blocks (a column) goes whole
- * instead where what holds it can do without it (its column group).
+ * in its smallest form. A block left with no blocks (a column), or a column
+ * group left with no columns, goes whole instead where what holds it can do
+ * without it.
  * @param targets - The targets, changed in place.
  * @param doc - The document before the deletion.
  */
@@ -497,7 +498,10 @@ function keepRequired(targets: Targets, doc: ProseMirrorNode): void {
   ]);
   for (const { group, left } of groups) {
     const { parent } = group[0]!;
-    if (parent.type.validContent(Fragment.fromArray(left))) continue;
+    // A column group left with no columns is legal and shows nothing: it is
+    // repaired as a column left with no blocks is.
+    const emptiedGroup = parent.type.name === 'docColumnList' && left.length === 0;
+    if (!emptiedGroup && parent.type.validContent(Fragment.fromArray(left))) continue;
     const holder = left.length === 0 ? holderGoing(doc, group[0]!.parentPos, parent, going) : null;
     if (holder !== null) {
       targets.nodes.set(holder.pos, holder);

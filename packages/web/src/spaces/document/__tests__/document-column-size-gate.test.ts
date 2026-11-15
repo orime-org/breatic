@@ -11,6 +11,7 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Awareness } from 'y-protocols/awareness';
+import { TextSelection } from '@tiptap/pm/state';
 
 vi.mock('@web/lib/toast', () => ({
   toast: { warning: vi.fn(), error: vi.fn(), success: vi.fn(), info: vi.fn(), loading: vi.fn(), dismiss: vi.fn() },
@@ -158,6 +159,31 @@ describe('deletes in a full Space around columns and cells', () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
     handle.editor.removeBlocks([rowId(handle, 'lead'), rowId(handle, 'a')] as never);
     await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(shapeOf(handle.editor.document as never)).toEqual(['[¶]']);
+  });
+
+  it.each([
+    ['F', 'alone'],
+    ['O', 'alone'],
+    ['F', 'with a line after it'],
+    ['O', 'with a line after it'],
+  ] as const)('[%s] a selection from a whole group (%s) to the end pressed away keeps a line in its first column', async (code, body) => {
+    const blocks = body === 'alone' ? [columnsBlock(['a'], ['b'])] : [columnsBlock(['a'], ['b']), para('tail')];
+    const handle = open(code, blocks);
+    const view = handle.editor.prosemirrorView;
+    let from = -1;
+    let to = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (!node.isTextblock) return true;
+      if (from < 0) from = pos + 1;
+      to = pos + 1 + node.content.size;
+      return false;
+    });
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, from, to)));
+    const event = new KeyboardEvent('keydown', { key: 'Backspace', bubbles: true, cancelable: true });
+    view.someProp('handleKeyDown', (handler) => handler(view, event));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(() => view.state.doc.check()).not.toThrow();
     expect(shapeOf(handle.editor.document as never)).toEqual(['[¶]']);
   });
 
