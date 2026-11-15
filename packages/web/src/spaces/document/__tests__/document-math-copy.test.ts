@@ -193,9 +193,15 @@ describe('copying a selection that holds formulas', () => {
     const editor = open([{ type: 'paragraph', content: ['x ', { type: 'math', props: { source: 'a' } }, { type: 'math', props: { source: 'b' } }, ' y'] }]);
     const data: Record<string, string> = {};
     const transfer = { clearData: (): void => undefined, setData: (format: string, value: string): void => { data[format] = value; }, setDragImage: (): void => undefined, effectAllowed: '' };
-    const sideMenu = (editor as unknown as { getExtension: (name: string) => { blockDragStart: (event: unknown, block: unknown) => void } }).getExtension('sideMenu');
+    const sideMenu = (editor as unknown as { getExtension: (name: string) => { blockDragStart: (event: unknown, block: unknown) => void; blockDragEnd: () => void } }).getExtension('sideMenu');
     sideMenu.blockDragStart({ dataTransfer: transfer }, editor.document[0]);
-    expect(data['text/plain']?.trim()).toBe('x $$a$$ $$b$$ y');
+    try {
+      expect(data['text/plain']?.trim()).toBe('x $$a$$ $$b$$ y');
+    } finally {
+      // BlockNote keeps the drag's preview in module state that outlives this
+      // file; a drag left running breaks the next file's first drag.
+      sideMenu.blockDragEnd();
+    }
   });
 
   // A drag carries what a copy of the same selection writes, as ProseMirror
