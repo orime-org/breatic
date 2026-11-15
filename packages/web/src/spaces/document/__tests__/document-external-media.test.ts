@@ -20,7 +20,6 @@ import { ownMediaOnly } from '@web/spaces/document/document-external-media';
 
 import { drop, pasteFormats, type Editor } from './paste-harness';
 
-
 const mounted: Editor[] = [];
 
 afterEach(() => {

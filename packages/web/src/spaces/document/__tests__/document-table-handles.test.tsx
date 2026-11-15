@@ -21,10 +21,8 @@ import { BODY_ANCHOR, BODY_LAYER } from '@web/spaces/document/document-body-focu
 import { deleteRowAt, insertRow } from '@web/spaces/document/document-table-run';
 import { TABLE_CONTROL } from '@web/spaces/document/document-table-handles';
 import { tableTargetOf } from '@web/spaces/document/document-table-target';
-import { written } from '@web/spaces/document/__tests__/paste-harness';
+import { copyCommand, type Editor } from '@web/spaces/document/__tests__/paste-harness';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
-
-type Editor = ReturnType<typeof buildDocumentEditor>;
 
 const side = vi.hoisted(() => ({
   editor: undefined as unknown,
@@ -391,14 +389,7 @@ describe('copy, cut and paste from the handles (inner#1239)', () => {
    * @returns What the last copy wrote.
    */
   function fakeClipboard(): Record<string, string> {
-    const clip: Record<string, string> = {};
-    Object.defineProperty(document, 'execCommand', {
-      configurable: true,
-      value: vi.fn(() => {
-        Object.assign(clip, written(document, 'copy'));
-        return true;
-      }),
-    });
+    const clip = copyCommand();
     vi.stubGlobal('navigator', {
       ...navigator,
       clipboard: {

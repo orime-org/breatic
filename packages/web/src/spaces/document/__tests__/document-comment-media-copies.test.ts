@@ -29,7 +29,6 @@ import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote
 import { OURS, settled, type Editor } from '@web/spaces/document/__tests__/paste-harness';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
-
 const mounted: Editor[] = [];
 
 afterEach(() => {

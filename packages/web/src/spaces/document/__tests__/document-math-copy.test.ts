@@ -22,7 +22,6 @@ import { markdownBlocks } from '@web/spaces/document/document-markdown';
 import { written, type Editor } from '@web/spaces/document/__tests__/paste-harness';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
-
 const mounted: Editor[] = [];
 
 afterEach(() => {

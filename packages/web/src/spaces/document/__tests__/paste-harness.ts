@@ -158,13 +158,13 @@ export function paste(editor: Editor, html: string, text: string): void {
 }
 
 /**
- * Fires a copy or a drag start, as a browser does, and reads what the
+ * Fires a copy, a cut or a drag start, as a browser does, and reads what the
  * handlers wrote into its data transfer.
  * @param target - Where the event fires.
- * @param type - `copy` or `dragstart`.
+ * @param type - `copy`, `cut` or `dragstart`.
  * @returns Each format written, with its data.
  */
-export function written(target: EventTarget, type: 'copy' | 'dragstart'): Record<string, string> {
+export function written(target: EventTarget, type: 'copy' | 'cut' | 'dragstart'): Record<string, string> {
   const data: Record<string, string> = {};
   const transfer = {
     types: [],
@@ -181,9 +181,30 @@ export function written(target: EventTarget, type: 'copy' | 'dragstart'): Record
     setDragImage: (): void => undefined,
   };
   const event = new Event(type, { bubbles: true, cancelable: true });
-  Object.defineProperty(event, type === 'copy' ? 'clipboardData' : 'dataTransfer', { value: transfer });
+  Object.defineProperty(event, type === 'dragstart' ? 'dataTransfer' : 'clipboardData', { value: transfer });
   target.dispatchEvent(event);
   return data;
+}
+
+/**
+ * Gives the page a copy command, which jsdom lacks: `execCommand('copy')`
+ * fires the copy event on the document, as a browser does, and its clipboard
+ * then holds what that copy wrote.
+ * @returns The clipboard, refilled by every copy.
+ */
+export function copyCommand(): Record<string, string> {
+  const clipboard: Record<string, string> = {};
+  Object.defineProperty(document, 'execCommand', {
+    configurable: true,
+    value: vi.fn((command: string): boolean => {
+      if (command !== 'copy') return false;
+      const data = written(document, 'copy');
+      Object.keys(clipboard).forEach((format) => delete clipboard[format]);
+      Object.assign(clipboard, data);
+      return true;
+    }),
+  });
+  return clipboard;
 }
 
 /**

@@ -16,10 +16,8 @@ import * as Y from 'yjs';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
-import { written } from '@web/spaces/document/__tests__/paste-harness';
+import { copyCommand, type Editor } from '@web/spaces/document/__tests__/paste-harness';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
-
-type Editor = ReturnType<typeof buildDocumentEditor>;
 
 const side = vi.hoisted(() => ({
   editor: undefined as unknown,
@@ -136,14 +134,7 @@ describe('the strip on a table (A5)', () => {
   });
 
   it('copy puts the whole table on the clipboard (inner#1239)', async () => {
-    const clip: Record<string, string> = {};
-    Object.defineProperty(document, 'execCommand', {
-      configurable: true,
-      value: vi.fn(() => {
-        Object.assign(clip, written(document, 'copy'));
-        return true;
-      }),
-    });
+    const clip = copyCommand();
     const editor = openOver([{ type: 'paragraph', content: 'above' }, TABLE], 1);
     render(<Strip />);
     fireEvent.click(screen.getByTestId('doc-block-table-handle'));

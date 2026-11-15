@@ -9,7 +9,7 @@
  * is hovered, with them or alone (T13, user 2026-10-21).
  */
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { BlockNoteContext } from '@blocknote/react';
 import * as Y from 'yjs';
@@ -19,11 +19,9 @@ import { documentBodyFragment } from '@breatic/shared';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { DocumentTableHandlesController } from '@web/spaces/document/DocumentTableHandlesController';
 import { moveRowTo } from '@web/spaces/document/document-drag-move';
-import { written } from '@web/spaces/document/__tests__/paste-harness';
+import { copyCommand, type Editor } from '@web/spaces/document/__tests__/paste-harness';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 import { setTableFullscreen } from '@web/spaces/document/document-table-fullscreen';
-
-type Editor = ReturnType<typeof buildDocumentEditor>;
 
 const mounted: Editor[] = [];
 
@@ -166,14 +164,7 @@ describe('the table\'s own strip (T13, user 2026-10-21)', () => {
   });
 
   it('cuts the whole table from its menu (inner#1239)', async () => {
-    const clip: Record<string, string> = {};
-    Object.defineProperty(document, 'execCommand', {
-      configurable: true,
-      value: vi.fn(() => {
-        Object.assign(clip, written(document, 'copy'));
-        return true;
-      }),
-    });
+    const clip = copyCommand();
     const editor = open();
     pointAt(editor, 'b1');
     fireEvent.click(screen.getByTestId('doc-block-table-handle'));

@@ -29,10 +29,8 @@ import {
   tableLineItem,
   tableLineSelection,
 } from '@web/spaces/document/document-table-line-clipboard';
-import { written } from '@web/spaces/document/__tests__/paste-harness';
+import { copyCommand, written, type Editor } from '@web/spaces/document/__tests__/paste-harness';
 import { tableBlock, type TableInput } from '@web/spaces/document/__tests__/table-fixtures';
-
-type Editor = ReturnType<typeof buildDocumentEditor>;
 
 const mounted: Editor[] = [];
 
@@ -46,18 +44,9 @@ let readable: Record<string, string> | null = {};
 let readGate: Promise<void> | null = null;
 
 beforeEach(() => {
-  copied = {};
   readable = {};
   readGate = null;
-  // jsdom has no clipboard: a copy command fires the copy event a browser fires.
-  Object.defineProperty(document, 'execCommand', {
-    configurable: true,
-    value: vi.fn((command: string) => {
-      if (command !== 'copy') return false;
-      copied = written(document, 'copy');
-      return true;
-    }),
-  });
+  copied = copyCommand();
   vi.stubGlobal('navigator', {
     ...navigator,
     clipboard: {
