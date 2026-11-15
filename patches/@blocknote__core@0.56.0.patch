@@ -62,9 +62,10 @@ index 7af41f748b4995a2a9b693e267af72eff57f1a29..fe9b2e861190efb706c1c6353329b041
  	let c = t.orientation === "block-vertical-left" || t.orientation === "block-vertical-right", l = c ? t.pos : t.pos - (o ? o.nodeSize : 0), u = e.nodeDOM(l);
  	if (!u) return null;
 -	let d = u.getBoundingClientRect();
-+	let d = (c && u.querySelector?.(":scope > .bn-block > .bn-block-content")?.querySelector("[data-media-box]") || u).getBoundingClientRect();
++	let d = (c && ((g) => g?.querySelector("[data-media-box]") || g)(u.querySelector?.(":scope > .bn-block > .bn-block-content")) || u).getBoundingClientRect();
  	if (c) {
- 		let e = n / 2 * r, i = t.orientation === "block-vertical-left" ? d.left : d.right;
+-		let e = n / 2 * r, i = t.orientation === "block-vertical-left" ? d.left : d.right;
++		let e = n / 2 * r, g = t.orientation === "block-vertical-left", f = u.parentElement?.matches?.(".doc-column") ? u.parentElement : null, h = f ? (g ? f.previousElementSibling : f.nextElementSibling) : null, i = h?.matches?.(".doc-column") ? (g ? h.getBoundingClientRect().right + f.getBoundingClientRect().left : f.getBoundingClientRect().right + h.getBoundingClientRect().left) / 2 : g ? d.left - 6 : d.right + 6;
  		return {
 @@ -968,7 +968,7 @@ function Rt(e, t, n) {
  	let r = {
