@@ -9,7 +9,7 @@
  */
 
 import { AppError, env, getMiniToolsConfig, getStorageAdapter, logger } from "@breatic/core";
-import { assertServable } from "@server/modules/task/model-servable.js";
+import { assertServable, assertTakesInput } from "@server/modules/task/model-servable.js";
 import {
   assetRepo,
   containerCostUsd,
@@ -151,7 +151,7 @@ async function assertSourceWithinModel(spec: MiniToolSpec, body: MiniToolRequest
  * @param body - The validated request.
  * @returns The prepared run.
  * @throws {AppError} 503 when the pinned model is not served or no upstream here can serve it; 400 when a value is one it does not take.
- * @throws {ValidationError} When the route names an upstream the model is not offered through.
+ * @throws {ValidationError} When the route names an upstream the model is not offered through, or no upstream here takes the run.
  */
 async function prepareModelRun(spec: MiniToolSpec, body: MiniToolRequest): Promise<PreparedRun> {
   const model = spec.run.kind === "model" ? spec.run.model : "";
@@ -167,6 +167,7 @@ async function prepareModelRun(spec: MiniToolSpec, body: MiniToolRequest): Promi
   await assertSourceWithinModel(spec, body, entry);
   const snapshot = snapshotOf(spec, body, entry);
   const input = miniToolEstimateInput(spec, snapshot);
+  await assertTakesInput(model, entry.display_name, input, body.route, { tool: body.tool, projectId: body.project_id });
   const params: Record<string, unknown> = { ...input.params };
   if (spec.prompt) params.prompt = snapshot.prompt;
   // The run is held, priced and served on one route: the task carries the one the estimate used.

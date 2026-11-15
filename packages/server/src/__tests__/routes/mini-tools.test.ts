@@ -427,6 +427,20 @@ describe("POST /mini-tools", () => {
     expect(mocks.taskService.create).not.toHaveBeenCalled();
   });
 
+  it("refuses a run no upstream here takes, before any row opens (#1521)", async () => {
+    mocks.inputRefusalFor.mockResolvedValueOnce({ reason: "upstream refuses", limit: { field: "prompt", measure: "characters", max: 10 } });
+    const res = await post({
+      tool: "image.upscale",
+      node_ids: [NODE_A],
+      source: { url: "https://assets.example.com/i/a.png" },
+      params: { target_megapixels: 16, creativity: 2 },
+    });
+
+    expect(res.status).toBe(422);
+    expect(mocks.inputRefusalFor).toHaveBeenLastCalledWith("pro-upscaler", expect.objectContaining({ params: expect.any(Object) }), undefined);
+    expect(mocks.taskService.create).not.toHaveBeenCalled();
+  });
+
   it("refuses a value outside the pinned model's range", async () => {
     const res = await post({
       tool: "image.upscale",
