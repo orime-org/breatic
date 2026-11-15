@@ -51,6 +51,30 @@ export function useShots(projectId: string, spaceId: string, nodeId: string): St
 }
 
 /**
+ * A count that moves on every change to a video node's shots, words typed inside a shot included, for what reads the
+ * shots' words during render (the run a press would send).
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space containing the node.
+ * @param nodeId - The video node.
+ * @returns The count.
+ */
+export function useShotWords(projectId: string, spaceId: string, nodeId: string): number {
+  const [version, setVersion] = React.useState(0);
+  React.useEffect(() => {
+    const shots = shotListOf(projectId, spaceId, nodeId);
+    if (!shots) return undefined;
+    /** Ask for a fresh read. */
+    const bump = (): void => {
+      setVersion((v) => v + 1);
+    };
+    shots.observeDeep(bump);
+    bump();
+    return () => shots.unobserveDeep(bump);
+  }, [projectId, spaceId, nodeId]);
+  return version;
+}
+
+/**
  * Whether a changed type is part of a shot's prompt rather than the list.
  * @param target - The type a change happened on.
  * @returns True for a prompt fragment and anything inside one.

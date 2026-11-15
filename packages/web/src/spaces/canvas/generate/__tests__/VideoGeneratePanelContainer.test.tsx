@@ -2790,6 +2790,46 @@ describe('the multi-shot mode', () => {
       expect(toast.warning).not.toHaveBeenCalled();
       expect(createTask.mock.calls[0]?.[0]?.params).not.toHaveProperty('prompt');
     });
+
+    /** Wan served here by an upstream that holds the prompt, the shots written into it, to forty characters. */
+    const CAPPED_WAN: ModelEntry = {
+      ...WAN,
+      availability: CAPPED_KLING.availability,
+      pricing_rules: {
+        model: 'wan-3',
+        upstreams: [{
+          upstream: 'wavespeed',
+          prompt_field: 'prompt',
+          fields: {},
+          pricing: { kind: 'formula', base_price: 30000, formula: '{"total_price": base_price}', discount_rate: 100 },
+          steps: [],
+          rejects: [{ when: '$length(prompt) > 40', reason: 'WaveSpeed prompt maxLength 40', limit: { field: 'prompt', measure: 'characters', max: 40 } }],
+        }],
+      },
+    };
+
+    it('says the limit the shots written into the prompt break, as they are typed, and sends nothing', async () => {
+      const createTask = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+      vi.spyOn(modelsApi, 'list').mockResolvedValue({ ...catalog(), video: [KLING, CAPPED_WAN, ...catalog().video] });
+      const stored = { mode: 'multi_shot', model: 'wan-3', modelByMode: { multi_shot: 'wan-3' }, paramsByModel: { 'wan-3': { duration: 5 } } };
+      seedVideoNode(stored);
+      enterStoryboardShots('p', 's', 'target', 5);
+      mountContainer('video', stored);
+      act(() => {
+        canvasSessions.of('s').getState().openGeneratePanel('target', 'video');
+      });
+      await screen.findByTestId('generate-storyboard-shots');
+      // Typed once the panel is open: the words of a shot alone change the run.
+      act(() => {
+        typeShot(0, 'a paper boat');
+        typeShot(1, 'the pond at dusk');
+      });
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      fireEvent.click(screen.getByTestId('generate-video-execute'));
+
+      expect(toast.warning).toHaveBeenCalledWith('Wan 3 takes at most 40 characters in the text.', expect.anything());
+      expect(createTask).not.toHaveBeenCalled();
+    });
   });
 });
 
