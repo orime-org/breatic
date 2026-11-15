@@ -77,7 +77,14 @@ describe("Gemini 3.8 Flash TTS", () => {
   it("takes a dialogue longer than 8000 characters in all, and keeps one with a line over 8000 off WaveSpeed", async () => {
     const long = `Ava: ${"x".repeat(5000)}\nLeo: ${"y".repeat(5000)}`;
     expect(await refused("wavespeed", { prompt: long, params: { speakers: PAIR } })).toBeUndefined();
-    expect(await refused("wavespeed", { prompt: `Ava: ${"x".repeat(7996)}`, params: { speakers: PAIR } })).toEqual({ reason: "WaveSpeed turns[].text maxLength 8000", limit: { field: "prompt", measure: "characters", max: 8000, per: "line" } });
+    expect(await refused("wavespeed", { prompt: `Ava: ${"x".repeat(8001)}`, params: { speakers: PAIR } })).toEqual({ reason: "WaveSpeed turns[].text maxLength 8000", limit: { field: "prompt", measure: "characters", max: 8000, per: "line" } });
+  });
+
+  it("counts a line's words as the turn WaveSpeed is sent holds them, after the speaker's name", async () => {
+    expect(await refused("wavespeed", { prompt: `Ava: ${"x".repeat(8000)}`, params: { speakers: PAIR } })).toBeUndefined();
+    expect(await refused("wavespeed", { prompt: `Leo: ${"x".repeat(8000)}`, params: { speakers: [PAIR[0], { speaker: "Leo ", voice: "Puck" }] } })).toBeUndefined();
+    // A line naming no speaker goes to the first one whole, so all of it counts.
+    expect(await refused("wavespeed", { prompt: `Someone: ${"x".repeat(7992)}`, params: { speakers: PAIR } })).toMatchObject({ limit: { per: "line" } });
   });
 
   it("keeps a dialogue of more than 100 lines off WaveSpeed, whose turns cap there, and counts only lines with words", async () => {

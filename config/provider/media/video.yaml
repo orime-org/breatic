@@ -1165,7 +1165,12 @@ models:
           discount_rate: 100
   happyhorse-1.1-reference-to-video:
     rejects:
-      - when: $length(prompt) > 5000 or $length($replace(prompt, /[^\u3400-\u4DBF\u4E00-\u9FFF]/, "")) > 2500
+      - when: $length(prompt) > 5000
+        limit: { field: prompt, measure: characters, max: 5000 }
+        reason: "Alibaba HappyHorse prompt: limited to 5,000 non-Chinese characters or 2,500 Chinese characters (content beyond it is truncated)"
+        source: https://www.alibabacloud.com/help/en/model-studio/happyhorse-reference-to-video-api-reference
+      - when: $length($replace(prompt, /[^\u3400-\u4DBF\u4E00-\u9FFF]/, "")) > 2500
+        limit: { field: prompt, measure: chinese_characters, max: 2500 }
         reason: "Alibaba HappyHorse prompt: limited to 5,000 non-Chinese characters or 2,500 Chinese characters (content beyond it is truncated)"
         source: https://www.alibabacloud.com/help/en/model-studio/happyhorse-reference-to-video-api-reference
       - when: duration < 3 or duration > 15 or duration != $floor(duration)

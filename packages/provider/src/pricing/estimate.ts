@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { z } from "zod";
+
+import { dialogueSchema, dialogueTurns } from "@provider/pricing/dialogue.js";
 import { evaluationMessage, holds, priceUsd, type PriceContract } from "@provider/pricing/evaluate.js";
 
 /** How the caller wants its upstream chosen. */
@@ -181,7 +183,8 @@ export const rejectSchema = z.strictObject({
     .strictObject({
       /** Our param the limit is on; the prompt is `prompt`. */
       field: z.string().min(1),
-      measure: z.enum(["characters", "lines"]),
+      /** Characters, lines, or only the Chinese characters (CJK ideographs) of the value. */
+      measure: z.enum(["characters", "lines", "chinese_characters"]),
       max: z.number().int().nonnegative().optional(),
       min: z.number().int().nonnegative().optional(),
       /** Counted for each line or each list item rather than for the whole value. */
@@ -247,6 +250,8 @@ const upstreamPricingSchema = z.looseObject({
   voices: z.record(z.string(), z.array(z.string())).optional(),
   /** The upstream's own input limits, in order. */
   rejects: z.array(rejectSchema).optional(),
+  /** How a dialogue run's script is sent as turns, which the upstream's own limits read too. */
+  dialogue: dialogueSchema.optional(),
   /** Per param, how the upstream names its references in the prompt (`{n}` from 1, `{i}` from 0). */
   mentions: z.record(z.string(), z.string()).optional(),
 });
@@ -468,6 +473,9 @@ async function assessed(rule: UpstreamPricing, input: EstimateInput, vendor: rea
   if (written !== "") ours.fields.prompt = written;
   const run = runIn(input, fieldNamer(rule));
   if (rule.prompt_field !== undefined && written !== "") run.fields[rule.prompt_field] = written;
+  // A dialogue goes as turns, and the upstream's limits on a turn read the turn it is sent.
+  const turns = rule.dialogue === undefined ? undefined : dialogueTurns(rule.dialogue, input.params, written);
+  if (rule.dialogue !== undefined && turns !== undefined) run.fields[rule.dialogue.field] = turns;
   const hit = (await firstHeld(vendor, ours)) ?? (await firstHeld(rule.rejects ?? [], run));
   if (hit !== undefined) return { rejected: hit };
   try {
@@ -543,6 +551,17 @@ export async function orderByPrice(rules: PricingRules, availability: Availabili
 }
 
 /**
+ * The upstreams a route tries, in the order it tries them: the configured ones by weight, or only the one it names.
+ * @param availability - Which upstreams are configured.
+ * @param route - The caller's mode.
+ * @returns The upstreams in order.
+ */
+function routePool(availability: Availability, route: Route): Availability["upstreams"] {
+  const configured = [...availability.upstreams].sort((a, b) => a.weight - b.weight).filter((u) => u.configured);
+  return route.mode === "upstream" ? configured.filter((u) => u.upstream === route.upstream) : configured;
+}
+
+/**
  * The estimate of the upstream the route would choose.
  * @param rules - The model's pricing rules.
  * @param availability - Which upstreams are configured.
@@ -555,8 +574,7 @@ export async function estimateCost(rules: PricingRules, availability: Availabili
     const [head] = await orderByPrice(rules, availability, input);
     return head === undefined ? null : { usd: head.usd, bound: head.bound, upstream: head.upstream };
   }
-  const configured = [...availability.upstreams].sort((a, b) => a.weight - b.weight).filter((u) => u.configured);
-  const pool = route.mode === "upstream" ? configured.filter((u) => u.upstream === route.upstream) : configured;
+  const pool = routePool(availability, route);
   for (const { upstream } of pool) {
     const read = await assess(rules, upstream, input);
     if (read !== undefined && "estimate" in read) return read.estimate;
@@ -574,8 +592,7 @@ export async function estimateCost(rules: PricingRules, availability: Availabili
  * @returns The refusal, or null when one of them takes the run or none is configured (which servability answers).
  */
 export async function inputRefusal(rules: PricingRules, availability: Availability, input: EstimateInput, route: Route): Promise<RejectedInput | null> {
-  const configured = [...availability.upstreams].sort((a, b) => a.weight - b.weight).filter((u) => u.configured);
-  const pool = route.mode === "upstream" ? configured.filter((u) => u.upstream === route.upstream) : configured;
+  const pool = routePool(availability, route);
   let first: RejectedInput | null = null;
   for (const { upstream } of pool) {
     const read = await assess(rules, upstream, input);

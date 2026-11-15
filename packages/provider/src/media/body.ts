@@ -3,6 +3,7 @@
 
 import type { MediaBinding, ParamBinding } from "@provider/config/schema.js";
 import type { MediaInput } from "@provider/media/runner.js";
+import { dialogueTurns } from "@provider/pricing/dialogue.js";
 import { isPresent, mentionsWritten } from "@provider/pricing/estimate.js";
 
 /**
@@ -85,41 +86,6 @@ function written(bound: ParamBinding, value: unknown, sendEmpty: boolean): unkno
   return bound.item_key !== undefined && Array.isArray(spelled) ? spelled.map((item: unknown) => ({ [bound.item_key!]: item })) : spelled;
 }
 
-/**
- * The names of the run's speakers, as the run sends them, when the binding sends dialogue as turns.
- * @param dialogue - The binding's dialogue rule.
- * @param params - The run's params; untrusted collaborative data.
- * @returns The names in order, empty when the run names none.
- */
-function speakerNames(dialogue: NonNullable<MediaBinding["dialogue"]>, params: Record<string, unknown>): string[] {
-  const speakers = params[dialogue.speakers];
-  if (!Array.isArray(speakers)) return [];
-  return speakers.flatMap((item: unknown) => {
-    const name = typeof item === "object" && item !== null ? (item as Record<string, unknown>)[dialogue.name] : undefined;
-    return typeof name === "string" && name !== "" ? [name] : [];
-  });
-}
-
-/**
- * A `Name: line` script as the upstream's turns: each non-blank line goes to the speaker whose name and a
- * half-width colon start it (the longest such name), else whole to the first speaker. The script is the one
- * `dialogueText` in `@breatic/shared` writes: one line per turn, no line break inside a line, each name trimmed;
- * a turn names its speaker as the speakers list does, so the upstream pairs the two.
- * @param dialogue - The binding's dialogue rule.
- * @param script - The prompt.
- * @param names - The speakers' names, at least one.
- * @returns The turns, in order.
- */
-function turnsOf(dialogue: NonNullable<MediaBinding["dialogue"]>, script: string, names: readonly string[]): Record<string, string>[] {
-  const longestFirst = [...names].sort((a, b) => b.trim().length - a.trim().length);
-  return script.split("\n").flatMap((raw) => {
-    const line = raw.trim();
-    if (line === "") return [];
-    const name = longestFirst.find((each) => line.startsWith(`${each.trim()}: `));
-    const text = name === undefined ? line : line.slice(name.trim().length + 2).trim();
-    return [{ [dialogue.speaker_field]: name ?? names[0]!, [dialogue.text_field]: text }];
-  });
-}
 
 /**
  * The body of a model's own call: each of our params under the binding's field
@@ -146,9 +112,8 @@ export function buildBody(binding: MediaBinding, input: MediaInput): Record<stri
     const out = written(bound, voices !== undefined && typeof value === "string" ? (voices[value] ?? value) : value, binding.send_empty === true);
     if (out !== undefined) writeAt(body, bound.field, out);
   }
-  const names = binding.dialogue === undefined ? [] : speakerNames(binding.dialogue, input.params);
-  if (binding.dialogue !== undefined && names.length > 0) {
-    const turns = turnsOf(binding.dialogue, mentionsWritten(binding.mentions, input.prompt), names);
+  const turns = binding.dialogue === undefined ? undefined : dialogueTurns(binding.dialogue, input.params, mentionsWritten(binding.mentions, input.prompt));
+  if (binding.dialogue !== undefined && turns !== undefined) {
     if (turns.length > 0) writeAt(body, binding.dialogue.field, turns);
   } else if (binding.prompt_field !== undefined && (input.prompt !== "" || binding.send_empty === true)) {
     body[binding.prompt_field] = mentionsWritten(binding.mentions, input.prompt);

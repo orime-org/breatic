@@ -71,10 +71,10 @@ models:
           - when: '$not($exists(speakers[0])) and $length(text) > 8000'
             limit: { field: prompt, measure: characters, max: 8000 }
             reason: WaveSpeed text maxLength 8000
-          - when: '$exists(speakers[0]) and $max($split(text, "\n").$length($)) > 8000'
+          - when: $max(turns.$length(text)) > 8000
             limit: { field: prompt, measure: characters, max: 8000, per: line }
             reason: WaveSpeed turns[].text maxLength 8000
-          - when: '$exists(speakers[0]) and $count($split(text, "\n")[$trim($) != ""]) > 100'
+          - when: $count(turns) > 100
             limit: { field: prompt, measure: lines, max: 100 }
             reason: WaveSpeed turns maxItems 100
         pricing:

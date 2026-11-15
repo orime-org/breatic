@@ -5,6 +5,7 @@ import { z } from "zod";
 import { hasUnderstandAdapter } from "@provider/llm/understand/dispatch.js";
 import { hasLlmAdapter } from "@provider/llm/vendors.js";
 import { mediaAdapter } from "@provider/media/adapters.js";
+import { dialogueSchema } from "@provider/pricing/dialogue.js";
 import { pricingRuleSchema, rejectSchema, vendorRejectSchema, type Reject } from "@provider/pricing/estimate.js";
 import { formulaProblem } from "@provider/pricing/evaluate.js";
 import type { Candidate } from "@provider/routing/route.js";
@@ -98,19 +99,6 @@ const STEP_AT = {
   rig: "after",
 } as const satisfies Record<z.infer<typeof extraStepSchema>["kind"], "before" | "after">;
 
-/** How a `Name: line` script becomes the upstream's list of turns when the run names its speakers. */
-const dialogueSchema = z.strictObject({
-  /** Our items param listing the speakers; the script becomes turns only when it holds at least one named speaker. */
-  speakers: z.string().min(1),
-  /** The sub-field of a speaker holding the name the script's lines start with. */
-  name: z.string().min(1),
-  /** The upstream field the turns go under. */
-  field: z.string().min(1),
-  /** The sub-field of a turn naming its speaker. */
-  speaker_field: z.string().min(1),
-  /** The sub-field of a turn holding its words. */
-  text_field: z.string().min(1),
-});
 
 // Every binding carries its price: the cheapest mode and the
 // estimate both read it, and the shipped bindings all have one.
