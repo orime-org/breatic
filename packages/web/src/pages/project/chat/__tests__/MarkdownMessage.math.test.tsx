@@ -165,12 +165,19 @@ describe('MarkdownMessage — maths', () => {
     expect(event.defaultPrevented, 'and the browser writes nothing over it').toBe(true);
   });
 
-  it('gives a drag of a reply the formula source a copy gives, and lets the drag go on (A8)', () => {
-    const body = draw('area $$a^2+b$$ end').querySelector('[data-testid="markdown-body"]');
-    const range = around(body as Element);
-    const copied = copy(range).written.get('text/html');
-
-    const held = { isCollapsed: false, rangeCount: 1, getRangeAt: (): Range => range } as unknown as Selection;
+  /**
+   * Starts a drag from an element while a selection covers a range.
+   * @param range - What the user has selected.
+   * @param from - Where the drag starts.
+   * @returns What the drag carries, and the event.
+   */
+  function dragFrom(range: Range, from: Node): Copied {
+    const held = {
+      isCollapsed: false,
+      rangeCount: 1,
+      getRangeAt: (): Range => range,
+      containsNode: (node: Node): boolean => range.intersectsNode(node),
+    } as unknown as Selection;
     const realSelection = window.getSelection.bind(window);
     window.getSelection = (): Selection => held;
     const written = new Map<string, string>();
@@ -178,11 +185,30 @@ describe('MarkdownMessage — maths', () => {
     Object.defineProperty(event, 'dataTransfer', {
       value: { setData: (type: string, data: string): Map<string, string> => written.set(type, data) },
     });
-    document.dispatchEvent(event);
+    from.dispatchEvent(event);
     window.getSelection = realSelection;
+    return { written, event };
+  }
+
+  it('gives a drag of a reply the formula source a copy gives, and lets the drag go on (A8)', () => {
+    const body = draw('area $$a^2+b$$ end').querySelector('[data-testid="markdown-body"]') as Element;
+    const range = around(body);
+    const copied = copy(range).written.get('text/html');
+
+    const { written, event } = dragFrom(range, body.querySelector('p') as Element);
 
     expect(written.get('text/html'), 'the drag carries what a copy writes').toBe(copied);
     expect(event.defaultPrevented, 'and the drag is not cancelled').toBe(false);
+  });
+
+  it('leaves a drag that starts outside the selection to the browser (A8)', () => {
+    const body = draw('area $$a^2+b$$ end\n\n[link](https://example.com/doc)').querySelector('[data-testid="markdown-body"]') as Element;
+    const range = document.createRange();
+    range.selectNodeContents(body.querySelector('p') as Element);
+
+    const { written } = dragFrom(range, body.querySelector('a') as Element);
+
+    expect(written.size, 'a link dragged while a formula is selected carries the link').toBe(0);
   });
 
   it('leaves a copy with no formula in it to the browser (A8)', () => {
