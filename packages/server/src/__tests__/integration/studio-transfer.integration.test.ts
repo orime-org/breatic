@@ -64,6 +64,7 @@ import { initCore } from "@breatic/core";
 import { studioMembersRepo } from "@breatic/domain";
 import * as studioTransferService from "@server/modules/studio/studioTransfer.service.js";
 import { mirrorAllInDirectory } from "./directory-fixtures.js";
+import { openPaymentSource } from "./payment-source.js";
 
 try {
   initCore(process.env);
@@ -283,6 +284,18 @@ describe("requestTransfer", () => {
     });
     expect(reqPayload!.payload).not.toHaveProperty("fromHandle");
     expect(reqPayload!.payload).not.toHaveProperty("studioSlug");
+  });
+
+  it("refuses while a pack the admin bought still points at the Studio", async () => {
+    const { studioId, slug, adminId, memberId } = await seedStudio();
+    const source = await openPaymentSource(sql);
+    await sql`
+      INSERT INTO credit_lots (source_id, source_kind, user_id, purchased_credits, remaining_credits, lifecycle, designated_studio_id)
+      VALUES (${source}, 'payment', ${adminId}, 100, 100, 'active', ${studioId})
+    `;
+
+    await expect(studioTransferService.requestTransfer(slug, adminId, memberId)).rejects.toMatchObject({ statusCode: 409 });
+    expect(await transferRequestsFor(memberId)).toHaveLength(0);
   });
 
   it("rejects transferring to a non-member with NotFound", async () => {

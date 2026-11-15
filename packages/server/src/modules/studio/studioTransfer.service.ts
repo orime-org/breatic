@@ -39,7 +39,7 @@ import { studioTransfersRepo as transfersRepo } from "@breatic/domain";
 import { buildStudioTransferMail } from "@server/utils/notification-mail.js";
 import { decisionLink } from "@server/utils/decision-link.js";
 import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
-import { db, env, GlobalApiError, isGlobalRegion } from "@breatic/core";
+import { db, GlobalApiError } from "@breatic/core";
 import {
   ConflictError,
   ForbiddenError,
@@ -47,7 +47,7 @@ import {
   ValidationError,
 } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
-import { creditLotService, directoryWrites, globalApi, studioMembersRepo } from "@breatic/domain";
+import { directoryWrites, globalApi, studioMembersRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
 import {
   getDecisionWindowMs,
@@ -109,10 +109,10 @@ export async function requestTransfer(
   ]);
   const from = profiles.get(fromAdminUserId);
   // Bound out here because the mail is built after the transaction closes.
-  // Outside the global region the credits are asked about before the offer's
-  // transaction opens (inner#1955); a pack pointed at the Studio after that is
-  // released when the transfer is accepted.
-  if (!isGlobalRegion(env) && (await globalApi().hasActiveDesignationsTo(studio.id))) {
+  // The credits are asked about before the offer's transaction opens
+  // (inner#1955); a pack pointed at the Studio after that is released when the
+  // transfer is accepted.
+  if (await globalApi().hasActiveDesignationsTo(studio.id)) {
     throw new ConflictError(t("server.studio.transfer_credits_designated"));
   }
   let shareToken = "";
@@ -121,9 +121,6 @@ export async function requestTransfer(
       // The Studio row first: every transaction writing a `studio:{id}`
       // directory event takes it first, so their events commit in order.
       await studioRepo.lockStudio(studio.id, tx);
-      if (isGlobalRegion(env) && (await creditLotService.hasActiveDesignationsTo(studio.id, tx))) {
-        throw new ConflictError(t("server.studio.transfer_credits_designated"));
-      }
       const filed = await transfersRepo.createPending({
         studioId: studio.id,
         fromUserId: fromAdminUserId,
