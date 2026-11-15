@@ -34,17 +34,45 @@ export const EXEC_EXPIRED = '90000000-0000-4000-8000-000000000005';
 export const EXEC_GONE = '90000000-0000-4000-8000-0000000000ff';
 
 /** What `GET /timeline/web-sources` answers for every reference above except the `_GONE` ones. */
+/** The Motion Space the fixtures' executions were made in. */
+export const MOTION_SPACE = 'a0000000-0000-4000-8000-0000000000aa';
+/** Made `SRC_A`: a create. */
+export const EXEC_A = '90000000-0000-4000-8000-0000000000a1';
+
 export const RESOLUTION: TimelineWebResolution = {
   sources: {
-    [SRC_A]: { durationFrames: 48, fps: FPS, viewport: { width: 1920, height: 1080 } },
-    [SRC_B]: { durationFrames: 96, fps: FPS, viewport: { width: 1080, height: 1920 } },
+    [SRC_A]: {
+      durationFrames: 48, fps: FPS, viewport: { width: 1920, height: 1080 },
+      executionId: EXEC_A, spaceId: MOTION_SPACE, kind: 'web_animation_create', request: 'Gold dot along an arc',
+    },
+    [SRC_B]: {
+      durationFrames: 96, fps: FPS, viewport: { width: 1080, height: 1920 },
+      executionId: EXEC_DONE, spaceId: MOTION_SPACE, kind: 'web_animation_modify', request: 'Slower',
+      base: { executionId: EXEC_A, request: 'Gold dot along an arc' },
+    },
   },
   executions: {
-    [EXEC_RUNNING]: { status: 'running', resultSourceVersionId: null, acceptedDurationFrames: 72, fps: FPS },
-    [EXEC_DONE]: { status: 'succeeded', resultSourceVersionId: SRC_B, acceptedDurationFrames: 96, fps: FPS },
-    [EXEC_FAILED]: { status: 'failed', resultSourceVersionId: null, acceptedDurationFrames: 48, fps: FPS },
-    [EXEC_CANCELLED]: { status: 'cancelled', resultSourceVersionId: null, acceptedDurationFrames: 24, fps: FPS },
-    [EXEC_EXPIRED]: { status: 'expired', resultSourceVersionId: null, acceptedDurationFrames: 24, fps: FPS },
+    [EXEC_RUNNING]: {
+      status: 'running', resultSourceVersionId: null, acceptedDurationFrames: 72, fps: FPS,
+      executionId: EXEC_RUNNING, spaceId: MOTION_SPACE, kind: 'web_animation_create', request: 'Brand name fades in', phase: 'writing', failureReason: null,
+    },
+    [EXEC_DONE]: {
+      status: 'succeeded', resultSourceVersionId: SRC_B, acceptedDurationFrames: 96, fps: FPS,
+      executionId: EXEC_DONE, spaceId: MOTION_SPACE, kind: 'web_animation_modify', request: 'Slower', phase: null, failureReason: null,
+      base: { executionId: EXEC_A, request: 'Gold dot along an arc' },
+    },
+    [EXEC_FAILED]: {
+      status: 'failed', resultSourceVersionId: null, acceptedDurationFrames: 48, fps: FPS,
+      executionId: EXEC_FAILED, spaceId: MOTION_SPACE, kind: 'web_animation_create', request: 'A carousel of three products', phase: null, failureReason: 'harness_failed',
+    },
+    [EXEC_CANCELLED]: {
+      status: 'cancelled', resultSourceVersionId: null, acceptedDurationFrames: 24, fps: FPS,
+      executionId: EXEC_CANCELLED, spaceId: MOTION_SPACE, kind: 'web_animation_create', request: 'Cancelled request', phase: null, failureReason: null,
+    },
+    [EXEC_EXPIRED]: {
+      status: 'expired', resultSourceVersionId: null, acceptedDurationFrames: 24, fps: FPS,
+      executionId: EXEC_EXPIRED, spaceId: MOTION_SPACE, kind: 'web_animation_create', request: 'Expired request', phase: null, failureReason: null,
+    },
   },
 };
 

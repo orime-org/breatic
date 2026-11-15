@@ -2,13 +2,11 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Web animation in the Timeline Space as users drive it (inner#1711 design §8, §9, V1, V2, V5, A8).
+ * Web animation in the Timeline Space as users drive it (inner#1711 design §8, §9; #1490 design §8).
  *
- * The track toolbar opens the creation dialog and the execution list. Execute accepts the frozen input once
- * (`Idempotency-Key`), then lands the receipt, with a placeholder copy at the playhead when the switch is on. The
- * list has Completed and In Progress views; a row opens to its steps, usage and actions: cancel, add as placeholder,
- * add to the Timeline (repeatable, each a new copy) and run again (a prefilled dialog with a new action). The
- * preview shows a sandboxed player per visible copy in a fixed DOM order stacked by z-index, a note for copies
+ * The Timeline makes no web animations: "Add web animation" beside "Add media" places copies of the Project's
+ * results, made in Motion Spaces (or in the Timeline before), and a copy's name, request and state come from the
+ * resolution of its binding. A copy whose execution failed offers "Open in Motion". The preview shows a sandboxed player per visible copy in a fixed DOM order stacked by z-index, a note for copies
  * that are not ready, and a retry for one whose preview cannot load. Viewers see the list and its details only.
  *
  * The player itself and the page inside it run only in a real browser; here the player is an inert element and
@@ -22,16 +20,15 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 import {
-  t, type ProjectRegisteredAsset, type TimelineClip, type TimelineDocumentV1, type TimelineExecution, type TimelineTrack,
+  t, type ProjectRegisteredAsset, type TimelineClip, type TimelineDocumentV1, type TimelineTrack,
   type TimelineVideoSource,
 } from '@breatic/shared';
-import { initializeTimelineDocument, timelineExecutionEnded } from '@breatic/shared/space-content';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { timelineApi } from '@web/data/api/timeline';
 import type * as TimelineApiModule from '@web/data/api/timeline';
 import { ApiException } from '@web/data/api/types';
-import { clearAllDocSizes, setDocSize, startDocResync } from '@web/data/yjs/doc-size';
+import { clearAllDocSizes } from '@web/data/yjs/doc-size';
 import { _resetForTests, docName, getDoc } from '@web/data/yjs/manager';
 import { SpaceConnectionContext } from '@web/data/yjs/space-connection';
 import { applyTimelineEdit, readTimelineDocument } from '@web/data/yjs/timeline-document';
@@ -39,15 +36,15 @@ import type { SocketState } from '@web/data/yjs/use-socket';
 import { toast } from '@web/lib/toast';
 import { writeUserPreference } from '@web/lib/user-preferences-storage';
 import { useCurrentUserStore, useUIStore } from '@web/stores';
+import { useSpaceOpenRequestStore } from '@web/stores/space-open-request';
 import { resetRunOnceForTests } from '@web/stores/task-actions-in-flight';
 import { useTimelineEditPrefsStore } from '@web/stores/timeline-edit-prefs';
 import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 import { gesture, moveableMock, resetMoveableMock } from '@web/spaces/timeline/__tests__/helpers/moveable-mock';
 import { TimelineSpace } from '@web/spaces/timeline/TimelineSpace';
 import { MAIN, clip as videoClip, seededDoc, timeline, track } from '@web/data/yjs/__tests__/timeline-document-fixtures';
-import { P_FULL, P_NORMAL, P_OVER, P_UNLIMITED, P_WARNING, type DocSizePushV2 } from '@web/data/yjs/__tests__/helpers/size-v2-fixtures';
 import {
-  EXEC_DONE, EXEC_FAILED, EXEC_RUNNING, RESOLUTION, SRC_A, SRC_B, boundTo, waitingFor, webClip,
+  EXEC_A, EXEC_FAILED, EXEC_RUNNING, MOTION_SPACE, RESOLUTION, SRC_A, SRC_B, boundTo, waitingFor, webClip,
 } from '@web/data/yjs/__tests__/timeline-web-fixtures';
 
 vi.mock('@web/data/api/timeline', async (importOriginal) => {
@@ -57,7 +54,7 @@ vi.mock('@web/data/api/timeline', async (importOriginal) => {
     timelineApi: {
       ...actual.timelineApi,
       listVideos: vi.fn(), resolveAsset: vi.fn(), limits: vi.fn(),
-      listExecutions: vi.fn(), acceptExecution: vi.fn(), cancelExecution: vi.fn(), resolveWebSources: vi.fn(), previewUrl: vi.fn(),
+      listResults: vi.fn(), resolveWebSources: vi.fn(), previewUrl: vi.fn(),
     },
   };
 });
@@ -72,9 +69,6 @@ vi.mock('react-moveable', async () => (await import('@web/spaces/timeline/__test
 vi.mock('@web/lib/toast', () => ({
   toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn(), loading: vi.fn(), dismiss: vi.fn() },
 }));
-
-/** A list row as `GET /timeline/executions` answers it. */
-type ListedExecution = TimelineExecution & { usageCredits: number };
 
 const PROJECT = '60000000-0000-4000-8000-000000000001';
 const SPACE = '70000000-0000-4000-8000-000000000001';
@@ -99,31 +93,6 @@ const CONNECTED: SocketState = {
   provider: null, synced: true, hasEverSynced: true, status: 'connected', writeAccess: 'granted', authFailedReason: null,
 };
 const clients: QueryClient[] = [];
-let rows: ListedExecution[] = [];
-
-/**
- * A list row.
- * @param id - The execution id.
- * @param status - Its status.
- * @param fields - Overrides.
- * @returns The row.
- * @throws {never} Never.
- */
-function row(id: string, status: TimelineExecution['status'], fields: Partial<ListedExecution> = {}): ListedExecution {
-  return {
-    id, projectId: PROJECT, spaceId: SPACE, actorUserId: ME, kind: 'web_animation_create',
-    actionId: `a${id.slice(1)}`, input: { prompt: `Prompt of ${status}`, engine: 'deepseek', aspect: '16:9', durationSeconds: 3, fps: SETTINGS.fps },
-    inputHash: `sha256:${status}`, engine: 'deepseek', status, phase: status === 'running' ? 'writing' : null, steps: [],
-    attempt: 1, fence: null, deadlineAt: new Date(Date.now() + 3_600_000).toISOString(),
-    resultSourceVersionId: null, failureReason: null, billedCredits: null, billedAt: null,
-    createdAt: '2026-11-07T08:00:00.000000Z', updatedAt: '2026-11-07T08:00:00.000000Z', usageCredits: 0, ...fields,
-  };
-}
-
-const DONE_ROW = row(EXEC_DONE, 'succeeded', { resultSourceVersionId: SRC_B, usageCredits: 0.38, input: { prompt: 'Brand name fades in', engine: 'deepseek', aspect: '9:16', durationSeconds: 4, fps: SETTINGS.fps } });
-const RUNNING_ROW = row(EXEC_RUNNING, 'running');
-const FAILED_ROW = row(EXEC_FAILED, 'failed', { failureReason: 'feature_disabled', input: { prompt: 'A carousel of three products', engine: 'deepseek', aspect: '9:16', durationSeconds: 5, fps: SETTINGS.fps } });
-const SOURCE_A_ROW = row('90000000-0000-4000-8000-0000000000a1', 'succeeded', { resultSourceVersionId: SRC_A, input: { prompt: 'Gold dot along an arc', engine: 'deepseek', aspect: '16:9', durationSeconds: 2, fps: SETTINGS.fps } });
 
 /**
  * The manager-owned document of this Space.
@@ -182,55 +151,12 @@ function showTimeline(readOnly = false): QueryClient {
   return client;
 }
 
-/**
- * Open the execution list from the track toolbar.
- * @returns The list panel.
- * @throws {Error} When the control is missing.
- */
-async function openList(): Promise<HTMLElement> {
-  await userEvent.click(await screen.findByTestId('timeline-open-executions'));
-  return screen.findByTestId('timeline-executions');
-}
-
-/**
- * Switch the list to one view.
- * @param name - The view's locale key.
- * @throws {Error} When the tab is missing.
- */
-async function view(name: 'completed' | 'inProgress'): Promise<void> {
-  const label = t(`timeline.webAnimation.list.${name}`);
-  const tab = screen.getAllByRole('tab').find((item) => item.textContent?.includes(label));
-  if (tab === undefined) throw new Error(`No ${name} tab`);
-  await userEvent.click(tab);
-}
-
-/**
- * Open one row's details.
- * @param id - The execution.
- * @returns The details.
- * @throws {Error} When the row is missing.
- */
-async function expand(id: string): Promise<HTMLElement> {
-  await userEvent.click(await screen.findByTestId(`timeline-execution-toggle-${id}`));
-  return screen.findByTestId(`timeline-execution-detail-${id}`);
-}
-
-/**
- * Open the creation dialog from the toolbar.
- * @returns The dialog.
- * @throws {Error} When the control is missing.
- */
-async function openCreate(): Promise<HTMLElement> {
-  await userEvent.click(await screen.findByTestId('timeline-create-web-animation'));
-  return screen.findByRole('dialog');
-}
-
 beforeEach(() => {
   _resetForTests();
   resetRunOnceForTests();
   resetMoveableMock();
+  useSpaceOpenRequestStore.setState({ state: { status: 'none' } });
   window.localStorage.clear();
-  rows = [];
   useTimelineEditPrefsStore.setState({ owner: null });
   useCurrentUserStore.setState({ user: { id: ME, name: 'Me', email: 'me@e.com', personalStudio: { name: 'Me', slug: 'me', avatarUrl: null }, membershipTier: 'base' } });
   useUIStore.setState({ activeRegion: 'space' });
@@ -239,9 +165,7 @@ beforeEach(() => {
   vi.mocked(timelineApi.listVideos).mockReset().mockResolvedValue({ items: [ASSET], nextCursor: null });
   vi.mocked(timelineApi.resolveAsset).mockReset().mockResolvedValue(ASSET);
   vi.mocked(timelineApi.limits).mockReset().mockResolvedValue(LIMITS as never);
-  vi.mocked(timelineApi.listExecutions).mockReset().mockImplementation(async () => rows);
-  vi.mocked(timelineApi.acceptExecution).mockReset();
-  vi.mocked(timelineApi.cancelExecution).mockReset();
+  vi.mocked(timelineApi.listResults).mockReset().mockResolvedValue({ rows: [], nextCursor: null, totals: { done: 0, inProgress: 0 } });
   vi.mocked(timelineApi.resolveWebSources).mockReset().mockResolvedValue(RESOLUTION);
   vi.mocked(timelineApi.previewUrl).mockReset().mockResolvedValue({ url: PREVIEW_URL });
   vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});
@@ -260,541 +184,25 @@ afterEach(() => {
 });
 
 describe('track toolbar', () => {
-  it('offers an Editor the creation dialog and the execution list beside Add media', async () => {
+  it('offers an Editor Add web animation beside Add media, and no way to make one here', async () => {
     seed();
     showTimeline();
-    expect(await screen.findByTestId('timeline-create-web-animation')).toHaveTextContent(t('timeline.webAnimation.create'));
-    expect(screen.getByTestId('timeline-open-executions')).toHaveTextContent(t('timeline.webAnimation.executions'));
-  });
-
-  it('shows a Viewer the execution list but not the creation control', async () => {
-    seed();
-    showTimeline(true);
-    expect(await screen.findByTestId('timeline-open-executions')).toBeInTheDocument();
+    expect(await screen.findByTestId('timeline-add-web-animation')).toHaveAccessibleName(t('timeline.webAnimation.add'));
     expect(screen.queryByTestId('timeline-create-web-animation')).toBeNull();
-  });
-});
-
-describe('creation dialog', () => {
-  it('opens with the default duration and the first aspect the Timeline limits give', async () => {
-    seed();
-    showTimeline();
-    const dialog = await openCreate();
-    expect(within(dialog).getByTestId('web-animation-duration')).toHaveValue(4);
-    expect(within(dialog).getByTestId('web-animation-aspect')).toHaveTextContent('16:9');
+    expect(screen.queryByTestId('timeline-open-executions')).toBeNull();
   });
 
-  // breatic#1502 design §7: the frame's own ratio when it is one of the three, otherwise the one that, contained in the
-  // frame, covers most of it, ties going to the one facing the same way.
-  it.each([
-    ['16:9', 1920, 1080, '16:9'],
-    ['9:16', 1080, 1920, '9:16'],
-    ['1:1', 1080, 1080, '1:1'],
-    ['21:9', 2520, 1080, '16:9'],
-    ['4:3', 1440, 1080, '16:9'],
-    ['4:5', 1080, 1350, '1:1'],
-    ['2:3', 1080, 1620, '9:16'],
-  ] as const)('opens a %s Timeline (%i x %i) with the %s aspect, whatever order the limits list them in', async (_frame, width, height, aspect) => {
-    // The expected aspect is listed last, so the first listed one is never the answer.
-    const aspects = [...['16:9', '9:16', '1:1'].filter((item) => item !== aspect), aspect];
-    vi.mocked(timelineApi.limits).mockResolvedValue({ ...LIMITS, webAnimation: { ...LIMITS.webAnimation, aspects } } as never);
-    const server = new Y.Doc();
-    try {
-      initializeTimelineDocument(server, { ...SETTINGS, width, height });
-      Y.applyUpdate(currentDoc(), Y.encodeStateAsUpdate(server), 'provider');
-    } finally { server.destroy(); }
-    showTimeline();
-    const dialog = await openCreate();
-    expect(within(dialog).getByTestId('web-animation-aspect')).toHaveTextContent(aspect);
-  });
-
-  it('labels its fields at the standard label size and colour and keeps its controls at the standard control height', async () => {
-    seed();
-    showTimeline();
-    const dialog = await openCreate();
-    for (const key of ['prompt', 'engine', 'aspect', 'duration']) {
-      const label = within(dialog).getByText(t(`timeline.webAnimation.dialog.${key}`));
-      expect(label.tagName, key).toBe('LABEL');
-      expect(label, key).not.toHaveClass('text-xs');
-      expect(label, key).not.toHaveClass('text-muted-foreground');
-    }
-    for (const testId of ['web-animation-engine', 'web-animation-aspect', 'web-animation-duration']) {
-      expect(within(dialog).getByTestId(testId), testId).not.toHaveClass('h-8');
-    }
-  });
-
-  it('accepts the frozen input once with the document fps, lands the receipt with a placeholder at the playhead and shows the run', async () => {
-    seed();
-    showTimeline();
-    const dialog = await openCreate();
-    expect(within(dialog).getByText(t('timeline.webAnimation.dialog.title'))).toBeInTheDocument();
-    await userEvent.type(within(dialog).getByTestId('web-animation-prompt'), 'A blue title slides in');
-    const duration = within(dialog).getByTestId('web-animation-duration');
-    await userEvent.clear(duration);
-    await userEvent.type(duration, '6');
-    expect(within(dialog).getByTestId('web-animation-add-at-playhead')).toHaveAttribute('aria-checked', 'true');
-    const accepted = row('90000000-0000-4000-8000-0000000000b1', 'awaiting_landing', { inputHash: 'sha256:frozen' });
-    vi.mocked(timelineApi.acceptExecution).mockImplementation(async (body) => {
-      rows = [{ ...accepted, actionId: body.actionId }];
-      return { ...accepted, actionId: body.actionId };
-    });
-    await userEvent.click(within(dialog).getByTestId('web-animation-execute'));
-
-    await waitFor(() => expect(timelineApi.acceptExecution).toHaveBeenCalledTimes(1));
-    const [body, key] = vi.mocked(timelineApi.acceptExecution).mock.calls[0] ?? [];
-    expect(body).toEqual({
-      projectId: PROJECT, spaceId: SPACE, actionId: expect.stringMatching(/^[0-9a-f-]{36}$/), prompt: 'A blue title slides in',
-      engine: 'deepseek', aspect: '16:9', durationSeconds: 6, fps: SETTINGS.fps,
-    });
-    expect(key).toEqual(expect.any(String));
-    const actionId = body?.actionId ?? '';
-    await waitFor(() => expect(layout().operationReceipts[actionId]).toMatchObject({ executionId: accepted.id, inputHash: 'sha256:frozen' }));
-    expect(new Date(layout().operationReceipts[actionId]?.landedAt ?? '').toString()).not.toBe('Invalid Date');
-    expect(webCopies()).toEqual([expect.objectContaining({ startFrame: 0, sourceInFrame: 0, durationFrames: 144, contentBinding: waitingFor(accepted.id) })]);
-
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    const list = await screen.findByTestId('timeline-executions');
-    const inProgress = within(list).getAllByRole('tab').find((item) => item.textContent?.includes(t('timeline.webAnimation.list.inProgress')));
-    expect(inProgress).toHaveAttribute('aria-selected', 'true');
-    expect(await within(list).findByTestId(`timeline-execution-${accepted.id}`)).toHaveAttribute('data-status', 'awaiting_landing');
-  });
-
-  it('lands only the receipt when the add-at-playhead switch is off', async () => {
-    seed();
-    showTimeline();
-    const dialog = await openCreate();
-    await userEvent.type(within(dialog).getByTestId('web-animation-prompt'), 'Title');
-    await userEvent.click(within(dialog).getByTestId('web-animation-add-at-playhead'));
-    const accepted = row('90000000-0000-4000-8000-0000000000b2', 'awaiting_landing');
-    vi.mocked(timelineApi.acceptExecution).mockImplementation(async (body) => ({ ...accepted, actionId: body.actionId }));
-    await userEvent.click(within(dialog).getByTestId('web-animation-execute'));
-    await waitFor(() => expect(Object.values(layout().operationReceipts)).toEqual([expect.objectContaining({ executionId: accepted.id })]));
-    expect(webCopies()).toEqual([]);
-  });
-
-  it('shows the Execute button loading while the accept is out', async () => {
-    seed();
-    showTimeline();
-    const dialog = await openCreate();
-    await userEvent.type(within(dialog).getByTestId('web-animation-prompt'), 'Title');
-    vi.mocked(timelineApi.acceptExecution).mockReturnValue(new Promise(() => {}));
-    await userEvent.click(within(dialog).getByTestId('web-animation-execute'));
-    expect(within(dialog).getByTestId('web-animation-execute')).toHaveAttribute('aria-busy', 'true');
-    await userEvent.click(within(dialog).getByTestId('web-animation-execute'));
-    expect(timelineApi.acceptExecution).toHaveBeenCalledTimes(1);
-  });
-
-  it('keeps the dialog and the input and shows the reason when the accept is refused for credits', async () => {
-    seed();
-    showTimeline();
-    const dialog = await openCreate();
-    await userEvent.type(within(dialog).getByTestId('web-animation-prompt'), 'Spring sale title');
-    vi.mocked(timelineApi.acceptExecution).mockRejectedValue(new ApiException({ status: 402, message: 'Your Studio has no credits left.', fromServer: true }));
-    await userEvent.click(within(dialog).getByTestId('web-animation-execute'));
-    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Your Studio has no credits left.');
-    expect(within(dialog).getByTestId('web-animation-prompt')).toHaveValue('Spring sale title');
-    expect(layout().operationReceipts).toEqual({});
-    expect(webCopies()).toEqual([]);
-  });
-});
-
-describe('creation dialog in a Space at its size limit (inner#1790 WA-01..WA-06)', () => {
-  const NAME = docName.timelineSpace(PROJECT, SPACE);
-  let seq = 0;
-  /**
-   * Push a size for a document.
-   * @param name - The document.
-   * @param push - The size.
-   */
-  function size(name: string, push: DocSizePushV2): void {
-    seq += 1;
-    setDocSize(name, { type: 'doc:size', seq, ...push });
-  }
-
-  /**
-   * Open the dialog with a prompt typed, ready to execute.
-   * @returns The dialog.
-   */
-  async function readyDialog(): Promise<HTMLElement> {
-    seed();
-    showTimeline();
-    const dialog = await openCreate();
-    await userEvent.type(within(dialog).getByTestId('web-animation-prompt'), 'Kept words');
-    return dialog;
-  }
-
-  /**
-   * Assert a refused press left everything as it was.
-   * @param dialog - The dialog.
-   */
-  function expectNothingSent(dialog: HTMLElement): void {
-    expect(timelineApi.acceptExecution).not.toHaveBeenCalled();
-    expect(layout().operationReceipts).toEqual({});
-    expect(webCopies()).toEqual([]);
-    expect(screen.getByRole('dialog')).toBe(dialog);
-    expect(within(dialog).getByTestId('web-animation-prompt')).toHaveValue('Kept words');
-    expect(within(dialog).getByTestId('web-animation-execute')).not.toHaveAttribute('aria-busy', 'true');
-    expect(within(dialog).queryByRole('alert')).toBeNull();
-    expect(screen.queryByTestId('timeline-executions')).toBeNull();
-  }
-
-  it.each([
-    ['WA-01 full', P_FULL, 'spaces.sizeCap.add'],
-    ['WA-02 over the ceiling', P_OVER, 'spaces.sizeCap.over'],
-  ] as const)('%s: Execute asks nothing, writes nothing and says why once', async (_label, push, key) => {
-    const dialog = await readyDialog();
-    size(NAME, push);
-    await userEvent.click(within(dialog).getByTestId('web-animation-execute'));
-    expectNothingSent(dialog);
-    expect(toast.warning).toHaveBeenCalledTimes(1);
-    expect(toast.warning).toHaveBeenCalledWith(t(key));
-  });
-
-  it('WA-03 resyncing: Execute asks nothing, writes nothing and shows no toast', async () => {
-    const dialog = await readyDialog();
-    size(NAME, P_NORMAL);
-    startDocResync(NAME);
-    await userEvent.click(within(dialog).getByTestId('web-animation-execute'));
-    expectNothingSent(dialog);
-    for (const fn of Object.values(toast)) if (vi.isMockFunction(fn)) expect(fn).not.toHaveBeenCalled();
-  });
-
-  it.each([
-    ['unknown', null],
-    ['unlimited', P_UNLIMITED],
-    ['normal', P_NORMAL],
-    ['warning', P_WARNING],
-  ] as const)('WA-04 %s: Execute sends once and lands', async (_label, push) => {
-    const dialog = await readyDialog();
-    if (push !== null) size(NAME, push);
-    const accepted = row('90000000-0000-4000-8000-0000000000e1', 'awaiting_landing');
-    vi.mocked(timelineApi.acceptExecution).mockImplementation(async (body) => ({ ...accepted, actionId: body.actionId }));
-    await userEvent.click(within(dialog).getByTestId('web-animation-execute'));
-    await waitFor(() => expect(timelineApi.acceptExecution).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(Object.values(layout().operationReceipts)).toEqual([expect.objectContaining({ executionId: accepted.id })]));
-    expect(webCopies()).toHaveLength(1);
-    expect(toast.warning).not.toHaveBeenCalled();
-  });
-
-  it('WA-05 another Space being full does not stop this one', async () => {
-    const dialog = await readyDialog();
-    size(NAME, P_NORMAL);
-    size(docName.timelineSpace(PROJECT, '70000000-0000-4000-8000-000000000002'), P_FULL);
-    size(docName.canvasSpace(PROJECT, '70000000-0000-4000-8000-000000000003'), P_FULL);
-    const accepted = row('90000000-0000-4000-8000-0000000000e2', 'awaiting_landing');
-    vi.mocked(timelineApi.acceptExecution).mockImplementation(async (body) => ({ ...accepted, actionId: body.actionId }));
-    await userEvent.click(within(dialog).getByTestId('web-animation-execute'));
-    await waitFor(() => expect(timelineApi.acceptExecution).toHaveBeenCalledTimes(1));
-    expect(toast.warning).not.toHaveBeenCalled();
-  });
-
-  it('WA-06 after a refusal the kept input executes once the Space has room', async () => {
-    const dialog = await readyDialog();
-    size(NAME, P_FULL);
-    await userEvent.click(within(dialog).getByTestId('web-animation-execute'));
-    expect(timelineApi.acceptExecution).not.toHaveBeenCalled();
-    size(NAME, P_NORMAL);
-    const accepted = row('90000000-0000-4000-8000-0000000000e3', 'awaiting_landing');
-    vi.mocked(timelineApi.acceptExecution).mockImplementation(async (body) => ({ ...accepted, actionId: body.actionId }));
-    await userEvent.click(within(dialog).getByTestId('web-animation-execute'));
-    await waitFor(() => expect(timelineApi.acceptExecution).toHaveBeenCalledTimes(1));
-    expect(vi.mocked(timelineApi.acceptExecution).mock.calls[0]?.[0]).toMatchObject({ prompt: 'Kept words' });
-  });
-});
-
-describe('execution list', () => {
-  beforeEach(() => {
-    rows = [RUNNING_ROW, DONE_ROW, FAILED_ROW, row('90000000-0000-4000-8000-0000000000c1', 'cancelled'), row('90000000-0000-4000-8000-0000000000c2', 'awaiting_landing')];
-  });
-
-  it('splits rows into In Progress and Completed', async () => {
-    seed();
-    showTimeline();
-    const list = await openList();
-    await view('inProgress');
-    const active = await within(list).findAllByTestId(/^timeline-execution-[0-9a-f-]{36}$/);
-    expect(active.map((item) => item.getAttribute('data-status')).sort()).toEqual(['awaiting_landing', 'running']);
-    await view('completed');
-    const done = await within(list).findAllByTestId(/^timeline-execution-[0-9a-f-]{36}$/);
-    expect(done.map((item) => item.getAttribute('data-status')).sort()).toEqual(['cancelled', 'failed', 'succeeded']);
-  });
-
-  it('shows the empty state of a view with no rows', async () => {
-    rows = [DONE_ROW];
-    seed();
-    showTimeline();
-    await openList();
-    await view('inProgress');
-    expect(await screen.findByText(t('timeline.webAnimation.list.emptyInProgress'))).toBeInTheDocument();
-  });
-
-  it('shows a running row status and phase, and its steps and cancel in the details', async () => {
-    seed();
-    showTimeline();
-    await openList();
-    await view('inProgress');
-    expect(await screen.findByTestId(`timeline-execution-${EXEC_RUNNING}`)).toHaveTextContent(t('timeline.webAnimation.status.running'));
-    const detail = await expand(EXEC_RUNNING);
-    expect(detail).toHaveTextContent(t('timeline.webAnimation.phase.writing'));
-    vi.mocked(timelineApi.cancelExecution).mockImplementation(async () => {
-      rows = rows.map((item) => (item.id === EXEC_RUNNING ? { ...item, status: 'cancelling' } : item));
-      return { ...RUNNING_ROW, status: 'cancelling' };
-    });
-    const calls = vi.mocked(timelineApi.listExecutions).mock.calls.length;
-    await userEvent.click(within(detail).getByTestId(`timeline-execution-cancel-${EXEC_RUNNING}`));
-    expect(timelineApi.cancelExecution).toHaveBeenCalledWith(EXEC_RUNNING, expect.any(String));
-    await waitFor(() => expect(vi.mocked(timelineApi.listExecutions).mock.calls.length).toBeGreaterThan(calls));
-    await waitFor(() => expect(screen.getByTestId(`timeline-execution-${EXEC_RUNNING}`)).toHaveAttribute('data-status', 'cancelling'));
-  });
-
-  it('adds a running execution as a placeholder copy at the playhead', async () => {
-    seed();
-    showTimeline();
-    await openList();
-    await view('inProgress');
-    const detail = await expand(EXEC_RUNNING);
-    await userEvent.click(within(detail).getByTestId(`timeline-execution-add-placeholder-${EXEC_RUNNING}`));
-    await waitFor(() => expect(webCopies()).toEqual([expect.objectContaining({ startFrame: 0, durationFrames: 72, contentBinding: waitingFor(EXEC_RUNNING) })]));
-  });
-
-  it('adds a succeeded result again and again, each a new copy bound to the same source', async () => {
-    seed();
-    showTimeline();
-    await openList();
-    await view('completed');
-    const detail = await expand(EXEC_DONE);
-    expect(detail).toHaveTextContent('0.38');
-    await userEvent.click(within(detail).getByTestId(`timeline-execution-add-${EXEC_DONE}`));
-    await userEvent.click(within(detail).getByTestId(`timeline-execution-add-${EXEC_DONE}`));
-    await waitFor(() => expect(webCopies()).toHaveLength(2));
-    const [first, second] = webCopies();
-    expect(first?.id).not.toBe(second?.id);
-    for (const copy of webCopies()) expect(copy).toMatchObject({ startFrame: 0, durationFrames: 96, contentBinding: boundTo(SRC_B) });
-    expect(first?.trackId).not.toBe(second?.trackId);
-  });
-
-  it('shows the feature-off reason for a failed run and runs it again from a prefilled dialog under a new action', async () => {
-    seed();
-    showTimeline();
-    await openList();
-    await view('completed');
-    const detail = await expand(EXEC_FAILED);
-    expect(detail).toHaveTextContent(t('timeline.webAnimation.failure.feature_disabled'));
-    await userEvent.click(within(detail).getByTestId(`timeline-execution-retry-${EXEC_FAILED}`));
-    const dialog = await screen.findByRole('dialog');
-    expect(within(dialog).getByText(t('timeline.webAnimation.dialog.retryTitle'))).toBeInTheDocument();
-    expect(within(dialog).getByTestId('web-animation-prompt')).toHaveValue('A carousel of three products');
-    expect(within(dialog).getByTestId('web-animation-duration')).toHaveValue(5);
-    expect(within(dialog).getByTestId('web-animation-aspect')).toHaveTextContent('9:16');
-    vi.mocked(timelineApi.acceptExecution).mockImplementation(async (body) => ({ ...row('90000000-0000-4000-8000-0000000000d1', 'awaiting_landing'), actionId: body.actionId }));
-    await userEvent.click(within(dialog).getByTestId('web-animation-execute'));
-    await waitFor(() => expect(timelineApi.acceptExecution).toHaveBeenCalledTimes(1));
-    const body = vi.mocked(timelineApi.acceptExecution).mock.calls[0]?.[0];
-    expect(body).toMatchObject({ prompt: 'A carousel of three products', aspect: '9:16', durationSeconds: 5 });
-    expect(body?.actionId).not.toBe(FAILED_ROW.actionId);
-  });
-
-  const FAILURE_LINES: Array<[string | null, string]> = [
-    ...['validation_failed', 'font_not_in_set', 'manifest_invalid', 'package_too_large', 'output_missing', 'viewport_mismatch', 'fps_mismatch', 'duration_mismatch', 'font_set_mismatch']
-      .map((reason): [string, string] => [reason, 'check']),
-    ...['harness_failed', 'container_failed', 'internal'].map((reason): [string, string] => [reason, 'stopped']),
-    ['feature_disabled', 'feature_disabled'],
-    ['a_reason_with_no_sentence', 'unknown'],
-    [null, 'unknown'],
-  ];
-
-  it.each(FAILURE_LINES)('tells a failure for reason %s with failure.%s', async (reason, line) => {
-    rows = [row(EXEC_FAILED, 'failed', { failureReason: reason })];
-    seed();
-    showTimeline();
-    await openList();
-    await view('completed');
-    const detail = await expand(EXEC_FAILED);
-    expect(detail).toHaveTextContent(t(`timeline.webAnimation.failure.${line}`));
-    if (line !== 'unknown') expect(detail).not.toHaveTextContent(t('timeline.webAnimation.failure.unknown'));
-  });
-
-  it('lets a Viewer open rows and read their details but offers no action', async () => {
+  it('shows a Viewer neither Add web animation nor an execution list', async () => {
     seed();
     showTimeline(true);
-    await openList();
-    await view('completed');
-    const done = await expand(EXEC_DONE);
-    expect(within(done).queryByTestId(`timeline-execution-add-${EXEC_DONE}`)).toBeNull();
-    const failed = await expand(EXEC_FAILED);
-    expect(within(failed).queryByTestId(`timeline-execution-retry-${EXEC_FAILED}`)).toBeNull();
-    await view('inProgress');
-    const running = await expand(EXEC_RUNNING);
-    expect(running).toHaveTextContent(t('timeline.webAnimation.phase.writing'));
-    expect(within(running).queryByTestId(`timeline-execution-cancel-${EXEC_RUNNING}`)).toBeNull();
-    expect(within(running).queryByTestId(`timeline-execution-add-placeholder-${EXEC_RUNNING}`)).toBeNull();
-  });
-});
-
-describe('execution row header, steps, usage and actions', () => {
-  /**
-   * Show only this row, in the view it belongs to.
-   * @param target - The row.
-   * @returns Its header toggle.
-   * @throws {Error} When the row is missing.
-   */
-  async function showRow(target: ListedExecution): Promise<HTMLElement> {
-    rows = [target];
-    seed();
-    showTimeline();
-    await openList();
-    await view(timelineExecutionEnded(target.status) ? 'completed' : 'inProgress');
-    return screen.findByTestId(`timeline-execution-toggle-${target.id}`);
-  }
-
-  /**
-   * The step items of an open row, in order.
-   * @param detail - The row's details.
-   * @returns Its steps.
-   * @throws {never} Never.
-   */
-  function stepItems(detail: HTMLElement): HTMLElement[] {
-    return [...detail.querySelectorAll<HTMLElement>('ol > li')];
-  }
-
-  it('puts the summary on its own row across the header, apart from the title, with the short duration', async () => {
-    const toggle = await showRow(DONE_ROW);
-    const meta = within(toggle).getByTestId(`timeline-execution-meta-${EXEC_DONE}`);
-    const title = within(toggle).getByText('Brand name fades in');
-    expect(meta.parentElement).not.toBe(title.parentElement);
-    expect(meta).not.toContainElement(title);
-    // A row across the whole header sits directly in the header, which also holds the kind icon.
-    expect(meta.parentElement).toBe(toggle);
-    expect(toggle).toContainElement(toggle.querySelector('svg'));
-    expect(meta).toHaveTextContent('DeepSeek');
-    expect(meta).toHaveTextContent('9:16');
-    expect(meta).toHaveTextContent(t('timeline.webAnimation.durationShort', { seconds: 4 }));
-    expect(meta).not.toHaveTextContent(t('timeline.material.duration', { seconds: 4 }));
-  });
-
-  it.each(['awaiting_landing', 'queued', 'running', 'cancelling'] as const)('spins an icon before the status of a %s row', async (status) => {
-    const target = row('90000000-0000-4000-8000-0000000000f1', status, { input: { prompt: 'Spinning row', engine: 'deepseek', aspect: '16:9', durationSeconds: 3, fps: SETTINGS.fps } });
-    await showRow(target);
-    const holder = within(screen.getByTestId(`timeline-execution-${target.id}`)).getByTestId(`timeline-execution-status-${target.id}`);
-    const spinners = holder.querySelectorAll('svg.animate-spin');
-    expect(spinners).toHaveLength(1);
-    expect(holder.firstChild).toBe(spinners[0]);
-    expect(holder).toHaveTextContent(t(`timeline.webAnimation.status.${status}`));
-    expect(holder).not.toHaveTextContent('Spinning row');
-  });
-
-  it.each([DONE_ROW, FAILED_ROW, row('90000000-0000-4000-8000-0000000000c1', 'cancelled'), row('90000000-0000-4000-8000-0000000000c3', 'expired')])(
-    'spins nothing in the header of a finished row ($status)', async (target) => {
-      const toggle = await showRow(target);
-      const holder = within(screen.getByTestId(`timeline-execution-${target.id}`)).getByTestId(`timeline-execution-status-${target.id}`);
-      expect(holder).toHaveTextContent(t(`timeline.webAnimation.status.${target.status}`));
-      expect(holder.querySelector('svg.animate-spin')).toBeNull();
-      expect(toggle.querySelector('svg.animate-spin')).toBeNull();
-    });
-
-  it('marks the page-writing step current for a running row that has reported no phase yet', async () => {
-    await showRow(row(EXEC_RUNNING, 'running', { phase: null }));
-    const steps = stepItems(await expand(EXEC_RUNNING));
-    expect(steps.map((item) => item.getAttribute('data-mark'))).toEqual(['done', 'current', 'pending', 'pending']);
-    expect(steps[1]).toHaveTextContent(t('timeline.webAnimation.phase.writing'));
-  });
-
-  it('marks the step a failed run stopped at in the error tone and leaves the later ones pending', async () => {
-    await showRow(row(EXEC_FAILED, 'failed', { phase: 'validating', failureReason: 'validation_failed' }));
-    const steps = stepItems(await expand(EXEC_FAILED));
-    expect(steps.map((item) => item.getAttribute('data-mark'))).toEqual(['done', 'done', 'stopped', 'pending']);
-    expect(steps[2]).toHaveClass('text-status-error-foreground');
-  });
-
-  it('marks the page-writing step stopped for a failed run that reported no phase', async () => {
-    await showRow(row(EXEC_FAILED, 'failed', { phase: null }));
-    const steps = stepItems(await expand(EXEC_FAILED));
-    expect(steps.map((item) => item.getAttribute('data-mark'))).toEqual(['done', 'stopped', 'pending', 'pending']);
-    expect(steps[1]).toHaveClass('text-status-error-foreground');
-  });
-
-  it('marks the saving step stopped in the error tone for a run that expired while saving', async () => {
-    const id = '90000000-0000-4000-8000-0000000000c3';
-    await showRow(row(id, 'expired', { phase: 'saving' }));
-    const steps = stepItems(await expand(id));
-    expect(steps.map((item) => item.getAttribute('data-mark'))).toEqual(['done', 'done', 'done', 'stopped']);
-    expect(steps[3]).toHaveClass('text-status-error-foreground');
-  });
-
-  it('marks the step a cancelled run stopped at muted, not in the error tone', async () => {
-    const id = '90000000-0000-4000-8000-0000000000c1';
-    await showRow(row(id, 'cancelled', { phase: null }));
-    const steps = stepItems(await expand(id));
-    expect(steps.map((item) => item.getAttribute('data-mark'))).toEqual(['done', 'stopped', 'pending', 'pending']);
-    expect(steps[1]).not.toHaveClass('text-status-error-foreground');
-  });
-
-  it('lists the usage of a finished row as a labelled term beside the prompt', async () => {
-    await showRow(DONE_ROW);
-    const detail = await expand(EXEC_DONE);
-    const label = within(detail).getByText(t('timeline.webAnimation.usageLabel'));
-    expect(label.tagName).toBe('DT');
-    const value = label.nextElementSibling as HTMLElement;
-    expect(value.tagName).toBe('DD');
-    expect(value.previousElementSibling).toBe(label);
-    expect(value).toHaveTextContent(t('timeline.webAnimation.usage', { credits: '0.38' }));
-    expect(label.parentElement).toBe(within(detail).getByText(t('timeline.webAnimation.dialog.prompt')).parentElement);
-  });
-
-  it('lists the usage of an unfinished row as pending', async () => {
-    await showRow(RUNNING_ROW);
-    const detail = await expand(EXEC_RUNNING);
-    const label = within(detail).getByText(t('timeline.webAnimation.usageLabel'));
-    expect(label.tagName).toBe('DT');
-    const value = label.nextElementSibling as HTMLElement;
-    expect(value.tagName).toBe('DD');
-    expect(value).toHaveTextContent(t('timeline.webAnimation.usagePending'));
-    expect(label.parentElement).toBe(within(detail).getByText(t('timeline.webAnimation.dialog.prompt')).parentElement);
-  });
-
-  it('spaces the icon and label of every row action alike', async () => {
-    rows = [RUNNING_ROW, DONE_ROW, FAILED_ROW];
-    seed();
-    showTimeline();
-    await openList();
-    await view('inProgress');
-    const running = await expand(EXEC_RUNNING);
-    expect(within(running).getByTestId(`timeline-execution-cancel-${EXEC_RUNNING}`)).toHaveClass('gap-1.5');
-    expect(within(running).getByTestId(`timeline-execution-add-placeholder-${EXEC_RUNNING}`)).toHaveClass('gap-1.5');
-    await view('completed');
-    const done = await expand(EXEC_DONE);
-    expect(within(done).getByTestId(`timeline-execution-add-${EXEC_DONE}`)).toHaveClass('gap-1.5');
-    const failed = await expand(EXEC_FAILED);
-    expect(within(failed).getByTestId(`timeline-execution-retry-${EXEC_FAILED}`)).toHaveClass('gap-1.5');
-  });
-});
-
-describe('landing after a reopen', () => {
-  const pending = row('90000000-0000-4000-8000-0000000000e1', 'awaiting_landing', { inputHash: 'sha256:pending' });
-
-  it('writes the receipt of an accepted action whose landing never happened', async () => {
-    rows = [pending];
-    seed();
-    showTimeline();
-    await waitFor(() => expect(layout().operationReceipts[pending.actionId]).toMatchObject({ executionId: pending.id, inputHash: 'sha256:pending' }));
-  });
-
-  it('leaves it alone for a Viewer and after its deadline', async () => {
-    rows = [pending, { ...pending, id: '90000000-0000-4000-8000-0000000000e2', actionId: 'a0000000-0000-4000-8000-0000000000e2', deadlineAt: new Date(Date.now() - 1000).toISOString() }];
-    seed();
-    showTimeline(true);
-    await waitFor(() => expect(timelineApi.listExecutions).toHaveBeenCalled());
-    await act(async () => { await Promise.resolve(); });
-    expect(layout().operationReceipts).toEqual({});
-    cleanup();
-    showTimeline();
-    await waitFor(() => expect(Object.keys(layout().operationReceipts)).toEqual([pending.actionId]));
+    await screen.findByTestId('timeline-side-panel');
+    expect(screen.queryByTestId('timeline-add-web-animation')).toBeNull();
+    expect(screen.queryByTestId('timeline-open-executions')).toBeNull();
   });
 });
 
 describe('preview of web copies', () => {
   it('mounts one sandboxed player for a visible copy that only the Timeline clock drives', async () => {
-    rows = [SOURCE_A_ROW];
     seed([webClip('30000000-0000-4000-8000-000000000101', 'v2', 0, 48, boundTo(SRC_A))]);
     showTimeline();
     const preview = await screen.findByTestId('timeline-preview');
@@ -810,7 +218,6 @@ describe('preview of web copies', () => {
   });
 
   it('keys copies of one source by ordinal, stacks them by z-index and keeps the same elements when the stacking changes', async () => {
-    rows = [SOURCE_A_ROW];
     const lower = '30000000-0000-4000-8000-000000000101';
     const upper = '30000000-0000-4000-8000-000000000102';
     seed([webClip(lower, 'v2', 0, 48, boundTo(SRC_A)), webClip(upper, 'v3', 0, 48, boundTo(SRC_A))], [track(MAIN, 0), track('v2', 1), track('v3', 2), track('v4', 3)]);
@@ -836,7 +243,6 @@ describe('preview of web copies', () => {
   });
 
   it('mounts a player for a copy under a higher video, stacked below that video (breatic#1410 §6.1)', async () => {
-    rows = [SOURCE_A_ROW];
     const copy = '30000000-0000-4000-8000-000000000101';
     const video = '30000000-0000-4000-8000-000000000201';
     seed([webClip(copy, 'v2', 0, 48, boundTo(SRC_A)), videoClip(video, 'v3', 0, 48, { sourceId: VIDEO_SOURCE.id })],
@@ -857,7 +263,6 @@ describe('preview of web copies', () => {
   });
 
   it('moves a web copy with the same preview handles as a video and writes its transform on release (breatic#1410 §4, item 10)', async () => {
-    rows = [SOURCE_A_ROW];
     const copy = '30000000-0000-4000-8000-000000000109';
     seed([webClip(copy, 'v2', 0, 48, boundTo(SRC_A))]);
     // jsdom lays nothing out: the area the preview fits into measures 962 x 542 with the 1px border on each side, so the
@@ -881,7 +286,6 @@ describe('preview of web copies', () => {
   });
 
   it('draws no picture for a placeholder and notes its status instead', async () => {
-    rows = [RUNNING_ROW];
     const placeholder = '30000000-0000-4000-8000-000000000103';
     seed([webClip(placeholder, 'v2', 0, 48, waitingFor(EXEC_RUNNING))]);
     showTimeline();
@@ -893,7 +297,6 @@ describe('preview of web copies', () => {
   });
 
   it('notes a copy whose execution failed with the whole sentence for that status', async () => {
-    rows = [FAILED_ROW];
     const failed = '30000000-0000-4000-8000-000000000108';
     seed([webClip(failed, 'v2', 0, 48, waitingFor(EXEC_FAILED))]);
     showTimeline();
@@ -903,7 +306,6 @@ describe('preview of web copies', () => {
   });
 
   it('notes a copy whose preview address cannot be had and fetches a new one on retry', async () => {
-    rows = [SOURCE_A_ROW];
     vi.mocked(timelineApi.previewUrl).mockRejectedValueOnce(new ApiException({ status: 404, message: 'Not found', fromServer: true }));
     const copy = '30000000-0000-4000-8000-000000000104';
     seed([webClip(copy, 'v2', 0, 48, boundTo(SRC_A))]);
@@ -918,7 +320,6 @@ describe('preview of web copies', () => {
   });
 
   it('unloads an instance whose preview address was refused once its copy leaves, so a later copy of its source gets a new instance that asks again', async () => {
-    rows = [SOURCE_A_ROW];
     // With idle instances kept, only the failure decides that the refused instance is unloaded rather than idled.
     vi.mocked(timelineApi.limits).mockResolvedValue({ ...LIMITS, webAnimation: { ...LIMITS.webAnimation, idleInstancesMax: 2 } } as never);
     vi.mocked(timelineApi.previewUrl).mockRejectedValueOnce(new ApiException({ status: 404, message: 'Not found', fromServer: true }));
@@ -958,7 +359,6 @@ describe('play holds for a web copy that has just become visible', () => {
   let frames = new Map<Element, { frameWindow: Window; posted: ReturnType<typeof vi.fn> }>();
 
   beforeEach(() => {
-    rows = [SOURCE_A_ROW];
     playerModule.fail = false;
     playerModule.imports = 0;
     frames = new Map();
@@ -1098,7 +498,6 @@ describe('play holds for a web copy that has just become visible', () => {
 
 describe('web copies on the tracks and in properties', () => {
   it('marks copies by kind and by the state of what they show', async () => {
-    rows = [SOURCE_A_ROW, RUNNING_ROW, FAILED_ROW];
     const ready = '30000000-0000-4000-8000-000000000101';
     const waiting = '30000000-0000-4000-8000-000000000102';
     const failed = '30000000-0000-4000-8000-000000000103';
@@ -1110,32 +509,189 @@ describe('web copies on the tracks and in properties', () => {
     expect(screen.getByTestId(`timeline-clip-${failed}`)).toHaveAttribute('data-state', 'failed');
   });
 
-  it('names a selected copy and the request it came from', async () => {
-    rows = [SOURCE_A_ROW];
+  it('names a copy by its whole request on the track and in its properties, from the resolution alone', async () => {
     const copy = '30000000-0000-4000-8000-000000000101';
     seed([webClip(copy, 'v2', 0, 48, boundTo(SRC_A))]);
     showTimeline();
-    await userEvent.click(await screen.findByTestId(`timeline-clip-${copy}`));
+    await waitFor(() => expect(screen.getByTestId(`timeline-clip-${copy}`)).toHaveTextContent('Gold dot along an arc'));
+    await userEvent.click(screen.getByTestId(`timeline-clip-${copy}`));
     const panel = screen.getByTestId('timeline-side-panel');
     await waitFor(() => expect(panel).toHaveTextContent(t('timeline.webAnimation.copy')));
     expect(panel).toHaveTextContent('Gold dot along an arc');
     expect(within(panel).getByTestId('timeline-clip-start')).toBeInTheDocument();
     expect(within(panel).getByTestId('timeline-clip-duration')).toBeInTheDocument();
   });
+
+  it('names a copy of a modification as modified from its base, and shows the base request in its properties', async () => {
+    const copy = '30000000-0000-4000-8000-000000000104';
+    seed([webClip(copy, 'v2', 0, 96, boundTo(SRC_B))]);
+    showTimeline();
+    const title = t('spaces.webAnimation.titleModifiedFrom', { base: 'Gold dot along an arc', request: 'Slower' });
+    await waitFor(() => expect(screen.getByTestId(`timeline-clip-${copy}`)).toHaveTextContent(title));
+    await userEvent.click(screen.getByTestId(`timeline-clip-${copy}`));
+    const panel = screen.getByTestId('timeline-side-panel');
+    await waitFor(() => expect(within(panel).getByTestId('timeline-web-base-request')).toHaveTextContent('Gold dot along an arc'));
+    expect(panel).toHaveTextContent('Slower');
+  });
+
+  it('names a placeholder by the request of the execution it waits for', async () => {
+    const waiting = '30000000-0000-4000-8000-000000000102';
+    seed([webClip(waiting, 'v2', 0, 72, waitingFor(EXEC_RUNNING))]);
+    showTimeline();
+    await waitFor(() => expect(screen.getByTestId(`timeline-clip-${waiting}`)).toHaveTextContent('Brand name fades in'));
+  });
+});
+
+describe('a copy whose execution failed', () => {
+  const failed = '30000000-0000-4000-8000-000000000103';
+
+  /**
+   * List a Motion Space in the Project's meta document.
+   */
+  function withMotionSpace(): void {
+    const entry = new Y.Map<unknown>();
+    entry.set('id', MOTION_SPACE);
+    entry.set('type', 'web_animation');
+    entry.set('name', 'Motion');
+    entry.set('createdAt', 1);
+    getDoc(docName.projectMeta(PROJECT)).getMap('spaces').set(MOTION_SPACE, entry);
+  }
+
+  it('shows why it failed and offers Open in Motion, which asks for that Space with the execution selected', async () => {
+    seed([webClip(failed, 'v2', 0, 48, waitingFor(EXEC_FAILED))]);
+    showTimeline();
+    await userEvent.click(await screen.findByTestId(`timeline-clip-${failed}`));
+    const panel = screen.getByTestId('timeline-side-panel');
+    await waitFor(() => expect(panel).toHaveTextContent(t('timeline.webAnimation.failure.stopped')));
+    await userEvent.click(within(panel).getByTestId('timeline-web-open-in-motion'));
+    expect(useSpaceOpenRequestStore.getState().state).toEqual({ status: 'requesting', request: { type: 'web_animation', spaceId: MOTION_SPACE, select: EXEC_FAILED } });
+  });
+
+  it('hides Open in Motion from a Viewer when the Project has no Motion Space, since a Viewer cannot make one', async () => {
+    seed([webClip(failed, 'v2', 0, 48, waitingFor(EXEC_FAILED))]);
+    showTimeline(true);
+    await userEvent.click(await screen.findByTestId(`timeline-clip-${failed}`));
+    await waitFor(() => expect(screen.getByTestId('timeline-side-panel')).toHaveTextContent(t('timeline.webAnimation.failure.stopped')));
+    expect(screen.queryByTestId('timeline-web-open-in-motion')).toBeNull();
+  });
+
+  it('shows a Viewer Open in Motion when the Project has a Motion Space', async () => {
+    withMotionSpace();
+    seed([webClip(failed, 'v2', 0, 48, waitingFor(EXEC_FAILED))]);
+    showTimeline(true);
+    await userEvent.click(await screen.findByTestId(`timeline-clip-${failed}`));
+    expect(await screen.findByTestId('timeline-web-open-in-motion')).toBeInTheDocument();
+  });
+});
+
+describe('Add web animation', () => {
+  const TIMELINE_SPACE = SPACE;
+
+  /**
+   * A result row as `GET /timeline/results` answers it.
+   * @param id - The execution.
+   * @param spaceId - The Space that made it.
+   * @param request - Its request.
+   * @param status - Its status.
+   * @param resultSourceVersionId - What it made, when it succeeded.
+   * @returns The row.
+   */
+  function result(id: string, spaceId: string, request: string, status: 'succeeded' | 'running', resultSourceVersionId: string | null): Record<string, unknown> {
+    return {
+      id, projectId: PROJECT, spaceId, actorUserId: ME, actionId: id, inputHash: 'sha256:x', attempt: 1, fence: null,
+      billedCredits: null, billedAt: null, origin: spaceId === TIMELINE_SPACE ? 'timeline' : 'web_animation_space',
+      status, phase: status === 'running' ? 'writing' : null, steps: [], failureReason: null, ownProject: true, usageCredits: 0,
+      deadlineAt: '2026-11-15T10:00:00.000000Z', createdAt: '2026-11-15T08:00:00.000000Z', updatedAt: '2026-11-15T08:00:00.000000Z',
+      kind: 'web_animation_create', engine: 'deepseek', request,
+      input: { prompt: request, engine: 'deepseek', aspect: '16:9', durationSeconds: 2, fps: SETTINGS.fps },
+      resultSourceVersionId, resultAssetId: null,
+    };
+  }
+
+  /**
+   * List Spaces in the Project's meta document.
+   * @param spaces - Id, type and name of each.
+   */
+  function listSpaces(spaces: Array<[string, string, string]>): void {
+    const map = getDoc(docName.projectMeta(PROJECT)).getMap('spaces');
+    spaces.forEach(([id, type, name], index) => {
+      const entry = new Y.Map<unknown>();
+      entry.set('id', id);
+      entry.set('type', type);
+      entry.set('name', name);
+      entry.set('createdAt', index + 1);
+      map.set(id, entry);
+    });
+  }
+
+  /**
+   * Open the picker from the toolbar.
+   * @returns The dialog.
+   */
+  async function openPicker(): Promise<HTMLElement> {
+    await userEvent.click(await screen.findByTestId('timeline-add-web-animation'));
+    return screen.findByTestId('timeline-web-animation-picker');
+  }
+
+  it('groups the Project\'s results by the Space that made them, Motion Spaces first and the Timeline last', async () => {
+    const GONE = 'a0000000-0000-4000-8000-0000000000ee';
+    listSpaces([[MOTION_SPACE, 'web_animation', 'Launch motion'], [TIMELINE_SPACE, 'timeline', 'Cut']]);
+    vi.mocked(timelineApi.listResults).mockResolvedValue({
+      rows: [result(EXEC_A, MOTION_SPACE, 'Gold dot along an arc', 'succeeded', SRC_A), result(EXEC_RUNNING, MOTION_SPACE, 'Brand name fades in', 'running', null),
+        result('90000000-0000-4000-8000-0000000000c1', TIMELINE_SPACE, 'Old title card', 'succeeded', SRC_B), result('90000000-0000-4000-8000-0000000000c2', GONE, 'Lost one', 'succeeded', SRC_B)],
+      nextCursor: null, totals: { done: 3, inProgress: 1 },
+    } as never);
+    seed();
+    showTimeline();
+    const picker = await openPicker();
+    await waitFor(() => expect(within(picker).getAllByTestId(/^timeline-picker-group-/)).toHaveLength(3));
+    expect(within(picker).getAllByTestId(/^timeline-picker-group-/).map((group) => group.getAttribute('data-testid'))).toEqual([
+      `timeline-picker-group-${MOTION_SPACE}`, `timeline-picker-group-${TIMELINE_SPACE}`, 'timeline-picker-group-deleted',
+    ]);
+    expect(within(picker).getByTestId(`timeline-picker-group-${MOTION_SPACE}`)).toHaveTextContent('Launch motion');
+    expect(within(picker).getByTestId('timeline-picker-group-deleted')).toHaveTextContent(t('timeline.webAnimation.picker.deletedSpace'));
+    expect(within(picker).getByTestId(`timeline-picker-row-${EXEC_RUNNING}`)).toHaveTextContent(t('timeline.webAnimation.picker.making'));
+  });
+
+  it('places a finished result as a copy bound to its source, and a running one as a placeholder', async () => {
+    listSpaces([[MOTION_SPACE, 'web_animation', 'Launch motion']]);
+    vi.mocked(timelineApi.listResults).mockResolvedValue({
+      rows: [result(EXEC_A, MOTION_SPACE, 'Gold dot along an arc', 'succeeded', SRC_A), result(EXEC_RUNNING, MOTION_SPACE, 'Brand name fades in', 'running', null)],
+      nextCursor: null, totals: { done: 1, inProgress: 1 },
+    } as never);
+    seed();
+    showTimeline();
+    await userEvent.click(within(await openPicker()).getByTestId(`timeline-picker-row-${EXEC_A}`));
+    await waitFor(() => expect(webCopies().map((copy) => copy.contentBinding)).toEqual([boundTo(SRC_A)]));
+    await userEvent.click(within(await openPicker()).getByTestId(`timeline-picker-row-${EXEC_RUNNING}`));
+    await waitFor(() => expect(webCopies().map((copy) => copy.contentBinding)).toEqual(expect.arrayContaining([boundTo(SRC_A), waitingFor(EXEC_RUNNING)])));
+  });
+
+  it('shows the empty state with Make in Motion, which asks for the newest Motion Space', async () => {
+    seed();
+    showTimeline();
+    const picker = await openPicker();
+    expect(await within(picker).findByText(t('timeline.webAnimation.picker.empty'))).toBeInTheDocument();
+    await userEvent.click(within(picker).getByTestId('timeline-web-animation-go-make'));
+    expect(useSpaceOpenRequestStore.getState().state).toEqual({ status: 'requesting', request: { type: 'web_animation' } });
+  });
+
+  it('shows the error with a retry when the results cannot be read', async () => {
+    vi.mocked(timelineApi.listResults).mockRejectedValueOnce(new ApiException({ status: 500, message: 'Boom', fromServer: true }));
+    seed();
+    showTimeline();
+    const picker = await openPicker();
+    await userEvent.click(await within(picker).findByTestId('timeline-web-animation-picker-retry'));
+    await waitFor(() => expect(timelineApi.listResults).toHaveBeenCalledTimes(2));
+  });
 });
 
 describe('web animation copy in every locale', () => {
   const KEYS = [
-    'timeline.webAnimation.create', 'timeline.webAnimation.executions', 'timeline.webAnimation.copy',
-    'timeline.webAnimation.dialog.title', 'timeline.webAnimation.dialog.retryTitle', 'timeline.webAnimation.dialog.prompt',
-    'timeline.webAnimation.dialog.engine', 'timeline.webAnimation.dialog.aspect', 'timeline.webAnimation.dialog.duration',
-    'timeline.webAnimation.dialog.addAtPlayhead', 'timeline.webAnimation.dialog.execute',
-    'timeline.webAnimation.list.completed', 'timeline.webAnimation.list.inProgress',
-    'timeline.webAnimation.list.emptyCompleted', 'timeline.webAnimation.list.emptyInProgress',
-    ...['awaiting_landing', 'queued', 'running', 'cancelling', 'succeeded', 'failed', 'cancelled', 'expired'].map((status) => `timeline.webAnimation.status.${status}`),
-    'timeline.webAnimation.step.landing', 'timeline.webAnimation.phase.writing', 'timeline.webAnimation.phase.validating', 'timeline.webAnimation.phase.saving',
-    'timeline.webAnimation.usageLabel', 'timeline.webAnimation.usage', 'timeline.webAnimation.usagePending', 'timeline.webAnimation.durationShort',
-    'timeline.webAnimation.cancel', 'timeline.webAnimation.addToTimeline', 'timeline.webAnimation.addPlaceholder', 'timeline.webAnimation.retry',
+    'timeline.webAnimation.add', 'timeline.webAnimation.goMake', 'timeline.webAnimation.openInMotion', 'timeline.webAnimation.copy',
+    'timeline.webAnimation.picker.title', 'timeline.webAnimation.picker.empty', 'timeline.webAnimation.picker.making',
+    'timeline.webAnimation.picker.deletedSpace', 'timeline.webAnimation.picker.loadMore',
+    'timeline.webAnimation.durationShort',
     'timeline.webAnimation.failure.feature_disabled', 'timeline.webAnimation.failure.unknown',
     'timeline.webAnimation.failure.check', 'timeline.webAnimation.failure.stopped',
     'timeline.webAnimation.preview.pending', 'timeline.webAnimation.preview.failed', 'timeline.webAnimation.preview.unavailable',
@@ -1161,11 +717,8 @@ describe('web animation copy in every locale', () => {
     for (const [tag, catalog] of LOCALE_CATALOGS) expect(readPath(catalog, 'timeline.webAnimation.durationShort'), tag).toBe(expected[tag]);
   });
 
-  it('has the agreed English sentences for usage, failures and preview notes', () => {
+  it('has the agreed English sentences for failures and preview notes', () => {
     const english = LOCALE_CATALOGS[0]?.[1] ?? {};
-    expect(readPath(english, 'timeline.webAnimation.usageLabel')).toBe('Usage');
-    expect(readPath(english, 'timeline.webAnimation.usage')).toBe('{credits} credits');
-    expect(readPath(english, 'timeline.webAnimation.usagePending')).toBe('Settled when it ends');
     expect(readPath(english, 'timeline.webAnimation.failure.check')).toBe('The page did not pass the check.');
     expect(readPath(english, 'timeline.webAnimation.failure.stopped')).toBe('Creation stopped unexpectedly.');
     expect(readPath(english, 'timeline.webAnimation.preview.pending')).toBe(
