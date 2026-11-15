@@ -5,7 +5,7 @@
  * What a region's ledger holds under storage keys, asked by a paste in another
  * region (inner#1955, design 6.15). The bytes sit in the one shared bucket, so
  * the row found here is registered there without copying them. Every key of a
- * paste is asked in one call.
+ * paste is asked in one call and read in two queries.
  */
 
 import { assetRepo } from "@breatic/core";
@@ -25,9 +25,6 @@ export interface KeyLookupAnswer {
  * @returns Each key's live row and cover row.
  */
 export async function lookupKeysHere(keys: readonly string[]): Promise<Record<string, KeyLookupAnswer>> {
-  const answers: Record<string, KeyLookupAnswer> = {};
-  for (const key of new Set(keys)) {
-    answers[key] = { asset: await assetRepo.findLiveByStorageKey(key), cover: await assetRepo.findCoverUnderKey(key) };
-  }
-  return answers;
+  const found = await assetRepo.findByStorageKeys(keys);
+  return Object.fromEntries([...new Set(keys)].map((key) => [key, found.get(key) ?? { asset: null, cover: null }]));
 }

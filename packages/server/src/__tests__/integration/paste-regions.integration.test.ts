@@ -29,7 +29,8 @@ vi.mock("ai", () => ({
 
 import crypto from "node:crypto";
 import postgres from "postgres";
-import { getRedis, getStorageAdapter, initCore, loadLocales, sessionCookieName, setSession } from "@breatic/core";
+import { coverKeyFor, getRedis, getStorageAdapter, initCore, loadLocales, sessionCookieName, setSession } from "@breatic/core";
+import { lookupKeysHere } from "@breatic/domain";
 import type { Hono } from "hono";
 import { GLOBAL_REGION_SETTINGS } from "./global-region-env.js";
 import { mirrorAllInDirectory } from "./directory-fixtures.js";
@@ -173,5 +174,33 @@ describe("pasting an asset another region registered", () => {
 
     expect(res.status).toBe(200);
     expect(Date.now() - started).toBeLessThan(5_000);
+  });
+});
+
+describe("answering another region about a paste's keys", () => {
+  it("reads every key's row and a video's cover in one answer", async () => {
+    const target = await seedEditor();
+    const image = imageKey();
+    const video = imageKey().replace(/\.png$/, ".mp4");
+    const coverKey = coverKeyFor(video);
+    const insert = async (key: string, kind: string, coverId: string | null = null): Promise<string> => {
+      const [row] = await sql<{ id: string }[]>`
+        INSERT INTO studio_assets (studio_id, content_hash, storage_key, file_url, size_bytes, mime_type, kind, source, produced_by_user_id, cover_asset_id)
+        VALUES (${target.studioId}, ${crypto.randomBytes(32).toString("hex")}, ${key}, ${publicUrl(key)}, 10, 'application/octet-stream', ${kind}, 'upload', ${target.userId}, ${coverId})
+        RETURNING id`;
+      return row!.id;
+    };
+    await insert(image, "image");
+    const coverId = await insert(coverKey, "image");
+    await insert(video, "video", coverId);
+    const unknown = imageKey();
+
+    const answers = await lookupKeysHere([image, video, unknown, image]);
+
+    expect(answers[image]?.asset?.storageKey).toBe(image);
+    expect(answers[image]?.cover).toBeNull();
+    expect(answers[video]?.asset?.storageKey).toBe(video);
+    expect(answers[video]?.cover?.storageKey).toBe(coverKey);
+    expect(answers[unknown]).toEqual({ asset: null, cover: null });
   });
 });
