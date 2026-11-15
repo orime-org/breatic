@@ -111,7 +111,8 @@ const positiveSeconds = z.number().finite().positive();
 const lipsyncTimeline = z.strictObject({ duration: positiveSeconds, videoDuration: positiveSeconds, syncMode: z.enum(VIDEO_TOOL_SYNC_MODES) });
 const cropSize = z.number().int().positive();
 const windowRef = z.strictObject({ startFrame: index, frameCount: z.number().int().positive() });
-const windowClip = z.strictObject({ inputId, entries, colorMatrix: z.string().min(1), toneMap: z.enum(["none", "sdr-bt709"]) });
+// `fit`: where the clip sits on the output frame, the rectangle its encode chunks use too (`transitionFitRect`, §7.17).
+const windowClip = z.strictObject({ inputId, entries, colorMatrix: z.string().min(1), toneMap: z.enum(["none", "sdr-bt709"]), fit: pixelRect });
 // The erase model's grid and an expand window's grid (execution design §10.4, §10.5).
 const modelGrid = z.strictObject({ mode: z.enum(["frames", "resample"]), rate: z.number().finite().positive(), frameCount: z.number().int().positive() });
 const windowGrid = z.strictObject({ fps: z.number().int().positive(), frameCount: z.number().int().positive() });

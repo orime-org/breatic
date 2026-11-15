@@ -62,8 +62,17 @@ export interface PresentationRecipeRequest {
   limits: PlanLimits;
 }
 
-// §4.3 colour/HDR/bit-depth row: the D05 tone-map chain, then the BT.709 tags written on the frames.
-const TONE_MAP = "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv";
+/**
+ * §4.3 colour/HDR/bit-depth row: the D05 tone-map chain, then the BT.709 tags written on the frames. The frames reach zscale as
+ * float RGB with alpha, converted with the plan matrix by swscale, which keeps alpha full range (zscale reads a YUVA source's
+ * alpha as limited range, which moved alpha 64 to 56).
+ * @param matrix - The plan matrix as the scale filter spells it.
+ * @returns The filter chain text.
+ * @throws {never} Never.
+ */
+function toneMap(matrix: string): string {
+  return `scale=in_color_matrix=${matrix}:out_range=pc,format=gbrapf32le,zscale=t=linear:npl=100,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv`;
+}
 export const BT709_TAGS = "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv";
 // The plan's matrix names (physical-video-probe.ts) as the scale filter spells them.
 const SCALE_MATRICES: Readonly<Record<string, string>> = { bt709: "bt709", bt601: "bt601", bt2020nc: "bt2020" };
@@ -138,7 +147,7 @@ export function placement(target: MiniToolPlanTarget): { rect: MiniToolPlanPixel
 export function decodedPicture(source: { colorMatrix: string; toneMap: "none" | "sdr-bt709" }, width: number, height: number): string {
   const matrix = SCALE_MATRICES[source.colorMatrix];
   if (matrix === undefined) throw new RangeError(`No decode matrix for ${source.colorMatrix}`);
-  return `${source.toneMap === "sdr-bt709" ? `${TONE_MAP},` : ""}scale=${width}:${height}:in_color_matrix=${matrix}`;
+  return `${source.toneMap === "sdr-bt709" ? `${toneMap(matrix)},` : ""}scale=${width}:${height}:in_color_matrix=${matrix}`;
 }
 
 /**
@@ -186,8 +195,13 @@ export function picture(target: MiniToolPlanTarget, label: string): string {
   const pad = `pad=${planeWidth}:${target.height}:${rect.x}:${rect.y}:color=black`;
   // The frames are already upright; a display matrix left on them would be written to the output and rotate it again.
   const unrotated = `${BT709_TAGS},sidedata=mode=delete:type=DISPLAYMATRIX`;
-  // A VP9 split output keeps its display size, odd sides included, and its straight alpha (§4.3 odd-size row, §91 D4-4).
-  if (target.format === "webm-vp9") return `${head}:out_color_matrix=bt709:out_range=tv,format=${target.alpha === "straight" ? "yuva420p" : "yuv420p"},setsar=1,${unrotated}`;
+  // A VP9 split output keeps its display size, odd sides included, and its straight alpha (§4.3 odd-size row, §91 D4-4); a VP9
+  // transition chunk sits in its fitted rectangle, the bars transparent when it keeps alpha (§7.17).
+  if (target.format === "webm-vp9") {
+    const straight = target.alpha === "straight";
+    const bars = target.displayRect === null ? "" : `,pad=${target.width}:${target.height}:${rect.x}:${rect.y}:color=black${straight ? "@0" : ""}`;
+    return `${head}:out_color_matrix=bt709:out_range=tv,format=${straight ? "yuva420p" : "yuv420p"}${bars},setsar=1,${unrotated}`;
+  }
   const tail = `scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,setsar=1,${unrotated}`;
   if (target.alpha === "none") return `${head}:out_color_matrix=bt709:out_range=tv,format=yuv444p,${pad},${tail}`;
   return `${head},format=gbrap,split=2[${label}r][${label}a];[${label}r]premultiply=inplace=1,format=rgb24,${pad}[${label}c];` +
@@ -912,7 +926,7 @@ const GL_RENDERER = "/app/gl-renderer/render.mjs";
 
 /**
  * Render one chunk of a transition's overlap window (§7.17 transition_window row; §5.4; transitions render DD): each clip's
- * frames are presented on the profile's frame grid as RGBA at the output size, fitted inside it (the preview's `contain`);
+ * frames are presented on the profile's frame grid as RGBA at the output size, in the clip's `fit` rectangle (`transitionFitRect`, the preview's `contain`);
  * the separate headless-gl renderer draws output frame k at progress (k − startFrame) / frameCount with the same
  * `gl-transition` call and pinned `gl-transitions` shader as the preview; FFmpeg encodes the frames with the profile,
  * opening with an IDR, so the chunk's codec headers equal the profile's `chunk_encode` chunks'.
@@ -937,10 +951,10 @@ async function renderTransitionWindow(recipe: MiniToolPlanTransitionWindow, file
     if (matrix === undefined) throw new RangeError(`No decode matrix for ${clip.colorMatrix}`);
     // The chunk's own conversion to limited-range BT.709 first, then full-range RGBA for the renderer, so the window meets
     // the chunk_encode chunks with no colour jump; a transparent profile keeps each clip's alpha through it.
-    const convert = `${clip.toneMap === "sdr-bt709" ? `${TONE_MAP},` : ""}scale=${width}:${height}:force_original_aspect_ratio=decrease:in_color_matrix=${matrix}`
+    const convert = `${clip.toneMap === "sdr-bt709" ? `${toneMap(matrix)},` : ""}scale=${clip.fit.width}:${clip.fit.height}:in_color_matrix=${matrix}`
       + `:out_color_matrix=bt709:out_range=tv,format=${profile.alpha ? "yuva444p" : "yuv444p"},scale=in_color_matrix=bt709:in_range=tv:out_range=pc`;
     const window = await windowGraph(clip.entries, frameRate(profile.fps), local(files, clip.inputId), run,
-      () => `${convert},format=rgba,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${fill},setsar=1`,
+      () => `${convert},format=rgba,pad=${width}:${height}:${clip.fit.x}:${clip.fit.y}:color=${fill},setsar=1`,
       (entry) => `color=c=black${entry.fill === "transparent" ? "@0" : ""}:s=${width}x${height}:r=1:d=1,format=rgba`);
     const file = join(directory, `transition-${at}.rgba`);
     await runPlanCommand("ffmpeg", [...window.args, "-filter_complex", `${window.graph.join(";").replace(/\[v\]$/u, "[w]")};[w]${profileGrid(profile, count)},format=rgba[v]`,
@@ -1022,7 +1036,7 @@ async function renderFrame(recipe: FrameRecipe, source: string, output: string,
     const facts = await sourceFacts(source, run);
     const first = await frameStartAt(source, facts, entry, run);
     args.push(...mediaTimeline(facts), "-seek_timestamp", "1", "-noaccurate_seek", "-ss", seconds(rational(entry.decodeStart)), ...facts.decoder, "-i", source);
-    graph = `[0:v:0]trim=start=${seconds(first)},${target.toneMap === "sdr-bt709" ? `${TONE_MAP},` : ""}` +
+    graph = `[0:v:0]trim=start=${seconds(first)},${target.toneMap === "sdr-bt709" ? `${toneMap(matrix)},` : ""}` +
       `scale=${target.width}:${target.height}:in_color_matrix=${matrix},format=${pixel}${cropped}[v]`;
   }
   await runPlanCommand("ffmpeg", [...args, "-filter_complex", graph, "-map", "[v]", "-frames:v", "1", "-c:v", "png", "-f", "image2", output], run);
@@ -1104,11 +1118,11 @@ async function detectPeople(recipe: PeopleRecipe, source: string, output: string
  * @throws {Error} When rendering, detection or writing fails.
  */
 async function detectScenes(recipe: SceneRecipe, source: string, output: string, request: PresentationRecipeRequest, run: Run): Promise<void> {
-  const { width, height, colorMatrix, toneMap } = recipe.target;
+  const { width, height, colorMatrix, toneMap: tone } = recipe.target;
   const matrix = SCALE_MATRICES[colorMatrix];
   if (matrix === undefined) throw new RangeError(`No decode matrix for ${colorMatrix}`);
   const window = await windowGraph(recipe.entries, BigInt(recipe.timescale), source, run,
-    () => `${toneMap === "sdr-bt709" ? `${TONE_MAP},` : ""}scale=${width}:${height}:in_color_matrix=${matrix},format=bgr24,setsar=1,sidedata=mode=delete:type=DISPLAYMATRIX`,
+    () => `${tone === "sdr-bt709" ? `${toneMap(matrix)},` : ""}scale=${width}:${height}:in_color_matrix=${matrix},format=bgr24,setsar=1,sidedata=mode=delete:type=DISPLAYMATRIX`,
     () => `color=c=black:s=${width}x${height}:r=1:d=1,format=bgr24,setsar=1`);
   const count = recipe.window.end - recipe.window.start;
   const result = await detect("scene_cuts", recipe.profile, { width, height, count,

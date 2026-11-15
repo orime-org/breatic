@@ -769,6 +769,26 @@ function measuredOutputFps(table: VideoPresentationTable): ExactRational {
 }
 
 /**
+ * Where a clip's picture sits on a transition's output frame (§7.17 transition output profile row; the preview's `contain`):
+ * scaled by the smaller of the two side ratios, rounded to whole pixels, and centred. Every encode chunk and every window
+ * chunk of the clip uses this one rectangle.
+ * @param display - The clip's display size.
+ * @param display.width - Its width.
+ * @param display.height - Its height.
+ * @param output - The output frame.
+ * @param output.width - Its width.
+ * @param output.height - Its height.
+ * @returns The rectangle in output pixels.
+ * @throws {never} Never.
+ */
+export function transitionFitRect(display: { width: number; height: number }, output: { width: number; height: number }): { x: number; y: number; width: number; height: number } {
+  const scale = Math.min(output.width / display.width, output.height / display.height);
+  const width = Math.max(1, Math.min(output.width, Math.round(display.width * scale)));
+  const height = Math.max(1, Math.min(output.height, Math.round(display.height * scale)));
+  return { x: Math.floor((output.width - width) / 2), y: Math.floor((output.height - height) / 2), width, height };
+}
+
+/**
  * The transition output profile from the two clips' selected plans, in timeline order (§97 D13-1, D15-5): the first
  * clip's display size, odd sides of an opaque output taken down to even (one up to two) and a transparent one kept; the
  * first clip's frame rate, `presentationOutputFps` of its table; alpha when

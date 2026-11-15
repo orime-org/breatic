@@ -12,7 +12,7 @@
 import { logger } from "@breatic/core";
 import { transitionSlotTime, transitionSourceWindow, type AcceptedMiniToolExecution } from "@breatic/domain";
 import { videoPresentationWorkKeyFor, type MiniToolPlanExact, type MiniToolPlanRecipe, type VideoPresentationLedger } from "@breatic/shared";
-import { planVideoTimeline, videoContainerJobId, type FrameWindow, type VideoContainerJobSpec, type VideoToolDraftById } from "@breatic/shared/mini-tools";
+import { planVideoTimeline, transitionFitRect, videoContainerJobId, type FrameWindow, type VideoContainerJobSpec, type VideoToolDraftById } from "@breatic/shared/mini-tools";
 import { advanceChunks, advanceRegistered, type ContainerStep } from "@worker/handlers/mini-tool/model-run-steps.js";
 import { failedResult, type VideoToolPickup } from "@worker/handlers/mini-tool/run-video-tool.js";
 import { planReadUntil } from "@worker/handlers/mini-tool/advance-plan-job.js";
@@ -108,13 +108,15 @@ export async function runMiniToolTransitions(execution: AcceptedMiniToolExecutio
     const window = transitionSourceWindow(clips[at]!.ledger.plan.presentation, clips[at]!, frames, profile.fps);
     return { window, entries: windowEntries(clips[at]!.ledger, window, exact(...transitionSlotTime(clips[at]!, frames.start, profile.fps)), true) };
   };
+  // Where each clip sits on the output frame, the one rectangle its encode and window chunks use (§7.17).
+  const fits = clips.map((clip) => transitionFitRect(clip.ledger.plan.display, profile));
   const planned: { window: FrameWindow; step: ContainerStep }[] = [];
   for (const [k, window] of layout.encode.entries()) {
     const at = window.end <= boundary ? 0 : 1;
     planned.push({ window, step: workChunk(execution, (attempt) => ({ kind: "run-chunk", taskId: execution.taskId, output: 0, chunk: k, attempt }), execution.container.containerClass, () => {
       const { window: source, entries } = over(at, window);
       return { recipe: { kind: "chunk_encode", inputId: clipInputId(at), window: source, timescale: clips[at]!.ledger.plan.presentation.timescale, entries,
-        target: segmentTarget(clips[at]!.ledger, execution.container.encode), profile, frames: { start: window.start, end: window.end } }, inputs: [{ inputId: clipInputId(at), storageKey: clips[at]!.storageKey }] };
+        target: { ...segmentTarget(clips[at]!.ledger, execution.container.encode), width: profile.width, height: profile.height, displayRect: fits[at]! }, profile, frames: { start: window.start, end: window.end } }, inputs: [{ inputId: clipInputId(at), storageKey: clips[at]!.storageKey }] };
     }) });
   }
   for (const [k, frames] of layout.window.entries()) {
@@ -124,7 +126,7 @@ export async function runMiniToolTransitions(execution: AcceptedMiniToolExecutio
         transition: window.kind, profile,
         clips: [0, 1].map((at) => {
           const { entries } = over(at, frames);
-          return { inputId: clipInputId(at), entries, colorMatrix: clips[at]!.ledger.plan.colorMatrix, toneMap: clips[at]!.ledger.plan.output.toneMap };
+          return { inputId: clipInputId(at), entries, colorMatrix: clips[at]!.ledger.plan.colorMatrix, toneMap: clips[at]!.ledger.plan.output.toneMap, fit: fits[at]! };
         }) as [never, never] },
       inputs: clips.map((clip, at) => ({ inputId: clipInputId(at), storageKey: clip.storageKey })),
     })) });

@@ -128,8 +128,11 @@ export interface MiniToolPlanTransitionStitch {
   crossfade: { startFrame: number; frameCount: number } | null;
   profile: MiniToolPlanTransitionProfile;
 }
-/** One clip of a transition window: its entries and the matrix and tone mapping of its own plan (§97 D23-4). */
-export interface MiniToolPlanWindowClip { inputId: string; entries: MiniToolPlanEntry[]; colorMatrix: string; toneMap: "none" | "sdr-bt709" }
+/**
+ * One clip of a transition window: its entries, the matrix and tone mapping of its own plan (§97 D23-4), and where it sits on
+ * the output frame (`transitionFitRect`).
+ */
+export interface MiniToolPlanWindowClip { inputId: string; entries: MiniToolPlanEntry[]; colorMatrix: string; toneMap: "none" | "sdr-bt709"; fit: MiniToolPlanPixelRect }
 /** One chunk `frames` of a transition's overlap window, composed from both clips' entries (§97 D15-6). */
 export interface MiniToolPlanTransitionWindow {
   kind: "transition_window";

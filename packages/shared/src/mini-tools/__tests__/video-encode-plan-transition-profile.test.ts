@@ -19,7 +19,7 @@ type Rational = { numerator: string; denominator: string };
 type Plan = Record<string, unknown> & { display: { width: number; height: number; duration: Rational }; policy: { singleFrameDurationMs: number; emptyFill: "black" | "transparent" } };
 interface Profile { width: number; height: number; fps: Rational; timeBase: Rational; alpha: boolean; codec: string; encode: unknown; pixFmt: string; color: unknown }
 type Table = { schemaVersion: 1; timescale: number; runs: { start: number; count: number; step: number; duration: number }[] };
-const api = miniTools as unknown as { transitionOutputProfile: (first: Plan, second: Plan, config: unknown) => Profile; presentationOutputFps: (table: Table) => Rational; presentationConform: (table: Table) => { origin: Rational; period: Rational } | null; conformedTime: (conform: { origin: Rational; period: Rational }, at: readonly [bigint, bigint]) => [bigint, bigint] };
+const api = miniTools as unknown as { transitionFitRect: (display: { width: number; height: number }, output: { width: number; height: number }) => { x: number; y: number; width: number; height: number }; transitionOutputProfile: (first: Plan, second: Plan, config: unknown) => Profile; presentationOutputFps: (table: Table) => Rational; presentationConform: (table: Table) => { origin: Rational; period: Rational } | null; conformedTime: (conform: { origin: Rational; period: Rational }, at: readonly [bigint, bigint]) => [bigint, bigint] };
 const r = (numerator: number, denominator = 1): Rational => ({ numerator: String(numerator), denominator: String(denominator) });
 const CONFIG = { encode: { crf: 18, preset: "medium" } };
 const BT709 = { matrix: "bt709", range: "tv", primaries: "bt709", transfer: "bt709" };
@@ -275,3 +275,14 @@ describe("the conform grid of a presentation table (frames-split §7.17)", () =>
   });
 });
 
+
+describe("where a clip sits on the transition frame (frames-split §7.17; the preview's contain)", () => {
+  it.each([
+    ["a portrait phone clip on a landscape frame", { width: 1080, height: 1920 }, { width: 1920, height: 1080 }, { x: 656, y: 0, width: 608, height: 1080 }],
+    ["a 4:3 clip on a 16:9 frame", { width: 640, height: 480 }, { width: 1920, height: 1080 }, { x: 240, y: 0, width: 1440, height: 1080 }],
+    ["a wider clip letterboxed", { width: 1920, height: 800 }, { width: 1280, height: 720 }, { x: 0, y: 93, width: 1280, height: 533 }],
+    ["the same shape fills the frame", { width: 1280, height: 720 }, { width: 1920, height: 1080 }, { x: 0, y: 0, width: 1920, height: 1080 }],
+  ])("FIT01 %s", (_name, display, output, rect) => {
+    expect(api.transitionFitRect(display, output)).toEqual(rect);
+  });
+});

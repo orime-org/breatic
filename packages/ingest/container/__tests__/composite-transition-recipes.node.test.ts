@@ -152,8 +152,9 @@ function clipChunk(inputId: string, start: number, end: number, conversion = SDR
  */
 function windowChunk(transition: 'fade' | 'wipeLeft' | 'wipeRight', start: number, end: number, conversions = [SDR, SDR]): Recipe {
   const offset = start - WINDOW.startFrame;
-  const from = { inputId: CLIP_A, entries: [span(r(30, 25), r(30 + offset, 25), r(30 + offset, 25), r(30 + offset + end - start, 25))], ...conversions[0] };
-  const to = { inputId: CLIP_B, entries: [span(r(0), r(offset, 25), r(offset, 25), r(offset + end - start, 25))], ...conversions[1] };
+  const fit = { x: 0, y: 0, width: 64, height: 36 };
+  const from = { inputId: CLIP_A, entries: [span(r(30, 25), r(30 + offset, 25), r(30 + offset, 25), r(30 + offset + end - start, 25))], fit, ...conversions[0] };
+  const to = { inputId: CLIP_B, entries: [span(r(0), r(offset, 25), r(offset, 25), r(offset + end - start, 25))], fit, ...conversions[1] };
   return { kind: 'transition_window', clips: [from, to], frames: { start, end }, window: WINDOW, transition, profile: PROFILE };
 }
 
@@ -411,6 +412,11 @@ beforeAll(async () => {
     '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-ac', '1', '-shortest']);
   await make('clip-b-stereo.mp4', ['-f', 'lavfi', '-i', 'color=c=0xC0C0C0:s=64x36:r=25:d=1.6', '-f', 'lavfi', '-i', 'sine=f=1500:r=48000:d=1.6',
     '-filter_complex', '[1:a]pan=stereo|c0=c0|c1=0*c0[a]', '-map', '0:v', '-map', '[a]', '-c:v', 'libx264', '-bf', '0', '-pix_fmt', 'yuv420p', '-g', '10', '-video_track_timescale', '25', '-c:a', 'alac', '-shortest']);
+  // A transparent HDR clip: 10-bit 4:4:4 at alpha 64, tagged PQ BT.2020 limited range, as a motion-graphics HDR delivery.
+  await make('clip-hdr-alpha.mkv', ['-f', 'lavfi', '-i', 'color=c=0x808080:s=64x36:r=25:d=2,format=yuva444p10le,colorchannelmixer=aa=0.25,setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc:range=tv',
+    '-c:v', 'ffv1', '-pix_fmt', 'yuva444p10le', '-color_range', 'tv', '-colorspace', 'bt2020nc', '-color_primaries', 'bt2020', '-color_trc', 'smpte2084']);
+  // A narrower clip: 48x36 white for 2 s, contained in the 64x36 profile with 8-pixel bars.
+  await make('clip-narrow.mp4', ['-f', 'lavfi', '-i', 'color=c=white:s=48x36:r=25:d=2', ...h264, '-g', '10']);
   // A transparent clip: 2 s of grey at alpha 64 in a VP9 WebM, which stores its alpha in BlockAdditional.
   await make('clip-alpha.webm', ['-f', 'lavfi', '-i', 'color=c=0x808080:s=64x36:r=25:d=2,format=yuva420p,colorchannelmixer=aa=0.25', '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuva420p']);
   for (const [name, grey, tone] of [['clip-a.mp4', '0x404040', 500], ['clip-b.mp4', '0xC0C0C0', 1500]] as const) {
@@ -771,6 +777,48 @@ describe('transition_window (§7.17 transition_window and 转场输出档 rows; 
       for (let at = frame * size + 3; at < (frame + 1) * size; at += 4) sum += from![at]!;
       expect(Math.abs(sum / (64 * 36) - 64), `frame ${frame} alpha`).toBeLessThan(3);
     }
+  });
+
+  it(`TW10 a narrower clip reaches the blend in its fitted rectangle, and its encode chunk puts it in the same place (§7.17; renderer stand-in)`, async () => {
+    renderer.fake = true;
+    const fit = { x: 8, y: 0, width: 48, height: 36 };
+    const recipe = windowChunk('fade', 30, 32);
+    (recipe.clips as Recipe[])[0] = { ...(recipe.clips as Recipe[])[0]!, fit };
+    await produce({ [CLIP_A]: join(dir, 'clip-narrow.mp4'), [CLIP_B]: join(dir, 'clip-b.mp4') }, [recipe]);
+    const [from] = renderer.inputs;
+    renderer.fake = false;
+    // The middle row's red channel: black bars at columns 0-7 and 56-63, white between.
+    const row = Array.from({ length: 64 }, (_unused, x) => from![(18 * 64 + x) * 4]!);
+    expect(row.slice(0, 8).every((value) => value < 20), JSON.stringify(row)).toBe(true);
+    expect(row.slice(8, 56).every((value) => value > 235), JSON.stringify(row)).toBe(true);
+    expect(row.slice(56).every((value) => value < 20), JSON.stringify(row)).toBe(true);
+    for (const profile of [PROFILE, { ...PROFILE, codec: 'vp9', pixFmt: 'yuva420p', alpha: true }]) {
+      const chunk = { ...clipChunk(CLIP_A, 30, 32), profile, target: { ...TARGET, displayRect: fit } };
+      const [file] = await produce({ [CLIP_A]: join(dir, 'clip-narrow.mp4') }, [chunk]);
+      const { stdout } = await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', ...(profile.alpha ? ['-c:v', 'libvpx-vp9'] : []), '-i', file!, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgba', '-'], { encoding: 'buffer', maxBuffer: 1 << 24 });
+      const pixels = stdout as unknown as Buffer;
+      const column = (x: number): number[] => pixels.subarray((18 * 64 + x) * 4, (18 * 64 + x) * 4 + 4) as unknown as number[];
+      expect(column(32)[0], `${profile.codec} middle`).toBeGreaterThan(235);
+      expect(profile.alpha ? column(2)[3] : column(2)[0], `${profile.codec} bar`).toBeLessThan(20);
+    }
+  });
+
+  it(`TW11 a transparent HDR clip keeps its alpha through the tone map, in the window and in its encode chunk (§4.3; renderer stand-in)`, async () => {
+    renderer.fake = true;
+    const transparent = { ...PROFILE, codec: 'vp9', pixFmt: 'yuva420p', alpha: true };
+    const recipe = { ...windowChunk('fade', 30, 32, [HDR, SDR]), profile: transparent };
+    await produce({ [CLIP_A]: join(dir, 'clip-hdr-alpha.mkv'), [CLIP_B]: join(dir, 'clip-b.mp4') }, [recipe]);
+    const [from] = renderer.inputs;
+    renderer.fake = false;
+    let sum = 0;
+    for (let at = 3; at < 64 * 36 * 4; at += 4) sum += from![at]!;
+    expect(Math.abs(sum / (64 * 36) - 64), 'window alpha').toBeLessThan(3);
+    const [file] = await produce({ [CLIP_A]: join(dir, 'clip-hdr-alpha.mkv') }, [{ ...clipChunk(CLIP_A, 30, 32, HDR), profile: transparent }]);
+    const { stdout } = await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-c:v', 'libvpx-vp9', '-i', file!, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgba', '-'], { encoding: 'buffer', maxBuffer: 1 << 24 });
+    const pixels = stdout as unknown as Buffer;
+    let chunk = 0;
+    for (let at = 3; at < 64 * 36 * 4; at += 4) chunk += pixels[at]!;
+    expect(Math.abs(chunk / (64 * 36) - 64), 'chunk alpha').toBeLessThan(3);
   });
 
   it.skipIf(!GL)(`TW08 fade from an HDR clip: frame k mixes the tone-mapped clip A into clip B, so progress 0 matches A's tone-mapped chunk [${GL_SKIP}]`, async () => {

@@ -686,6 +686,25 @@ describe("a chunk starts at its first output slot's time in the clip (§7.17 tra
   });
 });
 
+describe("each clip sits in its fitted rectangle in every chunk (§7.17; the preview's contain)", () => {
+  it("TF01 a 160x96 clip after a 320x180 one is contained at 300x180 from x 10 in its encode chunks; the first fills the frame", async () => {
+    const value = { ...run({ kind: "cut", duration: 0 }, SILENT, 1.48, 48), layout: { encode: [{ start: 0, end: 96 }, { start: 96, end: 133 }], window: [] } };
+    serve(plan(value));
+    await drive();
+    expect((recipeOf(requestOf(encId(0))).target as { displayRect: unknown }).displayRect).toEqual({ x: 0, y: 0, width: 320, height: 180 });
+    expect((recipeOf(requestOf(encId(1))).target as { displayRect: unknown }).displayRect).toEqual({ x: 10, y: 0, width: 300, height: 180 });
+  });
+
+  it("TF02 a window chunk gives each clip the rectangle its encode chunks use", async () => {
+    const value = run({ kind: "fade", duration: 1 }, B, 3.84, 24);
+    serve(plan(value));
+    await drive();
+    for (const [k] of value.layout.window.entries()) {
+      expect((recipeOf(requestOf(winId(k))).clips as { fit: unknown }[]).map((clip) => clip.fit)).toEqual([{ x: 0, y: 0, width: 320, height: 180 }, { x: 0, y: 0, width: 320, height: 180 }]);
+    }
+  });
+});
+
 describe("a Cut transition (§5.4 派发: 转场选「直接切换」时不派 transition_window; §97 D23)", () => {
   // The current video, a Cut, then 1.48 s (37 frames) of a source without audio; chunks of at most 48 frames.
   const cut = (): Run => run({ kind: "cut", duration: 0 }, SILENT, 1.48, 48);
