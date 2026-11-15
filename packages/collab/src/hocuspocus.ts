@@ -73,7 +73,7 @@ import {
 } from "@collab/hooks/presence-wiring.js";
 import { createLivenessHandler } from "@collab/services/socket-liveness.js";
 import { keepDocumentSchemaPublished } from "@collab/services/document-schema-publisher.js";
-import { replySyncConfirmation } from "@collab/services/sync-receipt.js";
+import { confirmsSync, replySyncConfirmation } from "@collab/services/sync-receipt.js";
 import { isMetaWriteAttempt } from "@collab/hooks/meta-write-attempt-log.js";
 import {
   createPersistenceExtension,
@@ -750,7 +750,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
           return;
         }
       }
-      if (parsed.kind === "canvas" || parsed.kind === "document") {
+      if (confirmsSync(parsed.kind)) {
         const request = SyncConfirmRequestSchema.safeParse(json);
         if (!request.success) return;
         try {

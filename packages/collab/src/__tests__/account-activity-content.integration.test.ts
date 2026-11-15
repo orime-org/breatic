@@ -73,7 +73,7 @@ async function logs(root: string): Promise<string> {
 }
 
 describe("authenticated content SyncUpdate activity (inner#1893)", () => {
-  for (const kind of ["canvas", "document", "timeline", "3d"] as const) {
+  for (const kind of ["canvas", "document", "timeline", "3d", "web_animation"] as const) {
     for (const mutation of ["struct", "deleteSet"] as const) {
       it(`P19 records ${kind} ${mutation} updates as the authenticated actor`, async () => {
         const fixture = await seedCollabActivity();

@@ -588,7 +588,7 @@ describe("handleSpaceRpc — happy paths write PG activity rows", () => {
       { id: "r1", type: "space:delete", payload: { spaceId: SID } },
     );
     expect(res.ok).toBe(true);
-    for (const kind of ["canvas", "document", "timeline", "3d"] as const) {
+    for (const kind of ["canvas", "document", "timeline", "3d", "web_animation"] as const) {
       expect(softDeleteByNameMock).toHaveBeenCalledWith(
         spaceContentDocName(PID, SID, kind),
       );
