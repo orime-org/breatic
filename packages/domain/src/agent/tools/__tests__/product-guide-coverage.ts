@@ -605,6 +605,8 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.task.failure.declined": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.task.failure.empty": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.task.failure.expired": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "canvas.task.failure.input_refused": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "canvas.task.failure.model_not_configured": { excluded: REASONS.UPSTREAM_UNSET },
   "canvas.task.failure.internal": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.task.failure.media_refused": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.task.failure.no_credits": { excluded: REASONS.SAYS_WHAT_HAPPENED },
