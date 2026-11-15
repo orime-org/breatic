@@ -795,14 +795,10 @@ export async function listDesignatedLotIds(
  * A spent lot keeps its designation but the credits panel offers no way to
  * unassign it, so only active lots count.
  * @param studioId - The studio they point at.
- * @param tx - The enclosing transaction, if any.
  * @returns True if at least one does.
  */
-export async function hasActiveDesignatedToStudio(
-  studioId: string,
-  tx?: DbTx,
-): Promise<boolean> {
-  const rows = await (tx ?? db)
+export async function hasActiveDesignatedToStudio(studioId: string): Promise<boolean> {
+  const rows = await db
     .select({ id: creditLots.id })
     .from(creditLots)
     .where(
