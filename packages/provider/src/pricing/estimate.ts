@@ -172,7 +172,24 @@ export type PricingRule = z.infer<typeof pricingRuleSchema>;
  * and the upstream's own words for the limit. A run it holds for cannot go there. A limit announced for a date carries
  * `from` (an ISO 8601 UTC time) and holds only from then on.
  */
-export const rejectSchema = z.strictObject({ when: z.string().min(1), reason: z.string().min(1), from: z.iso.datetime().optional() });
+export const rejectSchema = z.strictObject({
+  when: z.string().min(1),
+  reason: z.string().min(1),
+  from: z.iso.datetime().optional(),
+  /** What the condition limits, for the application to tell the user; absent when no count says it. */
+  limit: z
+    .strictObject({
+      /** Our param the limit is on; the prompt is `prompt`. */
+      field: z.string().min(1),
+      measure: z.enum(["characters", "lines"]),
+      max: z.number().int().nonnegative().optional(),
+      min: z.number().int().nonnegative().optional(),
+      /** Counted for each line or each list item rather than for the whole value. */
+      per: z.enum(["line", "item"]).optional(),
+    })
+    .refine((l) => (l.max === undefined) !== (l.min === undefined), "a limit has exactly one of max and min")
+    .optional(),
+});
 
 /** One input limit: the condition a run breaks it on, and the words for it. */
 export type Reject = z.infer<typeof rejectSchema>;
@@ -190,7 +207,16 @@ export const vendorRejectSchema = rejectSchema.extend({ source: z.url() });
  */
 export type RejectedInput =
   | { param: string; value: unknown }
-  | { reason: string; /** The evaluator's message, when the check could not be made. */ evaluationError?: string };
+  | {
+    reason: string;
+    /** The evaluator's message, when the check could not be made. */
+    evaluationError?: string;
+    /** What the broken condition limits, when its reject says. */
+    limit?: InputLimit;
+  };
+
+/** What one input limit counts and where it stops. */
+export type InputLimit = NonNullable<Reject["limit"]>;
 
 /**
  * What the browser needs to price a run on one upstream: the one description of the entry the
@@ -387,10 +413,10 @@ async function estimateOn(rule: UpstreamPricing, input: EstimateInput, { fields,
  */
 async function firstHeld(rejects: readonly Reject[], read: ReturnType<typeof runIn>): Promise<RejectedInput | undefined> {
   const now = Date.now();
-  for (const { when, reason, from } of rejects) {
+  for (const { when, reason, from, limit } of rejects) {
     if (from !== undefined && Date.parse(from) > now) continue;
     try {
-      if (await holds(when, read.fields, read.durations)) return { reason };
+      if (await holds(when, read.fields, read.durations)) return limit === undefined ? { reason } : { reason, limit };
     } catch (error) {
       return { reason, evaluationError: evaluationMessage(error) };
     }
@@ -536,4 +562,26 @@ export async function estimateCost(rules: PricingRules, availability: Availabili
     if (read !== undefined && "estimate" in read) return read.estimate;
   }
   return null;
+}
+
+/**
+ * Why no configured upstream the route may use takes a run: the refusal of the first of them in the order the route
+ * tries them (weight order; every configured upstream on the cheapest route), the one whose limit the user meets first.
+ * @param rules - The model's pricing rules.
+ * @param availability - Which upstreams are configured.
+ * @param input - The prepared run.
+ * @param route - The caller's mode.
+ * @returns The refusal, or null when one of them takes the run or none is configured (which servability answers).
+ */
+export async function inputRefusal(rules: PricingRules, availability: Availability, input: EstimateInput, route: Route): Promise<RejectedInput | null> {
+  const configured = [...availability.upstreams].sort((a, b) => a.weight - b.weight).filter((u) => u.configured);
+  const pool = route.mode === "upstream" ? configured.filter((u) => u.upstream === route.upstream) : configured;
+  let first: RejectedInput | null = null;
+  for (const { upstream } of pool) {
+    const read = await assess(rules, upstream, input);
+    if (read === undefined) continue;
+    if ("estimate" in read) return null;
+    first ??= read.rejected;
+  }
+  return first;
 }

@@ -31,12 +31,15 @@ models:
         reason: "Mureka song/generate melody_id: does not support combination with other control options (WaveSpeed refused lyrics, prompt and melody on 2026-11-07)"
         source: https://platform.mureka.ai/docs/api/operations/post-v1-song-generate.html
       - when: $exists(lyrics) and $length(prompt) > 1024
+        limit: { field: prompt, measure: characters, max: 1024 }
         reason: "Mureka song/generate prompt: maximum 1024 characters"
         source: https://platform.mureka.ai/docs/api/operations/post-v1-song-generate.html
       - when: $length(prompt) > 2000
+        limit: { field: prompt, measure: characters, max: 2000 }
         reason: "Mureka song/easy-generate prompt: maximum 2000 characters"
         source: https://platform.mureka.ai/docs/api/operations/post-v1-song-easy-generate.html
       - when: $length(lyrics) > 5000
+        limit: { field: lyrics, measure: characters, max: 5000 }
         reason: "Mureka song/generate lyrics: maximum 5000 characters"
         source: https://platform.mureka.ai/docs/api/operations/post-v1-song-generate.html
       - when: get_duration(song, min=30, max=1000000, total=1000000) > get_duration(song)
@@ -152,6 +155,7 @@ models:
   mureka-v9.5-generate-bgm:
     rejects:
       - when: $length(prompt) > 1024
+        limit: { field: prompt, measure: characters, max: 1024 }
         reason: "Mureka instrumental/generate prompt: maximum 1024 characters"
         source: https://platform.mureka.ai/docs/api/operations/post-v1-instrumental-generate.html
     upstreams:
@@ -198,6 +202,7 @@ models:
             field: image_url
         rejects:
           - when: $length(prompt) > 5000
+            limit: { field: prompt, measure: characters, max: 5000 }
             reason: fal prompt maxLength 5000
         pricing:
           kind: formula
@@ -207,9 +212,11 @@ models:
   minimax-music-cover:
     rejects:
       - when: $length(prompt) < 10
+        limit: { field: prompt, measure: characters, min: 10 }
         reason: "MiniMax music-cover prompt: Required, 10-300 characters"
         source: https://platform.minimax.io/docs/api-reference/music-generation
       - when: $length(prompt) > 300
+        limit: { field: prompt, measure: characters, max: 300 }
         reason: "MiniMax music-cover prompt: Required, 10-300 characters"
         source: https://platform.minimax.io/docs/api-reference/music-generation
       - when: get_duration(audio, min=6, max=1000000, total=1000000) > get_duration(audio)
@@ -237,6 +244,7 @@ models:
         reason: "Sonilo video-to-music video: Max duration: 6 minutes"
         source: https://platform.sonilo.com/docs/api/video-to-music
       - when: $length(prompt) > 2000
+        limit: { field: prompt, measure: characters, max: 2000 }
         reason: "Sonilo video-to-music prompt: maxLength 2000"
         source: https://sonilo.com/openapi.json
     upstreams:
@@ -267,6 +275,7 @@ models:
         reason: "Mirelo sfx-1.6 text-to-sfx duration_ms: at most 600000 with controls.loop"
         source: https://mirelo.ai/api-docs.md
       - when: $length(prompt) > 5000
+        limit: { field: prompt, measure: characters, max: 5000 }
         reason: Mirelo sfx-1.6 max_prompt_chars 5000; too long a prompt is rejected rather than truncated
         source: https://api.mirelo.ai/v3/openapi.json
     upstreams:
@@ -286,6 +295,7 @@ models:
             - false
         rejects:
           - when: $length(text_prompt) < 4
+            limit: { field: prompt, measure: characters, min: 4 }
             reason: WaveSpeed text_prompt minLength 4
         pricing:
           kind: formula
@@ -310,6 +320,7 @@ models:
           upload_audio_format: mp3
         rejects:
           - when: $length(text_prompt) < 4
+            limit: { field: prompt, measure: characters, min: 4 }
             reason: fal text_prompt minLength 4
         pricing:
           kind: formula
@@ -319,6 +330,7 @@ models:
   sonilo-sfx-v1:
     rejects:
       - when: $length(prompt) > 2000
+        limit: { field: prompt, measure: characters, max: 2000 }
         reason: "Sonilo text-to-sfx prompt: maxLength 2000"
         source: https://sonilo.com/openapi.json
     upstreams:

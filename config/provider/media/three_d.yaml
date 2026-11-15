@@ -31,9 +31,11 @@ models:
         reason: "Tripo generate_parts: Not compatible with smart_low_poly; smart_low_poly takes precedence and parts are NOT produced"
         source: https://developers.tripo3d.com/en/docs/generation-text-to-model/standard.md
       - when: $length(prompt) > 1024
+        limit: { field: prompt, measure: characters, max: 1024 }
         reason: 'Tripo prompt: "Text prompt, up to 1024 characters."'
         source: https://developers.tripo3d.com/en/docs/generation-text-to-model/standard.md
       - when: $length(negative_prompt) > 255
+        limit: { field: negative_prompt, measure: characters, max: 255 }
         reason: 'Tripo negative_prompt: "Negative prompt, up to 255 characters."'
         source: https://developers.tripo3d.com/en/docs/generation-text-to-model/standard.md
       - when: smart_low_poly = true and (face_limit < 500 or face_limit > 20000)

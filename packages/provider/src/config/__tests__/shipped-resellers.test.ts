@@ -496,7 +496,7 @@ describe("the limits a reseller states beyond its schema", () => {
   it.each(STATED)("keeps a %s run off %s where its own words refuse it, and takes the nearest run it allows", async (model, upstream, refusedRun, takenRun, words) => {
     // Without the model vendor's limits, so the refusal can only be the binding's own.
     const own = { ...provider.pricingRules(model), rejects: [] };
-    expect(await rejectedInput(own, upstream, run(withDefaults(model, refusedRun)))).toEqual({ reason: expect.stringContaining(words) });
+    expect(await rejectedInput(own, upstream, run(withDefaults(model, refusedRun)))).toMatchObject({ reason: expect.stringContaining(words) });
     expect(await rejectedInput(own, upstream, run(withDefaults(model, takenRun)))).toBeUndefined();
   });
 
@@ -806,7 +806,8 @@ describe("the limits a reseller states beyond its schema", () => {
       for (const reject of rejects ?? []) {
         for (const part of disjuncts(reject.when)) {
           // The operand alone, on a binding stripped of its own checks, tells which operand, and which of two limits sharing a reason, holds.
-          const alone = { ...rules, rejects: [{ when: part, reason: reject.reason }], upstreams: (rules.upstreams as Record<string, unknown>[]).map((u) => ({ ...u, rejects: [], limits: {}, voices: {} })) };
+          const said = reject.limit === undefined ? { reason: reject.reason } : { reason: reject.reason, limit: reject.limit };
+          const alone = { ...rules, rejects: [{ when: part, ...said }], upstreams: (rules.upstreams as Record<string, unknown>[]).map((u) => ({ ...u, rejects: [], limits: {}, voices: {} })) };
           let hit = false;
           for (const input of rows) {
             // The first upstream that takes the row's values (SKIPS lists those that do not).
@@ -816,7 +817,7 @@ describe("the limits a reseller states beyond its schema", () => {
               [upstream, ...rest] = rest;
               whole = await rejectedInput(rules, upstream!, input);
             }
-            if (JSON.stringify(whole) === JSON.stringify({ reason: reject.reason }) && JSON.stringify(await rejectedInput(alone, upstream!, input)) === JSON.stringify({ reason: reject.reason })) hit = true;
+            if (JSON.stringify(whole) === JSON.stringify(said) && JSON.stringify(await rejectedInput(alone, upstream!, input)) === JSON.stringify(said)) hit = true;
           }
           if (!hit) untested.push(`${model}: ${part}`);
         }
@@ -895,8 +896,9 @@ describe("the limits a reseller states beyond its schema", () => {
       for (const binding of upstreams) {
         const rows = STATED.filter(([m, u]) => m === model && u === binding.upstream).map(([, , refusedRow]) => run(withDefaults(model, refusedRow)));
         for (const reject of binding.rejects ?? []) {
-          const expected = JSON.stringify({ reason: reject.reason });
-          const alone = { ...own, upstreams: (own.upstreams as Record<string, unknown>[]).map((u) => (u.upstream === binding.upstream ? { ...u, rejects: [{ when: reject.when, reason: reject.reason }] } : u)) };
+          const said = reject.limit === undefined ? { reason: reject.reason } : { reason: reject.reason, limit: reject.limit };
+          const expected = JSON.stringify(said);
+          const alone = { ...own, upstreams: (own.upstreams as Record<string, unknown>[]).map((u) => (u.upstream === binding.upstream ? { ...u, rejects: [{ when: reject.when, ...said }] } : u)) };
           let hit = false;
           for (const input of rows) {
             if (JSON.stringify(await rejectedInput(own, binding.upstream, input)) === expected && JSON.stringify(await rejectedInput(alone, binding.upstream, input)) === expected) hit = true;

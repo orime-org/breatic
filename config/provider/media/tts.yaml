@@ -69,10 +69,13 @@ models:
           text_field: text
         rejects:
           - when: '$not($exists(speakers[0])) and $length(text) > 8000'
+            limit: { field: prompt, measure: characters, max: 8000 }
             reason: WaveSpeed text maxLength 8000
           - when: '$exists(speakers[0]) and $max($split(text, "\n").$length($)) > 8000'
+            limit: { field: prompt, measure: characters, max: 8000, per: line }
             reason: WaveSpeed turns[].text maxLength 8000
           - when: '$exists(speakers[0]) and $count($split(text, "\n")[$trim($) != ""]) > 100'
+            limit: { field: prompt, measure: lines, max: 100 }
             reason: WaveSpeed turns maxItems 100
         pricing:
           kind: formula
@@ -151,6 +154,7 @@ models:
         output_field: audio
         rejects:
           - when: $length(prompt) > 50000
+            limit: { field: prompt, measure: characters, max: 50000 }
             reason: fal prompt maxLength 50000
           - when: $exists(speakers[$not($word(speaker))])
             reason: fal speakers[].speaker_id pattern ^\w+$ (Unicode word characters)
@@ -213,6 +217,7 @@ models:
           mode: async
         rejects:
           - when: $length(prompt) > 50000
+            limit: { field: prompt, measure: characters, max: 50000 }
             reason: SandBase prompt maxLength 50000
           - when: $exists(speakers[$not($word(speaker))])
             reason: "SandBase speakers[].speaker_id: Must be alphanumeric with no whitespace (measured: it takes Chinese letters and refuses a middle dot)"
@@ -224,6 +229,7 @@ models:
   minimax-speech-2.8-hd:
     rejects:
       - when: $length(prompt) > 10000
+        limit: { field: prompt, measure: characters, max: 10000 }
         reason: "MiniMax T2A text: Must be less than 10,000 characters (a 10,000-character text was served when measured)"
         source: https://platform.minimax.io/docs/api-reference/speech-t2a-http
       - when: speed < 0.5 or speed > 2
@@ -1253,6 +1259,7 @@ models:
           mode: async
         rejects:
           - when: $length(text) > 5000
+            limit: { field: prompt, measure: characters, max: 5000 }
             reason: SandBase text maxLength 5000
         pricing:
           kind: formula
@@ -1262,6 +1269,7 @@ models:
   elevenlabs-v3:
     rejects:
       - when: $length(prompt) > 5000
+        limit: { field: prompt, measure: characters, max: 5000 }
         reason: "ElevenLabs Eleven v3: up to 5,000 characters"
         source: https://elevenlabs.io/docs/help-center/product/core-capabilities/text-to-speech/whats-the-maximum-amount-of-characters-and-text-i-can-generate.md
     upstreams:

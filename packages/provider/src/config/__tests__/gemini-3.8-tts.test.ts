@@ -70,19 +70,19 @@ describe("Gemini 3.8 Flash TTS", () => {
   });
 
   it("keeps a single-voice script over 8000 characters off WaveSpeed, whose text field caps there", async () => {
-    expect(await refused("wavespeed", { prompt: "x".repeat(8001) })).toEqual({ reason: "WaveSpeed text maxLength 8000" });
+    expect(await refused("wavespeed", { prompt: "x".repeat(8001) })).toEqual({ reason: "WaveSpeed text maxLength 8000", limit: { field: "prompt", measure: "characters", max: 8000 } });
     expect(await refused("wavespeed", { prompt: "x".repeat(8000) })).toBeUndefined();
   });
 
   it("takes a dialogue longer than 8000 characters in all, and keeps one with a line over 8000 off WaveSpeed", async () => {
     const long = `Ava: ${"x".repeat(5000)}\nLeo: ${"y".repeat(5000)}`;
     expect(await refused("wavespeed", { prompt: long, params: { speakers: PAIR } })).toBeUndefined();
-    expect(await refused("wavespeed", { prompt: `Ava: ${"x".repeat(7996)}`, params: { speakers: PAIR } })).toEqual({ reason: "WaveSpeed turns[].text maxLength 8000" });
+    expect(await refused("wavespeed", { prompt: `Ava: ${"x".repeat(7996)}`, params: { speakers: PAIR } })).toEqual({ reason: "WaveSpeed turns[].text maxLength 8000", limit: { field: "prompt", measure: "characters", max: 8000, per: "line" } });
   });
 
   it("keeps a dialogue of more than 100 lines off WaveSpeed, whose turns cap there, and counts only lines with words", async () => {
     const lines = (n: number): string => Array.from({ length: n }, (_, i) => `${i % 2 === 0 ? "Ava" : "Leo"}: line ${i}.`).join("\n");
-    expect(await refused("wavespeed", { prompt: lines(101), params: { speakers: PAIR } })).toEqual({ reason: expect.stringContaining("100") });
+    expect(await refused("wavespeed", { prompt: lines(101), params: { speakers: PAIR } })).toEqual({ reason: expect.stringContaining("100"), limit: { field: "prompt", measure: "lines", max: 100 } });
     expect(await refused("wavespeed", { prompt: `${lines(100)}\n\n  \n`, params: { speakers: PAIR } })).toBeUndefined();
     expect(await refused("wavespeed", { prompt: lines(101) })).toBeUndefined();
   });
