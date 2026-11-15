@@ -18,14 +18,13 @@ import { Textarea } from '@web/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { assetsApi } from '@web/data/api/assets';
 import { projectImagesQueryKey, submitSceneGeneration } from '@web/data/api/scene';
-import { ApiException } from '@web/data/api/types';
 import { sendFileAndFinish } from '@web/data/upload/finish-upload';
 import { hashFile } from '@web/data/upload/hash';
 import { runMediaUpload } from '@web/data/upload/media-upload';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { PanelRunFooter } from '@web/spaces/canvas/_shared/PanelRunFooter';
-import { executeErrorMessage } from '@web/spaces/canvas/generate/execute-error-message';
+import { executeFailureMessage } from '@web/spaces/canvas/generate/execute-error-message';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import type { ModelControl } from '@web/spaces/canvas/generate/model-controls';
 import { ModelParamControls } from '@web/spaces/canvas/generate/ModelParamControls';
@@ -300,9 +299,7 @@ function SceneGenerateForm({ projectId, spaceId, fill, intent, submitting, onClo
         return undefined;
       },
       onFailure: async (err) => {
-        // A 422 of ours names the rule or the view slot, in the user's language.
-        const ours = err instanceof ApiException && err.status === 422 && err.fromServer;
-        toast.error(ours ? err.message : await executeErrorMessage(err instanceof ApiException ? err.status : undefined, t));
+        toast.error(await executeFailureMessage(err, t));
       },
     });
   }, [entry, ready, refusalText, mode, settings, origin, prompt, views, intent, projectId, spaceId, onClose, onSubmitted, t]);

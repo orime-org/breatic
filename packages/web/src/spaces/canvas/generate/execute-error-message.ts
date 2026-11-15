@@ -10,6 +10,7 @@
  */
 
 import { assetsApi, requestBodyLimitOf } from '@web/data/api/assets';
+import { ApiException } from '@web/data/api/types';
 import { formatBytes } from '@web/lib/format-bytes';
 
 /** The translate function, with ICU values. */
@@ -60,4 +61,16 @@ export async function executeErrorMessage(status: number | undefined, translate:
     default:
       return translate('canvas.generatePanel.errorFailed');
   }
+}
+
+/**
+ * Maps any failed execute press to what the user reads: the sentence our server refused it with (a 422 names the
+ * rule, the limit or the slot, in the user's language), else {@link executeErrorMessage} by status.
+ * @param err - What the request threw.
+ * @param translate - The i18n translate function.
+ * @returns A localized error message.
+ */
+export async function executeFailureMessage(err: unknown, translate: Translate): Promise<string> {
+  if (err instanceof ApiException && err.status === 422 && err.fromServer) return err.message;
+  return executeErrorMessage(err instanceof ApiException ? err.status : undefined, translate);
 }
