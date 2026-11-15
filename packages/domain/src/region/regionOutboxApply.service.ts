@@ -75,8 +75,7 @@ export async function applyRegionEvent(
 async function apply(region: string, event: OutboxEvent, tx: DbTx): Promise<boolean> {
   const p = event.payload as Record<string, unknown>;
   switch (event.type) {
-    case "studio.profile_changed":
-    case "studio.slug_changed": {
+    case "studio.profile_changed": {
       const profile: { name?: string; avatarUrl?: string | null; slug?: string } = {};
       if (typeof p.name === "string") profile.name = p.name;
       if (typeof p.slug === "string") profile.slug = p.slug;

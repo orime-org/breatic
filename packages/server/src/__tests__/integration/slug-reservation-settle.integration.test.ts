@@ -185,7 +185,7 @@ describe("reserving a slug for a rename", () => {
     const event = (id: string, slug: string) => ({
       id,
       aggregateKey: `studio:${r.studioId}`,
-      type: "studio.slug_changed",
+      type: "studio.profile_changed",
       payload: { studioId: r.studioId, slug },
     });
 
