@@ -60,32 +60,60 @@ describe('a selection dragged in from another body', () => {
   });
 });
 
-describe('a selection dragged in from another body onto a code block', () => {
+/**
+ * Blocks as JSON with their ids left out, which differ between two bodies.
+ * @param blocks - The blocks.
+ * @returns The JSON.
+ */
+function withoutIds(blocks: unknown): string {
+  return JSON.stringify(blocks, (key, value: unknown) => (key === 'id' ? undefined : value));
+}
+
+describe('a selection dragged in from another body', () => {
+  const formulas = [
+    { type: 'paragraph', content: [{ type: 'text', text: 'bold', styles: { bold: true } }, ' x ', { type: 'math', props: { source: 'a^2' } }] },
+    { type: 'mathBlock', props: { source: 'x^2' } },
+    { type: 'paragraph', content: 'gamma' },
+  ];
+  const tableWithFormula = [
+    { type: 'paragraph', content: 'lead' },
+    tableBlock({ rows: [{ cells: ['c1', { blocks: [{ type: 'mathBlock', props: { source: 'y_1' } }] }] }] }),
+    { type: 'paragraph', content: 'tail' },
+  ];
+  const codeLines = [{ type: 'codeBlock', content: 'line1\n  line2 *a*\n\tline3' }];
+  const spaced = [{ type: 'paragraph', content: 'a  b   c' }];
   it.each([
-    ['blocks with formulas', [
-      { type: 'paragraph', content: [{ type: 'text', text: 'bold', styles: { bold: true } }, ' x ', { type: 'math', props: { source: 'a^2' } }] },
-      { type: 'mathBlock', props: { source: 'x^2' } },
-      { type: 'paragraph', content: 'gamma' },
-    ]],
-    ['a table holding a formula block', [
-      { type: 'paragraph', content: 'lead' },
-      tableBlock({ rows: [{ cells: ['c1', { blocks: [{ type: 'mathBlock', props: { source: 'y_1' } }] }] }] }),
-      { type: 'paragraph', content: 'tail' },
-    ]],
-  ])('lands as the words a copy of it pastes there, for %s', (_name, blocks) => {
+    ['blocks with formulas', 'codeBlock', formulas],
+    ['a table holding a formula block', 'codeBlock', tableWithFormula],
+    ['lines of code', 'codeBlock', codeLines],
+    ['lines of code', 'paragraph', codeLines],
+    ['words with runs of spaces', 'codeBlock', spaced],
+    ['words with runs of spaces', 'paragraph', spaced],
+  ])('lands as a paste of its copy does, for %s onto a %s', (_name, target, blocks) => {
     const source = open(blocks).editor;
     select(source, 3, source.prosemirrorView!.state.doc.content.size - 3);
     const dragged = written(source, 'dragstart');
     const copied = written(source, 'copy');
-    const dropped = open([{ type: 'codeBlock', content: 'let x = 1' }]).editor;
-    const pasted = open([{ type: 'codeBlock', content: 'let x = 1' }]).editor;
+    const dropped = open([{ type: target, content: 'let x = 1' }]).editor;
+    const pasted = open([{ type: target, content: 'let x = 1' }]).editor;
     const end = (editor: Editor): number => editor.prosemirrorView!.state.doc.content.size - 3;
 
     drop(dropped, end(dropped), dragged['text/html'] ?? '', dragged['text/plain'] ?? '');
     select(pasted, end(pasted));
     pasteFormats(pasted, copied);
 
-    expect(dropped.prosemirrorView!.state.doc.textContent).toBe(pasted.prosemirrorView!.state.doc.textContent);
+    expect(withoutIds(dropped.document)).toEqual(withoutIds(pasted.document));
+  });
+});
+
+describe('HTML from another page that marks its parts with data-content-type', () => {
+  it('lands in a code block as its plain text', () => {
+    const target = open([{ type: 'codeBlock', content: 'x' }]).editor;
+    select(target, target.prosemirrorView!.state.doc.content.size - 3);
+
+    paste(target, '<div data-content-type="html"><pre>def f():\n    return 1</pre></div>', 'def f():\n    return 1');
+
+    expect(target.prosemirrorView!.state.doc.textContent).toBe('xdef f():\n    return 1');
   });
 });
 

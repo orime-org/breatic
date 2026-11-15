@@ -3,7 +3,7 @@
 
 /**
  * What a paste or a drop carries (inner#1351 + inner#1390 design §5.4.1,
- * §5.4.2): the body's own copy as the slice it was copied as
+ * §5.4.2): the body's own copy or drag as the slice it holds
  * (`document-paste-slice.ts`), anything else read into blocks. Reading looks
  * only at the clipboard or the drag; where the content goes is
  * `document-put.ts`.
@@ -69,8 +69,11 @@ const HTML_MEDIA = new RegExp(`<(${HTML_MEDIA_ELEMENTS.join('|')})\\b`, 'i');
 /** A formula as the chat's copy writes it (inner#1423). */
 const FORMULA_COPY = new RegExp(`\\s(?:${MATH_SOURCE_ATTR}|${MATH_BLOCK_SOURCE_ATTR})=`);
 
-/** A body's own blocks in HTML, as a drag out of a body carries them; another editor's slice has none. */
-const BODY_SLICE = /\sdata-content-type=/;
+/** Block types in HTML, as a body's own blocks carry them; another editor's slice has none. */
+const BODY_BLOCKS = /\sdata-content-type=/;
+
+/** The slice ProseMirror records in the HTML it writes; another page's blocks have none. */
+const PM_SLICE = /\sdata-pm-slice=/;
 
 /** The marker a medium stands as while BlockNote reads the words around it. */
 const MARKER = /(\d+)/g;
@@ -575,8 +578,8 @@ function blocksOf(blocks: readonly ReadBlock[]): Source {
 }
 
 /**
- * Reads what a paste or a drop carries (§5.4.1): the body's own copy as the
- * slice it was copied as, an editor's code as one code block, Markdown, HTML
+ * Reads what a paste or a drop carries (§5.4.1): the body's own copy or drag
+ * as the slice it holds, an editor's code as one code block, Markdown, HTML
  * with media and plain text by markers, and any other HTML with its tables
  * evened. Where it goes is `putContent`'s to settle.
  * @param reader - The editor.
@@ -587,8 +590,11 @@ function blocksOf(blocks: readonly ReadBlock[]): Source {
 export function readTransfer(reader: BlockReader, data: Transfer, lands: (url: string) => boolean): Read {
   const plain = data.getData('text/plain');
   const html = data.types.includes('text/html') ? data.getData('text/html') : '';
-  if (data.types.includes('blocknote/html')) {
-    return { source: { kind: 'slice', slice: readClipboardSlice(reader.pmSchema, data.getData('blocknote/html'), plain), parsed: true }, lost: 0, plain: null };
+  // A drag out of a body carries as its HTML the slice a copy of it writes as
+  // `blocknote/html`: both are ProseMirror's clipboard serialisation.
+  const slice = data.types.includes('blocknote/html') ? data.getData('blocknote/html') : PM_SLICE.test(html) && BODY_BLOCKS.test(html) ? html : null;
+  if (slice !== null) {
+    return { source: { kind: 'slice', slice: readClipboardSlice(reader.pmSchema, slice, plain), parsed: true }, lost: 0, plain: null };
   }
   const plainOnly = html === '' && plain !== '' ? plain : null;
   const mode = data.types.includes('vscode-editor-data') ? editorLanguage(data.getData('vscode-editor-data')) : null;
@@ -601,13 +607,9 @@ export function readTransfer(reader: BlockReader, data: Transfer, lands: (url: s
   const codeText = !withMedia && plain !== '' ? plain : null;
   // A chat reply's copy carries its formulas as `data-math*` elements, and its
   // plain text (a block formula's `$$` lines) reads as Markdown: the HTML holds
-  // the reply's structure, so it is the one read. So does a body's own slice,
-  // dragged in from another window, whose HTML keeps the words' styles; its
-  // plain text is the Markdown a copy writes, so a code block takes the words
-  // of its blocks, as it does from a paste of that copy.
-  const bodySlice = BODY_SLICE.test(html);
-  if (!markdown && !withMedia && html !== '' && (!isMarkdown(plain) || FORMULA_COPY.test(html) || bodySlice)) {
-    return { source: blocksOf(pastedBlocks(reader, evenPastedTables(html))), lost: 0, plain: null, codeText: bodySlice ? null : codeText };
+  // the reply's structure, so it is the one read.
+  if (!markdown && !withMedia && html !== '' && (!isMarkdown(plain) || FORMULA_COPY.test(html))) {
+    return { source: blocksOf(pastedBlocks(reader, evenPastedTables(html))), lost: 0, plain: null, codeText };
   }
   if (!markdown && plain === '' && html === '') return { source: blocksOf([]), lost: 0, plain: null };
   const source = markdown ? formulaMarkdownToHTML(data.getData('text/markdown')) : withMedia ? html : formulaMarkdownToHTML(plain);
