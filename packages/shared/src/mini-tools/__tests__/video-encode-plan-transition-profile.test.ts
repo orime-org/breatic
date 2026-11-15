@@ -199,6 +199,21 @@ describe("the output frame rate of a presentation table (frames-split §7.17)", 
   });
 });
 
+describe("the output frame rate is read once per table", () => {
+  it("FPS09 the timeline Dialog's every-frame reads of a long table return the rate it computed the first time", () => {
+    // Ten minutes of a 30 fps WebM on its 1 ms clock: every frame its own run.
+    const starts = Array.from({ length: 18001 }, (_unused, k) => Math.round((k * 1000) / 30));
+    const table: Table = { schemaVersion: 1, timescale: 1000, runs: starts.slice(0, 18000).map((start, k) => ({ start, count: 1, step: starts[k + 1]! - start, duration: starts[k + 1]! - start })) };
+    const first = api.presentationOutputFps(table);
+    expect(first).toEqual(r(30));
+    expect(api.presentationOutputFps(table)).toBe(first);
+    // A phone VFR clip on 1/90000 with ±2 ms jitter takes the average path, read once as well.
+    const jitter = Array.from({ length: 18001 }, (_unused, k) => k * 3000 + (k % 7) * 180);
+    const vfr: Table = { schemaVersion: 1, timescale: 90000, runs: jitter.slice(0, 18000).map((start, k) => ({ start, count: 1, step: jitter[k + 1]! - start, duration: jitter[k + 1]! - start })) };
+    expect(api.presentationOutputFps(vfr)).toBe(api.presentationOutputFps(vfr));
+  });
+});
+
 // frames-split §7.17 rounding clock row: a table whose clock rounded a constant rate's frame times has an exact grid.
 describe("the conform grid of a presentation table (frames-split §7.17)", () => {
   /**

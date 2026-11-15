@@ -734,6 +734,23 @@ export function conformedTime(conform: PresentationConform, at: readonly [bigint
  * @throws {RangeError} When the table presents no frame.
  */
 export function presentationOutputFps(table: VideoPresentationTable): ExactRational {
+  // The timeline Dialog and the panel read it on every render, so each table is measured once.
+  const cached = outputRates.get(table);
+  if (cached !== undefined) return cached;
+  const rate = measuredOutputFps(table);
+  outputRates.set(table, rate);
+  return rate;
+}
+
+const outputRates = new WeakMap<VideoPresentationTable, ExactRational>();
+
+/**
+ * A presentation table's output frame rate, measured (`presentationOutputFps`).
+ * @param table - The compact presentation table.
+ * @returns The rate, exact and reduced.
+ * @throws {RangeError} When the table presents no frame.
+ */
+function measuredOutputFps(table: VideoPresentationTable): ExactRational {
   const { runs, timescale } = table;
   const frames = runs.reduce((total, run) => total + run.count, 0);
   if (frames === 0) throw new RangeError("A presentation table presents at least one frame");
