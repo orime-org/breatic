@@ -538,6 +538,34 @@ test('dragging a row into a cell\'s left padding lands beside the cell\'s block,
   await expect(cell.locator('.doc-columns')).toHaveCount(1);
 });
 
+test('dragging a row into the page margin level with a column gap in a scrolled table adds no column in its cell', async () => {
+  await openWithLines(page, ['lead', 'moved']);
+  await tableUnder(page, 'lead', '2-8');
+  // The table runs past the body: write two lines in the last cell of its row.
+  const scroller = page.locator(`${EDITOR} .doc-table-scroller`).first();
+  await scroller.evaluate((element) => element.scrollTo({ left: element.scrollWidth }));
+  await page.locator(`${EDITOR} td`).nth(7).click();
+  await page.keyboard.type('p');
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('q');
+  const p = (await row(page, 'p').boundingBox())!;
+  await dragRowTo(page, 'q', { x: p.x + p.width - 6, y: p.y + p.height / 2 });
+  const cell = page.locator(`${EDITOR} td`).nth(7);
+  await expect(cell.locator('.doc-column')).toHaveCount(2);
+  // Scroll so the gap between the cell's columns sits at the body's right edge.
+  const body = (await page.locator(`${EDITOR} .bn-block-group`).first().boundingBox())!;
+  const [left, right] = await cell.locator('.doc-column').evaluateAll((list) => list.map((column) => column.getBoundingClientRect().toJSON() as DOMRect));
+  const gap = (left!.right + right!.left) / 2;
+  await scroller.evaluate((element, by) => element.scrollBy({ left: by }), gap - (body.x + body.width - 1));
+  const columns = (await cell.locator('.doc-column').first().boundingBox())!;
+  await dragRowTo(page, 'moved', { x: body.x + body.width + 120, y: columns.y + 10 });
+  // From the margin the table stands whole, and a table holding columns
+  // takes no side drop: the row lands as the line shows, and no column is
+  // added in the cell.
+  await expect.poll(() => cell.locator('.bn-block-content').allInnerTexts()).toContain('moved');
+  await expect(cell.locator('.doc-column')).toHaveCount(2);
+});
+
 test('dragging a row into the gap between two columns in a cell adds a column in the cell', async () => {
   await openWithLines(page, ['lead', 'moved', 'third']);
   await tableUnder(page, 'lead');

@@ -6,7 +6,7 @@
  */
 
 import type { ComputeDropPositionContext } from '@blocknote/core/extensions';
-import type { Node as PMNode, ResolvedPos } from '@tiptap/pm/model';
+import type { Node as PMNode } from '@tiptap/pm/model';
 import type { EditorView } from '@tiptap/pm/view';
 
 import { columnAround, landsInPlace, weightsAfterDrop, type ColumnSide } from '@web/spaces/document/document-column-drop';
@@ -15,7 +15,7 @@ import { holds, LISTS } from '@web/spaces/document/document-column-entry';
 import { DOC_COLUMN_LIST, MAX_COLUMNS, roomInside, weightsFit } from '@web/spaces/document/document-column-geometry';
 import { isSynthetic } from '@web/spaces/document/document-margin-drop';
 import { rowById } from '@web/spaces/document/document-row-by-id';
-import { cellDepthOf, DOC_TABLE, isTableCell } from '@web/spaces/document/document-table-nodes';
+import { cellDepthOf, DOC_TABLE, isTableCell, TABLES } from '@web/spaces/document/document-table-nodes';
 
 /** A target's visible horizontal extent. */
 export interface VisibleBox {
@@ -26,8 +26,6 @@ export interface VisibleBox {
 /** How far in from a visible edge the side zone reaches. */
 const SIDE_ZONE = 24;
 
-/** Table nodes: ours, and the stored (legacy) one. */
-const TABLES = new Set([DOC_TABLE, 'table']);
 
 /**
  * The side of the target the pointer is on: from the left edge of the body,
@@ -178,19 +176,6 @@ function clamp(value: number, low: number, high: number): number {
 }
 
 /**
- * The depth of the outermost table around a position, deeper than a holder.
- * @param $at - The position.
- * @param holder - The holder's depth.
- * @returns The table's depth, or -1 for none.
- */
-function tableIn($at: ResolvedPos, holder: number): number {
-  for (let depth = holder + 1; depth <= $at.depth; depth += 1) {
-    if ($at.node(depth).type.name === DOC_TABLE) return depth;
-  }
-  return -1;
-}
-
-/**
  * The row level with the pointer, the gutter and margin included, and what
  * of it the user sees: a picture, video or audio by its media box, any other
  * row by its own content. In the gap between two columns, or in a cell's
@@ -201,8 +186,8 @@ function tableIn($at: ResolvedPos, holder: number): number {
  * @param y - The pointer's y.
  * @param beside - When the pointer is beside the content, the depth of what it
  *   came in from: the body (0) from the page margin, held to the body's box,
- *   or the column the gap it is in stands beside. A table in there is the row
- *   whole, never a block in one of its cells. Null otherwise.
+ *   or else the column the gap it is in stands beside. A table in there is
+ *   the row whole, never a block in one of its cells. Null otherwise.
  * @param hops - How many times the point was already moved in.
  * @returns The row, or null.
  */
@@ -217,8 +202,9 @@ function rowAt(view: EditorView, x: number, y: number, beside: number | null, ho
     const room = gap ? nearestColumn(element, x) : beside === null && isTableCell(inside!) ? roomInside(element) : undefined;
     if (room === null) return null;
     if (room !== undefined) {
-      // A column stands one level inside its group.
-      const from = gap ? view.state.doc.resolve(at.inside).depth + 2 : beside;
+      // A column stands one level inside its group; a pointer already beside
+      // the body stays beside it.
+      const from = gap ? (beside ?? view.state.doc.resolve(at.inside).depth + 2) : beside;
       return rowAt(view, clamp(x, room.left, room.right), clamp(y, room.top, room.bottom), from, hops + 1);
     }
   }
@@ -227,8 +213,10 @@ function rowAt(view: EditorView, x: number, y: number, beside: number | null, ho
   // pointer, outside its cells), then come the nodes around it; from inside
   // the body a table around the pointer is no row of its own. Beside the
   // content, a point in a cell (a table scrolled sideways reaches past its
-  // holder's edge) stands for the outermost table in what it came in from.
-  const table = beside === null ? -1 : tableIn($at, beside);
+  // holder's edge) stands for the table holding it, when that table stands
+  // in what the pointer came in from (a cell stands in a row in a table).
+  const cell = beside === null ? -1 : cellDepthOf($at);
+  const table = cell - 2 > (beside ?? 0) ? cell - 2 : -1;
   const start = table > 0 ? table : at.inside >= 0 ? $at.depth + 1 : $at.depth;
   for (let depth = start; depth > 0; depth -= 1) {
     const node = depth > $at.depth ? $at.nodeAfter : $at.node(depth);

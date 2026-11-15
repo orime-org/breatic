@@ -64,6 +64,9 @@ export const DOC_TABLE_ROW = 'docTableRow';
 export const DOC_TABLE_CELL = 'docTableCell';
 export const DOC_TABLE_HEADER = 'docTableHeader';
 
+/** Table nodes: ours, and the stored (legacy) one documents from before hold. */
+export const TABLES: ReadonlySet<string> = new Set([DOC_TABLE, 'table']);
+
 /** The prosemirror-tables role of each table node. */
 const TABLE_ROLES: Readonly<Record<string, string>> = {
   [DOC_TABLE]: 'table',

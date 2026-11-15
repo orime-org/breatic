@@ -29,7 +29,7 @@
  * ProseMirror computes it, so where a row lands does not change.
  */
 
-import { columnsBarredAt, holdsColumns } from '@web/spaces/document/document-column-entry';
+import { columnsBarredAt, holds, holdsColumns } from '@web/spaces/document/document-column-entry';
 import { Fragment, Slice, type Node as PMNode } from '@tiptap/pm/model';
 import { dropPoint } from '@tiptap/pm/transform';
 import type { EditorView } from '@tiptap/pm/view';
@@ -42,26 +42,7 @@ import {
   rowById,
   type RowInDocument,
 } from '@web/spaces/document/document-row-by-id';
-import { cellDepthOf, DOC_TABLE, isTableCell } from '@web/spaces/document/document-table-nodes';
-
-/** Table nodes: ours, and the stored (legacy) one documents from before hold. */
-const TABLES = new Set([DOC_TABLE, 'table']);
-
-/**
- * Whether a row, or a block nested under it, is a table of either kind: a row
- * holding one is refused in a cell (inner#1312 A14).
- * @param row - The row: a block container, or a table, which holds its own id.
- * @returns True when it does.
- */
-function carriesTable(row: PMNode): boolean {
-  if (TABLES.has(row.type.name)) return true;
-  let found = false;
-  row.descendants((child) => {
-    if (TABLES.has(child.type.name)) found = true;
-    return !found;
-  });
-  return found;
-}
+import { cellDepthOf, isTableCell, TABLES } from '@web/spaces/document/document-table-nodes';
 
 /**
  * Where a row would land for a drop at the given document position.
@@ -138,7 +119,7 @@ export function moveRowTo(view: EditorView, blockId: string, at: number): void {
 
   const landing = landingFor(view.state.doc, at, row.node);
   if (landing >= row.from && landing <= row.to) return;
-  if (cellDepthOf(view.state.doc.resolve(landing)) > 0 && carriesTable(row.node)) {
+  if (cellDepthOf(view.state.doc.resolve(landing)) > 0 && holds(row.node, TABLES)) {
     toast.warning(t('spaces.document.paste.unsupportedInCell'));
     return;
   }
