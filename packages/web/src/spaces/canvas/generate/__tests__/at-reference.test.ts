@@ -9,6 +9,7 @@ import {
   planMentionDeletions,
   planChipDisplayUpdates,
 } from '@web/spaces/canvas/generate/at-reference';
+import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 
 /** Builds a reference-mention node fixture. */
 function mention(sourceNodeId: string): JSONContent {
@@ -181,5 +182,34 @@ describe('planChipDisplayUpdates — sync chip display attrs from the live pool'
     expect(planChipDisplayUpdates(chips, renamedBlank)).toEqual([
       { pos: 1, label: null },
     ]);
+  });
+});
+
+describe('extractAtMentionedSourceIds with an optional mention (inner#1811, CAP-9)', () => {
+  /** An optional input's mention. */
+  const optional = (sourceNodeId: string): JSONContent => ({ type: 'referenceMention', attrs: { sourceNodeId, optional: true } });
+  /**
+   * The pool, the product holding a picture and the person as given.
+   * @param personPicture - The person's picture, or none.
+   * @returns The rows.
+   */
+  const pool = (personPicture?: string): ReferenceRailItem[] => [
+    { refId: 'e0', sourceNodeId: 'product', sourceNodeType: 'image', sourceNodeName: 'Product', mediaUrl: 'https://r2.example/product.png' },
+    { refId: 'e1', sourceNodeId: 'person', sourceNodeType: 'image', sourceNodeName: 'Person', ...(personPicture === undefined ? {} : { mediaUrl: personPicture }) },
+    { refId: 'e2', sourceNodeId: 'still', sourceNodeType: 'image', sourceNodeName: 'Still' },
+  ];
+  const prompt = doc(para(mention('product')), para(optional('person'), mention('still')), para(mention('still')));
+
+  it('leaves out what only a paragraph left unsent mentions', () => {
+    expect(extractAtMentionedSourceIds(doc(para(mention('product')), para(optional('person'), mention('still'))), pool())).toEqual(['product']);
+    expect(extractAtMentionedSourceIds(prompt, pool())).toEqual(['product', 'still']);
+  });
+
+  it('keeps it once the optional source holds a picture', () => {
+    expect(extractAtMentionedSourceIds(prompt, pool('https://r2.example/person.png'))).toEqual(['product', 'person', 'still']);
+  });
+
+  it('keeps every mention when given no pool', () => {
+    expect(extractAtMentionedSourceIds(prompt)).toEqual(['product', 'person', 'still']);
   });
 });

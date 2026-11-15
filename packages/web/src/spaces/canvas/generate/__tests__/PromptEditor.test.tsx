@@ -33,6 +33,7 @@ import {
   type PromptEditorHandle,
 } from '@web/spaces/canvas/generate/PromptEditor';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import { writeProposalPrompt, type ProposalMention } from '@web/spaces/canvas/generate/proposal-prompt';
 import type { ReferenceKind } from '@breatic/shared';
 import { CanvasContext } from '@web/spaces/canvas/canvas-context';
 import { canvasSessions } from '@web/stores/canvas-session';
@@ -850,5 +851,62 @@ describe('PromptEditor — reporting a prompt already in the fragment', () => {
     } finally {
       errors.mockRestore();
     }
+  });
+});
+
+describe('PromptEditor — the paragraph of an optional input (inner#1811, CAP-9)', () => {
+  /**
+   * The pool, the product holding a picture and the person as given.
+   * @param personPicture - The person's picture, or none.
+   * @returns The rows.
+   */
+  const pool = (personPicture?: string): ReferenceRailItem[] => [
+    { refId: 'e0', sourceNodeId: 'n-product', sourceNodeType: 'image', sourceNodeName: 'Product', mediaUrl: 'https://r2.example/product.png' },
+    { refId: 'e1', sourceNodeId: 'n-person', sourceNodeType: 'image', sourceNodeName: 'Person', ...(personPicture === undefined ? {} : { mediaUrl: personPicture }) },
+  ];
+
+  /**
+   * A prompt fragment holding the product ad's three paragraphs, the person's optional.
+   * @returns The fragment.
+   */
+  function seeded(): Y.XmlFragment {
+    const fragment = new Y.Doc().getXmlFragment('prompt');
+    const mentions: ProposalMention[] = [
+      { sourceNodeId: 'n-product', label: 'Product', kind: 'image' },
+      { sourceNodeId: 'n-person', label: 'Person', kind: 'image' },
+    ];
+    writeProposalPrompt(
+      fragment,
+      [{ text: 'An ad for ' }, { ref: 0 }, { text: '.\nThe person looks like ' }, { ref: 1, optional: true }, { text: '.\nLit softly.' }],
+      (index) => mentions[index],
+    );
+    return fragment;
+  }
+
+  /** The paragraphs shown greyed as unsent. */
+  const heldBack = (): Element[] => [...document.querySelectorAll('.ProseMirror p[data-prompt-held-back]')];
+
+  it('greys the paragraph it leaves out, sends the others, and mentions only what they hold, until the person holds a picture', async () => {
+    const onTextChange = vi.fn();
+    const onAtMentionsChange = vi.fn();
+    const props = {
+      fragment: seeded(),
+      placeholder: 'Describe',
+      onTextChange,
+      onAtMentionsChange,
+      referenceKinds: ['image'] as const,
+      mentionEmptyLabel: 'No references',
+    };
+    const { rerender } = render(<PromptEditor {...props} references={pool()} />);
+    await waitFor(() => expect(heldBack()).toHaveLength(1));
+    expect(heldBack()[0]?.textContent).toContain('The person looks like');
+    await waitFor(() => expect(onAtMentionsChange).toHaveBeenLastCalledWith(['n-product']));
+    expect(String(onTextChange.mock.lastCall?.[0])).not.toContain('The person looks like');
+    expect(String(onTextChange.mock.lastCall?.[0])).toContain('Lit softly.');
+
+    rerender(<PromptEditor {...props} references={pool('https://r2.example/person.png')} />);
+    await waitFor(() => expect(heldBack()).toHaveLength(0));
+    await waitFor(() => expect(onAtMentionsChange).toHaveBeenLastCalledWith(['n-product', 'n-person']));
+    expect(String(onTextChange.mock.lastCall?.[0])).toContain('The person looks like');
   });
 });

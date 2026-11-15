@@ -11,7 +11,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 
 import { loadLocales } from "@breatic/core";
-import { GENERATION_TEMPLATES, formatCredits, setLocale, type GenerationTemplate } from "@breatic/shared";
+import { GENERATION_TEMPLATES, formatCredits, setLocale, t, type GenerationTemplate } from "@breatic/shared";
 
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 import { estimateModelCredits } from "@domain/model-catalog/model-catalog.js";
@@ -303,5 +303,26 @@ describe("the craft each template gets by what it generates (inner#1825 design 1
       expect(craft, id).toContain(TEMPLATE_CRAFT.picture);
       expect(craft, id).not.toContain(TEMPLATE_CRAFT.audio);
     }
+  });
+});
+
+describe("get_generation_template, optional inputs (inner#1811, CAP-9)", () => {
+  it("marks an optional input optional, says its paragraph is not sent while its node is empty, asks { id, input } on its node and gives its note", () => {
+    const text = describeTemplate(byId("product-ad-15s"));
+    expect(text).toContain('"person" (image, optional) into "still", "result"');
+    expect(text).toContain('"product" (image) into "still", "result"');
+    expect(text).toContain("its ref stands in a paragraph of its own, which is not sent while its node is empty");
+    expect(text).toContain("its node carries { id, input }");
+    expect(text).toContain(`its note: "${t("canvas.template.product-ad-15s.input.person.note")}"`);
+  });
+
+  it("says no input is optional on a template whose inputs are all required", () => {
+    expect(describeTemplate(byId("food-money-shot"))).not.toContain("optional");
+  });
+
+  it("tells the agent an optional input's node is placed empty when the user has none for it, without asking them", async () => {
+    expect(await read("product-ad-15s")).toContain(
+      "An optional input's node is placed empty when the user has no material for it; do not ask them for it.",
+    );
   });
 });

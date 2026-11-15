@@ -1484,3 +1484,49 @@ describe('expandTemplate, downstream and standalone nodes and slotted inputs (in
     expect(again.unassigned).toEqual([]);
   });
 });
+
+describe('expandTemplate, optional inputs (inner#1811, CAP-9)', () => {
+  /** The fixture with its palette, which feeds both generate nodes, optional. */
+  const OPTIONAL: GenerationTemplate = {
+    ...FIXTURE,
+    inputs: FIXTURE.inputs.map((input) => (input.key === 'palette' ? { ...input, optional: true } : input)),
+  };
+
+  /**
+   * A node's references in order, each named by identity and keeping whether it is optional.
+   * @param node - The node.
+   * @param who - Names an index.
+   * @returns The references.
+   */
+  const refsOf = (node: ProposalNode | undefined, who: (index: number) => string): unknown[] =>
+    (node?.prompt ?? []).flatMap((segment) => (segment.ref === undefined ? [] : [{ ref: who(segment.ref), ...(segment.optional === true ? { optional: true } : {}) }]));
+
+  it('marks every reference to an optional input optional, in every node it feeds, and no other reference', () => {
+    const result = expandTemplate(OPTIONAL, FRESH);
+    const who = identityIn(result, 1, { 0: 'final' });
+    expect(refsOf(result.rewritten.get(0), who)).toEqual([{ ref: 'hero' }, { ref: 'place' }, { ref: 'palette', optional: true }]);
+    expect(refsOf(appendedAs(result, 1, 'sheet'), who)).toEqual([{ ref: 'pose' }, { ref: 'style' }, { ref: 'palette', optional: true }]);
+  });
+
+  it('marks the reference optional when the caller already has the optional input’s node, on every node it feeds', () => {
+    // 0 anchor, 1 a node the caller already wired into the anchor for the palette.
+    const result = expandTemplate(OPTIONAL, {
+      anchorAt: 0,
+      base: 2,
+      inputs: new Map([['palette', new Map([['final', 1]])]]),
+      wired: [{ fromIndex: 1, toIndex: 0 }],
+      reuse: new Map(),
+      guide: false,
+      emptyNodes: new Set([1]),
+    });
+    const who = identityIn(result, 2, { 0: 'final', 1: 'palette' });
+    expect(refsOf(result.rewritten.get(0), who)).toContainEqual({ ref: 'palette', optional: true });
+    expect(refsOf(appendedAs(result, 2, 'sheet'), who)).toContainEqual({ ref: 'palette', optional: true });
+  });
+
+  it('marks no reference optional on a template with no optional input', () => {
+    const result = expandTemplate(FIXTURE, FRESH);
+    const all = [...result.rewritten.values(), ...result.appended].flatMap((node) => node.prompt ?? []);
+    expect(all.some((segment) => segment.optional === true)).toBe(false);
+  });
+});

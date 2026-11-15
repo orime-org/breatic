@@ -70,3 +70,43 @@ describe('a shot read off its fragment', () => {
     expect(serializePromptFragment(fragmentOf(['See ', chip('v9', 'video')]), pool, {})).toBe('See ');
   });
 });
+
+describe('a shot holding an optional mention (inner#1811, CAP-9)', () => {
+  /**
+   * A chip of an optional input.
+   * @param id - The source node id.
+   * @returns The element.
+   */
+  const optional = (id: string): Y.XmlElement => {
+    const element = chip(id, 'image');
+    element.setAttribute('optional', true as unknown as string);
+    return element;
+  };
+  /**
+   * The pool with the person as given.
+   * @param personPicture - The person's picture, or none.
+   * @returns The rows.
+   */
+  const rows = (personPicture?: string): ReferenceRailItem[] => [
+    { refId: 'e0', sourceNodeId: 'i1', sourceNodeType: 'image', sourceNodeName: 'Product', mediaUrl: 'https://r2.example/product.png' },
+    { refId: 'e1', sourceNodeId: 'p1', sourceNodeType: 'image', sourceNodeName: 'Person', ...(personPicture === undefined ? {} : { mediaUrl: personPicture }) },
+  ];
+  const shot = (): Y.XmlFragment =>
+    fragmentOf(['Show ', chip('i1', 'image')], ['Held by ', optional('p1'), ' and ', chip('i1', 'image')], ['slowly']);
+
+  it('leaves out the paragraph of an optional mention whose source holds no picture', () => {
+    expect(serializePromptFragment(shot(), rows(), { i1: 'Element 1', p1: 'Element 2' })).toBe('Show Element 1\n\nslowly');
+  });
+
+  it('sends it once the source holds a picture', () => {
+    expect(serializePromptFragment(shot(), rows('https://r2.example/p.png'), { i1: 'Element 1', p1: 'Element 2' })).toBe(
+      'Show Element 1\n\nHeld by Element 2 and Element 1\n\nslowly',
+    );
+  });
+
+  it('mentions only what the paragraphs it sends hold', () => {
+    expect(mentionedSourceIds(shot(), rows())).toEqual(['i1']);
+    expect(mentionedSourceIds(fragmentOf(['Held by ', optional('p1'), ' with ', chip('t1', 'text')]), rows())).toEqual([]);
+    expect(mentionedSourceIds(shot(), rows('https://r2.example/p.png'))).toEqual(['i1', 'p1']);
+  });
+});
