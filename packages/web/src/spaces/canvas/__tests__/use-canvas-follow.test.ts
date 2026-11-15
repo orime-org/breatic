@@ -128,6 +128,20 @@ describe('useCanvasFollow', () => {
     expect(useFollowStore.getState().targetUserId).toBe('leader');
   });
 
+  it('does not stop on the moves its later alignments start either', () => {
+    const local = makeAwareness();
+    const peer = makeAwareness();
+    let onMoveStart: ((event: unknown) => void) | null = null;
+    const applyViewport = vi.fn(() => onMoveStart?.(null));
+    const { result } = renderHook(() => useCanvasFollow(input({ awareness: local, applyViewport })));
+    onMoveStart = result.current.onMoveStart;
+    arrive(local, peer, { user: { id: 'leader' }, camera: { ...RECT, at: 1 } });
+    arrive(local, peer, { user: { id: 'leader' }, camera: { ...RECT, x: 700, at: 2 } });
+    arrive(local, peer, { user: { id: 'leader' }, camera: { ...RECT, x: 900, at: 3 } });
+    expect(applyViewport).toHaveBeenCalledTimes(3);
+    expect(useFollowStore.getState().targetUserId).toBe('leader');
+  });
+
   it('stops on any other move start, with or without an input event, and then stops aligning', () => {
     const local = makeAwareness();
     const peer = makeAwareness();
