@@ -20,6 +20,7 @@
  * through both.
  */
 
+import { extractPromptText } from "@shared/agent/extract-prompt.js";
 import { completeEntries } from "@shared/item-cap.js";
 
 /**
@@ -261,7 +262,8 @@ export function dialogueText(lines: readonly DialogueLine[], speakers: readonly 
   return lines
     .flatMap((line, at) => {
       const text = line.text.slice(plans[at]?.strip ?? 0).replace(/\s*\n\s*/g, " ").trim();
-      if (text === "") return [];
+      // A line whose words the prompt cleaning drops (a tag, a comment, invisible characters) says nothing.
+      if (extractPromptText(text) === "") return [];
       const name = (speakers[(plans[at]?.speaker ?? 1) - 1]?.speaker ?? "").trim();
       return [`${name}: ${text}`];
     })

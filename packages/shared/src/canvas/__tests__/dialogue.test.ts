@@ -148,6 +148,8 @@ describe('dialogueText', () => {
     );
     expect(dialogueText([{ speaker: 1, text: ' ' }], SPEAKERS)).toBe('');
     expect(dialogueText([], SPEAKERS)).toBe('');
+    // A line whose words the cleaning drops (a tag, a comment, invisible characters) says nothing either (#1521).
+    expect(dialogueText([{ speaker: 1, text: 'Hi.' }, { speaker: 2, text: '<break time="1s"/>' }, { speaker: 2, text: '\u200B' }, { speaker: 2, text: '<!-- x -->' }], SPEAKERS)).toBe('Ava: Hi.');
   });
 
   it('takes a line\'s speaker from a typed name and colon in front, and takes the name off, as the editor does (design 8.5)', () => {
