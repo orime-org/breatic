@@ -6,7 +6,7 @@ import * as React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from '@web/lib/toast';
 
-import { rememberProjectRegion } from '@web/data/api/regions';
+import { getRegionConfig, rememberProjectRegion } from '@web/data/api/regions';
 import { projectsApi, type CreatedProject } from '@web/data/api/projects';
 import { reportConversion } from '@web/data/analytics';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -81,7 +81,7 @@ export function useCreateProject(
           const target = studios.find((s) => s.id === project.studioId);
           // The directory hears of a Project in another region a moment
           // later; the page about to open asks for its region first.
-          rememberProjectRegion(project.id, target?.region ?? null);
+          if (getRegionConfig() !== null) rememberProjectRegion(project.id, target?.region ?? null);
           void queryClient.invalidateQueries({
             queryKey: ['studio', target?.slug, 'projects'],
           });

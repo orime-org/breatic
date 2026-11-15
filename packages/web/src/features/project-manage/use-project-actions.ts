@@ -5,7 +5,7 @@ import * as React from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { invalidateProjectListings, projectsApi } from '@web/data/api';
-import { getCurrentRegion, projectRegionOf, rememberProjectRegion } from '@web/data/api/regions';
+import { getCurrentRegion, getRegionConfig, projectRegionOf, rememberProjectRegion } from '@web/data/api/regions';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toastFailure } from '@web/features/project-manage/toast-failure';
 import { reportConversion } from '@web/data/analytics';
@@ -49,7 +49,7 @@ export function useProjectActions(projectId: string): ProjectActions {
       const known = projectRegionOf(projectId);
       const region = known === undefined ? getCurrentRegion() : known;
       const copy = await projectsApi.duplicate(projectId);
-      rememberProjectRegion(copy.id, region);
+      if (getRegionConfig() !== null) rememberProjectRegion(copy.id, region);
       return copy;
     },
     onSuccess: (copy) => {

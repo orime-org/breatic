@@ -14,6 +14,7 @@ vi.mock('@web/data/api/projects', async (importOriginal) => ({
 vi.mock('@web/data/api/regions', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@web/data/api/regions')>()),
   rememberProjectRegion: vi.fn(),
+  getRegionConfig: () => ({ global: 'us-west', regions: {} }),
 }));
 import { projectsApi } from '@web/data/api/projects';
 import { rememberProjectRegion } from '@web/data/api/regions';

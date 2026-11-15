@@ -10,7 +10,7 @@
  * requires auth (the httpOnly session cookie rides along via `withCredentials`).
  */
 
-import { rememberProjectRegion, rememberStudioRegion, studioRegionOf } from '@web/data/api/regions';
+import { getRegionConfig, rememberProjectRegion, rememberStudioRegion, studioRegionOf } from '@web/data/api/regions';
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from '@web/data/api/request';
 // One shape for "a container has an outstanding ownership offer" — a project and
 // a studio differ in what changes hands, not in what the offer looks like.
@@ -81,7 +81,7 @@ export const studiosApi = {
   async listUserStudios(): Promise<StudioSummary[]> {
     const studios = await apiGet<StudioSummary[]>('/studios');
     // Requests acting on one of them go to its region from now on (inner#1955).
-    for (const studio of studios) rememberStudioRegion([studio.id, studio.slug], studio.region);
+    if (getRegionConfig() !== null) for (const studio of studios) rememberStudioRegion([studio.id, studio.slug], studio.region);
     return studios;
   },
   /**

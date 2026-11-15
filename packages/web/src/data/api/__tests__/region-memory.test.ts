@@ -10,6 +10,11 @@
 import { describe, expect, it, vi } from 'vitest';
 
 const apiGet = vi.hoisted(() => vi.fn());
+const config = vi.hoisted(() => ({ value: { global: 'us-west', regions: {} } as unknown }));
+vi.mock('@web/data/api/regions', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@web/data/api/regions')>()),
+  getRegionConfig: () => config.value,
+}));
 vi.mock('@web/data/api/request', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@web/data/api/request')>()),
   apiGet,
@@ -43,5 +48,16 @@ describe('region memory', () => {
     await studiosApi.listProjects('unknown-handle', { archived: false, sort: 'last_opened' as never, cursor: undefined });
 
     expect(projectRegionOf('p-9')).toBeUndefined();
+  });
+
+  it('learns nothing in a build with one region, where nothing reads it', async () => {
+    config.value = null;
+    apiGet.mockResolvedValueOnce([{ id: 's-9', slug: 'solo', region: null }]);
+    await studiosApi.listUserStudios();
+    apiGet.mockResolvedValueOnce({ items: [{ id: 'p-solo' }], nextCursor: null, total: 1 });
+
+    await studiosApi.listProjects('solo', { archived: false, sort: 'last_opened' as never, cursor: undefined });
+
+    expect([studioRegionOf('s-9'), projectRegionOf('p-solo')]).toEqual([undefined, undefined]);
   });
 });

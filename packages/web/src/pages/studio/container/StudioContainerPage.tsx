@@ -82,13 +82,13 @@ export default function StudioContainerPage(): React.JSX.Element {
   useCurrentRegion(region);
   // Written during render, before any child sends a request: requests acting
   // on this Studio go to its region even after the user leaves the page.
-  if (region !== undefined) rememberStudioRegion([slug], region);
+  if (region !== undefined && getRegionConfig() !== null) rememberStudioRegion([slug], region);
   const studioQuery = useQuery({
     queryKey: ['studio', slug],
     enabled: region !== undefined,
     queryFn: () => studiosApi.get(slug),
   });
-  if (region !== undefined && studioQuery.data !== undefined) rememberStudioRegion([studioQuery.data.id], region);
+  if (region !== undefined && getRegionConfig() !== null && studioQuery.data !== undefined) rememberStudioRegion([studioQuery.data.id], region);
   // Remembered per studio by id, so renaming the studio keeps the choice.
   const studioId = studioQuery.data?.id ?? '';
   const projectPrefs = useStudioListPrefs(studioId, 'projects');
