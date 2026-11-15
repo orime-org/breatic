@@ -1,0 +1,29 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: Elastic-2.0
+
+import * as React from 'react';
+
+import { useTranslation } from '@web/i18n/use-translation';
+import { toast } from '@web/lib/toast';
+import { useFollowStore } from '@web/stores/follow';
+
+/**
+ * Tell the user once why following stopped (#920): they moved the view or
+ * switched Space themselves (info), or the leader went offline (warning).
+ * The stop button and leaving the project say nothing; the user did those
+ * and sees the bar go.
+ * @param nameOf - The display name of a member by user id.
+ */
+export function useFollowExitToast(nameOf: (userId: string) => string): void {
+  const t = useTranslation();
+  const stopped = useFollowStore((s) => s.stopped);
+  // Each stop is told once, keyed by its seq, however often this re-renders.
+  const told = React.useRef(stopped?.seq ?? 0);
+  React.useEffect(() => {
+    if (stopped === null || stopped.seq === told.current) return;
+    told.current = stopped.seq;
+    if (stopped.reason === 'viewport') toast.info(t('members.follow.stoppedViewport'));
+    else if (stopped.reason === 'space') toast.info(t('members.follow.stoppedSpace'));
+    else if (stopped.reason === 'offline') toast.warning(t('members.follow.stoppedOffline', { name: nameOf(stopped.userId) }));
+  }, [stopped, nameOf, t]);
+}

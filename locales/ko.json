@@ -2189,7 +2189,11 @@
     "popover": {
       "title": "Project 멤버",
       "manage": "공동 작업자 관리",
-      "isMe": "(나)"
+      "isMe": "(나)",
+      "online": "온라인",
+      "offline": "오프라인",
+      "follow": "보기",
+      "unfollow": "중지"
     },
     "modal": {
       "title": "공동 작업자",
@@ -2221,6 +2225,13 @@
     },
     "stack": {
       "triggerAria": "Project 멤버({count})"
+    },
+    "follow": {
+      "bar": "{name} 님을 따라가는 중",
+      "stop": "중지",
+      "stoppedViewport": "뷰를 움직여 따라가기를 중지했습니다",
+      "stoppedSpace": "Space를 전환해 따라가기를 중지했습니다",
+      "stoppedOffline": "{name} 님이 오프라인이라 따라가기를 중지했습니다"
     }
   },
   "spaces": {

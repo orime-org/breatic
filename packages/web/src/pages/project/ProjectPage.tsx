@@ -63,6 +63,14 @@ import {
 import { TopBar, toCreditsReadout } from '@web/pages/project/chrome/top-bar/TopBar';
 import { useDocumentProposalRouting } from '@web/pages/project/use-document-proposal-routing';
 import { useCanvasRevealRouting } from '@web/pages/project/use-canvas-reveal-routing';
+import { useFollowRouting } from '@web/pages/project/use-follow-routing';
+import { usePublishView } from '@web/pages/project/use-publish-view';
+import { FollowBar } from '@web/features/follow/FollowBar';
+import { useFollowExitToast } from '@web/features/follow/use-follow-exit-toast';
+import { useFollowLeaderPresence } from '@web/features/follow/use-follow-leader-presence';
+import { useLeaderSpaceId } from '@web/features/follow/use-leader-space-id';
+import { useFollowStore } from '@web/stores/follow';
+import { userPaletteColor } from '@web/lib/user-color';
 import { useRefreshOnReauth } from '@web/pages/project/use-refresh-on-reauth';
 import { useRenameProject } from '@web/features/project-manage/use-rename-project';
 import {
@@ -385,6 +393,41 @@ function ProjectWorkspace({
   useDocumentProposalRouting(spaces, tabs.openIds, tabs.activeId, openSpace, metaSynced);
   // A 3D capture's "View" press opens its canvas here, where the strip is held (#1411).
   useCanvasRevealRouting(spaces, tabs.activeId, openSpace, metaSynced);
+
+  // ---- Following a member (#920) ----
+  // This tab's Space in front goes out on the meta awareness for whoever
+  // follows this user; following someone takes this strip to their Space and
+  // stops when they go offline or leave the project.
+  const metaAwareness = provider?.awareness ?? null;
+  usePublishView(metaAwareness, tabs.activeId);
+  const followedUserId = useFollowStore((s) => s.targetUserId);
+  const leaderSpaceId = useLeaderSpaceId(metaAwareness, followedUserId);
+  useFollowRouting({
+    following: followedUserId !== null,
+    leaderSpaceId,
+    spaces,
+    activeId: tabs.activeId,
+    ready: tabs.ready,
+    persist: tabs.persist,
+    open: openSpace,
+  });
+  const presenceRecords = React.useMemo(() => [...users.values()], [users]);
+  const onlineUserIds = React.useMemo(
+    () => new Set(presenceRecords.filter((u) => u.online).map((u) => u.id)),
+    [presenceRecords],
+  );
+  const memberUserIds = React.useMemo(() => members.map((m) => m.userId), [members]);
+  // The roster is empty until it loads, and a loaded one always lists at least this user.
+  useFollowLeaderPresence({
+    users: presenceRecords,
+    memberUserIds,
+    synced: metaSynced && memberUserIds.length > 0,
+  });
+  const memberName = React.useCallback(
+    (id: string): string => members.find((m) => m.userId === id)?.name ?? '',
+    [members],
+  );
+  useFollowExitToast(memberName);
 
   // Hand the strip back to the browser so the next visit opens on it. Held
   // until `ready`, because the strip is empty before the Spaces arrive and
@@ -932,6 +975,7 @@ function ProjectWorkspace({
               onRename={(next) => renameMutation.mutate(next)}
               members={members}
               currentUserId={userId}
+              onlineUserIds={onlineUserIds}
             />
             {/* Both panels are given `display: flex` and `overflow: visible`
             because the library's inner wrapper is a block box that hard-codes
@@ -1044,6 +1088,10 @@ function ProjectWorkspace({
                         myRole={role}
                       />
                     ))}
+                    <FollowBar
+                      leaderName={followedUserId === null ? '' : memberName(followedUserId)}
+                      leaderColor={followedUserId === null ? '' : userPaletteColor(followedUserId)}
+                    />
                     {activeSpace ? null : (
                       <div
                         data-testid='no-active-space'

@@ -272,7 +272,18 @@ export function renderProductGuide(): string {
       "double-clicking it (Enter or clicking away saves, Esc or an empty name keeps the old one); and the user's role, " +
       `${quoted(t("role.owner"))} or ${quoted(t("role.editor"))}.`,
     "On the right: the members' pictures with a small arrow, which open " +
-      `${quoted(t("members.popover.title"))}. For an editor or a viewer that list ends with ` +
+      `${quoted(t("members.popover.title"))}. Each member's row says ${quoted(t("members.popover.online"))} or ` +
+      `${quoted(t("members.popover.offline"))}. Every role can follow another member who is online: pressing ` +
+      `${quoted(t("members.popover.follow"))} on their row opens the Space they have in front and moves the user's ` +
+      "view with theirs as they switch Spaces, pan, zoom or scroll. While following, a bar in that member's colour " +
+      `across the top of the Space area reads ${quoted(t("members.follow.bar"))}, {name} being that member's name, ` +
+      `with ${quoted(t("members.follow.stop"))}, the Space area is outlined in the same colour, and their row shows ` +
+      `${quoted(t("members.popover.unfollow"))}. Following ends when the user presses either of those; when the user ` +
+      `moves the view themselves (${quoted(t("members.follow.stoppedViewport"))}) or switches Space themselves ` +
+      `(${quoted(t("members.follow.stoppedSpace"))}); or when that member goes offline or leaves the project ` +
+      `(${quoted(t("members.follow.stoppedOffline"))}). Pressing ` +
+      `${quoted(t("members.popover.follow"))} on someone else switches straight to them. ` +
+      "For an editor or a viewer that list ends with " +
       `${quoted(t("project.leave.action"))}, which asks to confirm first, with ` +
       `${quoted(t("project.leave.confirm"))}; once they leave they are taken back to their recent projects and can ` +
       "no longer open the project. A member of the project's studio also finds it on the project's card in " +

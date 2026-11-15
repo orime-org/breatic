@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import { LogOut, Users } from 'lucide-react';
+import { Eye, LogOut, Users, X } from 'lucide-react';
 import * as React from 'react';
 
 import { Avatar, AvatarFallback } from '@web/components/ui/avatar';
@@ -14,6 +14,7 @@ import {
 import { Separator } from '@web/components/ui/separator';
 import { cn } from '@web/lib/utils';
 import { useUIStore } from '@web/stores';
+import { useFollowStore } from '@web/stores/follow';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { Member, MemberRole } from '@web/data/api/members';
 import { StudioAvatar } from '@web/ui/StudioAvatar';
@@ -40,7 +41,15 @@ interface MembersStackProps {
    * where the owner's ends with "Manage collaborators".
    */
   onLeave?: () => void;
+  /**
+   * User ids the server holds a connection for in this project (the meta
+   * `users` records with `online`). Rows of other members in it offer View,
+   * which follows them (#920).
+   */
+  onlineUserIds?: ReadonlySet<string>;
 }
+
+const NOBODY_ONLINE: ReadonlySet<string> = new Set();
 
 const ROLE_KEY: Record<MemberRole, 'role.owner' | 'role.editor' | 'role.viewer'> = {
   owner: 'role.owner',
@@ -53,8 +62,9 @@ const ROLE_KEY: Record<MemberRole, 'role.owner' | 'role.editor' | 'role.viewer'>
  *
  * Stack uses the backend `Member` shape ({id, userId, name, email, role})
  * per 2026-05-28 spec § 5; the subtitle below each member name shows the
- * email. Every row is read-only and shows the member's role badge; the
- * footer holds at most one action — "Manage collaborators" for the owner,
+ * email. Every row shows whether the member is online and their role badge,
+ * and another member's row, while they are online, offers View to follow
+ * them (#920); the footer holds at most one action — "Manage collaborators" for the owner,
  * "Leave project" for a member who may leave. Removing / changing a member lives solely in the "Manage
  * collaborators" modal (owner-only); the popover never offers a remove
  * control (2026-06-18 — the per-row hover-remove was dropped so remove
@@ -69,7 +79,7 @@ const ROLE_KEY: Record<MemberRole, 'role.owner' | 'role.editor' | 'role.viewer'>
 export const MembersStack = React.forwardRef<
   HTMLButtonElement,
   MembersStackProps
->(({ members, currentUserId, currentUserRole, onLeave }, ref) => {
+>(({ members, currentUserId, currentUserRole, onLeave, onlineUserIds = NOBODY_ONLINE }, ref) => {
   const t = useTranslation();
   // Owner-only affordance (B model — hidden, not disabled): the manage
   // button only renders when the current user is owner.
@@ -78,6 +88,8 @@ export const MembersStack = React.forwardRef<
   const overflow = members.length - visible.length;
   const [open, setOpen] = React.useState(false);
   const setActiveOverlayId = useUIStore((s) => s.setActiveOverlayId);
+  const followedUserId = useFollowStore((s) => s.targetUserId);
+  const titleId = React.useId();
 
   const openManage = React.useCallback((): void => {
     setOpen(false);
@@ -166,9 +178,11 @@ export const MembersStack = React.forwardRef<
         align='end'
         className='w-72 p-1'
         data-testid='members-popover'
+        aria-labelledby={titleId}
       >
         <div className='flex items-center justify-between px-2 pb-1 pt-2'>
           <span
+            id={titleId}
             className='text-2xs font-medium tracking-wide text-muted-foreground'
             data-testid='members-popover-title'
           >
@@ -184,6 +198,8 @@ export const MembersStack = React.forwardRef<
               <MemberRow
                 member={m}
                 isMe={currentUserId !== undefined && m.userId === currentUserId}
+                online={onlineUserIds.has(m.userId)}
+                followed={followedUserId === m.userId}
               />
             </li>
           ))}
@@ -217,18 +233,27 @@ MembersStack.displayName = 'MembersStack';
 interface MemberRowProps {
   member: Member;
   isMe: boolean;
+  online: boolean;
+  followed: boolean;
 }
 
 /**
- * One member row inside the stack popover — avatar, name/email, role badge.
- * The popover is read-only; remove / role changes live in the manage modal.
+ * One member row inside the stack popover — avatar, name/email, online or
+ * offline, role badge, and for another member who is online View (follow
+ * them) or, while following them, Stop (#920). Remove / role changes live in
+ * the manage modal.
  * @param root0 - Member row props.
  * @param root0.member - Member rendered by this row.
- * @param root0.isMe - Whether this row is the current viewer (annotates the name).
- * @returns the popover member row with its role badge.
+ * @param root0.isMe - Whether this row is the current user (annotates the name, no View).
+ * @param root0.online - Whether the member is connected to this project.
+ * @param root0.followed - Whether this user is following the member.
+ * @returns the popover member row.
  */
-function MemberRow({ member, isMe }: MemberRowProps): React.JSX.Element {
+function MemberRow({ member, isMe, online, followed }: MemberRowProps): React.JSX.Element {
   const t = useTranslation();
+  const { userId } = member;
+  const follow = React.useCallback((): void => useFollowStore.getState().start(userId), [userId]);
+  const unfollow = React.useCallback((): void => useFollowStore.getState().stop('button'), []);
   return (
     <div className='group flex items-center gap-2 rounded-chrome px-2 py-1.5 hover:bg-accent'>
       <StudioAvatar
@@ -256,6 +281,17 @@ function MemberRow({ member, isMe }: MemberRowProps): React.JSX.Element {
         >
           {member.email}
         </span>
+        <span
+          className='flex items-center gap-1 text-xs text-muted-foreground'
+          data-testid={`members-status-${member.id}`}
+          data-online={online ? 'true' : 'false'}
+        >
+          <span
+            aria-hidden='true'
+            className={cn('inline-block size-2 shrink-0 rounded-full', online ? 'bg-status-success' : 'bg-muted-foreground/40')}
+          />
+          {online ? t('members.popover.online') : t('members.popover.offline')}
+        </span>
       </div>
       <span
         className={cn(
@@ -265,6 +301,29 @@ function MemberRow({ member, isMe }: MemberRowProps): React.JSX.Element {
       >
         {t(ROLE_KEY[member.role])}
       </span>
+      {isMe || !online ? null : followed ? (
+        <Button
+          variant='outline'
+          size='compact'
+          className='shrink-0 gap-1 text-xs'
+          icon={<X className='size-3.5' />}
+          onClick={unfollow}
+          data-testid={`members-unfollow-${member.id}`}
+        >
+          {t('members.popover.unfollow')}
+        </Button>
+      ) : (
+        <Button
+          variant='outline'
+          size='compact'
+          className='shrink-0 gap-1 text-xs'
+          icon={<Eye className='size-3.5' />}
+          onClick={follow}
+          data-testid={`members-follow-${member.id}`}
+        >
+          {t('members.popover.follow')}
+        </Button>
+      )}
     </div>
   );
 }
