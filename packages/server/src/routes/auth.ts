@@ -50,7 +50,7 @@ auth.get("/invitation", rateLimitFor("invite-preview"), validate("query", invita
   // A token issued in another region names it; that region answers (inner#1955).
   const region = regionOfShareToken(token);
   // A prefix that names no region of this deployment names no invitation.
-  if (region !== null && region !== env.REGION && !isKnownRegion(region)) throw new NotFoundError(t("server.error.not_found"));
+  if (region !== null && !isKnownRegion(region)) throw new NotFoundError(t("server.error.not_found"));
   const data = region === null || region === env.REGION
     ? await invitationService.getInvitationPreview(token)
     : await previewInRegion(region, token);

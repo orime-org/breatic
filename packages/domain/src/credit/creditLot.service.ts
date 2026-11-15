@@ -1398,15 +1398,13 @@ export async function releaseDesignations(input: {
  * their packs first, so the change of hands never takes credits by surprise.
  * Spent packs keep their last designation but cannot be unassigned from the
  * credits panel, so they are left to `releaseDesignations` at acceptance.
+ * The transfer asks before its offer's transaction opens (inner#1955); a pack
+ * pointed at the Studio after that is released when the transfer is accepted.
  * @param studioId - The studio being handed over.
- * @param tx - The transaction the offer is filed in.
  * @returns True if at least one active pack names the studio.
  */
-export async function hasActiveDesignationsTo(
-  studioId: string,
-  tx: DbTx,
-): Promise<boolean> {
-  return creditLotRepo.hasActiveDesignatedToStudio(studioId, tx);
+export async function hasActiveDesignationsTo(studioId: string): Promise<boolean> {
+  return creditLotRepo.hasActiveDesignatedToStudio(studioId);
 }
 
 

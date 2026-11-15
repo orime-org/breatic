@@ -12,7 +12,6 @@ import {
   checkSessions,
   claimFirstMilestone,
   createGlobalApi,
-  db,
   enqueueAccountAdsConversion,
   getLimitsForStudio,
   getRedis,
@@ -122,8 +121,7 @@ export const GLOBAL_FUNCTIONS = {
    * @param studioId - The Studio.
    * @returns True when at least one does.
    */
-  hasActiveDesignationsTo: (studioId: string): Promise<boolean> =>
-    db.transaction((tx) => hasActiveDesignationsTo(studioId, tx)),
+  hasActiveDesignationsTo: (studioId: string): Promise<boolean> => hasActiveDesignationsTo(studioId),
   /**
    * What a Studio can spend, for admitting a chat turn, a text-tool run or a Timeline execution.
    * @param studioId - The Studio.
