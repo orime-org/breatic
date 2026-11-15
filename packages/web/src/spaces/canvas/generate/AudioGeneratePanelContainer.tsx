@@ -486,8 +486,8 @@ function AudioGeneratePanelBody({
   );
 
   // The run as the click sends it: a model taking no prompt with these settings sends none, whatever the box
-  // last held. Priced, and asked why no upstream here takes it (#1521), for the button and the click.
-  const estimateInput = audioEstimateInput({ ...vm, params }, slots, vm.promptRequired ? extractPromptText(promptText) : '');
+  // last held, and the lyrics go while the lyrics box is on the panel. Priced, and asked why no upstream here takes it (#1521), for the button and the click.
+  const estimateInput = audioEstimateInput({ ...vm, params }, slots, vm.promptRequired ? extractPromptText(promptText) : '', lyrics ? lyricsText : undefined);
   const { creditText, refusalText, latestRefusal } = useRunCheck(vm.modelEntry, estimateInput, catalog?.credit_multiplier ?? 1);
   const onExecute = React.useCallback((): void => {
     // Every execute-critical value is read synchronously here, never from a

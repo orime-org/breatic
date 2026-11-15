@@ -253,7 +253,11 @@ const A2M: ModelEntry = {
   // As provider has it: the vendor refuses a melody beside a style (#1521).
   pricing_rules: {
     model: 'mureka-v9.5-generate-song',
-    rejects: [{ when: '$exists(melody) and $exists(prompt)', reason: 'Mureka melody combination' }],
+    rejects: [
+      { when: '$exists(melody) and $exists(prompt)', reason: 'Mureka melody combination' },
+      // The vendor's lyrics cap, shortened so a test can write past it.
+      { when: '$length(lyrics) > 20', limit: { field: 'lyrics', measure: 'characters', max: 20 }, reason: 'Mureka lyrics cap' },
+    ],
     upstreams: [{
       upstream: 'wavespeed',
       prompt_field: 'prompt',
@@ -1077,6 +1081,22 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
     // An undrawn slot travels as null, which the worker leaves out of the request.
     expect(params?.song ?? null).toBeNull();
     expect(params?.prompt ?? '').toBe('');
+  });
+
+  it('says which limit the lyrics break, and sends nothing (#1521)', async () => {
+    const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+    await openPanel({
+      mode: 'a2m',
+      model: 'mureka-v9.5-generate-song',
+      paramsByModel: { 'mureka-v9.5-generate-song': { compose_from: 'melody' } },
+      musicMelody: { url: 'https://x/m.mp3' },
+    });
+    typeLyrics('la la la la la la la la');
+    // The refusal is worked out off the render path, once the rules have loaded.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    fireEvent.click(screen.getByTestId('generate-audio-execute'));
+    expect(toast.warning).toHaveBeenCalledWith('Mureka V9.5 Song takes at most 20 characters in the lyrics.', expect.anything());
+    expect(create).not.toHaveBeenCalled();
   });
 
   it('offers song and vocals, and no melody, when composing from style and references', async () => {
