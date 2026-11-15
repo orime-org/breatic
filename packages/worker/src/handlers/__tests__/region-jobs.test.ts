@@ -12,6 +12,7 @@ const h = vi.hoisted(() => ({
   usagePerStudio: vi.fn(async () => [{ studioId: "s-1", bytes: 10 }]),
   listDue: vi.fn(async (): Promise<Array<{ slug: string; studioId: string; region: string | null }>> => []),
   settle: vi.fn(async () => undefined),
+  postpone: vi.fn(async () => undefined),
   slugState: vi.fn(async (): Promise<{ slug: string | null; eventsInFlight: boolean }> => ({ slug: null, eventsInFlight: false })),
   logError: vi.fn(),
   relayOutbox: vi.fn(),
@@ -44,7 +45,7 @@ vi.mock("@breatic/core", () => ({
 vi.mock("@breatic/domain", () => ({
   globalApi: () => ({ recordRegionUsage: h.recordRegionUsage, applyRegionEvent: h.applyRegionEvent }),
   regionOutboxService: { relayOutbox: h.relayOutbox },
-  directoryWrites: { settleSlugReservation: h.settle, slugState: h.slugState },
+  directoryWrites: { settleSlugReservation: h.settle, slugState: h.slugState, postponeSlugReservation: h.postpone },
   studioDirectoryService: { reconcileDirectoryAfterUpgrade: h.reconcile },
 }));
 
@@ -150,6 +151,28 @@ describe("region jobs", () => {
     expect(h.settle).toHaveBeenCalledWith("there", "s-us", { slug: "renamed-again", eventsInFlight: true });
     expect(h.settle).not.toHaveBeenCalledWith("lost", expect.anything(), expect.anything());
     expect(h.logError).toHaveBeenCalledWith(expect.objectContaining({ studioId: "s-eu" }), "slug_reservation_settle_failed");
+  });
+
+  // inner#1955: a region that stays down must not keep its due reservations
+  // at the head of every batch, ahead of every other region's.
+  it("postpones what a region could not answer and asks that region nothing more in the pass", async () => {
+    h.callRegion.mockReset();
+    h.postpone.mockClear();
+    h.listDue.mockResolvedValueOnce([
+      { slug: "a", studioId: "s-a", region: "eu" },
+      { slug: "b", studioId: "s-b", region: "eu" },
+      { slug: "c", studioId: "s-c", region: "us-west" },
+    ]);
+    h.callRegion.mockImplementation(async (...args: unknown[]) => {
+      if (args[0] === "eu") throw new Error("eu is down");
+      return { slug: "c", eventsInFlight: false };
+    });
+
+    expect(await sweepSlugReservations()).toBe(1);
+    expect(h.callRegion.mock.calls.filter((call) => call[0] === "eu")).toHaveLength(1);
+    expect(h.postpone).toHaveBeenCalledWith("a", "s-a");
+    expect(h.postpone).toHaveBeenCalledWith("b", "s-b");
+    expect(h.settle).toHaveBeenCalledWith("c", "s-c", { slug: "c", eventsInFlight: false });
   });
 
   // inner#1955: a self-hosted upgrade swaps every container in one

@@ -203,6 +203,21 @@ export async function settleSlugReservation(slug: string, studioId: string, regi
 }
 
 /**
+ * Hold a due reservation whose Studio's region did not answer for another
+ * window, so it stays held and the next sweep reaches the reservations of
+ * regions that do answer first.
+ * @param slug - The reserved slug.
+ * @param studioId - The Studio.
+ * @returns Once postponed, or at once when it is no longer due.
+ */
+export async function postponeSlugReservation(slug: string, studioId: string): Promise<void> {
+  await db.transaction(async (tx) => {
+    await studioDirectoryRepo.lockSlug(slug, tx);
+    if (await studioDirectoryRepo.isReservationDue(slug, studioId, tx)) await studioDirectoryRepo.extendReservation(slug, studioId, tx);
+  });
+}
+
+/**
  * In the global region, whether a rename may take a slug: checked under the
  * slug's lock in the rename's own transaction.
  * @param slug - The new slug.

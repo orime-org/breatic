@@ -130,6 +130,27 @@ describe("settling a past-due slug reservation", () => {
   });
 });
 
+describe("postponing a reservation whose region did not answer", () => {
+  it("moves a due reservation a window later, still held", async () => {
+    const r = await reserved(1);
+
+    await directoryWrites.postponeSlugReservation(r.newSlug, r.studioId);
+
+    const [row] = await sql<{ due: boolean }[]>`SELECT expires_at <= now() AS due FROM slug_reservations WHERE slug = ${r.newSlug} AND deleted_at IS NULL`;
+    expect(row?.due).toBe(false);
+  });
+
+  it("leaves a reservation that is no longer due alone", async () => {
+    const r = await reserved(-5);
+    const [before] = await sql<{ at: string }[]>`SELECT expires_at::text AS at FROM slug_reservations WHERE slug = ${r.newSlug}`;
+
+    await directoryWrites.postponeSlugReservation(r.newSlug, r.studioId);
+
+    const [after] = await sql<{ at: string }[]>`SELECT expires_at::text AS at FROM slug_reservations WHERE slug = ${r.newSlug}`;
+    expect(after?.at).toBe(before?.at);
+  });
+});
+
 describe("reserving a slug for a rename", () => {
   it("answers a Studio's retry of its own reservation as held, with no second reservation", async () => {
     const r = await reserved(-5);

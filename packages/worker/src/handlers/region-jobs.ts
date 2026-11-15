@@ -116,23 +116,33 @@ export async function forwardRevocation(job: Job<IdentityRevocationForwardJob>):
  * Settle slug reservations past due: ask each Studio's region which slug it
  * holds and whether events of the Studio are still on their way, then keep
  * or let go of the reservation; the sweep never writes the directory. A
- * region that does not answer keeps its reservations for the next sweep.
+ * region that does not answer has its reservations postponed a window and is
+ * not asked again in the pass, so it cannot hold the head of every batch.
  * @returns How many were settled.
  * @throws {Error} When the reservations cannot be read.
  */
 export async function sweepSlugReservations(): Promise<number> {
   let settled = 0;
+  const silent = new Set<string>();
   for (const due of await studioDirectoryRepo.listDueSlugReservations(getRegionsConfig().slug_reservation_sweep_batch)) {
     const region = due.region ?? env.GLOBAL_REGION;
     try {
+      if (silent.has(region)) {
+        await directoryWrites.postponeSlugReservation(due.slug, due.studioId);
+        continue;
+      }
       const state = region === env.REGION
         ? await directoryWrites.slugState(due.studioId)
         : ((await askRegion(region, "studioSlugState", [due.studioId])) as directoryWrites.SlugState);
       await directoryWrites.settleSlugReservation(due.slug, due.studioId, state);
       settled += 1;
     } catch (err) {
-      // The reservation stays held; the next sweep asks again.
+      // The reservation stays held; a later sweep asks again.
       logger.error({ err, studioId: due.studioId, region }, "slug_reservation_settle_failed");
+      silent.add(region);
+      await directoryWrites.postponeSlugReservation(due.slug, due.studioId).catch((postponeErr: unknown) => {
+        logger.error({ err: postponeErr, studioId: due.studioId, region }, "slug_reservation_postpone_failed");
+      });
     }
   }
   return settled;
