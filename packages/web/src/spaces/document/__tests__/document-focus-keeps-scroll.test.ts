@@ -109,6 +109,23 @@ describe('the body taking the focus', () => {
     expect(document.activeElement).toBe(field);
   });
 
+  it('takes the focus back for a row dropped beside the body, which the body handles', async () => {
+    const { editor } = openScrolled();
+    const id = (editor.document[1] as unknown as { id: string }).id;
+    const dataTransfer = { setDragImage: vi.fn(), setData: vi.fn(), clearData: vi.fn(), effectAllowed: 'all' } as unknown as DataTransfer;
+    startRowDrag(editor, { dataTransfer, clientY: 0 }, id);
+    const margin = document.createElement('div');
+    document.body.appendChild(margin);
+
+    // BlockNote hands a drop in the margin to the body first, then the page
+    // sees the drop where it really fell.
+    editor.prosemirrorView.dom.dispatchEvent(new Event('drop', { bubbles: true, cancelable: true }));
+    margin.dispatchEvent(new Event('drop', { bubbles: true, cancelable: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(editor.prosemirrorView.dom.contains(document.activeElement)).toBe(true);
+  });
+
   it('stays where it is when text dragged in from outside is dropped on it', () => {
     const { editor, box } = openScrolled();
     focusScrollsToCaret(box);

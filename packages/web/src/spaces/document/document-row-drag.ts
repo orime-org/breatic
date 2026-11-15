@@ -65,7 +65,9 @@ export function startRowDrag(
   previewRowDrag(view, event.dataTransfer, blockId);
 
   let ended = false;
-  // Whether the row was dropped in the body; null when no drop came.
+  // Whether the row was dropped in the body; null when no drop came. A drop
+  // beside the body is handed to it by BlockNote before the page sees it
+  // where it fell, so one drop in the body settles it.
   let landedHere: boolean | null = null;
   /** Ends the drag, once. */
   const end = (): void => {
@@ -90,7 +92,7 @@ export function startRowDrag(
    * @param drop - The drop.
    */
   const onDrop = (drop: DragEvent): void => {
-    landedHere = drop.target instanceof Node && view.dom.contains(drop.target);
+    landedHere = landedHere === true || (drop.target instanceof Node && view.dom.contains(drop.target));
     setTimeout(end, 0);
   };
   page.addEventListener('drop', onDrop, true);
