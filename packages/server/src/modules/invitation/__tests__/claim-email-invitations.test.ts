@@ -87,6 +87,22 @@ describe("email invitation compensation", () => {
     }, "email_invitation_claim_failed");
   });
 
+  // inner#1955: a forwarded claim whose global region did not answer fails
+  // its job, which retries, after trying every other candidate.
+  it("throws a global-region outage after trying every candidate", async () => {
+    const { GlobalApiError, UNREACHABLE_STATUS } = await import("@breatic/core");
+    const outage = new GlobalApiError(UNREACHABLE_STATUS, "unreachable", "timed out");
+    mocks.findProjectCandidates.mockResolvedValue([
+      { id: "failed-invite", targetId: "project" },
+      { id: "next-invite", targetId: "another-project" },
+    ]);
+    mocks.findStudioCandidates.mockResolvedValue([]);
+    mocks.claimInvitation.mockRejectedValueOnce(outage);
+
+    await expect(claimEmailInvitations(USER)).rejects.toBe(outage);
+    expect(mocks.claimInvitation).toHaveBeenCalledTimes(2);
+  });
+
   it("returns after a candidate scan failure and retries on the next authenticated call", async () => {
     const failure = new Error("database unavailable");
     mocks.findProjectCandidates.mockRejectedValueOnce(failure);

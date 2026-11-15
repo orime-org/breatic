@@ -13,13 +13,13 @@
  *      function with its arguments, and its answer is sent as it came.
  *   2. A call with no region, or naming this one, is answered here.
  *   3. A region this deployment does not reach is 422.
- *   4. A region that does not answer is 503.
+ *   4. A region that is unavailable is 503.
  */
 
 import { describe, expect, it, afterAll, afterEach } from "vitest";
 import { randomUUID } from "node:crypto";
 import { GLOBAL_REGION_SETTINGS } from "./global-region-env.js";
-import { startRegionStandIn } from "./region-harness.js";
+import { StandInRefusal, startRegionStandIn } from "./region-harness.js";
 import { call, useInternalApp } from "./internal-api-harness.js";
 
 const sg = await startRegionStandIn();
@@ -80,8 +80,10 @@ describe("storage reclaim in another region", () => {
     expect(sg.received).toEqual([]);
   });
 
-  it("answers 503 when the region does not answer", async () => {
-    sg.mode = "hang";
+  it("answers 503 when the region is unavailable", async () => {
+    sg.answers.maintenanceQueue = () => {
+      throw new StandInRefusal(503, "unavailable");
+    };
 
     const response = await call(suite.baseUrl, `${base}/queue?region=sg`);
 

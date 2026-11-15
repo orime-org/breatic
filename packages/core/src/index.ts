@@ -215,6 +215,8 @@ export {
   checkSessions,
   recordRevokedIdentities,
   isIdentityRevoked,
+  IDENTITY_REVOCATION_FORWARD_QUEUE,
+  INVITATION_CLAIM_FORWARD_QUEUE,
   type RevokeOutcome,
 } from "@core/infra/session-store.js";
 export { redactSessionError, type RedactedSessionError } from "@core/infra/session-error.js";

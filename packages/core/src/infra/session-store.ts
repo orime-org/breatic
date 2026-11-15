@@ -152,6 +152,9 @@ async function announce(userId: string, tokens: string[]): Promise<RevokeOutcome
 /** The worker queue that carries revocations to the other regions (inner#1955). */
 export const IDENTITY_REVOCATION_FORWARD_QUEUE = "identity-revocation-forward";
 
+/** The worker queue that carries a sign-in's email-invitation claims to the other regions (inner#1955). */
+export const INVITATION_CLAIM_FORWARD_QUEUE = "invitation-claim-forward";
+
 let revocationForwardQueue: ReturnType<typeof createQueue> | null = null;
 
 /**

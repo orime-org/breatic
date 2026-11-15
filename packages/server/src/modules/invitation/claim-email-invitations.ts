@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import { createQueue, defaultJobOpts, env, logger, otherRegionsOf } from "@breatic/core";
+import { createQueue, defaultJobOpts, env, INVITATION_CLAIM_FORWARD_QUEUE, isRegionUnavailable, logger, otherRegionsOf } from "@breatic/core";
 import { normalizeEmail } from "@breatic/shared";
 import type { UserEntity } from "@breatic/shared";
 import { claimInvitation, invitationRepo } from "@server/modules/invitation/invitation-lifecycle.service.js";
@@ -12,9 +12,12 @@ import { claimInvitation, invitationRepo } from "@server/modules/invitation/invi
  * can complete and the next authenticated session can retry the scan.
  * @param user - The account whose verified mailbox may have invitations.
  * @returns Once the compensation scan has finished.
+ * @throws {GlobalApiError} After the scan, when the global region was unavailable
+ *   for a candidate, so the forwarded job that ran it retries (inner#1955).
  */
 export async function claimEmailInvitations(user: Pick<UserEntity, "id" | "email" | "emailVerified">): Promise<void> {
   if (!user.emailVerified) return;
+  let unavailable: unknown = null;
   try {
     for (const kind of ["project", "studio"] as const) {
       const candidates = await invitationRepo(kind).findPendingEmailCandidates(normalizeEmail(user.email));
@@ -23,16 +26,16 @@ export async function claimEmailInvitations(user: Pick<UserEntity, "id" | "email
           await claimInvitation(kind, candidate.id, candidate.targetId, user.id);
         } catch (err) {
           logger.error({ err, ctx: { userId: user.id, kind, invitationId: candidate.id } }, "email_invitation_claim_failed");
+          if (unavailable === null && isRegionUnavailable(err)) unavailable = err;
         }
       }
     }
   } catch (err) {
     logger.error({ err, ctx: { userId: user.id } }, "email_invitation_claim_failed");
   }
+  if (unavailable !== null) throw unavailable;
 }
 
-/** The worker queue that carries a sign-in's claims to the other regions (inner#1955). */
-const INVITATION_CLAIM_FORWARD_QUEUE = "invitation-claim-forward";
 
 let claimForwardQueue: ReturnType<typeof createQueue> | null = null;
 

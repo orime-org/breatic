@@ -37,6 +37,9 @@
 # outbox_relay_batch: how many outbox events one relay pass reads.
 # storage_usage_report_batch: how many Studios one storage usage report
 #   carries.
+# maintenance_forward_timeout_ms: how long the global region waits for a
+#   storage-reclaim call it hands to another region; a preview or submission
+#   reads up to 100 objects from storage there.
 # region_api_body_max_bytes: the largest request body one region accepts
 #   from another. A Studio snapshot carries every member and Project id and a
 #   collab session recheck every session id an instance holds, so this is
@@ -58,3 +61,4 @@ slug_reservation_sweep_batch: 50
 region_api_body_max_bytes: 4194304
 outbox_relay_batch: 100
 storage_usage_report_batch: 500
+maintenance_forward_timeout_ms: 300000

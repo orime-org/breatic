@@ -55,7 +55,7 @@ async function inRegion(
   if (region === env.REGION) return send(c, await here());
   if (!isGlobalRegion(env) || !Object.hasOwn(env.REGION_API_URLS, region)) return c.json({ code: "invalid_body" }, 422);
   try {
-    return send(c, (await callRegion(region, fn, args, getRegionsConfig().global_api_timeout_ms)) as maintenanceService.MaintenanceAnswer<unknown>);
+    return send(c, (await callRegion(region, fn, args, getRegionsConfig().maintenance_forward_timeout_ms)) as maintenanceService.MaintenanceAnswer<unknown>);
   } catch (err) {
     if (isRegionUnavailable(err)) return c.json({ code: "unavailable" }, 503);
     throw err;

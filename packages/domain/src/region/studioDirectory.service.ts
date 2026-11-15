@@ -64,14 +64,14 @@ export async function changeDirectoryAdmin(change: AdminChange, tx?: DbTx): Prom
  * the global region's internal API; the directory admin is left to
  * `changeDirectoryAdmin`.
  * @param studioId - A Studio in this region.
- * @returns Once the snapshot is written.
+ * @returns Whether this region holds the Studio, so a snapshot was written.
  */
-export async function emitStudioSnapshot(studioId: string): Promise<void> {
-  await db.transaction(async (tx) => {
+export async function emitStudioSnapshot(studioId: string): Promise<boolean> {
+  return db.transaction(async (tx) => {
     // The Studio row first, the lock every `studio:{id}` event takes.
     await studioRepo.lockStudio(studioId, tx);
     const studio = await studioRepo.getById(studioId, tx);
-    if (studio === null) return;
+    if (studio === null) return false;
     const members = await studioMembersRepo.lockMembership(studioId, tx);
     const offer = await studioTransfersRepo.findLiveForContainer(studioId);
     const snapshot: StudioSnapshot = {
@@ -90,6 +90,7 @@ export async function emitStudioSnapshot(studioId: string): Promise<void> {
         tx,
       );
     }
+    return true;
   });
 }
 

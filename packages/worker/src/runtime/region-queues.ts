@@ -12,7 +12,7 @@
  * a region's own Studios runs in every region.
  */
 
-import { ADS_CONVERSION_QUEUE, TIMELINE_QUEUE } from "@breatic/core";
+import { ADS_CONVERSION_QUEUE, IDENTITY_REVOCATION_FORWARD_QUEUE, INVITATION_CLAIM_FORWARD_QUEUE, TIMELINE_QUEUE } from "@breatic/core";
 import {
   AUDIO_PEAKS_QUEUE,
   MAIL_QUEUE,
@@ -28,10 +28,7 @@ export const TIMELINE_SWEEP_QUEUE = "timeline-sweep";
 export const CREDIT_CHARGE_SWEEP_QUEUE = "credit-charge-sweep";
 /** The sweep that settles slug reservations a region's rename left behind. */
 export const SLUG_RESERVATION_SWEEP_QUEUE = "slug-reservation-sweep";
-/** Revoked session ids sent on to every other region. */
-export const IDENTITY_REVOCATION_FORWARD_QUEUE = "identity-revocation-forward";
-/** Email-invitation claims sent on to every other region after sign-in. */
-export const INVITATION_CLAIM_FORWARD_QUEUE = "invitation-claim-forward";
+export { IDENTITY_REVOCATION_FORWARD_QUEUE, INVITATION_CLAIM_FORWARD_QUEUE } from "@breatic/core";
 /** The relay of this region's outbox to the global region. */
 export const REGION_OUTBOX_RELAY_QUEUE = "region-outbox-relay";
 /** This region's storage report to the global region. */

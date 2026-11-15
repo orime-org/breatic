@@ -70,6 +70,14 @@ describe("parseConfig — regions", () => {
     expect(config.GLOBAL_API_URL).toBe("http://10.0.0.5:3002");
   });
 
+  // Payments are taken in the global region alone; a region holds credits
+  // with PAYMENT_ENABLED and carries no Stripe secret (inner#1955).
+  it("starts a non-global region with payments on and no Stripe secret, and still refuses the global one", () => {
+    const region = { REGION: "sg", GLOBAL_REGION: "us-west", GLOBAL_API_URL: "http://10.0.0.5:3002", IDENTITY_PUBLIC_KEYS: '{"k1":"PEM"}', INTERNAL_API_SECRET: "secret" };
+    expect(parseConfig(baseEnv({ ...region, PAYMENT_ENABLED: "true", STRIPE_SECRET_KEY: "", STRIPE_WEBHOOK_SECRET: "" })).PAYMENT_ENABLED).toBe(true);
+    expect(() => parseConfig(baseEnv({ PAYMENT_ENABLED: "true", STRIPE_SECRET_KEY: "", STRIPE_WEBHOOK_SECRET: "" }))).toThrow(/STRIPE_SECRET_KEY/);
+  });
+
   // A misconfigured second region must not start and answer every request
   // with 401 or a failed cross-region call (inner#1955).
   it("refuses a non-global region with no internal API secret to sign its calls with", () => {

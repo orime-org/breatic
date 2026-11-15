@@ -11,7 +11,7 @@ import { describe, it, expect, beforeAll, afterAll, inject } from "vitest";
 import crypto from "node:crypto";
 import postgres from "postgres";
 import { initCore, studioDirectoryRepo } from "@breatic/core";
-import { directoryWrites } from "@breatic/domain";
+import { directoryWrites, regionOutboxApplyService } from "@breatic/domain";
 import { mirrorInDirectory } from "./directory-fixtures.js";
 
 let sql: ReturnType<typeof postgres>;
@@ -110,5 +110,23 @@ describe("reserving a slug for a rename", () => {
     expect(await directoryWrites.reserveSlug(r.oldSlug, r.studioId)).toBe(true);
     const rows = await sql`SELECT 1 FROM slug_reservations WHERE slug = ${r.oldSlug} AND studio_id = ${r.studioId} AND deleted_at IS NULL`;
     expect(rows).toHaveLength(1);
+  });
+
+  // inner#1955: renamed to a slug, away and straight back before the outbox
+  // ran; the first event applying must not free the slug the last relies on.
+  it("keeps a rename's reservation after its event applies, until the sweep settles it", async () => {
+    const r = await reserved(-5);
+    const stranger = await reserved(-5);
+    const event = (id: string, slug: string) => ({
+      id,
+      aggregateKey: `studio:${r.studioId}`,
+      type: "studio.slug_changed",
+      payload: { studioId: r.studioId, slug },
+    });
+
+    await regionOutboxApplyService.applyRegionEvent("sg", event("901", r.newSlug));
+    await regionOutboxApplyService.applyRegionEvent("sg", event("902", r.oldSlug));
+
+    expect(await directoryWrites.reserveSlug(r.newSlug, stranger.studioId)).toBe(false);
   });
 });

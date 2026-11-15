@@ -92,11 +92,21 @@ describe("repairing a Studio's directory row", () => {
 
   it("asks the Studio's own region to emit its snapshot", async () => {
     const { studioId } = await staleStudio("sg");
+    sg.answers.emitStudioSnapshot = true;
 
     const answer = await repair(studioId);
 
     expect(answer.status).toBe(200);
     expect(sg.received).toEqual([{ side: "region", fn: "emitStudioSnapshot", args: [studioId], signed: true }]);
+  });
+
+  it("answers 404 when the Studio's region does not hold the Studio", async () => {
+    const { studioId } = await staleStudio("sg");
+    sg.answers.emitStudioSnapshot = false;
+
+    const answer = await repair(studioId);
+
+    expect(answer.status).toBe(404);
   });
 
   it("answers a region's refusal as a failure of ours, never as region_unavailable", async () => {

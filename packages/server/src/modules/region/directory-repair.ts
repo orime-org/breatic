@@ -21,7 +21,10 @@ export async function repairStudioDirectory(studioId: string): Promise<"emitted"
   const row = await studioDirectoryRepo.findLive(studioId);
   if (row === null) return "not_found";
   const region = row.region ?? env.GLOBAL_REGION;
-  if (region === env.REGION) await studioDirectoryService.emitStudioSnapshot(studioId);
-  else await callRegion(region, "emitStudioSnapshot", [studioId], getRegionsConfig().global_api_timeout_ms);
-  return "emitted";
+  const emitted =
+    region === env.REGION
+      ? await studioDirectoryService.emitStudioSnapshot(studioId)
+      : (await callRegion(region, "emitStudioSnapshot", [studioId], getRegionsConfig().global_api_timeout_ms)) === true;
+  // A directory row whose Studio its region does not hold has nothing to repair from.
+  return emitted ? "emitted" : "not_found";
 }

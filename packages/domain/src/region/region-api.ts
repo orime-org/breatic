@@ -42,7 +42,7 @@ export const REGION_FUNCTIONS = {
    * @param studioId - A Studio in this region.
    * @returns Once the snapshot is in the outbox.
    */
-  emitStudioSnapshot: (studioId: string): Promise<void> => emitStudioSnapshot(studioId),
+  emitStudioSnapshot: (studioId: string): Promise<boolean> => emitStudioSnapshot(studioId),
 };
 
 /**

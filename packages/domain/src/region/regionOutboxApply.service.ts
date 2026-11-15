@@ -81,8 +81,10 @@ async function apply(region: string, event: OutboxEvent, tx: DbTx): Promise<bool
       if (typeof p.name === "string") profile.name = p.name;
       if (typeof p.slug === "string") profile.slug = p.slug;
       if (p.avatarUrl === null || typeof p.avatarUrl === "string") profile.avatarUrl = p.avatarUrl;
+      // The rename's reservation stays: a later rename of the same Studio
+      // back to this slug may still rely on it, and the slug sweep lets it
+      // go once the region's own slug says which one stands.
       await studioDirectoryRepo.updateProfile(String(p.studioId), profile, tx);
-      if (profile.slug !== undefined) await studioDirectoryRepo.releaseSlugReservation(profile.slug, String(p.studioId), tx);
       return true;
     }
     case "studio_member.upserted":

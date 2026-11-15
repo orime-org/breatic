@@ -469,7 +469,9 @@ export function parseConfig(rawEnv: Record<string, string | undefined>): CoreCon
   // app boots with PAYMENT_ENABLED=false; if enabled and empty,
   // webhook signature verification fails confusingly at runtime.
   // Fail fast at init with a clear message instead.
-  if (config.PAYMENT_ENABLED) {
+  // Payments are taken in the global region alone (inner#1955); a region
+  // keeps PAYMENT_ENABLED for holding credits and needs no Stripe secret.
+  if (config.PAYMENT_ENABLED && isGlobalRegion(config)) {
     if (!config.STRIPE_SECRET_KEY.trim()) {
       throw new Error(
         "FATAL: PAYMENT_ENABLED=true requires STRIPE_SECRET_KEY to be set " +
