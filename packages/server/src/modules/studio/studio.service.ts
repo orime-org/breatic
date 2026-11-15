@@ -22,7 +22,7 @@
 import { profilesService, studioRepo } from "@breatic/domain";
 import * as studioInvitationsRepo from "@server/modules/studio/studioInvitations.repo.js";
 import { withPendingDisplay } from "@server/modules/invitation/pending-display.js";
-import { isGlobalRegion, isMultiRegion, isUniqueViolation, logger } from "@breatic/core";
+import { isGlobalRegion, isMultiRegion, isUniqueViolation } from "@breatic/core";
 import { randomUUID } from "node:crypto";
 import { db, studioDirectoryRepo } from "@breatic/core";
 import { ConflictError, NotFoundError, ValidationError } from "@breatic/core";
@@ -208,9 +208,9 @@ export async function checkStudioSlug(
  *
  * Slug uniqueness is decided by the global directory, under the slug's lock
  * (inner#1955): in the global region inside the rename's own transaction, and
- * elsewhere by holding the slug there before the rename and letting it go if
- * the rename does not commit. A slug already held is a conflict, so a lost
- * race reads the same as a slug that was already taken.
+ * elsewhere by holding the slug there before the rename; the slug sweep later
+ * settles that hold from the slug the region holds. A slug already held is a
+ * conflict, so a lost race reads the same as a slug that was already taken.
  *
  * Changing the slug frees the old one immediately — no alias, no redirect
  * (rule 7). Every existing link to the old address stops working, which is why
@@ -235,7 +235,7 @@ export async function updateStudio(
   }
   const newSlug = patch.slug !== undefined && patch.slug !== studio.slug ? patch.slug : undefined;
   // Slugs are unique across regions (inner#1955). Outside the global region
-  // the new slug is held there first and let go if the rename does not commit.
+  // the new slug is held there first; the slug sweep settles the hold.
   const remote = !isGlobalRegion(env);
   if (newSlug !== undefined && remote && !(await globalApi().reserveSlug(newSlug, studio.id))) {
     throw new ConflictError(t("server.studio.slug_taken"));
@@ -262,12 +262,8 @@ export async function updateStudio(
       return updated;
     });
   } catch (err) {
-    if (newSlug !== undefined && remote) {
-      // The sweep lets the reservation go after slug_reservation_stale_ms anyway.
-      await globalApi().releaseSlug(newSlug, studio.id).catch((releaseErr: unknown) => {
-        logger.error({ err: releaseErr, ctx: { studioId: studio.id, slug: newSlug } }, "slug_release_failed");
-      });
-    }
+    // A reservation the rename took is settled by the slug sweep from the slug
+    // the region holds, whether or not the rename committed.
     if (isUniqueViolation(err)) {
       throw new ConflictError(t("server.studio.slug_taken"));
     }

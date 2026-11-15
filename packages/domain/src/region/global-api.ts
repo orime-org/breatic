@@ -31,7 +31,7 @@ import {
   type AdminChangeResult,
   type Profile,
 } from "@domain/region/studioDirectory.service.js";
-import { releaseSlug, reserveSlug } from "@domain/region/directory-writes.js";
+import { reserveSlug } from "@domain/region/directory-writes.js";
 import { applyRegionEvent } from "@domain/region/regionOutboxApply.service.js";
 import { getStorageBudget, recordRegionUsage, type RegionUsageReport, type StorageBudget } from "@domain/region/storageUsage.service.js";
 import type { OutboxEvent } from "@domain/region/regionOutbox.service.js";
@@ -171,13 +171,6 @@ export const GLOBAL_FUNCTIONS = {
    * @returns Whether it is held for the Studio.
    */
   reserveSlug: (slug: string, studioId: string): Promise<boolean> => reserveSlug(slug, studioId),
-  /**
-   * Let go of a rename's reservation.
-   * @param slug - The slug.
-   * @param studioId - The Studio.
-   * @returns Once released.
-   */
-  releaseSlug: (slug: string, studioId: string): Promise<void> => releaseSlug(slug, studioId),
   /**
    * Apply one event a region's outbox relay sent.
    * @param region - The sending region.

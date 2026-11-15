@@ -155,16 +155,6 @@ export async function reserveSlug(slug: string, studioId: string): Promise<boole
 }
 
 /**
- * Let go of a reservation whose rename did not happen.
- * @param slug - The slug.
- * @param studioId - The Studio.
- * @returns Once released.
- */
-export async function releaseSlug(slug: string, studioId: string): Promise<void> {
-  await db.transaction((tx) => studioDirectoryRepo.releaseSlugReservation(slug, studioId, tx));
-}
-
-/**
  * Settle a reservation the sweep found past due, from the slug the Studio's
  * region actually holds: the rename happened, so the directory takes the slug;
  * or it did not, so the slug is let go. A Studio that has reserved another

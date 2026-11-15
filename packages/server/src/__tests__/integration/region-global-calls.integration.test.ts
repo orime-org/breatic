@@ -66,7 +66,6 @@ const LISTED = new Set([
   "recordRegionUsage",
   "transferAdmin",
   "reserveSlug",
-  "releaseSlug",
   "checkSessions",
   "applyRegionEvent",
   "enqueueAdsConversion",
