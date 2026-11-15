@@ -9,7 +9,8 @@ import {
   SCENE_AMBIENT_COLOR_DEFAULT, SCENE_AMBIENT_INTENSITY_DEFAULT, isSceneCamera, isSceneLight, isSceneModelFile,
   type SceneCameraObject, type SceneModelFile, type SceneObject, type ScenePose,
 } from '@breatic/shared';
-import { DISPLAY_LINE_LAYER, DISPLAY_PICK_LAYER, DirectorFigure, applyCameraRecord } from '@web/spaces/three-d/viewport/director-objects';
+import { DirectorFigure, applyCameraRecord } from '@web/spaces/three-d/viewport/director-objects';
+import { DISPLAY_LINE_LAYER, DISPLAY_PICK_LAYER } from '@web/spaces/three-d/viewport/scene-layers';
 import { cameraFrameRatio } from '@web/spaces/three-d/viewfinder/viewfinder-geometry';
 import { directionalShadowRange, localShadowFar, planLights, programSamplers, shadowSlots, type LightsPlan } from '@web/spaces/three-d/viewport/director-lights';
 import { monitorReducer, monitorsDue, type MonitorCards, type MonitorEvent } from '@web/spaces/three-d/viewport/monitor-schedule';

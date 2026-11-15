@@ -4,6 +4,7 @@
 import type { Camera, Vector3 } from 'three';
 import { TransformControls, TransformControlsGizmo } from 'three/addons/controls/TransformControls.js';
 import { uniformScaleRatio } from '@web/spaces/three-d/viewport/scene-transform';
+import { HIDDEN_LAYER } from '@web/spaces/three-d/viewport/scene-layers';
 
 interface UniformScaleStart {
   x: number;
@@ -114,7 +115,7 @@ export class SceneTransformControls173 extends TransformControls {
     const gizmo = this.getHelper().children.find((child) => child instanceof TransformControlsGizmo);
     if (!(gizmo instanceof TransformControlsGizmo)) throw new Error('Unexpected TransformControls r173 helper');
     for (const group of [gizmo.gizmo.scale, gizmo.picker.scale]) {
-      for (const handle of group.children) handle.layers.set(multiple && handle.name !== 'XYZ' ? 1 : 0);
+      for (const handle of group.children) handle.layers.set(multiple && handle.name !== 'XYZ' ? HIDDEN_LAYER : 0);
     }
   }
 }

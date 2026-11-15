@@ -10,11 +10,8 @@ import { SCENE_SPOT_ANGLE_DEFAULT, isSceneCamera, isSceneLight, type SceneCamera
 
 import { cameraFrameRatio } from '@web/spaces/three-d/viewfinder/viewfinder-geometry';
 import type { LightPlan } from '@web/spaces/three-d/viewport/director-lights';
+import { DISPLAY_LINE_LAYER, DISPLAY_PICK_LAYER } from '@web/spaces/three-d/viewport/scene-layers';
 
-/** Layer of the camera and light icons: drawn in the main view and picked by a click. */
-export const DISPLAY_PICK_LAYER = 1;
-/** Layer of frustum and direction lines and number labels: drawn in the main view, never picked. */
-export const DISPLAY_LINE_LAYER = 2;
 /** The film gauge a camera's focal length is measured on, in millimetres. */
 export const CAMERA_FILM_GAUGE = 36;
 /** Length of a camera's frustum lines and a light's direction line, in scene units. */
