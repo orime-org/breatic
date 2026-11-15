@@ -51,6 +51,7 @@ import {
 import type { Hono } from "hono";
 import { withPeer } from "../helpers/peer.js";
 import { hashPassword } from "@server/modules/auth/auth.service.js";
+import { cookiesAreSecure } from "@server/middleware/session-cookie.js";
 
 const keys = generateKeyPairSync("ed25519");
 const PRIVATE_KEY = keys.privateKey.export({ type: "pkcs8", format: "pem" }).toString();
@@ -135,7 +136,7 @@ function expectIssued(line: string | undefined, userId: string, sessionToken: st
   const attributes = line!.split(";").map((part) => part.trim().toLowerCase());
   expect(attributes).toContain("domain=.example.test");
   expect(attributes).toContain("httponly");
-  expect(attributes).toContain("secure");
+  expect(attributes.includes("secure")).toBe(cookiesAreSecure());
   expect(attributes).toContain("samesite=lax");
   expect(attributes).toContain("max-age=2592000");
   const value = line!.split(";")[0]!.slice(`${identityCookieName()}=`.length);
@@ -251,6 +252,23 @@ describe("identity token issue in the global region", () => {
 
       expect(stagingRegion).toBe(stagingGlobal);
       expect(identityCookieName()).not.toBe(stagingGlobal);
+    } finally {
+      initCore({ ...process.env, ...SIGNING_ENV });
+    }
+  });
+
+  it("carries Secure outside dev and leaves it off in dev, as the session cookie does", async () => {
+    const userId = await account();
+    const secureOf = async (): Promise<boolean> => {
+      const token = await session(userId);
+      const res = await app.request("/api/v1/auth/me", { headers: { Cookie: `${sessionCookieName()}=${token}` } });
+      return identityCookie(res)!.split(";").map((part) => part.trim().toLowerCase()).includes("secure");
+    };
+    try {
+      initCore({ ...process.env, ...SIGNING_ENV, ENV: "dev" });
+      expect(await secureOf()).toBe(false);
+      initCore({ ...process.env, ...SIGNING_ENV, ENV: "staging" });
+      expect(await secureOf()).toBe(true);
     } finally {
       initCore({ ...process.env, ...SIGNING_ENV });
     }

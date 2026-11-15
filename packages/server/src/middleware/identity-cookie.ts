@@ -22,7 +22,7 @@ import {
   signIdentityToken,
   type IdentityClaimsInput,
 } from "@breatic/core";
-import { SESSION_COOKIE_MAX_AGE_SECONDS } from "@server/middleware/session-cookie.js";
+import { cookiesAreSecure, SESSION_COOKIE_MAX_AGE_SECONDS } from "@server/middleware/session-cookie.js";
 
 /** Who the token says the user is, besides the session it came from. */
 export interface IdentitySubject {
@@ -60,7 +60,7 @@ export async function writeIdentityCookie(c: Context, subject: IdentitySubject, 
   setCookie(c, identityCookieName(), token, {
     path: "/",
     httpOnly: true,
-    secure: true,
+    secure: cookiesAreSecure(),
     sameSite: "Lax",
     // The cookie outlives the token, so a region still receives a token that
     // expired while the tab slept and answers `identity_expired`, the answer
@@ -79,7 +79,7 @@ export async function writeIdentityCookie(c: Context, subject: IdentitySubject, 
  */
 function dropHostOnlyTwin(c: Context): void {
   if (env.IDENTITY_COOKIE_DOMAIN.trim() === "") return;
-  deleteCookie(c, identityCookieName(), { path: "/", secure: true });
+  deleteCookie(c, identityCookieName(), { path: "/", secure: cookiesAreSecure() });
 }
 
 /**
@@ -89,7 +89,7 @@ function dropHostOnlyTwin(c: Context): void {
 export function clearIdentityCookie(c: Context): void {
   deleteCookie(c, identityCookieName(), {
     path: "/",
-    secure: true,
+    secure: cookiesAreSecure(),
     ...(env.IDENTITY_COOKIE_DOMAIN.trim() !== "" ? { domain: env.IDENTITY_COOKIE_DOMAIN.trim() } : {}),
   });
   dropHostOnlyTwin(c);

@@ -40,6 +40,15 @@ export { sessionCookieName };
 export const SESSION_COOKIE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
 
 /**
+ * Whether our cookies carry Secure: not in dev, which serves plain
+ * `http://localhost`, where a Secure cookie is dropped by the browser.
+ * @returns True outside dev.
+ */
+export function cookiesAreSecure(): boolean {
+  return env.ENV !== "dev";
+}
+
+/**
  * Cookie options assembled from env. `secure` is auto-derived from
  * `ENV` — dev defaults `http://localhost` over plain TCP so a
  * `secure: true` cookie would be silently dropped by the browser.
@@ -58,7 +67,7 @@ function baseOptions(): {
   const domain = env.COOKIE_DOMAIN.trim();
   return {
     httpOnly: true,
-    secure: env.ENV !== "dev",
+    secure: cookiesAreSecure(),
     sameSite: "Lax",
     path: "/",
     maxAge: SESSION_COOKIE_MAX_AGE_SECONDS,
