@@ -1,0 +1,54 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: Elastic-2.0
+
+/**
+ * What the annotation panel lists (#1490 design §7.1, §10.1): this Space's threads grouped by the result they point at,
+ * groups in the execution list's order (results it has not loaded after), threads in a group by their time.
+ */
+
+import type { ThreadData } from '@blocknote/core/comments';
+import { readWebAnimationAnchor, type WebAnimationAnchor } from '@breatic/shared/space-content';
+
+/** The part of a BlockNote thread the panel reads. */
+export type AnnotationThread = Pick<ThreadData, 'id' | 'resolved' | 'deletedAt' | 'metadata' | 'comments'>;
+
+/** One listed thread with its anchor. */
+export interface ListedAnnotation<T extends AnnotationThread = AnnotationThread> {
+  id: string;
+  anchor: WebAnimationAnchor;
+  thread: T;
+}
+
+/** One result's threads. */
+export interface AnnotationGroup<T extends AnnotationThread = AnnotationThread> {
+  executionId: string;
+  threads: ListedAnnotation<T>[];
+}
+
+/**
+ * The panel's groups.
+ * @param threads - Every thread of the Space.
+ * @param options - How to list them.
+ * @param options.order - Result ids in the execution list's order.
+ * @param options.filter - `open` leaves resolved threads out.
+ * @returns The groups, empty ones dropped.
+ * @throws {never} Never.
+ */
+export function annotationGroups<T extends AnnotationThread>(
+  threads: readonly T[],
+  options: { order: readonly string[]; filter: 'open' | 'all' },
+): AnnotationGroup<T>[] {
+  const byResult = new Map<string, ListedAnnotation<T>[]>();
+  for (const thread of threads) {
+    if (thread.deletedAt !== undefined || (options.filter === 'open' && thread.resolved)) continue;
+    const anchor = readWebAnimationAnchor(thread.metadata);
+    if (anchor === null) continue;
+    const listed = byResult.get(anchor.executionId) ?? [];
+    listed.push({ id: thread.id, anchor, thread });
+    byResult.set(anchor.executionId, listed);
+  }
+  const rank = new Map(options.order.map((id, index) => [id, index]));
+  return [...byResult.entries()]
+    .sort(([a], [b]) => (rank.get(a) ?? Number.MAX_SAFE_INTEGER) - (rank.get(b) ?? Number.MAX_SAFE_INTEGER))
+    .map(([executionId, listed]) => ({ executionId, threads: listed.sort((a, b) => a.anchor.timeSeconds - b.anchor.timeSeconds) }));
+}

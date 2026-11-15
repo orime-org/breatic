@@ -63,13 +63,13 @@ function done(id: string, request: string, createdAt: string): Record<string, un
 }
 
 /**
- * Answer the list with these rows in the done group and nothing in progress.
+ * Answer this Space's list with these rows in the done group, nothing in progress and no Timeline-made group.
  * @param rows - The finished rows, newest first.
  */
 function listing(rows: Array<Record<string, unknown>>): void {
-  vi.mocked(timelineApi.listSpaceExecutions).mockImplementation(async (params: { group?: string }) => (
-    params.group === 'running'
-      ? { rows: [], nextCursor: null, totals: { done: rows.length, inProgress: 0 } }
+  vi.mocked(timelineApi.listSpaceExecutions).mockImplementation(async (params: { group?: string; scope?: string }) => (
+    params.group === 'running' || params.scope === 'timeline'
+      ? { rows: [], nextCursor: null, totals: params.scope === 'timeline' ? { done: 0, inProgress: 0 } : { done: rows.length, inProgress: 0 } }
       : { rows, nextCursor: null, totals: { done: rows.length, inProgress: 0 } }
   ) as never);
 }

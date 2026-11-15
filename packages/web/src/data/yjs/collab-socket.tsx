@@ -515,7 +515,8 @@ export function acquireDocProvider(
     sync: null,
   };
   const parsed = parseDocName(name);
-  if (parsed?.kind === 'canvas' || parsed?.kind === 'document') {
+  // A Motion Space's document holds only its annotations, which are edits the page waits for like a Document's comments.
+  if (parsed?.kind === 'canvas' || parsed?.kind === 'document' || parsed?.kind === 'web_animation') {
     entry.sync = bindDocSync(name, doc, provider, () => notifyProjectSync(parsed.projectId));
   }
   if (isSpaceContentDoc(name)) {

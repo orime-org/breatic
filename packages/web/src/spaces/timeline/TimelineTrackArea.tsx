@@ -41,9 +41,17 @@ const SELECTED_FILL = { video: 'bg-[color:var(--color-palette-blue-highlight)]',
  */
 export interface TimelineWebClipView {
   state: 'ready' | 'pending' | 'failed' | 'unresolved';
-  prompt: string | null;
+  /** The one title rule's name for it, once its reference is resolved. */
+  title: string | null;
+  /** The whole prompt or modification instruction. */
+  request: string | null;
+  /** For a modification, the request of the result it started from. */
+  baseRequest: string | null;
+  /** The Space and execution that made it. */
+  origin: { spaceId: string; executionId: string; origin: 'timeline' | 'web_animation_space' } | null;
   status: TimelineExecutionStatus | null;
-  phase: 'writing' | 'validating' | 'saving' | null;
+  phase: 'writing' | 'validating' | 'saving' | 'rendering' | null;
+  failureReason: string | null;
 }
 
 /** What the track area needs from the editor. */
@@ -128,7 +136,7 @@ const TimelineClip = React.memo(function TimelineClip({ projectId, clip, assetId
   const assetName = useTimelineAsset(projectId, assetId).data?.displayName || null;
   const isWeb = clip.kind === 'web-animation';
   const upload = clip.kind === 'upload' ? uploadView ?? null : null;
-  const name = isWeb ? webView?.prompt || t('timeline.webAnimation.copy') : clip.kind === 'upload' ? clip.upload.name : assetName ?? t('timeline.video');
+  const name = isWeb ? webView?.title || t('timeline.webAnimation.copy') : clip.kind === 'upload' ? clip.upload.name : assetName ?? t('timeline.video');
   const status = isWeb && (webView?.state === 'pending' || webView?.state === 'failed') ? webView.status : null;
   const phase = status === 'running' ? webView?.phase ?? null : null;
   // A failure's reason, which names the file, is read in the properties; the track keeps the short status.

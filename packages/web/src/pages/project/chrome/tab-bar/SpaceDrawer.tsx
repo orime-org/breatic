@@ -1,19 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import {
-  Box,
-  Clock,
-  Eye,
-  FileText,
-  Lock,
-  Menu,
-  MoreVertical,
-  Palette,
-  Pencil,
-  Trash2,
-  Unlock,
-} from 'lucide-react';
+import { Box, Clapperboard, Clock, Eye, FileText, Lock, Menu, MoreVertical, Palette, Pencil, Trash2, Unlock } from 'lucide-react';
 import * as React from 'react';
 
 import {
@@ -72,12 +60,13 @@ interface SpaceDrawerProps {
 
 const TYPE_META: Record<
   SpaceType,
-  { icon: typeof Palette; labelKey: 'spaces.kind.canvas' | 'spaces.kind.document' | 'spaces.kind.timeline' | 'spaces.kind.threeD' }
+  { icon: typeof Palette; labelKey: 'spaces.kind.canvas' | 'spaces.kind.document' | 'spaces.kind.timeline' | 'spaces.kind.threeD' | 'spaces.kind.webAnimation' }
 > = {
   canvas: { icon: Palette, labelKey: 'spaces.kind.canvas' },
   document: { icon: FileText, labelKey: 'spaces.kind.document' },
   timeline: { icon: Clock, labelKey: 'spaces.kind.timeline' },
   '3d': { icon: Box, labelKey: 'spaces.kind.threeD' },
+  web_animation: { icon: Clapperboard, labelKey: 'spaces.kind.webAnimation' },
 };
 
 // The row's own layout, the same whether it is the row's button or, while the

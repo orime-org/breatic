@@ -229,6 +229,8 @@ export interface VideoNodeView extends ContentNodeViewBase {
   /** Intrinsic pixel dimensions from the ledger (#209). See ImageNodeView. */
   width?: number;
   height?: number;
+  /** The Motion result this video was exported from (#1490). */
+  sourceAnimation?: { spaceId: string; executionId: string; videoUrl: string };
 }
 
 export interface ThreeDNodeView extends ContentNodeViewBase {
@@ -410,6 +412,7 @@ export function toNodeView(fields: CanvasNodeFields): TypedNodeView | null {
           duration: data.duration,
           width: data.mediaWidth,
           height: data.mediaHeight,
+          ...(data.sourceAnimation === undefined ? {} : { sourceAnimation: data.sourceAnimation }),
           ...contentCommon,
         },
       };

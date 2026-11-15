@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The creation dialog's state (inner#1711 design §9, the table whose one writer is `transitionCreationDraft`).
+ * The Motion Space's New and Modify dialog state (inner#1711 design §9, #1490 design §5.1; the table whose one writer is
+ * `transitionCreationDraft`).
  *
  * Execute fixes the input and the action id; while the accept is out, edits are ignored and a second Execute joins
  * the same action. Closing while submitting lets the submission go on; its answer closes the draft (accepted) or
@@ -14,9 +15,9 @@ import fc from 'fast-check';
 
 import {
   transitionCreationDraft, type CreationDraftEvent, type CreationDraftInput, type CreationDraftState,
-} from '@web/spaces/timeline/web-animation-creation-draft';
+} from '@web/spaces/web-animation/creation-draft';
 
-const INPUT: CreationDraftInput = { prompt: 'A blue title slides in', engine: 'deepseek', aspect: '16:9', durationSeconds: 4, addAtPlayhead: true };
+const INPUT: CreationDraftInput = { base: null, prompt: 'A blue title slides in', engine: 'deepseek', aspect: '16:9', durationSeconds: 4 };
 const ACTION = 'a0000000-0000-4000-8000-000000000001';
 const OTHER_ACTION = 'a0000000-0000-4000-8000-000000000002';
 const CLOSED: CreationDraftState = { status: 'closed' };

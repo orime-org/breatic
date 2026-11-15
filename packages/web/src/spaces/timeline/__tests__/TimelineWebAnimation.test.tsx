@@ -327,8 +327,8 @@ describe('preview of web copies', () => {
     const later = '30000000-0000-4000-8000-000000000107';
     seed([webClip(first, 'v2', 0, 48, boundTo(SRC_A)), webClip(later, 'v2', 96, 48, boundTo(SRC_A))]);
     showTimeline();
-    // The creation control shows once the Timeline limits, and so the idle cap, have arrived.
-    await screen.findByTestId('timeline-create-web-animation');
+    // Add web animation shows once the Timeline limits, and so the idle cap, have arrived.
+    await screen.findByTestId('timeline-add-web-animation');
     const unavailable = t('timeline.webAnimation.preview.unavailable', { track: t('timeline.track', { index: 2 }) });
     await waitFor(() => expect(screen.getByTestId(`timeline-preview-note-${first}`)).toHaveTextContent(unavailable));
     const seek = screen.getByRole('slider', { name: t('timeline.seek') });

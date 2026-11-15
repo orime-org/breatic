@@ -1023,7 +1023,8 @@
       "snapshot": "儲存快照",
       "download": "下載",
       "understand": "理解",
-      "transcribe": "轉寫"
+      "transcribe": "轉寫",
+      "openSourceAnimation": "開啟來源動畫"
     },
     "edge": {
       "delete": "刪除連線"
@@ -2296,7 +2297,9 @@
       "document": "Document",
       "documentSub": "富文本 + 協作",
       "timeline": "Timeline",
-      "timelineSub": "影片 / 音訊剪輯"
+      "timelineSub": "影片 / 音訊剪輯",
+      "webAnimation": "Motion",
+      "webAnimationSub": "用程式碼生成動畫，可匯出影片"
     },
     "create": {
       "title": "新增 Space",
@@ -2308,7 +2311,9 @@
       "namePlaceholder": "例:Cyberpunk Concept",
       "nameRemaining": "{count, plural, other {還可輸入 # 個字元}}",
       "cancel": "取消",
-      "submit": "建立"
+      "submit": "建立",
+      "scrollTypesStart": "向左捲動類型",
+      "scrollTypesEnd": "向右捲動類型"
     },
     "rename": {
       "inputAriaLabel": "重新命名 Space",
@@ -2797,6 +2802,63 @@
       "reason": "這個 Space 已滿。",
       "text": "文字沒有寫入：這個 Space 已滿。",
       "wait": "這個 Space 已滿，刪除一些內容後會自動完成。"
+    },
+    "webAnimation": {
+      "addAnnotation": "新增註解",
+      "annotateAt": "在 {time} 新增註解",
+      "annotationDisconnected": "連線已中斷，請重新新增註解。",
+      "annotationFailed": "註解未能儲存。",
+      "annotationPlaceholder": "寫下要修改的地方",
+      "annotations": "註解",
+      "annotationsAll": "全部 {count}",
+      "annotationsOpen": "未解決 {count}",
+      "baseWithAnnotations": "{base}（{count} 則未解決註解）",
+      "canvasUnreachable": "無法連線到這個 Canvas。",
+      "chooseCanvas": "放到哪個 Canvas",
+      "closePanel": "關閉",
+      "completed": "已完成",
+      "details": "詳情",
+      "dialog": {
+        "instruction": "修改要求",
+        "instructionPlaceholder": "例如：標題慢一點，背景再暗一些",
+        "modifyDescription": "修改自「{base}」，原結果保持不變。",
+        "modifyTitle": "修改網頁動畫"
+      },
+      "discardAnnotation": "捨棄這則註解？",
+      "discard": "捨棄",
+      "keepWriting": "繼續寫",
+      "download": "下載",
+      "empty": "還沒有網頁動畫",
+      "emptyInProgress": "沒有進行中的",
+      "executions": "執行列表",
+      "export": "匯出影片",
+      "foreignCancel": "這筆執行屬於來源 Project，無法在這裡取消。",
+      "hasPoint": "有位置",
+      "inProgress": "進行中",
+      "listError": "清單載入失敗。",
+      "madeInTimeline": "以前在 Timeline 裡做的",
+      "modifiedFromLabel": "修改自",
+      "modify": "修改",
+      "new": "新增",
+      "noAnnotations": "還沒有註解",
+      "noCanvas": "本 Project 還沒有 Canvas",
+      "noOpenAnnotations": "沒有未解決的註解",
+      "notFound": "找不到這筆網頁動畫。",
+      "pickPoint": "點畫面標出位置，或直接在下方寫",
+      "placeOnCanvas": "放到 Canvas",
+      "placed": "已放到「{name}」",
+      "placing": "影片仍在放到 Canvas 上。",
+      "readOnlyNotice": "協作人數已滿，註解暫時只能檢視。新增、修改、匯出照常可用。",
+      "reexport": "重新匯出",
+      "replies": "{count} 則回覆",
+      "sourceLabel": "來源動畫",
+      "statusLabel": "狀態",
+      "titleModifiedFrom": "修改自「{base}」：{request}",
+      "titleVideo": "影片 · {source}",
+      "unlistedResult": "其他結果",
+      "viewSource": "檢視來源動畫",
+      "viewVideo": "檢視影片",
+      "sourceSpaceGone": "來源動畫所在的 Space 已不存在。"
     }
   },
   "menu": {
@@ -3833,8 +3895,6 @@
       "offFrame": "這個片段不在目前的影格。"
     },
     "webAnimation": {
-      "create": "製作網頁動畫",
-      "executions": "執行列表",
       "copy": "網頁動畫副本",
       "durationShort": "{seconds} 秒",
       "dialog": {
@@ -3846,15 +3906,7 @@
         "engine": "引擎",
         "aspect": "比例",
         "duration": "時長（秒）",
-        "addAtPlayhead": "在播放頭位置加入 Timeline",
         "execute": "執行"
-      },
-      "list": {
-        "close": "關閉執行列表",
-        "completed": "已完成",
-        "inProgress": "進行中",
-        "emptyCompleted": "還沒有已完成的執行。",
-        "emptyInProgress": "沒有進行中的執行。"
       },
       "status": {
         "awaiting_landing": "儲存中",
@@ -3867,32 +3919,46 @@
         "expired": "已過期"
       },
       "step": {
-        "landing": "儲存執行請求"
+        "landing": "儲存執行請求",
+        "savingVideo": "儲存影片"
       },
       "phase": {
         "writing": "編寫網頁",
         "validating": "校驗定位與清單",
-        "saving": "儲存源包"
+        "saving": "儲存源包",
+        "rendering": "算繪影片"
       },
       "usageLabel": "用量",
       "usage": "{credits} 點",
       "usagePending": "結束後結算",
       "unavailable": "網頁動畫不可用",
       "cancel": "取消",
-      "addToTimeline": "新增至 Timeline",
-      "addPlaceholder": "先加入 Timeline",
       "retry": "重新執行",
       "failure": {
         "feature_disabled": "網頁動畫暫不可用。",
         "check": "頁面沒有通過檢查。",
         "stopped": "製作意外中斷。",
-        "unknown": "執行失敗。"
+        "unknown": "執行失敗。",
+        "render": "影片未能算繪成功。"
       },
       "preview": {
         "pending": "{track}：網頁動畫{status, select, awaiting_landing {儲存中} queued {排隊中} running {製作中} cancelling {取消中} other {等待中}}…",
         "failed": "{track}：網頁動畫{status, select, failed {失敗} cancelled {已取消} expired {已過期} other {不可用}}，不顯示",
         "unavailable": "{track}：網頁動畫不可用",
         "loading": "{track}：網頁動畫載入中…"
+      },
+      "add": "新增網頁動畫",
+      "goMake": "到 Motion 製作",
+      "openInMotion": "在 Motion 中開啟",
+      "modifiedFrom": "修改自：{base}",
+      "picker": {
+        "title": "新增網頁動畫",
+        "description": "選一個結果，在播放頭處放一份副本。",
+        "empty": "本 Project 還沒有網頁動畫",
+        "making": "製作中",
+        "deletedSpace": "已刪除的 Space",
+        "loadMore": "載入更多",
+        "error": "網頁動畫載入失敗。"
       }
     },
     "upload": {

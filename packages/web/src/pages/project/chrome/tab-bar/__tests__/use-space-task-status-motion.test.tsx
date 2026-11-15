@@ -24,7 +24,7 @@ import { useSpaceOperationsStore } from '@web/stores/space-operations';
 
 vi.mock('@web/data/api/timeline', async (importOriginal) => {
   const actual = await importOriginal<typeof TimelineApiModule>();
-  return { ...actual, timelineApi: { ...actual.timelineApi, listSpaceExecutions: vi.fn(), listExecutions: vi.fn(), limits: vi.fn() } };
+  return { ...actual, timelineApi: { ...actual.timelineApi, listSpaceExecutions: vi.fn(), limits: vi.fn() } };
 });
 
 const PROJECT = '60000000-0000-4000-8000-000000000001';
@@ -70,7 +70,6 @@ function provider(): { client: QueryClient; wrapper: (props: { children: React.R
 beforeEach(() => {
   useSpaceOperationsStore.setState({ operations: {} });
   vi.mocked(timelineApi.listSpaceExecutions).mockReset().mockResolvedValue(page(0));
-  vi.mocked(timelineApi.listExecutions).mockReset().mockResolvedValue([]);
   vi.mocked(timelineApi.limits).mockReset().mockResolvedValue(limits(3_600_000));
 });
 
@@ -123,7 +122,6 @@ describe('useSpaceTaskStatus for the other Space types', () => {
     const { result } = renderHook(() => useSpaceTaskStatus(PROJECT, SPACE, type), { wrapper });
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(timelineApi.listSpaceExecutions).not.toHaveBeenCalled();
-    expect(timelineApi.listExecutions).not.toHaveBeenCalled();
     expect(result.current).toBe(false);
   });
 

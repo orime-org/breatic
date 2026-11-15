@@ -9,17 +9,14 @@ import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, Dia
 import { Input } from '@web/components/ui/input';
 import { Label } from '@web/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@web/components/ui/select';
-import { Switch } from '@web/components/ui/switch';
 import { Textarea } from '@web/components/ui/textarea';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useReturnFocus } from '@web/lib/overlay-focus';
-import type { CreationDraftInput, CreationDraftState } from '@web/spaces/timeline/web-animation-creation-draft';
-
-/** Engine names are the vendor's own and stay in English. */
-export const WEB_ANIMATION_ENGINE_NAMES: Readonly<Record<CreationDraftInput['engine'], string>> = { deepseek: 'DeepSeek' };
+import type { CreationDraftInput, CreationDraftState } from '@web/spaces/web-animation/creation-draft';
+import { WEB_ANIMATION_ENGINE_NAMES, isWebAnimationEngine } from '@web/spaces/web-animation/execution-text';
 
 /** The open creation dialog's draft and actions. */
-interface TimelineWebAnimationDialogProps {
+interface WebAnimationDialogProps {
   spaceId: string;
   draft: Exclude<CreationDraftState, { status: 'closed' }>;
   retry: boolean;
@@ -30,9 +27,10 @@ interface TimelineWebAnimationDialogProps {
 }
 
 /**
- * The web-animation creation dialog (inner#1711 design §8): prompt, engine, aspect, duration and the switch that
- * adds a placeholder at the playhead. Execute fixes what is shown; while it waits the fields hold and the button shows
- * it is waiting; a refusal comes back here with the server's reason and the input kept.
+ * The Motion Space's New and Modify dialog (inner#1711 design §8, #1490 design §5.1): the prompt, or a modification's
+ * instruction with the request it starts from, then engine, aspect and duration. Execute fixes what is shown; while
+ * it waits the fields hold and the button shows it is waiting; a refusal comes back here with the server's reason and
+ * the input kept.
  * @param props - The draft and its actions.
  * @param props.spaceId - The Space, for field ids.
  * @param props.draft - The open draft.
@@ -44,7 +42,7 @@ interface TimelineWebAnimationDialogProps {
  * @returns The dialog.
  * @throws {never} Never.
  */
-export function TimelineWebAnimationDialog({ spaceId, draft, retry, limits, onEdit, onExecute, onClose }: TimelineWebAnimationDialogProps): React.JSX.Element {
+export function WebAnimationDialog({ spaceId, draft, retry, limits, onEdit, onExecute, onClose }: WebAnimationDialogProps): React.JSX.Element {
   const t = useTranslation();
   const returnFocus = useReturnFocus(true);
   const submitting = draft.status === 'submitting';
@@ -56,7 +54,7 @@ export function TimelineWebAnimationDialog({ spaceId, draft, retry, limits, onEd
   const changeOpen = React.useCallback((open: boolean): void => { if (!open) onClose(); }, [onClose]);
   const submit = React.useCallback((event: React.FormEvent): void => { event.preventDefault(); onExecute(); }, [onExecute]);
   const changePrompt = React.useCallback((event: React.ChangeEvent<HTMLTextAreaElement>): void => onEdit({ prompt: event.target.value }), [onEdit]);
-  const changeEngine = React.useCallback((value: string): void => { if (value === 'deepseek') onEdit({ engine: value }); }, [onEdit]);
+  const changeEngine = React.useCallback((value: string): void => { if (isWebAnimationEngine(value)) onEdit({ engine: value }); }, [onEdit]);
   const changeAspect = React.useCallback((value: string): void => {
     if (value === '16:9' || value === '9:16' || value === '1:1') onEdit({ aspect: value });
   }, [onEdit]);
@@ -64,20 +62,20 @@ export function TimelineWebAnimationDialog({ spaceId, draft, retry, limits, onEd
   const changeDuration = React.useCallback((event: React.ChangeEvent<HTMLInputElement>): void => {
     onEdit({ durationSeconds: event.target.value.trim() === '' ? Number.NaN : Number(event.target.value) });
   }, [onEdit]);
-  const changeAdd = React.useCallback((checked: boolean): void => onEdit({ addAtPlayhead: checked }), [onEdit]);
-  const fieldId = `timeline-web-animation-${spaceId}`;
+  const fieldId = `motion-dialog-${spaceId}`;
+  const modifying = input.base !== null;
   return <Dialog open onOpenChange={changeOpen}>
     <DialogContent onCloseAutoFocus={returnFocus}>
       <DialogHeader>
-        <DialogTitle>{t(retry ? 'timeline.webAnimation.dialog.retryTitle' : 'timeline.webAnimation.dialog.title')}</DialogTitle>
-        <DialogDescription>{t('timeline.webAnimation.dialog.description')}</DialogDescription>
+        <DialogTitle>{t(modifying ? 'spaces.webAnimation.dialog.modifyTitle' : retry ? 'timeline.webAnimation.dialog.retryTitle' : 'timeline.webAnimation.dialog.title')}</DialogTitle>
+        <DialogDescription>{modifying ? t('spaces.webAnimation.dialog.modifyDescription', { base: input.base?.request ?? '' }) : t('timeline.webAnimation.dialog.description')}</DialogDescription>
       </DialogHeader>
       <form noValidate onSubmit={submit}>
         <DialogBody className='flex flex-col gap-4'>
           <div className='flex flex-col gap-1.5'>
-            <Label htmlFor={`${fieldId}-prompt`}>{t('timeline.webAnimation.dialog.prompt')}</Label>
+            <Label htmlFor={`${fieldId}-prompt`}>{t(modifying ? 'spaces.webAnimation.dialog.instruction' : 'timeline.webAnimation.dialog.prompt')}</Label>
             <Textarea id={`${fieldId}-prompt`} data-testid='web-animation-prompt' rows={4} autoComplete='off' maxLength={limits.promptMaxLength} className='resize-none'
-              placeholder={t('timeline.webAnimation.dialog.promptPlaceholder')} value={input.prompt} disabled={submitting} onChange={changePrompt} />
+              placeholder={t(modifying ? 'spaces.webAnimation.dialog.instructionPlaceholder' : 'timeline.webAnimation.dialog.promptPlaceholder')} value={input.prompt} disabled={submitting} onChange={changePrompt} />
             <span className='self-end text-xs tabular-nums text-muted-foreground'>{`${input.prompt.length} / ${limits.promptMaxLength}`}</span>
           </div>
           <div className='grid grid-cols-3 gap-3'>
@@ -100,10 +98,6 @@ export function TimelineWebAnimationDialog({ spaceId, draft, retry, limits, onEd
               <Input id={`${fieldId}-duration`} data-testid='web-animation-duration' type='number' inputMode='numeric' autoComplete='off' min={min} max={max} step={1} className='w-full'
                 value={Number.isFinite(input.durationSeconds) ? input.durationSeconds : ''} disabled={submitting} onChange={changeDuration} />
             </div>
-          </div>
-          <div className='flex items-center justify-between gap-3'>
-            <Label htmlFor={`${fieldId}-add`} className='text-sm'>{t('timeline.webAnimation.dialog.addAtPlayhead')}</Label>
-            <Switch id={`${fieldId}-add`} data-testid='web-animation-add-at-playhead' checked={input.addAtPlayhead} onCheckedChange={changeAdd} disabled={submitting} />
           </div>
           {error !== null && <p role='alert' className='text-sm text-status-error-foreground'>{error}</p>}
         </DialogBody>

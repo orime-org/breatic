@@ -9,6 +9,7 @@ import { CanvasSpace } from '@web/spaces/canvas/CanvasSpace';
 import { DocumentSpace } from '@web/spaces/document/DocumentSpace';
 import { TimelineSpace } from '@web/spaces/timeline/TimelineSpace';
 import { ThreeDSpace } from '@web/spaces/three-d/ThreeDSpace';
+import { WebAnimationSpace } from '@web/spaces/web-animation/WebAnimationSpace';
 
 export interface SpaceBodyProps {
   spaceId: string;
@@ -68,5 +69,11 @@ export const SPACE_TYPES: Record<SpaceType, SpaceDefinition> = {
     label: 'Timeline',
     icon: 'film',
     bodyComponent: TimelineSpace,
+  },
+  web_animation: {
+    type: 'web_animation',
+    label: 'Motion',
+    icon: 'clapperboard',
+    bodyComponent: WebAnimationSpace,
   },
 };

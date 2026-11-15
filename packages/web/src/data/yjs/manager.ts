@@ -8,6 +8,7 @@ import {
   documentSpaceDocName,
   timelineSpaceDocName,
   threeDSpaceDocName,
+  webAnimationSpaceDocName,
 } from '@breatic/shared';
 
 /**
@@ -18,6 +19,7 @@ import {
  *   - `project-{projectId}/canvas-{spaceId}` — one doc per canvas space
  *   - `project-{projectId}/document-{spaceId}` — one doc per document space
  *   - `project-{projectId}/timeline-{spaceId}` — one doc per timeline space
+ *   - `project-{projectId}/web_animation-{spaceId}` — one doc per Motion space (its annotations)
  *
  * Yjs requires the SAME Y.Doc instance for a given name across all
  * consumers in a tab — otherwise edits go to parallel docs and never
@@ -114,6 +116,7 @@ export const docName = {
   documentSpace: documentSpaceDocName,
   timelineSpace: timelineSpaceDocName,
   threeDSpace: threeDSpaceDocName,
+  webAnimationSpace: webAnimationSpaceDocName,
 };
 
 /**

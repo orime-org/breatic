@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { keepPreviousData, useQuery, type Query } from '@tanstack/react-query';
 import type { TimelineDocumentV1, TimelineWebResolution } from '@breatic/shared';
-import { timelineExecutionEnded } from '@breatic/shared/space-content';
+import { webAnimationExecutionEnded } from '@breatic/shared/space-content';
 
 import { spaceTasksQueryKey } from '@web/data/api/scene';
 import { timelineApi } from '@web/data/api/timeline';
@@ -57,7 +57,7 @@ export function useTimelineWebResolution(projectId: string, spaceId: string, doc
     [projectId, sourceIds, executionIds]);
   const refetchInterval = React.useCallback((query: Query<TimelineWebResolution>): number | false => {
     const executions = query.state.data?.executions ?? {};
-    return refreshMs !== undefined && executionIds.some((id) => { const execution = executions[id]; return execution !== undefined && !timelineExecutionEnded(execution.status); })
+    return refreshMs !== undefined && executionIds.some((id) => { const execution = executions[id]; return execution !== undefined && !webAnimationExecutionEnded(execution.status); })
       ? refreshMs : false;
   }, [refreshMs, executionIds]);
   const enabled = sourceIds.length > 0 || executionIds.length > 0;

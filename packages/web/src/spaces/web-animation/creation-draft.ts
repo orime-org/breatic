@@ -2,22 +2,25 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The web-animation creation dialog's state (inner#1711 design §9): `transitionCreationDraft` is its one writer.
+ * The Motion Space's New and Modify dialog state (inner#1711 design §9, #1490 design §5.1): `transitionCreationDraft`
+ * is its one writer.
  *
  * Execute fixes the input and the action id; until the accept answers, edits are ignored, a second Execute joins the
  * same action and opening shows that submission. Closing while submitting hides the dialog and lets the submission go
  * on; acceptance closes the draft, a refusal brings it back with the user's input and the reason.
  */
 
-import type { TimelineExecutionCreateInput } from '@breatic/shared/space-content';
+import type { WebAnimationEngine } from '@web/spaces/web-animation/execution-text';
 
 /** What the user fills in. */
 export interface CreationDraftInput {
+  /** The result a modification starts from, or null for a new animation. */
+  base: { sourceVersionId: string; request: string } | null;
+  /** The prompt of a new animation, or the instruction of a modification. */
   prompt: string;
-  engine: TimelineExecutionCreateInput['engine'];
-  aspect: TimelineExecutionCreateInput['aspect'];
+  engine: WebAnimationEngine;
+  aspect: '16:9' | '9:16' | '1:1';
   durationSeconds: number;
-  addAtPlayhead: boolean;
 }
 
 /** Closed, being filled in, or submitted and waiting for the accept. */

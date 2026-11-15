@@ -23,7 +23,7 @@ import { t } from '@breatic/shared';
 import { timelineApi } from '@web/data/api/timeline';
 import type * as TimelineApiModule from '@web/data/api/timeline';
 import { TimelineWebPreview, type TimelineWebEntry } from '@web/spaces/timeline/TimelineWebPreview';
-import { TimelineWebResultPreview } from '@web/spaces/timeline/TimelineWebResultPreview';
+import { MotionResultPlayer } from '@web/spaces/web-animation/MotionResultPlayer';
 import type { WebInstanceState } from '@web/spaces/timeline/web-animation-host';
 import { SRC_A, boundTo, webClip } from '@web/data/yjs/__tests__/timeline-web-fixtures';
 
@@ -344,7 +344,7 @@ function answerLastSeek(result: ResultPlayer): void {
   reply({ type: 'breatic-frame-ready', session: seek.session, sequence: seek.sequence }, result.frameWindow);
 }
 
-describe('execution list result preview', () => {
+describe('Motion result player', () => {
   beforeEach(() => {
     // The player counts as defined, so the preview drives it; the element itself stays inert.
     const get = customElements.get.bind(customElements);
@@ -403,15 +403,14 @@ describe('execution list result preview', () => {
 });
 
 /**
- * Render a succeeded execution's result preview inside the query cache the execution list provides.
+ * Render a succeeded execution's result in the Motion player, inside the query cache the Motion Space provides.
  * @throws {Error} When rendering fails.
  */
 function showResult(): void {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
-  // The list opens inside the Timeline Space, which has read the Timeline limits already.
+  // The Motion Space has read the Timeline limits already.
   client.setQueryData(['timeline-limits', PROJECT], LIMITS);
-  render(<QueryClientProvider client={client}>
-    <TimelineWebResultPreview projectId={PROJECT} executionId={EXECUTION} sourceVersionId={SRC_A}
-      input={{ prompt: 'Gold dot along an arc', engine: 'deepseek', aspect: '16:9', durationSeconds: 2, fps: FPS }} />
-  </QueryClientProvider>);
+  render(<QueryClientProvider client={client}><div className='relative'>
+    <MotionResultPlayer projectId={PROJECT} executionId={EXECUTION} sourceVersionId={SRC_A} input={{ durationSeconds: 2, fps: FPS }} frame={0} />
+  </div></QueryClientProvider>);
 }

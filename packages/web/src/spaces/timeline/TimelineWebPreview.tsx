@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { createPortal } from 'react-dom';
 import type { TimelineExecutionStatus, TimelineRate, TimelineWebAnimationClip } from '@breatic/shared';
-import { timelineExecutionFailed } from '@breatic/shared/space-content';
+import { webAnimationExecutionFailed } from '@breatic/shared/space-content';
 
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -244,7 +244,7 @@ export function TimelineWebPreview({ projectId, entries, states, sharing, onPlay
     {notes !== null && createPortal(<>
       {entries.filter((entry) => entry.instance === null).map((entry) => {
         const status = entry.status ?? '';
-        const ended = entry.status !== null && timelineExecutionFailed(entry.status);
+        const ended = entry.status !== null && webAnimationExecutionFailed(entry.status);
         return <PreviewNote key={entry.clip.id} clipId={entry.clip.id} z={entry.z}
           text={t(ended ? 'timeline.webAnimation.preview.failed' : 'timeline.webAnimation.preview.pending', { track: entry.track, status })} />;
       })}

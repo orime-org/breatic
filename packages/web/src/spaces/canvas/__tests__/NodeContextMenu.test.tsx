@@ -511,7 +511,7 @@ describe('NodeContextMenu — adding to the agent', () => {
 describe('NodeContextMenu — open source animation (#1490)', () => {
   it('offers "Open source animation" after the asset actions when the node has one, and runs it', () => {
     const onOpenSourceAnimation = vi.fn();
-    setup({ target: 'node', onDownload: () => {}, onUnderstand: () => {}, onOpenSourceAnimation });
+    setup({ target: 'node', onUpload: () => {}, onDownload: () => {}, onUnderstand: () => {}, onOpenSourceAnimation });
     const item = screen.getByTestId('node-menu-open-source-animation');
     expect(item).toHaveTextContent('Open source animation');
     const items = screen.getAllByRole('menuitem').map((element) => element.getAttribute('data-testid'));
@@ -521,7 +521,7 @@ describe('NodeContextMenu — open source animation (#1490)', () => {
   });
 
   it('leaves "Open source animation" out for a node without one', () => {
-    setup({ target: 'node', onDownload: () => {}, onUnderstand: () => {} });
+    setup({ target: 'node', onUpload: () => {}, onDownload: () => {}, onUnderstand: () => {} });
     expect(screen.queryByTestId('node-menu-open-source-animation')).not.toBeInTheDocument();
   });
 });

@@ -83,6 +83,9 @@ interface CommentDelete {
   readonly commentId: string;
 }
 
+/** The root map a store's threads live under, read from its document. */
+export type ThreadRoot = (doc: Y.Doc) => Y.Map<unknown>;
+
 /** Where a comment to delete sits. */
 interface CommentEntry {
   readonly comments: Y.Array<Y.Map<unknown>>;
@@ -96,15 +99,15 @@ interface CommentEntry {
  * what the library's own `deleteComment` checks except "already deleted": a
  * soft-deleted comment's map is removed like any other.
  * @param store - The store.
- * @param doc - The document the threads live in.
+ * @param threads - The root map the threads live under.
  * @param target - The comment.
  * @param target.threadId - Its thread.
  * @param target.commentId - The comment.
  * @returns Where it sits.
  * @throws {Error} When the thread or comment is missing or the user may not delete it.
  */
-function commentEntry(store: YjsThreadStore, doc: Y.Doc, { threadId, commentId }: CommentDelete): CommentEntry {
-  const thread = documentCommentThreads(doc).get(threadId);
+function commentEntry(store: YjsThreadStore, threads: Y.Map<unknown>, { threadId, commentId }: CommentDelete): CommentEntry {
+  const thread = threads.get(threadId);
   if (!(thread instanceof Y.Map)) throw new Error('Thread not found');
   const comments = thread.get('comments') as Y.Array<Y.Map<unknown>>;
   const all = comments.toArray();
@@ -135,11 +138,13 @@ export function checkCommentAdd(store: object, notify: boolean): SpaceWriteResul
  * writes run their Yjs transaction before their first await, so the write
  * happens inside the gate's callback; a refused one rejects with
  * {@link SpaceFullError}.
+ * Document comments and Motion annotations share it, each under its own root key.
  * @param store - The store; its methods are replaced in place.
  * @param doc - The document the threads live in.
+ * @param root - The root map the threads live under.
  * @returns The same store.
  */
-function sizeGated(store: YjsThreadStore, doc: Y.Doc): YjsThreadStore {
+export function sizeGated(store: YjsThreadStore, doc: Y.Doc, root: ThreadRoot): YjsThreadStore {
   storeDocs.set(store, doc);
   const methods = store as unknown as Record<string, (options: unknown) => Promise<unknown>>;
   for (const [method, kind] of WRITE_KINDS) {
@@ -153,12 +158,12 @@ function sizeGated(store: YjsThreadStore, doc: Y.Doc): YjsThreadStore {
         const target = options as CommentDelete;
         let entry: CommentEntry;
         try {
-          entry = commentEntry(store, doc, target);
+          entry = commentEntry(store, root(doc), target);
         } catch (err) {
           return Promise.reject(err);
         }
         const result = writeSpaceDoc(name, { kind: 'remove' }, () => doc.transact(() => {
-          if (entry.last) documentCommentThreads(doc).delete(target.threadId);
+          if (entry.last) root(doc).delete(target.threadId);
           else entry.comments.delete(entry.index);
         }));
         return result.ok ? Promise.resolve(undefined) : Promise.reject(new SpaceFullError());
@@ -249,7 +254,7 @@ export function documentCommentsExtension(
     options.readWho().viewerId ?? '',
     documentCommentThreads(options.doc),
     documentCommentAuth(options.readWho),
-  ), options.doc);
+  ), options.doc, documentCommentThreads);
 
   return CommentsExtension({
     threadStore: store,

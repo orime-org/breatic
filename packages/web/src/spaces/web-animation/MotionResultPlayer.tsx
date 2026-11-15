@@ -3,36 +3,42 @@
 
 import * as React from 'react';
 import type { TimelineWebAnimationClip } from '@breatic/shared';
-import { webAnimationDurationFrames, type TimelineExecutionInput } from '@breatic/shared/space-content';
+import { webAnimationDurationFrames } from '@breatic/shared/space-content';
 
 import { Button } from '@web/components/ui/button';
 import { Skeleton } from '@web/components/ui/skeleton';
-import { Slider } from '@web/components/ui/slider';
 import { useTranslation } from '@web/i18n/use-translation';
-import { formatTimelineTimecode } from '@web/spaces/timeline/timeline-timecode';
 import { UNDRAWN_PLAYER, usePlayerDefined, useWebInstanceDrawn } from '@web/spaces/timeline/TimelineWebPreview';
 import { useTimelineLimits } from '@web/spaces/timeline/use-timeline-limits';
 import { useWebAnimationPreviewUrl } from '@web/spaces/timeline/use-web-animation-preview-url';
 import { createWebAnimationHost, type WebAnimationPlayerElement, type WebInstanceState } from '@web/spaces/timeline/web-animation-host';
 import { TIMELINE_DEFAULT_PLACEMENT } from '@web/data/yjs/timeline-edit';
 
-/** One succeeded execution's result. */
-interface TimelineWebResultPreviewProps { projectId: string; executionId: string; sourceVersionId: string; input: TimelineExecutionInput }
+/** One succeeded execution's result, and the frame the Space's play bar is on. */
+interface MotionResultPlayerProps {
+  projectId: string;
+  executionId: string;
+  sourceVersionId: string;
+  input: { durationSeconds: number; fps: { num: number; den: number } };
+  /** The frame to show, from the play bar. */
+  frame: number;
+}
 
 /**
- * A finished result in the execution list, scrubbed by its own slider through the same frame-ready bridge as the
- * Timeline preview (inner#1711 design §8), under the same player load timeout. Its page is sandboxed and takes no
- * clicks; a refused address, a player module that failed to load or a page that never answered shows unavailable with
- * a retry instead of the skeleton.
+ * A finished result in the Motion Space's preview (#1490 design §7.1), driven to the play bar's frame through the same
+ * frame-ready bridge as the Timeline preview (inner#1711 design §8), under the same player load timeout. It fills the
+ * frame it is placed in. Its page is sandboxed and takes no clicks; a refused address, a player module that failed to
+ * load or a page that never answered shows unavailable with a retry instead of the skeleton.
  * @param props - The result.
  * @param props.projectId - The Project its address is read through.
  * @param props.executionId - The execution, standing in for a copy's id.
  * @param props.sourceVersionId - The source version.
- * @param props.input - What the execution accepted: its aspect, length and frame rate.
- * @returns The preview.
+ * @param props.input - What the execution accepted: its length and frame rate.
+ * @param props.frame - The frame to show.
+ * @returns The player.
  * @throws {never} Never.
  */
-export function TimelineWebResultPreview({ projectId, executionId, sourceVersionId, input }: TimelineWebResultPreviewProps): React.JSX.Element {
+export function MotionResultPlayer({ projectId, executionId, sourceVersionId, input, frame }: MotionResultPlayerProps): React.JSX.Element {
   const t = useTranslation();
   const preview = useWebAnimationPreviewUrl(projectId, sourceVersionId);
   const player = usePlayerDefined(true);
@@ -40,8 +46,7 @@ export function TimelineWebResultPreview({ projectId, executionId, sourceVersion
   const loadTimeoutMs = React.useRef<number | undefined>(undefined);
   loadTimeoutMs.current = useTimelineLimits(projectId)?.webAnimation.playerLoadTimeoutMs;
   const [element, setElement] = React.useState<HTMLElement | null>(null);
-  const [frame, setFrame] = React.useState(0);
-  const position = React.useRef(0);
+  const position = React.useRef(frame);
   const durationFrames = webAnimationDurationFrames(input);
   const { fps } = input;
   const clip = React.useMemo((): TimelineWebAnimationClip => ({
@@ -70,28 +75,19 @@ export function TimelineWebResultPreview({ projectId, executionId, sourceVersion
     player.retry();
     refresh();
   }, [player, refresh]);
-  const scrub = React.useCallback((value: number[]): void => {
-    position.current = value[0] ?? 0;
-    setFrame(position.current);
+  React.useEffect(() => {
+    position.current = frame;
     host.reposition();
-  }, [host]);
-  const value = React.useMemo(() => [frame], [frame]);
-  const style = React.useMemo(() => ({ aspectRatio: input.aspect.replace(':', ' / ') }), [input.aspect]);
+  }, [host, frame]);
   const playerStyle = React.useMemo(() => ({ pointerEvents: 'none' as const, ...(drawn ? {} : UNDRAWN_PLAYER) }), [drawn]);
-  return <div className='flex flex-col gap-1.5'>
-    <div className='relative mx-auto max-h-48 w-full max-w-full overflow-hidden rounded-chrome border border-border bg-muted' style={style}>
-      {unavailable
-        ? <div className='absolute inset-0 flex items-center justify-center gap-2 bg-muted text-xs text-foreground'>
-          <span>{t('timeline.webAnimation.unavailable')}</span>
-          <Button variant='outline' size='compact' onClick={retry}>{t('timeline.retry')}</Button>
-        </div>
-        : !drawn && <Skeleton className='absolute inset-0 size-full rounded-none' />}
-      {preview.url !== null && <hyperframes-player ref={setElement} src={preview.url} sandbox-origin='' disable-click-to-play='' data-web-state={state ?? 'loading'}
-        className='absolute inset-0 size-full bg-transparent' style={playerStyle} />}
-    </div>
-    <div className='flex items-center gap-2'>
-      <Slider aria-label={t('timeline.seek')} value={value} onValueChange={scrub} min={0} max={Math.max(1, durationFrames - 1)} step={1} className='min-w-0 flex-1' />
-      <span className='shrink-0 text-2xs tabular-nums text-muted-foreground'>{formatTimelineTimecode(frame, fps)}</span>
-    </div>
+  return <div className='absolute inset-0 overflow-hidden rounded-chrome bg-muted'>
+    {unavailable
+      ? <div className='absolute inset-0 flex items-center justify-center gap-2 bg-muted text-xs text-foreground'>
+        <span>{t('timeline.webAnimation.unavailable')}</span>
+        <Button variant='outline' size='compact' onClick={retry}>{t('timeline.retry')}</Button>
+      </div>
+      : !drawn && <Skeleton className='absolute inset-0 size-full rounded-none' />}
+    {preview.url !== null && <hyperframes-player ref={setElement} src={preview.url} sandbox-origin='' disable-click-to-play='' data-web-state={state ?? 'loading'}
+      className='absolute inset-0 size-full bg-transparent' style={playerStyle} />}
   </div>;
 }

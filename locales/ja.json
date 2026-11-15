@@ -1023,7 +1023,8 @@
       "snapshot": "スナップショットを保存",
       "download": "ダウンロード",
       "understand": "内容を読み取る",
-      "transcribe": "文字起こし"
+      "transcribe": "文字起こし",
+      "openSourceAnimation": "元のアニメーションを開く"
     },
     "edge": {
       "delete": "接続を削除"
@@ -2296,7 +2297,9 @@
       "document": "Document",
       "documentSub": "リッチテキスト + 共同編集",
       "timeline": "Timeline",
-      "timelineSub": "ビデオ / オーディオ編集"
+      "timelineSub": "ビデオ / オーディオ編集",
+      "webAnimation": "Motion",
+      "webAnimationSub": "コードでアニメーションを作り、動画に書き出す"
     },
     "create": {
       "title": "新規 Space",
@@ -2308,7 +2311,9 @@
       "namePlaceholder": "例:Cyberpunk Concept",
       "nameRemaining": "{count, plural, other {残り # 文字}}",
       "cancel": "キャンセル",
-      "submit": "作成"
+      "submit": "作成",
+      "scrollTypesStart": "種類を左へスクロール",
+      "scrollTypesEnd": "種類を右へスクロール"
     },
     "rename": {
       "inputAriaLabel": "Space の名前を変更",
@@ -2797,6 +2802,63 @@
       "reason": "この Space はいっぱいです。",
       "text": "テキストは追加されませんでした。この Space はいっぱいです。",
       "wait": "この Space はいっぱいです。一部の内容を削除すると完了します。"
+    },
+    "webAnimation": {
+      "addAnnotation": "注釈を追加",
+      "annotateAt": "{time} に注釈を追加",
+      "annotationDisconnected": "接続が切れました。もう一度注釈を追加してください。",
+      "annotationFailed": "注釈を保存できませんでした。",
+      "annotationPlaceholder": "変更したい点を書く",
+      "annotations": "注釈",
+      "annotationsAll": "すべて {count}",
+      "annotationsOpen": "未解決 {count}",
+      "baseWithAnnotations": "{base}（未解決の注釈 {count} 件）",
+      "canvasUnreachable": "この Canvas に接続できませんでした。",
+      "chooseCanvas": "どの Canvas に置くか",
+      "closePanel": "閉じる",
+      "completed": "完了",
+      "details": "詳細",
+      "dialog": {
+        "instruction": "変更内容",
+        "instructionPlaceholder": "例：タイトルをゆっくりにして、背景をもっと暗く",
+        "modifyDescription": "「{base}」を修正します。元の結果はそのまま残ります。",
+        "modifyTitle": "Web アニメーションを修正"
+      },
+      "discardAnnotation": "この注釈を破棄しますか？",
+      "discard": "破棄",
+      "keepWriting": "書き続ける",
+      "download": "ダウンロード",
+      "empty": "Web アニメーションはまだありません",
+      "emptyInProgress": "進行中のものはありません",
+      "executions": "実行一覧",
+      "export": "動画を書き出す",
+      "foreignCancel": "この実行は元の Project のもので、ここでは取り消せません。",
+      "hasPoint": "位置あり",
+      "inProgress": "進行中",
+      "listError": "一覧を読み込めませんでした。",
+      "madeInTimeline": "以前 Timeline で作ったもの",
+      "modifiedFromLabel": "修正元",
+      "modify": "修正",
+      "new": "新規作成",
+      "noAnnotations": "注釈はまだありません",
+      "noCanvas": "この Project にはまだ Canvas がありません",
+      "noOpenAnnotations": "未解決の注釈はありません",
+      "notFound": "この Web アニメーションが見つかりません。",
+      "pickPoint": "画面をクリックして位置を示すか、そのまま下に書く",
+      "placeOnCanvas": "Canvas に置く",
+      "placed": "「{name}」に置きました",
+      "placing": "動画を Canvas に置いているところです。",
+      "readOnlyNotice": "共同作業の人数が上限に達したため、注釈は今は表示のみです。新規作成・修正・書き出しは引き続き使えます。",
+      "reexport": "もう一度書き出す",
+      "replies": "返信 {count} 件",
+      "sourceLabel": "元のアニメーション",
+      "statusLabel": "状態",
+      "titleModifiedFrom": "「{base}」から修正：{request}",
+      "titleVideo": "動画 · {source}",
+      "unlistedResult": "その他の結果",
+      "viewSource": "元のアニメーションを見る",
+      "viewVideo": "動画を見る",
+      "sourceSpaceGone": "元のアニメーションがある Space はもうありません。"
     }
   },
   "menu": {
@@ -3833,8 +3895,6 @@
       "offFrame": "このクリップは現在のフレームにありません。"
     },
     "webAnimation": {
-      "create": "ウェブアニメーションを作成",
-      "executions": "実行リスト",
       "copy": "ウェブアニメーションのコピー",
       "durationShort": "{seconds} 秒",
       "dialog": {
@@ -3846,15 +3906,7 @@
         "engine": "エンジン",
         "aspect": "アスペクト比",
         "duration": "長さ（秒）",
-        "addAtPlayhead": "再生ヘッドの位置で Timeline に追加",
         "execute": "実行"
-      },
-      "list": {
-        "close": "実行リストを閉じる",
-        "completed": "完了",
-        "inProgress": "進行中",
-        "emptyCompleted": "完了した実行はまだありません。",
-        "emptyInProgress": "進行中の実行はありません。"
       },
       "status": {
         "awaiting_landing": "保存中",
@@ -3867,32 +3919,46 @@
         "expired": "期限切れ"
       },
       "step": {
-        "landing": "実行リクエストを保存"
+        "landing": "実行リクエストを保存",
+        "savingVideo": "動画を保存"
       },
       "phase": {
         "writing": "ページを作成",
         "validating": "フレームとマニフェストを検証",
-        "saving": "ソースを保存"
+        "saving": "ソースを保存",
+        "rendering": "動画をレンダリング"
       },
       "usageLabel": "使用量",
       "usage": "{credits} クレジット",
       "usagePending": "終了後に精算",
       "unavailable": "ウェブアニメーションを利用できません",
       "cancel": "キャンセル",
-      "addToTimeline": "Timeline に追加",
-      "addPlaceholder": "先に Timeline に追加",
       "retry": "再実行",
       "failure": {
         "feature_disabled": "ウェブアニメーションは現在利用できません。",
         "check": "ページがチェックを通過しませんでした。",
         "stopped": "作成が予期せず停止しました。",
-        "unknown": "実行に失敗しました。"
+        "unknown": "実行に失敗しました。",
+        "render": "動画をレンダリングできませんでした。"
       },
       "preview": {
         "pending": "{track}：ウェブアニメーション{status, select, awaiting_landing {保存中} queued {待機中} running {作成中} cancelling {キャンセル中} other {待機中}}…",
         "failed": "{track}：ウェブアニメーション{status, select, failed {失敗} cancelled {キャンセル済み} expired {期限切れ} other {利用不可}}、表示されません",
         "unavailable": "{track}：ウェブアニメーションを利用できません",
         "loading": "{track}：ウェブアニメーションを読み込み中…"
+      },
+      "add": "Web アニメーションを追加",
+      "goMake": "Motion で作る",
+      "openInMotion": "Motion で開く",
+      "modifiedFrom": "修正元：{base}",
+      "picker": {
+        "title": "Web アニメーションを追加",
+        "description": "結果を選ぶと、再生ヘッドの位置にコピーを置きます。",
+        "empty": "この Project にはまだ Web アニメーションがありません",
+        "making": "作成中",
+        "deletedSpace": "削除された Space",
+        "loadMore": "さらに読み込む",
+        "error": "Web アニメーションを読み込めませんでした。"
       }
     },
     "upload": {

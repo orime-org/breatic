@@ -8,7 +8,7 @@ import {
   endsAfter,
   scrollTargetFor,
   startsBefore,
-} from '@web/pages/project/chrome/tab-bar/tab-scroll';
+} from '@web/lib/strip-scroll';
 
 const VISIBLE = { start: 0, end: 100 };
 

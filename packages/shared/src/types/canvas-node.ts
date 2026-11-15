@@ -372,6 +372,12 @@ export interface CanvasNodeFields {
     mimeType?: string;
     /** Byte count of `content`, as the ledger counted it. See `data.mimeType`. */
     size?: number;
+    /**
+     * The Motion result a video was exported from (#1490 design §9.2): the Motion Space that exported it, the create or
+     * modify execution it renders and the address written into `content` when it was placed. Content, so it travels
+     * with copies; it stands for the video only while `content` is still `videoUrl`. Video only.
+     */
+    sourceAnimation?: { spaceId: string; executionId: string; videoUrl: string };
     /** Source node id when this data node was produced by a mini-tool from a parent node. */
     sourceNodeId?: string;
     /** Tool name when produced by mini-tool (e.g., 'image.crop'). */

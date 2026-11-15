@@ -2,11 +2,10 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The reads behind the execution list, web-clip resolution and preview (inner#1711 design §7.3 "address", §9 read
- * table).
+ * The reads behind web-clip resolution and preview (inner#1711 design §7.3 "address", §9 read table).
  *
- * The execution list and the web-source resolution live under `spaceTasksQueryKey(projectId, spaceId)`, so the
- * page's Space-task signal (`use-space-tasks-refresh.ts`) refetches both. The resolution asks only for the ids the
+ * The web-source resolution lives under `spaceTasksQueryKey(projectId, spaceId)`, so the page's Space-task signal
+ * (`use-space-tasks-refresh.ts`) refetches it. The resolution asks only for the ids the
  * document's web copies reference, refetches when that set changes, and polls while an execution it resolved is
  * unfinished. A preview address is fetched once per mount, outside that key, and never on window focus.
  */
@@ -20,7 +19,6 @@ import type { TimelineClip, TimelineDocumentV1 } from '@breatic/shared';
 import { spaceTasksQueryKey } from '@web/data/api/scene';
 import { timelineApi } from '@web/data/api/timeline';
 import type * as TimelineApiModule from '@web/data/api/timeline';
-import { timelineExecutionsQueryKey, useTimelineExecutions } from '@web/spaces/timeline/use-timeline-executions';
 import { useTimelineWebResolution } from '@web/spaces/timeline/use-timeline-web-resolution';
 import { useWebAnimationPreviewUrl } from '@web/spaces/timeline/use-web-animation-preview-url';
 import { MAIN, V2, V3, cid, clip, timeline } from '@web/data/yjs/__tests__/timeline-document-fixtures';
@@ -32,7 +30,7 @@ vi.mock('@web/data/api/timeline', async (importOriginal) => {
   const actual = await importOriginal<typeof TimelineApiModule>();
   return {
     ...actual,
-    timelineApi: { ...actual.timelineApi, listExecutions: vi.fn(), resolveWebSources: vi.fn(), previewUrl: vi.fn() },
+    timelineApi: { ...actual.timelineApi, resolveWebSources: vi.fn(), previewUrl: vi.fn() },
   };
 });
 
@@ -63,7 +61,6 @@ function docWith(clips: TimelineClip[]): TimelineDocumentV1 {
 }
 
 beforeEach(() => {
-  vi.mocked(timelineApi.listExecutions).mockReset().mockResolvedValue([]);
   vi.mocked(timelineApi.resolveWebSources).mockReset().mockResolvedValue(RESOLUTION);
   vi.mocked(timelineApi.previewUrl).mockReset().mockResolvedValue({ url: 'https://preview.example/a/index.html' });
 });
@@ -72,18 +69,6 @@ afterEach(() => {
   vi.useRealTimers();
   for (const client of clients.splice(0)) client.clear();
   focusManager.setFocused(undefined);
-});
-
-describe('useTimelineExecutions', () => {
-  it('keeps the list under the Space-task key, so the page signal refetches it', async () => {
-    expect(timelineExecutionsQueryKey(PROJECT, SPACE).slice(0, 3)).toEqual([...spaceTasksQueryKey(PROJECT, SPACE)]);
-    const { client, wrapper } = provider();
-    const hook = renderHook(() => useTimelineExecutions(PROJECT, SPACE), { wrapper });
-    await waitFor(() => expect(hook.result.current.data).toEqual([]));
-    expect(timelineApi.listExecutions).toHaveBeenCalledWith(PROJECT, SPACE, expect.any(AbortSignal));
-    await act(async () => { await client.invalidateQueries({ queryKey: spaceTasksQueryKey(PROJECT, SPACE) }); });
-    expect(timelineApi.listExecutions).toHaveBeenCalledTimes(2);
-  });
 });
 
 describe('useTimelineWebResolution', () => {

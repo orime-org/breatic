@@ -220,6 +220,8 @@ import {
   NODE_GATE_TOAST_KEY,
 } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
+import { sourceAnimationOf } from '@web/spaces/canvas/source-animation';
+import { useSpaceOpenRequestStore } from '@web/stores/space-open-request';
 import { downloadableAsset } from '@web/spaces/canvas/node-download';
 import { keepSnapshot } from '@web/spaces/canvas/keep-snapshot';
 import {
@@ -3880,6 +3882,18 @@ function CanvasSpaceInner({
   // return in `onNodeContextMenu` — today that return is what keeps this menu
   // shut for them. The browser makes the request itself so the file lands in
   // its download list; nothing here learns how it went.
+  // A video still showing what a Motion Space exported opens that result (#1490 design §9.3).
+  const menuSourceAnimation = React.useMemo(() => {
+    const node = nodes.find((n) => n.id === nodeMenu.nodeId);
+    return node === undefined ? null : sourceAnimationOf(node);
+  }, [nodes, nodeMenu.nodeId]);
+  const openSourceAnimationFromMenu = React.useCallback((): void => {
+    if (menuSourceAnimation === null) return;
+    useSpaceOpenRequestStore.getState().dispatch({
+      type: 'request',
+      request: { type: 'web_animation', spaceId: menuSourceAnimation.spaceId, select: menuSourceAnimation.executionId },
+    });
+  }, [menuSourceAnimation]);
   const downloadFromMenu = React.useCallback((): void => {
     if (menuDownloadUrl !== null) downloadAsset(menuDownloadUrl);
   }, [menuDownloadUrl]);
@@ -5119,6 +5133,7 @@ function CanvasSpaceInner({
               menuDownloadUrl === null ? undefined : understandFromMenu
             }
             understanding={understandingMenuNode}
+            onOpenSourceAnimation={menuSourceAnimation === null ? undefined : openSourceAnimationFromMenu}
             // Transcribe hears speech, which only audio and video carry; it
             // greys on the same answer the two above read.
             transcribeOffered={nodeMenu.type === 'audio' || nodeMenu.type === 'video'}

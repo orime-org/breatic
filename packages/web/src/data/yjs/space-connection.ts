@@ -53,4 +53,5 @@ export const DOC_NAME_BUILDERS: Partial<
   document: docName.documentSpace,
   timeline: docName.timelineSpace,
   '3d': docName.threeDSpace,
+  web_animation: docName.webAnimationSpace,
 };
