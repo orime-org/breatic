@@ -16,6 +16,8 @@
 import type { JSONContent } from '@tiptap/core';
 
 import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
+import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
+import { heldBackBy, MENTION_OPTIONAL_ATTR, type ParagraphMention } from '@web/spaces/canvas/generate/optional-paragraph';
 
 /**
  * Extracts the source node ids of all `@`-mentioned reference images in a
@@ -23,12 +25,16 @@ import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/re
  * TipTap JSON tree for reference-mention nodes; the returned ids drive the i2i
  * execute payload (only `@`-picked sources are sent — design B). A mention
  * whose `sourceNodeId` is missing or not a non-empty string is skipped
- * (collaborative Yjs content is untrusted).
+ * (collaborative Yjs content is untrusted). A paragraph an empty optional
+ * template input holds back is not sent, so what only it mentions is not
+ * either (inner#1811).
  * @param doc - The prompt editor content as TipTap JSON (`editor.getJSON()`).
+ * @param pool - The node's reference rows, which say whether an optional input holds a paragraph back.
  * @returns The `@`-mentioned source node ids, de-duplicated, in document order.
  */
 export function extractAtMentionedSourceIds(
   doc: JSONContent | undefined,
+  pool: ReadonlyArray<ReferenceRailItem> = [],
 ): string[] {
   const ordered: string[] = [];
   const seen = new Set<string>();
@@ -47,7 +53,22 @@ export function extractAtMentionedSourceIds(
     }
     node.content?.forEach(visit);
   };
-  visit(doc);
+  /**
+   * The mentions anywhere under a node.
+   * @param node - The node.
+   * @returns Each mention's source and mark.
+   */
+  const mentionsIn = (node: JSONContent): ParagraphMention[] =>
+    node.type === REFERENCE_MENTION_NODE
+      ? [{ id: node.attrs?.[MENTION_SOURCE_ID_ATTR], optional: node.attrs?.[MENTION_OPTIONAL_ATTR] }]
+      : (node.content ?? []).flatMap(mentionsIn);
+  if (doc?.type === 'doc') {
+    for (const block of doc.content ?? []) {
+      if (heldBackBy(mentionsIn(block), pool).length === 0) visit(block);
+    }
+  } else {
+    visit(doc);
+  }
   return ordered;
 }
 

@@ -12,6 +12,7 @@ import * as Y from 'yjs';
 import { CANVAS_NODES_KEY, REFERENCE_KINDS, type ReferenceKind } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useCanvasContext, useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
@@ -52,6 +53,8 @@ import {
   SpeakerParagraph,
 } from '@web/spaces/canvas/generate/dialogue-line';
 import { dispatchMachineEdit } from '@web/features/reference-mention/reference-mention-local-input';
+import { HELD_BACK_ATTR, OptionalParagraphs } from '@web/spaces/canvas/generate/optional-paragraph';
+import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 import { NO_MENTION_TOKENS, type MentionTokens } from '@web/spaces/canvas/generate/reference-urls';
 import { makeReferenceSuggestion } from '@web/spaces/canvas/generate/reference-mention-suggestion';
 import { planCascadeDeletion } from '@web/features/reference-mention/reference-mention-whitespace';
@@ -386,6 +389,60 @@ function projectChipsAfterWrite(editor: Editor, fragment: Y.XmlFragment, transac
   syncChipDisplay(editor, live);
 }
 
+/** Where a held-back paragraph sits in the box, and the inputs it waits for. */
+interface HeldBackHint {
+  box: React.CSSProperties;
+  names: string;
+}
+
+/** The area showing the hint, and the hint showing in it. */
+interface HeldBackHintArea {
+  areaRef: React.RefObject<HTMLDivElement | null>;
+  hint: HeldBackHint | null;
+  onPointerOver: (event: React.PointerEvent) => void;
+  onPointerLeave: () => void;
+}
+
+/**
+ * The hint over a paragraph an empty optional template input holds back
+ * (inner#1811): shown while the pointer is on the paragraph's words, not on a
+ * chip in it, which has its own preview. Its anchor sits over the paragraph
+ * inside the box, in the box's own coordinates, so it scrolls and zooms with
+ * the canvas.
+ * @returns The area's ref and handlers, and the hint showing, if any.
+ */
+function useHeldBackHint(): HeldBackHintArea {
+  const areaRef = React.useRef<HTMLDivElement | null>(null);
+  const [hint, setHint] = React.useState<HeldBackHint | null>(null);
+  const shown = React.useRef<Element | null>(null);
+  useFollowCanvasViewport(hint !== null);
+  const onPointerOver = React.useCallback((event: React.PointerEvent): void => {
+    const area = areaRef.current;
+    const target = event.target instanceof Element ? event.target : null;
+    const found = target?.closest(`[${HELD_BACK_ATTR}]`);
+    const paragraph = found instanceof HTMLElement && !target?.closest('[data-reference-mention]') ? found : null;
+    if (paragraph === shown.current) return;
+    shown.current = paragraph;
+    if (area === null || paragraph === null) {
+      setHint(null);
+      return;
+    }
+    const outer = area.getBoundingClientRect();
+    const inner = paragraph.getBoundingClientRect();
+    // The canvas zoom scales both rects; the box's own pixels are what the anchor is placed in.
+    const scale = area.offsetWidth > 0 ? outer.width / area.offsetWidth : 1;
+    setHint({
+      box: { top: (inner.top - outer.top) / scale, left: (inner.left - outer.left) / scale, width: inner.width / scale, height: inner.height / scale },
+      names: paragraph.getAttribute(HELD_BACK_ATTR) ?? '',
+    });
+  }, []);
+  const onPointerLeave = React.useCallback((): void => {
+    shown.current = null;
+    setHint(null);
+  }, []);
+  return { areaRef, hint, onPointerOver, onPointerLeave };
+}
+
 /**
  * The Generate panel's collaborative prompt editor. Slice 1 is plain text: a
  * minimal TipTap schema (Document / Paragraph / Text) bound to the node's
@@ -481,7 +538,7 @@ export const PromptEditor = React.forwardRef<
       const report = (e: Editor): void => {
         if (constructing) return;
         wiring.onTextChange(serialized(e, wiring, dialogueOn));
-        wiring.onAtMentionsChange(extractAtMentionedSourceIds(e.getJSON()));
+        wiring.onAtMentionsChange(extractAtMentionedSourceIds(e.getJSON(), wiring.references));
       };
       const built = new Editor({
         extensions: [
@@ -543,6 +600,9 @@ export const PromptEditor = React.forwardRef<
             // same pool (spec §9.1).
             getPool: () => wiring.references,
           }),
+          // A paragraph an empty optional template input holds back is greyed,
+          // as it is left out of what is sent (inner#1811).
+          OptionalParagraphs.configure({ getPool: () => wiring.references }),
         ],
         onCreate: ({ editor: e }) => report(e),
         onUpdate: ({ editor: e }) => report(e),
@@ -614,10 +674,14 @@ export const PromptEditor = React.forwardRef<
   );
   // A kept editor shown again reported its values when it was built, to
   // whichever container showed it then; this one has to hear them too.
+  // The pool also says which paragraphs are sent (inner#1811): a picture put
+  // into an optional input's node, or taken out, changes them with no edit to
+  // the prompt, so they are redrawn and the sources reported again.
   React.useEffect(() => {
     if (editor.isDestroyed) return;
-    onAtMentionsChange(extractAtMentionedSourceIds(editor.getJSON()));
-  }, [editor, onAtMentionsChange]);
+    dispatchMachineEdit(editor.view, editor.state.tr);
+    onAtMentionsChange(extractAtMentionedSourceIds(editor.getJSON(), references));
+  }, [editor, onAtMentionsChange, references]);
   // Publish this window's focus and dim collaborators who have left theirs.
   // Shared with the document editor — both halves have to travel together,
   // or one side publishes into a void and the other renders a flag nobody
@@ -768,6 +832,7 @@ export const PromptEditor = React.forwardRef<
   // their effect).
   // A mode whose model declares no prompt sends an empty one (#1950), but it
   // mounts no editor either, so no chip is on screen to dim.
+  const heldBack = useHeldBackHint();
   const dimReferences = REFERENCE_KINDS.filter((kind) => !referenceKinds.includes(kind))
     .map((kind) => DIM_CHIP[kind])
     .join('');
@@ -815,7 +880,19 @@ export const PromptEditor = React.forwardRef<
         dimReferences
       }
     >
-      <EditorContent editor={editor} />
+      <div ref={heldBack.areaRef} className='relative' onPointerOver={heldBack.onPointerOver} onPointerLeave={heldBack.onPointerLeave}>
+        <EditorContent editor={editor} />
+        {heldBack.hint !== null && (
+          <Tooltip open>
+            <TooltipTrigger asChild>
+              <span aria-hidden='true' className='pointer-events-none absolute' style={heldBack.hint.box} />
+            </TooltipTrigger>
+            <TooltipContent side='top' avoidCollisions={false}>
+              {t('canvas.generatePanel.optionalParagraphHint', { name: heldBack.hint.names })}
+            </TooltipContent>
+          </Tooltip>
+        )}
+      </div>
       {dialogueOn && (
         <Button
           type='button'

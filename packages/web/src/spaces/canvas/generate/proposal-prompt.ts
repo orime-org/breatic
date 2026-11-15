@@ -25,6 +25,7 @@ import { markText, type CanvasProposal, type NodeType, type PromptSegment } from
 import { PROMPT_NOTE_LABEL_ATTR, PROMPT_NOTE_NODE } from '@web/features/prompt-note/prompt-note';
 import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
 import { SPEAKER_ATTR } from '@web/spaces/canvas/generate/dialogue-line';
+import { MENTION_OPTIONAL_ATTR } from '@web/spaces/canvas/generate/optional-paragraph';
 import {
   MENTION_KIND_ATTR,
   MENTION_LABEL_ATTR,
@@ -44,6 +45,8 @@ export interface ProposalMention {
   kind: NodeType;
   /** Its picture, when it lands holding one. */
   thumbnail?: string;
+  /** The ref is to a template input the user may leave empty (inner#1811). */
+  optional?: true;
 }
 
 /** Answers what a ref at a proposal index mentions; undefined when nothing was placed there. */
@@ -96,7 +99,7 @@ function layOut(segments: readonly PromptSegment[], mentionOf: MentionOf): { not
     }
     if (segment.ref !== undefined) {
       const mention = mentionOf(segment.ref);
-      if (mention) lines[lines.length - 1]?.push(mention);
+      if (mention) lines[lines.length - 1]?.push(segment.optional === true ? { ...mention, optional: true } : mention);
       continue;
     }
     const [first = '', ...rest] = (segment.slot ? markText(segment.slot) : segment.text).split('\n');
@@ -123,6 +126,7 @@ function mentionElement(mention: ProposalMention): Y.XmlElement {
   element.setAttribute(MENTION_LABEL_ATTR, mention.label);
   element.setAttribute(MENTION_KIND_ATTR, mention.kind);
   if (mention.thumbnail !== undefined) element.setAttribute(MENTION_THUMBNAIL_ATTR, mention.thumbnail);
+  if (mention.optional === true) element.setAttribute(MENTION_OPTIONAL_ATTR, true as unknown as string);
   return element;
 }
 
