@@ -566,6 +566,38 @@ test('dragging a row into the page margin level with a column gap in a scrolled 
   await expect(cell.locator('.doc-column')).toHaveCount(2);
 });
 
+test('dragging a row into the gap level with a table at the top of a column draws the line beside the table', async () => {
+  await openWithLines(page, ['lead', 'alpha', 'delta']);
+  const lead = (await row(page, 'lead').boundingBox())!;
+  await dragRowTo(page, 'alpha', { x: lead.x + 4, y: lead.y + lead.height / 2 });
+  await expect.poll(() => groups(page)).toEqual([['alpha', 'lead']]);
+  await tableUnder(page, 'alpha');
+  // The table now heads its column, a line under it.
+  await page.mouse.move(5, 5);
+  const alpha = (await row(page, 'alpha').boundingBox())!;
+  await page.mouse.move(alpha.x + 30, alpha.y + alpha.height / 2, { steps: 3 });
+  await page.getByTestId('doc-block-handle').click();
+  await page.getByTestId('doc-block-row-delete').click();
+  const first = page.locator(`${EDITOR} .doc-column`).first();
+  await expect(first.locator(':scope > *').first()).toHaveAttribute('data-node-type', 'docTable');
+  const [left, right] = await page.locator(`${EDITOR} .doc-column`).evaluateAll((list) => list.map((column) => column.getBoundingClientRect().toJSON() as DOMRect));
+  const table = (await first.locator('[data-node-type="docTable"]').boundingBox())!;
+  // Hold the drag level with the table's middle and read the line.
+  await page.mouse.move(5, 5);
+  const box = (await row(page, 'delta').boundingBox())!;
+  await page.mouse.move(box.x + 30, box.y + box.height / 2, { steps: 3 });
+  const grip = (await page.getByTestId('doc-block-handle').boundingBox())!;
+  await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2, { steps: 3 });
+  await page.mouse.down();
+  await page.mouse.move(grip.x + 20, grip.y + 20, { steps: 3 });
+  await page.mouse.move(left!.right + (right!.left - left!.right) / 4, table.y + table.height / 2, { steps: 12 });
+  const line = (await page.locator('.prosemirror-dropcursor-vertical').boundingBox())!;
+  await page.mouse.up();
+  expect(line.y).toBeLessThan(table.y + table.height);
+  expect(line.y + line.height).toBeGreaterThan(table.y);
+  await expect.poll(() => page.locator(`${EDITOR} .doc-column`).count()).toBe(3);
+});
+
 test('dragging a row into the gap between two columns in a cell adds a column in the cell', async () => {
   await openWithLines(page, ['lead', 'moved', 'third']);
   await tableUnder(page, 'lead');
