@@ -81,9 +81,9 @@ async function apply(region: string, event: OutboxEvent, tx: DbTx): Promise<bool
       if (typeof p.name === "string") profile.name = p.name;
       if (typeof p.slug === "string") profile.slug = p.slug;
       if (p.avatarUrl === null || typeof p.avatarUrl === "string") profile.avatarUrl = p.avatarUrl;
-      // The rename's reservation stays: a later rename of the same Studio
-      // back to this slug may still rely on it, and the slug sweep lets it
-      // go once the region's own slug says which one stands.
+      // The rename's reservation stays: a later event of the same Studio may
+      // carry this slug again, and the slug sweep lets it go once the region
+      // has delivered every event of the Studio.
       await studioDirectoryRepo.updateProfile(String(p.studioId), profile, tx);
       return true;
     }

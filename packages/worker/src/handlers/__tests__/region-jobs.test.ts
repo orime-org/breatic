@@ -12,7 +12,7 @@ const h = vi.hoisted(() => ({
   usagePerStudio: vi.fn(async () => [{ studioId: "s-1", bytes: 10 }]),
   listDue: vi.fn(async (): Promise<Array<{ slug: string; studioId: string; region: string | null }>> => []),
   settle: vi.fn(async () => undefined),
-  getById: vi.fn(async (): Promise<{ slug: string } | null> => null),
+  slugState: vi.fn(async (): Promise<{ slug: string | null; eventsInFlight: boolean }> => ({ slug: null, eventsInFlight: false })),
   logError: vi.fn(),
   relayOutbox: vi.fn(),
   reconcile: vi.fn(async () => 3),
@@ -44,8 +44,7 @@ vi.mock("@breatic/core", () => ({
 vi.mock("@breatic/domain", () => ({
   globalApi: () => ({ recordRegionUsage: h.recordRegionUsage, applyRegionEvent: h.applyRegionEvent }),
   regionOutboxService: { relayOutbox: h.relayOutbox },
-  directoryWrites: { settleSlugReservation: h.settle },
-  studioRepo: { getById: h.getById },
+  directoryWrites: { settleSlugReservation: h.settle, slugState: h.slugState },
   studioDirectoryService: { reconcileDirectoryAfterUpgrade: h.reconcile },
 }));
 
@@ -132,22 +131,23 @@ describe("region jobs", () => {
     expect(await deliver({ id: "4" })).toBe("applied");
   });
 
-  it("settles a past-due slug from the slug its region holds, and keeps it when the region does not answer", async () => {
+  it("settles a past-due slug from what its region says, and keeps it when the region does not answer", async () => {
     h.listDue.mockResolvedValueOnce([
       { slug: "here", studioId: "s-local", region: "sg" },
       { slug: "there", studioId: "s-us", region: null },
       { slug: "lost", studioId: "s-eu", region: "eu" },
     ]);
-    h.getById.mockResolvedValueOnce({ slug: "here" });
+    h.slugState.mockResolvedValueOnce({ slug: "here", eventsInFlight: false });
     h.callRegion.mockImplementation(async (...args: unknown[]) => {
       if (args[0] === "eu") throw new Error("no address for region eu");
-      return "renamed-again";
+      return { slug: "renamed-again", eventsInFlight: true };
     });
 
     expect(await sweepSlugReservations()).toBe(2);
-    expect(h.settle).toHaveBeenCalledWith("here", "s-local", "here");
-    expect(h.callRegion).toHaveBeenCalledWith("us-west", "studioSlug", ["s-us"], 5000);
-    expect(h.settle).toHaveBeenCalledWith("there", "s-us", "renamed-again");
+    expect(h.slugState).toHaveBeenCalledWith("s-local");
+    expect(h.settle).toHaveBeenCalledWith("here", "s-local", { slug: "here", eventsInFlight: false });
+    expect(h.callRegion).toHaveBeenCalledWith("us-west", "studioSlugState", ["s-us"], 5000);
+    expect(h.settle).toHaveBeenCalledWith("there", "s-us", { slug: "renamed-again", eventsInFlight: true });
     expect(h.settle).not.toHaveBeenCalledWith("lost", expect.anything(), expect.anything());
     expect(h.logError).toHaveBeenCalledWith(expect.objectContaining({ studioId: "s-eu" }), "slug_reservation_settle_failed");
   });

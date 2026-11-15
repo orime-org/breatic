@@ -54,6 +54,20 @@ export async function listUnsent(limit: number): Promise<OutboxRow[]> {
 }
 
 /**
+ * Whether any event filed under a key is still unsent.
+ * @param aggregateKey - The key, such as `studio:{id}`.
+ * @returns True when one is.
+ */
+export async function hasUnsent(aggregateKey: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: regionOutbox.id })
+    .from(regionOutbox)
+    .where(and(eq(regionOutbox.aggregateKey, aggregateKey), isNull(regionOutbox.sentAt)))
+    .limit(1);
+  return row !== undefined;
+}
+
+/**
  * Mark an event confirmed by the global region.
  * @param id - The event.
  */

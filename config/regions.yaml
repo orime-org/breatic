@@ -30,8 +30,8 @@
 # slug_reservation_sweep_interval_ms: how often the global region looks for
 #   slugs held for a rename that never reached it.
 # slug_reservation_stale_ms: how long after a rename reserves its slug the
-#   sweep asks the Studio's region which slug it holds, then lets the
-#   directory take it or lets it go.
+#   sweep asks the Studio's region which slug it holds and whether its events
+#   are still on their way, and keeps or lets go of the reservation.
 # slug_reservation_sweep_batch: how many past-due reservations one sweep
 #   settles.
 # outbox_relay_batch: how many outbox events one relay pass reads.

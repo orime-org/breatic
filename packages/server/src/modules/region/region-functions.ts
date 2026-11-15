@@ -7,7 +7,7 @@
  */
 
 import type { NotificationListView, RecentItem, SignupInvitationPreview } from "@breatic/shared";
-import { lookupKeysHere, profilesService, studioRepo, type KeyLookupAnswer } from "@breatic/domain";
+import { directoryWrites, lookupKeysHere, profilesService, type KeyLookupAnswer } from "@breatic/domain";
 import { getRedis, NotFoundError, publishSessionsRevoked, recordRevokedIdentities } from "@breatic/core";
 import { claimForwardedEmailInvitations } from "@server/modules/invitation/claim-email-invitations.js";
 import * as maintenanceService from "@server/modules/maintenance/maintenance.service.js";
@@ -102,11 +102,12 @@ export const SERVER_REGION_FUNCTIONS = {
    */
   previewInvitation: (token: string): Promise<SignupInvitationPreview> => getInvitationPreview(token),
   /**
-   * The slug a Studio in this region holds, for settling a slug reservation.
+   * The slug a Studio in this region holds and whether its events are still on
+   * their way, for settling a slug reservation.
    * @param studioId - The Studio.
-   * @returns Its slug, or null when it is gone.
+   * @returns Its slug state.
    */
-  studioSlug: async (studioId: string): Promise<string | null> => (await studioRepo.getById(studioId))?.slug ?? null,
+  studioSlugState: (studioId: string): Promise<directoryWrites.SlugState> => directoryWrites.slugState(studioId),
   /**
    * Mark one of the user's notifications in this region read.
    * @param id - The notification.

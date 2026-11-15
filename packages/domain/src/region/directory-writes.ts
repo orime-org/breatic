@@ -11,6 +11,7 @@
  */
 
 import { db, env, isGlobalRegion, regionOutboxRepo, studioDirectoryRepo, type DbTx } from "@breatic/core";
+import * as studioRepo from "@domain/studio/studio.repo.js";
 
 /**
  * Record that a Studio's transfer offer opened, until its expiry.
@@ -157,27 +158,47 @@ export async function reserveSlug(slug: string, studioId: string): Promise<boole
   });
 }
 
+/** What a Studio's region says about its slug, for settling a reservation. */
+export interface SlugState {
+  /** The slug the region holds, or null when the Studio is gone. */
+  slug: string | null;
+  /** Whether the region still has events of the Studio to deliver. */
+  eventsInFlight: boolean;
+}
+
 /**
- * Settle a reservation the sweep found past due, from the slug the Studio's
- * region actually holds. The sweep never writes the directory: the region's
- * ordered outbox (or a repair snapshot) does. A slug the region holds stays
- * reserved until the directory shows it; a slug it does not hold is let go.
- * Under the slug's lock, a reservation a rename reused since the region
- * answered is no longer due and is left alone.
+ * The slug a Studio in this region holds, and whether events of the Studio
+ * are still on their way to the global region. The slug is read first: a
+ * rename after it leaves an unsent event behind.
+ * @param studioId - The Studio.
+ * @returns Its slug state.
+ */
+export async function slugState(studioId: string): Promise<SlugState> {
+  const slug = (await studioRepo.getById(studioId))?.slug ?? null;
+  return { slug, eventsInFlight: await regionOutboxRepo.hasUnsent(`studio:${studioId}`) };
+}
+
+/**
+ * Settle a reservation the sweep found past due, from what the Studio's
+ * region says. The sweep never writes the directory: the region's ordered
+ * outbox (or a repair snapshot) does. While events of the Studio are on their
+ * way one of them may carry the slug, so it stays; after that it stays while
+ * the region holds it and the directory does not show it yet, and goes
+ * otherwise. Under the slug's lock, a reservation a rename reused since the
+ * region answered is no longer due and is left alone.
  * @param slug - The reserved slug.
  * @param studioId - The Studio.
- * @param actualSlug - The Studio's slug in its region, or null when it is gone.
+ * @param region - What the Studio's region says.
  * @returns Once settled.
  */
-export async function settleSlugReservation(slug: string, studioId: string, actualSlug: string | null): Promise<void> {
+export async function settleSlugReservation(slug: string, studioId: string, region: SlugState): Promise<void> {
   await db.transaction(async (tx) => {
     await studioDirectoryRepo.lockSlug(slug, tx);
     if (!(await studioDirectoryRepo.isReservationDue(slug, studioId, tx))) return;
-    if (actualSlug === slug && (await studioDirectoryRepo.lockRow(studioId, tx))?.slug !== slug) {
-      await studioDirectoryRepo.extendReservation(slug, studioId, tx);
-      return;
-    }
-    await studioDirectoryRepo.releaseSlugReservation(slug, studioId, tx);
+    const keep =
+      region.eventsInFlight || (region.slug === slug && (await studioDirectoryRepo.lockRow(studioId, tx))?.slug !== slug);
+    if (keep) await studioDirectoryRepo.extendReservation(slug, studioId, tx);
+    else await studioDirectoryRepo.releaseSlugReservation(slug, studioId, tx);
   });
 }
 

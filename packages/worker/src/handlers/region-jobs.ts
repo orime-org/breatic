@@ -10,7 +10,7 @@
 
 import type { Job } from "bullmq";
 import { assetRepo, callRegion, env, getRegionsConfig, GlobalApiError, isRegionUnavailable, logger, studioDirectoryRepo } from "@breatic/core";
-import { directoryWrites, globalApi, regionOutboxService, studioDirectoryService, studioRepo } from "@breatic/domain";
+import { directoryWrites, globalApi, regionOutboxService, studioDirectoryService } from "@breatic/domain";
 
 /** A sign-in's claims for one other region. */
 export interface InvitationClaimForwardJob {
@@ -114,8 +114,9 @@ export async function forwardRevocation(job: Job<IdentityRevocationForwardJob>):
 
 /**
  * Settle slug reservations past due: ask each Studio's region which slug it
- * holds, then let the directory take it or let it go. A region that does not
- * answer keeps its reservations for the next sweep.
+ * holds and whether events of the Studio are still on their way, then keep
+ * or let go of the reservation; the sweep never writes the directory. A
+ * region that does not answer keeps its reservations for the next sweep.
  * @returns How many were settled.
  * @throws {Error} When the reservations cannot be read.
  */
@@ -124,10 +125,10 @@ export async function sweepSlugReservations(): Promise<number> {
   for (const due of await studioDirectoryRepo.listDueSlugReservations(getRegionsConfig().slug_reservation_sweep_batch)) {
     const region = due.region ?? env.GLOBAL_REGION;
     try {
-      const actual = region === env.REGION
-        ? ((await studioRepo.getById(due.studioId))?.slug ?? null)
-        : ((await askRegion(region, "studioSlug", [due.studioId])) as string | null);
-      await directoryWrites.settleSlugReservation(due.slug, due.studioId, actual);
+      const state = region === env.REGION
+        ? await directoryWrites.slugState(due.studioId)
+        : ((await askRegion(region, "studioSlugState", [due.studioId])) as directoryWrites.SlugState);
+      await directoryWrites.settleSlugReservation(due.slug, due.studioId, state);
       settled += 1;
     } catch (err) {
       // The reservation stays held; the next sweep asks again.

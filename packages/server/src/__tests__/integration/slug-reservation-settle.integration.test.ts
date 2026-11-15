@@ -2,9 +2,12 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Settling a slug reservation the sweep found past due (inner#1955): the
- * directory takes the slug when the Studio's region holds it, and lets it go
- * when the region holds another; a reservation not yet due is left alone.
+ * Settling a slug reservation the sweep found past due (inner#1955): it stays
+ * while the Studio's region still has events of the Studio to deliver, or
+ * holds the slug the directory does not show yet; it goes once every event is
+ * delivered and the directory shows it, or the region holds another. The
+ * sweep never writes the directory, and a reservation not yet due is left
+ * alone.
  */
 
 import { describe, it, expect, beforeAll, afterAll, inject } from "vitest";
@@ -69,38 +72,50 @@ describe("settling a past-due slug reservation", () => {
     expect(listed.map((r) => r.slug)).not.toContain(ahead.newSlug);
   });
 
-  it("lets the slug go once the directory shows the slug the region holds", async () => {
+  it("lets the slug go once every event is delivered and the directory shows the slug the region holds", async () => {
     const r = await reserved(1);
     await sql`UPDATE studio_directory SET slug = ${r.newSlug} WHERE studio_id = ${r.studioId}`;
 
-    await directoryWrites.settleSlugReservation(r.newSlug, r.studioId, r.newSlug);
+    await directoryWrites.settleSlugReservation(r.newSlug, r.studioId, { slug: r.newSlug, eventsInFlight: false });
 
     expect(await state(r.studioId, r.newSlug)).toEqual({ directorySlug: r.newSlug, held: false });
   });
 
-  it("keeps the slug held, due again later, while the directory has not caught up with the region", async () => {
+  it("keeps the slug held, due again later, while the region holds it and the directory does not show it", async () => {
     const r = await reserved(1);
 
-    await directoryWrites.settleSlugReservation(r.newSlug, r.studioId, r.newSlug);
+    await directoryWrites.settleSlugReservation(r.newSlug, r.studioId, { slug: r.newSlug, eventsInFlight: false });
 
     expect(await state(r.studioId, r.newSlug)).toEqual({ directorySlug: r.oldSlug, held: true });
     const [row] = await sql<{ due: boolean }[]>`SELECT expires_at <= now() AS due FROM slug_reservations WHERE slug = ${r.newSlug} AND deleted_at IS NULL`;
     expect(row?.due).toBe(false);
   });
 
-  it("keeps the slug when a later rename of the Studio failed and the directory still shows the old slug", async () => {
+  // inner#1955: renamed S -> T -> S while the outbox was stalled; the directory
+  // still shows the S from before T, and the T and S events are on their way.
+  it("keeps the slug while events of the Studio are still on their way, though the directory shows it", async () => {
     const r = await reserved(1);
-    await sql`INSERT INTO slug_reservations (slug, studio_id, expires_at) VALUES (${`${r.newSlug}-c`}, ${r.studioId}, now() + interval '10 minutes')`;
+    await sql`UPDATE studio_directory SET slug = ${r.newSlug} WHERE studio_id = ${r.studioId}`;
 
-    await directoryWrites.settleSlugReservation(r.newSlug, r.studioId, r.newSlug);
+    await directoryWrites.settleSlugReservation(r.newSlug, r.studioId, { slug: r.newSlug, eventsInFlight: true });
+
+    expect(await state(r.studioId, r.newSlug)).toEqual({ directorySlug: r.newSlug, held: true });
+  });
+
+  // inner#1955: renamed to X and then to Y while the outbox was stalled; the
+  // event carrying X has not landed yet.
+  it("keeps a slug the region moved on from while events of the Studio are still on their way", async () => {
+    const r = await reserved(1);
+
+    await directoryWrites.settleSlugReservation(r.newSlug, r.studioId, { slug: r.oldSlug, eventsInFlight: true });
 
     expect(await state(r.studioId, r.newSlug)).toEqual({ directorySlug: r.oldSlug, held: true });
   });
 
-  it("lets the slug go when the region holds another", async () => {
+  it("lets the slug go once every event is delivered and the region holds another", async () => {
     const r = await reserved(1);
 
-    await directoryWrites.settleSlugReservation(r.newSlug, r.studioId, r.oldSlug);
+    await directoryWrites.settleSlugReservation(r.newSlug, r.studioId, { slug: r.oldSlug, eventsInFlight: false });
 
     expect(await state(r.studioId, r.newSlug)).toEqual({ directorySlug: r.oldSlug, held: false });
   });
@@ -109,7 +124,7 @@ describe("settling a past-due slug reservation", () => {
     const r = await reserved(1);
     expect(await directoryWrites.reserveSlug(r.newSlug, r.studioId)).toBe(true);
 
-    await directoryWrites.settleSlugReservation(r.newSlug, r.studioId, r.oldSlug);
+    await directoryWrites.settleSlugReservation(r.newSlug, r.studioId, { slug: r.oldSlug, eventsInFlight: false });
 
     expect(await state(r.studioId, r.newSlug)).toEqual({ directorySlug: r.oldSlug, held: true });
   });
@@ -157,5 +172,51 @@ describe("reserving a slug for a rename", () => {
     await regionOutboxApplyService.applyRegionEvent("sg", event("902", r.oldSlug));
 
     expect(await directoryWrites.reserveSlug(r.newSlug, stranger.studioId)).toBe(false);
+  });
+});
+
+describe("the slug state a region answers for the sweep", () => {
+  it("says events are in flight while one of the Studio's outbox events is unsent", async () => {
+    const r = await reserved(-5);
+    const [row] = await sql<{ id: string }[]>`
+      INSERT INTO region_outbox (aggregate_key, event_type, payload)
+      VALUES (${`studio:${r.studioId}`}, 'studio.profile_changed', ${sql.json({ studioId: r.studioId, slug: r.newSlug })})
+      RETURNING id`;
+
+    expect(await directoryWrites.slugState(r.studioId)).toEqual({ slug: r.oldSlug, eventsInFlight: true });
+
+    await sql`UPDATE region_outbox SET sent_at = now() WHERE id = ${row!.id}`;
+    expect(await directoryWrites.slugState(r.studioId)).toEqual({ slug: r.oldSlug, eventsInFlight: false });
+  });
+});
+
+describe("a Studio's slug events landing after a stalled outbox", () => {
+  // inner#1955: an sg admin renamed name and slug to X, then the slug to Y,
+  // while the outbox was stalled. Another Studio tries X before the events land.
+  it("applies both events, keeping the name, because X stays held until they land", async () => {
+    const r = await reserved(1);
+    const stranger = await reserved(-5);
+    const second = `${r.newSlug}-y`;
+    await sql`INSERT INTO slug_reservations (slug, studio_id, expires_at) VALUES (${second}, ${r.studioId}, now() - interval '1 minute')`;
+    const event = (id: string, payload: Record<string, unknown>) => ({
+      id,
+      aggregateKey: `studio:${r.studioId}`,
+      type: "studio.profile_changed",
+      payload: { studioId: r.studioId, ...payload },
+    });
+
+    await directoryWrites.settleSlugReservation(r.newSlug, r.studioId, { slug: second, eventsInFlight: true });
+    expect(await directoryWrites.reserveSlug(r.newSlug, stranger.studioId)).toBe(false);
+
+    expect(await regionOutboxApplyService.applyRegionEvent("sg", event("911", { name: "N1", slug: r.newSlug }))).toBe("applied");
+    expect(await regionOutboxApplyService.applyRegionEvent("sg", event("912", { slug: second }))).toBe("applied");
+    const [row] = await sql<{ name: string; slug: string }[]>`SELECT name, slug FROM studio_directory WHERE studio_id = ${r.studioId}`;
+    expect(row).toEqual({ name: "N1", slug: second });
+
+    await sql`UPDATE slug_reservations SET expires_at = now() - interval '1 minute' WHERE studio_id = ${r.studioId} AND deleted_at IS NULL`;
+    await directoryWrites.settleSlugReservation(r.newSlug, r.studioId, { slug: second, eventsInFlight: false });
+    await directoryWrites.settleSlugReservation(second, r.studioId, { slug: second, eventsInFlight: false });
+    expect(await state(r.studioId, r.newSlug)).toMatchObject({ held: false });
+    expect(await state(r.studioId, second)).toMatchObject({ held: false });
   });
 });
