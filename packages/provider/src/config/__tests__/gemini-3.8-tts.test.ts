@@ -53,6 +53,15 @@ describe("Gemini 3.8 Flash TTS", () => {
     expect(entry!.params.language).toBeUndefined();
   });
 
+  it("reads a line holding only a speaker's name as a turn of nobody's, and sends no turn for it (#1521)", async () => {
+    expect(buildBody(bindingOn("wavespeed"), { prompt: "Ava: Hi.\nLeo:\nAva: Bye.", params: { speakers: PAIR } })).toMatchObject({
+      turns: [{ speaker_id: "Ava", text: "Hi." }, { speaker_id: "Ava", text: "Bye." }],
+    });
+    // A hundred lines that say something and one that says nothing is a hundred turns, within WaveSpeed's cap.
+    const hundred = Array.from({ length: 100 }, (_, i) => `${i % 2 === 0 ? "Ava" : "Leo"}: line ${i}.`).join("\n");
+    expect(await refused("wavespeed", { prompt: `${hundred}\nLeo:`, params: { speakers: PAIR } })).toBeUndefined();
+  });
+
   it("sends a dialogue to WaveSpeed as speakers and turns, with no text", () => {
     expect(buildBody(bindingOn("wavespeed"), { prompt: "Ava: Hi.\nLeo: Hello.", params: { speakers: PAIR, voice_id: "Kore" } })).toEqual({
       speakers: [{ speaker_id: "Ava", voice: "Kore" }, { speaker_id: "Leo", voice: "Puck" }],

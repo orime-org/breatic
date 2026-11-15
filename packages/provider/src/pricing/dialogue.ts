@@ -42,7 +42,8 @@ function speakerNames(dialogue: Dialogue, params: Record<string, unknown>): stri
 
 /**
  * A `Name: line` script as the upstream's turns: each non-blank line goes to the speaker whose name and a
- * half-width colon start it (the longest such name), else whole to the first speaker. The script is the one
+ * half-width colon start it (the longest such name), else whole to the first speaker; a line that leaves its speaker
+ * nothing to say sends no turn. The script is the one
  * `dialogueText` in `@breatic/shared` writes: one line per turn, no line break inside a line, each name trimmed;
  * a turn names its speaker as the speakers list does, so the upstream pairs the two.
  * @param dialogue - The binding's dialogue rule.
@@ -55,9 +56,10 @@ function turnsOf(dialogue: Dialogue, script: string, names: readonly string[]): 
   return script.split("\n").flatMap((raw) => {
     const line = raw.trim();
     if (line === "") return [];
-    const name = longestFirst.find((each) => line.startsWith(`${each.trim()}: `));
-    const text = name === undefined ? line : line.slice(name.trim().length + 2).trim();
-    return [{ [dialogue.speaker_field]: name ?? names[0]!, [dialogue.text_field]: text }];
+    // A line of only a name and its colon is that speaker's, with nothing to say.
+    const name = longestFirst.find((each) => line.startsWith(`${each.trim()}: `) || line === `${each.trim()}:`);
+    const text = name === undefined ? line : line.slice(name.trim().length + 1).trim();
+    return text === "" ? [] : [{ [dialogue.speaker_field]: name ?? names[0]!, [dialogue.text_field]: text }];
   });
 }
 
