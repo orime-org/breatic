@@ -20,7 +20,7 @@ import * as creditHoldRepo from "@domain/credit/creditHold.repo.js";
 import * as creditLotRepo from "@domain/credit/creditLot.repo.js";
 import { resolveOwnerStudioId } from "@domain/asset/asset.service.js";
 import { fromMicroCredits, positionFrom, serializeCreditPosition, toChargeMicro, type CreditPositionMicro } from "@domain/credit/credit-math.js";
-import { createQueue, db, defaultJobOpts, env, isGlobalRegion, isRegionUnavailable } from "@breatic/core";
+import { createQueue, db, env, getRegionsConfig, isGlobalRegion, isRegionUnavailable } from "@breatic/core";
 import { globalApi } from "@domain/region/global-api.js";
 import type { DbTx } from "@breatic/core";
 import type { ProjectCreditsView } from "@breatic/shared";
@@ -118,9 +118,10 @@ export async function reserveHere(
 /** The queue that retries, in a region outside the global one, a release the global region could not take (inner#1955). */
 export const CREDIT_HOLD_RELEASE_QUEUE = "credit-hold-release";
 
-/** A queued release. */
+/** A queued release, or an abandon when it names the hold's Studio and actor. */
 export interface HoldReleaseJob {
   referenceId: string;
+  abandon?: { studioId: string; actorUserId: string };
 }
 
 let releaseQueue: ReturnType<typeof createQueue> | null = null;
@@ -134,39 +135,61 @@ let releaseQueue: ReturnType<typeof createQueue> | null = null;
  * @throws {Error} When the database fails, the global region refuses, or the retry cannot be queued.
  */
 export async function releaseHold(referenceId: string): Promise<void> {
+  await orQueue(() => globalApi().releaseHold(referenceId), { referenceId });
+}
+
+/**
+ * Run a cleanup of a hold through the global region; outside the global
+ * region, one that finds the global region unavailable is queued and retried
+ * for longer than a hold lives.
+ * @param call - The cleanup.
+ * @param job - The same cleanup as a queued job.
+ * @returns Once done or queued.
+ * @throws {Error} When the global region refuses, or the retry cannot be queued.
+ */
+async function orQueue(call: () => Promise<void>, job: HoldReleaseJob): Promise<void> {
   try {
-    await globalApi().releaseHold(referenceId);
+    await call();
   } catch (err) {
     if (isGlobalRegion(env) || !isRegionUnavailable(err)) throw err;
+    const { hold_cleanup_retry_attempts: attempts, hold_cleanup_retry_base_ms: delay } = getRegionsConfig();
     releaseQueue ??= createQueue(CREDIT_HOLD_RELEASE_QUEUE);
-    await releaseQueue.add("release", { referenceId } satisfies HoldReleaseJob, { ...defaultJobOpts(), jobId: referenceId });
+    await releaseQueue.add("release", job, {
+      attempts,
+      backoff: { type: "exponential", delay },
+      removeOnComplete: true,
+      removeOnFail: true,
+      jobId: job.referenceId,
+    });
   }
 }
 
 /**
- * Run one queued release; a throw makes the queue retry it.
- * @param job - The release.
- * @param job.referenceId - The hold's key.
- * @returns Once released.
+ * Run one queued cleanup; a throw makes the queue retry it.
+ * @param job - The cleanup.
+ * @returns Once released or given up.
  * @throws {Error} When the global region still does not take it.
  */
 export async function runQueuedHoldRelease(job: HoldReleaseJob): Promise<void> {
-  await globalApi().releaseHold(job.referenceId);
+  if (job.abandon === undefined) await globalApi().releaseHold(job.referenceId);
+  else await globalApi().abandonHold({ ...job.abandon, referenceId: job.referenceId });
 }
 
 /**
  * Give up a hold after its reserve call failed: the books may have taken it
  * and lost only the answer, or may still be taking it.
  * @param request - The hold that was asked for.
- * @returns Once the key can hold nothing.
+ * @returns Once the key can hold nothing, or the abandon is queued for retry.
  * @throws {NotFoundError} When the project has no live studio.
+ * @throws {Error} When the global region refuses, or the retry cannot be queued.
  */
 export async function abandonHold(
   request: Pick<HoldFields, "actorUserId" | "referenceId"> & ({ studioId: string } | { projectId: string }),
 ): Promise<void> {
   if (!env.PAYMENT_ENABLED) return;
   const studioId = "studioId" in request ? request.studioId : await resolveOwnerStudioId(request.projectId);
-  await globalApi().abandonHold({ studioId, actorUserId: request.actorUserId, referenceId: request.referenceId });
+  const { actorUserId, referenceId } = request;
+  await orQueue(() => globalApi().abandonHold({ studioId, actorUserId, referenceId }), { referenceId, abandon: { studioId, actorUserId } });
 }
 
 /**
