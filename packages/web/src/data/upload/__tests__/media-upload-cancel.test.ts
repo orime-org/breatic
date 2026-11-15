@@ -137,7 +137,7 @@ describe('runMediaUpload cancellation ownership', () => {
       ...CONTEXT, filename: FILE.name, contentType: FILE.type, size: FILE.size, hash: HASH,
     }, controller.signal);
     expect(deps.sendToIngest).toHaveBeenCalledWith(FILE, TICKET, CONFIG, expect.any(Function), controller.signal);
-    expect(deps.waitForEnding).toHaveBeenCalledWith(TICKET.storageKey, controller.signal);
+    expect(deps.waitForEnding).toHaveBeenCalledWith(TICKET.storageKey, controller.signal, undefined);
     expect(deps.onSuccess).toHaveBeenCalledExactlyOnceWith(COMPLETED.result);
     expect(deps.onFailure).not.toHaveBeenCalled();
   });
@@ -230,7 +230,7 @@ describe('runMediaUpload cancellation ownership', () => {
 
     expect(deps.hashFile).toHaveBeenCalledWith(FILE, undefined);
     expect(deps.sendToIngest).toHaveBeenCalledWith(FILE, TICKET, CONFIG, undefined, undefined);
-    expect(deps.waitForEnding).toHaveBeenCalledWith(TICKET.storageKey, undefined);
+    expect(deps.waitForEnding).toHaveBeenCalledWith(TICKET.storageKey, undefined, undefined);
     expect(deps.onSuccess).toHaveBeenCalledExactlyOnceWith(COMPLETED.result);
     expect(deps.onFailure).not.toHaveBeenCalled();
   });

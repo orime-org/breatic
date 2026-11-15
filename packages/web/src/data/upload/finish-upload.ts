@@ -89,6 +89,8 @@ export async function sendFileAndFinish(
         { parts: held.parts },
         {
           headers: { 'x-upload-token': held.token },
+          // The region that opened the upload holds its grant (inner#1955).
+          ...(ticket.apiBase !== undefined && { baseURL: ticket.apiBase }),
           ...(signal !== undefined && { signal }),
         },
       ),

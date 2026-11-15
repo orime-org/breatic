@@ -2523,7 +2523,7 @@ function CanvasSpaceInner({
         // this upload and looked away still finds it — which a toast, and a
         // node now running several uploads at once, cannot do.
         stashRetryFile(projectId, spaceId, plan.taskId, file, tag);
-        void canvasApi.reportNodeTaskFailure(plan.taskId).catch((err: unknown) => {
+        void canvasApi.reportNodeTaskFailure(plan.taskId, plan.apiBase).catch((err: unknown) => {
           // Nothing on screen: this report is itself a request, and one reason
           // it fails is that the network would not take one — saying so twice
           // adds nothing, and the row still has its budget to fall back on.

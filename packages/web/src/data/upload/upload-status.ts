@@ -157,22 +157,40 @@ export function createUploadStatusList(deps: UploadStatusListDeps): UploadStatus
   };
 }
 
-/** The page's list, against the real server and timers. */
-const pageList = createUploadStatusList({
-  fetchStatus: (keys) => assetsApi.fetchUploadStatus(keys),
-  pollSeconds: async () => (await assetsApi.fetchUploadConfig()).uploadStatusPollSeconds,
-  setTimer: (fire, ms) => {
-    setTimeout(fire, ms);
-  },
-});
+/** The page's lists, one per API base an upload was opened at (inner#1955). */
+const pageLists = new Map<string, UploadStatusList>();
+
+/**
+ * The page's list for one API base, against the real server and timers.
+ * @param apiBase - The API base the upload's ticket was asked of, or
+ *   undefined for the page's region.
+ * @returns The list.
+ */
+function pageListFor(apiBase: string | undefined): UploadStatusList {
+  const id = apiBase ?? '';
+  let list = pageLists.get(id);
+  if (list === undefined) {
+    list = createUploadStatusList({
+      fetchStatus: (keys) => assetsApi.fetchUploadStatus(keys, apiBase),
+      pollSeconds: async () => (await assetsApi.fetchUploadConfig()).uploadStatusPollSeconds,
+      setTimer: (fire, ms) => {
+        setTimeout(fire, ms);
+      },
+    });
+    pageLists.set(id, list);
+  }
+  return list;
+}
 
 /**
  * Wait for the ending of an upload whose finish was queued.
  * @param storageKey - The key its finish was queued under.
  * @param signal - Ends this observer when its owning document closes.
+ * @param apiBase - The API base its ticket was asked of; the page's region
+ *   when absent.
  * @returns Its ending, once the server has one.
  * @throws {DOMException} When the observer is cancelled.
  */
-export function waitForUploadEnding(storageKey: string, signal?: AbortSignal): Promise<UploadEnding> {
-  return pageList.waitFor(storageKey, signal);
+export function waitForUploadEnding(storageKey: string, signal?: AbortSignal, apiBase?: string): Promise<UploadEnding> {
+  return pageListFor(apiBase).waitFor(storageKey, signal);
 }

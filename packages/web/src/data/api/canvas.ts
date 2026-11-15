@@ -439,15 +439,18 @@ export const canvasApi = {
    * to is read off the row by the server, since the task id in the path is
    * something the caller supplied.
    * @param taskId - The row this upload opened.
+   * @param apiBase - The API base the upload's ticket was asked of, whose
+   *   region holds the row; the page's region when absent (inner#1955).
    * @returns The node's counts after the row settled.
    * @throws {import('@web/data/api/types').ApiException} On 403, 422 for a
    *   body the endpoint does not take, or 404 when the row is gone or is not
    *   an upload.
    */
-  async reportNodeTaskFailure(taskId: string): Promise<NodeTaskCounts> {
+  async reportNodeTaskFailure(taskId: string, apiBase?: string): Promise<NodeTaskCounts> {
     const { counts } = await apiPost<{ counts: NodeTaskCounts }>(
       `/canvas/node-tasks/${taskId}/failure`,
       { reason: 'aborted' },
+      apiBase !== undefined ? { baseURL: apiBase } : undefined,
     );
     return counts;
   },

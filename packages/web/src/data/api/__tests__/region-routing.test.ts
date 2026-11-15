@@ -13,6 +13,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AxiosAdapter, InternalAxiosRequestConfig } from 'axios';
 
 const fetchEventSource = vi.hoisted(() => vi.fn(async (_url: string, _init: unknown) => undefined));
+vi.mock('@breatic/shared', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@breatic/shared')>()),
+  sendBytesToIngest: vi.fn(async () => ({ uploadId: 'up1', token: 'tok', parts: [] })),
+}));
 vi.mock('@microsoft/fetch-event-source', () => ({ fetchEventSource }));
 vi.mock('@web/data/api/regions', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@web/data/api/regions')>()),
@@ -25,6 +29,10 @@ import { notificationsApi } from '@web/data/api/notifications';
 import { decisionsApi } from '@web/data/api/decisions';
 import { getRegionConfig, parseRegionConfig, setCurrentRegion } from '@web/data/api/regions';
 import { sseStream } from '@web/data/stream/sse';
+import { assetsApi } from '@web/data/api/assets';
+import { canvasApi } from '@web/data/api/canvas';
+import { sendFileAndFinish } from '@web/data/upload/finish-upload';
+import type { UploadTicket } from '@web/data/upload/ingest-upload';
 import { chatSessionFor, evictAllChatSessions } from '@web/stores/chat-sessions';
 
 const TWO_REGIONS = parseRegionConfig(
@@ -154,5 +162,31 @@ describe('decision links', () => {
     await decisionsApi.view('abc');
 
     expect(seen).toEqual([`${US}/decisions/abc`]);
+  });
+});
+
+describe('an upload', () => {
+  it('sends its finish, status poll and failure report to the region that opened it, after the page moved', async () => {
+    setCurrentRegion('sg');
+    const ticket = (await assetsApi.requestUploadTicket({
+      filename: 'a.png',
+      contentType: 'image/png',
+      projectId: 'p1',
+      size: 1,
+      hash: 'a'.repeat(64),
+    })) as UploadTicket;
+    setCurrentRegion(null);
+
+    const cfg = { maxBytes: 10, clientMaxAttempts: 1, clientRetryBaseDelayMs: 0, partIdleTimeoutMs: 1000 };
+    await sendFileAndFinish(new Blob(['x']), ticket, cfg as never);
+    await assetsApi.fetchUploadStatus(['k1'], ticket.apiBase);
+    await canvasApi.reportNodeTaskFailure('t1', ticket.apiBase);
+
+    expect(seen).toEqual([
+      `${SG}/assets/upload-ticket`,
+      `${SG}/assets/uploads/up1/complete`,
+      `${SG}/assets/upload-status`,
+      `${SG}/canvas/node-tasks/t1/failure`,
+    ]);
   });
 });
