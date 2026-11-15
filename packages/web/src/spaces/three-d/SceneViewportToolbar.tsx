@@ -14,7 +14,7 @@ const icons = {
 };
 
 /**
- * Keep personal history, scene panels and the overview switch in the approved order.
+ * Keep personal history, scene panels, the viewfinder and the overview switch in the approved order.
  * @param root0 - Scene controls and their current owner bindings.
  * @param root0.undo - Whether personal history can undo a shared edit.
  * @param root0.redo - Whether personal history can redo a shared edit.
@@ -24,12 +24,14 @@ const icons = {
  * @param root0.minimap - Whether the native overview is visible.
  * @param root0.minimapDisabled - Whether the minimap cannot be toggled now, as while the viewfinder is open.
  * @param root0.onMinimap - Toggles the native overview allocation.
+ * @param root0.viewfinderHost - Receives the place the viewfinder renders its button into.
  * @returns The floating action controls.
  * @throws {never} Actions delegate to the existing scene owner.
  */
-export const SceneViewportToolbar = React.memo(function SceneViewportToolbar({ undo, redo, onHistory, hasSelection, onPanel, minimap, minimapDisabled = false, onMinimap }: {
+export const SceneViewportToolbar = React.memo(function SceneViewportToolbar({ undo, redo, onHistory, hasSelection, onPanel, minimap, minimapDisabled = false, onMinimap, viewfinderHost }: {
   undo: boolean; redo: boolean; onHistory: (step: 'undo' | 'redo') => void; hasSelection: boolean;
   onPanel: (panel: ScenePanel) => void; minimap: boolean; minimapDisabled?: boolean; onMinimap: () => void;
+  viewfinderHost: (host: HTMLDivElement | null) => void;
 }): React.JSX.Element {
   const t = useTranslation();
   /**
@@ -69,6 +71,6 @@ export const SceneViewportToolbar = React.memo(function SceneViewportToolbar({ u
       <SceneIconButton data-testid='scene-objects-trigger' label={t('spaces.threeD.objects')} onClick={showObjects}>{icons.objects}</SceneIconButton>
       <SceneIconButton data-testid='scene-tasks-trigger' label={t('spaces.threeD.tasks')} onClick={showTasks}>{icons.tasks}</SceneIconButton>
       <SceneIconButton data-testid='scene-director-trigger' label={t('spaces.threeD.director.open')} onClick={showDirector}>{icons.director}</SceneIconButton>
-    </div><div className='flex px-1'><SceneIconButton label={t('spaces.threeD.minimap')} active={minimap && !minimapDisabled} disabled={minimapDisabled} onClick={onMinimap}>{icons.minimap}</SceneIconButton></div>
+    </div><div className='flex items-center gap-0.5 px-1'><div ref={viewfinderHost} className='contents' /><SceneIconButton label={t('spaces.threeD.minimap')} active={minimap && !minimapDisabled} disabled={minimapDisabled} onClick={onMinimap}>{icons.minimap}</SceneIconButton></div>
   </div>;
 });

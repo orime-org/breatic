@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
+import { createPortal } from 'react-dom';
 import { Frame } from 'lucide-react';
 
 import { VIEWFINDER_RATIOS, type SceneCameraObject, type SceneCaptureConfig, type ViewfinderRatio } from '@breatic/shared';
@@ -44,11 +45,11 @@ const CORNER_POSITION: Readonly<Record<ViewfinderCorner, string>> = {
   sw: '-bottom-[5px] -left-[5px] cursor-nesw-resize',
   se: '-bottom-[5px] -right-[5px] cursor-nwse-resize',
 };
-// What the chrome around the frame covers, in pixels: the top clears the
-// viewfinder bar (10 + 42 + 10); the bottom keeps the menu under the frame
+// What the chrome around the frame covers, in pixels: the top and sides keep the
+// stage margin; the bottom keeps the menu under the frame
 // (38 + 8) above the object toolbar (16 + 42 + 8), whether or not it shows;
 // the right edge stops at an open right panel (10 + 320 + 10).
-const INSETS = { top: 62, bottom: 112, side: 20, panel: 340 };
+const INSETS = { top: 20, bottom: 112, side: 20, panel: 340 };
 
 /**
  * Where the frame may sit on the stage.
@@ -66,6 +67,8 @@ export function sceneViewfinderSafeArea(stage: { width: number; height: number }
 const MENU_GAP = 8;
 
 export interface SceneViewfinderProps {
+  /** The place in the bottom-right toolbar its button renders into, once mounted. */
+  host: HTMLDivElement | null;
   state: ViewfinderState;
   dispatch: React.Dispatch<ViewfinderAction>;
   /** The 3D stage's size. */
@@ -125,7 +128,7 @@ function canvasOrigin(userId: string, projectId: string, canvasId: string): { x:
 }
 
 /**
- * The viewfinder of a 3D Space (#1411): the persistent top-right button, the
+ * The viewfinder of a 3D Space (#1411): its button in the bottom-right toolbar, the
  * frame with its corners and the menu under it, the capture and its three
  * destinations. Its state is held by the editor, which also hides the minimap
  * and the creation menu while it is open.
@@ -133,7 +136,7 @@ function canvasOrigin(userId: string, projectId: string, canvasId: string): { x:
  * @returns The viewfinder.
  */
 export const SceneViewfinder = React.memo(function SceneViewfinder(props: SceneViewfinderProps): React.JSX.Element {
-  const { state, dispatch, stage, rightPanelOpen, capture, modelsLoading, disabled, chatSwitching, projectId, spaceId, spaceName, userId, config, spaces,
+  const { host, state, dispatch, stage, rightPanelOpen, capture, modelsLoading, disabled, chatSwitching, projectId, spaceId, spaceName, userId, config, spaces,
     camera, canEdit, onCameraFrame } = props;
   const t = useTranslation();
   const { phase, frame, ratio, shot, sending } = state;
@@ -338,13 +341,9 @@ export const SceneViewfinder = React.memo(function SceneViewfinder(props: SceneV
     dispatch(open ? { type: 'pick' } : { type: 'unpick' });
   }, [dispatch]);
 
-  const trigger = <div className='absolute right-[var(--space-5)] top-[var(--space-5)] z-20 flex rounded-md border border-border bg-popover py-1 shadow'>
-    <div className='flex px-1'>
-      <SceneIconButton data-testid='scene-viewfinder-trigger' label={t('spaces.threeD.viewfinder.open')} active={phase !== 'off'}
-        disabled={disabled || config === undefined} onClick={toggle}>{frameIcon}</SceneIconButton>
-    </div>
-  </div>;
-  if (phase === 'off') return trigger;
+  const trigger = host === null ? null : createPortal(<SceneIconButton data-testid='scene-viewfinder-trigger' label={t('spaces.threeD.viewfinder.open')}
+    active={phase !== 'off'} disabled={disabled || config === undefined} onClick={toggle}>{frameIcon}</SceneIconButton>, host);
+  if (phase === 'off') return <>{trigger}</>;
 
   const busy = phase === 'sending';
   const framing = phase === 'framing';

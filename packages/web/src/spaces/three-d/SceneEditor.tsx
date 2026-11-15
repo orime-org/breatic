@@ -486,6 +486,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     return () => observer.disconnect();
   }, []);
   const [overviewHost, setOverviewHost] = React.useState<HTMLDivElement | null>(null);
+  const [viewfinderHost, setViewfinderHost] = React.useState<HTMLDivElement | null>(null);
   const selection = JSON.stringify([...snapshot.selectedIds].sort());
   const lastSelection = React.useRef('[]');
   React.useEffect(() => {
@@ -767,7 +768,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
                   onPilotPreview={onPilotPreview} onPilotEnd={onPilotEnd} onPilotLocked={onPilotLocked} onPilotControl={onPilotControl}
                   onLightPlan={setLightPlan} monitors={monitors} />
               </React.Suspense>}
-      {failedModels ? <div className='absolute left-20 top-3 flex max-w-[calc(100%_-_5rem_-_var(--space-5)_-_42px_-_var(--space-2))] items-center justify-between gap-2 rounded-chrome border border-border bg-background p-2 text-xs'>
+      {failedModels ? <div className='absolute left-20 top-3 flex max-w-[calc(100%_-_5rem_-_var(--space-5))] items-center justify-between gap-2 rounded-chrome border border-border bg-background p-2 text-xs'>
         <span className='min-w-0'>{t('spaces.threeD.modelFailed')}{cause && <> {t(importErrorKey(cause.code))}{cause.budget && <> {budgetText(t, cause.budget, getLocale())}</>}{cause.detail && <span className='block break-all text-muted-foreground'>{cause.detail}</span>}</>}</span>
         {modelRetryable && <Button size='sm' variant='ghost' onClick={() => setModelRetryRevision((value) => value + 1)}>{t('spaces.threeD.retry')}</Button>}
       </div> : null}
@@ -785,8 +786,8 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
       {minimap && !framing ? <div ref={setOverviewHost} data-testid='scene-map' className='h-[142px] w-[202px] overflow-hidden rounded-overlay border border-border bg-popover shadow' /> : null}
     </div>
     <SceneViewportToolbar undo={snapshot.canEdit && snapshot.canUndo} redo={snapshot.canEdit && snapshot.canRedo}
-      onHistory={onHistory} hasSelection={selected.length > 0} onPanel={showPanel} minimap={minimap} minimapDisabled={framing} onMinimap={toggleMinimap} />
-    <SceneViewfinder state={viewfinder} dispatch={viewfinderAction} stage={stageSize} rightPanelOpen={rightOpen} capture={frameCapture}
+      onHistory={onHistory} hasSelection={selected.length > 0} onPanel={showPanel} minimap={minimap} minimapDisabled={framing} onMinimap={toggleMinimap} viewfinderHost={setViewfinderHost} />
+    <SceneViewfinder host={viewfinderHost} state={viewfinder} dispatch={viewfinderAction} stage={stageSize} rightPanelOpen={rightOpen} capture={frameCapture}
       modelsLoading={modelsLoading} disabled={myRole === 'viewer' || snapshot.status !== 'ready'} chatSwitching={chatSwitching} projectId={projectId} spaceId={spaceId}
       spaceName={spaceName} userId={userId} config={controls.data?.capture} spaces={projectSpaces}
       camera={lookCamera} canEdit={snapshot.canEdit} onCameraFrame={onCameraFrame} />

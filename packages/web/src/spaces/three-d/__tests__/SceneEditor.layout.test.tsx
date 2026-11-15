@@ -14,6 +14,7 @@ import { TooltipProvider } from '@web/components/ui/tooltip';
 import { applySceneCommand, readSceneDocument } from '@web/data/yjs/scene-document';
 import { SceneSession } from '@web/data/yjs/scene-session';
 import SceneEditor from '@web/spaces/three-d/SceneEditor';
+import { sceneViewfinderSafeArea } from '@web/spaces/three-d/SceneViewfinder';
 import { useUIStore } from '@web/stores/ui';
 
 const NAME = 'project-p1/3d-s1';
@@ -65,8 +66,12 @@ describe('approved scene layout (inner#1724)', () => {
     expect(screen.queryByTestId('scene-object-menu')).toBeNull();
     expect(screen.queryByTestId('scene-right-panel')).toBeNull();
     expect(within(screen.getByTestId('scene-viewport-toolbar')).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual([
-      t('spaces.threeD.undo'), t('spaces.threeD.redo'), t('spaces.threeD.properties'), t('spaces.threeD.objects'), t('spaces.threeD.tasks'), t('spaces.threeD.director.open'), t('spaces.threeD.minimap'),
+      t('spaces.threeD.undo'), t('spaces.threeD.redo'), t('spaces.threeD.properties'), t('spaces.threeD.objects'), t('spaces.threeD.tasks'), t('spaces.threeD.director.open'),
+      t('spaces.threeD.viewfinder.open'), t('spaces.threeD.minimap'),
     ]);
+  });
+  it('keeps the viewfinder frame 20px from every stage edge but the bottom controls', () => {
+    expect(sceneViewfinderSafeArea({ width: 1200, height: 900 }, false)).toEqual({ x: 20, y: 20, width: 1160, height: 768 });
   });
   it.each([
     { state: 'unlocked object', ids: [ID], locked: [], action: 'lock', next: [true, false], second: [false, false] },

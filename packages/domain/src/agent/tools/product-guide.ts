@@ -1578,13 +1578,13 @@ export function renderProductGuide(): string {
       "A refusal, such as too few credits or a view that is not a picture of this Project, keeps the dialog open with everything in it and says why in a short message.",
     `The floating bar at the bottom right orders ${quoted(t("spaces.threeD.undo"))}, ${quoted(t("spaces.threeD.redo"))}, ` +
       `${quoted(t("spaces.threeD.properties"))}, ${quoted(t("spaces.threeD.objects"))}, ${quoted(t("spaces.threeD.tasks"))}, ` +
-      `${quoted(t("spaces.threeD.director.open"))} (a clapperboard icon) and ` +
+      `${quoted(t("spaces.threeD.director.open"))} (a clapperboard icon), ${quoted(t("spaces.threeD.viewfinder.open"))} (a frame icon) and ` +
       `${quoted(t("spaces.threeD.minimap"))}. The four panel buttons keep their ordinary appearance while open. ` +
       "Click one to open its panel on the right; click the same button again to close it, or another to switch content. " +
       `An X with the ${quoted(t("spaces.threeD.closePanel"))} tooltip also closes the panel. Its content scrolls above the minimap. ` +
       "Opening a header menu while the panel is open keeps keyboard focus in that new menu. " +
       "The minimap button toggles the scene's top view; clicking that map navigates your personal viewing camera. It is unavailable while the viewfinder is open.",
-    `A frame button at the top right of the 3D Space, ${quoted(t("spaces.threeD.viewfinder.open"))}, takes a still of the scene to use for picture and video generation; it is unavailable to a Viewer. ` +
+    `The frame button in that bar, ${quoted(t("spaces.threeD.viewfinder.open"))}, takes a still of the scene to use for picture and video generation; it is unavailable to a Viewer. ` +
       "Clicking it shows a frame over the view with everything outside it dimmed; an open right panel closes and is not reopened when the viewfinder closes (its own buttons still open it meanwhile), the minimap and the left rail are put away until it closes, and selecting an object no longer opens its panel by itself. " +
       "The frame starts as the largest one of the chosen aspect ratio that fits, and moves back into place when the window, the chat column or the right panel changes the view's size. " +
       "Dragging any of its four corners resizes it with the opposite corner fixed: square corners keep the ratio, round corners (under Free) change width and height separately. " +
