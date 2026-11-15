@@ -21,7 +21,7 @@ import type { CanvasPasteAnswer, NodeMediaFields, PasteHistoryItem, PastePair, S
 import { assetRepo, assetService, ingestReportService, materialFacts, nodeHistoryService } from "@breatic/domain";
 
 import { assertStudioStorageAllowance } from "@server/modules/asset/storageQuota.service.js";
-import { findElsewhereByKey } from "@server/modules/region/asset-lookup.js";
+import { findElsewhereByKeys } from "@server/modules/region/asset-lookup.js";
 
 /** What a paste asks for. */
 export interface PasteInput {
@@ -54,6 +54,19 @@ export async function pasteAssets(input: PasteInput): Promise<CanvasPasteAnswer>
   const storage = await getStorageAdapter();
   const map: Record<string, string | null> = {};
 
+  // Every key the paste names that this region's ledger does not hold is
+  // asked of the other regions in one call each (inner#1955).
+  const local = new Map<string, StudioAssetEntity | null>();
+  const addresses = new Set([...input.urls, ...input.pairs.flatMap((pair) => [pair.url, pair.cover])]);
+  for (const address of addresses) {
+    const key = storage.keyFromUrl(address);
+    if (key !== null && !local.has(key)) local.set(key, await assetRepo.findLiveByStorageKey(key));
+  }
+  const elsewhere = await findElsewhereByKeys([...local].filter(([, row]) => row === null).map(([key]) => key));
+
+  // Cover rows found under a video's key, by the cover's own key.
+  const covers = new Map<string, StudioAssetEntity>();
+
   /**
    * The live row an address names, from any Studio in any region.
    * @param address - A storage address.
@@ -62,7 +75,8 @@ export async function pasteAssets(input: PasteInput): Promise<CanvasPasteAnswer>
   const sourceOf = async (address: string): Promise<StudioAssetEntity | null> => {
     const key = storage.keyFromUrl(address);
     if (key === null) return null;
-    return (await assetRepo.findLiveByStorageKey(key)) ?? findElsewhereByKey("findAssetByKey", key);
+    if (local.has(key)) return local.get(key) ?? elsewhere.get(key)?.asset ?? null;
+    return covers.get(key) ?? (await assetRepo.findLiveByStorageKey(key));
   };
 
   // Read everything first; nothing is written until the storage gate passed.
@@ -75,14 +89,15 @@ export async function pasteAssets(input: PasteInput): Promise<CanvasPasteAnswer>
   const paired = new Set(pairs.flatMap((pair) => [pair.url, pair.cover]));
   for (const address of new Set(input.urls)) {
     const key = paired.has(address) ? null : storage.keyFromUrl(address);
-    // A cover lives in its video's region: another region is asked only for
+    // A cover lives in its video's region: another region answers only for
     // an address this region's ledger does not hold.
     const cover =
-      key === null
-        ? null
-        : ((await assetRepo.findCoverUnderKey(key)) ??
-          ((await assetRepo.findLiveByStorageKey(key)) === null ? await findElsewhereByKey("findCoverUnderKey", key) : null));
-    if (cover !== null) pairs.push({ url: address, cover: cover.fileUrl });
+      key === null ? null : ((await assetRepo.findCoverUnderKey(key)) ?? (local.get(key) === null ? (elsewhere.get(key)?.cover ?? null) : null));
+    if (cover !== null) {
+      pairs.push({ url: address, cover: cover.fileUrl });
+      const coverKey = storage.keyFromUrl(cover.fileUrl);
+      if (coverKey !== null) covers.set(coverKey, cover);
+    }
   }
   for (const pair of pairs) {
     const video = await sourceOf(pair.url);

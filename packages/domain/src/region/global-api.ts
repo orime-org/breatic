@@ -9,7 +9,6 @@
  */
 
 import {
-  assetRepo,
   checkSessions,
   claimFirstMilestone,
   createGlobalApi,
@@ -22,7 +21,8 @@ import {
   type MembershipLimits,
 } from "@breatic/core";
 import { listLedgerByStudio, type StudioLedgerRow } from "@domain/credit/creditLot.repo.js";
-import type { CreditDecimal, ProjectCreditsView, StudioAssetEntity } from "@breatic/shared";
+import { lookupKeysHere, type KeyLookupAnswer } from "@domain/asset/asset-key-lookup.js";
+import type { CreditDecimal, ProjectCreditsView } from "@breatic/shared";
 import * as usersRepo from "@domain/auth/user.repo.js";
 import {
   changeDirectoryAdmin,
@@ -249,17 +249,11 @@ export const GLOBAL_FUNCTIONS = {
    */
   recordRegionUsage: (report: RegionUsageReport): Promise<void> => recordRegionUsage(report),
   /**
-   * The live row a storage key names in the global region, for a paste in another region.
-   * @param storageKey - The key.
-   * @returns The row, or null.
+   * What the global region's ledger holds under a paste's storage keys, for a paste in another region.
+   * @param keys - The keys.
+   * @returns Each key's live row and cover row.
    */
-  findAssetByKey: (storageKey: string): Promise<StudioAssetEntity | null> => assetRepo.findLiveByStorageKey(storageKey),
-  /**
-   * The cover row under a video's storage key in the global region, for a paste in another region.
-   * @param storageKey - The video's key.
-   * @returns The cover row, or null.
-   */
-  findCoverUnderKey: (storageKey: string): Promise<StudioAssetEntity | null> => assetRepo.findCoverUnderKey(storageKey),
+  findAssetsByKeys: (keys: string[]): Promise<Record<string, KeyLookupAnswer>> => lookupKeysHere(keys),
   /** Queue an account's ad conversion, credited to its sign-up click; core's own client calls the same. */
   enqueueAdsConversion: enqueueAccountAdsConversion,
 };

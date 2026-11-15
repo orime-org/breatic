@@ -6,8 +6,8 @@
  * lists (inner#1955), beside domain's `REGION_FUNCTIONS`.
  */
 
-import type { NotificationListView, RecentItem, SignupInvitationPreview, StudioAssetEntity } from "@breatic/shared";
-import { assetRepo, profilesService, studioRepo } from "@breatic/domain";
+import type { NotificationListView, RecentItem, SignupInvitationPreview } from "@breatic/shared";
+import { lookupKeysHere, profilesService, studioRepo, type KeyLookupAnswer } from "@breatic/domain";
 import { getRedis, NotFoundError, publishSessionsRevoked, recordRevokedIdentities } from "@breatic/core";
 import { claimEmailInvitations } from "@server/modules/invitation/claim-email-invitations.js";
 import * as maintenanceService from "@server/modules/maintenance/maintenance.service.js";
@@ -70,17 +70,11 @@ export const SERVER_REGION_FUNCTIONS = {
    */
   maintenanceControlResult: (key: string): Promise<maintenanceService.MaintenanceAnswer<unknown>> => maintenanceService.controlResult(key),
   /**
-   * The live row a storage key names in this region, for a paste in the global region.
-   * @param storageKey - The key.
-   * @returns The row, or null.
+   * What this region's ledger holds under a paste's storage keys, for a paste in the global region.
+   * @param keys - The keys.
+   * @returns Each key's live row and cover row.
    */
-  findAssetByKey: (storageKey: string): Promise<StudioAssetEntity | null> => assetRepo.findLiveByStorageKey(storageKey),
-  /**
-   * The cover row under a video's storage key in this region, for a paste in the global region.
-   * @param storageKey - The video's key.
-   * @returns The cover row, or null.
-   */
-  findCoverUnderKey: (storageKey: string): Promise<StudioAssetEntity | null> => assetRepo.findCoverUnderKey(storageKey),
+  findAssetsByKeys: (keys: string[]): Promise<Record<string, KeyLookupAnswer>> => lookupKeysHere(keys),
   /**
    * The Projects in this region the user opened, newest first.
    * @param userId - The user.

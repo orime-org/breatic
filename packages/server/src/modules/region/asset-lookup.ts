@@ -8,36 +8,41 @@
  */
 
 import { callRegion, env, getRegionsConfig, isGlobalRegion, logger, otherRegionsOf } from "@breatic/core";
-import { globalApi } from "@breatic/domain";
-import type { StudioAssetEntity } from "@breatic/shared";
-
-/** The lookups another region answers by storage key. */
-export type KeyLookup = "findAssetByKey" | "findCoverUnderKey";
+import { globalApi, type KeyLookupAnswer } from "@breatic/domain";
 
 /**
- * Ask the other regions for a row this region does not hold: the global
- * region asks every other region, any other region asks the global region.
- * A region that does not answer in time counts as holding nothing.
- * @param lookup - Which row to ask for.
- * @param storageKey - The key.
- * @returns The first row found, or null.
+ * Ask the other regions, in one call each and all at once, what they hold
+ * under keys this region's ledger does not: the global region asks every
+ * other region, any other region asks the global region. A region that does
+ * not answer in time counts as holding nothing.
+ * @param keys - The keys.
+ * @returns Each key's live row and cover row, first found across the regions.
  */
-export async function findElsewhereByKey(lookup: KeyLookup, storageKey: string): Promise<StudioAssetEntity | null> {
-  if (!isGlobalRegion(env)) {
-    try {
-      return await globalApi()[lookup](storageKey);
-    } catch (err) {
-      logger.error({ err, ctx: { lookup, region: env.GLOBAL_REGION, storageKey } }, "asset_lookup_elsewhere_failed");
-      return null;
-    }
+export async function findElsewhereByKeys(keys: readonly string[]): Promise<Map<string, KeyLookupAnswer>> {
+  const found = new Map<string, KeyLookupAnswer>();
+  if (keys.length === 0) return found;
+  const asked = isGlobalRegion(env)
+    ? otherRegionsOf(env).map((region) => ({
+      region,
+      answer: callRegion(region, "findAssetsByKeys", [keys], getRegionsConfig().cross_region_fanout_timeout_ms) as Promise<Record<string, KeyLookupAnswer>>,
+    }))
+    : [{ region: env.GLOBAL_REGION, answer: globalApi().findAssetsByKeys([...keys]) }];
+  const nothing: Record<string, KeyLookupAnswer> = {};
+  const answers = await Promise.all(
+    asked.map(({ region, answer }) =>
+      answer.catch((err: unknown) => {
+        logger.error({ err, ctx: { region, keys: keys.length } }, "asset_lookup_elsewhere_failed");
+        return nothing;
+      }),
+    ),
+  );
+  for (const key of keys) {
+    // A region that answered nothing usable counts as holding nothing.
+    const each = answers.map((answer: Record<string, KeyLookupAnswer> | null) => answer?.[key]);
+    found.set(key, {
+      asset: each.find((answer) => answer !== undefined && answer.asset !== null)?.asset ?? null,
+      cover: each.find((answer) => answer !== undefined && answer.cover !== null)?.cover ?? null,
+    });
   }
-  for (const region of otherRegionsOf(env)) {
-    try {
-      const row = (await callRegion(region, lookup, [storageKey], getRegionsConfig().cross_region_fanout_timeout_ms)) as StudioAssetEntity | null;
-      if (row !== null) return row;
-    } catch (err) {
-      logger.error({ err, ctx: { lookup, region, storageKey } }, "asset_lookup_elsewhere_failed");
-    }
-  }
-  return null;
+  return found;
 }

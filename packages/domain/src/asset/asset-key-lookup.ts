@@ -1,0 +1,33 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: Elastic-2.0
+
+/**
+ * What a region's ledger holds under storage keys, asked by a paste in another
+ * region (inner#1955, design 6.15). The bytes sit in the one shared bucket, so
+ * the row found here is registered there without copying them. Every key of a
+ * paste is asked in one call.
+ */
+
+import { assetRepo } from "@breatic/core";
+import type { StudioAssetEntity } from "@breatic/shared";
+
+/** What one region holds under one storage key. */
+export interface KeyLookupAnswer {
+  /** The live row the key names, or null. */
+  asset: StudioAssetEntity | null;
+  /** The cover row under the key when it names a video, or null. */
+  cover: StudioAssetEntity | null;
+}
+
+/**
+ * What this region's ledger holds under each key.
+ * @param keys - The storage keys.
+ * @returns Each key's live row and cover row.
+ */
+export async function lookupKeysHere(keys: readonly string[]): Promise<Record<string, KeyLookupAnswer>> {
+  const answers: Record<string, KeyLookupAnswer> = {};
+  for (const key of new Set(keys)) {
+    answers[key] = { asset: await assetRepo.findLiveByStorageKey(key), cover: await assetRepo.findCoverUnderKey(key) };
+  }
+  return answers;
+}

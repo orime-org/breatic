@@ -121,10 +121,13 @@ describe("pasting an asset another region registered", () => {
     const target = await seedEditor();
     const key = imageKey();
     const hash = crypto.randomBytes(32).toString("hex");
-    sg.answers.findAssetByKey = (asked: unknown) =>
-      asked === key
-        ? { id: crypto.randomUUID(), studioId: crypto.randomUUID(), contentHash: hash, storageKey: key, fileUrl: publicUrl(key), sizeBytes: 4096, mimeType: "image/png", kind: "image", source: "upload", width: 640, height: 480, durationSeconds: null }
-        : null;
+    sg.answers.findAssetsByKeys = (asked: unknown) =>
+      Object.fromEntries((asked as string[]).map((k) => [k, {
+        asset: k === key
+          ? { id: crypto.randomUUID(), studioId: crypto.randomUUID(), contentHash: hash, storageKey: key, fileUrl: publicUrl(key), sizeBytes: 4096, mimeType: "image/png", kind: "image", source: "upload", width: 640, height: 480, durationSeconds: null }
+          : null,
+        cover: null,
+      }]));
 
     const res = await paste(target.cookie, target.projectId, [publicUrl(key)]);
 
@@ -133,7 +136,7 @@ describe("pasting an asset another region registered", () => {
       SELECT storage_key, content_hash, source FROM studio_assets WHERE studio_id = ${target.studioId} AND deleted_at IS NULL
     `;
     expect(rows).toEqual([{ storage_key: key, content_hash: hash, source: "upload" }]);
-    expect(sg.received.map((call) => call.fn)).toContain("findAssetByKey");
+    expect(sg.received.map((call) => call.fn)).toEqual(["findAssetsByKeys"]);
   });
 
   it("asks no other region about an address this region already holds", async () => {
@@ -161,12 +164,12 @@ describe("pasting an asset another region registered", () => {
     expect((await res.json()).data.map).not.toHaveProperty(address);
   });
 
-  it("skips a region that does not answer, within the fan-out wait", async () => {
+  it("skips a region that does not answer, waiting once for every address of the paste", async () => {
     const target = await seedEditor();
     sg.mode = "hang";
     const started = Date.now();
 
-    const res = await paste(target.cookie, target.projectId, [publicUrl(imageKey())]);
+    const res = await paste(target.cookie, target.projectId, Array.from({ length: 8 }, () => publicUrl(imageKey())));
 
     expect(res.status).toBe(200);
     expect(Date.now() - started).toBeLessThan(5_000);

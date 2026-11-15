@@ -30,6 +30,7 @@ export * as studioRegionService from "@domain/region/studioRegion.service.js";
 export * as regionOutboxService from "@domain/region/regionOutbox.service.js";
 export * as regionOutboxApplyService from "@domain/region/regionOutboxApply.service.js";
 export { REGION_FUNCTIONS, isKnownRegion, regionClient } from "@domain/region/region-api.js";
+export { lookupKeysHere, type KeyLookupAnswer } from "@domain/asset/asset-key-lookup.js";
 export * as directoryWrites from "@domain/region/directory-writes.js";
 export { globalApi, GLOBAL_FUNCTIONS, type Account, type GlobalApi } from "@domain/region/global-api.js";
 export * as profilesService from "@domain/region/profiles.service.js";
