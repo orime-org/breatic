@@ -490,15 +490,6 @@ function rotationOf(raw: RawStream, frames: RawFrame[]): { rotation?: number } {
 }
 
 /**
- * Read ffprobe's JSON into the shape the container answers with.
- *
- * Output it cannot read answers as nothing found, which is what a medium with
- * no streams looks like too — neither decides whether the upload succeeded, so
- * they need not be told apart.
- * @param stdout - What ffprobe wrote.
- * @returns The normalised report.
- */
-/**
  * A stream's `alpha_mode` tag, whatever case its key is in.
  * @param raw - The stream.
  * @returns The tag as a field, or nothing.
@@ -509,6 +500,15 @@ function alphaModeOf(raw: RawStream): { alphaMode?: string } {
   return found === undefined ? {} : { alphaMode: found[1] };
 }
 
+/**
+ * Read ffprobe's JSON into the shape the container answers with.
+ *
+ * Output it cannot read answers as nothing found, which is what a medium with
+ * no streams looks like too — neither decides whether the upload succeeded, so
+ * they need not be told apart.
+ * @param stdout - What ffprobe wrote.
+ * @returns The normalised report.
+ */
 export function readProbeOutput(stdout: string): ProbeReport {
   let parsed: {
     streams?: RawStream[];
