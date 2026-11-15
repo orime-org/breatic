@@ -154,7 +154,7 @@ for (const scope of ["project", "studio"] satisfies Scope[]) {
       const user = await usersRepo.createUser({ termsVersion: "test-terms", locale: "en", email: fixture.email, emailVerified: true });
       const restoreNotifications = await rejectNotificationWrites(sql);
       try {
-        await expect(claimEmailInvitations(user)).resolves.toBeUndefined();
+        await expect(claimEmailInvitations(user)).resolves.toEqual({ unavailable: null });
       } finally {
         await restoreNotifications();
       }
@@ -293,7 +293,7 @@ it("continues processing another invitation after one notification transaction f
   const user = await usersRepo.createUser({ termsVersion: "test-terms", locale: "en", email: fixture.email, emailVerified: true });
   const restoreNotifications = await rejectNotificationWrites(sql, true);
   try {
-    await expect(claimEmailInvitations(user)).resolves.toBeUndefined();
+    await expect(claimEmailInvitations(user)).resolves.toEqual({ unavailable: null });
   } finally {
     await restoreNotifications();
   }
