@@ -14,8 +14,6 @@
  * content goes into the cell.
  */
 
-import { columnsBarredAt, holdsColumns } from '@web/spaces/document/document-column-entry';
-import { DOC_COLUMN } from '@web/spaces/document/document-column-geometry';
 import { blockToNode, type BlockNoteEditor } from '@blocknote/core';
 import { Fragment, Slice, type Node as PMNode, type ResolvedPos, type Schema } from '@tiptap/pm/model';
 import { NodeSelection, TextSelection, type Transaction } from '@tiptap/pm/state';
@@ -26,6 +24,8 @@ import { newId, t } from '@breatic/shared';
 
 import { toast } from '@web/lib/toast';
 
+import { columnsBarredAt, holds, holdsColumns } from '@web/spaces/document/document-column-entry';
+import { DOC_COLUMN } from '@web/spaces/document/document-column-geometry';
 import { landingSlice, withoutRowIds } from '@web/spaces/document/document-comment-paste';
 import { gapAtDrop, insertAtGapTr, quotedBeside } from '@web/spaces/document/document-file-input';
 import { QUOTED } from '@web/spaces/document/document-list-block';
@@ -205,20 +205,8 @@ export function holdsContent(rows: readonly PMNode[], parsed: boolean): boolean 
   });
 }
 
-/**
- * Whether content holds a node of a type, at any depth.
- * @param content - The content.
- * @param name - The type's name.
- * @returns True when it does.
- */
-export function holdsNode(content: Fragment, name: string): boolean {
-  let found = false;
-  content.descendants((node) => {
-    if (node.type.name === name) found = true;
-    return !found;
-  });
-  return found;
-}
+/** A stored table's type, as a set to search for. */
+const STORED_TABLES: ReadonlySet<string> = new Set([DOC_TABLE]);
 
 /**
  * The one table alone, ignoring lines around it that show no words: a line
@@ -254,7 +242,7 @@ export function judgedTable(content: Read, judge: JudgeMedium, schema: Schema): 
  * @returns True when it is refused there.
  */
 export function refusedInCell(inCell: boolean, rows: readonly PMNode[]): boolean {
-  return inCell && holdsNode(Fragment.from(rows), DOC_TABLE) && onlyTable(rows) === null;
+  return inCell && holds(Fragment.from(rows), STORED_TABLES) && onlyTable(rows) === null;
 }
 
 /**
@@ -645,7 +633,7 @@ export function putContent(editor: Editor, content: Read, options: PutOptions): 
   const startsInCode = $drop !== null ? $drop.parent.type.spec.code === true : selection.$from.parent.type.spec.code === true && selection.$from.sameParent(selection.$to);
   const source = content.source.kind === 'slice' ? content.source.slice : blocksSlice(content.source.blocks, schema);
   // A table in a cell goes by the cell's table rules (A12–A14) even from a code block.
-  const plain = content.plain ?? (startsInCode && !(inCell && holdsNode(source.content, DOC_TABLE)) ? content.codeText ?? null : null);
+  const plain = content.plain ?? (startsInCode && !(inCell && holds(source.content, STORED_TABLES)) ? content.codeText ?? null : null);
   /**
    * Places content at its target, all of it or none: a placement that fails
    * part way leaves the body and the selection as they were. A drop's point is aimed first and its

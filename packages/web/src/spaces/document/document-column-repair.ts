@@ -176,21 +176,10 @@ export function liftOnlyColumn(tr: Transform, pos: number, group: PMNode): void 
 }
 
 /**
- * The plugin that repairs column groups after every local transaction.
- * @returns The plugin.
- */
-export function columnRepairPlugin(): Plugin {
-  return new Plugin({
-    key: new PluginKey('doc-column-repair'),
-    appendTransaction: (transactions, oldState, newState) => repair(transactions, oldState, newState),
-  });
-}
-
-/**
  * The extension that carries the column repair.
  * @returns The extension, for the assembly to register.
  */
 export const documentColumnRepairExtension = createExtension(() => ({
   key: 'document-column-repair',
-  prosemirrorPlugins: [columnRepairPlugin()],
+  prosemirrorPlugins: [new Plugin({ key: new PluginKey('doc-column-repair'), appendTransaction: repair })],
 }));

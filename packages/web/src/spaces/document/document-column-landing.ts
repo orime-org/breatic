@@ -26,7 +26,6 @@ export interface VisibleBox {
 /** How far in from a visible edge the side zone reaches. */
 const SIDE_ZONE = 24;
 
-
 /**
  * The side of the target the pointer is on: from the left edge of the body,
  * cell or column holding it to within the zone of its visible left edge, or
@@ -51,10 +50,10 @@ export function sideOfPointer(x: number, box: VisibleBox, holderLeft: number): C
  * @returns True when it is or does.
  */
 function tableWithColumns(node: PMNode): boolean {
-  let found = TABLES.has(node.type.name) && holds(node, LISTS);
-  node.descendants((child) => {
-    if (!found && TABLES.has(child.type.name)) found = holds(child, LISTS);
-    return !found;
+  if (TABLES.has(node.type.name)) return holds(node, LISTS);
+  let found = false;
+  node.forEach((child) => {
+    found ||= tableWithColumns(child);
   });
   return found;
 }
@@ -204,8 +203,8 @@ function rowAt(view: EditorView, x: number, y: number, beside: number | null, ho
     if (room !== undefined) {
       // A column stands one level inside its group; a pointer already beside
       // the body stays beside it.
-      const from = gap ? (beside ?? view.state.doc.resolve(at.inside).depth + 2) : beside;
-      return rowAt(view, clamp(x, room.left, room.right), clamp(y, room.top, room.bottom), from, hops + 1);
+      const besideDepth = gap ? (beside ?? view.state.doc.resolve(at.inside).depth + 2) : beside;
+      return rowAt(view, clamp(x, room.left, room.right), clamp(y, room.top, room.bottom), besideDepth, hops + 1);
     }
   }
   const $at = view.state.doc.resolve(at.inside >= 0 ? at.inside : at.pos);

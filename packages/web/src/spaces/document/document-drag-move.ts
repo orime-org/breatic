@@ -29,7 +29,6 @@
  * ProseMirror computes it, so where a row lands does not change.
  */
 
-import { columnsBarredAt, holds, holdsColumns } from '@web/spaces/document/document-column-entry';
 import { Fragment, Slice, type Node as PMNode } from '@tiptap/pm/model';
 import { dropPoint } from '@tiptap/pm/transform';
 import type { EditorView } from '@tiptap/pm/view';
@@ -38,6 +37,7 @@ import { t } from '@breatic/shared';
 
 import { toast } from '@web/lib/toast';
 
+import { columnsBarredAt, holds, holdsColumns } from '@web/spaces/document/document-column-entry';
 import {
   rowById,
   type RowInDocument,

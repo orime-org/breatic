@@ -48,7 +48,7 @@ import { bodyHolds } from '@web/spaces/document/document-body-focus';
 import { bodyScrollerOf, type PointerAt } from '@web/spaces/document/document-body-autoscroll';
 import { autoScrollOf } from '@web/spaces/document/document-drag-autoscroll';
 import { MEDIA_CHROME } from '@web/spaces/document/DocumentMediaBlock';
-import { DOC_TABLE } from '@web/spaces/document/document-table-nodes';
+import { TABLES } from '@web/spaces/document/document-table-nodes';
 import { DOC_COLUMN_LIST } from '@web/spaces/document/document-column-geometry';
 import { inTableFullscreen } from '@web/spaces/document/document-table-fullscreen';
 
@@ -117,14 +117,14 @@ function zoneAt(view: EditorView, y: number): PointerZone {
     const last = edgeLine(view, 'end');
     if (last) {
       const box = last.getBoundingClientRect();
-      if (y >= (edgeBlockIsTable(view, 'end') ? box.bottom : box.top)) return 'end';
+      if (y >= (edgeBlockIsTableOrColumns(view, 'end') ? box.bottom : box.top)) return 'end';
     }
   }
   if (bodyEdgeNeedsTakeover(doc, 'start')) {
     const first = edgeLine(view, 'start');
     if (first) {
       const box = first.getBoundingClientRect();
-      if (y <= (edgeBlockIsTable(view, 'start') ? box.top : box.bottom)) return 'start';
+      if (y <= (edgeBlockIsTableOrColumns(view, 'start') ? box.top : box.bottom)) return 'start';
     }
   }
   return 'body';
@@ -138,10 +138,10 @@ function zoneAt(view: EditorView, y: number): PointerZone {
  * @param edge - Which end.
  * @returns True for a table or a column group.
  */
-function edgeBlockIsTable(view: EditorView, edge: BodyEdge): boolean {
+function edgeBlockIsTableOrColumns(view: EditorView, edge: BodyEdge): boolean {
   const pos = bodyEdgeBlockPos(view.state.doc, edge);
   const name = pos === null ? undefined : view.state.doc.nodeAt(pos)?.type.name;
-  return name === 'table' || name === DOC_TABLE || name === DOC_COLUMN_LIST;
+  return name !== undefined && (TABLES.has(name) || name === DOC_COLUMN_LIST);
 }
 
 /**

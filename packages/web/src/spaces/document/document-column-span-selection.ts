@@ -57,7 +57,7 @@ export function columnAt(doc: PMNode, pos: number): string | null {
  * @param selection - The selection.
  * @returns True when it runs across columns.
  */
-export function spansColumns(selection: Selection): boolean {
+function spansColumns(selection: Selection): boolean {
   if (selection.empty || !(selection instanceof TextSelection)) return false;
   const doc = selection.$from.doc;
   return columnAt(doc, selection.from) !== columnAt(doc, selection.to);

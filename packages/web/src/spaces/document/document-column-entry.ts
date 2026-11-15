@@ -8,7 +8,7 @@
  * dropping and dragging content holding one ask here first.
  */
 
-import type { Node as PMNode, ResolvedPos } from '@tiptap/pm/model';
+import { Node as PMNode, type Fragment, type ResolvedPos } from '@tiptap/pm/model';
 
 import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-geometry';
 import { rowById } from '@web/spaces/document/document-row-by-id';
@@ -18,15 +18,16 @@ import { isTableCell } from '@web/spaces/document/document-table-nodes';
 export const LISTS: ReadonlySet<string> = new Set([DOC_COLUMN_LIST]);
 
 /**
- * Whether a node, or any node inside it, is of one of these types.
- * @param node - The node.
+ * Whether a node, or any node inside it or inside content, is of one of these
+ * types.
+ * @param content - The node or the content.
  * @param types - The type names.
  * @returns True when one is found.
  */
-export function holds(node: PMNode, types: ReadonlySet<string>): boolean {
-  if (types.has(node.type.name)) return true;
+export function holds(content: PMNode | Fragment, types: ReadonlySet<string>): boolean {
+  if (content instanceof PMNode && types.has(content.type.name)) return true;
   let found = false;
-  node.descendants((child) => {
+  content.descendants((child) => {
     if (types.has(child.type.name)) found = true;
     return !found;
   });

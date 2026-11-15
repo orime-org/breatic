@@ -33,7 +33,7 @@ import { checkAdd } from '@web/data/yjs/space-write';
 import { DOC_COLUMN, DOC_COLUMN_LIST, meanWeight, weightsOf } from '@web/spaces/document/document-column-geometry';
 import { liftOnlyColumn } from '@web/spaces/document/document-column-repair';
 import { rangeToLift } from '@web/spaces/document/document-drag-move';
-import { rowById, type RowInDocument } from '@web/spaces/document/document-row-by-id';
+import { positionOf, rowById, type RowInDocument } from '@web/spaces/document/document-row-by-id';
 
 /**
  * Meta on the put-down of a lone block's move within its group: the id of
@@ -153,7 +153,7 @@ export function dropRowBeside(
   // itself, wherever it stands now. Failing that, the row where it maps to
   // through the put-down's own steps, when it carries the row's id.
   const { doc } = view.state;
-  let at = whereIs(doc, dragged.node);
+  let at = positionOf(doc, dragged.node);
   if (at < 0 && doc.nodeAt(mapped)?.attrs['id'] === draggedId) at = mapped;
   if (at < 0) return true;
   const original = doc.nodeAt(at)!;
@@ -162,21 +162,6 @@ export function dropRowBeside(
   const leaving = rangeToLift(doc, { node: original, from: at, to: at + original.nodeSize });
   view.dispatch(view.state.tr.delete(leaving.from, leaving.to));
   return true;
-}
-
-/**
- * Where a node stands in a document, by identity.
- * @param doc - The document.
- * @param node - The node.
- * @returns Its position, or -1 when the document holds it nowhere.
- */
-function whereIs(doc: PMNode, node: PMNode): number {
-  let at = -1;
-  doc.descendants((child, pos) => {
-    if (child === node) at = pos;
-    return at < 0;
-  });
-  return at;
 }
 
 /**
