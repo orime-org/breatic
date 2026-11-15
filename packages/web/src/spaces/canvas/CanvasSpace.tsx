@@ -22,6 +22,7 @@ import {
   type OnConnectEnd,
   type OnConnectStart,
   type OnNodeDrag,
+  type Viewport,
   ViewportPortal,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -277,6 +278,9 @@ import { heldIds } from '@web/spaces/canvas/gesture-table';
 import { useBufferAccess } from '@web/spaces/canvas/use-buffer-access';
 import { useGestureRelease } from '@web/spaces/canvas/use-gesture-release';
 import { usePublishPresence } from '@web/spaces/canvas/use-publish-presence';
+import { useCanvasFollow } from '@web/spaces/canvas/use-canvas-follow';
+import { visibleRect, type FlowRect, type PaneSize } from '@web/features/follow/follow-geometry';
+import { useFollowStore } from '@web/stores/follow';
 import {
   AnnotationNamesContext,
   everyAnnotationAuthor,
@@ -3166,14 +3170,45 @@ function CanvasSpaceInner({
     [screenToFlowPosition],
   );
 
-  // Presence out: which nodes this client holds, and where its pointer is.
-  // One writer for both fields — awareness resends the whole state per field.
+  // Following a member (#920): their visible rectangle on this canvas, fitted
+  // into this pane once the document has loaded; any move this did not start
+  // stops it.
+  const leaderUserId = useFollowStore((s) => s.targetUserId);
+  const paneSize = React.useCallback((): PaneSize => {
+    const { width, height } = rfStoreApi.getState();
+    return { width, height };
+  }, [rfStoreApi]);
+  const applyFollowViewport = React.useCallback((next: Viewport): void => {
+    void setViewport(next, { duration: 0 });
+  }, [setViewport]);
+  const clearOpeningFit = React.useCallback((): void => {
+    rfStoreApi.setState({ fitViewQueued: false });
+  }, [rfStoreApi]);
+  const follow = useCanvasFollow({
+    awareness,
+    leaderUserId,
+    ready: synced,
+    paneSize,
+    applyViewport: applyFollowViewport,
+    clearOpeningFit,
+  });
+  const readCamera = React.useCallback((): FlowRect | null => {
+    const { transform, width, height } = rfStoreApi.getState();
+    if (width <= 0 || height <= 0) return null;
+    return visibleRect({ x: transform[0], y: transform[1], zoom: transform[2] }, { width, height });
+  }, [rfStoreApi]);
+
+  // Presence out: which nodes this client holds, where its pointer is and what
+  // part of the canvas it shows. One writer for all of them — awareness resends
+  // the whole state per field.
   const publisher = usePublishPresence({
     awareness,
     sources: { selectedIds, pickSession, focusTargetId: focusCropTargetId },
     synced,
     containerRef,
     toFlowPosition: publishedPoint,
+    readCamera,
+    followCamera: follow.followCamera,
   });
   const gesture = useGestureBroadcast(publisher, buffer.onScreen, setLocalGestureIds);
   useGestureRelease(gesture.abandon);
@@ -4747,6 +4782,7 @@ function CanvasSpaceInner({
             // zoom presets still use the full global range below.
             fitViewOptions={FIT_VIEW_OPTIONS}
             onMove={noteCameraPlaced}
+            onMoveStart={follow.onMoveStart}
             onMoveEnd={rememberViewport}
             // 10%–800%, over the library's own 0.5–2. The toolbar and the stored
             // camera are checked against these same two constants, so what the

@@ -54,6 +54,10 @@ import type { DocumentScope } from '@web/data/api/documents';
 import { DocumentSnapshotNameDialog } from '@web/spaces/document/DocumentSnapshotNameDialog';
 import { useDocumentVersions } from '@web/spaces/document/use-document-versions';
 import { DocumentVersionAreaUnavailable } from '@web/spaces/document/DocumentVersionAreaUnavailable';
+import { useDocumentFollow } from '@web/spaces/document/use-document-follow';
+import { usePublishTopBlock } from '@web/spaces/document/use-publish-top-block';
+import { useFollowStore } from '@web/stores/follow';
+import type { Awareness } from 'y-protocols/awareness';
 
 // The snapshot panel, its preview editor and the diff renderer load when the
 // panel first opens (inner#1129 design §7.1); a chunk that cannot be fetched
@@ -85,6 +89,8 @@ interface DocumentEditorProps {
   landed?: ProposalLocation | null;
   /** The document, for its snapshots; without it the snapshot commands are not drawn. */
   scope?: DocumentScope | null;
+  /** This document Space's awareness, for following a member (#920); null before it is attached. */
+  awareness?: Awareness | null;
 }
 
 /** How long a block an Agent proposal landed stays marked. */
@@ -154,6 +160,7 @@ function cutTo(box: DOMRect, frame: DOMRect): DOMRect {
  * @param root0.pending - What the body's pending media blocks read.
  * @param root0.landed - The block an Agent proposal just landed.
  * @param root0.scope - The document, for its snapshots.
+ * @param root0.awareness - This document Space's awareness.
  * @returns The editor body, the comment panel beside it, the entry and the
  *   bubble bar.
  */
@@ -165,8 +172,15 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   pending = null,
   landed = null,
   scope = null,
+  awareness = null,
 }: DocumentEditorProps): React.JSX.Element {
   const body = React.useRef<HTMLDivElement>(null);
+  // The same element as state, for the hooks that wait for it to exist.
+  const [bodyRoot, setBodyRoot] = React.useState<HTMLDivElement | null>(null);
+  const bodyRef = React.useCallback((element: HTMLDivElement | null): void => {
+    body.current = element;
+    setBodyRoot(element);
+  }, []);
   // The snapshot panel takes the body's place while open; the comment panel
   // and it are never up together (inner#1129 design §7.2).
   const versions = useDocumentVersions(handle.editor, scope);
@@ -248,6 +262,14 @@ export const DocumentEditor = React.memo(function DocumentEditor({
     viewport.scrollTop = bodyTop.current;
     bodyTop.current = null;
   }, [panelOpen, viewport]);
+  // Following a member (#920): their top block kept at the top of this body,
+  // and this body's own top block published for whoever follows this user.
+  // Both rest while the snapshot panel shows in the same viewport; the
+  // follower aligns after the layout effect above gave the body its place back.
+  const leaderUserId = useFollowStore((s) => s.targetUserId);
+  const { followTopBlockId } = useDocumentFollow({ awareness, leaderUserId, viewport, root: bodyRoot, paused: panelOpen });
+  usePublishTopBlock({ awareness, viewport, root: bodyRoot, paused: panelOpen, followTopBlockId });
+
   // A table open full screen (#1427): this area covers the window and
   // shows that table alone; what it leaves out is listed in design §5.1.
   const fullscreen = useTableFullscreen(handle.editor);
@@ -497,7 +519,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
                 />
               )}
               <div
-                ref={body}
+                ref={bodyRef}
                 data-testid='document-editor-content'
                 // The body and the row handles that stand beside it: the
                 // focus on a handle has not left the body.
