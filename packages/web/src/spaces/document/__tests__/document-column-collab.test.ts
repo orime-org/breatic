@@ -55,6 +55,10 @@ interface Pair {
   readonly theirs: Editor;
   /** Exchanges every change made since the last exchange, both ways. */
   readonly sync: () => void;
+  /** Our document. */
+  readonly a: Y.Doc;
+  /** Theirs. */
+  readonly b: Y.Doc;
 }
 
 /**
@@ -81,7 +85,7 @@ function pair(blocks: readonly unknown[]): Pair {
     }
   };
   sync();
-  return { ours, theirs, sync };
+  return { ours, theirs, sync, a, b };
 }
 
 /**
@@ -190,15 +194,47 @@ describe('concurrent edits around a column group (A10)', () => {
     expect(agreed(p)).toEqual(['[T|D]', 'b+typed']);
   });
 
-  it('keeps the moved column\'s width when two of three columns swap', () => {
+  it('keeps the untouched columns\' widths, and gives the moved one the mean, when two of three columns swap', () => {
     const p = pair([
-      columnsBlock({ blocks: [para('a')], width: 2 }, { blocks: [para('b')], width: 1 }, { blocks: [para('c')], width: 1 }),
+      columnsBlock({ blocks: [para('a')], width: 2 }, { blocks: [para('b')], width: 1.5 }, { blocks: [para('c')], width: 0.5 }),
     ]);
     dropRowBeside(p.ours, idOf(p.ours, 'a'), idOf(p.ours, 'c'), 'right');
     p.sync();
     expect(agreed(p)).toEqual(['[b|c|a]']);
     const group = p.theirs.document[0] as unknown as { children: { props: { width: number } }[] };
-    expect(group.children.slice(0, 2).map((column) => column.props.width)).toEqual([1, 1]);
+    expect(group.children.map((column) => column.props.width)).toEqual([1.5, 0.5, 1]);
+  });
+
+  it('keeps the moved block when a collaborator types between the two halves of a swap', () => {
+    const p = pair([columnsBlock(['X'], ['Y'])]);
+    const updates: Uint8Array[] = [];
+    p.a.on('update', (update: Uint8Array, origin: unknown) => {
+      if (origin !== 'peer') updates.push(update);
+    });
+    const moved = idOf(p.ours, 'X');
+    dropRowBeside(p.ours, moved, idOf(p.ours, 'Y'), 'right');
+    expect(updates.length).toBeGreaterThan(1);
+    // Theirs sees the first half only, and types then.
+    Y.applyUpdate(p.b, updates[0]!, 'peer');
+    typeAfter(p.theirs, 'Y', '+t');
+    for (const update of updates.slice(1)) Y.applyUpdate(p.b, update, 'peer');
+    p.sync();
+    expect(agreed(p)).toEqual(['[Y+t|X]']);
+    expect(idOf(p.ours, 'X')).toBe(moved);
+  });
+
+  it('keeps the ids of a moved row and the row under it when a collaborator receives the two halves apart', () => {
+    const p = pair([para('T'), { ...para('D'), children: [para('d')] }]);
+    const updates: Uint8Array[] = [];
+    p.a.on('update', (update: Uint8Array, origin: unknown) => {
+      if (origin !== 'peer') updates.push(update);
+    });
+    const [row, child] = [idOf(p.ours, 'D'), idOf(p.ours, 'd')];
+    dropRowBeside(p.ours, row, idOf(p.ours, 'T'), 'left');
+    for (const update of updates) Y.applyUpdate(p.b, update, 'peer');
+    p.sync();
+    expect(agreed(p)).toEqual(['[D|T]']);
+    for (const editor of [p.ours, p.theirs]) expect([idOf(editor, 'D'), idOf(editor, 'd')]).toEqual([row, child]);
   });
 });
 

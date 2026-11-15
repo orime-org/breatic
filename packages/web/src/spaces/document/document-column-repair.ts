@@ -12,9 +12,6 @@
  *   or whose new block holds words (a block replaced in place), stays.
  * - A group left with one column, which this transaction touched, dissolves
  *   into that column's blocks; a group left with no column is deleted.
- * - The take-away half of a two-step move ({@link COLUMN_TAKE_AWAY}) only
- *   deletes the emptied column: the put-down half may land in the same
- *   group, and dissolving in between would rebuild the column left standing.
  *
  * Remote transactions are left alone: a repair appended to a collaborator's
  * change is not written back to Yjs (see `document-table-nodes.tsx` on
@@ -29,12 +26,6 @@ import { Fragment, Slice, type Node as PMNode } from '@tiptap/pm/model';
 import { columnsBarredAt } from '@web/spaces/document/document-column-entry';
 import { fromYjs } from '@web/spaces/document/document-yjs-origin';
 import { DOC_COLUMN, DOC_COLUMN_LIST, holdsOneEmptyParagraph } from '@web/spaces/document/document-column-geometry';
-
-/**
- * Meta on the take-away half of a two-step move: the emptied column is
- * deleted, and the group is not dissolved until the put-down half has run.
- */
-export const COLUMN_TAKE_AWAY = new PluginKey('doc-column-take-away');
 
 /**
  * Meta on a transaction that writes a body as it was saved (a snapshot
@@ -130,7 +121,6 @@ function repair(
   newState: EditorState,
 ): Transaction | null {
   if (!localEdit(transactions)) return null;
-  const takeAway = transactions.some((tr) => tr.getMeta(COLUMN_TAKE_AWAY) === true);
   const before = idsOf(oldState.doc);
   const tr = newState.tr;
   const emptied: Range[] = [];
@@ -140,40 +130,38 @@ function repair(
     return false;
   });
   for (const [from, to] of [...emptied].reverse()) tr.delete(from, to);
-  if (!takeAway) {
-    const touched = [
-      ...localRanges(transactions).map(([from, to]): Range => [tr.mapping.map(from, -1), tr.mapping.map(to, 1)]),
-      ...emptied.map(([from]): Range => [tr.mapping.map(from, -1), tr.mapping.map(from, 1)]),
-    ];
-    // A group where none may stand (design 5.1) unfolds like a one-column
-    // group, every column's blocks in reading order. Inner groups come first,
-    // so each is read again where it stands then.
-    const groups: number[] = [];
-    tr.doc.descendants((node, pos) => {
-      if (node.type.name !== DOC_COLUMN_LIST) return true;
-      const leftover = node.childCount === 0 || (node.childCount === 1 && meets(touched, pos, pos + node.nodeSize));
-      if (leftover || columnsBarredAt(tr.doc.resolve(pos))) groups.push(pos);
-      return true;
-    });
-    for (const pos of groups.reverse()) {
-      const node = tr.doc.nodeAt(pos);
-      if (node === null) continue;
-      if (node.childCount === 0) {
-        tr.delete(pos, pos + node.nodeSize);
-        continue;
-      }
-      const blocks: PMNode[] = [];
-      node.forEach((column) => column.forEach((block) => blocks.push(block)));
-      const $pos = tr.doc.resolve(pos);
-      // A table that cannot stand where the group stood (a cell) waits for
-      // the cell's own rule (`unfoldCellTables`) and the next change.
-      if (!$pos.parent.canReplace($pos.index(), $pos.index() + 1, Fragment.from(blocks))) continue;
-      const end = pos + node.nodeSize;
-      // One column's blocks are lifted out where they stand, so the caret
-      // and every position inside them map through unchanged.
-      if (node.childCount === 1) tr.step(new ReplaceAroundStep(pos, end, pos + 2, end - 2, Slice.empty, 0, true));
-      else tr.replaceWith(pos, end, blocks);
+  const touched = [
+    ...localRanges(transactions).map(([from, to]): Range => [tr.mapping.map(from, -1), tr.mapping.map(to, 1)]),
+    ...emptied.map(([from]): Range => [tr.mapping.map(from, -1), tr.mapping.map(from, 1)]),
+  ];
+  // A group where none may stand (design 5.1) unfolds like a one-column
+  // group, every column's blocks in reading order. Inner groups come first,
+  // so each is read again where it stands then.
+  const groups: number[] = [];
+  tr.doc.descendants((node, pos) => {
+    if (node.type.name !== DOC_COLUMN_LIST) return true;
+    const leftover = node.childCount === 0 || (node.childCount === 1 && meets(touched, pos, pos + node.nodeSize));
+    if (leftover || columnsBarredAt(tr.doc.resolve(pos))) groups.push(pos);
+    return true;
+  });
+  for (const pos of groups.reverse()) {
+    const node = tr.doc.nodeAt(pos);
+    if (node === null) continue;
+    if (node.childCount === 0) {
+      tr.delete(pos, pos + node.nodeSize);
+      continue;
     }
+    const blocks: PMNode[] = [];
+    node.forEach((column) => column.forEach((block) => blocks.push(block)));
+    const $pos = tr.doc.resolve(pos);
+    // A table that cannot stand where the group stood (a cell) waits for
+    // the cell's own rule (`unfoldCellTables`) and the next change.
+    if (!$pos.parent.canReplace($pos.index(), $pos.index() + 1, Fragment.from(blocks))) continue;
+    const end = pos + node.nodeSize;
+    // One column's blocks are lifted out where they stand, so the caret
+    // and every position inside them map through unchanged.
+    if (node.childCount === 1) tr.step(new ReplaceAroundStep(pos, end, pos + 2, end - 2, Slice.empty, 0, true));
+    else tr.replaceWith(pos, end, blocks);
   }
   return tr.docChanged ? tr : null;
 }

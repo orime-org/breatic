@@ -23,7 +23,6 @@ import { DOCUMENT_SCHEMA, documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-geometry';
-import { COLUMN_TAKE_AWAY } from '@web/spaces/document/document-column-repair';
 import { columnsBlock, para, shapeOf } from '@web/spaces/document/__tests__/column-fixtures';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
@@ -220,26 +219,6 @@ describe('the repair rule (design §5.2)', () => {
     caretAt(editor, 'b');
     press(editor, 'Backspace');
     expect(shape(editor)).toEqual(['[a|b]']);
-  });
-
-  it('only deletes the emptied column, without dissolving, in a take-away step', () => {
-    const editor = editorWith([columnsBlock(['a'], ['b'])]);
-    const view = editor.prosemirrorView;
-    let from = -1;
-    let to = -1;
-    view.state.doc.descendants((node: PMNode, pos: number) => {
-      if (node.type.name === 'blockContainer' && node.firstChild?.textContent === 'a') {
-        from = pos;
-        to = pos + node.nodeSize;
-        return false;
-      }
-      return true;
-    });
-    view.dispatch(view.state.tr.delete(from, to).setMeta(COLUMN_TAKE_AWAY, true));
-    const group = view.state.doc.firstChild!.firstChild!;
-    expect(group.type.name).toBe(DOC_COLUMN_LIST);
-    expect(group.childCount).toBe(1);
-    expect(group.firstChild!.textContent).toBe('b');
   });
 
   it('leaves a remote change alone and repairs a one-column group on the next local edit inside it', () => {

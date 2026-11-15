@@ -3,10 +3,9 @@
 
 /**
  * inner#1314 design §5.2 "两段事务": a move into or out of columns is two
- * transactions, a take-away and a put-down. The size state is asked before
+ * transactions, a put-down and a take-away. The size state is asked before
  * the first one goes: a Space that cannot take an add, or is resyncing,
- * refuses the whole move with the add's toast, and nothing is written; the
- * gate never lets the take-away through alone.
+ * refuses the whole move with the add's toast, and nothing is written.
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
