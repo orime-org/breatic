@@ -74,6 +74,12 @@ describe("Gemini 3.8 Flash TTS", () => {
     expect(await refused("wavespeed", { prompt: "x".repeat(8000) })).toBeUndefined();
   });
 
+  it("holds the text cap to a run that names no speaker, which goes as text whatever its speakers list holds", async () => {
+    const unnamed = [{ speaker: "", voice: "Kore" }, { speaker: "", voice: "Puck" }];
+    expect(buildBody(bindingOn("wavespeed"), { prompt: "x".repeat(10), params: { speakers: unnamed, voice_id: "Kore" } })).toHaveProperty("text");
+    expect(await refused("wavespeed", { prompt: "x".repeat(8001), params: { speakers: unnamed } })).toMatchObject({ limit: { field: "prompt", measure: "characters", max: 8000 } });
+  });
+
   it("takes a dialogue longer than 8000 characters in all, and keeps one with a line over 8000 off WaveSpeed", async () => {
     const long = `Ava: ${"x".repeat(5000)}\nLeo: ${"y".repeat(5000)}`;
     expect(await refused("wavespeed", { prompt: long, params: { speakers: PAIR } })).toBeUndefined();
