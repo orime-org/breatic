@@ -163,6 +163,11 @@ describe("a run no upstream here takes (#1521)", () => {
     expect(reason).toContain("The upstream says: Tripo prompt up to 1024.");
   });
 
+  it("names a count of Chinese characters as such", async () => {
+    vi.mocked(inputRefusalFor).mockResolvedValueOnce({ reason: "r", limit: { field: "prompt", measure: "chinese_characters", max: 2500 } });
+    expect(await refusal(TEXT_TO_3D)).toContain('"tripo-h3.1-t23d" takes at most 2500 Chinese characters in the prompt here.');
+  });
+
   it("is refused in the upstream's words when the refusal names no count", async () => {
     vi.mocked(inputRefusalFor).mockResolvedValueOnce({ param: "texture", value: "4k" });
     expect(await refusal(TEXT_TO_3D)).toContain('The upstream says: it does not take texture = "4k".');

@@ -13,6 +13,7 @@ function limitWords(limit: InputLimit): string {
   const field = limit.field === "prompt" ? "the prompt" : `"${limit.field}"`;
   const bound = limit.max !== undefined ? `at most ${String(limit.max)}` : `at least ${String(limit.min)}`;
   if (limit.measure === "lines") return `${bound} lines in ${field}`;
+  if (limit.measure === "chinese_characters") return `${bound} Chinese characters in ${field}`;
   const where = limit.per === "line" ? `each line of ${field}` : limit.per === "item" ? `each item of ${field}` : field;
   return `${bound} characters in ${where}`;
 }

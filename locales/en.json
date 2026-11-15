@@ -350,6 +350,7 @@
         "line_characters_max": "{model} takes at most {max, number} characters in each line of {field}.",
         "item_characters_max": "{model} takes at most {max, number} characters in each of {field}.",
         "lines_max": "{model} takes at most {max, number} lines in {field}.",
+        "chinese_characters_max": "{model} takes at most {max, number} Chinese characters in {field}.",
         "unsupported": "{model} can’t take this run as set up. Change the settings or pick another model."
       },
       "input_field": {

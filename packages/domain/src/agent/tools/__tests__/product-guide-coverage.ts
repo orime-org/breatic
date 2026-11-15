@@ -964,6 +964,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "server.model.input_limit.line_characters_max": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.model.input_limit.item_characters_max": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.model.input_limit.lines_max": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "server.model.input_limit.chinese_characters_max": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.model.input_limit.unsupported": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.model.input_field.prompt": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.model.input_field.negative_prompt": { excluded: REASONS.SAYS_WHAT_HAPPENED },

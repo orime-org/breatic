@@ -350,6 +350,7 @@
         "line_characters_max": "{model} 的{field}每行最多 {max, number} 個字元。",
         "item_characters_max": "{model} 的{field}每條最多 {max, number} 個字元。",
         "lines_max": "{model} 的{field}最多 {max, number} 行。",
+        "chinese_characters_max": "{model} 的{field}最多 {max, number} 個漢字。",
         "unsupported": "{model} 無法使用目前的設定，請修改設定或換個模型。"
       },
       "input_field": {

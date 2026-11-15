@@ -48,6 +48,8 @@ describe("inputRefusalText", () => {
       .toBe("Gemini 3.8 Flash TTS takes at most 255 characters in the negative prompt.");
     expect(inputRefusalText({ reason: "r", limit: { field: "lyrics", measure: "characters", max: 5000 } }, model))
       .toBe("Gemini 3.8 Flash TTS takes at most 5,000 characters in the lyrics.");
+    expect(inputRefusalText({ reason: "r", limit: { field: "prompt", measure: "chinese_characters", max: 2500 } }, model))
+      .toBe("Gemini 3.8 Flash TTS takes at most 2,500 Chinese characters in the text.");
   });
 
   it("gives a refusal no count explains, or a count of a kind it has no sentence for, the general sentence", () => {
@@ -77,6 +79,7 @@ describe("inputRefusalText", () => {
         { reason: "r", limit: { field: "lyrics", measure: "characters", max: 1, per: "line" } },
         { reason: "r", limit: { field: "multi_prompt", measure: "characters", max: 1, per: "item" } },
         { reason: "r", limit: { field: "prompt", measure: "lines", max: 1 } },
+        { reason: "r", limit: { field: "prompt", measure: "chinese_characters", max: 1 } },
         { reason: "r" },
       ] as const) {
         const text = inputRefusalText(refusal, model);

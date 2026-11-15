@@ -350,6 +350,7 @@
         "line_characters_max": "{model} の{field}は1行あたり最大 {max, number} 文字です。",
         "item_characters_max": "{model} の{field}は1件あたり最大 {max, number} 文字です。",
         "lines_max": "{model} の{field}は最大 {max, number} 行です。",
+        "chinese_characters_max": "{model} の{field}は漢字最大 {max, number} 文字です。",
         "unsupported": "{model} は現在の設定では実行できません。設定を変えるか、別のモデルを選んでください。"
       },
       "input_field": {

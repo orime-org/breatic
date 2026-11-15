@@ -6,7 +6,7 @@ import { t } from "@shared/i18n/index.js";
 /** What one input limit counts and where it stops, as `@breatic/provider` states it on a reject. */
 export interface InputLimitShape {
   readonly field: string;
-  readonly measure: "characters" | "lines";
+  readonly measure: "characters" | "lines" | "chinese_characters";
   readonly max?: number;
   readonly min?: number;
   readonly per?: "line" | "item";
@@ -30,6 +30,7 @@ function sentenceOf(limit: InputLimitShape): { key: string; count: number; name:
   const base = "server.model.input_limit";
   if (limit.max !== undefined) {
     if (limit.measure === "lines") return limit.per === undefined ? { key: `${base}.lines_max`, count: limit.max, name: "max" } : undefined;
+    if (limit.measure === "chinese_characters") return limit.per === undefined ? { key: `${base}.chinese_characters_max`, count: limit.max, name: "max" } : undefined;
     const kind = limit.per === "line" ? "line_characters_max" : limit.per === "item" ? "item_characters_max" : "characters_max";
     return { key: `${base}.${kind}`, count: limit.max, name: "max" };
   }
