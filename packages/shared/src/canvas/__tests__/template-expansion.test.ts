@@ -1527,6 +1527,6 @@ describe('expandTemplate, optional inputs (inner#1811, CAP-9)', () => {
   it('marks no reference optional on a template with no optional input', () => {
     const result = expandTemplate(FIXTURE, FRESH);
     const all = [...result.rewritten.values(), ...result.appended].flatMap((node) => node.prompt ?? []);
-    expect(all.some((segment) => segment.optional === true)).toBe(false);
+    expect(all.some((segment) => segment.ref !== undefined && segment.optional === true)).toBe(false);
   });
 });

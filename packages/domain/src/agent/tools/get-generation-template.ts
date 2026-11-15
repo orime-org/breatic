@@ -25,7 +25,7 @@ const HOW_TO_SEND =
   `To use one, send each of its nodes as a node in ${PROPOSE_CANVAS_ACTION}: { id } in template on the anchor, { id, key } on each other node, ` +
   "and wire them as its edges say. A node not wired stands beside the anchor with no edge and carries { id, key, anchor }, anchor being the anchor's index. " +
   "Give each input a node of your own wired into the nodes it feeds; " +
-  "{ id, input } on that node is optional. An input into a slot (its line says by which) whose node holds material goes in the fed node's fills under that slot, with no edge; " +
+  "{ id, input } on that node is optional unless the input is. An optional input's node is placed empty when the user has no material for it; do not ask them for it. An input into a slot (its line says by which) whose node holds material goes in the fed node's fills under that slot, with no edge; " +
   "an empty one is wired with into that slot. A resource node lands holding the template's file: send it with no material. " +
   "Leave out the mode and model you keep; while you keep them, a value you write in a node's params wins over the template's. Send each generate node's prompt as its own, rewritten in the language " +
   "the user writes in with their story or detail in it: fill every tweak segment with words before you send it: from what the user said, or, for one their words leave open, after asking them, making takes first, or choosing, as your working rules say. A template's tweak segment is never sent as it is. " +
@@ -68,9 +68,14 @@ export function describeTemplate(template: GenerationTemplate): string {
     return `"${node.key}"${node.key === anchor.key ? " (anchor)" : ""}: ${what}${where}`;
   });
   const edges = skeleton.edges.map((edge) => `"${edge.from}" into "${edge.to}" by "${edge.into ?? "pool"}"`);
-  const inputs = skeleton.inputs.map(
-    (input) => `"${input.key}" (${input.type}) into ${input.feeds.map((fed) => `"${fed}"`).join(", ")}${input.into === undefined ? "" : ` by "${input.into}"`}`,
-  );
+  const optional = new Set(template.inputs.flatMap((input) => (input.optional === true ? [input.key] : [])));
+  const inputs = skeleton.inputs.map((input) => {
+    const fed = `"${input.key}" (${input.type}${optional.has(input.key) ? ", optional" : ""}) into ${input.feeds.map((one) => `"${one}"`).join(", ")}${input.into === undefined ? "" : ` by "${input.into}"`}`;
+    // inner#1811, CAP-9: the panel leaves the paragraph out while the node is empty.
+    return optional.has(input.key)
+      ? `${fed} (its ref stands in a paragraph of its own, which is not sent while its node is empty; its node carries { id, input }; its note: "${t(`canvas.template.${template.id}.input.${input.key}.note`)}")`
+      : fed;
+  });
   const steps = skeleton.steps.map((step) => t(`canvas.template.${template.id}.step.${step}`));
   const prompts = template.nodes.flatMap((node) => (node.role === "generate" ? [`"${node.key}": ${templateSegmentsText(template, node.key)}`] : []));
   return (

@@ -667,6 +667,8 @@ export function expandTemplate(template: GenerationTemplate, input: TemplateExpa
     return fills === undefined ? {} : { fills };
   };
 
+  // A mark of an optional input is marked optional (inner#1811).
+  const optionalInputs = new Set(template.inputs.flatMap((one) => (one.optional === true ? [one.key] : [])));
   // A mark names its target in the user's language: an input feeding the
   // node, or a template node wired into its pool.
   /**
@@ -676,7 +678,6 @@ export function expandTemplate(template: GenerationTemplate, input: TemplateExpa
    * @param key - The node's key.
    * @returns The prompt, the shots or the lines.
    */
-  const optionalInputs = new Set(template.inputs.flatMap((one) => (one.optional === true ? [one.key] : [])));
   const wordsOf = (key: TemplateNodeKey): Pick<ProposalNode, "prompt" | "shots" | "lines"> => {
     const targets = templateMarkTargets(template, key);
     const notes = skeleton.inputs

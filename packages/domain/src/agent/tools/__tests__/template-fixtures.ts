@@ -325,7 +325,7 @@ export interface AgentShape {
  * a node with dialogue lines sends them the same way from its `line.<n>` words.
  * No guide node.
  * @param template - The template.
- * @param options - `anchorKey`: write the anchor's key; `tagInputs`: tag each input node with `{ id, input }`; `material`: input key to the address its node holds.
+ * @param options - `anchorKey`: write the anchor's key; `tagInputs`: tag each input node with `{ id, input }`, which an optional input's node carries always; `material`: input key to the address its node holds.
  * @returns The proposal and where each identity sits.
  */
 export function agentShape(
@@ -358,6 +358,7 @@ export function agentShape(
    * @returns The address, or undefined for an empty node.
    */
   const materialOf = (key: string): string | undefined => (intoOf(key) === undefined ? undefined : options.material?.get(key));
+  const optionalKeys = new Set(template.inputs.flatMap((input) => (input.optional === true ? [input.key] : [])));
   for (const input of skeleton.inputs) {
     const name = t(`${base}.input.${input.key}.name`);
     const material = materialOf(input.key);
@@ -367,7 +368,8 @@ export function agentShape(
       type: input.type,
       name,
       ...(material === undefined ? {} : { material }),
-      ...(options.tagInputs === true ? { template: { id: template.id, input: input.key } } : {}),
+      // An optional input's node always carries its tag, as HOW_TO_SEND asks (inner#1811).
+      ...(options.tagInputs === true || optionalKeys.has(input.key) ? { template: { id: template.id, input: input.key } } : {}),
     });
   }
   const index = (identity: string): number => at.get(identity) as number;

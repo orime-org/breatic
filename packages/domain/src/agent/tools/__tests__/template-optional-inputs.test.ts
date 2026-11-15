@@ -142,7 +142,7 @@ describe("an optional template input (inner#1811, CAP-9)", () => {
      * @returns The proposal.
      */
     const withWords = (words: PromptSegment[]): Sent =>
-      withNode(shape.sent, result, (node) => ({ ...node, prompt: [...(node.prompt ?? []).filter((segment) => segment.slot?.kind === "note"), ...words] as SentNode["prompt"] }));
+      withNode(shape.sent, result, (node) => ({ ...node, prompt: [...(node.prompt ?? []).filter((segment) => "slot" in segment && segment.slot.kind === "note"), ...words] as SentNode["prompt"] }));
     const shared = withWords([{ text: "An ad for " }, { ref: product }, { text: " held by " }, { ref: person }, { text: ".\nLit like " }, { ref: still }, { text: "." }]);
     expect(answerFor(shared)).toMatchObject({ placed: false, reason: expect.stringMatching(/optional input "person".*paragraph of its own/) });
     const apart = withWords([{ text: "An ad for " }, { ref: product }, { text: ".\nThe person looks like " }, { ref: person }, { text: ".\nLit like " }, { ref: still }, { text: "." }]);
@@ -152,7 +152,7 @@ describe("an optional template input (inner#1811, CAP-9)", () => {
   it("asks of its empty node a note saying it is optional and can be left empty", () => {
     const shape = productAd();
     const result = indexOf(shape, "node:result");
-    const bare = withNode(shape.sent, result, (node) => ({ ...node, prompt: (node.prompt ?? []).filter((segment) => segment.slot?.kind !== "note") as SentNode["prompt"] }));
+    const bare = withNode(shape.sent, result, (node) => ({ ...node, prompt: (node.prompt ?? []).filter((segment) => !("slot" in segment && segment.slot.kind === "note")) }));
     expect(answerFor(bare)).toMatchObject({ placed: false, reason: expect.stringMatching(/"Person" \([^)]*optional and can be left empty\)/) });
   });
 
