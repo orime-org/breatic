@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * What a region's ledger holds under storage keys, asked by a paste in another
- * region (inner#1955, design 6.15). The bytes sit in the one shared bucket, so
- * the row found here is registered there without copying them. Every key of a
- * paste is asked in one call and read in two queries.
+ * What a region's ledger holds under storage keys, asked by a paste in this
+ * region or another (inner#1955, design 6.15). The bytes sit in the one shared
+ * bucket, so a row found here is registered in the pasting Studio without
+ * copying them. Every key of a paste is read in two queries.
  */
 
 import { assetRepo } from "@breatic/core";

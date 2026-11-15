@@ -208,8 +208,9 @@ export async function checkStudioSlug(
  *
  * Slug uniqueness is decided by the global directory, under the slug's lock
  * (inner#1955): in the global region inside the rename's own transaction, and
- * elsewhere by holding the slug there before the rename; the slug sweep later
- * settles that hold from the slug the region holds. A slug already held is a
+ * elsewhere by holding the slug there before the rename; the slug sweep lets
+ * that hold go once the region has delivered the Studio's events and no
+ * longer needs it. A slug already held is a
  * conflict, so a lost race reads the same as a slug that was already taken.
  *
  * Changing the slug frees the old one immediately — no alias, no redirect
@@ -262,8 +263,8 @@ export async function updateStudio(
       return updated;
     });
   } catch (err) {
-    // A reservation the rename took is settled by the slug sweep from the slug
-    // the region holds, whether or not the rename committed.
+    // A reservation the rename took is settled by the slug sweep, whether or
+    // not the rename committed.
     if (isUniqueViolation(err)) {
       throw new ConflictError(t("server.studio.slug_taken"));
     }

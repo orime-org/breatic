@@ -4,8 +4,8 @@
 /**
  * The worker's cross-region jobs (inner#1955): relaying this region's outbox,
  * reporting its storage use, and, in the global region, forwarding sign-in
- * claims and revocations to every other region and letting go of slugs held
- * for renames that never arrived.
+ * claims and revocations to every other region and settling the slugs held
+ * for renames made in other regions.
  */
 
 import type { Job } from "bullmq";

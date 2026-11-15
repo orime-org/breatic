@@ -327,9 +327,8 @@ async function drive<B, R>(
   }
   const key = newId();
   const stopAt = idempotencyRetryDeadline(spec.scope, Date.now());
-  // Each send goes to the region of the page open at the time (inner#1955);
-  // once the user moved to another region, a resend would reach a server
-  // that never saw the press.
+  // A resend after the user moved to another region ends with unknownResult
+  // instead of being sent again (inner#1955).
   const region = getCurrentRegion();
   for (let attempt = 0; ; attempt += 1) {
     try {

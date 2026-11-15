@@ -27,8 +27,8 @@
 #   and the storage ceiling with the usage of the admin's other regions.
 # storage_usage_sync_interval_ms: how often each region reports what its
 #   Studios store to the global region.
-# slug_reservation_sweep_interval_ms: how often the global region looks for
-#   slugs held for a rename that never reached it.
+# slug_reservation_sweep_interval_ms: how often the global region settles the
+#   slugs held for renames made in other regions.
 # slug_reservation_stale_ms: how long after a rename reserves its slug the
 #   sweep asks the Studio's region which slug it holds and whether its events
 #   are still on their way, and keeps or lets go of the reservation.
