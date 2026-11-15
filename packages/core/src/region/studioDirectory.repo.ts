@@ -7,7 +7,7 @@
  * offer is open on it. Only the global region reads or writes these rows.
  */
 
-import { and, eq, inArray, isNull, lte, ne, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNull, lte, ne, sql } from "drizzle-orm";
 import { db, type DbTx } from "@core/db/client.js";
 import { getRegionsConfig } from "@core/config/regions.js";
 import {
@@ -501,6 +501,34 @@ export async function hasReservation(slug: string, studioId: string, tx: DbTx): 
     .select({ id: slugReservations.id })
     .from(slugReservations)
     .where(and(eq(slugReservations.slug, slug), eq(slugReservations.studioId, studioId), isNull(slugReservations.deletedAt)))
+    .limit(1);
+  return row !== undefined;
+}
+
+/**
+ * Whether a Studio holds a live reservation made after its reservation of a
+ * slug: it renamed again since.
+ * @param slug - The older reservation's slug.
+ * @param studioId - The Studio.
+ * @param tx - The reading transaction.
+ * @returns True when a newer one stands.
+ */
+export async function hasNewerReservation(slug: string, studioId: string, tx: DbTx): Promise<boolean> {
+  const older = tx
+    .select({ createdAt: slugReservations.createdAt })
+    .from(slugReservations)
+    .where(and(eq(slugReservations.slug, slug), eq(slugReservations.studioId, studioId), isNull(slugReservations.deletedAt)));
+  const [row] = await tx
+    .select({ id: slugReservations.id })
+    .from(slugReservations)
+    .where(
+      and(
+        eq(slugReservations.studioId, studioId),
+        isNull(slugReservations.deletedAt),
+        ne(slugReservations.slug, slug),
+        gt(slugReservations.createdAt, sql`(${older})`),
+      ),
+    )
     .limit(1);
   return row !== undefined;
 }

@@ -77,6 +77,19 @@ describe("settling a past-due slug reservation", () => {
     expect(await state(r.studioId, r.newSlug)).toEqual({ directorySlug: r.newSlug, held: false });
   });
 
+  it("only lets the slug go when the Studio has renamed again since the region answered", async () => {
+    const r = await reserved(1);
+    const later = `${r.newSlug}-c`;
+    // The Studio renamed again after the sweep asked: the newer rename holds
+    // its own reservation and its event already wrote the directory.
+    await sql`INSERT INTO slug_reservations (slug, studio_id, expires_at, created_at) VALUES (${later}, ${r.studioId}, now() + interval '10 minutes', now() + interval '1 second')`;
+    await sql`UPDATE studio_directory SET slug = ${later} WHERE studio_id = ${r.studioId}`;
+
+    await directoryWrites.settleSlugReservation(r.newSlug, r.studioId, r.newSlug);
+
+    expect(await state(r.studioId, r.newSlug)).toEqual({ directorySlug: later, held: false });
+  });
+
   it("lets the slug go when the region holds another", async () => {
     const r = await reserved(1);
 
