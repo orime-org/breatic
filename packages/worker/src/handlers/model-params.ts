@@ -8,7 +8,7 @@
  */
 
 import { logger } from "@breatic/core";
-import { checkParamCombination, cleanTextParams, currentModelName, extractPromptText, itemCap, resolveParams, type ResolvableModel } from "@breatic/shared";
+import { checkParamCombination, cleanTextParams, currentModelName, itemCap, resolveParams, type ResolvableModel } from "@breatic/shared";
 import { getFullModelConfig, type FullModelEntry } from "@breatic/domain";
 
 /** The catalog modalities a model run serves. */
