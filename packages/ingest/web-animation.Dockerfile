@@ -24,6 +24,7 @@ COPY packages/ingest/container ./container
 COPY packages/shared/src/timeline/time.ts /shared/src/timeline/time.ts
 COPY packages/shared/src/timeline/web-animation-runtime.ts /shared/src/timeline/web-animation-runtime.ts
 COPY packages/shared/src/timeline/web-animation-bridge.ts /shared/src/timeline/web-animation-bridge.ts
+COPY packages/shared/src/timeline/web-animation-source.ts /shared/src/timeline/web-animation-source.ts
 # Pinned for the same reason as in the media container's Dockerfile.
 RUN npm install --no-audit --no-fund --global esbuild@0.25.12 \
   && esbuild container/web-animation-server.ts \

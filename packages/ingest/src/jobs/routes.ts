@@ -15,8 +15,10 @@
 import { miniToolJobRequestSchema } from "@breatic/shared";
 import {
   WEB_ANIMATION_CONTAINER_CLASS,
+  WEB_ANIMATION_RENDER_CONTAINER_CLASS,
   webAnimationJobCancelSchema,
   webAnimationJobRequestSchema,
+  webAnimationRenderJobRequestSchema,
 } from "@breatic/shared/space-content";
 
 import { fromOurBackend } from "@ingest/backend-secret.js";
@@ -29,15 +31,16 @@ import {
 } from "@ingest/jobs/mini-tool-container.js";
 import { harnessKeyName, harnessKeyOf } from "@ingest/jobs/harness-keys.js";
 import type { WebAnimationEnv } from "@ingest/jobs/web-animation-container.js";
+import type { WebAnimationRenderEnv } from "@ingest/jobs/web-animation-render-container.js";
 
 /** What the job endpoints read. */
-export type JobsEnv = MiniToolEnv & WebAnimationEnv & { INGEST_SHARED_SECRET: string };
+export type JobsEnv = MiniToolEnv & WebAnimationEnv & WebAnimationRenderEnv & { INGEST_SHARED_SECRET: string };
 
 /** `/jobs/<class>/<id>`. */
 export const JOB_PATH = /^\/jobs\/([^/]+)\/([^/]+)$/;
 
-/** `/jobs/WebAnimationContainer/<id>/cancel`. */
-export const WEB_ANIMATION_CANCEL_PATH = new RegExp(`^/jobs/${WEB_ANIMATION_CONTAINER_CLASS}/([^/]+)/cancel$`);
+/** `/jobs/WebAnimationContainer/<id>/cancel` and `/jobs/WebAnimationRenderContainer/<id>/cancel`. */
+export const WEB_ANIMATION_CANCEL_PATH = new RegExp(`^/jobs/(${WEB_ANIMATION_CONTAINER_CLASS}|${WEB_ANIMATION_RENDER_CONTAINER_CLASS})/([^/]+)/cancel$`);
 
 /**
  * The namespace a mini-tool class is bound under.
@@ -113,6 +116,31 @@ async function submitWebAnimationJob(body: unknown, env: JobsEnv): Promise<Respo
 }
 
 /**
+ * Start an export's render job, or answer the one already holding its id.
+ * @param body - The parsed request body.
+ * @param env - The bindings.
+ * @returns 200 with its report; 400 for a body that is not a render job; 410 after a cancel that came before any
+ *   submit; 501 when exports are off; 503 when the container could not start.
+ * @throws {unknown} What the object throws other than a start failure.
+ */
+async function submitRenderJob(body: unknown, env: JobsEnv): Promise<Response> {
+  const namespace = env.WEB_ANIMATION_RENDER ?? null;
+  if (namespace === null) return featureDisabled();
+  const parsed = webAnimationRenderJobRequestSchema.safeParse(body);
+  if (!parsed.success) return new Response("Not a render job", { status: 400 });
+  const job = parsed.data;
+  try {
+    const answer = await namespace.get(namespace.idFromName(job.jobId)).submit(job);
+    if (!("report" in answer)) return new Response("Cancelled before it was submitted", { status: 410 });
+    return Response.json(answer.report);
+  } catch (err) {
+    if (!isStartFailure(err)) throw err;
+    noteFailure("ingest_web_animation_render_start_failed", { jobId: job.jobId }, err);
+    return new Response("The container could not start", { status: 503 });
+  }
+}
+
+/**
  * `POST /jobs` — start a job, or answer the one already holding its id.
  * @param request - The request.
  * @param env - The bindings.
@@ -123,9 +151,9 @@ async function submitWebAnimationJob(body: unknown, env: JobsEnv): Promise<Respo
 export async function submitJob(request: Request, env: JobsEnv): Promise<Response> {
   if (!fromOurBackend(request, env)) return new Response("Unauthorized", { status: 401 });
   const body: unknown = await request.json().catch(() => null);
-  if (typeof body === "object" && body !== null && (body as { containerClass?: unknown }).containerClass === WEB_ANIMATION_CONTAINER_CLASS) {
-    return submitWebAnimationJob(body, env);
-  }
+  const containerClass = typeof body === "object" && body !== null ? (body as { containerClass?: unknown }).containerClass : undefined;
+  if (containerClass === WEB_ANIMATION_CONTAINER_CLASS) return submitWebAnimationJob(body, env);
+  if (containerClass === WEB_ANIMATION_RENDER_CONTAINER_CLASS) return submitRenderJob(body, env);
   const parsed = miniToolJobRequestSchema.safeParse(body);
   if (!parsed.success) return new Response("Not a job", { status: 400 });
   const job = parsed.data;
@@ -159,6 +187,12 @@ export async function readJob(request: Request, env: JobsEnv, containerClass: st
     const report = await namespace.get(namespace.idFromName(decodeURIComponent(jobId))).report();
     return report === null ? new Response("No such job", { status: 404 }) : Response.json(report);
   }
+  if (className === WEB_ANIMATION_RENDER_CONTAINER_CLASS) {
+    const render = env.WEB_ANIMATION_RENDER ?? null;
+    if (render === null) return featureDisabled();
+    const report = await render.get(render.idFromName(decodeURIComponent(jobId))).report();
+    return report === null ? new Response("No such job", { status: 404 }) : Response.json(report);
+  }
   const namespace = namespaceOf(env, className);
   if (namespace === null) return new Response("No such job", { status: 404 });
   const report = await namespace.get(namespace.idFromName(decodeURIComponent(jobId))).report();
@@ -166,20 +200,25 @@ export async function readJob(request: Request, env: JobsEnv, containerClass: st
 }
 
 /**
- * `POST /jobs/WebAnimationContainer/<id>/cancel` — stop a job; with none yet, refuse its submit until the body's
- * deadline.
+ * `POST /jobs/<WebAnimationContainer|WebAnimationRenderContainer>/<id>/cancel` — stop a job; with none yet, refuse
+ * its submit until the body's deadline.
  * @param request - The request, carrying `{deadlineAt}`.
  * @param env - The bindings.
+ * @param containerClass - Which of the two classes the job runs on.
  * @param jobId - The URL-encoded job id.
  * @returns 200 with the report after the cancel; 400 for a body that is not a cancel; 401 without the secret; 501
- *   while the feature is off.
+ *   while the class is not bound.
  */
-export async function cancelWebAnimationJob(request: Request, env: JobsEnv, jobId: string): Promise<Response> {
+export async function cancelWebAnimationJob(request: Request, env: JobsEnv, containerClass: string, jobId: string): Promise<Response> {
   if (!fromOurBackend(request, env)) return new Response("Unauthorized", { status: 401 });
-  const namespace = webAnimationNamespace(env);
+  const render = containerClass === WEB_ANIMATION_RENDER_CONTAINER_CLASS;
+  const namespace = render ? (env.WEB_ANIMATION_RENDER ?? null) : webAnimationNamespace(env);
   if (namespace === null) return featureDisabled();
   const parsed = webAnimationJobCancelSchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return new Response("Not a cancel", { status: 400 });
-  const report = await namespace.get(namespace.idFromName(decodeURIComponent(jobId))).cancel(parsed.data.deadlineAt);
+  const id = decodeURIComponent(jobId);
+  const report = render
+    ? await (namespace as NonNullable<JobsEnv["WEB_ANIMATION_RENDER"]>).get(namespace.idFromName(id)).cancel(parsed.data.deadlineAt)
+    : await (namespace as NonNullable<JobsEnv["WEB_ANIMATION"]>).get(namespace.idFromName(id)).cancel(parsed.data.deadlineAt);
   return Response.json(report);
 }

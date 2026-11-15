@@ -198,6 +198,28 @@ storage = "sqlite"
 # type = "durable-object"
 # storage = "sqlite"
 #
+# Exporting a web animation to video (#1490) renders it on a container of its
+# own; uncomment these three blocks with the four above. Without them the
+# render job routes answer 501 `feature_disabled`. standard-4 is 4 vCPU, 12 GiB
+# and 20 GB, the instance the worker bills a render for
+# (`web_animation.render_container` in config/timeline.yaml).
+#
+# [[containers]]
+# class_name = "WebAnimationRenderContainer"
+# image = "./web-animation-render.Dockerfile"
+# image_build_context = "../.."
+# instance_type = "standard-4"
+# max_instances = <how many exports may render at once; start at 2>
+# image_vars = { DEV_COPY = "<the same name as in the MediaContainer block>" }
+#
+# [[durable_objects.bindings]]
+# name = "WEB_ANIMATION_RENDER"
+# class_name = "WebAnimationRenderContainer"
+#
+# [exports.WebAnimationRenderContainer]
+# type = "durable-object"
+# storage = "sqlite"
+#
 # [assets]
 # directory = "./assets"
 
@@ -384,6 +406,21 @@ storage = "sqlite"
 # class_name = "WebAnimationContainer"
 #
 # [env.production.exports.WebAnimationContainer]
+# type = "durable-object"
+# storage = "sqlite"
+#
+# [[env.production.containers]]
+# class_name = "WebAnimationRenderContainer"
+# image = "./web-animation-render.Dockerfile"
+# image_build_context = "../.."
+# instance_type = "standard-4"
+# max_instances = <how many exports may render at once>
+#
+# [[env.production.durable_objects.bindings]]
+# name = "WEB_ANIMATION_RENDER"
+# class_name = "WebAnimationRenderContainer"
+#
+# [env.production.exports.WebAnimationRenderContainer]
 # type = "durable-object"
 # storage = "sqlite"
 #

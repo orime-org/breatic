@@ -25,18 +25,18 @@ export function buildInfo(version = '0.0.0-dev', revision = 'unknown') {
 }
 
 /** Create the portable manifest only from registry-confirmed image digests. */
-export function releaseManifest(tag, revision, repository, backend, web, ingestMedia, ingestWebReader, ingestWebAnimation) {
+export function releaseManifest(tag, revision, repository, backend, web, ingestMedia, ingestWebReader, ingestWebAnimation, ingestWebAnimationRender) {
   const info = buildInfo(parseReleaseTag(tag), revision);
   if (!/^[a-z0-9-]+\/breatic$/.test(repository)) throw new Error('Invalid product repository');
-  for (const [name, ref] of [['breatic', backend], ['breatic-web', web], ['breatic-ingest-media', ingestMedia], ['breatic-ingest-web-reader', ingestWebReader], ['breatic-ingest-web-animation', ingestWebAnimation]]) {
+  for (const [name, ref] of [['breatic', backend], ['breatic-web', web], ['breatic-ingest-media', ingestMedia], ['breatic-ingest-web-reader', ingestWebReader], ['breatic-ingest-web-animation', ingestWebAnimation], ['breatic-ingest-web-animation-render', ingestWebAnimationRender]]) {
     const prefix = `ghcr.io/${repository.split('/')[0]}/${name}@sha256:`;
     if (typeof ref !== 'string' || !ref.startsWith(prefix) || !/^[a-f0-9]{64}$/.test(ref.slice(prefix.length))) {
       throw new Error(`Invalid immutable ${name} image`);
     }
   }
   return { schemaVersion: 2, tag, ...info, repository,
-    imagePlatforms: { backend: ['linux/amd64', 'linux/arm64'], web: ['linux/amd64', 'linux/arm64'], ingestMedia: ['linux/amd64'], ingestWebReader: ['linux/amd64'], ingestWebAnimation: ['linux/amd64'] },
-    images: { backend, web, ingestMedia, ingestWebReader, ingestWebAnimation } };
+    imagePlatforms: { backend: ['linux/amd64', 'linux/arm64'], web: ['linux/amd64', 'linux/arm64'], ingestMedia: ['linux/amd64'], ingestWebReader: ['linux/amd64'], ingestWebAnimation: ['linux/amd64'], ingestWebAnimationRender: ['linux/amd64'] },
+    images: { backend, web, ingestMedia, ingestWebReader, ingestWebAnimation, ingestWebAnimationRender } };
 }
 
 /** Reject an index unless it contains exactly the two native images tested by CI. */
@@ -74,8 +74,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const [command, ...args] = process.argv.slice(2);
   if (command === 'build-info' && args.length === 3) {
     writeFileSync(args[2], JSON.stringify(buildInfo(args[0], args[1]), null, 2) + '\n');
-  } else if (command === 'manifest' && args.length === 9) {
-    writeFileSync(args[8], JSON.stringify(releaseManifest(...args.slice(0, 8)), null, 2) + '\n');
+  } else if (command === 'manifest' && args.length === 10) {
+    writeFileSync(args[9], JSON.stringify(releaseManifest(...args.slice(0, 9)), null, 2) + '\n');
   } else if (command === 'check-index' && args.length === 3) {
     checkImageIndex(JSON.parse(readFileSync(args[0], 'utf8')), args[1], args[2]);
   } else if (command === 'compose-tag' && args.length === 2) {
