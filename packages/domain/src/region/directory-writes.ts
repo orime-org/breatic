@@ -149,17 +149,21 @@ export async function reserveSlug(slug: string, studioId: string): Promise<boole
   return db.transaction(async (tx) => {
     await studioDirectoryRepo.lockSlug(slug, tx);
     if (await studioDirectoryRepo.isSlugHeld(slug, tx, studioId)) return false;
-    if (!(await studioDirectoryRepo.hasReservation(slug, studioId, tx))) await studioDirectoryRepo.reserveSlug(slug, studioId, tx);
+    // A reused reservation is held for another window, so a sweep that asked
+    // the region before this rename leaves it alone.
+    if (await studioDirectoryRepo.hasReservation(slug, studioId, tx)) await studioDirectoryRepo.extendReservation(slug, studioId, tx);
+    else await studioDirectoryRepo.reserveSlug(slug, studioId, tx);
     return true;
   });
 }
 
 /**
  * Settle a reservation the sweep found past due, from the slug the Studio's
- * region actually holds: the rename happened, so the directory takes the slug;
- * or it did not, so the slug is let go. A Studio that has reserved another
- * slug since renamed again after the region answered, and that newer rename's
- * event writes the directory, so this one only lets its slug go.
+ * region actually holds. The sweep never writes the directory: the region's
+ * ordered outbox (or a repair snapshot) does. A slug the region holds stays
+ * reserved until the directory shows it; a slug it does not hold is let go.
+ * Under the slug's lock, a reservation a rename reused since the region
+ * answered is no longer due and is left alone.
  * @param slug - The reserved slug.
  * @param studioId - The Studio.
  * @param actualSlug - The Studio's slug in its region, or null when it is gone.
@@ -167,8 +171,11 @@ export async function reserveSlug(slug: string, studioId: string): Promise<boole
  */
 export async function settleSlugReservation(slug: string, studioId: string, actualSlug: string | null): Promise<void> {
   await db.transaction(async (tx) => {
-    if (actualSlug === slug && !(await studioDirectoryRepo.hasNewerReservation(slug, studioId, tx))) {
-      await studioDirectoryRepo.updateProfile(studioId, { slug }, tx);
+    await studioDirectoryRepo.lockSlug(slug, tx);
+    if (!(await studioDirectoryRepo.isReservationDue(slug, studioId, tx))) return;
+    if (actualSlug === slug && (await studioDirectoryRepo.lockRow(studioId, tx))?.slug !== slug) {
+      await studioDirectoryRepo.extendReservation(slug, studioId, tx);
+      return;
     }
     await studioDirectoryRepo.releaseSlugReservation(slug, studioId, tx);
   });

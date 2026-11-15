@@ -69,25 +69,32 @@ describe("settling a past-due slug reservation", () => {
     expect(listed.map((r) => r.slug)).not.toContain(ahead.newSlug);
   });
 
-  it("gives the directory the slug when the region holds it", async () => {
+  it("lets the slug go once the directory shows the slug the region holds", async () => {
     const r = await reserved(1);
+    await sql`UPDATE studio_directory SET slug = ${r.newSlug} WHERE studio_id = ${r.studioId}`;
 
     await directoryWrites.settleSlugReservation(r.newSlug, r.studioId, r.newSlug);
 
     expect(await state(r.studioId, r.newSlug)).toEqual({ directorySlug: r.newSlug, held: false });
   });
 
-  it("only lets the slug go when the Studio has renamed again since the region answered", async () => {
+  it("keeps the slug held, due again later, while the directory has not caught up with the region", async () => {
     const r = await reserved(1);
-    const later = `${r.newSlug}-c`;
-    // The Studio renamed again after the sweep asked: the newer rename holds
-    // its own reservation and its event already wrote the directory.
-    await sql`INSERT INTO slug_reservations (slug, studio_id, expires_at, created_at) VALUES (${later}, ${r.studioId}, now() + interval '10 minutes', now() + interval '1 second')`;
-    await sql`UPDATE studio_directory SET slug = ${later} WHERE studio_id = ${r.studioId}`;
 
     await directoryWrites.settleSlugReservation(r.newSlug, r.studioId, r.newSlug);
 
-    expect(await state(r.studioId, r.newSlug)).toEqual({ directorySlug: later, held: false });
+    expect(await state(r.studioId, r.newSlug)).toEqual({ directorySlug: r.oldSlug, held: true });
+    const [row] = await sql<{ due: boolean }[]>`SELECT expires_at <= now() AS due FROM slug_reservations WHERE slug = ${r.newSlug} AND deleted_at IS NULL`;
+    expect(row?.due).toBe(false);
+  });
+
+  it("keeps the slug when a later rename of the Studio failed and the directory still shows the old slug", async () => {
+    const r = await reserved(1);
+    await sql`INSERT INTO slug_reservations (slug, studio_id, expires_at) VALUES (${`${r.newSlug}-c`}, ${r.studioId}, now() + interval '10 minutes')`;
+
+    await directoryWrites.settleSlugReservation(r.newSlug, r.studioId, r.newSlug);
+
+    expect(await state(r.studioId, r.newSlug)).toEqual({ directorySlug: r.oldSlug, held: true });
   });
 
   it("lets the slug go when the region holds another", async () => {
@@ -96,6 +103,15 @@ describe("settling a past-due slug reservation", () => {
     await directoryWrites.settleSlugReservation(r.newSlug, r.studioId, r.oldSlug);
 
     expect(await state(r.studioId, r.newSlug)).toEqual({ directorySlug: r.oldSlug, held: false });
+  });
+
+  it("leaves a reservation a rename reused since the region answered", async () => {
+    const r = await reserved(1);
+    expect(await directoryWrites.reserveSlug(r.newSlug, r.studioId)).toBe(true);
+
+    await directoryWrites.settleSlugReservation(r.newSlug, r.studioId, r.oldSlug);
+
+    expect(await state(r.studioId, r.newSlug)).toEqual({ directorySlug: r.oldSlug, held: true });
   });
 });
 

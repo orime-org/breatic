@@ -7,7 +7,7 @@
  * offer is open on it. Only the global region reads or writes these rows.
  */
 
-import { and, eq, gt, inArray, isNull, lte, ne, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lte, ne, sql } from "drizzle-orm";
 import { db, type DbTx } from "@core/db/client.js";
 import { getRegionsConfig } from "@core/config/regions.js";
 import {
@@ -506,27 +506,36 @@ export async function hasReservation(slug: string, studioId: string, tx: DbTx): 
 }
 
 /**
- * Whether a Studio holds a live reservation made after its reservation of a
- * slug: it renamed again since.
- * @param slug - The older reservation's slug.
+ * Hold a Studio's live reservation of a slug for another stale window, so the
+ * sweep asks about it again later.
+ * @param slug - The slug.
+ * @param studioId - The Studio.
+ * @param tx - The writing transaction.
+ */
+export async function extendReservation(slug: string, studioId: string, tx: DbTx): Promise<void> {
+  await tx
+    .update(slugReservations)
+    .set({ expiresAt: new Date(Date.now() + getRegionsConfig().slug_reservation_stale_ms) })
+    .where(and(eq(slugReservations.slug, slug), eq(slugReservations.studioId, studioId), isNull(slugReservations.deletedAt)));
+}
+
+/**
+ * Whether a Studio's live reservation of a slug is past due.
+ * @param slug - The slug.
  * @param studioId - The Studio.
  * @param tx - The reading transaction.
- * @returns True when a newer one stands.
+ * @returns True when it stands and has fallen due.
  */
-export async function hasNewerReservation(slug: string, studioId: string, tx: DbTx): Promise<boolean> {
-  const older = tx
-    .select({ createdAt: slugReservations.createdAt })
-    .from(slugReservations)
-    .where(and(eq(slugReservations.slug, slug), eq(slugReservations.studioId, studioId), isNull(slugReservations.deletedAt)));
+export async function isReservationDue(slug: string, studioId: string, tx: DbTx): Promise<boolean> {
   const [row] = await tx
     .select({ id: slugReservations.id })
     .from(slugReservations)
     .where(
       and(
+        eq(slugReservations.slug, slug),
         eq(slugReservations.studioId, studioId),
         isNull(slugReservations.deletedAt),
-        ne(slugReservations.slug, slug),
-        gt(slugReservations.createdAt, sql`(${older})`),
+        lte(slugReservations.expiresAt, sql`now()`),
       ),
     )
     .limit(1);
