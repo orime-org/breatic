@@ -86,7 +86,7 @@ const planShape = z.strictObject({
     entries: z.array(originEntry).min(1),
     firstSource: z.strictObject({ supportStart: exactTime, lead: z.strictObject({ kind: z.literal('derived-lead'), start: exactTime }).nullable() }),
     lastSource: z.strictObject({
-      support: z.enum(['declared', 'previous-max', 'single-frame']), supportEnd: exactTime,
+      support: z.enum(['declared', 'previous-max', 'audio-end', 'single-frame']), supportEnd: exactTime,
       hold: z.strictObject({ kind: z.literal('derived-hold'), end: exactTime }).nullable(),
     }),
   }),

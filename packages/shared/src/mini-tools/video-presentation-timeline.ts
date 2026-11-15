@@ -23,7 +23,7 @@ export interface VideoTimelineInput {
   singleFrameDurationMs: number;
 }
 /** How a real frame's support end was obtained. */
-export type VideoSupportRule = "declared" | "next-start" | "previous-max" | "single-frame";
+export type VideoSupportRule = "declared" | "next-start" | "previous-max" | "audio-end" | "single-frame";
 /** One planned frame on the presentation timeline, whose time 0 is the origin. */
 export type VideoTimelineFrame =
   | {
@@ -99,6 +99,9 @@ export function planVideoPresentationTimeline(input: VideoTimelineInput): VideoP
   if (input.segmentDuration !== null) rational(input.segmentDuration);
   const starts = input.frames.map((frame) => rational(frame.start));
   const last = starts.length - 1;
+  const audioStart = input.audioStart === null ? null : rational(input.audioStart);
+  const audioEnd = input.audioEnd === null ? null : rational(input.audioEnd);
+  if (audioStart !== null && (audioStart[0] < 0n || (audioEnd !== null && cmp(audioEnd, audioStart) < 0n))) throw new RangeError("The audio window must start at or after zero and not end before it starts");
   const ends: Exact[] = [];
   const rules: VideoSupportRule[] = [];
   starts.forEach((start, index) => {
@@ -116,6 +119,10 @@ export function planVideoPresentationTimeline(input: VideoTimelineInput): VideoP
     } else if (index === 0) {
       ends.push(shift(start, exact(BigInt(single), 1000n), 1n));
       rules.push("single-frame");
+    } else if (audioEnd !== null && cmp(audioEnd, start) > 0n) {
+      // A recording's sound runs to its stop, so an undeclared last frame shows until the sound ends (§4.2.1 last frame row).
+      ends.push(audioEnd);
+      rules.push("audio-end");
     } else {
       let widest: Exact = [0n, 1n];
       for (let at = 1; at <= last; at += 1) {
@@ -127,9 +134,6 @@ export function planVideoPresentationTimeline(input: VideoTimelineInput): VideoP
     }
   });
 
-  const audioStart = input.audioStart === null ? null : rational(input.audioStart);
-  const audioEnd = input.audioEnd === null ? null : rational(input.audioEnd);
-  if (audioStart !== null && (audioStart[0] < 0n || (audioEnd !== null && cmp(audioEnd, audioStart) < 0n))) throw new RangeError("The audio window must start at or after zero and not end before it starts");
   const origin = audioStart !== null && cmp(audioStart, starts[0]!) < 0n ? audioStart : starts[0]!;
   const support = ends[last]!;
   let end = support;

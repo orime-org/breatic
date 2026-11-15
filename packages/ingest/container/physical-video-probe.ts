@@ -158,7 +158,8 @@ export interface PhysicalVideoPackets { streamIndex: number; sourceTimeBase: Phy
  * @throws {never} Never.
  */
 export function videoPacketProbeArgs(input: { input: string; streamIndex: number; iso: boolean }): string[] {
-  return ["-v", "error", "-protocol_whitelist", "file", ...(input.iso ? ["-ignore_editlist", "1"] : []),
+  // nofillin: a packet's duration is the one the file stores, never FFmpeg's estimate from its frame rate (§4.2.1).
+  return ["-v", "error", "-protocol_whitelist", "file", "-fflags", "+nofillin", ...(input.iso ? ["-ignore_editlist", "1"] : []),
     "-select_streams", String(input.streamIndex), "-show_packets", "-show_entries", "packet=stream_index,pts,dts,duration,flags,pos", "-of", "json", input.input];
 }
 

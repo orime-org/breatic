@@ -37,7 +37,7 @@ interface TimelineInput {
   audioEnd: Rational | null;
   singleFrameDurationMs: number;
 }
-type SupportRule = 'declared' | 'next-start' | 'previous-max' | 'single-frame';
+type SupportRule = 'declared' | 'next-start' | 'previous-max' | 'audio-end' | 'single-frame';
 type PlannedFrame =
   | {
     kind: 'source'; occurrence: number; displayStart: Rational; displayEnd: Rational;
@@ -301,10 +301,10 @@ describe('PT §4.2.1 frame ends, leading and empty intervals and the composite e
     expect(plan(input([bare(r(0))], { audioStart: r(0), audioEnd: r(2) }))).toEqual({ origin: r(0), frames: [source(0, r(0), r(5), 'single-frame')], end: r(5) });
   });
 
-  it('PT16 the previous-max support holds to a longer audio end', () => {
+  it('PT16 an undeclared last frame with longer audio ends with the audio, no hold', () => {
     const plan = required('planVideoPresentationTimeline');
     const frames = [bare(r(0)), bare(r(7, 100)), bare(r(17, 100)), bare(r(233, 250))];
-    expect(plan(input(frames, { audioStart: r(0), audioEnd: r(2) })).frames.at(-1)).toEqual(source(3, r(233, 250), r(2), 'previous-max', { end: r(847, 500) }));
+    expect(plan(input(frames, { audioStart: r(0), audioEnd: r(2) })).frames.at(-1)).toEqual(source(3, r(233, 250), r(2), 'audio-end'));
   });
 
   it('PT17 one frame carries both a lead and a hold', () => {
@@ -336,7 +336,8 @@ interface GeneratedFrame { gap: number; length: number }
 interface GeneratedAudio { start: number; length: number }
 
 /**
- * The naive oracle for declared frames with gaps, an optional undeclared last frame and optional audio, written from §4.2.1.
+ * The naive oracle for declared frames with gaps, an optional undeclared last frame and optional audio, written from §4.2.1:
+ * an undeclared last frame after others ends with audio that outlasts its start, else after the widest earlier difference.
  * @param frames - Gap before and length of each frame, in units of 1/denominator.
  * @param denominator - The unit.
  * @param lastUndeclared - Whether the last frame has no declared end.
@@ -352,17 +353,20 @@ function oracle(frames: readonly GeneratedFrame[], denominator: number, lastUnde
   let at = 0n;
   for (const frame of frames) { at += BigInt(frame.gap) * 1000n; starts.push(at); at += BigInt(frame.length) * 1000n; ends.push(at); }
   const last = frames.length - 1;
+  const audioStart = audio === null ? null : BigInt(audio.start) * 1000n;
+  const audioEnd = audio === null ? null : BigInt(audio.start + audio.length) * 1000n;
   let lastRule: SupportRule = 'declared';
   if (lastUndeclared) {
-    if (frames.length === 1) { lastRule = 'single-frame'; ends[last] = starts[last]! + BigInt(singleFrameMs) * BigInt(denominator); } else {
+    if (frames.length === 1) { lastRule = 'single-frame'; ends[last] = starts[last]! + BigInt(singleFrameMs) * BigInt(denominator); } else if (audioEnd !== null && audioEnd > starts[last]!) {
+      lastRule = 'audio-end';
+      ends[last] = audioEnd;
+    } else {
       let widest = 0n;
       for (let index = 1; index <= last; index += 1) if (starts[index]! - starts[index - 1]! > widest) widest = starts[index]! - starts[index - 1]!;
       lastRule = 'previous-max';
       ends[last] = starts[last]! + widest;
     }
   }
-  const audioStart = audio === null ? null : BigInt(audio.start) * 1000n;
-  const audioEnd = audio === null ? null : BigInt(audio.start + audio.length) * 1000n;
   const origin = audioStart !== null && audioStart < starts[0]! ? audioStart : starts[0]!;
   const t = (value: bigint): Rational => r(value - origin, d);
   const planned: PlannedFrame[] = [];
@@ -531,5 +535,22 @@ describe('AS §4.2 audio sample grid', () => {
   ])('AS07 rejects %s', (_, time) => {
     const index = required('videoAudioSampleIndex');
     expect(() => index(time)).toThrow(RangeError);
+  });
+});
+
+describe('an undeclared last frame with sound after it (§4.2.1 last frame row)', () => {
+  it('AE01 a recording paused mid-way ends its last frame with its sound, not after its widest gap', () => {
+    const plan = required('planVideoPresentationTimeline');
+    // A MediaRecorder screen capture: frames at 0, 0.579 and 2.616 s with no durations, Opus ending at 3.054 s.
+    const frames = [bare(r(0)), bare(r(579, 1000)), bare(r(2616, 1000))];
+    const result = plan(input(frames, { audioStart: r(0), audioEnd: r(3054, 1000) }));
+    expect(result.frames.at(-1)).toEqual(source(2, r(2616, 1000), r(3054, 1000), 'audio-end'));
+    expect(result.end).toEqual(r(3054, 1000));
+  });
+
+  it('AE02 sound that ends before the last frame starts leaves the widest-gap rule', () => {
+    const plan = required('planVideoPresentationTimeline');
+    const frames = [bare(r(0)), bare(r(1, 2)), bare(r(3, 5))];
+    expect(plan(input(frames, { audioStart: r(0), audioEnd: r(1, 2) })).frames.at(-1)).toEqual(source(2, r(3, 5), r(11, 10), 'previous-max'));
   });
 });

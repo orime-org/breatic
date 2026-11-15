@@ -171,6 +171,10 @@ beforeAll(async () => {
   const webm = new Uint8Array(await readFile(join(dir, 'vfr-default.webm')));
   await writeFile(join(dir, 'vfr.webm'), withoutDefaultDuration(webm));
   files.set('vfr.webm', join(dir, 'vfr.webm'));
+  // 8 s at 30 fps with the DefaultDuration voided, so no frame stores a duration though FFmpeg's reader would estimate one.
+  await make('long-nodefault-src.webm', ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=30:d=8', '-c:v', 'libvpx-vp9', '-deadline', 'realtime', '-cpu-used', '8', '-pix_fmt', 'yuv420p']);
+  await writeFile(join(dir, 'long-nodefault.webm'), withoutDefaultDuration(new Uint8Array(await readFile(join(dir, 'long-nodefault-src.webm')))));
+  files.set('long-nodefault.webm', join(dir, 'long-nodefault.webm'));
 }, 120_000);
 
 /**
@@ -432,6 +436,11 @@ describe('timeline rules applied by the probe (design §4.2.1 开头行)', () =>
     const frames = table.runs.flatMap((run) => Array.from({ length: run.count }, (_unused, k) => ({ start: run.start + k * run.step, end: run.start + k * run.step + run.duration })));
     const at300 = frames.find((frame) => frame.start * 1000 === 300 * table.timescale)!;
     expect(at300.end * 1000).toBe(500 * table.timescale);
+  });
+
+  it('PT08 a Matroska frame without a stored duration is undeclared, whatever duration FFmpeg would estimate for it', async () => {
+    const { plan } = planned(await probed('long-nodefault.webm'));
+    expect((plan.originMapping as { lastSource: { support: string } }).lastSource.support).toBe('previous-max');
   });
 
   it('PT02 the picture 0.3 s after the audio: origin 0, the first frame held from 0 as derived-lead, and the edit kept at 3/10', async () => {

@@ -51,7 +51,7 @@ export interface VideoPlanAlterations {
   originMapping: {
     entries: readonly { kind: "source" | "derived-empty" }[];
     firstSource: { lead: unknown };
-    lastSource: { support: "declared" | "previous-max" | "single-frame"; hold: unknown };
+    lastSource: { support: "declared" | "previous-max" | "audio-end" | "single-frame"; hold: unknown };
   };
   videoSpans: readonly unknown[] | null;
 }

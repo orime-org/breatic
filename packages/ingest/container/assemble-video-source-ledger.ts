@@ -105,7 +105,7 @@ export interface AssembledVideoPresentationPlan {
     origin: PresentationRational;
     entries: ({ kind: "source"; start: number; count: number; step: number } | { kind: "derived-empty" })[];
     firstSource: { supportStart: PresentationRational; lead: { kind: "derived-lead"; start: PresentationRational } | null };
-    lastSource: { support: "declared" | "previous-max" | "single-frame"; supportEnd: PresentationRational; hold: { kind: "derived-hold"; end: PresentationRational } | null };
+    lastSource: { support: "declared" | "previous-max" | "audio-end" | "single-frame"; supportEnd: PresentationRational; hold: { kind: "derived-hold"; end: PresentationRational } | null };
   };
   videoSpans: VideoEditSpan[] | null;
   audioSpans: VideoEditSpan[] | null;
