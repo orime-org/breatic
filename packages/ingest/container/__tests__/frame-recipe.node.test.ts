@@ -142,6 +142,13 @@ beforeAll(async () => {
   await ff('pqa-even.mkv', ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=25:d=0.2', '-vf', `format=rgba,colorchannelmixer=aa=0.25,format=yuva420p10le,${pq}`, '-c:v', 'ffv1']);
   await ff('pqa-odd.mkv', ['-i', join(dir, 'pqa-even.mkv'), '-vf', 'crop=159:95:0:0:exact=1', '-c:v', 'ffv1']);
   await ff('pq-odd-rot.mov', ['-display_rotation', '90', '-i', join(dir, 'pq-odd.mkv'), '-c', 'copy']);
+  // The lossless RGB picture the SDR twins are made from (FC12).
+  await ff('rgb-even.png', ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=25:d=0.2', '-frames:v', '1', '-vf', 'format=rgb24']);
+  // The same twins in SDR BT.709, opaque and with alpha (FC11, FC12).
+  await ff('sdr-even.mkv', ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=25:d=0.2', '-vf', 'format=yuv420p,setparams=colorspace=bt709:range=tv', '-c:v', 'ffv1']);
+  await ff('sdr-odd.mkv', ['-i', join(dir, 'sdr-even.mkv'), '-vf', 'crop=159:95:0:0:exact=1', '-c:v', 'ffv1']);
+  await ff('sdra-even.mkv', ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=25:d=0.2', '-vf', 'format=rgba,colorchannelmixer=aa=0.25,format=yuva420p,setparams=colorspace=bt709:range=tv', '-c:v', 'ffv1']);
+  await ff('sdra-odd.mkv', ['-i', join(dir, 'sdra-even.mkv'), '-vf', 'crop=159:95:0:0:exact=1', '-c:v', 'ffv1']);
   await ff('rot90.mp4', ['-display_rotation', '90', '-i', join(dir, 'flash.mp4'), '-c', 'copy']);
   // A white 20x12 box at (40, 20) on black, every frame a keyframe: FC07's crops are read against its known edges.
   await ff('box.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=160x96:r=25:d=0.2,drawbox=x=40:y=20:w=20:h=12:color=white:t=fill,format=yuv420p",
@@ -229,6 +236,24 @@ describe('frame from a full-ledger entry (§92 D4-3; design §7.17 frame row)', 
     const upright = await luma(join(dir, 'pq-odd-rot.mov'));
     const turned = gap(upright, await luma(join(dir, 'pq-odd.mkv'), 'transpose=clock')) === 0 ? 'clock' : 'cclock';
     expect(gap(upright, await luma(join(dir, 'pq-odd.mkv'), `transpose=${turned}`))).toBe(0);
+  });
+
+  // §4.3 odd-size row: an odd 4:2:0 SDR source is converted as its even twin is, so each pixel equals the twin's.
+  it.each([['sdr-odd.mkv', 'sdr-even.mkv', 'none'], ['sdra-odd.mkv', 'sdra-even.mkv', 'straight']] as const)('FC11 an odd-sized SDR frame (%s) is the even twin\'s frame, pixel for pixel', async (odd, even, alpha) => {
+    const png = await frame(odd, { entry: frameAt([0, 1]), target: { ...OPAQUE, width: 159, height: 95, alpha } });
+    expect(header(png)).toMatchObject({ width: 159, height: 95, colorType: alpha === 'none' ? 2 : 6 });
+    const twin = await frame(even, { entry: frameAt([0, 1]), target: { ...OPAQUE, width: 160, height: 96, alpha } });
+    const format = alpha === 'none' ? 'rgb24' : 'rgba';
+    expect(gap(await pixels(await saved(png), format), await pixels(await saved(twin), format, 'crop=159:95:0:0'))).toBeLessThanOrEqual(1);
+  });
+
+  // An odd-sized subsampled source scaled to another size becomes full chroma on its even frame first, then is scaled, so its
+  // chroma stays on its luma: the frame stays near the lossless RGB picture scaled the same way (only 4:2:0's own loss).
+  it('FC12 an odd-sized SDR frame scaled to 80x48 keeps its chroma on its luma', async () => {
+    const png = await frame('sdr-odd.mkv', { entry: frameAt([0, 1]), target: { ...OPAQUE, width: 80, height: 48 } });
+    expect(header(png)).toMatchObject({ width: 80, height: 48, colorType: 2 });
+    const ideal = await pixels(join(dir, 'rgb-even.png'), 'rgb24', 'crop=159:95:0:0,scale=80:48');
+    expect(gap(await pixels(await saved(png), 'rgb24'), ideal)).toBeLessThanOrEqual(60);
   });
 
   it('FC06 the frame is upright in the display geometry (§7.17 方向与几何): a 90° source gives 96x160', async () => {

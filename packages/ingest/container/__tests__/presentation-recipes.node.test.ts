@@ -285,6 +285,11 @@ beforeAll(async () => {
   await make('pq-even.mkv', ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=25:d=0.4', '-vf',
     'format=yuv420p10le,setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc', '-c:v', 'ffv1']);
   await make('pq-odd.mkv', ['-i', join(dir, 'pq-even.mkv'), '-vf', 'crop=159:95:0:0:exact=1', '-c:v', 'ffv1']);
+  // SDR twins in 4:2:0 and 4:4:4 (CE20, CE21).
+  for (const format of ['yuv420p', 'yuv444p']) {
+    await make(`sdr-${format}-even.mkv`, ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=25:d=0.4', '-vf', `format=${format},setparams=colorspace=bt709:range=tv`, '-c:v', 'ffv1']);
+    await make(`sdr-${format}-odd.mkv`, ['-i', join(dir, `sdr-${format}-even.mkv`), '-vf', 'crop=159:95:0:0:exact=1', '-c:v', 'ffv1']);
+  }
   // 60 fps H.264 with a white frame 60 (1 s) and 1.9 s of sound encoded straight into Matroska: its priming lies before 0.
   const primed = (codec: string): string[] => ['-f', 'lavfi', '-i', "color=c=black:s=160x96:r=60:d=2,format=yuv420p,geq=lum='if(eq(N\\,60)\\,235\\,16)':cb=128:cr=128",
     '-f', 'lavfi', '-i', 'sine=d=1.9', '-c:v', 'libx264', '-bf', '0', '-pix_fmt', 'yuv420p', ...tagged, '-c:a', codec];
@@ -458,6 +463,33 @@ describe('chunk_encode (§5.4 切块、块的时间; §7.17)', () => {
     expect(planeGap(await planes(file!), chained)).toBeLessThan(3);
   });
 
+  /**
+   * The mean per-sample gap of a chroma plane between an odd-sized VP9 output and its even twin's, over the samples both
+   * pictures hold the same source pixels for (the last chroma column and row of the odd picture cover one pixel less).
+   * @param odd - The odd output.
+   * @param even - The even output.
+   * @param plane - The chroma plane.
+   * @returns The mean gap.
+   */
+  async function chromaGap(odd: string, even: string, plane: 'u' | 'v'): Promise<number> {
+    const [a, b] = [await plane8(odd, `extractplanes=${plane}`), await plane8(even, `extractplanes=${plane}`)];
+    let sum = 0;
+    let count = 0;
+    for (let y = 0; y < 47; y += 1) for (let x = 0; x < 79; x += 1) { sum += Math.abs(a[y * 80 + x]! - b[y * 80 + x]!); count += 1; }
+    return sum / count;
+  }
+
+  // §4.3 odd-size row: an odd VP9 output is subsampled where its even twin is, so its chroma planes match the twin's.
+  it.each(['yuv420p', 'yuv444p'])('CE20 an odd-sized %s source gives an odd VP9 output whose chroma lies where the even twin\'s does', async (format) => {
+    const vp9 = (width: number, height: number): Recipe => chunk({ start: 0, end: 10 }, [span(r(0), r(0), r(0), r(2, 5))], { ...TARGET, width, height, format: 'webm-vp9' });
+    const [odd] = await produce({ [SOURCE]: join(dir, `sdr-${format}-odd.mkv`) }, [vp9(159, 95)]);
+    const [even] = await produce({ [SOURCE]: join(dir, `sdr-${format}-even.mkv`) }, [vp9(160, 96)]);
+    for (const plane of ['u', 'v'] as const) {
+      const gap = await chromaGap(odd!, even!, plane);
+      expect(gap, plane).toBeLessThan(1);
+    }
+  });
+
   it('CE12 rewrites a BT.601-tagged source\'s tags to BT.709 (§4.3 载体与输出一律显式写标签)', async () => {
     const recipe = chunk({ start: 0, end: 10 }, [span(r(0), r(0), r(0), r(2, 5))], { ...TARGET, colorMatrix: 'bt601' });
     const [file] = await produce({ [SOURCE]: join(dir, 'tagged601.mp4') }, [recipe]);
@@ -510,6 +542,9 @@ describe('chunk_encode (§5.4 切块、块的时间; §7.17)', () => {
     const encoded = await plane8(file!, 'extractplanes=y');
     expect(encoded.length).toBe(twin.length);
     expect(encoded.reduce((sum, value, index) => sum + Math.abs(value - twin[index]!), 0) / twin.length).toBeLessThan(1);
+    const [even] = await produce({ [SOURCE]: join(dir, 'pq-even.mkv') }, [chunk({ start: 0, end: 10 }, [span(r(0), r(0), r(0), r(2, 5))],
+      { ...TARGET, width: 160, height: 96, colorMatrix: 'bt2020nc', toneMap: 'sdr-bt709', format: 'webm-vp9' })]);
+    for (const plane of ['u', 'v'] as const) expect(await chromaGap(file!, even!, plane), plane).toBeLessThan(1);
   });
 });
 

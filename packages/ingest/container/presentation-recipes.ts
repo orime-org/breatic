@@ -73,10 +73,73 @@ export interface FrameColour {
   primaries: string;
   range: "tv" | "pc";
   chromaLocation: string;
-  odd: { format: string; width: number; height: number; padWidth: boolean; padHeight: boolean } | null;
+  odd: { format: string; alpha: boolean; width: number; height: number; padWidth: boolean; padHeight: boolean } | null;
 }
 // The plan's matrix names (physical-video-probe.ts) as zscale spells them.
 const ZSCALE_MATRICES: Readonly<Record<string, string>> = { bt709: "709", bt601: "170m", bt2020nc: "2020_ncl" };
+
+/**
+ * An odd-sided planar subsampled frame as an even one (§4.3 odd-size row): its luma (and alpha) plane padded to the even size
+ * in the subsampled directions and its chroma planes as decoded, so every conversion that follows places each chroma sample
+ * as on an even frame. The merged frame carries no colour tags; its readers name the matrix and range.
+ * @param odd - The frame's planar format and upright size.
+ * @param label - A label prefix unique within the graph.
+ * @param keepAlpha - Whether an alpha plane is carried.
+ * @returns The filter chain text, ending on the even frame.
+ * @throws {never} Never.
+ */
+function evenPlanes(odd: NonNullable<FrameColour["odd"]>, label: string, keepAlpha: boolean): string {
+  const [width, height] = evenSize(odd);
+  const alpha = keepAlpha && odd.alpha;
+  const format = alpha ? odd.format : odd.format.replace(/^yuva/u, "yuv");
+  return `extractplanes=y+u+v${alpha ? "+a" : ""}[${label}y][${label}u][${label}v]${alpha ? `[${label}a]` : ""};` +
+    `[${label}y]pad=${width}:${height}[${label}p];${alpha ? `[${label}a]pad=${width}:${height}[${label}q];` : ""}` +
+    `[${label}p][${label}u][${label}v]${alpha ? `[${label}q]` : ""}mergeplanes=map0s=0:map0p=0:map1s=1:map1p=0:map2s=2:map2p=0${alpha ? ":map3s=3:map3p=0" : ""}:format=${format}`;
+}
+
+/**
+ * The size an odd-sided frame's planes are padded to: even in its subsampled directions.
+ * @param odd - The frame's upright size and subsampled directions.
+ * @returns The width and height.
+ * @throws {never} Never.
+ */
+function evenSize(odd: NonNullable<FrameColour["odd"]>): [number, number] {
+  return [odd.width + (odd.padWidth ? odd.width % 2 : 0), odd.height + (odd.padHeight ? odd.height % 2 : 0)];
+}
+
+/**
+ * Frames converted to a format at a size (§4.3 odd-size row). swscale subsamples chroma at the right places only on even
+ * sides, so an odd picture going to a subsampled format is converted to full chroma, padded to even with its last column and
+ * row repeated, subsampled, and cropped back: each chroma sample covers the pixels it covers on an even picture.
+ * @param width - The width.
+ * @param height - The height.
+ * @param options - The scale options before the output ones, starting with the size.
+ * @param output - The output format and whether it is converted to limited-range BT.709.
+ * @returns The filter chain text.
+ * @throws {never} Never.
+ */
+function converted(width: number, height: number, options: string, output: PictureOutput): string {
+  const scale = `scale=${width}:${height}${options}${output.bt709 === true ? ":out_color_matrix=bt709:out_range=tv" : ""}`;
+  return `${scale},${subsampledAt(width, height, output.format)}`;
+}
+
+/**
+ * Full-chroma frames as a format at their size, subsampled on an even picture when a side is odd (`converted`).
+ * @param width - The frames' width.
+ * @param height - The frames' height.
+ * @param format - The output format.
+ * @returns The filter chain text.
+ * @throws {never} Never.
+ */
+export function subsampledAt(width: number, height: number, format: string): string {
+  const sub = /^(yuva?)(420|422|440)p/u.exec(format);
+  if (sub === null || (width % 2 === 0 && height % 2 === 0)) return `format=${format}`;
+  return `format=${format.replace(/^(yuva?)(420|422|440)p/u, "$1444p")},pad=${width + width % 2}:${height + height % 2}:0:0,` +
+    `fillborders=right=${width % 2}:bottom=${height % 2}:mode=smear,format=${format},crop=${width}:${height}:0:0:exact=1`;
+}
+
+/** The format a decoded picture is converted to, and whether to limited-range BT.709. */
+export interface PictureOutput { format: string; bt709?: boolean }
 
 /**
  * The D05 tone map (§4.3 colour/HDR row). The chain's first step names every input fact: the plan's matrix and the probed
@@ -98,9 +161,7 @@ function toneMap(matrix: string, colour: FrameColour, label: string, keepAlpha: 
   const inputs = `${colour.transfer === null ? "" : `tin=${colour.transfer}:`}pin=${colour.primaries}:p=${colour.primaries}:min=${min}:rin=${colour.range}:cin=${colour.chromaLocation}`;
   const chain = `zscale=${inputs}:t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv`;
   const { odd } = colour;
-  const mapped = odd === null ? chain
-    : `extractplanes=y+u+v[${label}ty][${label}tu][${label}tv];[${label}ty]pad=${odd.width + (odd.padWidth ? odd.width % 2 : 0)}:${odd.height + (odd.padHeight ? odd.height % 2 : 0)}[${label}tp];` +
-      `[${label}tp][${label}tu][${label}tv]mergeplanes=map0s=0:map0p=0:map1s=1:map1p=0:map2s=2:map2p=0:format=${odd.format},${chain},crop=${odd.width}:${odd.height}:0:0:exact=1`;
+  const mapped = odd === null ? chain : `${evenPlanes(odd, `${label}t`, false)},${chain},crop=${odd.width}:${odd.height}:0:0:exact=1`;
   if (!keepAlpha) return mapped;
   return `split[${label}tc][${label}ta];[${label}ta]format=yuva444p,alphaextract[${label}tm];[${label}tc]${mapped}[${label}tt];[${label}tt][${label}tm]alphamerge`;
 }
@@ -174,17 +235,30 @@ export function placement(target: MiniToolPlanTarget): { rect: MiniToolPlanPixel
  * @param height - The scaled height.
  * @param colour - The decoded frames' colour facts; null only for frames that are not tone mapped.
  * @param label - A label prefix unique within the graph.
- * @param keepAlpha - Whether the tone map carries the frames' alpha.
- * @returns The filter chain text.
+ * @param output - The format the frames are converted to and whether to limited-range BT.709.
+ * @param keepAlpha - Whether the frames' alpha is carried.
+ * @returns The filter chain text, ending on frames of the output format at the size.
  * @throws {RangeError} When the plan matrix has no decode value, or HDR frames come without their colour facts.
  */
 export function decodedPicture(source: { colorMatrix: string; toneMap: "none" | "sdr-bt709" }, width: number, height: number, colour: FrameColour | null,
-  label: string, keepAlpha = false): string {
+  label: string, output: PictureOutput, keepAlpha = false): string {
   const matrix = SCALE_MATRICES[source.colorMatrix];
   if (matrix === undefined) throw new RangeError(`No decode matrix for ${source.colorMatrix}`);
-  if (source.toneMap === "none") return `scale=${width}:${height}:in_color_matrix=${matrix}`;
-  if (colour === null) throw new RangeError("Tone-mapped frames need their colour facts");
-  return `${toneMap(source.colorMatrix, colour, label, keepAlpha)},scale=${width}:${height}:in_color_matrix=${matrix}`;
+  if (source.toneMap === "sdr-bt709") {
+    if (colour === null) throw new RangeError("Tone-mapped frames need their colour facts");
+    return `${toneMap(source.colorMatrix, colour, label, keepAlpha)},${converted(width, height, `:in_color_matrix=${matrix}`, output)}`;
+  }
+  const odd = colour?.odd ?? null;
+  if (odd === null) return converted(width, height, `:in_color_matrix=${matrix}`, output);
+  // An odd-sided subsampled source is converted on its even frame: at its own size the output is cropped back, so each pixel
+  // equals its even twin's; scaled, it becomes full chroma there first and is scaled from that.
+  const [evenWidth, evenHeight] = evenSize(odd);
+  const read = `:in_color_matrix=${matrix}:in_range=${colour!.range}`;
+  const even = evenPlanes(odd, `${label}e`, keepAlpha);
+  if (width === odd.width && height === odd.height) return `${even},${converted(evenWidth, evenHeight, read, output)},crop=${width}:${height}:0:0:exact=1`;
+  const full = keepAlpha && odd.alpha ? "yuva444p16le" : "yuv444p16le";
+  return `${even},scale=${evenWidth}:${evenHeight}${read}:out_color_matrix=${matrix}:out_range=${colour!.range},format=${full},crop=${odd.width}:${odd.height}:0:0:exact=1,` +
+    converted(width, height, read, output);
 }
 
 /**
@@ -229,7 +303,13 @@ export async function probeModelResultDecode(file: string, run: { signal: AbortS
  */
 export function picture(target: MiniToolPlanTarget, label: string, colour: FrameColour | null): string {
   const { rect, planeWidth } = placement(target);
-  const head = decodedPicture(target, rect.width, rect.height, colour, `${label}a`, target.alpha !== "none");
+  /**
+   * The decoded picture in the rectangle, as a format.
+   * @param output - The format and whether to limited-range BT.709.
+   * @returns The filter chain text.
+   * @throws {RangeError} When the plan matrix has no decode value.
+   */
+  const head = (output: PictureOutput): string => decodedPicture(target, rect.width, rect.height, colour, `${label}a`, output, target.alpha !== "none");
   const pad = `pad=${planeWidth}:${target.height}:${rect.x}:${rect.y}:color=black`;
   // The frames are already upright; a display matrix left on them would be written to the output and rotate it again.
   const unrotated = `${BT709_TAGS},sidedata=mode=delete:type=DISPLAYMATRIX`;
@@ -238,13 +318,14 @@ export function picture(target: MiniToolPlanTarget, label: string, colour: Frame
   if (target.format === "webm-vp9") {
     const straight = target.alpha === "straight";
     const [full, sub] = straight ? ["yuva444p", "yuva420p"] : ["yuv444p", "yuv420p"];
+    if (target.displayRect === null) return `${head({ format: sub, bt709: true })},setsar=1,${unrotated}`;
     // Padded in 4:4:4: a 4:2:0 pad rounds an odd offset down and cannot make an odd side.
-    const bars = target.displayRect === null ? "" : `format=${full},pad=${target.width}:${target.height}:${rect.x}:${rect.y}:color=black${straight ? "@0" : ""},`;
-    return `${head}:out_color_matrix=bt709:out_range=tv,${bars}format=${sub},setsar=1,${unrotated}`;
+    return `${head({ format: full, bt709: true })},pad=${target.width}:${target.height}:${rect.x}:${rect.y}:color=black${straight ? "@0" : ""},` +
+      `${subsampledAt(target.width, target.height, sub)},setsar=1,${unrotated}`;
   }
   const tail = `scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,setsar=1,${unrotated}`;
-  if (target.alpha === "none") return `${head}:out_color_matrix=bt709:out_range=tv,format=yuv444p,${pad},${tail}`;
-  return `${head},format=gbrap,split=2[${label}r][${label}a];[${label}r]premultiply=inplace=1,format=rgb24,${pad}[${label}c];` +
+  if (target.alpha === "none") return `${head({ format: "yuv444p", bt709: true })},${pad},${tail}`;
+  return `${head({ format: "gbrap" })},split=2[${label}r][${label}a];[${label}r]premultiply=inplace=1,format=rgb24,${pad}[${label}c];` +
     `[${label}a]alphaextract,format=rgb24,${pad}[${label}m];[${label}c][${label}m]hstack,${tail}`;
 }
 
@@ -444,7 +525,7 @@ function frameColour(video: { width?: number; height?: number; pix_fmt?: string;
   return {
     transfer: known(video.color_transfer, ZSCALE_TRANSFERS), primaries: known(video.color_primaries, ZSCALE_PRIMARIES) ?? "bt709",
     range: video.color_range === "pc" ? "pc" : "tv", chromaLocation: known(video.chroma_location, CHROMA_LOCATIONS) ?? "left",
-    odd: padWidth || padHeight ? { format: video.pix_fmt!.replace(/^yuva/u, "yuv"), width, height, padWidth, padHeight } : null,
+    odd: padWidth || padHeight ? { format: video.pix_fmt!, alpha: video.pix_fmt!.startsWith("yuva"), width, height, padWidth, padHeight } : null,
   };
 }
 
@@ -1036,8 +1117,9 @@ async function renderTransitionWindow(recipe: MiniToolPlanTransitionWindow, file
      * @returns The filter chain text.
      * @throws {RangeError} When the plan matrix has no decode value.
      */
-    const convert = (label: string, colour: FrameColour): string => `${decodedPicture(clip, clip.fit.width, clip.fit.height, colour, label, profile.alpha)}`
-      + `:out_color_matrix=bt709:out_range=tv,format=${profile.alpha ? "yuva444p" : "yuv444p"},scale=in_color_matrix=bt709:in_range=tv:out_range=pc`;
+    const convert = (label: string, colour: FrameColour): string =>
+      `${decodedPicture(clip, clip.fit.width, clip.fit.height, colour, label, { format: profile.alpha ? "yuva444p" : "yuv444p", bt709: true }, profile.alpha)}` +
+      ",scale=in_color_matrix=bt709:in_range=tv:out_range=pc";
     const window = await windowGraph(clip.entries, frameRate(profile.fps), local(files, clip.inputId), run,
       (label, colour) => `${convert(label, colour)},format=rgba,pad=${width}:${height}:${clip.fit.x}:${clip.fit.y}:color=${fill},setsar=1`,
       (entry) => `color=c=black${entry.fill === "transparent" ? "@0" : ""}:s=${width}x${height}:r=1:d=1,format=rgba`);
@@ -1054,7 +1136,7 @@ async function renderTransitionWindow(recipe: MiniToolPlanTransitionWindow, file
   const target = profileTarget(profile);
   const { video, muxer } = videoOutput(target, base, BigInt(count), tick);
   await runPlanCommand("ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-f", "rawvideo", "-pix_fmt", "rgba", "-s", `${width}x${height}`,
-    "-framerate", `${base}/${tick}`, "-i", rendered, "-vf", `scale=in_range=pc:out_color_matrix=bt709:out_range=tv,format=${profile.alpha ? "yuva420p" : "yuv420p"},setsar=1,${BT709_TAGS}`,
+    "-framerate", `${base}/${tick}`, "-i", rendered, "-vf", `scale=in_range=pc:out_color_matrix=bt709:out_range=tv,${subsampledAt(width, height, profile.alpha ? "yuva420p" : "yuv420p")},setsar=1,${BT709_TAGS}`,
     ...video, "-an", ...muxer, output], run);
 }
 
@@ -1119,7 +1201,7 @@ async function renderFrame(recipe: FrameRecipe, source: string, output: string,
     const facts = await sourceFacts(source, run);
     const first = await frameStartAt(source, facts, entry, run);
     args.push(...mediaTimeline(facts), "-seek_timestamp", "1", "-noaccurate_seek", "-ss", seconds(rational(entry.decodeStart)), ...facts.decoder, "-i", source);
-    graph = `[0:v:0]trim=start=${seconds(first)},${decodedPicture(target, target.width, target.height, facts.colour, "f", keep)},format=${pixel}${cropped}[v]`;
+    graph = `[0:v:0]trim=start=${seconds(first)},${decodedPicture(target, target.width, target.height, facts.colour, "f", { format: pixel }, keep)}${cropped}[v]`;
   }
   await runPlanCommand("ffmpeg", [...args, "-filter_complex", graph, "-map", "[v]", "-frames:v", "1", "-c:v", "png", "-f", "image2", output], run);
   const size = pngSize(new Uint8Array(await readFile(output)));
@@ -1202,7 +1284,7 @@ async function detectPeople(recipe: PeopleRecipe, source: string, output: string
 async function detectScenes(recipe: SceneRecipe, source: string, output: string, request: PresentationRecipeRequest, run: Run): Promise<void> {
   const { width, height } = recipe.target;
   const window = await windowGraph(recipe.entries, BigInt(recipe.timescale), source, run,
-    (label, colour) => `${decodedPicture(recipe.target, width, height, colour, label)},format=bgr24,setsar=1,sidedata=mode=delete:type=DISPLAYMATRIX`,
+    (label, colour) => `${decodedPicture(recipe.target, width, height, colour, label, { format: "bgr24" })},setsar=1,sidedata=mode=delete:type=DISPLAYMATRIX`,
     () => `color=c=black:s=${width}x${height}:r=1:d=1,format=bgr24,setsar=1`);
   const count = recipe.window.end - recipe.window.start;
   const result = await detect("scene_cuts", recipe.profile, { width, height, count,
