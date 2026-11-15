@@ -803,6 +803,17 @@ describe('transition_window (§7.17 transition_window and 转场输出档 rows; 
     }
   });
 
+  it(`TW12 on an odd transparent frame with an odd offset the encode chunk places the clip exactly where the window does`, async () => {
+    const transparent = { ...PROFILE, width: 63, height: 36, codec: 'vp9', pixFmt: 'yuva420p', alpha: true };
+    const fit = { x: 7, y: 0, width: 48, height: 36 };
+    const [file] = await produce({ [CLIP_A]: join(dir, 'clip-narrow.mp4') }, [{ ...clipChunk(CLIP_A, 30, 32), profile: transparent, target: { ...TARGET, width: 63, height: 36, displayRect: fit } }]);
+    const { stdout } = await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-c:v', 'libvpx-vp9', '-i', file!, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgba', '-'], { encoding: 'buffer', maxBuffer: 1 << 24 });
+    const pixels = stdout as unknown as Buffer;
+    expect(pixels.length).toBe(63 * 36 * 4);
+    const alpha = (x: number): number => pixels[(18 * 63 + x) * 4 + 3]!;
+    expect([alpha(6), alpha(7), alpha(54), alpha(55)]).toEqual([0, 255, 255, 0]);
+  });
+
   it(`TW11 a transparent HDR clip keeps its alpha through the tone map, in the window and in its encode chunk (§4.3; renderer stand-in)`, async () => {
     renderer.fake = true;
     const transparent = { ...PROFILE, codec: 'vp9', pixFmt: 'yuva420p', alpha: true };

@@ -199,8 +199,10 @@ export function picture(target: MiniToolPlanTarget, label: string): string {
   // transition chunk sits in its fitted rectangle, the bars transparent when it keeps alpha (§7.17).
   if (target.format === "webm-vp9") {
     const straight = target.alpha === "straight";
-    const bars = target.displayRect === null ? "" : `,pad=${target.width}:${target.height}:${rect.x}:${rect.y}:color=black${straight ? "@0" : ""}`;
-    return `${head}:out_color_matrix=bt709:out_range=tv,format=${straight ? "yuva420p" : "yuv420p"}${bars},setsar=1,${unrotated}`;
+    const [full, sub] = straight ? ["yuva444p", "yuva420p"] : ["yuv444p", "yuv420p"];
+    // Padded in 4:4:4: a 4:2:0 pad rounds an odd offset down and cannot make an odd side.
+    const bars = target.displayRect === null ? "" : `format=${full},pad=${target.width}:${target.height}:${rect.x}:${rect.y}:color=black${straight ? "@0" : ""},`;
+    return `${head}:out_color_matrix=bt709:out_range=tv,${bars}format=${sub},setsar=1,${unrotated}`;
   }
   const tail = `scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,setsar=1,${unrotated}`;
   if (target.alpha === "none") return `${head}:out_color_matrix=bt709:out_range=tv,format=yuv444p,${pad},${tail}`;
