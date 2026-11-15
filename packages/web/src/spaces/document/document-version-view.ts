@@ -19,6 +19,7 @@ import * as Y from 'yjs';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+import { documentFallbackExtension } from '@web/spaces/document/document-unsupported-blocknote';
 import { documentVersionFoldExtension } from '@web/spaces/document/document-version-fold';
 import type { ShownRef } from '@web/spaces/document/document-version-storage';
 
@@ -99,6 +100,8 @@ export function buildVersionPreview(options: {
           `doc-version-${modificationType === 'attrs' ? 'format' : modificationType}${contentType === 'block' ? '-block' : ''}`,
       }),
       documentVersionFoldExtension(),
+      // The live body registers it, so its content can carry the mark it registers.
+      documentFallbackExtension(),
       createVersioningExtension<Json>((editor) => ({
         adapter: previewAdapter(editor as unknown as Editor, options),
         storage: options.storage,

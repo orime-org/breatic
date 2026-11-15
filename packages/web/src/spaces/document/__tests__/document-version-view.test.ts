@@ -12,6 +12,7 @@ import * as Y from 'yjs';
 import { documentBodyFragment, type DocumentVersion } from '@breatic/shared';
 
 import { documentsApi } from '@web/data/api/documents';
+import { documentFallbackExtension } from '@web/spaces/document/document-unsupported-blocknote';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
 import { openVersionFold, versionFolds } from '@web/spaces/document/document-version-fold';
@@ -208,5 +209,28 @@ describe('folding unchanged stretches', () => {
     await versioning.select({ type: 'snapshot', id: 'v1' });
     await versioning.select({ type: 'current' }, { compareTo: 'v1' });
     expect(versionFolds(preview.prosemirrorState).map((f) => f.count)).toEqual([8]);
+  });
+});
+
+describe('a body holding what this build cannot read', () => {
+  it('previews the stand-in block, labelled, and the words under an unknown mark', async () => {
+    const doc = new Y.Doc();
+    const live = mount(buildDocumentEditor({ fragment: documentBodyFragment(doc), extensions: [documentFallbackExtension()] }));
+    live.replaceBlocks(live.document, [
+      { type: 'paragraph', content: 'marked words' },
+      { type: 'unsupportedBlock', props: { originalName: 'futureBlock' } },
+    ] as never);
+    const view = live.prosemirrorView!;
+    const mark = view.state.schema.marks['unsupportedMark']!.create({ originalName: 'futureMark', originalValue: 'v' });
+    view.dispatch(view.state.tr.addMark(1, view.state.doc.content.size - 1, mark));
+    const shown: ShownRef = { current: null };
+    const storage = createDocumentVersionStorage({ scope: { projectId: 'p', spaceId: 's' }, shown, apply: () => 'refused', report: vi.fn() });
+    const preview = mount(buildVersionPreview({ live: () => live.prosemirrorState.doc, storage, shown, onShow: vi.fn() }));
+
+    await versioningOf(preview).open();
+
+    expect(text(preview)).toBe('marked words');
+    const block = preview.prosemirrorView!.dom.querySelector('[data-unsupported-block]');
+    expect(block?.closest('[data-label]')?.getAttribute('data-label') ?? block?.getAttribute('data-label')).toBeTruthy();
   });
 });
