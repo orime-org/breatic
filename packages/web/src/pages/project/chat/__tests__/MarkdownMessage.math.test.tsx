@@ -183,7 +183,7 @@ describe('MarkdownMessage — maths', () => {
     const written = new Map<string, string>();
     const event = new Event('dragstart', { bubbles: true, cancelable: true });
     Object.defineProperty(event, 'dataTransfer', {
-      value: { types, setData: (type: string, data: string): Map<string, string> => written.set(type, data) },
+      value: { types, setData: (type: string, data: string): Map<string, string> => written.set(type, data), getData: (type: string): string => written.get(type) ?? '' },
     });
     from.dispatchEvent(event);
     window.getSelection = realSelection;
