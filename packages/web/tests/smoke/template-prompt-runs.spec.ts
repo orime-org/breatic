@@ -637,6 +637,42 @@ const RUNS: Record<string, Run> = {
     fills: { anchor: ['the dog', 'Sunday walks / smell like grass'] },
     localeFills: { 'zh-CN': { anchor: ['那只狗', '周日的散步 / 有青草的味道'] } },
   },
+  'vehicle-speed-cutlist': {
+    type: 'video',
+    photo: true,
+    image: 'vehicle.jpg',
+    first: [],
+    fills: { anchor: ['a driver in sunglasses, both hands on the wheel', 'a dry coastal highway at sunset, cliffs on one side and the sea on the other', 'a low sun ahead at the end of the road'] },
+    localeFills: { 'zh-CN': { anchor: ['戴墨镜、双手握方向盘的司机', '日落时干燥的海边公路，一边是悬崖，一边是大海', '路尽头前方低垂的太阳'] } },
+  },
+  'sports-live-coverage': {
+    type: 'video',
+    photo: true,
+    first: [],
+    fills: {
+      anchor: [
+        'an obstacle course over a pool: a balance beam, a swinging bag, a foam wall',
+        'the swinging bag',
+        'she falls into the water with a big splash',
+        'she climbs out soaked, laughing, and waves to the crowd',
+      ],
+    },
+    localeFills: { 'zh-CN': { anchor: ['水池上的闯关赛道：平衡木、摆锤沙袋、泡沫墙', '摆过来的沙袋', '她掉进水里，水花四溅', '她浑身湿透地爬上岸，笑着向观众挥手'] } },
+  },
+  'extreme-sports-run': {
+    type: 'video',
+    photo: true,
+    first: [],
+    fills: {
+      anchor: [
+        'snowboarding off a kicker on a sunny mountain slope',
+        'the board edge carving the snow, spray flying off each turn',
+        'one grab of the board',
+        'snow bursting out around the board',
+      ],
+    },
+    localeFills: { 'zh-CN': { anchor: ['阳光下的雪山坡，单板滑雪冲上跳台', '板刃切进雪里，每次转弯扬起雪雾', '抓一次板', '雪从板边炸开'] } },
+  },
   'pet-selfie-vlog': { type: 'video', photo: true, image: 'pet.jpg', first: [], fills: { anchor: ['a sunny living room', 'jumps onto the sofa and sniffs the phone'] } },
   'phone-vlog-realism': {
     type: 'video',

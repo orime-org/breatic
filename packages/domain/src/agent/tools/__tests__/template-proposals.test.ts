@@ -163,6 +163,17 @@ describe("templates in proposals", () => {
     }
   });
 
+  // inner#1810: the speed goal; only the vehicle cut list has a case for when it also fits.
+  it("indexes the three motion and speed templates under their goal, only the vehicle one saying when it also fits", () => {
+    const lines = String(makeProposeCanvasAction().description ?? "").split(" | ");
+    for (const id of ["vehicle-speed-cutlist", "sports-live-coverage", "extreme-sports-run"]) {
+      const line = lines.find((one) => one.includes(`${id} (speed,`));
+      expect(line, `${id} indexed`).toBeDefined();
+      if (id === "vehicle-speed-cutlist") expect(line, id).toContain("It also fits when");
+      else expect(line, id).not.toContain("It also fits when");
+    }
+  });
+
   // inner#1808: the food goal, each of its templates with a case for when it also fits.
   it("indexes the three food templates under their goal, each saying when it also fits", () => {
     const lines = String(makeProposeCanvasAction().description ?? "").split(" | ");

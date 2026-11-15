@@ -39,6 +39,7 @@ import { COSTUME_SHEET } from "@shared/canvas/templates/costume-sheet.js";
 import { DESTINATION_FESTIVAL_POSTER } from "@shared/canvas/templates/destination-festival-poster.js";
 import { DISH_HERO_STILL } from "@shared/canvas/templates/dish-hero-still.js";
 import { EXPRESSION_SHEET } from "@shared/canvas/templates/expression-sheet.js";
+import { EXTREME_SPORTS_RUN } from "@shared/canvas/templates/extreme-sports-run.js";
 import { FISHEYE_CLONE_POV } from "@shared/canvas/templates/fisheye-clone-pov.js";
 import { FLASH_PHOTO_DUMP_GRID } from "@shared/canvas/templates/flash-photo-dump-grid.js";
 import { FOOD_MONEY_SHOT } from "@shared/canvas/templates/food-money-shot.js";
@@ -56,12 +57,14 @@ import { SCORE_FOR_MY_VIDEO } from "@shared/canvas/templates/score-for-my-video.
 import { SECTION_MAPPED_SCORE } from "@shared/canvas/templates/section-mapped-score.js";
 import { SINGLE_VIEW_REFS_SCENE } from "@shared/canvas/templates/single-view-refs-scene.js";
 import { SONG_COVER } from "@shared/canvas/templates/song-cover.js";
+import { SPORTS_LIVE_COVERAGE } from "@shared/canvas/templates/sports-live-coverage.js";
 import { STORYBOARD_GRID_25 } from "@shared/canvas/templates/storyboard-grid-25.js";
 import { TIME_FREEZE_REWIND } from "@shared/canvas/templates/time-freeze-rewind.js";
 import { TRAVEL_CITY_WALK } from "@shared/canvas/templates/travel-city-walk.js";
 import { TWIST_COMEDY_SKIT } from "@shared/canvas/templates/twist-comedy-skit.js";
 import { TWO_VOICE_DIALOGUE } from "@shared/canvas/templates/two-voice-dialogue.js";
 import { UNDERSCORE_BGM } from "@shared/canvas/templates/underscore-bgm.js";
+import { VEHICLE_SPEED_CUTLIST } from "@shared/canvas/templates/vehicle-speed-cutlist.js";
 import { VERTICAL_15S_QUICK_TIP } from "@shared/canvas/templates/vertical-15s-quick-tip.js";
 import { VOICE_CLONE_LINE } from "@shared/canvas/templates/voice-clone-line.js";
 import { VOICE_FROM_DESCRIPTOR } from "@shared/canvas/templates/voice-from-descriptor.js";
@@ -69,7 +72,7 @@ import { VOICE_LINE } from "@shared/canvas/templates/voice-line.js";
 import type { GenerationNodeType } from "@shared/types/model-catalog.js";
 
 /** Every creative goal, in the order the panels list them; its name is `canvas.template.goal.<goal>`. */
-export const TEMPLATE_GOALS = ["character", "comics-storyboards", "food", "social-hooks", "posters", "sound"] as const;
+export const TEMPLATE_GOALS = ["character", "comics-storyboards", "food", "social-hooks", "posters", "speed", "sound"] as const;
 
 /** A creative goal a template serves; the panel groups templates under it. */
 export type TemplateGoal = (typeof TEMPLATE_GOALS)[number];
@@ -204,6 +207,9 @@ export const GENERATION_TEMPLATES: readonly GenerationTemplate[] = [
   NAME_AS_WORLD_TYPOGRAPHY,
   DESTINATION_FESTIVAL_POSTER,
   PHOTO_PAPER_DIORAMA,
+  VEHICLE_SPEED_CUTLIST,
+  SPORTS_LIVE_COVERAGE,
+  EXTREME_SPORTS_RUN,
   AMBIENCE_SFX_BED,
   VOICE_LINE,
   TWO_VOICE_DIALOGUE,

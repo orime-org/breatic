@@ -139,6 +139,10 @@ describe("get_generation_template", () => {
     expect(TEMPLATE_CRAFT.picture).toContain("put no text in the picture unless the template asks for it (labels, a title, lines of verse)");
   });
 
+  it("lets a template set a cut rhythm faster than the beat every 2 to 3 seconds", () => {
+    expect(TEMPLATE_CRAFT.video).toContain("a visible beat every 2 to 3 seconds unless the template sets its own cut rhythm");
+  });
+
   it("has words in every craft section", () => {
     for (const craft of Object.values(TEMPLATE_CRAFT)) expect(craft.trim().length).toBeGreaterThan(0);
   });

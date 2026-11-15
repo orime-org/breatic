@@ -256,6 +256,9 @@ patchedDependencies:
   prosemirror-view@1.42.6:
     hash: b5ej5jmfcxeucg3jh365cdjlaa
     path: patches/prosemirror-view@1.42.6.patch
+  resumable-stream@2.2.13:
+    hash: a6derv6as3qqzweehvxg35zcli
+    path: patches/resumable-stream@2.2.13.patch
   use-smooth-text@0.1.1:
     hash: owjxlg5drxrvbpft5zc357s3ly
     path: patches/use-smooth-text@0.1.1.patch
@@ -785,7 +788,7 @@ importers:
         version: 14.2.0
       resumable-stream:
         specifier: 2.2.13
-        version: 2.2.13
+        version: 2.2.13(patch_hash=a6derv6as3qqzweehvxg35zcli)
       stripe:
         specifier: 'catalog:'
         version: 21.0.1(@types/node@24.19.1)
@@ -21386,7 +21389,7 @@ snapshots:
       path-parse: 1.0.7
       supports-preserve-symlinks-flag: 1.0.0
 
-  resumable-stream@2.2.13: {}
+  resumable-stream@2.2.13(patch_hash=a6derv6as3qqzweehvxg35zcli): {}
 
   ret@0.1.15: {}
 
