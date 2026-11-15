@@ -9,6 +9,7 @@
  */
 
 import type { RegionConfig } from '@web/data/api/regions';
+import { ApiException } from '@web/data/api/types';
 
 /** How often the identity token is renewed. */
 export const IDENTITY_RENEW_INTERVAL_MS = 45_000;
@@ -16,11 +17,14 @@ export const IDENTITY_RENEW_INTERVAL_MS = 45_000;
 let renewer: (() => Promise<unknown>) | null = null;
 let renewedAt = 0;
 let inFlight: Promise<void> | null = null;
+let stopRenewal: (() => void) | null = null;
 
 /**
  * Renew now, sharing one request among everyone who asks while it runs: the
  * timer, a stream about to open, and every request a region refused with
- * `identity_expired`. A failed renewal is left to the next tick or sender.
+ * `identity_expired`. A failed renewal is left to the next tick or sender;
+ * one the global region refuses with 401 means the session is gone, and the
+ * renewal stops until the next sign-in starts it again.
  * @returns Once the renewal has answered.
  */
 export function renewIdentityNow(): Promise<void> {
@@ -30,7 +34,9 @@ export function renewIdentityNow(): Promise<void> {
     () => {
       renewedAt = Date.now();
     },
-    () => undefined,
+    (err: unknown) => {
+      if (err instanceof ApiException && err.status === 401) stopRenewal?.();
+    },
   ).finally(() => {
     inFlight = null;
   });
@@ -68,10 +74,14 @@ export function startIdentityRenewal(renew: () => Promise<unknown>, config: Regi
   };
   document.addEventListener('visibilitychange', onBack);
   window.addEventListener('online', onBack);
-  return () => {
+  /** Stop the timer and listeners; the next sign-in starts them again. */
+  const stop = (): void => {
     clearInterval(timer);
     document.removeEventListener('visibilitychange', onBack);
     window.removeEventListener('online', onBack);
     if (renewer === renew) renewer = null;
+    if (stopRenewal === stop) stopRenewal = null;
   };
+  stopRenewal = stop;
+  return stop;
 }

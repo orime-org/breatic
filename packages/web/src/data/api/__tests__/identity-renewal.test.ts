@@ -19,6 +19,7 @@ vi.mock('@web/data/deployment/stale-release', () => ({ checkStaleRelease }));
 import { request } from '@web/data/api/request';
 import { IDENTITY_RENEW_INTERVAL_MS, ensureFreshIdentity, startIdentityRenewal } from '@web/data/api/identity-renewal';
 import { parseRegionConfig } from '@web/data/api/regions';
+import { ApiException } from '@web/data/api/types';
 
 const TWO_REGIONS = parseRegionConfig(
   JSON.stringify({
@@ -83,6 +84,30 @@ describe('startIdentityRenewal', () => {
     stop();
     await vi.advanceTimersByTimeAsync(45_000 * 2);
     expect(renew).toHaveBeenCalledTimes(3);
+  });
+
+  it('stops renewing once the global region answers that the session is gone', async () => {
+    vi.useFakeTimers();
+    const renew = vi.fn(async () => {
+      throw new ApiException({ status: 401, message: 'not signed in' });
+    });
+
+    const stop = startIdentityRenewal(renew, TWO_REGIONS);
+    await vi.advanceTimersByTimeAsync(45_000 * 3);
+    expect(renew).toHaveBeenCalledTimes(1);
+    stop();
+  });
+
+  it('keeps renewing after a failure that is not about the session', async () => {
+    vi.useFakeTimers();
+    const renew = vi.fn(async () => {
+      throw new ApiException({ status: 503, message: 'down' });
+    });
+
+    const stop = startIdentityRenewal(renew, TWO_REGIONS);
+    await vi.advanceTimersByTimeAsync(45_000 * 3);
+    expect(renew).toHaveBeenCalledTimes(3);
+    stop();
   });
 
   it('renews at once when the tab comes back after the token went stale, and not when it is fresh', async () => {
