@@ -219,16 +219,14 @@ describe('copying a selection that holds formulas', () => {
     expect(dragged).toBe(copy(editor)['text/plain']);
   });
 
-  it('leaves the plain text of a serialising outside a drag to Tiptap', () => {
+  it('leaves a serialising after a drag, and the selection it reads, to Tiptap', async () => {
     const editor = open([{ type: 'paragraph', content: 'lead' }, { type: 'mathBlock', props: { source: 'x' } }, { type: 'paragraph', content: 'tail' }]);
     select(editor, before(editor, 'paragraph') + 1, editor.prosemirrorState.doc.content.size - 3);
+    dragText(editor);
+    await Promise.resolve();
     const view = editor.prosemirrorView;
-    expect(view.serializeForClipboard(view.state.selection.content()).text).not.toBe(copy(editor)['text/plain']);
-  });
 
-  it('leaves the selection alone when a selected block is serialised', () => {
-    const editor = open([{ type: 'paragraph', content: 'lead' }, { type: 'mathBlock', props: { source: 'x' } }]);
-    const view = editor.prosemirrorView;
+    expect(view.serializeForClipboard(view.state.selection.content()).text).not.toBe(copy(editor)['text/plain']);
     view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, before(editor, 'mathBlock'))));
     const selected = view.state.selection;
     view.serializeForClipboard(selected.content());
