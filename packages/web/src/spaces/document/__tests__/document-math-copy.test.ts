@@ -95,6 +95,32 @@ function copy(editor: Editor): Record<string, string> {
   return data;
 }
 
+/**
+ * Starts a drag of the selection the way the browser does, and reads the
+ * plain text it carries.
+ * @param editor - The editor.
+ * @returns The plain text.
+ */
+function dragText(editor: Editor): string {
+  const data: Record<string, string> = {};
+  const event = new Event('dragstart', { bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'dataTransfer', {
+    value: {
+      files: [],
+      effectAllowed: '',
+      setData: (format: string, value: string) => {
+        data[format] = value;
+      },
+      clearData: () => {
+        Object.keys(data).forEach((key) => delete data[key]);
+      },
+      setDragImage: (): void => undefined,
+    },
+  });
+  editor.prosemirrorView.dom.dispatchEvent(event);
+  return data['text/plain'] ?? '';
+}
+
 describe('copying a selection that holds formulas', () => {
   it('writes an inline formula into the plain text as $$source$$', () => {
     const editor = open([{ type: 'paragraph', content: ['x ', { type: 'math', props: { source: 'a^2' } }, ' y'] }]);
@@ -189,9 +215,15 @@ describe('copying a selection that holds formulas', () => {
   ])('gives a selection drag the plain text a copy writes, for %s', (_name, blocks, pick) => {
     const editor = open(blocks);
     pick(editor);
-    const view = editor.prosemirrorView;
-    const dragged = view.serializeForClipboard(view.state.selection.content()).text;
+    const dragged = dragText(editor);
     expect(dragged).toBe(copy(editor)['text/plain']);
+  });
+
+  it('leaves the plain text of a serialising outside a drag to Tiptap', () => {
+    const editor = open([{ type: 'paragraph', content: 'lead' }, { type: 'mathBlock', props: { source: 'x' } }, { type: 'paragraph', content: 'tail' }]);
+    select(editor, before(editor, 'paragraph') + 1, editor.prosemirrorState.doc.content.size - 3);
+    const view = editor.prosemirrorView;
+    expect(view.serializeForClipboard(view.state.selection.content()).text).not.toBe(copy(editor)['text/plain']);
   });
 
   it('leaves the selection alone when a selected block is serialised', () => {

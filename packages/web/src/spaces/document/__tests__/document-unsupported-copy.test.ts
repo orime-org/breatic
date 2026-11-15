@@ -83,10 +83,14 @@ describe('a selection holding a stand-in block', () => {
 
   it('gives a drag of it the plain text a copy writes', () => {
     const editor = openAllSelected(body);
-    const view = editor.prosemirrorView;
+    const data: Record<string, string> = {};
+    const event = new Event('dragstart', { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'dataTransfer', {
+      value: { files: [], effectAllowed: '', setData: (format: string, value: string) => { data[format] = value; }, clearData: (): void => undefined, setDragImage: (): void => undefined },
+    });
 
-    const dragged = view.serializeForClipboard(view.state.selection.content()).text;
+    editor.prosemirrorView.dom.dispatchEvent(event);
 
-    expect(dragged).toBe(copy(editor)['text/plain']);
+    expect(data['text/plain']).toBe(copy(editor)['text/plain']);
   });
 });

@@ -36,9 +36,6 @@ import {
   type ExtensionFactoryInstance,
 } from '@blocknote/core';
 import { withCollaboration } from '@blocknote/core/yjs';
-import type { Slice } from '@tiptap/pm/model';
-import { NodeSelection } from '@tiptap/pm/state';
-import type { EditorView } from '@tiptap/pm/view';
 import { ySyncPluginKey } from 'y-prosemirror';
 import type * as Y from 'yjs';
 
@@ -64,7 +61,7 @@ import { documentTableKeysExtension } from '@web/spaces/document/document-table-
 import { documentTableColumnWidthsExtension } from '@web/spaces/document/document-table-column-widths';
 import { documentTableTargetExtension } from '@web/spaces/document/document-table-target';
 import { documentTableHandlesExtension } from '@web/spaces/document/document-table-handles';
-import { copiedPlainText, documentTableCopyExtension } from '@web/spaces/document/document-table-copy';
+import { documentTableCopyExtension } from '@web/spaces/document/document-table-copy';
 import { documentTableSideMenuExtension } from '@web/spaces/document/document-table-side-menu';
 import { documentTableLeaveSelectionExtension } from '@web/spaces/document/document-table-leave-selection';
 import { documentCellContentSelectionExtension } from '@web/spaces/document/document-cell-content-selection';
@@ -261,31 +258,7 @@ export function buildDocumentEditor(
    */
   const dropLine: typeof tableDrags = (context) => (inTableFullscreen(context.view.state) ? null : tableDrags(context));
 
-  let built: BlockNoteEditor<never, never, never> | null = null;
-  let writing = false;
-  /**
-   * A drag's plain text, read off the selection as Tiptap's own serialiser
-   * reads it: what a copy of the selection writes, as ProseMirror serialises a
-   * copy and a drag alike. A selected block is BlockNote's own drag, and the
-   * serialising the copy itself does while this one is written is left to
-   * Tiptap.
-   * @param _slice - The slice being serialised, the selection's.
-   * @param view - The editor view.
-   * @returns The text, or '' to leave it to the next serialiser.
-   */
-  const dragPlainText = (_slice: Slice, view: EditorView): string => {
-    const { selection } = view.state;
-    if (writing || built === null || (selection instanceof NodeSelection && selection.node.type.spec.group === 'blockContent')) return '';
-    writing = true;
-    try {
-      return copiedPlainText(built, view);
-    } finally {
-      writing = false;
-    }
-  };
-
-  built = BlockNoteEditor.create({
-    _tiptapOptions: { editorProps: { clipboardTextSerializer: dragPlainText } },
+  return BlockNoteEditor.create({
     schema: buildDocumentSchema(),
     links: { onClick: openLinkInANewTab },
     domAttributes: { editor: { class: BODY_SURFACE_CLASS } },
@@ -311,7 +284,6 @@ export function buildDocumentEditor(
     pasteHandler: pasteChain(options),
     ...collaborative,
   } as never) as BlockNoteEditor<never, never, never>;
-  return built;
 }
 
 /**

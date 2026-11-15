@@ -286,7 +286,7 @@ export function tableClipped(editor: CopyEditor, view: EditorView): Clipped | nu
  * @param view - The editor view.
  * @returns The plain text.
  */
-export function copiedPlainText(editor: CopyEditor, view: EditorView): string {
+function copiedPlainText(editor: CopyEditor, view: EditorView): string {
   return tableClipped(editor, view)?.plain ?? selectedFragmentToHTML(view, editor).plain;
 }
 
@@ -336,41 +336,67 @@ export function writeClipped(event: ClipboardEvent, clipped: Clipped): void {
  * The extension that takes these copies and cuts.
  * @returns The extension, for the assembly to register.
  */
-export const documentTableCopyExtension = createExtension(({ editor }) => ({
-  key: 'documentTableCopy',
-  prosemirrorPlugins: [
-    new Plugin({
-      key: new PluginKey('documentTableCopy'),
-      props: {
-        // A drag of the selection carries what its copy does (words in a cell
-        // without the table around them, a range leaving a table with the
-        // table): ProseMirror keeps this slice at dragstart (`view.dragging`),
-        // before the selection can move (Outline `TableCell.ts` clips the same).
-        transformCopied: (slice, view) =>
-          (slice.eq(view.state.selection.content()) ? tableClippedBlocks(view)?.slice : null) ?? slice,
-        handleDOMEvents: {
-          copy: (view, event) => {
-            const clipped = tableClipped(editor as unknown as CopyEditor, view);
-            if (clipped === null) return false;
-            writeClipped(event, clipped);
-            return true;
-          },
-          cut: (view, event) => {
-            const clipped = tableClipped(editor as unknown as CopyEditor, view);
-            if (clipped === null) return false;
-            writeClipped(event, clipped);
-            if (!view.editable) return true;
-            const tr = view.state.tr;
-            if (view.state.selection instanceof CellSelection) {
-              deleteCellSelection(view.state, view.dispatch);
-            } else {
-              if (!replaceStoredHeld(view.state.selection, tr)) tr.deleteSelection();
-              view.dispatch(tr);
+export const documentTableCopyExtension = createExtension(({ editor }) => {
+  // Set while the body's own dragstart runs, the one serialising whose plain
+  // text is kept; `writing` is the serialising the copy itself does inside.
+  let dragging = false;
+  let writing = false;
+  return {
+    key: 'documentTableCopy',
+    prosemirrorPlugins: [
+      new Plugin({
+        key: new PluginKey('documentTableCopy'),
+        props: {
+          // A selection drag carries the plain text a copy of it writes, as
+          // ProseMirror serialises a copy and a drag alike; every other
+          // serialising is Tiptap's. A selected block's drag is BlockNote's
+          // own, which moves the selection onto the block's container first.
+          clipboardTextSerializer: (_slice, view) => {
+            if (!dragging || writing) return '';
+            writing = true;
+            try {
+              return copiedPlainText(editor as unknown as CopyEditor, view);
+            } finally {
+              writing = false;
             }
-            return true;
+          },
+          // A drag of the selection carries what its copy does (words in a cell
+          // without the table around them, a range leaving a table with the
+          // table): ProseMirror keeps this slice at dragstart (`view.dragging`),
+          // before the selection can move (Outline `TableCell.ts` clips the same).
+          transformCopied: (slice, view) =>
+            (slice.eq(view.state.selection.content()) ? tableClippedBlocks(view)?.slice : null) ?? slice,
+          handleDOMEvents: {
+            dragstart: () => {
+              dragging = true;
+              queueMicrotask(() => {
+                dragging = false;
+              });
+              return false;
+            },
+            copy: (view, event) => {
+              const clipped = tableClipped(editor as unknown as CopyEditor, view);
+              if (clipped === null) return false;
+              writeClipped(event, clipped);
+              return true;
+            },
+            cut: (view, event) => {
+              const clipped = tableClipped(editor as unknown as CopyEditor, view);
+              if (clipped === null) return false;
+              writeClipped(event, clipped);
+              if (!view.editable) return true;
+              const tr = view.state.tr;
+              if (view.state.selection instanceof CellSelection) {
+                deleteCellSelection(view.state, view.dispatch);
+              } else {
+                if (!replaceStoredHeld(view.state.selection, tr)) tr.deleteSelection();
+                view.dispatch(tr);
+              }
+              return true;
+            },
           },
         },
-      },
-    }),
-  ],
-}));
+      }),
+    ],
+  };
+});
