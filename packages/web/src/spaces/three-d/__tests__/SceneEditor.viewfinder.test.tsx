@@ -281,6 +281,26 @@ describe('the failed-model notice', () => {
 });
 
 describe('capturing (acceptance 3 and 4)', () => {
+  it('keeps the frame where it was across Capture and Reframe when the object toolbar stacks on a narrow stage', async () => {
+    const sizes: Record<string, [number, number]> = { 'scene-bottom-row': [400, 50], 'scene-object-menu': [223, 42], 'scene-viewport-toolbar': [294, 42] };
+    const size = (element: HTMLElement): [number, number] => sizes[element.dataset.testid ?? ''] ?? [0, 0];
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockImplementation(function (this: HTMLElement) { return size(this)[0]; });
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function (this: HTMLElement) { return size(this)[1]; });
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(420);
+    const frame = (): string => { const style = screen.getByTestId('scene-viewfinder-frame').style; return `${style.left} ${style.top} ${style.width} ${style.height}`; };
+    const { session } = await setup();
+    act(() => session.select(ID, false));
+    await waitFor(() => expect(screen.getByTestId('scene-map-holder').style.bottom).toBe('111px'));
+    fireEvent.click(trigger());
+    const framed = frame();
+    fireEvent.click(button('confirm'));
+    await within(menu()).findByRole('button', { name: t('spaces.threeD.viewfinder.toAgent') });
+    expect(frame()).toBe(framed);
+    fireEvent.click(button('reframe'));
+    await waitFor(() => expect(screen.getByTestId('scene-object-menu')).toBeInTheDocument());
+    expect(frame()).toBe(framed);
+  });
+
   it('does not capture while a model is loading and says so', async () => {
     h.modelState = 'loading';
     await setup();

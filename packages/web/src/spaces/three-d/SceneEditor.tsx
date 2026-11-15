@@ -520,9 +520,11 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   React.useLayoutEffect(() => {
     /**
      * Measure the bottom row and the failed-model notice: the object toolbar stacks above the bottom-right controls
-     * when the two do not fit in one row, and an open right panel starts below the notice.
+     * when the two do not fit in one row, and an open right panel starts below the notice. A still keeps the
+     * measure it was framed with, so putting the object toolbar away for it leaves the frame where it was.
      */
     const measure = (): void => {
+      if (shotTaken) return;
       const objectBar = bottomRow?.querySelector<HTMLElement>('[data-testid="scene-object-menu"]') ?? null;
       const controls = bottomRow?.querySelector<HTMLElement>('[data-testid="scene-viewport-toolbar"]') ?? null;
       const gap = controls?.parentElement ? parseFloat(getComputedStyle(controls.parentElement).marginLeft) || 0 : 0;
