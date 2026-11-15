@@ -247,3 +247,25 @@ describe('copying a selection that holds formulas', () => {
   });
 
 });
+
+describe('pasting a copy that holds a formula block into a code block', () => {
+  it('keeps the formula block as its $$ lines', () => {
+    const editor = open([
+      { type: 'codeBlock', props: { language: 'javascript' }, content: 'let x = 1' },
+      { type: 'paragraph', content: 'lead' },
+      { type: 'mathBlock', props: { source: 'x^2' } },
+      { type: 'paragraph', content: 'tail' },
+    ]);
+    select(editor, before(editor, 'paragraph') + 1, editor.prosemirrorState.doc.content.size - 3);
+    const formats = copy(editor);
+    const code = before(editor, 'codeBlock');
+    const end = code + 1 + editor.prosemirrorState.doc.nodeAt(code)!.content.size;
+    select(editor, end, end);
+
+    const event = new Event('paste', { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'clipboardData', { value: { types: Object.keys(formats), files: [], items: [], getData: (type: string) => formats[type] ?? '' } });
+    editor.prosemirrorView.dom.dispatchEvent(event);
+
+    expect(editor.prosemirrorState.doc.nodeAt(before(editor, 'codeBlock'))!.textContent).toContain('$$\nx^2\n$$');
+  });
+});

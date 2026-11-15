@@ -389,7 +389,8 @@ function wordsOf(rows: readonly PMNode[]): string {
       return node.children.map((row) => row.children.map((cell) => wordsOf(cell.children)).join('\t')).join('\n');
     }
     const nested = node.lastChild?.type.name === 'blockGroup' ? node.lastChild.children : [];
-    return [node.firstChild!.isTextblock ? wordsIn(node.firstChild!) : '', ...nested.map((child) => wordsOf([child]))].join('\n');
+    // A leaf reads as its `leafText`: a formula block as its `$$` lines.
+    return [node.firstChild!.isTextblock ? wordsIn(node.firstChild!) : node.firstChild!.textContent, ...nested.map((child) => wordsOf([child]))].join('\n');
   }).join('\n');
 }
 
