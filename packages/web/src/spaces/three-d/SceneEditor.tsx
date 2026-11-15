@@ -41,7 +41,6 @@ import type { ModelSource } from '@web/spaces/three-d/model-source';
 import { budgetText, importErrorKey } from '@web/spaces/three-d/model-import-error-text';
 import { pageSceneUploads } from '@web/spaces/three-d/scene-uploads';
 import { SceneTaskList } from '@web/spaces/three-d/SceneTaskList';
-import { useControlPress } from '@web/spaces/three-d/use-control-press';
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 
 const SceneViewport = React.lazy(() => import('@web/spaces/three-d/viewport/SceneViewport'));
@@ -184,21 +183,32 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   const environment = React.useMemo(() => (ambientDraft ? { ...snapshot.environment, ...ambientDraft } : snapshot.environment), [ambientDraft, snapshot.environment]);
   const ambientDraftRef = React.useRef(ambientDraft);
   ambientDraftRef.current = ambientDraft;
-  const ambientOpen = React.useCallback((): boolean => session.getSnapshot().canEdit, [session]);
-  const ambientPress = useControlPress(ambientOpen);
+  // The ambient light has no session gesture: this flag is its press, opened only with edit access, and once Escape,
+  // an undo or a loss of focus or edit access ends its drag, the press's later changes are ignored (design 3.8, 6.2).
+  const ambientHeld = React.useRef(false);
   const [lightPlan, setLightPlan] = React.useState<LightsPlan | null>(null);
   const [monitors, setMonitors] = React.useState<ReadonlyMap<string, HTMLCanvasElement>>(new Map());
   const pilotControl = React.useRef<ScenePilotControl | null>(null);
   /**
    * End an ambient press without writing it; its later changes are ignored until the next press starts.
-   * @returns Whether its drag was still open.
+   * @returns Whether its drag was still open: a release then writes it, and an Escape stops there.
    */
   const dropAmbient = React.useCallback((): boolean => {
-    const open = ambientPress.end();
+    const open = ambientHeld.current;
+    ambientHeld.current = false;
     ambientDraftRef.current = null;
     setAmbientDraft(null);
     return open;
-  }, [ambientPress]);
+  }, []);
+  /**
+   * Start an ambient press from the stored values, whatever an earlier press left (its release may have come outside
+   * the browser).
+   * @throws {never} Never.
+   */
+  const beginAmbient = React.useCallback((): void => {
+    dropAmbient();
+    ambientHeld.current = session.getSnapshot().canEdit;
+  }, [session, dropAmbient]);
   /**
    * Apply a personal history step (design 3.8): a pending pilot wheel step is written first, and every press in
    * progress ends without writing it.
@@ -536,8 +546,9 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     setPanel(next); setRightOpen(true);
   }, [panel, rightOpen, setRightOpen]);
   /**
-   * Give an in-progress native transform, then joint mode, ownership of the panel's Escape.
-   * @returns Whether this press cancelled the current personal gesture or left joint mode.
+   * Take the panel's Escape for the first press or mode in progress: a held ambient press, a session gesture (a light's
+   * press or a native transform), the camera pilot, a viewfinder step during a camera view, then joint mode.
+   * @returns Whether one of them took this Escape; false lets the panel close.
    * @throws {never} Cancellation uses the existing session owner.
    */
   const cancelGesture = React.useCallback((): boolean => {
@@ -687,12 +698,12 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     });
   }, []);
   const onAmbientPreview = React.useCallback((values: Partial<SceneEnvironmentValues>): boolean => {
-    if (!ambientPress.change()) return false;
+    if (!ambientHeld.current) return false;
     // The ref leads the state so a commit queued right after this change reads it before React renders.
     ambientDraftRef.current = { ...ambientDraftRef.current, ...values };
     setAmbientDraft(ambientDraftRef.current);
     return true;
-  }, [ambientPress]);
+  }, []);
   const onAmbientCommit = React.useCallback((): void => {
     const draft = ambientDraftRef.current;
     if (dropAmbient() && draft) session.execute({ type: 'environment', set: draft });
@@ -732,14 +743,14 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     : panel === 'director' ? <SceneDirectorPanel session={session} snapshot={snapshot} spaceId={spaceId} Field={SceneField} fieldDrafts={fieldDrafts}
       onFieldDraftChange={onFieldDraftChange} lightPlan={lightPlan} maxLights={director?.maxLights} lookingAt={lookCamera?.id ?? null}
       environment={environment} onSaveView={onSaveView} onAddLight={onAddLight} onLook={onLook} onMonitor={onMonitor}
-      onAmbientPreview={onAmbientPreview} onAmbientCommit={onAmbientCommit} onAmbientCancel={dropAmbient} ambientPress={ambientPress} onAmbientWrite={onAmbientWrite} viewFailed={viewFailed} />
+      onAmbientPreview={onAmbientPreview} onAmbientCommit={onAmbientCommit} onAmbientCancel={dropAmbient} onAmbientPressStart={beginAmbient} onAmbientWrite={onAmbientWrite} viewFailed={viewFailed} />
       : panel === 'objects' ? <SceneObjectList session={session} snapshot={snapshot} modelStates={modelStates} onSelect={showSelectedProperties} />
         : <SceneTaskList projectId={projectId} spaceId={spaceId} userId={userId} canEdit={snapshot.canEdit} canGenerate={myRole !== 'viewer'} uploads={uploads}
           remoteUploads={snapshot.remoteUploads} onPlace={placeTask} focusTaskId={focusTaskId} onFocused={taskFocused}
           onRetryGeneration={retryGeneration} placedAssetIds={placedAssetIds} onLocate={locateAsset} filterHost={filterHost} />,
   [panel, inspectorFallback, session, snapshot, readObjects, namedPeers, spaceId, fieldDrafts, onFieldDraftChange, skeletonStates, jointMode, changeJointMode, modelStates, showSelectedProperties,
     projectId, userId, myRole, uploads, placeTask, focusTaskId, taskFocused, retryGeneration, placedAssetIds, locateAsset, filterHost,
-    lightPlan, director, lookCamera, environment, onSaveView, onAddLight, onLook, onMonitor, onAmbientPreview, onAmbientCommit, dropAmbient, ambientPress, onAmbientWrite, viewFailed]);
+    lightPlan, director, lookCamera, environment, onSaveView, onAddLight, onLook, onMonitor, onAmbientPreview, onAmbientCommit, dropAmbient, beginAmbient, onAmbientWrite, viewFailed]);
   // An older-format scene is never opened, so no editing chrome is shown around its message.
   if (snapshot.status === 'unsupported' && isOlderSceneFormat(snapshot.version)) {
     return <div ref={stage} className='relative isolate h-full min-h-0 min-w-0 bg-canvas' data-testid='three-d-space'>
@@ -767,8 +778,9 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
                   onPilotPreview={onPilotPreview} onPilotEnd={onPilotEnd} onPilotLocked={onPilotLocked} onPilotControl={onPilotControl}
                   onLightPlan={setLightPlan} monitors={monitors} />
               </React.Suspense>}
-      {/* An open right panel covers the stage's right edge from its top (10 + 320 + 10, as the viewfinder's INSETS.panel). */}
-      {failedModels ? <div className={cn('absolute left-20 top-3 flex items-center justify-between gap-2 rounded-chrome border border-border bg-background p-2 text-xs',
+      {/* An open right panel covers the stage's right edge from its top (10 + 320 + 10, as the viewfinder's INSETS.panel);
+        the frame may reach the stage's top, so the notice is put away while the viewfinder is open, as the minimap is. */}
+      {failedModels && !framing ? <div className={cn('absolute left-20 top-3 flex items-center justify-between gap-2 rounded-chrome border border-border bg-background p-2 text-xs',
         rightOpen ? 'max-w-[calc(100%_-_5rem_-_340px)]' : 'max-w-[calc(100%_-_5rem_-_var(--space-5))]')}>
         <span className='min-w-0'>{t('spaces.threeD.modelFailed')}{cause && <> {t(importErrorKey(cause.code))}{cause.budget && <> {budgetText(t, cause.budget, getLocale())}</>}{cause.detail && <span className='block break-all text-muted-foreground'>{cause.detail}</span>}</>}</span>
         {modelRetryable && <Button size='sm' variant='ghost' onClick={() => setModelRetryRevision((value) => value + 1)}>{t('spaces.threeD.retry')}</Button>}
@@ -786,14 +798,21 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     <div className='absolute bottom-[61px] right-[var(--space-5)] z-10'>
       {minimap && !framing ? <div ref={setOverviewHost} data-testid='scene-map' className='h-[142px] w-[202px] overflow-hidden rounded-overlay border border-border bg-popover shadow' /> : null}
     </div>
-    <SceneViewportToolbar undo={snapshot.canEdit && snapshot.canUndo} redo={snapshot.canEdit && snapshot.canRedo}
-      onHistory={onHistory} hasSelection={selected.length > 0} onPanel={showPanel} minimap={minimap} minimapDisabled={framing} onMinimap={toggleMinimap} viewfinderHost={setViewfinderHost} />
+    {/* One bottom row: the object toolbar is centred while it fits and otherwise yields to the controls on the right. */}
+    <div className='pointer-events-none absolute inset-x-[var(--space-5)] bottom-0 z-10 grid grid-cols-[1fr_auto_1fr] items-end'>
+      {selected.length > 0 && !shotTaken ? <div className='pointer-events-auto col-start-2 mb-4'>
+        <SceneObjectToolbar mode={mode} jointMode={jointMode} mutable={mutable} canRotate={canRotate} canScale={canScale} canDuplicate={snapshot.canEdit}
+          onMode={onMode} onFocus={onFocus} onDuplicate={duplicate} onDelete={onDelete} />
+      </div> : null}
+      <div className='pointer-events-auto col-start-3 mb-[var(--space-5)] ml-2 justify-self-end'>
+        <SceneViewportToolbar undo={snapshot.canEdit && snapshot.canUndo} redo={snapshot.canEdit && snapshot.canRedo}
+          onHistory={onHistory} hasSelection={selected.length > 0} onPanel={showPanel} minimap={minimap} minimapDisabled={framing} onMinimap={toggleMinimap} viewfinderHost={setViewfinderHost} />
+      </div>
+    </div>
     <SceneViewfinder host={viewfinderHost} state={viewfinder} dispatch={viewfinderAction} stage={stageSize} rightPanelOpen={rightOpen} capture={frameCapture}
       modelsLoading={modelsLoading} disabled={myRole === 'viewer' || snapshot.status !== 'ready'} chatSwitching={chatSwitching} projectId={projectId} spaceId={spaceId}
       spaceName={spaceName} userId={userId} config={controls.data?.capture} spaces={projectSpaces}
       camera={lookCamera} canEdit={snapshot.canEdit} onCameraFrame={onCameraFrame} />
-    {selected.length > 0 && !shotTaken ? <SceneObjectToolbar mode={mode} jointMode={jointMode} mutable={mutable} canRotate={canRotate} canScale={canScale} canDuplicate={snapshot.canEdit}
-      onMode={onMode} onFocus={onFocus} onDuplicate={duplicate} onDelete={onDelete} /> : null}
   </div>;
 });
 

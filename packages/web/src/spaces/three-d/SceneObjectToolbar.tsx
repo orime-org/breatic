@@ -48,7 +48,7 @@ export const SceneObjectToolbar = React.memo(function SceneObjectToolbar({ mode,
    * @throws {never} Delegates to the host.
    */
   const scale = React.useCallback((): void => onMode('scale'), [onMode]);
-  return <div className='absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-0.5 rounded-overlay border border-border bg-popover p-1 shadow' data-testid='scene-object-menu'>
+  return <div className='flex items-center gap-0.5 rounded-overlay border border-border bg-popover p-1 shadow' data-testid='scene-object-menu'>
     <SceneIconButton label={t('spaces.threeD.move')} active={!jointMode && mode === 'translate'} disabled={!mutable} onClick={move}>{icons.move}</SceneIconButton>
     <SceneIconButton label={t('spaces.threeD.rotate')} active={!jointMode && mode === 'rotate'} disabled={!mutable || !canRotate} onClick={rotate}>{icons.rotate}</SceneIconButton>
     <SceneIconButton label={t('spaces.threeD.scale')} active={!jointMode && mode === 'scale'} disabled={!mutable || !canScale} onClick={scale}>{icons.scale}</SceneIconButton><span className='mx-1 h-4 border-l border-border' />

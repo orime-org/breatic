@@ -20,7 +20,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { whenBlurLeaves } from '@web/lib/blur-left';
 import type { SceneField, SceneFieldDraftOwner } from '@web/spaces/three-d/SceneField';
 import { keepOnSpaceTab } from '@web/spaces/three-d/SceneRightPanel';
-import { takeStepKey } from '@web/spaces/three-d/use-control-press';
+import { takeStepKey } from '@web/spaces/three-d/slider-step-key';
 
 /** Lens presets in millimetres (inner#1694 design 3.2). */
 const FOCAL_PRESETS = [14, 24, 35, 50, 70, 100, 200] as const;
@@ -108,7 +108,10 @@ export const SceneColorField = React.memo(function SceneColorField({ value, disa
   // as a transition, which React renders after flushing the move and its effects.
   React.useEffect(() => { if (released.current) { released.current = false; onCommit(); } }, [releases, onCommit]);
   const pick = React.useCallback((hex: string): void => {
-    if (live.current && !onPreview(hex)) setResyncs((count) => count + 1);
+    if (!live.current || onPreview(hex)) return;
+    // The remount takes focus off the picker, and with it the held keys' release.
+    arrows.current.clear();
+    setResyncs((count) => count + 1);
   }, [onPreview]);
   const release = React.useCallback((): void => {
     if (!live.current) return;
@@ -134,6 +137,16 @@ export const SceneColorField = React.memo(function SceneColorField({ value, disa
   }, [release]);
   // react-colorful also ends a change on each arrow key's release, before this field sees which keys are still held.
   const endChange = React.useCallback((): void => { if (arrows.current.size === 0) release(); }, [release]);
+  /** End an arrow press whose keys' release can no longer reach the picker, without writing it. */
+  const dropArrows = React.useCallback((): void => {
+    if (arrows.current.size === 0) return;
+    arrows.current.clear();
+    onCancel();
+  }, [onCancel]);
+  // Focus leaving the picker, for the rest of the page or another window, takes the held keys' release with it.
+  const onPickerBlur = React.useCallback((event: React.FocusEvent): void => {
+    if (!(event.relatedTarget instanceof Node && picker.current?.contains(event.relatedTarget))) dropArrows();
+  }, [dropArrows]);
   const settle = React.useCallback((): void => {
     setTyped(null);
     const digits = typed === null ? undefined : HEX_TEXT.exec(typed)?.[1]?.toLowerCase();
@@ -149,9 +162,9 @@ export const SceneColorField = React.memo(function SceneColorField({ value, disa
       return;
     }
     settle();
-    arrows.current.clear();
+    dropArrows();
     live.current = false;
-  }, [spaceId, settle]);
+  }, [spaceId, settle, dropArrows]);
   const onEscapeKeyDown = React.useCallback((): void => { setTyped(null); onCancel(); }, [onCancel]);
   const onType = React.useCallback((event: React.ChangeEvent<HTMLInputElement>): void => {
     setTyped(`#${event.currentTarget.value.replace(/[^0-9a-f]/gi, '').slice(0, 6)}`);
@@ -168,7 +181,7 @@ export const SceneColorField = React.memo(function SceneColorField({ value, disa
         className='size-6 rounded-full border border-border disabled:cursor-not-allowed disabled:opacity-50' style={{ backgroundColor: value }} />
     </PopoverTrigger>
     <PopoverContent container={container} side='left' align='start' className='w-auto space-y-2 p-2' onEscapeKeyDown={onEscapeKeyDown} onInteractOutside={keepOnSpaceTab}>
-      <div ref={picker}><HexColorPicker key={resyncs} color={value} onChange={pick} onChangeEnd={endChange} onMouseDown={onPress} onKeyDown={onPickerKey} onKeyUp={onPickerKeyUp} /></div>
+      <div ref={picker} onBlur={onPickerBlur}><HexColorPicker key={resyncs} color={value} onChange={pick} onChangeEnd={endChange} onMouseDown={onPress} onKeyDown={onPickerKey} onKeyUp={onPickerKeyUp} /></div>
       <Input value={typed ?? value} onChange={onType} onBlur={onBlur} onKeyDown={onKeyDown} spellCheck={false} autoComplete='off'
         className='h-[var(--btn-inline)] rounded-md bg-background px-2 text-xs md:text-xs' />
     </PopoverContent>

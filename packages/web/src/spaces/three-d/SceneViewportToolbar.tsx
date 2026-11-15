@@ -64,7 +64,7 @@ export const SceneViewportToolbar = React.memo(function SceneViewportToolbar({ u
    * @throws {never} Delegates to the host.
    */
   const showDirector = React.useCallback((): void => onPanel('director'), [onPanel]);
-  return <div className='absolute bottom-[var(--space-5)] right-[var(--space-5)] z-10 flex rounded-md border border-border bg-popover py-1 shadow' data-testid='scene-viewport-toolbar'>
+  return <div className='flex rounded-md border border-border bg-popover py-1 shadow' data-testid='scene-viewport-toolbar'>
     <div className='flex items-center gap-0.5 border-r border-border px-1'><SceneIconButton label={t('spaces.threeD.undo')} disabled={!undo} onClick={undoStep}>{icons.undo}</SceneIconButton><SceneIconButton label={t('spaces.threeD.redo')} disabled={!redo} onClick={redoStep}>{icons.redo}</SceneIconButton></div>
     <div className='flex items-center gap-0.5 border-r border-border px-1'>
       <SceneIconButton data-testid='scene-properties-trigger' label={t('spaces.threeD.properties')} disabled={!hasSelection} onClick={showProperties}>{icons.properties}</SceneIconButton>

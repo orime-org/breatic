@@ -1178,6 +1178,89 @@ describe('continuous controls end on release and on Escape (round 1 fixes, desig
     expect(stored()).toBe('#804040');
   });
 
+  it.each([
+    ['the ambient light', 'focus loss', false],
+    ['a light', 'focus loss', true],
+    ['a light', 'an undo', true],
+    ['a light', 'a lock', true],
+  ])('takes the next picker arrow press on %s after %s ended one whose key was held', async (_, how, light) => {
+    const { session } = await setup([lamp(LAMP, 1, 'point', { color: '#ff0000' })], 'editor', true, { spaceKeyboard: true });
+    if (!light) act(() => { session.execute({ type: 'environment', set: { ambientColor: '#ff0000' } }); });
+    act(() => { session.execute({ type: 'patch', patches: [{ id: LAMP, intensity: 3 }] }); });
+    const opened = await openDirector();
+    if (light) act(() => session.select(LAMP, false));
+    const stored = (): unknown => (light ? lampValue(session, 'color') : ambientColor(session));
+    fireEvent.click(light ? lightSwatch() : ambientSwatch(opened));
+    await screen.findByRole('slider', { name: 'Hue' });
+    const hue = (): HTMLElement => screen.getByRole('slider', { name: 'Hue' });
+    hue().focus();
+    fireEvent.keyDown(hue(), { key: 'ArrowRight', keyCode: 39 });
+    if (how === 'focus loss') {
+      // The browser blurs the focused element when the window loses focus; the key comes up in another window.
+      const focused = vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+      act(() => { hue().blur(); window.dispatchEvent(new Event('blur')); });
+      focused.mockReturnValue(true);
+      act(() => { window.dispatchEvent(new Event('focus')); });
+    } else {
+      if (how === 'an undo') fireEvent.keyDown(hue(), { key: 'z', metaKey: true });
+      else act(() => { session.execute({ type: 'lock', ids: [LAMP], locked: true }); });
+      fireEvent.keyDown(hue(), { key: 'ArrowRight', keyCode: 39, repeat: true });
+      fireEvent.keyUp(document.activeElement ?? document.body, { key: 'ArrowRight', keyCode: 39 });
+      if (how === 'a lock') act(() => { session.execute({ type: 'lock', ids: [LAMP], locked: false }); });
+    }
+    const before = stored();
+    hue().focus();
+    fireEvent.keyDown(hue(), { key: 'ArrowRight', keyCode: 39 });
+    fireEvent.keyUp(hue(), { key: 'ArrowRight', keyCode: 39 });
+    await waitFor(() => expect(stored()).not.toBe(before));
+  });
+
+  it.each([
+    ['the ambient light', false],
+    ['a light', true],
+  ])('ends a held picker arrow press on %s without writing when the picker is closed', async (_, light) => {
+    const { session } = await setup([lamp(LAMP, 1, 'point', { color: '#ff0000' })], 'editor', true, { spaceKeyboard: true });
+    if (!light) act(() => { session.execute({ type: 'environment', set: { ambientColor: '#ff0000' } }); });
+    const opened = await openDirector();
+    if (light) act(() => session.select(LAMP, false));
+    const stored = (): unknown => (light ? lampValue(session, 'color') : ambientColor(session));
+    const shown = (): unknown => (light ? h.viewport?.objects.find((object) => object.id === LAMP)?.['color' as never] : h.viewport?.environment?.ambientColor);
+    fireEvent.click(light ? lightSwatch() : ambientSwatch(opened));
+    const hue = await screen.findByRole('slider', { name: 'Hue' });
+    hue.focus();
+    fireEvent.keyDown(hue, { key: 'ArrowRight', keyCode: 39 });
+    fireEvent.keyDown(hue, { key: 'ArrowRight', keyCode: 39, repeat: true });
+    expect(shown()).not.toBe('#ff0000');
+    // With the key still held, a click on the console's heading closes the picker.
+    const heading = within(opened).getAllByRole('heading')[0] as HTMLElement;
+    fireEvent.pointerDown(heading, { pointerId: 1, button: 0 });
+    fireEvent.mouseDown(heading); fireEvent.pointerUp(heading, { pointerId: 1 }); fireEvent.mouseUp(heading); fireEvent.click(heading);
+    await pickerClosed();
+    fireEvent.keyUp(document.activeElement ?? document.body, { key: 'ArrowRight', keyCode: 39 });
+    expect(stored()).toBe('#ff0000');
+    expect(shown()).toBe('#ff0000');
+    expect(session.getSnapshot().gestureActive).toBe(false);
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByTestId('scene-right-panel')).toBeNull());
+  });
+
+  it('starts an ambient press from the stored values whatever an earlier press left', async () => {
+    const { session } = await setup();
+    act(() => { session.execute({ type: 'environment', set: { ambientColor: '#ff0000', ambientIntensity: 2 } }); });
+    const opened = await openDirector();
+    sliderPointers();
+    const [thumb] = within(within(opened).getByTestId('scene-director-ambient')).getAllByRole('slider');
+    // A drag of the intensity whose release came outside the browser.
+    drag(thumb as HTMLElement, [0, 200], false);
+    expect(h.viewport?.environment?.ambientIntensity).not.toBe(2);
+    fireEvent.click(ambientSwatch(opened));
+    const hue = await screen.findByRole('slider', { name: 'Hue' });
+    fireEvent.keyDown(hue, { key: 'ArrowRight', keyCode: 39 });
+    fireEvent.keyUp(hue, { key: 'ArrowRight', keyCode: 39 });
+    await waitFor(() => expect(ambientColor(session)).not.toBe('#ff0000'));
+    expect(session.getSnapshot().environment.ambientIntensity).toBe(2);
+  });
+
   it('drops an ambient picker drag when the browser loses focus', async () => {
     const { session } = await setup();
     const opened = await openDirector();

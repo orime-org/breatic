@@ -70,6 +70,14 @@ describe('approved scene layout (inner#1724)', () => {
       t('spaces.threeD.viewfinder.open'), t('spaces.threeD.minimap'),
     ]);
   });
+  it('lays the object toolbar and the bottom-right controls out in one row that keeps them apart', async () => {
+    const { session } = setup(); await screen.findByTestId('scene-native-boundary');
+    act(() => session.select(ID, false));
+    const row = screen.getByTestId('scene-object-menu').closest('.grid');
+    expect(row).not.toBeNull();
+    expect(row).toBe(screen.getByTestId('scene-viewport-toolbar').closest('.grid'));
+    expect(row?.className).toContain('grid-cols-[1fr_auto_1fr]');
+  });
   it('keeps the viewfinder frame 20px from every stage edge but the bottom controls', () => {
     expect(sceneViewfinderSafeArea({ width: 1200, height: 900 }, false)).toEqual({ x: 20, y: 20, width: 1160, height: 768 });
   });

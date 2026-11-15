@@ -216,7 +216,7 @@ describe('framing (acceptance 2)', () => {
 
   it('keeps the menu clear of a right panel opened while framing', async () => {
     vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(400);
-    HTMLElement.prototype.setPointerCapture = vi.fn();
+    vi.spyOn(Element.prototype, 'setPointerCapture').mockImplementation(() => undefined);
     await setup();
     fireEvent.click(trigger());
     fireEvent.click(screen.getByTestId('scene-objects-trigger'));
@@ -231,7 +231,7 @@ describe('framing (acceptance 2)', () => {
 
   it('forgets a corner drag the viewfinder was closed during', async () => {
     await setup();
-    HTMLElement.prototype.setPointerCapture = vi.fn();
+    vi.spyOn(Element.prototype, 'setPointerCapture').mockImplementation(() => undefined);
     fireEvent.click(trigger());
     const corner = screen.getByTestId('scene-viewfinder-corner-se');
     fireEvent.pointerDown(corner, { pointerId: 1, buttons: 1, clientX: 900, clientY: 600 });
@@ -267,6 +267,16 @@ describe('the failed-model notice', () => {
     expect(notice.className).toContain('max-w-[calc(100%_-_5rem_-_340px)]');
     expect(notice.className).not.toContain('max-w-[calc(100%_-_5rem_-_var(--space-5))]');
   });
+
+  it('is put away while the viewfinder is open and comes back when it closes', async () => {
+    h.modelState = 'failed';
+    await setup();
+    await screen.findByText(t('spaces.threeD.modelFailed'));
+    fireEvent.click(trigger());
+    expect(screen.queryByText(t('spaces.threeD.modelFailed'))).toBeNull();
+    fireEvent.click(trigger());
+    expect(await screen.findByText(t('spaces.threeD.modelFailed'))).toBeInTheDocument();
+  });
 });
 
 describe('capturing (acceptance 3 and 4)', () => {
@@ -294,7 +304,8 @@ describe('capturing (acceptance 3 and 4)', () => {
     fireEvent.click(trigger());
     const dim = screen.getByTestId('scene-viewfinder-frame').parentElement;
     expect(dim?.className).toContain('z-[5]');
-    expect(screen.getByTestId('scene-viewport-toolbar').className).toContain('z-10');
+    // The bottom row holding the toolbars sits above the dimmed layer.
+    expect(screen.getByTestId('scene-viewport-toolbar').closest('.grid')?.className).toContain('z-10');
   });
 
   it('captures the frame at a 2048 long edge, locks the view and offers the destinations', async () => {
