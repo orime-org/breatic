@@ -94,3 +94,13 @@ describe('a selection holding a stand-in block', () => {
     expect(data['text/plain']).toBe(copy(editor)['text/plain']);
   });
 });
+
+describe('a stand-in block on the page', () => {
+  it('names its type where BlockNote finds a block from the element under the pointer', () => {
+    const editor = openAllSelected([{ type: 'paragraph', content: 'before' }, { type: 'unsupportedBlock', props: { originalName: 'futureBlock' } }]);
+
+    const element = editor.prosemirrorView.dom.querySelector('[data-unsupported-block]');
+
+    expect(element?.getAttribute('data-content-type')).toBe('unsupportedBlock');
+  });
+});
