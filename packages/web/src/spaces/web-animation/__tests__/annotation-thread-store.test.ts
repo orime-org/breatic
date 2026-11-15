@@ -68,4 +68,13 @@ describe('webAnimationAnnotationStore', () => {
     await store.deleteComment({ threadId: thread.id, commentId: thread.comments[0]!.id });
     expect(webAnimationAnnotationThreads(doc).has(thread.id)).toBe(false);
   });
+
+  it('keeps the anchor it was created with through a reply, a resolve and a reopen', async () => {
+    const { doc, store } = open();
+    const thread = await store.createThread({ initialComment: { body: asCommentBody('x') as never }, metadata: { webAnimationAnchor: ANCHOR } });
+    await store.addComment({ threadId: thread.id, comment: { body: asCommentBody('reply') as never } });
+    await store.resolveThread({ threadId: thread.id });
+    await store.unresolveThread({ threadId: thread.id });
+    expect((webAnimationAnnotationThreads(doc).get(thread.id) as Y.Map<unknown>).get('metadata')).toEqual({ webAnimationAnchor: ANCHOR });
+  });
 });
