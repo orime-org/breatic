@@ -845,6 +845,42 @@ describe('continuous controls end on release and on Escape (round 1 fixes, desig
     vi.spyOn(MouseEvent.prototype, 'pageY', 'get').mockImplementation(function (this: MouseEvent) { return this.clientY; });
   }
 
+  it.each([['a light', true], ['the ambient light', false]])('ends a held picker drag of %s on the first Escape while a hover tooltip shows', async (_, light) => {
+    const { session } = await setup([lamp()], 'editor', true, { spaceKeyboard: true });
+    const opened = await openDirector();
+    if (light) act(() => session.select(LAMP, false));
+    pickerArea();
+    fireEvent.click(light ? lightSwatch() : ambientSwatch(opened));
+    const saturation = (await screen.findByRole('slider', { name: 'Color' })) as HTMLElement;
+    fireEvent.mouseDown(saturation, { button: 0, buttons: 1, clientX: 100, clientY: 50 });
+    fireEvent.mouseMove(window, { buttons: 1, clientX: 200, clientY: 60 });
+    // The held pointer leaves the picker and rests on the panel's close button until its tooltip shows.
+    fireEvent.pointerMove(within(panel()).getByRole('button', { name: t('spaces.threeD.closePanel') }), { pointerType: 'mouse', buttons: 1 });
+    await screen.findByRole('tooltip', {}, { timeout: 2000 });
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+    fireEvent.mouseMove(window, { buttons: 1, clientX: 210, clientY: 70 });
+    fireEvent.mouseUp(window);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(light ? lampValue(session, 'color') : ambientColor(session)).toBe('#ffffff');
+  });
+
+  it.each([['a light', true], ['the ambient light', false]])('ends a held picker arrow press of %s on the first Escape while a hover tooltip shows', async (_, light) => {
+    const { session } = await setup([lamp(LAMP, 1, 'point', { color: '#ff0000' })], 'editor', true, { spaceKeyboard: true });
+    if (!light) act(() => { session.execute({ type: 'environment', set: { ambientColor: '#ff0000' } }); });
+    const opened = await openDirector();
+    if (light) act(() => session.select(LAMP, false));
+    fireEvent.click(light ? lightSwatch() : ambientSwatch(opened));
+    const hue = await screen.findByRole('slider', { name: 'Hue' });
+    hue.focus();
+    fireEvent.pointerMove(within(panel()).getByRole('button', { name: t('spaces.threeD.closePanel') }), { pointerType: 'mouse' });
+    await screen.findByRole('tooltip', {}, { timeout: 2000 });
+    fireEvent.keyDown(hue, { key: 'ArrowRight', keyCode: 39 });
+    fireEvent.keyDown(hue, { key: 'Escape' });
+    fireEvent.keyUp(document.activeElement ?? document.body, { key: 'ArrowRight', keyCode: 39 });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(light ? lampValue(session, 'color') : ambientColor(session)).toBe('#ff0000');
+  });
+
   it('keeps a part typed colour in the box when the browser loses focus', async () => {
     await setup();
     const opened = await openDirector();

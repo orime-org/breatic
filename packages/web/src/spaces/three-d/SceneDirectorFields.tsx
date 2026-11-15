@@ -133,12 +133,15 @@ export const SceneColorField = React.memo(function SceneColorField({ value, disa
     window.addEventListener('mouseup', release, { once: true });
   }, [onPressStart, release]);
   // Arrow keys on the picker are a press of their own, ended on the release of the last one held (auto-repeats and a
-  // second key belong to it): react-colorful reports no end for a step that changed nothing.
+  // second key belong to it): react-colorful reports no end for a step that changed nothing. The picker holds focus
+  // through a mouse press and an arrow press alike, so it takes Escape itself: a hover tooltip shown meanwhile is the
+  // top layer and keeps Escape from the popover.
   const onPickerKey = React.useCallback((event: React.KeyboardEvent): void => {
+    if (event.key === 'Escape') { arrows.current.clear(); onCancel(); return; }
     if (!live.current || !event.key.startsWith('Arrow')) return;
     if (arrows.current.size === 0) arrowPress.current = onPressStart();
     arrows.current.add(event.key);
-  }, [onPressStart]);
+  }, [onPressStart, onCancel]);
   const onPickerKeyUp = React.useCallback((event: React.KeyboardEvent): void => {
     if (arrows.current.delete(event.key) && arrows.current.size === 0) release();
   }, [release]);
