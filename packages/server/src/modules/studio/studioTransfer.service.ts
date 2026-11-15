@@ -39,7 +39,7 @@ import { studioTransfersRepo as transfersRepo } from "@breatic/domain";
 import { buildStudioTransferMail } from "@server/utils/notification-mail.js";
 import { decisionLink } from "@server/utils/decision-link.js";
 import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
-import { db, GlobalApiError } from "@breatic/core";
+import { db, GlobalApiError, logger } from "@breatic/core";
 import {
   ConflictError,
   ForbiddenError,
@@ -301,14 +301,19 @@ export async function sweepAcceptingTransfers(options: { olderThanMs: number }):
   for (const id of ids) {
     const parties = await transfersRepo.findParties(id);
     if (!parties) continue;
-    const moved = await globalApi().transferAdmin({
-      studioId: parties.studioId,
-      fromUserId: parties.fromUserId,
-      toUserId: parties.toUserId,
-      changeId: id,
-    });
-    if (moved.changed) await finishAccepted(id);
-    else await invalidateAccepting(id);
+    try {
+      const moved = await globalApi().transferAdmin({
+        studioId: parties.studioId,
+        fromUserId: parties.fromUserId,
+        toUserId: parties.toUserId,
+        changeId: id,
+      });
+      if (moved.changed) await finishAccepted(id);
+      else await invalidateAccepting(id);
+    } catch (err) {
+      // The offer stays accepting for the next pass; the others go on.
+      logger.error({ err, ctx: { transferId: id, studioId: parties.studioId } }, "studio_transfer_accepting_finish_failed");
+    }
   }
   return ids.length;
 }

@@ -339,6 +339,37 @@ describe("a transfer across the global and region steps", () => {
     expect(await role(studioId, memberId)).toBe("admin");
     expect(await role(studioId, adminId)).not.toBe("admin");
   });
+
+  it("finishes the other offers when one fails, and leaves the failed one accepting", async () => {
+    const offers: Array<{ studioId: string; id: string; memberId: string }> = [];
+    for (let i = 0; i < 2; i += 1) {
+      const { studioId, slug, adminId, memberId } = await localStudio();
+      await studioTransferService.requestTransfer(slug, adminId, memberId);
+      const [offer] = await sql<{ id: string }[]>`SELECT id FROM studio_transfers WHERE studio_id = ${studioId} AND status = 'pending'`;
+      await sql`UPDATE studio_transfers SET status = 'accepting', updated_at = now() - interval '5 minutes' WHERE id = ${offer!.id}`;
+      await studioDirectoryService.changeDirectoryAdmin({ studioId, fromUserId: adminId, toUserId: memberId, changeId: offer!.id });
+      offers.push({ studioId, id: offer!.id, memberId });
+    }
+    const real = globalApi().transferAdmin;
+    vi.spyOn(globalApi(), "transferAdmin").mockImplementation(async (change) => {
+      if (change.changeId === offers[0]!.id) throw new Error("this offer keeps failing");
+      return real(change);
+    });
+
+    try {
+      await studioTransferService.sweepAcceptingTransfers({ olderThanMs: 60_000 });
+    } finally {
+      vi.mocked(globalApi().transferAdmin).mockRestore();
+    }
+
+    const statuses = await sql<{ id: string; status: string }[]>`
+      SELECT id, status FROM studio_transfers WHERE id IN (${offers[0]!.id}, ${offers[1]!.id})`;
+    expect(Object.fromEntries(statuses.map((row) => [row.id, row.status]))).toEqual({
+      [offers[0]!.id]: "accepting",
+      [offers[1]!.id]: "accepted",
+    });
+    expect(await role(offers[1]!.studioId, offers[1]!.memberId)).toBe("admin");
+  });
 });
 
 describe("credit conservation across regions", () => {
