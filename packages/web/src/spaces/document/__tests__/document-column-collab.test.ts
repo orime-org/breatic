@@ -14,7 +14,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 import { Awareness } from 'y-protocols/awareness';
 import { Selection } from '@tiptap/pm/state';
-import type { Node as PMNode } from '@tiptap/pm/model';
+import { Fragment, Node as PMNode } from '@tiptap/pm/model';
+import { ySyncPluginKey } from 'y-prosemirror';
 
 import { documentBodyFragment } from '@breatic/shared';
 
@@ -332,5 +333,46 @@ describe('a two-step move is one undo step (design §5.2)', () => {
     expect(shapeOf(editor.document as never)).toEqual(['[T|D]', 'b']);
     handle.undoManager.undo();
     expect(shapeOf(editor.document as never)).toEqual(['T', 'b', 'D']);
+  });
+});
+
+describe('ids repeated in a change that comes through Yjs (patched UniqueID)', () => {
+  /**
+   * How many rows still carry the first row's id after a copy of it comes in.
+   * @param meta - The Yjs meta the change carries; a `binding` of true stands
+   *   for the editor's own binding.
+   * @returns The count.
+   */
+  function copiesKept(meta: Record<string, unknown>): number {
+    const editor = mount(new Y.Doc());
+    editor.replaceBlocks(editor.document, [para('a'), para('b')] as never);
+    const view = editor.prosemirrorView;
+    const id = idOf(editor, 'a');
+    const first = view.state.doc.firstChild!.firstChild!;
+    const copy = PMNode.fromJSON(view.state.schema, first.toJSON());
+    const binding = (ySyncPluginKey.getState(view.state) as { binding: unknown }).binding;
+    const sent = meta['binding'] === true ? { ...meta, binding } : meta;
+    // The binding writes a change from Yjs as one replace of the whole body.
+    const body = view.state.doc.firstChild!;
+    const content = view.state.doc.content.replaceChild(0, body.copy(body.content.append(Fragment.from(copy))));
+    view.dispatch(view.state.tr.replaceWith(0, view.state.doc.content.size, content).setMeta(ySyncPluginKey, sent));
+    let count = 0;
+    view.state.doc.descendants((node) => {
+      if (node.attrs['id'] === id) count += 1;
+      return true;
+    });
+    return count;
+  }
+
+  it('keeps the ids of a collaborator\'s change', () => {
+    expect(copiesKept({ isChangeOrigin: true, isUndoRedoOperation: false })).toBe(2);
+  });
+
+  it('renews a repeated id in the user\'s own undo or redo', () => {
+    expect(copiesKept({ isChangeOrigin: true, isUndoRedoOperation: true })).toBe(0);
+  });
+
+  it('renews a repeated id when the body is drawn again from Yjs', () => {
+    expect(copiesKept({ isChangeOrigin: true, binding: true })).toBe(0);
   });
 });
