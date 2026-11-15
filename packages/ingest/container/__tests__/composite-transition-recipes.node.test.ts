@@ -495,6 +495,16 @@ describe('frame times a source stores rounded to its clock (§7.17 rounding cloc
   });
 });
 
+describe('a chunk that starts between a rounded frame\'s stored start and its grid point (§7.17 rounding clock row)', () => {
+  it('CR11 a 29.97 fps WebM from In 1 on a 30 fps grid starts on frame 0, which still covers 1/30 s', async () => {
+    // Frame 1 is stored at 33 ms, at or before 1/30 s, but truly starts at 1001/30000 s, after it.
+    const recipe = { kind: 'chunk_encode', inputId: CLIP_A, window: { start: 0, end: 7 }, timescale: 1000, target: TARGET, profile: { ...PROFILE, fps: r(30), timeBase: r(1, 30) },
+      frames: { start: 0, end: 7 }, entries: [{ ...span(r(0), r(1, 30), r(1, 30), r(7007, 30000)), conform: { origin: r(1001, 30000), period: r(1001, 30000) } }] };
+    const [file] = await produce({ [CLIP_A]: join(dir, 'greys-2997.webm') }, [recipe]);
+    expect((await lumaMeans(file!)).map((mean) => Math.round((mean - 16) / 6))).toEqual(Array.from({ length: 7 }, (_unused, k) => Math.floor(((k + 1) * 1000) / 1001)));
+  });
+});
+
 describe('a frame grid FFmpeg cannot carry (FFmpeg filter time bases are int rationals)', () => {
   // On a 34650000/1154957 fps grid (an exact VFR average) a 1/15360 clip needs a 1/2217600000 clock, past 2^31 − 1, which
   // settb would clamp to 1/2147483647 and so move frames to the wrong slots.

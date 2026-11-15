@@ -378,6 +378,7 @@ async function frameStartAt(source: string, facts: SourceFacts, entry: Extract<M
   const clip = rational(entry.clipStart);
   const decode = rational(entry.decodeStart);
   if (decode[0] * clip[1] === clip[0] * decode[1]) return clip;
+  const conform = entry.conform;
   // One second past the clip start covers packets that B-frame reordering delivers after a later one.
   const until: [bigint, bigint] = [clip[0] + clip[1], clip[1]];
   const answer = JSON.parse((await runPlanCommand("ffprobe", ["-v", "error", "-protocol_whitelist", "file", ...mediaTimeline(facts), "-select_streams", "v:0",
@@ -390,13 +391,16 @@ async function frameStartAt(source: string, facts: SourceFacts, entry: Extract<M
   for (const packet of answer.packets ?? []) {
     if (packet.pts === undefined) continue;
     const pts = BigInt(packet.pts);
-    if (pts * tickNumerator * clip[1] <= clip[0] * tickDenominator && (best === null || pts > best)) best = pts;
+    // On a conform grid a frame starts at its grid point, the time it is shown from (§7.17 rounding clock row).
+    const [at, per] = conform === undefined ? [pts * tickNumerator, tickDenominator] : conformedTime(conform, [pts * tickNumerator, tickDenominator]);
+    if (at * clip[1] <= clip[0] * per && (best === null || pts > best)) best = pts;
   }
-  return best === null ? clip : [best * tickNumerator, tickDenominator];
+  if (best === null) return clip;
+  return conform === undefined ? [best * tickNumerator, tickDenominator] : conformedTime(conform, [best * tickNumerator, tickDenominator]);
 }
 
 /** The inputs and filter graph presenting a window's frames, ending at `[v]`. */
-interface WindowGraph { args: string[]; graph: string[]; inputs: number; facts: SourceFacts }
+interface WindowGraph { args: string[]; graph: string[]; inputs: number; facts: SourceFacts; clock: bigint }
 
 /** A frame rate as a reduced numerator and denominator. */
 type FrameRate = readonly [bigint, bigint];
@@ -499,7 +503,8 @@ function exactClock(entries: readonly MiniToolPlanEntry[], origin: MiniToolPlanE
 /**
  * Present a window's entries as frames (§5.4 chunking and chunk time; §7.17 entries): each source span decodes from its
  * keyframe on the media timeline and shows from its clip start at its rate, each derived-empty entry is one composed frame.
- * Without a grid the frames run on a `1/clock` clock from 0, one output frame per presented frame. With a grid each frame
+ * Without a grid the frames run on a `1/clock` clock from 0, one output frame per presented frame; entries with a conform grid
+ * run on an exact clock that holds its points, returned as the graph's `clock`. With a grid each frame
  * is put on the first grid slot at or after its start (§7.17 transition output profile row: output frame k shows the
  * source frame covering k / fps) before the inputs are interleaved, whose microsecond times would otherwise move a frame to
  * the next slot, and a closing frame on the slot at the window end lets the grid that follows keep the last frame.
@@ -520,7 +525,9 @@ export async function windowGraph(entries: readonly MiniToolPlanEntry[], time: b
   const graph: string[] = [];
   const facts = await sourceFacts(source, run);
   const grid = typeof time === "bigint" ? null : time;
-  const clock = grid === null ? time as bigint : exactClock(entries, origin, facts.tick, grid);
+  // Grid points of a conform grid lie between the ticks of the window's own clock, so such a window runs on an exact clock.
+  const conformed = entries.some((entry) => entry.kind === "source" && entry.conform !== undefined);
+  const clock = grid === null ? (conformed ? exactClock(entries, origin, facts.tick, [time as bigint, 1n]) : time as bigint) : exactClock(entries, origin, facts.tick, grid);
   if (clock > MAX_TIME_BASE_DENOMINATOR) throw new RangeError("The window's clock is beyond FFmpeg's time base range");
   const slot = grid === null ? null : (clock * grid[1]) / grid[0];
   const base = grid === null ? `1/${clock}` : `${grid[1]}/${grid[0]}`;
@@ -548,7 +555,7 @@ export async function windowGraph(entries: readonly MiniToolPlanEntry[], time: b
     const ticks = `max(round((PTS-${roundTimes([clipNumerator, clipDenominator], clock)})*${rateDenominator}/${rateNumerator})\\,0)+${roundTimes(offset, clock)}`;
     // On a rounding clock each stored frame time snaps to its exact grid point first (§7.17 rounding clock row), then trims.
     const snap = entry.conform === undefined ? null
-      : { origin: roundTimes(rational(entry.conform.origin), clock), period: roundTimes(rational(entry.conform.period), clock), first: conformedTime(entry.conform, first) };
+      : { origin: roundTimes(rational(entry.conform.origin), clock), period: roundTimes(rational(entry.conform.period), clock), first };
     const timing = snap === null ? `trim=start=${seconds(first)}:end=${seconds(clipEnd)},settb=1/${clock},`
       : `settb=1/${clock},setpts=${snap.origin}+floor((PTS-${snap.origin})/${snap.period}+0.5)*${snap.period},trim=start=${seconds(snap.first)}:end=${seconds(clipEnd)},`;
     graph.push(`[${inputs}:v:0]${timing}${slot === null ? `setpts=${ticks}` : `setpts=ceil((${ticks})/${slot})*${slot},settb=${base}`},${frame(`p${at}`)}[e${at}]`);
@@ -563,7 +570,7 @@ export async function windowGraph(entries: readonly MiniToolPlanEntry[], time: b
     labels.push("[end]");
   }
   graph.push(`${labels.join("")}interleave=nb_inputs=${labels.length},settb=${base}[v]`);
-  return { args, graph, inputs, facts };
+  return { args, graph, inputs, facts, clock };
 }
 
 /**
@@ -671,7 +678,7 @@ async function renderWindow(recipe: Extract<PresentationRecipe, { kind: "chunk_e
   const count = recipe.kind === "chunk_encode" && recipe.frames !== undefined ? recipe.frames.end - recipe.frames.start : recipe.window.end - recipe.window.start;
   if (recipe.kind === "prepare_model_input" && (recipe.order === "reverse" || recipe.grid !== undefined)) {
     encode = modelInputTiming(recipe, graph, clock, count, target);
-  } else if (profile === undefined) encode = videoOutput(target, clock, roundTimes(minus(span(entries[entries.length - 1]!).end, span(entries[0]!).start), clock));
+  } else if (profile === undefined) encode = videoOutput(target, window.clock, roundTimes(minus(span(entries[entries.length - 1]!).end, span(entries[0]!).start), window.clock));
   else {
     const [tick, base] = rational(profile.timeBase);
     // The window's graph ends at [v]; the grid takes it from there (the audio chain, absent for a chunk, never follows it).

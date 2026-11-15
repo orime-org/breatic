@@ -349,6 +349,27 @@ describe('entries on an output grid over a rounding clock (§7.17 rounding clock
     expect(() => windows.windowEntries(webm(), { start: 2, end: 3 }, r(1, 15))).toThrow(RangeError);
   });
 
+  it('LV10 a first frame off the grid (a cut 40 ms before a 30 fps run) shows alone from its pts; the rest carry the grid', () => {
+    const ledger = cfr96((plan) => {
+      const starts = [0, ...Array.from({ length: 30 }, (_unused, k) => 40 + Math.round((k * 1000) / 30))];
+      plan.presentation = { schemaVersion: 1, timescale: 1000, runs: starts.map((start, k) => ({ start, count: 1, step: (starts[k + 1] ?? start + 33) - start, duration: (starts[k + 1] ?? start + 33) - start })) };
+      plan.originMapping = { ...plan.originMapping, timeBase: r(1, 1000), origin: r(0), entries: starts.map((start) => ({ kind: 'source', start, count: 1, step: 0 })),
+        firstSource: { supportStart: r(0), lead: null }, lastSource: { support: 'declared', supportEnd: r(1), hold: null } };
+      plan.videoSpans = null as never;
+    });
+    (ledger as { encoding: unknown }).encoding = { keyframeOrdinals: [0], codedWidth: 320, codedHeight: 180, sourceKeyframes: [{ pts: r(0), dts: r(0) }], firstPacketDts: r(0) };
+    const entries = windows.windowEntries(ledger, { start: 0, end: 5 }, undefined, true);
+    expect(entries).toHaveLength(2);
+    expect(entries[0]).not.toHaveProperty('conform');
+    expect(entries[0]).toMatchObject({ clipStart: r(0), displayStart: r(0) });
+    expect(entries[1]).toHaveProperty('conform');
+    expect(entries[1]!.displayStart).toEqual(entries[0]!.displayEnd);
+    // Frame 0 shows within its own 40 ms of source.
+    const rate = entries[0]!.rate as Exact;
+    const display = entries[0]!.displayEnd as Exact;
+    expect(Number(rate.numerator) / Number(rate.denominator) * Number(display.numerator) / Number(display.denominator)).toBeLessThanOrEqual(0.04);
+  });
+
   it('LV09 the first frame keeps the presentation start and the last its stored end on a grid', () => {
     const [entry] = windows.windowEntries(webm(), { start: 0, end: 30 }, undefined, true);
     expect(entry).toMatchObject({ displayStart: r(0), displayEnd: r(1) });

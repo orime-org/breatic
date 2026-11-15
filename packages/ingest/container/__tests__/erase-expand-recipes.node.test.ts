@@ -589,6 +589,18 @@ describe('model_window, model_window_mask and frame_at (execution design §10.5 
     expect(Math.abs(inside[1]! - source[4]!)).toBeLessThan(3);
   });
 
+  it('MW04 a 60 fps WebM window starting on a frame stored before its grid point: slot j shows the frame covering start + j / fps on the grid', async () => {
+    // Frame 2 is stored at 33 ms and truly starts at 1/30 s: a span at 33 ms opens on frame 1 (from 1/60 s).
+    const recipe = { kind: 'model_window', inputId: SOURCE, window: { start: 1, end: 11 }, timescale: 1000,
+      entries: [{ kind: 'source', decodeStart: r(0), clipStart: r(1, 60), displayStart: r(1, 60), displayEnd: r(11, 60), rate: r(1), conform: { origin: r(1, 60), period: r(1, 60) } }],
+      target: { ...TARGET, width: ROI.width, height: ROI.height }, grid: { fps: 30, frameCount: 5 }, frame: FRAME, sourceRoi: ROI, fill: [127, 127, 127], span: { start: r(33, 1000), end: r(1, 5) } };
+    const file = await produce({ [SOURCE]: join(dir, 'greys60.webm') }, recipe);
+    const source = (await rgbMeans(join(dir, 'greys60.webm'), { width: W, height: H }, { x: 0, y: 0, width: W, height: H })).map(rgb => rgb[0]!);
+    const inside = (await rgbMeans(file, FRAME, ROI_IN)).map(rgb => rgb[0]!);
+    expect(inside).toHaveLength(5);
+    [1, 3, 5, 7, 9].forEach((frame, j) => expect(Math.abs(inside[j]! - source[frame]!), `slot ${j}`).toBeLessThan(3));
+  });
+
   it('MW03 an HDR source is tone mapped with its plan matrix: the source rectangle equals the composite\'s source layer', async () => {
     const hdr = join(dir, 'clip-hdr.mp4');
     const file = await produce({ [SOURCE]: hdr }, modelWindow(r(0), HDR));

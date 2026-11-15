@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { conformedTime, presentationConform } from "@shared/mini-tools/video-encode-plan.js";
-import { presentationRunOffsets, type VideoPresentationTable } from "@shared/mini-tools/video-presentation-projection.js";
+import { presentationCoveringFrame, presentationRunOffsets, type VideoPresentationTable } from "@shared/mini-tools/video-presentation-projection.js";
 
 /** The model input's frame grid: the range frame for frame at its average rate, or resampled at the model's top rate. */
 export interface ModelGrid { mode: "frames" | "resample"; rate: number; frameCount: number }
@@ -122,4 +122,36 @@ export function presentationGridFrames(table: VideoPresentationTable, startFrame
     const start = bound(index, starts[at]!);
     return { start, end: conform === null || index + 1 === total ? ends[at]! / table.timescale : bound(index + 1, starts[at + 1]!) };
   });
+}
+
+/**
+ * The frames a model window's span shows on the grid as `presentationGridFrames` reads them (execution design §10.5; §7.17
+ * rounding clock row): from the frame covering the span's start to the last one starting before its end, at least one.
+ * @param table - The presentation table.
+ * @param span - The span in seconds.
+ * @param span.start - Its start.
+ * @param span.end - Its end.
+ * @returns The frame window.
+ * @throws {RangeError} When the table has no frames.
+ */
+export function presentationGridSpan(table: VideoPresentationTable, span: { start: number; end: number }): { start: number; end: number } {
+  const total = presentationRunOffsets(table).at(-1)!;
+  /**
+   * The last frame whose grid start passes a test, searched one frame either side of the stored-time covering frame.
+   * @param time - The time the stored covering is taken at.
+   * @param starts - Whether a grid start counts.
+   * @returns The frame.
+   * @throws {never} Never.
+   */
+  const lastWhere = (time: number, starts: (start: number) => boolean): number => {
+    const near = presentationCoveringFrame(table, time);
+    const low = Math.max(0, near - 1);
+    const around = presentationGridFrames(table, low, Math.min(total, near + 2) - low);
+    let found = low;
+    around.forEach((frame, at) => { if (starts(frame.start)) found = low + at; });
+    return found;
+  };
+  const start = lastWhere(span.start, (at) => at <= span.start + EPSILON);
+  const last = lastWhere(span.end, (at) => at < span.end - EPSILON);
+  return { start, end: Math.max(start, last) + 1 };
 }

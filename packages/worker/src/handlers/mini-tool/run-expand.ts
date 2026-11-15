@@ -16,7 +16,7 @@ import { z } from "zod";
 import { getStorageAdapter, logger } from "@breatic/core";
 import type { AcceptedMiniToolExecution, MiniToolStepJson } from "@breatic/domain";
 import type { MiniToolPlanExact, MiniToolPlanTarget } from "@breatic/shared";
-import { presentationCoveringFrame, presentationFrameAt, presentationFramesIn, type ExpandFailureReason } from "@breatic/shared/mini-tools";
+import { presentationFrameAt, presentationGridSpan, type ExpandFailureReason } from "@breatic/shared/mini-tools";
 import type { LipSyncPickup } from "@worker/handlers/mini-tool/run-lip-sync.js";
 import {
   advanceChunks, advanceContainer, advanceGenerate, advanceRegistered, catalogModel, eachSubmitted, exactSeconds, expandFailureReason, modelRunFailure, modelStepCategory, providerModel, runLedger,
@@ -112,9 +112,8 @@ export async function runMiniToolExpand(execution: unknown, userId: string, dead
     const spans = plan.windows.map((window) => ({ start: exactSeconds(window.span.start), end: exactSeconds(window.span.end) }));
     const results: string[] = [];
     for (const [k, window] of plan.windows.entries()) {
-      // The frames the window's span touches; the span is the grid's origin and length.
-      const first = presentationCoveringFrame(table, window.span.start);
-      const frames = { start: first, end: first + Math.max(1, presentationFramesIn(table, { start: presentationFrameAt(table, first).pts, end: window.span.end }).count) };
+      // The frames the window's span touches on the grid its entries carry; the span is the grid's origin and length.
+      const frames = presentationGridSpan(table, window.span);
       const grid = { fps: plan.modelFps, frameCount: plan.modelFps * window.duration };
       const layer: MiniToolPlanTarget = { ...encoded, width: plan.sourceRoi.width, height: plan.sourceRoi.height, displayRect: null, format: undefined };
       // Each step names itself just before it runs, so a step that throws leaves the run standing at it (§10.5).

@@ -243,6 +243,12 @@ describe("the conform grid of a presentation table (frames-split §7.17)", () =>
     if (period !== null) expect(same(conform!.origin, period), JSON.stringify(conform)).toBe(true);
   });
 
+  it("CF04 a 29.97 fps clip rounded to 1/600 and then copied onto a 1 ms Matroska clock is still read as 29.97 fps", () => {
+    const starts = Array.from({ length: 601 }, (_unused, k) => Math.round((Math.round((k * 1001 * 600) / 30000) * 1000) / 600));
+    const table: Table = { schemaVersion: 1, timescale: 1000, runs: starts.slice(0, 600).map((start, k) => ({ start, count: 1, step: starts[k + 1]! - start, duration: starts[k + 1]! - start })) };
+    expect(api.presentationConform(table)?.period).toEqual(r(1001, 30000));
+  });
+
   it("CF02 every stored start rounds to its own exact grid point, and so does the output rate", () => {
     const table = rounded([30000, 1001], 19200, 32, 300);
     const conform = api.presentationConform(table)!;

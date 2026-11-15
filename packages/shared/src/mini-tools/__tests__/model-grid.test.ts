@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
-import { gridFrameSlot, gridSecondsAllowed, gridSlotFrame, modelGrid, presentationGridFrames } from "../model-grid.js";
+import { gridFrameSlot, gridSecondsAllowed, gridSlotFrame, modelGrid, presentationGridFrames, presentationGridSpan } from "../model-grid.js";
 
 /** Presentation frames of a constant-rate clip, as [displayStart, displayEnd) seconds. */
 function cfr(count: number, rate: number, from = 0): { start: number; end: number }[] {
@@ -131,5 +131,11 @@ describe("a resample grid over starts rounded to the source clock (frames-split 
 
   it("MG12 a range in the middle reads the same grid points as the whole table", () => {
     expect(presentationGridFrames(table, 20, 10)).toEqual(frames.slice(20, 30));
+  });
+
+  it("MG13 a model window span opens on the frame covering its start on the grid, not by stored time", () => {
+    // Frame 2 is stored at 33 ms and starts on the grid at 1/30 s: a span from 33 ms opens on frame 1 and runs to frame 11.
+    expect(presentationGridSpan(table, { start: 0.033, end: 0.2 })).toEqual({ start: 1, end: 12 });
+    expect(presentationGridSpan(table, { start: 1 / 30, end: 0.2 })).toEqual({ start: 2, end: 12 });
   });
 });

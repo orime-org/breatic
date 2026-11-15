@@ -641,9 +641,10 @@ function nearestInteger(numerator: bigint, denominator: bigint): bigint {
 
 /**
  * The rounded constant rate of a table and its grid, computed once per table: the standard rate whose exact grid every
- * frame start from the second on matches within the clock's rounding granularity g (the greatest common divisor of those
- * starts' distances from the second start), with g under half a frame so each start rounds to one grid point. The starts'
- * offsets from the grid then spread over at most g; the rate with the least spread wins. The grid passes through the first
+ * frame start from the second on matches within the clock's rounding (g, the greatest common divisor of those starts'
+ * distances from the second start, is the stored clock's granularity). A file copied from a coarser rounding clock (a 1/600
+ * clip copied onto 1 ms) carries both roundings, so the offsets from the grid may spread over up to 3g, with 3g under half a
+ * frame so each start rounds to one grid point; the rate with the least spread wins. The grid passes through the first
  * frame's start when that start fits it too (a start of 0 is stored exactly), else through the middle of the offsets, on a
  * half-tick of the table clock. Null for a table with fewer than three frames or one frame spacing (exact already) and for
  * one no standard grid fits (VFR).
@@ -673,13 +674,13 @@ function roundedConstant(table: VideoPresentationTable): { conform: Presentation
         if (offset > high) high = offset;
       });
       const spread = high - low;
-      // Within the granularity, which is under half a frame (2 · g · n < timescale · d); spreads compare per tick: spread / n.
-      if (spread <= granularity * numerator && 2n * granularity * numerator < timescale * denominator
+      // Within 3g, which is under half a frame (6 · g · n < timescale · d); spreads compare per tick: spread / n.
+      if (spread <= 3n * granularity * numerator && 6n * granularity * numerator < timescale * denominator
         && (best === null || spread * best.rate[0] < best.spread * numerator)) best = { rate, spread, low, high };
     }
     if (best !== null) {
       const [numerator, denominator] = best.rate;
-      const limit = granularity * numerator;
+      const limit = 3n * granularity * numerator;
       // The first frame's offset, one frame before the second: (s_0 − s_1) · n + timescale · d.
       const lead = (first - later[0]!) * numerator + timescale * denominator;
       // The grid point of the second frame in table ticks: through the first frame, or the offsets' middle on a half tick.

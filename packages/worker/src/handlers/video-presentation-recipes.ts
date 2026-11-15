@@ -252,6 +252,18 @@ function placedEntries(ledger: VideoPresentationLedger, window: FrameWindow, fro
     const [display, own] = [BigInt(lead.end - lead.start) * length[1], scale * length[0]];
     if (own > 0n) leadRate = [1n, (display + own - 1n) / own];
   }
+  // On a conform grid that misses the first frame's start, that frame keeps the presentation start and shows alone, from its
+  // pts at rate 1/n of its edit within its own source length, so the next frame enters only at its grid point (§7.17).
+  let held = leadOrdinal;
+  let heldRate = leadRate;
+  const opener = frames[0]!;
+  if (held < 0 && conform !== null && frames.length > 1 && opener.pts !== null && cmp(conformedTime(conform, time(opener.start)), time(opener.start)) !== 0n) {
+    held = 0;
+    const span = spanAt(time(opener.start));
+    const [display, own] = [minus(endOf(0), startOf(0)), time(opener.end - opener.start)];
+    const n = (display[0] * own[1] + display[1] * own[0] - 1n) / (display[1] * own[0]);
+    heldRate = times(span < 0 ? [1n, 1n] : q(spans![span]!.rate), [1n, n > 0n ? n : 1n]);
+  }
   const entries: { entry: MiniToolPlanEntry; ordinal: number }[] = [];
   let open: { span: number; first: number; last: number } | null = null;
   /**
@@ -269,9 +281,9 @@ function placedEntries(ledger: VideoPresentationLedger, window: FrameWindow, fro
     }
     if (keyframe === undefined) throw new RangeError('No source keyframe precedes the span');
     const decode = plus(keyframe.dts, shift);
-    const lead = open.first === leadOrdinal;
+    const lead = open.first === held;
     const edit = open.span < 0 ? null : spans![open.span]!;
-    const rate: Q = lead ? leadRate : edit === null ? [1n, 1n] : q(edit.rate);
+    const rate: Q = lead ? heldRate : edit === null ? [1n, 1n] : q(edit.rate);
     // The span's first frame shows its source from its pts, or from the edit start when the edit cuts into it, advancing at the
     // span's rate from the frame's display start; the held lead frame always shows from its pts.
     const from0 = edit !== null && cmp(q(edit.sourceStart), firstSource) > 0 ? q(edit.sourceStart) : firstSource;
@@ -299,7 +311,7 @@ function placedEntries(ledger: VideoPresentationLedger, window: FrameWindow, fro
       continue;
     }
     const span = spanAt(time(frame.start));
-    if (open !== null && open.span === span && open.first !== leadOrdinal) { open.last = ordinal; continue; }
+    if (open !== null && open.span === span && open.first !== held) { open.last = ordinal; continue; }
     close();
     open = { span, first: ordinal, last: ordinal };
   }
