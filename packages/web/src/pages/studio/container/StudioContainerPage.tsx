@@ -68,10 +68,13 @@ export default function StudioContainerPage(): React.JSX.Element {
   const t = useTranslation();
   const queryClient = useQueryClient();
   // The Studio's region decides where its data lives (inner#1955): the
-  // switcher's rows already carry it, the directory answers otherwise.
+  // switcher's rows already carry it, the directory answers otherwise. It is
+  // asked again on every visit, since a slug can move to a Studio in another
+  // region, and nothing reads the Studio until this visit's answer is in.
   const regions = getRegionConfig();
   const regionQuery = useQuery({
     queryKey: ['studio-region', slug],
+    staleTime: 0,
     queryFn: () => {
       if (regions === null) return { region: null };
       const known = queryClient.getQueryData<StudioSummary[]>(['studios', 'user'])?.find((s) => s.slug === slug);
@@ -79,7 +82,7 @@ export default function StudioContainerPage(): React.JSX.Element {
     },
     retry: (failureCount, err) => !(err instanceof ApiException && err.status === 404) && failureCount < 2,
   });
-  const region = regionQuery.data?.region;
+  const region = regionQuery.isFetchedAfterMount ? regionQuery.data?.region : undefined;
   useCurrentRegion(region);
   const studioQuery = useQuery({
     queryKey: ['studio', slug],

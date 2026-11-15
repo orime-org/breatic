@@ -18,9 +18,8 @@ vi.mock('@web/data/api/regions', async (importOriginal) => ({
   rememberStudioRegion: vi.fn(),
   getRegionConfig: () => ({ global: 'us-west', regions: {} }),
 }));
-vi.mock('@web/data/api/directory', () => ({
-  directoryApi: { studio: vi.fn(async () => ({ region: 'sg' })) },
-}));
+const directory = vi.hoisted(() => ({ studio: vi.fn(async (_slug: string) => ({ region: 'sg' as string | null })) }));
+vi.mock('@web/data/api/directory', () => ({ directoryApi: directory }));
 vi.mock('@web/data/api/studios', () => ({
   studiosApi: {
     get: vi.fn(),
@@ -37,6 +36,23 @@ import { renderWithTooltips as render } from '@web/test-utils/render-with-toolti
 import { rememberStudioRegion } from '@web/data/api/regions';
 import { studiosApi } from '@web/data/api/studios';
 
+/**
+ * Render the Studio page for a slug.
+ * @param client - The query client, possibly holding an earlier answer.
+ * @returns The rendered page.
+ */
+function renderPage(client: QueryClient): ReturnType<typeof render> {
+  return render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={['/studio/far-studio']}>
+        <Routes>
+          <Route path='/studio/:slug' element={<StudioContainerPage />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
 const STUDIO: StudioDetail = {
   id: 's-far',
   slug: 'far-studio',
@@ -52,19 +68,28 @@ const STUDIO: StudioDetail = {
 describe('StudioContainerPage in a build with regions', () => {
   it('remembers the Studio region under its slug and its id', async () => {
     vi.mocked(studiosApi.get).mockResolvedValue(STUDIO);
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    render(
-      <QueryClientProvider client={client}>
-        <MemoryRouter initialEntries={['/studio/far-studio']}>
-          <Routes>
-            <Route path='/studio/:slug' element={<StudioContainerPage />} />
-          </Routes>
-        </MemoryRouter>
-      </QueryClientProvider>,
-    );
+    renderPage(new QueryClient({ defaultOptions: { queries: { retry: false } } }));
 
     expect(await screen.findByText('Far Studio')).toBeInTheDocument();
     expect(rememberStudioRegion).toHaveBeenCalledWith(['far-studio'], 'sg');
     await waitFor(() => expect(rememberStudioRegion).toHaveBeenCalledWith(['far-studio', 's-far'], 'sg'));
+  });
+
+  // inner#1955: the slug moved to a Studio in another region since this tab
+  // last looked it up; the cached answer must not decide where the page reads.
+  it('reads the Studio from the region the directory answers now, not a cached one', async () => {
+    vi.mocked(rememberStudioRegion).mockClear();
+    vi.mocked(studiosApi.get).mockClear();
+    vi.mocked(studiosApi.get).mockResolvedValue({ ...STUDIO, id: 's-near', region: null });
+    directory.studio.mockResolvedValueOnce({ region: 'us-west' });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(['studio-region', 'far-studio'], { region: 'sg' });
+
+    renderPage(client);
+
+    expect(await screen.findByText('Far Studio')).toBeInTheDocument();
+    expect(studiosApi.get).toHaveBeenCalledTimes(1);
+    expect(rememberStudioRegion).not.toHaveBeenCalledWith(expect.anything(), 'sg');
+    expect(rememberStudioRegion).toHaveBeenCalledWith(['far-studio'], 'us-west');
   });
 });
