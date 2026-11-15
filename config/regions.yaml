@@ -40,11 +40,11 @@
 # maintenance_forward_timeout_ms: how long the global region waits for a
 #   storage-reclaim call it hands to another region; a preview or submission
 #   reads up to 100 objects from storage there.
-# hold_cleanup_retry_attempts / hold_cleanup_retry_base_ms: how often, and
-#   from what first wait (doubling each time), a region retries releasing or
-#   giving up a credit hold the global region could not take. The waits add
-#   up to more than a hold's two-hour life, so an outage that ends while the
-#   hold still counts always frees the Studio's credits.
+# hold_cleanup_retry_interval_ms: how long a region waits between tries to
+#   release or give up a credit hold the global region could not take. It
+#   keeps trying for as long as a hold lives (default_budget_ms in
+#   node-tasks.yaml), so the Studio's credits are freed within one interval
+#   of the global region coming back.
 # region_api_body_max_bytes: the largest request body one region accepts
 #   from another. A Studio snapshot carries every member and Project id and a
 #   collab session recheck every session id an instance holds, so this is
@@ -67,5 +67,4 @@ region_api_body_max_bytes: 4194304
 outbox_relay_batch: 100
 storage_usage_report_batch: 500
 maintenance_forward_timeout_ms: 300000
-hold_cleanup_retry_attempts: 12
-hold_cleanup_retry_base_ms: 5000
+hold_cleanup_retry_interval_ms: 30000

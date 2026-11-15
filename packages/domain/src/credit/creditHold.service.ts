@@ -20,7 +20,7 @@ import * as creditHoldRepo from "@domain/credit/creditHold.repo.js";
 import * as creditLotRepo from "@domain/credit/creditLot.repo.js";
 import { resolveOwnerStudioId } from "@domain/asset/asset.service.js";
 import { fromMicroCredits, positionFrom, serializeCreditPosition, toChargeMicro, type CreditPositionMicro } from "@domain/credit/credit-math.js";
-import { createQueue, db, env, getRegionsConfig, isGlobalRegion, isRegionUnavailable } from "@breatic/core";
+import { createQueue, db, env, getNodeTaskConfig, getRegionsConfig, isGlobalRegion, isRegionUnavailable } from "@breatic/core";
 import { globalApi } from "@domain/region/global-api.js";
 import type { DbTx } from "@breatic/core";
 import type { ProjectCreditsView } from "@breatic/shared";
@@ -115,7 +115,7 @@ export async function reserveHere(
   });
 }
 
-/** The queue that retries, in a region outside the global one, a release the global region could not take (inner#1955). */
+/** The queue that retries, in a region outside the global one, a release or abandon the global region could not take (inner#1955). */
 export const CREDIT_HOLD_RELEASE_QUEUE = "credit-hold-release";
 
 /** A queued release, or an abandon when it names the hold's Studio and actor. */
@@ -129,19 +129,31 @@ let releaseQueue: ReturnType<typeof createQueue> | null = null;
 /**
  * Release a hold. Releasing one that is gone or already released does nothing.
  * Outside the global region a release that finds the global region
- * unavailable is queued and retried, so the Studio's credits are not held
- * until the hold expires.
+ * unavailable is queued and retried, so the Studio's credits are freed within
+ * one retry interval of the global region coming back.
  * @param referenceId - Its key.
  * @throws {Error} When the database fails, the global region refuses, or the retry cannot be queued.
  */
 export async function releaseHold(referenceId: string): Promise<void> {
+  if (!env.PAYMENT_ENABLED) return;
   await orQueue(() => globalApi().releaseHold(referenceId), { referenceId });
+}
+
+/**
+ * The retry a queued hold cleanup carries: one try every interval for as long
+ * as a hold lives, so the cleanup lands within one interval of the global
+ * region coming back while the hold still counts.
+ * @returns The attempts and the fixed wait between them.
+ */
+export function holdCleanupRetry(): { attempts: number; backoff: { type: "fixed"; delay: number } } {
+  const delay = getRegionsConfig().hold_cleanup_retry_interval_ms;
+  return { attempts: Math.ceil(getNodeTaskConfig().default_budget_ms / delay) + 1, backoff: { type: "fixed", delay } };
 }
 
 /**
  * Run a cleanup of a hold through the global region; outside the global
  * region, one that finds the global region unavailable is queued and retried
- * for longer than a hold lives.
+ * while the hold lives (see {@link holdCleanupRetry}).
  * @param call - The cleanup.
  * @param job - The same cleanup as a queued job.
  * @returns Once done or queued.
@@ -152,11 +164,9 @@ async function orQueue(call: () => Promise<void>, job: HoldReleaseJob): Promise<
     await call();
   } catch (err) {
     if (isGlobalRegion(env) || !isRegionUnavailable(err)) throw err;
-    const { hold_cleanup_retry_attempts: attempts, hold_cleanup_retry_base_ms: delay } = getRegionsConfig();
     releaseQueue ??= createQueue(CREDIT_HOLD_RELEASE_QUEUE);
-    await releaseQueue.add("release", job, {
-      attempts,
-      backoff: { type: "exponential", delay },
+    await releaseQueue.add(job.abandon === undefined ? "release" : "abandon", job, {
+      ...holdCleanupRetry(),
       removeOnComplete: true,
       removeOnFail: true,
       jobId: job.referenceId,

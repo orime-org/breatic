@@ -477,13 +477,23 @@ export function startWorker(): void {
     });
     regionWorkers.push(claimForward);
   }
-  // Hold releases the global region could not take at the time (inner#1955).
+  // Hold releases and abandons the global region could not take at the time (inner#1955).
   if (WORKER_QUEUES.includes(CREDIT_HOLD_RELEASE_QUEUE)) {
     const holdRelease = createWorker<creditHoldService.HoldReleaseJob>(CREDIT_HOLD_RELEASE_QUEUE, (job) =>
       creditHoldService.runQueuedHoldRelease(job.data),
     );
     holdRelease.on("failed", (job, err) => {
-      logger.error({ err, referenceId: job?.data.referenceId, attempts: job?.attemptsMade }, "credit_hold_release_retry_failed");
+      const ctx = {
+        err,
+        action: job?.name,
+        referenceId: job?.data.referenceId,
+        studioId: job?.data.abandon?.studioId,
+        attempts: job?.attemptsMade,
+      };
+      // Tries keep failing while the global region is down; only the last one
+      // leaves the hold to run out on its own.
+      if (job !== undefined && job.attemptsMade < (job.opts.attempts ?? 1)) logger.warn(ctx, "credit_hold_cleanup_retry_failed");
+      else logger.error(ctx, "credit_hold_cleanup_gave_up");
     });
     regionWorkers.push(holdRelease);
   }

@@ -38,8 +38,7 @@ export const regionsConfigSchema = z
     outbox_relay_batch: z.number().int().positive().default(100),
     storage_usage_report_batch: z.number().int().positive().default(500),
     maintenance_forward_timeout_ms: millis.default(300000),
-    hold_cleanup_retry_attempts: z.number().int().positive().default(12),
-    hold_cleanup_retry_base_ms: millis.default(5000),
+    hold_cleanup_retry_interval_ms: millis.default(30000),
     region_api_body_max_bytes: z.number().int().positive().default(4 * 1024 * 1024),
   })
   .refine((c) => c.outbox_relay_interval_ms + c.profile_cache_ttl_ms <= 60_000, {
