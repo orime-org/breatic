@@ -16,7 +16,9 @@
  * TEMPLATE_RUN_LOCALE=zh-CN (their braces come in the same order in every locale). TEMPLATE_RUN_ASK instead sends that request to the
  * Agent with the picture attached (TEMPLATE_RUN_ASK_IMAGE names another fixture, empty for none) and generates the node
  * its proposal places; TEMPLATE_RUN_ASK_REPLY is the user's answer when the agent asks first, and
- * TEMPLATE_RUN_ASK_ONLY stops once the turn is recorded.
+ * TEMPLATE_RUN_ASK_ONLY stops once the turn is recorded. TEMPLATE_RUN_LEAVE_EMPTY names optional inputs (comma-separated) a run
+ * leaves empty (inner#1811): every generation request is recorded, and the paragraph of an optional input must be in each
+ * request of a node it feeds exactly when that input holds a picture.
  */
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
@@ -40,6 +42,7 @@ const REPEAT = Number(process.env.TEMPLATE_RUN_REPEAT ?? '1');
 const LOCALE = process.env.TEMPLATE_RUN_LOCALE;
 const DEFAULT_TIER = process.env.TEMPLATE_RUN_DEFAULT_TIER !== undefined;
 const LOCALE_FILE = join(__dirname, `../../../../locales/${LOCALE ?? 'en'}.json`);
+const LEAVE_EMPTY = new Set((process.env.TEMPLATE_RUN_LEAVE_EMPTY ?? '').split(',').filter((key) => key !== ''));
 mkdirSync(OUT, { recursive: true });
 
 /**
@@ -361,6 +364,45 @@ async function keyed(key: string): Promise<string> {
   return node.id;
 }
 
+/**
+ * The words that open the paragraph of each optional input in one generate node's prompt, as the locale file
+ * holds them: what a request carries exactly when that input holds a picture (inner#1811).
+ * @param id - The template.
+ * @param key - The generate node's key.
+ * @returns Input key to the paragraph's opening words.
+ */
+function optionalLeads(id: string, key: string): Map<string, string> {
+  const template = GENERATION_TEMPLATES.find((one) => one.id === id);
+  const leads = new Map<string, string>();
+  if (template === undefined) return leads;
+  const words = fromLocale(`canvas.template.${id}.${key === template.anchor ? '' : `node.${key}.`}prompt`).split('\n');
+  for (const input of template.inputs) {
+    if (input.optional !== true || !(input.feeds ?? [template.anchor]).includes(key)) continue;
+    const name = fromLocale(`canvas.template.${id}.input.${input.key}.name`);
+    const paragraph = words.find((line) => markedSegments(line).some((s) => s.slot?.kind === 'asset' && s.slot.label === name));
+    const lead = paragraph === undefined ? undefined : markedSegments(paragraph).find((s) => s.text?.trim())?.text?.trim();
+    if (lead !== undefined) leads.set(input.key, lead);
+  }
+  return leads;
+}
+
+/** The prompt of each generation request the page has sent, in order. */
+const requests: string[] = [];
+
+/**
+ * Check one node's last request against its optional inputs: each one's paragraph is sent exactly when the input
+ * holds a picture.
+ * @param id - The template.
+ * @param key - The generate node's key.
+ * @param prompt - What the request carried.
+ */
+function expectOptionalParagraphs(id: string, key: string, prompt: string): void {
+  for (const [input, lead] of optionalLeads(id, key)) {
+    if (LEAVE_EMPTY.has(input)) expect(prompt, `${key} leaves out the ${input} paragraph`).not.toContain(lead);
+    else expect(prompt, `${key} sends the ${input} paragraph`).toContain(lead);
+  }
+}
+
 /** Each dropped file's type and node type, by extension. */
 const DROPPED: Record<string, { mime: string; kind: Kind }> = {
   '.png': { mime: 'image/png', kind: 'image' },
@@ -399,6 +441,12 @@ const STYLE = '3D cartoon';
 
 test.beforeEach(async ({ browser }) => {
   page = await browser.newPage();
+  requests.length = 0;
+  page.on('request', (request) => {
+    if (request.method() !== 'POST' || !/\/canvas\/tasks(\?|$)/.test(request.url())) return;
+    const body = request.postDataJSON() as { params?: { prompt?: unknown } } | null;
+    requests.push(typeof body?.params?.prompt === 'string' ? body.params.prompt : JSON.stringify(body));
+  });
   await openSmokeProject(page);
   if (LOCALE) await switchLanguage(page, LOCALE);
   projectId = (/([0-9a-f-]{36})$/.exec(page.url()) ?? [])[1] ?? '';
@@ -534,6 +582,11 @@ interface Run {
   /** Whether a picture is wired in: the character picture, or `image` from the fixtures. */
   photo: boolean;
   image?: string;
+  /**
+   * A picture from the fixtures for each input, wired in the order the template declares its inputs (inner#1811),
+   * in place of `photo`; an optional input in TEMPLATE_RUN_LEAVE_EMPTY is left out and the template places it empty.
+   */
+  inputs?: Record<string, string>;
   /** A file of another kind wired in, from the fixtures: `voice sample` is the speech fixture played twice over. */
   media?: string;
   /** A song with vocals generated first and wired in: covers refuse an instrumental ("Cover mode needs a song with vocals"). */
@@ -673,7 +726,70 @@ const RUNS: Record<string, Run> = {
     },
     localeFills: { 'zh-CN': { anchor: ['阳光下的雪山坡，单板滑雪冲上跳台', '板刃切进雪里，每次转弯扬起雪雾', '抓一次板', '雪从板边炸开'] } },
   },
-  'pet-selfie-vlog': { type: 'video', photo: true, image: 'pet.jpg', first: [], fills: { anchor: ['a sunny living room', 'jumps onto the sofa and sniffs the phone'] } },
+  'pet-selfie-vlog': {
+    type: 'video',
+    photo: false,
+    inputs: { pet: 'pet.jpg', person: 'character.jpg' },
+    first: [],
+    fills: { anchor: ['a sunny living room', 'jumps onto the sofa and sniffs the phone'] },
+  },
+  // inner#1811: the e-commerce ads, on the product photo and its colours made in the product (§9).
+  'product-ad-15s': {
+    type: 'video',
+    photo: false,
+    inputs: { product: 'product.jpg', person: 'character.jpg' },
+    first: ['still'],
+    fills: { still: ['a sunlit kitchen counter'], anchor: ['a hand sets the bottle down hard on the counter', 'a sunlit kitchen', 'keeps water ice-cold for 24 hours'] },
+    localeFills: { 'zh-CN': { still: ['阳光充足的厨房台面'], anchor: ['一只手把水瓶重重放在台面上', '阳光充足的厨房', '24 小时保冷'] } },
+  },
+  'ugc-creator-review': {
+    type: 'video',
+    photo: false,
+    inputs: { creator: 'character.jpg', product: 'product.jpg' },
+    first: [],
+    fills: { anchor: ['Okay, I did not expect this', 'how the bamboo cap clicks shut', 'It stayed cold all day', 'Honestly, I am keeping it'] },
+    localeFills: { 'zh-CN': { anchor: ['说真的，我没想到会这样', '竹盖咔哒一声拧紧', '一整天都是冰的', '这个我留着自己用了'] } },
+  },
+  'livestream-pitch': {
+    type: 'video',
+    photo: false,
+    inputs: { host: 'portrait.png', product: 'product.jpg' },
+    first: [],
+    fills: { anchor: ['excited and fast', 'it keeps drinks cold for 24 hours and the bamboo cap never leaks'] },
+    localeFills: { 'zh-CN': { anchor: ['兴奋、语速快', '24 小时保冷，竹盖拧紧一滴不漏'] } },
+  },
+  'hype-then-twist-ad': {
+    type: 'video',
+    photo: false,
+    inputs: { product: 'product.jpg' },
+    first: [],
+    fills: { anchor: ['the plain bottle sits on a cluttered kitchen table under a bare bulb', 'a fridge hums'] },
+    localeFills: { 'zh-CN': { anchor: ['朴素的水瓶摆在一张乱糟糟的厨房桌上，头顶一个裸灯泡', '冰箱嗡嗡响'] } },
+  },
+  'product-commercial-shotlist': {
+    type: 'video',
+    photo: false,
+    inputs: { product: 'product.jpg' },
+    first: [],
+    fills: { anchor: ['cool, minimal, soft grey and steel', 'the bamboo cap lifts off'] },
+    localeFills: { 'zh-CN': { anchor: ['冷调极简、柔和的灰色和金属', '竹盖缓缓抬起'] } },
+  },
+  'unboxing-ad': {
+    type: 'video',
+    photo: false,
+    inputs: { product: 'product.jpg' },
+    first: [],
+    fills: { anchor: ['a matte black box with a gold ribbon', 'the bamboo cap and the printed label'] },
+    localeFills: { 'zh-CN': { anchor: ['哑光黑盒子系着金色丝带', '竹盖和印刷标签'] } },
+  },
+  'variant-carousel-ad': {
+    type: 'video',
+    photo: false,
+    inputs: { 'variant-1': 'product.jpg', 'variant-2': 'variant-2.jpg', 'variant-3': 'variant-3.jpg' },
+    first: [],
+    fills: { anchor: ['warm beige', 'a quick spin'] },
+    localeFills: { 'zh-CN': { anchor: ['暖米色', '快速旋转'] } },
+  },
   'phone-vlog-realism': {
     type: 'video',
     photo: true,
@@ -792,13 +908,21 @@ if (AGENT_ASK === undefined) for (const id of process.env.TEMPLATE_RUN_ONLY ? [p
     const fills = (LOCALE === undefined ? undefined : run.localeFills?.[LOCALE]) ?? run.fills;
     // The picture is dropped first: dropped onto an empty node, it would upload into that node instead.
     const photo = run.photo ? await dropMedia(run.image === undefined ? CHARACTER : join(FIXTURES, run.image)) : undefined;
+    // Each input's picture, in the order the template declares its inputs, so the panel matches them in turn.
+    const declared = GENERATION_TEMPLATES.find((template) => template.id === id)?.inputs ?? [];
+    const pictures: string[] = [];
+    for (const input of declared) {
+      const file = run.inputs?.[input.key];
+      if (file === undefined || LEAVE_EMPTY.has(input.key)) continue;
+      pictures.push(await dropMedia(join(FIXTURES, file)));
+    }
     const media = run.media === undefined ? undefined : mediaOf(run.media);
     const material = media === undefined ? undefined : await dropMedia(media.file, media.bytes);
     const song = run.song === true ? await generateSong() : undefined;
     const anchor = crypto.randomUUID();
     await seedNode(page, { projectId, spaceId }, anchor, run.type, 600, { name: `${run.type}-run`, state: 'idle' });
     // Wired in before the template is picked, so it lands in the template's slot.
-    for (const wired of [photo, material, song]) if (wired !== undefined) await wire(page, { projectId, spaceId }, wired, anchor);
+    for (const wired of [photo, ...pictures, material, song]) if (wired !== undefined) await wire(page, { projectId, spaceId }, wired, anchor);
     await openPanel(anchor);
     await applyTemplate(id);
     for (const key of run.first) {
@@ -810,7 +934,9 @@ if (AGENT_ASK === undefined) for (const id of process.env.TEMPLATE_RUN_ONLY ? [p
       const kind = ((await graph()).nodes.find((one) => one.id === node)?.type ?? 'image') as Kind;
       const url = await generate(node, kind);
       expect(url).toMatch(/^https?:/);
-      record({ template: id, node: key, label: LABEL, n, result: { prompt, url } });
+      const sentPrompt = requests[requests.length - 1] ?? '';
+      record({ template: id, node: key, label: LABEL, n, empty: [...LEAVE_EMPTY], result: { prompt, sent: sentPrompt, url } });
+      expectOptionalParagraphs(id, key, sentPrompt);
       await save(url, `${id}-${key}-${LABEL}-${n}.${EXTENSION[kind]}`);
     }
     await openPanel(anchor);
@@ -846,7 +972,9 @@ if (AGENT_ASK === undefined) for (const id of process.env.TEMPLATE_RUN_ONLY ? [p
     }
     const url = await generate(anchor, run.type);
     expect(url).toMatch(/^https?:/);
-    record({ template: id, label: LABEL, n, result: { prompt, url } });
+    const sentPrompt = requests[requests.length - 1] ?? '';
+    record({ template: id, label: LABEL, n, empty: [...LEAVE_EMPTY], result: { prompt, sent: sentPrompt, url } });
+    expectOptionalParagraphs(id, registered.anchor, sentPrompt);
     await save(url, `${id}-${LABEL}-${n}.${EXTENSION[run.type]}`);
     for (const { key, slot } of run.after ?? []) {
       const node = await keyed(key);
