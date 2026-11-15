@@ -25,7 +25,7 @@ describe('SpaceKindPicker', () => {
     expect(screen.getByRole('radio', { name: /Timeline/ })).toBeInTheDocument();
   });
 
-  it('lists Canvas, Document, 3D and Timeline in that order', () => {
+  it('lists Canvas, Document, 3D, Timeline and Motion in that order', () => {
     render(<SpaceKindPicker value='canvas' onChange={() => {}} />);
     const cards = within(screen.getByRole('radiogroup', { name: 'Space type' })).getAllByRole('radio');
     expect(cards.map((card) => card.getAttribute('data-testid'))).toEqual([
@@ -33,6 +33,7 @@ describe('SpaceKindPicker', () => {
       'space-kind-document',
       'space-kind-3d',
       'space-kind-timeline',
+      'space-kind-web_animation',
     ]);
   });
 
@@ -44,7 +45,7 @@ describe('SpaceKindPicker', () => {
       .filter((element) => !isInaccessible(element))
       .map((element) => element.textContent?.trim())
       .join(' '));
-    expect(visibleLabels).toEqual(['Canvas', 'Document', '3D', 'Timeline']);
+    expect(visibleLabels).toEqual(['Canvas', 'Document', '3D', 'Timeline', 'Motion']);
   });
 
   it.each(LOCALE_CATALOGS)('labels the 3D type as 3D in %s', (locale) => {
@@ -53,12 +54,18 @@ describe('SpaceKindPicker', () => {
     expect(within(screen.getByTestId('space-kind-3d')).getByText('3D', { exact: true })).toBeInTheDocument();
   });
 
-  it.each(LOCALE_CATALOGS)('shows DEV on 3D and Timeline while keeping type names in %s', (locale) => {
+  it.each(LOCALE_CATALOGS)('labels the web animation type as Motion in %s', (locale) => {
+    setLocale(locale);
+    render(<SpaceKindPicker value='canvas' onChange={() => {}} />);
+    expect(within(screen.getByTestId('space-kind-web_animation')).getByText('Motion', { exact: true })).toBeInTheDocument();
+  });
+
+  it.each(LOCALE_CATALOGS)('shows DEV on 3D, Timeline and Motion while keeping type names in %s', (locale) => {
     setLocale(locale);
     render(<SpaceKindPicker value='canvas' onChange={() => {}} />);
     const markers = within(screen.getByRole('radiogroup')).getAllByText('DEV', { exact: true });
-    expect(markers).toHaveLength(2);
-    for (const [type, name] of [['3d', '3D'], ['timeline', 'Timeline']]) {
+    expect(markers).toHaveLength(3);
+    for (const [type, name] of [['3d', '3D'], ['timeline', 'Timeline'], ['web_animation', 'Motion']]) {
       const card = screen.getByTestId(`space-kind-${type}`);
       expect(within(card).getByText(name, { exact: true })).toBeVisible();
       expect(within(card.parentElement!).getByText('DEV', { exact: true })).toBeVisible();
@@ -146,6 +153,14 @@ describe('SpaceKindPicker', () => {
     render(<SpaceKindPicker value='canvas' onChange={onChange} />);
     await user.click(screen.getByRole('radio', { name: /Canvas/ }));
     expect(onChange).toHaveBeenCalledWith('canvas');
+  });
+
+  it('reports a click on the Motion card', async () => {
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    render(<SpaceKindPicker value='canvas' onChange={onChange} />);
+    await user.click(screen.getByTestId('space-kind-web_animation'));
+    expect(onChange).toHaveBeenCalledWith('web_animation');
   });
 
   it('reports a click on the available 3D card', async () => {

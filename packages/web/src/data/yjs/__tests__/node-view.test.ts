@@ -181,6 +181,18 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
     });
   });
 
+  it('maps the source animation a video was exported from, as content (#1490)', () => {
+    const sourceAnimation = { spaceId: 's1', executionId: 'e1', videoUrl: 'v.mp4' };
+    expect(toNodeView(fields('video', { content: 'v.mp4', sourceAnimation }))).toMatchObject({
+      type: 'video', data: { content: 'v.mp4', sourceAnimation },
+    });
+  });
+
+  it('maps no source animation onto a video without one', () => {
+    const v = toNodeView(fields('video', { content: 'v.mp4' }));
+    expect((v?.data as Record<string, unknown>).sourceAnimation).toBeUndefined();
+  });
+
   it('maps the 3d model URL', () => {
     const v = toNodeView(fields('3d', { content: 'm.glb' }));
     expect(v).toMatchObject({ type: '3d', data: { content: 'm.glb' } });
