@@ -137,6 +137,11 @@ export interface ExecuteGateInput {
     maxShots?: number;
     maxChars?: number;
   };
+  /**
+   * Why no upstream here takes the run as set up (#1521), as `inputRefusalText` says it in the user's language;
+   * absent while none is known.
+   */
+  inputRefusal?: string | undefined;
 }
 
 /**
@@ -168,7 +173,8 @@ export type ExecuteRefusal =
   | 'storyboard-shot-empty'
   | 'storyboard-too-many'
   | 'storyboard-shot-too-long'
-  | 'storyboard-duration-mismatch';
+  | 'storyboard-duration-mismatch'
+  | 'input-refused';
 
 /**
  * Why Generate cannot run, and the detail a sentence about it needs.
@@ -195,6 +201,8 @@ export interface ExecuteVerdict {
   readonly seconds?: { shots: number; total: number };
   /** What a storyboard refusal measured against its cap: the shots given, or the characters of the shot. */
   readonly found?: number;
+  /** The sentence an `input-refused` refusal says, already in the user's language. */
+  readonly message?: string;
 }
 
 /**
@@ -302,6 +310,9 @@ export function evaluateExecute(
     const over = referenceCapExceeded(pool.count, pool.cap);
     if (over) return { refusal: 'too-many-references', over: { ...over, kind: pool.kind } };
   }
+  // Last: what the panel can name itself is said first, and an upstream's
+  // limit is only known once the run is otherwise complete.
+  if (input.inputRefusal !== undefined) return { refusal: 'input-refused', message: input.inputRefusal };
   return null;
 }
 
@@ -414,6 +425,9 @@ export const REFUSAL_TOAST_KEY: Record<ExecuteRefusal, string | null> = {
   'storyboard-too-many': 'canvas.generatePanel.refuseStoryboardTooMany',
   'storyboard-shot-too-long': 'canvas.generatePanel.refuseStoryboardShotTooLong',
   'storyboard-duration-mismatch': 'canvas.generatePanel.refuseStoryboardDurationMismatch',
+  // Said through the verdict's `message`, which names the limit; this is the
+  // general sentence it falls back to.
+  'input-refused': 'server.model.input_limit.unsupported',
 };
 
 /**

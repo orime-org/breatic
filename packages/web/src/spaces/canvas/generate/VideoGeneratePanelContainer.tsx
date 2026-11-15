@@ -41,7 +41,7 @@ import {
   type ReferencePool,
   type StoryboardSpec,
 } from '@breatic/shared';
-import { useCreditText } from '@web/spaces/canvas/generate/use-credit-estimate';
+import { useCreditText, useInputRefusalText } from '@web/spaces/canvas/generate/use-credit-estimate';
 import {
   CatalogGatedFrame,
   useOpenPanelNode,
@@ -283,11 +283,10 @@ function VideoGeneratePanelBody({
       buildVideoPanelViewModel({ nodeId, nodes, edges, models, mode, textById }),
     [nodeId, nodes, edges, models, mode, textById],
   );
-  const creditText = useCreditText(
-    vm.modelEntry,
-    videoEstimateInput(vm, extractPromptText(promptText)),
-    catalog?.credit_multiplier ?? 1,
-  );
+  const estimateInput = videoEstimateInput(vm, extractPromptText(promptText));
+  const creditText = useCreditText(vm.modelEntry, estimateInput, catalog?.credit_multiplier ?? 1);
+  // Why no upstream here takes the run as set up (#1521): on the button, and said by the click.
+  const refused = useInputRefusalText(vm.modelEntry, estimateInput);
 
   // The node's shots, which only the multi-shot mode shows and sends: `spec`
   // is defined there alone, for a model that takes shots.
@@ -778,7 +777,12 @@ function VideoGeneratePanelBody({
       ),
       pools: poolCounts(fresh.pool, fresh.referenceUrls),
       storyboard: run.gate,
+      inputRefusal: refused.latest.current,
     });
+    if (verdict?.message !== undefined) {
+      toast.warning(verdict.message);
+      return;
+    }
     if (verdict != null) {
       // The limit is written out here so the check that every id reaches a
       // real message in all five catalogs can see it.
@@ -837,6 +841,7 @@ function VideoGeneratePanelBody({
     // where the linter cannot see that for itself.
     promptEditorRef,
     promptTextRef,
+    refused.latest,
   ]);
 
   // EVERY localized string below is depended on BY VALUE, not via `t`: `t` is a
@@ -1037,6 +1042,7 @@ function VideoGeneratePanelBody({
             vm.referenceUrls,
           ),
           pools: poolCounts(vm.pool, vm.referenceUrls),
+          inputRefusal: refused.text,
         })?.refusal ?? null
       }
       promptSlot={promptSlot}

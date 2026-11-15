@@ -12,7 +12,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 
 import type { ModelEntry } from '@breatic/shared';
 
-import { useCreditEstimate } from '@web/spaces/canvas/generate/use-credit-estimate';
+import { useCreditEstimate, useInputRefusal } from '@web/spaces/canvas/generate/use-credit-estimate';
 
 /** One upstream's rule, as the model list carries it. */
 const rule = (upstream: string, formula: string): Record<string, unknown> => ({
@@ -80,5 +80,41 @@ describe('useCreditEstimate', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(result.current).toBeUndefined();
+  });
+});
+
+describe('useInputRefusal (#1521)', () => {
+  const capped = {
+    ...MIDJOURNEY,
+    pricing_rules: {
+      model: 'midjourney',
+      upstreams: [{ ...rule('wavespeed', '{"total_price": base_price}'), prompt_field: 'text', rejects: [{ when: '$length(text) > 5', reason: 'WaveSpeed text maxLength 5', limit: { field: 'prompt', measure: 'characters', max: 5 } }] }],
+    },
+    availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: true, envVar: 'WAVESPEED_API_KEY' }] },
+  } as unknown as ModelEntry;
+
+  it('answers the refusal, with its limit, of a run no upstream here takes', async () => {
+    const { result } = renderHook(() => useInputRefusal(capped, { params: {}, prompt: 'abcdef' }));
+
+    await waitFor(() => expect(result.current).toEqual({ reason: 'WaveSpeed text maxLength 5', limit: { field: 'prompt', measure: 'characters', max: 5 } }));
+  });
+
+  it('answers nothing once the run fits, following what the user writes', async () => {
+    const { result, rerender } = renderHook(({ prompt }: { prompt: string }) => useInputRefusal(capped, { params: {}, prompt }), { initialProps: { prompt: 'abcdef' } });
+    await waitFor(() => expect(result.current).not.toBeUndefined());
+
+    rerender({ prompt: 'abc' });
+
+    await waitFor(() => expect(result.current).toBeUndefined());
+  });
+
+  it('answers nothing without a model or for rules that do not parse', async () => {
+    const broken = { ...capped, pricing_rules: { model: 'midjourney' } } as unknown as ModelEntry;
+    const { result } = renderHook(() => useInputRefusal(broken, { params: {}, prompt: 'abcdef' }));
+    const none = renderHook(() => useInputRefusal(undefined, { params: {}, prompt: 'abcdef' }));
+
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(result.current).toBeUndefined();
+    expect(none.result.current).toBeUndefined();
   });
 });

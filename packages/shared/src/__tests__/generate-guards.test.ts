@@ -588,3 +588,23 @@ describe('evaluateExecute — the multi-shot mode', () => {
     }
   });
 });
+
+describe('evaluateExecute — a run no upstream here takes (#1521)', () => {
+  const sentence = 'Gemini 3.8 Flash TTS takes at most 8,000 characters in the text.';
+
+  it('refuses with the sentence naming the limit, the button left live so the click can say it', () => {
+    expect(evaluateExecute({ ...ok, inputRefusal: sentence })).toEqual({ refusal: 'input-refused', message: sentence });
+    expect(isExecuteButtonDisabled('input-refused')).toBe(false);
+    expect(refusalToastKey('input-refused')).toBe('server.model.input_limit.unsupported');
+  });
+
+  it('comes after every refusal the panel can name itself', () => {
+    expect(refusalOf({ ...ok, promptText: '', inputRefusal: sentence })).toBe('prompt-missing');
+    expect(refusalOf({ ...ok, voiceRequired: true, voiceChosen: false, inputRefusal: sentence })).toBe('voice-missing');
+    expect(refusalOf({ ...ok, maxInputChars: 3, inputRefusal: sentence })).toBe('prompt-too-long');
+  });
+
+  it('lets the run through when no upstream refusal is known', () => {
+    expect(evaluateExecute({ ...ok, inputRefusal: undefined })).toBeNull();
+  });
+});

@@ -29,7 +29,7 @@ import { cropSourceSelector, intrinsicSize, isCropSource } from '@web/spaces/can
 import { canvasRootOf, useCanvasContext, useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 import { controlsForKeys } from '@web/spaces/canvas/generate/model-controls';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
-import { useCreditText } from '@web/spaces/canvas/generate/use-credit-estimate';
+import { useCreditText, useInputRefusalText } from '@web/spaces/canvas/generate/use-credit-estimate';
 import { isJoinTool, joinClipsOf } from '@web/spaces/canvas/mini-tool/join';
 import { useMiniToolRunning } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
 import { MiniToolPanel } from '@web/spaces/canvas/mini-tool/MiniToolPanel';
@@ -330,6 +330,8 @@ function OpenMiniToolPanel({
   );
   const estimateInput = React.useMemo(() => miniToolEstimateInput(spec, snapshot), [spec, snapshot]);
   const estimate = useCreditText(entry, estimateInput, catalog?.credit_multiplier ?? 1);
+  // Why no upstream here takes the run as set up (#1521), said by the press.
+  const refused = useInputRefusalText(entry, estimateInput);
   const mode = creditMode(spec);
   const creditText =
     mode === 'free'
@@ -412,6 +414,10 @@ function OpenMiniToolPanel({
       return;
     }
     if (refusal !== null) return;
+    if (refused.text !== undefined) {
+      toast.warning(refused.text);
+      return;
+    }
     // What the user made on the node is copied out now, so a later change
     // to the draft does not reach this run.
     const expandFrame = sessionStore.getState().miniTool?.expand?.frame;
@@ -436,7 +442,7 @@ function OpenMiniToolPanel({
     // Pressing Run leaves picking, as pressing generate does (inner#1304).
     if (sessionStore.getState().pickSession !== null) endPick();
     void onRun(nodeId, spec, snapshot, capture, sourceSize);
-  }, [refusal, onRun, nodeId, spec, entry, slots, snapshot, drawingSteps, source, sessionStore, endPick, t, joinCap]);
+  }, [refusal, refused.text, onRun, nodeId, spec, entry, slots, snapshot, drawingSteps, source, sessionStore, endPick, t, joinCap]);
 
   // Escape closes the panel; a running pick takes the press first.
   useEscapeInSpace(pickSession === null, closeActivePanel);

@@ -31,7 +31,7 @@ import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-que
 import type { ModelControl } from '@web/spaces/canvas/generate/model-controls';
 import { ModelParamControls } from '@web/spaces/canvas/generate/ModelParamControls';
 import { ModePill, type ModeOption } from '@web/spaces/canvas/generate/ModeToggle';
-import { useCreditEstimate } from '@web/spaces/canvas/generate/use-credit-estimate';
+import { useCreditEstimate, useInputRefusalText } from '@web/spaces/canvas/generate/use-credit-estimate';
 import { SCENE_VIEW_ACCEPT, SceneImagePickerDialog } from '@web/spaces/three-d/SceneImagePickerDialog';
 import { SCENE_MODE_LABELS, commonSceneParams, sceneEntryFor, sceneGenerateIntent } from '@web/spaces/three-d/scene-generation';
 import type { SceneGenerateFill, SceneViewImage } from '@web/stores/scene-proposals';
@@ -216,6 +216,8 @@ function SceneGenerateForm({ projectId, spaceId, fill, intent, submitting, onClo
   const estimateInput = React.useMemo(() => ({ params: settings, ...(mode === 't23d' ? { prompt } : {}) }), [settings, mode, prompt]);
   const estimate = useCreditEstimate(entry, estimateInput, catalog.data?.credit_multiplier ?? 1);
   const creditText = estimate ? creditEstimateText(estimate, t) : '';
+  // Why no upstream here takes the run as set up (#1521), said by the press.
+  const refused = useInputRefusalText(entry, estimateInput);
 
   // Uploads into the view slots; any still running is cancelled when the form goes.
   const uploads = React.useRef(new Set<AbortController>());
@@ -280,6 +282,10 @@ function SceneGenerateForm({ projectId, spaceId, fill, intent, submitting, onClo
   const ready = entry !== undefined && violations.length === 0 && (mode === 't23d' ? prompt.trim() !== '' : viewsReady);
   const submit = React.useCallback((): void => {
     if (entry === undefined || !ready) return;
+    if (refused.text !== undefined) {
+      toast.warning(refused.text);
+      return;
+    }
     const body: SceneGenerationBody = {
       mode, model: entry.name, params: settings, origin,
       ...(mode === 't23d' ? { prompt } : { image_asset_ids: views.flatMap((slot) => (slot.kind === 'image' ? [slot.assetId] : [])) }),
@@ -300,7 +306,7 @@ function SceneGenerateForm({ projectId, spaceId, fill, intent, submitting, onClo
         toast.error(ours ? err.message : await executeErrorMessage(err instanceof ApiException ? err.status : undefined, t));
       },
     });
-  }, [entry, ready, mode, settings, origin, prompt, views, intent, projectId, spaceId, onClose, onSubmitted, t]);
+  }, [entry, ready, refused.text, mode, settings, origin, prompt, views, intent, projectId, spaceId, onClose, onSubmitted, t]);
 
   const selectMode = React.useCallback((value: string): void => setMode(value === 'i23d' ? 'i23d' : 't23d'), []);
   const promptError = errors.prompt;

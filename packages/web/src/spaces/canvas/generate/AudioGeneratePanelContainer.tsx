@@ -53,7 +53,7 @@ import {
   buildAudioPanelViewModel,
   withListDefaultVoice,
 } from '@web/spaces/canvas/generate/audio-panel-view-model';
-import { useCreditText } from '@web/spaces/canvas/generate/use-credit-estimate';
+import { useCreditText, useInputRefusalText } from '@web/spaces/canvas/generate/use-credit-estimate';
 import { audioEstimateInput, buildAudioTaskPayload } from '@web/spaces/canvas/generate/audio-task-payload';
 import { AudioGeneratePanel } from '@web/spaces/canvas/generate/AudioGeneratePanel';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
@@ -485,6 +485,10 @@ function AudioGeneratePanelBody({
     [shownBox, promptEditorRef, lyricsEditorRef],
   );
 
+  const estimateInput = audioEstimateInput({ ...vm, params }, slots, extractPromptText(promptText));
+  const creditText = useCreditText(vm.modelEntry, estimateInput, catalog?.credit_multiplier ?? 1);
+  // Why no upstream here takes the run as set up (#1521): on the button, and said by the click.
+  const refused = useInputRefusalText(vm.modelEntry, estimateInput);
   const onExecute = React.useCallback((): void => {
     // Every execute-critical value is read synchronously here, never from a
     // render closure that batching and live collaboration make stale.
@@ -524,7 +528,12 @@ function AudioGeneratePanelBody({
       missing: audioMissing(fresh.modelEntry, mode, fresh.slotUrls, fresh.params),
       lyricsRequired: lyrics,
       lyricsText: freshLyrics,
+      inputRefusal: refused.latest.current,
     });
+    if (verdict?.message !== undefined) {
+      toast.warning(verdict.message);
+      return;
+    }
     if (verdict != null) {
       const key = slotRefusalKey(
         AUDIO_SLOTS,
@@ -585,6 +594,7 @@ function AudioGeneratePanelBody({
     lyricsTextRef,
     promptEditorRef,
     promptTextRef,
+    refused.latest,
   ]);
 
   // Depended on BY VALUE, not via `t`: `t` is a stable module-level function
@@ -685,11 +695,6 @@ function AudioGeneratePanelBody({
     ],
   );
 
-  const creditText = useCreditText(
-    vm.modelEntry,
-    audioEstimateInput({ ...vm, params }, slots, extractPromptText(promptText)),
-    catalog?.credit_multiplier ?? 1,
-  );
 
   return (
     <AudioGeneratePanel
@@ -730,6 +735,7 @@ function AudioGeneratePanelBody({
         missing: audioMissing(vm.modelEntry, mode, vm.slotUrls, vm.params),
         lyricsRequired: lyrics,
         lyricsText,
+        inputRefusal: refused.text,
       })?.refusal ?? null}
       promptSlot={promptSlot}
       lyricsSlot={lyricsSlot}

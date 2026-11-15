@@ -83,7 +83,7 @@ import {
   submitGeneration,
   useGenerating,
 } from '@web/spaces/canvas/generate/submit-generation';
-import { useCreditText } from '@web/spaces/canvas/generate/use-credit-estimate';
+import { useCreditText, useInputRefusalText } from '@web/spaces/canvas/generate/use-credit-estimate';
 import { PromptNotUsedNotice } from '@web/spaces/canvas/generate/PromptNotUsedNotice';
 import { useApplyTemplate, type PlaceTemplate } from '@web/spaces/canvas/generate/use-apply-template';
 
@@ -262,11 +262,10 @@ function GeneratePanelBody({
     () => getPromptFragment(projectId, spaceId, nodeId, vm.mode),
     [projectId, spaceId, nodeId, vm.mode],
   );
-  const creditText = useCreditText(
-    vm.modelEntry,
-    imageEstimateInput(vm, extractPromptText(promptText)),
-    catalog?.credit_multiplier ?? 1,
-  );
+  const estimateInput = imageEstimateInput(vm, extractPromptText(promptText));
+  const creditText = useCreditText(vm.modelEntry, estimateInput, catalog?.credit_multiplier ?? 1);
+  // Why no upstream here takes the run as set up (#1521): on the button, and said by the click.
+  const refused = useInputRefusalText(vm.modelEntry, estimateInput);
   // Stable model-list identity for the memo'd pickers: the vm rebuilds on
   // EVERY canvas graph mutation (nodes/edges deps), and its freshly-filtered
   // models array would defeat ModelPicker's React.memo each frame of any node
@@ -373,6 +372,7 @@ function GeneratePanelBody({
       maxInputChars: vm.maxInputChars,
       missing: vm.missing,
       pools: poolCounts(vm.pool, vm.referenceUrls),
+      inputRefusal: refused.text,
     })?.refusal ?? null;
 
   const onSelectModel = React.useCallback(
@@ -617,7 +617,12 @@ function GeneratePanelBody({
       maxInputChars,
       missing: fresh.missing,
       pools: poolCounts(fresh.pool, fresh.referenceUrls),
+      inputRefusal: refused.latest.current,
     });
+    if (verdict?.message !== undefined) {
+      toast.warning(verdict.message);
+      return;
+    }
     if (verdict != null) {
       // Both keys are written out here so the check that every id reaches a
       // real message in all five catalogs can see them.
@@ -666,6 +671,7 @@ function GeneratePanelBody({
     // where the linter cannot see that for itself.
     promptEditorRef,
     promptTextRef,
+    refused.latest,
   ]);
 
   // Stabilize the prompt-editor element (#1783): `GeneratePanel` is `React.memo`,

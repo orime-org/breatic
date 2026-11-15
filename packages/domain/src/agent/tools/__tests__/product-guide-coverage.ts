@@ -957,6 +957,18 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "server.canvas.voices_model_not_found": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.model.not_configured": { excluded: REASONS.UPSTREAM_UNSET },
   "server.model.upstream_not_bound": { excluded: REASONS.UPSTREAM_UNSET },
+  // #1521: the refusal of a run no upstream here takes, naming the limit; the
+  // Agent's own proposal check refuses the same run in its own words.
+  "server.model.input_limit.characters_max": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "server.model.input_limit.characters_min": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "server.model.input_limit.line_characters_max": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "server.model.input_limit.item_characters_max": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "server.model.input_limit.lines_max": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "server.model.input_limit.unsupported": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "server.model.input_field.prompt": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "server.model.input_field.negative_prompt": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "server.model.input_field.lyrics": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "server.model.input_field.multi_prompt": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.canvas.voices_not_offered": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.three_d.model_not_offered": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.three_d.prompt_required": { excluded: REASONS.SAYS_WHAT_HAPPENED },
