@@ -94,7 +94,9 @@ export function landingFor(doc: PMNode, at: number, node: PMNode): number {
  * group is exempt — `BlockContainer.ts` puts it at depth 1 and the document
  * requires it, so it stays and the insert below is what keeps it occupied. A
  * table cell is exempt too: it is a place in its table, and the refill is
- * the empty paragraph a cell a block left holds.
+ * the empty paragraph a cell a block left holds. A column (inner#1314) goes
+ * the same way as a nested group: a row alone in it takes the column along,
+ * and its group is left one column narrower.
  * @param doc - The document the row sits in.
  * @param row - The row about to leave.
  * @returns The range to remove.

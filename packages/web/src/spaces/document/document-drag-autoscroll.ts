@@ -56,6 +56,7 @@ import {
   type DragTarget,
   type PointerAt,
 } from '@web/spaces/document/document-body-autoscroll';
+import { isSynthetic } from '@web/spaces/document/document-margin-drop';
 import { clearTableDropLine, dragSourceOf, tableFrameOf } from '@web/spaces/document/document-table-drag';
 
 /**
@@ -124,14 +125,6 @@ export class DragWindow {
   }
 }
 
-/**
- * Whether an event is one BlockNote re-dispatched, by the mark it sets.
- * @param event - The event.
- * @returns Whether it is synthetic.
- */
-function isSynthetic(event: Event): boolean {
-  return (event as Event & { synthetic?: boolean }).synthetic === true;
-}
 
 /** Each view's session loop. */
 const sessions = new WeakMap<EditorView, BodyAutoScroll>();

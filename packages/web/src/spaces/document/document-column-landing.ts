@@ -9,10 +9,11 @@ import type { ComputeDropPositionContext } from '@blocknote/core/extensions';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import type { EditorView } from '@tiptap/pm/view';
 
-import { columnAround, landsInPlace, type ColumnSide } from '@web/spaces/document/document-column-drop';
+import { columnAround, landsInPlace, weightsAfterDrop, type ColumnSide } from '@web/spaces/document/document-column-drop';
 import { columnAt } from '@web/spaces/document/document-column-span-selection';
 import { holds, LISTS } from '@web/spaces/document/document-column-entry';
-import { DOC_COLUMN_LIST, MAX_COLUMNS, meanWeight, roomInside, weightsFit, weightsOf } from '@web/spaces/document/document-column-geometry';
+import { DOC_COLUMN_LIST, MAX_COLUMNS, roomInside, weightsFit } from '@web/spaces/document/document-column-geometry';
+import { isSynthetic } from '@web/spaces/document/document-margin-drop';
 import { rowById } from '@web/spaces/document/document-row-by-id';
 import { cellDepthOf, DOC_TABLE, isTableCell } from '@web/spaces/document/document-table-nodes';
 
@@ -92,13 +93,7 @@ export function sideDropAllowed(
   if (cell > 0 && holds(dragged.node, TABLES)) return false;
   if (tableWithColumns(dragged.node) || tableWithColumns(target.node)) return false;
   if (landsInPlace(doc, dragged, target, side)) return false;
-  const from = columnAround(doc.resolve(dragged.from));
-  const to = columnAround($target);
-  // A lone block moving within its group takes its column along.
-  const leaving = from !== null && to !== null && from.groupPos === to.groupPos && from.column.childCount === 1 ? from.index : -1;
-  const kept = to === null ? [] : weightsOf(to.group).filter((_weight, index) => index !== leaving);
-  // The new column takes the mean, as the drop writes it; a new group is even.
-  const weights = to === null ? [1, 1] : [...kept, meanWeight(kept)];
+  const weights = weightsAfterDrop(columnAround(doc.resolve(dragged.from)), columnAround($target));
   if (weights.length > MAX_COLUMNS) return false;
   return cell >= 0 || weightsFit(bodyWidth, weights);
 }
@@ -214,8 +209,11 @@ function rowAt(view: EditorView, x: number, y: number, beside: boolean, hops = 0
   const $at = view.state.doc.resolve(at.inside >= 0 ? at.inside : at.pos);
   // The node the pointer is inside starts at `inside` (a table level with the
   // pointer, outside its cells), then come the nodes around it; from inside
-  // the body a table around the pointer is no row of its own.
-  for (let depth = at.inside >= 0 ? $at.depth + 1 : $at.depth; depth > 0; depth -= 1) {
+  // the body a table around the pointer is no row of its own. Beside the
+  // content, a point in a cell (a table scrolled sideways reaches past its
+  // holder's edge) stands for the table holding it.
+  const cell = beside ? cellDepthOf($at) : 0;
+  for (let depth = cell > 0 ? cell - 2 : at.inside >= 0 ? $at.depth + 1 : $at.depth; depth > 0; depth -= 1) {
     const node = depth > $at.depth ? $at.nodeAfter : $at.node(depth);
     const table = node?.type.name === DOC_TABLE && (beside || depth > $at.depth);
     if (node === null || (node.type.name !== 'blockContainer' && !table)) continue;
@@ -258,7 +256,7 @@ export function columnDropHook(next: DropPositionHook, flyingRowId: () => string
     // (BlockNote `SideMenu/blockDropHandling.ts`): held to its left edge, the
     // pointer is out in the gutter; held to its top or bottom edge, it is
     // above or below the body, level with no row.
-    const fromMargin = (event as { synthetic?: boolean }).synthetic === true;
+    const fromMargin = isSynthetic(event);
     const row = rowAt(view, event.clientX, event.clientY, fromMargin);
     const group = view.dom.firstElementChild?.getBoundingClientRect();
     const held =

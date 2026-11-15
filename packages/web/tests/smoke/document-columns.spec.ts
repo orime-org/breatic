@@ -554,6 +554,27 @@ test('dragging a row into the gap beside a table that fills its column adds a co
   await expect.poll(() => page.locator(`${EDITOR} .doc-column`).count()).toBe(3);
 });
 
+test('dragging a row into the gap beside a scrolling table whose words reach the column edge adds a column', async () => {
+  await openWithLines(page, ['alpha', 'lead', 'gamma']);
+  await tableUnder(page, 'lead', '2-4');
+  const words = 'x'.repeat(90);
+  for (const cell of [words, words, words, words]) {
+    await page.keyboard.type(cell);
+    await page.keyboard.press('Tab');
+  }
+  const table = page.locator(`${EDITOR} [data-node-type="docTable"]`).first();
+  const body = (await page.locator(`${EDITOR} .bn-block-group`).first().boundingBox())!;
+  const drawn = (await table.boundingBox())!;
+  await dragRowTo(page, 'alpha', { x: body.x + body.width + 120, y: drawn.y + 20 });
+  await expect.poll(() => page.locator(`${EDITOR} .doc-column > [data-node-type="docTable"]`).count()).toBe(1);
+  const [left, right] = await page.locator(`${EDITOR} .doc-column`).evaluateAll((list) => list.map((column) => column.getBoundingClientRect().toJSON() as DOMRect));
+  const firstCell = (await page.locator(`${EDITOR} td`).first().boundingBox())!;
+  // Level with the cells' first line, whose words run past the column's edge.
+  const y = firstCell.y + 14;
+  await dragRowTo(page, 'gamma', { x: left!.right + (right!.left - left!.right) / 4, y });
+  await expect.poll(() => page.locator(`${EDITOR} .doc-column`).count()).toBe(3);
+});
+
 test('dragging a row into the page margin level with blank space under a shorter column adds a column', async () => {
   const long = 'words '.repeat(60).trim();
   await openWithLines(page, [long, 'beta', 'gamma']);

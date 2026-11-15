@@ -53,6 +53,16 @@ function resend(view: EditorView, event: DragEvent): void {
 }
 
 /**
+ * Whether an event is a re-sent one, by the mark BlockNote's re-dispatch and
+ * {@link resend} both set.
+ * @param event - The event.
+ * @returns Whether it is.
+ */
+export function isSynthetic(event: Event): boolean {
+  return (event as Event & { synthetic?: boolean }).synthetic === true;
+}
+
+/**
  * The extension that lands block drags anywhere in the body's scroll area.
  * @returns The extension, for the assembly to register.
  */
@@ -68,7 +78,7 @@ export const documentMarginDropExtension = createExtension(() => ({
          * @param event - The drag event.
          */
         const onDrag = (event: DragEvent): void => {
-          if (view.dragging === null || (event as { synthetic?: boolean }).synthetic === true) return;
+          if (view.dragging === null || isSynthetic(event)) return;
           const target = event.target instanceof Node ? event.target : null;
           if (target === null || view.dom.contains(target)) return;
           const scroller = view.dom.closest(SCROLLER);
