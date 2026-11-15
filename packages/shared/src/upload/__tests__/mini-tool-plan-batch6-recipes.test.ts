@@ -9,7 +9,7 @@
  *
  * - The transition output profile: `{ width, height, fps, timeBase, pixFmt, color, codec, encode: { crf, preset }, alpha }`;
  *   timeBase is 1/fps, alpha goes with vp9 and yuva420p, no alpha with h264 and yuv420p, and h264 has even sides.
- * - `transition_window`: `{ kind, clips: [two { inputId, entries, colorMatrix, toneMap }], frames, window: { startFrame,
+ * - `transition_window`: `{ kind, clips: [two { inputId, entries, colorMatrix, toneMap, fit }], frames, window: { startFrame,
  *   frameCount }, transition, profile }`; `frames` is the chunk's [k0, k1) on the output grid and lies inside the window.
  *   Each clip carries its own source conversion (frames-split §4.3 colour/HDR row): the decode matrix its plan resolved and
  *   `toneMap: "sdr-bt709"` for an HDR source, the same two fields and values the `segment`/`chunk_encode` target and the
@@ -46,7 +46,9 @@ const AUDIO = { start: r(0), end: r(3), origin: r(0), spans: null };
 
 const SDR = { colorMatrix: "bt709", toneMap: "none" };
 const HDR = { colorMatrix: "bt2020nc", toneMap: "sdr-bt709" };
-const windowClips = (): Recipe[] => [{ inputId: SOURCE_A, entries: [entryAt(75, 15)], ...HDR }, { inputId: SOURCE_B, entries: [entryAt(0, 15)], ...SDR }];
+// Each clip sits in its fitted rectangle on the 320x180 output (`transitionFitRect`).
+const FIT = { x: 0, y: 0, width: 320, height: 180 };
+const windowClips = (): Recipe[] => [{ inputId: SOURCE_A, entries: [entryAt(75, 15)], ...HDR, fit: FIT }, { inputId: SOURCE_B, entries: [entryAt(0, 15)], ...SDR, fit: FIT }];
 const windowChunk = (): Recipe => ({
   kind: "transition_window", clips: windowClips(),
   frames: { start: 75, end: 90 }, window: { startFrame: 75, frameCount: 15 }, transition: "fade", profile: OPAQUE,
@@ -165,6 +167,7 @@ describe("transition_window (§97 D15-6; frames-split §7.17)", () => {
   it.each([
     ["a clip without its matrix", { "clips.0.colorMatrix": undefined }],
     ["a clip without its tone mapping", { "clips.0.toneMap": undefined }],
+    ["a clip without its fitted rectangle", { "clips.0.fit": undefined }],
     ["an empty matrix", { "clips.1.colorMatrix": "" }],
     ["an unknown tone mapping", { "clips.0.toneMap": "hdr10" }],
     ["one conversion for the whole window instead of per clip", { "clips.0.colorMatrix": undefined, "clips.0.toneMap": undefined, "clips.1.colorMatrix": undefined, "clips.1.toneMap": undefined, colorMatrix: "bt709", toneMap: "none" }],
