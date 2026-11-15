@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * inner#1423 design 6.6 "Agent 写入工具": an insert card anchored after an
+ * inner#1423 design 6.6 "Agent write tools": an insert card anchored after an
  * empty formula block names the block by its kind, as it does an image.
  */
 
