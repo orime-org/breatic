@@ -10,9 +10,8 @@
  * server, or worse, silently truncated by the worker.
  */
 
-import fc from "fast-check";
 import { describe, it, expect } from "vitest";
-import { isPresent, itemCap, stepRequested } from "@shared/item-cap.js";
+import { isPresent, itemCap } from "@shared/item-cap.js";
 
 describe("the cap on a capped list param", () => {
   it("reads max_items", () => {
@@ -42,29 +41,5 @@ describe("isPresent", () => {
 
   it("is true for any other value, falsy ones included", () => {
     expect([0, false, "a", ["a"], {}].map(isPresent)).toEqual([true, true, true, true, true]);
-  });
-});
-
-// Whether a run takes an extra step its `for_param` switches (inner#1692): a
-// toggle switched off holds false, which is present but asks for nothing.
-describe("stepRequested", () => {
-  it("is false for nothing, an empty string, an empty list and false", () => {
-    expect([undefined, null, "", [], false].map(stepRequested)).toEqual([false, false, false, false, false]);
-  });
-
-  it("is true for true and for any other present value, falsy ones included", () => {
-    expect([true, 0, "a", ["a"], {}].map(stepRequested)).toEqual([true, true, true, true, true]);
-  });
-
-  it("agrees with isPresent on every value except false", () => {
-    fc.assert(
-      fc.property(fc.anything(), (value) => {
-        expect(stepRequested(value)).toBe(value === false ? false : isPresent(value));
-      }),
-    );
-  });
-
-  it("leaves isPresent reading false as present", () => {
-    expect(isPresent(false)).toBe(true);
   });
 });

@@ -79,7 +79,7 @@ Check: can this state change? Then it cannot come from an immutable field.
 
 ### Redis databases and keys
 
-**Redis is split by database: DB0 sessions, locks and rate limits (`getRedis`); DB1 BullMQ (`getQueueRedis`); DB2 cross-service streams (`getStreamRedis`); DB3 collab instance coordination (`getCollabRedis`).** Keys start with `{env}:` and then their kind (`{env}:session:{token}`, `{env}:stream:task-events`), every key has a TTL, and streams are trimmed to `STREAM_MAXLEN` in `infra/event-stream.ts`.
+**Redis is split by database: DB0 sessions, locks and rate limits (`getRedis`); DB1 BullMQ (`getQueueRedis`); DB2 cross-service streams (`getStreamRedis`); DB3 collab instance coordination (`getCollabRedis`).** Keys start with `{env}:` and then their kind (`{env}:session:{token}`, `{env}:stream:task-events`), every key has a TTL except the Agent chat queue's `queue`, `taken` and `awaiting` (`packages/server/src/modules/chat-queue/chat-queue.service.ts`), which hold what the user sent and the card waiting for their answer until they are answered, withdrawn, refused or the conversation is deleted, and streams are trimmed to `STREAM_MAXLEN` in `infra/event-stream.ts`.
 
 **Pub/sub channels and the session cookie are separated between deployments on one host only by `REDIS_KEY_PREFIX`.** `SUBSCRIBE` ignores the DB number and a browser shares cookies across ports of one host; the cookie name is built only by `sessionCookieName()` in `infra/session-store.ts`.
 
@@ -107,7 +107,7 @@ Check: is this really separated by DB number or port? Channels and cookie names 
 
 ### Config is injected and read lazily
 
-**The db, Redis, LLM provider and logger singletons build themselves on first use, so the `@breatic/core` barrel can be imported before `initCore` runs.** Every known key, including the health ports (`SERVER_HEALTH_PORT`, `WORKER_HEALTH_PORT`, `COLLAB_HEALTH_PORT`) and `INTERNAL_API_*`, is in the zod schema in `config/schema.ts` and read through `env` or `getConfig()`; keys outside the schema (`PATH`, `HOME`, a provider's `api_key_env`) are read with `getRawEnvVar()`.
+**The db, Redis and logger singletons build themselves on first use, so the `@breatic/core` barrel can be imported before `initCore` runs.** Every known key, including the health ports (`SERVER_HEALTH_PORT`, `WORKER_HEALTH_PORT`, `COLLAB_HEALTH_PORT`) and `INTERNAL_API_*`, is in the zod schema in `config/schema.ts` and read through `env` or `getConfig()`; keys outside the schema (`PATH`, `HOME`, an upstream's `key_env` in `config/provider/upstreams.yaml`) are read with `getRawEnvVar()`.
 
 ### Logger methods need their instance
 

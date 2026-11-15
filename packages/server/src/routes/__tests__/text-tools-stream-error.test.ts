@@ -28,6 +28,9 @@ vi.mock("@server/modules", () => ({
   precheckCredits: async () => undefined,
 }));
 
+// Whether this deployment can serve the tool's model is not this file's subject either.
+vi.mock("@server/modules/task/model-servable.js", () => ({ assertLlmServable: () => undefined }));
+
 import { textToolsRoute } from "@server/routes/text-tools.js";
 
 const PID = "11111111-1111-4111-8111-111111111111";

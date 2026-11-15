@@ -11,6 +11,7 @@
     "types": ["@cloudflare/workers-types", "@cloudflare/vitest-pool-workers"],
     "paths": {
       "@shared/*": ["../shared/src/*"],
+      "@provider/*": ["../provider/src/*"],
       "@ingest/*": ["./src/*"]
     }
   },

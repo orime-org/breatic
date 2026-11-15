@@ -22,7 +22,7 @@
 
 import { vi, describe, it, expect, beforeEach } from "vitest";
 
-const mockMarkFailed = vi.hoisted(() => vi.fn());
+const mockMarkFailed = vi.hoisted(() => vi.fn(async () => true));
 const mockRecordFailure = vi.hoisted(() => vi.fn());
 const mockSettleTaskForNode = vi.hoisted(() => vi.fn());
 const mockInsertActivity = vi.hoisted(() => vi.fn());
@@ -51,13 +51,11 @@ vi.mock("@breatic/core", () => ({
 vi.mock("@breatic/domain", () => ({
   creditHoldService: { releaseHold: mockReleaseHold },
   buildAgentConfig: vi.fn(),
-  getModel: vi.fn(),
   generateTextRetry: vi.fn(),
   taskService: { markFailed: mockMarkFailed },
   upstreamStepRepo: { failOpenSteps: mockFailOpenSteps },
   assetService: {},
   creditLotService: {},
-  resolveActiveProvider: vi.fn(),
   nodeHistoryService: { recordGenerationFailure: mockRecordFailure },
   settleTaskForNode: mockSettleTaskForNode,
   understandMediaAt: vi.fn(),
@@ -88,6 +86,25 @@ const END = {
   errorMessage: "it broke",
   settles: true,
 };
+
+describe("a stale run that fails a task waiting on its cost (inner#1743)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // The task's result is delivered and its own job bills it: the failure writes nothing.
+  it("leaves the steps, the hold, the history, the node and the feed alone", async () => {
+    mockMarkFailed.mockResolvedValueOnce(false);
+
+    await finishFailedRun(END);
+
+    expect(mockFailOpenSteps).not.toHaveBeenCalled();
+    expect(mockReleaseHold).not.toHaveBeenCalled();
+    expect(mockRecordFailure).not.toHaveBeenCalled();
+    expect(mockSettleTaskForNode).not.toHaveBeenCalled();
+    expect(mockInsertActivity).not.toHaveBeenCalled();
+  });
+});
 
 describe("a failed run that is the last word", () => {
   beforeEach(() => {

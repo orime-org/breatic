@@ -5,8 +5,10 @@
  * Timeline layer transform in the preview (#1410): the selection handles move, scale, stretch and rotate a layer and
  * snap it to the frame centre, each release is one undo step; the properties fields move it by number; a Viewer sees a
  * collaborator's placement but gets no selection box; a web-animation copy drags the same way; and two video tracks,
- * the upper one scaled down, play together. Every value is read back from the Space's live Yjs document.
+ * the upper one scaled down, play together. Every value is read back from the Space's live Yjs document, where the
+ * centre offset is stored as fractions of the frame width and height (#1502 design §4).
  */
+import { roundTimelineFrameOffset } from '@breatic/shared';
 import { expect, type Locator, type Page } from 'playwright/test';
 import type { Doc } from 'yjs';
 
@@ -19,8 +21,8 @@ import {
   watchTimelineErrors, withTimelinePeer,
 } from '../helpers/timeline-media';
 
-/** A layer's stored `transform` (#1410 design §2). */
-interface LayerTransform { x: number; y: number; scaleX: number; scaleY: number; rotation: number }
+/** A layer's stored `transform` (#1410 design §2); `frameX` and `frameY` are fractions of the frame (#1502 design §4). */
+interface LayerTransform { frameX: number; frameY: number; scaleX: number; scaleY: number; rotation: number }
 
 /** One layer as stored, with the canvas it is placed on. */
 interface StoredLayer { transform: LayerTransform; canvas: { width: number; height: number } }
@@ -29,7 +31,7 @@ interface StoredLayer { transform: LayerTransform; canvas: { width: number; heig
 interface Box { x: number; y: number; width: number; height: number }
 
 /** The untouched transform a new placement carries. */
-const IDENTITY: LayerTransform = { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 };
+const IDENTITY: LayerTransform = { frameX: 0, frameY: 0, scaleX: 1, scaleY: 1, rotation: 0 };
 
 /**
  * Display pixels a measured box may differ from the computed one: the layer sits inside the frame's 1 px border while
@@ -90,6 +92,15 @@ function centreOf(box: Box): { x: number; y: number } {
  */
 async function displayFactor(page: Page, canvasWidth: number): Promise<number> {
   return (await boxOf(visibleSpace(page).getByTestId('timeline-preview'))).width / canvasWidth;
+}
+
+/**
+ * A display-pixel distance as the fraction of one frame side it stores: over the display factor, then over that side
+ * in canvas pixels.
+ * @throws {never} Never.
+ */
+function frameShare(display: number, factor: number, side: number): number {
+  return display / factor / side;
 }
 
 /**
@@ -190,6 +201,7 @@ test('an Editor scales, stretches, moves and rotates a video layer with the prev
     expect(start.transform).toEqual(IDENTITY);
     const factor = await displayFactor(page, start.canvas.width);
     expect(factor).toBeGreaterThan(0);
+    const { width, height } = start.canvas;
     // Measured deltas below are exact only without snapping; the snap step turns it on itself.
     snapWas = await setSnap(page, false);
     await pickAtCentre(page, uploaded.clipId);
@@ -206,8 +218,8 @@ test('an Editor scales, stretches, moves and rotates a video layer with the prev
       expect(stored.scaleY, 'a corner keeps the ratio').toBeCloseTo(stored.scaleX, 3);
       expect(stored.rotation).toBe(0);
       // The opposite corner stays put, so the centre moves an eighth of the box up and left.
-      expectNear(stored.x, -before.width / 8 / factor, PX / factor, 'x');
-      expectNear(stored.y, -before.height / 8 / factor, PX / factor, 'y');
+      expectNear(stored.frameX, frameShare(-before.width / 8, factor, width), frameShare(PX, factor, width), 'frameX');
+      expectNear(stored.frameY, frameShare(-before.height / 8, factor, height), frameShare(PX, factor, height), 'frameY');
       const after = await boxOf(handles.proxy);
       expectNear(after.x, before.x, PX, 'left edge');
       expectNear(after.y, before.y, PX, 'top edge');
@@ -225,8 +237,8 @@ test('an Editor scales, stretches, moves and rotates a video layer with the prev
       expectNear(stored.scaleX, previous.scaleX * 1.2, 0.01, 'scaleX');
       expect(stored.scaleY, 'an edge leaves the other axis').toBe(previous.scaleY);
       expect(stored.rotation).toBe(0);
-      expectNear(stored.x, previous.x + before.width / 10 / factor, PX / factor, 'x');
-      expect(stored.y).toBe(previous.y);
+      expectNear(stored.frameX, previous.frameX + frameShare(before.width / 10, factor, width), frameShare(PX, factor, width), 'frameX');
+      expect(stored.frameY).toBe(previous.frameY);
       const after = await boxOf(handles.proxy);
       expectNear(after.x, before.x, PX, 'left edge');
       expectNear(after.y, before.y, PX, 'top edge');
@@ -245,8 +257,8 @@ test('an Editor scales, stretches, moves and rotates a video layer with the prev
       const dy = Math.round(frame.y - centreOf(before).y) + 20;
       await dragFrom(page, centreOf(before), dx, dy);
       stored = await changedFrom(page, spaceId, uploaded.clipId, stored);
-      expectNear(stored.x, previous.x + dx / factor, PX / factor, 'x');
-      expectNear(stored.y, previous.y + dy / factor, PX / factor, 'y');
+      expectNear(stored.frameX, previous.frameX + frameShare(dx, factor, width), frameShare(PX, factor, width), 'frameX');
+      expectNear(stored.frameY, previous.frameY + frameShare(dy, factor, height), frameShare(PX, factor, height), 'frameY');
       expect({ scaleX: stored.scaleX, scaleY: stored.scaleY, rotation: stored.rotation }).toEqual({ scaleX: previous.scaleX, scaleY: previous.scaleY, rotation: 0 });
       const after = await boxOf(handles.proxy);
       expectNear(after.x - before.x, dx, PX, 'box moved right');
@@ -294,9 +306,9 @@ test('an Editor scales, stretches, moves and rotates a video layer with the prev
         await expect(handles.guides).toHaveCount(0);
       });
       const loose = await changedFrom(page, spaceId, uploaded.clipId, moved);
-      expectNear(loose.x, moved.x + dx / factor, PX / factor, 'unsnapped x');
-      expectNear(loose.y, moved.y + dy / factor, PX / factor, 'unsnapped y');
-      expect(Math.abs(loose.x), 'unsnapped, the drop stays off centre').toBeGreaterThan(1 / factor);
+      expectNear(loose.frameX, moved.frameX + frameShare(dx, factor, width), frameShare(PX, factor, width), 'unsnapped frameX');
+      expectNear(loose.frameY, moved.frameY + frameShare(dy, factor, height), frameShare(PX, factor, height), 'unsnapped frameY');
+      expect(Math.abs(loose.frameX), 'unsnapped, the drop stays off centre').toBeGreaterThan(frameShare(1, factor, width));
       await outlet.getByTestId('timeline-undo').click();
       await expect.poll(async () => (await storedLayer(page, spaceId, uploaded.clipId)).transform).toEqual(moved);
 
@@ -305,9 +317,10 @@ test('an Editor scales, stretches, moves and rotates a video layer with the prev
         await expect(handles.guides.first()).toBeVisible();
       });
       const snapped = await changedFrom(page, spaceId, uploaded.clipId, moved);
-      // The base box is centred in the canvas, so a centred layer has no offset.
-      expectNear(snapped.x, 0, 0.5, 'snapped x');
-      expectNear(snapped.y, 0, 0.5, 'snapped y');
+      // The base box is centred in the canvas, so a centred layer has no offset. The snap lines up display pixels and
+      // the fitted frame is a fractional number of them wide, so the drop lands within half a display pixel.
+      expectNear(snapped.frameX, 0, frameShare(0.5, factor, width), 'snapped frameX');
+      expectNear(snapped.frameY, 0, frameShare(0.5, factor, height), 'snapped frameY');
       expect({ scaleX: snapped.scaleX, scaleY: snapped.scaleY, rotation: snapped.rotation }).toEqual({ scaleX: moved.scaleX, scaleY: moved.scaleY, rotation: 0 });
       await expectLayerUnderProxy(page, video);
     });
@@ -345,10 +358,14 @@ test('numbers typed into the properties fields move, scale and rotate the layer 
     };
     const read = async (): Promise<LayerTransform> => (await storedLayer(page, spaceId, uploaded.clipId)).transform;
 
+    // X and Y take canvas pixels and store them as fractions of the frame.
+    const at = { frameX: roundTimelineFrameOffset(100 / canvas.width), frameY: roundTimelineFrameOffset(-50 / canvas.height) };
     await type('timeline-clip-x', '100');
-    await expect.poll(read).toEqual({ ...IDENTITY, x: 100 });
+    await expect.poll(read).toEqual({ ...IDENTITY, frameX: at.frameX });
+    await expect(outlet.getByTestId('timeline-clip-x')).toHaveValue('100');
     await type('timeline-clip-y', '-50');
-    await expect.poll(read).toEqual({ ...IDENTITY, x: 100, y: -50 });
+    await expect.poll(read).toEqual({ ...IDENTITY, ...at });
+    await expect(outlet.getByTestId('timeline-clip-y')).toHaveValue('-50');
     await expect.poll(async () => centreOf(await boxOf(video)).x - frame.x).toBeGreaterThan(100 * factor - PX);
     expectNear(centreOf(await boxOf(video)).x - frame.x, 100 * factor, PX, 'moved right');
     expectNear(centreOf(await boxOf(video)).y - frame.y, -50 * factor, PX, 'moved up');
@@ -356,7 +373,7 @@ test('numbers typed into the properties fields move, scale and rotate the layer 
     // The ratio lock is on by default: one scale field carries the other.
     await expect(outlet.getByTestId('timeline-clip-lock-ratio')).toHaveAttribute('aria-checked', 'true');
     await type('timeline-clip-scale-x', '50');
-    await expect.poll(read).toEqual({ ...IDENTITY, x: 100, y: -50, scaleX: 0.5, scaleY: 0.5 });
+    await expect.poll(read).toEqual({ ...IDENTITY, ...at, scaleX: 0.5, scaleY: 0.5 });
     await expect(outlet.getByTestId('timeline-clip-scale-y')).toHaveValue('50');
     await expect.poll(async () => (await boxOf(video)).width).toBeLessThan(original.width * 0.5 + PX);
     expectNear((await boxOf(video)).width, original.width * 0.5, PX, 'half width');
@@ -365,9 +382,9 @@ test('numbers typed into the properties fields move, scale and rotate the layer 
     await outlet.getByTestId('timeline-clip-lock-ratio').click();
     await expect(outlet.getByTestId('timeline-clip-lock-ratio')).toHaveAttribute('aria-checked', 'false');
     await type('timeline-clip-scale-y', '80');
-    await expect.poll(read).toEqual({ ...IDENTITY, x: 100, y: -50, scaleX: 0.5, scaleY: 0.8 });
+    await expect.poll(read).toEqual({ ...IDENTITY, ...at, scaleX: 0.5, scaleY: 0.8 });
     await type('timeline-clip-rotation', '90');
-    await expect.poll(read).toEqual({ x: 100, y: -50, scaleX: 0.5, scaleY: 0.8, rotation: 90 });
+    await expect.poll(read).toEqual({ ...at, scaleX: 0.5, scaleY: 0.8, rotation: 90 });
     // A quarter turn swaps the page width and height of the half-wide, 80 %-high layer, about the same centre.
     await expect.poll(async () => Math.abs((await boxOf(video)).width - original.height * 0.8)).toBeLessThanOrEqual(PX);
     expectNear((await boxOf(video)).height, original.width * 0.5, PX, 'turned height');
@@ -402,8 +419,8 @@ test('a Viewer sees the layer an Editor dragged at its new place, and clicking t
       const moved = await changedFrom(page, spaceId, uploaded.clipId, IDENTITY);
       const { canvas } = await storedLayer(page, spaceId, uploaded.clipId);
       const factor = await displayFactor(page, canvas.width);
-      expectNear(moved.x, 60 / factor, PX / factor, 'Editor x');
-      expectNear(moved.y, 40 / factor, PX / factor, 'Editor y');
+      expectNear(moved.frameX, frameShare(60, factor, canvas.width), frameShare(PX, factor, canvas.width), 'Editor frameX');
+      expectNear(moved.frameY, frameShare(40, factor, canvas.height), frameShare(PX, factor, canvas.height), 'Editor frameY');
 
       // The Viewer's document and picture follow.
       await expect.poll(async () => (await storedLayer(peer, spaceId, uploaded.clipId)).transform).toEqual(moved);
@@ -412,8 +429,8 @@ test('a Viewer sees the layer an Editor dragged at its new place, and clicking t
       const peerVideo = timelineVideoOf(peer, uploaded.clipId);
       await expect(peerVideo).toBeVisible();
       const frame = centreOf(await boxOf(view.getByTestId('timeline-preview')));
-      await expect.poll(async () => Math.abs(centreOf(await boxOf(peerVideo)).x - frame.x - moved.x * peerFactor)).toBeLessThanOrEqual(PX);
-      expectNear(centreOf(await boxOf(peerVideo)).y - frame.y, moved.y * peerFactor, PX, 'Viewer centre y');
+      await expect.poll(async () => Math.abs(centreOf(await boxOf(peerVideo)).x - frame.x - moved.frameX * canvas.width * peerFactor)).toBeLessThanOrEqual(PX);
+      expectNear(centreOf(await boxOf(peerVideo)).y - frame.y, moved.frameY * canvas.height * peerFactor, PX, 'Viewer centre y');
 
       // A Viewer's preview has no operation layer: a click selects nothing and draws no box.
       await expect(view.getByTestId('timeline-layer-overlay')).toHaveCount(0);
@@ -423,7 +440,7 @@ test('a Viewer sees the layer an Editor dragged at its new place, and clicking t
       await expect(view.locator('.moveable-control')).toHaveCount(0);
       // Selected from the track, the fields read as text and still no handles appear.
       await selectTimelineClip(peer, uploaded.clipId);
-      await expect(view.getByTestId('timeline-clip-x')).toHaveText(String(Math.round(moved.x)));
+      await expect(view.getByTestId('timeline-clip-x')).toHaveText(String(Math.round(moved.frameX * canvas.width)));
       await expect(view.locator('input[data-testid="timeline-clip-x"]')).toHaveCount(0);
       await expect(view.getByTestId('timeline-clip-lock-ratio')).toHaveCount(0);
       await expect(view.getByTestId('timeline-layer-proxy')).toHaveCount(0);
@@ -525,8 +542,8 @@ test('a web-animation copy is selected and dragged in the preview like a video l
     const before = await boxOf(player);
     await dragFrom(page, centreOf(await boxOf(handlesOf(page).proxy)), 50, 30);
     const moved = await changedFrom(page, spaceId, clipId, IDENTITY);
-    expectNear(moved.x, 50 / factor, PX / factor, 'x');
-    expectNear(moved.y, 30 / factor, PX / factor, 'y');
+    expectNear(moved.frameX, frameShare(50, factor, canvas.width), frameShare(PX, factor, canvas.width), 'frameX');
+    expectNear(moved.frameY, frameShare(30, factor, canvas.height), frameShare(PX, factor, canvas.height), 'frameY');
     expect({ scaleX: moved.scaleX, scaleY: moved.scaleY, rotation: moved.rotation }).toEqual({ scaleX: 1, scaleY: 1, rotation: 0 });
     await expectLayerUnderProxy(page, player);
     const after = await boxOf(player);

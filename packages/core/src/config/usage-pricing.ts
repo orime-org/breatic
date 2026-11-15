@@ -4,9 +4,8 @@
 /**
  * Usage pricing loader (#296).
  *
- * Reads `config/usage-pricing.yaml`: what the agent's paid calls cost when the
- * service answering them reports no cost of its own — a model reached
- * directly, or a search service billed per request.
+ * Reads `config/usage-pricing.yaml`: what the agent's paid service calls cost
+ * when the service answering them reports no cost of its own, per request.
  */
 
 import { readFileSync } from "node:fs";
@@ -17,19 +16,9 @@ import { MONOREPO_ROOT } from "@core/config/env.js";
 
 const price = z.number().nonnegative();
 
-// A model with no write prices has its cache writes priced as misses.
-const modelPriceSchema = z.object({
-  input_cache_hit_per_mtok: price,
-  input_cache_miss_per_mtok: price,
-  input_cache_write_5m_per_mtok: price.optional(),
-  input_cache_write_1h_per_mtok: price.optional(),
-  output_per_mtok: price,
-});
-
 const servicePriceSchema = z.object({ per_request: price });
 
 const usagePricingSchema = z.object({
-  models: z.record(z.string(), modelPriceSchema),
   services: z.object({
     brave_web_search: servicePriceSchema,
     brave_image_search: servicePriceSchema,
@@ -38,9 +27,6 @@ const usagePricingSchema = z.object({
 
 /** Validated usage prices, in US dollars. */
 export type UsagePricing = z.infer<typeof usagePricingSchema>;
-
-/** One model's prices, per million tokens. */
-export type ModelPrice = z.infer<typeof modelPriceSchema>;
 
 let _cached: Readonly<UsagePricing> | null = null;
 

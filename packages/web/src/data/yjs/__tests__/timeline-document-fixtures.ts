@@ -101,7 +101,7 @@ export function clip(
     rate: { num: 1, den: 1 },
     gain: 1,
     mute: false,
-    transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+    transform: { frameX: 0, frameY: 0, scaleX: 1, scaleY: 1, rotation: 0 },
     ...fields,
   };
 }
@@ -143,7 +143,7 @@ export function timeline(
   sources: readonly TimelineVideoSource[] = [SOURCE],
 ): TimelineDocumentV1 {
   return TimelineDocumentV1Schema.parse({
-    schemaVersion: 1,
+    schemaVersion: 2,
     settings: SETTINGS,
     tracks: Object.fromEntries(tracks.map((item) => [item.id, item])),
     clips: Object.fromEntries(clips.map((item) => [item.id, item])),

@@ -143,19 +143,34 @@ async function askHelper(api: APIRequestContext, prompt: string, asObject = fals
 }
 
 /**
- * Send one message to the chat route and read the stream to its end.
+ * Send one message, or a card's answer, to the chat route and read the run it
+ * starts to its end (inner#1717): the route answers JSON once the run has
+ * opened, and the run's frames come from the conversation's stream, which
+ * closes after the reply is stored.
  * @param api - The signed-in request context.
  * @param scenario - The scenario, for its language.
- * @param body - The request body.
- * @throws {Error} When the route refuses the message.
+ * @param body - The request body; a new message is given its id here.
+ * @returns The run's stream as text, empty when no run was left to read.
+ * @throws {Error} When the route refuses the message or does not start a run.
  */
-async function send(api: APIRequestContext, scenario: Scenario, body: Record<string, unknown>): Promise<void> {
+async function send(api: APIRequestContext, scenario: Scenario, body: Record<string, unknown>): Promise<string> {
+  const isCard = 'answer' in body || 'shared_spaces' in body;
   const res = await api.post('/api/v1/chat/message', {
-    headers: { accept: 'text/event-stream', 'Accept-Language': scenario.lang },
-    data: body,
-    timeout: 600_000,
+    headers: { 'Accept-Language': scenario.lang },
+    data: isCard ? body : { id: randomUUID(), ...body },
+    timeout: 120_000, // answered once the run's opening stage is done
   });
   if (!res.ok()) throw new Error(`chat message: ${String(res.status())} ${await res.text()}`);
+  // One send at a time, each after the last run ended: anything but a start would read another run.
+  const { status } = ((await res.json()) as { data: { status: string } }).data;
+  if (status !== 'start') throw new Error(`chat message: ${status}, not start`);
+  const run = await api.get(`/api/v1/chat/conversations/${String(body.conversation_id)}/stream`, {
+    headers: { accept: 'text/event-stream' },
+    timeout: 600_000,
+  });
+  if (run.status() === 204) return '';
+  if (!run.ok()) throw new Error(`chat stream: ${String(run.status())} ${await run.text()}`);
+  return run.text();
 }
 
 /**
@@ -213,13 +228,8 @@ async function runOnce(api: APIRequestContext, helper: APIRequestContext, studio
         await api.post('/api/v1/chat/conversations', { headers: { 'Idempotency-Key': randomUUID() }, data: { project_id: project.id } }),
         'create the memory conversation',
       );
-      const res = await api.post('/api/v1/chat/message', {
-        headers: { accept: 'text/event-stream', 'Accept-Language': scenario.lang },
-        data: { project_id: project.id, conversation_id: earlier.id, time_zone: TIME_ZONES[scenario.lang] ?? 'UTC', ...extra, ...(model === undefined ? {} : { model }), message: scenario.memory, attached_chips: [] },
-        timeout: 600_000,
-      });
-      if (!res.ok()) throw new Error(`memory message: ${String(res.status())} ${await res.text()}`);
-      if (!/"toolName":"save_memory"/.test(await res.text())) throw new Error(`the memory turn of ${scenario.id} saved no entry`);
+      const said = await send(api, scenario, { project_id: project.id, conversation_id: earlier.id, time_zone: TIME_ZONES[scenario.lang] ?? 'UTC', ...extra, ...(model === undefined ? {} : { model }), message: scenario.memory, attached_chips: [] });
+      if (!/"toolName":"save_memory"/.test(said)) throw new Error(`the memory turn of ${scenario.id} saved no entry`);
     }
     // After the memory turn, so its entry is saved before the instructions
     // exist: the judged run then checks that the instructions win over it.

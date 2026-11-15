@@ -11,11 +11,11 @@ import {
   type MediaBinding,
   type ProviderConfigInput,
 } from "@provider/config/schema.js";
-import { z } from "zod";
-import { numberLeaf, type Cost, type CostLookup, type TokenBuckets } from "@provider/cost.js";
-import { fetchJson, sideBounds, SIDE_REQUEST_MS } from "@provider/http/request.js";
+import type { Cost, CostLookup } from "@provider/cost.js";
+import { sideBounds } from "@provider/http/request.js";
 import type { LlmApi } from "@provider/llm/api.js";
 import { createLlm } from "@provider/llm/llm.js";
+import { hasLlmAdapter, vendorOf } from "@provider/llm/vendors.js";
 import { mediaAdapter } from "@provider/media/adapters.js";
 import {
   estimateCost,
@@ -60,6 +60,11 @@ export interface Provider {
   readonly cost: {
     /** Ask the upstream again for a cost that was pending; the last attempt answers known or missing. */
     lookup(lookup: CostLookup, options: { lastAttempt: boolean }): Promise<Cost>;
+    /**
+     * The lookup of a generation queued before lookups named their upstream: the first upstream that keeps
+     * generations to look a cost up by, or undefined when none does.
+     */
+    fromGeneration(generationId: string): CostLookup | undefined;
   };
 }
 
@@ -97,7 +102,13 @@ export function createProvider(options: ProviderOptions): Provider {
     pricingRules,
     estimate: (model, input, route) => estimateCost(pricingRules(model), availability(model), input, route),
     llm: createLlm(config, options),
-    cost: { lookup: (lookup, { lastAttempt }) => lookupCost(config, options, lookup, lastAttempt) },
+    cost: {
+      lookup: (lookup, { lastAttempt }) => lookupCost(config, options, lookup, lastAttempt),
+      fromGeneration(generationId) {
+        const upstream = Object.keys(config.upstreams).find((u) => hasLlmAdapter(config.upstreams[u]!.kind) && vendorOf(config.upstreams[u]!.kind).costs !== undefined);
+        return upstream === undefined ? undefined : { upstream, generationId };
+      },
+    },
   };
 }
 
@@ -146,22 +157,8 @@ function limitsOf(binding: MediaBinding): Pick<UpstreamPricing, "limits" | "voic
   };
 }
 
-/** OpenRouter's generation answer, as far as it is read. */
-const generationSchema = z.looseObject({
-  data: z.looseObject({
-    total_cost: numberLeaf,
-    native_tokens_prompt: numberLeaf,
-    native_tokens_cached: numberLeaf,
-    native_tokens_completion: numberLeaf,
-    native_tokens_reasoning: numberLeaf,
-  }),
-});
-
-/** The largest generation answer read. */
-const MAX_LOOKUP_BYTES = 1024 * 1024;
-
 /**
- * Ask the upstream again for a cost that was pending: OpenRouter
+ * Ask the upstream again for a cost that was pending: an LLM upstream that reports its costs
  * by generation id, a media upstream through its adapter. Until the last attempt an
  * unanswered lookup stays pending; on it, it is missing.
  * @param config - The validated configuration.
@@ -171,12 +168,6 @@ const MAX_LOOKUP_BYTES = 1024 * 1024;
  * @returns The cost.
  */
 async function lookupCost(config: ProviderConfig, options: ProviderOptions, lookup: CostLookup, lastAttempt: boolean): Promise<Cost> {
-  /**
-   * The answer when the upstream did not say: pending, or missing on the last attempt.
-   * @param reason - Why.
-   * @returns The cost.
-   */
-  const unanswered = (reason: string): Cost => (lastAttempt ? { state: "missing", reason } : { state: "pending", lookup });
   const decl = config.upstreams[lookup.upstream];
   if (decl === undefined) return { state: "missing", reason: `unknown upstream ${lookup.upstream}` };
   const key = options.keyOf(decl.key_env) ?? "";
@@ -184,29 +175,7 @@ async function lookupCost(config: ProviderConfig, options: ProviderOptions, look
   if (media !== undefined && typeof lookup.predictionId === "string") {
     return (await media.billed({ name: lookup.upstream, decl, key }, lookup.predictionId, sideBounds(), lastAttempt)).cost;
   }
-  if (decl.kind !== "openrouter" || typeof lookup.generationId !== "string") return { state: "missing", reason: "the lookup names nothing to ask" };
-  try {
-    const body = await fetchJson(
-      { url: `${decl.base_url}/generation?id=${encodeURIComponent(lookup.generationId)}`, method: "GET", headers: { authorization: `Bearer ${key}` } },
-      { replaySafe: true, maxBodyBytes: MAX_LOOKUP_BYTES, idleMs: SIDE_REQUEST_MS, ...sideBounds() },
-    );
-    const parsed = generationSchema.safeParse(body);
-    if (!parsed.success) return unanswered("the generation answer is not shaped as a generation");
-    const data = parsed.data.data;
-    const tokens: TokenBuckets = {
-      input: data.native_tokens_prompt ?? 0,
-      cachedInput: data.native_tokens_cached ?? 0,
-      output: data.native_tokens_completion ?? 0,
-      reasoning: data.native_tokens_reasoning ?? 0,
-    };
-    const cost = data.total_cost;
-    if (cost === undefined) {
-      const reason = "the generation carries no cost yet";
-      return lastAttempt ? { state: "missing", reason, tokens } : { state: "pending", lookup };
-    }
-    return { state: "known", usd: cost, tokens, source: "billing" };
-  } catch (error) {
-    // fetchJson throws only Error instances.
-    return unanswered((error as Error).message);
-  }
+  const costs = hasLlmAdapter(decl.kind) ? vendorOf(decl.kind).costs : undefined;
+  if (costs === undefined || typeof lookup.generationId !== "string") return { state: "missing", reason: "the lookup names nothing to ask" };
+  return costs.lookup(decl, key, lookup.generationId, lookup, lastAttempt);
 }

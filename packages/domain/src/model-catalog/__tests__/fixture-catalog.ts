@@ -16,6 +16,7 @@
  * `restoreRealCatalog`.
  */
 
+import type * as NodeFs from "node:fs";
 import { vi } from "vitest";
 
 /** One temporary catalog: the mode declarations, plus one yaml per modality. */
@@ -27,20 +28,6 @@ export interface FixtureCatalog {
 }
 
 /**
- * The provider connection every fixture directory shares.
- *
- * The variable name is one the real catalog uses: `useFullCatalog` sets every
- * `api_key_env` it reads to a non-empty value, and that goes through core's
- * schema, which drops a name it does not know -- leaving every model
- * unavailable and the catalog empty again.
- */
-const PROVIDERS = [
-  "wavespeed:",
-  '  base_url: "https://example.invalid"',
-  "  api_key_env: WAVESPEED_API_KEY",
-].join("\n");
-
-/**
  * The catalog currently mounted, read afresh on every call.
  *
  * Held here rather than closed over, so a test can revise it without mounting
@@ -50,31 +37,35 @@ const PROVIDERS = [
 let mounted: FixtureCatalog = { modes: "", buckets: {} };
 
 /**
- * A `node:fs` that answers for the mounted fixture and nothing else.
+ * A `node:fs` that answers for the mounted fixture below `config/models`, and reads everything else from disk.
+ * @param real - The real module.
  * @returns The calls the catalog loaders make.
  */
-function fsDouble(): Record<string, unknown> {
+function fsDouble(real: typeof NodeFs): Record<string, unknown> {
   const fixture = (): FixtureCatalog => mounted;
+  const ofProvider = (path: unknown): boolean => !/\/config\/models(\/|$)/.test(String(path));
   const bucketOf = (path: string): string | undefined =>
     Object.keys(fixture().buckets).find((bucket) => new RegExp(`/${bucket}(/|$)`).test(path));
   return {
     readdirSync: (path: string): string[] => {
+      if (ofProvider(path)) return real.readdirSync(path);
       // The loader reads a failed directory listing as "no such modality",
       // which is the right answer for the modalities a fixture leaves out.
       if (!bucketOf(String(path))) throw new Error("no such modality");
-      return ["fixture.yaml", "providers.yaml"];
+      return ["fixture.yaml"];
     },
     statSync: (path: string): { isDirectory: () => boolean } => ({
       isDirectory: () => !String(path).endsWith(".md") && !String(path).endsWith(".json"),
     }),
     existsSync: (path: string): boolean => {
+      if (ofProvider(path)) return real.existsSync(path);
       const at = String(path);
       return at.endsWith("modes.yaml") || bucketOf(at) !== undefined;
     },
     readFileSync: (path: string): string => {
+      if (ofProvider(path)) return real.readFileSync(path, "utf8");
       const at = String(path);
       if (at.endsWith("modes.yaml")) return fixture().modes;
-      if (at.endsWith("providers.yaml")) return PROVIDERS;
       return fixture().buckets[bucketOf(at) ?? ""] ?? "";
     },
   };
@@ -87,10 +78,27 @@ function fsDouble(): Record<string, unknown> {
 export async function useFixtureCatalog(fixture: FixtureCatalog): Promise<void> {
   mounted = fixture;
   vi.resetModules();
-  vi.doMock("node:fs", () => fsDouble());
+  vi.doMock("node:fs", async (importOriginal) => fsDouble(await importOriginal<typeof NodeFs>()));
   const env = await import("./catalog-env.js");
-  env.useFullCatalog();
+  env.useEnvWithKeys(env.allProviderKeyNames());
+  // A fixture's models are bound nowhere in provider's configuration: they are served here by one configured
+  // upstream and priced at nothing, which is what the questions these fixtures ask need of them.
+  const { initProvider, provider } = await import("../../provider/instance.js");
+  const real = provider();
+  const bound = (model: string): boolean => real.config.models[model] !== undefined;
+  initProvider({
+    ...real,
+    availability: (model) => (bound(model) ? real.availability(model) : FIXTURE_AVAILABILITY),
+    pricingRules: (model) => (bound(model) ? real.pricingRules(model) : { model, upstreams: [] }),
+    estimate: async (model, input, route) => (bound(model) ? real.estimate(model, input, route) : null),
+  });
+  const catalog = await import("../model-catalog.js");
+  catalog.resetModelCatalog();
+  if (catalog.getModelCatalog().total === 0) throw new Error("useFixtureCatalog: the mounted fixture lists no model");
 }
+
+/** How a fixture's model is served: by one upstream whose key is set. */
+const FIXTURE_AVAILABILITY = { upstreams: [{ upstream: "wavespeed", weight: 1, configured: true, envVar: "WAVESPEED_API_KEY" }] };
 
 /**
  * Change what the mounted catalog says, leaving every module where it is.

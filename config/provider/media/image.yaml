@@ -105,8 +105,8 @@ models:
             field: resolution
         pricing:
           kind: formula
-          base_price: 50000
-          formula: ""
+          base_price: 80000
+          formula: '{"total_price": base_price * (resolution = "1k" ? 0.75 : 1)}'
           discount_rate: 100
       - upstream: fal
         weight: 2
@@ -281,7 +281,7 @@ models:
           kind: formula
           base_price: 70000
           formula: '{"total_price": (resolution = "0.5k" ? 45000 : (resolution = "2k" ? 105000 : (resolution = "4k" ? 140000 : base_price)))}'
-          discount_rate: 100
+          discount_rate: 90
       - upstream: fal
         weight: 2
         model_id: fal-ai/nano-banana-2/edit
@@ -382,7 +382,7 @@ models:
           kind: formula
           base_price: 70000
           formula: '{"total_price": (resolution = "0.5k" ? 45000 : (resolution = "2k" ? 105000 : (resolution = "4k" ? 140000 : base_price)))}'
-          discount_rate: 100
+          discount_rate: 90
       - upstream: fal
         weight: 2
         model_id: fal-ai/nano-banana-2/edit
@@ -456,7 +456,7 @@ models:
             field: image_size
         pricing:
           kind: formula
-          base_price: 300000
+          base_price: 360000
           formula: ""
           discount_rate: 100
       - upstream: fal
@@ -904,3 +904,52 @@ models:
           base_price: 40000
           formula: ""
           discount_rate: 100
+  seedream-v5.5-text-to-image:
+    upstreams:
+      - upstream: wavespeed
+        weight: 1
+        model_id: bytedance/seedream-v5.5
+        prompt_field: prompt
+        params:
+          aspect_ratio:
+            field: aspect_ratio
+          resolution:
+            field: resolution
+          transparency:
+            field: background
+            values:
+              "true": transparent
+              "false": opaque
+        pricing:
+          kind: formula
+          base_price: 20000
+          formula: '{"total_price": (resolution = "2k" ? 35000 : 20000)}'
+          discount_rate: 95
+  seedream-v5.5-edit:
+    upstreams:
+      - upstream: wavespeed
+        weight: 1
+        model_id: bytedance/seedream-v5.5/edit
+        prompt_field: prompt
+        params:
+          aspect_ratio:
+            field: aspect_ratio
+            absent_value: auto
+          images:
+            field: images
+          resolution:
+            field: resolution
+          transparency:
+            field: background
+            values:
+              "true": transparent
+              "false": opaque
+        drops:
+          style_images: "*"
+        mentions:
+          images: image {n}
+        pricing:
+          kind: formula
+          base_price: 28000
+          formula: '{"total_price": (resolution = "2k" ? 35000 : 20000) + 8000 * $count(images)}'
+          discount_rate: 95

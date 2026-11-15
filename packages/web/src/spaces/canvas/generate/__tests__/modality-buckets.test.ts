@@ -37,7 +37,8 @@ function model(name: string, modality: ModelEntry['modality']): ModelEntry {
     generation_time: 0,
     takes_prompt: true,
     params: {},
-    providers: [],
+    availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: false, envVar: 'WAVESPEED_API_KEY' }] },
+    pricing_rules: undefined,
   };
 }
 

@@ -197,6 +197,24 @@ describe('MessageList', () => {
     expect(screen.getAllByTestId('message-bubble')).toHaveLength(1);
   });
 
+  it('leaves a message taken in mid-reply the room a reply\'s action line leaves above a message', () => {
+    // The part of the reply before it shows no action line of its own, and the
+    // message keeps one under itself; without this room above it the message
+    // reads as the end of the paragraph before it (inner#1717 visual round 1).
+    const room = 'mt-[calc(--spacing(3)+var(--btn-compact))]';
+    const messages: ChatMessage[] = [
+      { id: 'u1', role: 'user', content: 'Write a story' },
+      { id: 'a1', role: 'assistant', content: 'Once upon a time', continued: true },
+      { id: 't1', role: 'user', content: 'Give the keeper a blue coat', takenIn: true },
+      { id: 't2', role: 'user', content: 'Make the ending hopeful', takenIn: true },
+      { id: 't1~after', role: 'assistant', content: 'The light went round' },
+      { id: 'u2', role: 'user', content: 'Thanks' },
+    ];
+    render(<MessageList ready messages={messages} />);
+    const lead = screen.getAllByTestId('message-bubble').map((b) => b.className.includes(room));
+    expect(lead).toEqual([false, false, true, false, false, false]);
+  });
+
   it('follows a reply as it grows, not only when a message is added', async () => {
     // jsdom lays nothing out, so what there is to observe is the write the
     // column makes to reach its end. Sitting at the bottom to begin with:

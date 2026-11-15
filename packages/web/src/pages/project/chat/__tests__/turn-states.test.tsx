@@ -2,77 +2,89 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * 一轮对话的三种状态，以及它们各自在屏幕上是什么样。
+ * A message from the press to the list, and what the screen shows meanwhile.
  *
- * 传输和状态都由 `useChat` 管：面板订阅一个 `Chat` 实例，那个实例把消息
- * 发出去、把回来的东西攒起来。这个文件从 `fetch` 那一层往上全是真的——真的
- * transport 解析流、真的 `Chat` 状态机、真的 hook 订阅——只有网络本身是替身。
+ * A turn is not the answer to a send (inner#1717): the send is answered with
+ * JSON once the server holds the message, which is when the box empties; the
+ * message shows in the waiting area while it waits, and in the list once the
+ * history read back before attaching to the run holds it. Everything above
+ * axios and `fetch` is real -- the transport parsing the run's stream, the
+ * `Chat` state machine, the hook subscribing.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import type { ChatSendAnswer, ChatSyncAnswer } from '@breatic/shared';
 
 const toastSpy = vi.hoisted(() => ({ error: vi.fn(), warning: vi.fn() }));
 vi.mock('@web/lib/toast', () => ({ toast: { error: toastSpy.error, warning: toastSpy.warning, success: vi.fn(), info: vi.fn() } }));
 import { renderHook, waitFor, act } from '@testing-library/react';
+import type * as ChatApiModule from '@web/data/api/chat';
 
-vi.mock('@web/data/api/chat', () => ({
-  chatApi: {
-    streamConfig: vi.fn(async () => ({
-      heartbeatIntervalMs: 5000,
-      attachmentMaxChars: 200_000,
-      attachmentMaxItems: 10,
-      currentSpaceMaxChars: 100_000,
-      spaceListMaxItems: 200,
-    })),
-    openChat: vi.fn(),
-    streamMessage: vi.fn(),
-    listConversations: vi.fn(),
-    earlierMessages: vi.fn(),
-  },
+vi.mock('@web/data/api/chat', async (importOriginal) => {
+  const actual = await importOriginal<typeof ChatApiModule>();
+  return {
+    ...actual,
+    chatApi: {
+      streamConfig: vi.fn(async () => ({
+        heartbeatIntervalMs: 5000,
+        attachmentMaxChars: 200_000,
+        attachmentMaxItems: 10,
+        currentSpaceMaxChars: 100_000,
+        spaceListMaxItems: 200,
+        spaceReadTimeoutMs: 20_000,
+        runningPollIntervalMs: 5000,
+        syncIntervalMs: 3000,
+      })),
+      openChat: vi.fn(),
+      readConversation: vi.fn(),
+      listConversations: vi.fn(),
+      createConversation: vi.fn(),
+      messagesBefore: vi.fn(),
+      running: vi.fn(async () => []),
+      sync: vi.fn(),
+      sendMessage: vi.fn(),
+      stop: vi.fn(),
+      removeQueued: vi.fn(),
+      streamPath: actual.chatApi.streamPath,
+    },
+  };
+});
+
+vi.mock('@web/data/upload/transfer-body', () => ({
+  bodyOrTransfer: async (_projectId: string, body: unknown) => body,
 }));
 
 import { chatApi } from '@web/data/api/chat';
+import type { StoredUiMessage } from '@web/data/api/chat';
+import { ApiException } from '@web/data/api/types';
 import { useChatSession } from '@web/pages/project/chat/use-chat-session';
 import { conversationRuntime, _resetForTests } from '@web/stores/conversation-runtime';
 import { evictAllChatSessions } from '@web/stores/chat-sessions';
+import { resetChatLiveForTests } from '@web/stores/chat-live';
+import { resetRunOnceForTests } from '@web/stores/task-actions-in-flight';
+import { replyOpens, stubRunWire } from '@web/test-utils/chat-run-wire';
+import type { RunWire } from '@web/test-utils/chat-run-wire';
 
-/** 这一轮的流，测试自己往里推东西。 */
-let wire: {
-  push: (chunk: Record<string, unknown>) => void;
-  close: () => void;
-} | null = null;
+/** A sync answered while nothing holds the conversation; asked again soon, so a case need not wait. */
+const IDLE: ChatSyncAnswer = { pending: [], running: false, awaiting: false, next_sync_ms: 20 };
 
-/** 每次发送时收到的请求体，按顺序。 */
-let sentBodies: Array<Record<string, unknown>> = [];
+/** The run streams the page reads. */
+let wire: RunWire;
+
+/** What the server holds for c-1, as reading it back answers. */
+let stored: StoredUiMessage[] = [];
 
 /**
- * 让下一次请求拿到一条测试握着的流。
- * @returns 那条流的响应。
+ * The user's message as the server stores it.
+ * @param text - What it says.
+ * @returns The row.
  */
-function openWire(): Response {
-  const encoder = new TextEncoder();
-  let controller: ReadableStreamDefaultController<Uint8Array>;
-  const body = new ReadableStream<Uint8Array>({
-    start(c) {
-      controller = c;
-    },
-  });
-  wire = {
-    push: (chunk) => {
-      controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
-    },
-    close: () => {
-      controller.close();
-    },
-  };
-  return new Response(body, {
-    status: 200,
-    headers: { 'Content-Type': 'text/event-stream' },
-  });
+function userRow(text: string): StoredUiMessage {
+  return { id: 'u-1', role: 'user', parts: [{ type: 'text', text }], metadata: { turnIndex: 1, ts: '2026-08-11T00:00:00Z' } } as StoredUiMessage;
 }
 
 /**
- * 打开会话时服务器说这条会话里有什么。
- * @param messages - 已经说过的话，协议的形状。
+ * What the server says this conversation holds when the chat is opened.
+ * @param messages - What was said in it, in the protocol's shape.
  */
 function openChatAnswers(messages: Array<Record<string, unknown>>): void {
   vi.mocked(chatApi.openChat).mockResolvedValue({
@@ -86,55 +98,82 @@ function openChatAnswers(messages: Array<Record<string, unknown>>): void {
 }
 
 /**
- * 渲染面板要的那份东西。
- * @returns renderHook 的结果。
+ * Render what the panel reads.
+ * @returns What renderHook returns.
  */
 function render(): ReturnType<typeof renderHook<ReturnType<typeof useChatSession>, unknown>> {
   return renderHook(() => useChatSession('p-1', () => ({ spaces: [] })));
 }
 
+/**
+ * Render the panel and wait until it is open.
+ * @returns What renderHook returns.
+ */
+async function anOpenPanel(): Promise<ReturnType<typeof render>> {
+  const panel = render();
+  await waitFor(() => {
+    expect(panel.result.current.status).toBe('ready');
+  });
+  return panel;
+}
+
+/**
+ * Hold the next send's answer until the case gives it.
+ * @returns Gives the answer.
+ */
+function holdTheAnswer(): (answer: ChatSendAnswer) => void {
+  let give: (answer: ChatSendAnswer) => void = () => undefined;
+  vi.mocked(chatApi.sendMessage).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        give = resolve;
+      }),
+  );
+  return (answer) => {
+    give(answer);
+  };
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
-  wire = null;
-  sentBodies = [];
+  stored = [];
   _resetForTests();
   evictAllChatSessions();
   openChatAnswers([]);
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async (_url: string, init?: RequestInit) => {
-      sentBodies.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>);
-      return openWire();
-    }),
-  );
+  wire = stubRunWire();
+  vi.mocked(chatApi.readConversation).mockImplementation(async () => ({
+    conversation: { id: 'c-1', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
+    messages: stored,
+    hasMore: false,
+  }) as unknown as Awaited<ReturnType<typeof chatApi.readConversation>>);
+  vi.mocked(chatApi.sync).mockResolvedValue(IDLE);
+  vi.mocked(chatApi.sendMessage).mockResolvedValue({ status: 'start', pending: [], running: true });
 });
 
 afterEach(() => {
+  resetChatLiveForTests();
+  resetRunOnceForTests();
+  evictAllChatSessions();
   vi.unstubAllGlobals();
 });
 
-describe('发一条消息', () => {
-  it('posts to the chat endpoint with exactly the fields the server reads', async () => {
-    const panel = render();
-    await waitFor(() => {
-      expect(panel.result.current.status).toBe('ready');
-    });
+describe('sending a message', () => {
+  it('posts exactly the fields the server reads', async () => {
+    const panel = await anOpenPanel();
 
-    // Not awaited: sending settles when the turn is over, and this one is
-    // held open on purpose -- what is being read is the request that went out.
     act(() => {
-      void panel.result.current.send('找几张参考图');
+      void panel.result.current.send('find a few reference images');
     });
     await waitFor(() => {
-      expect(vi.mocked(fetch)).toHaveBeenCalled();
+      expect(chatApi.sendMessage).toHaveBeenCalled();
     });
 
-    const [url] = vi.mocked(fetch).mock.calls[0] ?? [];
-    expect(String(url)).toContain('/chat/message');
-    // 整份比对，不是包含：多一个字段服务器会一声不响地丢掉，少一个是 422，
-    // 而用户看到的都是「发失败了，不知道为什么」。
-    expect(sentBodies[0]).toEqual({
-      message: '找几张参考图',
+    // Compared whole, not by inclusion: a field too many the server drops
+    // without a word, one too few is a 422, and either way the user sees "it
+    // did not send, and I do not know why".
+    expect(vi.mocked(chatApi.sendMessage).mock.calls[0]?.[0]).toEqual({
+      id: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      message: 'find a few reference images',
       project_id: 'p-1',
       conversation_id: 'c-1',
       attached_chips: [],
@@ -145,81 +184,97 @@ describe('发一条消息', () => {
     });
   });
 
-  it('第一帧没到之前，列表里不多一条气泡', async () => {
-    const panel = render();
-    await waitFor(() => {
-      expect(panel.result.current.status).toBe('ready');
-    });
+  it('adds no bubble before the server has answered', async () => {
+    const panel = await anOpenPanel();
+    holdTheAnswer();
 
     act(() => {
-      void panel.result.current.send('找几张参考图');
+      void panel.result.current.send('find a few reference images');
     });
 
     await waitFor(() => {
       expect(panel.result.current.turnPhase).toBe('sending');
     });
-    // 库是先把用户消息推进列表、再把状态置成「已发出」的，所以这一条要靠
-    // 渲染侧按状态排除。屏幕上这时候应该什么都没多。
     expect(panel.result.current.messages).toHaveLength(0);
   });
 
-  it('第一帧到了，用户那句话和回复一起出现', async () => {
-    const panel = render();
+  it('shows the words from the history read back, and the reply from the run (RW-11)', async () => {
+    const panel = await anOpenPanel();
+    stored = [userRow('find a few reference images')];
+
+    act(() => {
+      void panel.result.current.send('find a few reference images');
+    });
     await waitFor(() => {
-      expect(panel.result.current.status).toBe('ready');
+      expect(wire.last()).not.toBeNull();
     });
 
     act(() => {
-      void panel.result.current.send('找几张参考图');
-    });
-    await waitFor(() => {
-      expect(wire).not.toBeNull();
-    });
-
-    act(() => {
-      wire?.push({ type: 'start' });
-      wire?.push({ type: 'start-step' });
-      wire?.push({ type: 'text-start', id: 't1' });
-      wire?.push({ type: 'text-delta', id: 't1', delta: '好的' });
+      for (const chunk of replyOpens()) wire.last()?.push(chunk);
+      wire.last()?.push({ type: 'text-delta', id: 't1', delta: 'Sure' });
     });
 
     await waitFor(() => {
       expect(panel.result.current.turnPhase).toBe('running');
     });
-    // 消息走 useChat 自己的 throttle，跟 turnPhase 不是同一次更新，所以等它到。
+    // Messages go through useChat's own throttle, a different update from
+    // turnPhase's, so wait for them.
     await waitFor(() => {
       expect(panel.result.current.messages.map((m) => m.role)).toEqual(['user', 'assistant']);
-      expect(panel.result.current.messages[0]?.content).toBe('找几张参考图');
-      expect(panel.result.current.messages[1]?.content).toBe('好的');
+      expect(panel.result.current.messages[0]?.content).toBe('find a few reference images');
+      expect(panel.result.current.messages[1]?.content).toBe('Sure');
+    });
+  });
+
+  it('waits in the waiting area, and moves to the list once the history holds it (RW-11)', async () => {
+    const panel = await anOpenPanel();
+    const item = { id: 'u-1', sentAt: '2026-11-12T08:00:00.000Z', words: 'and make it blue', chips: [] };
+    vi.mocked(chatApi.sendMessage).mockResolvedValueOnce({ status: 'queued', pending: [item], running: false });
+    // Every sync says the same while it waits: the waiting area is the server's.
+    vi.mocked(chatApi.sync).mockResolvedValue({ ...IDLE, pending: [item] });
+
+    act(() => {
+      void panel.result.current.send('and make it blue');
+    });
+
+    await waitFor(() => {
+      expect(panel.result.current.waiting.pending).toEqual([item]);
+    });
+    expect(panel.result.current.messages).toHaveLength(0);
+
+    // A run took it in: the server stores it, and the next sync says a run holds the conversation.
+    stored = [userRow('and make it blue')];
+    vi.mocked(chatApi.sync).mockResolvedValue({ ...IDLE, running: true });
+
+    await waitFor(() => {
+      expect(panel.result.current.waiting.pending).toEqual([]);
+    });
+    await waitFor(() => {
+      expect(panel.result.current.messages.map((m) => m.content)).toEqual(['and make it blue']);
     });
   });
 });
 
-describe('输入框里的字', () => {
-  it('第一帧到了才清空，不是按下发送就清', async () => {
-    const panel = render();
-    await waitFor(() => {
-      expect(panel.result.current.status).toBe('ready');
-    });
+describe('the words in the box', () => {
+  it('are emptied once the server holds the message, not at the press (RW-11)', async () => {
+    const panel = await anOpenPanel();
     act(() => {
-      conversationRuntime.setDraft('c-1', '找几张参考图');
+      conversationRuntime.setDraft('c-1', 'find a few reference images');
     });
+    const answer = holdTheAnswer();
 
     act(() => {
-      void panel.result.current.send('找几张参考图');
+      void panel.result.current.send('find a few reference images');
     });
     await waitFor(() => {
       expect(panel.result.current.turnPhase).toBe('sending');
     });
-    // 服务端还没答话。这时候清掉，一旦这一轮被拒，用户的字就没了、也没有
-    // 任何东西能把它放回去。
-    expect(panel.result.current.draft).toBe('找几张参考图');
+    // The server has not answered. Emptied now, a refused message would take
+    // the user's words with it, and nothing could put them back.
+    expect(panel.result.current.draft).toBe('find a few reference images');
 
     act(() => {
-      wire?.push({ type: 'start' });
-      wire?.push({ type: 'start-step' });
-      wire?.push({ type: 'text-start', id: 't1' });
-      wire?.push({ type: 'text-delta', id: 't1', delta: '好的' });
+      answer({ status: 'start', pending: [], running: true });
     });
 
     await waitFor(() => {
@@ -227,60 +282,45 @@ describe('输入框里的字', () => {
     });
   });
 
-  it('只清这一条会话的，别人那条不动', async () => {
-    const panel = render();
-    await waitFor(() => {
-      expect(panel.result.current.status).toBe('ready');
-    });
+  it('are emptied in this conversation only, another one left alone', async () => {
+    const panel = await anOpenPanel();
     act(() => {
-      conversationRuntime.setDraft('c-2', '另一条里没发出去的半句话');
+      conversationRuntime.setDraft('c-1', 'find a few reference images');
+      conversationRuntime.setDraft('c-2', 'half a sentence never sent in the other one');
     });
 
     act(() => {
-      void panel.result.current.send('找几张参考图');
+      void panel.result.current.send('find a few reference images');
     });
     await waitFor(() => {
-      expect(wire).not.toBeNull();
-    });
-    act(() => {
-      wire?.push({ type: 'start' });
-      wire?.push({ type: 'start-step' });
-      wire?.push({ type: 'text-start', id: 't1' });
-      wire?.push({ type: 'text-delta', id: 't1', delta: '好的' });
-    });
-    await waitFor(() => {
-      expect(panel.result.current.turnPhase).toBe('running');
+      expect(panel.result.current.draft).toBe('');
     });
 
-    expect(conversationRuntime.draftOf('c-2')).toBe('另一条里没发出去的半句话');
+    expect(conversationRuntime.draftOf('c-2')).toBe('half a sentence never sent in the other one');
   });
 });
 
-describe('发不出去的时候', () => {
-  it('告诉用户一声，不悄悄新开一条会话把话放进去', async () => {
-    // 会话在服务器上没了——另一个标签页或另一个人删掉的——服务器答 404。
-    // 这时候不重开：重开等于把这句话放进一条凭空出现的新会话，而屏幕上
-    // 原来那条的历史还在，用户会看到自己的话跑到了别处（user 2026-08-19
-    // 拍定）。
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () => new Response('{"error":"Conversation not found"}', { status: 404 })),
+describe('when it cannot be sent', () => {
+  it('tells the user, without quietly opening a new conversation to put the words in', async () => {
+    // The conversation is gone on the server -- another tab or another person
+    // deleted it -- and the server answers 404. Nothing reopens: that would
+    // put the words in a conversation that appeared from nowhere while the old
+    // one's history is still on screen (user 2026-08-19).
+    vi.mocked(chatApi.sendMessage).mockRejectedValueOnce(
+      new ApiException({ status: 404, message: 'Conversation not found', fromServer: true }),
     );
-
-    const panel = render();
-    await waitFor(() => {
-      expect(panel.result.current.status).toBe('ready');
-    });
+    const panel = await anOpenPanel();
 
     await act(async () => {
-      await panel.result.current.send('找几张参考图');
+      await panel.result.current.send('find a few reference images');
     });
 
     await waitFor(() => {
       expect(toastSpy.error).toHaveBeenCalled();
     });
-    // 一次请求，不是两次：第二次就是那个「重开一条再发一遍」。
-    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(chatApi.openChat)).toHaveBeenCalledTimes(1);
+    // One request, not two: a second one is that "open another and send again".
+    expect(chatApi.sendMessage).toHaveBeenCalledTimes(1);
+    expect(chatApi.openChat).toHaveBeenCalledTimes(1);
+    expect(chatApi.createConversation).not.toHaveBeenCalled();
   });
 });

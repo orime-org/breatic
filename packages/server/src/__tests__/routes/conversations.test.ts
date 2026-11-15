@@ -26,6 +26,17 @@ vi.mock("@server/modules", async (importOriginal) => {
   return serverModulesMock(importOriginal);
 });
 
+const queue = vi.hoisted(() => ({
+  peek: vi.fn(async () => ({ active: null, awaiting: false, work: false })),
+  clear: vi.fn(async () => {}),
+}));
+
+vi.mock("@server/modules/chat-queue/chat-queue.service.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof ChatQueueModule>()),
+  chatQueue: () => queue,
+}));
+
+import type * as ChatQueueModule from "@server/modules/chat-queue/chat-queue.service.js";
 import { createApp } from "../../app.js";
 import { mocks } from "../helpers/mock-core.js";
 import { getAgentConfig } from "@breatic/core";
@@ -144,6 +155,7 @@ describe("Conversation routes", () => {
 
       expect(res.status).toBe(200);
       expect(mocks.conversationService.deleteConversation).toHaveBeenCalledWith("22222222-2222-4222-8222-222222222222", "user-1");
+      expect(queue.clear).toHaveBeenCalledWith("22222222-2222-4222-8222-222222222222");
     });
   });
 

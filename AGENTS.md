@@ -172,7 +172,7 @@ Each is a rule above, enforced by lint where it can be: business logic in routes
 | [packages/server/AGENTS.md](packages/server/AGENTS.md) | HTTP API, auth routes, SSE, agent |
 | [packages/shared/AGENTS.md](packages/shared/AGENTS.md) | browser-safe shared code and entry points |
 | [packages/web/AGENTS.md](packages/web/AGENTS.md) | React front end |
-| [packages/worker/AGENTS.md](packages/worker/AGENTS.md) | BullMQ jobs and providers |
+| [packages/worker/AGENTS.md](packages/worker/AGENTS.md) | BullMQ jobs and their handlers |
 
 | Invoke | Before |
 |---|---|

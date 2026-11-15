@@ -49,11 +49,11 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       return { modelId: "test", instructions: { base: "system" }, tools: {} };
     },
     finalizeTurn: async () => [],
-    getModel: () =>
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider(() =>
       modelProducing(
         () => modelSays.parts as ModelStreamPart[],
         (asked) => modelSays.prompts.push(asked.prompt),
-      ),
+      )),
   };
 });
 

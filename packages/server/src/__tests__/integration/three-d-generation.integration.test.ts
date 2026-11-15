@@ -13,6 +13,7 @@
  * the `ai` module is stubbed as in the other server integration suites.
  */
 
+import { initConfiguredProvider } from "@breatic/integration-tests/provider";
 import { describe, it, expect, beforeAll, beforeEach, afterAll, inject, vi } from "vitest";
 
 vi.mock("ai", () => ({
@@ -68,6 +69,7 @@ initCore({
   WAVESPEED_API_KEY: "unused_by_this_suite",
 });
 loadLocales();
+initConfiguredProvider();
 
 const T23D = "tripo-h3.1-t23d";
 const I23D = "tripo-h3.1-i23d";

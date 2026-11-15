@@ -16,8 +16,7 @@ import type { Tool } from "ai";
 import { getAgentConfig } from "@breatic/core";
 import type { MemoryContext } from "@breatic/shared";
 import { instructionsForAgentMemory, type Instructions } from "@domain/agent/instructions.js";
-import { resolveModelPictureCapability } from "@domain/agent/model-picture-capability.js";
-import { resolveModelContextWindow } from "@domain/agent/model-context-window.js";
+import { provider } from "@domain/provider/instance.js";
 import type { AgentPicturePolicy } from "@domain/agent/project-agent-request.js";
 import {
   BASELINE_TOOLS,
@@ -61,7 +60,7 @@ export interface ResolvedAgentConfig {
    * one place.
    */
   modelId: string;
-  /** The system prompt in its parts; `systemFor` decides whether they go as separate blocks. */
+  /** The system prompt in its parts; the prepared call's `system` decides whether they go as separate blocks. */
   instructions: Instructions;
   /** Tools, ready for the AI SDK's `tools` option. */
   tools: Record<string, Tool>;
@@ -90,15 +89,16 @@ export async function buildAgentConfig(
   const { basePrompt, memoryContext, projectInstructions, toolContext } = request;
   const config = getAgentConfig();
   const modelId = request.modelId ?? config.default_model;
-  const catalogPolicy = {
-    timeoutMs: config.model_catalog_timeout_ms,
-    ttlMs: config.model_catalog_ttl_ms,
-    retryMs: config.model_catalog_retry_ms,
-  };
-  const [seesPictures, resolvedWindow] = await Promise.all([
-    resolveModelPictureCapability(modelId, { override: config.main_model_sees_pictures, ...catalogPolicy }, request.signal),
-    resolveModelContextWindow(modelId, catalogPolicy, request.signal),
-  ]);
+  const { pictures: seesPictures, contextWindow: resolvedWindow } = await provider().llm.capabilities(
+    modelId,
+    {
+      override: config.main_model_sees_pictures,
+      timeoutMs: config.model_catalog_timeout_ms,
+      ttlMs: config.model_catalog_ttl_ms,
+      retryMs: config.model_catalog_retry_ms,
+    },
+    request.signal,
+  );
   const picturePolicy: AgentPicturePolicy = {
     seesPictures,
     maxPictures: config.chat_pictures_max,

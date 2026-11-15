@@ -83,7 +83,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
     finalizeTurn: actual.finalizeTurn,
     // The studio the turn's tools read material for; the ledger is not here.
     assetService: { ...actual.assetService, resolveOwnerStudioId: async () => "s0000000-0000-4000-8000-000000000001" },
-    getModel: () =>
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider(() =>
       new MockLanguageModelV4({
         doStream: async () => {
           providerCalls += 1;
@@ -103,8 +103,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
             }),
           };
         },
-      }),
-    resolveProvider: () => "test",
+      })),
     buildAgentConfig: () => ({
       modelId: "test/model",
       instructions: { base: "system" },
@@ -116,9 +115,6 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       actual.createUsageRecorder({
         ...options,
         pricing: {
-          models: {
-            "test/model": { input_cache_hit_per_mtok: 1, input_cache_miss_per_mtok: 1, output_per_mtok: 1 },
-          },
           services: { brave_web_search: { per_request: 0.005 }, brave_image_search: { per_request: 0.005 } },
         },
         multiplier: 1,

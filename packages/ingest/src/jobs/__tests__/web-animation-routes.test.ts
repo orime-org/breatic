@@ -5,10 +5,12 @@
  * The web-animation job endpoints (inner#1711 design §3.7, §6): `POST /jobs` dispatching on `containerClass`,
  * `GET /jobs/WebAnimationContainer/<id>` and `POST /jobs/WebAnimationContainer/<id>/cancel`.
  *
- * Web-animation execution is optional on a deployment: the `WEB_ANIMATION` Durable Object binding and the
- * `HARNESS_OPENROUTER_API_KEY` secret stay out of `REQUIRED_SETTINGS`. Missing either, the three
- * endpoints answer 501 `feature_disabled` before the namespace is touched, which the worker reads as a terminal answer,
- * while every other endpoint keeps working. 503 keeps its meaning: the container could not start this time.
+ * Web-animation execution is optional on a deployment: the `WEB_ANIMATION` Durable Object binding and the model keys
+ * (`HARNESS_` plus each upstream's key variable) stay out of `REQUIRED_SETTINGS`. Without the binding the three
+ * endpoints answer 501 `feature_disabled` before the namespace is touched; a submit with no plan answers the same, and
+ * one whose plan names no upstream with a key here answers 501 naming the model and the variables it needs. The worker
+ * reads both as terminal answers, while every other endpoint keeps working. 503 keeps its meaning: the container could
+ * not start this time.
  *
  * The pool has no container runtime, so the namespace here is a stand-in that records what the route asked of the
  * job object; the object's own behaviour is specified in `web-animation-transition.node.test.ts`.
@@ -36,6 +38,13 @@ const JOB: WebAnimationJobRequest = {
   maxTokens: 32_000,
   callTimeoutMs: 300_000,
   model: "deepseek/deepseek-v4.1-flash-1017",
+  messagesPlan: {
+    model: "deepseek/deepseek-v4.1-flash-1017",
+    candidates: [
+      { upstream: "openrouter", kind: "openrouter", baseUrl: "https://openrouter.ai/api/v1", vendorModel: "deepseek/deepseek-v4.1-flash-1017", keyEnv: "OPENROUTER_API_KEY" },
+      { upstream: "deepseek", kind: "deepseek", baseUrl: "https://api.deepseek.com/anthropic", vendorModel: "deepseek-v4.1-flash", keyEnv: "DEEPSEEK_API_KEY" },
+    ],
+  },
 };
 
 const JOB_PATH = `/jobs/WebAnimationContainer/${encodeURIComponent(JOB.jobId)}`;
@@ -223,16 +232,9 @@ describe("POST /jobs/WebAnimationContainer/<id>/cancel", () => {
 });
 
 describe("a Worker without web-animation execution configured", () => {
-  const missing: Array<[string, string[], Record<string, unknown>]> = [
-    ["the OpenRouter key", ["HARNESS_OPENROUTER_API_KEY"], {}],
-    ["an empty OpenRouter key", [], { HARNESS_OPENROUTER_API_KEY: "" }],
-    ["the WEB_ANIMATION binding", ["WEB_ANIMATION"], {}],
-    ["both", ["HARNESS_OPENROUTER_API_KEY", "WEB_ANIMATION"], {}],
-  ];
-
-  it.each(missing)("answers submit, read and cancel 501 feature_disabled without touching the namespace when %s is missing", async (_label, without, overrides) => {
+  it("answers submit, read and cancel 501 feature_disabled without touching the namespace when WEB_ANIMATION is not bound", async () => {
     const { namespace, stub } = standIn();
-    const bindings = configured(namespace, without, overrides);
+    const bindings = configured(namespace, ["WEB_ANIMATION"]);
 
     for (const res of [await submit(bindings), await read(bindings), await cancel(bindings)]) {
       expect(res.status).toBe(501);
@@ -243,6 +245,50 @@ describe("a Worker without web-animation execution configured", () => {
     expect(stub.submit).not.toHaveBeenCalled();
     expect(stub.report).not.toHaveBeenCalled();
     expect(stub.cancel).not.toHaveBeenCalled();
+  });
+
+  it("answers a submit without a plan, from a backend deployed before it, 501 feature_disabled", async () => {
+    const { namespace, stub } = standIn();
+    const { messagesPlan: _plan, ...planless } = JOB;
+    const res = await submit(configured(namespace), planless);
+
+    expect(res.status).toBe(501);
+    await expect(res.text()).resolves.toBe("feature_disabled");
+    expect(stub.submit).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["missing", ["HARNESS_OPENROUTER_API_KEY"], {}],
+    ["empty", [], { HARNESS_OPENROUTER_API_KEY: "" }],
+  ])("answers a submit 501 naming the model and every key variable when the only key here is %s", async (_label, without, overrides) => {
+    const { namespace, stub } = standIn();
+    const res = await submit(configured(namespace, without, overrides));
+
+    expect(res.status).toBe(501);
+    await expect(res.json()).resolves.toEqual({
+      error: "not_configured",
+      model: "deepseek/deepseek-v4.1-flash-1017",
+      envVars: ["HARNESS_OPENROUTER_API_KEY", "HARNESS_DEEPSEEK_API_KEY"],
+    });
+    expect(stub.submit).not.toHaveBeenCalled();
+  });
+
+  it("submits a job when any upstream of its plan has its key here", async () => {
+    const { namespace, stub } = standIn();
+    const res = await submit(configured(namespace, ["HARNESS_OPENROUTER_API_KEY"], { HARNESS_DEEPSEEK_API_KEY: "test-deepseek-key" }));
+
+    expect(res.status).toBe(200);
+    expect(stub.submit).toHaveBeenCalledTimes(1);
+  });
+
+  it("still reads and cancels a job without any key, so a job already running is seen to its end", async () => {
+    const { namespace, stub } = standIn();
+    const bindings = configured(namespace, ["HARNESS_OPENROUTER_API_KEY"]);
+
+    expect((await read(bindings)).status).toBe(200);
+    expect((await cancel(bindings)).status).toBe(200);
+    expect(stub.report).toHaveBeenCalledTimes(1);
+    expect(stub.cancel).toHaveBeenCalledTimes(1);
   });
 
   it("still refuses a caller without our secret before saying the feature is off", async () => {

@@ -6,7 +6,7 @@ import type * as Y from 'yjs';
 import { ArrowRightToLine, Code, Copy, Film, Link2, ListChecks, Magnet, Pause, Play, Plus, Redo2, Scissors, Sparkles, Trash2, Undo2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  newId, TIMELINE_MAIN_TRACK_ID, timelineLayerBase, timelineLayerContains, timelineLayerCorners, timelineLayerStyle,
+  newId, TIMELINE_MAIN_TRACK_ID, timelineLayerBase, type TimelineFramePreset, timelineLayerContains, timelineLayerCorners, timelineLayerStyle,
   type TimelineClip, type TimelineDocumentV1, type TimelineExecution, type TimelineExecutionRow, type TimelineLayerBox, type TimelineLayerTransform, type TimelineWebAnimationClip,
 } from '@breatic/shared';
 import { TimelineExecutionCreateInputSchema, timelineExecutionEnded, timelineExecutionFailed, webAnimationDurationFrames } from '@breatic/shared/space-content';
@@ -39,6 +39,8 @@ import { runOnce } from '@web/stores/task-actions-in-flight';
 import type { SpaceBodyProps } from '@web/spaces';
 import { formatShortcut } from '@web/spaces/canvas/format-shortcut';
 import { TimelineClipProperties } from '@web/spaces/timeline/TimelineClipProperties';
+import { TimelineFrameRatio } from '@web/spaces/timeline/TimelineFrameRatio';
+import { timelinePreviewFit } from '@web/spaces/timeline/timeline-preview-fit';
 import { TimelineMaterialDialog } from '@web/spaces/timeline/TimelineMaterialDialog';
 import { TimelineTrackArea } from '@web/spaces/timeline/TimelineTrackArea';
 import { getTimelineEditSession, type TimelineEditOptions } from '@web/data/yjs/timeline-edit-session';
@@ -190,6 +192,32 @@ function aspectOf(value: string | undefined): CreationDraftInput['aspect'] | nul
 }
 
 /**
+ * The offered web-animation aspect closest to the Timeline frame (#1502): the one that covers most of the frame when
+ * fitted into it, which is the smallest gap between the logarithms of the two ratios; on a tie, the one with the frame's
+ * orientation.
+ * @param frame - The Timeline frame size.
+ * @param frame.width - Frame width.
+ * @param frame.height - Frame height.
+ * @param offered - The aspects the creation dialog offers.
+ * @returns The closest offered aspect, or null when none is accepted.
+ * @throws {never} Never.
+ */
+function nearestAspect(frame: { width: number; height: number }, offered: readonly string[]): CreationDraftInput['aspect'] | null {
+  const ratio = Math.log(frame.width / frame.height);
+  let best: { aspect: CreationDraftInput['aspect']; gap: number; same: boolean } | null = null;
+  for (const value of offered) {
+    const aspect = aspectOf(value);
+    if (aspect === null) continue;
+    const [width, height] = aspect.split(':').map(Number) as [number, number];
+    const own = Math.log(width / height);
+    const gap = Math.abs(own - ratio);
+    const same = Math.sign(own) === Math.sign(ratio);
+    if (best === null || gap < best.gap - 1e-12 || (Math.abs(gap - best.gap) <= 1e-12 && same && !best.same)) best = { aspect, gap, same };
+  }
+  return best?.aspect ?? null;
+}
+
+/**
  * What a web copy on a track shows, and the request it came from.
  * @param clip - The copy.
  * @param web - The resolution of its references.
@@ -278,23 +306,28 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   const selectedAssetId = selected === undefined ? '' : timelineClipSource(document.sources, selected)?.assetId ?? '';
   const selectedResource = useTimelineAsset(projectId, selectedAssetId);
   const visible = React.useMemo(() => visibleTimelineClipsAt(document, readyIds, frame), [document, readyIds, frame]);
-  // Display pixels per canvas pixel, measured from the preview frame (#1410 design §2).
-  const [frameBox, setFrameBox] = React.useState<HTMLDivElement | null>(null);
-  const [displayWidth, setDisplayWidth] = React.useState(0);
+  // The preview frame is contained in the area measured around it, and its factor (display pixels per canvas pixel)
+  // places every layer and handle (#1502 design §6.2).
+  const [previewArea, setPreviewArea] = React.useState<HTMLDivElement | null>(null);
+  const [areaSize, setAreaSize] = React.useState({ width: 0, height: 0 });
   React.useLayoutEffect(() => {
-    if (frameBox === null) return;
+    if (previewArea === null) return;
     /**
-     * Read the frame's displayed width.
+     * Read the area's displayed size.
      * @throws {never} Never.
      */
-    const measure = (): void => { setDisplayWidth(frameBox.getBoundingClientRect().width); };
+    const measure = (): void => {
+      const { width, height } = previewArea.getBoundingClientRect();
+      setAreaSize((previous) => previous.width === width && previous.height === height ? previous : { width, height });
+    };
     measure();
     const observer = new ResizeObserver(measure);
-    observer.observe(frameBox);
+    observer.observe(previewArea);
     return () => observer.disconnect();
-  }, [frameBox]);
+  }, [previewArea]);
   const canvas = document.settings;
-  const factor = canvas.width > 0 ? displayWidth / canvas.width : 0;
+  const fit = React.useMemo(() => timelinePreviewFit(areaSize, canvas), [areaSize, canvas]);
+  const factor = fit.factor;
   // The live value of a layer being dragged in the preview; it is never written to the document.
   const [override, setOverride] = React.useState<{ clipId: string; transform: TimelineLayerTransform } | null>(null);
   const transformOf = React.useCallback((clip: TimelineClip): TimelineLayerTransform => override?.clipId === clip.id ? override.transform : clip.transform, [override]);
@@ -351,7 +384,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
       const track = labels.nameOf(clip.trackId) ?? clip.trackId;
       const status = clip.contentBinding.operationId === null ? null : web.executions[clip.contentBinding.operationId]?.status ?? null;
       if (assignment === undefined || resolved === undefined) return [{ clip, track, z: index + 1, instance: null, status }];
-      const box = timelineLayerStyle(timelineLayerBase(canvas, resolved.viewport), transformOf(clip), factor);
+      const box = timelineLayerStyle(canvas, timelineLayerBase(canvas, resolved.viewport), transformOf(clip), factor);
       return [{ clip, track, z: index + 1, instance: { key: assignment.key, sourceVersionId: assignment.sourceVersionId, fps: resolved.fps, role: 'visible' }, status, box }];
     });
     // Premounted and idle instances stay mounted, hidden; an idle one keeps the copy it last showed.
@@ -360,7 +393,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
       const resolved = web.sources[assignment.sourceVersionId];
       if (assignment.role === 'visible' || clip === undefined || resolved === undefined) return [];
       const instance = { key: assignment.key, sourceVersionId: assignment.sourceVersionId, fps: resolved.fps, role: assignment.role };
-      return [{ clip, track: labels.nameOf(clip.trackId) ?? clip.trackId, z: 0, status: null, box: timelineLayerStyle(timelineLayerBase(canvas, resolved.viewport), clip.transform, factor),
+      return [{ clip, track: labels.nameOf(clip.trackId) ?? clip.trackId, z: 0, status: null, box: timelineLayerStyle(canvas, timelineLayerBase(canvas, resolved.viewport), clip.transform, factor),
         instance: assignment.targetFrame === null ? instance : { ...instance, targetFrame: assignment.targetFrame } }];
     });
     return [...shown, ...hidden];
@@ -464,7 +497,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
       const base = baseOf(clip);
       if (base === null) continue;
       Object.assign(element.style, {
-        ...timelineLayerStyle(base, transformOf(clip), factor), position: 'absolute', objectFit: 'contain', pointerEvents: 'none',
+        ...timelineLayerStyle(canvas, base, transformOf(clip), factor), position: 'absolute', objectFit: 'contain', pointerEvents: 'none',
         zIndex: String(index + 1), visibility: index < 0 ? 'hidden' : '',
       });
     }
@@ -545,11 +578,11 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
     }
   }, [readOnly, rows, document.operationReceipts, land]);
   const openCreate = React.useCallback((input?: CreationDraftInput): void => {
-    const aspect = aspectOf(webLimits?.aspects[0]);
+    const aspect = webLimits === undefined ? null : nearestAspect(document.settings, webLimits.aspects);
     if (readOnly || webLimits === undefined || aspect === null) return;
     if (draft.status === 'closed') setRetryDialog(input !== undefined);
     dispatchDraft({ type: 'open', input: input ?? { prompt: '', engine: 'deepseek', aspect, durationSeconds: webLimits.durationSeconds.default, addAtPlayhead: true } });
-  }, [readOnly, webLimits, draft.status]);
+  }, [readOnly, webLimits, draft.status, document.settings]);
   const openBlankCreate = React.useCallback((): void => openCreate(), [openCreate]);
   const editDraft = React.useCallback((patch: Partial<CreationDraftInput>): void => dispatchDraft({ type: 'edit', patch }), []);
   const closeDraft = React.useCallback((): void => dispatchDraft({ type: 'close' }), []);
@@ -780,12 +813,12 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
     const rect = hitLayer.current?.getBoundingClientRect();
     if (rect === undefined || factor <= 0) return;
     const point = { x: (clientX - rect.left) / factor, y: (clientY - rect.top) / factor };
-    const hit = [...pickable].reverse().find(({ clip, base }) => timelineLayerContains(timelineLayerCorners(base, transformOf(clip)), point));
+    const hit = [...pickable].reverse().find(({ clip, base }) => timelineLayerContains(timelineLayerCorners(canvas, base, transformOf(clip)), point));
     // A field left mid-entry commits on blur before the panel it belongs to unmounts.
     const focusedElement = window.document.activeElement;
     if (focusedElement instanceof HTMLElement && focusedElement !== window.document.body) focusedElement.blur();
     session.select(hit?.clip.id ?? null);
-  }, [factor, pickable, transformOf, session]);
+  }, [factor, canvas, pickable, transformOf, session]);
   const pickFromHitLayer = React.useCallback((event: React.PointerEvent<HTMLDivElement>): void => {
     if (event.button !== 0) return;
     pickAt(event.clientX, event.clientY);
@@ -836,7 +869,11 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
     setMaterialOpen(true);
   }, [readOnly, duration, material, setMaterialOpen, selected, labels]);
   const closeMaterial = React.useCallback((): void => { material.close(); setMaterialOpen(false); }, [material, setMaterialOpen]);
-  const previewStyle = React.useMemo(() => ({ aspectRatio: `${document.settings.width} / ${document.settings.height}` }), [document.settings.width, document.settings.height]);
+  // The frame's border box: the fitted area inside the 1px border, plus the border.
+  const previewStyle = React.useMemo(() => ({ width: `${fit.width + 2}px`, height: `${fit.height + 2}px` }), [fit.width, fit.height]);
+  const chooseFrame = React.useCallback((preset: TimelineFramePreset): void => {
+    commit({ operation: 'set_frame', parameters: { preset }, placement });
+  }, [commit, placement]);
   const inConflict = clips.some((clip) => !readyIds.has(clip.id) && frame >= clip.startFrame && frame < clip.startFrame + clip.durationFrames);
   const noSelection = selected === undefined;
   const hasConflicts = arrangement.hasConflicts || damagedClipIds.length > 0;
@@ -847,35 +884,41 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
       <div className='flex min-h-0 flex-1 items-center justify-center bg-muted/40 p-6'>
         {/* The frame clips the layers; the operation layer above it does not, so handles outside the frame stay reachable;
             the note layer is on top and lets clicks through except on its notes (#1410 design §4.1). */}
-        <div className='relative max-h-full w-full max-w-4xl' style={previewStyle}>
-          <div ref={setFrameBox} data-testid='timeline-preview' className='absolute inset-0 isolate flex items-center justify-center overflow-hidden rounded-content-sm border border-border bg-background'>
-            <div ref={videoHost} className='pointer-events-none absolute inset-0' />
-            <TimelineWebPreview projectId={projectId} entries={webEntries} states={playback.webStates} sharing={sharing} onPlayer={registerPlayer} onRetry={retryWeb} onUnavailable={reportUnavailable} uploadNotes={uploadNotes} notes={notesLayer} />
-            {clips.length === 0 && <div data-testid='timeline-space-empty' className='flex flex-col items-center gap-3 p-6 text-center text-sm text-muted-foreground'><Film className='size-8' /><p>{t('timeline.empty')}</p></div>}
-            {inConflict && visible.length === 0 && <p className='p-6 text-center text-sm text-status-error-foreground'>{t('timeline.conflictHelp')}</p>}
-          </div>
-          {!readOnly && <div data-testid='timeline-layer-overlay' className='absolute inset-0' style={OPERATION_LAYER_STYLE}>
-            <div ref={hitLayer} data-testid='timeline-layer-hit' className='absolute inset-0' onPointerDown={pickFromHitLayer} />
-            {handled !== undefined && <React.Suspense fallback={null}>
-              <TimelineLayerHandles key={handled.clip.id} canvas={canvas} base={handled.base} transform={handled.clip.transform} factor={factor} snap={prefs.snap}
-                onOverride={overrideLayer} onCommit={commitLayer} onDraggingChange={layerDragging} onPick={pickFromHandles} />
-            </React.Suspense>}
-          </div>}
-          <div data-testid='timeline-preview-notes' className='pointer-events-none absolute inset-0' style={NOTE_LAYER_STYLE}>
-            <div ref={setNotesLayer} className='absolute right-3 top-3 flex flex-col items-end gap-1.5 *:pointer-events-auto'>
-              {videoNotes.map((note) => <PreviewNote key={note.clipId} clipId={note.clipId} z={note.z}
-                text={t(note.state === 'failed' ? 'timeline.preview.videoUnavailable' : 'timeline.preview.videoLoading', { track: note.track })}>
-                {note.state === 'failed' && <Button data-testid={`timeline-video-retry-${note.clipId}`} variant='outline' size='compact' onClick={() => retryVideoLayer(note.clipId)}>{t('timeline.retry')}</Button>}
-              </PreviewNote>)}
+        <div ref={setPreviewArea} data-testid='timeline-preview-area' className='flex h-full w-full items-center justify-center'>
+          <div className='relative shrink-0' style={previewStyle}>
+            <div data-testid='timeline-preview' className='absolute inset-0 isolate flex items-center justify-center overflow-hidden rounded-content-sm border border-border bg-black'>
+              <div ref={videoHost} className='pointer-events-none absolute inset-0' />
+              <TimelineWebPreview projectId={projectId} entries={webEntries} states={playback.webStates} sharing={sharing} onPlayer={registerPlayer} onRetry={retryWeb} onUnavailable={reportUnavailable} uploadNotes={uploadNotes} notes={notesLayer} />
+              {clips.length === 0 && <div data-testid='timeline-space-empty' className='flex flex-col items-center gap-3 p-6 text-center text-sm text-white/60'><Film className='size-8' /><p>{t('timeline.empty')}</p></div>}
+              {inConflict && visible.length === 0 && <p className='p-6 text-center text-sm text-status-error-foreground'>{t('timeline.conflictHelp')}</p>}
+            </div>
+            {!readOnly && <div data-testid='timeline-layer-overlay' className='absolute inset-px' style={OPERATION_LAYER_STYLE}>
+              <div ref={hitLayer} data-testid='timeline-layer-hit' className='absolute inset-0' onPointerDown={pickFromHitLayer} />
+              {handled !== undefined && <React.Suspense fallback={null}>
+                <TimelineLayerHandles key={handled.clip.id} canvas={canvas} base={handled.base} transform={handled.clip.transform} factor={factor} snap={prefs.snap}
+                  onOverride={overrideLayer} onCommit={commitLayer} onDraggingChange={layerDragging} onPick={pickFromHandles} />
+              </React.Suspense>}
+            </div>}
+            <div data-testid='timeline-preview-notes' className='pointer-events-none absolute inset-px' style={NOTE_LAYER_STYLE}>
+              <div ref={setNotesLayer} className='absolute right-3 top-3 flex flex-col items-end gap-1.5 *:pointer-events-auto'>
+                {videoNotes.map((note) => <PreviewNote key={note.clipId} clipId={note.clipId} z={note.z}
+                  text={t(note.state === 'failed' ? 'timeline.preview.videoUnavailable' : 'timeline.preview.videoLoading', { track: note.track })}>
+                  {note.state === 'failed' && <Button data-testid={`timeline-video-retry-${note.clipId}`} variant='outline' size='compact' onClick={() => retryVideoLayer(note.clipId)}>{t('timeline.retry')}</Button>}
+                </PreviewNote>)}
+              </div>
             </div>
           </div>
         </div>
       </div>
-      <div className='flex shrink-0 items-center gap-3 border-t border-border px-4 py-2'>
+      <div data-playback-state={playback.state} className='flex shrink-0 items-center gap-3 border-t border-border px-4 py-2'>
         <Button data-testid='timeline-play' variant='outline' size='sm' className='gap-1.5' disabled={duration === 0} onClick={playback.toggle} icon={playback.intent === 'play' ? <Pause className='size-4' /> : <Play className='size-4' />}>{playback.intent === 'play' ? t('timeline.pause') : t('timeline.play')}</Button>
-        <span className='shrink-0 text-xs tabular-nums'>{`${formatTimelineTimecode(frame, fps)} / ${formatTimelineTimecode(duration, fps)}`}</span>
+        {/* The buffering text sits above the timecode, out of the flow, so nothing in the row moves when it appears. */}
+        <div data-testid='timeline-timecode' className='relative flex shrink-0'>
+          <span className='text-xs tabular-nums'>{`${formatTimelineTimecode(frame, fps)} / ${formatTimelineTimecode(duration, fps)}`}</span>
+          {playback.state === 'waiting' && <span className='pointer-events-none absolute bottom-full left-0 mb-0.5 whitespace-nowrap text-2xs leading-none text-muted-foreground'>{t('timeline.transport.waiting')}</span>}
+        </div>
         <Slider aria-label={t('timeline.seek')} value={seekValue} onValueChange={onSeek} min={0} max={Math.max(1, duration - 1)} step={1} disabled={duration === 0} className='min-w-0 flex-1' />
-        <span className='shrink-0 text-xs text-muted-foreground'>{t(`timeline.transport.${playback.state}`)}</span>
+        <TimelineFrameRatio width={canvas.width} height={canvas.height} readOnly={readOnly} onChoose={chooseFrame} />
       </div>
       <div role='toolbar' aria-label={t('timeline.tracks')} className='flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-2'>
         <div className='flex flex-wrap items-center gap-2'>

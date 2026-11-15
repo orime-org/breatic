@@ -2,90 +2,96 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * 一条会话的状态活得比看着它的那个面板长。
+ * A conversation's state outlives the panel looking at it.
  *
- * 折叠 agent 列、切到别的会话再切回来、组件重新挂载——这些都不该把正在跑的
- * 那一轮弄没。做法是 `Chat` 实例按会话 id 存在模块里，组件只订阅它，跟
- * `data/yjs/canvas-space.ts` 的 `getCanvasUndoManager` 同一个形状：按数据
- * 的 key 缓存，由明确的动作驱逐，不挂组件卸载。
- *
- * 这件事今天已经成立（`conversation-switching.test.ts:63` 钉着），迁移后
- * 「不得回退」，所以这里钉的是新做法下它仍然成立。
+ * Collapsing the agent column, switching to another conversation and back,
+ * a component remounting: none of these may lose what is on screen. The
+ * `Chat` instance is kept in the module by conversation id and components
+ * only subscribe to it, the same shape as `getCanvasUndoManager` in
+ * `data/yjs/canvas-space.ts`: cached by the data's key, evicted by an
+ * explicit action, never tied to a component unmounting.
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   chatSessionFor,
   evictChatSession,
   evictAllChatSessions,
   prependHistory,
+  readRun,
 } from '@web/stores/chat-sessions';
 import type { StoredUiMessage } from '@web/data/api/chat';
 import { setLocale } from '@breatic/shared';
 
-/** 一条读回来的历史，够用就行。 */
+/** A page of history read back, just enough of one. */
 const HISTORY: StoredUiMessage[] = [
   {
     id: 'row-1',
     role: 'user',
-    parts: [{ type: 'text', text: '之前说过的话' }],
+    parts: [{ type: 'text', text: 'something said before' }],
     metadata: { turnIndex: 1, ts: '2026-08-19T00:00:00Z' },
   },
 ];
 
-describe('会话的 Chat 实例', () => {
+/**
+ * The session for a conversation in project p-1.
+ * @param conversationId - The conversation.
+ * @param history - What the store had for it.
+ * @returns Its `Chat`.
+ */
+function sessionOf(conversationId: string, history: StoredUiMessage[] = []): ReturnType<typeof chatSessionFor> {
+  return chatSessionFor({ projectId: 'p-1', conversationId, history, onTitled: () => undefined });
+}
+
+describe('the Chat instance of a conversation', () => {
   beforeEach(() => {
     evictAllChatSessions();
   });
 
-  it('同一条会话拿到的是同一个', () => {
-    const first = chatSessionFor({ projectId: 'p-1', conversationId: 'c-1', history: HISTORY, onTitled: () => undefined, onFirstFrame: () => undefined });
-    const again = chatSessionFor({ projectId: 'p-1', conversationId: 'c-1', history: HISTORY, onTitled: () => undefined, onFirstFrame: () => undefined });
+  it('is the same one each time it is asked for', () => {
+    const first = sessionOf('c-1', HISTORY);
+    const again = sessionOf('c-1', HISTORY);
 
     expect(again).toBe(first);
   });
 
-  it('两条会话各是各的', () => {
-    const one = chatSessionFor({ projectId: 'p-1', conversationId: 'c-1', history: [], onTitled: () => undefined, onFirstFrame: () => undefined });
-    const other = chatSessionFor({ projectId: 'p-1', conversationId: 'c-2', history: [], onTitled: () => undefined, onFirstFrame: () => undefined });
+  it('is a different one for each conversation', () => {
+    const one = sessionOf('c-1');
+    const other = sessionOf('c-2');
 
     expect(other).not.toBe(one);
   });
 
-  it('第二次给的历史不动已有的那条会话', () => {
-    // 这一条是 A4 的核心。一轮正在跑的时候，面板重新挂载会再读一次历史；
-    // 拿它去覆盖，屏幕上正在长出来的那半句就没了。
-    const chat = chatSessionFor({ projectId: 'p-1', conversationId: 'c-1', history: [], onTitled: () => undefined, onFirstFrame: () => undefined });
+  it('is not touched by history handed over a second time', () => {
+    // While a run is read, a remounting panel reads the history again;
+    // writing it over the session would wipe the half-sentence growing on
+    // screen.
+    const chat = sessionOf('c-1');
     chat.messages = [
       {
         id: 'in-flight',
         role: 'assistant',
-        parts: [{ type: 'text', text: '正在写' }],
+        parts: [{ type: 'text', text: 'writing' }],
         metadata: { turnIndex: 2, ts: '2026-08-19T00:00:02Z' },
       },
     ];
 
-    const again = chatSessionFor({ projectId: 'p-1', conversationId: 'c-1', history: HISTORY, onTitled: () => undefined, onFirstFrame: () => undefined });
+    const again = sessionOf('c-1', HISTORY);
 
     expect(again.messages).toHaveLength(1);
     expect(again.messages[0]?.id).toBe('in-flight');
   });
 
-  it('把更早的一页接在头上，正在写的那半不动', () => {
-    // 「加载更早」读回来的那一页要出现在屏幕上,而屏幕读的是这个实例 ——
-    // 只写进 store 的话,它给下一个新建的实例当起点,对已经存在的这个毫无
-    // 作用,用户按了按钮什么都不会发生。
-    const chat = chatSessionFor({
-      projectId: 'p-1',
-      conversationId: 'c-1',
-      history: [],
-      onTitled: () => undefined,
-      onFirstFrame: () => undefined,
-    });
+  it('takes an earlier page at its head and leaves the half being written alone', () => {
+    // The page "load earlier" read has to show on screen, and the screen reads
+    // this instance: written only into the store, it would seed the next new
+    // instance and do nothing for this one, so the user's press would show
+    // nothing.
+    const chat = sessionOf('c-1');
     chat.messages = [
       {
         id: 'in-flight',
         role: 'assistant',
-        parts: [{ type: 'text', text: '正在写' }],
+        parts: [{ type: 'text', text: 'writing' }],
         metadata: { turnIndex: 2, ts: '2026-08-19T00:00:02Z' },
       },
     ];
@@ -95,63 +101,53 @@ describe('会话的 Chat 实例', () => {
     expect(chat.messages.map((m) => m.id)).toEqual(['row-1', 'in-flight']);
   });
 
-  it('对一条没在这儿的会话什么都不做', () => {
-    // 面板走开之后那一页才回来,或者这条会话已经被删了。
+  it('does nothing for a conversation not held here', () => {
+    // The page came back after the panel moved on, or the conversation was deleted.
     expect(() => {
       prependHistory('c-gone', HISTORY);
     }).not.toThrow();
   });
 
-  it('驱逐之后再拿是新的一个', () => {
-    const before = chatSessionFor({ projectId: 'p-1', conversationId: 'c-1', history: [], onTitled: () => undefined, onFirstFrame: () => undefined });
+  it('is a new one once evicted', () => {
+    const before = sessionOf('c-1');
     evictChatSession('c-1');
-    const after = chatSessionFor({ projectId: 'p-1', conversationId: 'c-1', history: HISTORY, onTitled: () => undefined, onFirstFrame: () => undefined });
+    const after = sessionOf('c-1', HISTORY);
 
     expect(after).not.toBe(before);
     expect(after.messages).toHaveLength(1);
   });
 });
 
-describe('一条聊天请求带着界面语言', () => {
+describe('reading a run carries the interface language', () => {
   beforeEach(() => {
     evictAllChatSessions();
   });
 
-  it('带的是语言开关选的那个，不是浏览器的', async () => {
-    // 这个头只管服务端自己写的、要显示给用户看的文字（今天是 `chat.ts:87`
-    // 那句「这条消息太长了」）。模型的回复跟它无关：那段话用什么语言由模型
-    // 从对话里判断，我们一个字都不译。
-    const sent: Array<{ url: string; init?: RequestInit }> = [];
-    const original = globalThis.fetch;
-    globalThis.fetch = ((url: string, init?: RequestInit) => {
-      sent.push({ url: String(url), init });
-      return Promise.resolve(
-        new Response('', { status: 200, headers: { 'Content-Type': 'text/event-stream' } }),
-      );
-    }) as typeof globalThis.fetch;
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    setLocale('en');
+  });
 
-    try {
-      setLocale('ja');
-      const chat = chatSessionFor({
-        projectId: 'p-1',
-        conversationId: 'c-1',
-        history: [],
-        onTitled: () => undefined,
-        onFirstFrame: () => undefined,
-      });
-      await chat.sendMessage({ text: '帮我看看' });
+  it('sends the one the language switcher picked, not the browser one', async () => {
+    // The header only governs text the server writes itself for the user to
+    // see. The model's reply is not translated: its language is the model's
+    // to judge from the conversation.
+    const sent: Array<RequestInit | undefined> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        sent.push(init);
+        return new Response(null, { status: 204 });
+      }),
+    );
+    setLocale('ja');
+    sessionOf('c-1');
 
-      // Read without regard to case: header names are case-insensitive and the
-      // SDK lowercases what it is given.
-      const headers = (sent.at(-1)?.init?.headers ?? {}) as Record<string, string>;
-      const asked = Object.entries(headers).find(
-        ([name]) => name.toLowerCase() === 'accept-language',
-      );
+    await readRun('c-1', () => undefined);
 
-      expect(asked?.[1]).toBe('ja');
-    } finally {
-      globalThis.fetch = original;
-      setLocale('en');
-    }
+    // Read without regard to case: header names are case-insensitive and the
+    // SDK lowercases what it is given.
+    const headers = new Headers(sent.at(-1)?.headers);
+    expect(headers.get('accept-language')).toBe('ja');
   });
 });

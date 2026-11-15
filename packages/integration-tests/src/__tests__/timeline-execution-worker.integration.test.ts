@@ -7,9 +7,10 @@
  * `runTimelineExecution(job, token)` is the `timeline` queue's processor. A pickup takes the row with a new attempt
  * and fence (claim from queued, retry from running) and never moves the original deadline; it reads the container
  * job before submitting it, submits the fixed `timeline:<executionId>` job, and throws `StillRunning` while the job
- * runs. Only a terminal report settles: each completed call is a usage row under `timeline:<executionId>:<seq>`, an
- * interrupted or cut-off call a zero row marked missing, an upstream error no row, the container one row; then the
- * `billed_at` gate decides whether this writer charges actual use: it writes a `timeline_execution` charge request in
+ * runs. The job carries provider's plan of where its model calls go (inner#1743). Only a terminal report settles: each
+ * call is recorded by the cost provider's relay gave it under `timeline:<executionId>:<seq>` (a pending cost is looked
+ * up later, once the charge is decided; a cut-off call is a zero row marked missing), an upstream error no row, the
+ * container one row; then the `billed_at` gate decides whether this writer charges actual use: it writes a `timeline_execution` charge request in
  * the same commit as `billed_at` and then settles it (inner#1617), and a settle that fails leaves the request pending
  * for the sweep without failing the execution. Acceptance held no credits, so no path releases a hold and no charge
  * names one; the run has no spend ceiling of its own. The job lock is re-checked before the source insert, the usage,
@@ -47,13 +48,17 @@ vi.mock("ai", () => ({
 
 import type * as DomainModule from "@breatic/domain";
 import fc from "fast-check";
-import { createPgClient, env, getStreamRedis, getTimelineConfig, initCore, loadLocales, timelineExecutionRepo } from "@breatic/core";
-import { toChargeCredits } from "@breatic/domain";
+import { createHash } from "node:crypto";
+import { createPgClient, createQueue, env, getStreamRedis, getTimelineConfig, initCore, loadLocales, timelineExecutionRepo } from "@breatic/core";
+import { initProvider, provider, toChargeCredits, USAGE_LOOKUP_QUEUE } from "@breatic/domain";
+import { NoUpstreamAvailable, type CostLookup } from "@breatic/provider";
+import { t } from "@breatic/shared";
 import { spaceTasksChangedChannel } from "@breatic/shared";
 import { WEB_ANIMATION_CONTAINER_CLASS, webAnimationJobRequestSchema } from "@breatic/shared/space-content";
 import { runTimelineExecution } from "@worker/handlers/timeline/web-animation-execution.js";
 import {
   CALLS,
+  LEGACY_CALLS,
   asJob,
   captureErrorLogs,
   expectedSource,
@@ -64,6 +69,7 @@ import {
   jobFor,
   json,
   manifest,
+  notConfigured,
   read,
   report,
   seedExecution,
@@ -82,6 +88,7 @@ const owned: string[] = [];
 beforeAll(() => {
   initCore(process.env);
   loadLocales();
+  initProvider();
   errorLogs = captureErrorLogs("timeline-worker");
   sql = createPgClient(inject("DATABASE_URL"), { name: "timeline-worker-driver", max: 6, prepare: false });
 });
@@ -93,6 +100,8 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  // A lookup is queued under its hash, so the next case's hand-off of the same call would find this one.
+  await lookupQueue().remove(lookupJobId(INTERRUPTED_LOOKUP));
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   if (owned.length > 0) await sql`UPDATE timeline_executions SET deleted_at = now() WHERE id = ANY(${owned}::uuid[])`;
@@ -104,6 +113,49 @@ afterAll(async () => {
 });
 
 const TOKEN = "lock-token";
+
+const INTERRUPTED_LOOKUP: CostLookup = { upstream: "openrouter", generationId: "gen-3" };
+
+let lookups: ReturnType<typeof createQueue> | undefined;
+
+/**
+ * The queue a pending cost is looked up on.
+ * @returns It.
+ */
+function lookupQueue(): ReturnType<typeof createQueue> {
+  lookups ??= createQueue(USAGE_LOOKUP_QUEUE);
+  return lookups;
+}
+
+/**
+ * The id a lookup is queued under.
+ * @param lookup - The lookup.
+ * @returns Its job id.
+ */
+function lookupJobId(lookup: CostLookup): string {
+  return createHash("sha256").update(JSON.stringify(lookup)).digest("hex");
+}
+
+/**
+ * The lookup queued for the interrupted call of an execution, if one is.
+ * @param fx - The execution.
+ * @returns The job's data, or undefined.
+ */
+async function queuedLookup(fx: ExecutionFixture): Promise<Record<string, unknown> | undefined> {
+  const job = await lookupQueue().getJob(lookupJobId(INTERRUPTED_LOOKUP));
+  const data = job?.data as Record<string, unknown> | undefined;
+  return data?.["operationKey"] === `timeline:${fx.execution.id}` ? data : undefined;
+}
+
+/**
+ * The upstream each charge request of an execution names.
+ * @param executionId - The execution.
+ * @returns Their providers.
+ */
+async function chargeProviders(executionId: string): Promise<Array<string | null>> {
+  const rows = await sql<{ provider: string | null }[]>`SELECT provider FROM credit_charge_requests WHERE reference_id = ${executionId}`;
+  return rows.map((row) => row.provider);
+}
 
 /**
  * Seed an execution this suite cleans up.
@@ -186,9 +238,10 @@ async function settlesFor(executionId: string): Promise<number> {
 }
 
 /**
- * The usage rows a report with one completed call and one interrupted call leaves, before the container row.
+ * The usage rows a report with one completed call and one interrupted call leaves, before the container row: the
+ * interrupted call's cost is pending, so it waits for its lookup and writes no row yet.
  * @param executionId - The execution.
- * @returns The two model rows.
+ * @returns The model row.
  */
 function modelRows(executionId: string): Record<string, unknown>[] {
   const model = getTimelineConfig().web_animation.model;
@@ -197,11 +250,6 @@ function modelRows(executionId: string): Record<string, unknown>[] {
       source: "model", provider: "openrouter", model, feature: "timeline_web_animation",
       cost_identity: `timeline:${executionId}:1`, cost_source: "provider", cost_usd: 0.0125, credits: 1.25 * env.CREDIT_MULTIPLIER,
       input_tokens: 1_200, cached_input_tokens: 200, output_tokens: 300, reasoning_tokens: 100,
-    },
-    {
-      source: "model", provider: "openrouter", model, feature: "timeline_web_animation",
-      cost_identity: `timeline:${executionId}:3`, cost_source: "missing", cost_usd: 0, credits: 0,
-      input_tokens: 900, cached_input_tokens: 0, output_tokens: 40, reasoning_tokens: 0,
     },
   ];
 }
@@ -277,7 +325,9 @@ describe("picking up a queued execution", () => {
       maxTokens: config.max_tokens,
       callTimeoutMs: config.call_timeout_ms,
       model: config.model,
+      messagesPlan: provider().llm.messagesPlan(config.model),
     });
+    expect(submitted.messagesPlan!.candidates.length).toBeGreaterThan(0);
     expect(submitted.viewport.width * 9).toBe(submitted.viewport.height * 16);
     expect(await chargesFor(fx.execution.id)).toEqual([]);
     expect(await usageRows(sql, fx.execution.id)).toEqual([]);
@@ -438,9 +488,49 @@ describe("settling a terminal report", () => {
     expect(Number(row.billedCredits)).toBe(amount);
     expect(row.billedAt).not.toBeNull();
     await expectNothingHeld(fx);
+    expect(await chargeProviders(fx.execution.id)).toEqual(["openrouter"]);
+    expect(await queuedLookup(fx)).toEqual(expect.objectContaining({
+      lookup: INTERRUPTED_LOOKUP, upstream: "openrouter", feature: "timeline_web_animation", charge: true,
+      model: getTimelineConfig().web_animation.model, source: "model",
+    }));
+  });
+
+  it("reads a report from a Worker deployed before the plan: a dollar cost is known, none is a logged zero row", async () => {
+    const fx = await seed("running");
+    const ingest = installFakeIngest(fx);
+    ingest.read = () => json(report(fx, "failed", { calls: [LEGACY_CALLS.completed, LEGACY_CALLS.interrupted] }));
+    await pickUp(fx);
+    const models = (await usageRows(sql, fx.execution.id)).filter((r) => r.source === "model");
+    // Such a Worker sends every call to OpenRouter.
+    expect(models.map((r) => [r.cost_identity, r.provider, r.cost_source, r.cost_usd, r.input_tokens])).toEqual([
+      [`timeline:${fx.execution.id}:1`, "openrouter", "provider", 0.0125, 1_200],
+      [`timeline:${fx.execution.id}:3`, "openrouter", "missing", 0, 900],
+    ]);
     expect(errorLogs()).toContainEqual(
-      expect.objectContaining({ executionId: fx.execution.id, seq: 3, generationId: "gen-3", outcome: "interrupted" }),
+      expect.objectContaining({ executionId: fx.execution.id, seq: 3, outcome: "interrupted" }),
     );
+    expect(await queuedLookup(fx)).toBeUndefined();
+  });
+
+  it("logs a cost the report carries in a shape provider does not read and records the call at zero", async () => {
+    const fx = await seed("running");
+    const ingest = installFakeIngest(fx);
+    const garbled = { ...CALLS.completed, cost: { state: "known", usd: -1 } };
+    ingest.read = () => json(report(fx, "failed", { calls: [garbled] }));
+    await pickUp(fx);
+    const models = (await usageRows(sql, fx.execution.id)).filter((r) => r.source === "model");
+    expect(models.map((r) => [r.cost_source, r.cost_usd])).toEqual([["missing", 0]]);
+    expect(errorLogs()).toContainEqual(expect.objectContaining({ executionId: fx.execution.id, seq: 1, msg: "timeline_model_call_cost_unreadable" }));
+  });
+
+  it("queues the pending lookup even when another writer already charged the run", async () => {
+    const fx = await seed("running");
+    await sql`UPDATE timeline_executions SET billed_at = now(), billed_credits = 1 WHERE id = ${fx.execution.id}`;
+    const ingest = installFakeIngest(fx);
+    ingest.read = () => json(report(fx, "failed"));
+    await pickUp(fx);
+    expect(await chargesFor(fx.execution.id)).toEqual([]);
+    expect(await queuedLookup(fx)).toEqual(expect.objectContaining({ lookup: INTERRUPTED_LOOKUP }));
   });
 
   it("settles a failed report, recording a call the crash cut off at zero, and fails with the report's reason", async () => {
@@ -593,8 +683,9 @@ describe("the job lock", () => {
   it.each([
     { answers: [0], sources: 0, usage: 0, charges: 0 },
     { answers: [1, 0], sources: 1, usage: 0, charges: 0 },
-    { answers: [1, 1, 0], sources: 1, usage: 3, charges: 0 },
-    { answers: [1, 1, 1, 0], sources: 1, usage: 3, charges: 1 },
+    // The report's model row and container row; its interrupted call waits for a lookup.
+    { answers: [1, 1, 0], sources: 1, usage: 2, charges: 0 },
+    { answers: [1, 1, 1, 0], sources: 1, usage: 2, charges: 1 },
   ])("is checked before the source, the usage, the charge and the terminal transition (lock answers $answers)", async ({ answers, sources, usage, charges }) => {
     const fx = await seed("running");
     const ingest = installFakeIngest(fx);
@@ -641,6 +732,33 @@ describe("an ingest Worker without web-animation execution", () => {
     ingest.read = () => featureDisabled();
     await pickUp(fx);
     await expectFeatureDisabled(fx, "failed");
+  });
+
+  it("fails the execution as feature_disabled when the submit says no upstream has a key there, logging the model and variables", async () => {
+    const fx = await seed("queued");
+    const ingest = installFakeIngest(fx);
+    const model = getTimelineConfig().web_animation.model;
+    ingest.submit = () => notConfigured(model, ["HARNESS_OPENROUTER_API_KEY"]);
+    await pickUp(fx);
+    await expectFeatureDisabled(fx, "failed");
+    expect(errorLogs()).toContainEqual(expect.objectContaining({
+      executionId: fx.execution.id,
+      reason: t("server.model.not_configured", { model, envVars: "HARNESS_OPENROUTER_API_KEY" }),
+      msg: "timeline_model_not_configured",
+    }));
+  });
+
+  it("fails the execution as feature_disabled without submitting when no upstream of its model takes a Messages call", async () => {
+    const fx = await seed("queued");
+    const ingest = installFakeIngest(fx);
+    const model = getTimelineConfig().web_animation.model;
+    vi.spyOn(provider().llm, "messagesPlan").mockImplementation(() => {
+      throw new NoUpstreamAvailable(model, [{ upstream: "google", kind: "failed", failure: "takes no Messages request" }]);
+    });
+    await pickUp(fx);
+    await expectFeatureDisabled(fx, "failed");
+    expect(ingest.calls.filter((call) => call.route === "submit")).toEqual([]);
+    expect(errorLogs()).toContainEqual(expect.objectContaining({ executionId: fx.execution.id, msg: "timeline_model_not_configured" }));
   });
 
   it("ends a cancelling execution when the cancel answers 501", async () => {

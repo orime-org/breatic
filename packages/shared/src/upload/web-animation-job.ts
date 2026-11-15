@@ -18,6 +18,37 @@ const nonnegativeInteger = z.number().int().nonnegative();
 /** Package and Manifest stay under the private prefix, never on the public asset domain. */
 const webAnimationKey = z.string().min(1).max(500).startsWith("web-animation/");
 
+/**
+ * A JSON value with every object's keys in sorted order.
+ * @param value - The value.
+ * @returns The same value, its keys sorted at every depth.
+ * @throws {never} Never.
+ */
+function sortedKeys(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortedKeys);
+  if (typeof value !== "object" || value === null) return value;
+  return Object.fromEntries(Object.keys(value).sort().map((key) => [key, sortedKeys((value as Record<string, unknown>)[key])]));
+}
+
+/**
+ * Where the job's model calls go, in order: the plan provider's `messagesPlan` made on the worker, which the ingest
+ * Worker hands to provider's Messages relay. shared imports no provider, so a direct upstream's prices pass through
+ * as provider wrote them.
+ */
+const messagesPlan = z.object({
+  model: z.string().min(1).max(200),
+  candidates: z.array(z.object({
+    upstream: z.string().min(1),
+    kind: z.string().min(1),
+    baseUrl: z.string().min(1),
+    vendorModel: z.string().min(1),
+    keyEnv: z.string().min(1),
+    // jsonb does not keep key order, and the prices are no fixed shape a schema could restore it from: sorting them
+    // makes a request read back from its stored step submit the same bytes as the first submission.
+    prices: z.array(z.record(z.string(), z.unknown())).transform((entries) => entries.map((entry) => sortedKeys(entry) as Record<string, unknown>)).optional(),
+  })).min(1),
+});
+
 /** What the worker submits; every limit is read from yaml by the worker, because the ingest Worker cannot read it. */
 export const webAnimationJobRequestSchema = z.object({
   containerClass: z.literal(WEB_ANIMATION_CONTAINER_CLASS),
@@ -35,6 +66,11 @@ export const webAnimationJobRequestSchema = z.object({
   maxTokens: positiveInteger,
   callTimeoutMs: positiveInteger,
   model: z.string().min(1).max(200),
+  /**
+   * Absent only from a backend deployed before the plan (inner#1743): a Worker deployed after it answers such a
+   * submit 501 `feature_disabled`; remove the optional once every job submitted without it is past its deadline.
+   */
+  messagesPlan: messagesPlan.optional(),
 });
 
 /** What the worker submits. */
@@ -48,12 +84,21 @@ export type WebAnimationJobCancel = z.infer<typeof webAnimationJobCancelSchema>;
 
 const call = z.object({
   seq: positiveInteger,
-  /** Null when the upstream answered no generation. */
-  generationId: z.string().min(1).nullable(),
+  /** Who served the call; null when no upstream did. */
+  upstream: z.string().min(1).nullable().optional(),
+  /** The id `message_start` named; null when the stream never named one. */
+  messageId: z.string().min(1).nullable().optional(),
   tokens: z.object({
     input: nonnegativeInteger, output: nonnegativeInteger, reasoning: nonnegativeInteger, cacheRead: nonnegativeInteger,
   }).nullable(),
-  costUsd: z.number().nonnegative().nullable(),
+  /** provider's `Cost` as the relay gave it, read by the worker with provider's `costSchema`; null for no cost. */
+  cost: z.unknown().optional(),
+  /**
+   * What a Worker deployed before the plan reports instead of the three fields above (inner#1743); remove both once
+   * every job such a Worker ran is past its deadline.
+   */
+  generationId: z.string().min(1).nullable().optional(),
+  costUsd: z.number().nonnegative().nullable().optional(),
   outcome: z.enum(["completed", "upstream_error", "interrupted", "cut_off"]),
 });
 

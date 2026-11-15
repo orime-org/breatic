@@ -16,6 +16,7 @@
 import { expect, type Locator, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
 import { startNewConversation } from '../helpers/conversation';
+import { answerRuns } from '../helpers/fake-run';
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
 import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
@@ -86,8 +87,7 @@ const TWO = {
  * @param proposal - What the proposal tool answers with.
  */
 async function answerWithProposal(p: Page, proposal: object): Promise<void> {
-  const chunks = [
-    { type: 'data-heartbeat', transient: true, data: {} },
+  await answerRuns(p, () => [
     { type: 'data-conversation-titled', data: { title: 'clear spot' } },
     { type: 'start', messageId: 'm-reply' },
     { type: 'start-step' },
@@ -100,11 +100,7 @@ async function answerWithProposal(p: Page, proposal: object): Promise<void> {
     { type: 'tool-output-available', toolCallId: 'call-1', output: proposal },
     { type: 'finish-step' },
     { type: 'finish' },
-  ];
-  const body = chunks.map((c) => `data: ${JSON.stringify(c)}\n\n`).join('');
-  await p.route('**/chat/message', (route) =>
-    route.fulfill({ status: 200, headers: { 'content-type': 'text/event-stream' }, body }),
-  );
+  ]);
 }
 
 /**

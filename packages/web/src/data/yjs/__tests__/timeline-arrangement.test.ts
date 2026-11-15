@@ -21,7 +21,7 @@ const baseClip = {
   rate: { num: 1, den: 1 },
   gain: 1,
   mute: false,
-  transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+  transform: { frameX: 0, frameY: 0, scaleX: 1, scaleY: 1, rotation: 0 },
 };
 
 const FPS: TimelineRate = { num: 24, den: 1 };
@@ -40,7 +40,7 @@ function documentOf(
   sources: Record<string, TimelineVideoSource> = { [SOURCE.id]: SOURCE }, fps: TimelineRate = FPS,
 ): TimelineDocumentV1 {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     settings: { width: 1920, height: 1080, fps },
     tracks: Object.fromEntries(trackList.map((item) => [item.id, item])),
     clips: Object.fromEntries(clips.map((item) => [item.id, item])),

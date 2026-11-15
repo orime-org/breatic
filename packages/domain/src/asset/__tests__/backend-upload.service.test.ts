@@ -522,8 +522,8 @@ describe("transferUrlToStorage — lane ③", () => {
   });
 });
 
-// Lane ② is what a mini-tool's ffmpeg output and a synchronous transport's
-// bytes both take. Nothing asserted what it asks the Worker for, so dropping
+// Lane ② is what a mini-tool's ffmpeg output and a file an upstream answered
+// inline both take. Nothing asserted what it asks the Worker for, so dropping
 // either argument left every asset down it without its numbers and every video
 // without a cover, with the whole suite still green.
 describe("what lane ② asks the Worker for", () => {

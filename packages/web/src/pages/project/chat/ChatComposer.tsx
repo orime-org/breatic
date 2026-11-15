@@ -6,6 +6,7 @@ import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { EditorContent } from '@tiptap/react';
 import { CHAT_MESSAGE_MAX_CHARS, messageLength } from '@breatic/shared';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -30,12 +31,15 @@ interface ChatComposerProps {
   /**
    * How far along the turn is, which decides what stands where Send does.
    *
-   * `sending` is the wait between the press and the server's first word.
-   * Neither button belongs there: sending again would ask the same thing
-   * twice, and a stop button would offer to stop something this end has no
-   * word of yet -- with nothing on screen for stopping it to take back.
+   * `sending` is the wait between the press and the server's answer to the
+   * send, whether or not a run is answering. Neither button belongs there:
+   * sending again would ask the same thing twice, and a stop button would
+   * offer to stop a run this end may have no word of yet. While a run is
+   * `running`, stop and send stand side by side.
    */
   turnPhase?: TurnPhase;
+  /** A stop is on its way to the server (inner#1717). */
+  stopping?: boolean;
   /**
    * The panel is on its way to another conversation.
    *
@@ -86,6 +90,7 @@ interface ChatComposerProps {
  * @param root0.projectId - The Project it is in, for the model picker.
  * @param root0.draft - The current draft text in the input.
  * @param root0.turnPhase - How far along the turn is: idle, sending, running.
+ * @param root0.stopping - A stop is on its way to the server.
  * @param root0.navigating - The panel is on its way to another conversation.
  * @param root0.attachments - What is attached to the next message.
  * @param root0.attachAccept - What the file picker offers.
@@ -103,6 +108,7 @@ function ChatComposerInner({
   projectId,
   draft,
   turnPhase = 'idle',
+  stopping = false,
   navigating = false,
   attachments = NO_ATTACHMENTS,
   attachAccept,
@@ -120,7 +126,9 @@ function ChatComposerInner({
   // panel changes conversation they belong to the one being left.
   const frozen = turnPhase === 'sending' || navigating;
   const allReady = attachments.every((item) => item.status === 'ready');
-  const ready = draft.trim().length > 0 && turnPhase === 'idle' && !navigating && allReady;
+  // A run answering does not hold the box: what is sent meanwhile waits for
+  // the run's next step (inner#1717).
+  const ready = draft.trim().length > 0 && turnPhase !== 'sending' && !navigating && allReady;
   const picker = React.useRef<HTMLInputElement>(null);
   const tray = React.useRef<HTMLDivElement>(null);
 
@@ -141,16 +149,8 @@ function ChatComposerInner({
   });
 
   /**
-   * Submit the draft message when the composer is in a ready state.
-   *
-   * Hands the keyboard to the box on the way out. Whoever pressed this with
-   * the keyboard is standing on a button that is about to be a different
-   * one -- the same element serves send, the wait and stop, which is what
-   * keeps the focus from falling to the body when the phase changes. Left
-   * standing there, their next keypress reaches stop: they would be ending
-   * the answer they just asked for, having aimed at nothing of the sort.
-   * The box is where they act next anyway, and it is the one thing here that
-   * does not change meaning underneath them.
+   * Submit the draft message when the composer is in a ready state, and hand
+   * the keyboard over on the way out.
    */
   const submit = (): void => {
     if (!ready) return;
@@ -159,26 +159,16 @@ function ChatComposerInner({
   };
   submitRef.current = submit;
 
-  /**
-   * Stop the turn, and hand the keyboard over on the way out.
-   *
-   * The same rule as {@link submit} and the same reason: this element is
-   * about to be a different button. Stopping turns it back into Send, and a
-   * user who wrote their next message while waiting would send it with the
-   * very next keypress, having aimed at stop.
-   */
+  /** Stop the turn, and hand the keyboard over on the way out. */
   const abort = (): void => {
     onAbort?.();
     handOverTheKeyboard();
   };
 
   /**
-   * Put the keyboard where nothing changes meaning underneath it.
-   *
-   * The one slot in this row serves send, the wait and stop in turn, which is
-   * what keeps focus from falling to the body when the phase changes -- and
-   * what makes standing there dangerous. The box is where the user acts
-   * next anyway.
+   * Put the keyboard in the box: the button pressed unmounts (send gives way
+   * to the wait, stop leaves when the run ends), and focus would fall to the
+   * body. The box is where the user acts next anyway.
    */
   const handOverTheKeyboard = (): void => {
     // The editor's own focus puts the caret back where the user left it; a
@@ -303,36 +293,55 @@ function ChatComposerInner({
             >
               <Loader2 className='h-4 w-4 animate-spin' />
             </span>
-          ) : turnPhase === 'running' ? (
-            <Button
-              type='button'
-              variant={null}
-              size={null}
-              aria-label='Abort'
-              onClick={abort}
-              data-testid='chat-composer-abort'
-              className='inline-flex h-[var(--btn-inline)] w-[var(--btn-inline)] shrink-0 items-center justify-center rounded-chrome border border-status-error-border bg-status-error-bg text-status-error-foreground transition-colors hover:border-status-error'
-            >
-              <Square className='h-4 w-4' />
-            </Button>
           ) : (
-            <Button
-              type='button'
-              variant={null}
-              size={null}
-              aria-label={t('chat.composer.send')}
-              title={t('chat.composer.send')}
-              disabled={!ready}
-              onClick={submit}
-              data-testid='chat-composer-send'
-              className={`inline-flex h-[var(--btn-inline)] w-[var(--btn-inline)] shrink-0 items-center justify-center rounded-chrome transition-opacity disabled:cursor-not-allowed ${
-              ready
-                ? 'bg-foreground text-background transition-colors hover:bg-primary-hover'
-                : 'bg-muted text-muted-foreground hover:bg-accent hover:text-foreground'
-            }`}
-            >
-              <ArrowUp className='h-4 w-4' />
-            </Button>
+            <>
+              {turnPhase === 'running' ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type='button'
+                      variant='destructive'
+                      size={null}
+                      aria-label='Abort'
+                      loading={stopping}
+                      icon={<Square className='h-4 w-4' />}
+                      onClick={abort}
+                      data-testid='chat-composer-abort'
+                      className='inline-flex h-[var(--btn-inline)] w-[var(--btn-inline)] shrink-0 items-center justify-center rounded-chrome'
+                    />
+                  </TooltipTrigger>
+                  <TooltipContent portal>{t('chat.composer.stop')}</TooltipContent>
+                </Tooltip>
+              ) : null}
+              {/* disableHoverableContent: while a reply runs this label is
+                  wide enough to sit over the stop button, and a hoverable
+                  tooltip treats the pointer on its way to stop as on its way
+                  to the label -- the label stayed up and stop's never opened
+                  (measured in Chromium). */}
+              <Tooltip disableHoverableContent>
+                <TooltipTrigger asChild>
+                  <Button
+                    type='button'
+                    variant={null}
+                    size={null}
+                    aria-label={t('chat.composer.send')}
+                    disabled={!ready}
+                    onClick={submit}
+                    data-testid='chat-composer-send'
+                    className={`inline-flex h-[var(--btn-inline)] w-[var(--btn-inline)] shrink-0 items-center justify-center rounded-chrome transition-opacity disabled:cursor-not-allowed ${
+                    ready
+                      ? 'bg-foreground text-background transition-colors hover:bg-primary-hover'
+                      : 'bg-muted text-muted-foreground hover:bg-accent hover:text-foreground'
+                  }`}
+                  >
+                    <ArrowUp className='h-4 w-4' />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent portal>
+                  {turnPhase === 'running' ? t('chat.composer.sendWhileRunning') : t('chat.composer.send')}
+                </TooltipContent>
+              </Tooltip>
+            </>
           )}
         </div>
         {/* Here whether or not there is anything to say, so that a user is

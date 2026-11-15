@@ -159,7 +159,7 @@ describe("a direct vendor's stream cut before its finish", () => {
     }
     stop.abort();
     await Promise.resolve(stream.consumeStream()).catch(() => undefined);
-    expect(prepared.pendingCosts()).toEqual([expect.objectContaining({ state: "missing" })]);
+    expect(prepared.pendingCosts()).toEqual([expect.objectContaining({ state: "missing", upstream: "deepseek" })]);
     fakes.deepseek.release();
   });
 
@@ -179,7 +179,7 @@ describe("an OpenRouter stream stopped before its first data chunk", () => {
     setTimeout(() => stop.abort(), 300);
     const stream = streamText({ model: prepared.model, prompt: "hi", abortSignal: stop.signal, ...prepared.options, onError: () => undefined });
     await Promise.resolve(stream.consumeStream()).catch(() => undefined);
-    expect(prepared.pendingCosts()).toEqual([expect.objectContaining({ state: "missing" })]);
+    expect(prepared.pendingCosts()).toEqual([expect.objectContaining({ state: "missing", upstream: "openrouter" })]);
     fakes.openrouter.release();
   });
 });

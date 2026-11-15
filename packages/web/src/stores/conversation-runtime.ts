@@ -12,8 +12,8 @@
  *
  * The history read here is the starting point a `Chat` is built from. After
  * that the `Chat` is where the messages live, and this does not follow them:
- * a reply being written exists nowhere but in that session until the turn ends
- * and the server stores it.
+ * a reply being written lives in that session as this page reads it from the
+ * run's stream on the server, until the run ends and the server stores it.
  */
 
 import { create } from 'zustand';
@@ -577,9 +577,9 @@ async function openAndAdopt(projectId: string): Promise<OpenFailure | undefined>
  *
  * Rebuilds the entry rather than merging into it: this is an answer describing
  * the whole conversation, so what it does describe replaces what was held.
- * A turn still running here is the exception, and the reason is the same one
- * -- it is the part of this conversation the answer does not describe, because
- * it has not reached the server yet. It is carried across, along with the
+ * A turn still running is the exception, and the reason is the same one --
+ * the reply it is writing is the part of this conversation the answer does not
+ * describe, because the server has not stored it yet. It is carried across, along with the
  * reply being written and the failures shown beside it. That is also why
  * callers must not reach here with an answer to a visit that is over -- see
  * {@link visits} -- and why every one of them checks first.
@@ -1527,11 +1527,8 @@ async function remove(projectId: string, conversationId: string): Promise<void> 
   }
   if (visit.signal.aborted) return;
 
-  // Whatever it was running stops with it. Leaving the turn to finish would
-  // go on calling the model, and being billed for it, on behalf of a
-  // conversation that no longer exists. Dropping the session from the map is
-  // not enough on its own -- the request is out, and nothing about a map
-  // entry disappearing reaches it.
+  // The server stopped whatever it was running when it deleted it; this page
+  // lets go of the stream it was reading and drops the session.
   evictChatSession(conversationId);
 
   const remaining = (useStore.getState().listByProject[projectId] ?? []).filter(
@@ -1626,6 +1623,28 @@ function setDraft(conversationId: string | undefined, text: string): void {
 }
 
 /**
+ * Take a page of history that replaced a conversation's list whole as how far
+ * back the list now reaches (inner#1717): read back before attaching to a run,
+ * it did not join onto the list on screen.
+ * @param conversationId - The conversation.
+ * @param read - The page, and whether anything is older.
+ * @param read.messages - The page, oldest first.
+ * @param read.hasMore - The conversation reaches back further than the page.
+ */
+function tookLatestPage(conversationId: string, read: { messages: readonly StoredUiMessage[]; hasMore: boolean }): void {
+  useStore.setState((s) => {
+    const c = s.conversations[conversationId];
+    if (!c) return s;
+    return {
+      conversations: {
+        ...s.conversations,
+        [conversationId]: { ...c, hasMore: read.hasMore, oldestLoadedTurn: oldestTurnOf(read.messages) },
+      },
+    };
+  });
+}
+
+/**
  * Read back what was half-typed.
  * @param conversationId - The conversation asked about, if one is on screen.
  * @returns What is in its box, empty when nothing was left there.
@@ -1638,11 +1657,8 @@ function draftOf(conversationId: string | undefined): string {
 /**
  * Forget everything about one project's chat.
  *
- * Called when the user leaves the project. A turn still running is stopped
- * first, because leaving says more plainly than a dropped connection that
- * nobody is listening -- and once the entry is gone there is no screen
- * anywhere showing a stop button for it, so not stopping it would leave the
- * model running on the user's account with the switch out of reach.
+ * Called when the user leaves the project. A run still going goes on on the
+ * server; this page lets go of the stream it was reading and drops the rest.
  * @param projectId - The project being left.
  */
 function leaveProject(projectId: string): void {
@@ -1809,6 +1825,7 @@ export const conversationRuntime = {
   remove,
   setDraft,
   draftOf,
+  tookLatestPage,
   setAgentModel,
   askModelListAgain,
 };

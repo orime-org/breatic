@@ -23,10 +23,20 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 
 const counts = vi.hoisted(() => ({ composer: 0, history: 0 }));
 
-vi.mock('@web/data/api/chat', async (importOriginal) => ({
-  ...(await importOriginal<typeof ChatApiModule>()),
-  chatApi: { openChat: vi.fn() },
-}));
+vi.mock('@web/data/api/chat', async (importOriginal) => {
+  const actual = await importOriginal<typeof ChatApiModule>();
+  return {
+    ...actual,
+    chatApi: {
+      openChat: vi.fn(),
+      streamConfig: vi.fn(),
+      readConversation: vi.fn(),
+      running: vi.fn(),
+      sync: vi.fn(),
+      streamPath: actual.chatApi.streamPath,
+    },
+  };
+});
 
 // Stand-ins that count. Memoised the way the real ones are, so what a count
 // that grows says is "the props changed", which is the half of this the panel
@@ -56,10 +66,13 @@ import { ChatPanel } from '@web/pages/project/chat/ChatPanel';
 import { ChatComposer } from '@web/pages/project/chat/ChatComposer';
 import { ConversationHistorySheet } from '@web/pages/project/chat/ConversationHistorySheet';
 import { _resetForTests } from '@web/stores/conversation-runtime';
-import { chatSessionFor, evictAllChatSessions } from '@web/stores/chat-sessions';
+import { evictAllChatSessions } from '@web/stores/chat-sessions';
+import { resetChatLiveForTests } from '@web/stores/chat-live';
+import { replyOpens, stubRunWire } from '@web/test-utils/chat-run-wire';
+import type { RunWire } from '@web/test-utils/chat-run-wire';
 
-/** The stream this turn is arriving on, which the test pushes into. */
-let wire: { push: (chunk: Record<string, unknown>) => void } | null = null;
+/** The run streams the page reads, which the test pushes into. */
+let wire: RunWire;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -67,35 +80,33 @@ beforeEach(() => {
   evictAllChatSessions();
   counts.composer = 0;
   counts.history = 0;
-  wire = null;
   vi.mocked(chatApi.openChat).mockResolvedValue({
     conversations: [{ id: 'c1' }],
     current: { conversation: { id: 'c1', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } }, messages: [], hasMore: false },
   } as unknown as Awaited<ReturnType<typeof chatApi.openChat>>);
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async () => {
-      const encoder = new TextEncoder();
-      let controller: ReadableStreamDefaultController<Uint8Array>;
-      const body = new ReadableStream<Uint8Array>({
-        start(c) {
-          controller = c;
-        },
-      });
-      wire = {
-        push: (chunk) => {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
-        },
-      };
-      return new Response(body, {
-        status: 200,
-        headers: { 'Content-Type': 'text/event-stream' },
-      });
-    }),
-  );
+  vi.mocked(chatApi.streamConfig).mockResolvedValue({
+    heartbeatIntervalMs: 5000,
+    attachmentMaxChars: 200_000,
+    attachmentMaxItems: 10,
+    currentSpaceMaxChars: 100_000,
+    spaceListMaxItems: 200,
+    spaceReadTimeoutMs: 20_000,
+    runningPollIntervalMs: 5000,
+    syncIntervalMs: 3000,
+  });
+  vi.mocked(chatApi.readConversation).mockResolvedValue({
+    conversation: { id: 'c1', agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
+    messages: [],
+    hasMore: false,
+  } as unknown as Awaited<ReturnType<typeof chatApi.readConversation>>);
+  vi.mocked(chatApi.sync).mockResolvedValue({ pending: [], running: false, awaiting: false, next_sync_ms: 3000 });
+  vi.mocked(chatApi.running).mockResolvedValue([]);
+  wire = stubRunWire();
 });
 
 afterEach(() => {
+  resetChatLiveForTests();
+  evictAllChatSessions();
   vi.unstubAllGlobals();
 });
 
@@ -140,6 +151,10 @@ describe('the project meta being re-read (inner#1413)', () => {
 
 describe('a reply arriving piece by piece', () => {
   it('does not re-render the composer or the history sheet', async () => {
+    // A run holds the conversation when it opens, so the panel attaches to it
+    // (inner#1717). What is being measured is what the panel does to its
+    // children while a reply arrives, not how the reply was asked for.
+    vi.mocked(chatApi.sync).mockResolvedValue({ pending: [], running: true, awaiting: false, next_sync_ms: 3000 });
     render(
       <QueryClientProvider client={new QueryClient()}>
         <ChatPanel historyOpen={false} onHistoryOpenChange={() => undefined} projectId='p1' activeSpace={undefined} spaces={[]} />
@@ -147,23 +162,12 @@ describe('a reply arriving piece by piece', () => {
     );
     await waitFor(() => expect(chatApi.openChat).toHaveBeenCalled());
 
-    // Sent through the session rather than the composer, because the composer
-    // is a stub here. What is being measured is what the panel does to its
-    // children while a reply arrives, not how the reply was asked for.
+    await waitFor(() => {
+      expect(wire.last()).not.toBeNull();
+    });
     await act(async () => {
-      void chatSessionFor({
-        projectId: 'p1',
-        conversationId: 'c1',
-        history: [],
-        onTitled: () => undefined,
-        onFirstFrame: () => undefined,
-      }).sendMessage({ text: 'hello' });
-      await waitFor(() => {
-        expect(wire).not.toBeNull();
-      });
-      wire?.push({ type: 'start' });
-      wire?.push({ type: 'start-step' });
-      wire?.push({ type: 'text-start', id: 't1' });
+      for (const chunk of replyOpens()) wire.last()?.push(chunk);
+      await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
     const composerBefore = counts.composer;
@@ -173,7 +177,7 @@ describe('a reply arriving piece by piece', () => {
     // a single act would only ever measure one render of the panel.
     for (const delta of ['a', 'b', 'c', 'd', 'e']) {
       await act(async () => {
-        wire?.push({ type: 'text-delta', id: 't1', delta });
+        wire.last()?.push({ type: 'text-delta', id: 't1', delta });
         await new Promise((resolve) => setTimeout(resolve, 0));
       });
     }

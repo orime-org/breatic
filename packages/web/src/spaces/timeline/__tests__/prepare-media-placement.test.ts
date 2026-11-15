@@ -108,7 +108,7 @@ function expectedCommand(overrides: Partial<TimelineVideoClip> = {}, placement: 
         id: CLIP_ID, trackId: 'visual-1', kind: 'video', sourceId: SOURCE_ID,
         startFrame: 72, sourceInFrame: 0, durationFrames: 48,
         rate: { num: 1, den: 1 }, gain: 1, mute: false,
-        transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+        transform: { frameX: 0, frameY: 0, scaleX: 1, scaleY: 1, rotation: 0 },
         ...overrides,
       },
     },
@@ -180,7 +180,7 @@ describe('prepareTimelineMediaPlacement', () => {
     const command = expectedCommand();
     expect(result).toEqual({ ok: true, command });
     expect(readTimelineDocument(doc)).toEqual({
-      schemaVersion: 1, settings: SETTINGS,
+      schemaVersion: 2, settings: SETTINGS,
       tracks: { 'visual-1': { id: 'visual-1', kind: 'visual', order: 0 } },
       clips: {}, sources: {}, operationReceipts: {},
     });
@@ -188,7 +188,7 @@ describe('prepareTimelineMediaPlacement', () => {
     expect(TimelineEditCommandSchema.parse(result.command)).toEqual(command);
     expect(applyTimelineEdit(doc, result.command, 'local').ok).toBe(true);
     expect(readTimelineDocument(doc)).toEqual({
-      schemaVersion: 1, settings: SETTINGS,
+      schemaVersion: 2, settings: SETTINGS,
       tracks: { 'visual-1': { id: 'visual-1', kind: 'visual', order: 0 } },
       clips: { [CLIP_ID]: command.parameters.clip },
       sources: { [SOURCE_ID]: command.parameters.source },

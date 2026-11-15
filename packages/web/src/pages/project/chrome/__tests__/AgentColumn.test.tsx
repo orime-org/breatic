@@ -10,32 +10,49 @@
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type * as ChatApiModule from '@web/data/api/chat';
 
-vi.mock('@web/data/api/chat', () => ({
-  chatApi: {
-    openChat: vi.fn(),
-    streamMessage: vi.fn(() => new Promise<void>(() => {})),
-    messagesBefore: vi.fn(),
-    readConversation: vi.fn(),
-    createConversation: vi.fn(),
-    renameConversation: vi.fn(),
-    deleteConversation: vi.fn(),
-    // The open conversation list asks which conversations are running (#1394).
-    running: vi.fn(async () => []),
-    streamConfig: vi.fn(async () => ({ runningPollIntervalMs: 5000 })),
-  },
-}));
+vi.mock('@web/data/api/chat', async (importOriginal) => {
+  const actual = await importOriginal<typeof ChatApiModule>();
+  return {
+    ...actual,
+    chatApi: {
+      openChat: vi.fn(),
+      messagesBefore: vi.fn(),
+      // Every conversation here opens empty, and reads back the same.
+      readConversation: vi.fn(async (id: string) => ({ conversation: { id }, messages: [], hasMore: false })),
+      createConversation: vi.fn(),
+      renameConversation: vi.fn(),
+      deleteConversation: vi.fn(),
+      // The open conversation list asks which conversations are running (#1394).
+      running: vi.fn(async () => []),
+      streamConfig: vi.fn(async () => ({ runningPollIntervalMs: 5000, syncIntervalMs: 3_000 })),
+      // The conversation on screen asks where it stands (inner#1717); nothing holds it here.
+      sync: vi.fn(async () => ({ pending: [], running: false, awaiting: false, next_sync_ms: 3000 })),
+      sendMessage: vi.fn(),
+      stop: vi.fn(),
+      removeQueued: vi.fn(),
+      streamPath: actual.chatApi.streamPath,
+    },
+  };
+});
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { chatApi } from '@web/data/api/chat';
 import { AgentColumn } from '@web/pages/project/chrome/AgentColumn';
 import { _resetForTests, useConversationRuntime } from '@web/stores/conversation-runtime';
+import { resetChatLiveForTests } from '@web/stores/chat-live';
 import { unexpectedTextIn } from '@web/test-utils/visible-text';
 
 const PROJECT = 'p-1';
+
+// The conversation on screen is synced on a timer; none carries into the next case.
+afterEach(() => {
+  resetChatLiveForTests();
+});
 
 /**
  * Render the column under a tooltip provider, the way the app does.

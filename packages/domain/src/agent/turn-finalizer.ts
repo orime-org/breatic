@@ -8,15 +8,11 @@
  * where any early exit skipped them: a failure, and a blocking interaction
  * tool returning. In both the reply went unsaved and the turn unbilled.
  *
- * The third way -- the user closing the page -- also skips everything after
- * the loop, because an async generator stops where the consumer stopped it.
- * That one is reachable now. It could not be found by watching writes fail:
- * hono's `StreamingApi.write` swallows the error, so a loop that only checks
- * whether its own writes landed runs on with nobody listening. PR-3 batch 3
- * (breatic #425) made the route subscribe to the departure itself -- the chat
- * entries open their stream with `streamUntilClientLeaves`, which raises a
- * signal when the client goes away, and pass it down to the loop -- so the
- * turn now learns about it and arrives here.
+ * The third way -- the turn being stopped -- also skips everything after the
+ * loop, because an async generator stops where the consumer stopped it. A
+ * chat run hands the turn its stop signal (the user's stop, the conversation
+ * deleted, a shutdown; `packages/server/src/agent/chat-run.ts`), so the turn
+ * learns about it and arrives here.
  *
  * What belongs here is what the turn's ending waits on. Work the user is not
  * waiting for -- memory consolidation, an LLM call of its own -- does not:

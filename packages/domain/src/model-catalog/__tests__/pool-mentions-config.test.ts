@@ -36,6 +36,7 @@ const MENTIONS: ReadonlyArray<readonly [string, string, string, string]> = [
   ["image", "muse-image-edit", "images", "image {n}"],
   ["image", "nano-banana-pro-edit-ultra", "images", "image {n}"],
   ["image", "qwen-image-edit-multiple-angles", "images", "image {n}"],
+  ["image", "seedream-v5.5-edit", "images", "image {n}"],
 ];
 
 describe("pool mentions in the real catalog", () => {

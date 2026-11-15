@@ -19,7 +19,7 @@
  * duplication this module was created to end — so it moved here too.
  */
 
-import { referenceKinds, type ReferenceKind, type ReferencePool } from '@breatic/shared';
+import { neutralReference, referenceKinds, type ReferenceKind, type ReferencePool } from '@breatic/shared';
 
 import { focusRefId } from '@web/spaces/canvas/generate/derive-references';
 import type { NodeRef, TypedNodeView } from '@web/data/yjs/node-view';
@@ -140,9 +140,10 @@ export function mentionedReferenceUrls(input: MentionInput): ReferenceUrls {
 
 /**
  * How each mentioned chip is written into the prompt the model reads (#2156,
- * design §13.2): its kind's `mention`, with `{n}` its place in that kind's sent
- * list counted from 1 and `{i}` counted from 0, so the words point at the same
- * file the list carries there.
+ * design §13.2): a neutral reference to its place in its kind's sent list,
+ * counted from 1, so it points at the same file the list carries there;
+ * provider writes it the way the upstream serving the run spells it
+ * (inner#1743). A kind whose model declares no `mention` takes no reference.
  * @param pool - The model's pool in this mode.
  * @param input - The two row sources plus what the prompt mentions.
  * @returns Pool id to its words; a chip whose kind the model takes nothing of,
@@ -153,9 +154,8 @@ export function mentionTokens(pool: ReferencePool, input: MentionInput): Mention
   const counts: Record<ReferenceKind, number> = { image: 0, video: 0, audio: 0 };
   for (const ref of sentReferences(input)) {
     const index = counts[ref.kind]++;
-    const mention = pool[ref.kind]?.mention;
-    if (mention === undefined) continue;
-    tokens[ref.id] = mention.replace('{n}', String(index + 1)).replace('{i}', String(index));
+    if (pool[ref.kind]?.mention === undefined) continue;
+    tokens[ref.id] = neutralReference(pool[ref.kind]!.param, index + 1);
   }
   return tokens;
 }

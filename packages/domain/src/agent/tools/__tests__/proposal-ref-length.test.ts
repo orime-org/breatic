@@ -3,19 +3,22 @@
 
 /**
  * What a ref adds to a prompt's length is what the panel sends in its place
- * (inner#1315): a picture's ref is the mention of the pool its mode reads,
- * numbered within its kind. The model below caps its prompt and serves two
+ * (inner#1315): a picture's ref is the neutral reference to the pool its mode
+ * reads, numbered within its kind (inner#1743). The model below caps its prompt and serves two
  * modes, each reading pictures from a pool of its own named differently, which
  * no model in the live catalog does, so a catalog of this file's own is what
  * lets the question be asked.
  */
 
 import { afterEach, describe, expect, it } from "vitest";
-import type { CanvasProposal } from "@breatic/shared";
+import { neutralReference, type CanvasProposal } from "@breatic/shared";
 
 import { restoreRealCatalog, useFixtureCatalog } from "@domain/model-catalog/__tests__/fixture-catalog.js";
 
 const CAP = 40;
+
+/** What the panel sends in place of the ref: the first picture of the `images` pool. */
+const SENT_REF = neutralReference("images", 1);
 
 /** An image model capping its prompt, with a pool per mode, the other mode's listed first. */
 const IMAGE = [
@@ -27,10 +30,6 @@ const IMAGE = [
   `    max_input_chars: ${String(CAP)}`,
   "    cost_per_call: 1",
   "    generation_time: 10",
-  "    providers:",
-  "      - name: wavespeed",
-  '        model_id: "capped"',
-  "        priority: 1",
   "    params:",
   "      references:",
   '        fill: "pool"',
@@ -79,17 +78,17 @@ function edit(words: string): CanvasProposal {
 describe("a picture's ref in a capped prompt", () => {
   afterEach(restoreRealCatalog);
 
-  it("counts as its pool's mention, so the prompt fits at exactly the cap", async () => {
+  it("counts as its pool's neutral reference, so the prompt fits at exactly the cap", async () => {
     await useFixtureCatalog({ modes: MODES, buckets: { image: IMAGE } });
     const { checkProposal } = await import("../propose-canvas-action.js");
 
-    expect(checkProposal(edit("a".repeat(CAP - "image 1".length)))).toEqual({ ok: true });
+    expect(checkProposal(edit("a".repeat(CAP - SENT_REF.length)))).toEqual({ ok: true });
   });
 
   it("is refused one character past the cap", async () => {
     await useFixtureCatalog({ modes: MODES, buckets: { image: IMAGE } });
     const { checkProposal } = await import("../propose-canvas-action.js");
 
-    expect(checkProposal(edit("a".repeat(CAP - "image 1".length + 1)))).toMatchObject({ ok: false });
+    expect(checkProposal(edit("a".repeat(CAP - SENT_REF.length + 1)))).toMatchObject({ ok: false });
   });
 });

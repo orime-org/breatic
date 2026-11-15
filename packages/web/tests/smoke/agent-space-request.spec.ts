@@ -4,10 +4,10 @@
 /**
  * The Agent asks to look at Spaces, in a browser (inner#1552).
  *
- * The turn requests are answered here with streams written the way the server
- * writes them, so the card is reached without a model: it names each Space
- * asked for and the part asked for, Decline on the left and Allow on the
- * right. Allowing reads each Space -- ones whose tab is closed over a socket
+ * The sends are answered here with runs written the way the server writes
+ * them (`helpers/fake-run.ts`), so the card is reached without a model: it
+ * names each Space asked for and the part asked for, Decline on the left and
+ * Allow on the right. Allowing reads each Space -- ones whose tab is closed over a socket
  * of the read's own -- and sends what it read with the answer; declining
  * sends only that. A card still waiting is drawn again after a reload from
  * the stored conversation and can still be answered. That the server takes
@@ -17,6 +17,7 @@
 import { expect, type Page, type Route } from 'playwright/test';
 import { test } from '../helpers/slot';
 import { startNewConversation } from '../helpers/conversation';
+import { answerRuns, type RunFrames } from '../helpers/fake-run';
 import { openSmokeProject } from '../helpers/project';
 import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
 import { createSpace, deleteSpace, DOCUMENT_EDITOR } from '../helpers/space';
@@ -25,8 +26,8 @@ import { projectIdOf } from '../helpers/tab-restore';
 /** One request body the panel sent. */
 type Sent = Record<string, unknown>;
 
-/** Builds a turn's stream from the request that asked for it. */
-type Answer = (sent: Sent) => string;
+/** Builds the run a send opens from what it sent. */
+type Answer = (sent: Sent) => RunFrames;
 
 let page: Page;
 const created: string[] = [];
@@ -55,16 +56,12 @@ async function makeSpace(kind: 'document' | 'canvas', label: string): Promise<{ 
 }
 
 /**
- * A stream the way the server writes one.
+ * A run the way the server writes one, after its heartbeat.
  * @param chunks - What follows the opening.
- * @returns The response body.
+ * @returns The run's frames.
  */
-function stream(chunks: object[]): string {
-  const opening = [
-    { type: 'data-heartbeat', transient: true, data: {} },
-    { type: 'data-conversation-titled', data: { title: 'space request' } },
-  ];
-  return [...opening, ...chunks].map((c) => `data: ${JSON.stringify(c)}\n\n`).join('');
+function run(chunks: object[]): RunFrames {
+  return [{ type: 'data-conversation-titled', data: { title: 'space request' } }, ...chunks];
 }
 
 /** The reason the served turn gives. */
@@ -73,10 +70,10 @@ const REASON = 'To see what you have written so far.';
 /**
  * A turn that stops at a request to look at these Spaces.
  * @param spaces - The Spaces asked for, as the tool names them.
- * @returns The stream.
+ * @returns The run's frames.
  */
-function asks(spaces: object[]): string {
-  return stream([
+function asks(spaces: object[]): RunFrames {
+  return run([
     { type: 'start', messageId: 'm-reply' },
     { type: 'start-step' },
     { type: 'text-start', id: 't0' },
@@ -90,13 +87,14 @@ function asks(spaces: object[]): string {
 }
 
 /**
- * The turn going on after the user answered, as the server sends it: the
- * card's summary of the answer, then a reply of its own.
+ * The turn going on after the user answered: the card's answer, which the
+ * fake stores on the card in the history it serves as the server does, then
+ * what the turn says next in a reply of its own.
  * @param output - What the card is settled with.
- * @returns The stream.
+ * @returns The run's frames.
  */
-function resumes(output: object): string {
-  return stream([
+function resumes(output: object): RunFrames {
+  return run([
     { type: 'tool-output-available', toolCallId: 'req-1', output },
     { type: 'start', messageId: 'm-reply-resumed' },
     { type: 'start-step' },
@@ -112,7 +110,7 @@ function resumes(output: object): string {
  * The resumed turn for whatever the user answered: the summary the server
  * keeps for the card is each shared Space without its content.
  * @param sent - The answer's request.
- * @returns The stream.
+ * @returns The run's frames.
  */
 const settle: Answer = (sent) => {
   const answer = sent.shared_spaces as { decision: string; spaces?: Array<Record<string, unknown>> };
@@ -122,23 +120,13 @@ const settle: Answer = (sent) => {
 };
 
 /**
- * Serve the turn requests in order, and keep what each one sent.
- * @param answers - The stream for each request, in order.
- * @returns What each request carried.
+ * Answer the sends in order, and keep what each one sent.
+ * @param answers - The run for each send, in order.
+ * @returns What each send carried.
  */
 async function serve(answers: Answer[]): Promise<Sent[]> {
-  const sent: Sent[] = [];
-  await page.route('**/chat/message', async (route: Route) => {
-    const body = route.request().postDataJSON() as Sent;
-    sent.push(body);
-    const answer = answers[sent.length - 1];
-    await route.fulfill({
-      status: 200,
-      headers: { 'content-type': 'text/event-stream' },
-      body: answer === undefined ? stream([{ type: 'finish' }]) : answer(body),
-    });
-  });
-  return sent;
+  const { bodies } = await answerRuns(page, (body, index) => answers[index]?.(body) ?? run([{ type: 'finish' }]));
+  return bodies;
 }
 
 /** Say something in a new conversation and wait for the card. */
@@ -293,8 +281,21 @@ test('a card still waiting is drawn again after a reload and can be answered', a
     const real = await route.fetch();
     const json = (await real.json()) as Record<string, unknown>;
     const held = pick(json);
-    if ((held.conversation as { id?: string } | undefined)?.id === conversationId) held.messages = stored;
+    if ((held.conversation as { id?: string } | undefined)?.id === conversationId) held.messages = answeredOnceSent();
     await route.fulfill({ response: real, json });
+  };
+  /**
+   * The stored rows, with the card settled once its answer was sent, as the
+   * server stores an answer.
+   * @returns The rows.
+   */
+  const answeredOnceSent = (): unknown[] => {
+    if (sent.length < 2) return stored;
+    const [user, reply] = stored;
+    const parts = reply!.parts
+      .filter((p) => p.type !== 'data-ask-awaiting')
+      .map((p) => (p.type === 'tool-request_space_content' ? { ...p, state: 'output-available', output: { declined: true } } : p));
+    return [user!, { ...reply!, parts }];
   };
   await page.route('**/chat/open', (route) => withStored(route, (json) => (json.data as { current: Record<string, unknown> }).current));
   await page.route(`**/chat/conversations/${conversationId}`, (route) => withStored(route, (json) => json.data as Record<string, unknown>));

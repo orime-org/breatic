@@ -47,7 +47,7 @@ function modelWith(
     cost_per_call: 1,
     generation_time: 1,
     params: { [key]: { description: '', default: null, ...descriptor } },
-    providers: [],
+    availability: { upstreams: [] },
     sourcesByMode: {},
   } as unknown as ModelEntry;
 }

@@ -11,10 +11,15 @@ import type * as CoreModule from "@breatic/core";
 import { buildAgentConfig } from "@domain/agent/agent-config.js";
 import { CANVAS_TOOLS } from "@domain/agent/tools/index.js";
 
-vi.mock("@domain/agent/model-picture-capability.js", () => ({ resolveModelPictureCapability: vi.fn(async () => true) }));
-vi.mock("@domain/agent/model-context-window.js", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  resolveModelContextWindow: vi.fn(async () => 1_000_000),
+vi.mock("@domain/provider/instance.js", () => ({
+  initProvider: () => undefined,
+  provider: () => ({
+    llm: {
+      capabilities: async () => ({ pictures: true, contextWindow: 1_000_000 }),
+      availability: () => ({ upstreams: [] }),
+      judgeAvailability: () => ({ upstreams: [] }),
+    },
+  }),
 }));
 
 vi.mock("@breatic/core", async (importOriginal) => {

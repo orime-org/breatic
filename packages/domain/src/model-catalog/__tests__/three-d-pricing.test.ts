@@ -15,7 +15,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ceilToCreditCent } from "@breatic/shared";
 
-import { estimateModelCredits, getFullModelConfig, getModelCatalog } from "../model-catalog.js";
+import { estimateModelCredits, getModelCatalog } from "../model-catalog.js";
 import { restoreProcessEnv, useFullCatalog } from "./catalog-env.js";
 
 const T23D = "tripo-h3.1-t23d";
@@ -79,19 +79,12 @@ const ENTRIES: ReadonlyArray<{ model: string; sources: Record<string, unknown>; 
 ];
 
 /**
- * The credits a table price comes to on this entry.
- * @param model - The entry name.
- * @param usd - The table's price before discount.
+ * The credits a table price comes to: WaveSpeed charges Tripo's table price in full.
+ * @param usd - The table's price.
  * @returns The credits, rounded as the charge is.
- * @throws {Error} When the entry declares no WaveSpeed pricing.
  */
-function creditsFor(model: string, usd: number): number {
-  const pricing = getFullModelConfig("three_d")
-    .models.find((m) => m.name === model)
-    ?.providers?.find((p) => p.name === "wavespeed")?.pricing;
-  if (!pricing) throw new Error(`${model} declares no WaveSpeed pricing`);
-  const cents = usd * pricing.discount_rate;
-  return ceilToCreditCent(cents * getModelCatalog().credit_multiplier);
+function creditsFor(usd: number): number {
+  return ceilToCreditCent(usd * 100 * getModelCatalog().credit_multiplier);
 }
 
 beforeAll(useFullCatalog);
@@ -103,7 +96,7 @@ describe("Tripo H3.1 pricing", () => {
       it(`prices ${model}: ${c.name}`, async () => {
         const usd = Math.round((c.t23dUsd + extraUsd) * 100) / 100;
         expect(await estimateModelCredits(model, { params: { ...sources, ...c.params } })).toEqual({
-          credits: expect.closeTo(creditsFor(model, usd), 6) as number,
+          credits: expect.closeTo(creditsFor(usd), 6) as number,
           bound: "exact",
         });
       });
@@ -112,7 +105,7 @@ describe("Tripo H3.1 pricing", () => {
 
   it("prices text-to-3D at its defaults as Standard texture", async () => {
     expect(await estimateModelCredits(T23D, { params: {}, prompt: "a wooden chair" })).toEqual({
-      credits: expect.closeTo(creditsFor(T23D, 0.24), 6) as number,
+      credits: expect.closeTo(creditsFor(0.24), 6) as number,
       bound: "exact",
     });
   });
