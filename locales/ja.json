@@ -2451,6 +2451,7 @@
       "math": {
         "placeholder": "LaTeX を入力（例：E = mc^2）",
         "empty": "数式を追加",
+        "blank": "空の数式",
         "error": "数式にエラーがあります",
         "ok": "OK"
       },

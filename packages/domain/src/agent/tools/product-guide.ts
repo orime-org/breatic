@@ -2018,7 +2018,8 @@ export function renderProductGuide(): string {
       `is typed; Enter, ${quoted(t("spaces.document.math.ok"))}, Esc or a click outside closes the box and keeps the change, and Cmd+Z ` +
       "undoes it like any typing. Backspace right under a formula or Delete right above it selects it; a second press " +
       "deletes it. An empty one shows " +
-      `${quoted(t("spaces.document.math.empty"))}, one that does not parse ${quoted(t("spaces.document.math.error"))}. ` +
+      `${quoted(t("spaces.document.math.empty"))} (${quoted(t("spaces.document.math.blank"))} in a snapshot or a read-only ` +
+      `document), one that does not parse ${quoted(t("spaces.document.math.error"))}. ` +
       "The Agent, copies and Markdown get it as its LaTeX between $$.",
     "",
     "## Document comments",

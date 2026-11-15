@@ -615,6 +615,72 @@ test('a formula block selected from the line above is framed, and a wide one scr
   expect(measured).toEqual({ inside: true, scrolls: true });
 });
 
+/**
+ * The colour a token resolves to on this page.
+ * @param p - The page.
+ * @param token - The custom property, such as `--color-content-link`.
+ * @returns The computed colour.
+ */
+async function tokenColour(p: Page, token: string): Promise<string> {
+  return p.evaluate((name) => {
+    const probe = document.createElement('div');
+    probe.style.color = `var(${name})`;
+    document.body.appendChild(probe);
+    const colour = getComputedStyle(probe).color;
+    probe.remove();
+    return colour;
+  }, token);
+}
+
+test('a formula under the pointer or open in its box is framed in the link colour, a block one 2px off its glyphs', async () => {
+  await openFreshDocument(page);
+  await paste(page, { 'text/plain': 'lead $$x$$ tail\n\n$$\ny\n$$\n\nlast' });
+  await expect.poll(() => lines(page)).toContain('mathBlock:y');
+  await page.getByText('last', { exact: true }).click();
+  const link = await tokenColour(page, '--color-content-link');
+  const frame = page.locator(`${EDITOR} .doc-math [data-math-frame]`).first();
+  const inline = page.locator(`${EDITOR} span.doc-math > [data-math-face]`).first();
+  const outline = (locator: Locator): Promise<string> =>
+    locator.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return `${style.outlineStyle} ${style.outlineWidth} ${style.outlineColor} ${style.outlineOffset}`;
+    });
+  expect(await outline(frame)).toMatch(/^none /);
+
+  await page.locator(`${EDITOR} .katex-display`).hover();
+  await expect.poll(() => outline(frame)).toBe(`solid 1px ${link} 2px`);
+
+  await page.locator(`${EDITOR} p .katex`).first().hover();
+  await expect.poll(() => outline(frame)).toMatch(/^none /);
+  const accent = await tokenColour(page, '--color-accent');
+  const lifted = await inline.evaluate((element) => [getComputedStyle(element).backgroundColor, getComputedStyle(element).cursor]);
+  expect(lifted[1]).toBe('pointer');
+  expect(lifted[0]).toBe(accent);
+
+  await page.locator(`${EDITOR} p .katex`).first().click();
+  await expect(page.locator(FIELD)).toBeFocused();
+  await page.mouse.move(5, 5);
+  await expect.poll(() => outline(inline)).toMatch(new RegExp(`^solid 1px ${link.replace(/[()]/g, '\\$&')}`));
+  await page.keyboard.press('Escape');
+
+  await page.locator(`${EDITOR} .katex-display`).click();
+  await expect(page.locator(FIELD)).toBeFocused();
+  await page.mouse.move(5, 5);
+  await expect.poll(() => outline(frame)).toBe(`solid 1px ${link} 2px`);
+});
+
+test('a source that does not parse turns the field red while the box says what is wrong', async () => {
+  await openFreshDocument(page);
+  await insertFromPlus(page);
+  await page.keyboard.type('\\frac{a');
+  const red = await tokenColour(page, '--color-status-error-foreground');
+  const field = page.locator(FIELD);
+  await expect.poll(() => field.evaluate((element) => getComputedStyle(element).borderTopColor)).toBe(red);
+
+  await page.keyboard.type('}{b}');
+  await expect.poll(() => field.evaluate((element) => getComputedStyle(element).borderTopColor)).not.toBe(red);
+});
+
 test('a line holding a formula copies as $$source$$ and pastes back as a formula', async () => {
   await openFreshDocument(page);
   await page.keyboard.type('a $$x^2$$ b');

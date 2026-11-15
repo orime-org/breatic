@@ -413,3 +413,17 @@ describe('a read-only body', () => {
     expect(closed()).toBe(true);
   });
 });
+
+describe('a source that does not parse', () => {
+  it('turns the field red while it says what is wrong, as other fields with an error line do', async () => {
+    const { editor } = open(BLOCK);
+    const text = await openBy('.katex-display');
+
+    fireEvent.change(text, { target: { value: '\\frac{a' } });
+    expect(sourceIn(editor, 'mathBlock')).toBe('\\frac{a');
+    expect(text.getAttribute('aria-invalid')).toBe('true');
+
+    fireEvent.change(text, { target: { value: '\\frac{a}{b}' } });
+    expect(text.getAttribute('aria-invalid')).toBeNull();
+  });
+});

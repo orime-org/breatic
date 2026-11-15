@@ -2451,6 +2451,7 @@
       "math": {
         "placeholder": "输入 LaTeX，例如 E = mc^2",
         "empty": "添加公式",
+        "blank": "空公式",
         "error": "公式有误",
         "ok": "确定"
       },

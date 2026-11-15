@@ -2451,6 +2451,7 @@
       "math": {
         "placeholder": "Enter LaTeX, e.g. E = mc^2",
         "empty": "Add a formula",
+        "blank": "Empty formula",
         "error": "Formula has an error",
         "ok": "OK"
       },

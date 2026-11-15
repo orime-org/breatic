@@ -2451,6 +2451,7 @@
       "math": {
         "placeholder": "LaTeX 입력(예: E = mc^2)",
         "empty": "수식 추가",
+        "blank": "빈 수식",
         "error": "수식에 오류가 있습니다",
         "ok": "확인"
       },

@@ -17,6 +17,7 @@ const KEYS = [
   'spaces.document.math.placeholder',
   'spaces.document.math.empty',
   'spaces.document.math.error',
+  'spaces.document.math.blank',
   'spaces.document.math.ok',
 ] as const;
 

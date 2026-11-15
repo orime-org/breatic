@@ -513,14 +513,20 @@ const MathFace = React.memo(function MathFace({
   }, [shown, isPositioned, placement, side]);
 
   const Wrapper = inline ? 'span' : 'div';
+  // The grey face of an empty or a broken formula; in text, a pointer over it
+  // lifts it a step, as a pointer over a drawn formula lifts that.
+  const chip = cn(
+    'inline-flex items-center gap-1.5 rounded-chrome bg-muted px-2 py-1 text-sm text-muted-foreground',
+    inline && editable && 'group-hover/math:bg-accent-strong',
+  );
   const face =
     blank ? (
-      <span className='inline-flex items-center gap-1.5 rounded-chrome bg-muted px-2 py-1 text-sm text-muted-foreground'>
+      <span className={chip}>
         <Sigma className='h-3.5 w-3.5' aria-hidden />
-        {t('spaces.document.math.empty')}
+        {t(editable ? 'spaces.document.math.empty' : 'spaces.document.math.blank')}
       </span>
     ) : preview === null ? (
-      <span className='inline-flex items-center gap-1.5 rounded-chrome bg-muted px-2 py-1 text-sm text-muted-foreground'>
+      <span className={chip}>
         <TriangleAlert className='h-3.5 w-3.5' aria-hidden />
         {t('spaces.document.math.error')}
       </span>
@@ -536,7 +542,12 @@ const MathFace = React.memo(function MathFace({
       data-selected={!inline && selected && editable && !shown ? 'true' : undefined}
     >
       <Wrapper
-        className={cn(!editable && 'cursor-default')}
+        data-math-face
+        className={cn(
+          editable ? 'cursor-pointer' : 'cursor-default',
+          inline && 'group/math inline-block rounded-chrome px-0.5',
+          inline && editable && 'hover:bg-accent',
+        )}
         role={editable && (blank || preview === null) ? 'button' : undefined}
         // The body keeps the keyboard until the box takes it.
         onMouseDown={(event) => {
@@ -552,7 +563,7 @@ const MathFace = React.memo(function MathFace({
           // A formula wider than the body scrolls sideways in its own
           // scroller, as a formula in a chat reply does (`MarkdownMessage.tsx`);
           // the frame a selection draws sits around that scroller.
-          <div data-math-frame className='mx-auto w-fit max-w-full'>
+          <div data-math-frame className={cn('mx-auto w-fit max-w-full', (blank || preview === null) && 'rounded-chrome')}>
             <ScrollArea scrollbars='horizontal' className={cn('w-full', DISPLAY_MATH_SCROLLER)}>
               <div className='flex w-max min-w-full flex-col items-center'>{face}</div>
             </ScrollArea>
@@ -577,7 +588,8 @@ const MathFace = React.memo(function MathFace({
             actions.close(windowLeft ? 'after' : 'stay');
           }}
         >
-          <div className='flex shrink-0 items-center gap-1.5 border-b border-border px-3 py-1.5 text-sm font-medium'>
+          {/* As tall as the AI box's title row, which holds a compact button. */}
+          <div className='flex min-h-[calc(var(--btn-compact)+0.75rem+1px)] shrink-0 items-center gap-1.5 border-b border-border px-3 py-1.5 text-sm font-medium'>
             <Sigma className='h-3.5 w-3.5 shrink-0 text-muted-foreground' aria-hidden />
             <span className='truncate'>{t('spaces.document.commands.formula')}</span>
           </div>
@@ -586,6 +598,7 @@ const MathFace = React.memo(function MathFace({
               ref={field}
               value={draft}
               spellCheck={false}
+              aria-invalid={error !== null || undefined}
               placeholder={t('spaces.document.math.placeholder')}
               className='min-h-[calc(3lh+1rem+2px)] resize-none whitespace-pre-wrap break-all font-mono md:text-sm'
               onChange={(event) => {

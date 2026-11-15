@@ -184,3 +184,47 @@ describe('a selected, closed formula block (§6.2)', () => {
   });
 });
 
+
+describe('what a formula offers the pointer (visual adversary)', () => {
+  it('points the pointer at a formula the user can open, and not where the body is read-only', async () => {
+    const { editor, root } = open([{ type: 'paragraph', content: ['x ', { type: 'math', props: { source: 'a' } }] }]);
+    const face = await appear(root, '.doc-math [data-math-face]');
+    expect(face.className).toContain('cursor-pointer');
+
+    editor.isEditable = false;
+
+    await vi.waitFor(() => {
+      expect(face.className).toContain('cursor-default');
+    });
+    expect(face.className).not.toContain('cursor-pointer');
+  });
+
+  it('rounds the frame of a formula block that shows the placeholder or the error, as the grey face inside it is', async () => {
+    const { root } = open([
+      { type: 'mathBlock', props: { source: '' } },
+      { type: 'mathBlock', props: { source: '\\frac{a' } },
+      { type: 'mathBlock', props: { source: 'x' } },
+    ]);
+    await appear(root, '.katex-display');
+    await vi.waitFor(() => {
+      expect(root.querySelectorAll('[data-math-frame]')).toHaveLength(3);
+    });
+    const frames = [...root.querySelectorAll('[data-math-frame]')].map((frame) => frame.classList.contains('rounded-chrome'));
+
+    expect(frames).toEqual([true, true, false]);
+  });
+
+  it('says an empty formula is empty, not something to add, where the body is read-only', async () => {
+    const { editor, root } = open([{ type: 'mathBlock', props: { source: '' } }]);
+    await vi.waitFor(() => {
+      expect(root.textContent).toContain(t('spaces.document.math.empty'));
+    });
+
+    editor.isEditable = false;
+
+    await vi.waitFor(() => {
+      expect(root.textContent).toContain(t('spaces.document.math.blank'));
+    });
+    expect(root.textContent).not.toContain(t('spaces.document.math.empty'));
+  });
+});
