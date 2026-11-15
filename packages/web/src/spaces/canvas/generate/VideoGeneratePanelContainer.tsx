@@ -41,7 +41,7 @@ import {
   type ReferencePool,
   type StoryboardSpec,
 } from '@breatic/shared';
-import { useCreditText, useInputRefusalText } from '@web/spaces/canvas/generate/use-credit-estimate';
+import { useRunCheck } from '@web/spaces/canvas/generate/use-credit-estimate';
 import {
   CatalogGatedFrame,
   useOpenPanelNode,
@@ -283,14 +283,14 @@ function VideoGeneratePanelBody({
       buildVideoPanelViewModel({ nodeId, nodes, edges, models, mode, textById }),
     [nodeId, nodes, edges, models, mode, textById],
   );
-  const estimateInput = videoEstimateInput(vm, extractPromptText(promptText));
-  const creditText = useCreditText(vm.modelEntry, estimateInput, catalog?.credit_multiplier ?? 1);
-  // Why no upstream here takes the run as set up (#1521): on the button, and said by the click.
-  const refused = useInputRefusalText(vm.modelEntry, estimateInput);
-
   // The node's shots, which only the multi-shot mode shows and sends: `spec`
   // is defined there alone, for a model that takes shots.
   const spec = React.useMemo(() => specOf(vm.modelEntry, mode), [vm.modelEntry, mode]);
+  // The run as the click sends it, without the main prompt where the click sends none of it: a model taking no prompt,
+  // and the multi-shot mode, whose shots the storyboard gate holds and the server asks about before it holds anything.
+  // Priced, and asked why no upstream here takes it (#1521), for the button and the click.
+  const estimateInput = videoEstimateInput(vm, vm.promptRequired && spec === undefined ? extractPromptText(promptText) : '');
+  const { creditText, refusalText, latestRefusal } = useRunCheck(vm.modelEntry, estimateInput, catalog?.credit_multiplier ?? 1);
   const total = totalOf(spec, vm.params);
   // A fresh list only when a shot is added, removed, brought back or given
   // other seconds; words typed in a shot leave it as it is (`useShots`).
@@ -777,7 +777,7 @@ function VideoGeneratePanelBody({
       ),
       pools: poolCounts(fresh.pool, fresh.referenceUrls),
       storyboard: run.gate,
-      inputRefusal: refused.latest.current,
+      inputRefusal: latestRefusal.current,
     });
     if (verdict?.message !== undefined) {
       toast.warning(verdict.message);
@@ -841,7 +841,7 @@ function VideoGeneratePanelBody({
     // where the linter cannot see that for itself.
     promptEditorRef,
     promptTextRef,
-    refused.latest,
+    latestRefusal,
   ]);
 
   // EVERY localized string below is depended on BY VALUE, not via `t`: `t` is a
@@ -1042,7 +1042,7 @@ function VideoGeneratePanelBody({
             vm.referenceUrls,
           ),
           pools: poolCounts(vm.pool, vm.referenceUrls),
-          inputRefusal: refused.text,
+          inputRefusal: refusalText,
         })?.refusal ?? null
       }
       promptSlot={promptSlot}

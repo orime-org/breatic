@@ -5,7 +5,7 @@ import * as React from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { FolderOpen, Plus, RefreshCw, Upload, X } from 'lucide-react';
 import {
-  SCENE_VIEW_SLOTS, THREE_D_GENERATION_MODES, applyForces, checkParamCombination, getLocale, resolveParams,
+  SCENE_VIEW_SLOTS, THREE_D_GENERATION_MODES, applyForces, checkParamCombination, extractPromptText, getLocale, resolveParams,
   type ModelEntry, type ParamViolation, type SceneGenerationBody, type ThreeDGenerationMode,
 } from '@breatic/shared';
 
@@ -25,13 +25,12 @@ import { runMediaUpload } from '@web/data/upload/media-upload';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { PanelRunFooter } from '@web/spaces/canvas/_shared/PanelRunFooter';
-import { creditEstimateText } from '@web/spaces/canvas/generate/credit-estimate-text';
 import { executeErrorMessage } from '@web/spaces/canvas/generate/execute-error-message';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import type { ModelControl } from '@web/spaces/canvas/generate/model-controls';
 import { ModelParamControls } from '@web/spaces/canvas/generate/ModelParamControls';
 import { ModePill, type ModeOption } from '@web/spaces/canvas/generate/ModeToggle';
-import { useCreditEstimate, useInputRefusalText } from '@web/spaces/canvas/generate/use-credit-estimate';
+import { useRunCheck } from '@web/spaces/canvas/generate/use-credit-estimate';
 import { SCENE_VIEW_ACCEPT, SceneImagePickerDialog } from '@web/spaces/three-d/SceneImagePickerDialog';
 import { SCENE_MODE_LABELS, commonSceneParams, sceneEntryFor, sceneGenerateIntent } from '@web/spaces/three-d/scene-generation';
 import type { SceneGenerateFill, SceneViewImage } from '@web/stores/scene-proposals';
@@ -213,11 +212,11 @@ function SceneGenerateForm({ projectId, spaceId, fill, intent, submitting, onClo
   const ownSettings = React.useCallback((control: ModelControl): boolean => !common.has(control.name) && shown(control), [common, shown]);
   const change = React.useCallback((partial: Record<string, unknown>): void => setParams((previous) => ({ ...previous, ...partial })), []);
 
-  const estimateInput = React.useMemo(() => ({ params: settings, ...(mode === 't23d' ? { prompt } : {}) }), [settings, mode, prompt]);
-  const estimate = useCreditEstimate(entry, estimateInput, catalog.data?.credit_multiplier ?? 1);
-  const creditText = estimate ? creditEstimateText(estimate, t) : '';
-  // Why no upstream here takes the run as set up (#1521), said by the press.
-  const refused = useInputRefusalText(entry, estimateInput);
+  // The run as the server plans it: the prompt cleaned and trimmed (`planSceneGeneration`). Priced, and asked why
+  // no upstream here takes it (#1521), said by the press.
+  const estimateInput = React.useMemo(() => ({ params: settings, ...(mode === 't23d' ? { prompt: extractPromptText(prompt).trim() } : {}) }), [settings, mode, prompt]);
+  const { creditText: shownCredits, refusalText } = useRunCheck(entry, estimateInput, catalog.data?.credit_multiplier ?? 1);
+  const creditText = shownCredits ?? '';
 
   // Uploads into the view slots; any still running is cancelled when the form goes.
   const uploads = React.useRef(new Set<AbortController>());
@@ -282,8 +281,8 @@ function SceneGenerateForm({ projectId, spaceId, fill, intent, submitting, onClo
   const ready = entry !== undefined && violations.length === 0 && (mode === 't23d' ? prompt.trim() !== '' : viewsReady);
   const submit = React.useCallback((): void => {
     if (entry === undefined || !ready) return;
-    if (refused.text !== undefined) {
-      toast.warning(refused.text);
+    if (refusalText !== undefined) {
+      toast.warning(refusalText);
       return;
     }
     const body: SceneGenerationBody = {
@@ -306,7 +305,7 @@ function SceneGenerateForm({ projectId, spaceId, fill, intent, submitting, onClo
         toast.error(ours ? err.message : await executeErrorMessage(err instanceof ApiException ? err.status : undefined, t));
       },
     });
-  }, [entry, ready, refused.text, mode, settings, origin, prompt, views, intent, projectId, spaceId, onClose, onSubmitted, t]);
+  }, [entry, ready, refusalText, mode, settings, origin, prompt, views, intent, projectId, spaceId, onClose, onSubmitted, t]);
 
   const selectMode = React.useCallback((value: string): void => setMode(value === 'i23d' ? 'i23d' : 't23d'), []);
   const promptError = errors.prompt;

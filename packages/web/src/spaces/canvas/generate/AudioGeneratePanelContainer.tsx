@@ -53,7 +53,7 @@ import {
   buildAudioPanelViewModel,
   withListDefaultVoice,
 } from '@web/spaces/canvas/generate/audio-panel-view-model';
-import { useCreditText, useInputRefusalText } from '@web/spaces/canvas/generate/use-credit-estimate';
+import { useRunCheck } from '@web/spaces/canvas/generate/use-credit-estimate';
 import { audioEstimateInput, buildAudioTaskPayload } from '@web/spaces/canvas/generate/audio-task-payload';
 import { AudioGeneratePanel } from '@web/spaces/canvas/generate/AudioGeneratePanel';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
@@ -485,10 +485,10 @@ function AudioGeneratePanelBody({
     [shownBox, promptEditorRef, lyricsEditorRef],
   );
 
-  const estimateInput = audioEstimateInput({ ...vm, params }, slots, extractPromptText(promptText));
-  const creditText = useCreditText(vm.modelEntry, estimateInput, catalog?.credit_multiplier ?? 1);
-  // Why no upstream here takes the run as set up (#1521): on the button, and said by the click.
-  const refused = useInputRefusalText(vm.modelEntry, estimateInput);
+  // The run as the click sends it: a model taking no prompt with these settings sends none, whatever the box
+  // last held. Priced, and asked why no upstream here takes it (#1521), for the button and the click.
+  const estimateInput = audioEstimateInput({ ...vm, params }, slots, vm.promptRequired ? extractPromptText(promptText) : '');
+  const { creditText, refusalText, latestRefusal } = useRunCheck(vm.modelEntry, estimateInput, catalog?.credit_multiplier ?? 1);
   const onExecute = React.useCallback((): void => {
     // Every execute-critical value is read synchronously here, never from a
     // render closure that batching and live collaboration make stale.
@@ -528,7 +528,7 @@ function AudioGeneratePanelBody({
       missing: audioMissing(fresh.modelEntry, mode, fresh.slotUrls, fresh.params),
       lyricsRequired: lyrics,
       lyricsText: freshLyrics,
-      inputRefusal: refused.latest.current,
+      inputRefusal: latestRefusal.current,
     });
     if (verdict?.message !== undefined) {
       toast.warning(verdict.message);
@@ -594,7 +594,7 @@ function AudioGeneratePanelBody({
     lyricsTextRef,
     promptEditorRef,
     promptTextRef,
-    refused.latest,
+    latestRefusal,
   ]);
 
   // Depended on BY VALUE, not via `t`: `t` is a stable module-level function
@@ -735,7 +735,7 @@ function AudioGeneratePanelBody({
         missing: audioMissing(vm.modelEntry, mode, vm.slotUrls, vm.params),
         lyricsRequired: lyrics,
         lyricsText,
-        inputRefusal: refused.text,
+        inputRefusal: refusalText,
       })?.refusal ?? null}
       promptSlot={promptSlot}
       lyricsSlot={lyricsSlot}

@@ -83,7 +83,7 @@ import {
   submitGeneration,
   useGenerating,
 } from '@web/spaces/canvas/generate/submit-generation';
-import { useCreditText, useInputRefusalText } from '@web/spaces/canvas/generate/use-credit-estimate';
+import { useRunCheck } from '@web/spaces/canvas/generate/use-credit-estimate';
 import { PromptNotUsedNotice } from '@web/spaces/canvas/generate/PromptNotUsedNotice';
 import { useApplyTemplate, type PlaceTemplate } from '@web/spaces/canvas/generate/use-apply-template';
 
@@ -262,10 +262,10 @@ function GeneratePanelBody({
     () => getPromptFragment(projectId, spaceId, nodeId, vm.mode),
     [projectId, spaceId, nodeId, vm.mode],
   );
-  const estimateInput = imageEstimateInput(vm, extractPromptText(promptText));
-  const creditText = useCreditText(vm.modelEntry, estimateInput, catalog?.credit_multiplier ?? 1);
-  // Why no upstream here takes the run as set up (#1521): on the button, and said by the click.
-  const refused = useInputRefusalText(vm.modelEntry, estimateInput);
+  // The run as the click sends it: a model taking no prompt sends none, whatever the box last held. Priced, and
+  // asked why no upstream here takes it (#1521), for the button and the click.
+  const estimateInput = imageEstimateInput(vm, vm.promptRequired ? extractPromptText(promptText) : '');
+  const { creditText, refusalText, latestRefusal } = useRunCheck(vm.modelEntry, estimateInput, catalog?.credit_multiplier ?? 1);
   // Stable model-list identity for the memo'd pickers: the vm rebuilds on
   // EVERY canvas graph mutation (nodes/edges deps), and its freshly-filtered
   // models array would defeat ModelPicker's React.memo each frame of any node
@@ -372,7 +372,7 @@ function GeneratePanelBody({
       maxInputChars: vm.maxInputChars,
       missing: vm.missing,
       pools: poolCounts(vm.pool, vm.referenceUrls),
-      inputRefusal: refused.text,
+      inputRefusal: refusalText,
     })?.refusal ?? null;
 
   const onSelectModel = React.useCallback(
@@ -617,7 +617,7 @@ function GeneratePanelBody({
       maxInputChars,
       missing: fresh.missing,
       pools: poolCounts(fresh.pool, fresh.referenceUrls),
-      inputRefusal: refused.latest.current,
+      inputRefusal: latestRefusal.current,
     });
     if (verdict?.message !== undefined) {
       toast.warning(verdict.message);
@@ -671,7 +671,7 @@ function GeneratePanelBody({
     // where the linter cannot see that for itself.
     promptEditorRef,
     promptTextRef,
-    refused.latest,
+    latestRefusal,
   ]);
 
   // Stabilize the prompt-editor element (#1783): `GeneratePanel` is `React.memo`,

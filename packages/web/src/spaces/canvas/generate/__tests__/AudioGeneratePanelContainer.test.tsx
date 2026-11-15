@@ -250,6 +250,18 @@ const A2M: ModelEntry = {
   // The mode takes any one of its three places, which is what lets a submit
   // carrying only a song through.
   source_groups: [{ mode: 'a2m', any_of: ['song', 'melody', 'vocal'] }],
+  // As provider has it: the vendor refuses a melody beside a style (#1521).
+  pricing_rules: {
+    model: 'mureka-v9.5-generate-song',
+    rejects: [{ when: '$exists(melody) and $exists(prompt)', reason: 'Mureka melody combination' }],
+    upstreams: [{
+      upstream: 'wavespeed',
+      prompt_field: 'prompt',
+      fields: {},
+      pricing: { kind: 'formula', base_price: 50000, formula: '{"total_price": base_price}', discount_rate: 100 },
+      steps: [],
+    }],
+  },
 };
 
 /**
@@ -1112,9 +1124,13 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
     view.rerender(panelTree({ ...node, paramsByModel: { 'mureka-v9.5-generate-song': { compose_from: 'melody' } } }));
     await waitFor(() => expect(screen.queryByTestId('generate-prompt-group-prompt')).toBeNull());
     typeLyrics('la la la');
+    // The vendor refuses a melody beside a style; the style left on the node is
+    // not sent, so it refuses nothing (#1521). Pressed once the rules have read the run.
+    await new Promise((resolve) => setTimeout(resolve, 300));
     fireEvent.click(screen.getByTestId('generate-audio-execute'));
 
     await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    expect(toast.warning).not.toHaveBeenCalled();
     const params = create.mock.calls[0]?.[0]?.params;
     expect(params?.melody).toBe('https://x/m.mp3');
     expect(params?.prompt ?? '').toBe('');

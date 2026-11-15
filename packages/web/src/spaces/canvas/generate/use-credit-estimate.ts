@@ -12,51 +12,67 @@ import { creditEstimateText } from '@web/spaces/canvas/generate/credit-estimate-
 /** The route a run takes when the user names none: the deployment's weights. */
 const DEFAULT_ROUTE: RunRoute = { mode: 'default' };
 
+/** What provider's rules say about one run as set up. */
+export interface RunAnswer {
+  /** What it would cost on the upstream its route would choose; undefined when no upstream here can price it. */
+  estimate: CreditEstimate | undefined;
+  /** Why no upstream here that the route may use takes it (#1521); undefined while one does. */
+  refusal: InputRefusalShape | undefined;
+}
+
+const NO_ANSWER: RunAnswer = { estimate: undefined, refusal: undefined };
+
 /**
- * What one run as set up would cost on the upstream its route would choose, priced by provider's rules for the
- * model the way the server prices it.
+ * What one run as set up would cost on the upstream its route would choose, and why no upstream here takes it when
+ * none does, asked of provider's rules for the model the way the server asks before it holds anything. One load of
+ * the rules and one layout of the run answer both.
  *
  * The pricing entries carry the formula evaluator, so they load on first use
  * rather than with the page. The answer is dropped when the model or the run
- * changed while it was being computed.
+ * changed while it was being worked out.
  * @param model - The selected model, or undefined when none is picked yet.
- * @param input - The run as set up: params, prompt and known source lengths.
+ * @param input - The run as it will be sent: params, prompt and known source lengths.
  * @param creditMultiplier - Credits per US cent, off the catalog.
  * @param route - How the run chooses its upstream, the same value its request carries.
- * @returns The estimate, or undefined until it resolves, without a model, or when no upstream here can serve it.
+ * @returns The estimate and the refusal; both undefined until they resolve, without a model, or when the rules do
+ *   not parse.
  */
-export function useCreditEstimate(
+export function useRunAnswer(
   model: ModelEntry | undefined,
   input: EstimateInput,
   creditMultiplier: number,
   route: RunRoute = DEFAULT_ROUTE,
-): CreditEstimate | undefined {
-  const [estimate, setEstimate] = React.useState<CreditEstimate | undefined>(undefined);
+): RunAnswer {
+  const [answer, setAnswer] = React.useState<RunAnswer>(NO_ANSWER);
   // The input and route are rebuilt on every render; their content is what the answer follows.
   const key = JSON.stringify({ input, route });
 
   React.useEffect(() => {
     if (!model) {
-      setEstimate(undefined);
+      setAnswer(NO_ANSWER);
       return undefined;
     }
     let current = true;
     const asked = JSON.parse(key) as { input: EstimateInput; route: RunRoute };
     void Promise.all([import('@breatic/provider/pricing'), import('@breatic/shared/pricing')])
-      .then(async ([{ estimateCost, parsePricingRules }, { creditEstimateOf, prepareRunParams }]) =>
-        creditEstimateOf(
-          await estimateCost(parsePricingRules(model.pricing_rules), model.availability, prepareRunParams(model, asked.input), asked.route),
-          creditMultiplier,
-        ))
+      .then(async ([{ estimateCost, inputRefusal, parsePricingRules }, { creditEstimateOf, prepareRunParams }]) => {
+        const rules = parsePricingRules(model.pricing_rules);
+        const prepared = prepareRunParams(model, asked.input);
+        const [cost, refusal] = await Promise.all([
+          estimateCost(rules, model.availability, prepared, asked.route),
+          inputRefusal(rules, model.availability, prepared, asked.route),
+        ]);
+        return { estimate: creditEstimateOf(cost, creditMultiplier), refusal: refusal ?? undefined };
+      })
       .then(
         (next) => {
-          if (current) setEstimate(next);
+          if (current) setAnswer(next);
         },
         () => {
           // Rules that do not parse or a formula the evaluator cannot run leave
-          // the star with nothing rather than a wrong number; the run itself is
-          // billed on usage.
-          if (current) setEstimate(undefined);
+          // the star with nothing and refuse nothing; the server asks again
+          // before it holds anything.
+          if (current) setAnswer(NO_ANSWER);
         },
       );
     return () => {
@@ -64,91 +80,42 @@ export function useCreditEstimate(
     };
   }, [model, key, creditMultiplier]);
 
-  return estimate;
+  return answer;
+}
+
+/** What a generation entry shows and says about one run as set up. */
+export interface RunCheck {
+  /** The estimate, for an entry that prints it its own way. */
+  estimate: CreditEstimate | undefined;
+  /** What prints beside the star; undefined until the estimate resolves. */
+  creditText: string | undefined;
+  /** What a press says when no upstream here takes the run (#1521), in the user's language. */
+  refusalText: string | undefined;
+  /** The last refusal sentence rendered, for a click handler that reads it outside render. */
+  latestRefusal: React.RefObject<string | undefined>;
 }
 
 /**
- * Why no upstream here that the route may use takes the run as set up (#1521), asked of provider's rules the way the
- * server asks before it holds anything, so the panel can say which limit the run breaks before the user presses.
- * Loaded with the estimate's rules; the answer is dropped when the model or the run changed while it was worked out.
+ * The estimate and the refusal of one run as set up, as a generation entry shows and says them.
  * @param model - The selected model, or undefined when none is picked yet.
- * @param input - The run as set up: params, prompt and known source lengths.
- * @param route - How the run chooses its upstream, the same value its request carries.
- * @returns The refusal, or undefined while one upstream takes the run, without a model, or when the rules do not parse.
- */
-export function useInputRefusal(
-  model: ModelEntry | undefined,
-  input: EstimateInput,
-  route: RunRoute = DEFAULT_ROUTE,
-): InputRefusalShape | undefined {
-  const [refusal, setRefusal] = React.useState<InputRefusalShape | undefined>(undefined);
-  // The input and route are rebuilt on every render; their content is what the answer follows.
-  const key = JSON.stringify({ input, route });
-
-  React.useEffect(() => {
-    if (!model) {
-      setRefusal(undefined);
-      return undefined;
-    }
-    let current = true;
-    const asked = JSON.parse(key) as { input: EstimateInput; route: RunRoute };
-    void Promise.all([import('@breatic/provider/pricing'), import('@breatic/shared/pricing')])
-      .then(([{ inputRefusal, parsePricingRules }, { prepareRunParams }]) =>
-        inputRefusal(parsePricingRules(model.pricing_rules), model.availability, prepareRunParams(model, asked.input), asked.route))
-      .then(
-        (next) => {
-          if (current) setRefusal(next ?? undefined);
-        },
-        () => {
-          // Rules that do not parse refuse nothing here; the server asks again before it holds anything.
-          if (current) setRefusal(undefined);
-        },
-      );
-    return () => {
-      current = false;
-    };
-  }, [model, key]);
-
-  return refusal;
-}
-
-/**
- * The sentence a panel's Generate says when no upstream here takes the run as set up (#1521), in the user's language,
- * and a ref holding the last one rendered for the click handler, which reads it outside render.
- * @param model - The selected model, or undefined when none is picked yet.
- * @param input - The run as set up, the same value the estimate prices.
- * @param route - How the run chooses its upstream, the same value its request carries.
- * @returns The sentence, undefined while the run is taken, and the ref.
- */
-export function useInputRefusalText(
-  model: ModelEntry | undefined,
-  input: EstimateInput,
-  route: RunRoute = DEFAULT_ROUTE,
-): { text: string | undefined; latest: React.RefObject<string | undefined> } {
-  // Read so the sentence follows an in-session language switch.
-  useTranslation();
-  const refusal = useInputRefusal(model, input, route);
-  const text = refusal === undefined || model === undefined ? undefined : inputRefusalText(refusal, model.display_name);
-  const latest = React.useRef<string | undefined>(undefined);
-  React.useEffect(() => {
-    latest.current = text;
-  }, [text]);
-  return { text, latest };
-}
-
-/**
- * What the panel prints beside the star for the run as set up.
- * @param model - The selected model, or undefined when none is picked yet.
- * @param input - The run as set up: params, prompt and known source lengths.
+ * @param input - The run as it will be sent.
  * @param creditMultiplier - Credits per US cent, off the catalog.
- * @returns The text, or undefined until the estimate resolves.
+ * @param route - How the run chooses its upstream, the same value its request carries.
+ * @returns The estimate, its text, the refusal sentence and a ref to the latest one.
  */
-export function useCreditText(
+export function useRunCheck(
   model: ModelEntry | undefined,
   input: EstimateInput,
   creditMultiplier: number,
-): string | undefined {
+  route: RunRoute = DEFAULT_ROUTE,
+): RunCheck {
+  // Read so both sentences follow an in-session language switch.
   const t = useTranslation();
-  const estimate = useCreditEstimate(model, input, creditMultiplier);
-  return estimate ? creditEstimateText(estimate, t) : undefined;
+  const { estimate, refusal } = useRunAnswer(model, input, creditMultiplier, route);
+  const refusalText = refusal === undefined || model === undefined ? undefined : inputRefusalText(refusal, model.display_name);
+  const latestRefusal = React.useRef<string | undefined>(undefined);
+  React.useEffect(() => {
+    latestRefusal.current = refusalText;
+  }, [refusalText]);
+  return { estimate, creditText: estimate ? creditEstimateText(estimate, t) : undefined, refusalText, latestRefusal };
 }
