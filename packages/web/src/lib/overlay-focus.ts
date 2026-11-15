@@ -30,7 +30,9 @@ export function suppressTooltipFocusOpen(event: React.FocusEvent): void {
 }
 
 /**
- * Hands focus back to whatever opened an overlay that has no Radix `Trigger`.
+ * Hands focus back to whatever opened an overlay that has no Radix `Trigger`, when focus went down with the overlay to
+ * the body; focus that another element already holds (an overlay that took the shared slot, a box opened from it) stays
+ * there, as `useKeepMovedFocus` keeps it for the overlay contents.
  *
  * Radix restores focus by focusing its own trigger and nothing else: on close
  * it calls `event.preventDefault()` on the FocusScope's restoration and then
@@ -78,8 +80,9 @@ function focusMovedOn(): boolean {
 }
 
 /**
- * The `onCloseAutoFocus` every overlay primitive in `components/ui` passes to Radix: the caller's own handler first,
- * then focus goes back to the trigger only when it went down with the overlay. An overlay that another one closed
+ * The `onCloseAutoFocus` that the focus-taking overlay contents in `components/ui` (Dialog, AlertDialog, Sheet, Popover,
+ * DropdownMenu) pass to Radix: the caller's own handler first, then focus goes back to the trigger only when it went down
+ * with the overlay. An overlay that another one closed
  * (a panel taking the shared overlay slot, a Space opened from a menu that hands focus to its own panel) otherwise
  * pulls focus back to its trigger once its exit ends and closes the overlay that now holds it. react-aria's
  * `FocusScope` restores focus on the same condition.
@@ -89,6 +92,6 @@ function focusMovedOn(): boolean {
 export function useKeepMovedFocus(handler?: (event: Event) => void): (event: Event) => void {
   return React.useCallback((event: Event): void => {
     handler?.(event);
-    if (!event.defaultPrevented && focusMovedOn()) event.preventDefault();
+    if (focusMovedOn()) event.preventDefault();
   }, [handler]);
 }
