@@ -1422,9 +1422,12 @@ body {
   }
 
   /* A column group opening the document or a cell: the first block of each
-     column stands flush, as the first block there does (inner#1314). */
-  .doc-body > .bn-block-group > .doc-columns:first-child > .doc-columns-row > .doc-column > .bn-block-outer:first-child > .bn-block > .bn-block-content,
-  .doc-body [data-node-type='docTable'] :is(td, th) > .doc-columns:first-child > .doc-columns-row > .doc-column > .bn-block-outer:first-child > .bn-block > .bn-block-content {
+     column stands flush, as the first block there does (inner#1314). Stacked,
+     only the first column's does; the others keep a block's spacing. */
+  .doc-body > .bn-block-group > .doc-columns:first-child:not([data-stacked]) > .doc-columns-row > .doc-column > .bn-block-outer:first-child > .bn-block > .bn-block-content,
+  .doc-body [data-node-type='docTable'] :is(td, th) > .doc-columns:first-child:not([data-stacked]) > .doc-columns-row > .doc-column > .bn-block-outer:first-child > .bn-block > .bn-block-content,
+  .doc-body > .bn-block-group > .doc-columns[data-stacked]:first-child > .doc-columns-row > .doc-column:first-child > .bn-block-outer:first-child > .bn-block > .bn-block-content,
+  .doc-body [data-node-type='docTable'] :is(td, th) > .doc-columns[data-stacked]:first-child > .doc-columns-row > .doc-column:first-child > .bn-block-outer:first-child > .bn-block > .bn-block-content {
     --doc-block-lift: 0px;
   }
 
@@ -2206,14 +2209,14 @@ body {
   }
 
   /* The divider between two columns (design §5.4): it stands in the middle
-     of the gap the pointer is over, as wide as a table column's resize zone,
-     and draws a 1px line in the colour a table column's handle draws. */
+     of the gap the pointer is over, 24px wide (`COLUMN_DIVIDER_ZONE` either
+     side), and draws a 1px line in the colour a table column's handle draws. */
   .doc-body .doc-column-divider {
     position: absolute;
     top: 0;
     bottom: 0;
-    width: 11px;
-    margin-left: -5.5px;
+    width: 24px;
+    margin-left: -12px;
     cursor: col-resize;
     display: none;
   }
@@ -2228,7 +2231,7 @@ body {
     position: absolute;
     top: 0;
     bottom: 0;
-    left: 5px;
+    left: 11.5px;
     width: 1px;
     background-color: var(--color-ring);
   }
@@ -2272,7 +2275,11 @@ body {
     z-index: 3;
   }
 
+  /* One pixel, as every line is (packages/web/AGENTS.md "Lines are one
+     pixel") and as the column divider draws; BlockNote's is 4px. */
   .doc-body .column-resize-handle {
+    width: 1px;
+    right: -1px;
     background-color: var(--color-ring);
   }
 

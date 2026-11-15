@@ -49,6 +49,7 @@ import * as React from 'react';
 
 import { MEDIA_FRAME } from '@web/spaces/document/DocumentMediaBlock';
 import { SCROLL_VIEWPORT } from '@web/spaces/document/document-body-autoscroll';
+import { COLUMN_DIVIDER_ZONE, COLUMN_GAP } from '@web/spaces/document/document-column-geometry';
 import { COLUMN_RESIZE_ZONE, DOC_TABLE } from '@web/spaces/document/document-table-nodes';
 
 /**
@@ -72,6 +73,14 @@ export const STRIP_SIZE = 24;
  * (`document-table-side-menu.ts`).
  */
 export const TABLE_STRIP_OUTSET = STRIP_OUTSET + STRIP_SIZE + 4;
+
+/**
+ * How far a strip stands out from its column's left edge, clear of the
+ * divider's 24px round the gap's middle (inner#1314 design §5.1): a block's in
+ * the gap's 24px right of it, a table's in the 24px left of it.
+ */
+const COLUMN_STRIP_OUTSET = COLUMN_GAP / 2 - COLUMN_DIVIDER_ZONE - STRIP_SIZE;
+const COLUMN_TABLE_STRIP_OUTSET = COLUMN_GAP / 2 + COLUMN_DIVIDER_ZONE;
 
 /**
  * The body's left gutter: as far out as a table's own strip reaches, and 8px
@@ -174,8 +183,8 @@ export function stripPlacement(bodyOf: () => HTMLElement | undefined): {
             };
             const anchor = kept === undefined || kept.isConnected ? kept : drawn();
             // A block in a column stands its strip in the gap left of its
-            // column, a table its own further out, in the gap's left half
-            // (inner#1314 design §5.1), unless a cell is nearer. A group's
+            // column, a table its own further out, either side of the
+            // divider (inner#1314 design §5.1), unless a cell is nearer. A group's
             // first column in a cell has no gap: its blocks' strips follow
             // the cell's rule.
             const holder = anchor?.closest('.doc-column, td, th');
@@ -186,7 +195,7 @@ export function stripPlacement(bodyOf: () => HTMLElement | undefined): {
               // BlockNote cached before the block was drawn in the column.
               const parent = elements.floating.offsetParent;
               const origin = parent === null ? 0 : parent.getBoundingClientRect().left + parent.clientLeft - parent.scrollLeft;
-              const outset = anchor?.matches(`[data-node-type="${DOC_TABLE}"]`) === true ? TABLE_STRIP_OUTSET : STRIP_OUTSET;
+              const outset = anchor?.matches(`[data-node-type="${DOC_TABLE}"]`) === true ? COLUMN_TABLE_STRIP_OUTSET : COLUMN_STRIP_OUTSET;
               return { x: holder.getBoundingClientRect().left - outset - rects.floating.width - origin };
             }
             const cell = anchor?.closest('td, th');

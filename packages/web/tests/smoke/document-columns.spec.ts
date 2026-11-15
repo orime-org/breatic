@@ -164,8 +164,9 @@ test('a block in the second column has its handle in the gap, and drags from the
   await expect(handle).toBeVisible();
   const grip = await handle.boundingBox();
   if (grip === null) throw new Error('no handle');
-  expect(grip.x).toBeGreaterThanOrEqual(second.x - 36 - 1);
-  expect(grip.x + grip.width).toBeLessThanOrEqual(second.x - 12 + 1);
+  // The gap's right 24px, clear of the divider's 24px round its middle.
+  expect(grip.x).toBeGreaterThanOrEqual(second.x - 24 - 1);
+  expect(grip.x + grip.width).toBeLessThanOrEqual(second.x + 1);
 
   // Dragged from that handle below beta, gamma leaves the columns.
   const b = await row(page, 'beta').boundingBox();
@@ -670,4 +671,135 @@ test('dragging a row into the page margin level with a table wider than the body
   await dragRowTo(page, 'moved', { x: body.x + body.width + 120, y: table.y + table.height / 2 });
   await expect.poll(() => page.locator(`${EDITOR} .doc-column > [data-node-type="docTable"]`).count()).toBe(1);
   expect(await page.locator(`${EDITOR} td .doc-columns`).count()).toBe(0);
+});
+
+/**
+ * Holds a row's drag at a point and reads the vertical drop line there.
+ * @param p - The page.
+ * @param words - The dragged row's words.
+ * @param at - Where to hold.
+ * @param at.x - The x.
+ * @param at.y - The y.
+ * @returns The line's box.
+ */
+async function lineWhileDragging(p: Page, words: string, at: { x: number; y: number }): Promise<{ x: number; y: number; width: number; height: number }> {
+  await p.mouse.move(5, 5);
+  const box = (await row(p, words).boundingBox())!;
+  await p.mouse.move(box.x + 30, box.y + box.height / 2, { steps: 3 });
+  const grip = (await p.getByTestId('doc-block-handle').boundingBox())!;
+  await p.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2, { steps: 3 });
+  await p.mouse.down();
+  await p.mouse.move(grip.x + 20, grip.y + 20, { steps: 3 });
+  await p.mouse.move(at.x, at.y, { steps: 12 });
+  // Chromium hands the page each dragover one move late; one more move
+  // brings the one for this point.
+  await p.mouse.move(at.x, at.y + 1);
+  const line = p.locator('.prosemirror-dropcursor-vertical');
+  await expect(line).toBeVisible();
+  const found = (await line.boundingBox())!;
+  await p.mouse.move(box.x + 40, box.y + box.height / 2, { steps: 4 });
+  await p.mouse.up();
+  return found;
+}
+
+test('a press 10px right of the gap\'s middle, level with a block in the right column, drags the divider', async () => {
+  await openWithLines(page, ['lead', 'alpha', 'beta']);
+  const a = (await row(page, 'alpha').boundingBox())!;
+  await dragRowTo(page, 'beta', { x: a.x + a.width - 6, y: a.y + a.height / 2 });
+  await expect.poll(() => groups(page)).toEqual([['alpha', 'beta']]);
+  const widths = (): Promise<number[]> =>
+    page.locator(`${EDITOR} .doc-column`).evaluateAll((list) => list.map((column) => Math.round(column.getBoundingClientRect().width)));
+  const [left, right] = await page.locator(`${EDITOR} .doc-column`).evaluateAll((list) => list.map((column) => column.getBoundingClientRect().toJSON() as DOMRect));
+  const middle = (left!.right + right!.left) / 2;
+  const b = (await row(page, 'beta').boundingBox())!;
+  await page.mouse.move(5, 5);
+  await page.mouse.move(middle - 40, b.y + b.height / 2, { steps: 3 });
+  await page.mouse.move(middle + 10, b.y + b.height / 2, { steps: 4 });
+  await expect(page.locator(`${EDITOR} .doc-column-divider`)).toBeVisible();
+  const before = await widths();
+  await page.mouse.down();
+  await page.mouse.move(middle + 90, b.y + b.height / 2, { steps: 8 });
+  await page.mouse.up();
+  const after = await widths();
+  expect(after[0]! - before[0]!).toBeGreaterThan(40);
+});
+
+test('the divider runs from the columns\' first line, not from the space above it', async () => {
+  await openWithLines(page, ['lead', 'alpha', 'beta']);
+  const a = (await row(page, 'alpha').boundingBox())!;
+  await dragRowTo(page, 'beta', { x: a.x + a.width - 6, y: a.y + a.height / 2 });
+  await expect.poll(() => groups(page)).toEqual([['alpha', 'beta']]);
+  const [left, right] = await page.locator(`${EDITOR} .doc-column`).evaluateAll((list) => list.map((column) => column.getBoundingClientRect().toJSON() as DOMRect));
+  const middle = (left!.right + right!.left) / 2;
+  const words = (await row(page, 'alpha').boundingBox())!;
+  await page.mouse.move(5, 5);
+  await page.mouse.move(middle - 40, words.y + 4, { steps: 3 });
+  await page.mouse.move(middle, words.y + 4, { steps: 4 });
+  const line = await page.locator(`${EDITOR} .doc-column-divider`).evaluate((divider) => divider.getBoundingClientRect().toJSON() as DOMRect);
+  expect(Math.abs(line.top - words.y)).toBeLessThanOrEqual(1);
+  expect(Math.abs(line.bottom - (words.y + words.height))).toBeLessThanOrEqual(1);
+});
+
+test('four columns stacked at the top of the body stand a block\'s spacing apart', async () => {
+  await openWithLines(page, ['A first', 'B second', 'C third', 'D fourth', 'After']);
+  for (const [dragged, target] of [['B second', 'A first'], ['C third', 'B second'], ['D fourth', 'C third']] as const) {
+    const t = (await row(page, target).boundingBox())!;
+    await dragRowTo(page, dragged, { x: t.x + t.width - 6, y: t.y + t.height / 2 });
+  }
+  await expect.poll(() => groups(page)).toEqual([['A first', 'B second', 'C third', 'D fourth']]);
+  await page.setViewportSize({ width: 1024, height: 900 });
+  await expect(page.locator(`${EDITOR} .doc-columns`)).toHaveAttribute('data-stacked', '');
+  const top = async (words: string): Promise<number> => (await row(page, words).boundingBox())!.y;
+  const bottom = async (words: string): Promise<number> => { const box = (await row(page, words).boundingBox())!; return box.y + box.height; };
+  const between = (await top('After')) - (await bottom('D fourth'));
+  expect(between).toBeGreaterThan(8);
+  expect(Math.abs((await top('B second')) - (await bottom('A first')) - between)).toBeLessThanOrEqual(1);
+  expect(Math.abs((await top('D fourth')) - (await bottom('C third')) - between)).toBeLessThanOrEqual(1);
+});
+
+test('the line beside a row spans that row\'s words, not the space above it', async () => {
+  await openWithLines(page, ['lead', 'below', 'dragged']);
+  const below = (await row(page, 'below').boundingBox())!;
+  const line = await lineWhileDragging(page, 'dragged', { x: below.x + below.width - 6, y: below.y + below.height / 2 });
+  expect(Math.abs(line.y - below.y)).toBeLessThanOrEqual(1);
+  expect(Math.abs(line.height - below.height)).toBeLessThanOrEqual(1);
+});
+
+test('the line for a drop in the gap between columns stands at the gap\'s middle', async () => {
+  await openWithLines(page, ['alpha', 'beta', 'dragged']);
+  const a = (await row(page, 'alpha').boundingBox())!;
+  await dragRowTo(page, 'beta', { x: a.x + a.width - 6, y: a.y + a.height / 2 });
+  await expect.poll(() => groups(page)).toEqual([['alpha', 'beta']]);
+  const [left, right] = await page.locator(`${EDITOR} .doc-column`).evaluateAll((list) => list.map((column) => column.getBoundingClientRect().toJSON() as DOMRect));
+  const middle = (left!.right + right!.left) / 2;
+  const words = (await row(page, 'beta').boundingBox())!;
+  // The gap's left half lands right of the left column; its right half is
+  // the right column's handle, where a drag straight down reorders.
+  for (const x of [middle - 20, middle - 8]) {
+    const line = await lineWhileDragging(page, 'dragged', { x, y: words.y + words.height / 2 });
+    expect(Math.abs(line.x + line.width / 2 - middle)).toBeLessThanOrEqual(1);
+  }
+});
+
+test('the line for a drop in a cell\'s left padding stands clear of the words', async () => {
+  await openWithLines(page, ['lead', 'moved']);
+  await tableUnder(page, 'lead');
+  await page.keyboard.type('one');
+  const cell = (await page.locator(`${EDITOR} td`).first().boundingBox())!;
+  const words = (await row(page, 'one').boundingBox())!;
+  const line = await lineWhileDragging(page, 'moved', { x: cell.x + 4, y: words.y + words.height / 2 });
+  expect(line.x + line.width).toBeLessThanOrEqual(words.x - 4);
+  expect(line.x).toBeGreaterThanOrEqual(cell.x);
+});
+
+test('a table column\'s resize line is 1px, as the column divider is', async () => {
+  await openWithLines(page, ['lead']);
+  await tableUnder(page, 'lead');
+  const cell = (await page.locator(`${EDITOR} td`).first().boundingBox())!;
+  await page.mouse.move(5, 5);
+  await page.mouse.move(cell.x + cell.width - 20, cell.y + cell.height / 2, { steps: 3 });
+  await page.mouse.move(cell.x + cell.width - 1, cell.y + cell.height / 2, { steps: 4 });
+  const handle = page.locator(`${EDITOR} .column-resize-handle`).first();
+  await expect(handle).toBeVisible();
+  expect((await handle.boundingBox())!.width).toBeLessThanOrEqual(1);
 });

@@ -25,6 +25,13 @@ export const MIN_COLUMN_WIDTH = 96;
 export const COLUMN_GAP = 72;
 
 /**
+ * How far either side of the gap's middle the divider is taken: 24px in all,
+ * the least target WCAG 2.2 SC 2.5.8 asks for. The gap's 24px right of it
+ * holds a block's strip, the 24px left of it a table's.
+ */
+export const COLUMN_DIVIDER_ZONE = 12;
+
+/**
  * A column's stored width read as its weight: any value that is not a
  * positive number counts as 1.
  * @param value - The stored width.

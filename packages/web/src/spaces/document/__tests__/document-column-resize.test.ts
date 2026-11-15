@@ -131,3 +131,40 @@ describe('a divider drag the Space refuses to write', () => {
     expect(columns.map((column) => column.style.flexGrow)).toEqual(['1', '1']);
   });
 });
+
+describe('where the divider can be taken (WCAG 2.2 SC 2.5.8)', () => {
+  /**
+   * Two columns 300px wide, 72px apart, in a mounted editor.
+   * @returns The group and its divider.
+   */
+  function twoColumns(): { group: HTMLElement; divider: HTMLElement } {
+    const name = docName.documentSpace('p1', 'd2');
+    const doc = getDoc(name);
+    const handle = getDocumentEditor(doc, name, {
+      caretProvider: { awareness: new Awareness(doc) },
+      readWho: () => ({ role: 'editor', viewerId: 'user-1' }),
+      editable: true,
+    });
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    adoptDocumentEditor(handle, root);
+    handle.editor.replaceBlocks(handle.editor.document, [para('lead'), columnsBlock(['a'], ['b'])] as never);
+    const group = root.querySelector('.doc-columns') as HTMLElement;
+    for (const [index, column] of group.querySelectorAll<HTMLElement>(':scope > .doc-columns-row > .doc-column').entries()) {
+      column.getBoundingClientRect = () => ({ left: index * 372, right: index * 372 + 300, width: 300, top: 0, bottom: 20, height: 20, x: index * 372, y: 0, toJSON: () => ({}) });
+    }
+    return { group, divider: group.querySelector('.doc-column-divider') as HTMLElement };
+  }
+
+  it.each([-12, -6, 0, 6, 12])('shows the divider %ipx off the gap\'s middle', (offset) => {
+    const { group, divider } = twoColumns();
+    group.dispatchEvent(new MouseEvent('pointermove', { clientX: 336 + offset, bubbles: true }));
+    expect(divider.dataset['shown']).toBe('');
+  });
+
+  it.each([-13, 13])('leaves the gap %ipx off its middle to the blocks beside it', (offset) => {
+    const { group, divider } = twoColumns();
+    group.dispatchEvent(new MouseEvent('pointermove', { clientX: 336 + offset, bubbles: true }));
+    expect(divider.dataset['shown']).toBeUndefined();
+  });
+});

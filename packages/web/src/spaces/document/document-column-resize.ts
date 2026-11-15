@@ -7,8 +7,7 @@
 
 import type { EditorView } from '@tiptap/pm/view';
 
-import { columnWeight, MIN_COLUMN_WIDTH } from '@web/spaces/document/document-column-geometry';
-import { COLUMN_RESIZE_ZONE } from '@web/spaces/document/document-table-nodes';
+import { COLUMN_DIVIDER_ZONE, columnWeight, MIN_COLUMN_WIDTH } from '@web/spaces/document/document-column-geometry';
 import { rowById } from '@web/spaces/document/document-row-by-id';
 
 /** The two columns either side of a divider when the drag started. */
@@ -90,8 +89,8 @@ function weightOf(column: HTMLElement): number {
 }
 
 /**
- * Draws the divider between two columns where the pointer is within the
- * resize zone of a gap's middle, and lets it be dragged: the two columns
+ * Draws the divider between two columns where the pointer is within
+ * `COLUMN_DIVIDER_ZONE` of a gap's middle, and lets it be dragged: the two columns
  * follow the pointer in view only, and the release writes both widths once.
  * @param group - The group's element, the divider's container.
  * @param row - The element the columns stand in.
@@ -114,23 +113,29 @@ export function attachDivider(group: HTMLElement, row: HTMLElement, editor: Divi
   /**
    * The gap whose middle the pointer is at.
    * @param x - The pointer's x.
-   * @returns The index of the column right of it and the middle's x, or null.
+   * @returns The index of the column right of it, or -1.
    */
-  const gapAt = (x: number): { index: number; middle: number } | null => {
+  const gapAt = (x: number): number => {
     const all = columns();
-    for (let index = 1; index < all.length; index += 1) {
-      const middle = (all[index - 1]!.getBoundingClientRect().right + all[index]!.getBoundingClientRect().left) / 2;
-      if (Math.abs(x - middle) <= COLUMN_RESIZE_ZONE) return { index, middle };
-    }
-    return null;
+    return all.findIndex((column, index) =>
+      index > 0 && Math.abs(x - (all[index - 1]!.getBoundingClientRect().right + column.getBoundingClientRect().left) / 2) <= COLUMN_DIVIDER_ZONE);
   };
 
   /**
-   * Stands the divider at an x.
-   * @param middle - The x.
+   * Stands the divider between two columns: in the middle of their gap, from
+   * the top of their first blocks' own content, below the space a block
+   * keeps above it, to the group's bottom.
+   * @param left - The column left of the gap.
+   * @param right - The column right of it.
    */
-  const standAt = (middle: number): void => {
-    divider.style.left = `${String(middle - group.getBoundingClientRect().left)}px`;
+  const standBetween = (left: HTMLElement, right: HTMLElement): void => {
+    const box = group.getBoundingClientRect();
+    const top = Math.min(...[left, right].map((column) => {
+      const first = column.firstElementChild;
+      return (first?.querySelector(':scope > .bn-block > .bn-block-content') ?? first ?? column).getBoundingClientRect().top;
+    }));
+    divider.style.left = `${String((left.getBoundingClientRect().right + right.getBoundingClientRect().left) / 2 - box.left)}px`;
+    divider.style.top = `${String(Math.max(0, top - box.top))}px`;
   };
 
   /**
@@ -139,13 +144,14 @@ export function attachDivider(group: HTMLElement, row: HTMLElement, editor: Divi
    */
   const onMove = (event: PointerEvent): void => {
     if (drag !== null) return;
-    const gap = editor.isEditable && group.dataset['stacked'] === undefined ? gapAt(event.clientX) : null;
-    if (gap === null) {
+    const index = editor.isEditable && group.dataset['stacked'] === undefined ? gapAt(event.clientX) : -1;
+    if (index < 0) {
       delete divider.dataset['shown'];
       return;
     }
-    standAt(gap.middle);
-    divider.dataset['index'] = String(gap.index);
+    const all = columns();
+    standBetween(all[index - 1]!, all[index]!);
+    divider.dataset['index'] = String(index);
     divider.dataset['shown'] = '';
   };
   /** Hides the divider once the pointer leaves the group, unless it is dragged. */
@@ -197,7 +203,7 @@ export function attachDivider(group: HTMLElement, row: HTMLElement, editor: Divi
     drag.last = resizedWeights({ ...drag, dx: event.clientX - drag.startX });
     drag.left.style.flexGrow = String(drag.last.left);
     drag.right.style.flexGrow = String(drag.last.right);
-    standAt((drag.left.getBoundingClientRect().right + drag.right.getBoundingClientRect().left) / 2);
+    standBetween(drag.left, drag.right);
   };
   /** Writes the two widths once, on release. */
   const onUp = (): void => {
