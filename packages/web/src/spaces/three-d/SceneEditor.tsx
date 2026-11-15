@@ -538,7 +538,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     const observer = new ResizeObserver(measure);
     for (const element of [bottomRow, modelNotice, ...(bottomRow ? Array.from(bottomRow.children) : [])]) if (element) observer.observe(element);
     return () => observer.disconnect();
-  }, [bottomRow, modelNotice, selected.length, shotTaken, stageSize]);
+  }, [bottomRow, modelNotice, selected.length, shotTaken]);
   const [viewfinderHost, setViewfinderHost] = React.useState<HTMLDivElement | null>(null);
   const selection = JSON.stringify([...snapshot.selectedIds].sort());
   const lastSelection = React.useRef('[]');
