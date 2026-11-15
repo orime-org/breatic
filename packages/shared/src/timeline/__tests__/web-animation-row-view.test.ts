@@ -67,7 +67,7 @@ const exportRow = {
   id: id(8),
   kind: "web_animation_export" as const,
   engine: null,
-  input: { sourceVersionId: id(7), width: 1080, height: 1920, fps: FPS, durationFrames: 144 },
+  input: { sourceVersionId: id(7), width: 1080, height: 1920, fps: FPS, durationFrames: 144, videoKey: "generated/2026/11/15/v.mp4" },
   source: { executionId: id(6), request: "Slower", base: { executionId: id(1), request: "A logo" } },
   resultSourceVersionId: null,
   resultAssetId: id(9),

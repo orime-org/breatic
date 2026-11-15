@@ -70,7 +70,7 @@ describe("WebAnimationExecutionInputSchema", () => {
   it("accepts each kind's frozen input", () => {
     const create = { kind: "web_animation_create", prompt: "A", engine: "deepseek", aspect: "16:9", durationSeconds: 4, fps: FPS };
     const modify = { kind: "web_animation_modify", baseSourceVersionId: VERSION, instruction: "B", engine: "deepseek", aspect: "9:16", durationSeconds: 6, fps: FPS };
-    const exported = { kind: "web_animation_export", sourceVersionId: VERSION, width: 1920, height: 1080, fps: FPS, durationFrames: 96 };
+    const exported = { kind: "web_animation_export", sourceVersionId: VERSION, width: 1920, height: 1080, fps: FPS, durationFrames: 96, videoKey: "generated/2026/11/15/a.mp4" };
     expect(WebAnimationExecutionInputSchema.parse(create)).toEqual(create);
     expect(WebAnimationExecutionInputSchema.parse(modify)).toEqual(modify);
     expect(WebAnimationExecutionInputSchema.parse(exported)).toEqual(exported);
@@ -81,7 +81,11 @@ describe("WebAnimationExecutionInputSchema", () => {
   });
 
   it("refuses an engine on a frozen export", () => {
-    expect(WebAnimationExecutionInputSchema.safeParse({ kind: "web_animation_export", sourceVersionId: VERSION, engine: "deepseek", width: 1920, height: 1080, fps: FPS, durationFrames: 96 }).success).toBe(false);
+    expect(WebAnimationExecutionInputSchema.safeParse({ kind: "web_animation_export", sourceVersionId: VERSION, engine: "deepseek", width: 1920, height: 1080, fps: FPS, durationFrames: 96, videoKey: "generated/a.mp4" }).success).toBe(false);
+  });
+
+  it("refuses a frozen export without the key its video is written to", () => {
+    expect(WebAnimationExecutionInputSchema.safeParse({ kind: "web_animation_export", sourceVersionId: VERSION, width: 1920, height: 1080, fps: FPS, durationFrames: 96 }).success).toBe(false);
   });
 });
 
@@ -92,8 +96,8 @@ describe("executionInputOf", () => {
   });
 
   it("takes the kind from the column over any kind key in the input", () => {
-    const row = { kind: "web_animation_export" as const, input: { kind: "web_animation_create", sourceVersionId: VERSION, width: 1080, height: 1920, fps: FPS, durationFrames: 120 } };
-    expect(executionInputOf(row)).toEqual({ kind: "web_animation_export", sourceVersionId: VERSION, width: 1080, height: 1920, fps: FPS, durationFrames: 120 });
+    const row = { kind: "web_animation_export" as const, input: { kind: "web_animation_create", sourceVersionId: VERSION, width: 1080, height: 1920, fps: FPS, durationFrames: 120, videoKey: "generated/b.mp4" } };
+    expect(executionInputOf(row)).toEqual({ kind: "web_animation_export", sourceVersionId: VERSION, width: 1080, height: 1920, fps: FPS, durationFrames: 120, videoKey: "generated/b.mp4" });
   });
 
   it("throws on a stored input that does not fit its kind", () => {

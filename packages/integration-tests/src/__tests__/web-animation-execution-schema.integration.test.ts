@@ -97,7 +97,7 @@ async function insert(
 ): Promise<TimelineExecution | null> {
   const base = { projectId: fixture.projectId, spaceId: options.spaceId ?? randomUUID(), actorUserId: fixture.ownerId, actionId: randomUUID(), inputHash: `sha256:${randomUUID()}`, deadlineAt: new Date(Date.now() + 7_200_000), status: "queued" as const, origin: "web_animation_space" as const };
   const row = kind === "web_animation_export"
-    ? await timelineExecutionRepo.insert({ ...base, kind, engine: null, input: { sourceVersionId: options.sourceVersionId ?? randomUUID(), width: 1920, height: 1080, fps: FPS, durationFrames: 96 } })
+    ? await timelineExecutionRepo.insert({ ...base, kind, engine: null, input: { sourceVersionId: options.sourceVersionId ?? randomUUID(), width: 1920, height: 1080, fps: FPS, durationFrames: 96, videoKey: `generated/${randomUUID()}.mp4` } })
     : kind === "web_animation_modify"
       ? await timelineExecutionRepo.insert({ ...base, kind, engine: "deepseek", input: { baseSourceVersionId: randomUUID(), instruction: "Slower", engine: "deepseek", aspect: "16:9", durationSeconds: 4, fps: FPS } })
       : await timelineExecutionRepo.insert({ ...base, kind, engine: "deepseek", input: { prompt: "A", engine: "deepseek", aspect: "16:9", durationSeconds: 4, fps: FPS } });
