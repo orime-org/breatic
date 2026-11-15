@@ -2275,8 +2275,8 @@ body {
     z-index: 3;
   }
 
-  /* One pixel, as every line is (packages/web/AGENTS.md "Lines are one
-     pixel") and as the column divider draws; BlockNote's is 4px. */
+  /* One pixel, as every line is (packages/web/AGENTS.md#lines-are-one-pixel)
+     and as the column divider draws; BlockNote's is 4px. */
   .doc-body .column-resize-handle {
     width: 1px;
     right: -1px;
