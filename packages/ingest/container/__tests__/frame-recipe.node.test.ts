@@ -82,6 +82,34 @@ async function rgbaMeans(path: string, filter?: string): Promise<number[]> {
   return [0, 1, 2, 3].map(channel => bytes.filter((_value, index) => index % 4 === channel).reduce((sum, value) => sum + value, 0) / (bytes.length / 4));
 }
 
+// The D05 tone-map chain (§4.3 colour/HDR row) as a reference, on frames whose tags are all set.
+const D05 = 'zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv';
+
+/**
+ * The first frame of a picture as raw bytes.
+ * @param path - The image or video.
+ * @param format - The raw pixel format.
+ * @param filter - An optional filter chain before the conversion.
+ * @returns The bytes.
+ */
+async function pixels(path: string, format: 'rgb24' | 'rgba', filter?: string): Promise<Buffer> {
+  const { stdout } = await run('ffmpeg', ['-v', 'error', '-i', path, '-frames:v', '1', '-vf', `${filter === undefined ? '' : `${filter},`}format=${format}`, '-f', 'rawvideo', '-'], { encoding: 'buffer', maxBuffer: 1 << 26 });
+  return stdout;
+}
+
+/**
+ * The largest difference between two equally sized pictures' bytes.
+ * @param a - One.
+ * @param b - The other.
+ * @returns The difference, or Infinity when the sizes differ.
+ */
+function gap(a: Buffer, b: Buffer): number {
+  if (a.length !== b.length) return Number.POSITIVE_INFINITY;
+  let most = 0;
+  for (let index = 0; index < a.length; index += 1) most = Math.max(most, Math.abs(a[index]! - b[index]!));
+  return most;
+}
+
 /**
  * Write PNG bytes to a file for FFmpeg to read.
  * @param png - The bytes.
@@ -106,8 +134,14 @@ beforeAll(async () => {
   await ff('alpha.mov', ['-f', 'lavfi', '-i', 'testsrc2=s=64x36:r=25:d=0.4,format=rgba,colorchannelmixer=aa=0.25', '-c:v', 'png']);
   // The same alpha in a VP9 WebM: the alpha plane is a BlockAdditional, which only the libvpx decoder reads.
   await ff('alpha.webm', ['-f', 'lavfi', '-i', 'testsrc2=s=64x36:r=25:d=0.4,format=yuva420p,colorchannelmixer=aa=0.25', '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuva420p']);
-  await ff('pq-odd-alpha.webm', ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=25:d=0.4', '-vf',
-    'crop=159:95:0:0:exact=1,format=yuva420p,colorchannelmixer=aa=0.25,setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc', '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuva420p']);
+  // Lossless PQ twins: the odd source is the even one's decoded frame cropped exactly, so their samples are the same and the
+  // odd tool output must equal the even frame's D05 picture cropped (FC08-FC10).
+  const pq = 'setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc';
+  await ff('pq-even.mkv', ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=25:d=0.2', '-vf', `format=yuv420p10le,${pq}`, '-c:v', 'ffv1']);
+  await ff('pq-odd.mkv', ['-i', join(dir, 'pq-even.mkv'), '-vf', 'crop=159:95:0:0:exact=1', '-c:v', 'ffv1']);
+  await ff('pqa-even.mkv', ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=25:d=0.2', '-vf', `format=rgba,colorchannelmixer=aa=0.25,format=yuva420p10le,${pq}`, '-c:v', 'ffv1']);
+  await ff('pqa-odd.mkv', ['-i', join(dir, 'pqa-even.mkv'), '-vf', 'crop=159:95:0:0:exact=1', '-c:v', 'ffv1']);
+  await ff('pq-odd-rot.mov', ['-display_rotation', '90', '-i', join(dir, 'pq-odd.mkv'), '-c', 'copy']);
   await ff('rot90.mp4', ['-display_rotation', '90', '-i', join(dir, 'flash.mp4'), '-c', 'copy']);
   // A white 20x12 box at (40, 20) on black, every frame a keyframe: FC07's crops are read against its known edges.
   await ff('box.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=160x96:r=25:d=0.2,drawbox=x=40:y=20:w=20:h=12:color=white:t=fill,format=yuv420p",
@@ -169,13 +203,32 @@ describe('frame from a full-ledger entry (§92 D4-3; design §7.17 frame row)', 
     expect(Math.abs((await rgbaMeans(await saved(png)))[3]! - 64)).toBeLessThan(2);
   });
 
-  // §4.3 odd-size and colour/HDR rows: an odd 4:2:0 HDR VP9 with alpha is tone mapped at its own size, alpha kept.
-  it('FC08 an odd-sized transparent HDR VP9 frame keeps its size and alpha through the tone map', async () => {
-    const { stdout } = await run('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height,color_transfer', '-of', 'csv=p=0', join(dir, 'pq-odd-alpha.webm')]);
-    expect(String(stdout).trim()).toBe('159,95,smpte2084');
-    const png = await frame('pq-odd-alpha.webm', { entry: frameAt([0, 1]), target: { ...OPAQUE, width: 159, height: 95, colorMatrix: 'bt2020nc', toneMap: 'sdr-bt709', alpha: 'straight' } });
+  // §4.3 odd-size and colour/HDR rows: an odd 4:2:0 HDR source is tone mapped at its own size, each pixel as the D05 chain
+  // maps the same samples in its even twin.
+  it('FC08 an odd-sized HDR frame is the even twin\'s D05 picture, pixel for pixel', async () => {
+    expect(String((await run('ffprobe', ['-v', 'error', '-show_entries', 'stream=width,height,color_transfer', '-of', 'csv=p=0', join(dir, 'pq-odd.mkv')])).stdout).trim()).toBe('159,95,smpte2084');
+    const png = await frame('pq-odd.mkv', { entry: frameAt([0, 1]), target: { ...OPAQUE, width: 159, height: 95, colorMatrix: 'bt2020nc', toneMap: 'sdr-bt709' } });
+    expect(header(png)).toMatchObject({ width: 159, height: 95, colorType: 2 });
+    expect(gap(await pixels(await saved(png), 'rgb24'), await pixels(join(dir, 'pq-even.mkv'), 'rgb24', `${D05},crop=159:95:0:0:exact=1`))).toBeLessThanOrEqual(2);
+  });
+
+  it('FC09 an odd-sized transparent HDR frame keeps its alpha and the even twin\'s D05 colour, pixel for pixel', async () => {
+    const png = await frame('pqa-odd.mkv', { entry: frameAt([0, 1]), target: { ...OPAQUE, width: 159, height: 95, colorMatrix: 'bt2020nc', toneMap: 'sdr-bt709', alpha: 'straight' } });
     expect(header(png)).toMatchObject({ width: 159, height: 95, colorType: 6 });
+    const rgba = await pixels(await saved(png), 'rgba');
+    const twin = await pixels(join(dir, 'pqa-even.mkv'), 'rgb24', `${D05},crop=159:95:0:0:exact=1`);
+    expect(gap(Buffer.from(rgba.filter((_value, index) => index % 4 !== 3)), twin)).toBeLessThanOrEqual(2);
     expect(Math.abs((await rgbaMeans(await saved(png)))[3]! - 64)).toBeLessThan(2);
+  });
+
+  // The decoder turns the frame before the graph, so the odd side the tone map crops back to is the turned one.
+  it('FC10 a rotated odd-sized HDR frame comes out upright at its turned size', async () => {
+    const png = await frame('pq-odd-rot.mov', { entry: frameAt([0, 1]), target: { ...OPAQUE, width: 95, height: 159, colorMatrix: 'bt2020nc', toneMap: 'sdr-bt709' } });
+    expect(header(png)).toMatchObject({ width: 95, height: 159 });
+    const luma = async (path: string, filter?: string): Promise<Buffer> => (await run('ffmpeg', ['-v', 'error', '-i', path, '-frames:v', '1', '-vf', `${filter === undefined ? '' : `${filter},`}extractplanes=y`, '-f', 'rawvideo', '-'], { encoding: 'buffer', maxBuffer: 1 << 26 })).stdout;
+    const upright = await luma(join(dir, 'pq-odd-rot.mov'));
+    const turned = gap(upright, await luma(join(dir, 'pq-odd.mkv'), 'transpose=clock')) === 0 ? 'clock' : 'cclock';
+    expect(gap(upright, await luma(join(dir, 'pq-odd.mkv'), `transpose=${turned}`))).toBe(0);
   });
 
   it('FC06 the frame is upright in the display geometry (§7.17 方向与几何): a 90° source gives 96x160', async () => {

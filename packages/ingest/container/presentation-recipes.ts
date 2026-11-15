@@ -63,35 +63,46 @@ export interface PresentationRecipeRequest {
 }
 
 /**
- * What the tone map reads of a source's decoded frames that its plan does not carry (§4.3 colour/HDR row): whether the
- * stream tags its primaries, and, for 4:2:0 or 4:2:2 frames with an odd side (which zimg cannot read), the chroma location
- * to upsample them to 4:4:4 from.
+ * What the tone map reads of a source's decoded frames beyond its plan (§4.3 colour/HDR row), as zscale names: the transfer,
+ * the primaries (BT.709 when untagged, as Chromium reads them), the range (limited when untagged) and the chroma location
+ * (left when unspecified, as zimg reads it); and, for a planar subsampled stream with an odd subsampled side, which zimg
+ * cannot read, its planar format without alpha and its upright decoded size.
  */
-export interface FrameColour { primariesTagged: boolean; upsample: string | null }
+export interface FrameColour {
+  transfer: string | null;
+  primaries: string;
+  range: "tv" | "pc";
+  chromaLocation: string;
+  odd: { format: string; width: number; height: number; padWidth: boolean; padHeight: boolean } | null;
+}
 // The plan's matrix names (physical-video-probe.ts) as zscale spells them.
 const ZSCALE_MATRICES: Readonly<Record<string, string>> = { bt709: "709", bt601: "170m", bt2020nc: "2020_ncl" };
 
 /**
- * The D05 tone map, keeping the frames' alpha when `label` names the graph-unique labels to carry it on: the alpha plane is
- * extracted beside the chain and merged back after it (the chain's float RGB has none, and zscale reads a YUVA source's alpha
- * as limited range). An opaque frame gets an opaque alpha. The chain reads the plan's matrix, never the frame's tag (an
- * untagged one stops zscale); untagged primaries are BT.709, as Chromium reads them. Odd-sided subsampled frames are first
- * upsampled by swscale bilinear from their chroma location, which is zimg's own upsampling (measured within 0.1/255).
+ * The D05 tone map (§4.3 colour/HDR row). The chain's first step names every input fact: the plan's matrix and the probed
+ * transfer, primaries, range and chroma location, so a tag missing from the frames cannot stop zscale. An odd-sided
+ * subsampled frame reaches zimg with only its luma plane padded to the even size and its chroma planes as decoded, then the
+ * picture is cropped back: zimg places each chroma sample as on the even frame, so every pixel equals the D05 picture of the
+ * same samples. With `keepAlpha` the alpha plane is extracted beside the chain and merged back after it (the chain's float RGB
+ * has none, and zscale reads a YUVA source's alpha as limited range); an opaque frame gets an opaque alpha.
  * @param matrix - The plan matrix.
  * @param colour - The decoded frames' colour facts.
- * @param label - A label prefix unique within the graph, when the alpha is kept.
+ * @param label - A label prefix unique within the graph.
+ * @param keepAlpha - Whether the frames' alpha is carried through.
  * @returns The filter chain text, ending on tone-mapped frames.
  * @throws {RangeError} When the plan matrix has no zscale value.
  */
-function toneMap(matrix: string, colour: FrameColour, label?: string): string {
+function toneMap(matrix: string, colour: FrameColour, label: string, keepAlpha: boolean): string {
   const min = ZSCALE_MATRICES[matrix];
   if (min === undefined) throw new RangeError(`No tone map matrix for ${matrix}`);
-  const primaries = colour.primariesTagged ? "" : ":pin=709:p=709";
-  const chain = `zscale=min=${min}${primaries}:t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv`;
-  const upsample = colour.upsample === null ? ""
-    : `scale=in_chroma_loc=${colour.upsample}:flags=bilinear+accurate_rnd+full_chroma_int,format=${label === undefined ? "yuv444p16le" : "yuva444p16le"},`;
-  if (label === undefined) return `${upsample}${chain}`;
-  return `${upsample}split[${label}tc][${label}ta];[${label}ta]format=yuva444p,alphaextract[${label}tm];[${label}tc]${chain}[${label}tt];[${label}tt][${label}tm]alphamerge`;
+  const inputs = `${colour.transfer === null ? "" : `tin=${colour.transfer}:`}pin=${colour.primaries}:p=${colour.primaries}:min=${min}:rin=${colour.range}:cin=${colour.chromaLocation}`;
+  const chain = `zscale=${inputs}:t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv`;
+  const { odd } = colour;
+  const mapped = odd === null ? chain
+    : `extractplanes=y+u+v[${label}ty][${label}tu][${label}tv];[${label}ty]pad=${odd.width + (odd.padWidth ? odd.width % 2 : 0)}:${odd.height + (odd.padHeight ? odd.height % 2 : 0)}[${label}tp];` +
+      `[${label}tp][${label}tu][${label}tv]mergeplanes=map0s=0:map0p=0:map1s=1:map1p=0:map2s=2:map2p=0:format=${odd.format},${chain},crop=${odd.width}:${odd.height}:0:0:exact=1`;
+  if (!keepAlpha) return mapped;
+  return `split[${label}tc][${label}ta];[${label}ta]format=yuva444p,alphaextract[${label}tm];[${label}tc]${mapped}[${label}tt];[${label}tt][${label}tm]alphamerge`;
 }
 export const BT709_TAGS = "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv";
 // The plan's matrix names (physical-video-probe.ts) as the scale filter spells them.
@@ -162,17 +173,18 @@ export function placement(target: MiniToolPlanTarget): { rect: MiniToolPlanPixel
  * @param width - The scaled width.
  * @param height - The scaled height.
  * @param colour - The decoded frames' colour facts; null only for frames that are not tone mapped.
- * @param alphaLabel - A label prefix unique within the graph, when the tone map keeps alpha.
+ * @param label - A label prefix unique within the graph.
+ * @param keepAlpha - Whether the tone map carries the frames' alpha.
  * @returns The filter chain text.
  * @throws {RangeError} When the plan matrix has no decode value, or HDR frames come without their colour facts.
  */
 export function decodedPicture(source: { colorMatrix: string; toneMap: "none" | "sdr-bt709" }, width: number, height: number, colour: FrameColour | null,
-  alphaLabel?: string): string {
+  label: string, keepAlpha = false): string {
   const matrix = SCALE_MATRICES[source.colorMatrix];
   if (matrix === undefined) throw new RangeError(`No decode matrix for ${source.colorMatrix}`);
   if (source.toneMap === "none") return `scale=${width}:${height}:in_color_matrix=${matrix}`;
   if (colour === null) throw new RangeError("Tone-mapped frames need their colour facts");
-  return `${toneMap(source.colorMatrix, colour, alphaLabel)},scale=${width}:${height}:in_color_matrix=${matrix}`;
+  return `${toneMap(source.colorMatrix, colour, label, keepAlpha)},scale=${width}:${height}:in_color_matrix=${matrix}`;
 }
 
 /**
@@ -217,7 +229,7 @@ export async function probeModelResultDecode(file: string, run: { signal: AbortS
  */
 export function picture(target: MiniToolPlanTarget, label: string, colour: FrameColour | null): string {
   const { rect, planeWidth } = placement(target);
-  const head = decodedPicture(target, rect.width, rect.height, colour, target.alpha === "none" ? undefined : `${label}a`);
+  const head = decodedPicture(target, rect.width, rect.height, colour, `${label}a`, target.alpha !== "none");
   const pad = `pad=${planeWidth}:${target.height}:${rect.x}:${rect.y}:color=black`;
   // The frames are already upright; a display matrix left on them would be written to the output and rotate it again.
   const unrotated = `${BT709_TAGS},sidedata=mode=delete:type=DISPLAYMATRIX`;
@@ -385,9 +397,10 @@ interface SourceFacts { iso: boolean; audio: boolean; mono: boolean; tick: [bigi
  */
 async function sourceFacts(source: string, run: { signal: AbortSignal; stdoutBytes: number; stderrTailBytes: number }): Promise<SourceFacts> {
   const answer = JSON.parse((await runPlanCommand("ffprobe", ["-v", "error", "-protocol_whitelist", "file", "-show_entries",
-    "format=format_name:stream=codec_type,codec_name,time_base,channels,width,height,pix_fmt,color_primaries,chroma_location:stream_tags", "-of", "json", source], run))
-    .toString("utf8")) as { format?: { format_name?: string }; streams?: { codec_type?: string; codec_name?: string; time_base?: string; channels?: number; width?: number;
-    height?: number; pix_fmt?: string; color_primaries?: string; chroma_location?: string; tags?: Record<string, string> }[] };
+    "format=format_name:stream=codec_type,codec_name,time_base,channels,width,height,pix_fmt,color_transfer,color_primaries,color_range,chroma_location:stream_side_data=rotation:stream_tags",
+    "-of", "json", source], run)).toString("utf8")) as { format?: { format_name?: string }; streams?: { codec_type?: string; codec_name?: string; time_base?: string;
+    channels?: number; width?: number; height?: number; pix_fmt?: string; color_transfer?: string; color_primaries?: string; color_range?: string; chroma_location?: string;
+    side_data_list?: { rotation?: number }[]; tags?: Record<string, string> }[] };
   const names = (answer.format?.format_name ?? "").split(",");
   const video = (answer.streams ?? []).find((stream) => stream.codec_type === "video");
   const tick = /^(\d+)\/(\d+)$/u.exec(video?.time_base ?? "");
@@ -397,28 +410,42 @@ async function sourceFacts(source: string, run: { signal: AbortSignal; stdoutByt
     tick: tick === null ? null : [BigInt(tick[1]!), BigInt(tick[2]!)], decoder, colour: frameColour(video ?? {}) };
 }
 
-// Pixel formats whose chroma planes are subsampled in a direction (4:2:0, 4:2:2, 4:1:1, 4:4:0 and their semi-planar forms).
-const SUBSAMPLED = /^(yuva?j?(420|422|411|410|440)|nv1[26]|nv2[014]|nv42|p0[14]0|p21[06]|p01[06]|p41[06]|y210|xv[13]|yuyv|uyvy)/u;
-// The chroma locations swscale's in_chroma_loc names; zimg reads an unspecified one as left.
+// Planar YUV formats whose chroma is subsampled: 4:2:0 halves both sides, 4:2:2 the width, 4:4:0 the height.
+const PLANAR_SUBSAMPLED = /^yuva?(420|422|440)p(\d+(le|be))?$/u;
+// The tags zscale reads by these names (its primaries, chroma location and transfer option values).
+const ZSCALE_PRIMARIES: ReadonlySet<string> = new Set(["bt709", "bt470m", "bt470bg", "smpte170m", "smpte240m", "film", "bt2020", "smpte428", "smpte431", "smpte432", "jedec-p22", "ebu3213"]);
 const CHROMA_LOCATIONS: ReadonlySet<string> = new Set(["left", "center", "topleft", "top", "bottomleft", "bottom"]);
+const ZSCALE_TRANSFERS: ReadonlySet<string> = new Set(["bt709", "bt470m", "bt470bg", "smpte170m", "smpte240m", "linear", "log100", "log316", "iec61966-2-4",
+  "iec61966-2-1", "bt2020-10", "bt2020-12", "smpte2084", "arib-std-b67"]);
 
 /**
- * The colour facts the tone map reads of a video stream (`FrameColour`): its primaries tag, and the chroma location an
- * odd-sided subsampled stream is upsampled from. An odd side in either direction counts, whatever the rotation.
+ * The colour facts the tone map reads of a video stream (`FrameColour`). The decoder turns a ±90° display rotation before
+ * the graph, so the upright size swaps the coded sides.
  * @param video - The ffprobe video stream.
  * @param video.width - Its coded width.
  * @param video.height - Its coded height.
  * @param video.pix_fmt - Its pixel format.
+ * @param video.color_transfer - Its transfer tag.
  * @param video.color_primaries - Its primaries tag.
+ * @param video.color_range - Its range tag.
  * @param video.chroma_location - Its chroma location.
+ * @param video.side_data_list - Its side data, read for the display rotation.
  * @returns The facts.
  * @throws {never} Never.
  */
-function frameColour(video: { width?: number; height?: number; pix_fmt?: string; color_primaries?: string; chroma_location?: string }): FrameColour {
-  const primariesTagged = video.color_primaries !== undefined && video.color_primaries !== "unknown" && video.color_primaries !== "";
-  const odd = (video.width ?? 0) % 2 === 1 || (video.height ?? 0) % 2 === 1;
-  const location = video.chroma_location !== undefined && CHROMA_LOCATIONS.has(video.chroma_location) ? video.chroma_location : "left";
-  return { primariesTagged, upsample: odd && SUBSAMPLED.test(video.pix_fmt ?? "") ? location : null };
+function frameColour(video: { width?: number; height?: number; pix_fmt?: string; color_transfer?: string; color_primaries?: string; color_range?: string;
+  chroma_location?: string; side_data_list?: { rotation?: number }[] }): FrameColour {
+  const known = (tag: string | undefined, names: ReadonlySet<string>): string | null => (tag !== undefined && names.has(tag) ? tag : null);
+  const turned = Math.abs(video.side_data_list?.find((entry) => typeof entry.rotation === "number")?.rotation ?? 0) % 180 === 90;
+  const [width, height] = turned ? [video.height ?? 0, video.width ?? 0] : [video.width ?? 0, video.height ?? 0];
+  const planar = PLANAR_SUBSAMPLED.exec(video.pix_fmt ?? "");
+  const padWidth = planar !== null && planar[1] !== "440" && width % 2 === 1;
+  const padHeight = planar !== null && planar[1] !== "422" && height % 2 === 1;
+  return {
+    transfer: known(video.color_transfer, ZSCALE_TRANSFERS), primaries: known(video.color_primaries, ZSCALE_PRIMARIES) ?? "bt709",
+    range: video.color_range === "pc" ? "pc" : "tv", chromaLocation: known(video.chroma_location, CHROMA_LOCATIONS) ?? "left",
+    odd: padWidth || padHeight ? { format: video.pix_fmt!.replace(/^yuva/u, "yuv"), width, height, padWidth, padHeight } : null,
+  };
 }
 
 /**
@@ -1009,7 +1036,7 @@ async function renderTransitionWindow(recipe: MiniToolPlanTransitionWindow, file
      * @returns The filter chain text.
      * @throws {RangeError} When the plan matrix has no decode value.
      */
-    const convert = (label: string, colour: FrameColour): string => `${decodedPicture(clip, clip.fit.width, clip.fit.height, colour, profile.alpha ? label : undefined)}`
+    const convert = (label: string, colour: FrameColour): string => `${decodedPicture(clip, clip.fit.width, clip.fit.height, colour, label, profile.alpha)}`
       + `:out_color_matrix=bt709:out_range=tv,format=${profile.alpha ? "yuva444p" : "yuv444p"},scale=in_color_matrix=bt709:in_range=tv:out_range=pc`;
     const window = await windowGraph(clip.entries, frameRate(profile.fps), local(files, clip.inputId), run,
       (label, colour) => `${convert(label, colour)},format=rgba,pad=${width}:${height}:${clip.fit.x}:${clip.fit.y}:color=${fill},setsar=1`,
@@ -1092,7 +1119,7 @@ async function renderFrame(recipe: FrameRecipe, source: string, output: string,
     const facts = await sourceFacts(source, run);
     const first = await frameStartAt(source, facts, entry, run);
     args.push(...mediaTimeline(facts), "-seek_timestamp", "1", "-noaccurate_seek", "-ss", seconds(rational(entry.decodeStart)), ...facts.decoder, "-i", source);
-    graph = `[0:v:0]trim=start=${seconds(first)},${decodedPicture(target, target.width, target.height, facts.colour, keep ? "f" : undefined)},format=${pixel}${cropped}[v]`;
+    graph = `[0:v:0]trim=start=${seconds(first)},${decodedPicture(target, target.width, target.height, facts.colour, "f", keep)},format=${pixel}${cropped}[v]`;
   }
   await runPlanCommand("ffmpeg", [...args, "-filter_complex", graph, "-map", "[v]", "-frames:v", "1", "-c:v", "png", "-f", "image2", output], run);
   const size = pngSize(new Uint8Array(await readFile(output)));
@@ -1175,7 +1202,7 @@ async function detectPeople(recipe: PeopleRecipe, source: string, output: string
 async function detectScenes(recipe: SceneRecipe, source: string, output: string, request: PresentationRecipeRequest, run: Run): Promise<void> {
   const { width, height } = recipe.target;
   const window = await windowGraph(recipe.entries, BigInt(recipe.timescale), source, run,
-    (_label, colour) => `${decodedPicture(recipe.target, width, height, colour)},format=bgr24,setsar=1,sidedata=mode=delete:type=DISPLAYMATRIX`,
+    (label, colour) => `${decodedPicture(recipe.target, width, height, colour, label)},format=bgr24,setsar=1,sidedata=mode=delete:type=DISPLAYMATRIX`,
     () => `color=c=black:s=${width}x${height}:r=1:d=1,format=bgr24,setsar=1`);
   const count = recipe.window.end - recipe.window.start;
   const result = await detect("scene_cuts", recipe.profile, { width, height, count,

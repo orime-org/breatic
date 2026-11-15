@@ -200,6 +200,17 @@ async function bt709Of(path: string, chain: string): Promise<{ y: number; u: num
 }
 
 /**
+ * One 8-bit plane of a picture's first frame.
+ * @param path - The image or video.
+ * @param chain - The filter chain ending on the plane.
+ * @returns The plane's bytes.
+ */
+async function plane8(path: string, chain: string): Promise<Buffer> {
+  const { stdout } = await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-i', path, '-frames:v', '1', '-vf', chain, '-f', 'rawvideo', '-'], { encoding: 'buffer', maxBuffer: 1 << 26 });
+  return stdout;
+}
+
+/**
  * The largest per-plane difference of two plane means.
  * @param a - One.
  * @param b - The other.
@@ -270,11 +281,10 @@ beforeAll(async () => {
     'scale=out_color_matrix=bt2020:out_range=tv,format=yuv420p10le,setparams=colorspace=unknown:color_primaries=unknown:color_trc=unknown', '-c:v', 'libx264', '-pix_fmt', 'yuv420p10le'];
   await make('pq-nomatrix.mp4', [...patch, '-x264-params', 'colorprim=bt2020:transfer=smpte2084']);
   await make('hlg-trconly.mp4', [...patch, '-x264-params', 'transfer=arib-std-b67']);
-  // Odd-sized 4:2:0 HDR VP9 (VP9 stores odd sides) and its even twin, both lossless so the pictures compare.
-  const odd = (crop: string): string[] => ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=25:d=0.4', '-vf',
-    `${crop}format=yuv420p10le,setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc`, '-c:v', 'libvpx-vp9', '-lossless', '1', '-pix_fmt', 'yuv420p10le'];
-  await make('pq-odd.webm', odd('crop=159:95:0:0:exact=1,'));
-  await make('pq-even.webm', odd(''));
+  // Lossless PQ twins: the odd source is the even one's decoded frames cropped exactly, so their samples are the same.
+  await make('pq-even.mkv', ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=25:d=0.4', '-vf',
+    'format=yuv420p10le,setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc', '-c:v', 'ffv1']);
+  await make('pq-odd.mkv', ['-i', join(dir, 'pq-even.mkv'), '-vf', 'crop=159:95:0:0:exact=1', '-c:v', 'ffv1']);
 });
 afterAll(async () => { await rm(dir, { recursive: true, force: true }); });
 
@@ -481,15 +491,20 @@ describe('chunk_encode (§5.4 切块、块的时间; §7.17)', () => {
   });
 
   // §4.3 odd-size and colour/HDR rows: an odd 4:2:0 HDR source keeps its size, its picture that of the even twin.
-  it('CE19 tone maps an odd-sized 4:2:0 HDR VP9 source into an odd-sized VP9 output', async () => {
+  it('CE19 tone maps an odd-sized 4:2:0 HDR source into an odd-sized VP9 output, each pixel as the even twin\'s D05 picture', async () => {
     const recipe = chunk({ start: 0, end: 10 }, [span(r(0), r(0), r(0), r(2, 5))],
       { ...TARGET, width: 159, height: 95, colorMatrix: 'bt2020nc', toneMap: 'sdr-bt709', format: 'webm-vp9' });
-    expect((await probe(join(dir, 'pq-odd.webm'))).streams[0]).toMatchObject({ width: 159, height: 95, pix_fmt: 'yuv420p10le', color_transfer: 'smpte2084' });
-    const [file] = await produce({ [SOURCE]: join(dir, 'pq-odd.webm') }, [recipe]);
+    expect((await probe(join(dir, 'pq-odd.mkv'))).streams[0]).toMatchObject({ width: 159, height: 95, pix_fmt: 'yuv420p10le', color_transfer: 'smpte2084' });
+    const [file] = await produce({ [SOURCE]: join(dir, 'pq-odd.mkv') }, [recipe]);
     const video = (await probe(file!)).streams[0]!;
     expect([video.width, video.height]).toEqual([159, 95]);
-    const twin = await bt709Of(join(dir, 'pq-even.webm'), 'zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv,crop=159:95:0:0');
-    expect(planeGap(await planes(file!), twin)).toBeLessThan(3);
+    // The output's luma plane holds the same samples as the even twin's, so it is compared sample by sample with the twin's
+    // D05 picture in the output's BT.709; lossy VP9 keeps the mean near its coding error.
+    const reference = 'zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv,scale=out_color_matrix=bt709:out_range=tv,format=yuv420p';
+    const twin = await plane8(join(dir, 'pq-even.mkv'), `${reference},extractplanes=y,crop=159:95:0:0`);
+    const encoded = await plane8(file!, 'extractplanes=y');
+    expect(encoded.length).toBe(twin.length);
+    expect(encoded.reduce((sum, value, index) => sum + Math.abs(value - twin[index]!), 0) / twin.length).toBeLessThan(1);
   });
 });
 
