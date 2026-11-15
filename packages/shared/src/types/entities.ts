@@ -1012,6 +1012,8 @@ export interface TimelineWebResolutionOrigin {
   executionId: string;
   /** The Space that made it: a Motion Space, or a Timeline before #1490. */
   spaceId: string;
+  /** Where it was asked from: a Motion Space, or a Timeline before #1490. */
+  origin: "timeline" | "web_animation_space";
   kind: "web_animation_create" | "web_animation_modify";
   /** The whole prompt or modification instruction. */
   request: string;

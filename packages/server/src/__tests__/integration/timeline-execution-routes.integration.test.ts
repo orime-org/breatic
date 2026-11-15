@@ -345,17 +345,17 @@ describe("GET /timeline/web-sources", () => {
         sources: {
           [source.id]: {
             durationFrames: 96, fps: { num: 24, den: 1 }, viewport: { width: 1920, height: 1080 },
-            executionId: done.id, spaceId: fx.spaceId, kind: "web_animation_create", request: "A red square",
+            executionId: done.id, spaceId: fx.spaceId, origin: "web_animation_space", kind: "web_animation_create", request: "A red square",
           },
         },
         executions: {
           [done.id]: {
             status: "succeeded", resultSourceVersionId: source.id, acceptedDurationFrames: 96, fps: { num: 24, den: 1 },
-            executionId: done.id, spaceId: fx.spaceId, kind: "web_animation_create", request: "A red square", phase: null, failureReason: null,
+            executionId: done.id, spaceId: fx.spaceId, origin: "web_animation_space", kind: "web_animation_create", request: "A red square", phase: null, failureReason: null,
           },
           [running.id]: {
             status: "running", resultSourceVersionId: null, acceptedDurationFrames: 96, fps: { num: 24, den: 1 },
-            executionId: running.id, spaceId: fx.spaceId, kind: "web_animation_create", request: "A red square", phase: "validating", failureReason: null,
+            executionId: running.id, spaceId: fx.spaceId, origin: "web_animation_space", kind: "web_animation_create", request: "A red square", phase: "validating", failureReason: null,
           },
         },
       },
@@ -379,13 +379,13 @@ describe("GET /timeline/web-sources", () => {
         sources: {
           [source.id]: {
             durationFrames: 96, fps: { num: 24, den: 1 }, viewport: { width: 1920, height: 1080 },
-            executionId: done.id, spaceId: fx.spaceId, kind: "web_animation_create", request: "A red square",
+            executionId: done.id, spaceId: fx.spaceId, origin: "web_animation_space", kind: "web_animation_create", request: "A red square",
           },
         },
         executions: {
           [done.id]: {
             status: "succeeded", resultSourceVersionId: source.id, acceptedDurationFrames: 96, fps: { num: 24, den: 1 },
-            executionId: done.id, spaceId: fx.spaceId, kind: "web_animation_create", request: "A red square", phase: null, failureReason: null,
+            executionId: done.id, spaceId: fx.spaceId, origin: "web_animation_space", kind: "web_animation_create", request: "A red square", phase: null, failureReason: null,
           },
         },
       },

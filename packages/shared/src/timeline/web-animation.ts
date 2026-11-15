@@ -95,9 +95,10 @@ export function matchWebAnimationManifest(
   return null;
 }
 
-const CREATE = "web_animation_create";
-const MODIFY = "web_animation_modify";
-const EXPORT = "web_animation_export";
+// Annotated so a kind written into an object keeps its literal type in the emitted declarations.
+const CREATE = "web_animation_create" as const;
+const MODIFY = "web_animation_modify" as const;
+const EXPORT = "web_animation_export" as const;
 
 /** The three kinds of web-animation execution. */
 export const WebAnimationExecutionKindSchema = z.enum([CREATE, MODIFY, EXPORT]);
@@ -133,7 +134,7 @@ const legacyCreateRequest = z.object({ ...keyed, ...createFields, fps: TimelineR
  */
 export const WebAnimationExecutionRequestSchema = z.union([
   kindedRequest.transform((request) => ({ ...request, origin: "web_animation_space" as const })),
-  legacyCreateRequest.transform(({ fps: _fps, ...request }) => ({ ...request, kind: CREATE as typeof CREATE, origin: "timeline" as const })),
+  legacyCreateRequest.transform(({ fps: _fps, ...request }) => ({ ...request, kind: CREATE, origin: "timeline" as const })),
 ]);
 
 /** A read execution request. */

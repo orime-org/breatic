@@ -232,7 +232,7 @@ describe("POST /timeline/executions — modify", () => {
   it("freezes the instruction as extractPromptText leaves it", async () => {
     const fx = await seedProject();
     const { versionId } = await finishedCreate(fx);
-    const raw = "<p>Make it <b>slower</b><!-- x --></p>​";
+    const raw = "<p>Make it <b>slower</b><!-- x --></p>\u200B";
     const data = await acceptRow(fx.editor.cookie, modifyBody(fx, versionId, { instruction: raw }), 201);
     expect(data.input).toMatchObject({ instruction: extractPromptText(raw) });
   });

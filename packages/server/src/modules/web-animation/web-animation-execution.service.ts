@@ -532,7 +532,7 @@ export async function resolveWebSources(
   const originOf = (execution: TimelineExecution, input: WebAnimationExecutionInput): TimelineWebResolutionOrigin | null => {
     if (input.kind === "web_animation_export") return null;
     const base = input.kind === "web_animation_modify" ? baseRef(input, byVersion) : undefined;
-    return { executionId: execution.id, spaceId: execution.spaceId, kind: input.kind, request: requestOf(input) ?? "", ...(base !== undefined && { base }) };
+    return { executionId: execution.id, spaceId: execution.spaceId, origin: execution.origin, kind: input.kind, request: requestOf(input) ?? "", ...(base !== undefined && { base }) };
   };
   const resolution: TimelineWebResolution = { sources: {}, executions: {} };
   for (const source of sources) {
