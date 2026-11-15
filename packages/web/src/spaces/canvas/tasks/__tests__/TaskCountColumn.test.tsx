@@ -35,7 +35,8 @@ import { TaskCountColumn } from '@web/spaces/canvas/tasks/TaskCountColumn';
  */
 function renderColumn(props: React.ComponentProps<typeof TaskCountColumn>): ReturnType<typeof render> {
   return render(
-    <TooltipProvider>
+    // The app's own delay (`App.tsx`), so a tip opens in the time a hover in the product takes.
+    <TooltipProvider delayDuration={100}>
       <TaskCountColumn {...props} />
     </TooltipProvider>,
   );
