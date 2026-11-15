@@ -17,6 +17,13 @@ vi.mock('@web/data/api/chat', () => ({
     })),
   },
 }));
+const order = vi.hoisted(() => [] as string[]);
+vi.mock('@web/data/upload/transfer-body', () => ({
+  bodyOrTransfer: vi.fn(async (_projectId: string, body: unknown) => {
+    order.push('upload');
+    return body;
+  }),
+}));
 let freshen: () => void = () => undefined;
 const ensureFreshIdentity = vi.hoisted(() => vi.fn());
 vi.mock('@web/data/api/identity-renewal', () => ({ ensureFreshIdentity }));
@@ -30,7 +37,11 @@ const original = globalThis.fetch;
 beforeEach(() => {
   evictAllChatSessions();
   sent = 0;
-  ensureFreshIdentity.mockImplementation(() => new Promise<void>((resolve) => { freshen = resolve; }));
+  order.length = 0;
+  ensureFreshIdentity.mockImplementation(() => new Promise<void>((resolve) => {
+    order.push('fresh');
+    freshen = resolve;
+  }));
   globalThis.fetch = (() => {
     sent += 1;
     return Promise.resolve(new Response(OPENS_AND_ENDS, { status: 200, headers: { 'Content-Type': 'text/event-stream' } }));
@@ -52,5 +63,17 @@ describe('the identity token on a chat message', () => {
     freshen();
     await sending;
     expect(sent).toBe(1);
+  });
+
+  // An oversized body goes up through storage first, which can outlast the
+  // token; the check comes right before the message leaves.
+  it('checks the token after the body is uploaded', async () => {
+    chatSessionFor({ projectId: 'p-1', conversationId: 'c-1', history: [], onTitled: () => undefined, onFirstFrame: () => undefined });
+
+    const sending = sendInSession('c-1', 'hello');
+    await vi.waitFor(() => expect(ensureFreshIdentity).toHaveBeenCalled());
+    freshen();
+    await sending;
+    expect(order).toEqual(['upload', 'fresh']);
   });
 });

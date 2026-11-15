@@ -316,9 +316,6 @@ function transportFor(
         // Read at the press, so a pick made a moment before goes with it.
         ...(model === undefined ? {} : { model }),
       };
-      // The message goes to the Project's region, which reads only the
-      // identity token, and this request is not retried after an expired one.
-      await ensureFreshIdentity();
       // A body over the request limit goes through storage first (inner#1006).
       // No beat can come before the request goes out, so the watch on this
       // turn is paused for the upload and counts again from the send.
@@ -337,6 +334,10 @@ function transportFor(
       } finally {
         if (bodyUploads.get(conversationId) === upload) bodyUploads.delete(conversationId);
       }
+      // The message goes to the Project's region, which reads only the
+      // identity token, and this request is not retried after an expired one;
+      // checked after any upload, which can take longer than the token lives.
+      await ensureFreshIdentity();
       if (uploaded) restartBeatWatch(conversationId, turn);
       return {
         // What the interface is in, which is what the server needs when it
