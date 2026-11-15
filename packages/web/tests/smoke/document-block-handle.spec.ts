@@ -1594,8 +1594,8 @@ test('rules the insert submenu the same way', async () => {
   // The same three dimensions, on the menu that makes a row rather than
   // changes one: six rows set the type, one sets the number, one sets the
   // quote. Paragraph is absent, so the first group is one shorter than the
-  // block type menu's. The divider, the table and the three media close it in
-  // a group of their own (#124, inner#1126, inner#1127).
+  // block type menu's. The divider, the table, the formula and the three media
+  // close it in a group of their own (#124, inner#1126, inner#1127, inner#1423).
   await openFreshDocument(page);
   await typeLines(page, ['a row to act on']);
   await openHandleMenu(page);
@@ -1631,6 +1631,7 @@ test('rules the insert submenu the same way', async () => {
     'separator',
     'doc-block-insert-divider',
     'doc-block-insert-table',
+    'doc-block-insert-formula',
     'doc-block-insert-image',
     'doc-block-insert-audio',
     'doc-block-insert-video',
