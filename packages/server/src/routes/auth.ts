@@ -293,11 +293,11 @@ auth.post(
  *
  * The authenticated-but-studio-less user picks their slug. The slug
  * format is validated by `setupStudioSchema` (lowercase handle, 6–39
- * chars); the service re-checks uniqueness against `studios.slug` and
- * creates `studios` (slug = name = chosen slug, type='personal') + the
- * creator's admin `studio_members` row atomically. A concurrent
- * duplicate slug that loses the pre-check race is caught by the
- * `studios_slug_idx` unique index → `ConflictError` → 409 (never 500).
+ * chars); the service checks the slug in the global directory under the
+ * slug's lock and creates `studios` (slug = name = chosen slug,
+ * type='personal') + the creator's admin `studio_members` row atomically. A
+ * slug already held, including by a concurrent setup that took the lock
+ * first, is a `ConflictError` → 409 (never 500).
  * @param c - Hono context with validated `setupStudioSchema` body + authed user
  * @returns `201` with `{ personalStudio: { name, slug } }`
  * @throws {AppError} `409` if the slug is already taken (or the user

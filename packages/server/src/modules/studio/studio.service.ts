@@ -154,8 +154,10 @@ function placementRegion(requested: string | undefined): string {
  *
  * A UX helper only — it tells the user early what the write would say. The
  * authoritative guards are the schema (shape, length, reserved words) and the
- * `studios_slug_idx` unique index, so a slug reported available here can still
- * lose a concurrent race and surface as `409` on submit. Checks run in the
+ * global directory, which the write checks under the slug's lock
+ * (`studio_directory_slug_live`, `slug_reservations_slug_live`; inner#1955),
+ * so a slug reported available here can still lose a concurrent race and
+ * surface as `409` on submit. Checks run in the
  * order the user would hit them, so the reason names the first real problem.
  *
  * `excludeStudioId` is what makes this usable while renaming: a studio's
@@ -204,9 +206,11 @@ export async function checkStudioSlug(
  * profile. What a personal studio has no meaningful version of is being
  * transferred, left, or having members — not being renamed.
  *
- * Slug uniqueness is left to the `studios_slug_idx` unique index rather than a
- * pre-check: a pre-check races, the index does not. The violation is mapped to
- * a conflict so a lost race reads the same as a slug that was already taken.
+ * Slug uniqueness is decided by the global directory, under the slug's lock
+ * (inner#1955): in the global region inside the rename's own transaction, and
+ * elsewhere by holding the slug there before the rename and letting it go if
+ * the rename does not commit. A slug already held is a conflict, so a lost
+ * race reads the same as a slug that was already taken.
  *
  * Changing the slug frees the old one immediately — no alias, no redirect
  * (rule 7). Every existing link to the old address stops working, which is why
