@@ -265,6 +265,16 @@ beforeAll(async () => {
   await make('alpha.mov', ['-f', 'lavfi', '-i', 'testsrc2=s=64x36:r=25:d=0.4,format=rgba,colorchannelmixer=aa=0.25', '-c:v', 'png']);
   // The same alpha in a VP9 WebM, whose alpha plane only the libvpx decoder reads.
   await make('alpha.webm', ['-f', 'lavfi', '-i', 'testsrc2=s=64x36:r=25:d=0.4,format=yuva420p,colorchannelmixer=aa=0.25', '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuva420p']);
+  // HDR whose stream leaves the matrix unspecified (only primaries and transfer set), and one with the transfer alone.
+  const patch = ['-f', 'lavfi', '-i', 'testsrc2=s=64x36:r=25:d=0.4', '-vf',
+    'scale=out_color_matrix=bt2020:out_range=tv,format=yuv420p10le,setparams=colorspace=unknown:color_primaries=unknown:color_trc=unknown', '-c:v', 'libx264', '-pix_fmt', 'yuv420p10le'];
+  await make('pq-nomatrix.mp4', [...patch, '-x264-params', 'colorprim=bt2020:transfer=smpte2084']);
+  await make('hlg-trconly.mp4', [...patch, '-x264-params', 'transfer=arib-std-b67']);
+  // Odd-sized 4:2:0 HDR VP9 (VP9 stores odd sides) and its even twin, both lossless so the pictures compare.
+  const odd = (crop: string): string[] => ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=25:d=0.4', '-vf',
+    `${crop}format=yuv420p10le,setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc`, '-c:v', 'libvpx-vp9', '-lossless', '1', '-pix_fmt', 'yuv420p10le'];
+  await make('pq-odd.webm', odd('crop=159:95:0:0:exact=1,'));
+  await make('pq-even.webm', odd(''));
 });
 afterAll(async () => { await rm(dir, { recursive: true, force: true }); });
 
@@ -448,6 +458,38 @@ describe('chunk_encode (§5.4 切块、块的时间; §7.17)', () => {
     expect(planeGap(stored, byDefault)).toBeGreaterThan(5);
     // BT.709 in and BT.709 out keeps the stored planes.
     expect(planeGap(await planes(file!), stored)).toBeLessThan(3);
+  });
+
+  // §4.3 colour/HDR row: an untagged matrix decodes with the plan's matrix, through the tone map as everywhere else.
+  it('CE17 tone maps an HDR source whose matrix is untagged with the plan\'s matrix', async () => {
+    const recipe = chunk({ start: 0, end: 10 }, [span(r(0), r(0), r(0), r(2, 5))], { ...TARGET, width: 64, height: 36, colorMatrix: 'bt601', toneMap: 'sdr-bt709' });
+    expect((await probe(join(dir, 'pq-nomatrix.mp4'))).streams[0]).toMatchObject({ color_transfer: 'smpte2084', color_primaries: 'bt2020' });
+    expect((await probe(join(dir, 'pq-nomatrix.mp4'))).streams[0]!.color_space ?? 'unknown').toBe('unknown');
+    const [file] = await produce({ [SOURCE]: join(dir, 'pq-nomatrix.mp4') }, [recipe]);
+    const chained = await bt709Of(join(dir, 'pq-nomatrix.mp4'), 'zscale=min=170m:t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv');
+    expect(planeGap(await planes(file!), chained)).toBeLessThan(3);
+  });
+
+  // §4.3 colour/HDR row: untagged primaries are BT.709, as Chromium reads them.
+  it('CE18 tone maps an HDR source tagged with its transfer alone, its primaries read as BT.709', async () => {
+    const recipe = chunk({ start: 0, end: 10 }, [span(r(0), r(0), r(0), r(2, 5))], { ...TARGET, width: 64, height: 36, colorMatrix: 'bt601', toneMap: 'sdr-bt709' });
+    const stream = (await probe(join(dir, 'hlg-trconly.mp4'))).streams[0]!;
+    expect([stream.color_transfer, stream.color_primaries ?? 'unknown', stream.color_space ?? 'unknown']).toEqual(['arib-std-b67', 'unknown', 'unknown']);
+    const [file] = await produce({ [SOURCE]: join(dir, 'hlg-trconly.mp4') }, [recipe]);
+    const chained = await bt709Of(join(dir, 'hlg-trconly.mp4'), 'zscale=min=170m:pin=709:p=709:t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv');
+    expect(planeGap(await planes(file!), chained)).toBeLessThan(3);
+  });
+
+  // §4.3 odd-size and colour/HDR rows: an odd 4:2:0 HDR source keeps its size, its picture that of the even twin.
+  it('CE19 tone maps an odd-sized 4:2:0 HDR VP9 source into an odd-sized VP9 output', async () => {
+    const recipe = chunk({ start: 0, end: 10 }, [span(r(0), r(0), r(0), r(2, 5))],
+      { ...TARGET, width: 159, height: 95, colorMatrix: 'bt2020nc', toneMap: 'sdr-bt709', format: 'webm-vp9' });
+    expect((await probe(join(dir, 'pq-odd.webm'))).streams[0]).toMatchObject({ width: 159, height: 95, pix_fmt: 'yuv420p10le', color_transfer: 'smpte2084' });
+    const [file] = await produce({ [SOURCE]: join(dir, 'pq-odd.webm') }, [recipe]);
+    const video = (await probe(file!)).streams[0]!;
+    expect([video.width, video.height]).toEqual([159, 95]);
+    const twin = await bt709Of(join(dir, 'pq-even.webm'), 'zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv,crop=159:95:0:0');
+    expect(planeGap(await planes(file!), twin)).toBeLessThan(3);
   });
 });
 

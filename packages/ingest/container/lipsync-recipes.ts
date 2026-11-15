@@ -714,7 +714,7 @@ async function writeComposite(recipe: MiniToolPlanLipsyncComposite, request: Lip
   const sources = Array.from({ length }, (_unused, j) => lipsyncSourceFrameAt(timeline, table, window.start + j));
   // The entries cover only the source frames this chunk shows, so the decoded frames start at the window's first.
   const shown = lipsyncSourceSpan(sources, { start: 0, end: length });
-  const graph = await windowGraph(recipe.entries, BigInt(table.timescale), local(request.inputs, recipe.inputId), run, (label) => picture(target, label),
+  const graph = await windowGraph(recipe.entries, BigInt(table.timescale), local(request.inputs, recipe.inputId), run, (label, colour) => picture(target, label, colour),
     (entry) => `color=c=black${alpha && entry.fill === "transparent" ? "@0" : ""}:s=${target.width}x${target.height}:r=1:d=1,format=${alpha ? "yuva420p" : "yuv420p"},setsar=1`);
   const sourceArgs = [...graph.args, "-filter_complex", graph.graph.join(";"), "-map", "[v]"];
   const persons: CompositePerson[] = [];

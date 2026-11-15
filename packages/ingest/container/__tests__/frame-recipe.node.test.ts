@@ -106,6 +106,8 @@ beforeAll(async () => {
   await ff('alpha.mov', ['-f', 'lavfi', '-i', 'testsrc2=s=64x36:r=25:d=0.4,format=rgba,colorchannelmixer=aa=0.25', '-c:v', 'png']);
   // The same alpha in a VP9 WebM: the alpha plane is a BlockAdditional, which only the libvpx decoder reads.
   await ff('alpha.webm', ['-f', 'lavfi', '-i', 'testsrc2=s=64x36:r=25:d=0.4,format=yuva420p,colorchannelmixer=aa=0.25', '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuva420p']);
+  await ff('pq-odd-alpha.webm', ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=25:d=0.4', '-vf',
+    'crop=159:95:0:0:exact=1,format=yuva420p,colorchannelmixer=aa=0.25,setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc', '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuva420p']);
   await ff('rot90.mp4', ['-display_rotation', '90', '-i', join(dir, 'flash.mp4'), '-c', 'copy']);
   // A white 20x12 box at (40, 20) on black, every frame a keyframe: FC07's crops are read against its known edges.
   await ff('box.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=160x96:r=25:d=0.2,drawbox=x=40:y=20:w=20:h=12:color=white:t=fill,format=yuv420p",
@@ -164,6 +166,15 @@ describe('frame from a full-ledger entry (§92 D4-3; design §7.17 frame row)', 
   it.each(['alpha.mov', 'alpha.webm'])('FC05 a transparent source keeps its alpha in an RGBA PNG: %s', async (name) => {
     const png = await frame(name, { entry: frameAt([0, 1]), target: { ...OPAQUE, width: 64, height: 36, alpha: 'straight' } });
     expect(header(png)).toMatchObject({ width: 64, height: 36, colorType: 6 });
+    expect(Math.abs((await rgbaMeans(await saved(png)))[3]! - 64)).toBeLessThan(2);
+  });
+
+  // §4.3 odd-size and colour/HDR rows: an odd 4:2:0 HDR VP9 with alpha is tone mapped at its own size, alpha kept.
+  it('FC08 an odd-sized transparent HDR VP9 frame keeps its size and alpha through the tone map', async () => {
+    const { stdout } = await run('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height,color_transfer', '-of', 'csv=p=0', join(dir, 'pq-odd-alpha.webm')]);
+    expect(String(stdout).trim()).toBe('159,95,smpte2084');
+    const png = await frame('pq-odd-alpha.webm', { entry: frameAt([0, 1]), target: { ...OPAQUE, width: 159, height: 95, colorMatrix: 'bt2020nc', toneMap: 'sdr-bt709', alpha: 'straight' } });
+    expect(header(png)).toMatchObject({ width: 159, height: 95, colorType: 6 });
     expect(Math.abs((await rgbaMeans(await saved(png)))[3]! - 64)).toBeLessThan(2);
   });
 

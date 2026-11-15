@@ -170,9 +170,9 @@ async function modelWindow(recipe: MiniToolPlanModelWindow, request: ModelRecipe
   const origin = span(recipe.entries[0]!).start;
   const hex = fill.map((channel) => channel.toString(16).padStart(2, "0")).join("");
   // The frames are tagged BT.709 limited range before the pad, so the RGB fill colour is converted with that matrix.
-  const inside = `${decodedPicture(recipe.target, roi.width, roi.height)}:out_color_matrix=bt709:out_range=tv,format=yuv444p,${BT709_TAGS},` +
-    `pad=${frame.width}:${frame.height}:${roi.x}:${roi.y}:color=0x${hex}`;
-  const window = await windowGraph(recipe.entries, clock, local(request.inputs, recipe.inputId), run, () => inside,
+  const window = await windowGraph(recipe.entries, clock, local(request.inputs, recipe.inputId), run,
+    (_label, colour) => `${decodedPicture(recipe.target, roi.width, roi.height, colour)}:out_color_matrix=bt709:out_range=tv,format=yuv444p,${BT709_TAGS},` +
+      `pad=${frame.width}:${frame.height}:${roi.x}:${roi.y}:color=0x${hex}`,
     () => `color=c=0x${hex}:s=${frame.width}x${frame.height}:r=1:d=1,format=yuv444p,${BT709_TAGS}`);
   // The span can start or end between the window clock's ticks, so it is placed on a 1/90000 clock.
   const fine = 90000n;
@@ -320,7 +320,7 @@ async function eraseComposite(recipe: MiniToolPlanEraseComposite, request: Model
   await writeFile(lists.result, `ffconcat version 1.0\n${resultList.join("\n")}\n`);
   await writeFile(lists.mask, `ffconcat version 1.0\n${maskList.join("\n")}\n`);
   const toVideo = "out_color_matrix=bt709:out_range=tv,format=yuv444p";
-  const window = await windowGraph(recipe.entries, clock, local(request.inputs, recipe.inputId), run, () => `${decodedPicture(target, rect.width, rect.height)}:${toVideo}`,
+  const window = await windowGraph(recipe.entries, clock, local(request.inputs, recipe.inputId), run, (_label, colour) => `${decodedPicture(target, rect.width, rect.height, colour)}:${toVideo}`,
     () => `color=c=black:s=${rect.width}x${rect.height}:r=1:d=1,format=yuv444p`);
   const { args, graph } = window;
   const resultInput = window.inputs;
@@ -331,7 +331,7 @@ async function eraseComposite(recipe: MiniToolPlanEraseComposite, request: Model
   // All three inputs carry the source's BT.709 limited-range tags, so no conversion is inserted before the merge; the mask's
   // values are weights.
   graph.push(`[${resultInput}:v:0]settb=1/${clock},${BT709_TAGS}[r]`, `[${resultInput + 1}:v:0]${maskChain},settb=1/${clock},${BT709_TAGS}[m]`,
-    `[v][r][m]maskedmerge,trim=end_frame=${count},${picture({ ...target, colorMatrix: "bt709", toneMap: "none" }, "o")}[c]`);
+    `[v][r][m]maskedmerge,trim=end_frame=${count},${picture({ ...target, colorMatrix: "bt709", toneMap: "none" }, "o", null)}[c]`);
   const { video, muxer } = videoOutput(target, clock, roundTimes(minus(span(recipe.entries[recipe.entries.length - 1]!).end, span(recipe.entries[0]!).start), clock));
   await runPlanCommand("ffmpeg", [...args, "-filter_complex", graph.join(";"), "-map", "[c]", ...video, "-an", ...muxer, request.output], run);
 }

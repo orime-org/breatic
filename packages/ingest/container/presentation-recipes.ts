@@ -62,20 +62,36 @@ export interface PresentationRecipeRequest {
   limits: PlanLimits;
 }
 
-// §4.3 colour/HDR/bit-depth row: the D05 tone-map chain, then the BT.709 tags written on the frames.
-const TONE_MAP = "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv";
+/**
+ * What the tone map reads of a source's decoded frames that its plan does not carry (§4.3 colour/HDR row): whether the
+ * stream tags its primaries, and, for 4:2:0 or 4:2:2 frames with an odd side (which zimg cannot read), the chroma location
+ * to upsample them to 4:4:4 from.
+ */
+export interface FrameColour { primariesTagged: boolean; upsample: string | null }
+// The plan's matrix names (physical-video-probe.ts) as zscale spells them.
+const ZSCALE_MATRICES: Readonly<Record<string, string>> = { bt709: "709", bt601: "170m", bt2020nc: "2020_ncl" };
 
 /**
  * The D05 tone map, keeping the frames' alpha when `label` names the graph-unique labels to carry it on: the alpha plane is
  * extracted beside the chain and merged back after it (the chain's float RGB has none, and zscale reads a YUVA source's alpha
- * as limited range). An opaque frame gets an opaque alpha.
+ * as limited range). An opaque frame gets an opaque alpha. The chain reads the plan's matrix, never the frame's tag (an
+ * untagged one stops zscale); untagged primaries are BT.709, as Chromium reads them. Odd-sided subsampled frames are first
+ * upsampled by swscale bilinear from their chroma location, which is zimg's own upsampling (measured within 0.1/255).
+ * @param matrix - The plan matrix.
+ * @param colour - The decoded frames' colour facts.
  * @param label - A label prefix unique within the graph, when the alpha is kept.
  * @returns The filter chain text, ending on tone-mapped frames.
- * @throws {never} Never.
+ * @throws {RangeError} When the plan matrix has no zscale value.
  */
-function toneMap(label?: string): string {
-  if (label === undefined) return TONE_MAP;
-  return `split[${label}tc][${label}ta];[${label}ta]format=yuva444p,alphaextract[${label}tm];[${label}tc]${TONE_MAP}[${label}tt];[${label}tt][${label}tm]alphamerge`;
+function toneMap(matrix: string, colour: FrameColour, label?: string): string {
+  const min = ZSCALE_MATRICES[matrix];
+  if (min === undefined) throw new RangeError(`No tone map matrix for ${matrix}`);
+  const primaries = colour.primariesTagged ? "" : ":pin=709:p=709";
+  const chain = `zscale=min=${min}${primaries}:t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv`;
+  const upsample = colour.upsample === null ? ""
+    : `scale=in_chroma_loc=${colour.upsample}:flags=bilinear+accurate_rnd+full_chroma_int,format=${label === undefined ? "yuv444p16le" : "yuva444p16le"},`;
+  if (label === undefined) return `${upsample}${chain}`;
+  return `${upsample}split[${label}tc][${label}ta];[${label}ta]format=yuva444p,alphaextract[${label}tm];[${label}tc]${chain}[${label}tt];[${label}tt][${label}tm]alphamerge`;
 }
 export const BT709_TAGS = "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv";
 // The plan's matrix names (physical-video-probe.ts) as the scale filter spells them.
@@ -145,13 +161,18 @@ export function placement(target: MiniToolPlanTarget): { rect: MiniToolPlanPixel
  * @param source.toneMap - The tone mapping.
  * @param width - The scaled width.
  * @param height - The scaled height.
+ * @param colour - The decoded frames' colour facts; null only for frames that are not tone mapped.
+ * @param alphaLabel - A label prefix unique within the graph, when the tone map keeps alpha.
  * @returns The filter chain text.
- * @throws {RangeError} When the plan matrix has no decode value.
+ * @throws {RangeError} When the plan matrix has no decode value, or HDR frames come without their colour facts.
  */
-export function decodedPicture(source: { colorMatrix: string; toneMap: "none" | "sdr-bt709" }, width: number, height: number, alphaLabel?: string): string {
+export function decodedPicture(source: { colorMatrix: string; toneMap: "none" | "sdr-bt709" }, width: number, height: number, colour: FrameColour | null,
+  alphaLabel?: string): string {
   const matrix = SCALE_MATRICES[source.colorMatrix];
   if (matrix === undefined) throw new RangeError(`No decode matrix for ${source.colorMatrix}`);
-  return `${source.toneMap === "sdr-bt709" ? `${toneMap(alphaLabel)},` : ""}scale=${width}:${height}:in_color_matrix=${matrix}`;
+  if (source.toneMap === "none") return `scale=${width}:${height}:in_color_matrix=${matrix}`;
+  if (colour === null) throw new RangeError("Tone-mapped frames need their colour facts");
+  return `${toneMap(source.colorMatrix, colour, alphaLabel)},scale=${width}:${height}:in_color_matrix=${matrix}`;
 }
 
 /**
@@ -190,12 +211,13 @@ export async function probeModelResultDecode(file: string, run: { signal: AbortS
  * an alpha source is packed premultiplied colour left and alpha right as `alpha-presentation.ts` packs it.
  * @param target - The carrier target.
  * @param label - A label prefix unique within the graph.
+ * @param colour - The decoded frames' colour facts; null only for frames that are not tone mapped.
  * @returns The filter chain text, ending on 8-bit BT.709 4:2:0 frames.
- * @throws {RangeError} When the plan matrix has no decode value.
+ * @throws {RangeError} When the plan matrix has no decode value, or HDR frames come without their colour facts.
  */
-export function picture(target: MiniToolPlanTarget, label: string): string {
+export function picture(target: MiniToolPlanTarget, label: string, colour: FrameColour | null): string {
   const { rect, planeWidth } = placement(target);
-  const head = decodedPicture(target, rect.width, rect.height, target.alpha === "none" ? undefined : `${label}a`);
+  const head = decodedPicture(target, rect.width, rect.height, colour, target.alpha === "none" ? undefined : `${label}a`);
   const pad = `pad=${planeWidth}:${target.height}:${rect.x}:${rect.y}:color=black`;
   // The frames are already upright; a display matrix left on them would be written to the output and rotate it again.
   const unrotated = `${BT709_TAGS},sidedata=mode=delete:type=DISPLAYMATRIX`;
@@ -350,7 +372,7 @@ const AAC = ["-map", "[a]", "-c:a", "aac", "-b:a", "192k", "-ar", "48000"];
  * decoder options a VP9 or VP8 stream with alpha needs (FFmpeg's own decoders skip the alpha plane, which Matroska stores as a
  * BlockAdditional; only libvpx reads it, as alpha-presentation.ts decodes it).
  */
-interface SourceFacts { iso: boolean; audio: boolean; mono: boolean; tick: [bigint, bigint] | null; decoder: string[] }
+interface SourceFacts { iso: boolean; audio: boolean; mono: boolean; tick: [bigint, bigint] | null; decoder: string[]; colour: FrameColour }
 
 /**
  * Whether the source is ISO BMFF (its edit lists are ignored so packet times are media time, the recipe's timeline;
@@ -363,15 +385,40 @@ interface SourceFacts { iso: boolean; audio: boolean; mono: boolean; tick: [bigi
  */
 async function sourceFacts(source: string, run: { signal: AbortSignal; stdoutBytes: number; stderrTailBytes: number }): Promise<SourceFacts> {
   const answer = JSON.parse((await runPlanCommand("ffprobe", ["-v", "error", "-protocol_whitelist", "file", "-show_entries",
-    "format=format_name:stream=codec_type,codec_name,time_base,channels:stream_tags", "-of", "json", source], run))
-    .toString("utf8")) as { format?: { format_name?: string }; streams?: { codec_type?: string; codec_name?: string; time_base?: string; channels?: number; tags?: Record<string, string> }[] };
+    "format=format_name:stream=codec_type,codec_name,time_base,channels,width,height,pix_fmt,color_primaries,chroma_location:stream_tags", "-of", "json", source], run))
+    .toString("utf8")) as { format?: { format_name?: string }; streams?: { codec_type?: string; codec_name?: string; time_base?: string; channels?: number; width?: number;
+    height?: number; pix_fmt?: string; color_primaries?: string; chroma_location?: string; tags?: Record<string, string> }[] };
   const names = (answer.format?.format_name ?? "").split(",");
   const video = (answer.streams ?? []).find((stream) => stream.codec_type === "video");
   const tick = /^(\d+)\/(\d+)$/u.exec(video?.time_base ?? "");
   const decoder = alphaDecoderArgs(video?.codec_name, Object.entries(video?.tags ?? {}).find(([key]) => key.toLowerCase() === "alpha_mode")?.[1]);
   const audio = (answer.streams ?? []).find((stream) => stream.codec_type === "audio");
   return { iso: names.includes("mov") || names.includes("mp4"), audio: audio !== undefined, mono: audio?.channels === 1,
-    tick: tick === null ? null : [BigInt(tick[1]!), BigInt(tick[2]!)], decoder };
+    tick: tick === null ? null : [BigInt(tick[1]!), BigInt(tick[2]!)], decoder, colour: frameColour(video ?? {}) };
+}
+
+// Pixel formats whose chroma planes are subsampled in a direction (4:2:0, 4:2:2, 4:1:1, 4:4:0 and their semi-planar forms).
+const SUBSAMPLED = /^(yuva?j?(420|422|411|410|440)|nv1[26]|nv2[014]|nv42|p0[14]0|p21[06]|p01[06]|p41[06]|y210|xv[13]|yuyv|uyvy)/u;
+// The chroma locations swscale's in_chroma_loc names; zimg reads an unspecified one as left.
+const CHROMA_LOCATIONS: ReadonlySet<string> = new Set(["left", "center", "topleft", "top", "bottomleft", "bottom"]);
+
+/**
+ * The colour facts the tone map reads of a video stream (`FrameColour`): its primaries tag, and the chroma location an
+ * odd-sided subsampled stream is upsampled from. An odd side in either direction counts, whatever the rotation.
+ * @param video - The ffprobe video stream.
+ * @param video.width - Its coded width.
+ * @param video.height - Its coded height.
+ * @param video.pix_fmt - Its pixel format.
+ * @param video.color_primaries - Its primaries tag.
+ * @param video.chroma_location - Its chroma location.
+ * @returns The facts.
+ * @throws {never} Never.
+ */
+function frameColour(video: { width?: number; height?: number; pix_fmt?: string; color_primaries?: string; chroma_location?: string }): FrameColour {
+  const primariesTagged = video.color_primaries !== undefined && video.color_primaries !== "unknown" && video.color_primaries !== "";
+  const odd = (video.width ?? 0) % 2 === 1 || (video.height ?? 0) % 2 === 1;
+  const location = video.chroma_location !== undefined && CHROMA_LOCATIONS.has(video.chroma_location) ? video.chroma_location : "left";
+  return { primariesTagged, upsample: odd && SUBSAMPLED.test(video.pix_fmt ?? "") ? location : null };
 }
 
 /**
@@ -532,14 +579,14 @@ function exactClock(entries: readonly MiniToolPlanEntry[], origin: MiniToolPlanE
  * @param time - The timescale, or the rate of the frame grid that follows; the frames then run on a `rate⁻¹` time base.
  * @param source - The downloaded source.
  * @param run - The lifetime and IO bounds.
- * @param frame - The chain after a source span's timing, given a unique label prefix.
+ * @param frame - The chain after a source span's timing, given a unique label prefix and the source's colour facts.
  * @param empty - The source of one composed frame for a derived-empty entry.
  * @returns The inputs and graph.
  * @throws {RangeError} When a time is malformed or the clock is beyond FFmpeg's time base range.
  * @throws {Error} When ffprobe fails.
  */
 export async function windowGraph(entries: readonly MiniToolPlanEntry[], time: bigint | FrameRate, source: string, run: Run,
-  frame: (label: string) => string, empty: (entry: Extract<MiniToolPlanEntry, { kind: "empty" }>) => string): Promise<WindowGraph> {
+  frame: (label: string, colour: FrameColour) => string, empty: (entry: Extract<MiniToolPlanEntry, { kind: "empty" }>) => string): Promise<WindowGraph> {
   const origin = span(entries[0]!).start;
   const args = ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-protocol_whitelist", "file", "-copyts"];
   const graph: string[] = [];
@@ -578,7 +625,7 @@ export async function windowGraph(entries: readonly MiniToolPlanEntry[], time: b
       : { origin: roundTimes(rational(entry.conform.origin), clock), period: roundTimes(rational(entry.conform.period), clock), first };
     const timing = snap === null ? `trim=start=${seconds(first)}:end=${seconds(clipEnd)},settb=1/${clock},`
       : `settb=1/${clock},setpts=${snap.origin}+floor((PTS-${snap.origin})/${snap.period}+0.5)*${snap.period},trim=start=${seconds(snap.first)}:end=${seconds(clipEnd)},`;
-    graph.push(`[${inputs}:v:0]${timing}${slot === null ? `setpts=${ticks}` : `setpts=ceil((${ticks})/${slot})*${slot},settb=${base}`},${frame(`p${at}`)}[e${at}]`);
+    graph.push(`[${inputs}:v:0]${timing}${slot === null ? `setpts=${ticks}` : `setpts=ceil((${ticks})/${slot})*${slot},settb=${base}`},${frame(`p${at}`, facts.colour)}[e${at}]`);
     inputs += 1;
   }
   // interleave ends the stream at its last frame's start, so a grid after it never gives that frame its slot and repeats
@@ -684,7 +731,7 @@ async function renderWindow(recipe: Extract<PresentationRecipe, { kind: "chunk_e
   const clock = BigInt(recipe.timescale);
   const transparent = target.format === "webm-vp9" && target.alpha === "straight";
   // Black: a transparent fill packs to black colour and black alpha; a VP9 output with alpha keeps it transparent.
-  const window = await windowGraph(entries, gridRate(recipe) ?? clock, source, run, (label) => picture(target, label),
+  const window = await windowGraph(entries, gridRate(recipe) ?? clock, source, run, (label, colour) => picture(target, label, colour),
     (entry) => `color=c=black${transparent && entry.fill === "transparent" ? "@0" : ""}:s=${target.width}x${target.height}:r=1:d=1,` +
       `format=${transparent ? "yuva420p" : "yuv420p"},setsar=1,${BT709_TAGS}`);
   const { args, graph } = window;
@@ -838,7 +885,7 @@ async function compositeWindow(recipe: MiniToolPlanExpandComposite, files: Reado
   const origin = span(entries[0]!).start;
   const { rect } = placement(target);
   const sourceTarget = { ...target, width: rect.width, height: rect.height, displayRect: null };
-  const window = await windowGraph(entries, clock, local(files, recipe.inputId), run, (label) => picture(sourceTarget, label),
+  const window = await windowGraph(entries, clock, local(files, recipe.inputId), run, (label, colour) => picture(sourceTarget, label, colour),
     () => `color=c=black:s=${sourceTarget.width}x${sourceTarget.height}:r=1:d=1,format=yuv420p,setsar=1,${BT709_TAGS}`);
   const { args, graph } = window;
   let inputs = window.inputs;
@@ -953,20 +1000,19 @@ async function renderTransitionWindow(recipe: MiniToolPlanTransitionWindow, file
   const fill = `black@${profile.alpha ? 0 : 1}`;
   const decoded = await Promise.all(recipe.clips.map(async (clip, at) => {
     // Each clip is decoded with its own plan's matrix and tone mapped as its own chunk_encode would be (§97 D23-4).
-    const matrix = SCALE_MATRICES[clip.colorMatrix];
-    if (matrix === undefined) throw new RangeError(`No decode matrix for ${clip.colorMatrix}`);
     // The chunk's own conversion to limited-range BT.709 first, then full-range RGBA for the renderer, so the window meets
     // the chunk_encode chunks with no colour jump; a transparent profile keeps each clip's alpha through it.
     /**
      * The clip's conversion for one span of the window graph.
      * @param label - The span's label prefix, unique within the graph.
+     * @param colour - The source's colour facts.
      * @returns The filter chain text.
-     * @throws {never} Never.
+     * @throws {RangeError} When the plan matrix has no decode value.
      */
-    const convert = (label: string): string => `${clip.toneMap === "sdr-bt709" ? `${toneMap(profile.alpha ? label : undefined)},` : ""}scale=${clip.fit.width}:${clip.fit.height}:in_color_matrix=${matrix}`
+    const convert = (label: string, colour: FrameColour): string => `${decodedPicture(clip, clip.fit.width, clip.fit.height, colour, profile.alpha ? label : undefined)}`
       + `:out_color_matrix=bt709:out_range=tv,format=${profile.alpha ? "yuva444p" : "yuv444p"},scale=in_color_matrix=bt709:in_range=tv:out_range=pc`;
     const window = await windowGraph(clip.entries, frameRate(profile.fps), local(files, clip.inputId), run,
-      (label) => `${convert(label)},format=rgba,pad=${width}:${height}:${clip.fit.x}:${clip.fit.y}:color=${fill},setsar=1`,
+      (label, colour) => `${convert(label, colour)},format=rgba,pad=${width}:${height}:${clip.fit.x}:${clip.fit.y}:color=${fill},setsar=1`,
       (entry) => `color=c=black${entry.fill === "transparent" ? "@0" : ""}:s=${width}x${height}:r=1:d=1,format=rgba`);
     const file = join(directory, `transition-${at}.rgba`);
     await runPlanCommand("ffmpeg", [...window.args, "-filter_complex", `${window.graph.join(";").replace(/\[v\]$/u, "[w]")};[w]${profileGrid(profile, count)},format=rgba[v]`,
@@ -1043,13 +1089,10 @@ async function renderFrame(recipe: FrameRecipe, source: string, output: string,
   if (entry.kind === "empty") {
     graph = `color=c=black${keep && entry.fill === "transparent" ? "@0" : ""}:s=${target.width}x${target.height}:r=1:d=1,format=${pixel}${cropped}[v]`;
   } else {
-    const matrix = SCALE_MATRICES[target.colorMatrix];
-    if (matrix === undefined) throw new RangeError(`No decode matrix for ${target.colorMatrix}`);
     const facts = await sourceFacts(source, run);
     const first = await frameStartAt(source, facts, entry, run);
     args.push(...mediaTimeline(facts), "-seek_timestamp", "1", "-noaccurate_seek", "-ss", seconds(rational(entry.decodeStart)), ...facts.decoder, "-i", source);
-    graph = `[0:v:0]trim=start=${seconds(first)},${target.toneMap === "sdr-bt709" ? `${toneMap(keep ? "f" : undefined)},` : ""}` +
-      `scale=${target.width}:${target.height}:in_color_matrix=${matrix},format=${pixel}${cropped}[v]`;
+    graph = `[0:v:0]trim=start=${seconds(first)},${decodedPicture(target, target.width, target.height, facts.colour, keep ? "f" : undefined)},format=${pixel}${cropped}[v]`;
   }
   await runPlanCommand("ffmpeg", [...args, "-filter_complex", graph, "-map", "[v]", "-frames:v", "1", "-c:v", "png", "-f", "image2", output], run);
   const size = pngSize(new Uint8Array(await readFile(output)));
@@ -1130,11 +1173,9 @@ async function detectPeople(recipe: PeopleRecipe, source: string, output: string
  * @throws {Error} When rendering, detection or writing fails.
  */
 async function detectScenes(recipe: SceneRecipe, source: string, output: string, request: PresentationRecipeRequest, run: Run): Promise<void> {
-  const { width, height, colorMatrix, toneMap: tone } = recipe.target;
-  const matrix = SCALE_MATRICES[colorMatrix];
-  if (matrix === undefined) throw new RangeError(`No decode matrix for ${colorMatrix}`);
+  const { width, height } = recipe.target;
   const window = await windowGraph(recipe.entries, BigInt(recipe.timescale), source, run,
-    () => `${tone === "sdr-bt709" ? `${toneMap()},` : ""}scale=${width}:${height}:in_color_matrix=${matrix},format=bgr24,setsar=1,sidedata=mode=delete:type=DISPLAYMATRIX`,
+    (_label, colour) => `${decodedPicture(recipe.target, width, height, colour)},format=bgr24,setsar=1,sidedata=mode=delete:type=DISPLAYMATRIX`,
     () => `color=c=black:s=${width}x${height}:r=1:d=1,format=bgr24,setsar=1`);
   const count = recipe.window.end - recipe.window.start;
   const result = await detect("scene_cuts", recipe.profile, { width, height, count,
