@@ -538,6 +538,19 @@ test('dragging a row into a cell\'s left padding lands beside the cell\'s block,
   await expect(cell.locator('.doc-columns')).toHaveCount(1);
 });
 
+test('dragging a row into the gap between two columns in a cell adds a column in the cell', async () => {
+  await openWithLines(page, ['lead', 'moved', 'third']);
+  await tableUnder(page, 'lead');
+  await page.keyboard.type('one');
+  const line = (await row(page, 'one').boundingBox())!;
+  await dragRowTo(page, 'moved', { x: line.x + line.width - 6, y: line.y + line.height / 2 });
+  const cell = page.locator(`${EDITOR} td`).first();
+  await expect(cell.locator('.doc-column')).toHaveCount(2);
+  const [left, right] = await cell.locator('.doc-column').evaluateAll((list) => list.map((column) => column.getBoundingClientRect().toJSON() as DOMRect));
+  await dragRowTo(page, 'third', { x: left!.right + (right!.left - left!.right) / 4, y: left!.top + 10 });
+  await expect(cell.locator('.doc-column')).toHaveCount(3);
+});
+
 test('dragging a row into the gap beside a table that fills its column adds a column', async () => {
   await openWithLines(page, ['alpha', 'lead', 'gamma']);
   await tableUnder(page, 'lead', '2-4');

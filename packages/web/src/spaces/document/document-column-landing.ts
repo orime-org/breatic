@@ -6,7 +6,7 @@
  */
 
 import type { ComputeDropPositionContext } from '@blocknote/core/extensions';
-import type { Node as PMNode } from '@tiptap/pm/model';
+import type { Node as PMNode, ResolvedPos } from '@tiptap/pm/model';
 import type { EditorView } from '@tiptap/pm/view';
 
 import { columnAround, landsInPlace, weightsAfterDrop, type ColumnSide } from '@web/spaces/document/document-column-drop';
@@ -178,6 +178,19 @@ function clamp(value: number, low: number, high: number): number {
 }
 
 /**
+ * The depth of the outermost table around a position, deeper than a holder.
+ * @param $at - The position.
+ * @param holder - The holder's depth.
+ * @returns The table's depth, or -1 for none.
+ */
+function tableIn($at: ResolvedPos, holder: number): number {
+  for (let depth = holder + 1; depth <= $at.depth; depth += 1) {
+    if ($at.node(depth).type.name === DOC_TABLE) return depth;
+  }
+  return -1;
+}
+
+/**
  * The row level with the pointer, the gutter and margin included, and what
  * of it the user sees: a picture, video or audio by its media box, any other
  * row by its own content. In the gap between two columns, or in a cell's
@@ -186,13 +199,14 @@ function clamp(value: number, low: number, high: number): number {
  * @param view - The editor view.
  * @param x - The pointer's x.
  * @param y - The pointer's y.
- * @param beside - Whether the pointer is beside the content, out in the page
- *   margin (held to the body's box) or in the gap between two columns: the
- *   row there is a table whole, never a block in one of its cells.
+ * @param beside - When the pointer is beside the content, the depth of what it
+ *   came in from: the body (0) from the page margin, held to the body's box,
+ *   or the column the gap it is in stands beside. A table in there is the row
+ *   whole, never a block in one of its cells. Null otherwise.
  * @param hops - How many times the point was already moved in.
  * @returns The row, or null.
  */
-function rowAt(view: EditorView, x: number, y: number, beside: boolean, hops = 0): RowAt | null {
+function rowAt(view: EditorView, x: number, y: number, beside: number | null, hops = 0): RowAt | null {
   const surface = view.dom.getBoundingClientRect();
   const at = view.posAtCoords({ left: clamp(x, surface.left, surface.right), top: y });
   if (at === null) return null;
@@ -200,10 +214,12 @@ function rowAt(view: EditorView, x: number, y: number, beside: boolean, hops = 0
   const element = inside === null ? null : view.nodeDOM(at.inside);
   if (element instanceof HTMLElement) {
     const gap = inside!.type.name === DOC_COLUMN_LIST;
-    const room = gap ? nearestColumn(element, x) : !beside && isTableCell(inside!) ? roomInside(element) : undefined;
+    const room = gap ? nearestColumn(element, x) : beside === null && isTableCell(inside!) ? roomInside(element) : undefined;
     if (room === null) return null;
     if (room !== undefined) {
-      return rowAt(view, clamp(x, room.left, room.right), clamp(y, room.top, room.bottom), beside || gap, hops + 1);
+      // A column stands one level inside its group.
+      const from = gap ? view.state.doc.resolve(at.inside).depth + 2 : beside;
+      return rowAt(view, clamp(x, room.left, room.right), clamp(y, room.top, room.bottom), from, hops + 1);
     }
   }
   const $at = view.state.doc.resolve(at.inside >= 0 ? at.inside : at.pos);
@@ -211,12 +227,13 @@ function rowAt(view: EditorView, x: number, y: number, beside: boolean, hops = 0
   // pointer, outside its cells), then come the nodes around it; from inside
   // the body a table around the pointer is no row of its own. Beside the
   // content, a point in a cell (a table scrolled sideways reaches past its
-  // holder's edge) stands for the table holding it.
-  const cell = beside ? cellDepthOf($at) : 0;
-  for (let depth = cell > 0 ? cell - 2 : at.inside >= 0 ? $at.depth + 1 : $at.depth; depth > 0; depth -= 1) {
+  // holder's edge) stands for the outermost table in what it came in from.
+  const table = beside === null ? -1 : tableIn($at, beside);
+  const start = table > 0 ? table : at.inside >= 0 ? $at.depth + 1 : $at.depth;
+  for (let depth = start; depth > 0; depth -= 1) {
     const node = depth > $at.depth ? $at.nodeAfter : $at.node(depth);
-    const table = node?.type.name === DOC_TABLE && (beside || depth > $at.depth);
-    if (node === null || (node.type.name !== 'blockContainer' && !table)) continue;
+    const isTable = node?.type.name === DOC_TABLE && (beside !== null || depth > $at.depth);
+    if (node === null || (node.type.name !== 'blockContainer' && !isTable)) continue;
     const pos = depth > $at.depth ? $at.pos : $at.before(depth);
     const dom = view.nodeDOM(pos);
     if (!(dom instanceof HTMLElement)) return null;
@@ -257,7 +274,7 @@ export function columnDropHook(next: DropPositionHook, flyingRowId: () => string
     // pointer is out in the gutter; held to its top or bottom edge, it is
     // above or below the body, level with no row.
     const fromMargin = isSynthetic(event);
-    const row = rowAt(view, event.clientX, event.clientY, fromMargin);
+    const row = rowAt(view, event.clientX, event.clientY, fromMargin ? 0 : null);
     const group = view.dom.firstElementChild?.getBoundingClientRect();
     const held =
       fromMargin &&
