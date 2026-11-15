@@ -394,11 +394,28 @@ function sentPrompt(proposal: CanvasProposal, node: ProposalNode, chosen: ModelI
 }
 
 /**
+ * What a song model's lyrics box sends: the words of the nodes wired into it, a line apart.
+ * @param node - The generation.
+ * @param chosen - Its model.
+ * @param arriving - The nodes wired into it and the way each comes in.
+ * @returns The lyrics, or undefined when the model draws no lyrics box with these settings.
+ * @throws {never} Never.
+ */
+function lyricsSent(node: ProposalNode, chosen: ModelInfo, arriving: Wiring["arriving"]): string | undefined {
+  if (waysIn(chosen, node.params ?? {}).get("text")?.some((way) => way.into === PANEL_EDITOR_PARAM) !== true) return undefined;
+  return arriving
+    .filter(({ entry }) => entry.way.into === PANEL_EDITOR_PARAM)
+    .map(({ node: n }) => promptPlainText(n.prompt ?? []))
+    .join("\n");
+}
+
+/**
  * The run a generation that passed {@link checkGenerateNode} sends, for asking whether an upstream takes it (#1521).
  * @param proposal - The whole proposal.
  * @param node - The generation.
  * @param index - Where it sits.
- * @returns Its model, params and prompt; undefined when its model or wiring does not resolve.
+ * @returns Its model, its params with the lyrics wired into it, and its prompt as sent; undefined when its model or
+ *   wiring does not resolve.
  * @throws {never} Never.
  */
 export function generateRunOf(proposal: CanvasProposal, node: ProposalNode, index: number): { model: string; params: Record<string, unknown>; prompt: string } | undefined {
@@ -406,7 +423,13 @@ export function generateRunOf(proposal: CanvasProposal, node: ProposalNode, inde
   if ("refusal" in resolved) return undefined;
   const wiring = checkWiring(proposal, node, index, resolved.chosen, nodeLabel(proposal.nodes, index));
   if ("refusal" in wiring) return undefined;
-  return { model: resolved.chosen.name, params: { ...(node.params ?? {}) }, prompt: sentPrompt(proposal, node, resolved.chosen, wiring.pooled).sent };
+  const lyrics = lyricsSent(node, resolved.chosen, wiring.arriving);
+  return {
+    model: resolved.chosen.name,
+    params: { ...(node.params ?? {}), ...(lyrics === undefined || lyrics === "" ? {} : { [PANEL_EDITOR_PARAM]: lyrics }) },
+    // Cleaned as the worker cleans every prompt before it is sent, as the server asks about it.
+    prompt: extractPromptText(sentPrompt(proposal, node, resolved.chosen, wiring.pooled).sent),
+  };
 }
 
 /**
@@ -442,18 +465,15 @@ function checkPanelGate(proposal: CanvasProposal, node: ProposalNode, chosen: Mo
   const { sent, shots } = sentPrompt(proposal, node, chosen, pooled);
   // A song model's lyrics box is a second box the panel holds to the same
   // gate: the words of the nodes wired into it, a line apart.
-  const lyricsRequired = waysIn(chosen, node.params ?? {}).get("text")?.some((way) => way.into === PANEL_EDITOR_PARAM) === true;
-  const lyricsText = arriving
-    .filter(({ entry }) => entry.way.into === PANEL_EDITOR_PARAM)
-    .map(({ node: n }) => promptPlainText(n.prompt ?? []))
-    .join("\n");
+  const lyricsText = lyricsSent(node, chosen, arriving);
+  const lyricsRequired = lyricsText !== undefined;
   const verdict = evaluateExecute({
     promptText: sent,
     model: chosen.name,
     nodeExists: true,
     isSubmitting: false,
     promptRequired: takesPromptHere(node, chosen),
-    ...(lyricsRequired ? { lyricsRequired, lyricsText } : {}),
+    ...(lyricsRequired ? { lyricsRequired, lyricsText: lyricsText ?? "" } : {}),
     ...(chosen.maxInputChars === undefined ? {} : { maxInputChars: chosen.maxInputChars }),
     ...(node.shots !== undefined && total !== undefined
       ? { storyboard: { shots, total, ...(board === undefined ? {} : { maxShots: board.maxShots }), ...(shotCap === undefined ? {} : { maxChars: shotCap }) } }
