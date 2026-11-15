@@ -320,7 +320,9 @@ async function plan(body: PresentationProbeRequest, input: string, directory: st
   // -show_frames: ffprobe 8.0.1 reports HEVC with an alpha layer as opaque yuv420p while ffmpeg's decoder gives yuva420p.
   // The sample is bounded by the frozen frame count.
   const sample = join(directory, 'sample.nut');
-  await runPlanCommand('ffmpeg', ['-v', 'error', '-nostdin', '-y', '-protocol_whitelist', 'file', '-i', input, '-map', `0:${String(video.index)}`,
+  // -copyts keeps every packet time, so a source whose audio primes before 0 (FFmpeg's Matroska AAC, MP3, AC3) keeps its
+  // picture at its own start and the MP4 audio edit skips the priming.
+  await runPlanCommand('ffmpeg', ['-v', 'error', '-nostdin', '-y', '-protocol_whitelist', 'file', '-copyts', '-i', input, '-map', `0:${String(video.index)}`,
     '-frames:v', String(body.probe.sampleFrames), '-c:v', 'rawvideo', '-f', 'nut', sample], options);
   const decoded = json(await runPlanCommand('ffprobe', ['-v', 'error', '-protocol_whitelist', 'file', '-show_streams', '-of', 'json', sample], options)).streams;
   const pixFmt = Array.isArray(decoded) ? decoded.map(record).find((stream) => stream.codec_type === 'video')?.pix_fmt : undefined;
@@ -544,7 +546,9 @@ export async function copyWithMatrixTag(input: string, output: string, matrix: s
   const tag = matrixTag(String(video.codec_name), matrix);
   const sound = audio === 'copy' ? ['-map', '0:a:0?', '-c:a', 'copy'] : audio === null ? ['-an']
     : ['-filter_complex', audio.graph, '-map', '[a]', '-c:a', 'aac', '-ar', '48000'];
-  await runPlanCommand('ffmpeg', ['-v', 'error', '-nostdin', '-y', '-protocol_whitelist', 'file', '-i', input, ...(typeof audio === 'object' && audio !== null ? [...audio.args, input] : []),
+  // -copyts keeps every packet time, so a source whose audio primes before 0 (FFmpeg's Matroska AAC, MP3, AC3) keeps its
+  // picture at its own start and the MP4 audio edit skips the priming.
+  await runPlanCommand('ffmpeg', ['-v', 'error', '-nostdin', '-y', '-protocol_whitelist', 'file', '-copyts', '-i', input, ...(typeof audio === 'object' && audio !== null ? [...audio.args, input] : []),
     '-map', `0:${String(video.index)}`, '-c:v', 'copy', ...(tag === null ? [] : ['-bsf:v', tag]), ...sound, '-movflags', '+faststart', '-f', 'mp4', output],
   { signal: run.signal, stdoutBytes: run.limits.analysisStdoutBytes, stderrTailBytes: run.limits.stderrTailBytes });
 }

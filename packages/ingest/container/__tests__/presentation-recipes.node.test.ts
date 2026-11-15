@@ -285,6 +285,11 @@ beforeAll(async () => {
   await make('pq-even.mkv', ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=25:d=0.4', '-vf',
     'format=yuv420p10le,setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc', '-c:v', 'ffv1']);
   await make('pq-odd.mkv', ['-i', join(dir, 'pq-even.mkv'), '-vf', 'crop=159:95:0:0:exact=1', '-c:v', 'ffv1']);
+  // 60 fps H.264 with a white frame 60 (1 s) and 1.9 s of sound encoded straight into Matroska: its priming lies before 0.
+  const primed = (codec: string): string[] => ['-f', 'lavfi', '-i', "color=c=black:s=160x96:r=60:d=2,format=yuv420p,geq=lum='if(eq(N\\,60)\\,235\\,16)':cb=128:cr=128",
+    '-f', 'lavfi', '-i', 'sine=d=1.9', '-c:v', 'libx264', '-bf', '0', '-pix_fmt', 'yuv420p', ...tagged, '-c:a', codec];
+  await make('primed-aac60.mkv', primed('aac'));
+  await make('primed-mp3-60.mkv', primed('libmp3lame'));
 });
 afterAll(async () => { await rm(dir, { recursive: true, force: true }); });
 
@@ -644,6 +649,21 @@ describe('copy_carrier and prepare_model_input', () => {
     expect([video.start_time, carried.start_time]).toEqual([sourceVideo.start_time, sourceAudio.start_time]);
     const sourceSeconds = sourceAudio.duration_ts / Number(sourceAudio.sample_rate);
     expect(Math.abs(carried.duration_ts / 48000 - sourceSeconds)).toBeLessThanOrEqual(1 / 96000);
+  });
+
+  // §4.2 effective audio, §4.1 row 2: FFmpeg's Matroska muxer puts AAC and MP3 priming before time 0; the copies keep every
+  // packet time, so the picture starts where the plan starts it (the white frame 60 at 1 s at 60 fps) and the priming stays
+  // unpresented, both for the copy audio and the encoded audio.
+  it.each([['primed-aac60.mkv', 'copy'], ['primed-mp3-60.mkv', 'encode']] as const)('CC04 %s with %s audio: the copy keeps packet times, its white frame at 1 s', async (name, kind) => {
+    const source = join(dir, name);
+    const audio = kind === 'copy' ? { kind } : { kind, start: r(0), end: r(19, 10), origin: r(0), spans: null };
+    const [file] = await produce({ [SOURCE]: source }, [{ kind: 'copy_carrier', inputId: SOURCE, colorMatrix: 'bt709', audio }]);
+    const video = await streamClock(file!, 'v:0');
+    expect(Number(video.start_time)).toBe(0);
+    const { stdout: times } = await run('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'frame=pts_time', '-of', 'csv=p=0', file!]);
+    const { stdout } = await run('ffmpeg', ['-v', 'error', '-i', file!, '-map', '0:v:0', '-fps_mode', 'passthrough', '-vf', 'extractplanes=y,scale=1:1:flags=area', '-f', 'rawvideo', '-'], { encoding: 'buffer', maxBuffer: 1 << 26 });
+    const white = [...(stdout as unknown as Buffer)].findIndex(level => level > 128);
+    expect(Number(times.trim().split('\n')[white])).toBeCloseTo(1, 6);
   });
 
   // §94 D8 (design §7.17 copy_carrier row, §4.3 audio row): audio inside identity_formats, here an AAC source dispatched
