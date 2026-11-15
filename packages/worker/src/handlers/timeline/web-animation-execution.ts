@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The `timeline` queue's processor (inner#1711 design §3.5, §5.2, §5.3, §6).
+ * The `timeline` queue's processor (inner#1711 design §3.5, §5.2, §5.3, §6; #1490 design §5.2, §6).
+ *
+ * A create or a modification runs on the creation container: a modification names the package its base result was
+ * made from, with that result's frame and length, and the runner starts from it. An export runs its render job
+ * (`web-animation-export.ts`).
  *
  * A pickup takes the row with a new attempt and fence (claim from queued, retry from running) and never moves the
  * original deadline. The container job is fixed once, in the row's steps, before its first submission, so every
@@ -20,11 +24,9 @@
 
 import { DelayedError, type Job } from "bullmq";
 import {
-  db,
   getMiniToolsConfig,
   getStorageAdapter,
   getTimelineConfig,
-  getWorkerConfig,
   logger,
   timelineExecutionRepo,
   type TimelineExecutionEvent,
@@ -34,32 +36,30 @@ import { costSchema, NoUpstreamAvailable, type Cost } from "@breatic/provider";
 import {
   containerCostUsd,
   createUsageRecorder,
-  creditLotService,
   handOffLookups,
   provider,
-  sumCreditsByOperationKeys,
   timelineOperationKey,
-  toChargeCredits,
   webAnimationSourceRepo,
   type AwaitedLookup,
 } from "@breatic/domain";
 import { t, type TimelineExecution } from "@breatic/shared";
 import {
-  TimelineExecutionInputSchema,
   WEB_ANIMATION_CONTAINER_CLASS,
+  executionInputOf,
   WEB_ANIMATION_MANIFEST_MAX_BYTES,
   WebAnimationManifestSchema,
   matchWebAnimationManifest,
   webAnimationDurationFrames,
   webAnimationJobRequestSchema,
-  type TimelineExecutionInput,
+  type WebAnimationExecutionInput,
   type WebAnimationJobReport,
   type WebAnimationJobRequest,
   type WebAnimationManifest,
 } from "@breatic/shared/space-content";
 import { StillRunning } from "@worker/handlers/still-running.js";
-import { settleChargeLogged } from "@worker/handlers/settle-charge.js";
 import { move } from "@worker/handlers/timeline/timeline-transition.js";
+import { runExport } from "@worker/handlers/timeline/web-animation-export.js";
+import { chargeExecution, owns, take, type Held } from "@worker/handlers/timeline/web-animation-pickup.js";
 import {
   cancelWebAnimationJob,
   readWebAnimationJob,
@@ -75,10 +75,7 @@ interface JobStep {
 }
 
 /** One pickup's view of the execution it holds. */
-interface Pickup {
-  job: Pick<Job<TimelineExecutionJobData>, "extendLock">;
-  token: string | undefined;
-  row: TimelineExecution;
+interface Pickup extends Held {
   step: JobStep;
   /** When the job's last report is due: two polls past the deadline. */
   endsAt: number;
@@ -116,19 +113,6 @@ function ended(report: WebAnimationJobReport): report is EndedReport {
 }
 
 /**
- * Whether this attempt still owns the job. A pickup outside the queue (no token) has no rival.
- * @param pickup - The pickup.
- * @returns True when it may write.
- * @throws {Error} When Redis cannot answer; the job's retry owns that.
- */
-async function owns(pickup: Pickup): Promise<boolean> {
-  if (pickup.token === undefined) return true;
-  if ((await pickup.job.extendLock(pickup.token, getWorkerConfig().lock_duration_ms)) === 1) return true;
-  logger.error({ executionId: pickup.row.id, attempt: pickup.row.attempt }, "timeline_job_lock_lost_aborting");
-  return false;
-}
-
-/**
  * The job step a row already holds. Its request is read back through its schema, which also restores the field
  * order jsonb does not keep, so every attempt submits the same bytes. Anything else a stored step carries beside its
  * request is ignored.
@@ -149,15 +133,22 @@ function storedStep(steps: unknown[]): JobStep | undefined {
 
 /**
  * The job an execution runs: fixed from its accepted input, the yaml and provider's plan of the attempt that first
- * submits it.
+ * submits it. A modification's job names its base package with that result's frame and length.
  * @param row - The execution.
- * @param input - Its frozen input.
+ * @param input - Its frozen input, a create or a modification.
  * @returns The step.
  * @throws {RangeError} When the input's duration does not make a frame count.
  * @throws {NoUpstreamAvailable} When no upstream of the model takes a Messages call.
+ * @throws {Error} When a modification's base version is gone.
  */
-function newStep(row: TimelineExecution, input: TimelineExecutionInput): JobStep {
+async function newStep(row: TimelineExecution, input: Exclude<WebAnimationExecutionInput, { kind: "web_animation_export" }>): Promise<JobStep> {
   const config = getTimelineConfig().web_animation;
+  let base: WebAnimationJobRequest["base"];
+  if (input.kind === "web_animation_modify") {
+    const version = await webAnimationSourceRepo.findById(input.baseSourceVersionId);
+    if (version === undefined) throw new Error(`Base source version ${input.baseSourceVersionId} is gone`);
+    base = { packageKey: version.packageKey, viewport: { width: version.width, height: version.height }, durationFrames: version.durationFrames };
+  }
   const prefix = `web-animation/${row.projectId}/${row.id}`;
   return {
     kind: "container_job",
@@ -166,7 +157,7 @@ function newStep(row: TimelineExecution, input: TimelineExecutionInput): JobStep
       containerClass: WEB_ANIMATION_CONTAINER_CLASS,
       jobId: timelineOperationKey(row.id),
       deadlineAt: Date.parse(row.deadlineAt),
-      prompt: input.prompt,
+      prompt: input.kind === "web_animation_create" ? input.prompt : input.instruction,
       viewport: { ...config.viewports[input.aspect] },
       fps: input.fps,
       durationFrames: webAnimationDurationFrames(input),
@@ -178,6 +169,7 @@ function newStep(row: TimelineExecution, input: TimelineExecutionInput): JobStep
       callTimeoutMs: config.call_timeout_ms,
       model: config.model,
       messagesPlan: provider().llm.messagesPlan(config.model),
+      ...(base !== undefined && { base }),
     }),
   };
 }
@@ -229,30 +221,6 @@ function costOfCall(row: TimelineExecution, call: ReportedCall): Cost {
   }
   if (cost.state === "missing") logger.error(identity, "timeline_model_call_cost_missing");
   return cost.state !== "pending" && cost.tokens === undefined && tokens !== undefined ? { ...cost, tokens } : cost;
-}
-
-/**
- * Take the row for this pickup: claim a queued one, retry a running one, keep a cancelling one as it is.
- * @param row - The row as read.
- * @returns The row this pickup holds, or null when there is nothing for it to do.
- * @throws {Error} When a write fails.
- */
-async function take(row: TimelineExecution): Promise<TimelineExecution | null> {
-  if (row.status === "queued") {
-    // Never claimed, so never submitted: past its deadline it ends without a job.
-    if (Date.parse(row.deadlineAt) <= Date.now()) {
-      await move(row, { type: "deadline" });
-      return null;
-    }
-    const claimed = await move(row, { type: "claim" });
-    return claimed.applied ? claimed.row : take(claimed.row);
-  }
-  if (row.status === "running") {
-    // A new attempt changes nothing the user sees, so it does not signal the Space; a phase change does.
-    const retried = await timelineExecutionRepo.transition({ id: row.id, event: { type: "retry" } });
-    return retried.applied ? retried.row : take(retried.row);
-  }
-  return row.status === "cancelling" ? row : null;
 }
 
 /**
@@ -367,43 +335,17 @@ async function recordUsage(pickup: Pickup, report: EndedReport): Promise<{ looku
 }
 
 /**
- * Charge what the execution's rows add up to, once (inner#1617): the `billed_at` update and the charge request commit
- * together, so only the writer whose update lands records a charge, and a run that spent nothing records none. The
- * request is then settled; a settlement that fails stays pending for the worker sweep and does not stop the run from
- * ending. As with an Agent chat turn nothing was held, and the charge may take the balance below zero.
- * The charge names the upstream that served the run's first served call, as an Agent turn names the one that served it.
+ * Charge the run's use once, naming the model and the upstream that served its first served call, as an Agent turn
+ * names the one that served it.
  * @param pickup - The pickup.
  * @param report - The terminal report.
  * @returns Nothing.
- * @throws {Error} When the `billed_at` update or the request cannot be written; neither then commits.
+ * @throws {Error} When the charge cannot be written.
  */
 async function bill(pickup: Pickup, report: EndedReport): Promise<void> {
-  const { row, step } = pickup;
-  const sums = await sumCreditsByOperationKeys([timelineOperationKey(row.id)]);
-  const amount = toChargeCredits(Number(sums.get(timelineOperationKey(row.id)) ?? 0));
-  if (amount <= 0) return;
-  const requestId = await db.transaction(async (tx) => {
-    if (!(await timelineExecutionRepo.markBilled(row.id, String(amount), tx))) return null;
-    return creditLotService.requestCharge(
-      {
-        kind: "timeline_execution",
-        referenceId: row.id,
-        actorUserId: row.actorUserId,
-        projectId: row.projectId,
-        amount,
-        description: "timeline_web_animation",
-        model: step.request.model,
-        provider: report.calls.map(servedBy).find((upstream) => upstream !== "unknown") ?? "unknown",
-      },
-      tx,
-    );
-  });
-  if (requestId === null) return;
-  await settleChargeLogged(requestId, {
-    executionId: row.id,
-    userId: row.actorUserId,
-    projectId: row.projectId,
-    amount,
+  await chargeExecution(pickup.row, {
+    model: pickup.step.request.model,
+    provider: report.calls.map(servedBy).find((upstream) => upstream !== "unknown") ?? "unknown",
   });
 }
 
@@ -549,16 +491,19 @@ async function pickUp(job: Job<TimelineExecutionJobData>, token: string | undefi
   if (read === undefined) return;
   const row = await take(read);
   if (row === null) return;
-  const input = TimelineExecutionInputSchema.safeParse(row.input);
-  if (!input.success) {
-    logger.error({ executionId: row.id, issues: input.error.issues }, "timeline_execution_input_unreadable");
+  let input: WebAnimationExecutionInput;
+  try {
+    input = executionInputOf(row);
+  } catch (err) {
+    logger.error({ err, executionId: row.id }, "timeline_execution_input_unreadable");
     await move(row, { type: "failure", fence: row.fence, reason: "internal" });
     return;
   }
+  if (input.kind === "web_animation_export") return runExport({ job, token, row }, input);
   let step = storedStep(row.steps);
   if (step === undefined) {
     try {
-      step = newStep(row, input.data);
+      step = await newStep(row, input);
     } catch (err) {
       if (!(err instanceof NoUpstreamAvailable)) throw err;
       // No upstream of the model takes a Messages call: a deployment's configuration, not this run's.

@@ -46,6 +46,8 @@ let sql: ReturnType<typeof createPgClient>;
 const owned: string[] = [];
 const FPS = { num: 24, den: 1 };
 const SHA = "d".repeat(64);
+/** The cover's own hash: the same bytes as the video would be filed as one asset. */
+const COVER_SHA = "e".repeat(64);
 
 beforeAll(() => {
   initCore(process.env);
@@ -168,6 +170,7 @@ describe("an export", () => {
   it("submits a render job on its own class with the frozen frame, the source package and the two output keys", async () => {
     const { fx, source, videoKey } = await seedExport("queued");
     const ingest = installFakeIngest(fx);
+    ingest.submit = () => json(renderReport("running"));
     await pickUp(fx);
     const submit = ingest.calls.find((call) => call.route === "submit");
     expect(submit?.containerClass).toBe(WEB_ANIMATION_RENDER_CONTAINER_CLASS);
@@ -202,7 +205,7 @@ describe("an export", () => {
     ingest.read = () => json(renderReport("done", {
       video: {
         storageKey: videoKey, sha256: SHA, sizeBytes: 4_000_000, contentType: "video/mp4", width: 1080, height: 1920, durationSeconds: 6,
-        cover: { storageKey: coverKeyFor(videoKey), sha256: SHA, sizeBytes: 90_000, contentType: "image/png", width: 1080, height: 1920 },
+        cover: { storageKey: coverKeyFor(videoKey), sha256: COVER_SHA, sizeBytes: 90_000, contentType: "image/png", width: 1080, height: 1920 },
       },
     }));
     await pickUp(fx);
