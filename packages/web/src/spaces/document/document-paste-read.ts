@@ -69,6 +69,9 @@ const HTML_MEDIA = new RegExp(`<(${HTML_MEDIA_ELEMENTS.join('|')})\\b`, 'i');
 /** A formula as the chat's copy writes it (inner#1423). */
 const FORMULA_COPY = new RegExp(`\\s(?:${MATH_SOURCE_ATTR}|${MATH_BLOCK_SOURCE_ATTR})=`);
 
+/** ProseMirror's own HTML of a slice, as a drag out of a body carries it. */
+const EDITOR_SLICE = /\sdata-pm-slice=/;
+
 /** The marker a medium stands as while BlockNote reads the words around it. */
 const MARKER = /(\d+)/g;
 
@@ -598,8 +601,9 @@ export function readTransfer(reader: BlockReader, data: Transfer, lands: (url: s
   const codeText = !withMedia && plain !== '' ? plain : null;
   // A chat reply's copy carries its formulas as `data-math*` elements, and its
   // plain text (a block formula's `$$` lines) reads as Markdown: the HTML holds
-  // the reply's structure, so it is the one read.
-  if (!markdown && !withMedia && html !== '' && (!isMarkdown(plain) || FORMULA_COPY.test(html))) {
+  // the reply's structure, so it is the one read. So does a body's own slice,
+  // dragged in from another window, whose HTML keeps the words' styles.
+  if (!markdown && !withMedia && html !== '' && (!isMarkdown(plain) || FORMULA_COPY.test(html) || EDITOR_SLICE.test(html))) {
     return { source: blocksOf(pastedBlocks(reader, evenPastedTables(html))), lost: 0, plain: null, codeText };
   }
   if (!markdown && plain === '' && html === '') return { source: blocksOf([]), lost: 0, plain: null };
