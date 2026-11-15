@@ -602,9 +602,12 @@ export function readTransfer(reader: BlockReader, data: Transfer, lands: (url: s
   // A chat reply's copy carries its formulas as `data-math*` elements, and its
   // plain text (a block formula's `$$` lines) reads as Markdown: the HTML holds
   // the reply's structure, so it is the one read. So does a body's own slice,
-  // dragged in from another window, whose HTML keeps the words' styles.
-  if (!markdown && !withMedia && html !== '' && (!isMarkdown(plain) || FORMULA_COPY.test(html) || BODY_SLICE.test(html))) {
-    return { source: blocksOf(pastedBlocks(reader, evenPastedTables(html))), lost: 0, plain: null, codeText };
+  // dragged in from another window, whose HTML keeps the words' styles; its
+  // plain text is the Markdown a copy writes, so a code block takes the words
+  // of its blocks, as it does from a paste of that copy.
+  const bodySlice = BODY_SLICE.test(html);
+  if (!markdown && !withMedia && html !== '' && (!isMarkdown(plain) || FORMULA_COPY.test(html) || bodySlice)) {
+    return { source: blocksOf(pastedBlocks(reader, evenPastedTables(html))), lost: 0, plain: null, codeText: bodySlice ? null : codeText };
   }
   if (!markdown && plain === '' && html === '') return { source: blocksOf([]), lost: 0, plain: null };
   const source = markdown ? formulaMarkdownToHTML(data.getData('text/markdown')) : withMedia ? html : formulaMarkdownToHTML(plain);

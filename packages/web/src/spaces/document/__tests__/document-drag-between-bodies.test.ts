@@ -11,9 +11,33 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { AllSelection } from '@tiptap/pm/state';
 
-import { caretIn, drop, open, paste, select, unmountAll } from '@web/spaces/document/__tests__/paste-harness';
+import { caretIn, drop, open, paste, pasteFormats, select, unmountAll } from '@web/spaces/document/__tests__/paste-harness';
+import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 
 afterEach(unmountAll);
+
+type Editor = ReturnType<typeof open>['editor'];
+
+/**
+ * Fires an event that writes a data transfer on the body, and reads what it wrote.
+ * @param editor - The editor holding the selection.
+ * @param type - `copy` or `dragstart`.
+ * @returns Each format written, with its data.
+ */
+function written(editor: Editor, type: 'copy' | 'dragstart'): Record<string, string> {
+  const data: Record<string, string> = {};
+  const transfer = {
+    types: [], files: [], effectAllowed: '',
+    setData: (format: string, value: string): void => { data[format] = value; },
+    getData: (format: string): string => data[format] ?? '',
+    clearData: (): void => undefined,
+    setDragImage: (): void => undefined,
+  };
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperty(event, type === 'copy' ? 'clipboardData' : 'dataTransfer', { value: transfer });
+  editor.prosemirrorView!.dom.dispatchEvent(event);
+  return data;
+}
 
 describe('a selection dragged in from another body', () => {
   it('keeps the styles of its words', () => {
@@ -36,8 +60,37 @@ describe('a selection dragged in from another body', () => {
   });
 });
 
+describe('a selection dragged in from another body onto a code block', () => {
+  it.each([
+    ['blocks with formulas', [
+      { type: 'paragraph', content: [{ type: 'text', text: 'bold', styles: { bold: true } }, ' x ', { type: 'math', props: { source: 'a^2' } }] },
+      { type: 'mathBlock', props: { source: 'x^2' } },
+      { type: 'paragraph', content: 'gamma' },
+    ]],
+    ['a table holding a formula block', [
+      { type: 'paragraph', content: 'lead' },
+      tableBlock({ rows: [{ cells: ['c1', { blocks: [{ type: 'mathBlock', props: { source: 'y_1' } }] }] }] }),
+      { type: 'paragraph', content: 'tail' },
+    ]],
+  ])('lands as the words a copy of it pastes there, for %s', (_name, blocks) => {
+    const source = open(blocks).editor;
+    select(source, 3, source.prosemirrorView!.state.doc.content.size - 3);
+    const dragged = written(source, 'dragstart');
+    const copied = written(source, 'copy');
+    const dropped = open([{ type: 'codeBlock', content: 'let x = 1' }]).editor;
+    const pasted = open([{ type: 'codeBlock', content: 'let x = 1' }]).editor;
+    const end = (editor: Editor): number => editor.prosemirrorView!.state.doc.content.size - 3;
+
+    drop(dropped, end(dropped), dragged['text/html'] ?? '', dragged['text/plain'] ?? '');
+    select(pasted, end(pasted));
+    pasteFormats(pasted, copied);
+
+    expect(dropped.prosemirrorView!.state.doc.textContent).toBe(pasted.prosemirrorView!.state.doc.textContent);
+  });
+});
+
 describe('a slice from another ProseMirror editor', () => {
-  it('is read from its Markdown plain text, as before', () => {
+  it('is read from its Markdown plain text', () => {
     const target = open([{ type: 'paragraph', content: '' }]).editor;
     select(target, caretIn(target, 0));
 
