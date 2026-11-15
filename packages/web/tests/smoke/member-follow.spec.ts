@@ -64,7 +64,7 @@ function tab(page: Page, spaceId: string): Locator {
 }
 
 /**
- * The centre of the visible canvas, in flow coordinates.
+ * The centre of the visible canvas (below the follow bar when there is one), in flow coordinates.
  * @param page - A page showing a canvas.
  * @returns The centre.
  */
@@ -74,7 +74,10 @@ async function canvasCentre(page: Page): Promise<{ x: number; y: number }> {
     const viewport = document.querySelector(`${outlet} .react-flow__viewport`) as HTMLElement;
     const m = new DOMMatrixReadOnly(getComputedStyle(viewport).transform);
     const rect = pane.getBoundingClientRect();
-    return { x: (rect.width / 2 - m.e) / m.a, y: (rect.height / 2 - m.f) / m.a };
+    // The follow bar lies over the top of the follower's canvas; the centre is that of what shows below it.
+    const bar = document.querySelector('[data-testid="follow-bar"]')?.getBoundingClientRect();
+    const covered = bar ? Math.max(0, Math.min(rect.height, bar.bottom - rect.top)) : 0;
+    return { x: (rect.width / 2 - m.e) / m.a, y: (covered + (rect.height - covered) / 2 - m.f) / m.a };
   }, VISIBLE_SPACE);
 }
 
@@ -124,8 +127,11 @@ async function distanceToEnd(page: Page): Promise<number> {
   }, VISIBLE_SPACE);
 }
 
-/** Where the follow lands the leader's top block: this far below the top of the body. */
-const LANDING = 16;
+/**
+ * Where the follow lands the leader's top block: this far below the top of the body, which is the
+ * editor's own landing (16) plus the follow bar (32) laid over the top of the body.
+ */
+const LANDING = 16 + 32;
 
 /**
  * Scroll the document body of a page by a distance, the way the user does.
