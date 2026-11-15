@@ -11,7 +11,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { AllSelection } from '@tiptap/pm/state';
 
-import { drop, open, unmountAll } from '@web/spaces/document/__tests__/paste-harness';
+import { caretIn, drop, open, paste, select, unmountAll } from '@web/spaces/document/__tests__/paste-harness';
 
 afterEach(unmountAll);
 
@@ -33,5 +33,18 @@ describe('a selection dragged in from another body', () => {
       .filter((piece) => Object.keys(piece.styles ?? {}).length > 0)
       .map((piece) => `${piece.text}:${Object.keys(piece.styles!).join(',')}`);
     expect(styled).toEqual(['red:textColor', ' words:underline']);
+  });
+});
+
+describe('a slice from another ProseMirror editor', () => {
+  it('is read from its Markdown plain text, as before', () => {
+    const target = open([{ type: 'paragraph', content: '' }]).editor;
+    select(target, caretIn(target, 0));
+
+    paste(target, '<p data-pm-slice="1 1 []"># Title</p><p>- item</p>', '# Title\n\n- item');
+
+    const types = (target.document as unknown as { type: string }[]).map((block) => block.type);
+    expect(types).toContain('heading');
+    expect(types).toContain('bulletListItem');
   });
 });
