@@ -820,8 +820,8 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
                   onPilotPreview={onPilotPreview} onPilotEnd={onPilotEnd} onPilotLocked={onPilotLocked} onPilotControl={onPilotControl}
                   onLightPlan={setLightPlan} monitors={monitors} />
               </React.Suspense>}
-      {/* An open right panel covers the stage's right edge from its top (10 + 320 + 10, as the viewfinder's INSETS.panel);
-        the frame may reach the stage's top, so the notice is put away while the viewfinder is open, as the minimap is. */}
+      {/* The notice spans to the stage margin and an open right panel starts below it; the frame may reach the stage's
+        top, so the notice is put away while the viewfinder is open, as the minimap is. */}
       {failedModels && !framing ? <div ref={setModelNotice} data-testid='scene-model-notice'
         className='absolute left-20 top-3 flex max-w-[calc(100%_-_5rem_-_var(--space-5))] items-center justify-between gap-2 rounded-chrome border border-border bg-background p-2 text-xs'>
         <span className='min-w-0'>{t('spaces.threeD.modelFailed')}{cause && <> {t(importErrorKey(cause.code))}{cause.budget && <> {budgetText(t, cause.budget, getLocale())}</>}{cause.detail && <span className='block break-all text-muted-foreground'>{cause.detail}</span>}</>}</span>
