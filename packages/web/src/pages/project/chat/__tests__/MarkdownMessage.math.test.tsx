@@ -171,7 +171,7 @@ describe('MarkdownMessage — maths', () => {
    * @param from - Where the drag starts.
    * @returns What the drag carries, and the event.
    */
-  function dragFrom(range: Range, from: Node): Copied {
+  function dragFrom(range: Range, from: Node, types: readonly string[] = ['text/html', 'text/plain']): Copied {
     const held = {
       isCollapsed: false,
       rangeCount: 1,
@@ -183,7 +183,7 @@ describe('MarkdownMessage — maths', () => {
     const written = new Map<string, string>();
     const event = new Event('dragstart', { bubbles: true, cancelable: true });
     Object.defineProperty(event, 'dataTransfer', {
-      value: { setData: (type: string, data: string): Map<string, string> => written.set(type, data) },
+      value: { types, setData: (type: string, data: string): Map<string, string> => written.set(type, data) },
     });
     from.dispatchEvent(event);
     window.getSelection = realSelection;
@@ -209,6 +209,19 @@ describe('MarkdownMessage — maths', () => {
     const { written } = dragFrom(range, body.querySelector('a') as Element);
 
     expect(written.size, 'a link dragged while a formula is selected carries the link').toBe(0);
+  });
+
+  it('leaves the drag of a link the selection only reaches into to the browser (A8)', () => {
+    const body = draw('area $$a^2+b$$ [link](https://example.com/doc)').querySelector('[data-testid="markdown-body"]') as Element;
+    const link = body.querySelector('a') as Element;
+    const range = document.createRange();
+    range.setStart(body.querySelector('p') as Element, 0);
+    range.setEnd(link.firstChild as Node, 2);
+
+    // Dragged from the unselected end, the browser drags the link, not the selection.
+    const { written } = dragFrom(range, link, ['text/uri-list', 'text/html', 'text/plain']);
+
+    expect(written.size, 'the drag carries the link').toBe(0);
   });
 
   it('leaves a copy with no formula in it to the browser (A8)', () => {

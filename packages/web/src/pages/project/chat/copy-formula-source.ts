@@ -227,8 +227,11 @@ document.addEventListener('copy', (event: ClipboardEvent): void => {
   if (writeWithSource(event.clipboardData)) event.preventDefault();
 });
 // Only a drag of the selection itself: a link or a picture dragged while a
-// selection stays on the page carries its own data.
+// selection stays on the page carries its own data, and so does a link the
+// selection only reaches into, which the browser drags whole (`text/uri-list`)
+// from its unselected end; a selection's own drag carries no URL.
 document.addEventListener('dragstart', (event: DragEvent): void => {
   if (!(event.target instanceof Node) || window.getSelection()?.containsNode(event.target, true) !== true) return;
+  if (event.dataTransfer?.types.includes('text/uri-list') === true) return;
   writeWithSource(event.dataTransfer);
 });
