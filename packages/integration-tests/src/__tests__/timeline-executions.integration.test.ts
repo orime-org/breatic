@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The Timeline execution record (inner#1711 design §3.4, §5.3).
+ * The web-animation execution record (inner#1711 design §3.4, §5.3; #1490 design §4.3, §13.1).
  *
  * `timelineExecutionRepo.transition` is the one writer of `status`. These tests drive it against the real database:
  * every state crossed with every event, the attempt fence, the invariants that hold for any event sequence, and the
- * `billed_at` gate that lets an execution be charged at most once.
+ * `billed_at` gate that lets an execution be charged at most once. New code inserts rows `queued`; a row still
+ * `awaiting_landing` is one the previous server wrote during the deploy window, and only the deadline or a cancel
+ * moves it.
  */
 
 import { randomUUID } from "node:crypto";
@@ -79,10 +81,30 @@ async function accept(overrides: Partial<{ projectId: string; ownerId: string; s
     input: { prompt: "A red square", aspect: "16:9", durationSeconds: 4, fps: { num: 24, den: 1 } },
     inputHash: "sha256:input",
     deadlineAt: new Date(Date.now() + 2 * 60 * 60 * 1000),
+    status: "queued",
+    origin: "web_animation_space",
   });
   if (row === null) throw new Error("Fixture execution conflicted");
   owned.executions.push(row.id);
   return row;
+}
+
+/**
+ * Insert a row the way the previous server did during the deploy window: no `status`, no `origin`.
+ * @returns The row as the repository reads it.
+ * @throws {Error} When the insert fails.
+ */
+async function acceptAsPreviousServer(): Promise<TimelineExecution> {
+  const { projectId, ownerId } = await seedProject();
+  const [inserted] = await sql<{ id: string }[]>`INSERT INTO timeline_executions
+      (project_id, space_id, actor_user_id, kind, engine, action_id, input, input_hash, deadline_at)
+    VALUES (${projectId}, ${randomUUID()}, ${ownerId}, 'web_animation_create', 'deepseek', ${randomUUID()},
+      ${sql.json({ prompt: "A red square", engine: "deepseek", aspect: "16:9", durationSeconds: 4, fps: { num: 24, den: 1 } })},
+      'sha256:input', now() + interval '2 hours')
+    RETURNING id`;
+  if (inserted === undefined) throw new Error("Fixture execution missing");
+  owned.executions.push(inserted.id);
+  return read(inserted.id);
 }
 
 /**
@@ -107,7 +129,7 @@ async function read(id: string): Promise<TimelineExecution> {
 }
 
 type Setup = "awaiting_landing" | "queued" | "running" | "cancelling" | "succeeded" | "failed" | "cancelled" | "expired";
-type EventName = "land" | "claim" | "retry" | "success" | "failure" | "cancel" | "cancelAck" | "deadline";
+type EventName = "claim" | "retry" | "success" | "failure" | "cancel" | "cancelAck" | "deadline";
 
 /**
  * Drive a fresh execution into a state through the writer itself.
@@ -116,19 +138,18 @@ type EventName = "land" | "claim" | "retry" | "success" | "failure" | "cancel" |
  * @throws {Error} When a setup step is refused.
  */
 async function reach(state: Setup): Promise<TimelineExecution> {
+  if (state === "awaiting_landing") return acceptAsPreviousServer();
   const row = await accept();
   const step = async (event: TimelineExecutionEvent): Promise<TimelineExecution> => {
     const result = await timelineExecutionRepo.transition({ id: row.id, event });
     if (!result.applied) throw new Error(`Setup step ${event.type} refused`);
     return result.row;
   };
-  if (state === "awaiting_landing") return row;
   if (state === "expired") { await passDeadline(row.id); return step({ type: "deadline" }); }
   if (state === "cancelled") return step({ type: "cancel" });
-  let current = await step({ type: "land", inputHash: row.inputHash });
-  if (state === "queued") return current;
+  if (state === "queued") return row;
   if (state === "failed") return step({ type: "failure", fence: null, reason: "enqueue_failed" });
-  current = await step({ type: "claim" });
+  const current = await step({ type: "claim" });
   if (state === "running") return current;
   if (state === "succeeded") return step({ type: "success", fence: current.fence, resultSourceVersionId: randomUUID() });
   return step({ type: "cancel" });
@@ -143,7 +164,6 @@ async function reach(state: Setup): Promise<TimelineExecution> {
  */
 function eventFor(name: EventName, row: TimelineExecution): TimelineExecutionEvent {
   switch (name) {
-    case "land": return { type: "land", inputHash: row.inputHash };
     case "claim": return { type: "claim" };
     case "retry": return { type: "retry" };
     case "success": return { type: "success", fence: row.fence, resultSourceVersionId: randomUUID() };
@@ -159,18 +179,18 @@ const S = {
   OK: "succeeded", F: "failed", X: "cancelled", E: "expired",
 } as const satisfies Record<string, TimelineExecutionStatus>;
 
-// Rows: current state. Columns: land, claim, retry, success, failure, cancel, cancelAck, deadline.
+// Rows: current state. Columns: claim, retry, success, failure, cancel, cancelAck, deadline.
 const MATRIX: Record<Setup, readonly TimelineExecutionStatus[]> = {
-  awaiting_landing: [S.Q, S.AL, S.AL, S.AL, S.AL, S.X, S.AL, S.E],
-  queued: [S.Q, S.R, S.Q, S.Q, S.F, S.X, S.Q, S.E],
-  running: [S.R, S.R, S.R, S.OK, S.F, S.C, S.R, S.E],
-  cancelling: [S.C, S.C, S.C, S.X, S.X, S.C, S.X, S.E],
-  succeeded: [S.OK, S.OK, S.OK, S.OK, S.OK, S.OK, S.OK, S.OK],
-  failed: [S.F, S.F, S.F, S.F, S.F, S.F, S.F, S.F],
-  cancelled: [S.X, S.X, S.X, S.X, S.X, S.X, S.X, S.X],
-  expired: [S.E, S.E, S.E, S.E, S.E, S.E, S.E, S.E],
+  awaiting_landing: [S.AL, S.AL, S.AL, S.AL, S.X, S.AL, S.E],
+  queued: [S.R, S.Q, S.Q, S.F, S.X, S.Q, S.E],
+  running: [S.R, S.R, S.OK, S.F, S.C, S.R, S.E],
+  cancelling: [S.C, S.C, S.X, S.X, S.C, S.X, S.E],
+  succeeded: [S.OK, S.OK, S.OK, S.OK, S.OK, S.OK, S.OK],
+  failed: [S.F, S.F, S.F, S.F, S.F, S.F, S.F],
+  cancelled: [S.X, S.X, S.X, S.X, S.X, S.X, S.X],
+  expired: [S.E, S.E, S.E, S.E, S.E, S.E, S.E],
 };
-const EVENTS: readonly EventName[] = ["land", "claim", "retry", "success", "failure", "cancel", "cancelAck", "deadline"];
+const EVENTS: readonly EventName[] = ["claim", "retry", "success", "failure", "cancel", "cancelAck", "deadline"];
 
 describe("timeline_executions table", () => {
   it("stores every column the design lists, with soft delete", async () => {
@@ -178,7 +198,8 @@ describe("timeline_executions table", () => {
       WHERE table_schema = current_schema() AND table_name = 'timeline_executions' ORDER BY column_name`;
     expect(rows.map((row) => row.column_name)).toEqual([
       "action_id", "actor_user_id", "attempt", "billed_at", "billed_credits", "created_at", "deadline_at", "deleted_at",
-      "engine", "failure_reason", "fence", "id", "input", "input_hash", "kind", "phase", "project_id", "result_source_version_id", "space_id", "status", "steps", "updated_at",
+      "engine", "failure_reason", "fence", "id", "input", "input_hash", "kind", "origin", "phase", "project_id", "result_asset_id",
+      "result_source_version_id", "space_id", "status", "steps", "updated_at",
     ]);
   });
 
@@ -189,9 +210,29 @@ describe("timeline_executions table", () => {
 });
 
 describe("timelineExecutionRepo.insert", () => {
-  it("starts an accepted execution waiting for its receipt, with no attempt and no fence", async () => {
+  it("starts an accepted execution queued, with no attempt and no fence", async () => {
     const row = await accept();
-    expect(row).toMatchObject({ status: "awaiting_landing", attempt: 0, fence: null, phase: null, billedAt: null, resultSourceVersionId: null });
+    expect(row).toMatchObject({
+      status: "queued", origin: "web_animation_space", attempt: 0, fence: null, phase: null, billedAt: null,
+      resultSourceVersionId: null, resultAssetId: null,
+    });
+  });
+
+  it("stores the origin and status the caller gives", async () => {
+    const { projectId, ownerId } = await seedProject();
+    const row = await timelineExecutionRepo.insert({
+      projectId, spaceId: randomUUID(), actorUserId: ownerId, kind: "web_animation_create", engine: "deepseek",
+      actionId: randomUUID(), input: {}, inputHash: "sha256:legacy", deadlineAt: new Date(Date.now() + 60_000),
+      status: "queued", origin: "timeline",
+    });
+    if (row === null) throw new Error("Fixture execution conflicted");
+    owned.executions.push(row.id);
+    expect(row).toMatchObject({ status: "queued", origin: "timeline" });
+  });
+
+  it("gives a row the previous server inserts without status or origin awaiting_landing and timeline", async () => {
+    const row = await acceptAsPreviousServer();
+    expect(row).toMatchObject({ status: "awaiting_landing", origin: "timeline" });
   });
 
   it("answers null for a second insert of the same action in the same Project and Space", async () => {
@@ -199,6 +240,7 @@ describe("timelineExecutionRepo.insert", () => {
     const again = await timelineExecutionRepo.insert({
       projectId: first.projectId, spaceId: first.spaceId, actorUserId: first.actorUserId, kind: "web_animation_create",
       engine: "deepseek", actionId: first.actionId, input: {}, inputHash: "sha256:other", deadlineAt: new Date(Date.now() + 60_000),
+      status: "queued", origin: "web_animation_space",
     });
     expect(again).toBeNull();
     expect(await timelineExecutionRepo.findByAction({ projectId: first.projectId, spaceId: first.spaceId, actionId: first.actionId }))
@@ -266,20 +308,6 @@ describe("timelineExecutionRepo.transition — fence, deadline and payloads", ()
     const other = await reach("running");
     await timelineExecutionRepo.transition({ id: other.id, event: { type: "failure", fence: other.fence, reason: "dsh_failed" } });
     expect(await read(other.id)).toMatchObject({ status: "failed", failureReason: "dsh_failed" });
-  });
-
-  it("refuses a landing receipt whose input hash differs from the accepted input", async () => {
-    const row = await accept();
-    const result = await timelineExecutionRepo.transition({ id: row.id, event: { type: "land", inputHash: "sha256:tampered" } });
-    expect(result.applied).toBe(false);
-    expect((await read(row.id)).status).toBe("awaiting_landing");
-  });
-
-  it("refuses a landing after the original deadline", async () => {
-    const row = await accept();
-    await passDeadline(row.id);
-    const result = await timelineExecutionRepo.transition({ id: row.id, event: { type: "land", inputHash: row.inputHash } });
-    expect(result.applied).toBe(false);
   });
 
   it("ignores a deadline event before the original deadline", async () => {
@@ -357,17 +385,6 @@ describe("timelineExecutionRepo reads", () => {
     await accept({ ...other, spaceId });
     const listed = await timelineExecutionRepo.listForSpace({ projectId: fixture.projectId, spaceId });
     expect(listed.map((row) => row.id)).toEqual([newer.id, older.id]);
-  });
-
-  it("lists only a Space's rows in the asked status when given one", async () => {
-    const fixture = await seedProject();
-    const spaceId = randomUUID();
-    const waiting = await accept({ ...fixture, spaceId });
-    const landed = await accept({ ...fixture, spaceId });
-    const queued = await timelineExecutionRepo.transition({ id: landed.id, event: { type: "land", inputHash: landed.inputHash } });
-    expect(queued.applied).toBe(true);
-    const listed = await timelineExecutionRepo.listForSpace({ projectId: fixture.projectId, spaceId, status: "awaiting_landing" });
-    expect(listed.map((row) => row.id)).toEqual([waiting.id]);
   });
 
   it("offers every non-terminal row to the worker sweep and no terminal one", async () => {
