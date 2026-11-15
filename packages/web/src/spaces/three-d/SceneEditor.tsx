@@ -43,6 +43,11 @@ import { pageSceneUploads } from '@web/spaces/three-d/scene-uploads';
 import { SceneTaskList } from '@web/spaces/three-d/SceneTaskList';
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 
+// The gap between a stacked object toolbar and the controls under it, and below the failed-model notice.
+const STACK_GAP = 8;
+// The minimap's distance above the stage bottom: the bottom controls, 10 + 42, and a 9px gap.
+const MAP_BOTTOM = 61;
+
 const SceneViewport = React.lazy(() => import('@web/spaces/three-d/viewport/SceneViewport'));
 const SceneInspector = React.lazy(() => import('@web/spaces/three-d/SceneInspector').then((module) => ({ default: module.SceneInspector })));
 const SceneModelImportHost = React.lazy(() => import('@web/spaces/three-d/SceneModelImportHost'));
@@ -182,7 +187,6 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   const [ambientDraft, setAmbientDraft] = React.useState<Partial<SceneEnvironmentValues> | null>(null);
   const environment = React.useMemo(() => (ambientDraft ? { ...snapshot.environment, ...ambientDraft } : snapshot.environment), [ambientDraft, snapshot.environment]);
   const ambientDraftRef = React.useRef(ambientDraft);
-  ambientDraftRef.current = ambientDraft;
   // The ambient light has no session gesture: this flag is its press, opened only with edit access, and once Escape,
   // an undo or a loss of focus or edit access ends its drag, the press's later changes are ignored (design 3.8, 6.2).
   const ambientHeld = React.useRef(false);
@@ -200,15 +204,28 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     setAmbientDraft(null);
     return open;
   }, []);
+  // Counts ambient presses, so a control can end the press it opened and leave a later one alone.
+  const ambientPresses = React.useRef(0);
   /**
    * Start an ambient press from the stored values, whatever an earlier press left (its release may have come outside
    * the browser).
+   * @returns The press.
    * @throws {never} Never.
    */
-  const beginAmbient = React.useCallback((): void => {
+  const beginAmbient = React.useCallback((): number => {
     dropAmbient();
     ambientHeld.current = session.getSnapshot().canEdit;
+    ambientPresses.current += 1;
+    return ambientPresses.current;
   }, [session, dropAmbient]);
+  /**
+   * End an ambient press without writing it: the open one, or, given a press, that one only while it is still open.
+   * @param press - The press to end.
+   * @throws {never} Never.
+   */
+  const cancelAmbient = React.useCallback((press?: number): void => {
+    if (press === undefined || press === ambientPresses.current) dropAmbient();
+  }, [dropAmbient]);
   /**
    * Apply a personal history step (design 3.8): a pending pilot wheel step is written first, and every press in
    * progress ends without writing it.
@@ -497,6 +514,29 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     return () => observer.disconnect();
   }, []);
   const [overviewHost, setOverviewHost] = React.useState<HTMLDivElement | null>(null);
+  const [bottomRow, setBottomRow] = React.useState<HTMLDivElement | null>(null);
+  const [modelNotice, setModelNotice] = React.useState<HTMLDivElement | null>(null);
+  const [chrome, setChrome] = React.useState({ stacked: false, lift: 0, noticeBottom: 0 });
+  React.useLayoutEffect(() => {
+    /**
+     * Measure the bottom row and the failed-model notice: the object toolbar stacks above the bottom-right controls
+     * when the two do not fit in one row, and an open right panel starts below the notice.
+     */
+    const measure = (): void => {
+      const objectBar = bottomRow?.querySelector<HTMLElement>('[data-testid="scene-object-menu"]') ?? null;
+      const controls = bottomRow?.querySelector<HTMLElement>('[data-testid="scene-viewport-toolbar"]') ?? null;
+      const gap = controls?.parentElement ? parseFloat(getComputedStyle(controls.parentElement).marginLeft) || 0 : 0;
+      const stacked = bottomRow !== null && objectBar !== null && controls !== null
+        && bottomRow.offsetWidth < objectBar.offsetWidth + gap + controls.offsetWidth;
+      const next = { stacked, lift: stacked && objectBar ? objectBar.offsetHeight + STACK_GAP : 0,
+        noticeBottom: modelNotice ? modelNotice.offsetTop + modelNotice.offsetHeight : 0 };
+      setChrome((previous) => (previous.stacked === next.stacked && previous.lift === next.lift && previous.noticeBottom === next.noticeBottom ? previous : next));
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    for (const element of [bottomRow, modelNotice, ...(bottomRow ? Array.from(bottomRow.children) : [])]) if (element) observer.observe(element);
+    return () => observer.disconnect();
+  }, [bottomRow, modelNotice, selected.length, shotTaken, stageSize]);
   const [viewfinderHost, setViewfinderHost] = React.useState<HTMLDivElement | null>(null);
   const selection = JSON.stringify([...snapshot.selectedIds].sort());
   const lastSelection = React.useRef('[]');
@@ -649,13 +689,13 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
       return;
     }
     const freeOpen = viewfinder.phase !== 'off';
-    const frame = freeOpen ? viewfinder.frame : largestFrame(viewfinderRatioValue(SAVED_CAMERA_FRAME) ?? 1, sceneViewfinderSafeArea(stageSize, rightOpen));
+    const frame = freeOpen ? viewfinder.frame : largestFrame(viewfinderRatioValue(SAVED_CAMERA_FRAME) ?? 1, sceneViewfinderSafeArea(stageSize, rightOpen, chrome.lift));
     if (frame.width <= 0 || frame.height <= 0) return;
     const pose = cameraFromView(view.current, frame, stageSize);
     const ratio = freeOpen ? viewfinder.ratio : SAVED_CAMERA_FRAME;
     session.execute({ type: 'create', objects: [{ ...base, ...pose, frame: ratio,
       ...(ratio === 'Free' ? { freeRatio: clampFreeRatio(frame.width / frame.height) } : {}) } satisfies SceneObject] });
-  }, [session, t, lookCamera, viewfinder, stageSize, rightOpen]);
+  }, [session, t, lookCamera, viewfinder, stageSize, rightOpen, chrome.lift]);
   const onSaveView = React.useCallback((): void => { void saveView(); }, [saveView]);
   /**
    * Add a light of one type aimed at the orbit centre (design 3.6); through a camera, or on its still, the centre and
@@ -682,8 +722,8 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     const camera = session.getSnapshot().objects.find((object) => object.id === id);
     if (!camera || !isSceneCamera(camera)) return;
     pilotControl.current?.flush();
-    dispatchViewfinder({ type: 'look', id, view: view.current, frame: largestFrame(cameraFrameRatio(camera), sceneViewfinderSafeArea(stageSize, rightOpen)) });
-  }, [session, stageSize, rightOpen]);
+    dispatchViewfinder({ type: 'look', id, view: view.current, frame: largestFrame(cameraFrameRatio(camera), sceneViewfinderSafeArea(stageSize, rightOpen, chrome.lift)) });
+  }, [session, stageSize, rightOpen, chrome.lift]);
   /**
    * Follow a monitor card's canvas.
    * @param id - The camera.
@@ -743,14 +783,14 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     : panel === 'director' ? <SceneDirectorPanel session={session} snapshot={snapshot} spaceId={spaceId} Field={SceneField} fieldDrafts={fieldDrafts}
       onFieldDraftChange={onFieldDraftChange} lightPlan={lightPlan} maxLights={director?.maxLights} lookingAt={lookCamera?.id ?? null}
       environment={environment} onSaveView={onSaveView} onAddLight={onAddLight} onLook={onLook} onMonitor={onMonitor}
-      onAmbientPreview={onAmbientPreview} onAmbientCommit={onAmbientCommit} onAmbientCancel={dropAmbient} onAmbientPressStart={beginAmbient} onAmbientWrite={onAmbientWrite} viewFailed={viewFailed} />
+      onAmbientPreview={onAmbientPreview} onAmbientCommit={onAmbientCommit} onAmbientCancel={cancelAmbient} onAmbientPressStart={beginAmbient} onAmbientWrite={onAmbientWrite} viewFailed={viewFailed} />
       : panel === 'objects' ? <SceneObjectList session={session} snapshot={snapshot} modelStates={modelStates} onSelect={showSelectedProperties} />
         : <SceneTaskList projectId={projectId} spaceId={spaceId} userId={userId} canEdit={snapshot.canEdit} canGenerate={myRole !== 'viewer'} uploads={uploads}
           remoteUploads={snapshot.remoteUploads} onPlace={placeTask} focusTaskId={focusTaskId} onFocused={taskFocused}
           onRetryGeneration={retryGeneration} placedAssetIds={placedAssetIds} onLocate={locateAsset} filterHost={filterHost} />,
   [panel, inspectorFallback, session, snapshot, readObjects, namedPeers, spaceId, fieldDrafts, onFieldDraftChange, skeletonStates, jointMode, changeJointMode, modelStates, showSelectedProperties,
     projectId, userId, myRole, uploads, placeTask, focusTaskId, taskFocused, retryGeneration, placedAssetIds, locateAsset, filterHost,
-    lightPlan, director, lookCamera, environment, onSaveView, onAddLight, onLook, onMonitor, onAmbientPreview, onAmbientCommit, dropAmbient, beginAmbient, onAmbientWrite, viewFailed]);
+    lightPlan, director, lookCamera, environment, onSaveView, onAddLight, onLook, onMonitor, onAmbientPreview, onAmbientCommit, cancelAmbient, beginAmbient, onAmbientWrite, viewFailed]);
   // An older-format scene is never opened, so no editing chrome is shown around its message.
   if (snapshot.status === 'unsupported' && isOlderSceneFormat(snapshot.version)) {
     return <div ref={stage} className='relative isolate h-full min-h-0 min-w-0 bg-canvas' data-testid='three-d-space'>
@@ -780,8 +820,8 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
               </React.Suspense>}
       {/* An open right panel covers the stage's right edge from its top (10 + 320 + 10, as the viewfinder's INSETS.panel);
         the frame may reach the stage's top, so the notice is put away while the viewfinder is open, as the minimap is. */}
-      {failedModels && !framing ? <div className={cn('absolute left-20 top-3 flex items-center justify-between gap-2 rounded-chrome border border-border bg-background p-2 text-xs',
-        rightOpen ? 'max-w-[calc(100%_-_5rem_-_340px)]' : 'max-w-[calc(100%_-_5rem_-_var(--space-5))]')}>
+      {failedModels && !framing ? <div ref={setModelNotice} data-testid='scene-model-notice'
+        className='absolute left-20 top-3 flex max-w-[calc(100%_-_5rem_-_var(--space-5))] items-center justify-between gap-2 rounded-chrome border border-border bg-background p-2 text-xs'>
         <span className='min-w-0'>{t('spaces.threeD.modelFailed')}{cause && <> {t(importErrorKey(cause.code))}{cause.budget && <> {budgetText(t, cause.budget, getLocale())}</>}{cause.detail && <span className='block break-all text-muted-foreground'>{cause.detail}</span>}</>}</span>
         {modelRetryable && <Button size='sm' variant='ghost' onClick={() => setModelRetryRevision((value) => value + 1)}>{t('spaces.threeD.retry')}</Button>}
       </div> : null}
@@ -790,26 +830,27 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
       onGenerated={importStarted} />}
     {importController && importLimits && <React.Suspense fallback={null}><SceneModelImportHost controller={importController}
       open={importOpen} onOpenChange={setImportOpen} canEdit={snapshot.canEdit} maxInputBytes={importLimits.maxInputBytes} onStarted={importStarted} /></React.Suspense>}
-    <SceneRightPanel open={rightOpen} onOpenChange={setRightOpen} automatic={automaticPanel} stage={stage} returnTarget={returnTarget} cancelGesture={cancelGesture} contentRef={rightPanel}
+    <SceneRightPanel top={chrome.noticeBottom > 0 ? chrome.noticeBottom + STACK_GAP : null} bottomLift={chrome.lift} open={rightOpen} onOpenChange={setRightOpen} automatic={automaticPanel} stage={stage} returnTarget={returnTarget} cancelGesture={cancelGesture} contentRef={rightPanel}
       title={panel === 'properties' ? t('spaces.threeD.properties') : panel === 'objects' ? t('spaces.threeD.objects') : panel === 'director' ? t('spaces.threeD.director.open') : t('spaces.threeD.tasks')}
       actions={panelActions}>
       {panelContent}
     </SceneRightPanel>
-    <div className='absolute bottom-[61px] right-[var(--space-5)] z-10'>
+    <div className='absolute right-[var(--space-5)] z-10' data-testid='scene-map-holder' style={{ bottom: MAP_BOTTOM + chrome.lift }}>
       {minimap && !framing ? <div ref={setOverviewHost} data-testid='scene-map' className='h-[142px] w-[202px] overflow-hidden rounded-overlay border border-border bg-popover shadow' /> : null}
     </div>
-    {/* One bottom row: the object toolbar is centred while it fits and otherwise yields to the controls on the right. */}
-    <div className='pointer-events-none absolute inset-x-[var(--space-5)] bottom-0 z-10 grid grid-cols-[1fr_auto_1fr] items-end'>
-      {selected.length > 0 && !shotTaken ? <div className='pointer-events-auto col-start-2 mb-4'>
+    {/* One bottom row: the object toolbar is centred while it fits, yields to the controls on the right, and stacks
+        above them when the two do not fit side by side. */}
+    <div ref={setBottomRow} data-testid='scene-bottom-row' className='pointer-events-none absolute inset-x-[var(--space-5)] bottom-0 z-10 grid grid-cols-[1fr_auto_1fr] items-end'>
+      {selected.length > 0 && !shotTaken ? <div className={cn('pointer-events-auto', chrome.stacked ? 'col-start-3 row-start-1 mb-2 justify-self-end' : 'col-start-2 mb-[var(--space-5)]')}>
         <SceneObjectToolbar mode={mode} jointMode={jointMode} mutable={mutable} canRotate={canRotate} canScale={canScale} canDuplicate={snapshot.canEdit}
           onMode={onMode} onFocus={onFocus} onDuplicate={duplicate} onDelete={onDelete} />
       </div> : null}
-      <div className='pointer-events-auto col-start-3 mb-[var(--space-5)] ml-2 justify-self-end'>
+      <div className={cn('pointer-events-auto col-start-3 mb-[var(--space-5)] ml-2 justify-self-end', chrome.stacked && 'row-start-2')}>
         <SceneViewportToolbar undo={snapshot.canEdit && snapshot.canUndo} redo={snapshot.canEdit && snapshot.canRedo}
           onHistory={onHistory} hasSelection={selected.length > 0} onPanel={showPanel} minimap={minimap} minimapDisabled={framing} onMinimap={toggleMinimap} viewfinderHost={setViewfinderHost} />
       </div>
     </div>
-    <SceneViewfinder host={viewfinderHost} state={viewfinder} dispatch={viewfinderAction} stage={stageSize} rightPanelOpen={rightOpen} capture={frameCapture}
+    <SceneViewfinder host={viewfinderHost} bottomLift={chrome.lift} state={viewfinder} dispatch={viewfinderAction} stage={stageSize} rightPanelOpen={rightOpen} capture={frameCapture}
       modelsLoading={modelsLoading} disabled={myRole === 'viewer' || snapshot.status !== 'ready'} chatSwitching={chatSwitching} projectId={projectId} spaceId={spaceId}
       spaceName={spaceName} userId={userId} config={controls.data?.capture} spaces={projectSpaces}
       camera={lookCamera} canEdit={snapshot.canEdit} onCameraFrame={onCameraFrame} />

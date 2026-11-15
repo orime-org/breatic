@@ -47,9 +47,9 @@ const CORNER_POSITION: Readonly<Record<ViewfinderCorner, string>> = {
 };
 // What the chrome around the frame covers, in pixels: the top and sides keep
 // 20px from the stage edge; the bottom keeps the menu under the frame
-// (38 + 8) above the object toolbar (16 + 42 + 8), whether or not it shows;
+// (38 + 8) above the object toolbar (10 + 42 + 8), whether or not it shows;
 // the right edge stops at an open right panel (10 + 320 + 10).
-const INSETS = { top: 20, bottom: 112, side: 20, panel: 340 };
+const INSETS = { top: 20, bottom: 106, side: 20, panel: 340 };
 
 /**
  * Where the frame may sit on the stage.
@@ -57,10 +57,11 @@ const INSETS = { top: 20, bottom: 112, side: 20, panel: 340 };
  * @param stage.width - Its width.
  * @param stage.height - Its height.
  * @param rightPanelOpen - Whether the right panel covers the stage's right edge.
+ * @param bottomLift - How far a stacked object toolbar raises the bottom controls.
  * @returns The safe area.
  */
-export function sceneViewfinderSafeArea(stage: { width: number; height: number }, rightPanelOpen: boolean): ViewfinderRect {
-  return viewfinderSafeArea(stage, { top: INSETS.top, bottom: INSETS.bottom, left: INSETS.side, right: rightPanelOpen ? INSETS.panel : INSETS.side });
+export function sceneViewfinderSafeArea(stage: { width: number; height: number }, rightPanelOpen: boolean, bottomLift = 0): ViewfinderRect {
+  return viewfinderSafeArea(stage, { top: INSETS.top, bottom: INSETS.bottom + bottomLift, left: INSETS.side, right: rightPanelOpen ? INSETS.panel : INSETS.side });
 }
 
 // The menu sits this far below the frame.
@@ -69,6 +70,8 @@ const MENU_GAP = 8;
 export interface SceneViewfinderProps {
   /** The place in the bottom-right toolbar its button renders into, once mounted. */
   host: HTMLDivElement | null;
+  /** How far a stacked object toolbar raises the bottom controls. */
+  bottomLift: number;
   state: ViewfinderState;
   dispatch: React.Dispatch<ViewfinderAction>;
   /** The 3D stage's size. */
@@ -136,14 +139,14 @@ function canvasOrigin(userId: string, projectId: string, canvasId: string): { x:
  * @returns The viewfinder.
  */
 export const SceneViewfinder = React.memo(function SceneViewfinder(props: SceneViewfinderProps): React.JSX.Element {
-  const { host, state, dispatch, stage, rightPanelOpen, capture, modelsLoading, disabled, chatSwitching, projectId, spaceId, spaceName, userId, config, spaces,
+  const { host, bottomLift, state, dispatch, stage, rightPanelOpen, capture, modelsLoading, disabled, chatSwitching, projectId, spaceId, spaceName, userId, config, spaces,
     camera, canEdit, onCameraFrame } = props;
   const t = useTranslation();
   const { phase, frame, ratio, shot, sending } = state;
   const throughCamera = state.source.kind === 'camera';
   // Only an editor may change an unlocked camera's frame.
   const cameraEditable = camera !== null && canEdit && !camera.locked;
-  const safe = React.useMemo(() => sceneViewfinderSafeArea(stage, rightPanelOpen), [stage, rightPanelOpen]);
+  const safe = React.useMemo(() => sceneViewfinderSafeArea(stage, rightPanelOpen, bottomLift), [stage, rightPanelOpen, bottomLift]);
   // A camera holds its own ratio; a Free camera's frame is dragged free and written as its free ratio.
   const cameraRatio = camera === null ? null : cameraFrameRatio(camera);
   const ratioValue = throughCamera ? (camera?.frame === 'Free' ? null : cameraRatio) : viewfinderRatioValue(ratio);

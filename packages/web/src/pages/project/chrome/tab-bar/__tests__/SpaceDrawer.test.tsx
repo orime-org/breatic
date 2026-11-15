@@ -193,6 +193,38 @@ describe('SpaceDrawer', () => {
     expect(document.activeElement).not.toBe(trigger);
   });
 
+  it('gives the keyboard back to its trigger when it is reopened during its exit and then closed without opening a Space', async () => {
+    // Radix Presence keeps the content mounted until its exit animation ends.
+    const real = window.getComputedStyle.bind(window);
+    const computed = vi.spyOn(window, 'getComputedStyle').mockImplementation((element: Element, pseudo?: string | null) => {
+      const styles = real(element, pseudo);
+      if (!(element instanceof HTMLElement) || element.dataset.testid !== 'space-drawer') return styles;
+      return new Proxy(styles, { get(target, key) {
+        if (key === 'animationName') return element.dataset.state === 'open' ? 'enter' : 'exit';
+        const value: unknown = Reflect.get(target, key);
+        return typeof value === 'function' ? value.bind(target) : value;
+      } });
+    });
+    const endExit = (element: Element): void => act(() => {
+      const event = new Event('animationend');
+      Object.defineProperty(event, 'animationName', { value: 'exit' });
+      element.dispatchEvent(event);
+    });
+    const user = userEvent.setup();
+    setup();
+    const trigger = screen.getByTestId('space-drawer-trigger');
+    await user.click(trigger);
+    await user.click(within(screen.getByTestId('space-drawer-row-sp-1')).getAllByRole('button')[0] as HTMLElement);
+    expect(screen.getByTestId('space-drawer').dataset.state).toBe('closed');
+    await user.click(trigger);
+    await user.click(screen.getByTestId('space-drawer-list'));
+    await user.keyboard('{Escape}');
+    endExit(screen.getByTestId('space-drawer'));
+    await waitFor(() => expect(screen.queryByTestId('space-drawer')).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+    computed.mockRestore();
+  });
+
   it('gives the keyboard back to its trigger when it closes without opening a Space', async () => {
     const user = userEvent.setup();
     setup();

@@ -52,10 +52,10 @@ export interface SceneDirectorPanelProps extends SceneFieldDraftOwner {
   onMonitor: (id: string, canvas: HTMLCanvasElement | null) => void;
   onAmbientPreview: (values: Partial<SceneEnvironmentValues>) => boolean;
   onAmbientCommit: () => void;
-  /** Ends an ambient press that gets no release, as when its picker closes on Escape. */
-  onAmbientCancel: () => void;
-  /** Starts an ambient press when the pointer, a step key or a picker arrow key goes down. */
-  onAmbientPressStart: () => void;
+  /** Ends an ambient press that gets no release, as when its picker closes on Escape; given a press, only that one. */
+  onAmbientCancel: (press?: number) => void;
+  /** Starts an ambient press when the pointer, a step key or a picker arrow key goes down, and names it. */
+  onAmbientPressStart: () => number;
   /** Writes a typed ambient colour as a command of its own. */
   onAmbientWrite: (ambientColor: string) => void;
   /** The view failed to load: every card shows the failure the main area shows. */

@@ -8,7 +8,7 @@ import * as Y from 'yjs';
 import { Unlock } from 'lucide-react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { t, SCENE_FORMAT_VERSION, type SceneObject } from '@breatic/shared';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { applySceneCommand, readSceneDocument } from '@web/data/yjs/scene-document';
@@ -78,8 +78,38 @@ describe('approved scene layout (inner#1724)', () => {
     expect(row).toBe(screen.getByTestId('scene-viewport-toolbar').closest('.grid'));
     expect(row?.className).toContain('grid-cols-[1fr_auto_1fr]');
   });
+  it.each([
+    ['too narrow for one row', 400, true],
+    ['wide enough for one row', 1180, false],
+  ])('stacks the object toolbar above the bottom-right controls only when the bottom row is %s', async (_, rowWidth, stacked) => {
+    const sizes: Record<string, [number, number]> = { 'scene-bottom-row': [rowWidth, 50], 'scene-object-menu': [223, 42], 'scene-viewport-toolbar': [294, 42] };
+    const size = (element: HTMLElement): [number, number] => sizes[element.dataset.testid ?? ''] ?? [0, 0];
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockImplementation(function (this: HTMLElement) { return size(this)[0]; });
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function (this: HTMLElement) { return size(this)[1]; });
+    const { session } = setup(); await screen.findByTestId('scene-native-boundary');
+    act(() => session.select(ID, false));
+    const objectCell = screen.getByTestId('scene-object-menu').parentElement as HTMLElement;
+    const controlsCell = screen.getByTestId('scene-viewport-toolbar').parentElement as HTMLElement;
+    if (stacked) {
+      await waitFor(() => expect(objectCell.className).toContain('row-start-1'));
+      expect(objectCell.className).toContain('col-start-3');
+      expect(controlsCell.className).toContain('row-start-2');
+      expect(screen.getByTestId('scene-map-holder').style.bottom).toBe('111px');
+    } else {
+      expect(objectCell.className).toContain('col-start-2');
+      expect(screen.getByTestId('scene-map-holder').style.bottom).toBe('61px');
+    }
+  });
+  it('keeps the object toolbar and the bottom-right controls the same distance above the stage edge', async () => {
+    const { session } = setup(); await screen.findByTestId('scene-native-boundary');
+    act(() => session.select(ID, false));
+    const objectCell = screen.getByTestId('scene-object-menu').parentElement as HTMLElement;
+    const controlsCell = screen.getByTestId('scene-viewport-toolbar').parentElement as HTMLElement;
+    expect(objectCell.className).toContain('mb-[var(--space-5)]');
+    expect(controlsCell.className).toContain('mb-[var(--space-5)]');
+  });
   it('keeps the viewfinder frame 20px from every stage edge but the bottom controls', () => {
-    expect(sceneViewfinderSafeArea({ width: 1200, height: 900 }, false)).toEqual({ x: 20, y: 20, width: 1160, height: 768 });
+    expect(sceneViewfinderSafeArea({ width: 1200, height: 900 }, false)).toEqual({ x: 20, y: 20, width: 1160, height: 774 });
   });
   it.each([
     { state: 'unlocked object', ids: [ID], locked: [], action: 'lock', next: [true, false], second: [false, false] },

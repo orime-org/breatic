@@ -47,12 +47,16 @@ function Row({ label, labelId, children }: { label: string; labelId: string; chi
  * @param id - The object being changed.
  * @returns The begin, preview, commit and cancel callbacks, and a Slider's key handler.
  */
-function useContinuousPatch(session: SceneSession, id: string): { begin: () => void; preview: (patch: Omit<ScenePatch, 'id'>) => boolean; commit: () => void; cancel: () => void; stepKey: (event: React.KeyboardEvent) => void } {
+function useContinuousPatch(session: SceneSession, id: string): { begin: () => number; preview: (patch: Omit<ScenePatch, 'id'>) => boolean; commit: () => void; cancel: (press?: number) => void; stepKey: (event: React.KeyboardEvent) => void } {
   // The session owns the press: beginGesture ends whatever an earlier press left, and Escape, a lock, an undo or a loss
   // of focus end its drag, after which its changes preview nothing and its release writes nothing.
   return React.useMemo(() => {
-    /** Start a press, refused without edit access or on a locked object. */
-    const begin = (): void => { session.beginGesture(); };
+    /**
+     * Start a press, refused without edit access or on a locked object.
+     * @returns The press.
+     */
+    // A gesture keeps one cancelRevision from its start to its end, so it names the press.
+    const begin = (): number => { session.beginGesture(); return session.getSnapshot().cancelRevision; };
     /** End the press and write what it previewed. */
     const commit = (): void => { session.endGesture(true); };
     return {
@@ -63,7 +67,7 @@ function useContinuousPatch(session: SceneSession, id: string): { begin: () => v
         return true;
       },
       commit,
-      cancel: (): void => { session.endGesture(false); },
+      cancel: (press?: number): void => { if (press === undefined || press === session.getSnapshot().cancelRevision) session.endGesture(false); },
       stepKey: (event: React.KeyboardEvent): void => { takeStepKey(event, begin, commit); },
     };
   }, [session, id]);
@@ -80,16 +84,17 @@ const HEX_TEXT = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
  * @param root0.disabled - Whether it can be changed.
  * @param root0.labelId - What names it.
  * @param root0.spaceId - The Space the field belongs to.
- * @param root0.onPressStart - Opens a picker press when the mouse or an arrow key first goes down.
+ * @param root0.onPressStart - Opens a picker press when the mouse or an arrow key first goes down, and names it.
  * @param root0.onPreview - Shows a colour while picking; false when the press it belongs to has ended.
  * @param root0.onCommit - Writes the previewed colour and ends the press.
- * @param root0.onCancel - Ends the press without writing it; no release of it follows.
+ * @param root0.onCancel - Ends the press without writing it; no release of it follows. Given a press, only while that press is
+ *   still the open one.
  * @param root0.onWrite - Writes a typed colour.
  * @returns The swatch and its picker.
  */
 export const SceneColorField = React.memo(function SceneColorField({ value, disabled, labelId, spaceId, onPressStart, onPreview, onCommit, onCancel, onWrite }: {
-  value: string; disabled: boolean; labelId: string; spaceId: string; onPressStart: () => void; onPreview: (hex: string) => boolean;
-  onCommit: () => void; onCancel: () => void; onWrite: (hex: string) => void;
+  value: string; disabled: boolean; labelId: string; spaceId: string; onPressStart: () => number; onPreview: (hex: string) => boolean;
+  onCommit: () => void; onCancel: (press?: number) => void; onWrite: (hex: string) => void;
 }): React.JSX.Element {
   // Only this opening of the popover feeds the scene: its exit animation still shows the picker after Escape.
   const live = React.useRef(false);
@@ -104,6 +109,8 @@ export const SceneColorField = React.memo(function SceneColorField({ value, disa
   const [resyncs, setResyncs] = React.useState(0);
   // The arrow keys held on the picker: one press lasts from the first going down to the last coming up.
   const arrows = React.useRef(new Set<string>());
+  // The press the held arrow keys opened; another control's press may have replaced it since.
+  const arrowPress = React.useRef<number | undefined>(undefined);
   // react-colorful reports a move from an effect, and a release that follows at once arrives first: the commit runs
   // as a transition, which React renders after flushing the move and its effects.
   React.useEffect(() => { if (released.current) { released.current = false; onCommit(); } }, [releases, onCommit]);
@@ -129,7 +136,7 @@ export const SceneColorField = React.memo(function SceneColorField({ value, disa
   // second key belong to it): react-colorful reports no end for a step that changed nothing.
   const onPickerKey = React.useCallback((event: React.KeyboardEvent): void => {
     if (!live.current || !event.key.startsWith('Arrow')) return;
-    if (arrows.current.size === 0) onPressStart();
+    if (arrows.current.size === 0) arrowPress.current = onPressStart();
     arrows.current.add(event.key);
   }, [onPressStart]);
   const onPickerKeyUp = React.useCallback((event: React.KeyboardEvent): void => {
@@ -141,7 +148,7 @@ export const SceneColorField = React.memo(function SceneColorField({ value, disa
   const dropArrows = React.useCallback((): void => {
     if (arrows.current.size === 0) return;
     arrows.current.clear();
-    onCancel();
+    onCancel(arrowPress.current);
   }, [onCancel]);
   // Focus leaving the picker, for the rest of the page or another window, takes the held keys' release with it.
   const onPickerBlur = React.useCallback((event: React.FocusEvent): void => {

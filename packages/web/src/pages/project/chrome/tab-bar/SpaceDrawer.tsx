@@ -153,13 +153,19 @@ export function SpaceDrawer({
     openedSpace.current = false;
     event.preventDefault();
   }, []);
+  // Each opening starts afresh: a reopening during the exit animation never
+  // unmounts the drawer, so its own close must still return focus.
+  const handleOpenChange = React.useCallback((next: boolean): void => {
+    if (next) openedSpace.current = false;
+    setOpen(next);
+  }, [setOpen]);
   const handleEscapeKeyDown = React.useCallback((event: KeyboardEvent): void => {
     // Escape inside a rename box ends the rename (the box's own handler);
     // the drawer stays. The box carries `data-renaming` for this.
     if (document.activeElement?.hasAttribute('data-renaming')) event.preventDefault();
   }, []);
   return (
-    <Sheet open={open} onOpenChange={setOpen} modal>
+    <Sheet open={open} onOpenChange={handleOpenChange} modal>
       <SheetTrigger asChild>
         <Button
           variant='chrome-ghost'

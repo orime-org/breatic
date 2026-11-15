@@ -36,14 +36,18 @@ export function keepOnSpaceTab(event: Pick<Event, 'target' | 'preventDefault'>):
  * @param root0.cancelGesture - Cancels an active scene transform and reports ownership of this press.
  * @param root0.contentRef - Persistent panel container receiving focus before its content changes.
  * @param root0.actions - Contextual controls placed before the panel's close action.
+ * @param root0.top - Where the panel starts below the stage top, in pixels, when something above it must stay clear.
+ * @param root0.bottomLift - How far a stacked object toolbar raises the panel's bottom edge.
  * @returns The scene-edge shared floating panel.
  * @throws {never} Never directly.
  */
-export const SceneRightPanel = React.memo(function SceneRightPanel({ open, onOpenChange, title, automatic, stage, returnTarget, children, cancelGesture, contentRef, actions }: {
+export const SceneRightPanel = React.memo(function SceneRightPanel({ open, onOpenChange, title, automatic, stage, returnTarget, children, cancelGesture, contentRef, actions, top = null, bottomLift = 0 }: {
   open: boolean; onOpenChange: (open: boolean) => void; title: string; automatic: React.RefObject<boolean>;
   stage: React.RefObject<HTMLDivElement | null>; returnTarget: React.RefObject<HTMLElement | null>; children: React.ReactNode; cancelGesture: () => boolean;
   contentRef: React.RefObject<HTMLDivElement | null>;
   actions?: React.ReactNode;
+  top?: number | null;
+  bottomLift?: number;
 }): React.JSX.Element {
   const t = useTranslation();
   const interactedOutside = React.useRef(false);
@@ -54,7 +58,8 @@ export const SceneRightPanel = React.memo(function SceneRightPanel({ open, onOpe
    */
   const close = React.useCallback((): void => onOpenChange(false), [onOpenChange]);
   return <Popover open={open} onOpenChange={onOpenChange}>
-    <Anchor asChild><div className='pointer-events-none absolute bottom-[calc(61px_+_142px_+_var(--space-5))] right-[var(--space-5)] top-[var(--space-5)] w-0' /></Anchor>
+    <Anchor asChild><div data-testid='scene-right-panel-anchor' className='pointer-events-none absolute right-[var(--space-5)] top-[var(--space-5)] w-0'
+      style={{ bottom: `calc(61px + 142px + var(--space-5) + ${bottomLift}px)`, ...(top === null ? {} : { top: `${top}px` }) }} /></Anchor>
     <PopoverContent ref={contentRef} container={stage.current} side='left' align='start' sideOffset={0} className='flex h-[var(--radix-popover-trigger-height)] w-80 flex-col p-0' data-testid='scene-right-panel'
       onOpenAutoFocus={(event) => { event.preventDefault(); if (!automatic.current) (event.currentTarget as HTMLElement).focus(); }}
       onEscapeKeyDown={(event) => {

@@ -257,15 +257,16 @@ describe('framing (acceptance 2)', () => {
 });
 
 describe('the failed-model notice', () => {
-  it('stops before an open right panel and spans to the stage margin otherwise', async () => {
+  it('spans to the stage margin and moves an open right panel below itself', async () => {
+    vi.spyOn(HTMLElement.prototype, 'offsetTop', 'get').mockImplementation(function (this: HTMLElement) { return this.dataset.testid === 'scene-model-notice' ? 12 : 0; });
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function (this: HTMLElement) { return this.dataset.testid === 'scene-model-notice' ? 46 : 0; });
     h.modelState = 'failed';
     await setup();
-    const notice = (await screen.findByText(t('spaces.threeD.modelFailed'))).closest('div') as HTMLElement;
-    expect(notice.className).toContain('max-w-[calc(100%_-_5rem_-_var(--space-5))]');
+    const notice = await screen.findByTestId('scene-model-notice');
     fireEvent.click(screen.getByTestId('scene-objects-trigger'));
     await screen.findByTestId('scene-right-panel');
-    expect(notice.className).toContain('max-w-[calc(100%_-_5rem_-_340px)]');
-    expect(notice.className).not.toContain('max-w-[calc(100%_-_5rem_-_var(--space-5))]');
+    expect(notice.className).toContain('max-w-[calc(100%_-_5rem_-_var(--space-5))]');
+    await waitFor(() => expect(screen.getByTestId('scene-right-panel-anchor').style.top).toBe('66px'));
   });
 
   it('is put away while the viewfinder is open and comes back when it closes', async () => {

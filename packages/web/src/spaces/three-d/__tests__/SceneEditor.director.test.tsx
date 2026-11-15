@@ -1244,6 +1244,26 @@ describe('continuous controls end on release and on Escape (round 1 fixes, desig
     await waitFor(() => expect(screen.queryByTestId('scene-right-panel')).toBeNull());
   });
 
+  it.each([
+    ['the ambient light', false],
+    ['a light', true],
+  ])('keeps a slider press on %s that starts while an arrow key is still down on its picker', async (_, light) => {
+    const { session } = await setup([lamp()], 'editor', true, { spaceKeyboard: true });
+    const opened = await openDirector();
+    if (light) act(() => session.select(LAMP, false));
+    const intensity = (): unknown => (light ? lampValue(session, 'intensity') : session.getSnapshot().environment.ambientIntensity);
+    const before = intensity();
+    fireEvent.click(light ? lightSwatch() : ambientSwatch(opened));
+    const hue = await screen.findByRole('slider', { name: 'Hue' });
+    hue.focus();
+    fireEvent.keyDown(hue, { key: 'ArrowRight', keyCode: 39 });
+    sliderPointers();
+    const fields = light ? screen.getByTestId(`scene-director-fields-${LAMP}`) : within(opened).getByTestId('scene-director-ambient');
+    const [thumb] = within(fields).getAllByRole('slider').filter((slider) => slider.getAttribute('aria-label') !== 'Hue');
+    drag(thumb as HTMLElement, [300, 320]);
+    await waitFor(() => expect(intensity()).not.toBe(before));
+  });
+
   it('starts an ambient press from the stored values whatever an earlier press left', async () => {
     const { session } = await setup();
     act(() => { session.execute({ type: 'environment', set: { ambientColor: '#ff0000', ambientIntensity: 2 } }); });
