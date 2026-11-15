@@ -137,6 +137,16 @@ describe('columns made in a cell (design §5.1)', () => {
     expect(storedWidths(editor)).toEqual([[371], [201]]);
   });
 
+  it('widen a cell drawn a fraction over uneven columns, whose whole pixels fall short', () => {
+    // Drawn at 370.4, stored at 370 whole pixels: 368.4 inside now, 368 once held,
+    // short of the 368.159 columns 1.3517 : 0.6483 need.
+    drawEverythingAt(370, 370.4);
+    const editor = open([tableBlock({ rows: [{ cells: ['a', 'z'] }] })]);
+    const uneven = columnsBlock({ blocks: [para('x')], width: 1.3517 }, { blocks: [para('y')], width: 0.6483 });
+    editor.replaceBlocks([idOf(editor, 'a')], [uneven] as never);
+    expect(storedWidths(editor)).toEqual([[371], [370]]);
+  });
+
   it('write down the drawn widths when the cell already holds them', () => {
     drawEverythingAt(300);
     const editor = open([tableBlock({ rows: [{ cells: [{ blocks: [para('a'), para('b')] }, 'z'] }] })]);
