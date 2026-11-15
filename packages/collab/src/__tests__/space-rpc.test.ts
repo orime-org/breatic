@@ -286,6 +286,44 @@ describe("handleSpaceRpc — happy paths write PG activity rows", () => {
     scene.destroy();
   });
 
+  it("creates, deletes and restores a Motion Space under its own content doc name, seeded empty", async () => {
+    const ctx = { hocuspocus: makeHocuspocus() };
+    const created = await handleSpaceRpc(ctx, PID, { userId: "u-1", role: "editor" }, {
+      id: "create-motion",
+      type: "space:create",
+      payload: { type: "web_animation", name: "Motion", claimToken: TOKEN },
+    });
+    expect(created.ok).toBe(true);
+    if (!created.ok || !created.result) throw new Error("Motion Space was not created");
+    const id = created.result.spaceId;
+    expect(created.result.type).toBe("web_animation");
+    const contentName = `project-${PID}/web_animation-${id}`;
+    const seeded = seedInitialStateMock.mock.calls.find((call) => call[0] === contentName);
+    expect(seeded).toBeDefined();
+    const content = new Y.Doc();
+    Y.applyUpdate(content, seeded![1] as Uint8Array);
+    expect(content.share.size).toBe(0);
+    content.destroy();
+
+    const entry = fakeMetaDoc.doc.getMap("spaces").get(id) as Y.Map<unknown>;
+    activityLatestUnrestoredMock.mockResolvedValue({
+      id: "deleted-motion",
+      payload: { spaceSnapshot: entry.toJSON(), spaceName: "Motion" },
+    });
+    const deleted = await handleSpaceRpc(ctx, PID, { userId: "u-1", role: "editor" }, {
+      id: "delete-motion", type: "space:delete", payload: { spaceId: id },
+    });
+    expect(deleted.ok).toBe(true);
+    expect(softDeleteByNameMock).toHaveBeenCalledWith(contentName);
+
+    const restored = await handleSpaceRpc(ctx, PID, { userId: "owner-1", role: "owner" }, {
+      id: "restore-motion", type: "space:restore", payload: { spaceId: id },
+    });
+    expect(restored.ok).toBe(true);
+    expect(restoreByNameMock.mock.calls).toEqual([[contentName]]);
+    expect((fakeMetaDoc.doc.getMap("spaces").get(id) as Y.Map<unknown>).get("type")).toBe("web_animation");
+  });
+
   it("space:create mints the id, writes meta.spaces + inserts a space:created activity row + broadcasts the signal", async () => {
     const res = await handleSpaceRpc(
       { hocuspocus: makeHocuspocus() },
