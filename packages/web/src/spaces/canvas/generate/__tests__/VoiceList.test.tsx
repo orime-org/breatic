@@ -26,6 +26,7 @@ import { expectChosenFill } from '@web/test-utils/selection-fill';
 import type { VoiceListState } from '@web/spaces/canvas/generate/voice-list-state';
 import { setLocale, type ModelEntry, type Voice } from '@breatic/shared';
 import { useCurrentUserStore } from '@web/stores/current-user';
+import { renderWithTooltips } from '@web/test-utils/render-with-tooltips';
 
 vi.mock('@web/i18n/use-translation', () => ({
   useTranslation: () => (key: string): string => key,
@@ -366,7 +367,7 @@ describe('the voice list samples (#1960 A2)', () => {
      */
     function openGemini(list: VoiceListState = state({ voices: [kore] })): void {
       const voice = { list, selectedId: null, selectedName: null, ...NOOPS };
-      render(<AudioSettingsPicker mode='tts' model={GEMINI} value={{}} onChange={() => {}} voice={voice as never} />);
+      renderWithTooltips(<AudioSettingsPicker mode='tts' model={GEMINI} value={{}} onChange={() => {}} voice={voice as never} />);
       fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
       fireEvent.click(screen.getByTestId('generate-audio-row-voice_id'));
     }
@@ -398,6 +399,15 @@ describe('the voice list samples (#1960 A2)', () => {
       cleanup();
       openGemini();
       expect(screen.getByTestId('generate-voice-language')).toHaveTextContent(new Intl.DisplayNames(['ja'], { type: 'language', languageDisplay: 'standard' }).of('zh')!);
+    });
+
+    it('names the held language in full in a tooltip on hover, painted by the app', async () => {
+      const user = userEvent.setup();
+      openGemini();
+      const trigger = screen.getByTestId('generate-voice-language');
+      expect(trigger).not.toHaveAttribute('title');
+      await user.hover(trigger);
+      expect(await screen.findByRole('tooltip')).toHaveTextContent(new Intl.DisplayNames(['ja'], { type: 'language', languageDisplay: 'standard' }).of('ja')!);
     });
 
     it('keeps the picker while the list loads and when nothing matched, so the search box never moves', () => {
