@@ -87,6 +87,23 @@ export async function insertPending(input: NewChargeRequest, tx: DbTx): Promise<
   return rows[0]?.id ?? null;
 }
 
+/** The columns a charge request is read with. */
+const REQUEST_COLUMNS = {
+  id: creditChargeRequests.id,
+  kind: creditChargeRequests.kind,
+  referenceId: creditChargeRequests.referenceId,
+  actorUserId: creditChargeRequests.actorUserId,
+  projectId: creditChargeRequests.projectId,
+  studioId: creditChargeRequests.studioId,
+  amount: creditChargeRequests.amount,
+  description: creditChargeRequests.description,
+  model: creditChargeRequests.model,
+  provider: creditChargeRequests.provider,
+  tokensUsed: creditChargeRequests.tokensUsed,
+  releaseHold: creditChargeRequests.releaseHold,
+  status: creditChargeRequests.status,
+};
+
 /**
  * Lock a request for its settlement. The lock names the primary key alone: a
  * condition on `status` would be re-checked once the lock is granted and skip
@@ -97,21 +114,7 @@ export async function insertPending(input: NewChargeRequest, tx: DbTx): Promise<
  */
 export async function lockById(id: string, tx: DbTx): Promise<ChargeRequest | null> {
   const rows = await tx
-    .select({
-      id: creditChargeRequests.id,
-      kind: creditChargeRequests.kind,
-      referenceId: creditChargeRequests.referenceId,
-      actorUserId: creditChargeRequests.actorUserId,
-      projectId: creditChargeRequests.projectId,
-      studioId: creditChargeRequests.studioId,
-      amount: creditChargeRequests.amount,
-      description: creditChargeRequests.description,
-      model: creditChargeRequests.model,
-      provider: creditChargeRequests.provider,
-      tokensUsed: creditChargeRequests.tokensUsed,
-      releaseHold: creditChargeRequests.releaseHold,
-      status: creditChargeRequests.status,
-    })
+    .select(REQUEST_COLUMNS)
     .from(creditChargeRequests)
     .where(eq(creditChargeRequests.id, id))
     .for("update");
@@ -125,21 +128,7 @@ export async function lockById(id: string, tx: DbTx): Promise<ChargeRequest | nu
  */
 export async function findById(id: string): Promise<ChargeRequest | null> {
   const rows = await db
-    .select({
-      id: creditChargeRequests.id,
-      kind: creditChargeRequests.kind,
-      referenceId: creditChargeRequests.referenceId,
-      actorUserId: creditChargeRequests.actorUserId,
-      projectId: creditChargeRequests.projectId,
-      studioId: creditChargeRequests.studioId,
-      amount: creditChargeRequests.amount,
-      description: creditChargeRequests.description,
-      model: creditChargeRequests.model,
-      provider: creditChargeRequests.provider,
-      tokensUsed: creditChargeRequests.tokensUsed,
-      releaseHold: creditChargeRequests.releaseHold,
-      status: creditChargeRequests.status,
-    })
+    .select(REQUEST_COLUMNS)
     .from(creditChargeRequests)
     .where(eq(creditChargeRequests.id, id))
     .limit(1);

@@ -1220,7 +1220,6 @@ export async function readStudioCredits(
   studioId: string,
   limit: number,
 ): Promise<StudioCreditsSnapshot> {
-  if (isGlobalRegion(env)) return readStudioCreditsHere(studioId, limit);
   const snapshot = await globalApi().readStudioCredits(studioId, limit);
   return { ...snapshot, lots: snapshot.lots.map(revivedLot), ledger: snapshot.ledger.map(revivedLedgerRow) };
 }
@@ -1237,7 +1236,6 @@ export async function listStudioLedger(
   limit: number,
   cursor: ActivityCursor,
 ): Promise<creditLotRepo.StudioLedgerRow[]> {
-  if (isGlobalRegion(env)) return creditLotRepo.listLedgerByStudio(studioId, limit, cursor);
   const rows = await globalApi().listStudioLedger(studioId, limit, cursor);
   return rows.map(revivedLedgerRow);
 }

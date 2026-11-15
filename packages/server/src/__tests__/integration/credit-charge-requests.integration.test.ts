@@ -27,6 +27,7 @@ vi.mock("ai", () => ({
 import { randomUUID } from "node:crypto";
 import postgres from "postgres";
 import { db, initCore, loadLocales } from "@breatic/core";
+import { sql as sql_ } from "drizzle-orm";
 import { creditHoldService, creditLotService, taskService } from "@breatic/domain";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
 import {
@@ -262,6 +263,25 @@ describe("credit_charge_requests schema", () => {
 });
 
 describe("requestCharge", () => {
+  // inner#1955: the request names its Studio, read inside the delivery's
+  // own transaction, so a Project written in it is seen.
+  it("reads the Project's Studio inside the delivery's transaction", async () => {
+    const fx = await studioWith(100);
+    const reference = ref("in-tx");
+    await expect(
+      db.transaction(async (tx) => {
+        const [project] = await tx.execute<{ id: string }>(sql_`
+          INSERT INTO projects (studio_id, created_by_user_id, name, slug)
+          VALUES (${fx.studioId}, ${fx.userId}, 'Unseen', ${`unseen-${randomUUID()}`}) RETURNING id
+        `);
+        await creditLotService.requestCharge(taskCharge(fx, reference, 10, { projectId: project!.id }), tx);
+        const [row] = await tx.execute<{ studio_id: string | null }>(sql_`SELECT studio_id FROM credit_charge_requests WHERE reference_id = ${reference}`);
+        expect(row!.studio_id).toBe(fx.studioId);
+        throw new Error("roll back the probe");
+      }),
+    ).rejects.toThrow("roll back the probe");
+  });
+
   it("leaves no row when its transaction rolls back", async () => {
     const fx = await studioWith(100);
     const reference = ref("rollback");
