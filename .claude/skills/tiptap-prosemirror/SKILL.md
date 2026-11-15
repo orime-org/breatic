@@ -101,6 +101,14 @@ y-prosemirror hands the pre-edit selection over on `stack-item-popped`, which yj
 
 **A remote caret that is a direct child of `.ProseMirror` is taken out of flow (`.ProseMirror > .collaboration-carets__caret { position: absolute }` in `index.css`).** At the very start of the document the caret widget sits before the first block, and an inline element there creates an anonymous line box that pushes everything down by an empty line. The child combinator leaves carets inside paragraphs alone.
 
+### A move between siblings is two transactions
+
+**A change that takes a block away from one place among its siblings and puts it in another goes out as two transactions, one that only inserts and one that only deletes (`spaces/document/document-column-drop.ts`).** y-prosemirror's `updateYFragment` pairs a changed list of children by identity from both ends only and rewrites the middle in place by position, so one transaction that both inserts and deletes rewrites every sibling between the two places and drops the words a collaborator is typing in them. The undo manager's capture timeout merges the two into one undo step.
+
+### BlockNote keeps a collaborator's ids
+
+**`patches/@blocknote__core@0.56.0.patch` makes BlockNote's `UniqueID` leave the ids in a collaborator's change alone (y-sync meta with `isChangeOrigin` true and not an undo or redo), as Tiptap's own `UniqueID` does; local edits, undo, redo and redraws from Yjs still renew a repeated id.** Unpatched, a move that briefly holds a block twice gives the copy a new id on every receiving editor and not on the sender, and the ids drift apart. Test it with two real `Y.Doc`s (`spaces/document/__tests__/document-column-collab.test.ts`).
+
 ## Drag and drop
 
 ### Draggable atoms need a drag handle
