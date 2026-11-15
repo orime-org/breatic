@@ -128,6 +128,13 @@ beforeAll(async () => {
   // A VFR clip with B-frames written as fragmented MP4, which has no edit list: ffprobe's durations are the decode-order deltas.
   await make('frag-vfr.mp4', ['-f', 'lavfi', '-i', "testsrc2=s=160x96:r=30:d=2,settb=1/90000,setpts='N*3000+if(mod(N\\,3)\\,600\\,0)'", '-fps_mode', 'passthrough',
     '-enc_time_base', '1/90000', '-c:v', 'libx264', '-bf', '2', '-pix_fmt', 'yuv420p', '-video_track_timescale', '90000', '-movflags', 'frag_keyframe+empty_moov']);
+  // x264's default B-frames in Matroska, as an OBS recording: Matroska stores no dts, so the first packets have none.
+  await make('bframes.mkv', ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=30000/1001:d=2', '-c:v', 'libx264', '-g', '30', '-pix_fmt', 'yuv420p']);
+  // A VFR clip with B-frames and dropped frames 10 to 14, copied into Matroska: each block keeps the MP4 sample's decode-order
+  // duration, so the frame at 600 ms declares 200 ms while the next one starts at 633 ms.
+  await make('vfr-bframes.mp4', ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=30:d=2', '-vf', "select='not(between(n\\,10\\,14))'", '-fps_mode', 'passthrough',
+    '-c:v', 'libx264', '-bf', '2', '-pix_fmt', 'yuv420p']);
+  await make('vfr-bframes.mkv', ['-i', join(dir, 'vfr-bframes.mp4'), '-c', 'copy']);
   // The picture 0.3 s after the audio: an empty edit before media 0 on the video track, AAC from 0.
   await make('late-video.mp4', ['-itsoffset', '0.3', '-i', join(dir, 'edit-base.mp4'), '-f', 'lavfi', '-i', 'sine=f=440:sample_rate=48000:d=2.5',
     '-map', '0:v', '-map', '1:a', '-c:v', 'copy', '-c:a', 'aac', '-use_editlist', '1']);
@@ -396,6 +403,23 @@ describe('timeline rules applied by the probe (design §4.2.1 开头行)', () =>
     const { plan } = planned(await probed(name));
     expect(plan.originMapping.entries.every((entry) => entry.kind === 'source')).toBe(true);
     expect(presentationFrameCount(plan.presentation as never)).toBe(count);
+  });
+
+  it('PT05 a B-frame H.264 Matroska file plans: each keyframe decodes from its block time, and nothing is shifted', async () => {
+    const { plan, encoding } = planned(await probed('bframes.mkv')) as unknown as { plan: { presentation: unknown }; encoding: { sourceKeyframes: { pts: Rational; dts: Rational }[]; firstPacketDts: Rational } };
+    expect(presentationFrameCount(plan.presentation as never)).toBe(60);
+    expect(encoding.sourceKeyframes.length).toBeGreaterThan(1);
+    encoding.sourceKeyframes.forEach((keyframe) => expect(keyframe.dts).toEqual(keyframe.pts));
+    expect(Number(encoding.firstPacketDts.numerator)).toBe(0);
+  });
+
+  it('PT06 a Matroska frame declared past the next frame ends where the next one starts', async () => {
+    const { plan } = planned(await probed('vfr-bframes.mkv'));
+    const table = plan.presentation as { timescale: number; runs: { start: number; count: number; step: number; duration: number }[] };
+    const frames = table.runs.flatMap((run) => Array.from({ length: run.count }, (_unused, k) => ({ start: run.start + k * run.step, end: run.start + k * run.step + run.duration })));
+    const at600 = frames.find((frame) => frame.start * 1000 === 600 * table.timescale)!;
+    expect(at600.end * 1000).toBe(633 * table.timescale);
+    frames.slice(1).forEach((frame, k) => expect(frame.start).toBeGreaterThanOrEqual(frames[k]!.end));
   });
 
   it('PT02 the picture 0.3 s after the audio: origin 0, the first frame held from 0 as derived-lead, and the edit kept at 3/10', async () => {

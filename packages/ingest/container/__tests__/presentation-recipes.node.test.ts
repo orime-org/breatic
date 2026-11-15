@@ -230,6 +230,9 @@ function expectBt709(stream: Stream): void {
 beforeAll(async () => {
   dir = await mkdtemp(join(tmpdir(), 'presentation-recipes-'));
   const tagged = ['-x264-params', 'colorprim=bt709:transfer=bt709:colormatrix=bt709'];
+  // 50 greys (16 + 3n) at 25 fps with B-frames and a keyframe every 25 frames in Matroska, which stores no dts.
+  await make('greys-bframes.mkv', ['-f', 'lavfi', '-i', "color=c=black:s=320x180:r=25:d=2,format=yuv420p,geq=lum='16+3*N':cb=128:cr=128", '-c:v', 'libx264', '-qp', '0',
+    '-g', '25', '-bf', '3', '-pix_fmt', 'yuv420p', ...tagged]);
   // 2 s at 25 fps, keyframe every 10 frames, BT.709-tagged, with a 44.1 kHz tone so the stitch's audio is resampled to 48 kHz (§4.2).
   await make('cfr.mp4', ['-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=25:d=2', '-f', 'lavfi', '-i', 'sine=f=1000:r=44100:d=2',
     '-c:v', 'libx264', '-g', '10', '-bf', '0', '-pix_fmt', 'yuv420p', ...tagged, '-video_track_timescale', '25', '-c:a', 'aac', '-shortest']);
@@ -389,6 +392,13 @@ describe('chunk_encode (§5.4 切块、块的时间; §7.17)', () => {
     const [source, encoded] = [await lumaMeans(join(dir, 'greys.mp4')), await lumaMeans(file!)];
     expect(encoded).toHaveLength(6);
     [0, 1, 6, 7, 8, 9].forEach((frame, n) => expect(Math.abs(encoded[n]! - source[frame]!)).toBeLessThan(5));
+  });
+
+  it('CE16 a Matroska span decoding from its keyframe\'s block time starts on that keyframe\'s frame', async () => {
+    // Frame 25 is the second keyframe, at 1 s: the probe gives its block time as its decode position.
+    const recipe = { ...chunk({ start: 25, end: 30 }, [span(r(1), r(1), r(1), r(6, 5))]), timescale: 25 };
+    const [file] = await produce({ [SOURCE]: join(dir, 'greys-bframes.mkv') }, [recipe]);
+    expect((await lumaMeans(file!)).map((mean) => Math.round((mean - 16) / 3))).toEqual([25, 26, 27, 28, 29]);
   });
 
   // A picture that starts 0.3 s late holds its first frame from 0 as derived-lead (§7.17 timeline row): the worker gives that

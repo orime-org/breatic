@@ -177,7 +177,9 @@ function framesOf(packets: readonly PhysicalVideoPacket[], base: [bigint, bigint
     const next = index + 1 < sorted.length ? BigInt(sorted[index + 1]!.ptsTicks) : null;
     if (packet.durationTicks === null) return { sourcePtsTicks: packet.ptsTicks, start: at(pts, base), declaredEnd: iso && next !== null ? at(next, base) : null };
     const end = pts + BigInt(packet.durationTicks);
-    const rounding = next !== null && (iso || (end > next ? end - next : next - end) <= 1n);
+    // A middle frame shows until the next frame starts: always on ISO, whose durations are decode-order deltas; on Matroska
+    // when its declared end runs past the next start or falls short of it by one tick (rounding), a larger gap stays a gap.
+    const rounding = next !== null && (iso || end >= next - 1n);
     return { sourcePtsTicks: packet.ptsTicks, start: at(pts, base), declaredEnd: at(rounding ? next : end, base) };
   });
 }
@@ -251,14 +253,23 @@ function keyframeOrdinals(plan: ReturnType<typeof assembleVideoPresentationPlan>
 }
 
 /**
- * Every source keyframe's pts and dts in pts order and the first packet's dts, on the media timeline (§3.2 item 7).
+ * Every source keyframe's pts and decode position in pts order and the first packet's, on the media timeline (§3.2 item 7):
+ * an ISO packet's dts; a Matroska block's time, which is its pts (Matroska stores no dts and seeks by block time).
  * @param packets - The selected stream's packets in decode order.
  * @param base - Their time base.
+ * @param iso - Whether the container is ISO BMFF.
  * @returns The keyframes and the first packet dts.
- * @throws {ProbeFailure} When a keyframe or the first packet has no dts.
+ * @throws {ProbeFailure} When an ISO keyframe or first packet has no dts.
  */
-function sourceKeyframesOf(packets: readonly PhysicalVideoPacket[], base: [bigint, bigint]): Pick<PresentationEncodeFacts, 'sourceKeyframes' | 'firstPacketDts'> {
+function sourceKeyframesOf(packets: readonly PhysicalVideoPacket[], base: [bigint, bigint], iso: boolean): Pick<PresentationEncodeFacts, 'sourceKeyframes' | 'firstPacketDts'> {
+  /**
+   * A packet's decode position.
+   * @param packet - The packet.
+   * @returns The time.
+   * @throws {ProbeFailure} When an ISO packet has no dts.
+   */
   const dtsOf = (packet: PhysicalVideoPacket): PresentationRational => {
+    if (!iso) return at(BigInt(packet.ptsTicks), base);
     if (packet.dtsTicks === undefined) throw new ProbeFailure('clock_unknown');
     return at(BigInt(packet.dtsTicks), base);
   };
@@ -378,7 +389,7 @@ async function plan(body: PresentationProbeRequest, input: string, directory: st
   const encodedFrames = assembled.originMapping.entries.reduce((total, entry) => total + (entry.kind === 'source' ? entry.count : 1), 0);
   return {
     kind: 'planned', toolInputId, planSha256, plan: assembled,
-    encoding: { keyframeOrdinals: keyframeOrdinals(assembled, packets), codedWidth: Number(video.width), codedHeight: Number(video.height), ...sourceKeyframesOf(packets, base) },
+    encoding: { keyframeOrdinals: keyframeOrdinals(assembled, packets), codedWidth: Number(video.width), codedHeight: Number(video.height), ...sourceKeyframesOf(packets, base, iso) },
     routeInput: {
       plan: { planSha256, producerVersion: PRODUCER_VERSION, profileVersion: PROFILE_VERSION }, hdr, alpha,
       identityQualified: identityQualified({ container: containerOf(format), video, pixFmt, bitDepth: depth.bitDepth, matrixTagged, audioCodec }, body.probe.identityFormats),
