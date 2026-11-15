@@ -177,10 +177,9 @@ function framesOf(packets: readonly PhysicalVideoPacket[], base: [bigint, bigint
     const next = index + 1 < sorted.length ? BigInt(sorted[index + 1]!.ptsTicks) : null;
     if (packet.durationTicks === null) return { sourcePtsTicks: packet.ptsTicks, start: at(pts, base), declaredEnd: iso && next !== null ? at(next, base) : null };
     const end = pts + BigInt(packet.durationTicks);
-    // A middle frame shows until the next frame starts: always on ISO, whose durations are decode-order deltas; on Matroska
-    // when its declared end runs past the next start or falls short of it by one tick (rounding), a larger gap stays a gap.
-    const rounding = next !== null && (iso || end >= next - 1n);
-    return { sourcePtsTicks: packet.ptsTicks, start: at(pts, base), declaredEnd: at(rounding ? next : end, base) };
+    // A middle frame shows until the next frame starts (design §3.1 full ledger row): ISO durations are decode-order deltas, and
+    // a Matroska BlockDuration is often the source sample's decode-order delta too, so players take the next block's time.
+    return { sourcePtsTicks: packet.ptsTicks, start: at(pts, base), declaredEnd: at(next ?? end, base) };
   });
 }
 

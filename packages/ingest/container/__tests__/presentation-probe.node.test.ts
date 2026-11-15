@@ -135,6 +135,9 @@ beforeAll(async () => {
   await make('vfr-bframes.mp4', ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=30:d=2', '-vf', "select='not(between(n\\,10\\,14))'", '-fps_mode', 'passthrough',
     '-c:v', 'libx264', '-bf', '2', '-pix_fmt', 'yuv420p']);
   await make('vfr-bframes.mkv', ['-i', join(dir, 'vfr-bframes.mp4'), '-c', 'copy']);
+  // The same clip transcoded to VP9 WebM with FFmpeg defaults: the frame before the drop declares 33 ms though the next block
+  // starts 200 ms later, and the frame after it declares 200 ms though the next block starts 33 ms later.
+  await make('vfr-bframes.webm', ['-i', join(dir, 'vfr-bframes.mp4'), '-c:v', 'libvpx-vp9', '-deadline', 'realtime', '-cpu-used', '8']);
   // The picture 0.3 s after the audio: an empty edit before media 0 on the video track, AAC from 0.
   await make('late-video.mp4', ['-itsoffset', '0.3', '-i', join(dir, 'edit-base.mp4'), '-f', 'lavfi', '-i', 'sine=f=440:sample_rate=48000:d=2.5',
     '-map', '0:v', '-map', '1:a', '-c:v', 'copy', '-c:a', 'aac', '-use_editlist', '1']);
@@ -420,6 +423,15 @@ describe('timeline rules applied by the probe (design §4.2.1 开头行)', () =>
     const at600 = frames.find((frame) => frame.start * 1000 === 600 * table.timescale)!;
     expect(at600.end * 1000).toBe(633 * table.timescale);
     frames.slice(1).forEach((frame, k) => expect(frame.start).toBeGreaterThanOrEqual(frames[k]!.end));
+  });
+
+  it('PT07 a Matroska middle frame shows until the next block starts, as players hold it: a dropped stretch holds the frame before it', async () => {
+    const { plan } = planned(await probed('vfr-bframes.webm'));
+    expect(plan.originMapping.entries.every((entry) => entry.kind === 'source')).toBe(true);
+    const table = plan.presentation as { timescale: number; runs: { start: number; count: number; step: number; duration: number }[] };
+    const frames = table.runs.flatMap((run) => Array.from({ length: run.count }, (_unused, k) => ({ start: run.start + k * run.step, end: run.start + k * run.step + run.duration })));
+    const at300 = frames.find((frame) => frame.start * 1000 === 300 * table.timescale)!;
+    expect(at300.end * 1000).toBe(500 * table.timescale);
   });
 
   it('PT02 the picture 0.3 s after the audio: origin 0, the first frame held from 0 as derived-lead, and the edit kept at 3/10', async () => {
