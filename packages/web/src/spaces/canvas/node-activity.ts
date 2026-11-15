@@ -11,7 +11,7 @@
  * the marks store stays the one place that decides it.
  */
 
-import { readUserId } from '@web/spaces/canvas/awareness-user';
+import { readUserId } from '@web/data/yjs/awareness-user';
 import type { UploadMark, UploadMarkAction } from '@web/stores/upload-marks';
 
 /** One node this client is working on, as it goes on the wire. */

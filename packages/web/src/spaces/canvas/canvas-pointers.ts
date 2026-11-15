@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import { readUserId } from '@web/spaces/canvas/awareness-user';
+import { readUserId } from '@web/data/yjs/awareness-user';
 
 /** One collaborator's pointer, in canvas coordinates. */
 export interface RemotePointer {

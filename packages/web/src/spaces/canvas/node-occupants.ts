@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { sameIdList } from '@web/spaces/canvas/active-node-ids';
-import { readUserId } from '@web/spaces/canvas/awareness-user';
+import { readUserId } from '@web/data/yjs/awareness-user';
 
 /**
  * Compare two occupant tables by value.

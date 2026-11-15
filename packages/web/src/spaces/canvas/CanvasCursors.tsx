@@ -8,7 +8,7 @@ import * as React from 'react';
 import { useNamed } from '@web/features/collab-editor/collaborator-names-context';
 import { userPaletteColor } from '@web/lib/user-color';
 import { collectPointers, samePointers, type RemotePointer } from '@web/spaces/canvas/canvas-pointers';
-import { useAwarenessSlice } from '@web/spaces/canvas/use-awareness-slice';
+import { useAwarenessSlice } from '@web/data/yjs/use-awareness-slice';
 import { overlayCounterScale } from '@web/spaces/canvas/overlay-scale';
 import { VIEWPORT_TOP_Z } from '@web/spaces/canvas/viewport-layers';
 
