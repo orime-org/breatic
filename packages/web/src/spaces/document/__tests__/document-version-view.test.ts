@@ -212,6 +212,23 @@ describe('folding unchanged stretches', () => {
   });
 });
 
+describe('leaving a comparison', () => {
+  it.each([
+    ['a heading', { type: 'heading', content: 'x' }],
+    ['a formula block', { type: 'mathBlock', props: { source: 'x^2' } }],
+  ])('shows the current content again after a line turned into %s under its own id', async (_name, changed) => {
+    keep('v1', paragraphs(['alpha', 'x']));
+    const { preview, versioning } = open([...paragraphs(['alpha']), { id: 'block-1', ...changed }]);
+    await versioning.open();
+    await versioning.select({ type: 'current' }, { compareTo: 'v1' });
+
+    await versioning.select({ type: 'current' });
+
+    expect(changes(preview)).toEqual([]);
+    expect((preview.document as unknown as { type: string }[]).map((block) => block.type)).toEqual(['paragraph', changed.type]);
+  });
+});
+
 describe('a body holding what this build cannot read', () => {
   /**
    * A live body holding a stand-in block and words under an unknown mark, and its preview, opened.
