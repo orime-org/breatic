@@ -97,10 +97,20 @@ export const CameraCommandPicker = React.memo(function CameraCommandPicker({
     event.preventDefault();
     (event.currentTarget as HTMLElement).focus();
   }, []);
+  // An insert hands the caret to the prompt, whose editor focuses a frame later; the popover's close hands focus
+  // back to its pill on a timer, and whichever runs last wins (#1474). A close that inserted keeps it in the prompt;
+  // any other close gives it back to the pill.
+  const inserted = React.useRef(false);
   const insert = React.useCallback(() => {
+    inserted.current = true;
     onInsert(cameraCommandBracket(picked));
     onOpenChange(false);
   }, [onInsert, onOpenChange, picked]);
+  const keepInsertFocus = React.useCallback((event: Event) => {
+    if (!inserted.current) return;
+    inserted.current = false;
+    event.preventDefault();
+  }, []);
 
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
@@ -123,6 +133,7 @@ export const CameraCommandPicker = React.memo(function CameraCommandPicker({
         // edge rather than flipping while following.
         avoidCollisions={false}
         onOpenAutoFocus={focusPopover}
+        onCloseAutoFocus={keepInsertFocus}
         aria-label={t('canvas.generatePanel.cameraCommands')}
         // As wide as its widest row, so every label and option fits in every locale.
         className='w-max p-3 shadow-md'
