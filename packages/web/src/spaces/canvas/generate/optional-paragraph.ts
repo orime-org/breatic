@@ -15,7 +15,7 @@
 
 import { Extension } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
-import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { Plugin, PluginKey, type Transaction } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
 import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
@@ -65,33 +65,38 @@ export function blockMentions(block: PMNode): ParagraphMention[] {
   return mentions;
 }
 
-/** The plugin that greys a held-back paragraph. */
-const OPTIONAL_PARAGRAPHS = new PluginKey('optionalParagraphs');
+/** The plugin that greys a held-back paragraph; its state is the pool the box last committed. */
+const OPTIONAL_PARAGRAPHS = new PluginKey<ReadonlyArray<ReferenceRailItem>>('optionalParagraphs');
 
-/** Options for {@link OptionalParagraphs}. */
-export interface OptionalParagraphsOptions {
-  /** Reads the current reference pool. */
-  getPool: () => ReadonlyArray<ReferenceRailItem>;
+/**
+ * The transaction handing the box the pool it now reads from, which redraws
+ * the held-back paragraphs. Sent once the pool is committed: a pool read
+ * while rendering may belong to a render that is never committed.
+ * @param tr - A transaction of the box.
+ * @param pool - The node's reference rows.
+ * @returns The transaction, carrying the pool.
+ */
+export function withPool(tr: Transaction, pool: ReadonlyArray<ReferenceRailItem>): Transaction {
+  return tr.setMeta(OPTIONAL_PARAGRAPHS, pool);
 }
 
 /**
  * Greys each paragraph the prompt leaves out, naming in {@link HELD_BACK_ATTR}
- * the inputs it waits for. The pool is read on every view update: a box whose
- * pool changed with no edit dispatches a machine edit to be redrawn.
+ * the inputs it waits for, against the pool {@link withPool} last handed it.
  */
-export const OptionalParagraphs = Extension.create<OptionalParagraphsOptions>({
+export const OptionalParagraphs = Extension.create({
   name: 'optionalParagraphs',
-  addOptions() {
-    return { getPool: () => [] };
-  },
   addProseMirrorPlugins() {
-    const { getPool } = this.options;
     return [
-      new Plugin({
+      new Plugin<ReadonlyArray<ReferenceRailItem>>({
         key: OPTIONAL_PARAGRAPHS,
+        state: {
+          init: () => [],
+          apply: (tr, pool) => (tr.getMeta(OPTIONAL_PARAGRAPHS) as ReadonlyArray<ReferenceRailItem> | undefined) ?? pool,
+        },
         props: {
           decorations: (state) => {
-            const pool = getPool();
+            const pool = OPTIONAL_PARAGRAPHS.getState(state) ?? [];
             const decorations: Decoration[] = [];
             state.doc.forEach((block, offset) => {
               const held = heldBackBy(blockMentions(block), pool);
