@@ -20,6 +20,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { WEB_ANIMATION_BRIDGE_SCRIPT } from "@shared/timeline/web-animation-bridge.js";
+
+import type { WebAnimationRunBody } from "../../src/jobs/web-animation-run-body.js";
+import { packWebAnimationSource } from "../web-animation-package.js";
 import { CHROMIUM_ARGS, runWebAnimation, type WebAnimationRunnerSettings } from "../web-animation-run.js";
 
 /** How long the run may take to report before the test calls it hung; well past anything the run does on its own. */
@@ -32,12 +36,19 @@ let dir: string;
 let cdpServer: Server | undefined;
 const cdpSockets = new Set<Socket>();
 const posts: { url: string; body: unknown }[] = [];
+/** What the stand-in Worker answers to a GET of a URL; any other GET is a 404. */
+const served = new Map<string, string>();
 
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), "web-animation-run-test-"));
   posts.length = 0;
+  served.clear();
   vi.spyOn(console, "error").mockImplementation(() => {});
   vi.stubGlobal("fetch", async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    if ((init?.method ?? "GET") === "GET") {
+      const text = served.get(String(input));
+      return text === undefined ? new Response("not found", { status: 404 }) : new Response(text, { status: 200 });
+    }
     const body = typeof init?.body === "string" && init.method === "POST" ? (JSON.parse(init.body) as unknown) : null;
     posts.push({ url: String(input), body });
     return new Response(null, { status: 200 });
@@ -156,9 +167,9 @@ async function serveFakeCdp(mode: Mode): Promise<string> {
  * @param endpoint - The DevTools endpoint the browser prints.
  * @returns The settings.
  */
-async function image(endpoint: string): Promise<WebAnimationRunnerSettings> {
+async function image(endpoint: string, dshScript = "#!/bin/sh\nexit 0\n"): Promise<WebAnimationRunnerSettings> {
   const dshBin = join(dir, "dsh");
-  await writeFile(dshBin, "#!/bin/sh\nexit 0\n");
+  await writeFile(dshBin, dshScript);
   const chromiumBin = join(dir, "chromium");
   await writeFile(chromiumBin, `#!/bin/sh\necho $$ > "${join(dir, "chromium.pid")}"\necho "DevTools listening on ${endpoint}" >&2\nexec sleep 3600\n`);
   await chmod(dshBin, 0o755);
@@ -176,9 +187,10 @@ async function image(endpoint: string): Promise<WebAnimationRunnerSettings> {
 /**
  * Run once and wait for it to report, failing the test when it does not report in time.
  * @param settings - The image.
+ * @param overrides - Run fields a case varies.
  * @returns What it reported.
  */
-async function runAndReport(settings: WebAnimationRunnerSettings): Promise<unknown> {
+async function runAndReport(settings: WebAnimationRunnerSettings, overrides: Partial<WebAnimationRunBody> = {}): Promise<unknown> {
   const run = runWebAnimation({
     prompt: "A red square slides in",
     viewport: { width: 640, height: 360 },
@@ -190,6 +202,7 @@ async function runAndReport(settings: WebAnimationRunnerSettings): Promise<unkno
     manifestUrl: "http://r2.local/manifest.json",
     progressUrl: "http://jobs.local/progress",
     reportUrl: "http://jobs.local/report",
+    ...overrides,
   }, settings);
   let timer: ReturnType<typeof setTimeout> | undefined;
   const hung = new Promise<never>((_, reject) => {
@@ -220,5 +233,69 @@ describe("Chromium going away during the package check", () => {
 describe("CHROMIUM_ARGS", () => {
   it("launches headless without the sandbox and keeps shared memory off the container's small /dev/shm", () => {
     expect(CHROMIUM_ARGS).toEqual(expect.arrayContaining(["--headless=new", "--no-sandbox", "--disable-dev-shm-usage"]));
+  });
+});
+
+describe("a modification", () => {
+  const BASE = "<!doctype html>\n<html>\n<head><title>base</title></head>\n<body>\n<div id=\"main\" data-composition-id=\"main\" data-start=\"0\" data-duration=\"4\" data-width=\"1920\" data-height=\"1080\"><p>Logo</p></div>\n</body>\n</html>\n";
+  const BASE_URL = "http://r2.local/web-animation/p/base/index.html";
+
+  /**
+   * A harness that keeps what it found in its workspace.
+   * @returns Its script.
+   */
+  function capturingDsh(): string {
+    return `#!/bin/sh\ncp index.html "${join(dir, "seen-index.html")}"\ncp AGENTS.md "${join(dir, "seen-agents.md")}"\nexit 0\n`;
+  }
+
+  /**
+   * Serve the base package as the creation run packed it.
+   */
+  function serveBase(): void {
+    served.set(BASE_URL, packWebAnimationSource({ composition: BASE, runtime: "", bridge: WEB_ANIMATION_BRIDGE_SCRIPT, fontStylesheet: "" }));
+  }
+
+  it("starts the harness from the base's own composition, told to change it", { timeout: REPORT_WITHIN_MS + 5_000 }, async () => {
+    serveBase();
+    const settings = await image(await serveFakeCdp("socket_closes"), capturingDsh());
+    await runAndReport(settings, {
+      prompt: "Make it slower",
+      viewport: { width: 1920, height: 1080 },
+      durationFrames: 96,
+      base: { packageUrl: BASE_URL, viewport: { width: 1920, height: 1080 }, durationFrames: 96 },
+    });
+    expect(await readFile(join(dir, "seen-index.html"), "utf8")).toBe(BASE);
+    const agents = await readFile(join(dir, "seen-agents.md"), "utf8");
+    expect(agents).toMatch(/existing composition/i);
+    expect(agents).not.toMatch(/re-?lay ?out/i);
+  });
+
+  it("asks for a re-layout when the frame or the length changes", { timeout: REPORT_WITHIN_MS + 5_000 }, async () => {
+    serveBase();
+    const settings = await image(await serveFakeCdp("socket_closes"), capturingDsh());
+    await runAndReport(settings, {
+      prompt: "Make it vertical",
+      viewport: { width: 1080, height: 1920 },
+      durationFrames: 144,
+      base: { packageUrl: BASE_URL, viewport: { width: 1920, height: 1080 }, durationFrames: 96 },
+    });
+    const agents = await readFile(join(dir, "seen-agents.md"), "utf8");
+    expect(agents).toMatch(/re-?lay ?out/i);
+    expect(agents).toContain('data-width="1080"');
+    expect(agents).toContain('data-height="1920"');
+  });
+
+  it("fails the run as base_unavailable when the base package cannot be read, without running the harness", { timeout: REPORT_WITHIN_MS + 5_000 }, async () => {
+    const settings = await image(await serveFakeCdp("socket_closes"), capturingDsh());
+    expect(await runAndReport(settings, {
+      base: { packageUrl: BASE_URL, viewport: { width: 1920, height: 1080 }, durationFrames: 96 },
+    })).toEqual({ ok: false, failureReason: "base_unavailable", cpuUsec: expect.toSatisfy((v: unknown) => v === null || typeof v === "number") });
+    await expect(readFile(join(dir, "seen-index.html"), "utf8")).rejects.toThrow();
+  });
+
+  it("tells a create nothing about an existing composition", { timeout: REPORT_WITHIN_MS + 5_000 }, async () => {
+    const settings = await image(await serveFakeCdp("socket_closes"), capturingDsh());
+    await runAndReport(settings);
+    expect(await readFile(join(dir, "seen-agents.md"), "utf8")).not.toMatch(/existing composition/i);
   });
 });
