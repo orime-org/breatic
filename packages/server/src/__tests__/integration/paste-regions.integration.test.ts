@@ -81,7 +81,7 @@ function imageKey(): string {
  * A user with a personal Studio, a Project in it and a session.
  * @returns Their ids and session cookie.
  */
-async function seedEditor(): Promise<{ studioId: string; projectId: string; cookie: string }> {
+async function seedEditor(): Promise<{ userId: string; studioId: string; projectId: string; cookie: string }> {
   const [user] = await sql<{ id: string }[]>`
     INSERT INTO users (email, email_verified) VALUES (${`paste-regions-${Date.now()}-${seq++}@example.test`}, true) RETURNING id
   `;
@@ -98,7 +98,7 @@ async function seedEditor(): Promise<{ studioId: string; projectId: string; cook
   const token = crypto.randomBytes(24).toString("hex");
   await setSession(getRedis(), token, user!.id);
   await mirrorAllInDirectory(sql);
-  return { studioId: studio!.id, projectId: project!.id, cookie: `${sessionCookieName()}=${token}` };
+  return { userId: user!.id, studioId: studio!.id, projectId: project!.id, cookie: `${sessionCookieName()}=${token}` };
 }
 
 /**
@@ -134,6 +134,21 @@ describe("pasting an asset another region registered", () => {
     `;
     expect(rows).toEqual([{ storage_key: key, content_hash: hash, source: "upload" }]);
     expect(sg.received.map((call) => call.fn)).toContain("findAssetByKey");
+  });
+
+  it("asks no other region about an address this region already holds", async () => {
+    const target = await seedEditor();
+    const key = imageKey();
+    const url = publicUrl(key);
+    await sql`
+      INSERT INTO studio_assets (studio_id, content_hash, storage_key, file_url, size_bytes, mime_type, kind, source, produced_by_user_id, width, height)
+      VALUES (${target.studioId}, ${crypto.randomBytes(32).toString("hex")}, ${key}, ${url}, 4096, 'image/png', 'image', 'upload', ${target.userId}, 640, 480)
+    `;
+
+    const res = await paste(target.cookie, target.projectId, [url]);
+
+    expect(res.status).toBe(200);
+    expect(sg.received).toEqual([]);
   });
 
   it("leaves out an address no region knows", async () => {

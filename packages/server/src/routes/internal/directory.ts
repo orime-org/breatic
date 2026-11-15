@@ -8,7 +8,7 @@
 
 import type { Hono } from "hono";
 import { z } from "zod";
-import { env, GlobalApiError, isGlobalRegion, isRegionUnavailable, logger } from "@breatic/core";
+import { env, isGlobalRegion, isRegionUnavailable, logger } from "@breatic/core";
 import { validate } from "@server/middleware/validate.js";
 import { repairStudioDirectory } from "@server/modules/region/directory-repair.js";
 
@@ -26,7 +26,7 @@ export function registerDirectoryRoutes(app: Hono): void {
       const outcome = await repairStudioDirectory(studioId);
       return outcome === "not_found" ? c.json({ code: "not_found" }, 404) : c.json({ status: "emitted" }, 200);
     } catch (err) {
-      if (!(err instanceof GlobalApiError) || !isRegionUnavailable(err)) throw err;
+      if (!isRegionUnavailable(err)) throw err;
       logger.error({ err, ctx: { studioId } }, "directory_repair_region_unavailable");
       return c.json({ code: "region_unavailable" }, 503);
     }

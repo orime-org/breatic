@@ -27,7 +27,7 @@ export async function findElsewhereByKey(lookup: KeyLookup, storageKey: string):
     try {
       return await globalApi()[lookup](storageKey);
     } catch (err) {
-      logger.warn({ err, lookup, region: env.GLOBAL_REGION }, "asset_lookup_elsewhere_failed");
+      logger.error({ err, ctx: { lookup, region: env.GLOBAL_REGION, storageKey } }, "asset_lookup_elsewhere_failed");
       return null;
     }
   }
@@ -36,7 +36,7 @@ export async function findElsewhereByKey(lookup: KeyLookup, storageKey: string):
       const row = (await callRegion(region, lookup, [storageKey], getRegionsConfig().cross_region_fanout_timeout_ms)) as StudioAssetEntity | null;
       if (row !== null) return row;
     } catch (err) {
-      logger.warn({ err, lookup, region }, "asset_lookup_elsewhere_failed");
+      logger.error({ err, ctx: { lookup, region, storageKey } }, "asset_lookup_elsewhere_failed");
     }
   }
   return null;

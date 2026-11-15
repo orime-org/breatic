@@ -75,7 +75,13 @@ export async function pasteAssets(input: PasteInput): Promise<CanvasPasteAnswer>
   const paired = new Set(pairs.flatMap((pair) => [pair.url, pair.cover]));
   for (const address of new Set(input.urls)) {
     const key = paired.has(address) ? null : storage.keyFromUrl(address);
-    const cover = key === null ? null : ((await assetRepo.findCoverUnderKey(key)) ?? (await findElsewhereByKey("findCoverUnderKey", key)));
+    // A cover lives in its video's region: another region is asked only for
+    // an address this region's ledger does not hold.
+    const cover =
+      key === null
+        ? null
+        : ((await assetRepo.findCoverUnderKey(key)) ??
+          ((await assetRepo.findLiveByStorageKey(key)) === null ? await findElsewhereByKey("findCoverUnderKey", key) : null));
     if (cover !== null) pairs.push({ url: address, cover: cover.fileUrl });
   }
   for (const pair of pairs) {
