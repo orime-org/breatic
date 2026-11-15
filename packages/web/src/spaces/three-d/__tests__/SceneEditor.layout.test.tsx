@@ -95,9 +95,11 @@ describe('approved scene layout (inner#1724)', () => {
       expect(objectCell.className).toContain('col-start-3');
       expect(controlsCell.className).toContain('row-start-2');
       expect(screen.getByTestId('scene-map-holder').style.bottom).toBe('111px');
+      expect(screen.getByTestId('scene-right-panel-anchor').style.bottom).toBe('calc(253px + var(--space-5))');
     } else {
       expect(objectCell.className).toContain('col-start-2');
       expect(screen.getByTestId('scene-map-holder').style.bottom).toBe('61px');
+      expect(screen.getByTestId('scene-right-panel-anchor').style.bottom).toBe('calc(203px + var(--space-5))');
     }
   });
   it('keeps the object toolbar and the bottom-right controls the same distance above the stage edge', async () => {

@@ -47,6 +47,7 @@ import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 const STACK_GAP = 8;
 // The minimap's distance above the stage bottom: the bottom controls, 10 + 42, and a 9px gap.
 const MAP_BOTTOM = 61;
+const MAP_HEIGHT = 142;
 
 const SceneViewport = React.lazy(() => import('@web/spaces/three-d/viewport/SceneViewport'));
 const SceneInspector = React.lazy(() => import('@web/spaces/three-d/SceneInspector').then((module) => ({ default: module.SceneInspector })));
@@ -832,13 +833,13 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
       onGenerated={importStarted} />}
     {importController && importLimits && <React.Suspense fallback={null}><SceneModelImportHost controller={importController}
       open={importOpen} onOpenChange={setImportOpen} canEdit={snapshot.canEdit} maxInputBytes={importLimits.maxInputBytes} onStarted={importStarted} /></React.Suspense>}
-    <SceneRightPanel top={chrome.noticeBottom > 0 ? chrome.noticeBottom + STACK_GAP : null} bottomLift={chrome.lift} open={rightOpen} onOpenChange={setRightOpen} automatic={automaticPanel} stage={stage} returnTarget={returnTarget} cancelGesture={cancelGesture} contentRef={rightPanel}
+    <SceneRightPanel top={chrome.noticeBottom > 0 ? chrome.noticeBottom + STACK_GAP : null} bottom={`calc(${MAP_BOTTOM + MAP_HEIGHT + chrome.lift}px + var(--space-5))`} open={rightOpen} onOpenChange={setRightOpen} automatic={automaticPanel} stage={stage} returnTarget={returnTarget} cancelGesture={cancelGesture} contentRef={rightPanel}
       title={panel === 'properties' ? t('spaces.threeD.properties') : panel === 'objects' ? t('spaces.threeD.objects') : panel === 'director' ? t('spaces.threeD.director.open') : t('spaces.threeD.tasks')}
       actions={panelActions}>
       {panelContent}
     </SceneRightPanel>
     <div className='absolute right-[var(--space-5)] z-10' data-testid='scene-map-holder' style={{ bottom: MAP_BOTTOM + chrome.lift }}>
-      {minimap && !framing ? <div ref={setOverviewHost} data-testid='scene-map' className='h-[142px] w-[202px] overflow-hidden rounded-overlay border border-border bg-popover shadow' /> : null}
+      {minimap && !framing ? <div ref={setOverviewHost} data-testid='scene-map' style={{ height: MAP_HEIGHT }} className='w-[202px] overflow-hidden rounded-overlay border border-border bg-popover shadow' /> : null}
     </div>
     {/* One bottom row: the object toolbar is centred while it fits, yields to the controls on the right, and stacks
         above them when the two do not fit side by side. */}
