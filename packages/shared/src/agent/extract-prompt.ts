@@ -67,13 +67,16 @@ export function extractPromptText(prompt: unknown): string {
 /** What {@link cleanTextParams} reads of a param's declaration. */
 export interface TextParamSpec {
   readonly type?: string;
+  /** Where the panel takes the value from; `editor` is words the user writes in a box of their own, such as lyrics. */
+  readonly fill?: string;
   /** For an `items` param, the declaration of each field of an item. */
   readonly fields?: Readonly<Record<string, { readonly type?: string }>>;
 }
 
 /**
- * A run's params with every text param, and every text field of an `items` param, passed through
- * {@link extractPromptText}: what the worker sends, and so what every check before it asks about.
+ * A run's params with every text param (declared `text`, or written in an editor box), and every text field of an
+ * `items` param, passed through {@link extractPromptText}: what the worker sends, and so what every check before it
+ * asks about.
  * @param model - The model, for which params are text.
  * @param model.params - Its param declarations.
  * @param params - The params as written.
@@ -86,7 +89,7 @@ export function cleanTextParams(
 ): Record<string, unknown> {
   return Object.fromEntries(Object.entries(params).map(([key, value]) => {
     const spec = model.params?.[key];
-    if (spec?.type === "text" && typeof value === "string") return [key, extractPromptText(value)];
+    if ((spec?.type === "text" || spec?.fill === "editor") && typeof value === "string") return [key, extractPromptText(value)];
     if (spec?.type !== "items" || !Array.isArray(value)) return [key, value];
     const fields = spec.fields ?? {};
     return [key, value.map((item: unknown) =>

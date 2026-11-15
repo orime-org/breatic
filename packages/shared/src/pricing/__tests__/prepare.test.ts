@@ -105,6 +105,13 @@ describe("prepareRunParams on text", () => {
     expect(run.params.shots).toEqual([{ prompt: extractPromptText("<i>one</i>"), seconds: 3 }]);
     expect(run.params.tag).toBe("<x>");
   });
+
+  it("cleans what the user writes in an editor, the lyrics box, as the worker sends it", () => {
+    const song: PreparableModel = { takes_prompt: true, params: { lyrics: { default: null, fill: "editor" } } };
+    const run = prepareRunParams(song, { params: { lyrics: "  la  la\n\n\n\u200Bla" }, prompt: "p" });
+    expect(run.params.lyrics).toBe(extractPromptText("  la  la\n\n\n\u200Bla"));
+    expect(run.params.lyrics).toBe("la la\n\nla");
+  });
 });
 
 describe("creditEstimateOf", () => {
