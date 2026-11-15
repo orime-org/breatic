@@ -204,3 +204,28 @@ describe("a cause and what it was about", () => {
     expect(readTaskFailure("[]")).toEqual({ reason: null });
   });
 });
+
+describe("a model run refused here (#1521)", () => {
+  it("keeps the model's name and the limit a refused input broke, for each viewer's own sentence", () => {
+    const limit = { field: "prompt", measure: "characters", max: 8000 } as const;
+    expect(readTaskFailure(encodeTaskFailure("input_refused", { model: "Gemini 3.8 Flash TTS", limit }))).toEqual({
+      reason: "input_refused",
+      model: "Gemini 3.8 Flash TTS",
+      limit,
+    });
+    expect(readTaskFailure(encodeTaskFailure("input_refused", { model: "Gemini 3.8 Flash TTS" }))).toEqual({ reason: "input_refused", model: "Gemini 3.8 Flash TTS" });
+  });
+
+  it("keeps the model's name and the variables a deployment is missing", () => {
+    expect(readTaskFailure(encodeTaskFailure("model_not_configured", { model: "Voice Model", envVars: ["WAVESPEED_API_KEY", "FAL_KEY"] }))).toEqual({
+      reason: "model_not_configured",
+      model: "Voice Model",
+      envVars: ["WAVESPEED_API_KEY", "FAL_KEY"],
+    });
+  });
+
+  it("drops a stored limit or variable list that is not what it claims to be", () => {
+    const stored = JSON.stringify({ reason: "input_refused", model: 3, limit: { field: "prompt" }, envVars: ["A", 2] });
+    expect(readTaskFailure(stored)).toEqual({ reason: "input_refused" });
+  });
+});

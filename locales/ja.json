@@ -1167,7 +1167,9 @@
         "media_refused": "モデルがこのファイルを受け付けませんでした。",
         "tool_failed": "ツールでこのファイルを処理できませんでした。",
         "no_audio_track": "{kind, select, audio {この音声から音を読み取れません。} other {この動画には音声トラックがありません。}}",
-        "cut_short": "長すぎて最後まで文字起こしできませんでした。"
+        "cut_short": "長すぎて最後まで文字起こしできませんでした。",
+        "input_refused": "{model} は現在の設定では実行できません。設定を変えるか、別のモデルを選んでください。",
+        "model_not_configured": "このデプロイでは {model} がまだ設定されていません。{envVars} の設定が必要です。"
       },
       "kind": {
         "upload": "アップロード",

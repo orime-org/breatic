@@ -201,6 +201,8 @@ const SAYS_SOMETHING_ABOUT_THE_FILE: Readonly<
   tool_failed: false,
   no_audio_track: false,
   cut_short: false,
+  input_refused: false,
+  model_not_configured: false,
 };
 
 /**

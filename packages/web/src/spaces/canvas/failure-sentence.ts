@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import { readTaskFailure, uploadableFormatList } from '@breatic/shared';
+import { inputRefusalText, readTaskFailure, uploadableFormatList } from '@breatic/shared';
 
 import { getCachedUnderstandMaxBytes } from '@web/data/api/canvas';
 import { formatBytes } from '@web/lib/format-bytes';
@@ -69,6 +69,8 @@ export function failureSentence(
   const held = readTaskFailure(stored ?? null);
   const reason = held.reason;
   if (reason === null) return stored ?? '';
+  // #1521: the limit a refused run broke, said the way the panel and the server say it.
+  if (reason === 'input_refused' && held.limit !== undefined) return inputRefusalText({ reason: '', limit: held.limit }, held.model ?? '');
   const ceiling = getCachedUnderstandMaxBytes();
   // The formats are named for the sentences that carry them; the rest hold no
   // such placeholder and ICU leaves an unused parameter alone. A node holding
@@ -87,5 +89,8 @@ export function failureSentence(
     // Which reading failed, off the record itself, so the row and history agree
     // (inner#856). Always a value: ICU throws on a select with none.
     reading: held.reading ?? 'other',
+    // The model a refusal or a missing setup is about, and the variables it needs.
+    model: held.model ?? '',
+    envVars: (held.envVars ?? []).join(', '),
   });
 }

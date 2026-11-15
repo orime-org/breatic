@@ -1167,7 +1167,9 @@
         "media_refused": "모델이 이 파일을 받지 않았습니다.",
         "tool_failed": "도구가 이 파일을 처리하지 못했습니다.",
         "no_audio_track": "{kind, select, audio {이 오디오에서 소리를 읽을 수 없습니다.} other {이 동영상에는 오디오 트랙이 없습니다.}}",
-        "cut_short": "너무 길어서 끝까지 받아쓰지 못했습니다."
+        "cut_short": "너무 길어서 끝까지 받아쓰지 못했습니다.",
+        "input_refused": "{model}은(는) 현재 설정으로 실행할 수 없습니다. 설정을 바꾸거나 다른 모델을 선택하세요.",
+        "model_not_configured": "이 배포에는 {model}이(가) 아직 설정되지 않았습니다. {envVars}을(를) 설정해야 합니다."
       },
       "kind": {
         "upload": "업로드",

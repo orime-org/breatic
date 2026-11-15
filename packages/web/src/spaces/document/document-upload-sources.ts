@@ -94,6 +94,8 @@ const FETCH_FAILURE: Readonly<Record<TaskFailureReason, UploadFailure>> = {
   no_audio_track: { reason: 'failed', retryable: false },
   credits_held: { reason: 'failed', retryable: false },
   cut_short: { reason: 'failed', retryable: false },
+  input_refused: { reason: 'failed', retryable: false },
+  model_not_configured: { reason: 'failed', retryable: false },
 };
 
 /** What the block says for each way a file upload fails. */
