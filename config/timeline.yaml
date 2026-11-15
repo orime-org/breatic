@@ -45,6 +45,15 @@ web_animation:
     vcpu: 1
     memory_gib: 6
     disk_gb: 12
+  # The frame rate a create freezes; a modification and an export keep their base's.
+  fps: { num: 24, den: 1 }
+  # The instance an export renders on and is billed for, at the prices in mini-tools.yaml. More than 8 GiB lets the
+  # renderer capture frames in parallel.
+  render_container:
+    vcpu: 4
+    memory_gib: 12
+    disk_gb: 20
+  render_quality: standard
 # Multi-video preview sync (#1410), in seconds except the steer rate.
 preview:
   # Drift past which a lane's playback rate is steered by drift_steer_rate.

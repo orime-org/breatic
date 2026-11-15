@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Data access for `timeline_executions` (inner#1711).
+ * Data access for `timeline_executions` (inner#1711, #1490): web-animation creates, modifications and exports.
  *
  * {@link transition} is the one writer of `status`: each event is one
  * conditional `UPDATE ... RETURNING`, so a lost race or a stale attempt is
  * answered with the current row and `applied: false` instead of a write.
  */
 
-import { and, asc, desc, eq, inArray, isNull, lte, gt, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lte, sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import type { PgColumn, PgUpdateSetSource } from "drizzle-orm/pg-core";
 import type { TimelineExecution, TimelineExecutionStatus } from "@breatic/shared";
@@ -18,17 +18,20 @@ import { timelineExecutions as t } from "@core/db/schema.js";
 
 /** What a caller sends to move an execution; the matrix in the design decides what each does in each state. */
 export type TimelineExecutionEvent =
-  | { type: "land"; inputHash: string }
   | { type: "claim" }
   | { type: "retry" }
   | { type: "success"; fence: string | null; resultSourceVersionId: string }
+  | { type: "success"; fence: string | null; resultAssetId: string }
   | { type: "failure"; fence: string | null; reason: string }
   | { type: "cancel" }
   | { type: "cancelAck" }
   | { type: "deadline" }
   | { type: "progress"; fence: string | null; phase: NonNullable<TimelineExecution["phase"]> };
 
-/** The fields an accepted execution is inserted with. */
+/**
+ * The fields an accepted execution is inserted with. `status` and `origin` are required: the columns keep defaults
+ * only for the previous server's inserts during the deploy window (0126), so every new insert path states both.
+ */
 export interface NewTimelineExecution {
   projectId: string;
   spaceId: string;
@@ -39,6 +42,8 @@ export interface NewTimelineExecution {
   input: Record<string, unknown>;
   inputHash: string;
   deadlineAt: Date;
+  status: "queued";
+  origin: TimelineExecution["origin"];
 }
 
 /** The outcome of one {@link transition} call. */
@@ -67,6 +72,7 @@ const columns = {
   spaceId: t.spaceId,
   actorUserId: t.actorUserId,
   kind: t.kind,
+  origin: t.origin,
   actionId: t.actionId,
   input: t.input,
   inputHash: t.inputHash,
@@ -78,6 +84,7 @@ const columns = {
   fence: t.fence,
   deadlineAt: iso(t.deadlineAt),
   resultSourceVersionId: t.resultSourceVersionId,
+  resultAssetId: t.resultAssetId,
   failureReason: t.failureReason,
   billedCredits: t.billedCredits,
   billedAt: iso<string | null>(t.billedAt),
@@ -86,9 +93,10 @@ const columns = {
 };
 
 /** A selected row before its text columns are narrowed to the entity's unions. */
-type Row = Omit<TimelineExecution, "kind" | "engine" | "status" | "phase"> & {
+type Row = Omit<TimelineExecution, "kind" | "origin" | "engine" | "status" | "phase"> & {
   kind: string;
-  engine: string;
+  origin: string;
+  engine: string | null;
   status: string;
   phase: string | null;
 };
@@ -103,6 +111,7 @@ function toEntity(row: Row): TimelineExecution {
   return {
     ...row,
     kind: row.kind as TimelineExecution["kind"],
+    origin: row.origin as TimelineExecution["origin"],
     engine: row.engine as TimelineExecution["engine"],
     status: row.status as TimelineExecutionStatus,
     phase: row.phase as TimelineExecution["phase"],
@@ -110,7 +119,7 @@ function toEntity(row: Row): TimelineExecution {
 }
 
 /**
- * Record an accepted execution, waiting for its landing receipt.
+ * Record an accepted execution, queued.
  * @param input - The execution.
  * @param tx - The transaction to write in.
  * @returns The row, or null when the Project and Space already hold a live execution with this action id.
@@ -187,12 +196,6 @@ function fenced(fence: string | null): SQL | undefined {
 function plan(event: TimelineExecutionEvent): { where: SQL | undefined; set: PgUpdateSetSource<typeof t> } {
   const newAttempt = { attempt: sql`${t.attempt} + 1`, fence: sql`gen_random_uuid()` };
   switch (event.type) {
-    case "land":
-      return {
-        where: and(eq(t.status, "awaiting_landing"), eq(t.inputHash, event.inputHash), gt(t.deadlineAt, sql`now()`)),
-        // The sweep adds the job again if the enqueue right after this is lost.
-        set: { status: "queued" },
-      };
     case "claim":
       return { where: eq(t.status, "queued"), set: { status: "running", ...newAttempt } };
     case "retry":
@@ -202,7 +205,9 @@ function plan(event: TimelineExecutionEvent): { where: SQL | undefined; set: PgU
         where: fenced(event.fence),
         set: {
           status: sql`CASE WHEN ${t.status} = 'running' THEN 'succeeded' ELSE 'cancelled' END`,
-          resultSourceVersionId: sql`CASE WHEN ${t.status} = 'running' THEN ${event.resultSourceVersionId}::uuid END`,
+          ...("resultAssetId" in event
+            ? { resultAssetId: sql`CASE WHEN ${t.status} = 'running' THEN ${event.resultAssetId}::uuid END` }
+            : { resultSourceVersionId: sql`CASE WHEN ${t.status} = 'running' THEN ${event.resultSourceVersionId}::uuid END` }),
           fence: null,
         },
       };

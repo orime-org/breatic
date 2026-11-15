@@ -50,6 +50,16 @@ const webAnimationSchema = z.object({
     memory_gib: z.number().positive().default(6),
     disk_gb: z.number().positive().default(12),
   }).prefault({}),
+  /** The frame rate a create freezes (#1490); a modification and an export keep their base's. */
+  fps: z.object({ num: positiveInt, den: positiveInt }).default({ num: 24, den: 1 }),
+  /** The render container an export runs on and is billed for, priced by `config/mini-tools.yaml` (#1490). */
+  render_container: z.object({
+    vcpu: z.number().positive().default(4),
+    memory_gib: z.number().positive().default(12),
+    disk_gb: z.number().positive().default(20),
+  }).prefault({}),
+  /** The renderer's quality for an export. */
+  render_quality: z.string().min(1).default("standard"),
 }).superRefine((config, ctx) => {
   if (config.duration_seconds.min > config.duration_seconds.max) {
     ctx.addIssue({ code: "custom", path: ["duration_seconds", "min"], message: "duration_seconds.min exceeds max" });

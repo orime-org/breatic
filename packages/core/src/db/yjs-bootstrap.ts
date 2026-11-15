@@ -244,5 +244,7 @@ export function defaultSpaceName(kind: SpaceKind): string {
       return "Timeline";
     case "3d":
       return "3D";
+    case "web_animation":
+      return "Motion";
   }
 }

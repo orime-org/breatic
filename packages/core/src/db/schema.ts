@@ -2314,14 +2314,26 @@ export const timelineExecutions = pgTable(
     actionId: text("action_id").notNull(),
     input: jsonb("input").$type<Record<string, unknown>>().notNull(),
     inputHash: text("input_hash").notNull(),
-    engine: text("engine").notNull(),
+    /** Empty for an export, which calls no model (0126, #1490). */
+    engine: text("engine"),
+    /**
+     * `awaiting_landing` only so the previous server's inserts during the deploy window keep working (0126, #1490);
+     * new code always writes `queued`. The next release makes `queued` the default.
+     */
     status: text("status").notNull().default("awaiting_landing"),
+    /**
+     * Where it was asked for: `web_animation_space`, or `timeline` before #1490. The default serves the previous
+     * server during the deploy window only; new code always writes it, and the next release drops the default.
+     */
+    origin: text("origin").notNull().default("timeline"),
     phase: text("phase"),
     steps: jsonb("steps").$type<unknown[]>().notNull().default(sql`'[]'::jsonb`),
     attempt: integer("attempt").notNull().default(0),
     fence: uuid("fence"),
     deadlineAt: timestamp("deadline_at", { withTimezone: true }).notNull(),
     resultSourceVersionId: uuid("result_source_version_id"),
+    /** An export's registered video (0126, #1490). */
+    resultAssetId: uuid("result_asset_id").references(() => studioAssets.id, { onDelete: "restrict" }),
     failureReason: text("failure_reason"),
     billedCredits: numeric("billed_credits"),
     billedAt: timestamp("billed_at", { withTimezone: true }),
@@ -2338,6 +2350,12 @@ export const timelineExecutions = pgTable(
     index("timeline_executions_open_idx")
       .on(table.createdAt)
       .where(sql`${table.deletedAt} IS NULL AND ${table.status} IN ('awaiting_landing', 'queued', 'running', 'cancelling')`),
+    index("timeline_executions_space_order_idx")
+      .on(table.spaceId, desc(table.createdAt), desc(table.id))
+      .where(sql`${table.deletedAt} IS NULL`),
+    uniqueIndex("timeline_executions_export_source_idx")
+      .on(table.projectId, table.spaceId, sql`(${table.input}->>'sourceVersionId')`)
+      .where(sql`${table.kind} = 'web_animation_export' AND ${table.status} NOT IN ('failed', 'cancelled', 'expired') AND ${table.deletedAt} IS NULL`),
   ],
 );
 
@@ -2421,10 +2439,21 @@ export const timelineExecutionGrants = pgTable(
     projectId: uuid("project_id")
       .notNull()
       .references(() => projects.id, { onDelete: "restrict" }),
+    // The two execution fields are written only by the BEFORE INSERT trigger fill_timeline_grant_execution_fields
+    // (0126, #1490); the database has no default for them. Declaring one here keeps them out of what an insert must
+    // pass, so Drizzle sends DEFAULT and the trigger fills them before NOT NULL is checked.
+    executionCreatedAt: timestamp("execution_created_at", { withTimezone: true }).notNull().default(sql`null`),
+    executionOrigin: text("execution_origin").notNull().default(sql`null`),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (table) => [
+    index("timeline_execution_grants_order_idx")
+      .on(table.projectId, desc(table.executionCreatedAt), desc(table.executionId))
+      .where(sql`${table.deletedAt} IS NULL`),
+    index("timeline_execution_grants_origin_order_idx")
+      .on(table.projectId, table.executionOrigin, desc(table.executionCreatedAt), desc(table.executionId))
+      .where(sql`${table.deletedAt} IS NULL`),
     uniqueIndex("timeline_execution_grants_live_idx")
       .on(table.executionId, table.projectId)
       .where(sql`${table.deletedAt} IS NULL`),
