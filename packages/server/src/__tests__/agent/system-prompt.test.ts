@@ -513,7 +513,7 @@ describe("how the prompt says to co-create (breatic#1361)", () => {
 });
 
 describe("what the prompt says per medium (breatic#1361)", () => {
-  const MEDIA = ["Pictures", "Video", "Audio", "Writing in a Document", "Timeline", "3D"] as const;
+  const MEDIA = ["Pictures", "Video", "Audio", "Writing in a Document", "Timeline", "Motion", "3D"] as const;
   const FIELDS = ["Ask:", "Takes:", "Craft:", "Keep:", "Reach:"] as const;
 
   /** Each paragraph under By medium, keyed by the name it opens with. */
@@ -578,9 +578,20 @@ describe("what the prompt says per medium (breatic#1361)", () => {
     expect(text).not.toContain("Breatic does not make models");
   });
 
-  it("says in the Timeline Reach that a timeline holds video clips and web animations made from a typed request", () => {
+  it("says in the Timeline Reach that a timeline adds web animations made in a Motion Space, and makes none itself", () => {
     const reach = (paragraphs().get("Timeline") ?? "").split("Reach:")[1] ?? "";
-    expect(reach).toContain("a timeline holds video clips from the Project's videos and web animations it makes from a typed request, shown on top of the video below them.");
+    expect(reach).toContain("Motion Space");
+    expect(reach).not.toContain("it makes from a typed request");
+  });
+
+  it("says in Motion that the user makes a web animation in a Motion Space from a request written in full, which the Agent cannot see", () => {
+    const para = paragraphs().get("Motion") ?? "";
+    const craft = (para.split("Craft:")[1] ?? "").split("Keep:")[0] ?? "";
+    expect(craft).toContain("written in full");
+    expect(craft).toContain("Motion Space");
+    const reach = para.split("Reach:")[1] ?? "";
+    expect(reach).toContain("Motion Space");
+    expect(reach).toMatch(/cannot (see|read)/);
   });
 
   it("makes Video trial shots before the final shot as takes on a fast, cheap model", () => {
@@ -596,9 +607,11 @@ describe("what the prompt says per medium (breatic#1361)", () => {
     expect(para).not.toContain("takes at the lowest resolution");
   });
 
-  it("makes a clip the Timeline lacks as a video on the Canvas, and writes a web animation's request in full for the user to type in the Timeline", () => {
-    const para = paragraphs().get("Timeline") ?? "";
-    expect(para).toContain("Craft: the clips, as for video, a clip they lack made as a video on the Canvas, and the steps for them to place and trim the clips; for titles or motion graphics, the request for a web animation written in full, with its ratio and length, for them to type in the Timeline.");
+  it("makes a clip the Timeline lacks as a video on the Canvas, and sends titles or motion graphics to a Motion Space", () => {
+    const craft = ((paragraphs().get("Timeline") ?? "").split("Craft:")[1] ?? "").split("Keep:")[0] ?? "";
+    expect(craft).toContain("a clip they lack made as a video on the Canvas");
+    expect(craft).toContain("Motion Space");
+    expect(craft).not.toContain("for them to type in the Timeline");
   });
 
   // The template guard: a new Space type or a new model medium has to be
@@ -608,6 +621,7 @@ describe("what the prompt says per medium (breatic#1361)", () => {
     canvas: ["Pictures", "Video", "Audio"],
     document: ["Writing in a Document"],
     timeline: ["Timeline"],
+    web_animation: ["Motion"],
     "3d": ["3D"],
   };
   const MODALITY_TO_MEDIUM: Record<string, string> = {
