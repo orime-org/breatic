@@ -139,41 +139,6 @@ export function buildFontSetStylesheet(version: number, faces: WebAnimationFontF
 }
 
 /**
- * Keep inlined text from ending its element early.
- * @param text - Script or stylesheet text.
- * @param tag - The element it goes into.
- * @returns The text, with every closing tag of that element and every comment opener escaped.
- * @throws {never} Never.
- */
-function inlineSafe(text: string, tag: "script" | "style"): string {
-  return text.replace(new RegExp(`</(${tag})`, "gi"), "<\\/$1").replace(/<!--/g, "<\\!--");
-}
-
-/**
- * Build the package: the model's composition with the runtime, then the bridge, then the font stylesheet inlined at
- * the end of its head (its body, or its end, when it has none), so the package references no file but the font set
- * and the runtime is loaded before the composition's own scripts run.
- * @param pieces - The composition and the three texts to inline.
- * @param pieces.composition - The composition the model wrote.
- * @param pieces.runtime - The HyperFrames runtime.
- * @param pieces.bridge - The frame-ready bridge.
- * @param pieces.fontStylesheet - The font set's stylesheet.
- * @returns The package's HTML.
- * @throws {never} Never.
- */
-export function packWebAnimationSource(pieces: { composition: string; runtime: string; bridge: string; fontStylesheet: string }): string {
-  const inlined =
-    `<script>\n${inlineSafe(pieces.runtime, "script")}\n</script>\n` +
-    `<script>\n${inlineSafe(pieces.bridge, "script")}\n</script>\n` +
-    `<style>\n${inlineSafe(pieces.fontStylesheet, "style")}\n</style>\n`;
-  const lower = pieces.composition.toLowerCase();
-  const head = lower.indexOf("</head>");
-  const at = head >= 0 ? head : lower.lastIndexOf("</body>");
-  if (at < 0) return `${pieces.composition}\n${inlined}`;
-  return `${pieces.composition.slice(0, at)}${inlined}${pieces.composition.slice(at)}`;
-}
-
-/**
  * The frame count a `data-duration` gives at the run's frame rate.
  * @param seconds - The duration.
  * @param fps - The frame rate.

@@ -2,70 +2,83 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Reading a source package back into the composition it was made from (#1490 design §5.2), so a modification starts
- * from what its base result showed.
+ * Packing a composition into a source package, and reading a package back into the composition it was made from
+ * (#1490 design §5.2), so a modification starts from what its base result showed.
  *
  * Packing inlines three blocks, the runtime, the bridge and the font stylesheet, at the first `</head>` (else the last
- * `</body>`, else after a newline at the end). Each block's text has every closing tag of its own element escaped, so
- * the first `\n</script>\n` or `\n</style>\n` after a block's opening ends it. A run of the three blocks the
- * composition happens to contain is told apart by where packing would have put them.
+ * `</body>`, else after a newline at the end). Reading takes the same three pieces: the composition is what is left
+ * once that exact run of blocks is taken out, checked by packing it again. A composition whose own text holds what
+ * looks like a block opening is therefore read back as it was written.
  */
 
-const SCRIPT_OPEN = "<script>\n";
-const SCRIPT_CLOSE = "\n</script>\n";
-const STYLE_OPEN = "<style>\n";
-const STYLE_CLOSE = "\n</style>\n";
-
-/**
- * Where a run of the three inlined blocks starting at an offset ends.
- * @param html - The package.
- * @param at - Where the run would start.
- * @returns The offset just after it, or null when no run starts there.
- * @throws {never} Never.
- */
-function blocksEnd(html: string, at: number): number | null {
-  let cursor = at;
-  for (const [open, close] of [[SCRIPT_OPEN, SCRIPT_CLOSE], [SCRIPT_OPEN, SCRIPT_CLOSE], [STYLE_OPEN, STYLE_CLOSE]] as const) {
-    if (!html.startsWith(open, cursor)) return null;
-    const end = html.indexOf(close, cursor + open.length);
-    if (end < 0) return null;
-    cursor = end + close.length;
-  }
-  return cursor;
+/** The three texts a package inlines. */
+export interface WebAnimationInlinePieces {
+  /** The HyperFrames runtime. */
+  runtime: string;
+  /** The frame-ready bridge. */
+  bridge: string;
+  /** The font set's stylesheet. */
+  fontStylesheet: string;
 }
 
 /**
- * Whether packing a composition would put the blocks at this offset.
- * @param composition - The composition left once the blocks are taken out.
- * @param at - Where the blocks sat.
- * @param appended - Whether they followed the composition after a newline.
- * @returns True when the offset is where packing puts them.
+ * Keep inlined text from ending its element early.
+ * @param text - Script or stylesheet text.
+ * @param tag - The element it goes into.
+ * @returns The text, with every closing tag of that element and every comment opener escaped.
  * @throws {never} Never.
  */
-function packedHere(composition: string, at: number, appended: boolean): boolean {
-  const lower = composition.toLowerCase();
+function inlineSafe(text: string, tag: "script" | "style"): string {
+  return text.replace(new RegExp(`</(${tag})`, "gi"), "<\\/$1").replace(/<!--/g, "<\\!--");
+}
+
+/**
+ * The run of three blocks a package inlines.
+ * @param pieces - The texts.
+ * @returns The run.
+ * @throws {never} Never.
+ */
+function inlinedBlocks(pieces: WebAnimationInlinePieces): string {
+  return `<script>\n${inlineSafe(pieces.runtime, "script")}\n</script>\n` +
+    `<script>\n${inlineSafe(pieces.bridge, "script")}\n</script>\n` +
+    `<style>\n${inlineSafe(pieces.fontStylesheet, "style")}\n</style>\n`;
+}
+
+/**
+ * Build the package: the model's composition with the runtime, then the bridge, then the font stylesheet inlined at
+ * the end of its head (its body, or its end, when it has none), so the package references no file but the font set
+ * and the runtime is loaded before the composition's own scripts run.
+ * @param pieces - The composition and the three texts to inline.
+ * @param pieces.composition - The composition the model wrote.
+ * @returns The package's HTML.
+ * @throws {never} Never.
+ */
+export function packWebAnimationSource(pieces: WebAnimationInlinePieces & { composition: string }): string {
+  const inlined = inlinedBlocks(pieces);
+  const lower = pieces.composition.toLowerCase();
   const head = lower.indexOf("</head>");
-  const body = lower.lastIndexOf("</body>");
-  if (appended) return head < 0 && body < 0;
-  return head >= 0 ? head === at : body === at;
+  const at = head >= 0 ? head : lower.lastIndexOf("</body>");
+  if (at < 0) return `${pieces.composition}\n${inlined}`;
+  return `${pieces.composition.slice(0, at)}${inlined}${pieces.composition.slice(at)}`;
 }
 
 /**
- * The composition a source package was packed from.
+ * The composition a package was packed from with these pieces. Every package so far was packed with the runtime the
+ * images carry; a release that changes the runtime reads older packages with the runtime they name in their Manifest.
  * @param html - The package.
+ * @param pieces - The texts it was packed with.
  * @returns The composition.
- * @throws {Error} When the package holds no packed blocks.
+ * @throws {Error} When the package was not packed with these pieces.
  */
-export function unpackWebAnimationSource(html: string): string {
-  for (let at = html.indexOf(SCRIPT_OPEN); at >= 0; at = html.indexOf(SCRIPT_OPEN, at + 1)) {
-    const end = blocksEnd(html, at);
-    if (end === null) continue;
-    if (end === html.length && at > 0 && html[at - 1] === "\n") {
-      const composition = html.slice(0, at - 1);
-      if (packedHere(composition, at - 1, true)) return composition;
+export function unpackWebAnimationSource(html: string, pieces: WebAnimationInlinePieces): string {
+  const inlined = inlinedBlocks(pieces);
+  for (let at = html.indexOf(inlined); at >= 0; at = html.indexOf(inlined, at + 1)) {
+    const end = at + inlined.length;
+    const candidates = [html.slice(0, at) + html.slice(end)];
+    if (end === html.length && at > 0 && html[at - 1] === "\n") candidates.unshift(html.slice(0, at - 1));
+    for (const composition of candidates) {
+      if (packWebAnimationSource({ composition, ...pieces }) === html) return composition;
     }
-    const composition = html.slice(0, at) + html.slice(end);
-    if (packedHere(composition, at, false)) return composition;
   }
-  throw new Error("The package holds no packed web-animation blocks");
+  throw new Error("The package was not packed with these pieces");
 }

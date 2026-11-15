@@ -22,11 +22,11 @@ import {
   buildFontSetStylesheet,
   buildWebAnimationManifest,
   judgeWebAnimationCheck,
-  packWebAnimationSource,
   webAnimationDshEnv,
   type WebAnimationCheckExpectation,
   type WebAnimationCheckObservation,
 } from "../web-animation-package.js";
+import { packWebAnimationSource } from "@shared/timeline/web-animation-source.js";
 
 const REQUEST = {
   viewport: { width: 1080, height: 1920 },

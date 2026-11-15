@@ -23,7 +23,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WEB_ANIMATION_BRIDGE_SCRIPT } from "@shared/timeline/web-animation-bridge.js";
 
 import type { WebAnimationRunBody } from "../../src/jobs/web-animation-run-body.js";
-import { packWebAnimationSource } from "../web-animation-package.js";
+import { packWebAnimationSource } from "@shared/timeline/web-animation-source.js";
+import { buildFontSetStylesheet } from "../web-animation-package.js";
 import { CHROMIUM_ARGS, runWebAnimation, type WebAnimationRunnerSettings } from "../web-animation-run.js";
 
 /** How long the run may take to report before the test calls it hung; well past anything the run does on its own. */
@@ -249,10 +250,10 @@ describe("a modification", () => {
   }
 
   /**
-   * Serve the base package as the creation run packed it.
+   * Serve the base package as the creation run packed it, with the runtime and font set the test image holds.
    */
   function serveBase(): void {
-    served.set(BASE_URL, packWebAnimationSource({ composition: BASE, runtime: "", bridge: WEB_ANIMATION_BRIDGE_SCRIPT, fontStylesheet: "" }));
+    served.set(BASE_URL, packWebAnimationSource({ composition: BASE, runtime: "", bridge: WEB_ANIMATION_BRIDGE_SCRIPT, fontStylesheet: buildFontSetStylesheet(1, []) }));
   }
 
   it("starts the harness from the base's own composition, told to change it", { timeout: REPORT_WITHIN_MS + 5_000 }, async () => {
