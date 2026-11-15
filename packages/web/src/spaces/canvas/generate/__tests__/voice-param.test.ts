@@ -147,6 +147,11 @@ describe('sampleUrlFor', () => {
 describe('sampleLanguageFor (#1521)', () => {
   const offered = ['en', 'ja', 'ko', 'zh', 'th'];
 
+  it('reads any interface language by its language alone, so a locale added later starts on its own samples', () => {
+    expect(sampleLanguageFor(['en', 'fr', 'pt'], 'fr', null)).toBe('fr');
+    expect(sampleLanguageFor(['en', 'fr', 'pt'], 'pt-BR', null)).toBe('pt');
+  });
+
   it('keeps the language the user picked while the model offers it', () => {
     expect(sampleLanguageFor(offered, 'en', 'th')).toBe('th');
   });
