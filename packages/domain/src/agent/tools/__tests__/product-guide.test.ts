@@ -1133,8 +1133,8 @@ describe("Motion Spaces and the Timeline's web animations (#1490)", () => {
     const timeline = section("Timeline spaces");
     expect(timeline).toContain(q("timeline.webAnimation.add"));
     expect(timeline).toContain(q("timeline.webAnimation.goMake"));
-    expect(timeline).not.toContain(q("timeline.webAnimation.create"));
-    expect(timeline).not.toContain(q("timeline.webAnimation.executions"));
+    expect(timeline).not.toContain(q("timeline.webAnimation.dialog.execute"));
+    expect(timeline).not.toContain(q("spaces.webAnimation.executions"));
   });
 
   it("names the canvas menu item that opens a video's source animation", () => {
