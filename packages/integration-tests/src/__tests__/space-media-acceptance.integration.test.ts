@@ -14,7 +14,7 @@ import {
   loadLocales,
   projectAssetReferenceService,
 } from "@breatic/core";
-import { CANVAS_NODES_KEY, canvasSpaceDocName, documentBodyFragment, documentSpaceDocName, projectMetaDocName, threeDSpaceDocName, timelineSpaceDocName } from "@breatic/shared";
+import { CANVAS_NODES_KEY, canvasSpaceDocName, documentBodyFragment, documentSpaceDocName, projectMetaDocName, threeDSpaceDocName, timelineSpaceDocName, webAnimationSpaceDocName } from "@breatic/shared";
 import { initializeTimelineDocument } from "@breatic/shared/space-content";
 import type { SpaceType } from "@breatic/shared";
 import { fetchDoc, storeDoc } from "@collab/services/persistence.js";
@@ -113,6 +113,7 @@ function contentName(projectId: string, kind: SpaceType, spaceId: string): strin
     case "document": return documentSpaceDocName(projectId, spaceId);
     case "3d": return threeDSpaceDocName(projectId, spaceId);
     case "timeline": return timelineSpaceDocName(projectId, spaceId);
+    case "web_animation": return webAnimationSpaceDocName(projectId, spaceId);
   }
 }
 
