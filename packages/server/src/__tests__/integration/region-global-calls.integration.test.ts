@@ -150,7 +150,7 @@ async function regionStudio(): Promise<{ userId: string; studioId: string; slug:
 
 describe("serving Studio and Project requests in a region", () => {
   it("succeeds and asks the global region only through listed interfaces", async () => {
-    const { studioId, slug, cookie } = await regionStudio();
+    const { userId, studioId, slug, cookie } = await regionStudio();
     const headers = { cookie, "Content-Type": "application/json" };
 
     const studioPage = await app.request(`/api/v1/studio/${slug}`, { headers });
@@ -163,8 +163,9 @@ describe("serving Studio and Project requests in a region", () => {
     const projectId = ((await created.json()) as { data?: { id?: string } }).data?.id;
     const project = await app.request(`/api/v1/projects/${projectId}`, { headers });
     const credits = await app.request(`/api/v1/studio/${slug}/credits?amountFormat=decimal-v1`, { headers });
+    const names = await app.request(`/api/v1/users?ids=${userId}`, { headers });
 
-    expect([studioPage.status, members.status, created.status, project.status, credits.status]).toEqual([200, 200, 201, 200, 200]);
+    expect([studioPage.status, members.status, created.status, project.status, credits.status, names.status]).toEqual([200, 200, 201, 200, 200, 200]);
     expect(global.received.map((call) => call.fn)).toContain("readStudioCredits");
     expect(global.received.length).toBeGreaterThan(0);
     for (const call of global.received) {

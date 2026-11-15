@@ -55,7 +55,7 @@ describe("refuseGlobalOnlyPaths", () => {
     },
   );
 
-  it.each(["/api/v1/studio/acme", "/api/v1/projects/p1", "/api/v1/canvas/x", "/api/v1/decisions/t"])("lets %s through outside the global region", async (path) => {
+  it.each(["/api/v1/studio/acme", "/api/v1/projects/p1", "/api/v1/canvas/x", "/api/v1/decisions/t", "/api/v1/users?ids=a,b"])("lets %s through outside the global region", async (path) => {
     const res = await app().request(path);
 
     expect(res.status).toBe(200);

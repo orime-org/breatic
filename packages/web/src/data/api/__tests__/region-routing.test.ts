@@ -89,8 +89,9 @@ describe('axios calls', () => {
 
     await projectsApi.get('p1');
     await notificationsApi.count();
+    await request.get('/users', { params: { ids: 'a,b' } });
 
-    expect(seen).toEqual([`${SG}/projects/p1`, `${US}/users/me/notifications/count`]);
+    expect(seen).toEqual([`${SG}/projects/p1`, `${US}/users/me/notifications/count`, `${SG}/users`]);
   });
 
   it('go to the global region when the open Studio has no region', async () => {
