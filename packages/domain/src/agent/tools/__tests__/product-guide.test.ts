@@ -1098,3 +1098,46 @@ describe("product guide: full screen", () => {
     expect(text).not.toMatch(/play, seek and fullscreen/);
   });
 });
+
+describe("Motion Spaces and the Timeline's web animations (#1490)", () => {
+  /**
+   * A message as the guide quotes it.
+   * @param key - The catalog key.
+   * @returns It between double quotes.
+   */
+  const q = (key: string): string => `"${t(key)}"`;
+
+  it("describes the Motion Space with its three entry buttons and what each opens", () => {
+    const motion = section("Motion spaces");
+    for (const key of ["spaces.webAnimation.executions", "spaces.webAnimation.annotations", "spaces.webAnimation.new"]) {
+      expect(t(key), key).not.toBe(key);
+      expect(motion, key).toContain(q(key));
+    }
+  });
+
+  it("says how a result is modified, exported to video and put on a canvas", () => {
+    const motion = section("Motion spaces");
+    for (const key of ["spaces.webAnimation.modify", "spaces.webAnimation.export", "spaces.webAnimation.viewVideo", "spaces.webAnimation.placeOnCanvas"]) {
+      expect(t(key), key).not.toBe(key);
+      expect(motion, key).toContain(q(key));
+    }
+  });
+
+  it("says how an annotation is added at the playhead and found again", () => {
+    const motion = section("Motion spaces");
+    expect(t("spaces.webAnimation.addAnnotation")).not.toBe("spaces.webAnimation.addAnnotation");
+    expect(motion).toContain(q("spaces.webAnimation.addAnnotation"));
+  });
+
+  it("has the Timeline add web animations from the Project's results and send making them to Motion", () => {
+    const timeline = section("Timeline spaces");
+    expect(timeline).toContain(q("timeline.webAnimation.add"));
+    expect(timeline).toContain(q("timeline.webAnimation.goMake"));
+    expect(timeline).not.toContain(q("timeline.webAnimation.create"));
+    expect(timeline).not.toContain(q("timeline.webAnimation.executions"));
+  });
+
+  it("names the canvas menu item that opens a video's source animation", () => {
+    expect(renderProductGuide()).toContain(q("canvas.nodeMenu.openSourceAnimation"));
+  });
+});
