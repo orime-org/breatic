@@ -70,11 +70,11 @@ export async function pasteAssets(input: PasteInput): Promise<CanvasPasteAnswer>
    * @param address - A storage address.
    * @returns The row, or null.
    */
-  const sourceOf = async (address: string): Promise<StudioAssetEntity | null> => {
+  const sourceOf = (address: string): StudioAssetEntity | null => {
     const key = storage.keyFromUrl(address);
     if (key === null) return null;
     if (local.has(key)) return local.get(key) ?? elsewhere.get(key)?.asset ?? null;
-    return covers.get(key) ?? (await assetRepo.findLiveByStorageKey(key));
+    return covers.get(key) ?? null;
   };
 
   // Read everything first; nothing is written until the storage gate passed.
@@ -98,9 +98,9 @@ export async function pasteAssets(input: PasteInput): Promise<CanvasPasteAnswer>
     }
   }
   for (const pair of pairs) {
-    const video = await sourceOf(pair.url);
+    const video = sourceOf(pair.url);
     if (video === null) continue;
-    const cover = await sourceOf(pair.cover);
+    const cover = sourceOf(pair.cover);
     const hit = await assetRepo.findByStudioAndHash(studioId, video.contentHash);
     videos.push({ pair, video, hit });
     if (hit === null) misses.push({ address: pair.url, source: video, as: "upload" });
@@ -121,7 +121,7 @@ export async function pasteAssets(input: PasteInput): Promise<CanvasPasteAnswer>
   }
   for (const address of new Set(input.urls)) {
     if (address in map || misses.some((miss) => miss.address === address)) continue;
-    const source = await sourceOf(address);
+    const source = sourceOf(address);
     if (source === null) continue;
     const hit = await assetRepo.findByStudioAndHash(studioId, source.contentHash);
     if (hit === null) misses.push({ address, source, as: "upload" });
