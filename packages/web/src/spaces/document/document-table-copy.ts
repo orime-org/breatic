@@ -333,7 +333,8 @@ export function writeClipped(event: ClipboardEvent, clipped: Clipped): void {
 }
 
 /**
- * The extension that takes these copies and cuts.
+ * The extension that takes these copies and cuts, and gives a selection drag
+ * the plain text its copy writes.
  * @returns The extension, for the assembly to register.
  */
 export const documentTableCopyExtension = createExtension(({ editor }) => {
@@ -341,6 +342,7 @@ export const documentTableCopyExtension = createExtension(({ editor }) => {
   // text is kept; `writing` is the serialising the copy itself does inside.
   let dragging = false;
   let writing = false;
+  const copyEditor = editor as unknown as CopyEditor;
   return {
     key: 'documentTableCopy',
     prosemirrorPlugins: [
@@ -355,7 +357,7 @@ export const documentTableCopyExtension = createExtension(({ editor }) => {
             if (!dragging || writing) return '';
             writing = true;
             try {
-              return copiedPlainText(editor as unknown as CopyEditor, view);
+              return copiedPlainText(copyEditor, view);
             } finally {
               writing = false;
             }
@@ -375,13 +377,13 @@ export const documentTableCopyExtension = createExtension(({ editor }) => {
               return false;
             },
             copy: (view, event) => {
-              const clipped = tableClipped(editor as unknown as CopyEditor, view);
+              const clipped = tableClipped(copyEditor, view);
               if (clipped === null) return false;
               writeClipped(event, clipped);
               return true;
             },
             cut: (view, event) => {
-              const clipped = tableClipped(editor as unknown as CopyEditor, view);
+              const clipped = tableClipped(copyEditor, view);
               if (clipped === null) return false;
               writeClipped(event, clipped);
               if (!view.editable) return true;

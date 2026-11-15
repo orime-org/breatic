@@ -92,7 +92,7 @@ export function startRowDrag(
    * @param drop - The drop.
    */
   const onDrop = (drop: DragEvent): void => {
-    landedHere = landedHere === true || (drop.target instanceof Node && view.dom.contains(drop.target));
+    landedHere ||= drop.target instanceof Node && view.dom.contains(drop.target);
     setTimeout(end, 0);
   };
   page.addEventListener('drop', onDrop, true);
