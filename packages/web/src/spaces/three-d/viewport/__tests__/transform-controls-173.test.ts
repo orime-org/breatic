@@ -5,7 +5,6 @@ import { describe, expect, it, vi } from 'vitest';
 import { Object3D, PerspectiveCamera } from 'three';
 import { TransformControlsGizmo } from 'three/addons/controls/TransformControls.js';
 import { SceneTransformControls173 } from '@web/spaces/three-d/viewport/transform-controls-173';
-import { DISPLAY_LINE_LAYER, DISPLAY_PICK_LAYER } from '@web/spaces/three-d/viewport/scene-layers';
 
 describe('the installed r173 controls adapter (inner#1689)', () => {
   it('cancels native interaction without publishing a mouseUp commit', () => {
@@ -37,10 +36,9 @@ describe('the installed r173 controls adapter (inner#1689)', () => {
     controls.dispose();
   });
 
-  it('keeps nonuniform multiselect scale handles out of the view camera, which also draws the director layers', () => {
+  it('keeps nonuniform multiselect scale handles out of a camera that draws every layer', () => {
     const camera = new PerspectiveCamera();
-    camera.layers.enable(DISPLAY_PICK_LAYER);
-    camera.layers.enable(DISPLAY_LINE_LAYER);
+    camera.layers.enableAll();
     const controls = new SceneTransformControls173(camera, document.createElement('canvas'), 0.006, vi.fn());
     const gizmo = controls.getHelper().children.find((child) => child instanceof TransformControlsGizmo);
     if (!(gizmo instanceof TransformControlsGizmo)) throw new Error('Installed r173 helper has no gizmo');

@@ -8,5 +8,3 @@
 export const DISPLAY_PICK_LAYER = 1;
 /** Layer of frustum and direction lines and number labels: drawn in the main view, never picked. */
 export const DISPLAY_LINE_LAYER = 2;
-/** Layer no camera draws and no ray picks: an object moved here is hidden from both. */
-export const HIDDEN_LAYER = 31;
