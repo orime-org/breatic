@@ -1,14 +1,16 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import type * as React from 'react';
+import * as React from 'react';
+import { Anchor as PopoverAnchor } from '@radix-ui/react-popover';
 
 import { SPACE_NAME_MAX_LEN } from '@breatic/shared';
 
 import { SpaceDrawer } from '@web/pages/project/chrome/tab-bar/SpaceDrawer';
+import { Popover, PopoverContent } from '@web/components/ui/popover';
 import { toast } from '@web/lib/toast';
 import { useUIStore } from '@web/stores/ui';
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
@@ -223,6 +225,83 @@ describe('SpaceDrawer', () => {
     await waitFor(() => expect(screen.queryByTestId('space-drawer')).toBeNull());
     await waitFor(() => expect(document.activeElement).toBe(trigger));
     computed.mockRestore();
+  });
+
+  describe('a panel that takes focus while the drawer closes', () => {
+    let computed: { mockRestore: () => void } | null = null;
+    afterEach(() => { computed?.mockRestore(); computed = null; });
+    /**
+     * Keep the drawer mounted through an exit animation, as Radix Presence does in a browser.
+     * @returns Ends the exit.
+     */
+    function exitAnimation(): () => void {
+      const real = window.getComputedStyle.bind(window);
+      computed = vi.spyOn(window, 'getComputedStyle').mockImplementation((element: Element, pseudo?: string | null) => {
+        const styles = real(element, pseudo);
+        if (!(element instanceof HTMLElement) || element.dataset.testid !== 'space-drawer') return styles;
+        return new Proxy(styles, { get(target, key) {
+          if (key === 'animationName') return element.dataset.state === 'open' ? 'enter' : 'exit';
+          const value: unknown = Reflect.get(target, key);
+          return typeof value === 'function' ? value.bind(target) : value;
+        } });
+      });
+      return () => act(() => {
+        const event = new Event('animationend');
+        Object.defineProperty(event, 'animationName', { value: 'exit' });
+        screen.queryByTestId('space-drawer')?.dispatchEvent(event);
+      });
+    }
+    /**
+     * A panel beside the drawer that takes focus when it opens, as the 3D task list does.
+     * @param root0 - Props.
+     * @param root0.open - Whether it is open.
+     * @param root0.onOpenChange - Its open state setter.
+     * @returns The panel.
+     */
+    function Panel({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }): React.JSX.Element {
+      return <Popover open={open} onOpenChange={onOpenChange}><PopoverAnchor asChild><div /></PopoverAnchor>
+        <PopoverContent data-testid='focus-panel' onOpenAutoFocus={(event) => { event.preventDefault(); (event.currentTarget as HTMLElement).focus(); }}>panel</PopoverContent></Popover>;
+    }
+    const settle = (): Promise<void> => act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+
+    it('keeps a panel opened by View in the row menu', async () => {
+      const endExit = exitAnimation();
+      /** The drawer whose activation opens the panel. */
+      function Harness(): React.JSX.Element {
+        const [open, setOpen] = React.useState(false);
+        return <><SpaceDrawer spaces={[SPACE, SIBLING]} activeSpaceId='sp-2' projectId='proj-1' onActivate={() => setOpen(true)}
+          onDeleteSpace={vi.fn()} onRenameSpace={vi.fn()} onSetSpaceLocked={vi.fn()} /><Panel open={open} onOpenChange={setOpen} /></>;
+      }
+      const user = userEvent.setup();
+      render(<Harness />);
+      await user.click(screen.getByTestId('space-drawer-trigger'));
+      await openRowMenu(user, 'sp-1');
+      await user.click(screen.getByTestId('space-drawer-view-sp-1'));
+      await settle();
+      endExit();
+      await settle();
+      expect(screen.getByTestId('focus-panel')).toHaveFocus();
+    });
+
+    it('keeps a panel that takes the overlay slot from the open drawer', async () => {
+      const endExit = exitAnimation();
+      /** The drawer beside a panel that holds the shared overlay slot when open. */
+      function Harness(): React.JSX.Element {
+        const open = useUIStore((state) => state.activeOverlayId === 'scene:x:right');
+        return <><SpaceDrawer spaces={[SPACE, SIBLING]} activeSpaceId='sp-1' projectId='proj-1' onActivate={vi.fn()}
+          onDeleteSpace={vi.fn()} onRenameSpace={vi.fn()} onSetSpaceLocked={vi.fn()} />
+        <Panel open={open} onOpenChange={(next) => useUIStore.setState({ activeOverlayId: next ? 'scene:x:right' : null })} /></>;
+      }
+      const user = userEvent.setup();
+      render(<Harness />);
+      await user.click(screen.getByTestId('space-drawer-trigger'));
+      act(() => useUIStore.setState({ activeOverlayId: 'scene:x:right' }));
+      await settle();
+      endExit();
+      await settle();
+      expect(screen.getByTestId('focus-panel')).toHaveFocus();
+      expect(useUIStore.getState().activeOverlayId).toBe('scene:x:right');
+    });
   });
 
   it('gives the keyboard back to its trigger when it closes without opening a Space', async () => {

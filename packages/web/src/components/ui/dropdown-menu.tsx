@@ -3,6 +3,7 @@ import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu';
 import { Check, ChevronRight, Circle } from 'lucide-react';
 
 import { ScrollArea } from '@web/components/ui/scroll-area';
+import { useKeepMovedFocus } from '@web/lib/overlay-focus';
 import { cn } from '@web/lib/utils';
 
 export const DropdownMenu = DropdownMenuPrimitive.Root;
@@ -53,8 +54,10 @@ export function DropdownMenuContent({
   children,
   sideOffset = 6,
   collisionPadding = 8,
+  onCloseAutoFocus,
   ...props
 }: ComponentProps<typeof DropdownMenuPrimitive.Content> & MenuSurfaceProps): ReactNode {
+  const keepMovedFocus = useKeepMovedFocus(onCloseAutoFocus);
   return (
     <DropdownMenuPrimitive.Portal>
       <DropdownMenuPrimitive.Content
@@ -67,6 +70,7 @@ export function DropdownMenuContent({
           className,
         )}
         {...props}
+        onCloseAutoFocus={keepMovedFocus}
       >
         <MenuRows rowsClassName={rowsClassName}>{children}</MenuRows>
       </DropdownMenuPrimitive.Content>

@@ -61,8 +61,34 @@ export function useReturnFocus(open: boolean): (event: Event) => void {
     event.preventDefault();
     const target = opener.current;
     opener.current = null;
+    if (focusMovedOn()) return;
     // Gone from the document if the row it sat in re-rendered while the
     // overlay was up; the body is then where focus was headed anyway.
     if (target !== null && document.contains(target)) target.focus();
   }, []);
+}
+
+/**
+ * Whether focus has moved on to another element, rather than going down with a closing overlay to the body.
+ * @returns True when something other than the body holds focus.
+ */
+function focusMovedOn(): boolean {
+  const active = document.activeElement;
+  return active !== null && active !== document.body;
+}
+
+/**
+ * The `onCloseAutoFocus` every overlay primitive in `components/ui` passes to Radix: the caller's own handler first,
+ * then focus goes back to the trigger only when it went down with the overlay. An overlay that another one closed
+ * (a panel taking the shared overlay slot, a Space opened from a menu that hands focus to its own panel) otherwise
+ * pulls focus back to its trigger once its exit ends and closes the overlay that now holds it. react-aria's
+ * `FocusScope` restores focus on the same condition.
+ * @param handler - The caller's `onCloseAutoFocus`, if any.
+ * @returns The handler to pass to the Radix content.
+ */
+export function useKeepMovedFocus(handler?: (event: Event) => void): (event: Event) => void {
+  return React.useCallback((event: Event): void => {
+    handler?.(event);
+    if (!event.defaultPrevented && focusMovedOn()) event.preventDefault();
+  }, [handler]);
 }
