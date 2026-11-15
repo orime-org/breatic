@@ -40,7 +40,7 @@ export const REGION_FUNCTIONS = {
   /**
    * Send this Studio's whole state to the directory, to repair its row.
    * @param studioId - A Studio in this region.
-   * @returns Once the snapshot is in the outbox.
+   * @returns Whether this region holds the Studio, so a snapshot went into the outbox.
    */
   emitStudioSnapshot: (studioId: string): Promise<boolean> => emitStudioSnapshot(studioId),
 };

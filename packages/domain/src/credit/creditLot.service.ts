@@ -363,12 +363,12 @@ async function applyCharge(input: ChargeInput, tx: DbTx): Promise<ChargeOutcome>
   // The debt row first, and before any lot. Both writers take it in this
   // order, so two charges on one studio — or a charge and a designation —
   // queue up rather than each holding half of what the other needs. The
-  // whole order is `credit_charge_requests` → `studios` → `studio_members` →
-  // `studio_credit_debts` → `credit_holds` → `credit_lots`; a charge holds its
-  // request row and joins the rest at the debt, a
-  // designation one table earlier, and accepting a transfer at the
-  // membership. An admission that holds credits takes the same debt lock, so
-  // it sees this charge and the hold it releases together.
+  // whole order is `credit_charge_settlements` (or, in the region holding the
+  // books, the charge's request row) → `studio_directory` →
+  // `studio_credit_debts` → `credit_holds` → `credit_lots`; a charge joins at
+  // the debt, while a designation and an admin change take the directory row
+  // first. An admission that holds credits takes the same debt lock, so it
+  // sees this charge and the hold it releases together.
   await creditLotRepo.lockDebt(studioId, tx);
   if (input.releaseHold) await creditHoldRepo.releaseHold(input.releaseHold, tx);
   const candidates = await creditLotRepo.listSpendableLots(studioId, tx);
