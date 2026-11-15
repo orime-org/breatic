@@ -13,6 +13,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AxiosAdapter, InternalAxiosRequestConfig } from 'axios';
 
 const fetchEventSource = vi.hoisted(() => vi.fn(async (_url: string, _init: unknown) => undefined));
+// Every body goes through storage, so the routes see only a transfer reference.
+vi.mock('@web/data/upload/transfer-body', () => ({
+  bodyOrTransfer: vi.fn(async () => ({ transfer: 'transfer/k' })),
+}));
 vi.mock('@breatic/shared', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@breatic/shared')>()),
   sendBytesToIngest: vi.fn(async () => ({ uploadId: 'up1', token: 'tok', parts: [] })),
@@ -27,10 +31,13 @@ import { request } from '@web/data/api/request';
 import { projectsApi } from '@web/data/api/projects';
 import { notificationsApi } from '@web/data/api/notifications';
 import { decisionsApi } from '@web/data/api/decisions';
-import { getRegionConfig, parseRegionConfig, setCurrentRegion } from '@web/data/api/regions';
+import { getRegionConfig, parseRegionConfig, rememberProjectRegion, rememberStudioRegion, setCurrentRegion } from '@web/data/api/regions';
 import { sseStream } from '@web/data/stream/sse';
 import { assetsApi } from '@web/data/api/assets';
 import { canvasApi } from '@web/data/api/canvas';
+import { documentsApi } from '@web/data/api/documents';
+import { studiosApi } from '@web/data/api/studios';
+import { apiPost } from '@web/data/api/request';
 import { sendFileAndFinish } from '@web/data/upload/finish-upload';
 import type { UploadTicket } from '@web/data/upload/ingest-upload';
 import { chatSessionFor, evictAllChatSessions } from '@web/stores/chat-sessions';
@@ -145,6 +152,27 @@ describe('the Agent chat send', () => {
 
     expect(sent.at(-1)).toBe(`${SG}/chat/message`);
   });
+
+  it('posts to the region of its Project when another page is open', async () => {
+    rememberProjectRegion('p-chat-sg', 'sg');
+    setCurrentRegion(null);
+    const sent: string[] = [];
+    vi.stubGlobal('fetch', (url: string) => {
+      sent.push(String(url));
+      return Promise.resolve(new Response('', { status: 200, headers: { 'Content-Type': 'text/event-stream' } }));
+    });
+
+    const chat = chatSessionFor({
+      projectId: 'p-chat-sg',
+      conversationId: 'c-chat-sg',
+      history: [],
+      onTitled: () => undefined,
+      onFirstFrame: () => undefined,
+    });
+    await chat.sendMessage({ text: 'hello' });
+
+    expect(sent.at(-1)).toBe(`${SG}/chat/message`);
+  });
 });
 
 describe('decision links', () => {
@@ -154,6 +182,14 @@ describe('decision links', () => {
     await decisionsApi.view('sg.abc');
 
     expect(seen).toEqual([`${SG}/decisions/sg.abc`]);
+  });
+
+  it('go to the global region for a prefix the table does not name', async () => {
+    setCurrentRegion('sg');
+
+    await decisionsApi.view('mars.abc');
+
+    expect(seen).toEqual([`${US}/decisions/mars.abc`]);
   });
 
   it('go to the global region for a token with no prefix', async () => {
@@ -188,5 +224,42 @@ describe('an upload', () => {
       `${SG}/assets/upload-status`,
       `${SG}/canvas/node-tasks/t1/failure`,
     ]);
+  });
+});
+
+describe('a request acting on a Project or Studio', () => {
+  it('goes to its region whichever page is open when it is sent', async () => {
+    rememberProjectRegion('p-sg', 'sg');
+    rememberStudioRegion(['s-sg', 'sg-handle'], 'sg');
+    setCurrentRegion(null);
+
+    await projectsApi.get('p-sg');
+    await apiPost('/mini-tools', { project_id: 'p-sg' });
+    await request.get('/canvas/limits', { params: { project_id: 'p-sg' } });
+    await studiosApi.get('sg-handle');
+    await assetsApi.requestUploadTicket({ filename: 'a.png', contentType: 'image/png', studioId: 's-sg', purpose: 'studio_avatar', size: 1, hash: 'a'.repeat(64) });
+    await documentsApi.save({ projectId: 'p-sg', spaceId: 'sp' }, { name: undefined, content: {}, schemaVersion: '1' });
+    await canvasApi.paste({ project_id: 'p-sg', urls: [], pairs: [], history: [] });
+    await canvasApi.snapshotNodeText({ project_id: 'p-sg', node_id: 'n', text: 'x' });
+
+    expect(seen).toEqual([
+      `${SG}/projects/p-sg`,
+      `${SG}/mini-tools`,
+      `${SG}/canvas/limits`,
+      `${SG}/studio/sg-handle`,
+      `${SG}/assets/upload-ticket`,
+      `${SG}/documents/versions`,
+      `${SG}/canvas/paste`,
+      `${SG}/canvas/node-history/snapshot`,
+    ]);
+  });
+
+  it('goes to the open page region when it names nothing this tab knows', async () => {
+    setCurrentRegion('sg');
+
+    await projectsApi.get('p-unknown');
+    await apiPost('/mini-tools', { project_id: 'p-unknown' });
+
+    expect(seen).toEqual([`${SG}/projects/p-unknown`, `${SG}/mini-tools`]);
   });
 });

@@ -11,9 +11,12 @@ vi.mock('@web/data/api/projects', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@web/data/api/projects')>()),
   projectsApi: { create: vi.fn() },
 }));
-vi.mock('@web/data/api/directory', () => ({ rememberProjectRegion: vi.fn() }));
+vi.mock('@web/data/api/regions', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@web/data/api/regions')>()),
+  rememberProjectRegion: vi.fn(),
+}));
 import { projectsApi } from '@web/data/api/projects';
-import { rememberProjectRegion } from '@web/data/api/directory';
+import { rememberProjectRegion } from '@web/data/api/regions';
 import { useCreateProject } from '@web/pages/studio/container/dialogs/use-create-project';
 import type { StudioSummary } from '@breatic/shared';
 

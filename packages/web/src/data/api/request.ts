@@ -11,7 +11,7 @@ import { getLocale } from '@breatic/shared';
 
 import { ApiException, type ApiEnvelope, type ApiError } from '@web/data/api/types';
 import { renewIdentityNow } from '@web/data/api/identity-renewal';
-import { apiBaseForPath, getRegionConfig } from '@web/data/api/regions';
+import { apiBaseForRequest, getRegionConfig } from '@web/data/api/regions';
 import { checkStaleRelease } from '@web/data/deployment/stale-release';
 
 /**
@@ -25,10 +25,11 @@ import { checkStaleRelease } from '@web/data/deployment/stale-release';
  * That removes the XSS exfiltration surface entirely (a JS payload
  * cannot read an httpOnly cookie).
  *
- * - `baseURL` is chosen per request by `apiBaseForPath`: the one same-origin
- *   prefix in a single-region build, otherwise the global region for global
- *   data and the open Studio's region for the rest (inner#1955). A caller's
- *   own `baseURL` wins.
+ * - `baseURL` is chosen per request by `apiBaseForRequest`: the one
+ *   same-origin prefix in a single-region build, otherwise the global region
+ *   for global data, the region of the Project or Studio the request names,
+ *   and the open page's region for the rest (inner#1955). A caller's own
+ *   `baseURL` wins.
  * - A region's 401 with `identity_expired` renews the identity token at the
  *   global region once and retries the request once.
  * - Request interceptor: send the language the user picked, so the server
@@ -51,7 +52,7 @@ function createClient(): AxiosInstance {
   // the two, and it is read per request because the user can switch at any
   // time while this singleton lives for the life of the page.
   instance.interceptors.request.use((config) => {
-    config.baseURL ??= apiBaseForPath(config.url ?? '', getRegionConfig());
+    config.baseURL ??= apiBaseForRequest(config, getRegionConfig());
     // An explicit header from the caller wins; nothing sets one today, but
     // silently overwriting one would be a surprise if anything ever did.
     if (config.headers.get('Accept-Language') === undefined) {

@@ -15,7 +15,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const apiGet = vi.hoisted(() => vi.fn());
 vi.mock('@web/data/api/request', () => ({ apiGet }));
 
-import { directoryApi, rememberProjectRegion } from '@web/data/api/directory';
+import { directoryApi } from '@web/data/api/directory';
+import { rememberProjectRegion } from '@web/data/api/regions';
 
 beforeEach(() => {
   apiGet.mockReset();

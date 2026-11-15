@@ -5,7 +5,7 @@ import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { getLocale, t } from '@breatic/shared';
 
 import { ensureFreshIdentity } from '@web/data/api/identity-renewal';
-import { apiBaseForPath, getRegionConfig } from '@web/data/api/regions';
+import { apiBaseForRequest, getRegionConfig } from '@web/data/api/regions';
 import { checkStaleRelease } from '@web/data/deployment/stale-release';
 
 /** The content-type of a stream that opened. Anything else is an answer. */
@@ -164,7 +164,7 @@ interface SseOptions<TEvent> {
  *   - `POST /chat/message` — Agent chat token stream
  *   - `POST /mini-tools/text` — text mini-tool token stream
  *
- * Both are relative: this wrapper puts them under `apiBaseForPath`, the same
+ * Both are relative: this wrapper puts them under `apiBaseForRequest`, the same
  * choice of base the axios instance makes, so the two transports cannot drift apart.
  *
  * Auth: `credentials: 'include'` makes the browser attach the httpOnly
@@ -196,7 +196,7 @@ export async function sseStream<TEvent>({
   onError,
   signal,
 }: SseOptions<TEvent>): Promise<void> {
-  const fullUrl = url.startsWith('http') ? url : `${apiBaseForPath(url, getRegionConfig())}${url}`;
+  const fullUrl = url.startsWith('http') ? url : `${apiBaseForRequest({ url, data: body }, getRegionConfig())}${url}`;
 
   // Set once the response turned out to be a stream, which is what separates
   // "never reached the server" from "died on the way".

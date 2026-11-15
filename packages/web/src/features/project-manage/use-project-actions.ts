@@ -5,8 +5,7 @@ import * as React from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { invalidateProjectListings, projectsApi } from '@web/data/api';
-import { rememberProjectRegion } from '@web/data/api/directory';
-import { getCurrentRegion } from '@web/data/api/regions';
+import { getCurrentRegion, projectRegionOf, rememberProjectRegion } from '@web/data/api/regions';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toastFailure } from '@web/features/project-manage/toast-failure';
 import { reportConversion } from '@web/data/analytics';
@@ -45,9 +44,10 @@ export function useProjectActions(projectId: string): ProjectActions {
 
   const duplicate = useMutation({
     mutationFn: async () => {
-      // The copy lives where this request goes, read as it is sent; the
-      // directory hears of it a moment later (inner#1955).
-      const region = getCurrentRegion();
+      // The copy lives where this request goes, the source Project's region;
+      // the directory hears of it a moment later (inner#1955).
+      const known = projectRegionOf(projectId);
+      const region = known === undefined ? getCurrentRegion() : known;
       const copy = await projectsApi.duplicate(projectId);
       rememberProjectRegion(copy.id, region);
       return copy;

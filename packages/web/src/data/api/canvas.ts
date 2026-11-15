@@ -3,6 +3,7 @@
 
 import type { CanvasPasteAnswer, CanvasPasteInput, NodeTaskCounts, NodeTaskEntry, TaskCreateInput } from '@breatic/shared';
 
+import { apiBaseForProject, getRegionConfig } from '@web/data/api/regions';
 import { apiDelete, apiGet, apiPost, runOnceRequest } from '@web/data/api/request';
 import { noteCreditsChanged } from '@web/data/api/credits';
 import { bodyOrTransfer } from '@web/data/upload/transfer-body';
@@ -308,9 +309,11 @@ export const canvasApi = {
     text: string;
   }): Promise<{ id: string }> {
     // A long text goes through storage when it is over the request limit (inner#1006).
+    // A transfer reference does not name the Project: the request names its region (inner#1955).
     return apiPost<{ id: string }>(
       '/canvas/node-history/snapshot',
       await bodyOrTransfer(body.project_id, body),
+      { baseURL: apiBaseForProject(body.project_id, getRegionConfig()) },
     );
   },
   /**
@@ -324,9 +327,11 @@ export const canvasApi = {
    */
   async paste(body: CanvasPasteInput): Promise<CanvasPasteAnswer> {
     // Long text history goes through storage when it is over the request limit (inner#1006).
+    // A transfer reference does not name the Project: the request names its region (inner#1955).
     return apiPost<CanvasPasteAnswer>(
       '/canvas/paste',
       await bodyOrTransfer(body.project_id, body),
+      { baseURL: apiBaseForProject(body.project_id, getRegionConfig()) },
     );
   },
 

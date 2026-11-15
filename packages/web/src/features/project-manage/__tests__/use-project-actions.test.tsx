@@ -17,15 +17,17 @@ vi.mock('@web/data/api', async (importOriginal) => ({
 vi.mock('@web/lib/toast', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
-vi.mock('@web/data/api/directory', () => ({ rememberProjectRegion: vi.fn() }));
+vi.mock('@web/data/api/regions', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@web/data/api/regions')>()),
+  rememberProjectRegion: vi.fn(),
+}));
 
 import { projectsApi } from '@web/data/api';
 import { toast } from '@web/lib/toast';
 import { ApiException } from '@web/data/api/types';
 import { studioProjectsListKey } from '@web/data/api/projects';
 import { useProjectActions } from '@web/features/project-manage/use-project-actions';
-import { rememberProjectRegion } from '@web/data/api/directory';
-import { setCurrentRegion } from '@web/data/api/regions';
+import { rememberProjectRegion, setCurrentRegion } from '@web/data/api/regions';
 
 // Every studio's lists: the in-project banner does not know the studio's slug.
 const LIVE = studioProjectsListKey('acme', { archived: false, sort: 'opened', locale: 'en' });

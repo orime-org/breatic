@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import { apiBaseForPath, getRegionConfig } from '@web/data/api/regions';
+import { apiBaseForRequest, getRegionConfig } from '@web/data/api/regions';
 import { apiGet, apiPost, request } from '@web/data/api/request';
 import type { ApiEnvelope } from '@web/data/api/types';
 import type { UploadClientConfig, UploadStatus } from '@breatic/shared';
@@ -48,15 +48,15 @@ export function requestBodyLimitOf(cfg: UploadConfig | null): number | null {
 export const NO_CLIENT_TIMEOUT = { timeout: 0 } as const;
 
 /**
- * The API base an upload is opened at: the open page's region now. The page
- * keeps it on the ticket, because the bytes can take minutes and the page may
- * move to another region before the upload's later requests are sent
- * (inner#1955).
+ * The API base an upload is opened at: the region of the Project or Studio it
+ * lands in. The page keeps it on the ticket for the upload's later requests,
+ * which name only the upload (inner#1955).
+ * @param body - The ticket request's body.
  * @returns The API base.
- * @throws {Error} When the region table has no address for the page's region.
+ * @throws {Error} When the region table has no address for the region.
  */
-function uploadApiBase(): string {
-  return apiBaseForPath('/assets/upload-ticket', getRegionConfig());
+function uploadApiBase(body: Record<string, unknown>): string {
+  return apiBaseForRequest({ url: '/assets/upload-ticket', data: body }, getRegionConfig());
 }
 
 /** Session cache for the upload knobs (one fetch per session). */
@@ -99,8 +99,7 @@ export const assetsApi = {
    * @throws {ApiException} When the request fails.
    */
   async requestUploadTicket(params: UploadTicketRequest, signal?: AbortSignal): Promise<UploadTicketResponse> {
-    const apiBase = uploadApiBase();
-    const answer = await apiPost<UploadTicketResponse>('/assets/upload-ticket', {
+    const body = {
       filename: params.filename,
       content_type: params.contentType,
       ...(params.projectId !== undefined && { project_id: params.projectId }),
@@ -114,7 +113,11 @@ export const assetsApi = {
       ...(params.derived !== undefined && { derived: params.derived }),
       ...(params.purpose !== undefined && { purpose: params.purpose }),
       ...(params.label !== undefined && { label: params.label }),
-    }, { ...NO_CLIENT_TIMEOUT, baseURL: apiBase, ...(signal !== undefined && { signal }) });
+    };
+    const apiBase = uploadApiBase(body);
+    const answer = await apiPost<UploadTicketResponse>('/assets/upload-ticket', body, {
+      ...NO_CLIENT_TIMEOUT, baseURL: apiBase, ...(signal !== undefined && { signal }),
+    });
     return { ...answer, apiBase };
   },
 
@@ -127,8 +130,7 @@ export const assetsApi = {
    * @throws {ApiException} When the request fails.
    */
   async requestUploadTicketBatch(params: BatchTicketRequest): Promise<BatchTicketAnswer[]> {
-    const apiBase = uploadApiBase();
-    const { items } = await apiPost<{ items: BatchTicketAnswer[] }>('/assets/upload-ticket', {
+    const body = {
       project_id: params.projectId,
       space_id: params.spaceId,
       source: params.source,
@@ -140,7 +142,11 @@ export const assetsApi = {
         client_hash: item.hash,
         node_id: item.nodeId,
       })),
-    }, { ...NO_CLIENT_TIMEOUT, baseURL: apiBase });
+    };
+    const apiBase = uploadApiBase(body);
+    const { items } = await apiPost<{ items: BatchTicketAnswer[] }>('/assets/upload-ticket', body, {
+      ...NO_CLIENT_TIMEOUT, baseURL: apiBase,
+    });
     return items.map((item) => ({ ...item, apiBase }));
   },
 

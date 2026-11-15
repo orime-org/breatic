@@ -6,7 +6,7 @@ import * as React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from '@web/lib/toast';
 
-import { rememberProjectRegion } from '@web/data/api/directory';
+import { rememberProjectRegion } from '@web/data/api/regions';
 import { projectsApi, type CreatedProject } from '@web/data/api/projects';
 import { reportConversion } from '@web/data/analytics';
 import { useTranslation } from '@web/i18n/use-translation';

@@ -10,6 +10,7 @@
  * requires auth (the httpOnly session cookie rides along via `withCredentials`).
  */
 
+import { rememberProjectRegion, rememberStudioRegion, studioRegionOf } from '@web/data/api/regions';
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from '@web/data/api/request';
 // One shape for "a container has an outstanding ownership offer" — a project and
 // a studio differ in what changes hands, not in what the offer looks like.
@@ -77,8 +78,11 @@ export const studiosApi = {
    * personal-first.
    * @returns the user's studios as summaries.
    */
-  listUserStudios(): Promise<StudioSummary[]> {
-    return apiGet<StudioSummary[]>('/studios');
+  async listUserStudios(): Promise<StudioSummary[]> {
+    const studios = await apiGet<StudioSummary[]>('/studios');
+    // Requests acting on one of them go to its region from now on (inner#1955).
+    for (const studio of studios) rememberStudioRegion([studio.id, studio.slug], studio.region);
+    return studios;
   },
   /**
    * `GET /api/v1/studios/recent` — the cross-studio "Recent" landing feed: the
@@ -142,13 +146,17 @@ export const studiosApi = {
    * @param query.cursor the previous page's `nextCursor`; omit for the first page.
    * @returns the page.
    */
-  listProjects(
+  async listProjects(
     slug: string,
     query: { archived: boolean; sort: StudioProjectSort; cursor: string | undefined },
   ): Promise<StudioProjectPage> {
     const params = new URLSearchParams({ archived: String(query.archived), sort: query.sort });
     if (query.cursor !== undefined) params.set('cursor', query.cursor);
-    return apiGet<StudioProjectPage>(`/studio/${slug}/projects?${params.toString()}`);
+    const page = await apiGet<StudioProjectPage>(`/studio/${slug}/projects?${params.toString()}`);
+    // A Studio's Projects live in its region (inner#1955).
+    const region = studioRegionOf(slug);
+    if (region !== undefined) for (const project of page.items) rememberProjectRegion(project.id, region);
+    return page;
   },
   /**
    * `GET /api/v1/studio/:slug/members` — the Members tab view: active members

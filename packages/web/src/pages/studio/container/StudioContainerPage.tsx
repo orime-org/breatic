@@ -8,7 +8,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { StudioProjectSort, StudioSummary } from '@breatic/shared';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { directoryApi } from '@web/data/api/directory';
-import { getRegionConfig, isRegionDown } from '@web/data/api/regions';
+import { getRegionConfig, isRegionDown, rememberStudioRegion } from '@web/data/api/regions';
 import { studiosApi } from '@web/data/api/studios';
 import { useCurrentRegion } from '@web/data/api/use-current-region';
 import { RegionUnavailable } from '@web/components/RegionUnavailable';
@@ -80,11 +80,15 @@ export default function StudioContainerPage(): React.JSX.Element {
   });
   const region = regionQuery.data?.region;
   useCurrentRegion(region);
+  // Written during render, before any child sends a request: requests acting
+  // on this Studio go to its region even after the user leaves the page.
+  if (region !== undefined) rememberStudioRegion([slug], region);
   const studioQuery = useQuery({
     queryKey: ['studio', slug],
     enabled: region !== undefined,
     queryFn: () => studiosApi.get(slug),
   });
+  if (region !== undefined && studioQuery.data !== undefined) rememberStudioRegion([studioQuery.data.id], region);
   // Remembered per studio by id, so renaming the studio keeps the choice.
   const studioId = studioQuery.data?.id ?? '';
   const projectPrefs = useStudioListPrefs(studioId, 'projects');

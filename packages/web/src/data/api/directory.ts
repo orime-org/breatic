@@ -5,33 +5,20 @@
  * Which region a Studio or Project lives in, from the global directory
  * (inner#1955). The directory hears of a non-global region's new Project or
  * new slug through that region's outbox a moment after the change, so the tab
- * that made the change answers from what it already knows. A Project id never
- * changes, so its region is kept in localStorage and a reopened page skips the
- * question. A slug can later belong to another Studio and is always asked;
- * this tab's own rename is written into the switcher's list, which the
- * Studio page reads first.
+ * that made the change answers from what it already knows. Every answer is
+ * remembered (`rememberProjectRegion`, `rememberStudioRegion`), and requests
+ * acting on that Project or Studio go to its region from then on. A slug can
+ * later belong to another Studio and is asked again on each page; this tab's
+ * own rename is written into the switcher's list, which the Studio page reads
+ * first.
  */
 
+import { projectRegionOf, rememberProjectRegion, rememberStudioRegion } from '@web/data/api/regions';
 import { apiGet } from '@web/data/api/request';
 
 /** Where a Studio or Project lives; null is the global region. */
 export interface DirectoryEntry {
   region: string | null;
-}
-
-const PROJECT_CACHE_PREFIX = 'breatic:region:project:';
-
-/**
- * Remember the region of a Project this tab just created.
- * @param id - The Project id.
- * @param region - Its region; null is the global region.
- */
-export function rememberProjectRegion(id: string, region: string | null): void {
-  try {
-    window.localStorage.setItem(PROJECT_CACHE_PREFIX + id, region ?? '');
-  } catch {
-    // Storage unavailable: the directory answers once it has heard.
-  }
 }
 
 export const directoryApi = {
@@ -42,7 +29,9 @@ export const directoryApi = {
    * @throws {ApiException} When the directory does not answer.
    */
   async studio(slug: string): Promise<DirectoryEntry> {
-    return apiGet<DirectoryEntry>(`/directory/studios/${encodeURIComponent(slug)}`);
+    const entry = await apiGet<DirectoryEntry>(`/directory/studios/${encodeURIComponent(slug)}`);
+    rememberStudioRegion([slug], entry.region);
+    return entry;
   },
 
   /**
@@ -52,12 +41,8 @@ export const directoryApi = {
    * @throws {ApiException} When the directory does not answer.
    */
   async project(id: string): Promise<DirectoryEntry> {
-    try {
-      const remembered = window.localStorage.getItem(PROJECT_CACHE_PREFIX + id);
-      if (remembered !== null) return { region: remembered === '' ? null : remembered };
-    } catch {
-      // Storage unavailable: ask the directory.
-    }
+    const remembered = projectRegionOf(id);
+    if (remembered !== undefined) return { region: remembered };
     const entry = await apiGet<DirectoryEntry>(`/directory/projects/${encodeURIComponent(id)}`);
     rememberProjectRegion(id, entry.region);
     return entry;

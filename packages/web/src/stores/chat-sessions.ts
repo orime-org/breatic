@@ -24,7 +24,7 @@ import { DefaultChatTransport } from 'ai';
 import type { ChatTransport, UIMessageChunk } from 'ai';
 import { SSE_HEARTBEAT_MISSES_ALLOWED, attachmentPart, chipOfPart, getLocale } from '@breatic/shared';
 import type { AskUserAnswer, AskUserResult, ChatAttachedChip, ChatSpaceContext, SpaceRequestAnswer } from '@breatic/shared';
-import { apiBaseForPath, getRegionConfig } from '@web/data/api/regions';
+import { apiBaseForProject, getRegionConfig } from '@web/data/api/regions';
 import { ensureFreshIdentity } from '@web/data/api/identity-renewal';
 import { chatApi } from '@web/data/api/chat';
 import { clearConsolidating, noteConsolidating } from '@web/stores/consolidating';
@@ -285,7 +285,7 @@ function transportFor(
     // Built from the one definition of the prefix rather than spelled out.
     // Two spellings is how both streaming endpoints once came to post at an
     // address the server does not serve, with nothing complaining.
-    api: `${apiBaseForPath('/chat/message', getRegionConfig())}/chat/message`,
+    api: `${apiBaseForProject(projectId, getRegionConfig())}/chat/message`,
     // The session cookie is what says who is asking, and a cross-origin
     // default would leave it off in any deployment where the API is not the
     // page's own origin.
