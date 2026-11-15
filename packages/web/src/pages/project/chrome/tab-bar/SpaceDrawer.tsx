@@ -149,9 +149,7 @@ export function SpaceDrawer({
   // to it and close.
   const openedSpace = React.useRef(false);
   const handleCloseAutoFocus = React.useCallback((event: Event): void => {
-    if (!openedSpace.current) return;
-    openedSpace.current = false;
-    event.preventDefault();
+    if (openedSpace.current) event.preventDefault();
   }, []);
   // Each opening starts afresh: a reopening during the exit animation never
   // unmounts the drawer, so its own close must still return focus.
