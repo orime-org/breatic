@@ -176,6 +176,19 @@ describe("identity token issue in the global region", () => {
     expectIssued(identityCookie(res), userId, sessionToken);
   });
 
+  // A host-only cookie left from before the cookie domain was set is sent
+  // first and would keep handing regions an expired token for 30 days.
+  it("deletes a host-only cookie of the same name when it writes one on the parent domain", async () => {
+    const userId = await account();
+    const token = await session(userId);
+
+    const res = await app.request("/api/v1/auth/me", { headers: { Cookie: `${sessionCookieName()}=${token}` } });
+
+    const lines = res.headers.getSetCookie().filter((line) => line.startsWith(`${identityCookieName()}=`));
+    const hostOnlyDeletion = lines.find((line) => /max-age=0/i.test(line) && !/domain=/i.test(line));
+    expect(hostOnlyDeletion).toBeDefined();
+  });
+
   it("is cleared by POST /auth/logout", async () => {
     const userId = await account();
     const token = await session(userId);

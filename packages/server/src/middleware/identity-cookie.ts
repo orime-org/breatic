@@ -68,6 +68,18 @@ export async function writeIdentityCookie(c: Context, subject: IdentitySubject, 
     maxAge: SESSION_COOKIE_MAX_AGE_SECONDS,
     ...(env.IDENTITY_COOKIE_DOMAIN.trim() !== "" ? { domain: env.IDENTITY_COOKIE_DOMAIN.trim() } : {}),
   });
+  dropHostOnlyTwin(c);
+}
+
+/**
+ * With a cookie domain set, delete a host-only cookie of the same name a
+ * deployment without one wrote: it would be sent first, for its whole 30
+ * days, and every region would read its expired token.
+ * @param c - The request context.
+ */
+function dropHostOnlyTwin(c: Context): void {
+  if (env.IDENTITY_COOKIE_DOMAIN.trim() === "") return;
+  deleteCookie(c, identityCookieName(), { path: "/", secure: true });
 }
 
 /**
@@ -80,4 +92,5 @@ export function clearIdentityCookie(c: Context): void {
     secure: true,
     ...(env.IDENTITY_COOKIE_DOMAIN.trim() !== "" ? { domain: env.IDENTITY_COOKIE_DOMAIN.trim() } : {}),
   });
+  dropHostOnlyTwin(c);
 }
