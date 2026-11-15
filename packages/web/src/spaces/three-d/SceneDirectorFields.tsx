@@ -53,10 +53,10 @@ function useContinuousPatch(session: SceneSession, id: string): { begin: () => n
   return React.useMemo(() => {
     /**
      * Start a press, refused without edit access or on a locked object.
-     * @returns The press.
+     * @returns The press, or -1 for a refused one, whose cancel then ends no later press.
      */
-    // A gesture keeps one cancelRevision from its start to its end, so it names the press.
-    const begin = (): number => { session.beginGesture(); return session.getSnapshot().cancelRevision; };
+    // A gesture keeps one cancelRevision from its start to its end, so it names the press; cancelRevision starts at 0.
+    const begin = (): number => (session.beginGesture() ? session.getSnapshot().cancelRevision : -1);
     /** End the press and write what it previewed. */
     const commit = (): void => { session.endGesture(true); };
     return {

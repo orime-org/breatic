@@ -749,6 +749,26 @@ describe('continuous controls end on release and on Escape (round 1 fixes, desig
     expect(session.getSnapshot().gestureActive).toBe(false);
   });
 
+  it.each([['editing access goes', 'access'], ['a peer lock', 'lock']])('keeps a slider press started while a refused picker arrow is held, after %s and comes back', async (_, how) => {
+    const { session } = await setup([lamp(LAMP, 1, 'point', { color: '#ff0000' })], 'editor', true, { spaceKeyboard: true });
+    await openDirector();
+    act(() => session.select(LAMP, false));
+    fireEvent.click(lightSwatch());
+    const hue = await screen.findByRole('slider', { name: 'Hue' });
+    hue.focus();
+    const access = (granted: boolean): void => act(() => session.setEnvironment({ readOnly: !granted, connected: true, hasEverSynced: true, writeAccess: granted ? 'granted' : 'denied', refused: false, awareness: null }));
+    const lock = (locked: boolean): void => act(() => { applySceneCommand(session.doc, { type: 'lock', ids: [LAMP], locked }, Symbol('peer'), true, NAME, { maxLights: 64 }); });
+    if (how === 'access') access(false); else lock(true);
+    // Hue 0 with ArrowLeft changes nothing, so the refused press stays held.
+    fireEvent.keyDown(hue, { key: 'ArrowLeft', keyCode: 37 });
+    if (how === 'access') access(true); else lock(false);
+    sliderPointers();
+    const thumb = within(screen.getByTestId(`scene-director-fields-${LAMP}`)).getAllByRole('slider')[0] as HTMLElement;
+    drag(thumb, [300, 320]);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(lampValue(session, 'intensity')).not.toBe(1);
+  });
+
   it.each([
     ['the ambient light', false],
     ['a light', true],
