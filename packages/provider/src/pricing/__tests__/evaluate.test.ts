@@ -71,6 +71,12 @@ describe("priceUsd — properties", () => {
     }));
   });
 
+  it("$word holds for a non-empty string of word characters in any script, as the upstreams read ^\\w+$, and for nothing else", async () => {
+    for (const name of ["Ava", "Ava_2", "李雷", "José"]) expect(await holds("$word(name)", { name }, {})).toBe(true);
+    for (const name of ["", "Ava Lee", "Ava·Lee", "a-b"]) expect(await holds("$word(name)", { name }, {})).toBe(false);
+    expect(await holds("$word(name)", { name: 7 }, {})).toBe(false);
+  });
+
   it("a formula without a finite total_price is refused", async () => {
     await expect(priceUsd({ basePrice: 1, formula: "{\"other\": 1}", discountRate: 100 }, {}, {})).rejects.toThrow("total_price");
   });

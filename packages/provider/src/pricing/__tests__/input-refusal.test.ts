@@ -106,6 +106,12 @@ describe("inputRefusal", () => {
     expect(await refusal(bound([false, false]), "x".repeat(25))).toBeNull();
   });
 
+  it("passes over a configured upstream the model has no pricing on", async () => {
+    const p = bound();
+    const rules = { ...p.pricingRules("m"), upstreams: p.pricingRules("m").upstreams.filter((u) => (u as { upstream: string }).upstream === "fal") };
+    expect(await inputRefusal(rules, p.availability("m"), run("x".repeat(25)), { mode: "default" })).toEqual({ reason: "fal prompt maxLength 20" });
+  });
+
   it("is what the provider answers for a model", async () => {
     const p = bound();
     expect(await p.refusal("m", run("x".repeat(25)), { mode: "default" })).toMatchObject({ limit: { max: 10 } });
