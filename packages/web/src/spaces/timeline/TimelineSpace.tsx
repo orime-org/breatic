@@ -25,6 +25,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tool
 import { spaceTasksQueryKey } from '@web/data/api/scene';
 import { serverMessage } from '@web/data/api/server-message';
 import { timelineApi } from '@web/data/api/timeline';
+import { useDocProvider } from '@web/data/yjs/collab-socket';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { checkAdd } from '@web/data/yjs/space-write';
 import { useSpaceConnection } from '@web/data/yjs/space-connection';
@@ -35,6 +36,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { isEditableTarget } from '@web/lib/is-editable-target';
 import { toast } from '@web/lib/toast';
 import { cn } from '@web/lib/utils';
+import { useFollowStore } from '@web/stores/follow';
 import { runOnce } from '@web/stores/task-actions-in-flight';
 import type { SpaceBodyProps } from '@web/spaces';
 import { formatShortcut } from '@web/spaces/canvas/format-shortcut';
@@ -53,6 +55,8 @@ import { useTimelineTrackLabels } from '@web/spaces/timeline/timeline-track-labe
 import { useTimelineDocument } from '@web/spaces/timeline/use-timeline-document';
 import { useTimelineEditPrefs } from '@web/spaces/timeline/use-timeline-edit-prefs';
 import { useTimelinePlayback } from '@web/spaces/timeline/use-timeline-playback';
+import { usePublishTimelineView } from '@web/spaces/timeline/use-publish-timeline-view';
+import { userMovedScroll, type TrackScroll } from '@web/spaces/timeline/timeline-follow-scroll';
 import { useTimelineAsset, useTimelineAssets } from '@web/spaces/timeline/use-timeline-asset';
 import { TimelineExecutionList, timelineCancelIntent, timelineExecutionInput, type TimelineExecutionView } from '@web/spaces/timeline/TimelineExecutionList';
 import type { TimelineWebClipView } from '@web/spaces/timeline/TimelineTrackArea';
@@ -64,6 +68,14 @@ import { useTimelineWebResolution } from '@web/spaces/timeline/use-timeline-web-
 import { transitionCreationDraft, type CreationDraftInput, type CreationDraftState } from '@web/spaces/timeline/web-animation-creation-draft';
 import type { TimelineWebLayer, WebAnimationPlayerElement } from '@web/spaces/timeline/web-animation-host';
 import { EMPTY_WEB_INSTANCE_POOL, allocateWebInstances } from '@web/spaces/timeline/web-instance-pool';
+
+/**
+ * The user moved their own Timeline view, so following a member ends (#920).
+ * @throws {never} Never.
+ */
+function stopFollowing(): void {
+  useFollowStore.getState().stop('viewport');
+}
 
 /** The existing content document and its supported native projection. */
 interface TimelineEditorProps extends SpaceBodyProps { doc: Y.Doc; document: TimelineDocumentV1; damagedClipIds: readonly string[] }
@@ -515,10 +527,38 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   const fps = document.settings.fps;
   const extent = Math.max(duration, Math.ceil(fps.num / fps.den * 12)) + Math.ceil(fps.num / fps.den * 2);
   const seekValue = React.useMemo(() => [Math.min(frame, Math.max(0, duration - 1))], [frame, duration]);
-  const onSeek = React.useCallback((value: number[]): void => seek(value[0] ?? 0), [seek]);
-  const seekTo = React.useCallback((target: number): void => seek(Math.max(0, Math.min(target, Math.max(0, duration - 1)))), [seek, duration]);
+  // Every seek the user makes goes through these two (ruler, arrow keys, locating a clip, the seek slider); a follow
+  // that moves the playhead calls playback.seek itself.
+  const onSeek = React.useCallback((value: number[]): void => { stopFollowing(); seek(value[0] ?? 0); }, [seek]);
+  const seekTo = React.useCallback((target: number): void => {
+    stopFollowing();
+    seek(Math.max(0, Math.min(target, Math.max(0, duration - 1))));
+  }, [seek, duration]);
+  const { toggle } = playback;
+  const togglePlay = React.useCallback((): void => { stopFollowing(); toggle(); }, [toggle]);
   const selectClip = React.useCallback((clipId: string | null): void => session.select(clipId), [session]);
-  const trackViewport = React.useRef<HTMLDivElement>(null);
+  const [trackScroller, setTrackScroller] = React.useState<HTMLDivElement | null>(null);
+  const attachTrackViewport = React.useCallback((element: HTMLDivElement | null): void => {
+    if (element !== null) element.dataset.testid = 'timeline-track-scroller';
+    setTrackScroller(element);
+  }, []);
+  // A scroll the user makes stops following; the clamp after the tracks got shorter does not (#920).
+  React.useEffect(() => {
+    if (trackScroller === null) return undefined;
+    let accepted: TrackScroll = { left: trackScroller.scrollLeft, top: trackScroller.scrollTop };
+    /**
+     * Judge one scroll of the track viewport against the last accepted position.
+     * @throws {never} Never.
+     */
+    const onScroll = (): void => {
+      const next = { left: trackScroller.scrollLeft, top: trackScroller.scrollTop };
+      const max = { left: trackScroller.scrollWidth - trackScroller.clientWidth, top: trackScroller.scrollHeight - trackScroller.clientHeight };
+      if (userMovedScroll(accepted, next, max)) stopFollowing();
+      accepted = next;
+    };
+    trackScroller.addEventListener('scroll', onScroll, { passive: true });
+    return () => trackScroller.removeEventListener('scroll', onScroll);
+  }, [trackScroller]);
 
   const commit = React.useCallback((command: TimelineEditCommand, options?: TimelineEditOptions): TimelineEditPlan | null => {
     if (readOnly) return null;
@@ -672,17 +712,24 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   const minZoom = timelineMinZoom(extent, trackWidth);
   const pixelsPerFrame = Math.min(TIMELINE_MAX_PIXELS_PER_FRAME, Math.max(minZoom, zoom));
   const zoomValue = React.useMemo(() => [Math.log2(pixelsPerFrame)], [pixelsPerFrame]);
-  const changeZoom = React.useCallback((value: number[]): void => setZoom(2 ** (value[0] ?? Math.log2(DEFAULT_PIXELS_PER_FRAME))), []);
+  const changeZoom = React.useCallback((value: number[]): void => {
+    stopFollowing();
+    setZoom(2 ** (value[0] ?? Math.log2(DEFAULT_PIXELS_PER_FRAME)));
+  }, []);
+  const awareness = useDocProvider(name)?.awareness ?? null;
+  // Effects run only while the Space body is shown, so the view is out only then.
+  usePublishTimelineView({ awareness, viewport: trackScroller, pixelsPerFrame, headerPx: TIMELINE_TRACK_HEADER_PX,
+    frame, intent: playback.intent, anchor: playback.anchor });
   const locateClip = React.useCallback((clipId: string): void => {
     session.select(clipId);
     const clip = document.clips[clipId];
     if (clip === undefined) return;
     seekTo(clip.startFrame);
-    const viewport = trackViewport.current;
+    const viewport = trackScroller;
     const left = clip.startFrame * pixelsPerFrame;
     // The lanes visible right of the sticky track headers; the margin keeps the start off the headers' edge.
     if (viewport !== null && (left < viewport.scrollLeft || left >= viewport.scrollLeft + viewport.clientWidth - TIMELINE_TRACK_HEADER_PX)) viewport.scrollTo({ left: Math.max(0, left - LOCATE_MARGIN_PX) });
-  }, [session, document.clips, seekTo, pixelsPerFrame]);
+  }, [session, document.clips, seekTo, pixelsPerFrame, trackScroller]);
 
   const nudge = React.useCallback((frames: number): void => {
     if (readOnly || selected === undefined) { seekTo(frame + frames); return; }
@@ -911,7 +958,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
         </div>
       </div>
       <div data-playback-state={playback.state} className='flex shrink-0 items-center gap-3 border-t border-border px-4 py-2'>
-        <Button data-testid='timeline-play' variant='outline' size='sm' className='gap-1.5' disabled={duration === 0} onClick={playback.toggle} icon={playback.intent === 'play' ? <Pause className='size-4' /> : <Play className='size-4' />}>{playback.intent === 'play' ? t('timeline.pause') : t('timeline.play')}</Button>
+        <Button data-testid='timeline-play' variant='outline' size='sm' className='gap-1.5' disabled={duration === 0} onClick={togglePlay} icon={playback.intent === 'play' ? <Pause className='size-4' /> : <Play className='size-4' />}>{playback.intent === 'play' ? t('timeline.pause') : t('timeline.play')}</Button>
         {/* The buffering text sits above the timecode, out of the flow, so nothing in the row moves when it appears. */}
         <div data-testid='timeline-timecode' className='relative flex shrink-0'>
           <span className='text-xs tabular-nums'>{`${formatTimelineTimecode(frame, fps)} / ${formatTimelineTimecode(duration, fps)}`}</span>
@@ -944,7 +991,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
           </span>
         </div>
       </div>
-      <TimelineTrackArea projectId={projectId} document={document} labels={labels} readyIds={readyIds} selectedId={selectedId} frame={frame} extent={extent} viewportRef={trackViewport}
+      <TimelineTrackArea projectId={projectId} document={document} labels={labels} readyIds={readyIds} selectedId={selectedId} frame={frame} extent={extent} viewportRef={attachTrackViewport}
         pixelsPerFrame={pixelsPerFrame} readOnly={readOnly} snap={prefs.snap} placement={placement} web={web} webClips={webClips} uploads={uploadViews} onSelect={selectClip} onSeek={seekTo} onCommit={commitCommand} onVanished={vanished} onDraggingChange={draggingChange} />
     </div>
     <aside data-testid='timeline-side-panel' className='flex w-72 shrink-0 flex-col border-l border-border'>

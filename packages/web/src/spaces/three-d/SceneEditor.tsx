@@ -21,6 +21,7 @@ import { SceneCreationMenu } from '@web/spaces/three-d/SceneCreationMenu';
 import { fillFromTask } from '@web/spaces/three-d/scene-generation';
 import { useSceneProposals } from '@web/stores/scene-proposals';
 import { useConversationRuntime } from '@web/stores/conversation-runtime';
+import { useFollowStore } from '@web/stores/follow';
 import { useProjectSpaceList } from '@web/data/yjs/project-meta';
 import { SceneViewfinder } from '@web/spaces/three-d/SceneViewfinder';
 import { INITIAL_VIEWFINDER, viewfinderReducer, type ViewfinderAction } from '@web/spaces/three-d/viewfinder/viewfinder-state';
@@ -30,7 +31,7 @@ import { SceneObjectList } from '@web/spaces/three-d/SceneObjectList';
 import { SceneRightPanel } from '@web/spaces/three-d/SceneRightPanel';
 import { SceneViewportToolbar, type ScenePanel } from '@web/spaces/three-d/SceneViewportToolbar';
 import { SceneObjectToolbar } from '@web/spaces/three-d/SceneObjectToolbar';
-import type { SceneFrameCapture, SceneModelAcquire, SceneModelState, SceneSkeletonState, SceneTransformMode, SceneView, SceneViewportProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
+import { SCENE_CAMERA_FOV, type SceneFrameCapture, type SceneModelAcquire, type SceneModelState, type SceneSkeletonState, type SceneTransformMode, type SceneView, type SceneViewportProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
 import { getModelImportController } from '@web/spaces/three-d/model-import-controller';
 import type { ModelImportController, PreparedModel } from '@web/spaces/three-d/model-import-controller';
 import type { ModelSource } from '@web/spaces/three-d/model-source';
@@ -45,6 +46,14 @@ const SceneModelImportHost = React.lazy(() => import('@web/spaces/three-d/SceneM
 
 
 const lockIcon = <Lock className='size-4' />;
+
+/**
+ * The user moved their own camera, so following a member ends (#920).
+ * @throws {never} Never.
+ */
+function stopFollowing(): void {
+  useFollowStore.getState().stop('viewport');
+}
 const stageStyle = { '--color-background': 'var(--color-canvas)' } as React.CSSProperties;
 
 export interface SceneEditorProps extends SpaceBodyProps {
@@ -160,6 +169,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
 
   React.useEffect(() => {
     session.setVisible(true);
+    session.setCamera({ ...view.current, fov: SCENE_CAMERA_FOV });
     /** Re-evaluate focus and page visibility from the browser's current facts. */
     const syncFocus = (): void => { session.setFocused(document.hasFocus() && document.visibilityState === 'visible'); };
     syncFocus();
@@ -213,7 +223,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
         else session.select(null, false);
         return;
       }
-      if (!modifier && !event.altKey && key === 'f') { event.preventDefault(); setFocusRevision((value) => value + 1); return; }
+      if (!modifier && !event.altKey && key === 'f') { event.preventDefault(); stopFollowing(); setFocusRevision((value) => value + 1); return; }
       if (modifier && !event.altKey && key === 'z') { event.preventDefault(); session.historyStep(event.shiftKey ? 'redo' : 'undo'); return; }
       if (event.ctrlKey && !event.metaKey && !event.altKey && key === 'y') { event.preventDefault(); session.historyStep('redo'); return; }
       if (modifier && !event.altKey && !event.shiftKey && key === 'd') { event.preventDefault(); if (!event.repeat) duplicate(); return; }
@@ -230,11 +240,12 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   const resolveAsset = React.useCallback((assetId: string, signal: AbortSignal): Promise<{ url: string; mimeType: string; sizeBytes: number }> =>
     resolveSceneAsset(projectId, assetId, signal), [projectId]);
 
-  /** Persist only the personal camera; it never enters shared content or awareness. */
+  /** Persist the personal camera and publish it for followers; it never enters shared content. */
   const onViewChange = React.useCallback((next: SceneView): void => {
     view.current = next;
+    session.setCamera({ ...next, fov: SCENE_CAMERA_FOV });
     if (!writeSceneView(userId, projectId, spaceId, next)) toast.error(t('spaces.threeD.viewFailed'));
-  }, [userId, projectId, spaceId, t]);
+  }, [session, userId, projectId, spaceId, t]);
 
   /** Show model failures and finish a placement's requested focus after asynchronous loading. */
   const onModelStateChange = React.useCallback((id: string, state: SceneModelState, error?: Error): void => {
@@ -246,7 +257,8 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
       next.delete(id);
       return next;
     });
-    if (state === 'ready' && pendingFocusIds.current.delete(id)) setFocusRevision((value) => value + 1);
+    // Only the user's own duplicate, add and place queue a frame, so it moves their camera.
+    if (state === 'ready' && pendingFocusIds.current.delete(id)) { stopFollowing(); setFocusRevision((value) => value + 1); }
     // The viewport holds the placed model itself now, or never will.
     if (state !== 'loading') {
       placements.current.get(id)?.();
@@ -377,6 +389,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     if (ids.length === 0) return;
     keepTasksPanel.current = true;
     ids.forEach((id, index) => session.select(id, index > 0));
+    stopFollowing();
     setFocusRevision((value) => value + 1);
   }, [snapshot.objects, session]);
 
@@ -524,7 +537,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
    * Frame the current selection.
    * @throws {never} Never.
    */
-  const onFocus = React.useCallback((): void => setFocusRevision((value) => value + 1), []);
+  const onFocus = React.useCallback((): void => { stopFollowing(); setFocusRevision((value) => value + 1); }, []);
   /**
    * Delete the latest selection rather than a captured snapshot.
    * @throws {never} Never.
@@ -573,7 +586,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
                   jointMode={jointMode} selectedJoint={selectedJoint} onJointSelect={setSelectedJoint} onSkeletonState={onSkeletonState}
                   onSelect={onSelect} onGestureStart={onGestureStart}
                   onGestureChange={onGestureChange} onGestureEnd={onGestureEnd}
-                  onViewChange={onViewChange} onError={onError} onModelStateChange={onModelStateChange} resolveAsset={resolveAsset} onResources={onResources}
+                  onViewChange={onViewChange} onUserCameraMove={stopFollowing} onError={onError} onModelStateChange={onModelStateChange} resolveAsset={resolveAsset} onResources={onResources}
                   onCapture={onCapture} viewLocked={shotTaken} />
               </React.Suspense>}
       {failedModels ? <div className='absolute left-20 top-3 flex max-w-[calc(100%_-_5rem_-_var(--space-5)_-_42px_-_var(--space-2))] items-center justify-between gap-2 rounded-chrome border border-border bg-background p-2 text-xs'>

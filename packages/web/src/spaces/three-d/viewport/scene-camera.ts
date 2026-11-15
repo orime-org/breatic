@@ -5,6 +5,8 @@ import { MathUtils, Sphere, Vector3 } from 'three';
 import type { Box3, PerspectiveCamera } from 'three';
 import type { ViewfinderRect } from '@web/spaces/three-d/viewfinder/viewfinder-geometry';
 
+export { SCENE_CAMERA_FOV } from '@web/spaces/three-d/viewport/scene-viewport-props';
+
 /**
  * Frame loaded content without changing the scene or another user's camera.
  * @param camera - This viewport's perspective camera.
