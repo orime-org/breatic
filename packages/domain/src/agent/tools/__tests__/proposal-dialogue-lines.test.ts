@@ -104,6 +104,12 @@ describe("a dialogue its upstream cannot take (#1521)", () => {
     const answer = await checkedAnswerFor(one, NO_MATERIAL);
     expect(answer.placed === false && answer.reason).toMatch(/"Read".*8000 characters/);
   });
+
+  it("asks about a single voice as it is sent, without the speakers it keeps for the dialogue side", async () => {
+    const narration = Array.from({ length: 120 }, (_, i) => `Line ${String(i)}.`).join("\n");
+    const one: Sent = { nodes: [{ role: "generate", type: "audio", name: "Read", mode: "tts", model: DUO, params: { speakers: [{ speaker: "Ava", voice: "Nobody" }, { speaker: "Leo", voice: "Nobody" }] }, prompt: [{ text: narration }] }], edges: [], rationale: "A reading." };
+    expect(await checkedAnswerFor(one, NO_MATERIAL)).toMatchObject({ placed: true });
+  });
 });
 
 describe("the price of a dialogue read back", () => {

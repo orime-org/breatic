@@ -20,6 +20,8 @@ import {
   referencePool,
   standInOf,
   storyboardSend,
+  wireParams,
+  withStandInOn,
   type CanvasProposal,
   type ExecuteVerdict,
   type ModelEntry,
@@ -424,9 +426,11 @@ export function generateRunOf(proposal: CanvasProposal, node: ProposalNode, inde
   const wiring = checkWiring(proposal, node, index, resolved.chosen, nodeLabel(proposal.nodes, index));
   if ("refusal" in wiring) return undefined;
   const lyrics = lyricsSent(node, resolved.chosen, wiring.arriving);
+  const entry = proposalModelEntry(node);
   return {
     model: resolved.chosen.name,
-    params: { ...(node.params ?? {}), ...(lyrics === undefined || lyrics === "" ? {} : { [PANEL_EDITOR_PARAM]: lyrics }) },
+    // The params the landed node sends: on the side its switch is on, without the switch.
+    params: { ...wireParams(entry, withStandInOn(entry, node.params ?? {})), ...(lyrics === undefined || lyrics === "" ? {} : { [PANEL_EDITOR_PARAM]: lyrics }) },
     // Cleaned as the worker cleans every prompt before it is sent, as the server asks about it.
     prompt: extractPromptText(sentPrompt(proposal, node, resolved.chosen, wiring.pooled).sent),
   };

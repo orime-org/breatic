@@ -962,6 +962,7 @@ export {
   speakersShort,
   standInOf,
   typedSpeaker,
+  wireParams,
   withStandInOn,
   type DialogueLine,
   type LinePlan,
