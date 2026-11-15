@@ -482,18 +482,18 @@ export function startWorker(): void {
     const holdRelease = createWorker<creditHoldService.HoldReleaseJob>(CREDIT_HOLD_RELEASE_QUEUE, (job) =>
       creditHoldService.runQueuedHoldRelease(job.data),
     );
+    // Tries keep failing while the global region is down.
     holdRelease.on("failed", (job, err) => {
-      const ctx = {
-        err,
-        action: job?.name,
-        referenceId: job?.data.referenceId,
-        studioId: job?.data.abandon?.studioId,
-        attempts: job?.attemptsMade,
-      };
-      // Tries keep failing while the global region is down; only the last one
-      // leaves the hold to run out on its own.
-      if (job !== undefined && job.attemptsMade < (job.opts.attempts ?? 1)) logger.warn(ctx, "credit_hold_cleanup_retry_failed");
-      else logger.error(ctx, "credit_hold_cleanup_gave_up");
+      logger.warn(
+        { err, action: job?.name, referenceId: job?.data.referenceId, studioId: job?.data.abandon?.studioId, attempts: job?.attemptsMade },
+        "credit_hold_cleanup_retry_failed",
+      );
+    });
+    // A cleanup that will not be tried again, including one whose worker
+    // stalled out, leaves the hold to run out on its own; only the queue's
+    // events see every such end, and the job id is the hold's key.
+    createQueueEvents(CREDIT_HOLD_RELEASE_QUEUE).on("failed", ({ jobId, failedReason }) => {
+      logger.error({ referenceId: jobId, failedReason }, "credit_hold_cleanup_gave_up");
     });
     regionWorkers.push(holdRelease);
   }

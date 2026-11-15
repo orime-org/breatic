@@ -42,8 +42,8 @@ import {
   runQueuedHoldRelease,
 } from "@domain/credit/creditHold.service.js";
 
-/** One try every 30 s for the two hours a hold lives: 240 waits after the first try. */
-const RETRY = { attempts: 241, backoff: { type: "fixed", delay: 30_000 }, removeOnFail: true };
+/** One try every 30 s for the two hours a hold lives: 240 waits after the first try, keeping one stack trace. */
+const RETRY = { attempts: 241, backoff: { type: "fixed", delay: 30_000 }, removeOnFail: true, stackTraceLimit: 1 };
 
 beforeEach(() => {
   queueAdd.mockClear();

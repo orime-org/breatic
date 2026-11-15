@@ -169,6 +169,9 @@ async function orQueue(call: () => Promise<void>, job: HoldReleaseJob): Promise<
       ...holdCleanupRetry(),
       removeOnComplete: true,
       removeOnFail: true,
+      // A retry keeps every earlier stack trace unless told otherwise, and
+      // the job hash is rewritten on each of its many tries.
+      stackTraceLimit: 1,
       jobId: job.referenceId,
     });
   }
