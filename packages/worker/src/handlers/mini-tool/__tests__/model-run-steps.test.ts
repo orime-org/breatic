@@ -120,3 +120,14 @@ describe("SAM3 tracking answer (execution design §10.3 track step)", () => {
     expect(sam3RleLink(outputs)).toBeNull();
   });
 });
+
+describe("an expand window's span start against its opening frame (execution design §10.5; frames-split §7.17)", () => {
+  const exact = (numerator: string, denominator: string): { numerator: string; denominator: string } => ({ numerator, denominator });
+  it("AS01 a decimal start below the opening frame's grid time by less than float precision is that grid time", async () => {
+    const { alignedSpanStart } = await import("@worker/handlers/mini-tool/model-run-steps.js");
+    // Frame 224 of a 23.976 fps clip on 1/90000 starts at 7007/750 s; the frozen float start reads 9.342666666666666.
+    expect(alignedSpanStart(exact("4671333333333333", "500000000000000"), exact("7007", "750"))).toEqual(exact("7007", "750"));
+    expect(alignedSpanStart(exact("9", "1"), exact("7007", "750"))).toEqual(exact("9", "1"));
+    expect(alignedSpanStart(exact("9343", "1000"), exact("7007", "750"))).toEqual(exact("9343", "1000"));
+  });
+});

@@ -19,7 +19,7 @@ import type { MiniToolPlanExact, MiniToolPlanTarget } from "@breatic/shared";
 import { presentationFrameAt, presentationGridSpan, type ExpandFailureReason } from "@breatic/shared/mini-tools";
 import type { LipSyncPickup } from "@worker/handlers/mini-tool/run-lip-sync.js";
 import {
-  advanceChunks, advanceContainer, advanceGenerate, advanceRegistered, catalogModel, eachSubmitted, exactSeconds, expandFailureReason, modelRunFailure, modelStepCategory, providerModel, runLedger,
+  advanceChunks, advanceContainer, advanceGenerate, advanceRegistered, alignedSpanStart, catalogModel, eachSubmitted, exactSeconds, expandFailureReason, modelRunFailure, modelStepCategory, providerModel, runLedger,
   type ExpandWindowState, type ModelRunAt, type ModelRunPosition, type ModelStepRun,
 } from "@worker/handlers/mini-tool/model-run-steps.js";
 import { audioOf, chunkInputId, segmentTarget, SOURCE_INPUT_ID, windowDuration, windowEntries } from "@worker/handlers/video-presentation-recipes.js";
@@ -114,12 +114,16 @@ export async function runMiniToolExpand(execution: unknown, userId: string, dead
     for (const [k, window] of plan.windows.entries()) {
       // The frames the window's span touches on the grid its entries carry; the span is the grid's origin and length.
       const frames = presentationGridSpan(table, window.span);
+      const entries = windowEntries(ledger, frames, undefined, true);
+      // The frozen float start is the opening frame's start when it lies within float precision below its grid time.
+      const opening = entries[0]!.kind === "source" ? entries[0]!.displayStart : entries[0]!.window.start;
+      spans[k] = { ...spans[k]!, start: alignedSpanStart(spans[k]!.start, opening) };
       const grid = { fps: plan.modelFps, frameCount: plan.modelFps * window.duration };
       const layer: MiniToolPlanTarget = { ...encoded, width: plan.sourceRoi.width, height: plan.sourceRoi.height, displayRect: null, format: undefined };
       // Each step names itself just before it runs, so a step that throws leaves the run standing at it (§10.5).
       const [input, mask, condition] = await eachSubmitted([
         () => { position.current = { window: k, step: "window" }; return advanceContainer(run, { stepKey: keyOf(plan, `window:${k}`), contentType: "video/mp4", failed: () => ({ failed: "failed", step: "window" }),
-          build: () => Promise.resolve({ recipe: { kind: "model_window", inputId: SOURCE_INPUT_ID, window: frames, timescale: table.timescale, entries: windowEntries(ledger, frames, undefined, true),
+          build: () => Promise.resolve({ recipe: { kind: "model_window", inputId: SOURCE_INPUT_ID, window: frames, timescale: table.timescale, entries,
             target: layer, grid, frame: plan.frame, sourceRoi: plan.sourceRoi, fill: [127, 127, 127], span: spans[k]! }, inputs: [{ inputId: SOURCE_INPUT_ID, storageKey: plan.sourceKey }] }) }, deadlineAt); },
         () => { position.current = { window: k, step: "window_mask" }; return advanceContainer(run, { stepKey: keyOf(plan, `window_mask:${k}`), contentType: "video/mp4", failed: () => ({ failed: "failed", step: "window_mask" }),
           build: () => Promise.resolve({ recipe: { kind: "model_window_mask", grid, frame: plan.frame, sourceRoi: plan.sourceRoi, span: spans[k]! }, inputs: [] }) }, deadlineAt); },

@@ -511,6 +511,22 @@ export async function advanceContainer(run: ModelStepRun, planned: ContainerStep
 }
 
 /**
+ * A window span start written in float seconds, aligned to the grid time of the frame the window opens on (§10.5; §7.17
+ * rounding clock row): a start below that frame's exact start by less than float precision (1e-9 s) is that start.
+ * @param start - The span start, exact from its decimal.
+ * @param opening - The opening frame's exact start.
+ * @returns The span start.
+ * @throws {never} Never.
+ */
+export function alignedSpanStart(start: MiniToolPlanExact, opening: MiniToolPlanExact): MiniToolPlanExact {
+  const [sn, sd] = [BigInt(start.numerator), BigInt(start.denominator)];
+  const [on, od] = [BigInt(opening.numerator), BigInt(opening.denominator)];
+  // opening − start = (on · sd − sn · od) / (od · sd); aligned when 0 < that < 1e-9.
+  const gap = on * sd - sn * od;
+  return gap > 0n && gap * 1_000_000_000n < od * sd ? opening : start;
+}
+
+/**
  * The reduced exact time of seconds written in decimal.
  * @param seconds - The seconds.
  * @returns The exact time.
