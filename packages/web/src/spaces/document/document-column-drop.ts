@@ -145,18 +145,38 @@ export function dropRowBeside(
     const gap = side === 'left' ? moved.nodeSize + 2 : 2;
     put.step(new ReplaceAroundStep(landing.from, landing.to, landing.from, landing.to, new Slice(Fragment.from(list), 0, 0), gap, true));
   }
-  // The put-down only inserts and lifts, and what is appended to it only
-  // changes markup: the original stands where the row maps to.
-  const at = put.mapping.map(dragged.from, 1);
+  const mapped = put.mapping.map(dragged.from, 1);
   view.dispatch(put);
 
-  const original = view.state.doc.nodeAt(at);
-  if (original?.attrs['id'] !== draggedId) return true;
+  // The put-down and the repairs appended to it insert, wrap and lift, which
+  // keep a node standing whole as the same node: the original is the row node
+  // itself, wherever it stands now. Failing that, the row where it maps to
+  // through the put-down's own steps, when it carries the row's id.
+  const { doc } = view.state;
+  let at = whereIs(doc, dragged.node);
+  if (at < 0 && doc.nodeAt(mapped)?.attrs['id'] === draggedId) at = mapped;
+  if (at < 0) return true;
+  const original = doc.nodeAt(at)!;
   // A row that is the only child of its nested group, or of its column,
   // leaves with it.
-  const leaving = rangeToLift(view.state.doc, { node: original, from: at, to: at + original.nodeSize });
+  const leaving = rangeToLift(doc, { node: original, from: at, to: at + original.nodeSize });
   view.dispatch(view.state.tr.delete(leaving.from, leaving.to));
   return true;
+}
+
+/**
+ * Where a node stands in a document, by identity.
+ * @param doc - The document.
+ * @param node - The node.
+ * @returns Its position, or -1 when the document holds it nowhere.
+ */
+function whereIs(doc: PMNode, node: PMNode): number {
+  let at = -1;
+  doc.descendants((child, pos) => {
+    if (child === node) at = pos;
+    return at < 0;
+  });
+  return at;
 }
 
 /**

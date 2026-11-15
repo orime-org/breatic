@@ -12,6 +12,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 import { TextSelection } from '@tiptap/pm/state';
+import { ySyncPluginKey } from 'y-prosemirror';
 
 import { documentBodyFragment } from '@breatic/shared';
 
@@ -209,6 +210,24 @@ describe('a side drop of a row whose id stands twice (inner#1314 A1)', () => {
     view.dispatch(view.state.tr.setNodeAttribute(y, 'id', id));
     dropRowBeside(editor as never, id, idOf(editor, 'T'), 'right');
     expect(shape(editor)).toEqual(['[T|X]', 'Y']);
+  });
+});
+
+describe('a side drop out of a group a merge left with one column (inner#1314 design §5.1)', () => {
+  it.each(['left', 'right'] as const)('moves the row on its %s, leaving no copy behind', (side) => {
+    const editor = open([para('T'), columnsBlock(['gone'], ['X']), para('tail')]);
+    const view = editor.prosemirrorView;
+    let column = -1;
+    view.state.doc.descendants((node, pos) => {
+      if (column < 0 && node.type.name === 'docColumn') column = pos;
+      return column < 0;
+    });
+    // A collaborator's change takes the first column: the group stays with one.
+    const merged = view.state.tr.delete(column, column + view.state.doc.nodeAt(column)!.nodeSize);
+    view.dispatch(merged.setMeta(ySyncPluginKey, { isChangeOrigin: true, isUndoRedoOperation: false }));
+    expect(shape(editor)).toEqual(['T', '[X]', 'tail']);
+    dropRowBeside(editor as never, idOf(editor, 'X'), idOf(editor, 'T'), side);
+    expect(shape(editor)).toEqual([side === 'left' ? '[X|T]' : '[T|X]', 'tail']);
   });
 });
 
