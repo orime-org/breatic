@@ -79,14 +79,15 @@ export const UnsupportedBlock = Node.create({
     return { [ORIGINAL_NAME]: { default: null } };
   },
 
+  // An element, not an array spec: BlockNote's own HTML export of a block it
+  // has no `toExternalHTML` for reads `{ dom }` off this, and a copy or a
+  // drag of a selection holding the block goes through that export.
   renderHTML({ HTMLAttributes }) {
-    return [
-      'div',
-      {
-        'data-unsupported-block': '',
-        'data-original-name': HTMLAttributes[ORIGINAL_NAME],
-      },
-    ];
+    const dom = document.createElement('div');
+    dom.setAttribute('data-unsupported-block', '');
+    const name = HTMLAttributes[ORIGINAL_NAME] as unknown;
+    if (typeof name === 'string') dom.setAttribute('data-original-name', name);
+    return { dom };
   },
 });
 

@@ -1,0 +1,92 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: Elastic-2.0
+
+/**
+ * A copy or a drag of a selection that holds a stand-in block: what an older
+ * build could not read is written out as an empty element naming it, so the
+ * rest of the selection still reaches the clipboard.
+ */
+
+import { afterEach, describe, expect, it } from 'vitest';
+import * as Y from 'yjs';
+import { AllSelection } from '@tiptap/pm/state';
+
+import { documentBodyFragment } from '@breatic/shared';
+
+import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
+
+type Editor = ReturnType<typeof buildDocumentEditor>;
+
+const mounted: Editor[] = [];
+
+afterEach(() => {
+  for (const editor of mounted.splice(0)) editor.unmount();
+  document.body.innerHTML = '';
+});
+
+/**
+ * A mounted editor holding these blocks, everything selected.
+ * @param blocks - The body.
+ * @returns The editor.
+ */
+function openAllSelected(blocks: unknown[]): Editor {
+  const editor = buildDocumentEditor({ fragment: documentBodyFragment(new Y.Doc()) });
+  const host = document.createElement('div');
+  document.body.appendChild(host);
+  editor.mount(host);
+  mounted.push(editor);
+  editor.replaceBlocks(editor.document, blocks as never);
+  const view = editor.prosemirrorView;
+  view.focus();
+  view.dispatch(view.state.tr.setSelection(new AllSelection(view.state.doc)));
+  return editor;
+}
+
+/**
+ * Fires a copy and reads what it put on the clipboard.
+ * @param editor - The editor.
+ * @returns The clipboard.
+ */
+function copy(editor: Editor): Record<string, string> {
+  const data: Record<string, string> = {};
+  const event = new Event('copy', { bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'clipboardData', {
+    value: {
+      setData: (format: string, value: string) => {
+        data[format] = value;
+      },
+      clearData: () => {
+        Object.keys(data).forEach((key) => delete data[key]);
+      },
+      getData: (format: string) => data[format] ?? '',
+    },
+  });
+  editor.prosemirrorView.dom.dispatchEvent(event);
+  return data;
+}
+
+describe('a selection holding a stand-in block', () => {
+  const body = [
+    { type: 'paragraph', content: 'before' },
+    { type: 'unsupportedBlock', props: { originalName: 'futureBlock' } },
+    { type: 'paragraph', content: 'after' },
+  ];
+
+  it('copies the words around it', () => {
+    const editor = openAllSelected(body);
+
+    const plain = copy(editor)['text/plain'] ?? '';
+
+    expect(plain).toContain('before');
+    expect(plain).toContain('after');
+  });
+
+  it('gives a drag of it the plain text a copy writes', () => {
+    const editor = openAllSelected(body);
+    const view = editor.prosemirrorView;
+
+    const dragged = view.serializeForClipboard(view.state.selection.content()).text;
+
+    expect(dragged).toBe(copy(editor)['text/plain']);
+  });
+});
