@@ -35,6 +35,7 @@ import StudioContainerPage from '@web/pages/studio/container/StudioContainerPage
 import { renderWithTooltips as render } from '@web/test-utils/render-with-tooltips';
 import { rememberStudioRegion } from '@web/data/api/regions';
 import { studiosApi } from '@web/data/api/studios';
+import { ApiException } from '@web/data/api/types';
 
 /**
  * Render the Studio page for a slug.
@@ -76,20 +77,40 @@ describe('StudioContainerPage in a build with regions', () => {
   });
 
   // inner#1955: the slug moved to a Studio in another region since this tab
-  // last looked it up; the cached answer must not decide where the page reads.
-  it('reads the Studio from the region the directory answers now, not a cached one', async () => {
+  // last looked it up, so every cache here still names the old region.
+  it('asks the directory again when the cached region does not have the Studio, and reads it there', async () => {
     vi.mocked(rememberStudioRegion).mockClear();
-    vi.mocked(studiosApi.get).mockClear();
-    vi.mocked(studiosApi.get).mockResolvedValue({ ...STUDIO, id: 's-near', region: null });
+    vi.mocked(studiosApi.get).mockReset();
+    vi.mocked(studiosApi.get)
+      .mockRejectedValueOnce(new ApiException({ status: 404, message: 'missing' }))
+      .mockResolvedValueOnce({ ...STUDIO, id: 's-near', region: null });
+    directory.studio.mockClear();
     directory.studio.mockResolvedValueOnce({ region: 'us-west' });
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    // The app's own freshness window (QueryClientProvider), so the cached answer is used as it would be.
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 30_000 } } });
     client.setQueryData(['studio-region', 'far-studio'], { region: 'sg' });
 
     renderPage(client);
 
     expect(await screen.findByText('Far Studio')).toBeInTheDocument();
+    expect(directory.studio).toHaveBeenCalledTimes(1);
+    expect(studiosApi.get).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(rememberStudioRegion).toHaveBeenCalledWith(['far-studio', 's-near'], 'us-west'));
+  });
+
+  it('shows not found when the directory still names the region that does not have it', async () => {
+    vi.mocked(studiosApi.get).mockReset();
+    vi.mocked(studiosApi.get).mockRejectedValue(new ApiException({ status: 404, message: 'missing' }));
+    directory.studio.mockClear();
+    directory.studio.mockResolvedValueOnce({ region: 'sg' });
+    // The app's own freshness window (QueryClientProvider), so the cached answer is used as it would be.
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 30_000 } } });
+    client.setQueryData(['studio-region', 'far-studio'], { region: 'sg' });
+
+    renderPage(client);
+
+    expect(await screen.findByText('404')).toBeInTheDocument();
+    expect(directory.studio).toHaveBeenCalledTimes(1);
     expect(studiosApi.get).toHaveBeenCalledTimes(1);
-    expect(rememberStudioRegion).not.toHaveBeenCalledWith(expect.anything(), 'sg');
-    expect(rememberStudioRegion).toHaveBeenCalledWith(['far-studio'], 'us-west');
   });
 });

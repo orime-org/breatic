@@ -68,13 +68,10 @@ export default function StudioContainerPage(): React.JSX.Element {
   const t = useTranslation();
   const queryClient = useQueryClient();
   // The Studio's region decides where its data lives (inner#1955): the
-  // switcher's rows already carry it, the directory answers otherwise. It is
-  // asked again on every visit, since a slug can move to a Studio in another
-  // region, and nothing reads the Studio until this visit's answer is in.
+  // switcher's rows already carry it, the directory answers otherwise.
   const regions = getRegionConfig();
   const regionQuery = useQuery({
     queryKey: ['studio-region', slug],
-    staleTime: 0,
     queryFn: () => {
       if (regions === null) return { region: null };
       const known = queryClient.getQueryData<StudioSummary[]>(['studios', 'user'])?.find((s) => s.slug === slug);
@@ -82,12 +79,24 @@ export default function StudioContainerPage(): React.JSX.Element {
     },
     retry: (failureCount, err) => !(err instanceof ApiException && err.status === 404) && failureCount < 2,
   });
-  const region = regionQuery.isFetchedAfterMount ? regionQuery.data?.region : undefined;
+  const region = regionQuery.data?.region;
   useCurrentRegion(region);
   const studioQuery = useQuery({
     queryKey: ['studio', slug],
     enabled: region !== undefined,
-    queryFn: () => studiosApi.get(slug),
+    queryFn: async () => {
+      try {
+        return await studiosApi.get(slug);
+      } catch (err) {
+        // A slug can move to a Studio in another region after this tab cached
+        // where it lived; a region without it asks the directory once more.
+        if (regions === null || !(err instanceof ApiException && err.status === 404)) throw err;
+        const fresh = await directoryApi.studio(slug);
+        if (fresh.region === region) throw err;
+        queryClient.setQueryData(['studio-region', slug], { region: fresh.region });
+        return studiosApi.get(slug);
+      }
+    },
   });
   // Written during render, before any child sends a request: requests acting
   // on this Studio go to its region even after the user leaves the page. The
