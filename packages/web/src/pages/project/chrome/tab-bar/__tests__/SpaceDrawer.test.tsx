@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type * as React from 'react';
 
@@ -181,6 +181,26 @@ describe('SpaceDrawer', () => {
     await user.click(screen.getByTestId('space-drawer-view-sp-1'));
     expect(onActivate).toHaveBeenCalledWith('sp-1');
     expect(screen.queryByTestId('space-drawer')).toBeNull();
+  });
+
+  it('keeps the keyboard off its trigger once a row has opened a Space', async () => {
+    const user = userEvent.setup();
+    setup();
+    const trigger = screen.getByTestId('space-drawer-trigger');
+    await user.click(trigger);
+    await user.click(within(screen.getByTestId('space-drawer-row-sp-1')).getAllByRole('button')[0] as HTMLElement);
+    await waitFor(() => expect(screen.queryByTestId('space-drawer')).toBeNull());
+    expect(document.activeElement).not.toBe(trigger);
+  });
+
+  it('gives the keyboard back to its trigger when it closes without opening a Space', async () => {
+    const user = userEvent.setup();
+    setup();
+    const trigger = screen.getByTestId('space-drawer-trigger');
+    await user.click(trigger);
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByTestId('space-drawer')).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
   });
 
   it('offers no Rename when the drawer is given no rename handler', async () => {
