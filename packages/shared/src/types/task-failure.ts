@@ -254,7 +254,7 @@ export function readTaskFailure(message: string | null): StoredTaskFailure {
     ...(held.reading === "transcribe" && { reading: "transcribe" as const }),
     ...(typeof held.model === "string" && held.model !== "" && { model: held.model }),
     ...(isLimit(held.limit) && { limit: held.limit }),
-    ...(Array.isArray(held.envVars) && held.envVars.length > 0 && held.envVars.every((v) => typeof v === "string") && { envVars: held.envVars as string[] }),
+    ...(Array.isArray(held.envVars) && held.envVars.length > 0 && held.envVars.every((v) => typeof v === "string") && { envVars: held.envVars }),
   };
 }
 
@@ -267,6 +267,11 @@ export function readTaskFailure(message: string | null): StoredTaskFailure {
 function isLimit(value: unknown): value is InputLimitShape {
   if (typeof value !== "object" || value === null) return false;
   const l = value as Record<string, unknown>;
+  /**
+   * Whether one bound is absent or a count.
+   * @param n - The stored bound.
+   * @returns True for undefined or a non-negative integer.
+   */
   const bound = (n: unknown): boolean => n === undefined || (typeof n === "number" && Number.isInteger(n) && n >= 0);
   return typeof l.field === "string"
     && (l.measure === "characters" || l.measure === "lines" || l.measure === "chinese_characters")
