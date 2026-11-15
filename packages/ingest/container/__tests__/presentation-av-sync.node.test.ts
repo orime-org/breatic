@@ -59,6 +59,9 @@ let lag: string;
 let lagPlan: Plan;
 let noedit: string;
 let noeditPlan: Plan;
+// Matroska sources whose audio encoder primes before time 0, by codec, with their plans.
+const PRIMED = ['aac', 'libmp3lame', 'ac3'] as const;
+const primed = new Map<string, [string, Plan]>();
 const served = new Map<string, string>();
 const written = new Map<string, Uint8Array>();
 let reports: { ok: boolean }[] = [];
@@ -251,6 +254,12 @@ beforeAll(async () => {
   leadPlan = await planOf(lead);
   lagPlan = await planOf(lag);
   noeditPlan = await planOf(noedit);
+  for (const codec of PRIMED) {
+    await ff(`primed-${codec}.mkv`, ['-f', 'lavfi', '-i', "color=c=black:s=160x96:r=25:d=2,format=yuv420p,geq=lum='if(eq(N\\,25)\\,235\\,16)':cb=128:cr=128",
+      '-f', 'lavfi', '-i', "aevalsrc='if(between(t\\,1.0\\,1.1)\\,0.8*sin(2*PI*1000*t)\\,0)':s=48000:d=2",
+      '-c:v', 'libx264', '-g', '10', '-bf', '0', '-pix_fmt', 'yuv420p', '-x264-params', 'colorprim=bt709:transfer=bt709:colormatrix=bt709', '-c:a', codec, '-shortest']);
+    primed.set(codec, [join(dir, `primed-${codec}.mkv`), await planOf(join(dir, `primed-${codec}.mkv`))]);
+  }
 });
 afterAll(async () => { await rm(dir, { recursive: true, force: true }); });
 
@@ -400,6 +409,17 @@ describe('an edited source keeps picture and sound at their plan times (§4.2, �
     const of = { ...noeditPlan, originMapping: { ...noeditPlan.originMapping, origin: { numerator: '1', denominator: '4' } } };
     const output = stitch ? await stitched(noedit, of, null) : await modelInput(noedit, of, null);
     expect(Math.abs(await toneAt(output) - (await toneAt(noedit) - 0.25))).toBeLessThanOrEqual(AAC_FRAME);
+  });
+
+  // §4.2 effective audio: FFmpeg's Matroska muxer stores the encoder priming of AAC, MP3 and AC3 as samples before time 0
+  // (CodecDelay only for Opus); like an MP4 edit list's skipped priming, they are not presented.
+  it.each(PRIMED)('AV07 a Matroska source whose %s priming starts before 0 plans, its burst on its white frame', async (codec) => {
+    const [mkv, of] = primed.get(codec)!;
+    const { stdout } = await run('ffprobe', ['-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=start_pts', '-of', 'csv=p=0', mkv]);
+    expect(Number(stdout.trim())).toBeLessThan(0);
+    expect(value(of.originMapping.origin)).toBe(0);
+    const output = await stitched(mkv, of, null);
+    expect(Math.abs(await toneAt(output) - await flashAt(output))).toBeLessThanOrEqual(AAC_FRAME);
   });
 });
 

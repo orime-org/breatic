@@ -184,28 +184,33 @@ function framesOf(packets: readonly PhysicalVideoPacket[], base: [bigint, bigint
 }
 
 /**
- * The selected audio's window: the first audio stream in ffprobe order, from its declared start and duration or,
- * without them, from its decoded frames, streamed.
+ * The selected audio's presented window: the first audio stream in ffprobe order, from its declared start and duration or,
+ * without them, from its decoded frames, streamed. Samples before time 0 are not presented (§4.2 effective audio): they are
+ * an encoder's priming, which FFmpeg's Matroska muxer stores before 0 for AAC, MP3 and AC3 as an MP4 edit list skips it.
  * @param stream - The stream, or undefined without audio.
  * @param input - The local source.
  * @param run - The read's lifetime and stderr tail.
  * @param run.signal - The lifetime.
  * @param run.stderrTailBytes - The stderr tail kept.
- * @returns Its window, or null without audio.
+ * @returns Its window, or null without audio or with none of it at or after 0.
  * @throws {ProbeFailure} When its clock is unknown.
  * @throws {Error} When the frame read fails.
  */
 async function audioWindow(stream: Record<string, unknown> | undefined, input: string,
   run: { signal: AbortSignal; stderrTailBytes: number }): Promise<{ start: PresentationRational; end: PresentationRational } | null> {
   if (stream === undefined) return null;
+  let window: { start: PresentationRational; end: PresentationRational };
   if (declaresAudioWindow(stream)) {
     const base = timeBase(stream.time_base);
     const start = integer(stream.start_pts);
-    return { start: at(start, base), end: at(start + integer(stream.duration_ts), base) };
+    window = { start: at(start, base), end: at(start + integer(stream.duration_ts), base) };
+  } else {
+    const read = await readStreamWindow(input, stream, 'own-file', run);
+    if (read === null) throw new ProbeFailure('audio_clock_unknown');
+    window = { start: exactPresentationTime(...read.start), end: exactPresentationTime(...read.end) };
   }
-  const window = await readStreamWindow(input, stream, 'own-file', run);
-  if (window === null) throw new ProbeFailure('audio_clock_unknown');
-  return { start: exactPresentationTime(...window.start), end: exactPresentationTime(...window.end) };
+  if (BigInt(window.end.numerator) <= 0n) return null;
+  return BigInt(window.start.numerator) < 0n ? { start: exactPresentationTime(0n, 1n), end: window.end } : window;
 }
 
 /**
