@@ -343,7 +343,21 @@
     },
     "model": {
       "not_configured": "このデプロイでは {model} がまだ設定されていません。{envVars} の設定が必要です。",
-      "upstream_not_bound": "{model} は {upstream} 経由では提供されていません。"
+      "upstream_not_bound": "{model} は {upstream} 経由では提供されていません。",
+      "input_limit": {
+        "characters_max": "{model} の{field}は最大 {max, number} 文字です。",
+        "characters_min": "{model} の{field}は {min, number} 文字以上必要です。",
+        "line_characters_max": "{model} の{field}は1行あたり最大 {max, number} 文字です。",
+        "item_characters_max": "{model} の{field}は1件あたり最大 {max, number} 文字です。",
+        "lines_max": "{model} の{field}は最大 {max, number} 行です。",
+        "unsupported": "{model} は現在の設定では実行できません。設定を変えるか、別のモデルを選んでください。"
+      },
+      "input_field": {
+        "prompt": "テキスト",
+        "negative_prompt": "ネガティブプロンプト",
+        "lyrics": "歌詞",
+        "multi_prompt": "ショットのプロンプト"
+      }
     },
     "document": {
       "versions_full": "{limit, plural, other {この Document のスナップショットは上限の # 件に達しています。古いスナップショットを削除してから保存してください。}}"

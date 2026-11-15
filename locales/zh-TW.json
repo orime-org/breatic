@@ -343,7 +343,21 @@
     },
     "model": {
       "not_configured": "這個部署還沒設定好 {model}：需要設定 {envVars}。",
-      "upstream_not_bound": "{model} 不透過 {upstream} 提供。"
+      "upstream_not_bound": "{model} 不透過 {upstream} 提供。",
+      "input_limit": {
+        "characters_max": "{model} 的{field}最多 {max, number} 個字元。",
+        "characters_min": "{model} 的{field}至少要 {min, number} 個字元。",
+        "line_characters_max": "{model} 的{field}每行最多 {max, number} 個字元。",
+        "item_characters_max": "{model} 的{field}每條最多 {max, number} 個字元。",
+        "lines_max": "{model} 的{field}最多 {max, number} 行。",
+        "unsupported": "{model} 無法使用目前的設定，請修改設定或換個模型。"
+      },
+      "input_field": {
+        "prompt": "文字",
+        "negative_prompt": "反向提示詞",
+        "lyrics": "歌詞",
+        "multi_prompt": "分鏡提示詞"
+      }
     },
     "document": {
       "versions_full": "{limit, plural, other {這個 Document 的快照已滿 # 張。刪掉舊的快照後再儲存。}}"

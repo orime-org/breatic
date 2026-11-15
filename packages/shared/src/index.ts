@@ -950,6 +950,7 @@ export {
   type TemplateTriggers,
 } from "@shared/canvas/generation-templates.js";
 export { RETIRED_MODELS, currentModelName, withCurrentModelNames, type NodeModelFields } from "@shared/canvas/retired-models.js";
+export { inputRefusalText, type InputLimitShape, type InputRefusalShape } from "@shared/input-refusal.js";
 export {
   STAND_IN_ON,
   dialogueSideOf,
