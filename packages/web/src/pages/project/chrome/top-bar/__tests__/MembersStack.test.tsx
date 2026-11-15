@@ -7,6 +7,7 @@ import userEvent from '@testing-library/user-event';
 
 import { MembersStack } from '@web/pages/project/chrome/top-bar/MembersStack';
 import type { Member } from '@web/data/api/members';
+import { useFollowStore } from '@web/stores/follow';
 import { useUIStore } from '@web/stores/ui';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
 
@@ -167,5 +168,64 @@ describe('MembersStack', () => {
     render(<MembersStack members={MEMBERS} currentUserRole='viewer' />);
     await user.click(screen.getByTestId('members-trigger'));
     expect(screen.queryByRole('button', { name: 'Leave project' })).toBeNull();
+  });
+});
+
+describe('MembersStack, following', () => {
+  beforeEach(() => {
+    useFollowStore.getState().reset();
+  });
+
+  it('shows each row online or offline', async () => {
+    const user = userEvent.setup();
+    render(<MembersStack members={MEMBERS} currentUserId='u-own' onlineUserIds={new Set(['u-own', 'u-ed'])} />);
+    await user.click(screen.getByTestId('members-trigger'));
+    expect(screen.getByTestId('members-status-m-ed')).toHaveAttribute('data-online', 'true');
+    expect(screen.getByTestId('members-status-m-vw')).toHaveAttribute('data-online', 'false');
+  });
+
+  it('offers View only on other members who are online', async () => {
+    const user = userEvent.setup();
+    render(<MembersStack members={MEMBERS} currentUserId='u-own' onlineUserIds={new Set(['u-own', 'u-ed'])} />);
+    await user.click(screen.getByTestId('members-trigger'));
+    expect(screen.getByTestId('members-follow-m-ed')).toBeInTheDocument();
+    expect(screen.queryByTestId('members-follow-m-own')).toBeNull();
+    expect(screen.queryByTestId('members-follow-m-vw')).toBeNull();
+  });
+
+  it('starts following on View, and the row then offers Stop', async () => {
+    const user = userEvent.setup();
+    render(<MembersStack members={MEMBERS} currentUserId='u-vw' currentUserRole='viewer' onlineUserIds={new Set(['u-vw', 'u-ed'])} />);
+    await user.click(screen.getByTestId('members-trigger'));
+    await user.click(screen.getByTestId('members-follow-m-ed'));
+    expect(useFollowStore.getState().targetUserId).toBe('u-ed');
+    expect(screen.queryByTestId('members-follow-m-ed')).toBeNull();
+    await user.click(screen.getByTestId('members-unfollow-m-ed'));
+    expect(useFollowStore.getState().targetUserId).toBeNull();
+    expect(useFollowStore.getState().stopped?.reason).toBe('button');
+  });
+
+  it('switches straight to another member when View is pressed on them', async () => {
+    const user = userEvent.setup();
+    render(<MembersStack members={MEMBERS} currentUserId='u-vw' onlineUserIds={new Set(['u-own', 'u-ed', 'u-vw'])} />);
+    useFollowStore.getState().start('u-ed');
+    await user.click(screen.getByTestId('members-trigger'));
+    await user.click(screen.getByTestId('members-follow-m-own'));
+    expect(useFollowStore.getState().targetUserId).toBe('u-own');
+    expect(useFollowStore.getState().stopped).toBeNull();
+  });
+
+  it('shows nobody online when it is given no presence', async () => {
+    const user = userEvent.setup();
+    render(<MembersStack members={MEMBERS} currentUserId='u-own' />);
+    await user.click(screen.getByTestId('members-trigger'));
+    expect(screen.queryByTestId('members-follow-m-ed')).toBeNull();
+  });
+
+  it('has no a11y violations with the follow controls open', async () => {
+    const user = userEvent.setup();
+    const { baseElement } = render(<MembersStack members={MEMBERS} currentUserId='u-own' onlineUserIds={new Set(['u-own', 'u-ed'])} />);
+    await user.click(screen.getByTestId('members-trigger'));
+    await expectNoA11yViolations(baseElement);
   });
 });

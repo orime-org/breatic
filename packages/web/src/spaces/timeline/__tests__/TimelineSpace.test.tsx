@@ -30,6 +30,7 @@ import { useCurrentUserStore, useUIStore } from '@web/stores';
 import { MAIN, clip as clipAt, seededDoc, sourceIdOf, timeline, track } from '@web/data/yjs/__tests__/timeline-document-fixtures';
 import type { SocketState } from '@web/data/yjs/use-socket';
 import { TimelineSpace } from '@web/spaces/timeline/TimelineSpace';
+import { useFollowStore } from '@web/stores/follow';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 import { useTimelineEditPrefsStore } from '@web/stores/timeline-edit-prefs';
 import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
@@ -3423,5 +3424,66 @@ describe('TimelineSpace frame ratio and play bar (breatic#1502)', () => {
       expect(readPath(catalog, 'timeline.transport.playing'), locale).toBeUndefined();
       expect(typeof readPath(catalog, 'timeline.transport.waiting'), locale).toBe('string');
     }
+  });
+});
+
+describe('TimelineSpace, following a member', () => {
+  beforeEach(() => {
+    useFollowStore.getState().reset();
+    useFollowStore.getState().start('leader');
+  });
+
+  it('stops following when the user presses play', async () => {
+    const doc = seedContent();
+    write(doc, { operation: 'add_video', parameters: { source: SOURCE, clip: CLIP }, placement: ON });
+    showTimeline();
+    fireEvent.click(await screen.findByTestId('timeline-play'));
+    expect(useFollowStore.getState().stopped?.reason).toBe('viewport');
+  });
+
+  it('stops following when the user clicks the ruler to seek', async () => {
+    const doc = seedContent();
+    write(doc, { operation: 'add_video', parameters: { source: SOURCE, clip: CLIP }, placement: ON });
+    showTimeline();
+    fireEvent.pointerDown(await screen.findByTestId('timeline-ruler'), { clientX: 40 });
+    expect(useFollowStore.getState().stopped?.reason).toBe('viewport');
+  });
+
+  it('stops following when the user nudges the playhead with an arrow key', async () => {
+    const doc = seedContent();
+    write(doc, { operation: 'add_video', parameters: { source: SOURCE, clip: CLIP }, placement: ON });
+    showTimeline(CONNECTED, true);
+    press(await screen.findByTestId('timeline-space'), 'ArrowRight');
+    expect(useFollowStore.getState().stopped?.reason).toBe('viewport');
+  });
+
+  it('stops following when the user scrolls the tracks, and not when a shorter track clamps them', async () => {
+    const doc = seedContent();
+    write(doc, { operation: 'add_video', parameters: { source: SOURCE, clip: CLIP }, placement: ON });
+    showTimeline();
+    const tracks = await screen.findByTestId('timeline-track-scroller');
+    let left = 0;
+    let width = 4000;
+    Object.defineProperty(tracks, 'scrollLeft', { get: () => left, set: (v: number) => { left = v; }, configurable: true });
+    Object.defineProperty(tracks, 'scrollWidth', { get: () => width, configurable: true });
+    Object.defineProperty(tracks, 'clientWidth', { get: () => 1000, configurable: true });
+    left = 2500;
+    fireEvent.scroll(tracks);
+    useFollowStore.getState().start('leader');
+    width = 3000;
+    left = 2000;
+    fireEvent.scroll(tracks);
+    expect(useFollowStore.getState().targetUserId).toBe('leader');
+    left = 1500;
+    fireEvent.scroll(tracks);
+    expect(useFollowStore.getState().stopped?.reason).toBe('viewport');
+  });
+
+  it('keeps following while the user does nothing', async () => {
+    const doc = seedContent();
+    write(doc, { operation: 'add_video', parameters: { source: SOURCE, clip: CLIP }, placement: ON });
+    showTimeline();
+    await screen.findByTestId('timeline-play');
+    expect(useFollowStore.getState().targetUserId).toBe('leader');
   });
 });
