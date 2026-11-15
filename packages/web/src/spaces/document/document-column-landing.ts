@@ -148,20 +148,38 @@ interface RowAt {
 }
 
 /**
- * The box of a group's column nearest a point across.
+ * The room of a group's column nearest a point: across, the column's own
+ * box; down, from its first block to its last, so a point level with the
+ * blank space under a shorter column reaches the block nearest it.
  * @param group - The group's element.
  * @param x - The point's x.
- * @returns The box, or null for a group with no column drawn.
+ * @returns The room, or null for a group with no column drawn.
  */
 function nearestColumn(group: HTMLElement, x: number): DOMRect | null {
-  let nearest: DOMRect | null = null;
+  let nearest: Element | null = null;
   let distance = Infinity;
   for (const column of group.querySelectorAll(':scope > .doc-columns-row > .doc-column')) {
     const box = column.getBoundingClientRect();
     const away = Math.max(box.left - x, 0, x - box.right);
-    if (away < distance) [nearest, distance] = [box, away];
+    if (away < distance) [nearest, distance] = [column, away];
   }
-  return nearest;
+  if (nearest === null) return null;
+  const box = nearest.getBoundingClientRect();
+  const blocks = nearest.querySelectorAll(':scope > .bn-block-outer');
+  if (blocks.length === 0) return box;
+  const top = blocks[0]!.getBoundingClientRect().top;
+  return new DOMRect(box.left, top, box.width, blocks[blocks.length - 1]!.getBoundingClientRect().bottom - top);
+}
+
+/**
+ * A coordinate moved a pixel inside a span.
+ * @param value - The coordinate.
+ * @param low - The span's start.
+ * @param high - The span's end.
+ * @returns The coordinate inside it.
+ */
+function clamp(value: number, low: number, high: number): number {
+  return Math.min(Math.max(value, low + 1), high - 1);
 }
 
 /**
@@ -173,21 +191,25 @@ function nearestColumn(group: HTMLElement, x: number): DOMRect | null {
  * @param view - The editor view.
  * @param x - The pointer's x.
  * @param y - The pointer's y.
- * @param fromMargin - Whether the drag is out in the page margin, held to the
- *   body's box: the row there is the body's, a table whole.
- * @param hops - How many times x was already moved in.
+ * @param beside - Whether the pointer is beside the content, out in the page
+ *   margin (held to the body's box) or in the gap between two columns: the
+ *   row there is a table whole, never a block in one of its cells.
+ * @param hops - How many times the point was already moved in.
  * @returns The row, or null.
  */
-function rowAt(view: EditorView, x: number, y: number, fromMargin: boolean, hops = 0): RowAt | null {
+function rowAt(view: EditorView, x: number, y: number, beside: boolean, hops = 0): RowAt | null {
   const surface = view.dom.getBoundingClientRect();
-  const at = view.posAtCoords({ left: Math.min(Math.max(x, surface.left + 1), surface.right - 1), top: y });
+  const at = view.posAtCoords({ left: clamp(x, surface.left, surface.right), top: y });
   if (at === null) return null;
   const inside = at.inside >= 0 && hops < 2 ? view.state.doc.nodeAt(at.inside) : null;
   const element = inside === null ? null : view.nodeDOM(at.inside);
   if (element instanceof HTMLElement) {
-    const room = inside!.type.name === DOC_COLUMN_LIST ? nearestColumn(element, x) : !fromMargin && isTableCell(inside!) ? roomInside(element) : undefined;
+    const gap = inside!.type.name === DOC_COLUMN_LIST;
+    const room = gap ? nearestColumn(element, x) : !beside && isTableCell(inside!) ? roomInside(element) : undefined;
     if (room === null) return null;
-    if (room !== undefined) return rowAt(view, Math.min(Math.max(x, room.left + 1), room.right - 1), y, fromMargin, hops + 1);
+    if (room !== undefined) {
+      return rowAt(view, clamp(x, room.left, room.right), clamp(y, room.top, room.bottom), beside || gap, hops + 1);
+    }
   }
   const $at = view.state.doc.resolve(at.inside >= 0 ? at.inside : at.pos);
   // The node the pointer is inside starts at `inside` (a table level with the
@@ -195,7 +217,7 @@ function rowAt(view: EditorView, x: number, y: number, fromMargin: boolean, hops
   // the body a table around the pointer is no row of its own.
   for (let depth = at.inside >= 0 ? $at.depth + 1 : $at.depth; depth > 0; depth -= 1) {
     const node = depth > $at.depth ? $at.nodeAfter : $at.node(depth);
-    const table = node?.type.name === DOC_TABLE && (fromMargin || depth > $at.depth);
+    const table = node?.type.name === DOC_TABLE && (beside || depth > $at.depth);
     if (node === null || (node.type.name !== 'blockContainer' && !table)) continue;
     const pos = depth > $at.depth ? $at.pos : $at.before(depth);
     const dom = view.nodeDOM(pos);

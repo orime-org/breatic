@@ -117,13 +117,15 @@ function pixelsOf(...lengths: string[]): number {
  * The room inside an element as drawn, to the fraction of a pixel: its box
  * with its border and padding taken off, as a group standing in it measures.
  * @param element - The element (a cell).
- * @returns Its left and right.
+ * @returns Its edges.
  */
-export function roomInside(element: HTMLElement): { left: number; right: number } {
+export function roomInside(element: HTMLElement): { left: number; right: number; top: number; bottom: number } {
   const box = element.getBoundingClientRect();
   const style = getComputedStyle(element);
   return {
     left: box.left + pixelsOf(style.borderLeftWidth, style.paddingLeft),
     right: box.right - pixelsOf(style.borderRightWidth, style.paddingRight),
+    top: box.top + pixelsOf(style.borderTopWidth, style.paddingTop),
+    bottom: box.bottom - pixelsOf(style.borderBottomWidth, style.paddingBottom),
   };
 }

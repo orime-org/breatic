@@ -413,15 +413,16 @@ test('one undo takes back columns made in a narrow cell together with the widene
  * Inserts a 2 × 2 table under a line off the handle's insert menu.
  * @param p - The page.
  * @param words - The line's words.
+ * @param size - The table's rows and columns, as the size grid names them.
  */
-async function tableUnder(p: Page, words: string): Promise<void> {
+async function tableUnder(p: Page, words: string, size = '2-2'): Promise<void> {
   await p.mouse.move(5, 5);
   const line = (await row(p, words).boundingBox())!;
   await p.mouse.move(line.x + 30, line.y + line.height / 2, { steps: 3 });
   await p.getByTestId('doc-block-handle').click();
   await p.getByTestId('doc-block-row-insertBelow').hover();
   await p.getByTestId('doc-block-insert-table').hover();
-  await p.getByTestId('doc-table-size-2-2').click();
+  await p.getByTestId(`doc-table-size-${size}`).click();
 }
 
 test('a block in a cell of a table in a column has its handle in the gap\'s right half', async () => {
@@ -535,4 +536,44 @@ test('dragging a row into a cell\'s left padding lands beside the cell\'s block,
   await dragRowTo(page, 'moved', { x: box.x + 4, y: line.y + line.height / 2 });
   await expect.poll(() => groups(page)).toEqual([['moved', 'one']]);
   await expect(cell.locator('.doc-columns')).toHaveCount(1);
+});
+
+test('dragging a row into the gap beside a table that fills its column adds a column', async () => {
+  await openWithLines(page, ['alpha', 'lead', 'gamma']);
+  await tableUnder(page, 'lead', '2-4');
+  await page.keyboard.type('one');
+  // Alpha goes beside the table; four 120px columns overflow the table's column.
+  const table = page.locator(`${EDITOR} [data-node-type="docTable"]`).first();
+  const body = (await page.locator(`${EDITOR} .bn-block-group`).first().boundingBox())!;
+  const drawn = (await table.boundingBox())!;
+  await dragRowTo(page, 'alpha', { x: body.x + body.width + 120, y: drawn.y + drawn.height / 2 });
+  await expect.poll(() => page.locator(`${EDITOR} .doc-column > [data-node-type="docTable"]`).count()).toBe(1);
+  const [left, right] = await page.locator(`${EDITOR} .doc-column`).evaluateAll((list) => list.map((column) => column.getBoundingClientRect().toJSON() as DOMRect));
+  const box = (await table.boundingBox())!;
+  await dragRowTo(page, 'gamma', { x: left!.right + (right!.left - left!.right) / 4, y: box.y + box.height / 2 });
+  await expect.poll(() => page.locator(`${EDITOR} .doc-column`).count()).toBe(3);
+});
+
+test('dragging a row into the page margin level with blank space under a shorter column adds a column', async () => {
+  const long = 'words '.repeat(60).trim();
+  await openWithLines(page, [long, 'beta', 'gamma']);
+  const first = (await row(page, long).boundingBox())!;
+  await dragRowTo(page, 'beta', { x: first.x + first.width - 6, y: first.y + 10 });
+  await expect.poll(() => groups(page)).toEqual([[long, 'beta']]);
+  const tall = (await row(page, long).boundingBox())!;
+  const body = (await page.locator(`${EDITOR} .bn-block-group`).first().boundingBox())!;
+  // Level with the long column's last line, below beta.
+  await dragRowTo(page, 'gamma', { x: body.x + body.width + 120, y: tall.y + tall.height - 8 });
+  await expect.poll(() => groups(page)).toEqual([[long, 'beta', 'gamma']]);
+});
+
+test('dragging a row into the page margin level with a table wider than the body stands it beside the table', async () => {
+  await openWithLines(page, ['lead', 'moved']);
+  await tableUnder(page, 'lead', '2-8');
+  await page.keyboard.type('one');
+  const table = (await page.locator(`${EDITOR} [data-node-type="docTable"]`).first().boundingBox())!;
+  const body = (await page.locator(`${EDITOR} .bn-block-group`).first().boundingBox())!;
+  await dragRowTo(page, 'moved', { x: body.x + body.width + 120, y: table.y + table.height / 2 });
+  await expect.poll(() => page.locator(`${EDITOR} .doc-column > [data-node-type="docTable"]`).count()).toBe(1);
+  expect(await page.locator(`${EDITOR} td .doc-columns`).count()).toBe(0);
 });
