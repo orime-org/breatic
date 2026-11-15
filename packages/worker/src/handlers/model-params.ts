@@ -8,7 +8,7 @@
  */
 
 import { logger } from "@breatic/core";
-import { checkParamCombination, currentModelName, extractPromptText, itemCap, resolveParams, type ResolvableModel } from "@breatic/shared";
+import { checkParamCombination, cleanTextParams, currentModelName, extractPromptText, itemCap, resolveParams, type ResolvableModel } from "@breatic/shared";
 import { getFullModelConfig, type FullModelEntry } from "@breatic/domain";
 
 /** The catalog modalities a model run serves. */
@@ -66,28 +66,6 @@ function cleanParams(model: FullModelEntry, params: Readonly<Record<string, unkn
 }
 
 /**
- * Clean every text setting as a prompt is cleaned, and each text field of a list's entries (a speaker's name, which
- * the script names in its cleaned form), so what is judged and sent is what the user meant.
- * @param model - The model's catalog entry.
- * @param params - The params, unknown keys already dropped.
- * @returns The params with their text cleaned.
- */
-function cleanTexts(model: FullModelEntry, params: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(Object.entries(params).map(([key, value]) => {
-    const spec = model.params?.[key];
-    if (spec?.type === "text" && typeof value === "string") return [key, extractPromptText(value)];
-    if (spec?.type !== "items" || !Array.isArray(value)) return [key, value];
-    const fields = spec.fields ?? {};
-    return [key, value.map((item: unknown) =>
-      typeof item === "object" && item !== null && !Array.isArray(item)
-        ? Object.fromEntries(Object.entries(item as Record<string, unknown>).map(([field, held]) =>
-          [field, fields[field]?.type === "text" && typeof held === "string" ? extractPromptText(held) : held]))
-        : item,
-    )];
-  }));
-}
-
-/**
  * Validate a catalog model's params and resolve them: defaults filled, forced values applied, what a condition
  * switches off dropped.
  * @param modality - The model's modality.
@@ -103,7 +81,7 @@ export function validateModelParams(
   params: Readonly<Record<string, unknown>>,
 ): [string, Record<string, unknown>] {
   const entry = entryOf(modality, modelName);
-  const cleaned = cleanTexts(entry, cleanParams(entry, params));
+  const cleaned = cleanTextParams(entry, cleanParams(entry, params));
   const model = entry as unknown as ResolvableModel;
   const found = checkParamCombination(model, cleaned);
   const tooLong = found.find((v) => v.rule === "max_length");

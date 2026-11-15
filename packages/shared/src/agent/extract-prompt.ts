@@ -63,3 +63,37 @@ export function extractPromptText(prompt: unknown): string {
 
   return text;
 }
+
+/** What {@link cleanTextParams} reads of a param's declaration. */
+export interface TextParamSpec {
+  readonly type?: string;
+  /** For an `items` param, the declaration of each field of an item. */
+  readonly fields?: Readonly<Record<string, { readonly type?: string }>>;
+}
+
+/**
+ * A run's params with every text param, and every text field of an `items` param, passed through
+ * {@link extractPromptText}: what the worker sends, and so what every check before it asks about.
+ * @param model - The model, for which params are text.
+ * @param model.params - Its param declarations.
+ * @param params - The params as written.
+ * @returns The params, text cleaned; everything else as it was.
+ * @throws {never} Never.
+ */
+export function cleanTextParams(
+  model: { readonly params?: Readonly<Record<string, TextParamSpec>> },
+  params: Readonly<Record<string, unknown>>,
+): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(params).map(([key, value]) => {
+    const spec = model.params?.[key];
+    if (spec?.type === "text" && typeof value === "string") return [key, extractPromptText(value)];
+    if (spec?.type !== "items" || !Array.isArray(value)) return [key, value];
+    const fields = spec.fields ?? {};
+    return [key, value.map((item: unknown) =>
+      typeof item === "object" && item !== null && !Array.isArray(item)
+        ? Object.fromEntries(Object.entries(item as Record<string, unknown>).map(([field, held]) =>
+          [field, fields[field]?.type === "text" && typeof held === "string" ? extractPromptText(held) : held]))
+        : item,
+    )];
+  }));
+}

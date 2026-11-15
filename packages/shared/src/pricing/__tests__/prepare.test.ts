@@ -7,6 +7,7 @@
  * names for provider, which prices it per upstream; and its USD in credits, rounded up as the charge will be.
  */
 import { describe, expect, it } from "vitest";
+import { extractPromptText } from "@shared/agent/extract-prompt";
 import { creditEstimateOf, prepareRunParams, type PreparableModel } from "@shared/pricing";
 
 const PANEL: PreparableModel = {
@@ -81,6 +82,28 @@ describe("prepareRunParams", () => {
     const prepared = prepareRunParams(CLIPS, { params: { video: "v", refs: ["a", "b"] }, durations: { video: [10], refs: [3] } });
     expect(prepared.durations).toEqual({ video: [10] });
     expect(prepared.durationsMissing).toEqual(["refs"]);
+  });
+});
+
+describe("prepareRunParams on text", () => {
+  const WORDS: PreparableModel = {
+    takes_prompt: true,
+    params: {
+      lyrics: { type: "text", fill: "editor" },
+      shots: { type: "items", fields: { prompt: { type: "text" }, seconds: { type: "number" } } },
+      tag: { type: "enum" },
+    },
+  };
+
+  it("cleans every text param and text field as the worker cleans them before sending, and leaves the rest", () => {
+    const run = prepareRunParams(WORDS, {
+      params: { lyrics: "<b>la</b>  \u200Bla", shots: [{ prompt: "<i>one</i>", seconds: 3 }], tag: "<x>" },
+      prompt: "p",
+    });
+    expect(run.params.lyrics).toBe(extractPromptText("<b>la</b>  \u200Bla"));
+    expect(run.params.lyrics).not.toContain("<b>");
+    expect(run.params.shots).toEqual([{ prompt: extractPromptText("<i>one</i>"), seconds: 3 }]);
+    expect(run.params.tag).toBe("<x>");
   });
 });
 
