@@ -28,6 +28,7 @@ import {
   catalogEntryOf,
   isModelTool,
   miniToolEstimateInput,
+  miniToolPrompt,
   type MiniToolRequest,
   type MiniToolSnapshot,
   type MiniToolSpec,
@@ -48,20 +49,6 @@ export interface PreparedRun {
   inputKeys?: string[];
   /** What the precheck holds the user to. */
   credits: number;
-}
-
-/**
- * The prompt a run is sent: an empty one on a tool that has its own is sent as
- * that one, and a tool's preamble goes before whatever the user wrote.
- * @param spec - The tool.
- * @param typed - What the user wrote.
- * @returns The prompt.
- */
-function promptOf(spec: MiniToolSpec, typed: string): string {
-  const empty = typed.trim() === "";
-  const preamble = spec.prompt?.preamble;
-  if (preamble !== undefined) return empty ? preamble : `${preamble} Also: ${typed.trim()}`;
-  return empty && spec.prompt?.defaultText !== undefined ? spec.prompt.defaultText : typed;
 }
 
 /**
@@ -106,7 +93,7 @@ function snapshotOf(spec: MiniToolSpec, body: MiniToolRequest, entry: ModelEntry
   }
   return {
     params,
-    prompt: promptOf(spec, body.prompt ?? ""),
+    prompt: body.prompt ?? "",
     source: {
       url: body.source.url,
       ...(body.source.duration !== undefined && { duration: body.source.duration }),
@@ -169,7 +156,7 @@ async function prepareModelRun(spec: MiniToolSpec, body: MiniToolRequest): Promi
   const input = miniToolEstimateInput(spec, snapshot);
   await assertTakesInput(model, entry.display_name, input, body.route, { tool: body.tool, projectId: body.project_id });
   const params: Record<string, unknown> = { ...input.params };
-  if (spec.prompt) params.prompt = snapshot.prompt;
+  if (spec.prompt) params.prompt = miniToolPrompt(spec, snapshot.prompt);
   // The run is held, priced and served on one route: the task carries the one the estimate used.
   if (body.route !== undefined) params.route = body.route;
   return {
