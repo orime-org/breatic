@@ -43,7 +43,8 @@ import { pageSceneUploads } from '@web/spaces/three-d/scene-uploads';
 import { SceneTaskList } from '@web/spaces/three-d/SceneTaskList';
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 
-// The gap between a stacked object toolbar and the controls under it, and below the failed-model notice.
+// The gap between the object toolbar and the controls, stacked (mb-2) or in one row (ml-2), and below the failed-model
+// notice.
 const STACK_GAP = 8;
 // The minimap's distance above the stage bottom: the bottom controls, 10 + 42, and a 9px gap.
 const MAP_BOTTOM = 61;
@@ -528,9 +529,8 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     const measure = (): void => {
       const objectBar = bottomRow?.querySelector<HTMLElement>('[data-testid="scene-object-menu"]') ?? null;
       const controls = bottomRow?.querySelector<HTMLElement>('[data-testid="scene-viewport-toolbar"]') ?? null;
-      const gap = controls?.parentElement ? parseFloat(getComputedStyle(controls.parentElement).marginLeft) || 0 : 0;
       const stacked = bottomRow !== null && objectBar !== null && controls !== null
-        && bottomRow.offsetWidth < objectBar.offsetWidth + gap + controls.offsetWidth;
+        && bottomRow.offsetWidth < objectBar.offsetWidth + STACK_GAP + controls.offsetWidth;
       const next = { stacked, lift: stacked && objectBar ? objectBar.offsetHeight + STACK_GAP : 0,
         noticeBottom: modelNotice ? modelNotice.offsetTop + modelNotice.offsetHeight : 0 };
       setChrome((previous) => (previous.stacked === next.stacked && previous.lift === next.lift && previous.noticeBottom === next.noticeBottom ? previous : next));

@@ -80,6 +80,8 @@ describe('approved scene layout (inner#1724)', () => {
   });
   it.each([
     ['too narrow for one row', 400, true],
+    ['one pixel short of the two toolbars and the 8px between them', 524, true],
+    ['one pixel wider than the two toolbars and the 8px between them', 526, false],
     ['wide enough for one row', 1180, false],
   ])('stacks the object toolbar above the bottom-right controls only when the bottom row is %s', async (_, rowWidth, stacked) => {
     const sizes: Record<string, [number, number]> = { 'scene-bottom-row': [rowWidth, 50], 'scene-object-menu': [223, 42], 'scene-viewport-toolbar': [294, 42] };
@@ -102,7 +104,9 @@ describe('approved scene layout (inner#1724)', () => {
       expect(screen.getByTestId('scene-right-panel-anchor').style.bottom).toBe('calc(203px + var(--space-5))');
     }
   });
-  it('keeps the object toolbar and the bottom-right controls the same distance above the stage edge', async () => {
+  it('keeps the object toolbar and the bottom-right controls the same distance above the stage edge in one row', async () => {
+    const sizes: Record<string, number> = { 'scene-bottom-row': 1180, 'scene-object-menu': 223, 'scene-viewport-toolbar': 294 };
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockImplementation(function (this: HTMLElement) { return sizes[this.dataset.testid ?? ''] ?? 0; });
     const { session } = setup(); await screen.findByTestId('scene-native-boundary');
     act(() => session.select(ID, false));
     const objectCell = screen.getByTestId('scene-object-menu').parentElement as HTMLElement;
