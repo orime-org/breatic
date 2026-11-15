@@ -22,7 +22,7 @@ import { estimateModelCredits } from "@domain/model-catalog/model-catalog.js";
 
 import { generationModels, renderGenerationModelsForModel, type PricedModelsForMode } from "../generation-models.js";
 import { renderProductGuide } from "../product-guide.js";
-import { answerFor, renderProposalForModel, verdictFor, type MaterialTable } from "../propose-canvas-action.js";
+import { answerFor, checkedAnswerFor, renderProposalForModel, verdictFor, type MaterialTable } from "../propose-canvas-action.js";
 import { inputSchema } from "../proposal-input.js";
 
 beforeEach(() => {
@@ -78,6 +78,31 @@ describe("a dialogue sent as lines", () => {
   it("refuses a dialogue whose speakers are not all named, as the panel would", () => {
     const verdict = verdictFor(dialogue([{ speaker: 1, prompt: [{ text: "Hi." }] }], { params: { speakers: [PAIR[0], { speaker: " ", voice: "Puck" }] } }), NO_MATERIAL);
     expect(verdict.ok ? "ok" : verdict.refusal).toBe("speakers-missing");
+  });
+});
+
+describe("a dialogue its upstream cannot take (#1521)", () => {
+  /**
+   * A dialogue of this many lines, the two speakers taking turns.
+   * @param n - How many lines.
+   * @returns What the model sends.
+   */
+  const lines = (n: number): Sent => dialogue(Array.from({ length: n }, (_, i) => ({ speaker: (i % 2) + 1, prompt: [{ text: `Line ${String(i)}.` }] })));
+
+  it("is refused before it is placed, naming the limit it breaks", async () => {
+    const answer = await checkedAnswerFor(lines(101), NO_MATERIAL);
+    expect(answer.placed).toBe(false);
+    expect(answer.placed === false && answer.reason).toMatch(/"Scene".*100 lines/);
+  });
+
+  it("is placed when every upstream limit holds", async () => {
+    expect((await checkedAnswerFor(lines(100), NO_MATERIAL)).placed).toBe(true);
+  });
+
+  it("refuses a single voice past WaveSpeed's 8000 characters", async () => {
+    const one: Sent = { nodes: [{ role: "generate", type: "audio", name: "Read", mode: "tts", model: DUO, params: {}, prompt: [{ text: "x".repeat(8001) }] }], edges: [], rationale: "A reading." };
+    const answer = await checkedAnswerFor(one, NO_MATERIAL);
+    expect(answer.placed === false && answer.reason).toMatch(/"Read".*8000 characters/);
   });
 });
 

@@ -46,7 +46,7 @@ import type {
 } from "@breatic/shared";
 import { checkParamCombination, extractPromptText, fitsSomeMode, promptTaken, resolveParams } from "@breatic/shared";
 import { creditEstimateOf, prepareRunParams, type CreditEstimate, type EstimateInput } from "@breatic/shared/pricing";
-import type { Route } from "@breatic/provider";
+import type { RejectedInput, Route } from "@breatic/provider";
 import { provider } from "@domain/provider/instance.js";
 
 /** Root directory for model YAML configs. */
@@ -402,6 +402,23 @@ export async function estimateModelCredits(
   if (entry === undefined) return undefined;
   const prepared = prepareRunParams(entry, { ...input, params: resolveParams(entry, input.params) });
   return creditEstimateOf(await provider().estimate(model, prepared, route), env.CREDIT_MULTIPLIER);
+}
+
+/**
+ * Why no upstream here that the route may use takes a run (#1521), with the run laid out the way it is priced and
+ * sent, so the refusal names the limit it broke before anything is held.
+ * @param model - Model name.
+ * @param input - The run as the request describes it.
+ * @param route - How the run chooses its upstream; the weights when left out.
+ * @returns The refusal of the first upstream the route would try, or null when one takes the run, the model is not in
+ *   the catalog, or no upstream has its key (which {@link servability} answers).
+ * @throws {Error} When a limit cannot be evaluated in a way provider does not catch.
+ */
+export async function inputRefusalFor(model: string, input: EstimateInput, route: Route = { mode: "default" }): Promise<RejectedInput | null> {
+  const entry = findCatalogEntry(model);
+  if (entry === undefined) return null;
+  const prepared = prepareRunParams(entry, { ...input, params: resolveParams(entry, input.params) });
+  return provider().refusal(model, prepared, route);
 }
 
 /** Whether a run of a model can be served here on its route, and if not, why. */

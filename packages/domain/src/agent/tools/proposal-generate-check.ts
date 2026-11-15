@@ -372,6 +372,44 @@ function gateReason(verdict: ExecuteVerdict, node: ProposalNode, chosen: ModelIn
 }
 
 /**
+ * What a generation sends as its prompt: its lines written out as the script for a dialogue, the shots written into
+ * one for a model with no field for them, else its prompt, each ref in the words that reach the model.
+ * @param proposal - The whole proposal.
+ * @param node - The generation.
+ * @param chosen - Its model.
+ * @param pooled - The nodes wired into its pool.
+ * @returns The prompt sent, and the shots as written.
+ * @throws {never} Never.
+ */
+function sentPrompt(proposal: CanvasProposal, node: ProposalNode, chosen: ModelInfo, pooled: readonly number[]): { sent: string; shots: { text: string; duration: NonNullable<ProposalNode["shots"]>[number]["duration"] }[] } {
+  const refWords = refWordsFor(proposal, node, pooled);
+  const board = chosen.storyboard;
+  const shots = (node.shots ?? []).map((shot) => ({ text: promptTextOf(shot.prompt, refWords), duration: shot.duration }));
+  const sent = onDialogueSide(node)
+    ? proposalDialogueText(node, (segments) => promptTextOf(segments, refWords))
+    : board === undefined
+      ? promptTextOf(node.prompt ?? [], refWords)
+      : (storyboardSend(board, shots.map((shot) => ({ prompt: shot.text, duration: shot.duration }))).prompt ?? "");
+  return { sent, shots };
+}
+
+/**
+ * The run a generation that passed {@link checkGenerateNode} sends, for asking whether an upstream takes it (#1521).
+ * @param proposal - The whole proposal.
+ * @param node - The generation.
+ * @param index - Where it sits.
+ * @returns Its model, params and prompt; undefined when its model or wiring does not resolve.
+ * @throws {never} Never.
+ */
+export function generateRunOf(proposal: CanvasProposal, node: ProposalNode, index: number): { model: string; params: Record<string, unknown>; prompt: string } | undefined {
+  const resolved = resolveModel(node, index);
+  if ("refusal" in resolved) return undefined;
+  const wiring = checkWiring(proposal, node, index, resolved.chosen, nodeLabel(proposal.nodes, index));
+  if ("refusal" in wiring) return undefined;
+  return { model: resolved.chosen.name, params: { ...(node.params ?? {}) }, prompt: sentPrompt(proposal, node, resolved.chosen, wiring.pooled).sent };
+}
+
+/**
  * Whether the boxes a generation fills pass the gate Generate holds them to,
  * asked with the text they will hold. A note is left out of it.
  * @param proposal - The whole proposal.
@@ -394,22 +432,14 @@ function checkPanelGate(proposal: CanvasProposal, node: ProposalNode, chosen: Mo
   if (long) {
     return refuse("script-too-long-for-shot", `"${long.name}" is longer than the ${String(shotCap)} characters "${chosen.name}" takes for one shot, so @'ing it into a shot is refused at Generate.`);
   }
-  const refWords = refWordsFor(proposal, node, pooled);
-  const shots = (node.shots ?? []).map((shot) => ({ text: promptTextOf(shot.prompt, refWords), duration: shot.duration }));
   const totalParam = board?.totalParam;
   const total = totalParam === undefined ? undefined : Number(node.params?.[totalParam] ?? chosen.params[totalParam]?.default);
   // A dialogue's words are its lines, each held to having words as the
   // panel holds the box, and sent as the script they write out.
-  const dialogue = onDialogueSide(node);
-  const blank = dialogue ? (node.lines ?? []).findIndex((line) => extractPromptText(promptTextOf(line.prompt, refWords)).length === 0) : -1;
+  const refWords = refWordsFor(proposal, node, pooled);
+  const blank = onDialogueSide(node) ? (node.lines ?? []).findIndex((line) => extractPromptText(promptTextOf(line.prompt, refWords)).length === 0) : -1;
   if (blank >= 0) return refuse("line-empty", `Line ${String(blank + 1)} writes nothing. Every line needs its own words.`);
-  // What goes out as the prompt: the shots written into one, for a model with
-  // no field for them, so its length is held to the model's cap.
-  const sent = dialogue
-    ? proposalDialogueText(node, (segments) => promptTextOf(segments, refWords))
-    : board === undefined
-      ? promptTextOf(node.prompt ?? [], refWords)
-      : (storyboardSend(board, shots.map((shot) => ({ prompt: shot.text, duration: shot.duration }))).prompt ?? "");
+  const { sent, shots } = sentPrompt(proposal, node, chosen, pooled);
   // A song model's lyrics box is a second box the panel holds to the same
   // gate: the words of the nodes wired into it, a line apart.
   const lyricsRequired = waysIn(chosen, node.params ?? {}).get("text")?.some((way) => way.into === PANEL_EDITOR_PARAM) === true;
