@@ -117,6 +117,32 @@ test('text past the model’s limit is refused before anything is sent', async (
   await expect(page.locator('[data-sonner-toast]').first()).toContainText('2,000', { timeout: 10_000 });
 });
 
+test('a Gemini script past what its upstream takes names the limit and sends nothing', async ({ page }) => {
+  // #1521: Gemini 3.8 is served by WaveSpeed alone, whose text field takes
+  // 8,000 characters; the vendor states no cap, so this is the upstream's.
+  const nodeId = crypto.randomUUID();
+  await seedNode(nodeId, 'audio');
+  await openGenerate(nodeId);
+  await page.getByTestId('generate-model-trigger').click();
+  await page.getByTestId('generate-model-option-gemini-3.8-flash-text-to-speech').click();
+  await page.getByTestId('generate-prompt-editor').click();
+  await page.keyboard.insertText('Hello.');
+  const rate = page.getByTestId('generate-audio-rate');
+  await expect(rate).toBeVisible({ timeout: 15_000 });
+
+  const sent: number[] = [];
+  page.on('response', (res) => {
+    if (res.request().method() === 'POST' && res.url().includes('/canvas/tasks')) sent.push(res.status());
+  });
+  await page.keyboard.insertText('x'.repeat(8001));
+  // The rules have read the run once the price can no longer be given.
+  await expect(rate).toBeHidden({ timeout: 15_000 });
+  await page.getByTestId('generate-audio-execute').click();
+
+  await expect(page.locator('[data-sonner-toast]').first()).toContainText('takes at most 8,000 characters in the text', { timeout: 10_000 });
+  expect(sent.filter((status) => status < 300)).toEqual([]);
+});
+
 test('the voice list matches the deployment it is served from, and a pick survives a reopen @needs-tts', async ({ page }) => {
   const nodeId = crypto.randomUUID();
   await seedNode(nodeId, 'audio');
