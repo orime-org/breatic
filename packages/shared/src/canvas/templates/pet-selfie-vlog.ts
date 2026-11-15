@@ -13,6 +13,7 @@ export const PET_SELFIE_VLOG: GenerationTemplate = {
   edges: [],
   inputs: [
     { key: "pet", type: "image" },
+    { key: "person", type: "image", optional: true },
   ],
   steps: [],
   agentNote:

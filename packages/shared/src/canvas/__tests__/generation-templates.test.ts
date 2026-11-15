@@ -755,7 +755,7 @@ describe('optional template inputs (inner#1811, CAP-9)', () => {
     GENERATION_TEMPLATES.flatMap((template) => template.inputs.filter((input) => input.optional === true).map((input) => `${template.id}.${input.key}`));
 
   it('marks the person of the product ad and of the pet selfie vlog optional, and no other input', () => {
-    expect(optionalInputs()).toEqual(['pet-selfie-vlog.person', 'product-ad-15s.person']);
+    expect(optionalInputs()).toEqual(['product-ad-15s.person', 'pet-selfie-vlog.person']);
   });
 
   it('feeds the pet selfie vlog an optional person after its pet', () => {
@@ -823,7 +823,8 @@ describe('motion and speed templates (inner#1810)', () => {
 describe('social hook templates (inner#1816)', () => {
   it('feeds each its user inputs and wires the carried object through two scenes into the first and last frame', () => {
     const expected: Record<string, { inputs: Array<{ key: string; type: string; feeds: readonly string[] }>; edges: GenerationTemplate['edges'] }> = {
-      'pet-selfie-vlog': { inputs: [{ key: 'pet', type: 'image', feeds: ['result'] }], edges: [] },
+      // inner#1811 adds the optional person filming.
+      'pet-selfie-vlog': { inputs: [{ key: 'pet', type: 'image', feeds: ['result'] }, { key: 'person', type: 'image', feeds: ['result'] }], edges: [] },
       'phone-vlog-realism': { inputs: [{ key: 'person', type: 'image', feeds: ['result'] }], edges: [] },
       'retro-found-footage': { inputs: [], edges: [] },
       'time-freeze-rewind': { inputs: [{ key: 'person', type: 'image', feeds: ['result'] }], edges: [] },

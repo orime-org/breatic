@@ -38,7 +38,17 @@ const promptSegmentSchema = z.union([
       z.object({ kind: z.literal("note"), label: z.string(), note: z.undefined().optional() }),
     ]),
   }),
-  z.object({ ref: z.number().int().nonnegative(), text: z.undefined().optional(), slot: z.undefined().optional() }),
+  z.object({
+    ref: z.number().int().nonnegative(),
+    /**
+     * The ref is to a template input the user may leave empty (inner#1811,
+     * CAP-9): it lands as a mention marked optional, and the panel leaves out
+     * its paragraph while the node it names holds nothing.
+     */
+    optional: z.literal(true).optional(),
+    text: z.undefined().optional(),
+    slot: z.undefined().optional(),
+  }),
 ]);
 
 /** One stretch of the prompt, as {@link promptSegmentSchema} describes it. */
