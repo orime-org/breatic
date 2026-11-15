@@ -22,7 +22,7 @@ import { TableMap } from '@tiptap/pm/tables';
 import type { EditorView } from '@tiptap/pm/view';
 
 import { DOC_COLUMN_LIST, roomInside, weightsOf, weightsWidth } from '@web/spaces/document/document-column-geometry';
-import { localEdit } from '@web/spaces/document/document-column-repair';
+import { LEAVING_COLUMN, localEdit } from '@web/spaces/document/document-column-repair';
 import { rowById } from '@web/spaces/document/document-row-by-id';
 import { drawnColumns, holdColumnWidths } from '@web/spaces/document/document-table-column-widths';
 import { isTableCell } from '@web/spaces/document/document-table-nodes';
@@ -59,8 +59,9 @@ function grownGroups(before: PMNode, after: PMNode): string[] {
  * @param view - The editor view, still drawing the document before the change.
  * @param tr - The transaction to write into, on the document after it.
  * @param groupId - The group's id.
+ * @param leaving - The id of a column the move's take-away empties next.
  */
-function holdFor(view: EditorView, tr: Transaction, groupId: string): void {
+function holdFor(view: EditorView, tr: Transaction, groupId: string, leaving: unknown): void {
   const found = rowById(tr.doc, groupId);
   if (found?.node.type.name !== DOC_COLUMN_LIST) return;
   const $group = tr.doc.resolve(found.from);
@@ -87,7 +88,7 @@ function holdFor(view: EditorView, tr: Transaction, groupId: string): void {
   const cellSpan = Number($group.parent.attrs['colspan'] ?? 1);
   const covered = widths.slice(column, column + cellSpan);
   const coveredWidth = covered.every((width) => width !== null) ? covered.reduce((sum, width) => sum + width!, 0) : cellDom.offsetWidth;
-  const weights = weightsOf(found.node);
+  const weights = weightsOf(found.node).filter((_weight, index) => found.node.child(index).attrs['id'] !== leaving);
   const deficit = weights.length <= 1 ? 0 : Math.ceil(weightsWidth(weights) + edges - coveredWidth);
   if (deficit <= 0) {
     holdColumnWidths(tr, tablePos, widths);
@@ -131,7 +132,8 @@ export const documentColumnCellWidthExtension = createExtension(() => {
           const grown = grownGroups(before.doc, after.doc);
           if (grown.length === 0) return null;
           const tr = after.tr;
-          for (const id of grown) holdFor(view, tr, id);
+          const leaving = transactions.map((transaction) => transaction.getMeta(LEAVING_COLUMN) as unknown).find((id) => id !== undefined);
+          for (const id of grown) holdFor(view, tr, id, leaving);
           return tr.docChanged ? tr : null;
         },
       }),

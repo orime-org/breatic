@@ -13,20 +13,16 @@
  * between on its own Yjs element, so words a collaborator types there stay.
  * Putting down first means a group never stands with one column in between:
  * a collaborator's own repair would dissolve it (§5.1), and the put-down
- * would then land in a group that is gone.
- *
- * The copy put down carries the row's ids, and the put-down marks the
- * original's ids as moving: a collaborator's editor reads a remote change as
- * one change over the whole document, and BlockNote's `UniqueID` renews an id
- * that repeats inside one change, so two rows carrying one id there would
- * cost the moved row its id. The take-away deletes the marked original.
+ * would then land in a group that is gone. The copy put down carries the
+ * row's ids; a collaborator's editor keeps them while it shows both copies,
+ * as BlockNote's `UniqueID` leaves the ids of a remote change alone (patched,
+ * as Tiptap's own `UniqueID` does).
  * The two land in one undo step: the undo manager merges changes made within
  * its capture timeout.
  */
 
 import type { BlockNoteEditor } from '@blocknote/core';
 import { Fragment, Node as PMNode, Slice, type ResolvedPos } from '@tiptap/pm/model';
-import type { Transaction } from '@tiptap/pm/state';
 import { ReplaceAroundStep } from '@tiptap/pm/transform';
 import type * as Y from 'yjs';
 import { ySyncPluginKey } from 'y-prosemirror';
@@ -34,11 +30,9 @@ import { ySyncPluginKey } from 'y-prosemirror';
 import { docNameOf } from '@web/data/yjs/manager';
 import { checkAdd } from '@web/data/yjs/space-write';
 import { DOC_COLUMN, DOC_COLUMN_LIST, meanWeight, weightsOf } from '@web/spaces/document/document-column-geometry';
+import { LEAVING_COLUMN, liftOnlyColumn } from '@web/spaces/document/document-column-repair';
 import { rangeToLift } from '@web/spaces/document/document-drag-move';
 import { rowById, type RowInDocument } from '@web/spaces/document/document-row-by-id';
-
-/** What the original's ids carry while the row is being moved. */
-const MOVING = ':moving';
 
 /** Which side of the target the row lands on. */
 export type ColumnSide = 'left' | 'right';
@@ -118,24 +112,25 @@ export function dropRowBeside(
   const { schema } = view.state;
   const columnType = schema.nodes[DOC_COLUMN]!;
   const listType = schema.nodes[DOC_COLUMN_LIST]!;
+  // A copy of its own: y-prosemirror pairs nodes with Yjs elements by identity.
   const copy = PMNode.fromJSON(schema, dragged.node.toJSON());
+  const width = weightsAfterDrop(fromGroup, around).at(-1)!;
   const put = view.state.tr;
-  markMoving(put, dragged);
   let landing = target;
   if (around !== null && around.group.childCount === 1 && !sameGroup) {
-    // A group a merge left with one column: it dissolves, its blocks lifted
-    // out where they stand, and the target is wrapped on its own.
-    const end = around.groupPos + around.group.nodeSize;
-    put.step(new ReplaceAroundStep(around.groupPos, end, around.groupPos + 2, end - 2, Slice.empty, 0, true));
+    // A group a merge left with one column dissolves, and the target is
+    // wrapped on its own.
+    liftOnlyColumn(put, around.groupPos, around.group);
     landing = rowById(put.doc, targetId)!;
     around = null;
   }
+  let copyAt: number;
   if (around !== null) {
-    // A lone block moving within its group takes its column along.
-    const leaving = sameGroup && fromGroup.column.childCount === 1 ? fromGroup.index : -1;
-    const kept = weightsOf(around.group).filter((_weight, index) => index !== leaving);
     const $column = put.doc.resolve(landing.from);
-    put.insert(side === 'left' ? $column.before() : $column.after(), columnType.create({ width: meanWeight(kept) }, copy));
+    copyAt = side === 'left' ? $column.before() : $column.after();
+    put.insert(copyAt, columnType.create({ width }, copy));
+    // The column the take-away empties is no column of the group to come.
+    if (sameGroup && fromGroup.column.childCount === 1) put.setMeta(LEAVING_COLUMN, String(fromGroup.column.attrs['id']));
   } else {
     // The target is wrapped where it stands, so everything inside it maps
     // through, a block nested under it included.
@@ -143,40 +138,52 @@ export function dropRowBeside(
     const ours = columnType.create({ width: 1 });
     const list = listType.create(null, side === 'left' ? [theirs, ours] : [ours, theirs]);
     const gap = side === 'left' ? theirs.nodeSize + 2 : 2;
+    copyAt = side === 'left' ? landing.from : landing.to;
     put.step(new ReplaceAroundStep(landing.from, landing.to, landing.from, landing.to, new Slice(Fragment.from(list), 0, 0), gap, true));
   }
+  const copyFirst = copyAt <= put.mapping.map(dragged.from, 1);
   view.dispatch(put);
 
-  const original = rowById(view.state.doc, draggedId + MOVING);
+  // The row stands twice now, the original on its side of the copy.
+  const rows = rowsById(view.state.doc, draggedId);
+  const original = rows.length === 2 ? rows[copyFirst ? 1 : 0]! : undefined;
   if (original === undefined) return true;
-  // A nested child leaves with its group when it is the group's only child.
+  // A row that is the only child of its nested group, or of its column,
+  // leaves with it.
   const leaving = rangeToLift(view.state.doc, original);
-  view.dispatch(view.state.tr.delete(leaving.from, leaving.to).scrollIntoView());
+  view.dispatch(view.state.tr.delete(leaving.from, leaving.to));
   return true;
 }
 
 /**
- * Marks the ids of a row and everything in it as moving. The marks change no
- * size, so positions stay.
- * @param tr - The transaction.
- * @param row - The row.
+ * The weights of the group a drop lands in, the new column's last: a new
+ * group, or one a merge left with one column, is two even columns; otherwise
+ * the new column takes the mean of the columns that stay, and a lone block
+ * moving within its group takes its column along.
+ * @param from - The dragged row's column, if it stands in one.
+ * @param to - The target's column, if it stands in one.
+ * @returns The weights.
  */
-function markMoving(tr: Transaction, row: RowInDocument): void {
-  for (const [node, pos] of [[row.node, row.from] as const, ...descendantsOf(row)]) {
-    const id: unknown = node.attrs['id'];
-    if (typeof id === 'string' && id !== '') tr.setNodeAttribute(pos, 'id', id + MOVING);
-  }
+export function weightsAfterDrop(from: InColumn | null, to: InColumn | null): number[] {
+  const same = from !== null && to !== null && from.groupPos === to.groupPos;
+  if (to === null || (to.group.childCount === 1 && !same)) return [1, 1];
+  const leaving = same && from.column.childCount === 1 ? from.index : -1;
+  const kept = weightsOf(to.group).filter((_weight, index) => index !== leaving);
+  return [...kept, meanWeight(kept)];
 }
 
 /**
- * Every node inside a row, with where it starts.
- * @param row - The row.
- * @returns The nodes.
+ * Every row carrying that id, in document order.
+ * @param doc - The document.
+ * @param blockId - The id.
+ * @returns The rows.
  */
-function descendantsOf(row: RowInDocument): (readonly [PMNode, number])[] {
-  const nodes: (readonly [PMNode, number])[] = [];
-  row.node.descendants((node, offset) => {
-    nodes.push([node, row.from + 1 + offset]);
+function rowsById(doc: PMNode, blockId: string): RowInDocument[] {
+  const rows: RowInDocument[] = [];
+  doc.descendants((node, pos) => {
+    if (node.attrs['id'] !== blockId) return true;
+    rows.push({ node, from: pos, to: pos + node.nodeSize });
+    return false;
   });
-  return nodes;
+  return rows;
 }

@@ -170,6 +170,23 @@ describe('concurrent edits around a column group (A10)', () => {
     expect(agreed(p)).toEqual(['[Y+typed|X]']);
   });
 
+  it('keeps words typed in the other column while a lone block swaps to the left', () => {
+    const p = pair([columnsBlock(['X'], ['Y'])]);
+    dropRowBeside(p.ours, idOf(p.ours, 'Y'), idOf(p.ours, 'X'), 'left');
+    typeAfter(p.theirs, 'X', '+typed');
+    p.sync();
+    expect(agreed(p)).toEqual(['[Y|X+typed]']);
+  });
+
+  it('keeps words typed in every untouched column when a sole block moves to the far left', () => {
+    const p = pair([columnsBlock(['p'], ['q'], ['r'])]);
+    dropRowBeside(p.ours, idOf(p.ours, 'r'), idOf(p.ours, 'p'), 'left');
+    typeAfter(p.theirs, 'p', '+1');
+    typeAfter(p.theirs, 'q', '+2');
+    p.sync();
+    expect(agreed(p)).toEqual(['[r|p+1|q+2]']);
+  });
+
   it('keeps words typed in an untouched column when a sole block moves to the far right', () => {
     const p = pair([columnsBlock(['p1'], ['q1', 'q2', 'q3'], ['r1'])]);
     dropRowBeside(p.ours, idOf(p.ours, 'p1'), idOf(p.ours, 'r1'), 'right');
@@ -223,7 +240,7 @@ describe('concurrent edits around a column group (A10)', () => {
     expect(idOf(p.ours, 'X')).toBe(moved);
   });
 
-  it('keeps the ids of a moved row and the row under it when a collaborator receives the two halves apart', () => {
+  it('keeps the ids of a moved row and the row under it when a collaborator types between the two halves', () => {
     const p = pair([para('T'), { ...para('D'), children: [para('d')] }]);
     const updates: Uint8Array[] = [];
     p.a.on('update', (update: Uint8Array, origin: unknown) => {
@@ -231,9 +248,11 @@ describe('concurrent edits around a column group (A10)', () => {
     });
     const [row, child] = [idOf(p.ours, 'D'), idOf(p.ours, 'd')];
     dropRowBeside(p.ours, row, idOf(p.ours, 'T'), 'left');
-    for (const update of updates) Y.applyUpdate(p.b, update, 'peer');
+    Y.applyUpdate(p.b, updates[0]!, 'peer');
+    typeAfter(p.theirs, 'T', '+t');
+    for (const update of updates.slice(1)) Y.applyUpdate(p.b, update, 'peer');
     p.sync();
-    expect(agreed(p)).toEqual(['[D|T]']);
+    expect(agreed(p)).toEqual(['[D|T+t]']);
     for (const editor of [p.ours, p.theirs]) expect([idOf(editor, 'D'), idOf(editor, 'd')]).toEqual([row, child]);
   });
 });

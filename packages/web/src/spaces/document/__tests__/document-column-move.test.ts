@@ -180,6 +180,22 @@ describe('a side drop of a nested child (inner#1314 A1)', () => {
   });
 });
 
+describe('a side drop leaves the scroll where the user dropped (inner#1314 A1)', () => {
+  it('asks no transaction to scroll the selection into view', () => {
+    const editor = open([para('a'), para('b'), para('c')]);
+    const view = editor.prosemirrorView;
+    const scrolled: boolean[] = [];
+    const dispatch = view.dispatch.bind(view);
+    view.dispatch = (tr): void => {
+      scrolled.push(tr.scrolledIntoView);
+      dispatch(tr);
+    };
+    dropRowBeside(editor as never, idOf(editor, 'a'), idOf(editor, 'c'), 'right');
+    expect(shape(editor)).toEqual(['b', '[c|a]']);
+    expect(scrolled).toEqual([false, false]);
+  });
+});
+
 describe('a column group moved past a list item with children (inner#1314 design §5.1)', () => {
   it('goes below the whole list item on the way down', () => {
     const editor = open([columnsBlock(['a'], ['c']), { type: 'bulletListItem', content: 'L', children: [para('child')] }, para('tail')]);

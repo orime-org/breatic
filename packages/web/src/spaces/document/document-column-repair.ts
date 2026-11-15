@@ -20,7 +20,7 @@
 
 import { createExtension } from '@blocknote/core';
 import { Plugin, PluginKey, type EditorState, type Transaction } from '@tiptap/pm/state';
-import { Mapping, ReplaceAroundStep } from '@tiptap/pm/transform';
+import { Mapping, ReplaceAroundStep, type Transform } from '@tiptap/pm/transform';
 import { Fragment, Slice, type Node as PMNode } from '@tiptap/pm/model';
 
 import { columnsBarredAt } from '@web/spaces/document/document-column-entry';
@@ -33,6 +33,12 @@ import { DOC_COLUMN, DOC_COLUMN_LIST, holdsOneEmptyParagraph } from '@web/spaces
  * only an empty line is not one emptied by the transaction.
  */
 export const SAVED_BODY = new PluginKey('doc-saved-body');
+
+/**
+ * Meta on the put-down half of a move within one group (design 5.2): the id
+ * of the column its take-away empties, which the group to come leaves out.
+ */
+export const LEAVING_COLUMN = new PluginKey('doc-column-leaving');
 
 /**
  * Whether transactions hold a change made in this editor itself, other than
@@ -157,13 +163,22 @@ function repair(
     // A table that cannot stand where the group stood (a cell) waits for
     // the cell's own rule (`unfoldCellTables`) and the next change.
     if (!$pos.parent.canReplace($pos.index(), $pos.index() + 1, Fragment.from(blocks))) continue;
-    const end = pos + node.nodeSize;
-    // One column's blocks are lifted out where they stand, so the caret
-    // and every position inside them map through unchanged.
-    if (node.childCount === 1) tr.step(new ReplaceAroundStep(pos, end, pos + 2, end - 2, Slice.empty, 0, true));
-    else tr.replaceWith(pos, end, blocks);
+    if (node.childCount === 1) liftOnlyColumn(tr, pos, node);
+    else tr.replaceWith(pos, pos + node.nodeSize, blocks);
   }
   return tr.docChanged ? tr : null;
+}
+
+/**
+ * Dissolves a group of one column, its blocks lifted out where they stand,
+ * so the caret and every position inside them map through unchanged.
+ * @param tr - The transform.
+ * @param pos - Where the group starts.
+ * @param group - The group.
+ */
+export function liftOnlyColumn(tr: Transform, pos: number, group: PMNode): void {
+  const end = pos + group.nodeSize;
+  tr.step(new ReplaceAroundStep(pos, end, pos + 2, end - 2, Slice.empty, 0, true));
 }
 
 /**

@@ -147,6 +147,14 @@ describe('columns made in a cell (design §5.1)', () => {
     expect(storedWidths(editor)).toEqual([[371], [370]]);
   });
 
+  it('keep a cell\'s width when two of its columns swap places', () => {
+    // 266 holds two even columns: 2 x 96 + 72, plus the 1px padding each side.
+    drawEverythingAt(266);
+    const editor = open([tableBlock({ rows: [{ cells: [{ blocks: [columnsBlock(['a'], ['b'])] }, 'z'] }] })]);
+    dropRowBeside(editor as never, idOf(editor, 'a'), idOf(editor, 'b'), 'right');
+    expect(storedWidths(editor)).toEqual([[266], [266]]);
+  });
+
   it('write down the drawn widths when the cell already holds them', () => {
     drawEverythingAt(300);
     const editor = open([tableBlock({ rows: [{ cells: [{ blocks: [para('a'), para('b')] }, 'z'] }] })]);
