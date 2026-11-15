@@ -9,7 +9,7 @@
 import type { NotificationListView, RecentItem, SignupInvitationPreview } from "@breatic/shared";
 import { lookupKeysHere, profilesService, studioRepo, type KeyLookupAnswer } from "@breatic/domain";
 import { getRedis, NotFoundError, publishSessionsRevoked, recordRevokedIdentities } from "@breatic/core";
-import { claimEmailInvitations } from "@server/modules/invitation/claim-email-invitations.js";
+import { claimForwardedEmailInvitations } from "@server/modules/invitation/claim-email-invitations.js";
 import * as maintenanceService from "@server/modules/maintenance/maintenance.service.js";
 import { projectNamesHere } from "@server/modules/region/project-names.js";
 import { getInvitationPreview } from "@server/modules/invitation/invitation.service.js";
@@ -149,9 +149,10 @@ export const SERVER_REGION_FUNCTIONS = {
    * Claim this region's email invitations for an account that signed in.
    * @param userId - The account.
    * @returns Once claimed.
+   * @throws {GlobalApiError} When the global region was unavailable, so the forwarding job retries.
    */
   claimEmailInvitations: async (userId: string): Promise<void> => {
     const account = (await profilesService.accountsOf([userId])).get(userId);
-    if (account !== undefined) await claimEmailInvitations(account);
+    if (account !== undefined) await claimForwardedEmailInvitations(account);
   },
 };

@@ -11,12 +11,11 @@ import { claimInvitation, invitationRepo } from "@server/modules/invitation/invi
  * Candidate and transaction failures are logged so account and session creation
  * can complete and the next authenticated session can retry the scan.
  * @param user - The account whose verified mailbox may have invitations.
- * @returns Once the compensation scan has finished.
- * @throws {GlobalApiError} After the scan, when the global region was unavailable
- *   for a candidate, so the forwarded job that ran it retries (inner#1955).
+ * @returns Once the scan has finished: the first global-region outage a
+ *   candidate met, or null (inner#1955).
  */
-export async function claimEmailInvitations(user: Pick<UserEntity, "id" | "email" | "emailVerified">): Promise<void> {
-  if (!user.emailVerified) return;
+export async function claimEmailInvitations(user: Pick<UserEntity, "id" | "email" | "emailVerified">): Promise<{ unavailable: unknown }> {
+  if (!user.emailVerified) return { unavailable: null };
   let unavailable: unknown = null;
   try {
     for (const kind of ["project", "studio"] as const) {
@@ -33,9 +32,20 @@ export async function claimEmailInvitations(user: Pick<UserEntity, "id" | "email
   } catch (err) {
     logger.error({ err, ctx: { userId: user.id } }, "email_invitation_claim_failed");
   }
-  if (unavailable !== null) throw unavailable;
+  return { unavailable };
 }
 
+/**
+ * Claim a signed-in account's email invitations for a job forwarded from the
+ * global region: a global-region outage fails the job, which retries.
+ * @param user - The account whose verified mailbox may have invitations.
+ * @returns Once every candidate was claimed or failed for good.
+ * @throws {GlobalApiError} When the global region was unavailable for a candidate.
+ */
+export async function claimForwardedEmailInvitations(user: Pick<UserEntity, "id" | "email" | "emailVerified">): Promise<void> {
+  const { unavailable } = await claimEmailInvitations(user);
+  if (unavailable !== null) throw unavailable;
+}
 
 let claimForwardQueue: ReturnType<typeof createQueue> | null = null;
 

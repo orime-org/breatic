@@ -96,7 +96,7 @@ for (const scope of ["project", "studio"] satisfies Scope[]) {
         const first = conversionFirst
           ? claimEmailInvitations(user)
           : revokeInvitation(scope, fixture, invitation.id);
-        const operations: Promise<void>[] = [first];
+        const operations: Promise<unknown>[] = [first];
         try {
           await waitUntilBlockedOn(sql, [scope === "project" ? "projects" : "studios", "for update"], 1);
           operations.push(conversionFirst
@@ -205,7 +205,7 @@ for (const conversionFirst of [false, true]) {
       await db.transaction(async (tx) => { await projectRepo.archiveProject(fixture.projectId, fixture.adminId, tx); });
     };
     const first = conversionFirst ? claimEmailInvitations(user) : archive();
-    const operations: Promise<void>[] = [first];
+    const operations: Promise<unknown>[] = [first];
     try {
       await waitUntilBlockedOn(sql, ["projects", "for update"], 1);
       operations.push(conversionFirst ? archive() : claimEmailInvitations(user));
