@@ -19,17 +19,7 @@ describe('createOrbitUserMoveWatch', () => {
     const onUserMove = vi.fn();
     const watch = createOrbitUserMoveWatch(onUserMove);
     watch.start();
-    watch.end();
     expect(onUserMove).not.toHaveBeenCalled();
-  });
-
-  it('counts the damping after the gesture ends as the user move', () => {
-    const onUserMove = vi.fn();
-    const watch = createOrbitUserMoveWatch(onUserMove);
-    watch.start();
-    watch.end();
-    watch.change();
-    expect(onUserMove).toHaveBeenCalledTimes(1);
   });
 
   it('reports nothing for camera changes outside any gesture', () => {

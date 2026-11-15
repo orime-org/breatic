@@ -11,10 +11,10 @@ import { useFollowStore } from '@web/stores/follow';
  * Tell the user once why following stopped (#920): they moved the view or
  * switched Space themselves (info), or the leader went offline (warning).
  * The stop button and leaving the project say nothing; the user did those
- * and sees the bar go.
- * @param nameOf - The display name of a member by user id.
+ * and sees the bar go. The leader's name comes from the stop, so a leader who
+ * has left the member list is still named.
  */
-export function useFollowExitToast(nameOf: (userId: string) => string): void {
+export function useFollowExitToast(): void {
   const t = useTranslation();
   const stopped = useFollowStore((s) => s.stopped);
   // Each stop is told once, keyed by its seq, however often this re-renders.
@@ -24,6 +24,6 @@ export function useFollowExitToast(nameOf: (userId: string) => string): void {
     told.current = stopped.seq;
     if (stopped.reason === 'viewport') toast.info(t('members.follow.stoppedViewport'));
     else if (stopped.reason === 'space') toast.info(t('members.follow.stoppedSpace'));
-    else if (stopped.reason === 'offline') toast.warning(t('members.follow.stoppedOffline', { name: nameOf(stopped.userId) }));
-  }, [stopped, nameOf, t]);
+    else if (stopped.reason === 'offline') toast.warning(t('members.follow.stoppedOffline', { name: stopped.name }));
+  }, [stopped, t]);
 }

@@ -5,10 +5,8 @@
 export interface OrbitUserMoveWatch {
   /** OrbitControls `start`: a press, wheel or touch began; it fires before anything moves. */
   start: () => void;
-  /** OrbitControls `change`: the camera moved. */
+  /** OrbitControls `change`: the camera moved; the damping after the input ends still belongs to it. */
   change: () => void;
-  /** OrbitControls `end`: the input ended; the damping that follows still belongs to it. */
-  end: () => void;
   /** Run a camera change the code makes; it is not the user's, and it ends the gesture it interrupts. */
   applying: (fn: () => void) => void;
 }
@@ -34,7 +32,6 @@ export function createOrbitUserMoveWatch(onUserMove: () => void): OrbitUserMoveW
       armed = false;
       onUserMove();
     },
-    end: (): void => {},
     applying: (fn: () => void): void => {
       armed = false;
       applyingDepth += 1;

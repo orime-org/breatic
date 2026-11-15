@@ -423,11 +423,7 @@ function ProjectWorkspace({
     memberUserIds,
     synced: metaSynced && memberUserIds.length > 0,
   });
-  const memberName = React.useCallback(
-    (id: string): string => members.find((m) => m.userId === id)?.name ?? '',
-    [members],
-  );
-  useFollowExitToast(memberName);
+  useFollowExitToast();
 
   // Hand the strip back to the browser so the next visit opens on it. Held
   // until `ready`, because the strip is empty before the Spaces arrive and
@@ -1089,7 +1085,6 @@ function ProjectWorkspace({
                       />
                     ))}
                     <FollowBar
-                      leaderName={followedUserId === null ? '' : memberName(followedUserId)}
                       leaderColor={followedUserId === null ? '' : userPaletteColor(followedUserId)}
                     />
                     {activeSpace ? null : (

@@ -3171,13 +3171,12 @@ function CanvasSpaceInner({
   );
 
   // Following a member (#920): their visible rectangle on this canvas, fitted
-  // into this pane once the document has loaded; any move this did not start
-  // stops it.
+  // into this pane once the document has loaded and again when the pane
+  // changes size; the user's own moves stop it.
   const leaderUserId = useFollowStore((s) => s.targetUserId);
-  const paneSize = React.useCallback((): PaneSize => {
-    const { width, height } = rfStoreApi.getState();
-    return { width, height };
-  }, [rfStoreApi]);
+  const paneWidth = useStore((s) => s.width);
+  const paneHeight = useStore((s) => s.height);
+  const pane = React.useMemo((): PaneSize => ({ width: paneWidth, height: paneHeight }), [paneWidth, paneHeight]);
   const applyFollowViewport = React.useCallback((next: Viewport): void => {
     void setViewport(next, { duration: 0 });
   }, [setViewport]);
@@ -3188,7 +3187,7 @@ function CanvasSpaceInner({
     awareness,
     leaderUserId,
     ready: synced,
-    paneSize,
+    pane,
     applyViewport: applyFollowViewport,
     clearOpeningFit,
   });

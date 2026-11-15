@@ -72,6 +72,7 @@ function distanceBelowTop(viewport: HTMLElement, line: HTMLElement): number {
  * @param root - The element the block is looked up in.
  * @param id - The block id.
  * @param options - Whether a block with no line of its own falls back to its outer box.
+ * @param landing - How far below the top of the body the line lands; {@link LANDING} by default.
  * @returns The scrollTop, or null when the block is not on the page.
  */
 export function landingFor(
@@ -79,10 +80,11 @@ export function landingFor(
   root: HTMLElement,
   id: string,
   options: LineOptions = { fallback: false },
+  landing = LANDING,
 ): number | null {
   const line = blockLine(root, id, options);
   if (line === null) return null;
-  const want = viewport.scrollTop + distanceBelowTop(viewport, line) - LANDING;
+  const want = viewport.scrollTop + distanceBelowTop(viewport, line) - landing;
   return Math.max(0, Math.min(viewport.scrollHeight - viewport.clientHeight, want));
 }
 

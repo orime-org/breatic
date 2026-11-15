@@ -15,9 +15,9 @@ import type { SceneModelLease } from '@web/spaces/three-d/viewport/model-resourc
 import { createTransformGesture, transformPatches } from '@web/spaces/three-d/viewport/scene-transform';
 import type { SceneTransformGesture } from '@web/spaces/three-d/viewport/scene-transform';
 import { SceneTransformControls173 } from '@web/spaces/three-d/viewport/transform-controls-173';
-import { SCENE_CAMERA_FOV, captureViewOffset, focusSceneBounds, updateSceneCameraRange } from '@web/spaces/three-d/viewport/scene-camera';
+import { captureViewOffset, focusSceneBounds, updateSceneCameraRange } from '@web/spaces/three-d/viewport/scene-camera';
 import { createOrbitUserMoveWatch } from '@web/spaces/three-d/viewport/orbit-user-move';
-import type { CapturedPixels, SceneFrameCapture, SceneTransformPatch, SceneViewportProps, SceneView } from '@web/spaces/three-d/viewport/scene-viewport-props';
+import { SCENE_CAMERA_FOV, type CapturedPixels, type SceneFrameCapture, type SceneTransformPatch, type SceneViewportProps, type SceneView } from '@web/spaces/three-d/viewport/scene-viewport-props';
 
 interface NativeHandleObservation {
   name: string;
@@ -220,7 +220,6 @@ export class SceneViewportRuntime {
     this.orbit.addEventListener('change', this.onViewChange);
     this.orbit.addEventListener('start', this.userMove.start);
     this.orbit.addEventListener('change', this.userMove.change);
-    this.orbit.addEventListener('end', this.userMove.end);
     canvas.addEventListener('pointerdown', this.onPointerDown, true);
     canvas.addEventListener('pointerup', this.onPointerUpCapture, true);
     canvas.addEventListener('pointerup', this.onPointerUp);
@@ -1055,7 +1054,6 @@ export class SceneViewportRuntime {
     this.orbit.removeEventListener('change', this.onViewChange);
     this.orbit.removeEventListener('start', this.userMove.start);
     this.orbit.removeEventListener('change', this.userMove.change);
-    this.orbit.removeEventListener('end', this.userMove.end);
     this.controls.dispose();
     this.orbit.dispose();
     this.overview?.dispose();

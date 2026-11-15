@@ -14,7 +14,7 @@ import { TooltipProvider } from '@web/components/ui/tooltip';
 import { applySceneCommand, readSceneDocument } from '@web/data/yjs/scene-document';
 import { SceneSession } from '@web/data/yjs/scene-session';
 import SceneEditor from '@web/spaces/three-d/SceneEditor';
-import { SCENE_CAMERA_FOV } from '@web/spaces/three-d/viewport/scene-camera';
+import { SCENE_CAMERA_FOV } from '@web/spaces/three-d/viewport/scene-viewport-props';
 import type { SceneViewportProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
 import { useFollowStore } from '@web/stores/follow';
 import { useUIStore } from '@web/stores/ui';
@@ -77,7 +77,7 @@ beforeEach(() => {
   vi.spyOn(document, 'hasFocus').mockReturnValue(true);
   viewportInputs.mockClear();
   useFollowStore.getState().reset();
-  useFollowStore.getState().start('leader');
+  useFollowStore.getState().start('leader', 'Leader');
 });
 afterEach(() => {
   cleanup();

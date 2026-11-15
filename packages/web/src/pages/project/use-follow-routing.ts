@@ -30,21 +30,23 @@ export interface FollowRoutingInput {
  *
  * The leader's Space is acted on when following starts and each time it
  * changes; a Space this project does not have, or none at all, leaves the tab
- * where it is. A change of the tab in front that is not the one this hook just
- * asked for stops following when the user made it (`persist`), once the tab
- * strip has landed; a Space deleted from under the user moves the tab without
+ * where it is. A change of the tab in front that is not one this hook asked
+ * for stops following when the user made it (`persist`), once the tab strip
+ * has landed; a Space deleted from under the user moves the tab without
  * `persist` and keeps following. Modelled on `useCanvasRevealRouting`.
  * @param input - The current state; see `FollowRoutingInput`.
  */
 export function useFollowRouting(input: FollowRoutingInput): void {
   const { following, leaderSpaceId, spaces, activeId, ready, persist, open } = input;
-  // The leader Space already acted on while following, and the tab this hook asked for and is waiting on.
+  // The leader Space already acted on while following, and the tabs this hook
+  // asked for that have not landed yet, oldest first: a leader going A -> B -> A
+  // quickly has this hook ask for B and then A before either renders.
   const routed = React.useRef<string | null | undefined>(undefined);
-  const pending = React.useRef<string | null>(null);
+  const pending = React.useRef<string[]>([]);
   React.useEffect(() => {
     if (!following) {
       routed.current = undefined;
-      pending.current = null;
+      pending.current = [];
       return;
     }
     if (leaderSpaceId === routed.current) return;
@@ -55,8 +57,9 @@ export function useFollowRouting(input: FollowRoutingInput): void {
     // Not yet (or no longer) in this project: judged again when the Spaces change.
     if (!spaces.some((space) => space.id === leaderSpaceId)) return;
     routed.current = leaderSpaceId;
-    if (leaderSpaceId !== activeId) {
-      pending.current = leaderSpaceId;
+    // Where the tab ends up once the opens already asked for land.
+    if (leaderSpaceId !== (pending.current.at(-1) ?? activeId)) {
+      pending.current.push(leaderSpaceId);
       open(leaderSpaceId);
     }
   }, [following, leaderSpaceId, spaces, activeId, open]);
@@ -67,8 +70,10 @@ export function useFollowRouting(input: FollowRoutingInput): void {
     const was = last.current;
     last.current = { activeId, ready };
     if (!following || was.activeId === activeId) return;
-    if (activeId !== null && activeId === pending.current) {
-      pending.current = null;
+    // One of this hook's own opens landing; the ones asked for before it are past.
+    const own = activeId === null ? -1 : pending.current.indexOf(activeId);
+    if (own >= 0) {
+      pending.current = pending.current.slice(own + 1);
       return;
     }
     if (persist && was.ready) useFollowStore.getState().stop('space');

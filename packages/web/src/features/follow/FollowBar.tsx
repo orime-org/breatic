@@ -5,11 +5,12 @@ import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
-import { useFollowStore } from '@web/stores/follow';
+import { stopFollowing, useFollowStore } from '@web/stores/follow';
+
+/** The bar's height in pixels (`h-8`); a followed view is aligned below it, so it stays visible. */
+export const FOLLOW_BAR_HEIGHT = 32;
 
 interface FollowBarProps {
-  /** The followed member's display name. */
-  leaderName: string;
   /** The followed member's collaboration colour, a CSS colour reference. */
   leaderColor: string;
 }
@@ -20,15 +21,14 @@ interface FollowBarProps {
  * member (#920). Renders nothing otherwise. Its parent is the positioned
  * element that hosts the open Space bodies.
  * @param root0 - Follow bar props.
- * @param root0.leaderName - The followed member's display name.
  * @param root0.leaderColor - The followed member's collaboration colour.
  * @returns The bar and outline, or null while not following.
  */
-export function FollowBar({ leaderName, leaderColor }: FollowBarProps): React.JSX.Element | null {
+export function FollowBar({ leaderColor }: FollowBarProps): React.JSX.Element | null {
   const t = useTranslation();
-  const following = useFollowStore((s) => s.targetUserId !== null);
-  const stop = React.useCallback((): void => useFollowStore.getState().stop('button'), []);
-  if (!following) return null;
+  const leaderName = useFollowStore((s) => s.targetName);
+  const stop = React.useCallback((): void => stopFollowing('button'), []);
+  if (leaderName === null) return null;
   return (
     <>
       {/* 2px inset outline in the leader's colour: approved by the maintainer

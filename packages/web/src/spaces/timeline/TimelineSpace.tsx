@@ -36,7 +36,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { isEditableTarget } from '@web/lib/is-editable-target';
 import { toast } from '@web/lib/toast';
 import { cn } from '@web/lib/utils';
-import { useFollowStore } from '@web/stores/follow';
+import { stopFollowing } from '@web/stores/follow';
 import { runOnce } from '@web/stores/task-actions-in-flight';
 import type { SpaceBodyProps } from '@web/spaces';
 import { formatShortcut } from '@web/spaces/canvas/format-shortcut';
@@ -69,13 +69,6 @@ import { transitionCreationDraft, type CreationDraftInput, type CreationDraftSta
 import type { TimelineWebLayer, WebAnimationPlayerElement } from '@web/spaces/timeline/web-animation-host';
 import { EMPTY_WEB_INSTANCE_POOL, allocateWebInstances } from '@web/spaces/timeline/web-instance-pool';
 
-/**
- * The user moved their own Timeline view, so following a member ends (#920).
- * @throws {never} Never.
- */
-function stopFollowing(): void {
-  useFollowStore.getState().stop('viewport');
-}
 
 /** The existing content document and its supported native projection. */
 interface TimelineEditorProps extends SpaceBodyProps { doc: Y.Doc; document: TimelineDocumentV1; damagedClipIds: readonly string[] }
@@ -538,10 +531,6 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   const togglePlay = React.useCallback((): void => { stopFollowing(); toggle(); }, [toggle]);
   const selectClip = React.useCallback((clipId: string | null): void => session.select(clipId), [session]);
   const [trackScroller, setTrackScroller] = React.useState<HTMLDivElement | null>(null);
-  const attachTrackViewport = React.useCallback((element: HTMLDivElement | null): void => {
-    if (element !== null) element.dataset.testid = 'timeline-track-scroller';
-    setTrackScroller(element);
-  }, []);
   // A scroll the user makes stops following; the clamp after the tracks got shorter does not (#920).
   React.useEffect(() => {
     if (trackScroller === null) return undefined;
@@ -991,7 +980,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
           </span>
         </div>
       </div>
-      <TimelineTrackArea projectId={projectId} document={document} labels={labels} readyIds={readyIds} selectedId={selectedId} frame={frame} extent={extent} viewportRef={attachTrackViewport}
+      <TimelineTrackArea projectId={projectId} document={document} labels={labels} readyIds={readyIds} selectedId={selectedId} frame={frame} extent={extent} viewportRef={setTrackScroller}
         pixelsPerFrame={pixelsPerFrame} readOnly={readOnly} snap={prefs.snap} placement={placement} web={web} webClips={webClips} uploads={uploadViews} onSelect={selectClip} onSeek={seekTo} onCommit={commitCommand} onVanished={vanished} onDraggingChange={draggingChange} />
     </div>
     <aside data-testid='timeline-side-panel' className='flex w-72 shrink-0 flex-col border-l border-border'>

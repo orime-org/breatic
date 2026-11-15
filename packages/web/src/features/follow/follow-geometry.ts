@@ -3,8 +3,8 @@
 
 /**
  * The canvas geometry of following a member (#920): what part of the canvas a
- * viewport shows, the viewport that shows a leader's part, and what a follower
- * publishes while its viewport is being led.
+ * viewport shows, the viewport that shows a leader's part, and whether two
+ * rectangles are the same.
  */
 
 import { getViewportForBounds, type Viewport } from '@xyflow/react';
@@ -53,14 +53,13 @@ export function followViewport(rect: FlowRect, pane: PaneSize): Viewport {
 }
 
 /**
- * The rectangle this client publishes as its `camera`: its own while the user
- * drives the viewport, the leader's unchanged while following drives it, so
- * two members following each other settle on one rectangle instead of growing
- * it each round, and a chain of followers passes the leader's on.
- * @param own - The rectangle this client's viewport shows.
- * @param leader - The leader's rectangle while following drives the viewport, else null.
- * @returns The rectangle to publish.
+ * Whether two rectangles show the same part of the canvas; a missing one
+ * (null or undefined) equals only another missing one.
+ * @param a - One rectangle.
+ * @param b - The other.
+ * @returns True when they match.
  */
-export function publishedCamera(own: FlowRect, leader: FlowRect | null): FlowRect {
-  return leader ?? own;
+export function sameRect(a: FlowRect | null | undefined, b: FlowRect | null | undefined): boolean {
+  if (a === null || a === undefined || b === null || b === undefined) return (a ?? null) === (b ?? null);
+  return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
 }

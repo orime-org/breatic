@@ -98,6 +98,40 @@ describe('usePublishTimelineView', () => {
     await vi.waitFor(() => expect(view(awareness)).toMatchObject({ intent: 'play', anchor, frame: 30 }));
   });
 
+  it('publishes the anchor frame while playing, so the value changes only when playback changes', async () => {
+    const awareness = makeAwareness();
+    const { el } = trackViewport();
+    const { rerender } = renderHook((p: PublishTimelineViewInput) => usePublishTimelineView(p), { initialProps: input(awareness, el) });
+    const anchor = { frame: 30, at: Date.now() };
+    rerender(input(awareness, el, { intent: 'play', anchor, frame: 30 }));
+    await vi.waitFor(() => expect(view(awareness)).toMatchObject({ intent: 'play', anchor, frame: 30 }));
+    const writes = vi.fn();
+    awareness.on('change', writes);
+    for (const frame of [31, 32, 33, 34, 35]) {
+      rerender(input(awareness, el, { intent: 'play', anchor, frame }));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    expect(writes).not.toHaveBeenCalled();
+    expect(view(awareness)).toMatchObject({ frame: 30, anchor });
+    awareness.off('change', writes);
+    // Pausing is news again, with the frame it stopped on.
+    rerender(input(awareness, el, { intent: 'pause', anchor: null, frame: 36 }));
+    await vi.waitFor(() => expect(view(awareness)).toMatchObject({ intent: 'pause', anchor: null, frame: 36 }));
+  });
+
+  it('publishes the view again after the page comes back from the back-forward cache', async () => {
+    const awareness = makeAwareness();
+    const { el } = trackViewport();
+    renderHook(() => usePublishTimelineView(input(awareness, el, { frame: 12 })));
+    await vi.waitFor(() => expect(view(awareness)).not.toBeNull());
+    // The provider drops the local state on pagehide and puts back an empty one on restore.
+    awareness.setLocalState({});
+    const restored = new Event('pageshow');
+    Object.defineProperty(restored, 'persisted', { value: true });
+    window.dispatchEvent(restored);
+    await vi.waitFor(() => expect(view(awareness)).toMatchObject({ frame: 12 }));
+  });
+
   it('takes the field down at once when it unmounts', async () => {
     const awareness = makeAwareness();
     const { el } = trackViewport();

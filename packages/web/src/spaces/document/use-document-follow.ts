@@ -4,15 +4,21 @@
 import * as React from 'react';
 import type { Awareness } from 'y-protocols/awareness';
 
+import { SCROLLBAR_MARK } from '@web/components/ui/scroll-area';
 import { pickLeaderField } from '@web/data/yjs/follow-presence';
+import { FOLLOW_BAR_HEIGHT } from '@web/features/follow/FollowBar';
 import {
+  LANDING,
   landingFor,
   markAlignment,
   rebaseMark,
   stillAligned,
   type AlignmentMark,
 } from '@web/spaces/document/block-scroll';
-import { useFollowStore } from '@web/stores/follow';
+import { stopFollowing, useFollowStore } from '@web/stores/follow';
+
+/** Keys that scroll the body when it has focus. */
+const SCROLL_KEYS = new Set(['PageUp', 'PageDown', 'Home', 'End', ' ', 'ArrowUp', 'ArrowDown']);
 
 /** What following a member in a document body needs (#920 design 4.2). */
 export interface DocumentFollowInput {
@@ -38,15 +44,18 @@ export interface DocumentFollowResult {
  * Keep the followed member's top block at the top of this body (#920 design
  * 4.2) and stop following once the user scrolls the body themselves.
  *
- * Each alignment scrolls the block's line to the landing and records where
- * that left the body; a later scroll that still matches the record (the body
- * got shorter, or scroll anchoring kept the block in place) is accepted and
- * the record moves with it, any other is the user's and stops following. A
- * block not yet on the page is aligned once it appears. A change of the
- * body's size aligns again, because a reflowed column moves the block away
- * from the landing in a way anchoring does not undo. While paused, both the
- * aligning and the check rest, and resuming aligns to the leader's latest
- * block.
+ * Each alignment scrolls the block's line to the landing below the follow
+ * bar, which covers the top of the body, and records where that left the
+ * body; a later scroll that still matches the record (the body got shorter,
+ * or scroll anchoring kept the block in place) is accepted and the record
+ * moves with it, any other is the user's and stops following. A block not yet
+ * on the page is aligned once it appears. A change of the body's size aligns
+ * again, because a reflowed column moves the block away from the landing in
+ * a way anchoring does not undo. Before the first alignment there is no
+ * record to judge a scroll by, so the user's own scrolling inputs (the wheel,
+ * a scrolling key, a press on this body's scrollbar) stop following directly.
+ * While paused, both the aligning and the check rest, and resuming aligns to
+ * the leader's latest block.
  * @param input - The awareness, the leader, the body and whether it is paused.
  * @returns The block to publish while following.
  */
@@ -86,7 +95,7 @@ export function useDocumentFollow(input: DocumentFollowInput): DocumentFollowRes
      * @param id - The block to align to.
      */
     const alignTo = (id: string): void => {
-      const top = landingFor(viewport, root, id);
+      const top = landingFor(viewport, root, id, undefined, LANDING + FOLLOW_BAR_HEIGHT);
       if (top === null) {
         pending = id;
         return;
@@ -122,13 +131,38 @@ export function useDocumentFollow(input: DocumentFollowInput): DocumentFollowRes
         return;
       }
       mark = null;
-      useFollowStore.getState().stop('viewport');
+      stopFollowing();
       setFollowTopBlockId(null);
+    };
+
+    /** Stop following on the user's own scrolling input before the first alignment. */
+    const stopBeforeAligned = (): void => {
+      if (mark === null && following()) stopFollowing();
+    };
+    /**
+     * A key that scrolls the body.
+     * @param event - The keydown inside the body.
+     */
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (SCROLL_KEYS.has(event.key)) stopBeforeAligned();
+    };
+    const area = viewport.closest('[data-scrollbars]');
+    /**
+     * A press on this body's scrollbar; the rail cancels its own pointerdown,
+     * so this listens on the window in the capture phase.
+     * @param event - Any pointerdown on the page.
+     */
+    const onPointerDown = (event: Event): void => {
+      const bar = event.target instanceof Element ? event.target.closest(`[${SCROLLBAR_MARK}]`) : null;
+      if (bar !== null && area !== null && bar.closest('[data-scrollbars]') === area) stopBeforeAligned();
     };
 
     align(true);
     awareness.on('change', onChange);
     viewport.addEventListener('scroll', onScroll, { passive: true });
+    viewport.addEventListener('wheel', stopBeforeAligned, { passive: true });
+    viewport.addEventListener('keydown', onKeyDown);
+    window.addEventListener('pointerdown', onPointerDown, true);
     // The block may arrive after the leader names it (sync, a peer's insert).
     const arrivals = new MutationObserver(() => {
       if (pending !== null && following()) alignTo(pending);
@@ -141,6 +175,9 @@ export function useDocumentFollow(input: DocumentFollowInput): DocumentFollowRes
     return (): void => {
       awareness.off('change', onChange);
       viewport.removeEventListener('scroll', onScroll);
+      viewport.removeEventListener('wheel', stopBeforeAligned);
+      viewport.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('pointerdown', onPointerDown, true);
       arrivals.disconnect();
       resize.disconnect();
       setFollowTopBlockId(null);

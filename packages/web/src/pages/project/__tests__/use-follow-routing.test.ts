@@ -34,7 +34,7 @@ function input(over: Partial<FollowRoutingInput>): FollowRoutingInput {
 
 beforeEach(() => {
   useFollowStore.getState().reset();
-  useFollowStore.getState().start('leader');
+  useFollowStore.getState().start('leader', 'Leader');
 });
 
 describe('useFollowRouting', () => {
@@ -52,6 +52,29 @@ describe('useFollowRouting', () => {
     rerender(input({ open, leaderSpaceId: 's3', activeId: 's3', persist: true }));
     expect(useFollowStore.getState().targetUserId).toBe('leader');
     expect(useFollowStore.getState().stopped).toBeNull();
+  });
+
+  it('follows the leader back to the Space in front here while its own switch away has not rendered yet', () => {
+    const open = vi.fn();
+    const { rerender } = renderHook((p: FollowRoutingInput) => useFollowRouting(p), { initialProps: input({ open }) });
+    // The leader goes s1 -> s3 -> s1 before this tab strip has rendered the open of s3.
+    rerender(input({ open, leaderSpaceId: 's3' }));
+    expect(open).toHaveBeenLastCalledWith('s3');
+    rerender(input({ open, leaderSpaceId: 's1' }));
+    expect(open).toHaveBeenLastCalledWith('s1');
+  });
+
+  it('keeps following while the opens it asked for land one after the other', () => {
+    const open = vi.fn();
+    const { rerender } = renderHook((p: FollowRoutingInput) => useFollowRouting(p), { initialProps: input({ open }) });
+    rerender(input({ open, leaderSpaceId: 's3' }));
+    rerender(input({ open, leaderSpaceId: 's1' }));
+    // Neither landing is the user's own switch.
+    rerender(input({ open, leaderSpaceId: 's1', activeId: 's3', persist: true }));
+    rerender(input({ open, leaderSpaceId: 's1', activeId: 's1', persist: true }));
+    expect(useFollowStore.getState().targetUserId).toBe('leader');
+    expect(useFollowStore.getState().stopped).toBeNull();
+    expect(open).toHaveBeenLastCalledWith('s1');
   });
 
   it('stays put when the leader closes every tab or names a Space that is gone', () => {

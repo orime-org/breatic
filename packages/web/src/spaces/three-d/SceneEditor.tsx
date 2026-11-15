@@ -21,7 +21,7 @@ import { SceneCreationMenu } from '@web/spaces/three-d/SceneCreationMenu';
 import { fillFromTask } from '@web/spaces/three-d/scene-generation';
 import { useSceneProposals } from '@web/stores/scene-proposals';
 import { useConversationRuntime } from '@web/stores/conversation-runtime';
-import { useFollowStore } from '@web/stores/follow';
+import { stopFollowing } from '@web/stores/follow';
 import { useProjectSpaceList } from '@web/data/yjs/project-meta';
 import { SceneViewfinder } from '@web/spaces/three-d/SceneViewfinder';
 import { INITIAL_VIEWFINDER, viewfinderReducer, type ViewfinderAction } from '@web/spaces/three-d/viewfinder/viewfinder-state';
@@ -47,13 +47,6 @@ const SceneModelImportHost = React.lazy(() => import('@web/spaces/three-d/SceneM
 
 const lockIcon = <Lock className='size-4' />;
 
-/**
- * The user moved their own camera, so following a member ends (#920).
- * @throws {never} Never.
- */
-function stopFollowing(): void {
-  useFollowStore.getState().stop('viewport');
-}
 const stageStyle = { '--color-background': 'var(--color-canvas)' } as React.CSSProperties;
 
 export interface SceneEditorProps extends SpaceBodyProps {

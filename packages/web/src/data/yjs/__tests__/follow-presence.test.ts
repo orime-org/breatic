@@ -4,7 +4,6 @@
 import { describe, expect, it } from 'vitest';
 
 import {
-  FOLLOW_FIELDS,
   pickLeaderField,
   pickLeaderView,
   readFollowField,
@@ -17,16 +16,6 @@ function entry(userId: string, fields: Record<string, unknown>): Record<string, 
 }
 
 describe('follow presence fields', () => {
-  it('names the five fields the follow broadcast uses', () => {
-    expect(FOLLOW_FIELDS).toEqual({
-      view: 'view',
-      camera: 'camera',
-      topBlockId: 'topBlockId',
-      camera3d: 'camera3d',
-      timelineView: 'timelineView',
-    });
-  });
-
   it('reads a well-formed view and rejects malformed ones', () => {
     expect(readFollowField(entry('u', { view: { spaceId: 's1', at: 10, focused: true } }), 'view'))
       .toEqual({ spaceId: 's1', at: 10, focused: true });

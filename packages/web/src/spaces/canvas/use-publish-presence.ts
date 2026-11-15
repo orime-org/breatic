@@ -10,8 +10,8 @@ import { sameGeometry } from '@web/spaces/canvas/gesture-table';
 import { deriveActiveNodeIds, sameIdList } from '@web/spaces/canvas/active-node-ids';
 import { PRESENCE_WRITE_INTERVAL_MS, createPublishThrottle } from '@web/lib/publish-throttle';
 import { observeViewportTransform } from '@web/spaces/canvas/viewport-observer';
-import { publishedCamera, type FlowRect } from '@web/features/follow/follow-geometry';
-
+import { readFollowField } from '@web/data/yjs/follow-presence';
+import { sameRect, type FlowRect } from '@web/features/follow/follow-geometry';
 
 /** A point, in either screen or canvas coordinates. */
 interface Point {
@@ -105,14 +105,41 @@ function readPublished(awareness: Awareness): Presence {
 }
 
 /**
- * Compare two rectangles, leaving the write time out.
- * @param a - The previously published camera.
- * @param b - The freshly read rectangle.
- * @returns True when the two show the same part of the canvas.
+ * The stamp a followed leader rectangle was written with: the latest among the
+ * peers' cameras that show it. Passing it on with that stamp rather than a new
+ * one lets two members following each other order their rectangles by when
+ * the leader wrote them, so they settle on one (#920).
+ * @param awareness - This Space's awareness.
+ * @param rect - The leader rectangle being passed on.
+ * @returns The stamp, or null when no peer shows that rectangle (any more).
  */
-function sameRect(a: FlowRect | null | undefined, b: FlowRect | null): boolean {
-  if (a === null || a === undefined || b === null) return (a ?? null) === b;
-  return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
+function relayedStamp(awareness: Awareness, rect: FlowRect): number | null {
+  let stamp: number | null = null;
+  for (const [clientId, state] of awareness.getStates()) {
+    if (clientId === awareness.clientID) continue;
+    const camera = readFollowField(state as Record<string, unknown>, 'camera');
+    if (camera !== null && sameRect(camera, rect) && (stamp === null || camera.at > stamp)) stamp = camera.at;
+  }
+  return stamp;
+}
+
+/**
+ * The stamp of a new camera. A leader rectangle passed on keeps the stamp the
+ * leader wrote it with, found among the peers' cameras; this client's own
+ * rectangle, and the first leader rectangle it passes on after showing its own
+ * (news to its followers even when the leader wrote it long ago), never go
+ * back in time from the last stamp it published.
+ * @param awareness - This Space's awareness.
+ * @param leader - The leader rectangle being passed on, or null for the own one.
+ * @param lastAt - The stamp of the camera published before, or 0.
+ * @param passingOn - Whether the camera published before was a leader rectangle passed on.
+ * @returns The stamp.
+ */
+function cameraStamp(awareness: Awareness, leader: FlowRect | null, lastAt: number, passingOn: boolean): number {
+  const fresh = Math.max(Date.now(), lastAt + 1);
+  if (leader === null) return fresh;
+  const relayed = relayedStamp(awareness, leader) ?? fresh;
+  return passingOn ? relayed : Math.max(relayed, lastAt + 1);
 }
 
 /**
@@ -204,6 +231,9 @@ export function usePublishPresence(input: PublishPresenceInput): GesturePublishe
   // state so setting it never schedules a render of its own.
   const force = React.useRef(false);
 
+  // Whether the last camera written was a leader rectangle passed on.
+  const passingOn = React.useRef(false);
+
   // The gesture's own batch. A ref rather than state: it is rewritten on every
   // pointer move of a drag and no render reads it — what reaches the peers goes
   // straight into awareness.
@@ -222,10 +252,17 @@ export function usePublishPresence(input: PublishPresenceInput): GesturePublishe
     let sameCamera = true;
     if (readCamera) {
       const own = readCamera();
-      const rect = own === null ? null : publishedCamera(own, latestFollowCamera.current);
+      const leader = latestFollowCamera.current;
+      // While following drives the viewport the leader rectangle goes on
+      // unchanged, so a chain of followers passes it along and two members
+      // following each other do not grow it each round.
+      const rect = own === null ? null : (leader ?? own);
       sameCamera = sameRect(prev.camera, rect);
       // An unchanged rectangle keeps its stamp, so it does not count as news.
-      next.camera = sameCamera ? prev.camera : rect && { ...rect, at: Date.now() };
+      if (sameCamera) next.camera = prev.camera;
+      else if (rect === null) next.camera = null;
+      else next.camera = { ...rect, at: cameraStamp(awareness, leader, prev.camera?.at ?? 0, passingOn.current) };
+      passingOn.current = rect !== null && leader !== null;
     }
     const unchanged =
       sameCamera &&

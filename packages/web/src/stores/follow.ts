@@ -18,16 +18,20 @@ export type FollowStopReason = 'button' | 'viewport' | 'space' | 'offline';
 export interface FollowStop {
   reason: FollowStopReason;
   userId: string;
+  /** The leader's display name as of the start, kept for a leader who has since left the member list. */
+  name: string;
   seq: number;
 }
 
 interface FollowState {
   /** The member being followed, or null. */
   targetUserId: string | null;
+  /** The followed member's display name, or null while not following. */
+  targetName: string | null;
   /** The last stop, or null when none has happened since the last start or reset. */
   stopped: FollowStop | null;
   /** Follow a member; following someone else switches straight over. */
-  start: (userId: string) => void;
+  start: (userId: string, name: string) => void;
   /** Stop following and record why; nothing happens while not following. */
   stop: (reason: FollowStopReason) => void;
   /** Clear everything without recording a stop (leaving the project). */
@@ -38,13 +42,22 @@ let stopSeq = 0;
 
 export const useFollowStore = create<FollowState>()((set, get) => ({
   targetUserId: null,
+  targetName: null,
   stopped: null,
-  start: (userId) => set({ targetUserId: userId, stopped: null }),
+  start: (userId, name) => set({ targetUserId: userId, targetName: name, stopped: null }),
   stop: (reason) => {
-    const userId = get().targetUserId;
+    const { targetUserId: userId, targetName } = get();
     if (userId === null) return;
     stopSeq += 1;
-    set({ targetUserId: null, stopped: { reason, userId, seq: stopSeq } });
+    set({ targetUserId: null, targetName: null, stopped: { reason, userId, name: targetName ?? '', seq: stopSeq } });
   },
-  reset: () => set({ targetUserId: null, stopped: null }),
+  reset: () => set({ targetUserId: null, targetName: null, stopped: null }),
 }));
+
+/**
+ * Stop following because the user moved the view or pressed a stop control.
+ * @param reason - Why; the user moving the viewport by default.
+ */
+export function stopFollowing(reason: FollowStopReason = 'viewport'): void {
+  useFollowStore.getState().stop(reason);
+}

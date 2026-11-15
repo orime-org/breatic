@@ -4,7 +4,7 @@
 import * as React from 'react';
 import type { Awareness } from 'y-protocols/awareness';
 
-import { FOLLOW_FIELDS, type FollowFieldValue } from '@web/data/yjs/follow-presence';
+import type { FollowField, FollowFieldValue } from '@web/data/yjs/follow-presence';
 import { PRESENCE_WRITE_INTERVAL_MS, createPublishThrottle, type PublishThrottle } from '@web/lib/publish-throttle';
 import type { TimelinePlaybackAnchor } from '@web/spaces/timeline/use-timeline-playback';
 
@@ -23,13 +23,17 @@ export interface PublishTimelineViewInput {
   anchor: TimelinePlaybackAnchor | null;
 }
 
-const FIELD = FOLLOW_FIELDS.timelineView;
+const FIELD = 'timelineView' satisfies FollowField;
 
 /**
  * Publish this Timeline's view as `timelineView` for a follower (#920): the
  * visible frame range, the track scroll, the playhead and the playback state.
- * Writes go through the presence throttle; unmounting, which also happens when
- * the Space body is hidden, withdraws the field at once.
+ * While playing, the playhead published is the anchor's frame: a follower
+ * plays on from the anchor itself, so the value changes only on play, pause,
+ * seek, scroll or zoom rather than every frame. Writes go through the presence
+ * throttle and are sent again after a restore from the bfcache, which empties
+ * the local state; unmounting, which also happens when the Space body is
+ * hidden, withdraws the field at once.
  * @param input - The awareness, track viewport, zoom, playhead and playback state.
  * @throws {never} Never.
  */
@@ -38,6 +42,7 @@ export function usePublishTimelineView(input: PublishTimelineViewInput): void {
   latest.current = input;
   const throttle = React.useRef<PublishThrottle | null>(null);
   const { awareness, viewport, pixelsPerFrame, headerPx, frame, intent, anchor } = input;
+  const playhead = intent === 'play' && anchor !== null ? anchor.frame : frame;
 
   React.useEffect(() => {
     if (awareness === null || viewport === null) return undefined;
@@ -49,11 +54,12 @@ export function usePublishTimelineView(input: PublishTimelineViewInput): void {
     const publish = (): void => {
       const state = awareness.getLocalState();
       if (state === null) return;
-      const { pixelsPerFrame: ppf, headerPx: header, frame: playhead, intent: playIntent, anchor: started } = latest.current;
+      const { pixelsPerFrame: ppf, headerPx: header, frame: current, intent: playIntent, anchor: started } = latest.current;
+      const shown = playIntent === 'play' && started !== null ? started.frame : current;
       const startFrame = Math.floor(viewport.scrollLeft / ppf);
       // A viewport without width (not laid out) still publishes a range the schema accepts.
       const endFrame = Math.max(startFrame + 1, Math.ceil((viewport.scrollLeft + viewport.clientWidth - header) / ppf));
-      const view = { startFrame, endFrame, trackScrollTop: viewport.scrollTop, frame: playhead, intent: playIntent, anchor: started };
+      const view = { startFrame, endFrame, trackScrollTop: viewport.scrollTop, frame: shown, intent: playIntent, anchor: started };
       const key = JSON.stringify(view);
       if (key === published && state[FIELD] !== undefined) return;
       published = key;
@@ -64,8 +70,17 @@ export function usePublishTimelineView(input: PublishTimelineViewInput): void {
     throttle.current = pending;
     pending.schedule();
     viewport.addEventListener('scroll', pending.schedule, { passive: true });
+    /**
+     * Send the view again after a restore from the bfcache.
+     * @param event - The pageshow event; `persisted` is true only on a restore.
+     */
+    const onPageShow = (event: PageTransitionEvent): void => {
+      if (event.persisted) pending.schedule();
+    };
+    window.addEventListener('pageshow', onPageShow);
     return (): void => {
       viewport.removeEventListener('scroll', pending.schedule);
+      window.removeEventListener('pageshow', onPageShow);
       pending.cancel();
       throttle.current = null;
       // A withdrawal must land, so it skips the frame-scheduled throttle.
@@ -78,5 +93,5 @@ export function usePublishTimelineView(input: PublishTimelineViewInput): void {
 
   React.useEffect(() => {
     throttle.current?.schedule();
-  }, [pixelsPerFrame, headerPx, frame, intent, anchor]);
+  }, [pixelsPerFrame, headerPx, playhead, intent, anchor]);
 }

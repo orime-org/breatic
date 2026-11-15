@@ -199,6 +199,7 @@ describe('MembersStack, following', () => {
     await user.click(screen.getByTestId('members-trigger'));
     await user.click(screen.getByTestId('members-follow-m-ed'));
     expect(useFollowStore.getState().targetUserId).toBe('u-ed');
+    expect(useFollowStore.getState().targetName).toBe('Editor Person');
     expect(screen.queryByTestId('members-follow-m-ed')).toBeNull();
     await user.click(screen.getByTestId('members-unfollow-m-ed'));
     expect(useFollowStore.getState().targetUserId).toBeNull();
@@ -208,7 +209,7 @@ describe('MembersStack, following', () => {
   it('switches straight to another member when View is pressed on them', async () => {
     const user = userEvent.setup();
     render(<MembersStack members={MEMBERS} currentUserId='u-vw' onlineUserIds={new Set(['u-own', 'u-ed', 'u-vw'])} />);
-    useFollowStore.getState().start('u-ed');
+    useFollowStore.getState().start('u-ed', 'Editor Person');
     await user.click(screen.getByTestId('members-trigger'));
     await user.click(screen.getByTestId('members-follow-m-own'));
     expect(useFollowStore.getState().targetUserId).toBe('u-own');

@@ -27,7 +27,8 @@ export interface PublishTopBlockInput {
  * following this user (#920 design 4.1): on mount, on scroll and on a size
  * change, through the presence write limiter. While following drives the
  * scroll it publishes the leader's block unchanged, so a chain of followers
- * passes it on. Hidden behind the snapshot panel or unmounted, the field is
+ * passes it on. A restore from the bfcache, which empties the local state,
+ * publishes again. Hidden behind the snapshot panel or unmounted, the field is
  * withdrawn at once (`packages/web/AGENTS.md#writes-that-must-land-skip-frame-scheduling`).
  * @param input - The awareness, the body, whether it is paused and the followed block.
  */
@@ -56,13 +57,22 @@ export function usePublishTopBlock(input: PublishTopBlockInput): void {
     const onMove = (): void => {
       throttle.schedule();
     };
+    /**
+     * Publish again after a restore from the bfcache.
+     * @param event - The pageshow event; `persisted` is true only on a restore.
+     */
+    const onPageShow = (event: PageTransitionEvent): void => {
+      if (event.persisted) throttle.schedule();
+    };
     viewport.addEventListener('scroll', onMove, { passive: true });
+    window.addEventListener('pageshow', onPageShow);
     const resize = new ResizeObserver(onMove);
     resize.observe(viewport);
     resize.observe(root);
     return (): void => {
       throttle.cancel();
       viewport.removeEventListener('scroll', onMove);
+      window.removeEventListener('pageshow', onPageShow);
       resize.disconnect();
       awareness.setLocalState({ ...awareness.getLocalState(), topBlockId: null });
     };

@@ -4,7 +4,7 @@
 import * as React from 'react';
 import type { Awareness } from 'y-protocols/awareness';
 
-import { FOLLOW_FIELDS, readFollowField, type FollowFieldValue } from '@web/data/yjs/follow-presence';
+import { readFollowField, type FollowFieldValue } from '@web/data/yjs/follow-presence';
 
 /**
  * Put one value in this client's `view`, keeping the rest of its state. A
@@ -16,7 +16,7 @@ import { FOLLOW_FIELDS, readFollowField, type FollowFieldValue } from '@web/data
 function writeView(awareness: Awareness, view: FollowFieldValue<'view'> | null): void {
   const state = awareness.getLocalState();
   if (state === null) return;
-  awareness.setLocalState({ ...state, [FOLLOW_FIELDS.view]: view });
+  awareness.setLocalState({ ...state, view });
 }
 
 /**
@@ -66,7 +66,7 @@ export function usePublishView(metaAwareness: Awareness | null, activeSpaceId: s
       if (!added.includes(self) && !updated.includes(self)) return;
       if (document.visibilityState === 'hidden') return;
       const state = awareness.getLocalState();
-      if (state !== null && readFollowField(state, FOLLOW_FIELDS.view) === null) publish();
+      if (state !== null && readFollowField(state, 'view') === null) publish();
     };
     window.addEventListener('focus', publish);
     window.addEventListener('blur', publish);

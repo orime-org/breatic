@@ -14,7 +14,7 @@ import {
 import { Separator } from '@web/components/ui/separator';
 import { cn } from '@web/lib/utils';
 import { useUIStore } from '@web/stores';
-import { useFollowStore } from '@web/stores/follow';
+import { stopFollowing, useFollowStore } from '@web/stores/follow';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { Member, MemberRole } from '@web/data/api/members';
 import { StudioAvatar } from '@web/ui/StudioAvatar';
@@ -251,9 +251,9 @@ interface MemberRowProps {
  */
 function MemberRow({ member, isMe, online, followed }: MemberRowProps): React.JSX.Element {
   const t = useTranslation();
-  const { userId } = member;
-  const follow = React.useCallback((): void => useFollowStore.getState().start(userId), [userId]);
-  const unfollow = React.useCallback((): void => useFollowStore.getState().stop('button'), []);
+  const { userId, name } = member;
+  const follow = React.useCallback((): void => useFollowStore.getState().start(userId, name), [userId, name]);
+  const unfollow = React.useCallback((): void => stopFollowing('button'), []);
   return (
     <div className='group flex items-center gap-2 rounded-chrome px-2 py-1.5 hover:bg-accent'>
       <StudioAvatar

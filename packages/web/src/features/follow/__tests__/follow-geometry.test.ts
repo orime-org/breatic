@@ -4,7 +4,7 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
-import { followViewport, publishedCamera, visibleRect } from '@web/features/follow/follow-geometry';
+import { followViewport, sameRect, visibleRect, type FlowRect } from '@web/features/follow/follow-geometry';
 import { CANVAS_MAX_ZOOM, CANVAS_MIN_ZOOM } from '@web/lib/canvas-zoom';
 
 describe('visibleRect', () => {
@@ -40,18 +40,17 @@ describe('followViewport', () => {
   });
 });
 
-describe('publishedCamera', () => {
-  it('publishes the own rectangle while the viewport is the user own', () => {
-    const own = { x: 1, y: 2, width: 3, height: 4 };
-    expect(publishedCamera(own, null)).toEqual(own);
+describe('sameRect', () => {
+  it('compares the four edges and treats a missing rectangle as equal only to another', () => {
+    const rect = { x: 1, y: 2, width: 3, height: 4 };
+    expect(sameRect(rect, { ...rect })).toBe(true);
+    expect(sameRect(rect, { ...rect, height: 5 })).toBe(false);
+    expect(sameRect(null, rect)).toBe(false);
+    expect(sameRect(undefined, null)).toBe(true);
   });
+});
 
-  it('republishes the leader rectangle unchanged while follow drives the viewport', () => {
-    const own = { x: 1, y: 2, width: 30, height: 4 };
-    const leader = { x: 9, y: 9, width: 9, height: 9 };
-    expect(publishedCamera(own, leader)).toEqual(leader);
-  });
-
+describe('the published camera while following', () => {
   it('keeps two members following each other on one rectangle whatever their pane shapes', () => {
     fc.assert(
       fc.property(
@@ -61,12 +60,14 @@ describe('publishedCamera', () => {
         (paneA, paneB, rounds) => {
           const start = visibleRect({ x: -40, y: -30, zoom: 1 }, paneA);
           // A starts the exchange with its own rectangle; from then on each side
-          // fits what the other published and publishes per publishedCamera.
-          let publishedByA = publishedCamera(start, null);
+          // fits what the other published and publishes the leader rectangle
+          // while following drives its viewport, else its own (leader ?? own).
+          const leaderOrOwn = (leader: FlowRect | null, own: FlowRect): FlowRect => leader ?? own;
+          let publishedByA = leaderOrOwn(null, start);
           let publishedByB = publishedByA;
           for (let round = 0; round < rounds; round += 1) {
-            publishedByB = publishedCamera(visibleRect(followViewport(publishedByA, paneB), paneB), publishedByA);
-            publishedByA = publishedCamera(visibleRect(followViewport(publishedByB, paneA), paneA), publishedByB);
+            publishedByB = leaderOrOwn(publishedByA, visibleRect(followViewport(publishedByA, paneB), paneB));
+            publishedByA = leaderOrOwn(publishedByB, visibleRect(followViewport(publishedByB, paneA), paneA));
           }
           expect(publishedByA).toEqual(start);
           expect(publishedByB).toEqual(start);

@@ -3430,7 +3430,7 @@ describe('TimelineSpace frame ratio and play bar (breatic#1502)', () => {
 describe('TimelineSpace, following a member', () => {
   beforeEach(() => {
     useFollowStore.getState().reset();
-    useFollowStore.getState().start('leader');
+    useFollowStore.getState().start('leader', 'Leader');
   });
 
   it('stops following when the user presses play', async () => {
@@ -3461,7 +3461,9 @@ describe('TimelineSpace, following a member', () => {
     const doc = seedContent();
     write(doc, { operation: 'add_video', parameters: { source: SOURCE, clip: CLIP }, placement: ON });
     showTimeline();
-    const tracks = await screen.findByTestId('timeline-track-scroller');
+    // The track area's ScrollArea viewport, the one that holds the ruler.
+    const tracks = (await screen.findByTestId('timeline-ruler')).closest<HTMLElement>('[data-radix-scroll-area-viewport]');
+    if (tracks === null) throw new Error('no track viewport');
     let left = 0;
     let width = 4000;
     Object.defineProperty(tracks, 'scrollLeft', { get: () => left, set: (v: number) => { left = v; }, configurable: true });
@@ -3469,7 +3471,7 @@ describe('TimelineSpace, following a member', () => {
     Object.defineProperty(tracks, 'clientWidth', { get: () => 1000, configurable: true });
     left = 2500;
     fireEvent.scroll(tracks);
-    useFollowStore.getState().start('leader');
+    useFollowStore.getState().start('leader', 'Leader');
     width = 3000;
     left = 2000;
     fireEvent.scroll(tracks);

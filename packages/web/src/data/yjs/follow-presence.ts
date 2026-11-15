@@ -50,15 +50,6 @@ export type FollowField = keyof typeof SCHEMAS;
 /** The value one follow field holds once it has passed its schema. */
 export type FollowFieldValue<F extends FollowField> = z.infer<(typeof SCHEMAS)[F]>;
 
-/** The awareness key of each follow field. */
-export const FOLLOW_FIELDS = {
-  view: 'view',
-  camera: 'camera',
-  topBlockId: 'topBlockId',
-  camera3d: 'camera3d',
-  timelineView: 'timelineView',
-} as const satisfies { [F in FollowField]: F };
-
 /**
  * Read one follow field from one awareness entry.
  * @param state - One client's awareness state.
