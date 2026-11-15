@@ -590,13 +590,13 @@ test('a video panel lists the seven e-commerce ad templates under the e-commerce
 });
 
 test('picking the product ad places the product, an optional person and the still; the person\'s paragraph is greyed and left out until it holds a picture', async () => {
-  await openPanelOnNewNode('video');
+  const anchorId = await openPanelOnNewNode('video');
   await openGoal('ecommerce');
   await page.getByTestId('generate-template-product-ad-15s').click();
 
   await expect(page.getByTestId('generate-model-trigger')).toContainText('Seedance 2.5', { timeout: 15_000 });
   expect(await graph()).toEqual({
-    names: ['Lifestyle still', 'Person', 'Product', 'video-template'],
+    names: ['15-second product ad', 'Lifestyle still', 'Person', 'Product', 'video-template'],
     edges: [
       'Lifestyle still -> video-template',
       'Person -> Lifestyle still',
@@ -624,17 +624,19 @@ test('picking the product ad places the product, an optional person and the stil
     bodies.push(route.request().postData() ?? '');
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ data: { id: crypto.randomUUID(), status: 'queued' } }) });
   });
-  await page.getByTestId('generate-execute').click();
+  await page.getByTestId('generate-video-execute').click();
   await expect.poll(() => bodies.length, { timeout: 15_000 }).toBe(1);
   expect(bodies[0]).toContain('The place, light and colours follow');
   expect(bodies[0]).not.toContain('The person in the ad looks like');
 
   const personPicture = 'https://smoke-media.test/person.jpg';
   await setNodeContent(page, where, await nodeIdNamed('Person'), personPicture);
+  // A run closes the panel; open it again on the video.
+  await visibleSpace(page).locator(`.react-flow__node[data-id="${anchorId}"]`).click({ button: 'right' });
+  await page.getByTestId('node-menu-generate').click();
+  await expect(prompt).toContainText('The person in the ad looks like', { timeout: 15_000 });
   await expect(held).toHaveCount(0);
-  await expect(prompt).toContainText('The person in the ad looks like');
-  await page.mouse.move(0, 0);
-  await page.getByTestId('generate-execute').click();
+  await page.getByTestId('generate-video-execute').click();
   await expect.poll(() => bodies.length, { timeout: 15_000 }).toBe(2);
   expect(bodies[1]).toContain('The person in the ad looks like');
   expect(bodies[1]).toContain(personPicture);
