@@ -22,7 +22,7 @@ import { documentBodyFragment } from '@breatic/shared';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { dropRowBeside } from '@web/spaces/document/document-column-drop';
 import { moveRowTo } from '@web/spaces/document/document-drag-move';
-import { adoptDocumentEditor, getDocumentEditor } from '@web/spaces/document/document-editor-cache';
+import { _resetDocumentEditorCacheForTests, adoptDocumentEditor, getDocumentEditor } from '@web/spaces/document/document-editor-cache';
 import { columnsBlock, para, shapeOf } from '@web/spaces/document/__tests__/column-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
@@ -33,6 +33,7 @@ afterEach(() => {
   for (const editor of mounted.splice(0)) {
     editor.unmount();
   }
+  _resetDocumentEditorCacheForTests();
   document.body.innerHTML = '';
 });
 
