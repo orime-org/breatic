@@ -33,8 +33,8 @@ import {
 } from '@blocknote/core';
 import { ReadOnlyExtension } from '@blocknote/core/extensions';
 import { Extension } from '@tiptap/core';
-import type { Node as PMNode } from '@tiptap/pm/model';
-import { NodeSelection, Selection, TextSelection } from '@tiptap/pm/state';
+import { DOMSerializer, type Node as PMNode } from '@tiptap/pm/model';
+import { NodeSelection, Plugin, PluginKey, Selection, TextSelection } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
 import { Button } from '@web/components/ui/button';
@@ -231,11 +231,36 @@ export function holdsFormula(node: PMNode): boolean {
   return isFormula(node) && formulaSource(node).trim() !== '';
 }
 
-/** Gives both formula nodes their text, which `textContent` and `textBetween` read. */
+/**
+ * Gives both formula nodes their text, which `textContent` and `textBetween`
+ * read, and a block formula its words in the HTML a selection drag carries.
+ */
 const FormulaText = Extension.create({
   name: 'documentFormulaText',
   extendNodeSchema: (extension) =>
     extension.name === MATH_BLOCK || extension.name === MATH_INLINE ? { leafText: formulaLeafText } : {},
+
+  addProseMirrorPlugins() {
+    // ProseMirror writes that HTML through each node's `toDOM`, which BlockNote
+    // leaves empty for a block without content (`blocks-COYcDVg7.js:1303-1317`),
+    // and a text field the drag lands in reads the HTML's words. The element
+    // gets what a copy writes, which BlockNote serialises through `render`.
+    const base = DOMSerializer.fromSchema(this.editor.schema);
+    const toDOM = base.nodes[MATH_BLOCK];
+    if (toDOM === undefined) return [];
+    const serializer = new DOMSerializer(
+      {
+        ...base.nodes,
+        [MATH_BLOCK]: (node) => {
+          const html = toDOM(node) as { dom: HTMLElement };
+          html.dom.firstElementChild?.append(formulaSourceHolder(formulaSource(node), true));
+          return html;
+        },
+      },
+      base.marks,
+    );
+    return [new Plugin({ key: new PluginKey('documentFormulaDragHTML'), props: { clipboardSerializer: serializer } })];
+  },
 });
 
 /** The box's element: a control region of its own (design 5.1). */

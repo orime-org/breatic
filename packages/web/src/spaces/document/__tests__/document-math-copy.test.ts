@@ -96,12 +96,13 @@ function copy(editor: Editor): Record<string, string> {
 }
 
 /**
- * Starts a drag of the selection the way the browser does, and reads the
- * plain text it carries.
+ * Starts a drag of the selection the way the browser does, and reads what
+ * it carries.
  * @param editor - The editor.
- * @returns The plain text.
+ * @param format - The format to read.
+ * @returns The data in that format.
  */
-function dragText(editor: Editor): string {
+function dragText(editor: Editor, format = 'text/plain'): string {
   const data: Record<string, string> = {};
   const event = new Event('dragstart', { bubbles: true, cancelable: true });
   Object.defineProperty(event, 'dataTransfer', {
@@ -115,10 +116,12 @@ function dragText(editor: Editor): string {
         Object.keys(data).forEach((key) => delete data[key]);
       },
       setDragImage: (): void => undefined,
+      // BlockNote's own listener on the page reads the drag back.
+      getData: (type: string) => data[type] ?? '',
     },
   });
   editor.prosemirrorView.dom.dispatchEvent(event);
-  return data['text/plain'] ?? '';
+  return data[format] ?? '';
 }
 
 describe('copying a selection that holds formulas', () => {
@@ -231,6 +234,15 @@ describe('copying a selection that holds formulas', () => {
     const selected = view.state.selection;
     view.serializeForClipboard(selected.content());
     expect(view.state.selection.eq(selected)).toBe(true);
+  });
+
+  it('gives a block formula its $$ text in the HTML a selection drag carries', () => {
+    const editor = open([{ type: 'paragraph', content: 'lead' }, { type: 'mathBlock', props: { source: 'x^2' } }, { type: 'paragraph', content: 'tail' }]);
+    select(editor, before(editor, 'paragraph') + 1, editor.prosemirrorState.doc.content.size - 3);
+    const host = document.createElement('div');
+    host.innerHTML = dragText(editor, 'text/html');
+    // A text field the drag lands in reads the HTML's words.
+    expect(host.querySelector('[data-content-type="mathBlock"]')?.textContent).toBe('$$\nx^2\n$$');
   });
 
   it('writes a block formula into the plain text as $$ on lines of their own', () => {
