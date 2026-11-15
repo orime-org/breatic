@@ -211,7 +211,7 @@ export function probeArgs(objectUrl: string, from: ReadFrom = "object"): string[
     "-read_intervals",
     "%+#1",
     "-show_entries",
-    "stream=index,codec_type,codec_name,width,height,color_transfer,color_primaries,color_space,sample_rate,channels,channel_layout,start_pts,duration_ts,time_base:stream_side_data=rotation:stream_disposition=attached_pic:format=duration:frame=stream_index,pts,best_effort_timestamp:frame_side_data=rotation",
+    "stream=index,codec_type,codec_name,width,height,color_transfer,color_primaries,color_space,sample_rate,channels,channel_layout,start_pts,duration_ts,time_base:stream_side_data=rotation:stream_disposition=attached_pic:stream_tags=alpha_mode:format=duration:frame=stream_index,pts,best_effort_timestamp:frame_side_data=rotation",
     "-of",
     "json",
     objectUrl,
@@ -233,14 +233,16 @@ export const COVER_CONTENT_TYPE = "image/png";
  * way to becoming one (the earlier worker path went MJPEG then re-encoded).
  * @param objectUrl - Where the container reads the object.
  * @param from - Whether that is a served object or the container's own file.
+ * @param decoder - The video decoder options the object needs (`alphaDecoderArgs`).
  * @returns The argument list, without the program name.
  */
-export function coverArgs(objectUrl: string, from: ReadFrom = "object"): string[] {
+export function coverArgs(objectUrl: string, from: ReadFrom = "object", decoder: readonly string[] = []): string[] {
   return [
     "-v",
     "error",
     "-protocol_whitelist",
     protocolsFor(from),
+    ...decoder,
     "-i",
     objectUrl,
     "-vframes",
@@ -253,6 +255,31 @@ export function coverArgs(objectUrl: string, from: ReadFrom = "object"): string[
     "png",
     "pipe:1",
   ];
+}
+
+/**
+ * The decoder options a VP9 or VP8 stream with alpha needs: FFmpeg's own vp8 and vp9 decoders skip the alpha plane, which
+ * Matroska stores in BlockAdditional (`alpha_mode` 1); libvpx reads it.
+ * @param codecName - The stream's codec.
+ * @param alphaMode - Its `alpha_mode` tag.
+ * @returns The options to put before `-i`.
+ * @throws {never} Never.
+ */
+export function alphaDecoderArgs(codecName: string | null | undefined, alphaMode: string | null | undefined): string[] {
+  if (alphaMode !== "1") return [];
+  if (codecName === "vp9") return ["-c:v", "libvpx-vp9"];
+  return codecName === "vp8" ? ["-c:v", "libvpx"] : [];
+}
+
+/**
+ * The decoder options for the video stream FFmpeg cuts a cover from: the first that is not attached art.
+ * @param report - The object's probe report.
+ * @returns The options to put before `-i`.
+ * @throws {never} Never.
+ */
+export function coverDecoderArgs(report: ProbeReport): string[] {
+  const video = report.streams.find((stream) => stream.codecType === "video" && !stream.attachedPic);
+  return video === undefined ? [] : alphaDecoderArgs(video.codecName, video.alphaMode);
 }
 
 /**
@@ -380,6 +407,7 @@ interface RawStream {
   width?: number;
   height?: number;
   disposition?: { attached_pic?: number };
+  tags?: Record<string, string>;
   side_data_list?: { rotation?: unknown }[];
   color_transfer?: string;
   color_primaries?: string;
@@ -470,6 +498,17 @@ function rotationOf(raw: RawStream, frames: RawFrame[]): { rotation?: number } {
  * @param stdout - What ffprobe wrote.
  * @returns The normalised report.
  */
+/**
+ * A stream's `alpha_mode` tag, whatever case its key is in.
+ * @param raw - The stream.
+ * @returns The tag as a field, or nothing.
+ * @throws {never} Never.
+ */
+function alphaModeOf(raw: RawStream): { alphaMode?: string } {
+  const found = Object.entries(raw.tags ?? {}).find(([key]) => key.toLowerCase() === "alpha_mode");
+  return found === undefined ? {} : { alphaMode: found[1] };
+}
+
 export function readProbeOutput(stdout: string): ProbeReport {
   let parsed: {
     streams?: RawStream[];
@@ -489,6 +528,7 @@ export function readProbeOutput(stdout: string): ProbeReport {
     width: raw.width ?? null,
     height: raw.height ?? null,
     attachedPic: raw.disposition?.attached_pic === 1,
+    ...alphaModeOf(raw),
     ...rotationOf(raw, frames),
     ...(raw.color_transfer === undefined ? {} : { colorTransfer: raw.color_transfer }),
     ...(raw.color_primaries === undefined ? {} : { colorPrimaries: raw.color_primaries }),

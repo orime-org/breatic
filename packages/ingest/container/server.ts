@@ -44,6 +44,7 @@ import {
   PREVIEW_MAX_BYTES,
   peaksArgs,
   coverArgs,
+  coverDecoderArgs,
   previewArgs,
   agentPictureArgs,
   readProbeOutput,
@@ -106,7 +107,7 @@ async function probe(
   const hasFrame = pickMediaMetadata(report).width !== null;
   if (!wantCover || !hasFrame) return { report, cover: null };
 
-  const cut = await runTool("ffmpeg", coverArgs(objectUrl), {
+  const cut = await runTool("ffmpeg", coverArgs(objectUrl, "object", coverDecoderArgs(report)), {
     maxBytes: COVER_MAX_BYTES,
     signal,
   });

@@ -23,7 +23,7 @@ import type { ReadableStream as NodeReadableStream } from "node:stream/web";
 import type { ContainerFailure, ContainerOp } from "@shared/mini-tools/types.js";
 import { inputRefusal, mediumOf, opSteps, outputFileName, outputRefusal } from "@ingest/jobs/op-args.js";
 import { pickMediaMetadata, NOTHING_FOUND } from "@ingest/media-metadata.js";
-import { coverArgs, probeArgs, readProbeOutput } from "@ingest/probe-command.js";
+import { coverArgs, coverDecoderArgs, probeArgs, readProbeOutput } from "@ingest/probe-command.js";
 import { pngSize } from "@ingest/png-size.js";
 
 import { runCommand, runSteps } from "./run-steps.js";
@@ -129,7 +129,7 @@ export async function runJob(job: RunBody): Promise<void> {
       const numbers = pickMediaMetadata(report);
       let cover: { width: number | null; height: number | null } | null = null;
       if (output.coverUrl !== undefined && numbers.width !== null) {
-        const frame = await runCommand("ffmpeg", coverArgs(file, "own-file"), COVER_MAX_BYTES).then((out) => out.stdout, () => null);
+        const frame = await runCommand("ffmpeg", coverArgs(file, "own-file", coverDecoderArgs(report)), COVER_MAX_BYTES).then((out) => out.stdout, () => null);
         if (frame !== null && frame.length > 0) {
           const coverFile = join(dir, "cover.png");
           await writeFile(coverFile, frame);

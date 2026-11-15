@@ -407,6 +407,8 @@ beforeAll(async () => {
   // Clip B with stereo sound: the 1500 Hz tone in the left channel only, silence on the right.
   await make('clip-b-stereo.mp4', ['-f', 'lavfi', '-i', 'color=c=0xC0C0C0:s=64x36:r=25:d=1.6', '-f', 'lavfi', '-i', 'sine=f=1500:r=48000:d=1.6',
     '-filter_complex', '[1:a]pan=stereo|c0=c0|c1=0*c0[a]', '-map', '0:v', '-map', '[a]', '-c:v', 'libx264', '-bf', '0', '-pix_fmt', 'yuv420p', '-g', '10', '-video_track_timescale', '25', '-c:a', 'alac', '-shortest']);
+  // A transparent clip: 2 s of grey at alpha 64 in a VP9 WebM, which stores its alpha in BlockAdditional.
+  await make('clip-alpha.webm', ['-f', 'lavfi', '-i', 'color=c=0x808080:s=64x36:r=25:d=2,format=yuva420p,colorchannelmixer=aa=0.25', '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuva420p']);
   for (const [name, grey, tone] of [['clip-a.mp4', '0x404040', 500], ['clip-b.mp4', '0xC0C0C0', 1500]] as const) {
     await make(name, ['-f', 'lavfi', '-i', `color=c=${grey}:s=64x36:r=25:d=1.6`, '-f', 'lavfi', '-i', `sine=f=${tone}:r=48000:d=1.6`,
       ...h264, '-g', '10', '-video_track_timescale', '25', '-c:a', 'alac', '-shortest']);
@@ -740,6 +742,21 @@ describe('transition_window (§7.17 transition_window and 转场输出档 rows; 
     // Clip B is SDR: its blend input is its own decode, not clip A's conversion.
     const grey = channelMeans(await rgba(sdr, 'scale=in_color_matrix=bt709:in_range=tv,format=rgba'))[0]!;
     channelMeans(to!).forEach((means, i) => means.forEach((mean, channel) => expect(Math.abs(mean - grey[channel]!), `clip B frame ${i} ${'RGB'[channel]}`).toBeLessThan(TOLERANCE)));
+  });
+
+  it(`TW09 a transparent clip reaches the blend with its alpha on a transparent profile (§7.17 alpha row; renderer stand-in)`, async () => {
+    renderer.fake = true;
+    const recipe = { ...windowChunk('fade', 30, 34), profile: { ...PROFILE, codec: 'vp9', pixFmt: 'yuva420p', alpha: true } };
+    await produce({ [CLIP_A]: join(dir, 'clip-alpha.webm'), [CLIP_B]: join(dir, 'clip-b.mp4') }, [recipe]);
+    const [from] = renderer.inputs;
+    renderer.fake = false;
+    expect(from, 'the window job ran the renderer').toBeDefined();
+    const size = 64 * 36 * 4;
+    for (let frame = 0; frame < from!.length / size; frame += 1) {
+      let sum = 0;
+      for (let at = frame * size + 3; at < (frame + 1) * size; at += 4) sum += from![at]!;
+      expect(Math.abs(sum / (64 * 36) - 64), `frame ${frame} alpha`).toBeLessThan(3);
+    }
   });
 
   it.skipIf(!GL)(`TW08 fade from an HDR clip: frame k mixes the tone-mapped clip A into clip B, so progress 0 matches A's tone-mapped chunk [${GL_SKIP}]`, async () => {

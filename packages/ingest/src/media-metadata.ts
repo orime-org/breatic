@@ -41,6 +41,8 @@ export interface ProbeStream {
   sampleRate?: number;
   /** An audio stream's channel count, when ffprobe read one. */
   channels?: number;
+  /** A video stream's `alpha_mode` tag, when it carries one (a VP9 or VP8 WebM with alpha says "1"). */
+  alphaMode?: string;
 }
 
 /** One /probe answer, minus the cover bytes. */

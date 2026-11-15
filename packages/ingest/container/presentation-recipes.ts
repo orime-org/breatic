@@ -20,7 +20,7 @@ import type { MediaOfOutput } from "@ingest/jobs/container-report.js";
 import { runPlanCommand } from "@ingest/container/plan-command.js";
 import { copyWithMatrixTag } from "@ingest/container/presentation-run.js";
 import { TAGGED_MATRICES } from "@ingest/container/physical-video-probe.js";
-import { probeArgs, readProbeOutput } from "@ingest/probe-command.js";
+import { alphaDecoderArgs, probeArgs, readProbeOutput } from "@ingest/probe-command.js";
 import { pickMediaMetadata } from "@ingest/media-metadata.js";
 import { pngSize } from "@ingest/png-size.js";
 import { runAnalysisPipeline } from "@ingest/container/analysis-pipeline.js";
@@ -348,8 +348,7 @@ async function sourceFacts(source: string, run: { signal: AbortSignal; stdoutByt
   const names = (answer.format?.format_name ?? "").split(",");
   const video = (answer.streams ?? []).find((stream) => stream.codec_type === "video");
   const tick = /^(\d+)\/(\d+)$/u.exec(video?.time_base ?? "");
-  const alpha = Object.entries(video?.tags ?? {}).some(([key, value]) => key.toLowerCase() === "alpha_mode" && value === "1");
-  const decoder = !alpha ? [] : video?.codec_name === "vp9" ? ["-c:v", "libvpx-vp9"] : video?.codec_name === "vp8" ? ["-c:v", "libvpx"] : [];
+  const decoder = alphaDecoderArgs(video?.codec_name, Object.entries(video?.tags ?? {}).find(([key]) => key.toLowerCase() === "alpha_mode")?.[1]);
   return { iso: names.includes("mov") || names.includes("mp4"), audio: (answer.streams ?? []).some((stream) => stream.codec_type === "audio"),
     tick: tick === null ? null : [BigInt(tick[1]!), BigInt(tick[2]!)], decoder };
 }
@@ -927,9 +926,9 @@ async function renderTransitionWindow(recipe: MiniToolPlanTransitionWindow, file
     const matrix = SCALE_MATRICES[clip.colorMatrix];
     if (matrix === undefined) throw new RangeError(`No decode matrix for ${clip.colorMatrix}`);
     // The chunk's own conversion to limited-range BT.709 first, then full-range RGBA for the renderer, so the window meets
-    // the chunk_encode chunks with no colour jump.
+    // the chunk_encode chunks with no colour jump; a transparent profile keeps each clip's alpha through it.
     const convert = `${clip.toneMap === "sdr-bt709" ? `${TONE_MAP},` : ""}scale=${width}:${height}:force_original_aspect_ratio=decrease:in_color_matrix=${matrix}`
-      + ":out_color_matrix=bt709:out_range=tv,format=yuv444p,scale=in_color_matrix=bt709:in_range=tv:out_range=pc";
+      + `:out_color_matrix=bt709:out_range=tv,format=${profile.alpha ? "yuva444p" : "yuv444p"},scale=in_color_matrix=bt709:in_range=tv:out_range=pc`;
     const window = await windowGraph(clip.entries, frameRate(profile.fps), local(files, clip.inputId), run,
       () => `${convert},format=rgba,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2:color=${fill},setsar=1`,
       (entry) => `color=c=black${entry.fill === "transparent" ? "@0" : ""}:s=${width}x${height}:r=1:d=1,format=rgba`);

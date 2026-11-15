@@ -20,6 +20,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { runPlanJob, type PlanRunBody } from '@ingest/container/plan-run.js';
+import { coverArgs, coverDecoderArgs, probeArgs, readProbeOutput } from '@ingest/probe-command.js';
 
 const run = promisify(execFile);
 type Exact = { numerator: string; denominator: string };
@@ -641,5 +642,16 @@ describe('copy_carrier and prepare_model_input', () => {
     const [file] = await produce({ [SOURCE]: join(dir, 'untagged.mp4') }, [recipe]);
     expect((await probe(file!)).streams.map(stream => stream.codec_type)).toEqual(['video']);
     expect(await packets(file!)).toHaveLength(10);
+  });
+});
+
+describe('the cover of a transparent video (§3.5; storage cover row)', () => {
+  it.each([['alpha.webm', ['-c:v', 'libvpx-vp9']], ['alpha.mov', []]] as const)('CV01 the cover cut from %s keeps its alpha', async (name, decoder) => {
+    const path = join(dir, name);
+    const report = readProbeOutput((await run('ffprobe', probeArgs(path, 'own-file'), { maxBuffer: 1 << 24 })).stdout);
+    expect(coverDecoderArgs(report)).toEqual(decoder);
+    const { stdout } = await run('ffmpeg', coverArgs(path, 'own-file', coverDecoderArgs(report)), { encoding: 'buffer', maxBuffer: 1 << 24 });
+    // PNG IHDR colour type, byte 25: 6 is RGBA.
+    expect((stdout as unknown as Buffer)[25]).toBe(6);
   });
 });

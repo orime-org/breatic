@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { ALPHA_RUN_PATH, type AlphaPresentationReport, type AlphaProbeEvidence, type AlphaRunBody, type AlphaRunResult } from '@ingest/alpha-run-contract.js';
 import { classifyVideoAlpha } from '@ingest/video-alpha-classification.js';
 import { pickMediaMetadata } from '@ingest/media-metadata.js';
-import { readProbeOutput } from '@ingest/probe-command.js';
+import { alphaDecoderArgs, readProbeOutput } from '@ingest/probe-command.js';
 import { audioOut } from '@ingest/jobs/op-args.js';
 import { cpuUsec, download, put } from '@ingest/container/mini-tool-run.js';
 import { runPlanCommand } from '@ingest/container/plan-command.js';
@@ -327,7 +327,7 @@ export async function runAlphaPresentation(job: AlphaRunBody): Promise<AlphaRunR
         const planeWidth = Math.ceil(width / 2) * 2;
         const packedHeight = Math.ceil(height / 2) * 2;
         const packedWidth = planeWidth * 2;
-        const decoder = video.codec_name === 'vp9' ? ['-c:v', 'libvpx-vp9'] : video.codec_name === 'vp8' ? ['-c:v', 'libvpx'] : [];
+        const decoder = alphaDecoderArgs(String(video.codec_name), typeof alphaMode === 'string' ? alphaMode : null);
         const output = join(directory, 'packed.mp4');
         const filter = `[0:${integer(video.index)}]split=2[r][a];[r]format=gbrap,premultiply=inplace=1,format=rgb24,pad=${planeWidth}:${packedHeight}:0:0:color=black[rgb];[a]alphaextract,format=rgb24,pad=${planeWidth}:${packedHeight}:0:0:color=black[alpha];[rgb][alpha]hstack,format=yuv420p[v]`;
         const last = originalClock.frames[originalClock.frames.length - 1]!;
