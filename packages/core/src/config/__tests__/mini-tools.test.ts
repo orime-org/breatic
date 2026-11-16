@@ -32,6 +32,8 @@ describe("getMiniToolsConfig", () => {
         // inner#1825: joining clips, a video's and an audio's.
         "join",
         "audio_join",
+        // inner#1968: the grid, cut on the server.
+        "grid",
       ].sort(),
     );
   });
