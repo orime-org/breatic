@@ -1269,3 +1269,31 @@ describe('MembershipPanel for an enterprise account (inner#1968 F-20)', () => {
     expect(screen.getByTestId('quota-operations')).toHaveTextContent('9,830 / 20,000');
   });
 });
+
+describe('MembershipPanel on a self-hosted account (inner#1968 E-05)', () => {
+  it('draws the operations row for a metered account and leaves it out when operations is null', async () => {
+    membershipMock.mockResolvedValue(
+      answer({
+        operations: {
+          monthlyAllowance: 4000,
+          usedThisPeriod: 120,
+          allowanceUsed: 120,
+          allowanceRemaining: 3880,
+          overageThisPeriod: 0,
+          periodStart: '2026-11-10T00:00:00.000Z',
+          nextResetAt: '2026-12-10T00:00:00.000Z',
+          overageCredits: '0.5',
+        },
+      } as Partial<AccountMembership>),
+    );
+    const metered = setup();
+    await screen.findByTestId('quota-storage');
+    expect(screen.getByTestId('quota-operations')).toHaveTextContent('120 / 4,000');
+    metered.unmount();
+
+    membershipMock.mockResolvedValue(answer({ operations: null } as unknown as Partial<AccountMembership>));
+    setup();
+    await screen.findByTestId('quota-storage');
+    expect(screen.queryByTestId('quota-operations')).toBeNull();
+  });
+});

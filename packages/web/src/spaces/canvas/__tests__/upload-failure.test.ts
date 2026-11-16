@@ -16,10 +16,12 @@ import { describe, it, expect } from 'vitest';
 
 import { UPLOAD_FAILURE_REASONS } from '@web/data/upload/media-upload';
 import {
+  ingestRefusalToastKey,
   resolveUploadFailure,
   uploadFailureMessageKey,
   uploadRetryCanChange,
 } from '@web/spaces/canvas/upload-failure';
+import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 
 /**
  * The plan for a failure the browser says rather than reports.
@@ -175,5 +177,16 @@ describe('where an upload the server could not open lands (inner#1595)', () => {
       toastKey: uploadFailureMessageKey('transfer'),
       severity: 'error',
     });
+  });
+});
+
+// inner#1968 D-24: an address pasted onto the canvas once the month's
+// operations are used up and the studio cannot pay for one more.
+describe('ingestRefusalToastKey for operations used up', () => {
+  it('says the operations are used up, apart from a plain refused upload', () => {
+    const key = ingestRefusalToastKey(402, 'operations_exhausted');
+    expect(key).not.toBe(ingestRefusalToastKey(402, undefined));
+    const zhCN = LOCALE_CATALOGS.find(([tag]) => tag === 'zh-CN')![1];
+    expect(readPath(zhCN, key)).toBe('本月操作次数已用完，积分不足 {credits}。充值后可继续。');
   });
 });

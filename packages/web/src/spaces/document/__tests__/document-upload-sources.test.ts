@@ -260,3 +260,15 @@ describe('addresses of ours', () => {
     expect(failure(outcome)).toEqual({ reason: 'failed', retryable: true });
   });
 });
+
+// inner#1968 D-25: an address pasted into a Document once the month's
+// operations are used up. Topping up changes the answer, so it can be retried.
+describe('an address refused for operations used up', () => {
+  it('fails as operations, retryable', async () => {
+    const { run } = sources({
+      ingest: vi.fn(async () => Promise.reject(new ApiException({ status: 402, message: 'used up', reason: 'operations_exhausted' }))),
+    });
+    const outcome = await run('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' }, noProgress);
+    expect(failure(outcome)).toEqual({ reason: 'operations', retryable: true });
+  });
+});

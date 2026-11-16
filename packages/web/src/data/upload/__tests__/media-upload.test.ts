@@ -576,3 +576,21 @@ describe('runMediaUpload — the server could not open the upload (inner#1595)',
     expect(deps.onFailure).not.toHaveBeenCalled();
   });
 });
+
+// inner#1968 D-23: the ticket refused because the month's operations are used
+// up and the studio cannot pay for one more.
+describe('a ticket refused for operations used up', () => {
+  it('names the failure operations, apart from an ordinary failure', async () => {
+    const file = new File(['x'], 'photo.png', { type: 'image/png' });
+    const context = { projectId: 'p1', nodeId: 'n1', spaceId: 's1' };
+    const deps = makeUploadDeps({
+      requestTicket: vi.fn().mockRejectedValue(
+        new ApiException({ status: 402, message: 'used up', reason: 'operations_exhausted' }),
+      ),
+    });
+
+    await runMediaUpload(file, context, deps);
+
+    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({ reason: 'operations' });
+  });
+});
