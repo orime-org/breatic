@@ -21,6 +21,7 @@ import { promisify } from 'node:util';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { runPlanJob, type PlanRunBody } from '@ingest/container/plan-run.js';
 import { resolveVideoColorMatrix } from '@ingest/container/physical-video-probe.js';
+import { packedCarrierWidth } from '@shared/mini-tools/video-encode-plan.js';
 import { coverArgs, coverDecoderArgs, probeArgs, readProbeOutput } from '@ingest/probe-command.js';
 
 const run = promisify(execFile);
@@ -258,6 +259,8 @@ beforeAll(async () => {
   await make('rot90.mp4', ['-display_rotation', '90', '-i', join(dir, 'cfr.mp4'), '-c', 'copy']);
   // The dispatched copy's source (§93 D8): cfr.mp4's picture with ALAC audio, which the MP4 entry's audio_codecs does not
   // list. 2 s of 44.1 kHz audio (88200 samples), one edit from media time 0 on both tracks.
+  // Opaque everywhere, saturated green on its last eight columns: the packed planes' seam shows any chroma bleeding (CE24).
+  await make('banner.mov', ['-f', 'lavfi', '-i', "color=c=white:s=64x36:r=25:d=0.4,format=rgba,geq=r='if(gte(X\\,56)\\,0\\,255)':g='255':b='if(gte(X\\,56)\\,0\\,255)':a='255'", '-c:v', 'png']);
   await make('alac.mp4', ['-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=25:d=2', '-f', 'lavfi', '-i', 'sine=f=1000:r=44100:d=2',
     '-c:v', 'libx264', '-g', '10', '-bf', '0', '-pix_fmt', 'yuv420p', ...tagged, '-video_track_timescale', '25', '-c:a', 'alac', '-shortest']);
   // Straight alpha of 64 over the whole picture, lossless PNG in QuickTime.
@@ -398,12 +401,12 @@ describe('chunk_encode (§5.4 切块、块的时间; §7.17)', () => {
   });
 
   it.each(['alpha.mov', 'alpha.webm'])('CE08 packs an alpha source premultiplied colour left and alpha right on even planes (§3.5 alpha-packed; alpha-presentation.ts packing): %s', async (name) => {
-    const recipe = chunk({ start: 0, end: 10 }, [span(r(0), r(0), r(0), r(2, 5))], { ...TARGET, width: 128, height: 36, alpha: 'packed' });
+    const recipe = chunk({ start: 0, end: 10 }, [span(r(0), r(0), r(0), r(2, 5))], { ...TARGET, width: packedCarrierWidth(64), height: 36, alpha: 'packed' });
     const [file] = await produce({ [SOURCE]: join(dir, name) }, [recipe]);
     const video = (await probe(file!)).streams[0]!;
-    expect([video.codec_name, video.pix_fmt, video.width, video.height]).toEqual(['h264', 'yuv420p', 128, 36]);
-    // The right plane is the alpha as grey: 64 stored as limited-range luma 16 + 64 * 219 / 255 ≈ 71.
-    for (const mean of await lumaMeans(file!, { x: 64, y: 0, width: 64, height: 36 })) expect(Math.abs(mean - 71)).toBeLessThan(6);
+    expect([video.codec_name, video.pix_fmt, video.width, video.height]).toEqual(['h264', 'yuv420p', 132, 36]);
+    // The right plane, after the 4-column gap, is the alpha as grey: 64 stored as limited-range luma 16 + 64 * 219 / 255 ≈ 71.
+    for (const mean of await lumaMeans(file!, { x: 68, y: 0, width: 64, height: 36 })) expect(Math.abs(mean - 71)).toBeLessThan(6);
   });
 
   // An RGB-coded source (PNG in MOV) packs with the matrix its own plan resolves; the scaler converts RGB frames with no
@@ -412,10 +415,26 @@ describe('chunk_encode (§5.4 切块、块的时间; §7.17)', () => {
     const source = join(dir, 'alpha.mov');
     const planMatrix = resolveVideoColorMatrix((await probe(source)).streams[0] as unknown as Record<string, unknown>);
     const packed = async (colorMatrix: string): Promise<number[]> =>
-      lumaMeans((await produce({ [SOURCE]: source }, [chunk({ start: 0, end: 10 }, [span(r(0), r(0), r(0), r(2, 5))], { ...TARGET, colorMatrix, width: 128, height: 36, alpha: 'packed' })]))[0]!);
+      lumaMeans((await produce({ [SOURCE]: source }, [chunk({ start: 0, end: 10 }, [span(r(0), r(0), r(0), r(2, 5))], { ...TARGET, colorMatrix, width: packedCarrierWidth(64), height: 36, alpha: 'packed' })]))[0]!);
     const [own, bt709, bt601] = [await packed(planMatrix), await packed('bt709'), await packed('bt601')];
     expect(own).toEqual(bt709);
     expect(bt601).toEqual(bt709);
+  });
+
+  // A browser upsamples 4:2:0 chroma across neighbouring samples (Chrome 157 read up to 20% wrong alpha in the alpha plane's
+  // first column and a washed-out last colour column when the planes touched). The chroma sample before the alpha plane is
+  // neutral and the one after the colour plane's edge repeats that edge, whatever two samples the upsampler mixes.
+  it('CE24 the packed planes are kept apart: neutral chroma before the alpha plane, the colour edge repeated after its plane', async () => {
+    const [file] = await produce({ [SOURCE]: join(dir, 'banner.mov') }, [chunk({ start: 0, end: 10 }, [span(r(0), r(0), r(0), r(2, 5))], { ...TARGET, width: packedCarrierWidth(64), height: 36, alpha: 'packed' })]);
+    const raw = (await run('ffmpeg', ['-v', 'error', '-i', file!, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'yuv420p', '-'], { encoding: 'buffer', maxBuffer: 1 << 24 })).stdout;
+    const [luma, chromaWidth] = [132 * 36, 66];
+    // Chroma samples on row 8 of the 18: U then V.
+    const chroma = (column: number): [number, number] => [raw[luma + 8 * chromaWidth + column]!, raw[luma + 66 * 18 + 8 * chromaWidth + column]!];
+    // x264 at crf 18 moves chroma by a few levels; a bleed moves it by tens.
+    for (const value of chroma(68 / 2 - 1)) expect(Math.abs(value - 128)).toBeLessThanOrEqual(6);
+    const [edge, after] = [chroma(64 / 2 - 1), chroma(64 / 2)];
+    for (const index of [0, 1]) expect(Math.abs(after[index]! - edge[index]!)).toBeLessThanOrEqual(6);
+    expect(Math.abs(edge[0] - 128)).toBeGreaterThan(20);
   });
 
   // SMPTE 240M and FCC sources decode with their own matrix.
@@ -645,15 +664,15 @@ describe('stitch (§5.4 块的时间、拼接)', () => {
   });
 
   it('ST04 a packed chunk stitches into a packed carrier of the same geometry and reports that geometry', async () => {
-    const packed = { ...TARGET, width: 128, height: 36, alpha: 'packed' };
+    const packed = { ...TARGET, width: packedCarrierWidth(64), height: 36, alpha: 'packed' };
     const [a] = await produce({ [SOURCE]: join(dir, 'alpha.mov') }, [chunk({ start: 0, end: 10 }, [span(r(0), r(0), r(0), r(2, 5))], packed)]);
     const [file] = await produce({ [SOURCE]: join(dir, 'alpha.mov'), [CHUNKS[0]!]: a! },
       [{ kind: 'stitch', inputId: SOURCE, target: packed, chunks: [{ inputId: CHUNKS[0], duration: r(2, 5) }], audio: null }]);
     const video = (await probe(file!)).streams[0]!;
-    expect([video.codec_name, video.width, video.height]).toEqual(['h264', 128, 36]);
+    expect([video.codec_name, video.width, video.height]).toEqual(['h264', 132, 36]);
     expect(await packets(file!)).toHaveLength(10);
     expect(reports[0]!.outputs).toHaveLength(1);
-    expect(reports[0]!.outputs[0]!.packing).toEqual({ packedWidth: 128, packedHeight: 36, colorRect: { x: 0, y: 0, width: 64, height: 36 }, alphaRect: { x: 64, y: 0, width: 64, height: 36 } });
+    expect(reports[0]!.outputs[0]!.packing).toEqual({ packedWidth: 132, packedHeight: 36, colorRect: { x: 0, y: 0, width: 64, height: 36 }, alphaRect: { x: 68, y: 0, width: 64, height: 36 } });
   });
 });
 

@@ -240,6 +240,33 @@ export function videoPlanIsUnaltered(plan: VideoPlanAlterations): boolean {
 }
 
 /**
+ * Columns between the colour and alpha planes of a packed carrier (§3.5 alpha-packed): two repeat the colour plane's edge and
+ * two are neutral black, so a browser upsampling 4:2:0 chroma from neighbouring samples reads each plane's own chroma at the
+ * seam. Measured in Chrome 157 with the planes touching: up to 20% wrong alpha in the alpha plane's first column.
+ */
+export const PACKED_PLANE_GAP = 4;
+
+/**
+ * A packed carrier's width: the colour plane, the gap and the alpha plane.
+ * @param planeWidth - One plane's even width.
+ * @returns The carrier width.
+ * @throws {never} Never.
+ */
+export function packedCarrierWidth(planeWidth: number): number {
+  return planeWidth * 2 + PACKED_PLANE_GAP;
+}
+
+/**
+ * One plane's width in a packed carrier.
+ * @param packedWidth - The carrier width.
+ * @returns The plane width.
+ * @throws {never} Never.
+ */
+export function packedPlaneWidth(packedWidth: number): number {
+  return (packedWidth - PACKED_PLANE_GAP) / 2;
+}
+
+/**
  * Estimate a job whose only encoding is one AAC track (§5.4; §97 D7-1, D24-3): its start plus the audio seconds over the
  * AAC rate. The dispatched copy, a lip-sync stem and the lip-sync stitch (its video chunks joined by packet copy) are such jobs.
  * @param audioSeconds - The audio seconds encoded.

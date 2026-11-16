@@ -455,11 +455,11 @@ describe('recipes from the full ledger (inner#1306 §91 D3b; design §7.17, §5.
   });
 
   // §91 D3b-6: the plan sets `emptyFill: 'transparent'` exactly when the probe confirmed alpha (presentation-run.ts policy), and it is inside planSha256.
-  it('RB02 a transparent source is encoded alpha-packed: the target is two even planes side by side', async () => {
+  it('RB02 a transparent source is encoded alpha-packed: the target is two even planes side by side with a 4-column gap', async () => {
     await serve(LEDGERS.cfr96, {}, (plan) => { plan.policy!.emptyFill = 'transparent'; });
     await expect(advance()(data)).rejects.toBeInstanceOf(StillRunning);
     const recipes = submitted().map((job) => (job.outputs as { recipe: { target: unknown } }[])[0]!.recipe);
-    expect(recipes.map((recipe) => recipe.target)).toEqual([0, 1].map(() => ({ ...TARGET, width: 640, height: 180, alpha: 'packed' })));
+    expect(recipes.map((recipe) => recipe.target)).toEqual([0, 1].map(() => ({ ...TARGET, width: 644, height: 180, alpha: 'packed' })));
   });
 
   it.each([

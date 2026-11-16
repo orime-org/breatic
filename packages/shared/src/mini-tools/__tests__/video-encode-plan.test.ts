@@ -531,3 +531,12 @@ describe('BT §5.4 user-run batching', () => {
     expect(() => batch([1], { maxOutputsPerJob, shareSeconds: 10, fixedSeconds: 1 })).toThrow(RangeError);
   });
 });
+
+// A packed alpha carrier holds the colour plane, a 4-column gap and the alpha plane side by side (§3.5 alpha-packed).
+describe('packed carrier width', () => {
+  it('is two planes and the gap, and gives the plane back', () => {
+    const plan = miniTools as unknown as { packedCarrierWidth: (plane: number) => number; packedPlaneWidth: (packed: number) => number };
+    expect(plan.packedCarrierWidth(320)).toBe(644);
+    expect(plan.packedPlaneWidth(644)).toBe(320);
+  });
+});

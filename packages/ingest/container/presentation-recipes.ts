@@ -10,7 +10,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { rational } from "@shared/mini-tools/video-presentation-projection.js";
-import { conformedTime } from "@shared/mini-tools/video-encode-plan.js";
+import { conformedTime, PACKED_PLANE_GAP, packedPlaneWidth } from "@shared/mini-tools/video-encode-plan.js";
 import type {
   MiniToolPlanAudio, MiniToolPlanEntry, MiniToolPlanExact, MiniToolPlanExpandComposite, MiniToolPlanPixelRect, MiniToolPlanRecipe, MiniToolPlanStitch,
   MiniToolPlanTarget, MiniToolPlanTransitionProfile, MiniToolPlanTransitionStitch, MiniToolPlanTransitionWindow,
@@ -273,7 +273,7 @@ export function span(entry: MiniToolPlanEntry): { start: MiniToolPlanExact; end:
  * @throws {never} Never.
  */
 export function placement(target: MiniToolPlanTarget): { rect: MiniToolPlanPixelRect; planeWidth: number } {
-  const planeWidth = target.alpha === "packed" ? target.width / 2 : target.width;
+  const planeWidth = target.alpha === "packed" ? packedPlaneWidth(target.width) : target.width;
   return { rect: target.displayRect ?? { x: 0, y: 0, width: planeWidth, height: target.height }, planeWidth };
 }
 
@@ -349,7 +349,7 @@ export async function probeModelResultDecode(file: string, run: { signal: AbortS
 /**
  * The filters that turn decoded display frames into the target picture (§4.3 odd-size and colour/HDR/bit-depth rows, §3.5): HDR
  * tone mapped, decoded with the plan matrix, scaled to the picture rectangle and padded around it to the even coded size;
- * an alpha source is packed premultiplied colour left and alpha right as `alpha-presentation.ts` packs it.
+ * an alpha source is packed premultiplied colour left, then the `PACKED_PLANE_GAP` columns, then alpha.
  * @param target - The carrier target.
  * @param label - A label prefix unique within the graph.
  * @param colour - The decoded frames' colour facts; null only for frames that are not tone mapped.
@@ -380,7 +380,12 @@ export function picture(target: MiniToolPlanTarget, label: string, colour: Frame
   }
   const tail = `scale=out_color_matrix=bt709:out_range=tv,format=yuv420p,setsar=1,${unrotated}`;
   if (target.alpha === "none") return `${head({ format: "yuv444p", bt709: true })},${pad},${tail}`;
-  return `${head({ format: "gbrap" })},split=2[${label}r][${label}a];[${label}r]premultiply=inplace=1,format=rgb24,${pad}[${label}c];` +
+  // The colour plane repeats its edges into its padding and two more columns, then two neutral black ones keep the alpha
+  // plane's chroma its own (`PACKED_PLANE_GAP`); fillborders reads planar RGB.
+  const below = target.height - rect.y - rect.height;
+  const colourPlane = `${pad},fillborders=left=${rect.x}:right=${planeWidth - rect.x - rect.width}:top=${rect.y}:bottom=${below}:mode=smear,` +
+    `pad=${planeWidth + 2}:${target.height}:0:0,fillborders=right=2:mode=smear,pad=${planeWidth + PACKED_PLANE_GAP}:${target.height}:0:0:color=black`;
+  return `${head({ format: "gbrap" })},split=2[${label}r][${label}a];[${label}r]premultiply=inplace=1,format=gbrp,${colourPlane},format=rgb24[${label}c];` +
     `[${label}a]alphaextract,format=rgb24,${pad}[${label}m];[${label}c][${label}m]hstack,${tail}`;
 }
 
@@ -1412,5 +1417,5 @@ export async function executePresentationRecipe(request: PresentationRecipeReque
   const metadata = await readVideoMetadata(output, request, recipe.kind);
   if (recipe.kind !== "stitch" || "clips" in recipe || recipe.target.alpha !== "packed") return { ...metadata, cover: null };
   const { rect, planeWidth } = placement(recipe.target);
-  return { ...metadata, cover: null, packing: { packedWidth: recipe.target.width, packedHeight: recipe.target.height, colorRect: rect, alphaRect: { ...rect, x: rect.x + planeWidth } } };
+  return { ...metadata, cover: null, packing: { packedWidth: recipe.target.width, packedHeight: recipe.target.height, colorRect: rect, alphaRect: { ...rect, x: rect.x + planeWidth + PACKED_PLANE_GAP } } };
 }

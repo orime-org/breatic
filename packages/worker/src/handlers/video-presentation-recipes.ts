@@ -14,7 +14,7 @@ import {
   type MiniToolPlanDetectorProfile, type MiniToolPlanFrameCrop, type MiniToolPlanFrameTarget, type MiniToolPlanRecipe,
   type VideoPresentationLedger, type VideoPresentationLedgerReceipt,
 } from '@breatic/shared';
-import { conformedTime, presentationConform, videoCarrierGeometry } from '@breatic/shared/mini-tools';
+import { conformedTime, packedCarrierWidth, presentationConform, videoCarrierGeometry } from '@breatic/shared/mini-tools';
 
 /** An exact rational as numerator and positive denominator. */
 type Q = [bigint, bigint];
@@ -362,7 +362,8 @@ export function audioOf(ledger: VideoPresentationLedger, interval?: MiniToolPlan
 /**
  * The display carrier's target (§91 D-2, §8.2, §4.3): the capped, even geometry, the plan's matrix and conversion, and the
  * encode parameters frozen at admission. A plan sets `emptyFill: 'transparent'` exactly when the probe confirmed alpha
- * (`presentation-run.ts` policy, inside planSha256), so that source is packed: two even planes side by side (§91 D3b-6).
+ * (`presentation-run.ts` policy, inside planSha256), so that source is packed: two even planes side by side with the
+ * `PACKED_PLANE_GAP` columns between them (§91 D3b-6).
  * @param ledger - The full ledger.
  * @param carrier - The frozen carrier parameters.
  * @param carrier.crf - The crf.
@@ -375,7 +376,7 @@ export function carrierTarget(ledger: VideoPresentationLedger, carrier: { crf: n
   const { plan } = ledger;
   const geometry = videoCarrierGeometry(plan.display, carrier.maxShortSide);
   const packed = plan.policy.emptyFill === 'transparent';
-  return { width: packed ? geometry.width * 2 : geometry.width, height: geometry.height, displayRect: geometry.displayRect, colorMatrix: plan.colorMatrix,
+  return { width: packed ? packedCarrierWidth(geometry.width) : geometry.width, height: geometry.height, displayRect: geometry.displayRect, colorMatrix: plan.colorMatrix,
     toneMap: plan.output.toneMap, alpha: packed ? 'packed' : 'none', crf: carrier.crf, preset: carrier.preset };
 }
 
