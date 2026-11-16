@@ -160,7 +160,7 @@ function containerOf(format: Record<string, unknown>): string {
 }
 
 /**
- * Plan frames from packets without an edit list, in presentation order by pts (§3.1 中间帧行: a middle frame's window runs
+ * Plan frames from packets without an edit list, in presentation order by pts (§3.1 middle-frame row: a middle frame's window runs
  * to the next frame's start). An ISO sample's duration is its decode-order delta, not its own display time, so an ISO middle
  * frame always ends at the next frame. A Matroska block's time and declared duration are each rounded to the container clock,
  * so a declared end within one tick of the next frame, before or after it, is that rounding and ends there too; a larger gap
@@ -216,7 +216,7 @@ async function audioWindow(stream: Record<string, unknown> | undefined, input: s
 }
 
 /**
- * Whether Chromium plays the source on the plan's clock (§4.1 简单稳定输入, §4.2.1), so it may play as-is: the plan's 0 is the
+ * Whether Chromium plays the source on the plan's clock (§4.1 simple stable input row, §4.2.1), so it may play as-is: the plan's 0 is the
  * source's 0, every presented frame is a source frame and the last one declares its end; a lead before the first frame (which
  * Chromium shows) and a hold after the last (which it holds) are allowed; and the video's edits are none, or one rate-1 edit
  * at presentation 0 from the first frame that ends inside the last frame, which Chromium cuts there as the plan does (an
