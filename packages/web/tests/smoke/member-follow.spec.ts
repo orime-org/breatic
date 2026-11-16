@@ -8,8 +8,9 @@
  * editor and follows A from the member list. A switches to a Space B never
  * opened, pans the canvas, scrolls and edits the document; B's tab and view go
  * along. B leaves by moving its own view, by the bar's Stop, and when A goes
- * offline. Scroll anchoring and the end-of-body clamp only happen in a real
- * browser, so the cases that must not end following live here.
+ * offline; while B follows A, A cannot follow B. Scroll anchoring and the
+ * end-of-body clamp only happen in a real browser, so the cases that must not
+ * end following live here.
  *
  *   pnpm --filter @breatic/web test:smoke member-follow
  */
@@ -241,8 +242,18 @@ test('a member follows another across Spaces, canvas camera and document scroll,
     await bPage.getByTestId('follow-bar-stop').click();
     await expect(bPage.getByTestId('follow-bar')).toHaveCount(0);
 
-    // B follows again; A closes the page; B is told A went offline and stops.
+    // B follows again. Following is one level deep: A cannot follow B while B follows A, and is told why.
     await followTheOther(bPage);
+    await page.getByTestId('members-trigger').click();
+    const viewB = page.locator('[data-testid^="members-follow-"]');
+    await expect(viewB).toHaveAttribute('aria-disabled', 'true', { timeout: 15_000 });
+    await viewB.click();
+    await expect(page.locator('[data-sonner-toast]').filter({ hasText: /following you/i })).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('follow-bar')).toHaveCount(0);
+    await expect(bPage.getByTestId('follow-bar')).toBeVisible();
+
+    // A closes the page; B is told A went offline and stops.
     await page.goto('about:blank');
     await expect(bPage.getByTestId('follow-bar')).toHaveCount(0, { timeout: 150_000 });
     await expect(bPage.locator('[data-sonner-toast]').filter({ hasText: /offline/i })).toBeVisible();
