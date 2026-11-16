@@ -9,7 +9,7 @@ import {
   MessageSquarePlus, Pause, Pencil, Play, Plus, RotateCcw, Undo2, Upload, Video, X,
 } from 'lucide-react';
 import { formatCredits, getLocale, newId } from '@breatic/shared';
-import { readWebAnimationAnchor, webAnimationExecutionEnded, webAnimationExecutionFailed, type WebAnimationRowView } from '@breatic/shared/space-content';
+import { anchorTimeWithin, readWebAnimationAnchor, webAnimationExecutionEnded, webAnimationExecutionFailed, type WebAnimationRowView } from '@breatic/shared/space-content';
 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@web/components/ui/alert-dialog';
 import { Button } from '@web/components/ui/button';
@@ -485,9 +485,10 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   const addAnnotation = React.useCallback((): void => {
     if (selectedId !== null) {
       setActiveThreadId(null);
-      annotate({ type: 'add', executionId: selectedId, timeSeconds: clock.time });
+      // The anchor's time lies within the result (design §13.6).
+      annotate({ type: 'add', executionId: selectedId, timeSeconds: anchorTimeWithin(clock.time, durationSeconds) });
     }
-  }, [selectedId, clock.time, annotate]);
+  }, [selectedId, clock.time, durationSeconds, annotate]);
   const clickFrame = React.useCallback((event: React.MouseEvent<HTMLDivElement>): void => {
     if (annotationRef.current.status !== 'picking' && annotationRef.current.status !== 'writing') return;
     const box = event.currentTarget.getBoundingClientRect();
