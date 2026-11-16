@@ -18,7 +18,7 @@ The backend shared kernel. These rules apply when you change anything under `pac
 
 ### Global rows go through the global API
 
-**Every table is placed in `TABLE_PLACEMENT` (`src/db/table-placement.ts`) as `global`, `regional` or `both`, and code that can run outside the global region reaches global rows only through `globalApi` or `callRegion`, never through SQL.** Outside the global region the services' role has no rights on global tables, so a direct query passes every single-region test and fails only in a second region; `table-placement.test.ts` fails on a table nobody placed. How regions fit together: [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md#regions-and-the-global-region).
+**Every table is placed in `TABLE_PLACEMENT` (`src/db/table-placement.ts`) as `global`, `regional` or `both`, and code that can run outside the global region reaches global rows only through `globalApi`, never through SQL.** Outside the global region the services' role has no rights on global tables, so a direct query passes every single-region test and fails only in a second region; `table-placement.test.ts` fails on a table nobody placed. How regions fit together: [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md#regions-and-the-global-region).
 Check: can this code run in a Studio's region while it reads accounts, credits or the directory? Yes → the global API.
 
 ### A migration changes data on one side
