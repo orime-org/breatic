@@ -196,7 +196,7 @@ async function dropFiles(
   }, files);
 }
 
-test('the plus menu offers image, audio and video after the table and columns, and a picked image lands (A1, A4, A7, A15)', async () => {
+test('the plus menu offers image, audio and video after the table, columns and the formula, and a picked image lands (A1, A4, A7, A15)', async () => {
   await openFreshDocument(page);
   const firstRow = page.locator(`${EDITOR} .bn-block-content`).first();
   await firstRow.hover();

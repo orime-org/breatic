@@ -45,7 +45,7 @@ describe('the media entries (A1)', () => {
       .getAllByRole('menuitem')
       .map((item) => item.getAttribute('data-testid'))
       .filter((id) => id !== null);
-    // Columns follow the table (inner#1314 demo, "插入菜单"); the formula
+    // Columns follow the table (inner#1314 demo, the insert menu); the formula
     // comes after them, before the media entries.
     expect(ids.slice(-6)).toEqual([
       'doc-block-insert-table',
