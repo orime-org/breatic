@@ -1016,6 +1016,8 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "server.idempotency.in_progress": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.idempotency.mismatch": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.idempotency.missing": { excluded: REASONS.SAYS_TRY_AGAIN },
+  "server.operation.exhausted": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "server.operation.key_taken": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.internal.idempotency_key_reused": { excluded: REASONS.NO_CALLER },
   "server.internal.invalid_body": { excluded: REASONS.NO_CALLER },
   "server.internal.invalid_idempotency_key": { excluded: REASONS.NO_CALLER },

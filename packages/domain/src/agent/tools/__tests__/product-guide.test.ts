@@ -1031,7 +1031,7 @@ describe("mini-tools and the task rows", () => {
     expect(tools).toMatch(/the tools marked \(billed by how long it runs\) in this section's list are billed that way/);
     for (const tool of MINI_TOOLS) {
       const line = `"${t(tool.labelKey)}": ${tool.guide} (billed by how long it runs).`;
-      expect(tools.includes(line), tool.id).toBe(tool.run.kind === "container");
+      expect(tools.includes(line), tool.id).toBe(tool.run.kind === "container" && tool.billing !== "free");
     }
   });
 
