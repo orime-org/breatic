@@ -10,9 +10,9 @@ import {
   menuCentre,
   refitFrame,
   resizeFrame,
-  viewfinderRatioValue,
   viewfinderSafeArea,
 } from '@web/spaces/three-d/viewfinder/viewfinder-geometry';
+import { viewfinderRatioValue } from '@web/spaces/three-d/viewfinder/viewfinder-ratio';
 
 const SAFE = { x: 40, y: 60, width: 800, height: 400 };
 const MIN = 120;

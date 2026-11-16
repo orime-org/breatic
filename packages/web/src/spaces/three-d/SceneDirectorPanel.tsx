@@ -22,7 +22,7 @@ import { SceneColorField, SceneDirectorFields } from '@web/spaces/three-d/SceneD
 import type { SceneField, SceneFieldDraftOwner } from '@web/spaces/three-d/SceneField';
 import { SceneIconButton } from '@web/spaces/three-d/SceneIconButton';
 import { takeStepKey } from '@web/spaces/three-d/slider-step-key';
-import { cameraFrameRatio } from '@web/spaces/three-d/viewfinder/viewfinder-geometry';
+import { cameraFrameRatio } from '@web/spaces/three-d/viewfinder/viewfinder-ratio';
 import type { LightsPlan } from '@web/spaces/three-d/viewport/director-lights';
 
 /** Tallest a monitor picture is drawn, in pixels. */

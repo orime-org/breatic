@@ -24,8 +24,10 @@ import { useSceneProposals } from '@web/stores/scene-proposals';
 import { useConversationRuntime } from '@web/stores/conversation-runtime';
 import { useProjectSpaceList } from '@web/data/yjs/project-meta';
 import { SceneViewfinder, sceneViewfinderSafeArea } from '@web/spaces/three-d/SceneViewfinder';
+import { SceneDirectorFields } from '@web/spaces/three-d/SceneDirectorFields';
 import { LIGHT_LABEL, SceneDirectorPanel } from '@web/spaces/three-d/SceneDirectorPanel';
-import { cameraFrameRatio, clampFreeRatio, largestFrame, viewfinderRatioValue } from '@web/spaces/three-d/viewfinder/viewfinder-geometry';
+import { clampFreeRatio, largestFrame } from '@web/spaces/three-d/viewfinder/viewfinder-geometry';
+import { cameraFrameRatio, viewfinderRatioValue } from '@web/spaces/three-d/viewfinder/viewfinder-ratio';
 import type { LightsPlan } from '@web/spaces/three-d/viewport/director-lights';
 import { INITIAL_VIEWFINDER, cameraViewOf, viewfinderReducer, type ViewfinderAction } from '@web/spaces/three-d/viewfinder/viewfinder-state';
 import { SceneField, type SceneFieldDraft } from '@web/spaces/three-d/SceneField';
@@ -688,7 +690,8 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     }
     const { cameraFromStill, cameraFromView } = await import('@web/spaces/three-d/viewfinder/camera-from-frame');
     if (viewfinder.frozen !== null) {
-      session.execute({ type: 'create', objects: [{ ...base, ...cameraFromStill(viewfinder.frozen) } satisfies SceneObject] });
+      const still = cameraFromStill(viewfinder.frozen);
+      session.execute({ type: 'create', objects: [{ ...base, ...still, freeRatio: clampFreeRatio(still.freeRatio) } satisfies SceneObject] });
       return;
     }
     const freeOpen = viewfinder.phase !== 'off';
@@ -779,7 +782,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   const viewportFallback = React.useMemo(() => <div className='grid h-full place-items-center text-sm'>{loadingText}</div>, [loadingText]);
   const panelContent = React.useMemo(() => panel === 'properties'
     ? <React.Suspense fallback={inspectorFallback}>
-      <SceneInspector session={session} snapshot={snapshot} readObjects={readObjects} namedPeers={namedPeers} spaceId={spaceId} Field={SceneField}
+      <SceneInspector session={session} snapshot={snapshot} readObjects={readObjects} namedPeers={namedPeers} spaceId={spaceId} Field={SceneField} DirectorFields={SceneDirectorFields}
         fieldDrafts={fieldDrafts} onFieldDraftChange={onFieldDraftChange}
         skeletonStates={skeletonStates} jointMode={jointMode} onJointModeChange={changeJointMode} />
     </React.Suspense>

@@ -10,6 +10,7 @@ import { TooltipProvider } from '@web/components/ui/tooltip';
 import { applySceneCommand, readSceneDocument } from '@web/data/yjs/scene-document';
 import { SceneSession } from '@web/data/yjs/scene-session';
 import { SceneInspector } from '@web/spaces/three-d/SceneInspector';
+import { SceneDirectorFields } from '@web/spaces/three-d/SceneDirectorFields';
 import { SceneField } from '@web/spaces/three-d/SceneField';
 
 const NAME = 'project-p1/3d-s1';
@@ -32,7 +33,7 @@ function show(record: Record<string, unknown>): void {
   session.setEnvironment({ readOnly: false, connected: true, hasEverSynced: true, writeAccess: 'granted', refused: false, awareness: null });
   session.select(ID, false);
   owners.push({ doc, session });
-  render(<TooltipProvider><SceneInspector spaceId='scene' session={session} snapshot={session.getSnapshot()} namedPeers={[]} Field={SceneField}
+  render(<TooltipProvider><SceneInspector DirectorFields={SceneDirectorFields} spaceId='scene' session={session} snapshot={session.getSnapshot()} namedPeers={[]} Field={SceneField}
     fieldDrafts={new Map()} onFieldDraftChange={() => undefined} readObjects={() => readSceneDocument(doc).objects}
     skeletonStates={new Map()} jointMode={false} onJointModeChange={() => undefined} /></TooltipProvider>);
 }

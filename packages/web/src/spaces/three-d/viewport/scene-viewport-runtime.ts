@@ -11,7 +11,7 @@ import {
 } from '@breatic/shared';
 import { DirectorFigure, applyCameraRecord } from '@web/spaces/three-d/viewport/director-objects';
 import { DISPLAY_LINE_LAYER, DISPLAY_PICK_LAYER } from '@web/spaces/three-d/viewport/scene-layers';
-import { cameraFrameRatio } from '@web/spaces/three-d/viewfinder/viewfinder-geometry';
+import { cameraFrameRatio } from '@web/spaces/three-d/viewfinder/viewfinder-ratio';
 import { directionalShadowRange, localShadowFar, planLights, programSamplers, shadowSlots, type LightsPlan } from '@web/spaces/three-d/viewport/director-lights';
 import { monitorReducer, monitorsDue, type MonitorCards, type MonitorEvent } from '@web/spaces/three-d/viewport/monitor-schedule';
 import { ScenePilot, pilotPivotDistance } from '@web/spaces/three-d/viewport/scene-pilot';

@@ -6,7 +6,7 @@ import { Euler, Quaternion } from 'three';
 import { SceneObjectValuesSchema, isSceneLight, isSceneModelFile, type SceneObject } from '@breatic/shared';
 import type { SceneEditorProps } from '@web/spaces/three-d/SceneEditor';
 import type { SceneField, SceneFieldDraftOwner } from '@web/spaces/three-d/SceneField';
-import { SceneDirectorFields } from '@web/spaces/three-d/SceneDirectorFields';
+import type { SceneDirectorFields } from '@web/spaces/three-d/SceneDirectorFields';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 import { Button } from '@web/components/ui/button';
@@ -100,6 +100,7 @@ function transformFields(object: SceneObject): readonly ('position' | 'rotation'
  * @param root0.namedPeers - Resolved collaborator names and selection hints.
  * @param root0.spaceId - Space that owns field blur and visibility.
  * @param root0.Field - Eager field control keeping shared input helpers outside this lazy geometry module.
+ * @param root0.DirectorFields - The eager camera and light fields, passed in for the same reason.
  * @param root0.fieldDrafts - Temporary input retained by the owning editor.
  * @param root0.onFieldDraftChange - Updates the current object's temporary field input.
  * @param root0.skeletonStates - What each loaded object's skeleton allows.
@@ -108,7 +109,7 @@ function transformFields(object: SceneObject): readonly ('position' | 'rotation'
  * @returns The current selection inspector.
  * @throws {never} Command refusals are reported by the session owner.
  */
-export const SceneInspector = React.memo(function SceneInspector({ session, snapshot, readObjects, namedPeers, spaceId, Field, fieldDrafts, onFieldDraftChange, skeletonStates, jointMode, onJointModeChange }: Pick<SceneEditorProps, 'session' | 'snapshot' | 'readObjects' | 'namedPeers' | 'spaceId'> & SceneFieldDraftOwner & ScenePoseInputs & { Field: typeof SceneField }): React.JSX.Element {
+export const SceneInspector = React.memo(function SceneInspector({ session, snapshot, readObjects, namedPeers, spaceId, Field, DirectorFields, fieldDrafts, onFieldDraftChange, skeletonStates, jointMode, onJointModeChange }: Pick<SceneEditorProps, 'session' | 'snapshot' | 'readObjects' | 'namedPeers' | 'spaceId'> & SceneFieldDraftOwner & ScenePoseInputs & { Field: typeof SceneField; DirectorFields: typeof SceneDirectorFields }): React.JSX.Element {
   const t = useTranslation();
   const selected = snapshot.objects.filter((object) => snapshot.selectedIds.includes(object.id));
   const mutable = snapshot.canEdit && selected.length > 0 && selected.every((object) => !object.locked);
@@ -168,7 +169,7 @@ export const SceneInspector = React.memo(function SceneInspector({ session, snap
           draftKey={`${object.id}:${field}:${axis}`} draft={fieldDrafts.get(`${object.id}:${field}:${axis}`)} onFieldDraftChange={onFieldDraftChange}
           label={axis} numeric value={numberText(geometry[field][index])} disabled={!mutable} spaceId={spaceId} onCommit={commits.geometry[fieldIndex][index]} />)}</div>
       </fieldset>)}
-      <SceneDirectorFields object={object} session={session} canEdit={snapshot.canEdit} spaceId={spaceId} Field={Field} compact={false}
+      <DirectorFields object={object} session={session} canEdit={snapshot.canEdit} spaceId={spaceId} Field={Field} compact={false}
         fieldDrafts={fieldDrafts} onFieldDraftChange={onFieldDraftChange} />
       {skeleton ? <PoseSection objectId={object.id} state={skeleton} mutable={mutable} session={session}
         jointMode={jointMode} onJointModeChange={onJointModeChange} /> : null}</> : <><p className='text-xs font-medium'>{t('spaces.threeD.selectedCount', { count: selected.length })}</p><p className='text-xs text-muted-foreground'>{t('spaces.threeD.multiTransform')}</p>

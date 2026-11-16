@@ -8,7 +8,7 @@ import {
 } from 'three';
 import { SCENE_SPOT_ANGLE_DEFAULT, isSceneCamera, isSceneLight, type SceneCameraObject, type SceneDirectorConfig, type SceneLightObject, type SceneObject } from '@breatic/shared';
 
-import { cameraFrameRatio } from '@web/spaces/three-d/viewfinder/viewfinder-geometry';
+import { cameraFrameRatio } from '@web/spaces/three-d/viewfinder/viewfinder-ratio';
 import type { LightPlan } from '@web/spaces/three-d/viewport/director-lights';
 import { DISPLAY_LINE_LAYER, DISPLAY_PICK_LAYER } from '@web/spaces/three-d/viewport/scene-layers';
 

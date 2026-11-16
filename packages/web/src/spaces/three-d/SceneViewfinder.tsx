@@ -18,15 +18,14 @@ import { toast } from '@web/lib/toast';
 import { placeImageOnCanvas } from '@web/spaces/canvas/place-image-on-canvas';
 import { SceneIconButton } from '@web/spaces/three-d/SceneIconButton';
 import { encodeCapturePng } from '@web/spaces/three-d/viewfinder/encode-capture';
+import { cameraFrameRatio, viewfinderRatioValue } from '@web/spaces/three-d/viewfinder/viewfinder-ratio';
 import {
-  cameraFrameRatio,
   captureSize,
   clampFreeRatio,
   largestFrame,
   menuCentre,
   refitFrame,
   resizeFrame,
-  viewfinderRatioValue,
   viewfinderSafeArea,
   type ViewfinderCorner,
   type ViewfinderRect,
