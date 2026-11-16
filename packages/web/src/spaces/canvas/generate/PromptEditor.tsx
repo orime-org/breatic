@@ -53,7 +53,7 @@ import {
   SpeakerParagraph,
 } from '@web/spaces/canvas/generate/dialogue-line';
 import { dispatchMachineEdit } from '@web/features/reference-mention/reference-mention-local-input';
-import { HELD_BACK_ATTR, OptionalParagraphs, withPool } from '@web/spaces/canvas/generate/optional-paragraph';
+import { HELD_BACK_ATTR, OptionalParagraphs } from '@web/spaces/canvas/generate/optional-paragraph';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 import { NO_MENTION_TOKENS, type MentionTokens } from '@web/spaces/canvas/generate/reference-urls';
 import { makeReferenceSuggestion } from '@web/spaces/canvas/generate/reference-mention-suggestion';
@@ -602,7 +602,7 @@ export const PromptEditor = React.forwardRef<
           }),
           // A paragraph an empty optional template input holds back is greyed,
           // as it is left out of what is sent (inner#1811).
-          OptionalParagraphs,
+          OptionalParagraphs.configure({ getPool: () => wiring.references }),
         ],
         onCreate: ({ editor: e }) => report(e),
         onUpdate: ({ editor: e }) => report(e),
@@ -683,9 +683,9 @@ export const PromptEditor = React.forwardRef<
     // This effect can run inside the view's own update: a chip's React view
     // flushes pending effects while the view draws it, and a transaction
     // dispatched then is drawn by a nested update the outer one overwrites.
-    // The pool goes in once that update has returned.
+    // The greyed paragraphs are redrawn once that update has returned.
     queueMicrotask(() => {
-      if (!editor.isDestroyed) dispatchMachineEdit(editor.view, withPool(editor.state.tr, references));
+      if (!editor.isDestroyed) dispatchMachineEdit(editor.view, editor.state.tr);
     });
   }, [editor, onAtMentionsChange, references]);
   // Publish this window's focus and dim collaborators who have left theirs.

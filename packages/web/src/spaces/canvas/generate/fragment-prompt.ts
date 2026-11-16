@@ -61,7 +61,7 @@ function sentBlocks(fragment: Y.XmlFragment, pool: ReadonlyArray<ReferenceRailIt
  * @param pool - The node's reference rows, which say whether an optional input holds a paragraph back.
  * @returns Their node ids.
  */
-export function mentionedSourceIds(fragment: Y.XmlFragment, pool: ReadonlyArray<ReferenceRailItem> = []): string[] {
+export function mentionedSourceIds(fragment: Y.XmlFragment, pool: ReadonlyArray<ReferenceRailItem>): string[] {
   const ids = sentBlocks(fragment, pool)
     .flatMap((block) => (block instanceof Y.XmlElement ? (block.nodeName === REFERENCE_MENTION_NODE ? [block] : mentionsUnder(block)) : []))
     .map((element) => element.getAttribute(MENTION_SOURCE_ID_ATTR))

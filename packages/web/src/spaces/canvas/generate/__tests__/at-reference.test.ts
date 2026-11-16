@@ -26,10 +26,10 @@ function doc(...content: JSONContent[]): JSONContent {
 
 describe('extractAtMentionedSourceIds', () => {
   it('returns [] for an empty / undefined / text-only doc', () => {
-    expect(extractAtMentionedSourceIds(undefined)).toEqual([]);
-    expect(extractAtMentionedSourceIds(doc())).toEqual([]);
+    expect(extractAtMentionedSourceIds(undefined, [])).toEqual([]);
+    expect(extractAtMentionedSourceIds(doc(), [])).toEqual([]);
     expect(
-      extractAtMentionedSourceIds(doc(para({ type: 'text', text: 'hello' }))),
+      extractAtMentionedSourceIds(doc(para({ type: 'text', text: 'hello' })), []),
     ).toEqual([]);
   });
 
@@ -42,12 +42,12 @@ describe('extractAtMentionedSourceIds', () => {
         mention('b'),
       ),
     );
-    expect(extractAtMentionedSourceIds(d)).toEqual(['a', 'b']);
+    expect(extractAtMentionedSourceIds(d, [])).toEqual(['a', 'b']);
   });
 
   it('de-duplicates repeated mentions, keeping first-appearance order', () => {
     const d = doc(para(mention('a'), mention('b'), mention('a')));
-    expect(extractAtMentionedSourceIds(d)).toEqual(['a', 'b']);
+    expect(extractAtMentionedSourceIds(d, [])).toEqual(['a', 'b']);
   });
 
   it('finds mentions nested across multiple paragraphs', () => {
@@ -55,7 +55,7 @@ describe('extractAtMentionedSourceIds', () => {
       para(mention('a')),
       para({ type: 'text', text: 'x' }, mention('b')),
     );
-    expect(extractAtMentionedSourceIds(d)).toEqual(['a', 'b']);
+    expect(extractAtMentionedSourceIds(d, [])).toEqual(['a', 'b']);
   });
 
   it('skips a mention with a missing / non-string sourceNodeId', () => {
@@ -66,7 +66,7 @@ describe('extractAtMentionedSourceIds', () => {
         mention('ok'),
       ),
     );
-    expect(extractAtMentionedSourceIds(d)).toEqual(['ok']);
+    expect(extractAtMentionedSourceIds(d, [])).toEqual(['ok']);
   });
 });
 
@@ -210,6 +210,6 @@ describe('extractAtMentionedSourceIds with an optional mention (inner#1811, CAP-
   });
 
   it('keeps every mention when given no pool', () => {
-    expect(extractAtMentionedSourceIds(prompt)).toEqual(['product', 'person', 'still']);
+    expect(extractAtMentionedSourceIds(prompt, [])).toEqual(['product', 'person', 'still']);
   });
 });

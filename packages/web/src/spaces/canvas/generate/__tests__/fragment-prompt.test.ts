@@ -56,7 +56,7 @@ const pool = [
 describe('a shot read off its fragment', () => {
   it('says what it mentions, each once, in order', () => {
     const shot = fragmentOf(['Use ', chip('i1', 'image'), ' then ', chip('i2', 'image')], [chip('i1', 'image')]);
-    expect(mentionedSourceIds(shot)).toEqual(['i1', 'i2']);
+    expect(mentionedSourceIds(shot, [])).toEqual(['i1', 'i2']);
   });
 
   it('writes a media chip as its token and a text chip as its source words', () => {

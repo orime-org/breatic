@@ -34,25 +34,8 @@ import { heldBackBy, MENTION_OPTIONAL_ATTR, type ParagraphMention } from '@web/s
  */
 export function extractAtMentionedSourceIds(
   doc: JSONContent | undefined,
-  pool: ReadonlyArray<ReferenceRailItem> = [],
+  pool: ReadonlyArray<ReferenceRailItem>,
 ): string[] {
-  const ordered: string[] = [];
-  const seen = new Set<string>();
-  /**
-   * Recursively collects mention source ids into `ordered` (de-duped via `seen`).
-   * @param node - The current TipTap JSON node (undefined at a leaf).
-   */
-  const visit = (node: JSONContent | undefined): void => {
-    if (!node) return;
-    if (node.type === REFERENCE_MENTION_NODE) {
-      const id = node.attrs?.[MENTION_SOURCE_ID_ATTR];
-      if (typeof id === 'string' && id.length > 0 && !seen.has(id)) {
-        seen.add(id);
-        ordered.push(id);
-      }
-    }
-    node.content?.forEach(visit);
-  };
   /**
    * The mentions anywhere under a node.
    * @param node - The node.
@@ -62,14 +45,14 @@ export function extractAtMentionedSourceIds(
     node.type === REFERENCE_MENTION_NODE
       ? [{ id: node.attrs?.[MENTION_SOURCE_ID_ATTR], optional: node.attrs?.[MENTION_OPTIONAL_ATTR] }]
       : (node.content ?? []).flatMap(mentionsIn);
-  if (doc?.type === 'doc') {
-    for (const block of doc.content ?? []) {
-      if (heldBackBy(mentionsIn(block), pool).length === 0) visit(block);
-    }
-  } else {
-    visit(doc);
-  }
-  return ordered;
+  const blocks = doc?.type === 'doc' ? doc.content ?? [] : doc === undefined ? [] : [doc];
+  const ids = blocks
+    .map(mentionsIn)
+    .filter((mentions) => heldBackBy(mentions, pool).length === 0)
+    .flat()
+    .map((mention) => mention.id)
+    .filter((id): id is string => typeof id === 'string' && id.length > 0);
+  return [...new Set(ids)];
 }
 
 /** A reference-mention occurrence located in the prompt document. */
