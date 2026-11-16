@@ -45,9 +45,9 @@ import { compositionEndOf } from '@web/spaces/document/document-enter';
 import type { HandleEditor } from '@web/spaces/document/document-handle-commands';
 import {
   INSERT_ENTRY_IDS,
-  insertEntryGroup,
   insertEntryLook,
   insertReach,
+  ruleBetween,
   type InsertEntryId,
 } from '@web/spaces/document/document-insert-entries';
 import { COLUMNS, type InsertChoice, type TableSize } from '@web/spaces/document/document-insert-row';
@@ -532,7 +532,7 @@ function OpenSlashMenu({ editor, menu, trigger, query }: OpenSlashMenuProps): Re
               items.map((id, at) => {
                 const { Icon, labelKey } = insertEntryLook(id);
                 const out = reach.has(id);
-                const ruled = at > 0 && insertEntryGroup(items[at - 1] ?? id) !== insertEntryGroup(id);
+                const ruled = ruleBetween(items[at - 1], id);
                 return (
                   <React.Fragment key={id}>
                     {ruled ? <Separator className='-mx-1 w-auto' /> : null}

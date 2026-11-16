@@ -73,6 +73,16 @@ export function insertEntryGroup(id: InsertEntryId): string {
 }
 
 /**
+ * Whether a rule sits between two neighbouring entries of a menu.
+ * @param previous - The entry above, if any.
+ * @param id - The entry below.
+ * @returns True when they are in different groups.
+ */
+export function ruleBetween(previous: InsertEntryId | undefined, id: InsertEntryId): boolean {
+  return previous !== undefined && insertEntryGroup(previous) !== insertEntryGroup(id);
+}
+
+/**
  * How a pick acts on the row: it turns the row itself into the pick (the plus
  * menu, the slash menu on a line with no text) or adds a row below it (the
  * insert-below submenu, the slash menu on a line with text).
