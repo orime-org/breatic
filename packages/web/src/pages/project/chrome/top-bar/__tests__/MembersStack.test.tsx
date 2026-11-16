@@ -198,6 +198,8 @@ describe('MembersStack, following', () => {
     await user.click(view);
     expect(useFollowStore.getState().targetUserId).toBeNull();
     expect(toastMock.warning).toHaveBeenCalledWith(t('members.follow.busy', { name: 'Editor Person', other: 'Owner Person' }));
+    // Nothing happened, so the list stays open for the user to pick someone else.
+    expect(screen.getByTestId('members-popover')).toBeInTheDocument();
   });
 
   it('ellipsizes a long member name beside the View button', async () => {
@@ -232,6 +234,8 @@ describe('MembersStack, following', () => {
     await user.click(screen.getByTestId('members-follow-m-ed'));
     expect(useFollowStore.getState().targetUserId).toBeNull();
     expect(toastMock.warning).toHaveBeenCalledWith(t('members.follow.busyYou', { name: 'Editor Person' }));
+    // Nothing happened, so the list stays open for the user to pick someone else.
+    expect(screen.getByTestId('members-popover')).toBeInTheDocument();
   });
 
   it('shows each row online or offline', async () => {
@@ -251,17 +255,20 @@ describe('MembersStack, following', () => {
     expect(screen.queryByTestId('members-follow-m-vw')).toBeNull();
   });
 
-  it('starts following on View, and the row then offers Stop', async () => {
+  it('starts following on View and closes the list; the row then offers Stop, which closes it too', async () => {
     const user = userEvent.setup();
     render(<MembersStack members={MEMBERS} currentUserId='u-vw' currentUserRole='viewer' onlineUserIds={new Set(['u-vw', 'u-ed'])} />);
     await user.click(screen.getByTestId('members-trigger'));
     await user.click(screen.getByTestId('members-follow-m-ed'));
     expect(useFollowStore.getState().targetUserId).toBe('u-ed');
     expect(useFollowStore.getState().targetName).toBe('Editor Person');
+    expect(screen.queryByTestId('members-popover')).toBeNull();
+    await user.click(screen.getByTestId('members-trigger'));
     expect(screen.queryByTestId('members-follow-m-ed')).toBeNull();
     await user.click(screen.getByTestId('members-unfollow-m-ed'));
     expect(useFollowStore.getState().targetUserId).toBeNull();
     expect(useFollowStore.getState().stopped?.reason).toBe('button');
+    expect(screen.queryByTestId('members-popover')).toBeNull();
   });
 
   it('switches straight to another member when View is pressed on them', async () => {

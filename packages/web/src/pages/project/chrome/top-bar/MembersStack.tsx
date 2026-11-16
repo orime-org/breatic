@@ -95,6 +95,7 @@ export const MembersStack = React.forwardRef<
   const visible = members.slice(0, 2);
   const overflow = members.length - visible.length;
   const [open, setOpen] = React.useState(false);
+  const close = React.useCallback((): void => setOpen(false), []);
   const setActiveOverlayId = useUIStore((s) => s.setActiveOverlayId);
   const followedUserId = useFollowStore((s) => s.targetUserId);
   const titleId = React.useId();
@@ -222,6 +223,7 @@ export const MembersStack = React.forwardRef<
                 online={onlineUserIds.has(m.userId)}
                 followed={followedUserId === m.userId}
                 busyNotice={busyNotice(m)}
+                onFollowChanged={close}
               />
             </li>
           ))}
@@ -258,6 +260,7 @@ interface MemberRowProps {
   online: boolean;
   followed: boolean;
   busyNotice: string | null;
+  onFollowChanged: () => void;
 }
 
 /**
@@ -272,17 +275,25 @@ interface MemberRowProps {
  * @param root0.online - Whether the member is connected to this project.
  * @param root0.followed - Whether this user is following the member.
  * @param root0.busyNotice - Whom the member is following, said instead of following them; null when they follow nobody.
+ * @param root0.onFollowChanged - Called once View started following the member or Stop ended it.
  * @returns the popover member row.
  */
-function MemberRow({ member, isMe, online, followed, busyNotice }: MemberRowProps): React.JSX.Element {
+function MemberRow({ member, isMe, online, followed, busyNotice, onFollowChanged }: MemberRowProps): React.JSX.Element {
   const t = useTranslation();
   const { userId, name } = member;
   // Following is one level deep: a member who is following someone is not followed.
   const follow = React.useCallback((): void => {
-    if (busyNotice !== null) toast.warning(busyNotice);
-    else useFollowStore.getState().start(userId, name);
-  }, [userId, name, busyNotice]);
-  const unfollow = React.useCallback((): void => stopFollowing('button'), []);
+    if (busyNotice !== null) {
+      toast.warning(busyNotice);
+      return;
+    }
+    useFollowStore.getState().start(userId, name);
+    onFollowChanged();
+  }, [userId, name, busyNotice, onFollowChanged]);
+  const unfollow = React.useCallback((): void => {
+    stopFollowing('button');
+    onFollowChanged();
+  }, [onFollowChanged]);
   return (
     <div className='group flex items-center gap-2 rounded-chrome px-2 py-1.5 hover:bg-accent'>
       <StudioAvatar
