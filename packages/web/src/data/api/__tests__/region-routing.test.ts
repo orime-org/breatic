@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Where each request goes once the open Studio or Project lives in another
@@ -40,7 +40,8 @@ import { studiosApi } from '@web/data/api/studios';
 import { apiPost } from '@web/data/api/request';
 import { sendFileAndFinish } from '@web/data/upload/finish-upload';
 import type { UploadTicket } from '@web/data/upload/ingest-upload';
-import { chatSessionFor, evictAllChatSessions } from '@web/stores/chat-sessions';
+import { evictAllChatSessions } from '@web/stores/chat-sessions';
+import { chatApi } from '@web/data/api/chat';
 
 const TWO_REGIONS = parseRegionConfig(
   JSON.stringify({
@@ -134,45 +135,23 @@ describe('the streaming wrapper', () => {
 });
 
 describe('the Agent chat send', () => {
-  it('posts to the current region', async () => {
-    setCurrentRegion('sg');
-    const sent: string[] = [];
-    vi.stubGlobal('fetch', (url: string) => {
-      sent.push(String(url));
-      return Promise.resolve(new Response('', { status: 200, headers: { 'Content-Type': 'text/event-stream' } }));
-    });
-
-    const chat = chatSessionFor({
-      projectId: 'p-region',
-      conversationId: 'c-region',
-      history: [],
-      onTitled: () => undefined,
-      onFirstFrame: () => undefined,
-    });
-    await chat.sendMessage({ text: 'hello' });
-
-    expect(sent.at(-1)).toBe(`${SG}/chat/message`);
-  });
-
   it('posts to the region of its Project when another page is open', async () => {
     rememberProjectRegion('p-chat-sg', 'sg');
     setCurrentRegion(null);
-    const sent: string[] = [];
-    vi.stubGlobal('fetch', (url: string) => {
-      sent.push(String(url));
-      return Promise.resolve(new Response('', { status: 200, headers: { 'Content-Type': 'text/event-stream' } }));
-    });
 
-    const chat = chatSessionFor({
-      projectId: 'p-chat-sg',
-      conversationId: 'c-chat-sg',
-      history: [],
-      onTitled: () => undefined,
-      onFirstFrame: () => undefined,
-    });
-    await chat.sendMessage({ text: 'hello' });
+    await chatApi.sendMessage({ project_id: 'p-chat-sg', message: 'hello' }, 'key-1', 'p-chat-sg');
 
-    expect(sent.at(-1)).toBe(`${SG}/chat/message`);
+    expect(seen.at(-1)).toBe(`${SG}/chat/message`);
+  });
+
+  // A body over the request limit goes as a reference that names no Project.
+  it('posts a stored body to the region of its Project too', async () => {
+    rememberProjectRegion('p-chat-sg', 'sg');
+    setCurrentRegion(null);
+
+    await chatApi.sendMessage({ transfer: 'transfer/abc' }, 'key-2', 'p-chat-sg');
+
+    expect(seen.at(-1)).toBe(`${SG}/chat/message`);
   });
 });
 

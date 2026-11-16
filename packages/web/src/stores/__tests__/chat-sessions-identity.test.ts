@@ -1,49 +1,44 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * A chat message to a region goes out only once the identity token is fresh
- * (inner#1955): a tab that sat hidden past the token's minute would otherwise
- * send it with an expired token and have it refused.
+ * A conversation's run is read from its Project's region only once the
+ * identity token is fresh (inner#1955): the stream is not an axios request,
+ * so a region's `identity_expired` would not be retried, and a tab that sat
+ * hidden past the token's minute would have the read refused.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('@web/data/api/chat', () => ({
-  chatApi: {
-    streamConfig: vi.fn(async () => ({
-      heartbeatIntervalMs: 60_000,
-      attachmentMaxChars: 200_000,
-      attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200,
-    })),
+const TWO_REGIONS = vi.hoisted(() => ({
+  global: 'us-west',
+  regions: {
+    'us-west': { api: 'https://us.example.test/api/v1', collab: 'wss://us.example.test/ws' },
+    sg: { api: 'https://sg.example.test/api/v1', collab: 'wss://sg.example.test/ws' },
   },
 }));
-const order = vi.hoisted(() => [] as string[]);
-vi.mock('@web/data/upload/transfer-body', () => ({
-  bodyOrTransfer: vi.fn(async (_projectId: string, body: unknown) => {
-    order.push('upload');
-    return body;
-  }),
+vi.mock('@web/data/api/regions', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@web/data/api/regions')>()),
+  getRegionConfig: () => TWO_REGIONS,
 }));
 let freshen: () => void = () => undefined;
 const ensureFreshIdentity = vi.hoisted(() => vi.fn());
 vi.mock('@web/data/api/identity-renewal', () => ({ ensureFreshIdentity }));
 
-const { chatSessionFor, evictAllChatSessions, sendInSession } = await import('@web/stores/chat-sessions');
+const { chatSessionFor, evictAllChatSessions, readRun } = await import('@web/stores/chat-sessions');
+const { rememberProjectRegion } = await import('@web/data/api/regions');
 
 const OPENS_AND_ENDS = 'data: {"type":"start"}\n\ndata: {"type":"finish"}\n\ndata: [DONE]\n\n';
-let sent = 0;
+const read: string[] = [];
 const original = globalThis.fetch;
 
 beforeEach(() => {
   evictAllChatSessions();
-  sent = 0;
-  order.length = 0;
+  read.length = 0;
   ensureFreshIdentity.mockImplementation(() => new Promise<void>((resolve) => {
-    order.push('fresh');
     freshen = resolve;
   }));
-  globalThis.fetch = (() => {
-    sent += 1;
+  globalThis.fetch = ((url: string) => {
+    read.push(String(url));
     return Promise.resolve(new Response(OPENS_AND_ENDS, { status: 200, headers: { 'Content-Type': 'text/event-stream' } }));
   }) as typeof globalThis.fetch;
 });
@@ -53,27 +48,16 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('the identity token on a chat message', () => {
-  it('sends the message only after the token is fresh', async () => {
-    chatSessionFor({ projectId: 'p-1', conversationId: 'c-1', history: [], onTitled: () => undefined, onFirstFrame: () => undefined });
+describe('reading a run', () => {
+  it('opens the stream at the Project region only after the token is fresh', async () => {
+    rememberProjectRegion('p-sg', 'sg');
+    chatSessionFor({ projectId: 'p-sg', conversationId: 'c-1', history: [], onTitled: () => undefined });
 
-    const sending = sendInSession('c-1', 'hello');
+    const reading = readRun('c-1', () => undefined);
     await vi.waitFor(() => expect(ensureFreshIdentity).toHaveBeenCalled());
-    expect(sent).toBe(0);
+    expect(read).toEqual([]);
     freshen();
-    await sending;
-    expect(sent).toBe(1);
-  });
-
-  // An oversized body goes up through storage first, which can outlast the
-  // token; the check comes right before the message leaves.
-  it('checks the token after the body is uploaded', async () => {
-    chatSessionFor({ projectId: 'p-1', conversationId: 'c-1', history: [], onTitled: () => undefined, onFirstFrame: () => undefined });
-
-    const sending = sendInSession('c-1', 'hello');
-    await vi.waitFor(() => expect(ensureFreshIdentity).toHaveBeenCalled());
-    freshen();
-    await sending;
-    expect(order).toEqual(['upload', 'fresh']);
+    await reading;
+    expect(read).toEqual(['https://sg.example.test/api/v1/chat/conversations/c-1/stream']);
   });
 });

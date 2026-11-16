@@ -32,8 +32,9 @@ describe('sending to a conversation', () => {
     const answer = { status: 'queued', pending: [], running: true };
     apiPost.mockResolvedValueOnce(answer);
     const body = { id: 'm1', message: 'hi', project_id: 'p1', conversation_id: 'c1' };
-    expect(await chatApi.sendMessage(body, 'k1')).toBe(answer);
-    expect(apiPost).toHaveBeenCalledWith('/chat/message', body, { headers: { 'Idempotency-Key': 'k1' }, timeout: 0 });
+    expect(await chatApi.sendMessage(body, 'k1', 'p1')).toBe(answer);
+    // A single-region build keeps the one API base.
+    expect(apiPost).toHaveBeenCalledWith('/chat/message', body, { headers: { 'Idempotency-Key': 'k1' }, timeout: 0, baseURL: API_BASE_PATH });
   });
 });
 
