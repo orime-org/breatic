@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { createPortal } from 'react-dom';
-import { Frame } from 'lucide-react';
+import { Scan } from 'lucide-react';
 
 import { VIEWFINDER_RATIOS, type SceneCameraObject, type SceneCaptureConfig, type ViewfinderRatio } from '@breatic/shared';
 import { Button } from '@web/components/ui/button';
@@ -14,7 +14,6 @@ import type { ProjectSpace } from '@web/data/yjs/project-meta';
 import { useTranslation } from '@web/i18n/use-translation';
 import { readSpaceViewport } from '@web/lib/project-tabs-storage';
 import { cn } from '@web/lib/utils';
-import { OUTSIDE_DIM } from '@web/spaces/canvas/crop/crop-geometry';
 import { toast } from '@web/lib/toast';
 import { placeImageOnCanvas } from '@web/spaces/canvas/place-image-on-canvas';
 import { SceneIconButton } from '@web/spaces/three-d/SceneIconButton';
@@ -37,7 +36,7 @@ import type { ViewfinderAction, ViewfinderOutcome, ViewfinderState, ViewfinderTa
 import type { SceneFrameCapture } from '@web/spaces/three-d/viewport/scene-viewport-props';
 import { useCanvasRevealStore } from '@web/stores/canvas-reveal';
 
-const frameIcon = <Frame className='size-4' />;
+const frameIcon = <Scan className='size-4' />;
 const CORNERS: readonly ViewfinderCorner[] = ['nw', 'ne', 'sw', 'se'];
 const CORNER_POSITION: Readonly<Record<ViewfinderCorner, string>> = {
   nw: '-left-[5px] -top-[5px] cursor-nwse-resize',
@@ -357,7 +356,7 @@ export const SceneViewfinder = React.memo(function SceneViewfinder(props: SceneV
     {trigger}
     {/* Beneath the floating toolbars (z-10), so they stay readable while the scene is dimmed. */}
     <div className='pointer-events-none absolute inset-0 z-[5] overflow-hidden'>
-      <div data-testid='scene-viewfinder-frame' className='absolute border border-active-border' style={{ ...frameStyle, boxShadow: `0 0 0 9999px ${OUTSIDE_DIM}` }}>
+      <div data-testid='scene-viewfinder-frame' className='absolute border border-active-border' style={{ ...frameStyle, boxShadow: '0 0 0 9999px var(--viewfinder-shade)' }}>
         {cornersShown ? CORNERS.map((corner) => <span key={corner} data-testid={`scene-viewfinder-corner-${corner}`} data-corner={corner}
           data-shape={ratioValue === null ? 'round' : 'square'}
           className={cn('pointer-events-auto absolute size-2.5 touch-none border border-active-border bg-background before:absolute before:-inset-[7px] before:content-[""]', ratioValue === null ? 'rounded-full' : 'rounded-none', CORNER_POSITION[corner])}
