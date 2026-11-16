@@ -36,7 +36,7 @@
  */
 
 import { initConfiguredProvider } from "@breatic/integration-tests/provider";
-import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, inject, it, vi } from "vitest";
 import crypto from "node:crypto";
 import { mkdtempSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -44,8 +44,8 @@ import { join } from "node:path";
 import fc from "fast-check";
 import postgres from "postgres";
 import { Worker, type Job, type Queue } from "bullmq";
-import { canvasSpaceDocName } from "@breatic/shared";
-import { createQueue, getNodeTaskConfig, getStreamRedis, getWorkerConfig, initCore, initLogger, loadLocales, REPORT_GRACE_MS, taskEventsStreamKey, timelineExecutionRepo } from "@breatic/core";
+import { canvasSpaceDocName, spaceTasksChangedChannel } from "@breatic/shared";
+import { createQueue, env, getNodeTaskConfig, getStreamRedis, getWorkerConfig, initCore, initLogger, loadLocales, REPORT_GRACE_MS, taskEventsStreamKey, timelineExecutionRepo } from "@breatic/core";
 import { nodeTaskService, runningSlotService, sceneTaskService, taskService } from "@breatic/domain";
 import { cleanupFailedJobNodes } from "@worker/handlers/failed-job-cleanup.js";
 import { finishFailedRun, runTask, type TaskJobData } from "@worker/handlers/dispatch.js";
@@ -915,6 +915,28 @@ describe("G the node's counts event says how many wait", () => {
     await sql`update tasks set status = 'completed', completed_at = now() where user_id = ${p.userId} and status = 'running'`;
     expect(await pick(t.taskId)).toEqual({ started: true });
     expect((await countsEvents(p, t.nodeId!)).at(-1)).toMatchObject({ running: 1, waiting: 0 });
+  });
+});
+
+describe("G a 3D Space's waiting row tells the Space's list", () => {
+  it("first waiting and starting each signal the Space's tasks changed", async () => {
+    const p = await person();
+    await running(p, 2);
+    const t = await seedTask(p, { scene: true });
+    const channel = spaceTasksChangedChannel(env.REDIS_KEY_PREFIX, p.projectId);
+    const publish = vi.spyOn(getStreamRedis(), "publish");
+    try {
+      const signals = (): number => publish.mock.calls.filter(([published]) => published === channel).length;
+      expect(await pick(t.taskId)).toMatchObject({ waiting: true });
+      expect(signals()).toBe(1);
+      expect(await pick(t.taskId)).toMatchObject({ waiting: true });
+      expect(signals()).toBe(1);
+      await sql`update tasks set status = 'completed', completed_at = now() where user_id = ${p.userId} and status = 'running'`;
+      expect(await pick(t.taskId)).toEqual({ started: true });
+      expect(signals()).toBe(2);
+    } finally {
+      publish.mockRestore();
+    }
   });
 });
 
