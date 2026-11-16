@@ -377,6 +377,20 @@ export async function renewOperation(key: string): Promise<void> {
 }
 
 /**
+ * Keep an operation admitted for a task in flight, with its overage hold,
+ * while the task waits for a free running slot (inner#1968): only a reserved
+ * row expiring before `dueBefore` is written.
+ * @param key - Its key.
+ * @param until - The new expiry.
+ * @param dueBefore - Renew only what expires before this moment.
+ * @param tx - The gate's transaction.
+ * @throws {Error} When the database fails.
+ */
+export async function extendInFlight(key: string, until: Date, dueBefore: Date, tx: DbTx): Promise<void> {
+  if (await operationRepo.extend(key, until, dueBefore, tx)) await creditHoldRepo.extendHold(`operation:${key}`, until, tx);
+}
+
+/**
  * Count every derived upload no live operation claimed before it expired
  * (design 3.2.1), each in its own transaction under its account lock, in the
  * period of this moment; settle the overage charges this files.

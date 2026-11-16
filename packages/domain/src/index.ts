@@ -61,6 +61,8 @@ export * as studioMembersRepo from "@domain/auth/studioMembers.repo.js";
 // ── Task (+ markCompletedAndBill: completion and charge request in one commit) ─
 export * as taskService from "@domain/task/task.service.js";
 export * as taskRepo from "@domain/task/task.repo.js";
+export * as runningSlotService from "@domain/task/running-slot.service.js";
+export { StillRunning } from "@domain/task/still-running.js";
 export * as upstreamStepRepo from "@domain/task/upstreamStep.repo.js";
 export * as upstreamCloneRepo from "@domain/task/upstreamClone.repo.js";
 

@@ -49,8 +49,8 @@ export interface NodeTaskRow {
   nodeHistoryId: string | null;
   /** The registered model a Space-level row holds; null everywhere else. */
   assetId: string | null;
-  /** Since when its task waits for a free running slot; null once it runs (inner#1968). */
-  waitingSince: Date | null;
+  /** Since when its task waits for a free running slot; null once it runs (inner#1968). Every read sets it. */
+  waitingSince?: Date | null;
 }
 
 /** A 3D Space's own row (inner#1690, inner#1691), as its list and its actions read it. */
@@ -615,4 +615,54 @@ export async function softDeleteSceneTask(taskId: string): Promise<boolean> {
     )
     .returning({ id: nodeTasks.id });
   return rows.length === 1;
+}
+
+/** Where a row of one task sits: its node, or none for a 3D Space's own row. */
+export interface TaskRowPlace {
+  id: string;
+  projectId: string;
+  spaceId: string;
+  nodeId: string | null;
+}
+
+/**
+ * Mark every running row of a task as waiting for a free running slot, keeping
+ * a row that already waits as it is (inner#1968).
+ * @param taskId - The AIGC job.
+ * @param tx - The gate's transaction.
+ * @returns The rows this call marked.
+ */
+export async function markWaiting(taskId: string, tx: DbTx): Promise<TaskRowPlace[]> {
+  return tx
+    .update(nodeTasks)
+    .set({ waitingSince: sql`now()` })
+    .where(and(eq(nodeTasks.taskId, taskId), eq(nodeTasks.status, "running"), isNull(nodeTasks.waitingSince)))
+    .returning({ id: nodeTasks.id, projectId: nodeTasks.projectId, spaceId: nodeTasks.spaceId, nodeId: nodeTasks.nodeId });
+}
+
+/**
+ * Start the waiting rows of a task: they stop waiting and count their budget
+ * from now (inner#1968).
+ * @param taskId - The AIGC job.
+ * @param tx - The gate's transaction.
+ * @returns The rows this call started.
+ */
+export async function startWaiting(taskId: string, tx: DbTx): Promise<TaskRowPlace[]> {
+  return tx
+    .update(nodeTasks)
+    .set({ waitingSince: null, startedAt: sql`now()` })
+    .where(and(eq(nodeTasks.taskId, taskId), eq(nodeTasks.status, "running"), sql`${nodeTasks.waitingSince} is not null`))
+    .returning({ id: nodeTasks.id, projectId: nodeTasks.projectId, spaceId: nodeTasks.spaceId, nodeId: nodeTasks.nodeId });
+}
+
+/**
+ * The rows of one task still running, on nodes or on a 3D Space.
+ * @param taskId - The AIGC job.
+ * @returns Each row's place.
+ */
+export async function listRunningForTask(taskId: string): Promise<TaskRowPlace[]> {
+  return db
+    .select({ id: nodeTasks.id, projectId: nodeTasks.projectId, spaceId: nodeTasks.spaceId, nodeId: nodeTasks.nodeId })
+    .from(nodeTasks)
+    .where(and(eq(nodeTasks.taskId, taskId), eq(nodeTasks.status, "running"), isNull(nodeTasks.deletedAt)));
 }

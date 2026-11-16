@@ -36,6 +36,10 @@ const workerConfigSchema = z.object({
   slot_wait_max_delay_ms: z.number().int().positive().default(30_000),
   /** How often the sweep that releases tasks still waiting for a slot runs. */
   slot_wait_sweep_interval_ms: z.number().int().positive().default(60_000),
+  /** How many stale waiters one round of that sweep looks at. */
+  slot_wait_sweep_batch_size: z.number().int().positive().default(200),
+  /** How long a pickup tries for the person's running-task gate lock before going back to the queue. */
+  slot_lock_wait_ms: z.number().int().nonnegative().default(200),
   /** The sweep that settles charge requests still pending (inner#1617). */
   credit_charge_sweep: z
     .object({

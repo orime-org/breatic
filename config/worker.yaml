@@ -70,6 +70,12 @@ slot_wait_stale_ms: 120000
 slot_wait_max_delay_ms: 30000
 # How often the sweep for tasks still waiting runs.
 slot_wait_sweep_interval_ms: 60000
+# How many stale waiters one round of that sweep looks at.
+slot_wait_sweep_batch_size: 200
+# How long a pickup tries for the person's gate lock, held only for the
+# milliseconds another pickup of theirs counts, before it goes back to the
+# queue for one poll interval without writing anything.
+slot_lock_wait_ms: 200
 
 
 # ── Credit charge sweep (inner#1617) ──────────────
