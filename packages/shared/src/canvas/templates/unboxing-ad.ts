@@ -14,7 +14,7 @@ export const UNBOXING_AD: GenerationTemplate = {
   inputs: [{ key: "product", type: "image" }],
   steps: [],
   agentNote:
-    "a 25-second vertical unboxing in five timed parts (the package, opening it, taking the product out, its details, using it), starting on the package; the product kept as in the photo; the user fills in what the package looks like",
+    "a 25-second vertical unboxing in five timed parts (the package, opening it, taking the product out, its details, using it), starting on the package; the product kept as in the photo; the user fills in what the package looks like and the two details shown in close-up",
   goal: "ecommerce",
   triggers: {
     asks: ["an unboxing video"],
