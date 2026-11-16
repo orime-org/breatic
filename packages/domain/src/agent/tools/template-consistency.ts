@@ -16,9 +16,9 @@
 import {
   keyStanding,
   matchTemplateInstance,
+  promptLines,
   templateSkeleton,
   type CanvasProposal,
-  type PromptSegment,
   type TemplateGraphNode,
   type TemplateInstanceMatch,
   type TemplateNodeKey,
@@ -287,22 +287,6 @@ export function optionalInputRefs(instances: readonly AnchoredInstance[]): Map<n
 }
 
 /**
- * The refs of one run of words, paragraph by paragraph: a line break in a
- * text segment starts the next paragraph, as the box lays the words out.
- * @param words - The words.
- * @returns Each paragraph's refs.
- * @throws {never} Never.
- */
-function refsByParagraph(words: readonly PromptSegment[]): number[][] {
-  const paragraphs: number[][] = [[]];
-  for (const segment of words) {
-    if (segment.ref !== undefined) paragraphs[paragraphs.length - 1]?.push(segment.ref);
-    else if (segment.text !== undefined) for (let i = 0; i < segment.text.split("\n").length - 1; i += 1) paragraphs.push([]);
-  }
-  return paragraphs;
-}
-
-/**
  * Whether every optional input of each anchored template stands as the panel
  * can leave it out (inner#1811, CAP-9): its node carries its input tag, which
  * alone tells an empty node from another input's, and every ref to it stands
@@ -332,7 +316,7 @@ export function checkOptionalInputs(proposal: CanvasProposal, instances: readonl
     const node = proposal.nodes[generation];
     if (node === undefined) continue;
     const runs = [...(node.prompt === undefined ? [] : [node.prompt]), ...(node.shots ?? []).map((shot) => shot.prompt)];
-    for (const paragraph of runs.flatMap(refsByParagraph)) {
+    for (const paragraph of runs.flatMap((words) => promptLines(words).map((line) => line.flatMap((segment) => (segment.ref === undefined ? [] : [segment.ref]))))) {
       const held = paragraph.find((ref) => optional.has(ref));
       const other = paragraph.find((ref) => ref !== held);
       if (held === undefined || other === undefined) continue;

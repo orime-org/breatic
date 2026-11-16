@@ -272,6 +272,7 @@ export {
   proposalWordRuns,
   markReadsBack,
   markText,
+  promptLines,
   writtenMark,
   markedSegments,
   marksTypedIn,

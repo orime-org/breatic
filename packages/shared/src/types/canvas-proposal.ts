@@ -95,6 +95,31 @@ export function markText(slot: NonNullable<PromptSegment["slot"]>): string {
 }
 
 /**
+ * A prompt's lines as the box lays them out: a line break in words or in a
+ * mark's text starts the next line, a ref stays in the line it is written
+ * in, and a note is left out (it lands above the words). The canvas writes
+ * the box from these lines and the proposal check judges paragraphs by them
+ * (inner#1811), so the two cannot split a prompt differently.
+ * @param segments - The prompt as the model or a template wrote it.
+ * @returns Each line's words and refs, a mark's text as words.
+ * @throws {never} Never.
+ */
+export function promptLines(segments: readonly PromptSegment[]): PromptSegment[][] {
+  const lines: PromptSegment[][] = [[]];
+  for (const segment of segments) {
+    if (segment.slot?.kind === "note") continue;
+    if (segment.ref !== undefined) {
+      lines[lines.length - 1]?.push(segment);
+      continue;
+    }
+    const [first = "", ...rest] = (segment.slot === undefined ? segment.text : markText(segment.slot)).split("\n");
+    lines[lines.length - 1]?.push({ text: first });
+    for (const next of rest) lines.push([{ text: next }]);
+  }
+  return lines;
+}
+
+/**
  * Whether a mark written as words reads back as the same mark: a label
  * holding the bracket that closes its kind would read back cut short, and one
  * holding a line break is split across two paragraphs by the box.

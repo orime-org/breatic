@@ -20,7 +20,7 @@
 
 import * as Y from 'yjs';
 
-import { markText, type CanvasProposal, type NodeType, type PromptSegment } from '@breatic/shared';
+import { promptLines, type CanvasProposal, type NodeType, type PromptSegment } from '@breatic/shared';
 
 import { PROMPT_NOTE_LABEL_ATTR, PROMPT_NOTE_NODE } from '@web/features/prompt-note/prompt-note';
 import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
@@ -90,27 +90,23 @@ type Part = string | ProposalMention;
  * @throws {never} Never.
  */
 function layOut(segments: readonly PromptSegment[], mentionOf: MentionOf): { notes: string[]; lines: Part[][] } {
-  const notes: string[] = [];
-  const lines: Part[][] = [[]];
-  for (const segment of segments) {
-    if (segment.slot?.kind === 'note') {
-      notes.push(segment.slot.label);
-      continue;
+  const notes = segments.flatMap((segment) => (segment.slot?.kind === 'note' ? [segment.slot.label] : []));
+  const lines = promptLines(segments).map((line) => {
+    const parts: Part[] = [];
+    for (const segment of line) {
+      if (segment.ref !== undefined) {
+        const mention = mentionOf(segment.ref);
+        if (mention) parts.push(segment.optional === true ? { ...mention, optional: true } : mention);
+        continue;
+      }
+      // Words running on from words join them: the schema holds a line's text
+      // as one run between mentions.
+      const last = parts[parts.length - 1];
+      if (typeof last === 'string') parts[parts.length - 1] = last + (segment.text ?? '');
+      else parts.push(segment.text ?? '');
     }
-    if (segment.ref !== undefined) {
-      const mention = mentionOf(segment.ref);
-      if (mention) lines[lines.length - 1]?.push(segment.optional === true ? { ...mention, optional: true } : mention);
-      continue;
-    }
-    const [first = '', ...rest] = (segment.slot ? markText(segment.slot) : segment.text).split('\n');
-    // Words running on from words join them: the schema holds a line's text
-    // as one run between mentions.
-    const line = lines[lines.length - 1] ?? [];
-    const last = line[line.length - 1];
-    if (typeof last === 'string') line[line.length - 1] = last + first;
-    else line.push(first);
-    for (const next of rest) lines.push([next]);
-  }
+    return parts;
+  });
   return { notes, lines };
 }
 
