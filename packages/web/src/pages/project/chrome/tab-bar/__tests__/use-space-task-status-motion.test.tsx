@@ -32,13 +32,14 @@ const SPACE = '70000000-0000-4000-8000-000000000001';
 const clients: QueryClient[] = [];
 
 /**
- * A page of the in-progress group with these totals.
+ * A page of the in-progress group with these totals, holding that many rows as the server answers it.
  * @param inProgress - How many executions are still in progress.
  * @returns The page.
  * @throws {never} Never.
  */
 function page(inProgress: number): SpaceExecutionPage {
-  return { rows: [], nextCursor: null, totals: { done: 3, inProgress } };
+  const rows = Array.from({ length: inProgress }, (_, index) => ({ id: `90000000-0000-4000-8000-00000000000${index}`, status: 'running' }));
+  return { rows: rows as unknown as SpaceExecutionPage['rows'], nextCursor: null, totals: { done: 3, inProgress } };
 }
 
 /**

@@ -50,17 +50,18 @@ export function motionListQueryKey(projectId: string, spaceId: string, scope: Sp
  * @param scope - Which list.
  * @param group - Which tab.
  * @param refreshMs - The polling interval for an unfinished list.
+ * @param enabled - Whether to read it.
  * @returns The query.
  * @throws {never} Never.
  */
-function useMotionList(projectId: string, spaceId: string, scope: SpaceExecutionQuery['scope'], group: MotionTab, refreshMs: number | undefined): ListQuery {
+export function useMotionList(projectId: string, spaceId: string, scope: SpaceExecutionQuery['scope'], group: MotionTab, refreshMs: number | undefined, enabled = true): ListQuery {
   const queryKey = React.useMemo(() => motionListQueryKey(projectId, spaceId, scope, group), [projectId, spaceId, scope, group]);
   const queryFn = React.useCallback(({ pageParam, signal }: { pageParam: string | undefined; signal: AbortSignal }) =>
     timelineApi.listSpaceExecutions({ projectId, spaceId, scope, group, cursor: pageParam }, signal), [projectId, spaceId, scope, group]);
   const refetchInterval = React.useCallback((query: { state: { data?: InfiniteData<SpaceExecutionPage, string | undefined> } }): number | false =>
     group === 'running' && refreshMs !== undefined && (query.state.data?.pages[0]?.rows.length ?? 0) > 0 ? refreshMs : false, [group, refreshMs]);
   return useInfiniteQuery({
-    queryKey, queryFn, refetchInterval,
+    queryKey, queryFn, refetchInterval, enabled,
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (page) => page.nextCursor ?? undefined,
   });
