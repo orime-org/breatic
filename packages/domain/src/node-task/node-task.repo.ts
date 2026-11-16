@@ -24,6 +24,8 @@ export interface NodeTaskCounts {
   running: number;
   /** Of `running`, the rows waiting for a free running slot (inner#1968). */
   waiting: number;
+  /** The running-task limit the earliest waiting row's task waits under; absent while nothing waits (design 21 row 22). */
+  waitingLimit?: number;
   done: number;
   failed: number;
   expired: number;
