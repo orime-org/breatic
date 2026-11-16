@@ -111,6 +111,14 @@ describe('transitionAnnotationDraft — writing', () => {
     expect(step(offline, { type: 'reconnect' }).state).toEqual(writing('A'));
   });
 
+  it('answers a connection state it already holds with the same draft, so a repeated notice renders nothing', () => {
+    const online = writing('A');
+    expect(step(online, { type: 'reconnect' })).toEqual({ state: online, effects: [] });
+    expect(step(online, { type: 'reconnect' }).state).toBe(online);
+    const offline = writing('A', { disconnected: true });
+    expect(step(offline, { type: 'disconnect' }).state).toBe(offline);
+  });
+
   it('drops the draft on leaving', () => {
     expect(step(writing('A'), { type: 'leave' }).state).toEqual(IDLE);
   });

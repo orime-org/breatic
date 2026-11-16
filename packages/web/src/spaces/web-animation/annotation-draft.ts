@@ -98,8 +98,8 @@ export function transitionAnnotationDraft(state: AnnotationDraftState, event: An
           };
         }
         case 'cancel': case 'switch_result': return closeWriting(state, event.confirmed);
-        case 'disconnect': return { state: { ...state, disconnected: true }, effects: [] };
-        case 'reconnect': return { state: { ...state, disconnected: false }, effects: [] };
+        case 'disconnect': return state.disconnected ? stay : { state: { ...state, disconnected: true }, effects: [] };
+        case 'reconnect': return state.disconnected ? { state: { ...state, disconnected: false }, effects: [] } : stay;
         case 'leave': return IDLE;
         default: return stay;
       }

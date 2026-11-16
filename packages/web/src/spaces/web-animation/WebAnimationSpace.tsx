@@ -363,6 +363,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   // Playback over the shown result.
   const durationSeconds = row === undefined ? 0 : rowSeconds(row);
   const clock = useMotionClock(row?.status === 'succeeded' ? durationSeconds : 0, selectedId);
+  const { pause: pauseClock } = clock;
   const fps = row === undefined ? { num: 24, den: 1 } : row.input.fps;
   const frame = Math.min(Math.round(clock.time * fps.num / fps.den), Math.max(0, Math.round(durationSeconds * fps.num / fps.den) - 1));
 
@@ -464,7 +465,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
     annotationRef.current = state;
     setAnnotation(state);
     for (const effect of effects) {
-      if (effect.type === 'pause') clock.pause();
+      if (effect.type === 'pause') pauseClock();
       if (effect.type === 'toast_disconnected') toast.warning(t('spaces.webAnimation.annotationDisconnected'));
       if (effect.type === 'toast_failed' && effect.reason !== 'space_full') toast.error(t('spaces.webAnimation.annotationFailed'));
       if (effect.type === 'confirm_discard') setDiscardAsked(event.type === 'switch_result' ? 'switch_result' : 'cancel');
@@ -475,7 +476,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
         }, (err: unknown) => annotate({ type: 'write_failed', reason: err instanceof SpaceFullError ? 'space_full' : 'failed' }));
       }
     }
-  }, [clock, store, t]);
+  }, [pauseClock, store, t]);
   React.useEffect(() => { annotate(docReady ? { type: 'reconnect' } : { type: 'disconnect' }); }, [docReady, annotate]);
   const addAnnotation = React.useCallback((): void => {
     if (selectedId !== null) {

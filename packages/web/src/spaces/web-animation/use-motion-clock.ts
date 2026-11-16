@@ -60,5 +60,5 @@ export function useMotionClock(durationSeconds: number, resultKey: string | null
     setPlaying(false);
     setTime(Math.min(Math.max(0, seconds), durationSeconds));
   }, [durationSeconds]);
-  return { time, playing, toggle, pause, seek };
+  return React.useMemo(() => ({ time, playing, toggle, pause, seek }), [time, playing, toggle, pause, seek]);
 }
