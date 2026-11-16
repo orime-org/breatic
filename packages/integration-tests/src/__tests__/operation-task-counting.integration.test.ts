@@ -264,7 +264,7 @@ describe("B.1 server mini-tools, understanding and transcription", () => {
 
   it("B-09 an 8x8 grid is one run on the server: one operation, 64 rows of one task, no uploads and nothing charged", async () => {
     const a = await seedAccount(sql);
-    const body = gridBody(a, 8, 8, "https://assets.example.test/source.png");
+    const body = gridBody(a, 8, 8, (await seedAsset(sql, a.studioId, a.userId)).url);
     const taskId = await start(a, "/mini-tools", body);
     const rows = await sql<{ task_id: string }[]>`select task_id from node_tasks where node_id in ${sql(body.node_ids as string[])}`;
     expect(rows).toHaveLength(64);
@@ -279,7 +279,7 @@ describe("B.1 server mini-tools, understanding and transcription", () => {
 
   it("B-10 a grid runs with no credits at all, charges nothing and counts once", async () => {
     const a = await seedAccount(sql, { credits: 0 });
-    const taskId = await start(a, "/mini-tools", gridBody(a, 2, 2, "https://assets.example.test/source.png"));
+    const taskId = await start(a, "/mini-tools", gridBody(a, 2, 2, (await seedAsset(sql, a.studioId, a.userId)).url));
     await succeed(taskId);
     expect((await ledgerRow(sql, `task:${taskId}`))?.status).toBe("counted");
     expect(Number((await creditHoldService.getCreditPosition(a.studioId)).spendable)).toBe(0);
@@ -287,7 +287,7 @@ describe("B.1 server mini-tools, understanding and transcription", () => {
 
   it("B-11 a grid runs in a studio that owes 3, which still owes 3 after", async () => {
     const a = await seedAccount(sql, { credits: 0, debt: 3 });
-    const taskId = await start(a, "/mini-tools", gridBody(a, 2, 2, "https://assets.example.test/source.png"));
+    const taskId = await start(a, "/mini-tools", gridBody(a, 2, 2, (await seedAsset(sql, a.studioId, a.userId)).url));
     await succeed(taskId);
     expect((await ledgerRow(sql, `task:${taskId}`))?.status).toBe("counted");
     expect(Number((await creditHoldService.getCreditPosition(a.studioId)).spendable)).toBeCloseTo(-3, 6);
