@@ -5,7 +5,7 @@ import * as React from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ThreadData } from '@blocknote/core/comments';
 import {
-  Check, CircleSlash, Clapperboard, Dot, Download, Ellipsis, LayoutGrid, List, LoaderCircle, MessageSquare,
+  Check, CircleSlash, Dot, Download, Ellipsis, LayoutGrid, List, LoaderCircle, MessageSquare,
   MessageSquarePlus, Pause, Pencil, Play, Plus, RotateCcw, Undo2, Upload, Video, X,
 } from 'lucide-react';
 import { formatCredits, getLocale, newId } from '@breatic/shared';
@@ -638,7 +638,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
         count={lists.totals.inProgress} onClick={toggleExecutions} />
       <BarButton testId='motion-open-annotations' label={t('spaces.webAnimation.annotations')} icon={<MessageSquare className='size-4' />} pressed={panels.panel === 'annotations'}
         count={docReady ? unresolvedCount : 0} onClick={toggleAnnotations} loading={!docReady} />
-      {!readOnly && <BarButton testId='motion-new' label={t('spaces.webAnimation.new')} icon={<Clapperboard className='size-4' />} onClick={openNew} />}
+      {!readOnly && <BarButton testId='motion-new' label={t('spaces.webAnimation.new')} icon={<Plus className='size-4' />} onClick={openNew} />}
     </div>
     <AlertDialog open={discardAsked !== null} onOpenChange={keepWriting}>
       <AlertDialogContent>

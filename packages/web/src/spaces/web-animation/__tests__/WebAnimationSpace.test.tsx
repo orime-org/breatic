@@ -121,6 +121,13 @@ describe('the bottom bar', () => {
     }
   });
 
+  it('draws New as a plus, apart from the Space type\'s own icon', async () => {
+    show();
+    const button = await screen.findByTestId('motion-new');
+    expect(button.querySelector('svg.lucide-plus')).not.toBeNull();
+    expect(button.querySelector('svg.lucide-clapperboard')).toBeNull();
+  });
+
   it('has no top bar above the preview', async () => {
     show();
     await screen.findByTestId('motion-bottom-bar');
