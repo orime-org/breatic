@@ -73,38 +73,87 @@ export interface FrameColour {
   primaries: string;
   range: "tv" | "pc";
   chromaLocation: string;
-  odd: { format: string; alpha: boolean; width: number; height: number; padWidth: boolean; padHeight: boolean } | null;
+  odd: OddFrames | null;
+  /** The display turn the graph applies itself on full-chroma frames, with autorotate off; null when FFmpeg's autorotate turns them. */
+  turn: string | null;
+}
+/**
+ * How odd-sided planar subsampled frames reach the graph: their planar format (alpha included when the decoder hands it out),
+ * their size there, the directions their chroma is subsampled in, the directions FFmpeg's autorotate reversed (whose chroma
+ * grid then starts at the far edge, so the even frame is padded at the near one).
+ */
+export interface OddFrames {
+  format: string;
+  alpha: boolean;
+  width: number;
+  height: number;
+  hsub: boolean;
+  vsub: boolean;
+  leadX: boolean;
+  leadY: boolean;
 }
 // The plan's matrix names (physical-video-probe.ts) as zscale spells them.
 const ZSCALE_MATRICES: Readonly<Record<string, string>> = { bt709: "709", bt601: "170m", bt2020nc: "2020_ncl" };
 
 /**
- * An odd-sided planar subsampled frame as an even one (§4.3 odd-size row): its luma (and alpha) plane padded to the even size
- * in the subsampled directions and its chroma planes as decoded, so every conversion that follows places each chroma sample
- * as on an even frame. The merged frame carries no colour tags; its readers name the matrix and range.
- * @param odd - The frame's planar format and upright size.
+ * Odd-sided planar subsampled frames as even ones (§4.3 odd-size row): taken to their planned size (a mid-stream size change
+ * keeps the graph's sizes), then every plane padded to the even frame's plane size: luma and alpha in both directions, chroma
+ * only where it is not subsampled, so the decoded chroma samples cover the pixels they cover on an even frame. Padding goes at
+ * the near edge of a direction autorotate reversed. The merged frame carries no colour tags; its readers name matrix and range.
+ * @param odd - How the frames reach the graph.
  * @param label - A label prefix unique within the graph.
  * @param keepAlpha - Whether an alpha plane is carried.
  * @returns The filter chain text, ending on the even frame.
  * @throws {never} Never.
  */
-function evenPlanes(odd: NonNullable<FrameColour["odd"]>, label: string, keepAlpha: boolean): string {
+function evenPlanes(odd: OddFrames, label: string, keepAlpha: boolean): string {
   const [width, height] = evenSize(odd);
+  const [x, y] = evenOffset(odd);
   const alpha = keepAlpha && odd.alpha;
   const format = alpha ? odd.format : odd.format.replace(/^yuva/u, "yuv");
-  return `extractplanes=y+u+v${alpha ? "+a" : ""}[${label}y][${label}u][${label}v]${alpha ? `[${label}a]` : ""};` +
-    `[${label}y]pad=${width}:${height}[${label}p];${alpha ? `[${label}a]pad=${width}:${height}[${label}q];` : ""}` +
-    `[${label}p][${label}u][${label}v]${alpha ? `[${label}q]` : ""}mergeplanes=map0s=0:map0p=0:map1s=1:map1p=0:map2s=2:map2p=0${alpha ? ":map3s=3:map3p=0" : ""}:format=${format}`;
+  // A full-chroma direction's padding repeats the edge: swscale's chroma filter there reaches past the last column or row.
+  const [left, right, top, bottom] = [x, width - odd.width - x, y, height - odd.height - y];
+  const smear = (h: boolean, v: boolean): string =>
+    `fillborders=left=${h ? left : 0}:right=${h ? right : 0}:top=${v ? top : 0}:bottom=${v ? bottom : 0}:mode=smear`;
+  const chroma = (plane: string): string => (odd.hsub || odd.width % 2 === 0) && (odd.vsub || odd.height % 2 === 0) ? ""
+    : `[${label}${plane}]pad=${odd.hsub ? width / 2 : width}:${odd.vsub ? height / 2 : height}:${odd.hsub ? 0 : x}:${odd.vsub ? 0 : y},${smear(!odd.hsub, !odd.vsub)}[${label}${plane}p];`;
+  const [u, v] = [chroma("u"), chroma("v")];
+  const full = `pad=${width}:${height}:${x}:${y},${smear(true, true)}`;
+  return `scale=${odd.width}:${odd.height},format=${odd.format},extractplanes=y+u+v${alpha ? "+a" : ""}[${label}y][${label}u][${label}v]${alpha ? `[${label}a]` : ""};` +
+    `[${label}y]${full}[${label}p];${alpha ? `[${label}a]${full}[${label}q];` : ""}${u}${v}` +
+    `[${label}p][${label}u${u === "" ? "" : "p"}][${label}v${v === "" ? "" : "p"}]${alpha ? `[${label}q]` : ""}` +
+    `mergeplanes=map0s=0:map0p=0:map1s=1:map1p=0:map2s=2:map2p=0${alpha ? ":map3s=3:map3p=0" : ""}:format=${format}`;
 }
 
 /**
- * The size an odd-sided frame's planes are padded to: even in its subsampled directions.
- * @param odd - The frame's upright size and subsampled directions.
+ * The even size odd frames are padded to.
+ * @param odd - How the frames reach the graph.
  * @returns The width and height.
  * @throws {never} Never.
  */
-function evenSize(odd: NonNullable<FrameColour["odd"]>): [number, number] {
-  return [odd.width + (odd.padWidth ? odd.width % 2 : 0), odd.height + (odd.padHeight ? odd.height % 2 : 0)];
+function evenSize(odd: OddFrames): [number, number] {
+  return [odd.width + odd.width % 2, odd.height + odd.height % 2];
+}
+
+/**
+ * Where the odd frames sit in their even frame: one pixel in on a reversed odd direction.
+ * @param odd - How the frames reach the graph.
+ * @returns The x and y offsets.
+ * @throws {never} Never.
+ */
+function evenOffset(odd: OddFrames): [number, number] {
+  return [odd.leadX ? odd.width % 2 : 0, odd.leadY ? odd.height % 2 : 0];
+}
+
+/**
+ * The odd frames cropped back out of their even frame.
+ * @param odd - How the frames reach the graph.
+ * @returns The filter chain text.
+ * @throws {never} Never.
+ */
+function oddBack(odd: OddFrames): string {
+  const [x, y] = evenOffset(odd);
+  return `crop=${odd.width}:${odd.height}:${x}:${y}:exact=1`;
 }
 
 /**
@@ -161,9 +210,10 @@ function toneMap(matrix: string, colour: FrameColour, label: string, keepAlpha: 
   const inputs = `${colour.transfer === null ? "" : `tin=${colour.transfer}:`}pin=${colour.primaries}:p=${colour.primaries}:min=${min}:rin=${colour.range}:cin=${colour.chromaLocation}`;
   const chain = `zscale=${inputs}:t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv`;
   const { odd } = colour;
-  const mapped = odd === null ? chain : `${evenPlanes(odd, `${label}t`, false)},${chain},crop=${odd.width}:${odd.height}:0:0:exact=1`;
-  if (!keepAlpha) return mapped;
-  return `split[${label}tc][${label}ta];[${label}ta]format=yuva444p,alphaextract[${label}tm];[${label}tc]${mapped}[${label}tt];[${label}tt][${label}tm]alphamerge`;
+  const mapped = odd === null ? chain : `${evenPlanes(odd, `${label}t`, false)},${chain},${oddBack(odd)}`;
+  const turn = colour.turn === null ? "" : `,${colour.turn}`;
+  if (!keepAlpha) return `${mapped}${turn}`;
+  return `split[${label}tc][${label}ta];[${label}ta]format=yuva444p,alphaextract[${label}tm];[${label}tc]${mapped}[${label}tt];[${label}tt][${label}tm]alphamerge${turn}`;
 }
 export const BT709_TAGS = "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv";
 // The plan's matrix names (physical-video-probe.ts) as the scale filter spells them.
@@ -249,16 +299,20 @@ export function decodedPicture(source: { colorMatrix: string; toneMap: "none" | 
     return `${toneMap(source.colorMatrix, colour, label, keepAlpha)},${converted(width, height, `:in_color_matrix=${matrix}`, output)}`;
   }
   const odd = colour?.odd ?? null;
-  if (odd === null) return converted(width, height, `:in_color_matrix=${matrix}`, output);
+  const turn = colour?.turn ?? null;
+  const read = colour === null ? "" : `:in_color_matrix=${matrix}:in_range=${colour.range}`;
+  const full = keepAlpha && (odd?.alpha ?? true) ? "yuva444p16le" : "yuv444p16le";
+  if (odd === null) {
+    if (turn === null) return converted(width, height, `:in_color_matrix=${matrix}`, output);
+    return `scale${read}:out_color_matrix=${matrix}:out_range=${colour!.range},format=${full},${turn},${converted(width, height, read, output)}`;
+  }
   // An odd-sided subsampled source is converted on its even frame: at its own size the output is cropped back, so each pixel
-  // equals its even twin's; scaled, it becomes full chroma there first and is scaled from that.
+  // equals its even twin's; scaled or turned here, it becomes full chroma there first and is scaled from that.
   const [evenWidth, evenHeight] = evenSize(odd);
-  const read = `:in_color_matrix=${matrix}:in_range=${colour!.range}`;
   const even = evenPlanes(odd, `${label}e`, keepAlpha);
-  if (width === odd.width && height === odd.height) return `${even},${converted(evenWidth, evenHeight, read, output)},crop=${width}:${height}:0:0:exact=1`;
-  const full = keepAlpha && odd.alpha ? "yuva444p16le" : "yuv444p16le";
-  return `${even},scale=${evenWidth}:${evenHeight}${read}:out_color_matrix=${matrix}:out_range=${colour!.range},format=${full},crop=${odd.width}:${odd.height}:0:0:exact=1,` +
-    converted(width, height, read, output);
+  if (turn === null && width === odd.width && height === odd.height) return `${even},${converted(evenWidth, evenHeight, read, output)},${oddBack(odd)}`;
+  return `${even},scale=${evenWidth}:${evenHeight}${read}:out_color_matrix=${matrix}:out_range=${colour!.range},format=${full},${oddBack(odd)},` +
+    `${turn === null ? "" : `${turn},`}${converted(width, height, read, output)}`;
 }
 
 /**
@@ -478,54 +532,82 @@ interface SourceFacts { iso: boolean; audio: boolean; mono: boolean; tick: [bigi
  */
 async function sourceFacts(source: string, run: { signal: AbortSignal; stdoutBytes: number; stderrTailBytes: number }): Promise<SourceFacts> {
   const answer = JSON.parse((await runPlanCommand("ffprobe", ["-v", "error", "-protocol_whitelist", "file", "-show_entries",
-    "format=format_name:stream=codec_type,codec_name,time_base,channels,width,height,pix_fmt,color_transfer,color_primaries,color_range,chroma_location:stream_side_data=rotation:stream_tags",
-    "-of", "json", source], run)).toString("utf8")) as { format?: { format_name?: string }; streams?: { codec_type?: string; codec_name?: string; time_base?: string;
-    channels?: number; width?: number; height?: number; pix_fmt?: string; color_transfer?: string; color_primaries?: string; color_range?: string; chroma_location?: string;
-    side_data_list?: { rotation?: number }[]; tags?: Record<string, string> }[] };
+    "format=format_name:stream=codec_type,codec_name,time_base,channels,width,height,pix_fmt,color_transfer,color_primaries,color_range,chroma_location:" +
+    "stream_side_data=rotation,displaymatrix:stream_tags", "-of", "json", source], run)).toString("utf8")) as { format?: { format_name?: string };
+    streams?: (ProbedVideo & { codec_type?: string; time_base?: string; channels?: number })[] };
   const names = (answer.format?.format_name ?? "").split(",");
   const video = (answer.streams ?? []).find((stream) => stream.codec_type === "video");
   const tick = /^(\d+)\/(\d+)$/u.exec(video?.time_base ?? "");
   const decoder = alphaDecoderArgs(video?.codec_name, Object.entries(video?.tags ?? {}).find(([key]) => key.toLowerCase() === "alpha_mode")?.[1]);
   const audio = (answer.streams ?? []).find((stream) => stream.codec_type === "audio");
+  const colour = frameColour(video ?? {});
   return { iso: names.includes("mov") || names.includes("mp4"), audio: audio !== undefined, mono: audio?.channels === 1,
-    tick: tick === null ? null : [BigInt(tick[1]!), BigInt(tick[2]!)], decoder, colour: frameColour(video ?? {}) };
+    tick: tick === null ? null : [BigInt(tick[1]!), BigInt(tick[2]!)], decoder: [...decoder, ...(colour.turn === null ? [] : ["-noautorotate"])], colour };
 }
 
 // Planar YUV formats whose chroma is subsampled: 4:2:0 halves both sides, 4:2:2 the width, 4:4:0 the height.
-const PLANAR_SUBSAMPLED = /^yuva?(420|422|440)p(\d+(le|be))?$/u;
+const PLANAR_SUBSAMPLED = /^yuv[aj]?(420|422|440)p(\d+(le|be))?$/u;
 // The tags zscale reads by these names (its primaries, chroma location and transfer option values).
 const ZSCALE_PRIMARIES: ReadonlySet<string> = new Set(["bt709", "bt470m", "bt470bg", "smpte170m", "smpte240m", "film", "bt2020", "smpte428", "smpte431", "smpte432", "jedec-p22", "ebu3213"]);
 const CHROMA_LOCATIONS: ReadonlySet<string> = new Set(["left", "center", "topleft", "top", "bottomleft", "bottom"]);
 const ZSCALE_TRANSFERS: ReadonlySet<string> = new Set(["bt709", "bt470m", "bt470bg", "smpte170m", "smpte240m", "linear", "log100", "log316", "iec61966-2-4",
   "iec61966-2-1", "bt2020-10", "bt2020-12", "smpte2084", "arib-std-b67"]);
+/** A video stream as ffprobe reports what the recipes read of it. */
+interface ProbedVideo {
+  codec_name?: string; width?: number; height?: number; pix_fmt?: string; color_transfer?: string; color_primaries?: string; color_range?: string;
+  chroma_location?: string; side_data_list?: { rotation?: number; displaymatrix?: string }[]; tags?: Record<string, string>;
+}
 
 /**
- * The colour facts the tone map reads of a video stream (`FrameColour`). The decoder turns a ±90° display rotation before
- * the graph, so the upright size swaps the coded sides.
+ * The turn FFmpeg's autorotate applies for a display matrix (fftools/ffmpeg_filter.c, FFmpeg 8): a transpose for a quarter
+ * turn, flips for a half turn or a mirror; and which output directions it reverses.
+ * @param side - The stream's side data.
+ * @returns The turn's filter (null for none), whether it transposes, and the reversed directions.
+ * @throws {never} Never.
+ */
+function autorotation(side: ProbedVideo["side_data_list"]): { filter: string | null; transposed: boolean; x: boolean; y: boolean } {
+  const entry = side?.find((item) => typeof item.displaymatrix === "string");
+  if (entry === undefined) return { filter: null, transposed: false, x: false, y: false };
+  const m = entry.displaymatrix!.replace(/\d{8}:/gu, " ").trim().split(/\s+/u).map(Number);
+  let theta = -Math.round(entry.rotation ?? 0);
+  theta -= 360 * Math.floor(theta / 360 + 0.9 / 360);
+  const near = (angle: number): boolean => Math.abs(theta - angle) < 1;
+  if (near(90)) return m[3]! > 0 ? { filter: "transpose=cclock_flip", transposed: true, x: false, y: false } : { filter: "transpose=clock", transposed: true, x: true, y: false };
+  if (near(270)) return m[3]! < 0 ? { filter: "transpose=clock_flip", transposed: true, x: true, y: true } : { filter: "transpose=cclock", transposed: true, x: false, y: true };
+  const x = near(180) && m[0]! < 0;
+  const y = (near(180) || near(0)) && m[4]! < 0;
+  return { filter: x || y ? [x ? "hflip" : "", y ? "vflip" : ""].filter((part) => part !== "").join(",") : null, transposed: false, x, y };
+}
+
+/**
+ * The colour facts the tone map and the odd-frame conversion read of a video stream (`FrameColour`). A VP8/VP9 stream with
+ * alpha decodes (through libvpx, `alphaDecoderArgs`) with an alpha plane ffprobe's pixel format does not show.
  * @param video - The ffprobe video stream.
- * @param video.width - Its coded width.
- * @param video.height - Its coded height.
- * @param video.pix_fmt - Its pixel format.
- * @param video.color_transfer - Its transfer tag.
- * @param video.color_primaries - Its primaries tag.
- * @param video.color_range - Its range tag.
- * @param video.chroma_location - Its chroma location.
- * @param video.side_data_list - Its side data, read for the display rotation.
  * @returns The facts.
  * @throws {never} Never.
  */
-function frameColour(video: { width?: number; height?: number; pix_fmt?: string; color_transfer?: string; color_primaries?: string; color_range?: string;
-  chroma_location?: string; side_data_list?: { rotation?: number }[] }): FrameColour {
+function frameColour(video: ProbedVideo): FrameColour {
   const known = (tag: string | undefined, names: ReadonlySet<string>): string | null => (tag !== undefined && names.has(tag) ? tag : null);
-  const turned = Math.abs(video.side_data_list?.find((entry) => typeof entry.rotation === "number")?.rotation ?? 0) % 180 === 90;
-  const [width, height] = turned ? [video.height ?? 0, video.width ?? 0] : [video.width ?? 0, video.height ?? 0];
-  const planar = PLANAR_SUBSAMPLED.exec(video.pix_fmt ?? "");
-  const padWidth = planar !== null && planar[1] !== "440" && width % 2 === 1;
-  const padHeight = planar !== null && planar[1] !== "422" && height % 2 === 1;
+  const vpxAlpha = alphaDecoderArgs(video.codec_name, Object.entries(video.tags ?? {}).find(([key]) => key.toLowerCase() === "alpha_mode")?.[1]).length > 0;
+  const format = vpxAlpha ? (video.pix_fmt ?? "").replace(/^yuv(?!a)/u, "yuva") : video.pix_fmt ?? "";
+  const planar = PLANAR_SUBSAMPLED.exec(format);
+  const turn = autorotation(video.side_data_list);
+  const [hsub, vsub] = planar === null ? [false, false] : [planar[1] !== "440", planar[1] !== "422"];
+  const transfer = known(video.color_transfer, ZSCALE_TRANSFERS);
+  // The graph turns the frames itself, after reading them in their stored orientation, when autorotate would misplace chroma:
+  // zimg (the HDR tone map) reads the chroma location the turn leaves untouched on the frames, and FFmpeg's transpose cannot
+  // keep 4:2:2 or 4:4:0, whose odd-sided conversion to 4:4:4 then happens before the graph.
+  const [codedWidth, codedHeight] = [video.width ?? 0, video.height ?? 0];
+  const own = turn.filter !== null && (transfer === "smpte2084" || transfer === "arib-std-b67"
+    || (turn.transposed && hsub !== vsub && (codedWidth % 2 === 1 || codedHeight % 2 === 1)));
+  const [width, height] = turn.transposed && !own ? [codedHeight, codedWidth] : [codedWidth, codedHeight];
+  const odd = planar !== null && (width % 2 === 1 || height % 2 === 1)
+    ? { format, alpha: format.startsWith("yuva"), width, height, hsub, vsub, leadX: !own && turn.x, leadY: !own && turn.y }
+    : null;
   return {
-    transfer: known(video.color_transfer, ZSCALE_TRANSFERS), primaries: known(video.color_primaries, ZSCALE_PRIMARIES) ?? "bt709",
-    range: video.color_range === "pc" ? "pc" : "tv", chromaLocation: known(video.chroma_location, CHROMA_LOCATIONS) ?? "left",
-    odd: padWidth || padHeight ? { format: video.pix_fmt!, alpha: video.pix_fmt!.startsWith("yuva"), width, height, padWidth, padHeight } : null,
+    transfer, primaries: known(video.color_primaries, ZSCALE_PRIMARIES) ?? "bt709",
+    range: video.color_range === "pc" || format.startsWith("yuvj") ? "pc" : "tv", chromaLocation: known(video.chroma_location, CHROMA_LOCATIONS) ?? "left",
+    odd, turn: own ? turn.filter : null,
   };
 }
 

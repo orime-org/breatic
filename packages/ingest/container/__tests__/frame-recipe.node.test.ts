@@ -26,6 +26,11 @@ const SOURCE = '10000000-0000-4000-8000-000000000001';
 const LIMITS = { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 };
 const OPAQUE = { width: 160, height: 96, colorMatrix: 'bt709', toneMap: 'none', pngBitDepth: 8, alpha: 'none' };
 
+// Display transforms of the odd SDR source (FC14).
+const TURNS: readonly (readonly [string, string[]])[] = [['r90', ['-display_rotation', '90']], ['r270', ['-display_rotation', '-90']], ['r180', ['-display_rotation', '180']],
+  ['hflip', ['-display_hflip']], ['vflip', ['-display_vflip']], ['r90h', ['-display_rotation', '90', '-display_hflip']], ['r270h', ['-display_rotation', '-90', '-display_hflip']]];
+// The transforms FFmpeg's autorotate can apply, to find the one it applied to a file.
+const TRANSFORMS = ['transpose=clock', 'transpose=cclock', 'transpose=clock_flip', 'transpose=cclock_flip', 'hflip', 'vflip', 'hflip,vflip'];
 let dir: string;
 const served = new Map<string, string>();
 let written: Uint8Array | null = null;
@@ -111,6 +116,20 @@ function gap(a: Buffer, b: Buffer): number {
 }
 
 /**
+ * The display transform FFmpeg's autorotate applies to a file: the one whose luma turns the unturned file's luma into it.
+ * @param turned - The file with the display matrix.
+ * @param flat - The same frames without it.
+ * @returns The filter chain.
+ */
+async function turnOf(turned: string, flat: string): Promise<string> {
+  const luma = async (path: string, filter?: string): Promise<Buffer> =>
+    (await run('ffmpeg', ['-v', 'error', '-i', path, '-frames:v', '1', '-vf', `${filter === undefined ? '' : `${filter},`}format=yuv444p16le,extractplanes=y`, '-f', 'rawvideo', '-'], { encoding: 'buffer', maxBuffer: 1 << 26 })).stdout;
+  const upright = await luma(turned);
+  for (const turn of TRANSFORMS) if (gap(upright, await luma(flat, turn)) === 0) return turn;
+  throw new Error(`No transform turns ${flat} into ${turned}`);
+}
+
+/**
  * Write PNG bytes to a file for FFmpeg to read.
  * @param png - The bytes.
  * @returns The path.
@@ -149,6 +168,23 @@ beforeAll(async () => {
   await ff('sdr-odd.mkv', ['-i', join(dir, 'sdr-even.mkv'), '-vf', 'crop=159:95:0:0:exact=1', '-c:v', 'ffv1']);
   await ff('sdra-even.mkv', ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=25:d=0.2', '-vf', 'format=rgba,colorchannelmixer=aa=0.25,format=yuva420p,setparams=colorspace=bt709:range=tv', '-c:v', 'ffv1']);
   await ff('sdra-odd.mkv', ['-i', join(dir, 'sdra-even.mkv'), '-vf', 'crop=159:95:0:0:exact=1', '-c:v', 'ffv1']);
+  // The alpha twins as lossless VP9, whose alpha only the libvpx decoder reads (FC13).
+  for (const side of ['even', 'odd']) await ff(`va-${side}.webm`, ['-i', join(dir, `sdra-${side}.mkv`), '-c:v', 'libvpx-vp9', '-lossless', '1', '-pix_fmt', 'yuva420p']);
+  // The odd SDR source under each display transform FFmpeg's autorotate undoes (FC14), and 4:2:2 turned a quarter (FC15).
+  for (const [name, args] of TURNS) await ff(`turn-${name}.mov`, [...args, '-i', join(dir, 'sdr-odd.mkv'), '-c', 'copy']);
+  await ff('sdr422-even.mkv', ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=25:d=0.2', '-vf', 'format=yuv422p,setparams=colorspace=bt709:range=tv', '-c:v', 'ffv1']);
+  await ff('sdr422-odd.mkv', ['-i', join(dir, 'sdr422-even.mkv'), '-vf', 'crop=159:95:0:0:exact=1', '-c:v', 'ffv1']);
+  await ff('turn422.mov', ['-display_rotation', '90', '-i', join(dir, 'sdr422-odd.mkv'), '-c', 'copy']);
+  // Full-range JPEG 4:2:2 twins, stored raw so the decoder hands out yuvj422p (FC16), and 4:4:0 odd in width only (FC17).
+  await ff('j-even.avi', ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=25:d=0.2', '-vf', 'format=yuvj422p', '-c:v', 'mjpeg', '-q:v', '1']);
+  await ff('j-odd.avi', ['-i', join(dir, 'j-even.avi'), '-vf', 'crop=159:95:0:0:exact=1', '-c:v', 'mjpeg', '-q:v', '1']);
+  await ff('s440-even.mkv', ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=25:d=0.2', '-vf', 'format=yuv440p,setparams=colorspace=bt709:range=tv', '-c:v', 'ffv1']);
+  await ff('s440-odd.mkv', ['-i', join(dir, 's440-even.mkv'), '-vf', 'crop=159:96:0:0:exact=1', '-c:v', 'ffv1']);
+  // A WebM whose frames change size mid-stream, as MediaRecorder writes when a captured window is resized (FC18).
+  await ff('size-a.webm', ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=25:d=0.4', '-vf', 'crop=159:95:0:0:exact=1', '-c:v', 'libvpx', '-b:v', '1M']);
+  await ff('size-b.webm', ['-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=25:d=0.4', '-c:v', 'libvpx', '-b:v', '1M']);
+  await writeFile(join(dir, 'sizes.txt'), `file '${join(dir, 'size-a.webm')}'\nfile '${join(dir, 'size-b.webm')}'\n`);
+  await ff('sizes.webm', ['-f', 'concat', '-safe', '0', '-i', join(dir, 'sizes.txt'), '-c', 'copy']);
   await ff('rot90.mp4', ['-display_rotation', '90', '-i', join(dir, 'flash.mp4'), '-c', 'copy']);
   // A white 20x12 box at (40, 20) on black, every frame a keyframe: FC07's crops are read against its known edges.
   await ff('box.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=160x96:r=25:d=0.2,drawbox=x=40:y=20:w=20:h=12:color=white:t=fill,format=yuv420p",
@@ -229,13 +265,12 @@ describe('frame from a full-ledger entry (§92 D4-3; design §7.17 frame row)', 
   });
 
   // The decoder turns the frame before the graph, so the odd side the tone map crops back to is the turned one.
-  it('FC10 a rotated odd-sized HDR frame comes out upright at its turned size', async () => {
+  it('FC10 a rotated odd-sized HDR frame is the unrotated one turned, pixel for pixel', async () => {
     const png = await frame('pq-odd-rot.mov', { entry: frameAt([0, 1]), target: { ...OPAQUE, width: 95, height: 159, colorMatrix: 'bt2020nc', toneMap: 'sdr-bt709' } });
     expect(header(png)).toMatchObject({ width: 95, height: 159 });
-    const luma = async (path: string, filter?: string): Promise<Buffer> => (await run('ffmpeg', ['-v', 'error', '-i', path, '-frames:v', '1', '-vf', `${filter === undefined ? '' : `${filter},`}extractplanes=y`, '-f', 'rawvideo', '-'], { encoding: 'buffer', maxBuffer: 1 << 26 })).stdout;
-    const upright = await luma(join(dir, 'pq-odd-rot.mov'));
-    const turned = gap(upright, await luma(join(dir, 'pq-odd.mkv'), 'transpose=clock')) === 0 ? 'clock' : 'cclock';
-    expect(gap(upright, await luma(join(dir, 'pq-odd.mkv'), `transpose=${turned}`))).toBe(0);
+    const flat = await frame('pq-odd.mkv', { entry: frameAt([0, 1]), target: { ...OPAQUE, width: 159, height: 95, colorMatrix: 'bt2020nc', toneMap: 'sdr-bt709' } });
+    const turn = await turnOf(join(dir, 'pq-odd-rot.mov'), join(dir, 'pq-odd.mkv'));
+    expect(gap(await pixels(await saved(png), 'rgb24'), await pixels(await saved(flat), 'rgb24', turn))).toBeLessThanOrEqual(1);
   });
 
   // §4.3 odd-size row: an odd 4:2:0 SDR source is converted as its even twin is, so each pixel equals the twin's.
@@ -254,6 +289,63 @@ describe('frame from a full-ledger entry (§92 D4-3; design §7.17 frame row)', 
     expect(header(png)).toMatchObject({ width: 80, height: 48, colorType: 2 });
     const ideal = await pixels(join(dir, 'rgb-even.png'), 'rgb24', 'crop=159:95:0:0,scale=80:48');
     expect(gap(await pixels(await saved(png), 'rgb24'), ideal)).toBeLessThanOrEqual(60);
+  });
+
+  // §4.3 odd-size row: the alpha of an odd VP9 WebM, which only the libvpx decoder reads, is kept.
+  it('FC13 an odd-sized transparent VP9 frame is the even twin\'s frame, alpha included', async () => {
+    const target = { ...OPAQUE, width: 159, height: 95, alpha: 'straight' };
+    const png = await frame('va-odd.webm', { entry: frameAt([0, 1]), target });
+    const twin = await frame('va-even.webm', { entry: frameAt([0, 1]), target: { ...target, width: 160, height: 96 } });
+    expect(gap(await pixels(await saved(png), 'rgba'), await pixels(await saved(twin), 'rgba', 'crop=159:95:0:0'))).toBeLessThanOrEqual(1);
+  });
+
+  // §4.3 odd-size row with §7.17 方向与几何: a turned odd source is the unturned one turned the way FFmpeg turns it.
+  it.each(TURNS.map(([name]) => name))('FC14 an odd-sized SDR frame under display transform %s is the untransformed frame transformed', async (name) => {
+    const flat = await frame('sdr-odd.mkv', { entry: frameAt([0, 1]), target: { ...OPAQUE, width: 159, height: 95 } });
+    const turn = await turnOf(join(dir, `turn-${name}.mov`), join(dir, 'sdr-odd.mkv'));
+    const sideways = turn.startsWith('transpose');
+    const png = await frame(`turn-${name}.mov`, { entry: frameAt([0, 1]), target: { ...OPAQUE, width: sideways ? 95 : 159, height: sideways ? 159 : 95 } });
+    expect(gap(await pixels(await saved(png), 'rgb24'), await pixels(await saved(flat), 'rgb24', turn))).toBeLessThanOrEqual(1);
+  });
+
+  // A quarter turn of 4:2:2 cannot stay 4:2:2, so the frame is turned in 4:4:4 after its even-frame conversion: against the
+  // lossless RGB picture turned, it errs about as much as the unturned frame (swscale's 4:4:4 route interpolates chroma a
+  // little differently from its direct one); chroma off its pixels would add several levels.
+  it('FC15 an odd-sized 4:2:2 frame turned a quarter comes out upright, as close to the picture as the unturned frame', async () => {
+    const png = await frame('turn422.mov', { entry: frameAt([0, 1]), target: { ...OPAQUE, width: 95, height: 159 } });
+    expect(header(png)).toMatchObject({ width: 95, height: 159 });
+    const flat = await frame('sdr422-odd.mkv', { entry: frameAt([0, 1]), target: { ...OPAQUE, width: 159, height: 95 } });
+    const turn = await turnOf(join(dir, 'turn422.mov'), join(dir, 'sdr422-odd.mkv'));
+    const mean = (a: Buffer, b: Buffer): number => a.reduce((sum, value, index) => sum + Math.abs(value - b[index]!), 0) / a.length;
+    const turned = mean(await pixels(await saved(png), 'rgb24'), await pixels(join(dir, 'rgb-even.png'), 'rgb24', `crop=159:95:0:0,${turn}`));
+    const unturned = mean(await pixels(await saved(flat), 'rgb24'), await pixels(join(dir, 'rgb-even.png'), 'rgb24', 'crop=159:95:0:0'));
+    expect(turned).toBeLessThan(unturned + 2);
+  });
+
+  // swscale's chroma filter on 4:4:0 reaches across columns, so the three columns next to the missing one may differ a little.
+  it('FC16 an odd-sized 4:4:0 frame (odd in width only) is the even twin\'s frame away from its last columns', async () => {
+    const png = await frame('s440-odd.mkv', { entry: frameAt([0, 1]), target: { ...OPAQUE, width: 159, height: 96 } });
+    const twin = await frame('s440-even.mkv', { entry: frameAt([0, 1]), target: { ...OPAQUE, width: 160, height: 96 } });
+    const [a, b] = [await pixels(await saved(png), 'rgb24'), await pixels(await saved(twin), 'rgb24', 'crop=159:96:0:0')];
+    expect(gap(await pixels(await saved(png), 'rgb24', 'crop=156:96:0:0'), await pixels(await saved(twin), 'rgb24', 'crop=156:96:0:0'))).toBeLessThanOrEqual(1);
+    expect(gap(a, b)).toBeLessThanOrEqual(8);
+  });
+
+  // MJPEG decodes as full-range yuvj422p; the twins are separate lossy encodes, so the mean stays at their coding gap while
+  // chroma off its pixels raises it.
+  it('FC18 an odd-sized MJPEG (yuvj422p) frame stays near the even twin\'s frame', async () => {
+    expect(String((await run('ffprobe', ['-v', 'error', '-show_entries', 'stream=pix_fmt', '-of', 'csv=p=0', join(dir, 'j-odd.avi')])).stdout).trim()).toBe('yuvj422p');
+    const png = await frame('j-odd.avi', { entry: frameAt([0, 1]), target: { ...OPAQUE, width: 159, height: 95, colorMatrix: 'bt601' } });
+    const twin = await frame('j-even.avi', { entry: frameAt([0, 1]), target: { ...OPAQUE, width: 160, height: 96, colorMatrix: 'bt601' } });
+    const [a, b] = [await pixels(await saved(png), 'rgb24'), await pixels(await saved(twin), 'rgb24', 'crop=159:95:0:0')];
+    const mean = a.reduce((sum, value, index) => sum + Math.abs(value - b[index]!), 0) / a.length;
+    expect(mean).toBeLessThan(1);
+  });
+
+  // Frames after a size change are taken to the planned size before the even-frame conversion.
+  it('FC17 a frame after a mid-stream size change comes out at the planned odd size', async () => {
+    const png = await frame('sizes.webm', { entry: frameAt([3, 5], [2, 5]), target: { ...OPAQUE, width: 159, height: 95 } });
+    expect(header(png)).toMatchObject({ width: 159, height: 95 });
   });
 
   it('FC06 the frame is upright in the display geometry (§7.17 方向与几何): a 90° source gives 96x160', async () => {
