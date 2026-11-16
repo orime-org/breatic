@@ -1,5 +1,5 @@
 -- Copyright (c) 2026 Orime, Inc.
--- SPDX-License-Identifier: Elastic-2.0
+-- SPDX-License-Identifier: AGPL-3.0-only
 
 -- Product database (inner#1711): the immutable source version a web-animation
 -- execution produced, and which Projects may resolve and preview it.

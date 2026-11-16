@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Holding on to one table cell while co-editors change the document.
@@ -35,6 +35,7 @@ import type { EditorState, Transaction } from '@tiptap/pm/state';
 import type * as Y from 'yjs';
 
 import { syncBindingOf } from '@web/spaces/document/document-link-tracking';
+import { positionOf } from '@web/spaces/document/document-row-by-id';
 import { cellAt } from '@web/spaces/document/document-table-run';
 import { fromYjs } from '@web/spaces/document/document-yjs-origin';
 
@@ -71,13 +72,8 @@ export function cellNamed(state: EditorState, doc: PMNode, name: CellName): numb
   if (bound === null || item === null || item.deleted) return null;
   const node = bound.mapping.get(name);
   if (node === undefined || Array.isArray(node)) return null;
-  let found: number | null = null;
-  doc.descendants((child, pos) => {
-    if (found !== null) return false;
-    if (child === node) found = pos;
-    return found === null;
-  });
-  return found !== null && cellAt(doc, found) !== null ? found : null;
+  const found = positionOf(doc, node);
+  return found >= 0 && cellAt(doc, found) !== null ? found : null;
 }
 
 /**

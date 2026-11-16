@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The one place a document editor is assembled.
@@ -57,6 +57,12 @@ import { documentSelectionPaintExtension } from '@web/spaces/document/document-s
 import { documentEnterExtension } from '@web/spaces/document/document-enter';
 import { documentKeyboardMoveExtension } from '@web/spaces/document/document-keyboard-move';
 import { documentTabExtension } from '@web/spaces/document/document-tab';
+import { documentColumnCellWidthExtension } from '@web/spaces/document/document-column-cell-width';
+import { documentColumnKeysExtension } from '@web/spaces/document/document-column-keys';
+import { columnDropHook } from '@web/spaces/document/document-column-landing';
+import { documentColumnRepairExtension } from '@web/spaces/document/document-column-repair';
+import { documentMarginDropExtension, DROP_MARGIN } from '@web/spaces/document/document-margin-drop';
+import { documentColumnSpanSelectionExtension } from '@web/spaces/document/document-column-span-selection';
 import { documentTableKeysExtension } from '@web/spaces/document/document-table-keys';
 import { documentTableColumnWidthsExtension } from '@web/spaces/document/document-table-column-widths';
 import { documentTableTargetExtension } from '@web/spaces/document/document-table-target';
@@ -73,7 +79,7 @@ import { documentQuoteInputExtension } from '@web/spaces/document/document-quote
 import { documentSafariImeExtension } from '@web/spaces/document/document-safari-ime';
 import { documentTrailingPressExtension } from '@web/spaces/document/document-trailing-press';
 import { documentLinkEditMarkExtension } from '@web/spaces/document/document-link-edit-mark';
-import { documentDragDropExtension } from '@web/spaces/document/document-drag-drop';
+import { documentDragDropExtension, flyingRowId } from '@web/spaces/document/document-drag-drop';
 import { documentCommentLiveMarkExtension, documentCommentMarkExtension } from '@web/spaces/document/document-comment-mark';
 import { COMMENT_MARK } from '@web/spaces/document/document-comment-extension';
 import {
@@ -129,6 +135,12 @@ export interface DocumentEditorOptions {
    * canvas clipboard pastes as the plain text it is.
    */
   readonly onCanvasPaste?: CanvasPasteSink;
+  /**
+   * The editor shows bodies as they were saved (the version preview), so the
+   * column repair (inner#1314) stays off: a saved column holding only its
+   * empty line is shown as it was saved.
+   */
+  readonly showsSavedBodies?: boolean;
 }
 
 /**
@@ -190,7 +202,12 @@ export function buildDocumentEditor(
       documentMathEditingExtension(),
       documentSafariImeExtension(),
       documentTabExtension(),
+      documentColumnKeysExtension(),
       documentTableKeysExtension(),
+      ...(options.showsSavedBodies === true ? [] : [documentColumnRepairExtension()]),
+      documentColumnSpanSelectionExtension(),
+      documentColumnCellWidthExtension(),
+      documentMarginDropExtension(),
       documentTableTargetExtension(),
       documentTableHandlesExtension(),
       documentTableCopyExtension(),
@@ -250,7 +267,7 @@ export function buildDocumentEditor(
 
   // A table open full screen takes every drop (#1427), so no line says
   // where one would land; a table's own row and column drags draw none either.
-  const tableDrags = holdDropLineInTableDrags(fileDropPosition);
+  const tableDrags = holdDropLineInTableDrags(columnDropHook(fileDropPosition, flyingRowId));
   /**
    * Where the drop line stands, or nowhere while a table is full screen.
    * @param context - The drag the library is asking about.
@@ -280,7 +297,7 @@ export function buildDocumentEditor(
     // a strip stands, a table's own being the furthest: it is reached there,
     // level with the table and past its first column's strips, since over its
     // cells the strip belongs to their blocks (inner#1619 design 5.3).
-    sideMenu: { hoverMargin: TABLE_STRIP_OUTSET + STRIP_SIZE },
+    sideMenu: { hoverMargin: TABLE_STRIP_OUTSET + STRIP_SIZE, dropMargin: DROP_MARGIN },
     pasteHandler: pasteChain(options),
     ...collaborative,
   } as never) as BlockNoteEditor<never, never, never>;

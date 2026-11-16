@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /** A page's article HTML as the Markdown the Agent reads (inner#1664). */
 import TurndownService from "turndown";

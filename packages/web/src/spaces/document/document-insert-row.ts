@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What the insert menu does to the row it was opened on.
@@ -15,6 +15,7 @@
 
 import type { BlockTypeId } from '@web/spaces/document/document-block-ticks';
 import { runBlockType } from '@web/spaces/document/document-block-run';
+import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-geometry';
 import { DIVIDER } from '@web/spaces/document/document-divider';
 import { quotedAs, type BlockSpec } from '@web/spaces/document/document-file-input';
 import {
@@ -35,8 +36,36 @@ export interface TableSize {
 /** The insert menu's formula entry (inner#1423). */
 export const FORMULA = 'formula';
 
-/** One entry of the insert menu: a block type, the divider, a formula, or a table of a size. */
-export type InsertChoice = BlockTypeId | typeof DIVIDER | typeof FORMULA | { readonly table: TableSize };
+/** The insert menu's columns entry (inner#1314 design §5.3). */
+export const COLUMNS = 'columns';
+
+/** One entry of the insert menu: a block type, the divider, columns, a formula, or a table of a size. */
+export type InsertChoice =
+  | BlockTypeId
+  | typeof DIVIDER
+  | typeof COLUMNS
+  | typeof FORMULA
+  | { readonly table: TableSize };
+
+/**
+ * Two columns, each holding one empty paragraph.
+ * @returns The group block.
+ */
+function emptyColumns(): BlockSpec {
+  const column = { type: DOC_COLUMN, children: [{ type: 'paragraph' }] };
+  return { type: DOC_COLUMN_LIST, children: [column, column] } as BlockSpec;
+}
+
+/**
+ * Puts the caret at the start of a group's first column.
+ * @param editor - The editor.
+ * @param groupId - The group's id.
+ */
+function caretInFirstColumn(editor: HandleEditor, groupId: string): void {
+  const group = editor.getBlock(groupId) as { children?: { children?: { id: string }[] }[] } | undefined;
+  const first = group?.children?.[0]?.children?.[0];
+  if (first !== undefined) editor.setTextCursorPosition(first.id, 'start');
+}
 
 /**
  * An empty table of a size.
@@ -108,7 +137,9 @@ export function insertRowForMenu(
  * A block type is a new row turned into that type; a divider is a divider with
  * the new row under it (#124 A2); a table is the table with the new row under
  * it and the caret in its first cell (inner#1126 A1), so the user writes in
- * the table and has a line below it to carry on. A formula is the formula with
+ * the table and has a line below it to carry on. Columns are two empty
+ * columns with the new row under them and the caret in the first column
+ * (inner#1314 design §5.3). A formula is the formula with
  * the new row under it, its box for the menu to open once it closes (inner#1423).
  * @param editor - The editor to write to.
  * @param row - The block the menu was opened on.
@@ -124,6 +155,10 @@ export function insertBelow(
 ): string | undefined {
   if (choice === DIVIDER) {
     insertRowForMenu(editor, row, [{ type: DIVIDER }]);
+  } else if (choice === COLUMNS) {
+    const made = insertRowForMenu(editor, row, [emptyColumns()]);
+    const group = editor.getPrevBlock(made) as { id: string } | undefined;
+    if (group !== undefined) caretInFirstColumn(editor, group.id);
   } else if (choice === FORMULA) {
     // Like the divider and the table: the formula with a line under it to
     // carry on in.
@@ -221,6 +256,11 @@ export function fillEmptyRow(
     return row.id;
   }
   editor.transact(() => {
+    if (choice === COLUMNS) {
+      editor.updateBlock(row.id, emptyColumns() as never);
+      caretInFirstColumn(editor, row.id);
+      return;
+    }
     if (typeof choice === 'object') {
       // `updateBlock` keeps the row's id and merges its props, so the quote
       // stays on the table it becomes.

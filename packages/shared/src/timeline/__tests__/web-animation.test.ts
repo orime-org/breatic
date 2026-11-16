@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Web-animation contracts both sides compute the same way (inner#1711 design §3.6, §4, §7.1): the source Manifest,

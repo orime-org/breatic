@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Timeline frame ratio (#1502): an Editor picks 9:16 from the play bar, the preview frame takes that ratio inside the

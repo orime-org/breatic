@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The snapshot preview (inner#1129 design §7.3, §7.4): a separate read-only
@@ -123,6 +123,32 @@ describe('snapshot preview', () => {
     expect(JSON.stringify(preview.prosemirrorState.doc.toJSON())).not.toContain('"comment"');
     expect(shown.current).toEqual({ id: 'v1', content: rows.get('v1') });
     expect(text(live)).toBe('live words');
+  });
+
+  it('shows a snapshot column holding only its empty line as it was saved (inner#1314)', async () => {
+    const group = (second: unknown[]): unknown[] => [
+      { id: 'lead', type: 'paragraph', content: 'lead' },
+      {
+        id: 'g',
+        type: 'docColumnList',
+        children: [
+          { id: 'c1', type: 'docColumn', children: [{ id: 'a', type: 'paragraph', content: 'a' }] },
+          { id: 'c2', type: 'docColumn', children: second },
+        ],
+      },
+    ];
+    keep('v1', group([{ id: 'p1', type: 'paragraph' }]));
+    const { preview, versioning } = open(group([{ id: 'x', type: 'paragraph', content: 'x' }]));
+    await versioning.open();
+
+    await versioning.select({ type: 'snapshot', id: 'v1' });
+
+    let columns = 0;
+    preview.prosemirrorState.doc.descendants((node) => {
+      if (node.type.name === 'docColumn') columns += 1;
+      return true;
+    });
+    expect(columns).toBe(2);
   });
 
   it('marks what changed from the older to the newer, without scrolling the page', async () => {

@@ -2357,6 +2357,7 @@
         "divider": "分隔線",
         "table": "表格",
         "formula": "公式",
+        "columns": "分欄",
         "align": "對齊",
         "alignLeft": "靠左",
         "alignCenter": "置中",
@@ -2571,6 +2572,9 @@
         "deleteFailed": "沒能刪除快照。",
         "folded": "{count, plural, other {# 個區塊未變動 · 展開}}",
         "unavailable": "快照載入失敗，重新整理頁面後可用"
+      },
+      "columns": {
+        "unavailable": "這裡不能分欄"
       }
     },
     "readOnlyReconnect": "重新連線",

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The BlockNote schema this Space runs on.
@@ -38,6 +38,7 @@ import { buildListItemSpecs } from '@web/spaces/document/document-list-block';
 import { mathBlockSpec, mathInlineSpec } from '@web/spaces/document/document-math';
 import { withMediaView } from '@web/spaces/document/document-media-blocknote';
 import { legacyTableSpec } from '@web/spaces/document/document-table-legacy';
+import { docColumnSpecs } from '@web/spaces/document/document-column-nodes';
 import { docTableSpecs } from '@web/spaces/document/document-table-nodes';
 import {
   unsupportedBlockSpec,
@@ -161,6 +162,8 @@ export function buildDocumentSchema(): ReturnType<typeof BlockNoteSchema.create>
     // (inner#1619).
     table: legacyTableSpec(),
     ...docTableSpecs(),
+    // Column groups (inner#1314).
+    ...docColumnSpecs(),
     // The library's own props: image and video carry a width and an
     // alignment, audio neither (inner#1127 A8, A9).
     image: withMediaView(

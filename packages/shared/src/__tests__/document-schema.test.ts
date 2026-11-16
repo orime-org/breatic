@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * document space 的词表本身、版本号怎么算出来，以及「我这份跟服务器那份一样
@@ -51,7 +51,7 @@ function parse(
  * `publishedAt` is not earlier than the published one, so a change released
  * under an old date would be refused wherever a newer one is published.
  */
-const RELEASED = { version: "cc89cb7d5ec9581b", publishedAt: "2026-11-13T10:24:41Z" };
+const RELEASED = { version: "3e2ebc01528214cb", publishedAt: "2026-11-16T03:27:03Z" };
 
 describe("the released vocabulary", () => {
   it("is pinned with its release time: a changed vocabulary needs a later publishedAt", () => {

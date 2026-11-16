@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Copying and cutting where a table whose cells hold blocks is involved
@@ -44,7 +44,8 @@ import type { EditorView } from '@tiptap/pm/view';
 import { blocksPlainText } from '@web/spaces/document/document-table-markdown';
 import { bodyEdgeBetween } from '@web/spaces/document/document-body-edge-selection';
 import { heldRange, replaceHeld, type HeldTables } from '@web/spaces/document/document-table-leave-selection';
-import { cellDepthOf, DOC_TABLE, tableAround, type TableAt } from '@web/spaces/document/document-table-nodes';
+import { bodyDepthBetween } from '@web/spaces/document/document-body-carrier';
+import { DOC_TABLE, tableAround, type TableAt } from '@web/spaces/document/document-table-nodes';
 
 /** The editor, as far as copying reads it. */
 type CopyEditor = BlockNoteEditor<never, never, never>;
@@ -57,13 +58,16 @@ export interface Clipped {
 }
 
 /**
- * The cell both ends of a selection are in, when they are in one.
+ * The innermost cell or column (inner#1314) both ends of a selection are in,
+ * when they are in one.
  * @param selection - The selection.
- * @returns The cell's depth, or -1.
+ * @returns Its depth, or -1.
  */
 function oneCellDepth(selection: Selection): number {
   const { $from, $to } = selection;
-  const depth = cellDepthOf($from);
+  // The innermost cell or column (inner#1314): a column in a cell is a body
+  // of its own inside the cell's.
+  const depth = bodyDepthBetween($from, $from);
   return depth > 0 && $to.depth >= depth && $to.node(depth) === $from.node(depth) ? depth : -1;
 }
 
