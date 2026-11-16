@@ -15,7 +15,7 @@
 
 import { Extension } from '@tiptap/core';
 import type { Node as PMNode } from '@tiptap/pm/model';
-import { Plugin, PluginKey } from '@tiptap/pm/state';
+import { Plugin } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
 import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/reference-mention/mention-node';
@@ -70,9 +70,6 @@ export interface OptionalParagraphsOptions {
   getPool: () => ReadonlyArray<ReferenceRailItem>;
 }
 
-/** The plugin that greys a held-back paragraph. */
-const OPTIONAL_PARAGRAPHS = new PluginKey('optionalParagraphs');
-
 /**
  * Greys each paragraph the prompt leaves out, naming in {@link HELD_BACK_ATTR}
  * the inputs it waits for. Decorations are worked out on every view update, so
@@ -87,7 +84,6 @@ export const OptionalParagraphs = Extension.create<OptionalParagraphsOptions>({
     const { getPool } = this.options;
     return [
       new Plugin({
-        key: OPTIONAL_PARAGRAPHS,
         props: {
           decorations: (state) => {
             const pool = getPool();

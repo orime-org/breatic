@@ -63,7 +63,7 @@ function sentBlocks(fragment: Y.XmlFragment, pool: ReadonlyArray<ReferenceRailIt
  */
 export function mentionedSourceIds(fragment: Y.XmlFragment, pool: ReadonlyArray<ReferenceRailItem>): string[] {
   const ids = sentBlocks(fragment, pool)
-    .flatMap((block) => (block instanceof Y.XmlElement ? (block.nodeName === REFERENCE_MENTION_NODE ? [block] : mentionsUnder(block)) : []))
+    .flatMap((block) => (block instanceof Y.XmlElement ? mentionsUnder(block) : []))
     .map((element) => element.getAttribute(MENTION_SOURCE_ID_ATTR))
     .filter((id): id is string => typeof id === 'string');
   return [...new Set(ids)];
