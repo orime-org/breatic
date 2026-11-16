@@ -30,6 +30,12 @@ const workerConfigSchema = z.object({
   /** Base backoff delay (ms) between job retries. */
   job_backoff_delay_ms: z.number().int().positive().default(2000),
   poll_interval: z.number().int().positive().default(3000),
+  /** A waiting task not judged by the running-task gate for this long no longer holds its place in line (inner#1968). */
+  slot_wait_stale_ms: z.number().int().positive().default(120_000),
+  /** The longest a task waiting for a running-task slot is put off before it is judged again. */
+  slot_wait_max_delay_ms: z.number().int().positive().default(30_000),
+  /** How often the sweep that releases tasks still waiting for a slot runs. */
+  slot_wait_sweep_interval_ms: z.number().int().positive().default(60_000),
   /** The sweep that settles charge requests still pending (inner#1617). */
   credit_charge_sweep: z
     .object({
