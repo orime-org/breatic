@@ -9,7 +9,7 @@
  */
 
 import type { Job } from "bullmq";
-import { assetRepo, callRegion, env, getRegionsConfig, GlobalApiError, isRegionUnavailable, logger, studioDirectoryRepo } from "@breatic/core";
+import { assetRepo, callRegion, env, getNodeTaskConfig, getRegionsConfig, GlobalApiError, isRegionUnavailable, logger, studioDirectoryRepo, type getRedis } from "@breatic/core";
 import { directoryWrites, globalApi, regionOutboxService, studioDirectoryService } from "@breatic/domain";
 
 /** A sign-in's claims for one other region. */
@@ -177,4 +177,23 @@ export async function sweepSlugReservations(): Promise<number> {
 export async function reconcileDirectoryOnStart(): Promise<number> {
   if (!env.DIRECTORY_RECONCILE_ON_START) return 0;
   return studioDirectoryService.reconcileDirectoryAfterUpgrade();
+}
+
+/**
+ * Log a hold cleanup that will not be tried again, once across every worker
+ * instance: each hears the queue's event, and the one that claims it, for as
+ * long as a hold lives, logs it. A claim that cannot be made still logs.
+ * @param redis - Where the claim is made.
+ * @param jobId - The job, whose id is the hold's key.
+ * @param failedReason - Why its last try failed.
+ * @returns Once logged or left to the instance that claimed it.
+ */
+export async function reportHoldCleanupGaveUp(redis: ReturnType<typeof getRedis>, jobId: string, failedReason: string): Promise<void> {
+  const ctx = { referenceId: jobId, failedReason };
+  try {
+    const claimed = await redis.set(`${env.REDIS_KEY_PREFIX}:hold-cleanup-gave-up:${jobId}`, "1", "PX", getNodeTaskConfig().default_budget_ms, "NX");
+    if (claimed === "OK") logger.error(ctx, "credit_hold_cleanup_gave_up");
+  } catch (err) {
+    logger.error({ err, ...ctx }, "credit_hold_cleanup_gave_up");
+  }
 }

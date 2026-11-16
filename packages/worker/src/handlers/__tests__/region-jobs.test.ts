@@ -32,7 +32,8 @@ class FakeGlobalApiError extends Error {
 }
 
 vi.mock("@breatic/core", () => ({
-  env: { REGION: "sg", GLOBAL_REGION: "us-west", INTERNAL_API_SECRET: "secret", REGION_API_URLS: { "us-west": "http://global.invalid" }, DIRECTORY_RECONCILE_ON_START: true },
+  env: { REGION: "sg", GLOBAL_REGION: "us-west", INTERNAL_API_SECRET: "secret", REGION_API_URLS: { "us-west": "http://global.invalid" }, DIRECTORY_RECONCILE_ON_START: true, REDIS_KEY_PREFIX: "test" },
+  getNodeTaskConfig: () => ({ default_budget_ms: 7_200_000 }),
   logger: { error: h.logError },
   getRegionsConfig: () => ({ global_api_timeout_ms: 5000, slug_reservation_stale_ms: 600000, slug_reservation_sweep_batch: 50, storage_usage_report_batch: 500 }),
   callRegion: h.callRegion,
@@ -49,7 +50,7 @@ vi.mock("@breatic/domain", () => ({
   studioDirectoryService: { reconcileDirectoryAfterUpgrade: h.reconcile },
 }));
 
-const { forwardInvitationClaim, forwardRevocation, reconcileDirectoryOnStart, relayRegionOutbox, sweepSlugReservations, syncStorageUsage } = await import("@worker/handlers/region-jobs.js");
+const { forwardInvitationClaim, forwardRevocation, reconcileDirectoryOnStart, relayRegionOutbox, reportHoldCleanupGaveUp, sweepSlugReservations, syncStorageUsage } = await import("@worker/handlers/region-jobs.js");
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -192,6 +193,22 @@ describe("region jobs", () => {
     expect(h.callRegion.mock.calls.filter((call) => call[0] === "us-west")).toHaveLength(2);
     expect(h.postpone).not.toHaveBeenCalled();
     expect(h.logError).toHaveBeenCalledWith(expect.objectContaining({ studioId: "s-d" }), "slug_reservation_settle_failed");
+  });
+
+  // inner#1955: every worker instance hears a hold cleanup's final failure;
+  // only the one that claims it logs, and a Redis error still logs.
+  it("logs a hold cleanup's final failure once across instances, and when the claim cannot be made", async () => {
+    const set = vi.fn().mockResolvedValueOnce("OK").mockResolvedValueOnce(null).mockRejectedValueOnce(new Error("redis down"));
+    const redis = { set } as unknown as Parameters<typeof reportHoldCleanupGaveUp>[0];
+    const gaveUp = (): number => h.logError.mock.calls.filter((call) => call[1] === "credit_hold_cleanup_gave_up").length;
+
+    await reportHoldCleanupGaveUp(redis, "task-1", "refused");
+    await reportHoldCleanupGaveUp(redis, "task-1", "refused");
+    expect(set).toHaveBeenCalledWith("test:hold-cleanup-gave-up:task-1", "1", "PX", 7_200_000, "NX");
+    expect(gaveUp()).toBe(1);
+
+    await reportHoldCleanupGaveUp(redis, "task-2", "refused");
+    expect(gaveUp()).toBe(2);
   });
 
   // inner#1955: a self-hosted upgrade swaps every container in one

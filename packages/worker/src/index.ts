@@ -21,7 +21,6 @@ import {
   createQueueEvents,
   defaultJobOpts,
   getRegionsConfig,
-  getNodeTaskConfig,
   checkInfraReady,
   InfraNotReadyError,
   logger,
@@ -161,6 +160,7 @@ import {
   forwardRevocation,
   reconcileDirectoryOnStart,
   relayRegionOutbox,
+  reportHoldCleanupGaveUp,
   sweepSlugReservations,
   syncStorageUsage,
   type IdentityRevocationForwardJob,
@@ -496,14 +496,7 @@ export function startWorker(): void {
     // worker instance hears the event, so the one that claims it logs it.
     const holdCleanupEnds = createQueueEvents(CREDIT_HOLD_RELEASE_QUEUE);
     holdCleanupEnds.on("failed", ({ jobId, failedReason }) => {
-      void getRedis()
-        .set(`${env.REDIS_KEY_PREFIX}:hold-cleanup-gave-up:${jobId}`, "1", "PX", getNodeTaskConfig().default_budget_ms, "NX")
-        .then((claimed) => {
-          if (claimed === "OK") logger.error({ referenceId: jobId, failedReason }, "credit_hold_cleanup_gave_up");
-        })
-        .catch((err: unknown) => {
-          logger.error({ err, referenceId: jobId, failedReason }, "credit_hold_cleanup_gave_up");
-        });
+      void reportHoldCleanupGaveUp(getRedis(), jobId, failedReason);
     });
     regionWorkers.push(holdRelease, holdCleanupEnds);
   }
