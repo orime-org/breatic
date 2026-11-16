@@ -7,6 +7,7 @@ import { resolve } from 'node:path';
 import { describe, it, expect, vi } from 'vitest';
 import {
   act,
+  fireEvent,
   render as baseRender,
   screen,
   waitFor,
@@ -900,8 +901,10 @@ describe('PromptEditor — the paragraph of an optional input (inner#1811, CAP-9
     const { rerender } = render(<PromptEditor {...props} references={pool()} />);
     await waitFor(() => expect(heldBack()).toHaveLength(1));
     expect(heldBack()[0]?.textContent).toContain('The person looks like');
-    // Greyed as it is left out: the box shows what it sends.
-    expect(heldBack()[0]).toHaveClass('opacity-40', 'grayscale');
+    // Greyed as it is left out: the box shows what it sends. The words keep a
+    // readable muted colour; only the chip inside is faded and drained.
+    expect(heldBack()[0]).toHaveClass('text-muted-foreground', '[&_.reference-mention]:opacity-40', '[&_.reference-mention]:grayscale');
+    expect(heldBack()[0]).not.toHaveClass('opacity-40');
     await waitFor(() => expect(onAtMentionsChange).toHaveBeenLastCalledWith(['n-product']));
     expect(String(onTextChange.mock.lastCall?.[0])).not.toContain('The person looks like');
     expect(String(onTextChange.mock.lastCall?.[0])).toContain('Lit softly.');
@@ -910,6 +913,33 @@ describe('PromptEditor — the paragraph of an optional input (inner#1811, CAP-9
     await waitFor(() => expect(heldBack()).toHaveLength(0));
     await waitFor(() => expect(onAtMentionsChange).toHaveBeenLastCalledWith(['n-product', 'n-person']));
     expect(String(onTextChange.mock.lastCall?.[0])).toContain('The person looks like');
+  });
+
+  it('names the missing input after the pointer rests on the greyed paragraph, and not when it only passes over', async () => {
+    render(
+      <PromptEditor
+        fragment={seeded()}
+        placeholder='Describe'
+        onTextChange={vi.fn()}
+        onAtMentionsChange={vi.fn()}
+        references={pool()}
+        referenceKinds={['image']}
+        mentionEmptyLabel='No references'
+      />,
+    );
+    await waitFor(() => expect(heldBack()).toHaveLength(1));
+    const paragraph = heldBack()[0] as HTMLElement;
+    const hint = (): HTMLElement | null => screen.queryByRole('tooltip');
+
+    fireEvent.pointerOver(paragraph);
+    expect(hint()).toBeNull();
+    fireEvent.pointerLeave(paragraph);
+    await act(() => new Promise((resolve) => setTimeout(resolve, 150)));
+    expect(hint()).toBeNull();
+
+    fireEvent.pointerOver(paragraph);
+    expect(hint()).toBeNull();
+    await waitFor(() => expect(hint()).toHaveTextContent('Person'));
   });
 
   it('leaves the greyed paragraph out of a dialogue script as well', async () => {

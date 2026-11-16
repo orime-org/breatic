@@ -54,6 +54,7 @@ import {
 } from '@web/spaces/canvas/generate/dialogue-line';
 import { dispatchMachineEdit } from '@web/features/reference-mention/reference-mention-local-input';
 import { HELD_BACK_ATTR, OptionalParagraphs } from '@web/spaces/canvas/generate/optional-paragraph';
+import { HOVER_OPEN_DELAY_MS } from '@web/spaces/canvas/nodes/_shared/hover-preview-timing';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 import { NO_MENTION_TOKENS, type MentionTokens } from '@web/spaces/canvas/generate/reference-urls';
 import { makeReferenceSuggestion } from '@web/spaces/canvas/generate/reference-mention-suggestion';
@@ -415,31 +416,42 @@ function useHeldBackHint(): HeldBackHintArea {
   const areaRef = React.useRef<HTMLDivElement | null>(null);
   const [hint, setHint] = React.useState<HeldBackHint | null>(null);
   const shown = React.useRef<Element | null>(null);
+  const timer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   useFollowCanvasViewport(hint !== null);
+  const cancel = React.useCallback((): void => {
+    if (timer.current !== null) clearTimeout(timer.current);
+    timer.current = null;
+  }, []);
+  React.useEffect(() => cancel, [cancel]);
   const onPointerOver = React.useCallback((event: React.PointerEvent): void => {
-    const area = areaRef.current;
     const target = event.target instanceof Element ? event.target : null;
     const found = target?.closest(`[${HELD_BACK_ATTR}]`);
     const paragraph = found instanceof HTMLElement && !target?.closest('[data-reference-mention]') ? found : null;
     if (paragraph === shown.current) return;
     shown.current = paragraph;
-    if (area === null || paragraph === null) {
-      setHint(null);
-      return;
-    }
-    const outer = area.getBoundingClientRect();
-    const inner = paragraph.getBoundingClientRect();
-    // The canvas zoom scales both rects; the box's own pixels are what the anchor is placed in.
-    const scale = area.offsetWidth > 0 ? outer.width / area.offsetWidth : 1;
-    setHint({
-      box: { top: (inner.top - outer.top) / scale, left: (inner.left - outer.left) / scale, width: inner.width / scale, height: inner.height / scale },
-      names: paragraph.getAttribute(HELD_BACK_ATTR) ?? '',
-    });
-  }, []);
+    cancel();
+    setHint(null);
+    if (paragraph === null) return;
+    // Opens after the same rest as every other tooltip, so a pointer passing over on its way elsewhere shows nothing.
+    timer.current = setTimeout(() => {
+      timer.current = null;
+      const area = areaRef.current;
+      if (area === null || !paragraph.isConnected) return;
+      const outer = area.getBoundingClientRect();
+      const inner = paragraph.getBoundingClientRect();
+      // The canvas zoom scales both rects; the box's own pixels are what the anchor is placed in.
+      const scale = area.offsetWidth > 0 ? outer.width / area.offsetWidth : 1;
+      setHint({
+        box: { top: (inner.top - outer.top) / scale, left: (inner.left - outer.left) / scale, width: inner.width / scale, height: inner.height / scale },
+        names: paragraph.getAttribute(HELD_BACK_ATTR) ?? '',
+      });
+    }, HOVER_OPEN_DELAY_MS);
+  }, [cancel]);
   const onPointerLeave = React.useCallback((): void => {
+    cancel();
     shown.current = null;
     setHint(null);
-  }, []);
+  }, [cancel]);
   return { areaRef, hint, onPointerOver, onPointerLeave };
 }
 

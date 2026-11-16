@@ -93,7 +93,9 @@ export const OptionalParagraphs = Extension.create<OptionalParagraphsOptions>({
               if (held.length === 0) return;
               decorations.push(
                 Decoration.node(offset, offset + block.nodeSize, {
-                  class: 'opacity-40 grayscale',
+                  // The words stay readable in the muted text colour; the chip fades the
+                  // way a chip of a kind the mode cannot use does.
+                  class: 'text-muted-foreground [&_.reference-mention]:opacity-40 [&_.reference-mention]:grayscale',
                   [HELD_BACK_ATTR]: held.map((row) => row.sourceNodeName).join(', '),
                 }),
               );
