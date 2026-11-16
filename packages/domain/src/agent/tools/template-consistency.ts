@@ -106,7 +106,8 @@ export function anchoredInstances(proposal: CanvasProposal, places: readonly (Te
  * @throws {never} Never.
  */
 export function checkTemplateInstances(proposal: CanvasProposal, instances: readonly AnchoredInstance[]): ProposalVerdict {
-  for (const { anchor, place, match } of instances) {
+  for (const instance of instances) {
+    const { anchor, place, match } = instance;
     const id = place.template.id;
     const at = nodeLabel(proposal.nodes, anchor);
     /**
@@ -116,15 +117,11 @@ export function checkTemplateInstances(proposal: CanvasProposal, instances: read
      */
     const label = (node: string): string => nodeLabel(proposal.nodes, Number(node));
     /**
-     * The index of the node a key stands on: the anchor's, or the node matched to it.
+     * The index of the node a key of this instance stands on.
      * @param key - The key.
      * @returns The index, or undefined when no node stands there.
      */
-    const indexAt = (key: TemplateNodeKey): number | undefined => {
-      if (key === place.template.anchor) return anchor;
-      const node = nodeIdOf(match, key);
-      return node === "" ? undefined : Number(node);
-    };
+    const indexAt = (key: TemplateNodeKey): number | undefined => keyIndex(instance, key);
     /**
      * The fix that sends one node into another the way a template edge does,
      * with the ref and note that route asks for (`entriesFor`).
@@ -248,6 +245,21 @@ export function checkTemplateInstances(proposal: CanvasProposal, instances: read
 }
 
 /**
+ * The index of the node a key of an instance stands on: the anchor's, or the
+ * node matched to it.
+ * @param instance - The anchored instance.
+ * @param key - The key.
+ * @returns The index, or undefined when no node stands there.
+ * @throws {never} Never.
+ */
+function keyIndex(instance: AnchoredInstance, key: TemplateNodeKey): number | undefined {
+  const { anchor, place, match } = instance;
+  if (key === place.template.anchor) return anchor;
+  const node = nodeIdOf(match, key);
+  return node === "" ? undefined : Number(node);
+}
+
+/**
  * The node a key was matched to.
  * @param match - The match.
  * @param key - A key the match found one or more nodes for.
@@ -272,13 +284,12 @@ function nodeIdOf(match: TemplateInstanceMatch, key: TemplateNodeKey): string {
  */
 export function optionalInputRefs(instances: readonly AnchoredInstance[]): Map<number, Map<number, string>> {
   const refs = new Map<number, Map<number, string>>();
-  for (const { anchor, place, match } of instances) {
-    for (const input of place.template.inputs) {
+  for (const instance of instances) {
+    for (const input of instance.place.template.inputs) {
       if (input.optional !== true) continue;
-      for (const [fed, node] of match.inputs.get(input.key) ?? []) {
-        const at = fed === place.template.anchor ? anchor : nodeIdOf(match, fed);
-        if (at === "") continue;
-        const generation = Number(at);
+      for (const [fed, node] of instance.match.inputs.get(input.key) ?? []) {
+        const generation = keyIndex(instance, fed);
+        if (generation === undefined) continue;
         refs.set(generation, (refs.get(generation) ?? new Map<number, string>()).set(Number(node), input.key));
       }
     }
@@ -302,7 +313,7 @@ export function checkOptionalInputs(proposal: CanvasProposal, instances: readonl
     const id = place.template.id;
     for (const input of place.template.inputs) {
       if (input.optional !== true) continue;
-      for (const node of new Set((match.inputs.get(input.key) ?? new Map<TemplateNodeKey, string>()).values())) {
+      for (const node of new Set(match.inputs.get(input.key)?.values())) {
         if (inputTags.get(Number(node)) === input.key) continue;
         return refuse(
           "template-optional-input-untagged",

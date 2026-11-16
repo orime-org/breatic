@@ -114,35 +114,6 @@ export const SHOTS: GenerationTemplate = {
   triggers: { asks: ["a fixture"], offerWhen: ["a fixture is wanted"] },
 };
 
-/**
- * A fixture whose multi-shot anchor takes a required input and an optional
- * one (inner#1811, CAP-9), the optional input @'d alone in the second shot.
- */
-export const CAST: GenerationTemplate = {
-  id: "fixture-cast",
-  anchor: "clip",
-  nodes: [
-    {
-      key: "clip",
-      role: "generate",
-      type: "video",
-      mode: "multi_shot",
-      model: "seedance-2.5-text-to-video",
-      params: { aspect_ratio: "9:16", duration: 10 },
-      shots: [{ seconds: 5 }, { seconds: 5 }],
-    },
-  ],
-  edges: [],
-  inputs: [
-    { key: "product", type: "image" },
-    { key: "person", type: "image", optional: true },
-  ],
-  steps: [],
-  agentNote: "a fixture clip of a product, someone optional holding it",
-  goal: "ecommerce",
-  triggers: { asks: ["a fixture"], offerWhen: ["a fixture is wanted"] },
-};
-
 /** Every fixture, as a registry. */
 export const FIXTURES: readonly GenerationTemplate[] = [SHEET, SOLO, STEPPED, SHOTS];
 
@@ -203,8 +174,37 @@ export const STANDALONE: GenerationTemplate = {
   triggers: { asks: ["a fixture"], offerWhen: ["a fixture is wanted"] },
 };
 
-/** The fixtures with the new places a template node or input can stand (inner#1825), as a registry. */
-export const PLACED_FIXTURES: readonly GenerationTemplate[] = [...FIXTURES, SLOTTED, DOWNSTREAM, STANDALONE];
+/**
+ * A fixture whose multi-shot anchor takes a required input and an optional
+ * one (inner#1811, CAP-9), the optional input @'d alone in the second shot.
+ */
+export const CAST: GenerationTemplate = {
+  id: "fixture-cast",
+  anchor: "clip",
+  nodes: [
+    {
+      key: "clip",
+      role: "generate",
+      type: "video",
+      mode: "multi_shot",
+      model: "seedance-2.5-text-to-video",
+      params: { aspect_ratio: "9:16", duration: 10 },
+      shots: [{ seconds: 5 }, { seconds: 5 }],
+    },
+  ],
+  edges: [],
+  inputs: [
+    { key: "product", type: "image" },
+    { key: "person", type: "image", optional: true },
+  ],
+  steps: [],
+  agentNote: "a fixture clip of a product, someone optional holding it",
+  goal: "ecommerce",
+  triggers: { asks: ["a fixture"], offerWhen: ["a fixture is wanted"] },
+};
+
+/** The fixtures with the new places a template node or input can stand (inner#1825) and an optional input of a multi-shot anchor (inner#1811), as a registry. */
+export const PLACED_FIXTURES: readonly GenerationTemplate[] = [...FIXTURES, SLOTTED, DOWNSTREAM, STANDALONE, CAST];
 
 /** The fixtures' strings, under `canvas.template`, by locale. */
 const STRINGS: Record<string, Record<string, unknown>> = {
