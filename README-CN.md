@@ -113,6 +113,10 @@ Breatic 官方在线服务已开放使用，并持续开发。上文各功能的
 
 [官网](https://breatic.ai) · [Discord](https://discord.gg/Yeu6A4aejN) · [X](https://x.com/breatic_ai) · [YouTube](https://www.youtube.com/@breatic_ai) · [Instagram](https://www.instagram.com/breatic_ai)
 
+**飞书群：Breatic 中文社区**。用飞书扫码加入，交流创作经验、反馈问题或参与项目讨论。
+
+<img src="docs/images/readme/feishu-community-zh-CN.jpg" alt="Breatic 中文社区飞书群二维码" width="260">
+
 ## 许可证与允许用途
 
 Breatic 是**开源**项目，采用 [GNU Affero General Public License v3.0](LICENSE)（`AGPL-3.0-only`）。
@@ -126,6 +130,12 @@ Breatic 的名称和标识是 Orime, Inc. 的商标，不在许可证授权范�
 Breatic 是 AI 辅助内容创作工具。Breatic 实例的运营者和用户须自行负责：生成内容符合适用法律（版权、商标、隐私、数据保护、名誉权与内容审核），对所提供的输入及其后续使用拥有相应权利，并按使用场景做好内容审核。Orime, Inc. 不对生成内容的准确性、合法性、原创性或安全性作任何保证。
 
 第三方组件及许可说明见 [THIRD-PARTY.md](THIRD-PARTY.md)。
+
+## 鸣谢
+
+- [AtomGit](https://atomgit.com/orime-org/breatic)：在国内托管本项目，帮助中国大陆用户更快访问项目与下载 Release。
+
+[![AtomGit G-Star](https://atomgit.com/orime-org/breatic/star/new_badge.svg)](https://atomgit.com/orime-org/breatic)
 
 [hosted-app]: https://breatic.ai/login?utm_source=github&utm_medium=referral&utm_campaign=repository_listing_202610&utm_content=readme_cn
 [hosted-pricing]: https://breatic.ai/zh-CN/pricing/?utm_source=github&utm_medium=referral&utm_campaign=repository_listing_202610&utm_content=readme_pricing_cn
