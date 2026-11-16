@@ -347,6 +347,10 @@
     },
     "document": {
       "versions_full": "{limit, plural, other {이 Document의 스냅샷이 최대 #개로 가득 찼습니다. 오래된 스냅샷을 삭제한 뒤 저장하세요.}}"
+    },
+    "operation": {
+      "exhausted": "이번 달 작업 횟수를 모두 사용했고 크레딧이 {credits}보다 부족합니다. 충전하면 계속할 수 있습니다.",
+      "key_taken": "이 작업은 이미 처리되었습니다."
     }
   },
   "chat": {

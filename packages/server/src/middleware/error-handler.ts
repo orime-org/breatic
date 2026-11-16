@@ -37,6 +37,7 @@ import { AppError, TooManyRequestsError } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { REQUEST_SHAPE_REASON, t } from "@breatic/shared";
 import { RequestShapeError } from "@server/middleware/validate.js";
+import { ReasonedError } from "@server/modules/operation/operation-admission.service.js";
 
 /**
  * Global error handler for the Hono app.
@@ -75,6 +76,7 @@ export const errorHandler: ErrorHandler = (err, c) => {
           code: err.statusCode,
           message: err.message,
           ...(err instanceof RequestShapeError ? { reason: REQUEST_SHAPE_REASON } : {}),
+          ...(err instanceof ReasonedError ? { reason: err.reason } : {}),
         },
       },
       err.statusCode as 400,

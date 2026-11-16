@@ -347,6 +347,10 @@
     },
     "document": {
       "versions_full": "{limit, plural, one {This document already has 1 snapshot. Delete it to save a new one.} other {This document already has # snapshots. Delete an old one to save a new one.}}"
+    },
+    "operation": {
+      "exhausted": "This month's operations are used up, and there are fewer than {credits} credits for the next one. Add credits to continue.",
+      "key_taken": "This operation was already handled."
     }
   },
   "chat": {

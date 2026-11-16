@@ -347,6 +347,10 @@
     },
     "document": {
       "versions_full": "{limit, plural, other {這個 Document 的快照已滿 # 張。刪掉舊的快照後再儲存。}}"
+    },
+    "operation": {
+      "exhausted": "本月操作次數已用完，點數不足 {credits}。儲值後可繼續。",
+      "key_taken": "這次操作已經處理過了。"
     }
   },
   "chat": {
