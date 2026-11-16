@@ -84,11 +84,10 @@ class InsertLost extends Error {
   }
 }
 
-/** A frozen input before the export's video key is minted, with what its hash is computed over. */
+/** A frozen input before the export's video key is minted, and its engine. */
 interface Frozen {
   input: Record<string, unknown>;
   engine: TimelineExecution["engine"];
-  hashParts: unknown[];
 }
 
 /**
@@ -133,7 +132,7 @@ async function grantedVersion(projectId: string, sourceVersionId: string): Promi
  * the configured frame rate, a modification at its base's, an export at its source's frame and length.
  * @param projectId - The Project accepting.
  * @param request - The read request.
- * @returns The frozen input without the export's video key, its engine and what its hash covers.
+ * @returns The frozen input without the export's video key, and its engine.
  * @throws {ValidationError} When a text or the length is out of bounds.
  * @throws {NotFoundError} When the base or source version is not this Project's to use.
  */
@@ -143,7 +142,7 @@ async function freeze(projectId: string, request: WebAnimationExecutionRequest):
       checkDuration(request.durationSeconds);
       const fps = getTimelineConfig().web_animation.fps;
       const input = { prompt: freezeText(request.prompt), engine: request.engine, aspect: request.aspect, durationSeconds: request.durationSeconds, fps };
-      return { input, engine: request.engine, hashParts: [input.prompt, input.engine, input.aspect, input.durationSeconds, fps.num, fps.den] };
+      return { input, engine: request.engine };
     }
     case "web_animation_modify": {
       checkDuration(request.durationSeconds);
@@ -151,27 +150,27 @@ async function freeze(projectId: string, request: WebAnimationExecutionRequest):
       const base = await grantedVersion(projectId, request.baseSourceVersionId);
       const fps = { num: base.fpsNum, den: base.fpsDen };
       const input = { baseSourceVersionId: base.id, instruction, engine: request.engine, aspect: request.aspect, durationSeconds: request.durationSeconds, fps };
-      return { input, engine: request.engine, hashParts: [base.id, instruction, input.engine, input.aspect, input.durationSeconds, fps.num, fps.den] };
+      return { input, engine: request.engine };
     }
     case "web_animation_export": {
       const source = await grantedVersion(projectId, request.sourceVersionId);
       const fps = { num: source.fpsNum, den: source.fpsDen };
       const input = { sourceVersionId: source.id, width: source.width, height: source.height, fps, durationFrames: source.durationFrames };
-      return { input, engine: null, hashParts: [source.id, input.width, input.height, fps.num, fps.den, input.durationFrames] };
+      return { input, engine: null };
     }
   }
 }
 
 /**
- * Hash a frozen input with its kind in a fixed order, so the same input always hashes the same and an action replayed
- * as another kind differs.
+ * Hash a frozen input with its kind, so the same input always hashes the same, any field that differs changes it and
+ * an action replayed as another kind differs. `freeze` builds every input in a fixed key order.
  * @param kind - The kind.
- * @param parts - The input's fields, in their fixed order.
+ * @param input - The frozen input, before the export's video key is minted.
  * @returns `sha256:<hex>`.
  * @throws {never} Never.
  */
-function hashInput(kind: TimelineExecution["kind"], parts: unknown[]): string {
-  return `sha256:${createHash("sha256").update(JSON.stringify([kind, ...parts])).digest("hex")}`;
+function hashInput(kind: TimelineExecution["kind"], input: Record<string, unknown>): string {
+  return `sha256:${createHash("sha256").update(JSON.stringify([kind, input])).digest("hex")}`;
 }
 
 /**
@@ -211,7 +210,8 @@ export async function accept(userId: string, body: WebAnimationExecutionRequest 
   const { projectId, spaceId, actionId, kind, origin } = body;
   await projectService.assertAccess(projectId, userId, "editor");
   const frozen = await freeze(projectId, body);
-  const inputHash = hashInput(kind, frozen.hashParts);
+  const inputHash = hashInput(kind, frozen.input);
+  const sourceVersionId = body.kind === "web_animation_export" ? body.sourceVersionId : null;
   /**
    * Answer a row as the routes do.
    * @param row - The row.
@@ -223,17 +223,24 @@ export async function accept(userId: string, body: WebAnimationExecutionRequest 
     if (view === undefined) throw new AppError(500, t("server.error.internal"));
     return { row: view, created };
   };
-  const replayed = await timelineExecutionRepo.findByAction({ projectId, spaceId, actionId });
-  if (replayed !== undefined) {
-    if (replayed.inputHash !== inputHash) throw new ConflictError(t("server.error.conflict"));
-    return answer(replayed, false);
-  }
-  const sourceVersionId = kind === "web_animation_export" ? String(frozen.input.sourceVersionId) : null;
-  // A video already made, or being made, here is answered before any balance or storage check.
-  if (sourceVersionId !== null) {
+  /**
+   * The row this request already has: the action's own, or a conflict when its input differs; for an export, a video
+   * already made, or being made, of the same source here. Asked before any balance or storage check, and again when
+   * the insert loses to a concurrent accept.
+   * @returns The answer, or undefined when there is none.
+   */
+  const existing = async (): Promise<AcceptedExecution | undefined> => {
+    const replayed = await timelineExecutionRepo.findByAction({ projectId, spaceId, actionId });
+    if (replayed !== undefined) {
+      if (replayed.inputHash !== inputHash) throw new ConflictError(t("server.error.conflict"));
+      return answer(replayed, false);
+    }
+    if (sourceVersionId === null) return undefined;
     const [live] = await listRepo.findLiveExports({ projectId, spaceId, sourceVersionIds: [sourceVersionId] });
-    if (live !== undefined) return answer(live, false);
-  }
+    return live === undefined ? undefined : answer(live, false);
+  };
+  const found = await existing();
+  if (found !== undefined) return found;
 
   // A new execution needs a balance above zero to start, as an Agent chat turn does (chat.ts). Payments off: no check.
   await precheckCredits(projectId, userId, SMALLEST_CREDIT);
@@ -258,16 +265,9 @@ export async function accept(userId: string, body: WebAnimationExecutionRequest 
     return answer(row, true);
   } catch (err) {
     if (!(err instanceof InsertLost)) throw err;
-    const winner = await timelineExecutionRepo.findByAction({ projectId, spaceId, actionId });
-    if (winner !== undefined) {
-      if (winner.inputHash !== inputHash) throw new ConflictError(t("server.error.conflict"));
-      return answer(winner, false);
-    }
-    if (sourceVersionId !== null) {
-      const [live] = await listRepo.findLiveExports({ projectId, spaceId, sourceVersionIds: [sourceVersionId] });
-      if (live !== undefined) return answer(live, false);
-    }
-    throw new AppError(500, t("server.error.internal"));
+    const winner = await existing();
+    if (winner === undefined) throw new AppError(500, t("server.error.internal"));
+    return winner;
   }
 }
 

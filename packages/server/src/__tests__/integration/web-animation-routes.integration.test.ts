@@ -239,6 +239,22 @@ describe("POST /timeline/executions — create from a Motion Space", () => {
     expect(job?.data).toEqual({ executionId: data.id });
   });
 
+  it.each([
+    ["create", "prompt", "A logo fade"],
+    ["create", "aspect", "9:16"],
+    ["create", "durationSeconds", 5],
+    ["modify", "instruction", "Make it faster"],
+    ["modify", "aspect", "16:9"],
+    ["modify", "durationSeconds", 4],
+  ] as const)("answers a %s sent again as it was with its own row, and refuses it with another %s with 409", async (kind, field, value) => {
+    const fx = await seedProject();
+    const { versionId } = await finishedCreate(fx);
+    const body = kind === "create" ? createBody(fx) : modifyBody(fx, versionId);
+    const made = await acceptRow(fx.editor.cookie, body, 201);
+    expect((await acceptRow(fx.editor.cookie, body, 200)).id).toBe(made.id);
+    expect((await accept(fx.editor.cookie, { ...body, [field]: value })).status).toBe(409);
+  });
+
   it("refuses the same action sent again as another kind with 409", async () => {
     const fx = await seedProject();
     const { versionId } = await finishedCreate(fx);

@@ -122,7 +122,8 @@ export function toEntity(row: Row): TimelineExecution {
  * Record an accepted execution, queued.
  * @param input - The execution.
  * @param tx - The transaction to write in.
- * @returns The row, or null when the Project and Space already hold a live execution with this action id.
+ * @returns The row, or null when it would break a live unique index: an execution with this action id in the Project
+ *   and Space, or a live export of the same source in the Space.
  * @throws {Error} When the write fails.
  */
 export async function insert(input: NewTimelineExecution, tx?: DbTx): Promise<TimelineExecution | null> {
