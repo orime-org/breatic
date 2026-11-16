@@ -627,6 +627,11 @@ export interface NodeTaskCounts {
    * which reads as 0.
    */
   waiting?: number;
+  /**
+   * The running-task limit the node's earliest waiting task waits under
+   * (inner#1968, design 21 row 22); absent while nothing waits.
+   */
+  waitingLimit?: number;
   done: number;
   failed: number;
   expired: number;

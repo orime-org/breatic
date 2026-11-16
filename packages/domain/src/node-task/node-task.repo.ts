@@ -11,9 +11,9 @@
  * a refusal.
  */
 
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { db, type DbTx } from "@breatic/core";
-import { nodeHistory, nodeTasks } from "@breatic/core";
+import { nodeHistory, nodeTasks, tasks } from "@breatic/core";
 import type { NodeTaskAction, SceneGenerationOrigin, SceneTaskNotice } from "@breatic/shared";
 
 /** The four states a task can be in, and the four numbers the node shows. */
@@ -53,6 +53,8 @@ export interface NodeTaskRow {
   waitingSince?: Date | null;
   /** The AIGC job the row runs as; null on an upload. Every read sets it. */
   taskId?: string | null;
+  /** The running-task limit its task waits under (inner#1968); null when it does not wait. The list reads set it. */
+  slotWaitLimit?: number | null;
 }
 
 /** A 3D Space's own row (inner#1690, inner#1691), as its list and its actions read it. */
@@ -411,6 +413,25 @@ export async function countsFor(
     if (key in counts) counts[key] = Number(row.n);
     if (key === "running") counts.waiting = Number(row.waiting);
   }
+  if ((counts.waiting ?? 0) > 0) {
+    // The limit the earliest waiting task waits under (design 21 row 22).
+    const [first] = await (tx ?? db)
+      .select({ limit: tasks.slotWaitLimit })
+      .from(nodeTasks)
+      .innerJoin(tasks, eq(tasks.id, nodeTasks.taskId))
+      .where(
+        and(
+          eq(nodeTasks.projectId, projectId),
+          eq(nodeTasks.nodeId, nodeId),
+          eq(nodeTasks.status, "running"),
+          isNotNull(nodeTasks.waitingSince),
+          isNull(nodeTasks.deletedAt),
+        ),
+      )
+      .orderBy(asc(nodeTasks.waitingSince))
+      .limit(1);
+    if (first?.limit != null) counts.waitingLimit = first.limit;
+  }
   return counts;
 }
 
@@ -428,9 +449,10 @@ export async function listLive(
   nodeId: string,
 ): Promise<NodeTaskListRow[]> {
   const rows = await db
-    .select({ task: nodeTasks, history: nodeHistory })
+    .select({ task: nodeTasks, history: nodeHistory, limit: tasks.slotWaitLimit })
     .from(nodeTasks)
     .leftJoin(nodeHistory, eq(nodeHistory.id, nodeTasks.nodeHistoryId))
+    .leftJoin(tasks, eq(tasks.id, nodeTasks.taskId))
     .where(
       and(
         eq(nodeTasks.projectId, projectId),
@@ -440,8 +462,9 @@ export async function listLive(
     )
     .orderBy(sql`${nodeTasks.startedAt} DESC`);
 
-  return rows.map(({ task, history }) => ({
+  return rows.map(({ task, history, limit }) => ({
     ...rowOf(task),
+    slotWaitLimit: task.waitingSince === null ? null : limit,
     content: history?.content ?? null,
     coverUrl: history?.thumbnailUrl ?? null,
     mediaWidth: history?.mediaWidth ?? null,
@@ -553,8 +576,9 @@ export async function harvestExpiredInSpace(projectId: string, spaceId: string):
  */
 export async function listSpace(projectId: string, spaceId: string): Promise<SceneTaskRow[]> {
   const rows = await db
-    .select()
+    .select({ task: nodeTasks, limit: tasks.slotWaitLimit })
     .from(nodeTasks)
+    .leftJoin(tasks, eq(tasks.id, nodeTasks.taskId))
     .where(
       and(
         eq(nodeTasks.projectId, projectId),
@@ -566,7 +590,7 @@ export async function listSpace(projectId: string, spaceId: string): Promise<Sce
     // Newest first by when the row was written, which is when it started;
     // `started_at` is the deadline's clock and is not what the list orders by.
     .orderBy(sql`${nodeTasks.createdAt} DESC`);
-  return rows.map(sceneRowOf);
+  return rows.map(({ task, limit }) => ({ ...sceneRowOf(task), slotWaitLimit: task.waitingSince === null ? null : limit }));
 }
 
 /**

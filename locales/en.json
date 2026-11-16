@@ -1171,7 +1171,8 @@
         "transcribe": "Transcribe"
       },
       "waitReason": "You've reached the number of tasks you can run at once. This one starts by itself when an earlier one ends.",
-      "cancelFailed": "That task could not be cancelled."
+      "cancelFailed": "That task could not be cancelled.",
+      "waitReasonLimit": "You've reached your limit of {limit} tasks running at once. This one starts by itself when an earlier one ends."
     },
     "panel": {
       "hostDeletedByPeer": "A collaborator deleted the node."

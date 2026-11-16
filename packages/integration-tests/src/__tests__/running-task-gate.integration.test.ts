@@ -389,6 +389,8 @@ describe("G waiting for a free slot", () => {
     expect(row.slot_wait_limit).toBe(2);
     between((await nodeRow(t.nodeTaskId!)).waiting_since, before, after);
     expect(await nodeTaskService.countsFor({ projectId: p.projectId, nodeId: t.nodeId! })).toMatchObject({ running: 1, waiting: 1, done: 0, failed: 0, expired: 0 });
+    // Design 21 row 22: the queued cell's tip names the limit the task waits under.
+    expect((await nodeTaskService.countsFor({ projectId: p.projectId, nodeId: t.nodeId! })).waitingLimit).toBe(2);
   });
 
   it("G-02 once a running task ends, the waiter starts: running from that moment, its node row no longer waits and counts from then", async () => {

@@ -32,6 +32,7 @@ import { Button } from '@web/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { cn } from '@web/lib/utils';
 import { useTranslation } from '@web/i18n/use-translation';
+import { waitReason } from '@web/spaces/canvas/tasks/wait-reason';
 import { TASK_COUNT_ORDER } from '@web/spaces/canvas/overlay-scale';
 import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
 
@@ -110,6 +111,7 @@ export interface TaskCountColumnProps {
  * @param props.value - How many tasks are in it.
  * @param props.isOpen - Whether this state's list is the open one.
  * @param props.onOpen - Called with the state to open, or `null` to close.
+ * @param props.waitingLimit - The waiting cell's running-task limit, when the counts carry it.
  * @returns The count button.
  */
 function TaskCount({
@@ -117,11 +119,13 @@ function TaskCount({
   value,
   isOpen,
   onOpen,
+  waitingLimit,
 }: {
   status: CountCell;
   value: number;
   isOpen: boolean;
   onOpen: (status: TaskStatus | null) => void;
+  waitingLimit?: number;
 }): JSX.Element {
   const t = useTranslation();
   const Mark = MARK_SHAPE[status];
@@ -170,7 +174,7 @@ function TaskCount({
       </TooltipTrigger>
       <TooltipContent side='right'>
         {tip}
-        {status === 'waiting' ? <span className='block'>{t('canvas.task.waitReason')}</span> : null}
+        {status === 'waiting' ? <span className='block'>{waitReason(t, waitingLimit)}</span> : null}
       </TooltipContent>
     </Tooltip>
   );
@@ -214,6 +218,7 @@ export function TaskCountColumn({ counts, endedShown, openFor, onOpen }: TaskCou
           value={value(cell)}
           isOpen={openFor === (cell === 'waiting' ? 'running' : cell)}
           onOpen={onOpen}
+          {...(cell === 'waiting' && counts.waitingLimit !== undefined && { waitingLimit: counts.waitingLimit })}
         />
       ))}
     </div>

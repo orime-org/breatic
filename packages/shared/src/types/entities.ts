@@ -976,6 +976,8 @@ export interface TimelineExecution {
   billedAt: string | null;
   /** First time the running-task gate held it back (inner#1968); null when it never waited. Absent from an older server. */
   slotWaitSince?: string | null;
+  /** The running-task limit it waits under, as the gate last judged it (inner#1968); null when it never waited. Absent from an older server. */
+  slotWaitLimit?: number | null;
   createdAt: string;
   updatedAt: string;
 }

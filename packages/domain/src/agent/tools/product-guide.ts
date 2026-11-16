@@ -946,7 +946,7 @@ export function renderProductGuide(): string {
       "a task past it waits its turn and starts by itself when an earlier one ends, and the time it waits does " +
       "not count against its two hours. A node with a waiting task shows an hourglass in that column, just below " +
       `the spinning circle; hovering it shows ${quoted(t("canvas.task.status.waiting"))} with how many, and why: ` +
-      `${quoted(t("canvas.task.waitReason"))} — clicking it opens the ${quoted(t("canvas.task.status.running"))} ` +
+      `${quoted(t("canvas.task.waitReasonLimit", { limit: 2 }))} — clicking it opens the ${quoted(t("canvas.task.status.running"))} ` +
       `list, where a waiting row says ${quoted(t("canvas.task.status.waiting"))}, shows no running time and ` +
       `offers ${quoted(t("common.cancel"))}, which ends it as ${quoted(t("canvas.task.failure.cancelled"))} A task ` +
       "that has started running cannot be cancelled; pressing it then says " +
@@ -1630,7 +1630,7 @@ export function renderProductGuide(): string {
       "Closing the dialog while the generation is being submitted lets the submission carry on, and its answer still opens the panel on the new row. " +
       "A refusal, such as too few credits or a view that is not a picture of this Project, keeps the dialog open with everything in it and says why in a short message. " +
       `A generation waiting its turn, past the number of tasks one person runs at once, says ${quoted(t("canvas.task.status.waiting"))} on its row, counts no minutes, ` +
-      `offers ${quoted(t("common.cancel"))} and says why it waits: ${quoted(t("canvas.task.waitReason"))} — one that has started running cannot be cancelled.`,
+      `offers ${quoted(t("common.cancel"))} and says why it waits: ${quoted(t("canvas.task.waitReasonLimit", { limit: 2 }))} — one that has started running cannot be cancelled.`,
     `The floating bar at the bottom right orders ${quoted(t("spaces.threeD.undo"))}, ${quoted(t("spaces.threeD.redo"))}, ` +
       `${quoted(t("spaces.threeD.properties"))}, ${quoted(t("spaces.threeD.objects"))}, ${quoted(t("spaces.threeD.tasks"))} and ` +
       `${quoted(t("spaces.threeD.minimap"))}. The three panel buttons keep their ordinary appearance while open. ` +

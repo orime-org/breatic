@@ -58,6 +58,7 @@ interface Excluded {
 export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   // inner#1968: the refusals of the month's operations and spend limits, and
   // the credits panel the top-up opens on the project page.
+  "canvas.task.waitReason": { described: /starts by itself when an earlier one ends|waits its turn/ },
   "canvas.task.cancelFailed": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "credits.spendCap.member": { described: /names the limit and the day it resets/ },
   "credits.spendCap.studio": { described: /names the limit and the day it resets/ },

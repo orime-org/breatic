@@ -18,6 +18,7 @@ import { Button } from '@web/components/ui/button';
 import { failureSentence } from '@web/spaces/canvas/failure-sentence';
 import { useCollaboratorNames } from '@web/features/collab-editor/collaborator-names-context';
 import { useTranslation } from '@web/i18n/use-translation';
+import { waitReason } from '@web/spaces/canvas/tasks/wait-reason';
 import { TaskStatusDot } from '@web/spaces/canvas/tasks/TaskStatusDot';
 import { formatDuration } from '@web/spaces/canvas/lib/duration';
 import { elapsedMs } from '@web/spaces/canvas/tasks/task-timing';
@@ -212,7 +213,7 @@ export const TaskRow = React.memo(function TaskRow({
       {waiting ? (
         <div data-testid='task-waiting' className='flex flex-col gap-0.5 pl-5 text-2xs text-muted-foreground'>
           <span className='font-medium text-foreground-secondary'>{t('canvas.task.status.waiting')}</span>
-          <span>{t('canvas.task.waitReason')}</span>
+          <span>{waitReason(t, entry.slotWaitLimit)}</span>
         </div>
       ) : entry.status === 'running' ? (
         <div className='flex items-center gap-3 pl-5 text-2xs tabular-nums text-muted-foreground'>

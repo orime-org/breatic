@@ -84,6 +84,7 @@ const columns = {
   billedCredits: t.billedCredits,
   billedAt: iso<string | null>(t.billedAt),
   slotWaitSince: iso<string | null>(t.slotWaitSince),
+  slotWaitLimit: t.slotWaitLimit,
   createdAt: iso(t.createdAt),
   updatedAt: iso(t.updatedAt),
 };

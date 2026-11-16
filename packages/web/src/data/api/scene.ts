@@ -40,6 +40,8 @@ export interface SpaceTask {
   deadlineAt: string;
   /** Since when its task waits for a free running slot; null or absent once it runs (inner#1968). */
   waitingSince?: string | null;
+  /** The running-task limit it waits under (inner#1968); null or absent when it does not wait. */
+  slotWaitLimit?: number | null;
   assetId: string | null;
   /** Absent on rows from a server that knew only imports. */
   kind?: 'import' | 'generation';

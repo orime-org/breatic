@@ -10,6 +10,7 @@ import { Button } from '@web/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@web/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
+import { waitReason } from '@web/spaces/canvas/tasks/wait-reason';
 import { cn } from '@web/lib/utils';
 import { useRunning } from '@web/stores/task-actions-in-flight';
 import { WEB_ANIMATION_ENGINE_NAMES } from '@web/spaces/timeline/TimelineWebAnimationDialog';
@@ -140,7 +141,7 @@ const ExecutionRow = React.memo(function ExecutionRow({ projectId, row, open, re
       </span>
     </div>
     {open && <div data-testid={`timeline-execution-detail-${row.id}`} className='flex flex-col gap-3 px-3 pb-3 text-xs'>
-      {waiting && <p className='text-pretty text-muted-foreground'>{t('canvas.task.waitReason')}</p>}
+      {waiting && <p className='text-pretty text-muted-foreground'>{waitReason(t, row.slotWaitLimit)}</p>}
       <ol className='flex flex-col gap-1'>
         {steps.map((key, index) => {
           const mark = stepMark(row, index);

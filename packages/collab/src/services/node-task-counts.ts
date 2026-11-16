@@ -104,7 +104,7 @@ export function applyNodeTaskCounts(
  * Whether the counts a node holds are exactly these.
  * @param held - What the node's `taskCounts` holds, if anything.
  * @param next - The counts just published.
- * @returns True when all five match; an older document's missing `waiting` reads as 0 (inner#1968).
+ * @returns True when all match; an older document's missing `waiting` reads as 0 (inner#1968).
  */
 function sameCounts(held: unknown, next: NodeTaskCounts): boolean {
   if (typeof held !== "object" || held === null) return false;
@@ -112,6 +112,7 @@ function sameCounts(held: unknown, next: NodeTaskCounts): boolean {
   return (
     h.running === next.running &&
     (h.waiting ?? 0) === (next.waiting ?? 0) &&
+    h.waitingLimit === next.waitingLimit &&
     h.done === next.done &&
     h.failed === next.failed &&
     h.expired === next.expired

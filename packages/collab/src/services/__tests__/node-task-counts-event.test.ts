@@ -368,6 +368,14 @@ describe("applyNodeTaskCounts — nothing new, nothing written", () => {
     expect(updates.length).toBeGreaterThan(0);
     expect(data.get("taskCounts")).toEqual({ ...counts, running: 0, done: 3 });
   });
+  // inner#1968 design 21 row 22: the queued cell's tip reads the limit here.
+  it("writes when only the waiting limit moved", () => {
+    const { doc, data } = docWithNode("n-1");
+    apply(doc, { nodeId: "n-1", counts: { ...counts, waiting: 1, waitingLimit: 2 } });
+    apply(doc, { nodeId: "n-1", counts: { ...counts, waiting: 1, waitingLimit: 5 } });
+
+    expect(data.get("taskCounts")).toEqual({ ...counts, waiting: 1, waitingLimit: 5 });
+  });
 });
 
 describe("counts and result each change only for an event newer than their own version", () => {
