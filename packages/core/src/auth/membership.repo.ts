@@ -243,6 +243,21 @@ export async function lockAccountRow(userId: string, tx: DbTx): Promise<void> {
 }
 
 /**
+ * Lock an account row for an operations decision (inner#1968, design 3.3):
+ * `FOR NO KEY UPDATE`, which queues behind every tier, subscription and
+ * agreement write on the row (they take `FOR UPDATE`) and behind another
+ * admission, but not behind the `FOR KEY SHARE` a foreign-key check takes,
+ * so rows that reference the account are still inserted freely.
+ * @param userId - The account whose allowance is decided.
+ * @param tx - The enclosing transaction; the lock is meaningless without one.
+ * @throws {Error} if no account has that id.
+ */
+export async function lockOperationAccount(userId: string, tx: DbTx): Promise<void> {
+  const rows = await tx.select({ id: users.id }).from(users).where(eq(users.id, userId)).for("no key update");
+  if (rows.length === 0) throw new Error(`No account ${userId}`);
+}
+
+/**
  * Who administers a studio, and how many bytes that account's tier allows.
  *
  * An active enterprise agreement caps storage at its storage_bytes; only a
@@ -585,7 +600,7 @@ export async function getMembershipReadingForUser(userId: string, tx?: DbTx): Pr
  * @returns The current administrator's complete entitlement decision.
  * @throws {Error} When no live administrator exists or its data is invalid.
  */
-async function getMembershipReadingForStudio(studioId: string, tx?: DbTx): Promise<MembershipReading> {
+export async function getMembershipReadingForStudio(studioId: string, tx?: DbTx): Promise<MembershipReading> {
   const found = await readMembershipProfile({ studioId }, tx);
   if (found === null) throw new Error(`No live admin for studio ${studioId}`);
   return { ...found.profile.reading, subject: found.subject, storedTier: found.profile.snapshot.storedTier, operations: found.operations };

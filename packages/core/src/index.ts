@@ -238,12 +238,13 @@ export {
   getProjectConcurrentEditorLimit,
   lockLimitsForUser,
   lockAccountRow,
+  lockOperationAccount,
   runningTaskLimitForStudio,
   changeMembershipTier,
   TIER_CHANGE_REASONS,
 } from "@core/auth/membership.repo.js";
 export type { TierChangeReason } from "@core/auth/membership.repo.js";
-export { getEnterpriseMembershipProfile, getMembershipReadingForUser, lockRawMembershipSnapshot, writeEnterpriseMembershipRecord } from "@core/auth/membership.repo.js";
+export { getEnterpriseMembershipProfile, getMembershipReadingForUser, getMembershipReadingForStudio, lockRawMembershipSnapshot, writeEnterpriseMembershipRecord } from "@core/auth/membership.repo.js";
 export type { MembershipReading } from "@core/auth/membership.repo.js";
 export { enterpriseMembershipWriteSchema, enterpriseMembershipProfileSchema, enterpriseMembershipResultSchema, enterpriseMembershipAccountAnswerSchema, negotiatedOperationsOf, MISSING_AGREEMENT_OPERATIONS } from "@core/auth/enterprise-membership-contract.js";
 export type { EnterpriseMembershipWrite, EnterpriseMembershipProfile, EnterpriseMembershipResult, EnterpriseMembershipAccountAnswer, RawMembershipSnapshot, EnterpriseRecord, NegotiatedOperations } from "@core/auth/enterprise-membership-contract.js";
