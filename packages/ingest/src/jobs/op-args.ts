@@ -141,8 +141,8 @@ function hdrFilter(transfer: string, source: ProbeReport): string {
 
 /**
  * The filters that take the source's decoded frames, which keep codec cropping only (`CODEC_CROPPING_ONLY`), to the
- * picture it shows (`shownFilters`: a Matroska PixelCrop cropped exactly, a non-square sample aspect ratio scaled to the
- * shown size), followed by the given filters; a crop rectangle from the panel is in that shown picture.
+ * picture it shows (`shownFilters`: a non-square sample aspect ratio scaled to the shown size), followed by the given
+ * filters; a crop rectangle from the panel is in that shown picture.
  * @param source - The source's probe.
  * @param filters - The operation's own video filters.
  * @returns The filter chain text.
@@ -154,14 +154,13 @@ function shown(source: ProbeReport, filters: string): string {
 
 /**
  * The source's picture into the output: copied when an mp4 plays it as it is,
- * otherwise encoded as H.264 on even sides. A cropped source is encoded: a copy
- * would carry its PixelCrop as an MP4 clean aperture, which Chromium does not apply.
+ * otherwise encoded as H.264 on even sides.
  * @param source - The source's probe.
  * @returns The video arguments.
  */
 function videoOut(source: ProbeReport): string[] {
   const codec = realVideoStream(source)?.codecName ?? "";
-  if (!MP4_VIDEO.has(codec) || realVideoStream(source)?.crop !== undefined) return ["-vf", shown(source, EVEN), ...H264];
+  if (!MP4_VIDEO.has(codec)) return ["-vf", shown(source, EVEN), ...H264];
   // An HEVC stream copied into mp4 is tagged hev1 by default, which Safari does not open.
   return codec === "hevc" ? ["-c:v", "copy", "-tag:v", "hvc1"] : ["-c:v", "copy"];
 }

@@ -19,8 +19,8 @@ import type { ContainerFailure } from "@shared/mini-tools/types.js";
 import type { MediaOfOutput } from "@ingest/jobs/container-report.js";
 import { runPlanCommand } from "@ingest/container/plan-command.js";
 import { copyWithMatrixTag } from "@ingest/container/presentation-run.js";
-import { TAGGED_MATRICES, videoContainerCrop } from "@ingest/container/physical-video-probe.js";
-import { cropFilter, displayTurn } from "@ingest/shown-picture.js";
+import { TAGGED_MATRICES } from "@ingest/container/physical-video-probe.js";
+import { displayTurn } from "@ingest/shown-picture.js";
 import { alphaDecoderArgs, probeArgs, readProbeOutput } from "@ingest/probe-command.js";
 import { pickMediaMetadata } from "@ingest/media-metadata.js";
 import { pngSize } from "@ingest/png-size.js";
@@ -67,7 +67,7 @@ export interface PresentationRecipeRequest {
  * What the tone map reads of a source's decoded frames beyond its plan (§4.3 colour/HDR row), as zscale names: the transfer,
  * the primaries (BT.709 when untagged, as Chromium reads them), the range (limited when untagged) and the chroma location
  * (left when unspecified, as zimg reads it); for a planar subsampled stream with an odd subsampled side, which zimg cannot
- * read, its planar format and decoded size; and the container cropping the graph applies itself.
+ * read, its planar format and decoded size.
  */
 export interface FrameColour {
   transfer: string | null;
@@ -77,8 +77,6 @@ export interface FrameColour {
   odd: OddFrames | null;
   /** The display turn the graph applies itself on full-chroma frames, with autorotate off; null when FFmpeg's autorotate turns them. */
   turn: string | null;
-  /** The exact crop of a Matroska PixelCrop on full-chroma frames before the turn (the decoder's own crop is off); null for none. */
-  crop: string | null;
 }
 /**
  * How odd-sided planar subsampled frames reach the graph: their planar format (alpha included when the decoder hands it out),
@@ -214,7 +212,7 @@ function toneMap(matrix: string, colour: FrameColour, label: string, keepAlpha: 
   const chain = `zscale=${inputs}:t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv`;
   const { odd } = colour;
   const mapped = odd === null ? chain : `${evenPlanes(odd, `${label}t`, false)},${chain},${oddBack(odd)}`;
-  const turn = `${colour.crop === null ? "" : `,${colour.crop}`}${colour.turn === null ? "" : `,${colour.turn}`}`;
+  const turn = colour.turn === null ? "" : `,${colour.turn}`;
   if (!keepAlpha) return `${mapped}${turn}`;
   return `split[${label}tc][${label}ta];[${label}ta]format=yuva444p,alphaextract[${label}tm];[${label}tc]${mapped}[${label}tt];[${label}tt][${label}tm]alphamerge${turn}`;
 }
@@ -302,8 +300,7 @@ export function decodedPicture(source: { colorMatrix: string; toneMap: "none" | 
     return `${toneMap(source.colorMatrix, colour, label, keepAlpha)},${converted(width, height, `:in_color_matrix=${matrix}`, output)}`;
   }
   const odd = colour?.odd ?? null;
-  const turns = [colour?.crop ?? null, colour?.turn ?? null].filter((step) => step !== null);
-  const turn = turns.length === 0 ? null : turns.join(",");
+  const turn = colour?.turn ?? null;
   const read = colour === null ? "" : `:in_color_matrix=${matrix}:in_range=${colour.range}`;
   const full = keepAlpha && (odd?.alpha ?? true) ? "yuva444p16le" : "yuv444p16le";
   if (odd === null) {
@@ -311,7 +308,7 @@ export function decodedPicture(source: { colorMatrix: string; toneMap: "none" | 
     return `scale=w=iw:h=ih${read}:out_color_matrix=${matrix}:out_range=${colour!.range},format=${full},${turn},${converted(width, height, read, output)}`;
   }
   // An odd-sided subsampled source is converted on its even frame: at its own size the output is cropped back, so each pixel
-  // equals its even twin's; scaled, cropped or turned here, it becomes full chroma there first and is scaled from that.
+  // equals its even twin's; scaled or turned here, it becomes full chroma there first and is scaled from that.
   const [evenWidth, evenHeight] = evenSize(odd);
   const even = evenPlanes(odd, `${label}e`, keepAlpha);
   if (turn === null && width === odd.width && height === odd.height) return `${even},${converted(evenWidth, evenHeight, read, output)},${oddBack(odd)}`;
@@ -537,15 +534,15 @@ interface SourceFacts { iso: boolean; audio: boolean; mono: boolean; tick: [bigi
 async function sourceFacts(source: string, run: { signal: AbortSignal; stdoutBytes: number; stderrTailBytes: number }): Promise<SourceFacts> {
   const answer = JSON.parse((await runPlanCommand("ffprobe", ["-v", "error", "-protocol_whitelist", "file", "-show_entries",
     "format=format_name:stream=codec_type,codec_name,time_base,channels,width,height,pix_fmt,color_transfer,color_primaries,color_range,chroma_location:" +
-    "stream_side_data=rotation,displaymatrix,crop_top,crop_bottom,crop_left,crop_right,side_data_type:stream_tags", "-of", "json", source], run)).toString("utf8")) as { format?: { format_name?: string };
+    "stream_side_data=rotation,displaymatrix:stream_tags", "-of", "json", source], run)).toString("utf8")) as { format?: { format_name?: string };
     streams?: (ProbedVideo & { codec_type?: string; time_base?: string; channels?: number })[] };
   const names = (answer.format?.format_name ?? "").split(",");
   const video = (answer.streams ?? []).find((stream) => stream.codec_type === "video");
   const tick = /^(\d+)\/(\d+)$/u.exec(video?.time_base ?? "");
   const decoder = alphaDecoderArgs(video?.codec_name, Object.entries(video?.tags ?? {}).find(([key]) => key.toLowerCase() === "alpha_mode")?.[1]);
   const audio = (answer.streams ?? []).find((stream) => stream.codec_type === "audio");
-  const colour = frameColour(video ?? {}, answer.format?.format_name ?? "");
-  // The decoders apply codec cropping only; a container's is the graph's (Matroska, exactly) or not applied (as Chromium).
+  const colour = frameColour(video ?? {});
+  // The decoders apply codec cropping only: Chromium shows no container cropping (`@ingest/shown-picture.js`).
   return { iso: names.includes("mov") || names.includes("mp4"), audio: audio !== undefined, mono: audio?.channels === 1,
     tick: tick === null ? null : [BigInt(tick[1]!), BigInt(tick[2]!)], decoder: [...decoder, "-apply_cropping", "codec", ...(colour.turn === null ? [] : ["-noautorotate"])], colour };
 }
@@ -565,14 +562,12 @@ interface ProbedVideo {
 
 /**
  * The colour facts the tone map and the odd-frame conversion read of a video stream (`FrameColour`). A VP8/VP9 stream with
- * alpha decodes (through libvpx, `alphaDecoderArgs`) with an alpha plane ffprobe's pixel format does not show. A Matroska
- * PixelCrop reaches the graph uncropped and in its stored orientation, and is cropped exactly there before the turn.
+ * alpha decodes (through libvpx, `alphaDecoderArgs`) with an alpha plane ffprobe's pixel format does not show.
  * @param video - The ffprobe video stream.
- * @param formatName - The ffprobe format name.
  * @returns The facts.
- * @throws {TypeError} When a cropping value is malformed.
+ * @throws {never} Never.
  */
-function frameColour(video: ProbedVideo, formatName: string): FrameColour {
+function frameColour(video: ProbedVideo): FrameColour {
   const known = (tag: string | undefined, names: ReadonlySet<string>): string | null => (tag !== undefined && names.has(tag) ? tag : null);
   const vpxAlpha = alphaDecoderArgs(video.codec_name, Object.entries(video.tags ?? {}).find(([key]) => key.toLowerCase() === "alpha_mode")?.[1]).length > 0;
   const format = vpxAlpha ? (video.pix_fmt ?? "").replace(/^yuv(?!a)/u, "yuva") : video.pix_fmt ?? "";
@@ -582,12 +577,9 @@ function frameColour(video: ProbedVideo, formatName: string): FrameColour {
   const transfer = known(video.color_transfer, ZSCALE_TRANSFERS);
   // The graph turns the frames itself, after reading them in their stored orientation, when autorotate would misplace chroma:
   // zimg (the HDR tone map) reads the chroma location the turn leaves untouched on the frames, and FFmpeg's transpose cannot
-  // keep 4:2:2 or 4:4:0, whose odd-sided conversion to 4:4:4 then happens before the graph; and a container crop, which is in
-  // stored coordinates, is cropped before the turn.
+  // keep 4:2:2 or 4:4:0, whose odd-sided conversion to 4:4:4 then happens before the graph.
   const [codedWidth, codedHeight] = [video.width ?? 0, video.height ?? 0];
-  const cut = videoContainerCrop(video as Record<string, unknown>, formatName);
-  const crop = cut.top + cut.bottom + cut.left + cut.right === 0 ? null : cropFilter(cut);
-  const own = turn.filter !== null && (crop !== null || transfer === "smpte2084" || transfer === "arib-std-b67"
+  const own = turn.filter !== null && (transfer === "smpte2084" || transfer === "arib-std-b67"
     || (turn.transposed && hsub !== vsub && (codedWidth % 2 === 1 || codedHeight % 2 === 1)));
   const [width, height] = turn.transposed && !own ? [codedHeight, codedWidth] : [codedWidth, codedHeight];
   const odd = planar !== null && (width % 2 === 1 || height % 2 === 1)
@@ -596,7 +588,7 @@ function frameColour(video: ProbedVideo, formatName: string): FrameColour {
   return {
     transfer, primaries: known(video.color_primaries, ZSCALE_PRIMARIES) ?? "bt709",
     range: video.color_range === "pc" || format.startsWith("yuvj") ? "pc" : "tv", chromaLocation: known(video.chroma_location, CHROMA_LOCATIONS) ?? "left",
-    odd, turn: own ? turn.filter : null, crop,
+    odd, turn: own ? turn.filter : null,
   };
 }
 

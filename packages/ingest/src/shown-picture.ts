@@ -2,24 +2,19 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The picture a video source shows, as Chromium shows it: a Matroska PixelCrop is applied (Chromium's
- * `media/formats/webm/webm_video_client.cc` reads it into the visible rectangle) and an MP4 clean aperture is not (its
- * `media/formats/mp4/box_definitions.cc` has no clap). ffprobe reports both as the stream's Frame Cropping side data, and
- * FFmpeg's decoders apply both, rounded to the chroma grid, so every decode of a source keeps codec cropping only
- * (`CODEC_CROPPING_ONLY`) and crops a PixelCrop exactly itself. A video's sample aspect ratio is shown too: Chromium's
- * natural size is the cropped width scaled by it, as `videoDisplayGeometry` plans it.
+ * The picture a video source shows, as Chromium shows it (measured in Chromium 151 and Chrome 157): container cropping is not
+ * applied, neither a Matroska PixelCrop nor an MP4 clean aperture, so every decode of a source keeps codec cropping only
+ * (`CODEC_CROPPING_ONLY`; FFmpeg's decoders would apply both); a non-square sample aspect ratio is shown at Chromium's natural
+ * size (`naturalSize` in `@ingest/media-metadata.js`), which the plan's display geometry and the size an upload is filed at
+ * both take.
  */
 
 import { pickMediaMetadata, realVideoStream, type ProbeReport } from "@ingest/media-metadata.js";
 
-/** The pixels a container crops at each edge of a picture. */
-export interface ContainerCrop { top: number; bottom: number; left: number; right: number }
-export const NO_CONTAINER_CROP: ContainerCrop = { top: 0, bottom: 0, left: 0, right: 0 };
-
 /** The decoder input options that apply codec cropping and no container cropping. */
 export const CODEC_CROPPING_ONLY: readonly string[] = ["-apply_cropping", "codec"];
 
-/** One entry of a stream's ffprobe side data, as far as the picture's crop and turn read it. */
+/** One entry of a stream's ffprobe side data, as far as the picture's turn reads it. */
 export interface PictureSideData { side_data_type?: unknown; displaymatrix?: unknown; rotation?: unknown; [field: string]: unknown }
 
 /** The turn FFmpeg's autorotate applies, and which output directions it reverses. */
@@ -47,86 +42,14 @@ export function displayTurn(side: readonly PictureSideData[] | undefined): Displ
 }
 
 /**
- * A Matroska stream's PixelCrop, in its stored orientation; null for any other container and for a crop of nothing.
- * @param side - The stream's side data.
- * @param formatName - The ffprobe format name.
- * @returns The crop, or null.
- * @throws {TypeError} When a cropping value is malformed.
- */
-export function matroskaCrop(side: readonly PictureSideData[] | undefined, formatName: string): ContainerCrop | null {
-  if (!formatName.split(",").includes("matroska")) return null;
-  const entry = side?.find((item) => item.side_data_type === "Frame Cropping");
-  if (entry === undefined) return null;
-  const value = (key: string): number => {
-    const found = entry[key] ?? 0;
-    if (typeof found !== "number" || !Number.isSafeInteger(found) || found < 0) throw new TypeError("Expected a container cropping value");
-    return found;
-  };
-  const crop = { top: value("crop_top"), bottom: value("crop_bottom"), left: value("crop_left"), right: value("crop_right") };
-  return crop.top + crop.bottom + crop.left + crop.right === 0 ? null : crop;
-}
-
-/**
- * A stored crop in the orientation FFmpeg's autorotate shows the picture at.
- * @param crop - The crop of the stored picture.
- * @param turn - The turn.
- * @returns The crop of the shown picture.
- * @throws {never} Never.
- */
-export function shownCrop(crop: ContainerCrop, turn: DisplayTurn): ContainerCrop {
-  const [left, right, top, bottom] = turn.transposed ? [crop.top, crop.bottom, crop.left, crop.right] : [crop.left, crop.right, crop.top, crop.bottom];
-  return { left: turn.x ? right : left, right: turn.x ? left : right, top: turn.y ? bottom : top, bottom: turn.y ? top : bottom };
-}
-
-/**
- * The exact crop of each frame by the container's edges: relative to the frame, so frames that change size mid-stream are
- * cropped as the container says. Its input is full-chroma frames, where an odd edge cuts no chroma sample in two.
- * @param crop - The pixels cropped at each edge.
- * @returns The filter text.
- * @throws {never} Never.
- */
-export function cropFilter(crop: ContainerCrop): string {
-  return `crop=iw-${crop.left}-${crop.right}:ih-${crop.top}-${crop.bottom}:${crop.left}:${crop.top}:exact=1`;
-}
-
-/**
- * Whether a pixel format holds more than 8 bits a component: planar formats of 9 to 16 bits, packed RGB of 48 or 64 bits.
- * @param pixelFormat - The ffprobe pixel format; undefined when ffprobe reported none.
- * @returns Whether it is deeper than 8 bits.
- * @throws {never} Never.
- */
-function deep(pixelFormat: string | undefined): boolean {
-  const bits = /(\d+)(le|be)$/u.exec(pixelFormat ?? "");
-  if (bits === null) return false;
-  const value = Number(bits[1]);
-  return (value >= 9 && value <= 16) || value === 48 || value === 64;
-}
-
-/**
- * The filters that crop a shown picture exactly: taken to full chroma at its own depth, with alpha when the frames carry it
- * (one depth is offered: a graph with an alpha extraction behind it cannot choose among both depths), then `cropFilter`.
- * @param crop - The crop of the shown picture.
- * @param pixelFormat - The picture's ffprobe pixel format.
- * @returns The filter chain text.
- * @throws {never} Never.
- */
-export function exactCrop(crop: ContainerCrop, pixelFormat: string | undefined): string {
-  return `format=pix_fmts=${deep(pixelFormat) ? "yuva444p16le|yuv444p16le" : "yuva444p|yuv444p"},${cropFilter(crop)}`;
-}
-
-/**
  * The filters that take a source's decoded frames, which keep codec cropping only and are turned by FFmpeg's autorotate, to
- * the picture it shows: a Matroska PixelCrop cropped exactly, then a non-square sample aspect ratio scaled to the size the
- * source is filed at, with square pixels.
+ * the picture it shows: a non-square sample aspect ratio scaled to the size the source is filed at, with square pixels.
  * @param report - The source's probe.
  * @returns The filter chain text, or null when the decoded frames are the shown picture.
  * @throws {never} Never.
  */
 export function shownFilters(report: ProbeReport): string | null {
   const video = realVideoStream(report);
-  if (video === undefined) return null;
-  const steps = video.crop === undefined ? [] : [exactCrop(video.crop, video.pixelFormat)];
   const { width, height } = pickMediaMetadata(report);
-  if (video.sampleAspectRatio !== undefined && width !== null && height !== null) steps.push(`scale=${width}:${height},setsar=1`);
-  return steps.length === 0 ? null : steps.join(",");
+  return video?.sampleAspectRatio === undefined || width === null || height === null ? null : `scale=${width}:${height},setsar=1`;
 }

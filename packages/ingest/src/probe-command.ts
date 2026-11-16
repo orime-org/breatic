@@ -15,7 +15,7 @@ import { AUDIO_PEAK_RATE } from "@shared/audio-peaks.js";
 import type { AgentPictureSpec } from "@shared/upload/agent-picture-types.js";
 import type { LongMediaJobRequest } from "@shared/media/long-media-job-types.js";
 
-import { CODEC_CROPPING_ONLY, displayTurn, matroskaCrop, shownCrop, shownFilters, type ContainerCrop, type PictureSideData } from "@ingest/shown-picture.js";
+import { CODEC_CROPPING_ONLY, shownFilters } from "@ingest/shown-picture.js";
 import { NOTHING_FOUND } from "@ingest/media-metadata.js";
 import type { ProbeReport, ProbeStream } from "@ingest/media-metadata.js";
 
@@ -212,7 +212,7 @@ export function probeArgs(objectUrl: string, from: ReadFrom = "object"): string[
     "-read_intervals",
     "%+#1",
     "-show_entries",
-    "stream=index,codec_type,codec_name,width,height,pix_fmt,sample_aspect_ratio,color_transfer,color_primaries,color_space,sample_rate,channels,channel_layout,start_pts,duration_ts,time_base:stream_side_data=rotation,displaymatrix,side_data_type,crop_top,crop_bottom,crop_left,crop_right:stream_disposition=attached_pic:stream_tags=alpha_mode:format=duration,format_name:frame=stream_index,pts,best_effort_timestamp:frame_side_data=rotation",
+    "stream=index,codec_type,codec_name,width,height,sample_aspect_ratio,color_transfer,color_primaries,color_space,sample_rate,channels,channel_layout,start_pts,duration_ts,time_base:stream_side_data=rotation:stream_disposition=attached_pic:stream_tags=alpha_mode:format=duration:frame=stream_index,pts,best_effort_timestamp:frame_side_data=rotation",
     "-of",
     "json",
     objectUrl,
@@ -234,8 +234,8 @@ export const COVER_CONTENT_TYPE = "image/png";
  * way to becoming one (the earlier worker path went MJPEG then re-encoded).
  * @param objectUrl - Where the container reads the object.
  * @param from - Whether that is a served object or the container's own file.
- * @param report - The object's probe: the decoder options it needs (`coverDecoderArgs`) and the Matroska PixelCrop its
- * picture is shown with (`ProbeStream.crop`), cropped exactly.
+ * @param report - The object's probe: the decoder options it needs (`coverDecoderArgs`) and the picture it shows
+ * (`shownFilters`).
  * @returns The argument list, without the program name.
  */
 export function coverArgs(objectUrl: string, from: ReadFrom = "object", report: ProbeReport = NOTHING_FOUND): string[] {
@@ -411,8 +411,7 @@ interface RawStream {
   height?: number;
   disposition?: { attached_pic?: number };
   tags?: Record<string, string>;
-  side_data_list?: PictureSideData[];
-  pix_fmt?: string;
+  side_data_list?: { rotation?: unknown }[];
   sample_aspect_ratio?: string;
   color_transfer?: string;
   color_primaries?: string;
@@ -519,18 +518,6 @@ function sampleAspectRatioOf(raw: RawStream): { sampleAspectRatio?: { numerator:
 }
 
 /**
- * A video stream's Matroska PixelCrop, in the orientation the picture is shown at (`@ingest/shown-picture.js`).
- * @param raw - The stream.
- * @param formatName - The ffprobe format name.
- * @returns The crop as a field, or nothing.
- * @throws {TypeError} When a cropping value is malformed.
- */
-function cropOf(raw: RawStream, formatName: string): { crop?: ContainerCrop } {
-  const crop = raw.codec_type === "video" ? matroskaCrop(raw.side_data_list, formatName) : null;
-  return crop === null ? {} : { crop: shownCrop(crop, displayTurn(raw.side_data_list)) };
-}
-
-/**
  * Read ffprobe's JSON into the shape the container answers with.
  *
  * Output it cannot read answers as nothing found, which is what a medium with
@@ -543,7 +530,7 @@ export function readProbeOutput(stdout: string): ProbeReport {
   let parsed: {
     streams?: RawStream[];
     frames?: RawFrame[];
-    format?: { duration?: unknown; format_name?: unknown };
+    format?: { duration?: unknown };
   };
   try {
     parsed = JSON.parse(stdout) as typeof parsed;
@@ -560,13 +547,11 @@ export function readProbeOutput(stdout: string): ProbeReport {
     attachedPic: raw.disposition?.attached_pic === 1,
     ...alphaModeOf(raw),
     ...rotationOf(raw, frames),
-    ...(raw.pix_fmt === undefined ? {} : { pixelFormat: raw.pix_fmt }),
     ...sampleAspectRatioOf(raw),
     ...(raw.color_transfer === undefined ? {} : { colorTransfer: raw.color_transfer }),
     ...(raw.color_primaries === undefined ? {} : { colorPrimaries: raw.color_primaries }),
     ...(raw.color_space === undefined ? {} : { colorSpace: raw.color_space }),
     ...audioFieldsOf(raw),
-    ...cropOf(raw, typeof parsed.format?.format_name === "string" ? parsed.format.format_name : ""),
   }));
   return {
     streams,

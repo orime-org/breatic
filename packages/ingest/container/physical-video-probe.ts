@@ -5,7 +5,7 @@ import type { MatroskaPhysicalVideoProbe, PhysicalVideoProbe } from "@shared/upl
 export type { MatroskaPhysicalVideoProbe, PhysicalVideoProbe } from "@shared/upload/video-source-ledger-types.js";
 
 import type { MatroskaMetadata } from "@ingest/container/matroska-metadata.js";
-import { matroskaCrop, NO_CONTAINER_CROP, type ContainerCrop } from "@ingest/shown-picture.js";
+import { naturalSize } from "@ingest/media-metadata.js";
 
 /**
  * Bind original selected FFprobe frame tokens to exact Matroska block headers.
@@ -223,44 +223,27 @@ export function resolveVideoColorMatrix(stream: Record<string, unknown>): string
 }
 
 /**
- * The display size (§4.3): the coded size less the container cropping ({@link videoContainerCrop}), the width scaled by SAR
- * and truncated as FFmpeg `scale=iw*sar:ih`, SAR 0:1 read as 1:1, then sides swapped for a ±90 display rotation; a mirror
- * (rotation -180 or 0) keeps them.
+ * The display size (§4.3): the size Chromium shows the coded picture at (`naturalSize`): a sample aspect ratio above 1
+ * widens it and below 1 makes it taller, rounded; SAR 0:1 reads as square; a ±90 display rotation swaps the sides and a
+ * mirror (rotation -180 or 0) keeps them. Container cropping is not shown.
  * @param stream - The selected ffprobe stream.
- * @param crop - Its container cropping.
  * @returns The display width and height.
  * @throws {TypeError} When the coded size, SAR or rotation is malformed.
  */
-export function videoDisplayGeometry(stream: Record<string, unknown>, crop: ContainerCrop = NO_CONTAINER_CROP): { width: number; height: number } {
+export function videoDisplayGeometry(stream: Record<string, unknown>): { width: number; height: number } {
   const { width, height } = stream;
   if (typeof width !== "number" || typeof height !== "number" || !Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width <= 0 || height <= 0) {
     throw new TypeError("Expected the coded video size");
   }
-  const [shownWidth, shownHeight] = [width - crop.left - crop.right, height - crop.top - crop.bottom];
-  if (shownWidth <= 0 || shownHeight <= 0) throw new TypeError("Expected container cropping inside the coded size");
-  let displayWidth = shownWidth;
   const sar = stream.sample_aspect_ratio;
+  let ratio: { numerator: number; denominator: number } | undefined;
   if (sar !== undefined) {
     const match = typeof sar === "string" ? /^(\d+):(\d+)$/u.exec(sar) : null;
     if (match === null) throw new TypeError("Expected a sample aspect ratio");
-    const [num, den] = [BigInt(match[1]!), BigInt(match[2]!)];
-    if (num > 0n && den > 0n) displayWidth = Number((BigInt(shownWidth) * num) / den);
+    ratio = { numerator: Number(match[1]), denominator: Number(match[2]) };
   }
   const sideData = Array.isArray(stream.side_data_list) ? stream.side_data_list.map(probeObject) : [];
   const rotation = sideData.find((entry) => entry.side_data_type === "Display Matrix")?.rotation ?? 0;
   if (typeof rotation !== "number" || !Number.isFinite(rotation)) throw new TypeError("Expected a display rotation");
-  return Math.abs(rotation) % 180 === 90 ? { width: shownHeight, height: displayWidth } : { width: displayWidth, height: shownHeight };
-}
-
-/**
- * The container cropping the picture is shown with: a Matroska stream's PixelCrop (`@ingest/shown-picture.js`), zero for
- * any other container and for none.
- * @param stream - The selected ffprobe stream.
- * @param formatName - The ffprobe format name.
- * @returns The pixels cropped at each edge, in the stored orientation.
- * @throws {TypeError} When a cropping value is malformed.
- */
-export function videoContainerCrop(stream: Record<string, unknown>, formatName: string): ContainerCrop {
-  const sideData = Array.isArray(stream.side_data_list) ? stream.side_data_list.map(probeObject) : [];
-  return matroskaCrop(sideData, formatName) ?? NO_CONTAINER_CROP;
+  return naturalSize(width, height, ratio, Math.abs(rotation) % 180 === 90);
 }

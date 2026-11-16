@@ -192,10 +192,10 @@ beforeAll(async () => {
   await writeFile(join(dir, 'shrink.txt'), `file '${join(dir, 'size-c.webm')}'\nfile '${join(dir, 'size-d.webm')}'\n`);
   await ff('shrink-whole.webm', ['-f', 'concat', '-safe', '0', '-i', join(dir, 'shrink.txt'), '-c', 'copy']);
   await writePixelCropped(join(dir, 'shrink-whole.webm'), join(dir, 'shrink.webm'), { left: 2 });
-  // The even SDR twin with Matroska PixelCrop: right and bottom (even offsets), and left and top (odd offsets) (FC19).
+  // The even SDR twin with Matroska PixelCrop, which Chromium does not apply: right and bottom, and left and top (FC19).
   await writePixelCropped(join(dir, 'sdr-even.mkv'), join(dir, 'crop-rb.mkv'), { right: 1, bottom: 1 });
   await writePixelCropped(join(dir, 'sdr-even.mkv'), join(dir, 'crop-lt.mkv'), { left: 3, top: 1 });
-  // The same crop on a stream turned a quarter (FC20): the crop is in stored coordinates, before the turn.
+  // The same crop on a stream turned a quarter (FC19).
   await ff('turn-even.mkv', ['-display_rotation', '90', '-i', join(dir, 'sdr-even.mkv'), '-c', 'copy']);
   await writePixelCropped(join(dir, 'turn-even.mkv'), join(dir, 'crop-turn.mkv'), { left: 3, top: 1 });
   await ff('rot90.mp4', ['-display_rotation', '90', '-i', join(dir, 'flash.mp4'), '-c', 'copy']);
@@ -361,41 +361,24 @@ describe('frame from a full-ledger entry (§92 D4-3; design §7.17 frame row)', 
     expect(header(png)).toMatchObject({ width: 159, height: 95 });
   });
 
-  // §7.17 方向与几何: a Matroska PixelCrop is part of the display geometry, cropped exactly (FFmpeg's decoders round an odd crop
-  // to the chroma grid). The crop is made on full-chroma frames, so the frame is the uncropped picture taken to full chroma
-  // and cut there (swscale's direct route to RGB interpolates chroma differently; a cut one pixel off is 5 levels off on average).
-  it.each([['crop-rb.mkv', 0, 0, 159, 95], ['crop-lt.mkv', 3, 1, 157, 95]] as const)('FC19 a frame of %s is the picture cropped exactly as the container says', async (name, x, y, width, height) => {
-    const png = await frame(name, { entry: frameAt([0, 1]), target: { ...OPAQUE, width, height } });
-    expect(header(png)).toMatchObject({ width, height });
-    const read = 'in_color_matrix=bt709:in_range=tv';
-    const cut = await pixels(join(dir, 'sdr-even.mkv'), 'rgb24', `scale=w=iw:h=ih:${read}:out_color_matrix=bt709:out_range=tv,format=yuv444p16le,crop=${width}:${height}:${x}:${y}:exact=1,scale=${read}`);
-    const got = await pixels(await saved(png), 'rgb24');
-    expect(got.reduce((sum, value, index) => sum + Math.abs(value - cut[index]!), 0) / got.length).toBeLessThan(0.5);
+  // §7.17 方向与几何: Chromium shows no container cropping (measured), so a frame of a source with a Matroska PixelCrop is the
+  // frame of the same picture without it, after a seek as well, turned or not.
+  it.each([
+    ['crop-rb.mkv', 'sdr-even.mkv', [0, 1], [0, 1], 160, 96],
+    ['crop-lt.mkv', 'sdr-even.mkv', [0, 1], [0, 1], 160, 96],
+    ['crop-lt.mkv', 'sdr-even.mkv', [3, 25], [2, 25], 160, 96],
+    ['crop-turn.mkv', 'turn-even.mkv', [0, 1], [0, 1], 96, 160],
+  ] as const)('FC19 a frame of %s is the frame of %s, uncropped', async (name, twin, at, decodeAt, width, height) => {
+    const target = { ...OPAQUE, width, height };
+    const got = await pixels(await saved(await frame(name, { entry: frameAt([...at], [...decodeAt]), target })), 'rgb24');
+    const want = await pixels(await saved(await frame(twin, { entry: frameAt([...at], [...decodeAt]), target })), 'rgb24');
+    expect(gap(got, want)).toBe(0);
   });
 
-  // The crop file is read through its Cues: a frame after a seek is the same picture cropped the same way.
-  it('FC19 a later frame of crop-lt.mkv, read after a seek, is the picture cropped exactly as the container says', async () => {
-    const png = await frame('crop-lt.mkv', { entry: frameAt([3, 25], [2, 25]), target: { ...OPAQUE, width: 157, height: 95 } });
-    const read = 'in_color_matrix=bt709:in_range=tv';
-    const cut = await pixels(join(dir, 'sdr-even.mkv'), 'rgb24', `select=eq(n\\,3),scale=w=iw:h=ih:${read}:out_color_matrix=bt709:out_range=tv,format=yuv444p16le,crop=157:95:3:1:exact=1,scale=${read}`);
-    const got = await pixels(await saved(png), 'rgb24');
-    expect(got.reduce((sum, value, index) => sum + Math.abs(value - cut[index]!), 0) / got.length).toBeLessThan(0.5);
-  });
-
-  // The crop is relative to each frame, so frames that change size mid-stream are cropped as the container says and taken to
-  // the planned picture.
+  // A cropped stream whose frames shrink mid-stream is planned at its coded size; the later frames reach that size.
   it('FC21 a frame after a cropped stream shrinks mid-stream comes out at the planned size', async () => {
-    const png = await frame('shrink.webm', { entry: frameAt([3, 5], [2, 5]), target: { ...OPAQUE, width: 158, height: 96 } });
-    expect(header(png)).toMatchObject({ width: 158, height: 96 });
-  });
-
-  it('FC20 a cropped stream turned a quarter is cropped where it is stored, then turned upright', async () => {
-    const png = await frame('crop-turn.mkv', { entry: frameAt([0, 1]), target: { ...OPAQUE, width: 95, height: 157 } });
-    expect(header(png)).toMatchObject({ width: 95, height: 157 });
-    const read = 'in_color_matrix=bt709:in_range=tv';
-    const cut = await pixels(join(dir, 'sdr-even.mkv'), 'rgb24', `scale=w=iw:h=ih:${read}:out_color_matrix=bt709:out_range=tv,format=yuv444p16le,crop=157:95:3:1:exact=1,transpose=cclock,scale=${read}`);
-    const got = await pixels(await saved(png), 'rgb24');
-    expect(got.reduce((sum, value, index) => sum + Math.abs(value - cut[index]!), 0) / got.length).toBeLessThan(0.5);
+    const png = await frame('shrink.webm', { entry: frameAt([3, 5], [2, 5]), target: { ...OPAQUE, width: 160, height: 96 } });
+    expect(header(png)).toMatchObject({ width: 160, height: 96 });
   });
 
   it('FC06 the frame is upright in the display geometry (§7.17 方向与几何): a 90° source gives 96x160', async () => {

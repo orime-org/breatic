@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The packed display carrier of a transparent WebM with a Matroska PixelCrop: the picture Chromium shows, cropped exactly
- * and packed colour left and alpha right. Run on the real ffprobe and ffmpeg 8.0.1; only the transfers are stood in for.
+ * The packed display carrier of a transparent source with a container crop (a Matroska PixelCrop, an MP4 clean aperture):
+ * the picture Chromium shows, uncropped, packed colour left and alpha right. Run on the real ffprobe and ffmpeg 8.0.1; only
+ * the transfers are stood in for.
  */
 
 import { execFile } from 'node:child_process';
@@ -64,18 +65,19 @@ afterEach(() => { vi.restoreAllMocks(); });
  * One frame's luma as bytes.
  * @param path - The file.
  * @param filter - The filters before the luma is read.
+ * @param decoder - The decoder options (libvpx reads a WebM's alpha).
  * @returns The bytes.
  */
-async function luma(path: string, filter: string): Promise<Buffer> {
-  return (await run('ffmpeg', ['-v', 'error', '-i', path, '-frames:v', '1', '-vf', `${filter},format=gray`, '-f', 'rawvideo', '-'], { encoding: 'buffer', maxBuffer: 1 << 24 })).stdout;
+async function luma(path: string, filter: string, decoder: string[] = []): Promise<Buffer> {
+  return (await run('ffmpeg', ['-v', 'error', ...decoder, '-i', path, '-frames:v', '1', '-vf', `${filter},format=gray`, '-f', 'rawvideo', '-'], { encoding: 'buffer', maxBuffer: 1 << 24 })).stdout;
 }
 
 describe('a transparent source its container crops', () => {
-  // The WebM shows its PixelCrop; the MOV's clean aperture is not shown, so its picture is the coded one.
+  // Neither the WebM's PixelCrop nor the MOV's clean aperture is shown, so each picture is the coded one.
   it.each([
-    ['crop.webm', 157, 95, 3, 1, 2, 0],
-    ['clap.mov', 160, 96, 0, 0, 0, 0],
-  ] as const)('%s is filed and packed at the picture Chromium shows', async (name, width, height, x, y, roundedX, roundedY) => {
+    ['crop.webm', 160, 96, ['-c:v', 'libvpx-vp9']],
+    ['clap.mov', 160, 96, []],
+  ] as const)('%s is filed and packed at the picture Chromium shows, uncropped', async (name, width, height, decoder) => {
     source = name;
     expect(await runAlphaPresentation(job)).toEqual({ ok: true });
     const [plane, packedHeight] = [Math.ceil(width / 2) * 2, Math.ceil(height / 2) * 2];
@@ -84,12 +86,9 @@ describe('a transparent source its container crops', () => {
       alphaRect: { x: plane, y: 0, width, height } });
     // The alpha is half everywhere: the packed alpha rectangle has no transparent column or row.
     expect(Math.min(...await luma(packed, `format=gray,crop=${width}:${height}:${plane}:0`))).toBeGreaterThan(100);
-    // The colour rectangle is the uncropped picture cut where the source shows it, not where FFmpeg's own crop rounds to.
+    // The colour rectangle is the source's whole coded picture, premultiplied.
     const colour = await luma(packed, `format=gray,crop=${width}:${height}:0:0`);
-    const cut = async (left: number, top: number): Promise<number> => {
-      const want = await luma(join(dir, 'whole.webm'), `format=gbrap,premultiply=inplace=1,crop=${width}:${height}:${left}:${top}`);
-      return colour.reduce((sum, value, index) => sum + Math.abs(value - want[index]!), 0) / colour.length;
-    };
-    if (x !== roundedX || y !== roundedY) expect(await cut(x, y)).toBeLessThan(await cut(roundedX, roundedY));
+    const want = await luma(join(dir, name), 'format=gbrap,premultiply=inplace=1', ['-apply_cropping', 'codec', ...decoder]);
+    expect(colour.reduce((sum, value, index) => sum + Math.abs(value - want[index]!), 0) / colour.length).toBeLessThan(2);
   }, 120_000);
 });

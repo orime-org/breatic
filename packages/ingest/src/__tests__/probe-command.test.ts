@@ -100,12 +100,9 @@ describe("what ffprobe is asked", () => {
     // a portrait phone video is filed at its stored pair while the cover cut
     // in the same run comes out the other way round.
     expect(entries).toContain("stream_side_data=rotation");
-    // The container format and its cropping: a Matroska PixelCrop is part of what the picture shows.
-    expect(entries).toContain("displaymatrix,side_data_type,crop_top,crop_bottom,crop_left,crop_right");
-    // The pixel format: a crop to full chroma keeps the picture's depth; the sample aspect ratio is part of what it shows.
-    expect(entries).toContain("pix_fmt");
+    // The sample aspect ratio is part of what the picture shows.
     expect(entries).toContain("sample_aspect_ratio");
-    expect(entries).toContain("format=duration,format_name");
+    expect(entries).toContain("format=duration");
     expect(entries).toContain("start_pts");
     expect(entries).toContain("duration_ts");
     expect(entries).toContain("time_base");
@@ -470,43 +467,16 @@ describe("what the display matrix reads as", () => {
 // a video with a display matrix reports the same angle in both places.
 // Measured on ffmpeg 8.0.1 — what the container ships — with the production
 // argument list; the JSON below is that output with the empty sections dropped.
-// The rotated, cropped stream as ffprobe 8.0.1 writes it: a quarter turn (autorotate's transpose=cclock) and a PixelCrop
-// of three columns on the left and one row at the top, which the picture shows at its bottom and its left.
-const CROPPED_TURNED = {
-  index: 0, codec_type: "video", codec_name: "vp9", width: 160, height: 96, disposition: { attached_pic: 0 },
-  side_data_list: [
-    { side_data_type: "Display Matrix", displaymatrix: "\n00000000:            0      -65536           0\n00000001:        65536           0           0\n00000002:            0           0  1073741824\n", rotation: 90 },
-    { side_data_type: "Frame Cropping", crop_top: 1, crop_bottom: 0, crop_left: 3, crop_right: 0 },
-  ],
-};
-
-describe("what the container's cropping reads as", () => {
-  it("carries a Matroska PixelCrop in the orientation the picture is shown at", () => {
-    const read = readProbeOutput(JSON.stringify({ streams: [CROPPED_TURNED], format: { duration: "2.000000", format_name: "matroska,webm" } }));
-
-    expect(read.streams[0]).toMatchObject({ rotation: 90, crop: { top: 0, bottom: 3, left: 1, right: 0 } });
-  });
-
-  // ffprobe reports an MP4 clean aperture the same way; Chromium does not apply it, so the picture is the coded one.
-  it("leaves the key off any other container's cropping, and off a crop of nothing", () => {
-    const mp4 = readProbeOutput(JSON.stringify({ streams: [CROPPED_TURNED], format: { duration: "2.000000", format_name: "mov,mp4,m4a,3gp,3g2,mj2" } }));
-    const none = readProbeOutput(JSON.stringify({ streams: [{ ...CROPPED_TURNED, side_data_list: [{ side_data_type: "Frame Cropping", crop_top: 0, crop_bottom: 0, crop_left: 0, crop_right: 0 }] }],
-      format: { duration: "2.000000", format_name: "matroska,webm" } }));
-
-    expect(mp4.streams[0]).not.toHaveProperty("crop");
-    expect(none.streams[0]).not.toHaveProperty("crop");
-  });
-
-  // FFmpeg's decoders apply container cropping rounded to the chroma grid (and an MP4 clap Chromium ignores), so the cover
-  // decodes with codec cropping only and crops a Matroska PixelCrop exactly on full-chroma frames, after the turn.
-  it("cuts the cover with codec cropping only, cropping a PixelCrop exactly", () => {
-    const read = readProbeOutput(JSON.stringify({ streams: [CROPPED_TURNED], format: { duration: "2.000000", format_name: "matroska,webm" } }));
+// Chromium shows no container cropping (a Matroska PixelCrop or an MP4 clean aperture), and FFmpeg's decoders would apply
+// both: the cover decodes with codec cropping only and crops nothing.
+describe("what the cover of a cropped stream is cut from", () => {
+  it("decodes with codec cropping only and adds no crop", () => {
+    const read = readProbeOutput(JSON.stringify({ streams: [{ index: 0, codec_type: "video", codec_name: "vp9", width: 160, height: 96, disposition: { attached_pic: 0 },
+      side_data_list: [{ side_data_type: "Frame Cropping", crop_top: 1, crop_bottom: 0, crop_left: 3, crop_right: 0 }] }], format: { duration: "2.000000", format_name: "matroska,webm" } }));
     const args = coverArgs(URL_FOR_KEY, "object", read);
 
     expect(args.slice(0, args.indexOf("-i"))).toEqual(expect.arrayContaining(["-apply_cropping", "codec"]));
-    expect(args[args.indexOf("-vf") + 1]).toBe(
-      "format=pix_fmts=yuva444p|yuv444p,crop=iw-1-0:ih-0-3:1:0:exact=1,scale='min(1920,iw)':'min(1920,ih)':force_original_aspect_ratio=decrease",
-    );
+    expect(args[args.indexOf("-vf") + 1]).toBe("scale='min(1920,iw)':'min(1920,ih)':force_original_aspect_ratio=decrease");
   });
 });
 
