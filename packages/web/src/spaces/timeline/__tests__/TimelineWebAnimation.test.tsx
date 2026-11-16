@@ -676,6 +676,32 @@ describe('Add web animation', () => {
     expect(useSpaceOpenRequestStore.getState().state).toEqual({ status: 'requesting', request: { type: 'web_animation' } });
   });
 
+  it('closes the picker once the Motion Space opens, even when that Space handles the request at once', async () => {
+    seed();
+    showTimeline();
+    await userEvent.click(within(await openPicker()).getByTestId('timeline-web-animation-go-make'));
+    act(() => {
+      const { dispatch } = useSpaceOpenRequestStore.getState();
+      dispatch({ type: 'target_exists', spaceId: MOTION_SPACE });
+      dispatch({ type: 'handled' });
+    });
+    await waitFor(() => expect(screen.queryByTestId('timeline-web-animation-picker')).toBeNull());
+  });
+
+  it('keeps the picker open when making the Motion Space fails', async () => {
+    seed();
+    showTimeline();
+    const picker = await openPicker();
+    await userEvent.click(within(picker).getByTestId('timeline-web-animation-go-make'));
+    act(() => {
+      const { dispatch } = useSpaceOpenRequestStore.getState();
+      dispatch({ type: 'target_missing' });
+      dispatch({ type: 'create_failed' });
+    });
+    expect(screen.getByTestId('timeline-web-animation-picker')).toBeInTheDocument();
+    expect(within(picker).getByTestId('timeline-web-animation-go-make')).not.toHaveAttribute('aria-busy', 'true');
+  });
+
   it('shows the error with a retry when the results cannot be read', async () => {
     vi.mocked(timelineApi.listResults).mockRejectedValueOnce(new ApiException({ status: 500, message: 'Boom', fromServer: true }));
     seed();

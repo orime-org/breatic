@@ -498,15 +498,21 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   // The picker stays open, its button waiting, while a Motion Space is being made for it.
   const requestStatus = useSpaceOpenRequestStore((state) => state.state.status);
   const [goMakeAsked, setGoMakeAsked] = React.useState(false);
+  const stopWatchingGoMake = React.useRef<(() => void) | null>(null);
+  React.useEffect(() => () => stopWatchingGoMake.current?.(), []);
   const goMake = React.useCallback((): void => {
+    stopWatchingGoMake.current?.();
     setGoMakeAsked(true);
+    // Every transition is watched: the Motion Space it opens says it handled the request at once, so a render may never see `opened`.
+    stopWatchingGoMake.current = useSpaceOpenRequestStore.subscribe(({ state }) => {
+      if (state.status === 'requesting' || state.status === 'creating') return;
+      stopWatchingGoMake.current?.();
+      stopWatchingGoMake.current = null;
+      setGoMakeAsked(false);
+      if (state.status === 'opened') setPickerOpen(false);
+    });
     useSpaceOpenRequestStore.getState().dispatch({ type: 'request', request: { type: 'web_animation' } });
   }, []);
-  React.useEffect(() => {
-    if (!goMakeAsked || requestStatus === 'requesting' || requestStatus === 'creating') return;
-    setGoMakeAsked(false);
-    if (requestStatus === 'opened') setPickerOpen(false);
-  }, [goMakeAsked, requestStatus]);
   /**
    * Open the Motion Space that made a copy's execution, with it selected; one made in a Timeline before Motion opens in
    * the newest Motion Space, whose group of those holds it.
