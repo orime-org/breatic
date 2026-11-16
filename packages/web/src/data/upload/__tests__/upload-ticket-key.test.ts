@@ -163,6 +163,23 @@ describe('runMediaUpload resends the ticket request by the run-once rule', () =>
     expect(d.sendToIngest).toHaveBeenCalledOnce();
   });
 
+  // An unknown outcome (no answer, a 5xx not marked done) is resent under the
+  // same key only clientMaxAttempts times in all, so a drop with no network
+  // says it failed in seconds, as the node's failure state promises.
+  it.each([
+    ['a network error', NETWORK],
+    ['a 5xx not marked done', new ApiException({ status: 502, message: 'bad gateway' })],
+  ])('after %s every try, the upload fails at clientMaxAttempts sends under one key', async (_name, error) => {
+    const requestTicket = vi.fn().mockRejectedValue(error);
+    const d = deps(requestTicket);
+    await runMediaUpload(FILE, CONTEXT, d);
+
+    expect(requestTicket).toHaveBeenCalledTimes(MAX_ATTEMPTS);
+    expect(new Set(keysOf(requestTicket)).size).toBe(1);
+    expect(d.sendToIngest).not.toHaveBeenCalled();
+    expect(d.onFailure).toHaveBeenCalledOnce();
+  });
+
   it('B-81 the user retrying the upload asks under a new key', async () => {
     const requestTicket = vi.fn().mockRejectedValueOnce(new ApiException({ status: 400, message: 'refused', idempotencyStatus: 'done' })).mockResolvedValue(TICKET);
     const d = deps(requestTicket);
