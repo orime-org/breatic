@@ -3940,7 +3940,9 @@
         "check": "페이지가 검사를 통과하지 못했습니다.",
         "stopped": "제작이 예기치 않게 중단되었습니다.",
         "unknown": "실행에 실패했습니다.",
-        "render": "동영상을 렌더링하지 못했습니다."
+        "render": "동영상 렌더링에 실패했습니다.",
+        "frameMismatch": "렌더링된 동영상의 길이가 애니메이션과 일치하지 않습니다.",
+        "saveVideo": "동영상을 저장하지 못했습니다."
       },
       "preview": {
         "pending": "{track}: 웹 애니메이션 {status, select, awaiting_landing {저장 중} queued {대기 중} running {제작 중} cancelling {취소 중} other {대기 중}}…",

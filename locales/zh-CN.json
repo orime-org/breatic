@@ -3940,7 +3940,9 @@
         "check": "页面没有通过检查。",
         "stopped": "制作意外中断。",
         "unknown": "执行失败。",
-        "render": "视频没有渲染成功。"
+        "render": "视频渲染失败。",
+        "frameMismatch": "渲染出的视频与动画长度不一致。",
+        "saveVideo": "视频保存失败。"
       },
       "preview": {
         "pending": "{track}：网页动画{status, select, awaiting_landing {保存中} queued {排队中} running {制作中} cancelling {取消中} other {等待中}}…",

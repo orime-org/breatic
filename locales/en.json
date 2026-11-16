@@ -3940,7 +3940,9 @@
         "check": "The page did not pass the check.",
         "stopped": "Creation stopped unexpectedly.",
         "unknown": "This execution failed.",
-        "render": "The video could not be rendered."
+        "render": "Video rendering failed.",
+        "frameMismatch": "The rendered video does not match the animation's length.",
+        "saveVideo": "The video could not be saved."
       },
       "preview": {
         "pending": "{track}: {status, select, awaiting_landing {saving web animation} queued {web animation queued} running {creating web animation} cancelling {cancelling web animation} other {web animation pending}}…",

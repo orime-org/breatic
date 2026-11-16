@@ -34,12 +34,13 @@ const CREATION_PHASES = ['writing', 'validating', 'saving'] as const;
 const EXPORT_PHASES = ['rendering', 'saving'] as const;
 
 // The sentence each failure reason is told with; a reason not listed reads as a general failure.
-const FAILURE_SENTENCE: Readonly<Record<string, 'feature_disabled' | 'check' | 'stopped' | 'render'>> = {
+const FAILURE_SENTENCE: Readonly<Record<string, 'feature_disabled' | 'check' | 'stopped' | 'render' | 'frameMismatch' | 'saveVideo'>> = {
   feature_disabled: 'feature_disabled',
   validation_failed: 'check', font_not_in_set: 'check', manifest_invalid: 'check', package_too_large: 'check', output_missing: 'check',
   viewport_mismatch: 'check', fps_mismatch: 'check', duration_mismatch: 'check', font_set_mismatch: 'check',
-  harness_failed: 'stopped', container_failed: 'stopped', internal: 'stopped', base_unavailable: 'stopped', save_failed: 'stopped',
-  render_failed: 'render', frame_mismatch: 'render',
+  harness_failed: 'stopped', container_failed: 'stopped', internal: 'stopped', base_unavailable: 'stopped',
+  // Only an export reports these three (design §6.5).
+  render_failed: 'render', frame_mismatch: 'frameMismatch', save_failed: 'saveVideo',
 };
 
 /**

@@ -3940,7 +3940,9 @@
         "check": "ページがチェックを通過しませんでした。",
         "stopped": "作成が予期せず停止しました。",
         "unknown": "実行に失敗しました。",
-        "render": "動画をレンダリングできませんでした。"
+        "render": "動画のレンダリングに失敗しました。",
+        "frameMismatch": "レンダリングした動画の長さがアニメーションと一致しません。",
+        "saveVideo": "動画を保存できませんでした。"
       },
       "preview": {
         "pending": "{track}：ウェブアニメーション{status, select, awaiting_landing {保存中} queued {待機中} running {作成中} cancelling {キャンセル中} other {待機中}}…",

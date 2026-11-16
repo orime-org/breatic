@@ -3940,7 +3940,9 @@
         "check": "頁面沒有通過檢查。",
         "stopped": "製作意外中斷。",
         "unknown": "執行失敗。",
-        "render": "影片未能算繪成功。"
+        "render": "影片算繪失敗。",
+        "frameMismatch": "算繪出的影片與動畫長度不一致。",
+        "saveVideo": "影片儲存失敗。"
       },
       "preview": {
         "pending": "{track}：網頁動畫{status, select, awaiting_landing {儲存中} queued {排隊中} running {製作中} cancelling {取消中} other {等待中}}…",
