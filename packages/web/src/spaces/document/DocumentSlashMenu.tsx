@@ -52,6 +52,7 @@ import {
 } from '@web/spaces/document/document-insert-entries';
 import { COLUMNS, type InsertChoice, type TableSize } from '@web/spaces/document/document-insert-row';
 import { openFormulaBlock } from '@web/spaces/document/document-math';
+import { UNAVAILABLE_KEYBOARD_FOCUS_ONLY } from '@web/spaces/document/document-unavailable-control';
 import type { MediaBlockType } from '@web/spaces/document/document-media-types';
 import { asOneUndoStep, undoOf } from '@web/spaces/document/document-proposal-landing';
 import { filterInsertEntries, closesForNoMatch, queryWhileComposing } from '@web/spaces/document/document-slash-filter';
@@ -547,7 +548,7 @@ function OpenSlashMenu({ editor, menu, trigger, query }: OpenSlashMenuProps): Re
                       className={cn(
                         menuItemBase,
                         'w-full justify-start font-normal data-[highlighted]:bg-accent',
-                        out && 'cursor-not-allowed opacity-50',
+                        out && UNAVAILABLE_KEYBOARD_FOCUS_ONLY,
                         id === 'table' && grid !== null && 'bg-accent',
                       )}
                       onMouseEnter={() => {
