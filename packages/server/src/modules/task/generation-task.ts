@@ -18,7 +18,8 @@
 import { randomUUID } from "node:crypto";
 import { getNodeTaskConfig, AppError, logger } from "@breatic/core";
 import { canvasSpaceDocName } from "@breatic/shared";
-import { creditHoldService, nodeTaskService, taskService } from "@breatic/domain";
+import { creditHoldService, nodeTaskService, operationService, taskService } from "@breatic/domain";
+import { admitOperationOrRefuse } from "@server/modules/operation/operation-admission.service.js";
 import { CreditsHeldError, reserveForRun } from "@server/modules/payment/credit-precheck.service.js";
 import { assertAccess } from "@server/modules/project/project.service.js";
 import { publishCountsQuietly } from "@server/modules/task/publish-counts.js";
@@ -174,7 +175,10 @@ export async function startRowedRun(opts: {
       action: opts.action,
       label: opts.label,
     });
-    await reserveForRun(projectId, opts.userId, taskId, await opts.credits());
+    const credits = await opts.credits();
+    // A free run (the grid) holds nothing: a studio in debt could hold no
+    // amount at all, and nothing will be charged (inner#1968).
+    if (credits > 0) await reserveForRun(projectId, opts.userId, taskId, credits);
     const job = await opts.enqueue();
     await recordJobId(taskId, job.id, projectId, opts.logTag);
     return "pending";
@@ -207,20 +211,67 @@ export async function startRowedRun(opts: {
  * @param opts.userId - Who submits it.
  * @param opts.check - The submission's own checks; throws its refusal, returns what the estimate reads.
  * @param opts.credits - The run's estimate, from what the checks returned.
+ * @param opts.inputs - The media URLs the run uses, from what the checks
+ *   returned; the operation it counts as may claim derived uploads among them.
  * @returns The new task id, and what the checks returned.
  * @throws {AppError} 403 or 404 without editor access, the checks' refusal, 402 when the studio cannot cover the estimate.
+ * @throws {OperationsExhaustedError} 402 when the month's operations are used up and the studio cannot pay for one more.
  */
 export async function holdRun<T>(opts: {
   projectId: string;
   userId: string;
   check: () => Promise<T>;
   credits: (checked: T) => Promise<number>;
+  inputs: (checked: T) => readonly string[];
 }): Promise<{ taskId: string; checked: T }> {
   await assertAccess(opts.projectId, opts.userId, "editor");
   const checked = await opts.check();
   const taskId = randomUUID();
-  await reserveForRun(opts.projectId, opts.userId, taskId, await opts.credits(checked));
+  // One generation is one operation, admitted before anything opens (inner#1968).
+  await admitTaskOperation("generation", taskId, opts.projectId, opts.userId, opts.inputs(checked));
+  try {
+    await reserveForRun(opts.projectId, opts.userId, taskId, await opts.credits(checked));
+  } catch (err) {
+    await operationService.releaseOperation(`task:${taskId}`, undefined, "not_started");
+    throw err;
+  }
   return { taskId, checked };
+}
+
+/**
+ * Every address a run's params name, in order: each string value and each
+ * string in a list. Only those naming one of the studio's own assets are
+ * read further, so a prompt or a setting among them is passed over.
+ * @param params - The run's params.
+ * @returns The candidate media URLs.
+ */
+export function mediaUrlsIn(params: Record<string, unknown>): string[] {
+  const urls: string[] = [];
+  for (const value of Object.values(params)) {
+    for (const item of Array.isArray(value) ? value : [value]) {
+      if (typeof item === "string" && /^https?:\/\//.test(item)) urls.push(item);
+    }
+  }
+  return urls;
+}
+
+/**
+ * Admit the operation a task run counts as, under `task:<taskId>`.
+ * @param kind - A generation, or a tool run (mini-tool, understanding, transcription).
+ * @param taskId - The run's task id, minted by the server.
+ * @param projectId - Where it runs.
+ * @param userId - Who starts it.
+ * @param inputs - The media URLs it uses.
+ * @throws {OperationsExhaustedError} 402 when the studio cannot pay for one more.
+ */
+export async function admitTaskOperation(
+  kind: "generation" | "tool_run",
+  taskId: string,
+  projectId: string,
+  userId: string,
+  inputs: readonly string[],
+): Promise<void> {
+  await admitOperationOrRefuse({ kind, key: `task:${taskId}`, projectId, actorUserId: userId, inputs });
 }
 
 /**
@@ -246,6 +297,7 @@ export async function settleUnqueuedRun(
   for (const settle of [
     // A refused admission held nothing, and releasing it does nothing.
     (): Promise<unknown> => creditHoldService.releaseHold(taskId),
+    (): Promise<unknown> => operationService.releaseOperation(`task:${taskId}`, undefined, "not_started"),
     (): Promise<unknown> => taskService.markFailed(taskId, reason),
     settleRow,
   ]) {

@@ -53,6 +53,7 @@ import {
   mediaKindForActivity,
   recordGenerationForNodes,
   releaseRunHold,
+  releaseRunOperation,
   runContextOf,
   settleSceneRow,
   type TaskJobData,
@@ -142,6 +143,7 @@ export async function cleanupFailedJobNodes(
   // (inner#1611). Released before the canvas checks below, which only decide
   // what the nodes are told. A release that fails leaves the hold to expire.
   await releaseRunHold(job.data.taskId, job.data.userId);
+  await releaseRunOperation(job.data.taskId, job.data.userId);
 
   const { projectId, spaceId, targetNodeIds, sceneRowId } = job.data;
   if (!projectId) return 0;

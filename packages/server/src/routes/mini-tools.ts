@@ -9,6 +9,7 @@
  * export uploads like any other file.
  */
 
+import { randomUUID } from "node:crypto";
 import { tasksQueue } from "@server/modules/task/tasks-queue.js";
 import { admitGeneration } from "@server/modules/task/admit-generation.service.js";
 import { currentConsent } from "@breatic/core";
@@ -24,7 +25,8 @@ import { runOnce } from "@server/middleware/run-once.js";
 import { idempotencyKeyHeaderSchema } from "@server/routes/schemas.js";
 import { projectService } from "@server/modules";
 import { prepareRun } from "@server/modules/mini-tool/mini-tool.service.js";
-import { startRowedRun } from "@server/modules/task/generation-task.js";
+import { admitTaskOperation, startRowedRun } from "@server/modules/task/generation-task.js";
+import { operationService } from "@breatic/domain";
 
 const miniTools = new Hono<{ Variables: AuthVariables }>();
 
@@ -54,16 +56,30 @@ miniTools.post(
   const run = await prepareRun(spec, body);
 
   const taskType = outputTemplateOf(spec).modality;
-  const task = await admitGeneration(
-    user.id,
-    body.project_id,
-    body.space_id,
-    taskType,
-    "append",
-    run.params,
-    run.model,
-    "mini_tool",
-  );
+  // One run is one operation under the id its task takes, admitted before
+  // any row opens; the drawing and expand inputs are the derived images it
+  // may use up (inner#1968).
+  const taskId = randomUUID();
+  const drawn = body.drawing === undefined ? [] : "mask" in body.drawing ? [body.drawing.mask] : [body.drawing.image];
+  const expanded = body.expand === undefined ? [] : [body.expand.image, body.expand.mask];
+  await admitTaskOperation("tool_run", taskId, body.project_id, user.id, [...drawn, ...expanded]);
+  let task: Awaited<ReturnType<typeof admitGeneration>>;
+  try {
+    task = await admitGeneration(
+      user.id,
+      body.project_id,
+      body.space_id,
+      taskType,
+      "append",
+      run.params,
+      run.model,
+      "mini_tool",
+      taskId,
+    );
+  } catch (err) {
+    await operationService.releaseOperation(`task:${taskId}`, undefined, "not_started");
+    throw err;
+  }
 
   const status = await startRowedRun({
     taskId: task.id,

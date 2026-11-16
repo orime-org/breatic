@@ -10,6 +10,7 @@
 
 import * as taskRepo from "@domain/task/task.repo.js";
 import * as creditLotService from "@domain/credit/creditLot.service.js";
+import * as operationService from "@domain/operation/operation.service.js";
 import { t } from "@breatic/shared";
 import { db, NotFoundError, ForbiddenError, type DbTx } from "@breatic/core";
 import type { GenerationSource, TaskEntity } from "@breatic/shared";
@@ -180,7 +181,7 @@ export async function recordProviderResult(
  * @param durationMs - Wall-clock duration of the task in milliseconds.
  * @param charge - The charge to record when this call wins, or null when the run owes nothing.
  * @returns `true` if this call won the transition, `false` if the task was already completed.
- * @throws {Error} When either write fails; neither then commits.
+ * @throws {Error} When any write fails; none then commits.
  */
 export async function markCompletedAndBill(
   taskId: string,
@@ -189,13 +190,39 @@ export async function markCompletedAndBill(
   durationMs: number,
   charge: Omit<creditLotService.ChargeRequestInput, "kind" | "referenceId"> | null,
 ): Promise<boolean> {
-  return db.transaction(async (tx) => {
-    const won = await taskRepo.markCompletedAndBill(taskId, result, creditsUsed, durationMs, tx);
-    if (won && charge !== null && charge.amount > 0) {
+  let counted: operationService.CountOutcome | null = null;
+  const won = await db.transaction(async (tx) => {
+    const completed = await taskRepo.markCompletedAndBill(taskId, result, creditsUsed, durationMs, tx);
+    if (completed && charge !== null && charge.amount > 0) {
       await creditLotService.requestCharge({ ...charge, kind: "task", referenceId: taskId }, tx);
     }
-    return won;
+    // The run's operation counts in the commit that records its success (inner#1968).
+    if (completed) counted = await operationService.countOperation(`task:${taskId}`, tx);
+    return completed;
   });
+  await operationService.settleOverage(counted);
+  return won;
+}
+
+/**
+ * Complete a task whose cost is still being looked up, and count its
+ * operation, in one commit (inner#1968): the completion and the count land
+ * together or not at all. Billing it later counts nothing.
+ * @param taskId - UUID of the task.
+ * @param result - Its result, with `costWait` and the pending lookups.
+ * @param durationMs - How long the run took from its first start.
+ * @returns True for the call that completed it; false once it is completed and waiting, or billed.
+ * @throws {Error} When either write fails; neither then commits.
+ */
+export async function markCompletedAndCount(taskId: string, result: Record<string, unknown>, durationMs: number): Promise<boolean> {
+  let counted: operationService.CountOutcome | null = null;
+  const won = await db.transaction(async (tx) => {
+    const completed = await taskRepo.markCompleted(taskId, result, durationMs, tx);
+    if (completed) counted = await operationService.countOperation(`task:${taskId}`, tx);
+    return completed;
+  });
+  await operationService.settleOverage(counted);
+  return won;
 }
 
 /**

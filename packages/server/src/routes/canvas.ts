@@ -9,6 +9,7 @@
  * via Yjs document sync through the Hocuspocus collab server.
  */
 
+import { randomUUID } from "node:crypto";
 import { tasksQueue } from "@server/modules/task/tasks-queue.js";
 import { admitGeneration } from "@server/modules/task/admit-generation.service.js";
 import { currentConsent } from "@breatic/core";
@@ -19,6 +20,7 @@ import { runOnce } from "@server/middleware/run-once.js";
 import { z } from "zod";
 import {
   idempotencyKeyHeaderSchema,
+  operationIdHeaderSchema,
   taskCreateSchema,
   understandSchema,
   transcribeSchema,
@@ -37,6 +39,7 @@ import {
 } from "@server/config/limits.js";
 import {
   creditHoldService,
+  operationService,
   taskService,
   estimateTaskCredits,
   sendsUntakenPrompt,
@@ -50,7 +53,9 @@ import { assertLlmServable, assertServable } from "@server/modules/task/model-se
 import { catalogEntryOf } from "@breatic/shared/mini-tools";
 import { nodeTaskService } from "@breatic/domain";
 import {
+  admitTaskOperation,
   holdRun,
+  mediaUrlsIn,
   openGenerationTasks,
   startRowedRun,
 } from "@server/modules/task/generation-task.js";
@@ -185,7 +190,10 @@ function templateResourceUrl(path: string): string {
 canvas.post(
   "/ingest-url",
   rateLimitFor("ingest-url", "user"),
+  validate("header", operationIdHeaderSchema),
   validate("json", ingestUrlSchema),
+  // One address of one press is one operation, keyed by the browser's id (inner#1968).
+  runOnce("ingest-url"),
   async (c) => {
     const user = c.get("user");
     const body = c.req.valid("json");
@@ -196,6 +204,8 @@ canvas.post(
       spaceId: body.space_id,
       nodeId: body.node_id,
       userId: user.id,
+      // A template's own resource is not the user's operation.
+      operationKey: body.template_resource === undefined ? `url:${user.id}:${c.req.valid("header")["idempotency-key"]!}` : null,
     });
     return c.json({ data: { task_id: taskId } }, 201);
   },
@@ -314,6 +324,8 @@ canvas.post(
         { params: body.params, prompt: extractPromptText(body.params.prompt ?? body.params.text) },
         body.route,
       ),
+    // The run's references, among them any focus crop it uses up (inner#1968).
+    inputs: () => mediaUrlsIn(body.params),
   });
 
   let task: Awaited<ReturnType<typeof taskService.create>>;
@@ -395,6 +407,9 @@ canvas.post(
   } catch (err) {
     await creditHoldService.releaseHold(taskId).catch((releaseErr: unknown) =>
       logger.error({ err: releaseErr, taskId, projectId }, "credit_hold_release_failed"),
+    );
+    await operationService.releaseOperation(`task:${taskId}`, undefined, "not_started").catch((releaseErr: unknown) =>
+      logger.error({ err: releaseErr, taskId, projectId }, "operation_release_failed"),
     );
     throw err;
   }
@@ -515,21 +530,33 @@ async function startReading(
     ...reading,
   };
 
+  // One reading is one operation, admitted under the id its task takes
+  // before any row opens (inner#1968); a way out before the rows open gives
+  // it back, and from there `startRowedRun` settles it.
+  const taskId = randomUUID();
+  await admitTaskOperation("tool_run", taskId, body.project_id, userId, []);
   // Understand tasks transcribe / analyze a media URL into a result node;
   // they always produce a new node ('append'), no overwrite semantics.
-  const task = await admitGeneration(
-    userId,
-    body.project_id,
-    body.space_id,
-    "understand",
-    "append",
-    params,
-    model,
-    // The column every lane names itself in. Left unsaid it falls to the
-    // column's own default, which predates this vocabulary — these rows
-    // would then be the only ones it cannot account for.
-    "understand",
-  );
+  let task: Awaited<ReturnType<typeof admitGeneration>>;
+  try {
+    task = await admitGeneration(
+      userId,
+      body.project_id,
+      body.space_id,
+      "understand",
+      "append",
+      params,
+      model,
+      // The column every lane names itself in. Left unsaid it falls to the
+      // column's own default, which predates this vocabulary — these rows
+      // would then be the only ones it cannot account for.
+      "understand",
+      taskId,
+    );
+  } catch (err) {
+    await operationService.releaseOperation(`task:${taskId}`, undefined, "not_started");
+    throw err;
+  }
 
   // The node this run writes to is already on the canvas — the browser built
   // it before the request went out — so its row opens before the credit

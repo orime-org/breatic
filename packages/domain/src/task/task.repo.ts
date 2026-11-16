@@ -367,11 +367,12 @@ export async function clearSending(id: string): Promise<void> {
  * @param id - The task.
  * @param result - Its result, with `costWait` and the pending lookups.
  * @param durationMs - How long the run took from its first start.
+ * @param tx - Optional transaction, so the completion commits with its count.
  * @returns True for the call that completed it; false once it is completed and waiting, or billed.
  */
-export async function markCompleted(id: string, result: Record<string, unknown>, durationMs: number): Promise<boolean> {
+export async function markCompleted(id: string, result: Record<string, unknown>, durationMs: number, tx?: DbTx): Promise<boolean> {
   const now = new Date();
-  const rows = await db
+  const rows = await (tx ?? db)
     .update(tasks)
     .set({ status: "completed", result, durationMs, completedAt: now, updatedAt: now })
     .where(and(eq(tasks.id, id), notWaitingOnCost(), isNull(tasks.billedAt)))
