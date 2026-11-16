@@ -214,15 +214,15 @@ describe("durable activity at real request admission (inner#1893)", () => {
     expect(rows).toEqual([]);
   });
 
-  for (const entry of ["url", "paste", "deleted", "batch"] as const) {
+  // The batch upload ticket is gone: the grid is cut on the server (inner#1968).
+  for (const entry of ["url", "paste", "deleted"] as const) {
     it(`P13 records one accepted ${entry} request under its real actor`, async () => {
       const project = await seedActivityProject(sql);
       const common = { project_id: project.projectId, space_id: randomUUID() };
-      const path = entry === "url" ? "/canvas/ingest-url" : entry === "paste" ? "/canvas/paste" : entry === "deleted" ? "/assets/deleted" : "/assets/upload-ticket";
+      const path = entry === "url" ? "/canvas/ingest-url" : entry === "paste" ? "/canvas/paste" : "/assets/deleted";
       const body = entry === "url" ? { ...common, node_id: randomUUID(), url: "https://assets.example.test/tree.jpg" }
         : entry === "paste" ? { project_id: project.projectId, urls: [], pairs: [], history: [{ node_id: randomUUID(), kind: "text", content: "copied text" }] }
-        : entry === "deleted" ? { project_id: project.projectId, entries: [{ file_url: "https://assets.example.test/tree.jpg", kind: "image" }] }
-        : { ...common, source: "mini_tool", tool_name: "image.grid", items: [1,2].map(() => ({ filename: "tile.jpg", content_type: "image/jpeg", size: 100, client_hash: randomBytes(32).toString("hex"), node_id: randomUUID() })) };
+        : { project_id: project.projectId, entries: [{ file_url: "https://assets.example.test/tree.jpg", kind: "image" }] };
       const response = await post(project, path, body);
       expect(response.status, await response.clone().text()).toBe(entry === "url" ? 201 : 200);
       const rows = await activityRows(sql, project.userId);

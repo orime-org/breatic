@@ -5,7 +5,7 @@
  * inner#1595 P06: one ticket opens exactly one upload, and no answer carries
  * a ticket (the second of the four parts of acceptance item 5, test spec §1.3).
  *
- * Any mix of single, batch (1 to BATCH_MAX files) and transfer tickets, sent
+ * Any mix of single tickets, dedup hits and transfer tickets, sent
  * one after another or all at once, through the real routes and the real
  * database. Only the Worker's `POST /uploads` is a double, which counts every
  * open by key and answers each key the way the run's modes say, decided by
@@ -15,6 +15,7 @@
  * not off the answers: an `openFailed` answer carries no key.
  */
 
+import { randomUUID } from "node:crypto";
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
 
 vi.mock("ai", () => ({
@@ -40,7 +41,6 @@ import fc from "fast-check";
 import type { Hono } from "hono";
 import { initCore, getRedis, setSession, sessionCookieName, loadLocales } from "@breatic/core";
 import { UploadHttpError } from "@breatic/shared";
-import { MINI_TOOLS, mostOutputsOf } from "@breatic/shared/mini-tools";
 import { getRateLimit } from "@server/config/rate-limits.js";
 import { openCalls, opensByKey, resetOpenDouble, setOpenMode } from "../helpers/ingest-open-double.js";
 
@@ -68,10 +68,6 @@ afterAll(async () => {
   await sql?.end({ timeout: 1 });
 });
 
-/** The largest batch a grouped browser tool asks for, read the way the route reads it. */
-const BATCH_MAX = Math.max(
-  ...MINI_TOOLS.filter((spec) => spec.run.kind === "browser" && spec.groupOutputs === true).map(mostOutputsOf),
-);
 const TILE_BYTES = 4096;
 let seq = 0;
 
@@ -81,10 +77,11 @@ type Mode = "ok" | "http5xx" | "http4xx" | "net";
 /** One request of a run. */
 type Op =
   | { kind: "single"; node: boolean; purpose: "none" | "project_cover" }
-  | { kind: "batch"; n: number; hits: boolean[] }
+  // A file the studio already holds. The batch form is gone (inner#1968).
+  | { kind: "hit" }
   | { kind: "transfer"; size: number };
 
-/** One file a single or batch request asked for, and where its answer is. */
+/** One file a ticket request asked for, and where its answer is. */
 interface Asked {
   op: number;
   item: number;
@@ -181,22 +178,15 @@ function hasTicketKey(value: unknown): boolean {
 }
 
 const single = fc.record({ node: fc.boolean(), purpose: fc.constantFrom("none" as const, "project_cover" as const) });
-const batchOp = fc.record({
-  n: fc.oneof(
-    { arbitrary: fc.integer({ min: 1, max: 4 }), weight: 4 },
-    { arbitrary: fc.constant(BATCH_MAX), weight: 1 },
-  ),
-  hits: fc.array(fc.boolean()),
-});
 const transfer = fc.record({ size: fc.integer({ min: 1, max: 4096 }) });
 const op: fc.Arbitrary<Op> = fc.oneof(
   single.map((o) => ({ kind: "single" as const, ...o })),
-  batchOp.map((o) => ({ kind: "batch" as const, ...o })),
+  fc.constant({ kind: "hit" as const }),
   transfer.map((o) => ({ kind: "transfer" as const, ...o })),
 );
 
 describe("inner#1595 P06: every key the server issues is opened exactly once, and no answer carries a ticket", () => {
-  it("holds for any mix of single, batch and transfer tickets, sequential or concurrent", async () => {
+  it("holds for any mix of single tickets, dedup hits and transfer tickets, sequential or concurrent", async () => {
     await fc.assert(
       fc.asyncProperty(
         fc.array(op, { minLength: 1, maxLength: 5 }),
@@ -248,32 +238,20 @@ describe("inner#1595 P06: every key the server issues is opened exactly once, an
               sends.push(() =>
                 app.request("/api/v1/assets/upload-ticket", {
                   method: "POST",
-                  headers: { "content-type": "application/json", cookie: seed.cookie },
+                  headers: { "Idempotency-Key": randomUUID(), "content-type": "application/json", cookie: seed.cookie },
                   body: JSON.stringify(payload),
                 }),
               );
               continue;
             }
-            const items: Record<string, unknown>[] = [];
-            for (let i = 0; i < o.n; i++) {
-              const hit = o.hits[i] === true;
-              const hash = crypto.randomBytes(32).toString("hex");
-              if (hit) await registerAsset(seed.studioId, seed.userId, hash);
-              const nodeId = crypto.randomUUID();
-              asked.push({ op: index, item: i, nodeId, hit });
-              items.push({ filename: "GRID.png", content_type: "image/png", size: TILE_BYTES, client_hash: hash, node_id: nodeId });
-            }
+            const hash = crypto.randomBytes(32).toString("hex");
+            await registerAsset(seed.studioId, seed.userId, hash);
+            asked.push({ op: index, item: 0, nodeId: undefined, hit: true });
             sends.push(() =>
               app.request("/api/v1/assets/upload-ticket", {
                 method: "POST",
-                headers: { "content-type": "application/json", cookie: seed.cookie },
-                body: JSON.stringify({
-                  project_id: seed.projectId,
-                  space_id: spaceId,
-                  source: "mini_tool",
-                  tool_name: "image.grid",
-                  items,
-                }),
+                headers: { "Idempotency-Key": randomUUID(), "content-type": "application/json", cookie: seed.cookie },
+                body: JSON.stringify({ project_id: seed.projectId, filename: "photo.png", content_type: "image/png", size: TILE_BYTES, client_hash: hash }),
               }),
             );
           }
@@ -322,8 +300,7 @@ describe("inner#1595 P06: every key the server issues is opened exactly once, an
           let openedItems = 0;
           let failedItems = 0;
           for (const a of asked) {
-            const json = answers[a.op]!.json as { data: Record<string, unknown> & { items?: Record<string, unknown>[] } };
-            const item = ops[a.op]!.kind === "batch" ? json.data.items![a.item]! : json.data;
+            const item = (answers[a.op]!.json as { data: Record<string, unknown> }).data;
             if (a.hit) {
               // 4. A dedup hit opens no grant and nothing at the Worker.
               expect(item.alreadyExists).toBe(true);

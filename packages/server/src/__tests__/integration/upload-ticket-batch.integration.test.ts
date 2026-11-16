@@ -2,10 +2,9 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * `POST /assets/upload-ticket` in its batch form (inner#1303 §7): a browser
- * tool that cuts one picture into many asks for every tile's ticket in one
- * request, and each tile is answered on its own — a ticket, a dedup hit, or a
- * refusal.
+ * Finishing many uploads in a row (inner#1303 §7). The batch form of
+ * `POST /assets/upload-ticket` is gone (inner#1968): the grid is cut on the
+ * server, so no browser tool asks for many tickets at once.
  */
 
 import { describe, it, expect, beforeAll, beforeEach, afterAll, inject, vi } from "vitest";
@@ -49,12 +48,9 @@ import {
   setSession,
   sessionCookieName,
   loadLocales,
-  getMembershipLimits,
 } from "@breatic/core";
-import { assetRepo } from "@breatic/domain";
-import { signSessionToken, UploadHttpError } from "@breatic/shared";
-import { MINI_TOOLS, mostOutputsOf } from "@breatic/shared/mini-tools";
-import { openCalls, opensByKey, resetOpenDouble, setOpenMode } from "../helpers/ingest-open-double.js";
+import { signSessionToken } from "@breatic/shared";
+import { resetOpenDouble } from "../helpers/ingest-open-double.js";
 import { getRateLimit } from "@server/config/rate-limits.js";
 import type { Hono } from "hono";
 
@@ -87,21 +83,13 @@ afterAll(async () => {
   await sql?.end({ timeout: 1 });
 });
 
-/** The largest batch a grouped browser tool asks for, read the way the route reads it. */
-const BATCH_MAX = Math.max(
-  ...MINI_TOOLS.filter((spec) => spec.run.kind === "browser" && spec.groupOutputs === true).map(mostOutputsOf),
-);
-
 let seq = 0;
-const TILE_BYTES = 4096;
-const SPACE_ID = "22222222-2222-4222-9222-222222222222";
 
 /**
- * A base-tier account with a personal studio and a project, holding `filledBytes`.
- * @param filledBytes - How full the account is before the test runs.
+ * A base-tier account with a personal studio and a project.
  * @returns The ids and a login cookie.
  */
-async function account(filledBytes = 0): Promise<{
+async function account(): Promise<{
   userId: string;
   studioId: string;
   projectId: string;
@@ -128,264 +116,10 @@ async function account(filledBytes = 0): Promise<{
     INSERT INTO project_members (project_id, user_id, role, added_by)
     VALUES (${projectId}, ${userId}, 'owner', null)
   `;
-  if (filledBytes > 0) await register(studioId, userId, crypto.randomBytes(32).toString("hex"), filledBytes);
   const token = crypto.randomBytes(24).toString("hex");
   await setSession(getRedis(), token, userId);
   return { userId, studioId, projectId, cookie: `${sessionCookieName()}=${token}` };
 }
-
-/**
- * Put one picture in the studio's ledger so the dedup pass finds it.
- * @param studioId - The studio.
- * @param userId - Who produced it.
- * @param contentHash - Its hash.
- * @param sizeBytes - Its size.
- */
-async function register(studioId: string, userId: string, contentHash: string, sizeBytes: number): Promise<void> {
-  await assetRepo.registerWithDedup({
-    studioId,
-    producedByUserId: userId,
-    contentHash,
-    storageKey: `image/2026-10-12/${crypto.randomUUID()}.png`,
-    fileUrl: `https://cdn/${crypto.randomUUID()}.png`,
-    sizeBytes,
-    mimeType: "image/png",
-    kind: "image",
-    source: "upload",
-  });
-}
-
-/**
- * One tile's entry in a batch.
- * @param hash - Its content hash; random when absent.
- * @returns The entry.
- */
-function tile(hash = crypto.randomBytes(32).toString("hex")): Record<string, unknown> {
-  return {
-    filename: "GRID.png",
-    content_type: "image/png",
-    size: TILE_BYTES,
-    client_hash: hash,
-    node_id: crypto.randomUUID(),
-  };
-}
-
-/**
- * POST a batch.
- * @param cookie - The caller's session.
- * @param payload - The body.
- * @returns The response.
- */
-async function batch(cookie: string, payload: Record<string, unknown>): Promise<Response> {
-  return app.request("/api/v1/assets/upload-ticket", {
-    method: "POST",
-    headers: { "content-type": "application/json", cookie },
-    body: JSON.stringify(payload),
-  });
-}
-
-/**
- * A batch body for the grid tool.
- * @param projectId - The project.
- * @param items - The tiles.
- * @param overrides - Fields to change.
- * @returns The body.
- */
-function gridBody(
-  projectId: string,
-  items: Record<string, unknown>[],
-  overrides: Record<string, unknown> = {},
-): Record<string, unknown> {
-  return { project_id: projectId, space_id: SPACE_ID, source: "mini_tool", tool_name: "image.grid", items, ...overrides };
-}
-
-type Item = {
-  ticket?: string;
-  uploadId?: string;
-  token?: string;
-  storageKey?: string;
-  taskId?: string;
-  alreadyExists?: boolean;
-  refused?: { reason: string };
-  openFailed?: { reason: string };
-};
-
-/**
- * Whether an item is a ticket in the shape inner#1595 answers: an opened
- * upload's id and first token, and no ticket.
- * @param item - The item.
- * @returns Whether it is.
- */
-function isOpened(item: Item): boolean {
-  return (
-    typeof item.uploadId === "string" &&
-    typeof item.token === "string" &&
-    typeof item.taskId === "string" &&
-    !("ticket" in item)
-  );
-}
-
-describe("the batch form of the upload ticket", () => {
-  it("T72: opens BATCH_MAX (64) tiles in one request, each once, counted once against the ticket limit", async () => {
-    expect(BATCH_MAX).toBe(64);
-    const a = await account();
-    const items = Array.from({ length: BATCH_MAX }, () => tile());
-
-    const res = await batch(a.cookie, gridBody(a.projectId, items));
-
-    expect(res.status).toBe(200);
-    const { data } = (await res.json()) as { data: { items: Item[] } };
-    expect(data.items).toHaveLength(BATCH_MAX);
-    expect(data.items.every(isOpened)).toBe(true);
-    const opens = opensByKey();
-    expect(opens.size).toBe(BATCH_MAX);
-    expect([...opens.values()].every((n) => n === 1)).toBe(true);
-    expect(await getRedis().zcard(`${env.ENV}:ratelimit:upload-ticket:${a.userId}`)).toBe(1);
-  });
-
-  it("answers each tile in the order it was asked", async () => {
-    const a = await account();
-    const hit = crypto.randomBytes(32).toString("hex");
-    await register(a.studioId, a.userId, hit, TILE_BYTES);
-
-    const res = await batch(a.cookie, gridBody(a.projectId, [tile(), tile(hit), tile()]));
-
-    const { data } = (await res.json()) as { data: { items: Item[] } };
-    expect(data.items.map((item) => (item.alreadyExists ? "hit" : item.uploadId ? "ticket" : "other"))).toEqual([
-      "ticket",
-      "hit",
-      "ticket",
-    ]);
-  });
-
-  it.each([
-    ["more tiles than the grid can cut", (p: string) => gridBody(p, Array.from({ length: 65 }, () => tile()))],
-    ["a tool that does not group its results", (p: string) => gridBody(p, [tile()], { tool_name: "image.crop" })],
-    ["a studio id", (p: string) => gridBody(p, [tile()], { studio_id: crypto.randomUUID() })],
-    ["a purpose", (p: string) => gridBody(p, [tile()], { purpose: "project_cover" })],
-    [
-      "two tiles on one node",
-      (p: string) => {
-        const one = tile();
-        return gridBody(p, [one, { ...tile(), node_id: one.node_id }]);
-      },
-    ],
-    [
-      "a tile without a node",
-      (p: string) => {
-        const { node_id: _drop, ...rest } = tile();
-        return gridBody(p, [rest]);
-      },
-    ],
-  ])("refuses a batch carrying %s", async (_label, make) => {
-    const a = await account();
-
-    const res = await batch(a.cookie, make(a.projectId));
-
-    expect(res.status).toBe(422);
-  });
-
-  it("settles every tile when storage is full and each one is already held", async () => {
-    const a = await account(getMembershipLimits("base").storage_bytes);
-    const hashes = [0, 1, 2].map(() => crypto.randomBytes(32).toString("hex"));
-    for (const hash of hashes) await register(a.studioId, a.userId, hash, TILE_BYTES);
-
-    const res = await batch(a.cookie, gridBody(a.projectId, hashes.map((hash) => tile(hash))));
-
-    expect(res.status).toBe(200);
-    const { data } = (await res.json()) as { data: { items: Item[] } };
-    expect(data.items.every((item) => item.alreadyExists === true)).toBe(true);
-  });
-
-  it("refuses only the tiles that need room when storage is full", async () => {
-    const a = await account(getMembershipLimits("base").storage_bytes);
-    const held = crypto.randomBytes(32).toString("hex");
-    await register(a.studioId, a.userId, held, TILE_BYTES);
-
-    const res = await batch(a.cookie, gridBody(a.projectId, [tile(), tile(held), tile()]));
-
-    expect(res.status).toBe(200);
-    const { data } = (await res.json()) as { data: { items: Item[] } };
-    expect(data.items).toEqual([
-      { refused: { reason: "storage" } },
-      expect.objectContaining({ alreadyExists: true }),
-      { refused: { reason: "storage" } },
-    ]);
-  });
-
-  it("T71: answers a failed open, a dedup hit and two opened uploads each on their own", async () => {
-    const a = await account();
-    const hit = crypto.randomBytes(32).toString("hex");
-    await register(a.studioId, a.userId, hit, TILE_BYTES);
-    const tiles = [tile(), tile(), tile(hit), tile()];
-    // The key is minted inside the request, so the failing tile is found by
-    // the node its grant was opened for.
-    setOpenMode(async (key) => {
-      const [row] = await sql<{ node_id: string | null }[]>`
-        SELECT node_id FROM upload_grants WHERE storage_key = ${key}
-      `;
-      return row?.node_id === tiles[1]!.node_id ? new UploadHttpError(502, "store_failed") : "ok";
-    });
-
-    const res = await batch(a.cookie, gridBody(a.projectId, tiles));
-
-    expect(res.status).toBe(200);
-    const { data } = (await res.json()) as { data: { items: Item[] } };
-    expect(data.items).toHaveLength(4);
-    expect(isOpened(data.items[0]!)).toBe(true);
-    expect(Object.keys(data.items[1]!).sort()).toEqual(["openFailed", "taskId"]);
-    expect(data.items[1]!.openFailed).toEqual({ reason: "store_failed" });
-    expect(typeof data.items[1]!.taskId).toBe("string");
-    expect(data.items[2]!.alreadyExists).toBe(true);
-    expect(isOpened(data.items[3]!)).toBe(true);
-
-    const opens = opensByKey();
-    expect(opens.size).toBe(3);
-    expect([...opens.values()]).toEqual([1, 1, 1]);
-    const grants = await sql<{ node_id: string; voided_at: Date | null; status: string }[]>`
-      SELECT g.node_id, g.voided_at, t.status
-      FROM upload_grants g JOIN node_tasks t ON t.storage_key = g.storage_key
-      WHERE g.user_id = ${a.userId}
-    `;
-    const byNode = new Map(grants.map((g) => [g.node_id, g]));
-    expect(byNode.get(tiles[1]!.node_id as string)).toMatchObject({ status: "failed" });
-    expect(byNode.get(tiles[1]!.node_id as string)!.voided_at).not.toBeNull();
-    expect(byNode.get(tiles[0]!.node_id as string)).toMatchObject({ status: "running", voided_at: null });
-    expect(byNode.get(tiles[3]!.node_id as string)).toMatchObject({ status: "running", voided_at: null });
-    expect(await getRedis().zcard(`${env.ENV}:ratelimit:upload-ticket:${a.userId}`)).toBe(1);
-    expect(logged.error.mock.calls.filter((call) => call[1] === "upload_open_failed")).toHaveLength(1);
-  });
-
-  it("T73: opens a batch's uploads at the same time", async () => {
-    const a = await account();
-    // Each open answers only once all eight have arrived; opened one after
-    // another, the first would wait out its five seconds and fail.
-    setOpenMode(async () => {
-      const until = Date.now() + 5000;
-      while (openCalls().length < 8) {
-        if (Date.now() > until) return new Error("the opens did not run at the same time");
-        await new Promise((resolve) => setTimeout(resolve, 20));
-      }
-      return "ok";
-    });
-
-    const res = await batch(a.cookie, gridBody(a.projectId, Array.from({ length: 8 }, () => tile())));
-
-    expect(res.status).toBe(200);
-    const { data } = (await res.json()) as { data: { items: Item[] } };
-    expect(data.items).toHaveLength(8);
-    expect(data.items.every(isOpened)).toBe(true);
-  });
-
-  it("answers a caller who is not on the project as if it did not exist", async () => {
-    const a = await account();
-    const b = await account();
-
-    const res = await batch(b.cookie, gridBody(a.projectId, [tile()]));
-
-    expect(res.status).toBe(404);
-  });
-});
 
 /**
  * Ask to finish one upload, holding a token the Worker would have given it.
