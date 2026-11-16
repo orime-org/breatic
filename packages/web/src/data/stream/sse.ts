@@ -65,11 +65,13 @@ export class StreamRefusedError extends Error {
    * @param fromServer - The message came out of our own envelope, which is
    *   what makes it a sentence written for this user rather than one this
    *   file supplied because the refusal needed to carry something
+   * @param reason - The server's `error.reason`, when it marked the refusal
    */
   constructor(
     readonly status: number,
     message: string,
     readonly fromServer: boolean,
+    readonly reason?: string,
   ) {
     super(message);
     this.name = 'StreamRefusedError';
@@ -115,6 +117,7 @@ async function readEnvelopeOrOpen(response: Response): Promise<void> {
     response.status,
     message ?? t('server.error.internal'),
     message !== undefined,
+    reason,
   );
 }
 

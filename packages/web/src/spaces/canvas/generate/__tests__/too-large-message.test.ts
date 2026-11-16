@@ -100,7 +100,7 @@ describe('executeErrorMessage on 413 (E01, E02)', () => {
       `${key}:${JSON.stringify(params)}`,
     );
 
-    const message = await executeErrorMessage(413, translate);
+    const message = await executeErrorMessage(new ApiException({ status: 413, message: 'too large' }), translate);
 
     expect(translate.mock.calls).toEqual([['server.error.payload_too_large', { limit: '2 MiB' }]]);
     expect(message).toBe('server.error.payload_too_large:{"limit":"2 MiB"}');
@@ -113,7 +113,7 @@ describe('executeErrorMessage on 413 (E01, E02)', () => {
     [500, 'canvas.generatePanel.errorFailed'],
     [undefined, 'canvas.generatePanel.errorFailed'],
   ])('E02 keeps the sentence for %s', async (status, key) => {
-    expect(await executeErrorMessage(status, (k: string) => k)).toBe(key);
+    expect(await executeErrorMessage(status === undefined ? undefined : new ApiException({ status, message: 'refused' }), (k: string) => k)).toBe(key);
   });
 });
 
@@ -127,7 +127,7 @@ describe('executeErrorMessage on 413 without a usable limit (E10, Generate entry
       vi.mocked(apiGet).mockRejectedValue(new Error('offline'));
     } else await cacheLimit(limit);
 
-    const message = await executeErrorMessage(413, t);
+    const message = await executeErrorMessage(new ApiException({ status: 413, message: 'too large' }), t);
 
     expect(message).toBe(t('canvas.generatePanel.errorTooLargeNoLimit'));
     expect(message).not.toBe('canvas.generatePanel.errorTooLargeNoLimit');
@@ -144,7 +144,7 @@ describe('a 413 before this session cached the upload config', () => {
     await cacheLimit(TWO_MIB);
     assetsApi.resetUploadConfigCache();
 
-    const message = await executeErrorMessage(413, t);
+    const message = await executeErrorMessage(new ApiException({ status: 413, message: 'too large' }), t);
 
     expect(vi.mocked(apiGet)).toHaveBeenCalledTimes(2);
     expect(vi.mocked(apiGet)).toHaveBeenLastCalledWith('/assets/upload-config');

@@ -21,13 +21,13 @@ const echo = (key: string): string => key;
 
 describe('executeErrorMessage', () => {
   it('says storage is full on 507', async () => {
-    expect(await executeErrorMessage(507, echo)).toBe(
+    expect(await executeErrorMessage(new ApiException({ status: 507, message: 'full' }), echo)).toBe(
       'canvas.generatePanel.errorStorageFull',
     );
   });
 
   it('still falls back for a status it has no sentence for', async () => {
-    expect(await executeErrorMessage(500, echo)).toBe(
+    expect(await executeErrorMessage(new ApiException({ status: 500, message: 'broke' }), echo)).toBe(
       'canvas.generatePanel.errorFailed',
     );
     expect(await executeErrorMessage(undefined, echo)).toBe(

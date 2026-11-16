@@ -34,6 +34,7 @@ import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusi
 import { useTranslation } from '@web/i18n/use-translation';
 import { isEditableTarget } from '@web/lib/is-editable-target';
 import { toast } from '@web/lib/toast';
+import { refusalSentence } from '@web/stores/credit-refusals';
 import { cn } from '@web/lib/utils';
 import { runOnce } from '@web/stores/task-actions-in-flight';
 import type { SpaceBodyProps } from '@web/spaces';
@@ -603,7 +604,9 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
       send: (key, body) => timelineApi.acceptExecution(body, key),
     }).then((outcome) => {
       if (outcome.kind !== 'done') {
-        dispatchDraft({ type: 'refused', error: serverMessage(outcome.kind === 'failed' ? outcome.error : null, t('common.runOnce.unknownResult')) });
+        // A spend limit says its limit and reset day (inner#1968).
+        const failed = outcome.kind === 'failed' ? outcome.error : null;
+        dispatchDraft({ type: 'refused', error: refusalSentence(failed) ?? serverMessage(failed, t('common.runOnce.unknownResult')) });
         return;
       }
       const execution = outcome.result;

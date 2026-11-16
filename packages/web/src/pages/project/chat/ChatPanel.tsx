@@ -323,6 +323,7 @@ export function ChatPanel({
         items={waiting.pending}
         awaiting={waiting.awaiting}
         blocked={waiting.blocked}
+        capNote={waiting.capNote}
         busy={waiting.busy}
         onTakeBack={takeBack}
       />

@@ -24,6 +24,8 @@ interface PendingTrayProps {
   awaiting: boolean;
   /** The balance cannot pay for the run these would open. */
   blocked: boolean;
+  /** A spend limit stopped the run: what says so (inner#1968). */
+  capNote?: string | null;
   /** Which messages are being taken back, and how. */
   busy: Readonly<Record<string, 'retract' | 'delete'>>;
   /** Take a message back into the box, or delete it. */
@@ -75,14 +77,15 @@ function TrayButton({ label, icon, busy, onPress, testId }: TrayButtonProps): Re
  * @param root0.items - The messages waiting.
  * @param root0.awaiting - A card waits for an answer first.
  * @param root0.blocked - The balance cannot pay.
+ * @param root0.capNote - A spend limit stopped the run: what says so.
  * @param root0.busy - Which are being taken back.
  * @param root0.onTakeBack - Take one back or delete it.
  * @returns The area, or nothing while nothing waits.
  */
-function PendingTrayInner({ items, awaiting, blocked, busy, onTakeBack }: PendingTrayProps): React.JSX.Element | null {
+function PendingTrayInner({ items, awaiting, blocked, capNote = null, busy, onTakeBack }: PendingTrayProps): React.JSX.Element | null {
   const t = useTranslation();
   if (items.length === 0) return null;
-  const note = blocked ? t('chat.waiting.blocked') : awaiting ? t('chat.waiting.awaitingCard') : null;
+  const note = capNote ?? (blocked ? t('chat.waiting.blocked') : awaiting ? t('chat.waiting.awaitingCard') : null);
   return (
     <div data-testid='chat-waiting-tray' className='mx-[var(--space-5)] -mb-[var(--space-3)] rounded-chrome border border-border bg-card'>
       <div className='px-2.5 pb-1 pt-2 text-xs'>

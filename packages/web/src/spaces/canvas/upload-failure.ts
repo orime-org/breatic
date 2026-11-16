@@ -90,6 +90,10 @@ const TOAST_KEY: Readonly<
   rateLimited: 'canvas.upload.rateLimited',
   // The same bytes are over the same cap the next time.
   tooLarge: 'canvas.upload.tooLarge',
+  // The month's operations are used up (inner#1968): adding credits lets it through.
+  operations: 'credits.refusal.operations',
+  // A monthly spend limit (inner#1968): adding credits does not lift it.
+  spendCap: 'credits.refusal.spendCap',
   upload: 'canvas.upload.failed',
 };
 
@@ -100,10 +104,16 @@ const TOAST_KEY: Readonly<
  * is opened, so the node has no failure of its own to show and a toast is the
  * only place it can be said. A failure to queue after the row was opened (500)
  * also settles that row as failed.
+ * The month's operations used up and a spend limit (inner#1968) are named by
+ * the refusal's reason; the first is the server's sentence, which the caller
+ * shows as the server wrote it when it has it.
  * @param status - The refusal's HTTP status, when the server answered.
+ * @param reason - The refusal's reason, when the server marked one.
  * @returns The toast's message key.
  */
-export function ingestRefusalToastKey(status: number | undefined): string {
+export function ingestRefusalToastKey(status: number | undefined, reason?: string): string {
+  if (reason === 'operations_exhausted') return 'server.operation.exhausted';
+  if (reason === 'spend_cap_reached') return TOAST_KEY.spendCap;
   return status === STORAGE_FULL_STATUS ? TOAST_KEY.storage : TOAST_KEY.upload;
 }
 
@@ -113,13 +123,14 @@ export function ingestRefusalToastKey(status: number | undefined): string {
  * The catch-all, a transfer and a rate limit are about this attempt: a
  * transfer ends when the connection drops, the ticket runs out or the edge
  * could not store a part, and a fresh ticket starts all of that over; a rate
- * limit lifts once its window passes. The other reasons are about the file or
- * the account, and re-sending meets the same answer.
+ * limit lifts once its window passes; used-up operations let it through once
+ * credits are added. The other reasons are about the file or the account, and
+ * re-sending meets the same answer.
  * @param reason - Why the upload ended.
  * @returns True when a Retry is worth offering.
  */
 export function uploadRetryCanChange(reason: UploadFailure['reason']): boolean {
-  return reason === 'upload' || reason === 'transfer' || reason === 'rateLimited';
+  return reason === 'upload' || reason === 'transfer' || reason === 'rateLimited' || reason === 'operations';
 }
 
 /**

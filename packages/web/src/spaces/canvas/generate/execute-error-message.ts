@@ -10,6 +10,8 @@
  */
 
 import { assetsApi, requestBodyLimitOf } from '@web/data/api/assets';
+import { ApiException } from '@web/data/api/types';
+import { refusalSentence } from '@web/stores/credit-refusals';
 import { formatBytes } from '@web/lib/format-bytes';
 
 /** The translate function, with ICU values. */
@@ -38,15 +40,18 @@ export async function tooLargeMessage(): Promise<{ key: string; params?: { limit
 }
 
 /**
- * Maps a failed execute request to a user-facing message. Credits, full
- * storage, an outage and a request over the body limit are the meaningful
- * task-create failures.
- * @param status - The HTTP status, or undefined for a non-API error.
+ * Maps a failed execute request to a user-facing message. The two refusals of
+ * the monthly operations and spend limits (inner#1968) are read off the
+ * refusal's reason first; then credits, full storage, an outage and a request
+ * over the body limit are the meaningful task-create failures.
+ * @param err - What the request rejected with.
  * @param translate - The i18n translate function.
  * @returns A localized error message.
  */
-export async function executeErrorMessage(status: number | undefined, translate: Translate): Promise<string> {
-  switch (status) {
+export async function executeErrorMessage(err: unknown, translate: Translate): Promise<string> {
+  const refused = refusalSentence(err);
+  if (refused !== null) return refused;
+  switch (err instanceof ApiException ? err.status : undefined) {
     case 402:
       return translate('canvas.generatePanel.errorCredits');
     case 413: {

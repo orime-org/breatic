@@ -107,6 +107,9 @@ const FILE_FAILURE_REASON: Readonly<Record<UploadFailureReason, PendingFailureRe
   tooLarge: 'tooLarge',
   upload: 'failed',
   transfer: 'failed',
+  // Adding credits lets it through (inner#1968).
+  operations: 'operations',
+  spendCap: 'spendCap',
 };
 
 /**
@@ -140,6 +143,9 @@ function done(url: string, width?: number | null, height?: number | null): Uploa
  * @returns The outcome.
  */
 function refusal(err: unknown): UploadOutcome {
+  // Adding credits changes the first answer; it does not lift a spend limit (inner#1968).
+  if (err instanceof ApiException && err.reason === 'operations_exhausted') return fail('operations', true);
+  if (err instanceof ApiException && err.reason === 'spend_cap_reached') return fail('spendCap', false);
   const status = err instanceof ApiException ? err.status : 0;
   if (status === STORAGE_FULL_STATUS) return fail('storageFull', false);
   if (status === RATE_LIMITED_STATUS) return fail('rateLimited', true);

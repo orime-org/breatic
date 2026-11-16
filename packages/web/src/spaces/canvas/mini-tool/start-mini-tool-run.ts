@@ -20,6 +20,7 @@ import {
 
 import { miniToolsApi } from '@web/data/api/mini-tools';
 import { ApiException } from '@web/data/api/types';
+import { isOperationsExhausted, refusalSentence } from '@web/stores/credit-refusals';
 import type { MiniToolUploadTag } from '@web/data/upload/ingest-upload';
 import { UploadFailedError } from '@web/data/upload/media-upload';
 import { addEdge, addNode, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';
@@ -395,14 +396,18 @@ export function useMiniToolRunning(spaceId: string, nodeId: string, toolId: stri
 type Settle = (message?: UploadMarkMessage) => void;
 
 /**
- * What a refused or unreached request says on the nodes: the server's
- * sentence when it gave one, already in the user's language; a request
+ * What a refused or unreached request says on the nodes: a used-up or
+ * spend-limit refusal's own sentence; the server's sentence when it gave one, already in the user's language; a request
  * refused as too large by a proxy with no sentence of ours says why
  * (inner#1006); a request that never arrived has none.
  * @param err - What the send rejected with.
  * @returns The message.
  */
 async function refusalOf(err: unknown): Promise<UploadMarkMessage> {
+  // The month's operations used up offer to add credits; a spend limit says its
+  // limit and reset day (inner#1968).
+  const refused = refusalSentence(err);
+  if (refused !== null) return isOperationsExhausted(err) ? { text: refused, topUp: true } : { text: refused };
   if (err instanceof ApiException && err.fromServer && err.message) return { text: err.message };
   if (err instanceof ApiException && err.status === 413) return await tooLargeMessage();
   return { key: 'canvas.miniTool.panel.couldNotStart' };

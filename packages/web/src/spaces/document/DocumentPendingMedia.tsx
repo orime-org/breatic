@@ -64,6 +64,8 @@ const FAILURE_MESSAGE: Readonly<Record<PendingFailureReason, string>> = {
   empty: 'spaces.document.media.failure.empty',
   unreachable: 'spaces.document.media.failure.unreachable',
   spaceFull: 'spaces.sizeCap.reason',
+  operations: 'credits.refusal.operations',
+  spendCap: 'credits.refusal.spendCap',
 };
 
 /**

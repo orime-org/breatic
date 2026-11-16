@@ -20,6 +20,8 @@ export interface WaitingArea {
   awaiting: boolean;
   /** What waits could not open a run, because the balance cannot pay. */
   blocked: boolean;
+  /** What waits could not open a run past a spend limit: the sentence that says so (inner#1968). */
+  capNote: string | null;
   /** Which messages are being taken back, and whether into the box or away. */
   busy: Record<string, 'retract' | 'delete'>;
 }
@@ -29,7 +31,7 @@ interface ChatWaitingState {
 }
 
 /** Nothing waiting, and no reason given. */
-export const NOTHING_WAITING: Readonly<WaitingArea> = Object.freeze({ pending: [], awaiting: false, blocked: false, busy: {} });
+export const NOTHING_WAITING: Readonly<WaitingArea> = Object.freeze({ pending: [], awaiting: false, blocked: false, capNote: null, busy: {} });
 
 export const useChatWaiting = create<ChatWaitingState>(() => ({ byConversation: {} }));
 
@@ -53,7 +55,7 @@ export const chatWaiting = {
    * @param pending - The queue.
    */
   fromSend(conversationId: string, pending: ChatPendingItem[]): void {
-    update(conversationId, () => ({ pending, awaiting: false, blocked: false }));
+    update(conversationId, () => ({ pending, awaiting: false, blocked: false, capNote: null }));
   },
   /**
    * What a sync answered.
@@ -62,9 +64,10 @@ export const chatWaiting = {
    * @param seen.pending - The queue.
    * @param seen.awaiting - A card waits.
    * @param seen.blocked - The balance cannot pay for a run.
+   * @param seen.capNote - A spend limit stopped the run: what says so.
    */
-  fromSync(conversationId: string, seen: { pending: ChatPendingItem[]; awaiting: boolean; blocked: boolean }): void {
-    update(conversationId, () => seen);
+  fromSync(conversationId: string, seen: { pending: ChatPendingItem[]; awaiting: boolean; blocked: boolean; capNote?: string | null }): void {
+    update(conversationId, () => ({ ...seen, capNote: seen.capNote ?? null }));
   },
   /**
    * A message left the queue: a run took it in, or it was taken back here or elsewhere.

@@ -3,9 +3,11 @@
 
 import * as React from 'react';
 
+import { Button } from '@web/components/ui/button';
 import { Skeleton } from '@web/components/ui/skeleton';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useUploadMark } from '@web/spaces/canvas/nodes/_shared/use-upload-mark';
+import { openCreditsOverlay } from '@web/stores/credit-refusals';
 
 /**
  * The uploader's own mark over a node that already shows something (inner#1303
@@ -30,6 +32,12 @@ export function NodeUploadMarkOverlay(): React.JSX.Element | null {
       className='pointer-events-none absolute inset-x-1 bottom-1 bg-popover px-2 py-1 text-xs text-pretty text-status-error wrap-anywhere [word-break:auto-phrase]'
     >
       {'text' in mark.message ? mark.message.text : t(mark.message.key, mark.message.params)}
+      {'text' in mark.message && mark.message.topUp === true ? (
+        // The line lets presses through to the content; its one button takes them.
+        <Button variant='default' size='compact' className='nodrag pointer-events-auto ml-2' onClick={openCreditsOverlay}>
+          {t('credits.topUp')}
+        </Button>
+      ) : null}
     </span>
   );
 }

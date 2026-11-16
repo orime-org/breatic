@@ -61,6 +61,7 @@ import { langFor } from '@web/features/preferences/supported-langs';
 import { useTranslation } from '@web/i18n/use-translation';
 import { compositionEnd, keyBelongsToInputMethod } from '@web/lib/composition-end';
 import { toast } from '@web/lib/toast';
+import { topUpAction } from '@web/stores/credit-refusals';
 import { cn } from '@web/lib/utils';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { DocumentAiLaunchContext, TONE_LABEL_KEYS, type AiLaunch } from '@web/spaces/document/document-ai-context';
@@ -224,6 +225,8 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
   const requests = React.useRef(new Map<number, AbortController>());
   // What the last failure said, when the server said something for this user.
   const failure = React.useRef<string | null>(null);
+  /** Whether that failure was the month's operations used up (inner#1968). */
+  const failureTopUp = React.useRef(false);
   const configRequest = React.useRef<Promise<TextToolsConfig> | null>(null);
   const endsWithEditor = React.useRef<(() => void) | null>(null);
 
@@ -273,6 +276,8 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
           },
           onError: (err) => {
             failure.current = err instanceof StreamRefusedError && err.fromServer ? err.message : null;
+            // Used-up operations offer to add credits (inner#1968).
+            failureTopUp.current = err instanceof StreamRefusedError && err.reason === 'operations_exhausted';
             send({ type: 'error', seq });
           },
           signal: controller.signal,
@@ -285,8 +290,10 @@ export function DocumentAiDialog({ editor, viewport, children }: DocumentAiDialo
         requests.current.get(effect.seq)?.abort();
         return;
       case 'toastFailure':
-        toast.error(failure.current ?? t('server.text_tool.failed'));
+        if (failureTopUp.current) toast.error(failure.current ?? t('server.text_tool.failed'), { action: topUpAction() });
+        else toast.error(failure.current ?? t('server.text_tool.failed'));
         failure.current = null;
+        failureTopUp.current = false;
         return;
       case 'toastNotWritable':
         toast.error(t('spaces.document.ai.notWritable'));

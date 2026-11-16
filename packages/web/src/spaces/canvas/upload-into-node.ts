@@ -11,6 +11,7 @@ import { isNodeLocked, setNodeExtractedText } from '@web/data/yjs/canvas-space';
 import { docName } from '@web/data/yjs/manager';
 import { checkAdd } from '@web/data/yjs/space-write';
 import { toast } from '@web/lib/toast';
+import { topUpAction } from '@web/stores/credit-refusals';
 import { checkFileAdmission, fileToNodeSpec, fillNodeFromFile, refusedFormatParams, type UploadNodeSpec } from '@web/spaces/canvas/canvas-upload';
 import { fillActionOf } from '@web/spaces/canvas/node-activity';
 import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
@@ -61,7 +62,10 @@ export function failUploadIntoNode(target: Pick<UploadTarget, 'projectId' | 'spa
     });
     return;
   }
-  toast[plan.severity](t(plan.toastKey, { filename: file.name, ...refusedFormatParams(file) }));
+  const said = t(plan.toastKey, { filename: file.name, ...refusedFormatParams(file) });
+  // Used-up operations offer to add credits (inner#1968).
+  if (outcome.reason === 'operations') toast[plan.severity](said, { action: topUpAction() });
+  else toast[plan.severity](said);
   if (plan.keepFileFor !== undefined) stashRetryFile(projectId, spaceId, plan.keepFileFor, file, tag);
 }
 
