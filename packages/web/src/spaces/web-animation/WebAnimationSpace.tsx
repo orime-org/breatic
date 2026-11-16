@@ -338,7 +338,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   // Playback over the shown result.
   const durationSeconds = row === undefined ? 0 : rowSeconds(row);
   const clock = useMotionClock(row?.status === 'succeeded' ? durationSeconds : 0, selectedId);
-  const { pause: pauseClock } = clock;
+  const { pause: pauseClock, seek: seekClock } = clock;
   const fps = row === undefined ? { num: 24, den: 1 } : row.input.fps;
   const frame = Math.min(Math.round(clock.time * fps.num / fps.den), Math.max(0, Math.round(durationSeconds * fps.num / fps.den) - 1));
 
@@ -523,10 +523,14 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
     showResult(() => {
       setActiveThreadId(threadId);
       const shown = selectionRef.current;
+      if (shown.status === 'selected' && shown.executionId === anchor.executionId) {
+        seekClock(anchor.timeSeconds);
+        return;
+      }
       pendingSeek.current = anchor.timeSeconds;
-      if (!(shown.status === 'selected' && shown.executionId === anchor.executionId)) locate(anchor.executionId);
+      locate(anchor.executionId);
     });
-  }, [threads, showResult, locate]);
+  }, [threads, showResult, seekClock, locate]);
   React.useEffect(() => {
     if (pendingSeek.current === null || activeThread === null || activeThread.anchor.executionId !== selectedId) return;
     clock.seek(pendingSeek.current);

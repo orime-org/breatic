@@ -312,3 +312,24 @@ describe('switching result while an annotation is being added', () => {
     expect(screen.queryByTestId('motion-annotation-draft')).toBeNull();
   });
 });
+
+describe('opening an annotation', () => {
+  it('jumps back to its time when its card is already open', async () => {
+    listing([done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z')]);
+    show();
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId('motion-action-add-annotation'));
+    await user.type(await screen.findByTestId('doc-comment-motion-annotation-input'), 'Logo too small');
+    await user.click(screen.getByTestId('doc-comment-motion-annotation-save'));
+    await waitFor(() => expect(screen.queryByTestId('motion-annotation-draft')).toBeNull());
+    const bar = screen.getByTestId('motion-bottom-bar');
+    within(bar).getByRole('slider').focus();
+    await user.keyboard('{End}');
+    expect(bar).toHaveTextContent('0:04.0 / 0:04.0');
+    await user.click(screen.getByTestId('motion-open-annotations'));
+    const panel = await screen.findByTestId('motion-panel-annotations');
+    await user.click(within(panel).getByRole('button', { name: /Logo too small/ }));
+    expect(bar).toHaveTextContent('0:00.0 / 0:04.0');
+  });
+});
