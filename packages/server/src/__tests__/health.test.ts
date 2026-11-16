@@ -26,6 +26,7 @@ vi.mock("@breatic/core", async (importOriginal) => ({
   pingRedis: probes.redis,
   getRedis: () => "general",
   yjsRawPg: "yjs",
+  globalApiHealthChecks: () => [{ name: "global_api", informational: true, check: async () => true }],
 }));
 
 vi.mock("@server/agent/run-stream.js", () => ({ getChatSubscriberRedis: () => "subscriber" }));
@@ -62,6 +63,12 @@ describe("server healthz check wiring", () => {
     await expect(run("redis_general")).resolves.toBe(true);
     await expect(run("redis_chat_subscriber")).resolves.toBe(true);
     expect(probes.redis.mock.calls).toEqual([["general"], ["subscriber"]]);
+  });
+
+  // inner#1955: outside the global region the server also reports whether
+  // the global region answers, as a check that never fails the instance.
+  it("adds core's global API check", () => {
+    expect(serverHealthChecks().find((c) => c.name === "global_api")).toMatchObject({ informational: true });
   });
 
   it("answers false when a Redis probe does", async () => {
