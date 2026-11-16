@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The template registry: what each generate panel lists and what a template
@@ -194,6 +194,12 @@ const SOCIAL_HOOKS = [
 /** The social hook templates a video panel lists. */
 const SOCIAL_HOOK_VIDEOS = SOCIAL_HOOKS.filter((id) => id !== 'fisheye-clone-pov' && id !== 'flash-photo-dump-grid');
 
+/** The poster and graphics templates (inner#1809), in registry order. */
+const POSTERS = ['name-as-world-typography', 'destination-festival-poster', 'photo-paper-diorama'];
+
+/** The motion and speed templates (inner#1810), in registry order. */
+const SPEED = ['vehicle-speed-cutlist', 'sports-live-coverage', 'extreme-sports-run'];
+
 /** The sound, music and voice templates (inner#1825), in registry order. */
 const SOUND = [
   'ambience-sfx-bed',
@@ -212,8 +218,8 @@ const SOUND = [
 /** The sound templates an audio panel lists: all but the one anchored on its video. */
 const SOUND_AUDIO = SOUND.filter((id) => id !== 'clip-ambience-foley');
 
-/** The templates the plan's G13 and G19 give no case for offering unasked. */
-const NEVER_OFFERED_UNASKED = ['retro-found-footage', 'pov-continuous-shot', 'fisheye-clone-pov', 'flash-photo-dump-grid', 'game-ui-livestream', 'song-cover'];
+/** The templates the plan's G13, G15, G18 and G19 give no case for offering unasked. */
+const NEVER_OFFERED_UNASKED = ['retro-found-footage', 'pov-continuous-shot', 'fisheye-clone-pov', 'flash-photo-dump-grid', 'game-ui-livestream', 'photo-paper-diorama', 'sports-live-coverage', 'extreme-sports-run', 'song-cover'];
 
 /**
  * The template nodes a generate node's words carry a note for, counted the
@@ -300,6 +306,7 @@ describe('generation templates', () => {
       'dish-hero-still',
       'fisheye-clone-pov',
       'flash-photo-dump-grid',
+      ...POSTERS,
     ]);
     expect(templatesFor('video').map((t) => t.id)).toEqual([
       'single-view-refs-scene',
@@ -307,6 +314,7 @@ describe('generation templates', () => {
       'character-showcase-orbit',
       ...FOOD_VIDEOS,
       ...SOCIAL_HOOK_VIDEOS,
+      ...SPEED,
       'clip-ambience-foley',
     ]);
     // inner#1825 changes this contract: audio had no template until the sound goal.
@@ -370,6 +378,12 @@ describe('generation templates', () => {
       'game-ui-livestream': t2v(12, '9:16'),
       'travel-city-walk': t2v(24),
       'twist-comedy-skit': t2v(15),
+      'name-as-world-typography': { result: { type: 'image', mode: 't2i', model: 'gpt-image-2.5-sunburst-text-to-image', params: { aspect_ratio: '3:4' } } },
+      'destination-festival-poster': { result: { type: 'image', mode: 't2i', model: 'seedream-v5.5-text-to-image', params: { aspect_ratio: '3:4' } } },
+      'photo-paper-diorama': { result: { type: 'image', mode: 'i2i', model: 'gpt-image-2.5-sunburst-edit', params: { aspect_ratio: '3:4' } } },
+      'vehicle-speed-cutlist': t2v(12, '16:9'),
+      'sports-live-coverage': t2v(12, '16:9'),
+      'extreme-sports-run': t2v(10),
       'vertical-15s-quick-tip': {
         result: {
           type: 'video',
@@ -472,13 +486,15 @@ describe('generation templates', () => {
 
 describe('creative goals and triggers', () => {
   it('lists the goals the registry uses, in panel order', () => {
-    expect([...TEMPLATE_GOALS]).toEqual(['character', 'comics-storyboards', 'food', 'social-hooks', 'sound']);
+    expect([...TEMPLATE_GOALS]).toEqual(['character', 'comics-storyboards', 'food', 'social-hooks', 'posters', 'speed', 'sound']);
   });
 
   it('gives every template a known goal and words the user asks for it with, and words for when to offer it unless it has none', () => {
     const goals: Record<string, string> = {
       ...Object.fromEntries(FOOD.map((id) => [id, 'food'])),
       ...Object.fromEntries(SOCIAL_HOOKS.map((id) => [id, 'social-hooks'])),
+      ...Object.fromEntries(POSTERS.map((id) => [id, 'posters'])),
+      ...Object.fromEntries(SPEED.map((id) => [id, 'speed'])),
       ...Object.fromEntries(SOUND.map((id) => [id, 'sound'])),
       'storyboard-grid-25': 'comics-storyboards',
       'costume-sheet': 'character',
@@ -492,7 +508,7 @@ describe('creative goals and triggers', () => {
     for (const template of GENERATION_TEMPLATES) {
       expect(template.goal, template.id).toBe(goals[template.id]);
       expect(template.triggers.asks.length, `${template.id} asks`).toBeGreaterThan(0);
-      // The plan's G13 and G19 write "none" for when to offer these unasked.
+      // The plan's G13, G15, G18 and G19 write "none" for when to offer these unasked.
       expect(template.triggers.offerWhen.length === 0, `${template.id} offerWhen`).toBe(NEVER_OFFERED_UNASKED.includes(template.id));
       for (const words of [...template.triggers.asks, ...template.triggers.offerWhen]) {
         expect(words.trim().length, template.id).toBeGreaterThan(0);
@@ -527,11 +543,13 @@ describe('creative goals and triggers', () => {
       ['comics-storyboards', ['storyboard-grid-25']],
       ['food', ['dish-hero-still']],
       ['social-hooks', ['fisheye-clone-pov', 'flash-photo-dump-grid']],
+      ['posters', POSTERS],
     ]);
     expect(templateGoalsFor('video').map(({ goal, templates }) => [goal, templates.map((one) => one.id)])).toEqual([
       ['character', ['single-view-refs-scene', 'identity-locked-sequence', 'character-showcase-orbit']],
       ['food', FOOD_VIDEOS],
       ['social-hooks', SOCIAL_HOOK_VIDEOS],
+      ['speed', SPEED],
       ['sound', ['clip-ambience-foley']],
     ]);
     expect(templateGoalsFor('audio').map(({ goal, templates }) => [goal, templates.map((one) => one.id)])).toEqual([['sound', SOUND_AUDIO]]);
@@ -544,6 +562,17 @@ describe('generation template registry checks', () => {
       for (const key of generateNodes(template).flatMap((node) => wordKeysOf(template, node).map((rest) => textKey(template, rest)))) {
         const reference = marksOf(raw('en', key) ?? '');
         for (const locale of LOCALES) expect(marksOf(raw(locale, key) ?? ''), `${key} ${locale}`).toEqual(reference);
+      }
+    }
+  });
+
+  it('writes no space between a fill-in mark and the Chinese or Japanese words around it, as the user’s words take its place', () => {
+    // A [📎] reference keeps its spaces: they belong to the chip's caret rules.
+    const cjk = '[\\u3040-\\u30ff\\u3400-\\u9fff\\u3000-\\u303f\\uff00-\\uffef]';
+    const spaced = new RegExp(`${cjk} \\{✏️|\\} ${cjk}`, 'u');
+    for (const template of GENERATION_TEMPLATES) {
+      for (const key of generateNodes(template).flatMap((node) => wordKeysOf(template, node).map((rest) => textKey(template, rest)))) {
+        for (const locale of ['zh-CN', 'zh-TW', 'ja']) expect(raw(locale, key) ?? '', `${key} ${locale}`).not.toMatch(spaced);
       }
     }
   });
@@ -663,6 +692,14 @@ describe('generation template registry checks', () => {
 
   it('has every string in all five languages, the names within the node name cap', () => {
     for (const template of GENERATION_TEMPLATES) expectEveryString(template);
+  });
+});
+
+describe('motion and speed templates (inner#1810)', () => {
+  it('tells the agent the user’s vehicle photo goes straight into the video, which takes only the vehicle from it', () => {
+    expect(byId('vehicle-speed-cutlist')?.agentNote).toContain(
+      "the user's photo goes straight into the video's pool, which takes only the vehicle from it, so its background needs no edit first",
+    );
   });
 });
 
@@ -968,7 +1005,7 @@ describe('sound, music and voice templates (inner#1825)', () => {
   const ANCHORS: Record<string, Settings> = {
     'ambience-sfx-bed': { type: 'audio', mode: 'sfx', model: 'sfx-1.6-text-to-audio', params: { loop: true, duration: 30 } },
     'voice-line': { type: 'audio', mode: 'tts', model: 'minimax-speech-2.8-hd' },
-    'two-voice-dialogue': { type: 'audio', mode: 'tts', model: 'gemini-3.1-flash-text-to-speech' },
+    'two-voice-dialogue': { type: 'audio', mode: 'tts', model: 'gemini-3.8-flash-text-to-speech' },
     'underscore-bgm': { type: 'audio', mode: 't2m', model: MUREKA_BGM },
     'voice-from-descriptor': { type: 'audio', mode: 'tts', model: 'qwen3-tts-voice-design' },
     'song-cover': { type: 'audio', mode: 'a2m', model: 'minimax-music-cover' },
@@ -1167,5 +1204,11 @@ describe('template inputs that go into a slot (inner#1825, CAP-1)', () => {
         }
       }
     }
+  });
+});
+
+describe('poster templates (inner#1809)', () => {
+  it('tells the agent that the name and its annotations stay in the picture, not the name alone', () => {
+    expect(byId('name-as-world-typography')?.agentNote).toContain('the name and the annotations must stay in the picture, the name spelled and shaped exactly right, and no other text appears');
   });
 });

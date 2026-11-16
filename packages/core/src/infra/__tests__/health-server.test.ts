@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Invariant tests for the `startHealthServer` utility.
@@ -87,6 +87,23 @@ describe("startHealthServer", () => {
       status: "fail",
       checks: { redis: { ok: false } },
     });
+    await stop();
+  });
+
+  it("reports a failing informational check without making the instance unhealthy", async () => {
+    const { server, stop } = startHealthServer({
+      port: pickPort(),
+      serviceName: "test",
+      checks: [
+        { name: "pg", check: async () => true },
+        { name: "global_api", informational: true, check: async () => false },
+      ],
+    });
+    await new Promise((r) => server.once("listening", r));
+    const port = (server.address() as AddressInfo).port;
+    const { status, body } = await fetchJson(port, "/healthz");
+    expect(status).toBe(200);
+    expect(body).toMatchObject({ status: "ok", checks: { global_api: { ok: false } } });
     await stop();
   });
 

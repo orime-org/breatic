@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { createHash, randomUUID } from "node:crypto";
 import type postgres from "postgres";
@@ -25,6 +25,7 @@ export interface AppliedGrant {
 export async function seedPersonal(sql: Sql, label = "operator-grant"): Promise<PersonalFixture> {
   const fx = await seedStudioFixture(sql, label);
   const [studio] = await sql<{ slug: string }[]>`update studios set type='personal' where id=${fx.studioId} returning slug`;
+  await sql`update studio_directory set type='personal' where studio_id=${fx.studioId}`;
   const [account] = await sql<{ email: string }[]>`select email from users where id=${fx.userId}`;
   await sql`insert into project_members(project_id,user_id,role) values(${fx.projectId},${fx.userId},'owner') on conflict do nothing`;
   return { ...fx, studioSlug: studio!.slug, email: account!.email };

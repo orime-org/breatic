@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
@@ -26,6 +26,7 @@ function s(
     bio: null,
     memberCount: 1,
     myStudioRole: role,
+    region: null,
   };
 }
 
@@ -123,6 +124,7 @@ describe('StudioRail (spec §4 — invariant #1: renders exactly my studios, ④
         bio: null,
         memberCount: 1,
         myStudioRole: 'admin' as const,
+        region: null,
       },
       s('myteam', 'My Team', 'admin'),
       s('join', 'Joined', 'guest'),

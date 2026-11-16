@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
 import {
@@ -68,8 +68,9 @@ type Confirm = { kind: 'remove'; member: StudioMember } | null;
  *
  * Member management (slice 3) is owned here: invite / change-role / remove /
  * transfer-admin run as React Query mutations that invalidate the shared
- * members query (`['studio', slug, 'members']`, the same key
- * `StudioContainerPage` reads) on success, so the table refetches the
+ * members query by its prefix (`['studio', slug, 'members']`;
+ * `StudioContainerPage` adds the Studio's region outside the global one) on
+ * success, so the table refetches the
  * authoritative server state — no optimistic cache writes, which avoids the
  * microtask-race trap (.claude/skills/react-state-traps/SKILL.md#optimistic-updates-and-local-drafts)
  * entirely. Destructive actions (remove, transfer-admin) route through a

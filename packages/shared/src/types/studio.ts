@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Studio entity. A studio is either a `personal` studio (one per user,
@@ -136,6 +136,8 @@ export interface StudioSummary {
    * `GET /studios` (the viewer's own memberships) it is always non-null.
    */
   myStudioRole: StudioRole | null;
+  /** The region that holds the studio; null for the global region (inner#1955). */
+  region: string | null;
 }
 
 /**

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Project join requests repository — the only module that touches the
@@ -24,7 +24,7 @@ import { and, eq, gt, isNull, lte, sql } from "drizzle-orm";
 import { db, projectJoinRequests } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import type { DecisionGrantRole, RequestFailedReason } from "@breatic/shared";
-import { mintShareToken } from "@server/utils/share-token.js";
+import { mintShareToken } from "@breatic/core";
 import { failedReasonAtNow } from "@server/modules/decision/decision.repo.js";
 
 /** Where a request sits in its lifecycle. */
@@ -379,9 +379,9 @@ export async function listLivePendingForProject(
  */
 export async function getDecisionKeys(
   id: string,
-  tx: DbTx,
+  tx?: DbTx,
 ): Promise<{ projectId: string; requesterUserId: string } | null> {
-  const rows = await tx
+  const rows = await (tx ?? db)
     .select({
       projectId: projectJoinRequests.projectId,
       requesterUserId: projectJoinRequests.requesterUserId,

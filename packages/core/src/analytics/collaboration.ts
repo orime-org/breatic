@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The collaboration milestone (inner#1442 design §4.8, §4.9): someone other
@@ -7,14 +7,14 @@
  * from server, worker and collab, so it lives here.
  */
 
-import { adClickFrom, type ConsentSnapshot, type ProjectActivityType } from "@breatic/shared";
-import { adsConversionConfig, enqueueAdsConversion } from "@core/ads/ads-conversion.js";
-import { getAccountAttribution } from "@core/analytics/account.repo.js";
+import { type ConsentSnapshot, type ProjectActivityType } from "@breatic/shared";
+import { adsConversionConfig } from "@core/ads/ads-conversion.js";
 import { currentConsent } from "@core/analytics/consent-context.js";
 import { claimMilestone } from "@core/analytics/milestone.repo.js";
 import { reportAnalyticsFailure, serverAnalyticsOn, trackServerEvent } from "@core/analytics/server-analytics.js";
 import { getOwner } from "@core/auth/projectMembers.repo.js";
 import { findCreatorAndStudio } from "@core/project/projects.repo.js";
+import { coreGlobalApi } from "@core/region/core-global-api.js";
 
 /** What kind of first action it was. */
 export type CollaborationAction = "space" | "asset" | "generation" | "agent";
@@ -66,13 +66,8 @@ export async function reportCollaboratorFirstAction(
     const ownerId = await getOwner(input.projectId);
     if (!ownerId) return;
     // No browser of the owner's is behind this, so the owner's latest reported consent decides.
-    await enqueueAdsConversion(
-      {
-        userId: ownerId,
-        conversion: "collaboration",
-        transactionId: `collab:${ownerId}`,
-        click: adClickFrom(await getAccountAttribution(ownerId), Date.now()),
-      },
+    await coreGlobalApi().enqueueAdsConversion(
+      { userId: ownerId, conversion: "collaboration", transactionId: `collab:${ownerId}` },
       null,
     );
   } catch (err) {

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What a message says about the user's Spaces (inner#1413): read at the
@@ -232,6 +232,7 @@ describe('an open canvas', () => {
    */
   const accepted = (current: ChatSpaceContext['current_space']): boolean =>
     chatMessageSchema.safeParse({
+      id: '33333333-3333-4333-8333-333333333333',
       message: 'hi',
       project_id: '11111111-1111-4111-8111-111111111111',
       conversation_id: '22222222-2222-4222-8222-222222222222',
@@ -612,6 +613,7 @@ describe('cutting what was read to the limits', () => {
 
     expect(
       chatMessageSchema.safeParse({
+        id: '33333333-3333-4333-8333-333333333333',
         message: 'hi',
         project_id: '11111111-1111-4111-8111-111111111111',
         conversation_id: '22222222-2222-4222-8222-222222222222',

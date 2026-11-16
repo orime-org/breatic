@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /** Real business/Yjs database acceptance boundaries for semantic media (inner#1707). */
 
@@ -22,6 +22,7 @@ import { handleLifecycleEvent } from "@collab/services/lifecycle-listener.js";
 import * as yjsRepo from "@collab/services/yjs-documents.repo.js";
 import { duplicate } from "@server/modules/project/project.service.js";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
+import { mirrorInDirectory } from "@server/__tests__/integration/directory-fixtures.js";
 
 interface Scope { ownerId: string; studioId: string; projectId: string }
 interface Asset { id: string; fileUrl: string }
@@ -146,6 +147,7 @@ async function seedScope(): Promise<Scope> {
   await sql`INSERT INTO studios (id, created_by_user_id, slug, type, name)
     VALUES (${studioId}, ${ownerId}, ${studioId}, 'personal', 'Space media acceptance')`;
   await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${studioId}, ${ownerId}, 'admin')`;
+  await mirrorInDirectory(sql, studioId);
   return { ownerId, studioId, projectId: await seedProject(studioId, ownerId) };
 }
 

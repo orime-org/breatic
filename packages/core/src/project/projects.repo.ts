@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 import { and, eq, isNull } from "drizzle-orm";
 import { db, type DbTx } from "@core/db/client.js";
 import { projects, studios } from "@core/db/schema.js";
@@ -63,4 +63,18 @@ export async function findCreatorAndStudio(
     .where(and(eq(projects.id, projectId), isNull(projects.deletedAt)))
     .limit(1);
   return rows[0];
+}
+
+/**
+ * The ids of a Studio's live Projects.
+ * @param studioId - The Studio.
+ * @param tx - The transaction to read in.
+ * @returns The Project ids.
+ */
+export async function listIdsInStudio(studioId: string, tx: DbTx): Promise<string[]> {
+  const rows = await tx
+    .select({ id: projects.id })
+    .from(projects)
+    .where(and(eq(projects.studioId, studioId), isNull(projects.deletedAt)));
+  return rows.map((row) => row.id);
 }

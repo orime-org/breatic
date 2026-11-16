@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * A turn is charged for once, and two turns are charged for separately.
@@ -57,6 +57,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
 import type * as DomainModule from "@breatic/domain";
 import crypto from "node:crypto";
 import postgres from "postgres";
+import { mirrorInDirectory } from "./directory-fixtures.js";
 import {
   initCore,
   getRedis,
@@ -67,6 +68,7 @@ import {
 import { creditLotService } from "@breatic/domain";
 import type { Hono } from "hono";
 import { openPaymentSource } from "./payment-source.js";
+import { sendAndRead } from "./chat-run-harness.js";
 
 const PG_DRIVER_LOCAL = "turn-billing-once-test-driver";
 
@@ -127,6 +129,7 @@ async function seed(credits = 100_000): Promise<Seeded> {
   await sql`
     INSERT INTO studio_members (studio_id, user_id, role) VALUES (${studio!.id}, ${user!.id}, 'admin')
   `;
+  await mirrorInDirectory(sql, studio!.id);
   const [project] = await sql<{ id: string }[]>`
     INSERT INTO projects (studio_id, created_by_user_id, name, slug)
     VALUES (${studio!.id}, ${user!.id}, ${tag}, ${`${tag}-p`}) RETURNING id
@@ -211,29 +214,21 @@ describe("turn numbers do not collide", () => {
 });
 
 describe("two turns in one conversation are billed apart", () => {
-  it("gives concurrent turns different settlement keys", async () => {
-    // Two messages sent together, the shape that used to collide: both turns
-    // read the conversation's highest turn number before either had written
-    // its own.
+  it("gives consecutive turns different settlement keys", async () => {
+    // Two messages in one conversation. Sent together they no longer make two
+    // turns that race for a number: the second joins the run the first opened
+    // (inner#1717), so the turns are sent one after the other here, each read
+    // to its end, and the collision itself is held by the case above.
     const { userId, projectId, conversationId, cookie } = await seed();
-    const send = async (): Promise<Response> =>
-      app.request("/api/v1/chat/message", {
-        method: "POST",
-        headers: { Cookie: cookie, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: "hello",
-          project_id: projectId,
-          conversation_id: conversationId,
-        }),
-      });
+    const send = async (): Promise<number> =>
+      (await sendAndRead(app, cookie, {
+        message: "hello",
+        project_id: projectId,
+        conversation_id: conversationId,
+      })).status;
 
-    const responses = await Promise.all([send(), send()]);
-    for (const res of responses) {
-      expect(res.status).toBe(200);
-      // Drain: the turn's work, including its settlement, happens as the
-      // stream is consumed.
-      await res.text();
-    }
+    expect(await send()).toBe(200);
+    expect(await send()).toBe(200);
 
     const keys = await settlementsFor(userId);
     expect(keys).toHaveLength(2);

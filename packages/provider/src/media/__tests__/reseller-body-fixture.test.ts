@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -27,7 +27,8 @@ const catalogModels = catalog().models;
 const offered = new Map(catalogModels.map((m) => [m.name, m.params as Record<string, { values?: unknown[]; min?: number; max?: number; accepts?: string; fill?: string }>]));
 /** Per model, the params of which a run must carry at least one, per mode, as the catalog lists them. */
 const sourceGroups = new Map(catalogModels.map((m) => [m.name, m.source_groups ?? []] as const));
-const cases = Object.entries(config.media.models).flatMap(([model, { upstreams }]) => upstreams.filter((b) => b.upstream !== "wavespeed").map((binding) => ({ model, binding })));
+// A retired model is outside the catalog and has no sample (gemini-3.8-tts.test.ts keeps it bound).
+const cases = Object.entries(config.media.models).filter(([model]) => offered.has(model)).flatMap(([model, { upstreams }]) => upstreams.filter((b) => b.upstream !== "wavespeed").map((binding) => ({ model, binding })));
 /**
  * The committed sample of a binding.
  * @param upstream - The upstream.

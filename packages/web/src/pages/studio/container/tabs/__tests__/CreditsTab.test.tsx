@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import type { CreditDecimal } from '@breatic/shared';
 
@@ -87,6 +87,24 @@ function renderTab(ui: ReactElement) {
 beforeEach(() => {
   fetchStudioCredits.mockReset();
   reachEnd = null;
+});
+
+describe('CreditsTab across regions (inner#1955)', () => {
+  it('reads the credits of the Studio in its region, not a cached answer for the slug', async () => {
+    fetchStudioCredits.mockResolvedValue(credits({ spendable: '12.000000' as CreditDecimal }));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 30_000 } } });
+    client.setQueryData(['studio-credits', 'acme'], { pages: [credits()], pageParams: [undefined] });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter>
+          <CreditsTab slug='acme' region='sg' />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByTestId('studio-spendable')).toHaveTextContent('12');
+    expect(fetchStudioCredits).toHaveBeenCalledWith('acme', undefined);
+  });
 });
 
 describe('CreditsTab', () => {

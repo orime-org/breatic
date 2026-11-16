@@ -1,7 +1,7 @@
 <h1 align="center">Breatic</h1>
 
 <p align="center"><strong>クリエイティブチームのための、リアルタイムで共同制作できる AI ワークスペース。</strong></p>
-<p align="center">オンラインで利用可能 · ソースコード公開 · デスクトップブラウザー</p>
+<p align="center">オンラインで利用可能 · オープンソース · デスクトップブラウザー</p>
 
 <p align="center">
   <a href="https://breatic.ai/?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=repository_listing_202610&amp;utm_content=readme_website_ja">公式サイト</a> ·
@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/orime-org/breatic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/orime-org/breatic?style=flat&amp;color=blueviolet&amp;label=release&amp;display_name=tag"></a>
-  <a href="LICENSE"><img alt="License: Elastic-2.0" src="https://img.shields.io/badge/license-Elastic--2.0-blue?style=flat"></a>
+  <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat"></a>
   <a href="https://discord.gg/Yeu6A4aejN"><img alt="Discord community" src="https://img.shields.io/badge/discord-join%20community-5865F2?style=flat&amp;logo=discord&amp;logoColor=white"></a>
   <a href="#get-started"><img alt="Quickstart guide" src="https://img.shields.io/badge/quickstart-guide-green?style=flat"></a>
 </p>
@@ -39,11 +39,11 @@
 | **Document Spaces** | 見出し、リスト、書式付きテキストで脚本、ショットの説明、制作チェックリストを作成します。 |
 | **Canvas Spaces** | 無限キャンバスに参考資料やメディアを配置し、プロンプト、モデル、参照入力で素材を生成・調整します。 |
 | **3D（DEV）** | 共有シーンに組み込みオブジェクトを配置し、位置、回転、スケールを編集します。 |
-| **Timeline（DEV）** | Project の動画やローカル動画を共有の映像トラックに追加し、開始フレームを調整してシーケンスをプレビューします。 |
+| **Timeline（DEV）** | Project の動画やアップロードしたローカル動画を共有トラックに並べ、クリップの移動・トリミング・分割・複製・削除、自分の編集の取り消し、シーケンスのプレビューができます。Web Animation の内容を書いて DeepSeek に作らせ、実行リストで進行を確認し、結果を Timeline の時計で再生されるクリップとして追加できます。各トラックの動画と Web Animation はレイヤーとして重なって同時に再生され、プレビューでレイヤーを選ぶと移動・拡大縮小・伸縮・回転でき、位置とサイズを数値で入力することもできます。再生バーの右端で画面比率を 7 種類（16:9、9:16、1:1、4:3、4:5、2:3、21:9）から選べ、レイヤーは画面内の相対位置を保ちます。 |
 | **プロジェクト内の AI エージェント** | アイデアを話し合い、文書やキャンバスの文脈を渡し、素材とともに提案を検討します。 |
 | **リアルタイム共同編集** | メンバーを招待し、アクセス権を設定して、同期されたキャンバス、文書、3D シーン、Timeline を共同編集します。 |
 
-画像、動画、音声、3D 素材に対応します。生成機能は設定したプロバイダーとモデルの利用権限によって異なります。Canvas と Document は利用可能で、3D と Timeline には **DEV** と表示されます。現在の Timeline は一本の映像トラックで動画の配置とプレビューに対応します。マルチトラック編集、ほかのメディア形式、Web Animation、動画書き出しは計画段階です。3D シーン内のモデル生成と注釈は開発中です。
+画像、動画、音声、3D 素材に対応します。生成機能は設定したプロバイダーとモデルの利用権限によって異なります。Canvas と Document は利用可能で、3D と Timeline には **DEV** と表示されます。現在の Timeline は複数の映像トラック上で動画と Web Animation の編集とプレビューに対応し、Web Animation は有効にしたデプロイでのみ利用できます。ほかのメディア形式と動画書き出しは計画段階です。3D シーン内のモデル生成と注釈は開発中です。
 
 ## 変更を一緒に確認する
 
@@ -96,7 +96,7 @@ Web、API、バックグラウンド処理、共同編集には公開済みの D
 
 ## ライセンスと利用範囲
 
-Breatic のソースコードは [Elastic License 2.0](LICENSE)（Elastic-2.0）で公開されています。閲覧、変更、再配布、ご自身での実行、組織内での実行が可能で、商用の制作作業にも利用できます。第三者に Breatic をホスト型またはマネージドサービスとして提供することはできません。詳細はライセンス本文をご確認ください。
+Breatic は [GNU Affero General Public License v3.0](LICENSE)（AGPL-3.0-only）のもとで公開されているオープンソースです。商用を含むあらゆる目的で、利用、調査、変更、セルフホストができます。Breatic を変更し、変更版をネットワーク経由で他の人に利用させる場合は、同じライセンスのもとで完全なソースコードを提供する必要があります。詳細はライセンス本文をご確認ください。
 
 Breatic の名称とロゴは Orime, Inc. の商標で、ソフトウェアライセンスの対象外です。[TRADEMARKS.md](TRADEMARKS.md) をご覧ください。このライセンスは Breatic で制作するコンテンツを制限しません。
 

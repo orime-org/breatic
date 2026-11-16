@@ -1,11 +1,13 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import postgres from 'postgres';
 import { initCore } from '@breatic/core';
-import { linkGoogleIdentity } from '../user.repo.js';
+import { usersRepo } from "@breatic/domain";
+
+const { linkGoogleIdentity } = usersRepo;
 
 initCore(process.env);
 let sql: ReturnType<typeof postgres>;

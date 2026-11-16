@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What the AI output dialog sends, previews and writes (inner#1860, design
@@ -34,6 +34,8 @@ import {
   undoOf,
 } from '@web/spaces/document/document-proposal-landing';
 import { LEGACY_CELL_LINE, blockInTableCell, cellDepthOf, DOC_TABLE } from '@breatic/shared/document-model';
+import { MATH_BLOCK, MATH_INLINE } from '@web/spaces/document/document-math';
+import { formulaMarkdownToHTML } from '@web/spaces/document/document-math-markdown';
 import { blocksMarkdown, type BlockLike } from '@web/spaces/document/document-table-markdown';
 
 /** How a write ended. */
@@ -57,7 +59,7 @@ const CODE = 'codeBlock';
 const LIST_ITEMS = new Set(['bulletListItem', 'numberedListItem', 'checkListItem', 'toggleListItem']);
 
 /** The punctuation BlockNote 0.56's parser takes a backslash before. */
-const BACKSLASHED = /[\\`*_{}[\]()#+\-.!~|>]/g;
+const BACKSLASHED = /[\\`*_{}[\]()#+\-.!~|>$]/g;
 
 /** One inline piece of a block, loosely typed. */
 interface Inline {
@@ -65,6 +67,7 @@ interface Inline {
   text?: string;
   href?: string;
   styles?: Record<string, unknown>;
+  props?: Record<string, unknown>;
   content?: Inline[];
 }
 
@@ -305,10 +308,12 @@ const BACKSLASH_PAIR = '&aibs;';
  */
 function fixedInline(content: readonly Inline[], code = false): Inline[] {
   if (code) return content.map((c) => (c.type === 'text' ? { ...c, text: decoded(asCode(c.text ?? '')) } : c));
+  // A formula's source went out and came back as written, its `\\` pairs held.
+  const pieces = content.map((c) => (c.type === MATH_INLINE ? { ...c, props: formulaSource(c.props) } : c));
   // A link the parser made from an address keeps every backslash in its
   // address and words; those are taken out here, once.
   const unescaped = new Set<Inline>();
-  const out = content.map((c): Inline => {
+  const out = pieces.map((c): Inline => {
     if (c.type !== 'link') return { ...c };
     const href = decoded(asWords((c.href ?? '').replace(BACKSLASH_ESCAPE, '$1')));
     const bare = (c.content ?? []).map((t) => ({ ...t, text: asWords((t.text ?? '').replace(BACKSLASH_ESCAPE, '$1')) }));
@@ -355,11 +360,21 @@ function asWords(text: string): string {
 }
 
 /**
+ * A formula's props with its parsed source's held backslash pairs as written.
+ * @param props - The props, holding `source`.
+ * @returns The props, fixed.
+ */
+function formulaSource(props: Record<string, unknown> | undefined): Record<string, unknown> {
+  return { ...props, source: asCode(String(props?.['source'] ?? '')) };
+}
+
+/**
  * A parsed block with its words fixed, children included.
  * @param block - The block.
  * @returns It.
  */
 function fixedBlock(block: Read): Read {
+  if (block.type === MATH_BLOCK) return { ...block, props: formulaSource(block.props), children: (block.children ?? []).map(fixedBlock) };
   const content = Array.isArray(block.content) ? fixedInline(block.content as Inline[], block.type === CODE) : block.content;
   return { ...block, content, children: (block.children ?? []).map(fixedBlock) };
 }
@@ -643,7 +658,7 @@ export function aiAnswerEmpty(text: string): boolean {
  */
 function parsed(parser: ViewedEditor, text: string): Read[] {
   const markdown = text.replace(/\\\\/g, BACKSLASH_PAIR);
-  return (parser.tryParseMarkdownToBlocks(markdown) as unknown as Read[]).map(fixedBlock);
+  return (parser.tryParseHTMLToBlocks(formulaMarkdownToHTML(markdown)) as unknown as Read[]).map(fixedBlock);
 }
 
 /**

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What the browser does with an upload that ended badly (#186 §3.7.3).
@@ -63,6 +63,14 @@ describe('resolveUploadFailure', () => {
     expect(resolveUploadFailure({ reason: 'transfer', taskId: 't-1' })).toEqual({
       kind: 'reportToServer',
       taskId: 't-1',
+    });
+  });
+
+  it('reports at the region that opened the upload (inner#1955)', () => {
+    expect(resolveUploadFailure({ reason: 'transfer', taskId: 't-1', apiBase: 'https://sg.example.test/api/v1' })).toEqual({
+      kind: 'reportToServer',
+      taskId: 't-1',
+      apiBase: 'https://sg.example.test/api/v1',
     });
   });
 

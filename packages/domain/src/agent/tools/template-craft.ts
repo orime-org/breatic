@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * How to write a template's prompts well (inner#1807), handed to the agent
@@ -15,12 +15,12 @@ export const TEMPLATE_CRAFT = {
   picture:
     "Craft for a picture or a video: say what each reference is for, what to take from it and what not to inherit; " +
     "repeat 3 to 6 identifying features word for word and write every count as a number; name concrete light " +
-    "sources and materials, never empty words such as cinematic or 8K; put no text in the picture unless the template asks for labels; write what " +
+    "sources and materials, never empty words such as cinematic or 8K; put no text in the picture unless the template asks for it (labels, a title, lines of verse); write what " +
     "can be seen happening, not what someone feels inside.",
   video:
     "Craft for video: the first frame is already the finished picture and already moving, with a hook within " +
     "2 seconds; timecodes are whole seconds, continuous, not overlapping and adding up to the duration, with a " +
-    "visible beat every 2 to 3 seconds; one main camera move per shot, with its start, direction and end and " +
+    "visible beat every 2 to 3 seconds unless the template sets its own cut rhythm; one main camera move per shot, with its start, direction and end and " +
     "what stays still; one light source logic; sound in layers, saying where silence falls.",
   audio:
     "Craft for sound: for music, name the genre, the BPM, the key, 2 to 3 instruments and how the energy rises " +

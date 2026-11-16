@@ -1,0 +1,165 @@
+{
+  "source": "https://api.wavespeed.ai/api/v3/models",
+  "fields": {
+    "speakers": [
+      {
+        "type": "array",
+        "maxItems": 2,
+        "items": {
+          "fields": {
+            "speaker_id": [
+              {
+                "type": "string",
+                "minLength": 1
+              }
+            ],
+            "voice": [
+              {
+                "type": "string",
+                "enum": [
+                  "Achernar",
+                  "Achird",
+                  "Algenib",
+                  "Algieba",
+                  "Alnilam",
+                  "Aoede",
+                  "Autonoe",
+                  "Callirrhoe",
+                  "Charon",
+                  "Despina",
+                  "Enceladus",
+                  "Erinome",
+                  "Fenrir",
+                  "Gacrux",
+                  "Iapetus",
+                  "Kore",
+                  "Laomedeia",
+                  "Leda",
+                  "Orus",
+                  "Puck",
+                  "Pulcherrima",
+                  "Rasalgethi",
+                  "Sadachbia",
+                  "Sadaltager",
+                  "Schedar",
+                  "Sulafat",
+                  "Umbriel",
+                  "Vindemiatrix",
+                  "Zephyr",
+                  "Zubenelgenubi"
+                ]
+              }
+            ],
+            "": [
+              {
+                "type": "object",
+                "required": [
+                  "speaker_id",
+                  "voice"
+                ]
+              }
+            ]
+          },
+          "required": [
+            "speaker_id",
+            "voice"
+          ]
+        }
+      }
+    ],
+    "style_instructions": [
+      {
+        "type": "string",
+        "maxLength": 2000
+      }
+    ],
+    "text": [
+      {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 8000
+      }
+    ],
+    "turns": [
+      {
+        "type": "array",
+        "maxItems": 100,
+        "items": {
+          "fields": {
+            "speaker_id": [
+              {
+                "type": "string",
+                "minLength": 1
+              }
+            ],
+            "style_instructions": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              }
+            ],
+            "text": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 8000
+              }
+            ],
+            "": [
+              {
+                "type": "object",
+                "required": [
+                  "speaker_id",
+                  "text"
+                ]
+              }
+            ]
+          },
+          "required": [
+            "speaker_id",
+            "text"
+          ]
+        }
+      }
+    ],
+    "voice": [
+      {
+        "type": "string",
+        "enum": [
+          "Achernar",
+          "Achird",
+          "Algenib",
+          "Algieba",
+          "Alnilam",
+          "Aoede",
+          "Autonoe",
+          "Callirrhoe",
+          "Charon",
+          "Despina",
+          "Enceladus",
+          "Erinome",
+          "Fenrir",
+          "Gacrux",
+          "Iapetus",
+          "Kore",
+          "Laomedeia",
+          "Leda",
+          "Orus",
+          "Puck",
+          "Pulcherrima",
+          "Rasalgethi",
+          "Sadachbia",
+          "Sadaltager",
+          "Schedar",
+          "Sulafat",
+          "Umbriel",
+          "Vindemiatrix",
+          "Zephyr",
+          "Zubenelgenubi"
+        ],
+        "default": "Kore"
+      }
+    ]
+  },
+  "required": []
+}

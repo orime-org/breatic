@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Canvas node **view** layer — the component-facing projection of the
@@ -33,6 +33,7 @@
  */
 
 import type { AnnotationAssignment, AnnotationReply, CanvasNodeFields, FocusImage, NodeTaskCounts, NodeType } from '@shared/types/canvas-node.js';
+import { withCurrentModelNames } from '@shared/canvas/retired-models.js';
 
 /** The 6 content modalities that own a renderable payload. */
 export type Modality = 'text' | 'image' | 'audio' | 'video' | '3d' | 'web';
@@ -343,7 +344,10 @@ export function deriveHandling(
  * @returns The type paired with its view, or `null` when the type is unknown.
  */
 export function toNodeView(fields: CanvasNodeFields): TypedNodeView | null {
-  const { type, data } = fields;
+  const { type } = fields;
+  // A node saved on a retired model reads as its replacement until collab
+  // stores it so (#1521); every panel read and write goes through this view.
+  const data = withCurrentModelNames(fields.data);
   const locked = data.locked;
   // Common content-view fields: the editable name (node name header), the
   // derived handling flag, and the Generate panel inputs (model / mode /

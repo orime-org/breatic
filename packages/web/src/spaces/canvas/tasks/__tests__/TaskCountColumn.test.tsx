@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The counts that sit outside a node's top-right corner (#186 §7.1).
@@ -35,7 +35,8 @@ import { TaskCountColumn } from '@web/spaces/canvas/tasks/TaskCountColumn';
  */
 function renderColumn(props: React.ComponentProps<typeof TaskCountColumn>): ReturnType<typeof render> {
   return render(
-    <TooltipProvider>
+    // The app's own delay (`App.tsx`), so a tip opens in the time a hover in the product takes.
+    <TooltipProvider delayDuration={100}>
       <TaskCountColumn {...props} />
     </TooltipProvider>,
   );

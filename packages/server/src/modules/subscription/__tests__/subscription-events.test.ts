@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import type Stripe from "stripe";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocked = vi.hoisted(() => ({ findUser: vi.fn(), read: vi.fn(), subscriptions: vi.fn(), situation: vi.fn(), retrieve: vi.fn() }));
 vi.mock("@breatic/core", () => ({ db: {}, findOfferByPriceId: vi.fn(), getStripeCallTimeoutMs: () => 2000, listSubscriptions: mocked.subscriptions, subscriptionClock: () => new Date(), subscriptionSituation: mocked.situation }));
 vi.mock("@server/infra/stripe.js", () => ({ getStripeClient: () => ({ subscriptions: { retrieve: mocked.retrieve } }) }));
-vi.mock("@server/modules/auth/user.repo.js", () => ({ findUserIdByStripeCustomerId: mocked.findUser }));
+vi.mock("@breatic/domain", () => ({ usersRepo: { findUserIdByStripeCustomerId: mocked.findUser } }));
 vi.mock("@server/modules/notification/notification.service.js", () => ({}));
 vi.mock("@server/modules/subscription/read-stripe-subscription.js", () => ({ readStripeSubscription: mocked.read }));
 vi.mock("@server/modules/subscription/apply-subscription.js", () => ({ applySubscriptionWrite: vi.fn() }));

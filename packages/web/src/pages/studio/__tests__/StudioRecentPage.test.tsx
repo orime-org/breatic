@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
@@ -45,10 +45,10 @@ beforeEach(() => {
 
 describe('StudioRecentPage (fetches + maps the cross-studio recent feed)', () => {
   it('renders a card per fetched recent project (wire row mapped to the view)', async () => {
-    vi.mocked(studiosApi.getRecent).mockResolvedValue([
-      WIRE,
-      { ...WIRE, projectId: 'p2', name: 'Second Project' },
-    ]);
+    vi.mocked(studiosApi.getRecent).mockResolvedValue({
+      items: [WIRE, { ...WIRE, projectId: 'p2', name: 'Second Project' }],
+      unavailableRegions: [],
+    });
     setup();
     // The mapped cards appear once the query resolves; the card link target
     // proves the wire→view mapping (projectId → /project/{slug}-{id}).
@@ -59,7 +59,7 @@ describe('StudioRecentPage (fetches + maps the cross-studio recent feed)', () =>
   });
 
   it('shows the PASSIVE empty state (no cards, no create button) for an empty feed', async () => {
-    vi.mocked(studiosApi.getRecent).mockResolvedValue([]);
+    vi.mocked(studiosApi.getRecent).mockResolvedValue({ items: [], unavailableRegions: [] });
     setup();
     // Wait for the query to settle, then assert the empty state has no CTA.
     expect(
@@ -67,6 +67,22 @@ describe('StudioRecentPage (fetches + maps the cross-studio recent feed)', () =>
     ).toBeInTheDocument();
     expect(screen.queryAllByRole('link')).toHaveLength(0);
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it('says only that some Studios are out of reach when a region did not answer an empty feed', async () => {
+    // The feed is empty because a region is down, not because nothing was opened.
+    vi.mocked(studiosApi.getRecent).mockResolvedValue({ items: [], unavailableRegions: ['sg'] });
+    setup();
+    expect(await screen.findByTestId('recent-regions-unavailable')).toBeInTheDocument();
+    expect(screen.queryByText(/Nothing recent yet/i)).not.toBeInTheDocument();
+  });
+
+  it('says some Studios are out of reach before the list it leaves short', async () => {
+    vi.mocked(studiosApi.getRecent).mockResolvedValue({ items: [WIRE], unavailableRegions: ['sg'] });
+    setup();
+    const line = await screen.findByTestId('recent-regions-unavailable');
+    const list = await screen.findByText(/Recent projects/i);
+    expect(line.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('shows a loading spinner while the feed is in flight', () => {
@@ -86,7 +102,7 @@ describe('StudioRecentPage (fetches + maps the cross-studio recent feed)', () =>
   });
 
   it('has no a11y violations (loaded with content)', async () => {
-    vi.mocked(studiosApi.getRecent).mockResolvedValue([WIRE]);
+    vi.mocked(studiosApi.getRecent).mockResolvedValue({ items: [WIRE], unavailableRegions: [] });
     const { container } = setup();
     await screen.findByText('Demo Project');
     await expectNoA11yViolations(container);

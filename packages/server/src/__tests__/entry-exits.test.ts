@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -46,5 +46,18 @@ describe("server entry exits", () => {
     const calls = [...code.matchAll(/(\S+)\s+exitProcess\(/g)].map((m) => m[1]);
     expect(calls.length).toBeGreaterThan(0);
     for (const prefix of calls) expect(["await", "void"]).toContain(prefix);
+  });
+});
+
+describe("server Timeline configuration check (#1502 design §2)", () => {
+  it("reads the Timeline configuration before it serves, and logs and exits when it cannot", () => {
+    const check = code.indexOf("getTimelineConfig();");
+    const failed = code.indexOf('"timeline_config_invalid"');
+    const serving = code.indexOf("const server = serve(");
+    expect(check).toBeGreaterThanOrEqual(0);
+    expect(failed).toBeGreaterThan(check);
+    expect(serving).toBeGreaterThan(failed);
+    expect(code.slice(check, failed)).toMatch(/catch \(err\)[\s\S]*logger\.(error|fatal)\(\{ err\b[^}]*\}, $/);
+    expect(code.slice(failed, failed + 80)).toMatch(/await exitProcess\(1\)/);
   });
 });

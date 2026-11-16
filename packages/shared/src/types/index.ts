@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 export { STRIPE_WEBHOOK_RESULTS, type StripeWebhookResult } from "@shared/types/stripe-webhook.js";
 
@@ -27,12 +27,15 @@ export type {
   NotificationEntity,
   NotificationRef,
   NotificationListView,
+  NotificationFeed,
+  NotificationCount,
   ProjectEntity,
   ProjectDetail,
   ProjectSummary,
   StudioProjectSort,
   StudioProjectPage,
   RecentItem,
+  RecentFeed,
   MemoryContext,
   AgentMemoryEntity,
   AgentModelChoice,

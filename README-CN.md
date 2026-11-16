@@ -1,7 +1,7 @@
 <h1 align="center">Breatic</h1>
 
 <p align="center"><strong>面向创意团队的实时协作 AI 工作空间。</strong></p>
-<p align="center">线上已开放 · 源码公开 · 桌面浏览器</p>
+<p align="center">线上已开放 · 开源 · 桌面浏览器</p>
 
 <p align="center">
   <a href="https://breatic.ai/?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=repository_listing_202610&amp;utm_content=readme_website_cn">官网</a> ·
@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/orime-org/breatic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/orime-org/breatic?style=flat&amp;color=blueviolet&amp;label=release&amp;display_name=tag"></a>
-  <a href="LICENSE"><img alt="License: Elastic-2.0" src="https://img.shields.io/badge/license-Elastic--2.0-blue?style=flat"></a>
+  <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat"></a>
   <a href="https://discord.gg/Yeu6A4aejN"><img alt="Discord community" src="https://img.shields.io/badge/discord-join%20community-5865F2?style=flat&amp;logo=discord&amp;logoColor=white"></a>
   <a href="#get-started"><img alt="Quickstart guide" src="https://img.shields.io/badge/quickstart-guide-green?style=flat"></a>
 </p>
@@ -40,8 +40,8 @@
 | **一个项目，多个 Space** | 将创作简报、各个场景和不同创意方向组织在一起，每个 Space 有独立标签页。 |
 | **Document Space（文档空间）** | 用标题、列表和格式化文字编写剧本、镜头描述及制作清单。 |
 | **Canvas Space（画布空间）** | 在无限画布上排列参考素材和媒体，结合提示词、模型及参考输入生成、调整资产。 |
-| **3D（DEV）** | 在共享三维场景中布置内置对象、导入的 glTF 模型和 AI 生成的模型，编辑位置、旋转及缩放，用预设或逐个关节给角色摆姿势；用取景框按画幅截图，添加到 Agent、Canvas 或剪贴板。 |
-| **Timeline（DEV）** | 将 Project 视频或本地上传视频编排在共享轨道上：移动、裁剪、分割、复制和删除片段，撤销自己的编辑并预览编排。描述一段网页动画，交给 DeepSeek 制作，在执行列表查看进度，再把结果作为片段加入轨道，按 Timeline 时钟播放。各轨的视频和网页动画按图层叠放、一起播放；在预览里选中图层即可移动、缩放、拉伸或旋转，也可以输入位置和大小。 |
+| **3D（DEV）** | 在共享三维场景中布置内置对象、导入的 glTF 模型和 AI 生成的模型，编辑位置、旋转及缩放，用预设或逐个关节给角色摆姿势；在导演台里布置大家共用的机位和灯光，实时看到每台机位的画面；用取景框按画幅截取场景或任一机位的画面，添加到 Agent、Canvas 或剪贴板。 |
+| **Timeline（DEV）** | 将 Project 视频或本地上传视频编排在共享轨道上：移动、裁剪、分割、复制和删除片段，撤销自己的编辑并预览编排。描述一段网页动画，交给 DeepSeek 制作，在执行列表查看进度，再把结果作为片段加入轨道，按 Timeline 时钟播放。各轨的视频和网页动画按图层叠放、一起播放；在预览里选中图层即可移动、缩放、拉伸或旋转，也可以输入位置和大小。在播放条右端从 16:9、9:16、1:1、4:3、4:5、2:3、21:9 七种比例中选择画面比例，图层在画面中的相对位置保持不变。 |
 | **项目中的 AI Agent** | 讨论创意、提供文档或画布上下文，结合已有素材查看和评审提案。 |
 | **实时协作** | 邀请协作者、设置项目访问权限，共同编辑实时同步的画布、文档、三维场景和 Timeline。 |
 
@@ -113,11 +113,15 @@ Breatic 官方在线服务已开放使用，并持续开发。上文各功能的
 
 [官网](https://breatic.ai) · [Discord](https://discord.gg/Yeu6A4aejN) · [X](https://x.com/breatic_ai) · [YouTube](https://www.youtube.com/@breatic_ai) · [Instagram](https://www.instagram.com/breatic_ai)
 
+**飞书群：Breatic 中文社区**。用飞书扫码加入，交流创作经验、反馈问题或参与项目讨论。
+
+<img src="docs/images/readme/feishu-community-zh-CN.jpg" alt="Breatic 中文社区飞书群二维码" width="260">
+
 ## 许可证与允许用途
 
-Breatic **源码公开**，采用 [Elastic License 2.0](LICENSE)（`Elastic-2.0`）。
+Breatic 是**开源**项目，采用 [GNU Affero General Public License v3.0](LICENSE)（`AGPL-3.0-only`）。
 
-你可以阅读、修改和再分发 Breatic，也可以自己使用或在你所在的组织内部部署，包括用于商业工作。你不可以把 Breatic 作为托管服务或代管服务提供给第三方。完整条款以许可证为准。
+你可以出于任何目的使用、研究、修改和自行部署 Breatic，包括商业用途。如果你修改了 Breatic，并让其他人通过网络使用修改后的版本，就必须按同一许可证向他们提供完整源代码。完整条款以许可证为准。
 
 Breatic 的名称和标识是 Orime, Inc. 的商标，不在许可证授权范围内，使用规则见 [TRADEMARKS.md](TRADEMARKS.md)。许可证不限制你用 Breatic 创作的内容。
 
@@ -126,6 +130,12 @@ Breatic 的名称和标识是 Orime, Inc. 的商标，不在许可证授权范�
 Breatic 是 AI 辅助内容创作工具。Breatic 实例的运营者和用户须自行负责：生成内容符合适用法律（版权、商标、隐私、数据保护、名誉权与内容审核），对所提供的输入及其后续使用拥有相应权利，并按使用场景做好内容审核。Orime, Inc. 不对生成内容的准确性、合法性、原创性或安全性作任何保证。
 
 第三方组件及许可说明见 [THIRD-PARTY.md](THIRD-PARTY.md)。
+
+## 鸣谢
+
+- [AtomGit](https://atomgit.com/orime-org/breatic)：在国内托管本项目，帮助中国大陆用户更快访问项目与下载 Release。
+
+[![AtomGit G-Star](https://atomgit.com/orime-org/breatic/star/new_badge.svg)](https://atomgit.com/orime-org/breatic)
 
 [hosted-app]: https://breatic.ai/login?utm_source=github&utm_medium=referral&utm_campaign=repository_listing_202610&utm_content=readme_cn
 [hosted-pricing]: https://breatic.ai/zh-CN/pricing/?utm_source=github&utm_medium=referral&utm_campaign=repository_listing_202610&utm_content=readme_pricing_cn

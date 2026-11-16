@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { isPresent } from "../../../pricing/estimate.js";
 
@@ -7,6 +7,13 @@ import { isPresent } from "../../../pricing/estimate.js";
 
 /** Models WaveSpeed no longer serves (absent from `/api/v3/models`, rechecked on 2026-11-02): they carry no WaveSpeed binding. */
 export const OFF_WAVESPEED: ReadonlySet<string> = new Set(["veed-clean-audio", "recraft-v4-style-text-to-image"]);
+
+/**
+ * Models the catalog has retired whose bindings stay so runs opened before the change finish on them (#1521);
+ * every bound model outside the catalog is one of these. Gemini 3.1 Flash TTS goes with #1516, once no run opened
+ * on it can be inside its two-hour task budget.
+ */
+export const RETIRED: ReadonlySet<string> = new Set(["gemini-3.1-flash-text-to-speech"]);
 
 /**
  * Where a binding departs from the body before provider on purpose, by model: a field renamed to the
@@ -41,6 +48,11 @@ export const ADDED_AFTER_FREEZE: Readonly<Record<string, readonly string[]>> = {
   "tripo-h3.1-t23d": ["rig_skeleton"],
   "tripo-h3.1-i23d": ["rig_skeleton"],
   "tripo-h3.1-multiview": ["rig_skeleton"],
+  // Gemini 3.8 Flash TTS replaces 3.1 after the freeze (#1521); its bodies are checked in `gemini-3.8-tts.test.ts`.
+  "gemini-3.8-flash-text-to-speech": ["speakers", "voice_id"],
+  // Models added after the freeze (inner#1809); the transparency toggle's body is checked in `seedream-v5.5.test.ts`.
+  "seedream-v5.5-text-to-image": ["aspect_ratio", "resolution", "transparency"],
+  "seedream-v5.5-edit": ["aspect_ratio", "images", "resolution", "transparency"],
 };
 
 /**

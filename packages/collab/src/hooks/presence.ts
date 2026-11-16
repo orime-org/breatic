@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Who is currently in a project, written by the server alone (#1886).
@@ -55,6 +55,7 @@
  * bug) — but none of that reaches this module.
  */
 
+import { FOLLOWING_TABLE, followingEntrySchema, type FollowingEntry } from "@breatic/shared";
 import type { Doc as YDoc, Map as YMap } from "yjs";
 import * as Y from "yjs";
 
@@ -173,7 +174,8 @@ export function touchLastSeen(args: {
 }
 
 /**
- * Turn off every record nobody is refreshing any more.
+ * Turn off every record nobody is refreshing any more, and delete every
+ * following entry nobody is refreshing.
  *
  * This is the ONLY thing that writes "offline", and the timestamp is the only
  * evidence it uses. That sounds weaker than asking the server who it is holding
@@ -208,6 +210,8 @@ export function sweepStalePresence(args: {
   const users = args.document.getMap(USERS_KEY);
   const swept: string[] = [];
 
+  const following = args.document.getMap(FOLLOWING_TABLE);
+
   args.document.transact(() => {
     users.forEach((value, userId) => {
       if (!(value instanceof Y.Map)) return;
@@ -218,7 +222,102 @@ export function sweepStalePresence(args: {
       value.set("online", false);
       swept.push(userId);
     });
+    // A connection's entry is deleted when it closes, so one nobody refreshes
+    // was left by an instance that went away before it could do that.
+    for (const [socketId, value] of [...following.entries()]) {
+      const lastSeenAt = value instanceof Y.Map ? value.get("lastSeenAt") : undefined;
+      if (typeof lastSeenAt === "number" && args.now - lastSeenAt < args.staleAfterMs) continue;
+      following.delete(socketId);
+    }
   });
 
   return swept;
+}
+
+/**
+ * Fetch whom one connection follows, or null when it follows nobody or its
+ * entry is malformed.
+ * @param document - The meta document.
+ * @param socketId - The connection's socket.
+ * @returns The stored entry, or null.
+ */
+export function readFollowing(document: YDoc, socketId: string): FollowingEntry | null {
+  const entry = document.getMap(FOLLOWING_TABLE).get(socketId);
+  if (!(entry instanceof Y.Map)) return null;
+  const parsed = followingEntrySchema.safeParse(entry.toJSON());
+  return parsed.success ? parsed.data : null;
+}
+
+/**
+ * Record whom a connection follows, as its browser declared it.
+ *
+ * Every awareness beat and focus change resends the whole declaration, so an
+ * unchanged one writes nothing: a write per beat would be a meta update
+ * broadcast to the whole project per beat. `lastSeenAt` is then moved by
+ * {@link touchFollowing} alone.
+ * @param args - What to record.
+ * @param args.document - The meta document to write into.
+ * @param args.socketId - The connection that declared it.
+ * @param args.userId - The authenticated user behind that connection.
+ * @param args.target - The user they follow.
+ * @param args.at - When they started following, on the browser's clock.
+ * @param args.now - Current time in ms.
+ * @returns True when the entry was written.
+ */
+export function writeFollowing(args: {
+  document: YDoc;
+  socketId: string;
+  userId: string;
+  target: string;
+  at: number;
+  now: number;
+}): boolean {
+  const current = readFollowing(args.document, args.socketId);
+  if (current && current.userId === args.userId && current.target === args.target && current.at === args.at) {
+    return false;
+  }
+  const following = args.document.getMap(FOLLOWING_TABLE);
+  args.document.transact(() => {
+    // Attached before it is filled, for the reason `markOnline` gives.
+    const entry = new Y.Map<unknown>();
+    following.set(args.socketId, entry);
+    entry.set("userId", args.userId);
+    entry.set("target", args.target);
+    entry.set("at", args.at);
+    entry.set("lastSeenAt", args.now);
+  });
+  return true;
+}
+
+/**
+ * Forget whom a connection follows.
+ * @param args - Which entry.
+ * @param args.document - The meta document.
+ * @param args.socketId - The connection.
+ * @returns True when there was an entry to delete.
+ */
+export function deleteFollowing(args: { document: YDoc; socketId: string }): boolean {
+  const following = args.document.getMap(FOLLOWING_TABLE);
+  if (!following.has(args.socketId)) return false;
+  following.delete(args.socketId);
+  return true;
+}
+
+/**
+ * Take one refresh of a connection's entry: move `lastSeenAt` forward to when
+ * the socket was last heard. Creates nothing; only a declaration does.
+ * @param args - Which connection answered, and when.
+ * @param args.document - The meta document.
+ * @param args.socketId - The connection.
+ * @param args.heardAt - When the socket was last heard, in ms.
+ * @returns True when there was an entry.
+ */
+export function touchFollowing(args: { document: YDoc; socketId: string; heardAt: number }): boolean {
+  const entry = args.document.getMap(FOLLOWING_TABLE).get(args.socketId);
+  if (!(entry instanceof Y.Map)) return false;
+  const previous = entry.get("lastSeenAt");
+  // A refresh held back behind another can land after a later one.
+  if (typeof previous === "number" && previous >= args.heardAt) return true;
+  entry.set("lastSeenAt", args.heardAt);
+  return true;
 }

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import type * as ProjectsApiModule from '@web/data/api/projects';
 
@@ -47,6 +47,7 @@ const TEAM: StudioDetail = {
   avatarUrl: null,
   bio: null,
   myStudioRole: 'admin',
+  region: null,
 };
 const PERSONAL: StudioDetail = {
   id: 's-alex',
@@ -57,6 +58,7 @@ const PERSONAL: StudioDetail = {
   avatarUrl: null,
   bio: null,
   myStudioRole: 'admin',
+  region: null,
 };
 // A studio the viewer is NOT a member of (decision A: 200 + null role). The
 // container renders the non-member view (no tabs) for this case (spec §6.3).
@@ -69,6 +71,7 @@ const STRANGER: StudioDetail = {
   avatarUrl: null,
   bio: null,
   myStudioRole: null,
+  region: null,
 };
 // A team studio the viewer is in, but not as its admin. The money sections
 // are the admin's, so this viewer's strip is one shorter than the admin's.
@@ -81,6 +84,7 @@ const MAINTAINED: StudioDetail = {
   avatarUrl: null,
   bio: null,
   myStudioRole: 'maintainer',
+  region: null,
 };
 const STUDIOS: readonly StudioSummary[] = [
   {
@@ -92,6 +96,7 @@ const STUDIOS: readonly StudioSummary[] = [
     avatarUrl: null,
     bio: null,
     myStudioRole: 'admin',
+    region: null,
   },
   {
     id: 's-acme',
@@ -104,6 +109,7 @@ const STUDIOS: readonly StudioSummary[] = [
     avatarUrl: null,
     bio: null,
     myStudioRole: 'admin',
+    region: null,
   },
 ];
 const PROJECTS: readonly ProjectSummary[] = [
@@ -288,7 +294,7 @@ describe('StudioContainerPage', () => {
       name: 'Fresh',
       slug: 'fresh-proj',
       spaceType: 'canvas',
-    }, expect.any(String));
+    }, expect.any(String), null);
   });
 
   it('has no a11y violations', async () => {

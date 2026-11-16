@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { sameIdList } from '@web/spaces/canvas/active-node-ids';
-import { readUserId } from '@web/spaces/canvas/awareness-user';
+import { readUserId } from '@web/data/yjs/awareness-user';
 
 /**
  * Compare two occupant tables by value.

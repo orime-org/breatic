@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Application entry point.
@@ -18,6 +18,7 @@ import { env,
   getAgentConfig,
   getSubscriptionPlans,
 } from "@breatic/core";
+import { lacksRegionListener } from "@server/utils/region-listener.js";
 import { onDatabaseWaitTimeout } from "@breatic/core";
 import { getPricingTiers } from "@server/config/pricing.js";
 import { getMaintenanceConfig } from "@server/config/maintenance.js";
@@ -26,17 +27,22 @@ import { getCreditRefundConfig } from "@server/config/credit-refund.js";
 import { adsConversionState, closeDb, flushServerAnalytics, initServerAnalytics } from "@breatic/core";
 import { closeRedis } from "@breatic/core";
 import { closeQueues } from "@breatic/core";
-import { getRedis, getQueueRedis, getStreamRedis, pingDb, pingRedis, yjsRawPg } from "@breatic/core";
+import { getRedis, getQueueRedis, getStreamRedis } from "@breatic/core";
 import { checkInfraReady, InfraNotReadyError } from "@breatic/core";
 import { installDeadlineBoundDispatcher, startHealthServer } from "@breatic/core";
-import { getStorageConfig } from "@breatic/core";
+import { getStorageConfig, getTimelineConfig } from "@breatic/core";
 import { runGracefulShutdown } from "@breatic/core";
 import { renderMetrics } from "@server/infra/metrics.js";
 import { logger, initLogger } from "@breatic/core";
 import { loadLocales } from "@breatic/core";
 import { startLifecycleRelay } from "@server/modules/project/lifecycle-relay.js";
 import { startRefundLoop } from "@server/modules/credit-refund/refund-loop.js";
+import { startRegionLoops } from "@server/modules/studio/region-loops.js";
 import { settleAfterReply, pendingAfterReply } from "@server/utils/after-reply.js";
+import { getServerShutdownDeadlineMs } from "@server/config/limits.js";
+import { markShuttingDown } from "@server/agent/shutdown-flag.js";
+import { closeChatSubscriberRedis, getChatSubscriberRedis } from "@server/agent/run-stream.js";
+import { serverHealthChecks } from "@server/health-checks.js";
 import { agentModelIds, initProvider, modelCatalog, provider } from "@breatic/domain";
 import { textToolModels } from "@server/config/text-tools.js";
 
@@ -127,6 +133,15 @@ try {
   await exitProcess(1);
 }
 
+// The Timeline config is lazy like the ones above; a default frame outside the presets (#1502) would otherwise
+// surface on the first Timeline request instead of at startup.
+try {
+  getTimelineConfig();
+} catch (err) {
+  logger.error({ err }, "timeline_config_invalid");
+  await exitProcess(1);
+}
+
 // Every model the agent runs on has to be priceable (#296). One reached
 // directly reports tokens but no cost, and is priced from its upstream's
 // prices in config/provider/llm.yaml; lazily, a missing price would surface
@@ -163,6 +178,12 @@ if (env.PAYMENT_ENABLED) {
   }
 }
 
+// Calls between regions arrive on the internal listener (inner#1955).
+if (lacksRegionListener(env)) {
+  logger.error({ region: env.REGION, globalRegion: env.GLOBAL_REGION }, "region_internal_api_disabled");
+  await exitProcess(1);
+}
+
 // The refund time limits are read lazily by the internal API and the refund
 // loop; a malformed file must stop the boot, not the first approval.
 if (env.INTERNAL_API_ENABLED) {
@@ -184,6 +205,7 @@ try {
     general: getRedis(),
     queue: getQueueRedis(),
     stream: getStreamRedis(),
+    chat_subscriber: getChatSubscriberRedis(),
   });
 } catch (err) {
   if (err instanceof InfraNotReadyError) {
@@ -205,6 +227,7 @@ for (const [client, instance] of [
   ["general", getRedis()],
   ["queue", getQueueRedis()],
   ["stream", getStreamRedis()],
+  ["chat_subscriber", getChatSubscriberRedis()],
 ] as const) {
   instance.on("error", (err) => {
     logger.error({ err, client }, "redis_error");
@@ -240,8 +263,6 @@ internalServer?.on("error", (err) => {
   void exitProcess(1);
 });
 
-/** Cap graceful shutdown so a stuck teardown can't hold the process / port. */
-const SHUTDOWN_DEADLINE_MS = 4000;
 
 // Surface a main-port listen-bind failure (EADDRINUSE etc.) cleanly instead of
 // letting Node crash on the unhandled `'error'` event; the app entry logs +
@@ -257,10 +278,12 @@ server.on("error", (err) => {
 // side cannot run inside the business transaction).
 const lifecycleRelay = startLifecycleRelay();
 
-// The refund disposition loop (inner#1410 §7.1); it runs whenever the
-// internal API is on, since it finishes every disposition the API accepts.
+// The refund disposition loop (inner#1410 §7.1); it runs whenever the global
+// region's internal API is on, since it finishes every disposition the API accepts.
 const refundLoop = startRefundLoop();
 const maintenanceLoop = startMaintenanceLoop();
+// Work left between the global region and another region (inner#1955).
+const regionLoops = startRegionLoops();
 
 // Health probe - separate port so probe traffic stays off the main
 // hono port and per-port failure semantics in the LB stay clean.
@@ -297,23 +320,7 @@ const health = startHealthServer({
       void exitProcess(1);
     }
   },
-  checks: [
-    {
-      name: "postgres",
-      // Single SELECT-1 liveness helper, shared across all services.
-      check: () => pingDb(),
-    },
-    {
-      name: "postgres_yjs",
-      // Liveness for the separate Yjs-store Postgres DB.
-      check: () => pingDb(yjsRawPg),
-    },
-    {
-      name: "redis_general",
-      // Single PING liveness helper, shared across all services.
-      check: () => pingRedis(getRedis()),
-    },
-  ],
+  checks: serverHealthChecks(),
 });
 
 /**
@@ -322,6 +329,10 @@ const health = startHealthServer({
  */
 async function shutdown(signal: string): Promise<void> {
   logger.info(`Received ${signal}, shutting down...`);
+  // No Agent chat run starts from here on, and every one running is stopped
+  // and stored as failed; what waited stays queued for the next instance
+  // (inner#1717).
+  markShuttingDown();
 
   // Stop health probe first so the LB stops sending traffic to this
   // instance while it drains in-flight HTTP requests; failing health
@@ -339,16 +350,17 @@ async function shutdown(signal: string): Promise<void> {
         lifecycleRelay.stop();
         return Promise.resolve();
       },
-      // Work a route left running after its reply (a password-reset send)
-      // still needs the pools, so they close once it has finished.
+      // Work a route left running after its reply (an Agent chat run, a
+      // password-reset send) still needs the pools, so they close once it has
+      // finished.
       () =>
         // The loop's last tick can still queue a buyer mail, so it stops
         // before the after-reply work is waited for.
-        Promise.all([refundLoop.stop(), maintenanceLoop.stop()])
+        Promise.all([refundLoop.stop(), maintenanceLoop.stop(), regionLoops.stop()])
           .then(() => settleAfterReply())
-          .then(() => Promise.allSettled([flushServerAnalytics(), closeDb(), closeRedis(), closeQueues()])),
+          .then(() => Promise.allSettled([flushServerAnalytics(), closeDb(), closeRedis(), closeQueues(), closeChatSubscriberRedis()])),
     ],
-    deadlineMs: SHUTDOWN_DEADLINE_MS,
+    deadlineMs: getServerShutdownDeadlineMs(),
   });
   for (const ctx of pendingAfterReply()) {
     logger.error(ctx, "after_reply_cut_off_by_shutdown");

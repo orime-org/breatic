@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The internal API's request authentication (inner#1410 §4.2): the signature
@@ -12,6 +12,9 @@ import type { MiddlewareHandler } from "hono";
 import { env, getRedis, logger } from "@breatic/core";
 import { WINDOW_SECONDS, verifyInternalRequest } from "@server/middleware/internal-signature.js";
 
+/** Admin ids other regions sign with (inner#1955). */
+export const REGION_ADMIN = /^region-[A-Za-z0-9-]+$/;
+
 /**
  * How long a nonce is remembered. The window compares whole seconds and
  * includes both ends, so a timestamp `ts` is accepted from `ts - 300` until
@@ -22,7 +25,7 @@ const NONCE_TTL_SECONDS = 2 * WINDOW_SECONDS + 2;
 
 declare module "hono" {
   interface ContextVariableMap {
-    /** The back office admin an internal API request acts for. */
+    /** Who signed an internal API request: a back-office admin, or `region-<code>`. */
     internalAdmin: string;
     /** The operator's reason a write request gave, for its log line. */
     internalReason: string;
@@ -30,8 +33,9 @@ declare module "hono" {
 }
 
 /**
- * Refuse any request that is not signed by the back office, or that repeats
- * a nonce. Sets `internalAdmin` for the handlers.
+ * Refuse any request that is not signed with the internal API secret (by
+ * the back office or another region), or that repeats a nonce. Sets
+ * `internalAdmin` for the handlers.
  * @returns The middleware.
  */
 export function internalAuth(): MiddlewareHandler {

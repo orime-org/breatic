@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Resolve the ids inside a page of notifications to current display identities.
@@ -22,13 +22,14 @@
  * returns the anonymised value with no special case of its own.
  */
 
-import * as studioRepo from "@server/modules/studio/studio.repo.js";
+import { studioRepo } from "@breatic/domain";
 import * as projectRepo from "@server/modules/project/project.repo.js";
 import type {
   NotificationEntity,
   NotificationListView,
   NotificationRef,
 } from "@breatic/shared";
+import { profilesService } from "@breatic/domain";
 
 /**
  * Payload keys that hold a user id, a studio id, and a project id.
@@ -107,7 +108,7 @@ export async function withResolvedRefs(
   }
 
   const [users, studios, projects] = await Promise.all([
-    studioRepo.getPersonalProfilesByCreators(userIds),
+    profilesService.personalProfiles(userIds),
     studioRepo.getIdentitiesByStudioIds(studioIds),
     projectRepo.getIdentitiesByProjectIds([...projectIds]),
   ]);

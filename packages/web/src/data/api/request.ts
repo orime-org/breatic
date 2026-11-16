@@ -1,30 +1,37 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import axios, {
   type AxiosInstance,
   type AxiosRequestConfig,
+  type InternalAxiosRequestConfig,
   AxiosError,
 } from 'axios';
 import { getLocale } from '@breatic/shared';
 
 import { ApiException, type ApiEnvelope, type ApiError } from '@web/data/api/types';
-import { API_BASE_PATH } from '@web/data/api/base-path';
+import { renewIdentityNow } from '@web/data/api/identity-renewal';
+import { apiBaseForRequest, getRegionConfig } from '@web/data/api/regions';
 import { checkStaleRelease } from '@web/data/deployment/stale-release';
 
 /**
  * Singleton axios instance configured for the breatic API.
  *
  * Auth: `withCredentials: true` makes the browser attach the
- * httpOnly session cookie on every cross-origin XHR. The
- * cookie is the single authentication channel since 2026-05-26 — no
- * Bearer token is read from JS, no Authorization header is set.
+ * httpOnly cookies on every cross-origin XHR: the session cookie for the
+ * global region, the identity token cookie for any other region. Cookies
+ * are the only authentication channel — no Bearer token is read from JS,
+ * no Authorization header is set.
  * That removes the XSS exfiltration surface entirely (a JS payload
  * cannot read an httpOnly cookie).
  *
- * - `baseURL` is `API_BASE_PATH`, the one prefix this app and the streaming
- *   transport share, so production nginx routes everything under one origin;
- *   dev uses the Vite proxy.
+ * - `baseURL` is chosen per request by `apiBaseForRequest`: the one
+ *   same-origin prefix in a single-region build, otherwise the global region
+ *   for global data, the region of the Project or Studio the request names,
+ *   and the open page's region for the rest (inner#1955). A caller's own
+ *   `baseURL` wins.
+ * - A region's 401 with `identity_expired` renews the identity token at the
+ *   global region once and retries the request once.
  * - Request interceptor: send the language the user picked, so the server
  *   can answer in it.
  * - Response interceptor: unwrap backend error envelope into `ApiException`.
@@ -32,9 +39,6 @@ import { checkStaleRelease } from '@web/data/deployment/stale-release';
  */
 function createClient(): AxiosInstance {
   const instance = axios.create({
-    // The one prefix, shared with the streaming transport. Per-resource paths
-    // stay `/projects`, `/chat` etc. without `v1` smeared across them.
-    baseURL: API_BASE_PATH,
     timeout: 30_000,
     headers: { 'Content-Type': 'application/json' },
     withCredentials: true,
@@ -48,6 +52,7 @@ function createClient(): AxiosInstance {
   // the two, and it is read per request because the user can switch at any
   // time while this singleton lives for the life of the page.
   instance.interceptors.request.use((config) => {
+    config.baseURL ??= apiBaseForRequest(config, getRegionConfig());
     // An explicit header from the caller wins; nothing sets one today, but
     // silently overwriting one would be a surprise if anything ever did.
     if (config.headers.get('Accept-Language') === undefined) {
@@ -62,6 +67,11 @@ function createClient(): AxiosInstance {
   instance.interceptors.response.use(
     (res) => res,
     async (err: unknown) => {
+      const retry = identityRetryOf(err);
+      if (retry) {
+        await renewIdentityNow();
+        return instance.request(retry);
+      }
       const apiErr = normalizeError(err);
       // Decided before the caller sees the refusal: an out-of-date page has
       // silenced toasts by the time any catch would show this one.
@@ -71,6 +81,24 @@ function createClient(): AxiosInstance {
   );
 
   return instance;
+}
+
+/** A request already retried once after renewing the identity token. */
+type IdentityRetried = InternalAxiosRequestConfig & { identityRetried?: true };
+
+/**
+ * The request to retry when a region refused it only because the identity
+ * token had expired, and it has not been retried for that yet.
+ * @param err - The failed request.
+ * @returns The request marked as retried, or null.
+ */
+function identityRetryOf(err: unknown): IdentityRetried | null {
+  if (!(err instanceof AxiosError) || err.response?.status !== 401) return null;
+  const reason = (err.response.data as { error?: { reason?: string } } | undefined)?.error?.reason;
+  const config = err.config as IdentityRetried | undefined;
+  if (reason !== 'identity_expired' || config === undefined || config.identityRetried) return null;
+  config.identityRetried = true;
+  return config;
 }
 
 /**

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { randomBytes, randomUUID } from "node:crypto";
 import type { Hono } from "hono";
@@ -12,6 +12,7 @@ import { getConfirmationView } from "@server/modules/payment/payment.repo.js";
 import { renderPurchaseConfirmation } from "@server/modules/payment/purchase-mail-template.js";
 import { useInternalApp } from "./internal-api-harness.js";
 import { chargeNow, seedDesignatedLot } from "./studio-credit-fixtures.js";
+import { mirrorInDirectory } from "./directory-fixtures.js";
 import { applied, grantBody, grantKey, postGrant, seedPersonal } from "./operator-credit-grant-fixtures.js";
 import type { PersonalFixture } from "./operator-credit-grant-fixtures.js";
 
@@ -110,6 +111,7 @@ describe("decimal-v1 amount format on the public readers", () => {
       const [studio] = await suite.sql<{ id: string }[]>`insert into studios(created_by_user_id,slug,type,name)
         values(${fx.userId},${`a-${randomUUID()}`},'team','Amount Studio') returning id`;
       await suite.sql`insert into studio_members(studio_id,user_id,role) values(${studio!.id},${fx.userId},'admin')`;
+      await mirrorInDirectory(suite.sql, studio!.id);
       await seedDesignatedLot(suite.sql, { ...fx, studioId: studio!.id }, 0.07);
     }
     const overview = await read("/api/v1/credits/overview?amountFormat=decimal-v1", await cookieFor(fx.userId));

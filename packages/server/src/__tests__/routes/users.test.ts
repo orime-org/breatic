@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Users route tests — batch lookup + cap.
@@ -27,11 +27,6 @@ vi.mock("@server/modules", async (importOriginal) => {
   return serverModulesMock(importOriginal);
 });
 
-vi.mock("@server/modules/auth/user.repo.js", async () => {
-  const { userRepoMock } = await import("../helpers/mock-core.js");
-  return userRepoMock();
-});
-
 import { createApp } from "../../app.js";
 import { mocks } from "../helpers/mock-core.js";
 
@@ -43,15 +38,14 @@ beforeEach(() => {
 
 describe("GET /api/v1/users", () => {
   it("returns batched display fields — name resolved from the personal studio, sensitive fields stripped", async () => {
-    mocks.userRepo.getUsersByIds.mockResolvedValue([
-      { id: "u1", email: "a@x.com", emailVerified: true, googleId: "g-1" },
-      { id: "u2", email: "b@x.com", emailVerified: false, googleId: null },
-    ]);
-    // The display name AND avatar both come from each user's personal studio,
-    // batch-resolved by the studio service (pointer model — #1808). u2 is
-    // mid-onboarding (no studio) → absent from the map → name + avatar null.
-    mocks.studioService.getPersonalStudioIdentitiesByUserIds.mockResolvedValue(
-      new Map([["u1", { name: "alice", avatarUrl: "https://cdn/a.png" }]]),
+    // The display name AND avatar both come from each user's personal studio
+    // (pointer model — #1808), read with the address from the global profiles
+    // (inner#1955). u2 is mid-onboarding (no studio) → name + avatar null.
+    mocks.profilesService.profilesOf.mockResolvedValue(
+      new Map([
+        ["u1", { name: "alice", handle: "alice", avatarUrl: "https://cdn/a.png", email: "a@x.com", deleted: false }],
+        ["u2", { name: null, handle: null, avatarUrl: null, email: "b@x.com", deleted: false }],
+      ]),
     );
 
     const app = createApp();
@@ -90,15 +84,13 @@ describe("GET /api/v1/users", () => {
     expect(res.status).toBe(422);
   });
 
-  it("caps incoming ids at 100 — 101st id is dropped before repo call", async () => {
+  it("caps incoming ids at 100 — 101st id is dropped before the profile read", async () => {
     const idList = Array.from({ length: 150 }, (_, i) => `u${i}`).join(",");
-    mocks.userRepo.getUsersByIds.mockResolvedValue([]);
-
     const app = createApp();
     const res = await app.request(`/api/v1/users?ids=${idList}`, { headers: AUTH });
 
     expect(res.status).toBe(200);
-    const passedIds = (mocks.userRepo.getUsersByIds.mock.calls[0]?.[0] as string[] | undefined) ?? [];
+    const passedIds = (mocks.profilesService.profilesOf.mock.calls[0]?.[0] as string[] | undefined) ?? [];
     expect(passedIds).toHaveLength(100);
   });
 });

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as Y from 'yjs';
@@ -135,6 +135,33 @@ describe('collab-socket manager — refcounted shared socket + deferred teardown
     expect(wsInstances).toHaveLength(1);
     expect(wsInstances[0]!.config.WebSocketPolyfill).toBe(ChunkingWebSocket);
     expect(wsInstances[0]!.config.url).toBe(`ws://${window.location.host}/ws?size_ack=1`);
+  });
+
+  // inner#1955: Projects in different regions are served by different
+  // collab addresses. Going from one to the other in one tab leaves the first
+  // Project's documents waiting for their deferred release when the second
+  // acquires; the second must not ride the first region's socket.
+  it('opens the new address\'s socket when a Project in another region is opened, dropping the old one', () => {
+    acquireDocProvider(META, getDoc(META), 'wss://us.example.test/ws');
+    releaseDocProvider(META);
+    const other = 'project-p2/meta';
+
+    acquireDocProvider(other, getDoc(other), 'wss://sg.example.test/ws');
+
+    expect(wsInstances).toHaveLength(2);
+    expect(wsInstances[0]!.destroy).toHaveBeenCalledOnce();
+    expect(String(wsInstances[1]!.config.url)).toContain('sg.example.test');
+    expect(providerInstances.at(-1)!.config.websocketProvider).toBe(wsInstances[1]);
+    expect(readDocProvider(META)).toBeNull();
+  });
+
+  it('keeps the one socket for a Project at the same address', () => {
+    acquireDocProvider(META, getDoc(META), 'wss://us.example.test/ws');
+    releaseDocProvider(META);
+    acquireDocProvider('project-p2/meta', getDoc('project-p2/meta'), 'wss://us.example.test/ws');
+
+    expect(wsInstances).toHaveLength(1);
+    expect(wsInstances[0]!.destroy).not.toHaveBeenCalled();
   });
 
   it('creates ONE shared socket + attaches the provider on first acquire', () => {

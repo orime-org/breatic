@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The table, as four layout blocks whose cells hold blocks (inner#1619):
@@ -59,6 +59,9 @@ export const DOC_TABLE = 'docTable';
 export const DOC_TABLE_ROW = 'docTableRow';
 export const DOC_TABLE_CELL = 'docTableCell';
 export const DOC_TABLE_HEADER = 'docTableHeader';
+
+/** Table nodes: ours, and the stored (legacy) one documents from before hold. */
+export const TABLES: ReadonlySet<string> = new Set([DOC_TABLE, 'table']);
 
 /** The prosemirror-tables role of each table node. */
 const TABLE_ROLES: Readonly<Record<string, string>> = {

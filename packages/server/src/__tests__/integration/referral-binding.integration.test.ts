@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { randomUUID } from "node:crypto";
 import fc from "fast-check";
@@ -173,17 +173,25 @@ describe("bindReferral", () => {
 
     let release!: () => void;
     const gate = new Promise<void>((resolve) => { release = resolve; });
+    let markPaymentReady!: () => void;
+    const paymentReady = new Promise<void>((resolve) => { markPaymentReady = resolve; });
     const payment = sql.begin(async (tx) => {
       await tx`select id from users where id = ${userId} for update`;
       await tx`update subscriptions set first_active_at = now() where stripe_subscription_id = ${subscriptionId}`;
+      markPaymentReady();
       await gate;
     });
-    const binding = bind(userId, code);
-    await waitUntilBlockedOn(sql, ["users", "for update"], 1);
-    release();
-    await payment;
-    expect(await binding).toEqual({ ok: false, reason: "already_paid" });
-    expect(await bindingOf(userId)).toBeNull();
+    try {
+      await Promise.race([paymentReady, payment]);
+      const binding = bind(userId, code);
+      const probe = waitUntilBlockedOn(sql, ["users", "for update"], 1).finally(release);
+      const [, outcome] = await Promise.all([probe, binding, payment]);
+      expect(outcome).toEqual({ ok: false, reason: "already_paid" });
+      expect(await bindingOf(userId)).toBeNull();
+    } finally {
+      release();
+      await payment;
+    }
   });
 
   // The four facts the rule reads, in every mix (inner#1868 §5): the first one

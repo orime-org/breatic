@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { OFFICIAL_HOME_URL } from '@web/lib/official-home';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
@@ -24,7 +24,7 @@ afterEach(() => setLocale('en'));
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.mocked(notificationsApi.list).mockResolvedValue({ items: [], resolved: EMPTY_RESOLVED });
+  vi.mocked(notificationsApi.list).mockResolvedValue({ items: [], resolved: EMPTY_RESOLVED, unavailableRegions: [] });
 });
 
 function setup() {

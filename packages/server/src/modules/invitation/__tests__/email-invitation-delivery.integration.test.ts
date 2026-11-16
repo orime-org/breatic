@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import type * as MockModule0 from "@breatic/domain";
 
@@ -14,7 +14,7 @@ vi.mock("@breatic/domain", async (importOriginal) => ({
 import { db, initCore, loadLocales, NotFoundError } from "@breatic/core";
 import { enqueueMail } from "@breatic/domain";
 import { t } from "@breatic/shared";
-import * as usersRepo from "@server/modules/auth/user.repo.js";
+import { usersRepo as usersRepo } from "@breatic/domain";
 import * as projectRepo from "@server/modules/project/project.repo.js";
 import { claimEmailInvitations } from "@server/modules/invitation/claim-email-invitations.js";
 import {
@@ -96,7 +96,7 @@ for (const scope of ["project", "studio"] satisfies Scope[]) {
       if (outcome.ok) throw new Error("Expected email delivery to fail");
       expect(outcome.error).toBeInstanceOf(Error);
       expect((outcome.error as Error).message).toBe(t(`server.${scope}.invite_mail_failed`));
-      const user = await usersRepo.createUser({ locale: "en", email: fixture.email, emailVerified: true });
+      const user = await usersRepo.createUser({ termsVersion: "test-terms", locale: "en", email: fixture.email, emailVerified: true });
       await claimEmailInvitations(user);
       expect(await invitationRows(sql, scope, fixture)).toMatchObject([{
         status: "revoked", invited_user_id: null, invited_email: fixture.email, notification_id: null,
@@ -109,7 +109,7 @@ for (const scope of ["project", "studio"] satisfies Scope[]) {
         const fixture = await seedInvitationFixture(sql);
         const attempt = await beginDelivery(scope, fixture);
         try {
-          const user = await usersRepo.createUser({ locale: "en", email: fixture.email, emailVerified: true });
+          const user = await usersRepo.createUser({ termsVersion: "test-terms", locale: "en", email: fixture.email, emailVerified: true });
           await claimEmailInvitations(user);
           if (queueSucceeds) attempt.succeed();
           else attempt.fail();
@@ -137,7 +137,7 @@ for (const scope of ["project", "studio"] satisfies Scope[]) {
         const fixture = await seedInvitationFixture(sql);
         const attempt = await beginDelivery(scope, fixture);
         try {
-          const user = await usersRepo.createUser({ locale: "en", email: fixture.email, emailVerified: true });
+          const user = await usersRepo.createUser({ termsVersion: "test-terms", locale: "en", email: fixture.email, emailVerified: true });
           await claimEmailInvitations(user);
           const invitation = (await invitationRows(sql, scope, fixture))[0]!;
           await answerInvitation(scope, invitation.id, user.id, accept);

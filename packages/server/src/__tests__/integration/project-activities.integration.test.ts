@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Project activity feed — real-PG integration (ADR 2026-07-04
@@ -45,6 +45,7 @@ import {
 } from "@breatic/shared";
 import type { ActivityCursor } from "@breatic/core";
 import type { Hono } from "hono";
+import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 try {
   initCore(process.env);
@@ -95,6 +96,7 @@ async function insertUserWithStudio(
     INSERT INTO studio_members (studio_id, user_id, role)
     VALUES (${studios[0]!.id}, ${userId}, 'admin')
   `;
+  await mirrorAllInDirectory(sql);
   return { userId, studioId: studios[0]!.id };
 }
 
@@ -121,6 +123,7 @@ async function insertProject(ownerUserId: string): Promise<string> {
     INSERT INTO project_members (project_id, user_id, role, added_by)
     VALUES (${projectId}, ${ownerUserId}, 'owner', null)
   `;
+  await mirrorAllInDirectory(sql);
   return projectId;
 }
 

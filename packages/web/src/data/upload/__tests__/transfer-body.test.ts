@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * `bodyOrTransfer` (inner#1006 design §4.7): a request body over the server's
@@ -244,7 +244,9 @@ describe('bodyOrTransfer: the threshold, counted in UTF-8 bytes of JSON.stringif
     expect(onTransferStart).toHaveBeenCalledTimes(1);
     const [ticket] = postsTo(isTicket);
     expect(ticket?.[1]).toEqual({ project_id: P, size: 1048596 });
-    expect(vi.mocked(waitForUploadEnding)).toHaveBeenCalledWith(KEY);
+    expect(vi.mocked(waitForUploadEnding)).toHaveBeenCalledWith(KEY, undefined, '/api/v1');
+    // The finish goes where the ticket was asked (inner#1955).
+    expect(postsTo(isFinish)[0]?.[2]).toHaveProperty('baseURL', '/api/v1');
   });
 
   it('W03 counts bytes, not characters', async () => {
@@ -531,12 +533,12 @@ describe('bodyOrTransfer: request timeouts (inner#1595 W09, W10)', () => {
 
   it('W09 asks for the transfer ticket with timeout 0, with and without a signal', async () => {
     await bodyOrTransfer(P, big());
-    expect(postsTo(isTicket)[0]?.[2]).toEqual({ timeout: 0 });
+    expect(postsTo(isTicket)[0]?.[2]).toEqual({ timeout: 0, baseURL: '/api/v1' });
 
     vi.mocked(apiPost).mockClear();
     const controller = new AbortController();
     await bodyOrTransfer(P, big(), { signal: controller.signal });
-    expect(postsTo(isTicket)[0]?.[2]).toEqual({ signal: controller.signal, timeout: 0 });
+    expect(postsTo(isTicket)[0]?.[2]).toEqual({ signal: controller.signal, timeout: 0, baseURL: '/api/v1' });
     expect(signalOf(postsTo(isFinish)[0])).toBe(controller.signal);
   });
 

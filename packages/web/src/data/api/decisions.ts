@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The one client for answering any waiting request.
@@ -9,6 +9,7 @@
  * and the caller never has to know which it is holding.
  */
 
+import { apiBaseForToken, getRegionConfig } from '@web/data/api/regions';
 import { apiGet, apiPost } from '@web/data/api/request';
 import type {
   DecisionAction,
@@ -24,7 +25,9 @@ export const decisionsApi = {
    * @returns What to render, including which of the dead ends it is in.
    */
   view(token: string): Promise<DecisionView> {
-    return apiGet<DecisionView>(`/decisions/${encodeURIComponent(token)}`);
+    return apiGet<DecisionView>(`/decisions/${encodeURIComponent(token)}`, {
+      baseURL: apiBaseForToken(token, getRegionConfig()),
+    });
   },
 
   /**
@@ -46,6 +49,7 @@ export const decisionsApi = {
     return apiPost<DecisionResult>(
       '/decisions/respond',
       role === undefined ? { token, action } : { token, action, role },
+      { baseURL: apiBaseForToken(token, getRegionConfig()) },
     );
   },
 };

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { ESLint } from "eslint";
@@ -39,10 +39,11 @@ const TEMPORARY: ReadonlyArray<readonly [string, string]> = [
 
 /**
  * The exceptions the table had before the merge, less the content lander and
- * the proposal prompt writers that moved to `@breatic/shared/canvas-model`
- * (breatic#1488 §8.1),
- * plus the undo/redo copy trial v2 adds (design section 5.2); the final table
- * is a subset.
+ * the proposal prompt and dialogue lines writers that moved to
+ * `@breatic/shared/canvas-model` (breatic#1488 §8.1), plus the undo/redo copy
+ * trial v2 adds (design section 5.2) and the document body manager's own undo
+ * and redo, reached through its gated history command (inner#1314); the final
+ * table is a subset.
  */
 const LONG_TERM: ReadonlyArray<readonly [string, string]> = [
   ["src/data/yjs/canvas-space.ts", "writeSnapshotNodes"],
@@ -50,6 +51,8 @@ const LONG_TERM: ReadonlyArray<readonly [string, string]> = [
   ["src/data/yjs/scene-session.ts", "historyStep"],
   ["src/data/yjs/history-step.ts", "copyRedone"],
   ["src/data/yjs/history-step.ts", "trial"],
+  ["src/spaces/document/document-undo-blocknote.ts", "undo"],
+  ["src/spaces/document/document-undo-blocknote.ts", "redo"],
 ];
 
 /**

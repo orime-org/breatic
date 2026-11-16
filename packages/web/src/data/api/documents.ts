@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import type { DocumentVersion } from '@breatic/shared';
 
+import { apiBaseForProject, getRegionConfig } from '@web/data/api/regions';
 import { apiDelete, apiGet, apiPatch, apiPost } from '@web/data/api/request';
 import { bodyOrTransfer } from '@web/data/upload/transfer-body';
 
@@ -39,7 +40,12 @@ export const documentsApi = {
     input: { name: string | undefined; content: Record<string, unknown>; schemaVersion: string },
   ): Promise<DocumentVersion> {
     const body = { ...scopeParams(scope), name: input.name, content: input.content, schema_version: input.schemaVersion };
-    const { version } = await apiPost<{ version: DocumentVersion }>('/documents/versions', await bodyOrTransfer(scope.projectId, body));
+    // A transfer reference does not name the Project: the request names its region (inner#1955).
+    const { version } = await apiPost<{ version: DocumentVersion }>(
+      '/documents/versions',
+      await bodyOrTransfer(scope.projectId, body),
+      { baseURL: apiBaseForProject(scope.projectId, getRegionConfig()) },
+    );
     return version;
   },
 

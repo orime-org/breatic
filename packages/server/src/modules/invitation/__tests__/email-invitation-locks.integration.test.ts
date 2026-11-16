@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import type * as MockModule0 from "@breatic/domain";
 
@@ -13,7 +13,7 @@ vi.mock("@breatic/domain", async (importOriginal) => ({
 
 import { ConflictError, db, initCore, loadLocales } from "@breatic/core";
 import { enqueueMail } from "@breatic/domain";
-import * as usersRepo from "@server/modules/auth/user.repo.js";
+import { usersRepo as usersRepo } from "@breatic/domain";
 import * as projectRepo from "@server/modules/project/project.repo.js";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
 import { claimEmailInvitations } from "@server/modules/invitation/claim-email-invitations.js";
@@ -51,7 +51,7 @@ for (const scope of ["project", "studio"] satisfies Scope[]) {
     for (const registered of [false, true]) {
       it(`takes the object lock when creating an ${registered ? "ordinary" : "email"} invitation`, async () => {
         const fixture = await seedInvitationFixture(sql);
-        if (registered) await usersRepo.createUser({ locale: "en", email: fixture.email, emailVerified: true });
+        if (registered) await usersRepo.createUser({ termsVersion: "test-terms", locale: "en", email: fixture.email, emailVerified: true });
         const held = await holdTarget(sql, scope, fixture);
         const attempt = createInvitation(scope, fixture).then(
           (value) => ({ value, error: null }),
@@ -73,7 +73,7 @@ for (const scope of ["project", "studio"] satisfies Scope[]) {
     it("takes the object lock before converting an email invitation", async () => {
       const fixture = await seedInvitationFixture(sql);
       const invitation = await seedEmailInvitation(sql, scope, fixture);
-      const user = await usersRepo.createUser({ locale: "en", email: fixture.email, emailVerified: true });
+      const user = await usersRepo.createUser({ termsVersion: "test-terms", locale: "en", email: fixture.email, emailVerified: true });
       const held = await holdTarget(sql, scope, fixture);
       const conversion = claimEmailInvitations(user);
       try {
@@ -91,12 +91,12 @@ for (const scope of ["project", "studio"] satisfies Scope[]) {
       it(`${conversionFirst ? "converts then revokes" : "revokes then attempts conversion"} behind one object lock`, async () => {
         const fixture = await seedInvitationFixture(sql);
         const invitation = await seedEmailInvitation(sql, scope, fixture);
-        const user = await usersRepo.createUser({ locale: "en", email: fixture.email, emailVerified: true });
+        const user = await usersRepo.createUser({ termsVersion: "test-terms", locale: "en", email: fixture.email, emailVerified: true });
         const held = await holdTarget(sql, scope, fixture);
         const first = conversionFirst
           ? claimEmailInvitations(user)
           : revokeInvitation(scope, fixture, invitation.id);
-        const operations: Promise<void>[] = [first];
+        const operations: Promise<unknown>[] = [first];
         try {
           await waitUntilBlockedOn(sql, [scope === "project" ? "projects" : "studios", "for update"], 1);
           operations.push(conversionFirst
@@ -134,7 +134,7 @@ for (const scope of ["project", "studio"] satisfies Scope[]) {
       let userId = "";
       try {
         await waitUntilBlockedOn(sql, [scope === "project" ? "projects" : "studios", "for update"], 1);
-        const user = await usersRepo.createUser({ locale: "en", email: fixture.email, emailVerified: true });
+        const user = await usersRepo.createUser({ termsVersion: "test-terms", locale: "en", email: fixture.email, emailVerified: true });
         userId = user.id;
         second = createInvitation(scope, fixture).then(
           (value) => ({ value, error: null }),
@@ -195,7 +195,7 @@ for (const conversionFirst of [false, true]) {
   it(`${conversionFirst ? "converts before archiving" : "archives before converting"} a project under its object lock`, async () => {
     const fixture = await seedInvitationFixture(sql);
     const invitation = await seedEmailInvitation(sql, "project", fixture);
-    const user = await usersRepo.createUser({ locale: "en", email: fixture.email, emailVerified: true });
+    const user = await usersRepo.createUser({ termsVersion: "test-terms", locale: "en", email: fixture.email, emailVerified: true });
     const held = await holdTarget(sql, "project", fixture);
     /**
      * Commit the existing project archive operation.
@@ -205,7 +205,7 @@ for (const conversionFirst of [false, true]) {
       await db.transaction(async (tx) => { await projectRepo.archiveProject(fixture.projectId, fixture.adminId, tx); });
     };
     const first = conversionFirst ? claimEmailInvitations(user) : archive();
-    const operations: Promise<void>[] = [first];
+    const operations: Promise<unknown>[] = [first];
     try {
       await waitUntilBlockedOn(sql, ["projects", "for update"], 1);
       operations.push(conversionFirst ? archive() : claimEmailInvitations(user));

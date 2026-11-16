@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Opening a body and pasting or dropping into it the way a user does, for
@@ -155,6 +155,56 @@ export function pasteFormats(editor: Editor, formats: Readonly<Record<string, st
  */
 export function paste(editor: Editor, html: string, text: string): void {
   pasteFormats(editor, html === '' ? { 'text/plain': text } : { 'text/html': html, 'text/plain': text });
+}
+
+/**
+ * Fires a copy, a cut or a drag start, as a browser does, and reads what the
+ * handlers wrote into its data transfer.
+ * @param target - Where the event fires.
+ * @param type - `copy`, `cut` or `dragstart`.
+ * @returns Each format written, with its data.
+ */
+export function written(target: EventTarget, type: 'copy' | 'cut' | 'dragstart'): Record<string, string> {
+  const data: Record<string, string> = {};
+  const transfer = {
+    types: [],
+    files: [],
+    effectAllowed: '',
+    setData: (format: string, value: string): void => {
+      data[format] = value;
+    },
+    // BlockNote's own listener on the page reads a drag back.
+    getData: (format: string): string => data[format] ?? '',
+    clearData: (): void => {
+      Object.keys(data).forEach((format) => delete data[format]);
+    },
+    setDragImage: (): void => undefined,
+  };
+  const event = new Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperty(event, type === 'dragstart' ? 'dataTransfer' : 'clipboardData', { value: transfer });
+  target.dispatchEvent(event);
+  return data;
+}
+
+/**
+ * Gives the page a copy command, which jsdom lacks: `execCommand('copy')`
+ * fires the copy event on the document, as a browser does, and its clipboard
+ * then holds what that copy wrote.
+ * @returns The clipboard, refilled by every copy.
+ */
+export function copyCommand(): Record<string, string> {
+  const clipboard: Record<string, string> = {};
+  Object.defineProperty(document, 'execCommand', {
+    configurable: true,
+    value: vi.fn((command: string): boolean => {
+      if (command !== 'copy') return false;
+      const data = written(document, 'copy');
+      Object.keys(clipboard).forEach((format) => delete clipboard[format]);
+      Object.assign(clipboard, data);
+      return true;
+    }),
+  });
+  return clipboard;
 }
 
 /**

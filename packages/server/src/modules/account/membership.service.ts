@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Everything the membership panel shows, in one read (task #90).
@@ -24,6 +24,7 @@ import {
   getMembershipForUser,
   getMembershipLimits,
   getSubscriptionPlan,
+  studioDirectoryRepo,
 } from "@breatic/core";
 import {
   BILLING_PERIODS,
@@ -35,7 +36,6 @@ import {
 } from "@breatic/shared";
 
 import * as assetUsageService from "@server/modules/asset/assetUsage.service.js";
-import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import { readStoredSubscriptionSummary } from "@server/modules/subscription/subscription-panel.js";
 
 /**
@@ -58,10 +58,14 @@ export async function readAccountMembership(
     : null;
   const { tier, limits } = await getMembershipForUser(userId);
 
-  const [teamStudios, storageBytes] = await Promise.all([
-    studioRepo.countTeamStudiosAdministeredBy(userId),
+  // Both count every region (inner#1955): team Studios as the creation quota
+  // counts them, storage as this region's own plus what the others reported.
+  const [teamStudios, storageHere, storageElsewhere] = await Promise.all([
+    studioDirectoryRepo.countTeamQuota(userId),
     assetUsageService.accountStorageUsage(userId),
+    studioDirectoryRepo.sumUsageElsewhere(userId, env.REGION),
   ]);
+  const storageBytes = storageHere + storageElsewhere;
 
   return {
     tier,

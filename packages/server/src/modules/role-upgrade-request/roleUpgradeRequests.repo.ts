@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Role-upgrade requests repository — `role_upgrade_requests` table.
@@ -32,7 +32,7 @@
 import { and, eq, gt, isNull, lte, sql } from "drizzle-orm";
 import { db, roleUpgradeRequests } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
-import { mintShareToken } from "@server/utils/share-token.js";
+import { mintShareToken } from "@breatic/core";
 import type { RequestFailedReason } from "@breatic/shared";
 
 /** Where a request sits in its lifecycle. */

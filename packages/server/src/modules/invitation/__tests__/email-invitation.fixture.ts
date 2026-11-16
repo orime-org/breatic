@@ -1,9 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import type postgres from "postgres";
 import * as projectInvites from "@server/modules/project-invite/projectInvite.service.js";
 import * as studioInvites from "@server/modules/studio/studioInvite.service.js";
+import { mirrorAllInDirectory } from "@server/__tests__/integration/directory-fixtures.js";
 
 export type Sql = ReturnType<typeof postgres>;
 export type Scope = "project" | "studio";
@@ -54,6 +55,7 @@ export async function seedInvitationFixture(sql: Sql): Promise<InvitationFixture
     INSERT INTO studios (created_by_user_id, slug, type, name)
     VALUES (${admin!.id}, ${`${tag}-personal`}, 'personal', 'Inviting Admin')
   `;
+  await mirrorAllInDirectory(sql);
   const [project] = await sql<{ id: string }[]>`
     INSERT INTO projects (studio_id, created_by_user_id, name, slug)
     VALUES (${studio!.id}, ${admin!.id}, 'Invitation Project', ${`${tag}-project`}) RETURNING id

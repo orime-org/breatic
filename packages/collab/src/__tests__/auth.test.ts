@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Unit tests for the Hocuspocus auth hook (v10 multi-doc).
@@ -702,7 +702,7 @@ describe("createAuthHook", () => {
 
   it("E-A10 takes nothing that could write a seat: the handshake only counts and asks", () => {
     expectTypeOf<keyof CreateAuthHookOptions>().toEqualTypeOf<
-      "redis" | "resolveConnectionLimit" | "countConnections" | "hasOwnSeat"
+      "redis" | "resolveConnectionLimit" | "countConnections" | "hasOwnSeat" | "boundIdentity"
     >();
   });
 

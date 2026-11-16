@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The `credit_charge_requests` table (inner#1617): a charge for delivered work,
@@ -25,6 +25,8 @@ export interface NewChargeRequest {
   referenceId: string;
   actorUserId: string;
   projectId: string | null;
+  /** The Studio charged; read from the Project when the caller does not name it (inner#1955). */
+  studioId?: string | null;
   /** Credits, already rounded to the cent. */
   amount: number;
   description?: string;
@@ -42,6 +44,7 @@ export interface ChargeRequest {
   referenceId: string;
   actorUserId: string;
   projectId: string | null;
+  studioId: string | null;
   /** Decimal string. */
   amount: string;
   description: string | null;
@@ -66,6 +69,7 @@ export async function insertPending(input: NewChargeRequest, tx: DbTx): Promise<
       referenceId: input.referenceId,
       actorUserId: input.actorUserId,
       projectId: input.projectId,
+      studioId: input.studioId ?? null,
       amount: String(input.amount),
       description: input.description ?? null,
       // Cut to the ledger's widths (`credit_ledger.model` / `provider`): a
@@ -83,6 +87,23 @@ export async function insertPending(input: NewChargeRequest, tx: DbTx): Promise<
   return rows[0]?.id ?? null;
 }
 
+/** The columns a charge request is read with. */
+const REQUEST_COLUMNS = {
+  id: creditChargeRequests.id,
+  kind: creditChargeRequests.kind,
+  referenceId: creditChargeRequests.referenceId,
+  actorUserId: creditChargeRequests.actorUserId,
+  projectId: creditChargeRequests.projectId,
+  studioId: creditChargeRequests.studioId,
+  amount: creditChargeRequests.amount,
+  description: creditChargeRequests.description,
+  model: creditChargeRequests.model,
+  provider: creditChargeRequests.provider,
+  tokensUsed: creditChargeRequests.tokensUsed,
+  releaseHold: creditChargeRequests.releaseHold,
+  status: creditChargeRequests.status,
+};
+
 /**
  * Lock a request for its settlement. The lock names the primary key alone: a
  * condition on `status` would be re-checked once the lock is granted and skip
@@ -93,23 +114,24 @@ export async function insertPending(input: NewChargeRequest, tx: DbTx): Promise<
  */
 export async function lockById(id: string, tx: DbTx): Promise<ChargeRequest | null> {
   const rows = await tx
-    .select({
-      id: creditChargeRequests.id,
-      kind: creditChargeRequests.kind,
-      referenceId: creditChargeRequests.referenceId,
-      actorUserId: creditChargeRequests.actorUserId,
-      projectId: creditChargeRequests.projectId,
-      amount: creditChargeRequests.amount,
-      description: creditChargeRequests.description,
-      model: creditChargeRequests.model,
-      provider: creditChargeRequests.provider,
-      tokensUsed: creditChargeRequests.tokensUsed,
-      releaseHold: creditChargeRequests.releaseHold,
-      status: creditChargeRequests.status,
-    })
+    .select(REQUEST_COLUMNS)
     .from(creditChargeRequests)
     .where(eq(creditChargeRequests.id, id))
     .for("update");
+  return rows[0] ?? null;
+}
+
+/**
+ * Read a request without locking it.
+ * @param id - The request.
+ * @returns It, or null when there is none.
+ */
+export async function findById(id: string): Promise<ChargeRequest | null> {
+  const rows = await db
+    .select(REQUEST_COLUMNS)
+    .from(creditChargeRequests)
+    .where(eq(creditChargeRequests.id, id))
+    .limit(1);
   return rows[0] ?? null;
 }
 

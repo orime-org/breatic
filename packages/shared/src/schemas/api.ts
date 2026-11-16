@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Shared API request schemas.
@@ -28,6 +28,7 @@ import { REQUEST_SHAPE_PARAMS } from "@shared/api/error-reason.js";
 import { THREE_D_GENERATION_MODES } from "@shared/types/model-catalog.js";
 import { SCENE_GENERATION_ORIGINS } from "@shared/types/scene-generation-proposal.js";
 import type { NodeMediaFields } from "@shared/canvas/node-media.js";
+import { currentModelName } from "@shared/canvas/retired-models.js";
 
 // ── Auth ─────────────────────────────────────────────────────────────
 
@@ -162,6 +163,17 @@ const studioSlug = z
   .refine((value) => !RESERVED_STUDIO_SLUGS.has(value), "slug_reserved");
 
 /**
+ * Where a new Studio goes (inner#1955): the id the page generated, reused
+ * while the form is unchanged so a retry is the same creation, and the region
+ * the user chose. Both are optional so a page loaded before regions existed
+ * still creates; the server then picks the id and the global region.
+ */
+const studioPlacement = {
+  studioId: z.uuid().optional(),
+  region: z.string().regex(/^[A-Za-z0-9-]{1,32}$/).optional(),
+};
+
+/**
  * `POST /auth/setup-studio` body — the second registration step. The
  * authenticated (but studio-less) user picks the slug for their personal
  * studio; the server validates it here and re-checks uniqueness against
@@ -169,6 +181,7 @@ const studioSlug = z
  */
 export const setupStudioSchema = z.object({
   slug: studioSlug,
+  ...studioPlacement,
 });
 export type SetupStudioInput = z.infer<typeof setupStudioSchema>;
 
@@ -181,6 +194,7 @@ export type SetupStudioInput = z.infer<typeof setupStudioSchema>;
 export const createTeamStudioSchema = z.object({
   name: z.string().trim().min(1).max(255),
   slug: studioSlug,
+  ...studioPlacement,
 });
 export type CreateTeamStudioInput = z.infer<typeof createTeamStudioSchema>;
 
@@ -420,6 +434,14 @@ export const spaceRequestAnswerSchema = z.discriminatedUnion("decision", [
 ]);
 
 export const chatMessageSchema = z.object({
+  /**
+   * The message's id, made by the page when the user pressed send and sent
+   * again unchanged on a resend (inner#1717): the queue answers a resend it
+   * has seen as a duplicate, and the user row it opens a run with, or the
+   * reply part it is taken in as, is keyed by it. Required
+   * on a new message; a card's answer carries none.
+   */
+  id: z.string().uuid().optional(),
   /** What the user wrote; empty when the request carries `answer` instead. */
   message: z.string(),
   project_id: z.string().uuid(),
@@ -475,6 +497,9 @@ export const chatMessageSchema = z.object({
   if (value.answer === undefined && value.shared_spaces === undefined && value.message.length === 0) {
     ctx.addIssue({ code: "custom", path: ["message"], message: "A message needs words." });
   }
+  if (value.answer === undefined && value.shared_spaces === undefined && value.id === undefined) {
+    ctx.addIssue({ code: "custom", path: ["id"], message: "A new message carries its id.", params: REQUEST_SHAPE_PARAMS });
+  }
   if (value.answer !== undefined && value.message.length > 0) {
     ctx.addIssue({ code: "custom", path: ["message"], message: "An answer to a questionnaire carries no message." });
   }
@@ -527,8 +552,8 @@ export const taskCreateSchema = z
   .object({
     /** `tasks.task_type` is varchar(50). */
     task_type: z.string().max(50),
-    /** `tasks.model` is varchar(100). */
-    model: z.string().max(100).optional(),
+    /** `tasks.model` is varchar(100). A retired model is asked for under its replacement (#1521). */
+    model: z.string().max(100).optional().transform((name) => (name === undefined ? name : currentModelName(name))),
     params: z.record(z.string(), z.unknown()),
     /**
      * Result nodes this task will update on completion (1..N).
@@ -1002,6 +1027,52 @@ export const chatRunningQuerySchema = z.object({
 export interface ChatRunningAnswer {
   /** Each conversation once, in no particular order. */
   conversation_ids: string[];
+}
+
+/** One message waiting in a conversation's queue, as the waiting area draws it (inner#1717). */
+export interface ChatPendingItem {
+  id: string;
+  /** When the user sent it. */
+  sentAt: string;
+  /** What they typed. */
+  words: string;
+  /** What they attached, which taking it back puts back above the box. */
+  chips: ChatAttachedChip[];
+}
+
+/** What `POST /chat/message` answers once a message or a card's answer is in (inner#1717). */
+export interface ChatSendAnswer {
+  /** `start`: it opened a run; `queued`: a run holds the conversation; `duplicate`: it was in already. */
+  status: "start" | "queued" | "duplicate";
+  /** The messages still waiting, the one a run opened with not among them. */
+  pending: ChatPendingItem[];
+  /** Whether a run holds the conversation, so there is a stream to attach to. */
+  running: boolean;
+}
+
+/** What `POST /chat/conversations/:id/sync` answers (inner#1717). */
+export interface ChatSyncAnswer {
+  pending: ChatPendingItem[];
+  running: boolean;
+  /** A card waits for the user's answer. */
+  awaiting: boolean;
+  /** Present when what waits could not open a run because the balance cannot pay for it. */
+  blocked?: "credits";
+  /** When to ask again, in milliseconds. */
+  next_sync_ms: number;
+}
+
+/** What `POST /chat/stop` answers: whether a run was there to stop (inner#1717). */
+export interface ChatStopAnswer {
+  stopped: boolean;
+}
+
+/**
+ * What taking a waiting message back answers (inner#1717): `removed` while it
+ * waited, `taken` once a run has read it, `gone` when it is nowhere.
+ */
+export interface ChatQueueRemoveAnswer {
+  status: "removed" | "taken" | "gone";
 }
 
 /**

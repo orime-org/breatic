@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Notifications point at ids, and the server resolves them to current names.
@@ -47,6 +47,7 @@ import * as studioTransferService from "@server/modules/studio/studioTransfer.se
 import * as studioService from "@server/modules/studio/studio.service.js";
 import type { NotificationListView } from "@breatic/shared";
 import type { Hono } from "hono";
+import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 try {
   initCore(process.env);
@@ -88,6 +89,7 @@ async function insertUserWithHandle(handle: string): Promise<string> {
     INSERT INTO studios (created_by_user_id, slug, type, name)
     VALUES (${userId}, ${handle}, 'personal', ${handle})
   `;
+  await mirrorAllInDirectory(sql);
   return userId;
 }
 
@@ -109,6 +111,7 @@ async function insertStudio(
   `;
   const id = rows[0]!.id;
   await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${id}, ${adminUserId}, 'admin')`;
+  await mirrorAllInDirectory(sql);
   return { id, slug };
 }
 

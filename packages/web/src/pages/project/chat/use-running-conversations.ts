@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -67,8 +67,9 @@ export function useRunningConversations(projectId: string, open: boolean): Reado
     return (): void => window.removeEventListener('focus', onFocus);
   }, [open, refetch]);
 
-  // A turn that ended here: the server released its lease before the stream
-  // closed, so asking now drops the mark without waiting for the next poll.
+  // A run this page stopped reading, because it ended or because the page let
+  // go of it: asking now drops the mark of one that ended without waiting for
+  // the next poll, and keeps the mark of one still running.
   React.useEffect(
     () =>
       useRunningTurns.subscribe((next, prev) => {

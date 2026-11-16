@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect } from 'vitest';
 
@@ -20,6 +20,7 @@ function studio(
     bio: null,
     memberCount: 1,
     myStudioRole: role,
+    region: null,
   };
 }
 

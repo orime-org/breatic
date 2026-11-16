@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * 存储配额闸门（#89，会员块五）—— real-PG 集成。
@@ -108,16 +108,20 @@ vi.mock("@server/modules/asset/assetUsage.service.js", async (io) => {
 // 它抛错时铃铛那一行会不会连累窗口被还回去。
 const studioReadCtl = { fail: false };
 
-vi.mock("@server/modules/studio/studio.repo.js", async (io) => {
-  const actual = await io<Record<string, unknown>>();
+vi.mock("@breatic/domain", async (io) => {
+  const actualDomain = await io<Record<string, unknown>>();
+  const actual = actualDomain.studioRepo as Record<string, unknown>;
   return {
-    ...actual,
-    getById: async (id: string, tx?: unknown) => {
-      if (studioReadCtl.fail) throw new Error("synthetic studio read failure");
-      return (actual.getById as (i: string, t?: unknown) => Promise<unknown>)(
-        id,
-        tx,
-      );
+    ...actualDomain,
+    studioRepo: {
+      ...actual,
+      getById: async (id: string, tx?: unknown) => {
+        if (studioReadCtl.fail) throw new Error("synthetic studio read failure");
+        return (actual.getById as (i: string, t?: unknown) => Promise<unknown>)(
+          id,
+          tx,
+        );
+      },
     },
   };
 });
@@ -170,6 +174,7 @@ import postgres from "postgres";
 import { initCore, loadLocales, getMembershipLimits } from "@breatic/core";
 import { assetRepo } from "@breatic/domain";
 import { assertStorageAllowance } from "@server/modules/asset/storageQuota.service.js";
+import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 try {
   initCore(process.env);
@@ -216,6 +221,7 @@ async function insertUser(
     INSERT INTO studio_members (studio_id, user_id, role)
     VALUES (${st!.id}, ${userId}, 'admin')
   `;
+  await mirrorAllInDirectory(sql);
   return { userId, personalStudioId: st!.id };
 }
 
@@ -234,6 +240,7 @@ async function insertTeamStudio(adminUserId: string): Promise<string> {
     INSERT INTO studio_members (studio_id, user_id, role)
     VALUES (${st!.id}, ${adminUserId}, 'admin')
   `;
+  await mirrorAllInDirectory(sql);
   return st!.id;
 }
 

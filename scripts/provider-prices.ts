@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Syncs the provider configuration with what each upstream publishes
@@ -164,9 +164,9 @@ function writeSnapshot(upstream: string, endpoint: string, snapshot: SchemaSnaps
 const upstreams = yaml<{ upstreams: Record<string, Upstream> }>("config/provider/upstreams.yaml").upstreams;
 const docs = new Map<string, Document>(MODALITIES.map((m) => [m, parseDocument(readFileSync(resolve(ROOT, `config/provider/media/${m}.yaml`), "utf8"))]));
 
-/** Every binding with where it sits in its file. */
+/** Every binding of a catalog model with where it sits in its file; a retired model's bindings only finish runs opened on it. */
 const bindings = [...docs].flatMap(([modality, doc]) =>
-  Object.entries((doc.toJS() as { models: Record<string, { upstreams: Binding[] }> }).models).flatMap(([model, { upstreams: list }]) =>
+  Object.entries((doc.toJS() as { models: Record<string, { upstreams: Binding[] }> }).models).filter(([model]) => catalogModels.has(model)).flatMap(([model, { upstreams: list }]) =>
     list.map((binding, index) => ({ modality, model, index, binding }))));
 
 /**

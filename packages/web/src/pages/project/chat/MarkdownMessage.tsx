@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Assistant prose, rendered as markdown.
@@ -24,6 +24,8 @@ import remend from 'remend';
 
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { useTranslation } from '@web/i18n/use-translation';
+import { DISPLAY_MATH_SCROLLER, KATEX_OPTIONS } from '@web/lib/katex-options';
+import { cn } from '@web/lib/utils';
 // Puts a copy handler on the document, so a copied formula reads as the
 // source the model wrote rather than as the glyphs it was drawn into.
 import '@web/pages/project/chat/copy-formula-source';
@@ -137,46 +139,6 @@ const REMARK_PLUGINS: Remark = [remarkGfm, [remarkMath, { singleDollarTextMath: 
 // they are copied.
 const REMARK_PLUGINS_WITH_BREAKS: Remark = [...REMARK_PLUGINS, remarkBreaks];
 
-/**
- * How a formula is rendered.
- *
- * Every switch is given a value, for the reason `COMPLETION` above carries.
- * `displayMode` and `throwOnError` are absent because rehype-katex owns them:
- * its own option type is `Omit<KatexOptions, 'displayMode' | 'throwOnError'>`.
- */
-const KATEX = {
-  // KaTeX's own default is a hard-coded #cc0000, which belongs to neither
-  // theme. A formula that failed to parse is shown as the LaTeX the model
-  // wrote, and there is nothing the user can do about it, so it is said
-  // quietly. The grey is what @streamdown/math ships, the package Vercel's
-  // Streamdown renders maths with:
-  // https://github.com/vercel/streamdown/tree/main/packages/streamdown-math
-  errorColor: 'var(--color-muted-foreground)',
-  // Seven commands ask this before they run: `\href`, `\url`, the four
-  // `\html*` ones and `\includegraphics`. The `\html*` four write a class, an
-  // id, a style or a data attribute of the model's choosing into our DOM, and
-  // `\includegraphics` sends the browser after a URL of its choosing.
-  trust: false,
-  // The rest are the values KaTeX runs on with nothing passed, written out
-  // because a later version could change what running on nothing means.
-  // KaTeX's options page states a default for all of them except `fleqn` and
-  // `leqno`, whose entries in its settings schema carry no `default` field;
-  // both are read as `if (settings.fleqn)`, so the value below is what an
-  // absent one already does. @streamdown/math sets only errorColor and runs
-  // on every one of these.
-  // `macros`, `minRuleThickness` and `colorIsTextColor` are absent because
-  // they are not switches: KaTeX documents no default for any of the three,
-  // and it writes into `macros` — one object shared by every render would
-  // carry a reply's `\gdef` into the next one.
-  output: 'htmlAndMathml',
-  strict: 'warn',
-  maxExpand: 1000,
-  maxSize: Infinity,
-  fleqn: false,
-  leqno: false,
-  globalGroup: false,
-} as const;
-
 // Handed no language set, `rehype-highlight` colours with lowlight's `common`
 // — thirty-seven grammars, all of which it imports at the top of its own
 // module whatever it is given. Its `detect` stays off, so a block reaches a
@@ -209,7 +171,7 @@ function ScrollableTable({ children }: { children?: ReactNode }): ReactElement {
  */
 function ScrollableMath({ children }: { children?: ReactNode }): ReactElement {
   return (
-    <ScrollArea className='my-[1em] [&_.katex-display]:my-0' scrollbars='horizontal'>
+    <ScrollArea className={cn('my-[1em]', DISPLAY_MATH_SCROLLER)} scrollbars='horizontal'>
       {children}
     </ScrollArea>
   );
@@ -351,7 +313,7 @@ export const MarkdownMessage = memo(function MarkdownMessage({
   // alone by the plugin itself.
   const rehypePlugins = useMemo<Rehype>(
     () => [
-      [rehypeKatex, KATEX],
+      [rehypeKatex, KATEX_OPTIONS],
       displayMathPlugin,
       [footnoteScopePlugin, scope],
       [citationPlugin, numbers],

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Uploading a file into an existing canvas node, the picker and Retry path
@@ -148,8 +148,16 @@ describe('uploadIntoNode', () => {
   it('reports bytes that never reached the edge to the server and keeps the file for Retry', async () => {
     h.sendFileAndFinish.mockRejectedValue(new BytesNotDelivered(new Error('offline')));
     await expect(uploadIntoNode(TARGET, FILE)).resolves.toBeUndefined();
-    expect(h.reportNodeTaskFailure).toHaveBeenCalledWith('task-1');
+    expect(h.reportNodeTaskFailure).toHaveBeenCalledWith('task-1', undefined);
     expect(getRetryUpload('p1', 's1', 'task-1')?.file).toBe(FILE);
+  });
+
+  // inner#1955: the task row lives in the region that opened the upload.
+  it('reports the failure to the region that opened the upload', async () => {
+    h.requestUploadTicket.mockResolvedValue({ ...TICKET, apiBase: 'https://sg.example.test/api/v1' });
+    h.sendFileAndFinish.mockRejectedValue(new BytesNotDelivered(new Error('offline')));
+    await expect(uploadIntoNode(TARGET, FILE)).resolves.toBeUndefined();
+    expect(h.reportNodeTaskFailure).toHaveBeenCalledWith('task-1', 'https://sg.example.test/api/v1');
   });
 
   it('toasts a finish the server recorded as failed', async () => {

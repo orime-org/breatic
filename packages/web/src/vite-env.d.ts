@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /// <reference types="vite/client" />
 
@@ -25,6 +25,8 @@ interface ImportMetaEnv {
   readonly VITE_API_BASE_URL?: string;
   /** WebSocket URL; empty means same-origin /ws. */
   readonly VITE_COLLAB_URL?: string;
+  /** Region table JSON `{ global, regions: { [code]: { api, collab } } }`; empty means one region (inner#1955). */
+  readonly VITE_REGIONS?: string;
   /** Amplitude project key; empty keeps browser analytics off (inner#1442). */
   readonly VITE_AMPLITUDE_API_KEY?: string;
   /** Google tag id (`AW-…`); empty keeps ad measurement off. */

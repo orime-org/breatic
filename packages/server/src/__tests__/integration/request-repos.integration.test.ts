@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The lifecycle rules the three deferred-decision request tables share.
@@ -62,7 +62,7 @@ initCore(process.env);
 
 import * as roleUpgradeRequestsRepo from "@server/modules/role-upgrade-request/roleUpgradeRequests.repo.js";
 import * as projectTransfersRepo from "@server/modules/project/projectTransfers.repo.js";
-import * as studioTransfersRepo from "@server/modules/studio/studioTransfers.repo.js";
+import { studioTransfersRepo as studioTransfersRepo } from "@breatic/domain";
 
 let sql: ReturnType<typeof postgres>;
 

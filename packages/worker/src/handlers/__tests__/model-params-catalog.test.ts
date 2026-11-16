@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What the shipped catalog lets through to provider for two models whose declarations decide it: the talking-head
@@ -18,6 +18,10 @@ beforeAll(() => {
 });
 
 describe("the shipped catalog", () => {
+  it("runs a task queued under a retired model on its replacement (#1521)", () => {
+    expect(entryOf("tts", "gemini-3.1-flash-text-to-speech").name).toBe("gemini-3.8-flash-text-to-speech");
+  });
+
   it("keeps the talking-head model to its two sources", () => {
     const [, cleaned] = validateModelParams("video", "omnihuman-1.5", {
       image: "https://cdn/portrait.png",

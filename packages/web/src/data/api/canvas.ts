@@ -1,9 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import type { NodeHistoryEntry } from '@breatic/shared/canvas-model';
 import type { CanvasPasteAnswer, CanvasPasteInput, NodeTaskCounts, NodeTaskEntry, TaskCreateInput } from '@breatic/shared';
 
+import { apiBaseForProject, getRegionConfig } from '@web/data/api/regions';
 import { apiDelete, apiGet, apiPost, runOnceRequest } from '@web/data/api/request';
 import { noteCreditsChanged } from '@web/data/api/credits';
 import { bodyOrTransfer } from '@web/data/upload/transfer-body';
@@ -271,9 +272,11 @@ export const canvasApi = {
     text: string;
   }): Promise<{ id: string }> {
     // A long text goes through storage when it is over the request limit (inner#1006).
+    // A transfer reference does not name the Project: the request names its region (inner#1955).
     return apiPost<{ id: string }>(
       '/canvas/node-history/snapshot',
       await bodyOrTransfer(body.project_id, body),
+      { baseURL: apiBaseForProject(body.project_id, getRegionConfig()) },
     );
   },
   /**
@@ -287,9 +290,11 @@ export const canvasApi = {
    */
   async paste(body: CanvasPasteInput): Promise<CanvasPasteAnswer> {
     // Long text history goes through storage when it is over the request limit (inner#1006).
+    // A transfer reference does not name the Project: the request names its region (inner#1955).
     return apiPost<CanvasPasteAnswer>(
       '/canvas/paste',
       await bodyOrTransfer(body.project_id, body),
+      { baseURL: apiBaseForProject(body.project_id, getRegionConfig()) },
     );
   },
 
@@ -402,15 +407,18 @@ export const canvasApi = {
    * to is read off the row by the server, since the task id in the path is
    * something the caller supplied.
    * @param taskId - The row this upload opened.
+   * @param apiBase - The API base the upload's ticket was asked of, whose
+   *   region holds the row; the page's region when absent (inner#1955).
    * @returns The node's counts after the row settled.
    * @throws {import('@web/data/api/types').ApiException} On 403, 422 for a
    *   body the endpoint does not take, or 404 when the row is gone or is not
    *   an upload.
    */
-  async reportNodeTaskFailure(taskId: string): Promise<NodeTaskCounts> {
+  async reportNodeTaskFailure(taskId: string, apiBase?: string): Promise<NodeTaskCounts> {
     const { counts } = await apiPost<{ counts: NodeTaskCounts }>(
       `/canvas/node-tasks/${taskId}/failure`,
       { reason: 'aborted' },
+      apiBase !== undefined ? { baseURL: apiBase } : undefined,
     );
     return counts;
   },

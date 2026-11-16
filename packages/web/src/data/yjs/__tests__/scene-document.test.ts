@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, describe, expect, it } from 'vitest';
 import fc from 'fast-check';
@@ -318,7 +318,7 @@ describe('scene projection and command transactions', () => {
     legacy.set('exists', flags);
     flags.push([true]);
     const before = Y.encodeStateAsUpdate(doc);
-    expect(readSceneDocument(doc)).toEqual({ status: 'unsupported', version: 1, objects: [], invalidObjects: [] });
+    expect(readSceneDocument(doc)).toEqual({ status: 'unsupported', version: 1, objects: [], invalidObjects: [], environment: { ambientColor: '#ffffff', ambientIntensity: 2.7 } });
     expect(planSceneCommand(doc, NAME, { type: 'patch', patches: [{ id: ID, name: 'Changed' }] }, true)).toEqual({ ok: false, reason: 'unsupported' });
     expect(applySceneCommand(doc, { type: 'create', objects: [{ ...ORIGINAL, id: COPY }] }, Symbol(), true, NAME)).toEqual({ ok: false, reason: 'unsupported' });
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
@@ -679,7 +679,7 @@ describe('scene collaboration invariants with real Yjs replicas', () => {
         else { history.redo(); rawHistory.redo(); }
         merge(a, b); merge(rawA, rawB);
         const expected = [ID, COPY].map((id) => ({ id, ...(rawA.getMap('objects').get(id) as Y.Map<unknown>).toJSON() }));
-        expect(readSceneDocument(a)).toEqual({ status: 'ready', version: SCENE_FORMAT_VERSION, objects: expected, invalidObjects: [] });
+        expect(readSceneDocument(a)).toEqual({ status: 'ready', version: SCENE_FORMAT_VERSION, objects: expected, invalidObjects: [], environment: { ambientColor: '#ffffff', ambientIntensity: 2.7 } });
         expect(readSceneDocument(b)).toEqual(readSceneDocument(a));
       }
       history.destroy(); rawHistory.destroy();

@@ -1,9 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import type { Node as PMNode } from '@tiptap/pm/model';
 
 import { BODY_HEADING_LEVELS } from '@breatic/shared/document-model';
+import { bodiesOf, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-geometry';
 import { computeNumbering } from '@web/spaces/document/document-numbering';
 import { quoteRuns } from '@web/spaces/document/document-quote-runs';
 
@@ -30,14 +31,21 @@ interface Building {
 }
 
 /**
- * The body's headings in reading order. Only `blockContainer`s are walked into,
- * so a layout table's cells are passed over; a stored table's cells hold words
- * only, so they hold no heading to find.
- * @param group - A `blockGroup` to walk.
+ * The body's headings in reading order. `blockContainer`s and column groups are
+ * walked into, a group column by column (inner#1314), so a layout table's cells
+ * are passed over; a stored table's cells hold words only, so they hold no
+ * heading to find.
+ * @param group - A `blockGroup` or a column to walk.
  * @param found - Where headings are collected, in order.
  */
 function collect(group: PMNode, found: PMNode[]): void {
   group.forEach((container) => {
+    // A column holds body blocks, read column by column (inner#1314); a
+    // table's cells are passed over (inner#1149).
+    if (container.type.name === DOC_COLUMN_LIST) {
+      bodiesOf(container).forEach((column) => collect(column, found));
+      return;
+    }
     if (container.type.name !== 'blockContainer') return;
     const content = container.firstChild;
     if (content?.type.name === 'heading') found.push(container);

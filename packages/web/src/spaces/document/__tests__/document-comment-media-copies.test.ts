@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Copies of a commented picture, and the picture moved (inner#1316 §5.2).
@@ -27,10 +27,8 @@ import { moveRowTo } from '@web/spaces/document/document-drag-move';
 import { duplicateRow } from '@web/spaces/document/document-handle-commands';
 import { rowById } from '@web/spaces/document/document-row-by-id';
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
-import { OURS, settled } from '@web/spaces/document/__tests__/paste-harness';
+import { OURS, settled, type Editor } from '@web/spaces/document/__tests__/paste-harness';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
-
-type Editor = ReturnType<typeof buildDocumentEditor>;
 
 const mounted: Editor[] = [];
 

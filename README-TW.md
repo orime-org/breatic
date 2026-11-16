@@ -1,7 +1,7 @@
 <h1 align="center">Breatic</h1>
 
 <p align="center"><strong>為創意團隊打造的即時協作 AI 創作空間。</strong></p>
-<p align="center">線上服務已開放 · 原始碼公開 · 桌面瀏覽器</p>
+<p align="center">線上服務已開放 · 開源 · 桌面瀏覽器</p>
 
 <p align="center">
   <a href="https://breatic.ai/?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=repository_listing_202610&amp;utm_content=readme_website_zh_tw">官網</a> ·
@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/orime-org/breatic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/orime-org/breatic?style=flat&amp;color=blueviolet&amp;label=release&amp;display_name=tag"></a>
-  <a href="LICENSE"><img alt="License: Elastic-2.0" src="https://img.shields.io/badge/license-Elastic--2.0-blue?style=flat"></a>
+  <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat"></a>
   <a href="https://discord.gg/Yeu6A4aejN"><img alt="Discord community" src="https://img.shields.io/badge/discord-join%20community-5865F2?style=flat&amp;logo=discord&amp;logoColor=white"></a>
   <a href="#get-started"><img alt="Quickstart guide" src="https://img.shields.io/badge/quickstart-guide-green?style=flat"></a>
 </p>
@@ -39,11 +39,11 @@
 | **Document Spaces** | 使用標題、清單與格式化文字撰寫劇本、鏡頭描述及製作清單。 |
 | **Canvas Spaces** | 在無限畫布排列參考資料與媒體，透過提示詞、模型與參考輸入生成及調整素材。 |
 | **3D（DEV）** | 在共享場景中配置內建物件，調整位置、旋轉與縮放。 |
-| **Timeline（DEV）** | 將 Project 影片或本機上傳影片加入共享視訊軌，調整起始影格並預覽編排。 |
+| **Timeline（DEV）** | 將 Project 影片或本機上傳影片編排在共享軌道上：移動、修剪、分割、複製和刪除片段，復原自己的編輯並預覽編排。描述一段網頁動畫，交給 DeepSeek 製作，在執行清單查看進度，再把結果作為片段加入軌道，按 Timeline 時鐘播放。各軌的影片和網頁動畫依圖層疊放、一起播放；在預覽中選取圖層即可移動、縮放、拉伸或旋轉，也可以輸入位置和大小。在播放列右端從 16:9、9:16、1:1、4:3、4:5、2:3、21:9 七種比例中選擇畫面比例，圖層在畫面中的相對位置保持不變。 |
 | **專案中的 AI Agent** | 討論想法、提供文件或畫布脈絡，結合現有素材檢視提案。 |
 | **即時協作** | 邀請協作者、設定存取權限，共同編輯同步的畫布、文件、3D 場景與 Timeline。 |
 
-支援圖片、影片、音訊及 3D 素材；生成能力取決於已設定的供應商及模型存取權限。Canvas 與 Document 已可使用；3D 與 Timeline 標示為 **DEV**。Timeline 目前支援單一視訊軌的影片編排與預覽，多軌編輯、更多媒體類型、Web Animation 與影片匯出列為後續計畫。3D 場景中的模型生成與註解仍在開發中。
+支援圖片、影片、音訊及 3D 素材；生成能力取決於已設定的供應商及模型存取權限。Canvas 與 Document 已可使用；3D 與 Timeline 標示為 **DEV**。Timeline 目前支援多條視訊軌上的影片和網頁動畫編輯與預覽，網頁動畫只在開啟該功能的部署中可用；更多媒體類型與影片匯出列為後續計畫。3D 場景中的模型生成與註解仍在開發中。
 
 ## 一起檢視與修改
 
@@ -96,7 +96,7 @@ Web、API、背景工作及協作服務使用已發布的 Docker 映像，搭配
 
 ## 授權條款與允許用途
 
-Breatic 原始碼公開，採用 [Elastic License 2.0](LICENSE)（Elastic-2.0）。你可以閱讀、修改、再散布，並自行使用或在所屬組織內部署，包括商業工作；不得將 Breatic 作為託管或代管服務提供給第三方。完整條件以授權條款為準。
+Breatic 是開源專案，採用 [GNU Affero General Public License v3.0](LICENSE)（AGPL-3.0-only）。你可以出於任何目的使用、研究、修改並自行部署 Breatic，包括商業用途；如果你修改了 Breatic，並讓其他人透過網路使用修改後的版本，就必須依同一授權條款向他們提供完整原始碼。完整條件以授權條款為準。
 
 Breatic 名稱與標誌是 Orime, Inc. 的商標，不包含在軟體授權中；使用規則見 [TRADEMARKS.md](TRADEMARKS.md)。授權條款不限制你使用 Breatic 創作的內容。
 

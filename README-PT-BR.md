@@ -1,7 +1,7 @@
 <h1 align="center">Breatic</h1>
 
 <p align="center"><strong>O espaço de trabalho colaborativo com IA, em tempo real, para equipes criativas.</strong></p>
-<p align="center">Disponível on-line · Código disponível · Navegador de desktop</p>
+<p align="center">Disponível on-line · Código aberto · Navegador de desktop</p>
 
 <p align="center">
   <a href="https://breatic.ai/?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=repository_listing_202610&amp;utm_content=readme_website_pt_br">Site</a> ·
@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/orime-org/breatic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/orime-org/breatic?style=flat&amp;color=blueviolet&amp;label=release&amp;display_name=tag"></a>
-  <a href="LICENSE"><img alt="License: Elastic-2.0" src="https://img.shields.io/badge/license-Elastic--2.0-blue?style=flat"></a>
+  <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat"></a>
   <a href="https://discord.gg/Yeu6A4aejN"><img alt="Discord community" src="https://img.shields.io/badge/discord-join%20community-5865F2?style=flat&amp;logo=discord&amp;logoColor=white"></a>
   <a href="#get-started"><img alt="Quickstart guide" src="https://img.shields.io/badge/quickstart-guide-green?style=flat"></a>
 </p>
@@ -39,11 +39,11 @@ O serviço hospedado oferece o plano Starter gratuito. Os créditos de geração
 | **Document Spaces** | Escreva roteiros, descrições de tomadas e listas de produção com texto formatado. |
 | **Canvas Spaces** | Organize referências e mídia em um canvas infinito; gere e refine recursos com prompts, modelos e referências. |
 | **3D (DEV)** | Posicione objetos integrados em uma cena compartilhada e edite posição, rotação e escala. |
-| **Timeline (DEV)** | Adicione vídeos do Project ou envie vídeos locais para uma faixa visual compartilhada, ajuste o quadro inicial e visualize a sequência. |
+| **Timeline (DEV)** | Organize vídeos do Project ou vídeos locais enviados em faixas compartilhadas: mova, recorte, divida, duplique e exclua clipes, desfaça suas próprias edições e visualize a sequência. Descreva uma Web Animation, peça ao DeepSeek para criá-la, acompanhe-a na lista de execuções e adicione o resultado como clipes que tocam no relógio da Timeline. Vídeos e Web Animations de todas as faixas tocam juntos como camadas sobrepostas; selecione uma camada na prévia para movê-la, redimensioná-la, esticá-la ou girá-la, ou digite sua posição e tamanho. Escolha a proporção do quadro entre sete opções (16:9, 9:16, 1:1, 4:3, 4:5, 2:3, 21:9) no fim da barra de reprodução; as camadas mantêm seu lugar no quadro. |
 | **Agente de IA no projeto** | Discuta ideias, forneça contexto de documentos ou do canvas e avalie propostas junto aos seus materiais. |
 | **Colaboração em tempo real** | Convide colaboradores, defina permissões e trabalhe em canvases, documentos, cenas 3D e Timelines sincronizados. |
 
-Os recursos podem ser imagens, vídeos, áudio e arquivos 3D. A geração depende dos provedores configurados e do acesso aos modelos. Canvas e Document estão disponíveis; 3D e Timeline têm a indicação **DEV**. A Timeline atual permite organizar e visualizar vídeos em uma única faixa visual. Edição multifaixa, outros tipos de mídia, Web Animation e exportação de vídeo estão planejados. A geração por modelos e as anotações dentro da cena 3D estão em desenvolvimento.
+Os recursos podem ser imagens, vídeos, áudio e arquivos 3D. A geração depende dos provedores configurados e do acesso aos modelos. Canvas e Document estão disponíveis; 3D e Timeline têm a indicação **DEV**. A Timeline atual permite editar e visualizar vídeos e Web Animations em várias faixas visuais; Web Animation só está disponível nas implantações que a ativam. Outros tipos de mídia e a exportação de vídeo estão planejados. A geração por modelos e as anotações dentro da cena 3D estão em desenvolvimento.
 
 ## Avaliem as alterações juntos
 
@@ -96,7 +96,7 @@ Para vulnerabilidades, use o canal privado de [SECURITY.md](SECURITY.md). O proj
 
 ## Licença e usos permitidos
 
-O código-fonte do Breatic está disponível sob a [Elastic License 2.0](LICENSE) (Elastic-2.0). Você pode ler, modificar, redistribuir e executar o Breatic para si ou dentro da sua organização, inclusive em trabalhos comerciais. Não pode oferecer o Breatic a terceiros como serviço hospedado ou gerenciado. Consulte os termos completos na licença.
+O Breatic é de código aberto sob a [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0-only). Você pode usar, estudar, modificar e hospedar o Breatic por conta própria para qualquer finalidade, inclusive comercial. Se modificar o Breatic e permitir que outras pessoas usem a versão modificada por uma rede, você deve oferecer a elas o código-fonte completo sob a mesma licença. Consulte os termos completos na licença.
 
 O nome e o logotipo são marcas da Orime, Inc. e não estão cobertos pela licença; veja [TRADEMARKS.md](TRADEMARKS.md). A licença não restringe o conteúdo que você cria com o Breatic.
 

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * `POST /assets/ingest-url` — an address fetched into storage with no node
@@ -37,6 +37,7 @@ import {
 } from "@breatic/core";
 import { getRateLimit } from "@server/config/rate-limits.js";
 import type { Hono } from "hono";
+import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 try {
   initCore(process.env);
@@ -103,6 +104,7 @@ async function seedEditor(): Promise<{
   `;
   const token = crypto.randomBytes(24).toString("hex");
   await setSession(getRedis(), token, userId);
+  await mirrorAllInDirectory(sql);
   return { userId, studioId, projectId, cookie: `${sessionCookieName()}=${token}` };
 }
 

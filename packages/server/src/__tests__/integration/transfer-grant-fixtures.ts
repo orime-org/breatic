@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Seeding and reading helpers for the transfer ticket, finish and grant-state
@@ -17,6 +17,7 @@ import type postgres from "postgres";
 import { getRedis, setSession, sessionCookieName, storageKey } from "@breatic/core";
 import { uploadGrantRepo, type UploadFinishJob } from "@breatic/domain";
 import { INGEST_FAILURE_HEADER } from "@breatic/shared";
+import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 export type Sql = ReturnType<typeof postgres>;
 
@@ -81,6 +82,7 @@ export async function seedOwner(sql: Sql): Promise<SeededOwner> {
     INSERT INTO project_members (project_id, user_id, role, added_by)
     VALUES (${projectId}, ${user.userId}, 'owner', null)
   `;
+  await mirrorAllInDirectory(sql);
   return { ...user, studioId, projectId };
 }
 

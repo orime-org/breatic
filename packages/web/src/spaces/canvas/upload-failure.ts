@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What the browser does with an upload that ended badly (#186 §3.7.3).
@@ -35,6 +35,8 @@ export type UploadFailurePlan =
       readonly kind: 'reportToServer';
       /** The row to report against, and to keep the File under for its Retry. */
       readonly taskId: string;
+      /** The API base of the region that holds the row, when the ticket named one. */
+      readonly apiBase?: string;
     }
   | {
       readonly kind: 'toastOnly';
@@ -151,7 +153,11 @@ export function resolveUploadFailure(
     // nothing to report against, which reads the same as any failure before
     // the ticket.
     return outcome.taskId !== undefined
-      ? { kind: 'reportToServer', taskId: outcome.taskId }
+      ? {
+        kind: 'reportToServer',
+        taskId: outcome.taskId,
+        ...(outcome.apiBase !== undefined && { apiBase: outcome.apiBase }),
+      }
       : {
         kind: 'toastOnly',
         toastKey: uploadFailureMessageKey(outcome.reason),

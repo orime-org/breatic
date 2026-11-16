@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * 订阅的四条用户动作（#106 §7、§6.5.3）。
@@ -86,11 +86,13 @@ const { firstPeriodDiscount, ensureFirstPeriodCoupon } = vi.hoisted(() => ({
 vi.mock("@server/modules/referral/referral.service.js", () => ({ firstPeriodDiscount }));
 vi.mock("@server/modules/referral/referral-coupon.js", () => ({ ensureFirstPeriodCoupon }));
 
-vi.mock("@server/modules/auth/user.repo.js", () => ({
-  getUserById: vi.fn(),
-  getStripeCustomerId: vi.fn(),
-  setStripeCustomerId: vi.fn(),
-  findUserIdByStripeCustomerId: vi.fn(),
+vi.mock("@breatic/domain", () => ({
+  usersRepo: {
+    getUserById: vi.fn(),
+    getStripeCustomerId: vi.fn(),
+    setStripeCustomerId: vi.fn(),
+    findUserIdByStripeCustomerId: vi.fn(),
+  },
 }));
 
 import {
@@ -101,7 +103,7 @@ import {
   logger,
   trackServerEvent,
 } from "@breatic/core";
-import * as userRepo from "@server/modules/auth/user.repo.js";
+import { usersRepo as userRepo } from "@breatic/domain";
 import * as service from "@server/modules/subscription/subscription.service.js";
 
 const USER = "u-1";

@@ -16,6 +16,15 @@ The backend shared kernel. These rules apply when you change anything under `pac
 
 **There are two databases: the product database (`db/schema.ts`, `db/migrations/`, clients `db` / `rawPg`) and the Yjs database (`db/yjs-schema.ts`, `db/migrations-yjs/` with its own journal, clients `yjsDb` / `yjsRawPg`, URL `YJS_DATABASE_URL`).** Every migration belongs to exactly one of them, so name which one, and pass `--yjs` to `pnpm db:journal-add` for the Yjs database.
 
+### Global rows go through the global API
+
+**Every table is placed in `TABLE_PLACEMENT` (`src/db/table-placement.ts`) as `global`, `regional` or `both`, and code that can run outside the global region reaches global rows only through `globalApi`, never through SQL.** Outside the global region the services' role has no rights on global tables, so a direct query passes every single-region test and fails only in a second region; `table-placement.test.ts` fails on a table nobody placed. How regions fit together: [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md#regions-and-the-global-region).
+Check: can this code run in a Studio's region while it reads accounts, credits or the directory? Yes → the global API.
+
+### A migration changes data on one side
+
+**A migration fills global tables only from global tables and regional tables only from regional tables; a backfill that crosses the two is a one-off task driven through the global API.** Every region runs the same migrations and the global tables are empty outside the global region, so a crossing `INSERT ... SELECT` silently writes nothing there.
+
 ### Migrations are hand-written
 
 **Since `0018` every migration is a hand-written `NNNN_name.sql`; never run `drizzle-kit generate`.** drizzle-kit's snapshot is frozen at `0017`, so generating diffs `schema.ts` against it and emits every later change again as new.
@@ -79,7 +88,7 @@ Check: can this state change? Then it cannot come from an immutable field.
 
 ### Redis databases and keys
 
-**Redis is split by database: DB0 sessions, locks and rate limits (`getRedis`); DB1 BullMQ (`getQueueRedis`); DB2 cross-service streams (`getStreamRedis`); DB3 collab instance coordination (`getCollabRedis`).** Keys start with `{env}:` and then their kind (`{env}:session:{token}`, `{env}:stream:task-events`), every key has a TTL, and streams are trimmed to `STREAM_MAXLEN` in `infra/event-stream.ts`.
+**Redis is split by database: DB0 sessions, locks and rate limits (`getRedis`); DB1 BullMQ (`getQueueRedis`); DB2 cross-service streams (`getStreamRedis`); DB3 collab instance coordination (`getCollabRedis`).** Keys start with `{env}:` and then their kind (`{env}:session:{token}`, `{env}:stream:task-events`), every key has a TTL except the Agent chat queue's `queue`, `taken` and `awaiting` (`packages/server/src/modules/chat-queue/chat-queue.service.ts`), which hold what the user sent and the card waiting for their answer until they are answered, withdrawn, refused or the conversation is deleted, and streams are trimmed to `STREAM_MAXLEN` in `infra/event-stream.ts`.
 
 **Pub/sub channels and the session cookie are separated between deployments on one host only by `REDIS_KEY_PREFIX`.** `SUBSCRIBE` ignores the DB number and a browser shares cookies across ports of one host; the cookie name is built only by `sessionCookieName()` in `infra/session-store.ts`.
 

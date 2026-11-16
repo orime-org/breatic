@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * inner#1619 design 5.3: with the pointer on a block in a cell the side menu
@@ -15,6 +15,7 @@ import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
+import { columnsBlock, para } from '@web/spaces/document/__tests__/column-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -177,5 +178,68 @@ describe('the side menu in a cell', () => {
     const { editor, tableId } = open();
 
     expect(hover(editor, 50, 120, tableId)).toBe(tableId);
+  });
+});
+
+/**
+ * A mounted editor holding a group whose second column holds a table: the
+ * first column from 0 to 300, the second from 372, its table's first cell
+ * at 372, 100 (inner#1314 design §5.1).
+ * @returns The editor, and the ids of the first column's block, the table and the first cell's block.
+ */
+function openInColumns(): { editor: Editor; alphaId: string; tableId: string; cellBlockId: string; row: Element } {
+  const editor = buildDocumentEditor({ fragment: documentBodyFragment(new Y.Doc()) });
+  const host = document.createElement('div');
+  document.body.appendChild(host);
+  act(() => {
+    editor.mount(host);
+    mounted.push(editor);
+    editor.replaceBlocks(editor.document, [
+      columnsBlock({ blocks: [para('alpha')] }, { blocks: [tableBlock({ rows: [{ cells: ['a1', 'b1'] }] })] }),
+    ] as never);
+  });
+  const group = editor.document[0] as unknown as { children: { children: { id: string; children: { children: { children: { id: string }[] }[] }[] }[] }[] };
+  const alphaId = group.children[0]!.children[0]!.id;
+  const table = group.children[1]!.children[0]!;
+  const cellBlockId = table.children[0]!.children[0]!.children[0]!.id;
+  const dom = editor.prosemirrorView.dom;
+  const [first, second] = [...dom.querySelectorAll<HTMLElement>('.doc-column')];
+  first!.getBoundingClientRect = () => new DOMRect(0, 100, 300, 40);
+  second!.getBoundingClientRect = () => new DOMRect(372, 100, 300, 40);
+  dom.querySelector<HTMLElement>('.doc-column [data-node-type="docTable"]')!.getBoundingClientRect = () => new DOMRect(372, 100, 240, 40);
+  dom.querySelector<HTMLElement>('.doc-column [data-node-type="blockContainer"]')!.getBoundingClientRect = () => new DOMRect(0, 100, 300, 20);
+  dom.querySelector<HTMLElement>('td')!.getBoundingClientRect = () => new DOMRect(372, 100, 120, 40);
+  dom.querySelector<HTMLElement>('tbody')!.getBoundingClientRect = () => new DOMRect(372, 100, 240, 40);
+  return { editor, alphaId, tableId: table.id, cellBlockId, row: dom.querySelector('.doc-columns-row')! };
+}
+
+describe('the side menu at a table in a column (inner#1314 design §5.1)', () => {
+  it('stands for the table in the gap\'s left half, where its own strip stands', () => {
+    const { editor, alphaId, tableId } = openInColumns();
+
+    expect(hover(editor, 320, 120, alphaId)).toBe(tableId);
+  });
+
+  it('stands for the first cell\'s block in the gap\'s right half, as in the body\'s gutter', () => {
+    const { editor, alphaId, cellBlockId } = openInColumns();
+
+    expect(hover(editor, 350, 120, alphaId)).toBe(cellBlockId);
+  });
+
+  it('stands for the block in the cell the pointer is in', () => {
+    const { editor, alphaId, cellBlockId } = openInColumns();
+
+    expect(hover(editor, 400, 120, alphaId)).toBe(cellBlockId);
+  });
+
+  it('shows the menu for the table in the gap\'s left half, where the library finds no block', () => {
+    const { editor, tableId, row } = openInColumns();
+    const sideMenu = editor.getExtension(SideMenuExtension)!;
+    row.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, clientX: 320, clientY: 120 }));
+
+    sideMenu.store.setState({ show: false, referencePos: new DOMRect(), block: editor.getBlock(tableId) as never });
+
+    expect(sideMenu.store.state?.show).toBe(true);
+    expect(sideMenu.store.state?.block.id).toBe(tableId);
   });
 });

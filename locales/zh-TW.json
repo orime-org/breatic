@@ -49,7 +49,8 @@
       "signup_code_exhausted": "這個驗證碼已失效，請重新取得。",
       "signup_expired": "本次註冊已過期。",
       "signup_resend_cooldown": "請 {seconds, plural, other {# 秒}}後再取得驗證碼。",
-      "signup_code_send_failed": "驗證碼傳送失敗，請重試。"
+      "signup_code_send_failed": "驗證碼傳送失敗，請重試。",
+      "invitation_region_unavailable": "暫時無法開啟這則邀請，請稍後再試。"
     },
     "studio": {
       "slug_taken": "該 Slug 已被使用，請換一個。",
@@ -65,6 +66,10 @@
       "leave_last_admin": "離開這個 Studio 前請先轉讓 Admin。",
       "transfer_credits_designated": "還有點數包指定給這個 Studio。請先在頭像選單 →「點數」→「指定」裡取消指定，再發起轉讓。",
       "designation_during_transfer": "這個 Studio 有待接受的轉讓，撤回或轉讓結束後才能再為它指定點數包。",
+      "transfer_processing": "Studio 轉讓正在處理，請稍後再試。",
+      "region_unavailable": "所選區域暫時無法建立 Studio，請稍後再試，或改選其他區域。",
+      "creation_in_progress": "上一次建立還在處理，請稍後再試。",
+      "creation_abandoned": "這個 Studio 沒有建立成功，請重試。",
       "email_not_registered_no_mail": "此信箱尚未註冊。這個部署未啟用電子郵件，無法邀請尚未註冊的信箱。",
       "invite_mail_failed": "郵件未能寄出，請重試。"
     },
@@ -182,7 +187,10 @@
       "ask_not_found": "這段對話裡沒有這張問題卡片。",
       "ask_already_answered": "這張問題卡片已經回答過了。",
       "model_unavailable": "所選模型已無法使用。",
-      "answer_mismatch": "這些答案和卡片上的問題對不上。"
+      "answer_mismatch": "這些答案和卡片上的問題對不上。",
+      "queue_full": "等待中的訊息太多了。等 Agent 讀完，或撤回一則。",
+      "turn_busy": "Agent 還在處理這個對話，等它完成後再試。",
+      "shutting_down": "伺服器正在重新啟動，請稍後再試。"
     },
     "mail": {
       "studio_invite": {
@@ -340,7 +348,22 @@
     },
     "model": {
       "not_configured": "這個部署還沒設定好 {model}：需要設定 {envVars}。",
-      "upstream_not_bound": "{model} 不透過 {upstream} 提供。"
+      "upstream_not_bound": "{model} 不透過 {upstream} 提供。",
+      "input_limit": {
+        "characters_max": "{model} 的{field}最多 {max, number} 個字元。",
+        "characters_min": "{model} 的{field}至少要 {min, number} 個字元。",
+        "line_characters_max": "{model} 的{field}每行最多 {max, number} 個字元。",
+        "item_characters_max": "{model} 的{field}每條最多 {max, number} 個字元。",
+        "lines_max": "{model} 的{field}最多 {max, number} 行。",
+        "chinese_characters_max": "{model} 的{field}最多 {max, number} 個漢字。",
+        "unsupported": "{model} 無法使用目前的設定，請修改設定或換個模型。"
+      },
+      "input_field": {
+        "prompt": "文字",
+        "negative_prompt": "反向提示詞",
+        "lyrics": "歌詞",
+        "multi_prompt": "分鏡提示詞"
+      }
     },
     "document": {
       "versions_full": "{limit, plural, other {這個 Document 的快照已滿 # 張。刪掉舊的快照後再儲存。}}"
@@ -351,6 +374,9 @@
       "capture_too_large": "截圖太大，無法傳送。",
       "capture_answered": "這次截圖請求已經有了回覆。",
       "oauth_request_expired": "這次授權請求已失效，請回到你的 Agent 重新發起連線。"
+    },
+    "region": {
+      "unavailable": "這個 Studio 暫時無法存取，請稍後再試。"
     }
   },
   "chat": {
@@ -364,6 +390,8 @@
       "placeholder": "問點什麼，或者把 Canvas 上的東西交給我…",
       "inputAria": "Chat 輸入",
       "send": "傳送",
+      "sendWhileRunning": "傳送 · Agent 會在下一步讀到",
+      "stop": "停止",
       "sending": "傳送中",
       "atLimit": "已達 {limit, number} 字上限",
       "attach": "新增檔案",
@@ -630,6 +658,14 @@
       "cleared": "已清空 Project 指令",
       "readFailed": "Project 指令讀取失敗",
       "saveFailed": "Project 指令儲存失敗"
+    },
+    "waiting": {
+      "title": "等待 Agent 讀取（{count}）",
+      "awaitingCard": "回答上方的卡片後繼續，或直接傳送訊息。",
+      "blocked": "點數不足，請先儲值。",
+      "retract": "撤回到輸入框",
+      "delete": "刪除",
+      "listAria": "等待 Agent 讀取的訊息"
     }
   },
   "canvas": {
@@ -735,6 +771,7 @@
       "mentionEmpty": "沒有可引用的內容",
       "voicePlaceholder": "未選音色",
       "voiceSearchPlaceholder": "搜尋音色…",
+      "voiceSampleLanguage": "試聽",
       "voiceLoading": "正在載入音色…",
       "voiceEmpty": "沒有匹配的音色",
       "voiceError": "音色暫不可用",
@@ -1145,7 +1182,9 @@
         "media_refused": "模型不接受這個檔案。",
         "tool_failed": "工具沒能處理這個檔案。",
         "no_audio_track": "{kind, select, audio {這段音訊讀不出聲音。} other {這個影片沒有音軌。}}",
-        "cut_short": "內容太長，沒能轉寫完。"
+        "cut_short": "內容太長，沒能轉寫完。",
+        "input_refused": "{model} 無法使用目前的設定，請修改設定或換個模型。",
+        "model_not_configured": "這個部署還沒設定好 {model}：需要設定 {envVars}。"
       },
       "kind": {
         "upload": "上傳",
@@ -1507,6 +1546,8 @@
         "comics-storyboards": "漫畫與分鏡",
         "food": "美食",
         "social-hooks": "社群鉤子",
+        "posters": "海報與平面",
+        "speed": "運動與速度",
         "sound": "配樂、音效與配音"
       },
       "storyboard-grid-25": {
@@ -1801,6 +1842,60 @@
       },
       "applyFailed": "模板套用失敗。",
       "groupLocked": "群組已鎖定，解鎖後才能放入新節點。",
+      "name-as-world-typography": {
+        "name": "名字微縮世界",
+        "description": "把一個名字搭成微縮世界，字形由它最有名的事物改變",
+        "prompt": "一張文字插畫。名字{✏️ 名字，例如 台北}搭成一座微縮世界：每個字母，或中文、日文、韓文名字裡的每個字，都是一座立在淺色素淨地面上的微縮建築模型，整個名字清楚可讀，每個字的寫法和字形都完全正確。這個名字最有名的事物改變字形：{✏️ 它以什麼出名、怎樣改變某個字，例如 101 大樓成了「北」字的一豎，夜市燈籠掛在「台」字上}。模型比例的小人、車和樹。6 到 14 條簡短的手寫技術標註，用細線指向細節，每條幾個詞，用這段提示詞的語言寫。點綴色：{✏️ 一種點綴色，例如 磚紅}，其他都用柔和的中性色。柔和的日光從左上方照下，陰影很淡。不出現其他文字。"
+      },
+      "destination-festival-poster": {
+        "name": "節日旅行海報",
+        "description": "一張某地在節日或季節裡的手繪旅行海報",
+        "prompt": "一張手繪旅行海報，畫的是{✏️ 地點，例如 京都}的{✏️ 節日或季節，例如 秋季紅葉季}。絹印和 risograph 的質感：4 到 6 種平塗油墨色，套色略有錯位，看得見顆粒和網點。這個地方的地標建築或景色佔滿海報，中景裡有人在過節。畫面裡唯一的文字是標題{✏️ 標題，例如 京都·紅葉}，大號手寫字放在頂部，寫法跟給的完全一致。不出現其他文字、標誌或小字。"
+      },
+      "photo-paper-diorama": {
+        "name": "照片紙藝拼貼",
+        "description": "照片下半撕成手工紙藝，配兩行手寫字",
+        "prompt": "[📎 照片] 的上半部分保持原樣。下半部分變成撕開的手工紙，邊緣是粗糙的纖維，像拼貼一樣層層疊起，照片裡的{✏️ 哪個元素，例如 那隻狗}從紙裡立起來，變成用彩色紙剪摺成的紙藝浮雕，投下細小真實的影子。紙上用墨水手寫兩行短句：{✏️ 兩行字，例如 週日的散步 / 有青草的味道}，寫法跟給的完全一致。柔和的日光。不出現其他文字。",
+        "input": {
+          "photo": {
+            "name": "照片",
+            "note": "先放入這張照片，再生成"
+          }
+        }
+      },
+      "vehicle-speed-cutlist": {
+        "name": "車輛高速快切",
+        "description": "汽車或機車高速飛馳，每秒換一個機位",
+        "prompt": "一段 12 秒的 16:9 車輛高速短片，剛好 12 切，每秒一切。車是 [📎 車輛]：每一切裡車型、顏色、輪框、車身姿態和車牌都跟照片一樣，照片裡的其他東西都不要；車輪轉動、懸吊壓縮都跟真車一樣。{✏️ 誰在開，例如一位全程戴黑色全罩安全帽的騎士}。路：{✏️ 路和天氣，例如黎明時濕漉漉的山路，兩邊是護欄和松樹}。九成畫面是純機位運動，一成是風景。第一格已經在全速行駛。0–1 秒：貼地機位，前輪占滿畫面，路面從下方飛過。1–2 秒：側面跟拍，與車齊平，路邊的東西飛速掠過。2–3 秒：前方低機位，車正對鏡頭衝過來。3–4 秒：後輪和懸吊隨路面起伏的特寫。4–5 秒：空拍機從上方順著路跟拍。5–6 秒：排氣管特寫，後面熱浪扭動；電動車拍後輪框特寫。6–7 秒：機位在車後，路一直往前收窄。7–8 秒：貼著輪胎高度的低機位側拍，路面飛速掠過。8–9 秒：駕駛者的過肩鏡頭。9–10 秒：全景，車在周圍景物裡拉成一道線。10–11 秒：貼地機位看車駛過，路面從鏡頭前糊過。11–12 秒：車衝出畫面，鏡頭停在空蕩的路上。只有一個光源：{✏️ 光，例如路盡頭低垂的太陽}。聲音：引擎隨換檔一檔檔拉高（電動車是馬達聲越轉越尖），胎噪和風聲，最後一秒車駛過後靜一拍。特寫只給輪胎、懸吊和排氣或輪框，不拍車標和儀表。車牌上不編造字母和數字，零件不重複，車輪不變形，車不浮在路面上。畫面裡不出現文字。",
+        "input": {
+          "vehicle": {
+            "name": "車輛",
+            "note": "先放入一張整台汽車或機車的清楚照片，再生成"
+          }
+        }
+      },
+      "sports-live-coverage": {
+        "name": "體育直播轉播",
+        "description": "像電視直播一樣拍闖關，帶觀眾和解說",
+        "prompt": "一段 12 秒的 16:9 體育直播畫面。選手是 [📎 選手]：臉、髮型、身材和服裝都跟照片一樣，照片裡的其他東西都不要。賽道：{✏️ 賽道和障礙的順序，例如水池上的闖關賽道：平衡木、擺錘沙包、泡棉牆}；選手從左往右過賽道。每個機位只做一件事，在動作節點上切。0–3 秒：搖臂全景，交代整條賽道、前進方向和第一個障礙，選手已經在路上。3–6 秒：長焦從側面跟拍，選手來到{✏️ 撞上的障礙，例如擺過來的沙包}。6–9 秒：低機位拍接觸：選手和障礙碰上，力順著障礙運動的方向把人推開，或把人彈回，身體順著受力彎開，然後{✏️ 結果，例如掉進水裡，水花四濺}；接觸之前什麼都不先反應。9–12 秒：終點機位拍結局：{✏️ 怎麼結束，例如渾身濕透地爬上岸，向觀眾揮手}；接觸留在人身上的樣子（濕衣服、泥、疲憊）之後一直保持。只有一個光源：場地本身的光，從上方來（泛光燈，戶外就是太陽）。聲音：選手的腳、車輪或雪板在賽道上的聲音，以及賽道上被撞到或在動的東西發出的聲音，每次接觸之後觀眾和激動的解說才跟著反應，接觸前一刻靜一下。沒有螢幕圖形，畫面裡不出現文字。",
+        "input": {
+          "athlete": {
+            "name": "選手",
+            "note": "先放入一張清楚的選手全身照，再生成"
+          }
+        }
+      },
+      "extreme-sports-run": {
+        "name": "極限運動一鏡到底",
+        "description": "從助跑到落地的一個動作，一鏡拍完",
+        "prompt": "一段 10 秒的直式動作影片，一鏡到底。人物是 [📎 人物]：臉、身材和服裝都跟照片一樣，照片裡的其他東西都不要；人、裝備、地點和光從頭到尾不變。運動和地點：{✏️ 例如陽光下的雪山坡，單板滑雪衝上跳台}。攝影師跟著人移動：不切鏡，不跳到別的角度。0–3 秒助跑：已經在高速衝向起跳點，{✏️ 例如板刃切進雪裡，每次轉彎揚起雪霧}。3–5 秒起跳：膝蓋先壓下，再在起跳點蹬起離地。5–7 秒空中：{✏️ 動作，例如抓一次板}，身體自然連貫地完成動作，有轉體也不限定圈數。7–10 秒落地：著地時膝蓋和髖部深深折下去吃住重量，{✏️ 例如雪從板邊炸開}，然後順勢衝出去。只有一個光源：這個地點本身的光（開闊雪坡上就是太陽）。聲音：雪板、輪子或鞋底摩擦地面的聲音和風聲，跳到最高點時幾乎無聲，落地一聲悶響。不飛，不懸停，不瞬移，落地有重量、不是輕飄飄地直著站住，不受傷。畫面裡不出現文字。",
+        "input": {
+          "person": {
+            "name": "人物",
+            "note": "先放入一張清楚的人物全身照，再生成"
+          }
+        }
+      },
       "ambience-sfx-bed": {
         "name": "環境聲床加擬音",
         "description": "循環的環境聲，加幾個擬音點",
@@ -2000,7 +2095,8 @@
       "helper": "你的首頁將位於 /studio/…。{min}–{max} 個字元，以小寫字母開頭，只能使用小寫字母、數字和連字號；必須唯一。",
       "submit": "繼續",
       "submitting": "設定中...",
-      "failed": "無法設定你的 Studio,請重試。"
+      "failed": "無法設定你的 Studio,請重試。",
+      "unavailable": "暫時無法完成註冊，請稍後再試。"
     },
     "recovery": {
       "title": "保存你的復原碼",
@@ -2161,7 +2257,11 @@
     "popover": {
       "title": "Project 成員",
       "manage": "管理協作者",
-      "isMe": "(你)"
+      "isMe": "(你)",
+      "online": "線上",
+      "offline": "離線",
+      "follow": "查看",
+      "unfollow": "停止"
     },
     "modal": {
       "title": "協作者管理",
@@ -2193,6 +2293,17 @@
     },
     "stack": {
       "triggerAria": "Project 成員（{count}）"
+    },
+    "follow": {
+      "bar": "正在跟隨 {name}",
+      "stop": "停止",
+      "stoppedViewport": "你動了視口，已停止跟隨",
+      "stoppedSpace": "你切換了 Space，已停止跟隨",
+      "stoppedOffline": "{name} 離線，已停止跟隨",
+      "stoppedLeaderFollows": "{name} 開始跟隨 {other}，已停止跟隨",
+      "stoppedLeaderFollowsYou": "{name} 開始跟隨你，已停止跟隨",
+      "busy": "{name} 正在跟隨 {other}",
+      "busyYou": "{name} 正在跟隨你"
     }
   },
   "spaces": {
@@ -2294,6 +2405,8 @@
         "taskList": "待辦清單",
         "divider": "分隔線",
         "table": "表格",
+        "formula": "公式",
+        "columns": "分欄",
         "align": "對齊",
         "alignLeft": "靠左",
         "alignCenter": "置中",
@@ -2459,6 +2572,13 @@
         "notPasted": "{count} 項沒有貼上。",
         "stillUploading": "{count} 個圖片、影片或音訊還在上傳，沒有貼上。上傳完成後重新複製。"
       },
+      "math": {
+        "placeholder": "輸入 LaTeX，例如 E = mc^2",
+        "empty": "新增公式",
+        "blank": "空公式",
+        "error": "公式有誤",
+        "ok": "確定"
+      },
       "versions": {
         "title": "快照",
         "close": "關閉快照",
@@ -2501,6 +2621,9 @@
         "deleteFailed": "沒能刪除快照。",
         "folded": "{count, plural, other {# 個區塊未變動 · 展開}}",
         "unavailable": "快照載入失敗，重新整理頁面後可用"
+      },
+      "columns": {
+        "unavailable": "這裡不能分欄"
       }
     },
     "readOnlyReconnect": "重新連線",
@@ -2721,6 +2844,36 @@
         "copied": "已複製",
         "copyFailed": "複製失敗",
         "canvasUnreachable": "連不上「{name}」，請再試一次"
+      },
+      "focalLength": "焦距",
+      "frame": "畫幅",
+      "color": "顏色",
+      "intensity": "強度",
+      "castShadow": "投影",
+      "angle": "角度",
+      "director": {
+        "open": "導演台",
+        "cameras": "機位",
+        "saveView": "把目前視角存為機位",
+        "camerasEmpty": "把目前視角存為機位，就能在這裡看到它拍到的畫面。",
+        "cameraName": "機位 {n}",
+        "lights": "燈光",
+        "addLight": "新增燈",
+        "lightDirectional": "平行光",
+        "lightPoint": "點光",
+        "lightSpot": "聚光",
+        "lightName": "{type} {n}",
+        "lightsEmpty": "還沒有放燈，場景使用預設照明。",
+        "lightLimit": "最多放 {max} 盞燈。",
+        "lightOverLimit": "超出上限，未啟用",
+        "shadowBudget": "顯示卡無法再顯示更多投影",
+        "ambient": "環境光",
+        "exitCamera": "退出機位",
+        "cameraLocked": "機位已鎖定。",
+        "cameraDeleted": "機位已被刪除。",
+        "more": "更多",
+        "look": "從這台機位看",
+        "customFocal": "自訂"
       }
     },
     "sizeCap": {
@@ -3120,7 +3273,11 @@
         "slugRequired": "請填寫 Slug。",
         "emailRequired": "請填寫電子郵件。",
         "slugUnverified": "暫時無法檢查，送出時由伺服器判斷。",
-        "slugLabelOptional": "Slug（選填）"
+        "slugLabelOptional": "Slug（選填）",
+        "regionLabel": "區域",
+        "regionUnavailable": "所選區域暫時無法建立 Studio，請稍後再試，或改選其他區域。",
+        "creationInProgress": "上一次建立仍在處理中，請稍後再試。",
+        "regionHelper": "內容存放在這個區域，建立後無法變更。"
       },
       "toolbar": {
         "sortLabel": "排序",
@@ -3695,8 +3852,6 @@
     "startFrame": "開始影格",
     "cancel": "取消",
     "transport": {
-      "paused": "已暫停",
-      "playing": "播放中",
       "waiting": "緩衝中…"
     },
     "material": {
@@ -3847,6 +4002,18 @@
       "playBlocked": "瀏覽器阻止了有聲播放，請按播放開始。",
       "videoLoading": "{track}：影片載入中…",
       "videoUnavailable": "{track}：影片不可用"
+    }
+  },
+  "regions": {
+    "usWest": "美國西部",
+    "sg": "新加坡",
+    "unavailable": {
+      "studioTitle": "這個 Studio 暫時無法存取",
+      "projectTitle": "這個 Project 暫時無法存取",
+      "body": "你的內容沒有遺失。",
+      "recents": "部分 Studio 暫時無法存取，相關內容稍後會恢復顯示。",
+      "bell": "部分 Studio 暫時無法存取，相關通知稍後會恢復顯示。",
+      "badge": "暫時無法存取"
     }
   }
 }

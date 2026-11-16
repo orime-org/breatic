@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 import { afterEach, describe, expect, it, vi } from "vitest";
-const { config, connections } = vi.hoisted(() => ({ config: { REDIS_QUEUE_URL: "redis://localhost:6379/1" }, connections: [] as Record<string, unknown>[] }));
+const { config, connections, seenWorkerOptions } = vi.hoisted(() => ({ config: { REDIS_QUEUE_URL: "redis://localhost:6379/1" }, connections: [] as Record<string, unknown>[], seenWorkerOptions: [] as Record<string, unknown>[] }));
 vi.mock("@core/config/env.js", () => ({ env: config, MONOREPO_ROOT: decodeURIComponent(new URL("../../../../../", import.meta.url).pathname) }));
 vi.mock("bullmq", () => {
     class ConnectionSpy {
@@ -12,13 +12,14 @@ vi.mock("bullmq", () => {
                 connection: Record<string, unknown>;
             };
             connections.push(options.connection);
+            if (workerOptions !== undefined) seenWorkerOptions.push(workerOptions);
         }
         async close(): Promise<void> { }
     }
     return { Queue: ConnectionSpy, QueueEvents: ConnectionSpy, Worker: ConnectionSpy };
 });
 import { createQueue, createQueueEvents, createWorker, closeQueues } from "../queue.js";
-afterEach(async () => { await closeQueues(); connections.length = 0; });
+afterEach(async () => { await closeQueues(); connections.length = 0; seenWorkerOptions.length = 0; });
 describe("queue Redis URL", () => {
     it("passes TLS, decoded ACL credentials and DB to all queue connections", () => {
         config.REDIS_QUEUE_URL = "rediss://queue%40team:p%40ss%3Aword%2F%25@redis.example.com:6380/1";
@@ -38,6 +39,11 @@ describe("queue Redis URL", () => {
     it("rejects non-Redis schemes without exposing credentials", () => {
         config.REDIS_QUEUE_URL = "https://user:secret@localhost/1";
         expect(() => createQueue("jobs")).toThrow("REDIS_QUEUE_URL must use redis:// or rediss://");
+    });
+    it("runs a worker at the concurrency its caller asks for", () => {
+        config.REDIS_QUEUE_URL = "redis://localhost:6379/1";
+        createWorker("jobs", async () => undefined, { concurrency: 1 });
+        expect(seenWorkerOptions[0]).toMatchObject({ concurrency: 1 });
     });
     it("supports password-only authentication", () => {
         config.REDIS_QUEUE_URL = "redis://:p%40ss@localhost/1";

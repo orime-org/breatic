@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The Timeline execution HTTP surface (inner#1711 design §3.4, §4, §5.1; acceptance V1, V2, V4).
@@ -30,6 +30,7 @@ vi.mock("ai", () => ({
 
 import crypto from "node:crypto";
 import postgres from "postgres";
+import { mirrorInDirectory } from "./directory-fixtures.js";
 import type { Hono } from "hono";
 import {
   env,
@@ -125,6 +126,7 @@ async function seedUser(): Promise<Member & { studioId: string }> {
     VALUES (${user!.id}, ${`tlx-s-${crypto.randomBytes(8).toString("hex")}`}, 'personal', 'Personal') RETURNING id
   `;
   await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${studio!.id}, ${user!.id}, 'admin')`;
+  await mirrorInDirectory(sql, studio!.id);
   return { userId: user!.id, studioId: studio!.id, cookie: await sessionFor(user!.id) };
 }
 

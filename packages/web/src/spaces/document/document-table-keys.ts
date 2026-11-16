@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The keys at and around tables: Tab, Shift-Tab, Enter and the arrows in a
@@ -151,7 +151,7 @@ function breakLine(view: EditorView): boolean {
  * @param $pos - The position.
  * @returns The depth, or -1 outside any block.
  */
-function containerDepth($pos: ResolvedPos): number {
+export function containerDepth($pos: ResolvedPos): number {
   for (let depth = $pos.depth; depth > 0; depth -= 1) {
     if ($pos.node(depth).type.name === 'blockContainer') return depth;
   }
@@ -168,7 +168,7 @@ function containerDepth($pos: ResolvedPos): number {
  * @returns False to leave the key to the body, true once the quote is taken
  *   off, undefined for a plain paragraph.
  */
-function firstStepAtStart(view: EditorView, $head: ResolvedPos, depth: number): boolean | undefined {
+export function firstStepAtStart(view: EditorView, $head: ResolvedPos, depth: number): boolean | undefined {
   const content = $head.node(depth).firstChild;
   if (content?.type.name !== 'paragraph') return false;
   if (content.attrs['quoted'] !== true) return undefined;

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Project instructions for the Agent (#1400): one text per Project that its
@@ -10,8 +10,7 @@
 import type { AgentInstructionsView, ProjectAgentInstructionsEntity } from "@breatic/shared";
 import * as instructionsRepo from "@server/modules/conversation/agent-instructions.repo.js";
 import * as projectService from "@server/modules/project/project.service.js";
-import * as authService from "@server/modules/auth/auth.service.js";
-import * as studioService from "@server/modules/studio/studio.service.js";
+import { profilesService } from "@breatic/domain";
 
 const NONE: AgentInstructionsView = { text: "", updatedBy: null, updatedAt: null };
 
@@ -22,11 +21,12 @@ const NONE: AgentInstructionsView = { text: "", updatedBy: null, updatedAt: null
  * @returns The view.
  */
 async function viewOf(row: ProjectAgentInstructionsEntity): Promise<AgentInstructionsView> {
-  const [identities, users] = await Promise.all([
-    studioService.getPersonalStudioIdentitiesByUserIds([row.updatedByUserId]),
-    authService.getUsersByIds([row.updatedByUserId]),
-  ]);
-  const name = identities.get(row.updatedByUserId)?.name ?? users[0]?.email.split("@")[0] ?? null;
+  const profile = (await profilesService.profilesOf([row.updatedByUserId])).get(row.updatedByUserId);
+  const name = profile === undefined
+    ? null
+    : profile.name !== null && !profile.deleted
+      ? profile.name
+      : (profile.email?.split("@")[0] ?? null);
   return { text: row.content, updatedBy: name, updatedAt: row.updatedAt.toISOString() };
 }
 

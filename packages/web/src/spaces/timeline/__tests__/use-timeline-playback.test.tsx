@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Playback of the Timeline preview over every visible video layer (#1410 design §6). The hook creates one video-layer
@@ -105,7 +105,7 @@ const CLIP: TimelineVideoClip = {
   rate: { num: 1, den: 1 },
   gain: 1,
   mute: false,
-  transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+  transform: { frameX: 0, frameY: 0, scaleX: 1, scaleY: 1, rotation: 0 },
 };
 // A second and third video stacked over CLIP for its whole span, as after the user shrinks the upper ones.
 const LANE_B: TimelineVideoClip = { ...CLIP, id: '30000000-0000-4000-8000-000000000012', trackId: 'v2', sourceId: SOURCE_B.id };
@@ -240,7 +240,7 @@ function timelineDocument(
   tracks: TimelineTrack[] = [{ id: 'visual-1', kind: 'visual', order: 0 }],
 ): TimelineDocumentV1 {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     settings: { width: 1920, height: 1080, fps: { num: 24, den: 1 } },
     tracks: Object.fromEntries(tracks.map((track) => [track.id, track])),
     clips: Object.fromEntries(clips.map((clip) => [clip.id, clip])),
@@ -2677,5 +2677,35 @@ describe('video lane rate steering (#1410 design §6.3, §6.4)', () => {
     });
     expect(a.play).toHaveBeenCalledTimes(1);
     expect(hook.result.current.state).toBe('playing');
+  });
+});
+
+describe('useTimelinePlayback, the playback anchor for followers', () => {
+  it('has no anchor at rest', () => {
+    const media = mediaFixture();
+    const hook = renderPlayback(media);
+    expect(hook.result.current.anchor).toBeNull();
+  });
+
+  it('exposes the frame and wall-clock time playback started from', async () => {
+    const media = mediaFixture();
+    const hook = renderPlayback(media);
+    const before = Date.now();
+    act(() => hook.result.current.toggle());
+    await settle();
+    expect(hook.result.current.state).toBe('playing');
+    const anchor = hook.result.current.anchor;
+    expect(anchor?.frame).toBe(0);
+    expect(anchor?.at).toBeGreaterThanOrEqual(before);
+    expect(anchor?.at).toBeLessThanOrEqual(Date.now());
+  });
+
+  it('drops the anchor when playback pauses', async () => {
+    const media = mediaFixture();
+    const hook = renderPlayback(media);
+    act(() => hook.result.current.toggle());
+    await settle();
+    act(() => hook.result.current.toggle());
+    expect(hook.result.current.anchor).toBeNull();
   });
 });

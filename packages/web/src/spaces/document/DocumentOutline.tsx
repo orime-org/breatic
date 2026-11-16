@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
 import { ChevronDown, ChevronRight, TableOfContents } from 'lucide-react';
@@ -12,15 +12,13 @@ import { cn } from '@web/lib/utils';
 import { useDocumentViewStore } from '@web/stores';
 import type { ShowableEditor } from '@web/spaces/document/document-editor-cache';
 import { viewOf } from '@web/spaces/document/document-editor-view';
+import { LANDING, atEnd, blockLine, scrollTopForBlock } from '@web/spaces/document/block-scroll';
 import { readOutline, type OutlineEntry } from '@web/spaces/document/document-outline';
 import { BODY_GUTTER_END, OUTLINE_WIDTH } from '@web/spaces/document/document-columns';
 import { outlineLayout } from '@web/spaces/document/document-outline-layout';
 import { useCachedSnapshot } from '@web/spaces/document/use-editor-snapshot';
 
 type Editor = ShowableEditor['editor'];
-
-/** Where a jump leaves a heading's line: this far below the top of the body. */
-const LANDING = 16;
 
 /** The heading under this line (the landing plus 8px) is the one being read. */
 const READING_LINE = LANDING + 8;
@@ -112,46 +110,10 @@ function lineage(entries: readonly OutlineEntry[], above: readonly string[] = []
 }
 
 /**
- * A heading's own line in the body: the block's content, not the block, whose
- * box takes in the space above the heading.
- * @param viewport - The body's viewport.
- * @param id - The heading's block id.
- * @returns The element, or null when the block is not on the page.
- */
-function headingLine(viewport: HTMLElement, id: string): HTMLElement | null {
-  const block = viewport.querySelector<HTMLElement>(`.bn-block-outer[data-id="${CSS.escape(id)}"]`);
-  return block?.querySelector<HTMLElement>(':scope > .bn-block > .bn-block-content') ?? block ?? null;
-}
-
-/**
- * Whether a scroll position is the body's end, give or take 2px.
- * @param viewport - The body's scrolling viewport.
- * @param top - The scroll position; the current one by default.
- * @returns True at the end.
- */
-function atEnd(viewport: HTMLElement, top = viewport.scrollTop): boolean {
-  return top + viewport.clientHeight >= viewport.scrollHeight - 2;
-}
-
-/**
- * Where the body scrolls to for a heading: its line at the landing, or the
- * body's end when too little follows it.
- * @param viewport - The body's scrolling viewport.
- * @param id - The heading's block id.
- * @returns The scrollTop, or null when the heading is not on the page.
- */
-function landingFor(viewport: HTMLElement, id: string): number | null {
-  const line = headingLine(viewport, id);
-  if (line === null) return null;
-  const want = viewport.scrollTop + line.getBoundingClientRect().top - viewport.getBoundingClientRect().top - LANDING;
-  return Math.max(0, Math.min(viewport.scrollHeight - viewport.clientHeight, want));
-}
-
-/**
  * Starts a smooth scroll to a heading's landing.
  * @param viewport - The body's scrolling viewport.
  * @param id - The heading's block id.
- * @param target - Its landing, from `landingFor`.
+ * @param target - Its landing, from `scrollTopForBlock`.
  * @returns The jump, measured from where the body is now.
  */
 function launch(viewport: HTMLElement, id: string, target: number): Jump {
@@ -360,9 +322,19 @@ export const DocumentOutline = React.memo(function DocumentOutline({
       }
       pinned.current = null;
       const top = viewport.getBoundingClientRect().top;
-      const lines = ids.map((id) => [id, headingLine(viewport, id)?.getBoundingClientRect().top] as const);
+      // A heading with no line of its own is measured by its outer box.
+      const lines = ids.map((id) => [id, blockLine(viewport, id, true)?.getBoundingClientRect().top] as const);
+      // The heading being read is the lowest one past the reading line; side
+      // by side in columns, reading order only breaks a tie (inner#1314
+      // design §5.5).
       let current: string | null = null;
-      for (const [id, at] of lines) if (at !== undefined && at <= top + READING_LINE) current = id;
+      let lowest = -Infinity;
+      for (const [id, at] of lines) {
+        if (at !== undefined && at <= top + READING_LINE && at >= lowest) {
+          current = id;
+          lowest = at;
+        }
+      }
       if (viewport.scrollHeight > viewport.clientHeight && atEnd(viewport)) {
         const inView = lines.filter(([, at]) => at !== undefined && at >= top && at < top + viewport.clientHeight);
         if (inView.length > 0) current = inView[inView.length - 1]![0];
@@ -380,7 +352,7 @@ export const DocumentOutline = React.memo(function DocumentOutline({
     const reaim = (): void => {
       const flight = jump.current;
       if (flight === null) return;
-      const target = landingFor(viewport, flight.id);
+      const target = scrollTopForBlock(viewport, viewport, flight.id, { fallback: true });
       if (target !== null && Math.abs(target - flight.target) >= 1) jump.current = launch(viewport, flight.id, target);
     };
     /**
@@ -433,14 +405,14 @@ export const DocumentOutline = React.memo(function DocumentOutline({
 
   const onJump = React.useCallback((id: string) => {
     if (viewport === null) return;
-    if (headingLine(viewport, id) === null) return;
+    if (blockLine(viewport, id, true) === null) return;
     // The caret goes in before the measuring: a browser that scrolls a new
     // selection into view does so first, and the smooth scroll carries on from there.
     if (!readOnly) {
       editor.setTextCursorPosition(id, 'start');
       viewOf(editor)?.dom.focus({ preventScroll: true });
     }
-    const target = landingFor(viewport, id);
+    const target = scrollTopForBlock(viewport, viewport, id, { fallback: true });
     if (target === null) return;
     // On the way the highlight follows the body. A jump that ends at the
     // body's end (a body too short to scroll always is) can leave the heading

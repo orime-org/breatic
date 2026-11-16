@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -110,6 +110,7 @@ describe("the body fixture samples every input the bindings read", () => {
     const unsampled: string[] = [];
     for (const [model, binding] of bindings) {
       for (const name of Object.keys(binding.mentions ?? {})) {
+        if (ADDED_AFTER_FREEZE[model]?.includes(name)) continue;
         if (!fixture.cases.some((c) => c.model === model && c.prompt.includes(`{{ref:${name}:`))) unsampled.push(`${model}.${name}`);
       }
     }

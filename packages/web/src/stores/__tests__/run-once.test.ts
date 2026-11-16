@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * One press, one execution (inner#1490): the registry keeps a press waiting
@@ -14,6 +14,7 @@ vi.mock('@web/lib/toast', () => ({
   toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() },
 }));
 
+import { setCurrentRegion } from '@web/data/api/regions';
 import {
   IDEMPOTENCY_CLIENT_MARGIN_SECONDS,
   IDEMPOTENCY_RETENTION_SECONDS,
@@ -287,6 +288,25 @@ describe('runOnce', () => {
     expect(send.mock.calls.length).toBe(sentBefore);
     expect(getRunning('credits:checkout')).toBeUndefined();
     expect(toast.error).toHaveBeenCalledWith(t('common.runOnce.unknownResult'));
+  });
+
+  // inner#1955: a resend goes to the open page's region, which is not the
+  // one the press went to once the user moved to a Studio in another region.
+  it('stops asking, and says so, once the user moved to another region', async () => {
+    setCurrentRegion('sg');
+    try {
+      const send = vi.fn().mockRejectedValue(failed({ status: 0, message: 'net', network: true }));
+      void runOnce('credits:checkout', { scope: 'credits-checkout', prepare: () => ({}), send });
+      await vi.advanceTimersByTimeAsync(0);
+      const sentBefore = send.mock.calls.length;
+      setCurrentRegion(null);
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(send.mock.calls.length).toBe(sentBefore);
+      expect(getRunning('credits:checkout')).toBeUndefined();
+      expect(toast.error).toHaveBeenCalledWith(t('common.runOnce.unknownResult'));
+    } finally {
+      setCurrentRegion(null);
+    }
   });
 
   it('keeps a press that left for another page waiting, until the page comes back', async () => {

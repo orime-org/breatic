@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * canvasApi tests — the session-cached canvas limits knob (#1782).
@@ -183,6 +183,7 @@ describe('canvasApi node tasks — the rows behind a node\'s four counts (#186)'
     expect(vi.mocked(apiPost)).toHaveBeenCalledWith(
       '/canvas/node-tasks/t-1/failure',
       { reason: 'aborted' },
+      undefined,
     );
   });
 });

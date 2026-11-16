@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Every paid call a chat turn makes leaves a row in `agent_usage_records`,
@@ -115,6 +115,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
 import type * as DomainModule from "@breatic/domain";
 import crypto from "node:crypto";
 import postgres from "postgres";
+import { mirrorInDirectory } from "./directory-fixtures.js";
 import {
   initCore,
   getRedis,
@@ -128,6 +129,7 @@ import { creditLotService } from "@breatic/domain";
 import { ceilToCreditCent } from "@breatic/shared";
 import type { Hono } from "hono";
 import { openPaymentSource } from "./payment-source.js";
+import { sendAndRead } from "./chat-run-harness.js";
 
 let sql: ReturnType<typeof postgres>;
 let app: Hono;
@@ -191,6 +193,7 @@ async function seed(credits: number): Promise<{
     VALUES (${user!.id}, ${`${tag}-studio`}, 'team', ${tag}) RETURNING id
   `;
   await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${studio!.id}, ${user!.id}, 'admin')`;
+  await mirrorInDirectory(sql, studio!.id);
   const [project] = await sql<{ id: string }[]>`
     INSERT INTO projects (studio_id, created_by_user_id, name, slug)
     VALUES (${studio!.id}, ${user!.id}, ${tag}, ${`${tag}-p`}) RETURNING id
@@ -225,23 +228,19 @@ async function seed(credits: number): Promise<{
 }
 
 /**
- * Send one message and drain the stream.
+ * Send one message and read its run to the end.
  * @param seeded - Who sends, and where.
+ * @param model - The model to pick, when the case picks one.
  * @returns The response status.
  */
 async function send(seeded: Awaited<ReturnType<typeof seed>>, model?: string): Promise<number> {
-  const res = await app.request("/api/v1/chat/message", {
-    method: "POST",
-    headers: { Cookie: seeded.cookie, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      message: "hello",
-      project_id: seeded.projectId,
-      conversation_id: seeded.conversationId,
-      ...(model === undefined ? {} : { model }),
-    }),
+  const { status } = await sendAndRead(app, seeded.cookie, {
+    message: "hello",
+    project_id: seeded.projectId,
+    conversation_id: seeded.conversationId,
+    ...(model === undefined ? {} : { model }),
   });
-  await res.text();
-  return res.status;
+  return status;
 }
 
 describe("a chat turn's model calls are recorded and charged at their cost", () => {

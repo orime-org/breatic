@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Studio member-management ROUTE auth-gate invariants (slice 3) — the
@@ -62,6 +62,7 @@ import {
   loadLocales,
 } from "@breatic/core";
 import { studioMembersRepo } from "@breatic/domain";
+import { mirrorInDirectory } from "@server/__tests__/integration/directory-fixtures.js";
 import type { Hono } from "hono";
 
 // @breatic/integration-tests/env injects the container URLs into process.env but
@@ -147,6 +148,7 @@ async function insertTeamStudio(createdByUserId: string): Promise<{ id: string; 
     VALUES (${createdByUserId}, ${slug}, 'team', 'Route Test Team Studio')
     RETURNING id
   `;
+  await mirrorInDirectory(sql, rows[0]!.id);
   return { id: rows[0]!.id, slug };
 }
 

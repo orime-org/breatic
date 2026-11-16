@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * 存储配额闸门接在哪两个路口上（#89）—— real-PG 集成，走真实的 Hono app。
@@ -53,6 +53,7 @@ import {
 } from "@breatic/core";
 import { assetRepo } from "@breatic/domain";
 import type { Hono } from "hono";
+import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 try {
   initCore(process.env);
@@ -156,6 +157,7 @@ async function fullAccount(filledBytes: number): Promise<{
 
   const token = crypto.randomBytes(24).toString("hex");
   await setSession(getRedis(), token, userId);
+  await mirrorAllInDirectory(sql);
   return {
     userId,
     studioId,

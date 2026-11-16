@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { db, getMembershipReadingForUser, getStripeCallTimeoutMs, hasPaidMembership, logger } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { getReferralConfig } from "@server/config/referral.js";
 import { getStripeClient } from "@server/infra/stripe.js";
-import { getStripeCustomerId } from "@server/modules/auth/user.repo.js";
+import { usersRepo } from "@breatic/domain";
 import { findLatestApplication } from "@server/modules/referral/promoter-application.repo.js";
 import { bindReferral } from "@server/modules/referral/referral-binding.service.js";
 import type { BindOutcome } from "@server/modules/referral/referral-binding.service.js";
@@ -95,7 +95,7 @@ export async function readAccountReferral(userId: string, termsVersion: string):
  */
 async function expireOpenMembershipCheckouts(userId: string): Promise<void> {
   try {
-    const customer = await getStripeCustomerId(userId);
+    const customer = await usersRepo.getStripeCustomerId(userId);
     if (customer === null) return;
     const call = { timeout: getStripeCallTimeoutMs(), maxNetworkRetries: 0 };
     const stripe = getStripeClient();

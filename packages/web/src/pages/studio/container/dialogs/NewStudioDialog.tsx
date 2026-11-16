@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -16,6 +16,14 @@ import {
 } from '@web/components/ui/dialog';
 import { Input } from '@web/components/ui/input';
 import { Label } from '@web/components/ui/label';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@web/components/ui/select';
+import { defaultRegionForTimeZone, getRegionConfig, regionToSend } from '@web/data/api/regions';
 import { ApiException } from '@web/data/api/types';
 import { useTranslation } from '@web/i18n/use-translation';
 import { SlugField } from '@web/pages/studio/container/dialogs/SlugField';
@@ -27,6 +35,11 @@ import {
   useSlugFieldShown,
 } from '@web/pages/studio/container/dialogs/use-slug-availability';
 import { useWaitForSlugCheck } from '@web/pages/studio/container/dialogs/use-wait-for-slug-check';
+import {
+  creationRefusalOf,
+  regionNameKey,
+  useStudioCreationId,
+} from '@web/pages/studio/container/dialogs/studio-creation';
 
 interface NewStudioDialogProps {
   open: boolean;
@@ -64,11 +77,16 @@ export function NewStudioDialog({
   const createStudio = useCreateStudio();
   const queryClient = useQueryClient();
   const fieldShows = useSlugFieldShown(open, slug);
+  const regions = getRegionConfig();
+  const defaultRegion = defaultRegionForTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone, regions);
+  const [region, setRegion] = React.useState(defaultRegion);
+  const creationId = useStudioCreationId(`${name.trim()}\n${slug.trim()}\n${region ?? ''}`);
 
   /** Clear the form back to empty (on close). */
   const reset = (): void => {
     setName('');
     setSlug('');
+    setRegion(defaultRegion);
     setFormError(null);
     setNameError(null);
     setSlugError(null);
@@ -96,6 +114,13 @@ export function NewStudioDialog({
     err: unknown,
     submitted: string,
   ): Promise<void> => {
+    const refusal = creationRefusalOf(err);
+    if (refusal === 'region_unavailable' || refusal === 'in_progress') {
+      setFormError(t(refusal === 'in_progress'
+        ? 'studio.container.dialog.creationInProgress'
+        : 'studio.container.dialog.regionUnavailable'));
+      return;
+    }
     if (
       await slugFieldShowsConflict(queryClient, err, submitted, () =>
         fieldShows(submitted),
@@ -131,11 +156,33 @@ export function NewStudioDialog({
       wait.start();
       return;
     }
+    send(trimmedName, trimmedSlug, true);
+  };
+
+  /**
+   * Send the create under the form's Studio id. A creation the region gave
+   * up on is sent once more under a new id, with nothing to tell the user.
+   * @param trimmedName - The name.
+   * @param trimmedSlug - The slug.
+   * @param mayResend - Whether an abandoned creation may be sent again.
+   */
+  const send = (trimmedName: string, trimmedSlug: string, mayResend: boolean): void => {
+    const chosen = region === undefined ? undefined : regionToSend(region, regions);
     createStudio.mutate(
-      { name: trimmedName, slug: trimmedSlug },
+      {
+        name: trimmedName,
+        slug: trimmedSlug,
+        studioId: creationId.idFor(),
+        ...(chosen === undefined ? {} : { region: chosen }),
+      },
       {
         onSuccess: () => handleOpenChange(false),
         onError: (err) => {
+          if (mayResend && creationRefusalOf(err) === 'abandoned') {
+            creationId.renew();
+            send(trimmedName, trimmedSlug, false);
+            return;
+          }
           void reportCreateError(err, trimmedSlug);
         },
       },
@@ -196,6 +243,35 @@ export function NewStudioDialog({
               bounds={STUDIO_SLUG_BOUNDS}
               helper={t('studio.container.dialog.slugHelperStudio', STUDIO_SLUG_BOUNDS)}
             />
+            {regions !== null && Object.keys(regions.regions).length > 1 && region !== undefined ? (
+              <div className='flex flex-col gap-1.5'>
+                <Label htmlFor='new-studio-region'>
+                  {t('studio.container.dialog.regionLabel')}
+                </Label>
+                <Select
+                  value={region}
+                  onValueChange={setRegion}
+                  disabled={createStudio.isPending}
+                >
+                  <SelectTrigger id='new-studio-region'>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.keys(regions.regions).map((code) => {
+                      const key = regionNameKey(code);
+                      return (
+                        <SelectItem key={code} value={code}>
+                          {key === null ? code : t(key)}
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+                <p className='text-xs text-muted-foreground'>
+                  {t('studio.container.dialog.regionHelper')}
+                </p>
+              </div>
+            ) : null}
             {formError ? (
               <p className='text-xs text-status-error-foreground' role='alert'>
                 {formError}

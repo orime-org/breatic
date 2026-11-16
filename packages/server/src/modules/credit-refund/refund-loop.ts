@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The refund loop (inner#1410 §7.1): a self-renewing timer in the server
@@ -9,7 +9,7 @@
  * lot's lock and leases decide whose answer counts.
  */
 
-import { db, env, logger } from "@breatic/core";
+import { db, env, logger, isGlobalRegion } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { creditLotRepo } from "@breatic/domain";
 import { getCreditRefundConfig } from "@server/config/credit-refund.js";
@@ -61,12 +61,13 @@ export async function runRefundLoopOnce(isStopped: () => boolean = () => false):
 }
 
 /**
- * Start the loop when this deployment runs the internal API: every
- * disposition the API accepts is finished by it. Otherwise do nothing.
+ * Start the loop when this deployment runs the internal API in the global
+ * region: every disposition the API accepts is finished by it, and refunds
+ * live with the global data (inner#1955). Otherwise do nothing.
  * @returns The handle to stop it.
  */
 export function startRefundLoop(): RefundLoop {
-  if (!env.INTERNAL_API_ENABLED) return { stop: async () => {} };
+  if (!env.INTERNAL_API_ENABLED || !isGlobalRegion(env)) return { stop: async () => {} };
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let running: Promise<void> | null = null;

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * How the settings tab wires its two write surfaces together.
@@ -56,6 +56,7 @@ const STUDIO: StudioDetail = {
   bio: null,
   memberCount: 3,
   myStudioRole: 'admin',
+  region: null,
 };
 
 /**

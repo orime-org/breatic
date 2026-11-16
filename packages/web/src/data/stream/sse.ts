@@ -1,10 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { getLocale, t } from '@breatic/shared';
 
-import { API_BASE_PATH } from '@web/data/api/base-path';
+import { ensureFreshIdentity } from '@web/data/api/identity-renewal';
+import { apiBaseForRequest, getRegionConfig } from '@web/data/api/regions';
 import { checkStaleRelease } from '@web/data/deployment/stale-release';
 
 /** The content-type of a stream that opened. Anything else is an answer. */
@@ -136,7 +137,7 @@ function classify(err: unknown, opened: boolean): Error {
 }
 
 interface SseOptions<TEvent> {
-  /** Endpoint relative to `API_BASE_PATH` (or an absolute URL). */
+  /** Endpoint relative to the API base (or an absolute URL). */
   url: string;
   /** POST body sent with the open request. */
   body?: unknown;
@@ -163,12 +164,13 @@ interface SseOptions<TEvent> {
  *   - `POST /chat/message` — Agent chat token stream
  *   - `POST /mini-tools/text` — text mini-tool token stream
  *
- * Both are relative: this wrapper puts them under `API_BASE_PATH`, the same
- * prefix the axios instance uses, so the two transports cannot drift apart.
+ * Both are relative: this wrapper puts them under `apiBaseForRequest`, the same
+ * choice of base the axios instance makes, so the two transports cannot drift apart.
  *
- * Auth: `credentials: 'include'` makes the browser attach the
- * httpOnly session cookie on the request (2026-05-26
- * cookie migration). No Bearer token is read from JS.
+ * Auth: `credentials: 'include'` makes the browser attach the httpOnly
+ * cookies on the request: the session cookie for the global region, the
+ * identity token cookie for any other region, made fresh first. No Bearer
+ * token is read from JS.
  *
  * Throws an immediate error if 4xx auth fails; otherwise retries on
  * transient network errors (handled by fetch-event-source defaults).
@@ -176,7 +178,7 @@ interface SseOptions<TEvent> {
  * Caller controls cancellation via an `AbortController` passed as
  * `signal` — closing the stream when the user clicks Abort.
  * @param root0 - SSE connection options.
- * @param root0.url - Endpoint relative to `API_BASE_PATH`, or an absolute URL.
+ * @param root0.url - Endpoint relative to the API base, or an absolute URL.
  * @param root0.body - POST body sent with the open request.
  * @param root0.parseEvent - Parses each `data:` payload, with its frame's event name, into a typed event, or null to skip.
  * @param root0.onEvent - Invoked for every successfully parsed event.
@@ -194,13 +196,15 @@ export async function sseStream<TEvent>({
   onError,
   signal,
 }: SseOptions<TEvent>): Promise<void> {
-  const fullUrl = url.startsWith('http') ? url : `${API_BASE_PATH}${url}`;
+  const fullUrl = url.startsWith('http') ? url : `${apiBaseForRequest({ url, data: body }, getRegionConfig())}${url}`;
 
   // Set once the response turned out to be a stream, which is what separates
   // "never reached the server" from "died on the way".
   let opened = false;
 
   try {
+    // A stream does not go through the axios retry on `identity_expired`.
+    await ensureFreshIdentity();
     await fetchEventSource(fullUrl, {
       method: 'POST',
       headers: {

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Integration test: studioInvite.service handshake against real PostgreSQL.
@@ -75,6 +75,7 @@ loadLocales();
 import { studioMembersRepo } from "@breatic/domain";
 import * as inviteService from "../../modules/studio/studioInvite.service.js";
 import * as invitesRepo from "../../modules/studio/studioInvitations.repo.js";
+import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 const INVITER = "00000000-0000-0000-0000-0000000b0001";
 const INVITEE = "00000000-0000-0000-0000-0000000b0002";
@@ -112,6 +113,7 @@ beforeAll(async () => {
   await db
     .insert(schema.studioMembers)
     .values({ studioId: TEAM, userId: INVITER, role: "admin" });
+  await mirrorAllInDirectory(pgClient);
 });
 
 afterAll(async () => {

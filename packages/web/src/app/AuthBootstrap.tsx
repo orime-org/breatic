@@ -1,9 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import React from 'react';
 
 import { authApi } from '@web/data/api/auth';
+import { startIdentityRenewal } from '@web/data/api/identity-renewal';
+import { getRegionConfig } from '@web/data/api/regions';
 import { changeLocale } from '@web/i18n/locale-bootstrap';
 // The store's own module, not the `@web/stores` barrel. `App` mounts this
 // file above the router and the route table imports `ProtectedRoute`
@@ -45,6 +47,13 @@ export default function AuthBootstrap({
   const setUser = useCurrentUserStore((s) => s.setUser);
   const setBootstrapped = useCurrentUserStore((s) => s.setBootstrapped);
   const clear = useCurrentUserStore((s) => s.clear);
+  const signedIn = useCurrentUserStore((s) => s.user !== null);
+
+  // While signed in with several regions, keep the identity token fresh.
+  React.useEffect(
+    () => (signedIn ? startIdentityRenewal(() => authApi.renewIdentity(), getRegionConfig()) : undefined),
+    [signedIn],
+  );
 
   React.useEffect(() => {
     let cancelled = false;

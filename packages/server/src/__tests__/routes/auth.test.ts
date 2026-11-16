@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Auth route tests — register, login, logout, getMe.
@@ -167,6 +167,7 @@ describe("Auth routes", () => {
       expect(mocks.studioService.createPersonalStudio).toHaveBeenCalledWith(
         "user-1",
         "my-handle",
+        { studioId: undefined, region: undefined },
       );
     });
 

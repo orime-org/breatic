@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What a proposal card says before the user presses it (#229, design §5.5).
@@ -10,7 +10,7 @@
  * display name.
  */
 
-import { TEMPLATE_GUIDE_KEY, layersOf, layoutFeedsOf, modelLabel, proposalMarkSegments } from '@breatic/shared';
+import { TEMPLATE_GUIDE_KEY, currentModelName, layersOf, layoutFeedsOf, modelLabel, proposalMarkSegments } from '@breatic/shared';
 import type { CanvasProposal, ModelCatalog, ProposalNode } from '@breatic/shared';
 
 /** What one node contributes to the little shape drawn on the card. */
@@ -273,7 +273,8 @@ export function nameOf(
   model: string | undefined,
   mode: string | undefined,
 ): string | undefined {
-  const entry = entryOf(catalog, model);
+  // An older proposal may name a model since retired; it lands on the replacement (#1521).
+  const entry = entryOf(catalog, model === undefined ? undefined : currentModelName(model));
   if (!entry || !catalog) return model;
   const peers = (catalog[entry.modality] ?? []).filter((m) => mode !== undefined && [m.mode].flat().includes(mode));
   return modelLabel(entry, peers) || model;

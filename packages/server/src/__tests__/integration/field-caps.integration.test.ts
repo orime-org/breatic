@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Field caps at the routes that write them (inner#1006 §6): F02, F04, F07,
@@ -31,6 +31,7 @@ import type { Hono } from "hono";
 import { getRedis, initCore, loadLocales, runWithLocale, sessionCookieName, setSession } from "@breatic/core";
 import { t } from "@breatic/shared";
 import { withPeer } from "../helpers/peer.js";
+import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 try {
   initCore(process.env);
@@ -111,6 +112,7 @@ async function seedOwner(): Promise<Seeded> {
   `;
   const token = crypto.randomBytes(24).toString("hex");
   await setSession(getRedis(), token, userId);
+  await mirrorAllInDirectory(sql);
   return {
     userId,
     studioId: studio!.id,
@@ -207,6 +209,7 @@ describe("F09: chat refuses an attachment name past 255 characters", () => {
     const res = await post(
       "/api/v1/chat/message",
       {
+        id: crypto.randomUUID(),
         message: "hello",
         project_id: a.projectId,
         conversation_id: a.conversationId,

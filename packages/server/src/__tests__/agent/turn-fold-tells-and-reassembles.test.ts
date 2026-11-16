@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What the user hears of a fold, what is sent after a fold that wrote
@@ -169,9 +169,9 @@ describe("the user is told of a precheck fold once", () => {
 
     const chunks = await sendMessage("second");
 
-    expect(wireDuringFold).toContain("data-memory-consolidating");
-    expect(wireDuringFold).not.toContain("start");
-    expect(typesOf(chunks).indexOf("data-memory-consolidating")).toBeLessThan(typesOf(chunks).indexOf("start"));
+    // Nothing the page reads as answering follows the notice until the fold is over.
+    expect(wireDuringFold.slice(wireDuringFold.indexOf("data-memory-consolidating"))).toEqual(["data-memory-consolidating"]);
+    expect(typesOf(chunks).indexOf("data-memory-consolidating")).toBeLessThan(typesOf(chunks).indexOf("start-step"));
   });
 
   it("keeps the count coverage of a turn that folded only before it called", async () => {

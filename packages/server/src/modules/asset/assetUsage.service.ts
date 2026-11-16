@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Account-level storage usage roll-up (#1826 §5.3).
@@ -16,7 +16,7 @@
  */
 
 import { assetRepo } from "@breatic/domain";
-import * as studioRepo from "@server/modules/studio/studio.repo.js";
+import { studioRepo } from "@breatic/domain";
 
 /**
  * Total live storage an account uses across all studios it controls, in bytes.

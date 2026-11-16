@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Conversation service — business logic for conversations and messages.
@@ -12,7 +12,7 @@ import * as conversationRepo from "@server/modules/conversation/conversation.rep
 import * as messageRepo from "@server/modules/conversation/conversation-message.repo.js";
 import * as projectService from "@server/modules/project/project.service.js";
 import * as projectRepo from "@server/modules/project/project.repo.js";
-import * as userRepo from "@server/modules/auth/user.repo.js";
+import { globalApi } from "@breatic/domain";
 import { answersMismatch, readQuestionnaire, spaceRequestInputSchema, t } from "@breatic/shared";
 import { spaceAnswerMismatch } from "@server/modules/conversation/space-answer-mismatch.js";
 import { db, NotFoundError, ForbiddenError, getAgentConfig, ValidationError } from "@breatic/core";
@@ -99,7 +99,7 @@ export async function openChat(
   };
 }> {
   await projectService.assertAccess(projectId, userId, "editor");
-  const userModel = await userRepo.getAgentModel(userId);
+  const userModel = await globalApi().getAgentModel(userId);
 
   // Two locks, each covering a race the other cannot see, taken in this order
   // everywhere. Nothing else in the codebase takes the advisory lock, so no
@@ -256,7 +256,7 @@ export async function createConversation(
 ): Promise<ChatConversation> {
   await projectService.assertAccess(projectId, userId, "editor");
   // A new conversation starts on the model the user last picked.
-  const model = resolveAgentModel(null, await userRepo.getAgentModel(userId));
+  const model = resolveAgentModel(null, await globalApi().getAgentModel(userId));
 
   return db.transaction(async (tx) => {
     // Same reason as in `openChat`: without holding the project row, this
@@ -397,7 +397,7 @@ export async function getWithMessages(
   hasMore: boolean;
 }> {
   const conversation = await validateOwnership(conversationId, userId);
-  const [page, userModel] = await Promise.all([messageRepo.getMessages(conversationId), userRepo.getAgentModel(userId)]);
+  const [page, userModel] = await Promise.all([messageRepo.getMessages(conversationId), globalApi().getAgentModel(userId)]);
   return {
     conversation: { ...conversation, agentModel: resolveAgentModel(conversation.agentModel, userModel) },
     messages: page.messages,
@@ -558,7 +558,7 @@ export function resolveAgentModel(conversationModel: string | null, userModel: s
  */
 export async function listChatModels(userId: string): Promise<{ models: AgentModelChoice[]; lastUsed: string }> {
   const models = getAgentConfig().chat_models.map(({ id, name }) => ({ id, name }));
-  return { models, lastUsed: resolveAgentModel(null, await userRepo.getAgentModel(userId)).id };
+  return { models, lastUsed: resolveAgentModel(null, await globalApi().getAgentModel(userId)).id };
 }
 
 /**
@@ -597,10 +597,9 @@ export async function setConversationModel(
   const picked = assertListed(model);
   await projectService.assertAccess(projectId, userId, "editor");
   const conversation = await assertWritable(conversationId, userId, projectId);
-  await db.transaction(async (tx) => {
-    await conversationRepo.setAgentModel(conversationId, picked.id, { tx });
-    await userRepo.setAgentModel(userId, picked.id, tx);
-  });
+  await conversationRepo.setAgentModel(conversationId, picked.id);
+  // The account's last pick lives with the account in the global region (inner#1955).
+  await globalApi().setAgentModel(userId, picked.id);
   return { ...conversation, agentModel: picked };
 }
 
@@ -623,12 +622,38 @@ export async function modelForMessage(
 ): Promise<string> {
   const model =
     requested === undefined
-      ? resolveAgentModel(conversation.agentModel, await userRepo.getAgentModel(userId))
+      ? resolveAgentModel(conversation.agentModel, await globalApi().getAgentModel(userId))
       : assertListed(requested);
   if (listedModel(conversation.agentModel) === undefined) {
     await conversationRepo.setAgentModel(conversation.id, model.id, { ifStill: { agentModel: conversation.agentModel } });
   }
   return model.id;
+}
+
+/**
+ * Whether a new message's id names a row it cannot be written under. The
+ * page makes a fresh id at each press, so only a request built by hand can
+ * carry one; its run could never write its opening row.
+ * @param conversationId - The conversation it is sent to.
+ * @param messageId - The id it carries.
+ * @returns True when the id is not the new message's to take.
+ */
+export async function messageIdRefused(conversationId: string, messageId: string): Promise<boolean> {
+  return messageRepo.messageIdRefused(conversationId, messageId);
+}
+
+/**
+ * The model a message that waited in the queue runs on: the one it was sent
+ * with, while the deployment still lists it, else the conversation's own.
+ * Never a refusal: the send was checked when it was accepted, and a release
+ * since may have stopped listing the model.
+ * @param conversation - The conversation, already checked writable.
+ * @param userId - The user.
+ * @param sentWith - The model the message was sent with, if any.
+ * @returns The model id.
+ */
+export async function modelForQueued(conversation: ConversationEntity, userId: string, sentWith: string | undefined): Promise<string> {
+  return modelForMessage(conversation, userId, sentWith !== undefined && listedModel(sentWith) !== undefined ? sentWith : undefined);
 }
 
 /**

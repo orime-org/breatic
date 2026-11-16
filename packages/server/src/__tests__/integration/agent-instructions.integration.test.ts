@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Project instructions (#1400): one plain text per Project that every member's
@@ -48,6 +48,7 @@ loadLocales();
 
 import { agentInstructionsService } from "@server/modules";
 import { getRateLimit } from "@server/config/rate-limits.js";
+import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 let sql: ReturnType<typeof postgres>;
 let app: Hono;
@@ -117,6 +118,7 @@ async function insertPerson(): Promise<Person> {
     INSERT INTO studios (created_by_user_id, slug, type, name)
     VALUES (${user!.id}, ${`${tag}-me`}, 'personal', ${name})
   `;
+  await mirrorAllInDirectory(sql);
   return { id: user!.id, name, cookie: await loginCookie(user!.id) };
 }
 
@@ -140,6 +142,7 @@ async function seedProject(): Promise<Scene> {
     INSERT INTO project_members (project_id, user_id, role, added_by)
     VALUES (${project!.id}, ${owner.id}, 'owner', null)
   `;
+  await mirrorAllInDirectory(sql);
   return { projectId: project!.id, studioId: studio!.id, owner };
 }
 
@@ -159,6 +162,7 @@ async function addMember(scene: Scene, role: "editor" | "viewer"): Promise<Perso
     INSERT INTO project_members (project_id, user_id, role, added_by)
     VALUES (${scene.projectId}, ${member.id}, ${role}, ${scene.owner.id})
   `;
+  await mirrorAllInDirectory(sql);
   return member;
 }
 
@@ -308,6 +312,8 @@ describe("GET / PUT /chat/instructions — what is stored", () => {
   it("shows the email local part for an editor with no personal studio yet, as the member list does", async () => {
     const s = await seedProject();
     const editor = await addMember(s, "editor");
+    await sql`DELETE FROM studio_directory_members WHERE studio_id IN (SELECT studio_id FROM studio_directory WHERE created_by_user_id = ${editor.id} AND type = 'personal')`;
+    await sql`DELETE FROM studio_directory WHERE created_by_user_id = ${editor.id} AND type = 'personal'`;
     await sql`DELETE FROM studios WHERE created_by_user_id = ${editor.id} AND type = 'personal'`;
     const [user] = await sql<{ email: string }[]>`SELECT email FROM users WHERE id = ${editor.id}`;
 

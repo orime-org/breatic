@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import {
   Background,
@@ -22,6 +22,7 @@ import {
   type OnConnectEnd,
   type OnConnectStart,
   type OnNodeDrag,
+  type Viewport,
   ViewportPortal,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
@@ -280,6 +281,9 @@ import { heldIds } from '@web/spaces/canvas/gesture-table';
 import { useBufferAccess } from '@web/spaces/canvas/use-buffer-access';
 import { useGestureRelease } from '@web/spaces/canvas/use-gesture-release';
 import { usePublishPresence } from '@web/spaces/canvas/use-publish-presence';
+import { useCanvasFollow } from '@web/spaces/canvas/use-canvas-follow';
+import { visibleRect, type FlowRect, type PaneSize } from '@web/features/follow/follow-geometry';
+import { useFollowStore } from '@web/stores/follow';
 import {
   AnnotationNamesContext,
   everyAnnotationAuthor,
@@ -1061,8 +1065,16 @@ function CanvasSpaceInner({
   const [storedViewport] = React.useState(() =>
     readSpaceViewport(viewerId, projectId, spaceId),
   );
+  // A canvas opened while following lands on the leader's view instead of
+  // framing its nodes. Held at its mount value: xyflow queues a fit whenever
+  // the `fitView` prop changes, so following stopping later would frame it.
+  const [followingAtMount] = React.useState(() => useFollowStore.getState().targetUserId !== null);
   /** The live ReactFlow store, read for the transform at the moment of a write. */
   const rfStoreApi = useStoreApi();
+  /** Drop the opening fit a canvas with no stored camera still has queued, so it does not frame every node later. */
+  const clearOpeningFit = React.useCallback((): void => {
+    rfStoreApi.setState({ fitViewQueued: false });
+  }, [rfStoreApi]);
   /**
    * Whether the camera has been placed at all since this canvas mounted.
    *
@@ -2794,7 +2806,7 @@ function CanvasSpaceInner({
         const focus = whatToFocus(intent.proposal, placed);
         // A Space opened empty and never framed still has its opening fit
         // queued for the first nodes to arrive; the framing below is that one.
-        if (placed.bounds) rfStoreApi.setState({ fitViewQueued: false });
+        if (placed.bounds) clearOpeningFit();
         if (focus.panel) {
           // The panel that opens under one of them is framed with them once
           // it has landed, in one move.
@@ -2839,6 +2851,7 @@ function CanvasSpaceInner({
     spaceId,
     getInternalNode,
     rfStoreApi,
+    clearOpeningFit,
     setViewport,
     showPlaced,
   ]);
@@ -2980,10 +2993,10 @@ function CanvasSpaceInner({
     const height = internal?.measured?.height ?? EMPTY_NODE_SIZE.height;
     // A canvas opened with no stored camera still has its opening fit queued; it would frame
     // every node after this move, the same as for a landed proposal.
-    rfStoreApi.setState({ fitViewQueued: false });
+    clearOpeningFit();
     void setCenter(at.x + width / 2, at.y + height / 2, { zoom: rfStoreApi.getState().transform[2], duration: FRAME_PAN_MS, interpolate: 'linear' });
     setSelectAfterCreate([id]);
-  }, [getInternalNode, nodes, setCenter, rfStoreApi]);
+  }, [getInternalNode, nodes, setCenter, rfStoreApi, clearOpeningFit]);
   useCanvasRevealReceiver(spaceId, synced, hasNode, revealNode);
 
   // One dispatch for Cmd+V and the menu's Paste (design 5.9): our nodes paste
@@ -3169,14 +3182,46 @@ function CanvasSpaceInner({
     [screenToFlowPosition],
   );
 
-  // Presence out: which nodes this client holds, and where its pointer is.
-  // One writer for both fields — awareness resends the whole state per field.
+  // Following a member (#920): their visible rectangle on this canvas, fitted
+  // into this pane once the document has loaded and again when the pane
+  // changes size; the user's own moves stop it.
+  const leaderUserId = useFollowStore((s) => s.targetUserId);
+  const paneWidth = useStore((s) => s.width);
+  const paneHeight = useStore((s) => s.height);
+  const pane = React.useMemo((): PaneSize => ({ width: paneWidth, height: paneHeight }), [paneWidth, paneHeight]);
+  const applyFollowViewport = React.useCallback((next: Viewport): void => {
+    void setViewport(next, { duration: 0 });
+  }, [setViewport]);
+  const frameCanvas = React.useCallback((): void => {
+    void fitView(FIT_VIEW_OPTIONS);
+  }, [fitView]);
+  const isCameraPlaced = React.useCallback((): boolean => storedViewport !== null || cameraPlaced.current, [storedViewport]);
+  const onFollowMoveStart = useCanvasFollow({
+    awareness,
+    leaderUserId,
+    ready: synced,
+    pane,
+    applyViewport: applyFollowViewport,
+    clearOpeningFit,
+    isCameraPlaced,
+    frameCanvas,
+  });
+  const readCamera = React.useCallback((): FlowRect | null => {
+    const { transform, width, height } = rfStoreApi.getState();
+    if (width <= 0 || height <= 0) return null;
+    return visibleRect({ x: transform[0], y: transform[1], zoom: transform[2] }, { width, height });
+  }, [rfStoreApi]);
+
+  // Presence out: which nodes this client holds, where its pointer is and what
+  // part of the canvas it shows. One writer for all of them — awareness resends
+  // the whole state per field.
   const publisher = usePublishPresence({
     awareness,
     sources: { selectedIds, pickSession, focusTargetId: focusCropTargetId },
     synced,
     containerRef,
     toFlowPosition: publishedPoint,
+    readCamera,
   });
   const gesture = useGestureBroadcast(publisher, buffer.onScreen, setLocalGestureIds);
   useGestureRelease(gesture.abandon);
@@ -4742,14 +4787,16 @@ function CanvasSpaceInner({
             proOptions={{ hideAttribution: true }}
             // Two ways in, one at a time: a Space whose camera this account has
             // aimed opens where they left it, and one they have not opens framing
-            // what is on it. `fitView` wins when both are given, so only one is.
+            // what is on it, unless it opens while following. `fitView` wins
+            // when both are given, so only one is.
             defaultViewport={storedViewport ?? undefined}
-            fitView={storedViewport === null}
+            fitView={storedViewport === null && !followingAtMount}
             // Clamp the open / fit-to-window auto-zoom to 10%–100% (#1547) so a
             // sparse space doesn't zoom in to the 800% global ceiling; the manual
             // zoom presets still use the full global range below.
             fitViewOptions={FIT_VIEW_OPTIONS}
             onMove={noteCameraPlaced}
+            onMoveStart={onFollowMoveStart}
             onMoveEnd={rememberViewport}
             // 10%–800%, over the library's own 0.5–2. The toolbar and the stored
             // camera are checked against these same two constants, so what the

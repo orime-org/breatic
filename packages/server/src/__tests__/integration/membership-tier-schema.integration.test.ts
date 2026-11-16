@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The membership tier column on `users` (task #16, migration 0052).
@@ -44,7 +44,7 @@ vi.mock("ai", () => ({
 
 import postgres from "postgres";
 import { initCore, getDefaultMembershipTier } from "@breatic/core";
-import * as userRepo from "@server/modules/auth/user.repo.js";
+import { usersRepo as userRepo } from "@breatic/domain";
 
 try {
   initCore(process.env);
@@ -152,7 +152,7 @@ describe("users.membership_tier", () => {
     ).not.toBe("base");
 
     const email = `tier-reg-${Date.now()}-${Math.random()}@example.test`;
-    const user = await userRepo.createUser({ email, locale: "en" });
+    const user = await userRepo.createUser({ termsVersion: "test-terms", email, locale: "en" });
     try {
       const [row] = await sql<{ membership_tier: string }[]>`
         SELECT membership_tier FROM users WHERE id = ${user.id}

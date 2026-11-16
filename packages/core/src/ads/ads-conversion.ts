@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Ad conversions reported to the ad platform from the backend (inner#1442
@@ -13,8 +13,8 @@
  */
 
 import { z } from "zod";
-import { CLICK_WINDOW_MS, type AdClick, type BrowserAdsSnapshot } from "@breatic/shared";
-import { adsAllowedFor } from "@core/analytics/account.repo.js";
+import { adClickFrom, CLICK_WINDOW_MS, type AdClick, type BrowserAdsSnapshot } from "@breatic/shared";
+import { adsAllowedFor, getAccountAttribution } from "@core/analytics/account.repo.js";
 import { currentAdsBrowser } from "@core/analytics/consent-context.js";
 import { createHash } from "node:crypto";
 import {
@@ -166,6 +166,28 @@ export async function enqueueAdsConversion(
   if (!(await claimUpload(job))) return false;
   await addJob(job);
   return true;
+}
+
+/**
+ * Queue an account's conversion, credited to the click the account signed up
+ * from. Runs where the accounts are; other regions reach it through the global
+ * API (inner#1955).
+ * @param input - The account, the conversion and its transaction id.
+ * @param input.userId - The account the conversion belongs to.
+ * @param input.conversion - Which configured conversion action.
+ * @param input.transactionId - Shared with the browser tag for deduplication.
+ * @param browser - The browser behind it, or null for an event no browser is behind.
+ * @returns Whether it was queued.
+ * @throws {unknown} When the database or the queue cannot be reached; callers log and carry on.
+ */
+export async function enqueueAccountAdsConversion(
+  input: { userId: string; conversion: AdsConversionName; transactionId: string },
+  browser: BrowserAdsSnapshot | null,
+): Promise<boolean> {
+  return enqueueAdsConversion(
+    { ...input, click: adClickFrom(await getAccountAttribution(input.userId), Date.now()) },
+    browser,
+  );
 }
 
 /**

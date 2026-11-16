@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect } from 'vitest';
 
@@ -54,6 +54,7 @@ const ready = (openIds: string[], activeId: string | null): TabState => ({
   openIds,
   activeId,
   persist: true,
+  byFollow: false,
   restored: null,
 });
 
@@ -349,5 +350,31 @@ describe('reduceTabState — what is worth storing', () => {
     const one = reduceTabState(ready(['a'], 'a'), { type: 'close', spaceId: 'a' });
     expect(one.openIds).toEqual([]);
     expect(one.persist).toBe(true);
+  });
+});
+
+describe('reduceTabState — whether following moved the strip (#920)', () => {
+  it('records that an open asked for by following moved the tab, and that any other change did not', () => {
+    const followed = reduceTabState(ready(['a', 'b'], 'a'), { type: 'open', spaceId: 'b', byFollow: true });
+    expect(followed).toMatchObject({ activeId: 'b', byFollow: true, persist: true });
+    const appended = reduceTabState(ready(['a'], 'a'), { type: 'open', spaceId: 'c', byFollow: true });
+    expect(appended).toMatchObject({ openIds: ['a', 'c'], activeId: 'c', byFollow: true });
+    expect(reduceTabState(followed, { type: 'open', spaceId: 'a' }).byFollow).toBe(false);
+    expect(reduceTabState(followed, { type: 'close', spaceId: 'b' }).byFollow).toBe(false);
+    expect(reduceTabState(followed, { type: 'spaces', spaces: [{ id: 'a' }] as TabOrderEntry[] }).byFollow).toBe(false);
+  });
+
+  it('keeps that record through changes that leave the tab in front where it is', () => {
+    const followed = reduceTabState(ready(['a', 'b', 'c'], 'a'), { type: 'open', spaceId: 'b', byFollow: true });
+    const closedBehind = reduceTabState(followed, { type: 'close', spaceId: 'c' });
+    expect(closedBehind).toMatchObject({ activeId: 'b', byFollow: true });
+    const reordered = reduceTabState(followed, { type: 'reorder', spaceId: 'c', beforeSpaceId: 'a' });
+    expect(reordered).toMatchObject({ activeId: 'b', byFollow: true });
+    const othersGone = reduceTabState(followed, { type: 'spaces', spaces: [{ id: 'a' }, { id: 'b' }] as TabOrderEntry[] });
+    expect(othersGone).toMatchObject({ activeId: 'b', byFollow: true });
+  });
+
+  it('starts with following not having moved the strip', () => {
+    expect(fresh().byFollow).toBe(false);
   });
 });

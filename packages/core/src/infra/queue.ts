@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * BullMQ queue and worker factories.
@@ -89,17 +89,19 @@ export function createQueueEvents(name: string): QueueEvents {
  *   its worker was judged to have died. BullMQ counts these on a field of
  *   their own, so a job's `attempts` does not bound them: a queue whose jobs
  *   must be delivered once has to say zero here as well.
+ * @param options.concurrency - How many jobs one worker runs at once, in
+ *   place of the queue's configured concurrency.
  * @returns A new BullMQ Worker instance
  */
 export function createWorker<T>(
   name: string,
   processor: Processor<T>,
-  options: { maxStalledCount?: number } = {},
+  options: { maxStalledCount?: number; concurrency?: number } = {},
 ): Worker<T> {
   const cfg = getWorkerConfig();
   const worker = new Worker<T>(name, processor, {
     connection: parseRedisUrl(),
-    concurrency: workerConcurrencyFor(name),
+    concurrency: options.concurrency ?? workerConcurrencyFor(name),
     lockDuration: cfg.lock_duration_ms,
     ...(options.maxStalledCount !== undefined && {
       maxStalledCount: options.maxStalledCount,

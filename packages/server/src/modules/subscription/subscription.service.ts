@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The four things a person can do to their membership (task #106, §7, §6.5.3).
@@ -58,7 +58,7 @@ import {
   t,
 } from "@breatic/shared";
 import { getStripeClient } from "@server/infra/stripe.js";
-import * as userRepo from "@server/modules/auth/user.repo.js";
+import { usersRepo as userRepo } from "@breatic/domain";
 import { applySubscriptionWrite } from "@server/modules/subscription/apply-subscription.js";
 import { readStripeSubscription } from "@server/modules/subscription/read-stripe-subscription.js";
 import { ensureFirstPeriodCoupon } from "@server/modules/referral/referral-coupon.js";

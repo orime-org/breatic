@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
 import { newId, TIMELINE_MAIN_TRACK_ID, type TimelineClip, type TimelineDocumentV1, type TimelineWebResolution } from '@breatic/shared';
@@ -190,7 +190,7 @@ export function TimelineClipProperties({ spaceId, document, web = EMPTY_TIMELINE
     {field('start', 'timeline.startFrame')}
     {field('in', 'timeline.edit.inPoint')}
     {field('duration', 'timeline.edit.duration')}
-    {clip.kind !== 'upload' && <TimelineTransformFields spaceId={spaceId} transform={clip.transform} atFrame={atFrame} readOnly={readOnly} onCommit={commitTransform} />}
+    {clip.kind !== 'upload' && <TimelineTransformFields spaceId={spaceId} transform={clip.transform} frame={document.settings} atFrame={atFrame} readOnly={readOnly} onCommit={commitTransform} />}
     {source !== undefined && clip.kind === 'video' && <span data-testid='timeline-clip-source' className='text-xs text-muted-foreground'>
       {t('timeline.sourceExtent', { frames: source.extentFrames, fps: Math.round(fps.num / fps.den * 100) / 100 })}</span>}
   </div>;

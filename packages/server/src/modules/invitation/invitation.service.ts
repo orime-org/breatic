@@ -1,18 +1,18 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { ConflictError, logger, NotFoundError } from "@breatic/core";
 import { enqueueMail } from "@breatic/domain";
 import { getActiveLocale, normalizeEmail, t } from "@breatic/shared";
 import type { SignupInvitationPreview } from "@breatic/shared";
-import * as usersRepo from "@server/modules/auth/user.repo.js";
+import { profilesService } from "@breatic/domain";
 import * as projectRepo from "@server/modules/project/project.repo.js";
-import * as studioRepo from "@server/modules/studio/studio.repo.js";
+import { studioRepo } from "@breatic/domain";
 import { claimEmailInvitations } from "@server/modules/invitation/claim-email-invitations.js";
-export { claimEmailInvitations } from "@server/modules/invitation/claim-email-invitations.js";
+export { claimEmailInvitations, claimEmailInvitationsOnSignIn } from "@server/modules/invitation/claim-email-invitations.js";
 import { invitationRepo, prepareInvitation, settleSignupInvitationDelivery } from "@server/modules/invitation/invitation-lifecycle.service.js";
 import type { InvitationKind, InvitationRole } from "@server/modules/invitation/invitation.types.js";
-import { isUniqueViolation } from "@server/utils/pg-error.js";
+import { isUniqueViolation } from "@breatic/core";
 import { frontendOrigin } from "@server/utils/frontend-origin.js";
 import { decisionLink } from "@server/utils/decision-link.js";
 import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
@@ -69,7 +69,7 @@ export async function createInvitation(
       }, { userId: invitee.id, subject: `${kind}_invite` });
     }
   } else {
-    const registered = await usersRepo.getUserByEmail(normalizedEmail);
+    const registered = await profilesService.accountByEmail(normalizedEmail);
     if (registered?.emailVerified) await claimEmailInvitations(registered);
     let delivered = false;
     try {
@@ -113,7 +113,7 @@ export async function getInvitationPreview(token: string): Promise<SignupInvitat
     if (!target || archived || invitation.deletedAt !== null || invitation.status !== "pending" || invitation.expiresAt.getTime() <= Date.now()) {
       return { state: "closed" };
     }
-    const profiles = await studioRepo.getPersonalProfilesByCreators([invitation.invitedBy]);
+    const profiles = await profilesService.personalProfiles([invitation.invitedBy]);
     if (invitation.invitedEmail === null) throw new Error("Mailbox invitation requires an address");
     return {
       state: "open", email: invitation.invitedEmail, inviterName: profiles.get(invitation.invitedBy)?.name ?? "",

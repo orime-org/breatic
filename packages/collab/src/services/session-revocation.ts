@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Closing connections whose session ended (inner#1548).
@@ -17,6 +17,11 @@
  * same (it is also what catches a session that simply expired), and the
  * `connected` hook reads a new connection's session once more, for a session
  * ended between its document authentication and registration.
+ *
+ * In a region that does not hold the sessions (inner#1955) a connection
+ * carries only its session id: the recheck asks the global region which ids
+ * ended (`checkSessions`), and the `connected` check reads this region's
+ * revocation tombstones.
  */
 
 import type { Hocuspocus } from "@hocuspocus/server";
@@ -38,12 +43,20 @@ interface ClosableConnection {
 /** Reads which user a session token belongs to, or null when it is gone. */
 export type ReadSession = (token: string) => Promise<string | null>;
 
+/** Answers which of these session ids have ended. */
+export type CheckSessionIds = (sids: readonly string[]) => Promise<string[]>;
+
+/** Whether this region holds a revocation tombstone for a session id. */
+export type IsRevoked = (sid: string) => Promise<boolean>;
+
 /** What {@link startSessionRevocation} needs from outside. */
 export interface SessionRevocationDeps {
   /** A client on the stream Redis; duplicated for the subscriber. */
   source: Redis;
   /** The session reader (core `getSession` on the session Redis). */
   readSession: ReadSession;
+  /** Outside the global region, the global region's `checkSessions`. */
+  checkSessionIds?: CheckSessionIds;
   /** How often every connection's session is read again. */
   recheckIntervalMs: number;
 }
@@ -104,20 +117,31 @@ function closeAnnounced(hocuspocus: Hocuspocus, raw: string): void {
  * the next round tries again.
  * @param hocuspocus - This instance's Hocuspocus server.
  * @param readSession - The session reader.
+ * @param checkSessionIds - Outside the global region, which ids ended.
  * @returns Once every session has been read.
  */
-async function recheckAll(hocuspocus: Hocuspocus, readSession: ReadSession): Promise<void> {
+async function recheckAll(
+  hocuspocus: Hocuspocus,
+  readSession: ReadSession,
+  checkSessionIds: CheckSessionIds | undefined,
+): Promise<void> {
   const held = sessionConnections(hocuspocus);
-  const tokens = [...new Set(held.map(({ ctx }) => ctx.session.token))];
+  const tokens = [...new Set(held.flatMap(({ ctx }) => (ctx.session.token === null ? [] : [ctx.session.token])))];
+  const idsOnly = [...new Set(held.filter(({ ctx }) => ctx.session.token === null).map(({ ctx }) => ctx.session.id))];
   let owners: Map<string, string | null>;
+  let endedIds: Set<string>;
   try {
     owners = new Map(await Promise.all(tokens.map(async (token) => [token, await readSession(token)] as const)));
+    endedIds = new Set(idsOnly.length > 0 && checkSessionIds ? await checkSessionIds(idsOnly) : []);
   } catch (err) {
-    logger.error({ err, sessions: tokens.length }, "session_recheck_failed");
+    logger.error({ err, sessions: tokens.length + idsOnly.length }, "session_recheck_failed");
     return;
   }
   for (const { connection, ctx } of held) {
-    if (owners.get(ctx.session.token) !== ctx.user.id) connection.close(SESSION_ENDED_CLOSE);
+    const ended = ctx.session.token === null
+      ? endedIds.has(ctx.session.id)
+      : owners.get(ctx.session.token) !== ctx.user.id;
+    if (ended) connection.close(SESSION_ENDED_CLOSE);
   }
 }
 
@@ -126,13 +150,22 @@ async function recheckAll(hocuspocus: Hocuspocus, readSession: ReadSession): Pro
  * its handshake read it.
  * @param connection - The new connection.
  * @param readSession - The session reader.
+ * @param isRevoked - Outside the global region, this region's tombstone check.
  * @returns Once the session has been read.
  * @throws {Error} When the session cannot be read; the `connected` hook logs it.
  */
-export async function closeIfSessionEnded(connection: ClosableConnection, readSession: ReadSession): Promise<void> {
+export async function closeIfSessionEnded(
+  connection: ClosableConnection,
+  readSession: ReadSession,
+  isRevoked?: IsRevoked,
+): Promise<void> {
   const ctx = connection.context as AuthContext | undefined;
   if (!ctx?.session) return;
-  if ((await readSession(ctx.session.token)) !== ctx.user.id) connection.close(SESSION_ENDED_CLOSE);
+  const { token, id } = ctx.session;
+  const ended = token === null
+    ? (isRevoked !== undefined && (await isRevoked(id)))
+    : (await readSession(token)) !== ctx.user.id;
+  if (ended) connection.close(SESSION_ENDED_CLOSE);
 }
 
 /**
@@ -155,7 +188,7 @@ export async function startSessionRevocation(
    * Re-read every session, logging anything unexpected.
    */
   const recheck = (): void => {
-    recheckAll(hocuspocus, deps.readSession).catch((err: unknown) => {
+    recheckAll(hocuspocus, deps.readSession, deps.checkSessionIds).catch((err: unknown) => {
       logger.error({ err }, "session_recheck_failed");
     });
   };

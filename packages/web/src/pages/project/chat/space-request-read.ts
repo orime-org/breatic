@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Reading the Spaces the Agent asked to look at, once the user allowed it
@@ -24,6 +24,7 @@ import * as Y from 'yjs';
 import { documentBodyFragment, documentCommentThreads, READ_ONLY_COLLAB_TOKEN } from '@breatic/shared';
 import type { SharedSpace, SpaceRequestInput } from '@breatic/shared';
 
+import { ensureFreshIdentity } from '@web/data/api/identity-renewal';
 import { createCollabSocket } from '@web/data/yjs/collab-socket';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
@@ -218,6 +219,8 @@ async function readOne(
  * @throws {unknown} The signal's reason once it is raised; nothing is kept.
  */
 export async function readRequestedSpaces(source: RequestedSpacesSource): Promise<SharedSpace[]> {
+  // A region checks the identity token when the socket opens (inner#1955).
+  await ensureFreshIdentity();
   let socket: HocuspocusProviderWebsocket | null = null;
   /**
    * The read's socket, opened the first time a Space needs a connection.

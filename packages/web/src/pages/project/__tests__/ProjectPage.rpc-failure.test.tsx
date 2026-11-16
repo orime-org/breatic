@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Every way a Space RPC can fail has to reach the user.
@@ -83,6 +83,7 @@ vi.mock('@web/data/yjs/project-meta', async () => {
     > => ({
       spaces: meta.spaces,
       users: new Map(),
+      following: new Map(),
       synced: true,
       provider: fakeProvider,
       status: 'connected',

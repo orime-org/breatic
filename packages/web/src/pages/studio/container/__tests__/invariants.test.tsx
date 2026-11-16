@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { StrictMode } from 'react';
@@ -28,6 +28,7 @@ const TEAM_DETAIL: StudioDetail = {
   avatarUrl: null,
   bio: null,
   myStudioRole: 'admin',
+  region: null,
 };
 
 beforeEach(() => {
@@ -42,6 +43,7 @@ beforeEach(() => {
       avatarUrl: null,
       bio: null,
       myStudioRole: 'guest',
+      region: null,
     },
   ]);
 });

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Space size cap v2 (inner#1790 v2 web test spec RQ-17, RQ-18, RQ-19, RQ-22):
@@ -426,7 +426,7 @@ describe('RQ-22 entries that only touch task counts are not judged', () => {
       fail(new BytesNotDelivered(new Error('network down')));
       for (let i = 0; i < 10; i += 1) await Promise.resolve();
     });
-    await waitFor(() => expect(report).toHaveBeenCalledWith('task-2'));
+    await waitFor(() => expect(report).toHaveBeenCalledWith('task-2', undefined));
     expect(toast.warning).not.toHaveBeenCalled();
   });
 });

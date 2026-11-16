@@ -394,6 +394,16 @@ export default [
               function: 'trial',
               reason: 'Runs undo/redo only on the throwaway copy, never a Space document.',
             },
+            {
+              file: 'src/spaces/document/document-undo-blocknote.ts',
+              function: 'undo',
+              reason: 'The body manager\'s own undo, reached only through gatedHistoryCommand, which asks the size gate first.',
+            },
+            {
+              file: 'src/spaces/document/document-undo-blocknote.ts',
+              function: 'redo',
+              reason: 'The body manager\'s own redo, reached only through gatedHistoryCommand, which asks the size gate first.',
+            },
           ],
           // The write bodies in @breatic/shared/canvas-model (breatic#1488
           // §8.1): shared is outside this rule, so a web call of one counts

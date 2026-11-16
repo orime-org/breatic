@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Trying to generate audio on a canvas node, end to end (#1960 PR1).
@@ -115,6 +115,32 @@ test('text past the model’s limit is refused before anything is sent', async (
 
   // Named, not merely refused: the user has to know how much to cut.
   await expect(page.locator('[data-sonner-toast]').first()).toContainText('2,000', { timeout: 10_000 });
+});
+
+test('a Gemini script past what its upstream takes names the limit and sends nothing', async ({ page }) => {
+  // #1521: Gemini 3.8 is served by WaveSpeed alone, whose text field takes
+  // 8,000 characters; the vendor states no cap, so this is the upstream's.
+  const nodeId = crypto.randomUUID();
+  await seedNode(nodeId, 'audio');
+  await openGenerate(nodeId);
+  await page.getByTestId('generate-model-trigger').click();
+  await page.getByTestId('generate-model-option-gemini-3.8-flash-text-to-speech').click();
+  await page.getByTestId('generate-prompt-editor').click();
+  await page.keyboard.insertText('Hello.');
+  const rate = page.getByTestId('generate-audio-rate');
+  await expect(rate).toBeVisible({ timeout: 15_000 });
+
+  const sent: number[] = [];
+  page.on('response', (res) => {
+    if (res.request().method() === 'POST' && res.url().includes('/canvas/tasks')) sent.push(res.status());
+  });
+  await page.keyboard.insertText('x'.repeat(8001));
+  // The rules have read the run once the price can no longer be given.
+  await expect(rate).toBeHidden({ timeout: 15_000 });
+  await page.getByTestId('generate-audio-execute').click();
+
+  await expect(page.locator('[data-sonner-toast]').first()).toContainText('takes at most 8,000 characters in the text', { timeout: 10_000 });
+  expect(sent.filter((status) => status < 300)).toEqual([]);
 });
 
 test('the voice list matches the deployment it is served from, and a pick survives a reopen @needs-tts', async ({ page }) => {
@@ -349,14 +375,16 @@ test.describe('reference to music in a window tall enough for its settings', () 
   });
 });
 
-test('Gemini keeps its reading mode, language and speakers in the settings pill', async ({ page }) => {
+test('Gemini keeps its reading mode and speakers in the settings pill, and its voices a sample language', async ({ page }) => {
   // Design §16: the pill opens a first panel over it, a row there opens a
-  // second panel beside it, and the rows read reading mode, language, voice.
+  // second panel beside it, and the rows read reading mode, then voice.
+  // Gemini 3.8 reads the language from the script, so there is no language
+  // row; the voice list offers the language its samples play in (#1521).
   const nodeId = crypto.randomUUID();
   await seedNode(nodeId, 'audio', undefined, -350);
   await openGenerate(nodeId);
   await page.getByTestId('generate-model-trigger').click();
-  await page.getByTestId('generate-model-option-gemini-3.1-flash-text-to-speech').click();
+  await page.getByTestId('generate-model-option-gemini-3.8-flash-text-to-speech').click();
 
   const pill = page.getByTestId('generate-audio-settings-trigger');
   await expect(pill).toBeVisible({ timeout: 15_000 });
@@ -364,33 +392,49 @@ test('Gemini keeps its reading mode, language and speakers in the settings pill'
   await pill.click();
 
   const reading = page.getByTestId('generate-audio-reading-single');
-  const language = page.getByTestId('generate-audio-row-language');
   const voice = page.getByTestId('generate-audio-row-voice_id');
-  await expect(language).toBeVisible();
-  const [r, l, v, p] = await Promise.all([reading, language, voice, pill].map((el) => el.boundingBox()));
-  expect(r!.y).toBeLessThan(l!.y);
-  expect(l!.y).toBeLessThan(v!.y);
+  await expect(voice).toBeVisible();
+  await expect(page.getByTestId('generate-audio-row-language')).toHaveCount(0);
+  const [r, v, p] = await Promise.all([reading, voice, pill].map((el) => el.boundingBox()));
+  expect(r!.y).toBeLessThan(v!.y);
   // The first panel opens over the pill.
   expect(v!.y + v!.height).toBeLessThanOrEqual(p!.y);
 
-  // Language: a searchable list beside the first panel, one row per language.
-  await language.click();
+  // Voice: a searchable list beside the first panel, its sample language beside the search box.
+  await voice.click();
   const second = page.getByTestId('generate-audio-second-panel');
   await expect(second).toBeVisible();
   // Beside the first panel, on whichever side the window has room for it.
-  const [lb, sb] = await Promise.all([language.boundingBox(), second.boundingBox()]);
+  const [vb, sb] = await Promise.all([voice.boundingBox(), second.boundingBox()]);
   const width = page.viewportSize()!.width;
-  expect(sb!.x >= lb!.x + lb!.width || sb!.x + sb!.width <= lb!.x).toBe(true);
+  expect(sb!.x >= vb!.x + vb!.width || sb!.x + sb!.width <= vb!.x).toBe(true);
   expect(sb!.x).toBeGreaterThanOrEqual(0);
   expect(sb!.x + sb!.width).toBeLessThanOrEqual(width);
-  const options = page.locator('[data-testid^="generate-audio-option-language-"]:not([data-testid$="-search"])');
+  const sampleLanguage = page.getByTestId('generate-voice-language');
+  await expect(sampleLanguage).toBeVisible();
+  const [search, picker] = await Promise.all([page.getByTestId('generate-voice-search').boundingBox(), sampleLanguage.boundingBox()]);
+  expect(Math.abs(search!.y - picker!.y)).toBeLessThan(2);
+  expect(picker!.x).toBeGreaterThan(search!.x);
+  // The list is widened beside the picker so the search box keeps its placeholder whole (#1521).
+  expect(Math.round(sb!.width)).toBe(320);
+  expect(search!.width).toBeGreaterThanOrEqual(120);
+  // The picker's list leaves the voice names to its left readable rather than a sliver of first letters.
+  await sampleLanguage.click();
+  const languageList = page.getByTestId('generate-voice-language-search').locator('xpath=ancestor::*[@role="dialog"][1]');
+  // Measured once the list has finished opening: it grows in from 95%.
+  await expect.poll(async () => Math.round((await languageList.boundingBox())?.width ?? 0)).toBe(200);
+  await page.keyboard.press('Escape');
+  await sampleLanguage.click();
+  const options = page.locator('[data-testid^="generate-voice-language-"]:not([data-testid$="-search"])');
   await expect(options).toHaveCount(24);
   // Chosen by fill alone, no tick (design §16.1).
-  const chosen = page.locator('[data-testid^="generate-audio-option-language-"][aria-pressed="true"]');
+  const chosen = page.locator('[data-testid^="generate-voice-language-"][aria-pressed="true"]');
   await expect(chosen).toHaveCount(1);
   await expect(chosen.locator('svg')).toHaveCount(0);
+  const pickedLanguage = (await options.nth(10).innerText()).trim();
   await options.nth(10).click();
-  await expect(second).toBeHidden();
+  await expect(page.getByTestId('generate-voice-language-search')).toHaveCount(0);
+  await expect(sampleLanguage).toContainText(pickedLanguage);
 
   // Dialogue: the voice row gives way to one voice row per speaker (#2256).
   await page.getByTestId('generate-audio-reading-dialogue').click();
@@ -443,7 +487,7 @@ test('a Gemini dialogue is written one line per turn, the speaker picked, and se
   await seedNode(nodeId, 'audio', undefined, -350);
   await openGenerate(nodeId);
   await page.getByTestId('generate-model-trigger').click();
-  await page.getByTestId('generate-model-option-gemini-3.1-flash-text-to-speech').click();
+  await page.getByTestId('generate-model-option-gemini-3.8-flash-text-to-speech').click();
 
   const pill = page.getByTestId('generate-audio-settings-trigger');
   await expect(pill).toBeVisible({ timeout: 15_000 });
@@ -619,7 +663,7 @@ test('every voice of the default model plays its sample from the list', async ({
 
 test('a sample speaks the language of its voice, or the one picked for a Gemini voice', async ({ page }) => {
   // User 2026-09-29: a Mandarin voice's sample is in Mandarin; a Gemini voice
-  // speaks whichever language the panel has picked, and so does its sample.
+  // plays its sample in the sample language picked in its voice list (#1521).
   const nodeId = crypto.randomUUID();
   await seedNode(nodeId, 'audio', undefined, -350);
   await openGenerate(nodeId);
@@ -641,14 +685,20 @@ test('a sample speaks the language of its voice, or the one picked for a Gemini 
   }).toPass({ timeout: 5_000 });
 
   await page.getByTestId('generate-model-trigger').click();
-  await page.getByTestId('generate-model-option-gemini-3.1-flash-text-to-speech').click();
+  await page.getByTestId('generate-model-option-gemini-3.8-flash-text-to-speech').click();
   await pill.click();
-  await page.getByTestId('generate-audio-row-language').click();
-  await page.getByTestId('generate-audio-option-language-Japanese (Japan)').click();
   await page.getByTestId('generate-audio-row-voice_id').click();
+  await page.getByTestId('generate-voice-language').click();
+  await page.getByTestId('generate-voice-language-ja').click();
+  // A pick closes the language list; its exit runs before the next key reaches the panel.
+  await expect(page.getByTestId('generate-voice-language-search')).toHaveCount(0);
   const sample = page.locator('[data-testid^="generate-voice-sample-"]').first();
   await expect(sample).toBeVisible({ timeout: 20_000 });
-  const heardJa = page.waitForRequest((r) => r.url().includes('/voice-samples/'));
+  // Only this model's samples: the Mandarin one above may still be answering.
+  const heardJa = page.waitForResponse((r) => r.url().includes('/voice-samples/gemini-3.8-flash-text-to-speech/'));
   await sample.click();
-  expect((await heardJa).url()).toContain('/gemini-3.1-flash-text-to-speech/ja/');
+  const answer = await heardJa;
+  expect(answer.url()).toContain('/gemini-3.8-flash-text-to-speech/ja/');
+  // The sample is served, so a key the catalog names but nobody uploaded fails here.
+  expect(answer.status()).toBeLessThan(400);
 });

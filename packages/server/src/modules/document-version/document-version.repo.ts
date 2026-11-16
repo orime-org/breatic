@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { and, desc, eq, isNull, sql, type SQL } from "drizzle-orm";
 import type { PgColumn } from "drizzle-orm/pg-core";
-import { db, documentVersions as v, studios, decodeActivityCursor, encodeActivityCursor } from "@breatic/core";
+import { db, documentVersions as v, decodeActivityCursor, encodeActivityCursor } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import type { DocumentVersion } from "@breatic/shared";
 
@@ -25,15 +25,15 @@ const columns = {
   createdAt: iso(v.createdAt),
   updatedAt: iso(v.updatedAt),
   createdById: v.createdByUserId,
-  createdByName: studios.name,
 };
 
-type Row = { [K in keyof typeof columns]: K extends "name" | "createdByName" ? string | null : string };
+type Row = { [K in keyof typeof columns]: K extends "name" ? string | null : string };
 
 /**
- * Map a selected row to the entity.
+ * Map a selected row to the entity. The saver's display name lives in the
+ * global directory, so the service fills `createdBy.name` in.
  * @param row - The row.
- * @returns The entity.
+ * @returns The entity, `createdBy.name` null.
  */
 function toEntity(row: Row): DocumentVersion {
   return {
@@ -44,7 +44,7 @@ function toEntity(row: Row): DocumentVersion {
     schemaVersion: row.schemaVersion,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
-    createdBy: { id: row.createdById, name: row.createdByName },
+    createdBy: { id: row.createdById, name: null },
   };
 }
 
@@ -63,9 +63,6 @@ export interface VersionKey {
 function liveIn(key: VersionKey): SQL | undefined {
   return and(eq(v.id, key.id), eq(v.projectId, key.projectId), eq(v.spaceId, key.spaceId), isNull(v.deletedAt));
 }
-
-/** The saver's display name lives on their personal studio. */
-const saverStudio = and(eq(studios.createdByUserId, v.createdByUserId), eq(studios.type, "personal"), isNull(studios.deletedAt));
 
 /**
  * Serialises saves into one document until the transaction ends.
@@ -121,7 +118,7 @@ export async function insert(
       contentBytes: input.contentBytes,
     })
     .returning({ id: v.id });
-  const [row] = await tx.select(columns).from(v).leftJoin(studios, saverStudio).where(eq(v.id, created!.id));
+  const [row] = await tx.select(columns).from(v).where(eq(v.id, created!.id));
   return toEntity(row as Row);
 }
 
@@ -145,7 +142,6 @@ export async function listPage(
   const rows = (await db
     .select({ ...columns, cursorAt: sql<string>`${v.createdAt}::text` })
     .from(v)
-    .leftJoin(studios, saverStudio)
     .where(and(
       eq(v.projectId, projectId),
       eq(v.spaceId, spaceId),
@@ -171,7 +167,6 @@ export async function findWithContent(key: VersionKey): Promise<{ version: Docum
   const [row] = await db
     .select({ ...columns, content: v.content })
     .from(v)
-    .leftJoin(studios, saverStudio)
     .where(liveIn(key));
   if (!row) return null;
   const { content, ...rest } = row;

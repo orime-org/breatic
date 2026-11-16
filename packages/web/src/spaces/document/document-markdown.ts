@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Markdown read with the document's own schema, with no document open
@@ -19,6 +19,7 @@ import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { blockPlainText } from '@web/spaces/document/document-blocks-read';
+import { formulaMarkdownToHTML } from '@web/spaces/document/document-math-markdown';
 
 /** A block as the parser hands it back, ready to write into a document. */
 export type ParsedBlock = Awaited<ReturnType<BlockNoteEditor<never, never, never>['tryParseMarkdownToBlocks']>>[number];
@@ -37,7 +38,7 @@ export interface MarkdownBlock {
 export async function markdownBlocks(markdown: string): Promise<MarkdownBlock[]> {
   if (markdown.trim() === '') return [];
   const editor = buildDocumentEditor({ fragment: documentBodyFragment(new Y.Doc()), extensions: [] });
-  const parsed = await editor.tryParseMarkdownToBlocks(markdown);
+  const parsed = await editor.tryParseHTMLToBlocks(formulaMarkdownToHTML(markdown));
   editor.replaceBlocks(editor.document, parsed);
   const nodes: string[] = [];
   editor.prosemirrorState.doc.firstChild?.forEach((node) => nodes.push(blockPlainText(node)));

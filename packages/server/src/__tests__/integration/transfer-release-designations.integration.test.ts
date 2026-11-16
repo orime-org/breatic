@@ -1,23 +1,27 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * 失去 admin 身份即解除积分包指定（任务 #15），钉在真实 Postgres 上。
+ * Losing the admin role releases credit designations (task #15) — real Postgres.
  *
- * 规则：一个人不再是某 studio 的 admin 的那一瞬间，他名下指向这个 studio 的
- * 每一笔积分，`designated_studio_id` 当场清空。今天唯一能让 admin 不再是 admin
- * 的路径是转让被接受（`confirmTransfer`），所以这一族全部从那里驱动。
+ * The rule: the moment someone stops administering a Studio, every credit lot
+ * of theirs pointed at it has `designated_studio_id` cleared. The only way an
+ * admin stops being one is an accepted transfer (`confirmTransfer`), so every
+ * case here starts from there.
  *
- * 这里的不变量都是 SQL 层的，mock 出来的查询构造器复现不了：
+ * The invariants are SQL-level, which a mocked query builder cannot show:
  *
- *   - 清空与降级同生共死（同一个事务，中途读不到半截状态）。
- *   - 只清这个人的、只清仍然指着这个 studio 的。
- *   - 两本账一分不改：剩余额度、流水行数、欠账都不动。
- *   - 转让被拒绝、降级没跑时，一笔都不许清。
- *   - 清空之后同一个人不能再把一笔指回来 —— 角色判定必须在事务内持锁读。
- *   - 新增的那条跨表加锁顺序不产生循环等待。
+ *   - The clearing commits with the directory admin change, in one global
+ *     transaction (inner#1955); no reader sees one without the other.
+ *   - Only this person's lots, and only those still pointed at this Studio.
+ *   - Neither book changes: remaining credits, ledger rows and debt stay.
+ *   - A refused transfer clears nothing.
+ *   - Once cleared, the same person cannot point a lot back: the admin check
+ *     holds the directory row inside the transaction.
+ *   - The cross-table lock order creates no wait cycle.
  *
- * 并发那几条用 `lock-probe.ts` 把交错强制出来，不用 `Promise.allSettled` 碰运气。
+ * The concurrent cases force their interleaving with `lock-probe.ts` rather
+ * than hoping `Promise.allSettled` lands one.
  */
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
@@ -37,6 +41,7 @@ vi.mock("ai", () => ({
 }));
 
 import postgres from "postgres";
+import { mirrorInDirectory } from "./directory-fixtures.js";
 import { initCore } from "@breatic/core";
 import { creditLotService, studioMembersRepo } from "@breatic/domain";
 import * as studioTransferService from "@server/modules/studio/studioTransfer.service.js";
@@ -113,6 +118,7 @@ async function insertStudioWithAdmin(
     INSERT INTO studio_members (studio_id, user_id, role)
     VALUES (${id}, ${adminUserId}, 'admin')
   `;
+  await mirrorInDirectory(sql, id);
   return { id, slug };
 }
 
@@ -237,7 +243,7 @@ async function debtOf(studioId: string): Promise<string | null> {
  * The SQLSTATE of a rejected query, when it has one.
  *
  * The chain is walked rather than the top level read, for the reason
- * `utils/pg-error.ts` already documents: a query made through drizzle arrives
+ * `packages/core/src/db/pg-error.ts` already documents: a query made through drizzle arrives
  * as a `DrizzleQueryError` whose own `code` is undefined and whose SQLSTATE
  * sits on `.cause`, so a flat check reports null while a deadlock is happening.
  * @param err - Whatever was thrown or rejected with.
@@ -454,18 +460,19 @@ describe("a transfer takes the admin away and the designations go with it", () =
     expect(await designationOf(lot)).toBeNull();
   });
 
-  it("parks the designation on the membership row", async () => {
-    // The role check has to run inside the transaction, holding the member
-    // row — a check made outside it answers about a moment already gone by the
-    // time the write lands. Holding that row here is what makes the difference
-    // observable: with the check outside, nothing ever parks on studio_members.
+  it("parks the designation on the directory row", async () => {
+    // The admin check has to run inside the transaction, holding the Studio's
+    // directory row (inner#1955) — a check made outside it answers about a
+    // moment already gone by the time the write lands. Holding that row here
+    // is what makes the difference observable: with the check outside,
+    // nothing ever parks on studio_directory.
     const s = await seedStudio();
     const lot = await insertLot(s.adminId, null);
 
     let designating: Promise<unknown>;
     await holder.begin(async (tx) => {
       await tx`
-        SELECT user_id FROM studio_members
+        SELECT studio_id FROM studio_directory
         WHERE studio_id = ${s.studioId} FOR UPDATE
       `;
 
@@ -474,7 +481,7 @@ describe("a transfer takes the admin away and the designations go with it", () =
         requestingUserId: s.adminId,
         studioId: s.studioId,
       });
-      await waitUntilBlockedOn(sql, ["studio_members", "for update"]);
+      await waitUntilBlockedOn(sql, ["studio_directory", "for update"]);
     });
     await designating!;
 
@@ -531,9 +538,9 @@ describe("a transfer takes the admin away and the designations go with it", () =
   });
 
   it("queues with a charge and a designation without deadlocking", async () => {
-    // All three writers on this studio at once: the transfer and the
-    // designation both enter the order at the membership, the charge one table
-    // later at the debt.
+    // All three writers on this studio at once: the transfer's global step and
+    // the designation both enter the order at the directory row (inner#1955),
+    // the charge one table later at the debt.
     const s = await seedPendingTransfer();
     const projectId = await insertProject(s.studioId, s.adminId);
     const held = await insertLot(s.adminId, s.studioId, 500, 60);
@@ -574,9 +581,9 @@ describe("a transfer takes the admin away and the designations go with it", () =
       // Both newcomers must be parked before the holder lets go, or they
       // would simply run one after another and prove nothing. The charge
       // takes the debt nobody holds and joins the transfer on the held lot;
-      // the designation stops at the membership the transfer is holding.
+      // the designation stops at the directory row the transfer is holding.
       await waitUntilBlockedOn(sql, ["credit_lots", "for update"], 2);
-      await waitUntilBlockedOn(sql, ["studio_members", "for update"], 1);
+      await waitUntilBlockedOn(sql, ["studio_directory", "for update"], 1);
     });
 
     const transferError = await transfer!.then(
@@ -593,43 +600,45 @@ describe("a transfer takes the admin away and the designations go with it", () =
     expect(sqlStateOf(designated)).not.toBe(DEADLOCK);
     expect(transferError).toBeNull();
     // The designation queued behind the transfer, so by the time it read the
-    // role it was no longer the admin's to give.
+    // directory admin it was no longer the admin's to give.
     expect(designated).toMatchObject({ statusCode: 403 });
     expect(await designationOf(held)).toBeNull();
     expect(await designationOf(loose)).toBeNull();
   });
 
-  it("keeps the clearing and the demote in one transaction", async () => {
-    // The parking point has to sit AFTER the release, or the assertions below
-    // read a transaction that has not reached it yet and hold whatever it
-    // goes on to do. Retiring the bell entry comes after both, so a held lock
-    // on that row stops the transaction with the demote and the clearing done
-    // and nothing committed. A reader on another connection must still
-    // see the old values; had the clearing committed on its own, the lot
-    // would already read as null here.
+  it("keeps the clearing and the directory admin change in one transaction", async () => {
+    // The designations are released in the global transaction that moves the
+    // directory admin (inner#1955): the admin is who pays, so the two facts
+    // commit together. A held lock on the lot stops that transaction with the
+    // admin already rewritten and nothing committed. A reader on another
+    // connection must still see the old admin and the old designation; had
+    // either committed on its own, it would already read as changed here.
     const s = await seedPendingTransfer();
     const lot = await insertLot(s.adminId, s.studioId);
 
     let transfer: Promise<void>;
     await holder.begin(async (tx) => {
-      await tx`
-        SELECT id FROM notifications WHERE id = ${s.notificationId} FOR UPDATE
-      `;
+      await tx`SELECT id FROM credit_lots WHERE id = ${lot} FOR UPDATE`;
 
       transfer = studioTransferService.confirmTransfer(
         s.transferId,
         s.memberId,
       );
-      await waitUntilBlockedOn(sql, ["notifications", "read_at"]);
+      await waitUntilBlockedOn(sql, ["credit_lots", "for update"]);
 
       expect(await designationOf(lot)).toBe(s.studioId);
-      expect(await studioMembersRepo.getRole(s.studioId, s.adminId)).toBe(
-        "admin",
-      );
+      const [directory] = await sql<{ admin: string }[]>`
+        SELECT admin_user_id AS admin FROM studio_directory WHERE studio_id = ${s.studioId}
+      `;
+      expect(directory!.admin).toBe(s.adminId);
     });
     await transfer!;
 
     expect(await designationOf(lot)).toBeNull();
+    const [directory] = await sql<{ admin: string }[]>`
+      SELECT admin_user_id AS admin FROM studio_directory WHERE studio_id = ${s.studioId}
+    `;
+    expect(directory!.admin).toBe(s.memberId);
     expect(await studioMembersRepo.getRole(s.studioId, s.adminId)).toBe(
       "maintainer",
     );

@@ -1,53 +1,27 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { Loader2 } from 'lucide-react';
 import * as React from 'react';
 
-import type { Voice } from '@breatic/shared';
+import { getLocale, type Voice } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { useTranslation } from '@web/i18n/use-translation';
+import { readUserPreferences, writeUserPreference } from '@web/lib/user-preferences-storage';
 import { cn } from '@web/lib/utils';
 import { SampleButton } from '@web/spaces/canvas/generate/SampleButton';
+import { LIST_BODY_HEIGHT } from '@web/spaces/canvas/generate/OptionList';
+import { SampleLanguagePicker } from '@web/spaces/canvas/generate/SampleLanguagePicker';
 import type { SamplePlayer } from '@web/spaces/canvas/generate/use-sample-player';
 import type { VoiceListState } from '@web/spaces/canvas/generate/voice-list-state';
-import { sampleUrlFor } from '@web/spaces/canvas/generate/voice-param';
+import { useCurrentUserStore } from '@web/stores/current-user';
+import { sampleLanguageFor, sampleUrlFor } from '@web/spaces/canvas/generate/voice-param';
 
 /** How close to the bottom asking for the next page starts, in pixels. */
 const PAGE_TRIGGER_DISTANCE = 24;
-
-/**
- * How tall the list stands, counted in rows.
- *
- * The height is the same in every state: a full result set scrolls inside it,
- * a short one leaves the space below empty, and the loading and empty lines
- * centre in it. The popover opens upward, so a box that grew and shrank with
- * its contents would take the search box with it, out from under the user's
- * hands — and on every keystroke, since each one restarts the request.
- */
-const LIST_ROWS = 5;
-
-/** A row's height on a real browser: `size='menu-item'` around two lines. */
-const ROW_HEIGHT = 46;
-/** The `gap-0.5` between two rows. */
-const ROW_GAP = 2;
-
-/** The `p-1` the rows sit inside, top and bottom. */
-const LIST_PADDING = 4;
-
-/**
- * The one height every state of this list stands at.
- *
- * Counts the padding as well as the rows: the box is `border-box`, so a height
- * of just the rows has its own inset taken out of that same number and the
- * last row comes up a padding short of a row.
- */
-export const LIST_BODY_HEIGHT = `${
-  LIST_ROWS * ROW_HEIGHT + (LIST_ROWS - 1) * ROW_GAP + 2 * LIST_PADDING
-}px`;
 
 interface VoiceListProps {
   /** Where the list is, owned by the container's reducer. */
@@ -64,8 +38,8 @@ interface VoiceListProps {
   onRetry: () => void;
   /** The one player every sample in the settings panel goes through. */
   player: SamplePlayer;
-  /** The language the user picked, for a voice with a sample in each. */
-  language: unknown;
+  /** The languages the model's voice samples speak, when it has a sample per language (#1521). */
+  sampleLanguages?: readonly string[];
 }
 
 /**
@@ -88,7 +62,7 @@ interface VoiceListProps {
  * @param root0.onLoadMore - Called when the list reaches its end.
  * @param root0.onRetry - Called to ask for the list again.
  * @param root0.player - Plays the samples.
- * @param root0.language - The language picked, if the model takes one.
+ * @param root0.sampleLanguages - The model's sample languages, if it has them.
  * @returns The voice list.
  */
 export const VoiceList = React.memo(function VoiceList({
@@ -99,9 +73,17 @@ export const VoiceList = React.memo(function VoiceList({
   onLoadMore,
   onRetry,
   player,
-  language,
+  sampleLanguages,
 }: VoiceListProps): React.JSX.Element {
   const t = useTranslation();
+  // The sample language is the user's own, kept per account (#1521).
+  const userId = useCurrentUserStore((s) => s.user?.id);
+  const [picked, setPicked] = React.useState<string | null>(() => readUserPreferences(userId).voiceSampleLanguage);
+  const language = sampleLanguages === undefined ? undefined : sampleLanguageFor(sampleLanguages, getLocale(), picked);
+  const pickLanguage = React.useCallback((tag: string): void => {
+    setPicked(tag);
+    writeUserPreference(userId, { voiceSampleLanguage: tag });
+  }, [userId]);
 
   // The listener goes on the element that scrolls, which the ScrollArea owns.
   // It arrives through a callback ref rather than a plain one: the popover
@@ -124,15 +106,19 @@ export const VoiceList = React.memo(function VoiceList({
 
   return (
     <div className='flex flex-col'>
-      <div className='border-b border-border p-2'>
+      <div className='flex items-center gap-2 border-b border-border p-2'>
         <Input
           autoComplete='off'
           data-testid='generate-voice-search'
           value={list.query}
           onChange={(e) => onQueryChange(e.target.value)}
           placeholder={t('canvas.generatePanel.voiceSearchPlaceholder')}
-          className='h-8 text-sm'
+          className='h-8 min-w-0 flex-1 text-sm'
         />
+        {/* Decided by the model, so it stays put whatever the list is showing (#1521). */}
+        {sampleLanguages !== undefined ? (
+          <SampleLanguagePicker languages={sampleLanguages} value={language} onPick={pickLanguage} />
+        ) : null}
       </div>
       {/* One height for every state this list can be in. A box that grew with
           its contents would move under the user on each keystroke, since the

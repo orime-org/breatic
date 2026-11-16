@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Node history repository — data access for the node_history table.
@@ -11,7 +11,7 @@
 
 import { and, desc, eq, gt, isNotNull, isNull, sql } from "drizzle-orm";
 import { db } from "@breatic/core";
-import { nodeHistory, studios } from "@breatic/core";
+import { nodeHistory } from "@breatic/core";
 import type { NodeHistoryEntity, NodeMediaNumbers } from "@breatic/shared";
 
 /**
@@ -29,22 +29,18 @@ export async function scanSuccessfulMediaHistory(cursor: string | null, limit: n
 }
 
 /**
- * Convert a Drizzle row to a NodeHistoryEntity.
+ * Convert a Drizzle row to a NodeHistoryEntity. The operator's display name
+ * lives in the global directory, so `listByNode` in the service fills it in.
  * @param row - The raw Drizzle row selected from the `node_history` table.
- * @param operatorName - Operator display name from the studios join, if any.
- *   Defaults to `null` — the write paths do not join, only `listByNode` does.
- * @returns The mapped `NodeHistoryEntity`.
+ * @returns The mapped `NodeHistoryEntity`, `operatorName` null.
  */
-function toEntity(
-  row: typeof nodeHistory.$inferSelect,
-  operatorName: string | null = null,
-): NodeHistoryEntity {
+function toEntity(row: typeof nodeHistory.$inferSelect): NodeHistoryEntity {
   return {
     id: row.id,
     projectId: row.projectId,
     nodeId: row.nodeId,
     userId: row.userId,
-    operatorName,
+    operatorName: null,
     entryType: row.entryType as "generation" | "upload" | "snapshot",
     status: row.status as "success" | "failed",
     content: row.content,
@@ -419,22 +415,10 @@ export async function listByNode(
         isNull(nodeHistory.deletedAt),
       );
 
-  // Operator display names live on the personal studio (`users` is the pure
-  // auth table), so the join targets studios(type='personal') by the row's
-  // userId — the same pointer-model join the activity feed uses (renames
-  // propagate; #1619). `null` when the studio was deleted.
   const [rows, countResult] = await Promise.all([
     db
-      .select({ row: nodeHistory, operatorName: studios.name })
+      .select()
       .from(nodeHistory)
-      .leftJoin(
-        studios,
-        and(
-          eq(studios.createdByUserId, nodeHistory.userId),
-          eq(studios.type, "personal"),
-          isNull(studios.deletedAt),
-        ),
-      )
       .where(whereClause)
       .orderBy(desc(nodeHistory.createdAt))
       .limit(limit)
@@ -446,7 +430,7 @@ export async function listByNode(
   ]);
 
   return {
-    entries: rows.map((r) => toEntity(r.row, r.operatorName)),
+    entries: rows.map((row) => toEntity(row)),
     total: countResult[0]?.count ?? 0,
   };
 }

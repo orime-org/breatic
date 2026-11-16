@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -26,7 +26,7 @@ import { notificationsApi , EMPTY_RESOLVED } from '@web/data/api/notifications';
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(studiosApi.listUserStudios).mockResolvedValue([]);
-  vi.mocked(notificationsApi.list).mockResolvedValue({ items: [], resolved: EMPTY_RESOLVED });
+  vi.mocked(notificationsApi.list).mockResolvedValue({ items: [], resolved: EMPTY_RESOLVED, unavailableRegions: [] });
 });
 
 function setup() {

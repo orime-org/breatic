@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect, vi } from 'vitest';
 import { screen, act } from '@testing-library/react';
@@ -593,7 +593,7 @@ describe('NewStudioDialog (spec §3.12 + §5.7 — live slug availability)', () 
     await user.type(screen.getByLabelText('Slug'), 'nova-lab');
     await user.click(screen.getByRole('button', { name: 'Create' }));
     expect(mockMutate).toHaveBeenCalledWith(
-      { name: 'Nova', slug: 'nova-lab' },
+      { name: 'Nova', slug: 'nova-lab', studioId: expect.any(String) },
       expect.objectContaining({
         onSuccess: expect.any(Function),
         onError: expect.any(Function),
@@ -683,7 +683,7 @@ describe('NewStudioDialog — reasons on press and waiting for the check (inner#
 
     vi.mocked(useSlugAvailability).mockReturnValue({ state: 'valid' });
     setOpen(true);
-    expect(mutate).toHaveBeenCalledWith({ name: 'Nova', slug: 'nova-lab' }, expect.anything());
+    expect(mutate).toHaveBeenCalledWith({ name: 'Nova', slug: 'nova-lab', studioId: expect.any(String) }, expect.anything());
   });
 
   it('reports the answer instead of creating when the check comes back taken', async () => {
@@ -751,7 +751,7 @@ describe('NewStudioDialog — reasons on press and waiting for the check (inner#
     await user.type(screen.getByLabelText('Name'), 'Nova');
     await user.type(screen.getByLabelText('Slug'), 'nova-lab');
     await user.click(screen.getByRole('button', { name: 'Create' }));
-    expect(mutate).toHaveBeenCalledWith({ name: 'Nova', slug: 'nova-lab' }, expect.anything());
+    expect(mutate).toHaveBeenCalledWith({ name: 'Nova', slug: 'nova-lab', studioId: expect.any(String) }, expect.anything());
   });
 
   it('ignores a press while the create is out', async () => {

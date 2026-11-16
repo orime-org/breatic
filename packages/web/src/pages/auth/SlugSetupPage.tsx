@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -7,6 +7,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 
 import { authApi } from '@web/data/api/auth';
 import { ApiException } from '@web/data/api/types';
+import { defaultRegionForTimeZone, getRegionConfig, regionToSend } from '@web/data/api/regions';
+import { creationRefusalOf, useStudioCreationId } from '@web/pages/studio/container/dialogs/studio-creation';
 import { applyPersonalStudio, useCurrentUserStore } from '@web/stores/current-user';
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -58,6 +60,11 @@ export default function SlugSetupPage(): React.JSX.Element {
   const [slugError, setSlugError] = React.useState<string | null>(null);
 
   const availability = useSlugAvailability(slug);
+  // The personal Studio goes where the time zone says, with nothing to choose (inner#1955).
+  const regions = getRegionConfig();
+  const homeRegion = defaultRegionForTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone, regions);
+  const region = homeRegion === undefined ? undefined : regionToSend(homeRegion, regions);
+  const creationId = useStudioCreationId(slug.trim());
 
   /**
    * Create the personal studio from the chosen slug, mirror it into the store
@@ -78,7 +85,7 @@ export default function SlugSetupPage(): React.JSX.Element {
     }
     setSubmitting(true);
     try {
-      const { personalStudio } = await authApi.setupStudio({ slug: trimmed });
+      const { personalStudio } = await send(trimmed);
       if (user) {
         setUser(applyPersonalStudio(user, personalStudio));
       }
@@ -87,13 +94,42 @@ export default function SlugSetupPage(): React.JSX.Element {
       // The field stays on the page holding the submitted slug (it is locked
       // while submitting), so a slug taken in the meantime is always its to
       // show; anything else goes to the form line.
-      if (!(await slugFieldShowsConflict(queryClient, err, trimmed, () => true))) {
+      const refusal = creationRefusalOf(err);
+      if (refusal === 'region_unavailable' || refusal === 'in_progress') {
+        setFormError(t('auth.onboarding.unavailable'));
+      } else if (!(await slugFieldShowsConflict(queryClient, err, trimmed, () => true))) {
         setFormError(
           err instanceof ApiException ? err.message : t('auth.onboarding.failed'),
         );
       }
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  /**
+   * Ask for the personal Studio under the form's id; a creation the region
+   * gave up on is asked once more under a new id.
+   * @param trimmed - The slug.
+   * @returns The server's answer.
+   * @throws {ApiException} When the server refuses.
+   */
+  async function send(trimmed: string): ReturnType<typeof authApi.setupStudio> {
+    /**
+     * The request body under the form's current Studio id.
+     * @returns The body.
+     */
+    const body = (): Parameters<typeof authApi.setupStudio>[0] => ({
+      slug: trimmed,
+      studioId: creationId.idFor(),
+      ...(region === undefined ? {} : { region }),
+    });
+    try {
+      return await authApi.setupStudio(body());
+    } catch (err) {
+      if (creationRefusalOf(err) !== 'abandoned') throw err;
+      creationId.renew();
+      return authApi.setupStudio(body());
     }
   }
   const wait = useWaitForSlugCheck(availability, slug, true, () => {

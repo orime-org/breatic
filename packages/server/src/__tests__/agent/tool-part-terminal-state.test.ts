@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * A stored tool part always says how that use of the tool ended.
@@ -390,6 +390,21 @@ describe("how a tool use is recorded when it does not come back", () => {
 
     expect(parts.some((p) => p.type === "failed")).toBe(true);
     expect(toolPart(parts)?.failure?.kind).not.toBe("user_aborted");
+  });
+
+  it("logs the provider's own failure, not only the line the user is shown", async () => {
+    const { mocks } = await import("../helpers/mock-core.js");
+    mocks.logger.error.mockClear();
+    thisCase.toolDoes = "answers";
+    thisCase.parts = [{ type: "error", error: new Error("provider connection dropped") }];
+    await runWithContext({ userId: "u1", conversationId: "c1", projectId: "p1" }, async () => {
+      const turn = await new MainAgent().chat("do something");
+      for await (const _chunk of turn) {
+        // drained
+      }
+    });
+    const logged = mocks.logger.error.mock.calls.map(([fields]) => (fields as { err?: { message?: string } }).err?.message);
+    expect(logged).toContain("provider connection dropped");
   });
 
   it("keeps both halves of what a tool threw, all the way to the record", async () => {

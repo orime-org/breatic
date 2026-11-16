@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * "Recent" landing ROUTE contract — `POST /projects/:id/opened` +
@@ -276,8 +276,9 @@ describe("GET /api/v1/studios/recent — landing feed (real PG + Redis)", () => 
       headers: { Cookie: cookie },
     });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { data: Array<{ projectId: string }> };
-    const ids = new Set(body.data.map((r) => r.projectId));
+    const body = (await res.json()) as { data: { items: Array<{ projectId: string }>; unavailableRegions: string[] } };
+    const ids = new Set(body.data.items.map((r) => r.projectId));
+    expect(body.data.unavailableRegions).toEqual([]);
     expect(ids.has(pVisible)).toBe(true);
     expect(ids.has(pOthersPrivate)).toBe(false);
   });

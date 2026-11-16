@@ -1,13 +1,17 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
 import { Navigate, useParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
-import type { StudioProjectSort } from '@breatic/shared';
+import type { StudioProjectSort, StudioSummary } from '@breatic/shared';
 import { ScrollArea } from '@web/components/ui/scroll-area';
+import { directoryApi } from '@web/data/api/directory';
+import { getRegionConfig, isRegionDown, rememberStudioRegion } from '@web/data/api/regions';
 import { studiosApi } from '@web/data/api/studios';
+import { useCurrentRegion } from '@web/data/api/use-current-region';
+import { RegionUnavailable } from '@web/components/RegionUnavailable';
 import { ApiException } from '@web/data/api/types';
 import { NotFoundScreen } from '@web/components/NotFoundScreen';
 import { ResourceLoadError } from '@web/components/ResourceLoadError';
@@ -62,10 +66,48 @@ import { WorksTab } from '@web/pages/studio/container/tabs/WorksTab';
 export default function StudioContainerPage(): React.JSX.Element {
   const { slug = '', tab: tabParam } = useParams();
   const t = useTranslation();
+  const queryClient = useQueryClient();
+  // The Studio's region decides where its data lives (inner#1955): the
+  // switcher's rows already carry it, the directory answers otherwise.
+  const regions = getRegionConfig();
+  const regionQuery = useQuery({
+    queryKey: ['studio-region', slug],
+    queryFn: () => {
+      if (regions === null) return { region: null };
+      const known = queryClient.getQueryData<StudioSummary[]>(['studios', 'user'])?.find((s) => s.slug === slug);
+      return known === undefined ? directoryApi.studio(slug) : { region: known.region };
+    },
+    retry: (failureCount, err) => !(err instanceof ApiException && err.status === 404) && failureCount < 2,
+  });
+  const region = regionQuery.data?.region;
+  useCurrentRegion(region);
   const studioQuery = useQuery({
     queryKey: ['studio', slug],
-    queryFn: () => studiosApi.get(slug),
+    enabled: region !== undefined,
+    queryFn: async () => {
+      try {
+        return await studiosApi.get(slug);
+      } catch (err) {
+        // A slug can move to a Studio in another region after this tab cached
+        // where it lived; a region without it asks the directory once more.
+        if (regions === null || !(err instanceof ApiException && err.status === 404)) throw err;
+        const fresh = await directoryApi.studio(slug);
+        if (fresh.region === region) throw err;
+        // A switcher row still naming the slug belongs to the Studio that left
+        // it; the region query reads those rows first.
+        queryClient.setQueryData<StudioSummary[]>(['studios', 'user'], (list) =>
+          list?.filter((s) => s.slug !== slug || s.region === fresh.region),
+        );
+        void queryClient.invalidateQueries({ queryKey: ['studios', 'user'] });
+        queryClient.setQueryData(['studio-region', slug], { region: fresh.region });
+        return studiosApi.get(slug);
+      }
+    },
   });
+  // Written during render, before any child sends a request: requests acting
+  // on this Studio go to its region even after the user leaves the page. The
+  // Studio query waits for the region, so the slug is written before it runs.
+  if (region !== undefined && regions !== null) rememberStudioRegion(studioQuery.data ? [slug, studioQuery.data.id] : [slug], region);
   // Remembered per studio by id, so renaming the studio keeps the choice.
   const studioId = studioQuery.data?.id ?? '';
   const projectPrefs = useStudioListPrefs(studioId, 'projects');
@@ -76,6 +118,7 @@ export default function StudioContainerPage(): React.JSX.Element {
     slug,
     archived: false,
     sort: projectPrefs.sort,
+    region,
     enabled: isMember,
   });
   // Archived projects are the studio admin's alone; nobody else is sent for them.
@@ -103,10 +146,13 @@ export default function StudioContainerPage(): React.JSX.Element {
     slug,
     archived: true,
     sort: archivedPrefs.sort,
+    region,
     enabled: isStudioAdmin,
   });
   const membersQuery = useQuery({
-    queryKey: ['studio', slug, 'members'],
+    // Keyed by region like the project lists: a slug that moved to a Studio
+    // in another region names another roster.
+    queryKey: region ? ['studio', slug, 'members', region] : ['studio', slug, 'members'],
     queryFn: () => studiosApi.listMembers(slug),
     enabled: studioQuery.isSuccess,
   });
@@ -159,8 +205,14 @@ export default function StudioContainerPage(): React.JSX.Element {
     studio !== undefined &&
     isAddressableTabSegment(tabParam) &&
     !isTabOnThisPage(tabParam, studio.type, studio.myStudioRole);
+  if (regionQuery.error instanceof ApiException && regionQuery.error.status === 404) return <NotFoundScreen />;
+  if (regionQuery.isError) return <ResourceLoadError onRetry={() => { void regionQuery.refetch(); }} />;
   if (studioQuery.error instanceof ApiException && studioQuery.error.status === 404) return <NotFoundScreen />;
-  if (studioQuery.isError && !studioQuery.data) return <ResourceLoadError onRetry={retry} />;
+  if (studioQuery.isError && !studioQuery.data) {
+    return region && isRegionDown(studioQuery.error)
+      ? <RegionUnavailable kind='studio' onRetry={retry} />
+      : <ResourceLoadError onRetry={retry} />;
+  }
   if (tabIsNotOnThisPage) {
     return <Navigate to={`/studio/${slug}`} replace />;
   }
@@ -263,7 +315,7 @@ export default function StudioContainerPage(): React.JSX.Element {
                   />
                 ) : null}
                 {tab === 'credits' ? (
-                  <CreditsTab slug={slug} />
+                  <CreditsTab slug={slug} region={region} />
                 ) : null}
                 {tab === 'settings' ? (
                   <SettingsTab studio={view.studio} members={members} />

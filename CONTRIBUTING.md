@@ -65,7 +65,7 @@ bodies if it helps reviewers understand the change.
 
 The authorship *identity* of the commit must be a human. Automated
 tooling cannot grant copyright, so listing it in any of the fields
-below creates licensing ambiguity — the project's license (Elastic-2.0)
+below creates licensing ambiguity — the project's license (AGPL-3.0-only)
 depends on identifiable human authors being able to grant rights.
 
 Don't put automated tooling in:
@@ -207,7 +207,10 @@ issues, email the maintainers privately instead of opening a public issue.
 
 ---
 
-## License
+## License and CLA
 
-By contributing, you agree that your contributions will be licensed under
-the same license as the project (see [LICENSE](./LICENSE)).
+Breatic is licensed under the GNU Affero General Public License v3.0
+(see [LICENSE](./LICENSE)). Before your first pull request can be merged,
+sign the [Contributor License Agreement](./CLA.md): a bot comments on the
+pull request, and you sign by replying with the sentence it asks for. You
+sign once, and it covers all your later contributions.

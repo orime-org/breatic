@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
@@ -16,6 +16,7 @@ const TEAM: StudioDetail = {
   avatarUrl: null,
   bio: null,
   myStudioRole: 'admin',
+  region: null,
 };
 
 const PERSONAL: StudioDetail = {
@@ -27,6 +28,7 @@ const PERSONAL: StudioDetail = {
   avatarUrl: null,
   bio: null,
   myStudioRole: 'admin',
+  region: null,
 };
 
 describe('StudioHeader', () => {

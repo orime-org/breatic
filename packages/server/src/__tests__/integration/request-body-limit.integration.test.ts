@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The public app's request body limit over a real socket (inner#1006 §3):
@@ -88,6 +88,7 @@ import {
   rawUpload,
   watchServerSockets,
 } from "./refused-connection.js";
+import { mirrorInDirectory } from "@server/__tests__/integration/directory-fixtures.js";
 
 try {
   initCore(process.env);
@@ -302,6 +303,7 @@ async function seedOwner(): Promise<Seeded> {
     VALUES (${userId}, ${`${tag}-s`}, 'personal', 'Personal') RETURNING id
   `;
   await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${studio!.id}, ${userId}, 'admin')`;
+  await mirrorInDirectory(sql, studio!.id);
   const [project] = await sql<{ id: string }[]>`
     INSERT INTO projects (studio_id, created_by_user_id, name, slug)
     VALUES (${studio!.id}, ${userId}, ${`P ${tag}`}, ${`${tag}-p`}) RETURNING id

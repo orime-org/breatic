@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Web-animation fixtures for the web Timeline tests (inner#1711 S8): copies bound to a source version or to an
@@ -97,7 +97,7 @@ export function webClip(
     rate: { num: 1, den: 1 },
     gain: 1,
     mute: false,
-    transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+    transform: { frameX: 0, frameY: 0, scaleX: 1, scaleY: 1, rotation: 0 },
     ...fields,
   };
 }

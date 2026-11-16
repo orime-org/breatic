@@ -1,11 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
 import * as Y from 'yjs';
 
 import {
   CANVAS_NODES_KEY,
+  currentModelName,
   newId,
   PANEL_EDITOR_PARAM,
   promptPlainText,
@@ -362,6 +363,16 @@ export interface PlacedProposal {
 }
 
 /**
+ * A proposal with every node's model under its current name.
+ * @param proposal - The proposal as the Agent sent it.
+ * @returns The proposal, the same object when no node names a retired model.
+ */
+function withCurrentProposalModels(proposal: CanvasProposal): CanvasProposal {
+  if (!proposal.nodes.some((node) => node.model !== undefined && currentModelName(node.model) !== node.model)) return proposal;
+  return { ...proposal, nodes: proposal.nodes.map((node) => (node.model === undefined ? node : { ...node, model: currentModelName(node.model) })) };
+}
+
+/**
  * Canvas node-creation core — composes the empty-node factory with the
  * frontend-owned Yjs `addNode` write. Kept as a hook (not inline in the
  * canvas) so the create path stays unit-testable without mounting ReactFlow:
@@ -492,13 +503,16 @@ export function useNodeCreation(
   );
   const placeProposalAt = React.useCallback(
     (
-      proposal: CanvasProposal,
+      asked: CanvasProposal,
       start: Spot,
       occupied: readonly Rect[],
       existing: ReadonlyMap<number, ExistingNode> = new Map(),
       order?: readonly number[],
       notify = true,
     ): PlacedProposal | SpaceRefusal => {
+      // A proposal kept in the chat history may name a model since retired; it
+      // lands on the replacement, whose entry decides the dialogue side (#1521).
+      const proposal = withCurrentProposalModels(asked);
       const fresh = proposal.nodes.map((_, i) => !existing.has(i));
       const arrangement = arrangeProposal(projectId, spaceId, proposal, start, occupied, existing, order);
       const { spots, bounds, aimedGroup, joinGroup } = arrangement;

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The trace the designation endpoint leaves when it refuses (task #267 B1).
@@ -21,7 +21,10 @@ const { service, warn } = vi.hoisted(() => ({
   warn: vi.fn(),
 }));
 
-vi.mock("@server/modules/studio/studioCreditDesignation.service.js", () => service);
+vi.mock("@breatic/domain", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  creditLotService: service,
+}));
 vi.mock("@server/modules/credit/credit-view.service.js", () => ({ getLot: vi.fn(async () => ({
   id: "11111111-1111-4111-8111-111111111111", sourceKind: "payment", purchasedCredits: "100.000000", remainingCredits: "100.000000",
   designatedStudioId: "22222222-2222-4222-8222-222222222222", designatedStudioName: "Selected Studio", designated: true,

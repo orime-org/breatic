@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The AI output dialog on screen (inner#1860 A1, A4, A5, A7, A8, design §5.3,
@@ -1130,7 +1130,7 @@ describe('the preview', () => {
     await waitFor(() => {
       expect(previewText()).toContain('WORLD');
     });
-    const parse = vi.spyOn(BlockNoteEditor.prototype, 'tryParseMarkdownToBlocks');
+    const parse = vi.spyOn(BlockNoteEditor.prototype, 'tryParseHTMLToBlocks');
     try {
       await act(async () => {
         selectTextRange(editor, 1, 2);
@@ -1143,7 +1143,7 @@ describe('the preview', () => {
   });
 
   it('parses a burst of pieces fewer times than they arrived, and shows the latest', async () => {
-    const parse = vi.spyOn(BlockNoteEditor.prototype, 'tryParseMarkdownToBlocks');
+    const parse = vi.spyOn(BlockNoteEditor.prototype, 'tryParseHTMLToBlocks');
     try {
       const { call } = await polishing();
       const pieces = Array.from({ length: 40 }, (_, i) => `w${String(i)} `);
@@ -1154,11 +1154,13 @@ describe('the preview', () => {
         expect(previewText()).toContain('w39');
       });
       expect(previewText()).toContain('w0 w1');
-      const ours = parse.mock.calls.filter(([markdown]) => String(markdown).startsWith('w0'));
+      // The answer is read as the HTML its Markdown makes; its words are what is compared.
+      const words = (html: unknown): string => String(html).replace(/<[^>]*>/g, '');
+      const ours = parse.mock.calls.filter(([html]) => words(html).startsWith('w0'));
       expect(ours.length).toBeGreaterThan(0);
       expect(ours.length).toBeLessThan(pieces.length);
       // The last parse taken is of the whole text, not of an earlier part.
-      expect(String(ours.at(-1)![0]).trim()).toBe(pieces.join('').trim());
+      expect(words(ours.at(-1)![0]).trim()).toBe(pieces.join('').trim());
     } finally {
       parse.mockRestore();
     }

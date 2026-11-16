@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The template button in a generate panel's corner (inner#977, inner#1345,
@@ -527,6 +527,50 @@ test('picking the food money shot places the dish it asks for, wired, @\'d and n
   await expect(prompt.locator('[data-prompt-note]')).toHaveCount(1);
   await expect(prompt).toContainText('{✏️ the most tempting moment');
   await page.screenshot({ path: test.info().outputPath('food-money-shot-applied.png') });
+});
+
+test('an image panel lists the three poster templates under the posters goal', async () => {
+  await openPanelOnNewNode('image');
+  await openGoal('posters');
+  await expect(page.getByTestId('generate-template-goal-posters')).toHaveText(/^Posters & graphics\s*3$/);
+  expect(await listedTemplates()).toEqual(['name-as-world-typography', 'destination-festival-poster', 'photo-paper-diorama']);
+  await closeTemplateMenu();
+});
+
+test('picking the photo paper diorama places the photo it asks for, wired, @\'d and noted', async () => {
+  await openPanelOnNewNode('image');
+  await openGoal('posters');
+  await page.getByTestId('generate-template-photo-paper-diorama').click();
+
+  await expect(page.getByTestId('generate-model-trigger')).toContainText('GPT Image 2.5', { timeout: 15_000 });
+  await expect(visibleSpace(page).locator('.react-flow__node')).toHaveCount(2, { timeout: 15_000 });
+  expect(await graph()).toEqual({ names: ['Photo', 'image-template'], edges: ['Photo -> image-template'] });
+  const prompt = page.getByTestId('generate-prompt-editor');
+  await expect(prompt.locator('[data-reference-mention]').filter({ hasText: 'Photo' })).toHaveCount(1);
+  await expect(prompt.locator('[data-prompt-note]')).toHaveCount(1);
+  await expect(prompt).toContainText('{✏️ the two lines');
+});
+
+test('a video panel lists the three motion and speed templates under the speed goal', async () => {
+  await openPanelOnNewNode('video');
+  await openGoal('speed');
+  await expect(page.getByTestId('generate-template-goal-speed')).toHaveText(/^Motion & speed\s*3$/);
+  expect(await listedTemplates()).toEqual(['vehicle-speed-cutlist', 'sports-live-coverage', 'extreme-sports-run']);
+  await closeTemplateMenu();
+});
+
+test('picking the vehicle speed cut list places the vehicle it asks for, wired, @\'d and noted', async () => {
+  await openPanelOnNewNode('video');
+  await openGoal('speed');
+  await page.getByTestId('generate-template-vehicle-speed-cutlist').click();
+
+  await expect(page.getByTestId('generate-model-trigger')).toContainText('Seedance 2.5', { timeout: 15_000 });
+  await expect(visibleSpace(page).locator('.react-flow__node')).toHaveCount(2, { timeout: 15_000 });
+  expect(await graph()).toEqual({ names: ['Vehicle', 'video-template'], edges: ['Vehicle -> video-template'] });
+  const prompt = page.getByTestId('generate-prompt-editor');
+  await expect(prompt.locator('[data-reference-mention]').filter({ hasText: 'Vehicle' })).toHaveCount(1);
+  await expect(prompt.locator('[data-prompt-note]')).toHaveCount(1);
+  await expect(prompt).toContainText('exactly 12 cuts, one cut per second');
 });
 
 test('an audio panel lists the ten sound templates under one goal', async () => {

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Taking away a selection that covers every block of one table cell keeps the
@@ -12,10 +12,8 @@ import { act } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { TextSelection } from '@tiptap/pm/state';
 
-import { OURS, open, paste, positionOf, settled } from './paste-harness';
+import { OURS, open, paste, positionOf, settled, written, type Editor } from './paste-harness';
 import { tableBlock } from './table-fixtures';
-
-type Editor = ReturnType<typeof open>['editor'];
 
 /**
  * A body with a two-row table whose first cell holds a heading and a paragraph,
@@ -96,17 +94,8 @@ describe('a selection covering one whole cell, taken away', () => {
 
   it('by a cut keeps the cell with one empty paragraph, after copying the words', async () => {
     const editor = await wholeCellSelected();
-    const data: Record<string, string> = {};
-    const event = new Event('cut', { bubbles: true, cancelable: true });
-    Object.defineProperty(event, 'clipboardData', {
-      value: {
-        setData: (format: string, value: string) => { data[format] = value; },
-        clearData: () => undefined,
-        getData: (format: string) => data[format] ?? '',
-      },
-    });
 
-    editor.prosemirrorView.dom.dispatchEvent(event);
+    const data = written(editor.prosemirrorView.dom, 'cut');
 
     expect(data['text/plain']).toContain('Head');
     expectEmptiedCell(editor);

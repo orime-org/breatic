@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Web-animation copies in the Timeline planner (inner#1711 design §3.2–§3.3, V5).
@@ -199,7 +199,7 @@ describe('add_web_animation', () => {
     expect(createdCopy(result, cid(1))).toEqual({
       id: cid(1), trackId: V2, kind: 'web-animation', contentBinding: boundTo(SRC_A),
       startFrame: 12, sourceInFrame: 0, durationFrames: 48, rate: { num: 1, den: 1 }, gain: 1, mute: false,
-      transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+      transform: { frameX: 0, frameY: 0, scaleX: 1, scaleY: 1, rotation: 0 },
     });
     expect(result.created).toEqual([cid(1)]);
   });

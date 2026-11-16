@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -16,9 +16,11 @@ const accounts = vi.hoisted(() => ({ getUserByToken: vi.fn() }));
 vi.mock("@server/modules", () => ({ authService: accounts }));
 
 // `logger` reads config on first use; the rejection path writes through it.
+// `requireAuth` reads which region it runs in; this is the global one.
 vi.mock("@breatic/core", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+  env: { REGION: "default", GLOBAL_REGION: "default" },
 }));
 
 import { loadLocales } from "@breatic/core";

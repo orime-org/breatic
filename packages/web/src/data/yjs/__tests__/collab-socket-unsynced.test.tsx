@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
@@ -96,7 +96,7 @@ vi.mock('@web/data/yjs/collab-failure-report', () => ({ reportCollabFailure: vi.
 
 vi.mock('@web/data/yjs/project-meta', async (importOriginal) => ({
   ...await importOriginal<typeof ProjectMetaModule>(),
-  useProjectMeta: () => ({ spaces: [], users: new Map(), synced: true, provider: null, status: 'disconnected', authFailedReason: null }),
+  useProjectMeta: () => ({ spaces: [], users: new Map(), following: new Map(), synced: true, provider: null, status: 'disconnected', authFailedReason: null }),
 }));
 vi.mock('@web/pages/project/use-record-project-open', () => ({ useRecordProjectOpen: (): undefined => undefined }));
 vi.mock('@web/data/api', async (importOriginal) => {

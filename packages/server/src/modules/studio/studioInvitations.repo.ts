@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Studio invitations repository — `studio_invitations` table CRUD + the accept
@@ -19,17 +19,16 @@
  * expired / revoked invitee can be re-invited (a fresh pending row).
  *
  * Drizzle row types never leak past this repo (prohibition #3 /
- * breatic/no-drizzle-type-leak): callers see the hand-written shapes below and
- * `PendingInvitationSummary` (a `@breatic/shared` entity).
+ * breatic/no-drizzle-type-leak): callers see the hand-written shapes below.
  */
 
 import { and, desc, eq, gt, isNull, lte, or, sql } from "drizzle-orm";
-import { alias } from "drizzle-orm/pg-core";
-import { db, studioInvitations, studios, users } from "@breatic/core";
+import { db, studioInvitations } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
-import type { PendingInvitationSummary, StudioRole } from "@breatic/shared";
+import type { StudioRole } from "@breatic/shared";
 import type { RecipientInvitation, EmailInvitationCandidate } from "@server/modules/invitation/invitation.types.js";
-import { mintShareToken } from "@server/utils/share-token.js";
+import type { PendingInvitationRow } from "@server/modules/invitation/pending-display.js";
+import { mintShareToken } from "@breatic/core";
 
 /** Roles an invite may grant — admin is granted via transfer, never invite. */
 type InvitableRole = "maintainer" | "guest";
@@ -306,50 +305,25 @@ export async function revokeIfPending(
 }
 
 /**
- * List a studio's LIVE pending invitations with display fields, for the
- * Members tab's "invited (pending)" section.
- *
- * Mirrors `studioMembers.listByStudio`: joins the invitee to `users` for
- * `email` and to their personal studio for the display `name` + `avatar`, plus
- * the inviter's personal studio for `invitedByName` (two `studios` aliases).
- * Only `status = 'pending'` and non-expired, non-deleted rows; newest first.
+ * List a studio's LIVE pending invitations, newest first: only
+ * `status = 'pending'`, non-expired, non-deleted rows. Display fields come from
+ * `withPendingDisplay`.
  * @param studioId - Studio UUID
- * @returns Pending invitations with display fields (empty when none)
+ * @returns The invitations (empty when none)
  */
 export async function listPendingByStudio(
   studioId: string,
-): Promise<PendingInvitationSummary[]> {
-  const inviteeStudio = alias(studios, "invitee_studio");
-  const inviterStudio = alias(studios, "inviter_studio");
+): Promise<PendingInvitationRow<StudioRole>[]> {
   const rows = await db
     .select({
       invitationId: studioInvitations.id,
       invitedUserId: studioInvitations.invitedUserId,
-      name: inviteeStudio.name,
-      email: sql<string>`coalesce(${users.email}, ${studioInvitations.invitedEmail})`,
-      avatarUrl: inviteeStudio.avatarUrl,
+      invitedEmail: studioInvitations.invitedEmail,
+      invitedBy: studioInvitations.invitedBy,
       role: studioInvitations.role,
-      invitedByName: inviterStudio.name,
       expiresAt: studioInvitations.expiresAt,
     })
     .from(studioInvitations)
-    .leftJoin(users, eq(users.id, studioInvitations.invitedUserId))
-    .leftJoin(
-      inviteeStudio,
-      and(
-        eq(inviteeStudio.createdByUserId, studioInvitations.invitedUserId),
-        eq(inviteeStudio.type, "personal"),
-        isNull(inviteeStudio.deletedAt),
-      ),
-    )
-    .leftJoin(
-      inviterStudio,
-      and(
-        eq(inviterStudio.createdByUserId, studioInvitations.invitedBy),
-        eq(inviterStudio.type, "personal"),
-        isNull(inviterStudio.deletedAt),
-      ),
-    )
     .where(
       and(
         eq(studioInvitations.studioId, studioId),
@@ -359,76 +333,8 @@ export async function listPendingByStudio(
       ),
     )
     .orderBy(desc(studioInvitations.createdAt));
-  return rows.map((r) => ({
-    invitationId: r.invitationId,
-    invitedUserId: r.invitedUserId,
-    awaitingSignup: r.invitedUserId === null,
-    name: r.name ?? r.email,
-    email: r.email,
-    avatarUrl: r.avatarUrl,
-    role: r.role as StudioRole,
-    invitedByName: r.invitedByName ?? "",
-    expiresAt: r.expiresAt.toISOString(),
-  }));
+  return rows.map((r) => ({ ...r, role: r.role as StudioRole }));
 }
-
-/**
- * Resolve a pending invite's landing-page detail by id (the email-link page
- * shows it before the invitee confirms). Joins the studio (name + slug) and the
- * inviter's personal studio (name). Includes EXPIRED pendings (the page renders
- * an "expired" state) — only non-pending / soft-deleted rows return null.
- * @param invitationId - Invitation id (resolved from the email-link token)
- * @returns Landing detail (incl. `invitedUserId` for the own-invite guard +
- *   `expiresAt` for the expiry check), or null if gone / no longer pending
- */
-export async function findLandingById(invitationId: string): Promise<{
-  studioName: string;
-  studioSlug: string;
-  inviterName: string;
-  role: StudioRole;
-  invitedUserId: string | null;
-  expiresAt: Date;
-} | null> {
-  const inviterStudio = alias(studios, "inviter_studio_landing");
-  const rows = await db
-    .select({
-      studioName: studios.name,
-      studioSlug: studios.slug,
-      inviterName: inviterStudio.name,
-      role: studioInvitations.role,
-      invitedUserId: studioInvitations.invitedUserId,
-      expiresAt: studioInvitations.expiresAt,
-    })
-    .from(studioInvitations)
-    .innerJoin(studios, eq(studios.id, studioInvitations.studioId))
-    .leftJoin(
-      inviterStudio,
-      and(
-        eq(inviterStudio.createdByUserId, studioInvitations.invitedBy),
-        eq(inviterStudio.type, "personal"),
-        isNull(inviterStudio.deletedAt),
-      ),
-    )
-    .where(
-      and(
-        eq(studioInvitations.id, invitationId),
-        eq(studioInvitations.status, "pending"),
-        isNull(studioInvitations.deletedAt),
-      ),
-    )
-    .limit(1);
-  const row = rows[0];
-  if (!row) return null;
-  return {
-    studioName: row.studioName,
-    studioSlug: row.studioSlug,
-    inviterName: row.inviterName ?? "",
-    role: row.role as StudioRole,
-    invitedUserId: row.invitedUserId,
-    expiresAt: row.expiresAt,
-  };
-}
-
 
 /** Fields shared by recipient arbitration and delivery settlement. */
 const recipientFields = {

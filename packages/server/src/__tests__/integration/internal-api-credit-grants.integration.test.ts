@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -13,6 +13,7 @@ import { call, initInternalCore, useInternalApp } from "./internal-api-harness.j
 import { chargeNow } from "./studio-credit-fixtures.js";
 import { GRANT_ADMIN, OTHER_ADMIN, applied, expectGrantTables, expectStoredGrant, fundingState, grantBody, grantKey, grantPath, operationPath, postGrant, profilePath, seedDebt, seedPersonal } from "./operator-credit-grant-fixtures.js";
 import type { GrantBody } from "./operator-credit-grant-fixtures.js";
+import { mirrorInDirectory } from "./directory-fixtures.js";
 
 const suite = useInternalApp("internal-api-credit-grants");
 beforeEach(() => { initInternalCore(); });
@@ -26,10 +27,24 @@ describe("operator credit grants over signed HTTP", () => {
     expect(response.json).toEqual({ account: { id: fx.userId, email: fx.email }, personalStudio: { id: fx.studioId, name: "Hold", slug: fx.studioSlug }, debtCredits: "20.000000", canGrant: true, reason: null });
   });
 
+  it("P03 reads a personal Studio that lives in another region (inner#1955)", async () => {
+    const [user] = await suite.sql<{ id: string; email: string }[]>`
+      insert into users(email,email_verified) values(${`grant-far-${randomUUID()}@example.test`},true) returning id,email`;
+    const studioId = randomUUID();
+    const slug = `far-${studioId.slice(0, 8)}`;
+    await suite.sql`
+      insert into studio_directory(studio_id,slug,region,type,name,admin_user_id,created_by_user_id,state)
+      values(${studioId},${slug},'sg','personal','Far',${user!.id},${user!.id},'live')`;
+    const response = await call(suite.baseUrl, profilePath(user!.id), { admin: GRANT_ADMIN });
+    expect(response.status).toBe(200);
+    expect(response.json).toMatchObject({ personalStudio: { id: studioId, name: "Far", slug }, canGrant: true, reason: null });
+  });
+
   it("P03 reports a missing profile account and an unavailable personal Studio", async () => {
     expect((await call(suite.baseUrl, profilePath(randomUUID()), { admin: GRANT_ADMIN })).status).toBe(404);
     const fx = await seedPersonal(suite.sql);
     await suite.sql`update studios set type='team' where id=${fx.studioId}`;
+    await suite.sql`update studio_directory set type='team' where studio_id=${fx.studioId}`;
     const response = await call(suite.baseUrl, profilePath(fx.userId), { admin: GRANT_ADMIN });
     expect(response.status).toBe(200);
     expect(response.json).toEqual({ account: { id: fx.userId, email: fx.email }, personalStudio: null, debtCredits: null, canGrant: false, reason: "personal_studio_unavailable" });
@@ -168,6 +183,7 @@ describe("operator credit grants over signed HTTP", () => {
     expect(missing.json).toMatchObject({ status: "refused", code: "account_not_found", operation: { accountId: missingId } });
     expect((await call(suite.baseUrl, operationPath(missingKey), { admin: GRANT_ADMIN })).json).toEqual(missing.json);
     await suite.sql`update studios set deleted_at=now() where id=${fx.studioId}`;
+    await suite.sql`update studio_directory set deleted_at=now() where studio_id=${fx.studioId}`;
     const unavailable = await postGrant(suite, fx, grantKey());
     expect(unavailable.status).toBe(200);
     expect(unavailable.json).toMatchObject({ status: "refused", code: "personal_studio_unavailable" });
@@ -177,9 +193,11 @@ describe("operator credit grants over signed HTTP", () => {
   it("P10 refuses an old snapshot after the real personal Studio was replaced", async () => {
     const fx = await seedPersonal(suite.sql);
     await suite.sql`update studios set deleted_at=now() where id=${fx.studioId}`;
+    await suite.sql`update studio_directory set deleted_at=now() where studio_id=${fx.studioId}`;
     const [replacement] = await suite.sql<{ id: string }[]>`insert into studios(created_by_user_id,slug,type,name)
       values(${fx.userId},${`p-${randomUUID()}`},'personal','Replacement') returning id`;
     await suite.sql`insert into studio_members(studio_id,user_id,role) values(${replacement!.id},${fx.userId},'admin')`;
+    await mirrorInDirectory(suite.sql, replacement!.id);
     const response = await postGrant(suite, fx, grantKey());
     expect(response.status).toBe(200);
     expect(response.json).toMatchObject({ status: "refused", code: "personal_studio_changed" });

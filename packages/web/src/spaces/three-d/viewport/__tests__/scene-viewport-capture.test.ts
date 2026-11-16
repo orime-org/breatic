@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SRGBColorSpace, type GridHelper, type Group, type Object3D, type PerspectiveCamera, type WebGLRenderTarget } from 'three';
@@ -24,6 +24,9 @@ vi.mock('three', async (importOriginal) => {
     domElement = document.createElement('canvas');
     private target: WebGLRenderTarget | null = null;
     setPixelRatio(): void {} setSize(): void {} dispose(): void {}
+    shadowMap = { enabled: false, type: 0, autoUpdate: true, needsUpdate: false };
+    capabilities = { maxTextures: 16 };
+    compile(): void {} getPixelRatio(): number { return 1; } setViewport(): void {} setScissor(): void {} setScissorTest(): void {}
     setRenderTarget(target: WebGLRenderTarget | null): void { this.target = target; }
     getRenderTarget(): WebGLRenderTarget | null { return this.target; }
     render(scene: { background: unknown }, camera: PerspectiveCamera): void {
@@ -86,6 +89,17 @@ async function open(): Promise<{ runtime: SceneViewportRuntime; capture: SceneFr
   if (!capture) throw new Error('the runtime did not hand over its capture');
   return { runtime, capture, camera: inner.camera };
 }
+
+describe('reporting the personal view (#920)', () => {
+  it('reports the opening view with the field of view once it is built, so the editor can publish it', async () => {
+    const { runtime } = await open();
+    const initial = (runtime as unknown as { props: SceneViewportProps }).props;
+    const [view, fov] = vi.mocked(initial.onViewChange).mock.calls[0]!;
+    view.position.forEach((value, index) => expect(value).toBeCloseTo([7, 5, 8][index]!));
+    view.target.forEach((value, index) => expect(value).toBeCloseTo([0, 1, 0][index]!));
+    expect(fov).toBe(45);
+  });
+});
 
 describe('capturing the viewfinder frame (#1411 design 4)', () => {
   it('renders the frame once into a 4-sample sRGB target at the output size, with every helper hidden', async () => {

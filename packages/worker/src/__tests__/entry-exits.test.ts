@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -55,5 +55,18 @@ describe("worker task failure log", () => {
     const block = code.slice(code.lastIndexOf("logger.error(", at), at);
     expect(block).toMatch(/\berr,/);
     expect(block).not.toMatch(/err\.message/);
+  });
+});
+
+describe("worker Timeline configuration check (#1502 design §2)", () => {
+  it("reads the Timeline configuration before it schedules the execution sweep, and logs and exits when it cannot", () => {
+    const check = code.indexOf("getTimelineConfig();");
+    const failed = code.indexOf('"timeline_config_invalid"');
+    const sweep = code.indexOf("getTimelineConfig().web_animation.sweep_interval_ms");
+    expect(check).toBeGreaterThanOrEqual(0);
+    expect(failed).toBeGreaterThan(check);
+    expect(sweep).toBeGreaterThan(failed);
+    expect(code.slice(check, failed)).toMatch(/catch \(err\)[\s\S]*logger\.(error|fatal)\(\{ err\b[^}]*\}, $/);
+    expect(code.slice(failed, failed + 80)).toMatch(/await exitProcess\(1\)/);
   });
 });

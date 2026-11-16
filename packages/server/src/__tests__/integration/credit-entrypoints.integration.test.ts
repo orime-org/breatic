@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * 碰积分的那几个入口，全部走新引擎（任务 #11）。
@@ -58,6 +58,7 @@ vi.mock("ai", () => ({
 import crypto from "node:crypto";
 import type { Hono } from "hono";
 import postgres from "postgres";
+import { mirrorInDirectory } from "./directory-fixtures.js";
 import {
   initCore,
   loadLocales,
@@ -128,6 +129,7 @@ async function seedFixture(): Promise<Fixture> {
     INSERT INTO studio_members (studio_id, user_id, role)
     VALUES (${studioId}, ${userId}, 'admin')
   `;
+  await mirrorInDirectory(sql, studioId);
   const [project] = await sql<{ id: string }[]>`
     INSERT INTO projects (studio_id, created_by_user_id, slug, name)
     VALUES (${studioId}, ${userId}, ${`entry-p-${n}-${Date.now()}`}, 'Entry') RETURNING id

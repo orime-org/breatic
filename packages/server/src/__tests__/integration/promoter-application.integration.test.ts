@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { randomUUID } from "node:crypto";
 import fc from "fast-check";
@@ -9,6 +9,7 @@ import { initCore, loadLocales } from "@breatic/core";
 
 import { submitApplication } from "@server/modules/referral/promoter-application.service";
 import { approve } from "@server/modules/referral/referral-admin.service";
+import { findApplicationDetail } from "@server/modules/referral/promoter-application.repo";
 import { waitUntilBlockedOn } from "./lock-probe";
 
 const TERMS = "2026-11-07";
@@ -147,5 +148,25 @@ describe("submitApplication", () => {
       ),
       { numRuns: 48 },
     );
+  });
+});
+
+describe("findApplicationDetail", () => {
+  it("names the applicant's personal Studio wherever it lives (inner#1955)", async () => {
+    const userId = await account();
+    const studioId = randomUUID();
+    await sql`
+      INSERT INTO studio_directory (studio_id, slug, region, type, name, admin_user_id, created_by_user_id, state)
+      VALUES (${studioId}, ${`pa-${studioId.slice(0, 8)}`}, 'sg', 'personal', 'Far Me', ${userId}, ${userId}, 'live')
+    `;
+    const [application] = await sql<{ id: string }[]>`
+      INSERT INTO promoter_applications (user_id, status, country, channels, plan, terms_version, terms_accepted_at)
+      VALUES (${userId}, 'pending', 'SG', ${sql.json(form.channels)}, 'Tutorials', ${TERMS}, now())
+      RETURNING id
+    `;
+
+    const detail = await findApplicationDetail(application!.id);
+
+    expect(detail?.personalStudioName).toBe("Far Me");
   });
 });

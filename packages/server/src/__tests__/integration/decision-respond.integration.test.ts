@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Answering a request through the one endpoint, for all five flows.
@@ -32,6 +32,7 @@ vi.mock("ai", () => ({
 }));
 
 import postgres from "postgres";
+import { mirrorInDirectory } from "./directory-fixtures.js";
 import {
   initCore,
   ConflictError,
@@ -46,7 +47,7 @@ import * as studioInvitationsRepo from "@server/modules/studio/studioInvitations
 import * as projectInvitationsRepo from "@server/modules/project-invite/projectInvitations.repo.js";
 import * as roleUpgradeRequestsRepo from "@server/modules/role-upgrade-request/roleUpgradeRequests.repo.js";
 import * as projectTransfersRepo from "@server/modules/project/projectTransfers.repo.js";
-import * as studioTransfersRepo from "@server/modules/studio/studioTransfers.repo.js";
+import { studioTransfersRepo as studioTransfersRepo } from "@breatic/domain";
 
 let sql: ReturnType<typeof postgres>;
 
@@ -107,6 +108,7 @@ async function seedScene(): Promise<Scene> {
     VALUES (${studio!.id}, ${owner!.id}, 'admin', ${owner!.id}),
            (${studio!.id}, ${member!.id}, 'maintainer', ${owner!.id})
   `;
+  await mirrorInDirectory(sql, studio!.id);
   const projectSlug = `${tag}-p`;
   const [project] = await sql<{ id: string }[]>`
     INSERT INTO projects (studio_id, created_by_user_id, name, slug)

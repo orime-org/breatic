@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What the ticket endpoint answers (#173, design §4.2).
@@ -40,6 +40,12 @@ export interface UploadTicket {
    * own for a retry. Absent on an upload with no node behind it.
    */
   taskId?: string;
+  /**
+   * The API base the ticket was asked of, stamped by the page (inner#1955):
+   * the finish, the status poll and a failure report go to the region that
+   * opened the upload, even when the page has since moved to another region.
+   */
+  apiBase?: string;
 }
 
 /**
@@ -117,6 +123,8 @@ export interface UploadAlreadyStored {
 export interface OpenFailedAnswer {
   openFailed: { reason: string };
   taskId?: string;
+  /** The API base the ticket was asked of, as on {@link UploadTicket}. */
+  apiBase?: string;
 }
 
 /** Any answer the ticket endpoint can give. */

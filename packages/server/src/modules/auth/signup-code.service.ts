@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Email sign-up with a code (#287), used while an email backend is enabled.
@@ -17,7 +17,7 @@
 
 import crypto from "node:crypto";
 
-import * as userRepo from "@server/modules/auth/user.repo.js";
+import { usersRepo as userRepo } from "@breatic/domain";
 import { SignupReferralRefused, createAccount, hashPassword } from "@server/modules/auth/auth.service.js";
 import type { SignupReferral, SignupReferralOutcome } from "@server/modules/auth/auth.service.js";
 import { findActiveCode } from "@server/modules/referral/referral-binding.service.js";

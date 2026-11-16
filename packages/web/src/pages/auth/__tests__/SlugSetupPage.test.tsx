@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -199,7 +199,7 @@ describe('SlugSetupPage', () => {
     setAvailability({ state: 'valid' });
     refresh();
     expect(await screen.findByTestId('studio-page')).toBeInTheDocument();
-    expect(authApi.setupStudio).toHaveBeenCalledWith({ slug: 'my-handle' });
+    expect(authApi.setupStudio).toHaveBeenCalledWith({ slug: 'my-handle', studioId: expect.any(String) });
   });
 
   it('reports a running check that comes back taken instead of sending (inner#1652)', async () => {
@@ -241,7 +241,7 @@ describe('SlugSetupPage', () => {
       expect(screen.getByTestId('studio-page')).toBeInTheDocument(),
     );
     expect(authApi.setupStudio).toHaveBeenCalledTimes(1);
-    expect(authApi.setupStudio).toHaveBeenCalledWith({ slug: 'my-handle' });
+    expect(authApi.setupStudio).toHaveBeenCalledWith({ slug: 'my-handle', studioId: expect.any(String) });
     const stored = useCurrentUserStore.getState().user;
     expect(stored?.personalStudio).toEqual({
       name: 'my-handle',

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Seeds for suites that need a studio with credits to spend: an admin, the
@@ -11,6 +11,7 @@ import type postgres from "postgres";
 import { db } from "@breatic/core";
 import { creditLotService } from "@breatic/domain";
 import { openPaymentSource } from "./payment-source.js";
+import { mirrorInDirectory } from "./directory-fixtures.js";
 
 type Sql = ReturnType<typeof postgres>;
 
@@ -69,6 +70,7 @@ export async function seedStudioFixture(sql: Sql, label: string): Promise<Studio
   `;
   const studioId = studio!.id;
   await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${studioId}, ${userId}, 'admin')`;
+  await mirrorInDirectory(sql, studioId);
   const [project] = await sql<{ id: string }[]>`
     INSERT INTO projects (studio_id, created_by_user_id, slug, name)
     VALUES (${studioId}, ${userId}, ${`${n}-p`}, 'Hold project') RETURNING id

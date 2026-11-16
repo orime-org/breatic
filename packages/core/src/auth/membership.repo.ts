@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Membership identity, negotiated records and entitlement reads shared by
@@ -26,8 +26,7 @@ import { db, type DbTx } from "@core/db/client.js";
 import {
   membershipTierChanges,
   enterpriseMemberships,
-  studioMembers,
-  studios,
+  studioDirectory,
   users,
 } from "@core/db/schema.js";
 import * as projectsRepo from "@core/project/projects.repo.js";
@@ -523,7 +522,8 @@ async function readMembershipProfile(target: { userId: string } | { studioId: st
   const query = (tx ?? db).select(selection).from(users).leftJoin(enterpriseMemberships, and(eq(enterpriseMemberships.userId, users.id), isNull(enterpriseMemberships.deletedAt)));
   const rows = "userId" in target
     ? await query.where(and(eq(users.id, target.userId), isNull(users.deletedAt))).limit(1)
-    : await query.innerJoin(studioMembers, and(eq(studioMembers.userId, users.id), eq(studioMembers.role, "admin"), isNull(studioMembers.deletedAt))).innerJoin(studios, and(eq(studios.id, studioMembers.studioId), eq(studios.id, target.studioId), isNull(studios.deletedAt))).where(isNull(users.deletedAt)).limit(1);
+    // The directory names every Studio's admin, whichever region holds it (inner#1955).
+    : await query.innerJoin(studioDirectory, and(eq(studioDirectory.adminUserId, users.id), eq(studioDirectory.studioId, target.studioId), isNull(studioDirectory.deletedAt))).where(isNull(users.deletedAt)).limit(1);
   const row = rows[0];
   if (row === undefined) return null;
   const subject: TierSubject = { accountId: row.userId, ...("studioId" in target ? { studioId: target.studioId } : {}) };

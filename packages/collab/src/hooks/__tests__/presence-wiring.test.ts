@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The presence rules, driven through a real Hocuspocus rather than by hand.
@@ -30,8 +30,10 @@ import {
   waitFor,
   type LiveClient,
 } from "@collab/__tests__/helpers/live-hocuspocus.js";
-import { readPresence } from "@collab/hooks/presence";
+import { markOnline, readFollowing, readPresence, writeFollowing } from "@collab/hooks/presence";
 import {
+  forgetFollowingOnDisconnect,
+  recordFollowingFromAwareness,
   recordPresenceOnConnect,
   refreshPresenceForSocket,
   stampIdentityOnAwareness,
@@ -67,10 +69,27 @@ const clients: LiveClient[] = [];
  *
  * Note what is NOT here: `onDisconnect` writes no presence at all. A socket
  * closing is not evidence the person left — they may hold another one, on this
- * machine or another — so absence is left entirely to the sweep.
+ * machine or another — so absence is left entirely to the sweep. With
+ * `following`, it also records whom each connection follows (#920) and drops
+ * a connection's entry when it closes: that entry is per socket, not per person.
+ * @param options - What else to wire.
+ * @param options.following - Wire the following table the way production does.
  * @returns The server.
  */
-function makeServer(): Hocuspocus {
+function makeServer(options: { following?: boolean } = {}): Hocuspocus {
+  const following = options.following
+    ? {
+      // Production order: the identity is stamped first, then whom the
+      // sender follows is recorded from the same frame.
+      beforeHandleAwareness: async (payload: unknown): Promise<void> => {
+        stampIdentityOnAwareness(payload as never);
+        recordFollowingFromAwareness(payload as never, { now: () => clock, ...POLICY });
+      },
+      onDisconnect: async (payload: unknown): Promise<void> => {
+        forgetFollowingOnDisconnect(payload as never);
+      },
+    }
+    : {};
   const instance = createLiveServer({
     onAuthenticate: async ({
       requestHeaders,
@@ -88,6 +107,7 @@ function makeServer(): Hocuspocus {
     beforeHandleAwareness: async (payload: unknown): Promise<void> => {
       stampIdentityOnAwareness(payload as never);
     },
+    ...following,
   });
   return instance;
 }
@@ -207,7 +227,7 @@ function alive(
       { context: { user: { id: userId } }, document: doc },
     ]),
   );
-  refreshPresenceForSocket(connections, { now: () => clock, ...POLICY }, heardAt);
+  refreshPresenceForSocket(connections, { now: () => clock, ...POLICY }, heardAt, `sock-${userId}`);
 }
 
 /**
@@ -348,6 +368,7 @@ describe("presence wiring — a sign of life refreshes and sweeps", () => {
       ]),
       { now: () => clock, ...POLICY },
       clock,
+      "sock-1",
     );
 
     expect(readPresence(space, ALICE)).toBeNull();
@@ -522,5 +543,289 @@ describe("presence wiring — the server decides whose caret is whose", () => {
     );
 
     expect(caretState(7070, CANVAS_DOC)?.user).toEqual({ id: ALICE });
+  });
+});
+
+/*
+ * Whom each connection follows (#920, design 4.2.1). Expected from
+ * `hooks/presence-wiring.ts`:
+ *
+ *   recordFollowingFromAwareness(payload, policy): void
+ *     payload = the meta document's `beforeHandleAwareness` payload
+ *     `{ states, connection?, context?, socketId, documentName, document }`.
+ *     Only a meta document and only a frame with a `connection`; skips the
+ *     scratch awareness's own (empty, or after stamping only `user`) entry;
+ *     the sender's `following: { id, at }` → `writeFollowing` for `socketId`
+ *     (userId from the connection context, lastSeenAt `policy.now()`);
+ *     `following` null or absent → `deleteFollowing` for `socketId`.
+ *   forgetFollowingOnDisconnect(payload): void
+ *     payload = `{ documentName, socketId, document }` from `onDisconnect`;
+ *     deletes that socket's entry on a meta document. The refused-duplicate
+ *     check stays in `hocuspocus.ts`, before this call.
+ *   refreshPresenceForSocket(connections, policy, heardAt, socketId): void
+ *     also moves that socket's entry `lastSeenAt` to `heardAt`, whether or
+ *     not the owner has a presence record.
+ */
+
+/** Where the following table lives in the meta document. */
+const FOLLOWING = "following";
+
+/**
+ * The socket ids of the connections the meta document holds now.
+ * @returns The ids.
+ */
+function metaSocketIds(): Set<string> {
+  const doc = metaDoc() as unknown as { getConnections: () => Array<{ socketId: string }> };
+  return new Set(doc.getConnections().map((c) => c.socketId));
+}
+
+/**
+ * Connect to the meta document and learn the socket id the server gave it.
+ * @param cookie - Who connects.
+ * @returns The client and its socket id.
+ * @throws {Error} When no new connection appeared.
+ */
+async function connectWithSocket(cookie: string): Promise<{ client: LiveClient; socketId: string }> {
+  const before = server.documents.has(META_DOC) ? metaSocketIds() : new Set<string>();
+  const client = await connect(cookie);
+  const socketId = [...metaSocketIds()].find((id) => !before.has(id));
+  if (socketId === undefined) throw new Error(`no new meta connection for ${cookie}`);
+  return { client, socketId };
+}
+
+/**
+ * Count the Yjs updates the meta document emits while `fn` runs.
+ * @param fn - What to run.
+ * @returns How many updates it emitted.
+ */
+async function metaUpdatesDuring(fn: () => Promise<void>): Promise<number> {
+  let count = 0;
+  const onUpdate = (): void => {
+    count += 1;
+  };
+  const doc = metaDoc();
+  doc.on("update", onUpdate);
+  try {
+    await fn();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  } finally {
+    doc.off("update", onUpdate);
+  }
+  return count;
+}
+
+describe("presence wiring — the server keeps whom each connection follows", () => {
+  beforeEach(() => {
+    server = makeServer({ following: true });
+  });
+
+  it("records whom a tab follows when it declares it, with the start time the tab sent", async () => {
+    const { client, socketId } = await connectWithSocket("alice");
+
+    await sendCaret(client, 8080, { following: { id: "u-bob", at: 500 } });
+    await waitFor(() => readFollowing(metaDoc(), socketId) !== null, "alice's following recorded");
+
+    expect(readFollowing(metaDoc(), socketId)).toEqual({ userId: ALICE, target: "u-bob", at: 500, lastSeenAt: clock });
+  });
+
+  it("writes nothing when a beat or a focus change resends the same following", async () => {
+    const { client, socketId } = await connectWithSocket("alice");
+    await sendCaret(client, 8080, { view: { spaceId: "s1", at: 400, focused: true }, following: { id: "u-bob", at: 500 } });
+    await waitFor(() => readFollowing(metaDoc(), socketId) !== null, "alice's following recorded");
+    const recorded = readFollowing(metaDoc(), socketId);
+
+    clock += BEAT_MS;
+    const updates = await metaUpdatesDuring(async () => {
+      await sendCaret(client, 8080, { view: { spaceId: "s1", at: 400, focused: true }, following: { id: "u-bob", at: 500 } }, { revisions: 2 });
+      await sendCaret(client, 8080, { view: { spaceId: "s1", at: 400, focused: false }, following: { id: "u-bob", at: 500 } }, { revisions: 3 });
+    });
+
+    expect(updates).toBe(0);
+    expect(readFollowing(metaDoc(), socketId)).toEqual(recorded);
+  });
+
+  it("rewrites the entry when the tab follows somebody else", async () => {
+    const { client, socketId } = await connectWithSocket("alice");
+    await sendCaret(client, 8080, { following: { id: "u-bob", at: 500 } });
+    await waitFor(() => readFollowing(metaDoc(), socketId) !== null, "alice's following recorded");
+
+    clock += BEAT_MS;
+    await sendCaret(client, 8080, { following: { id: "u-carol", at: 900 } }, { revisions: 2 });
+    await waitFor(() => readFollowing(metaDoc(), socketId)?.target === "u-carol", "alice's new target recorded");
+
+    expect(readFollowing(metaDoc(), socketId)).toEqual({ userId: ALICE, target: "u-carol", at: 900, lastSeenAt: clock });
+  });
+
+  it("deletes the entry when the tab stops following", async () => {
+    const { client, socketId } = await connectWithSocket("alice");
+    await sendCaret(client, 8080, { following: { id: "u-bob", at: 500 } });
+    await waitFor(() => readFollowing(metaDoc(), socketId) !== null, "alice's following recorded");
+
+    await sendCaret(client, 8080, { following: null }, { revisions: 2 });
+    await waitFor(() => readFollowing(metaDoc(), socketId) === null, "alice's following deleted");
+
+    expect(metaDoc().getMap(FOLLOWING).has(socketId)).toBe(false);
+  });
+
+  it("deletes the entry when the tab's state no longer carries following at all", async () => {
+    const { client, socketId } = await connectWithSocket("alice");
+    await sendCaret(client, 8080, { following: { id: "u-bob", at: 500 } });
+    await waitFor(() => readFollowing(metaDoc(), socketId) !== null, "alice's following recorded");
+
+    await sendCaret(client, 8080, { view: { spaceId: "s1", at: 600, focused: true } }, { revisions: 2 });
+    await waitFor(() => readFollowing(metaDoc(), socketId) === null, "alice's following deleted");
+
+    expect(metaDoc().getMap(FOLLOWING).has(socketId)).toBe(false);
+  });
+
+  it("deletes a connection's entry when it closes, and leaves other connections' entries", async () => {
+    const alice = await connectWithSocket("alice");
+    const bob = await connectWithSocket("bob");
+    await sendCaret(alice.client, 8080, { following: { id: "u-bob", at: 500 } });
+    await sendCaret(bob.client, 9090, { following: { id: ALICE, at: 600 } });
+    await waitFor(
+      () => readFollowing(metaDoc(), alice.socketId) !== null && readFollowing(metaDoc(), bob.socketId) !== null,
+      "both followings recorded",
+    );
+
+    alice.client.close();
+    await waitFor(() => readFollowing(metaDoc(), alice.socketId) === null, "alice's entry deleted on close");
+
+    expect(readFollowing(metaDoc(), bob.socketId)?.target).toBe(ALICE);
+  });
+
+  it("records the frame a reconnecting tab resends with an unchanged awareness clock", async () => {
+    // The browser keeps its Y.Doc across a reconnect, so it resends its state
+    // under the same client id and clock. The document's awareness already
+    // saw that clock and drops the frame, so a reader of applied awareness
+    // updates never sees it; the hook before that filter does.
+    await connectWithSocket("bob");
+    const first = await connectWithSocket("alice");
+    await sendCaret(first.client, 8080, { following: { id: "u-bob", at: 500 } });
+    await waitFor(() => readFollowing(metaDoc(), first.socketId) !== null, "alice's following recorded");
+    first.client.close();
+    await waitFor(() => readFollowing(metaDoc(), first.socketId) === null, "alice's entry deleted on close");
+
+    const again = await connectWithSocket("alice");
+    await sendCaret(again.client, 8080, { following: { id: "u-bob", at: 500 } });
+    await waitFor(() => readFollowing(metaDoc(), again.socketId) !== null, "the resent following recorded");
+
+    expect(readFollowing(metaDoc(), again.socketId)).toEqual({ userId: ALICE, target: "u-bob", at: 500, lastSeenAt: clock });
+    // Proof the frame was one the awareness clock filtered out.
+    expect(caretState(8080)).toBeUndefined();
+  });
+
+  it("writes nothing for a frame relayed from another instance", async () => {
+    // A relayed frame has no connection, and its socket id is the empty string.
+    await connectWithSocket("bob");
+    const states = new Map<number, Record<string, unknown>>([
+      [8080, { user: { id: ALICE }, following: { id: "u-bob", at: 500 } }],
+    ]);
+
+    const updates = await metaUpdatesDuring(async () => {
+      recordFollowingFromAwareness(
+        { states, socketId: "", context: undefined, documentName: META_DOC, document: metaDoc() },
+        { now: () => clock, ...POLICY },
+      );
+    });
+
+    expect(updates).toBe(0);
+    expect(metaDoc().getMap(FOLLOWING).size).toBe(0);
+  });
+
+  it("does not read the scratch awareness's own empty entry as a tab that stopped following", async () => {
+    // Every frame the hook sees also holds the scratch awareness's local
+    // entry, `{}` at clock zero, stamped with the sender like any other.
+    // Whichever order the two come in, the declaration stands and a repeat
+    // of it writes nothing.
+    const { socketId } = await connectWithSocket("alice");
+    const connection = { context: { user: { id: ALICE } }, socketId };
+    /**
+     * Run the hook pair the way production does, on one frame.
+     * @param states - The frame's entries, in order.
+     */
+    const frame = (states: Array<[number, Record<string, unknown>]>): void => {
+      const payload = {
+        states: new Map(states),
+        connection,
+        context: connection.context,
+        socketId,
+        documentName: META_DOC,
+        document: metaDoc(),
+      };
+      stampIdentityOnAwareness(payload);
+      recordFollowingFromAwareness(payload, { now: () => clock, ...POLICY });
+    };
+
+    frame([[1, {}], [8080, { following: { id: "u-bob", at: 500 } }]]);
+    expect(readFollowing(metaDoc(), socketId)?.target).toBe("u-bob");
+
+    clock += BEAT_MS;
+    const updates = await metaUpdatesDuring(async () => {
+      frame([[1, {}], [8080, { following: { id: "u-bob", at: 500 } }]]);
+      frame([[8080, { following: { id: "u-bob", at: 500 } }], [1, {}]]);
+    });
+
+    expect(updates).toBe(0);
+    expect(readFollowing(metaDoc(), socketId)).toEqual({ userId: ALICE, target: "u-bob", at: 500, lastSeenAt: clock - BEAT_MS });
+  });
+
+  it("moves a socket's entry forward on its sign of life, even for an owner with no presence record", () => {
+    // `touchLastSeen` refuses to create a record and returns early; whom the
+    // socket follows is refreshed regardless.
+    const doc = new Y.Doc();
+    writeFollowing({ document: doc, socketId: "sock-1", userId: ALICE, target: "u-bob", at: 500, now: 1_000 });
+    writeFollowing({ document: doc, socketId: "sock-2", userId: ALICE, target: "u-bob", at: 500, now: 1_000 });
+
+    refreshPresenceForSocket(
+      new Map([[META_DOC, { context: { user: { id: ALICE } }, document: doc }]]),
+      { now: () => clock, ...POLICY },
+      7_000,
+      "sock-1",
+    );
+
+    expect(readPresence(doc, ALICE)).toBeNull();
+    expect(readFollowing(doc, "sock-1")?.lastSeenAt).toBe(7_000);
+    expect(readFollowing(doc, "sock-2")?.lastSeenAt).toBe(1_000);
+    doc.destroy();
+  });
+
+  it("sends one meta update per sign of life for a socket that follows someone and has a presence record", () => {
+    // Every update is broadcast to the whole project; the entry and the record
+    // move together in one transaction.
+    const doc = new Y.Doc();
+    markOnline({ document: doc, userId: ALICE, now: 1_000 });
+    writeFollowing({ document: doc, socketId: "sock-1", userId: ALICE, target: "u-bob", at: 500, now: 1_000 });
+    let updates = 0;
+    doc.on("update", () => { updates += 1; });
+
+    refreshPresenceForSocket(
+      new Map([[META_DOC, { context: { user: { id: ALICE } }, document: doc }]]),
+      { now: () => 7_000, ...POLICY },
+      7_000,
+      "sock-1",
+    );
+
+    expect(updates).toBe(1);
+    expect(readPresence(doc, ALICE)?.lastSeenAt).toBe(7_000);
+    expect(readFollowing(doc, "sock-1")?.lastSeenAt).toBe(7_000);
+    doc.destroy();
+  });
+
+  it("moves the entry forward alongside the presence record when there is one", async () => {
+    const { client, socketId } = await connectWithSocket("alice");
+    await sendCaret(client, 8080, { following: { id: "u-bob", at: 500 } });
+    await waitFor(() => readFollowing(metaDoc(), socketId) !== null, "alice's following recorded");
+
+    clock += BEAT_MS;
+    refreshPresenceForSocket(
+      new Map([[META_DOC, { context: { user: { id: ALICE } }, document: metaDoc() }]]),
+      { now: () => clock, ...POLICY },
+      clock,
+      socketId,
+    );
+
+    expect(readPresence(metaDoc(), ALICE)?.lastSeenAt).toBe(clock);
+    expect(readFollowing(metaDoc(), socketId)?.lastSeenAt).toBe(clock);
   });
 });

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The page's one upload controller, against the real network (inner#1351 +
@@ -13,6 +13,7 @@ import type * as Y from 'yjs';
 
 import { assetsApi } from '@web/data/api/assets';
 import { canvasApi } from '@web/data/api/canvas';
+import { apiBaseForProject, getRegionConfig } from '@web/data/api/regions';
 import { uploadMedia } from '@web/data/upload/media-upload';
 import { waitForUploadEnding } from '@web/data/upload/upload-status';
 import { renewOnWorker } from '@web/lib/upload-claims';
@@ -89,7 +90,8 @@ function runnerFor(target: UploadTarget): UploadControllerDeps['run'] {
       uploadFile: (file, onProgress) => uploadMedia(file, target, onProgress),
       ingest: async (url) =>
         (await assetsApi.ingestUrl({ url, project_id: target.projectId, space_id: target.spaceId })).storage_key,
-      waitForEnding: waitForUploadEnding,
+      // Asked of the Project's region whichever page is open by then (inner#1955).
+      waitForEnding: (key) => waitForUploadEnding(key, undefined, apiBaseForProject(target.projectId, getRegionConfig())),
       register: async ({ urls, pairs }) =>
         (await canvasApi.paste({ project_id: target.projectId, urls, pairs, history: [] })).map,
       assetUrlPrefix: () =>

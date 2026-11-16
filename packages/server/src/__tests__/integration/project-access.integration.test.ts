@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Project access critical-path invariants — `projectService.create`,
@@ -34,6 +34,7 @@ vi.mock("ai", () => ({
 import postgres from "postgres";
 import { ForbiddenError, initCore, NotFoundError, projectMembersRepo } from "@breatic/core";
 import * as projectService from "@server/modules/project/project.service.js";
+import { mirrorInDirectory } from "@server/__tests__/integration/directory-fixtures.js";
 
 try {
   initCore(process.env);
@@ -80,6 +81,7 @@ async function insertStudio(createdByUserId: string): Promise<string> {
     VALUES (${createdByUserId}, ${slug}, 'team', ${`Studio ${slug}`})
     RETURNING id
   `;
+  await mirrorInDirectory(sql, rows[0]!.id);
   return rows[0]!.id;
 }
 

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 import { afterEach, expect, it, vi } from 'vitest';
 const transports = vi.hoisted(() => ({ socket: vi.fn(), stream: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@hocuspocus/provider', () => ({ HocuspocusProviderWebsocket: class {
@@ -17,7 +17,14 @@ it('uses the configured backend for API and streams', async () => {
   vi.stubEnv('VITE_API_BASE_URL', 'https://backend.example.com/api/v1/');
   const { request } = await import('../api/request');
   const { textToolsApi } = await import('../api/text-tools');
-  expect(request.defaults.baseURL).toBe('https://backend.example.com/api/v1');
+  const seen: string[] = [];
+  await request.get('/projects/p1', {
+    adapter: async (config) => {
+      seen.push(`${config.baseURL ?? ''}${config.url ?? ''}`);
+      return { data: { data: {} }, status: 200, statusText: '200', headers: {}, config };
+    },
+  });
+  expect(seen).toEqual(['https://backend.example.com/api/v1/projects/p1']);
   expect(request.defaults.withCredentials).toBe(true);
   await textToolsApi.stream({ tool: 'polish', project_id: 'p-1', selection: 'text', document: 'text' }, { onEvent: () => undefined });
   expect(transports.stream.mock.calls[0]?.[0]).toBe('https://backend.example.com/api/v1/mini-tools/text');

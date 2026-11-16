@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Stripe client singleton.
@@ -41,9 +41,10 @@ export function verifyWebhookSignature(
   payload: string | Buffer,
   signature: string,
 ): Stripe.Event {
-  // Defense-in-depth: env.ts already refuses to boot when PAYMENT_ENABLED=true
-  // with a blank/whitespace STRIPE_WEBHOOK_SECRET, but if this function is
-  // ever called with payments disabled or env validation bypassed, we still
+  // Defense-in-depth: the global region refuses to boot when
+  // PAYMENT_ENABLED=true with a blank/whitespace STRIPE_WEBHOOK_SECRET
+  // (schema.ts), and other regions never take payments, but if this function
+  // is ever called with payments disabled or env validation bypassed, we still
   // want a clear error instead of letting Stripe SDK fail with a confusing
   // "signature is malformed" message.
   const secret = env.STRIPE_WEBHOOK_SECRET.trim();

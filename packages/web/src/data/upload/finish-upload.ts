@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Sending a file to the ingest Worker and having our server finish it (#206,
@@ -89,6 +89,8 @@ export async function sendFileAndFinish(
         { parts: held.parts },
         {
           headers: { 'x-upload-token': held.token },
+          // The region that opened the upload holds its grant (inner#1955).
+          ...(ticket.apiBase !== undefined && { baseURL: ticket.apiBase }),
           ...(signal !== undefined && { signal }),
         },
       ),

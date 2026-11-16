@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Reading the Spaces an Agent asked to look at, once the user allowed it
@@ -93,6 +93,8 @@ vi.mock('@hocuspocus/provider', () => ({
   },
 }));
 vi.mock('@web/data/yjs/collab-failure-report', () => ({ reportCollabFailure: vi.fn() }));
+const renewal = vi.hoisted(() => ({ ensureFreshIdentity: vi.fn(async (): Promise<void> => undefined) }));
+vi.mock('@web/data/api/identity-renewal', () => renewal);
 vi.mock('@web/spaces/document/document-editor-cache', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   peekDocumentEditor: (name: string) => editors.get(name),
@@ -336,6 +338,22 @@ describe('a Space this tab does not hold', () => {
     await pending;
   });
 
+  it('makes sure the identity token is fresh before it dials', async () => {
+    let release: () => void = () => undefined;
+    renewal.ensureFreshIdentity.mockImplementationOnce(() => new Promise<void>((resolve) => {
+      release = resolve;
+    }));
+    const before = wsInstances.length;
+    const pending = read([{ id: 'c1' }], { url: 'wss://collab.example/ws' });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(wsInstances).toHaveLength(before);
+
+    release();
+    const reader = await readerFor(docName.canvasSpace(PID, canvas.id));
+    serve(reader, canvasUpdate(['a']));
+    await pending;
+  });
+
   it('builds a same-origin path into the address the shared socket dials', async () => {
     const pending = read([{ id: 'c1' }], { url: '/ws' });
     const reader = await readerFor(docName.canvasSpace(PID, canvas.id));
@@ -516,7 +534,7 @@ describe('a part of a document', () => {
     serve(reader, (await documentSeed(markdown, trailingEmpty)).update);
     const got = await pending;
     expectAnswerFor(requested, got);
-    return got[0] as Got[number] & { content?: string; blocks_total?: number; total_chars?: number };
+    return got[0];
   };
 
   it('keeps the blocks their original numbers and says how many the document has', async () => {

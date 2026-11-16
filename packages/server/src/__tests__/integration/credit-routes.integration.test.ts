@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * 积分的五个端点（任务 #11）。
@@ -32,6 +32,7 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import type { Hono } from "hono";
 import postgres from "postgres";
+import { mirrorInDirectory } from "./directory-fixtures.js";
 import {
   initCore,
   loadLocales,
@@ -110,6 +111,7 @@ async function seedFixture(): Promise<Fixture> {
     INSERT INTO studio_members (studio_id, user_id, role)
     VALUES (${studioId}, ${userId}, 'admin')
   `;
+  await mirrorInDirectory(sql, studioId);
   const projectName = `Route 项目 ${n}`;
   const [project] = await sql<{ id: string }[]>`
     INSERT INTO projects (studio_id, created_by_user_id, slug, name)
@@ -117,10 +119,11 @@ async function seedFixture(): Promise<Fixture> {
   `;
   // 显示名住在个人 studio 上（users 是纯鉴权表），跟活动流取名字同一处。
   const personalStudioName = `Route 本人 ${n}`;
-  await sql`
+  const [personal] = await sql<{ id: string }[]>`
     INSERT INTO studios (created_by_user_id, slug, type, name)
-    VALUES (${userId}, ${`route-me-${n}-${Date.now()}`}, 'personal', ${personalStudioName})
+    VALUES (${userId}, ${`route-me-${n}-${Date.now()}`}, 'personal', ${personalStudioName}) RETURNING id
   `;
+  await mirrorInDirectory(sql, personal!.id);
   const token = crypto.randomBytes(24).toString("hex");
   await setSession(getRedis(), token, userId);
   return {
@@ -999,6 +1002,7 @@ describe("a purchase pointed at a studio that is gone", () => {
     const fx = await seedFixture();
     const lotId = await seedLot(fx, 100, fx.studioId);
     await sql`UPDATE studios SET deleted_at = now() WHERE id = ${fx.studioId}`;
+    await sql`UPDATE studio_directory SET deleted_at = now() WHERE studio_id = ${fx.studioId}`;
 
     const res = await app.request("/api/v1/credits/lots?amountFormat=decimal-v1", {
       headers: { Cookie: fx.cookie },

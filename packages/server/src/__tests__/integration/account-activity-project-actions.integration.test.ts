@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, inject, it, vi } from "vitest";
@@ -8,6 +8,7 @@ import type { Hono } from "hono";
 import { initCore, loadLocales } from "@breatic/core";
 import { activityRows, seedActivityProject, seedActivityUser } from "./helpers/account-activity-fixture.js";
 import type { ActivityProject } from "./helpers/account-activity-fixture.js";
+import { mirrorInDirectory } from "./directory-fixtures.js";
 
 vi.mock("ai", () => ({ generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
   streamText: () => ({ fullStream: (async function* () {})(), text: Promise.resolve(""), usage: Promise.resolve({ totalTokens: 0 }) }),
@@ -32,7 +33,10 @@ async function scene(): Promise<Scene> {
   const owner = await seedActivityProject(sql);
   const member = await seedActivityUser(sql);
   await sql`UPDATE users SET membership_tier='pro' WHERE id IN (${owner.userId},${member.userId})`;
-  for (const account of [owner, member]) await sql`INSERT INTO studios(created_by_user_id,slug,type,name) VALUES(${account.userId},${`home-${randomUUID().slice(0, 16)}`},'personal','Personal')`;
+  for (const account of [owner, member]) {
+    const [home] = await sql<{ id: string }[]>`INSERT INTO studios(created_by_user_id,slug,type,name) VALUES(${account.userId},${`home-${randomUUID().slice(0, 16)}`},'personal','Personal') RETURNING id`;
+    await mirrorInDirectory(sql, home!.id);
+  }
   await sql`INSERT INTO studio_members(studio_id,user_id,role) VALUES(${owner.studioId},${member.userId},'maintainer')`;
   const [row] = await sql<{ email: string }[]>`SELECT email FROM users WHERE id=${member.userId}`;
   return { owner, member, email: row!.email };

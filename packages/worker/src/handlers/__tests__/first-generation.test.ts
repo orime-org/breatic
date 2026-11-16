@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The account's first completed generation is reported once, only with
@@ -16,8 +16,14 @@ const h = vi.hoisted(() => ({
   warn: vi.fn(),
 }));
 
+// The milestone is claimed in the global region (inner#1955).
+vi.mock("@breatic/domain", () => ({
+  globalApi: () => ({
+    claimAccountMilestone: async (kind: string, userId: string) => ({ claimed: await h.claimFirstMilestone(kind, userId) }),
+  }),
+}));
+
 vi.mock("@breatic/core", () => ({
-  claimFirstMilestone: h.claimFirstMilestone,
   serverAnalyticsWanted: h.serverAnalyticsWanted,
   trackServerEvent: h.trackServerEvent,
   projectsRepo: { findOwnerStudioId: h.findOwnerStudioId },
