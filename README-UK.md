@@ -1,7 +1,7 @@
 <h1 align="center">Breatic</h1>
 
 <p align="center"><strong>Робочий простір зі ШІ для спільної творчості в реальному часі.</strong></p>
-<p align="center">Доступно онлайн · Вихідний код доступний · Браузер на комп’ютері</p>
+<p align="center">Доступно онлайн · Відкритий код · Браузер на комп’ютері</p>
 
 <p align="center">
   <a href="https://breatic.ai/?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=repository_listing_202610&amp;utm_content=readme_website_uk">Сайт</a> ·
@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/orime-org/breatic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/orime-org/breatic?style=flat&amp;color=blueviolet&amp;label=release&amp;display_name=tag"></a>
-  <a href="LICENSE"><img alt="License: Elastic-2.0" src="https://img.shields.io/badge/license-Elastic--2.0-blue?style=flat"></a>
+  <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat"></a>
   <a href="https://discord.gg/Yeu6A4aejN"><img alt="Discord community" src="https://img.shields.io/badge/discord-join%20community-5865F2?style=flat&amp;logo=discord&amp;logoColor=white"></a>
   <a href="#get-started"><img alt="Quickstart guide" src="https://img.shields.io/badge/quickstart-guide-green?style=flat"></a>
 </p>
@@ -96,7 +96,7 @@ Spaces можна назвати «Початок · 0–10 с», «Основн
 
 ## Ліцензія та дозволене використання
 
-Вихідний код Breatic доступний за [Elastic License 2.0](LICENSE) (Elastic-2.0). Ви можете читати, змінювати, поширювати й запускати Breatic для себе або всередині своєї організації, зокрема для комерційної роботи. Не можна надавати Breatic третім особам як розміщений чи керований сервіс. Повні умови наведено в ліцензії.
+Breatic — проєкт із відкритим кодом за ліцензією [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0-only). Ви можете використовувати, вивчати, змінювати й самостійно розгортати Breatic для будь-яких цілей, зокрема комерційних. Якщо ви змінюєте Breatic і надаєте іншим людям доступ до зміненої версії через мережу, ви маєте запропонувати їм її повний вихідний код за тією самою ліцензією. Повні умови наведено в ліцензії.
 
 Назва й логотип є торговельними марками Orime, Inc. і не охоплюються ліцензією; дивіться [TRADEMARKS.md](TRADEMARKS.md). Ліцензія не обмежує контент, який ви створюєте за допомогою Breatic.
 

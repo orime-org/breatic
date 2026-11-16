@@ -1,7 +1,7 @@
 <h1 align="center">Breatic</h1>
 
 <p align="center"><strong>クリエイティブチームのための、リアルタイムで共同制作できる AI ワークスペース。</strong></p>
-<p align="center">オンラインで利用可能 · ソースコード公開 · デスクトップブラウザー</p>
+<p align="center">オンラインで利用可能 · オープンソース · デスクトップブラウザー</p>
 
 <p align="center">
   <a href="https://breatic.ai/?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=repository_listing_202610&amp;utm_content=readme_website_ja">公式サイト</a> ·
@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/orime-org/breatic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/orime-org/breatic?style=flat&amp;color=blueviolet&amp;label=release&amp;display_name=tag"></a>
-  <a href="LICENSE"><img alt="License: Elastic-2.0" src="https://img.shields.io/badge/license-Elastic--2.0-blue?style=flat"></a>
+  <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat"></a>
   <a href="https://discord.gg/Yeu6A4aejN"><img alt="Discord community" src="https://img.shields.io/badge/discord-join%20community-5865F2?style=flat&amp;logo=discord&amp;logoColor=white"></a>
   <a href="#get-started"><img alt="Quickstart guide" src="https://img.shields.io/badge/quickstart-guide-green?style=flat"></a>
 </p>
@@ -96,7 +96,7 @@ Web、API、バックグラウンド処理、共同編集には公開済みの D
 
 ## ライセンスと利用範囲
 
-Breatic のソースコードは [Elastic License 2.0](LICENSE)（Elastic-2.0）で公開されています。閲覧、変更、再配布、ご自身での実行、組織内での実行が可能で、商用の制作作業にも利用できます。第三者に Breatic をホスト型またはマネージドサービスとして提供することはできません。詳細はライセンス本文をご確認ください。
+Breatic は [GNU Affero General Public License v3.0](LICENSE)（AGPL-3.0-only）のもとで公開されているオープンソースです。商用を含むあらゆる目的で、利用、調査、変更、セルフホストができます。Breatic を変更し、変更版をネットワーク経由で他の人に利用させる場合は、同じライセンスのもとで完全なソースコードを提供する必要があります。詳細はライセンス本文をご確認ください。
 
 Breatic の名称とロゴは Orime, Inc. の商標で、ソフトウェアライセンスの対象外です。[TRADEMARKS.md](TRADEMARKS.md) をご覧ください。このライセンスは Breatic で制作するコンテンツを制限しません。
 

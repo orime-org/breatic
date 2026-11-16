@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { Box3, DirectionalLight, HemisphereLight, Mesh, PerspectiveCamera, Scene, SkinnedMesh, Vector3, WebGLRenderer } from 'three';
 import type { Group } from 'three';

@@ -1,7 +1,7 @@
 <h1 align="center">Breatic</h1>
 
 <p align="center"><strong>Yaratıcı ekipler için gerçek zamanlı, yapay zekâ destekli ortak çalışma alanı.</strong></p>
-<p align="center">Çevrim içi kullanıma açık · Kaynak kodu erişilebilir · Masaüstü tarayıcı</p>
+<p align="center">Çevrim içi kullanıma açık · Açık kaynak · Masaüstü tarayıcı</p>
 
 <p align="center">
   <a href="https://breatic.ai/?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=repository_listing_202610&amp;utm_content=readme_website_tr">Web sitesi</a> ·
@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/orime-org/breatic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/orime-org/breatic?style=flat&amp;color=blueviolet&amp;label=release&amp;display_name=tag"></a>
-  <a href="LICENSE"><img alt="License: Elastic-2.0" src="https://img.shields.io/badge/license-Elastic--2.0-blue?style=flat"></a>
+  <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat"></a>
   <a href="https://discord.gg/Yeu6A4aejN"><img alt="Discord community" src="https://img.shields.io/badge/discord-join%20community-5865F2?style=flat&amp;logo=discord&amp;logoColor=white"></a>
   <a href="#get-started"><img alt="Quickstart guide" src="https://img.shields.io/badge/quickstart-guide-green?style=flat"></a>
 </p>
@@ -96,7 +96,7 @@ Güvenlik açıklarını [SECURITY.md](SECURITY.md) içindeki özel bildirim yol
 
 ## Lisans ve izin verilen kullanım
 
-Breatic’in kaynak kodu [Elastic License 2.0](LICENSE) (Elastic-2.0) altında erişilebilirdir. Kodu okuyabilir, değiştirebilir, yeniden dağıtabilir; kendiniz veya kuruluşunuz içinde, ticari işler dahil çalıştırabilirsiniz. Breatic’i üçüncü taraflara barındırılan ya da yönetilen bir hizmet olarak sunamazsınız. Tam koşullar için lisansa bakın.
+Breatic, [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0-only) altında açık kaynaklıdır. Breatic’i ticari kullanım dahil her amaçla kullanabilir, inceleyebilir, değiştirebilir ve kendiniz barındırabilirsiniz. Breatic’i değiştirip değiştirilmiş sürümü ağ üzerinden başkalarının kullanımına sunarsanız, tam kaynak kodunu aynı lisans altında onlara sunmanız gerekir. Tam koşullar için lisansa bakın.
 
 Breatic adı ve logosu Orime, Inc.’in ticari markalarıdır ve yazılım lisansı kapsamında değildir; [TRADEMARKS.md](TRADEMARKS.md) dosyasına bakın. Lisans Breatic ile oluşturduğunuz içeriği kısıtlamaz.
 
