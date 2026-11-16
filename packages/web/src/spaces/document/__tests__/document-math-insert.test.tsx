@@ -7,7 +7,7 @@
  *
  * The plus menu and the insert-below submenu draw the same
  * `DocumentInsertChoices`, so one rendering pins the row's place in both: it
- * sits right under the table. Picking it on an empty line turns that line into
+ * sits under the table and columns, above the media entries. Picking it on an empty line turns that line into
  * an empty formula block; picking it under a row adds one below. Either is
  * one undo step, like the table.
  */
@@ -121,10 +121,15 @@ const AROUND_EMPTY = [
 ];
 
 describe('the formula entry in the insert menu', () => {
-  it.each([true, false])('sits right under the table (media entries drawn: %s)', (withMedia) => {
+  it.each([true, false])('sits right under the table and columns (media entries drawn: %s)', (withMedia) => {
     openMenu(vi.fn(), withMedia);
     const ids = rowIds();
-    expect(ids[ids.indexOf('doc-block-insert-table') + 1]).toBe('doc-block-insert-formula');
+    // Columns follow the table (inner#1314); the formula comes next.
+    expect(ids.slice(ids.indexOf('doc-block-insert-table'), ids.indexOf('doc-block-insert-table') + 3)).toEqual([
+      'doc-block-insert-table',
+      'doc-block-insert-columns',
+      'doc-block-insert-formula',
+    ]);
   });
 
   it('picks the formula', () => {
