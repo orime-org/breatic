@@ -95,9 +95,9 @@ export async function assertStudioStorageAllowance(
 ): Promise<void> {
   const { adminUserId, storageBytes } = await getStudioStorageQuota(studioId);
 
-  // Effective enterprise membership retains its storage exemption. Its
-  // negotiated storage value is recorded, while the storage gate uses null.
-  // This also preserves the exemption for legacy enterprise information.
+  // Only an enterprise account without a saved agreement is uncapped: an
+  // active agreement caps storage at its storage_bytes like any tier
+  // (inner#1968).
   if (storageBytes === null) return;
 
   const usedBytes = await accountStorageUsage(adminUserId);

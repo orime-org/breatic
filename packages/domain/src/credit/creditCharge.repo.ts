@@ -15,8 +15,8 @@ import { and, asc, eq, lt, sql } from "drizzle-orm";
 import { db, creditChargeRequests } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 
-/** What kind of delivery a request charges for. */
-export type ChargeRequestKind = "task" | "timeline_execution" | "operation";
+/** What kind of delivery a request charges for; `operation_overage` is one operation past the monthly allowance (inner#1968). */
+export type ChargeRequestKind = "task" | "timeline_execution" | "operation" | "operation_overage";
 
 /** A request about to be recorded. */
 export interface NewChargeRequest {

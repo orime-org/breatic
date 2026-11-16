@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import { changeMembershipTier, db, enterpriseMembershipResultSchema, getEnterpriseMembershipProfile, lockRawMembershipSnapshot, writeEnterpriseMembershipRecord } from "@breatic/core";
-import type { EnterpriseMembershipProfile, EnterpriseMembershipResult, EnterpriseMembershipWrite } from "@breatic/core";
+import { changeMembershipTier, db, enterpriseMembershipAccountAnswerSchema, enterpriseMembershipResultSchema, getEnterpriseMembershipProfile, lockRawMembershipSnapshot, writeEnterpriseMembershipRecord } from "@breatic/core";
+import type { EnterpriseMembershipAccountAnswer, EnterpriseMembershipResult, EnterpriseMembershipWrite } from "@breatic/core";
+import { operationService } from "@breatic/domain";
 import * as operationRepo from "@server/modules/enterprise-membership/enterprise-membership.repo.js";
 
 /** The signed identity and validated facts of one save. */
@@ -21,14 +22,26 @@ export type MembershipAnswer<T> =
   | { status: 409; body: { code: "idempotency_conflict" } };
 
 /**
- * Read current membership facts and effective entitlement from one snapshot.
+ * Read current membership facts and effective entitlement from one snapshot,
+ * with this period's operations (inner#1968). A count committed between the
+ * two reads may make `used` slightly newer than the snapshot; this answer is
+ * for display, and admission reads under the account lock.
  * @param userId - The target account.
- * @returns The current profile or a missing-account response.
+ * @returns The current profile with its operations, or a missing-account response.
  * @throws {Error} When the database or membership configuration is unavailable.
  */
-export async function profile(userId: string): Promise<MembershipAnswer<EnterpriseMembershipProfile>> {
-  const body = await getEnterpriseMembershipProfile(userId);
-  return body === null ? { status: 404, body: { code: "not_found" } } : { status: 200, body };
+export async function profile(userId: string): Promise<MembershipAnswer<EnterpriseMembershipAccountAnswer>> {
+  const found = await getEnterpriseMembershipProfile(userId);
+  if (found === null) return { status: 404, body: { code: "not_found" } };
+  const usage = await operationService.readOperationUsage(userId);
+  const operations = usage === null ? null : {
+    monthly: usage.monthlyAllowance,
+    used: usage.allowanceUsed,
+    remaining: usage.allowanceRemaining,
+    periodStart: usage.periodStart,
+    nextResetAt: usage.nextResetAt,
+  };
+  return { status: 200, body: enterpriseMembershipAccountAnswerSchema.parse({ ...found, operations }) };
 }
 
 /**

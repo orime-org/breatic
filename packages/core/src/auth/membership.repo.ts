@@ -12,9 +12,11 @@
  * their own additions. Reads price one complete revision at a single instant.
  * Existing objects retain their state when an entitlement expires.
  *
- * Enterprise plan presentation keeps its negotiated-agreement branch, and
- * enterprise storage keeps its exemption. A legacy enterprise account whose
- * negotiated record is absent remains explicit and quota checks name it.
+ * Enterprise plan presentation keeps its negotiated-agreement branch, and an
+ * active agreement's storage_bytes caps storage. A legacy enterprise account
+ * whose negotiated record is absent keeps uncapped storage and the 16,000
+ * operations and 10 running tasks of the column defaults; its other quota
+ * checks name it explicitly.
  */
 
 import { and, eq, isNull, getTableColumns, sql } from "drizzle-orm";
@@ -198,8 +200,10 @@ async function readUserTier(
 export interface AccountMembershipReading {
   /** The tier the account's ceilings are read from. */
   readonly tier: MembershipTier;
-  /** Its six ceilings; null for `enterprise`, whose ceilings are negotiated. */
+  /** Its eight ceilings; null for `enterprise`, whose ceilings are negotiated. */
   readonly limits: MembershipLimits | null;
+  /** Its storage ceiling in bytes: an active agreement's for enterprise; null without one. */
+  readonly storageBytes: number | null;
 }
 
 /**
@@ -219,7 +223,7 @@ export async function getMembershipForUser(
   tx?: DbTx,
 ): Promise<AccountMembershipReading> {
   const reading = await getMembershipReadingForUser(userId, tx);
-  return { tier: reading.effectiveTier, limits: reading.effectiveTier === "enterprise" ? null : reading.limits };
+  return { tier: reading.effectiveTier, limits: reading.effectiveTier === "enterprise" ? null : reading.limits, storageBytes: reading.storageBytes };
 }
 
 /**
@@ -243,9 +247,9 @@ export async function lockAccountRow(userId: string, tx: DbTx): Promise<void> {
 /**
  * Who administers a studio, and how many bytes that account's tier allows.
  *
- * Effective enterprise membership keeps its storage exemption, including a
- * legacy account awaiting complete information. Other effective tiers use
- * their configured storage ceiling from the same membership read.
+ * An active enterprise agreement caps storage at its storage_bytes; only a
+ * legacy enterprise account without one stays uncapped (inner#1968). Other
+ * effective tiers use their configured storage ceiling from the same read.
  *
  * Answers the admin id too, because a storage decision needs it twice over:
  * the usage roll-up is per ACCOUNT across every studio that account
@@ -255,7 +259,7 @@ export async function lockAccountRow(userId: string, tx: DbTx): Promise<void> {
  * @param tx - Optional transaction handle; see {@link getUserMembershipTier}
  *   for why a caller inside a transaction must pass it
  * @returns The current admin's account id, and that account's storage ceiling
- *   in bytes — `null` while the effective tier is enterprise
+ *   in bytes — `null` for an enterprise account without an agreement
  * @throws {Error} if the studio is gone, or has no live admin, or that admin's
  *   stored tier is not one this build knows — all three are corruption
  */
