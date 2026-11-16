@@ -61,6 +61,7 @@ import { getRedis, initCore, loadLocales, sessionCookieName, setSession } from "
 import { creditLotService } from "@breatic/domain";
 import type { Hono } from "hono";
 import { openPaymentSource } from "./payment-source.js";
+import { mirrorInDirectory } from "./directory-fixtures.js";
 import { keysOf, send, sync, until, untilIdle, type Seeded } from "./chat-run-harness.js";
 
 let sql: ReturnType<typeof postgres>;
@@ -104,6 +105,8 @@ async function seedOwner(credits: number): Promise<Seeded & { lotId?: string }> 
     INSERT INTO studios (created_by_user_id, slug, type, name) VALUES (${user!.id}, ${`${tag}-s`}, 'team', ${tag}) RETURNING id
   `;
   await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${studio!.id}, ${user!.id}, 'admin')`;
+  // The directory holds every Studio's admin; charges read it (inner#1955).
+  await mirrorInDirectory(sql, studio!.id);
   const [project] = await sql<{ id: string }[]>`
     INSERT INTO projects (studio_id, created_by_user_id, name, slug) VALUES (${studio!.id}, ${user!.id}, ${tag}, ${`${tag}-p`}) RETURNING id
   `;
