@@ -202,6 +202,9 @@ beforeAll(async () => {
   await make('bf-aac.mp4', ['-f', 'lavfi', '-i', "color=gray:s=320x180:r=30:d=2,format=yuv420p,geq=lum='if(mod(floor(N/pow(2\\,floor(X/32)))\\,2)\\,235\\,16)':cb=128:cr=128",
     '-f', 'lavfi', '-i', 'sine=f=440:sample_rate=48000:d=2', ...h264bf, '-shortest']);
   await make('trim-copy.mp4', ['-i', join(dir, 'bf-aac.mp4'), '-c', 'copy', '-t', '1.49']);
+  // Fragmented MP4 whose moov is written after the first fragment (delay_moov, as FFmpeg's DASH and HLS fMP4 muxers do): its
+  // one edit has media time 1024 and segment duration 0.
+  await make('frag-delay.mp4', [...bframes30, '-f', 'lavfi', '-i', 'sine=f=440:sample_rate=48000:d=2', ...h264bf, '-movflags', 'frag_keyframe+empty_moov+delay_moov']);
   await make('frag.mp4', [...bframes30, '-f', 'lavfi', '-i', 'sine=f=440:sample_rate=48000:d=2', ...h264bf, '-movflags', 'frag_keyframe+empty_moov']);
   // A stream-copy cut at 0.5 s: packets start at the 0.4 s keyframe and one edit starts 0.1 s (1280 of 12800) later.
   await make('cut.mp4', ['-ss', '0.5', '-i', join(dir, 'edit-base.mp4'), '-c', 'copy']);
@@ -808,3 +811,15 @@ describe('failures (design §10.6 失败分类)', () => {
   });
 });
 
+// A fragmented MP4's moov carries no samples, and FFmpeg (whose demuxer Chrome plays MP4 through) turns advanced edit lists off
+// for it (libavformat/mov.c, n8.0.1): only a leading empty edit and the first edit's media time apply, and the media plays from
+// there to its end. Chrome 157 plays frag-delay.mp4 from frame 0 at 0 and seeks onto every frame.
+describe('a fragmented MP4 edit list (FFmpeg semantics)', () => {
+  it('FR01 an edit of segment duration 0 presents the whole media from its media time', async () => {
+    const answer = planned(await probed('frag-delay.mp4'));
+    expect(presentationFrameCount(answer.plan.presentation as never)).toBe(60);
+    expect(answer.plan.originMapping.origin.numerator).toBe('0');
+    expect(answer.plan.originMapping.firstSource.lead).toBeNull();
+    expect(answer.plan.videoSpans).toBeNull();
+  });
+});

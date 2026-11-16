@@ -419,3 +419,27 @@ describe('PA §4.2.1 and §7.16 plan assembly', () => {
     }), { seed: 130808, numRuns: 200 });
   });
 });
+
+// FFmpeg's edits for a fragmented track (libavformat/mov.c, n8.0.1, advanced edit lists off): a leading empty edit and the next
+// edit's media time, then the media to its end on the movie clock, rounded up to a tick.
+describe('FE the edits FFmpeg applies to a fragmented track', () => {
+  const edits = (assemblyOwner as unknown as { fragmentedTrackEdits: (e: { segmentDurationMovieTicks: string; mediaTimeTrackTicks: string; mediaRateFixed16_16: string }[],
+    movie: string, media: string, end: Rational) => { segmentDurationMovieTicks: string; mediaTimeTrackTicks: string; mediaRateFixed16_16: string }[] }).fragmentedTrackEdits;
+  const edit = (duration: string, time: string, rate = '65536') => ({ segmentDurationMovieTicks: duration, mediaTimeTrackTicks: time, mediaRateFixed16_16: rate });
+
+  it('FE01 an edit of duration 0 runs from its media time to the media end', () => {
+    // Media 1024 of 15360 to 2.0667 s (31744 of 15360) is 2 s: 2000 ticks of 1000.
+    expect(edits([edit('0', '1024')], '1000', '15360', { numerator: '31744', denominator: '15360' })).toEqual([edit('2000', '1024')]);
+  });
+
+  it('FE02 keeps a leading empty edit and drops every later edit and the rate', () => {
+    // Media 960 of 48000 (0.02 s) to 1.5 s is 1480 ticks of 1000.
+    expect(edits([edit('278', '-1'), edit('100', '960', '131072'), edit('50', '4800')], '1000', '48000', { numerator: '3', denominator: '2' }))
+      .toEqual([edit('278', '-1'), edit('1480', '960')]);
+  });
+
+  it('FE03 rounds the duration up to a movie tick', () => {
+    // 7 frames of 1001 at 30000: 7007 / 30000 s is 233.57 ticks of 1000, so 234.
+    expect(edits([edit('0', '0')], '1000', '30000', { numerator: '7007', denominator: '30000' })).toEqual([edit('234', '0')]);
+  });
+});

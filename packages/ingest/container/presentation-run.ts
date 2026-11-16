@@ -32,7 +32,7 @@ import { inspectIsoBmffFile } from '@ingest/container/iso-bmff-metadata.js';
 import { exactPresentationTime, planEditListPresentation } from '@ingest/container/iso-bmff-presentation.js';
 import { CODEC_CROPPING_ONLY } from '@ingest/shown-picture.js';
 import { parsePhysicalVideoPackets, resolveVideoColorMatrix, videoDisplayGeometry, videoPacketProbeArgs, type PhysicalVideoPacket } from '@ingest/container/physical-video-probe.js';
-import { assembleVideoPresentationPlan, editSpans, type VideoPresentationPlanInput } from '@ingest/container/assemble-video-source-ledger.js';
+import { assembleVideoPresentationPlan, editSpans, fragmentedTrackEdits, type VideoPresentationPlanInput } from '@ingest/container/assemble-video-source-ledger.js';
 
 /** The producer and carrier profile a plan's carrier is reused by (§7.1). */
 const PRODUCER_VERSION = 2;
@@ -406,13 +406,16 @@ async function plan(body: PresentationProbeRequest, input: string, directory: st
     if (tracks.length !== 1) throw new ProbeFailure('source_ledger_selection_unknown');
     const track = tracks[0]!;
     editTick = exactPresentationTime(1n, BigInt(metadata.movieTimescale));
-    if (track.edits !== null) {
+    // A fragmented track (no samples in its moov) takes the edits FFmpeg, and so Chrome, applies to it.
+    const fragmented = (track.sampleTiming?.decodeRuns.length ?? 0) === 0;
+    const edits = track.edits === null || !fragmented ? track.edits : fragmentedTrackEdits(track.edits, metadata.movieTimescale, track.mediaTimescale, mediaEnd);
+    if (edits !== null) {
       // The edit list maps the presentation-ordered frames onto movie time; plan frames take those windows.
       const presented = planEditListPresentation({ movieTimescale: metadata.movieTimescale, mediaTimescale: track.mediaTimescale, sourceTimeBase,
-        edits: track.edits, frames: frames.map((frame, rawDecodeOrdinal) => ({ rawDecodeOrdinal, ptsTicks: frame.sourcePtsTicks })) }, UNBOUNDED);
+        edits, frames: frames.map((frame, rawDecodeOrdinal) => ({ rawDecodeOrdinal, ptsTicks: frame.sourcePtsTicks })) }, UNBOUNDED);
       frames = presented.frames.map((frame) => ({ sourcePtsTicks: frame.sourcePtsTicks, start: frame.displayStart, declaredEnd: frame.displayEnd }));
       emptyEdits = presented.edits.filter((edit) => edit.empty).map(({ start, end }) => ({ start, end }));
-      videoSpans = editSpans(track.edits, metadata.movieTimescale, track.mediaTimescale);
+      videoSpans = editSpans(edits, metadata.movieTimescale, track.mediaTimescale);
       if (videoSpans.length === 0) videoSpans = null;
     }
     // §91 D3b-10: the selected audio track's edit list, derived like the video's (the assembler rebases both by the origin).

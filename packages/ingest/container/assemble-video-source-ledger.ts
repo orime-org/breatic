@@ -243,6 +243,31 @@ export function editSpans(edits: readonly IsoBmffEdit[], movieTimescale: string,
 }
 
 /**
+ * The edits FFmpeg applies to a fragmented track, as an explicit list: its moov carries no samples, and FFmpeg's mov demuxer
+ * (which Chrome plays MP4 through) turns advanced edit lists off for such a file (libavformat/mov.c, n8.0.1), so only a
+ * leading empty edit and the next edit's media time apply, and the media then plays to its end, whatever the edits' durations
+ * say (a delay_moov fragment writes 0) and whatever edits follow.
+ * @param edits - The track's edit list.
+ * @param movieTimescale - The movie clock edit durations are written on.
+ * @param mediaTimescale - The track's media clock.
+ * @param mediaEnd - Where the track's last frame ends in source time.
+ * @returns A leading empty edit when there is one, then one rate-1 edit from the media time to the media's end, its duration
+ * rounded up to a movie tick.
+ * @throws {RangeError} When a time is not an exact rational.
+ */
+export function fragmentedTrackEdits(edits: readonly IsoBmffEdit[], movieTimescale: string, mediaTimescale: string, mediaEnd: PresentationRational): IsoBmffEdit[] {
+  const lead = edits[0]?.mediaTimeTrackTicks === "-1" ? edits[0] : null;
+  const next = edits[lead === null ? 0 : 1];
+  const mediaTime = next !== undefined && BigInt(next.mediaTimeTrackTicks) >= 0n ? BigInt(next.mediaTimeTrackTicks) : 0n;
+  const [movie, media, endN, endD] = [BigInt(movieTimescale), BigInt(mediaTimescale), BigInt(mediaEnd.numerator), BigInt(mediaEnd.denominator)];
+  // ceil((mediaEnd − mediaTime / media) · movie), exactly; never negative.
+  const span = (endN * media - mediaTime * endD) * movie;
+  const ticks = span <= 0n ? 0n : (span + endD * media - 1n) / (endD * media);
+  return [...(lead === null ? [] : [{ segmentDurationMovieTicks: lead.segmentDurationMovieTicks, mediaTimeTrackTicks: "-1", mediaRateFixed16_16: "65536" }]),
+    { segmentDurationMovieTicks: ticks.toString(), mediaTimeTrackTicks: mediaTime.toString(), mediaRateFixed16_16: "65536" }];
+}
+
+/**
  * A presented frame's source tick as a safe number.
  * @param ticks - The decimal tick string.
  * @returns The tick.
