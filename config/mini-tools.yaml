@@ -124,6 +124,9 @@ encoding:
       hdr_8bit: 106000000
       hdr_10bit: 102000000
       hdr_12bit: 109000000
+      # 16-bit: PNG-in-MOV at 16 bits per channel (rgba64be), the same Docker nproc-4 method.
+      sdr_16bit: 294000000
+      hdr_16bit: 71900000
     # Audio seconds encoded to AAC 48 kHz per second, for the dispatched copy's estimate.
     # Local Docker reading at nproc 4 (aac-encode-rate run), to be replaced by a measurement on Cloudflare standard-4.
     aac_encode_seconds_per_second: 100

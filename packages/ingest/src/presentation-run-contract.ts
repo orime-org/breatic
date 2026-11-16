@@ -50,7 +50,7 @@ export const presentationProbeAnswerSchema = z.discriminatedUnion('kind', [
     work: z.strictObject({
       encodedFrames: count, prerollFrames: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
       sourceWidth: count, sourceHeight: count, outputWidth: count, outputHeight: count,
-      bitDepth: z.union([z.literal(8), z.literal(10), z.literal(12)]), hdr: z.boolean(), audioSeconds: z.number().finite().nonnegative(),
+      bitDepth: z.union([z.literal(8), z.literal(10), z.literal(12), z.literal(16)]), hdr: z.boolean(), audioSeconds: z.number().finite().nonnegative(),
     }),
   }),
   z.strictObject({ kind: z.literal('failed'), code: z.string().regex(/^[a-z][a-z0-9_]*$/) }),

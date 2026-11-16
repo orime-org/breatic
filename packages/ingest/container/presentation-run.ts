@@ -335,13 +335,14 @@ function sourceKeyframesOf(packets: readonly PhysicalVideoPacket[], base: [bigin
 /**
  * The bit depth class whose measured rates the job estimate uses.
  * @param bitDepth - The decoded depth.
- * @returns 8, 10 or 12.
- * @throws {ProbeFailure} When it is deeper than 12 bits.
+ * @returns 8, 10, 12 or 16.
+ * @throws {ProbeFailure} When it is deeper than 16 bits.
  */
 function workDepth(bitDepth: number): VideoJobWork['bitDepth'] {
   if (bitDepth <= 8) return 8;
   if (bitDepth <= 10) return 10;
   if (bitDepth <= 12) return 12;
+  if (bitDepth <= 16) return 16;
   throw new ProbeFailure('classification_unknown');
 }
 
@@ -374,8 +375,12 @@ async function plan(body: PresentationProbeRequest, input: string, directory: st
   await runPlanCommand('ffmpeg', ['-v', 'error', '-nostdin', '-y', '-protocol_whitelist', 'file', ...CODEC_CROPPING_ONLY, '-i', input, '-map', `0:${String(video.index)}`,
     '-frames:v', String(body.probe.sampleFrames), '-c:v', 'rawvideo', '-f', 'nut', sample], options);
   const decoded = json(await runPlanCommand('ffprobe', ['-v', 'error', '-protocol_whitelist', 'file', '-show_streams', '-of', 'json', sample], options)).streams;
-  const pixFmt = Array.isArray(decoded) ? decoded.map(record).find((stream) => stream.codec_type === 'video')?.pix_fmt : undefined;
-  if (typeof pixFmt !== 'string') throw new ProbeFailure('classification_unknown');
+  const sampled = Array.isArray(decoded) ? decoded.map(record).find((stream) => stream.codec_type === 'video')?.pix_fmt : undefined;
+  if (typeof sampled !== 'string') throw new ProbeFailure('classification_unknown');
+  // NUT stores raw video only in the formats it has a tag for; FFmpeg converts any other decoded format to rgb555le, which
+  // drops its alpha and depth (measured over FFmpeg 8.0.1's 203 writable formats: ya16 from 16-bit grey PNG, ayuv64, p010,
+  // yuv440p10, ...). Such a sample's format is the stream's own, which its decoder gives.
+  const pixFmt = sampled === 'rgb555le' && typeof video.pix_fmt === 'string' && video.pix_fmt !== 'rgb555le' ? video.pix_fmt : sampled;
   const depth = pixelFormat(pixelFormats, pixFmt);
   const alpha = classifyVideoAlpha({ ...raw, streams: streams.map((stream) => (stream === video ? { ...stream, pix_fmt: pixFmt } : stream)) }, pixelFormats);
   if (alpha === 'unknown') throw new ProbeFailure('classification_unknown');

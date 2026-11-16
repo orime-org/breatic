@@ -62,7 +62,7 @@ type Answer = Planned | { kind: 'failed'; code: string };
 
 const ENCODING = {
   chunkShare: 0.5, maxParallelChunks: 8,
-  encoder: { startSeconds: 3, encodePixelsPerSecond: 248000000, decodeConvertPixelsPerSecond: { sdr_8bit: 2200000000, sdr_10bit: 1310000000, sdr_12bit: 816000000, hdr_8bit: 106000000, hdr_10bit: 102000000, hdr_12bit: 109000000 }, aacEncodeSecondsPerSecond: 100 },
+  encoder: { startSeconds: 3, encodePixelsPerSecond: 248000000, decodeConvertPixelsPerSecond: { sdr_8bit: 2200000000, sdr_10bit: 1310000000, sdr_12bit: 816000000, hdr_8bit: 106000000, hdr_10bit: 102000000, hdr_12bit: 109000000, sdr_16bit: 294000000, hdr_16bit: 71900000 }, aacEncodeSecondsPerSecond: 100 },
   copyDiskMarginBytes: 33554432, carrier: { maxShortSide: 1080, color: { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', range: 'tv' } },
 };
 const LIMITS = {
@@ -139,6 +139,9 @@ beforeAll(async () => {
   await make('sar.mp4', ['-f', 'lavfi', '-i', 'testsrc2=s=64x32:r=10:d=0.4,setsar=2/1', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', ...tagged]);
   await make('odd.mp4', ['-f', 'lavfi', '-i', 'testsrc=s=161x97:r=10:d=0.4', '-c:v', 'libx264', '-pix_fmt', 'yuv444p', ...tagged]);
   await make('vp9-alpha.webm', ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=25:d=0.4,format=yuva420p', '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuva420p', '-auto-alt-ref', '0']);
+  // 16 bits per channel with a half alpha, as After Effects' 16 bpc PNG-in-MOV export, and grey with alpha at 16 bits.
+  await make('png-rgba64.mov', ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=25:d=0.2,format=rgba,colorchannelmixer=aa=0.5,format=rgba64be', '-c:v', 'png']);
+  await make('png-ya16.mov', ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=25:d=0.2,format=rgba,colorchannelmixer=aa=0.5,format=ya16be', '-c:v', 'png']);
   await make('prores4444.mov', ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=25:d=0.2,format=yuva444p10le', '-c:v', 'prores_ks', '-profile:v', '4444', '-pix_fmt', 'yuva444p10le']);
   await make('pq10.mp4', ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=25:d=0.4', '-c:v', 'libx264', '-pix_fmt', 'yuv420p10le', '-x264-params', 'colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc']);
   await make('edit-base.mp4', ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=25:d=2', '-c:v', 'libx264', '-g', '10', '-bf', '0', '-pix_fmt', 'yuv420p', ...tagged]);
@@ -449,6 +452,14 @@ describe('alpha classification from real stream properties (design §5.1 step 2,
     // §91 D1-3: ProRes 4444 decodes as 12-bit (yuva444p12le); the work carries its 12-bit SDR depth.
     if (name === 'prores4444.mov') expect(answer.work).toMatchObject({ bitDepth: 12, hdr: false });
     expect(answer.plan.policy.emptyFill).toBe('transparent');
+  });
+
+  // A 16-bit source is planned on the 16-bit rates; the classification sample keeps a 16-bit grey's alpha (the NUT muxer
+  // stores ya16 as rgb555le, which has none).
+  it.each([['png-rgba64.mov', 16], ['png-ya16.mov', 16]])('PA04 %s is confirmed transparent at %i bits', async (name, bitDepth) => {
+    const answer = planned(await probed(name));
+    expect(answer.routeInput.alpha).toBe('confirmed_alpha');
+    expect(answer.work).toMatchObject({ bitDepth, hdr: false });
   });
 
   it.runIf(FFMPEG_MAJOR >= 8)('PA02 HEVC with an alpha layer is confirmed transparent (FFmpeg 8 decodes it as yuva420p)', async () => {

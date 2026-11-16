@@ -37,7 +37,7 @@ const price = (containerClass: string, vcpu: number, memory: number, disk: numbe
 const PRICING = { basic: price('MediaContainer', 0.25, 1, 4), standard4: price('MiniToolContainerStd4', 4, 12, 20) };
 const ENCODING = {
   chunkShare: 0.5, maxParallelChunks: 8,
-  encoder: { startSeconds: 3, encodePixelsPerSecond: 248000000, decodeConvertPixelsPerSecond: { sdr_8bit: 2200000000, sdr_10bit: 1310000000, sdr_12bit: 816000000, hdr_8bit: 106000000, hdr_10bit: 102000000, hdr_12bit: 109000000 }, aacEncodeSecondsPerSecond: 100 },
+  encoder: { startSeconds: 3, encodePixelsPerSecond: 248000000, decodeConvertPixelsPerSecond: { sdr_8bit: 2200000000, sdr_10bit: 1310000000, sdr_12bit: 816000000, hdr_8bit: 106000000, hdr_10bit: 102000000, hdr_12bit: 109000000, sdr_16bit: 294000000, hdr_16bit: 71900000 }, aacEncodeSecondsPerSecond: 100 },
   copyDiskMarginBytes: 33554432,
   carrier: { maxShortSide: 1080, color: { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', range: 'tv' } },
 };
@@ -86,10 +86,13 @@ describe('E2-1 the accept freezes the encoding parameters (§3.2 item 1, §3.5 �
     ['a zero parallel cap', { ...ENCODING, maxParallelChunks: 0 }],
     ['a fractional parallel cap', { ...ENCODING, maxParallelChunks: 1.5 }],
     ['a zero encode rate', { ...ENCODING, encoder: { ...ENCODING.encoder, encodePixelsPerSecond: 0 } }],
-    ['a missing HDR 10-bit rate', { ...ENCODING, encoder: { ...ENCODING.encoder, decodeConvertPixelsPerSecond: { sdr_8bit: 1, sdr_10bit: 1, sdr_12bit: 1, hdr_8bit: 1, hdr_12bit: 1 } } }],
+    ['a missing HDR 10-bit rate', { ...ENCODING, encoder: { ...ENCODING.encoder, decodeConvertPixelsPerSecond: { sdr_8bit: 1, sdr_10bit: 1, sdr_12bit: 1, hdr_8bit: 1, hdr_12bit: 1, sdr_16bit: 1, hdr_16bit: 1 } } }],
     // S6d D1-3 (§91): the 12-bit rates are frozen with the others.
-    ['a missing SDR 12-bit rate', { ...ENCODING, encoder: { ...ENCODING.encoder, decodeConvertPixelsPerSecond: { sdr_8bit: 1, sdr_10bit: 1, hdr_8bit: 1, hdr_10bit: 1, hdr_12bit: 1 } } }],
-    ['a missing HDR 12-bit rate', { ...ENCODING, encoder: { ...ENCODING.encoder, decodeConvertPixelsPerSecond: { sdr_8bit: 1, sdr_10bit: 1, sdr_12bit: 1, hdr_8bit: 1, hdr_10bit: 1 } } }],
+    ['a missing SDR 12-bit rate', { ...ENCODING, encoder: { ...ENCODING.encoder, decodeConvertPixelsPerSecond: { sdr_8bit: 1, sdr_10bit: 1, hdr_8bit: 1, hdr_10bit: 1, hdr_12bit: 1, sdr_16bit: 1, hdr_16bit: 1 } } }],
+    ['a missing HDR 12-bit rate', { ...ENCODING, encoder: { ...ENCODING.encoder, decodeConvertPixelsPerSecond: { sdr_8bit: 1, sdr_10bit: 1, sdr_12bit: 1, hdr_8bit: 1, hdr_10bit: 1, sdr_16bit: 1, hdr_16bit: 1 } } }],
+    // A 16-bit source (16 bpc PNG-in-MOV) has its own rates.
+    ['a missing SDR 16-bit rate', { ...ENCODING, encoder: { ...ENCODING.encoder, decodeConvertPixelsPerSecond: { sdr_8bit: 1, sdr_10bit: 1, sdr_12bit: 1, hdr_8bit: 1, hdr_10bit: 1, hdr_12bit: 1, hdr_16bit: 1 } } }],
+    ['a missing HDR 16-bit rate', { ...ENCODING, encoder: { ...ENCODING.encoder, decodeConvertPixelsPerSecond: { sdr_8bit: 1, sdr_10bit: 1, sdr_12bit: 1, hdr_8bit: 1, hdr_10bit: 1, hdr_12bit: 1, sdr_16bit: 1 } } }],
     ['a negative copy margin', { ...ENCODING, copyDiskMarginBytes: -1 }],
     ['a zero carrier short side', { ...ENCODING, carrier: { ...ENCODING.carrier, maxShortSide: 0 } }],
     ['an unknown key', { ...ENCODING, retries: 3 }],

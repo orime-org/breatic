@@ -81,7 +81,7 @@ const encoderDefaults = {
   // Local Docker readings at nproc 4 (encode-throughput nproc4 and 12-bit runs), to be replaced by Cloudflare standard-4 measurements.
   encode_pixels_per_second: 248_000_000,
   decode_convert_pixels_per_second: {
-    sdr_8bit: 2_200_000_000, sdr_10bit: 1_310_000_000, sdr_12bit: 816_000_000, hdr_8bit: 106_000_000, hdr_10bit: 102_000_000, hdr_12bit: 109_000_000,
+    sdr_8bit: 2_200_000_000, sdr_10bit: 1_310_000_000, sdr_12bit: 816_000_000, hdr_8bit: 106_000_000, hdr_10bit: 102_000_000, hdr_12bit: 109_000_000, sdr_16bit: 294_000_000, hdr_16bit: 71_900_000,
   },
   // Audio seconds encoded to AAC per second for the dispatched copy (local Docker nproc 4 reading, to be replaced by standard-4).
   aac_encode_seconds_per_second: 100,
@@ -107,7 +107,7 @@ const encodingSchema = z.strictObject({
     container_class: z.literal("MiniToolContainerStd4").default(encoderDefaults.container_class),
     start_seconds: z.number().nonnegative().finite().default(encoderDefaults.start_seconds),
     encode_pixels_per_second: pixelRate.default(encoderDefaults.encode_pixels_per_second),
-    decode_convert_pixels_per_second: z.strictObject({ sdr_8bit: pixelRate, sdr_10bit: pixelRate, sdr_12bit: pixelRate, hdr_8bit: pixelRate, hdr_10bit: pixelRate, hdr_12bit: pixelRate })
+    decode_convert_pixels_per_second: z.strictObject({ sdr_8bit: pixelRate, sdr_10bit: pixelRate, sdr_12bit: pixelRate, hdr_8bit: pixelRate, hdr_10bit: pixelRate, hdr_12bit: pixelRate, sdr_16bit: pixelRate, hdr_16bit: pixelRate })
       .default(encoderDefaults.decode_convert_pixels_per_second),
     aac_encode_seconds_per_second: z.number().positive().finite().default(encoderDefaults.aac_encode_seconds_per_second),
     face_detect_pixels_per_second: pixelRate.default(encoderDefaults.face_detect_pixels_per_second),

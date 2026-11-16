@@ -63,14 +63,14 @@ export interface VideoJobWork {
   sourceHeight: number;
   outputWidth: number;
   outputHeight: number;
-  bitDepth: 8 | 10 | 12;
+  bitDepth: 8 | 10 | 12 | 16;
   hdr: boolean;
 }
 /** The encoder's configured rates. */
 export interface VideoEncoderRates {
   startSeconds: number;
   encodePixelsPerSecond: number;
-  decodeConvertPixelsPerSecond: { sdr_8bit: number; sdr_10bit: number; sdr_12bit: number; hdr_8bit: number; hdr_10bit: number; hdr_12bit: number };
+  decodeConvertPixelsPerSecond: { sdr_8bit: number; sdr_10bit: number; sdr_12bit: number; hdr_8bit: number; hdr_10bit: number; hdr_12bit: number; sdr_16bit: number; hdr_16bit: number };
 }
 /** A half-open range of presentation frame indices. */
 export interface VideoEncodeChunk { start: number; end: number }
@@ -286,13 +286,13 @@ export function estimateAudioEncodeSeconds(audioSeconds: number, rates: { startS
  * @param work - The job's frames and geometry.
  * @param rates - The encoder's configured rates.
  * @returns The estimated seconds.
- * @throws {RangeError} When a count, size or rate is out of range or the bit depth is not 8, 10 or 12.
+ * @throws {RangeError} When a count, size or rate is out of range or the bit depth is not 8, 10, 12 or 16.
  */
 export function estimateVideoJobSeconds(work: VideoJobWork, rates: VideoEncoderRates): number {
   positiveInteger(work.encodedFrames, "Encoded frames");
   indexInteger(work.prerollFrames, "Pre-roll frames");
   for (const [name, value] of [["Source width", work.sourceWidth], ["Source height", work.sourceHeight], ["Output width", work.outputWidth], ["Output height", work.outputHeight]] as const) positiveInteger(value, name);
-  if (work.bitDepth !== 8 && work.bitDepth !== 10 && work.bitDepth !== 12) throw new RangeError("The source bit depth must be 8, 10 or 12");
+  if (work.bitDepth !== 8 && work.bitDepth !== 10 && work.bitDepth !== 12 && work.bitDepth !== 16) throw new RangeError("The source bit depth must be 8, 10, 12 or 16");
   if (!Number.isFinite(rates.startSeconds) || rates.startSeconds < 0) throw new RangeError("Start seconds must be non-negative");
   positiveFinite(rates.encodePixelsPerSecond, "The encode rate");
   const decodeRate = rates.decodeConvertPixelsPerSecond[`${work.hdr ? "hdr" : "sdr"}_${work.bitDepth}bit`];

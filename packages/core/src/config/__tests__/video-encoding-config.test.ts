@@ -39,7 +39,7 @@ function configured(): Record<string, unknown> {
     ...current,
     encoding: {
       chunk_share: 0.25, max_parallel_chunks: 3, chunk_retries: 2,
-      encoder: { container_class: 'MiniToolContainerStd4', start_seconds: 2, encode_pixels_per_second: 9000, decode_convert_pixels_per_second: { sdr_8bit: 8000, sdr_10bit: 7000, sdr_12bit: 6500, hdr_8bit: 6000, hdr_10bit: 5000, hdr_12bit: 4500 } },
+      encoder: { container_class: 'MiniToolContainerStd4', start_seconds: 2, encode_pixels_per_second: 9000, decode_convert_pixels_per_second: { sdr_8bit: 8000, sdr_10bit: 7000, sdr_12bit: 6500, hdr_8bit: 6000, hdr_10bit: 5000, hdr_12bit: 4500, sdr_16bit: 4200, hdr_16bit: 4000 } },
     },
     presentation: { ...current.presentation, policy_version: 1, carrier: { max_short_side: 720, color: { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', range: 'tv' } } },
     executions: {
@@ -70,7 +70,7 @@ function patched(value: Record<string, unknown>, path: readonly string[], replac
 const ENCODER = {
   container_class: 'MiniToolContainerStd4', start_seconds: 3, encode_pixels_per_second: 248_000_000,
   // S6d D1-3 (§91): all rates re-measured under one condition, nproc 4 as on standard-4 (encode-throughput nproc4 and 12-bit runs).
-  decode_convert_pixels_per_second: { sdr_8bit: 2_200_000_000, sdr_10bit: 1_310_000_000, sdr_12bit: 816_000_000, hdr_8bit: 106_000_000, hdr_10bit: 102_000_000, hdr_12bit: 109_000_000 },
+  decode_convert_pixels_per_second: { sdr_8bit: 2_200_000_000, sdr_10bit: 1_310_000_000, sdr_12bit: 816_000_000, hdr_8bit: 106_000_000, hdr_10bit: 102_000_000, hdr_12bit: 109_000_000, sdr_16bit: 294_000_000, hdr_16bit: 71_900_000 },
 };
 
 describe('EC S6b encoding and carrier configuration', () => {
@@ -132,7 +132,8 @@ describe('EC S6b encoding and carrier configuration', () => {
     ['a missing HDR 10-bit decode-convert rate', ['encoding', 'encoder', 'decode_convert_pixels_per_second', 'hdr_10bit'], undefined],
     ['a missing SDR 12-bit decode-convert rate', ['encoding', 'encoder', 'decode_convert_pixels_per_second', 'sdr_12bit'], undefined],
     ['a missing HDR 12-bit decode-convert rate', ['encoding', 'encoder', 'decode_convert_pixels_per_second', 'hdr_12bit'], undefined],
-    ['a decode-convert rate for a 16-bit source', ['encoding', 'encoder', 'decode_convert_pixels_per_second', 'sdr_16bit'], 100],
+    ['a missing SDR 16-bit decode-convert rate', ['encoding', 'encoder', 'decode_convert_pixels_per_second', 'sdr_16bit'], undefined],
+    ['a missing HDR 16-bit decode-convert rate', ['encoding', 'encoder', 'decode_convert_pixels_per_second', 'hdr_16bit'], undefined],
     ['negative start seconds', ['encoding', 'encoder', 'start_seconds'], -1],
     ['a download rate', ['encoding', 'encoder', 'download_bytes_per_second'], 100],
     ['a zero carrier short side', ['presentation', 'carrier', 'max_short_side'], 0], ['a fractional carrier short side', ['presentation', 'carrier', 'max_short_side'], 1080.5],

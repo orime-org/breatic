@@ -33,7 +33,7 @@ const LIMITS = {
 };
 const ENCODING = {
   chunkShare: 0.5, maxParallelChunks: 8,
-  encoder: { startSeconds: 3, encodePixelsPerSecond: 248000000, decodeConvertPixelsPerSecond: { sdr_8bit: 2200000000, sdr_10bit: 1310000000, sdr_12bit: 816000000, hdr_8bit: 106000000, hdr_10bit: 102000000, hdr_12bit: 109000000 }, aacEncodeSecondsPerSecond: 100 },
+  encoder: { startSeconds: 3, encodePixelsPerSecond: 248000000, decodeConvertPixelsPerSecond: { sdr_8bit: 2200000000, sdr_10bit: 1310000000, sdr_12bit: 816000000, hdr_8bit: 106000000, hdr_10bit: 102000000, hdr_12bit: 109000000, sdr_16bit: 294000000, hdr_16bit: 71900000 }, aacEncodeSecondsPerSecond: 100 },
   copyDiskMarginBytes: 33554432, carrier: { maxShortSide: 1080, color: { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', range: 'tv' } },
 };
 const PROBE = {
@@ -95,6 +95,7 @@ describe('the probe answer (§91 D-3; design §5.1 step 2)', () => {
     expect(parse({ kind: 'failed', code: 'classification_unknown' })).toBe(true);
     // §91 D1-3: 12-bit sources (ProRes 4444) have measured rates, so their work carries depth 12.
     expect(parse({ ...PLANNED, work: { ...PLANNED.work, bitDepth: 12 } })).toBe(true);
+    expect(parse({ ...PLANNED, work: { ...PLANNED.work, bitDepth: 16 } })).toBe(true);
   });
 
   it.each([
@@ -102,7 +103,7 @@ describe('the probe answer (§91 D-3; design §5.1 step 2)', () => {
     ['a malformed toolInputId', { toolInputId: 'x' }],
     ['no encode facts', { encoding: undefined }],
     ['an unknown alpha class', { routeInput: { ...PLANNED.routeInput, alpha: 'unknown' } }],
-    ['a 16-bit work depth', { work: { ...PLANNED.work, bitDepth: 16 } }],
+    ['a 14-bit work depth', { work: { ...PLANNED.work, bitDepth: 14 } }],
     ['a route plan of another plan', { routeInput: { ...PLANNED.routeInput, plan: { ...PLANNED.routeInput.plan, planSha256: 'd'.repeat(64) } } }],
   ])('CR05 refuses a planned answer with %s', (_name, change) => {
     expect(parse(PLANNED)).toBe(true);
