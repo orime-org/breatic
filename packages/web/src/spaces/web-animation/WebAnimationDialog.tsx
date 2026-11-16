@@ -81,8 +81,11 @@ export function WebAnimationDialog({ projectId, spaceId, draft, retry, limits, b
     <DialogContent onCloseAutoFocus={returnFocus}>
       <DialogHeader>
         <DialogTitle>{t(modifying ? 'spaces.webAnimation.dialog.modifyTitle' : retry ? 'timeline.webAnimation.dialog.retryTitle' : 'timeline.webAnimation.dialog.title')}</DialogTitle>
-        {modifying
-          ? <DialogDescription asChild>
+        {!modifying && <DialogDescription>{t('timeline.webAnimation.dialog.description')}</DialogDescription>}
+      </DialogHeader>
+      <form noValidate onSubmit={submit}>
+        <DialogBody className='flex flex-col gap-4'>
+          {modifying && <DialogDescription asChild>
             <div data-testid='web-animation-base' className='flex items-center gap-3 rounded-chrome border border-border p-2'>
               <div className='relative h-12 shrink-0 overflow-hidden rounded-chrome bg-muted' style={{ aspectRatio: baseAspect }}>
                 {base === undefined
@@ -92,11 +95,7 @@ export function WebAnimationDialog({ projectId, spaceId, draft, retry, limits, b
               </div>
               <span className='min-w-0'>{t('spaces.webAnimation.dialog.modifyDescription', { base: input.base?.request ?? '' })}</span>
             </div>
-          </DialogDescription>
-          : <DialogDescription>{t('timeline.webAnimation.dialog.description')}</DialogDescription>}
-      </DialogHeader>
-      <form noValidate onSubmit={submit}>
-        <DialogBody className='flex flex-col gap-4'>
+          </DialogDescription>}
           <div className='flex flex-col gap-1.5'>
             <Label htmlFor={`${fieldId}-prompt`}>{t(modifying ? 'spaces.webAnimation.dialog.instruction' : 'timeline.webAnimation.dialog.prompt')}</Label>
             <Textarea id={`${fieldId}-prompt`} data-testid='web-animation-prompt' rows={4} autoComplete='off' maxLength={limits.promptMaxLength} className='resize-none'
