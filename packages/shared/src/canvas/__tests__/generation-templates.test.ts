@@ -747,6 +747,14 @@ describe('e-commerce ad templates (inner#1811)', () => {
   it('tells the agent the still comes first and goes into the video pool', () => {
     expect(byId('product-ad-15s')?.agentNote).toMatch(/still .*first.*video'?s? pool/);
   });
+
+  it('tells the agent which model kept the product in shape for the still, and which did not (inner#1811 §9)', () => {
+    const note = byId('product-ad-15s')?.agentNote ?? '';
+    const still = byId('product-ad-15s')?.nodes.find((node) => node.key === 'still');
+    expect(still?.role === 'generate' ? still.model : undefined).toBe('nano-banana-pro-edit-ultra');
+    expect(note).toMatch(/still runs on nano-banana-pro-edit-ultra, which kept the product's proportions/);
+    expect(note).toContain('gpt-image-2.5-sunburst-edit changed them');
+  });
 });
 
 describe('optional template inputs (inner#1811, CAP-9)', () => {
