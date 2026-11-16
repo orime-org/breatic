@@ -1112,6 +1112,7 @@
     },
     "task": {
       "stillRunning": "This task is still running.",
+      "alreadyStarted": "This task has already started and cannot be cancelled.",
       "expired": "This task ran out of time.",
       "couldNotStart": "This task could not be started. Try again.",
       "status": {

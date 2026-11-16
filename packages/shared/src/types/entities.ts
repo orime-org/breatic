@@ -974,6 +974,8 @@ export interface TimelineExecution {
   /** Credits charged, as Postgres renders the numeric. */
   billedCredits: string | null;
   billedAt: string | null;
+  /** First time the running-task gate held it back (inner#1968); null when it never waited. Absent from an older server. */
+  slotWaitSince?: string | null;
   createdAt: string;
   updatedAt: string;
 }

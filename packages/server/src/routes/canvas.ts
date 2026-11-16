@@ -50,7 +50,7 @@ import {
 import { nodeHistoryService } from "@breatic/domain";
 import { assertLlmServable, assertServable } from "@server/modules/task/model-servable.js";
 import { catalogEntryOf } from "@breatic/shared/mini-tools";
-import { nodeTaskService } from "@breatic/domain";
+import { nodeTaskService, runningSlotService } from "@breatic/domain";
 import {
   admitTaskOperation,
   holdRun,
@@ -68,6 +68,7 @@ import {
 } from "@server/modules";
 import { defaultJobOpts, getMiniToolsConfig } from "@breatic/core";
 import {
+  ConflictError,
   ValidationError,
   NotFoundError,
   getUnderstandConfig,
@@ -828,6 +829,37 @@ canvas.delete(
     );
 
     return c.json({ data: result });
+  },
+);
+
+/**
+ * `POST /canvas/tasks/:taskId/cancel` — cancel a task that waits for a free
+ * running slot and has not started (inner#1968, design 3.9).
+ *
+ * Who may cancel is who may clear the task's row: a project editor, the
+ * project read from the task row. The task, its credit hold and its ledger
+ * row end in one commit under its person's running-slot lock; its rows on the
+ * canvas end failed with the reason `cancelled`, and their counts go out.
+ * @param c - Hono context; the task id in the path.
+ * @returns `{ data: { cancelled: true, counts } }`; `counts` is the node's, null for a 3D Space's own row.
+ * @throws {NotFoundError} When there is no such task in a project.
+ * @throws {AppError} 403 when the caller may not write that project.
+ * @throws {ConflictError} When the task has started or ended already.
+ */
+canvas.post(
+  "/tasks/:taskId/cancel",
+  validate("param", z.object({ taskId: z.string().uuid() })),
+  async (c) => {
+    const user = c.get("user");
+    const { taskId } = c.req.valid("param");
+    const task = await taskService.getByIdInternal(taskId);
+    if (task === null || task.projectId === null) throw new NotFoundError(t("server.error.not_found"));
+    await projectService.assertAccess(task.projectId, user.id, "editor");
+    const result = await runningSlotService.cancelQueued(taskId);
+    for (const err of result.publishFailures) logger.error({ err, taskId }, "running_slot_publish_failed");
+    if (!result.cancelled) throw new ConflictError(t("canvas.task.alreadyStarted"));
+    logger.info({ taskId, projectId: task.projectId, userId: user.id }, "queued_task_cancelled");
+    return c.json({ data: { cancelled: true, counts: result.counts } });
   },
 );
 

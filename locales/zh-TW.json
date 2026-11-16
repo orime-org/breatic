@@ -1112,6 +1112,7 @@
     },
     "task": {
       "stillRunning": "這個任務還在跑。",
+      "alreadyStarted": "這個任務已經開始執行，無法取消。",
       "expired": "這個任務逾時了。",
       "couldNotStart": "這個任務沒能開始，再試一次。",
       "status": {

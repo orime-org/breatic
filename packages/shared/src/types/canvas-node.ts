@@ -621,8 +621,12 @@ export interface CanvasNodeFields {
 export interface NodeTaskCounts {
   /** Every task not ended, the ones waiting for a free slot included. */
   running: number;
-  /** Of `running`, those waiting for a free running slot (inner#1968); an older document has none and reads 0. */
-  waiting: number;
+  /**
+   * Of `running`, those waiting for a free running slot (inner#1968). Every
+   * count the server sends carries it; a document written before it has none,
+   * which reads as 0.
+   */
+  waiting?: number;
   done: number;
   failed: number;
   expired: number;

@@ -111,7 +111,7 @@ function sameCounts(held: unknown, next: NodeTaskCounts): boolean {
   const h = held as Partial<NodeTaskCounts>;
   return (
     h.running === next.running &&
-    (h.waiting ?? 0) === next.waiting &&
+    (h.waiting ?? 0) === (next.waiting ?? 0) &&
     h.done === next.done &&
     h.failed === next.failed &&
     h.expired === next.expired
