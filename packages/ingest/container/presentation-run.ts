@@ -29,6 +29,7 @@ import { declaresAudioWindow, readStreamWindow } from '@ingest/container/stream-
 import { PlanCommandExit, runPlanCommand } from '@ingest/container/plan-command.js';
 import { inspectIsoBmffFile } from '@ingest/container/iso-bmff-metadata.js';
 import { exactPresentationTime, planEditListPresentation } from '@ingest/container/iso-bmff-presentation.js';
+import { CODEC_CROPPING_ONLY } from '@ingest/container-crop.js';
 import { parsePhysicalVideoPackets, resolveVideoColorMatrix, videoContainerCrop, videoDisplayGeometry, videoPacketProbeArgs, type PhysicalVideoPacket } from '@ingest/container/physical-video-probe.js';
 import { assembleVideoPresentationPlan, editSpans, type VideoPresentationPlanInput } from '@ingest/container/assemble-video-source-ledger.js';
 
@@ -320,7 +321,7 @@ async function plan(body: PresentationProbeRequest, input: string, directory: st
   // -show_frames: ffprobe 8.0.1 reports HEVC with an alpha layer as opaque yuv420p while ffmpeg's decoder gives yuva420p.
   // The sample is bounded by the frozen frame count.
   const sample = join(directory, 'sample.nut');
-  await runPlanCommand('ffmpeg', ['-v', 'error', '-nostdin', '-y', '-protocol_whitelist', 'file', '-i', input, '-map', `0:${String(video.index)}`,
+  await runPlanCommand('ffmpeg', ['-v', 'error', '-nostdin', '-y', '-protocol_whitelist', 'file', ...CODEC_CROPPING_ONLY, '-i', input, '-map', `0:${String(video.index)}`,
     '-frames:v', String(body.probe.sampleFrames), '-c:v', 'rawvideo', '-f', 'nut', sample], options);
   const decoded = json(await runPlanCommand('ffprobe', ['-v', 'error', '-protocol_whitelist', 'file', '-show_streams', '-of', 'json', sample], options)).streams;
   const pixFmt = Array.isArray(decoded) ? decoded.map(record).find((stream) => stream.codec_type === 'video')?.pix_fmt : undefined;

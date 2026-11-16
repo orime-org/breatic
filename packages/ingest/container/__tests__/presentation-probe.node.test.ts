@@ -179,7 +179,10 @@ beforeAll(async () => {
   // The CFR H.264 source in Matroska, and the same file with a PixelCrop of one column and one row (CT06).
   await make('cfr.mkv', ['-i', join(dir, 'cfr.mp4'), '-c', 'copy']);
   await writePixelCropped(join(dir, 'cfr.mkv'), join(dir, 'cfr-crop.mkv'), { right: 1, bottom: 1 });
+  // A crop that leaves one row of the 320x180 picture (CT07).
+  await writePixelCropped(join(dir, 'cfr.mkv'), join(dir, 'cfr-row.mkv'), { top: 179 });
   files.set('cfr-crop.mkv', join(dir, 'cfr-crop.mkv'));
+  files.set('cfr-row.mkv', join(dir, 'cfr-row.mkv'));
 }, 120_000);
 
 /**
@@ -536,6 +539,11 @@ describe('whether a stream copy keeps the plan timeline (design §4.1 row 2; §9
     const answer = planned(await probed('cfr-crop.mkv'));
     expect(answer.routeInput.copyPreservesTimeline).toBe(false);
     expect(answer.plan.display).toMatchObject({ width: 319, height: 179 });
+  });
+
+  // Every decode of a source keeps codec cropping only: the pixel-format sample of a picture cropped to one row is that row.
+  it('CT07 a Matroska source cropped to one row plans at 320x1', async () => {
+    expect(planned(await probed('cfr-row.mkv')).plan.display).toMatchObject({ width: 320, height: 1 });
   });
 
   it.each([
