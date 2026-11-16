@@ -114,6 +114,35 @@ export const SHOTS: GenerationTemplate = {
   triggers: { asks: ["a fixture"], offerWhen: ["a fixture is wanted"] },
 };
 
+/**
+ * A fixture whose multi-shot anchor takes a required input and an optional
+ * one (inner#1811, CAP-9), the optional input @'d alone in the second shot.
+ */
+export const CAST: GenerationTemplate = {
+  id: "fixture-cast",
+  anchor: "clip",
+  nodes: [
+    {
+      key: "clip",
+      role: "generate",
+      type: "video",
+      mode: "multi_shot",
+      model: "seedance-2.5-text-to-video",
+      params: { aspect_ratio: "9:16", duration: 10 },
+      shots: [{ seconds: 5 }, { seconds: 5 }],
+    },
+  ],
+  edges: [],
+  inputs: [
+    { key: "product", type: "image" },
+    { key: "person", type: "image", optional: true },
+  ],
+  steps: [],
+  agentNote: "a fixture clip of a product, someone optional holding it",
+  goal: "ecommerce",
+  triggers: { asks: ["a fixture"], offerWhen: ["a fixture is wanted"] },
+};
+
 /** Every fixture, as a registry. */
 export const FIXTURES: readonly GenerationTemplate[] = [SHEET, SOLO, STEPPED, SHOTS];
 
@@ -208,6 +237,14 @@ const STRINGS: Record<string, Record<string, unknown>> = {
       prompt: "A lighthouse at dawn.",
       step: { upscale: "Once it has generated, upscale it from Tools" },
     },
+    "fixture-cast": {
+      name: "Fixture cast",
+      shot: { 1: "[📎 Product] on a table.", 2: "Someone like [📎 Person] picks it up." },
+      input: {
+        product: { name: "Product", note: "Put the product in Product first" },
+        person: { name: "Person", note: "Optional: put someone in Person, or leave it empty" },
+      },
+    },
     "fixture-shots": {
       name: "Fixture shots",
       prompt: "(💡 Generate Still first)[📎 Still] walks along the shore.",
@@ -257,6 +294,14 @@ const STRINGS: Record<string, Record<string, unknown>> = {
       name: "フィクスチャ手順",
       prompt: "夜明けの灯台。",
       step: { upscale: "生成後、ツールからアップスケールする" },
+    },
+    "fixture-cast": {
+      name: "フィクスチャキャスト",
+      shot: { 1: "テーブルの上の [📎 商品]。", 2: "[📎 人物] のような人が手に取る。" },
+      input: {
+        product: { name: "商品", note: "先に商品に商品の画像を入れてください" },
+        person: { name: "人物", note: "任意：人物に人を入れるか、空のままにしてください" },
+      },
     },
     "fixture-shots": {
       name: "フィクスチャショット",

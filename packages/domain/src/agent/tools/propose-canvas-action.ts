@@ -252,10 +252,11 @@ function checkResolved(proposal: CanvasProposal, materials: MaterialTable, insta
   const optional = checkOptionalInputs(proposal, instances);
   if (!optional.ok) return optional;
 
-  const optionalNodes = new Set([...optionalInputRefs(instances).values()].flatMap((nodes) => [...nodes.keys()]));
+  // An input is optional only in the template's own generations, where its refs are marked.
+  const optionalIn = optionalInputRefs(instances);
   for (const [index, node] of proposal.nodes.entries()) {
     if (node.role !== "generate") continue;
-    const verdict = checkGenerateNode(proposal, node, index, optionalNodes);
+    const verdict = checkGenerateNode(proposal, node, index, new Set(optionalIn.get(index)?.keys()));
     if (!verdict.ok) return verdict;
   }
 

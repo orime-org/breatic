@@ -260,7 +260,7 @@ interface Wiring {
  * @param index - Its index.
  * @param chosen - Its model.
  * @param at - The generation, as a fix names it.
- * @param optionalNodes - The indices of the nodes standing for an optional template input.
+ * @param optionalNodes - The indices of the nodes standing for an optional input of a template this generation belongs to.
  * @returns What the wiring settles, or the refusal.
  * @throws {never} Never.
  */
@@ -532,11 +532,11 @@ export function checkBlanks(proposal: CanvasProposal): ProposalVerdict {
  * @param proposal - The whole proposal, for reading the group around it.
  * @param node - The node being judged.
  * @param index - Where it sits, for naming it in a refusal.
- * @param optionalNodes - The indices of the nodes standing for an optional template input (inner#1811).
+ * @param optionalNodes - The indices of the nodes standing for an optional input of a template this generation belongs to, whose refs here are marked optional (inner#1811).
  * @returns Whether it stands, and what is missing when it does not.
  * @throws {never} Never.
  */
-export function checkGenerateNode(proposal: CanvasProposal, node: ProposalNode, index: number, optionalNodes: ReadonlySet<number> = new Set()): ProposalVerdict {
+export function checkGenerateNode(proposal: CanvasProposal, node: ProposalNode, index: number, optionalNodes: ReadonlySet<number>): ProposalVerdict {
   const resolved = resolveModel(node, index);
   if ("refusal" in resolved) return resolved;
   const { chosen } = resolved;

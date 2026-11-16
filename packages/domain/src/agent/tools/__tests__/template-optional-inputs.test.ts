@@ -32,7 +32,7 @@ import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests
 
 import { answerFor } from "../propose-canvas-action.js";
 
-import { agentShape, withoutNode, type AgentShape, type Sent, type SentNode } from "./template-fixtures.js";
+import { agentShape, CAST, EDIT, loadFixtureLocales, withoutNode, type AgentShape, type Sent, type SentNode } from "./template-fixtures.js";
 
 beforeEach(() => {
   loadLocales();
@@ -154,6 +154,52 @@ describe("an optional template input (inner#1811, CAP-9)", () => {
     const result = indexOf(shape, "node:result");
     const bare = withNode(shape.sent, result, (node) => ({ ...node, prompt: (node.prompt ?? []).filter((segment) => !("slot" in segment && segment.slot.kind === "note")) }));
     expect(answerFor(bare)).toMatchObject({ placed: false, reason: expect.stringMatching(/"Person" \([^)]*optional and can be left empty\)/) });
+  });
+
+  describe("in a template whose anchor is made of shots", () => {
+    beforeEach(() => {
+      loadFixtureLocales();
+      setLocale("en");
+    });
+
+    /**
+     * The fixture as the agent sends it, every input node tagged.
+     * @returns The proposal and where each identity sits.
+     */
+    const cast = (): AgentShape => agentShape(CAST, { tagInputs: true });
+
+    it("marks only the refs to the optional input as optional", () => {
+      const shape = cast();
+      const answer = placed(answerFor(shape.sent, new Map(), [CAST]));
+      const person = indexOf(shape, "input:person");
+      const shots = answer.nodes[indexOf(shape, "node:clip")]?.shots ?? [];
+      const refs = shots.flatMap((shot) => refsOf(shot.prompt));
+      expect(refs).toContainEqual({ ref: person, optional: true });
+      for (const one of refs) expect(one.optional, `ref ${String(one.ref)}`).toBe(one.ref === person);
+    });
+
+    it("refuses its ref in a shot paragraph holding another ref", () => {
+      const shape = cast();
+      const clip = indexOf(shape, "node:clip");
+      const shared = withNode(shape.sent, clip, (node) => ({
+        ...node,
+        shots: (node.shots ?? []).map((shot, n) =>
+          n === 1 ? { ...shot, prompt: [{ text: "Someone like " }, { ref: indexOf(shape, "input:person") }, { text: " holds " }, { ref: indexOf(shape, "input:product") }, { text: "." }] } : shot,
+        ),
+      }));
+      expect(answerFor(shared, new Map(), [CAST])).toMatchObject({ placed: false, reason: expect.stringMatching(/optional input "person".*paragraph of its own/) });
+    });
+  });
+
+  it("is called optional only in the generations whose refs to it are marked optional", () => {
+    const shape = productAd();
+    const person = indexOf(shape, "input:person");
+    // A generation of the agent's own, outside the template, @s the empty Person with no note.
+    const extra: SentNode = { role: "generate", type: "image", name: "Portrait", mode: "i2i", model: EDIT, prompt: [{ text: "A portrait of " }, { ref: person }] };
+    const sent: Sent = { ...shape.sent, nodes: [...shape.sent.nodes, extra], edges: [...shape.sent.edges, { fromIndex: person, toIndex: shape.sent.nodes.length, into: "pool" }] };
+    const answer = answerFor(sent);
+    expect(answer).toMatchObject({ placed: false, reason: expect.stringContaining('"Portrait" needs a note') });
+    expect(answer.placed ? "" : answer.reason).not.toMatch(/optional and can be left empty/);
   });
 
   it("is still told apart from the product when its empty node is wired in first", () => {
