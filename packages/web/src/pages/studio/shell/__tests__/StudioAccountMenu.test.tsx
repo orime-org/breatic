@@ -17,6 +17,7 @@ import type { AccountReferral } from '@web/data/api/referral';
 import { ApiException } from '@web/data/api/types';
 import { StudioAccountMenu } from '@web/pages/studio/shell/StudioAccountMenu';
 import { useCurrentUserStore } from '@web/stores/current-user';
+import { useUIStore } from '@web/stores/ui';
 
 const meMock = vi.fn();
 // Only the two calls are replaced. `deriveDisplayName` stays real because the
@@ -160,6 +161,10 @@ async function openMenu(user: ReturnType<typeof userEvent.setup>): Promise<void>
 describe('StudioAccountMenu', () => {
   beforeEach(() => {
     useCurrentUserStore.getState().clear();
+    // The credits overlay is an exclusive overlay since inner#1968 (design
+    // 21 row 21): its open state lives in the shared UI store, so a test that
+    // opened it would leave it open for the next one.
+    useUIStore.getState().setActiveOverlayId(null);
     vi.mocked(authApi.logout).mockReset().mockResolvedValue(undefined);
     // Opening the menu re-reads the account. A refused read leaves the store
     // as the test set it, which is what every test but the one about this
