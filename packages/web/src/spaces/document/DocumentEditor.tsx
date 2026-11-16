@@ -267,8 +267,8 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   // Both rest while the snapshot panel shows in the same viewport; the
   // follower aligns after the layout effect above gave the body its place back.
   const leaderUserId = useFollowStore((s) => s.targetUserId);
-  const { followTopBlockId } = useDocumentFollow({ awareness, leaderUserId, viewport, root: bodyRoot, paused: panelOpen });
-  usePublishTopBlock({ awareness, viewport, root: bodyRoot, paused: panelOpen, followTopBlockId });
+  useDocumentFollow({ awareness, leaderUserId, viewport, root: bodyRoot, paused: panelOpen });
+  usePublishTopBlock({ awareness, viewport, root: bodyRoot, paused: panelOpen });
 
   // A table open full screen (#1427): this area covers the window and
   // shows that table alone; what it leaves out is listed in design §5.1.

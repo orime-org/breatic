@@ -5,6 +5,7 @@ import * as React from 'react';
 import type { Awareness } from 'y-protocols/awareness';
 
 import { readFollowField, type FollowFieldValue } from '@web/data/yjs/follow-presence';
+import { useFollowStore } from '@web/stores/follow';
 
 /**
  * Put one value in this client's `view`, keeping the rest of its state. A
@@ -23,37 +24,41 @@ function writeView(awareness: Awareness, view: FollowFieldValue<'view'> | null):
  * Write the current view, or withdraw it while the browser tab is hidden.
  * @param awareness - The project meta awareness.
  * @param spaceId - The Space in front, or null when no tab is open.
+ * @param following - The member this user follows, or null.
  */
-function publishView(awareness: Awareness, spaceId: string | null): void {
+function publishView(awareness: Awareness, spaceId: string | null, following: string | null): void {
   writeView(
     awareness,
-    document.visibilityState === 'hidden' ? null : { spaceId, at: Date.now(), focused: document.hasFocus() },
+    document.visibilityState === 'hidden' ? null : { spaceId, at: Date.now(), focused: document.hasFocus(), following },
   );
 }
 
 /**
- * Publish `view`, the Space this browser tab has in front, on the project's
- * meta awareness so members can follow this user (#920).
+ * Publish `view`, the Space this browser tab has in front and whom this user
+ * follows, on the project's meta awareness so members can follow this user
+ * and nobody follows a member who is following someone (#920).
  *
- * Written on mount and whenever the Space in front changes, rewritten when the
- * window gains or loses focus, withdrawn (`view: null`, the entry kept) while
- * the browser tab is hidden and written back when it shows again, and written
- * back after something else wiped this client's state (a bfcache restore sets
- * it to `{}`). Every write is direct: a withdrawal must land, and a hidden tab
- * gets no animation frames (`packages/web/AGENTS.md#writes-that-must-land-skip-frame-scheduling`).
+ * Written on mount and whenever the Space in front or the followed member
+ * changes, rewritten when the window gains or loses focus, withdrawn
+ * (`view: null`, the entry kept) while the browser tab is hidden and written
+ * back when it shows again, and written back after something else wiped this
+ * client's state (a bfcache restore sets it to `{}`). Every write is direct: a
+ * withdrawal must land, and a hidden tab gets no animation frames (`packages/web/AGENTS.md#writes-that-must-land-skip-frame-scheduling`).
  * @param metaAwareness - The project meta document's awareness, or null before it is attached.
  * @param activeSpaceId - The Space in front, or null when no tab is open.
  */
 export function usePublishView(metaAwareness: Awareness | null, activeSpaceId: string | null): void {
+  const following = useFollowStore((s) => s.targetUserId);
   // Read by the listeners below, which outlive one value.
   const spaceIdRef = React.useRef(activeSpaceId);
+  const followingRef = React.useRef(following);
 
   React.useEffect(() => {
     const awareness = metaAwareness;
     if (!awareness) return undefined;
     /** Rewrite the view for a focus or visibility change. */
     const publish = (): void => {
-      publishView(awareness, spaceIdRef.current);
+      publishView(awareness, spaceIdRef.current, followingRef.current);
     };
     /**
      * Write the view back when this client's state lost it from outside.
@@ -83,6 +88,7 @@ export function usePublishView(metaAwareness: Awareness | null, activeSpaceId: s
 
   React.useEffect(() => {
     spaceIdRef.current = activeSpaceId;
-    if (metaAwareness) publishView(metaAwareness, activeSpaceId);
-  }, [metaAwareness, activeSpaceId]);
+    followingRef.current = following;
+    if (metaAwareness) publishView(metaAwareness, activeSpaceId, following);
+  }, [metaAwareness, activeSpaceId, following]);
 }

@@ -1015,7 +1015,6 @@ describe('usePublishPresence, the camera', () => {
         containerRef: { current: container },
         toFlowPosition: SHIFTED,
         readCamera: () => ({ x: 10, y: 20, width: 800, height: 600 }),
-        followCamera: null,
       }),
     );
     await vi.waitFor(() => {
@@ -1036,7 +1035,6 @@ describe('usePublishPresence, the camera', () => {
         containerRef: { current: container },
         toFlowPosition: SHIFTED,
         readCamera: () => rect,
-        followCamera: null,
       }),
     );
     await vi.waitFor(() => expect(camera(awareness)).toMatchObject({ x: 0 }));
@@ -1057,31 +1055,12 @@ describe('usePublishPresence, the camera', () => {
         containerRef: { current: container },
         toFlowPosition: SHIFTED,
         readCamera: () => rect,
-        followCamera: null,
       }),
     );
     await vi.waitFor(() => expect(camera(awareness)).toMatchObject({ width: 800 }));
     rect = { x: 0, y: 0, width: 1200, height: 600 };
     resizeContainer(container);
     await vi.waitFor(() => expect(camera(awareness)).toMatchObject({ width: 1200 }));
-  });
-
-  it('publishes the leader rectangle unchanged while follow drives the viewport', async () => {
-    const awareness = makeAwareness();
-    const { container } = makeCanvas();
-    const leader = { x: 5, y: 6, width: 400, height: 300 };
-    renderHook(() =>
-      usePublishPresence({
-        awareness,
-        sources: NOTHING,
-        synced: true,
-        containerRef: { current: container },
-        toFlowPosition: SHIFTED,
-        readCamera: () => ({ x: -95, y: 6, width: 600, height: 300 }),
-        followCamera: leader,
-      }),
-    );
-    await vi.waitFor(() => expect(camera(awareness)).toMatchObject(leader));
   });
 
   it('keeps the camera when the window loses focus', async () => {
@@ -1095,7 +1074,6 @@ describe('usePublishPresence, the camera', () => {
         containerRef: { current: container },
         toFlowPosition: SHIFTED,
         readCamera: () => ({ x: 1, y: 1, width: 10, height: 10 }),
-        followCamera: null,
       }),
     );
     await vi.waitFor(() => expect(camera(awareness)).not.toBeNull());
@@ -1115,7 +1093,6 @@ describe('usePublishPresence, the camera', () => {
         containerRef: { current: container },
         toFlowPosition: SHIFTED,
         readCamera: () => ({ x: 1, y: 1, width: 10, height: 10 }),
-        followCamera: null,
       }),
     );
     await vi.waitFor(() => expect(camera(awareness)).not.toBeNull());

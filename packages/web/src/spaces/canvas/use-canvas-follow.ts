@@ -7,7 +7,7 @@ import type { Awareness } from 'y-protocols/awareness';
 
 import { pickLeaderField } from '@web/data/yjs/follow-presence';
 import { FOLLOW_BAR_HEIGHT } from '@web/features/follow/FollowBar';
-import { followViewport, sameRect, type FlowRect, type PaneSize } from '@web/features/follow/follow-geometry';
+import { followViewport, type FlowRect, type PaneSize } from '@web/features/follow/follow-geometry';
 import { stopFollowing, useFollowStore } from '@web/stores/follow';
 
 /** What following a member on the canvas needs (#920 design 4.2). */
@@ -28,8 +28,6 @@ export interface CanvasFollowInput {
 
 /** What the canvas wires back in. */
 export interface CanvasFollowResult {
-  /** The leader rectangle the viewport was last aligned to, or null; the camera publisher sends it on unchanged. */
-  followCamera: FlowRect | null;
   /** The `<ReactFlow onMoveStart>` handler: the user's moves, and after the first alignment any move this hook did not start, stop following. */
   onMoveStart: (event: unknown) => void;
 }
@@ -52,12 +50,11 @@ function belowFollowBar(rect: FlowRect, pane: PaneSize): Viewport {
  * fitted into this pane below the follow bar, the way tldraw fits a followed
  * user's viewport, and fitted again when this pane changes size.
  *
- * Once aligned, only a camera stamped later than the last one is applied. A
- * follower passes the leader's camera on with the leader's own stamp (the
- * camera publisher), so two members who press View on each other within one
- * round trip settle on one rectangle instead of swapping theirs forever.
- * Stamps are wall clocks: a relay from a browser whose clock is behind is held
- * until that clock catches up.
+ * Once aligned, only a camera stamped later than the last one is applied: the
+ * awareness change event fires for every member's pointer and holding, and
+ * those must not refit a viewport the leader has not moved. A follower
+ * publishes its own viewport like anyone else; following is one level deep,
+ * so nobody follows a follower.
  *
  * The move this hook makes runs inside a synchronous `applying` flag, because
  * xyflow reports a programmatic move through `onMoveStart` in the same call.
@@ -66,7 +63,7 @@ function belowFollowBar(rect: FlowRect, pane: PaneSize): Viewport {
  * framing) stops it once aligned, while before the first alignment it is the
  * opening fit of a canvas that loads after following started.
  * @param input - The awareness, the leader, readiness and the viewport commands.
- * @returns The rectangle to publish while following and the move-start handler.
+ * @returns The move-start handler.
  */
 export function useCanvasFollow(input: CanvasFollowInput): CanvasFollowResult {
   const { awareness, leaderUserId, ready } = input;
@@ -76,7 +73,6 @@ export function useCanvasFollow(input: CanvasFollowInput): CanvasFollowResult {
   const aligned = React.useRef(false);
   // The leader camera last applied, kept for a refit when this pane changes size.
   const last = React.useRef<{ rect: FlowRect; at: number } | null>(null);
-  const [followCamera, setFollowCamera] = React.useState<FlowRect | null>(null);
 
   /**
    * Move this viewport to show a leader rectangle, marking the move as this hook's own.
@@ -113,7 +109,6 @@ export function useCanvasFollow(input: CanvasFollowInput): CanvasFollowResult {
       const rect: FlowRect = { x: camera.x, y: camera.y, width: camera.width, height: camera.height };
       last.current = { rect, at: camera.at };
       fitLeader(rect);
-      setFollowCamera((prev) => (sameRect(prev, rect) ? prev : rect));
     };
     align();
     awareness.on('change', align);
@@ -121,7 +116,6 @@ export function useCanvasFollow(input: CanvasFollowInput): CanvasFollowResult {
       awareness.off('change', align);
       aligned.current = false;
       last.current = null;
-      setFollowCamera(null);
     };
   }, [awareness, leaderUserId, ready, fitLeader]);
 
@@ -140,11 +134,7 @@ export function useCanvasFollow(input: CanvasFollowInput): CanvasFollowResult {
     stopFollowing();
     aligned.current = false;
     last.current = null;
-    setFollowCamera(null);
   }, []);
 
-  return React.useMemo(
-    (): CanvasFollowResult => ({ followCamera: leaderUserId === null ? null : followCamera, onMoveStart }),
-    [followCamera, leaderUserId, onMoveStart],
-  );
+  return React.useMemo((): CanvasFollowResult => ({ onMoveStart }), [onMoveStart]);
 }

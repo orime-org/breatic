@@ -309,7 +309,7 @@ describe('usePublishTopBlock', () => {
    * @returns The input.
    */
   function input(b: Body, awareness: Awareness, over: Partial<PublishTopBlockInput> = {}): PublishTopBlockInput {
-    return { awareness, viewport: b.viewport, root: b.root, paused: false, followTopBlockId: null, ...over };
+    return { awareness, viewport: b.viewport, root: b.root, paused: false, ...over };
   }
 
   it('publishes the top block on mount and after a scroll', async () => {
@@ -318,13 +318,6 @@ describe('usePublishTopBlock', () => {
     renderHook(() => usePublishTopBlock(input(b, awareness)));
     await vi.waitFor(() => expect(published(awareness)?.id).toBe('a'));
     b.scrollBy(1010);
-    await vi.waitFor(() => expect(published(awareness)?.id).toBe('b'));
-  });
-
-  it('publishes the leader block while follow drives the scroll', async () => {
-    const b = body([['a', 0], ['b', 1000]]);
-    const awareness = makeAwareness();
-    renderHook(() => usePublishTopBlock(input(b, awareness, { followTopBlockId: 'b' })));
     await vi.waitFor(() => expect(published(awareness)?.id).toBe('b'));
   });
 

@@ -10,7 +10,6 @@ import { sameGeometry } from '@web/spaces/canvas/gesture-table';
 import { deriveActiveNodeIds, sameIdList } from '@web/spaces/canvas/active-node-ids';
 import { PRESENCE_WRITE_INTERVAL_MS, createPublishThrottle } from '@web/lib/publish-throttle';
 import { observeViewportTransform } from '@web/spaces/canvas/viewport-observer';
-import { readFollowField } from '@web/data/yjs/follow-presence';
 import { sameRect, type FlowRect } from '@web/features/follow/follow-geometry';
 
 /** A point, in either screen or canvas coordinates. */
@@ -44,8 +43,6 @@ export interface PublishPresenceInput {
    * no size; left out, no `camera` is published (#920).
    */
   readCamera?: () => FlowRect | null;
-  /** The followed member's rectangle while following drives the viewport, else null. */
-  followCamera?: FlowRect | null;
 }
 
 /** The visible rectangle on the wire, stamped with when it was written. */
@@ -102,44 +99,6 @@ function readPublished(awareness: Awareness): Presence {
     gesture: (gesture as GestureBatch | undefined) ?? null,
     camera: (state?.camera as Camera | undefined) ?? null,
   };
-}
-
-/**
- * The stamp a followed leader rectangle was written with: the latest among the
- * peers' cameras that show it. Passing it on with that stamp rather than a new
- * one lets two members following each other order their rectangles by when
- * the leader wrote them, so they settle on one (#920).
- * @param awareness - This Space's awareness.
- * @param rect - The leader rectangle being passed on.
- * @returns The stamp, or null when no peer shows that rectangle (any more).
- */
-function relayedStamp(awareness: Awareness, rect: FlowRect): number | null {
-  let stamp: number | null = null;
-  for (const [clientId, state] of awareness.getStates()) {
-    if (clientId === awareness.clientID) continue;
-    const camera = readFollowField(state as Record<string, unknown>, 'camera');
-    if (camera !== null && sameRect(camera, rect) && (stamp === null || camera.at > stamp)) stamp = camera.at;
-  }
-  return stamp;
-}
-
-/**
- * The stamp of a new camera. A leader rectangle passed on keeps the stamp the
- * leader wrote it with, found among the peers' cameras; this client's own
- * rectangle, and the first leader rectangle it passes on after showing its own
- * (news to its followers even when the leader wrote it long ago), never go
- * back in time from the last stamp it published.
- * @param awareness - This Space's awareness.
- * @param leader - The leader rectangle being passed on, or null for the own one.
- * @param lastAt - The stamp of the camera published before, or 0.
- * @param passingOn - Whether the camera published before was a leader rectangle passed on.
- * @returns The stamp.
- */
-function cameraStamp(awareness: Awareness, leader: FlowRect | null, lastAt: number, passingOn: boolean): number {
-  const fresh = Math.max(Date.now(), lastAt + 1);
-  if (leader === null) return fresh;
-  const relayed = relayedStamp(awareness, leader) ?? fresh;
-  return passingOn ? relayed : Math.max(relayed, lastAt + 1);
 }
 
 /**
@@ -208,7 +167,7 @@ function samePoint(a: Point | null, b: Point | null): boolean {
  * @returns The commands a gesture publishes its geometry with.
  */
 export function usePublishPresence(input: PublishPresenceInput): GesturePublisher {
-  const { awareness, sources, synced, containerRef, toFlowPosition, followCamera = null } = input;
+  const { awareness, sources, synced, containerRef, toFlowPosition } = input;
   const { selectedIds, pickSession, focusTargetId } = sources;
 
   // Read inside the write callback instead of closing over the values, so a
@@ -219,8 +178,6 @@ export function usePublishPresence(input: PublishPresenceInput): GesturePublishe
   latestConvert.current = toFlowPosition;
   const latestReadCamera = React.useRef(input.readCamera);
   latestReadCamera.current = input.readCamera;
-  const latestFollowCamera = React.useRef(followCamera);
-  latestFollowCamera.current = followCamera;
 
   // The pointer's last screen position, or null once it left the canvas. It is
   // a ref rather than state: it changes at pointer rates and no render reads
@@ -230,9 +187,6 @@ export function usePublishPresence(input: PublishPresenceInput): GesturePublishe
   // `force` skips the de-duplication for one write; it is a ref rather than
   // state so setting it never schedules a render of its own.
   const force = React.useRef(false);
-
-  // Whether the last camera written was a leader rectangle passed on.
-  const passingOn = React.useRef(false);
 
   // The gesture's own batch. A ref rather than state: it is rewritten on every
   // pointer move of a drag and no render reads it — what reaches the peers goes
@@ -251,18 +205,13 @@ export function usePublishPresence(input: PublishPresenceInput): GesturePublishe
     const readCamera = latestReadCamera.current;
     let sameCamera = true;
     if (readCamera) {
-      const own = readCamera();
-      const leader = latestFollowCamera.current;
-      // While following drives the viewport the leader rectangle goes on
-      // unchanged, so a chain of followers passes it along and two members
-      // following each other do not grow it each round.
-      const rect = own === null ? null : (leader ?? own);
+      const rect = readCamera();
       sameCamera = sameRect(prev.camera, rect);
-      // An unchanged rectangle keeps its stamp, so it does not count as news.
+      // An unchanged rectangle keeps its stamp, so it does not count as news;
+      // a new one never goes back in time from the last stamp published.
       if (sameCamera) next.camera = prev.camera;
       else if (rect === null) next.camera = null;
-      else next.camera = { ...rect, at: cameraStamp(awareness, leader, prev.camera?.at ?? 0, passingOn.current) };
-      passingOn.current = rect !== null && leader !== null;
+      else next.camera = { ...rect, at: Math.max(Date.now(), (prev.camera?.at ?? 0) + 1) };
     }
     const unchanged =
       sameCamera &&
@@ -286,7 +235,7 @@ export function usePublishPresence(input: PublishPresenceInput): GesturePublishe
     if (!awareness) return undefined;
     throttle.schedule();
     return (): void => throttle.cancel();
-  }, [awareness, throttle, selectedIds, pickSession, focusTargetId, followCamera]);
+  }, [awareness, throttle, selectedIds, pickSession, focusTargetId]);
 
   // Reconnect. This also covers the first publish being scheduled before the
   // document finished syncing, since a fresh mount starts out unsynced.

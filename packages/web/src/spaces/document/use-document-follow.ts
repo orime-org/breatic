@@ -34,12 +34,6 @@ export interface DocumentFollowInput {
   paused: boolean;
 }
 
-/** What the body wires back in. */
-export interface DocumentFollowResult {
-  /** The leader block the body was last aligned to, or null; the top-block publisher sends it on unchanged. */
-  followTopBlockId: string | null;
-}
-
 /**
  * Keep the followed member's top block at the top of this body (#920 design
  * 4.2) and stop following once the user scrolls the body themselves.
@@ -57,11 +51,9 @@ export interface DocumentFollowResult {
  * While paused, both the aligning and the check rest, and resuming aligns to
  * the leader's latest block.
  * @param input - The awareness, the leader, the body and whether it is paused.
- * @returns The block to publish while following.
  */
-export function useDocumentFollow(input: DocumentFollowInput): DocumentFollowResult {
+export function useDocumentFollow(input: DocumentFollowInput): void {
   const { awareness, leaderUserId, viewport, root, paused } = input;
-  const [followTopBlockId, setFollowTopBlockId] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (!awareness || leaderUserId === null || !viewport || !root || paused) return undefined;
@@ -103,7 +95,6 @@ export function useDocumentFollow(input: DocumentFollowInput): DocumentFollowRes
       pending = null;
       viewport.scrollTo({ top, behavior: 'auto' });
       mark = markAlignment(viewport, root, id);
-      setFollowTopBlockId(id);
     };
 
     /**
@@ -132,7 +123,6 @@ export function useDocumentFollow(input: DocumentFollowInput): DocumentFollowRes
       }
       mark = null;
       stopFollowing();
-      setFollowTopBlockId(null);
     };
 
     /** Stop following on the user's own scrolling input before the first alignment. */
@@ -180,12 +170,6 @@ export function useDocumentFollow(input: DocumentFollowInput): DocumentFollowRes
       window.removeEventListener('pointerdown', onPointerDown, true);
       arrivals.disconnect();
       resize.disconnect();
-      setFollowTopBlockId(null);
     };
   }, [awareness, leaderUserId, viewport, root, paused]);
-
-  return React.useMemo(
-    (): DocumentFollowResult => ({ followTopBlockId: leaderUserId === null ? null : followTopBlockId }),
-    [followTopBlockId, leaderUserId],
-  );
 }

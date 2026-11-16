@@ -2231,7 +2231,11 @@
       "stop": "중지",
       "stoppedViewport": "뷰를 움직여 따라가기를 중지했습니다",
       "stoppedSpace": "Space를 전환해 따라가기를 중지했습니다",
-      "stoppedOffline": "{name} 님이 오프라인이라 따라가기를 중지했습니다"
+      "stoppedOffline": "{name} 님이 오프라인이라 따라가기를 중지했습니다",
+      "stoppedLeaderFollows": "{name} 님이 {other} 님을 따라가기 시작해 따라가기를 중지했습니다",
+      "stoppedLeaderFollowsYou": "{name} 님이 나를 따라가기 시작해 따라가기를 중지했습니다",
+      "busy": "{name} 님은 {other} 님을 따라가는 중입니다",
+      "busyYou": "{name} 님은 나를 따라가는 중입니다"
     }
   },
   "spaces": {

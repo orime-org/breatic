@@ -12,6 +12,7 @@ import {
   PopoverTrigger,
 } from '@web/components/ui/popover';
 import { Separator } from '@web/components/ui/separator';
+import { toast } from '@web/lib/toast';
 import { cn } from '@web/lib/utils';
 import { useUIStore } from '@web/stores';
 import { stopFollowing, useFollowStore } from '@web/stores/follow';
@@ -47,9 +48,16 @@ interface MembersStackProps {
    * which follows them (#920).
    */
   onlineUserIds?: ReadonlySet<string>;
+  /**
+   * Whom each member is following, user id to user id (#920). Following is
+   * one level deep: View on a member following this user or someone on the
+   * roster is dimmed and pressing it says whom they follow.
+   */
+  followingByUser?: ReadonlyMap<string, string>;
 }
 
 const NOBODY_ONLINE: ReadonlySet<string> = new Set();
+const NOBODY_FOLLOWING: ReadonlyMap<string, string> = new Map();
 
 const ROLE_KEY: Record<MemberRole, 'role.owner' | 'role.editor' | 'role.viewer'> = {
   owner: 'role.owner',
@@ -79,7 +87,7 @@ const ROLE_KEY: Record<MemberRole, 'role.owner' | 'role.editor' | 'role.viewer'>
 export const MembersStack = React.forwardRef<
   HTMLButtonElement,
   MembersStackProps
->(({ members, currentUserId, currentUserRole, onLeave, onlineUserIds = NOBODY_ONLINE }, ref) => {
+>(({ members, currentUserId, currentUserRole, onLeave, onlineUserIds = NOBODY_ONLINE, followingByUser = NOBODY_FOLLOWING }, ref) => {
   const t = useTranslation();
   // Owner-only affordance (B model — hidden, not disabled): the manage
   // button only renders when the current user is owner.
@@ -90,6 +98,21 @@ export const MembersStack = React.forwardRef<
   const setActiveOverlayId = useUIStore((s) => s.setActiveOverlayId);
   const followedUserId = useFollowStore((s) => s.targetUserId);
   const titleId = React.useId();
+  const names = React.useMemo(() => new Map(members.map((m) => [m.userId, m.name])), [members]);
+
+  /**
+   * What pressing View on a member says when they are following someone,
+   * this user or another member; someone off the roster counts as nobody.
+   * @param member - The row's member.
+   * @returns The notice, or null when the member follows nobody here.
+   */
+  const busyNotice = (member: Member): string | null => {
+    const other = followingByUser.get(member.userId);
+    if (other === undefined) return null;
+    if (other === currentUserId) return t('members.follow.busyYou', { name: member.name });
+    const otherName = names.get(other);
+    return otherName === undefined ? null : t('members.follow.busy', { name: member.name, other: otherName });
+  };
 
   const openManage = React.useCallback((): void => {
     setOpen(false);
@@ -200,6 +223,7 @@ export const MembersStack = React.forwardRef<
                 isMe={currentUserId !== undefined && m.userId === currentUserId}
                 online={onlineUserIds.has(m.userId)}
                 followed={followedUserId === m.userId}
+                busyNotice={busyNotice(m)}
               />
             </li>
           ))}
@@ -235,24 +259,31 @@ interface MemberRowProps {
   isMe: boolean;
   online: boolean;
   followed: boolean;
+  busyNotice: string | null;
 }
 
 /**
  * One member row inside the stack popover — avatar, name/email, online or
  * offline, role badge, and for another member who is online View (follow
- * them) or, while following them, Stop (#920). Remove / role changes live in
- * the manage modal.
+ * them) or, while following them, Stop (#920); View on a member who is
+ * following someone is dimmed and says whom instead. Remove / role changes
+ * live in the manage modal.
  * @param root0 - Member row props.
  * @param root0.member - Member rendered by this row.
  * @param root0.isMe - Whether this row is the current user (annotates the name, no View).
  * @param root0.online - Whether the member is connected to this project.
  * @param root0.followed - Whether this user is following the member.
+ * @param root0.busyNotice - Whom the member is following, said instead of following them; null when they follow nobody.
  * @returns the popover member row.
  */
-function MemberRow({ member, isMe, online, followed }: MemberRowProps): React.JSX.Element {
+function MemberRow({ member, isMe, online, followed, busyNotice }: MemberRowProps): React.JSX.Element {
   const t = useTranslation();
   const { userId, name } = member;
-  const follow = React.useCallback((): void => useFollowStore.getState().start(userId, name), [userId, name]);
+  // Following is one level deep: a member who is following someone is not followed.
+  const follow = React.useCallback((): void => {
+    if (busyNotice !== null) toast.info(busyNotice);
+    else useFollowStore.getState().start(userId, name);
+  }, [userId, name, busyNotice]);
   const unfollow = React.useCallback((): void => stopFollowing('button'), []);
   return (
     <div className='group flex items-center gap-2 rounded-chrome px-2 py-1.5 hover:bg-accent'>
@@ -316,8 +347,9 @@ function MemberRow({ member, isMe, online, followed }: MemberRowProps): React.JS
         <Button
           variant='outline'
           size='compact'
-          className='shrink-0 gap-1 text-xs'
+          className={cn('shrink-0 gap-1 text-xs', busyNotice !== null && 'opacity-50')}
           icon={<Eye className='size-3.5' />}
+          aria-disabled={busyNotice !== null || undefined}
           onClick={follow}
           data-testid={`members-follow-${member.id}`}
         >

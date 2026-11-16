@@ -280,9 +280,14 @@ export function renderProductGuide(): string {
       `with ${quoted(t("members.follow.stop"))}, the Space area is outlined in the same colour, and their row shows ` +
       `${quoted(t("members.popover.unfollow"))}. Following ends when the user presses either of those; when the user ` +
       `moves the view themselves (${quoted(t("members.follow.stoppedViewport"))}) or switches Space themselves ` +
-      `(${quoted(t("members.follow.stoppedSpace"))}); or when that member goes offline or leaves the project ` +
-      `(${quoted(t("members.follow.stoppedOffline"))}). Pressing ` +
-      `${quoted(t("members.popover.follow"))} on someone else switches straight to them. ` +
+      `(${quoted(t("members.follow.stoppedSpace"))}); when that member goes offline or leaves the project ` +
+      `(${quoted(t("members.follow.stoppedOffline"))}); or when that member starts following someone ` +
+      `(${quoted(t("members.follow.stoppedLeaderFollows"))}, or ` +
+      `${quoted(t("members.follow.stoppedLeaderFollowsYou"))} when that someone is the user). Pressing ` +
+      `${quoted(t("members.popover.follow"))} on someone else switches straight to them. Following is one level ` +
+      "deep: a member who is following someone cannot be followed. Their " +
+      `${quoted(t("members.popover.follow"))} is dimmed, and pressing it only says whom they follow ` +
+      `(${quoted(t("members.follow.busy"))}, or ${quoted(t("members.follow.busyYou"))}). ` +
       "For an editor or a viewer that list ends with " +
       `${quoted(t("project.leave.action"))}, which asks to confirm first, with ` +
       `${quoted(t("project.leave.confirm"))}; once they leave they are taken back to their recent projects and can ` +

@@ -2231,7 +2231,11 @@
       "stop": "停止",
       "stoppedViewport": "你动了视口，已停止跟随",
       "stoppedSpace": "你切了 Space，已停止跟随",
-      "stoppedOffline": "{name} 离线，已停止跟随"
+      "stoppedOffline": "{name} 离线，已停止跟随",
+      "stoppedLeaderFollows": "{name} 开始跟随 {other}，已停止跟随",
+      "stoppedLeaderFollowsYou": "{name} 开始跟随你，已停止跟随",
+      "busy": "{name} 正在跟随 {other}",
+      "busyYou": "{name} 正在跟随你"
     }
   },
   "spaces": {

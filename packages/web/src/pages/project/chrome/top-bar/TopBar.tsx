@@ -88,6 +88,8 @@ interface TopBarProps {
   currentUserId?: string;
   /** User ids online in this project, for the members list's online state and View (#920). */
   onlineUserIds?: ReadonlySet<string>;
+  /** Whom each member is following, user id to user id, for the members list's View (#920). */
+  followingByUser?: ReadonlyMap<string, string>;
   /** Realtime failures take priority over release notices. */
   connectionStatus?: ConnectionStatus;
 }
@@ -119,6 +121,7 @@ interface TopBarProps {
  * @param root0.connectionStatus - Realtime status giving connection errors priority.
  * @param root0.currentUserId - Current user's id, used by MembersStack to mark the "me" row.
  * @param root0.onlineUserIds - User ids online in this project, forwarded to MembersStack.
+ * @param root0.followingByUser - Whom each member is following, forwarded to MembersStack.
  * @returns the project chrome top bar with its left identity block and right action groups.
  */
 export function TopBar({
@@ -134,6 +137,7 @@ export function TopBar({
   members,
   currentUserId,
   onlineUserIds,
+  followingByUser,
   connectionStatus = 'connected',
 }: TopBarProps): React.JSX.Element {
   const [leaving, setLeaving] = React.useState(false);
@@ -172,6 +176,7 @@ export function TopBar({
             currentUserRole={role}
             onLeave={canLeave ? openLeave : undefined}
             onlineUserIds={onlineUserIds}
+            followingByUser={followingByUser}
           />
           <LangSwitcher />
           <ThemeToggle />

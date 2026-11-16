@@ -1,10 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
-import { followViewport, sameRect, visibleRect, type FlowRect } from '@web/features/follow/follow-geometry';
+import { followViewport, sameRect, visibleRect } from '@web/features/follow/follow-geometry';
 import { CANVAS_MAX_ZOOM, CANVAS_MIN_ZOOM } from '@web/lib/canvas-zoom';
 
 describe('visibleRect', () => {
@@ -47,32 +46,5 @@ describe('sameRect', () => {
     expect(sameRect(rect, { ...rect, height: 5 })).toBe(false);
     expect(sameRect(null, rect)).toBe(false);
     expect(sameRect(undefined, null)).toBe(true);
-  });
-});
-
-describe('the published camera while following', () => {
-  it('keeps two members following each other on one rectangle whatever their pane shapes', () => {
-    fc.assert(
-      fc.property(
-        fc.record({ width: fc.integer({ min: 200, max: 3000 }), height: fc.integer({ min: 200, max: 2000 }) }),
-        fc.record({ width: fc.integer({ min: 200, max: 3000 }), height: fc.integer({ min: 200, max: 2000 }) }),
-        fc.integer({ min: 2, max: 12 }),
-        (paneA, paneB, rounds) => {
-          const start = visibleRect({ x: -40, y: -30, zoom: 1 }, paneA);
-          // A starts the exchange with its own rectangle; from then on each side
-          // fits what the other published and publishes the leader rectangle
-          // while following drives its viewport, else its own (leader ?? own).
-          const leaderOrOwn = (leader: FlowRect | null, own: FlowRect): FlowRect => leader ?? own;
-          let publishedByA = leaderOrOwn(null, start);
-          let publishedByB = publishedByA;
-          for (let round = 0; round < rounds; round += 1) {
-            publishedByB = leaderOrOwn(publishedByA, visibleRect(followViewport(publishedByA, paneB), paneB));
-            publishedByA = leaderOrOwn(publishedByB, visibleRect(followViewport(publishedByB, paneA), paneA));
-          }
-          expect(publishedByA).toEqual(start);
-          expect(publishedByB).toEqual(start);
-        },
-      ),
-    );
   });
 });

@@ -5,9 +5,9 @@
  * The awareness fields that let one member follow another (#920).
  *
  * The project's meta awareness carries `view`, the Space a browser tab has in
- * front; each Space's awareness carries where that Space's viewport is:
- * `camera` on a canvas, `topBlockId` in a document, `camera3d` in a 3D Space
- * and `timelineView` on a timeline. Every `at` is wall-clock milliseconds
+ * front and whom it follows; each Space's awareness carries where that Space's
+ * viewport is: `camera` on a canvas, `topBlockId` in a document, `camera3d` in
+ * a 3D Space and `timelineView` on a timeline. Every `at` is wall-clock milliseconds
  * (`Date.now()`), the only clock two browsers share. Awareness carries
  * whatever a peer put there, so every value is read through its schema and a
  * value that fails it counts as absent.
@@ -27,7 +27,13 @@ const frameIndex = z.number().int().nonnegative();
 const vector3 = z.tuple([z.number(), z.number(), z.number()]);
 
 const SCHEMAS = {
-  view: z.object({ spaceId: z.string().min(1).nullable(), at: instant, focused: z.boolean() }),
+  view: z.object({
+    spaceId: z.string().min(1).nullable(),
+    at: instant,
+    focused: z.boolean(),
+    // Whom this tab follows; a view written without it (an older client) follows nobody.
+    following: z.string().min(1).nullable().default(null),
+  }),
   camera: z.object({ x: z.number(), y: z.number(), width: z.number().positive(), height: z.number().positive(), at: instant }),
   topBlockId: z.object({ id: z.string().min(1), at: instant }),
   camera3d: z.object({ position: vector3, target: vector3, fov: z.number().positive(), at: instant }),

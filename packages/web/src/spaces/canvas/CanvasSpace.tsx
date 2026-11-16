@@ -3207,7 +3207,6 @@ function CanvasSpaceInner({
     containerRef,
     toFlowPosition: publishedPoint,
     readCamera,
-    followCamera: follow.followCamera,
   });
   const gesture = useGestureBroadcast(publisher, buffer.onScreen, setLocalGestureIds);
   useGestureRelease(gesture.abandon);

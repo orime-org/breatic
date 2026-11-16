@@ -2,17 +2,22 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Which project member this user is following (#920). Local only: whom a user
- * follows is never published in awareness.
+ * Which project member this user is following (#920). Whom a user follows is
+ * published in the meta awareness `view` (`usePublishView`), so following
+ * stays one level deep: nobody follows a member who is following someone.
  */
 
 import { create } from 'zustand';
 
 /**
  * Why following stopped: the stop button, the user moving the viewport or
- * switching the Space themselves, or the leader going offline.
+ * switching the Space themselves, the leader going offline, or the leader
+ * starting to follow someone.
  */
-export type FollowStopReason = 'button' | 'viewport' | 'space' | 'offline';
+export type FollowStopReason = 'button' | 'viewport' | 'space' | 'offline' | 'leaderFollows';
+
+/** Whom the leader started following: this user, or another member by name. */
+export type FollowOther = 'you' | { name: string };
 
 /** The last stop, for the one notice it gets; `seq` tells two equal stops apart. */
 export interface FollowStop {
@@ -20,6 +25,8 @@ export interface FollowStop {
   userId: string;
   /** The leader's display name as of the start, kept for a leader who has since left the member list. */
   name: string;
+  /** Whom the leader started following, for `leaderFollows`; null for every other reason. */
+  other: FollowOther | null;
   seq: number;
 }
 
@@ -32,8 +39,8 @@ interface FollowState {
   stopped: FollowStop | null;
   /** Follow a member; following someone else switches straight over. */
   start: (userId: string, name: string) => void;
-  /** Stop following and record why; nothing happens while not following. */
-  stop: (reason: FollowStopReason) => void;
+  /** Stop following and record why (and, for `leaderFollows`, whom); nothing happens while not following. */
+  stop: (reason: FollowStopReason, other?: FollowOther) => void;
   /** Clear everything without recording a stop (leaving the project). */
   reset: () => void;
 }
@@ -45,11 +52,11 @@ export const useFollowStore = create<FollowState>()((set, get) => ({
   targetName: null,
   stopped: null,
   start: (userId, name) => set({ targetUserId: userId, targetName: name, stopped: null }),
-  stop: (reason) => {
+  stop: (reason, other) => {
     const { targetUserId: userId, targetName } = get();
     if (userId === null) return;
     stopSeq += 1;
-    set({ targetUserId: null, targetName: null, stopped: { reason, userId, name: targetName ?? '', seq: stopSeq } });
+    set({ targetUserId: null, targetName: null, stopped: { reason, userId, name: targetName ?? '', other: other ?? null, seq: stopSeq } });
   },
   reset: () => set({ targetUserId: null, targetName: null, stopped: null }),
 }));

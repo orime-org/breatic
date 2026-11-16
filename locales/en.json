@@ -2231,7 +2231,11 @@
       "stop": "Stop",
       "stoppedViewport": "You moved the view. Stopped following",
       "stoppedSpace": "You switched Space. Stopped following",
-      "stoppedOffline": "{name} went offline. Stopped following"
+      "stoppedOffline": "{name} went offline. Stopped following",
+      "stoppedLeaderFollows": "{name} started following {other}. Stopped following",
+      "stoppedLeaderFollowsYou": "{name} started following you. Stopped following",
+      "busy": "{name} is following {other}",
+      "busyYou": "{name} is following you"
     }
   },
   "spaces": {
