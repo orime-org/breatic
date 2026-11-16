@@ -260,4 +260,31 @@ describe('RailStudioGroup — a region that does not answer (inner#1955)', () =>
     expect(far).toHaveTextContent('Unavailable');
     expect(screen.getByRole('link', { name: /Near/ })).not.toHaveTextContent('Unavailable');
   });
+
+  // The name and the mark stay readable on the hover and current fills, the
+  // way the rail's own icons are lifted there (RAIL_ICON).
+  it('greys the name and the mark, and lifts both to the foreground on hover and on the open Studio', () => {
+    useRegionHealthStore.setState({ bySource: { bell: ['sg'], recent: [] } });
+    render(
+      <MemoryRouter>
+        <TooltipProvider>
+          <RailStudioGroup
+            title='My Studios'
+            studios={[{ ...studio('far', 'Far'), region: 'sg' }]}
+            activeSlug='far'
+            emptyText='none yet'
+            section='mine'
+          />
+        </TooltipProvider>
+      </MemoryRouter>,
+    );
+
+    const name = screen.getByText('Far');
+    const mark = screen.getByTestId('rail-studio-unavailable');
+    for (const el of [name, mark]) {
+      expect(el).toHaveClass('text-muted-foreground', 'group-hover:text-foreground', 'group-aria-[current=page]:text-foreground');
+    }
+    expect(name).not.toHaveClass('opacity-50');
+    expect(screen.getByRole('link', { name: /Far/ })).toHaveAttribute('aria-current', 'page');
+  });
 });

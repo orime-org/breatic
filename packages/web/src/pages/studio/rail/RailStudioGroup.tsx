@@ -138,6 +138,12 @@ export function RailStudioGroup({
 }
 
 /**
+ * Text on an unavailable Studio's row: grey at rest, lifted on the hover and
+ * current fills as the rail's icons are (RAIL_ICON), so it stays readable there.
+ */
+const UNAVAILABLE_TEXT = 'text-muted-foreground group-hover:text-foreground group-aria-[current=page]:text-foreground';
+
+/**
  * One Studio row. A Studio whose region did not answer the last gathering is
  * still listed and still opens, faded, with a mark that says why on hover
  * (inner#1955).
@@ -162,15 +168,15 @@ function RailStudioLink({ studio, current }: { studio: StudioSummary; current: b
         size='xs'
         className={unavailable ? 'opacity-50' : undefined}
       />
-      <span className={cn('flex-1 truncate', unavailable && 'opacity-50')}>{studio.name}</span>
+      <span className={cn('flex-1 truncate', unavailable && UNAVAILABLE_TEXT)}>{studio.name}</span>
       {unavailable ? (
         <Tooltip>
           <TooltipTrigger asChild>
-            <span className='shrink-0 text-2xs text-muted-foreground' data-testid='rail-studio-unavailable'>
+            <span className={cn('shrink-0 text-2xs', UNAVAILABLE_TEXT)} data-testid='rail-studio-unavailable'>
               {t('regions.unavailable.badge')}
             </span>
           </TooltipTrigger>
-          <TooltipContent portal>{t('regions.unavailable.badgeHint')}</TooltipContent>
+          <TooltipContent portal side='right'>{t('regions.unavailable.studioTitle')}</TooltipContent>
         </Tooltip>
       ) : null}
     </Link>
