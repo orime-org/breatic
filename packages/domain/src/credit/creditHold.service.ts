@@ -250,7 +250,6 @@ export async function releaseHere(referenceId: string): Promise<void> {
  * @throws {Error} When the global region refuses, or the retry cannot be queued.
  */
 export async function extendHold(referenceId: string, until: Date): Promise<void> {
-  if (!env.PAYMENT_ENABLED) return;
   const extendUntil = until.toISOString();
   await orQueue(() => globalApi().extendHold(referenceId, extendUntil), { referenceId, extendUntil });
 }

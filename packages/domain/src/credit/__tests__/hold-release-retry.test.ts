@@ -173,13 +173,5 @@ describe("extending a hold outside the global region", () => {
     expect(extendHold).toHaveBeenCalledWith("task-1", UNTIL.toISOString());
     expect(releaseHold).not.toHaveBeenCalled();
   });
-
-  it("does nothing while payments are off", async () => {
-    where.payments = false;
-
-    await extendHere("task-1", UNTIL);
-
-    expect(extendHold).not.toHaveBeenCalled();
-  });
 });
 
