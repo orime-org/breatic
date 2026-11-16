@@ -72,6 +72,8 @@ export interface NodeTaskPanelProps {
   onRetry: (taskId: string) => void;
   /** Drop one row. */
   onDismiss: (taskId: string) => void;
+  /** Cancel a task that waits for a free running slot (inner#1968). */
+  onCancel?: (taskId: string) => void;
 }
 
 /**
@@ -92,6 +94,7 @@ export interface NodeTaskPanelProps {
  * @param props.displayNameOf - The catalog's name for a model id.
  * @param props.onRetry - Send one task's stashed File again.
  * @param props.onDismiss - Drop one row.
+ * @param props.onCancel - Cancel one waiting task.
  * @returns The panel element.
  */
 export function NodeTaskPanel({
@@ -110,6 +113,7 @@ export function NodeTaskPanel({
   displayNameOf,
   onRetry,
   onDismiss,
+  onCancel,
 }: NodeTaskPanelProps): JSX.Element {
   const t = useTranslation();
   const shown = React.useMemo(
@@ -190,12 +194,14 @@ export function NodeTaskPanel({
                 hasRetryFile={hasRetryFile(task.id)}
                 retrying={isWaiting(task.id, 'retry')}
                 dismissing={isWaiting(task.id, 'dismiss')}
+                cancelling={isWaiting(task.id, 'cancel')}
                 readOnly={readOnly}
                 {...(medium !== undefined && { medium })}
                 onView={onView}
                 {...(displayNameOf !== undefined && { displayNameOf })}
                 onRetry={onRetry}
                 onDismiss={onDismiss}
+                {...(onCancel !== undefined && { onCancel })}
               />
             ))}
           </div>

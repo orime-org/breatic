@@ -62,6 +62,9 @@ const COUNTS_COLUMN_WIDTH =
  */
 export const TASK_COUNT_ORDER: readonly TaskStatus[] = ['running', 'done', 'failed', 'expired'];
 
+/** Cells the column can stack: every state, plus the waiting ones (inner#1968). */
+const COUNTS_CELLS = TASK_COUNT_ORDER.length + 1;
+
 /** The screen gap between two cells of the column (`gap-1`). */
 const COUNTS_CELL_GAP = 4;
 
@@ -86,7 +89,7 @@ export const COUNTS_COLUMN_FLOW_REACH = (COUNTS_COLUMN_GAP + COUNTS_COLUMN_WIDTH
  * counter-scale floor.
  */
 export const COUNTS_COLUMN_FLOW_DEPTH =
-  (TASK_COUNT_ORDER.length * COUNTS_COLUMN_WIDTH + (TASK_COUNT_ORDER.length - 1) * COUNTS_CELL_GAP) /
+  (COUNTS_CELLS * COUNTS_COLUMN_WIDTH + (COUNTS_CELLS - 1) * COUNTS_CELL_GAP) /
   OVERLAY_SCALE_FLOOR_ZOOM;
 
 /** Gap the user sees between the column and whatever is anchored past it. */

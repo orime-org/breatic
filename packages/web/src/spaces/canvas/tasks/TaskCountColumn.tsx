@@ -25,7 +25,7 @@
 
 import type { JSX } from 'react';
 import React from 'react';
-import { CircleCheck, CircleX, Clock, Loader2 } from 'lucide-react';
+import { CircleCheck, CircleX, Clock, Hourglass, Loader2 } from 'lucide-react';
 import type { NodeTaskCounts } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
@@ -43,8 +43,15 @@ import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
  * alone and the count travels in its tooltip and accessible name
  * (user 2026-09-06).
  */
-const MARK_TONE: Readonly<Record<TaskStatus, string>> = {
+/**
+ * A cell of the column: a task state, or the running tasks that wait for a
+ * free slot (inner#1968, design 3.9), which `running` counts among its own.
+ */
+type CountCell = TaskStatus | 'waiting';
+
+const MARK_TONE: Readonly<Record<CountCell, string>> = {
   running: 'text-status-info-foreground',
+  waiting: 'text-muted-foreground',
   done: 'text-status-success-foreground',
   failed: 'text-status-error-foreground',
   expired: 'text-status-warning-foreground',
@@ -55,24 +62,27 @@ const MARK_TONE: Readonly<Record<TaskStatus, string>> = {
  * read as one thing at this size, so shape is what separates them
  * (see `TaskStatusDot`).
  */
-const MARK_SHAPE: Readonly<Record<TaskStatus, typeof Clock>> = {
+const MARK_SHAPE: Readonly<Record<CountCell, typeof Clock>> = {
   running: Loader2,
+  waiting: Hourglass,
   done: CircleCheck,
   failed: CircleX,
   expired: Clock,
 };
 
 /** The open cell's border, so which list is showing reads without the fill. */
-const OPEN_BORDER: Readonly<Record<TaskStatus, string>> = {
+const OPEN_BORDER: Readonly<Record<CountCell, string>> = {
   running: 'border-status-info-foreground',
+  waiting: 'border-active-border',
   done: 'border-status-success-foreground',
   failed: 'border-status-error-foreground',
   expired: 'border-status-warning-foreground',
 };
 
 /** i18n key for the button's accessible name, one per state. */
-const LABEL_KEY: Readonly<Record<TaskStatus, string>> = {
+const LABEL_KEY: Readonly<Record<CountCell, string>> = {
   running: 'canvas.task.status.running',
+  waiting: 'canvas.task.status.waiting',
   done: 'canvas.task.status.done',
   failed: 'canvas.task.status.failed',
   expired: 'canvas.task.status.expired',
@@ -108,16 +118,19 @@ function TaskCount({
   isOpen,
   onOpen,
 }: {
-  status: TaskStatus;
+  status: CountCell;
   value: number;
   isOpen: boolean;
   onOpen: (status: TaskStatus | null) => void;
 }): JSX.Element {
   const t = useTranslation();
   const Mark = MARK_SHAPE[status];
+  // Waiting tasks are running ones, so their cell opens the running list,
+  // where each says it is queued and can be cancelled.
+  const opens: TaskStatus = status === 'waiting' ? 'running' : status;
   const handleClick = React.useCallback(() => {
-    onOpen(isOpen ? null : status);
-  }, [isOpen, onOpen, status]);
+    onOpen(isOpen ? null : opens);
+  }, [isOpen, onOpen, opens]);
 
   // The state's name and how many are in it: the icon alone says nothing to a
   // user meeting it for the first time, and it is where the number the cell
@@ -155,12 +168,18 @@ function TaskCount({
           />
         </Button>
       </TooltipTrigger>
-      <TooltipContent side='right'>{tip}</TooltipContent>
+      <TooltipContent side='right'>
+        {tip}
+        {status === 'waiting' ? <span className='block'>{t('canvas.task.waitReason')}</span> : null}
+      </TooltipContent>
     </Tooltip>
   );
 }
 
 const TaskCountMemo = React.memo(TaskCount);
+
+/** The column's cells top to bottom: running, then waiting, then the three ways a task ends. */
+const TASK_COUNT_CELLS: readonly CountCell[] = [TASK_COUNT_ORDER[0]!, 'waiting', ...TASK_COUNT_ORDER.slice(1)];
 
 /**
  * Render the states this node has tasks in as a column of buttons.
@@ -172,19 +191,28 @@ const TaskCountMemo = React.memo(TaskCount);
  * @returns The column element, or null when this node has nothing to draw.
  */
 export function TaskCountColumn({ counts, endedShown, openFor, onOpen }: TaskCountColumnProps): JSX.Element | null {
-  const shown = TASK_COUNT_ORDER.filter(
-    (status) => counts[status] > 0 && (endedShown || status === 'running'),
+  // A document written before inner#1968 has no `waiting`; it reads as none.
+  const waiting = counts.waiting ?? 0;
+  /**
+   * How many tasks one cell counts: running without the waiting ones.
+   * @param cell - The cell.
+   * @returns Its count.
+   */
+  const value = (cell: CountCell): number =>
+    cell === 'waiting' ? waiting : cell === 'running' ? counts.running - waiting : counts[cell];
+  const shown = TASK_COUNT_CELLS.filter(
+    (cell) => value(cell) > 0 && (endedShown || cell === 'running' || cell === 'waiting'),
   );
   if (shown.length === 0) return null;
 
   return (
     <div className='flex flex-col gap-1' data-testid='node-task-counts'>
-      {shown.map((status) => (
+      {shown.map((cell) => (
         <TaskCountMemo
-          key={status}
-          status={status}
-          value={counts[status]}
-          isOpen={openFor === status}
+          key={cell}
+          status={cell}
+          value={value(cell)}
+          isOpen={openFor === (cell === 'waiting' ? 'running' : cell)}
           onOpen={onOpen}
         />
       ))}

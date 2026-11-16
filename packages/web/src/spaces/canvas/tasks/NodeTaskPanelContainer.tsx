@@ -17,6 +17,7 @@ import type { NodeRef } from '@web/data/yjs/node-view';
 import type { NodeTaskEntry } from '@breatic/shared';
 
 import { canvasApi } from '@web/data/api/canvas';
+import { ApiException } from '@web/data/api/types';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
@@ -127,7 +128,7 @@ function OpenNodeTaskPanel({
   const countsKey =
     counts === undefined
       ? 'none'
-      : `${counts.running}/${counts.done}/${counts.failed}/${counts.expired}`;
+      : `${counts.running}/${counts.waiting ?? 0}/${counts.done}/${counts.failed}/${counts.expired}`;
   const queryKey = React.useMemo(
     () => ['node-tasks', projectId, nodeId, countsKey] as const,
     [projectId, nodeId, countsKey],
@@ -217,6 +218,24 @@ function OpenNodeTaskPanel({
     [projectId, spaceId, nodeId, queryClient, queryKey, t, closeActivePanel, status],
   );
 
+  // Cancel a task that waits for a free slot (inner#1968). The row ends
+  // through the counts event; reading the list again shows it ended. One that
+  // started meanwhile answers 409 with the server's sentence.
+  const cancel = React.useCallback(
+    (taskId: string): void => {
+      const request = canvasApi
+        .cancelTask(taskId)
+        .then(() => {
+          void query.refetch();
+        })
+        .catch((err: unknown) => {
+          toast.error(err instanceof ApiException && err.fromServer ? err.message : t('canvas.task.cancelFailed'));
+        });
+      trackTaskAction(taskActionKey(projectId, spaceId, taskId, 'cancel'), request);
+    },
+    [projectId, spaceId, query, t],
+  );
+
   if (hostNode === undefined) return null;
   return (
     // Offset past the counts column. xyflow adds this after the zoom multiply,
@@ -251,6 +270,7 @@ function OpenNodeTaskPanel({
         displayNameOf={displayNameOf}
         onRetry={retry}
         onDismiss={dismiss}
+        onCancel={cancel}
       />
     </NodeToolbar>
   );

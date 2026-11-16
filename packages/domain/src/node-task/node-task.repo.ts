@@ -51,6 +51,8 @@ export interface NodeTaskRow {
   assetId: string | null;
   /** Since when its task waits for a free running slot; null once it runs (inner#1968). Every read sets it. */
   waitingSince?: Date | null;
+  /** The AIGC job the row runs as; null on an upload. Every read sets it. */
+  taskId?: string | null;
 }
 
 /** A 3D Space's own row (inner#1690, inner#1691), as its list and its actions read it. */
@@ -114,6 +116,7 @@ function rowOf(row: typeof nodeTasks.$inferSelect): NodeTaskRow {
     nodeHistoryId: row.nodeHistoryId,
     assetId: row.assetId,
     waitingSince: row.waitingSince,
+    taskId: row.taskId,
   };
 }
 

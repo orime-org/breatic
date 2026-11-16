@@ -105,6 +105,8 @@ const ExecutionRow = React.memo(function ExecutionRow({ projectId, row, open, re
   const t = useTranslation();
   const input = timelineExecutionInput(row);
   const unfinished = !timelineExecutionEnded(row.status);
+  // Waiting for a free running slot (inner#1968): queued, nothing working yet.
+  const waiting = row.status === 'queued' && row.slotWaitSince != null;
   const cancelling = useRunning(timelineCancelIntent(row.id)) !== undefined;
   const toggle = React.useCallback((): void => onToggle(row.id), [onToggle, row.id]);
   const cancel = React.useCallback((): void => onCancel(row), [onCancel, row]);
@@ -125,7 +127,7 @@ const ExecutionRow = React.memo(function ExecutionRow({ projectId, row, open, re
           <Code className='mt-0.5 size-4 shrink-0 text-[color:var(--color-palette-violet)]' />
           <span className='min-w-0 flex-1 truncate text-sm font-medium leading-normal'>{input?.prompt ?? t('timeline.webAnimation.copy')}</span>
           {/* Holds the status's room, so the title stops where the status starts. */}
-          <span aria-hidden className='invisible flex shrink-0 items-center gap-1 whitespace-nowrap'>{unfinished && <span className='size-3.5' />}{statusText}</span>
+          <span aria-hidden className='invisible flex shrink-0 items-center gap-1 whitespace-nowrap'>{unfinished && !waiting && <span className='size-3.5' />}{statusText}</span>
         </span>
         {/* The summary runs under the status too, starting where the title starts. */}
         <span data-testid={`timeline-execution-meta-${row.id}`} className='truncate pl-6 text-muted-foreground'>{summary}</span>
@@ -133,11 +135,12 @@ const ExecutionRow = React.memo(function ExecutionRow({ projectId, row, open, re
       {/* The status tells the execution's own progress, so it sits over the row and leaves presses to the row. */}
       <span data-testid={`timeline-execution-status-${row.id}`}
         className={cn('pointer-events-none absolute right-3 top-2.5 flex items-center gap-1 whitespace-nowrap text-xs', statusTone(row.status))}>
-        {unfinished && <LoaderCircle className='size-3.5 animate-spin' />}
+        {unfinished && !waiting && <LoaderCircle className='size-3.5 animate-spin' />}
         {statusText}
       </span>
     </div>
     {open && <div data-testid={`timeline-execution-detail-${row.id}`} className='flex flex-col gap-3 px-3 pb-3 text-xs'>
+      {waiting && <p className='text-pretty text-muted-foreground'>{t('canvas.task.waitReason')}</p>}
       <ol className='flex flex-col gap-1'>
         {steps.map((key, index) => {
           const mark = stepMark(row, index);

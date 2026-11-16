@@ -23,7 +23,7 @@
  */
 
 import type { JSX } from 'react';
-import { CircleCheck, CircleX, Clock, Loader2 } from 'lucide-react';
+import { CircleCheck, CircleX, Clock, Hourglass, Loader2 } from 'lucide-react';
 
 import { cn } from '@web/lib/utils';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -36,24 +36,27 @@ export type TaskStatus = 'running' | 'done' | 'failed' | 'expired';
  * as one kind of thing, and the running one turns — the way this product
  * already says "working" everywhere else.
  */
-const SHAPE: Readonly<Record<TaskStatus, typeof Clock>> = {
+const SHAPE: Readonly<Record<TaskStatus | 'waiting', typeof Clock>> = {
   running: Loader2,
+  waiting: Hourglass,
   done: CircleCheck,
   failed: CircleX,
   expired: Clock,
 };
 
 /** Semantic colour per state. */
-const TONE: Readonly<Record<TaskStatus, string>> = {
+const TONE: Readonly<Record<TaskStatus | 'waiting', string>> = {
   running: 'text-status-info-foreground',
+  waiting: 'text-muted-foreground',
   done: 'text-status-success-foreground',
   failed: 'text-status-error-foreground',
   expired: 'text-status-warning-foreground',
 };
 
 /** i18n key per state. */
-const LABEL_KEY: Readonly<Record<TaskStatus, string>> = {
+const LABEL_KEY: Readonly<Record<TaskStatus | 'waiting', string>> = {
   running: 'canvas.task.status.running',
+  waiting: 'canvas.task.status.waiting',
   done: 'canvas.task.status.done',
   failed: 'canvas.task.status.failed',
   expired: 'canvas.task.status.expired',
@@ -61,7 +64,8 @@ const LABEL_KEY: Readonly<Record<TaskStatus, string>> = {
 
 /** What {@link TaskStatusDot} renders. */
 export interface TaskStatusDotProps {
-  status: TaskStatus;
+  /** A state, or a running task that waits for a free slot (inner#1968). */
+  status: TaskStatus | 'waiting';
 }
 
 /**

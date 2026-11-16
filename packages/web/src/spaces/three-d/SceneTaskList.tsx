@@ -7,6 +7,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bot, Crosshair, ListFilter, Sparkles, Upload } from 'lucide-react';
 import type { SceneGenerationOrigin } from '@breatic/shared';
 import { checkSpaceTask, isGenerationTask, listSpaceTasks, removeSpaceTask, spaceTasksQueryKey, type SpaceTask } from '@web/data/api/scene';
+import { canvasApi } from '@web/data/api/canvas';
 import { ApiException } from '@web/data/api/types';
 import { Button } from '@web/components/ui/button';
 import {
@@ -108,6 +109,7 @@ export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spac
   const [placing, setPlacing] = React.useState<ReadonlySet<string>>(new Set());
   const [removing, setRemoving] = React.useState<ReadonlySet<string>>(new Set());
   const [checking, setChecking] = React.useState<ReadonlySet<string>>(new Set());
+  const [cancelling, setCancelling] = React.useState<ReadonlySet<string>>(new Set());
   const [filters, setFilters] = React.useState<TaskFilters>(NO_FILTERS);
   const [, setMinute] = React.useState(0);
   const data = query.data;
@@ -190,6 +192,24 @@ export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spac
       await queryClient.invalidateQueries({ queryKey });
     });
   }, [busyWhile, projectId, spaceId, queryClient, queryKey, removeFailed]);
+
+  const cancelFailed = t('canvas.task.cancelFailed');
+  /**
+   * Cancel a generation that waits for a free running slot (inner#1968); one
+   * that started meanwhile says what the server answered.
+   * @param task - The row.
+   */
+  const cancel = React.useCallback((task: SpaceTask): void => {
+    void busyWhile(task.id, setCancelling, async () => {
+      try {
+        await canvasApi.cancelTask(task.id);
+      } catch (error) {
+        if (error instanceof ApiException && error.status === 409 && error.fromServer) toast.warning(error.message);
+        else toast.error(cancelFailed);
+      }
+      await queryClient.invalidateQueries({ queryKey });
+    });
+  }, [busyWhile, queryClient, queryKey, cancelFailed]);
 
   /**
    * Place one finished model.
@@ -296,7 +316,9 @@ export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spac
         const percent = generation ? undefined : own?.phase === 'uploading' ? own.percent : remoteUploads[task.id];
         const minutes = Math.floor((serverNow - Date.parse(task.startedAt) + Date.now() - readAt) / MINUTE_MS);
         const hasResult = task.assetId !== null && (task.status === 'done' || task.status === 'expired');
-        const state = generation
+        // Waiting for a free running slot (inner#1968): queued, not yet timed.
+        const waiting = task.status === 'running' && task.waitingSince != null;
+        const state = waiting ? t('canvas.task.status.waiting') : generation
           ? task.status === 'running' ? minutes >= 1 ? t('spaces.threeD.taskList.generatingFor', { minutes }) : t('spaces.threeD.taskList.generating')
             : t(`spaces.threeD.taskList.${hasResult ? 'done' : task.status}`)
           : task.status === 'running'
@@ -314,6 +336,7 @@ export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spac
               : task.status === 'running' ? 'willRig' : hasResult ? 'rigged' : null;
         const placeable = canEdit && hasResult;
         const locatable = hasResult && task.assetId !== null && onLocate !== undefined && (placedAssetIds?.has(task.assetId) ?? false);
+        const cancellable = waiting && (generation ? canGenerate : canEdit);
         const removable = (generation ? canGenerate : canEdit) && (task.status === 'failed' || (task.status === 'expired' && task.assetId === null));
         const retryable = generation
           ? canGenerate && onRetryGeneration !== undefined && task.startedByUserId === userId && (task.status === 'failed' || (task.status === 'expired' && task.assetId === null))
@@ -338,6 +361,7 @@ export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spac
               {`${task.model.displayName} · ${starter} · ${task.origin === 'agent' ? t('spaces.threeD.taskList.originAgent') : t('spaces.threeD.taskList.originSpace')}`}
             </p>
             <p className='mt-0.5 text-xs text-muted-foreground'>{state}</p>
+            {waiting ? <p className='mt-0.5 text-pretty text-xs text-muted-foreground'>{t('canvas.task.waitReason')}</p> : null}
             {rigNote === null ? null : <p data-testid='scene-task-rig-note'
               className={cn('mt-0.5 text-pretty text-xs', rigNote === 'rigFailed' ? 'text-status-warning-foreground' : 'text-muted-foreground')}>
               {t(`spaces.threeD.taskList.${rigNote}`)}</p>}
@@ -345,7 +369,8 @@ export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spac
           {task.status === 'running' && percent !== undefined && own?.phase !== 'registering'
             ? <div className='mt-1.5 h-1 overflow-hidden rounded-full bg-muted'><div className='h-full rounded-full bg-foreground' style={{ width: `${percent}%` }} /></div> : null}
           {failure === null ? null : <p className='mt-1 text-xs text-status-error'>{failure}</p>}
-          {placeable || locatable || removable || retryable ? <div className='mt-2 flex flex-wrap gap-1.5'>
+          {placeable || locatable || removable || retryable || cancellable ? <div className='mt-2 flex flex-wrap gap-1.5'>
+            {cancellable ? <Button size='compact' variant='outline' loading={cancelling.has(task.id)} onClick={() => cancel(task)}>{t('common.cancel')}</Button> : null}
             {placeable ? <Button size='compact' loading={placing.has(task.id)} onClick={() => place(task)}>{t('spaces.threeD.taskList.place')}</Button> : null}
             {locatable ? <Button size='compact' variant='outline' icon={<Crosshair className='mr-1.5 size-3.5' />} onClick={() => onLocate(task.assetId!)}>{t('spaces.threeD.taskList.locate')}</Button> : null}
             {retryable ? <Button size='compact' variant='outline' loading={generation ? checking.has(task.id) : own?.phase === 'retrying'}

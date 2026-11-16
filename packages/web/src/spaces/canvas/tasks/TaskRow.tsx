@@ -75,6 +75,13 @@ export interface TaskRowProps {
   onRetry: (taskId: string) => void;
   /** Drop this row, whether it ended well or badly. */
   onDismiss: (taskId: string) => void;
+  /**
+   * Cancel a task that waits for a free running slot (inner#1968). Absent
+   * where nothing may cancel it.
+   */
+  onCancel?: (taskId: string) => void;
+  /** Whether this row's cancel waits for the server. */
+  cancelling?: boolean;
 }
 
 /**
@@ -129,6 +136,8 @@ export const TaskRow = React.memo(function TaskRow({
   displayNameOf = NO_NAMES,
   onRetry,
   onDismiss,
+  onCancel,
+  cancelling = false,
 }: TaskRowProps): JSX.Element {
   const t = useTranslation();
   const names = useCollaboratorNames();
@@ -136,6 +145,9 @@ export const TaskRow = React.memo(function TaskRow({
   // remain, so an unresolved id drops the name and keeps the row.
   const starter = names?.resolve(entry.startedByUserId) ?? null;
   const status = entry.status;
+  // Waiting for a free running slot (inner#1968): queued, not yet timed.
+  const waiting = status === 'running' && entry.waitingSince != null;
+  const cancel = React.useCallback((): void => onCancel?.(entry.id), [onCancel, entry.id]);
 
   const actions = taskRowActions({
     status,
@@ -176,7 +188,7 @@ export const TaskRow = React.memo(function TaskRow({
       className='flex flex-col gap-1.5 rounded-content-sm px-1.5 py-2'
     >
       <div className='flex items-center gap-2'>
-        <TaskStatusDot status={status} />
+        <TaskStatusDot status={waiting ? 'waiting' : status} />
         <KindBadge
           testId='task-kind'
           icon={kind.icon}
@@ -197,7 +209,12 @@ export const TaskRow = React.memo(function TaskRow({
         ) : null}
       </div>
 
-      {entry.status === 'running' ? (
+      {waiting ? (
+        <div data-testid='task-waiting' className='flex flex-col gap-0.5 pl-5 text-2xs text-muted-foreground'>
+          <span className='font-medium text-foreground-secondary'>{t('canvas.task.status.waiting')}</span>
+          <span>{t('canvas.task.waitReason')}</span>
+        </div>
+      ) : entry.status === 'running' ? (
         <div className='flex items-center gap-3 pl-5 text-2xs tabular-nums text-muted-foreground'>
           <span data-testid='task-elapsed'>
             {t('canvas.task.elapsed', {
@@ -238,6 +255,19 @@ export const TaskRow = React.memo(function TaskRow({
               }),
             })}
           </span>
+        ) : null}
+        {waiting && !readOnly && onCancel !== undefined ? (
+          <Button
+            type='button'
+            variant='outline'
+            size='compact'
+            data-testid='task-action-cancel'
+            loading={cancelling}
+            onClick={cancel}
+            className='text-2xs'
+          >
+            {t('common.cancel')}
+          </Button>
         ) : null}
         {actions.map((action) => (
           <Button

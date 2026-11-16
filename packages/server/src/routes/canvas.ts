@@ -833,7 +833,8 @@ canvas.delete(
 
 /**
  * `POST /canvas/tasks/:taskId/cancel` — cancel a task that waits for a free
- * running slot and has not started (inner#1968, design 3.9).
+ * running slot and has not started (inner#1968, design 3.9). The id is the
+ * task's, or that of one of its rows in a node or 3D task list.
  *
  * Who may cancel is who may clear the task's row: a project editor, the
  * project read from the task row. The task, its credit hold and its ledger
@@ -850,7 +851,10 @@ canvas.post(
   validate("param", z.object({ taskId: z.string().uuid() })),
   async (c) => {
     const user = c.get("user");
-    const { taskId } = c.req.valid("param");
+    const { taskId: named } = c.req.valid("param");
+    // The task lists name their rows, so a row of the node task list stands
+    // for the task it runs as (inner#1968).
+    const taskId = (await taskService.getByIdInternal(named)) !== null ? named : ((await nodeTaskService.findById(named))?.taskId ?? named);
     const task = await taskService.getByIdInternal(taskId);
     if (task === null || task.projectId === null) throw new NotFoundError(t("server.error.not_found"));
     await projectService.assertAccess(task.projectId, user.id, "editor");
