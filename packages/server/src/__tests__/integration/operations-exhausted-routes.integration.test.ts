@@ -143,11 +143,11 @@ async function account(options: Options = {}): Promise<Account> {
  * @returns The response.
  */
 function call(a: Account, method: string, path: string, body: unknown, headers: Record<string, string> = {}): Promise<Response> {
-  return app.request(`/api/v1${path}`, {
+  return Promise.resolve(app.request(`/api/v1${path}`, {
     method,
     headers: { Cookie: a.cookie, "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID(), ...headers },
     body: JSON.stringify(body),
-  });
+  }));
 }
 
 /**
