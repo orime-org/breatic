@@ -159,6 +159,15 @@ describe("extractPromptText — time in proportion to the text", () => {
     expect(timed(nested)).toBeLessThan(500);
   });
 
+  it("removes nested tags from the inside out in one go", () => {
+    const nested = `${"<a".repeat(64_000)}<i>${">".repeat(64_000)} words`;
+    expect(extractPromptText(nested)).toBe("words");
+    expect(timed(nested)).toBeLessThan(500);
+    expect(extractPromptText("<<b>a> and </<b>x>")).toBe("< a> and </ x>");
+    // A bare carriage return breaks the line as a newline does.
+    expect(extractPromptText("<a\r<b>-->")).toBe("<a\n-->");
+  });
+
   it("passes over many comments that never close", () => {
     const open = `${"<!--".repeat(64_000)} words`;
     expect(timed(open)).toBeLessThan(500);

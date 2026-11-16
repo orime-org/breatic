@@ -66,6 +66,42 @@ function stripComments(text: string): string {
   }).join("\n");
 }
 
+/** A letter, which is what a tag's name opens with. */
+const LETTER = /[a-zA-Z]/;
+
+/**
+ * The text with every HTML tag removed: a `<` followed by a letter, or by `/` and a letter, up to the next `>` on
+ * the same line with no other `<` between. A tag nested inside another goes first, and the one around it then
+ * closes over the space left behind, so tags come out from the inside in one scan of each line.
+ * @param text - The text.
+ * @returns The text, each tag replaced by a space.
+ * @throws {never} Never.
+ */
+function stripTags(text: string): string {
+  return text.split("\n").map((line) => {
+    const kept: string[] = [];
+    // Where each tag still open starts in `kept`, innermost last.
+    const open: number[] = [];
+    for (let at = 0; at < line.length; at += 1) {
+      const char = line.charAt(at);
+      if (char === "<") {
+        const next = line.charAt(at + 1);
+        const opens = LETTER.test(next) || (next === "/" && LETTER.test(line.charAt(at + 2)));
+        // A `<` that opens no tag stands between any tag open before it and its `>`.
+        if (opens) open.push(kept.length);
+        else open.length = 0;
+        kept.push(char);
+      } else if (char === ">" && open.length > 0) {
+        kept.length = open.pop() ?? 0;
+        kept.push(" ");
+      } else {
+        kept.push(char);
+      }
+    }
+    return kept.join("");
+  }).join("\n");
+}
+
 /**
  * One pass of the cleaning {@link extractPromptText} repeats.
  * @param raw - The text.
@@ -73,7 +109,8 @@ function stripComments(text: string): string {
  * @throws {never} Never.
  */
 function cleanOnce(raw: string): string {
-  let text = raw;
+  // Every line break as one `\n` first, so no tag or comment reaches across a bare `\r` either.
+  let text = raw.replace(/\r\n?/g, "\n");
 
   // Strip HTML comments, each within one line.
   text = stripComments(text);
@@ -85,7 +122,7 @@ function cleanOnce(raw: string): string {
   // and `5 < 6` lost every line down to the next `>`. A tag and a comment end
   // on the line they open on: a line break is the user's own, and a dialogue
   // sends one turn per line (#1521).
-  text = text.replace(/<\/?[a-zA-Z][^<>\n]*>/g, " ");
+  text = stripTags(text);
 
   // Decode common HTML entities, a whole `&amp;amp;…` chain at once so its
   // depth never sets the number of passes.
@@ -101,7 +138,6 @@ function cleanOnce(raw: string): string {
   // Tag removal above substitutes a space, never a break, so nothing that was
   // one line becomes two.
   text = text
-    .replace(/\r\n?/g, "\n")
     .replace(/[^\S\n]+/g, " ")
     .replace(/ *\n */g, "\n")
     .replace(/\n{3,}/g, "\n\n")
