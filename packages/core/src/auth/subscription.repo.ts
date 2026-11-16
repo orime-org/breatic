@@ -64,6 +64,11 @@ export interface SubscriptionWrite {
   readonly status: StripeSubscriptionStatus;
   /** When the paid period ends, from `items.data[0].current_period_end`. */
   readonly currentPeriodEnd: Date | null;
+  /**
+   * Stripe's top-level `billing_cycle_anchor` (inner#1968). Optional only so
+   * that writers predating it type-check; every Stripe read sets it.
+   */
+  readonly billingCycleAnchor?: Date | null;
   /** Whether it is set to end when that period runs out. */
   readonly cancelAtPeriodEnd: boolean;
   /** The subscription item, needed to change which price it sells. */
@@ -107,11 +112,12 @@ export function subscriptionFactsForMembership(userId: AnyPgColumn): SQL<Subscri
       'period', ${subscriptions.period},
       'cancelAtPeriodEnd', ${subscriptions.cancelAtPeriodEnd},
       'hasPendingUpdate', ${subscriptions.hasPendingUpdate},
-      'currentPeriodEnd', ${subscriptions.currentPeriodEnd}
+      'currentPeriodEnd', ${subscriptions.currentPeriodEnd},
+      'billingCycleAnchor', ${subscriptions.billingCycleAnchor}
     )), '[]'::jsonb)
     from ${subscriptions}
     where ${subscriptions.userId} = ${userId} and ${subscriptions.deletedAt} is null
-  )`.mapWith((rows: Array<Omit<SubscriptionRecord, "currentPeriodEnd"> & { currentPeriodEnd: string | null }>) => rows.map((row) => ({ ...row, currentPeriodEnd: row.currentPeriodEnd === null ? null : new Date(row.currentPeriodEnd) })));
+  )`.mapWith((rows: Array<Omit<SubscriptionRecord, "currentPeriodEnd" | "billingCycleAnchor"> & { currentPeriodEnd: string | null; billingCycleAnchor: string | null }>) => rows.map((row) => ({ ...row, currentPeriodEnd: row.currentPeriodEnd === null ? null : new Date(row.currentPeriodEnd), billingCycleAnchor: row.billingCycleAnchor === null ? null : new Date(row.billingCycleAnchor) })));
 }
 
 /**
@@ -131,6 +137,7 @@ function toStored(row: SubscriptionRow): StoredSubscription {
     period: row.period as BillingPeriod,
     status: row.status,
     currentPeriodEnd: row.currentPeriodEnd,
+    billingCycleAnchor: row.billingCycleAnchor,
     cancelAtPeriodEnd: row.cancelAtPeriodEnd,
     stripeItemId: row.stripeItemId,
     hasPendingUpdate: row.hasPendingUpdate,
@@ -197,6 +204,7 @@ export async function upsertSubscription(
     period: write.period,
     status: write.status,
     currentPeriodEnd: write.currentPeriodEnd,
+    billingCycleAnchor: write.billingCycleAnchor ?? null,
     cancelAtPeriodEnd: write.cancelAtPeriodEnd,
     stripeItemId: write.stripeItemId,
     hasPendingUpdate: write.hasPendingUpdate,
@@ -298,6 +306,7 @@ type SubscriptionValues = Required<
     | "period"
     | "status"
     | "currentPeriodEnd"
+    | "billingCycleAnchor"
     | "cancelAtPeriodEnd"
     | "stripeItemId"
     | "hasPendingUpdate"

@@ -75,7 +75,7 @@ export type {
   ProjectMediaBackfillSummary,
   RunProjectMediaBackfillInput,
 } from "@core/asset/project-media-backfill.js";
-export { budgetDeadlineFrom, getNodeTaskConfig, type NodeTaskConfig } from "@core/config/node-tasks.js";
+export { budgetDeadlineFrom, getNodeTaskConfig, REPORT_GRACE_MS, type NodeTaskConfig } from "@core/config/node-tasks.js";
 export { getStripeWebhookRecordingWriteTimeoutMs } from "@core/config/stripe-webhook-recording.js";
 export { getMiniToolsConfig, type MiniToolsConfig } from "@core/config/mini-tools.js";
 export { getUnderstandConfig, type UnderstandConfig } from "@core/config/understand.js";
@@ -91,8 +91,9 @@ export {
   getMembershipLimits,
   getDefaultMembershipTier,
   getSubscriptionStaleAfterDays,
+  getOperationsConfig,
 } from "@core/config/membership.js";
-export type { MembershipConfig, MembershipLimits } from "@core/config/membership.js";
+export type { MembershipConfig, MembershipLimits, OperationsConfig } from "@core/config/membership.js";
 export {
   getSubscriptionPlans,
   getSubscriptionPlan,
@@ -237,14 +238,17 @@ export {
   getProjectConcurrentEditorLimit,
   lockLimitsForUser,
   lockAccountRow,
+  runningTaskLimitForStudio,
   changeMembershipTier,
   TIER_CHANGE_REASONS,
 } from "@core/auth/membership.repo.js";
 export type { TierChangeReason } from "@core/auth/membership.repo.js";
 export { getEnterpriseMembershipProfile, getMembershipReadingForUser, lockRawMembershipSnapshot, writeEnterpriseMembershipRecord } from "@core/auth/membership.repo.js";
 export type { MembershipReading } from "@core/auth/membership.repo.js";
-export { enterpriseMembershipWriteSchema, enterpriseMembershipProfileSchema, enterpriseMembershipResultSchema } from "@core/auth/enterprise-membership-contract.js";
-export type { EnterpriseMembershipWrite, EnterpriseMembershipProfile, EnterpriseMembershipResult, RawMembershipSnapshot, EnterpriseRecord } from "@core/auth/enterprise-membership-contract.js";
+export { enterpriseMembershipWriteSchema, enterpriseMembershipProfileSchema, enterpriseMembershipResultSchema, enterpriseMembershipAccountAnswerSchema, negotiatedOperationsOf, MISSING_AGREEMENT_OPERATIONS } from "@core/auth/enterprise-membership-contract.js";
+export type { EnterpriseMembershipWrite, EnterpriseMembershipProfile, EnterpriseMembershipResult, EnterpriseMembershipAccountAnswer, RawMembershipSnapshot, EnterpriseRecord, NegotiatedOperations } from "@core/auth/enterprise-membership-contract.js";
+export { operationAllowanceOf, type OperationAllowance, type OperationAllowanceFacts } from "@core/auth/membership-reading.js";
+export { periodContaining, type OperationPeriod } from "@core/auth/operation-period.js";
 // Subscriptions: the rows, and the reading that turns them into the situation
 // an account is in. The reading is here rather than in server because the
 // ceilings above are read here too, and a subscription whose paid period ran

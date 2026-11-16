@@ -89,6 +89,12 @@ export interface SubscriptionRecord {
    * paid for has no period.
    */
   readonly currentPeriodEnd: Date | null;
+  /**
+   * Stripe's `billing_cycle_anchor`, which the monthly operations periods are
+   * counted from (inner#1968). Null or absent on a row not observed since the
+   * column was added.
+   */
+  readonly billingCycleAnchor?: Date | null;
 }
 
 // The situations themselves are declared in `@breatic/shared`: they are part

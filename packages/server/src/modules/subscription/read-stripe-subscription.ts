@@ -196,6 +196,9 @@ export function readStripeSubscription(
       // words, which is what makes ours a copy rather than a guess.
       status: subscription.status,
       currentPeriodEnd: periodEnd ? new Date(periodEnd * 1000) : null,
+      // Top-level, in Unix seconds; the monthly operations periods count from
+      // it (inner#1968).
+      billingCycleAnchor: subscription.billing_cycle_anchor ? new Date(subscription.billing_cycle_anchor * 1000) : null,
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
       stripeItemId: item.id,
       hasPendingUpdate: pending !== null && pending !== undefined,

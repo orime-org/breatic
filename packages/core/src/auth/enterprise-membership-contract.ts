@@ -30,7 +30,43 @@ export const enterpriseMembershipLimitsSchema = z.object({
   studio_members: count,
   project_members: count,
   storage_bytes: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+  // Optional (inner#1968): a result stored before these existed is re-parsed
+  // strictly by findOperation and replayed as stored, so neither has a default.
+  // A save that leaves one out keeps the value already agreed.
+  monthly_operations: count.optional(),
+  running_tasks_per_user: z.number().int().min(1).max(30).optional(),
 }).strict();
+
+/**
+ * What an enterprise account without a saved agreement gets, and what the
+ * agreement columns default to (migration 0126): 16,000 operations a month and
+ * 10 running tasks a person.
+ */
+export const MISSING_AGREEMENT_OPERATIONS = { monthlyOperations: 16000, runningTasksPerUser: 10 } as const;
+
+/** The two operation terms an account's reading grants. */
+export interface NegotiatedOperations {
+  /** Operations included each month. */
+  readonly monthlyOperations: number;
+  /** Tasks one person may have running at once. */
+  readonly runningTasksPerUser: number;
+}
+
+/**
+ * The one answer to "how many operations a month, and how many running tasks
+ * a person" for a reading: an active agreement's, the 16,000 and 10 of an
+ * enterprise account without one, or the effective tier's configured values.
+ * Never goes through the throwing enterprise limits lookup.
+ * @param reading - One membership reading.
+ * @param reading.limits - The limits it resolved, null for an enterprise account without an agreement.
+ * @returns The two terms.
+ */
+export function negotiatedOperationsOf(reading: { readonly limits: { readonly monthly_operations?: number; readonly running_tasks_per_user?: number } | null }): NegotiatedOperations {
+  return {
+    monthlyOperations: reading.limits?.monthly_operations ?? MISSING_AGREEMENT_OPERATIONS.monthlyOperations,
+    runningTasksPerUser: reading.limits?.running_tasks_per_user ?? MISSING_AGREEMENT_OPERATIONS.runningTasksPerUser,
+  };
+}
 
 export const enterpriseMembershipWriteSchema = z.object({
   targetTier: z.literal("enterprise"),
@@ -101,12 +137,46 @@ export const enterpriseMembershipReadingSchema = z.object({
   { path: ["limits"], message: "Invalid active enterprise limits" },
 );
 
-export const enterpriseMembershipProfileSchema = z.object({
+const profileShape = {
   account: z.object({ id: z.string().uuid(), email: z.string().email() }).strict(),
   snapshot: rawMembershipSnapshotSchema,
   reading: enterpriseMembershipReadingSchema,
+};
+
+/**
+ * Whether a profile's account, snapshot and reading describe the same agreement.
+ * @param value - The parsed profile.
+ * @returns Whether the relations hold.
+ */
+function profileRelated(value: z.infer<z.ZodObject<typeof profileShape>>): boolean {
+  return value.account.id === value.snapshot.userId && value.reading.revision === (value.snapshot.enterprise?.revision ?? null) && value.reading.expiresAt === (value.snapshot.enterprise?.expiresAt ?? null) && value.reading.fallbackTier === (value.snapshot.enterprise?.fallbackTier ?? null);
+}
+
+export const enterpriseMembershipProfileSchema = z.object(profileShape).strict().superRefine((value, ctx) => {
+  if (!profileRelated(value)) ctx.addIssue({ code: "custom", message: "Invalid membership profile relationship" });
+});
+
+/**
+ * The internal read answer: the profile plus this period's operations, null
+ * where operations are not counted. Validates the current reading only and is
+ * never stored.
+ */
+export const enterpriseMembershipAccountAnswerSchema = z.object({
+  ...profileShape,
+  operations: z.object({
+    monthly: count,
+    used: count,
+    remaining: count,
+    periodStart: instant,
+    nextResetAt: instant,
+  }).strict().nullable(),
 }).strict().superRefine((value, ctx) => {
-  if (value.account.id !== value.snapshot.userId || value.reading.revision !== (value.snapshot.enterprise?.revision ?? null) || value.reading.expiresAt !== (value.snapshot.enterprise?.expiresAt ?? null) || value.reading.fallbackTier !== (value.snapshot.enterprise?.fallbackTier ?? null)) ctx.addIssue({ code: "custom", message: "Invalid membership profile relationship" });
+  if (!profileRelated(value)) ctx.addIssue({ code: "custom", message: "Invalid membership profile relationship" });
+  const operations = value.operations;
+  if (operations === null) return;
+  if (operations.monthly !== negotiatedOperationsOf(value.reading).monthlyOperations || operations.remaining !== Math.max(0, operations.monthly - operations.used)) {
+    ctx.addIssue({ code: "custom", path: ["operations"], message: "Invalid operations relationship" });
+  }
 });
 
 export type EnterpriseMembershipWrite = z.infer<typeof enterpriseMembershipWriteSchema>;
@@ -114,3 +184,4 @@ export type EnterpriseRecord = z.infer<typeof enterpriseRecordSchema>;
 export type RawMembershipSnapshot = z.infer<typeof rawMembershipSnapshotSchema>;
 export type EnterpriseMembershipResult = z.infer<typeof enterpriseMembershipResultSchema>;
 export type EnterpriseMembershipProfile = z.infer<typeof enterpriseMembershipProfileSchema>;
+export type EnterpriseMembershipAccountAnswer = z.infer<typeof enterpriseMembershipAccountAnswerSchema>;

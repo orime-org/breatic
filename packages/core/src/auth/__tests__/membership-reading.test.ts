@@ -10,8 +10,9 @@ const limits = { team_studios: 0, projects_per_studio: 20, concurrent_editors: 3
 const record = { expiresAt, entryTimezone: "UTC", contractNumber: "ENT-29", limits, fallbackTier: "base" as const, revision: 1, createdAt: expiresAt, updatedAt: expiresAt };
 
 describe("membership reading from one snapshot", () => {
+  // An active agreement caps storage at its storage_bytes since inner#1968 (design 3.6).
   it("uses an exclusive deadline at the exact boundary", () => {
-    expect(resolveMembershipReading("enterprise", record, [], { now: new Date(Date.parse(expiresAt) - 1), staleAfterMs: 0 })).toMatchObject({ enterpriseState: "active", effectiveTier: "enterprise", limits, storageBytes: null, settlementProtected: true });
+    expect(resolveMembershipReading("enterprise", record, [], { now: new Date(Date.parse(expiresAt) - 1), staleAfterMs: 0 })).toMatchObject({ enterpriseState: "active", effectiveTier: "enterprise", limits, storageBytes: limits.storage_bytes, settlementProtected: true });
     expect(resolveMembershipReading("enterprise", record, [], { now: new Date(expiresAt), staleAfterMs: 0 })).toMatchObject({ enterpriseState: "expired", effectiveTier: "base", settlementProtected: false });
   });
   it("keeps self-hosted origin protected after expiry", () => {
