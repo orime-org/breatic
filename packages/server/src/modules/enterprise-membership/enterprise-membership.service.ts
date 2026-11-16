@@ -33,7 +33,7 @@ export type MembershipAnswer<T> =
 export async function profile(userId: string): Promise<MembershipAnswer<EnterpriseMembershipAccountAnswer>> {
   const found = await getEnterpriseMembershipProfile(userId);
   if (found === null) return { status: 404, body: { code: "not_found" } };
-  const usage = await operationService.readOperationUsage(userId);
+  const usage = await operationService.readMeteredOperationUsage(userId);
   const operations = usage === null ? null : {
     monthly: usage.monthlyAllowance,
     used: usage.allowanceUsed,

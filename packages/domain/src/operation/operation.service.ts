@@ -270,14 +270,38 @@ export async function countOperation(key: string, tx: DbTx): Promise<CountOutcom
 }
 
 /**
- * Settle an overage charge a count filed, after its commit; a failure stays
- * pending for the worker's `credit-charge-sweep`.
+ * Settle an overage charge a count filed, after its commit. A failure is
+ * recorded on the request by `settleCharge` and retried by the worker's
+ * `credit-charge-sweep`, so the success it follows is not failed by it.
  * @param outcome - What the count came to.
- * @returns Resolves when settled.
- * @throws {Error} When the settlement fails; the request stays pending.
+ * @returns Resolves when settled or left for the sweep.
  */
 export async function settleOverage(outcome: CountOutcome | null): Promise<void> {
-  if (outcome?.chargeRequestId) await creditLotService.settleCharge(outcome.chargeRequestId);
+  if (!outcome?.chargeRequestId) return;
+  await creditLotService.settleCharge(outcome.chargeRequestId).catch(() => null);
+}
+
+/** What an upload declared about where it lands. */
+export interface UploadPlacement {
+  derived: boolean | null;
+  spaceId: string | null;
+  nodeId: string | null;
+  /** The upload's purpose, as its grant records it (`project_cover`, `studio_avatar`). */
+  assetSource: string | null;
+  source: string | null;
+}
+
+/**
+ * Whether an upload is a derived image whose count waits for an operation to
+ * use it (design 3.2.1): declared derived, onto a Space, with no node,
+ * purpose or source, and registered as an image from the stored bytes.
+ * @param upload - What the upload declared.
+ * @param assetKind - What the registered asset is.
+ * @returns Whether to defer.
+ */
+export function defersCount(upload: UploadPlacement, assetKind: string): boolean {
+  return upload.derived === true && assetKind === "image" && upload.spaceId !== null
+    && upload.nodeId === null && upload.assetSource === null && upload.source === null;
 }
 
 /**
@@ -385,24 +409,50 @@ export async function operationStatus(key: string): Promise<OperationRow["status
 /**
  * What one account has used of this period's operations, read under no lock:
  * one membership reading gives the allowance and the period, one aggregate
- * gives the counts.
+ * gives the counts. Counts are read even where nothing is metered.
+ * @param userId - The account.
+ * @param tx - Optional transaction handle.
+ * @returns The usage, and whether operations are metered for the account.
+ * @throws {Error} if no live account has that id, or its data is invalid.
+ */
+async function usageOf(userId: string, tx?: DbTx): Promise<{ usage: OperationUsage; charging: boolean }> {
+  const { operations } = await getMembershipReadingForUser(userId, tx);
+  const counts = await operationRepo.countInPeriod(userId, operations.period.start, tx);
+  return {
+    charging: operations.charging,
+    usage: {
+      monthlyAllowance: operations.monthly,
+      usedThisPeriod: counts.allowance + counts.overage,
+      allowanceUsed: counts.allowance,
+      allowanceRemaining: Math.max(0, operations.monthly - counts.allowance),
+      overageThisPeriod: counts.overage,
+      periodStart: operations.period.start.toISOString(),
+      nextResetAt: operations.period.end.toISOString(),
+      overageCredits: serializeCreditMicro(quantizeQuotedCredits(getOperationsConfig().overage_credits)),
+    },
+  };
+}
+
+/**
+ * What one account has used of this period's operations.
+ * @param userId - The account.
+ * @param tx - Optional transaction handle.
+ * @returns The usage.
+ * @throws {Error} if no live account has that id, or its data is invalid.
+ */
+export async function readOperationUsage(userId: string, tx?: DbTx): Promise<OperationUsage> {
+  return (await usageOf(userId, tx)).usage;
+}
+
+/**
+ * What one account has used of this period's operations, where they are
+ * metered; what an account panel shows.
  * @param userId - The account.
  * @param tx - Optional transaction handle.
  * @returns The usage, or null where operations are not counted (payments off, or the self_hosted tier).
  * @throws {Error} if no live account has that id, or its data is invalid.
  */
-export async function readOperationUsage(userId: string, tx?: DbTx): Promise<OperationUsage | null> {
-  const { operations } = await getMembershipReadingForUser(userId, tx);
-  if (!operations.charging) return null;
-  const counts = await operationRepo.countInPeriod(userId, operations.period.start, tx);
-  return {
-    monthlyAllowance: operations.monthly,
-    usedThisPeriod: counts.allowance + counts.overage,
-    allowanceUsed: counts.allowance,
-    allowanceRemaining: Math.max(0, operations.monthly - counts.allowance),
-    overageThisPeriod: counts.overage,
-    periodStart: operations.period.start.toISOString(),
-    nextResetAt: operations.period.end.toISOString(),
-    overageCredits: serializeCreditMicro(quantizeQuotedCredits(getOperationsConfig().overage_credits)),
-  };
+export async function readMeteredOperationUsage(userId: string, tx?: DbTx): Promise<OperationUsage | null> {
+  const { usage, charging } = await usageOf(userId, tx);
+  return charging ? usage : null;
 }

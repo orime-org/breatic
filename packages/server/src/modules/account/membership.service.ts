@@ -68,7 +68,7 @@ export async function readAccountMembership(
   const [teamStudios, storageBytes, operations] = await Promise.all([
     studioRepo.countTeamStudiosAdministeredBy(userId),
     assetUsageService.accountStorageUsage(userId),
-    operationService.readOperationUsage(userId),
+    operationService.readMeteredOperationUsage(userId),
   ]);
 
   return {
