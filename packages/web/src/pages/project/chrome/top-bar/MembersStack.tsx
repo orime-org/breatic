@@ -279,7 +279,7 @@ function MemberRow({ member, isMe, online, followed, busyNotice }: MemberRowProp
   const { userId, name } = member;
   // Following is one level deep: a member who is following someone is not followed.
   const follow = React.useCallback((): void => {
-    if (busyNotice !== null) toast.info(busyNotice);
+    if (busyNotice !== null) toast.warning(busyNotice);
     else useFollowStore.getState().start(userId, name);
   }, [userId, name, busyNotice]);
   const unfollow = React.useCallback((): void => stopFollowing('button'), []);
@@ -292,8 +292,8 @@ function MemberRow({ member, isMe, online, followed, busyNotice }: MemberRowProp
         size='md'
       />
       <div className='flex min-w-0 flex-1 flex-col gap-0.5'>
-        <span className='flex items-center gap-1.5 truncate text-sm text-foreground'>
-          {member.name}
+        <span className='flex items-center gap-1.5 text-sm text-foreground'>
+          <span className='min-w-0 truncate'>{member.name}</span>
           {isMe ? (
             <span className='text-xs text-muted-foreground'>
               {t('members.popover.isMe')}
