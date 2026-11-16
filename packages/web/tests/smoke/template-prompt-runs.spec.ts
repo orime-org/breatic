@@ -93,7 +93,7 @@ let spaceId = '';
 interface NodeView {
   id: string;
   type: string;
-  data: { name?: string; content?: string; templateNode?: { key: string }; taskCounts?: { running: number; done: number; failed: number } };
+  data: { name?: string; content?: string; templateNode?: { template: string; key: string; input?: true }; taskCounts?: { running: number; done: number; failed: number } };
 }
 
 /** The open Space's nodes and edges. */
@@ -396,10 +396,11 @@ const requests: string[] = [];
  * @param id - The template.
  * @param key - The generate node's key.
  * @param prompt - What the request carried.
+ * @param empty - The optional inputs left empty.
  */
-function expectOptionalParagraphs(id: string, key: string, prompt: string): void {
+function expectOptionalParagraphs(id: string, key: string, prompt: string, empty: ReadonlySet<string> = LEAVE_EMPTY): void {
   for (const [input, lead] of optionalLeads(id, key)) {
-    if (LEAVE_EMPTY.has(input)) expect(prompt, `${key} leaves out the ${input} paragraph`).not.toContain(lead);
+    if (empty.has(input)) expect(prompt, `${key} leaves out the ${input} paragraph`).not.toContain(lead);
     else expect(prompt, `${key} sends the ${input} paragraph`).toContain(lead);
   }
 }
@@ -487,18 +488,36 @@ if (AGENT_ASK !== undefined) test('agent @needs-model', async () => {
   if (process.env.TEMPLATE_RUN_ASK_ONLY !== undefined) return;
   const before = new Set((await graph()).nodes.map((n) => n.id));
   await page.getByTestId('proposal-card').last().getByTestId('proposal-use').click();
-  let target = '';
-  await expect
-    .poll(async () => {
-      target = (await graph()).nodes.find((n) => !before.has(n.id) && n.type === 'image' && (n.data.content ?? '') === '')?.id ?? '';
-      return target;
-    }, { timeout: 60_000 })
-    .not.toBe('');
-  await openPanel(target);
-  const prompt = await promptText();
-  const url = await generate(target, 'image');
-  record({ template: 'agent', label: LABEL, result: { prompt, url } });
-  await save(url, `agent-${LABEL}.png`);
+  await expect.poll(async () => (await graph()).nodes.filter((n) => !before.has(n.id)).length, { timeout: 60_000 }).toBeGreaterThan(0);
+  const landed = (await graph()).nodes.filter((n) => !before.has(n.id));
+  // A template landing: its input nodes carry their keys, and its anchor carries none.
+  const template = GENERATION_TEMPLATES.find((one) => one.id === landed.find((n) => n.data.templateNode !== undefined)?.data.templateNode?.template);
+  const empty = new Set(
+    landed.filter((n) => n.data.templateNode?.input === true && (n.data.content ?? '') === '').map((n) => n.data.templateNode?.key ?? ''),
+  );
+  // Each generation the proposal placed, pictures first so a video finds its still made.
+  const order: Kind[] = ['image', 'video', 'audio'];
+  const targets = landed
+    .filter((n) => n.data.templateNode?.input !== true && (n.data.content ?? '') === '' && order.includes(n.type as Kind))
+    .sort((a, b) => order.indexOf(a.type as Kind) - order.indexOf(b.type as Kind));
+  expect(targets.length, 'the proposal places a generation').toBeGreaterThan(0);
+  for (const target of template === undefined ? targets.slice(0, 1) : targets) {
+    const key = target.data.templateNode?.key ?? template?.anchor ?? '';
+    await openPanel(target.id);
+    const prompt = await promptText();
+    if (template !== undefined) {
+      // An optional input left empty greys its paragraph in the box.
+      const optional = [...optionalLeads(template.id, key).keys()].filter((input) => empty.has(input));
+      await expect(page.getByTestId('generate-prompt-editor').locator('[data-prompt-held-back]')).toHaveCount(optional.length > 0 ? 1 : 0);
+    }
+    const sent = requests.length;
+    const url = await generate(target.id, target.type as Kind);
+    const sentPrompt = requests.at(-1) ?? '';
+    expect(requests.length, 'one request per generation').toBe(sent + 1);
+    if (template !== undefined) expectOptionalParagraphs(template.id, key, sentPrompt, empty);
+    record({ template: 'agent', label: LABEL, node: key, empty: [...empty], result: { prompt, sent: sentPrompt, url } });
+    await save(url, `agent-${LABEL}-${key || 'result'}.${EXTENSION[target.type as Kind]}`);
+  }
 });
 
 const FEATURES = 'short black bob, red hooded raincoat, grey hoodie, yellow sneakers';
