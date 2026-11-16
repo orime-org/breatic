@@ -21,8 +21,8 @@
 
 import {
   env,
-  getMembershipForUser,
   getMembershipLimits,
+  getMembershipReadingForUser,
   getSubscriptionPlan,
 } from "@breatic/core";
 import { operationService } from "@breatic/domain";
@@ -57,7 +57,13 @@ export async function readAccountMembership(
   const subscription = selling
     ? await readStoredSubscriptionSummary(userId)
     : null;
-  const { tier, limits, storageBytes: storageLimitBytes } = await getMembershipForUser(userId);
+  // One reading for the tier, its ceilings and its storage cap. Enterprise
+  // ceilings are negotiated, so the panel gets none; its storage cap is the
+  // agreement's, or null without one (inner#1968).
+  const reading = await getMembershipReadingForUser(userId);
+  const tier = reading.effectiveTier;
+  const limits = tier === "enterprise" ? null : reading.limits;
+  const storageLimitBytes = reading.storageBytes;
 
   const [teamStudios, storageBytes, operations] = await Promise.all([
     studioRepo.countTeamStudiosAdministeredBy(userId),

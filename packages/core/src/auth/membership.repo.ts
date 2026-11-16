@@ -202,8 +202,6 @@ export interface AccountMembershipReading {
   readonly tier: MembershipTier;
   /** Its eight ceilings; null for `enterprise`, whose ceilings are negotiated. */
   readonly limits: MembershipLimits | null;
-  /** Its storage ceiling in bytes: an active agreement's for enterprise; null without one. */
-  readonly storageBytes: number | null;
 }
 
 /**
@@ -223,7 +221,7 @@ export async function getMembershipForUser(
   tx?: DbTx,
 ): Promise<AccountMembershipReading> {
   const reading = await getMembershipReadingForUser(userId, tx);
-  return { tier: reading.effectiveTier, limits: reading.effectiveTier === "enterprise" ? null : reading.limits, storageBytes: reading.storageBytes };
+  return { tier: reading.effectiveTier, limits: reading.effectiveTier === "enterprise" ? null : reading.limits };
 }
 
 /**
