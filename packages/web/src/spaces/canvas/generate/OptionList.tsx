@@ -13,10 +13,11 @@ import type { ParamOption } from '@web/spaces/canvas/generate/ParamOptionGroup';
 /**
  * How tall the list stands, counted in rows.
  *
- * The height is the same in every state of a list in the audio panel (the voice list and every option list): a full result set scrolls inside it,
+ * The height is the same in every state of the list (the voice list, the audio panel's option lists and the sample
+ * language list): a full result set scrolls inside it,
  * a short one leaves the space below empty, and the loading and empty lines
- * centre in it. The popover opens upward, so a box that grew and shrank with
- * its contents would take the search box with it, out from under the user's
+ * centre in it. The audio settings popover opens upward, so a box there that
+ * grew and shrank with its contents would take the search box with it, out from under the user's
  * hands — and on every keystroke, since each one restarts the request.
  */
 const LIST_ROWS = 5;

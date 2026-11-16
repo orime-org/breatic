@@ -58,7 +58,7 @@ export interface Provider {
   pricingRules(model: string): PricingRules;
   /** The estimate of the upstream the route would choose; null when it reaches none. */
   estimate(model: string, input: EstimateInput, route: Route): Promise<Estimate | null>;
-  /** Why no configured upstream the route may use takes the run; null when one does or none is configured. */
+  /** Why no configured upstream the route may use takes the run; null when one does, none is configured or none configured is priced. */
   refusal(model: string, input: EstimateInput, route: Route): Promise<RejectedInput | null>;
   readonly llm: LlmApi;
   readonly cost: {

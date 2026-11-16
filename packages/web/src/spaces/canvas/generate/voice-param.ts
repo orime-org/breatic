@@ -48,8 +48,9 @@ export function isVoiceChosen(
 }
 
 /**
- * The sample to play for a voice: the one in the sample language the user
- * picked, where the voice has one per language (Gemini's), else its plain sample.
+ * The sample to play for a voice: the one in the sample language in force
+ * (see `sampleLanguageFor`), where the voice has one per language (Gemini's),
+ * else its plain sample.
  * @param voice - The voice.
  * @param language - The sample language's tag, if the model offers them.
  * @returns The sample's url, or undefined when the voice has none.

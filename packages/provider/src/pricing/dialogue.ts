@@ -41,8 +41,9 @@ function speakerNames(dialogue: Dialogue, params: Record<string, unknown>): stri
 }
 
 /**
- * A `Name: line` script as the upstream's turns: each non-blank line goes to the speaker whose name and a
- * half-width colon start it (the longest such name), else whole to the first speaker; a line that leaves its speaker
+ * A `Name: line` script as the upstream's turns: each non-blank line goes to the speaker whose name, a half-width
+ * colon and a space start it, or that is only that name and its colon (the longest such name), else whole to the first
+ * speaker; a line that leaves its speaker
  * nothing to say sends no turn. The script is the one
  * `dialogueText` in `@breatic/shared` writes: one line per turn, no line break inside a line, each name trimmed;
  * a turn names its speaker as the speakers list does, so the upstream pairs the two.

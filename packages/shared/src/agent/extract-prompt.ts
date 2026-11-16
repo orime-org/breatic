@@ -24,8 +24,8 @@ import { stripUnicodeTags } from "@shared/agent/strip-unicode-tags.js";
  * until the text stops changing: cleaning a value twice gives what cleaning it
  * once gave, and a check that cleans once judges what a sender that cleans
  * twice sends (#1521). Every pass only removes, decodes or folds and takes time
- * in proportion to the text, and a pass can leave at most a tag decoded or
- * joined behind, so a few passes reach the end.
+ * in proportion to the text, and a pass can leave at most a tag or an entity
+ * decoded or joined behind, so a few passes reach the end.
  * @param prompt - Raw prompt value (string, HTML, or unknown)
  * @returns Clean plain text suitable for AIGC provider input
  */

@@ -589,7 +589,8 @@ export async function estimateCost(rules: PricingRules, availability: Availabili
  * @param availability - Which upstreams are configured.
  * @param input - The prepared run.
  * @param route - The caller's mode.
- * @returns The refusal, or null when one of them takes the run or none is configured (which servability answers).
+ * @returns The refusal, or null when one of them takes the run, none is configured (which servability answers), or
+ *   none of the configured ones has pricing for the model.
  */
 export async function inputRefusal(rules: PricingRules, availability: Availability, input: EstimateInput, route: Route): Promise<RejectedInput | null> {
   const pool = routePool(availability, route);
