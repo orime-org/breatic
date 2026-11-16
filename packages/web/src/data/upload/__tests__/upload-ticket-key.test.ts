@@ -89,7 +89,7 @@ describe('the ticket request carries the operation id as its Idempotency-Key', (
   it('sends params.operationId as the Idempotency-Key header and no client timeout', async () => {
     apiPost.mockResolvedValue(TICKET);
     const key = crypto.randomUUID();
-    await assetsApi.requestUploadTicket({ filename: 'p.png', contentType: 'image/png', projectId: 'p1', size: 1, hash: 'a'.repeat(64), operationId: key } as UploadTicketRequest);
+    await assetsApi.requestUploadTicket({ filename: 'p.png', contentType: 'image/png', projectId: 'p1', size: 1, hash: 'a'.repeat(64), operationId: key });
     const config = apiPost.mock.calls.at(-1)![2] as { headers?: Record<string, string>; timeout?: number };
     expect(config.headers?.['Idempotency-Key']).toBe(key);
     expect(config.timeout).toBe(0);
