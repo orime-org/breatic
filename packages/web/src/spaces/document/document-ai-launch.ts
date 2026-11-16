@@ -18,7 +18,7 @@ import { blockAround, containerAt, inlineLetter, ownContentEnd, type AiCapture }
 import { bodyDepthBetween, carrierAt } from '@web/spaces/document/document-body-carrier';
 import { readTopBlocks } from '@web/spaces/document/document-blocks-read';
 import { letterBounds } from '@web/spaces/document/document-local-range';
-import { leafWords } from '@web/spaces/document/document-math';
+import { leafWords } from '@breatic/shared/document-model';
 import { heldTables } from '@web/spaces/document/document-table-leave-selection';
 
 

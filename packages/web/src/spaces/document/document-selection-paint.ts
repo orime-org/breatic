@@ -44,7 +44,7 @@ import { BodyEdgeSelection } from '@web/spaces/document/document-body-edge-selec
 import { bodyHolds } from '@web/spaces/document/document-body-focus';
 import { UNSUPPORTED_BLOCK } from '@breatic/shared/document-model';
 import { DIVIDER } from '@web/spaces/document/document-divider';
-import { MATH_BLOCK } from '@web/spaces/document/document-math';
+import { MATH_BLOCK } from '@breatic/shared/document-model';
 import { heldRange } from '@web/spaces/document/document-table-leave-selection';
 import { MEDIA_BLOCK_TYPES, isMediaBlockType } from '@web/spaces/document/document-media-types';
 

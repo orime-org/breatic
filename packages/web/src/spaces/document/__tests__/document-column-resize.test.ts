@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 import { Awareness } from 'y-protocols/awareness';
 
-import { COLUMN_GAP, weightsFit } from '@web/spaces/document/document-column-geometry';
+import { COLUMN_GAP, weightsFit } from '@breatic/shared/document-model';
 import { resizedWeights, writeColumnWidths } from '@web/spaces/document/document-column-resize';
 import { adoptDocumentEditor, getDocumentEditor } from '@web/spaces/document/document-editor-cache';
 import { columnsBlock, para } from '@web/spaces/document/__tests__/column-fixtures';

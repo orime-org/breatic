@@ -4,7 +4,7 @@
 import type { Node as PMNode } from '@tiptap/pm/model';
 
 import { BODY_HEADING_LEVELS } from '@breatic/shared/document-model';
-import { bodiesOf, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-geometry';
+import { bodiesOf, DOC_COLUMN_LIST } from '@breatic/shared/document-model';
 import { computeNumbering } from '@web/spaces/document/document-numbering';
 import { quoteRuns } from '@web/spaces/document/document-quote-runs';
 

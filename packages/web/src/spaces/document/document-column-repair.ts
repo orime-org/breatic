@@ -25,7 +25,7 @@ import { Fragment, Slice, type Node as PMNode } from '@tiptap/pm/model';
 
 import { columnsBarredAt } from '@web/spaces/document/document-column-entry';
 import { fromYjs } from '@web/spaces/document/document-yjs-origin';
-import { DOC_COLUMN, DOC_COLUMN_LIST, holdsOneEmptyParagraph } from '@web/spaces/document/document-column-geometry';
+import { DOC_COLUMN, DOC_COLUMN_LIST, holdsOneEmptyParagraph } from '@breatic/shared/document-model';
 
 /**
  * Meta on a transaction that writes a body as it was saved (a snapshot

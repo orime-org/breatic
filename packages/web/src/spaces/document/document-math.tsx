@@ -25,9 +25,7 @@ import katex from 'katex';
 import { autoUpdate, flip, hide, offset, shift, size, useFloating, type Middleware, type Placement } from '@floating-ui/react';
 import { Sigma, TriangleAlert } from 'lucide-react';
 import {
-  createBlockSpec,
   createExtension,
-  createInlineContentSpec,
   getNodeById,
   type BlockNoteEditor,
 } from '@blocknote/core';
@@ -46,25 +44,16 @@ import { DISPLAY_MATH_SCROLLER, KATEX_OPTIONS } from '@web/lib/katex-options';
 import { compositionEnd, keyBelongsToInputMethod, type CompositionEnd } from '@web/lib/composition-end';
 import { cn } from '@web/lib/utils';
 import { BODY_SCROLLER_CLASS } from '@web/spaces/document/document-body-scroller';
-import { DOC_TABLE, cellDepthOf } from '@breatic/shared/document-model';
+import {
+  DOC_TABLE,
+  cellDepthOf,
+  MATH_BLOCK,
+  formulaSource,
+  type DocMathView,
+} from '@breatic/shared/document-model';
 
 /** The editor as the node views use it. */
 type AnyEditor = BlockNoteEditor<never, never, never>;
-
-/** The block formula's type name. */
-export const MATH_BLOCK = 'mathBlock';
-
-/** The inline formula's type name. */
-export const MATH_INLINE = 'math';
-
-/**
- * Whether a node is a formula, block or inline.
- * @param node - The node.
- * @returns True for `mathBlock` and `math`.
- */
-export function isFormula(node: PMNode): boolean {
-  return node.type.name === MATH_BLOCK || node.type.name === MATH_INLINE;
-}
 
 /** The MathML annotation that holds a formula's LaTeX. */
 export const TEX_ANNOTATION = 'annotation[encoding="application/x-tex"]';
@@ -191,56 +180,12 @@ function externalFormula(source: string, display: boolean): HTMLElement {
 }
 
 /**
- * A formula's LaTeX, read off its node.
- * @param node - A `mathBlock` or `math` node.
- * @returns The source.
+ * Gives a block formula its `$$` words in the HTML ProseMirror writes for the
+ * clipboard (a copy's and a block drag's `blocknote/html`, a selection drag's
+ * `text/html`).
  */
-export function formulaSource(node: PMNode): string {
-  return String(node.attrs['source'] ?? '');
-}
-
-/**
- * How a formula reads as text: `$$source$$` inside a line, the source between
- * two `$$` lines for a block, as the Agent reads it.
- * @param node - A `mathBlock` or `math` node.
- * @returns The text.
- */
-export function formulaLeafText(node: PMNode): string {
-  const source = formulaSource(node);
-  return node.type.name === MATH_BLOCK ? `$$\n${source}\n$$` : `$$${source}$$`;
-}
-
-/**
- * A leaf reader for `textBetween` that reads a formula as its text and every
- * other leaf as `other` does: a reader passed to `textBetween` wins over the
- * node's own `leafText` (`prosemirror-model` 1.25.12 `index.js:122-123`).
- * @param other - What any other leaf reads as.
- * @returns The reader.
- */
-export function leafWords(other: (leaf: PMNode) => string): (leaf: PMNode) => string {
-  return (leaf) => (isFormula(leaf) ? formulaLeafText(leaf) : other(leaf));
-}
-
-/**
- * Whether a node is a formula with a source, which counts as content for the
- * Agent and the bubble bar.
- * @param node - The node.
- * @returns True for a formula whose source is not only white space.
- */
-export function holdsFormula(node: PMNode): boolean {
-  return isFormula(node) && formulaSource(node).trim() !== '';
-}
-
-/**
- * Gives both formula nodes their text, which `textContent` and `textBetween`
- * read, and a block formula its `$$` words in the HTML ProseMirror writes for
- * the clipboard (a copy's and a block drag's `blocknote/html`, a selection
- * drag's `text/html`).
- */
-const FormulaText = Extension.create({
-  name: 'documentFormulaText',
-  extendNodeSchema: (extension) =>
-    extension.name === MATH_BLOCK || extension.name === MATH_INLINE ? { leafText: formulaLeafText } : {},
+const FormulaClipboard = Extension.create({
+  name: 'documentFormulaClipboard',
 
   addProseMirrorPlugins() {
     // ProseMirror writes that HTML through each node's `toDOM`, which BlockNote
@@ -874,33 +819,8 @@ interface FormulaBlock {
   readonly props: { readonly source: string };
 }
 
-/** Gives both formula nodes their text; registered with the block spec, so every editor built from the schema has it. */
-const formulaTextExtension = createExtension({ key: 'document-formula-text', tiptapExtensions: [FormulaText] });
-
-/**
- * The block formula.
- * @returns The block spec.
- */
-export function mathBlockSpec(): unknown {
-  return createBlockSpec(
-    {
-      type: MATH_BLOCK,
-      propSchema: { quoted: { default: false }, source: { default: '' } },
-      content: 'none',
-    },
-    {
-      parse: (element: HTMLElement) =>
-        isBlockFormula(element) ? { source: sourceOf(element, MATH_BLOCK_SOURCE_ATTR) } : undefined,
-      render(this: RenderContext, block: FormulaBlock, editor: AnyEditor) {
-        if (this.renderType !== 'nodeView') return staticFormula(block.props.source, true);
-        const { node, view, getPos } = this.props;
-        return mountFormula(false, node, editor, view, getPos);
-      },
-      toExternalHTML: (block: FormulaBlock) => ({ dom: externalFormula(block.props.source, true) }),
-    } as never,
-    [formulaTextExtension],
-  )();
-}
+/** Registered with the block spec beside the formula text the shared spec carries. */
+const formulaClipboardExtension = createExtension({ key: 'document-formula-clipboard', tiptapExtensions: [FormulaClipboard] });
 
 /** The arguments an inline formula's `render` receives inside a node view. */
 type InlineRenderArgs = [
@@ -911,24 +831,29 @@ type InlineRenderArgs = [
   getPos?: () => number | undefined,
 ];
 
-/**
- * The inline formula.
- * @returns The inline content spec.
- */
-export function mathInlineSpec(): unknown {
-  return createInlineContentSpec(
-    { type: MATH_INLINE, propSchema: { source: { default: '' } }, content: 'none' },
-    {
-      parse: (element: HTMLElement) =>
-        isInlineFormula(element) ? { source: sourceOf(element, MATH_SOURCE_ATTR) } : undefined,
-      render(this: RenderContext, ...[inlineContent, , editor, node, getPos]: InlineRenderArgs) {
-        const view = editor.prosemirrorView;
-        if (this.renderType !== 'nodeView' || getPos === undefined || node === undefined || view === undefined) {
-          return staticFormula(inlineContent.props.source, false);
-        }
-        return mountFormula(true, node, editor, view, getPos);
-      },
-      toExternalHTML: (inlineContent: FormulaBlock) => ({ dom: externalFormula(inlineContent.props.source, false) }),
-    } as never,
-  );
-}
+/** How the browser's editor draws, edits, parses and copies a formula. */
+export const documentMathView: DocMathView = {
+  block: {
+    parse: (element: HTMLElement) =>
+      isBlockFormula(element) ? { source: sourceOf(element, MATH_BLOCK_SOURCE_ATTR) } : undefined,
+    render(this: RenderContext, block: FormulaBlock, editor: AnyEditor) {
+      if (this.renderType !== 'nodeView') return staticFormula(block.props.source, true);
+      const { node, view, getPos } = this.props;
+      return mountFormula(false, node, editor, view, getPos);
+    },
+    toExternalHTML: (block: FormulaBlock) => ({ dom: externalFormula(block.props.source, true) }),
+  },
+  inline: {
+    parse: (element: HTMLElement) =>
+      isInlineFormula(element) ? { source: sourceOf(element, MATH_SOURCE_ATTR) } : undefined,
+    render(this: RenderContext, ...[inlineContent, , editor, node, getPos]: InlineRenderArgs) {
+      const view = editor.prosemirrorView;
+      if (this.renderType !== 'nodeView' || getPos === undefined || node === undefined || view === undefined) {
+        return staticFormula(inlineContent.props.source, false);
+      }
+      return mountFormula(true, node, editor, view, getPos);
+    },
+    toExternalHTML: (inlineContent: FormulaBlock) => ({ dom: externalFormula(inlineContent.props.source, false) }),
+  },
+  extensions: [formulaClipboardExtension],
+};

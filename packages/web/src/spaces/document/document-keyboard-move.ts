@@ -47,7 +47,7 @@ import {
   DOC_TABLE_ROW,
 } from '@breatic/shared/document-model';
 import { bodyDepthBetween, carrierAt } from '@web/spaces/document/document-body-carrier';
-import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-geometry';
+import { DOC_COLUMN, DOC_COLUMN_LIST } from '@breatic/shared/document-model';
 
 /** A row as the editor's block calls hand it back. */
 interface BlockLike {

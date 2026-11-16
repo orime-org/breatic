@@ -25,7 +25,7 @@ import { newId, t } from '@breatic/shared';
 import { toast } from '@web/lib/toast';
 
 import { columnsBarredAt, holds, holdsColumns } from '@web/spaces/document/document-column-entry';
-import { DOC_COLUMN } from '@web/spaces/document/document-column-geometry';
+import { DOC_COLUMN } from '@breatic/shared/document-model';
 import { landingSlice, withoutRowIds } from '@web/spaces/document/document-comment-paste';
 import { gapAtDrop, insertAtGapTr, quotedBeside } from '@web/spaces/document/document-file-input';
 import { QUOTED, DOC_TABLE, isTableCell, squareSelectedTable } from '@breatic/shared/document-model';
@@ -34,7 +34,7 @@ import type { Read, ReadBlock } from '@web/spaces/document/document-paste-read';
 import { isWordsLine, rowsOf, WORDS, type Rows } from '@web/spaces/document/document-paste-slice';
 import { keepTablesWhole } from '@web/spaces/document/document-table-nodes';
 import { heldTables, swapHeldTables } from '@web/spaces/document/document-table-leave-selection';
-import { leafWords } from '@web/spaces/document/document-math';
+import { leafWords } from '@breatic/shared/document-model';
 import { HOLD_PRE_EDIT_SELECTION } from '@web/spaces/document/document-undo-selection';
 
 /** How a medium lands: its props as they go in, or null when it is left out. */

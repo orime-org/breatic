@@ -12,7 +12,7 @@ import type { EditorView } from '@tiptap/pm/view';
 import { columnAround, landsInPlace, weightsAfterDrop, type ColumnSide } from '@web/spaces/document/document-column-drop';
 import { columnAt } from '@web/spaces/document/document-column-span-selection';
 import { holds, LISTS } from '@web/spaces/document/document-column-entry';
-import { DOC_COLUMN_LIST, MAX_COLUMNS, roomInside, weightsFit } from '@web/spaces/document/document-column-geometry';
+import { DOC_COLUMN_LIST, MAX_COLUMNS, roomInside, weightsFit } from '@breatic/shared/document-model';
 import { isSynthetic } from '@web/spaces/document/document-margin-drop';
 import { rowById } from '@web/spaces/document/document-row-by-id';
 import { cellDepthOf, DOC_TABLE, isTableCell, TABLES } from '@breatic/shared/document-model';

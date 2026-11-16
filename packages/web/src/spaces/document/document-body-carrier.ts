@@ -14,7 +14,7 @@
 
 import type { Node as PMNode, ResolvedPos } from '@tiptap/pm/model';
 
-import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-geometry';
+import { DOC_COLUMN, DOC_COLUMN_LIST } from '@breatic/shared/document-model';
 import { DOC_TABLE, isTableCell, type TableAt } from '@breatic/shared/document-model';
 
 /**

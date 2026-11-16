@@ -19,7 +19,7 @@
 import type { Node as PMNode } from '@tiptap/pm/model';
 
 import { QUOTED } from '@breatic/shared/document-model';
-import { bodiesOf } from '@web/spaces/document/document-column-geometry';
+import { bodiesOf } from '@breatic/shared/document-model';
 
 /**
  * Every block id in one body, in reading order, with whether it is quoted. A

@@ -34,7 +34,7 @@ import {
   undoOf,
 } from '@web/spaces/document/document-proposal-landing';
 import { LEGACY_CELL_LINE, blockInTableCell, cellDepthOf, DOC_TABLE } from '@breatic/shared/document-model';
-import { MATH_BLOCK, MATH_INLINE } from '@web/spaces/document/document-math';
+import { MATH_BLOCK, MATH_INLINE } from '@breatic/shared/document-model';
 import { formulaMarkdownToHTML } from '@web/spaces/document/document-math-markdown';
 import { blocksMarkdown, type BlockLike } from '@web/spaces/document/document-table-markdown';
 

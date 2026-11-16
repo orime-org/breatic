@@ -34,7 +34,9 @@ import {
   createHeadingBlockSpec,
 } from '@blocknote/core/blocks';
 
+import { docColumnSpecs, type DocColumnView } from '@shared/document/model/document-column-nodes.js';
 import { buildListItemSpecs } from '@shared/document/model/document-list-block.js';
+import { mathBlockSpec, mathInlineSpec, type DocMathView } from '@shared/document/model/document-math-nodes.js';
 import { legacyTableSpec } from '@shared/document/model/document-table-legacy.js';
 import { docTableSpecs, type DocTableView } from '@shared/document/model/document-table-nodes.js';
 import {
@@ -86,6 +88,10 @@ export interface DocumentSchemaViews {
   readonly media?: <T extends MediaBlockSpec>(spec: T) => T;
   /** The table's frame and paste rule. */
   readonly table?: DocTableView;
+  /** A column group's divider and stacking. */
+  readonly column?: DocColumnView;
+  /** How a formula is drawn, edited, parsed and copied. */
+  readonly math?: DocMathView;
 }
 
 /**
@@ -161,7 +167,7 @@ function withProps<T extends SpecWithProps>(
 }
 
 /**
- * Builds the schema: twelve block types, five added props, the rest turned off.
+ * Builds the schema: thirteen block types, five added props, the rest turned off.
  * @param views - What the browser's editor adds; nothing by default.
  * @returns The schema to hand `BlockNoteEditor.create`.
  * @throws {Error} Whatever BlockNote throws while validating the specs.
@@ -217,6 +223,8 @@ export function buildDocumentSchema(views: DocumentSchemaViews = {}): ReturnType
     // (inner#1619).
     table: legacyTableSpec(),
     ...docTableSpecs(views.table),
+    // Column groups (inner#1314).
+    ...docColumnSpecs(views.column),
     // The library's own props: image and video carry a width and an
     // alignment, audio neither (inner#1127 A8, A9).
     image: withMediaView(
@@ -226,6 +234,8 @@ export function buildDocumentSchema(views: DocumentSchemaViews = {}): ReturnType
       withProps(enabled.video, { ...QUOTED_PROP, ...MEDIA_SIZE_PROPS, ...UPLOAD_ID_PROP }),
     ),
     audio: withMediaView(withProps(enabled.audio, { ...QUOTED_PROP, ...UPLOAD_ID_PROP })),
+    // A formula on a line of its own (inner#1423).
+    mathBlock: mathBlockSpec(views.math),
     unsupportedBlock: unsupportedBlockSpec,
   };
 
@@ -233,6 +243,8 @@ export function buildDocumentSchema(views: DocumentSchemaViews = {}): ReturnType
     blockSpecs,
     inlineContentSpecs: {
       ...defaultInlineContentSpecs,
+      // A formula inside a line (inner#1423).
+      math: mathInlineSpec(views.math),
       unsupportedInline: unsupportedInlineSpec,
     },
     styleSpecs: { ...defaultStyleSpecs },

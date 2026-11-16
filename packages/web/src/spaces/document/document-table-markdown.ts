@@ -19,7 +19,7 @@
 import type { BlockNoteEditor } from '@blocknote/core';
 
 import { DOC_TABLE, DOC_TABLE_HEADER } from '@breatic/shared/document-model';
-import { MATH_INLINE } from '@web/spaces/document/document-math';
+import { MATH_INLINE } from '@breatic/shared/document-model';
 import { formulasAsSourceElements } from '@web/spaces/document/document-math-markdown';
 
 /** The editor, as far as writing Markdown needs it. */

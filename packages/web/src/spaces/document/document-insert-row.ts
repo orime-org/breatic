@@ -15,7 +15,7 @@
 
 import type { BlockTypeId } from '@web/spaces/document/document-block-ticks';
 import { runBlockType } from '@web/spaces/document/document-block-run';
-import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-geometry';
+import { DOC_COLUMN, DOC_COLUMN_LIST } from '@breatic/shared/document-model';
 import { DIVIDER } from '@web/spaces/document/document-divider';
 import { quotedAs, type BlockSpec } from '@web/spaces/document/document-file-input';
 import {
@@ -23,7 +23,7 @@ import {
   type PressedBlock,
 } from '@web/spaces/document/document-handle-commands';
 import { QUOTED, DOC_TABLE, DOC_TABLE_CELL, DOC_TABLE_ROW } from '@breatic/shared/document-model';
-import { MATH_BLOCK } from '@web/spaces/document/document-math';
+import { MATH_BLOCK } from '@breatic/shared/document-model';
 import { markOwnUndoStep } from '@web/spaces/document/document-undo-step';
 
 /** How many rows and columns a new table has. */

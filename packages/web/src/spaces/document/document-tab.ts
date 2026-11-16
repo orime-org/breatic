@@ -53,7 +53,7 @@ import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { EditorView } from '@tiptap/pm/view';
 import type { NodeRange, Node as PMNode } from '@tiptap/pm/model';
 
-import { DOC_COLUMN_LIST } from '@web/spaces/document/document-column-geometry';
+import { DOC_COLUMN_LIST } from '@breatic/shared/document-model';
 
 /** The attribute the stylesheet animates. */
 const BLOCKED_ATTRIBUTE = 'data-tab-blocked';

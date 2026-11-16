@@ -10,7 +10,7 @@
 
 import { Node as PMNode, type Fragment, type ResolvedPos } from '@tiptap/pm/model';
 
-import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-geometry';
+import { DOC_COLUMN, DOC_COLUMN_LIST } from '@breatic/shared/document-model';
 import { rowById } from '@web/spaces/document/document-row-by-id';
 import { isTableCell } from '@breatic/shared/document-model';
 

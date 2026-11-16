@@ -30,7 +30,7 @@ import { ySyncPluginKey } from 'y-prosemirror';
 
 import { docNameOf } from '@web/data/yjs/manager';
 import { checkAdd } from '@web/data/yjs/space-write';
-import { DOC_COLUMN, DOC_COLUMN_LIST, meanWeight, weightsOf } from '@web/spaces/document/document-column-geometry';
+import { DOC_COLUMN, DOC_COLUMN_LIST, meanWeight, weightsOf } from '@breatic/shared/document-model';
 import { liftOnlyColumn } from '@web/spaces/document/document-column-repair';
 import { rangeToLift } from '@web/spaces/document/document-drag-move';
 import { positionOf, rowById, type RowInDocument } from '@web/spaces/document/document-row-by-id';

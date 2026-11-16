@@ -22,7 +22,7 @@ import { ySyncPluginKey } from 'y-prosemirror';
 import { DOCUMENT_SCHEMA, documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
-import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-geometry';
+import { DOC_COLUMN, DOC_COLUMN_LIST } from '@breatic/shared/document-model';
 import { columnsBlock, para, shapeOf } from '@web/spaces/document/__tests__/column-fixtures';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 

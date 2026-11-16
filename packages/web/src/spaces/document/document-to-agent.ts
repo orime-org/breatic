@@ -32,7 +32,7 @@ import { attachToChat } from '@web/stores/attach-to-chat';
 import type { TrayItem } from '@web/stores/chat-attachments';
 import { blocksMarkdown } from '@web/spaces/document/document-table-markdown';
 import { cellsBlocks, tableClippedBlocks, wholeTablesRange } from '@web/spaces/document/document-table-copy';
-import { formulaSource, holdsFormula, isFormula } from '@web/spaces/document/document-math';
+import { formulaSource, holdsFormula, isFormula } from '@breatic/shared/document-model';
 
 /**
  * The first non-empty line of some text, cut to the length a name may run.

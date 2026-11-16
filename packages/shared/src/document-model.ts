@@ -12,7 +12,10 @@
 
 export * from "@shared/document/model/document-comment-body.js";
 export * from "@shared/document/model/document-comment-mark.js";
+export * from "@shared/document/model/document-column-geometry.js";
+export * from "@shared/document/model/document-column-nodes.js";
 export * from "@shared/document/model/document-list-block.js";
+export * from "@shared/document/model/document-math-nodes.js";
 export * from "@shared/document/model/document-pm-schema.js";
 export * from "@shared/document/model/document-schema-blocknote.js";
 export * from "@shared/document/model/document-table-legacy.js";

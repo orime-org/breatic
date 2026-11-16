@@ -13,8 +13,8 @@
 
 import type { BlockNoteEditor } from '@blocknote/core';
 import type { Mark, Node as ProseMirrorNode } from '@tiptap/pm/model';
-import { DOC_COLUMN_LIST } from '@web/spaces/document/document-column-geometry';
-import { formulaLeafText, isFormula } from '@web/spaces/document/document-math';
+import { DOC_COLUMN_LIST } from '@breatic/shared/document-model';
+import { formulaLeafText, isFormula } from '@breatic/shared/document-model';
 import { isMediaBlockType } from '@web/spaces/document/document-media-types';
 import { blocksMarkdown } from '@web/spaces/document/document-table-markdown';
 

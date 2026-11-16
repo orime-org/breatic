@@ -30,7 +30,7 @@
 
 import type { Node as PMNode } from '@tiptap/pm/model';
 
-import { bodiesOf } from '@web/spaces/document/document-column-geometry';
+import { bodiesOf } from '@breatic/shared/document-model';
 
 import type { QuoteRun } from '@web/spaces/document/document-quote-runs';
 

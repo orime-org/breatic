@@ -81,7 +81,7 @@ import {
 
 
 import { commentTool } from '@web/spaces/document/document-comment-entries';
-import { holdsFormula, MATH_INLINE } from '@web/spaces/document/document-math';
+import { holdsFormula, MATH_INLINE } from '@breatic/shared/document-model';
 import { addToAgentTool } from '@web/spaces/document/document-to-agent';
 import { useTableFullscreen } from '@web/spaces/document/use-table-fullscreen';
 import { mergeCellsTool } from '@web/spaces/document/document-table-tools';

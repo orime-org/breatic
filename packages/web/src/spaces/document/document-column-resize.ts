@@ -7,7 +7,7 @@
 
 import type { EditorView } from '@tiptap/pm/view';
 
-import { COLUMN_DIVIDER_ZONE, columnWeight, MIN_COLUMN_WIDTH } from '@web/spaces/document/document-column-geometry';
+import { COLUMN_DIVIDER_ZONE, columnWeight, MIN_COLUMN_WIDTH } from '@breatic/shared/document-model';
 import { rowById } from '@web/spaces/document/document-row-by-id';
 
 /** The two columns either side of a divider when the drag started. */

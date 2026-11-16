@@ -41,6 +41,8 @@ import {
 import { ReplaceStep, type Step } from '@tiptap/pm/transform';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
+import { DOC_COLUMN } from '@shared/document/model/document-column-geometry.js';
+
 /** The narrowest a column can be dragged. */
 const CELL_MIN_WIDTH = 35;
 
@@ -82,12 +84,13 @@ export function isTableCell(node: PMNode): boolean {
 }
 
 /**
- * Whether a node holds blocks as a body does: a block group or a table cell.
+ * Whether a node holds blocks as a body does: a block group, a table cell or
+ * a column (inner#1314).
  * @param node - The node.
- * @returns True for either.
+ * @returns True for any of them.
  */
 export function holdsBlocks(node: PMNode): boolean {
-  return node.type.name === 'blockGroup' || isTableCell(node);
+  return node.type.name === 'blockGroup' || node.type.name === DOC_COLUMN || isTableCell(node);
 }
 
 /**

@@ -49,7 +49,7 @@ import { bodyScrollerOf, type PointerAt } from '@web/spaces/document/document-bo
 import { autoScrollOf } from '@web/spaces/document/document-drag-autoscroll';
 import { MEDIA_CHROME } from '@web/spaces/document/DocumentMediaBlock';
 import { TABLES } from '@breatic/shared/document-model';
-import { DOC_COLUMN_LIST } from '@web/spaces/document/document-column-geometry';
+import { DOC_COLUMN_LIST } from '@breatic/shared/document-model';
 import { inTableFullscreen } from '@web/spaces/document/document-table-fullscreen';
 import { FORMULA_BOX } from '@web/spaces/document/document-math';
 

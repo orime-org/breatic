@@ -32,7 +32,8 @@ import type { Node as PMNode, ResolvedPos } from '@tiptap/pm/model';
 import { NodeSelection, Plugin, PluginKey, TextSelection, type EditorState } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 
-import { MATH_BLOCK, MATH_INLINE, openFormulaAt, removeFormulaBlock } from '@web/spaces/document/document-math';
+import { openFormulaAt, removeFormulaBlock } from '@web/spaces/document/document-math';
+import { MATH_BLOCK, MATH_INLINE } from '@breatic/shared/document-model';
 import { markOwnUndoStep } from '@web/spaces/document/document-undo-step';
 
 /** The editor as this file uses it. */

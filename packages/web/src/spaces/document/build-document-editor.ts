@@ -83,6 +83,8 @@ import { documentDragDropExtension, flyingRowId } from '@web/spaces/document/doc
 import { documentCommentLiveMarkExtension } from '@web/spaces/document/document-comment-mark';
 import { withMediaView } from '@web/spaces/document/document-media-blocknote';
 import { documentTableView } from '@web/spaces/document/document-table-nodes';
+import { documentColumnView } from '@web/spaces/document/document-column-view';
+import { documentMathView } from '@web/spaces/document/document-math';
 import { COMMENT_MARK } from '@web/spaces/document/document-comment-extension';
 import {
   documentCommentsExtension,
@@ -278,7 +280,12 @@ export function buildDocumentEditor(
   const dropLine: typeof tableDrags = (context) => (inTableFullscreen(context.view.state) ? null : tableDrags(context));
 
   return BlockNoteEditor.create({
-    schema: buildDocumentSchema({ media: withMediaView, table: documentTableView }),
+    schema: buildDocumentSchema({
+      media: withMediaView,
+      table: documentTableView,
+      column: documentColumnView,
+      math: documentMathView,
+    }),
     links: { onClick: openLinkInANewTab },
     domAttributes: { editor: { class: BODY_SURFACE_CLASS } },
     // The line that says where a dragged block will land. Withholding the

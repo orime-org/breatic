@@ -9,31 +9,21 @@
  *   not dissolve it (`dissolve: false`): a state two collaborators merge into
  *   can hold one column or none, and a content expression it fails makes
  *   y-prosemirror delete the whole element with the column left in it
- *   (`sync-plugin.js` `createNodeFromYElement`). Our own repair
+ *   (`sync-plugin.js` `createNodeFromYElement`). Web's own repair
  *   (`document-column-repair.ts`) dissolves and deletes on local edits.
  * - A column holds at least one block (`allow: 'blocks'` takes no minimum,
  *   `validateChildren.ts:68-71`); an emptied column a merge brings in is
  *   deleted by the binding, and holds nothing.
  * - Enter on an empty last paragraph stays in the column, as in a cell.
+ *
+ * The browser's editor adds the divider and the stacking on narrow widths
+ * ({@link DocColumnView}); collab builds these specs with no view at all
+ * (breatic#1488 §11.1), and the schema is the same either way.
  */
 
 import { createBlockSpec } from '@blocknote/core';
 
-import { columnWeight, DOC_COLUMN, DOC_COLUMN_LIST, weightsFit } from '@web/spaces/document/document-column-geometry';
-import { attachDivider, type DividerEditor } from '@web/spaces/document/document-column-resize';
-
-/**
- * Marks a group stacked while its container is too narrow to give each of
- * its columns, at its weight, the minimum width.
- * @param element - The group's element.
- */
-function markStacked(element: HTMLElement): void {
-  const columns = element.querySelectorAll<HTMLElement>(':scope > .doc-columns-row > .doc-column');
-  const weights = [...columns].map((column) => columnWeight(column.dataset['width']));
-  const fits = weightsFit(element.getBoundingClientRect().width, weights);
-  if (fits) delete element.dataset['stacked'];
-  else element.dataset['stacked'] = '';
-}
+import { columnWeight, DOC_COLUMN, DOC_COLUMN_LIST } from '@shared/document/model/document-column-geometry.js';
 
 /**
  * A group's or a column's external HTML: nothing of its own, so its blocks
@@ -61,6 +51,27 @@ function applyWidth(element: HTMLElement, width: number): void {
   element.style.flexGrow = String(columnWeight(width));
 }
 
+/** What the browser mounts on a group's node view, to update and take down with it. */
+export interface DocColumnGroupFrame {
+  /** Runs after the group changed (a column added, removed or resized). */
+  update(): void;
+  /** Takes it down. */
+  destroy(): void;
+}
+
+/**
+ * What the browser's editor adds to a column group, none of which changes the
+ * schema.
+ */
+export interface DocColumnView {
+  /**
+   * Mounts the browser's parts of a group's node view on its element and its
+   * row of columns. Without it the node view is the bare group, as the static
+   * render is.
+   */
+  readonly attachGroup?: (element: HTMLElement, row: HTMLElement, editor: unknown) => DocColumnGroupFrame;
+}
+
 /** The two specs, keyed by type. */
 export interface DocColumnSpecs {
   readonly docColumnList: unknown;
@@ -69,9 +80,11 @@ export interface DocColumnSpecs {
 
 /**
  * The block specs of a column group.
+ * @param view - What the browser's editor adds; nothing by default.
  * @returns The two specs, keyed by type.
  */
-export function docColumnSpecs(): DocColumnSpecs {
+export function docColumnSpecs(view: DocColumnView = {}): DocColumnSpecs {
+  const { attachGroup } = view;
   const list = createBlockSpec(
     {
       type: DOC_COLUMN_LIST,
@@ -85,7 +98,7 @@ export function docColumnSpecs(): DocColumnSpecs {
       // outside HTML (MathML's `<math>`) need not carry `dataset`.
       parse: (element: HTMLElement) => (element.hasAttribute('data-doc-columns') ? {} : undefined),
       toExternalHTML: flatOutside,
-      renderFrame(this: { renderType: 'dom' | 'nodeView' }, _block: unknown, editor: DividerEditor) {
+      renderFrame(this: { renderType: 'dom' | 'nodeView' }, _block: unknown, editor: unknown) {
         const element = document.createElement('div');
         element.className = 'doc-columns';
         element.dataset['docColumns'] = '';
@@ -94,23 +107,16 @@ export function docColumnSpecs(): DocColumnSpecs {
         const row = document.createElement('div');
         row.className = 'doc-columns-row';
         element.appendChild(row);
-        if (this.renderType === 'dom') return { dom: element, slot: row };
-        const detach = attachDivider(element, row, editor);
-        // The width the group has decides whether its columns stand side by
-        // side; a column added or removed is an update of the group.
-        const observer = new ResizeObserver(() => markStacked(element));
-        observer.observe(element);
+        if (this.renderType === 'dom' || attachGroup === undefined) return { dom: element, slot: row };
+        const frame = attachGroup(element, row, editor);
         return {
           dom: element,
           slot: row,
           update: (): boolean => {
-            queueMicrotask(() => markStacked(element));
+            frame.update();
             return true;
           },
-          destroy: (): void => {
-            observer.disconnect();
-            detach();
-          },
+          destroy: (): void => frame.destroy(),
         };
       },
     } as never,

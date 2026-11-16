@@ -21,7 +21,7 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import { documentBodyFragment } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
-import { weightsFit } from '@web/spaces/document/document-column-geometry';
+import { weightsFit } from '@breatic/shared/document-model';
 import { columnDropHook, sideDropAllowed, sideOfPointer, takeSideDrop } from '@web/spaces/document/document-column-landing';
 import { rowIsFlying } from '@web/spaces/document/document-drag-drop';
 import { columnsBlock, para } from '@web/spaces/document/__tests__/column-fixtures';

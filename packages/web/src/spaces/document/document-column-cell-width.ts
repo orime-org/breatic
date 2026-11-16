@@ -21,7 +21,7 @@ import { Plugin, PluginKey, type Transaction } from '@tiptap/pm/state';
 import { TableMap } from '@tiptap/pm/tables';
 import type { EditorView } from '@tiptap/pm/view';
 
-import { DOC_COLUMN_LIST, roomInside, weightsOf, weightsWidth } from '@web/spaces/document/document-column-geometry';
+import { DOC_COLUMN_LIST, roomInside, weightsOf, weightsWidth } from '@breatic/shared/document-model';
 import { LEAVING_COLUMN } from '@web/spaces/document/document-column-drop';
 import { localEdit } from '@web/spaces/document/document-column-repair';
 import { rowById } from '@web/spaces/document/document-row-by-id';
