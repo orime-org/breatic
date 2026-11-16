@@ -3,6 +3,7 @@ import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { X } from 'lucide-react';
 
 import { ScrollArea } from '@web/components/ui/scroll-area';
+import { useKeepMovedFocus } from '@web/lib/overlay-focus';
 import { cn } from '@web/lib/utils';
 
 /**
@@ -136,12 +137,14 @@ interface DialogContentProps extends React.ComponentPropsWithoutRef<typeof Dialo
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
   DialogContentProps
->(({ className, children, fullScreen = false, ...props }, ref) => {
+>(({ className, children, fullScreen = false, onCloseAutoFocus, ...props }, ref) => {
+  const keepMovedFocus = useKeepMovedFocus(onCloseAutoFocus);
   const content = (
     <DialogPrimitive.Content
       ref={ref}
       className={cn(fullScreen ? FULL_SCREEN_CONTENT_CLASS : BOX_CONTENT_CLASS, className)}
       {...props}
+      onCloseAutoFocus={keepMovedFocus}
       // Opening puts focus on the dialog itself, which draws no ring. Its
       // first control is the header's close button, and focus handed to it
       // by script shows a ring only when the previous focus did, so it

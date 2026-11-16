@@ -3,9 +3,10 @@
 
 import * as React from 'react';
 import { Euler, Quaternion } from 'three';
-import { SceneObjectValuesSchema, type SceneObject } from '@breatic/shared';
+import { SceneObjectValuesSchema, isSceneLight, isSceneModelFile, type SceneObject } from '@breatic/shared';
 import type { SceneEditorProps } from '@web/spaces/three-d/SceneEditor';
 import type { SceneField, SceneFieldDraftOwner } from '@web/spaces/three-d/SceneField';
+import type { SceneDirectorFields } from '@web/spaces/three-d/SceneDirectorFields';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 import { Button } from '@web/components/ui/button';
@@ -80,6 +81,17 @@ function inspectorGeometry(object: SceneObject): Record<'position' | 'rotation' 
 }
 
 /**
+ * The transform fields an object's kind has: a camera or light keeps a unit scale and a point light has no direction
+ * (inner#1694 design 3.3).
+ * @param object - The object.
+ * @returns Its editable transform fields.
+ */
+function transformFields(object: SceneObject): readonly ('position' | 'rotation' | 'scale')[] {
+  if (isSceneModelFile(object.model)) return ['position', 'rotation', 'scale'];
+  return isSceneLight(object) && object.model.type === 'point' ? ['position'] : ['position', 'rotation'];
+}
+
+/**
  * Present committed geometry and existing draft controls for the current selection.
  * @param root0 - Scene controls and their current owner bindings.
  * @param root0.session - The document-scoped command and selection owner.
@@ -88,6 +100,7 @@ function inspectorGeometry(object: SceneObject): Record<'position' | 'rotation' 
  * @param root0.namedPeers - Resolved collaborator names and selection hints.
  * @param root0.spaceId - Space that owns field blur and visibility.
  * @param root0.Field - Eager field control keeping shared input helpers outside this lazy geometry module.
+ * @param root0.DirectorFields - The eager camera and light fields, passed in for the same reason.
  * @param root0.fieldDrafts - Temporary input retained by the owning editor.
  * @param root0.onFieldDraftChange - Updates the current object's temporary field input.
  * @param root0.skeletonStates - What each loaded object's skeleton allows.
@@ -96,7 +109,7 @@ function inspectorGeometry(object: SceneObject): Record<'position' | 'rotation' 
  * @returns The current selection inspector.
  * @throws {never} Command refusals are reported by the session owner.
  */
-export const SceneInspector = React.memo(function SceneInspector({ session, snapshot, readObjects, namedPeers, spaceId, Field, fieldDrafts, onFieldDraftChange, skeletonStates, jointMode, onJointModeChange }: Pick<SceneEditorProps, 'session' | 'snapshot' | 'readObjects' | 'namedPeers' | 'spaceId'> & SceneFieldDraftOwner & ScenePoseInputs & { Field: typeof SceneField }): React.JSX.Element {
+export const SceneInspector = React.memo(function SceneInspector({ session, snapshot, readObjects, namedPeers, spaceId, Field, DirectorFields, fieldDrafts, onFieldDraftChange, skeletonStates, jointMode, onJointModeChange }: Pick<SceneEditorProps, 'session' | 'snapshot' | 'readObjects' | 'namedPeers' | 'spaceId'> & SceneFieldDraftOwner & ScenePoseInputs & { Field: typeof SceneField; DirectorFields: typeof SceneDirectorFields }): React.JSX.Element {
   const t = useTranslation();
   const selected = snapshot.objects.filter((object) => snapshot.selectedIds.includes(object.id));
   const mutable = snapshot.canEdit && selected.length > 0 && selected.every((object) => !object.locked);
@@ -151,11 +164,13 @@ export const SceneInspector = React.memo(function SceneInspector({ session, snap
       {object && geometry ? <><Field key={`${object.id}:name`} label={t('spaces.threeD.name')} value={object.name} disabled={!mutable} spaceId={spaceId}
         draftKey={`${object.id}:name`} draft={fieldDrafts.get(`${object.id}:name`)} onFieldDraftChange={onFieldDraftChange}
         maxLength={SceneObjectValuesSchema.shape.name.maxLength ?? undefined} onCommit={commits.name} />
-      {(['position', 'rotation', 'scale'] as const).map((field, fieldIndex) => <fieldset key={field} className='min-w-0 space-y-2'><legend className='text-xs font-medium'>{geometryLabels[field]}</legend>
+      {transformFields(object).map((field) => [field, (['position', 'rotation', 'scale'] as const).indexOf(field)] as const).map(([field, fieldIndex]) => <fieldset key={field} className='min-w-0 space-y-2'><legend className='text-xs font-medium'>{geometryLabels[field]}</legend>
         <div className='grid grid-cols-3 gap-1'>{(['X', 'Y', 'Z'] as const).map((axis, index) => <Field key={`${object.id}:${field}:${axis}`}
           draftKey={`${object.id}:${field}:${axis}`} draft={fieldDrafts.get(`${object.id}:${field}:${axis}`)} onFieldDraftChange={onFieldDraftChange}
           label={axis} numeric value={numberText(geometry[field][index])} disabled={!mutable} spaceId={spaceId} onCommit={commits.geometry[fieldIndex][index]} />)}</div>
       </fieldset>)}
+      <DirectorFields object={object} session={session} canEdit={snapshot.canEdit} spaceId={spaceId} Field={Field} compact={false}
+        fieldDrafts={fieldDrafts} onFieldDraftChange={onFieldDraftChange} />
       {skeleton ? <PoseSection objectId={object.id} state={skeleton} mutable={mutable} session={session}
         jointMode={jointMode} onJointModeChange={onJointModeChange} /> : null}</> : <><p className='text-xs font-medium'>{t('spaces.threeD.selectedCount', { count: selected.length })}</p><p className='text-xs text-muted-foreground'>{t('spaces.threeD.multiTransform')}</p>
         {(['position', 'rotation', 'scale'] as const).map((field) => <p key={field} className='text-xs'>{geometryLabels[field]}: {geometries.every((item) => JSON.stringify(item[field]) === JSON.stringify(geometries[0]?.[field])) ? geometries[0]?.[field].map(numberText).join(', ') : t('spaces.threeD.mixed')}</p>)}</>}

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The viewfinder in the 3D Space (#1411): the persistent top-right button,
+ * The viewfinder in the 3D Space (#1411): its button in the bottom-right toolbar,
  * framing with the minimap and creation menu put away, the capture, and the
  * three destinations with the states of design 6.1.
  */
@@ -26,7 +26,7 @@ import { useConversationRuntime } from '@web/stores/conversation-runtime';
 import { useUIStore } from '@web/stores/ui';
 
 const h = vi.hoisted(() => ({
-  modelState: 'ready' as 'ready' | 'loading',
+  modelState: 'ready' as 'ready' | 'loading' | 'failed',
   viewport: null as null | { viewLocked?: boolean },
   capture: vi.fn(),
   spaces: [] as Array<{ id: string; name: string; type: string; createdAt?: number }>,
@@ -160,7 +160,7 @@ afterEach(() => {
 });
 
 describe('the viewfinder entry (acceptance 1)', () => {
-  it('sits top-right whether or not anything is selected, and is unavailable to a Viewer', async () => {
+  it('sits in the bottom-right toolbar whether or not anything is selected, and is unavailable to a Viewer', async () => {
     const { session } = await setup();
     expect(trigger()).toBeEnabled();
     act(() => session.select(ID, false));
@@ -216,7 +216,7 @@ describe('framing (acceptance 2)', () => {
 
   it('keeps the menu clear of a right panel opened while framing', async () => {
     vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(400);
-    HTMLElement.prototype.setPointerCapture = vi.fn();
+    vi.spyOn(Element.prototype, 'setPointerCapture').mockImplementation(() => undefined);
     await setup();
     fireEvent.click(trigger());
     fireEvent.click(screen.getByTestId('scene-objects-trigger'));
@@ -231,7 +231,7 @@ describe('framing (acceptance 2)', () => {
 
   it('forgets a corner drag the viewfinder was closed during', async () => {
     await setup();
-    HTMLElement.prototype.setPointerCapture = vi.fn();
+    vi.spyOn(Element.prototype, 'setPointerCapture').mockImplementation(() => undefined);
     fireEvent.click(trigger());
     const corner = screen.getByTestId('scene-viewfinder-corner-se');
     fireEvent.pointerDown(corner, { pointerId: 1, buttons: 1, clientX: 900, clientY: 600 });
@@ -256,7 +256,51 @@ describe('framing (acceptance 2)', () => {
   });
 });
 
+describe('the failed-model notice', () => {
+  it('spans to the stage margin and moves an open right panel below itself', async () => {
+    vi.spyOn(HTMLElement.prototype, 'offsetTop', 'get').mockImplementation(function (this: HTMLElement) { return this.dataset.testid === 'scene-model-notice' ? 12 : 0; });
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function (this: HTMLElement) { return this.dataset.testid === 'scene-model-notice' ? 46 : 0; });
+    h.modelState = 'failed';
+    await setup();
+    const notice = await screen.findByTestId('scene-model-notice');
+    fireEvent.click(screen.getByTestId('scene-objects-trigger'));
+    await screen.findByTestId('scene-right-panel');
+    expect(notice.className).toContain('max-w-[calc(100%_-_5rem_-_var(--space-5))]');
+    await waitFor(() => expect(screen.getByTestId('scene-right-panel-anchor').style.top).toBe('66px'));
+  });
+
+  it('is put away while the viewfinder is open and comes back when it closes', async () => {
+    h.modelState = 'failed';
+    await setup();
+    await screen.findByText(t('spaces.threeD.modelFailed'));
+    fireEvent.click(trigger());
+    expect(screen.queryByText(t('spaces.threeD.modelFailed'))).toBeNull();
+    fireEvent.click(trigger());
+    expect(await screen.findByText(t('spaces.threeD.modelFailed'))).toBeInTheDocument();
+  });
+});
+
 describe('capturing (acceptance 3 and 4)', () => {
+  it('keeps the frame where it was across Capture and Reframe when the object toolbar stacks on a narrow stage', async () => {
+    const sizes: Record<string, [number, number]> = { 'scene-bottom-row': [400, 50], 'scene-object-menu': [223, 42], 'scene-viewport-toolbar': [294, 42] };
+    const size = (element: HTMLElement): [number, number] => sizes[element.dataset.testid ?? ''] ?? [0, 0];
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockImplementation(function (this: HTMLElement) { return size(this)[0]; });
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function (this: HTMLElement) { return size(this)[1]; });
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(420);
+    const frame = (): string => { const style = screen.getByTestId('scene-viewfinder-frame').style; return `${style.left} ${style.top} ${style.width} ${style.height}`; };
+    const { session } = await setup();
+    act(() => session.select(ID, false));
+    await waitFor(() => expect(screen.getByTestId('scene-map-holder').style.bottom).toBe('111px'));
+    fireEvent.click(trigger());
+    const framed = frame();
+    fireEvent.click(button('confirm'));
+    await within(menu()).findByRole('button', { name: t('spaces.threeD.viewfinder.toAgent') });
+    expect(frame()).toBe(framed);
+    fireEvent.click(button('reframe'));
+    await waitFor(() => expect(screen.getByTestId('scene-object-menu')).toBeInTheDocument());
+    expect(frame()).toBe(framed);
+  });
+
   it('does not capture while a model is loading and says so', async () => {
     h.modelState = 'loading';
     await setup();
@@ -281,7 +325,8 @@ describe('capturing (acceptance 3 and 4)', () => {
     fireEvent.click(trigger());
     const dim = screen.getByTestId('scene-viewfinder-frame').parentElement;
     expect(dim?.className).toContain('z-[5]');
-    expect(screen.getByTestId('scene-viewport-toolbar').className).toContain('z-10');
+    // The bottom row holding the toolbars sits above the dimmed layer.
+    expect(screen.getByTestId('scene-viewport-toolbar').closest('.grid')?.className).toContain('z-10');
   });
 
   it('captures the frame at a 2048 long edge, locks the view and offers the destinations', async () => {
