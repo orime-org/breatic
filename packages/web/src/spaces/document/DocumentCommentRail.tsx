@@ -81,6 +81,7 @@ import {
 } from '@web/spaces/document/use-comment-cards';
 import { useCommentWrite } from '@web/spaces/document/use-comment-write';
 import { useCurrentUserStore } from '@web/stores/current-user';
+import { useFollowStore } from '@web/stores/follow';
 import { domElementOf } from '@web/spaces/document/document-editor-view';
 import { COMMENT_PANEL_WIDTH } from '@web/spaces/document/document-columns';
 
@@ -515,6 +516,8 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
     ) {
       return;
     }
+    // While following, the leader decides where this body is, so a card that grows is not chased.
+    if (last?.key === reveal && useFollowStore.getState().targetUserId !== null) return;
     // The words may sit in a wide table scrolled away from them, which
     // scrolling the body up and down does not bring back.
     const root = domElementOf(editor);

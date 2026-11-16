@@ -20,7 +20,7 @@ export interface FollowRoutingInput {
   ready: boolean;
   /** Whether the latest change of the tab in front was the user's (false when a deleted Space moved it). */
   persist: boolean;
-  /** Whether the strip's latest change was an open this hook asked for. */
+  /** Whether the tab in front was put there by an open this hook asked for (kept through changes that leave it in front). */
   byFollow: boolean;
   /** Opens a Space's tab, or switches to it, marking the change as following's. */
   open: (spaceId: string) => void;
@@ -43,11 +43,11 @@ export interface FollowRoutingInput {
  */
 export function useFollowRouting(input: FollowRoutingInput): void {
   const { following, leaderSpaceId, spaces, activeId, ready, persist, byFollow, open } = input;
-  // The leader Space already acted on while following; undefined until the first.
-  const routed = React.useRef<string | null | undefined>(undefined);
+  // The leader Space already acted on while following.
+  const routed = React.useRef<string | null>(null);
   React.useEffect(() => {
     if (!following) {
-      routed.current = undefined;
+      routed.current = null;
       return;
     }
     if (leaderSpaceId === routed.current) return;
@@ -57,12 +57,9 @@ export function useFollowRouting(input: FollowRoutingInput): void {
     }
     // Not yet (or no longer) in this project: judged again when the Spaces change.
     if (!spaces.some((space) => space.id === leaderSpaceId)) return;
-    const first = routed.current === undefined;
     routed.current = leaderSpaceId;
-    // Following that starts on the leader's Space has nothing to open.
-    if (first && leaderSpaceId === activeId) return;
     open(leaderSpaceId);
-  }, [following, leaderSpaceId, spaces, activeId, open]);
+  }, [following, leaderSpaceId, spaces, open]);
 
   // The tab in front and whether the strip had landed, as of the previous render.
   const last = React.useRef({ activeId, ready });

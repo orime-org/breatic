@@ -1068,6 +1068,10 @@ function CanvasSpaceInner({
   const [followingAtMount] = React.useState(() => useFollowStore.getState().targetUserId !== null);
   /** The live ReactFlow store, read for the transform at the moment of a write. */
   const rfStoreApi = useStoreApi();
+  /** Drop the opening fit a canvas with no stored camera still has queued, so it does not frame every node later. */
+  const clearOpeningFit = React.useCallback((): void => {
+    rfStoreApi.setState({ fitViewQueued: false });
+  }, [rfStoreApi]);
   /**
    * Whether the camera has been placed at all since this canvas mounted.
    *
@@ -2799,7 +2803,7 @@ function CanvasSpaceInner({
         const focus = whatToFocus(intent.proposal, placed);
         // A Space opened empty and never framed still has its opening fit
         // queued for the first nodes to arrive; the framing below is that one.
-        if (placed.bounds) rfStoreApi.setState({ fitViewQueued: false });
+        if (placed.bounds) clearOpeningFit();
         if (focus.panel) {
           // The panel that opens under one of them is framed with them once
           // it has landed, in one move.
@@ -2844,6 +2848,7 @@ function CanvasSpaceInner({
     spaceId,
     getInternalNode,
     rfStoreApi,
+    clearOpeningFit,
     setViewport,
     showPlaced,
   ]);
@@ -2985,10 +2990,10 @@ function CanvasSpaceInner({
     const height = internal?.measured?.height ?? EMPTY_NODE_SIZE.height;
     // A canvas opened with no stored camera still has its opening fit queued; it would frame
     // every node after this move, the same as for a landed proposal.
-    rfStoreApi.setState({ fitViewQueued: false });
+    clearOpeningFit();
     void setCenter(at.x + width / 2, at.y + height / 2, { zoom: rfStoreApi.getState().transform[2], duration: FRAME_PAN_MS, interpolate: 'linear' });
     setSelectAfterCreate([id]);
-  }, [getInternalNode, nodes, setCenter, rfStoreApi]);
+  }, [getInternalNode, nodes, setCenter, rfStoreApi, clearOpeningFit]);
   useCanvasRevealReceiver(spaceId, synced, hasNode, revealNode);
 
   // One dispatch for Cmd+V and the menu's Paste (design 5.9): our nodes paste
@@ -3184,9 +3189,9 @@ function CanvasSpaceInner({
   const applyFollowViewport = React.useCallback((next: Viewport): void => {
     void setViewport(next, { duration: 0 });
   }, [setViewport]);
-  const clearOpeningFit = React.useCallback((): void => {
-    rfStoreApi.setState({ fitViewQueued: false });
-  }, [rfStoreApi]);
+  const frameCanvas = React.useCallback((): void => {
+    void fitView(FIT_VIEW_OPTIONS);
+  }, [fitView]);
   const onFollowMoveStart = useCanvasFollow({
     awareness,
     leaderUserId,
@@ -3194,6 +3199,8 @@ function CanvasSpaceInner({
     pane,
     applyViewport: applyFollowViewport,
     clearOpeningFit,
+    openingFitHeld: storedViewport === null && followingAtMount,
+    frameCanvas,
   });
   const readCamera = React.useCallback((): FlowRect | null => {
     const { transform, width, height } = rfStoreApi.getState();

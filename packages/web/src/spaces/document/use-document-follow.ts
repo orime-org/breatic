@@ -53,7 +53,8 @@ export function useDocumentFollow(input: DocumentFollowInput): void {
 
   React.useEffect(() => {
     if (!awareness || leaderUserId === null || !viewport || !root || paused) return undefined;
-    let mark: AlignmentMark | null = null;
+    // Until the leader's block first aligns, where the body stands now.
+    let mark: AlignmentMark = markAlignment(viewport, root);
     // The leader value last aligned to, so a peer's unrelated awareness write
     // does not scroll the body again.
     let lastAt: number | null = null;
@@ -107,18 +108,15 @@ export function useDocumentFollow(input: DocumentFollowInput): void {
 
     /** Tell the user's scroll from one that keeps the alignment. */
     const onScroll = (): void => {
-      if (mark === null || !following()) return;
+      if (!following()) return;
       if (stillAligned(viewport, root, mark)) {
         mark = rebaseMark(viewport, root, mark);
         return;
       }
-      mark = null;
       stopFollowing();
     };
 
     align(true);
-    // No leader block aligned yet: judge scrolls against where the body stands now.
-    if (mark === null) mark = markAlignment(viewport, root);
     awareness.on('change', onChange);
     viewport.addEventListener('scroll', onScroll, { passive: true });
     // The block may arrive after the leader names it (sync, a peer's insert).
@@ -127,7 +125,7 @@ export function useDocumentFollow(input: DocumentFollowInput): void {
     });
     arrivals.observe(root, { childList: true, subtree: true });
     const resize = new ResizeObserver(() => {
-      if (mark !== null) align(true);
+      align(true);
     });
     resize.observe(root);
     return (): void => {

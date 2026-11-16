@@ -401,7 +401,11 @@ function ProjectWorkspace({
   const metaAwareness = provider?.awareness ?? null;
   usePublishView(metaAwareness, tabs.activeId);
   const followedUserId = useFollowStore((s) => s.targetUserId);
-  const memberViews = useMemberViews(metaAwareness);
+  const onlineUserIds = React.useMemo(
+    () => new Set([...users.values()].filter((u) => u.online).map((u) => u.id)),
+    [users],
+  );
+  const memberViews = useMemberViews(metaAwareness, onlineUserIds);
   const leaderView = followedUserId === null ? undefined : memberViews.get(followedUserId);
   const leaderSpaceId = leaderView?.spaceId ?? null;
   const openFollowedSpace = React.useCallback((spaceId: string) => {
@@ -417,12 +421,9 @@ function ProjectWorkspace({
     byFollow: tabs.byFollow,
     open: openFollowedSpace,
   });
-  const onlineUserIds = React.useMemo(
-    () => new Set([...users.values()].filter((u) => u.online).map((u) => u.id)),
-    [users],
-  );
   const memberNames = React.useMemo(() => new Map(members.map((m) => [m.userId, m.name])), [members]);
-  // Whom each member follows here, for the member list to dim View on them.
+  // Whom each member follows here: it dims View in the member list and stops
+  // following a leader who follows someone.
   const followTargets = React.useMemo(() => {
     const out = new Map<string, FollowOther>();
     for (const [memberId, view] of memberViews) {

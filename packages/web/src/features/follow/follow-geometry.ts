@@ -53,13 +53,12 @@ export function followViewport(rect: FlowRect, pane: PaneSize): Viewport {
 }
 
 /**
- * Whether two rectangles show the same part of the canvas; a missing one
- * (null or undefined) equals only another missing one.
+ * Whether two rectangles show the same part of the canvas; null equals only null.
  * @param a - One rectangle.
  * @param b - The other.
  * @returns True when they match.
  */
-export function sameRect(a: FlowRect | null | undefined, b: FlowRect | null | undefined): boolean {
-  if (a === null || a === undefined || b === null || b === undefined) return (a ?? null) === (b ?? null);
+export function sameRect(a: FlowRect | null, b: FlowRect | null): boolean {
+  if (a === null || b === null) return a === b;
   return a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
 }

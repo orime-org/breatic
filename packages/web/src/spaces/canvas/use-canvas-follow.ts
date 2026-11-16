@@ -24,6 +24,10 @@ export interface CanvasFollowInput {
   applyViewport: (viewport: Viewport) => void;
   /** Drop the opening fit a canvas with no stored camera still has queued. */
   clearOpeningFit: () => void;
+  /** Whether this canvas opened while following and so held off its opening fit. */
+  openingFitHeld: boolean;
+  /** Fit the whole canvas into the pane, as its opening fit would have. */
+  frameCanvas: () => void;
 }
 
 /**
@@ -55,7 +59,9 @@ function belowFollowBar(rect: FlowRect, pane: PaneSize): Viewport {
  * Every other move start (wheel, drag, pinch, minimap, toolbar, shortcut)
  * stops following. A canvas opened while following queues no opening fit,
  * and the one a canvas still has queued when following starts is dropped
- * then, so no move of the canvas's own reads as the user's.
+ * then, so no move of the canvas's own reads as the user's. A canvas that
+ * held off its opening fit and that no leader camera ever placed is framed
+ * once following ends, so it does not stay at the origin.
  * @param input - The awareness, the leader, readiness and the viewport commands.
  * @returns The `<ReactFlow onMoveStart>` handler.
  */
@@ -66,6 +72,8 @@ export function useCanvasFollow(input: CanvasFollowInput): (event: unknown) => v
   const applying = React.useRef(false);
   // The leader camera last applied, kept for a refit when this pane changes size.
   const last = React.useRef<{ rect: FlowRect; at: number } | null>(null);
+  // Whether this mount's viewport has been placed by a leader camera or the late opening fit.
+  const placed = React.useRef(false);
 
   /**
    * Move this viewport to show a leader rectangle, marking the move as this hook's own.
@@ -73,6 +81,7 @@ export function useCanvasFollow(input: CanvasFollowInput): (event: unknown) => v
    */
   const fitLeader = React.useCallback((rect: FlowRect): void => {
     const { pane, applyViewport } = latest.current;
+    placed.current = true;
     applying.current = true;
     try {
       applyViewport(belowFollowBar(rect, pane));
@@ -81,8 +90,17 @@ export function useCanvasFollow(input: CanvasFollowInput): (event: unknown) => v
     }
   }, []);
 
+  const previousLeader = React.useRef(leaderUserId);
   React.useEffect(() => {
-    if (leaderUserId !== null) latest.current.clearOpeningFit();
+    const was = previousLeader.current;
+    previousLeader.current = leaderUserId;
+    if (leaderUserId !== null) {
+      latest.current.clearOpeningFit();
+      return;
+    }
+    if (was === null || !latest.current.openingFitHeld || placed.current) return;
+    placed.current = true;
+    latest.current.frameCanvas();
   }, [leaderUserId]);
 
   React.useEffect(() => {

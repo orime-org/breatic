@@ -213,7 +213,7 @@ export function usePublishPresence(input: PublishPresenceInput): GesturePublishe
     let sameCamera = true;
     if (readCamera) {
       const rect = latestFollowing.current ? null : readCamera();
-      sameCamera = sameRect(prev.camera, rect);
+      sameCamera = sameRect(prev.camera ?? null, rect);
       // An unchanged rectangle keeps its stamp, so it does not count as news;
       // a new one never goes back in time from the last stamp published.
       if (sameCamera) next.camera = prev.camera;

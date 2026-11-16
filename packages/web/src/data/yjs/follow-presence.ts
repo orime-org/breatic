@@ -88,6 +88,82 @@ function beatsView(view: FollowFieldValue<'view'>, best: FollowFieldValue<'view'
   return (view.focused && !best.focused) || (view.focused === best.focused && view.at > best.at);
 }
 
+/** Whom one member follows, as one of their clients last published it. */
+export interface KeptFollowing {
+  userId: string;
+  following: FollowFieldValue<'following'>;
+}
+
+/** The client ids an awareness `change` event lists. */
+export interface AwarenessChange {
+  added: readonly number[];
+  updated: readonly number[];
+  removed: readonly number[];
+}
+
+/**
+ * The last `following` each other client published, kept while y-protocols
+ * has dropped that client for silence (#920). A tab hidden for minutes beats
+ * about once a minute and y-protocols drops a peer silent for 30 s, yet the
+ * member is still online (packages/collab/AGENTS.md#liveness-follows-the-transport),
+ * so whom they follow must outlast the gap. Any other removal (the tab's
+ * state arriving as null, the provider clearing its peers) forgets the client.
+ */
+export class FollowingKeeper {
+  private readonly byClient = new Map<number, KeptFollowing>();
+
+  /**
+   * Keep followings for one awareness.
+   * @param awareness - The project's meta awareness.
+   */
+  constructor(private readonly awareness: Awareness) {}
+
+  /**
+   * Read every client now in awareness, for changes that came before listening.
+   */
+  seed(): void {
+    for (const clientId of this.awareness.getStates().keys()) this.note(clientId);
+  }
+
+  /**
+   * Take in one awareness `change` event.
+   * @param change - The clients the event lists.
+   * @param origin - The event's origin; `'timeout'` when y-protocols dropped a silent client.
+   */
+  observe(change: AwarenessChange, origin: unknown): void {
+    for (const clientId of change.added) this.note(clientId);
+    for (const clientId of change.updated) this.note(clientId);
+    if (origin === 'timeout') return;
+    for (const clientId of change.removed) this.byClient.delete(clientId);
+  }
+
+  /**
+   * The followings kept for clients awareness no longer holds, of members still online.
+   * @param onlineUserIds - The members the server's presence records count as online.
+   * @returns The kept followings.
+   */
+  kept(onlineUserIds: ReadonlySet<string>): KeptFollowing[] {
+    const states = this.awareness.getStates();
+    const out: KeptFollowing[] = [];
+    for (const [clientId, kept] of this.byClient) {
+      if (!states.has(clientId) && onlineUserIds.has(kept.userId)) out.push(kept);
+    }
+    return out;
+  }
+
+  /**
+   * Record what one client publishes now; a new state replaces a kept one.
+   * @param clientId - The client to read.
+   */
+  private note(clientId: number): void {
+    const state = this.awareness.getStates().get(clientId);
+    const userId = state === undefined || clientId === this.awareness.clientID ? null : readUserId(state);
+    const following = state === undefined || userId === null ? null : readFollowField(state, 'following');
+    if (userId === null || following === null) this.byClient.delete(clientId);
+    else this.byClient.set(clientId, { userId, following });
+  }
+}
+
 /**
  * Each other member's view across their browser tabs: the Space from the
  * picked `view`, and whom they follow from the tab that started following
@@ -95,11 +171,13 @@ function beatsView(view: FollowFieldValue<'view'>, best: FollowFieldValue<'view'
  * with no `view` included, so such a member is listed with no Space.
  * @param states - The project's meta awareness states by client id.
  * @param selfClientId - This client's id, never listed.
+ * @param kept - Followings kept from clients awareness dropped for silence.
  * @returns The views by user id; a member with neither field is absent.
  */
 export function pickMemberViews(
   states: ReadonlyMap<number, Record<string, unknown>>,
   selfClientId: number,
+  kept: readonly KeptFollowing[] = [],
 ): Map<string, MemberView> {
   const picks = new Map<string, { view: FollowFieldValue<'view'> | null; following: FollowFieldValue<'following'> | null }>();
   for (const [clientId, state] of states) {
@@ -111,6 +189,11 @@ export function pickMemberViews(
     const pick = picks.get(userId) ?? { view: null, following: null };
     if (view !== null && (pick.view === null || beatsView(view, pick.view))) pick.view = view;
     if (following !== null && (pick.following === null || following.at > pick.following.at)) pick.following = following;
+    picks.set(userId, pick);
+  }
+  for (const { userId, following } of kept) {
+    const pick = picks.get(userId) ?? { view: null, following: null };
+    if (pick.following === null || following.at > pick.following.at) pick.following = following;
     picks.set(userId, pick);
   }
   const out = new Map<string, MemberView>();
