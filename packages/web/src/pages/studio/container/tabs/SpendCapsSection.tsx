@@ -49,7 +49,7 @@ function valueOf(draft: Draft): number | null | undefined {
 }
 
 /**
- * One limit, with `不设` and an amount per month.
+ * One limit, with "not set" and an amount per month.
  * @param props - The limit.
  * @param props.label - What it limits.
  * @param props.hint - How it applies.

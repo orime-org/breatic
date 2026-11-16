@@ -158,7 +158,7 @@ export function NodePlaceholder({
 }
 
 /**
- * The 充值 press a used-up refusal offers on a node: it opens the credits overlay.
+ * The top-up press a used-up refusal offers on a node: it opens the credits overlay.
  * @returns The button.
  */
 function TopUpButton(): React.JSX.Element {

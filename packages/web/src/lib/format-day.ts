@@ -32,7 +32,7 @@ export function formatLocalDay(at: string | number): string {
 
 /**
  * Format an instant as the user's own calendar day, written out in their
- * language (`2026年12月10日`, `December 10, 2026`).
+ * language (`December 10, 2026` in English).
  * @param at - An ISO-8601 timestamp, or epoch milliseconds.
  * @returns The day in the user's timezone and language.
  */

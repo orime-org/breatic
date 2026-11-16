@@ -109,7 +109,7 @@ export function StudioAccountMenu(): React.JSX.Element {
   const [logoutOthersOpen, setLogoutOthersOpen] = React.useState(false);
   const openLogoutOthers = React.useCallback((): void => setLogoutOthersOpen(true), []);
   const accountButtonRef = React.useRef<HTMLButtonElement>(null);
-  // An exclusive overlay, so a refusal's 充值 opens the same one from anywhere
+  // An exclusive overlay, so a refusal's top-up button opens the same one from anywhere
   // on the page (inner#1968).
   const [creditsOpen, setCreditsOpen] = useExclusiveOverlay(CREDITS_OVERLAY_ID);
 

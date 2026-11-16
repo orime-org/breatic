@@ -9,7 +9,7 @@ import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusi
 
 /**
  * The credits overlay on a page that has no account menu to open it, the
- * Project page: a refusal's 充值 opens it here (inner#1968, design 3.3).
+ * Project page: a refusal's top-up button opens it here (inner#1968, design 3.3).
  * @returns The overlay, closed until something opens it.
  */
 export function CreditsOverlayHost(): React.JSX.Element {

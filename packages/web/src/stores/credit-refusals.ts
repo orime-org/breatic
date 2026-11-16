@@ -40,7 +40,7 @@ export function openCreditsOverlay(): void {
 }
 
 /**
- * The 充值 action a used-up refusal carries.
+ * The top-up action a used-up refusal carries.
  * @returns The action.
  */
 export function topUpAction(): TopUpAction {
