@@ -14,12 +14,14 @@
 
 import { describe, it, expect } from "vitest";
 import { CONFIGURED_MEMBERSHIP_TIERS } from "@breatic/shared";
+import * as membershipConfig from "@core/config/membership.js";
 import {
   membershipConfigSchema,
   getMembershipConfig,
   getMembershipLimits,
   getSubscriptionStaleAfterDays,
 } from "@core/config/membership.js";
+import { tierLimitsSchema } from "@breatic/shared";
 
 /** Every quota field a tier must carry. */
 const FIELDS = [
@@ -29,6 +31,16 @@ const FIELDS = [
   "studio_members",
   "project_members",
   "storage_bytes",
+  "monthly_operations",
+  "running_tasks_per_user",
+] as const;
+
+/** Every key the operations block must carry. */
+const OPERATION_KEYS = [
+  "overage_credits",
+  "deferred_sweep_interval_ms",
+  "max_absorbed_per_operation",
+  "chat_message_lease_ms",
 ] as const;
 
 /**
@@ -44,6 +56,8 @@ function tier(over: Record<string, unknown> = {}): Record<string, unknown> {
     studio_members: 5,
     project_members: 4,
     storage_bytes: 1024,
+    monthly_operations: 500,
+    running_tasks_per_user: 2,
     ...over,
   };
 }
@@ -61,6 +75,13 @@ function config(over: Record<string, unknown> = {}): Record<string, unknown> {
       pro: tier(),
       team: tier(),
       self_hosted: tier(),
+    },
+    stale_after_days: 14,
+    operations: {
+      overage_credits: 0.5,
+      deferred_sweep_interval_ms: 300000,
+      max_absorbed_per_operation: 10,
+      chat_message_lease_ms: 7200000,
     },
     ...over,
   };
@@ -171,8 +192,10 @@ describe("membershipConfigSchema — default_tier", () => {
 });
 
 describe("membershipConfigSchema — stale_after_days", () => {
-  it("defaults the renewal window to Stripe's fourteen-day retry window", () => {
-    expect(membershipConfigSchema.parse(config()).stale_after_days).toBe(14);
+  it("rejects a config without the renewal window, so no default stands in for it", () => {
+    const c = config();
+    delete c.stale_after_days;
+    expect(() => membershipConfigSchema.parse(c)).toThrow();
   });
 
   it("rejects a window that is not a positive whole number of days", () => {
@@ -205,24 +228,128 @@ describe("the real config/membership.yaml", () => {
     }
   });
 
-  it("gives base the numbers the ratified decision states", () => {
-    // Straight from the 2026-07-30 tiers decision. If someone edits the
-    // shipped config, this is what tells them they changed a ratified value.
-    const base = getMembershipLimits("base");
-    expect(base.team_studios).toBe(0);
-    expect(base.projects_per_studio).toBe(10);
-    expect(base.concurrent_editors).toBe(2);
-    expect(base.project_members).toBe(4);
-    expect(base.storage_bytes).toBe(5 * 1024 ** 3);
+  it("gives base the 2026-11-15 numbers, all eight fields", () => {
+    expect(getMembershipLimits("base")).toEqual({
+      team_studios: 0,
+      projects_per_studio: 9999,
+      concurrent_editors: 2,
+      studio_members: 1,
+      project_members: 4,
+      storage_bytes: 5368709120,
+      monthly_operations: 500,
+      running_tasks_per_user: 2,
+    });
   });
 
-  it("gives team the numbers the ratified decision states", () => {
-    const team = getMembershipLimits("team");
-    expect(team.team_studios).toBe(3);
-    expect(team.projects_per_studio).toBe(300);
-    expect(team.concurrent_editors).toBe(20);
-    expect(team.studio_members).toBe(100);
-    expect(team.project_members).toBe(40);
-    expect(team.storage_bytes).toBe(500 * 1024 ** 3);
+  it("gives pro the 2026-11-15 numbers, all eight fields", () => {
+    expect(getMembershipLimits("pro")).toEqual({
+      team_studios: 1,
+      projects_per_studio: 9999,
+      concurrent_editors: 4,
+      studio_members: 10,
+      project_members: 8,
+      storage_bytes: 107374182400,
+      monthly_operations: 4000,
+      running_tasks_per_user: 5,
+    });
+  });
+
+  it("gives team the 2026-11-15 numbers, all eight fields", () => {
+    expect(getMembershipLimits("team")).toEqual({
+      team_studios: 3,
+      projects_per_studio: 9999,
+      concurrent_editors: 20,
+      studio_members: 50,
+      project_members: 40,
+      storage_bytes: 536870912000,
+      monthly_operations: 16000,
+      running_tasks_per_user: 10,
+    });
+  });
+
+  it("keeps self_hosted's six ceilings and adds the two new fields at 9999", () => {
+    expect(getMembershipLimits("self_hosted")).toEqual({
+      team_studios: 9999,
+      projects_per_studio: 9999,
+      concurrent_editors: 9999,
+      studio_members: 9999,
+      project_members: 9999,
+      storage_bytes: 109951162777600,
+      monthly_operations: 9999,
+      running_tasks_per_user: 9999,
+    });
+  });
+
+  it("carries the operations block", () => {
+    const getOperationsConfig = (membershipConfig as Record<string, unknown>).getOperationsConfig as (() => unknown) | undefined;
+    expect(typeof getOperationsConfig).toBe("function");
+    expect(getOperationsConfig?.()).toEqual({
+      overage_credits: 0.5,
+      deferred_sweep_interval_ms: 300000,
+      max_absorbed_per_operation: 10,
+      chat_message_lease_ms: 7200000,
+    });
+  });
+});
+
+describe("membershipConfigSchema — the operations block", () => {
+  it("rejects a config without the operations block", () => {
+    const c = config();
+    delete c.operations;
+    expect(() => membershipConfigSchema.parse(c)).toThrow();
+  });
+
+  for (const key of OPERATION_KEYS) {
+    it(`rejects an operations block missing ${key}`, () => {
+      const operations = { ...(config().operations as Record<string, unknown>) };
+      delete operations[key];
+      expect(() => membershipConfigSchema.parse(config({ operations }))).toThrow();
+    });
+  }
+
+  it("rejects a non-positive overage price, absorb cap or lease", () => {
+    const base = config().operations as Record<string, unknown>;
+    for (const over of [
+      { overage_credits: 0 },
+      { overage_credits: -0.5 },
+      { max_absorbed_per_operation: 0 },
+      { chat_message_lease_ms: 0 },
+    ]) {
+      expect(() => membershipConfigSchema.parse(config({ operations: { ...base, ...over } })), JSON.stringify(over)).toThrow();
+    }
+  });
+});
+
+describe("membershipConfigSchema — the two per-tier fields", () => {
+  for (const name of ["base", "pro", "team", "self_hosted"] as const) {
+    for (const field of ["monthly_operations", "running_tasks_per_user"] as const) {
+      it(`rejects ${name} missing ${field}`, () => {
+        const t = tier();
+        delete t[field];
+        const tiers = { ...(config().tiers as Record<string, unknown>), [name]: t };
+        expect(() => membershipConfigSchema.parse(config({ tiers }))).toThrow();
+      });
+    }
+  }
+
+  it("rejects a running-task cap of 0 and fractional or negative values", () => {
+    for (const over of [
+      { running_tasks_per_user: 0 },
+      { monthly_operations: -1 },
+      { monthly_operations: 1.5 },
+      { running_tasks_per_user: 2.5 },
+    ]) {
+      const tiers = { ...(config().tiers as Record<string, unknown>), base: tier(over) };
+      expect(() => membershipConfigSchema.parse(config({ tiers })), JSON.stringify(over)).toThrow();
+    }
+  });
+
+  it("accepts a monthly allowance of 0", () => {
+    const tiers = { ...(config().tiers as Record<string, unknown>), base: tier({ monthly_operations: 0 }) };
+    expect(membershipConfigSchema.parse(config({ tiers })).tiers.base.monthly_operations).toBe(0);
+  });
+
+  it("lets tierLimitsSchema pass an unknown extra key, so an older image reads a newer file", () => {
+    expect(() => tierLimitsSchema.parse({ ...tier(), extra: 1 })).not.toThrow();
   });
 });
