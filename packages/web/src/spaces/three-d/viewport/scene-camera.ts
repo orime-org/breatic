@@ -5,6 +5,8 @@ import { MathUtils, Sphere, Vector3 } from 'three';
 import type { Box3, PerspectiveCamera } from 'three';
 import type { ViewfinderRect } from '@web/spaces/three-d/viewfinder/viewfinder-geometry';
 
+/** The main view's vertical field of view in degrees; saving a view as a camera reproduces it. */
+export const SCENE_VIEW_FOV = 45;
 /** Near and far planes of the main view, which monitors and stills share (inner#1694 design 3.4.3). */
 export const SCENE_VIEW_NEAR = 0.05;
 export const SCENE_VIEW_FAR = 5000;

@@ -10,12 +10,6 @@ import type { MeasuredSceneModelLease } from '@web/spaces/three-d/viewport/model
 export type SceneVector3 = [number, number, number];
 export type SceneQuaternion = [number, number, number, number];
 export type SceneTransformMode = 'translate' | 'rotate' | 'scale';
-/**
- * The main view's vertical field of view in degrees; saving a view as a camera
- * reproduces it. It lives here, outside the Three graph, because the editor
- * publishes it with the camera (#920).
- */
-export const SCENE_VIEW_FOV = 45;
 export interface SceneView {
   position: SceneVector3;
   target: SceneVector3;
@@ -71,7 +65,8 @@ export interface SceneViewportProps {
   onGestureChange: (patches: readonly SceneTransformPatch[]) => void;
   /** Native interaction is released before this callback is invoked. */
   onGestureEnd: (commit: boolean) => void;
-  onViewChange: (view: SceneView) => void;
+  /** The user's own view moved, or was first shown; `fov` is the camera's vertical field of view in degrees, which the editor publishes with it (#920). */
+  onViewChange: (view: SceneView, fov: number) => void;
   /** The user's own input moved the camera: an Orbit drag or wheel, or an overview navigation. */
   onUserCameraMove?: () => void;
   onError: (error: Error) => void;

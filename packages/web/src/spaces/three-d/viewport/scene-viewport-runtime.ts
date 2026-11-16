@@ -24,9 +24,9 @@ import type { SceneModelLease } from '@web/spaces/three-d/viewport/model-resourc
 import { createTransformGesture, transformPatches } from '@web/spaces/three-d/viewport/scene-transform';
 import type { SceneTransformGesture } from '@web/spaces/three-d/viewport/scene-transform';
 import { SceneTransformControls173 } from '@web/spaces/three-d/viewport/transform-controls-173';
-import { SCENE_VIEW_FAR, SCENE_VIEW_NEAR, captureViewOffset, focusSceneBounds, updateSceneCameraRange } from '@web/spaces/three-d/viewport/scene-camera';
+import { SCENE_VIEW_FAR, SCENE_VIEW_FOV, SCENE_VIEW_NEAR, captureViewOffset, focusSceneBounds, updateSceneCameraRange } from '@web/spaces/three-d/viewport/scene-camera';
 import { createOrbitUserMoveWatch } from '@web/spaces/three-d/viewport/orbit-user-move';
-import { SCENE_VIEW_FOV, type CapturedPixels, type SceneCameraView, type SceneFrameCapture, type SceneTransformPatch, type SceneViewportProps, type SceneView } from '@web/spaces/three-d/viewport/scene-viewport-props';
+import type { CapturedPixels, SceneCameraView, SceneFrameCapture, SceneTransformPatch, SceneViewportProps, SceneView } from '@web/spaces/three-d/viewport/scene-viewport-props';
 
 /** Width and depth of the ground that shows shadows, matching the grid. */
 const GROUND_SIZE = 200;
@@ -311,6 +311,8 @@ export class SceneViewportRuntime {
     this.onResize();
     this.update(props);
     this.onFrame();
+    // The opening view is reported too, so a camera nobody has moved is still published (#920).
+    this.onViewChange();
     props.onCapture?.(this.capture);
     props.onPilotControl?.({ flush: () => this.pilot.flush('undo'), escape: () => this.pilot.escape(), lightAnchor: () => this.lightAnchor() });
   }
@@ -1326,7 +1328,7 @@ export class SceneViewportRuntime {
    */
   private onViewChange = (): void => {
     if (this.disposed || this.dragging || this.view !== null) return;
-    this.props.onViewChange({ position: this.camera.position.toArray(), target: this.orbit.target.toArray() });
+    this.props.onViewChange({ position: this.camera.position.toArray(), target: this.orbit.target.toArray() }, this.camera.fov);
     this.syncOverview();
     this.inspect();
   };

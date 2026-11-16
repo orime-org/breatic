@@ -37,7 +37,7 @@ import { SceneObjectList } from '@web/spaces/three-d/SceneObjectList';
 import { SceneRightPanel } from '@web/spaces/three-d/SceneRightPanel';
 import { SceneViewportToolbar, type ScenePanel } from '@web/spaces/three-d/SceneViewportToolbar';
 import { SceneObjectToolbar } from '@web/spaces/three-d/SceneObjectToolbar';
-import { SCENE_VIEW_FOV, type SceneCameraView, type SceneFrameCapture, type SceneModelAcquire, type SceneModelState, type ScenePilotControl, type SceneSkeletonState, type SceneTransformMode, type SceneView, type SceneViewportProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
+import type { SceneCameraView, SceneFrameCapture, SceneModelAcquire, SceneModelState, ScenePilotControl, SceneSkeletonState, SceneTransformMode, SceneView, SceneViewportProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
 import { getModelImportController } from '@web/spaces/three-d/model-import-controller';
 import type { ModelImportController, PreparedModel } from '@web/spaces/three-d/model-import-controller';
 import type { ModelSource } from '@web/spaces/three-d/model-source';
@@ -277,8 +277,11 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   const following = useFollowStore((s) => s.targetUserId !== null);
   const latestFollowing = React.useRef(following);
   latestFollowing.current = following;
+  // The field of view the viewport last reported with the view; null until it
+  // has shown one, and nothing is published before then.
+  const fov = React.useRef<number | null>(null);
   React.useEffect(() => {
-    session.setCamera(following ? null : { ...view.current, fov: SCENE_VIEW_FOV });
+    session.setCamera(following || fov.current === null ? null : { ...view.current, fov: fov.current });
   }, [session, following]);
 
   React.useEffect(() => {
@@ -358,9 +361,10 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     resolveSceneAsset(projectId, assetId, signal), [projectId]);
 
   /** Persist the personal camera and publish it for followers; it never enters shared content. */
-  const onViewChange = React.useCallback((next: SceneView): void => {
+  const onViewChange = React.useCallback((next: SceneView, nextFov: number): void => {
     view.current = next;
-    session.setCamera(latestFollowing.current ? null : { ...next, fov: SCENE_VIEW_FOV });
+    fov.current = nextFov;
+    session.setCamera(latestFollowing.current ? null : { ...next, fov: nextFov });
     if (!writeSceneView(userId, projectId, spaceId, next)) toast.error(t('spaces.threeD.viewFailed'));
   }, [session, userId, projectId, spaceId, t]);
 

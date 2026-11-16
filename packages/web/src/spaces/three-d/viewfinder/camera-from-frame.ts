@@ -7,7 +7,7 @@ import { SCENE_FOCAL_LENGTH_MAX, SCENE_FOCAL_LENGTH_MIN, VIEWFINDER_RATIOS, type
 import type { ViewfinderRect } from '@web/spaces/three-d/viewfinder/viewfinder-geometry';
 import { viewfinderRatioValue } from '@web/spaces/three-d/viewfinder/viewfinder-ratio';
 import { CAMERA_FILM_GAUGE } from '@web/spaces/three-d/viewport/director-objects';
-import { SCENE_VIEW_FOV } from '@web/spaces/three-d/viewport/scene-viewport-props';
+import { SCENE_VIEW_FOV } from '@web/spaces/three-d/viewport/scene-camera';
 import type { SceneFrozenPose, SceneQuaternion, SceneVector3 } from '@web/spaces/three-d/viewport/scene-viewport-props';
 
 
