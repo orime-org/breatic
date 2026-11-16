@@ -232,6 +232,19 @@ describe('the keyboard in the menu (A3)', () => {
     expect(read(editor)[0]?.type).toBe('paragraph');
   });
 
+  it('closes when the trigger is deleted', () => {
+    const { editor } = open([para('')]);
+    caretAtEnd(editor, read(editor)[0]!.id);
+    type(editor, '/');
+    expect(menu()).not.toBeNull();
+    const view = editor.prosemirrorView!;
+    act(() => {
+      const { from } = view.state.selection;
+      view.dispatch(view.state.tr.delete(from - 1, from));
+    });
+    expect(menu()).toBeNull();
+  });
+
   it('leaves an Enter the input method sends as 229 alone', () => {
     const { editor } = open([para('')]);
     const id = read(editor)[0]!.id;
@@ -375,6 +388,40 @@ describe('undo after a pick (A8)', () => {
     });
     expect(read(editor)[0]?.type).toBe('paragraph');
     expect(textOf(editor, read(editor)[0]!.id)).toBe('/he');
+  });
+
+  it('takes one undo back from a table to the line with the query on it', () => {
+    const { editor, manager } = open([para('')]);
+    const id = read(editor)[0]!.id;
+    caretAtEnd(editor, id);
+    type(editor, '/tab');
+    press(editor, 'Enter');
+    press(editor, 'Enter');
+    expect(read(editor).some((block) => block.type === 'docTable')).toBe(true);
+    act(() => {
+      manager.undo();
+    });
+    expect(read(editor).some((block) => block.type === 'docTable')).toBe(false);
+    expect(textOf(editor, read(editor)[0]!.id)).toBe('/tab');
+  });
+
+  it('takes one undo back from landed media to the line with the query on it', () => {
+    const start = vi.fn();
+    const files: FileUploads = { prepare: vi.fn(() => ({ blocks: [pendingBlock('image', 'u1', 'a.png', '')], start })) };
+    const { editor, manager } = open([para('')], files);
+    const id = read(editor)[0]!.id;
+    caretAtEnd(editor, id);
+    type(editor, '/ima');
+    const input = screen.getByTestId('doc-media-file-input') as HTMLInputElement;
+    vi.spyOn(input, 'click').mockImplementation(() => undefined);
+    press(editor, 'Enter');
+    fireEvent.change(input, { target: { files: [new File(['x'], 'a.png', { type: 'image/png' })] } });
+    expect(read(editor).some((block) => block.type === 'image')).toBe(true);
+    act(() => {
+      manager.undo();
+    });
+    expect(read(editor).some((block) => block.type === 'image')).toBe(false);
+    expect(textOf(editor, id)).toBe('/ima');
   });
 });
 
