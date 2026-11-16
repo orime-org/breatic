@@ -44,7 +44,10 @@ import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import { clearAllDocSizes, setDocSize, startDocResync } from '@web/data/yjs/doc-size';
 import { P_FULL } from '@web/data/yjs/__tests__/helpers/size-v2-fixtures';
 import { getRetryUpload } from '@web/spaces/canvas/upload-retry-files';
-import { uploadIntoNode } from '@web/spaces/canvas/upload-into-node';
+import { failUploadIntoNode, uploadIntoNode } from '@web/spaces/canvas/upload-into-node';
+import type { UploadFailure } from '@web/data/upload/media-upload';
+import { expectNoTopUpAction, expectTopUpToast, toastsShown } from '@web/test-utils/top-up-toast';
+import { setLocale } from '@breatic/shared';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 import { useUploadMarksStore } from '@web/stores/upload-marks';
 
@@ -156,5 +159,30 @@ describe('uploadIntoNode', () => {
     h.waitForUploadEnding.mockResolvedValue({ key: TICKET.storageKey, state: 'failed', reason: 'storage_error' });
     await expect(uploadIntoNode(TARGET, FILE)).resolves.toBeUndefined();
     expect(h.toast.error).toHaveBeenCalledOnce();
+  });
+});
+
+// inner#1968 D-23: an upload whose ticket was refused because the month's
+// operations are used up says so with a 充值 action that opens the credits
+// overlay; a spend-limit refusal offers no such action.
+describe('an upload refused for operations used up', () => {
+  beforeEach(() => {
+    setLocale('zh-CN');
+    h.toast.error.mockClear();
+    h.toast.warning.mockClear();
+  });
+
+  afterEach(() => {
+    setLocale('en');
+  });
+
+  it('says it with a 充值 action that opens the credits overlay', () => {
+    failUploadIntoNode(TARGET, { reason: 'operations' } as unknown as UploadFailure, FILE);
+    expectTopUpToast(toastsShown(h.toast.error, h.toast.warning), '本月操作次数已用完', '充值');
+  });
+
+  it('offers no 充值 action for a spend limit', () => {
+    failUploadIntoNode(TARGET, { reason: 'spendCap' } as unknown as UploadFailure, FILE);
+    expectNoTopUpAction(toastsShown(h.toast.error, h.toast.warning));
   });
 });

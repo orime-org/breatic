@@ -12,7 +12,7 @@
  * row beside the node it just built.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@web/data/yjs/canvas-space', () => ({
   addNode: vi.fn(() => true),
@@ -48,6 +48,8 @@ import { toast } from '@web/lib/toast';
 
 import { startTranscribeRun, startUnderstandRun } from '@web/spaces/canvas/start-understand-run';
 import { getRunning } from '@web/stores/task-actions-in-flight';
+import { expectNoTopUpAction, expectTopUpToast, toastsShown } from '@web/test-utils/top-up-toast';
+import { setLocale } from '@breatic/shared';
 
 const RUN = {
   projectId: 'p-1',
@@ -456,5 +458,44 @@ describe('one press of Transcribe', () => {
 
     expect(toast.warning).toHaveBeenCalledWith('Cannot transcribe this file type (a.m4a, OGG).');
     expect(addNode).not.toHaveBeenCalled();
+  });
+});
+
+// inner#1968 D-22: Understand and Transcribe refused because the month's
+// operations are used up say so with a 充值 action that opens the credits
+// overlay; a spend-limit refusal offers no such action.
+describe('a reading refused for operations used up', () => {
+  const SENTENCE = '本月操作次数已用完，积分不足 0.5。充值后可继续。';
+  const SPOKEN = { ...RUN.source, name: 'meeting', kind: 'audio' as const, url: 'https://assets.invalid/audio/a.m4a', mimeType: 'audio/mp4' };
+  const READINGS = [
+    ['Understand', 'understand', () => startUnderstandRun(RUN)],
+    ['Transcribe', 'transcribe', () => startTranscribeRun({ ...RUN, source: SPOKEN, keepFillers: false })],
+  ] as const;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setLocale('zh-CN');
+  });
+
+  afterEach(() => {
+    setLocale('en');
+  });
+
+  it.each(READINGS)('%s says it with a 充值 action that opens the credits overlay', async (_name, call, start) => {
+    vi.mocked(canvasApi[call]).mockRejectedValueOnce(
+      new ApiException({ status: 402, message: SENTENCE, reason: 'operations_exhausted', fromServer: true }),
+    );
+    await start();
+
+    expectTopUpToast(toastsShown(toast.error, toast.warning), '本月操作次数已用完', '充值');
+  });
+
+  it.each(READINGS)('%s offers no 充值 action for a spend limit', async (_name, call, start) => {
+    vi.mocked(canvasApi[call]).mockRejectedValueOnce(
+      new ApiException({ status: 402, message: 'cap reached', reason: 'spend_cap_reached', fromServer: true, details: { scope: 'member', limit: '10', resetsAt: '2026-12-01T00:00:00.000Z' } }),
+    );
+    await start();
+
+    expectNoTopUpAction(toastsShown(toast.error, toast.warning));
   });
 });

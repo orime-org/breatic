@@ -8,8 +8,8 @@
  * on the node (inner#1303 §6.7); a refused one leaves it.
  */
 
-import { describe, it, expect, vi, afterEach } from 'vitest';
-import type { TaskCreateInput } from '@breatic/shared';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
+import { setLocale, type TaskCreateInput } from '@breatic/shared';
 
 vi.mock('@web/data/api/canvas', () => ({
   canvasApi: { createTask: vi.fn() },
@@ -24,6 +24,8 @@ import { canvasSessions } from '@web/stores/canvas-session';
 import { resetRunOnceForTests } from '@web/stores/task-actions-in-flight';
 import { useUploadMarksStore } from '@web/stores/upload-marks';
 import { submitGeneration } from '@web/spaces/canvas/generate/submit-generation';
+import { toast } from '@web/lib/toast';
+import { expectNoTopUpAction, expectTopUpToast, toastsShown } from '@web/test-utils/top-up-toast';
 
 /**
  * Let pending promise callbacks run.
@@ -138,5 +140,43 @@ describe('submitGeneration', () => {
     await flush();
 
     expect(useUploadMarksStore.getState().markOf('s', 'n')).toMatchObject({ state: 'failed', action: 'upload' });
+  });
+});
+
+// inner#1968 D-22: a Generate press refused because the month's operations
+// are used up says so with a 充值 action that opens the credits overlay; a
+// spend-limit refusal offers no such action.
+describe('submitGeneration refused for operations used up', () => {
+  const SENTENCE = '本月操作次数已用完，积分不足 0.5。充值后可继续。';
+
+  beforeEach(() => {
+    vi.mocked(toast.error).mockClear();
+    vi.mocked(toast.warning).mockClear();
+  });
+
+  afterEach(() => {
+    setLocale('en');
+  });
+
+  it('says it with a 充值 action that opens the credits overlay', async () => {
+    setLocale('zh-CN');
+    vi.mocked(canvasApi.createTask).mockRejectedValueOnce(
+      new ApiException({ status: 402, message: SENTENCE, reason: 'operations_exhausted', fromServer: true }),
+    );
+    press();
+    await flush();
+
+    expectTopUpToast(toastsShown(toast.error, toast.warning), '本月操作次数已用完', '充值');
+  });
+
+  it('offers no 充值 action for a spend limit', async () => {
+    setLocale('zh-CN');
+    vi.mocked(canvasApi.createTask).mockRejectedValueOnce(
+      new ApiException({ status: 402, message: 'cap reached', reason: 'spend_cap_reached', fromServer: true, details: { scope: 'member', limit: '10', resetsAt: '2026-12-01T00:00:00.000Z' } }),
+    );
+    press();
+    await flush();
+
+    expectNoTopUpAction(toastsShown(toast.error, toast.warning));
   });
 });

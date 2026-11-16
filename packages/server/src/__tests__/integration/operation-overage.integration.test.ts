@@ -11,7 +11,8 @@
  * (0.5) on the studio under `operation:<key>` and is `held`. Counting decides
  * the slot from what is counted at that moment: `allowance` releases any
  * hold, `overage` records one `operation_overage` charge request of 0.5 that
- * takes the hold over. The 0.5 is a fixed credit price and is not scaled by
+ * takes the hold over. The admission answers `{ kind }` with one of the
+ * outcome names design 3.3 gives. The 0.5 is a fixed credit price and is not scaled by
  * `CREDIT_MULTIPLIER`.
  *
  * The account is a pro admin whose live subscription is anchored a minute ago,
@@ -218,7 +219,8 @@ async function balance(a: Account): Promise<number> {
 describe("admission at and beyond the allowance", () => {
   it("D-01 with 3999 counted and nothing in flight the next operation is covered with no credits, and counts into the allowance", async () => {
     const a = await account(ALLOWANCE - 1, 0);
-    const key = await admit(a);
+    const key = `task:${randomUUID()}`;
+    expect(await operationService.admitOperation({ kind: "generation", key, projectId: a.projectId, actorUserId: a.userId, inputs: [] })).toMatchObject({ kind: "covered" });
     expect((await ledger(key))?.admitted_as).toBe("covered");
     expect(await hold(`operation:${key}`)).toBeUndefined();
     await count(key);
@@ -229,7 +231,8 @@ describe("admission at and beyond the allowance", () => {
 
   it("D-02 with 4000 counted and 0.7 available the admission holds 0.5 under operation:<key> until the row expires", async () => {
     const a = await account(ALLOWANCE, 0.7);
-    const key = await admit(a);
+    const key = `task:${randomUUID()}`;
+    expect(await operationService.admitOperation({ kind: "generation", key, projectId: a.projectId, actorUserId: a.userId, inputs: [] })).toMatchObject({ kind: "held" });
     const row = await ledger(key);
     expect(row).toMatchObject({ status: "reserved", admitted_as: "held", overage_hold: `operation:${key}` });
     const held = await hold(`operation:${key}`);

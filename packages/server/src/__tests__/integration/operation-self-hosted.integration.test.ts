@@ -11,8 +11,10 @@
  * expiry sweep find no row and do nothing; the account's membership answer
  * carries `operations: null`. Spend limits are not judged with payments off.
  *
- * The admission's answer is read through {@link outcomeOf}, which accepts the
- * outcome as a bare string or as the `outcome` field of an object.
+ * The admission answers one of the outcomes design 3.3 names (`covered`,
+ * `held`, `refused`, `taken`, `not_metered`) as `{ kind }`: `refused` carries
+ * the studio's balance figures, so the answer is an object, discriminated the
+ * way the upload path's `admitStorage` answer beside it is.
  *
  * Placement: the spec puts these at domain integration (E-04 at worker
  * integration, E-05 at server integration). Domain and worker have no
@@ -84,25 +86,16 @@ async function counted(a: Account, n: number, periodStart: Date): Promise<void> 
 }
 
 /**
- * The admission's outcome, as a bare string or an object's `outcome` field.
- * @param answer - What `admitOperation` returned.
- * @returns The outcome name.
- */
-function outcomeOf(answer: unknown): unknown {
-  return typeof answer === "string" ? answer : (answer as { outcome?: unknown } | null | undefined)?.outcome;
-}
-
-/**
  * Admit one operation, then count it in a success transaction.
  * @param a - The account.
  * @param kind - Its kind.
  * @param key - Its key.
- * @returns The admission's outcome.
+ * @returns The admission's answer.
  */
 async function admitAndSucceed(a: Account, kind: Kind, key: string): Promise<unknown> {
   const answer = await operationService.admitOperation({ kind, key, projectId: a.projectId, actorUserId: a.userId, inputs: [] });
   await db.transaction((tx) => operationService.countOperation(key, tx));
-  return outcomeOf(answer);
+  return answer;
 }
 
 /**
@@ -136,7 +129,7 @@ describe("payments off", () => {
   it("E-01 a pro account's generation, ten uploads, Agent message, text tool and Timeline run write no ledger row, hold or overage request", async () => {
     const a = await account("pro");
     const outcomes = await everyKind(a);
-    expect(new Set(outcomes)).toEqual(new Set(["not_metered"]));
+    expect(outcomes).toEqual(outcomes.map(() => ({ kind: "not_metered" })));
     expect(await footprint(a)).toEqual({ ledger: 0, holds: 0, overage: 0 });
   });
 
@@ -144,7 +137,7 @@ describe("payments off", () => {
     const a = await account("base");
     await counted(a, 4000, new Date(Date.now() - 20 * 86_400_000));
     const key = `task:${randomUUID()}`;
-    expect(await admitAndSucceed(a, "generation", key)).toBe("not_metered");
+    expect(await admitAndSucceed(a, "generation", key)).toEqual({ kind: "not_metered" });
     expect(await sql`select 1 from operation_ledger where operation_key = ${key}`).toEqual([]);
     expect(await sql`select 1 from credit_charge_requests where reference_id = ${key}`).toEqual([]);
   });
@@ -152,7 +145,7 @@ describe("payments off", () => {
   it("E-04 an upload leaves no deferred row, and the expiry sweep does nothing for the account", async () => {
     const a = await account("pro");
     const key = `upload:${a.userId}:${randomUUID()}`;
-    expect(outcomeOf(await operationService.admitOperation({ kind: "upload", key, projectId: a.projectId, actorUserId: a.userId, inputs: [] }))).toBe("not_metered");
+    expect(await operationService.admitOperation({ kind: "upload", key, projectId: a.projectId, actorUserId: a.userId, inputs: [] })).toEqual({ kind: "not_metered" });
     await operationService.sweepDeferredOperations();
     expect(await sql`select status from operation_ledger where account_user_id = ${a.userId}`).toEqual([]);
   });
@@ -166,7 +159,7 @@ describe("payments off", () => {
     const a = await account("pro");
     await sql`insert into studio_spend_limits(studio_id, member_default_credits, studio_monthly_credits, updated_by_user_id) values (${a.studioId}, 0, null, ${a.userId})`;
     const key = `task:${randomUUID()}`;
-    expect(outcomeOf(await operationService.admitOperation({ kind: "generation", key, projectId: a.projectId, actorUserId: a.userId, inputs: [] }))).toBe("not_metered");
+    expect(await operationService.admitOperation({ kind: "generation", key, projectId: a.projectId, actorUserId: a.userId, inputs: [] })).toEqual({ kind: "not_metered" });
   });
 });
 
@@ -182,7 +175,7 @@ describe("payments on, self_hosted tier", () => {
   it("E-02 a self_hosted account's operations write no ledger row, hold or overage request", async () => {
     const a = await account("self_hosted");
     const outcomes = await everyKind(a);
-    expect(new Set(outcomes)).toEqual(new Set(["not_metered"]));
+    expect(outcomes).toEqual(outcomes.map(() => ({ kind: "not_metered" })));
     expect(await footprint(a)).toEqual({ ledger: 0, holds: 0, overage: 0 });
     expect((await readAccountMembership(a.userId)).operations).toBeNull();
   });

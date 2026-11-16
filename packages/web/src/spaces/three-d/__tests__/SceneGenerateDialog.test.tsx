@@ -6,13 +6,14 @@ import { cleanup, render, screen, waitFor, within } from '@testing-library/react
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import * as React from 'react';
-import { t } from '@breatic/shared';
+import { setLocale, t } from '@breatic/shared';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { ApiException } from '@web/data/api/types';
 import { toast } from '@web/lib/toast';
 import { resetRunOnceForTests } from '@web/stores/task-actions-in-flight';
 import { SceneGenerateDialog } from '@web/spaces/three-d/SceneGenerateDialog';
+import { expectNoTopUpAction, expectTopUpToast, toastsShown } from '@web/test-utils/top-up-toast';
 import { I23D, MODE_LABEL, MULTIVIEW, PROJECT, RAW_CATALOG, SPACE, T23D, projectImage, valueLabel } from '@web/spaces/three-d/__tests__/scene-generate-fixtures';
 
 const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
@@ -570,5 +571,47 @@ describe('SceneGenerateDialog view slot uploads (inner#1691 design 7.1)', () => 
     await waitFor(() => expect(screen.getByTestId('scene-generate-view-0-error')).toBeInTheDocument());
     expect(slotImage(1)).toBe('https://cdn.test/left.png');
     expect(screen.getByTestId('scene-generate-run')).toBeDisabled();
+  });
+});
+
+// inner#1968 D-22: a 3D generation refused because the month's operations are
+// used up says so with a 充值 action that opens the credits overlay; a
+// spend-limit refusal offers no such action.
+describe('SceneGenerateDialog refused for operations used up', () => {
+  const SENTENCE = '本月操作次数已用完，积分不足 0.5。充值后可继续。';
+
+  beforeEach(() => {
+    setLocale('zh-CN');
+    vi.mocked(toast.error).mockClear();
+    vi.mocked(toast.warning).mockClear();
+  });
+
+  afterEach(() => {
+    setLocale('en');
+  });
+
+  /**
+   * Submit a text-to-3D press that the server refuses with `err`.
+   * @param err - The refusal.
+   */
+  async function refusedWith(err: ApiException): Promise<void> {
+    const user = userEvent.setup();
+    api.post.mockRejectedValue(err);
+    renderDialog();
+    await ready();
+    await user.type(screen.getByTestId('scene-generate-prompt'), 'A lamp');
+    await user.click(screen.getByTestId('scene-generate-run'));
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(toastsShown(toast.error, toast.warning).length).toBeGreaterThan(0));
+  }
+
+  it('says it with a 充值 action that opens the credits overlay', async () => {
+    await refusedWith(new ApiException({ status: 402, message: SENTENCE, reason: 'operations_exhausted', fromServer: true }));
+    expectTopUpToast(toastsShown(toast.error, toast.warning), '本月操作次数已用完', '充值');
+  });
+
+  it('offers no 充值 action for a spend limit', async () => {
+    await refusedWith(new ApiException({ status: 402, message: 'cap reached', reason: 'spend_cap_reached', fromServer: true, details: { scope: 'member', limit: '10', resetsAt: '2026-12-01T00:00:00.000Z' } }));
+    expectNoTopUpAction(toastsShown(toast.error, toast.warning));
   });
 });
