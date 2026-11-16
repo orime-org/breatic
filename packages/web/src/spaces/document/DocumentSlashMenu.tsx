@@ -132,8 +132,10 @@ function claim(event: KeyboardEvent): void {
  * Opens the menu over a trigger an input method committed. The extension's
  * own check runs in `handleTextInput`, which a composition passes through
  * while it is still composing, so the trigger is let through there and caught
- * here once the composition ends: removed and typed again by the extension,
- * which anchors the menu on it (design 5.1).
+ * here once the composition ends. The menu opens the way `handleTextInput`
+ * opens it, with the extension's meta on a transaction that writes nothing,
+ * so the line and the undo history stay as the input method left them
+ * (design 5.1).
  * @param editor - The editor.
  * @param menu - The suggestion extension.
  * @param trigger - The trigger the composition ended with.
@@ -144,14 +146,13 @@ function openAfterComposition(
   trigger: string,
 ): void {
   const view = viewOf(editor);
-  if (view === null || slashMenuShown(menu.store.state)) return;
+  const plugin = menu.prosemirrorPlugins?.[0];
+  if (view === null || plugin === undefined || slashMenuShown(menu.store.state)) return;
   const { from, empty } = view.state.selection;
   if (!empty || from < trigger.length) return;
   if (view.state.doc.textBetween(from - trigger.length, from) !== trigger) return;
-  const tr = view.state.tr.delete(from - trigger.length, from);
-  if (!slashMayOpen(tr)) return;
-  view.dispatch(tr);
-  menu.openSuggestionMenu(trigger, { deleteTriggerCharacter: true });
+  if (!slashMayOpen(view.state.tr.delete(from - trigger.length, from))) return;
+  view.dispatch(view.state.tr.setMeta(plugin, { triggerCharacter: trigger }).scrollIntoView());
 }
 
 /**
