@@ -37,22 +37,20 @@ describe("the formula in the product guide", () => {
   });
 
   it("says a formula is typed between $$ and edited in a box opened by clicking it", () => {
-    const doc = section("Document spaces");
+    const doc = section("Document formulas");
     expect(doc).toMatch(/\$\$/);
     expect(doc).toMatch(/LaTeX/);
   });
 
   it("says every way out of the box keeps the change, with no cross to close it", () => {
-    const doc = section("Document spaces");
-    const formula = doc.slice(doc.indexOf("- A formula is LaTeX"));
-    const paragraph = formula.slice(0, formula.indexOf("\n- "));
+    const paragraph = section("Document formulas");
     expect(paragraph).toMatch(/keeps? the change/);
     expect(paragraph).toMatch(/Cmd\+Z/);
     expect(paragraph).not.toMatch(/cross/);
   });
 
   it("says a key beside a formula on its own line selects it before a second press deletes it", () => {
-    const doc = section("Document spaces");
+    const doc = section("Document formulas");
     expect(doc).toMatch(/Backspace right under a formula or Delete right above it selects it; a second press deletes it/);
   });
 });
