@@ -218,7 +218,7 @@ describe("enterprise agreement operation terms", () => {
     { running_tasks_per_user: 31 },
     { monthly_operations: -1 },
     { monthly_operations: 2147483648 },
-  ])("F-04 refuses %o with 422, no reason and no write", async (extra) => {
+  ] as Record<string, number>[])("F-04 refuses %o with 422, no reason and no write", async (extra) => {
     const e = await account();
     const requestKey = `bo-${randomUUID()}`;
     const refused = await post(e.userId, { ...SIX, ...extra }, {}, requestKey);
@@ -235,7 +235,7 @@ describe("enterprise agreement operation terms", () => {
     { running_tasks_per_user: 30 },
     { monthly_operations: 0 },
     { monthly_operations: 2147483647 },
-  ])("F-04 accepts %o", async (extra) => {
+  ] as Record<string, number>[])("F-04 accepts %o", async (extra) => {
     const e = await account();
     await agree(e.userId, { ...SIX, ...extra });
     expect(await columns(e.userId)).toMatchObject(extra);
