@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 // Its own subpath entry (`@breatic/shared/update-shape`): it imports yjs,
 // which must stay out of web's entry chunk.

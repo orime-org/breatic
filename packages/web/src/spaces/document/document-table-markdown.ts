@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Blocks as Markdown, a table whose cells hold blocks included (inner#1619
@@ -18,6 +18,8 @@
 
 import type { BlockNoteEditor } from '@blocknote/core';
 
+import { MATH_INLINE } from '@web/spaces/document/document-math';
+import { formulasAsSourceElements } from '@web/spaces/document/document-math-markdown';
 import { DOC_TABLE, DOC_TABLE_HEADER } from '@web/spaces/document/document-table-nodes';
 
 /** The editor, as far as writing Markdown needs it. */
@@ -44,6 +46,21 @@ export type WordsEscape = (blocks: readonly BlockLike[], into: 'markdown' | 'htm
 const AS_THEY_ARE: WordsEscape = (blocks) => [...blocks];
 
 /**
+ * Whether a line holds a formula whose source has `\|`: the pipe table writes
+ * every `|` in a cell as `\|` and the reader takes the backslash back off, so
+ * such a source would not come back as it was (design 6.6).
+ * @param line - The cell's paragraph.
+ * @returns True when one does.
+ */
+function holdsEscapedBar(line: BlockLike): boolean {
+  const content = (line as { readonly content?: unknown }).content;
+  if (!Array.isArray(content)) return false;
+  return (content as { type?: string; props?: { source?: string } }[]).some(
+    (piece) => piece.type === MATH_INLINE && (piece.props?.source ?? '').includes('\\|'),
+  );
+}
+
+/**
  * Whether a pipe table carries all of a table: every row is as wide as the
  * first, every cell holds one paragraph and nothing under it, no cell spans,
  * and the headers are the first row exactly, which a pipe table always reads as its header (GFM).
@@ -60,6 +77,7 @@ function pipeCarries(table: BlockLike): boolean {
         blocks.length === 1 &&
         blocks[0]!.type === 'paragraph' &&
         (blocks[0]!.children ?? []).length === 0 &&
+        !holdsEscapedBar(blocks[0]!) &&
         Number(cell.props?.['colspan'] ?? 1) === 1 &&
         Number(cell.props?.['rowspan'] ?? 1) === 1 &&
         (cell.type === DOC_TABLE_HEADER) === (r === 0)
@@ -109,7 +127,7 @@ function htmlTable(editor: MarkdownEditor, table: BlockLike, escape: WordsEscape
         .filter(([, value]) => value > 1)
         .map(([name, value]) => ` ${name}="${String(value)}"`)
         .join('');
-      return `<${tag}${spans}>${editor.blocksToHTMLLossy(escape(cell.children ?? [], 'html') as never)}</${tag}>`;
+      return `<${tag}${spans}>${formulasAsSourceElements(editor.blocksToHTMLLossy(escape(cell.children ?? [], 'html') as never))}</${tag}>`;
     });
     return `<tr>${cells.join('')}</tr>`;
   });
@@ -148,6 +166,19 @@ function indented(markdown: string, width: number): string {
     .split('\n')
     .map((line) => (line === '' ? line : `${pad}${line}`))
     .join('\n');
+}
+
+/**
+ * Blocks as the plain text a clipboard carries for people: their Markdown,
+ * where two dollar runs meet parted by a space as a person writes them, in
+ * place of the empty comment the Markdown writer puts there for programs to
+ * read back exactly (BlockNote's copy and block drag do the same in its patch).
+ * @param editor - The editor.
+ * @param blocks - The blocks, as the editor's block API hands them.
+ * @returns The plain text.
+ */
+export function blocksPlainText(editor: MarkdownEditor, blocks: readonly BlockLike[]): string {
+  return blocksMarkdown(editor, blocks).replaceAll('$<!---->$', () => '$ $');
 }
 
 /**

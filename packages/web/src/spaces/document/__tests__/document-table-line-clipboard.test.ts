@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * inner#1239: copying, cutting and pasting a table's rows, columns and whole
@@ -29,9 +29,8 @@ import {
   tableLineItem,
   tableLineSelection,
 } from '@web/spaces/document/document-table-line-clipboard';
+import { copyCommand, written, type Editor } from '@web/spaces/document/__tests__/paste-harness';
 import { tableBlock, type TableInput } from '@web/spaces/document/__tests__/table-fixtures';
-
-type Editor = ReturnType<typeof buildDocumentEditor>;
 
 const mounted: Editor[] = [];
 
@@ -45,30 +44,9 @@ let readable: Record<string, string> | null = {};
 let readGate: Promise<void> | null = null;
 
 beforeEach(() => {
-  copied = {};
   readable = {};
   readGate = null;
-  // jsdom has no clipboard: a copy command fires the copy event a browser fires.
-  Object.defineProperty(document, 'execCommand', {
-    configurable: true,
-    value: vi.fn((command: string) => {
-      if (command !== 'copy') return false;
-      const event = new Event('copy', { bubbles: true, cancelable: true });
-      Object.defineProperty(event, 'clipboardData', {
-        value: {
-          setData: (format: string, value: string) => {
-            copied[format] = value;
-          },
-          clearData: () => {
-            copied = {};
-          },
-          getData: (format: string) => copied[format] ?? '',
-        },
-      });
-      document.dispatchEvent(event);
-      return true;
-    }),
-  });
+  copied = copyCommand();
   vi.stubGlobal('navigator', {
     ...navigator,
     clipboard: {
@@ -191,21 +169,9 @@ function cellOf(editor: Editor, words: string): number {
  * @returns The clipboard, by type.
  */
 function cmdC(editor: Editor): Record<string, string> {
-  const data: Record<string, string> = {};
-  const event = new Event('copy', { bubbles: true, cancelable: true });
-  Object.defineProperty(event, 'clipboardData', {
-    value: {
-      setData: (format: string, value: string) => {
-        data[format] = value;
-      },
-      clearData: () => undefined,
-      getData: (format: string) => data[format] ?? '',
-    },
-  });
   // A copy in the body lands while it holds the focus.
   editor.prosemirrorView.focus();
-  editor.prosemirrorView.dom.dispatchEvent(event);
-  return data;
+  return written(editor.prosemirrorView.dom, 'copy');
 }
 
 /**

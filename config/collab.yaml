@@ -246,3 +246,8 @@ doc_table_migrate_lock_ms: 300000
 # 2 (#1502). The lock is never released, only expires; it has to outlast
 # store_interval_ms by far.
 timeline_transform_migrate_lock_ms: 300000
+
+# How long one instance holds the per-document lock under which it stores a
+# canvas node saved on a retired model under its replacement (#1521). The lock
+# is never released, only expires; it has to outlast store_interval_ms by far.
+retired_model_migrate_lock_ms: 300000

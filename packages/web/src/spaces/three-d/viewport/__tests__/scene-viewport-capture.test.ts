@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SRGBColorSpace, type GridHelper, type Group, type Object3D, type PerspectiveCamera, type WebGLRenderTarget } from 'three';
@@ -24,6 +24,9 @@ vi.mock('three', async (importOriginal) => {
     domElement = document.createElement('canvas');
     private target: WebGLRenderTarget | null = null;
     setPixelRatio(): void {} setSize(): void {} dispose(): void {}
+    shadowMap = { enabled: false, type: 0, autoUpdate: true, needsUpdate: false };
+    capabilities = { maxTextures: 16 };
+    compile(): void {} getPixelRatio(): number { return 1; } setViewport(): void {} setScissor(): void {} setScissorTest(): void {}
     setRenderTarget(target: WebGLRenderTarget | null): void { this.target = target; }
     getRenderTarget(): WebGLRenderTarget | null { return this.target; }
     render(scene: { background: unknown }, camera: PerspectiveCamera): void {

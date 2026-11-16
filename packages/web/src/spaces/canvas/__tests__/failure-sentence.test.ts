@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * A run on the sound of a source with none says what the source is
@@ -69,5 +69,33 @@ describe('a transcription that failed', () => {
         expect(failureSentence(stored, t), `${locale} ${stored}`).not.toMatch(/cut_short|\{/);
       }
     }
+  });
+});
+
+// #1521: a model run refused here is said in the viewer's own language.
+describe('a model run refused here', () => {
+  const limit = { field: 'prompt', measure: 'characters', max: 8000 } as const;
+
+  it('names the limit a refused input broke, in each language the viewer reads', () => {
+    setLocale('en');
+    const t = renderHook(() => useTranslation()).result.current;
+    const stored = encodeTaskFailure('input_refused', { model: 'Gemini 3.8 Flash TTS', limit });
+    expect(failureSentence(stored, t)).toBe('Gemini 3.8 Flash TTS takes at most 8,000 characters in the text.');
+    setLocale('zh-CN');
+    expect(failureSentence(stored, t)).toBe('Gemini 3.8 Flash TTS 的文本最多 8,000 个字符。');
+  });
+
+  it('says the general sentence when the refusal states no limit', () => {
+    setLocale('en');
+    const t = renderHook(() => useTranslation()).result.current;
+    expect(failureSentence(encodeTaskFailure('input_refused', { model: 'Gemini 3.8 Flash TTS' }), t))
+      .toBe('Gemini 3.8 Flash TTS can’t take this run as set up. Change the settings or pick another model.');
+  });
+
+  it('names the variables a deployment is missing', () => {
+    setLocale('en');
+    const t = renderHook(() => useTranslation()).result.current;
+    expect(failureSentence(encodeTaskFailure('model_not_configured', { model: 'Voice Model', envVars: ['WAVESPEED_API_KEY', 'FAL_KEY'] }), t))
+      .toBe('Voice Model is not set up on this deployment: it needs WAVESPEED_API_KEY, FAL_KEY.');
   });
 });

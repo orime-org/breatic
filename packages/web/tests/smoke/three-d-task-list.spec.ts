@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The 3D Space's task list around generation rows (inner#1691 design 7.3):
@@ -120,13 +120,12 @@ test('an editor filters generation rows and gets Retry, Remove and Place on them
   await menu.getByRole('menuitemradio', { name: 'Import', exact: true }).click();
   await expect(panel).toContainText('No tasks match the filters.');
   await expect(page.getByTestId('scene-task-filter-count')).toHaveText('1');
-  // A radio item keeps the menu open and Escape closes it with an exit animation; a click on the
-  // trigger before that animation ends is lost (#1421), so each Escape waits for the menu to go.
-  await page.keyboard.press('Escape');
+  // Picking a radio item closes the menu with an exit animation, and a click on the trigger before
+  // that animation ends is lost (#1421): each pick waits for the menu to go. An Escape once it has
+  // gone would close the tasks panel.
   await expect(page.getByRole('menu')).toHaveCount(0);
   await page.getByTestId('scene-task-filter').click();
   await page.getByRole('menu').getByRole('menuitemradio', { name: 'Generate', exact: true }).click();
-  await page.keyboard.press('Escape');
   await expect(page.getByRole('menu')).toHaveCount(0);
   await expect(panel.locator('[data-testid^="scene-task-"]')).toHaveCount(3);
 

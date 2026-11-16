@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The fixed Timeline frame presets (#1502 design §2): seven aspect ratios with a short side of 1080, and the reverse

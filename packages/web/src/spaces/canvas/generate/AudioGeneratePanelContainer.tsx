@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The audio Generate panel's canvas integration: everything the presentational
@@ -53,7 +53,7 @@ import {
   buildAudioPanelViewModel,
   withListDefaultVoice,
 } from '@web/spaces/canvas/generate/audio-panel-view-model';
-import { useCreditText } from '@web/spaces/canvas/generate/use-credit-estimate';
+import { useRunCheck } from '@web/spaces/canvas/generate/use-credit-estimate';
 import { audioEstimateInput, buildAudioTaskPayload } from '@web/spaces/canvas/generate/audio-task-payload';
 import { AudioGeneratePanel } from '@web/spaces/canvas/generate/AudioGeneratePanel';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
@@ -485,6 +485,10 @@ function AudioGeneratePanelBody({
     [shownBox, promptEditorRef, lyricsEditorRef],
   );
 
+  // The run as the click sends it: a model taking no prompt with these settings sends none, whatever the box
+  // last held, and the lyrics go while the lyrics box is on the panel. Priced, and asked why no upstream here takes it (#1521), for the button and the click.
+  const estimateInput = audioEstimateInput({ ...vm, params }, slots, vm.promptRequired ? extractPromptText(promptText) : '', lyrics ? lyricsText : undefined);
+  const { creditText, refusalText, latestRefusal } = useRunCheck(vm.modelEntry, estimateInput, catalog?.credit_multiplier ?? 1);
   const onExecute = React.useCallback((): void => {
     // Every execute-critical value is read synchronously here, never from a
     // render closure that batching and live collaboration make stale.
@@ -524,7 +528,12 @@ function AudioGeneratePanelBody({
       missing: audioMissing(fresh.modelEntry, mode, fresh.slotUrls, fresh.params),
       lyricsRequired: lyrics,
       lyricsText: freshLyrics,
+      inputRefusal: latestRefusal.current,
     });
+    if (verdict?.message !== undefined) {
+      toast.warning(verdict.message);
+      return;
+    }
     if (verdict != null) {
       const key = slotRefusalKey(
         AUDIO_SLOTS,
@@ -585,6 +594,7 @@ function AudioGeneratePanelBody({
     lyricsTextRef,
     promptEditorRef,
     promptTextRef,
+    latestRefusal,
   ]);
 
   // Depended on BY VALUE, not via `t`: `t` is a stable module-level function
@@ -685,11 +695,6 @@ function AudioGeneratePanelBody({
     ],
   );
 
-  const creditText = useCreditText(
-    vm.modelEntry,
-    audioEstimateInput({ ...vm, params }, slots, extractPromptText(promptText)),
-    catalog?.credit_multiplier ?? 1,
-  );
 
   return (
     <AudioGeneratePanel
@@ -730,6 +735,7 @@ function AudioGeneratePanelBody({
         missing: audioMissing(vm.modelEntry, mode, vm.slotUrls, vm.params),
         lyricsRequired: lyrics,
         lyricsText,
+        inputRefusal: refusalText,
       })?.refusal ?? null}
       promptSlot={promptSlot}
       lyricsSlot={lyricsSlot}

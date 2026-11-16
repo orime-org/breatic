@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Writes the reviewed request bodies of every fal and SandBase binding (inner#1775), which
@@ -199,6 +199,8 @@ function shotsAddingUp(value: unknown, param: CatalogParam | undefined, params: 
 
 const written = new Set<string>();
 for (const [model, { upstreams: bindings }] of Object.entries(config.media.models)) {
+  // A retired model is outside the catalog: its bindings only finish runs opened on it, and it gets no sample.
+  if (!entries.has(model)) continue;
   for (const binding of bindings.filter((b) => (RESELLERS as readonly string[]).includes(b.upstream))) {
     const params = offered.get(model) ?? {};
     const bound = Object.keys(binding.params ?? {});

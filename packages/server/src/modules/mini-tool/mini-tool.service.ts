@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What `POST /mini-tools` decides before any row opens (inner#888 §6.1): the
@@ -9,7 +9,7 @@
  */
 
 import { AppError, env, getMiniToolsConfig, getStorageAdapter, logger } from "@breatic/core";
-import { assertServable } from "@server/modules/task/model-servable.js";
+import { assertServable, assertTakesInput } from "@server/modules/task/model-servable.js";
 import {
   assetRepo,
   containerCostUsd,
@@ -28,6 +28,7 @@ import {
   catalogEntryOf,
   isModelTool,
   miniToolEstimateInput,
+  miniToolPrompt,
   type MiniToolRequest,
   type MiniToolSnapshot,
   type MiniToolSpec,
@@ -48,20 +49,6 @@ export interface PreparedRun {
   inputKeys?: string[];
   /** What the precheck holds the user to. */
   credits: number;
-}
-
-/**
- * The prompt a run is sent: an empty one on a tool that has its own is sent as
- * that one, and a tool's preamble goes before whatever the user wrote.
- * @param spec - The tool.
- * @param typed - What the user wrote.
- * @returns The prompt.
- */
-function promptOf(spec: MiniToolSpec, typed: string): string {
-  const empty = typed.trim() === "";
-  const preamble = spec.prompt?.preamble;
-  if (preamble !== undefined) return empty ? preamble : `${preamble} Also: ${typed.trim()}`;
-  return empty && spec.prompt?.defaultText !== undefined ? spec.prompt.defaultText : typed;
 }
 
 /**
@@ -106,7 +93,7 @@ function snapshotOf(spec: MiniToolSpec, body: MiniToolRequest, entry: ModelEntry
   }
   return {
     params,
-    prompt: promptOf(spec, body.prompt ?? ""),
+    prompt: body.prompt ?? "",
     source: {
       url: body.source.url,
       ...(body.source.duration !== undefined && { duration: body.source.duration }),
@@ -151,7 +138,7 @@ async function assertSourceWithinModel(spec: MiniToolSpec, body: MiniToolRequest
  * @param body - The validated request.
  * @returns The prepared run.
  * @throws {AppError} 503 when the pinned model is not served or no upstream here can serve it; 400 when a value is one it does not take.
- * @throws {ValidationError} When the route names an upstream the model is not offered through.
+ * @throws {ValidationError} When the route names an upstream the model is not offered through, or no upstream here takes the run.
  */
 async function prepareModelRun(spec: MiniToolSpec, body: MiniToolRequest): Promise<PreparedRun> {
   const model = spec.run.kind === "model" ? spec.run.model : "";
@@ -167,8 +154,9 @@ async function prepareModelRun(spec: MiniToolSpec, body: MiniToolRequest): Promi
   await assertSourceWithinModel(spec, body, entry);
   const snapshot = snapshotOf(spec, body, entry);
   const input = miniToolEstimateInput(spec, snapshot);
+  await assertTakesInput(model, entry.display_name, input, body.route, { tool: body.tool, projectId: body.project_id });
   const params: Record<string, unknown> = { ...input.params };
-  if (spec.prompt) params.prompt = snapshot.prompt;
+  if (spec.prompt) params.prompt = miniToolPrompt(spec, snapshot.prompt);
   // The run is held, priced and served on one route: the task carries the one the estimate used.
   if (body.route !== undefined) params.route = body.route;
   return {

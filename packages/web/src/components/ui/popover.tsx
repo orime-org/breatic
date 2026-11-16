@@ -1,6 +1,7 @@
 import * as React from 'react';
 import * as PopoverPrimitive from '@radix-ui/react-popover';
 
+import { useKeepMovedFocus } from '@web/lib/overlay-focus';
 import { cn } from '@web/lib/utils';
 
 /**
@@ -30,7 +31,7 @@ const PopoverContent = React.forwardRef<
     /** Where to portal to; the body when left out. */
     container?: React.ComponentProps<typeof PopoverPrimitive.Portal>['container'];
   }
->(({ className, align = 'center', sideOffset = 8, container, ...props }, ref) => (
+>(({ className, align = 'center', sideOffset = 8, container, onCloseAutoFocus, ...props }, ref) => (
   <PopoverPrimitive.Portal container={container}>
     <PopoverPrimitive.Content
       ref={ref}
@@ -43,6 +44,7 @@ const PopoverContent = React.forwardRef<
         className,
       )}
       {...props}
+      onCloseAutoFocus={useKeepMovedFocus(onCloseAutoFocus)}
     />
   </PopoverPrimitive.Portal>
 ));

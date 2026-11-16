@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The propose tool takes a template on a generate node and judges the node it
@@ -160,6 +160,17 @@ describe("templates in proposals", () => {
       expect(line, `${id} indexed`).toBeDefined();
       if (id === "photo-paper-diorama") expect(line, id).not.toContain("It also fits when");
       else expect(line, id).toContain("It also fits when");
+    }
+  });
+
+  // inner#1810: the speed goal; only the vehicle cut list has a case for when it also fits.
+  it("indexes the three motion and speed templates under their goal, only the vehicle one saying when it also fits", () => {
+    const lines = String(makeProposeCanvasAction().description ?? "").split(" | ");
+    for (const id of ["vehicle-speed-cutlist", "sports-live-coverage", "extreme-sports-run"]) {
+      const line = lines.find((one) => one.includes(`${id} (speed,`));
+      expect(line, `${id} indexed`).toBeDefined();
+      if (id === "vehicle-speed-cutlist") expect(line, id).toContain("It also fits when");
+      else expect(line, id).not.toContain("It also fits when");
     }
   });
 

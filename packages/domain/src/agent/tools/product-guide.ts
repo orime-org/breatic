@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Product guide tool — how the user operates our product (#260).
@@ -72,13 +72,16 @@ const INDEX: readonly { group: string; sections: readonly (readonly [name: strin
   {
     group: "Document",
     sections: [
-      ["Document spaces", "writing, formatting, pasting, comments and media in a document"],
+      ["Document spaces", "writing, formatting, pasting and media in a document"],
+      ["Document formulas", "typing, inserting and editing LaTeX formulas in a document"],
+      ["Document comments", "leaving, answering, resolving and deleting comments in a document"],
+      ["Document columns", "putting lines side by side in columns, resizing and leaving columns"],
       ["Document proposal cards", "applying a comment, rewrite or insert proposed in this chat"],
       ["Document snapshots", "saving, previewing, comparing, restoring, renaming and deleting snapshots of a document"],
     ],
   },
   { group: "Timeline", sections: [["Timeline spaces", "adding videos and web animations to a timeline and arranging them"]] },
-  { group: "3D", sections: [["3D spaces", "importing and generating models and their proposal card, objects, transforms, locks, the view and the viewfinder that sends a still to the Agent, a Canvas or the clipboard in a 3D space"]] },
+  { group: "3D", sections: [["3D spaces", "importing and generating models and their proposal card, objects, transforms, locks, the view and the viewfinder that sends a still to the Agent, a Canvas or the clipboard, and the director console's cameras, lights and ambient light in a 3D space"]] },
 ];
 
 /** Every section name the index lists. */
@@ -928,6 +931,9 @@ export function renderProductGuide(): string {
     `  - ${quoted(t("canvas.generatePanel.errorStorageFull"))}`,
     `  - ${quoted(t("canvas.generatePanel.errorUnavailable"))}`,
     `  - ${quoted(t("canvas.generatePanel.errorFailed"))}`,
+    "  - a sentence naming the model and, when a count says it, the limit the run breaks there, such as how many " +
+      "characters or lines its text may have; otherwise it says the model can't take the run as set up and to change " +
+      "the settings or pick another model",
     "When the run finishes, its result replaces what the node held. A run makes one result; there is no count. " +
       "To get another, open the panel again and press the arrow: it can start while an earlier task is still " +
       "running, each finished result replaces what the node holds in turn, and the earlier ones stay in its " +
@@ -1078,7 +1084,10 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.generatePanel.voicePlaceholder"))} until a voice is picked; clicking it opens rows such ` +
       `as ${quoted(t("canvas.generatePanel.audioVoice"))}, which opens the voice list beside it with ` +
       `${quoted(t("canvas.generatePanel.voiceSearchPlaceholder"))} and a play button on each voice that has a ` +
-      "sample; " +
+      "sample; on a model whose samples come in several languages a menu marked " +
+      `${quoted(t("canvas.generatePanel.voiceSampleLanguage"))} beside the search box picks the language the samples ` +
+      "play in, starting from the one the user last picked there, else the interface language; it changes only what the user hears there, and the speech " +
+      "generated is in the language of the script; " +
       `sliders such as ${quoted(t("canvas.generatePanel.voiceSpeed"))}, ` +
       `${quoted(t("canvas.generatePanel.voiceVolume"))}, ${quoted(t("canvas.generatePanel.voiceSimilarity"))} ` +
       `and ${quoted(t("canvas.generatePanel.voiceStability"))} (marked ` +
@@ -1440,7 +1449,7 @@ export function renderProductGuide(): string {
       `${quoted(t("chat.documentProposal.addComment"))} puts the rewritten words on the passage as a comment, and ` +
       `${quoted(t("chat.documentProposal.apply"))} replaces the passage with them; a passage with no words, such ` +
       "as an empty code block, an image, a video or an audio block, has only the second. When the passage holds something " +
-      `Markdown cannot write, such as colours, an alignment, underlining, column widths or comments, a rewrite card adds ${quoted(t("chat.documentProposal.lossy"))} ` +
+      `Markdown cannot write, such as colours, an alignment, underlining, table column widths, columns side by side or comments, a rewrite card adds ${quoted(t("chat.documentProposal.lossy"))} ` +
       "An insert card that goes after a passage first shows that passage under " +
       `${quoted(t("chat.documentProposal.insertAfter"))}, naming a passage with no words by its kind, such as ` +
       `${quoted(t("spaces.document.media.image"))} or ${quoted(t("chat.documentProposal.headingBlock"))}; it ` +
@@ -1628,13 +1637,14 @@ export function renderProductGuide(): string {
       "Closing the dialog while the generation is being submitted lets the submission carry on, and its answer still opens the panel on the new row. " +
       "A refusal, such as too few credits or a view that is not a picture of this Project, keeps the dialog open with everything in it and says why in a short message.",
     `The floating bar at the bottom right orders ${quoted(t("spaces.threeD.undo"))}, ${quoted(t("spaces.threeD.redo"))}, ` +
-      `${quoted(t("spaces.threeD.properties"))}, ${quoted(t("spaces.threeD.objects"))}, ${quoted(t("spaces.threeD.tasks"))} and ` +
-      `${quoted(t("spaces.threeD.minimap"))}. The three panel buttons keep their ordinary appearance while open. ` +
+      `${quoted(t("spaces.threeD.properties"))}, ${quoted(t("spaces.threeD.objects"))}, ${quoted(t("spaces.threeD.tasks"))}, ` +
+      `${quoted(t("spaces.threeD.director.open"))} (a clapperboard icon), ${quoted(t("spaces.threeD.viewfinder.open"))} (four frame corners) and ` +
+      `${quoted(t("spaces.threeD.minimap"))}. The four panel buttons keep their ordinary appearance while open. ` +
       "Click one to open its panel on the right; click the same button again to close it, or another to switch content. " +
       `An X with the ${quoted(t("spaces.threeD.closePanel"))} tooltip also closes the panel. Its content scrolls above the minimap. ` +
       "Opening a header menu while the panel is open keeps keyboard focus in that new menu. " +
       "The minimap button toggles the scene's top view; clicking that map navigates your personal viewing camera. It is unavailable while the viewfinder is open.",
-    `A frame button at the top right of the 3D Space, ${quoted(t("spaces.threeD.viewfinder.open"))}, takes a still of the scene to use for picture and video generation; it is unavailable to a Viewer. ` +
+    `The frame button in that bar, ${quoted(t("spaces.threeD.viewfinder.open"))}, takes a still of the scene to use for picture and video generation; it is unavailable to a Viewer. ` +
       "Clicking it shows a frame over the view with everything outside it dimmed; an open right panel closes and is not reopened when the viewfinder closes (its own buttons still open it meanwhile), the minimap and the left rail are put away until it closes, and selecting an object no longer opens its panel by itself. " +
       "The frame starts as the largest one of the chosen aspect ratio that fits, and moves back into place when the window, the chat column or the right panel changes the view's size. " +
       "Dragging any of its four corners resizes it with the opposite corner fixed: square corners keep the ratio, round corners (under Free) change width and height separately. " +
@@ -1653,7 +1663,36 @@ export function renderProductGuide(): string {
       "The viewfinder hands the still over and closes as soon as it is in the chat attachments, on the Canvas or on the clipboard; until then its button waits and the others are unavailable. " +
       "Uploading goes on in the chat attachments or on the Canvas node, which show how it ends. When the still could not be handed over, the viewfinder stays on it to try again. " +
       `Clicking the frame button or pressing Escape closes the viewfinder; on the still, Escape goes back to framing. Closing it before the hand-over lets the hand-over finish, and its result is told in a message. ` +
-      "Switching to another Space tab and back keeps the viewfinder as it was.",
+      "Switching to another Space tab and back keeps the viewfinder as it was. " +
+      "Looking through a camera from the director console uses the same frame and menu with these differences: the frame has the camera's own aspect ratio, the view shows exactly what the camera sees, " +
+      `and ${quoted(t("spaces.threeD.director.exitCamera"))} replaces ${quoted(t("spaces.threeD.viewfinder.cancel"))} and goes back to the view you had before. ` +
+      "The aspect ratio in the menu is the camera's own and changing it changes the camera for everyone; under Free, dragging a corner changes the camera's free ratio. " +
+      "Dragging anywhere except on a transform handle or a joint dot moves the camera itself: a left drag turns it around a point ahead of it without rolling it, a right drag or Shift with a left drag slides it, and the wheel moves it forward or back. " +
+      "A click still selects. The move is written when you let go, or shortly after the wheel stops. " +
+      `A locked camera does not move, and a drag on it says ${quoted(t("spaces.threeD.director.cameraLocked"))} ` +
+      "A Viewer can look through a camera and leave it, but cannot move it, change its ratio or take a still. " +
+      `If the camera is deleted meanwhile, a still already taken stays, the view otherwise goes back, and a message says ${quoted(t("spaces.threeD.director.cameraDeleted"))} ` +
+      "Escape first stops a drag in progress, then steps the viewfinder back, and only then closes the right panel. " +
+      `${quoted(t("spaces.threeD.viewfinder.confirm"))} takes the still with the camera's own lens. When you cannot edit, the still offers only ${quoted(t("spaces.threeD.viewfinder.copy"))}.`,
+    `The ${quoted(t("spaces.threeD.director.open"))} panel is where cameras and lights are set up; while it is open, selecting an object in the scene keeps it open instead of switching to ${quoted(t("spaces.threeD.properties"))}. ` +
+      `Under ${quoted(t("spaces.threeD.director.cameras"))}, the plus icon ${quoted(t("spaces.threeD.director.saveView"))} saves what you see as a new camera, 16:9, aimed and zoomed to match the largest 16:9 frame of the view; ` +
+      "with the viewfinder open it takes the frame and ratio shown, and while looking through a camera it copies that camera. " +
+      `Each camera has a card with its live picture, a row with its number, name, lens and ratio, a lock icon when locked, and a ${quoted(t("spaces.threeD.director.more"))} menu with ` +
+      `${quoted(t("spaces.threeD.properties"))}, ${quoted(t("spaces.threeD.duplicate"))}, ${quoted(t("spaces.threeD.lock"))} or ${quoted(t("spaces.threeD.unlock"))}, and ${quoted(t("spaces.threeD.delete"))} (unavailable while locked). ` +
+      `Clicking the picture, whose tooltip says ${quoted(t("spaces.threeD.director.look"))}, looks through that camera; that card gets a dark border. ` +
+      `With no camera it says ${quoted(t("spaces.threeD.director.camerasEmpty"))} ` +
+      `Under ${quoted(t("spaces.threeD.director.lights"))}, the plus icon ${quoted(t("spaces.threeD.director.addLight"))} offers ${quoted(t("spaces.threeD.director.lightDirectional"))}, ` +
+      `${quoted(t("spaces.threeD.director.lightPoint"))} and ${quoted(t("spaces.threeD.director.lightSpot"))}; a new light is white, casts shadows and sits above and in front of the centre of your view, to the left, aimed at it. ` +
+      `A scene holds at most ${String(getSceneConfig().director.max_lights)} lights: at that number the three choices are unavailable and the section says so. ` +
+      `Each light's row has a colour dot, its name, its type and a ${quoted(t("spaces.threeD.castShadow"))} switch; a row may say ${quoted(t("spaces.threeD.director.lightOverLimit"))} ` +
+      `or ${quoted(t("spaces.threeD.director.shadowBudget"))}, when this computer's graphics cannot show another shadow. With no light it says ${quoted(t("spaces.threeD.director.lightsEmpty"))} ` +
+      `Under ${quoted(t("spaces.threeD.director.ambient"))} are a ${quoted(t("spaces.threeD.color"))} swatch and an ${quoted(t("spaces.threeD.intensity"))} slider shared by everyone. ` +
+      "Clicking a camera's or light's icon in the scene, the dot, name or type on its light row, or its card menu's first item selects it and opens its settings under its card or row, and a selected light's row is outlined: the name, " +
+      `for a camera ${quoted(t("spaces.threeD.focalLength"))} (presets from 14 to 200 mm, ${quoted(t("spaces.threeD.director.customFocal"))}, and a box taking 8 to 300) and ${quoted(t("spaces.threeD.frame"))}, ` +
+      `for a light ${quoted(t("spaces.threeD.color"))}, ${quoted(t("spaces.threeD.intensity"))} and, for a spotlight, ${quoted(t("spaces.threeD.angle"))} (its ${quoted(t("spaces.threeD.castShadow"))} switch is the one on its row), and a ${quoted(t("spaces.threeD.lock"))} switch. ` +
+      `${quoted(t("spaces.threeD.properties"))} shows the same settings, a light's ${quoted(t("spaces.threeD.castShadow"))} switch among them, with the position and rotation. A slider or colour previews while you drag and is written once when you let go. ` +
+      "Cameras and lights are moved and turned in the scene like objects; they cannot be scaled and a point light cannot be turned. They show up in the object list and on the minimap, but never in a still or a camera's picture. " +
+      "Everyone in the Space sees the same cameras, lights and ambient light; which camera you look through is yours alone. A Viewer can watch the cards and look through cameras but cannot add or change anything.",
     `The ${quoted(t("spaces.threeD.tasks"))} panel lists every member's model imports and generations in this Space, newest first, the same for everyone. ` +
       `Its header has ${quoted(t("spaces.threeD.taskList.filter"))}, whose menu offers ${quoted(t("spaces.threeD.taskList.filterRunning"))}; ` +
       `${quoted(t("spaces.threeD.taskList.filterKind"))}: ${quoted(t("spaces.threeD.taskList.filterAll"))}, ${quoted(t("spaces.threeD.taskList.kind"))} or ${quoted(t("spaces.threeD.taskList.kindGeneration"))}; ` +
@@ -1872,7 +1911,7 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.blockHandle.delete"))}; it acts on that line. ` +
       `${quoted(t("canvas.contextMenu.addToAgent"))} puts that line, with the lines nested under it, into the ` +
       "Agent's box as an attachment, opening the Agent panel if hidden; greyed when they hold " +
-      "neither words (spaces don't count) nor uploaded media. On media it hands " +
+      "no words (spaces don't count), no uploaded media and no formula with LaTeX in it. On media it hands " +
       `over the file plus nested lines as text; ${quoted(t("spaces.document.commands.comment"))} covers ` +
       `the whole item; both stay greyed mid-upload; pressing either says ` +
       `${quoted(t("spaces.document.media.notUploaded"))} ` +
@@ -1880,13 +1919,15 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.blockHandle.insertBelow"))}, ${quoted(t("spaces.document.commands.align"))} ` +
       `and ${quoted(t("spaces.document.commands.color"))} open a submenu when hovered; ` +
       `${quoted(t("spaces.document.blockHandle.insertBelow"))} lists the block types other than ` +
-      `${quoted(t("spaces.document.commands.paragraph"))}, then ${quoted(t("spaces.document.commands.divider"))} ` +
-      `and ${quoted(t("spaces.document.commands.table"))} on their own, then ` +
+      `${quoted(t("spaces.document.commands.paragraph"))}, then ${quoted(t("spaces.document.commands.divider"))}, ` +
+      `${quoted(t("spaces.document.commands.table"))} and ${quoted(t("spaces.document.commands.columns"))} on their own, then ` +
+      `${quoted(t("spaces.document.commands.formula"))}, then ` +
       `${quoted(t("spaces.document.media.image"))}, ${quoted(t("spaces.document.media.audio"))} and ` +
       `${quoted(t("spaces.document.media.video"))}, and puts a new line of the one picked ` +
-      "below; the divider and the table each come with an empty line under them, and a new table puts the caret " +
-      `in its first cell. On a line in a table cell, ${quoted(t("spaces.document.commands.table"))} is greyed: a ` +
-      "table does not go inside a cell. The last three open the computer's file picker for that kind; the files chosen go " +
+      "below; the divider, the table and the formula each come with an empty line under them, a new table puts the caret " +
+      `in its first cell, and a new formula opens its box. On a line in a table cell, ${quoted(t("spaces.document.commands.table"))} is greyed: a ` +
+      "table does not go inside a cell. " +
+      "The last three open the computer's file picker for that kind; the files chosen go " +
       "under the line, above an empty line made for the caret. " +
       `${quoted(t("spaces.document.commands.table"))} opens a grid of squares, nine across and nine down, with ` +
       `${quoted(t("spaces.document.table.pickSize"))} under it; moving over it lights the squares up to the ` +
@@ -2011,7 +2052,7 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.table.splitCell"))} is greyed unless the cell was merged; while it is open ` +
       "that cell is tinted the way selected cells are. A cell holds blocks " +
       "the way the rest of the document does: paragraphs, headings, lists, to-dos, quotes, code, dividers, " +
-      "pictures, videos and audio, each with its own handle of six dots, and an empty line with the plus; a table " +
+      "formulas, pictures, videos and audio, each with its own handle of six dots, and an empty line with the plus; a table " +
       "does not go inside a cell. Enter and Shift+Enter work as anywhere else, and Enter on the last empty line " +
       "of a cell stays in the cell. Tab in a list item indents it when it can be indented and Shift+Tab takes an " +
       "indented one back out; otherwise Tab moves to the next cell, and in the last cell it adds a row first, and " +
@@ -2034,6 +2075,9 @@ export function renderProductGuide(): string {
       "with their names. Content written by a newer version of the editor shows as a box marked " +
       `${quoted(t("spaces.document.unsupported.label"))} and is kept as it is.`,
     "- Snapshots: saving, comparing and restoring snapshots of the body are in the Document snapshots section.",
+    "- Formulas: typing, inserting and editing LaTeX formulas are in the Document formulas section.",
+    "- Comments: leaving, answering, resolving and deleting comments are in the Document comments section.",
+    "- Columns: putting lines side by side, resizing and leaving columns are in the Document columns section.",
     "- The heading outline: an icon at the top left of the body, level with the three dots, opens and shuts " +
       `it; hovering it says ${quoted(t("spaces.document.outline.show"))} or ${quoted(t("spaces.document.outline.hide"))}. ` +
       "The outline lists the body's level 1–3 headings as a tree, with the same numbers the body shows; headings " +
@@ -2044,9 +2088,22 @@ export function renderProductGuide(): string {
       "until the outline icon is clicked again. Whether the outline is shown is remembered for each account in " +
       "this browser and applies to every document. With no headings yet the column says " +
       `${quoted(t("spaces.document.outline.empty"))}.`,
-    `- Comments: select text and press the speech bubble, or choose ` +
-      `${quoted(t("spaces.document.commands.comment"))} on a line's handle menu (greyed on an empty line, ` +
-      `except uploaded media). The ${quoted(t("spaces.document.comment.railTitle"))} panel opens beside the text, the words take ` +
+    "",
+    "## Document formulas",
+    "A formula is LaTeX: $$x$$ typed in a line becomes a formula of x as the closing $$ is typed (a single $ stays " +
+      `text, and Cmd+Z takes it back), and ${quoted(t("spaces.document.commands.formula"))} in the insert menu puts ` +
+      "one on its own line. Clicking a formula opens a box under it to edit the LaTeX, the formula redrawing as it " +
+      `is typed; Enter, ${quoted(t("spaces.document.math.ok"))}, Esc or a click outside closes the box and keeps the change, and Cmd+Z ` +
+      "undoes it like any typing. Backspace right under a formula or Delete right above it selects it; a second press " +
+      "deletes it. An empty one shows " +
+      `${quoted(t("spaces.document.math.empty"))} (${quoted(t("spaces.document.math.blank"))} in a snapshot or a read-only ` +
+      `document), one that does not parse ${quoted(t("spaces.document.math.error"))}. ` +
+      "The Agent, copies and Markdown get it as its LaTeX between $$.",
+    "",
+    "## Document comments",
+    `Select text and press the speech bubble, or choose ` +
+      `${quoted(t("spaces.document.commands.comment"))} on a line's handle menu (greyed on a line with no words, such as an ` +
+      `empty line or one holding only a formula; uploaded media can still be commented). The ${quoted(t("spaces.document.comment.railTitle"))} panel opens beside the text, the words take ` +
       `a highlight, and a box, ${quoted(t("spaces.document.comment.placeholder"))}, waits next to them. Enter ` +
       `or ${quoted(t("spaces.document.comment.save"))} posts it, Shift+Enter starts a new line, and Esc or ` +
       `${quoted(t("spaces.document.comment.cancel"))} drops it; both buttons appear once something is typed. ` +
@@ -2081,6 +2138,26 @@ export function renderProductGuide(): string {
       `was typed is kept. With no comments the panel shows ${quoted(t("spaces.document.comment.empty"))} ` +
       `With only resolved ones, ${quoted(t("spaces.document.comment.filterOpen"))} shows ` +
       `${quoted(t("spaces.document.comment.nothingUnresolved"))}`,
+    "",
+    "## Document columns",
+    `${quoted(t("spaces.document.commands.columns"))} in a line's ${quoted(t("spaces.document.blockHandle.insertBelow"))} ` +
+      "menu, or behind the plus on an empty line, puts two columns side by side, each holding an empty line, with the " +
+      "caret in the first. It is greyed on a line in a column, on a line nested under another line and on a line " +
+      `with lines nested under it, and pressing it there says ${quoted(t("spaces.document.columns.unavailable"))}`,
+    "Dragging a line by its six dots (or a picture, video or audio by itself) onto the left or right " +
+      "edge of another line, or into the empty space beside it, the right page margin included, shows a vertical line " +
+      "on that side; dropping puts the two lines side by side in two columns, or adds a column beside that line " +
+      "when it is already in columns, up to four. A line in a column shows its six dots in the gap left of its " +
+      "column; dragging it below a line outside the columns takes it out. Hovering the middle of the gap between " +
+      "two columns shows a thin line; dragging it changes the widths of those two columns, and one Cmd+Z puts " +
+      "them back. When a column's last line goes the column goes with it, and when one column is left its lines " +
+      "become ordinary lines again. On a page too narrow for them, columns stand one under another in reading " +
+      "order. Columns made in a table cell widen that column of the table when it is too narrow to hold them side by side. Columns never go inside a column or " +
+      `under a nested line: pasting or dropping columns there says ${quoted(t("spaces.document.columns.unavailable"))}. ` +
+      "Tab and the six dots' indenting work inside a column. Deleting or typing over a selection that runs across " +
+      "columns removes only what is selected in each column, and the AI dialog over such a selection takes the " +
+      "whole columns. A rewrite you propose over columns puts their lines one under another, column after column, " +
+      `since Markdown has no columns, and its card adds ${quoted(t("chat.documentProposal.lossy"))}`,
     "",
     "## Document snapshots",
     `${quoted(t("spaces.document.docMenu.saveSnapshot"))} in the document's three-dot menu asks for an optional name and keeps the body ` +

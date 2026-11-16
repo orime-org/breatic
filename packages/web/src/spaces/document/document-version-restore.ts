@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The body's side of document snapshots (inner#1129 design §7.4, §7.5).
@@ -19,6 +19,8 @@ import type { Node as PMNode } from '@tiptap/pm/model';
 import type { EditorView } from '@tiptap/pm/view';
 
 import { checkAdd, type SpaceRefusal } from '@web/data/yjs/space-write';
+import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-geometry';
+import { SAVED_BODY } from '@web/spaces/document/document-column-repair';
 import { asOneUndoStep, type UndoBoundary } from '@web/spaces/document/document-proposal-landing';
 import { pendingUploadId } from '@web/spaces/document/document-media-types';
 
@@ -72,6 +74,15 @@ function withoutPendingUploads(node: Json, left: { out: number }): Json {
       continue;
     }
     const next = withoutPendingUploads(child, left);
+    // A column left with no blocks goes, and a group left with one column
+    // or none lays out what is left, by the repair rule (inner#1314 design 5.2).
+    // A node with no children carries no `content` in its JSON.
+    const inner = (next.content as Json[] | undefined) ?? [];
+    if (next.type === DOC_COLUMN && inner.length === 0) continue;
+    if (next.type === DOC_COLUMN_LIST && inner.length <= 1) {
+      kept.push(...((inner[0]?.content as Json[] | undefined) ?? []));
+      continue;
+    }
     if (next.type === 'blockGroup' && (next.content as Json[]).length === 0) {
       // A block's children may go; the body itself keeps one line.
       if (node.type !== 'blockContainer') kept.push({ ...next, content: [emptyBlock()] });
@@ -150,7 +161,7 @@ export function restoreSnapshot(input: {
     const allowed = checkAdd(input.space, { notify: false });
     if (!allowed.ok) return allowed;
   }
-  const tr = view.state.tr.replaceWith(0, doc.content.size, snapshot.content);
+  const tr = view.state.tr.replaceWith(0, doc.content.size, snapshot.content).setMeta(SAVED_BODY, true);
   asOneUndoStep(input.undoManager, () => view.dispatch(tr));
   return 'restored';
 }

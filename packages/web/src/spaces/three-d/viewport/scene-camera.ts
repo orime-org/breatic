@@ -1,9 +1,13 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { MathUtils, Sphere, Vector3 } from 'three';
 import type { Box3, PerspectiveCamera } from 'three';
 import type { ViewfinderRect } from '@web/spaces/three-d/viewfinder/viewfinder-geometry';
+
+/** Near and far planes of the main view, which monitors and stills share (inner#1694 design 3.4.3). */
+export const SCENE_VIEW_NEAR = 0.05;
+export const SCENE_VIEW_FAR = 5000;
 
 /**
  * Frame loaded content without changing the scene or another user's camera.
@@ -32,7 +36,7 @@ export function focusSceneBounds(camera: PerspectiveCamera, target: Vector3, bou
 export function updateSceneCameraRange(camera: PerspectiveCamera, bounds: Box3): void {
   if (bounds.isEmpty()) return;
   const sphere = bounds.getBoundingSphere(new Sphere());
-  const far = Math.max(5000, (camera.position.distanceTo(sphere.center) + sphere.radius) * 1.1);
+  const far = Math.max(SCENE_VIEW_FAR, (camera.position.distanceTo(sphere.center) + sphere.radius) * 1.1);
   if (camera.far === far) return;
   camera.far = far;
   camera.updateProjectionMatrix();

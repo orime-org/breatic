@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Canvas routes — task management.
@@ -46,7 +46,7 @@ import {
   violatesTextLengthForModel,
 } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
-import { assertLlmServable, assertServable } from "@server/modules/task/model-servable.js";
+import { assertLlmServable, assertServable, assertTakesInput } from "@server/modules/task/model-servable.js";
 import { catalogEntryOf } from "@breatic/shared/mini-tools";
 import { nodeTaskService } from "@breatic/domain";
 import {
@@ -236,6 +236,8 @@ canvas.post(
   // the id its task row will carry, BEFORE that row exists, so a refusal
   // leaves nothing behind. From here until the job is queued, every way out
   // releases the hold; once queued, the worker charges or releases it.
+  // The run as it is priced, and asked about before anything is held.
+  const estimateInput = { params: body.params, prompt: extractPromptText(body.params.prompt ?? body.params.text) };
   const { taskId } = await holdRun({
     projectId,
     userId: user.id,
@@ -306,14 +308,12 @@ canvas.post(
         logger.warn({ userId: user.id, projectId, model: body.model, reason: "param_too_short", field: short.param }, "execute_gate_rejected");
         throw new ValidationError(t("server.canvas.param_too_short", { name: t(`canvas.generatePanel.param.${short.param}`) }));
       }
-      return Promise.resolve();
+      // #1521: a run no upstream here takes (too long a text, too many lines) is refused naming the limit.
+      return entry === undefined
+        ? Promise.resolve()
+        : assertTakesInput(entry.name, entry.display_name, estimateInput, body.route, { userId: user.id, projectId });
     },
-    credits: () =>
-      estimateTaskCredits(
-        body.model,
-        { params: body.params, prompt: extractPromptText(body.params.prompt ?? body.params.text) },
-        body.route,
-      ),
+    credits: () => estimateTaskCredits(body.model, estimateInput, body.route),
   });
 
   let task: Awaited<ReturnType<typeof taskService.create>>;

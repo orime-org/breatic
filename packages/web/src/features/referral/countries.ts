@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /** ISO 3166-1 alpha-2 codes an applicant can name; payouts and tax forms need it. */
 export const COUNTRY_CODES: readonly string[] = (

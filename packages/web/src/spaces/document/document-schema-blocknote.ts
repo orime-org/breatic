@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The BlockNote schema this Space runs on.
@@ -35,8 +35,10 @@ import {
 
 import { BODY_HEADING_LEVELS } from '@web/spaces/document/document-block-type';
 import { buildListItemSpecs } from '@web/spaces/document/document-list-block';
+import { mathBlockSpec, mathInlineSpec } from '@web/spaces/document/document-math';
 import { withMediaView } from '@web/spaces/document/document-media-blocknote';
 import { legacyTableSpec } from '@web/spaces/document/document-table-legacy';
+import { docColumnSpecs } from '@web/spaces/document/document-column-nodes';
 import { docTableSpecs } from '@web/spaces/document/document-table-nodes';
 import {
   unsupportedBlockSpec,
@@ -106,7 +108,7 @@ function withProps<T extends SpecWithProps>(
 }
 
 /**
- * Builds the schema: twelve block types, five added props, the rest turned off.
+ * Builds the schema: thirteen block types, five added props, the rest turned off.
  * @returns The schema to hand `BlockNoteEditor.create`.
  * @throws {Error} Whatever BlockNote throws while validating the specs.
  */
@@ -160,6 +162,8 @@ export function buildDocumentSchema(): ReturnType<typeof BlockNoteSchema.create>
     // (inner#1619).
     table: legacyTableSpec(),
     ...docTableSpecs(),
+    // Column groups (inner#1314).
+    ...docColumnSpecs(),
     // The library's own props: image and video carry a width and an
     // alignment, audio neither (inner#1127 A8, A9).
     image: withMediaView(
@@ -169,6 +173,8 @@ export function buildDocumentSchema(): ReturnType<typeof BlockNoteSchema.create>
       withProps(enabled.video, { ...QUOTED_PROP, ...MEDIA_SIZE_PROPS, ...UPLOAD_ID_PROP }),
     ),
     audio: withMediaView(withProps(enabled.audio, { ...QUOTED_PROP, ...UPLOAD_ID_PROP })),
+    // A formula on a line of its own (inner#1423).
+    mathBlock: mathBlockSpec(),
     unsupportedBlock: unsupportedBlockSpec,
   };
 
@@ -176,6 +182,8 @@ export function buildDocumentSchema(): ReturnType<typeof BlockNoteSchema.create>
     blockSpecs,
     inlineContentSpecs: {
       ...defaultInlineContentSpecs,
+      // A formula inside a line (inner#1423).
+      math: mathInlineSpec(),
       unsupportedInline: unsupportedInlineSpec,
     },
     styleSpecs: { ...defaultStyleSpecs },

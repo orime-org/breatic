@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Every refusal the proposal check gives, held to what it says (design 5.10):
@@ -80,7 +80,7 @@ const TTS = "realtime-tts-2";
 const SHOTS = "kling-v3.0-4k-text-to-video";
 const VID = "minimax-h3-image-to-video";
 const OMNI_SHOTS = "gemini-omni-1.1-flash-image-to-video";
-const DUO = "gemini-3.1-flash-text-to-speech";
+const DUO = "gemini-3.8-flash-text-to-speech";
 
 /** A note, as every to-do on a card is. */
 const NOTE = { slot: { kind: "note" as const, label: "Put the picture in Pic first" } };

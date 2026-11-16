@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * #904 验收 A10 的选区那半: undo puts the caret back where the undone edit
@@ -180,5 +180,47 @@ describe('undo restores the selection, not only the text', () => {
     expect(editor.document).toHaveLength(1);
     const { from, to } = view.state.selection;
     expect({ from, to }).toEqual({ from: splitAt, to: splitAt });
+  });
+
+  it('puts the caret after the redone words on redo', async () => {
+    // Redo puts the caret where it was when the user pressed undo, as
+    // prosemirror-history does (it stores the selection at undo time for the
+    // redo branch): after the words the redo brings back.
+    const { editor, manager } = await openWithSentence();
+    const view = editor.prosemirrorView!;
+    const at = rangeOf(editor, 'alpha').to;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, at, at)));
+    view.dispatch(view.state.tr.insertText('XY'));
+    await settle();
+    manager.stopCapturing();
+
+    editor.undo();
+    await settle();
+    expect(view.state.doc.textContent).toBe(SENTENCE);
+    editor.redo();
+    await settle();
+
+    expect(view.state.doc.textContent).toBe('alphaXY beta gamma');
+    const { from, to } = view.state.selection;
+    expect({ from, to }).toEqual({ from: at + 2, to: at + 2 });
+  });
+});
+
+describe('the selection kept for undo and redo', () => {
+  it('leaves no Yjs transaction listener on the document once the editor is gone', () => {
+    const doc = new Y.Doc();
+    const { extension } = createDocumentUndo(doc);
+    const listeners = (): number =>
+      (doc as unknown as { _observers: Map<string, Set<unknown>> })._observers.get('beforeAllTransactions')?.size ?? 0;
+    const before = listeners();
+    const editor = buildDocumentEditor({ fragment: documentBodyFragment(doc), extensions: [extension] });
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    editor.mount(root);
+    expect(listeners()).toBeGreaterThan(before);
+
+    editor.unmount();
+
+    expect(listeners()).toBe(before);
   });
 });

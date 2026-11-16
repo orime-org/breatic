@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The two paths content takes into the body (inner#1351 design §5.4.3 "the
@@ -15,7 +15,7 @@ import { AllSelection, NodeSelection, TextSelection, type Selection } from '@tip
 import type { Node as PMNode } from '@tiptap/pm/model';
 
 import { canvasClipboardOf } from './canvas-clipboard-fixture';
-import { OURS, open, pasteFormats, positionOf, settled, shape, unmountAll, type Editor } from './paste-harness';
+import { OURS, open, pasteFormats, positionOf, settled, shape, unmountAll, written, type Editor } from './paste-harness';
 import { nodeAt } from './paste-matrix';
 import { BodyEdgeSelection } from '@web/spaces/document/document-body-edge-selection';
 import { putContent } from '@web/spaces/document/document-put';
@@ -565,16 +565,6 @@ describe('a stored table dragged inside the body', () => {
 });
 
 /**
- * Fires a cut, its clipboard thrown away.
- * @param editor - The editor.
- */
-function cut(editor: Editor): void {
-  const event = new Event('cut', { bubbles: true, cancelable: true });
-  Object.defineProperty(event, 'clipboardData', { value: { setData: vi.fn(), clearData: vi.fn(), getData: () => '' } });
-  editor.prosemirrorView.dom.dispatchEvent(event);
-}
-
-/**
  * The body's lines, each with the lines nested under it.
  * @param editor - The editor.
  * @returns They, as `type:words` with nested ones in brackets.
@@ -592,7 +582,7 @@ function outline(editor: Editor): string[] {
 describe('a table at an end of a cut or a move takes it whole, stored or not', () => {
   const NEW = tableBlock({ rows: [{ cells: ['n1', 'n2'] }] });
   const HOW = [
-    ['a cut', (editor: Editor) => cut(editor)],
+    ['a cut', (editor: Editor) => written(editor.prosemirrorView.dom, 'cut')],
     ['a move', (editor: Editor) => {
       const { from, to } = editor.prosemirrorView.state.selection;
       dragWithin(editor, from, to, positionOf(editor, 'more', 4));
@@ -675,7 +665,7 @@ describe('a table at an end of a cut or a move takes it whole, stored or not', (
       const view = editor.prosemirrorView;
       view.dispatch(view.state.tr.setSelection(BodyEdgeSelection.create(view.state.doc, positionOf(editor, words, 1), 'end')));
       view.focus();
-      if (how === 'a cut') cut(editor);
+      if (how === 'a cut') written(editor.prosemirrorView.dom, 'cut');
       else {
         (view as unknown as { dragging: unknown }).dragging = { slice: view.serializeForClipboard(view.state.selection.content()).slice, move: true };
         dropFormats(editor, positionOf(editor, 'lead', 2), { 'text/html': '<p>x</p>' });
@@ -705,7 +695,7 @@ describe('a table at an end of a cut or a move takes it whole, stored or not', (
   it('a cut across two cells of a stored table leaves one empty line in its place', async () => {
     const editor = await openReady([{ type: 'paragraph', content: 'lead' }, STORED, { type: 'paragraph', content: 'tail' }]);
     select(editor, positionOf(editor, 'l1', 1), positionOf(editor, 'l2', 1));
-    cut(editor);
+    written(editor.prosemirrorView.dom, 'cut');
     await settled();
     expect(outline(editor)).toEqual(['paragraph:lead', 'paragraph:', 'paragraph:tail']);
   });

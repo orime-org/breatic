@@ -1,7 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
-import type { SceneImportLimits, SceneObject, ScenePose } from '@breatic/shared';
+import type { SceneDirectorConfig, SceneImportLimits, SceneModelFile, SceneObject, ScenePose } from '@breatic/shared';
+import type { SceneEnvironmentValues } from '@web/data/yjs/scene-document';
+import type { LightsPlan } from '@web/spaces/three-d/viewport/director-lights';
 import type { MeasuredSceneModelLease } from '@web/spaces/three-d/viewport/model-resources';
 
 /** Plain tuples keep the Project shell outside the lazy Three dependency graph. */
@@ -9,10 +11,11 @@ export type SceneVector3 = [number, number, number];
 export type SceneQuaternion = [number, number, number, number];
 export type SceneTransformMode = 'translate' | 'rotate' | 'scale';
 /**
- * The viewport camera's vertical field of view, in degrees. It lives here, outside
- * the Three graph, because the editor publishes it with the camera (#920).
+ * The main view's vertical field of view in degrees; saving a view as a camera
+ * reproduces it. It lives here, outside the Three graph, because the editor
+ * publishes it with the camera (#920).
  */
-export const SCENE_CAMERA_FOV = 45;
+export const SCENE_VIEW_FOV = 45;
 export interface SceneView {
   position: SceneVector3;
   target: SceneVector3;
@@ -83,7 +86,53 @@ export interface SceneViewportProps {
   onCapture?: (capture: SceneFrameCapture | null) => void;
   /** Stops orbiting and zooming while a capture is on screen. */
   viewLocked?: boolean;
+  /** What the main view shows: null for the user's own view (inner#1694 design 3.4.3). */
+  cameraView?: SceneCameraView | null;
+  /** The viewfinder frame in viewport pixels while a camera view lasts. */
+  viewFrame?: SceneViewportRect | null;
+  /** The scene's ambient light. */
+  environment?: SceneEnvironmentValues;
+  /** The director console's parameters, once loaded. */
+  director?: SceneDirectorConfig;
+  /** A pilot draft of the camera being looked through. */
+  onPilotPreview?: (id: string, position: SceneVector3, rotation: SceneQuaternion) => void;
+  /** The pilot draft ends: written when `commit`, dropped otherwise. */
+  onPilotEnd?: (commit: boolean) => void;
+  /** A drag on a locked camera crossed the drag threshold. */
+  onPilotLocked?: () => void;
+  /** Hands the editor what it calls before undo and on Escape, or null when the view goes away. */
+  onPilotControl?: (control: ScenePilotControl | null) => void;
+  /** Which lights shine and cast, whenever that changes. */
+  onLightPlan?: (plan: LightsPlan) => void;
+  /** The monitor card canvases by camera id. */
+  monitors?: ReadonlyMap<string, HTMLCanvasElement>;
 }
+
+/** What the editor asks of the pilot. */
+export interface ScenePilotControl {
+  /** Write a pending wheel step and drop a drag, before undo, redo or a viewfinder change. */
+  flush: () => void;
+  /** Drop a press in progress; true when there was one, so Escape stops there. */
+  escape: () => boolean;
+  /**
+   * Where a new light goes from the camera on screen, live or as a still: the pivot it aims at and the viewer whose
+   * direction it is offset toward; null outside a camera view.
+   */
+  lightAnchor: () => { centre: SceneVector3; viewer: SceneVector3 } | null;
+}
+
+/** The main view at the moment a camera still was taken. */
+export interface SceneFrozenPose {
+  position: SceneVector3;
+  quaternion: SceneQuaternion;
+  fov: number;
+  aspect: number;
+}
+
+/** What the main view shows: through a camera, or a still taken through one (the camera's id, null once it is deleted). */
+export type SceneCameraView =
+  | { kind: 'live'; id: string; canPilot: boolean }
+  | ({ kind: 'frozen'; id: string | null } & SceneFrozenPose);
 
 /** A rectangle in viewport pixels. */
 export interface SceneViewportRect {
@@ -98,10 +147,12 @@ export interface CapturedPixels {
   width: number;
   height: number;
   pixels: Uint8Array;
+  /** The camera pose the still was taken with, when it was taken through a camera. */
+  pose?: SceneFrozenPose;
 }
 
 /** Render one viewport rectangle at a given size, without the editing helpers. */
 export type SceneFrameCapture = (frame: SceneViewportRect, size: { width: number; height: number }) => Promise<CapturedPixels>;
 
 /** Hold one model through the viewport's own cache, measured for placing it. */
-export type SceneModelAcquire = (source: SceneObject['model']) => MeasuredSceneModelLease;
+export type SceneModelAcquire = (source: SceneModelFile) => MeasuredSceneModelLease;

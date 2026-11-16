@@ -304,9 +304,11 @@ The inbound filter (`infra/inbound-filter.ts`) runs on every reassembled message
 
 以上都不匹配 → 直接抛错(`has no runner`)。
 
-**AIGC 直达发出的文字设置先清洗再判长度**:`validateModelParams`(`packages/worker/src/handlers/model-params.ts`,在交给 provider 之前)用 `extractPromptText` 清洗每个 `type: text` 的参数,和 `items` 参数每一项里 `type: text` 的字段(例如对白的说话人名字),长度按清洗后的字判。目录参数可以写 `min_length`(只能写在 `type: text` 上),由 shared 的 `checkParamCombination` 判定:音频面板按下生成时拒为 `param-too-short`,提示先填上那个设置;`POST /canvas/tasks` 答 422,原因写出那个控件的名字;Agent 的提议拒为 `param-too-short`;越过这几处的作业在 worker 里不发出。
+**AIGC 直达发出的文字设置先清洗再判长度**:shared 的 `cleanTextParams`(`packages/shared/src/agent/extract-prompt.ts`)用 `extractPromptText` 清洗每个 `type: text` 或 `fill: editor`(歌词这类用户在自己的编辑框里写的字)的参数,和 `items` 参数每一项里 `type: text` 的字段(例如对白的说话人名字),长度按清洗后的字判。worker 的 `validateModelParams`(`packages/worker/src/handlers/model-params.ts`,在交给 provider 之前)和 shared 的 `prepareRunParams` 都调它,所以面板、服务端闸口和 Agent 提议检查估价、判上游上限时读到的就是 worker 发出的文字。目录参数可以写 `min_length`(只能写在 `type: text` 上),由 shared 的 `checkParamCombination` 判定:音频面板按下生成时拒为 `param-too-short`,提示先填上那个设置;`POST /canvas/tasks` 答 422,原因写出那个控件的名字;Agent 的提议拒为 `param-too-short`;越过这几处的作业在 worker 里不发出。
 
-**对白一句一段**(Gemini 的 tts 模型,目录里 `speakers` 声明 `replaces: "voice_id"`):台词存在 `data.prompts.tts` 这个提示词 fragment 里,每句一个段落,段落属性 `speaker` 是说话人序号;发出时由 shared 的 `dialogueText` 跳过空段、取说话人名字,拼成每行一句「名字: 台词」,面板、费用预估、交给 Agent 的快照和 Agent 提议的检查都用它的结果。节点在不在对白一侧由 `dialogueSideOf` 判定,只读参数里的 `_stand_in_on` 开关;开关未设而 `speakers` 已有填全的条目时打开对白,只由写入方 `withStandInOn` 做(模板落地和提议落地)。
+**上游的输入上限在冻结积分前说清**:上游和厂商的上限写在 `config/provider/media/*.yaml` 的 `rejects` 里,数字数或行数的那条带 `limit`(我们的参数名、按字符 / 行 / 汉字、最多或至少、整段或每行每项);数列表项数的(如 `$count(images)`)不带。provider 的 `inputRefusal`(`@breatic/provider/pricing`,浏览器也能用)按路由试上游的顺序问,一家都接不住时交回第一家的拒收;shared 的 `inputRefusalText` 把它说成用户语言的一句话:带 `limit` 的写明模型和超了哪条上限,不带的说这次设置该模型接不了。面板(`useRunCheck`,`evaluateExecute` 的 `input-refused`)按下时说这句、不发请求;`POST /canvas/tasks`、模型类 mini-tool 和 3D 生成在冻结积分前经 server 的 `assertTakesInput`(调 domain 的 `inputRefusalFor`)答 422,面板直接显示这句;Agent 的画布和 3D 提议检查同样拒收,用英文写给 Agent;排进队列后才被所有上游拒收的,worker 把它存成 `input_refused`(带上限),所有上游都没配 key 的存成 `model_not_configured`(带缺的环境变量),节点按看的人的语言说出。各处问的都是 worker 真正发出的那一次:参数经 `wireParams` 和 `prepareRunParams`(含 `cleanTextParams`),提示词清洗过,歌词、多分镜写进的提示词、mini-tool 的前言都算在内。
+
+**对白一句一段**(Gemini 的 tts 模型,目录里 `speakers` 声明 `replaces: "voice_id"`):台词存在 `data.prompts.tts` 这个提示词 fragment 里,每句一个段落,段落属性 `speaker` 是说话人序号;发出时由 shared 的 `dialogueText` 跳过清洗后为空的段、取清洗后的说话人名字,拼成每行一句「名字: 台词」,面板、费用预估、交给 Agent 的快照和 Agent 提议的检查都用它的结果。绑定写了 `dialogue` 的上游,由 provider 的 `dialogueTurns` 把这份脚本按行拆回上游的 `turns`(只有「名字:」的一行不发),上限检查读的也是拆出来的 `turns`;估价公式两样都读得到,3.8 在 WaveSpeed 上按整段脚本 `text`(含每行的「名字: 」)计。节点在不在对白一侧由 `dialogueSideOf` 判定,只读参数里的 `_stand_in_on` 开关;开关未设而 `speakers` 已有填全的条目时打开对白,只由写入方 `withStandInOn` 做(模板落地和提议落地)。
 
 **画布转写**由 `POST /canvas/transcribe` 开启,使用独立的 `transcribe` 限流与幂等 scope。服务端复用 `startReading`,任务类型和来源为 `understand`,节点任务的 action 为 `transcribe`;worker 的 `runUnderstand` 根据 `reading` 选择转写问题和输出上限,模型与后端取同一份 `UNDERSTAND_PINS`。取媒体的大小、并发限制和两小时任务预算由理解与转写共用,两者的输出 token 上限分别读取 `config/understand.yaml`。模型正常以 `stop` 结束时,返回文字原样进入任务结果、节点历史和文本节点的 `data.body`,包括空字符串及模型表示没有人声的文字;本次调用的实际用量记为 `canvas_transcribe`,经既有任务结算路径扣费。识别准确度由用户判断。接口明确报告拒绝、截断或其他异常停止时按任务失败协议处理。
 
@@ -456,7 +458,7 @@ Agent 与画布的单文件超限音频或视频共用长媒体路径。Node dom
 
 **要往流上加一个我们自己的名字,在让它真正发出来的那次改动里加**。声明一个还没人发的名字,等于告诉前端去等一个永远不来的东西。它管的是 `data-*` part 的名字。模型的 reasoning 上流,但它走的是 SDK 协议自己的 part,不占我们这十二个名字里的任何一个 —— 这条规矩管不到它。**一次调用要不要 reasoning,由发起它的那处自己说**(`provider().llm.prepare` 的 `thinking`,见 [Agent 的 provider 路由](#agent-provider-routing)),没有全局开关。
 
-**一轮属于会话的运行,不属于发起它的请求**(`agent/chat-run.ts`)。`POST /chat/message` 鉴权、三查之后把消息排进这条会话的队列(`chat-queue.service.ts`):没有运行占着会话时开一次运行,请求等运行的开头阶段做完才答复;有运行在跑时这条消息等在队列里,运行在下一个 step 之前把它接进来(写一帧 `data-user-message`),答复里是等待区。**开头阶段的次序是硬的**:核会话主人还能不能跑 → 取出等着的消息 → 把开头那条按它自己的 id 落库 → 占住运行列表 → 建这次运行的可续读流(`agent/run-stream.ts`:`resumable-stream` 在运行所在进程的内存里留下每一帧,经 Redis 发布订阅重放给任何实例上接上来的页面;运行所在的进程没了,流也就读不到了);做完才答复,所以答复到达时那条消息已经在历史里、流也已经接得上。之后才在后台读记忆、读历史、调模型,谁在读都跑到底。接进来的消息在队列的 `taken` 里留到这一轮的回复落库;进程崩溃时由下一次运行先处理它们,丢的只有这一轮已经输出、还没落库的回答。**读历史必须排除当前这一轮**(`getMessagesForLlm` 的上界参数):开头那条刚落库,读进去等于把它喂给模型两遍。**页面经 `GET /chat/conversations/:id/stream` 读这次运行**,从第一帧重放、再接着收;没有运行或流读不到答 204,等下一次 `sync`。**停一轮只有三条路**:`POST /chat/stop`(带上流里 `data-run` 给的运行 id,按下时这一轮刚结束、下一轮已经开了的话不停下一轮)· 删除会话 · server 停机;前两条经 Redis 发布到运行所在的实例。读的页面离开不停运行。**每条流的第一帧是心跳**,第二帧是 `data-run`(`agent/run-wire.ts`);两者都带 `transient: true`,SDK 交给 `onData` 之后就丢掉,不进回复(`stores/chat-sessions.ts` 的 `isAnswering`)。**会话内容不走这条流**:打开一条会话是 `POST /chat/open` 和 `GET /chat/conversations/:id` 两个 HTTP 端点的事,一次给一页(条数在 `config/agent.yaml`),流上只有这次运行自己的输出。**流里出错怎么收尾**:这一轮里的失败由 `main-agent.ts` 记一次日志(`agent_turn_failed`),先写 `data-failed`,再由 SDK 写 `error` 帧;`run-wire.ts` 兜住开这一轮时抛出的异常(记 `chat_turn_failed`,补写 `data-failed` 和 `error`)和收尾抛出的异常(记 `chat_run_settle_failed`,补写 `error`),然后都正常关流 —— 以出错结束的流让每个接着的页面都无话可说;框架对回调抛出的异常是正常关流,而正常关流在浏览器看来跟一轮答完了一模一样。
+**一轮属于会话的运行,不属于发起它的请求**(`agent/chat-run.ts`)。`POST /chat/message` 鉴权、三查之后把消息排进这条会话的队列(`chat-queue.service.ts`):没有运行占着会话时开一次运行,请求等运行的开头阶段做完才答复;有运行在跑时这条消息等在队列里,运行在下一个 step 之前把它接进来(写一帧 `data-user-message`),答复里是等待区。**开头阶段的次序是硬的**:核会话主人还能不能跑 → 取出等着的消息 → 把开头那条按它自己的 id 落库 → 占住运行列表 → 建这次运行的可续读流(`agent/run-stream.ts`:`resumable-stream` 在运行所在进程的内存里留下每一帧,经 Redis 发布订阅重放给任何实例上接上来的页面;运行所在的进程没了,流也就读不到了);做完才答复,所以答复到达时那条消息已经在历史里、流也已经接得上。之后才在后台读记忆、读历史、调模型,谁在读都跑到底。接进来的消息在队列的 `taken` 里留到这一轮的回复落库;进程崩溃时由下一次运行先处理它们,丢的只有这一轮已经输出、还没落库的回答。**读历史必须排除当前这一轮**(`getMessagesForLlm` 的上界参数):开头那条刚落库,读进去等于把它喂给模型两遍。**页面经 `GET /chat/conversations/:id/stream` 读这次运行**,从第一帧重放、再接着收;没有运行或流读不到答 204,等下一次 `sync`。运行所在的进程没了时,接流等 1 秒的 ack 就答 204:`patches/resumable-stream@2.2.13.patch` 让这次等待一到时间就结束(库原样时,定时器正好在第 1000 毫秒触发会让请求一直挂着,见 vercel/resumable-stream#50),`agent/__tests__/run-stream-ack-timeout.test.ts` 在补丁丢失时会红;升级 `resumable-stream` 时连补丁一起重做。**停一轮只有三条路**:`POST /chat/stop`(带上流里 `data-run` 给的运行 id,按下时这一轮刚结束、下一轮已经开了的话不停下一轮)· 删除会话 · server 停机;前两条经 Redis 发布到运行所在的实例。读的页面离开不停运行。**每条流的第一帧是心跳**,第二帧是 `data-run`(`agent/run-wire.ts`);两者都带 `transient: true`,SDK 交给 `onData` 之后就丢掉,不进回复(`stores/chat-sessions.ts` 的 `isAnswering`)。**会话内容不走这条流**:打开一条会话是 `POST /chat/open` 和 `GET /chat/conversations/:id` 两个 HTTP 端点的事,一次给一页(条数在 `config/agent.yaml`),流上只有这次运行自己的输出。**流里出错怎么收尾**:这一轮里的失败由 `main-agent.ts` 记一次日志(`agent_turn_failed`),先写 `data-failed`,再由 SDK 写 `error` 帧;`run-wire.ts` 兜住开这一轮时抛出的异常(记 `chat_turn_failed`,补写 `data-failed` 和 `error`)和收尾抛出的异常(记 `chat_run_settle_failed`,补写 `error`),然后都正常关流 —— 以出错结束的流让每个接着的页面都无话可说;框架对回调抛出的异常是正常关流,而正常关流在浏览器看来跟一轮答完了一模一样。
 
 **这条流每 5 秒说一次自己还活着**(`heartbeat`,`data` 为空)。一轮可能长时间什么都不产出 —— 首字慢、在等一个工具 —— 而那在线路上跟连接死掉一模一样:同样的沉默、同样开着的 socket。浏览器分不出来,所以服务端按固定节奏发这个帧,**它到达本身就是全部内容**;心跳跟其他帧一起存在流里,晚接上的页面也会重放到。客户端连着三个间隔没收到就放开这条流,向正在看的人闪一句「网络错误」,然后重读最近一页历史、重新接上(`stores/chat-live.ts`)。运行在 server 上照常跑,这一页的断线不改它的结局。
 
@@ -612,27 +614,33 @@ Product-tag CI builds and tests backend/web on native AMD64 and ARM64 runners, a
 
 `packages/shared/src/scene.ts` defines the plain scene values and their runtime
 schemas. Positions are finite Y-up metre tuples, rotations are normalized XYZW
-quaternions, and per-axis scales are positive. Model references identify a built-in
-model or a registered asset by UUID. `scene-version.ts` initializes version 2 when
+quaternions, and per-axis scales are positive. A record's model is a built-in model,
+a registered asset by UUID, a camera, or a directional, point or spot light. `scene-version.ts` initializes version 2 when
 both validated scene roots are empty; existing content, including unknown or
 missing version metadata, is retained. Its `getSceneRootMap` validates the root
 structure for initialization, projection and recovery checks. Yjs retains sequence
 content when a decoded root acquires its Map constructor, so the shared check
 rejects that content while preserving its encoded bytes.
 
-The document has a `scene` root Map with `formatVersion` and an `objects` root Map
-keyed by object UUID. Each object record is a Map of six plain current values:
-`name`, `model`, `position`, `rotation`, `scale` and `locked`, plus one flat `pose.`
-key per posed bone when the object has a pose (see the poses paragraph below). An edit overwrites the
+The document has a `scene` root Map with `formatVersion` and the ambient light's
+`ambientColor` and `ambientIntensity`, and an `objects` root Map keyed by object
+UUID. Each object record is a Map of six plain current values: `name`, `model`,
+`position`, `rotation`, `scale` and `locked`, plus one flat `pose.` key per posed
+bone when the object has a pose (see the poses paragraph below). A camera or light
+also carries its `number`, keeps a unit scale and has no pose; a camera adds
+`focalLength`, `frame` and `freeRatio`, and a light `color`, `intensity`,
+`castShadow` and, for a spotlight, `angle`. An edit overwrites the
 changed fields and skips values that are already current; deletion removes the
 record. Yjs merges consecutive overwrites of one field by one client, so such edits
 do not grow the stored document, while edits that switch fields or objects leave
 about 9 bytes per written field. The collab copy has no UndoManager and collects
 deleted content. A key left empty by a concurrent write followed by its writer's
-undo reads as its default (origin, identity rotation, unit scale, unlocked, and as
-the name the built-in model id or `Model` for an asset); a non-map record, a missing
-or invalid model, a value that fails its schema or an unknown key (anything other
-than those six and a well-formed `pose.` key) makes a record invalid.
+undo reads as its default (origin, identity rotation, unit scale, unlocked; as the
+name the built-in model id, `Model` for an asset, `Camera` or `Light`; for a camera
+a 35 mm lens and a 16:9 frame, for a light white, its type's initial intensity,
+shadow on and, for a spotlight, 30 degrees); a non-map record, a missing or invalid
+model, a camera or light without a number, a value that fails its schema or a key
+its kind does not carry makes a record invalid.
 
 `packages/web/src/data/yjs/scene-document.ts` projects valid objects while
 retaining invalid records and reporting their errors. Command planning checks the
@@ -835,6 +843,37 @@ the project page opens that canvas once, and the canvas, once loaded and
 holding the node, cancels its queued opening fit, centres on the node and
 selects it.
 
+The director console (`SceneDirectorPanel.tsx`) is a right panel over the same
+scene document: cameras and lights are scene objects (`model.kind` `camera`
+or `light`, numbered per kind), and the ambient light is two values on the
+scene map (`ambientColor`, `ambientIntensity`) written by the `environment`
+command, all shared by everyone in the Space. The runtime decides which lights
+shine and which cast shadows (`viewport/director-lights.ts`): the first
+`director.max_lights` (`config/scene.yaml`) by number then id shine, and of
+those, the ones whose shadow is on cast up to the shadow slots this device's
+GPU allows; the plan comes back to the console, whose rows say why a light is
+dark or casts no shadow. Each camera card is a monitor the runtime redraws at
+most every `director.monitor_refresh_ms`, only while the card is visible and
+something it shows has changed (`viewport/monitor-schedule.ts`). Clicking a
+monitor looks through that camera with the viewfinder's frame at the camera's
+ratio, and a drag there moves the camera itself (`viewport/scene-pilot.ts`),
+written on release or `director.wheel_commit_ms` after the wheel stops. A
+slider or colour press previews through the session gesture and writes once,
+as one undo step, on release; the gesture's `cancelRevision` names the press,
+so a cancel meant for one press never ends a later one. The ambient light has
+no session gesture, so the editor holds its press itself. Display-only meshes
+(camera and light icons, frustum lines, labels) live on the layers named in
+`viewport/scene-layers.ts`, and a multiselect hides its nonuniform scale
+handles with an empty layer mask.
+
+The bottom of the stage is one row: the toolbar of the selected objects in
+the middle and the bottom-right toolbar, whose last group holds the viewfinder
+button (portalled in by `SceneViewfinder`) and the minimap switch. When the two
+do not fit side by side, the object toolbar stacks right-aligned above the
+other, and the minimap, the right panel's bottom edge and the viewfinder's safe
+area rise with it; a still keeps the measure it was framed with, so the frame
+does not move when the object toolbar is put away for it.
+
 Opening a registered model checks its registered size, reads at most
 `max_artifact_bytes`, unpacks a ZIP in the worker (a manifest, `files/` paths
 only, no zip64) and parses it the same way. Texture edges are held to
@@ -1023,6 +1062,7 @@ When collab closes a document's connection with `COLLAB_DOCUMENT_TOO_LARGE_REASO
 - **document 正文打着两个 ProseMirror 补丁**(inner#1350) — 根 `package.json` 的 `pnpm.overrides` 钉 `prosemirror-view` 1.42.6 和 `prosemirror-model` 1.25.12:1.42.6 要求 model `^1.25.12`,不钉会装进两份 model。`patches/prosemirror-view@1.42.6.patch` 改三处:`localPosFromDOM` 在点落在包着内容元素的元素上(表格的包裹层、代码块的 `pre`)时按偏移判前后,拖选停在表格上沿的内边距里不会把整张表算进去;`skipIgnoredNodesBefore` / `skipIgnoredNodesAfter` 走到块节点的内容元素边界就停,待办开头按 ← 不再越过复选框;`focusPreventScroll` 拿焦点后一律把每一层滚动位置写回去,WebKit 认 `preventScroll` 仍会把可编辑元素滚到选区处。`patches/prosemirror-tables@1.8.5.patch` 改两类:一类是选区,文字选区只在两端都在同一张表的格子里时才规整成格子选区(`isTextSelectionAcrossCells`),在格子里按下、拖动中指针离开表格就放开格子选区(`handleMouseDown`);另一类是短一格的行(inner#1619),两人同时加行和加列会让某行缺格,表格地图在缺格的位置记 0(恰好也是第一行的偏移),库里每个读地图的地方都把 0 当作没有格子跳过:`TableMap.nextCell`、`cellsInRect`、`CellSelection.content`、整行整列选区的两端(`cellSlotFrom`)、整表选区的最后一格、`rowIsHeader` / `columnIsHeader`、`cellsOverlapRectangle`、`handleDecorations`,`updateColumnsOnResize` 每列取地图里第一个真实格子的宽度。我们自己读地图的地方(`holdColumnWidths`、`drawnColumns`、`canDragFrom`、`edgesOf`)按同一条规则跳过 0;缺格画成不可编辑的占位格,Tab 和表格菜单的命令执行前先补齐(`squareTable`)。补丁按版本号挂在 `patchedDependencies` 上,**升级这三个包时要连补丁一起重做**,并跑 `spaces/document/__tests__/` 下的 `document-pos-at-dom`、`prosemirror-skip-ignored`、`document-focus-keeps-scroll`、`document-table-selection-drag`、`document-table-short` 五个测试。
 - **document 表格全屏(#1427)** — 表格自己的手柄菜单第一行「全屏」把编辑区铺满窗口,只显示这张表格;正文的其余块还在同一个编辑器里,由 `index.css` 的 `[data-table-fullscreen]` 规则藏起来,大纲和批注栏用 `<Activity mode="hidden">` 让开(折叠、收起和批注草稿都保留)。状态只在常驻插件 `document-table-fullscreen.ts` 里:进出全屏和「回到哪」都由它的 `apply` 在引起变化的那个事务里写下,所以隐藏的 Space 回来时也知道往哪滚(`use-table-fullscreen-shell.ts` 的 `scrollBack`)。**全屏期间,本地写到这张表格外面的事务被 `filterTransaction` 拒掉**(协作者经 Yjs 来的改动照常进),光标和选区由 `appendTransaction` 拉回表格,拖到正文上的东西(文件、别的应用的内容、块和文字)一律不接,表格自己的行列拖动照常落下;所以要写到表格外面的功能必须先退出全屏 —— AI 的插入和替换调 `leaveFullscreenForWrite`,Agent 提议卡的每次按下都先调 `setTableFullscreen(…, null)`。Esc 只在没有更上层的东西接它时退出(输入法刚结束的那一下、BlockNote 的建议菜单(`SuggestionMenu`)、链接工具条、AI 对话框都先接);右上角的退出按钮跟图片全屏的关闭按钮一样离角 16px,表格从正文右侧留白那么宽(`--doc-body-gutter`)的位置往下开始。
 - **document 批注的锚有两种** — 批注在字上时,锚是那段字上的 `comment` mark(记线程 id);批注在图片、视频或音频上时,正文不加任何标记,线程的 metadata 在建线程时写下那个块的 id(`{ mediaBlockId }`,之后不再改)。线程在不在、在哪,每次都从正文读:`document-comment-media.ts` 的 `commentPositions` 把字上的位置表和按 id 找到的媒体块合成一张表,批注栏的顺序、卡片和计数都读它;卡片引用、选中后滚过去(`commentedElement`)、正在读的媒体的画框(`use-media-comments.ts`)、给 Agent 读的 `lossy`(`anchoredMediaIds`)也都按这个 id 找块。块删了,线程就没有位置,撤销会写回同一个 id;复制、粘贴和复制式拖动都换新 id,所以副本不带批注,移动式拖动保留。每条线程各写自己的 metadata,两个人同时批注同一张图片都留得住。
+- **document 正文的公式** — 公式是两种不含文字的叶子节点：块级 `mathBlock` 和行内 `math`，LaTeX 源码存在节点的 `source` 属性里（`@breatic/shared` 的 `document-schema.ts`），正文的光标、选区和删除都把公式当一个整体。节点视图在 `spaces/document/document-math.tsx`：公式用 KaTeX 画（选项与聊天共用 `lib/katex-options.ts`），点公式打开它下方的编辑框，框里的源码随打随写回 `source`。公式在纯文本和 Markdown 里写成 `$$源码$$`（行内）和 `$$` 独占首尾两行（块级）：写出走 BlockNote 的 `htmlToMarkdown`（`patches/@blocknote__core@0.56.0.patch` 改了它的行内分支），读入由 `document-math-markdown.ts` 先用 remark-math 摘出公式，再交给 BlockNote 解析。正文和聊天之间传的 HTML 里，公式是带 `data-math` / `data-math-block` 属性（值为源码）的元素（`lib/formula-source.ts`）：聊天回复的复制（`pages/project/chat/copy-formula-source.ts`）这样写，正文复制和拖块写的 `blocknote/html`、拖选区写的 `text/html` 也这样写（`document-math.tsx` 的 clipboard serializer）；正文复制和拖块写给别的应用的 `text/html` 走 `toExternalHTML`，是 KaTeX 的 MathML（带 TeX 注解）。粘贴时两个节点的解析规则认 `data-math*`、KaTeX 的输出和带 TeX 注解的 MathML。正文自己拖出的内容（HTML 同时带 `data-pm-slice` 和 `data-content-type`）与复制写的 `blocknote/html` 是同一份剪贴板 HTML，`document-paste-read.ts` 的 `readTransfer` 按同一条切片路径读，所以拖放和粘贴落下的结果一样
 - **活动区域(键盘与剪贴板归谁,#168)** — project 页分两个区域,根节点挂 `data-region`:`ProjectPage` 的 `<section>` 是 `space`(标签条加它下面那个 space),`AgentColumn` 的根是 `agent`。**活动区域存在 `stores/ui.ts` 的 `activeRegion`**(初始 `space`,换 project 回到 `space`),写入只经 `features/active-region/use-track-active-region.ts` 的 `claimRegion(region)`(交给 `space` 时顺带清掉不在 space 里的文字高亮),两个调用方:同文件的 tracker —— `document` 捕获阶段的 `pointerdown` · `focusin` · `drop` 共用一个 handler(捕获阶段是硬要求:`suppressTooltipFocusOpen` 在 focus 事件上 `stopPropagation`;`drop` 单列是因为从桌面拖文件进来既不按下指针也不移焦点)。以及画布接下一次粘贴的时候(`CanvasSpace` 的 `onPaste`:粘贴出来的节点被选中,随后的撤销 / 删除 / Escape 归画布)。焦点去顶栏、进浮层、出窗口,以及滚轮,都不改它。**读的一侧是 `features/active-region/keyboard-scope.ts` 的 `regionOwnsKeyboard(target, region)`,它只回答区域归属**:祖先链不经过任何 `data-region`、又不是 `<body>` 的目标不归任何人(portal 到 `<body>` 的浮层、顶栏、**两列之间那个可聚焦的拖动手柄** —— 它 `tabIndex=0`、住在两个区域之间,Tab 顺序是 agent 列 → 手柄 → space 区,聚焦在它身上时按 Delete / Cmd+C 落回浏览器默认),其余交给 `activeRegion`;`regionOf` 是读 `data-region` 的唯一处。**光标在字段里归谁由各出口自己问** —— 撤销重做 · 粘贴 · 复制 · 编组 · 复制副本 · 删除各加一句 `isEditableTarget`(这六个键在字段里由字段或浏览器回答),两个 Escape 出口不问(Escape 在普通编辑器里没有原生行为,而 prompt 框和裁剪浮层都在 space 区域内)。**删除键从 xyflow 接管**:`deleteKeyCode={null}` 一个监听都不注册,画布自建 handler 照搬库的语义(带修饰键不删;按住只删一次而每次重复仍 `preventDefault`,所以 `preventDefault` 排在重复检查前)。**Ctrl/Cmd+A 由 `lib/use-block-select-all.ts` 在光标落不下去的地方吞掉**(放给浏览器就是全选整页),判据认 `event.key` 或 `event.code === 'KeyA'`(非拉丁布局那个键送别的字母而浏览器按位置触发),字段与 document space 各留各的;它挂在 project 页、随页卸载。**屏幕上**:当前 space 标签的文字和 Agent 列头部的文字跟着区域走(活动侧 `foreground`、闲置侧 `muted`),当前标签的填充不动 —— 它回答的是「哪个 space 是当前的」;非当前标签的 hover 文字同样跟随。
 - **Agent 列的宽度(可拖,#169)** — project 页的两列是 `react-resizable-panels` 的 `Group`,Agent 列 `320..640`、space 区最低 `420`(user 2026-08-28 定;能量出来的是「必须有个下限」——画布工具条 317px 不缩、离右边 16px,所以 333 以下撤销按钮开始被切,320 时切掉 13px),中间那根手柄 1px,**它带 `z-10`** —— 它接指针的那 9px(透明 `::before` 左右各 4px)向右伸进 space 区,而画布的 `.react-flow__pane` 是 `position:absolute; z-index:1`,不抬起来右半边就被画布盖住:在那几像素上按下,DOM 认作点画布(画布开始框选并抓走指针捕获)、库仍认作拖手柄(它自己在 document 上算 hit rect,不看层叠),松手时 `pointerup` 去了手柄,画布等不到自己的结束事件,选框就一直画下去(#184 实测,`agent-column-handle.spec.ts` 钉住)。**手柄是 Group 的 flex item 而不是 panel**,所以两列真正分的宽度是 `Group.clientWidth` 减掉它 —— 库把各 panel 的份额算成百分比,少减这 1px 会让还原出来的像素值一直偏。**页面底线 `320 + 1 + 420 = 741` 恒定**:窄于它,project 页在自己的横向 `ScrollArea` 里滚(顶栏跟着一起滚,只在 project 页这一层),两列都不再让步。**恒定这件事是承诺的一部分** —— 折叠 Agent 列不降低它,身份从 editor 变成 viewer 也不降低它:这两样都会在页面开着的时候变,底线跟着变就等于页面在用户脚下改形。**宽度是两个独立的事实,不是一个**:用户拖到的那个值(`use-agent-column-width.ts` 的 `setWidthRef`,同时进 localStorage,**一个全局值、不分 project**),和此刻渲染出来的那个值(`agent-column-width.ts` 的 `resolveWidth` 从前者推)。库只存一个 layout 并按约束覆写它,所以被窄窗口挤过的列会永久丢掉用户设的宽度(实测:设 640 → 窄到 900 → 再拉宽,停在 579)。**只有 `meta.isUserInteraction` 那一支写用户设定值**,其余每一次(窗口缩放、约束重算、挂载)都是库自己到达的宽度,合规就接受、不合规就 `panel.resize` 推回去;两支都从库交回的 layout 里读宽度,不问 `panel.getSize()` —— 布局变更是同步报的,那时 React 还没重渲,键盘连按会存下上一次的值。
 - **Space 标签条与每个 Space 的相机(#2165)** — 开着哪些 Space、什么顺序、当前显示哪个,加上每个 Space 的画布相机(`x` / `y` / `zoom`),一起存在这台浏览器里(`STORAGE_KEYS.projectTabs`),**不进服务器**。唯一读写点 `src/lib/project-tabs-storage.ts`,按 **userId → projectId → spaceId** 寻址 —— 同一台机器上两个账号访问同一个 project 各看各的,同一个账号换一台机器也各管各的。首访(这台浏览器在这个账号下没来过这个 project)从 `createdAt` 最新的那个 Space 开始(`@breatic/shared` 的 `initialOpenTabIds`),之后打开的是上次离开时那条。**相机在它被放到位之后才存,而自动取景也算一次放置** —— 一个只是被打开过的 Space 会留下取景给它的那个相机,下次开在那上面。要挡的窗口更窄:画布开在恒等变换上、要等节点量完才自动取景(61 个节点实测 118ms),在这个窗口里离开会把原点当成用户选的视角存下去,而一个存了相机的 Space 从此不再自动取景。判据因此是 ReactFlow 报没报过 `onMove` —— 它为自己的取景和用户的手势都报,且早于被延后 150ms 的那个结束事件;**空画布取景时什么都没动、也就什么都不报**,所以画布上没东西的 Space 存不下相机、照旧 `fitView`。要重新取景的用户用工具条的「适应视图」。读回来的相机要过校验(有限数 + 缩放落在画布允许的范围内),**一个通不过的相机只让那一个 Space 回到取景,标签条照常还原**。
@@ -1288,10 +1328,10 @@ async function deductOnce(userId: string, amount: number, refKey: string): Promi
 
 ```ts
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 ```
 
-`Elastic-2.0` = Elastic License 2.0(见仓库根 `LICENSE`);Breatic 名称与标识的使用规则见仓库根 `TRADEMARKS.md`。
+`AGPL-3.0-only` = GNU Affero General Public License v3.0,仅限这一版本(见仓库根 `LICENSE`);Breatic 名称与标识的使用规则见仓库根 `TRADEMARKS.md`。
 
 - **豁免**:shadcn vendor(`web` 的 `components/ui/`)—— 第三方 IP,不挂 Orime 版权。
 - **CI 强制**:`breatic/no-missing-license-header`(扫 `packages/*/src` 的 `.ts`/`.tsx` + `eslint-rules/src` 与 `repo-lint/src` 的 `.ts`,排除 vendor;新文件缺头即 fail)。**双行都校验** —— 版权行与许可行都得在、都得在最前两行且顺序正确;只认第一行的话,写错许可证的文件能过。

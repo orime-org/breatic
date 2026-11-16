@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * #1960 — how much text a model will take.
@@ -52,12 +52,13 @@ describe("a tts model states how much text it takes (#1960 A17)", () => {
     expect(ttsEntry(model).max_input_chars).toBe(cap);
   });
 
-  // The Gemini schema states no cap. Absent is the honest answer, and the panel
-  // reads absent as uncapped; a number invented here would refuse text the
-  // upstream accepts.
-  it("leaves gemini-3.1-flash-text-to-speech uncapped, because its upstream states no cap", () => {
+  // Google states no character cap for Gemini 3.8, only a token budget; the
+  // 8000 characters WaveSpeed takes per text and per turn are that reseller's
+  // own, held as its binding's rejects. Absent is the honest answer here, and
+  // the panel reads absent as uncapped.
+  it("leaves gemini-3.8-flash-text-to-speech uncapped, because its vendor states no character cap", () => {
     useFullCatalog();
-    expect(ttsEntry("gemini-3.1-flash-text-to-speech").max_input_chars).toBeUndefined();
+    expect(ttsEntry("gemini-3.8-flash-text-to-speech").max_input_chars).toBeUndefined();
   });
 
   it("answers 5000 on a deployment with only the WaveSpeed key", () => {

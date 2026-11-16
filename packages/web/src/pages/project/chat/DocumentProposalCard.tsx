@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { diffWords, type Change } from 'diff';
 import * as React from 'react';
@@ -43,6 +43,7 @@ const BLOCK_NAME_KEY: Readonly<Record<string, string>> = {
   image: 'spaces.document.media.image',
   video: 'spaces.document.media.video',
   audio: 'spaces.document.media.audio',
+  mathBlock: 'spaces.document.commands.formula',
 };
 
 /** The line a press that landed shows. */

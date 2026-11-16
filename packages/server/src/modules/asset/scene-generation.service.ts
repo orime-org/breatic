@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Submitting a 3D generation from a 3D Space (inner#1691 design 4.2).
@@ -33,7 +33,7 @@ import {
   type SceneGenerationBody,
 } from "@breatic/shared";
 import { assertStorageAllowance } from "@server/modules/asset/storageQuota.service.js";
-import { assertServable } from "@server/modules/task/model-servable.js";
+import { assertServable, assertTakesInput } from "@server/modules/task/model-servable.js";
 import { admitGeneration } from "@server/modules/task/admit-generation.service.js";
 import { recordJobId, settleUnqueuedRun } from "@server/modules/task/generation-task.js";
 import { publishSpaceTasksQuietly } from "@server/modules/task/publish-counts.js";
@@ -169,6 +169,7 @@ export async function checkSubmission(projectId: string, submission: SceneGenera
   if (!plan.ok) throw new ValidationError(problemMessage(plan.problem));
   // A model no upstream here can serve is refused before anything is held or queued.
   assertServable(plan.entry.name, plan.entry.display_name);
+  await assertTakesInput(plan.entry.name, plan.entry.display_name, { params: plan.params, prompt: plan.prompt ?? undefined }, undefined, { projectId });
   return { plan, images: await resolveProjectImageInputs(projectId, views) };
 }
 

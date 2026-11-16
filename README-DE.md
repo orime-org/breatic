@@ -1,7 +1,7 @@
 <h1 align="center">Breatic</h1>
 
 <p align="center"><strong>Der KI-Arbeitsbereich für Kreativteams mit Zusammenarbeit in Echtzeit.</strong></p>
-<p align="center">Online verfügbar · Quellcode einsehbar · Desktop-Browser</p>
+<p align="center">Online verfügbar · Open Source · Desktop-Browser</p>
 
 <p align="center">
   <a href="https://breatic.ai/?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=repository_listing_202610&amp;utm_content=readme_website_de">Website</a> ·
@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/orime-org/breatic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/orime-org/breatic?style=flat&amp;color=blueviolet&amp;label=release&amp;display_name=tag"></a>
-  <a href="LICENSE"><img alt="License: Elastic-2.0" src="https://img.shields.io/badge/license-Elastic--2.0-blue?style=flat"></a>
+  <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat"></a>
   <a href="https://discord.gg/Yeu6A4aejN"><img alt="Discord community" src="https://img.shields.io/badge/discord-join%20community-5865F2?style=flat&amp;logo=discord&amp;logoColor=white"></a>
   <a href="#get-started"><img alt="Quickstart guide" src="https://img.shields.io/badge/quickstart-guide-green?style=flat"></a>
 </p>
@@ -96,7 +96,7 @@ Sicherheitslücken bitte gemäß [SECURITY.md](SECURITY.md) vertraulich melden. 
 
 ## Lizenz und erlaubte Nutzung
 
-Der Quellcode von Breatic ist unter der [Elastic License 2.0](LICENSE) (Elastic-2.0) verfügbar. Du darfst ihn lesen, ändern, weitergeben und für dich oder innerhalb deiner Organisation ausführen, auch für kommerzielle Arbeit. Du darfst Breatic Dritten nicht als gehosteten oder verwalteten Dienst anbieten. Maßgeblich sind die vollständigen Lizenzbedingungen.
+Breatic ist Open Source unter der [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0-only). Du darfst Breatic für jeden Zweck nutzen, untersuchen, ändern und selbst hosten, auch kommerziell. Wenn du Breatic änderst und anderen die geänderte Version über ein Netzwerk zur Verfügung stellst, musst du ihnen den vollständigen Quellcode unter derselben Lizenz anbieten. Maßgeblich sind die vollständigen Lizenzbedingungen.
 
 Name und Logo sind Marken von Orime, Inc. und nicht von dieser Lizenz erfasst; siehe [TRADEMARKS.md](TRADEMARKS.md). Die Lizenz schränkt die mit Breatic erstellten Inhalte nicht ein.
 

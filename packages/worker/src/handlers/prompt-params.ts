@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Taking the user's prompt out of a task's params (#1966).
@@ -56,8 +56,6 @@ type ValidateParams = (
  * paths could still call it on either side of validation. Sharing the ORDER is
  * what makes the defect unwritable: a caller gets one call, and there is
  * nothing left to sequence.
- * The music models' `lyrics` is cleaned here too, on the far side of the
- * validator — same mandate, different carrier (#1960).
  * @param params - Task params with the infra-only fields already stripped.
  * @param model - The model to validate against.
  * @param validateParams - The model's param check (`validateModelParams`).
@@ -70,24 +68,10 @@ export function takePromptAndValidate(
 ): [string, string, Record<string, unknown>] {
   const [prompt, promptless] = takePromptOutOfParams(params);
   // Every text setting (a 3D negative prompt, a voice description, a motion
-  // prompt) and every text field of a list's entries (a storyboard shot's
+  // prompt, a song's lyrics) and every text field of a list's entries (a storyboard shot's
   // prompt, a speaker's name) is cleaned by the validator, which knows from
   // the model's declaration which ones are text.
   const [resolvedModel, validated] = validateParams(model, promptless);
-  // The lyrics are the second thing a user types into a rich-text editor on
-  // the way to a provider (#1960), and the mandate that every AIGC prompt is
-  // stripped of HTML, comments and invisible characters is about what the user
-  // typed, not about which argument carries it. They stay INSIDE the bag
-  // because the vendor reads `lyrics` as a declared param rather than as the
-  // positional prompt — so this is a clean, not a lift.
-  //
-  // After validation, not before: a model that does not declare the field has
-  // had it dropped by then, and cleaning a value nothing will send is work on
-  // a key that no longer exists.
-  const cleaned: Record<string, unknown> =
-    typeof validated.lyrics === "string"
-      ? { ...validated, lyrics: extractPromptText(validated.lyrics) }
-      : { ...validated };
-  return [prompt, resolvedModel, cleaned];
+  return [prompt, resolvedModel, validated];
 }
 

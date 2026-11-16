@@ -343,7 +343,22 @@
     },
     "model": {
       "not_configured": "{model} is not set up on this deployment: it needs {envVars}.",
-      "upstream_not_bound": "{model} is not offered through {upstream}."
+      "upstream_not_bound": "{model} is not offered through {upstream}.",
+      "input_limit": {
+        "characters_max": "{model} takes at most {max, number} characters in {field}.",
+        "characters_min": "{model} needs at least {min, number} characters in {field}.",
+        "line_characters_max": "{model} takes at most {max, number} characters in each line of {field}.",
+        "item_characters_max": "{model} takes at most {max, number} characters in each of {field}.",
+        "lines_max": "{model} takes at most {max, number} lines in {field}.",
+        "chinese_characters_max": "{model} takes at most {max, number} Chinese characters in {field}.",
+        "unsupported": "{model} can’t take this run as set up. Change the settings or pick another model."
+      },
+      "input_field": {
+        "prompt": "the text",
+        "negative_prompt": "the negative prompt",
+        "lyrics": "the lyrics",
+        "multi_prompt": "the shot prompts"
+      }
     },
     "document": {
       "versions_full": "{limit, plural, one {This document already has 1 snapshot. Delete it to save a new one.} other {This document already has # snapshots. Delete an old one to save a new one.}}"
@@ -754,6 +769,7 @@
       "mentionEmpty": "No references available",
       "voicePlaceholder": "No voice chosen",
       "voiceSearchPlaceholder": "Search voices…",
+      "voiceSampleLanguage": "Sample",
       "voiceLoading": "Loading voices…",
       "voiceEmpty": "No matching voices",
       "voiceError": "Voices unavailable",
@@ -1151,7 +1167,9 @@
         "media_refused": "The model would not take this file.",
         "tool_failed": "The tool could not process this file.",
         "no_audio_track": "{kind, select, audio {This audio has no sound to read.} other {This video has no audio track.}}",
-        "cut_short": "This is too long to transcribe in full."
+        "cut_short": "This is too long to transcribe in full.",
+        "input_refused": "{model} can’t take this run as set up. Change the settings or pick another model.",
+        "model_not_configured": "{model} is not set up on this deployment: it needs {envVars}."
       },
       "kind": {
         "upload": "Upload",
@@ -1514,6 +1532,7 @@
         "food": "Food",
         "social-hooks": "Social hooks",
         "posters": "Posters & graphics",
+        "speed": "Motion & speed",
         "sound": "Sound, music & voice"
       },
       "storyboard-grid-25": {
@@ -1826,6 +1845,39 @@
           "photo": {
             "name": "Photo",
             "note": "Add the photo first, then generate."
+          }
+        }
+      },
+      "vehicle-speed-cutlist": {
+        "name": "Vehicle speed cut list",
+        "description": "A car or motorbike at speed, a new camera angle every second",
+        "prompt": "A 12-second 16:9 vehicle speed film in exactly 12 cuts, one cut per second. The vehicle is [📎 Vehicle]: the same model, colour, wheels, stance and number plate as in the picture in every cut, nothing else taken from the picture; its wheels turn and its suspension compresses like a real one. {✏️ Who drives, e.g. a rider in a black full-face helmet the whole time}. Road: {✏️ the road and the weather, e.g. a wet mountain road at dawn, guardrails and pine trees on both sides}. 90% of the film is pure camera motion, 10% scenery. The first frame is already at full speed. 0–1 s: road-level camera, the front tyre fills the frame and the road streaks under it. 1–2 s: side tracking shot level with the vehicle, the roadside racing past. 2–3 s: low camera ahead, the vehicle charges straight at the lens. 3–4 s: close-up of the rear wheel and suspension working over the road surface. 4–5 s: drone shot from above following the road. 5–6 s: close-up of the exhaust, heat shimmer behind it; on an electric vehicle, the rear wheel hub. 6–7 s: camera behind, the road narrowing ahead. 7–8 s: low side shot at tyre height, the road surface tearing past. 8–9 s: over-the-shoulder shot of the person driving. 9–10 s: wide shot, the vehicle a streak through its surroundings. 10–11 s: road-level camera as it passes, the road surface blurring past the lens. 11–12 s: the vehicle shoots out of frame and the camera stays on the empty road. One light source: {✏️ the light, e.g. a low sun at the end of the road}. Sound: the engine note rising through each gear (on an electric vehicle, the motor whine climbing), tyre roar and wind, one beat of silence after it passes in the last second. Close-ups only on tyres, suspension and exhaust or hub, never on badges or dials. No made-up letters or numbers on the number plate, no duplicated parts, no wheels changing shape, no vehicle floating above the road. No text on screen.",
+        "input": {
+          "vehicle": {
+            "name": "Vehicle",
+            "note": "Add a clear photo of the whole car or motorbike first, then generate."
+          }
+        }
+      },
+      "sports-live-coverage": {
+        "name": "Live sports coverage",
+        "description": "An obstacle course filmed like live TV, with crowd and commentator",
+        "prompt": "A 12-second 16:9 live sports broadcast. The athlete is [📎 Athlete]: the same face, hair, build and outfit as in the picture, nothing else taken from the picture. Course: {✏️ the course and its obstacles in order, e.g. an obstacle course over a pool: a balance beam, a swinging bag, a foam wall}; the athlete moves through it from left to right. Each camera has one job and the cuts land on the action. 0–3 s: wide crane shot of the whole course, the direction of travel and the first obstacle; the athlete is already under way. 3–6 s: long lens tracking from the side as the athlete reaches {✏️ the obstacle they run into, e.g. the swinging bag}. 6–9 s: low camera on the contact: the athlete and the obstacle meet, the force pushes the athlete the way the obstacle moves or throws them back off it, their body bends away from it, then {✏️ what happens, e.g. they fall into the water with a big splash}; nothing reacts before the contact. 9–12 s: finish camera on the ending: {✏️ how it ends, e.g. they climb out soaked and wave to the crowd}; whatever the contact left on them (wet clothes, mud, tiredness) stays from then on. One light source: the venue's own light from above (floodlights, or the sun outdoors). Sound: the athlete's feet, wheels or skis on the course and whatever on it moves or is hit, the crowd and an excited commentator reacting just after each contact, a breath of silence right before the contact. No on-screen graphics, no text on screen.",
+        "input": {
+          "athlete": {
+            "name": "Athlete",
+            "note": "Add a clear full-body photo of the athlete first, then generate."
+          }
+        }
+      },
+      "extreme-sports-run": {
+        "name": "Extreme sports run",
+        "description": "One stunt, run-up to landing, in one take",
+        "prompt": "A 10-second vertical action clip in one continuous take. The person is [📎 Person]: the same face, build and outfit as in the picture, nothing else taken from the picture; the same person, gear, place and light throughout. Sport and place: {✏️ e.g. snowboarding off a kicker on a sunny mountain slope}. The camera operator follows on the move: no cuts, no jumps to another angle. 0–3 s run-up: already moving fast toward the take-off, {✏️ e.g. the board edge carving the snow, spray flying off each turn}. 3–5 s take-off: knees compress, then extend as they leave the ground at the take-off. 5–7 s in the air: {✏️ the move, e.g. one grab of the board}, the body moving naturally and continuously through it, and if it spins, no set number of spins. 7–10 s landing: they touch down with knees and hips folding deep to take the weight, {✏️ e.g. snow bursting out around the board}, then carry the speed on. One light source: the place's own (the sun on an open slope). Sound: skis, board, wheels or feet on the surface and the wind, near silence at the top of the jump, a heavy thud on landing. No flying or hovering, no teleporting, no light upright landing, no injury. No text on screen.",
+        "input": {
+          "person": {
+            "name": "Person",
+            "note": "Add a clear full-body photo of the person first, then generate."
           }
         }
       },
@@ -2337,6 +2389,8 @@
         "taskList": "To-do list",
         "divider": "Divider",
         "table": "Table",
+        "formula": "Formula",
+        "columns": "Columns",
         "align": "Alignment",
         "alignLeft": "Left",
         "alignCenter": "Centre",
@@ -2502,6 +2556,13 @@
         "notPasted": "{count, plural, one {# item was not pasted.} other {# items were not pasted.}}",
         "stillUploading": "{count, plural, one {# image, video or audio is still uploading and was not pasted. Copy it again once the upload finishes.} other {# images, videos or audio are still uploading and were not pasted. Copy them again once the upload finishes.}}"
       },
+      "math": {
+        "placeholder": "Enter LaTeX, e.g. E = mc^2",
+        "empty": "Add a formula",
+        "blank": "Empty formula",
+        "error": "Formula has an error",
+        "ok": "OK"
+      },
       "versions": {
         "title": "Snapshots",
         "close": "Close snapshots",
@@ -2544,6 +2605,9 @@
         "deleteFailed": "The snapshot was not deleted.",
         "folded": "{count, plural, one {# unchanged block · Show} other {# unchanged blocks · Show}}",
         "unavailable": "Snapshots could not load. Refresh the page to use them."
+      },
+      "columns": {
+        "unavailable": "Columns can't go here"
       }
     },
     "readOnlyReconnect": "Reconnect",
@@ -2764,6 +2828,36 @@
         "copied": "Copied",
         "copyFailed": "Copy failed",
         "canvasUnreachable": "Couldn't reach {name}. Try again"
+      },
+      "focalLength": "Focal length",
+      "frame": "Frame",
+      "color": "Color",
+      "intensity": "Intensity",
+      "castShadow": "Cast shadow",
+      "angle": "Angle",
+      "director": {
+        "open": "Director",
+        "cameras": "Cameras",
+        "saveView": "Save this view as a camera",
+        "camerasEmpty": "Save this view as a camera to see what it shoots here.",
+        "cameraName": "Camera {n}",
+        "lights": "Lights",
+        "addLight": "Add light",
+        "lightDirectional": "Directional light",
+        "lightPoint": "Point light",
+        "lightSpot": "Spotlight",
+        "lightName": "{type} {n}",
+        "lightsEmpty": "No lights yet. The scene uses default lighting.",
+        "lightLimit": "A scene holds at most {max} lights.",
+        "lightOverLimit": "Over the limit, not lit",
+        "shadowBudget": "No more shadows fit on this graphics card",
+        "ambient": "Ambient light",
+        "exitCamera": "Exit camera",
+        "cameraLocked": "This camera is locked.",
+        "cameraDeleted": "The camera was deleted.",
+        "more": "More",
+        "look": "Look through this camera",
+        "customFocal": "Custom"
       }
     },
     "sizeCap": {

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -69,6 +69,12 @@ describe("priceUsd — properties", () => {
       const verdicts = await Promise.all(lengths.map((length) => holds("get_duration(video) > 15", { video: ["u"] }, { video: [length] })));
       expect(verdicts).toEqual(lengths.map((length) => length > 15));
     }));
+  });
+
+  it("$word holds for a non-empty string of word characters in any script, as the upstreams read ^\\w+$, and for nothing else", async () => {
+    for (const name of ["Ava", "Ava_2", "李雷", "José"]) expect(await holds("$word(name)", { name }, {})).toBe(true);
+    for (const name of ["", "Ava Lee", "Ava·Lee", "a-b"]) expect(await holds("$word(name)", { name }, {})).toBe(false);
+    expect(await holds("$word(name)", { name: 7 }, {})).toBe(false);
   });
 
   it("a formula without a finite total_price is refused", async () => {

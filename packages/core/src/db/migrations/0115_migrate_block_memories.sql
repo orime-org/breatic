@@ -1,5 +1,5 @@
 -- Copyright (c) 2026 Orime, Inc.
--- SPDX-License-Identifier: Elastic-2.0
+-- SPDX-License-Identifier: AGPL-3.0-only
 
 -- Product database (#1363): every block of memory written before entries
 -- existed becomes one entry, word for word; the next consolidation splits it.

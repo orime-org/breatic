@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Where each message the product's screens show is in the product guide.
@@ -540,6 +540,16 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.template.photo-paper-diorama.input.photo.name": { described: /an empty node is placed to the left, connected and @'d/ },
   "canvas.template.photo-paper-diorama.input.photo.note": { described: /a note at the top of the prompt says what to put in it/ },
   "canvas.template.photo-paper-diorama.prompt": { described: /replaces that mode's prompt with the template's/ },
+  // inner#1810: the motion and speed templates.
+  "canvas.template.vehicle-speed-cutlist.input.vehicle.name": { described: /an empty node is placed to the left, connected and @'d/ },
+  "canvas.template.vehicle-speed-cutlist.input.vehicle.note": { described: /a note at the top of the prompt says what to put in it/ },
+  "canvas.template.vehicle-speed-cutlist.prompt": { described: /replaces that mode's prompt with the template's/ },
+  "canvas.template.sports-live-coverage.input.athlete.name": { described: /an empty node is placed to the left, connected and @'d/ },
+  "canvas.template.sports-live-coverage.input.athlete.note": { described: /a note at the top of the prompt says what to put in it/ },
+  "canvas.template.sports-live-coverage.prompt": { described: /replaces that mode's prompt with the template's/ },
+  "canvas.template.extreme-sports-run.input.person.name": { described: /an empty node is placed to the left, connected and @'d/ },
+  "canvas.template.extreme-sports-run.input.person.note": { described: /a note at the top of the prompt says what to put in it/ },
+  "canvas.template.extreme-sports-run.prompt": { described: /replaces that mode's prompt with the template's/ },
   // inner#1808: the food templates.
   "canvas.template.food-money-shot.input.dish.name": { described: /an empty node is placed to the left, connected and @'d/ },
   "canvas.template.food-money-shot.input.dish.note": { described: /a note at the top of the prompt says what to put in it/ },
@@ -605,6 +615,8 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.task.failure.declined": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.task.failure.empty": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.task.failure.expired": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "canvas.task.failure.input_refused": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "canvas.task.failure.model_not_configured": { excluded: REASONS.UPSTREAM_UNSET },
   "canvas.task.failure.internal": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.task.failure.media_refused": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.task.failure.no_credits": { excluded: REASONS.SAYS_WHAT_HAPPENED },
@@ -957,6 +969,19 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "server.canvas.voices_model_not_found": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.model.not_configured": { excluded: REASONS.UPSTREAM_UNSET },
   "server.model.upstream_not_bound": { excluded: REASONS.UPSTREAM_UNSET },
+  // #1521: the refusal of a run no upstream here takes, naming the limit; the
+  // Agent's own proposal check refuses the same run in its own words.
+  "server.model.input_limit.characters_max": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "server.model.input_limit.characters_min": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "server.model.input_limit.line_characters_max": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "server.model.input_limit.item_characters_max": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "server.model.input_limit.lines_max": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "server.model.input_limit.chinese_characters_max": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "server.model.input_limit.unsupported": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "server.model.input_field.prompt": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "server.model.input_field.negative_prompt": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "server.model.input_field.lyrics": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "server.model.input_field.multi_prompt": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.canvas.voices_not_offered": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.three_d.model_not_offered": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.three_d.prompt_required": { excluded: REASONS.SAYS_WHAT_HAPPENED },
@@ -1195,6 +1220,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "spaces.create.typeLabel": { excluded: REASONS.FILLS_A_VALUE },
   "spaces.document.blockHandle.dragTip": { excluded: REASONS.SCREEN_READER, look: /a handle of six dots/ },
   "spaces.document.blockHandle.insertHere": { excluded: REASONS.SCREEN_READER, look: /shows a plus at its left/ },
+  "spaces.document.math.placeholder": { excluded: REASONS.SAYS_WHAT_TO_TYPE },
   "spaces.document.media.uploading": { excluded: REASONS.PASSING },
   "spaces.document.media.uploadingPercent": { excluded: REASONS.PASSING },
   "spaces.document.media.notPasted": { excluded: REASONS.SAYS_WHAT_HAPPENED },
@@ -1274,6 +1300,9 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "spaces.rename.error.failed": { excluded: REASONS.SAYS_TRY_AGAIN },
   "spaces.rename.inputAriaLabel": { excluded: REASONS.SCREEN_READER, look: /Double-click the name/ },
   "spaces.tab.closeAria": { excluded: REASONS.SCREEN_READER, look: /a small X at its right end, which closes the tab/ },
+  "spaces.threeD.director.cameraName": { excluded: REASONS.FILLS_A_VALUE },
+  "spaces.threeD.director.lightName": { excluded: REASONS.FILLS_A_VALUE },
+  "spaces.threeD.director.lightLimit": { described: /A scene holds at most \d+ lights/ },
   "spaces.threeD.importModel.description": { described: /a glTF 2\.0 \.glb, or a \.gltf with its \.bin and texture files/ },
   "spaces.threeD.importModel.resourceHint": { described: /a \.gltf with its \.bin and texture files, or a ZIP holding them/ },
   "spaces.threeD.importModel.dropFiles": { described: /or files dropped on it/ },

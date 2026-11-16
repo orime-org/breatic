@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * #1960 §6.3 — the voice list, as the audio settings pill opens it beside
@@ -18,13 +18,15 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { cleanup, render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { AudioSettingsPicker } from '@web/spaces/canvas/generate/AudioSettingsPicker';
 import { expectChosenFill } from '@web/test-utils/selection-fill';
 import type { VoiceListState } from '@web/spaces/canvas/generate/voice-list-state';
-import type { ModelEntry, Voice } from '@breatic/shared';
+import { setLocale, type ModelEntry, type Voice } from '@breatic/shared';
+import { useCurrentUserStore } from '@web/stores/current-user';
+import { renderWithTooltips } from '@web/test-utils/render-with-tooltips';
 
 vi.mock('@web/i18n/use-translation', () => ({
   useTranslation: () => (key: string): string => key,
@@ -350,41 +352,76 @@ describe('the voice list samples (#1960 A2)', () => {
     expect(screen.queryByTestId('generate-voice-sample-beta')).toBeNull();
   });
 
-  it('plays a voice\'s sample in the language the user picked', () => {
-    // A Gemini voice speaks whichever language is picked in the same panel,
-    // so its sample is the one in that language (user 2026-09-29).
-    const multilingual: ModelEntry = {
-      ...VOICED,
-      params: {
-        ...VOICED.params,
-        language: {
-          description: '',
-          default: 'English (United States)',
-          values: ['English (United States)', 'Japanese (Japan)'],
-          value_locales: ['en-US', 'ja-JP'],
-          fill: 'panel',
-        },
-      },
-    };
+  describe('a model whose voices have a sample per language (#1521)', () => {
+    const GEMINI: ModelEntry = { ...VOICED, sample_languages: ['en', 'ja', 'zh'] };
     const kore: Voice = {
       id: 'kore',
       name: 'Kore',
       previewUrl: 'https://example.test/kore.mp3',
-      previewUrls: { 'Japanese (Japan)': 'https://example.test/ja/kore.mp3' },
+      previewUrls: { en: 'https://example.test/kore.mp3', ja: 'https://example.test/ja/kore.mp3', zh: 'https://example.test/zh/kore.mp3' },
     };
-    const voice = { list: state({ voices: [kore] }), selectedId: null, selectedName: null, ...NOOPS };
-    render(
-      <AudioSettingsPicker mode='tts'
-        model={multilingual}
-        value={{ language: 'Japanese (Japan)' }}
-        onChange={() => {}}
-        voice={voice as never}
-      />,
-    );
-    fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
-    fireEvent.click(screen.getByTestId('generate-audio-row-voice_id'));
-    fireEvent.click(screen.getByTestId('generate-voice-sample-kore'));
-    expect((play.mock.contexts[0] as HTMLAudioElement).src).toBe('https://example.test/ja/kore.mp3');
+
+    /**
+     * Opens the voice list of the Gemini-like model.
+     * @param list - The list state to show.
+     */
+    function openGemini(list: VoiceListState = state({ voices: [kore] })): void {
+      const voice = { list, selectedId: null, selectedName: null, ...NOOPS };
+      renderWithTooltips(<AudioSettingsPicker mode='tts' model={GEMINI} value={{}} onChange={() => {}} voice={voice as never} />);
+      fireEvent.click(screen.getByTestId('generate-audio-settings-trigger'));
+      fireEvent.click(screen.getByTestId('generate-audio-row-voice_id'));
+    }
+
+    beforeEach(() => {
+      setLocale('ja');
+      useCurrentUserStore.setState({ user: { id: 'sample-language-user' } as never });
+      localStorage.clear();
+    });
+
+    afterEach(() => {
+      setLocale('en');
+      useCurrentUserStore.setState({ user: null });
+    });
+
+    it('plays a voice in the interface language until the user picks another', () => {
+      openGemini();
+      expect(screen.getByTestId('generate-voice-language')).toBeInTheDocument();
+      fireEvent.click(screen.getByTestId('generate-voice-sample-kore'));
+      expect((play.mock.contexts[0] as HTMLAudioElement).src).toBe('https://example.test/ja/kore.mp3');
+    });
+
+    it('plays the picked language, and keeps the pick for the next time the list opens', async () => {
+      openGemini();
+      fireEvent.click(screen.getByTestId('generate-voice-language'));
+      fireEvent.click(await screen.findByTestId('generate-voice-language-zh'));
+      fireEvent.click(screen.getByTestId('generate-voice-sample-kore'));
+      expect((play.mock.contexts.at(-1) as HTMLAudioElement).src).toBe('https://example.test/zh/kore.mp3');
+      cleanup();
+      openGemini();
+      expect(screen.getByTestId('generate-voice-language')).toHaveTextContent(new Intl.DisplayNames(['ja'], { type: 'language', languageDisplay: 'standard' }).of('zh')!);
+    });
+
+    it('names the held language in full in a tooltip on hover, painted by the app', async () => {
+      const user = userEvent.setup();
+      openGemini();
+      const trigger = screen.getByTestId('generate-voice-language');
+      expect(trigger).not.toHaveAttribute('title');
+      await user.hover(trigger);
+      expect(await screen.findByRole('tooltip')).toHaveTextContent(new Intl.DisplayNames(['ja'], { type: 'language', languageDisplay: 'standard' }).of('ja')!);
+    });
+
+    it('keeps the picker while the list loads and when nothing matched, so the search box never moves', () => {
+      openGemini(state({ status: 'loading', voices: [] }));
+      expect(screen.getByTestId('generate-voice-language')).toBeInTheDocument();
+      cleanup();
+      openGemini(state({ status: 'empty', voices: [] }));
+      expect(screen.getByTestId('generate-voice-language')).toBeInTheDocument();
+    });
+
+    it('offers no picker for a model whose voices have one sample each', () => {
+      open();
+      expect(screen.queryByTestId('generate-voice-language')).toBeNull();
+    });
   });
 
   it('plays the sample without choosing that voice', () => {

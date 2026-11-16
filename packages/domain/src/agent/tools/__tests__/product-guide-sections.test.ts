@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The product guide is read a section at a time (breatic#1361).
@@ -69,7 +69,14 @@ const SPACE_SECTIONS: Record<string, readonly string[]> = {
     "Groups and undo",
     "Proposal cards",
   ],
-  document: ["Document spaces", "Document proposal cards", "Document snapshots"],
+  document: [
+    "Document spaces",
+    "Document formulas",
+    "Document comments",
+    "Document columns",
+    "Document proposal cards",
+    "Document snapshots",
+  ],
   timeline: ["Timeline spaces"],
   "3d": ["3D spaces"],
 };

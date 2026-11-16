@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
 
@@ -14,7 +14,7 @@ import { TooltipProvider } from '@web/components/ui/tooltip';
 import { applySceneCommand, readSceneDocument } from '@web/data/yjs/scene-document';
 import { SceneSession } from '@web/data/yjs/scene-session';
 import SceneEditor from '@web/spaces/three-d/SceneEditor';
-import { SCENE_CAMERA_FOV } from '@web/spaces/three-d/viewport/scene-viewport-props';
+import { SCENE_VIEW_FOV } from '@web/spaces/three-d/viewport/scene-viewport-props';
 import type { SceneViewportProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
 import { useFollowStore } from '@web/stores/follow';
 import { useUIStore } from '@web/stores/ui';
@@ -92,7 +92,7 @@ describe('SceneEditor, following a member', () => {
     const session = await setup();
     const setCamera = vi.spyOn(session, 'setCamera');
     act(() => viewport().onViewChange({ position: [1, 2, 3], target: [0, 0, 0] }));
-    expect(setCamera).toHaveBeenLastCalledWith({ position: [1, 2, 3], target: [0, 0, 0], fov: SCENE_CAMERA_FOV });
+    expect(setCamera).toHaveBeenLastCalledWith({ position: [1, 2, 3], target: [0, 0, 0], fov: SCENE_VIEW_FOV });
   });
 
   it('publishes no camera while following a member, and its own once following stops', async () => {
@@ -101,7 +101,7 @@ describe('SceneEditor, following a member', () => {
     act(() => viewport().onViewChange({ position: [1, 2, 3], target: [0, 0, 0] }));
     expect(setCamera).toHaveBeenLastCalledWith(null);
     act(() => useFollowStore.getState().stop('button'));
-    expect(setCamera).toHaveBeenLastCalledWith({ position: [1, 2, 3], target: [0, 0, 0], fov: SCENE_CAMERA_FOV });
+    expect(setCamera).toHaveBeenLastCalledWith({ position: [1, 2, 3], target: [0, 0, 0], fov: SCENE_VIEW_FOV });
   });
 
   it('stops following when the user moves the camera in the viewport or the overview', async () => {

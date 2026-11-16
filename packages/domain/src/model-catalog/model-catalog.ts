@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Model catalog — loads all AIGC model configs from YAML.
@@ -46,7 +46,7 @@ import type {
 } from "@breatic/shared";
 import { checkParamCombination, extractPromptText, fitsSomeMode, promptTaken, resolveParams } from "@breatic/shared";
 import { creditEstimateOf, prepareRunParams, type CreditEstimate, type EstimateInput } from "@breatic/shared/pricing";
-import type { Route } from "@breatic/provider";
+import type { RejectedInput, Route } from "@breatic/provider";
 import { provider } from "@domain/provider/instance.js";
 
 /** Root directory for model YAML configs. */
@@ -163,7 +163,7 @@ export interface FullModelEntry {
     sample_url?: string | null;
     /** A sample we generated, as a path under config/voice-samples.json's `base_url` (#2156, #2239). */
     sample_key?: string;
-    /** Generated samples by language value, for a voice that speaks any of them. */
+    /** Generated samples by language tag, for a voice that speaks any of them (#1521). */
     sample_keys?: Record<string, string>;
   }>;
   [extra: string]: unknown;
@@ -236,6 +236,19 @@ export function getFullModelConfig(modality: string): FullModalityConfig {
 }
 
 /**
+ * The languages a model's voices have samples in, from the keys of their
+ * `sample_keys`, in first-seen order (#1521).
+ * @param m - Full model entry.
+ * @returns The language tags, or undefined when no voice has samples by language.
+ * @throws {never} Never.
+ */
+function sampleLanguagesOf(m: FullModelEntry): string[] | undefined {
+  const tags = new Set<string>();
+  for (const voice of m.voices ?? []) for (const tag of Object.keys(voice.sample_keys ?? {})) tags.add(tag);
+  return tags.size > 0 ? [...tags] : undefined;
+}
+
+/**
  * Project a full yaml model entry onto the shared wire {@link ModelEntry},
  * dropping `note` (it is for whoever ships the yaml),
  * with provider's availability and pricing rules of the model.
@@ -276,6 +289,8 @@ function projectModelEntry(m: FullModelEntry, modality: Modality): ModelEntry {
     // sending text the upstream will reject. Absent on models whose upstream
     // publishes no cap.
     max_input_chars: m.max_input_chars,
+    // #1521: the languages the voices' samples speak, for the voice list.
+    sample_languages: sampleLanguagesOf(m),
     // The longest side the expand tool may grow a picture to (inner#1303).
     max_output_side: m.max_output_side,
     output_type: m.output_type,
@@ -387,6 +402,23 @@ export async function estimateModelCredits(
   if (entry === undefined) return undefined;
   const prepared = prepareRunParams(entry, { ...input, params: resolveParams(entry, input.params) });
   return creditEstimateOf(await provider().estimate(model, prepared, route), env.CREDIT_MULTIPLIER);
+}
+
+/**
+ * Why no upstream here that the route may use takes a run (#1521), with the run laid out the way it is priced and
+ * sent, so the refusal names the limit it broke before anything is held.
+ * @param model - Model name.
+ * @param input - The run as the request describes it.
+ * @param route - How the run chooses its upstream; the weights when left out.
+ * @returns The refusal of the first upstream the route would try, or null when one takes the run, the model is not in
+ *   the catalog, or no upstream has its key (which {@link servability} answers).
+ * @throws {Error} When a limit cannot be evaluated in a way provider does not catch.
+ */
+export async function inputRefusalFor(model: string, input: EstimateInput, route: Route = { mode: "default" }): Promise<RejectedInput | null> {
+  const entry = findCatalogEntry(model);
+  if (entry === undefined) return null;
+  const prepared = prepareRunParams(entry, { ...input, params: resolveParams(entry, input.params) });
+  return provider().refusal(model, prepared, route);
 }
 
 /** Whether a run of a model can be served here on its route, and if not, why. */

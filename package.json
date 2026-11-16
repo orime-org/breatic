@@ -69,6 +69,7 @@
     ],
     "overrides": {
       "ioredis": "5.11.1",
+      "katex": "0.19.1",
       "@ai-sdk/provider": "4.0.10",
       "@ai-sdk/provider-utils": "5.0.36",
       "prosemirror-view": "1.42.6",
@@ -92,7 +93,8 @@
       "@hocuspocus/server@4.6.0": "patches/@hocuspocus__server@4.6.0.patch",
       "@blocknote/core@0.56.0": "patches/@blocknote__core@0.56.0.patch",
       "@tiptap/extension-collaboration-caret@3.31.4": "patches/@tiptap__extension-collaboration-caret@3.31.4.patch",
-      "use-smooth-text@0.1.1": "patches/use-smooth-text@0.1.1.patch"
+      "use-smooth-text@0.1.1": "patches/use-smooth-text@0.1.1.patch",
+      "resumable-stream@2.2.13": "patches/resumable-stream@2.2.13.patch"
     }
   }
 }

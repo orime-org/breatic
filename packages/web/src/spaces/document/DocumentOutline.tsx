@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
 import { ChevronDown, ChevronRight, TableOfContents } from 'lucide-react';
@@ -324,8 +324,17 @@ export const DocumentOutline = React.memo(function DocumentOutline({
       const top = viewport.getBoundingClientRect().top;
       // A heading with no line of its own is measured by its outer box.
       const lines = ids.map((id) => [id, blockLine(viewport, id, true)?.getBoundingClientRect().top] as const);
+      // The heading being read is the lowest one past the reading line; side
+      // by side in columns, reading order only breaks a tie (inner#1314
+      // design §5.5).
       let current: string | null = null;
-      for (const [id, at] of lines) if (at !== undefined && at <= top + READING_LINE) current = id;
+      let lowest = -Infinity;
+      for (const [id, at] of lines) {
+        if (at !== undefined && at <= top + READING_LINE && at >= lowest) {
+          current = id;
+          lowest = at;
+        }
+      }
       if (viewport.scrollHeight > viewport.clientHeight && atEnd(viewport)) {
         const inView = lines.filter(([, at]) => at !== undefined && at >= top && at < top + viewport.clientHeight);
         if (inView.length > 0) current = inView[inView.length - 1]![0];
