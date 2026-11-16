@@ -2593,6 +2593,9 @@
       },
       "columns": {
         "unavailable": "Columns can't go here"
+      },
+      "slashMenu": {
+        "empty": "No matches"
       }
     },
     "readOnlyReconnect": "Reconnect",

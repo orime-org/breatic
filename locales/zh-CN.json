@@ -2593,6 +2593,9 @@
       },
       "columns": {
         "unavailable": "这里不能分栏"
+      },
+      "slashMenu": {
+        "empty": "没有匹配项"
       }
     },
     "readOnlyReconnect": "重新连接",

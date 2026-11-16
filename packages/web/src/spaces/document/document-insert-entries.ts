@@ -8,7 +8,10 @@
  */
 
 import type { Node as PMNode } from '@tiptap/pm/model';
+import { Columns2, Image as ImageIcon, Minus, Music, Sigma, Table, Video, type LucideIcon } from 'lucide-react';
 
+import { DIMENSION_OF_ROW, type BlockTypeId } from '@web/spaces/document/document-block-ticks';
+import { blockTypeItem } from '@web/spaces/document/document-block-type';
 import { columnsOutOfReach } from '@web/spaces/document/document-column-entry';
 import { DIVIDER } from '@web/spaces/document/document-divider';
 import { INSERT_MENU_ROWS } from '@web/spaces/document/document-insert-menu-items';
@@ -30,6 +33,44 @@ export const INSERT_ENTRY_IDS = [
 
 /** One entry of the insert menu. */
 export type InsertEntryId = (typeof INSERT_ENTRY_IDS)[number];
+
+/** What an entry draws: its icon and the key of its name. */
+export interface InsertEntryLook {
+  readonly Icon: LucideIcon;
+  readonly labelKey: string;
+}
+
+/** The entries that are not block types, by id. */
+const OTHER_LOOKS: Readonly<Record<string, InsertEntryLook>> = {
+  [DIVIDER]: { Icon: Minus, labelKey: 'spaces.document.commands.divider' },
+  table: { Icon: Table, labelKey: 'spaces.document.commands.table' },
+  [COLUMNS]: { Icon: Columns2, labelKey: 'spaces.document.commands.columns' },
+  [FORMULA]: { Icon: Sigma, labelKey: 'spaces.document.commands.formula' },
+  image: { Icon: ImageIcon, labelKey: 'spaces.document.media.image' },
+  audio: { Icon: Music, labelKey: 'spaces.document.media.audio' },
+  video: { Icon: Video, labelKey: 'spaces.document.media.video' },
+};
+
+/**
+ * The icon and name an entry is drawn with, in every menu that lists it. A
+ * block type reads its own row of the block type menu.
+ * @param id - The entry.
+ * @returns Its icon and the key of its name.
+ */
+export function insertEntryLook(id: InsertEntryId): InsertEntryLook {
+  return OTHER_LOOKS[id] ?? blockTypeItem(id as BlockTypeId);
+}
+
+/**
+ * The group an entry sits in. A rule is drawn wherever two neighbouring
+ * entries are in different groups: block types group by dimension, as the
+ * block type menu does (`rulesAfter`), and the rest share one group.
+ * @param id - The entry.
+ * @returns Its group.
+ */
+export function insertEntryGroup(id: InsertEntryId): string {
+  return id in OTHER_LOOKS ? 'insert' : DIMENSION_OF_ROW[id as BlockTypeId];
+}
 
 /**
  * How a pick acts on the row: it turns the row itself into the pick (the plus

@@ -10,7 +10,6 @@
  * list itself is drawn here once.
  */
 
-import { Columns2, Image as ImageIcon, Minus, Music, Sigma, Table, Video } from 'lucide-react';
 import * as React from 'react';
 
 import {
@@ -29,18 +28,20 @@ import {
 import { blockTypeItem } from '@web/spaces/document/document-block-type';
 import { DIVIDER } from '@web/spaces/document/document-divider';
 import { INSERT_MENU_ROWS } from '@web/spaces/document/document-insert-menu-items';
-import type { InsertEntryId } from '@web/spaces/document/document-insert-entries';
+import { insertEntryLook, type InsertEntryId } from '@web/spaces/document/document-insert-entries';
 import { COLUMNS, FORMULA, type InsertChoice, type TableSize } from '@web/spaces/document/document-insert-row';
 import { DocumentTableSizeGrid } from '@web/spaces/document/DocumentTableSizeGrid';
 import { toast } from '@web/lib/toast';
 import type { MediaBlockType } from '@web/spaces/document/document-media-types';
 
 /** The media entries, in the order the menu shows them (inner#1127 A1). */
-const MEDIA_ENTRIES: readonly { kind: MediaBlockType; Icon: typeof ImageIcon }[] = [
-  { kind: 'image', Icon: ImageIcon },
-  { kind: 'audio', Icon: Music },
-  { kind: 'video', Icon: Video },
-];
+const MEDIA_ENTRIES: readonly MediaBlockType[] = ['image', 'audio', 'video'];
+
+/** How the entries that are not block types are drawn (`insertEntryLook`). */
+const DIVIDER_LOOK = insertEntryLook(DIVIDER);
+const TABLE_LOOK = insertEntryLook('table');
+const COLUMNS_LOOK = insertEntryLook(COLUMNS);
+const FORMULA_LOOK = insertEntryLook(FORMULA);
 
 interface DocumentInsertChoicesProps {
   /** What picking an entry does. */
@@ -113,13 +114,13 @@ export const DocumentInsertChoices = React.memo(function DocumentInsertChoices({
           onPick(DIVIDER);
         })}
       >
-        <Minus />
-        {t('spaces.document.commands.divider')}
+        <DIVIDER_LOOK.Icon />
+        {t(DIVIDER_LOOK.labelKey)}
       </DropdownMenuItem>
       <DropdownMenuSub>
         <DropdownMenuSubTrigger data-testid='doc-block-insert-table' {...whenOutOfReach(tableUnreachable)}>
-          <Table />
-          {t('spaces.document.commands.table')}
+          <TABLE_LOOK.Icon />
+          {t(TABLE_LOOK.labelKey)}
         </DropdownMenuSubTrigger>
         {tableUnreachable ? null : (
           <DropdownMenuSubContent className='min-w-0'>
@@ -131,8 +132,8 @@ export const DocumentInsertChoices = React.memo(function DocumentInsertChoices({
         data-testid='doc-block-insert-columns'
         {...itemWithin(!columnsUnreachable, onPickColumns, onColumnsRefused)}
       >
-        <Columns2 />
-        {t('spaces.document.commands.columns')}
+        <COLUMNS_LOOK.Icon />
+        {t(COLUMNS_LOOK.labelKey)}
       </DropdownMenuItem>
       <DropdownMenuItem
         data-testid='doc-block-insert-formula'
@@ -140,22 +141,25 @@ export const DocumentInsertChoices = React.memo(function DocumentInsertChoices({
           onPick(FORMULA);
         })}
       >
-        <Sigma />
-        {t('spaces.document.commands.formula')}
+        <FORMULA_LOOK.Icon />
+        {t(FORMULA_LOOK.labelKey)}
       </DropdownMenuItem>
       {onPickMedia !== undefined &&
-        MEDIA_ENTRIES.map(({ kind, Icon }) => (
-          <DropdownMenuItem
-            key={kind}
-            data-testid={`doc-block-insert-${kind}`}
-            {...itemWithin(true, () => {
-              onPickMedia(kind);
-            })}
-          >
-            <Icon />
-            {t(`spaces.document.media.${kind}`)}
-          </DropdownMenuItem>
-        ))}
+        MEDIA_ENTRIES.map((kind) => {
+          const { Icon, labelKey } = insertEntryLook(kind);
+          return (
+            <DropdownMenuItem
+              key={kind}
+              data-testid={`doc-block-insert-${kind}`}
+              {...itemWithin(true, () => {
+                onPickMedia(kind);
+              })}
+            >
+              <Icon />
+              {t(labelKey)}
+            </DropdownMenuItem>
+          );
+        })}
     </>
   );
 });

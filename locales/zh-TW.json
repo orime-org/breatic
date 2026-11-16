@@ -2593,6 +2593,9 @@
       },
       "columns": {
         "unavailable": "這裡不能分欄"
+      },
+      "slashMenu": {
+        "empty": "沒有符合的項目"
       }
     },
     "readOnlyReconnect": "重新連線",
