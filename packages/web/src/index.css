@@ -1357,6 +1357,19 @@ body {
     margin-left: 0;
   }
 
+  /* A table in a column (inner#1314): the group's other columns and the
+     blocks beside the table in its column go, and the group lays its one
+     column out at the body's width. Columns inside the table's own cells
+     stay as they are. */
+  [data-table-fullscreen] .doc-body .doc-column:not([data-fullscreen-table] *):not(:has([data-fullscreen-table])),
+  [data-table-fullscreen] .doc-body .doc-column:not([data-fullscreen-table] *) > :not([data-fullscreen-table]):not(:has([data-fullscreen-table])) {
+    display: none;
+  }
+
+  [data-table-fullscreen] .doc-body .doc-columns-row:not([data-fullscreen-table] *):has([data-fullscreen-table]) {
+    display: block;
+  }
+
   /* The exit button takes the top-right corner the way the whole-document
      entry takes the right gutter, so the table starts one gutter down and its
      header never shares a line with the button. */
@@ -1405,6 +1418,16 @@ body {
      against the cell's padding, as the document's first block does. */
   .doc-body [data-node-type='docTable'] td > .bn-block-outer:first-child > .bn-block > .bn-block-content,
   .doc-body [data-node-type='docTable'] th > .bn-block-outer:first-child > .bn-block > .bn-block-content {
+    --doc-block-lift: 0px;
+  }
+
+  /* A column group opening the document or a cell: the first block of each
+     column stands flush, as the first block there does (inner#1314). Stacked,
+     only the first column's does; the others keep a block's spacing. */
+  .doc-body > .bn-block-group > .doc-columns:first-child:not([data-stacked]) > .doc-columns-row > .doc-column > .bn-block-outer:first-child > .bn-block > .bn-block-content,
+  .doc-body [data-node-type='docTable'] :is(td, th) > .doc-columns:first-child:not([data-stacked]) > .doc-columns-row > .doc-column > .bn-block-outer:first-child > .bn-block > .bn-block-content,
+  .doc-body > .bn-block-group > .doc-columns[data-stacked]:first-child > .doc-columns-row > .doc-column:first-child > .bn-block-outer:first-child > .bn-block > .bn-block-content,
+  .doc-body [data-node-type='docTable'] :is(td, th) > .doc-columns[data-stacked]:first-child > .doc-columns-row > .doc-column:first-child > .bn-block-outer:first-child > .bn-block > .bn-block-content {
     --doc-block-lift: 0px;
   }
 
@@ -2159,6 +2182,64 @@ body {
     width: min(var(--doc-media-width, 100%), 100%) !important;
   }
 
+  /* Column groups (inner#1314 design §5.1): the columns side by side with a
+     72px gap, each taking its weight of the row (`flex-grow` is written
+     inline from the column's width). A group whose container is too narrow
+     for its columns is stacked in reading order (`data-stacked`, measured in
+     `document-column-nodes.tsx`). A picture or video in a column is shown at
+     its stored width or the column's, whichever is less. */
+  .doc-body .doc-columns {
+    position: relative;
+  }
+
+  .doc-body .doc-columns-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 72px;
+  }
+
+  .doc-body .doc-column {
+    flex-shrink: 1;
+    flex-basis: 0;
+    min-width: 0;
+  }
+
+  .doc-body .doc-columns[data-stacked] > .doc-columns-row {
+    display: block;
+  }
+
+  /* The divider between two columns (design §5.4): it stands in the middle
+     of the gap the pointer is over, 24px wide (`COLUMN_DIVIDER_ZONE` either
+     side), and draws a 1px line in the colour a table column's handle draws. */
+  .doc-body .doc-column-divider {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 24px;
+    margin-left: -12px;
+    cursor: col-resize;
+    display: none;
+  }
+
+  .doc-body .doc-column-divider[data-shown],
+  .doc-body .doc-column-divider[data-dragging] {
+    display: block;
+  }
+
+  .doc-body .doc-column-divider::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 11.5px;
+    width: 1px;
+    background-color: var(--color-ring);
+  }
+
+  .doc-body .doc-column [data-media-box] {
+    width: min(var(--doc-media-width, 100%), 100%) !important;
+  }
+
   /* Selected cells, the cells an open row or column menu acts on, and the
      cells of a table a selection runs out of: one look (inner#1126 A6,
      inner#1619 T14). The library draws this layer for `.selectedCell` only, so
@@ -2194,7 +2275,11 @@ body {
     z-index: 3;
   }
 
+  /* One pixel, as every line is (packages/web/AGENTS.md#lines-are-one-pixel)
+     and as the column divider draws; BlockNote's is 4px. */
   .doc-body .column-resize-handle {
+    width: 1px;
+    right: -1px;
     background-color: var(--color-ring);
   }
 

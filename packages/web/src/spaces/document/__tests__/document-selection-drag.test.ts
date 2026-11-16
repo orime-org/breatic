@@ -29,6 +29,7 @@ import { renderCollabCaret, renderCollabSelection } from '@web/features/collab-e
 import { documentFallbackExtension } from '@web/spaces/document/document-unsupported-blocknote';
 import { CONTENT_DECORATION } from '@web/spaces/document/document-view-state';
 import { tableBlock, type CellInput, type TableInput } from '@web/spaces/document/__tests__/table-fixtures';
+import { columnsBlock } from '@web/spaces/document/__tests__/column-fixtures';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
 
@@ -243,6 +244,12 @@ describe('which drag gets the selection preview (design §4, in this order)', ()
 });
 
 describe('the blocks a selection preview draws', () => {
+  it('words in one column: that column\'s blocks, not the group (inner#1314)', () => {
+    const editor = open([columnsBlock(['one', 'two', 'three'], ['other'])]);
+    selectText(editor, ['one', 1], ['two', 2]);
+    expect(blockTexts(selectionPreviewContent(editor.prosemirrorView!)!.content)).toEqual(['one', 'two']);
+  });
+
   it('a word in a heading: the whole heading, with its level', () => {
     const editor = open([{ type: 'heading', props: { level: 2 }, content: 'Title words' }, { type: 'paragraph', content: 'after' }]);
     selectText(editor, ['Title words', 6], ['Title words', 11]);

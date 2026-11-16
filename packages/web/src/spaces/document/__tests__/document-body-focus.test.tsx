@@ -380,6 +380,23 @@ describe('what a press is on', () => {
     expect(pressTargetOf(opened.editor.prosemirrorView!, event).kind).toBe(kind);
   });
 
+  it('reads the divider between two columns as a column resize (inner#1314 design 5.4)', () => {
+    const opened = open([
+      {
+        type: 'docColumnList',
+        children: [
+          { type: 'docColumn', children: [{ type: 'paragraph', content: 'left' }] },
+          { type: 'docColumn', children: [{ type: 'paragraph', content: 'right' }] },
+        ],
+      },
+    ]);
+    const divider = opened.editor.prosemirrorView!.dom.querySelector('.doc-column-divider')!;
+    const event = new MouseEvent('mousedown', { bubbles: true });
+    Object.defineProperty(event, 'target', { value: divider });
+
+    expect(pressTargetOf(opened.editor.prosemirrorView!, event).kind).toBe('column-resize');
+  });
+
   it('reads a divider as wordless, a media display, a media control, a body layer and a scrollbar', () => {
     const opened = open([
       { type: 'paragraph', content: 'Above' },

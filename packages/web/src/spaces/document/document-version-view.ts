@@ -92,6 +92,7 @@ export function buildVersionPreview(options: {
 }): Editor {
   return buildDocumentEditor({
     fragment: documentBodyFragment(new Y.Doc()),
+    showsSavedBodies: true,
     extensions: [
       // Colours follow the kind of change, not an author (index.css, `.doc-body`).
       DiffVersioningExtension({

@@ -107,6 +107,24 @@ describe('restoreSnapshot', () => {
     expect(json(editor)).toEqual(json(saved));
   });
 
+  it('restores a column holding only its empty line, though the body has since lost that line (inner#1314)', () => {
+    const group = (second: unknown[]): unknown => ({
+      id: 'g',
+      type: 'docColumnList',
+      children: [
+        { id: 'c1', type: 'docColumn', children: [{ id: 'a', type: 'paragraph', content: 'a' }] },
+        { id: 'c2', type: 'docColumn', children: second },
+      ],
+    });
+    const saved = open([{ id: 'lead', type: 'paragraph', content: 'lead' }, group([{ id: 'p1', type: 'paragraph' }])]).editor;
+    const { content } = snapshotOf(saved.prosemirrorState.doc);
+    const { editor, undo } = open([{ id: 'lead', type: 'paragraph', content: 'lead' }, group([{ id: 'x', type: 'paragraph', content: 'x' }])]);
+
+    expect(restoreSnapshot({ editor, undoManager: undo, space: null, content, threads: NO_THREADS })).toBe('restored');
+
+    expect(json(editor)).toEqual(json(saved));
+  });
+
   it('is one undo step, apart from the typing just before and after it', () => {
     const { editor, undo } = open([{ type: 'paragraph', content: 'before' }]);
     const { content } = snapshotOf(open([{ type: 'paragraph', content: 'snap' }]).editor.prosemirrorState.doc);
@@ -275,6 +293,63 @@ describe('snapshotOf', () => {
     const alone = snapshotOf(only.prosemirrorState.doc);
     expect(alone.leftOut).toBe(1);
     expect(() => only.pmSchema.nodeFromJSON(alone.content).check()).not.toThrow();
+  });
+
+  it('drops a column whose only block was uploading, and lays out a group left with one column (inner#1314)', () => {
+    const { editor } = open([
+      { type: 'paragraph', content: 'lead' },
+      {
+        type: 'docColumnList',
+        children: [
+          { type: 'docColumn', children: [{ type: 'paragraph', content: 'left' }] },
+          { type: 'docColumn', children: [pending] },
+        ],
+      },
+    ]);
+
+    const { content, leftOut } = snapshotOf(editor.prosemirrorState.doc);
+
+    expect(leftOut).toBe(1);
+    const node = editor.pmSchema.nodeFromJSON(content);
+    expect(() => node.check()).not.toThrow();
+    const lines: string[] = [];
+    node.firstChild!.forEach((block) => lines.push(`${block.type.name}:${block.textContent}`));
+    expect(lines).toEqual(['blockContainer:lead', 'blockContainer:left']);
+  });
+
+  it('keeps a group whose other columns stay, without the emptied one (inner#1314)', () => {
+    const { editor } = open([
+      {
+        type: 'docColumnList',
+        children: [
+          { type: 'docColumn', children: [{ type: 'paragraph', content: 'one' }] },
+          { type: 'docColumn', children: [pending] },
+          { type: 'docColumn', children: [{ type: 'paragraph', content: 'three' }] },
+        ],
+      },
+    ]);
+
+    const node = editor.pmSchema.nodeFromJSON(snapshotOf(editor.prosemirrorState.doc).content);
+
+    expect(() => node.check()).not.toThrow();
+    const group = node.firstChild!.firstChild!;
+    expect(group.type.name).toBe('docColumnList');
+    expect(group.childCount).toBe(2);
+    expect(group.textContent).toBe('onethree');
+  });
+
+  it('reads a group left with no columns as nothing (inner#1314)', () => {
+    const { editor } = open([{ type: 'paragraph', content: 'lead' }]);
+    const schema = editor.pmSchema;
+    const doc = schema.nodes['doc']!.create(null, schema.nodes['blockGroup']!.create(null, [
+      editor.prosemirrorState.doc.firstChild!.firstChild!,
+      schema.nodes['docColumnList']!.create({ id: 'g' }),
+    ]));
+
+    const node = schema.nodeFromJSON(snapshotOf(doc).content);
+
+    expect(() => node.check()).not.toThrow();
+    expect(node.firstChild!.childCount).toBe(1);
   });
 
   it('keeps what is nested under a block still uploading, in its place', () => {

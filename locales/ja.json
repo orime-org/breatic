@@ -2356,6 +2356,7 @@
         "taskList": "タスクリスト",
         "divider": "区切り線",
         "table": "表",
+        "columns": "列",
         "align": "配置",
         "alignLeft": "左揃え",
         "alignCenter": "中央揃え",
@@ -2563,6 +2564,9 @@
         "deleteFailed": "スナップショットを削除できませんでした。",
         "folded": "{count, plural, other {変更のないブロック # 件 · 表示}}",
         "unavailable": "スナップショットを読み込めませんでした。ページを再読み込みすると使えます。"
+      },
+      "columns": {
+        "unavailable": "ここには列を追加できません"
       }
     },
     "readOnlyReconnect": "再接続",

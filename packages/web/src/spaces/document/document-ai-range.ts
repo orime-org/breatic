@@ -48,7 +48,7 @@ import {
 } from '@web/spaces/document/document-local-range';
 import { blockById } from '@web/spaces/document/document-proposal-landing';
 import { noTextPaint } from '@web/spaces/document/document-selection-paint';
-import { cellDepthOf, tableAround } from '@web/spaces/document/document-table-nodes';
+import { bodyDepthBetween, carrierAt } from '@web/spaces/document/document-body-carrier';
 
 /** What the dialog opens the range on (§4.6). */
 export interface AiCapture {
@@ -143,38 +143,29 @@ export function ownContentEnd(doc: ProseMirrorNode, blockPos: number): number {
 
 /**
  * The block a position counts in (§4.6): the innermost one around it, or
- * the whole table when the range does not stay in one of its cells.
+ * the whole table or column group holding it when the range leaves one of
+ * its cells or columns (`document-body-carrier.ts`).
  * @param $pos - The position.
- * @param oneCell - Whether the range stays in one cell.
+ * @param $other - The range's other end.
+ * @param cellsHold - Whether a cell counts as a body of its own.
  * @returns Where the block starts, or null outside any block.
  */
-export function blockAround($pos: ResolvedPos, oneCell: boolean): number | null {
-  return (oneCell ? null : tableAround($pos)?.pos) ?? containerAt($pos.doc, $pos.pos);
+export function blockAround($pos: ResolvedPos, $other: ResolvedPos, cellsHold = true): number | null {
+  return carrierAt($pos, bodyDepthBetween($pos, $other, cellsHold))?.pos ?? containerAt($pos.doc, $pos.pos);
 }
 
 /**
- * Whether two positions stand in the same table cell.
- * @param $a - One.
- * @param $b - The other.
- * @returns True when one cell holds both.
- */
-export function inOneCell($a: ResolvedPos, $b: ResolvedPos): boolean {
-  const a = cellDepthOf($a);
-  const b = cellDepthOf($b);
-  return a > 0 && b > 0 && $a.before(a) === $b.before(b);
-}
-
-/**
- * One end of a range taken the way §4.6 takes blocks: in a table it does
- * not stay in one cell of, the table's edge; in a legacy table's line, whose
- * block holds lines of its own, that block's edge; otherwise where it is.
+ * One end of a range taken the way §4.6 takes blocks: in a table or column
+ * group it leaves a cell or column of, that table's or group's edge; in a
+ * legacy table's line, whose block holds lines of its own, that block's
+ * edge; otherwise where it is.
  * @param $pos - The end.
- * @param oneCell - Whether the range stays in one cell.
+ * @param $other - The range's other end.
  * @param side - Which end.
  * @returns The position.
  */
-function blockEdge($pos: ResolvedPos, oneCell: boolean, side: 'start' | 'end'): number {
-  const table = oneCell ? null : tableAround($pos);
+function blockEdge($pos: ResolvedPos, $other: ResolvedPos, side: 'start' | 'end'): number {
+  const table = carrierAt($pos, bodyDepthBetween($pos, $other));
   if (table !== null) return side === 'start' ? table.pos : table.pos + table.node.nodeSize;
   const block = containerAt($pos.doc, $pos.pos);
   if (block === null || !$pos.parent.isTextblock || $pos.before($pos.depth) === block + 1) return $pos.pos;
@@ -216,8 +207,7 @@ export function aiCoverOf(doc: ProseMirrorNode, letters: LocalRange | null, firs
   const $from = doc.resolve(from);
   const $to = doc.resolve(to);
   if ($from.parent.isTextblock && $from.sameParent($to)) return { from, to };
-  const oneCell = inOneCell($from, $to);
-  return { from: blockEdge($from, oneCell, 'start'), to: blockEdge($to, oneCell, 'end') };
+  return { from: blockEdge($from, $to, 'start'), to: blockEdge($to, $from, 'end') };
 }
 
 /**

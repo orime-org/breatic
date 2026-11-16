@@ -73,6 +73,7 @@ const INDEX: readonly { group: string; sections: readonly (readonly [name: strin
     group: "Document",
     sections: [
       ["Document spaces", "writing, formatting, pasting, comments and media in a document"],
+      ["Document columns", "putting lines side by side in columns, resizing and leaving columns"],
       ["Document proposal cards", "applying a comment, rewrite or insert proposed in this chat"],
       ["Document snapshots", "saving, previewing, comparing, restoring, renaming and deleting snapshots of a document"],
     ],
@@ -1423,7 +1424,7 @@ export function renderProductGuide(): string {
       `${quoted(t("chat.documentProposal.addComment"))} puts the rewritten words on the passage as a comment, and ` +
       `${quoted(t("chat.documentProposal.apply"))} replaces the passage with them; a passage with no words, such ` +
       "as an empty code block, an image, a video or an audio block, has only the second. When the passage holds something " +
-      `Markdown cannot write, such as colours, an alignment, underlining, column widths or comments, a rewrite card adds ${quoted(t("chat.documentProposal.lossy"))} ` +
+      `Markdown cannot write, such as colours, an alignment, underlining, table column widths, columns side by side or comments, a rewrite card adds ${quoted(t("chat.documentProposal.lossy"))} ` +
       "An insert card that goes after a passage first shows that passage under " +
       `${quoted(t("chat.documentProposal.insertAfter"))}, naming a passage with no words by its kind, such as ` +
       `${quoted(t("spaces.document.media.image"))} or ${quoted(t("chat.documentProposal.headingBlock"))}; it ` +
@@ -1863,13 +1864,14 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.blockHandle.insertBelow"))}, ${quoted(t("spaces.document.commands.align"))} ` +
       `and ${quoted(t("spaces.document.commands.color"))} open a submenu when hovered; ` +
       `${quoted(t("spaces.document.blockHandle.insertBelow"))} lists the block types other than ` +
-      `${quoted(t("spaces.document.commands.paragraph"))}, then ${quoted(t("spaces.document.commands.divider"))} ` +
-      `and ${quoted(t("spaces.document.commands.table"))} on their own, then ` +
+      `${quoted(t("spaces.document.commands.paragraph"))}, then ${quoted(t("spaces.document.commands.divider"))}, ` +
+      `${quoted(t("spaces.document.commands.table"))} and ${quoted(t("spaces.document.commands.columns"))} on their own, then ` +
       `${quoted(t("spaces.document.media.image"))}, ${quoted(t("spaces.document.media.audio"))} and ` +
       `${quoted(t("spaces.document.media.video"))}, and puts a new line of the one picked ` +
       "below; the divider and the table each come with an empty line under them, and a new table puts the caret " +
       `in its first cell. On a line in a table cell, ${quoted(t("spaces.document.commands.table"))} is greyed: a ` +
-      "table does not go inside a cell. The last three open the computer's file picker for that kind; the files chosen go " +
+      "table does not go inside a cell. " +
+      "The last three open the computer's file picker for that kind; the files chosen go " +
       "under the line, above an empty line made for the caret. " +
       `${quoted(t("spaces.document.commands.table"))} opens a grid of squares, nine across and nine down, with ` +
       `${quoted(t("spaces.document.table.pickSize"))} under it; moving over it lights the squares up to the ` +
@@ -2016,7 +2018,7 @@ export function renderProductGuide(): string {
       "unresolved. Other people in the document show as coloured carets " +
       "with their names. Content written by a newer version of the editor shows as a box marked " +
       `${quoted(t("spaces.document.unsupported.label"))} and is kept as it is.`,
-    "- Snapshots: saving, comparing and restoring snapshots of the body are in the Document snapshots section.",
+    "- Snapshots and columns have sections of their own: Document snapshots and Document columns.",
     "- The heading outline: an icon at the top left of the body, level with the three dots, opens and shuts " +
       `it; hovering it says ${quoted(t("spaces.document.outline.show"))} or ${quoted(t("spaces.document.outline.hide"))}. ` +
       "The outline lists the body's level 1–3 headings as a tree, with the same numbers the body shows; headings " +
@@ -2064,6 +2066,26 @@ export function renderProductGuide(): string {
       `was typed is kept. With no comments the panel shows ${quoted(t("spaces.document.comment.empty"))} ` +
       `With only resolved ones, ${quoted(t("spaces.document.comment.filterOpen"))} shows ` +
       `${quoted(t("spaces.document.comment.nothingUnresolved"))}`,
+    "",
+    "## Document columns",
+    `${quoted(t("spaces.document.commands.columns"))} in a line's ${quoted(t("spaces.document.blockHandle.insertBelow"))} ` +
+      "menu, or behind the plus on an empty line, puts two columns side by side, each holding an empty line, with the " +
+      "caret in the first. It is greyed on a line in a column, on a line nested under another line and on a line " +
+      `with lines nested under it, and pressing it there says ${quoted(t("spaces.document.columns.unavailable"))}`,
+    "Dragging a line by its six dots (or a picture, video or audio by itself) onto the left or right " +
+      "edge of another line, or into the empty space beside it, the right page margin included, shows a vertical line " +
+      "on that side; dropping puts the two lines side by side in two columns, or adds a column beside that line " +
+      "when it is already in columns, up to four. A line in a column shows its six dots in the gap left of its " +
+      "column; dragging it below a line outside the columns takes it out. Hovering the middle of the gap between " +
+      "two columns shows a thin line; dragging it changes the widths of those two columns, and one Cmd+Z puts " +
+      "them back. When a column's last line goes the column goes with it, and when one column is left its lines " +
+      "become ordinary lines again. On a page too narrow for them, columns stand one under another in reading " +
+      "order. Columns made in a table cell widen that column of the table when it is too narrow to hold them side by side. Columns never go inside a column or " +
+      `under a nested line: pasting or dropping columns there says ${quoted(t("spaces.document.columns.unavailable"))}. ` +
+      "Tab and the six dots' indenting work inside a column. Deleting or typing over a selection that runs across " +
+      "columns removes only what is selected in each column, and the AI dialog over such a selection takes the " +
+      "whole columns. A rewrite you propose over columns puts their lines one under another, column after column, " +
+      `since Markdown has no columns, and its card adds ${quoted(t("chat.documentProposal.lossy"))}`,
     "",
     "## Document snapshots",
     `${quoted(t("spaces.document.docMenu.saveSnapshot"))} in the document's three-dot menu asks for an optional name and keeps the body ` +

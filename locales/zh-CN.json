@@ -2356,6 +2356,7 @@
         "taskList": "任务列表",
         "divider": "分割线",
         "table": "表格",
+        "columns": "分栏",
         "align": "对齐",
         "alignLeft": "靠左",
         "alignCenter": "居中",
@@ -2563,6 +2564,9 @@
         "deleteFailed": "没能删除快照。",
         "folded": "{count, plural, other {# 个块未改动 · 展开}}",
         "unavailable": "快照加载失败，刷新页面后可用"
+      },
+      "columns": {
+        "unavailable": "这里不能分栏"
       }
     },
     "readOnlyReconnect": "重新连接",
