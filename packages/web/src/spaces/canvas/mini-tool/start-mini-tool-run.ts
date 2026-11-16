@@ -123,8 +123,6 @@ export interface MiniToolRun {
   exportFile: (spec: MiniToolSpec, snapshot: MiniToolSnapshot, capture?: MiniToolCapture) => Promise<ExportedFile[]>;
   /** Upload a browser tool's one file into its node, tagged with the tool, carrying on the press's operation. */
   fillUpload: (nodeId: string, file: File, modality: CreatableNodeType, tag: MiniToolUploadTag, markOp: string) => void;
-  /** Upload a browser tool's files into their nodes in one batch, tagged with the tool, each carrying on its node's operation. */
-  fillUploads: (entries: { nodeId: string; file: File; markOp: string }[], tag: MiniToolUploadTag) => void;
   /** What the user made on the node, copied out at the press. */
   capture?: MiniToolCapture | undefined;
   /** Make a drawing tool's images from the source and the drawing. */
@@ -559,23 +557,13 @@ async function buildMiniToolRun(run: MiniToolRun, onSent: (settle: Settle) => vo
     const tag: MiniToolUploadTag = { source: 'mini_tool', toolName: spec.id };
     const output = outputTemplateOf(spec);
     const handed = new Set<number>();
-    // A grouped run's files go up in one batch, which the server takes from a
-    // grouping tool only; any other run's one file goes up on its own.
-    if (spec.groupOutputs === true) {
-      const entries = nodes.flatMap((built, index) => {
-        const made = files[index];
-        if (made === undefined) return [];
-        handed.add(index);
-        return [{ nodeId: built.id, file: made.file, markOp: ops[index] }];
-      });
-      run.fillUploads(entries, tag);
-    } else {
-      const [node] = nodes;
-      const [only] = files;
-      if (node !== undefined && only !== undefined && output.modality !== 'text') {
-        handed.add(0);
-        run.fillUpload(node.id, only.file, output.modality, tag, ops[0]);
-      }
+    // A browser tool makes one file; the grid, the one tool with many
+    // results, is cut on the server (inner#1968 design 3.2.2).
+    const [node] = nodes;
+    const [only] = files;
+    if (node !== undefined && only !== undefined && output.modality !== 'text') {
+      handed.add(0);
+      run.fillUpload(node.id, only.file, output.modality, tag, ops[0]);
     }
     const now = useUploadMarksStore.getState();
     nodes.forEach((node, index) => {

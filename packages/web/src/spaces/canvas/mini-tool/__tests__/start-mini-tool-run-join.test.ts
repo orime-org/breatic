@@ -87,7 +87,6 @@ function press(placements: Record<string, Placement> = PLACEMENTS): MiniToolRun 
     placementOf: (nodeId: string) => placements[nodeId],
     exportFile: vi.fn(),
     fillUpload: vi.fn(),
-    fillUploads: vi.fn(),
     exportDrawing: vi.fn(),
     exportExpand: vi.fn(),
     uploadImage: vi.fn(),

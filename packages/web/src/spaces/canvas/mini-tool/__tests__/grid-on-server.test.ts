@@ -65,7 +65,6 @@ function press(): MiniToolRun {
     sourceExists: () => true,
     exportFile: vi.fn(),
     fillUpload: vi.fn(),
-    fillUploads: vi.fn(),
     exportDrawing: vi.fn(),
     exportExpand: vi.fn(),
     uploadImage: vi.fn(),
@@ -102,7 +101,6 @@ describe('B-82 a grid press runs on the server', () => {
     await startMiniToolRun(run);
 
     expect(run.exportFile).not.toHaveBeenCalled();
-    expect(run.fillUploads).not.toHaveBeenCalled();
     expect(run.fillUpload).not.toHaveBeenCalled();
     expect(run.uploadImage).not.toHaveBeenCalled();
     expect(api.run).toHaveBeenCalledTimes(1);

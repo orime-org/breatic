@@ -114,7 +114,6 @@ function basePress(): Omit<MiniToolRun, 'spec' | 'snapshot' | 'source'> {
     sourceExists: () => true,
     exportFile: vi.fn(),
     fillUpload: vi.fn(),
-    fillUploads: vi.fn(),
     exportDrawing: vi.fn(),
     exportExpand: vi.fn(),
     uploadImage: vi.fn(),
@@ -162,7 +161,6 @@ describe('RQ-14 a mini-tool builds nothing and sends nothing when the Space cann
     expect(readEdges(doc)).toEqual([]);
     expect(useUploadMarksStore.getState().marks).toEqual({});
     expect(run.exportFile).not.toHaveBeenCalled();
-    expect(run.fillUploads).not.toHaveBeenCalled();
     expect(api.run).not.toHaveBeenCalled();
     expect(run.onBuilt).not.toHaveBeenCalled();
     expectSizeToast(sentence);

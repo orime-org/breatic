@@ -70,7 +70,7 @@ vi.mock('@web/spaces/canvas/tasks/NodeTaskPanelContainer', async (importOriginal
   };
 });
 
-import { CANVAS_NODES_KEY, setLocale, t, type CanvasNodeFields } from '@breatic/shared';
+import { CANVAS_NODES_KEY, setLocale, type CanvasNodeFields } from '@breatic/shared';
 import { toast } from '@web/lib/toast';
 import { assetsApi } from '@web/data/api';
 import { canvasApi } from '@web/data/api/canvas';
@@ -80,14 +80,13 @@ import { clearAllDocSizes } from '@web/data/yjs/doc-size';
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import { addNode, readNodes, _resetCanvasUndoCacheForTests } from '@web/data/yjs/canvas-space';
 import { CanvasSpace } from '@web/spaces/canvas/CanvasSpace';
-import { fillNodesFromFiles } from '@web/spaces/canvas/canvas-upload';
 import * as blankPng from '@web/spaces/canvas/empty-image/generate-blank-png';
 import { NodeTaskPanelContainer } from '@web/spaces/canvas/tasks/NodeTaskPanelContainer';
 import { getRetryUpload, resetRetryFilesForTests, stashRetryFile } from '@web/spaces/canvas/upload-retry-files';
 import { useUIStore } from '@web/stores';
 import { canvasSessions } from '@web/stores/canvas-session';
 import { useTaskActionsInFlight } from '@web/stores/task-actions-in-flight';
-import { useUploadMarksStore, type UploadMarkMessage } from '@web/stores/upload-marks';
+import { useUploadMarksStore } from '@web/stores/upload-marks';
 import {
   P_FULL,
   SIZE_COPY_EN,
@@ -196,15 +195,6 @@ const ENTRIES: ReadonlyArray<readonly [string, (picker: MockInstance, file: File
   }],
 ];
 
-/**
- * How a mark message reads on screen.
- * @param message - The mark's message.
- * @returns The sentence.
- */
-function rendered(message: UploadMarkMessage): string {
-  return 'text' in message ? message.text : t(message.key, message.params);
-}
-
 let ticket: MockInstance<typeof assetsApi.requestUploadTicket>;
 let picker: MockInstance;
 const FILE = new File(['x'], 'next.png', { type: 'image/png' });
@@ -277,62 +267,6 @@ describe('RQ-17 fillUpload asks canAdd before the ticket', () => {
     run(picker, FILE);
     await waitFor(() => expect(ticket).toHaveBeenCalledTimes(1));
     expect(toast.warning).not.toHaveBeenCalled();
-  });
-});
-
-describe('RQ-18 a browser mini-tool export into its result nodes', () => {
-  /**
-   * Opens the two result nodes' marks the way the tool's press does, then
-   * hands their exports over.
-   * @param code - The size state when the export is ready.
-   * @returns The batch ticket spy.
-   */
-  function exportInto(code: SizeCode): MockInstance {
-    getDoc(NAME);
-    seed();
-    enterSize(NAME, 'W');
-    const marks = useUploadMarksStore.getState();
-    const entries = ['e1', 'img1'].map((nodeId) => ({
-      nodeId,
-      file: new File(['x'], `${nodeId}.png`, { type: 'image/png' }),
-      markOp: marks.begin(SID, nodeId, 'upload'),
-    }));
-    // The Space fills up after the result nodes were built.
-    if (code === 'F') pushSize(NAME, P_FULL);
-    else enterSize(NAME, code);
-    vi.mocked(toast.warning).mockClear();
-    const batch = vi.fn(() => new Promise<never>(() => {}));
-    fillNodesFromFiles(entries, PID, {
-      getUploadConfig: assetsApi.fetchUploadConfig,
-      hashFile: vi.fn(() => Promise.resolve('a'.repeat(64))),
-      requestTicketBatch: batch as unknown as typeof assetsApi.requestUploadTicketBatch,
-      sendToIngest: vi.fn(),
-      spaceId: SID,
-      tag: { source: 'mini_tool', toolName: 'crop' },
-      isLocked: () => false,
-      onLocked: vi.fn(),
-      track: vi.fn(),
-      onUploadFailure: vi.fn(),
-    });
-    return batch;
-  }
-
-  it('RQ-18 requests no batch ticket and fails every result node\'s mark with the full reason [F]', async () => {
-    const batch = exportInto('F');
-    await settle();
-    expect(batch).not.toHaveBeenCalled();
-    for (const nodeId of ['e1', 'img1']) {
-      const mark = useUploadMarksStore.getState().markOf(SID, nodeId);
-      if (mark?.state !== 'failed') throw new Error(`${nodeId} has no failed mark: ${JSON.stringify(mark)}`);
-      expect(rendered(mark.message)).toBe(SIZE_COPY_EN.T_REASON);
-    }
-    expect(toast.warning).not.toHaveBeenCalled();
-  });
-
-  it('RQ-18 requests the batch ticket in the warning band [W]', async () => {
-    const batch = exportInto('W');
-    await waitFor(() => expect(batch).toHaveBeenCalledTimes(1));
-    expect(useUploadMarksStore.getState().markOf(SID, 'e1')?.state).not.toBe('failed');
   });
 });
 

@@ -10,6 +10,7 @@
 
 import {
   gridShapeOf,
+  gridTileRects,
   isModelTool,
   outputsOf,
   pickedCellsOf,
@@ -19,7 +20,6 @@ import {
 
 import { EMPTY_NODE_SIZE, MEDIA_FRAME_PX, PLANNED_BODY_MIN_PX, mediaNodeHeight } from '@web/spaces/canvas/group-geometry';
 import { GAP_PX, NODE_STEP } from '@web/spaces/canvas/drop-layout';
-import { gridTileRects } from '@web/spaces/canvas/mini-tool/grid-export';
 import { MODALITY_LABEL } from '@web/spaces/canvas/nodes/_shared/modality';
 
 /** A result's pixel size, when the run already knows it. */

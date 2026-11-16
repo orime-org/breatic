@@ -102,7 +102,6 @@ function press(over: Partial<MiniToolRun> = {}): MiniToolRun {
     sourceExists: () => true,
     exportFile: vi.fn(),
     fillUpload: vi.fn(),
-    fillUploads: vi.fn(),
     exportDrawing: vi.fn(),
     exportExpand: vi.fn(),
     uploadImage: vi.fn(),
@@ -304,7 +303,6 @@ describe('startMiniToolRun', () => {
     expect(api.run).toHaveBeenCalledTimes(1);
     expect(api.run.mock.calls[0][0]).toMatchObject({ tool: 'image.grid', node_ids: nodes.map((node) => node.id) });
     expect(run.exportFile).not.toHaveBeenCalled();
-    expect(run.fillUploads).not.toHaveBeenCalled();
     expect(run.fillUpload).not.toHaveBeenCalled();
   });
 

@@ -4,9 +4,6 @@
 import {
   isAlreadyStored,
   isOpenFailed,
-  isRefused,
-  type BatchTicketAnswer,
-  type BatchTicketRequest,
   type UploadContext,
   type UploadTicket,
   type UploadTicketRequest,
@@ -17,7 +14,6 @@ import { resendWait } from '@web/data/api/resend-wait';
 import { ApiException } from '@web/data/api/types';
 import {
   errorStatus,
-  retryTransient,
   STORAGE_FULL_STATUS,
   UNSUPPORTED_TYPE_STATUS,
 } from '@web/data/upload/upload-retry';
@@ -462,96 +458,6 @@ async function deliverTicket(
     return;
   }
   sinks.onSuccess(end.result);
-}
-
-/** One file of a batch, the node it lands on, and where its outcome goes. */
-export interface BatchUploadEntry extends UploadSinks {
-  file: File;
-  nodeId: string;
-}
-
-/** Injected dependencies for {@link runMediaUploadBatch}. */
-export interface BatchUploadDeps
-  extends Pick<MediaUploadDeps, 'getUploadConfig' | 'hashFile' | 'sendToIngest' | 'waitForEnding' | 'sleep'> {
-  /** Ask for every file's ticket in one request. */
-  requestTicketBatch: (request: BatchTicketRequest) => Promise<BatchTicketAnswer[]>;
-}
-
-/**
- * Upload one browser tool's export of many files (inner#1303 §7): hash them
- * all, ask for every ticket in one request, then send each file the server
- * did not already hold. Each file's outcome goes to its own entry, by the same
- * rules as {@link runMediaUpload}; a file the server refused before any bytes
- * moved fails as `storage` when its account is full and `upload` otherwise.
- * Never throws.
- * @param entries - The files, each on its own node.
- * @param context - Where they land and which tool made them.
- * @param deps - Injected config / hash / network.
- */
-export async function runMediaUploadBatch(
-  entries: readonly BatchUploadEntry[],
-  context: Omit<BatchTicketRequest, 'items'>,
-  deps: BatchUploadDeps,
-): Promise<void> {
-  let cfg: UploadClientConfig;
-  let hashes: (string | null)[];
-  try {
-    cfg = await deps.getUploadConfig();
-    hashes = await Promise.all(entries.map((entry) => deps.hashFile(entry.file)));
-  } catch (err) {
-    for (const entry of entries) entry.onFailure({ reason: failureOf(err) });
-    return;
-  }
-  const asked = entries.flatMap((entry, index) => {
-    const hash = hashes[index];
-    if (hash === null || hash === undefined) {
-      entry.onFailure({ reason: 'hash' });
-      return [];
-    }
-    return [{ entry, hash }];
-  });
-  if (asked.length === 0) return;
-
-  let answers: BatchTicketAnswer[];
-  try {
-    answers = await retryTransient(
-      () =>
-        deps.requestTicketBatch({
-          ...context,
-          items: asked.map(({ entry, hash }) => ({
-            filename: entry.file.name,
-            contentType: entry.file.type,
-            size: entry.file.size,
-            hash,
-            nodeId: entry.nodeId,
-          })),
-        }),
-      {
-        attempts: cfg.clientMaxAttempts,
-        baseDelayMs: cfg.clientRetryBaseDelayMs,
-        ...(deps.sleep !== undefined && { sleep: deps.sleep }),
-      },
-    );
-  } catch (err) {
-    const reason = failureOf(err);
-    for (const { entry } of asked) entry.onFailure({ reason });
-    return;
-  }
-
-  await Promise.all(
-    asked.map(({ entry }, index) => {
-      const answer = answers[index];
-      if (answer === undefined) {
-        entry.onFailure({ reason: 'upload' });
-        return Promise.resolve();
-      }
-      if (isRefused(answer)) {
-        entry.onFailure({ reason: answer.refused.reason === 'storage' ? 'storage' : 'upload' });
-        return Promise.resolve();
-      }
-      return deliverTicket(entry.file, answer, cfg, entry, deps);
-    }),
-  );
 }
 
 /** Why an upload did not complete; the caller picks the message from it. */

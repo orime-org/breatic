@@ -122,7 +122,6 @@ function press(): MiniToolRun {
     sourceExists: () => true,
     exportFile: vi.fn(),
     fillUpload: vi.fn(),
-    fillUploads: vi.fn(),
     exportDrawing: vi.fn(),
     exportExpand: vi.fn(),
     uploadImage: vi.fn(),

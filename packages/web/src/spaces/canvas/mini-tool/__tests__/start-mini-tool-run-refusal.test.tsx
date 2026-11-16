@@ -89,7 +89,6 @@ function press(which: 'separate' | 'grid'): MiniToolRun {
     sourceExists: () => true,
     exportFile: vi.fn(),
     fillUpload: vi.fn(),
-    fillUploads: vi.fn(),
     exportDrawing: vi.fn(),
     exportExpand: vi.fn(),
     uploadImage: vi.fn(),
