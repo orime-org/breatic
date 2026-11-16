@@ -88,10 +88,12 @@ describe('a 507 reads as storage rather than an ordinary upload failure', () => 
     await runMediaUpload(pngFile(), { projectId: 'p1' }, {
       ...refusingDeps(onFailure),
       requestTicket: async () => {
+        // Marked done, so it is final for its key (inner#1968 design 3.2).
         throw new ApiException({
           status: 503,
           message: 'down',
           fromServer: true,
+          idempotencyStatus: 'done',
         });
       },
     } as unknown as MediaUploadDeps);

@@ -3,6 +3,7 @@
 
 import type { CanvasPasteAnswer, CanvasPasteInput, NodeTaskCounts, NodeTaskEntry, TaskCreateInput } from '@breatic/shared';
 
+import { newId } from '@breatic/shared';
 import { apiDelete, apiGet, apiPost, runOnceRequest } from '@web/data/api/request';
 import { noteCreditsChanged } from '@web/data/api/credits';
 import { bodyOrTransfer } from '@web/data/upload/transfer-body';
@@ -286,7 +287,8 @@ export const canvasApi = {
       node_id: string;
     },
   ): Promise<{ task_id: string }> {
-    return apiPost<{ task_id: string }>('/canvas/ingest-url', body);
+    // One fetched address is one operation (inner#1968), keyed per request.
+    return apiPost<{ task_id: string }>('/canvas/ingest-url', body, runOnceRequest(newId()));
   },
   /**
    * Keep a copy of what a text node says right now (#2175).
@@ -393,6 +395,17 @@ export const canvasApi = {
       { params: { project_id: projectId, space_id: spaceId } },
     );
     return tasks;
+  },
+
+  /**
+   * Cancel a task that waits for a free running slot (inner#1968, design
+   * 3.9). A task that has started answers 409 and goes on.
+   * @param taskId - The task, or one of its rows in a task list.
+   * @returns The node's counts after it, null for a 3D Space's own row.
+   * @throws {ApiException} When the request fails, 409 once the task has started.
+   */
+  cancelTask(taskId: string): Promise<{ cancelled: true; counts: NodeTaskCounts | null }> {
+    return apiPost<{ cancelled: true; counts: NodeTaskCounts | null }>(`/canvas/tasks/${taskId}/cancel`, {});
   },
 
   /**

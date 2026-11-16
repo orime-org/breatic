@@ -90,6 +90,11 @@ export type UploadTicketRequest = UploadContext & {
   size: number;
   /** Mandatory — a hashless upload is refused before it is asked for. */
   hash: string;
+  /**
+   * This file's operation id for this user action (inner#1968), sent as the
+   * request's `Idempotency-Key`; one is minted when absent.
+   */
+  operationId?: string;
 };
 
 /**

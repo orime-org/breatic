@@ -1,7 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import { apiGet, apiPost, request } from '@web/data/api/request';
+import { newId } from '@breatic/shared';
+import { apiGet, apiPost, request, runOnceRequest } from '@web/data/api/request';
 import type { ApiEnvelope } from '@web/data/api/types';
 import type { UploadClientConfig, UploadStatus } from '@breatic/shared';
 import type {
@@ -100,7 +101,7 @@ export const assetsApi = {
       ...(params.derived !== undefined && { derived: params.derived }),
       ...(params.purpose !== undefined && { purpose: params.purpose }),
       ...(params.label !== undefined && { label: params.label }),
-    }, { ...NO_CLIENT_TIMEOUT, ...(signal !== undefined && { signal }) });
+    }, { ...runOnceRequest(params.operationId ?? newId()), ...(signal !== undefined && { signal }) });
   },
 
   /**
@@ -140,7 +141,8 @@ export const assetsApi = {
    * @throws {import('@web/data/api/types').ApiException} On 400 / 403 / 429 / 507, or 500 when the fetch could not be queued.
    */
   ingestUrl(body: { url: string; project_id: string; space_id: string }): Promise<{ storage_key: string }> {
-    return apiPost<{ storage_key: string }>('/assets/ingest-url', body);
+    // One fetched address is one operation (inner#1968), keyed per request.
+    return apiPost<{ storage_key: string }>('/assets/ingest-url', body, runOnceRequest(newId()));
   },
 
   /**

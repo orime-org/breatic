@@ -117,6 +117,8 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
       hash: HASH,
       nodeId: 'n1',
       spaceId: 's1',
+      // The file's operation id (inner#1968 design 3.2).
+      operationId: expect.any(String),
     }, undefined);
     expect(deps.sendToIngest).toHaveBeenCalledWith(file, TICKET, CFG, undefined, undefined);
     expect(deps.onFailure).not.toHaveBeenCalled();
@@ -280,6 +282,8 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
       size: file.size,
       hash: HASH,
       purpose: 'studio_avatar',
+      // The file's operation id (inner#1968 design 3.2).
+      operationId: expect.any(String),
     }, undefined);
   });
 
@@ -311,9 +315,13 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
 
   // No ticket means no grant, so nothing on the server knows this upload was
   // ever attempted and nobody will announce how it ended.
+  // A 5xx marked done is final for its key (inner#1968 design 3.2): fresh
+  // keys stop at clientMaxAttempts and the upload fails.
   it('sends nothing when the ticket request finally fails', async () => {
     const deps = makeUploadDeps({
-      requestTicket: vi.fn().mockRejectedValue(apiError(503)),
+      requestTicket: vi.fn().mockRejectedValue(
+        new ApiException({ status: 503, message: 'HTTP 503', idempotencyStatus: 'done' }),
+      ),
     });
 
     await runMediaUpload(file, context, deps);
@@ -442,6 +450,8 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
       size: file.size,
       hash: HASH,
       derived: true,
+      // The file's operation id (inner#1968 design 3.2).
+      operationId: expect.any(String),
     }, undefined);
   });
 });

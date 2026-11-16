@@ -12,7 +12,9 @@ import {
   type UploadTicketRequest,
   type UploadTicketResponse,
 } from '@web/data/upload/ingest-upload';
-import type { UploadClientConfig, UploadStatusResult } from '@breatic/shared';
+import { idempotencyRetryDeadline, newId, type UploadClientConfig, type UploadStatusResult } from '@breatic/shared';
+import { resendWait } from '@web/data/api/resend-wait';
+import { ApiException } from '@web/data/api/types';
 import {
   errorStatus,
   retryTransient,
@@ -68,6 +70,10 @@ export type StoredUpload = UploadStatusResult;
  * `tooLarge` — the server refused the file as over the upload cap, which the
  * browser checks first whenever it has read the cap; sending it again changes
  * nothing.
+ * `operations` — the month's operations are used up and the studio cannot pay
+ * for one more (inner#1968); adding credits changes the answer.
+ * `spendCap` — a monthly spend limit was reached (inner#1968); adding credits
+ * does not lift it.
  * `upload` — anything else along the way: the knobs, the ticket request, or a
  * finish that failed. A retry can fix it, and the server settles the row
  * itself whenever it answered.
@@ -79,6 +85,8 @@ export const UPLOAD_FAILURE_REASONS = [
   'unsupportedType',
   'tooLarge',
   'transfer',
+  'operations',
+  'spendCap',
   'upload',
 ] as const;
 
@@ -143,6 +151,10 @@ const REASON_BY_STATUS: ReadonlyMap<number, UploadFailureReason> = new Map([
  * @returns The failure reason to report.
  */
 function failureOf(err: unknown): UploadFailureReason {
+  // The two refusals of the monthly operations and spend limits are named by
+  // the server's reason, not a status of their own (inner#1968).
+  if (err instanceof ApiException && err.reason === 'operations_exhausted') return 'operations';
+  if (err instanceof ApiException && err.reason === 'spend_cap_reached') return 'spendCap';
   // Asked first because it is about which half broke rather than what the
   // answer said. The edge answers the browser rather than our server, so a
   // refusal from it reaches here with a status that says nothing about whether
@@ -227,11 +239,67 @@ export interface MediaUploadDeps {
 }
 
 /**
+ * Ask for one file's ticket under the run-once rule (inner#1968 design 3.2):
+ * one operation id per file and press, resent under that id while the outcome
+ * is unknown (in progress, no answer, a 5xx without `done`) until the
+ * `upload-ticket` scope's deadline. A 5xx marked `done` already released that
+ * operation on the server, so the next try takes a fresh id, at most
+ * `clientMaxAttempts` tries in all. A full store and a rate limit are final
+ * here: neither lifts in the seconds a resend takes.
+ * @param ask - Sends the request under an operation id.
+ * @param cfg - The upload knobs.
+ * @param sleep - Backoff sleep override (tests).
+ * @param signal - Cancellation of this upload.
+ * @returns The ticket answer.
+ * @throws {unknown} The final failure.
+ */
+async function requestTicketOnce(
+  ask: (operationId: string) => Promise<UploadTicketResponse>,
+  cfg: UploadClientConfig,
+  sleep: ((ms: number) => Promise<void>) | undefined,
+  signal: AbortSignal | undefined,
+): Promise<UploadTicketResponse> {
+  const stopAt = idempotencyRetryDeadline('upload-ticket', Date.now());
+  /**
+   * Wait out one backoff; a cancellation meanwhile is seen as the loop goes round.
+   * @param ms - How long.
+   * @returns Once waited.
+   */
+  const pause = (ms: number): Promise<void> =>
+    sleep ? sleep(ms) : new Promise<void>((resolve) => setTimeout(resolve, ms));
+  let tries = 1;
+  let operationId = newId();
+  let resends = 0;
+  for (;;) {
+    signal?.throwIfAborted();
+    try {
+      return await ask(operationId);
+    } catch (err) {
+      signal?.throwIfAborted();
+      const status = errorStatus(err);
+      const final = status === STORAGE_FULL_STATUS || status === RATE_LIMITED_STATUS;
+      const doneServerError = err instanceof ApiException && err.idempotencyStatus === 'done' && err.status >= 500;
+      if (!final && doneServerError && tries < cfg.clientMaxAttempts) {
+        tries += 1;
+        operationId = newId();
+        resends = 0;
+        await pause(Math.random() * cfg.clientRetryBaseDelayMs * 2 ** (tries - 2));
+        continue;
+      }
+      const wait = final ? null : resendWait(err, resends);
+      if (wait === null || Date.now() >= stopAt) throw err;
+      resends += 1;
+      await pause(wait);
+    }
+  }
+}
+
+/**
  * Upload a media file (#173 design §4): fetch the knobs → hash the bytes
  * (Web Worker, any size) → ask for a ticket — the studio already holding this
  * content answers instantly and nothing moves — else send the parts to the
  * ingest Worker and complete. The two halves retry under different rules: the
- * ticket request through `retryTransient` on the knobs above, each part inside
+ * ticket request under the run-once rule ({@link requestTicketOnce}), each part inside
  * the shared HTTP transport on its own compiled-in policy. Network outcomes
  * route through `onSuccess` / `onFailure`; cancellation rejects the operation.
  *
@@ -270,21 +338,19 @@ export async function runMediaUpload(
       deps.onFailure({ reason: 'hash' });
       return;
     }
-    answer = await retryTransient(
-      () =>
+    answer = await requestTicketOnce(
+      (operationId) =>
         deps.requestTicket({
           ...context,
           filename: file.name,
           contentType: file.type,
           size: file.size,
           hash,
+          operationId,
         }, signal),
-      {
-        attempts: cfg.clientMaxAttempts,
-        baseDelayMs: cfg.clientRetryBaseDelayMs,
-        ...(deps.sleep !== undefined && { sleep: deps.sleep }),
-        ...(signal !== undefined && { signal }),
-      },
+      cfg,
+      deps.sleep,
+      signal,
     );
     signal?.throwIfAborted();
   } catch (err) {
