@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -27,6 +27,9 @@ vi.mock("@server/modules", () => ({
   projectService: { assertAccess: async () => undefined },
   precheckCredits: async () => undefined,
 }));
+
+// Whether this deployment can serve the tool's model is not this file's subject either.
+vi.mock("@server/modules/task/model-servable.js", () => ({ assertLlmServable: () => undefined }));
 
 import { textToolsRoute } from "@server/routes/text-tools.js";
 

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The links the user wrote in conversations the record tools read back
@@ -198,5 +198,37 @@ describe("search_conversations", () => {
     const { output } = await call(SEARCH, {}, recs);
 
     expect((output as { userLinks?: unknown }).userLinks).toEqual([]);
+  });
+});
+
+describe("a message the user sent while a turn ran (inner#1717)", () => {
+  const MID_LINK = "https://mid.example/ref";
+  const MID: ConversationTurns = {
+    ...TURNS,
+    messages: [
+      TURNS.messages[0]!,
+      {
+        ...TURNS.messages[1]!,
+        parts: [
+          { type: "text", text: `I also found ${AGENT_LINK} for you` },
+          { type: "user-message", id: "m-2", sentAt: "2026-10-18T09:00:10.000Z", parts: [{ type: "text", text: `see ${MID_LINK} too` }] },
+          { type: "text", text: "Got it" },
+        ],
+      },
+    ],
+  };
+
+  it("reads it as its own user line inside the turn (PT-05)", async () => {
+    const { output } = await call(READ, {}, records({ readConversation: vi.fn().mockResolvedValue(MID) }));
+
+    expect((output as { text: string }).text).toContain(
+      `assistant: I also found ${AGENT_LINK} for you\nuser: see ${MID_LINK} too\nGot it`,
+    );
+  });
+
+  it("counts its links as the user's (PT-06)", async () => {
+    const { output } = await call(READ, {}, records({ readConversation: vi.fn().mockResolvedValue(MID) }));
+
+    expect((output as { userLinks: string[] }).userLinks).toEqual([USER_LINK, OTHER_USER_LINK, MID_LINK]);
   });
 });

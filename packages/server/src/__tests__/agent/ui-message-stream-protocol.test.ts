@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * 线上流说的是 AI SDK 的话，不是我们自己发明的那 8 个事件。
@@ -72,7 +72,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       },
     }),
     finalizeTurn: async () => [],
-    getModel: () => modelProducing(() => modelSays.parts),
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider(() => modelProducing(() => modelSays.parts)),
   };
 });
 

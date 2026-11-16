@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * A turn tells the model which Spaces the project has and what is in the one
@@ -49,11 +49,11 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       return { modelId: "test", instructions: { base: "system" }, tools: {} };
     },
     finalizeTurn: async () => [],
-    getModel: () =>
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider(() =>
       modelProducing(
         () => modelSays.parts as ModelStreamPart[],
         (asked) => modelSays.prompts.push(asked.prompt),
-      ),
+      )),
   };
 });
 

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { tool, wrapLanguageModel } from "ai";
@@ -41,13 +41,13 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       seesPictures: true,
       picturePolicy: { seesPictures: true, maxPictures: h.maxPictures, maxBytes: h.maxBytes, pictureTokensEstimate: 1000 },
     }),
-    getModel: () => wrapLanguageModel({
+    provider: (await import("../../__tests__/helpers/fake-provider.js")).fakeProvider(() => wrapLanguageModel({
       model: modelProducing(
         () => (h.byCall[h.prompts.length - 1] ?? saying("done")) as ModelStreamPart[],
         (request) => h.prompts.push(request.prompt),
       ),
       middleware: actual.pictureMiddleware as Parameters<typeof wrapLanguageModel>[0]["middleware"],
-    }),
+    })),
   };
 });
 vi.mock("@server/agent/turn-context.js", () => ({ buildTurnContext: h.context }));

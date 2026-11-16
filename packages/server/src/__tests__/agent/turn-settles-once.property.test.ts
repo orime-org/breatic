@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * However a turn is put together, it settles up once.
@@ -80,8 +80,7 @@ vi.mock("@breatic/domain", async () => {
     streamTextRetry: actual.streamTextRetry,
     buildAgentConfig: () => ({ modelId: "m", instructions: { base: "s" }, tools: {} }),
     creditLotService: { chargeOnce },
-    resolveProvider: () => "test",
-    getModel: () => modelProducing(() => modelSays.parts as ModelStreamPart[]),
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider(() => modelProducing(() => modelSays.parts as ModelStreamPart[])),
   };
 });
 

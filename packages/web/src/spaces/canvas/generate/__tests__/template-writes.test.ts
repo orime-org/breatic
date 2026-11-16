@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What picking a template in a generate panel writes to each of its generate
@@ -45,7 +45,8 @@ const SHEET: ModelEntry = {
   tier: 'recommended',
   generation_time: 10,
   takes_prompt: true,
-  providers: [],
+  availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: false, envVar: 'WAVESPEED_API_KEY' }] },
+  pricing_rules: undefined,
   params: { aspect_ratio: { description: '', values: ['1:1', '16:9'], default: '1:1' } },
 };
 
@@ -60,7 +61,8 @@ const ULTRA: ModelEntry = {
   tier: 'recommended',
   generation_time: 10,
   takes_prompt: true,
-  providers: [],
+  availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: false, envVar: 'WAVESPEED_API_KEY' }] },
+  pricing_rules: undefined,
   params: {
     aspect_ratio: { description: '', values: ['1:1', '16:9', '9:16'], default: '16:9' },
     resolution: { description: '', values: ['1k', '4k'], default: '1k' },
@@ -108,7 +110,7 @@ describe('templateParams', () => {
 
 /** Gemini's speech model: one voice, or a dialogue whose speakers replace it. */
 const GEMINI_TTS = {
-  name: 'gemini-3.1-flash-text-to-speech',
+  name: 'gemini-3.8-flash-text-to-speech',
   params: {
     speakers: {
       fill: 'panel',

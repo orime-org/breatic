@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Which rows of the conversation list are marked running (#1394).
@@ -35,7 +35,7 @@ vi.mock('@web/data/api/chat', () => ({
       currentSpaceMaxChars: 100_000,
       spaceListMaxItems: 200,
       spaceReadTimeoutMs: 10_000,
-      runningPollIntervalMs: POLL_MS,
+      runningPollIntervalMs: POLL_MS, syncIntervalMs: 3_000,
     }),
   },
 }));

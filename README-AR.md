@@ -1,7 +1,7 @@
 <h1 align="center">Breatic</h1>
 
 <p align="center"><strong>مساحة عمل إبداعية بالذكاء الاصطناعي تتيح للفرق التعاون في الوقت الفعلي.</strong></p>
-<p align="center">متاح عبر الإنترنت · الشيفرة المصدرية متاحة · متصفح سطح المكتب</p>
+<p align="center">متاح عبر الإنترنت · مفتوح المصدر · متصفح سطح المكتب</p>
 
 <p align="center">
   <a href="https://breatic.ai/?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=repository_listing_202610&amp;utm_content=readme_website_ar">الموقع</a> ·
@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/orime-org/breatic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/orime-org/breatic?style=flat&amp;color=blueviolet&amp;label=release&amp;display_name=tag"></a>
-  <a href="LICENSE"><img alt="License: Elastic-2.0" src="https://img.shields.io/badge/license-Elastic--2.0-blue?style=flat"></a>
+  <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat"></a>
   <a href="https://discord.gg/Yeu6A4aejN"><img alt="Discord community" src="https://img.shields.io/badge/discord-join%20community-5865F2?style=flat&amp;logo=discord&amp;logoColor=white"></a>
   <a href="#get-started"><img alt="Quickstart guide" src="https://img.shields.io/badge/quickstart-guide-green?style=flat"></a>
 </p>
@@ -41,11 +41,11 @@
 | **Document Spaces** | كتابة السيناريوهات ووصف اللقطات وقوائم الإنتاج باستخدام نص منسّق. |
 | **Canvas Spaces** | ترتيب المراجع والوسائط على لوحة غير محدودة، وتوليد الأصول وتحسينها باستخدام التعليمات والنماذج والمدخلات المرجعية. |
 | **3D (DEV)** | وضع كائنات مدمجة في مشهد مشترك وتعديل موضعها ودورانها وحجمها. |
-| **Timeline (DEV)** | إضافة فيديوهات Project أو رفع فيديوهات محلية إلى مسار مرئي مشترك، وضبط إطار البداية ومعاينة التسلسل. |
+| **Timeline (DEV)** | ترتيب فيديوهات Project أو الفيديوهات المرفوعة محليًا على مسارات مشتركة: نقل المقاطع وقصّها وتقسيمها ونسخها وحذفها، والتراجع عن تعديلاتك ومعاينة التسلسل. صِف Web Animation ليصنعها DeepSeek، وتابعها في قائمة التنفيذ، ثم أضف النتيجة مقاطعَ تعمل على ساعة Timeline. تُعرض الفيديوهات وWeb Animation من كل المسارات طبقاتٍ متراكبة تعمل معًا؛ حدّد طبقة في المعاينة لتحريكها أو تكبيرها أو مطّها أو تدويرها، أو اكتب موضعها وحجمها. اختر نسبة الإطار من سبعة إعدادات (16:9 و9:16 و1:1 و4:3 و4:5 و2:3 و21:9) في نهاية شريط التشغيل، وتبقى الطبقات في مكانها من الإطار. |
 | **وكيل ذكاء اصطناعي داخل المشروع** | مناقشة الأفكار وتقديم سياق المستند أو اللوحة ومراجعة المقترحات إلى جانب موادك. |
 | **التعاون في الوقت الفعلي** | دعوة المتعاونين وتحديد صلاحيات الوصول والعمل على لوحات ومستندات ومشاهد 3D وTimelines متزامنة. |
 
-تشمل الوسائط المدعومة الصور والفيديو والصوت وأصول 3D. تعتمد إمكانات التوليد على المزوّدين المُعدّين وإمكانية الوصول إلى نماذجهم. يمكن استخدام Canvas وDocument؛ ويحمل محررا 3D وTimeline علامة **DEV**. يدعم Timeline حاليًا ترتيب الفيديو ومعاينته على مسار مرئي واحد. أما تعدد المسارات وأنواع الوسائط الإضافية وWeb Animation وتصدير الفيديو فهي ميزات مخططة. ما زال التوليد بالنماذج والتعليقات داخل مشهد 3D قيد التطوير.
+تشمل الوسائط المدعومة الصور والفيديو والصوت وأصول 3D. تعتمد إمكانات التوليد على المزوّدين المُعدّين وإمكانية الوصول إلى نماذجهم. يمكن استخدام Canvas وDocument؛ ويحمل محررا 3D وTimeline علامة **DEV**. يدعم Timeline حاليًا تحرير الفيديو وWeb Animation ومعاينتهما على عدة مسارات مرئية، وتتوفر Web Animation فقط في عمليات النشر التي تفعّلها. أما أنواع الوسائط الإضافية وتصدير الفيديو فهي ميزات مخططة. ما زال التوليد بالنماذج والتعليقات داخل مشهد 3D قيد التطوير.
 
 ## راجعوا التغييرات معًا
 
@@ -98,7 +98,7 @@
 
 ## الترخيص والاستخدام المسموح
 
-الشيفرة المصدرية لـBreatic متاحة بموجب [Elastic License 2.0](LICENSE) (Elastic-2.0). يمكنك قراءتها وتعديلها وإعادة توزيعها وتشغيلها لنفسك أو داخل مؤسستك، بما في ذلك للأعمال التجارية. لا يجوز تقديم Breatic لأطراف ثالثة كخدمة مستضافة أو مُدارة. راجع النص الكامل للترخيص.
+Breatic مشروع مفتوح المصدر بموجب [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0-only). يمكنك استخدام Breatic ودراسته وتعديله واستضافته بنفسك لأي غرض، بما في ذلك الاستخدام التجاري. إذا عدّلت Breatic وأتحت لآخرين استخدام النسخة المعدّلة عبر شبكة، فعليك أن توفّر لهم شيفرتها المصدرية الكاملة بموجب الترخيص نفسه. راجع النص الكامل للترخيص.
 
 اسم Breatic وشعاره علامتان تجاريتان لشركة Orime, Inc. ولا يشملهما ترخيص البرمجيات؛ راجع [TRADEMARKS.md](TRADEMARKS.md). لا يقيّد الترخيص المحتوى الذي تنشئه باستخدام Breatic.
 

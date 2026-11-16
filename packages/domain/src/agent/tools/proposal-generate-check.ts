@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The check one generation node answers: its mode and model are in the
@@ -11,6 +11,7 @@ import {
   completeEntries,
   evaluateExecute,
   extractPromptText,
+  neutralReference,
   PANEL_EDITOR_PARAM,
   promptPlainText,
   promptTaken,
@@ -19,6 +20,8 @@ import {
   referencePool,
   standInOf,
   storyboardSend,
+  wireParams,
+  withStandInOn,
   type CanvasProposal,
   type ExecuteVerdict,
   type ModelEntry,
@@ -69,9 +72,8 @@ function resolveModel(node: ProposalNode, index: number): { chosen: ModelInfo } 
   // `modelsForMode` already names what the node does offer instead.
   const reachable = modelsForMode(node.type, mode);
   if (!reachable.available) {
-    return reachable.offered.length > 0
-      ? refuse("mode-unbacked", `No model here backs "${mode}" on ${aNode(node.type)}. It offers: ${reachable.offered.join(", ")}.`)
-      : refuse("no-model-for-kind", `No ${node.type} model can generate right now.`);
+    const offers = reachable.offered.length > 0 ? ` It offers: ${reachable.offered.join(", ")}.` : "";
+    return refuse("mode-unbacked", `No model here backs "${mode}" on ${aNode(node.type)}.${offers}`);
   }
   const chosen = reachable.models.find((m) => m.name === model);
   return chosen
@@ -309,8 +311,9 @@ function checkWiring(proposal: CanvasProposal, node: ProposalNode, index: number
 
 /**
  * What the panel sends in place of each ref, the way it serialises it: a text
- * node's words, and a picture, clip or track as its pool's mention, numbered
- * within its kind in the order the pool lists them.
+ * node's words, and a picture, clip or track as a neutral reference to its
+ * place in its pool, numbered within its kind in the order the pool lists
+ * them (inner#1743).
  * @param proposal - The whole proposal.
  * @param node - The generation.
  * @param pooled - The indices wired into its pool, in order.
@@ -325,10 +328,10 @@ function refWordsFor(proposal: CanvasProposal, node: ProposalNode, pooled: reado
     const target = proposal.nodes[at];
     if (!target) return "";
     if (target.type === "text") return promptPlainText(target.prompt ?? []);
-    const mention = pool[target.type]?.mention;
-    if (mention === undefined) return "";
+    const kind = pool[target.type];
+    if (kind?.mention === undefined) return "";
     const n = pooled.filter((i) => proposal.nodes[i]?.type === target.type).indexOf(at);
-    return mention.replace("{n}", String(n + 1)).replace("{i}", String(n));
+    return neutralReference(kind.param, n + 1);
   };
 }
 
@@ -371,6 +374,69 @@ function gateReason(verdict: ExecuteVerdict, node: ProposalNode, chosen: ModelIn
 }
 
 /**
+ * What a generation sends as its prompt: its lines written out as the script for a dialogue, the shots written into
+ * one for a model with no field for them, else its prompt, each ref in the words that reach the model.
+ * @param proposal - The whole proposal.
+ * @param node - The generation.
+ * @param chosen - Its model.
+ * @param pooled - The nodes wired into its pool.
+ * @returns The prompt sent, and the shots as written.
+ * @throws {never} Never.
+ */
+function sentPrompt(proposal: CanvasProposal, node: ProposalNode, chosen: ModelInfo, pooled: readonly number[]): { sent: string; shots: { text: string; duration: NonNullable<ProposalNode["shots"]>[number]["duration"] }[] } {
+  const refWords = refWordsFor(proposal, node, pooled);
+  const board = chosen.storyboard;
+  const shots = (node.shots ?? []).map((shot) => ({ text: promptTextOf(shot.prompt, refWords), duration: shot.duration }));
+  const sent = onDialogueSide(node)
+    ? proposalDialogueText(node, (segments) => promptTextOf(segments, refWords))
+    : board === undefined
+      ? promptTextOf(node.prompt ?? [], refWords)
+      : (storyboardSend(board, shots.map((shot) => ({ prompt: shot.text, duration: shot.duration }))).prompt ?? "");
+  return { sent, shots };
+}
+
+/**
+ * What a song model's lyrics box sends: the words of the nodes wired into it, a line apart.
+ * @param node - The generation.
+ * @param chosen - Its model.
+ * @param arriving - The nodes wired into it and the way each comes in.
+ * @returns The lyrics, or undefined when the model draws no lyrics box with these settings.
+ * @throws {never} Never.
+ */
+function lyricsSent(node: ProposalNode, chosen: ModelInfo, arriving: Wiring["arriving"]): string | undefined {
+  if (waysIn(chosen, node.params ?? {}).get("text")?.some((way) => way.into === PANEL_EDITOR_PARAM) !== true) return undefined;
+  return arriving
+    .filter(({ entry }) => entry.way.into === PANEL_EDITOR_PARAM)
+    .map(({ node: n }) => promptPlainText(n.prompt ?? []))
+    .join("\n");
+}
+
+/**
+ * The run a generation that passed {@link checkGenerateNode} sends, for asking whether an upstream takes it (#1521).
+ * @param proposal - The whole proposal.
+ * @param node - The generation.
+ * @param index - Where it sits.
+ * @returns Its model, its params with the lyrics wired into it, and its prompt as sent; undefined when its model or
+ *   wiring does not resolve.
+ * @throws {never} Never.
+ */
+export function generateRunOf(proposal: CanvasProposal, node: ProposalNode, index: number): { model: string; params: Record<string, unknown>; prompt: string } | undefined {
+  const resolved = resolveModel(node, index);
+  if ("refusal" in resolved) return undefined;
+  const wiring = checkWiring(proposal, node, index, resolved.chosen, nodeLabel(proposal.nodes, index));
+  if ("refusal" in wiring) return undefined;
+  const lyrics = lyricsSent(node, resolved.chosen, wiring.arriving);
+  const entry = proposalModelEntry(node);
+  return {
+    model: resolved.chosen.name,
+    // The params the landed node sends: on the side its switch is on, without the switch.
+    params: { ...wireParams(entry, withStandInOn(entry, node.params ?? {})), ...(lyrics === undefined || lyrics === "" ? {} : { [PANEL_EDITOR_PARAM]: lyrics }) },
+    // Cleaned as the worker cleans every prompt before it is sent, as the server asks about it.
+    prompt: extractPromptText(sentPrompt(proposal, node, resolved.chosen, wiring.pooled).sent),
+  };
+}
+
+/**
  * Whether the boxes a generation fills pass the gate Generate holds them to,
  * asked with the text they will hold. A note is left out of it.
  * @param proposal - The whole proposal.
@@ -393,36 +459,25 @@ function checkPanelGate(proposal: CanvasProposal, node: ProposalNode, chosen: Mo
   if (long) {
     return refuse("script-too-long-for-shot", `"${long.name}" is longer than the ${String(shotCap)} characters "${chosen.name}" takes for one shot, so @'ing it into a shot is refused at Generate.`);
   }
-  const refWords = refWordsFor(proposal, node, pooled);
-  const shots = (node.shots ?? []).map((shot) => ({ text: promptTextOf(shot.prompt, refWords), duration: shot.duration }));
   const totalParam = board?.totalParam;
   const total = totalParam === undefined ? undefined : Number(node.params?.[totalParam] ?? chosen.params[totalParam]?.default);
   // A dialogue's words are its lines, each held to having words as the
   // panel holds the box, and sent as the script they write out.
-  const dialogue = onDialogueSide(node);
-  const blank = dialogue ? (node.lines ?? []).findIndex((line) => extractPromptText(promptTextOf(line.prompt, refWords)).length === 0) : -1;
+  const refWords = refWordsFor(proposal, node, pooled);
+  const blank = onDialogueSide(node) ? (node.lines ?? []).findIndex((line) => extractPromptText(promptTextOf(line.prompt, refWords)).length === 0) : -1;
   if (blank >= 0) return refuse("line-empty", `Line ${String(blank + 1)} writes nothing. Every line needs its own words.`);
-  // What goes out as the prompt: the shots written into one, for a model with
-  // no field for them, so its length is held to the model's cap.
-  const sent = dialogue
-    ? proposalDialogueText(node, (segments) => promptTextOf(segments, refWords))
-    : board === undefined
-      ? promptTextOf(node.prompt ?? [], refWords)
-      : (storyboardSend(board, shots.map((shot) => ({ prompt: shot.text, duration: shot.duration }))).prompt ?? "");
+  const { sent, shots } = sentPrompt(proposal, node, chosen, pooled);
   // A song model's lyrics box is a second box the panel holds to the same
   // gate: the words of the nodes wired into it, a line apart.
-  const lyricsRequired = waysIn(chosen, node.params ?? {}).get("text")?.some((way) => way.into === PANEL_EDITOR_PARAM) === true;
-  const lyricsText = arriving
-    .filter(({ entry }) => entry.way.into === PANEL_EDITOR_PARAM)
-    .map(({ node: n }) => promptPlainText(n.prompt ?? []))
-    .join("\n");
+  const lyricsText = lyricsSent(node, chosen, arriving);
+  const lyricsRequired = lyricsText !== undefined;
   const verdict = evaluateExecute({
     promptText: sent,
     model: chosen.name,
     nodeExists: true,
     isSubmitting: false,
     promptRequired: takesPromptHere(node, chosen),
-    ...(lyricsRequired ? { lyricsRequired, lyricsText } : {}),
+    ...(lyricsRequired ? { lyricsRequired, lyricsText: lyricsText ?? "" } : {}),
     ...(chosen.maxInputChars === undefined ? {} : { maxInputChars: chosen.maxInputChars }),
     ...(node.shots !== undefined && total !== undefined
       ? { storyboard: { shots, total, ...(board === undefined ? {} : { maxShots: board.maxShots }), ...(shotCap === undefined ? {} : { maxChars: shotCap }) } }

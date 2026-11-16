@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What a paste of web content reads, and that every medium it carries lands
@@ -30,6 +30,7 @@ import {
   settled,
   shape,
   unmountAll,
+  written,
   type Editor,
   type Sink,
 } from './paste-harness';
@@ -968,14 +969,8 @@ describe('words copied out of a table cell', () => {
    * @returns The clipboard formats written.
    */
   function copied(editor: Editor, from: number, to: number): Record<string, string> {
-    const data: Record<string, string> = {};
     select(editor, from, to);
-    const event = new Event('copy', { bubbles: true, cancelable: true });
-    Object.defineProperty(event, 'clipboardData', {
-      value: { setData: (type: string, value: string) => (data[type] = value), clearData: () => undefined, getData: (type: string) => data[type] ?? '' },
-    });
-    editor.prosemirrorView!.dom.dispatchEvent(event);
-    return data;
+    return written(editor.prosemirrorView!.dom, 'copy');
   }
 
   it.each([

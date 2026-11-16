@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Retry × terminal-attempt protocol.
@@ -31,7 +31,6 @@ vi.mock("@breatic/core", () => ({
 vi.mock("@breatic/domain", () => ({
   taskService: {},
   nodeHistoryService: {},
-  getModel: vi.fn(),
   buildToolSet: vi.fn(),
   extractPromptText: vi.fn(),
 }));

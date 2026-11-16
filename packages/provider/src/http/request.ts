@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * provider's own HTTP: the one place that calls the platform
@@ -382,7 +382,7 @@ export async function readBody(url: string, response: Response, maxBytes: number
 /**
  * Read an answer's body as text. A refusal (non-2xx) is that status whatever its body does:
  * one that cannot be read (over the limit, cut, stalled, stopped) reads as no words, as
- * today's callers read it with `text().catch(() => "")`; a 2xx body's failure is thrown.
+ * the callers read it with `text().catch(() => "")`; a 2xx body's failure is thrown.
  * @param url - Where it came from.
  * @param response - The response.
  * @param maxBytes - The most bytes read.

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Propose a comment, a rewrite or an insert for the open document
@@ -50,7 +50,8 @@ export const documentEditInputSchema = z
       .optional()
       .describe(
         "For a comment only: the words in that block it hangs on, appearing there once. Written without Markdown " +
-          "(no **, *, ~~, backticks, and a link as its words only); paragraphs and table cells one per line.",
+          "(no **, *, ~~, backticks, and a link as its words only, a formula as $$ and its LaTeX $$); " +
+          "paragraphs and table cells one per line.",
       ),
     body: z
       .string()
@@ -105,7 +106,8 @@ function quoteProblem(quote: string, n: number, text: string): string | null {
   }
   return (
     `The quote is not in block ${String(n)}. A quote is matched against the block's words without Markdown -- ` +
-    "no **, *, ~~ or backticks, a link as its words only -- with paragraphs and table cells one per line. " +
+    "no **, *, ~~ or backticks, a link as its words only, a formula as $$ and its LaTeX $$ -- with paragraphs " +
+    "and table cells one per line. " +
     `Block ${String(n)} reads: ${JSON.stringify(text)}`
   );
 }
@@ -222,7 +224,8 @@ export function makeProposeDocumentEdit(): Tool<DocumentEditInput, DocumentPropo
       "where each top-level block follows a <!-- b:N --> marker: name a block by that N. A comment hangs on " +
       "words in one block and the user can reply to it or resolve it; a rewrite replaces one whole block with " +
       "your Markdown; an insert adds Markdown -- paragraphs, headings (#, ## and ### only: the document has three " +
-      "levels, and deeper ones land as ###), lists, a table -- after a block or at the " +
+      "levels, and deeper ones land as ###), lists, a table, a formula (LaTeX between $$ inside a line, or with " +
+      "$$ on lines of their own for one on its own line; a single $ is a character) -- after a block or at the " +
       "end. Nothing changes in the document until the user presses the card. One proposal per change: several " +
       "changes are several calls, and content that follows one place -- a run of paragraphs, several scenes -- " +
       "goes in one insert, in the order it reads. An image, video or audio in the Markdown lands only when its " +

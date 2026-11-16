@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The mini-tool registry lives in `@breatic/shared`, which cannot read the
@@ -38,27 +38,6 @@ function catalog(): Map<string, FullModel> {
     for (const model of getFullModelConfig(bucket).models) byName.set(model.name, model);
   }
   return byName;
-}
-
-/**
- * The bare identifiers a pricing formula reads, leaving out `$` variables,
- * function calls, a call's named arguments (`get_duration(video, max=30)`),
- * quoted strings and the provider's own pricing constants.
- * @param formula - The JSONata pricing formula.
- * @param constants - The provider pricing keys the formula may read.
- * @returns The param names the formula reads.
- */
-function formulaParams(formula: string, constants: ReadonlySet<string>): string[] {
-  const unquoted = formula.replace(/\\?"[^"\\]*(?:\\.[^"\\]*)*\\?"/g, " ");
-  const bare = unquoted.replace(/([(,]\s*)[a-z_][a-z0-9_]*=(?!=)/g, "$1");
-  const names = new Set<string>();
-  for (const match of bare.matchAll(/(?<![$\w.])([a-z_][a-z0-9_]*)\b(?!\s*\()/g)) {
-    const name = match[1]!;
-    if (["true", "false", "null", "and", "or", "in"].includes(name)) continue;
-    if (constants.has(name)) continue;
-    names.add(name);
-  }
-  return [...names];
 }
 
 const modelTools = MINI_TOOLS.filter((tool) => tool.run.kind === "model");
@@ -132,23 +111,6 @@ describe("model tools against the catalog", () => {
     expect(offered("light_intensity")).toEqual(Object.keys(LIGHT_INTENSITIES));
     expect(offered("light_quality")).toEqual(Object.keys(LIGHT_QUALITIES));
   });
-
-  it("reads only declared params in every pinned model's pricing formula", () => {
-    const models = catalog();
-    const undeclared: string[] = [];
-    for (const tool of modelTools) {
-      const model = models.get(modelOf(tool)!)!;
-      for (const provider of model.providers ?? []) {
-        const formula = provider.pricing?.formula ?? "";
-        const constants = new Set(Object.keys(provider.pricing ?? {}));
-        for (const name of formulaParams(formula, constants)) {
-          if (!(name in (model.params ?? {}))) undeclared.push(`${model.name}.${name}`);
-        }
-      }
-    }
-    expect(undeclared).toEqual([]);
-  });
-
   it("leaves no fill: tool param unclaimed", () => {
     const claimed = new Set<string>();
     for (const tool of modelTools) {

@@ -1,0 +1,54 @@
+{
+  "source": "https://api.wavespeed.ai/api/v3/models",
+  "fields": {
+    "model": [
+      {
+        "type": "string"
+      }
+    ],
+    "out_format": [
+      {
+        "type": "string",
+        "enum": [
+          "glb",
+          "fbx"
+        ],
+        "default": "glb"
+      }
+    ],
+    "rig_type": [
+      {
+        "type": "string",
+        "enum": [
+          "auto",
+          "biped",
+          "quadruped",
+          "hexapod",
+          "octopod",
+          "avian",
+          "serpentine",
+          "aquatic",
+          "others"
+        ],
+        "default": "auto"
+      }
+    ],
+    "spec": [
+      {
+        "type": "string",
+        "enum": [
+          "tripo",
+          "mixamo",
+          "actorcore",
+          "unity",
+          "unreal",
+          "vrm"
+        ],
+        "default": "tripo"
+      }
+    ]
+  },
+  "required": [
+    "model"
+  ]
+}

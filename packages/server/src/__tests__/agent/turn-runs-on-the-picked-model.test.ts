@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * A turn runs on the model the route resolved from the user's pick (#1363),
@@ -47,13 +47,13 @@ vi.mock("@breatic/domain", async (importOriginal) => {
     streamTextRetry: actual.streamTextRetry,
     buildAgentConfig,
     finalizeTurn,
-    getModel: () =>
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider(() =>
       modelProducing(() => [
         { type: "text-start", id: "t1" },
         { type: "text-delta", id: "t1", delta: "Done." },
         { type: "text-end", id: "t1" },
         FINISHED,
-      ]),
+      ])),
   };
 });
 

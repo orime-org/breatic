@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Which modes a generation node can currently be set to, and what each is for.
@@ -169,6 +169,11 @@ export interface ParamInfo {
 export interface ModelInfo {
   /** The name a node stores and a proposal names. */
   name: string;
+  /**
+   * The environment variables this deployment would need for any upstream of the model, present only when it has
+   * none of them: a run of it is refused here until one is set.
+   */
+  missingKeys?: string[];
   /**
    * The kind of generation node it runs on, which decides what the canvas lets
    * wire into it; `3d` for a model the 3D Space generates with (inner#1691).
@@ -604,8 +609,10 @@ function modelsIn(
         ([name, spec]) => [name, spec, reachedBy(spec, mode)] as const,
       );
       const storyboard = storyboardSpec(entry.params, mode);
+      const configured = entry.availability.upstreams.some((u) => u.configured);
       return {
       name: entry.name,
+      ...(configured ? {} : { missingKeys: entry.availability.upstreams.map((u) => u.envVar) }),
       nodeType,
       // The name this mode's picker shows, so the agent and the user say the same one.
       displayName: modelLabel(entry, inMode),

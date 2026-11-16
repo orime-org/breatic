@@ -1,7 +1,7 @@
 <h1 align="center">Breatic</h1>
 
 <p align="center"><strong>Der KI-Arbeitsbereich für Kreativteams mit Zusammenarbeit in Echtzeit.</strong></p>
-<p align="center">Online verfügbar · Quellcode einsehbar · Desktop-Browser</p>
+<p align="center">Online verfügbar · Open Source · Desktop-Browser</p>
 
 <p align="center">
   <a href="https://breatic.ai/?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=repository_listing_202610&amp;utm_content=readme_website_de">Website</a> ·
@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/orime-org/breatic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/orime-org/breatic?style=flat&amp;color=blueviolet&amp;label=release&amp;display_name=tag"></a>
-  <a href="LICENSE"><img alt="License: Elastic-2.0" src="https://img.shields.io/badge/license-Elastic--2.0-blue?style=flat"></a>
+  <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat"></a>
   <a href="https://discord.gg/Yeu6A4aejN"><img alt="Discord community" src="https://img.shields.io/badge/discord-join%20community-5865F2?style=flat&amp;logo=discord&amp;logoColor=white"></a>
   <a href="#get-started"><img alt="Quickstart guide" src="https://img.shields.io/badge/quickstart-guide-green?style=flat"></a>
 </p>
@@ -39,11 +39,11 @@ Der gehostete Dienst bietet einen kostenlosen Starter-Tarif. Credits für die KI
 | **Document Spaces** | Drehbücher, Einstellungen und Produktionslisten mit formatiertem Text verfassen. |
 | **Canvas Spaces** | Referenzen und Medien auf einer unendlichen Arbeitsfläche anordnen; Inhalte mit Prompts, Modellen und Referenzen erzeugen und verfeinern. |
 | **3D (DEV)** | Integrierte Objekte in einer gemeinsamen Szene platzieren sowie Position, Drehung und Skalierung bearbeiten. |
-| **Timeline (DEV)** | Videos aus dem Project oder lokale Videos auf einer gemeinsamen Bildspur anordnen, Startframes ändern und die Sequenz abspielen. |
+| **Timeline (DEV)** | Videos aus dem Project oder lokal hochgeladene Videos auf gemeinsamen Spuren anordnen: Clips verschieben, trimmen, teilen, duplizieren und löschen, eigene Änderungen rückgängig machen und die Sequenz abspielen. Eine Web Animation beschreiben, von DeepSeek erstellen lassen, in der Ausführungsliste verfolgen und das Ergebnis als Clips einfügen, die im Takt der Timeline laufen. Videos und Web Animations aller Spuren laufen als übereinanderliegende Ebenen gemeinsam; eine Ebene in der Vorschau auswählen, um sie zu verschieben, zu skalieren, zu strecken oder zu drehen, oder Position und Größe eingeben. Am Ende der Wiedergabeleiste das Seitenverhältnis aus sieben Vorgaben wählen (16:9, 9:16, 1:1, 4:3, 4:5, 2:3, 21:9); die Ebenen behalten ihren Platz im Bild. |
 | **KI-Agent im Projekt** | Ideen besprechen, Dokument- und Canvas-Kontext bereitstellen und Vorschläge zusammen mit deinen Materialien prüfen. |
 | **Zusammenarbeit in Echtzeit** | Teammitglieder einladen, Berechtigungen festlegen und synchronisierte Canvases, Dokumente, 3D-Szenen und Timelines bearbeiten. |
 
-Unterstützte Medien sind Bilder, Videos, Audio und 3D-Dateien. Die Generierung hängt von den eingerichteten Anbietern und dem Modellzugang ab. Canvas und Document sind verfügbar; 3D und Timeline tragen die Kennzeichnung **DEV**. Die Timeline unterstützt derzeit Videoanordnung und Vorschau auf einer Bildspur. Mehrere Spuren, weitere Medientypen, Web Animation und Videoexport sind geplant. Modellgenerierung und Anmerkungen innerhalb der 3D-Szene sind in Entwicklung.
+Unterstützte Medien sind Bilder, Videos, Audio und 3D-Dateien. Die Generierung hängt von den eingerichteten Anbietern und dem Modellzugang ab. Canvas und Document sind verfügbar; 3D und Timeline tragen die Kennzeichnung **DEV**. Die Timeline unterstützt derzeit Bearbeitung und Vorschau von Videos und Web Animations auf mehreren Bildspuren; Web Animation steht nur in Installationen zur Verfügung, die sie aktivieren. Weitere Medientypen und Videoexport sind geplant. Modellgenerierung und Anmerkungen innerhalb der 3D-Szene sind in Entwicklung.
 
 ## Änderungen gemeinsam prüfen
 
@@ -96,7 +96,7 @@ Sicherheitslücken bitte gemäß [SECURITY.md](SECURITY.md) vertraulich melden. 
 
 ## Lizenz und erlaubte Nutzung
 
-Der Quellcode von Breatic ist unter der [Elastic License 2.0](LICENSE) (Elastic-2.0) verfügbar. Du darfst ihn lesen, ändern, weitergeben und für dich oder innerhalb deiner Organisation ausführen, auch für kommerzielle Arbeit. Du darfst Breatic Dritten nicht als gehosteten oder verwalteten Dienst anbieten. Maßgeblich sind die vollständigen Lizenzbedingungen.
+Breatic ist Open Source unter der [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0-only). Du darfst Breatic für jeden Zweck nutzen, untersuchen, ändern und selbst hosten, auch kommerziell. Wenn du Breatic änderst und anderen die geänderte Version über ein Netzwerk zur Verfügung stellst, musst du ihnen den vollständigen Quellcode unter derselben Lizenz anbieten. Maßgeblich sind die vollständigen Lizenzbedingungen.
 
 Name und Logo sind Marken von Orime, Inc. und nicht von dieser Lizenz erfasst; siehe [TRADEMARKS.md](TRADEMARKS.md). Die Lizenz schränkt die mit Breatic erstellten Inhalte nicht ein.
 

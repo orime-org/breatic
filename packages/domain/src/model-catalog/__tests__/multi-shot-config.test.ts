@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The multi-shot mode, read off the real config: which models run it, and how
@@ -98,8 +98,6 @@ describe("the models the multi-shot mode offers", () => {
 
   it.each(KLING)("%s offers auto multi-shot as a switch only in %s", (name, mode) => {
     expect(videoEntry(name).params?.auto_shots).toMatchObject({
-      upstream: "shot_type",
-      upstream_values: { true: "intelligence" },
       values: [true, false],
       default: false,
       absent_value: false,

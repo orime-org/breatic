@@ -177,6 +177,12 @@ promoter-apply: { max: 5, window_seconds: 3600 }
 # database. A person starts a handful of conversations a minute and creates
 # far fewer projects.
 conversation-create: { max: 30, window_seconds: 60 }
+# The Agent column's sync, stop and take-back (inner#1717, post-auth,
+# user-keyed). A shown conversation syncs every few seconds; switching
+# conversations and tabs coming back to view add a few more.
+chat-sync: { max: 120, window_seconds: 60 }
+chat-stop: { max: 30, window_seconds: 60 }
+chat-queue-remove: { max: 60, window_seconds: 60 }
 # Saving a Project's instructions for the Agent (#1400, post-auth, user-keyed).
 # Each save writes one row; a person saves a few times while editing.
 agent-instructions: { max: 30, window_seconds: 60 }

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * A turn sends the history as it was sent, and keeps its own message as sent
@@ -66,7 +66,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
     buildAgentConfig: () => ({ modelId: "test", instructions: { base: "system" }, tools: modelSays.tools }),
     // The real one, so the reply is written down.
     finalizeTurn: actual.finalizeTurn,
-    getModel: () =>
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider(() =>
       modelProducing(
         // Called once the call's prompt is pushed, so the call is the last one.
         () => (modelSays.byCall[modelSays.prompts.length - 1] ?? modelSays.parts) as ModelStreamPart[],
@@ -75,7 +75,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
           if (modelSays.prompts.length - 1 === modelSays.stopAtCall) modelSays.stopper?.abort();
         },
         () => modelSays.openLast && modelSays.prompts.length === modelSays.byCall.length,
-      ),
+      )),
   };
 });
 

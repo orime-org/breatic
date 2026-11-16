@@ -1,5 +1,5 @@
 -- Copyright (c) 2026 Orime, Inc.
--- SPDX-License-Identifier: Elastic-2.0
+-- SPDX-License-Identifier: AGPL-3.0-only
 
 -- Product database: durable interaction history; intentionally no backfill.
 CREATE TABLE account_activity_events (

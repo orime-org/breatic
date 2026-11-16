@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The one channel everything wrong with chat is said on.
@@ -38,8 +38,9 @@ export type ChatMishap = {
   /**
    * The user did this on purpose and is waiting to hear back.
    *
-   * What separates a rename they just pressed from a turn failing in some
-   * other conversation in the background. The panel shows only its own
+   * What separates a rename they just pressed from trouble in a conversation
+   * they have since switched away from, such as a send still on its way when
+   * they switched (inner#1717). The panel shows only its own
    * conversation's trouble -- except for this, which is theirs whichever
    * conversation it was about.
    */

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The chat box's editor: plain paragraphs with reference blocks, the draft
@@ -16,7 +16,7 @@ import { useEditor } from '@tiptap/react';
 import * as React from 'react';
 import { getLocale, t as sharedT } from '@breatic/shared';
 import { Fragment, Slice, type Schema } from '@tiptap/pm/model';
-import { EditorState } from '@tiptap/pm/state';
+import { EditorState, TextSelection } from '@tiptap/pm/state';
 
 import { makeMentionSuggestion } from '@web/features/reference-mention/mention-suggestion';
 import { dispatchMachineEdit } from '@web/features/reference-mention/reference-mention-local-input';
@@ -150,6 +150,19 @@ export function useComposerEditor(input: ComposerEditorInput): Editor | null {
             event.preventDefault();
             return true;
           },
+          drop: (view, event): boolean => {
+            // Words dragged in from a page land as the page's plain text, as a
+            // paste of them does; a drag inside the box is ProseMirror's own move.
+            if (!view.editable || view.dragging !== null || (event.dataTransfer?.files.length ?? 0) > 0) return false;
+            const text = plainTextOf(event.dataTransfer);
+            if (text === null) return false;
+            event.preventDefault();
+            const at = view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos ?? view.state.selection.from;
+            const tr = view.state.tr.replaceRange(at, at, plainTextSlice(text, view.state.schema));
+            view.dispatch(tr.setSelection(TextSelection.near(tr.doc.resolve(tr.mapping.map(at)))).setMeta('uiEvent', 'drop').scrollIntoView());
+            view.focus();
+            return true;
+          },
         },
         handlePaste: (_view, event): boolean => {
           const files = [...(event.clipboardData?.files ?? [])];
@@ -243,10 +256,10 @@ function nothingSelected(state: EditorState): boolean {
 }
 
 /**
- * The plain text to take from a paste whose HTML holds none of the box's
- * blocks: the page's own text, its line breaks and indents as the textarea
- * received them.
- * @param data - The clipboard's data.
+ * The plain text to take from a paste or a drop whose HTML holds none of the
+ * box's blocks: the page's own text, its line breaks and indents as the
+ * textarea received them.
+ * @param data - The clipboard's or the drag's data.
  * @returns The text, or null when ProseMirror's own reading applies.
  */
 function plainTextOf(data: DataTransfer | null): string | null {

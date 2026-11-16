@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
@@ -47,11 +47,11 @@ describe("the source a clone is keyed by", () => {
 
 describe("the references a prompt names", () => {
   it("are written the upstream's way, counting from 1 or from 0, past the ninth", () => {
-    expect(mentionsWritten({ images: "<IMG_{i}>", videos: "@video{n}" }, "<<ref:images:10>> and <<ref:videos:12>>")).toBe("<IMG_9> and @video12");
+    expect(mentionsWritten({ images: "<IMG_{i}>", videos: "@video{n}" }, "{{ref:images:10}} and {{ref:videos:12}}")).toBe("<IMG_9> and @video12");
   });
 
   it("stay as they are where the upstream has no template for the param, or none at all", () => {
-    expect(mentionsWritten({ images: "<IMG_{i}>" }, "<<ref:audios:1>>")).toBe("<<ref:audios:1>>");
-    expect(mentionsWritten(undefined, "<<ref:audios:1>>")).toBe("<<ref:audios:1>>");
+    expect(mentionsWritten({ images: "<IMG_{i}>" }, "{{ref:audios:1}}")).toBe("{{ref:audios:1}}");
+    expect(mentionsWritten(undefined, "{{ref:audios:1}}")).toBe("{{ref:audios:1}}");
   });
 });

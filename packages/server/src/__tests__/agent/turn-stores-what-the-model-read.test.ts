@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * A turn writes down what the model was given for every tool call that
@@ -101,13 +101,13 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       }
       return [];
     },
-    getModel: () =>
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider(() =>
       modelProducing(() => {
         thisCase.modelCalls += 1;
         const later = thisCase.laterParts as ModelStreamPart[] | undefined;
         if (thisCase.modelCalls > 1 && later !== undefined) return later;
         return thisCase.parts as ModelStreamPart[];
-      }),
+      })),
   };
 });
 

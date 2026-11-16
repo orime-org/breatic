@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Each run-once entry does its work once for a press sent twice (inner#1490)
@@ -12,6 +12,7 @@
  * suites (`storage-quota-routes`, `conversation-naming`).
  */
 
+import { initConfiguredProvider } from "@breatic/integration-tests/provider";
 import { describe, it, expect, beforeAll, beforeEach, afterAll, inject, vi } from "vitest";
 
 vi.mock("ai", () => ({
@@ -68,6 +69,7 @@ let seq = 0;
 beforeAll(async () => {
   initCore(SUITE_ENV);
   loadLocales();
+  initConfiguredProvider();
   sql = postgres(inject("DATABASE_URL"), {
     max: 2,
     prepare: false,

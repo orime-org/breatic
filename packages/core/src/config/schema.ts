@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Core configuration schema + pure validator.
@@ -263,14 +263,6 @@ export const coreConfigSchema = z.object({
   // and web sit on different subdomains and must share the
   // session cookie.
   COOKIE_DOMAIN: z.string().default(""),
-
-  // ── AI Providers (all optional) ──────────────────
-  OPENROUTER_API_KEY: z.string().default(""),
-  ANTHROPIC_API_KEY: z.string().default(""),
-  OPENAI_API_KEY: z.string().default(""),
-  GOOGLE_API_KEY: z.string().default(""),
-  DEEPSEEK_API_KEY: z.string().default(""),
-  WAVESPEED_API_KEY: z.string().default(""),
 
   // ── Error monitoring ─────────────────────────────
   // Blank keeps Sentry off, which is what a self-hosted instance gets. A

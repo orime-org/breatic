@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * A dialogue the agent proposes, sent as lines (inner#1825 design 8.5): one
@@ -22,7 +22,7 @@ import { estimateModelCredits } from "@domain/model-catalog/model-catalog.js";
 
 import { generationModels, renderGenerationModelsForModel, type PricedModelsForMode } from "../generation-models.js";
 import { renderProductGuide } from "../product-guide.js";
-import { answerFor, renderProposalForModel, verdictFor, type MaterialTable } from "../propose-canvas-action.js";
+import { answerFor, checkedAnswerFor, renderProposalForModel, verdictFor, type MaterialTable } from "../propose-canvas-action.js";
 import { inputSchema } from "../proposal-input.js";
 
 beforeEach(() => {
@@ -38,7 +38,7 @@ afterAll(() => {
 /** What the model sends, as the tool's input. */
 type Sent = Parameters<typeof verdictFor>[0];
 
-const DUO = "gemini-3.1-flash-text-to-speech";
+const DUO = "gemini-3.8-flash-text-to-speech";
 const PAIR = [{ speaker: "Ava", voice: "Kore" }, { speaker: "Leo", voice: "Puck" }];
 const NO_MATERIAL: MaterialTable = new Map();
 
@@ -81,10 +81,42 @@ describe("a dialogue sent as lines", () => {
   });
 });
 
+describe("a dialogue its upstream cannot take (#1521)", () => {
+  /**
+   * A dialogue of this many lines, the two speakers taking turns.
+   * @param n - How many lines.
+   * @returns What the model sends.
+   */
+  const lines = (n: number): Sent => dialogue(Array.from({ length: n }, (_, i) => ({ speaker: (i % 2) + 1, prompt: [{ text: `Line ${String(i)}.` }] })));
+
+  it("is refused before it is placed, naming the limit it breaks", async () => {
+    const answer = await checkedAnswerFor(lines(101), NO_MATERIAL);
+    expect(answer.placed).toBe(false);
+    expect(answer.placed === false && answer.reason).toMatch(/"Scene".*100 lines/);
+  });
+
+  it("is placed when every upstream limit holds", async () => {
+    expect((await checkedAnswerFor(lines(100), NO_MATERIAL)).placed).toBe(true);
+  });
+
+  it("refuses a single voice past WaveSpeed's 8000 characters", async () => {
+    const one: Sent = { nodes: [{ role: "generate", type: "audio", name: "Read", mode: "tts", model: DUO, params: {}, prompt: [{ text: "x".repeat(8001) }] }], edges: [], rationale: "A reading." };
+    const answer = await checkedAnswerFor(one, NO_MATERIAL);
+    expect(answer.placed === false && answer.reason).toMatch(/"Read".*8000 characters/);
+  });
+
+  it("asks about a single voice as it is sent, without the speakers it keeps for the dialogue side", async () => {
+    const narration = Array.from({ length: 120 }, (_, i) => `Line ${String(i)}.`).join("\n");
+    const one: Sent = { nodes: [{ role: "generate", type: "audio", name: "Read", mode: "tts", model: DUO, params: { speakers: [{ speaker: "Ava", voice: "Nobody" }, { speaker: "Leo", voice: "Nobody" }] }, prompt: [{ text: narration }] }], edges: [], rationale: "A reading." };
+    expect(await checkedAnswerFor(one, NO_MATERIAL)).toMatchObject({ placed: true });
+  });
+});
+
 describe("the price of a dialogue read back", () => {
   it("is priced on the script the model is sent: each line after its speaker's name", async () => {
-    const first = "We should leave before the tide comes in over the causeway.";
-    const second = "Then pack the lamps and the rope, and leave the rest behind.";
+    // Long enough to be priced past the upstream's per-run minimum, so the names show in the price.
+    const first = "We should leave before the tide comes in over the causeway. ".repeat(10).trim();
+    const second = "Then pack the lamps and the rope, and leave the rest behind. ".repeat(10).trim();
     const sent = dialogue([{ speaker: 1, prompt: [{ text: first }] }, { speaker: 2, prompt: [{ text: second }] }]);
     const answer = answerFor(inputSchema.parse(sent));
     if (!answer.placed) throw new Error(answer.reason);

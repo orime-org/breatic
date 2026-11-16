@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Project activity feed contract (ADR 2026-07-04 project-activity-feed).
@@ -94,6 +94,11 @@ export const GenerationActivityPayloadSchema = z.object({
    * mirroring the doublePrecision billing columns. Never `.int()`.
    */
   credits: z.number().nonnegative().optional(),
+  /**
+   * Set while the task waits on its upstream's bill (inner#1743): `credits` is
+   * what is known so far, and the final amount replaces it once billed.
+   */
+  billing: z.literal("pending").optional(),
 });
 
 /**

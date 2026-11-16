@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -12,12 +12,12 @@ interface PriceFixture {
   cases: { model: string; contract: string; fields: Record<string, unknown>; durations: Record<string, number[]>; usd: number | null }[];
 }
 
-/** What today's code answered for every catalog contract (scripts/provider-fixtures.ts). */
+/** What the code before provider answered for every catalog contract, frozen in test/fixtures before the move. */
 const fixture = JSON.parse(
   readFileSync(resolve(__dirname, "../../../test/fixtures/upstream-price.json"), "utf8"),
 ) as PriceFixture;
 
-describe("priceUsd — equal to today's evaluator on every catalog contract", () => {
+describe("priceUsd — equal to the evaluator before provider on every catalog contract", () => {
   it("has cases to compare", () => {
     expect(fixture.cases.length).toBeGreaterThan(500);
   });
@@ -71,6 +71,12 @@ describe("priceUsd — properties", () => {
     }));
   });
 
+  it("$word holds for a non-empty string of word characters in any script, as the upstreams read ^\\w+$, and for nothing else", async () => {
+    for (const name of ["Ava", "Ava_2", "李雷", "José"]) expect(await holds("$word(name)", { name }, {})).toBe(true);
+    for (const name of ["", "Ava Lee", "Ava·Lee", "a-b"]) expect(await holds("$word(name)", { name }, {})).toBe(false);
+    expect(await holds("$word(name)", { name: 7 }, {})).toBe(false);
+  });
+
   it("a formula without a finite total_price is refused", async () => {
     await expect(priceUsd({ basePrice: 1, formula: "{\"other\": 1}", discountRate: 100 }, {}, {})).rejects.toThrow("total_price");
   });
@@ -81,5 +87,52 @@ describe("the words of what an evaluation threw", () => {
     expect(evaluationMessage({ message: "bad token", code: "S0201" })).toBe("bad token");
     expect(evaluationMessage({ code: "S0201" })).toBe("[object Object]");
     expect(evaluationMessage(undefined)).toBe("undefined");
+  });
+});
+
+/** WaveSpeed's published formulas, verbatim, the examples moved from shared's evaluator tests. */
+const WAN_R2V =
+  '{"total_price": base_price * (resolution = "1080p" ? 2 : (resolution = "480p" ? 0.5 : 1)) * ($min([duration, 30]) + $ceil($min([get_duration(reference_videos, min=1, max=15, total=15), 15]))) / 5}';
+const H3_R2V =
+  '{"total_price": base_price * (($min([duration, 15]) + $ceil($min([get_duration(reference_videos, min=2, max=15, total=15), 15]))) / 5 * (resolution = "768p" ? 5 / 7 : 1)) + ($count(reference_images) > 5 ? 50000 * ($count(reference_images) - 5) : 0)}';
+const DREAMACTOR = '{"total_price": $min([$ceil(get_duration(video)), 30]) * base_price}';
+const ELEVEN_V3 = '{"total_price": $ceil(base_price * $length(text) / 1000)}';
+const NANO_BANANA_2 =
+  '{"total_price": ((resolution = "0.5k" ? 45000 : base_price * (resolution = "2k" ? 1.5 : (resolution = "4k" ? 2 : 1))) + (enable_web_search ? 14000 : 0) + (enable_image_search ? 14000 : 0)) }';
+
+describe("priceUsd — worked examples", () => {
+  it("charges base_price when the formula is empty", async () => {
+    expect(await priceUsd({ basePrice: 1_600_000, formula: "", discountRate: 100 }, {}, {})).toBeCloseTo(1.6, 10);
+  });
+
+  it("applies discount_rate to the formula result", async () => {
+    const usd = await priceUsd({ basePrice: 70_000, formula: NANO_BANANA_2, discountRate: 90 }, { resolution: "1k", enable_web_search: false, enable_image_search: false }, {});
+    expect(usd).toBeCloseTo(0.063, 10);
+  });
+
+  it("clamps each clip to [min, max] and the sum to total for get_duration(x, min, max, total)", async () => {
+    const usd = await priceUsd({ basePrice: 500_000, formula: WAN_R2V, discountRate: 100 }, { resolution: "720p", duration: 5, reference_videos: ["a", "b"] }, { reference_videos: [20, 20] });
+    expect(usd).toBeCloseTo(2.0, 10);
+  });
+
+  it("raises a short clip to the min of get_duration", async () => {
+    const usd = await priceUsd({ basePrice: 700_000, formula: H3_R2V, discountRate: 100 }, { resolution: "768p", duration: 5, reference_videos: ["a"], reference_images: [] }, { reference_videos: [1] });
+    expect(usd).toBeCloseTo(0.7, 10);
+  });
+
+  it("reads a single-clip field through bare get_duration(x)", async () => {
+    expect(await priceUsd({ basePrice: 50_000, formula: DREAMACTOR, discountRate: 100 }, { video: "v" }, { video: [10.4] })).toBeCloseTo(0.55, 10);
+  });
+
+  it("counts a field with no known durations as zero seconds", async () => {
+    expect(await priceUsd({ basePrice: 50_000, formula: DREAMACTOR, discountRate: 100 }, { video: "v" }, {})).toBe(0);
+  });
+
+  it("prices per character through $length(text)", async () => {
+    expect(await priceUsd({ basePrice: 200_000, formula: ELEVEN_V3, discountRate: 100 }, { text: "x".repeat(1000) }, {})).toBeCloseTo(0.2, 10);
+  });
+
+  it("throws when the formula does not produce a finite total_price", async () => {
+    await expect(priceUsd({ basePrice: 200_000, formula: ELEVEN_V3, discountRate: 100 }, {}, {})).rejects.toThrow(/total_price/);
   });
 });

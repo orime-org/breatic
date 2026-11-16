@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BoxGeometry, Group, Mesh, MeshStandardMaterial, Vector3 } from 'three';
@@ -24,7 +24,7 @@ vi.mock('@web/spaces/three-d/viewport/pose-rig', async (importOriginal) => ({
 
 const LYING = { 'h:hips': [0.7071068, 0, 0, 0.7071068], 't:hips': [0, -0.8, 0] } as const;
 const WAVING = { 'h:rightUpperArm': [0, 0, -0.7071068, 0.7071068] } as const;
-const OBJECT: SceneObject = { id: 'one', model: { kind: 'builtin', id: 'figure' }, name: 'Figure', position: [1, 0, 2], rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false, pose: LYING };
+const OBJECT = { id: 'one', model: { kind: 'builtin', id: 'figure' }, name: 'Figure', position: [1, 0, 2], rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false, pose: LYING } satisfies SceneObject;
 const owners: Array<() => void> = [];
 afterEach(() => { owners.splice(0).forEach((dispose) => dispose()); renders.length = 0; document.body.replaceChildren(); vi.mocked(applyPose).mockClear(); });
 function model(): Group { const root = new Group(); root.add(new Mesh(new BoxGeometry(1, 2, 1), new MeshStandardMaterial())); return root; }

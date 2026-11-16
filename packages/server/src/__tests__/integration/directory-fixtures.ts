@@ -3,7 +3,7 @@
 
 /**
  * Give Studios seeded straight into the region tables their global directory
- * rows (inner#1955), the way migration 0125 filled the directory from the
+ * rows (inner#1955), the way migration 0126 filled the directory from the
  * Studios already present: region NULL, live, the admin member as the admin,
  * every member copied. Product code writes these rows itself when it creates
  * a Studio; a fixture that inserts rows by hand calls this afterwards.

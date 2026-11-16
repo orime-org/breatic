@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Chat panel message model — mirrored from the Agent message contract.
@@ -226,6 +226,11 @@ export interface ChatMessage {
   streaming?: boolean;
   /** The turn was stopped before it finished, so this is as far as it got. */
   interrupted?: true;
+  /**
+   * A message the user sent while a reply ran, which that reply took in and
+   * which is drawn inside its turn (inner#1717). Only ever `true`.
+   */
+  takenIn?: true;
   /**
    * The turn failed and this reply is as much of it as there is.
    *

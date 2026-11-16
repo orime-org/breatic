@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * A turn hands its tools the links the conversation holds (inner#1664,
@@ -87,7 +87,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       return { modelId: "test", instructions: { base: "system" }, tools: { web_search: webSearch } };
     },
     finalizeTurn: async () => [],
-    getModel: () =>
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider(() =>
       new MockLanguageModelV4({
         doStream: async () => {
           const script = state.perCall[state.calls] ?? [FINISHED];
@@ -101,7 +101,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
             }),
           };
         },
-      }),
+      })),
   };
 });
 

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import fc from "fast-check";
@@ -282,11 +282,21 @@ describe("semantic Space media references", () => {
     expect(readSpaceMediaReferences("timeline", doc)).toEqual({ assetIds: [assetId], urls: [] });
   });
 
+  it.each([1, 2])("reads source identities from a version %i Timeline (#1502 design §5)", (version) => {
+    const doc = trackedDoc();
+    initializeTimelineDocument(doc, settings);
+    timelineSource(doc, "10000000-0000-4000-8000-000000000001", "20000000-0000-4000-8000-000000000001");
+    doc.getMap("timeline").set("schemaVersion", version);
+    const before = Y.encodeStateAsUpdate(doc);
+    expect(readSpaceMediaReferences("timeline", doc)).toEqual({ assetIds: ["20000000-0000-4000-8000-000000000001"], urls: [] });
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+  });
+
   it("does not infer source identities from an unsupported Timeline version", () => {
     const doc = trackedDoc();
     initializeTimelineDocument(doc, settings);
     timelineSource(doc, "10000000-0000-4000-8000-000000000001", "20000000-0000-4000-8000-000000000001");
-    doc.getMap("timeline").set("schemaVersion", 2);
+    doc.getMap("timeline").set("schemaVersion", 3);
     const before = Y.encodeStateAsUpdate(doc);
     expect(readSpaceMediaReferences("timeline", doc)).toEqual({ assetIds: [], urls: [] });
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);

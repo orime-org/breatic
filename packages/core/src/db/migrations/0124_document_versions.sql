@@ -1,5 +1,5 @@
 -- Copyright (c) 2026 Orime, Inc.
--- SPDX-License-Identifier: Elastic-2.0
+-- SPDX-License-Identifier: AGPL-3.0-only
 
 -- Product database (inner#1129): snapshots a user keeps of a document
 -- Space's body. `content` is the editor's ProseMirror JSON, comment marks

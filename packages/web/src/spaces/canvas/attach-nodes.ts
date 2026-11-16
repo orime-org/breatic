@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import {
   dialogueSideOf,
@@ -9,13 +9,14 @@ import {
   writtenMark,
   type ChatAttachedChip,
   type ModelCatalog,
+  withCurrentModelNames,
 } from '@breatic/shared';
 import { bodyToPlainText } from '@breatic/shared/canvas/text-body';
 import { catalogEntryOf } from '@breatic/shared/mini-tools';
 import * as Y from 'yjs';
 
 import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
-import { ATTACHMENT_NAME_CHARS, hashOf } from '@web/lib/attachment-naming';
+import { clipAttachmentName, hashOf } from '@web/lib/attachment-naming';
 import type { ContentNodeView } from '@web/data/yjs/node-view';
 import { toAbsolutePosition } from '@web/spaces/canvas/group-geometry';
 import { currentGeneration } from '@web/spaces/canvas/generate/current-generation';
@@ -152,7 +153,7 @@ export function nodeNameOf(type: string, data: { name?: unknown; content?: unkno
   const named = typeof data.name === 'string' ? data.name.trim() : '';
   if (named) return named;
   if (type === 'annotation' && typeof data.content === 'string') {
-    return data.content.trim().slice(0, ATTACHMENT_NAME_CHARS);
+    return clipAttachmentName(data.content.trim());
   }
   return type;
 }
@@ -216,11 +217,13 @@ export function snapshotOfPick(
    */
   const entry = (node: CanvasNodeView): Record<string, unknown> & { id: string } => {
     const stored = readers.dataOf(node.id);
-    const data = {
+    // The stored data wins over the view, so a node saved on a retired model is
+    // read under its replacement here too, as the view reads it (#1521).
+    const data = withCurrentModelNames({
       ...(node.data as unknown as Record<string, unknown>),
       ...(stored ? (plain(stored) as Record<string, unknown>) : {}),
       ...(stored?.has('prompts') === true ? { prompts: promptsOf(node, stored, readers.catalog) } : {}),
-    };
+    });
     const current = isGenerationNodeType(node.type)
       ? currentGeneration(
         node.type,

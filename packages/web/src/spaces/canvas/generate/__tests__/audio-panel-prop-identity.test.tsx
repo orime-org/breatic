@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The audio container's props for its memoized children keep their identity
@@ -126,7 +126,8 @@ const ELEVEN: ModelEntry = {
     voice_id: { description: '', default: 'Alice', remote_source: 'voices' },
     stability: { description: '', values: [0, 0.5, 1], default: 0.5 },
   },
-  providers: [],
+  availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: false, envVar: 'WAVESPEED_API_KEY' }] },
+  pricing_rules: undefined,
 };
 
 /**

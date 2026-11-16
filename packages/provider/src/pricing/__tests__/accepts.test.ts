@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import fc from "fast-check";
@@ -498,7 +498,7 @@ describe("a model vendor's own input limits (model-level rejects)", () => {
   it("reads the prompt as each upstream is sent it, its references written that upstream's way", async () => {
     const p = vendorBound();
     // fal is sent "Audio 1" (7 characters); WaveSpeed has no template and is sent the 15-character neutral reference.
-    const input = { ...audioRun(5), prompt: "<<ref:audio:1>>" };
+    const input = { ...audioRun(5), prompt: "{{ref:audio:1}}" };
     expect(await rejectedInput(p.pricingRules("m"), "fal", input)).toBeUndefined();
     expect(await rejectedInput(p.pricingRules("m"), "wavespeed", input)).toEqual({ reason: "Vendor prompt: up to 10 characters" });
   });

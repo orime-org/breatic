@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Node history service — business logic for per-node content timeline.
@@ -30,6 +30,7 @@ import type { NodeHistoryEntity, NodeMediaNumbers } from "@breatic/shared";
  * @param opts.metadata.model - Model identifier that produced the result.
  * @param opts.metadata.credits - Credits charged for the generation. Not the
  *   dollars the service charged us: the row's chip is labelled in credits.
+ * @param opts.metadata.billing - Set while the task waits on its cost (inner#1743).
  * @param opts.metadata.durationMs - How long the run took from its first start, in milliseconds.
  * @param opts.metadata.params - Provider/tool parameters used for the generation.
  * @param opts.media - The media numbers the result landed on the node with
@@ -47,6 +48,7 @@ export async function recordGenerationSuccess(opts: {
   metadata: {
     model?: string;
     credits?: number;
+    billing?: "pending";
     durationMs?: number;
     params?: Record<string, unknown>;
   };
@@ -62,6 +64,15 @@ export async function recordGenerationSuccess(opts: {
     metadata: opts.metadata,
     media: opts.media,
   });
+}
+
+/**
+ * Write the credits a task waiting on its cost was billed on its generation rows (inner#1743).
+ * @param taskId - The task.
+ * @param credits - What it was billed.
+ */
+export async function updateGenerationCredits(taskId: string, credits: number): Promise<void> {
+  await repo.updateGenerationCredits(taskId, credits);
 }
 
 /**

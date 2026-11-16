@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The propose tool takes a template on a generate node and judges the node it
@@ -8,10 +8,18 @@
 
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@domain/agent/model-picture-capability.js", () => ({ resolveModelPictureCapability: vi.fn(async () => true) }));
-vi.mock("@domain/agent/model-context-window.js", async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  resolveModelContextWindow: vi.fn(async () => 1_000_000),
+vi.mock("@domain/provider/instance.js", () => ({
+  initProvider: () => undefined,
+  provider: () => ({
+    availability: () => ({ upstreams: [{ upstream: "wavespeed", weight: 1, configured: true, envVar: "WAVESPEED_API_KEY" }] }),
+    pricingRules: (model: string) => ({ model, upstreams: [] }),
+    estimate: async () => null,
+    llm: {
+      capabilities: async () => ({ pictures: true, contextWindow: 1_000_000 }),
+      availability: () => ({ upstreams: [] }),
+      judgeAvailability: () => ({ upstreams: [] }),
+    },
+  }),
 }));
 
 import { loadLocales, runWithLocale } from "@breatic/core";
@@ -142,6 +150,28 @@ describe("templates in proposals", () => {
     for (const id of ["pet-selfie-vlog", "retro-found-footage"]) expect(lineOf(id), `${id} indexed`).toBeDefined();
     expect(lineOf("pet-selfie-vlog")).toContain("It also fits when");
     expect(lineOf("retro-found-footage")).not.toContain("It also fits when");
+  });
+
+  // inner#1809: the poster goal; the photo collage has no case for when it also fits.
+  it("indexes the three poster templates under their goal, the photo collage alone with no case for when it also fits", () => {
+    const lines = String(makeProposeCanvasAction().description ?? "").split(" | ");
+    for (const id of ["name-as-world-typography", "destination-festival-poster", "photo-paper-diorama"]) {
+      const line = lines.find((one) => one.includes(`${id} (posters,`));
+      expect(line, `${id} indexed`).toBeDefined();
+      if (id === "photo-paper-diorama") expect(line, id).not.toContain("It also fits when");
+      else expect(line, id).toContain("It also fits when");
+    }
+  });
+
+  // inner#1810: the speed goal; only the vehicle cut list has a case for when it also fits.
+  it("indexes the three motion and speed templates under their goal, only the vehicle one saying when it also fits", () => {
+    const lines = String(makeProposeCanvasAction().description ?? "").split(" | ");
+    for (const id of ["vehicle-speed-cutlist", "sports-live-coverage", "extreme-sports-run"]) {
+      const line = lines.find((one) => one.includes(`${id} (speed,`));
+      expect(line, `${id} indexed`).toBeDefined();
+      if (id === "vehicle-speed-cutlist") expect(line, id).toContain("It also fits when");
+      else expect(line, id).not.toContain("It also fits when");
+    }
   });
 
   // inner#1808: the food goal, each of its templates with a case for when it also fits.

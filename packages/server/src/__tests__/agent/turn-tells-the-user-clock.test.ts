@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Where a turn tells the model the user's local time.
@@ -52,11 +52,11 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       return { modelId: "test", instructions: { base: "system" }, tools: {} };
     },
     finalizeTurn: async () => [],
-    getModel: () =>
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider(() =>
       modelProducing(
         () => modelSays.parts as ModelStreamPart[],
         (asked) => modelSays.prompts.push(asked.prompt),
-      ),
+      )),
   };
 });
 

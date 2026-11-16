@@ -1,0 +1,41 @@
+diff --git a/dist/runtime.js b/dist/runtime.js
+index 4eaa74c7d7252b97f8bf626ce064280f10f95bd2..275a14cc1dd03f84c64624d6ccec63af25413e72 100644
+--- a/dist/runtime.js
++++ b/dist/runtime.js
+@@ -249,17 +249,29 @@ async function resumeStream(ctx, streamId, skipCharacters) {
+                             scheduleDoneWatchdog();
+                         }
+                     }
+-                    const start = Date.now();
++                    // Patched (vercel/resumable-stream#50): the timer firing is the timeout, so every path
++                    // settles the promise; the library's `Date.now() - start > 1000` check left it pending
++                    // whenever the timer fired on the exact millisecond, and a failed read escaped unhandled.
+                     ackTimeout = setTimeout(async () => {
+-                        await cleanup();
+-                        const val = await ctx.publisher.get(sentinelKey);
+-                        if (val === DONE_VALUE) {
+-                            resolve(null);
+-                        }
+-                        if (Date.now() - start > 1000) {
++                        try {
++                            await cleanup();
++                            const val = await ctx.publisher.get(sentinelKey);
++                            if (val === DONE_VALUE) {
++                                resolve(null);
++                                return;
++                            }
+                             controller.error(new Error("Timeout waiting for ack"));
+                             reject(new Error("Timeout waiting for ack"));
+                         }
++                        catch (e) {
++                            try {
++                                controller.error(e);
++                            }
++                            catch (_b) {
++                                // The stream may already be errored or closed.
++                            }
++                            reject(e);
++                        }
+                     }, 1000);
+                     await ctx.subscriber.subscribe(chunkChannel, async (message) => {
+                         debugLog("Received message", message);

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Reading a failed understand run as something the user is told (#2175).
@@ -24,7 +24,8 @@ import {
   verdictStands,
 } from "@worker/handlers/understand-failure.js";
 import { storedFailure } from "@worker/handlers/stored-failure.js";
-import { UpstreamTaskFailed } from "@worker/providers/http.js";
+import { UpstreamTaskFailed } from "@breatic/provider";
+import { MediaRunFailed } from "@worker/handlers/media-run.js";
 
 describe("what an address that yielded nothing is stored as", () => {
   // Each of the five says something different about what the user does
@@ -199,10 +200,9 @@ describe("which refusals a second attempt would only repeat", () => {
     },
   );
 
-  // The upstream already failed that task; asking again resumes the same
-  // prediction and reads the same failure (design 15.1, failed x E6).
-  it("stands by a task the upstream failed", () => {
-    expect(verdictStands(new UpstreamTaskFailed("wavespeed", "prompt refused"))).toBe(true);
+  // provider answered the run failed; asking again reads the same answer.
+  it("stands by a run provider answered failed", () => {
+    expect(verdictStands(new MediaRunFailed(new UpstreamTaskFailed("wavespeed", "prompt refused"), [], "Some Model"))).toBe(true);
   });
 
   // Whatever broke on our side is not a judgement about this media.

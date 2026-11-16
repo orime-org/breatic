@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * When a turn folds its oldest history into memory, and how far back it goes
@@ -20,8 +20,8 @@
 import type { ModelMessage } from "ai";
 import { getAgentConfig, logger, memoryReserveTokens } from "@breatic/core";
 import type { ResolvedAgentConfig } from "@breatic/domain";
+import { providerErrorOf, type ContextOverflow } from "@breatic/provider";
 import { planConsolidation } from "@server/agent/consolidation-window.js";
-import { providerErrorOf, type ContextOverflow } from "@server/agent/context-overflow.js";
 import { consolidateWindow } from "@server/agent/memory-consolidator.js";
 import { stripThinking } from "@server/agent/history-replay.js";
 import type { ReplayedRow, UserForModel } from "@server/agent/history-replay.js";

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Which camera command preview clips the sample address has to serve, and how
@@ -20,13 +20,13 @@ export const CAMERA_PREVIEW_SCENE =
  * What a run sends besides the prompt: each of the entry's panel params at its
  * own default, so a clip costs what a run at the model's defaults costs.
  * @param model - The text-to-video entry making the clips.
- * @returns The params, in the upstream's field names.
+ * @returns The params, in our names.
  */
 function defaultsOf(model: FullModelEntry): Record<string, unknown> {
   return Object.fromEntries(
     Object.entries(model.params ?? {})
       .filter(([, spec]) => spec.fill === "panel" && spec.default !== undefined && spec.default !== null)
-      .map(([name, spec]) => [spec.upstream ?? name, spec.default]),
+      .map(([name, spec]) => [name, spec.default]),
   );
 }
 
@@ -59,7 +59,7 @@ export function planCameraPreviews(models: readonly FullModelEntry[]): VoiceSamp
     return {
       model: maker.name,
       key,
-      body: { [maker.prompt_upstream ?? "prompt"]: `${CAMERA_PREVIEW_SCENE} ${cameraCommandBracket([command.name])}`, ...defaultsOf(maker) },
+      input: { prompt: `${CAMERA_PREVIEW_SCENE} ${cameraCommandBracket([command.name])}`, params: defaultsOf(maker) },
     };
   });
 }

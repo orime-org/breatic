@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Asset repository — the studio ledger and permanent Project asset references.
@@ -252,17 +252,6 @@ export async function findLiveByStorageKey(storageKey: string, tx?: DbTx): Promi
     .where(and(eq(studioAssets.storageKey, storageKey), isNull(studioAssets.deletedAt)))
     .limit(1);
   return row ? toEntity(row) : null;
-}
-
-/**
- * The content hash of the bytes stored under a key, from any studio's live
- * asset row.
- * @param storageKey - The object's storage key.
- * @returns The sha256 hex, or null when no live asset is stored under it.
- * @throws {Error} When the database query fails.
- */
-export async function findHashByStorageKey(storageKey: string): Promise<string | null> {
-  return (await findLiveByStorageKey(storageKey))?.contentHash ?? null;
 }
 
 /**

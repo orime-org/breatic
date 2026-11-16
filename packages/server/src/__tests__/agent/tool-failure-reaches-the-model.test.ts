@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * A tool that failed is in front of the model on its very next step.
@@ -83,7 +83,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       await opts.steps.persist?.();
       return [];
     },
-    getModel: () =>
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider(() =>
       modelProducing(
         () => {
           thisCase.step += 1;
@@ -94,7 +94,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
             : saying("could not read that page");
         },
         ({ prompt }) => promptsSeen.push(prompt),
-      ),
+      )),
   };
 });
 

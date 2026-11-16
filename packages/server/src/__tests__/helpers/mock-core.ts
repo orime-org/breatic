@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Shared @breatic/core mock for route-level tests.
@@ -62,11 +62,7 @@ import {
 } from "../../../../domain/src/agent/project-agent-request.js";
 import { pictureMiddleware as REAL_PICTURE_MIDDLEWARE } from "../../../../domain/src/agent/picture-middleware.js";
 import { containerCostUsd as REAL_CONTAINER_COST_USD } from "../../../../domain/src/credit/container-cost.js";
-// Real: the tracker is pure, and what a turn hands off depends on it.
-import {
-  isGenerationId as realIsGenerationId,
-  trackOpenGeneration as realTrackOpenGeneration,
-} from "../../../../domain/src/credit/open-generation.js";
+import { fakeProvider } from "./fake-provider.js";
 
 const mockPipeline = {
   zremrangebyscore: () => mockPipeline,
@@ -205,6 +201,8 @@ export const mocks = {
   // breatic#1393 server gate (a style prompt with Mureka composing from a
   // melody). Default: no violation; the breatic#1393 test flips it.
   sendsUntakenPrompt: vi.fn().mockReturnValue(false),
+  // #1521 gate (no upstream here takes the run). Default: one does; the #1521 test flips it.
+  inputRefusalFor: vi.fn().mockResolvedValue(null),
   nodeHistoryService: {
     listByNode: vi.fn(),
     recordGenerationSuccess: vi.fn(),
@@ -575,7 +573,7 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
  * A usage recorder for turns built on `domainMock` (#296): it writes nothing
  * and counts a credit per token a model call reports, so a turn that spent
  * something settles to a positive amount and one that spent nothing to zero.
- * What a call really costs is `usage-cost.ts`'s to say and is tested there.
+ * What a call really costs is provider's to say and is tested there.
  * @returns A recorder with the real interface.
  */
 function usageRecorderDouble(options: {
@@ -585,10 +583,10 @@ function usageRecorderDouble(options: {
   projectId: string | null;
 }): {
   operation: { operationKey: string; feature: string; actorUserId: string; projectId: string | null };
-  recordModelCall: (call: { usage: { inputTokens?: number; outputTokens?: number } }) => void;
+  recordModelCall: (call: { cost: { tokens?: { input: number; output: number } } }) => void;
   recordServiceCall: () => void;
   recordLookedUpCall: () => void;
-  awaitingLookup: () => readonly string[];
+  awaitingLookup: () => readonly unknown[];
   settle: () => Promise<number>;
   settleForCharge: () => Promise<{ credits: number; writeFailures: unknown[] }>;
 } {
@@ -597,7 +595,7 @@ function usageRecorderDouble(options: {
   return {
     operation: { operationKey, feature, actorUserId, projectId },
     recordModelCall: (call) => {
-      credits += (call.usage.inputTokens ?? 0) + (call.usage.outputTokens ?? 0);
+      credits += (call.cost.tokens?.input ?? 0) + (call.cost.tokens?.output ?? 0);
     },
     recordServiceCall: () => {},
     recordLookedUpCall: () => {},
@@ -613,8 +611,6 @@ export const domainMock = async () => ({
   // import waits on itself and the suite hangs.
   ...(await import("../../../../domain/src/agent/memory-entries.js")),
   createUsageRecorder: vi.fn(usageRecorderDouble),
-  trackOpenGeneration: realTrackOpenGeneration,
-  isGenerationId: realIsGenerationId,
   handOffLookups: mocks.handOffLookups,
   usersRepo: mocks.userRepo,
   profilesService: mocks.profilesService,
@@ -647,29 +643,23 @@ export const domainMock = async () => ({
   creditHoldService: mocks.creditHoldService,
   nodeHistoryService: mocks.nodeHistoryService,
   nodeHistoryRepo: mocks.nodeHistoryRepo,
-  modelCatalog: { getModelCatalog: vi.fn().mockReturnValue({ image: [], video: [], audio: [] }) },
+  modelCatalog: { getModelCatalog: vi.fn().mockReturnValue({ image: [], video: [], audio: [], tts: [], three_d: [], total: 0 }) },
   // #1580 #7 credit pre-check inputs (canvas + mini-tools routes).
   MIN_TASK_CREDIT_COST: 5,
   // Arithmetic, so the real one: a double would be a second copy of the rate.
   creditsForUsd: REAL_CREDITS_FOR_USD,
   containerCostUsd: REAL_CONTAINER_COST_USD,
   estimateTaskCredits: vi.fn().mockResolvedValue(5),
+  // Every model here is servable; the refusal of one that is not is tested on its own (model-servable.test.ts).
+  servability: vi.fn(() => ({ servable: true })),
+  llmServability: vi.fn(() => ({ servable: true })),
   violatesSourceRequirementForModel: mocks.violatesSourceRequirementForModel,
   violatesReferenceCountForModel: mocks.violatesReferenceCountForModel,
   violatesTextLengthForModel: mocks.violatesTextLengthForModel,
   sendsUntakenPrompt: mocks.sendsUntakenPrompt,
-  getModel: vi.fn(),
-  resolveProvider: vi.fn(),
-  // Shaped like the real return so a turn built on this stub spreads the
-  // same key it would in production. A bare `{}` would spread to nothing,
-  // which reads as "this turn sent no provider options" -- the one thing
-  // the real function never does.
-  callOptionsFor: vi.fn().mockReturnValue({ providerOptions: {} }),
-  // What the real one sends where nothing is marked, as with
-  // `callOptionsFor` above: the prompt whole, as one message.
-  systemFor: vi.fn((_model: string, parts: { base: string; project?: string; conversation?: string }) => [
-    { role: "system", content: REAL_INSTRUCTIONS_TEXT(parts) },
-  ]),
+  inputRefusalFor: mocks.inputRefusalFor,
+  // A provider whose calls run on no model until a test hands one over.
+  provider: fakeProvider(() => undefined),
   instructionsText: REAL_INSTRUCTIONS_TEXT,
   instructionsForAgentMemory: REAL_INSTRUCTIONS_FOR_AGENT_MEMORY,
   createAgentPicturePreparer: REAL_CREATE_AGENT_PICTURE_PREPARER,

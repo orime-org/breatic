@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
 import type { ModelEntry } from '@breatic/shared';
@@ -25,7 +25,8 @@ function model(style: { max_items: number } | undefined, modes?: string[]): Mode
     generation_time: 60,
     takes_prompt: true,
     mode: 'ref',
-    providers: [],
+    availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: false, envVar: 'WAVESPEED_API_KEY' }] },
+    pricing_rules: undefined,
     params:
       style === undefined
         ? {}

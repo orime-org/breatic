@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Landing an Agent's document proposal (inner#1509, design §5.4 · §5.5).
@@ -25,7 +25,7 @@ import type { WriteAccess } from '@web/data/yjs/collab-socket';
 import { docNameOf } from '@web/data/yjs/manager';
 import { checkAdd, type SpaceRefusal } from '@web/data/yjs/space-write';
 import { BODY_HEADING_LEVELS } from '@web/spaces/document/document-block-type';
-import { blockPlainText } from '@web/spaces/document/document-blocks-read';
+import { blockPlainRuns, blockPlainText } from '@web/spaces/document/document-blocks-read';
 import { commentOn, type CommentAim } from '@web/spaces/document/document-comment-post';
 import { asCommentBody, commentsOn } from '@web/spaces/document/document-comment-extension';
 import { ourMediaPrefixReady, ownMediaOnly, type WrittenBlock } from '@web/spaces/document/document-external-media';
@@ -97,15 +97,11 @@ function rangesOf(doc: ProseMirrorNode, blockId: string, start: number, end: num
   const block = blockById(doc, blockId);
   if (block === null) return null;
   const ranges: Array<{ from: number; to: number }> = [];
-  block.node.descendants((child, rel) => {
-    if (!child.isText) return true;
-    const at = block.node.textBetween(0, rel, '\n', '\n').length;
-    const length = child.text?.length ?? 0;
+  for (const { rel, at, length } of blockPlainRuns(block.node).runs) {
     const from = Math.max(start, at);
     const to = Math.min(end, at + length);
     if (from < to) ranges.push({ from: block.pos + 1 + rel + (from - at), to: block.pos + 1 + rel + (to - at) });
-    return false;
-  });
+  }
   return ranges;
 }
 

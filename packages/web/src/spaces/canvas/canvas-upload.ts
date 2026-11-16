@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { validFocusImages } from '@web/data/focus-images';
 import {
@@ -20,6 +20,7 @@ import {
 } from '@web/data/upload/media-upload';
 import { allSlotSpecs, readSlotPicks } from '@web/spaces/canvas/generate/slots';
 import { resolveUploadFailure } from '@web/spaces/canvas/upload-failure';
+import type { TrayNotice } from '@web/stores/chat-attachments';
 import { useUploadMarksStore, type UploadMarkMessage } from '@web/stores/upload-marks';
 
 /**
@@ -108,6 +109,15 @@ export function refusedFormatParams(file: Pick<File, 'type'>): {
   return medium === undefined
     ? { kind: 'other', formats: '' }
     : { kind: medium, formats: uploadableFormatList(medium) };
+}
+
+/**
+ * What the Agent tray says about a media file refused for its format.
+ * @param file - The file whose medium determines the supported formats.
+ * @returns The notice the tray's toast renders.
+ */
+export function mediaFormatNotice(file: Pick<File, 'name' | 'type'>): TrayNotice {
+  return { key: 'unsupportedMedia', filename: file.name, ...refusedFormatParams(file) };
 }
 
 /**

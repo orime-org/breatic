@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * #113 A3: a viewer gets no block strip.
@@ -42,7 +42,7 @@ import { test, stateFile } from '../helpers/slot';
 import { credentialsFor } from '../helpers/credentials';
 import { blankPoint, openCommentRail } from '../helpers/document-body';
 import { resizeDocumentColumn } from '../helpers/document-table-geometry';
-import { pressAndSettle } from '../helpers/editor-keys';
+import { pressAndSettle, selectInBody } from '../helpers/editor-keys';
 import { wavBytes } from '../helpers/media-bytes';
 import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR, visibleSpace } from '../helpers/space';
@@ -621,4 +621,30 @@ test('an editor turned viewer while the body is open still sees the highlight (i
   await viewer.mouse.up();
   expect(await viewer.evaluate(() => window.getSelection()?.toString().length ?? 0)).toBeGreaterThan(0);
   expect(await selectionColour(viewer)).not.toBe('rgba(0, 0, 0, 0)');
+});
+
+test('a viewer reads the owner\'s formulas, and a press on one opens no box (inner#1423 A14)', async () => {
+  await openTheSpace(owner);
+  await owner.locator(`${EDITOR} p`).first().click();
+  // The end of the row: `End` only scrolls on macOS.
+  await selectInBody(owner, () => owner.evaluate((selector) => {
+    const range = document.createRange();
+    range.selectNodeContents(document.querySelector(`${selector} p`)!);
+    range.collapse(false);
+    const selection = window.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }, EDITOR));
+  await owner.keyboard.type(' $$x^2$$');
+  await expect(owner.locator(`${EDITOR} p .katex`)).toHaveCount(1);
+
+  await openTheSpace(viewer);
+  const block = viewer.locator(`${EDITOR} p .katex`).first();
+  await expect(block).toBeVisible({ timeout: 20_000 });
+  await block.click();
+  // The same wait the strip gets above, for a box that would be coming.
+  await viewer.waitForTimeout(500);
+
+  await expect(viewer.locator('[data-formula-box]')).toHaveCount(0);
+  await expect(viewer.locator(`${EDITOR} p .katex annotation`)).toHaveText('x^2');
 });

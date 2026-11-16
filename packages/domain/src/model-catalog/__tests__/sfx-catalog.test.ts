@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What the sound-effect slice declares in the catalog (#1960 PR3 / #2088).
@@ -43,9 +43,7 @@ describe("the sound-effect model reaches the wire (#2088 A2)", () => {
   });
 
   it("routes it through WaveSpeed, the upstream whose spend we can read back", () => {
-    expect(audioEntry("sonilo-sfx-v1").providers.map((p) => p.name)).toEqual([
-      "wavespeed",
-    ]);
+    expect(audioEntry("sonilo-sfx-v1").availability.upstreams.map((u) => u.upstream)).toEqual(["wavespeed"]);
   });
 
   // The exact string, not merely a truthy one: `ModelIcon` renders nothing

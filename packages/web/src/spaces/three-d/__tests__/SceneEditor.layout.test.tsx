@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
 
@@ -8,12 +8,13 @@ import * as Y from 'yjs';
 import { Unlock } from 'lucide-react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { t, SCENE_FORMAT_VERSION, type SceneObject } from '@breatic/shared';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { applySceneCommand, readSceneDocument } from '@web/data/yjs/scene-document';
 import { SceneSession } from '@web/data/yjs/scene-session';
 import SceneEditor from '@web/spaces/three-d/SceneEditor';
+import { sceneViewfinderSafeArea } from '@web/spaces/three-d/SceneViewfinder';
 import { useUIStore } from '@web/stores/ui';
 
 const NAME = 'project-p1/3d-s1';
@@ -65,8 +66,56 @@ describe('approved scene layout (inner#1724)', () => {
     expect(screen.queryByTestId('scene-object-menu')).toBeNull();
     expect(screen.queryByTestId('scene-right-panel')).toBeNull();
     expect(within(screen.getByTestId('scene-viewport-toolbar')).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual([
-      t('spaces.threeD.undo'), t('spaces.threeD.redo'), t('spaces.threeD.properties'), t('spaces.threeD.objects'), t('spaces.threeD.tasks'), t('spaces.threeD.minimap'),
+      t('spaces.threeD.undo'), t('spaces.threeD.redo'), t('spaces.threeD.properties'), t('spaces.threeD.objects'), t('spaces.threeD.tasks'), t('spaces.threeD.director.open'),
+      t('spaces.threeD.viewfinder.open'), t('spaces.threeD.minimap'),
     ]);
+  });
+  it('lays the object toolbar and the bottom-right controls out in one row that keeps them apart', async () => {
+    const { session } = setup(); await screen.findByTestId('scene-native-boundary');
+    act(() => session.select(ID, false));
+    const row = screen.getByTestId('scene-object-menu').closest('.grid');
+    expect(row).not.toBeNull();
+    expect(row).toBe(screen.getByTestId('scene-viewport-toolbar').closest('.grid'));
+    expect(row?.className).toContain('grid-cols-[1fr_auto_1fr]');
+  });
+  it.each([
+    ['too narrow for one row', 400, true],
+    ['one pixel short of the two toolbars and the 8px between them', 524, true],
+    ['one pixel wider than the two toolbars and the 8px between them', 526, false],
+    ['wide enough for one row', 1180, false],
+  ])('stacks the object toolbar above the bottom-right controls only when the bottom row is %s', async (_, rowWidth, stacked) => {
+    const sizes: Record<string, [number, number]> = { 'scene-bottom-row': [rowWidth, 50], 'scene-object-menu': [223, 42], 'scene-viewport-toolbar': [294, 42] };
+    const size = (element: HTMLElement): [number, number] => sizes[element.dataset.testid ?? ''] ?? [0, 0];
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockImplementation(function (this: HTMLElement) { return size(this)[0]; });
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function (this: HTMLElement) { return size(this)[1]; });
+    const { session } = setup(); await screen.findByTestId('scene-native-boundary');
+    act(() => session.select(ID, false));
+    const objectCell = screen.getByTestId('scene-object-menu').parentElement as HTMLElement;
+    const controlsCell = screen.getByTestId('scene-viewport-toolbar').parentElement as HTMLElement;
+    if (stacked) {
+      await waitFor(() => expect(objectCell.className).toContain('row-start-1'));
+      expect(objectCell.className).toContain('col-start-3');
+      expect(controlsCell.className).toContain('row-start-2');
+      expect(screen.getByTestId('scene-map-holder').style.bottom).toBe('111px');
+      expect(screen.getByTestId('scene-right-panel-anchor').style.bottom).toBe('calc(253px + var(--space-5))');
+    } else {
+      expect(objectCell.className).toContain('col-start-2');
+      expect(screen.getByTestId('scene-map-holder').style.bottom).toBe('61px');
+      expect(screen.getByTestId('scene-right-panel-anchor').style.bottom).toBe('calc(203px + var(--space-5))');
+    }
+  });
+  it('keeps the object toolbar and the bottom-right controls the same distance above the stage edge in one row', async () => {
+    const sizes: Record<string, number> = { 'scene-bottom-row': 1180, 'scene-object-menu': 223, 'scene-viewport-toolbar': 294 };
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockImplementation(function (this: HTMLElement) { return sizes[this.dataset.testid ?? ''] ?? 0; });
+    const { session } = setup(); await screen.findByTestId('scene-native-boundary');
+    act(() => session.select(ID, false));
+    const objectCell = screen.getByTestId('scene-object-menu').parentElement as HTMLElement;
+    const controlsCell = screen.getByTestId('scene-viewport-toolbar').parentElement as HTMLElement;
+    expect(objectCell.className).toContain('mb-[var(--space-5)]');
+    expect(controlsCell.className).toContain('mb-[var(--space-5)]');
+  });
+  it('keeps the viewfinder frame 20px from every stage edge but the bottom controls', () => {
+    expect(sceneViewfinderSafeArea({ width: 1200, height: 900 }, false)).toEqual({ x: 20, y: 20, width: 1160, height: 774 });
   });
   it.each([
     { state: 'unlocked object', ids: [ID], locked: [], action: 'lock', next: [true, false], second: [false, false] },

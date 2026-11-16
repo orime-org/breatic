@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Upstream step repository — data access for `task_upstream_steps` (#2156).
@@ -93,19 +93,6 @@ export async function ensureSteps(taskId: string, plan: readonly PlannedStep[]):
       .onConflictDoNothing({ target: [taskUpstreamSteps.taskId, taskUpstreamSteps.position] });
   }
   return listSteps(taskId);
-}
-
-/**
- * Record that a step was submitted, before it is polled.
- * @param stepId - The step.
- * @param predictionId - The WaveSpeed prediction id.
- * @returns Nothing.
- */
-export async function markSubmitted(stepId: string, predictionId: string): Promise<void> {
-  await db
-    .update(taskUpstreamSteps)
-    .set({ status: "submitted", predictionId })
-    .where(eq(taskUpstreamSteps.id, stepId));
 }
 
 /**

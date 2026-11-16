@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * 碰积分的那几个入口，全部走新引擎（任务 #11）。
@@ -12,6 +12,7 @@
  * 「可用 0」，而他账上明明躺着刚付过钱的积分。
  */
 
+import { initConfiguredProvider } from "@breatic/integration-tests/provider";
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
 
 // `ai` is stubbed: the real SDK is replaced with a double that reaches no
@@ -86,6 +87,7 @@ beforeAll(async () => {
     STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite",
   });
   loadLocales();
+  initConfiguredProvider();
   sql = postgres(inject("DATABASE_URL"), {
     max: 4,
     prepare: false,

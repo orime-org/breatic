@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /** The canvas hands the panels a getter; these trees answer 'this client'. */
 const LAST_WRITE_LOCAL = (): boolean => true;
@@ -117,7 +117,8 @@ const T2V: ModelEntry = {
     aspect_ratio: { description: '', values: ['16:9'], default: '16:9' },
     duration: { description: '', values: [4, 8], default: 8 },
   },
-  providers: [],
+  availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: false, envVar: 'WAVESPEED_API_KEY' }] },
+  pricing_rules: undefined,
 };
 
 /** A picture the run starts from, declared the way the real entries do (#269). */
@@ -1406,7 +1407,7 @@ describe('VideoGeneratePanelContainer', () => {
       await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
       const sent = create.mock.calls[0]![0];
       expect(sent.params.images).toEqual(['https://cdn/a.png', 'https://cdn/c.png']);
-      expect(sent.params.prompt).toMatch(/^the two of them walk into frame\s*image 2\s+image 1\s*$/);
+      expect(sent.params.prompt).toMatch(/^the two of them walk into frame\s*{{ref:images:2}}\s+{{ref:images:1}}\s*$/);
     });
 
     it('stays clickable with nothing mentioned, and says what to do', async () => {
@@ -2314,8 +2315,6 @@ describe('the multi-shot mode', () => {
         label: 'Auto multi-shot',
         default: false,
         values: [true, false],
-        upstream: 'shot_type',
-        upstream_values: { true: 'intelligence' },
         modes: ['t2v'],
         fill: 'panel',
       },
@@ -2347,22 +2346,26 @@ describe('the multi-shot mode', () => {
    * @param before - Writes to make on the node before the panel opens.
    * @param model - The model the node stores.
    * @param params - What the node holds for that model.
+   * @param kling - The Kling entry the catalog serves.
+   * @returns The render result, for a case that switches mode by rerendering.
    */
   async function openOn(
     mode: string,
     before: () => void = () => undefined,
     model = 'kling-v3',
     params: Record<string, unknown> = {},
-  ): Promise<void> {
-    vi.spyOn(modelsApi, 'list').mockResolvedValue({ ...catalog(), video: [KLING, WAN, ...catalog().video] });
+    kling: ModelEntry = KLING,
+  ): Promise<ReturnType<typeof render>> {
+    vi.spyOn(modelsApi, 'list').mockResolvedValue({ ...catalog(), video: [kling, WAN, ...catalog().video] });
     const stored = { mode, model, modelByMode: { [mode]: model }, paramsByModel: { [model]: params } };
     seedVideoNode(stored);
     before();
-    mountContainer('video', stored);
+    const view = mountContainer('video', stored);
     act(() => {
       canvasSessions.of('s').getState().openGeneratePanel('target', 'video');
     });
     await screen.findByTestId('generate-video-execute');
+    return view;
   }
 
   /**
@@ -2729,6 +2732,104 @@ describe('the multi-shot mode', () => {
     expect(readShots('p', 's', 'target')?.map((s) => s.duration)).toEqual([2, 3]);
     const data = readCanvasGraph('p', 's').nodes.find((n) => n.id === 'target')?.data as { model?: string };
     expect(data.model).toBe('kling-v3');
+  });
+
+  describe('a run no upstream here takes (#1521)', () => {
+    /** Kling served here by an upstream that holds the main prompt to five characters. */
+    const CAPPED_KLING: ModelEntry = {
+      ...KLING,
+      availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: true, envVar: 'WAVESPEED_API_KEY' }] },
+      pricing_rules: {
+        model: 'kling-v3',
+        upstreams: [{
+          upstream: 'wavespeed',
+          prompt_field: 'prompt',
+          fields: {},
+          pricing: { kind: 'formula', base_price: 30000, formula: '{"total_price": base_price}', discount_rate: 100 },
+          steps: [],
+          rejects: [{ when: '$length(prompt) > 5', reason: 'WaveSpeed prompt maxLength 5', limit: { field: 'prompt', measure: 'characters', max: 5 } }],
+        }],
+      },
+    };
+
+    it('says the limit an upstream here holds the prompt to on press, and sends nothing', async () => {
+      const createTask = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+      await openOn('t2v', () => typePrompt('a paper boat on the pond'), 'kling-v3', {}, CAPPED_KLING);
+      // The refusal is worked out off the render path, once the rules have loaded.
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      fireEvent.click(screen.getByTestId('generate-video-execute'));
+
+      expect(toast.warning).toHaveBeenCalledWith('Kling v3 takes at most 5 characters in the text.', expect.anything());
+      expect(createTask).not.toHaveBeenCalled();
+    });
+
+    it('refuses nothing for a main prompt left from text-to-video once the multi-shot mode sends none of it', async () => {
+      const createTask = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+      const view = await openOn('t2v', () => typePrompt('a paper boat on the pond'), 'kling-v3', {}, CAPPED_KLING);
+      await waitFor(() =>
+        expect(screen.getByTestId('generate-prompt-editor').textContent).toContain('a paper boat on the pond'),
+      );
+      // The switch writes the mode and the two shots; the harness hands the panel the stored mode by prop.
+      fireEvent.click(screen.getByTestId('generate-video-mode-trigger'));
+      await userEvent.click(await screen.findByTestId('generate-video-mode-multi-shot'));
+      await waitFor(() => expect(readShots('p', 's', 'target')?.length).toBe(2));
+      view.rerender(panelTree('video', {
+        mode: 'multi_shot',
+        model: 'kling-v3',
+        modelByMode: { t2v: 'kling-v3', multi_shot: 'kling-v3' },
+        paramsByModel: { 'kling-v3': {} },
+      }));
+      await screen.findByTestId('generate-storyboard-shots');
+      typeShot(0, 'boat');
+      typeShot(1, 'pond');
+      // Pressed once the rules have read the run.
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      fireEvent.click(screen.getByTestId('generate-video-execute'));
+
+      await waitFor(() => expect(createTask).toHaveBeenCalledTimes(1));
+      expect(toast.warning).not.toHaveBeenCalled();
+      expect(createTask.mock.calls[0]?.[0]?.params).not.toHaveProperty('prompt');
+    });
+
+    /** Wan served here by an upstream that holds the prompt, the shots written into it, to forty characters. */
+    const CAPPED_WAN: ModelEntry = {
+      ...WAN,
+      availability: CAPPED_KLING.availability,
+      pricing_rules: {
+        model: 'wan-3',
+        upstreams: [{
+          upstream: 'wavespeed',
+          prompt_field: 'prompt',
+          fields: {},
+          pricing: { kind: 'formula', base_price: 30000, formula: '{"total_price": base_price}', discount_rate: 100 },
+          steps: [],
+          rejects: [{ when: '$length(prompt) > 40', reason: 'WaveSpeed prompt maxLength 40', limit: { field: 'prompt', measure: 'characters', max: 40 } }],
+        }],
+      },
+    };
+
+    it('says the limit the shots written into the prompt break, as they are typed, and sends nothing', async () => {
+      const createTask = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+      vi.spyOn(modelsApi, 'list').mockResolvedValue({ ...catalog(), video: [KLING, CAPPED_WAN, ...catalog().video] });
+      const stored = { mode: 'multi_shot', model: 'wan-3', modelByMode: { multi_shot: 'wan-3' }, paramsByModel: { 'wan-3': { duration: 5 } } };
+      seedVideoNode(stored);
+      enterStoryboardShots('p', 's', 'target', 5);
+      mountContainer('video', stored);
+      act(() => {
+        canvasSessions.of('s').getState().openGeneratePanel('target', 'video');
+      });
+      await screen.findByTestId('generate-storyboard-shots');
+      // Typed once the panel is open: the words of a shot alone change the run.
+      act(() => {
+        typeShot(0, 'a paper boat');
+        typeShot(1, 'the pond at dusk');
+      });
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      fireEvent.click(screen.getByTestId('generate-video-execute'));
+
+      expect(toast.warning).toHaveBeenCalledWith('Wan 3 takes at most 40 characters in the text.', expect.anything());
+      expect(createTask).not.toHaveBeenCalled();
+    });
   });
 });
 

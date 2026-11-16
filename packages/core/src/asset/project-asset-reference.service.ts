@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import type { ProjectAssetPage, ProjectAssetReferenceEntity, ProjectRegisteredAsset, StudioAssetEntity, TimelineClientLimits } from "@breatic/shared";
 import { t } from "@breatic/shared";
@@ -288,6 +288,13 @@ export async function getTimelineLimits(projectId: string, userId: string): Prom
       previewTokenTtlMs: config.web_animation.preview_token_ttl_ms,
       premountMs: config.web_animation.preview_premount_ms,
       idleInstancesMax: config.web_animation.preview_idle_instances_max,
+    },
+    preview: {
+      driftSteerSeconds: config.preview.drift_steer_seconds,
+      driftHardSyncSeconds: config.preview.drift_hard_sync_seconds,
+      driftCatastrophicSeconds: config.preview.drift_catastrophic_seconds,
+      resumeSeekSeconds: config.preview.resume_seek_seconds,
+      driftSteerRate: config.preview.drift_steer_rate,
     },
   };
 }

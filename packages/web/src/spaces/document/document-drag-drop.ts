@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The extension that answers a dropped row (A11, design §8).
@@ -26,6 +26,8 @@ import {
   restoreAfterRowDrag,
   type UserPlace,
 } from '@web/spaces/document/document-drag-selection';
+import { dropRowBeside } from '@web/spaces/document/document-column-drop';
+import { forgetSideDrop, takeSideDrop } from '@web/spaces/document/document-column-landing';
 import { moveRowTo } from '@web/spaces/document/document-drag-move';
 import { dropAsPaste } from '@web/spaces/document/document-drop-as-paste';
 
@@ -55,6 +57,7 @@ export function rowIsFlying(
   place: UserPlace | undefined,
 ): void {
   flying = { blockId, place };
+  forgetSideDrop();
 }
 
 /**
@@ -62,6 +65,14 @@ export function rowIsFlying(
  */
 export function rowHasLanded(): void {
   flying = undefined;
+}
+
+/**
+ * The row a drag in flight carries.
+ * @returns Its id, or undefined when no row drag is in flight.
+ */
+export function flyingRowId(): string | undefined {
+  return flying?.blockId;
 }
 
 /**
@@ -119,6 +130,14 @@ export const documentDragDropExtension = createExtension(({ editor }) => ({
           // selection-only transaction writes nothing to the
           // document, so it adds no undo item of its own.
           restoreAfterRowDrag(view, row.place, row.blockId);
+
+          // A drop the line showed beside a row makes or grows a column group
+          // (inner#1314 design §5.2).
+          const beside = takeSideDrop(row.blockId);
+          if (beside !== undefined) {
+            dropRowBeside(editor as never, row.blockId, beside.targetId, beside.side);
+            return true;
+          }
 
           // ProseMirror resolved these same coordinates before it asked this
           // prop, and returned when they did not resolve

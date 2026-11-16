@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Activity feed panel tests (ADR 2026-07-04 project-activity-feed).
@@ -599,6 +599,25 @@ describe('activity feed row: thumbnail + credits (#1622)', () => {
     await user.click(screen.getByTestId('project-activity-trigger'));
     await screen.findByTestId('project-activity-entry-g-2');
     expect(screen.getByTestId('project-activity-credits-g-2')).toHaveTextContent(/^3\.46$/);
+  });
+
+  // inner#1743: delivered before its upstream billed it, the run shows what is known so far.
+  it('marks a generation still being billed, its known part as a lower bound', async () => {
+    listMock.mockResolvedValue({
+      items: [
+        entry({
+          id: 'p-1',
+          type: 'generation:succeeded',
+          payload: { source: 'task', kind: 'image', fileUrl: 'https://x/i.png', credits: 12.5, billing: 'pending' },
+        }),
+      ],
+      nextCursor: null,
+    });
+    const user = userEvent.setup();
+    render(<ProjectActivityButton projectId={PID} />);
+    await user.click(screen.getByTestId('project-activity-trigger'));
+    await screen.findByTestId('project-activity-entry-p-1');
+    expect(screen.getByTestId('project-activity-credits-p-1')).toHaveTextContent(/^≥ 12\.5Billing$/);
   });
 
   it('plain rows (space / member) have no thumbnail and no credits', async () => {

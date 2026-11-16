@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Conversation service — business logic for conversations and messages.
@@ -631,16 +631,49 @@ export async function modelForMessage(
 }
 
 /**
+ * Whether a new message's id names a row it cannot be written under. The
+ * page makes a fresh id at each press, so only a request built by hand can
+ * carry one; its run could never write its opening row.
+ * @param conversationId - The conversation it is sent to.
+ * @param messageId - The id it carries.
+ * @returns True when the id is not the new message's to take.
+ */
+export async function messageIdRefused(conversationId: string, messageId: string): Promise<boolean> {
+  return messageRepo.messageIdRefused(conversationId, messageId);
+}
+
+/**
+ * The model a message that waited in the queue runs on: the one it was sent
+ * with, while the deployment still lists it, else the conversation's own.
+ * Never a refusal: the send was checked when it was accepted, and a release
+ * since may have stopped listing the model.
+ * @param conversation - The conversation, already checked writable.
+ * @param userId - The user.
+ * @param sentWith - The model the message was sent with, if any.
+ * @returns The model id.
+ */
+export async function modelForQueued(conversation: ConversationEntity, userId: string, sentWith: string | undefined): Promise<string> {
+  return modelForMessage(conversation, userId, sentWith !== undefined && listedModel(sentWith) !== undefined ? sentWith : undefined);
+}
+
+/**
  * The model a turn resumed by an answer to its card runs on: the one the turn
  * started on, while the deployment still lists it, else the conversation's
  * own by the usual order, written into the conversation. Never a refusal: the
- * answer must be able to resume the turn.
+ * answer must be able to resume the turn. On the model it started on, the
+ * resumed segment also stays on the upstream that served the paused one.
  * @param conversation - The conversation, already checked writable.
  * @param userId - The user.
  * @param toolCallId - The call being answered.
- * @returns The model id.
+ * @returns The model id, and the upstream to stay on when there is one.
  */
-export async function modelForResume(conversation: ConversationEntity, userId: string, toolCallId: string): Promise<string> {
-  const started = listedModel((await messageRepo.getReplyModelId(conversation.id, toolCallId)) ?? null);
-  return started?.id ?? modelForMessage(conversation, userId, undefined);
+export async function modelForResume(
+  conversation: ConversationEntity,
+  userId: string,
+  toolCallId: string,
+): Promise<{ modelId: string; upstream?: string }> {
+  const run = await messageRepo.getReplyRun(conversation.id, toolCallId);
+  const started = listedModel(run.modelId ?? null);
+  if (started === undefined) return { modelId: await modelForMessage(conversation, userId, undefined) };
+  return { modelId: started.id, ...(run.servedUpstream === undefined ? {} : { upstream: run.servedUpstream }) };
 }

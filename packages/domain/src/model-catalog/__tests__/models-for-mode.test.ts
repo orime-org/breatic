@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The models behind one mode of one generation node (#261).
@@ -95,12 +95,12 @@ describe("modelsForMode", () => {
     expect(answer.offered.length).toBeGreaterThan(0);
   });
 
-  it("follows the catalog: with no keys, no mode is available", () => {
+  it("offers a mode with no keys set, each model naming the keys it lacks", () => {
     useEnvWithKeys([]);
     const answer = modelsForMode("image", "t2i");
-    expect(answer.available).toBe(false);
-    if (answer.available) return;
-    expect(answer.offered).toEqual([]);
+    if (!answer.available) throw new Error("t2i is offered with no keys");
+    expect(answer.models.length).toBeGreaterThan(0);
+    for (const model of answer.models) expect(model.missingKeys?.length, model.name).toBeGreaterThan(0);
   });
 });
 

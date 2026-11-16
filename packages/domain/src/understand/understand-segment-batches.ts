@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { groupLongMediaSegments } from "@domain/understand/segment-batches.js";
 import { understandMediaAt } from "@domain/understand/understand-at.js";
@@ -123,7 +123,6 @@ export async function understandMediaInBatches(
     const inputDigest = longMediaInputDigest({
       question: request.question,
       model: request.model,
-      backend: request.backend,
       maxOutputTokens: request.maxOutputTokens,
       promptVersion: "long-media-batch-v1",
       batch: batch.map(({ url, ledgerType, sizeBytes, startUs, endUs }) => ({

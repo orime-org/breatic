@@ -3,7 +3,9 @@
 # are unique per model. A model's `rejects` are its vendor's own input limits,
 # in our param names (the prompt as `prompt`), each with the vendor's words as
 # `reason`, the vendor page as `source` and, for a limit announced for a date,
-# `from`; no upstream takes a run past them. Each binding names the upstream's
+# `from`; no upstream takes a run past them. A reject whose condition counts
+# characters or lines states that count as `limit` (our param, `measure`,
+# `max` or `min`, `per` line or item). Each binding names the upstream's
 # model id, the field the prompt goes in (`send_empty` sends it and every param
 # even when empty), and how each of our params is written there: `field` (dots
 # write under nested objects), `values` (our value to the upstream's spelling),
@@ -28,6 +30,7 @@ models:
   gpt-image-2.5-sunburst-text-to-image:
     rejects:
       - when: $length(prompt) > 32000
+        limit: { field: prompt, measure: characters, max: 32000 }
         reason: 'OpenAI GPT Image prompt: "The maximum length is 32000 characters"'
         source: https://developers.openai.com/api/reference/resources/images/methods/generate.md
     upstreams:
@@ -86,6 +89,7 @@ models:
           mode: async
         rejects:
           - when: $length(prompt) < 3
+            limit: { field: prompt, measure: characters, min: 3 }
             reason: SandBase prompt minLength 3
         pricing:
           kind: formula
@@ -105,8 +109,8 @@ models:
             field: resolution
         pricing:
           kind: formula
-          base_price: 50000
-          formula: ""
+          base_price: 80000
+          formula: '{"total_price": base_price * (resolution = "1k" ? 0.75 : 1)}'
           discount_rate: 100
       - upstream: fal
         weight: 2
@@ -120,6 +124,7 @@ models:
             field: resolution
         rejects:
           - when: $length(prompt) > 8000
+            limit: { field: prompt, measure: characters, max: 8000 }
             reason: fal prompt maxLength 8000
         pricing:
           kind: formula
@@ -147,6 +152,7 @@ models:
           mode: async
         rejects:
           - when: $length(prompt) > 8000
+            limit: { field: prompt, measure: characters, max: 8000 }
             reason: SandBase prompt maxLength 8000
         pricing:
           kind: formula
@@ -206,8 +212,10 @@ models:
           aperture: "*"
         rejects:
           - when: $length(prompt) > 50000
+            limit: { field: prompt, measure: characters, max: 50000 }
             reason: fal prompt maxLength 50000
           - when: $length(prompt) < 3
+            limit: { field: prompt, measure: characters, min: 3 }
             reason: fal prompt minLength 3
         pricing:
           kind: formula
@@ -242,8 +250,10 @@ models:
           mode: async
         rejects:
           - when: $length(prompt) > 50000
+            limit: { field: prompt, measure: characters, max: 50000 }
             reason: SandBase prompt maxLength 50000
           - when: $length(prompt) < 3
+            limit: { field: prompt, measure: characters, min: 3 }
             reason: SandBase prompt minLength 3
         pricing:
           kind: formula
@@ -281,7 +291,7 @@ models:
           kind: formula
           base_price: 70000
           formula: '{"total_price": (resolution = "0.5k" ? 45000 : (resolution = "2k" ? 105000 : (resolution = "4k" ? 140000 : base_price)))}'
-          discount_rate: 100
+          discount_rate: 90
       - upstream: fal
         weight: 2
         model_id: fal-ai/nano-banana-2/edit
@@ -312,8 +322,10 @@ models:
           light_reference: "*"
         rejects:
           - when: $length(prompt) > 50000
+            limit: { field: prompt, measure: characters, max: 50000 }
             reason: fal prompt maxLength 50000
           - when: $length(prompt) < 3
+            limit: { field: prompt, measure: characters, min: 3 }
             reason: fal prompt minLength 3
         pricing:
           kind: formula
@@ -354,8 +366,10 @@ models:
           mode: async
         rejects:
           - when: $length(prompt) > 50000
+            limit: { field: prompt, measure: characters, max: 50000 }
             reason: SandBase prompt maxLength 50000
           - when: $length(prompt) < 3
+            limit: { field: prompt, measure: characters, min: 3 }
             reason: SandBase prompt minLength 3
         pricing:
           kind: formula
@@ -382,7 +396,7 @@ models:
           kind: formula
           base_price: 70000
           formula: '{"total_price": (resolution = "0.5k" ? 45000 : (resolution = "2k" ? 105000 : (resolution = "4k" ? 140000 : base_price)))}'
-          discount_rate: 100
+          discount_rate: 90
       - upstream: fal
         weight: 2
         model_id: fal-ai/nano-banana-2/edit
@@ -402,8 +416,10 @@ models:
               4k: 4K
         rejects:
           - when: $length(prompt) > 50000
+            limit: { field: prompt, measure: characters, max: 50000 }
             reason: fal prompt maxLength 50000
           - when: $length(prompt) < 3
+            limit: { field: prompt, measure: characters, min: 3 }
             reason: fal prompt minLength 3
         pricing:
           kind: formula
@@ -433,8 +449,10 @@ models:
           mode: async
         rejects:
           - when: $length(prompt) > 50000
+            limit: { field: prompt, measure: characters, max: 50000 }
             reason: SandBase prompt maxLength 50000
           - when: $length(prompt) < 3
+            limit: { field: prompt, measure: characters, min: 3 }
             reason: SandBase prompt minLength 3
         pricing:
           kind: formula
@@ -444,6 +462,7 @@ models:
   recraft-v4.1-pro-text-to-vector:
     rejects:
       - when: $length(prompt) > 10000
+        limit: { field: prompt, measure: characters, max: 10000 }
         reason: "Recraft prompt: V4.1 including all Pro and Vector variants, max 10,000 characters"
         source: https://www.recraft.ai/docs/api-reference/models/recraft-v4-1.md
     upstreams:
@@ -456,7 +475,7 @@ models:
             field: image_size
         pricing:
           kind: formula
-          base_price: 300000
+          base_price: 360000
           formula: ""
           discount_rate: 100
       - upstream: fal
@@ -512,6 +531,7 @@ models:
             item_key: image
         rejects:
           - when: $length(prompt) > 5000
+            limit: { field: prompt, measure: characters, max: 5000 }
             reason: "WaveSpeed prompt: Supports 1-5000 characters"
         pricing:
           kind: formula
@@ -533,6 +553,7 @@ models:
             item_key: image_url
         rejects:
           - when: $length(prompt) > 5000
+            limit: { field: prompt, measure: characters, max: 5000 }
             reason: fal prompt maxLength 5000
         pricing:
           kind: formula
@@ -560,6 +581,7 @@ models:
   recraft-v4-style-text-to-image:
     rejects:
       - when: $length(prompt) > 10000
+        limit: { field: prompt, measure: characters, max: 10000 }
         reason: "Recraft prompt: V4 Styles max 10,000 characters"
         source: https://www.recraft.ai/docs/api-reference/models/recraft-v4-styles.md
     upstreams:
@@ -589,6 +611,7 @@ models:
   gpt-image-2.5-sunburst-edit:
     rejects:
       - when: $length(prompt) > 32000
+        limit: { field: prompt, measure: characters, max: 32000 }
         reason: "OpenAI GPT Image edit prompt: maxLength 32000"
         source: https://developers.openai.com/api/reference/resources/images/methods/edit.md
     upstreams:
@@ -666,6 +689,7 @@ models:
           mode: async
         rejects:
           - when: $length(prompt) < 3
+            limit: { field: prompt, measure: characters, min: 3 }
             reason: SandBase prompt minLength 3
         pricing:
           kind: formula
@@ -896,11 +920,62 @@ models:
           mode: async
         rejects:
           - when: $length(prompt) > 50000
+            limit: { field: prompt, measure: characters, max: 50000 }
             reason: SandBase prompt maxLength 50000
           - when: $length(prompt) < 3
+            limit: { field: prompt, measure: characters, min: 3 }
             reason: SandBase prompt minLength 3
         pricing:
           kind: formula
           base_price: 40000
           formula: ""
           discount_rate: 100
+  seedream-v5.5-text-to-image:
+    upstreams:
+      - upstream: wavespeed
+        weight: 1
+        model_id: bytedance/seedream-v5.5
+        prompt_field: prompt
+        params:
+          aspect_ratio:
+            field: aspect_ratio
+          resolution:
+            field: resolution
+          transparency:
+            field: background
+            values:
+              "true": transparent
+              "false": opaque
+        pricing:
+          kind: formula
+          base_price: 20000
+          formula: '{"total_price": (resolution = "2k" ? 35000 : 20000)}'
+          discount_rate: 95
+  seedream-v5.5-edit:
+    upstreams:
+      - upstream: wavespeed
+        weight: 1
+        model_id: bytedance/seedream-v5.5/edit
+        prompt_field: prompt
+        params:
+          aspect_ratio:
+            field: aspect_ratio
+            absent_value: auto
+          images:
+            field: images
+          resolution:
+            field: resolution
+          transparency:
+            field: background
+            values:
+              "true": transparent
+              "false": opaque
+        drops:
+          style_images: "*"
+        mentions:
+          images: image {n}
+        pricing:
+          kind: formula
+          base_price: 28000
+          formula: '{"total_price": (resolution = "2k" ? 35000 : 20000) + 8000 * $count(images)}'
+          discount_rate: 95

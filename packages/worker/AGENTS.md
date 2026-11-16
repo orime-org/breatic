@@ -6,13 +6,13 @@ Before changing any step of how a task runs in `handlers/dispatch.ts`, read the 
 
 ### No throw after the vendor has returned
 
-**Once the "vendor has returned" fact is written for a task, any later failure marks the task failed and returns; it never throws.** A throw makes BullMQ rerun the whole task, which calls the vendor again and pays for the same result twice. Before that fact is written, a thrown error is the retry path and a rerun resumes from `task_upstream_steps` without resubmitting.
+**Once the "vendor has returned" fact is written for a task, any later failure marks the task failed and returns; it never throws.** A throw makes BullMQ rerun the whole task, which calls the vendor again and pays for the same result twice. Before that fact is written, a thrown error is the retry path and a rerun resumes from the provider ticket stored on the task row (a task from before provider, from `task_upstream_steps`) without resubmitting.
 
 Check: does this failure fall before or after the vendor-returned fact is written?
 
 ### Waiting on upstream throws StillRunning
 
-**A handler that must wait for an upstream result throws `StillRunning` (`providers/still-running.ts`); it never polls or sleeps.** The single catch in `dispatch.ts` moves the job back to the delayed queue with `moveToDelayed`, which frees the slot and consumes no retry.
+**A handler that must wait for an upstream result throws `StillRunning` (`handlers/still-running.ts`); it never polls or sleeps.** The single catch in `dispatch.ts` moves the job back to the delayed queue with `moveToDelayed`, which frees the slot and consumes no retry.
 
 ### No local media processing
 
@@ -22,6 +22,6 @@ Check: does this failure fall before or after the vendor-returned fact is writte
 
 **Settling a task row nobody finished is driven by `QueueEvents.on('failed')` from core `createQueueEvents('tasks')` (`handlers/failed-job-cleanup.ts`), never by the in-process `worker.on('failed')`, and a job counts as terminally failed by `job.finishedOn`, never by `attemptsMade`.** A crashed worker cannot run its own callback, while every live instance receives the queue event; a stalled job's death sets `finishedOn` without incrementing `attemptsMade`.
 
-### Upstream field names are mapped in one place
+### Model runs go through provider
 
-**Our parameter names become an endpoint's field names only in `providers/upstream-body.ts`, from each param's `upstream` declaration in the model yaml.** A second mapping would drift from the yaml.
+**Every model run is a `@breatic/provider` ticket the worker stores on the task row and hands back on each pickup (`handlers/media-run.ts`); the worker sends our params by our names, and only each upstream's binding in `config/provider/media/` names its fields.** A second mapping in the worker would drift from the bindings, and a call the worker made itself would bypass provider's routing and cost readers.

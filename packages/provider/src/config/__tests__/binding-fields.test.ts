@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from "vitest";
 import { assertBindsCatalog, parseProviderConfig, ProviderConfigError, type CatalogShape, type MediaBinding, type ProviderConfigInput } from "../schema.js";
@@ -117,6 +117,18 @@ describe("reseller bindings load", () => {
     expect(loadProblems([
       bind("wavespeed", 1, { drops: { seed: "*" } }),
       bind("fal", 2, { drops: { seed: "*" } }),
+    ])).toEqual([]);
+  });
+
+  it("refuses a reseller drops wildcard on a param a WaveSpeed step serves, naming model, upstream and param", () => {
+    const rig = { kind: "rig", endpoint: "tripo3d/rig", at: "after", for_param: "rig_skeleton", optional: true, pricing };
+    expect(loadProblems([
+      bind("wavespeed", 1, { drops: { rig_skeleton: "*" }, extra_steps: [rig] }),
+      bind("fal", 2, { drops: { rig_skeleton: "*" } }),
+    ])).toEqual([expect.stringMatching(/m.*fal.*rig_skeleton/)]);
+    expect(loadProblems([
+      bind("wavespeed", 1, { drops: { rig_skeleton: "*" }, extra_steps: [rig] }),
+      bind("fal", 2, { drops: { rig_skeleton: [false] } }),
     ])).toEqual([]);
   });
 });

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The product guide answers how the user operates our product.
@@ -327,8 +327,8 @@ describe("what the guide says", () => {
   });
 
   it("walks through comments in a document: start, post, the panel, resolve and who may delete", () => {
-    const doc = section("Document spaces");
-    expect(doc).toMatch(/- Comments: select text and press the speech bubble/);
+    const doc = section("Document comments");
+    expect(doc).toMatch(/^Select text and press the speech bubble/m);
     expect(doc).toMatch(/"Comments" panel opens beside the text/);
     expect(doc).toMatch(/"Resolve" takes the highlight away and moves the card under "All", where "Reopen" brings it back/);
     expect(doc).toMatch(/for whoever wrote the first comment or a project owner/);
@@ -386,11 +386,11 @@ describe("what the guide says", () => {
   });
 
   it("says which comment controls depend on the thread or the panel being open", () => {
-    const doc = section("Document spaces");
-    expect(doc).toMatch(/a resolved card takes no replies until it is reopened/);
+    const comments = section("Document comments");
+    expect(comments).toMatch(/a resolved card takes no replies until it is reopened/);
     // DocumentCommentDraftCard.tsx: the outside-press check is against the whole card.
-    expect(doc).toMatch(/With nothing typed yet, clicking anywhere outside its card also drops it/);
-    expect(doc).toMatch(/The three dots are hidden while the comments panel or the snapshots panel is open/);
+    expect(comments).toMatch(/With nothing typed yet, clicking anywhere outside its card also drops it/);
+    expect(section("Document spaces")).toMatch(/The three dots are hidden while the comments panel or the snapshots panel is open/);
   });
 
   it("quotes no name the screen only gives a screen reader", () => {
@@ -566,7 +566,19 @@ describe("what the guide says", () => {
     expect(box).toContain("else wiring.onEnter();");
     const chat = section("The chat panel");
     expect(chat).toMatch(/Enter sends the message and Shift\+Enter starts a new line/);
-    expect(chat).toMatch(/red square, which stops the reply/);
+    expect(chat).toMatch(/the user can go on writing and sending: a red square left of\s+the send button \(hovering it shows [^)]+\) stops the reply/);
+    expect(chat).toMatch(/Switching to another conversation or leaving the page does not stop a reply/);
+  });
+
+  it("says a message sent while a reply runs waits above the box, and how to take it back", () => {
+    const composer = webSource("pages/project/chat/ChatComposer.tsx");
+    expect(composer).toMatch(/turnPhase === 'running' \? \([\s\S]*data-testid='chat-composer-abort'[\s\S]*t\('chat\.composer\.stop'\)[\s\S]*\) : null\}\s*(?:\{\/\*[\s\S]*?\*\/\}\s*)?<Tooltip[^>]*>\s*<TooltipTrigger asChild>\s*<Button/);
+    expect(composer).toContain("turnPhase === 'running' ? t('chat.composer.sendWhileRunning') : t('chat.composer.send')");
+    expect(webSource("pages/project/chat/ChatPanel.tsx")).toMatch(/<PendingTray[\s\S]*<ChatComposer/);
+    const chat = section("The chat panel");
+    expect(chat).toMatch(/read by the Agent at its next step,\s+inside the reply being written/);
+    expect(chat).toMatch(/waits in a list above the box headed/);
+    expect(chat).toMatch(/puts its words and attachments back in the box/);
   });
 
   it("says how @ references an attachment", () => {
@@ -857,7 +869,8 @@ describe("what the guide says about each surface", () => {
   it("says the send button is a dark square and when a message can go", () => {
     const chat = section("The chat panel");
     expect(chat).toMatch(/dark square button with an upward arrow/);
-    expect(chat).toMatch(/only when the box has some words, no reply is being written and every attachment has finished uploading/);
+    expect(chat).toMatch(/only when the box has some words and every\s+attachment has finished uploading/);
+    expect(chat).toMatch(/While a message\s+is on its way the box cannot be changed and a spinner stands in place of the button/);
     expect(chat).not.toMatch(/a Sources button/);
   });
 

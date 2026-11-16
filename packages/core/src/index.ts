@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * `@breatic/core` — shared backend runtime.
@@ -107,7 +107,6 @@ export {
   getUsagePricing,
   parseUsagePricing,
   type UsagePricing,
-  type ModelPrice,
 } from "@core/config/usage-pricing.js";
 export type { StorageConfig } from "@core/config/storage.js";
 export {
@@ -131,7 +130,6 @@ export type {
 } from "@core/config/subscription.js";
 export { jitterBackoffStrategy } from "@core/infra/retry.js";
 export { getAgentConfig, memoryReserveTokens, MEMORY_TITLE_MAX_CHARS, MEMORY_CONTENT_MAX_CHARS } from "@core/config/loader.js";
-export type { PromptCacheTtl } from "@core/config/loader.js";
 
 // ── Infrastructure ───────────────────────────────────────────────
 export {

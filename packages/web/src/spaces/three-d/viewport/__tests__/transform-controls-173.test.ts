@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, vi } from 'vitest';
 import { Object3D, PerspectiveCamera } from 'three';
@@ -33,6 +33,17 @@ describe('the installed r173 controls adapter (inner#1689)', () => {
     }
     controls.setMultipleSelection(false);
     expect(gizmo.picker.scale.children.every((handle) => handle.layers.isEnabled(0))).toBe(true);
+    controls.dispose();
+  });
+
+  it('keeps nonuniform multiselect scale handles out of a camera that draws every layer', () => {
+    const camera = new PerspectiveCamera();
+    camera.layers.enableAll();
+    const controls = new SceneTransformControls173(camera, document.createElement('canvas'), 0.006, vi.fn());
+    const gizmo = controls.getHelper().children.find((child) => child instanceof TransformControlsGizmo);
+    if (!(gizmo instanceof TransformControlsGizmo)) throw new Error('Installed r173 helper has no gizmo');
+    controls.setMultipleSelection(true);
+    expect(gizmo.gizmo.scale.children.filter((handle) => camera.layers.test(handle.layers)).map((handle) => handle.name)).toEqual(['XYZ']);
     controls.dispose();
   });
 });

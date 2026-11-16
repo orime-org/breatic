@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Run one mini-tool container job (inner#888 §8.1).
@@ -40,7 +40,7 @@ import {
 import { storedAsOutput } from "@worker/handlers/persisted-output.js";
 import { noteSideEffects } from "@worker/handlers/side-effects.js";
 import type { PersistedOutput } from "@worker/handlers/persisted-output.js";
-import { StillRunning } from "@worker/providers/still-running.js";
+import { StillRunning } from "@worker/handlers/still-running.js";
 
 /** A container run that ended without its outputs; the message is the row's cause code. */
 export class ContainerJobFailed extends Error {

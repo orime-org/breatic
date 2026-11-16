@@ -3,7 +3,9 @@
 # are unique per model. A model's `rejects` are its vendor's own input limits,
 # in our param names (the prompt as `prompt`), each with the vendor's words as
 # `reason`, the vendor page as `source` and, for a limit announced for a date,
-# `from`; no upstream takes a run past them. Each binding names the upstream's
+# `from`; no upstream takes a run past them. A reject whose condition counts
+# characters or lines states that count as `limit` (our param, `measure`,
+# `max` or `min`, `per` line or item). Each binding names the upstream's
 # model id, the field the prompt goes in (`send_empty` sends it and every param
 # even when empty), and how each of our params is written there: `field` (dots
 # write under nested objects), `values` (our value to the upstream's spelling),
@@ -31,9 +33,11 @@ models:
         reason: "Tripo generate_parts: Not compatible with smart_low_poly; smart_low_poly takes precedence and parts are NOT produced"
         source: https://developers.tripo3d.com/en/docs/generation-text-to-model/standard.md
       - when: $length(prompt) > 1024
+        limit: { field: prompt, measure: characters, max: 1024 }
         reason: 'Tripo prompt: "Text prompt, up to 1024 characters."'
         source: https://developers.tripo3d.com/en/docs/generation-text-to-model/standard.md
       - when: $length(negative_prompt) > 255
+        limit: { field: negative_prompt, measure: characters, max: 255 }
         reason: 'Tripo negative_prompt: "Negative prompt, up to 255 characters."'
         source: https://developers.tripo3d.com/en/docs/generation-text-to-model/standard.md
       - when: smart_low_poly = true and (face_limit < 500 or face_limit > 20000)
@@ -89,8 +93,18 @@ models:
           negative_prompt:
             field: negative_prompt
         drops:
-          # The rig runs in the worker for now; this layer does not rig yet (inner#1692).
           rig_skeleton: "*"
+        extra_steps:
+          - kind: rig
+            endpoint: tripo3d/rig
+            at: after
+            for_param: rig_skeleton
+            optional: true
+            pricing:
+              kind: formula
+              base_price: 300000
+              formula: ""
+              discount_rate: 100
         rejects:
           - when: face_limit < 48
             reason: "WaveSpeed face_limit: minimum 48"
@@ -127,8 +141,8 @@ models:
           negative_prompt:
             field: negative_prompt
         drops:
-          # The rig runs in the worker for now; this layer does not rig yet (inner#1692).
-          rig_skeleton: "*"
+          # No rig on this upstream: a run that asks for a skeleton goes to one that rigs (inner#1692).
+          rig_skeleton: [ false ]
           texture_version:
             values:
               - v3.0
@@ -175,8 +189,8 @@ models:
           negative_prompt:
             field: negative_prompt
         drops:
-          # The rig runs in the worker for now; this layer does not rig yet (inner#1692).
-          rig_skeleton: "*"
+          # No rig on this upstream: a run that asks for a skeleton goes to one that rigs (inner#1692).
+          rig_skeleton: [ false ]
           texture_version:
             values:
               - v3.0
@@ -264,8 +278,18 @@ models:
           enable_image_autofix:
             field: enable_image_autofix
         drops:
-          # The rig runs in the worker for now; this layer does not rig yet (inner#1692).
           rig_skeleton: "*"
+        extra_steps:
+          - kind: rig
+            endpoint: tripo3d/rig
+            at: after
+            for_param: rig_skeleton
+            optional: true
+            pricing:
+              kind: formula
+              base_price: 300000
+              formula: ""
+              discount_rate: 100
         rejects:
           - when: face_limit < 48
             reason: "WaveSpeed face_limit: minimum 48"
@@ -305,8 +329,8 @@ models:
           orientation:
             field: orientation
         drops:
-          # The rig runs in the worker for now; this layer does not rig yet (inner#1692).
-          rig_skeleton: "*"
+          # No rig on this upstream: a run that asks for a skeleton goes to one that rigs (inner#1692).
+          rig_skeleton: [ false ]
           texture_version:
             values:
               - v3.0
@@ -354,8 +378,8 @@ models:
           model_seed:
             field: seed
         drops:
-          # The rig runs in the worker for now; this layer does not rig yet (inner#1692).
-          rig_skeleton: "*"
+          # No rig on this upstream: a run that asks for a skeleton goes to one that rigs (inner#1692).
+          rig_skeleton: [ false ]
           texture_version:
             values:
               - v3.0
@@ -456,8 +480,18 @@ models:
           enable_image_autofix:
             field: enable_image_autofix
         drops:
-          # The rig runs in the worker for now; this layer does not rig yet (inner#1692).
           rig_skeleton: "*"
+        extra_steps:
+          - kind: rig
+            endpoint: tripo3d/rig
+            at: after
+            for_param: rig_skeleton
+            optional: true
+            pricing:
+              kind: formula
+              base_price: 300000
+              formula: ""
+              discount_rate: 100
         rejects:
           - when: face_limit < 48
             reason: "WaveSpeed face_limit: minimum 48"
@@ -497,8 +531,8 @@ models:
           orientation:
             field: orientation
         drops:
-          # The rig runs in the worker for now; this layer does not rig yet (inner#1692).
-          rig_skeleton: "*"
+          # No rig on this upstream: a run that asks for a skeleton goes to one that rigs (inner#1692).
+          rig_skeleton: [ false ]
           texture_version:
             values:
               - v3.0
@@ -546,8 +580,8 @@ models:
           model_seed:
             field: seed
         drops:
-          # The rig runs in the worker for now; this layer does not rig yet (inner#1692).
-          rig_skeleton: "*"
+          # No rig on this upstream: a run that asks for a skeleton goes to one that rigs (inner#1692).
+          rig_skeleton: [ false ]
           texture_version:
             values:
               - v3.0

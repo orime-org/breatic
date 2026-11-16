@@ -1,3 +1,6 @@
+# The frame of a new Timeline: width and height must be one of the seven frame
+# presets (1920x1080, 1080x1920, 1080x1080, 1440x1080, 1080x1350, 1080x1620,
+# 2520x1080); every service refuses to start otherwise.
 defaults:
   width: 1920
   height: 1080
@@ -29,7 +32,7 @@ web_animation:
   font_set_version: 3
   preview_token_ttl_ms: 3600000
   player_load_timeout_ms: 15000
-  # The preview loads a web copy's page this far ahead of its first visible frame, hidden.
+  # The preview loads a video clip's element or a web copy's page this far ahead of its first visible frame, hidden.
   preview_premount_ms: 2000
   # Loaded preview pages no copy uses that are kept for reuse; beyond this the oldest is unloaded.
   preview_idle_instances_max: 8
@@ -42,3 +45,14 @@ web_animation:
     vcpu: 1
     memory_gib: 6
     disk_gb: 12
+# Multi-video preview sync (#1410), in seconds except the steer rate.
+preview:
+  # Drift past which a lane's playback rate is steered by drift_steer_rate.
+  drift_steer_seconds: 0.04
+  # Drift past which a lane is hard-synced, when it also jumped by more than this since the last check; the preview waits for it.
+  drift_hard_sync_seconds: 0.5
+  # Drift past which a lane is hard-synced however gradually it grew.
+  drift_catastrophic_seconds: 3
+  # While the preview waits, lanes not waited for are sought back to the held frame only when further off than this.
+  resume_seek_seconds: 0.15
+  drift_steer_rate: 0.03

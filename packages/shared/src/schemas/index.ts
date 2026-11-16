@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /** Shared Zod schemas for API request validation. */
 export {
@@ -103,4 +103,9 @@ export type {
   AgentInstructionsSaveInput,
   AgentInstructionsView,
   ChatRunningAnswer,
+  ChatPendingItem,
+  ChatSendAnswer,
+  ChatSyncAnswer,
+  ChatStopAnswer,
+  ChatQueueRemoveAnswer,
 } from "@shared/schemas/api.js";

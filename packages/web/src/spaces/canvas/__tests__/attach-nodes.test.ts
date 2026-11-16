@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What the canvas hands the chat when nodes are added to the agent.
@@ -12,7 +12,7 @@ import * as Y from 'yjs';
 import type { ModelCatalog, ModelEntry, NodeType } from '@breatic/shared';
 
 import type { CanvasEdge, CanvasNodeView } from '@web/data/yjs/canvas-space';
-import { itemForPick } from '@web/spaces/canvas/attach-nodes';
+import { itemForPick, nodeNameOf } from '@web/spaces/canvas/attach-nodes';
 
 /**
  * A node on the canvas.
@@ -155,7 +155,8 @@ function videoModel(name: string, storyboard: boolean): ModelEntry {
         }
         : {}),
     },
-    providers: [],
+    availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: false, envVar: 'WAVESPEED_API_KEY' }] },
+    pricing_rules: undefined,
   } as ModelEntry;
 }
 
@@ -300,6 +301,15 @@ describe('a piece of the canvas handed to the agent', () => {
   });
 });
 
+describe('a note named by its own words', () => {
+  it('keeps an emoji whole when it straddles the cut, so the name stays storable text', () => {
+    const name = nodeNameOf('annotation', { content: `${'x'.repeat(39)}😀 and the rest` });
+
+    expect(name).toBe(`${'x'.repeat(39)}😀`);
+    expect(name.isWellFormed()).toBe(true);
+  });
+});
+
 describe('a dialogue handed over (inner#1825)', () => {
   const GEMINI = {
     ...SPEECH_MODEL,
@@ -363,6 +373,23 @@ describe('a dialogue handed over (inner#1825)', () => {
     expect(handed({ speakers: PAIR, _stand_in_on: true }, [paragraph('Ava：hi'), paragraph('Leo：hello')])?.data).toMatchObject({
       prompts: { tts: 'Ava: hi\nLeo: hello' },
     });
+  });
+
+  it('names the replacement of a retired model, before collab has stored the node under it (#1521)', () => {
+    const OLD = 'gemini-3.1-flash-text-to-speech';
+    const NEW = 'gemini-3.8-flash-text-to-speech';
+    const doc = new Y.Doc();
+    const root = doc.getMap<Y.Map<unknown>>('data');
+    root.set('d1', ymap({ mode: 'tts', model: OLD, modelByMode: { tts: OLD }, paramsByModel: { [OLD]: { speakers: PAIR, _stand_in_on: true } } }));
+    const viewed = node('d1', 'audio', { name: 'Dialogue', mode: 'tts', model: NEW, paramsByModel: { [NEW]: { speakers: PAIR, _stand_in_on: true } } });
+    const item = itemForPick({ nodes: [viewed], edges: [] }, ['d1'], {
+      dataOf: (id) => root.get(id) ?? null,
+      catalog: { image: [], video: [], audio: [{ ...GEMINI, name: NEW }], tts: [], three_d: [], total: 1, credit_multiplier: 1 } as unknown as ModelCatalog,
+      firstVoiceOf: () => undefined,
+    });
+    const data = (item?.chip?.data_snapshot as { nodes: Array<{ data: Record<string, unknown> }> } | undefined)?.nodes[0]?.data;
+    expect(data).toMatchObject({ model: NEW, modelByMode: { tts: NEW }, paramsByModel: { [NEW]: { speakers: PAIR } } });
+    expect(data?.paramsByModel).not.toHaveProperty(OLD);
   });
 
   it('gives the words as written when the node reads in one voice', () => {

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Canvas routes — task management.
@@ -42,9 +42,12 @@ import {
   sendsUntakenPrompt,
   violatesSourceRequirementForModel,
   violatesReferenceCountForModel,
+  modelCatalog,
   violatesTextLengthForModel,
 } from "@breatic/domain";
 import { nodeHistoryService } from "@breatic/domain";
+import { assertLlmServable, assertServable, assertTakesInput } from "@server/modules/task/model-servable.js";
+import { catalogEntryOf } from "@breatic/shared/mini-tools";
 import { nodeTaskService } from "@breatic/domain";
 import {
   holdRun,
@@ -233,6 +236,8 @@ canvas.post(
   // the id its task row will carry, BEFORE that row exists, so a refusal
   // leaves nothing behind. From here until the job is queued, every way out
   // releases the hold; once queued, the worker charges or releases it.
+  // The run as it is priced, and asked about before anything is held.
+  const estimateInput = { params: body.params, prompt: extractPromptText(body.params.prompt ?? body.params.text) };
   const { taskId } = await holdRun({
     projectId,
     userId: user.id,
@@ -274,7 +279,7 @@ canvas.post(
       // #1735 reference-count gate: a submission that over-fills a capped list
       // param (e.g. more reference images than the model's `max_items`) is rejected
       // BEFORE enqueue so the user is told, rather than the worker silently
-      // truncating (providers/shared.ts). Same gate location as the source check.
+      // truncating (`cleanParams` in handlers/model-params.ts). Same gate location as the source check.
       const countViolation = violatesReferenceCountForModel(body.model, body.params);
       if (countViolation) {
         logger.warn(
@@ -293,19 +298,22 @@ canvas.post(
           t("server.canvas.too_many_inputs", { limit: countViolation.limit, actual: countViolation.actual }),
         );
       }
+      // A model no upstream here can serve, or a route through one it is not offered on, is refused before
+      // anything is held or queued.
+      const entry = body.model === undefined ? undefined : catalogEntryOf(modelCatalog.getModelCatalog(), body.model);
+      if (entry !== undefined) assertServable(entry.name, entry.display_name, body.route);
       // inner#1825 text-length gate: a setting the model needs written, emptied.
       const short = violatesTextLengthForModel(body.model, body.params);
       if (short) {
         logger.warn({ userId: user.id, projectId, model: body.model, reason: "param_too_short", field: short.param }, "execute_gate_rejected");
         throw new ValidationError(t("server.canvas.param_too_short", { name: t(`canvas.generatePanel.param.${short.param}`) }));
       }
-      return Promise.resolve();
+      // #1521: a run no upstream here takes (too long a text, too many lines) is refused naming the limit.
+      return entry === undefined
+        ? Promise.resolve()
+        : assertTakesInput(entry.name, entry.display_name, estimateInput, body.route, { userId: user.id, projectId });
     },
-    credits: () =>
-      estimateTaskCredits(body.model, {
-        params: body.params,
-        prompt: extractPromptText(body.params.prompt ?? body.params.text),
-      }),
+    credits: () => estimateTaskCredits(body.model, estimateInput, body.route),
   });
 
   let task: Awaited<ReturnType<typeof taskService.create>>;
@@ -317,13 +325,15 @@ canvas.post(
     // mail about storage.
     await assertStorageAllowance(projectId, "generate");
 
+    // The run is held, priced and served on one route: the task row and the job both carry the one the estimate used.
+    const runParams = body.route === undefined ? body.params : { ...body.params, route: body.route };
     task = await admitGeneration(
       user.id,
       projectId,
       spaceId,
       body.task_type,
       mode,
-      body.params,
+      runParams,
       body.model,
       body.source,
       taskId,
@@ -375,7 +385,7 @@ canvas.post(
         spaceId,
         taskType: body.task_type,
         model: body.model,
-        params: body.params,
+        params: runParams,
         source: body.source,
         targetNodeIds: targetNodeId ? [targetNodeId] : [],
         mode,
@@ -484,6 +494,8 @@ async function startReading(
 
   // Cross-tenant guard — see /canvas/tasks rationale.
   await projectService.assertAccess(body.project_id, userId, "editor");
+  // A deployment with no understanding upstream refuses before the row opens, saying what it is missing.
+  assertLlmServable(model, "understand");
 
   const params: Record<string, unknown> = {
     source_type: body.source_type,

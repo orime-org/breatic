@@ -412,6 +412,10 @@ html[data-theme='light'] {
   --color-comment-hue: #f1e05a;
   --color-comment-mark: color-mix(in srgb, var(--color-comment-hue) 42%, transparent);
   --color-comment-mark-active: color-mix(in srgb, var(--color-comment-hue) 80%, transparent);
+  /* The 1px line around a media block whose comment is read: a line is too
+     thin for the highlight's pale fill to show on the page, so it takes the
+     dark theme's deeper hue in both themes. */
+  --color-comment-outline: #a08f0e;
   --color-note-foreground: var(--neutral-900);
   /* Recessive text ON the note: the time, the "edited" mark, the drop notice,
      every box's placeholder. `--color-muted-foreground` is tuned against
@@ -470,6 +474,8 @@ html[data-theme='light'] {
     0 2px 4px -2px rgba(0, 0, 0, 0.04);
   /* Content scrolled under the edge of its frame: the black --shadow-md uses. */
   --overflow-shade: rgba(0, 0, 0, 0.08);
+  /* The 3D viewfinder's dim outside its frame. */
+  --viewfinder-shade: rgba(0, 0, 0, 0.4);
 
   /* ---- Type scale · 10 steps (base 15, each with a line-height) ---- */
   --text-2xs: 11px;
@@ -622,6 +628,7 @@ html[data-theme='dark'] {
   --color-comment-hue: #a08f0e;
   --color-comment-mark: color-mix(in srgb, var(--color-comment-hue) 22%, transparent);
   --color-comment-mark-active: color-mix(in srgb, var(--color-comment-hue) 46%, transparent);
+  --color-comment-outline: var(--color-comment-hue);
   --color-note-foreground: var(--neutral-900);
   --color-note-foreground-muted: var(--neutral-600);
 
@@ -631,6 +638,8 @@ html[data-theme='dark'] {
   --shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.5),
     0 2px 4px -2px rgba(0, 0, 0, 0.4);
   --overflow-shade: rgba(0, 0, 0, 0.5);
+  /* Deeper on the dark stage, where 0.4 leaves the frame's inside and outside a few steps apart. */
+  --viewfinder-shade: rgba(0, 0, 0, 0.6);
 }
 
 /* ============================================================

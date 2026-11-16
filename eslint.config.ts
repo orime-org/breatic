@@ -4,7 +4,7 @@ import tseslint from "typescript-eslint";
 import jsdoc from "eslint-plugin-jsdoc";
 import importPlugin from "eslint-plugin-import";
 import drizzle from "eslint-plugin-drizzle";
-import { breaticPlugin } from "@breatic/eslint-rules";
+import { breaticPlugin, upstreamLiteralOptions } from "@breatic/eslint-rules";
 import ts from "typescript";
 import { posix } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -414,7 +414,6 @@ export default tseslint.config(
       "**/infra/**",
       "**/*-loader.ts",
       "**/model-catalog/**",
-      "**/providers/shared.ts",
     ],
     rules: {
       "breatic/no-sync-in-request-path": "error",
@@ -679,6 +678,23 @@ export default tseslint.config(
           message: "Global-region code reads Studios and Projects through the global directory or a region function.",
         }],
       }],
+    },
+  },
+  {
+    // Only provider names an upstream (inner#1743): its addresses, names and
+    // key variables, read from config/provider/upstreams.yaml. web declares
+    // the same rule in its own config.
+    files: [
+      "packages/{collab,core,domain,integration-tests,server,shared,worker,ingest}/src/**/*.{ts,tsx}",
+      "packages/ingest/container/**/*.ts",
+    ],
+    ignores: [
+      "**/__tests__/**",
+      "**/*.test.ts",
+      "**/*.spec.ts",
+    ],
+    rules: {
+      "breatic/no-upstream-literal": ["error", upstreamLiteralOptions(fileURLToPath(new URL(".", import.meta.url)))],
     },
   },
   {

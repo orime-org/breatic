@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { MediaBinding, ProviderConfigInput } from "../../../config/schema.js";
@@ -348,6 +348,11 @@ describe("fal costs", () => {
     expect(done.costs).toEqual([{ state: "pending", lookup: { upstream: "fal", predictionId: "r7" } }]);
     expect(await provider.cost.lookup({ upstream: "fal", predictionId: "r7" }, { lastAttempt: false })).toEqual({ state: "pending", lookup: { upstream: "fal", predictionId: "r7" } });
     expect((await provider.cost.lookup({ upstream: "fal", predictionId: "r7" }, { lastAttempt: true })).state).toBe("missing");
+  });
+
+  it("answers missing at once for a lookup that names no request to ask about", async () => {
+    const { provider } = await finished(events([]));
+    expect(await provider.cost.lookup({ upstream: "fal", generationId: "gen-9" }, { lastAttempt: false })).toEqual({ state: "missing", reason: "the lookup names nothing to ask" });
   });
 
   it("leaves a cost pending, with a warning, when the billing events cannot be read, and missing on the last lookup", async () => {

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /** The canvas hands the panels a getter; these trees answer 'this client'. */
 const LAST_WRITE_LOCAL = (): boolean => true;
@@ -638,7 +638,8 @@ const T2I_MODEL: ModelEntry = {
   params: {
     aspect_ratio: { description: '', values: ['1:1', '16:9'], default: '1:1' },
   },
-  providers: [],
+  availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: false, envVar: 'WAVESPEED_API_KEY' }] },
+  pricing_rules: undefined,
 };
 
 /** An image-to-image model, so a switch to i2i has something to resolve to. */
@@ -1730,5 +1731,50 @@ describe('GeneratePanelContainer — picking a template (inner#977)', () => {
     // `{✏️ the story}` is still the user's to write.
     expect(toast.info).toHaveBeenCalledWith(en.canvas.generatePanel.editProposalMarks, expect.anything());
     listSpy.mockRestore();
+  });
+});
+
+describe('GeneratePanelContainer — a run no upstream here takes (#1521)', () => {
+  beforeEach(() => {
+    _resetForTests();
+    canvasSessions.of('s').setState({ panelHostId: null, panelKind: null, pickSession: null });
+    vi.mocked(toast.warning).mockClear();
+  });
+
+  it('says the limit an upstream here holds the prompt to on press, and sends nothing', async () => {
+    const capped: ModelEntry = {
+      ...T2I_MODEL,
+      name: 'capped-image',
+      display_name: 'Capped Image',
+      availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: true, envVar: 'WAVESPEED_API_KEY' }] },
+      pricing_rules: {
+        model: 'capped-image',
+        upstreams: [{
+          upstream: 'wavespeed',
+          prompt_field: 'prompt',
+          fields: {},
+          pricing: { kind: 'formula', base_price: 30000, formula: '{"total_price": base_price}', discount_rate: 100 },
+          steps: [],
+          rejects: [{ when: '$length(prompt) > 5', reason: 'WaveSpeed prompt maxLength 5', limit: { field: 'prompt', measure: 'characters', max: 5 } }],
+        }],
+      },
+    };
+    const listSpy = vi.spyOn(modelsApi, 'list').mockResolvedValue(imageCatalog([capped]));
+    const createSpy = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({ id: 'task-1' } as Awaited<ReturnType<typeof canvasApi.createTask>>);
+    seedImageNode({ model: 'capped-image' });
+    seedPromptText('a long prompt');
+    mountContainer();
+    act(() => {
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
+    });
+    await screen.findByTestId('generate-prompt-editor');
+    // The refusal is worked out off the render path, once the rules have loaded.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    fireEvent.click(await screen.findByTestId('generate-execute'));
+
+    expect(toast.warning).toHaveBeenCalledWith('Capped Image takes at most 5 characters in the text.', expect.anything());
+    expect(createSpy).not.toHaveBeenCalled();
+    listSpy.mockRestore();
+    createSpy.mockRestore();
   });
 });

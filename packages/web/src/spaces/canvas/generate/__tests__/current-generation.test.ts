@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What a node's panel would run right now: the mode, model and params in
@@ -31,7 +31,8 @@ function video(name: string, mode: string[], params: Record<string, ParamDescrip
     generation_time: 10,
     takes_prompt: true,
     params: { duration: { description: '', default: 5, values: [3, 5], fill: 'panel' }, ...params },
-    providers: [],
+    availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: false, envVar: 'WAVESPEED_API_KEY' }] },
+    pricing_rules: undefined,
   };
 }
 

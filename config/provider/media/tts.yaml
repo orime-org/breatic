@@ -3,7 +3,9 @@
 # are unique per model. A model's `rejects` are its vendor's own input limits,
 # in our param names (the prompt as `prompt`), each with the vendor's words as
 # `reason`, the vendor page as `source` and, for a limit announced for a date,
-# `from`; no upstream takes a run past them. Each binding names the upstream's
+# `from`; no upstream takes a run past them. A reject whose condition counts
+# characters or lines states that count as `limit` (our param, `measure`,
+# `max` or `min`, `per` line or item). Each binding names the upstream's
 # model id, the field the prompt goes in (`send_empty` sends it and every param
 # even when empty), and how each of our params is written there: `field` (dots
 # write under nested objects), `values` (our value to the upstream's spelling),
@@ -18,7 +20,9 @@
 # every call, `voice_map` maps our voices to the upstream's, `output_field` is
 # where a fal result puts its files, `extra_steps` and `reused_by` are the
 # upstream's further calls, and the binding's `rejects` hold only what this
-# upstream enforces beyond the vendor. `mentions` is
+# upstream enforces beyond the vendor. `dialogue` sends a run that names its
+# speakers as the upstream's turns (`field`, each turn's `speaker_field` and
+# `text_field`) instead of the prompt field. `mentions` is
 # how the prompt names a param's sources there ({n} counts from 1, {i} from 0).
 # `pricing` is the upstream's contract: base_price in millionths of a USD, a
 # JSONata formula (empty means base_price per call), discount_rate the percentage
@@ -45,6 +49,44 @@ models:
           base_price: 50000
           formula: '{"total_price": $ceil(base_price * $length(text) / 1000)}'
           discount_rate: 100
+  gemini-3.8-flash-text-to-speech:
+    upstreams:
+      - upstream: wavespeed
+        weight: 1
+        model_id: google/gemini-3.8-flash/text-to-speech
+        prompt_field: text
+        params:
+          speakers:
+            field: speakers
+            item_fields:
+              speaker:
+                field: speaker_id
+              voice:
+                field: voice
+          voice_id:
+            field: voice
+        dialogue:
+          speakers: speakers
+          name: speaker
+          field: turns
+          speaker_field: speaker_id
+          text_field: text
+        rejects:
+          - when: '$not($exists(turns)) and $length(text) > 8000'
+            limit: { field: prompt, measure: characters, max: 8000 }
+            reason: WaveSpeed text maxLength 8000
+          - when: $max(turns.$length(text)) > 8000
+            limit: { field: prompt, measure: characters, max: 8000, per: line }
+            reason: WaveSpeed turns[].text maxLength 8000
+          - when: $count(turns) > 100
+            limit: { field: prompt, measure: lines, max: 100 }
+            reason: WaveSpeed turns maxItems 100
+        pricing:
+          kind: formula
+          base_price: 50000
+          formula: '{"total_price": $max([base_price, $ceil(base_price * $length(text) / 1000)])}'
+          discount_rate: 100
+  # Retired (#1521): kept so a run opened on 3.1 before the change finishes there; removed with #1516.
   gemini-3.1-flash-text-to-speech:
     upstreams:
       - upstream: wavespeed
@@ -116,6 +158,7 @@ models:
         output_field: audio
         rejects:
           - when: $length(prompt) > 50000
+            limit: { field: prompt, measure: characters, max: 50000 }
             reason: fal prompt maxLength 50000
           - when: $exists(speakers[$not($word(speaker))])
             reason: fal speakers[].speaker_id pattern ^\w+$ (Unicode word characters)
@@ -178,6 +221,7 @@ models:
           mode: async
         rejects:
           - when: $length(prompt) > 50000
+            limit: { field: prompt, measure: characters, max: 50000 }
             reason: SandBase prompt maxLength 50000
           - when: $exists(speakers[$not($word(speaker))])
             reason: "SandBase speakers[].speaker_id: Must be alphanumeric with no whitespace (measured: it takes Chinese letters and refuses a middle dot)"
@@ -189,6 +233,7 @@ models:
   minimax-speech-2.8-hd:
     rejects:
       - when: $length(prompt) > 10000
+        limit: { field: prompt, measure: characters, max: 10000 }
         reason: "MiniMax T2A text: Must be less than 10,000 characters (a 10,000-character text was served when measured)"
         source: https://platform.minimax.io/docs/api-reference/speech-t2a-http
       - when: speed < 0.5 or speed > 2
@@ -205,6 +250,8 @@ models:
         params:
           emotion:
             field: emotion
+          language_boost:
+            field: language_boost
           pronunciation_dict:
             field: pronunciation_dict
             transform: pronunciation_pairs
@@ -226,6 +273,9 @@ models:
         params:
           emotion:
             field: voice_setting.emotion
+          language_boost:
+            field: language_boost
+            supported: [ "Chinese", "Chinese,Yue", "English", "Arabic", "Russian", "Spanish", "French", "Portuguese", "German", "Turkish", "Dutch", "Ukrainian", "Vietnamese", "Indonesian", "Japanese", "Italian", "Korean", "Thai", "Polish", "Romanian", "Greek", "Czech", "Finnish", "Hindi", "Bulgarian", "Danish", "Hebrew", "Malay", "Slovak", "Swedish", "Croatian", "Hungarian", "Norwegian", "Slovenian", "Catalan", "Nynorsk", "Afrikaans", "auto" ]
           pronunciation_dict:
             field: pronunciation_dict.tone_list
             transform: pronunciation_pairs
@@ -724,6 +774,9 @@ models:
         params:
           emotion:
             field: emotion
+          language_boost:
+            field: language_boost
+            supported: [ "Chinese", "Chinese,Yue", "English", "Arabic", "Russian", "Spanish", "French", "Portuguese", "German", "Turkish", "Dutch", "Ukrainian", "Vietnamese", "Indonesian", "Japanese", "Italian", "Korean", "Thai", "Polish", "Romanian", "Greek", "Czech", "Finnish", "Hindi", "Bulgarian", "Danish", "Hebrew", "Malay", "Slovak", "Swedish", "Croatian", "Hungarian", "Norwegian", "Slovenian", "Catalan", "Nynorsk", "Afrikaans", "auto" ]
           speed:
             field: speed
           voice_id:
@@ -1210,6 +1263,7 @@ models:
           mode: async
         rejects:
           - when: $length(text) > 5000
+            limit: { field: prompt, measure: characters, max: 5000 }
             reason: SandBase text maxLength 5000
         pricing:
           kind: formula
@@ -1219,6 +1273,7 @@ models:
   elevenlabs-v3:
     rejects:
       - when: $length(prompt) > 5000
+        limit: { field: prompt, measure: characters, max: 5000 }
         reason: "ElevenLabs Eleven v3: up to 5,000 characters"
         source: https://elevenlabs.io/docs/help-center/product/core-capabilities/text-to-speech/whats-the-maximum-amount-of-characters-and-text-i-can-generate.md
     upstreams:

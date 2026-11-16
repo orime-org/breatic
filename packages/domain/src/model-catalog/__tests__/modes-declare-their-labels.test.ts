@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What a mode is called is declared once, and it is the picker's word (#269).
@@ -27,10 +27,6 @@ const VIDEO = [
   '    display_name: "A Model"',
   '    mode: "t2v"',
   "    takes_prompt: true",
-  "    providers:",
-  "      - name: wavespeed",
-  '        model_id: "a"',
-  "        priority: 1",
 ].join("\n");
 
 /** That mode, called something no table anywhere would guess. */

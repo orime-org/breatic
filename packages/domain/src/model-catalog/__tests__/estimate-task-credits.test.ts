@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * estimateTaskCredits — the estimate the /canvas/tasks route requires a
@@ -65,7 +65,7 @@ describe("estimateTaskCredits", () => {
     initCore(env);
     resetModelCatalog();
     try {
-      expect(await estimateTaskCredits("grok-imagine-image-v2.0-text-to-image", { params: {} })).toBeCloseTo(10, 6);
+      expect(await estimateTaskCredits("grok-imagine-image-v2.0-text-to-image", { params: {} })).toBeCloseTo(16, 6);
     } finally {
       useFullCatalog();
     }

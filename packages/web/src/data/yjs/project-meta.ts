@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import * as React from 'react';
@@ -226,4 +226,27 @@ function readMetaState(doc: Y.Doc): {
   users: ReadonlyMap<string, ProjectUser>;
 } {
   return { spaces: readSpaces(doc), users: readUsers(doc) };
+}
+
+/**
+ * The project's Spaces, read from the project meta document the project page
+ * already holds; this acquires no connection of its own.
+ * @param projectId - The project.
+ * @returns The Spaces, kept current.
+ */
+export function useProjectSpaceList(projectId: string): ReadonlyArray<ProjectSpace> {
+  const doc = React.useMemo(() => getDoc(docName.projectMeta(projectId)), [projectId]);
+  const [spaces, setSpaces] = React.useState<ReadonlyArray<ProjectSpace>>(() => readSpaces(doc));
+  React.useEffect(() => {
+    const spacesMap = doc.getMap<Y.Map<unknown>>(SPACES_KEY);
+    /**
+     * Re-read the Spaces after any change to them.
+     * @returns Nothing.
+     */
+    const update = (): void => setSpaces(readSpaces(doc));
+    spacesMap.observeDeep(update);
+    update();
+    return () => spacesMap.unobserveDeep(update);
+  }, [doc]);
+  return spaces;
 }

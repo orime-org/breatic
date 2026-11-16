@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -113,12 +113,35 @@ const ELEVEN: ModelEntry = {
       value_labels: { 0: 'Creative', 0.5: 'Natural', 1: 'Robust' },
     },
   },
-  providers: [],
-  prompt_upstream: 'text',
-  pricing: {
-    base_price: 50000,
-    formula: '{"total_price": $ceil(base_price * $length(text) / 1000)}',
-    discount_rate: 100,
+  availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: true, envVar: 'WAVESPEED_API_KEY' }] },
+  // As provider prices it on WaveSpeed: the prompt goes as `text`.
+  pricing_rules: {
+    model: 'elevenlabs-v3',
+    upstreams: [{
+      upstream: 'wavespeed',
+      prompt_field: 'text',
+      fields: {},
+      pricing: { kind: 'formula', base_price: 50000, formula: '{"total_price": $ceil(base_price * $length(text) / 1000)}', discount_rate: 100 },
+      steps: [],
+    }],
+  },
+};
+
+/** ElevenLabs as an upstream here that takes at most five characters would carry it (#1521). */
+const CAPPED: ModelEntry = {
+  ...ELEVEN,
+  name: 'capped-tts',
+  display_name: 'Capped TTS',
+  pricing_rules: {
+    model: 'capped-tts',
+    upstreams: [{
+      upstream: 'wavespeed',
+      prompt_field: 'text',
+      fields: {},
+      pricing: { kind: 'formula', base_price: 50000, formula: '{"total_price": base_price}', discount_rate: 100 },
+      steps: [],
+      rejects: [{ when: '$length(text) > 5', reason: 'WaveSpeed text maxLength 5', limit: { field: 'prompt', measure: 'characters', max: 5 } }],
+    }],
   },
 };
 
@@ -166,11 +189,15 @@ const SFX: ModelEntry = {
     },
     audio_format: { description: '', default: 'mp3' },
   },
-  // As the catalog prices it: $0.002 a second, three seconds at least.
-  pricing: {
-    base_price: 2000,
-    formula: '{"total_price": base_price * $max([3, $min([duration, 180])])}',
-    discount_rate: 100,
+  // As provider prices it: $0.002 a second, three seconds at least.
+  pricing_rules: {
+    model: 'sonilo-sfx-v1',
+    upstreams: [{
+      upstream: 'wavespeed',
+      fields: {},
+      pricing: { kind: 'formula', base_price: 2000, formula: '{"total_price": base_price * $max([3, $min([duration, 180])])}', discount_rate: 100 },
+      steps: [],
+    }],
   },
 };
 
@@ -223,6 +250,22 @@ const A2M: ModelEntry = {
   // The mode takes any one of its three places, which is what lets a submit
   // carrying only a song through.
   source_groups: [{ mode: 'a2m', any_of: ['song', 'melody', 'vocal'] }],
+  // As provider has it: the vendor refuses a melody beside a style (#1521).
+  pricing_rules: {
+    model: 'mureka-v9.5-generate-song',
+    rejects: [
+      { when: '$exists(melody) and $exists(prompt)', reason: 'Mureka melody combination' },
+      // The vendor's lyrics cap, shortened so a test can write past it.
+      { when: '$length(lyrics) > 20', limit: { field: 'lyrics', measure: 'characters', max: 20 }, reason: 'Mureka lyrics cap' },
+    ],
+    upstreams: [{
+      upstream: 'wavespeed',
+      prompt_field: 'prompt',
+      fields: {},
+      pricing: { kind: 'formula', base_price: 50000, formula: '{"total_price": base_price}', discount_rate: 100 },
+      steps: [],
+    }],
+  },
 };
 
 /**
@@ -236,7 +279,7 @@ function catalog(): ModelCatalog {
     // The audio bucket really does hold models outside text to speech today
     // (`config/models/audio/`), and this panel reads both buckets.
     audio: [SFX, T2M, BGM, A2M],
-    tts: [ELEVEN, FISH, CLONE, CHANGER],
+    tts: [ELEVEN, FISH, CLONE, CHANGER, CAPPED],
     three_d: [],
     total: 2,
     credit_multiplier: 1,
@@ -555,8 +598,8 @@ describe('AudioGeneratePanelContainer — what it offers', () => {
   it('states the price per thousand characters while the prompt is still empty', async () => {
     // A model priced by its text has no figure for a run with no text, so the
     // panel states the rate instead: $0.05 per thousand characters is five
-    // credits. What it does as text arrives is `estimateCredits`, and its own
-    // tests cover the pricing formulas.
+    // credits. What it does as text arrives is provider's `estimateCost`, and its
+    // own tests cover the pricing formulas.
     await openPanel({ model: 'fish-s2-pro' });
     await waitFor(() =>
       expect(screen.getByTestId('generate-audio-rate')).toHaveTextContent(
@@ -721,6 +764,25 @@ describe('AudioGeneratePanelContainer — submitting', () => {
       expect(toast.warning).toHaveBeenCalledWith('Choose a voice', expect.anything()),
     );
     expect(create).not.toHaveBeenCalled();
+  });
+
+  it('says which limit an upstream here holds the lines to, and sends nothing (#1521)', async () => {
+    const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+    await openPanel({ model: 'capped-tts', paramsByModel: { 'capped-tts': { voice_id: 'Aria' } } });
+    typePrompt('Good evening.');
+    // The refusal is worked out off the render path, once the rules have loaded.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    fireEvent.click(screen.getByTestId('generate-audio-execute'));
+    expect(toast.warning).toHaveBeenCalledWith('Capped TTS takes at most 5 characters in the text.', expect.anything());
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('sends a run the upstream takes', async () => {
+    const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+    await openPanel({ model: 'capped-tts', paramsByModel: { 'capped-tts': { voice_id: 'Aria' } } });
+    typePrompt('Hi.');
+    fireEvent.click(screen.getByTestId('generate-audio-execute'));
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
   });
 
   it('sends the task once a voice and lines are in place', async () => {
@@ -1021,6 +1083,22 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
     expect(params?.prompt ?? '').toBe('');
   });
 
+  it('says which limit the lyrics break, and sends nothing (#1521)', async () => {
+    const create = vi.spyOn(canvasApi, 'createTask').mockResolvedValue({} as never);
+    await openPanel({
+      mode: 'a2m',
+      model: 'mureka-v9.5-generate-song',
+      paramsByModel: { 'mureka-v9.5-generate-song': { compose_from: 'melody' } },
+      musicMelody: { url: 'https://x/m.mp3' },
+    });
+    typeLyrics('la la la la la la la la');
+    // The refusal is worked out off the render path, once the rules have loaded.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    fireEvent.click(screen.getByTestId('generate-audio-execute'));
+    expect(toast.warning).toHaveBeenCalledWith('Mureka V9.5 Song takes at most 20 characters in the lyrics.', expect.anything());
+    expect(create).not.toHaveBeenCalled();
+  });
+
   it('offers song and vocals, and no melody, when composing from style and references', async () => {
     await openPanel({ mode: 'a2m', model: 'mureka-v9.5-generate-song' });
     expect(screen.getByTestId('generate-prompt-group-prompt')).toBeInTheDocument();
@@ -1066,9 +1144,13 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
     view.rerender(panelTree({ ...node, paramsByModel: { 'mureka-v9.5-generate-song': { compose_from: 'melody' } } }));
     await waitFor(() => expect(screen.queryByTestId('generate-prompt-group-prompt')).toBeNull());
     typeLyrics('la la la');
+    // The vendor refuses a melody beside a style; the style left on the node is
+    // not sent, so it refuses nothing (#1521). Pressed once the rules have read the run.
+    await new Promise((resolve) => setTimeout(resolve, 300));
     fireEvent.click(screen.getByTestId('generate-audio-execute'));
 
     await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    expect(toast.warning).not.toHaveBeenCalled();
     const params = create.mock.calls[0]?.[0]?.params;
     expect(params?.melody).toBe('https://x/m.mp3');
     expect(params?.prompt ?? '').toBe('');
@@ -1311,7 +1393,7 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
 describe('AudioGeneratePanelContainer — a dialogue written line by line (inner#1825)', () => {
   const GEMINI: ModelEntry = {
     ...ELEVEN,
-    name: 'gemini-3.1-flash-text-to-speech',
+    name: 'gemini-3.8-flash-text-to-speech',
     display_name: 'Gemini 3.1 Flash TTS',
     params: {
       speakers: {

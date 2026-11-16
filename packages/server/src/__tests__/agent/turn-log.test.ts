@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The one line a finished turn leaves behind, and the two fields on it.
@@ -69,10 +69,10 @@ vi.mock("@breatic/domain", async (importOriginal) => {
     }),
     buildAgentConfig: () => ({ modelId: "test", instructions: { base: "system" }, tools: {} }),
     finalizeTurn: async () => [],
-    getModel: () =>
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider(() =>
       modelSays.failsToStart
         ? modelFailingToStart(modelSays.failsToStart)
-        : modelProducing(() => modelSays.parts as ModelStreamPart[]),
+        : modelProducing(() => modelSays.parts as ModelStreamPart[])),
   };
 });
 

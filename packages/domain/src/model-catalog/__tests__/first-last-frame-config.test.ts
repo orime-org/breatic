@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * First-last frame config wiring (#1904).
@@ -75,7 +75,7 @@ describe("first-last frame config wiring (#1904)", () => {
 
   it("keeps the end frame declared as a param on every one of them", () => {
     // The slot's URL travels as `end_image`; a model that stopped declaring it
-    // would have it dropped by validateParams before the family ever saw it.
+    // would have it dropped by the worker's validateModelParams before provider saw it.
     const config = getFullModelConfig("video");
     for (const name of FIRST_LAST_MODELS) {
       const model = config.models.find((m) => m.name === name);

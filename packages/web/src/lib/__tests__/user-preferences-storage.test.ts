@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
@@ -44,6 +44,7 @@ describe('user preferences storage', () => {
       timelineSnap: true,
       timelineLinkage: true,
       documentOutlineVisible: true,
+      voiceSampleLanguage: null,
     });
     expect(DEFAULT_USER_PREFERENCES).toEqual(readUserPreferences(ALICE));
   });
@@ -103,6 +104,7 @@ describe('user preferences storage', () => {
       timelineSnap: true,
       timelineLinkage: true,
       documentOutlineVisible: true,
+      voiceSampleLanguage: null,
     });
   });
 

@@ -3,7 +3,9 @@
 # are unique per model. A model's `rejects` are its vendor's own input limits,
 # in our param names (the prompt as `prompt`), each with the vendor's words as
 # `reason`, the vendor page as `source` and, for a limit announced for a date,
-# `from`; no upstream takes a run past them. Each binding names the upstream's
+# `from`; no upstream takes a run past them. A reject whose condition counts
+# characters or lines states that count as `limit` (our param, `measure`,
+# `max` or `min`, `per` line or item). Each binding names the upstream's
 # model id, the field the prompt goes in (`send_empty` sends it and every param
 # even when empty), and how each of our params is written there: `field` (dots
 # write under nested objects), `values` (our value to the upstream's spelling),
@@ -61,6 +63,7 @@ models:
           shots: "*"
         rejects:
           - when: $length(prompt) > 20000
+            limit: { field: prompt, measure: characters, max: 20000 }
             reason: fal prompt maxLength 20000
         pricing:
           kind: formula
@@ -84,6 +87,7 @@ models:
           mode: async
         rejects:
           - when: $length(prompt) > 20000
+            limit: { field: prompt, measure: characters, max: 20000 }
             reason: SandBase prompt maxLength 20000
         pricing:
           kind: formula
@@ -93,6 +97,7 @@ models:
   wan-3.0-text-to-video:
     rejects:
       - when: $length(prompt) > 20000
+        limit: { field: prompt, measure: characters, max: 20000 }
         reason: "Alibaba Wan3.0 prompt: maximum of 20,000 characters (content beyond it is truncated)"
         source: https://www.alibabacloud.com/help/en/model-studio/wan3-video-generation-api-reference
       - when: duration < 2 or duration > 30 or duration != $floor(duration)
@@ -252,8 +257,10 @@ models:
           mode: async
         rejects:
           - when: $length(prompt) > 50000
+            limit: { field: prompt, measure: characters, max: 50000 }
             reason: SandBase prompt maxLength 50000
           - when: $length(prompt) < 3
+            limit: { field: prompt, measure: characters, min: 3 }
             reason: SandBase prompt minLength 3
         pricing:
           kind: formula
@@ -263,6 +270,7 @@ models:
   minimax-h3-text-to-video:
     rejects:
       - when: $length(prompt) > 7000
+        limit: { field: prompt, measure: characters, max: 7000 }
         reason: "MiniMax H3 content text: maximum of 7000 characters per text"
         source: https://platform.minimax.io/docs/api-reference/video-generation-v2-create
     upstreams:
@@ -310,12 +318,14 @@ models:
   kling-v3.0-4k-text-to-video:
     rejects:
       - when: $length(prompt) > 3072
+        limit: { field: prompt, measure: characters, max: 3072 }
         reason: "Kling prompt: Maximum length: 3072 characters"
         source: https://kling.ai/document-api/api/video/3-0-omni/text-to-video.md
       - when: $sum(multi_prompt.duration) != duration
         reason: "Kling shots: sum of all shot durations must equal the total video duration"
         source: https://kling.ai/document-api/api/video/3-0-omni/text-to-video.md
       - when: $max(multi_prompt.$length(prompt)) > 512
+        limit: { field: multi_prompt, measure: characters, max: 512, per: item }
         reason: "Kling shots: shot prompt (max 512 characters)"
         source: https://kling.ai/document-api/api/video/3-0-omni/text-to-video.md
     upstreams:
@@ -379,10 +389,12 @@ models:
             field: generate_audio
         rejects:
           - when: $length(prompt) > 2500
+            limit: { field: prompt, measure: characters, max: 2500 }
             reason: fal prompt maxLength 2500
           - when: $exists(prompt) and $exists(multi_prompt)
             reason: "fal prompt: Either prompt or multi_prompt must be provided, but not both"
           - when: $length(negative_prompt) > 2500
+            limit: { field: negative_prompt, measure: characters, max: 2500 }
             reason: fal negative_prompt maxLength 2500
         pricing:
           kind: formula
@@ -433,6 +445,7 @@ models:
           shots: "*"
         rejects:
           - when: $length(prompt) > 20000
+            limit: { field: prompt, measure: characters, max: 20000 }
             reason: fal prompt maxLength 20000
         pricing:
           kind: formula
@@ -460,6 +473,7 @@ models:
           mode: async
         rejects:
           - when: $length(prompt) > 20000
+            limit: { field: prompt, measure: characters, max: 20000 }
             reason: SandBase prompt maxLength 20000
         pricing:
           kind: formula
@@ -469,6 +483,7 @@ models:
   minimax-h3-image-to-video:
     rejects:
       - when: $length(prompt) > 7000
+        limit: { field: prompt, measure: characters, max: 7000 }
         reason: "MiniMax H3 content text: maximum of 7000 characters per text"
         source: https://platform.minimax.io/docs/api-reference/video-generation-v2-create
     upstreams:
@@ -520,6 +535,7 @@ models:
   wan-3.0-image-to-video:
     rejects:
       - when: $length(prompt) > 20000
+        limit: { field: prompt, measure: characters, max: 20000 }
         reason: "Alibaba Wan3.0 prompt: maximum of 20,000 characters (content beyond it is truncated)"
         source: https://www.alibabacloud.com/help/en/model-studio/wan3-video-generation-api-reference
       - when: duration < 2 or duration > 30 or duration != $floor(duration)
@@ -660,8 +676,10 @@ models:
           mode: async
         rejects:
           - when: $length(prompt) > 50000
+            limit: { field: prompt, measure: characters, max: 50000 }
             reason: SandBase prompt maxLength 50000
           - when: $length(prompt) < 3
+            limit: { field: prompt, measure: characters, min: 3 }
             reason: SandBase prompt minLength 3
         pricing:
           kind: formula
@@ -671,12 +689,14 @@ models:
   kling-video-o3-4k-image-to-video:
     rejects:
       - when: $length(prompt) > 3072
+        limit: { field: prompt, measure: characters, max: 3072 }
         reason: "Kling Omni prompt: should not exceed 3072 characters"
         source: https://kling.ai/document-api/api/video/3-0-omni/video-omni.md
       - when: $sum(multi_prompt.duration) != duration
         reason: "Kling Omni shots: sum of all shot durations must equal the total video duration"
         source: https://kling.ai/document-api/api/video/3-0-omni/video-omni.md
       - when: $max(multi_prompt.$length(prompt)) > 512
+        limit: { field: multi_prompt, measure: characters, max: 512, per: item }
         reason: "Kling Omni shots: shot prompt (max 512 characters)"
         source: https://kling.ai/document-api/api/video/3-0-omni/video-omni.md
     upstreams:
@@ -756,6 +776,7 @@ models:
           elements: []
         rejects:
           - when: $length(prompt) > 2500
+            limit: { field: prompt, measure: characters, max: 2500 }
             reason: fal prompt maxLength 2500
           - when: $exists(prompt) and $exists(multi_prompt)
             reason: "fal prompt: Either prompt or multi_prompt must be provided, but not both"
@@ -789,6 +810,7 @@ models:
           mode: async
         rejects:
           - when: $length(prompt) > 2500
+            limit: { field: prompt, measure: characters, max: 2500 }
             reason: SandBase prompt maxLength 2500
         pricing:
           kind: formula
@@ -866,6 +888,7 @@ models:
   minimax-h3-reference-to-video:
     rejects:
       - when: $length(prompt) > 7000
+        limit: { field: prompt, measure: characters, max: 7000 }
         reason: "MiniMax H3 content text: maximum of 7000 characters per text"
         source: https://platform.minimax.io/docs/api-reference/video-generation-v2-create
       - when: get_duration(videos) > 15
@@ -1010,6 +1033,7 @@ models:
           videos: <VIDEO_REF_{i}>
         rejects:
           - when: $length(prompt) > 20000
+            limit: { field: prompt, measure: characters, max: 20000 }
             reason: fal prompt maxLength 20000
         pricing:
           kind: formula
@@ -1041,6 +1065,7 @@ models:
           videos: <VIDEO_REF_{i}>
         rejects:
           - when: $length(prompt) > 20000
+            limit: { field: prompt, measure: characters, max: 20000 }
             reason: SandBase prompt maxLength 20000
         pricing:
           kind: formula
@@ -1050,6 +1075,7 @@ models:
   wan-3.0-reference-to-video:
     rejects:
       - when: $length(prompt) > 20000
+        limit: { field: prompt, measure: characters, max: 20000 }
         reason: "Alibaba Wan3.0 prompt: maximum of 20,000 characters (content beyond it is truncated)"
         source: https://www.alibabacloud.com/help/en/model-studio/wan3-video-generation-api-reference
       - when: duration != $floor(duration) or ($not($exists(videos)) and duration < 2)
@@ -1141,7 +1167,12 @@ models:
           discount_rate: 100
   happyhorse-1.1-reference-to-video:
     rejects:
-      - when: $length(prompt) > 5000 or $length($replace(prompt, /[^\u3400-\u4DBF\u4E00-\u9FFF]/, "")) > 2500
+      - when: $length(prompt) > 5000
+        limit: { field: prompt, measure: characters, max: 5000 }
+        reason: "Alibaba HappyHorse prompt: limited to 5,000 non-Chinese characters or 2,500 Chinese characters (content beyond it is truncated)"
+        source: https://www.alibabacloud.com/help/en/model-studio/happyhorse-reference-to-video-api-reference
+      - when: $length($replace(prompt, /[^\u3400-\u4DBF\u4E00-\u9FFF]/, "")) > 2500
+        limit: { field: prompt, measure: chinese_characters, max: 2500 }
         reason: "Alibaba HappyHorse prompt: limited to 5,000 non-Chinese characters or 2,500 Chinese characters (content beyond it is truncated)"
         source: https://www.alibabacloud.com/help/en/model-studio/happyhorse-reference-to-video-api-reference
       - when: duration < 3 or duration > 15 or duration != $floor(duration)
@@ -1192,6 +1223,7 @@ models:
           images: character{n}
         rejects:
           - when: $length(prompt) > 2500
+            limit: { field: prompt, measure: characters, max: 2500 }
             reason: "fal prompt: Max 2500 characters"
         pricing:
           kind: formula
@@ -1220,6 +1252,7 @@ models:
           images: "[Image {n}]"
         rejects:
           - when: $length(prompt) > 2500
+            limit: { field: prompt, measure: characters, max: 2500 }
             reason: "SandBase prompt: Max 2500 characters"
         pricing:
           kind: formula
@@ -1356,6 +1389,7 @@ models:
   kling-v3-pro-motion:
     rejects:
       - when: $length(prompt) > 2500
+        limit: { field: prompt, measure: characters, max: 2500 }
         reason: "Kling motion control prompt: content not exceeding 2500 characters"
         source: https://kling.ai/document-api/api/video/3-0-omni/motion-control.md
       - when: 'get_duration(video) > (character_orientation = "image" ? 10 : 30)'
@@ -1499,7 +1533,7 @@ models:
           kind: formula
           base_price: 1100000
           formula: '{"total_price": $max([4, $min([$ceil(get_duration(audio)), 120])]) / 5 * base_price * (resolution = "480p" ? 1 : 2)}'
-          discount_rate: 100
+          discount_rate: 90
   sync-lipsync-3:
     upstreams:
       - upstream: wavespeed

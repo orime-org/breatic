@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Migration 0125 drops the keys that would cross the global and regional
+ * Migration 0126 drops the keys that would cross the global and regional
  * databases by what they join, so a database whose tables an earlier draft of
  * a migration built, naming the same key differently, migrates too (inner#1955).
  */
@@ -12,7 +12,7 @@ import { resolve } from "node:path";
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 
-const MIGRATION = resolve(__dirname, "../../../../core/src/db/migrations/0125_regions.sql");
+const MIGRATION = resolve(__dirname, "../../../../core/src/db/migrations/0126_regions.sql");
 
 let sql: ReturnType<typeof postgres>;
 let dropKeys: string;
@@ -30,7 +30,7 @@ afterAll(async () => {
 /** Ends the probe transaction without keeping anything. */
 class RolledBack extends Error {}
 
-describe("0125 dropping the keys across the region line", () => {
+describe("0126 dropping the keys across the region line", () => {
   it("drops a key whatever it is named, and leaves a region's own keys alone", async () => {
     const seen: { before: string[]; after: string[]; kept: number } = { before: [], after: [], kept: 0 };
     await sql

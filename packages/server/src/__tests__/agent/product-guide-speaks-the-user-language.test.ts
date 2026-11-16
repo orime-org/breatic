@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The product guide names controls in the user's language, inside a turn.
@@ -60,7 +60,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
       tools: { get_product_guide: productGuide },
     }),
     finalizeTurn: async () => [],
-    getModel: () =>
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider(() =>
       new MockLanguageModelV4({
         doStream: async (options: { prompt: unknown }) => {
           prompts.seen.push(JSON.stringify(options.prompt));
@@ -74,7 +74,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
             }),
           };
         },
-      }),
+      })),
   };
 });
 

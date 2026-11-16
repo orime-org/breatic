@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The one flow every caller runs a run's settings through (inner#1691, design
@@ -117,7 +117,7 @@ function tripo(
     tier: "recommended",
     generation_time: 120,
     params,
-    providers: [{ name: "wavespeed", model_id: "tripo3d/h3.1", priority: 0, available: true }],
+    availability: { upstreams: [{ upstream: "wavespeed", weight: 1, configured: true, envVar: "WAVESPEED_API_KEY" }] },
     takes_prompt: false,
     forces: FORCES,
     ...over,

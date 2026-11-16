@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -58,5 +58,18 @@ describe("collab entry exits", () => {
       const before = code.slice(Math.max(0, at - 120), at);
       expect(before).toMatch(/flushLogger\(\)/);
     }
+  });
+});
+
+describe("collab Timeline configuration check (#1502 design §2)", () => {
+  it("reads the Timeline configuration before the port opens, and logs and exits when it cannot", () => {
+    const check = code.indexOf("getTimelineConfig();");
+    const failed = code.indexOf('"timeline_config_invalid"');
+    const listen = code.indexOf("await server.listen();");
+    expect(check).toBeGreaterThanOrEqual(0);
+    expect(failed).toBeGreaterThan(check);
+    expect(listen).toBeGreaterThan(failed);
+    expect(code.slice(check, failed)).toMatch(/catch \(err\)[\s\S]*logger\.(error|fatal)\(\{ err\b[^}]*\}, $/);
+    expect(code.slice(failed, failed + 120)).toMatch(/exitProcess\(1\)/);
   });
 });

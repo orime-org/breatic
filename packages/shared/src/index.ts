@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 
 export { STRIPE_WEBHOOK_RESULTS, type StripeWebhookResult } from "@shared/types/stripe-webhook.js";
@@ -85,12 +85,10 @@ export type {
   ParamForce,
   ParamScalar,
   RemoteParamSource,
-  ModelProvider,
   ModelEntry,
+  ModelAvailability,
   CameraCommandEntry,
   CameraAngleParams,
-  PricingContract,
-  ExtraStep,
   SourceGroup,
   ItemField,
   ModelCatalog,
@@ -412,6 +410,11 @@ export type {
   AgentInstructionsSaveInput,
   AgentInstructionsView,
   ChatRunningAnswer,
+  ChatPendingItem,
+  ChatSendAnswer,
+  ChatSyncAnswer,
+  ChatStopAnswer,
+  ChatQueueRemoveAnswer,
   SceneGenerationAnswer,
   SceneGenerationBody,
 } from "@shared/schemas/index.js";
@@ -495,6 +498,8 @@ export {
   TimelineOperationReceiptSchema,
   TimelineDocumentV1Schema,
   TIMELINE_MAIN_TRACK_ID,
+  TIMELINE_SCHEMA_VERSIONS,
+  isTimelineSchemaVersion,
 } from "@shared/timeline/schema.js";
 export type {
   TimelineRate,
@@ -513,8 +518,24 @@ export type {
 // module load from the Timeline schemas, which share a bundle chunk with Yjs, and the main entry is in every page.
 export { assertTimelineRate, durationToFrames, timelineDurationFraction } from "@shared/timeline/time.js";
 export type { TimelineFraction } from "@shared/timeline/time.js";
-export { MAX_TIMELINE_ASSET_PAGE_SIZE } from "@shared/timeline/api.js";
-export type { TimelineClientLimits } from "@shared/timeline/api.js";
+export { MAX_TIMELINE_ASSET_PAGE_SIZE, TIMELINE_PREVIEW_DEFAULTS } from "@shared/timeline/api.js";
+export type { TimelineClientLimits, TimelinePreviewSyncLimits } from "@shared/timeline/api.js";
+export {
+  TIMELINE_LAYER_TRANSFORM_LIMITS,
+  clampTimelineScale,
+  normalizeTimelineLayerTransform,
+  roundTimelineFrameOffset,
+  sameTimelineLayerTransform,
+  timelineLayerBase,
+  timelineLayerContains,
+  timelineLayerCorners,
+  timelineLayerFrameOffset,
+  timelineLayerOffsetPixels,
+  timelineLayerStyle,
+} from "@shared/timeline/layer-geometry.js";
+export type { TimelineLayerBox, TimelineLayerFrame, TimelineLayerStyle, TimelineLayerTransform } from "@shared/timeline/layer-geometry.js";
+export { TIMELINE_FRAME_PRESETS, TIMELINE_FRAME_PRESET_KEYS, timelineFramePresetOf } from "@shared/timeline/frame-presets.js";
+export type { TimelineFramePreset } from "@shared/timeline/frame-presets.js";
 
 export {
   DOCUMENT_SCHEMA,
@@ -593,9 +614,10 @@ export { GLOBAL_API_PATHS } from "@shared/global-api-paths.js";
 // The three gates on a capped list param — the panel while picking, the server
 // before enqueue, the worker before mapping to vendor names — read one number,
 // so a submission the panel allowed is never the one the worker truncates.
-export { completeEntries, itemCap, isPresent, stepRequested, usableUrls } from "@shared/item-cap.js";
+export { completeEntries, itemCap, isPresent, usableUrls } from "@shared/item-cap.js";
 export type { CappedParam } from "@shared/item-cap.js";
-export { joinSlotFiles } from "@shared/join-slot-files.js";
+export { joinSlotFiles, neutralReference } from "@shared/join-slot-files.js";
+export { cameraPrompt, paramsToSend, type SendableModel, type SendableParam, type SendableRun } from "@shared/send-params.js";
 export type { JoinDeclarations, JoinedRun } from "@shared/join-slot-files.js";
 export {
   addShot,
@@ -663,7 +685,7 @@ export {
 // called dead. How often they arrive is `config/agent.yaml`'s, served to the
 // browser at `GET /chat/stream-config`.
 export { SSE_HEARTBEAT_MISSES_ALLOWED } from "@shared/agent/heartbeat.js";
-export { extractPromptText } from "@shared/agent/extract-prompt.js";
+export { cleanTextParams, extractPromptText, type TextParamSpec } from "@shared/agent/extract-prompt.js";
 export { applyForces, checkParamCombination, gateHolds, gateParams, promptTaken, resolveParams } from "@shared/param-resolution.js";
 export { modesOf, picturesOf } from "@shared/scene-generation.js";
 export type { AppliedForces, ParamViolation, ResolvableModel, ResolvableParam } from "@shared/param-resolution.js";
@@ -931,6 +953,8 @@ export {
   type TemplateShot,
   type TemplateTriggers,
 } from "@shared/canvas/generation-templates.js";
+export { RETIRED_MODELS, currentModelName, withCurrentModelNames, type NodeModelFields } from "@shared/canvas/retired-models.js";
+export { inputRefusalText, type InputLimitShape, type InputRefusalShape } from "@shared/input-refusal.js";
 export {
   STAND_IN_ON,
   dialogueSideOf,
@@ -942,6 +966,7 @@ export {
   speakersShort,
   standInOf,
   typedSpeaker,
+  wireParams,
   withStandInOn,
   type DialogueLine,
   type LinePlan,
@@ -1163,8 +1188,12 @@ export {
   type AttributionTouch,
 } from "@shared/analytics/attribution.js";
 
-export { SCENE_OBJECT_NAME_MAX, SCENE_POSE_KEY_PREFIX, SCENE_POSE_KEY_MAX_LENGTH, SCENE_POSE_HIPS_KEY, SceneVectorSchema, SceneRotationSchema, SceneScaleSchema, SceneModelSchema, ScenePoseSchema, SceneObjectValuesSchema, SceneObjectSchema, gatherScenePose, expandScenePose, isSceneModelMediaType } from "@shared/scene.js";
-export type { SceneVector, SceneRotation, SceneModel, ScenePose, SceneObjectValues, SceneObject, SceneEditableField, SceneImportLimits, SceneControlsConfig } from "@shared/scene.js";
+export { SCENE_OBJECT_NAME_MAX, SCENE_POSE_KEY_PREFIX, SCENE_POSE_KEY_MAX_LENGTH, SCENE_POSE_HIPS_KEY, SceneVectorSchema, SceneRotationSchema, SceneScaleSchema, SceneModelSchema, ScenePoseSchema, SceneObjectValuesSchema, SceneObjectSchema, gatherScenePose, expandScenePose, isSceneModelMediaType,
+  SCENE_LIGHT_TYPES, VIEWFINDER_RATIOS, DEFAULT_VIEWFINDER_RATIO, SCENE_FREE_RATIO_MIN, SCENE_FREE_RATIO_MAX, SCENE_FOCAL_LENGTH_MIN, SCENE_FOCAL_LENGTH_MAX, SCENE_FOCAL_LENGTH_DEFAULT,
+  SCENE_SPOT_ANGLE_MIN, SCENE_SPOT_ANGLE_MAX, SCENE_SPOT_ANGLE_DEFAULT, SCENE_LIGHT_INTENSITY, SCENE_LIGHT_COLOR_DEFAULT, SCENE_AMBIENT_COLOR_DEFAULT, SCENE_AMBIENT_INTENSITY_DEFAULT, SCENE_AMBIENT_INTENSITY_MAX,
+  SceneColorSchema, SCENE_CAMERA_KEYS, SCENE_LIGHT_KEYS, isSceneCamera, isSceneLight, compareDirectorRecords, nextDirectorNumber, isSceneModelFile } from "@shared/scene.js";
+export type { SceneVector, SceneRotation, SceneModel, ScenePose, SceneObjectValues, SceneObject, SceneEditableField, SceneImportLimits, SceneControlsConfig, SceneCaptureConfig,
+  SceneLightType, ViewfinderRatio, SceneModelFile, SceneCameraObject, SceneLightObject, SceneDirectorConfig } from "@shared/scene.js";
 export { SCENE_FORMAT_VERSION, getSceneRootMap, initializeSceneDocument } from "@shared/scene-version.js";
 
 export * from "@shared/credit-amount.js";
@@ -1176,3 +1205,4 @@ export type { AccountActivityEntity, AccountActivityKind, AccountActivityCoverag
 export type {
   TimelineExecution, TimelineExecutionRow, TimelineExecutionStatus, TimelineWebResolution, WebAnimationSourceVersion, DocumentVersion,
 } from "@shared/types/entities.js";
+export { routeSchema, type RunRoute } from "@shared/schemas/route.js";

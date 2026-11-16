@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 import { screen, act, cleanup, fireEvent, within } from '@testing-library/react';
@@ -101,6 +101,19 @@ describe('NodeHistoryRow (#1619)', () => {
   it('shows what a generation cost to at most two decimals, rounded up (inner#1666)', () => {
     renderRow(entry({ status: 'success', errorMessage: null, metadata: { credits: 3.4512 } }));
     expect(screen.getByText('3.46')).toBeInTheDocument();
+  });
+
+  // inner#1743: delivered before its upstream billed it, the run shows what is known so far.
+  it('marks a generation still being billed, its known part as a lower bound', () => {
+    renderRow(entry({ status: 'success', errorMessage: null, metadata: { credits: 12.5, billing: 'pending' } }));
+    expect(screen.getByText('≥ 12.5')).toBeInTheDocument();
+    expect(screen.getByText('credits.billingPending')).toBeInTheDocument();
+  });
+
+  it('shows a billed generation without the mark', () => {
+    renderRow(entry({ status: 'success', errorMessage: null, metadata: { credits: 18 } }));
+    expect(screen.getByText('18')).toBeInTheDocument();
+    expect(screen.queryByText('credits.billingPending')).toBeNull();
   });
 
   // #1 (user 2026-07-22): the type chip states ONLY the type (Generated /

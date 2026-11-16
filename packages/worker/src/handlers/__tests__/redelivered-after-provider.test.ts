@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What the node says when a job comes back after the provider was called.
@@ -19,7 +19,7 @@
 
 import { vi, describe, it, expect, beforeEach } from "vitest";
 
-const mockMarkFailed = vi.hoisted(() => vi.fn());
+const mockMarkFailed = vi.hoisted(() => vi.fn(async () => true));
 const mockRecordFailure = vi.hoisted(() => vi.fn());
 const mockSettleTaskForNode = vi.hoisted(() => vi.fn());
 const mockGetByIdInternal = vi.hoisted(() => vi.fn());
@@ -55,7 +55,6 @@ vi.mock("@breatic/core", () => ({
 }));
 vi.mock("@breatic/domain", () => ({
   buildAgentConfig: vi.fn(),
-  getModel: vi.fn(),
   generateTextRetry: vi.fn(),
   taskService: {
     markFailed: mockMarkFailed,
@@ -68,7 +67,6 @@ vi.mock("@breatic/domain", () => ({
     settleCharge: mockSettleCharge,
   },
   creditHoldService: { releaseHold: mockReleaseHold },
-  resolveActiveProvider: vi.fn(),
   nodeHistoryService: { recordGenerationFailure: mockRecordFailure },
   settleTaskForNode: mockSettleTaskForNode,
   understandMediaAt: vi.fn(),

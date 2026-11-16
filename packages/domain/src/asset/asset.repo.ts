@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /** Compatibility exports from the single backend asset repository. */
 import { assetRepo } from "@breatic/core";
@@ -18,8 +18,6 @@ export const findById: typeof assetRepo.findById = assetRepo.findById;
 export const fillMediaNumbers: typeof assetRepo.fillMediaNumbers = assetRepo.fillMediaNumbers;
 /** The shared repository implementation of findLiveByStorageKey. */
 export const findLiveByStorageKey: typeof assetRepo.findLiveByStorageKey = assetRepo.findLiveByStorageKey;
-/** The shared repository implementation of findHashByStorageKey. */
-export const findHashByStorageKey: typeof assetRepo.findHashByStorageKey = assetRepo.findHashByStorageKey;
 /** The shared repository implementation of registerWithDedup. */
 export const registerWithDedup: typeof assetRepo.registerWithDedup = assetRepo.registerWithDedup;
 /** The shared repository implementation of setCoverAsset. */

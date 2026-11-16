@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * recordGenerationForNodes re-throw contract (#1618 A / adversarial hole ③).
@@ -46,7 +46,6 @@ vi.mock("@breatic/domain", async () => ({
     recordProviderResult: vi.fn(),
   },
   nodeHistoryService: { recordGenerationSuccess: mockRecord, recordGenerationFailure: vi.fn() },
-  getModel: vi.fn(),
   buildToolSet: vi.fn(),
   extractPromptText: vi.fn(),
 }));

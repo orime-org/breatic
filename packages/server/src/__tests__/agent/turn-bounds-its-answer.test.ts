@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The ceiling on what one model call may write back (#148, G3).
@@ -55,14 +55,14 @@ vi.mock("@breatic/domain", async () => {
   const { domainMock } = await import("../helpers/mock-core.js");
   const base = await domainMock();
   const actual = await vi.importActual<typeof DomainModule>("@breatic/domain");
+  actual.initProvider((await import("../helpers/fake-provider.js")).assemblyProvider());
   return {
     ...base,
     streamTextRetry,
     finalizeTurn: actual.finalizeTurn,
     buildAgentConfig: actual.buildAgentConfig,
     creditLotService: { chargeOnce: vi.fn(async () => null) },
-    resolveProvider: () => "test",
-    getModel: () => ({ modelId: "test" }),
+    provider: (await import("../helpers/fake-provider.js")).fakeProvider(() => ({ modelId: "test" })),
   };
 });
 

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Credit holds (inner#1611): what a studio has promised to work that is
@@ -222,6 +222,17 @@ export async function abandonHere(hold: { studioId: string; actorUserId: string;
  */
 export async function releaseHere(referenceId: string): Promise<void> {
   await creditHoldRepo.releaseHold(referenceId);
+}
+
+/**
+ * Keep a task's hold alive while its cost is looked up after delivery (inner#1743): moved to a later expiry, never an
+ * earlier one; a released hold stays released.
+ * @param referenceId - Its key, the task id.
+ * @param until - The new expiry.
+ * @throws {Error} When the database fails.
+ */
+export async function extendHold(referenceId: string, until: Date): Promise<void> {
+  await creditHoldRepo.extendHold(referenceId, until);
 }
 
 /**

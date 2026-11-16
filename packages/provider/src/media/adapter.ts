@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What every media upstream's adapter answers to. The runner, cost lookups and
@@ -85,6 +85,11 @@ export interface StepContext {
    * @throws {Error} When the run has no cloned voice.
    */
   voice(): string;
+  /**
+   * The model the run's own call made, which a step after it reads by its address.
+   * @throws {Error} When no step before made one.
+   */
+  generated(): string;
   /** For an element step: what its describe step wrote. */
   description: string | undefined;
   itemIndex: number | null;

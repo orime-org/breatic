@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -139,6 +139,7 @@ function sampleStep(binding: MediaBinding, param: string | undefined): StepConte
     binding,
     customVoiceId: "voice-sample",
     voice: () => "voice-sample",
+    generated: () => SAMPLE_URL,
     description: SAMPLE_TEXT,
     itemIndex: 0,
     param,
@@ -265,7 +266,8 @@ const SAME_EFFECT: Readonly<Record<string, string>> = {
 const config = shipped();
 const catalogModels = new Map(catalog().models.map((m) => [m.name, m]));
 const models = new Map([...catalogModels].map(([name, m]) => [name, m.params as Record<string, CatalogParam>]));
-const cases = Object.entries(config.media.models).flatMap(([model, { upstreams }]) => upstreams.map((binding) => ({ model, binding })));
+// A retired model's bindings are checked only for staying bound (gemini-3.8-tts.test.ts): the catalog no longer has its params.
+const cases = Object.entries(config.media.models).filter(([model]) => catalogModels.has(model)).flatMap(([model, { upstreams }]) => upstreams.map((binding) => ({ model, binding })));
 const provider = createProvider({ config, keyOf: () => "k", llmMaxRetries: 0, cleanText: (t) => t });
 /**
  * The longest text the model's vendor takes in one of our params (`prompt` for the prompt), from its limits.

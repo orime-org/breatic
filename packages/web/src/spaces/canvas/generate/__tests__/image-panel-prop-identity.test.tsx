@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * 图片面板的可用档列表在内容不变时保持同一个引用（#1951）。
@@ -96,7 +96,8 @@ function catalog(): ModelCatalog {
         generation_time: 10,
         takes_prompt: true,
         params: {},
-        providers: [],
+        availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: false, envVar: 'WAVESPEED_API_KEY' }] },
+        pricing_rules: undefined,
       },
     ],
     video: [],

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * #1960 — the modes the audio panel offers.
@@ -35,7 +35,8 @@ function ttsModel(name: string, mode: string): ModelEntry {
     generation_time: 0,
     takes_prompt: true,
     params: {},
-    providers: [],
+    availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: false, envVar: 'WAVESPEED_API_KEY' }] },
+    pricing_rules: undefined,
   };
 }
 

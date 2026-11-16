@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Reading a failed understand run as something the node's row can hold
@@ -14,7 +14,7 @@
 import { MediaUnavailable, UnderstandRefused } from "@breatic/domain";
 import type { RefusalKind, UnavailableKind } from "@breatic/domain";
 import { ContainerJobFailed } from "@worker/handlers/container/run-container-job.js";
-import { UpstreamTaskFailed } from "@worker/providers/http.js";
+import { MediaRunFailed } from "@worker/handlers/media-run.js";
 import { DeadlinePassed } from "@breatic/shared";
 import {
   assetNameFromUrl,
@@ -141,8 +141,9 @@ const REFUSAL_ANSWER_STANDS: Readonly<Record<RefusalKind, boolean>> = {
  * @returns True when another attempt would land on the same answer.
  */
 export function verdictStands(err: unknown): boolean {
-  // A redelivery resumes the same prediction and reads the same failure.
-  if (err instanceof UpstreamTaskFailed) return true;
+  // provider answered the run failed: an upstream refused or failed it, or none can take it. A redelivery reads the
+  // same answer.
+  if (err instanceof MediaRunFailed) return true;
   // A redelivery reads the same job, which has already ended.
   if (err instanceof ContainerJobFailed) return true;
   // The task's two hours do not come back.
@@ -200,6 +201,8 @@ const SAYS_SOMETHING_ABOUT_THE_FILE: Readonly<
   tool_failed: false,
   no_audio_track: false,
   cut_short: false,
+  input_refused: false,
+  model_not_configured: false,
 };
 
 /**

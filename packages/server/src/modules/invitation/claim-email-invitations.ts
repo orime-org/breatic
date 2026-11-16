@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { createQueue, defaultJobOpts, env, INVITATION_CLAIM_FORWARD_QUEUE, isRegionUnavailable, logger, otherRegionsOf } from "@breatic/core";
 import { normalizeEmail } from "@breatic/shared";

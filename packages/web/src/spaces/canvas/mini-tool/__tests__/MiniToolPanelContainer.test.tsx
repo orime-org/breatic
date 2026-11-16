@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The open mini-tool panel against the canvas session (inner#888 §7.2): what a
@@ -10,7 +10,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { ReactFlow } from '@xyflow/react';
 import * as React from 'react';
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('@web/lib/toast', () => ({
   toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn() },
@@ -21,6 +21,7 @@ vi.mock('@web/spaces/canvas/mini-tool/paint-drawing', () => ({ hasInk: vi.fn() }
 import { defaultAdjustValue, type ModelCatalog, type ModelEntry } from '@breatic/shared';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
+import { modelsApi } from '@web/data/api';
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
 import { toast } from '@web/lib/toast';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
@@ -45,7 +46,7 @@ const ERASER = {
     image: { description: '', default: null, accepts: 'image', fill: 'tool' },
     mask_image: { description: '', default: null, accepts: 'image', fill: 'tool' },
   },
-  providers: [],
+  availability: { upstreams: [] },
 } as unknown as ModelEntry;
 
 const CATALOG = {
@@ -462,7 +463,7 @@ describe('an enhance source past the model\'s ceilings', () => {
       audio: { description: '', default: null, accepts: 'audio', fill: 'tool', max_total_duration: 1800, max_bytes: 536_870_912 },
       strength: { description: '', default: 0.85, min: 0, max: 1, step: 0.05, fill: 'tool' },
     },
-    providers: [],
+    availability: { upstreams: [] },
   } as unknown as ModelEntry;
 
   /**
@@ -500,5 +501,72 @@ describe('an enhance source past the model\'s ceilings', () => {
     fireEvent.click(screen.getByTestId('mini-tool-run'));
     expect(onRun).not.toHaveBeenCalled();
     expect(vi.mocked(toast.warning)).toHaveBeenCalledWith(expect.stringContaining('512'));
+  });
+});
+
+// #1521: why no upstream here takes the run as set up is said on the press, and nothing runs.
+describe('a mini-tool run no upstream here takes', () => {
+  /** The enhance model served here, its vendor refusing a strength above one half. */
+  const CAPPED = {
+    name: 'veed-clean-audio',
+    display_name: 'Clean Audio',
+    modality: 'audio',
+    mode: ['enhance'],
+    description: '',
+    guide: '',
+    tier: 'internal',
+    generation_time: 30,
+    takes_prompt: false,
+    params: {
+      audio: { description: '', default: null, accepts: 'audio', fill: 'tool' },
+      strength: { description: '', default: 0.85, min: 0, max: 1, step: 0.05, fill: 'tool' },
+    },
+    availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: true, envVar: 'WAVESPEED_API_KEY' }] },
+    pricing_rules: {
+      model: 'veed-clean-audio',
+      rejects: [{ when: 'strength > 0.5', reason: 'Clean Audio strength at most 0.5' }],
+      upstreams: [{
+        upstream: 'wavespeed',
+        fields: {},
+        pricing: { kind: 'formula', base_price: 30000, formula: '{"total_price": base_price}', discount_rate: 100 },
+        steps: [],
+      }],
+    },
+  } as unknown as ModelEntry;
+
+  /**
+   * The source audio node.
+   * @returns The node view.
+   */
+  function audio(): CanvasNodeView[] {
+    return [
+      { id: 'src', type: 'audio', position: { x: 0, y: 0 }, data: { handling: false, content: 'a.m4a', duration: 60, sizeBytes: 1_000 } },
+    ] as unknown as CanvasNodeView[];
+  }
+
+  beforeEach(() => {
+    const capped = { ...CATALOG, audio: [CAPPED] } as unknown as ModelCatalog;
+    // The query refetches on mount, and the answer is read after that; both serve the same catalog.
+    vi.spyOn(modelsApi, 'list').mockResolvedValue(capped);
+    client.setQueryData(modelCatalogQuery().queryKey, capped);
+    canvasSessions.of('').getState().closeActivePanel();
+    canvasSessions.of('').getState().openMiniTool('src', 'audio.enhance', { sourceContent: 'a.m4a', params: { strength: 0.9 } });
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('says the upstream here cannot take the run as set up on press, and runs nothing', async () => {
+    const onRun = vi.fn(() => Promise.resolve());
+    render(tree(audio(), onRun));
+    // The refusal is worked out off the render path, once the rules have loaded.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    });
+    fireEvent.click(screen.getByTestId('mini-tool-run'));
+    expect(onRun).not.toHaveBeenCalled();
+    expect(vi.mocked(toast.warning)).toHaveBeenCalledWith(
+      'Clean Audio can’t take this run as set up. Change the settings or pick another model.',
+    );
   });
 });

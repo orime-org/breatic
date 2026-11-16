@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The options a parameter offers, read off whichever model is active (#1896).
@@ -47,7 +47,7 @@ function modelWith(
     cost_per_call: 1,
     generation_time: 1,
     params: { [key]: { description: '', default: null, ...descriptor } },
-    providers: [],
+    availability: { upstreams: [] },
     sourcesByMode: {},
   } as unknown as ModelEntry;
 }

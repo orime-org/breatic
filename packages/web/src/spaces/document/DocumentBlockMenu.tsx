@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The rows of the block handle menu, and what each one runs: the seven of a
@@ -14,6 +14,7 @@
  */
 
 import * as React from 'react';
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import type { Selection } from '@tiptap/pm/state';
 
 import {
@@ -74,10 +75,12 @@ import {
   type IndentReach,
   type PressedBlock,
 } from '@web/spaces/document/document-handle-commands';
-import { openCommentDraft } from '@web/spaces/document/document-comment-entries';
+import { openCommentDraft, openMediaCommentDraft } from '@web/spaces/document/document-comment-entries';
 import { canCommentOver } from '@web/spaces/document/document-comment-target';
 import { useDocumentProjectId } from '@web/spaces/document/document-project-context';
-import { blockItem } from '@web/spaces/document/document-to-agent';
+import { blockItem, mediaRowItems, rowHoldsContent } from '@web/spaces/document/document-to-agent';
+import { mediaRowById } from '@web/spaces/document/document-comment-media';
+import { pendingUploadId } from '@web/spaces/document/document-media-types';
 import { attachToChat } from '@web/stores/attach-to-chat';
 import { selectionOverBlockContent } from '@web/spaces/document/document-hovered-block';
 import {
@@ -89,6 +92,7 @@ import { useDocumentMediaPick } from '@web/spaces/document/DocumentMediaPicker';
 import type { MediaBlockType } from '@web/spaces/document/document-media-types';
 import { DocumentInsertChoices } from '@web/spaces/document/DocumentInsertChoices';
 import { useRowNow } from '@web/spaces/document/use-row-now';
+import { columnsOutOfReach } from '@web/spaces/document/document-column-entry';
 import { blockInTableCell } from '@web/spaces/document/document-table-nodes';
 import { openTableFullscreen } from '@web/spaces/document/document-table-fullscreen';
 import { copyTableLine, cutTableLine, firstCellOf } from '@web/spaces/document/document-table-line-clipboard';
@@ -99,8 +103,8 @@ interface DocumentBlockMenuProps {
   editor: HandleEditor;
   /** The block the pointer is over. */
   block: PressedBlock;
-  /** Closes the menu. */
-  close: () => void;
+  /** Closes the menu; a formula block made by the pick has its box opened then. */
+  close: (formula?: string) => void;
   /** The rows to draw, in order. */
   rows?: readonly BlockMenuRow[];
 }
@@ -123,8 +127,15 @@ interface StyleFaces {
   readonly align: AlignFace;
   /** Which colour cells are marked, and whether a press reaches anything. */
   readonly colour: ColourFace;
-  /** Whether this row holds words a comment could mark (A3). */
+  /** Whether this row holds text a comment could mark, spaces included (A3). */
   readonly canComment: boolean;
+  /**
+   * Whether this row holds something to hand the Agent with the rows nested
+   * under it: words or uploaded media, never while its own media is still
+   * uploading. Spaces alone mark for a comment and hand the Agent nothing, as
+   * in the bubble bar.
+   */
+  readonly hasContent: boolean;
   /** Which way the row can be indented. */
   readonly indent: IndentReach;
   /** Whether the eight rows that set a block's type reach this row. */
@@ -135,6 +146,12 @@ interface StyleFaces {
    * pressing it would write nothing.
    */
   readonly quotable: boolean;
+  /**
+   * Whether the row is a picture, video or audio block, and whether its
+   * upload has finished: Comment and Add to Agent work on an uploaded one and
+   * are greyed on a pending frame (inner#1316 §5.1).
+   */
+  readonly media: 'none' | 'uploaded' | 'pending';
 }
 
 /**
@@ -147,12 +164,26 @@ function sameFaces(a: StyleFaces, b: StyleFaces): boolean {
   return (
     a.align === b.align &&
     a.canComment === b.canComment &&
+    a.hasContent === b.hasContent &&
     a.indent.in === b.indent.in &&
     a.indent.out === b.indent.out &&
     a.holdsText === b.holdsText &&
     a.quotable === b.quotable &&
+    a.media === b.media &&
     sameColours(a.colour, b.colour)
   );
+}
+
+/**
+ * Whether a row is a media block, and whether its upload has finished.
+ * @param doc - The body.
+ * @param blockId - The row.
+ * @returns What the Comment and Add to Agent rows read.
+ */
+function mediaFaceOf(doc: ProseMirrorNode, blockId: string): StyleFaces['media'] {
+  const row = mediaRowById(doc, blockId);
+  if (row === undefined) return 'none';
+  return pendingUploadId(row.node.firstChild!.attrs) === null ? 'uploaded' : 'pending';
 }
 
 /**
@@ -170,13 +201,16 @@ function sameFaces(a: StyleFaces, b: StyleFaces): boolean {
 function facesFor(editor: HandleEditor, blockId: string): StyleFaces {
   return editor.transact((tr) => {
     const over = selectionOverBlockContent(tr.doc, blockId);
+    const media = mediaFaceOf(tr.doc, blockId);
     return {
       align: alignFaceOver(tr.doc, over),
       colour: colourFaceOver(tr.doc, over),
       canComment: canCommentOver(tr.doc, over),
+      hasContent: media !== 'pending' && rowHoldsContent(tr.doc, blockId),
       indent: indentReach(tr.doc, blockId),
       holdsText: blocksUnder(tr.doc, over).length > 0,
       quotable: blocksUnderFor(tr.doc, over, 'quote').length > 0,
+      media,
     };
   });
 }
@@ -207,7 +241,7 @@ function useFacesOf(editor: HandleEditor, blockId: string): StyleFaces {
  * @param props - See {@link DocumentBlockMenuProps}.
  * @param props.editor - The editor to write to.
  * @param props.block - The block the pointer is over.
- * @param props.close - Closes the menu.
+ * @param props.close - Closes the menu, naming a formula block whose box opens then.
  * @param props.rows - The rows to draw; a block's grip rows when left out.
  * @returns The rows.
  */
@@ -220,6 +254,15 @@ export function DocumentBlockMenu({
   const t = useTranslation();
   const ticked = ticksFor(editor, block.id);
   const faces = useFacesOf(editor, block.id);
+  // Comment marks uploaded media whole and Add to Agent hands the media
+  // itself; a pending frame's two rows say why they are greyed.
+  const uploaded = faces.media === 'uploaded';
+  const refusedOnPending =
+    faces.media === 'pending'
+      ? (): void => {
+        toast.warning(t('spaces.document.media.notUploaded'));
+      }
+      : undefined;
 
   const rowNow = useRowNow(editor, block.id);
   const projectId = useDocumentProjectId();
@@ -269,10 +312,7 @@ export function DocumentBlockMenu({
   const onInsertBelow = React.useCallback(
     (choice: InsertChoice): void => {
       const live = rowNow();
-      if (live !== undefined) {
-        insertBelow(editor, live, choice);
-      }
-      close();
+      close(live === undefined ? undefined : insertBelow(editor, live, choice));
     },
     [editor, rowNow, close],
   );
@@ -401,6 +441,7 @@ export function DocumentBlockMenu({
                   onPick={onInsertBelow}
                   onPickMedia={onInsertMediaBelow}
                   tableUnreachable={blockInTableCell(editor.prosemirrorState.doc, block.id)}
+                  columnsUnreachable={columnsOutOfReach(editor.prosemirrorState.doc, block.id)}
                 />
               </DropdownMenuSubContent>
             </DropdownMenuSub>
@@ -504,7 +545,7 @@ export function DocumentBlockMenu({
           // into a range without dispatching a selection — the user's caret
           // is elsewhere and stays there (A2).
           //
-          // A row with no words in it covers no run, so there is nothing for
+          // A row with no text in it covers no run, so there is nothing for
           // a press to mark and the entry says so rather than looking usable
           // (A3, R7). The treatment is `itemWithin`'s, the menu-item side of
           // the `whenOutOfReach` the colour row beside it uses.
@@ -514,12 +555,17 @@ export function DocumentBlockMenu({
           // of a menu — "Disabled menu items are focusable but cannot be
           // activated" — so an arrow key lands here, and the row's own
           // background is the only thing that says so.
-          const reachable = faces.canComment;
           return (
             <DropdownMenuItem
               key={row.id}
               data-testid={`doc-block-row-${row.id}`}
-              {...itemWithin(reachable, () => {
+              {...itemWithin(faces.canComment || uploaded, () => {
+                if (uploaded) {
+                  const live = rowNow();
+                  if (live !== undefined) openMediaCommentDraft(editor, live.id);
+                  close();
+                  return;
+                }
                 const over = rangeNow();
                 if (over === undefined) {
                   close();
@@ -529,7 +575,7 @@ export function DocumentBlockMenu({
                   { from: over.from, to: over.to },
                 ]);
                 close();
-              })}
+              }, refusedOnPending)}
             >
               <Icon />
               {label}
@@ -539,21 +585,23 @@ export function DocumentBlockMenu({
 
         if (row.id === 'addToAgent') {
           // Hands the row, children included, to the project's Agent as the
-          // Markdown it reads as now. Greyed where Comment is, off the same
-          // reading: a row with no words has nothing to hand over. Outside a
-          // project there is nowhere to hand it, and the row is not drawn.
+          // Markdown it reads as now. Greyed when the row and its children
+          // hold no words and no uploaded media; spaces and a pending upload
+          // count as none. Outside a project there is nowhere
+          // to hand it, and the row is not drawn. A media row hands the media
+          // itself, then the rows under it as text (inner#1316 §5.5).
           if (projectId === null) return null;
           return (
             <DropdownMenuItem
               key={row.id}
               data-testid={`doc-block-row-${row.id}`}
-              {...itemWithin(faces.canComment, () => {
+              {...itemWithin(faces.hasContent, () => {
                 const live = rowNow();
                 if (live !== undefined) {
-                  void attachToChat(projectId, [blockItem(editor, live.id)]);
+                  void attachToChat(projectId, uploaded ? mediaRowItems(editor, live.id) : [blockItem(editor, live.id)]);
                 }
                 close();
-              })}
+              }, refusedOnPending)}
             >
               <Icon />
               {label}

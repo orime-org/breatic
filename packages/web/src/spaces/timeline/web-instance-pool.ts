@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The web preview instance pool (inner#1711 design §7.4): which loaded page shows which web copy. A copy visible at
@@ -73,7 +73,7 @@ function webCopiesAt(input: WebInstanceAllocationInput, frame: number): Array<{ 
 
 /**
  * The copies wanting an instance: visible ones bottom-up, then those first visible within the lead, walking the
- * playback boundaries so a copy revealed by a higher video ending is found at the frame it is revealed.
+ * playback boundaries so each copy is found at the frame it starts showing.
  * @param input - The allocation input.
  * @returns The wants in allocation order.
  * @throws {never} Never.

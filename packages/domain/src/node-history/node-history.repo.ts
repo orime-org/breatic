@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Node history repository — data access for the node_history table.
@@ -235,6 +235,26 @@ export async function createGenerationSuccessIfAbsent(data: {
         (await findLiveSuccessByContent(data.projectId, data.nodeId, data.content)),
     ),
   );
+}
+
+/**
+ * Write the credits a task was billed on its generation rows, and clear the `billing: "pending"` they carried while
+ * the task waited on its cost (inner#1743).
+ * @param taskId - The task.
+ * @param credits - What it was billed.
+ */
+export async function updateGenerationCredits(taskId: string, credits: number): Promise<void> {
+  await db
+    .update(nodeHistory)
+    .set({ metadata: sql`(coalesce(${nodeHistory.metadata}, '{}'::jsonb) - 'billing') || jsonb_build_object('credits', ${credits}::numeric)` })
+    .where(
+      and(
+        eq(nodeHistory.taskId, taskId),
+        eq(nodeHistory.entryType, "generation"),
+        eq(nodeHistory.status, "success"),
+        isNull(nodeHistory.deletedAt),
+      ),
+    );
 }
 
 /**

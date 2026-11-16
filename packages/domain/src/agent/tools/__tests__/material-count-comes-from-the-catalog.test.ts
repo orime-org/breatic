@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The tool counts material off the model's declarations (#269).
@@ -25,10 +25,6 @@ const VIDEO = [
   '    mode: "i2v"',
   "    takes_prompt: true",
   "    generation_time: 10",
-  "    providers:",
-  "      - name: wavespeed",
-  '        model_id: "two-slot"',
-  "        priority: 1",
   "    params:",
   "      image:",
   '        fill: "canvas"',
@@ -50,10 +46,6 @@ const AUDIO = [
   '    mode: "a2m"',
   "    takes_prompt: true",
   "    generation_time: 10",
-  "    providers:",
-  "      - name: wavespeed",
-  '        model_id: "three-slot"',
-  "        priority: 1",
   "    params:",
   "      song:",
   '        fill: "canvas"',

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Space size cap v2 (inner#1790 v2 web spec RQ-16, the image and audio
@@ -74,7 +74,8 @@ const T2I: ModelEntry = {
   generation_time: 10,
   takes_prompt: false,
   params: { aspect_ratio: { description: '', values: ['1:1', '16:9'], default: '1:1' } },
-  providers: [],
+  availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: false, envVar: 'WAVESPEED_API_KEY' }] },
+  pricing_rules: undefined,
 };
 
 /** A text-to-speech model with a voice catalog. */
@@ -89,8 +90,8 @@ const ELEVEN: ModelEntry = {
   generation_time: 30,
   takes_prompt: true,
   params: { voice_id: { description: '', default: 'Aria', remote_source: 'voices' } },
-  providers: [],
-  prompt_upstream: 'text',
+  availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: false, envVar: 'WAVESPEED_API_KEY' }] },
+  pricing_rules: undefined,
 };
 
 /**

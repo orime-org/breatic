@@ -12,9 +12,11 @@
 # Generate one with `openssl rand -hex 32`.
 INGEST_SHARED_SECRET=
 
-# Optional: the OpenRouter key web-animation runs call the model with
-# (inner#1711). Only the Worker's model.local relay reads it; the container
-# never sees it. Leave it empty to keep web-animation execution off, which
-# answers its job routes 501 `feature_disabled`. On a deployment:
+# Optional: the model keys web-animation runs call the model with. Each is
+# `HARNESS_` plus an upstream's `key_env` in config/provider/upstreams.yaml;
+# a run goes to the first upstream of its model's route whose key is set
+# here. Only the Worker's model.local relay reads them; the container never
+# sees them. With none set, a web-animation submit answers 501 naming the
+# variables it needs. On a deployment:
 # `wrangler secret put HARNESS_OPENROUTER_API_KEY --env production`.
 HARNESS_OPENROUTER_API_KEY=

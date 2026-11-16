@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Field caps at the routes that write them (inner#1006 §6): F02, F04, F07,
@@ -209,6 +209,7 @@ describe("F09: chat refuses an attachment name past 255 characters", () => {
     const res = await post(
       "/api/v1/chat/message",
       {
+        id: crypto.randomUUID(),
         message: "hello",
         project_id: a.projectId,
         conversation_id: a.conversationId,
