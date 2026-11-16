@@ -107,7 +107,7 @@ describe('pickMemberViews', () => {
       [4, entry('third', { view: { spaceId: 'a', at: 100, focused: false } })],
       [5, entry('third', { view: { spaceId: 'b', at: 200, focused: false } })],
     ]);
-    const views = pickMemberViews(states, 99);
+    const views = pickMemberViews(states, 99, new Map());
     expect(views.get('leader')?.spaceId).toBe('working');
     expect(views.get('other')?.spaceId).toBe('theirs');
     expect(views.get('third')?.spaceId).toBe('b');
@@ -118,23 +118,23 @@ describe('pickMemberViews', () => {
       [1, entry('leader', { view: { spaceId: 'a', at: 100, focused: false } })],
       [2, entry('leader', { view: { spaceId: 'b', at: 200, focused: false } })],
     ]);
-    const first = pickMemberViews(states, 99).get('leader');
+    const first = pickMemberViews(states, 99, new Map()).get('leader');
     states.set(1, entry('leader', { view: { spaceId: 'a', at: 150, focused: false } }));
-    expect(pickMemberViews(states, 99).get('leader')).toEqual(first);
+    expect(pickMemberViews(states, 99, new Map()).get('leader')).toEqual(first);
   });
 
-  it('counts a member as following when any of their tabs follows, a hidden one with no view included', () => {
+  it('takes whom a member follows from the server table, not from awareness, a member with no view included', () => {
+    // #920 design 4.2.1: `following` in awareness is only a tab's declaration
+    // to the server; the third argument is the table read by user id.
     const states = new Map<number, Record<string, unknown>>([
       [1, entry('u', { view: { spaceId: 's1', at: 10, focused: true } })],
-      [2, entry('u', { following: { id: 'l', at: 5 } })],
-      [3, entry('hiddenOnly', { following: { id: 'l', at: 5 } })],
-      [4, entry('switched', { following: { id: 'a', at: 1 } })],
-      [5, entry('switched', { following: { id: 'b', at: 2 } })],
+      [2, entry('u', { following: { id: 'stale', at: 5 } })],
+      [3, entry('declaredOnly', { view: { spaceId: 's2', at: 10, focused: true }, following: { id: 'l', at: 5 } })],
     ]);
-    const views = pickMemberViews(states, 99);
+    const views = pickMemberViews(states, 99, new Map([['u', 'l'], ['hiddenOnly', 'l']]));
     expect(views.get('u')).toEqual({ spaceId: 's1', following: 'l' });
     expect(views.get('hiddenOnly')).toEqual({ spaceId: null, following: 'l' });
-    expect(views.get('switched')?.following).toBe('b');
+    expect(views.get('declaredOnly')).toEqual({ spaceId: 's2', following: null });
   });
 
   it('never lists this client, malformed fields or entries without a user', () => {
@@ -143,7 +143,7 @@ describe('pickMemberViews', () => {
       [8, entry('leader', { view: { spaceId: 1, at: 999, focused: true }, following: { id: '', at: 1 } })],
       [9, { view: { spaceId: 'anon', at: 999, focused: true } }],
     ]);
-    expect(pickMemberViews(states, 7).size).toBe(0);
+    expect(pickMemberViews(states, 7, new Map()).size).toBe(0);
   });
 });
 

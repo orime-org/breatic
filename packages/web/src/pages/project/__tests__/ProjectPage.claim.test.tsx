@@ -106,6 +106,7 @@ vi.mock('@web/data/yjs/project-meta', async () => {
     > => ({
       spaces: meta.spaces,
       users: new Map(),
+      following: new Map(),
       synced: true,
       provider: fakeProvider,
       status: 'connected',

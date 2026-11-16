@@ -63,6 +63,7 @@ vi.mock('@web/data/yjs/project-meta', async () => {
     useProjectMeta: () => ({
       spaces: [{ id: 's1', name: 'S1', type: 'canvas' }],
       users: usersNow,
+      following: new Map(),
       synced: true,
       provider: null,
       status: 'connected' as const,

@@ -12,6 +12,16 @@ import { followViewport, type FlowRect, type PaneSize } from '@web/features/foll
 import { useCanvasFollow, type CanvasFollowInput } from '@web/spaces/canvas/use-canvas-follow';
 import { useFollowStore } from '@web/stores/follow';
 
+/*
+ * Framing once following ends (#920 design 4.2.1): `CanvasFollowInput` no
+ * longer has `openingFitHeld`; it takes `isCameraPlaced: () => boolean`, which
+ * CanvasSpace answers with `storedViewport !== null || cameraPlaced.current`
+ * (the ref every camera move sets). When following ends on a canvas whose
+ * camera was never placed, the hook calls `frameCanvas` once; a move the user
+ * started (a move start the hook did not cause) counts as placing it, even
+ * before the move itself reports.
+ */
+
 const docs: Y.Doc[] = [];
 const PANE = { width: 1000, height: 500 };
 
@@ -50,7 +60,7 @@ function input(over: Partial<CanvasFollowInput> & Pick<CanvasFollowInput, 'aware
     pane: PANE,
     applyViewport: vi.fn(),
     clearOpeningFit: vi.fn(),
-    openingFitHeld: false,
+    isCameraPlaced: () => true,
     frameCanvas: vi.fn(),
     ...over,
   };
@@ -216,36 +226,73 @@ describe('useCanvasFollow', () => {
     expect(clearOpeningFit).toHaveBeenCalledTimes(1);
   });
 
-  it('frames a canvas that opened while following once following ends, when no alignment ever placed it', () => {
+  it('frames a canvas whose camera was never placed once following ends', () => {
+    // It opened while following, or following dropped its queued opening fit,
+    // and the leader never showed a camera on it: it still sits at the origin.
     const local = makeAwareness();
     const frameCanvas = vi.fn();
+    const isCameraPlaced = (): boolean => false;
     const { rerender } = renderHook((p: CanvasFollowInput) => useCanvasFollow(p), {
-      initialProps: input({ awareness: local, openingFitHeld: true, frameCanvas }),
+      initialProps: input({ awareness: local, isCameraPlaced, frameCanvas }),
     });
     expect(frameCanvas).not.toHaveBeenCalled();
-    rerender(input({ awareness: local, openingFitHeld: true, frameCanvas, leaderUserId: null }));
+    rerender(input({ awareness: local, isCameraPlaced, frameCanvas, leaderUserId: null }));
     expect(frameCanvas).toHaveBeenCalledTimes(1);
+    rerender(input({ awareness: local, isCameraPlaced, frameCanvas, leaderUserId: null, pane: { width: 1200, height: 600 } }));
+    expect(frameCanvas).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not frame a canvas the user moved before any alignment', () => {
+    // The user's own move stops following at its start; the camera it is
+    // about to place must not be taken away by a frame.
+    const local = makeAwareness();
+    const frameCanvas = vi.fn();
+    const isCameraPlaced = (): boolean => false;
+    const { result, rerender } = renderHook((p: CanvasFollowInput) => useCanvasFollow(p), {
+      initialProps: input({ awareness: local, isCameraPlaced, frameCanvas }),
+    });
+    act(() => result.current(new MouseEvent('mousedown')));
+    expect(useFollowStore.getState().stopped?.reason).toBe('viewport');
+    rerender(input({ awareness: local, isCameraPlaced, frameCanvas, leaderUserId: null }));
+    expect(frameCanvas).not.toHaveBeenCalled();
   });
 
   it('leaves a canvas the follow placed where it is once following ends', () => {
     const local = makeAwareness();
     const peer = makeAwareness();
     const frameCanvas = vi.fn();
+    let placed = false;
+    const isCameraPlaced = (): boolean => placed;
+    // Setting the viewport moves the camera, which the canvas records.
+    const applyViewport = vi.fn(() => {
+      placed = true;
+    });
     const { rerender } = renderHook((p: CanvasFollowInput) => useCanvasFollow(p), {
-      initialProps: input({ awareness: local, openingFitHeld: true, frameCanvas }),
+      initialProps: input({ awareness: local, isCameraPlaced, applyViewport, frameCanvas }),
     });
     arrive(local, peer, { user: { id: 'leader' }, camera: { ...RECT, at: 1 } });
-    rerender(input({ awareness: local, openingFitHeld: true, frameCanvas, leaderUserId: null }));
+    rerender(input({ awareness: local, isCameraPlaced, applyViewport, frameCanvas, leaderUserId: null }));
     expect(frameCanvas).not.toHaveBeenCalled();
   });
 
-  it('frames nothing when following ends on a canvas that kept its own opening fit', () => {
+  it('frames nothing when following ends on a canvas whose camera was already placed', () => {
+    // A stored viewport, or its own opening fit before following began.
     const local = makeAwareness();
     const frameCanvas = vi.fn();
     const { rerender } = renderHook((p: CanvasFollowInput) => useCanvasFollow(p), {
-      initialProps: input({ awareness: local, frameCanvas }),
+      initialProps: input({ awareness: local, isCameraPlaced: () => true, frameCanvas }),
     });
-    rerender(input({ awareness: local, frameCanvas, leaderUserId: null }));
+    rerender(input({ awareness: local, isCameraPlaced: () => true, frameCanvas, leaderUserId: null }));
+    expect(frameCanvas).not.toHaveBeenCalled();
+  });
+
+  it('frames nothing on a canvas that was never following', () => {
+    const local = makeAwareness();
+    const frameCanvas = vi.fn();
+    const { rerender } = renderHook((p: CanvasFollowInput) => useCanvasFollow(p), {
+      initialProps: input({ awareness: local, isCameraPlaced: () => false, frameCanvas, leaderUserId: null }),
+    });
+    rerender(input({ awareness: local, isCameraPlaced: () => false, frameCanvas, leaderUserId: null, pane: { width: 1200, height: 600 } }));
     expect(frameCanvas).not.toHaveBeenCalled();
   });
 

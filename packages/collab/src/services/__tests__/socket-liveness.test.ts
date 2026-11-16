@@ -26,7 +26,7 @@ vi.mock("@breatic/core", () => ({
   createLogger: () => ({ warn: logWarn, error: logError, info: vi.fn(), debug: vi.fn() }),
 }));
 
-import { readPresence } from "@collab/hooks/presence.js";
+import { readFollowing, readPresence, writeFollowing } from "@collab/hooks/presence.js";
 import { createLivenessHandler } from "@collab/services/socket-liveness.js";
 
 type Deps = Parameters<typeof createLivenessHandler>[0];
@@ -113,6 +113,33 @@ describe("a sign of life refreshes everything it proves", () => {
 
     expect(refreshSeats).toHaveBeenCalledTimes(1);
     expect(readPresence(doc, ALICE)?.lastSeenAt).toBe(31_000);
+    doc.destroy();
+  });
+});
+
+describe("a sign of life refreshes whom the socket follows (#920)", () => {
+  it("moves the entry of the socket that answered, and only that one, to the time it was heard", () => {
+    // The handler is what knows the socket id; presence alone reads the
+    // connections, which do not carry it.
+    const doc = metaDocWith(1_000);
+    writeFollowing({ document: doc, socketId: "sock-1", userId: ALICE, target: "u-bob", at: 500, now: 1_000 });
+    writeFollowing({ document: doc, socketId: "sock-2", userId: ALICE, target: "u-bob", at: 500, now: 1_000 });
+    const handler = createLivenessHandler({
+      refreshSeats: vi.fn(nothingToReport),
+      requestDemote: vi.fn(async () => undefined),
+      presencePolicy: { now: () => 31_000, staleAfterMs: 60_000 },
+    });
+
+    handler(
+      "sock-1",
+      new Map<string, unknown>([
+        [META_DOC, { context: { user: { id: ALICE } }, document: doc }],
+      ]) as Connections,
+      25_000,
+    );
+
+    expect(readFollowing(doc, "sock-1")?.lastSeenAt).toBe(25_000);
+    expect(readFollowing(doc, "sock-2")?.lastSeenAt).toBe(1_000);
     doc.destroy();
   });
 });
