@@ -3,6 +3,7 @@ import * as SheetPrimitive from '@radix-ui/react-dialog';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { X } from 'lucide-react';
 
+import { useKeepMovedFocus } from '@web/lib/overlay-focus';
 import { cn } from '@web/lib/utils';
 
 /**
@@ -116,13 +117,14 @@ interface SheetContentProps
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
->(({ side = 'right', className, children, withOverlay = false, ...props }, ref) => (
+>(({ side = 'right', className, children, withOverlay = false, onCloseAutoFocus, ...props }, ref) => (
   <SheetPortal>
     {withOverlay ? <SheetOverlay /> : null}
     <SheetPrimitive.Content
       ref={ref}
       className={cn(sheetVariants({ side }), className)}
       {...props}
+      onCloseAutoFocus={useKeepMovedFocus(onCloseAutoFocus)}
     >
       {children}
       <SheetPrimitive.Close

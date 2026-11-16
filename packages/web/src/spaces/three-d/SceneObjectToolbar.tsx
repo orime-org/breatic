@@ -18,6 +18,8 @@ const icons = {
  * @param root0.mode - Current native transform tool.
  * @param root0.jointMode - Whether joints are being posed, when no transform tool is current.
  * @param root0.mutable - Whether every selected object may be changed.
+ * @param root0.canRotate - Whether the selection can turn; a point light cannot.
+ * @param root0.canScale - Whether the selection can scale; a camera or light cannot.
  * @param root0.canDuplicate - Whether selected objects may be copied.
  * @param root0.onMode - Ends the current gesture and selects a tool.
  * @param root0.onFocus - Frames the selected content in the personal camera.
@@ -26,8 +28,8 @@ const icons = {
  * @returns The floating action controls.
  * @throws {never} Actions delegate to existing commands.
  */
-export const SceneObjectToolbar = React.memo(function SceneObjectToolbar({ mode, jointMode, mutable, canDuplicate, onMode, onFocus, onDuplicate, onDelete }: {
-  mode: SceneTransformMode; jointMode: boolean; mutable: boolean; canDuplicate: boolean; onMode: (mode: SceneTransformMode) => void;
+export const SceneObjectToolbar = React.memo(function SceneObjectToolbar({ mode, jointMode, mutable, canRotate, canScale, canDuplicate, onMode, onFocus, onDuplicate, onDelete }: {
+  mode: SceneTransformMode; jointMode: boolean; mutable: boolean; canRotate: boolean; canScale: boolean; canDuplicate: boolean; onMode: (mode: SceneTransformMode) => void;
   onFocus: () => void; onDuplicate: () => void; onDelete: () => void;
 }): React.JSX.Element {
   const t = useTranslation();
@@ -46,12 +48,12 @@ export const SceneObjectToolbar = React.memo(function SceneObjectToolbar({ mode,
    * @throws {never} Delegates to the host.
    */
   const scale = React.useCallback((): void => onMode('scale'), [onMode]);
-  return <div className='absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-0.5 rounded-overlay border border-border bg-popover p-1 shadow' data-testid='scene-object-menu'>
-    <SceneIconButton label={t('spaces.threeD.move')} active={!jointMode && mode === 'translate'} disabled={!mutable} onClick={move}>{icons.move}</SceneIconButton>
-    <SceneIconButton label={t('spaces.threeD.rotate')} active={!jointMode && mode === 'rotate'} disabled={!mutable} onClick={rotate}>{icons.rotate}</SceneIconButton>
-    <SceneIconButton label={t('spaces.threeD.scale')} active={!jointMode && mode === 'scale'} disabled={!mutable} onClick={scale}>{icons.scale}</SceneIconButton><span className='mx-1 h-4 border-l border-border' />
-    <SceneIconButton label={t('spaces.threeD.focus')} onClick={onFocus}>{icons.focus}</SceneIconButton>
-    <SceneIconButton label={t('spaces.threeD.duplicate')} disabled={!canDuplicate} onClick={onDuplicate}>{icons.duplicate}</SceneIconButton>
-    <SceneIconButton label={t('spaces.threeD.delete')} disabled={!mutable} onClick={onDelete}>{icons.delete}</SceneIconButton>
+  return <div className='flex rounded-md border border-border bg-popover py-1 shadow' data-testid='scene-object-menu'>
+    <div className='flex items-center gap-0.5 border-r border-border px-1'><SceneIconButton label={t('spaces.threeD.move')} active={!jointMode && mode === 'translate'} disabled={!mutable} onClick={move}>{icons.move}</SceneIconButton>
+      <SceneIconButton label={t('spaces.threeD.rotate')} active={!jointMode && mode === 'rotate'} disabled={!mutable || !canRotate} onClick={rotate}>{icons.rotate}</SceneIconButton>
+      <SceneIconButton label={t('spaces.threeD.scale')} active={!jointMode && mode === 'scale'} disabled={!mutable || !canScale} onClick={scale}>{icons.scale}</SceneIconButton></div>
+    <div className='flex items-center gap-0.5 px-1'><SceneIconButton label={t('spaces.threeD.focus')} onClick={onFocus}>{icons.focus}</SceneIconButton>
+      <SceneIconButton label={t('spaces.threeD.duplicate')} disabled={!canDuplicate} onClick={onDuplicate}>{icons.duplicate}</SceneIconButton>
+      <SceneIconButton label={t('spaces.threeD.delete')} disabled={!mutable} onClick={onDelete}>{icons.delete}</SceneIconButton></div>
   </div>;
 });

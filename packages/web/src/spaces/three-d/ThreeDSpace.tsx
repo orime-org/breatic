@@ -25,7 +25,7 @@ import type { SpaceBodyProps } from '@web/spaces';
  * @param target - Event target receiving a scene shortcut.
  * @returns Whether the Space owns this non-editable keyboard target.
  */
-function ownsSceneKeyboard(target: EventTarget | null): boolean {
+export function ownsSceneKeyboard(target: EventTarget | null): boolean {
   return regionOwnsKeyboard(target, 'space') && !isEditableTarget(target instanceof Element ? target : null);
 }
 

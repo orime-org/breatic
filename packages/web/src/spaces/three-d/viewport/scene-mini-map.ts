@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { Box3, Color, DoubleSide, type Group, HemisphereLight, Mesh, MeshBasicMaterial, MeshStandardMaterial, OrthographicCamera, Plane, Raycaster, RingGeometry, Scene, Vector2, Vector3, WebGLRenderer } from 'three';
-import type { SceneObject } from '@breatic/shared';
+import { Box3, CircleGeometry, Color, DoubleSide, type Group, HemisphereLight, Mesh, MeshBasicMaterial, MeshStandardMaterial, OrthographicCamera, Plane, Raycaster, RingGeometry, Scene, Vector2, Vector3, WebGLRenderer } from 'three';
+import { isSceneLight, isSceneModelFile, type SceneObject } from '@breatic/shared';
 import type { ModelResourceCache, SceneModelLease } from '@web/spaces/three-d/viewport/model-resources';
 import { applyPose } from '@web/spaces/three-d/viewport/pose-rig';
 
@@ -44,6 +44,9 @@ export class SceneMiniMapRuntime {
   private readonly renderer: WebGLRenderer;
   private readonly marker = new Mesh(new RingGeometry(0.3, 0.4, 32), new MeshBasicMaterial({ side: DoubleSide }));
   private readonly items = new Map<string, OverviewItem>();
+  /** A small flat icon per camera and light, drawn from the record alone. */
+  private readonly icons = new Map<string, Mesh<CircleGeometry, MeshBasicMaterial>>();
+  private readonly iconGeometry = new CircleGeometry(0.35, 3);
   private readonly resize: ResizeObserver;
   private readonly target = new Vector3();
   private objects: readonly SceneObject[] = [];
@@ -90,11 +93,19 @@ export class SceneMiniMapRuntime {
       const object = existing.get(id);
       if (!object || !ready.has(id) || JSON.stringify(object.model) !== item.source) this.remove(id);
     }
+    for (const [id, icon] of this.icons) {
+      const model = existing.get(id)?.model;
+      if (!model || isSceneModelFile(model)) {
+        icon.removeFromParent(); icon.material.dispose(); this.icons.delete(id);
+      }
+    }
     for (const object of objects) {
+      const { model } = object;
+      if (!isSceneModelFile(model)) { this.placeIcon(object); continue; }
       if (!ready.has(object.id)) continue;
       let item = this.items.get(object.id);
       if (!item) {
-        const created: OverviewItem = { source: JSON.stringify(object.model), lease: this.resources.acquire(object.model), root: null };
+        const created: OverviewItem = { source: JSON.stringify(model), lease: this.resources.acquire(model), root: null };
         item = created; this.items.set(object.id, item);
         void created.lease.ready.then((root) => {
           if (this.disposed || this.items.get(object.id) !== created) { created.lease.release(); return; }
@@ -109,6 +120,23 @@ export class SceneMiniMapRuntime {
       }
     }
     this.render();
+  }
+
+  /**
+   * Draw a camera or light as a small flat icon at its place, coloured like a camera or by the light's colour.
+   * @param object - The camera or light.
+   */
+  private placeIcon(object: SceneObject): void {
+    let icon = this.icons.get(object.id);
+    if (!icon) {
+      icon = new Mesh(this.iconGeometry, new MeshBasicMaterial({ side: DoubleSide }));
+      icon.rotation.x = -Math.PI / 2;
+      icon.userData.sceneObjectId = object.id;
+      this.icons.set(object.id, icon);
+      this.scene.add(icon);
+    }
+    icon.position.set(object.position[0], object.position[1], object.position[2]);
+    icon.userData.color = isSceneLight(object) ? object.color : null;
   }
 
   /**
@@ -130,7 +158,7 @@ export class SceneMiniMapRuntime {
     const background = css.getPropertyValue('--color-popover').trim();
     const foreground = css.getPropertyValue('--color-foreground').trim();
     const builtin = css.getPropertyValue('--color-muted-foreground').trim();
-    const key = JSON.stringify([this.objects.filter((object) => this.items.get(object.id)?.root), [...this.previewed], this.target.toArray(), background, foreground, builtin, this.host.clientWidth, this.host.clientHeight]);
+    const key = JSON.stringify([this.objects.filter((object) => this.items.get(object.id)?.root || this.icons.has(object.id)), [...this.previewed], this.target.toArray(), background, foreground, builtin, this.host.clientWidth, this.host.clientHeight]);
     if (key === this.renderKey) return;
     this.renderKey = key;
     if (background) this.scene.background = new Color(background);
@@ -147,6 +175,11 @@ export class SceneMiniMapRuntime {
         }
       });
       bounds.expandByObject(root);
+    }
+    for (const icon of this.icons.values()) {
+      const color = typeof icon.userData.color === 'string' ? icon.userData.color : foreground;
+      if (color) icon.material.color.setStyle(color);
+      bounds.expandByPoint(icon.position);
     }
     fitSceneOverview(this.camera, bounds, this.host.clientWidth, this.host.clientHeight);
     this.marker.position.set(this.target.x, bounds.max.y + 0.01, this.target.z);
@@ -180,6 +213,8 @@ export class SceneMiniMapRuntime {
     this.disposed = true; this.resize.disconnect();
     this.renderer.domElement.removeEventListener('click', this.onClick);
     for (const id of this.items.keys()) this.remove(id);
+    for (const icon of this.icons.values()) icon.material.dispose();
+    this.icons.clear(); this.iconGeometry.dispose();
     this.marker.geometry.dispose(); this.marker.material.dispose(); this.renderer.dispose(); this.renderer.domElement.remove();
   }
 }

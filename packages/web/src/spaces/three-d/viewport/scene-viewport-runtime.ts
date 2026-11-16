@@ -1,11 +1,20 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { Box3, BoxHelper, Color, DirectionalLight, GridHelper, Group, HemisphereLight, Mesh, MeshBasicMaterial, MeshStandardMaterial, PerspectiveCamera, Raycaster, Scene, SkinnedMesh, SphereGeometry, SRGBColorSpace, Vector2, Vector3, WebGLRenderer, WebGLRenderTarget } from 'three';
+import { Box3, BoxHelper, Color, DirectionalLight, GridHelper, Group, HemisphereLight, Mesh, MeshBasicMaterial, MeshStandardMaterial, OrthographicCamera, PCFSoftShadowMap, PerspectiveCamera, PlaneGeometry, Quaternion, Raycaster, Scene, ShadowMaterial, SkinnedMesh, SphereGeometry, SRGBColorSpace, Vector2, Vector3, WebGLRenderer, WebGLRenderTarget } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControlsGizmo } from 'three/addons/controls/TransformControls.js';
 import type { Bone, Intersection, Object3D } from 'three';
-import type { SceneObject, ScenePose } from '@breatic/shared';
+import {
+  SCENE_AMBIENT_COLOR_DEFAULT, SCENE_AMBIENT_INTENSITY_DEFAULT, isSceneCamera, isSceneLight, isSceneModelFile,
+  type SceneCameraObject, type SceneModelFile, type SceneObject, type ScenePose,
+} from '@breatic/shared';
+import { DirectorFigure, applyCameraRecord } from '@web/spaces/three-d/viewport/director-objects';
+import { DISPLAY_LINE_LAYER, DISPLAY_PICK_LAYER } from '@web/spaces/three-d/viewport/scene-layers';
+import { cameraFrameRatio } from '@web/spaces/three-d/viewfinder/viewfinder-ratio';
+import { directionalShadowRange, localShadowFar, planLights, programSamplers, shadowSlots, type LightsPlan } from '@web/spaces/three-d/viewport/director-lights';
+import { monitorReducer, monitorsDue, type MonitorCards, type MonitorEvent } from '@web/spaces/three-d/viewport/monitor-schedule';
+import { ScenePilot, pilotPivotDistance } from '@web/spaces/three-d/viewport/scene-pilot';
 import { displayedObjects, previewedObjectIds } from '@web/spaces/three-d/viewport/scene-display';
 import { applyPose, poseRigOf, type PoseRig } from '@web/spaces/three-d/viewport/pose-rig';
 import { SceneMiniMapRuntime } from '@web/spaces/three-d/viewport/scene-mini-map';
@@ -15,8 +24,22 @@ import type { SceneModelLease } from '@web/spaces/three-d/viewport/model-resourc
 import { createTransformGesture, transformPatches } from '@web/spaces/three-d/viewport/scene-transform';
 import type { SceneTransformGesture } from '@web/spaces/three-d/viewport/scene-transform';
 import { SceneTransformControls173 } from '@web/spaces/three-d/viewport/transform-controls-173';
-import { captureViewOffset, focusSceneBounds, updateSceneCameraRange } from '@web/spaces/three-d/viewport/scene-camera';
-import type { CapturedPixels, SceneFrameCapture, SceneTransformPatch, SceneViewportProps, SceneView } from '@web/spaces/three-d/viewport/scene-viewport-props';
+import { SCENE_VIEW_FAR, SCENE_VIEW_FOV, SCENE_VIEW_NEAR, captureViewOffset, focusSceneBounds, updateSceneCameraRange } from '@web/spaces/three-d/viewport/scene-camera';
+import type { CapturedPixels, SceneCameraView, SceneFrameCapture, SceneTransformPatch, SceneViewportProps, SceneView } from '@web/spaces/three-d/viewport/scene-viewport-props';
+
+/** Width and depth of the ground that shows shadows, matching the grid. */
+const GROUND_SIZE = 200;
+/** How dark a shadow on the ground is. */
+const GROUND_SHADOW_OPACITY = 0.3;
+
+/**
+ * A lease for a figure the viewport builds itself: releasing it disposes the figure.
+ * @param figure - The figure.
+ * @returns Its lease.
+ */
+function figureLease(figure: DirectorFigure): SceneModelLease {
+  return { ready: Promise.resolve(figure.root), release: () => figure.dispose() };
+}
 
 interface NativeHandleObservation {
   name: string;
@@ -143,12 +166,12 @@ export class SceneViewportRuntime {
   private props: SceneViewportProps;
   private readonly host: HTMLDivElement;
   private readonly scene = new Scene();
-  private readonly camera = new PerspectiveCamera(45, 1, 0.05, 5000);
+  private readonly camera = new PerspectiveCamera(SCENE_VIEW_FOV, 1, SCENE_VIEW_NEAR, SCENE_VIEW_FAR);
   private readonly renderer: WebGLRenderer;
   private readonly orbit: OrbitControls;
   private readonly controls: SceneTransformControls173;
   private readonly pivot = new Group();
-  private readonly grid = new GridHelper(200, 200);
+  private readonly grid = new GridHelper(GROUND_SIZE, GROUND_SIZE);
   private readonly resources: ModelResourceCache;
   /**
    * Hold one model through this view's cache, measured for placing it; the
@@ -157,7 +180,7 @@ export class SceneViewportRuntime {
    * @returns The bounds and this holder's release.
    * @throws {Error} The bounds reject when the model cannot load.
    */
-  readonly acquireModel = (source: SceneObject['model']): MeasuredSceneModelLease => acquireMeasured(this.resources, source);
+  readonly acquireModel = (source: SceneModelFile): MeasuredSceneModelLease => acquireMeasured(this.resources, source);
   private readonly items = new Map<string, RenderedObject>();
   private overview: SceneMiniMapRuntime | null = null;
   private overviewHost: HTMLDivElement | null = null;
@@ -181,6 +204,24 @@ export class SceneViewportRuntime {
   private disposed = false;
   private readonly resize: ResizeObserver;
   private readonly theme: MutationObserver;
+  private readonly keyLight = new DirectionalLight(0xffffff, 3);
+  private readonly ambient = new HemisphereLight(0xffffff, 0x666666, SCENE_AMBIENT_INTENSITY_DEFAULT);
+  private readonly ground = new Mesh(new PlaneGeometry(GROUND_SIZE, GROUND_SIZE), new ShadowMaterial({ opacity: GROUND_SHADOW_OPACITY }));
+  /** Camera and light figures by record id; their roots are also in `items`. */
+  private readonly figures = new Map<string, DirectorFigure>();
+  private readonly pilot: ScenePilot;
+  /** What the main view shows (inner#1694 design 3.4.3). */
+  private view: SceneCameraView | null = null;
+  private lightPlan: LightsPlan = { defaultKey: true, lights: {} };
+  private reportedPlan = '';
+  private shadowKey = '';
+  private shadowsDirty = true;
+  private cards: MonitorCards = {};
+  private readonly monitorCanvases = new Map<string, HTMLCanvasElement>();
+  private readonly monitorCamera = new PerspectiveCamera(SCENE_VIEW_FOV, 1, SCENE_VIEW_NEAR, SCENE_VIEW_FAR);
+  private readonly cardVisibility: IntersectionObserver | null;
+  private readonly cardSize: ResizeObserver;
+  private monitorDrawnAt = 0;
 
   /**
    * Construct resources only within the React view's effect lifetime.
@@ -198,6 +239,13 @@ export class SceneViewportRuntime {
     canvas.dataset.testid = 'three-d-viewport';
     host.append(canvas);
     this.renderer.setPixelRatio(window.devicePixelRatio);
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = PCFSoftShadowMap;
+    // Shadow maps are drawn again only when a display value changes.
+    this.renderer.shadowMap.autoUpdate = false;
+    this.renderer.shadowMap.needsUpdate = true;
+    this.camera.layers.enable(DISPLAY_PICK_LAYER);
+    this.camera.layers.enable(DISPLAY_LINE_LAYER);
     this.camera.position.fromArray(props.view.position);
     this.orbit = new OrbitControls(this.camera, canvas);
     this.orbit.target.fromArray(props.view.target);
@@ -205,10 +253,10 @@ export class SceneViewportRuntime {
     this.orbit.update();
     this.controls = new SceneTransformControls173(this.camera, canvas, props.scaleSensitivity, this.onCancel);
     this.scene.add(this.controls.getHelper(), this.pivot, this.grid, this.markers);
-    this.scene.add(new HemisphereLight(0xffffff, 0x666666, 2.7));
-    const light = new DirectionalLight(0xffffff, 3);
-    light.position.set(5, 10, 4);
-    this.scene.add(light);
+    this.keyLight.position.set(5, 10, 4);
+    this.ground.rotation.x = -Math.PI / 2;
+    this.ground.receiveShadow = true;
+    this.scene.add(this.ambient, this.keyLight, this.ground);
     this.resources = new ModelResourceCache((source, signal) => loadSceneModel(source, signal, this.props.resolveAsset, this.token('--color-muted-foreground'), this.props.importLimits, this.renderer));
     this.controls.addEventListener('mouseDown', this.onGestureStart);
     this.controls.addEventListener('objectChange', this.onGestureChange);
@@ -220,16 +268,46 @@ export class SceneViewportRuntime {
     canvas.addEventListener('pointerup', this.onPointerUp);
     canvas.addEventListener('pointercancel', this.onCancel);
     canvas.addEventListener('lostpointercapture', this.onLostPointerCapture);
-    window.addEventListener('blur', this.onCancel);
+    window.addEventListener('blur', this.onBlur);
     document.addEventListener('visibilitychange', this.onVisibilityChange);
     this.resize = new ResizeObserver(this.onResize);
     this.resize.observe(host);
     this.theme = new MutationObserver(this.onThemeChange);
     this.theme.observe(document.documentElement, { attributes: true, attributeFilter: ['class', 'data-theme', 'style'] });
+    this.cardVisibility = typeof IntersectionObserver === 'undefined' ? null : new IntersectionObserver(this.onCardVisibility);
+    this.cardSize = new ResizeObserver(this.onCardResize);
+    this.pilot = new ScenePilot({
+      canvas,
+      active: () => this.view !== null,
+      live: () => {
+        const view = this.view;
+        if (view?.kind !== 'live') return null;
+        return { id: view.id, canPilot: view.canPilot, locked: this.cameraRecord(view.id)?.locked ?? false };
+      },
+      recordPose: () => {
+        const record = this.view?.kind === 'live' ? this.cameraRecord(this.view.id) : null;
+        return record ? { position: new Vector3().fromArray(record.position), quaternion: new Quaternion().fromArray(record.rotation) } : null;
+      },
+      objectGesture: () => this.dragging || this.controls.dragging,
+      modelBoxCentre: () => {
+        const box = this.modelBounds();
+        return box.isEmpty() ? null : box.getCenter(new Vector3());
+      },
+      viewSize: () => ({ height: this.host.clientHeight, fov: this.camera.fov * Math.PI / 180 }),
+      wheelCommitMs: () => this.props.director?.wheelCommitMs,
+      show: () => this.showCameraView(),
+      preview: (id, pose) => {
+        this.props.onPilotPreview?.(id, pose.position.toArray(), pose.quaternion.toArray());
+        this.monitorEvent({ type: 'changed', ids: [id] });
+      },
+      end: (commit) => this.props.onPilotEnd?.(commit),
+      notifyLocked: () => this.props.onPilotLocked?.(),
+    });
     this.onResize();
     this.update(props);
     this.onFrame();
     props.onCapture?.(this.capture);
+    props.onPilotControl?.({ flush: () => this.pilot.flush('undo'), escape: () => this.pilot.escape(), lightAnchor: () => this.lightAnchor() });
   }
 
   /**
@@ -242,30 +320,100 @@ export class SceneViewportRuntime {
    * @throws {Error} When the pixels cannot be read back.
    */
   private readonly capture: SceneFrameCapture = async (frame, size): Promise<CapturedPixels> => {
-    const offset = captureViewOffset(frame, { width: this.host.clientWidth, height: this.host.clientHeight }, size);
+    const looked = this.view?.kind === 'live' ? this.view.id : null;
+    // A wheel step still pending is written first; the still shows where the camera ended up.
+    const draft = looked === null ? null : this.pilot.poseOf(looked);
+    this.pilot.flush('confirm');
     const target = new WebGLRenderTarget(size.width, size.height, { samples: 4 });
     target.texture.colorSpace = SRGBColorSpace;
-    const helpers: Object3D[] = [this.grid, this.controls.getHelper(), this.markers, ...this.outlines];
-    const shown = helpers.map((helper) => helper.visible);
     const previous = this.renderer.getRenderTarget();
+    const live = this.view?.kind === 'live' ? this.cameraRecord(this.view.id) : null;
+    // Through a camera the still is the camera's own projection; the main view and its offset stay as they are.
+    const camera = live ? this.monitorCamera : this.camera;
+    const layers = camera.layers.mask;
+    let pose: CapturedPixels['pose'];
     try {
-      for (const helper of helpers) helper.visible = false;
-      this.camera.setViewOffset(offset.fullWidth, offset.fullHeight, offset.x, offset.y, offset.width, offset.height);
+      if (live) {
+        applyCameraRecord(camera, live, size.width / size.height);
+        if (draft) { camera.position.copy(draft.position); camera.quaternion.copy(draft.quaternion); camera.updateMatrixWorld(true); }
+        updateSceneCameraRange(camera, this.modelBounds());
+      } else {
+        const offset = captureViewOffset(frame, { width: this.host.clientWidth, height: this.host.clientHeight }, size);
+        camera.setViewOffset(offset.fullWidth, offset.fullHeight, offset.x, offset.y, offset.width, offset.height);
+      }
+      camera.layers.set(0);
       this.renderer.setRenderTarget(target);
-      this.renderer.render(this.scene, this.camera);
+      this.withoutHelpers(() => this.renderer.render(this.scene, camera));
+      // Read now: the monitors reuse this camera on the frames that run during the readback.
+      pose = live ? { position: camera.position.toArray(), quaternion: camera.quaternion.toArray(), fov: camera.fov, aspect: camera.aspect } : undefined;
     } finally {
-      this.camera.clearViewOffset();
+      camera.layers.mask = layers;
+      if (!live) camera.clearViewOffset();
       this.renderer.setRenderTarget(previous);
-      helpers.forEach((helper, index) => { helper.visible = shown[index] ?? true; });
     }
     try {
       const pixels = new Uint8Array(size.width * size.height * 4);
       await this.renderer.readRenderTargetPixelsAsync(target, 0, 0, size.width, size.height, pixels);
-      return { width: size.width, height: size.height, pixels };
+      return { width: size.width, height: size.height, pixels, ...(pose ? { pose } : {}) };
     } finally {
       target.dispose();
     }
   };
+
+  /**
+   * Render with the grid, transform handles, selection outlines and joint dots hidden.
+   * @param render - The render to run.
+   */
+  private withoutHelpers(render: () => void): void {
+    const helpers: Object3D[] = [this.grid, this.controls.getHelper(), this.markers, ...this.outlines];
+    const shown = helpers.map((helper) => helper.visible);
+    try {
+      for (const helper of helpers) helper.visible = false;
+      render();
+    } finally {
+      helpers.forEach((helper, index) => { helper.visible = shown[index] ?? true; });
+    }
+  }
+
+  /**
+   * A camera record as currently displayed, a collaborator's drag included.
+   * @param id - The camera.
+   * @returns The record, or null when it is not a camera in the scene.
+   */
+  private cameraRecord(id: string): SceneCameraObject | null {
+    const object = this.displayed.find((candidate) => candidate.id === id);
+    return object && isSceneCamera(object) ? object : null;
+  }
+
+  /**
+   * Where a new light goes from the camera on screen (design 3.6): its pose is the record's while live and the still's
+   * when frozen; the light aims at the pivot ahead of it, at the pilot's pivot distance, and sits above that pivot, offset toward the camera and to its left.
+   * @returns The pivot and the viewer, or null outside a camera view.
+   */
+  private lightAnchor(): { centre: [number, number, number]; viewer: [number, number, number] } | null {
+    const view = this.view;
+    const record = view?.kind === 'live' ? this.cameraRecord(view.id) : null;
+    const pose = record ? { position: record.position, rotation: record.rotation } : view?.kind === 'frozen' ? { position: view.position, rotation: view.quaternion } : null;
+    if (!pose) return null;
+    const position = new Vector3().fromArray(pose.position);
+    const box = this.modelBounds();
+    const distance = pilotPivotDistance(position, box.isEmpty() ? null : box.getCenter(new Vector3()));
+    const centre = position.clone().addScaledVector(new Vector3(0, 0, -1).applyQuaternion(new Quaternion().fromArray(pose.rotation)), distance);
+    return { centre: centre.toArray(), viewer: position.toArray() };
+  }
+
+
+  /**
+   * The bounding box of the loaded models, without camera and light figures.
+   * @returns The box, empty when there is no loaded model.
+   */
+  private modelBounds(): Box3 {
+    const box = new Box3();
+    for (const [id, item] of this.items) {
+      if (item.root && !this.figures.has(id)) box.expandByObject(item.root);
+    }
+    return box;
+  }
 
   /**
    * Keep the overview tied to the current host and main-ready resource identities.
@@ -291,7 +439,7 @@ export class SceneViewportRuntime {
    * @throws {never} Never directly.
    */
   private onOverviewNavigate = (x: number, z: number): void => {
-    if (this.dragging) return;
+    if (this.dragging || this.view !== null) return;
     const delta = new Vector3(x - this.orbit.target.x, 0, z - this.orbit.target.z);
     this.camera.position.add(delta); this.orbit.target.add(delta); this.orbit.update(); this.onViewChange();
   };
@@ -325,6 +473,7 @@ export class SceneViewportRuntime {
   update(props: SceneViewportProps): void {
     if (this.disposed) return;
     const previous = this.props;
+    this.leaveCameraView(previous, props);
     this.props = props;
     if (this.gesture && (
       props.readOnly || props.mode !== previous.mode || props.cancelRevision !== previous.cancelRevision
@@ -337,19 +486,24 @@ export class SceneViewportRuntime {
       || !sameSelection(props.selectedIds, [joint.id]) || !props.objects.some((object) => object.id === joint.id && !object.locked)
     )) this.endGesture(false);
     this.controls.setSensitivity(props.scaleSensitivity);
-    if (!this.dragging && !this.controls.dragging) this.orbit.enabled = !props.viewLocked;
+    if (!this.dragging && !this.controls.dragging) this.orbit.enabled = this.orbitEnabled();
     const visible = new Set(props.objects.map((object) => object.id));
     for (const [id, item] of this.items) {
       if (!visible.has(id)) {
         this.overview?.remove(id);
         item.lease.release();
         this.items.delete(id);
+        this.figures.delete(id);
       }
     }
     const local = this.localGestureIds();
     this.displayed = displayedObjects(props.objects, local, props.remotePeers);
     this.previewed = previewedObjectIds(local, props.remotePeers);
     for (const object of this.displayed) {
+      if (!isSceneModelFile(object.model)) {
+        this.syncFigure(object);
+        continue;
+      }
       const source = JSON.stringify(object.model);
       let item = this.items.get(object.id);
       if (item && (item.source !== source || (item.state === 'failed' && props.modelRetryRevision !== previous.modelRetryRevision))) {
@@ -359,21 +513,309 @@ export class SceneViewportRuntime {
         this.items.delete(object.id);
         item = undefined;
       }
-      if (!item) this.loadObject(object, source);
+      if (!item) this.loadObject(object, object.model, source);
       else if (item.root && !local.has(object.id)) {
         applyObject(item.root, object);
         applyPose(item.root, object.pose, !this.previewed.has(object.id));
       }
     }
-    if (!this.dragging && !this.sameView(props.view)) {
+    this.enterCameraView(props.cameraView ?? null);
+    if (this.view === null && !this.dragging && !this.sameView(props.view)) {
       this.camera.position.fromArray(props.view.position);
       this.orbit.target.fromArray(props.view.target);
       this.orbit.update();
     }
     this.syncControls();
-    if (props.focusRevision !== previous.focusRevision) this.focus();
-    this.onThemeChange();
+    // A focus request during a camera view is dropped; the view returns to where it was before.
+    if (props.focusRevision !== previous.focusRevision && this.view === null) this.focus();
+    this.syncLights();
+    this.syncMonitors();
+    this.markShadows();
+    this.monitorEvent({ type: 'changed' });
+    this.showCameraView();
+    this.restyle();
     this.inspect();
+  }
+
+  /**
+   * Whether OrbitControls may move the main camera: only in the user's own view, unlocked, and not during a drag.
+   * @returns True when orbiting is allowed.
+   */
+  private orbitEnabled(): boolean {
+    return this.view === null && !this.props.viewLocked && !this.dragging && !this.controls.dragging;
+  }
+
+  /**
+   * Tell the pilot what the next props do to the camera it may be piloting (design 6.2).
+   * @param previous - The props in force.
+   * @param next - The props about to apply.
+   */
+  private leaveCameraView(previous: SceneViewportProps, next: SceneViewportProps): void {
+    const before = previous.cameraView;
+    const after = next.cameraView ?? null;
+    if (before?.kind !== 'live') return;
+    if (after?.kind !== 'live') { this.pilot.flush('exit'); return; }
+    if (after.id !== before.id) { this.pilot.flush('switch'); return; }
+    const record = next.objects.find((object) => object.id === after.id);
+    if (!record) { this.pilot.dispatch({ type: 'deleted' }); return; }
+    if (before.canPilot && !after.canPilot) { this.pilot.dispatch({ type: record.locked ? 'locked' : 'permissionLost' }); return; }
+    const old = previous.objects.find((object) => object.id === after.id);
+    if (old && JSON.stringify([old.position, old.rotation]) !== JSON.stringify([record.position, record.rotation])) {
+      this.pilot.dispatch({ type: 'recordChanged' });
+    }
+  }
+
+  /**
+   * Follow the camera view value: entering stops orbiting and its damping and drops a pending focus;
+   * leaving restores the user's own projection and view (design 3.4.2).
+   * @param next - The new value.
+   */
+  private enterCameraView(next: SceneCameraView | null): void {
+    const before = this.view;
+    this.view = next;
+    if (before === null && next !== null) {
+      this.pendingFocus = false;
+      this.orbit.enabled = false;
+      const damping = this.orbit.enableDamping;
+      // One undamped update spends the damping still owed, while the view change it reports is ignored.
+      this.orbit.enableDamping = false;
+      this.orbit.update();
+      this.orbit.enableDamping = damping;
+    } else if (before !== null && next === null) {
+      this.camera.up.set(0, 1, 0);
+      this.camera.fov = SCENE_VIEW_FOV;
+      this.camera.aspect = this.host.clientWidth / Math.max(1, this.host.clientHeight);
+      this.camera.clearViewOffset();
+      this.camera.updateProjectionMatrix();
+      this.camera.position.fromArray(this.props.view.position);
+      this.orbit.target.fromArray(this.props.view.target);
+      this.orbit.update();
+      this.orbit.enabled = this.orbitEnabled();
+    }
+    const hidden = this.hiddenCamera();
+    for (const [id, figure] of this.figures) figure.root.visible = id !== hidden;
+  }
+
+  /**
+   * Set the main camera from the camera view: the record or the pilot's draft while live, the still's pose when frozen,
+   * with the frame cut out of the viewport by a view offset.
+   */
+  private showCameraView(): void {
+    const view = this.view;
+    if (view === null) return;
+    if (view.kind === 'live') {
+      const record = this.cameraRecord(view.id);
+      if (!record) return;
+      const draft = this.pilot.poseOf(view.id);
+      const frame = this.props.viewFrame;
+      // A Free camera follows the frame being dragged, so the view previews the new ratio before it is written.
+      const aspect = record.frame === 'Free' && frame && frame.height > 0 ? frame.width / frame.height : cameraFrameRatio(record);
+      applyCameraRecord(this.camera, record, aspect);
+      if (draft) { this.camera.position.copy(draft.position); this.camera.quaternion.copy(draft.quaternion); }
+    } else {
+      this.camera.position.fromArray(view.position);
+      this.camera.quaternion.fromArray(view.quaternion);
+      this.camera.fov = view.fov;
+      this.camera.aspect = view.aspect;
+    }
+    const frame = this.props.viewFrame;
+    if (frame) this.camera.setViewOffset(frame.width, frame.height, -frame.x, -frame.y, this.host.clientWidth, this.host.clientHeight);
+    else this.camera.clearViewOffset();
+    this.camera.updateProjectionMatrix();
+    this.camera.updateMatrixWorld(true);
+  }
+
+  /**
+   * Build or refresh a camera or light figure; its root joins `items` like a loaded model.
+   * @param object - The camera or light record as displayed.
+   */
+  private syncFigure(object: SceneObject): void {
+    const source = JSON.stringify(object.model);
+    let figure = this.figures.get(object.id);
+    const item = this.items.get(object.id);
+    if (!figure || item?.source !== source) {
+      item?.lease.release();
+      figure = new DirectorFigure(object);
+      this.figures.set(object.id, figure);
+      this.items.set(object.id, { source, lease: figureLease(figure), root: figure.root, state: 'ready' });
+      this.scene.add(figure.root);
+    }
+    if (this.localGestureIds().has(object.id)) return;
+    figure.update(object, { ink: this.token('--color-muted-foreground'), director: this.props.director }, this.lightPlan.lights[object.id]);
+  }
+
+  /**
+   * Decide which lights shine and cast (design 6.4), light the scene accordingly and report the plan when it changes.
+   */
+  private syncLights(): void {
+    const lights = this.displayed.filter(isSceneLight);
+    const director = this.props.director;
+    const slots = shadowSlots(this.renderer.capabilities.maxTextures, programSamplers(this.renderer.info.programs ?? []));
+    // Until the configuration arrives, the default key light stays on and no user light shines.
+    this.lightPlan = director
+      ? planLights(lights.map((light) => ({ id: light.id, number: light.number, castShadow: light.castShadow })), { maxLights: director.maxLights, shadowSlots: slots })
+      : { defaultKey: true, lights: {} };
+    this.keyLight.visible = this.lightPlan.defaultKey;
+    const environment = this.props.environment;
+    this.ambient.color.setStyle(environment?.ambientColor ?? SCENE_AMBIENT_COLOR_DEFAULT);
+    this.ambient.intensity = environment?.ambientIntensity ?? SCENE_AMBIENT_INTENSITY_DEFAULT;
+    const style = { ink: this.token('--color-muted-foreground'), director };
+    for (const light of lights) {
+      if (!this.localGestureIds().has(light.id)) this.figures.get(light.id)?.update(light, style, this.lightPlan.lights[light.id]);
+    }
+    const report = JSON.stringify(this.lightPlan);
+    if (report !== this.reportedPlan) {
+      this.reportedPlan = report;
+      this.props.onLightPlan?.(this.lightPlan);
+    }
+  }
+
+  /**
+   * Ask for new shadow maps when what casts or lights them changed.
+   * @param force - Redraw even when the displayed values are the same, as after a model loads.
+   */
+  private markShadows(force = false): void {
+    const key = JSON.stringify([this.displayed, this.lightPlan]);
+    if (!force && key === this.shadowKey) return;
+    this.shadowKey = key;
+    this.shadowsDirty = true;
+    this.renderer.shadowMap.needsUpdate = true;
+  }
+
+  /**
+   * Fit each casting light's shadow camera to the models and their ground shadows (design 3.6).
+   */
+  private fitShadows(): void {
+    this.shadowsDirty = false;
+    const box = this.modelBounds();
+    const reach = this.props.director?.shadowGroundReach;
+    if (box.isEmpty() || reach === undefined) return;
+    for (const figure of this.figures.values()) {
+      const light = figure.light;
+      if (!light?.castShadow) continue;
+      figure.root.updateMatrixWorld(true);
+      const position = new Vector3().setFromMatrixPosition(light.matrixWorld);
+      const camera = light.shadow.camera;
+      if (light instanceof DirectionalLight && camera instanceof OrthographicCamera) {
+        // three r173 places the shadow camera at the light, aimed at its target, before each shadow render.
+        const target = new Vector3().setFromMatrixPosition(light.target.matrixWorld);
+        camera.position.copy(position);
+        camera.lookAt(target);
+        camera.updateMatrixWorld();
+        Object.assign(camera, directionalShadowRange(camera, target.sub(position).normalize(), box, reach));
+      } else if (camera instanceof PerspectiveCamera) {
+        camera.far = localShadowFar(position, box, reach);
+      }
+      camera.updateProjectionMatrix();
+    }
+  }
+
+  /**
+   * Advance the monitor cards.
+   * @param event - What happened to them.
+   */
+  private monitorEvent(event: MonitorEvent): void {
+    this.cards = monitorReducer(this.cards, event);
+  }
+
+  /**
+   * Follow the card canvases the director console has mounted.
+   */
+  private syncMonitors(): void {
+    const next = this.props.monitors ?? new Map<string, HTMLCanvasElement>();
+    for (const [id, canvas] of this.monitorCanvases) {
+      if (next.get(id) === canvas) continue;
+      this.cardVisibility?.unobserve(canvas);
+      this.cardSize.unobserve(canvas);
+      this.monitorCanvases.delete(id);
+      this.monitorEvent({ type: 'removed', id });
+    }
+    for (const [id, canvas] of next) {
+      if (this.monitorCanvases.has(id)) continue;
+      this.monitorCanvases.set(id, canvas);
+      this.monitorEvent({ type: 'mount', id });
+      // Without IntersectionObserver every mounted card counts as on screen.
+      if (this.cardVisibility) this.cardVisibility.observe(canvas);
+      else this.monitorEvent({ type: 'visible', id, visible: true });
+      this.cardSize.observe(canvas);
+    }
+  }
+
+  /**
+   * The card a canvas belongs to.
+   * @param canvas - A card canvas.
+   * @returns Its camera id, or undefined.
+   */
+  private cardOf(canvas: Element): string | undefined {
+    for (const [id, owned] of this.monitorCanvases) if (owned === canvas) return id;
+    return undefined;
+  }
+
+  /**
+   * Follow which cards are on screen.
+   * @param entries - The visibility changes.
+   */
+  private onCardVisibility = (entries: IntersectionObserverEntry[]): void => {
+    for (const entry of entries) {
+      const id = this.cardOf(entry.target);
+      if (id !== undefined) this.monitorEvent({ type: 'visible', id, visible: entry.isIntersecting });
+    }
+  };
+
+  /**
+   * Redraw cards whose size changed.
+   * @param entries - The size changes.
+   */
+  private onCardResize = (entries: ResizeObserverEntry[]): void => {
+    const ids = entries.flatMap((entry) => this.cardOf(entry.target) ?? []);
+    if (ids.length > 0) this.monitorEvent({ type: 'changed', ids });
+  };
+
+  /**
+   * Draw the cards that are due: each camera into a corner of the main canvas, copied straight into its card (DD selection 2).
+   */
+  private drawMonitors(): void {
+    const refresh = this.props.director?.monitorRefreshMs;
+    const now = performance.now();
+    if (refresh === undefined || now - this.monitorDrawnAt < refresh) return;
+    const due = monitorsDue(this.cards);
+    if (due.length === 0) return;
+    this.monitorDrawnAt = now;
+    const canvas = this.renderer.domElement;
+    const ratio = this.renderer.getPixelRatio();
+    const width = this.host.clientWidth;
+    const height = this.host.clientHeight;
+    const bounds = this.modelBounds();
+    const painted: string[] = [];
+    this.withoutHelpers(() => {
+      this.renderer.setScissorTest(true);
+      for (const id of due) {
+        const card = this.monitorCanvases.get(id);
+        const record = this.cameraRecord(id);
+        const context = card?.getContext('2d');
+        if (!card || !record || !context) continue;
+        const cssWidth = Math.min(card.clientWidth, width);
+        const cssHeight = Math.min(card.clientHeight, height);
+        if (cssWidth === 0 || cssHeight === 0) continue;
+        applyCameraRecord(this.monitorCamera, record, cameraFrameRatio(record));
+        const draft = this.pilot.poseOf(id);
+        if (draft) { this.monitorCamera.position.copy(draft.position); this.monitorCamera.quaternion.copy(draft.quaternion); }
+        updateSceneCameraRange(this.monitorCamera, bounds);
+        this.renderer.setViewport(0, 0, cssWidth, cssHeight);
+        this.renderer.setScissor(0, 0, cssWidth, cssHeight);
+        this.renderer.render(this.scene, this.monitorCamera);
+        const pixelWidth = Math.round(cssWidth * ratio);
+        const pixelHeight = Math.round(cssHeight * ratio);
+        if (card.width !== pixelWidth || card.height !== pixelHeight) { card.width = pixelWidth; card.height = pixelHeight; }
+        context.drawImage(canvas, 0, canvas.height - pixelHeight, pixelWidth, pixelHeight, 0, 0, pixelWidth, pixelHeight);
+        // The card shows its placeholder until its first picture.
+        card.dataset.drawn = 'true';
+        painted.push(id);
+      }
+      this.renderer.setScissorTest(false);
+      this.renderer.setViewport(0, 0, width, height);
+    });
+    this.monitorEvent({ type: 'painted', ids: painted });
   }
 
   /**
@@ -398,11 +840,12 @@ export class SceneViewportRuntime {
   /**
    * Attach a token-owned instance; an old completion cannot attach to a new view.
    * @param object - The visible scene object whose model needs an instance in this viewport.
+   * @param model - Its model file.
    * @param source - The serialized immutable model reference used to detect replacement of this object's source.
    * @throws {never} Load failures are reported through the resource-state callback.
    */
-  private loadObject(object: SceneObject, source: string): void {
-    const item: RenderedObject = { source, lease: this.resources.acquire(object.model), root: null, state: 'loading' };
+  private loadObject(object: SceneObject, model: SceneModelFile, source: string): void {
+    const item: RenderedObject = { source, lease: this.resources.acquire(model), root: null, state: 'loading' };
     this.items.set(object.id, item);
     this.props.onModelStateChange?.(object.id, 'loading');
     void item.lease.ready.then((root) => {
@@ -418,16 +861,22 @@ export class SceneViewportRuntime {
       item.root = root;
       item.state = 'ready';
       root.userData.sceneObjectId = object.id;
+      root.traverse((child) => { if (child instanceof Mesh) { child.castShadow = true; child.receiveShadow = true; } });
+      // Its programs are compiled before it joins the scene, so the shadow budget counts its samplers first (design 3.6).
+      this.renderer.compile(root, this.camera);
       // The rig is measured first, while the fresh instance is still at rest.
       const rig = poseRigOf(root);
       applyObject(root, latest);
       applyPose(root, latest.pose, !this.previewed.has(object.id));
       this.scene.add(root);
+      this.syncLights();
+      this.markShadows(true);
+      this.monitorEvent({ type: 'changed' });
       this.props.onModelStateChange?.(object.id, 'ready');
       this.props.onSkeletonState(object.id, rig === null ? 'none' : rig.kind);
       this.syncControls();
       if (this.pendingFocus) this.focus();
-      this.onThemeChange();
+      this.restyle();
       this.inspect();
     }).catch((error: unknown) => {
       if (this.disposed || this.items.get(object.id) !== item) return;
@@ -450,12 +899,24 @@ export class SceneViewportRuntime {
   }
 
   /**
+   * The camera whose icon, frustum, selection box and handles the main view hides: the one looked through or whose
+   * still is shown (design 3.4 item 1).
+   * @returns Its id, or null.
+   */
+  private hiddenCamera(): string | null {
+    return this.view?.id ?? null;
+  }
+
+  /**
    * Return the whole eligible selection, or none while one item cannot mutate.
    * @returns The selected objects in selection order, or an empty array when editing is denied or any selected object is locked, absent or not loaded.
    * @throws {never} Never.
    */
   private mutableObjects(): SceneObject[] {
     if (this.props.readOnly || this.props.selectedIds.length === 0) return [];
+    const hidden = this.hiddenCamera();
+    // The camera being looked through moves only by piloting or by its fields.
+    if (hidden !== null && this.props.selectedIds.includes(hidden)) return [];
     const objects = this.props.selectedIds.map((id) => this.props.objects.find((object) => object.id === id));
     if (objects.some((object) => !object || object.locked || !this.items.get(object.id)?.root)) return [];
     return objects.filter((object): object is SceneObject => object !== undefined);
@@ -637,6 +1098,8 @@ export class SceneViewportRuntime {
     }
     this.changed = true;
     for (const patch of patches) this.applyPatch(patch);
+    this.markShadows(true);
+    this.monitorEvent({ type: 'changed' });
     this.props.onGestureChange(patches);
     this.rebuildOutlines();
     this.inspect();
@@ -677,7 +1140,7 @@ export class SceneViewportRuntime {
     this.joint = null;
     this.down = null;
     this.controls.cancelInteraction(!commit);
-    this.orbit.enabled = !this.props.viewLocked;
+    this.orbit.enabled = this.orbitEnabled();
     if (!commit && pointer) {
       const canvas = this.renderer.domElement;
       if (canvas.hasPointerCapture(pointer.id)) canvas.releasePointerCapture(pointer.id);
@@ -716,7 +1179,7 @@ export class SceneViewportRuntime {
    * @throws {never} Never.
    */
   private onDraggingChanged = (event: { value: unknown }): void => {
-    if (typeof event.value === 'boolean') this.orbit.enabled = !event.value && !this.props.viewLocked;
+    if (typeof event.value === 'boolean') this.orbit.enabled = this.orbitEnabled();
   };
 
   /**
@@ -746,6 +1209,7 @@ export class SceneViewportRuntime {
     if (rect.width === 0 || rect.height === 0) return null;
     const point = new Vector2((event.clientX - rect.left) / rect.width * 2 - 1, -(event.clientY - rect.top) / rect.height * 2 + 1);
     const ray = new Raycaster();
+    ray.layers.enable(DISPLAY_PICK_LAYER);
     ray.setFromCamera(point, this.camera);
     this.scene.updateMatrixWorld(true);
     return ray;
@@ -819,6 +1283,14 @@ export class SceneViewportRuntime {
   };
 
   /**
+   * Losing the window ends an object drag and the pilot's draft.
+   */
+  private onBlur = (): void => {
+    this.endGesture(false);
+    this.pilot.flush('blur');
+  };
+
+  /**
    * Losing capture during a gesture is a cancellation; normal release is idle.
    * @param event - The capture-loss notification used to distinguish an interruption from normal pointer release.
    * @throws {never} Never directly.
@@ -834,6 +1306,7 @@ export class SceneViewportRuntime {
   private onVisibilityChange = (): void => {
     if (document.visibilityState === 'hidden') {
       this.endGesture(false);
+      this.pilot.flush('hide');
       cancelAnimationFrame(this.frame);
       this.frame = 0;
     } else if (this.frame === 0 && !this.disposed) this.onFrame();
@@ -844,7 +1317,7 @@ export class SceneViewportRuntime {
    * @throws {never} Never directly.
    */
   private onViewChange = (): void => {
-    if (this.disposed || this.dragging) return;
+    if (this.disposed || this.dragging || this.view !== null) return;
     this.props.onViewChange({ position: this.camera.position.toArray(), target: this.orbit.target.toArray() });
     this.syncOverview();
     this.inspect();
@@ -861,13 +1334,14 @@ export class SceneViewportRuntime {
       this.scene.remove(outline);
     }
     this.outlines = [];
+    const hidden = this.hiddenCamera();
     for (const id of this.props.selectedIds) {
-      const root = this.items.get(id)?.root;
+      const root = id === hidden ? undefined : this.items.get(id)?.root;
       if (root) this.addOutline(root, this.token('--color-status-selected'));
     }
     for (const peer of this.props.remotePeers) {
       for (const id of peer.selectedIds) {
-        const root = this.items.get(id)?.root;
+        const root = id === hidden ? undefined : this.items.get(id)?.root;
         if (root) this.addOutline(root, peer.color);
       }
     }
@@ -912,16 +1386,28 @@ export class SceneViewportRuntime {
     const width = this.host.clientWidth;
     const height = this.host.clientHeight;
     if (width === 0 || height === 0) return;
+    this.renderer.setSize(width, height, false);
+    if (this.view !== null) { this.showCameraView(); return; }
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
-    this.renderer.setSize(width, height, false);
+  };
+
+  /**
+   * Repaint after a theme change: the restyle, plus the camera and light figures and every monitor card, which props
+   * updates and model loads refresh on their own.
+   * @throws {never} Never directly.
+   */
+  private onThemeChange = (): void => {
+    this.restyle();
+    for (const object of this.displayed) if (!isSceneModelFile(object.model)) this.syncFigure(object);
+    this.monitorEvent({ type: 'changed' });
   };
 
   /**
    * Resolve theme tokens for canvas content as well as surrounding React chrome.
    * @throws {never} Never directly.
    */
-  private onThemeChange = (): void => {
+  private restyle = (): void => {
     this.scene.background = new Color(this.token('--color-background'));
     applySceneGridTheme(this.grid, this.token('--color-muted-foreground'));
     const color = this.token('--color-muted-foreground');
@@ -946,7 +1432,7 @@ export class SceneViewportRuntime {
   private onFrame = (): void => {
     this.frame = 0;
     if (this.disposed || document.visibilityState === 'hidden') return;
-    if (!this.dragging && !this.controls.dragging) this.orbit.update();
+    if (this.view === null && !this.dragging && !this.controls.dragging) this.orbit.update();
     this.placeMarkers();
     const bounds = new Box3();
     for (const item of this.items.values()) {
@@ -954,6 +1440,8 @@ export class SceneViewportRuntime {
     }
     updateSceneCameraRange(this.camera, bounds);
     for (const outline of this.outlines) outline.update();
+    if (this.shadowsDirty) this.fitShadows();
+    this.drawMonitors();
     this.renderer.render(this.scene, this.camera);
     if (import.meta.env.DEV) this.inspectNativeControls();
     this.frame = requestAnimationFrame(this.onFrame);
@@ -1026,18 +1514,24 @@ export class SceneViewportRuntime {
   dispose(): void {
     if (this.disposed) return;
     this.props.onCapture?.(null);
+    this.props.onPilotControl?.(null);
+    // Hiding the scene writes a wheel step still pausing, as leaving the camera does (design 3.4.1).
+    this.pilot.flush('hide');
+    this.pilot.dispose();
     this.disposed = true;
     this.endGesture(false);
     cancelAnimationFrame(this.frame);
     this.resize.disconnect();
     this.theme.disconnect();
+    this.cardVisibility?.disconnect();
+    this.cardSize.disconnect();
     const canvas = this.renderer.domElement;
     canvas.removeEventListener('pointerdown', this.onPointerDown, true);
     canvas.removeEventListener('pointerup', this.onPointerUpCapture, true);
     canvas.removeEventListener('pointerup', this.onPointerUp);
     canvas.removeEventListener('pointercancel', this.onCancel);
     canvas.removeEventListener('lostpointercapture', this.onLostPointerCapture);
-    window.removeEventListener('blur', this.onCancel);
+    window.removeEventListener('blur', this.onBlur);
     document.removeEventListener('visibilitychange', this.onVisibilityChange);
     this.controls.removeEventListener('mouseDown', this.onGestureStart);
     this.controls.removeEventListener('objectChange', this.onGestureChange);
@@ -1049,7 +1543,11 @@ export class SceneViewportRuntime {
     this.overview?.dispose();
     this.overview = null;
     this.resources.dispose();
+    for (const figure of this.figures.values()) figure.dispose();
+    this.figures.clear();
     this.items.clear();
+    this.ground.geometry.dispose();
+    this.ground.material.dispose();
     for (const outline of this.outlines) {
       outline.geometry.dispose();
       outline.material.dispose();

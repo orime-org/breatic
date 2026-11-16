@@ -114,7 +114,10 @@ export class SceneTransformControls173 extends TransformControls {
     const gizmo = this.getHelper().children.find((child) => child instanceof TransformControlsGizmo);
     if (!(gizmo instanceof TransformControlsGizmo)) throw new Error('Unexpected TransformControls r173 helper');
     for (const group of [gizmo.gizmo.scale, gizmo.picker.scale]) {
-      for (const handle of group.children) handle.layers.set(multiple && handle.name !== 'XYZ' ? 1 : 0);
+      for (const handle of group.children) {
+        if (multiple && handle.name !== 'XYZ') handle.layers.disableAll();
+        else handle.layers.set(0);
+      }
     }
   }
 }

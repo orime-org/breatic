@@ -5,12 +5,12 @@ import type * as Y from 'yjs';
 import { z } from 'zod';
 import type { Awareness } from 'y-protocols/awareness';
 
-import { SceneObjectSchema, type SceneObject, type ScenePose } from '@breatic/shared';
+import { SceneObjectSchema, type SceneObject, type ScenePose, type SceneRotation, type SceneVector } from '@breatic/shared';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
 import { runHistoryStep } from '@web/data/yjs/history-step';
 import {
   applySceneCommand, createSceneHistory, readSceneDocument,
-  type SceneCommand, type SceneCommandResult, type SceneDocumentSnapshot, type ScenePatch,
+  type SceneCommand, type SceneCommandLimits, type SceneCommandResult, type SceneDocumentSnapshot, type ScenePatch,
 } from '@web/data/yjs/scene-document';
 import { PRESENCE_WRITE_INTERVAL_MS, createPublishThrottle } from '@web/lib/publish-throttle';
 import { userPaletteColor } from '@web/lib/user-color';
@@ -64,6 +64,8 @@ export class SceneSession {
     writeAccess: 'unknown', refused: false, awareness: null };
   private selectedIds: string[] = [];
   private gesture: SceneGestureDraft[] | null = null;
+  /** A camera's pilot draft (inner#1694 design 6.2): published to collaborators, never laid over the committed record. */
+  private pilot: { id: string; position: SceneVector; rotation: SceneRotation } | null = null;
   /** Each gesture target's committed pose when the drag began; a release writes only bones this drag changed. */
   private gestureStartPoses = new Map<string, ScenePose>();
   /** Drag previews reach awareness at most once per frame and per interval, as the canvas publishes its own. */
@@ -73,6 +75,7 @@ export class SceneSession {
   private focused = false;
   private destroyed = false;
   private commandError: Extract<SceneCommandResult, { ok: false }> | null = null;
+  private limits: SceneCommandLimits | undefined;
   private snapshot!: SceneSessionSnapshot;
 
   /**
@@ -115,6 +118,7 @@ export class SceneSession {
       && (this.environment.refused || this.environment.writeAccess !== 'denied');
     this.replaceSelection(nextSelection);
     if (this.gesture && (!canEdit || this.selectedIds.some((id) => byId.get(id)?.locked))) this.clearGesture();
+    if (this.pilot && (!canEdit || byId.get(this.pilot.id)?.locked !== false)) this.pilot = null;
     const objects = scene.objects.map((object) => {
       const patch = this.gesture?.find((item) => item.id === object.id);
       return patch ? { ...object, ...patch } : object;
@@ -210,7 +214,7 @@ export class SceneSession {
    * a withdrawal, an ineligible view) at once, dropping a preview still waiting.
    */
   private publishPresence(): void {
-    if (this.gesture !== null && !this.destroyed) {
+    if ((this.gesture !== null || this.pilot !== null) && !this.destroyed) {
       this.previewPublish.schedule();
       return;
     }
@@ -223,9 +227,11 @@ export class SceneSession {
     const awareness = this.environment.awareness;
     if (!awareness) return;
     const eligible = this.visible && this.focused && this.environment.connected && !this.destroyed;
-    const scenePresence = eligible ? { selectedIds: this.selectedIds,
-      gesture: this.gesture ? this.snapshot.objects.filter((object) => this.selectedIds.includes(object.id)) : null }
-      : { selectedIds: [], gesture: null };
+    const pilot = this.pilot;
+    const piloted = pilot ? this.snapshot.objects.find((object) => object.id === pilot.id) : undefined;
+    const gesture = this.gesture ? this.snapshot.objects.filter((object) => this.selectedIds.includes(object.id))
+      : pilot && piloted ? [{ ...piloted, position: pilot.position, rotation: pilot.rotation }] : null;
+    const scenePresence = eligible ? { selectedIds: this.selectedIds, gesture } : { selectedIds: [], gesture: null };
     const state = awareness.getLocalState();
     if (state !== null && JSON.stringify(state.scenePresence) !== JSON.stringify(scenePresence)) {
       awareness.setLocalState({ ...state, scenePresence });
@@ -364,12 +370,50 @@ export class SceneSession {
   }
 
   /**
+   * Take the configured command limits; until they arrive no light can be added.
+   * @param limits - The scene's configured limits.
+   */
+  setLimits(limits: SceneCommandLimits): void {
+    this.limits = limits;
+  }
+
+  /**
+   * Hold a camera's pilot draft and show it to collaborators; a locked camera or a user who cannot edit gets none.
+   * @param id - The camera being piloted.
+   * @param position - The draft position.
+   * @param rotation - The draft rotation.
+   */
+  previewPilot(id: string, position: SceneVector, rotation: SceneRotation): void {
+    const camera = this.snapshot.objects.find((object) => object.id === id);
+    if (!this.snapshot.canEdit || camera?.model.kind !== 'camera' || camera.locked) return;
+    this.pilot = { id, position: [...position], rotation: [...rotation] };
+    this.publishPresence();
+  }
+
+  /**
+   * End the pilot draft: a commit writes it as one patch when it differs from the record (design 3.4.1), publishing
+   * the final value first and withdrawing it after, as an object drag does; a drop writes nothing.
+   * @param commit - Whether to write the draft.
+   */
+  endPilot(commit: boolean): void {
+    const pilot = this.pilot;
+    this.previewPublish.cancel();
+    const record = pilot ? this.snapshot.objects.find((object) => object.id === pilot.id) : undefined;
+    if (commit && pilot && record && poseDiffers(record, pilot)) {
+      this.publishNow();
+      this.execute({ type: 'patch', patches: [{ id: pilot.id, position: pilot.position, rotation: pilot.rotation }] });
+    }
+    this.pilot = null;
+    this.publishPresence();
+  }
+
+  /**
    * Validate against fresh permissions and committed values immediately before writing.
    * @param command - User operation to validate against current committed scene data.
    * @returns Affected identities or a refusal from the fresh command gate.
    */
   execute(command: SceneCommand): SceneCommandResult {
-    const result = applySceneCommand(this.doc, command, this.origin, this.snapshot.canEdit, this.name);
+    const result = applySceneCommand(this.doc, command, this.origin, this.snapshot.canEdit, this.name, this.limits);
     this.commandError = result.ok ? null : result;
     if (result.ok && (command.type === 'create' || command.type === 'duplicate')) this.replaceSelection(result.ids);
     this.refresh();
@@ -417,6 +461,21 @@ export class SceneSession {
 function poseChange(id: string, start: ScenePose, draft: ScenePose): Extract<SceneCommand, { type: 'pose' }> {
   const set = Object.fromEntries(Object.entries(draft).filter(([key, value]) => JSON.stringify(start[key]) !== JSON.stringify(value)));
   return { type: 'pose', id, set, replace: false };
+}
+
+/**
+ * Whether a pilot draft differs from the record enough to write: past 1e-5 of position, or a rotation whose
+ * quaternion dot falls below 1 − 1e-9.
+ * @param record - The committed camera.
+ * @param draft - The draft pose.
+ * @param draft.position - Its position.
+ * @param draft.rotation - Its rotation.
+ * @returns True when it should be written.
+ */
+function poseDiffers(record: SceneObject, draft: { position: SceneVector; rotation: SceneRotation }): boolean {
+  const moved = Math.hypot(...record.position.map((value, index) => value - (draft.position[index] ?? value)));
+  const dot = record.rotation.reduce((sum, value, index) => sum + value * (draft.rotation[index] ?? 0), 0);
+  return moved > 1e-5 || Math.abs(dot) < 1 - 1e-9;
 }
 
 const sessions = createDocScopedCache<SceneSession, string>(
