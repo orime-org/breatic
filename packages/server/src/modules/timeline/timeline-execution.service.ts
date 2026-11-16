@@ -24,7 +24,7 @@ import {
   logger,
   timelineExecutionRepo,
 } from "@breatic/core";
-import { SMALLEST_CREDIT, sumCreditsByOperationKeys, timelineOperationKey, webAnimationSourceRepo } from "@breatic/domain";
+import { SMALLEST_CREDIT, sumCreditsByOperationKeys, timelineOperationKey, timelineSettlement, webAnimationSourceRepo } from "@breatic/domain";
 import { ceilToCreditCent, extractPromptText, signPayload, t, type TimelineExecution, type TimelineExecutionRow, type TimelineWebResolution } from "@breatic/shared";
 import {
   TimelineExecutionInputSchema,
@@ -34,6 +34,7 @@ import {
   type TimelineExecutionInput,
 } from "@breatic/shared/space-content";
 import { precheckCredits } from "@server/modules/payment/credit-precheck.service.js";
+import { admitOperationOrRefuse } from "@server/modules/operation/operation-admission.service.js";
 import * as projectService from "@server/modules/project/project.service.js";
 import { publishSpaceTasksQuietly } from "@server/modules/task/publish-counts.js";
 import * as grantRepo from "@server/modules/timeline/execution-grant.repo.js";
@@ -102,6 +103,7 @@ function sameAction(row: TimelineExecution, inputHash: string): AcceptedExecutio
  * @throws {ValidationError} When the input is out of the configured bounds.
  * @throws {ConflictError} When the action was accepted with a different input.
  * @throws {AppError} 402 when the studio's balance is not above zero.
+ * @throws {OperationsExhaustedError} 402 when the month's operations are used up and the studio cannot pay for one more.
  */
 export async function accept(userId: string, body: TimelineExecutionCreateInput & { projectId: string }): Promise<AcceptedExecution> {
   const { projectId, spaceId, actionId } = body;
@@ -130,6 +132,8 @@ export async function accept(userId: string, body: TimelineExecutionCreateInput 
         tx,
       );
       if (inserted === null) throw new ActionTaken();
+      // One execution is one operation; a refusal rolls the row back (inner#1968).
+      await admitOperationOrRefuse({ kind: "timeline", key: timelineOperationKey(inserted.id), projectId, actorUserId: userId, inputs: [] }, tx);
       await grantRepo.insertGrant({ executionId: inserted.id, projectId }, tx);
       return inserted;
     });
@@ -216,7 +220,7 @@ export async function cancel(userId: string, executionId: string): Promise<Timel
   const row = await timelineExecutionRepo.findById(executionId);
   if (row === undefined) throw new NotFoundError(t("server.error.not_found"));
   await projectService.assertAccess(row.projectId, userId, "editor");
-  const result = await timelineExecutionRepo.transition({ id: executionId, event: { type: "cancel" } });
+  const result = await timelineSettlement.transition({ id: executionId, event: { type: "cancel" } });
   if (!result.applied) return result.row;
   await publishSpaceTasksQuietly(result.row.projectId, result.row.spaceId);
   return result.row;
