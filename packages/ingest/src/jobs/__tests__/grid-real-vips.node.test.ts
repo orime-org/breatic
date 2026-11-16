@@ -42,10 +42,10 @@ afterAll(() => {
  * Run one program and read what it wrote.
  * @param program - Its name.
  * @param args - Its arguments.
- * @returns Its stdout.
+ * @returns Its stdout, as text.
  */
-function run(program: string, args: readonly string[]): Buffer {
-  return execFileSync(join(binOf(program) ?? "", program), args, { stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024 });
+function run(program: string, args: readonly string[]): string {
+  return execFileSync(join(binOf(program) ?? "", program), args, { stdio: ["ignore", "pipe", "pipe"], encoding: "utf8" });
 }
 
 /**
@@ -54,16 +54,17 @@ function run(program: string, args: readonly string[]): Buffer {
  * @param crop - The rectangle, when only part is wanted.
  * @returns The bytes.
  */
-function pixels(file: string, crop?: { x: number; y: number; width: number; height: number }): Buffer {
+function pixels(file: string, crop?: { x: number; y: number; width: number; height: number }): Uint8Array {
   const filter = crop === undefined ? [] : ["-vf", `crop=${String(crop.width)}:${String(crop.height)}:${String(crop.x)}:${String(crop.y)}`];
-  return run("ffmpeg", ["-v", "error", "-i", file, ...filter, "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]);
+  const args = ["-v", "error", "-i", file, ...filter, "-f", "rawvideo", "-pix_fmt", "rgb24", "-"];
+  return new Uint8Array(execFileSync(join(FFMPEG ?? "", "ffmpeg"), args, { stdio: ["ignore", "pipe", "pipe"], maxBuffer: 64 * 1024 * 1024 }));
 }
 
 describe.skipIf(!ready)("a grid cut by a real vips", () => {
   it("cuts each picked cell to exactly the source's pixels in its rectangle", () => {
     const source = join(dir, "source.png");
     run("ffmpeg", ["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=1000x700:rate=1", "-frames:v", "1", source]);
-    const probe = readProbeOutput(run("ffprobe", probeArgs(source, "own-file")).toString("utf8"));
+    const probe = readProbeOutput(run("ffprobe", probeArgs(source, "own-file")));
     const params = { rows: 3, cols: 3, skip: [4] };
     const rects = gridTileRects(1000, 700, 3, 3);
     gridCellsOf(params).forEach((cell, index) => {
@@ -72,7 +73,7 @@ describe.skipIf(!ready)("a grid cut by a real vips", () => {
         if (step.kind !== "run") throw new Error("a grid step is a single run");
         run(step.program, step.args);
       }
-      expect(pixels(tile).equals(pixels(source, rects[cell]))).toBe(true);
+      expect(pixels(tile)).toEqual(pixels(source, rects[cell]));
     });
   });
 });

@@ -51,7 +51,7 @@ describe("the grid's outputs", () => {
     expect(mediumOf("grid")).toBe("image");
     expect(outputFileName("grid")).toBe("out.png");
     expect(inputRefusal("grid", picture(1000, 700))).toBeNull();
-    expect(inputRefusal("grid", { streams: [{ index: 0, codecType: "audio", codecName: "aac" }], durationSeconds: 3 })).toBe("tool_failed");
+    expect(inputRefusal("grid", { streams: [{ index: 0, codecType: "audio", codecName: "aac", width: null, height: null, attachedPic: false }], durationSeconds: 3 })).toBe("tool_failed");
     expect(outputRefusal(picture(333, 233), "image")).toBeNull();
     expect(outputRefusal({ streams: [], durationSeconds: null }, "image")).toBe("tool_failed");
   });
