@@ -832,6 +832,37 @@ the project page opens that canvas once, and the canvas, once loaded and
 holding the node, cancels its queued opening fit, centres on the node and
 selects it.
 
+The director console (`SceneDirectorPanel.tsx`) is a right panel over the same
+scene document: cameras and lights are scene objects (`model.kind` `camera`
+or `light`, numbered per kind), and the ambient light is two values on the
+scene map (`ambientColor`, `ambientIntensity`) written by the `environment`
+command, all shared by everyone in the Space. The runtime decides which lights
+shine and which cast shadows (`viewport/director-lights.ts`): the first
+`director.max_lights` (`config/scene.yaml`) by number then id shine, and of
+those, the ones whose shadow is on cast up to the shadow slots this device's
+GPU allows; the plan comes back to the console, whose rows say why a light is
+dark or casts no shadow. Each camera card is a monitor the runtime redraws at
+most every `director.monitor_refresh_ms`, only while the card is visible and
+something it shows has changed (`viewport/monitor-schedule.ts`). Clicking a
+monitor looks through that camera with the viewfinder's frame at the camera's
+ratio, and a drag there moves the camera itself (`viewport/scene-pilot.ts`),
+written on release or `director.wheel_commit_ms` after the wheel stops. A
+slider or colour press previews through the session gesture and writes once,
+as one undo step, on release; the gesture's `cancelRevision` names the press,
+so a cancel meant for one press never ends a later one. The ambient light has
+no session gesture, so the editor holds its press itself. Display-only meshes
+(camera and light icons, frustum lines, labels) live on the layers named in
+`viewport/scene-layers.ts`, and a multiselect hides its nonuniform scale
+handles with an empty layer mask.
+
+The bottom of the stage is one row: the toolbar of the selected objects in
+the middle and the bottom-right toolbar, whose last group holds the viewfinder
+button (portalled in by `SceneViewfinder`) and the minimap switch. When the two
+do not fit side by side, the object toolbar stacks right-aligned above the
+other, and the minimap, the right panel's bottom edge and the viewfinder's safe
+area rise with it; a still keeps the measure it was framed with, so the frame
+does not move when the object toolbar is put away for it.
+
 Opening a registered model checks its registered size, reads at most
 `max_artifact_bytes`, unpacks a ZIP in the worker (a manifest, `files/` paths
 only, no zip64) and parses it the same way. Texture edges are held to
