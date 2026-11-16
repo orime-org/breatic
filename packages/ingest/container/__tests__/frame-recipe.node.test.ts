@@ -196,7 +196,7 @@ beforeAll(async () => {
   // A white 20x12 box at (40, 20) on black, every frame a keyframe: FC07's crops are read against its known edges.
   await ff('box.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=160x96:r=25:d=0.2,drawbox=x=40:y=20:w=20:h=12:color=white:t=fill,format=yuv420p",
     '-c:v', 'libx264', '-g', '1', '-bf', '0', '-pix_fmt', 'yuv420p', '-crf', '0', ...tagged]);
-});
+}, 120_000);
 afterAll(async () => { await rm(dir, { recursive: true, force: true }); });
 
 beforeEach(() => {

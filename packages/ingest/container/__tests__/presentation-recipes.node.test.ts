@@ -298,7 +298,7 @@ beforeAll(async () => {
   await make('late-opus.webm', ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=25:d=2', '-f', 'lavfi', '-i', 'sine=d=1.5', '-c:v', 'libvpx-vp9', '-c:a', 'libopus', '-output_ts_offset', '10']);
   await make('primed-aac60.mkv', primed('aac'));
   await make('primed-mp3-60.mkv', primed('libmp3lame'));
-});
+}, 120_000);
 afterAll(async () => { await rm(dir, { recursive: true, force: true }); });
 
 beforeEach(() => {

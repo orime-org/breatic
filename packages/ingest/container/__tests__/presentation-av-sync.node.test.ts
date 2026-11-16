@@ -260,7 +260,7 @@ beforeAll(async () => {
       '-c:v', 'libx264', '-g', '10', '-bf', '0', '-pix_fmt', 'yuv420p', '-x264-params', 'colorprim=bt709:transfer=bt709:colormatrix=bt709', '-c:a', codec, '-shortest']);
     primed.set(codec, [join(dir, `primed-${codec}.mkv`), await planOf(join(dir, `primed-${codec}.mkv`))]);
   }
-});
+}, 120_000);
 afterAll(async () => { await rm(dir, { recursive: true, force: true }); });
 
 beforeEach(() => {

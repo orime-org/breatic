@@ -427,7 +427,7 @@ beforeAll(async () => {
   // presentation-recipes, here at the transition clips' size and keyframe interval).
   await make('clip-hdr.mp4', ['-f', 'lavfi', '-i', 'color=c=0xB08060:s=64x36:r=25:d=1.6', '-c:v', 'libx264', '-bf', '0', '-pix_fmt', 'yuv420p10le',
     '-x264-params', 'colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc', '-g', '10', '-video_track_timescale', '25']);
-});
+}, 120_000);
 afterAll(async () => { await rm(dir, { recursive: true, force: true }); });
 
 beforeEach(() => {
