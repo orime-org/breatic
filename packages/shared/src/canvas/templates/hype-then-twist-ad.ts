@@ -14,7 +14,7 @@ export const HYPE_THEN_TWIST_AD: GenerationTemplate = {
   inputs: [{ key: "product", type: "image" }],
   steps: [],
   agentNote:
-    "a 12-second vertical funny ad in six 2-second parts: four shots like a luxury commercial build the user's product up, then the reveal shows it plainly, the music cuts out at that moment and it ends on a beat of silence; the product kept as in the photo; the user fills in what the reveal shows and the one ordinary sound after the silence",
+    "a 12-second vertical funny ad in six 2-second parts: four shots like a luxury commercial build the user's product up, then the reveal shows it plainly and the music cuts out at that moment; it ends on the product held still in everyday light, a beat of silence, then one ordinary sound; the product kept as in the photo; the user fills in what the reveal shows and that one ordinary sound",
   goal: "ecommerce",
   triggers: {
     asks: ["a twist ad", "a funny product ad"],
