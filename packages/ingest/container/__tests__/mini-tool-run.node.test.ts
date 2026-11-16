@@ -239,4 +239,93 @@ describe("runJob — a grid (inner#1968)", () => {
     expect(lastReport()).toMatchObject({ ok: true });
     expect(Object.keys(lastReport().media as Record<string, unknown>)).toEqual(outputs.map((output) => output.key));
   });
+
+  /**
+   * A grid job of `count` tiles.
+   * @param count - How many tiles.
+   * @param outputConcurrency - How many tile writes may be in flight; left out when undefined.
+   * @returns The body.
+   */
+  function gridBody(count: number, outputConcurrency?: number): Parameters<typeof runJob>[0] {
+    const outputs = Array.from({ length: count }, (_, i) => ({ url: `${OBJECTS}/image/tile-${String(i)}.png`, key: `image/tile-${String(i)}.png` }));
+    return {
+      op: "grid",
+      params: { rows: 3, cols: 3, skip: [] },
+      input: `${OBJECTS}/image/a.png`,
+      outputs,
+      reportUrl: REPORT,
+      ...(outputConcurrency !== undefined && { outputConcurrency }),
+    };
+  }
+
+  /**
+   * Stand the Worker's writes in: each PUT is held for a while, earlier tiles
+   * longest so they land out of order, and the most held at once is counted.
+   * @param failing - A tile URL whose write the Worker refuses.
+   * @returns The counts, read after the run.
+   */
+  function slowWrites(failing?: string): { most: number; puts: string[]; inFlightAtReport: number[] } {
+    const seen = { most: 0, puts: [] as string[], inFlightAtReport: [] as number[] };
+    let inFlight = 0;
+    vi.stubGlobal("fetch", async (url: string, init?: RequestInit): Promise<Response> => {
+      const method = init?.method ?? "GET";
+      if (method === "GET") return new Response(new Uint8Array([1, 2, 3]), { status: 200, headers: { "content-length": "3" } });
+      if (method === "POST" && url === REPORT) {
+        seen.inFlightAtReport.push(inFlight);
+        sent.reports.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+        return new Response(null, { status: 200 });
+      }
+      inFlight += 1;
+      seen.most = Math.max(seen.most, inFlight);
+      seen.puts.push(url);
+      await new Response(init?.body).arrayBuffer();
+      const index = Number(/tile-(\d+)/.exec(url)?.[1] ?? 0);
+      await new Promise((resolve) => setTimeout(resolve, 5 + (10 - index) * 3));
+      inFlight -= 1;
+      return new Response(null, { status: url === failing ? 500 : 200 });
+    });
+    return seen;
+  }
+
+  it("keeps at most outputConcurrency tile writes in flight, and more than one", async () => {
+    h.probes = { source: still, "out.png": still };
+    const seen = slowWrites();
+
+    await runJob(gridBody(9, 3));
+
+    expect(seen.most).toBe(3);
+    expect(seen.puts).toHaveLength(9);
+    expect(lastReport()).toMatchObject({ ok: true });
+  });
+
+  it("writes one tile at a time when the job names no concurrency", async () => {
+    h.probes = { source: still, "out.png": still };
+    const seen = slowWrites();
+
+    await runJob(gridBody(4));
+
+    expect(seen.most).toBe(1);
+    expect(lastReport()).toMatchObject({ ok: true });
+  });
+
+  it("reports every tile in output order when the writes land out of order", async () => {
+    h.probes = { source: still, "out.png": still };
+    slowWrites();
+    const body = gridBody(9, 4);
+
+    await runJob(body);
+
+    expect(Object.keys(lastReport().media as Record<string, unknown>)).toEqual(body.outputs.map((output) => output.key));
+  });
+
+  it("fails the whole run as internal when one tile's write is refused, reporting after every write settled", async () => {
+    h.probes = { source: still, "out.png": still };
+    const seen = slowWrites(`${OBJECTS}/image/tile-2.png`);
+
+    await runJob(gridBody(9, 4));
+
+    expect(sent.reports).toHaveLength(1);
+    expect(lastReport()).toMatchObject({ ok: false, reason: "internal" });
+    expect(seen.inFlightAtReport).toEqual([0]);
+  });
 });
