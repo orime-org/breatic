@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { z } from 'zod';
-import { presentationTableSchema } from '@shared/mini-tools/video-presentation-table.js';
 import type {
-  ExactPresentationTime, VideoEditSpan, VideoSourceLedgerFailureClass, VideoSourceLedgerV2, VideoSourceRun,
+  ExactPresentationTime, VideoEditSpan, VideoSourceLedgerFailureClass, VideoSourceRun,
 } from '@shared/upload/video-source-ledger-types.js';
 
 export const positiveCount = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
@@ -48,7 +47,6 @@ export const exactTime = z.strictObject({
 export const sourceClock = z.strictObject({ numerator: positiveDecimal, denominator: positiveDecimal });
 export const safeTick = z.number().int().min(Number.MIN_SAFE_INTEGER).max(Number.MAX_SAFE_INTEGER);
 export const httpsUrl = z.url().refine(value => value.startsWith('https://'));
-const identityV2 = { schemaVersion: z.literal(2), sourceFingerprint: hash, producerVersion: z.literal(2), attempt };
 export const editSpan = z.strictObject({ sourceStart: exactTime, sourceEnd: exactTime, presentationStart: exactTime, rate: exactTime });
 
 /**
@@ -89,25 +87,6 @@ export function spansValid(spans: readonly VideoEditSpan[]): boolean {
   }
   return true;
 }
-
-/** Stored source ledger v2: the compact presentation table, source ticks per presented frame and the edit spans. */
-export const videoSourceLedgerV2Schema: z.ZodType<VideoSourceLedgerV2> = z.strictObject({
-  ...identityV2,
-  presentation: presentationTableSchema,
-  source: z.strictObject({ timeBase: sourceClock, runs: z.array(z.strictObject({ start: safeTick, count: positiveCount, step: safeTick })).min(1) }),
-  videoEdits: z.array(editSpan).min(1).nullable(),
-  audioEdits: z.array(editSpan).nullable(),
-}).transform((value, ctx) => {
-  // A transform runs only after every field parsed, so the checks below see valid integers.
-  const presented = value.presentation.runs.reduce((total, run) => total + run.count, 0);
-  const sourced = value.source.runs.reduce((total, run) => total + run.count, 0);
-  if (sourced !== presented || !sourceRunsValid(value.source.runs) || (value.videoEdits !== null && !spansValid(value.videoEdits)) ||
-    (value.audioEdits !== null && !spansValid(value.audioEdits))) {
-    ctx.addIssue({ code: 'custom', message: 'Source runs must give one forward tick per presented frame and edit spans must be non-empty, forward and in order' });
-    return z.NEVER;
-  }
-  return value;
-});
 
 /** The compact object's exact measurements, shared by receipts and their bounded reader. */
 export const videoPresentationTableReceiptSchema = z.strictObject({ url: httpsUrl, sha256: hash, size: positiveCount, frameCount: positiveCount });

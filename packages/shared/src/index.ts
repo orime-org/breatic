@@ -1082,7 +1082,6 @@ export {
 export {
   videoSourceLedgerKeyFor,
   videoSourceLedgerTableKeyFor,
-  videoSourceLedgerV2Schema,
   classifyVideoSourceLedgerFailure,
 } from "@shared/upload/video-source-ledger.js";
 export {
@@ -1121,7 +1120,6 @@ export {
 } from "@shared/upload/read-video-source-ledger.js";
 export type {
   VideoSourceLedgerReceiptV2,
-  VideoSourceLedgerV2,
   VideoSourceLedgerFailureClass,
   VideoSourceLedgerProcessLimits,
 } from "@shared/upload/video-source-ledger-types.js";

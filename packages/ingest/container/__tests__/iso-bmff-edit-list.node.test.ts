@@ -3,10 +3,28 @@
 
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { assembleExplicitIsoVideoPresentation } from "@ingest/container/explicit-iso-video-presentation.js";
 import type { IsoBmffEdit, IsoBmffMetadata, IsoBmffTrackMetadata } from "@ingest/container/iso-bmff-metadata.js";
-import type { ExactPresentationTime, OwnedVideoPresentation } from "@ingest/container/iso-bmff-presentation.js";
-import type { PhysicalVideoProbe } from "@ingest/container/physical-video-probe.js";
+import { planEditListPresentation, type ExactPresentationTime, type OwnedVideoPresentation } from "@ingest/container/iso-bmff-presentation.js";
+import type { PhysicalVideoProbe } from "@shared/upload/video-source-ledger-types.js";
+
+// The edit-list planner (planEditListPresentation) on a selected track's metadata and frames, as the plan probe reads them.
+
+/**
+ * Plan the selected physical track's explicit edit list.
+ * @param iso - Container metadata.
+ * @param physical - The selected video track's clock and frames.
+ * @param maxOccurrences - The expansion ceiling.
+ * @returns The schedule, or null when the track has no edit list.
+ * @throws {Error} When track association, exact planning or the ceiling fails.
+ */
+function assembleExplicitIsoVideoPresentation(iso: IsoBmffMetadata, physical: PhysicalVideoProbe, maxOccurrences: number): OwnedVideoPresentation | null {
+  const matches = iso.tracks.filter((track) => track.trackId === physical.trackId);
+  if (matches.length !== 1) throw new Error("Expected one ISO track matching the original physical video track");
+  const track = matches[0]!;
+  if (track.edits === null) return null;
+  return planEditListPresentation({ movieTimescale: iso.movieTimescale, mediaTimescale: track.mediaTimescale, sourceTimeBase: physical.sourceTimeBase,
+    edits: track.edits, frames: physical.frames }, maxOccurrences);
+}
 
 /** Encode an independently specified reduced fraction without floating-point conversion.
  * @throws {never} Never.

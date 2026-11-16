@@ -1,72 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import type {
-  PhysicalVideoProbe, MatroskaPhysicalVideoProbe, OwnedVideoPresentation, VideoEditSpan, VideoSourceLedgerV2, VideoSourceRun,
-} from "@shared/upload/video-source-ledger-types.js";
+import type { VideoEditSpan, VideoSourceRun } from "@shared/upload/video-source-ledger-types.js";
 import { projectPresentationTable, rational, type PresentationRational, type VideoPresentationTable } from "@shared/mini-tools/video-presentation-projection.js";
 import { planVideoPresentationTimeline, videoAudioSampleIndex, VIDEO_AUDIO_SAMPLE_RATE, type VideoTimelineFrame } from "@shared/mini-tools/video-presentation-timeline.js";
 import { videoPlanOutput, type VideoPlanOutput, type VideoPlanSource } from "@shared/mini-tools/video-encode-plan.js";
-import type { IsoBmffEdit, IsoBmffMetadata } from "@ingest/container/iso-bmff-metadata.js";
+import type { IsoBmffEdit } from "@ingest/container/iso-bmff-metadata.js";
 import { exactPresentationTime } from "@ingest/container/iso-bmff-presentation.js";
-import type { MatroskaMetadata } from "@ingest/container/matroska-metadata.js";
-import { assembleExplicitIsoVideoPresentation } from "@ingest/container/explicit-iso-video-presentation.js";
-import { assembleUneditedIsoVideoPresentation } from "@ingest/container/unedited-iso-video-presentation.js";
-import { assembleMatroskaVideoPresentation } from "@ingest/container/matroska-video-presentation.js";
-
-/** Already admitted source identity and frozen pure-planning ceilings. */
-interface SourceLedgerAssemblyBase {
-  sourceFingerprint: string;
-  attempt: { jobId: string; deadlineAt: number };
-}
-/** Already admitted source identity and the complete facts the container parsed from it. */
-export type VideoSourceLedgerV2Input = SourceLedgerAssemblyBase & ({
-  kind: "iso_bmff";
-  metadata: IsoBmffMetadata;
-  physical: PhysicalVideoProbe;
-  /** The selected audio track, or null when the source has no audio. */
-  audioTrackId: number | null;
-} | {
-  kind: "matroska";
-  metadata: MatroskaMetadata;
-  physical: MatroskaPhysicalVideoProbe;
-});
-
-/** No frame ceiling: the stored ledger covers every upload (inner#1306), so the planners get the largest one they accept. */
-const UNBOUNDED = Number.MAX_SAFE_INTEGER;
-
-/**
- * Assemble the stored source ledger v2 and its compact presentation table in one pure call.
- * @param input - Accepted identity and the complete parsed container and physical facts.
- * @returns The ledger and the compact table, which is the ledger's own presentation.
- * @throws {Error} When the format owner rejects the source; `code` is `unsupported_rate` for a non-positive edit rate and `no_presented_frames` when nothing is presented.
- */
-export function assembleVideoSourceLedgerV2(input: VideoSourceLedgerV2Input): { ledger: VideoSourceLedgerV2; table: VideoPresentationTable } {
-  let presentation: OwnedVideoPresentation;
-  let videoEdits: VideoEditSpan[] | null = null;
-  let audioEdits: VideoEditSpan[] | null = null;
-  if (input.kind === "matroska") presentation = assembleMatroskaVideoPresentation(input.metadata, input.physical, UNBOUNDED);
-  else {
-    const explicit = assembleExplicitIsoVideoPresentation(input.metadata, input.physical, UNBOUNDED);
-    presentation = explicit ?? assembleUneditedIsoVideoPresentation(input.metadata, input.physical, UNBOUNDED);
-    if (explicit !== null) {
-      const video = trackOf(input.metadata, input.physical.trackId);
-      videoEdits = editSpans(video.edits!, input.metadata.movieTimescale, video.mediaTimescale);
-    }
-    if (input.audioTrackId !== null) {
-      const audio = trackOf(input.metadata, input.audioTrackId);
-      audioEdits = audio.edits === null ? null : editSpans(audio.edits, input.metadata.movieTimescale, audio.mediaTimescale);
-    }
-  }
-  if (presentation.frames.length === 0) throw ledgerError("no_presented_frames", "The edits present no frame");
-  const table = projectPresentationTable(presentation.frames);
-  const ledger: VideoSourceLedgerV2 = {
-    schemaVersion: 2, sourceFingerprint: input.sourceFingerprint, producerVersion: 2, attempt: { ...input.attempt }, presentation: table,
-    source: { timeBase: { ...input.physical.sourceTimeBase }, runs: sourceRuns(presentation.frames.map((frame) => sourceTick(frame.sourcePtsTicks))) },
-    videoEdits, audioEdits,
-  };
-  return { ledger, table };
-}
 
 /** Everything a presentation plan is assembled from: real frames and edits in original time and the resolved source facts. */
 export interface VideoPresentationPlanInput {
@@ -195,19 +135,6 @@ function coversWholeMedia(spans: readonly VideoEditSpan[], mediaStart: Presentat
   const gap = end[0] * to[1] - to[0] * end[1];
   return start[0] * from[1] === from[0] * start[1] && rate[0] === rate[1] && at[0] === 0n
     && (gap < 0n ? -gap : gap) * slack[1] <= slack[0] * end[1] * to[1];
-}
-
-/**
- * The one ISO track with this id.
- * @param metadata - Parsed ISO metadata.
- * @param trackId - The track id.
- * @returns The track.
- * @throws {Error} When no track or more than one has this id.
- */
-function trackOf(metadata: IsoBmffMetadata, trackId: number): IsoBmffMetadata["tracks"][number] {
-  const matches = metadata.tracks.filter((track) => track.trackId === trackId);
-  if (matches.length !== 1) throw new Error("Expected one ISO track with the selected id");
-  return matches[0]!;
 }
 
 /**

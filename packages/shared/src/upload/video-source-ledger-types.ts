@@ -1,8 +1,6 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import type { VideoPresentationTable } from '@shared/mini-tools/video-presentation-projection.js';
-
 /** Exact owned seconds, reduced with a positive denominator. */
 export interface ExactPresentationTime { numerator: string; denominator: string }
 /** One actual physical frame in an explicitly unedited decoder clock. */
@@ -98,15 +96,6 @@ export interface MatroskaBlockMetadata {
   blockDurationTicks: string | null;
   discardPaddingNs: string | null;
 }
-/** Exact physical Matroska frames bound to original packet/block provenance. */
-export interface MatroskaPhysicalVideoProbe {
-  streamIndex: number;
-  trackNumber: string;
-  trackUid: string;
-  sourceTimeBase: { numerator: string; denominator: string };
-  frames: { rawDecodeOrdinal: number; ptsTicks: string; blockOrdinal: number }[];
-}
-
 /** The existing accepted platform preparation identity. */
 interface VideoSourceLedgerAttempt { jobId: string; deadlineAt: number }
 /** Frozen operations budgets for one source-ledger production; there is no frame-count ceiling. */
@@ -127,19 +116,6 @@ export interface VideoEditSpan {
   sourceEnd: ExactPresentationTime;
   presentationStart: ExactPresentationTime;
   rate: ExactPresentationTime;
-}
-/** Stored source ledger v2: only what consumers read, with no producer-only evidence. */
-export interface VideoSourceLedgerV2 {
-  schemaVersion: 2;
-  sourceFingerprint: string;
-  producerVersion: 2;
-  attempt: VideoSourceLedgerAttempt;
-  presentation: VideoPresentationTable;
-  source: { timeBase: { numerator: string; denominator: string }; runs: VideoSourceRun[] };
-  /** Null when the video track has no edit list. */
-  videoEdits: VideoEditSpan[] | null;
-  /** Null when there is no audio or its track has no edit list; empty when its edits are all empty. */
-  audioEdits: VideoEditSpan[] | null;
 }
 /** Stored receipt naming the full v2 ledger and the compact presentation table written with it. */
 export interface VideoSourceLedgerReceiptV2 {
