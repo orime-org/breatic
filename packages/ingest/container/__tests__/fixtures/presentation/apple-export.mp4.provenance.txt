@@ -1,0 +1,11 @@
+apple-export.mp4: H.264 High 320x180 yuv420p at 30 fps tagged BT.709, 60 frames on a 1/15360 time base with
+B-frames (has_b_frames 2), and AAC-LC 48 kHz, both 2 s. The video has one edit: media time 1024, 30720 of
+15360 (2 s), rate 1. AVFoundation folds the composition shift into the last sample's decode delta: read
+without the edit list, the first pts is 1024 and the last frame starts at 31232 with a duration of 1536
+(every other frame lasts 512), so the media appears to end 1024 ticks after the edit does.
+Purpose: identity-route fixture (inner#1306 round 34): one rate-1 edit from the first frame that ends inside
+the last frame, which Chromium plays at the plan's 2 s duration.
+Provenance: an FFmpeg-made 2 s clip with AAC of equal length, exported on macOS with
+`avconvert --preset PresetHighestQuality` (AVAssetExportSession). Facts above read back with ffprobe
+(FFmpeg 8.0.1) and from the elst and mvhd boxes.
+SHA-256: a7a866e71dae48ed5a80456a81b05c0c19054f2bf24880b35b3291b7e47074be

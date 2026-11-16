@@ -16,6 +16,7 @@ import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { hashCanonicalJson, type CanonicalJson } from '@shared/mini-tools/canonical-json.js';
 import type { PresentationRational } from '@shared/mini-tools/video-presentation-projection.js';
+import type { VideoEditSpan } from '@shared/upload/video-source-ledger-types.js';
 import { isHdrTransfer, videoCarrierGeometry, videoCarrierTagFilter, videoContainerJobId, videoPlanIsUnaltered, type VideoJobWork } from '@shared/mini-tools/video-encode-plan.js';
 import {
   PRESENTATION_CARRIER_HOST, PRESENTATION_RUN_PATH, SOURCE_LEDGER_WRITE_HOST, type PresentationCarrierAnswer, type PresentationCarrierRequest, type PresentationEncodeFacts, type PresentationIdentityFormat,
@@ -215,6 +216,33 @@ async function audioWindow(stream: Record<string, unknown> | undefined, input: s
 }
 
 /**
+ * Whether Chromium plays the source on the plan's clock (§4.1 简单稳定输入, §4.2.1), so it may play as-is: the plan's 0 is the
+ * source's 0, every presented frame is a source frame and the last one declares its end; a lead before the first frame (which
+ * Chromium shows) and a hold after the last (which it holds) are allowed; and the video's edits are none, or one rate-1 edit
+ * at presentation 0 from the first frame that ends inside the last frame, which Chromium cuts there as the plan does (an
+ * AVFoundation export, whose composition shift lengthens the last frame's decode delta).
+ * @param plan - The assembled plan.
+ * @param media - Where the media's first frame starts, its last frame starts and its last frame ends, in source time.
+ * @param media.start - The first frame's start.
+ * @param media.lastStart - The last frame's start.
+ * @param media.end - The last frame's end.
+ * @returns Whether it plays on the plan's clock.
+ * @throws {RangeError} When a time is not an exact rational.
+ */
+function playsOnPlanClock(plan: { originMapping: { origin: PresentationRational; entries: readonly { kind: string }[]; lastSource: { support: string } };
+  videoSpans: readonly VideoEditSpan[] | null }, media: { start: PresentationRational; lastStart: PresentationRational; end: PresentationRational }): boolean {
+  const { origin, entries, lastSource } = plan.originMapping;
+  if (BigInt(origin.numerator) !== 0n || lastSource.support !== 'declared' || entries.some((entry) => entry.kind !== 'source')) return false;
+  if (plan.videoSpans === null) return true;
+  if (plan.videoSpans.length !== 1) return false;
+  const span = plan.videoSpans[0]!;
+  const compare = (a: PresentationRational, b: PresentationRational): bigint =>
+    BigInt(a.numerator) * BigInt(b.denominator) - BigInt(b.numerator) * BigInt(a.denominator);
+  return BigInt(span.presentationStart.numerator) === 0n && compare(span.rate, { numerator: '1', denominator: '1' }) === 0n
+    && compare(span.sourceStart, media.start) === 0n && compare(span.sourceEnd, media.lastStart) > 0n && compare(span.sourceEnd, media.end) <= 0n;
+}
+
+/**
  * Whether the source plays as itself (§4.1): a combination of the frozen identity table, with no rotation, square
  * samples and a tagged matrix.
  * @param facts - The source facts.
@@ -342,10 +370,10 @@ async function plan(body: PresentationProbeRequest, input: string, directory: st
   let videoSpans: VideoPresentationPlanInput['videoSpans'] = null;
   // The media's presented range on the media timeline: the first pts to the latest frame end.
   const mediaStart = frames[0]!.start;
-  const mediaEnd = frames.reduce((latest, frame) => {
-    const end = frame.declaredEnd ?? frame.start;
-    return BigInt(end.numerator) * BigInt(latest.denominator) > BigInt(latest.numerator) * BigInt(end.denominator) ? end : latest;
-  }, mediaStart);
+  const later = (a: PresentationRational, b: PresentationRational): PresentationRational =>
+    (BigInt(a.numerator) * BigInt(b.denominator) > BigInt(b.numerator) * BigInt(a.denominator) ? a : b);
+  const mediaEnd = frames.reduce((latest, frame) => later(frame.declaredEnd ?? frame.start, latest), mediaStart);
+  const lastStart = frames.reduce((latest, frame) => later(frame.start, latest), mediaStart);
   let editTick: PresentationRational | undefined;
   const audio = streams.find((stream) => stream.codec_type === 'audio');
   let audioSpans: VideoPresentationPlanInput['videoSpans'] = null;
@@ -397,8 +425,8 @@ async function plan(body: PresentationProbeRequest, input: string, directory: st
     encoding: { keyframeOrdinals: keyframeOrdinals(assembled, packets), codedWidth: Number(video.width), codedHeight: Number(video.height), ...sourceKeyframesOf(packets, base, iso) },
     routeInput: {
       plan: { planSha256, producerVersion: PRODUCER_VERSION, profileVersion: PROFILE_VERSION }, hdr, alpha,
-      // Playing as-is keeps the source's own clock, which is the plan's only for an unaltered plan whose origin is 0 (§4.1).
-      identityQualified: videoPlanIsUnaltered(assembled) && BigInt(assembled.originMapping.origin.numerator) === 0n
+      // Playing as-is keeps the source's own clock, which must be the plan's as Chromium plays it (§4.1).
+      identityQualified: playsOnPlanClock(assembled, { start: mediaStart, lastStart, end: mediaEnd })
         && identityQualified({ container: containerOf(format), video, pixFmt, bitDepth: depth.bitDepth, matrixTagged, audioCodec }, body.probe.identityFormats),
       colorMatrixTagged: matrixTagged, codec,
       // §4.1 row 2: a copy keeps the plan when the plan presents the source unaltered and the MP4 carrier can hold the codec.

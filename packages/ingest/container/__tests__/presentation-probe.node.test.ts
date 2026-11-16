@@ -11,8 +11,8 @@
  * the decoder-reported pixel format and colour properties, and answers the plan, the full ledger's encode facts, the
  * route facts and the job work. Alpha is confirmed transparent, confirmed opaque or unknown (`classification_unknown`).
  *
- * Every fixture is generated here with FFmpeg, except the HEVC-with-alpha clip (`fixtures/presentation/`, provenance
- * beside it), which needs VideoToolbox. Assertions use only facts FFmpeg reads back (D-5); the HEVC alpha case runs only
+ * Every fixture is generated here with FFmpeg, except those in `fixtures/presentation/` (provenance beside each): the
+ * HEVC-with-alpha clip, which needs VideoToolbox, and an AVFoundation export. Assertions use only facts FFmpeg reads back (D-5); the HEVC alpha case runs only
  * where FFmpeg is 8 or newer, as in the media image (FFmpeg 7.1 decodes it as yuv420p, §91 D-6 measurement).
  */
 import { execFile, execFileSync } from 'node:child_process';
@@ -93,6 +93,37 @@ async function make(name: string, args: string[]): Promise<void> {
   files.set(name, path);
 }
 
+/**
+ * Replace the edit list of a single-track MP4 whose `moov` follows `mdat` (FFmpeg's default), growing `edts`, `trak` and
+ * `moov` by the difference; no chunk offset moves.
+ * @param file - The MP4 bytes.
+ * @param edits - Each edit as [duration on the movie timescale, media time or -1 for an empty edit, rate].
+ * @returns The rewritten bytes.
+ */
+function withVideoEdits(file: Buffer, edits: readonly (readonly [number, number, number])[]): Buffer {
+  const child = (from: number, to: number, type: string): number => {
+    for (let at = from; at < to; at += file.readUInt32BE(at)) if (file.toString('latin1', at + 4, at + 8) === type) return at;
+    throw new Error(`No ${type} box`);
+  };
+  const moov = child(0, file.length, 'moov');
+  const trak = child(moov + 8, moov + file.readUInt32BE(moov), 'trak');
+  const edts = child(trak + 8, trak + file.readUInt32BE(trak), 'edts');
+  const elst = child(edts + 8, edts + file.readUInt32BE(edts), 'elst');
+  const box = Buffer.alloc(16 + 12 * edits.length);
+  box.writeUInt32BE(box.length, 0);
+  box.write('elst', 4, 'latin1');
+  box.writeUInt32BE(edits.length, 12);
+  edits.forEach(([duration, mediaTime, rate], index) => {
+    box.writeUInt32BE(duration, 16 + 12 * index);
+    box.writeInt32BE(mediaTime, 20 + 12 * index);
+    box.writeUInt32BE(rate * 0x10000, 24 + 12 * index);
+  });
+  const grown = box.length - file.readUInt32BE(elst);
+  const out = Buffer.concat([file.subarray(0, elst), box, file.subarray(elst + file.readUInt32BE(elst))]);
+  for (const at of [moov, trak, edts]) out.writeUInt32BE(out.readUInt32BE(at) + grown, at);
+  return out;
+}
+
 beforeAll(async () => {
   dir = await mkdtemp(join(tmpdir(), 'presentation-probe-'));
   const tagged = ['-x264-params', 'colorprim=bt709:transfer=bt709:colormatrix=bt709'];
@@ -144,6 +175,27 @@ beforeAll(async () => {
     '-map', '0:v', '-map', '1:a', '-c:v', 'copy', '-c:a', 'aac', '-use_editlist', '1']);
   files.set('hevc-alpha.mov', new URL('hevc-alpha.mov', COMMITTED).pathname);
   files.set('noelst-ctts.mp4', new URL('noelst-ctts.mp4', COMMITTED).pathname);
+  files.set('apple-export.mp4', new URL('apple-export.mp4', COMMITTED).pathname);
+  // Origin 0 with a derived edge: AAC 0.1 s longer than the B-frame video (a hold), and the same as fragmented MP4, which has
+  // no edit list, so the video starts at its composition delay after the audio (a lead).
+  const bframes30 = ['-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=30:d=2'];
+  const h264bf = ['-c:v', 'libx264', '-g', '30', '-bf', '2', '-pix_fmt', 'yuv420p', ...tagged, '-c:a', 'aac'];
+  await make('hold.mp4', [...bframes30, '-f', 'lavfi', '-i', 'sine=f=440:sample_rate=48000:d=2.1', ...h264bf]);
+  // A stream copy of the first 1.5 s: frames from 0 to 1.52 s and one edit over them (1520 of 1000 from media 0), rewritten
+  // to edits Chromium is not known to play on the plan's clock.
+  await make('tail-src.mp4', ['-i', join(dir, 'edit-base.mp4'), '-c', 'copy', '-t', '1.5']);
+  const tail = Buffer.from(await readFile(join(dir, 'tail-src.mp4')));
+  for (const [name, edits] of [
+    ['tail-cut.mp4', [[1000, 0, 1]]], // ends before the last frame (1.48 s) starts
+    ['tail-long.mp4', [[2000, 0, 1]]], // runs past the media end
+    ['tail-rate.mp4', [[760, 0, 2]]], // plays at twice the rate
+    ['tail-two.mp4', [[1520, 0, 1], [500, 0, 1]]], // the whole media, then its first 0.5 s again
+    ['tail-gap.mp4', [[1520, 0, 1], [500, -1, 1]]], // an empty edit after the media
+  ] as const) {
+    await writeFile(join(dir, name), withVideoEdits(tail, edits));
+    files.set(name, join(dir, name));
+  }
+  await make('frag.mp4', [...bframes30, '-f', 'lavfi', '-i', 'sine=f=440:sample_rate=48000:d=2', ...h264bf, '-movflags', 'frag_keyframe+empty_moov']);
   // A stream-copy cut at 0.5 s: packets start at the 0.4 s keyframe and one edit starts 0.1 s (1280 of 12800) later.
   await make('cut.mp4', ['-ss', '0.5', '-i', join(dir, 'edit-base.mp4'), '-c', 'copy']);
   // §91 D1-1 and D1-2: identity qualification and the copy criterion.
@@ -172,6 +224,11 @@ beforeAll(async () => {
   const webm = new Uint8Array(await readFile(join(dir, 'vfr-default.webm')));
   await writeFile(join(dir, 'vfr.webm'), withoutDefaultDuration(webm));
   files.set('vfr.webm', join(dir, 'vfr.webm'));
+  // The same with the matrix tagged, and its twin that keeps the DefaultDuration (IQ07).
+  const bt709 = ['-colorspace', 'bt709', '-color_primaries', 'bt709', '-color_trc', 'bt709'];
+  await make('tagged.webm', ['-f', 'lavfi', '-i', "testsrc2=s=160x96:r=10:d=0.4,setpts='if(eq(N\\,2)\\,0.4/TB\\,if(eq(N\\,3)\\,0.5/TB\\,PTS))'", '-fps_mode', 'passthrough', '-c:v', 'libvpx-vp9', '-pix_fmt', 'yuv420p', ...bt709]);
+  await writeFile(join(dir, 'tagged-vfr.webm'), withoutDefaultDuration(new Uint8Array(await readFile(join(dir, 'tagged.webm')))));
+  files.set('tagged-vfr.webm', join(dir, 'tagged-vfr.webm'));
   // 8 s at 30 fps with the DefaultDuration voided, so no frame stores a duration though FFmpeg's reader would estimate one.
   await make('long-nodefault-src.webm', ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=30:d=8', '-c:v', 'libvpx-vp9', '-deadline', 'realtime', '-cpu-used', '8', '-pix_fmt', 'yuv420p']);
   await writeFile(join(dir, 'long-nodefault.webm'), withoutDefaultDuration(new Uint8Array(await readFile(join(dir, 'long-nodefault-src.webm')))));
@@ -499,11 +556,32 @@ describe('each field of the frozen identity table decides on its own (§91 D1-1)
     expect(answer.routeInput.identityQualified).toBe(false);
   });
 
-  // The source plays as-is only when it plays on the plan's clock (§4.1 简单稳定输入): its plan unaltered and its origin 0. A
-  // first frame at 0.25 s through ctts alone (origin 1/4) and an edit that cuts the media (an altered plan) take a carrier.
-  it.each(['noelst-ctts.mp4', 'cut.mp4'])('IQ05 %s, a format the table qualifies, does not play as-is', async (name) => {
+  // The source plays as-is only when Chromium plays it on the plan's clock (§4.1 简单稳定输入). A first frame at 0.25 s
+  // through ctts alone (origin 1/4), an edit that starts inside the media, one that starts after an empty edit and one that
+  // ends before the last frame take a carrier.
+  it.each(['noelst-ctts.mp4', 'cut.mp4', 'late-video.mp4', 'tail-cut.mp4', 'tail-long.mp4', 'tail-rate.mp4', 'tail-two.mp4', 'tail-gap.mp4'])('IQ05 %s, a format the table qualifies, does not play as-is', async (name) => {
     const answer = planned(await probed(name, { probe: { ...PROBE, identityFormats: [{ ...IDENTITY_FORMATS[0]!, profiles: ['High', 'Main', 'Constrained Baseline', 'Baseline'] }] } }));
     expect(answer.routeInput.identityQualified).toBe(false);
+  });
+
+  // Chromium plays these on the plan's clock (measured durations equal the plan's; design §4.2.1: before a late first frame it
+  // shows that frame, after the last one it holds it): an AVFoundation export whose one edit ends inside the last frame, a
+  // hold after the last frame and a lead before the first.
+  it.each([['apple-export.mp4', 'videoSpans'], ['hold.mp4', 'hold'], ['frag.mp4', 'lead']])('IQ06 %s, origin 0 with a %s, plays as-is', async (name, edge) => {
+    const answer = planned(await probed(name));
+    const { originMapping, videoSpans } = answer.plan;
+    expect(originMapping.origin.numerator).toBe('0');
+    expect({ videoSpans: videoSpans !== null, hold: originMapping.lastSource.hold !== null, lead: originMapping.firstSource.lead !== null }[edge]).toBe(true);
+    expect(answer.routeInput.identityQualified).toBe(true);
+  });
+
+  // A Matroska last frame with no declared duration ends at a derived support, which Chromium does not show the same way.
+  it('IQ07 a WebM qualifies when its last frame declares its end, not when it does not', async () => {
+    const table = { probe: { ...PROBE, identityFormats: [{ ...IDENTITY_FORMATS[0]!, container: 'matroska', videoCodec: 'vp9', profiles: ['Profile 0'], audioCodecs: ['none'] }] } };
+    expect(planned(await probed('tagged.webm', table)).routeInput.identityQualified).toBe(true);
+    const undeclared = planned(await probed('tagged-vfr.webm', table));
+    expect(undeclared.plan.originMapping.lastSource.support).not.toBe('declared');
+    expect(undeclared.routeInput.identityQualified).toBe(false);
   });
 
   // Chromium shows no container cropping, so a PixelCrop leaves the source playing as-is.
