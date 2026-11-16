@@ -29,7 +29,7 @@ import { declaresAudioWindow, readStreamWindow } from '@ingest/container/stream-
 import { PlanCommandExit, runPlanCommand } from '@ingest/container/plan-command.js';
 import { inspectIsoBmffFile } from '@ingest/container/iso-bmff-metadata.js';
 import { exactPresentationTime, planEditListPresentation } from '@ingest/container/iso-bmff-presentation.js';
-import { parsePhysicalVideoPackets, resolveVideoColorMatrix, videoDisplayGeometry, videoPacketProbeArgs, type PhysicalVideoPacket } from '@ingest/container/physical-video-probe.js';
+import { parsePhysicalVideoPackets, resolveVideoColorMatrix, videoContainerCrop, videoDisplayGeometry, videoPacketProbeArgs, type PhysicalVideoPacket } from '@ingest/container/physical-video-probe.js';
 import { assembleVideoPresentationPlan, editSpans, type VideoPresentationPlanInput } from '@ingest/container/assemble-video-source-ledger.js';
 
 /** The producer and carrier profile a plan's carrier is reused by (§7.1). */
@@ -377,7 +377,9 @@ async function plan(body: PresentationProbeRequest, input: string, directory: st
   const colorSpace = video.color_space;
   const matrixTagged = typeof colorSpace === 'string' && colorSpace !== '' && colorSpace !== 'unknown';
   const transfer = typeof video.color_transfer === 'string' && video.color_transfer !== '' && video.color_transfer !== 'unknown' ? video.color_transfer : null;
-  const display = videoDisplayGeometry(video);
+  const crop = videoContainerCrop(video, String(format.format_name));
+  const display = videoDisplayGeometry(video, crop);
+  const cropped = crop.top + crop.bottom + crop.left + crop.right > 0;
   const assembled = assembleVideoPresentationPlan({
     frames, sourceTimeBase, emptyEdits, segmentDuration: null, videoSpans, mediaEnd, mediaStart, ...(editTick === undefined ? {} : { editTick }),
     audio: window === null ? null : { ...window, spans: audioSpans }, display, colorMatrix: resolveVideoColorMatrix(video),
@@ -396,10 +398,11 @@ async function plan(body: PresentationProbeRequest, input: string, directory: st
     encoding: { keyframeOrdinals: keyframeOrdinals(assembled, packets), codedWidth: Number(video.width), codedHeight: Number(video.height), ...sourceKeyframesOf(packets, base, iso) },
     routeInput: {
       plan: { planSha256, producerVersion: PRODUCER_VERSION, profileVersion: PROFILE_VERSION }, hdr, alpha,
-      identityQualified: identityQualified({ container: containerOf(format), video, pixFmt, bitDepth: depth.bitDepth, matrixTagged, audioCodec }, body.probe.identityFormats),
+      // A container crop is part of the display geometry, which a copied or played-as-is source does not carry to the carrier.
+      identityQualified: !cropped && identityQualified({ container: containerOf(format), video, pixFmt, bitDepth: depth.bitDepth, matrixTagged, audioCodec }, body.probe.identityFormats),
       colorMatrixTagged: matrixTagged, codec,
       // §4.1 row 2: a copy keeps the plan when the plan presents the source unaltered and the MP4 carrier can hold the codec.
-      copyPreservesTimeline: videoPlanIsUnaltered(assembled) && MP4_COPY_CODECS.has(codec),
+      copyPreservesTimeline: !cropped && videoPlanIsUnaltered(assembled) && MP4_COPY_CODECS.has(codec),
       // §4.1 row 2: only audio in the MP4 audio codecs of the frozen identity table is packet-copied; other audio is dispatched.
       audioCopyable: body.probe.identityFormats.some((entry) => entry.container === 'mp4' && entry.audioCodecs.includes(audioCodec)),
       sourceBytes: (await stat(input)).size,

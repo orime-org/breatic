@@ -28,6 +28,7 @@ import * as contractOwner from '@ingest/presentation-run-contract.js';
 import { presentationFrameCount } from '@shared/mini-tools/video-presentation-table.js';
 import { chooseVideoCarrierRoute, presentationOutputFps } from '@shared/mini-tools/video-encode-plan.js';
 import { videoPresentationPlanSha256, videoPresentationToolInputId } from '@shared/upload/video-presentation-version.js';
+import { pixelCropped } from './helpers/matroska-pixel-crop.js';
 
 const run = promisify(execFile);
 const calls = vi.hoisted(() => [] as { program: string; args: string[] }[]);
@@ -175,6 +176,10 @@ beforeAll(async () => {
   await make('long-nodefault-src.webm', ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=30:d=8', '-c:v', 'libvpx-vp9', '-deadline', 'realtime', '-cpu-used', '8', '-pix_fmt', 'yuv420p']);
   await writeFile(join(dir, 'long-nodefault.webm'), withoutDefaultDuration(new Uint8Array(await readFile(join(dir, 'long-nodefault-src.webm')))));
   files.set('long-nodefault.webm', join(dir, 'long-nodefault.webm'));
+  // The CFR H.264 source in Matroska, and the same file with a PixelCrop of one column and one row (CT06).
+  await make('cfr.mkv', ['-i', join(dir, 'cfr.mp4'), '-c', 'copy']);
+  await writeFile(join(dir, 'cfr-crop.mkv'), pixelCropped(await readFile(join(dir, 'cfr.mkv')), { right: 1, bottom: 1 }));
+  files.set('cfr-crop.mkv', join(dir, 'cfr-crop.mkv'));
 }, 120_000);
 
 /**
@@ -489,6 +494,13 @@ describe('each field of the frozen identity table decides on its own (§91 D1-1)
     const answer = planned(await probed('cfr.mp4', { probe: { ...PROBE, identityFormats: [{ ...seed, ...change }] } }));
     expect(answer.routeInput.identityQualified).toBe(false);
   });
+
+  // The source plays as-is only when its picture is the coded one: a Matroska PixelCrop is part of the display geometry (§4.3).
+  it('IQ04 a table that names Matroska qualifies the Matroska source until it carries a PixelCrop', async () => {
+    const table = { probe: { ...PROBE, identityFormats: [{ ...IDENTITY_FORMATS[0]!, container: 'matroska' }] } };
+    expect(planned(await probed('cfr.mkv', table)).routeInput.identityQualified).toBe(true);
+    expect(planned(await probed('cfr-crop.mkv', table)).routeInput.identityQualified).toBe(false);
+  });
 });
 
 describe('whether a stream copy keeps the plan timeline (design §4.1 row 2; §91 D1-2)', () => {
@@ -516,6 +528,14 @@ describe('whether a stream copy keeps the plan timeline (design §4.1 row 2; §9
 
   it('CT02 a codec the MP4 carrier cannot hold (ProRes) does not copy', async () => {
     expect(planned(await probed('prores422.mov')).routeInput.copyPreservesTimeline).toBe(false);
+  });
+
+  // A Matroska PixelCrop is part of the display geometry (§4.3), which a copied carrier does not keep.
+  it('CT06 a Matroska source copies until it carries a PixelCrop, which also crops its display size', async () => {
+    expect(planned(await probed('cfr.mkv')).routeInput.copyPreservesTimeline).toBe(true);
+    const answer = planned(await probed('cfr-crop.mkv'));
+    expect(answer.routeInput.copyPreservesTimeline).toBe(false);
+    expect(answer.plan.display).toMatchObject({ width: 319, height: 179 });
   });
 
   it.each([

@@ -50,8 +50,10 @@ interface ProbeApi {
   videoPacketProbeArgs: (input: { input: string; streamIndex: number; iso: boolean }) => string[];
   parsePhysicalVideoPackets: (metadata: unknown, packetBytes: Buffer) => Packets;
   resolveVideoColorMatrix: (stream: Record<string, unknown>) => string;
-  videoDisplayGeometry: (stream: Record<string, unknown>) => { width: number; height: number };
+  videoDisplayGeometry: (stream: Record<string, unknown>, crop?: Crop) => { width: number; height: number };
+  videoContainerCrop: (stream: Record<string, unknown>, formatName: string) => Crop;
 }
+interface Crop { top: number; bottom: number; left: number; right: number }
 interface AssemblyApi { assembleVideoPresentationPlan: (input: PlanInput) => Record<string, unknown> }
 
 const probe = probeOwner as unknown as Partial<ProbeApi>;
@@ -203,6 +205,17 @@ describe('DG §4.3 display geometry', () => {
     [{ width: 64, height: 32, side_data_list: [{ side_data_type: 'Display Matrix', rotation: 0 }] }, { width: 64, height: 32 }],
   ])('DG01 %o displays as %o', (stream, geometry) => {
     expect(probeExport('videoDisplayGeometry')(stream)).toEqual(geometry);
+  });
+
+  // A Matroska stream's PixelCrop is what the picture shows, as Chromium shows a WebM; an MP4 clap box, which ffprobe reports
+  // the same way, is not applied by Chromium, so the picture is the coded one.
+  it.each([
+    ['matroska,webm', { width: 160, height: 96, side_data_list: [{ side_data_type: 'Frame Cropping', crop_top: 0, crop_bottom: 1, crop_left: 0, crop_right: 1 }] }, { width: 159, height: 95 }],
+    ['matroska,webm', { width: 160, height: 96, sample_aspect_ratio: '2:1', side_data_list: [{ side_data_type: 'Frame Cropping', crop_top: 1, crop_bottom: 2, crop_left: 3, crop_right: 4 },
+      { side_data_type: 'Display Matrix', rotation: 90 }] }, { width: 93, height: 306 }],
+    ['mov,mp4,m4a,3gp,3g2,mj2', { width: 160, height: 96, side_data_list: [{ side_data_type: 'Frame Cropping', crop_top: 0, crop_bottom: 1, crop_left: 0, crop_right: 1 }] }, { width: 160, height: 96 }],
+  ])('DG02 a %s stream %o displays as %o', (format, stream, geometry) => {
+    expect(probeExport('videoDisplayGeometry')(stream, probeExport('videoContainerCrop')(stream, format))).toEqual(geometry);
   });
 });
 
