@@ -21,7 +21,7 @@ import { SceneCreationMenu } from '@web/spaces/three-d/SceneCreationMenu';
 import { fillFromTask } from '@web/spaces/three-d/scene-generation';
 import { useSceneProposals } from '@web/stores/scene-proposals';
 import { useConversationRuntime } from '@web/stores/conversation-runtime';
-import { stopFollowing } from '@web/stores/follow';
+import { stopFollowing, useFollowStore } from '@web/stores/follow';
 import { useProjectSpaceList } from '@web/data/yjs/project-meta';
 import { SceneViewfinder } from '@web/spaces/three-d/SceneViewfinder';
 import { INITIAL_VIEWFINDER, viewfinderReducer, type ViewfinderAction } from '@web/spaces/three-d/viewfinder/viewfinder-state';
@@ -162,7 +162,6 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
 
   React.useEffect(() => {
     session.setVisible(true);
-    session.setCamera({ ...view.current, fov: SCENE_CAMERA_FOV });
     /** Re-evaluate focus and page visibility from the browser's current facts. */
     const syncFocus = (): void => { session.setFocused(document.hasFocus() && document.visibilityState === 'visible'); };
     syncFocus();
@@ -177,6 +176,16 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
       document.removeEventListener('visibilitychange', syncFocus);
     };
   }, [session, userId, projectId, spaceId, t]);
+
+  // A tab following a member shows the leader's camera, not one of its own, so
+  // it publishes none for anyone to follow (#920); it publishes its own again
+  // once following stops.
+  const following = useFollowStore((s) => s.targetUserId !== null);
+  const latestFollowing = React.useRef(following);
+  latestFollowing.current = following;
+  React.useEffect(() => {
+    session.setCamera(following ? null : { ...view.current, fov: SCENE_CAMERA_FOV });
+  }, [session, following]);
 
   React.useEffect(() => {
     // A size refusal is reported by its own warning.
@@ -236,7 +245,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   /** Persist the personal camera and publish it for followers; it never enters shared content. */
   const onViewChange = React.useCallback((next: SceneView): void => {
     view.current = next;
-    session.setCamera({ ...next, fov: SCENE_CAMERA_FOV });
+    session.setCamera(latestFollowing.current ? null : { ...next, fov: SCENE_CAMERA_FOV });
     if (!writeSceneView(userId, projectId, spaceId, next)) toast.error(t('spaces.threeD.viewFailed'));
   }, [session, userId, projectId, spaceId, t]);
 

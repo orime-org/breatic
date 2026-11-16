@@ -20,7 +20,9 @@ export interface FollowRoutingInput {
   ready: boolean;
   /** Whether the latest change of the tab in front was the user's (false when a deleted Space moved it). */
   persist: boolean;
-  /** Opens a Space's tab, or switches to it. */
+  /** Whether the strip's latest change was an open this hook asked for. */
+  byFollow: boolean;
+  /** Opens a Space's tab, or switches to it, marking the change as following's. */
   open: (spaceId: string) => void;
 }
 
@@ -28,25 +30,24 @@ export interface FollowRoutingInput {
  * Take the follower's tab to the Space the leader has in front (#920), and
  * stop following when the user changes the tab in front themselves.
  *
- * The leader's Space is acted on when following starts and each time it
- * changes; a Space this project does not have, or none at all, leaves the tab
- * where it is. A change of the tab in front that is not one this hook asked
- * for stops following when the user made it (`persist`), once the tab strip
- * has landed; a Space deleted from under the user moves the tab without
- * `persist` and keeps following. Modelled on `useCanvasRevealRouting`.
+ * Every change of the leader's Space to one this project has is passed on as
+ * an open; the strip applies them in order and ignores an open of the tab
+ * already in front, so a leader going A -> B -> A lands on A however the
+ * renders fall. A Space this project does not have, or none at all, leaves the
+ * tab where it is. Whether a change of the tab in front was the user's is read
+ * off the strip itself: it stops following when the user made it (`persist`)
+ * and it was not one of these opens (`byFollow`), once the strip has landed.
+ * A Space deleted from under the user moves the tab without `persist` and
+ * keeps following. Modelled on `useCanvasRevealRouting`.
  * @param input - The current state; see `FollowRoutingInput`.
  */
 export function useFollowRouting(input: FollowRoutingInput): void {
-  const { following, leaderSpaceId, spaces, activeId, ready, persist, open } = input;
-  // The leader Space already acted on while following, and the tabs this hook
-  // asked for that have not landed yet, oldest first: a leader going A -> B -> A
-  // quickly has this hook ask for B and then A before either renders.
+  const { following, leaderSpaceId, spaces, activeId, ready, persist, byFollow, open } = input;
+  // The leader Space already acted on while following; undefined until the first.
   const routed = React.useRef<string | null | undefined>(undefined);
-  const pending = React.useRef<string[]>([]);
   React.useEffect(() => {
     if (!following) {
       routed.current = undefined;
-      pending.current = [];
       return;
     }
     if (leaderSpaceId === routed.current) return;
@@ -56,12 +57,11 @@ export function useFollowRouting(input: FollowRoutingInput): void {
     }
     // Not yet (or no longer) in this project: judged again when the Spaces change.
     if (!spaces.some((space) => space.id === leaderSpaceId)) return;
+    const first = routed.current === undefined;
     routed.current = leaderSpaceId;
-    // Where the tab ends up once the opens already asked for land.
-    if (leaderSpaceId !== (pending.current.at(-1) ?? activeId)) {
-      pending.current.push(leaderSpaceId);
-      open(leaderSpaceId);
-    }
+    // Following that starts on the leader's Space has nothing to open.
+    if (first && leaderSpaceId === activeId) return;
+    open(leaderSpaceId);
   }, [following, leaderSpaceId, spaces, activeId, open]);
 
   // The tab in front and whether the strip had landed, as of the previous render.
@@ -70,12 +70,6 @@ export function useFollowRouting(input: FollowRoutingInput): void {
     const was = last.current;
     last.current = { activeId, ready };
     if (!following || was.activeId === activeId) return;
-    // One of this hook's own opens landing; the ones asked for before it are past.
-    const own = activeId === null ? -1 : pending.current.indexOf(activeId);
-    if (own >= 0) {
-      pending.current = pending.current.slice(own + 1);
-      return;
-    }
-    if (persist && was.ready) useFollowStore.getState().stop('space');
-  }, [following, activeId, ready, persist]);
+    if (persist && was.ready && !byFollow) useFollowStore.getState().stop('space');
+  }, [following, activeId, ready, persist, byFollow]);
 }

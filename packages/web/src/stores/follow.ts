@@ -19,16 +19,23 @@ export type FollowStopReason = 'button' | 'viewport' | 'space' | 'offline' | 'le
 /** Whom the leader started following: this user, or another member by name. */
 export type FollowOther = 'you' | { name: string };
 
+/** Every reason but the leader starting to follow, which also names whom. */
+type PlainStopReason = Exclude<FollowStopReason, 'leaderFollows'>;
+
+/** What `stop` is told: whom the leader started following comes with `leaderFollows` and only with it. */
+type StopArgs = [reason: PlainStopReason] | [reason: 'leaderFollows', other: FollowOther];
+
 /** The last stop, for the one notice it gets; `seq` tells two equal stops apart. */
-export interface FollowStop {
-  reason: FollowStopReason;
+export type FollowStop = {
   userId: string;
   /** The leader's display name as of the start, kept for a leader who has since left the member list. */
   name: string;
-  /** Whom the leader started following, for `leaderFollows`; null for every other reason. */
-  other: FollowOther | null;
   seq: number;
-}
+} & (
+  // `other` is whom the leader started following, and there is one only for `leaderFollows`.
+  | { reason: 'leaderFollows'; other: FollowOther }
+  | { reason: PlainStopReason; other: null }
+);
 
 interface FollowState {
   /** The member being followed, or null. */
@@ -40,7 +47,7 @@ interface FollowState {
   /** Follow a member; following someone else switches straight over. */
   start: (userId: string, name: string) => void;
   /** Stop following and record why (and, for `leaderFollows`, whom); nothing happens while not following. */
-  stop: (reason: FollowStopReason, other?: FollowOther) => void;
+  stop: (...args: StopArgs) => void;
   /** Clear everything without recording a stop (leaving the project). */
   reset: () => void;
 }
@@ -52,11 +59,13 @@ export const useFollowStore = create<FollowState>()((set, get) => ({
   targetName: null,
   stopped: null,
   start: (userId, name) => set({ targetUserId: userId, targetName: name, stopped: null }),
-  stop: (reason, other) => {
+  stop: (...[reason, other]) => {
     const { targetUserId: userId, targetName } = get();
     if (userId === null) return;
     stopSeq += 1;
-    set({ targetUserId: null, targetName: null, stopped: { reason, userId, name: targetName ?? '', other: other ?? null, seq: stopSeq } });
+    const base = { userId, name: targetName ?? '', seq: stopSeq };
+    const stopped: FollowStop = reason === 'leaderFollows' ? { ...base, reason, other } : { ...base, reason, other: null };
+    set({ targetUserId: null, targetName: null, stopped });
   },
   reset: () => set({ targetUserId: null, targetName: null, stopped: null }),
 }));
@@ -65,6 +74,6 @@ export const useFollowStore = create<FollowState>()((set, get) => ({
  * Stop following because the user moved the view or pressed a stop control.
  * @param reason - Why; the user moving the viewport by default.
  */
-export function stopFollowing(reason: FollowStopReason = 'viewport'): void {
+export function stopFollowing(reason: PlainStopReason = 'viewport'): void {
   useFollowStore.getState().stop(reason);
 }

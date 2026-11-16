@@ -15,7 +15,7 @@ import { Separator } from '@web/components/ui/separator';
 import { toast } from '@web/lib/toast';
 import { cn } from '@web/lib/utils';
 import { useUIStore } from '@web/stores';
-import { stopFollowing, useFollowStore } from '@web/stores/follow';
+import { stopFollowing, useFollowStore, type FollowOther } from '@web/stores/follow';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { Member, MemberRole } from '@web/data/api/members';
 import { StudioAvatar } from '@web/ui/StudioAvatar';
@@ -49,15 +49,15 @@ interface MembersStackProps {
    */
   onlineUserIds?: ReadonlySet<string>;
   /**
-   * Whom each member is following, user id to user id (#920). Following is
-   * one level deep: View on a member following this user or someone on the
-   * roster is dimmed and pressing it says whom they follow.
+   * Whom each member is following here, by user id; members following nobody
+   * here are absent (#920). Following is one level deep: View on a member in
+   * it is dimmed and pressing it says whom they follow.
    */
-  followingByUser?: ReadonlyMap<string, string>;
+  followTargets?: ReadonlyMap<string, FollowOther>;
 }
 
 const NOBODY_ONLINE: ReadonlySet<string> = new Set();
-const NOBODY_FOLLOWING: ReadonlyMap<string, string> = new Map();
+const NOBODY_FOLLOWING: ReadonlyMap<string, FollowOther> = new Map();
 
 const ROLE_KEY: Record<MemberRole, 'role.owner' | 'role.editor' | 'role.viewer'> = {
   owner: 'role.owner',
@@ -87,7 +87,7 @@ const ROLE_KEY: Record<MemberRole, 'role.owner' | 'role.editor' | 'role.viewer'>
 export const MembersStack = React.forwardRef<
   HTMLButtonElement,
   MembersStackProps
->(({ members, currentUserId, currentUserRole, onLeave, onlineUserIds = NOBODY_ONLINE, followingByUser = NOBODY_FOLLOWING }, ref) => {
+>(({ members, currentUserId, currentUserRole, onLeave, onlineUserIds = NOBODY_ONLINE, followTargets = NOBODY_FOLLOWING }, ref) => {
   const t = useTranslation();
   // Owner-only affordance (B model — hidden, not disabled): the manage
   // button only renders when the current user is owner.
@@ -98,20 +98,18 @@ export const MembersStack = React.forwardRef<
   const setActiveOverlayId = useUIStore((s) => s.setActiveOverlayId);
   const followedUserId = useFollowStore((s) => s.targetUserId);
   const titleId = React.useId();
-  const names = React.useMemo(() => new Map(members.map((m) => [m.userId, m.name])), [members]);
 
   /**
-   * What pressing View on a member says when they are following someone,
-   * this user or another member; someone off the roster counts as nobody.
+   * What pressing View on a member says when they are following someone here.
    * @param member - The row's member.
    * @returns The notice, or null when the member follows nobody here.
    */
   const busyNotice = (member: Member): string | null => {
-    const other = followingByUser.get(member.userId);
+    const other = followTargets.get(member.userId);
     if (other === undefined) return null;
-    if (other === currentUserId) return t('members.follow.busyYou', { name: member.name });
-    const otherName = names.get(other);
-    return otherName === undefined ? null : t('members.follow.busy', { name: member.name, other: otherName });
+    return other === 'you'
+      ? t('members.follow.busyYou', { name: member.name })
+      : t('members.follow.busy', { name: member.name, other: other.name });
   };
 
   const openManage = React.useCallback((): void => {

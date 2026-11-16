@@ -7,6 +7,7 @@ import type { Awareness } from 'y-protocols/awareness';
 import type { FollowField, FollowFieldValue } from '@web/data/yjs/follow-presence';
 import { PRESENCE_WRITE_INTERVAL_MS, createPublishThrottle, type PublishThrottle } from '@web/lib/publish-throttle';
 import type { TimelinePlaybackAnchor } from '@web/spaces/timeline/use-timeline-playback';
+import { useFollowStore } from '@web/stores/follow';
 
 /** What one render of the Timeline tells its followers. */
 export interface PublishTimelineViewInput {
@@ -30,10 +31,12 @@ const FIELD = 'timelineView' satisfies FollowField;
  * visible frame range, the track scroll, the playhead and the playback state.
  * While playing, the playhead published is the anchor's frame: a follower
  * plays on from the anchor itself, so the value changes only on play, pause,
- * seek, scroll or zoom rather than every frame. Writes go through the presence
- * throttle and are sent again after a restore from the bfcache, which empties
- * the local state; unmounting, which also happens when the Space body is
- * hidden, withdraws the field at once.
+ * seek, scroll, zoom or a change of the track's width rather than every
+ * frame. Writes go through the presence throttle and are sent again after a
+ * restore from the bfcache, which empties the local state; unmounting, which
+ * also happens when the Space body is hidden, withdraws the field at once, and
+ * so does following a member, whose view this tab then shows rather than one
+ * of its own.
  * @param input - The awareness, track viewport, zoom, playhead and playback state.
  * @throws {never} Never.
  */
@@ -43,9 +46,10 @@ export function usePublishTimelineView(input: PublishTimelineViewInput): void {
   const throttle = React.useRef<PublishThrottle | null>(null);
   const { awareness, viewport, pixelsPerFrame, headerPx, frame, intent, anchor } = input;
   const playhead = intent === 'play' && anchor !== null ? anchor.frame : frame;
+  const following = useFollowStore((s) => s.targetUserId !== null);
 
   React.useEffect(() => {
-    if (awareness === null || viewport === null) return undefined;
+    if (awareness === null || viewport === null || following) return undefined;
     let published = '';
     /**
      * Write the current view unless it equals the one already out.
@@ -78,9 +82,13 @@ export function usePublishTimelineView(input: PublishTimelineViewInput): void {
       if (event.persisted) pending.schedule();
     };
     window.addEventListener('pageshow', onPageShow);
+    // A wider or narrower track shows a different frame range.
+    const resize = new ResizeObserver(pending.schedule);
+    resize.observe(viewport);
     return (): void => {
       viewport.removeEventListener('scroll', pending.schedule);
       window.removeEventListener('pageshow', onPageShow);
+      resize.disconnect();
       pending.cancel();
       throttle.current = null;
       // A withdrawal must land, so it skips the frame-scheduled throttle.
@@ -89,7 +97,7 @@ export function usePublishTimelineView(input: PublishTimelineViewInput): void {
       const { [FIELD]: _withdrawn, ...rest } = state;
       awareness.setLocalState(rest);
     };
-  }, [awareness, viewport]);
+  }, [awareness, viewport, following]);
 
   React.useEffect(() => {
     throttle.current?.schedule();

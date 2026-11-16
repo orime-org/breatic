@@ -16,18 +16,12 @@ export const LANDING = 16;
 /** A block's own line inside its outer box. */
 const OWN_LINE = ':scope > .bn-block > .bn-block-content';
 
-/** How a lookup treats a block with no line of its own. */
-export interface LineOptions {
-  /** Fall back to the block's outer box (the outline) instead of finding nothing. */
-  fallback: boolean;
-}
-
 /** Where following aligned the body, so a later scroll can be told from the user's. */
 export interface AlignmentMark {
   /** The scrollTop read back after aligning. */
   target: number;
-  /** The block aligned to. */
-  blockId: string;
+  /** The block aligned to, or null for a position with no block at the top. */
+  blockId: string | null;
   /** Its line's distance below the viewport top, or null when it had no line. */
   offset: number | null;
 }
@@ -36,13 +30,13 @@ export interface AlignmentMark {
  * A block's own line in the body.
  * @param root - The element to look inside.
  * @param id - The block id.
- * @param options - Whether a block with no line of its own falls back to its outer box.
+ * @param fallback - Whether a block with no line of its own falls back to its outer box (the outline) instead of finding nothing.
  * @returns The element, or null when there is none.
  */
-export function blockLine(root: HTMLElement, id: string, options: LineOptions): HTMLElement | null {
+export function blockLine(root: HTMLElement, id: string, fallback: boolean): HTMLElement | null {
   const block = root.querySelector<HTMLElement>(`.bn-block-outer[data-id="${CSS.escape(id)}"]`);
   if (block === null) return null;
-  return block.querySelector<HTMLElement>(OWN_LINE) ?? (options.fallback ? block : null);
+  return block.querySelector<HTMLElement>(OWN_LINE) ?? (fallback ? block : null);
 }
 
 /**
@@ -71,18 +65,18 @@ function distanceBelowTop(viewport: HTMLElement, line: HTMLElement): number {
  * @param viewport - The body's scrolling viewport.
  * @param root - The element the block is looked up in.
  * @param id - The block id.
- * @param options - Whether a block with no line of its own falls back to its outer box.
- * @param landing - How far below the top of the body the line lands; {@link LANDING} by default.
+ * @param options - How the block is found and where it lands.
+ * @param options.fallback - Whether a block with no line of its own falls back to its outer box; false by default.
+ * @param options.landing - How far below the top of the body the line lands; {@link LANDING} by default.
  * @returns The scrollTop, or null when the block is not on the page.
  */
-export function landingFor(
+export function scrollTopForBlock(
   viewport: HTMLElement,
   root: HTMLElement,
   id: string,
-  options: LineOptions = { fallback: false },
-  landing = LANDING,
+  { fallback = false, landing = LANDING }: { fallback?: boolean; landing?: number } = {},
 ): number | null {
-  const line = blockLine(root, id, options);
+  const line = blockLine(root, id, fallback);
   if (line === null) return null;
   const want = viewport.scrollTop + distanceBelowTop(viewport, line) - landing;
   return Math.max(0, Math.min(viewport.scrollHeight - viewport.clientHeight, want));
@@ -106,14 +100,29 @@ export function topBlockId(viewport: HTMLElement, root: HTMLElement): string | n
 }
 
 /**
- * Record where the body stands right after following aligned it to a block.
+ * A block's own line, for a mark that may name no block.
+ * @param root - The body element.
+ * @param blockId - The block, or null.
+ * @returns The line, or null when there is none.
+ */
+function markLine(root: HTMLElement, blockId: string | null): HTMLElement | null {
+  return blockId === null ? null : blockLine(root, blockId, false);
+}
+
+/**
+ * Record where the body stands right after following aligned it to a block,
+ * or, given no block, where it stands now by the block at its top.
  * @param viewport - The body's scrolling viewport.
  * @param root - The body element.
- * @param blockId - The block aligned to.
+ * @param blockId - The block aligned to; the block at the top when left out.
  * @returns The mark.
  */
-export function markAlignment(viewport: HTMLElement, root: HTMLElement, blockId: string): AlignmentMark {
-  const line = blockLine(root, blockId, { fallback: false });
+export function markAlignment(
+  viewport: HTMLElement,
+  root: HTMLElement,
+  blockId: string | null = topBlockId(viewport, root),
+): AlignmentMark {
+  const line = markLine(root, blockId);
   return { target: viewport.scrollTop, blockId, offset: line === null ? null : distanceBelowTop(viewport, line) };
 }
 
@@ -131,7 +140,7 @@ export function stillAligned(viewport: HTMLElement, root: HTMLElement, mark: Ali
   const max = viewport.scrollHeight - viewport.clientHeight;
   if (Math.abs(viewport.scrollTop - Math.min(mark.target, max)) < 1) return true;
   if (mark.offset === null) return false;
-  const line = blockLine(root, mark.blockId, { fallback: false });
+  const line = markLine(root, mark.blockId);
   return line !== null && Math.abs(distanceBelowTop(viewport, line) - mark.offset) < 1;
 }
 
@@ -144,6 +153,6 @@ export function stillAligned(viewport: HTMLElement, root: HTMLElement, mark: Ali
  * @returns The mark at the current position; the old offset when the block is gone.
  */
 export function rebaseMark(viewport: HTMLElement, root: HTMLElement, mark: AlignmentMark): AlignmentMark {
-  const line = blockLine(root, mark.blockId, { fallback: false });
+  const line = markLine(root, mark.blockId);
   return { ...mark, target: viewport.scrollTop, offset: line === null ? mark.offset : distanceBelowTop(viewport, line) };
 }

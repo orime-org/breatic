@@ -54,6 +54,7 @@ const ready = (openIds: string[], activeId: string | null): TabState => ({
   openIds,
   activeId,
   persist: true,
+  byFollow: false,
   restored: null,
 });
 

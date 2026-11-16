@@ -28,6 +28,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { Skeleton } from '@web/components/ui/skeleton';
 import type { ProjectCreditsView, ProjectRole } from '@breatic/shared';
 import type { Member } from '@web/data/api/members';
+import type { FollowOther } from '@web/stores/follow';
 
 /** Held still so the bar is not handed a fresh object on every render. */
 const BAR_BOX = chromeBarBox({ sides: 'var(--space-6)', gap: 'var(--space-4)' });
@@ -88,8 +89,8 @@ interface TopBarProps {
   currentUserId?: string;
   /** User ids online in this project, for the members list's online state and View (#920). */
   onlineUserIds?: ReadonlySet<string>;
-  /** Whom each member is following, user id to user id, for the members list's View (#920). */
-  followingByUser?: ReadonlyMap<string, string>;
+  /** Whom each member is following here, for the members list's View (#920). */
+  followTargets?: ReadonlyMap<string, FollowOther>;
   /** Realtime failures take priority over release notices. */
   connectionStatus?: ConnectionStatus;
 }
@@ -121,7 +122,7 @@ interface TopBarProps {
  * @param root0.connectionStatus - Realtime status giving connection errors priority.
  * @param root0.currentUserId - Current user's id, used by MembersStack to mark the "me" row.
  * @param root0.onlineUserIds - User ids online in this project, forwarded to MembersStack.
- * @param root0.followingByUser - Whom each member is following, forwarded to MembersStack.
+ * @param root0.followTargets - Whom each member is following here, forwarded to MembersStack.
  * @returns the project chrome top bar with its left identity block and right action groups.
  */
 export function TopBar({
@@ -137,7 +138,7 @@ export function TopBar({
   members,
   currentUserId,
   onlineUserIds,
-  followingByUser,
+  followTargets,
   connectionStatus = 'connected',
 }: TopBarProps): React.JSX.Element {
   const [leaving, setLeaving] = React.useState(false);
@@ -176,7 +177,7 @@ export function TopBar({
             currentUserRole={role}
             onLeave={canLeave ? openLeave : undefined}
             onlineUserIds={onlineUserIds}
-            followingByUser={followingByUser}
+            followTargets={followTargets}
           />
           <LangSwitcher />
           <ThemeToggle />

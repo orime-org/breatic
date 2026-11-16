@@ -3180,9 +3180,23 @@ function CanvasSpaceInner({
   const applyFollowViewport = React.useCallback((next: Viewport): void => {
     void setViewport(next, { duration: 0 });
   }, [setViewport]);
+  // Whether the opening fit of a canvas with no stored camera has yet to run.
+  // The toolbar's fit queues through the same store flag, so the opening one
+  // is tracked apart: it is spent the first time the queued flag clears. The
+  // library runs a queued fit's move before clearing the flag, so the move
+  // start of the opening fit still reads it set.
+  const openingFit = React.useRef(storedViewport === null);
+  React.useEffect(() => rfStoreApi.subscribe((state, previous) => {
+    if (previous.fitViewQueued && !state.fitViewQueued) openingFit.current = false;
+  }), [rfStoreApi]);
   const clearOpeningFit = React.useCallback((): void => {
+    openingFit.current = false;
     rfStoreApi.setState({ fitViewQueued: false });
   }, [rfStoreApi]);
+  const openingFitPending = React.useCallback(
+    (): boolean => openingFit.current && rfStoreApi.getState().fitViewQueued,
+    [rfStoreApi],
+  );
   const follow = useCanvasFollow({
     awareness,
     leaderUserId,
@@ -3190,6 +3204,7 @@ function CanvasSpaceInner({
     pane,
     applyViewport: applyFollowViewport,
     clearOpeningFit,
+    openingFitPending,
   });
   const readCamera = React.useCallback((): FlowRect | null => {
     const { transform, width, height } = rfStoreApi.getState();

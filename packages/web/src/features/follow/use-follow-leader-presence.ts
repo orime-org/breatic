@@ -4,6 +4,7 @@
 import * as React from 'react';
 
 import type { ProjectUser } from '@web/data/yjs/project-meta';
+import { followTarget } from '@web/features/follow/follow-target';
 import { useFollowStore } from '@web/stores/follow';
 
 /** What the project page tells the leader presence check. */
@@ -38,12 +39,7 @@ export function useFollowLeaderPresence(input: FollowLeaderPresenceInput): void 
       useFollowStore.getState().stop('offline');
       return;
     }
-    if (leaderFollowing === null) return;
-    if (leaderFollowing === currentUserId) {
-      useFollowStore.getState().stop('leaderFollows', 'you');
-      return;
-    }
-    const otherName = memberNames.get(leaderFollowing);
-    if (otherName !== undefined) useFollowStore.getState().stop('leaderFollows', { name: otherName });
+    const other = followTarget(leaderFollowing, currentUserId, memberNames);
+    if (other !== null) useFollowStore.getState().stop('leaderFollows', other);
   }, [targetUserId, users, memberNames, synced, currentUserId, leaderFollowing]);
 }

@@ -69,7 +69,8 @@ import { FollowBar } from '@web/features/follow/FollowBar';
 import { useFollowExitToast } from '@web/features/follow/use-follow-exit-toast';
 import { useFollowLeaderPresence } from '@web/features/follow/use-follow-leader-presence';
 import { useMemberViews } from '@web/features/follow/use-member-views';
-import { useFollowStore } from '@web/stores/follow';
+import { followTarget } from '@web/features/follow/follow-target';
+import { useFollowStore, type FollowOther } from '@web/stores/follow';
 import { userPaletteColor } from '@web/lib/user-color';
 import { useRefreshOnReauth } from '@web/pages/project/use-refresh-on-reauth';
 import { useRenameProject } from '@web/features/project-manage/use-rename-project';
@@ -405,6 +406,9 @@ function ProjectWorkspace({
   const leaderView = followedUserId === null ? undefined : memberViews.get(followedUserId);
   const leaderSpaceId = leaderView?.spaceId ?? null;
   const leaderFollowing = leaderView?.following ?? null;
+  const openFollowedSpace = React.useCallback((spaceId: string) => {
+    dispatchTabs({ type: 'open', spaceId, byFollow: true });
+  }, []);
   useFollowRouting({
     following: followedUserId !== null,
     leaderSpaceId,
@@ -412,7 +416,8 @@ function ProjectWorkspace({
     activeId: tabs.activeId,
     ready: tabs.ready,
     persist: tabs.persist,
-    open: openSpace,
+    byFollow: tabs.byFollow,
+    open: openFollowedSpace,
   });
   const presenceRecords = React.useMemo(() => [...users.values()], [users]);
   const onlineUserIds = React.useMemo(
@@ -420,14 +425,15 @@ function ProjectWorkspace({
     [presenceRecords],
   );
   const memberNames = React.useMemo(() => new Map(members.map((m) => [m.userId, m.name])), [members]);
-  // Whom each member follows, for the member list to dim View on them.
-  const followingByUser = React.useMemo(() => {
-    const out = new Map<string, string>();
+  // Whom each member follows here, for the member list to dim View on them.
+  const followTargets = React.useMemo(() => {
+    const out = new Map<string, FollowOther>();
     for (const [memberId, view] of memberViews) {
-      if (view.following !== null) out.set(memberId, view.following);
+      const other = followTarget(view.following, userId, memberNames);
+      if (other !== null) out.set(memberId, other);
     }
     return out;
-  }, [memberViews]);
+  }, [memberViews, userId, memberNames]);
   // The roster is empty until it loads, and a loaded one always lists at least this user.
   useFollowLeaderPresence({
     users: presenceRecords,
@@ -985,7 +991,7 @@ function ProjectWorkspace({
               members={members}
               currentUserId={userId}
               onlineUserIds={onlineUserIds}
-              followingByUser={followingByUser}
+              followTargets={followTargets}
             />
             {/* Both panels are given `display: flex` and `overflow: visible`
             because the library's inner wrapper is a block box that hard-codes

@@ -24,6 +24,8 @@ export interface CanvasFollowInput {
   applyViewport: (viewport: Viewport) => void;
   /** Drop the opening fit a canvas with no stored camera still has queued. */
   clearOpeningFit: () => void;
+  /** Whether the opening fit of a canvas with no stored camera has yet to run. */
+  openingFitPending: () => boolean;
 }
 
 /** What the canvas wires back in. */
@@ -53,15 +55,15 @@ function belowFollowBar(rect: FlowRect, pane: PaneSize): Viewport {
  * Once aligned, only a camera stamped later than the last one is applied: the
  * awareness change event fires for every member's pointer and holding, and
  * those must not refit a viewport the leader has not moved. A follower
- * publishes its own viewport like anyone else; following is one level deep,
- * so nobody follows a follower.
+ * publishes no viewport of its own (`usePublishPresence`); following is one
+ * level deep, so nobody follows a follower.
  *
  * The move this hook makes runs inside a synchronous `applying` flag, because
  * xyflow reports a programmatic move through `onMoveStart` in the same call.
  * A move start carrying an input event (wheel, drag, pinch) is the user
- * moving the view and always stops following; one without (minimap, toolbar,
- * framing) stops it once aligned, while before the first alignment it is the
- * opening fit of a canvas that loads after following started.
+ * moving the view and always stops following; so does one without (minimap,
+ * toolbar, shortcut), except the opening fit of a canvas that loads after
+ * following started and before the first alignment.
  * @param input - The awareness, the leader, readiness and the viewport commands.
  * @returns The move-start handler.
  */
@@ -129,8 +131,9 @@ export function useCanvasFollow(input: CanvasFollowInput): CanvasFollowResult {
 
   const onMoveStart = React.useCallback((event: unknown): void => {
     if (applying.current) return;
-    // Before the first alignment only an input event is the user's own move.
-    if (!aligned.current && (event === null || event === undefined)) return;
+    // The canvas framing itself on open is not the user moving the view.
+    const programmatic = event === null || event === undefined;
+    if (!aligned.current && programmatic && latest.current.openingFitPending()) return;
     stopFollowing();
     aligned.current = false;
     last.current = null;

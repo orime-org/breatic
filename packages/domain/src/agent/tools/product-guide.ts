@@ -274,8 +274,9 @@ export function renderProductGuide(): string {
     "On the right: the members' pictures with a small arrow, which open " +
       `${quoted(t("members.popover.title"))}. Each member's row says ${quoted(t("members.popover.online"))} or ` +
       `${quoted(t("members.popover.offline"))}. Every role can follow another member who is online: pressing ` +
-      `${quoted(t("members.popover.follow"))} on their row opens the Space they have in front and moves the user's ` +
-      "view with theirs as they switch Spaces, pan, zoom or scroll. While following, a bar in that member's colour " +
+      `${quoted(t("members.popover.follow"))} on their row takes the user to the Space they have in front, and on ` +
+      "to each Space they switch to; on a canvas or in a document the user's view also moves with theirs as they " +
+      "pan, zoom or scroll, while in a 3D or Timeline Space only the Space follows. While following, a bar in that member's colour " +
       `across the top of the Space area reads ${quoted(t("members.follow.bar"))}, {name} being that member's name, ` +
       `with ${quoted(t("members.follow.stop"))}, the Space area is outlined in the same colour, and their row shows ` +
       `${quoted(t("members.popover.unfollow"))}. Following ends when the user presses either of those; when the user ` +

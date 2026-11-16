@@ -26,7 +26,7 @@ export function useFollowExitToast(): void {
     if (stopped.reason === 'viewport') toast.info(t('members.follow.stoppedViewport'));
     else if (stopped.reason === 'space') toast.info(t('members.follow.stoppedSpace'));
     else if (stopped.reason === 'leaderFollows') {
-      toast.info(stopped.other === 'you' || stopped.other === null
+      toast.info(stopped.other === 'you'
         ? t('members.follow.stoppedLeaderFollowsYou', { name: stopped.name })
         : t('members.follow.stoppedLeaderFollows', { name: stopped.name, other: stopped.other.name }));
     } else if (stopped.reason === 'offline') toast.warning(t('members.follow.stoppedOffline', { name: stopped.name }));

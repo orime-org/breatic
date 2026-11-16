@@ -11,6 +11,7 @@ import { deriveActiveNodeIds, sameIdList } from '@web/spaces/canvas/active-node-
 import { PRESENCE_WRITE_INTERVAL_MS, createPublishThrottle } from '@web/lib/publish-throttle';
 import { observeViewportTransform } from '@web/spaces/canvas/viewport-observer';
 import { sameRect, type FlowRect } from '@web/features/follow/follow-geometry';
+import { useFollowStore } from '@web/stores/follow';
 
 /** A point, in either screen or canvas coordinates. */
 interface Point {
@@ -40,7 +41,8 @@ export interface PublishPresenceInput {
   toFlowPosition: (screen: Point) => Point;
   /**
    * The canvas rectangle this client's viewport shows, or null while it has
-   * no size; left out, no `camera` is published (#920).
+   * no size; left out, no `camera` is published (#920). Not read while this
+   * tab follows a member, when the camera published is null.
    */
   readCamera?: () => FlowRect | null;
 }
@@ -178,6 +180,11 @@ export function usePublishPresence(input: PublishPresenceInput): GesturePublishe
   latestConvert.current = toFlowPosition;
   const latestReadCamera = React.useRef(input.readCamera);
   latestReadCamera.current = input.readCamera;
+  // A tab following a member shows the leader's view, not one of its own, so
+  // it publishes no camera for anyone to follow (#920).
+  const following = useFollowStore((s) => s.targetUserId !== null);
+  const latestFollowing = React.useRef(following);
+  latestFollowing.current = following;
 
   // The pointer's last screen position, or null once it left the canvas. It is
   // a ref rather than state: it changes at pointer rates and no render reads
@@ -205,7 +212,7 @@ export function usePublishPresence(input: PublishPresenceInput): GesturePublishe
     const readCamera = latestReadCamera.current;
     let sameCamera = true;
     if (readCamera) {
-      const rect = readCamera();
+      const rect = latestFollowing.current ? null : readCamera();
       sameCamera = sameRect(prev.camera, rect);
       // An unchanged rectangle keeps its stamp, so it does not count as news;
       // a new one never goes back in time from the last stamp published.
@@ -236,6 +243,15 @@ export function usePublishPresence(input: PublishPresenceInput): GesturePublishe
     throttle.schedule();
     return (): void => throttle.cancel();
   }, [awareness, throttle, selectedIds, pickSession, focusTargetId]);
+
+  // Following starting or stopping withdraws or restores the camera on the spot.
+  const followingSeen = React.useRef(following);
+  React.useEffect(() => {
+    if (followingSeen.current === following) return;
+    followingSeen.current = following;
+    throttle.cancel();
+    publish();
+  }, [following, throttle, publish]);
 
   // Reconnect. This also covers the first publish being scheduled before the
   // document finished syncing, since a fresh mount starts out unsynced.

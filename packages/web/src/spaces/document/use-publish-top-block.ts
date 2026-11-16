@@ -7,6 +7,7 @@ import type { Awareness } from 'y-protocols/awareness';
 import { readFollowField } from '@web/data/yjs/follow-presence';
 import { PRESENCE_WRITE_INTERVAL_MS, createPublishThrottle } from '@web/lib/publish-throttle';
 import { topBlockId } from '@web/spaces/document/block-scroll';
+import { useFollowStore } from '@web/stores/follow';
 
 /** What publishing the body's top block needs (#920 design 4.1). */
 export interface PublishTopBlockInput {
@@ -23,16 +24,19 @@ export interface PublishTopBlockInput {
 /**
  * Publish the block at the top of this body as `topBlockId`, for members
  * following this user (#920 design 4.1): on mount, on scroll and on a size
- * change, through the presence write limiter. A follower publishes its own
- * top block like anyone else; following is one level deep. A restore from
- * the bfcache, which empties the local state, publishes again. Hidden behind the snapshot panel or unmounted, the field is
- * withdrawn at once (`packages/web/AGENTS.md#writes-that-must-land-skip-frame-scheduling`).
+ * change, through the presence write limiter. A restore from the bfcache,
+ * which empties the local state, publishes again. Hidden behind the snapshot
+ * panel, unmounted or while this tab follows a member (whose view it shows,
+ * not one of its own), the field is withdrawn at once
+ * (`packages/web/AGENTS.md#writes-that-must-land-skip-frame-scheduling`).
  * @param input - The awareness, the body and whether it is paused.
  */
 export function usePublishTopBlock(input: PublishTopBlockInput): void {
-  const { awareness, viewport, root, paused } = input;
-  const latest = React.useRef(paused);
-  latest.current = paused;
+  const following = useFollowStore((s) => s.targetUserId !== null);
+  const off = input.paused || following;
+  const { awareness, viewport, root } = input;
+  const latest = React.useRef(off);
+  latest.current = off;
 
   const publish = React.useCallback((): void => {
     if (!awareness || !viewport || !root || latest.current) return;
@@ -48,7 +52,7 @@ export function usePublishTopBlock(input: PublishTopBlockInput): void {
   );
 
   React.useEffect(() => {
-    if (!awareness || !viewport || !root || paused) return undefined;
+    if (!awareness || !viewport || !root || off) return undefined;
     throttle.schedule();
     /** Ask for a write; the throttle folds a burst of these together. */
     const onMove = (): void => {
@@ -73,5 +77,5 @@ export function usePublishTopBlock(input: PublishTopBlockInput): void {
       resize.disconnect();
       awareness.setLocalState({ ...awareness.getLocalState(), topBlockId: null });
     };
-  }, [awareness, viewport, root, paused, throttle]);
+  }, [awareness, viewport, root, off, throttle]);
 }

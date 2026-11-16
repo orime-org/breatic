@@ -38,7 +38,8 @@ describe('useFollowStore', () => {
   it('records each of the five reasons', () => {
     for (const reason of ['button', 'viewport', 'space', 'offline', 'leaderFollows'] as const) {
       useFollowStore.getState().start('u1', 'Li Lei');
-      useFollowStore.getState().stop(reason);
+      if (reason === 'leaderFollows') useFollowStore.getState().stop(reason, 'you');
+      else useFollowStore.getState().stop(reason);
       expect(useFollowStore.getState().stopped?.reason).toBe(reason);
     }
   });

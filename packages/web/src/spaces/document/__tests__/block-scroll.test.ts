@@ -7,7 +7,7 @@ import {
   LANDING,
   atEnd,
   blockLine,
-  landingFor,
+  scrollTopForBlock,
   markAlignment,
   rebaseMark,
   stillAligned,
@@ -99,29 +99,29 @@ afterEach(() => {
 describe('blockLine', () => {
   it('finds a block own line and, for a frame block, nothing unless asked to fall back', () => {
     const fake = build([{ id: 'p', top: 0, height: 24 }, { id: 't', top: 24, height: 300, frame: true }]);
-    expect(blockLine(fake.root, 'p', { fallback: false })?.className).toBe('bn-block-content');
-    expect(blockLine(fake.root, 't', { fallback: false })).toBeNull();
-    expect(blockLine(fake.root, 't', { fallback: true })?.className).toBe('bn-block-outer');
-    expect(blockLine(fake.root, 'missing', { fallback: true })).toBeNull();
+    expect(blockLine(fake.root, 'p', false)?.className).toBe('bn-block-content');
+    expect(blockLine(fake.root, 't', false)).toBeNull();
+    expect(blockLine(fake.root, 't', true)?.className).toBe('bn-block-outer');
+    expect(blockLine(fake.root, 'missing', true)).toBeNull();
   });
 
   it('looks only inside the root it is given', () => {
     const fake = build([{ id: 'p', top: 0, height: 24 }]);
     const elsewhere = document.createElement('div');
     document.body.appendChild(elsewhere);
-    expect(blockLine(elsewhere, 'p', { fallback: true })).toBeNull();
-    expect(blockLine(fake.root, 'p', { fallback: true })).not.toBeNull();
+    expect(blockLine(elsewhere, 'p', true)).toBeNull();
+    expect(blockLine(fake.root, 'p', true)).not.toBeNull();
   });
 });
 
-describe('landingFor and atEnd', () => {
+describe('scrollTopForBlock and atEnd', () => {
   it('puts the block line LANDING below the viewport top, clamped to the scroll range', () => {
     const fake = build([{ id: 'a', top: 0, height: 24 }, { id: 'b', top: 1000, height: 24 }, { id: 'z', top: 4900, height: 24 }]);
     expect(LANDING).toBe(16);
-    expect(landingFor(fake.viewport, fake.root, 'b')).toBe(1000 - LANDING);
-    expect(landingFor(fake.viewport, fake.root, 'a')).toBe(0);
-    expect(landingFor(fake.viewport, fake.root, 'z')).toBe(5000 - CLIENT_HEIGHT);
-    expect(landingFor(fake.viewport, fake.root, 'missing')).toBeNull();
+    expect(scrollTopForBlock(fake.viewport, fake.root, 'b')).toBe(1000 - LANDING);
+    expect(scrollTopForBlock(fake.viewport, fake.root, 'a')).toBe(0);
+    expect(scrollTopForBlock(fake.viewport, fake.root, 'z')).toBe(5000 - CLIENT_HEIGHT);
+    expect(scrollTopForBlock(fake.viewport, fake.root, 'missing')).toBeNull();
   });
 
   it('says whether a position is the end, give or take 2px', () => {
@@ -177,7 +177,7 @@ describe('stillAligned', () => {
    * @returns The mark.
    */
   function align(fake: Fake, id: string): ReturnType<typeof markAlignment> {
-    const target = landingFor(fake.viewport, fake.root, id)!;
+    const target = scrollTopForBlock(fake.viewport, fake.root, id)!;
     fake.viewport.scrollTo({ top: target, behavior: 'auto' });
     return markAlignment(fake.viewport, fake.root, id);
   }

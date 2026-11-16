@@ -4,21 +4,17 @@
 import * as React from 'react';
 import type { Awareness } from 'y-protocols/awareness';
 
-import { SCROLLBAR_MARK } from '@web/components/ui/scroll-area';
 import { pickLeaderField } from '@web/data/yjs/follow-presence';
 import { FOLLOW_BAR_HEIGHT } from '@web/features/follow/FollowBar';
 import {
   LANDING,
-  landingFor,
   markAlignment,
   rebaseMark,
+  scrollTopForBlock,
   stillAligned,
   type AlignmentMark,
 } from '@web/spaces/document/block-scroll';
 import { stopFollowing, useFollowStore } from '@web/stores/follow';
-
-/** Keys that scroll the body when it has focus. */
-const SCROLL_KEYS = new Set(['PageUp', 'PageDown', 'Home', 'End', ' ', 'ArrowUp', 'ArrowDown']);
 
 /** What following a member in a document body needs (#920 design 4.2). */
 export interface DocumentFollowInput {
@@ -45,11 +41,11 @@ export interface DocumentFollowInput {
  * moves with it, any other is the user's and stops following. A block not yet
  * on the page is aligned once it appears. A change of the body's size aligns
  * again, because a reflowed column moves the block away from the landing in
- * a way anchoring does not undo. Before the first alignment there is no
- * record to judge a scroll by, so the user's own scrolling inputs (the wheel,
- * a scrolling key, a press on this body's scrollbar) stop following directly.
- * While paused, both the aligning and the check rest, and resuming aligns to
- * the leader's latest block.
+ * a way anchoring does not undo. Until the leader's block first aligns, the
+ * record is where the body stood when following started here, so a scroll
+ * by any route (wheel, keys, scrollbar, an outline or comment jump) is judged
+ * the same way before and after. While paused, both the aligning and the
+ * check rest, and resuming aligns to the leader's latest block.
  * @param input - The awareness, the leader, the body and whether it is paused.
  */
 export function useDocumentFollow(input: DocumentFollowInput): void {
@@ -87,7 +83,7 @@ export function useDocumentFollow(input: DocumentFollowInput): void {
      * @param id - The block to align to.
      */
     const alignTo = (id: string): void => {
-      const top = landingFor(viewport, root, id, undefined, LANDING + FOLLOW_BAR_HEIGHT);
+      const top = scrollTopForBlock(viewport, root, id, { landing: LANDING + FOLLOW_BAR_HEIGHT });
       if (top === null) {
         pending = id;
         return;
@@ -125,34 +121,11 @@ export function useDocumentFollow(input: DocumentFollowInput): void {
       stopFollowing();
     };
 
-    /** Stop following on the user's own scrolling input before the first alignment. */
-    const stopBeforeAligned = (): void => {
-      if (mark === null && following()) stopFollowing();
-    };
-    /**
-     * A key that scrolls the body.
-     * @param event - The keydown inside the body.
-     */
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (SCROLL_KEYS.has(event.key)) stopBeforeAligned();
-    };
-    const area = viewport.closest('[data-scrollbars]');
-    /**
-     * A press on this body's scrollbar; the rail cancels its own pointerdown,
-     * so this listens on the window in the capture phase.
-     * @param event - Any pointerdown on the page.
-     */
-    const onPointerDown = (event: Event): void => {
-      const bar = event.target instanceof Element ? event.target.closest(`[${SCROLLBAR_MARK}]`) : null;
-      if (bar !== null && area !== null && bar.closest('[data-scrollbars]') === area) stopBeforeAligned();
-    };
-
     align(true);
+    // No leader block aligned yet: judge scrolls against where the body stands now.
+    if (mark === null) mark = markAlignment(viewport, root);
     awareness.on('change', onChange);
     viewport.addEventListener('scroll', onScroll, { passive: true });
-    viewport.addEventListener('wheel', stopBeforeAligned, { passive: true });
-    viewport.addEventListener('keydown', onKeyDown);
-    window.addEventListener('pointerdown', onPointerDown, true);
     // The block may arrive after the leader names it (sync, a peer's insert).
     const arrivals = new MutationObserver(() => {
       if (pending !== null && following()) alignTo(pending);
@@ -165,9 +138,6 @@ export function useDocumentFollow(input: DocumentFollowInput): void {
     return (): void => {
       awareness.off('change', onChange);
       viewport.removeEventListener('scroll', onScroll);
-      viewport.removeEventListener('wheel', stopBeforeAligned);
-      viewport.removeEventListener('keydown', onKeyDown);
-      window.removeEventListener('pointerdown', onPointerDown, true);
       arrivals.disconnect();
       resize.disconnect();
     };

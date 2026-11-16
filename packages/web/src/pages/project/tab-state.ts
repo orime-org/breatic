@@ -38,6 +38,12 @@ export interface TabState {
    */
   persist: boolean;
   /**
+   * Whether the strip's last change was an open that following asked for, so
+   * the follow routing can tell a landing it caused from the user's own switch.
+   * Never stored: it describes the last change, not the strip.
+   */
+  byFollow: boolean;
+  /**
    * What the browser was holding for this project when the page opened, spent
    * by the first `spaces` action and null from then on.
    *
@@ -53,7 +59,7 @@ export type TabAction =
   /** The live Spaces, as a whole. The first arrival settles the strip; later ones drop tabs whose Space is gone. */
   | { type: 'spaces'; spaces: ReadonlyArray<TabOrderEntry> }
   /** Show a Space: from the drawer, from the strip, or straight after creating one. */
-  | { type: 'open'; spaceId: string }
+  | { type: 'open'; spaceId: string; byFollow?: true }
   /** Close one tab. */
   | { type: 'close'; spaceId: string }
   /** Drop a tab in front of another, or at the end when `beforeSpaceId` is null. */
@@ -70,6 +76,7 @@ export function initialTabState(restored: RestoredTabs | null): TabState {
     openIds: [],
     activeId: null,
     persist: false,
+    byFollow: false,
     restored,
   };
 }
@@ -149,6 +156,7 @@ function foldSpaces(
       openIds,
       activeId: settleActive(openIds, state.restored?.activeId ?? null),
       persist: true,
+      byFollow: false,
       restored: null,
     };
   }
@@ -160,6 +168,7 @@ function foldSpaces(
     openIds,
     activeId: settleActive(openIds, state.activeId),
     persist: false,
+    byFollow: false,
   };
 }
 
@@ -175,14 +184,16 @@ export function reduceTabState(state: TabState, action: TabAction): TabState {
       return foldSpaces(state, action.spaces);
     case 'open': {
       if (state.activeId === action.spaceId) return state;
+      const byFollow = action.byFollow === true;
       if (state.openIds.includes(action.spaceId)) {
-        return { ...state, activeId: action.spaceId, persist: true };
+        return { ...state, activeId: action.spaceId, persist: true, byFollow };
       }
       return {
         ...state,
         openIds: [...state.openIds, action.spaceId],
         activeId: action.spaceId,
         persist: true,
+        byFollow,
       };
     }
     case 'close': {
@@ -192,6 +203,7 @@ export function reduceTabState(state: TabState, action: TabAction): TabState {
         openIds,
         activeId: settleActive(openIds, state.activeId),
         persist: true,
+        byFollow: false,
       };
     }
     case 'reorder': {
@@ -202,7 +214,7 @@ export function reduceTabState(state: TabState, action: TabAction): TabState {
       );
       return sameTabOrder(openIds, state.openIds)
         ? state
-        : { ...state, openIds, persist: true };
+        : { ...state, openIds, persist: true, byFollow: false };
     }
   }
 }

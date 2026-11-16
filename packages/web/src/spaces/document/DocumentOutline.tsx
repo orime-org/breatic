@@ -12,16 +12,13 @@ import { cn } from '@web/lib/utils';
 import { useDocumentViewStore } from '@web/stores';
 import type { ShowableEditor } from '@web/spaces/document/document-editor-cache';
 import { viewOf } from '@web/spaces/document/document-editor-view';
-import { LANDING, atEnd, blockLine, landingFor } from '@web/spaces/document/block-scroll';
+import { LANDING, atEnd, blockLine, scrollTopForBlock } from '@web/spaces/document/block-scroll';
 import { readOutline, type OutlineEntry } from '@web/spaces/document/document-outline';
 import { BODY_GUTTER_END, OUTLINE_WIDTH } from '@web/spaces/document/document-columns';
 import { outlineLayout } from '@web/spaces/document/document-outline-layout';
 import { useCachedSnapshot } from '@web/spaces/document/use-editor-snapshot';
 
 type Editor = ShowableEditor['editor'];
-
-/** The outline measures a heading by its outer box when its own line is not found. */
-const OUTLINE_LINE = { fallback: true } as const;
 
 /** The heading under this line (the landing plus 8px) is the one being read. */
 const READING_LINE = LANDING + 8;
@@ -116,7 +113,7 @@ function lineage(entries: readonly OutlineEntry[], above: readonly string[] = []
  * Starts a smooth scroll to a heading's landing.
  * @param viewport - The body's scrolling viewport.
  * @param id - The heading's block id.
- * @param target - Its landing, from `landingFor`.
+ * @param target - Its landing, from `scrollTopForBlock`.
  * @returns The jump, measured from where the body is now.
  */
 function launch(viewport: HTMLElement, id: string, target: number): Jump {
@@ -325,7 +322,8 @@ export const DocumentOutline = React.memo(function DocumentOutline({
       }
       pinned.current = null;
       const top = viewport.getBoundingClientRect().top;
-      const lines = ids.map((id) => [id, blockLine(viewport, id, OUTLINE_LINE)?.getBoundingClientRect().top] as const);
+      // A heading with no line of its own is measured by its outer box.
+      const lines = ids.map((id) => [id, blockLine(viewport, id, true)?.getBoundingClientRect().top] as const);
       let current: string | null = null;
       for (const [id, at] of lines) if (at !== undefined && at <= top + READING_LINE) current = id;
       if (viewport.scrollHeight > viewport.clientHeight && atEnd(viewport)) {
@@ -345,7 +343,7 @@ export const DocumentOutline = React.memo(function DocumentOutline({
     const reaim = (): void => {
       const flight = jump.current;
       if (flight === null) return;
-      const target = landingFor(viewport, viewport, flight.id, OUTLINE_LINE);
+      const target = scrollTopForBlock(viewport, viewport, flight.id, { fallback: true });
       if (target !== null && Math.abs(target - flight.target) >= 1) jump.current = launch(viewport, flight.id, target);
     };
     /**
@@ -398,14 +396,14 @@ export const DocumentOutline = React.memo(function DocumentOutline({
 
   const onJump = React.useCallback((id: string) => {
     if (viewport === null) return;
-    if (blockLine(viewport, id, OUTLINE_LINE) === null) return;
+    if (blockLine(viewport, id, true) === null) return;
     // The caret goes in before the measuring: a browser that scrolls a new
     // selection into view does so first, and the smooth scroll carries on from there.
     if (!readOnly) {
       editor.setTextCursorPosition(id, 'start');
       viewOf(editor)?.dom.focus({ preventScroll: true });
     }
-    const target = landingFor(viewport, viewport, id, OUTLINE_LINE);
+    const target = scrollTopForBlock(viewport, viewport, id, { fallback: true });
     if (target === null) return;
     // On the way the highlight follows the body. A jump that ends at the
     // body's end (a body too short to scroll always is) can leave the heading
