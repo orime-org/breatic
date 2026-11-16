@@ -201,7 +201,7 @@ async function finish(pickup: RenderPickup, report: EndedRender): Promise<void> 
  * Act on a cancel's answer for a cancelling export: a terminal report settles and acknowledges the cancel.
  * @param pickup - The pickup.
  * @returns Nothing.
- * @throws {StillRunning} While the job is still stopping.
+ * @throws {StillRunning} Until the cancel's answer is terminal.
  * @throws {Error} When a write fails.
  */
 async function cancelling(pickup: RenderPickup): Promise<void> {

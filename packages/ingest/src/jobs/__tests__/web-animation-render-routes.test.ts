@@ -44,7 +44,7 @@ function standIn() {
   const stub = {
     submit: vi.fn(async (_request: WebAnimationRenderJobRequest) => ({ kind: "report", report: RUNNING })),
     report: vi.fn(async () => RUNNING),
-    cancel: vi.fn(async (_deadlineAt: number) => ({ ...RUNNING, state: "stopping" })),
+    cancel: vi.fn(async (_deadlineAt: number) => ({ ...RUNNING, state: "cancelled" })),
   };
   const namespace = {
     idFromName: vi.fn((name: string) => ({ name })),

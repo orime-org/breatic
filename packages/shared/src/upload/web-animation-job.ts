@@ -179,7 +179,8 @@ const measured = {
  * bytes and the container measured the media, which is what registration reads.
  */
 export const webAnimationRenderJobReportSchema = z.object({
-  state: z.enum(["running", "stopping", "done", "failed", "cancelled", "expired", "cancelled_before_submit"]),
+  // No `stopping`: a render has no open model call to wait for, so a cancel ends it at once.
+  state: z.enum(["running", "done", "failed", "cancelled", "expired", "cancelled_before_submit"]),
   phase: z.enum(["rendering", "saving"]).nullable(),
   /** How far the renderer got, 0 to 1; null before it starts. */
   progress: z.number().min(0).max(1).nullable(),

@@ -115,6 +115,11 @@ describe("render reports", () => {
     expect(webAnimationRenderJobReportSchema.safeParse(done).success).toBe(false);
   });
 
+  it("refuse a stopping state, which a render never reaches: a cancel ends it at once", () => {
+    const stopping = { state: "stopping", phase: "rendering", progress: 0.4, container: null, video: null, failureReason: null };
+    expect(webAnimationRenderJobReportSchema.safeParse(stopping).success).toBe(false);
+  });
+
   it("refuse a progress outside 0 to 1", () => {
     const running = { state: "running", phase: "rendering", progress: 1.5, container: null, video: null, failureReason: null };
     expect(webAnimationRenderJobReportSchema.safeParse(running).success).toBe(false);
