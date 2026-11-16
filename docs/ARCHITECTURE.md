@@ -611,18 +611,22 @@ Product-tag CI builds and tests backend/web on native AMD64 and ARM64 runners, a
 
 `packages/shared/src/scene.ts` defines the plain scene values and their runtime
 schemas. Positions are finite Y-up metre tuples, rotations are normalized XYZW
-quaternions, and per-axis scales are positive. Model references identify a built-in
-model or a registered asset by UUID. `scene-version.ts` initializes version 2 when
+quaternions, and per-axis scales are positive. A record's model is a built-in model,
+a registered asset by UUID, a camera, or a directional, point or spot light. `scene-version.ts` initializes version 2 when
 both validated scene roots are empty; existing content, including unknown or
 missing version metadata, is retained. Its `getSceneRootMap` validates the root
 structure for initialization, projection and recovery checks. Yjs retains sequence
 content when a decoded root acquires its Map constructor, so the shared check
 rejects that content while preserving its encoded bytes.
 
-The document has a `scene` root Map with `formatVersion` and an `objects` root Map
-keyed by object UUID. Each object record is a Map of six plain current values:
-`name`, `model`, `position`, `rotation`, `scale` and `locked`, plus one flat `pose.`
-key per posed bone when the object has a pose (see the poses paragraph below). An edit overwrites the
+The document has a `scene` root Map with `formatVersion` and the ambient light's
+`ambientColor` and `ambientIntensity`, and an `objects` root Map keyed by object
+UUID. Each object record is a Map of six plain current values: `name`, `model`,
+`position`, `rotation`, `scale` and `locked`, plus one flat `pose.` key per posed
+bone when the object has a pose (see the poses paragraph below). A camera or light
+also carries its `number`, keeps a unit scale and has no pose; a camera adds
+`focalLength`, `frame` and `freeRatio`, and a light `color`, `intensity`,
+`castShadow` and, for a spotlight, `angle`. An edit overwrites the
 changed fields and skips values that are already current; deletion removes the
 record. Yjs merges consecutive overwrites of one field by one client, so such edits
 do not grow the stored document, while edits that switch fields or objects leave
@@ -630,8 +634,8 @@ about 9 bytes per written field. The collab copy has no UndoManager and collects
 deleted content. A key left empty by a concurrent write followed by its writer's
 undo reads as its default (origin, identity rotation, unit scale, unlocked, and as
 the name the built-in model id or `Model` for an asset); a non-map record, a missing
-or invalid model, a value that fails its schema or an unknown key (anything other
-than those six and a well-formed `pose.` key) makes a record invalid.
+or invalid model, a value that fails its schema or a key its kind does not carry
+makes a record invalid.
 
 `packages/web/src/data/yjs/scene-document.ts` projects valid objects while
 retaining invalid records and reporting their errors. Command planning checks the
