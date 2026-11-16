@@ -332,7 +332,8 @@ export async function runAlphaPresentation(job: AlphaRunBody): Promise<AlphaRunR
         const decoder = [...CODEC_CROPPING_ONLY, ...alphaDecoderArgs(String(video.codec_name), typeof alphaMode === 'string' ? alphaMode : null)];
         const picture = shownFilters(source);
         const output = join(directory, 'packed.mp4');
-        const filter = `[0:${integer(video.index)}]${picture === null ? '' : `${picture},`}split=2[r][a];[r]format=gbrap,premultiply=inplace=1,format=rgb24,pad=${planeWidth}:${packedHeight}:0:0:color=black[rgb];[a]alphaextract,format=rgb24,pad=${planeWidth}:${packedHeight}:0:0:color=black[alpha];[rgb][alpha]hstack,format=yuv420p[v]`;
+        // Both branches read planar RGBA: split hands a palette (pal8) frame on as it is, and alphaextract crashes on it.
+        const filter = `[0:${integer(video.index)}]${picture === null ? '' : `${picture},`}format=gbrap,split=2[r][a];[r]premultiply=inplace=1,format=rgb24,pad=${planeWidth}:${packedHeight}:0:0:color=black[rgb];[a]alphaextract,format=rgb24,pad=${planeWidth}:${packedHeight}:0:0:color=black[alpha];[rgb][alpha]hstack,format=yuv420p[v]`;
         const last = originalClock.frames[originalClock.frames.length - 1]!;
         const timescale = originalClock.videoTimeBase.split('/')[1]!;
         const threads = String(Math.max(1, Math.floor(job.vcpu)));

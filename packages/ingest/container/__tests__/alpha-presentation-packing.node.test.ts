@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The packed display carrier of a transparent source with a container crop (a Matroska PixelCrop, an MP4 clean aperture):
- * the picture Chromium shows, uncropped, packed colour left and alpha right. Run on the real ffprobe and ffmpeg 8.0.1; only
- * the transfers are stood in for.
+ * The packed display carrier of real transparent sources, colour left and alpha right: one with a container crop (a
+ * Matroska PixelCrop, an MP4 clean aperture), packed at the picture Chromium shows, uncropped; and a palette (pal8) one. Run
+ * on the real ffprobe and ffmpeg 8.0.1; only the transfers are stood in for.
  */
 
 import { execFile } from 'node:child_process';
@@ -41,6 +41,10 @@ beforeAll(async () => {
   await ff('whole-prores.mkv', ['-i', join(dir, 'whole.webm'), '-c:v', 'prores_ks', '-profile:v', '4444', '-pix_fmt', 'yuva444p10le']);
   await writePixelCropped(join(dir, 'whole-prores.mkv'), join(dir, 'crop-prores.mkv'), { left: 3, top: 1 });
   await ff('clap.mov', ['-i', join(dir, 'crop-prores.mkv'), '-c', 'copy']);
+  // A palette PNG in MOV, transparent on the left half and opaque on the right (a palette with a reserved transparent entry).
+  await ff('palette.mov', ['-f', 'lavfi', '-i', 'testsrc2=s=64x48:r=10:d=0.3', '-filter_complex',
+    "format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='if(lt(X,32),0,255)',split[s0][s1];[s0]palettegen=reserve_transparent=1:stats_mode=single[p];[s1][p]paletteuse=alpha_threshold=128:new=1",
+    '-c:v', 'png']);
 }, 120_000);
 
 afterAll(async () => {
@@ -90,5 +94,19 @@ describe('a transparent source its container crops', () => {
     const colour = await luma(packed, `format=gray,crop=${width}:${height}:0:0`);
     const want = await luma(join(dir, name), 'format=gbrap,premultiply=inplace=1', ['-apply_cropping', 'codec', ...decoder]);
     expect(colour.reduce((sum, value, index) => sum + Math.abs(value - want[index]!), 0) / colour.length).toBeLessThan(2);
+  }, 120_000);
+});
+
+// FFmpeg 8.0.1's split hands a palette frame to alphaextract, which then crashes (exit 139): the frames become planar RGBA
+// first.
+describe('a palette source', () => {
+  it('palette.mov is packed with its transparent half clear and its opaque half solid', async () => {
+    source = 'palette.mov';
+    expect(await runAlphaPresentation(job)).toEqual({ ok: true });
+    expect(reports[0]).toMatchObject({ kind: 'probe', classification: 'confirmed_alpha', original: { width: 64, height: 48 } });
+    const alpha = await luma(packed, 'format=gray,crop=64:48:64:0');
+    const half = (from: number): number => alpha.filter((_value, index) => index % 64 >= from && index % 64 < from + 32).reduce((sum, value) => sum + value, 0) / (32 * 48);
+    expect(half(0)).toBeLessThan(20);
+    expect(half(32)).toBeGreaterThan(235);
   }, 120_000);
 });
