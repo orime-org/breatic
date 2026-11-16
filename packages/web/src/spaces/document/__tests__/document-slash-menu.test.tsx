@@ -272,6 +272,28 @@ describe('the mouse on the menu (A3)', () => {
     fireEvent.mouseDown(screen.getByTestId('doc-slash-row-heading-3'));
     expect(read(editor)[0]?.props?.['level']).toBe(3);
   });
+
+  it('picks nothing on a press of another mouse button', () => {
+    const { editor } = open([para('')]);
+    caretAtEnd(editor, read(editor)[0]!.id);
+    type(editor, '/');
+    fireEvent.mouseDown(screen.getByTestId('doc-slash-row-heading-3'), { button: 2 });
+    fireEvent.mouseDown(screen.getByTestId('doc-slash-row-heading-3'), { button: 1 });
+    expect(read(editor)[0]?.type).toBe('paragraph');
+    expect(menu()).not.toBeNull();
+
+    fireEvent.mouseDown(screen.getByTestId('doc-slash-row-table'));
+    fireEvent.mouseDown(screen.getByTestId('doc-slash-table-size-2-2'), { button: 2 });
+    expect(read(editor).some((block) => block.type === 'docTable')).toBe(false);
+  });
+
+  it('marks Table as opening a grid, as the insert menu does', () => {
+    const { editor } = open([para('')]);
+    caretAtEnd(editor, read(editor)[0]!.id);
+    type(editor, '/');
+    expect(screen.getByTestId('doc-slash-row-table').querySelector('.lucide-chevron-right')).not.toBeNull();
+    expect(screen.getByTestId('doc-slash-row-heading-1').querySelector('.lucide-chevron-right')).toBeNull();
+  });
 });
 
 describe('entries out of reach (A7)', () => {
