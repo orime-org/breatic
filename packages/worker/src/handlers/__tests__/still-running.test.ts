@@ -104,6 +104,8 @@ vi.mock("@breatic/domain", async () => ({
   upstreamStepRepo: { failOpenSteps: vi.fn() },
   assetService: { resolveOwnerStudioId: vi.fn(async () => "studio-1") },
   creditLotService: {},
+  // The operation a run that failed for good gives back (inner#1968).
+  operationService: { releaseOperation: vi.fn(async () => true) },
   creditHoldService: { releaseHold: vi.fn(async () => undefined) },
   creditsForUsd: vi.fn(() => 0),
   toChargeCredits: (credits: number) => credits,

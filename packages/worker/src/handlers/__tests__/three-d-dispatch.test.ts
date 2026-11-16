@@ -100,6 +100,8 @@ vi.mock("@breatic/domain", async () => ({
     settleCharge: h.settleCharge,
     pendingChargeRequestId: vi.fn(async () => null),
   },
+  // The operation a run that failed for good gives back (inner#1968).
+  operationService: { releaseOperation: vi.fn(async () => true) },
   creditHoldService: { releaseHold: vi.fn(async () => undefined) },
   creditsForUsd: (usd: number) => usd,
   toChargeCredits: (await import("@domain/credit/credit-math.js")).toChargeCredits,

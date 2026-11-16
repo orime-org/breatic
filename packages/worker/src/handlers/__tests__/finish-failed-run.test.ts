@@ -49,6 +49,8 @@ vi.mock("@breatic/core", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: mockLogError, debug: vi.fn() },
 }));
 vi.mock("@breatic/domain", () => ({
+  // The operation a run that failed for good gives back (inner#1968).
+  operationService: { releaseOperation: vi.fn(async () => true) },
   creditHoldService: { releaseHold: mockReleaseHold },
   buildAgentConfig: vi.fn(),
   generateTextRetry: vi.fn(),

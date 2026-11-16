@@ -66,6 +66,8 @@ vi.mock("@breatic/domain", () => ({
     pendingChargeRequestId: mockPendingChargeRequestId,
     settleCharge: mockSettleCharge,
   },
+  // The operation a run that failed for good gives back (inner#1968).
+  operationService: { releaseOperation: vi.fn(async () => true) },
   creditHoldService: { releaseHold: mockReleaseHold },
   nodeHistoryService: { recordGenerationFailure: mockRecordFailure },
   settleTaskForNode: mockSettleTaskForNode,

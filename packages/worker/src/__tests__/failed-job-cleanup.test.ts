@@ -60,6 +60,8 @@ vi.mock("@breatic/domain", async () => ({
     generationOutcome: (await import("@domain/node-task/scene-task.service.js")).generationOutcome,
     settleById: mockSettleSceneRowById,
   },
+  // The operation a run that failed for good gives back (inner#1968).
+  operationService: { releaseOperation: vi.fn(async () => true) },
   creditHoldService: { releaseHold: mockReleaseHold },
   creditLotService: { pendingChargeRequestId: mockPendingChargeRequestId, settleCharge: mockSettleCharge },
   creditsForUsd: (usd: number) => usd * 100,
