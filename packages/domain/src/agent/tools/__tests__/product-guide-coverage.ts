@@ -120,6 +120,8 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "timeline.webAnimation.failure.stopped": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "timeline.webAnimation.failure.unknown": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "timeline.webAnimation.failure.render": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "timeline.webAnimation.failure.frameMismatch": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "timeline.webAnimation.failure.saveVideo": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "timeline.webAnimation.picker.title": { described: /opens a list of the Project's web animations/ },
   "timeline.webAnimation.picker.description": { excluded: REASONS.SAYS_WHAT_TO_PICK },
   "timeline.webAnimation.picker.error": { excluded: REASONS.SAYS_WHAT_HAPPENED },

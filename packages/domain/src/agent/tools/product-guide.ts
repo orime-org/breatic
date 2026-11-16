@@ -1556,7 +1556,9 @@ export function renderProductGuide(): string {
       "other copies and the web animation itself as they are. A copy is named by its request; a modification's copy is named after the request it was modified from " +
       "followed by its own change. The selected copy's panel shows the whole request and, for a modification, a line naming the request it was modified from. " +
       "A copy whose web animation failed, was cancelled or expired is red; its panel says why and offers " +
-      `${quoted(t("timeline.webAnimation.openInMotion"))}, which opens the Motion Space that made it with it selected, to retry or modify it there. ` +
+      `${quoted(t("timeline.webAnimation.openInMotion"))}, which opens the Motion Space that made it with it selected, to retry or modify it there; ` +
+      "a copy made in a Timeline before Motion existed opens in the newest Motion Space (one named Motion is made when the Project has none), " +
+      `selected under ${quoted(t("spaces.webAnimation.madeInTimeline"))}. ` +
       "In the preview copies and videos stack by track, so a copy wholly covered by a higher layer is not seen. A copy whose web animation has not finished, or ended without a result, is noted at the top right of the " +
       "preview with its track and its status, a copy whose page is still loading shows nothing and is noted there as loading, " +
       "and a copy whose page cannot be loaded is noted there as unavailable with " +
@@ -1584,7 +1586,8 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.webAnimation.export"))} renders it to a video in this Space; once the Space has one, the button reads ${quoted(t("spaces.webAnimation.viewVideo"))} and shows that video. ` +
       `On a finished video the bar offers ${quoted(t("spaces.webAnimation.download"))}, ${quoted(t("spaces.webAnimation.placeOnCanvas"))} and ${quoted(t("spaces.webAnimation.viewSource"))}. ` +
       `${quoted(t("spaces.webAnimation.placeOnCanvas"))} lists the Project's canvases (it is unavailable with ${quoted(t("spaces.webAnimation.noCanvas"))} when there are none) and puts the video on the chosen one ` +
-      "near the middle of its last view, then says it was put there with a button to view it. A run that failed, was cancelled or expired shows why in the middle with " +
+      `near the middle of its last view, then says it was put there with a button to view it, ${quoted(t("spaces.webAnimation.viewPlaced"))}, which opens that Canvas with the video selected. ` +
+      "A run that failed, was cancelled or expired shows why in the middle with " +
       `${quoted(t("timeline.webAnimation.retry"))}, which opens the dialog filled in as before, or ${quoted(t("spaces.webAnimation.reexport"))} for a video. ` +
       `The details button shows the name, ${quoted(t("spaces.webAnimation.statusLabel"))}, the request, the steps, the usage, ${quoted(t("spaces.webAnimation.modifiedFromLabel"))} for a modification ` +
       `and ${quoted(t("timeline.webAnimation.cancel"))} while it runs.`,
