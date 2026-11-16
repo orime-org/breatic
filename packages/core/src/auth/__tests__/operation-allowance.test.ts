@@ -43,7 +43,7 @@ function subscription(tier: MembershipTier, billingCycleAnchor: Date | null, per
     hasPendingUpdate: false,
     currentPeriodEnd: new Date("2027-12-10T00:00:00.000Z"),
     billingCycleAnchor,
-  } as SubscriptionRecord;
+  };
 }
 
 /**
@@ -72,7 +72,7 @@ function agreement(createdAt: string, expiresAt: string, monthlyOperations: numb
       monthly_operations: monthlyOperations,
       running_tasks_per_user: 10,
     },
-  } as EnterpriseRecord;
+  };
 }
 
 interface Account {
