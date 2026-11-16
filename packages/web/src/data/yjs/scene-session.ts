@@ -7,6 +7,7 @@ import type { Awareness } from 'y-protocols/awareness';
 
 import { SceneObjectSchema, type SceneObject, type ScenePose } from '@breatic/shared';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
+import type { FollowFieldValue } from '@web/data/yjs/follow-presence';
 import { runHistoryStep } from '@web/data/yjs/history-step';
 import {
   applySceneCommand, createSceneHistory, readSceneDocument,
@@ -17,11 +18,7 @@ import { userPaletteColor } from '@web/lib/user-color';
 import type { WriteAccess } from '@web/data/yjs/use-socket';
 
 /** This page's personal 3D camera as a follower reads it (#920); `fov` is in degrees. */
-export interface SceneCamera {
-  position: [number, number, number];
-  target: [number, number, number];
-  fov: number;
-}
+export type SceneCamera = Omit<FollowFieldValue<'camera3d'>, 'at'>;
 
 /** A gesture draft: the transform fields a drag previews, or the whole pose a joint drag shows. */
 type SceneGestureDraft = ScenePatch & { pose?: ScenePose };

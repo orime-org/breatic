@@ -5,7 +5,7 @@
  * The awareness fields that let one member follow another (#920).
  *
  * The project's meta awareness carries `view`, the Space a browser tab has in
- * front and whom it follows; each Space's awareness carries where that Space's
+ * front, and `following`, whom that tab follows; each Space's awareness carries where that Space's
  * viewport is: `camera` on a canvas, `topBlockId` in a document, `camera3d` in
  * a 3D Space and `timelineView` on a timeline. Every `at` is wall-clock milliseconds
  * (`Date.now()`), the only clock two browsers share. Awareness carries
@@ -13,6 +13,7 @@
  * value that fails it counts as absent.
  */
 
+import type { Awareness } from 'y-protocols/awareness';
 import { z } from 'zod';
 
 import { readUserId } from '@web/data/yjs/awareness-user';
@@ -31,9 +32,9 @@ const SCHEMAS = {
     spaceId: z.string().min(1).nullable(),
     at: instant,
     focused: z.boolean(),
-    // Whom this tab follows; a view written without it (an older client) follows nobody.
-    following: z.string().min(1).nullable().default(null),
   }),
+  // Apart from `view` because a hidden tab withdraws its view but still follows.
+  following: z.object({ id: z.string().min(1), at: instant }),
   camera: z.object({ x: z.number(), y: z.number(), width: z.number().positive(), height: z.number().positive(), at: instant }),
   topBlockId: z.object({ id: z.string().min(1), at: instant }),
   camera3d: z.object({ position: vector3, target: vector3, fov: z.number().positive(), at: instant }),
@@ -70,66 +71,73 @@ export function readFollowField<F extends FollowField>(
   return parsed.success ? (parsed.data as FollowFieldValue<F>) : null;
 }
 
+/** What one member's tabs say: the Space in front and whom they follow. */
+export interface MemberView {
+  spaceId: string | null;
+  following: string | null;
+}
+
 /**
- * Every well-formed value of one field among the leader's other clients.
- * @param states - The awareness states by client id.
- * @param leaderId - The followed member's user id.
- * @param field - The field to read.
- * @param selfClientId - This client's id, never a candidate.
- * @returns The values, in the states' order.
+ * Whether a candidate `view` beats the one picked so far: the focused tab
+ * first, then the latest written (as tldraw dedupes by activity).
+ * @param view - The candidate.
+ * @param best - The view picked so far.
+ * @returns True when the candidate wins.
  */
-function leaderValues<F extends FollowField>(
+function beatsView(view: FollowFieldValue<'view'>, best: FollowFieldValue<'view'>): boolean {
+  return (view.focused && !best.focused) || (view.focused === best.focused && view.at > best.at);
+}
+
+/**
+ * Each other member's view across their browser tabs: the Space from the
+ * picked `view`, and whom they follow from the tab that started following
+ * latest. A member counts as following when any tab follows, a hidden one
+ * with no `view` included, so such a member is listed with no Space.
+ * @param states - The project's meta awareness states by client id.
+ * @param selfClientId - This client's id, never listed.
+ * @returns The views by user id; a member with neither field is absent.
+ */
+export function pickMemberViews(
   states: ReadonlyMap<number, Record<string, unknown>>,
-  leaderId: string,
-  field: F,
   selfClientId: number,
-): FollowFieldValue<F>[] {
-  const out: FollowFieldValue<F>[] = [];
+): Map<string, MemberView> {
+  const picks = new Map<string, { view: FollowFieldValue<'view'> | null; following: FollowFieldValue<'following'> | null }>();
   for (const [clientId, state] of states) {
-    if (clientId === selfClientId || readUserId(state) !== leaderId) continue;
-    const value = readFollowField(state, field);
-    if (value !== null) out.push(value);
+    const userId = clientId === selfClientId ? null : readUserId(state);
+    if (userId === null) continue;
+    const view = readFollowField(state, 'view');
+    const following = readFollowField(state, 'following');
+    if (view === null && following === null) continue;
+    const pick = picks.get(userId) ?? { view: null, following: null };
+    if (view !== null && (pick.view === null || beatsView(view, pick.view))) pick.view = view;
+    if (following !== null && (pick.following === null || following.at > pick.following.at)) pick.following = following;
+    picks.set(userId, pick);
+  }
+  const out = new Map<string, MemberView>();
+  for (const [userId, pick] of picks) {
+    out.set(userId, { spaceId: pick.view?.spaceId ?? null, following: pick.following?.id ?? null });
   }
   return out;
 }
 
 /**
- * The `view` the follower goes by when the leader has several browser tabs:
- * the focused one, then the latest written (as tldraw dedupes by activity).
- * @param states - The project's meta awareness states by client id.
- * @param leaderId - The followed member's user id.
- * @param selfClientId - This client's id, never a candidate.
- * @returns The view, or null when the leader publishes none.
- */
-export function pickLeaderView(
-  states: ReadonlyMap<number, Record<string, unknown>>,
-  leaderId: string,
-  selfClientId: number,
-): FollowFieldValue<'view'> | null {
-  let best: FollowFieldValue<'view'> | null = null;
-  for (const view of leaderValues(states, leaderId, 'view', selfClientId)) {
-    if (best === null || (view.focused && !best.focused) || (view.focused === best.focused && view.at > best.at)) best = view;
-  }
-  return best;
-}
-
-/**
- * The latest value of one Space field among the leader's clients.
- * @param states - The Space's awareness states by client id.
+ * The latest value of one Space field among the leader's other clients.
+ * @param awareness - The Space's awareness.
  * @param leaderId - The followed member's user id.
  * @param field - The field to read.
- * @param selfClientId - This client's id, never a candidate.
  * @returns The value with the latest `at`, or null when there is none.
  */
 export function pickLeaderField<F extends FollowField>(
-  states: ReadonlyMap<number, Record<string, unknown>>,
+  awareness: Awareness,
   leaderId: string,
   field: F,
-  selfClientId: number,
 ): FollowFieldValue<F> | null {
+  const states = awareness.getStates() as ReadonlyMap<number, Record<string, unknown>>;
   let best: FollowFieldValue<F> | null = null;
-  for (const value of leaderValues(states, leaderId, field, selfClientId)) {
-    if (best === null || value.at > best.at) best = value;
+  for (const [clientId, state] of states) {
+    if (clientId === awareness.clientID || readUserId(state) !== leaderId) continue;
+    const value = readFollowField(state, field);
+    if (value !== null && (best === null || value.at > best.at)) best = value;
   }
   return best;
 }

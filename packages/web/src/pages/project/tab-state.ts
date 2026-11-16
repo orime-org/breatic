@@ -38,9 +38,10 @@ export interface TabState {
    */
   persist: boolean;
   /**
-   * Whether the strip's last change was an open that following asked for, so
-   * the follow routing can tell a landing it caused from the user's own switch.
-   * Never stored: it describes the last change, not the strip.
+   * Whether the tab in front was put there by an open that following asked
+   * for, so the follow routing can tell a landing it caused from the user's
+   * own switch. Changes only when the tab in front changes; never stored, as
+   * it describes how that tab came to the front, not the strip.
    */
   byFollow: boolean;
   /**
@@ -163,12 +164,13 @@ function foldSpaces(
   const live = new Set(spaces.map((s) => s.id));
   const openIds = state.openIds.filter((id) => live.has(id));
   if (openIds.length === state.openIds.length) return state;
+  const activeId = settleActive(openIds, state.activeId);
   return {
     ...state,
     openIds,
-    activeId: settleActive(openIds, state.activeId),
+    activeId,
     persist: false,
-    byFollow: false,
+    byFollow: activeId === state.activeId && state.byFollow,
   };
 }
 
@@ -198,12 +200,13 @@ export function reduceTabState(state: TabState, action: TabAction): TabState {
     }
     case 'close': {
       const openIds = state.openIds.filter((id) => id !== action.spaceId);
+      const activeId = settleActive(openIds, state.activeId);
       return {
         ...state,
         openIds,
-        activeId: settleActive(openIds, state.activeId),
+        activeId,
         persist: true,
-        byFollow: false,
+        byFollow: activeId === state.activeId && state.byFollow,
       };
     }
     case 'reorder': {
@@ -214,7 +217,7 @@ export function reduceTabState(state: TabState, action: TabAction): TabState {
       );
       return sameTabOrder(openIds, state.openIds)
         ? state
-        : { ...state, openIds, persist: true, byFollow: false };
+        : { ...state, openIds, persist: true };
     }
   }
 }

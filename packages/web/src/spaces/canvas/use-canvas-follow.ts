@@ -24,14 +24,6 @@ export interface CanvasFollowInput {
   applyViewport: (viewport: Viewport) => void;
   /** Drop the opening fit a canvas with no stored camera still has queued. */
   clearOpeningFit: () => void;
-  /** Whether the opening fit of a canvas with no stored camera has yet to run. */
-  openingFitPending: () => boolean;
-}
-
-/** What the canvas wires back in. */
-export interface CanvasFollowResult {
-  /** The `<ReactFlow onMoveStart>` handler: the user's moves, and after the first alignment any move this hook did not start, stop following. */
-  onMoveStart: (event: unknown) => void;
 }
 
 /**
@@ -60,19 +52,18 @@ function belowFollowBar(rect: FlowRect, pane: PaneSize): Viewport {
  *
  * The move this hook makes runs inside a synchronous `applying` flag, because
  * xyflow reports a programmatic move through `onMoveStart` in the same call.
- * A move start carrying an input event (wheel, drag, pinch) is the user
- * moving the view and always stops following; so does one without (minimap,
- * toolbar, shortcut), except the opening fit of a canvas that loads after
- * following started and before the first alignment.
+ * Every other move start (wheel, drag, pinch, minimap, toolbar, shortcut)
+ * stops following. A canvas opened while following queues no opening fit,
+ * and the one a canvas still has queued when following starts is dropped
+ * then, so no move of the canvas's own reads as the user's.
  * @param input - The awareness, the leader, readiness and the viewport commands.
- * @returns The move-start handler.
+ * @returns The `<ReactFlow onMoveStart>` handler.
  */
-export function useCanvasFollow(input: CanvasFollowInput): CanvasFollowResult {
+export function useCanvasFollow(input: CanvasFollowInput): (event: unknown) => void {
   const { awareness, leaderUserId, ready } = input;
   const latest = React.useRef(input);
   latest.current = input;
   const applying = React.useRef(false);
-  const aligned = React.useRef(false);
   // The leader camera last applied, kept for a refit when this pane changes size.
   const last = React.useRef<{ rect: FlowRect; at: number } | null>(null);
 
@@ -81,31 +72,26 @@ export function useCanvasFollow(input: CanvasFollowInput): CanvasFollowResult {
    * @param rect - The leader rectangle.
    */
   const fitLeader = React.useCallback((rect: FlowRect): void => {
-    const { pane, applyViewport, clearOpeningFit } = latest.current;
-    // Otherwise the queued fit frames every node right after this move.
-    if (!aligned.current) clearOpeningFit();
+    const { pane, applyViewport } = latest.current;
     applying.current = true;
     try {
       applyViewport(belowFollowBar(rect, pane));
     } finally {
       applying.current = false;
     }
-    aligned.current = true;
   }, []);
 
   React.useEffect(() => {
+    if (leaderUserId !== null) latest.current.clearOpeningFit();
+  }, [leaderUserId]);
+
+  React.useEffect(() => {
     if (!awareness || leaderUserId === null || !ready) return undefined;
-    last.current = null;
     /** Fit the leader's latest rectangle into this pane, when it is newer than the last. */
     const align = (): void => {
       // Stopped from inside (a move start) before the store's value re-rendered us.
       if (useFollowStore.getState().targetUserId !== leaderUserId) return;
-      const camera = pickLeaderField(
-        awareness.getStates() as ReadonlyMap<number, Record<string, unknown>>,
-        leaderUserId,
-        'camera',
-        awareness.clientID,
-      );
+      const camera = pickLeaderField(awareness, leaderUserId, 'camera');
       if (camera === null) return;
       if (last.current !== null && camera.at <= last.current.at) return;
       const rect: FlowRect = { x: camera.x, y: camera.y, width: camera.width, height: camera.height };
@@ -116,7 +102,6 @@ export function useCanvasFollow(input: CanvasFollowInput): CanvasFollowResult {
     awareness.on('change', align);
     return (): void => {
       awareness.off('change', align);
-      aligned.current = false;
       last.current = null;
     };
   }, [awareness, leaderUserId, ready, fitLeader]);
@@ -124,20 +109,12 @@ export function useCanvasFollow(input: CanvasFollowInput): CanvasFollowResult {
   const { width, height } = input.pane;
   React.useEffect(() => {
     const applied = last.current;
-    if (applied === null || !aligned.current) return;
+    if (applied === null) return;
     if (useFollowStore.getState().targetUserId !== latest.current.leaderUserId) return;
     fitLeader(applied.rect);
   }, [width, height, fitLeader]);
 
-  const onMoveStart = React.useCallback((event: unknown): void => {
-    if (applying.current) return;
-    // The canvas framing itself on open is not the user moving the view.
-    const programmatic = event === null || event === undefined;
-    if (!aligned.current && programmatic && latest.current.openingFitPending()) return;
-    stopFollowing();
-    aligned.current = false;
-    last.current = null;
+  return React.useCallback((): void => {
+    if (!applying.current) stopFollowing();
   }, []);
-
-  return React.useMemo((): CanvasFollowResult => ({ onMoveStart }), [onMoveStart]);
 }

@@ -3,37 +3,13 @@
 
 import type { Awareness } from 'y-protocols/awareness';
 
-import { readUserId } from '@web/data/yjs/awareness-user';
-import { pickLeaderView } from '@web/data/yjs/follow-presence';
+import { pickMemberViews, type MemberView } from '@web/data/yjs/follow-presence';
 import { useAwarenessSlice } from '@web/data/yjs/use-awareness-slice';
 
-/** What one member's picked `view` says: the Space in front and whom they follow. */
-export interface MemberView {
-  spaceId: string | null;
-  following: string | null;
-}
-
-/** Each other member's picked view, by user id; a member without a view is absent. */
+/** Each other member's view, by user id; a member with no tab publishing either field is absent. */
 export type MemberViews = ReadonlyMap<string, MemberView>;
 
 const EMPTY: MemberViews = new Map();
-
-/**
- * Pick each other member's view from the meta awareness states.
- * @param states - The meta awareness states by client id.
- * @param selfClientId - This client's id, never a candidate.
- * @returns Each member's Space in front and whom they follow, by user id.
- */
-function collectViews(states: ReadonlyMap<number, Record<string, unknown>>, selfClientId: number): MemberViews {
-  const out = new Map<string, MemberView>();
-  for (const [clientId, state] of states) {
-    const userId = clientId === selfClientId ? null : readUserId(state);
-    if (userId === null || out.has(userId)) continue;
-    const view = pickLeaderView(states, userId, selfClientId);
-    if (view !== null) out.set(userId, { spaceId: view.spaceId, following: view.following });
-  }
-  return out;
-}
 
 /**
  * Whether two collections hold the same Space and following for the same members.
@@ -51,13 +27,13 @@ function sameViews(a: MemberViews, b: MemberViews): boolean {
 }
 
 /**
- * Every other member's picked view (#920), read from the project's meta
- * awareness: the Space they have in front and whom they follow. Re-renders
- * only when some member's Space or following changes, not on every focus or
- * time stamp rewrite.
+ * Every other member's view (#920), read from the project's meta awareness:
+ * the Space they have in front and whom they follow. Re-renders only when
+ * some member's Space or following changes, not on every focus or time stamp
+ * rewrite.
  * @param metaAwareness - The project meta awareness, or null before it is attached.
  * @returns The views by user id; empty without an awareness.
  */
 export function useMemberViews(metaAwareness: Awareness | null): MemberViews {
-  return useAwarenessSlice(metaAwareness, EMPTY, collectViews, sameViews);
+  return useAwarenessSlice(metaAwareness, EMPTY, pickMemberViews, sameViews);
 }

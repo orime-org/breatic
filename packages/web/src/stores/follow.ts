@@ -3,7 +3,7 @@
 
 /**
  * Which project member this user is following (#920). Whom a user follows is
- * published in the meta awareness `view` (`usePublishView`), so following
+ * published in the meta awareness `following` (`usePublishView`), so following
  * stays one level deep: nobody follows a member who is following someone.
  */
 

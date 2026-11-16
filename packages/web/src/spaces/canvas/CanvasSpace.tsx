@@ -1062,6 +1062,10 @@ function CanvasSpaceInner({
   const [storedViewport] = React.useState(() =>
     readSpaceViewport(viewerId, projectId, spaceId),
   );
+  // A canvas opened while following lands on the leader's view instead of
+  // framing its nodes. Held at its mount value: xyflow queues a fit whenever
+  // the `fitView` prop changes, so following stopping later would frame it.
+  const [followingAtMount] = React.useState(() => useFollowStore.getState().targetUserId !== null);
   /** The live ReactFlow store, read for the transform at the moment of a write. */
   const rfStoreApi = useStoreApi();
   /**
@@ -3180,31 +3184,16 @@ function CanvasSpaceInner({
   const applyFollowViewport = React.useCallback((next: Viewport): void => {
     void setViewport(next, { duration: 0 });
   }, [setViewport]);
-  // Whether the opening fit of a canvas with no stored camera has yet to run.
-  // The toolbar's fit queues through the same store flag, so the opening one
-  // is tracked apart: it is spent the first time the queued flag clears. The
-  // library runs a queued fit's move before clearing the flag, so the move
-  // start of the opening fit still reads it set.
-  const openingFit = React.useRef(storedViewport === null);
-  React.useEffect(() => rfStoreApi.subscribe((state, previous) => {
-    if (previous.fitViewQueued && !state.fitViewQueued) openingFit.current = false;
-  }), [rfStoreApi]);
   const clearOpeningFit = React.useCallback((): void => {
-    openingFit.current = false;
     rfStoreApi.setState({ fitViewQueued: false });
   }, [rfStoreApi]);
-  const openingFitPending = React.useCallback(
-    (): boolean => openingFit.current && rfStoreApi.getState().fitViewQueued,
-    [rfStoreApi],
-  );
-  const follow = useCanvasFollow({
+  const onFollowMoveStart = useCanvasFollow({
     awareness,
     leaderUserId,
     ready: synced,
     pane,
     applyViewport: applyFollowViewport,
     clearOpeningFit,
-    openingFitPending,
   });
   const readCamera = React.useCallback((): FlowRect | null => {
     const { transform, width, height } = rfStoreApi.getState();
@@ -4787,15 +4776,16 @@ function CanvasSpaceInner({
             proOptions={{ hideAttribution: true }}
             // Two ways in, one at a time: a Space whose camera this account has
             // aimed opens where they left it, and one they have not opens framing
-            // what is on it. `fitView` wins when both are given, so only one is.
+            // what is on it, unless it opens while following. `fitView` wins
+            // when both are given, so only one is.
             defaultViewport={storedViewport ?? undefined}
-            fitView={storedViewport === null}
+            fitView={storedViewport === null && !followingAtMount}
             // Clamp the open / fit-to-window auto-zoom to 10%–100% (#1547) so a
             // sparse space doesn't zoom in to the 800% global ceiling; the manual
             // zoom presets still use the full global range below.
             fitViewOptions={FIT_VIEW_OPTIONS}
             onMove={noteCameraPlaced}
-            onMoveStart={follow.onMoveStart}
+            onMoveStart={onFollowMoveStart}
             onMoveEnd={rememberViewport}
             // 10%–800%, over the library's own 0.5–2. The toolbar and the stored
             // camera are checked against these same two constants, so what the

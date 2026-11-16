@@ -71,12 +71,7 @@ export function useDocumentFollow(input: DocumentFollowInput): void {
      * @returns The block id and its stamp, or null.
      */
     const leaderBlock = (): { id: string; at: number } | null =>
-      pickLeaderField(
-        awareness.getStates() as ReadonlyMap<number, Record<string, unknown>>,
-        leaderUserId,
-        'topBlockId',
-        awareness.clientID,
-      );
+      pickLeaderField(awareness, leaderUserId, 'topBlockId');
 
     /**
      * Scroll a block to the landing and record the result.

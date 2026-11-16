@@ -71,7 +71,6 @@ import { useFollowLeaderPresence } from '@web/features/follow/use-follow-leader-
 import { useMemberViews } from '@web/features/follow/use-member-views';
 import { followTarget } from '@web/features/follow/follow-target';
 import { useFollowStore, type FollowOther } from '@web/stores/follow';
-import { userPaletteColor } from '@web/lib/user-color';
 import { useRefreshOnReauth } from '@web/pages/project/use-refresh-on-reauth';
 import { useRenameProject } from '@web/features/project-manage/use-rename-project';
 import {
@@ -405,7 +404,6 @@ function ProjectWorkspace({
   const memberViews = useMemberViews(metaAwareness);
   const leaderView = followedUserId === null ? undefined : memberViews.get(followedUserId);
   const leaderSpaceId = leaderView?.spaceId ?? null;
-  const leaderFollowing = leaderView?.following ?? null;
   const openFollowedSpace = React.useCallback((spaceId: string) => {
     dispatchTabs({ type: 'open', spaceId, byFollow: true });
   }, []);
@@ -419,10 +417,9 @@ function ProjectWorkspace({
     byFollow: tabs.byFollow,
     open: openFollowedSpace,
   });
-  const presenceRecords = React.useMemo(() => [...users.values()], [users]);
   const onlineUserIds = React.useMemo(
-    () => new Set(presenceRecords.filter((u) => u.online).map((u) => u.id)),
-    [presenceRecords],
+    () => new Set([...users.values()].filter((u) => u.online).map((u) => u.id)),
+    [users],
   );
   const memberNames = React.useMemo(() => new Map(members.map((m) => [m.userId, m.name])), [members]);
   // Whom each member follows here, for the member list to dim View on them.
@@ -436,11 +433,10 @@ function ProjectWorkspace({
   }, [memberViews, userId, memberNames]);
   // The roster is empty until it loads, and a loaded one always lists at least this user.
   useFollowLeaderPresence({
-    users: presenceRecords,
+    onlineUserIds,
     memberNames,
     synced: metaSynced && memberNames.size > 0,
-    currentUserId: userId ?? null,
-    leaderFollowing,
+    leaderFollows: followedUserId === null ? null : followTargets.get(followedUserId) ?? null,
   });
   useFollowExitToast();
 
@@ -1104,9 +1100,7 @@ function ProjectWorkspace({
                         myRole={role}
                       />
                     ))}
-                    <FollowBar
-                      leaderColor={followedUserId === null ? '' : userPaletteColor(followedUserId)}
-                    />
+                    <FollowBar />
                     {activeSpace ? null : (
                       <div
                         data-testid='no-active-space'

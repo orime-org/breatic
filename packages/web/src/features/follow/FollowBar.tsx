@@ -5,30 +5,26 @@ import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
+import { userPaletteColor } from '@web/lib/user-color';
 import { stopFollowing, useFollowStore } from '@web/stores/follow';
 
 /** The bar's height in pixels (`h-8`); a followed view is aligned below it, so it stays visible. */
 export const FOLLOW_BAR_HEIGHT = 32;
-
-interface FollowBarProps {
-  /** The followed member's collaboration colour, a CSS colour reference. */
-  leaderColor: string;
-}
 
 /**
  * The "Following X · Stop" bar floating at the top of the Space area, and the
  * outline around that area in the leader's colour, while this user follows a
  * member (#920). Renders nothing otherwise. Its parent is the positioned
  * element that hosts the open Space bodies.
- * @param root0 - Follow bar props.
- * @param root0.leaderColor - The followed member's collaboration colour.
  * @returns The bar and outline, or null while not following.
  */
-export function FollowBar({ leaderColor }: FollowBarProps): React.JSX.Element | null {
+export function FollowBar(): React.JSX.Element | null {
   const t = useTranslation();
+  const leaderId = useFollowStore((s) => s.targetUserId);
   const leaderName = useFollowStore((s) => s.targetName);
   const stop = React.useCallback((): void => stopFollowing('button'), []);
-  if (leaderName === null) return null;
+  if (leaderId === null || leaderName === null) return null;
+  const leaderColor = userPaletteColor(leaderId);
   return (
     <>
       {/* 2px inset outline in the leader's colour: approved by the maintainer

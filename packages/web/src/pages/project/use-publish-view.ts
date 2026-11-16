@@ -7,51 +7,61 @@ import type { Awareness } from 'y-protocols/awareness';
 import { readFollowField, type FollowFieldValue } from '@web/data/yjs/follow-presence';
 import { useFollowStore } from '@web/stores/follow';
 
+/** Whom this tab follows, as it goes out on the wire. */
+type Following = FollowFieldValue<'following'>;
+
 /**
- * Put one value in this client's `view`, keeping the rest of its state. A
- * removed state (the provider's pagehide) is left removed; the restore that
+ * Put `view` and `following` in this client's state, keeping the rest of it.
+ * A removed state (the provider's pagehide) is left removed; the restore that
  * sets it back to `{}` is followed by a rewrite.
  * @param awareness - The project meta awareness.
  * @param view - The view, or null to withdraw it.
+ * @param following - Whom this tab follows, or null.
  */
-function writeView(awareness: Awareness, view: FollowFieldValue<'view'> | null): void {
+function writeFields(awareness: Awareness, view: FollowFieldValue<'view'> | null, following: Following | null): void {
   const state = awareness.getLocalState();
   if (state === null) return;
-  awareness.setLocalState({ ...state, view });
+  awareness.setLocalState({ ...state, view, following });
 }
 
 /**
- * Write the current view, or withdraw it while the browser tab is hidden.
+ * Write the current view and whom this tab follows; while the browser tab is
+ * hidden the view is withdrawn and the following kept, as the user still
+ * follows from it.
  * @param awareness - The project meta awareness.
  * @param spaceId - The Space in front, or null when no tab is open.
- * @param following - The member this user follows, or null.
+ * @param following - Whom this tab follows, or null.
  */
-function publishView(awareness: Awareness, spaceId: string | null, following: string | null): void {
-  writeView(
+function publishView(awareness: Awareness, spaceId: string | null, following: Following | null): void {
+  writeFields(
     awareness,
-    document.visibilityState === 'hidden' ? null : { spaceId, at: Date.now(), focused: document.hasFocus(), following },
+    document.visibilityState === 'hidden' ? null : { spaceId, at: Date.now(), focused: document.hasFocus() },
+    following,
   );
 }
 
 /**
- * Publish `view`, the Space this browser tab has in front and whom this user
- * follows, on the project's meta awareness so members can follow this user
- * and nobody follows a member who is following someone (#920).
+ * Publish `view`, the Space this browser tab has in front, and `following`,
+ * whom this tab follows and since when, on the project's meta awareness so
+ * members can follow this user and nobody follows a member who is following
+ * someone (#920).
  *
  * Written on mount and whenever the Space in front or the followed member
- * changes, rewritten when the window gains or loses focus, withdrawn
- * (`view: null`, the entry kept) while the browser tab is hidden and written
- * back when it shows again, and written back after something else wiped this
- * client's state (a bfcache restore sets it to `{}`). Every write is direct: a
- * withdrawal must land, and a hidden tab gets no animation frames (`packages/web/AGENTS.md#writes-that-must-land-skip-frame-scheduling`).
+ * changes, rewritten when the window gains or loses focus, `view` withdrawn
+ * (the entry and `following` kept) while the browser tab is hidden and written
+ * back when it shows again, both withdrawn on unmount, and written back after
+ * something else wiped this client's state (a bfcache restore sets it to
+ * `{}`). Every write is direct: a withdrawal must land, and a hidden tab gets
+ * no animation frames (`packages/web/AGENTS.md#writes-that-must-land-skip-frame-scheduling`).
  * @param metaAwareness - The project meta document's awareness, or null before it is attached.
  * @param activeSpaceId - The Space in front, or null when no tab is open.
  */
 export function usePublishView(metaAwareness: Awareness | null, activeSpaceId: string | null): void {
-  const following = useFollowStore((s) => s.targetUserId);
+  const followedId = useFollowStore((s) => s.targetUserId);
   // Read by the listeners below, which outlive one value.
   const spaceIdRef = React.useRef(activeSpaceId);
-  const followingRef = React.useRef(following);
+  // Its `at` is when following this member started, so it holds still while the same member is followed.
+  const followingRef = React.useRef<Following | null>(null);
 
   React.useEffect(() => {
     const awareness = metaAwareness;
@@ -82,13 +92,15 @@ export function usePublishView(metaAwareness: Awareness | null, activeSpaceId: s
       window.removeEventListener('blur', publish);
       document.removeEventListener('visibilitychange', publish);
       awareness.off('change', onChange);
-      writeView(awareness, null);
+      writeFields(awareness, null, null);
     };
   }, [metaAwareness]);
 
   React.useEffect(() => {
     spaceIdRef.current = activeSpaceId;
-    followingRef.current = following;
-    if (metaAwareness) publishView(metaAwareness, activeSpaceId, following);
-  }, [metaAwareness, activeSpaceId, following]);
+    const previous = followingRef.current;
+    followingRef.current = followedId === null ? null
+      : previous?.id === followedId ? previous : { id: followedId, at: Date.now() };
+    if (metaAwareness) publishView(metaAwareness, activeSpaceId, followingRef.current);
+  }, [metaAwareness, activeSpaceId, followedId]);
 }
