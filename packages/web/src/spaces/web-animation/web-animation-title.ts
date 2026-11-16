@@ -43,12 +43,5 @@ export function requestTitle(row: TitledRequest, t: TitleTranslator): string {
  * @throws {never} Never.
  */
 export function webAnimationTitle(row: WebAnimationTitleSource, t: TitleTranslator): string {
-  switch (row.kind) {
-    case 'web_animation_create':
-      return row.request;
-    case 'web_animation_modify':
-      return requestTitle(row, t);
-    case 'web_animation_export':
-      return t('spaces.webAnimation.titleVideo', { source: requestTitle(row.source, t) });
-  }
+  return row.kind === 'web_animation_export' ? t('spaces.webAnimation.titleVideo', { source: requestTitle(row.source, t) }) : requestTitle(row, t);
 }

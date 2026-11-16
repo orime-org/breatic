@@ -17,7 +17,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tool
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 import { phaseKey } from '@web/spaces/web-animation/execution-text';
-import { webAnimationTitle, type TitleTranslator } from '@web/spaces/web-animation/web-animation-title';
+import { webAnimationTitle } from '@web/spaces/web-animation/web-animation-title';
 
 /** One icon button of the bar. */
 interface BarButtonProps {
@@ -131,17 +131,6 @@ export function playable(row: WebAnimationRowView | undefined): row is PlayableR
 }
 
 /**
- * A row's title by the one title rule.
- * @param row - The row.
- * @param t - The translator.
- * @returns The title.
- * @throws {never} Never.
- */
-export function rowTitle(row: WebAnimationRowView, t: TitleTranslator): string {
-  return webAnimationTitle(row, t);
-}
-
-/**
  * The aspect of a row's frame, as the creation dialog names it, or its pixel size for an export.
  * @param row - The row.
  * @returns The text.
@@ -197,7 +186,7 @@ export const MotionRow = React.memo(function MotionRow({ row, selected, onPick }
   const pick = React.useCallback((): void => onPick(row.id), [onPick, row.id]);
   return <Button type='button' variant={null} size={null} data-testid={`motion-row-${row.id}`} aria-current={selected || undefined} onClick={pick}
     className={cn('flex w-full min-w-0 flex-col items-stretch gap-0.5 border-b border-border px-3 py-2 text-left hover-enabled:bg-accent', selected && 'bg-accent-strong hover-enabled:bg-accent-strong')}>
-    <span className='truncate text-xs font-medium'>{rowTitle(row, t)}</span>
+    <span className='truncate text-xs font-medium'>{webAnimationTitle(row, t)}</span>
     <span className='truncate text-2xs text-muted-foreground'>{rowSummary(row, t)}</span>
   </Button>;
 });

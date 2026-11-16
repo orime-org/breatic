@@ -55,7 +55,7 @@ import { TimelineWebPreview, PreviewNote, type TimelineUploadNote, type Timeline
 import { useTimelineLimits, useTimelinePreviewLimits } from '@web/spaces/timeline/use-timeline-limits';
 import { useTimelineWebResolution } from '@web/spaces/timeline/use-timeline-web-resolution';
 import { failureSentenceKey } from '@web/spaces/web-animation/execution-text';
-import { webAnimationTitle, type TitleTranslator } from '@web/spaces/web-animation/web-animation-title';
+import { requestTitle, type TitleTranslator } from '@web/spaces/web-animation/web-animation-title';
 import { useSpaceOpenRequestStore } from '@web/stores/space-open-request';
 import type { TimelineWebLayer, WebAnimationPlayerElement } from '@web/spaces/timeline/web-animation-host';
 import { EMPTY_WEB_INSTANCE_POOL, allocateWebInstances } from '@web/spaces/timeline/web-instance-pool';
@@ -189,7 +189,7 @@ function webClipView(clip: TimelineWebAnimationClip, web: Parameters<typeof time
   const execution = operationId === null ? undefined : web.executions[operationId];
   const origin = source ?? execution;
   const named = origin === undefined ? { title: null, request: null, baseRequest: null, origin: null }
-    : { title: webAnimationTitle(origin.base === undefined ? { kind: 'web_animation_create', request: origin.request } : { kind: 'web_animation_modify', request: origin.request, base: origin.base }, t),
+    : { title: requestTitle(origin, t),
       request: origin.request, baseRequest: origin.base?.request ?? null, origin: { spaceId: origin.spaceId, executionId: origin.executionId, origin: origin.origin } };
   if (source !== undefined) return { state: 'ready', ...named, status: null, phase: null, failureReason: null };
   if (execution === undefined) return { state: 'unresolved', ...named, status: null, phase: null, failureReason: null };

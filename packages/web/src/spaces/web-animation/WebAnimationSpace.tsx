@@ -41,8 +41,8 @@ import { CANVAS_PLACEMENT_IDLE, transitionCanvasPlacement, type CanvasPlacementE
 import { transitionCreationDraft, type CreationDraftInput, type CreationDraftState } from '@web/spaces/web-animation/creation-draft';
 import { DEFAULT_WEB_ANIMATION_ENGINE, cancelIntent, executionStepKeys, failureSentenceKey, phaseKey, stepMark } from '@web/spaces/web-animation/execution-text';
 import { MOTION_PANELS_CLOSED, transitionMotionPanels, type MotionPanelsEvent, type MotionTab } from '@web/spaces/web-animation/motion-panels';
-import { BarButton, PreviewUnavailable, playable, rowSeconds, rowTitle } from '@web/spaces/web-animation/motion-parts';
-import { requestTitle } from '@web/spaces/web-animation/web-animation-title';
+import { BarButton, PreviewUnavailable, playable, rowSeconds } from '@web/spaces/web-animation/motion-parts';
+import { requestTitle, webAnimationTitle } from '@web/spaces/web-animation/web-animation-title';
 import { MotionAnnotationsPanel, formatAnnotationTime } from '@web/spaces/web-animation/MotionAnnotationsPanel';
 import { MotionExecutionsPanel } from '@web/spaces/web-animation/MotionExecutionsPanel';
 import { MotionResultPlayer } from '@web/spaces/web-animation/MotionResultPlayer';
@@ -205,7 +205,7 @@ function Details({ row, unresolvedOnBase, readOnly, onCancel, onOpen }: DetailsP
       <BarButton testId='motion-details' label={t('spaces.webAnimation.details')} icon={<Ellipsis className='size-4' />} />
     </PopoverTrigger>
     <PopoverContent side='top' align='end' sideOffset={8} className='flex w-80 flex-col gap-2 p-3 text-xs'>
-      <span className='break-words font-medium'>{rowTitle(row, t)}</span>
+      <span className='break-words font-medium'>{webAnimationTitle(row, t)}</span>
       <dl className='grid grid-cols-[auto_1fr] gap-x-3 gap-y-1'>
         <dt className='text-muted-foreground'>{t('spaces.webAnimation.statusLabel')}</dt>
         <dd>{t(`timeline.webAnimation.status.${row.status}`)}</dd>

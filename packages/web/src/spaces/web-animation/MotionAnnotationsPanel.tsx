@@ -12,7 +12,8 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 import { bodyText } from '@web/spaces/document/use-comment-cards';
 import { annotationGroups, type ListedAnnotation } from '@web/spaces/web-animation/annotation-groups';
-import { MotionPanel, rowTitle } from '@web/spaces/web-animation/motion-parts';
+import { MotionPanel } from '@web/spaces/web-animation/motion-parts';
+import { webAnimationTitle } from '@web/spaces/web-animation/web-animation-title';
 
 /**
  * A time in a result as the panel and the cards show it: minutes, seconds and tenths.
@@ -114,7 +115,7 @@ export function MotionAnnotationsPanel({ threads, order, rows, activeThreadId, o
         : groups.map((group) => {
           const row = rows.get(group.executionId);
           return <section key={group.executionId}>
-            <h4 className='truncate px-3 pb-1 pt-2.5 text-2xs font-medium text-muted-foreground'>{row === undefined ? t('spaces.webAnimation.unlistedResult') : rowTitle(row, t)}</h4>
+            <h4 className='truncate px-3 pb-1 pt-2.5 text-2xs font-medium text-muted-foreground'>{row === undefined ? t('spaces.webAnimation.unlistedResult') : webAnimationTitle(row, t)}</h4>
             {group.threads.map((item) => <AnnotationItem key={item.id} item={item} author={profiles.get(item.thread.comments[0]?.userId ?? '')?.name ?? null}
               active={item.id === activeThreadId} onOpen={onOpen} />)}
           </section>;
