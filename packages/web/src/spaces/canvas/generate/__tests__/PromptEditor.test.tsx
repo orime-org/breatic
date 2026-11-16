@@ -900,6 +900,8 @@ describe('PromptEditor — the paragraph of an optional input (inner#1811, CAP-9
     const { rerender } = render(<PromptEditor {...props} references={pool()} />);
     await waitFor(() => expect(heldBack()).toHaveLength(1));
     expect(heldBack()[0]?.textContent).toContain('The person looks like');
+    // Greyed as it is left out: the box shows what it sends.
+    expect(heldBack()[0]).toHaveClass('opacity-40', 'grayscale');
     await waitFor(() => expect(onAtMentionsChange).toHaveBeenLastCalledWith(['n-product']));
     expect(String(onTextChange.mock.lastCall?.[0])).not.toContain('The person looks like');
     expect(String(onTextChange.mock.lastCall?.[0])).toContain('Lit softly.');
@@ -908,5 +910,25 @@ describe('PromptEditor — the paragraph of an optional input (inner#1811, CAP-9
     await waitFor(() => expect(heldBack()).toHaveLength(0));
     await waitFor(() => expect(onAtMentionsChange).toHaveBeenLastCalledWith(['n-product', 'n-person']));
     expect(String(onTextChange.mock.lastCall?.[0])).toContain('The person looks like');
+  });
+
+  it('leaves the greyed paragraph out of a dialogue script as well', async () => {
+    const onTextChange = vi.fn();
+    render(
+      <PromptEditor
+        fragment={seeded()}
+        placeholder='Describe'
+        onTextChange={onTextChange}
+        onAtMentionsChange={vi.fn()}
+        references={pool()}
+        referenceKinds={['image']}
+        mentionEmptyLabel='No references'
+        dialogue={{ names: ['Host', 'Guest'] }}
+      />,
+    );
+    // A dialogue line is a node view: the mark lands on its wrapper.
+    await waitFor(() => expect(document.querySelectorAll('.ProseMirror [data-prompt-held-back]')).toHaveLength(1));
+    await waitFor(() => expect(String(onTextChange.mock.lastCall?.[0])).toContain('Lit softly.'));
+    expect(String(onTextChange.mock.lastCall?.[0])).not.toContain('The person looks like');
   });
 });

@@ -136,17 +136,11 @@ export function serializePromptText(
   tokens: MentionTokens = NO_MENTION_TOKENS,
 ): string {
   const { doc } = editor.state;
-  // Notes sit above the words and are never sent: reading starts after the
-  // last of them, so no block separator is left behind in their place.
-  let from = 0;
-  doc.forEach((block, offset) => {
-    if (block.type.name === PROMPT_NOTE_NODE) from = offset + block.nodeSize;
-  });
   const textSerializers = promptSerializers(editor, pool, tokens);
-  // A paragraph an empty optional input holds back is left out whole (inner#1811).
+  // Notes are never sent, nor a paragraph an empty optional input holds back (inner#1811).
   const sent: string[] = [];
   doc.forEach((block, offset) => {
-    if (offset < from || heldBackBy(blockMentions(block), pool).length > 0) return;
+    if (block.type.name === PROMPT_NOTE_NODE || heldBackBy(blockMentions(block), pool).length > 0) return;
     sent.push(getTextBetween(doc, { from: offset, to: offset + block.nodeSize }, { blockSeparator, textSerializers }));
   });
   return sent.join(blockSeparator);
@@ -195,7 +189,8 @@ export function serializeDialogueText(
   const textSerializers = promptSerializers(editor, pool, tokens);
   const lines: Array<{ speaker: number | null; text: string }> = [];
   editor.state.doc.forEach((block, offset) => {
-    if (block.type.name !== 'paragraph') return;
+    // A line an empty optional input holds back is left out, as the box greys it (inner#1811).
+    if (block.type.name !== 'paragraph' || heldBackBy(blockMentions(block), pool).length > 0) return;
     const speaker = Number(block.attrs[SPEAKER_ATTR]);
     lines.push({
       speaker: Number.isInteger(speaker) ? speaker : null,
