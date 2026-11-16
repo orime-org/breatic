@@ -123,7 +123,7 @@ describe('the slash menu when a collaborator deletes its row', () => {
     expect(() => {
       sync();
     }).not.toThrow();
-    expect(ours.document.map((block) => block.id)).not.toContain(second);
+    expect((ours.document as unknown as { id: string }[]).map((block) => block.id)).not.toContain(second);
     expect(menu?.store.state?.show ?? false).toBe(false);
   });
 
@@ -152,7 +152,7 @@ describe('the slash menu when a collaborator deletes its row', () => {
       typeAtCaret(ours, 'x');
       sync();
     }).not.toThrow();
-    expect(ours.document.map((block) => block.id)).not.toContain(second);
+    expect((ours.document as unknown as { id: string }[]).map((block) => block.id)).not.toContain(second);
     expect(menu?.store.state?.show ?? false).toBe(false);
   });
 });

@@ -37,7 +37,7 @@ function caretIn(text: string, caretAt: number, type = 'paragraph'): Editor {
   editor.mount(host);
   mounted.push(editor);
   editor.replaceBlocks(editor.document, [{ type, content: text }] as never);
-  const id = editor.document[0]?.id ?? '';
+  const id = (editor.document as unknown as { id: string }[])[0]?.id ?? '';
   editor.setTextCursorPosition(id, 'start');
   const view = editor.prosemirrorView;
   const start = view.state.selection.from;
