@@ -98,6 +98,34 @@ describe('a pick in the slash menu', () => {
   });
 });
 
+describe('a pick on a line with an inline node before the trigger', () => {
+  /** Where the trigger sits, counted the way the menu counts it: in positions. */
+  function typedBeforeCaret(editor: Editor, id: string, typed: string): ReturnType<typeof slashTyped> {
+    caretAtEnd(editor, id);
+    return slashTyped(editor as never, id, typed, editor.prosemirrorState.selection.$from.parentOffset - typed.length);
+  }
+
+  it('adds the pick below a line that holds an inline formula', () => {
+    const editor = editorWith([
+      { type: 'paragraph', content: [{ type: 'text', text: 'a ', styles: {} }, { type: 'math', props: { source: 'x' } }, { type: 'text', text: ' /he', styles: {} }] },
+    ]);
+    const id = read(editor)[0]!.id;
+    const typed = typedBeforeCaret(editor, id, '/he');
+    expect(typed).toBeDefined();
+    pickInSlashMenu(editor as never, typed!, 'heading-1');
+    expect(read(editor).map((block) => block.type)).toEqual(['paragraph', 'heading']);
+  });
+
+  it('adds the pick below a line that holds a line break', () => {
+    const editor = editorWith([{ type: 'paragraph', content: 'abc\nd /he' }]);
+    const id = read(editor)[0]!.id;
+    const typed = typedBeforeCaret(editor, id, '/he');
+    expect(typed).toBeDefined();
+    pickInSlashMenu(editor as never, typed!, 'heading-1');
+    expect(read(editor).map((block) => block.type)).toEqual(['paragraph', 'heading']);
+  });
+});
+
 describe('media picked in the slash menu', () => {
   const picture = [{ type: 'image', props: { url: 'https://example.test/a.png' } }];
 
