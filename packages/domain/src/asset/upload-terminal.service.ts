@@ -5,6 +5,7 @@ import { assetRepo, db, NotFoundError, projectAssetReferenceService, type DbTx }
 import { t } from "@breatic/shared";
 import * as grants from "@domain/asset/upload-grant.repo.js";
 import type { UploadGrant } from "@domain/asset/upload-grant.repo.js";
+import * as operationService from "@domain/operation/operation.service.js";
 
 /** A registration or refusal requesting the one durable terminal. */
 export type UploadTerminalIntent = { kind: "completed"; assetId: string } | { kind: "failed"; reason: string } | { kind: "replay" };
@@ -31,6 +32,25 @@ export async function referenceUploadAsset(grant: UploadGrant, assetId: string, 
 }
 
 /**
+ * Settle the operation an upload counts under, in its terminal's commit:
+ * counted, or deferred when it is a derived image (inner#1968, design 3.2).
+ * @param grant - The consumed grant.
+ * @param assetId - The registered asset.
+ * @param tx - The terminal's transaction.
+ * @returns The count's outcome, to settle after the commit.
+ */
+async function countUpload(grant: UploadGrant, assetId: string, tx: DbTx): Promise<operationService.CountOutcome | null> {
+  if (grant.operationKey === null) return null;
+  const asset = await assetRepo.findLiveInStudio(grant.studioId, assetId, tx);
+  if (asset !== null && operationService.defersCount(grant, asset.kind)) {
+    await operationService.deferOperation(grant.operationKey, assetId, tx);
+    return null;
+  }
+  await operationService.recordOperationAsset(grant.operationKey, assetId, tx);
+  return operationService.countOperation(grant.operationKey, tx);
+}
+
+/**
  * Serialize all four report intents on the same immutable grant identity.
  *
  * The transaction contains database operations only. History and activity are
@@ -44,7 +64,8 @@ export async function referenceUploadAsset(grant: UploadGrant, assetId: string, 
  * @throws {Error} When association, locking or terminal commitment fails.
  */
 export async function settleUploadTerminal(storageKey: string, intent: UploadTerminalIntent): Promise<UploadTerminal> {
-  return db.transaction(async (tx) => {
+  let counted: operationService.CountOutcome | null = null;
+  const terminal = await db.transaction(async (tx): Promise<UploadTerminal> => {
     const grant = await grants.lockGrantByKey(storageKey, tx);
     if (grant === null) throw new NotFoundError(t("server.error.not_found"));
     if (grant.consumedAt !== null) {
@@ -66,8 +87,16 @@ export async function settleUploadTerminal(storageKey: string, intent: UploadTer
 
     const committed = await grants.findGrantByKey(storageKey, tx);
     if (committed === null) throw new Error("Upload grant missing before terminal commit");
-    if (committed.consumedAt !== null) return { state: "consumed", grant: committed, newlyConsumed: true };
-    if (committed.voidedAt !== null) return { state: "void", grant: committed };
+    if (committed.consumedAt !== null) {
+      counted = await countUpload(committed, intent.kind === "completed" ? intent.assetId : committed.assetId!, tx);
+      return { state: "consumed", grant: committed, newlyConsumed: true };
+    }
+    if (committed.voidedAt !== null) {
+      if (committed.operationKey !== null) await operationService.releaseOperation(committed.operationKey, tx, "upload_void");
+      return { state: "void", grant: committed };
+    }
     throw new Error("Upload grant remained pending after terminal update");
   });
+  await operationService.settleOverage(counted);
+  return terminal;
 }

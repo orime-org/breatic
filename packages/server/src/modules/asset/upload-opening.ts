@@ -24,7 +24,8 @@
 
 import { accountActivityRepo, db } from "@breatic/core";
 import { canvasSpaceDocName, type NodeTaskAction } from "@breatic/shared";
-import { nodeTaskService, sceneTaskService, uploadGrantService } from "@breatic/domain";
+import { nodeTaskService, sceneTaskService, uploadGrantService, type operationService } from "@breatic/domain";
+import { admitOperationOrRefuse } from "@server/modules/operation/operation-admission.service.js";
 import { publishCountsQuietly, publishSpaceTasksQuietly } from "@server/modules/task/publish-counts.js";
 
 /** What `issueUploadGrant` takes, so a lane passes its own through unchanged. */
@@ -63,6 +64,7 @@ export interface OpenedUpload {
  * @param grant - What the lane asks the grant for, naming node and space.
  * @param task - The budget and the label for the row.
  * @param recordUserAction - Explicit user admission; transport-only uploads omit it.
+ * @param operation - The operation this upload counts as, admitted first in the same transaction.
  * @returns The key, the studio, and the row's id.
  */
 export async function openUpload(
@@ -72,6 +74,7 @@ export async function openUpload(
   },
   task: TaskRowRequest,
   recordUserAction?: boolean,
+  operation?: operationService.AdmitInput,
 ): Promise<OpenedUpload & { taskId: string }>;
 
 /**
@@ -79,12 +82,14 @@ export async function openUpload(
  * @param grant - What the lane asks the grant for, passed through untouched.
  * @param task - The budget and the label for the row, when one is opened.
  * @param recordUserAction - Explicit user admission; transport-only uploads omit it.
+ * @param operation - The operation this upload counts as, admitted first in the same transaction.
  * @returns The key, the studio, and the row's id when there is a row.
  */
 export async function openUpload(
   grant: GrantInput,
   task: TaskRowRequest,
   recordUserAction?: boolean,
+  operation?: operationService.AdmitInput,
 ): Promise<OpenedUpload>;
 
 /**
@@ -98,7 +103,11 @@ export async function openUpload(
  * @param grant - What the lane asks the grant for, passed through untouched.
  * @param task - The budget and the label for the row, when one is opened.
  * @param recordUserAction - Explicit user admission; transport-only uploads omit it.
+ * @param operation - The operation this upload counts as (inner#1968): admitted
+ *   as the transaction's first statement, its key written on the grant.
  * @returns The key, the studio, and the row's id when there is a row.
+ * @throws {OperationsExhaustedError} 402 when the operation is refused; nothing is written.
+ * @throws {OperationKeyTakenError} 409 when its key already has a row.
  * @throws {Error} When grant, activity or node-row persistence fails; their
  *   shared product transaction rolls back.
  */
@@ -106,9 +115,14 @@ export async function openUpload(
   grant: GrantInput,
   task: TaskRowRequest,
   recordUserAction?: boolean,
+  operation?: operationService.AdmitInput,
 ): Promise<OpenedUpload> {
   const admitted = await db.transaction(async (tx) => {
-    const { key, studioId } = await uploadGrantService.issueUploadGrant(grant, tx);
+    if (operation !== undefined) await admitOperationOrRefuse(operation, tx);
+    const { key, studioId } = await uploadGrantService.issueUploadGrant(
+      operation === undefined ? grant : { ...grant, operationKey: operation.key },
+      tx,
+    );
     const { nodeId, spaceId } = grant.context;
     const { projectId } = grant;
     if (recordUserAction) {

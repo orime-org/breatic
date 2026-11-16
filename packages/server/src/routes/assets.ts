@@ -31,11 +31,7 @@ import {
   UPLOAD_STATUS_MAX_KEYS,
   t,
 } from "@breatic/shared";
-import {
-  MINI_TOOLS,
-  miniToolById,
-  mostOutputsOf,
-} from "@breatic/shared/mini-tools";
+import { miniToolById } from "@breatic/shared/mini-tools";
 import {
   assetService,
   ingestReportService,
@@ -48,7 +44,6 @@ import {
 import {
   issueTransferTicket,
   issueUploadTicket,
-  issueUploadTicketBatch,
   transferTicketMaxBytes,
   type TicketOutcome,
 } from "@server/modules/asset/upload-ticket.service.js";
@@ -57,6 +52,8 @@ import { noteIngestSideEffects } from "@server/modules/asset/ingest-side-effects
 import { userUrlSchema } from "@breatic/domain";
 import { startUrlIngest } from "@server/modules/asset/url-ingest.js";
 import { requireAuth } from "@server/middleware/auth.js";
+import { runOnce } from "@server/middleware/run-once.js";
+import { operationIdHeaderSchema } from "@server/routes/schemas.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor, rateLimitForAll } from "@server/middleware/rate-limit.js";
 import {
@@ -281,39 +278,6 @@ const uploadTicketSchema = z
     }
   });
 
-/** The browser tools whose results land in a group: the only ones that upload many files at once. */
-const GROUPED_TOOLS = MINI_TOOLS.filter((spec) => spec.run.kind === "browser" && spec.groupOutputs === true);
-
-/**
- * One browser tool's export of many files, each onto its own node of one
- * Space (inner#1303 §7). A cover or an avatar is one file and uses the single
- * form, so neither `studio_id` nor `purpose` is taken here.
- */
-const uploadTicketBatchSchema = z
-  .strictObject({
-    project_id: z.string().uuid(),
-    space_id: z.string().uuid(),
-    source: z.literal("mini_tool"),
-    tool_name: z.string().refine((id) => GROUPED_TOOLS.some((spec) => spec.id === id)),
-    items: z
-      .array(
-        z.strictObject({
-          filename: uploadTicketFields.shape.filename,
-          content_type: uploadTicketFields.shape.content_type,
-          size: uploadTicketFields.shape.size,
-          client_hash: uploadTicketFields.shape.client_hash,
-          node_id: z.string().uuid(),
-        }),
-      )
-      .min(1)
-      .max(Math.max(...GROUPED_TOOLS.map(mostOutputsOf))),
-  })
-  .superRefine((body, ctx) => {
-    if (new Set(body.items.map((item) => item.node_id)).size !== body.items.length) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["items"], message: "each file lands on its own node" });
-    }
-  });
-
 /**
  * The wire shape of an opened upload, a dedup hit or an upload that did not
  * open.
@@ -372,7 +336,10 @@ assets.post(
   requireAuth,
   // One window with the canvas lane: both start fetches through our Worker.
   rateLimitFor("ingest-url", "user"),
+  validate("header", operationIdHeaderSchema),
   validate("json", ingestUrlSchema),
+  // One address of one press is one operation, keyed by the browser's id (inner#1968).
+  runOnce("ingest-url"),
   async (c) => {
     const user = c.get("user");
     const body = c.req.valid("json");
@@ -381,6 +348,7 @@ assets.post(
       projectId: body.project_id,
       spaceId: body.space_id,
       userId: user.id,
+      operationKey: `url:${user.id}:${c.req.valid("header")["idempotency-key"]!}`,
     });
     return c.json({ data: { storage_key: key } }, 201);
   },
@@ -401,29 +369,13 @@ assets.post(
   "/upload-ticket",
   requireAuth,
   rateLimitFor("upload-ticket", "user"),
-  validate("json", z.union([uploadTicketSchema, uploadTicketBatchSchema])),
+  validate("header", operationIdHeaderSchema),
+  validate("json", uploadTicketSchema),
+  // One file of one press is one operation, keyed by the browser's id (inner#1968).
+  runOnce("upload-ticket"),
   async (c) => {
     const user = c.get("user");
     const body = c.req.valid("json");
-
-    // A batch answers every file in order, each an opened upload, a hit, a
-    // refusal or an upload that did not open.
-    if ("items" in body) {
-      await projectService.assertAccess(body.project_id, user.id, "editor");
-      const studioId = await assetService.resolveOwnerStudioId(body.project_id);
-      const outcomes = await issueUploadTicketBatch(
-        { userId: user.id, studioId, projectId: body.project_id },
-        { spaceId: body.space_id, toolName: body.tool_name },
-        body.items,
-      );
-      return c.json({
-        data: {
-          items: outcomes.map((outcome) =>
-            outcome.kind === "refused" ? { refused: { reason: outcome.reason } } : ticketBody(outcome),
-          ),
-        },
-      });
-    }
 
     // Upload is a write — edit-or-above can ask for a ticket. A project's
     // cover follows the cover rule (the studio admin may set it without being
@@ -441,7 +393,7 @@ assets.post(
         : body.studio_id;
 
     const outcome = await issueUploadTicket(
-      { userId: user.id, studioId, projectId: body.project_id },
+      { userId: user.id, studioId, projectId: body.project_id, operationKey: `upload:${user.id}:${c.req.valid("header")["idempotency-key"]!}` },
       body,
       async () => {
         await assertStudioStorageAllowance(studioId, "upload");

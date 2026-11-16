@@ -46,6 +46,12 @@ export interface UrlIngestRequest {
   /** The node the result goes to; absent for a document body's block. */
   readonly nodeId?: string;
   readonly userId: string;
+  /**
+   * The operations ledger key this address counts under,
+   * `url:<userId>:<id>` (inner#1968); null for a template's own resource,
+   * which is not the user's operation.
+   */
+  readonly operationKey: string | null;
 }
 
 /**
@@ -73,7 +79,7 @@ export async function startUrlIngest(request: UrlIngestRequest): Promise<OpenedU
  * @throws {Error} When the job cannot be queued; the upload is settled as not started first.
  */
 export async function startUrlIngest(request: UrlIngestRequest): Promise<OpenedUpload> {
-  const { url, projectId, spaceId, nodeId, userId } = request;
+  const { url, projectId, spaceId, nodeId, userId, operationKey } = request;
   await projectService.assertAccess(projectId, userId, "editor");
   await assertStorageAllowance(projectId, "upload");
 
@@ -98,6 +104,7 @@ export async function startUrlIngest(request: UrlIngestRequest): Promise<OpenedU
       label: labelForUrl(url),
     },
     true,
+    operationKey === null ? undefined : { kind: "url_paste", key: operationKey, projectId, actorUserId: userId, inputs: [] },
   );
 
   try {

@@ -20,9 +20,11 @@ describe("idempotency scopes", () => {
   it("name the requests that run once per press", () => {
     expect([...IDEMPOTENCY_SCOPES].sort()).toEqual(
       [
+        "chat-message",
         "conversation",
         "credits-checkout",
         "generate",
+        "ingest-url",
         "membership",
         "mini-tool",
         "project",
@@ -30,6 +32,7 @@ describe("idempotency scopes", () => {
         "timeline-execution",
         "transcribe",
         "understand",
+        "upload-ticket",
       ].sort(),
     );
   });
