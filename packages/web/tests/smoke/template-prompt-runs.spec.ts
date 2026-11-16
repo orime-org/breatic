@@ -14,7 +14,7 @@
  * TEMPLATE_RUN_LOCALE switches the interface language for the run (a run's `localeFills` give that language's words),
  * TEMPLATE_RUN_DEFAULT_TIER runs at the tier the template leaves in effect, for templates whose text in the picture is judged; the sound templates' words are Chinese, written for
  * TEMPLATE_RUN_LOCALE=zh-CN (their braces come in the same order in every locale). TEMPLATE_RUN_ASK instead sends that request to the
- * Agent with the picture attached (TEMPLATE_RUN_ASK_IMAGE names another fixture, empty for none) and generates the node
+ * Agent with the picture attached (TEMPLATE_RUN_ASK_IMAGE names other fixtures, comma-separated, empty for none) and generates the node
  * its proposal places; TEMPLATE_RUN_ASK_REPLY is the user's answer when the agent asks first, and
  * TEMPLATE_RUN_ASK_ONLY stops once the turn is recorded. TEMPLATE_RUN_LEAVE_EMPTY names optional inputs (comma-separated) a run
  * leaves empty (inner#1811): every generation request is recorded, and the paragraph of an optional input must be in each
@@ -472,7 +472,7 @@ test.afterEach(async () => {
 const INFO = 'Mika, bicycle courier, 25, cheerful, stubborn, curious, quick; racing the rain to deliver on time';
 
 const AGENT_ASK = process.env.TEMPLATE_RUN_ASK;
-const ASK_IMAGE = process.env.TEMPLATE_RUN_ASK_IMAGE === undefined ? CHARACTER : process.env.TEMPLATE_RUN_ASK_IMAGE === '' ? undefined : join(FIXTURES, process.env.TEMPLATE_RUN_ASK_IMAGE);
+const ASK_IMAGE = process.env.TEMPLATE_RUN_ASK_IMAGE === undefined ? CHARACTER : process.env.TEMPLATE_RUN_ASK_IMAGE === '' ? undefined : process.env.TEMPLATE_RUN_ASK_IMAGE.split(',').map((name) => join(FIXTURES, name));
 const ASK_REPLY = process.env.TEMPLATE_RUN_ASK_REPLY;
 
 if (AGENT_ASK !== undefined) test('agent @needs-model', async () => {
