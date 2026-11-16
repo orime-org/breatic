@@ -135,7 +135,7 @@ A deployment can run Studios in more than one region. One region is the global r
 | `IDENTITY_PUBLIC_KEYS` | Blank | JSON `{"<key id>": "<PEM public key>"}`, including the global region's current key |
 | `IDENTITY_COOKIE_DOMAIN` | The parent domain shared by every region's API host, when the hosts differ; blank when all regions share one API host | The same |
 | `DATABASE_APP_ROLE` | Blank | The role the services connect as; the last step of `pnpm db:migrate` grants it the region's tables and revokes the global ones, so run migrate as an account that may grant |
-| `DIRECTORY_RECONCILE_ON_START` | `true` on the worker once after the upgrade that brings regions, after the previous release has stopped; `docker-compose.yml` sets it and starts the worker after a healthy server | Blank |
+| `DIRECTORY_RECONCILE_ON_START` | `true` makes the worker align the Studio directory once at start; `docker-compose.yml` sets it and starts the worker after a healthy server, so the previous release has stopped by then. A deployment that cannot guarantee that leaves it blank and runs `pnpm db:reconcile-directory` once with the global region's settings after every process of the previous release has exited | Blank |
 
 Build the web image with `VITE_REGIONS` (a build argument of `Dockerfile.web`): `{"global": "<region>", "regions": {"<region>": {"api": "<public API URL>", "collab": "<public collab URL>"}}}`, one entry per region including the global one. Blank builds a single-region front end that sends every request to the relative `/api`.
 
