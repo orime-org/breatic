@@ -38,6 +38,8 @@ const resolveOwnerStudioId = vi.fn();
 vi.mock("@breatic/domain", () => ({
   creditHoldService: {
     reserveCredits: (...a: unknown[]) => reserveCredits(...a),
+    // No monthly spend limit is reached here (inner#1968 design 3.10 judges it first).
+    spendCapFor: async () => null,
   },
   creditLotService: {
     getStudioDebt: (...a: unknown[]) => getStudioDebt(...a),
