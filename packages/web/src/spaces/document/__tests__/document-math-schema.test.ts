@@ -7,8 +7,9 @@
  * Both are leaves holding their LaTeX in a `source` prop: no text of the
  * formula sits in the body, so no caret, selection or deletion of the body
  * reaches it. Neither declares `meta.hasPreview`, so BlockNote's own
- * source-in-a-box extensions stay off them. Both read as `$$source$$`
- * through ProseMirror's `leafText`, the way every text reader of the body
+ * source-in-a-box extensions stay off them. Both read as their `$$` text
+ * through ProseMirror's `leafText` (`$$source$$` inline, the source between
+ * `$$` lines for a block), the way every text reader of the body
  * that passes no leaf reader of its own sees a formula.
  */
 

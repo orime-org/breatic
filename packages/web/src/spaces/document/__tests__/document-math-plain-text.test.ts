@@ -6,9 +6,9 @@
  * proposals are located by and their cards compare, carries formulas as
  * `$$source$$` inline and `$$` lines around a block's source.
  *
- * `leafText` does nothing for a node with content (`prosemirror-model`
- * 1.25.12 reads it on leaves only), so `textBetween` alone would give the
- * bare source.
+ * A formula is a leaf, and a leaf reader passed to `textBetween` wins over
+ * its `leafText` (`prosemirror-model` 1.25.12), so `textBetween(0, size,
+ * '\n', '\n')` would read each formula as a line break.
  */
 
 import { afterEach, describe, expect, it } from 'vitest';

@@ -185,7 +185,7 @@ describe('a selected, closed formula block (§6.2)', () => {
 });
 
 
-describe('what a formula offers the pointer (visual adversary)', () => {
+describe('what a formula offers the pointer', () => {
   it('points the pointer at a formula the user can open, and not where the body is read-only', async () => {
     const { editor, root } = open([{ type: 'paragraph', content: ['x ', { type: 'math', props: { source: 'a' } }] }]);
     const face = await appear(root, '.doc-math [data-math-face]');

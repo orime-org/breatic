@@ -67,7 +67,8 @@ export interface PlainRun {
  * A block's plain text with where each text node's words sit in it.
  *
  * It reads as `textBetween(0, size, '\n', '\n')` does, except that a formula
- * reads as its text, `$$source$$` (inner#1423): a proposal quotes it the way
+ * reads as its text (`formulaLeafText`): `$$source$$` inside a line, the source
+ * between two `$$` lines for a block (inner#1423). A proposal quotes it the way
  * the Markdown it is sent writes it.
  * @param node - The block: its `blockContainer`, or a table's own node, which no container wraps.
  * @returns The text and its runs.

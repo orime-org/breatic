@@ -7,8 +7,8 @@
  *
  * The plain text is Markdown written by BlockNote's `htmlToMarkdown`, patched
  * so an inline formula is `$$source$$`; a block formula is `$$` on its own
- * lines. A selection inside an inline formula's source is source: BlockNote's
- * "wholly in code" check is patched to read `$from.parent.type.spec.code`.
+ * lines. An inline formula holds no text of the body, so a selection takes it
+ * whole.
  */
 
 import { afterEach, describe, expect, it } from 'vitest';

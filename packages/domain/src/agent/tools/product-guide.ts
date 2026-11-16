@@ -1835,7 +1835,7 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.blockHandle.delete"))}; it acts on that line. ` +
       `${quoted(t("canvas.contextMenu.addToAgent"))} puts that line, with the lines nested under it, into the ` +
       "Agent's box as an attachment, opening the Agent panel if hidden; greyed when they hold " +
-      "neither words (spaces don't count) nor uploaded media. On media it hands " +
+      "no words (spaces don't count), no uploaded media and no formula with LaTeX in it. On media it hands " +
       `over the file plus nested lines as text; ${quoted(t("spaces.document.commands.comment"))} covers ` +
       `the whole item; both stay greyed mid-upload; pressing either says ` +
       `${quoted(t("spaces.document.media.notUploaded"))} ` +
@@ -1975,7 +1975,7 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.table.splitCell"))} is greyed unless the cell was merged; while it is open ` +
       "that cell is tinted the way selected cells are. A cell holds blocks " +
       "the way the rest of the document does: paragraphs, headings, lists, to-dos, quotes, code, dividers, " +
-      "pictures, videos and audio, each with its own handle of six dots, and an empty line with the plus; a table " +
+      "formulas, pictures, videos and audio, each with its own handle of six dots, and an empty line with the plus; a table " +
       "does not go inside a cell. Enter and Shift+Enter work as anywhere else, and Enter on the last empty line " +
       "of a cell stays in the cell. Tab in a list item indents it when it can be indented and Shift+Tab takes an " +
       "indented one back out; otherwise Tab moves to the next cell, and in the last cell it adds a row first, and " +
@@ -2024,8 +2024,8 @@ export function renderProductGuide(): string {
     "",
     "## Document comments",
     `Select text and press the speech bubble, or choose ` +
-      `${quoted(t("spaces.document.commands.comment"))} on a line's handle menu (greyed on an empty line, ` +
-      `except uploaded media). The ${quoted(t("spaces.document.comment.railTitle"))} panel opens beside the text, the words take ` +
+      `${quoted(t("spaces.document.commands.comment"))} on a line's handle menu (greyed on a line with no words, such as an ` +
+      `empty line or one holding only a formula; uploaded media can still be commented). The ${quoted(t("spaces.document.comment.railTitle"))} panel opens beside the text, the words take ` +
       `a highlight, and a box, ${quoted(t("spaces.document.comment.placeholder"))}, waits next to them. Enter ` +
       `or ${quoted(t("spaces.document.comment.save"))} posts it, Shift+Enter starts a new line, and Esc or ` +
       `${quoted(t("spaces.document.comment.cancel"))} drops it; both buttons appear once something is typed. ` +

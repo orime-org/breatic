@@ -13,8 +13,9 @@
  * rules read them.
  *
  * A block placeholder stands on a line of its own between empty lines:
- * BlockNote ends a raw HTML block only at an empty line and does not end a
- * paragraph at one (`markdownToHtml.ts:1071-1100`). Inside a quote or a list
+ * BlockNote ends a raw HTML block only at an empty line
+ * (`markdownToHtml.ts:1071-1086`), so the line after the placeholder must be
+ * empty or the words after it join the HTML block. Inside a quote or a list
  * the empty lines carry the container's prefix, so the formula stays in it.
  */
 

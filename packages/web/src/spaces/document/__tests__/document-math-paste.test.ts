@@ -4,9 +4,8 @@
 /**
  * inner#1423 design 5.1 and 6.6: what a paste does with formulas.
  *
- * Into an open formula, a paste is source text whatever the clipboard holds:
- * `putContent` hands every parent whose spec is `code` the clipboard's words
- * (design round 3 item 9). From the chat, a formula arrives as an element
+ * Into an open formula's box, a paste is the text field's own: the node
+ * view's `stopEvent` keeps it from the body. From the chat, a formula arrives as an element
  * carrying `data-math` / `data-math-block` and becomes a formula again; from
  * another app, KaTeX's output and bare MathML parse to one formula each, read
  * off the TeX annotation.

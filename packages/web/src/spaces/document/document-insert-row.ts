@@ -197,9 +197,10 @@ export function isEmptyParagraph(row: PressedBlock | undefined): boolean {
  *
  * A block type, and the formula, become the row's own type, so the row keeps
  * its id; the formula's box is the menu's to open once it closes. The divider goes above the row, which stays the empty paragraph under it — what
- * typing `---` at the start of a line leaves. The caret is set into the row in
- * both cases: the handle follows the pointer, so the user's caret can be in
- * any other row, and the menu closing only hands the focus back.
+ * typing `---` at the start of a line leaves. The caret is set into the row
+ * for a block type and the divider: the handle follows the pointer, so the
+ * user's caret can be in any other row, and the menu closing only hands the
+ * focus back.
  *
  * One transaction, so one undo takes it all back (A6).
  * @param editor - The editor to write to.

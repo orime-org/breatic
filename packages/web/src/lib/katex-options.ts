@@ -13,7 +13,8 @@
  */
 export const KATEX_OPTIONS = {
   // KaTeX's own default is a hard-coded #cc0000, which belongs to neither
-  // theme. A formula that failed to parse is shown as its LaTeX, said quietly.
+  // theme. In the chat a formula that failed to parse is shown as its LaTeX,
+  // said quietly; the document body throws instead and draws its own error face.
   // The grey is what @streamdown/math ships, the package Vercel's Streamdown
   // renders maths with:
   // https://github.com/vercel/streamdown/tree/main/packages/streamdown-math

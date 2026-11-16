@@ -408,8 +408,8 @@ export function bubbleAnchorRect(
  * @param doc - The document node.
  * @param from - Range start.
  * @param to - Range end.
- * @returns True when at least one non-empty text node, or a formula with a
- *   source (inner#1423), lies in the range.
+ * @returns True when at least one non-empty text node, or an inline formula
+ *   with a source (inner#1423), lies in the range.
  */
 export function hasTextIn(doc: ProseMirrorNode, from: number, to: number): boolean {
   // An empty range holds nothing, and `nodesBetween` would say otherwise: it

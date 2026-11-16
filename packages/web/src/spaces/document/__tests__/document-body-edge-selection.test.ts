@@ -1065,11 +1065,7 @@ describe('an empty line a selection holds', () => {
     view.state.doc.descendants((node) => {
       if (node.isTextblock && node.content.size === 0) kinds.add(node.type.name);
     });
-    // A formula block holds its source as text, yet is painted whole like a
-    // block without text, never as an empty line (inner#1423).
-    const textblocks = Object.values(view.state.schema.nodes).filter(
-      (type) => type.isTextblock && type.name !== 'mathBlock',
-    );
+    const textblocks = Object.values(view.state.schema.nodes).filter((type) => type.isTextblock);
 
     const undrawn = [...view.dom.querySelectorAll(`.${EMPTY_LINE_CLASS}`)].filter(
       (el) => !el.matches(rule) && el.querySelector(rule) === null,
