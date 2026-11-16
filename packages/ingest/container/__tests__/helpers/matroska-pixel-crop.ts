@@ -1,14 +1,37 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
+import { execFile } from "node:child_process";
+import { readFile, rm, writeFile } from "node:fs/promises";
+import { promisify } from "node:util";
+
+/** The pixels cropped at each edge. */
+export interface PixelCrop { top?: number; bottom?: number; left?: number; right?: number }
+
+/**
+ * Write a copy of a Matroska file whose first track carries a PixelCrop: the elements are written into its Video element,
+ * then FFmpeg copies the file, which it reads with the crop and writes back with every Cues and SeekHead position right.
+ * @param source - The file.
+ * @param destination - The copy.
+ * @param crop - The pixels cropped at each edge.
+ * @returns Nothing once written.
+ */
+export async function writePixelCropped(source: string, destination: string, crop: PixelCrop): Promise<void> {
+  const raw = `${destination}.raw.mkv`;
+  await writeFile(raw, pixelCropped(await readFile(source), crop));
+  await promisify(execFile)("ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-i", raw, "-map", "0", "-c", "copy", destination]);
+  await rm(raw);
+}
+
 /**
  * A Matroska file with PixelCrop elements written into its first track's Video element (EBML ids 0x54AA bottom, 0x54BB top,
- * 0x54CC left, 0x54DD right), every enclosing element's size grown to match.
+ * 0x54CC left, 0x54DD right), every enclosing element's size grown to match; the Cues and SeekHead positions are left as
+ * they were, so the file is only read through `writePixelCropped`.
  * @param bytes - The file.
  * @param crop - The pixels cropped at each edge.
  * @returns The new file.
  */
-export function pixelCropped(bytes: Buffer, crop: { top?: number; bottom?: number; left?: number; right?: number }): Buffer {
+function pixelCropped(bytes: Buffer, crop: PixelCrop): Buffer {
   const id = (at: number): [number, number] => { let length = 1; while (!(bytes[at]! & (0x80 >> (length - 1)))) length += 1; return [bytes.readUIntBE(at, length), length]; };
   const size = (at: number): [number, number] => {
     let length = 1; while (!(bytes[at]! & (0x80 >> (length - 1)))) length += 1;

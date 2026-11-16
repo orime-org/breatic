@@ -28,7 +28,7 @@ import * as contractOwner from '@ingest/presentation-run-contract.js';
 import { presentationFrameCount } from '@shared/mini-tools/video-presentation-table.js';
 import { chooseVideoCarrierRoute, presentationOutputFps } from '@shared/mini-tools/video-encode-plan.js';
 import { videoPresentationPlanSha256, videoPresentationToolInputId } from '@shared/upload/video-presentation-version.js';
-import { pixelCropped } from './helpers/matroska-pixel-crop.js';
+import { writePixelCropped } from './helpers/matroska-pixel-crop.js';
 
 const run = promisify(execFile);
 const calls = vi.hoisted(() => [] as { program: string; args: string[] }[]);
@@ -178,7 +178,7 @@ beforeAll(async () => {
   files.set('long-nodefault.webm', join(dir, 'long-nodefault.webm'));
   // The CFR H.264 source in Matroska, and the same file with a PixelCrop of one column and one row (CT06).
   await make('cfr.mkv', ['-i', join(dir, 'cfr.mp4'), '-c', 'copy']);
-  await writeFile(join(dir, 'cfr-crop.mkv'), pixelCropped(await readFile(join(dir, 'cfr.mkv')), { right: 1, bottom: 1 }));
+  await writePixelCropped(join(dir, 'cfr.mkv'), join(dir, 'cfr-crop.mkv'), { right: 1, bottom: 1 });
   files.set('cfr-crop.mkv', join(dir, 'cfr-crop.mkv'));
 }, 120_000);
 

@@ -7,14 +7,14 @@
  */
 
 import { execFile } from 'node:child_process';
-import { copyFile, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { runAlphaPresentation } from '@ingest/container/alpha-presentation.js';
 import type { AlphaRunBody } from '@ingest/alpha-run-contract.js';
-import { pixelCropped } from './helpers/matroska-pixel-crop.js';
+import { writePixelCropped } from './helpers/matroska-pixel-crop.js';
 
 const { download, put, cpuUsec } = vi.hoisted(() => ({ download: vi.fn(), put: vi.fn(), cpuUsec: vi.fn() }));
 vi.mock('@ingest/container/mini-tool-run.js', async (original) => ({ ...await original<Record<string, unknown>>(), download, put, cpuUsec }));
@@ -35,10 +35,10 @@ beforeAll(async () => {
   };
   await ff('whole.webm', ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=25:d=0.4', '-vf', 'format=rgba,colorchannelmixer=aa=0.5,format=yuva420p', '-c:v', 'libvpx-vp9', '-lossless', '1']);
   // Three columns on the left and one row at the top.
-  await writeFile(join(dir, 'crop.webm'), pixelCropped(await readFile(join(dir, 'whole.webm')), { left: 3, top: 1 }));
+  await writePixelCropped(join(dir, 'whole.webm'), join(dir, 'crop.webm'), { left: 3, top: 1 });
   // ProRes 4444 with the same PixelCrop, then copied into MOV, where FFmpeg writes it as a clean aperture Chromium ignores.
   await ff('whole-prores.mkv', ['-i', join(dir, 'whole.webm'), '-c:v', 'prores_ks', '-profile:v', '4444', '-pix_fmt', 'yuva444p10le']);
-  await writeFile(join(dir, 'crop-prores.mkv'), pixelCropped(await readFile(join(dir, 'whole-prores.mkv')), { left: 3, top: 1 }));
+  await writePixelCropped(join(dir, 'whole-prores.mkv'), join(dir, 'crop-prores.mkv'), { left: 3, top: 1 });
   await ff('clap.mov', ['-i', join(dir, 'crop-prores.mkv'), '-c', 'copy']);
 }, 120_000);
 

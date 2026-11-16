@@ -18,7 +18,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { runPlanJob, type PlanRunBody } from '@ingest/container/plan-run.js';
-import { pixelCropped } from './helpers/matroska-pixel-crop.js';
+import { writePixelCropped } from './helpers/matroska-pixel-crop.js';
 
 const run = promisify(execFile);
 type Exact = { numerator: string; denominator: string };
@@ -187,11 +187,11 @@ beforeAll(async () => {
   await writeFile(join(dir, 'sizes.txt'), `file '${join(dir, 'size-a.webm')}'\nfile '${join(dir, 'size-b.webm')}'\n`);
   await ff('sizes.webm', ['-f', 'concat', '-safe', '0', '-i', join(dir, 'sizes.txt'), '-c', 'copy']);
   // The even SDR twin with Matroska PixelCrop: right and bottom (even offsets), and left and top (odd offsets) (FC19).
-  await writeFile(join(dir, 'crop-rb.mkv'), pixelCropped(await readFile(join(dir, 'sdr-even.mkv')), { right: 1, bottom: 1 }));
-  await writeFile(join(dir, 'crop-lt.mkv'), pixelCropped(await readFile(join(dir, 'sdr-even.mkv')), { left: 3, top: 1 }));
+  await writePixelCropped(join(dir, 'sdr-even.mkv'), join(dir, 'crop-rb.mkv'), { right: 1, bottom: 1 });
+  await writePixelCropped(join(dir, 'sdr-even.mkv'), join(dir, 'crop-lt.mkv'), { left: 3, top: 1 });
   // The same crop on a stream turned a quarter (FC20): the crop is in stored coordinates, before the turn.
   await ff('turn-even.mkv', ['-display_rotation', '90', '-i', join(dir, 'sdr-even.mkv'), '-c', 'copy']);
-  await writeFile(join(dir, 'crop-turn.mkv'), pixelCropped(await readFile(join(dir, 'turn-even.mkv')), { left: 3, top: 1 }));
+  await writePixelCropped(join(dir, 'turn-even.mkv'), join(dir, 'crop-turn.mkv'), { left: 3, top: 1 });
   await ff('rot90.mp4', ['-display_rotation', '90', '-i', join(dir, 'flash.mp4'), '-c', 'copy']);
   // A white 20x12 box at (40, 20) on black, every frame a keyframe: FC07's crops are read against its known edges.
   await ff('box.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=160x96:r=25:d=0.2,drawbox=x=40:y=20:w=20:h=12:color=white:t=fill,format=yuv420p",

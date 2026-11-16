@@ -8,7 +8,7 @@
  */
 
 import { execFile } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -19,7 +19,7 @@ import { opSteps } from "@ingest/jobs/op-args.js";
 import { pickMediaMetadata, type ProbeReport } from "@ingest/media-metadata.js";
 import { coverArgs, probeArgs, readProbeOutput } from "@ingest/probe-command.js";
 import { runSteps } from "../run-steps.js";
-import { pixelCropped } from "./helpers/matroska-pixel-crop.js";
+import { writePixelCropped } from "./helpers/matroska-pixel-crop.js";
 
 const run = promisify(execFile);
 let dir = "";
@@ -54,11 +54,11 @@ beforeAll(async () => {
     "-vf", "format=yuv420p,setparams=colorspace=bt709:range=tv", "-c:v", "ffv1", "-c:a", "flac"]);
   await ff("turned.mkv", ["-display_rotation", "90", "-i", join(dir, "whole.mkv"), "-c", "copy"]);
   // Three columns on the left and one row at the top; the turned file shows them at its bottom and its left.
-  await writeFile(join(dir, "crop.mkv"), pixelCropped(await readFile(join(dir, "whole.mkv")), { left: 3, top: 1 }));
-  await writeFile(join(dir, "crop-turned.mkv"), pixelCropped(await readFile(join(dir, "turned.mkv")), { left: 3, top: 1 }));
+  await writePixelCropped(join(dir, "whole.mkv"), join(dir, "crop.mkv"), { left: 3, top: 1 });
+  await writePixelCropped(join(dir, "turned.mkv"), join(dir, "crop-turned.mkv"), { left: 3, top: 1 });
   // The same picture as H.264, which the tools would copy into MP4.
   await ff("whole264.mkv", ["-i", join(dir, "whole.mkv"), "-c:v", "libx264", "-qp", "0", "-pix_fmt", "yuv420p", "-c:a", "aac"]);
-  await writeFile(join(dir, "crop264.mkv"), pixelCropped(await readFile(join(dir, "whole264.mkv")), { left: 3, top: 1 }));
+  await writePixelCropped(join(dir, "whole264.mkv"), join(dir, "crop264.mkv"), { left: 3, top: 1 });
   // FFmpeg writes the PixelCrop into MP4 as a clean aperture, which it reads back and applies on decode.
   await ff("clap.mp4", ["-i", join(dir, "crop.mkv"), "-map", "0:v", "-c", "copy"]);
   await ff("whole.mp4", ["-i", join(dir, "whole.mkv"), "-map", "0:v", "-c", "copy"]);
