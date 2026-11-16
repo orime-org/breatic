@@ -651,6 +651,8 @@ describe('Add web animation', () => {
     expect(within(picker).getByTestId(`timeline-picker-group-${MOTION_SPACE}`)).toHaveTextContent('Launch motion');
     expect(within(picker).getByTestId('timeline-picker-group-deleted')).toHaveTextContent(t('timeline.webAnimation.picker.deletedSpace'));
     expect(within(picker).getByTestId(`timeline-picker-row-${EXEC_RUNNING}`)).toHaveTextContent(t('timeline.webAnimation.picker.making'));
+    expect(within(picker).getByTestId(`timeline-picker-making-${EXEC_RUNNING}`)).toHaveTextContent(t('timeline.webAnimation.picker.making'));
+    expect(within(picker).queryByTestId(`timeline-picker-making-${EXEC_A}`)).toBeNull();
   });
 
   it('places a finished result as a copy bound to its source, and a running one as a placeholder', async () => {

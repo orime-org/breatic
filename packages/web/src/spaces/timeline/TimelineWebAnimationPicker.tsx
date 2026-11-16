@@ -67,11 +67,14 @@ const PickerRow = React.memo(function PickerRow({ row, onPick }: PickerRowProps)
   return <Button type='button' variant={null} size={null} data-testid={`timeline-picker-row-${row.id}`} onClick={pick}
     className='flex w-full min-w-0 items-center gap-2 rounded-chrome px-2 py-2 text-left text-sm hover-enabled:bg-accent'>
     <Code className='size-4 shrink-0 text-[color:var(--color-palette-violet)]' />
-    <span className='min-w-0 flex-1 truncate'>{webAnimationTitle(row, t)}</span>
-    <span className='shrink-0 whitespace-nowrap text-xs tabular-nums text-muted-foreground'>
-      {`${row.input.aspect} · ${t('timeline.webAnimation.durationShort', { seconds: row.input.durationSeconds })}`}
-      {row.status !== 'succeeded' && ` · ${t('timeline.webAnimation.picker.making')}`}
+    <span className='flex min-w-0 flex-1 flex-col gap-1'>
+      <span className='min-w-0 truncate leading-normal'>{webAnimationTitle(row, t)}</span>
+      <span className='text-xs tabular-nums text-muted-foreground'>
+        {`${row.input.aspect} · ${t('timeline.webAnimation.durationShort', { seconds: row.input.durationSeconds })}`}
+      </span>
     </span>
+    {row.status !== 'succeeded' && <span data-testid={`timeline-picker-making-${row.id}`}
+      className='shrink-0 whitespace-nowrap rounded-chrome border border-border px-1.5 py-0.5 text-2xs text-muted-foreground'>{t('timeline.webAnimation.picker.making')}</span>}
   </Button>;
 });
 
