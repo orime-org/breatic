@@ -163,10 +163,12 @@ export const enterpriseMembershipProfileSchema = z.object(profileShape).strict()
  */
 export const enterpriseMembershipAccountAnswerSchema = z.object({
   ...profileShape,
+  // Not the negotiated int32 bound: a configured tier may grant more (the
+  // reading's limits keep the same wider bound).
   operations: z.object({
-    monthly: count,
-    used: count,
-    remaining: count,
+    monthly: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    used: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    remaining: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
     periodStart: instant,
     nextResetAt: instant,
   }).strict().nullable(),
