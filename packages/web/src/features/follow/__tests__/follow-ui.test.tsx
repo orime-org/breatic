@@ -6,11 +6,11 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { t } from '@breatic/shared';
 
-import type { ProjectUser } from '@web/data/yjs/project-meta';
 import { FOLLOW_BAR_HEIGHT, FollowBar } from '@web/features/follow/FollowBar';
 import { useFollowExitToast } from '@web/features/follow/use-follow-exit-toast';
 import { useFollowLeaderPresence, type FollowLeaderPresenceInput } from '@web/features/follow/use-follow-leader-presence';
-import { useFollowStore } from '@web/stores/follow';
+import { useFollowStore, type FollowOther } from '@web/stores/follow';
+import { userPaletteColor } from '@web/lib/user-color';
 
 const toastMock = vi.hoisted(() => ({ info: vi.fn(), warning: vi.fn(), error: vi.fn(), success: vi.fn() }));
 vi.mock('@web/lib/toast', () => ({ toast: toastMock }));
@@ -22,22 +22,23 @@ beforeEach(() => {
 
 describe('FollowBar', () => {
   it('renders nothing while not following', () => {
-    render(<FollowBar leaderColor='var(--color-palette-blue)' />);
+    render(<FollowBar />);
     expect(screen.queryByTestId('follow-bar')).toBeNull();
     expect(screen.queryByTestId('follow-outline')).toBeNull();
   });
 
   it('shows whom the user follows in the leader colour, with the outline', () => {
     useFollowStore.getState().start('u1', 'Li Lei');
-    render(<FollowBar leaderColor='var(--color-palette-blue)' />);
+    render(<FollowBar />);
     expect(screen.getByTestId('follow-bar')).toHaveTextContent('Li Lei');
-    expect(screen.getByTestId('follow-bar').style.background).toContain('--color-palette-blue');
+    // The bar takes the leader's collaborator colour itself, from whom the store follows.
+    expect(screen.getByTestId('follow-bar').style.background).toBe(userPaletteColor('u1'));
     expect(screen.getByTestId('follow-outline')).toBeInTheDocument();
   });
 
   it('exports the bar height the Spaces keep clear while following', () => {
     useFollowStore.getState().start('u1', 'Li Lei');
-    render(<FollowBar leaderColor='var(--color-palette-blue)' />);
+    render(<FollowBar />);
     expect(FOLLOW_BAR_HEIGHT).toBe(32);
     // h-8 is 32px; the Spaces align below it, so the two must not drift apart.
     expect(screen.getByTestId('follow-bar')).toHaveClass('h-8');
@@ -46,7 +47,7 @@ describe('FollowBar', () => {
   it('stops following when its stop button is pressed', async () => {
     useFollowStore.getState().start('u1', 'Li Lei');
     const user = userEvent.setup();
-    render(<FollowBar leaderColor='var(--color-palette-blue)' />);
+    render(<FollowBar />);
     await user.click(screen.getByTestId('follow-bar-stop'));
     expect(useFollowStore.getState().targetUserId).toBeNull();
     expect(useFollowStore.getState().stopped?.reason).toBe('button');
@@ -129,16 +130,6 @@ describe('useFollowExitToast', () => {
 });
 
 describe('useFollowLeaderPresence', () => {
-  /**
-   * A presence record.
-   * @param id - The user.
-   * @param online - Whether online.
-   * @returns The record.
-   */
-  function user(id: string, online: boolean): ProjectUser {
-    return { id, online, lastSeenAt: 0 } as ProjectUser;
-  }
-
   /** The roster by user id: the leader, this user and a third member. */
   const NAMES: ReadonlyMap<string, string> = new Map([['u1', 'Li Lei'], ['me', 'Me'], ['u2', 'Wang Fang']]);
 
@@ -148,17 +139,17 @@ describe('useFollowLeaderPresence', () => {
    * @returns The input.
    */
   function presence(over: Partial<FollowLeaderPresenceInput>): FollowLeaderPresenceInput {
-    return { users: [user('u1', true)], memberNames: NAMES, synced: true, currentUserId: 'me', leaderFollowing: null, ...over };
+    return { onlineUserIds: new Set(['u1', 'me']), memberNames: NAMES, synced: true, leaderFollows: null, ...over };
   }
 
   it('stops with offline when the leader goes offline', () => {
     useFollowStore.getState().start('u1', 'Li Lei');
     const { rerender } = renderHook(
-      (p: { users: ProjectUser[] }) => useFollowLeaderPresence(presence({ users: p.users })),
-      { initialProps: { users: [user('u1', true)] } },
+      (p: { online: ReadonlySet<string> }) => useFollowLeaderPresence(presence({ onlineUserIds: p.online })),
+      { initialProps: { online: new Set(['u1', 'me']) as ReadonlySet<string> } },
     );
     expect(useFollowStore.getState().targetUserId).toBe('u1');
-    rerender({ users: [user('u1', false)] });
+    rerender({ online: new Set(['me']) });
     expect(useFollowStore.getState().stopped?.reason).toBe('offline');
   });
 
@@ -170,31 +161,24 @@ describe('useFollowLeaderPresence', () => {
 
   it('judges nothing before the presence records have synced', () => {
     useFollowStore.getState().start('u1', 'Li Lei');
-    renderHook(() => useFollowLeaderPresence(presence({ users: [], memberNames: new Map(), synced: false, leaderFollowing: 'u2' })));
+    renderHook(() => useFollowLeaderPresence(presence({ onlineUserIds: new Set(), memberNames: new Map(), synced: false, leaderFollows: 'you' })));
     expect(useFollowStore.getState().targetUserId).toBe('u1');
   });
 
   it('stops when the leader starts following another member, naming them', () => {
     useFollowStore.getState().start('u1', 'Li Lei');
     const { rerender } = renderHook(
-      (p: { leaderFollowing: string | null }) => useFollowLeaderPresence(presence(p)),
-      { initialProps: { leaderFollowing: null as string | null } },
+      (p: { leaderFollows: FollowOther | null }) => useFollowLeaderPresence(presence(p)),
+      { initialProps: { leaderFollows: null as FollowOther | null } },
     );
     expect(useFollowStore.getState().targetUserId).toBe('u1');
-    rerender({ leaderFollowing: 'u2' });
+    rerender({ leaderFollows: { name: 'Wang Fang' } });
     expect(useFollowStore.getState().stopped).toMatchObject({ reason: 'leaderFollows', userId: 'u1', other: { name: 'Wang Fang' } });
   });
 
   it('stops when the leader starts following this user', () => {
     useFollowStore.getState().start('u1', 'Li Lei');
-    renderHook(() => useFollowLeaderPresence(presence({ leaderFollowing: 'me' })));
+    renderHook(() => useFollowLeaderPresence(presence({ leaderFollows: 'you' })));
     expect(useFollowStore.getState().stopped).toMatchObject({ reason: 'leaderFollows', other: 'you' });
-  });
-
-  it('keeps following while the member the leader follows is not on the roster', () => {
-    useFollowStore.getState().start('u1', 'Li Lei');
-    renderHook(() => useFollowLeaderPresence(presence({ leaderFollowing: 'u-gone' })));
-    expect(useFollowStore.getState().targetUserId).toBe('u1');
-    expect(useFollowStore.getState().stopped).toBeNull();
   });
 });

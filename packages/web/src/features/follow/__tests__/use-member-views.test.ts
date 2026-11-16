@@ -43,8 +43,8 @@ describe('useMemberViews', () => {
     const li = makeAwareness();
     const wang = makeAwareness();
     const { result } = renderHook(() => useMemberViews(local));
-    arrive(local, li, { user: { id: 'li' }, view: { spaceId: 's1', at: 10, focused: true, following: 'wang' } });
-    arrive(local, wang, { user: { id: 'wang' }, view: { spaceId: 's2', at: 10, focused: true, following: null } });
+    arrive(local, li, { user: { id: 'li' }, view: { spaceId: 's1', at: 10, focused: true }, following: { id: 'wang', at: 10 } });
+    arrive(local, wang, { user: { id: 'wang' }, view: { spaceId: 's2', at: 10, focused: true }, following: null });
     expect(result.current.get('li')).toEqual({ spaceId: 's1', following: 'wang' });
     expect(result.current.get('wang')).toEqual({ spaceId: 's2', following: null });
   });
@@ -54,8 +54,8 @@ describe('useMemberViews', () => {
     const tabA = makeAwareness();
     const tabB = makeAwareness();
     const { result } = renderHook(() => useMemberViews(local));
-    arrive(local, tabA, { user: { id: 'li' }, view: { spaceId: 's1', at: 50, focused: true, following: null } });
-    arrive(local, tabB, { user: { id: 'li' }, view: { spaceId: 's2', at: 99, focused: false, following: 'wang' } });
+    arrive(local, tabA, { user: { id: 'li' }, view: { spaceId: 's1', at: 50, focused: true } });
+    arrive(local, tabB, { user: { id: 'li' }, view: { spaceId: 's2', at: 99, focused: false } });
     expect(result.current.get('li')).toEqual({ spaceId: 's1', following: null });
   });
 
@@ -63,14 +63,24 @@ describe('useMemberViews', () => {
     const local = makeAwareness();
     const li = makeAwareness();
     const { result } = renderHook(() => useMemberViews(local));
-    arrive(local, li, { user: { id: 'li' }, view: { spaceId: 's1', at: 10, focused: true, following: null } });
-    arrive(local, li, { user: { id: 'li' }, view: { spaceId: 's1', at: 11, focused: true, following: 'wang' } });
+    arrive(local, li, { user: { id: 'li' }, view: { spaceId: 's1', at: 10, focused: true } });
+    arrive(local, li, { user: { id: 'li' }, view: { spaceId: 's1', at: 10, focused: true }, following: { id: 'wang', at: 11 } });
     expect(result.current.get('li')?.following).toBe('wang');
+  });
+
+  it('counts a member as following while the tab that follows is hidden and shows no view', () => {
+    const local = makeAwareness();
+    const shown = makeAwareness();
+    const hidden = makeAwareness();
+    const { result } = renderHook(() => useMemberViews(local));
+    arrive(local, shown, { user: { id: 'li' }, view: { spaceId: 's1', at: 10, focused: true } });
+    arrive(local, hidden, { user: { id: 'li' }, view: null, following: { id: 'wang', at: 5 } });
+    expect(result.current.get('li')).toEqual({ spaceId: 's1', following: 'wang' });
   });
 
   it('never lists this client, and lists nothing without an awareness', () => {
     const local = makeAwareness();
-    local.setLocalState({ user: { id: 'me' }, view: { spaceId: 's1', at: 10, focused: true, following: null } });
+    local.setLocalState({ user: { id: 'me' }, view: { spaceId: 's1', at: 10, focused: true }, following: { id: 'x', at: 1 } });
     const { result } = renderHook(() => useMemberViews(local));
     expect(result.current.has('me')).toBe(false);
     const none = renderHook(() => useMemberViews(null));

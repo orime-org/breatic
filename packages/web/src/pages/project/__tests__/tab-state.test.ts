@@ -361,8 +361,17 @@ describe('reduceTabState — whether following moved the strip (#920)', () => {
     expect(appended).toMatchObject({ openIds: ['a', 'c'], activeId: 'c', byFollow: true });
     expect(reduceTabState(followed, { type: 'open', spaceId: 'a' }).byFollow).toBe(false);
     expect(reduceTabState(followed, { type: 'close', spaceId: 'b' }).byFollow).toBe(false);
-    expect(reduceTabState(followed, { type: 'reorder', spaceId: 'b', beforeSpaceId: 'a' }).byFollow).toBe(false);
     expect(reduceTabState(followed, { type: 'spaces', spaces: [{ id: 'a' }] as TabOrderEntry[] }).byFollow).toBe(false);
+  });
+
+  it('keeps that record through changes that leave the tab in front where it is', () => {
+    const followed = reduceTabState(ready(['a', 'b', 'c'], 'a'), { type: 'open', spaceId: 'b', byFollow: true });
+    const closedBehind = reduceTabState(followed, { type: 'close', spaceId: 'c' });
+    expect(closedBehind).toMatchObject({ activeId: 'b', byFollow: true });
+    const reordered = reduceTabState(followed, { type: 'reorder', spaceId: 'c', beforeSpaceId: 'a' });
+    expect(reordered).toMatchObject({ activeId: 'b', byFollow: true });
+    const othersGone = reduceTabState(followed, { type: 'spaces', spaces: [{ id: 'a' }, { id: 'b' }] as TabOrderEntry[] });
+    expect(othersGone).toMatchObject({ activeId: 'b', byFollow: true });
   });
 
   it('starts with following not having moved the strip', () => {

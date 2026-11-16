@@ -28,7 +28,16 @@ interface PublishedView {
   spaceId: string | null;
   at: number;
   focused: boolean;
-  following: string | null;
+}
+
+/**
+ * Read whom this tab says it follows.
+ * @param awareness - The awareness.
+ * @returns The followed user id, or null.
+ */
+function following(awareness: Awareness): string | null {
+  const state = awareness.getLocalState() as { following?: { id: string } | null } | null;
+  return state?.following?.id ?? null;
 }
 
 /**
@@ -77,20 +86,30 @@ describe('usePublishView', () => {
   it('publishes whom this user follows, rewritten when following starts, switches or stops', () => {
     const awareness = makeAwareness();
     renderHook(() => usePublishView(awareness, 's1'));
-    expect(view(awareness)?.following).toBeNull();
+    expect(following(awareness)).toBeNull();
     act(() => useFollowStore.getState().start('u1', 'Li Lei'));
-    expect(view(awareness)).toMatchObject({ spaceId: 's1', following: 'u1' });
+    expect(following(awareness)).toBe('u1');
+    expect(view(awareness)).toMatchObject({ spaceId: 's1' });
     act(() => useFollowStore.getState().start('u2', 'Han Meimei'));
-    expect(view(awareness)?.following).toBe('u2');
+    expect(following(awareness)).toBe('u2');
     act(() => useFollowStore.getState().stop('button'));
-    expect(view(awareness)?.following).toBeNull();
+    expect(following(awareness)).toBeNull();
+  });
+
+  it('keeps saying whom this tab follows while the browser tab is hidden and its view is withdrawn', () => {
+    useFollowStore.getState().start('u1', 'Li Lei');
+    const awareness = makeAwareness();
+    renderHook(() => usePublishView(awareness, 's1'));
+    setVisibility('hidden');
+    expect(view(awareness)).toBeNull();
+    expect(following(awareness)).toBe('u1');
   });
 
   it('publishes the member already being followed when it mounts', () => {
     useFollowStore.getState().start('u1', 'Li Lei');
     const awareness = makeAwareness();
     renderHook(() => usePublishView(awareness, 's1'));
-    expect(view(awareness)?.following).toBe('u1');
+    expect(following(awareness)).toBe('u1');
   });
 
   it('republishes when the Space in front changes, and publishes null when every tab is closed', () => {
@@ -143,6 +162,14 @@ describe('usePublishView', () => {
     unmount();
     expect(view(awareness)).toBeNull();
     expect(awareness.getLocalState()).not.toBeNull();
+  });
+
+  it('takes down whom this tab follows when it unmounts', () => {
+    useFollowStore.getState().start('u1', 'Li Lei');
+    const awareness = makeAwareness();
+    const { unmount } = renderHook(() => usePublishView(awareness, 's1'));
+    unmount();
+    expect(following(awareness)).toBeNull();
   });
 
   it('writes nothing without an awareness', () => {

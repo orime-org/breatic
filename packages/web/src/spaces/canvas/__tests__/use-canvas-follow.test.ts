@@ -50,7 +50,6 @@ function input(over: Partial<CanvasFollowInput> & Pick<CanvasFollowInput, 'aware
     pane: PANE,
     applyViewport: vi.fn(),
     clearOpeningFit: vi.fn(),
-    openingFitPending: () => false,
     ...over,
   };
 }
@@ -137,7 +136,7 @@ describe('useCanvasFollow', () => {
     let onMoveStart: ((event: unknown) => void) | null = null;
     const applyViewport = vi.fn(() => onMoveStart?.(null));
     const { result } = renderHook(() => useCanvasFollow(input({ awareness: local, applyViewport })));
-    onMoveStart = result.current.onMoveStart;
+    onMoveStart = result.current;
     arrive(local, peer, { user: { id: 'leader' }, camera: { ...RECT, at: 1 } });
     expect(applyViewport).toHaveBeenCalled();
     expect(useFollowStore.getState().targetUserId).toBe('leader');
@@ -149,7 +148,7 @@ describe('useCanvasFollow', () => {
     let onMoveStart: ((event: unknown) => void) | null = null;
     const applyViewport = vi.fn(() => onMoveStart?.(null));
     const { result } = renderHook(() => useCanvasFollow(input({ awareness: local, applyViewport })));
-    onMoveStart = result.current.onMoveStart;
+    onMoveStart = result.current;
     arrive(local, peer, { user: { id: 'leader' }, camera: { ...RECT, at: 1 } });
     arrive(local, peer, { user: { id: 'leader' }, camera: { ...RECT, x: 700, at: 2 } });
     arrive(local, peer, { user: { id: 'leader' }, camera: { ...RECT, x: 900, at: 3 } });
@@ -163,7 +162,7 @@ describe('useCanvasFollow', () => {
     const applyViewport = vi.fn();
     const { result } = renderHook(() => useCanvasFollow(input({ awareness: local, applyViewport })));
     arrive(local, peer, { user: { id: 'leader' }, camera: { ...RECT, at: 1 } });
-    act(() => result.current.onMoveStart(null));
+    act(() => result.current(null));
     expect(useFollowStore.getState().stopped?.reason).toBe('viewport');
     applyViewport.mockClear();
     arrive(local, peer, { user: { id: 'leader' }, camera: { ...RECT, x: 0, at: 2 } });
@@ -192,7 +191,7 @@ describe('useCanvasFollow', () => {
     const { result, rerender } = renderHook((p: CanvasFollowInput) => useCanvasFollow(p), {
       initialProps: input({ awareness: local, applyViewport }),
     });
-    onMoveStart = result.current.onMoveStart;
+    onMoveStart = result.current;
     arrive(local, peer, { user: { id: 'leader' }, camera: { ...RECT, at: 1 } });
     const wider = { width: 1400, height: 700 };
     rerender(input({ awareness: local, applyViewport, pane: wider }));
@@ -204,22 +203,22 @@ describe('useCanvasFollow', () => {
   it('stops on a move the user starts before the first alignment', () => {
     const local = makeAwareness();
     const { result } = renderHook(() => useCanvasFollow(input({ awareness: local })));
-    act(() => result.current.onMoveStart(new MouseEvent('wheel')));
+    act(() => result.current(new MouseEvent('wheel')));
     expect(useFollowStore.getState().stopped?.reason).toBe('viewport');
   });
 
-  it('lets the opening fit of a canvas with no stored view pass before the first alignment', () => {
+  it('drops the queued opening fit as soon as following starts, before the leader shows a camera', () => {
     const local = makeAwareness();
-    const { result } = renderHook(() => useCanvasFollow(input({ awareness: local, openingFitPending: () => true })));
-    act(() => result.current.onMoveStart(null));
-    expect(useFollowStore.getState().targetUserId).toBe('leader');
+    const clearOpeningFit = vi.fn();
+    renderHook(() => useCanvasFollow(input({ awareness: local, clearOpeningFit })));
+    expect(clearOpeningFit).toHaveBeenCalledTimes(1);
   });
 
   it('stops on a toolbar, minimap or shortcut move before the first alignment', () => {
     // The leader has no camera on this canvas (no Space open, or not published yet), so nothing aligns.
     const local = makeAwareness();
     const { result } = renderHook(() => useCanvasFollow(input({ awareness: local })));
-    act(() => result.current.onMoveStart(null));
+    act(() => result.current(null));
     expect(useFollowStore.getState().stopped?.reason).toBe('viewport');
   });
 
