@@ -911,6 +911,8 @@ export function renderProductGuide(): string {
     `  - ${quoted(t("canvas.generatePanel.errorStorageFull"))}`,
     `  - ${quoted(t("canvas.generatePanel.errorUnavailable"))}`,
     `  - ${quoted(t("canvas.generatePanel.errorFailed"))}`,
+    "  - a sentence naming the model and the rule or limit the run breaks there, such as how many characters or " +
+      "lines its text may have",
     "When the run finishes, its result replaces what the node held. A run makes one result; there is no count. " +
       "To get another, open the panel again and press the arrow: it can start while an earlier task is still " +
       "running, each finished result replaces what the node holds in turn, and the earlier ones stay in its " +
