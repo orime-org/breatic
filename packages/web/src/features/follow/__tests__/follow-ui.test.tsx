@@ -36,6 +36,18 @@ describe('FollowBar', () => {
     expect(screen.getByTestId('follow-outline')).toBeInTheDocument();
   });
 
+  it('draws the label as heavy as other names on a collaborator colour, and Stop on a deeper chip', () => {
+    // The chip leans toward the theme foreground, away from the on-palette
+    // text, so Stop reads at least as clearly as the label in both themes.
+    useFollowStore.getState().start('u1', 'Li Lei');
+    render(<FollowBar />);
+    expect(screen.getByText(t('members.follow.bar', { name: 'Li Lei' }))).toHaveClass('font-semibold');
+    const stop = screen.getByTestId('follow-bar-stop');
+    expect(stop.className).toContain('bg-[color-mix(in_srgb,var(--color-foreground)_20%,transparent)]');
+    expect(stop.className).toContain('hover-enabled:bg-[color-mix(in_srgb,var(--color-foreground)_30%,transparent)]');
+    expect(stop.className).not.toContain('var(--color-on-palette)_20%');
+  });
+
   it('exports the bar height the Spaces keep clear while following', () => {
     useFollowStore.getState().start('u1', 'Li Lei');
     render(<FollowBar />);

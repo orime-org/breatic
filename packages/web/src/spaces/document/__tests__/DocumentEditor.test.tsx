@@ -27,6 +27,8 @@ import { Awareness } from 'y-protocols/awareness';
 
 import { deriveId, documentBodyFragment, type DocumentProposal } from '@breatic/shared';
 
+import { FOLLOW_BAR_HEIGHT } from '@web/features/follow/FollowBar';
+import { useFollowStore } from '@web/stores/follow';
 import { BODY_SCROLLER_CLASS } from '@web/spaces/document/document-body-scroller';
 import { DocumentEditor } from '@web/spaces/document/DocumentEditor';
 import { requestCommentLocation, selectedThreadsIn } from '@web/spaces/document/document-comment-selection';
@@ -117,6 +119,22 @@ describe('DocumentEditor', () => {
     expect(columns).toHaveLength(2);
     expect(columns[0]).toHaveAttribute('data-testid', 'doc-outline-column');
     expect(columns[1]).toHaveClass(BODY_SCROLLER_CLASS);
+  });
+
+  it('moves the outline toggle and the whole-document entry below the follow bar while following', () => {
+    // The bar lies over the top of the Space; the controls pinned there
+    // would otherwise sit half under it.
+    const { container, unmount } = render(<DocumentEditor handle={handle} />);
+    const row = container.firstElementChild!.firstElementChild as HTMLElement;
+    expect(row.style.getPropertyValue('--doc-follow-inset')).toBe('0px');
+    unmount();
+    act(() => useFollowStore.getState().start('u2', 'Li Lei'));
+    const following = render(<DocumentEditor handle={handle} />);
+    const followingRow = following.container.firstElementChild!.firstElementChild as HTMLElement;
+    expect(followingRow.style.getPropertyValue('--doc-follow-inset')).toBe(`${FOLLOW_BAR_HEIGHT}px`);
+    expect(screen.getByTestId('doc-doc-menu-trigger').closest('.sticky')!.className).toContain('var(--doc-follow-inset)');
+    expect(screen.getByTestId('doc-outline-toggle').parentElement!.className).toContain('var(--doc-follow-inset)');
+    act(() => useFollowStore.getState().reset());
   });
 
   it('puts the whole-document entry inside the scroller, ahead of the page', () => {

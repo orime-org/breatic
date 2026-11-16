@@ -178,7 +178,7 @@ describe('MembersStack', () => {
 describe('MembersStack, following', () => {
   beforeEach(() => {
     useFollowStore.getState().reset();
-    toastMock.info.mockClear();
+    toastMock.warning.mockClear();
   });
 
   it('dims View on a member who is following someone, and pressing it only says whom they follow', async () => {
@@ -197,7 +197,25 @@ describe('MembersStack, following', () => {
     expect(screen.getByTestId('members-follow-m-own')).not.toHaveAttribute('aria-disabled');
     await user.click(view);
     expect(useFollowStore.getState().targetUserId).toBeNull();
-    expect(toastMock.info).toHaveBeenCalledWith(t('members.follow.busy', { name: 'Editor Person', other: 'Owner Person' }));
+    expect(toastMock.warning).toHaveBeenCalledWith(t('members.follow.busy', { name: 'Editor Person', other: 'Owner Person' }));
+  });
+
+  it('ellipsizes a long member name beside the View button', async () => {
+    // Text directly inside a flex container takes no ellipsis; the name has
+    // its own truncating box so a cut name shows that it is cut.
+    const user = userEvent.setup();
+    render(
+      <MembersStack
+        members={MEMBERS}
+        currentUserId='u-vw'
+        onlineUserIds={new Set(['u-ed', 'u-vw'])}
+        followTargets={new Map<string, FollowOther>()}
+      />,
+    );
+    await user.click(screen.getByTestId('members-trigger'));
+    const name = screen.getByText('Editor Person');
+    expect(name).toHaveClass('min-w-0', 'truncate');
+    expect(name).not.toHaveClass('flex');
   });
 
   it('says a member is following this user when View is pressed on them', async () => {
@@ -213,7 +231,7 @@ describe('MembersStack, following', () => {
     await user.click(screen.getByTestId('members-trigger'));
     await user.click(screen.getByTestId('members-follow-m-ed'));
     expect(useFollowStore.getState().targetUserId).toBeNull();
-    expect(toastMock.info).toHaveBeenCalledWith(t('members.follow.busyYou', { name: 'Editor Person' }));
+    expect(toastMock.warning).toHaveBeenCalledWith(t('members.follow.busyYou', { name: 'Editor Person' }));
   });
 
   it('shows each row online or offline', async () => {
