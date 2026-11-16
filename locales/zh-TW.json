@@ -2250,7 +2250,11 @@
     "popover": {
       "title": "Project 成員",
       "manage": "管理協作者",
-      "isMe": "(你)"
+      "isMe": "(你)",
+      "online": "線上",
+      "offline": "離線",
+      "follow": "查看",
+      "unfollow": "停止"
     },
     "modal": {
       "title": "協作者管理",
@@ -2282,6 +2286,17 @@
     },
     "stack": {
       "triggerAria": "Project 成員（{count}）"
+    },
+    "follow": {
+      "bar": "正在跟隨 {name}",
+      "stop": "停止",
+      "stoppedViewport": "你動了視口，已停止跟隨",
+      "stoppedSpace": "你切換了 Space，已停止跟隨",
+      "stoppedOffline": "{name} 離線，已停止跟隨",
+      "stoppedLeaderFollows": "{name} 開始跟隨 {other}，已停止跟隨",
+      "stoppedLeaderFollowsYou": "{name} 開始跟隨你，已停止跟隨",
+      "busy": "{name} 正在跟隨 {other}",
+      "busyYou": "{name} 正在跟隨你"
     }
   },
   "spaces": {

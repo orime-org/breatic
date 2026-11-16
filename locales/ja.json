@@ -2250,7 +2250,11 @@
     "popover": {
       "title": "Project メンバー",
       "manage": "コラボレーターを管理",
-      "isMe": "(自分)"
+      "isMe": "(自分)",
+      "online": "オンライン",
+      "offline": "オフライン",
+      "follow": "表示",
+      "unfollow": "停止"
     },
     "modal": {
       "title": "コラボレーター管理",
@@ -2282,6 +2286,17 @@
     },
     "stack": {
       "triggerAria": "Project メンバー({count})"
+    },
+    "follow": {
+      "bar": "{name} をフォロー中",
+      "stop": "停止",
+      "stoppedViewport": "ビューを動かしたため、フォローを停止しました",
+      "stoppedSpace": "Space を切り替えたため、フォローを停止しました",
+      "stoppedOffline": "{name} がオフラインになったため、フォローを停止しました",
+      "stoppedLeaderFollows": "{name} が {other} のフォローを始めたため、フォローを停止しました",
+      "stoppedLeaderFollowsYou": "{name} があなたのフォローを始めたため、フォローを停止しました",
+      "busy": "{name} は {other} をフォロー中です",
+      "busyYou": "{name} はあなたをフォロー中です"
     }
   },
   "spaces": {

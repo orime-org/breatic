@@ -8,7 +8,7 @@ import {
   samePeerActivity,
   type PeerActivity,
 } from '@web/spaces/canvas/node-activity';
-import { useAwarenessSlice } from '@web/spaces/canvas/use-awareness-slice';
+import { useAwarenessSlice } from '@web/data/yjs/use-awareness-slice';
 
 /** The table every node reads while nobody else is doing anything. */
 const EMPTY: PeerActivity = new Map();

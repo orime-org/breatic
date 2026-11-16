@@ -65,7 +65,10 @@ export interface SceneViewportProps {
   onGestureChange: (patches: readonly SceneTransformPatch[]) => void;
   /** Native interaction is released before this callback is invoked. */
   onGestureEnd: (commit: boolean) => void;
-  onViewChange: (view: SceneView) => void;
+  /** The user's own view moved, or was first shown; `fov` is the camera's vertical field of view in degrees, which the editor publishes with it (#920). */
+  onViewChange: (view: SceneView, fov: number) => void;
+  /** The user's own input moved the camera: an Orbit drag or wheel, or an overview navigation. */
+  onUserCameraMove?: () => void;
   onError: (error: Error) => void;
   onModelStateChange?: (id: string, state: SceneModelState, error?: Error) => void;
   resolveAsset: (assetId: string, signal: AbortSignal) => Promise<ResolvedSceneAsset>;

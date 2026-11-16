@@ -2250,7 +2250,11 @@
     "popover": {
       "title": "Project members",
       "manage": "Manage collaborators",
-      "isMe": "(you)"
+      "isMe": "(you)",
+      "online": "Online",
+      "offline": "Offline",
+      "follow": "View",
+      "unfollow": "Stop"
     },
     "modal": {
       "title": "Collaborators",
@@ -2282,6 +2286,17 @@
     },
     "stack": {
       "triggerAria": "Project members ({count})"
+    },
+    "follow": {
+      "bar": "Following {name}",
+      "stop": "Stop",
+      "stoppedViewport": "You moved the view. Stopped following",
+      "stoppedSpace": "You switched Space. Stopped following",
+      "stoppedOffline": "{name} went offline. Stopped following",
+      "stoppedLeaderFollows": "{name} started following {other}. Stopped following",
+      "stoppedLeaderFollowsYou": "{name} started following you. Stopped following",
+      "busy": "{name} is following {other}",
+      "busyYou": "{name} is following you"
     }
   },
   "spaces": {

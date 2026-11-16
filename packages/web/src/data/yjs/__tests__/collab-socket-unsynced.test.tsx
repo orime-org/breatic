@@ -96,7 +96,7 @@ vi.mock('@web/data/yjs/collab-failure-report', () => ({ reportCollabFailure: vi.
 
 vi.mock('@web/data/yjs/project-meta', async (importOriginal) => ({
   ...await importOriginal<typeof ProjectMetaModule>(),
-  useProjectMeta: () => ({ spaces: [], users: new Map(), synced: true, provider: null, status: 'disconnected', authFailedReason: null }),
+  useProjectMeta: () => ({ spaces: [], users: new Map(), following: new Map(), synced: true, provider: null, status: 'disconnected', authFailedReason: null }),
 }));
 vi.mock('@web/pages/project/use-record-project-open', () => ({ useRecordProjectOpen: (): undefined => undefined }));
 vi.mock('@web/data/api', async (importOriginal) => {
