@@ -150,7 +150,7 @@ describe("region jobs", () => {
     expect(h.callRegion).toHaveBeenCalledWith("us-west", "studioSlugState", ["s-us"], 5000);
     expect(h.settle).toHaveBeenCalledWith("there", "s-us", { slug: "renamed-again", eventsInFlight: true });
     expect(h.settle).not.toHaveBeenCalledWith("lost", expect.anything(), expect.anything());
-    expect(h.logError).toHaveBeenCalledWith(expect.objectContaining({ studioId: "s-eu" }), "slug_reservation_settle_failed");
+    expect(h.logError).toHaveBeenCalledWith(expect.objectContaining({ studioId: "s-eu" }), "slug_reservation_ask_failed");
   });
 
   // inner#1955: a region that stays down must not keep its due reservations

@@ -124,24 +124,35 @@ export async function forwardRevocation(job: Job<IdentityRevocationForwardJob>):
 export async function sweepSlugReservations(): Promise<number> {
   let settled = 0;
   const silent = new Set<string>();
+  /**
+   * Hold a reservation whose region gave no answer for another window.
+   * @param due - The reservation.
+   * @param due.slug - Its slug.
+   * @param due.studioId - Its Studio.
+   * @param region - Its Studio's region.
+   * @returns Once postponed or logged.
+   */
+  const postpone = async (due: { slug: string; studioId: string }, region: string): Promise<void> => {
+    await directoryWrites.postponeSlugReservation(due.slug, due.studioId).catch((err: unknown) => {
+      logger.error({ err, studioId: due.studioId, region }, "slug_reservation_postpone_failed");
+    });
+  };
   for (const due of await studioDirectoryRepo.listDueSlugReservations(getRegionsConfig().slug_reservation_sweep_batch)) {
     const region = due.region ?? env.GLOBAL_REGION;
+    if (silent.has(region)) {
+      await postpone(due, region);
+      continue;
+    }
     let state: directoryWrites.SlugState;
     try {
-      if (silent.has(region)) {
-        await directoryWrites.postponeSlugReservation(due.slug, due.studioId);
-        continue;
-      }
       state = region === env.REGION
         ? await directoryWrites.slugState(due.studioId)
         : ((await askRegion(region, "studioSlugState", [due.studioId])) as directoryWrites.SlugState);
     } catch (err) {
       // The region gave no answer: its reservations stay held, a window later.
-      logger.error({ err, studioId: due.studioId, region }, "slug_reservation_settle_failed");
+      logger.error({ err, studioId: due.studioId, region }, "slug_reservation_ask_failed");
       silent.add(region);
-      await directoryWrites.postponeSlugReservation(due.slug, due.studioId).catch((postponeErr: unknown) => {
-        logger.error({ err: postponeErr, studioId: due.studioId, region }, "slug_reservation_postpone_failed");
-      });
+      await postpone(due, region);
       continue;
     }
     try {
