@@ -57,12 +57,21 @@ function caretAtEnd(editor: Editor, blockId: string): void {
   view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, view.state.selection.from)));
 }
 
+/**
+ * Where a trigger and query typed at the end of a row sit, counted the way
+ * the menu counts them: in positions from the caret.
+ */
+function typedBeforeCaret(editor: Editor, id: string, typed: string): ReturnType<typeof slashTyped> {
+  caretAtEnd(editor, id);
+  return slashTyped(editor as never, id, typed, editor.prosemirrorState.selection.$from.parentOffset - typed.length);
+}
+
 describe('a pick in the slash menu', () => {
   it('turns an empty paragraph holding only the query into the pick', () => {
     const editor = editorWith([{ type: 'paragraph', content: '/he' }]);
     const id = read(editor)[0]!.id;
     caretAtEnd(editor, id);
-    pickInSlashMenu(editor as never, slashTyped(editor as never, id, '/he')!, 'heading-1');
+    pickInSlashMenu(editor as never, typedBeforeCaret(editor, id, '/he')!, 'heading-1');
     const blocks = read(editor);
     expect(blocks[0]?.type).toBe('heading');
     expect(words(blocks[0])).toBe('');
@@ -72,7 +81,7 @@ describe('a pick in the slash menu', () => {
     const editor = editorWith([{ type: 'bulletListItem', content: '/' }]);
     const id = read(editor)[0]!.id;
     caretAtEnd(editor, id);
-    pickInSlashMenu(editor as never, slashTyped(editor as never, id, '/')!, 'heading-2');
+    pickInSlashMenu(editor as never, typedBeforeCaret(editor, id, '/')!, 'heading-2');
     expect(read(editor)).toHaveLength(1);
     expect(read(editor)[0]?.type).toBe('heading');
   });
@@ -81,7 +90,7 @@ describe('a pick in the slash menu', () => {
     const editor = editorWith([{ type: 'paragraph', content: 'hello /he' }]);
     const id = read(editor)[0]!.id;
     caretAtEnd(editor, id);
-    pickInSlashMenu(editor as never, slashTyped(editor as never, id, '/he')!, 'heading-1');
+    pickInSlashMenu(editor as never, typedBeforeCaret(editor, id, '/he')!, 'heading-1');
     const blocks = read(editor);
     expect(words(blocks[0])).toBe('hello ');
     expect(blocks[0]?.type).toBe('paragraph');
@@ -92,19 +101,13 @@ describe('a pick in the slash menu', () => {
     const editor = editorWith([{ type: 'paragraph', content: '/fo' }]);
     const id = read(editor)[0]!.id;
     caretAtEnd(editor, id);
-    const made = pickInSlashMenu(editor as never, slashTyped(editor as never, id, '/fo')!, 'formula');
+    const made = pickInSlashMenu(editor as never, typedBeforeCaret(editor, id, '/fo')!, 'formula');
     expect(made).toBe(read(editor)[0]?.id);
     expect(read(editor)[0]?.type).toBe('mathBlock');
   });
 });
 
 describe('a pick on a line with an inline node before the trigger', () => {
-  /** Where the trigger sits, counted the way the menu counts it: in positions. */
-  function typedBeforeCaret(editor: Editor, id: string, typed: string): ReturnType<typeof slashTyped> {
-    caretAtEnd(editor, id);
-    return slashTyped(editor as never, id, typed, editor.prosemirrorState.selection.$from.parentOffset - typed.length);
-  }
-
   it('adds the pick below a line that holds an inline formula', () => {
     const editor = editorWith([
       { type: 'paragraph', content: [{ type: 'text', text: 'a ', styles: {} }, { type: 'math', props: { source: 'x' } }, { type: 'text', text: ' /he', styles: {} }] },
@@ -132,7 +135,7 @@ describe('media picked in the slash menu', () => {
   it('removes the query and lands the file once it is chosen', () => {
     const editor = editorWith([{ type: 'paragraph', content: 'text /im' }]);
     const id = read(editor)[0]!.id;
-    const typed = slashTyped(editor as never, id, '/im')!;
+    const typed = typedBeforeCaret(editor, id, '/im')!;
     expect(landSlashMedia(editor as never, typed, picture as never)).toBe(true);
     expect(words(read(editor)[0])).toBe('text ');
     expect(read(editor).some((block) => block.type === 'image')).toBe(true);
@@ -141,7 +144,7 @@ describe('media picked in the slash menu', () => {
   it('lands the file without deleting text that changed meanwhile', () => {
     const editor = editorWith([{ type: 'paragraph', content: 'text /im' }]);
     const id = read(editor)[0]!.id;
-    const typed = slashTyped(editor as never, id, '/im')!;
+    const typed = typedBeforeCaret(editor, id, '/im')!;
     editor.updateBlock(id, { content: 'text rewritten' } as never);
     expect(landSlashMedia(editor as never, typed, picture as never)).toBe(true);
     expect(words(read(editor)[0])).toBe('text rewritten');
@@ -151,7 +154,7 @@ describe('media picked in the slash menu', () => {
   it('lands nothing once the row is gone', () => {
     const editor = editorWith([{ type: 'paragraph', content: 'keep' }, { type: 'paragraph', content: '/im' }]);
     const id = read(editor)[1]!.id;
-    const typed = slashTyped(editor as never, id, '/im')!;
+    const typed = typedBeforeCaret(editor, id, '/im')!;
     editor.removeBlocks([id]);
     expect(landSlashMedia(editor as never, typed, picture as never)).toBe(false);
     expect(read(editor).some((block) => block.type === 'image')).toBe(false);

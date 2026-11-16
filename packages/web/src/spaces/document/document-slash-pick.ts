@@ -28,7 +28,7 @@ import {
 export interface SlashTyped {
   /** The row the menu was opened on. */
   readonly blockId: string;
-  /** Characters into the row's text where the trigger starts. */
+  /** Positions into the row's content where the trigger starts. */
   readonly offset: number;
   /** The trigger and the query after it. */
   readonly typed: string;
@@ -60,25 +60,36 @@ function rowText(doc: PMNode, blockId: string): RowText | undefined {
 }
 
 /**
- * Where a typed trigger and query sit in a row.
+ * Where a typed trigger and query sit in a row. The offset counts positions,
+ * as the caret does, so an inline formula or a line break before the trigger
+ * counts as one.
  * @param editor - The editor.
  * @param blockId - The row.
  * @param typed - The trigger and the query.
- * @param offset - Characters into the row's text; the last occurrence when left out.
+ * @param offset - Positions into the row's content where the trigger starts.
  * @returns The record, or undefined when the row does not hold the text there.
  */
 export function slashTyped(
   editor: HandleEditor,
   blockId: string,
   typed: string,
-  offset?: number,
+  offset: number,
 ): SlashTyped | undefined {
   const row = rowText(editor.prosemirrorState.doc, blockId);
-  if (row === undefined) return undefined;
-  const text = row.node.textContent;
-  const at = offset ?? text.lastIndexOf(typed);
-  if (at < 0 || text.slice(at, at + typed.length) !== typed) return undefined;
-  return { blockId, offset: at, typed };
+  if (row === undefined || !holdsTyped(row.node, offset, typed)) return undefined;
+  return { blockId, offset, typed };
+}
+
+/**
+ * Whether a row's content holds the typed text at an offset.
+ * @param node - The row's content node.
+ * @param offset - Positions into it.
+ * @param typed - The trigger and the query.
+ * @returns True when the text is there.
+ */
+function holdsTyped(node: PMNode, offset: number, typed: string): boolean {
+  const end = offset + typed.length;
+  return offset >= 0 && end <= node.content.size && node.textBetween(offset, end) === typed;
 }
 
 /**
@@ -89,12 +100,9 @@ export function slashTyped(
  */
 function removeTyped(tr: Transaction, record: SlashTyped): boolean {
   const row = rowText(tr.doc, record.blockId);
-  if (row === undefined) return false;
+  if (row === undefined || !holdsTyped(row.node, record.offset, record.typed)) return false;
   const from = row.start + record.offset;
-  const to = from + record.typed.length;
-  if (to > row.start + row.node.content.size) return false;
-  if (tr.doc.textBetween(from, to) !== record.typed) return false;
-  tr.delete(from, to);
+  tr.delete(from, from + record.typed.length);
   return true;
 }
 
