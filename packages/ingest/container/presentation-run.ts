@@ -400,7 +400,9 @@ async function plan(body: PresentationProbeRequest, input: string, directory: st
     routeInput: {
       plan: { planSha256, producerVersion: PRODUCER_VERSION, profileVersion: PROFILE_VERSION }, hdr, alpha,
       // A container crop is part of the display geometry, which a copied or played-as-is source does not carry to the carrier.
-      identityQualified: !cropped && identityQualified({ container: containerOf(format), video, pixFmt, bitDepth: depth.bitDepth, matrixTagged, audioCodec }, body.probe.identityFormats),
+      // Playing as-is keeps the source's own clock, which is the plan's only for an unaltered plan whose origin is 0 (§4.1).
+      identityQualified: !cropped && videoPlanIsUnaltered(assembled) && BigInt(assembled.originMapping.origin.numerator) === 0n
+        && identityQualified({ container: containerOf(format), video, pixFmt, bitDepth: depth.bitDepth, matrixTagged, audioCodec }, body.probe.identityFormats),
       colorMatrixTagged: matrixTagged, codec,
       // §4.1 row 2: a copy keeps the plan when the plan presents the source unaltered and the MP4 carrier can hold the codec.
       copyPreservesTimeline: !cropped && videoPlanIsUnaltered(assembled) && MP4_COPY_CODECS.has(codec),

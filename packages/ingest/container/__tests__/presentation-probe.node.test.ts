@@ -498,6 +498,13 @@ describe('each field of the frozen identity table decides on its own (§91 D1-1)
     expect(answer.routeInput.identityQualified).toBe(false);
   });
 
+  // The source plays as-is only when it plays on the plan's clock (§4.1 简单稳定输入): its plan unaltered and its origin 0. A
+  // first frame at 0.25 s through ctts alone (origin 1/4) and an edit that cuts the media (an altered plan) take a carrier.
+  it.each(['noelst-ctts.mp4', 'cut.mp4'])('IQ05 %s, a format the table qualifies, does not play as-is', async (name) => {
+    const answer = planned(await probed(name, { probe: { ...PROBE, identityFormats: [{ ...IDENTITY_FORMATS[0]!, profiles: ['High', 'Main', 'Constrained Baseline', 'Baseline'] }] } }));
+    expect(answer.routeInput.identityQualified).toBe(false);
+  });
+
   // The source plays as-is only when its picture is the coded one: a Matroska PixelCrop is part of the display geometry (§4.3).
   it('IQ04 a table that names Matroska qualifies the Matroska source until it carries a PixelCrop', async () => {
     const table = { probe: { ...PROBE, identityFormats: [{ ...IDENTITY_FORMATS[0]!, container: 'matroska' }] } };
