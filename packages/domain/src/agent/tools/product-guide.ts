@@ -1885,6 +1885,16 @@ export function renderProductGuide(): string {
       "when that line is the document's only block. Empty " +
       "paragraphs have no six-dot handle, so its menu and dragging are not offered on them; a selection that takes " +
       "in an empty paragraph acts on it as on any other paragraph.",
+    "- Typing a slash at the start of a line or after a space opens, under the caret, the same entries as that " +
+      "plus (with a Chinese or Japanese input method on, the full-width slash or the ideographic comma the slash key " +
+      "types does the same). Letters typed after it narrow the list by an entry's name in the interface language or " +
+      `in English; when nothing matches it says ${quoted(t("spaces.document.slashMenu.empty"))}, and it closes once ` +
+      "three more characters still match nothing. The up and down arrows move through it and Enter or a click picks; " +
+      "the slash and the letters after it are removed, a line left with no text turns into the pick and a line with " +
+      "text gets it below, greyed entries and what follows a pick (the table's size grid, the file picker, the " +
+      "formula box) work as in the plus menu. Esc, clicking elsewhere or moving the caret off the line closes it and " +
+      "keeps what was typed; one undo after a pick brings the slash and its letters back. It does not open in a code " +
+      "block.",
     "- Hovering any other line, with no text selected, shows a handle of six dots at its left. Drag it to move the " +
       `block; click it for a menu with ${quoted(t("spaces.document.commands.blockType"))}, ` +
       `${quoted(t("spaces.document.blockHandle.duplicate"))}, ` +
