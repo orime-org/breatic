@@ -667,6 +667,7 @@ describe("POST /assets/upload-ticket", () => {
     expect(events).toHaveLength(1);
     expect(events[0]!.counts).toEqual({
       running: 0,
+      waiting: 0,
       done: 1,
       failed: 0,
       expired: 0,

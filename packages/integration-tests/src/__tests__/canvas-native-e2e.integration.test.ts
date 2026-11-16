@@ -745,6 +745,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
     // The counts are what the node holds about tasks, and this run finished.
     expect(data!["taskCounts"]).toEqual({
       running: 0,
+      waiting: 0,
       done: 1,
       failed: 0,
       expired: 0,
@@ -910,6 +911,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
     expect(data).not.toBeNull();
     expect(data!["taskCounts"]).toEqual({
       running: 0,
+      waiting: 0,
       done: 0,
       failed: 1,
       expired: 0,
@@ -1012,6 +1014,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
     // anything, or the retry would have had nothing left to land on.
     expect(data!["taskCounts"]).toEqual({
       running: 0,
+      waiting: 0,
       done: 1,
       failed: 0,
       expired: 0,
@@ -1102,6 +1105,7 @@ describe("canvas-native flow: BullMQ → runTask → Redis stream → Collab →
       expect(data).not.toBeNull();
       expect(data!["taskCounts"]).toEqual({
         running: 0,
+        waiting: 0,
         done: 1,
         failed: 0,
         expired: 0,
@@ -1638,7 +1642,7 @@ describe("transcription results and usage cross the real settlement and collabor
           (data) => settled(data) && data["bodyText"] === text,
           10_000, `transcription ${taskId} content and counts reached Yjs`);
         expect(node["bodyText"]).toBe(text);
-        expect(node["taskCounts"]).toEqual({ running: 0, done: 1, failed: 0, expired: 0 });
+        expect(node["taskCounts"]).toEqual({ running: 0, waiting: 0, done: 1, failed: 0, expired: 0 });
         expect(readingCtrl.requests).toHaveLength(1);
         expect(readingCtrl.requests[0]).toMatchObject({
           model: MODEL,

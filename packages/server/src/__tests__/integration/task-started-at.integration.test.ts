@@ -44,8 +44,11 @@ afterAll(async () => {
 
 describe("marking a task running", () => {
   // The start is the worker's clock, the clock the run's end and duration are read on.
+  // A task first starts through the running-task gate; markRunning writes only
+  // a row already running (inner#1968 design 3.9), so the row is one here.
   it("keeps the first start the worker gave, when the run is picked up again", async () => {
     const first = new Date("2026-01-01T00:00:00.000Z");
+    await sql`UPDATE tasks SET status = 'running' WHERE id = ${taskId}`;
 
     const started = await taskService.markRunning(taskId, "job-1", first);
     const again = await taskService.markRunning(taskId, "job-1", new Date("2026-01-01T00:05:00.000Z"));

@@ -178,6 +178,9 @@ describe("B.1 a generation is one operation, counted when it succeeds", () => {
   it("B-03 a retried attempt that then succeeds still leaves one row, counted once", async () => {
     const a = await seedAccount(sql);
     const taskId = await generate(a);
+    // Only a started task has a retryable attempt; it stays running through
+    // the retry and markRunning keeps it so (inner#1968 design 3.9).
+    await sql`update tasks set status = 'running', started_at = now() where id = ${taskId}`;
     await fail(a, taskId, false);
     await taskService.markRunning(taskId, `job-${taskId}`, new Date());
     await succeed(taskId);

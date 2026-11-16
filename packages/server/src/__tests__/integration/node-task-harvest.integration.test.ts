@@ -159,7 +159,7 @@ describe("reading a node's task list", () => {
     expect(await readRow(taskId)).toMatchObject({ status: "expired" });
     expect(tasks).toHaveLength(1);
     expect(tasks[0]).toMatchObject({ id: taskId, status: "expired" });
-    expect(counts).toEqual({ running: 0, done: 0, failed: 0, expired: 1 });
+    expect(counts).toEqual({ running: 0, waiting: 0, done: 0, failed: 0, expired: 1 });
   });
 
   it("leaves a row still inside its budget alone", async () => {
@@ -173,7 +173,7 @@ describe("reading a node's task list", () => {
 
     expect(await readRow(taskId)).toMatchObject({ status: "running" });
     expect(tasks[0]).toMatchObject({ id: taskId, status: "running" });
-    expect(counts).toEqual({ running: 1, done: 0, failed: 0, expired: 0 });
+    expect(counts).toEqual({ running: 1, waiting: 0, done: 0, failed: 0, expired: 0 });
   });
 
   it("leaves a row that already settled alone, however old it is", async () => {
@@ -190,7 +190,7 @@ describe("reading a node's task list", () => {
     // A terminal row is a fact that already happened; the budget has nothing
     // left to say about it.
     expect(await readRow(taskId)).toMatchObject({ status: "done" });
-    expect(counts).toEqual({ running: 0, done: 1, failed: 0, expired: 0 });
+    expect(counts).toEqual({ running: 0, waiting: 0, done: 1, failed: 0, expired: 0 });
   });
 
   it("judges only the row that ran out when both are on one node", async () => {
@@ -206,7 +206,7 @@ describe("reading a node's task list", () => {
 
     expect(await readRow(stale)).toMatchObject({ status: "expired" });
     expect(await readRow(fresh)).toMatchObject({ status: "running" });
-    expect(counts).toEqual({ running: 1, done: 0, failed: 0, expired: 1 });
+    expect(counts).toEqual({ running: 1, waiting: 0, done: 0, failed: 0, expired: 1 });
   });
 
   it("touches no other node's rows", async () => {

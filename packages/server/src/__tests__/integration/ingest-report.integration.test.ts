@@ -628,12 +628,14 @@ describe("a finish this server drove — a completed upload", () => {
     expect(events).toHaveLength(2);
     expect(events[0]!.counts).toEqual({
       running: 1,
+      waiting: 0,
       done: 0,
       failed: 0,
       expired: 0,
     });
     expect(events[1]!.counts).toEqual({
       running: 0,
+      waiting: 0,
       done: 1,
       failed: 0,
       expired: 0,
