@@ -146,10 +146,10 @@ export const SceneDirectorPanel = React.memo(function SceneDirectorPanel(props: 
   const fields = (object: SceneCameraObject | SceneLightObject): React.ReactNode => object.id === selectedId
     ? <div className='border-t border-border px-2 pb-3 pt-2.5'><SceneDirectorFields object={object} session={session} canEdit={canEdit} spaceId={spaceId}
       Field={Field} compact fieldDrafts={fieldDrafts} onFieldDraftChange={onFieldDraftChange} /></div> : null;
-  return <div className='space-y-4 p-3' data-testid='scene-director-panel'>
+  return <div className='space-y-4 p-4' data-testid='scene-director-panel'>
     <section className='space-y-2'>
       <div className='flex items-center justify-between'>
-        <h3 className='text-xs font-medium text-muted-foreground'>{t('spaces.threeD.director.cameras')}</h3>
+        <h3 className='text-xs font-medium'>{t('spaces.threeD.director.cameras')}</h3>
         <SceneIconButton label={t('spaces.threeD.director.saveView')} disabled={!canEdit} onClick={onSaveView}>{plusIcon}</SceneIconButton>
       </div>
       {cameras.length === 0
@@ -159,7 +159,7 @@ export const SceneDirectorPanel = React.memo(function SceneDirectorPanel(props: 
     </section>
     <section className='space-y-2'>
       <div className='flex items-center justify-between'>
-        <h3 className='text-xs font-medium text-muted-foreground'>{t('spaces.threeD.director.lights')}</h3>
+        <h3 className='text-xs font-medium'>{t('spaces.threeD.director.lights')}</h3>
         <DropdownMenu>
           <DropdownMenuTrigger asChild disabled={!canEdit}>
             <SceneIconButton label={t('spaces.threeD.director.addLight')} disabled={!canEdit}>{plusIcon}</SceneIconButton>
@@ -175,15 +175,15 @@ export const SceneDirectorPanel = React.memo(function SceneDirectorPanel(props: 
         ? <p className='rounded-md border border-dashed border-border p-4 text-center text-xs text-muted-foreground'>{t('spaces.threeD.director.lightsEmpty')}</p>
         : <div className='space-y-1'>{lights.map((light) => {
           const note = lightPlan?.lights[light.id]?.note ?? null;
-          return <div key={light.id} data-testid={`scene-director-light-${light.id}`} className={cn('rounded-md', light.id === selectedId && 'bg-accent')}>
+          return <div key={light.id} data-testid={`scene-director-light-${light.id}`} className={cn('rounded-md border', light.id === selectedId ? 'border-active-border' : 'border-transparent')}>
             <div className={DIRECTOR_ROW}>
-              <Button variant={null} size={null} className='flex min-w-0 flex-1 items-center gap-2 text-left' onClick={() => session.select(light.id, false)}>
+              <Button variant={null} size={null} className='flex min-w-0 flex-1 items-center gap-2 self-stretch text-left text-xs font-normal' onClick={() => session.select(light.id, false)}>
                 <span className='size-3 shrink-0 rounded-full border border-border' style={{ backgroundColor: light.color }} />
                 <span className='min-w-0 flex-1 truncate'>{light.name}</span>
                 <span className='shrink-0 text-muted-foreground'>{t(`spaces.threeD.director.${LIGHT_LABEL[light.model.type]}`)}</span>
               </Button>
-              <span id={`${ids}-${light.id}-shadow`} className='shrink-0 text-muted-foreground'>{t('spaces.threeD.castShadow')}</span>
-              <Switch aria-labelledby={`${ids}-${light.id}-shadow`} checked={light.castShadow} disabled={!canEdit || light.locked}
+              <label id={`${ids}-${light.id}-shadow`} htmlFor={`${ids}-${light.id}-shadow-switch`} className='shrink-0 text-muted-foreground'>{t('spaces.threeD.castShadow')}</label>
+              <Switch id={`${ids}-${light.id}-shadow-switch`} aria-labelledby={`${ids}-${light.id}-shadow`} checked={light.castShadow} disabled={!canEdit || light.locked}
                 onCheckedChange={(castShadow) => session.execute({ type: 'patch', patches: [{ id: light.id, castShadow }] })} />
             </div>
             {note ? <p className='px-2 pb-1 text-xs text-muted-foreground'>{t(note === 'overLimit' ? 'spaces.threeD.director.lightOverLimit' : 'spaces.threeD.director.shadowBudget')}</p> : null}
@@ -192,14 +192,14 @@ export const SceneDirectorPanel = React.memo(function SceneDirectorPanel(props: 
         })}</div>}
     </section>
     <section className='space-y-2' data-testid='scene-director-ambient'>
-      <h3 className='text-xs font-medium text-muted-foreground'>{t('spaces.threeD.director.ambient')}</h3>
+      <h3 className='text-xs font-medium'>{t('spaces.threeD.director.ambient')}</h3>
       <div className='flex items-center justify-between gap-3'>
-        <span id={`${ids}-ambient-color`} className='text-xs'>{t('spaces.threeD.color')}</span>
+        <span id={`${ids}-ambient-color`} className='text-xs text-muted-foreground'>{t('spaces.threeD.color')}</span>
         <SceneColorField value={environment.ambientColor} disabled={!canEdit} labelId={`${ids}-ambient-color`} spaceId={spaceId}
           onPressStart={onAmbientPressStart} onPreview={onAmbientColor} onCommit={onAmbientCommit} onCancel={onAmbientCancel} onWrite={onAmbientWrite} />
       </div>
       <div className='flex items-center justify-between gap-3'>
-        <span id={`${ids}-ambient-intensity`} className='text-xs'>{t('spaces.threeD.intensity')}</span>
+        <span id={`${ids}-ambient-intensity`} className='text-xs text-muted-foreground'>{t('spaces.threeD.intensity')}</span>
         <div className='flex items-center gap-2'>
           <Slider aria-labelledby={`${ids}-ambient-intensity`} className='w-28' min={0} max={SCENE_AMBIENT_INTENSITY_MAX} step={0.1} disabled={!canEdit}
             value={[environment.ambientIntensity]} onValueChange={([ambientIntensity]) => { if (ambientIntensity !== undefined) onAmbientPreview({ ambientIntensity }); }}

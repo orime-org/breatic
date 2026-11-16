@@ -36,7 +36,7 @@ const CUSTOM = 'custom';
  */
 function Row({ label, labelId, children }: { label: string; labelId: string; children: React.ReactNode }): React.JSX.Element {
   return <div className='flex min-h-[var(--btn-inline)] items-center justify-between gap-3'>
-    <span id={labelId} className='shrink-0 text-xs'>{label}</span>
+    <span id={labelId} className='shrink-0 text-xs text-muted-foreground'>{label}</span>
     <div className='flex min-w-0 items-center justify-end gap-2'>{children}</div>
   </div>;
 }
@@ -74,6 +74,10 @@ function useContinuousPatch(session: SceneSession, id: string): { begin: () => n
 }
 
 const HEX_TEXT = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i;
+// The picker's width: react-colorful's 200px picker, the popover's p-3 and its border.
+const PICKER_WIDTH = 226;
+// The popover's gap from the surface it opens from, as PopoverContent's own sideOffset.
+const PICKER_GAP = 8;
 
 /**
  * A colour chosen in a react-colorful picker inside a Popover (design 3.8). Each press of the picker, by the mouse or an
@@ -102,6 +106,8 @@ export const SceneColorField = React.memo(function SceneColorField({ value, disa
   // What the box shows while the user is typing; null shows the current colour.
   const [typed, setTyped] = React.useState<string | null>(null);
   const [container, setContainer] = React.useState<HTMLElement | null>(null);
+  const swatch = React.useRef<HTMLButtonElement>(null);
+  const [sideOffset, setSideOffset] = React.useState(PICKER_GAP);
   const released = React.useRef(false);
   const [releases, setReleases] = React.useState(0);
   // react-colorful follows its own pointer and shows `value` again only when `value` changes: a change refused because
@@ -168,7 +174,15 @@ export const SceneColorField = React.memo(function SceneColorField({ value, disa
     if (open) {
       live.current = true;
       // In its Space, the popover hides with the Space and a Space tab press keeps the caret in the box.
-      setContainer(document.querySelector<HTMLElement>(`[data-space-outlet="${CSS.escape(spaceId)}"]`));
+      const outlet = document.querySelector<HTMLElement>(`[data-space-outlet="${CSS.escape(spaceId)}"]`);
+      setContainer(outlet);
+      // Beside the right panel, the picker opens outside it so the fields it belongs to stay readable; with no room
+      // there it opens next to the swatch.
+      const trigger = swatch.current;
+      const panel = trigger?.closest<HTMLElement>('[data-testid="scene-right-panel"]') ?? null;
+      const inset = trigger && panel ? trigger.getBoundingClientRect().left - panel.getBoundingClientRect().left : 0;
+      const room = panel && outlet ? panel.getBoundingClientRect().left - outlet.getBoundingClientRect().left : 0;
+      setSideOffset(room >= PICKER_WIDTH + PICKER_GAP ? inset + PICKER_GAP : PICKER_GAP);
       return;
     }
     settle();
@@ -187,13 +201,16 @@ export const SceneColorField = React.memo(function SceneColorField({ value, disa
   const onKeyDown = React.useCallback((event: React.KeyboardEvent<HTMLInputElement>): void => { if (event.key === 'Enter') settle(); }, [settle]);
   return <Popover onOpenChange={onOpenChange}>
     <PopoverTrigger asChild>
-      <Button variant={null} size={null} aria-labelledby={labelId} disabled={disabled}
-        className='size-6 rounded-full border border-border disabled:cursor-not-allowed disabled:opacity-50' style={{ backgroundColor: value }} />
+      <Button ref={swatch} variant={null} size={null} aria-labelledby={labelId} disabled={disabled}
+        className='size-6 rounded-full border border-border transition hover-enabled:border-active-border hover-enabled:opacity-70 disabled:cursor-not-allowed disabled:opacity-50'
+        style={{ backgroundColor: value }} />
     </PopoverTrigger>
-    <PopoverContent container={container} side='left' align='start' className='w-auto space-y-2 p-2' onEscapeKeyDown={onEscapeKeyDown} onInteractOutside={keepOnSpaceTab}>
-      <div ref={picker} onBlur={onPickerBlur}><HexColorPicker key={resyncs} color={value} onChange={pick} onChangeEnd={endChange} onMouseDown={onPress} onKeyDown={onPickerKey} onKeyUp={onPickerKeyUp} /></div>
+    <PopoverContent container={container} side='left' align='start' sideOffset={sideOffset} className='w-auto space-y-2 p-3'
+      onEscapeKeyDown={onEscapeKeyDown} onInteractOutside={keepOnSpaceTab}>
+      {/* react-colorful injects its own unlayered corners (8px); an important utility outranks them, as the canvas picker does. */}
+      <div ref={picker} onBlur={onPickerBlur} className='[&_.react-colorful__last-control]:!rounded-b-overlay [&_.react-colorful__saturation]:!rounded-t-overlay'><HexColorPicker key={resyncs} color={value} onChange={pick} onChangeEnd={endChange} onMouseDown={onPress} onKeyDown={onPickerKey} onKeyUp={onPickerKeyUp} /></div>
       <Input value={typed ?? value} onChange={onType} onBlur={onBlur} onKeyDown={onKeyDown} spellCheck={false} autoComplete='off'
-        className='h-[var(--btn-inline)] rounded-md bg-background px-2 text-xs md:text-xs' />
+        className='h-[var(--btn-inline)] rounded-content-sm bg-background px-2 text-xs uppercase tabular-nums md:text-xs' />
     </PopoverContent>
   </Popover>;
 });
@@ -293,9 +310,10 @@ export const SceneDirectorFields = React.memo(function SceneDirectorFields(props
         onValueChange={([value]) => { if (value !== undefined) continuous.preview({ intensity: value }); }} onPointerDown={continuous.begin} onKeyDown={continuous.stepKey} onPointerUp={continuous.commit} />
       <span className='w-10 text-right text-xs tabular-nums text-muted-foreground'>{Number(object.intensity.toFixed(1))}</span>
     </Row>
-    <Row label={t('spaces.threeD.castShadow')} labelId={`${ids}-shadow`}>
+    {/* The director's light row carries the shadow switch itself. */}
+    {compact ? null : <Row label={t('spaces.threeD.castShadow')} labelId={`${ids}-shadow`}>
       <Switch aria-labelledby={`${ids}-shadow`} checked={object.castShadow} disabled={disabled} onCheckedChange={(castShadow) => patch({ castShadow })} />
-    </Row>
+    </Row>}
     {object.model.type === 'spot' ? <Row label={t('spaces.threeD.angle')} labelId={`${ids}-angle`}>
       <Slider aria-labelledby={`${ids}-angle`} className='w-28' min={SCENE_SPOT_ANGLE_MIN} max={SCENE_SPOT_ANGLE_MAX} step={1} value={[object.angle ?? SCENE_SPOT_ANGLE_DEFAULT]}
         disabled={disabled} onValueChange={([value]) => { if (value !== undefined) continuous.preview({ angle: value }); }} onPointerDown={continuous.begin} onKeyDown={continuous.stepKey} onPointerUp={continuous.commit} />

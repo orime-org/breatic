@@ -1578,7 +1578,7 @@ export function renderProductGuide(): string {
       "A refusal, such as too few credits or a view that is not a picture of this Project, keeps the dialog open with everything in it and says why in a short message.",
     `The floating bar at the bottom right orders ${quoted(t("spaces.threeD.undo"))}, ${quoted(t("spaces.threeD.redo"))}, ` +
       `${quoted(t("spaces.threeD.properties"))}, ${quoted(t("spaces.threeD.objects"))}, ${quoted(t("spaces.threeD.tasks"))}, ` +
-      `${quoted(t("spaces.threeD.director.open"))} (a clapperboard icon), ${quoted(t("spaces.threeD.viewfinder.open"))} (a frame icon) and ` +
+      `${quoted(t("spaces.threeD.director.open"))} (a clapperboard icon), ${quoted(t("spaces.threeD.viewfinder.open"))} (four frame corners) and ` +
       `${quoted(t("spaces.threeD.minimap"))}. The four panel buttons keep their ordinary appearance while open. ` +
       "Click one to open its panel on the right; click the same button again to close it, or another to switch content. " +
       `An X with the ${quoted(t("spaces.threeD.closePanel"))} tooltip also closes the panel. Its content scrolls above the minimap. ` +
@@ -1627,10 +1627,10 @@ export function renderProductGuide(): string {
       `Each light's row has a colour dot, its name, its type and a ${quoted(t("spaces.threeD.castShadow"))} switch; a row may say ${quoted(t("spaces.threeD.director.lightOverLimit"))} ` +
       `or ${quoted(t("spaces.threeD.director.shadowBudget"))}, when this computer's graphics cannot show another shadow. With no light it says ${quoted(t("spaces.threeD.director.lightsEmpty"))} ` +
       `Under ${quoted(t("spaces.threeD.director.ambient"))} are a ${quoted(t("spaces.threeD.color"))} swatch and an ${quoted(t("spaces.threeD.intensity"))} slider shared by everyone. ` +
-      "Clicking a camera's or light's icon in the scene, its light row, or its card menu's first item selects it and opens its settings under its card or row: the name, " +
+      "Clicking a camera's or light's icon in the scene, anywhere on its light row, or its card menu's first item selects it and opens its settings under its card or row, and a selected light's row is outlined: the name, " +
       `for a camera ${quoted(t("spaces.threeD.focalLength"))} (presets from 14 to 200 mm, ${quoted(t("spaces.threeD.director.customFocal"))}, and a box taking 8 to 300) and ${quoted(t("spaces.threeD.frame"))}, ` +
-      `for a light ${quoted(t("spaces.threeD.color"))}, ${quoted(t("spaces.threeD.intensity"))}, ${quoted(t("spaces.threeD.castShadow"))} and, for a spotlight, ${quoted(t("spaces.threeD.angle"))}, and a ${quoted(t("spaces.threeD.lock"))} switch. ` +
-      `${quoted(t("spaces.threeD.properties"))} shows the same settings with the position and rotation. A slider or colour previews while you drag and is written once when you let go. ` +
+      `for a light ${quoted(t("spaces.threeD.color"))}, ${quoted(t("spaces.threeD.intensity"))} and, for a spotlight, ${quoted(t("spaces.threeD.angle"))} (its ${quoted(t("spaces.threeD.castShadow"))} switch is the one on its row), and a ${quoted(t("spaces.threeD.lock"))} switch. ` +
+      `${quoted(t("spaces.threeD.properties"))} shows the same settings, a light's ${quoted(t("spaces.threeD.castShadow"))} switch among them, with the position and rotation. A slider or colour previews while you drag and is written once when you let go. ` +
       "Cameras and lights are moved and turned in the scene like objects; they cannot be scaled and a point light cannot be turned. They show up in the object list and on the minimap, but never in a still or a camera's picture. " +
       "Everyone in the Space sees the same cameras, lights and ambient light; which camera you look through is yours alone. A Viewer can watch the cards and look through cameras but cannot add or change anything.",
     `The ${quoted(t("spaces.threeD.tasks"))} panel lists every member's model imports and generations in this Space, newest first, the same for everyone. ` +

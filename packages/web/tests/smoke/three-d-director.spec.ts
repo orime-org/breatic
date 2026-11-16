@@ -120,8 +120,8 @@ test('a light is added, its shadow turned off, and deleting it brings back defau
     const [light] = await directorRecords(page, id);
     expect(light).toMatchObject({ model: { kind: 'light', type: 'spot' }, number: 1, castShadow: true });
     const row = panel.getByTestId(`scene-director-light-${light!.id}`);
-    // The new light is selected, so its fields open under the row with a second shadow switch; the row's own comes first.
-    await row.getByRole('switch', { name: 'Cast shadow', exact: true }).first().click();
+    // The new light is selected and its fields open under the row; the shadow switch stays on the row itself.
+    await row.getByRole('switch', { name: 'Cast shadow', exact: true }).click();
     await expect.poll(async () => (await directorRecords(page, id))[0]?.castShadow).toBe(false);
     await row.getByRole('button').first().click();
     await visibleSpace(page).getByRole('button', { name: 'Delete', exact: true }).click();

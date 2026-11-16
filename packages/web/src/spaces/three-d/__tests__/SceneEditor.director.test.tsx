@@ -186,6 +186,23 @@ describe('the director console panel (inner#1694 design 3.1, 3.2)', () => {
     expect(within(card).getByText(t('spaces.threeD.frame'))).toBeInTheDocument();
   });
 
+  it('marks the selected light with the active border and keeps one shadow switch on its card', async () => {
+    const { session } = await setup([lamp()]);
+    await openDirector();
+    act(() => session.select(LAMP, false));
+    const card = screen.getByTestId(`scene-director-light-${LAMP}`);
+    expect(card.className).toContain('border-active-border');
+    expect(card.className).not.toMatch(/(^|\s)bg-accent(\s|$)/);
+    expect(within(card).getAllByRole('switch', { name: t('spaces.threeD.castShadow') })).toHaveLength(1);
+  });
+
+  it('turns a light\'s shadow off from the words beside its switch', async () => {
+    const { session } = await setup([lamp()]);
+    await openDirector();
+    fireEvent.click(within(screen.getByTestId(`scene-director-light-${LAMP}`)).getByText(t('spaces.threeD.castShadow')));
+    await waitFor(() => expect((readSceneDocument(session.doc).objects.find((object) => object.id === LAMP) as unknown as { castShadow: boolean }).castShadow).toBe(false));
+  });
+
   it('shows the over-limit and shadow-budget notes the viewport reports', async () => {
     const second = '00000000-0000-4000-8000-000000001002';
     await setup([lamp(), lamp(second, 2)]);
