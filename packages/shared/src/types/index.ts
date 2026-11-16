@@ -209,6 +209,7 @@ export type {
   TierPrice,
   AccountUsage,
   AccountMembership,
+  OperationUsage,
 } from "@shared/types/membership.js";
 
 export {

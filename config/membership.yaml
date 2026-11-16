@@ -33,32 +33,38 @@ tiers:
   # Free tier. One personal studio, no team studios.
   base:
     team_studios: 0            # a real zero: this tier cannot create one
-    projects_per_studio: 10
+    projects_per_studio: 9999
     concurrent_editors: 2
     studio_members: 1
     project_members: 4
     storage_bytes: 5368709120  # 5 GiB
+    monthly_operations: 500    # operations included each month, shared by every studio this account administers
+    running_tasks_per_user: 2  # tasks one person may have running at once; at least 1
 
   # Paid tier. What it costs over each billing period is in
   # config/subscription.yaml — a figure repeated here is a figure that goes
   # stale the next time one of them changes.
   pro:
     team_studios: 1
-    projects_per_studio: 100
-    concurrent_editors: 6
+    projects_per_studio: 9999
+    concurrent_editors: 4
     studio_members: 10
-    project_members: 12
-    storage_bytes: 214748364800  # 200 GiB
+    project_members: 8
+    storage_bytes: 107374182400  # 100 GiB
+    monthly_operations: 4000
+    running_tasks_per_user: 5
 
   # Paid tier, charged flat rather than per seat. Its prices live in
   # config/subscription.yaml, for the same reason as above.
   team:
     team_studios: 3
-    projects_per_studio: 300
+    projects_per_studio: 9999
     concurrent_editors: 20
-    studio_members: 100
+    studio_members: 50
     project_members: 40
     storage_bytes: 536870912000  # 500 GiB
+    monthly_operations: 16000
+    running_tasks_per_user: 10
 
   # Every account on a self-hosted install lands here. The numbers come from
   # whoever runs this deployment, not from our price list.
@@ -70,9 +76,10 @@ tiers:
   # Enterprise is a valid account tier with negotiated information stored in
   # enterprise_memberships. The membership reader combines that record's
   # validity and limits with ordinary subscription facts. Active enterprise
-  # quota checks use the saved limits; storage keeps its enterprise exemption.
-  # Missing legacy information produces an explicit quota error until it is
-  # completed. Registration requires a configured default_tier.
+  # quota checks use the saved limits, storage included; an enterprise account
+  # whose information is missing keeps uncapped storage and 16000 operations
+  # and 10 running tasks a person, and its other quotas raise an explicit
+  # error until the information is completed. Registration requires a configured default_tier.
   self_hosted:
     team_studios: 9999
     projects_per_studio: 9999
@@ -80,6 +87,8 @@ tiers:
     studio_members: 9999
     project_members: 9999
     storage_bytes: 109951162777600  # 100 TiB
+    monthly_operations: 9999
+    running_tasks_per_user: 9999
 
 # How long a stored subscription may sit past its paid period before its tier
 # stops being honoured, in days.
@@ -95,3 +104,13 @@ tiers:
 # every service that reads a tier has this file; collab reads it when it sizes
 # a document's editor seats.
 stale_after_days: 14
+
+# Monthly operations (inner#1968). Each tier above includes
+# monthly_operations a month; past that, an operation costs overage_credits,
+# taken from the studio it happens in. A deployment with payments off counts
+# nothing.
+operations:
+  overage_credits: 0.5                 # credits one operation past the allowance costs
+  deferred_sweep_interval_ms: 300000   # how often unclaimed derived uploads are counted
+  max_absorbed_per_operation: 10       # derived uploads one operation can use up
+  chat_message_lease_ms: 7200000       # how long a queued Agent message stays in flight unless renewed

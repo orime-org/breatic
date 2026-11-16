@@ -120,6 +120,7 @@ export type {
   TierPrice,
   AccountUsage,
   AccountMembership,
+  OperationUsage,
   BillingPeriod,
   MembershipOffer,
   InvitableProjectRole,

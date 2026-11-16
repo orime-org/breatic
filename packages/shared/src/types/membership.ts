@@ -78,7 +78,7 @@ export type ConfiguredMembershipTier =
 const limitSchema = z.number().int().nonnegative();
 
 /**
- * The six ceilings every tier carries.
+ * The eight ceilings every tier carries.
  *
  * `concurrent_editors` counts simultaneous WRITABLE CONNECTIONS to one
  * document, not people: one account with four browser tabs open holds four of
@@ -99,6 +99,13 @@ export const tierLimitsSchema = z.object({
   studio_members: limitSchema,
   project_members: limitSchema,
   storage_bytes: limitSchema,
+  /** Operations included each month before overage (inner#1968); 0 is a real zero. */
+  monthly_operations: limitSchema,
+  /**
+   * Tasks one person may have running at once (inner#1968). At least 1: a
+   * zero would park that tier's tasks forever without ever expiring them.
+   */
+  running_tasks_per_user: z.number().int().positive(),
 });
 
 /**
@@ -242,8 +249,10 @@ export interface TierPrice {
 export interface TierOffer {
   /** Which tier this row describes. */
   readonly tier: ComparableMembershipTier;
-  /** That tier's six ceilings, read from `config/membership.yaml`. */
+  /** That tier's eight ceilings, read from `config/membership.yaml`. */
   readonly limits: MembershipLimits;
+  /** Operations included each month, the comparison table's row (inner#1968). */
+  readonly monthlyOperations: number;
   /**
    * What it costs over each billing period.
    *
@@ -399,6 +408,26 @@ export interface AccountUsage {
   readonly storageBytes: number;
 }
 
+/** What one account has used of its monthly operations, read under no lock (inner#1968). */
+export interface OperationUsage {
+  /** The tier's, or the enterprise agreement's, monthly operations. */
+  readonly monthlyAllowance: number;
+  /** Counted operations in this period, every slot. */
+  readonly usedThisPeriod: number;
+  /** Counted operations in this period that the allowance covered. */
+  readonly allowanceUsed: number;
+  /** `max(0, monthlyAllowance - allowanceUsed)`. */
+  readonly allowanceRemaining: number;
+  /** Counted operations in this period charged as overage. */
+  readonly overageThisPeriod: number;
+  /** The period's start, ISO 8601. */
+  readonly periodStart: string;
+  /** The period's end, when the allowance resets, ISO 8601. */
+  readonly nextResetAt: string;
+  /** What one overage costs, as a CreditDecimal; null when this account is not charged. */
+  readonly overageCredits: string | null;
+}
+
 /**
  * Everything the membership panel shows, in one answer.
  *
@@ -410,7 +439,7 @@ export interface AccountMembership {
   /** The tier stored on this account. */
   readonly tier: MembershipTier;
   /**
-   * That tier's six ceilings, or `null` for `enterprise`.
+   * That tier's eight ceilings, or `null` for `enterprise`.
    *
    * `null` says "this tier's ceilings do not come from configuration", which
    * is a real state rather than a failure: they are agreed per customer, and
@@ -420,6 +449,17 @@ export interface AccountMembership {
   readonly limits: MembershipLimits | null;
   /** How much of the account-level allowances is spent. */
   readonly usage: AccountUsage;
+  /**
+   * The storage ceiling in bytes: the tier's, or an active enterprise
+   * agreement's; null for an enterprise account without an agreement, whose
+   * storage is not capped.
+   */
+  readonly storageLimitBytes: number | null;
+  /**
+   * This period's operations, or null where operations are not counted
+   * (payments off, or the self_hosted tier).
+   */
+  readonly operations: OperationUsage | null;
   /** The tiers offered for comparison, in ascending order. */
   readonly catalog: readonly TierOffer[];
   /**
