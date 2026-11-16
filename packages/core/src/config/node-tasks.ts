@@ -22,15 +22,6 @@ const nodeTaskConfigSchema = z.object({
   cost_wait_attempts: z.number().int().positive().default(6),
 });
 
-/**
- * How long past a task's deadline its last report may still land, for the
- * operations ledger and the running-task count (inner#1968): the room the
- * worker leaves a container job, two polls of the shipped `poll_interval_ms`
- * (5000, `config/mini-tools.yaml`; `run-container-job.ts`). Change both
- * together.
- */
-export const REPORT_GRACE_MS = 10_000;
-
 /** Validated node task configuration. */
 export type NodeTaskConfig = z.infer<typeof nodeTaskConfigSchema>;
 

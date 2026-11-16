@@ -75,9 +75,9 @@ export type {
   ProjectMediaBackfillSummary,
   RunProjectMediaBackfillInput,
 } from "@core/asset/project-media-backfill.js";
-export { budgetDeadlineFrom, getNodeTaskConfig, REPORT_GRACE_MS, type NodeTaskConfig } from "@core/config/node-tasks.js";
+export { budgetDeadlineFrom, getNodeTaskConfig, type NodeTaskConfig } from "@core/config/node-tasks.js";
 export { getStripeWebhookRecordingWriteTimeoutMs } from "@core/config/stripe-webhook-recording.js";
-export { getMiniToolsConfig, type MiniToolsConfig } from "@core/config/mini-tools.js";
+export { getMiniToolsConfig, reportGraceMs, type MiniToolsConfig } from "@core/config/mini-tools.js";
 export { getUnderstandConfig, type UnderstandConfig } from "@core/config/understand.js";
 export { getSceneConfig, type SceneConfig } from "@core/config/scene.js";
 export {
