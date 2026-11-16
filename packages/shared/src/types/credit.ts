@@ -272,7 +272,7 @@ export interface StudioLotView {
  * charge. It cost this account nothing, and it is still something the user
  * did.
  */
-export type CreditLedgerKind = "generation" | "debt_repayment" | "unbilled";
+export type CreditLedgerKind = "generation" | "debt_repayment" | "unbilled" | "operation_overage";
 
 /**
  * One line of this account's ledger: one run, and what it came to here.

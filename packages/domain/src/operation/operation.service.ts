@@ -33,6 +33,7 @@ import { emitOperationAudit, type OperationAudit } from "@domain/operation/opera
 import { findLiveByKeyInStudio } from "@domain/asset/asset.repo.js";
 import { resolveOwnerStudioId } from "@domain/asset/asset.service.js";
 import * as creditHoldRepo from "@domain/credit/creditHold.repo.js";
+import { OPERATION_OVERAGE_DESCRIPTION } from "@domain/credit/creditLot.repo.js";
 import { lockedPosition, spendCapHit, type SpendCapHit } from "@domain/credit/creditHold.service.js";
 import * as creditLotService from "@domain/credit/creditLot.service.js";
 import { fromMicroCredits, serializeCreditPosition, toChargeCredits, toChargeMicro } from "@domain/credit/credit-math.js";
@@ -245,7 +246,7 @@ async function settleCount(found: OperationRow, from: "reserved" | "deferred", t
       projectId: counted.projectId,
       studioId: counted.studioId,
       amount: toChargeCredits(getOperationsConfig().overage_credits),
-      description: "Operation overage",
+      description: OPERATION_OVERAGE_DESCRIPTION,
       ...(hold === null ? {} : { releaseHold: hold }),
     }, tx);
     if (chargeRequestId !== null) await operationRepo.setChargeRequest(counted.operationKey, chargeRequestId, tx);

@@ -52,6 +52,12 @@ import type {
 } from "@breatic/shared";
 
 /**
+ * What an operation-overage charge writes on its ledger rows (inner#1968,
+ * design 3.4), which is how the ledger reads such a line as its own kind.
+ */
+export const OPERATION_OVERAGE_DESCRIPTION = "Operation overage";
+
+/**
  * What makes a lot spendable, stated once.
  *
  * Designated to a studio that is still there, and still `active`. The studio
@@ -1321,7 +1327,9 @@ export async function listLedgerByPayer(
       kind: sql<CreditLedgerKind>`CASE
         WHEN BOOL_AND(${creditLedger.lotId} IS NULL) THEN 'unbilled'
         WHEN BOOL_AND(${creditLedger.entryType} = 'debt_repayment')
-        THEN 'debt_repayment' ELSE 'generation' END`,
+        THEN 'debt_repayment'
+        WHEN BOOL_AND(${creditLedger.description} = ${OPERATION_OVERAGE_DESCRIPTION})
+        THEN 'operation_overage' ELSE 'generation' END`,
       amount: sql<string>`COALESCE(SUM(${creditLedger.amount}), 0)::text`,
     })
     .from(creditLedger)
