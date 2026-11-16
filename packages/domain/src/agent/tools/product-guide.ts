@@ -215,7 +215,7 @@ const BILLED_BY_RUN_TIME = "billed by how long it runs";
 
 /**
  * The Mini-tools list, read off the registry: each tool by the name its menu
- * row shows, what it is for, and for the ones run in the media container,
+ * row shows, what it is for, and for the paid ones run in the media container,
  * that they are billed by run time.
  * @returns One line per kind of node, then one per tool.
  */
@@ -224,7 +224,7 @@ function miniToolLines(): string[] {
     `- ${name}:`,
     ...MINI_TOOLS.filter((tool) => tool.source === source).map(
       (tool) =>
-        `  - ${quoted(t(tool.labelKey))}: ${tool.guide}${tool.run.kind === "container" ? ` (${BILLED_BY_RUN_TIME})` : ""}.`,
+        `  - ${quoted(t(tool.labelKey))}: ${tool.guide}${tool.run.kind === "container" && tool.billing !== "free" ? ` (${BILLED_BY_RUN_TIME})` : ""}.`,
     ),
   ]);
 }
