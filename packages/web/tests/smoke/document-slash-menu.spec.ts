@@ -194,4 +194,53 @@ test.describe('the slash menu in the document body', () => {
     await expect(page.locator(MENU)).toBeHidden();
     await expect.poll(() => lines(page)).toEqual(['paragraph:、']);
   });
+
+  test('keeps the size grid open while the pointer crosses the rows below Table toward it', async () => {
+    await openFreshDocument(page);
+    await page.keyboard.type('/');
+    const table = await page.getByTestId('doc-slash-row-table').boundingBox();
+    expect(table).not.toBeNull();
+    await page.mouse.move(table!.x + 20, table!.y + table!.height / 2);
+    const far = page.getByTestId('doc-slash-table-size-6-6');
+    await expect(far).toBeVisible();
+    const cell = await far.boundingBox();
+    await page.mouse.move(cell!.x + 5, cell!.y + 5, { steps: 25 });
+    await expect(page.getByTestId('doc-slash-table-grid')).toBeVisible();
+    await page.mouse.down();
+    await page.mouse.up();
+    await expect.poll(() => lines(page)).toContain('docTable');
+  });
+
+  test('stays under the trigger when the window narrows', async () => {
+    await openFreshDocument(page);
+    await page.keyboard.type('x /');
+    await expect(page.locator(MENU)).toBeVisible();
+    await page.setViewportSize({ width: 760, height: 950 });
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const trigger = document.querySelector('.bn-suggestion-decorator')?.getBoundingClientRect();
+          const menu = document.querySelector('[data-testid="doc-slash-menu"]')?.getBoundingClientRect();
+          return trigger === undefined || menu === undefined ? null : Math.abs(Math.round(menu.left - trigger.left));
+        }),
+      )
+      .toBe(0);
+  });
+
+  test('takes a trigger committed after a pause out with one undo', async () => {
+    await openFreshDocument(page);
+    await page.keyboard.type('ab ');
+    // What was typed before stays its own undo step.
+    await page.waitForTimeout(900);
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Input.imeSetComposition', { text: '\u3001', selectionStart: 1, selectionEnd: 1 });
+    // A pause longer than the undo history's grouping window.
+    await page.waitForTimeout(800);
+    await cdp.send('Input.insertText', { text: '\u3001' });
+    await expect(page.locator(MENU)).toBeVisible();
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('ControlOrMeta+z');
+    await expect.poll(() => lines(page)).toEqual(['paragraph:ab ']);
+  });
 });
+
