@@ -594,3 +594,26 @@ describe('a ticket refused for operations used up', () => {
     expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({ reason: 'operations' });
   });
 });
+
+// inner#1968 H-33: the ticket refused because the person or the studio has
+// reached its monthly spend cap. Topping up does not lift a cap.
+describe('a ticket refused for a spend cap', () => {
+  it('names the failure spendCap', async () => {
+    const file = new File(['x'], 'photo.png', { type: 'image/png' });
+    const context = { projectId: 'p1', nodeId: 'n1', spaceId: 's1' };
+    const deps = makeUploadDeps({
+      requestTicket: vi.fn().mockRejectedValue(
+        new ApiException({
+          status: 402,
+          message: 'capped',
+          reason: 'spend_cap_reached',
+          details: { reason: 'spend_cap_reached', scope: 'member', limit: '10', resetsAt: '2026-12-01T00:00:00.000Z' },
+        }),
+      ),
+    });
+
+    await runMediaUpload(file, context, deps);
+
+    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({ reason: 'spendCap' });
+  });
+});

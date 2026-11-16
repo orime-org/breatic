@@ -451,3 +451,28 @@ describe("a result that cannot be written", () => {
     expect(data.get("taskResultEventId")).toBeUndefined();
   });
 });
+
+// inner#1968 G-37: the counts carry how many of the running tasks wait for a
+// free slot (`waiting`, a subset of `running`), and an older document whose
+// `taskCounts` has no `waiting` reads it as 0.
+describe("the waiting count", () => {
+  it("rewrites counts that differ only in waiting", () => {
+    const nodeId = crypto.randomUUID();
+    const { doc, data } = docWithNode(nodeId);
+    apply(doc, { nodeId, counts: { running: 1, waiting: 0, done: 0, failed: 0, expired: 0 } as never });
+    apply(doc, { nodeId, counts: { running: 1, waiting: 1, done: 0, failed: 0, expired: 0 } as never });
+    expect(data.get("taskCounts")).toEqual({ running: 1, waiting: 1, done: 0, failed: 0, expired: 0 });
+  });
+
+  // Passes before this work: the four-number comparison already ignores a
+  // missing `waiting`, which is what reading it as 0 asks for here.
+  it("reads an older document's missing waiting as 0, so the same counts with waiting 0 write nothing", () => {
+    const nodeId = crypto.randomUUID();
+    const { doc, data } = docWithNode(nodeId);
+    data.set("taskCounts", { running: 1, done: 0, failed: 0, expired: 0 });
+    let updates = 0;
+    doc.on("update", () => { updates += 1; });
+    apply(doc, { nodeId, counts: { running: 1, waiting: 0, done: 0, failed: 0, expired: 0 } as never });
+    expect(updates).toBe(0);
+  });
+});
