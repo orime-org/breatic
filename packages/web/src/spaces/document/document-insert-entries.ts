@@ -72,3 +72,21 @@ export function insertReach(doc: PMNode, blockId: string, mode: InsertMode): Rea
   if (mode === 'fill' && blockQuoted(doc, blockId)) out.add('quote');
   return out;
 }
+
+/**
+ * A reach as a string, for readings compared by value.
+ * @param reach - The entries out of reach.
+ * @returns Their ids, sorted and joined.
+ */
+export function reachKey(reach: ReadonlySet<InsertEntryId>): string {
+  return [...reach].sort().join(',');
+}
+
+/**
+ * The reach a {@link reachKey} string stands for.
+ * @param key - The string.
+ * @returns The entries out of reach.
+ */
+export function reachFromKey(key: string): ReadonlySet<InsertEntryId> {
+  return new Set(key === '' ? [] : (key.split(',') as InsertEntryId[]));
+}

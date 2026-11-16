@@ -68,7 +68,6 @@ import {
 import { openFormulaBlock } from '@web/spaces/document/document-math';
 import { useDocumentMediaPick } from '@web/spaces/document/DocumentMediaPicker';
 import type { MediaBlockType } from '@web/spaces/document/document-media-types';
-import { QUOTED } from '@web/spaces/document/document-list-block';
 import { useStripOnFirstLine } from '@web/spaces/document/document-strip-alignment';
 import { DocumentBlockMenu } from '@web/spaces/document/DocumentBlockMenu';
 import { DocumentInsertChoices } from '@web/spaces/document/DocumentInsertChoices';
@@ -78,8 +77,8 @@ import { useEditorSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { useRowNow } from '@web/spaces/document/use-row-now';
 import { bodyLayerMark } from '@web/spaces/document/document-body-focus';
 import { domElementOf } from '@web/spaces/document/document-editor-view';
-import { columnsOutOfReach } from '@web/spaces/document/document-column-entry';
-import { blockInTableCell, DOC_TABLE } from '@web/spaces/document/document-table-nodes';
+import { insertReach, reachFromKey, reachKey } from '@web/spaces/document/document-insert-entries';
+import { DOC_TABLE } from '@web/spaces/document/document-table-nodes';
 
 /**
  * The handle: 24 square, which is the smallest a pointer target may be
@@ -95,7 +94,6 @@ const STRIP_BUTTON = 'size-6 shrink-0 [&_svg]:size-4 text-muted-foreground';
 type StripFace = 'grip' | 'plus' | 'table';
 
 /** Quote is out of reach: the line is already in a quote. Module-level so the memo sees one set. */
-const QUOTE_GREYED: ReadonlySet<InsertChoice> = new Set<InsertChoice>(['quote']);
 
 /** Each face's test id. */
 const TEST_ID: Readonly<Record<StripFace, string>> = {
@@ -123,16 +121,12 @@ const DELETE_ROW = BLOCK_MENU_ROWS.find((row) => row.id === 'delete')!;
 interface RowReading {
   /** The row is an empty paragraph, so the strip shows the plus. */
   readonly empty: boolean;
-  /** The row is in a quote, so the plus menu greys Quote. */
-  readonly quoted: boolean;
   /** The row is the document's only block, so deleting it changes nothing. */
   readonly lone: boolean;
   /** The row is a table, so the strip shows the table entry. */
   readonly table: boolean;
-  /** The row stands in a table cell, so the plus menu greys Table. */
-  readonly inCell: boolean;
-  /** Whether "Columns" is out of reach on the row (inner#1314 design §5.3). */
-  readonly noColumns: boolean;
+  /** The plus menu's entries out of reach on the row, as a `reachKey` string. */
+  readonly reach: string;
 }
 
 /**
@@ -144,11 +138,9 @@ interface RowReading {
 function sameReading(a: RowReading, b: RowReading): boolean {
   return (
     a.empty === b.empty &&
-    a.quoted === b.quoted &&
     a.lone === b.lone &&
     a.table === b.table &&
-    a.inCell === b.inCell &&
-    a.noColumns === b.noColumns
+    a.reach === b.reach
   );
 }
 
@@ -229,21 +221,25 @@ export function BlockStrip({ block, hold }: { block: PressedBlock | undefined; h
         const only = group?.childCount === 1 ? group.firstChild : null;
         return {
           empty: isEmptyParagraph(live),
-          quoted: live?.props?.[QUOTED] === true,
           // A table's own node holds its rows, so it is alone with what it holds.
           lone:
             only != null &&
             only.attrs.id === live?.id &&
             (only.type.name !== 'blockContainer' || only.childCount === 1),
           table: live?.type === DOC_TABLE,
-          inCell: live !== undefined && blockInTableCell(current.prosemirrorState.doc, live.id),
-          noColumns: live === undefined || columnsOutOfReach(current.prosemirrorState.doc, live.id),
+          // The plus turns the row itself into the pick (design 5.2, `fill`).
+          reach:
+            live === undefined
+              ? reachKey(new Set(['columns']))
+              : reachKey(insertReach(current.prosemirrorState.doc, live.id, 'fill')),
         };
       },
       [rowNow],
     ),
     sameReading,
   );
+  // One set per reading, so the memoised menu rows bail between renders.
+  const plusReach = React.useMemo(() => reachFromKey(row.reach), [row.reach]);
 
   // The carrier is placed on the row's top edge; this brings the handle down
   // onto the middle of the row's first line (A2).
@@ -467,9 +463,7 @@ export function BlockStrip({ block, hold }: { block: PressedBlock | undefined; h
               <DocumentInsertChoices
                 onPick={onFill}
                 onPickMedia={onFillMedia}
-                unreachable={row.quoted ? QUOTE_GREYED : undefined}
-                tableUnreachable={row.inCell}
-                columnsUnreachable={row.noColumns}
+                unreachable={plusReach}
               />
               {/* The grip menu's delete row, the one command an empty line
                   still needs (A12). Drawn out of reach on the document's only

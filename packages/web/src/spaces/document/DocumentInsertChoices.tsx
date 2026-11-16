@@ -29,6 +29,7 @@ import {
 import { blockTypeItem } from '@web/spaces/document/document-block-type';
 import { DIVIDER } from '@web/spaces/document/document-divider';
 import { INSERT_MENU_ROWS } from '@web/spaces/document/document-insert-menu-items';
+import type { InsertEntryId } from '@web/spaces/document/document-insert-entries';
 import { COLUMNS, FORMULA, type InsertChoice, type TableSize } from '@web/spaces/document/document-insert-row';
 import { DocumentTableSizeGrid } from '@web/spaces/document/DocumentTableSizeGrid';
 import { toast } from '@web/lib/toast';
@@ -45,14 +46,10 @@ interface DocumentInsertChoicesProps {
   /** What picking an entry does. */
   onPick: (choice: InsertChoice) => void;
   /**
-   * Entries that would do nothing here, drawn out of reach. Every entry is
-   * reachable when it is left out.
+   * Entries that cannot be carried out on this row, drawn out of reach
+   * (`insertReach`). Every entry is reachable when it is left out.
    */
-  unreachable?: ReadonlySet<InsertChoice>;
-  /** Whether the table entry is drawn out of reach: a table never goes in a cell. */
-  tableUnreachable?: boolean;
-  /** Whether the columns entry is drawn out of reach (inner#1314 design §5.3). */
-  columnsUnreachable?: boolean;
+  unreachable?: ReadonlySet<InsertEntryId>;
   /** What picking a media entry does; left out, the menu offers none. */
   onPickMedia?: (kind: MediaBlockType) => void;
 }
@@ -61,20 +58,18 @@ interface DocumentInsertChoicesProps {
  * The rows, each running `onPick` with what it stands for.
  * @param props - See {@link DocumentInsertChoicesProps}.
  * @param props.onPick - What picking an entry does.
- * @param props.unreachable - Entries that would do nothing here.
- * @param props.tableUnreachable - Whether the table entry is out of reach.
- * @param props.columnsUnreachable - Whether the columns entry is out of reach.
+ * @param props.unreachable - Entries that cannot be carried out on this row.
  * @param props.onPickMedia - What picking a media entry does.
  * @returns The rows.
  */
 export const DocumentInsertChoices = React.memo(function DocumentInsertChoices({
   onPick,
   unreachable,
-  tableUnreachable = false,
-  columnsUnreachable = false,
   onPickMedia,
 }: DocumentInsertChoicesProps): React.JSX.Element {
   const t = useTranslation();
+  const tableUnreachable = unreachable?.has('table') === true;
+  const columnsUnreachable = unreachable?.has(COLUMNS) === true;
   const onPickColumns = React.useCallback((): void => {
     onPick(COLUMNS);
   }, [onPick]);

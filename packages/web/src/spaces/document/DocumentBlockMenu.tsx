@@ -92,8 +92,7 @@ import { useDocumentMediaPick } from '@web/spaces/document/DocumentMediaPicker';
 import type { MediaBlockType } from '@web/spaces/document/document-media-types';
 import { DocumentInsertChoices } from '@web/spaces/document/DocumentInsertChoices';
 import { useRowNow } from '@web/spaces/document/use-row-now';
-import { columnsOutOfReach } from '@web/spaces/document/document-column-entry';
-import { blockInTableCell } from '@web/spaces/document/document-table-nodes';
+import { insertReach, reachFromKey, reachKey } from '@web/spaces/document/document-insert-entries';
 import { openTableFullscreen } from '@web/spaces/document/document-table-fullscreen';
 import { copyTableLine, cutTableLine, firstCellOf } from '@web/spaces/document/document-table-line-clipboard';
 import { toast } from '@web/lib/toast';
@@ -266,6 +265,10 @@ export function DocumentBlockMenu({
 
   const rowNow = useRowNow(editor, block.id);
   const projectId = useDocumentProjectId();
+  // Insert below adds a row under this one (design 5.2, `below`); one set per
+  // value so the memoised rows bail between renders.
+  const belowKey = reachKey(insertReach(editor.prosemirrorState.doc, block.id, 'below'));
+  const belowReach = React.useMemo(() => reachFromKey(belowKey), [belowKey]);
 
   /**
    * The range standing for this row, read off the document as it is now.
@@ -440,8 +443,7 @@ export function DocumentBlockMenu({
                 <DocumentInsertChoices
                   onPick={onInsertBelow}
                   onPickMedia={onInsertMediaBelow}
-                  tableUnreachable={blockInTableCell(editor.prosemirrorState.doc, block.id)}
-                  columnsUnreachable={columnsOutOfReach(editor.prosemirrorState.doc, block.id)}
+                  unreachable={belowReach}
                 />
               </DropdownMenuSubContent>
             </DropdownMenuSub>
