@@ -363,14 +363,17 @@ export async function releaseOperation(key: string, tx?: DbTx, reason = "failed"
 }
 
 /**
- * Keep a waiting Agent message in flight, with its hold, for another lease.
+ * Keep a waiting Agent message in flight, with its hold, for another lease,
+ * once half of its lease has run.
  * @param key - Its key.
  * @returns Resolves when renewed; a row no longer reserved is left alone.
  * @throws {Error} When the database fails.
  */
 export async function renewOperation(key: string): Promise<void> {
-  const until = new Date(Date.now() + getOperationsConfig().chat_message_lease_ms);
-  if (await operationRepo.extend(key, until)) await creditHoldRepo.extendHold(`operation:${key}`, until);
+  const lease = getOperationsConfig().chat_message_lease_ms;
+  const now = Date.now();
+  const until = new Date(now + lease);
+  if (await operationRepo.extend(key, until, new Date(now + lease / 2))) await creditHoldRepo.extendHold(`operation:${key}`, until);
 }
 
 /**

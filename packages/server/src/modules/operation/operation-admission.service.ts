@@ -11,6 +11,16 @@ import type { DbTx } from "@breatic/core";
 import { operationService } from "@breatic/domain";
 import { formatCredits, getActiveLocale, t } from "@breatic/shared";
 
+/**
+ * The ledger key of an Agent message (design 3.2).
+ * @param userId - Who sent it.
+ * @param messageId - The id the page gave it.
+ * @returns `chat:<userId>:<messageId>`.
+ */
+export function chatOperationKey(userId: string, messageId: string): string {
+  return `chat:${userId}:${messageId}`;
+}
+
 /** A refusal the web client tells apart by `error.reason`. */
 export class ReasonedError extends AppError {
   /**
@@ -80,4 +90,36 @@ function refuseTakenKey(userId: string, projectId: string | null, key: string): 
  */
 export async function assertOperationKeyFree(key: string, userId: string, projectId: string | null): Promise<void> {
   if ((await operationService.operationStatus(key)) !== null) refuseTakenKey(userId, projectId, key);
+}
+
+/**
+ * Give back the operations of Agent messages that will never run: taken back
+ * from the queue, cleared with their conversation, or forgotten by a run.
+ * Each release that fails is logged and left to expire out of what is in
+ * flight; it never counts.
+ * @param messages - The messages and who sent each.
+ * @param reason - Why, kept on each row.
+ */
+export async function releaseChatMessages(messages: readonly { id: string; userId: string }[], reason: string): Promise<void> {
+  for (const message of messages) {
+    const key = chatOperationKey(message.userId, message.id);
+    await operationService.releaseOperation(key, undefined, reason).catch((err: unknown) =>
+      logger.error({ err, userId: message.userId, key }, "operation_release_failed"),
+    );
+  }
+}
+
+/**
+ * Keep Agent messages that are still waiting or running in flight for
+ * another lease (design 3.2). A renewal that fails is logged; the message
+ * then counts when it runs, whenever that is.
+ * @param messages - The messages and who sent each.
+ */
+export async function renewChatMessages(messages: readonly { id: string; userId: string }[]): Promise<void> {
+  for (const message of messages) {
+    const key = chatOperationKey(message.userId, message.id);
+    await operationService.renewOperation(key).catch((err: unknown) =>
+      logger.error({ err, userId: message.userId, key }, "operation_renew_failed"),
+    );
+  }
 }

@@ -28,8 +28,9 @@ import {
 import type { AgentGenerationStep, AgentPicture, OpenDocument, PrepareAgentPictures, ResolvedAgentConfig } from "@breatic/domain";
 import { buildSystemPrompt } from "@server/agent/context.js";
 import { userClockNote } from "@server/agent/user-clock.js";
-import { getAgentConfig, getStorageAdapter } from "@breatic/core";
-import { assetService, creditLotService, createUsageRecorder } from "@breatic/domain";
+import { db, getAgentConfig, getStorageAdapter } from "@breatic/core";
+import { assetService, creditLotService, createUsageRecorder, operationService } from "@breatic/domain";
+import { chatOperationKey } from "@server/modules/operation/operation-admission.service.js";
 import { saveToStorageFor } from "@server/agent/save-to-storage.js";
 import { agentMemoryFor } from "@server/agent/agent-memory.js";
 import { projectRecordsFor } from "@server/agent/project-records.js";
@@ -1507,6 +1508,7 @@ export class MainAgent {
           settled: { answered: whatToolAnswered, ended: howToolEnded },
         });
 
+        const recordedIds = [...(hooks.messageId === undefined ? [] : [hooks.messageId]), ...takenIn.map((t) => t.item.id)];
         let creditsUsed = 0;
         const failures = await finalizeTurn({
           steps: {
@@ -1515,12 +1517,28 @@ export class MainAgent {
             // reply with nothing in it, which is what draws "No reply this
             // turn" when the conversation is opened again.
             persist: async () => {
-              await messageRepo.addMessage(
-                conversationId,
-                { role: "assistant", parts: storedParts, turnIndex },
-                replyForModel,
-                replyId,
-              );
+              // Each message this turn took in is one operation, counted in
+              // the reply's own commit (inner#1968); a turn that failed or
+              // was too long to run releases them instead.
+              const counted = await db.transaction(async (tx) => {
+                await messageRepo.addMessage(
+                  conversationId,
+                  { role: "assistant", parts: storedParts, turnIndex },
+                  replyForModel,
+                  replyId,
+                );
+                const outcomes: operationService.CountOutcome[] = [];
+                for (const id of recordedIds) {
+                  const key = chatOperationKey(userId, id);
+                  if (exit === "failed" || exit === "too_long") await operationService.releaseOperation(key, tx, exit);
+                  else {
+                    const outcome = await operationService.countOperation(key, tx);
+                    if (outcome !== null) outcomes.push(outcome);
+                  }
+                }
+                return outcomes;
+              });
+              for (const outcome of counted) await operationService.settleOverage(outcome);
             },
             // Runs before `persist` (inner#1617): the charge request is
             // recorded as soon as the turn's usage rows are in, before the
@@ -1581,7 +1599,7 @@ export class MainAgent {
         hooks.onEnded?.({
           exit,
           stored: !failures.some((f) => f.step === "persist"),
-          recorded: [...(hooks.messageId === undefined ? [] : [hooks.messageId]), ...takenIn.map((t) => t.item.id)],
+          recorded: recordedIds,
           ...(awaitingCall === undefined ? {} : { awaitingCall }),
           ...(shutdown ? { shutdown: true } : {}),
         });

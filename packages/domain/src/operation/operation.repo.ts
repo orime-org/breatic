@@ -344,17 +344,20 @@ export async function listSweepable(limit: number): Promise<Array<{ operationKey
 }
 
 /**
- * Keep a live reserved row in flight until a later moment.
+ * Keep a reserved row in flight until a later moment, once it is due: only
+ * a row expiring before `dueBefore` is written, so frequent renewals cost
+ * one write per half lease.
  * @param key - The operation key.
- * @param until - The new expiry; an earlier one is ignored.
+ * @param until - The new expiry.
+ * @param dueBefore - Renew only a row expiring before this moment.
  * @param tx - Optional transaction handle.
  * @returns Whether a reserved row was extended.
  */
-export async function extend(key: string, until: Date, tx?: DbTx): Promise<boolean> {
+export async function extend(key: string, until: Date, dueBefore: Date, tx?: DbTx): Promise<boolean> {
   const rows = await (tx ?? db)
     .update(operationLedger)
     .set({ expiresAt: until, updatedAt: sql`now()` })
-    .where(and(eq(operationLedger.operationKey, key), eq(operationLedger.status, "reserved"), sql`${operationLedger.expiresAt} < ${until}`))
+    .where(and(eq(operationLedger.operationKey, key), eq(operationLedger.status, "reserved"), sql`${operationLedger.expiresAt} < ${dueBefore}`))
     .returning({ key: operationLedger.operationKey });
   return rows.length > 0;
 }
