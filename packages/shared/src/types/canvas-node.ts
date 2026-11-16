@@ -617,9 +617,12 @@ export interface CanvasNodeFields {
 
 // ── Event bus payloads ────────────────────────────────────────────
 
-/** The four numbers a node shows about its tasks. */
+/** The numbers a node shows about its tasks. */
 export interface NodeTaskCounts {
+  /** Every task not ended, the ones waiting for a free slot included. */
   running: number;
+  /** Of `running`, those waiting for a free running slot (inner#1968); an older document has none and reads 0. */
+  waiting: number;
   done: number;
   failed: number;
   expired: number;

@@ -36,6 +36,8 @@ export interface NodeTaskEntry {
   startedAt: string;
   /** Server time it reached its end state, ISO 8601; `null` while it runs. */
   settledAt: string | null;
+  /** Since when its task waits for a free running slot, ISO 8601; `null` once it runs (inner#1968). Absent from an older server. */
+  waitingSince?: string | null;
   /** The conservative allowance this task was given, in ms. */
   budgetMs: number;
   /** The file name or address for an upload, the model id for a run, the tool id for a mini-tool. */

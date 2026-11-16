@@ -103,6 +103,11 @@ export const TASK_FAILURE_REASONS = [
    * a whole one.
    */
   "cut_short",
+  /**
+   * The user cancelled a task that was waiting for a free running slot
+   * (inner#1968); it never ran, so nothing was charged.
+   */
+  "cancelled",
 ] as const;
 
 /** One of the causes above. */

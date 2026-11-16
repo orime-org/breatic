@@ -19,9 +19,11 @@ import type { NodeTaskAction, SceneGenerationOrigin, SceneTaskNotice } from "@br
 /** The four states a task can be in, and the four numbers the node shows. */
 export type NodeTaskStatus = "running" | "done" | "failed" | "expired";
 
-/** What the node's corner shows: one number per state. */
+/** What the node's corner shows: one number per state, and how many of the running wait for a slot. */
 export interface NodeTaskCounts {
   running: number;
+  /** Of `running`, the rows waiting for a free running slot (inner#1968). */
+  waiting: number;
   done: number;
   failed: number;
   expired: number;
@@ -47,6 +49,8 @@ export interface NodeTaskRow {
   nodeHistoryId: string | null;
   /** The registered model a Space-level row holds; null everywhere else. */
   assetId: string | null;
+  /** Since when its task waits for a free running slot; null once it runs (inner#1968). */
+  waitingSince: Date | null;
 }
 
 /** A 3D Space's own row (inner#1690, inner#1691), as its list and its actions read it. */
@@ -109,6 +113,7 @@ function rowOf(row: typeof nodeTasks.$inferSelect): NodeTaskRow {
     errorMessage: row.errorMessage,
     nodeHistoryId: row.nodeHistoryId,
     assetId: row.assetId,
+    waitingSince: row.waitingSince,
   };
 }
 
@@ -231,6 +236,8 @@ export async function harvestExpired(
         eq(nodeTasks.nodeId, nodeId),
         isNull(nodeTasks.deletedAt),
         eq(nodeTasks.status, "running"),
+        // A row waiting for a free running slot has no deadline yet (inner#1968).
+        isNull(nodeTasks.waitingSince),
         sql`${nodeTasks.startedAt} + (${nodeTasks.budgetMs} * interval '1 millisecond') < now()`,
       ),
     )
@@ -327,9 +334,9 @@ export async function findByStorageKey(
  * @param taskId - The job every row of that run points at.
  * @returns One entry per row, none when the job opened no row.
  */
-export async function budgetsFor(taskId: string): Promise<Pick<NodeTaskRow, "startedAt" | "budgetMs">[]> {
+export async function budgetsFor(taskId: string): Promise<Pick<NodeTaskRow, "startedAt" | "budgetMs" | "waitingSince">[]> {
   return db
-    .select({ startedAt: nodeTasks.startedAt, budgetMs: nodeTasks.budgetMs })
+    .select({ startedAt: nodeTasks.startedAt, budgetMs: nodeTasks.budgetMs, waitingSince: nodeTasks.waitingSince })
     .from(nodeTasks)
     .where(eq(nodeTasks.taskId, taskId));
 }
@@ -374,7 +381,11 @@ export async function countsFor(
   tx?: DbTx,
 ): Promise<NodeTaskCounts> {
   const rows = await (tx ?? db)
-    .select({ status: nodeTasks.status, n: sql<string>`count(*)` })
+    .select({
+      status: nodeTasks.status,
+      n: sql<string>`count(*)`,
+      waiting: sql<string>`count(*) filter (where ${nodeTasks.waitingSince} is not null)`,
+    })
     .from(nodeTasks)
     .where(
       and(
@@ -387,6 +398,7 @@ export async function countsFor(
 
   const counts: NodeTaskCounts = {
     running: 0,
+    waiting: 0,
     done: 0,
     failed: 0,
     expired: 0,
@@ -394,6 +406,7 @@ export async function countsFor(
   for (const row of rows) {
     const key = row.status as NodeTaskStatus;
     if (key in counts) counts[key] = Number(row.n);
+    if (key === "running") counts.waiting = Number(row.waiting);
   }
   return counts;
 }
@@ -521,6 +534,7 @@ export async function harvestExpiredInSpace(projectId: string, spaceId: string):
         isNull(nodeTasks.nodeId),
         isNull(nodeTasks.deletedAt),
         eq(nodeTasks.status, "running"),
+        isNull(nodeTasks.waitingSince),
         sql`${nodeTasks.startedAt} + (${nodeTasks.budgetMs} * interval '1 millisecond') < now()`,
       ),
     )

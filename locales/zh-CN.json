@@ -1155,7 +1155,8 @@
         "media_refused": "模型不接受这个文件。",
         "tool_failed": "工具没能处理这个文件。",
         "no_audio_track": "{kind, select, audio {这段音频读不出声音。} other {这个视频没有音轨。}}",
-        "cut_short": "内容太长，没能转写完。"
+        "cut_short": "内容太长，没能转写完。",
+        "cancelled": "已取消。"
       },
       "kind": {
         "upload": "上传",

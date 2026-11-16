@@ -1155,7 +1155,8 @@
         "media_refused": "The model would not take this file.",
         "tool_failed": "The tool could not process this file.",
         "no_audio_track": "{kind, select, audio {This audio has no sound to read.} other {This video has no audio track.}}",
-        "cut_short": "This is too long to transcribe in full."
+        "cut_short": "This is too long to transcribe in full.",
+        "cancelled": "Cancelled."
       },
       "kind": {
         "upload": "Upload",

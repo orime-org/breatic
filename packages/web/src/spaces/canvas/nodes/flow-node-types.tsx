@@ -47,7 +47,7 @@ import { typedViewOf } from '@web/data/yjs/node-view';
  * numbers being absent, not the node having no tasks, so it stands in for
  * them here and every reader downstream sees the same shape.
  */
-const NO_TASKS = { running: 0, done: 0, failed: 0, expired: 0 } as const;
+const NO_TASKS = { running: 0, waiting: 0, done: 0, failed: 0, expired: 0 } as const;
 
 /** Prop surface every node body accepts from the ReactFlow wrapper. */
 interface InnerNodeProps {
