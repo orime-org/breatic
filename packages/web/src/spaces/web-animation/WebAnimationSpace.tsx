@@ -24,10 +24,10 @@ import { docName, getDoc } from '@web/data/yjs/manager';
 import { useSpaceConnection } from '@web/data/yjs/space-connection';
 import { useTranslation } from '@web/i18n/use-translation';
 import { downloadAsset } from '@web/lib/download';
-import { readSpaceViewport } from '@web/lib/project-tabs-storage';
 import { toast } from '@web/lib/toast';
 import { cn } from '@web/lib/utils';
 import type { SpaceBodyProps } from '@web/spaces';
+import { canvasOrigin, canvasesOldestFirst } from '@web/spaces/canvas/place-on-canvas';
 import { placeVideoOnCanvas } from '@web/spaces/canvas/place-video-on-canvas';
 import { DocumentCommentWriteBox } from '@web/spaces/document/DocumentCommentWriteBox';
 import { asCommentBody } from '@web/spaces/document/document-comment-extension';
@@ -71,21 +71,6 @@ function ratioOf(row: WebAnimationRowView): number {
   if (row.kind === 'web_animation_export') return row.input.width / row.input.height;
   const [width, height] = row.input.aspect.split(':').map(Number) as [number, number];
   return width / height;
-}
-
-/**
- * Where a canvas starts looking for room: the middle of its last view here, or its origin.
- * @param userId - The signed-in account.
- * @param projectId - The project.
- * @param canvasId - The canvas.
- * @returns A point in canvas coordinates.
- * @throws {never} Never.
- */
-function canvasOrigin(userId: string, projectId: string, canvasId: string): { x: number; y: number } {
-  const view = readSpaceViewport(userId, projectId, canvasId);
-  if (view === null || view.zoom <= 0) return { x: 0, y: 0 };
-  // ponytail: the window stands in for the canvas pane, whose size is unknown while its tab is closed.
-  return { x: (window.innerWidth / 2 - view.x) / view.zoom, y: (window.innerHeight / 2 - view.y) / view.zoom };
 }
 
 /**
@@ -137,7 +122,7 @@ function PlaceOnCanvas({ projectId, row, canvases }: PlaceOnCanvasProps): React.
       if (effect.type === 'toast_unreachable') toast.error(t('spaces.webAnimation.canvasUnreachable'));
       if (effect.type === 'toast_placed') {
         const name = canvases.find((canvas) => canvas.id === effect.canvasId)?.name ?? '';
-        toast.success(t('spaces.webAnimation.placed', { name }), { action: { label: t('spaces.threeD.viewfinder.view'), onClick: () => useCanvasRevealStore.getState().reveal(effect.canvasId, effect.nodeId) } });
+        toast.success(t('spaces.webAnimation.placed', { name }), { action: { label: t('spaces.webAnimation.viewPlaced'), onClick: () => useCanvasRevealStore.getState().reveal(effect.canvasId, effect.nodeId) } });
       }
       if (effect.type === 'warn_in_progress') toast.warning(t('spaces.webAnimation.placing'));
     }
@@ -145,10 +130,17 @@ function PlaceOnCanvas({ projectId, row, canvases }: PlaceOnCanvasProps): React.
   React.useEffect(() => () => {
     if (latest.current.status !== 'idle') toast.warning(t('spaces.webAnimation.placing'));
   }, [t]);
+  const { refetch: refetchControls } = controls;
   const choose = React.useCallback((canvas: ProjectSpace): void => {
     setOpen(false);
     const config = controls.data?.capture;
-    if (asset === undefined || config === undefined || latest.current.status !== 'idle') return;
+    if (config === undefined) {
+      // The button waits while the settings are read, so only a failed read gets here.
+      toast.error(t('spaces.webAnimation.canvasUnreachable'));
+      void refetchControls();
+      return;
+    }
+    if (asset === undefined || latest.current.status !== 'idle') return;
     fire({ type: 'choose', canvasId: canvas.id });
     void placeVideoOnCanvas({
       projectId, spaceId: canvas.id, userId, origin: canvasOrigin(userId, projectId, canvas.id), syncTimeoutMs: config.canvasSyncTimeoutMs,
@@ -163,14 +155,14 @@ function PlaceOnCanvas({ projectId, row, canvases }: PlaceOnCanvasProps): React.
       else if (outcome.status === 'refused') { fire({ type: 'synced' }); fire({ type: 'size_refused' }); }
       else { fire({ type: 'synced' }); fire({ type: 'written', nodeId: outcome.nodeId }); }
     }, () => fire({ type: 'sync_timeout' }));
-  }, [asset, controls.data, fire, projectId, row, userId]);
+  }, [asset, controls.data, refetchControls, fire, projectId, row, userId, t]);
   if (canvases.length === 0) {
     return <BarButton testId='motion-action-place-on-canvas' label={t('spaces.webAnimation.noCanvas')} icon={<LayoutGrid className='size-4' />} disabled />;
   }
   return <Popover open={open} onOpenChange={setOpen}>
     <PopoverTrigger asChild>
       <BarButton testId='motion-action-place-on-canvas' label={t('spaces.webAnimation.placeOnCanvas')} icon={<LayoutGrid className='size-4' />}
-        loading={placement.status !== 'idle'} disabled={asset === undefined} />
+        loading={placement.status !== 'idle' || controls.isPending} disabled={asset === undefined} />
     </PopoverTrigger>
     <PopoverContent side='top' align='start' sideOffset={8} className='flex w-52 flex-col p-1'>
       <span className='px-2 py-1 text-xs text-muted-foreground'>{t('spaces.webAnimation.chooseCanvas')}</span>
@@ -268,10 +260,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   const limits = useTimelineLimits(projectId)?.webAnimation;
   const lists = useMotionLists(projectId, spaceId, limits?.sourceRefreshIntervalMs);
   const spaces = useProjectSpaceList(projectId);
-  const canvases = React.useMemo(() => spaces.filter((space) => space.type === 'canvas')
-    .map((space, index) => ({ space, index }))
-    .sort((a, b) => (a.space.createdAt ?? 0) - (b.space.createdAt ?? 0) || a.index - b.index)
-    .map(({ space }) => space), [spaces]);
+  const canvases = React.useMemo(() => canvasesOldestFirst(spaces), [spaces]);
   const connection = useSpaceConnection();
   const doc = React.useMemo(() => getDoc(docName.webAnimationSpace(projectId, spaceId)), [projectId, spaceId]);
   const readWho = React.useCallback(() => ({ role: myRole, viewerId }), [myRole, viewerId]);

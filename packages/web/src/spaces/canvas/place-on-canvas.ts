@@ -13,8 +13,39 @@ import type { CanvasNodeFields } from '@breatic/shared';
 import { acquireDocProvider, hasDocUnsyncedEdits, readDocFacts, releaseDocProvider, subscribeProjectSync } from '@web/data/yjs/collab-socket';
 import { addNode, readNodePlacements, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';
 import { docName, getDoc } from '@web/data/yjs/manager';
+import type { ProjectSpace } from '@web/data/yjs/project-meta';
+import { readSpaceViewport } from '@web/lib/project-tabs-storage';
 import { stepPastOccupied } from '@web/spaces/canvas/node-clipboard';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
+
+/**
+ * Where a placement starts looking for room on a canvas: the middle of the canvas's last view here, or its origin when
+ * it was never opened here.
+ * @param userId - The signed-in account.
+ * @param projectId - The project.
+ * @param canvasId - The canvas.
+ * @returns A point in canvas coordinates.
+ * @throws {never} Never.
+ */
+export function canvasOrigin(userId: string, projectId: string, canvasId: string): { x: number; y: number } {
+  const view = readSpaceViewport(userId, projectId, canvasId);
+  if (view === null || view.zoom <= 0) return { x: 0, y: 0 };
+  // ponytail: the window stands in for the canvas pane, whose size is unknown while its tab is closed.
+  return { x: (window.innerWidth / 2 - view.x) / view.zoom, y: (window.innerHeight / 2 - view.y) / view.zoom };
+}
+
+/**
+ * A Project's canvases as a placement menu lists them: oldest first, ties in the Project's order.
+ * @param spaces - The Project's Spaces.
+ * @returns Its canvases.
+ * @throws {never} Never.
+ */
+export function canvasesOldestFirst(spaces: readonly ProjectSpace[]): ProjectSpace[] {
+  return spaces.filter((space) => space.type === 'canvas')
+    .map((space, index) => ({ space, index }))
+    .sort((a, b) => (a.space.createdAt ?? 0) - (b.space.createdAt ?? 0) || a.index - b.index)
+    .map(({ space }) => space);
+}
 
 /** Where a node goes. */
 export interface PlaceNodeRequest {

@@ -2848,6 +2848,7 @@
       "pickPoint": "Click the frame to mark a spot, or just write below",
       "placeOnCanvas": "Put on Canvas",
       "placed": "Put on {name}",
+      "viewPlaced": "View",
       "placing": "The video is still being put on the Canvas.",
       "readOnlyNotice": "The collaborator limit is reached, so annotations are view-only for now. New, Modify and Export still work.",
       "reexport": "Export again",

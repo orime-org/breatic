@@ -13,14 +13,19 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as Y from 'yjs';
 import { t } from '@breatic/shared';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { timelineApi } from '@web/data/api/timeline';
 import type * as TimelineApiModule from '@web/data/api/timeline';
-import { _resetForTests } from '@web/data/yjs/manager';
+import { getSceneControls } from '@web/data/api/scene';
+import type * as SceneApiModule from '@web/data/api/scene';
+import { _resetForTests, docName, getDoc } from '@web/data/yjs/manager';
 import { SpaceConnectionContext } from '@web/data/yjs/space-connection';
 import type { SocketState } from '@web/data/yjs/use-socket';
+import { toast } from '@web/lib/toast';
+import { placeVideoOnCanvas } from '@web/spaces/canvas/place-video-on-canvas';
 import { WebAnimationSpace } from '@web/spaces/web-animation/WebAnimationSpace';
 import { useSpaceOpenRequestStore } from '@web/stores/space-open-request';
 
@@ -32,6 +37,9 @@ vi.mock('@web/data/api/timeline', async (importOriginal) => {
   };
 });
 vi.mock('@hyperframes/player', () => ({}));
+vi.mock('@web/data/api/scene', async (importOriginal) => ({ ...await importOriginal<typeof SceneApiModule>(), getSceneControls: vi.fn() }));
+vi.mock('@web/spaces/canvas/place-video-on-canvas', () => ({ placeVideoOnCanvas: vi.fn() }));
+vi.mock('@web/lib/toast', () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() } }));
 
 const PROJECT = '60000000-0000-4000-8000-000000000001';
 const SPACE = '70000000-0000-4000-8000-000000000001';
@@ -425,5 +433,59 @@ describe('the execution list when a read fails', () => {
     await user.click(within(panel).getByRole('button', { name: t('timeline.retry') }));
     await waitFor(() => expect(within(panel).queryByText(t('spaces.webAnimation.listError'))).toBeNull());
     expect(panel.querySelectorAll('.skeleton-shimmer').length).toBeGreaterThan(0);
+  });
+});
+
+describe('putting an export on a Canvas', () => {
+  const CANVAS = '70000000-0000-4000-8000-0000000000c1';
+  const CONTROLS = { capture: { canvasSyncTimeoutMs: 10_000 } };
+
+  /**
+   * Give the Project one Canvas, list a finished export with its video, and open it.
+   * @returns The user.
+   */
+  async function onExportWithCanvas(): Promise<ReturnType<typeof userEvent.setup>> {
+    const canvas = new Y.Map<unknown>();
+    getDoc(docName.projectMeta(PROJECT)).getMap<Y.Map<unknown>>('spaces').set(CANVAS, canvas);
+    for (const [key, value] of Object.entries({ id: CANVAS, name: 'Board', type: 'canvas', createdAt: 1 })) canvas.set(key, value);
+    vi.mocked(timelineApi.resolveAsset).mockReset().mockResolvedValue({ fileUrl: 'https://cdn.example/v.mp4', coverUrl: null, mimeType: 'video/mp4', sizeBytes: 1, width: 1920, height: 1080, durationSeconds: 4 } as never);
+    listing([{ ...exported(done(OLDER, 'Older logo', '2026-11-15T08:00:00.000000Z')), resultAssetId: '50000000-0000-4000-8000-000000000001' }]);
+    show();
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', EXPORT));
+    return userEvent.setup();
+  }
+
+  beforeEach(() => {
+    vi.mocked(toast.success).mockReset();
+    vi.mocked(toast.error).mockReset();
+    vi.mocked(placeVideoOnCanvas).mockReset().mockResolvedValue({ status: 'placed', nodeId: 'node-1' });
+  });
+
+  it('shows the button waiting while the placement settings are read', async () => {
+    vi.mocked(getSceneControls).mockReset().mockReturnValue(new Promise(() => {}));
+    await onExportWithCanvas();
+    await waitFor(() => expect(screen.getByTestId('motion-action-place-on-canvas')).toHaveAttribute('aria-busy', 'true'));
+  });
+
+  it('says it failed and reads the settings again when they could not be read', async () => {
+    vi.mocked(getSceneControls).mockReset().mockRejectedValue(new Error('network'));
+    const user = await onExportWithCanvas();
+    await waitFor(() => expect(screen.getByTestId('motion-action-place-on-canvas')).not.toHaveAttribute('aria-busy'));
+    const reads = vi.mocked(getSceneControls).mock.calls.length;
+    await user.click(screen.getByTestId('motion-action-place-on-canvas'));
+    await user.click(await screen.findByTestId(`motion-canvas-${CANVAS}`));
+    expect(toast.error).toHaveBeenCalled();
+    await waitFor(() => expect(vi.mocked(getSceneControls).mock.calls.length).toBeGreaterThan(reads));
+    expect(placeVideoOnCanvas).not.toHaveBeenCalled();
+  });
+
+  it('offers View on the placed toast in Motion\'s own words', async () => {
+    vi.mocked(getSceneControls).mockReset().mockResolvedValue(CONTROLS as never);
+    const user = await onExportWithCanvas();
+    await waitFor(() => expect(screen.getByTestId('motion-action-place-on-canvas')).not.toHaveAttribute('aria-busy'));
+    await user.click(screen.getByTestId('motion-action-place-on-canvas'));
+    await user.click(await screen.findByTestId(`motion-canvas-${CANVAS}`));
+    await waitFor(() => expect(toast.success).toHaveBeenCalled());
+    expect(vi.mocked(toast.success).mock.calls[0]?.[1]).toMatchObject({ action: { label: t('spaces.webAnimation.viewPlaced') } });
   });
 });

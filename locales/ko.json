@@ -2848,6 +2848,7 @@
       "pickPoint": "화면을 클릭해 위치를 표시하거나 아래에 바로 적으세요",
       "placeOnCanvas": "Canvas에 놓기",
       "placed": "{name}에 놓았습니다",
+      "viewPlaced": "보기",
       "placing": "동영상을 Canvas에 놓는 중입니다.",
       "readOnlyNotice": "공동 작업 인원이 가득 차 주석은 지금 보기만 가능합니다. 새로 만들기, 수정, 내보내기는 그대로 쓸 수 있습니다.",
       "reexport": "다시 내보내기",

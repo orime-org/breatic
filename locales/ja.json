@@ -2848,6 +2848,7 @@
       "pickPoint": "画面をクリックして位置を示すか、そのまま下に書く",
       "placeOnCanvas": "Canvas に置く",
       "placed": "「{name}」に置きました",
+      "viewPlaced": "表示",
       "placing": "動画を Canvas に置いているところです。",
       "readOnlyNotice": "共同作業の人数が上限に達したため、注釈は今は表示のみです。新規作成・修正・書き出しは引き続き使えます。",
       "reexport": "もう一度書き出す",

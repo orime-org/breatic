@@ -2848,6 +2848,7 @@
       "pickPoint": "点画面标出位置，或直接在下面写",
       "placeOnCanvas": "放到 Canvas",
       "placed": "已放到「{name}」",
+      "viewPlaced": "查看",
       "placing": "视频还在放到 Canvas 上。",
       "readOnlyNotice": "协作人数已满，批注暂时只能查看。新建、修改、导出照常可用。",
       "reexport": "重新导出",
