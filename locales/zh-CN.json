@@ -349,8 +349,8 @@
       "versions_full": "{limit, plural, other {这个 Document 的快照已满 # 张。删掉旧的快照后再保存。}}"
     },
     "spend_cap": {
-      "member": "你本月在这个 Studio 的花费已到上限（{limit} 积分）。需要更多请联系 Studio 管理员",
-      "studio": "这个 Studio 本月的花费已到上限。请联系 Studio 管理员"
+      "member": "你本月在这个 Studio 的花费已到上限（{limit} 积分）。需要更多请联系 Studio Admin",
+      "studio": "这个 Studio 本月的花费已到上限。请联系 Studio Admin"
     },
     "operation": {
       "exhausted": "本月操作次数已用完，积分不足 {credits}。充值后可继续。",
