@@ -60,7 +60,7 @@ const GLOBAL_WITH_REGIONS: readonly string[] = [
   STORAGE_USAGE_SYNC_QUEUE,
 ];
 
-/** Hold releases and abandons the global region could not take when they were made. */
+/** Hold releases, abandons and extensions the global region could not take when they were made. */
 export const CREDIT_HOLD_RELEASE_QUEUE = creditHoldService.CREDIT_HOLD_RELEASE_QUEUE;
 
 /** What every other region does for the global region. */

@@ -211,6 +211,21 @@ describe("region jobs", () => {
     expect(gaveUp()).toBe(2);
   });
 
+  // An extension's job id carries its target after the hold's key; the log
+  // names the hold and what gave up.
+  it("logs a queued extension that gave up under its hold's key", async () => {
+    const set = vi.fn().mockResolvedValueOnce("OK");
+    const redis = { set } as unknown as Parameters<typeof reportHoldCleanupGaveUp>[0];
+
+    await reportHoldCleanupGaveUp(redis, "task-3:extend:1763280000000", "refused");
+
+    expect(set).toHaveBeenCalledWith("test:hold-cleanup-gave-up:task-3:extend:1763280000000", "1", "PX", 7_200_000, "NX");
+    expect(h.logError).toHaveBeenCalledWith(
+      { referenceId: "task-3", action: "extend", jobId: "task-3:extend:1763280000000", failedReason: "refused" },
+      "credit_hold_cleanup_gave_up",
+    );
+  });
+
   // inner#1955: a self-hosted upgrade swaps every container in one
   // `docker compose up`; the worker starts last, so it aligns the directory.
   it("leaves it alone in a deployment that runs it by hand after the rollout", async () => {

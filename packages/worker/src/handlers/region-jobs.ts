@@ -184,12 +184,13 @@ export async function reconcileDirectoryOnStart(): Promise<number> {
  * instance: each hears the queue's event, and the one that claims it, for as
  * long as a hold lives, logs it. A claim that cannot be made still logs.
  * @param redis - Where the claim is made.
- * @param jobId - The job, whose id is the hold's key.
+ * @param jobId - The job: the hold's key, followed by `:extend:<epoch ms>` for an extension.
  * @param failedReason - Why its last try failed.
  * @returns Once logged or left to the instance that claimed it.
  */
 export async function reportHoldCleanupGaveUp(redis: ReturnType<typeof getRedis>, jobId: string, failedReason: string): Promise<void> {
-  const ctx = { referenceId: jobId, failedReason };
+  const [referenceId, extend] = jobId.split(":");
+  const ctx = { referenceId, action: extend === "extend" ? "extend" : "release_or_abandon", jobId, failedReason };
   try {
     const claimed = await redis.set(`${env.REDIS_KEY_PREFIX}:hold-cleanup-gave-up:${jobId}`, "1", "PX", getNodeTaskConfig().default_budget_ms, "NX");
     if (claimed === "OK") logger.error(ctx, "credit_hold_cleanup_gave_up");

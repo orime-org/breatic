@@ -115,10 +115,10 @@ export async function reserveHere(
   });
 }
 
-/** The queue that retries, in a region outside the global one, a release or abandon the global region could not take (inner#1955). */
+/** The queue that retries, in a region outside the global one, a release, abandon or extension the global region could not take (inner#1955). */
 export const CREDIT_HOLD_RELEASE_QUEUE = "credit-hold-release";
 
-/** A queued release, or an abandon when it names the hold's Studio and actor. */
+/** A queued release, an abandon when it names the hold's Studio and actor, or an extension when it names a new expiry. */
 export interface HoldReleaseJob {
   referenceId: string;
   abandon?: { studioId: string; actorUserId: string };

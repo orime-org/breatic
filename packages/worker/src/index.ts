@@ -512,7 +512,7 @@ export function startWorker(): void {
     });
     // A cleanup that will not be tried again, including one whose worker
     // stalled out, leaves the hold to run out on its own; only the queue's
-    // events see every such end, and the job id is the hold's key. Every
+    // events see every such end, and the job id begins with the hold's key. Every
     // worker instance hears the event, so the one that claims it logs it.
     const holdCleanupEnds = createQueueEvents(CREDIT_HOLD_RELEASE_QUEUE);
     holdCleanupEnds.on("failed", ({ jobId, failedReason }) => {
