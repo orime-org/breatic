@@ -10,7 +10,7 @@
  * (`lockOperationAccount`) around them.
  */
 
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, sql } from "drizzle-orm";
 import { db, operationLedger } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 
@@ -371,7 +371,7 @@ export async function extend(key: string, until: Date, dueBefore: Date, tx?: DbT
   const rows = await (tx ?? db)
     .update(operationLedger)
     .set({ expiresAt: until, updatedAt: sql`now()` })
-    .where(and(eq(operationLedger.operationKey, key), eq(operationLedger.status, "reserved"), sql`${operationLedger.expiresAt} < ${dueBefore}`))
+    .where(and(eq(operationLedger.operationKey, key), eq(operationLedger.status, "reserved"), lt(operationLedger.expiresAt, dueBefore)))
     .returning({ key: operationLedger.operationKey });
   return rows.length > 0;
 }
