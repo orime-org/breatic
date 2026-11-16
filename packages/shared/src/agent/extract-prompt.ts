@@ -18,13 +18,30 @@ import { stripUnicodeTags } from "@shared/agent/strip-unicode-tags.js";
 /**
  * Reduce a raw prompt value to clean plain text for an AIGC provider —
  * strips HTML tags, comments, zero-width and Unicode tag characters.
+ *
+ * One pass can leave a tag behind (`&lt;b&gt;` decodes into one, an invisible
+ * character inside brackets goes after the tags are stripped), so it runs
+ * until the text stops changing: cleaning a value twice gives what cleaning it
+ * once gave, and a check that cleans once judges what a sender that cleans
+ * twice sends (#1521). Every pass only removes, decodes or folds, so it ends.
  * @param prompt - Raw prompt value (string, HTML, or unknown)
  * @returns Clean plain text suitable for AIGC provider input
  */
 export function extractPromptText(prompt: unknown): string {
   if (prompt == null) return "";
-
   let text = typeof prompt === "string" ? prompt : String(prompt);
+  for (let next = cleanOnce(text); next !== text; next = cleanOnce(text)) text = next;
+  return text;
+}
+
+/**
+ * One pass of the cleaning {@link extractPromptText} repeats.
+ * @param raw - The text.
+ * @returns The text after one pass.
+ * @throws {never} Never.
+ */
+function cleanOnce(raw: string): string {
+  let text = raw;
 
   // Strip HTML comments, each within one line.
   text = text.replace(/<!--[^\n]*?-->/g, " ");

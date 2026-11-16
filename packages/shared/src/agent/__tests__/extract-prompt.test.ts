@@ -11,9 +11,11 @@
  * noise in every modality — and so do runs of blank lines beyond one.
  */
 
+import fc from "fast-check";
 import { describe, it, expect } from "vitest";
 
-import { extractPromptText } from "@shared/agent/extract-prompt.js";
+import { completeEntries } from "@shared/item-cap.js";
+import { extractPromptText, cleanTextParams } from "@shared/agent/extract-prompt.js";
 import { hiddenInTags } from "./helpers/tag-characters.js";
 
 describe("extractPromptText — what it strips", () => {
@@ -106,3 +108,32 @@ describe("extractPromptText — what it does to whitespace", () => {
     expect(extractPromptText("<p>a</p><p>b</p>")).toBe("a b");
   });
 });
+
+/**
+ * The panel, the Agent and the server clean a value once; the worker can clean the same value twice on its
+ * way out. Cleaning is therefore a fixed point, or the two sides judge and send different words (#1521).
+ */
+describe("extractPromptText — cleaning twice is cleaning once", () => {
+  it("leaves its own output as it is, for any text", () => {
+    const pieces = fc.constantFrom("<", ">", "b", "x", "&lt;", "&gt;", "&amp;", "&nbsp;", "\u200B", "<!--", "-->", " ", "\n", "a", "/");
+    fc.assert(fc.property(fc.array(pieces, { maxLength: 24 }).map((parts) => parts.join("")), (text) => {
+      const once = extractPromptText(text);
+      expect(extractPromptText(once)).toBe(once);
+    }), { numRuns: 2000 });
+  });
+
+  it("strips what a first pass leaves looking like a tag", () => {
+    expect(extractPromptText("<\u200BHost>")).toBe("");
+    expect(extractPromptText("&lt;x&gt;")).toBe("");
+  });
+
+  it("counts a speaker the same on the panel, which cleans once, and in the worker, which cleans twice", () => {
+    const fields = { speaker: {}, voice: { values: ["Kore", "Puck"] } };
+    const model = { params: { speakers: { type: "items", fields: { speaker: { type: "text" }, voice: {} } } } };
+    const speakers = [{ speaker: "Ann", voice: "Kore" }, { speaker: "Ben <\u200Bb>", voice: "Puck" }];
+    const panel = completeEntries(speakers, fields);
+    const worker = completeEntries(cleanTextParams(model, { speakers }).speakers, fields);
+    expect(worker).toEqual(panel);
+  });
+});
+
