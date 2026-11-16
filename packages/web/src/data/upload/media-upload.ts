@@ -250,11 +250,12 @@ export interface MediaUploadDeps {
 
 /**
  * Ask for one file's ticket under the run-once rule (inner#1968 design 3.2):
- * one operation id per file and press, resent under that id while the outcome
- * is unknown (in progress, no answer, a 5xx without `done`) until the
- * `upload-ticket` scope's deadline. A 5xx marked `done` already released that
- * operation on the server, so the next try takes a fresh id, at most
- * `clientMaxAttempts` tries in all. A full store and a rate limit are final
+ * one operation id per file and press. A 409 `in_progress` is the server still
+ * running the first send, so it is waited out under that id; an unknown outcome
+ * (no answer, a 5xx without `done`, a throttle) is resent under that id, and a
+ * 5xx marked `done` already released that operation on the server, so the next
+ * try takes a fresh id. Those last two count together: at most
+ * `clientMaxAttempts` sends in all, so a drop with no network fails in seconds. A full store and a rate limit are final
  * here: neither lifts in the seconds a resend takes.
  * @param ask - Sends the request under an operation id.
  * @param cfg - The upload knobs.
@@ -270,6 +271,7 @@ async function requestTicketOnce(
   signal: AbortSignal | undefined,
 ): Promise<UploadTicketResponse> {
   const stopAt = idempotencyRetryDeadline('upload-ticket', Date.now());
+  let sends = 1;
   /**
    * Wait out one backoff; a cancellation meanwhile is seen as the loop goes round.
    * @param ms - How long.
@@ -289,15 +291,18 @@ async function requestTicketOnce(
       const status = errorStatus(err);
       const final = status === STORAGE_FULL_STATUS || status === RATE_LIMITED_STATUS;
       const doneServerError = err instanceof ApiException && err.idempotencyStatus === 'done' && err.status >= 500;
-      if (!final && doneServerError && tries < cfg.clientMaxAttempts) {
+      const inProgress = err instanceof ApiException && err.idempotencyStatus === 'in_progress';
+      if (!final && doneServerError && sends < cfg.clientMaxAttempts) {
         tries += 1;
+        sends += 1;
         operationId = newId();
         resends = 0;
         await pause(Math.random() * cfg.clientRetryBaseDelayMs * 2 ** (tries - 2));
         continue;
       }
       const wait = final ? null : resendWait(err, resends);
-      if (wait === null || Date.now() >= stopAt) throw err;
+      if (wait === null || Date.now() >= stopAt || (!inProgress && sends >= cfg.clientMaxAttempts)) throw err;
+      if (!inProgress) sends += 1;
       resends += 1;
       await pause(wait);
     }
