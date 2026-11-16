@@ -10,6 +10,7 @@
  * not; a sync with nothing to open says nothing about the balance. Once the
  * balance can pay, what waited longest opens the run.
  */
+import { randomUUID } from "node:crypto";
 import { describe, it, expect, beforeAll, afterAll, afterEach, inject, vi } from "vitest";
 
 const script = vi.hoisted(() => ({ hold: undefined as Promise<void> | undefined, count: 0 }));
@@ -253,7 +254,7 @@ describe("a card's answer the balance cannot pay for", () => {
     await drain(who.lotId!);
     const res = await app.request("/api/v1/chat/message", {
       method: "POST",
-      headers: { Cookie: who.cookie, "Content-Type": "application/json" },
+      headers: { "Idempotency-Key": randomUUID(), Cookie: who.cookie, "Content-Type": "application/json" },
       body: JSON.stringify({
         message: "",
         project_id: who.projectId,

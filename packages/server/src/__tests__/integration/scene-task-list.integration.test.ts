@@ -183,7 +183,8 @@ function sceneBody(projectId: string, spaceId: string, overrides: Record<string,
 async function call(method: string, path: string, cookie: string, payload?: unknown): Promise<Response> {
   return app.request(`/api/v1${path}`, {
     method,
-    headers: { "content-type": "application/json", cookie },
+    // An upload ticket is run once per key (inner#1968).
+    headers: { "content-type": "application/json", cookie, "Idempotency-Key": crypto.randomUUID() },
     ...(payload !== undefined && { body: JSON.stringify(payload) }),
   });
 }

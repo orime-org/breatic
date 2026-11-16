@@ -213,7 +213,8 @@ describe("F09: chat refuses an attachment name past 255 characters", () => {
         conversation_id: a.conversationId,
         attached_chips: [{ id: "node-1", type: "text", name: "n".repeat(256), data_snapshot: { text: "x" } }],
       },
-      { Cookie: a.cookie },
+      // A new message is run once per key (inner#1968).
+      { Cookie: a.cookie, "Idempotency-Key": crypto.randomUUID() },
     );
 
     expect(res.status).toBe(422);

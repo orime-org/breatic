@@ -17,6 +17,7 @@
  *     alone
  */
 
+import { randomUUID } from "node:crypto";
 import {
   describe,
   it,
@@ -165,7 +166,7 @@ async function ticket(
 ): Promise<Response> {
   return app.request("/api/v1/assets/upload-ticket", {
     method: "POST",
-    headers: { "content-type": "application/json", cookie },
+    headers: { "Idempotency-Key": randomUUID(), "content-type": "application/json", cookie },
     body: JSON.stringify({
       filename: "cover.jpg",
       content_type: "image/jpeg",

@@ -14,6 +14,7 @@
  * message run took for the next process, and a card's run its failed ending,
  * wherever in the card's opening it lands.
  */
+import { randomUUID } from "node:crypto";
 import { describe, it, expect, beforeAll, afterAll, afterEach, inject, vi } from "vitest";
 
 const script = vi.hoisted(() => ({
@@ -389,7 +390,7 @@ async function answerCard(
 ): Promise<Response> {
   return app.request("/api/v1/chat/message", {
     method: "POST",
-    headers: { Cookie: who.cookie, "Content-Type": "application/json", ...headers },
+    headers: { "Idempotency-Key": randomUUID(), Cookie: who.cookie, "Content-Type": "application/json", ...headers },
     body: JSON.stringify({
       message: "",
       project_id: who.projectId,

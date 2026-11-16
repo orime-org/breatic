@@ -10,6 +10,7 @@
  * dead or failed run wrote is charged under a key of its own, since that run
  * may have been charged already; a card's run keeps the key it always had.
  */
+import { randomUUID } from "node:crypto";
 import { describe, it, expect, beforeAll, afterAll, afterEach, inject, vi } from "vitest";
 
 /** Per model call, by its index: a hold, and what it says. */
@@ -412,7 +413,7 @@ describe("a run opened by a card's answer", () => {
     await untilIdle(who.conversationId);
     const res = await app.request("/api/v1/chat/message", {
       method: "POST",
-      headers: { Cookie: who.cookie, "Content-Type": "application/json" },
+      headers: { "Idempotency-Key": randomUUID(), Cookie: who.cookie, "Content-Type": "application/json" },
       body: JSON.stringify({
         message: "",
         project_id: who.projectId,

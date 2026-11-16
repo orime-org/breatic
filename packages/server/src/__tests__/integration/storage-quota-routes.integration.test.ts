@@ -16,6 +16,7 @@
  *      一旦落库就会被 worker 捡走，那时候再没有任何一道检查。
  */
 
+import { randomUUID } from "node:crypto";
 import { initConfiguredProvider } from "@breatic/integration-tests/provider";
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
 
@@ -182,7 +183,7 @@ async function requestTicket(
 ): Promise<Response> {
   return app.request("/api/v1/assets/upload-ticket", {
     method: "POST",
-    headers: { Cookie: cookie, "Content-Type": "application/json" },
+    headers: { "Idempotency-Key": randomUUID(), Cookie: cookie, "Content-Type": "application/json" },
     body: JSON.stringify({
       filename: "photo.png",
       content_type: "image/png",

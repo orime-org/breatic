@@ -29,6 +29,7 @@
  * place. Deleting them as duplicates would leave nothing pinning it.
  */
 
+import { randomUUID } from "node:crypto";
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
 
 // `ai` is stubbed: the real SDK is replaced with a double that reaches no
@@ -169,7 +170,7 @@ async function send(
 ): Promise<Response> {
   return app.request("/api/v1/chat/message", {
     method: "POST",
-    headers: {
+    headers: { "Idempotency-Key": randomUUID(),
       "Content-Type": "application/json",
       ...(cookie ? { Cookie: cookie } : {}),
     },

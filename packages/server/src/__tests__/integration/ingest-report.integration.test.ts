@@ -20,6 +20,7 @@
  * that event the node keeps counting an upload that has already ended.
  */
 
+import { randomUUID } from "node:crypto";
 import {
   describe,
   it,
@@ -172,7 +173,7 @@ async function mintTicket(
 ): Promise<string> {
   const res = await app.request("/api/v1/assets/upload-ticket", {
     method: "POST",
-    headers: { "content-type": "application/json", cookie: seed.cookie },
+    headers: { "Idempotency-Key": randomUUID(), "content-type": "application/json", cookie: seed.cookie },
     body: JSON.stringify({
       filename: "shot.png",
       content_type: "image/png",
@@ -1081,7 +1082,7 @@ describe("a finish this server drove — a backend upload that landed empty", ()
 
     const res = await app.request("/api/v1/assets/upload-ticket", {
       method: "POST",
-      headers: { "content-type": "application/json", cookie: seed.cookie },
+      headers: { "Idempotency-Key": randomUUID(), "content-type": "application/json", cookie: seed.cookie },
       body: JSON.stringify({
         filename: "nothing.png",
         content_type: "image/png",
@@ -2836,20 +2837,21 @@ describe("Project association and upload terminal arbitration", () => {
     await ingestReportService.applyIngestReport(input);
     const canonical = (await terminalOn(key)).asset_id;
     await sql`UPDATE project_asset_refs SET deleted_at = now() WHERE project_id = ${seed.projectId}`;
-    const request = {
+    // Each press is a new operation with its own key (inner#1968): a retry after a 500 sends a new one.
+    const request = (): RequestInit => ({
       method: "POST",
-      headers: { "content-type": "application/json", cookie: seed.cookie },
+      headers: { "content-type": "application/json", cookie: seed.cookie, "Idempotency-Key": randomUUID() },
       body: JSON.stringify({
         filename: "dedup.png", content_type: "image/png", size: 4096,
         client_hash: input.sha256, project_id: seed.projectId,
       }),
-    };
+    });
     await withAssociationFailure(seed.projectId, async () => {
-      const refused = await app.request("/api/v1/assets/upload-ticket", request);
+      const refused = await app.request("/api/v1/assets/upload-ticket", request());
       expect(refused.status).toBe(500);
     });
     expect(await associatedAssets(seed.projectId)).toEqual([]);
-    const accepted = await app.request("/api/v1/assets/upload-ticket", request);
+    const accepted = await app.request("/api/v1/assets/upload-ticket", request());
     expect(accepted.status).toBe(200);
     const payload = await accepted.json() as { data: Record<string, unknown> };
     expect(payload.data).toMatchObject({ alreadyExists: true, assetId: canonical });

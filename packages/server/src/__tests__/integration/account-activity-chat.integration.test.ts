@@ -110,7 +110,7 @@ async function post(chat: Chat, body: Record<string, unknown>): Promise<SentAndR
 async function answerAtOnce(chat: Chat, body: Record<string, unknown>): Promise<SentAndRead> {
   const res = await app.request("/api/v1/chat/message", {
     method: "POST",
-    headers: { "Content-Type": "application/json", Cookie: chat.cookie },
+    headers: { "Idempotency-Key": randomUUID(), "Content-Type": "application/json", Cookie: chat.cookie },
     body: JSON.stringify({ project_id: chat.projectId, conversation_id: chat.conversationId, message: "", ...body }),
   });
   return { status: res.status, json: (await res.json()) as Record<string, unknown>, chunks: [] };

@@ -82,9 +82,11 @@ export type SendBody = Record<string, unknown> & { id?: string; message?: string
  * @returns The response.
  */
 export async function send(app: Hono, who: Seeded, body: SendBody = {}, headers: Record<string, string> = {}): Promise<Response> {
+  const isCard = "answer" in body || "shared_spaces" in body;
   return app.request("/api/v1/chat/message", {
     method: "POST",
-    headers: { Cookie: who.cookie, "Content-Type": "application/json", ...headers },
+    // A new message is run once per key (inner#1968); a card's answer needs none.
+    headers: { Cookie: who.cookie, "Content-Type": "application/json", ...(isCard ? {} : { "Idempotency-Key": crypto.randomUUID() }), ...headers },
     body: JSON.stringify({
       id: crypto.randomUUID(),
       message: "hello",
@@ -223,7 +225,8 @@ export async function sendAndRead(
   try {
     const res = await app.request("/api/v1/chat/message", {
       method: "POST",
-      headers: { "Content-Type": "application/json", Cookie: cookie, ...headers },
+      // A new message is run once per key (inner#1968); a card's answer needs none.
+      headers: { "Content-Type": "application/json", Cookie: cookie, ...(isCard ? {} : { "Idempotency-Key": crypto.randomUUID() }), ...headers },
       body: JSON.stringify(sent),
     });
     const text = await res.text();

@@ -13,6 +13,7 @@
  * which of them happened rather than blaming the source for all five.
  */
 
+import { randomUUID } from "node:crypto";
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
 
 /** The canvas routes reach the agent stack on import; this keeps it inert. */
@@ -148,7 +149,7 @@ async function submitted(): Promise<UrlIngestJobData & { nodeId: string }> {
 
   const res = await app.request("/api/v1/canvas/ingest-url", {
     method: "POST",
-    headers: { "content-type": "application/json", cookie: seed.cookie },
+    headers: { "Idempotency-Key": randomUUID(), "content-type": "application/json", cookie: seed.cookie },
     body: JSON.stringify({
       url: SOURCE,
       project_id: seed.projectId,
