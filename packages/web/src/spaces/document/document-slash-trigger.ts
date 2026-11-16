@@ -10,8 +10,11 @@
 
 import type { Transaction } from '@tiptap/pm/state';
 
-/** The characters that open the slash menu. */
-export const SLASH_TRIGGERS: readonly string[] = ['/', '／', '、'];
+/**
+ * The characters that open the slash menu: the slash, the full-width slash
+ * (U+FF0F) and the ideographic comma (U+3001).
+ */
+export const SLASH_TRIGGERS: readonly string[] = ['/', '\uFF0F', '\u3001'];
 
 /**
  * Whether a trigger typed at the caret may open the menu: at the start of a
