@@ -20,7 +20,7 @@ import type { MediaOfOutput } from "@ingest/jobs/container-report.js";
 import { runPlanCommand } from "@ingest/container/plan-command.js";
 import { copyWithMatrixTag } from "@ingest/container/presentation-run.js";
 import { TAGGED_MATRICES, videoContainerCrop } from "@ingest/container/physical-video-probe.js";
-import { displayTurn } from "@ingest/container-crop.js";
+import { cropFilter, displayTurn } from "@ingest/container-crop.js";
 import { alphaDecoderArgs, probeArgs, readProbeOutput } from "@ingest/probe-command.js";
 import { pickMediaMetadata } from "@ingest/media-metadata.js";
 import { pngSize } from "@ingest/png-size.js";
@@ -586,8 +586,7 @@ function frameColour(video: ProbedVideo, formatName: string): FrameColour {
   // stored coordinates, is cropped before the turn.
   const [codedWidth, codedHeight] = [video.width ?? 0, video.height ?? 0];
   const cut = videoContainerCrop(video as Record<string, unknown>, formatName);
-  const crop = cut.top + cut.bottom + cut.left + cut.right === 0 ? null
-    : `crop=${codedWidth - cut.left - cut.right}:${codedHeight - cut.top - cut.bottom}:${cut.left}:${cut.top}:exact=1`;
+  const crop = cut.top + cut.bottom + cut.left + cut.right === 0 ? null : cropFilter(cut);
   const own = turn.filter !== null && (crop !== null || transfer === "smpte2084" || transfer === "arib-std-b67"
     || (turn.transposed && hsub !== vsub && (codedWidth % 2 === 1 || codedHeight % 2 === 1)));
   const [width, height] = turn.transposed && !own ? [codedHeight, codedWidth] : [codedWidth, codedHeight];

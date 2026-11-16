@@ -212,7 +212,7 @@ export function probeArgs(objectUrl: string, from: ReadFrom = "object"): string[
     "-read_intervals",
     "%+#1",
     "-show_entries",
-    "stream=index,codec_type,codec_name,width,height,color_transfer,color_primaries,color_space,sample_rate,channels,channel_layout,start_pts,duration_ts,time_base:stream_side_data=rotation,displaymatrix,side_data_type,crop_top,crop_bottom,crop_left,crop_right:stream_disposition=attached_pic:stream_tags=alpha_mode:format=duration,format_name:frame=stream_index,pts,best_effort_timestamp:frame_side_data=rotation",
+    "stream=index,codec_type,codec_name,width,height,pix_fmt,color_transfer,color_primaries,color_space,sample_rate,channels,channel_layout,start_pts,duration_ts,time_base:stream_side_data=rotation,displaymatrix,side_data_type,crop_top,crop_bottom,crop_left,crop_right:stream_disposition=attached_pic:stream_tags=alpha_mode:format=duration,format_name:frame=stream_index,pts,best_effort_timestamp:frame_side_data=rotation",
     "-of",
     "json",
     objectUrl,
@@ -239,7 +239,8 @@ export const COVER_CONTENT_TYPE = "image/png";
  * @returns The argument list, without the program name.
  */
 export function coverArgs(objectUrl: string, from: ReadFrom = "object", report: ProbeReport = NOTHING_FOUND): string[] {
-  const crop = realVideoStream(report)?.crop;
+  const video = realVideoStream(report);
+  const crop = video?.crop;
   return [
     "-v",
     "error",
@@ -251,7 +252,7 @@ export function coverArgs(objectUrl: string, from: ReadFrom = "object", report: 
     "-vframes",
     "1",
     "-vf",
-    crop === undefined ? COVER_SCALE : `${exactCrop(crop)},${COVER_SCALE}`,
+    crop === undefined ? COVER_SCALE : `${exactCrop(crop, video?.pixelFormat)},${COVER_SCALE}`,
     "-f",
     "image2",
     "-vcodec",
@@ -412,6 +413,7 @@ interface RawStream {
   disposition?: { attached_pic?: number };
   tags?: Record<string, string>;
   side_data_list?: PictureSideData[];
+  pix_fmt?: string;
   color_transfer?: string;
   color_primaries?: string;
   color_space?: string;
@@ -545,6 +547,7 @@ export function readProbeOutput(stdout: string): ProbeReport {
     attachedPic: raw.disposition?.attached_pic === 1,
     ...alphaModeOf(raw),
     ...rotationOf(raw, frames),
+    ...(raw.pix_fmt === undefined ? {} : { pixelFormat: raw.pix_fmt }),
     ...(raw.color_transfer === undefined ? {} : { colorTransfer: raw.color_transfer }),
     ...(raw.color_primaries === undefined ? {} : { colorPrimaries: raw.color_primaries }),
     ...(raw.color_space === undefined ? {} : { colorSpace: raw.color_space }),

@@ -186,6 +186,12 @@ beforeAll(async () => {
   await ff('size-b.webm', ['-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=25:d=0.4', '-c:v', 'libvpx', '-b:v', '1M']);
   await writeFile(join(dir, 'sizes.txt'), `file '${join(dir, 'size-a.webm')}'\nfile '${join(dir, 'size-b.webm')}'\n`);
   await ff('sizes.webm', ['-f', 'concat', '-safe', '0', '-i', join(dir, 'sizes.txt'), '-c', 'copy']);
+  // A cropped WebM whose frames shrink mid-stream (FC21): 160x96, then 120x72, with a PixelCrop of two columns on the left.
+  await ff('size-c.webm', ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=25:d=0.4', '-c:v', 'libvpx', '-b:v', '1M']);
+  await ff('size-d.webm', ['-f', 'lavfi', '-i', 'testsrc2=s=120x72:r=25:d=0.4', '-c:v', 'libvpx', '-b:v', '1M']);
+  await writeFile(join(dir, 'shrink.txt'), `file '${join(dir, 'size-c.webm')}'\nfile '${join(dir, 'size-d.webm')}'\n`);
+  await ff('shrink-whole.webm', ['-f', 'concat', '-safe', '0', '-i', join(dir, 'shrink.txt'), '-c', 'copy']);
+  await writePixelCropped(join(dir, 'shrink-whole.webm'), join(dir, 'shrink.webm'), { left: 2 });
   // The even SDR twin with Matroska PixelCrop: right and bottom (even offsets), and left and top (odd offsets) (FC19).
   await writePixelCropped(join(dir, 'sdr-even.mkv'), join(dir, 'crop-rb.mkv'), { right: 1, bottom: 1 });
   await writePixelCropped(join(dir, 'sdr-even.mkv'), join(dir, 'crop-lt.mkv'), { left: 3, top: 1 });
@@ -365,6 +371,22 @@ describe('frame from a full-ledger entry (§92 D4-3; design §7.17 frame row)', 
     const cut = await pixels(join(dir, 'sdr-even.mkv'), 'rgb24', `scale=w=iw:h=ih:${read}:out_color_matrix=bt709:out_range=tv,format=yuv444p16le,crop=${width}:${height}:${x}:${y}:exact=1,scale=${read}`);
     const got = await pixels(await saved(png), 'rgb24');
     expect(got.reduce((sum, value, index) => sum + Math.abs(value - cut[index]!), 0) / got.length).toBeLessThan(0.5);
+  });
+
+  // The crop file is read through its Cues: a frame after a seek is the same picture cropped the same way.
+  it('FC19 a later frame of crop-lt.mkv, read after a seek, is the picture cropped exactly as the container says', async () => {
+    const png = await frame('crop-lt.mkv', { entry: frameAt([3, 25], [2, 25]), target: { ...OPAQUE, width: 157, height: 95 } });
+    const read = 'in_color_matrix=bt709:in_range=tv';
+    const cut = await pixels(join(dir, 'sdr-even.mkv'), 'rgb24', `select=eq(n\\,3),scale=w=iw:h=ih:${read}:out_color_matrix=bt709:out_range=tv,format=yuv444p16le,crop=157:95:3:1:exact=1,scale=${read}`);
+    const got = await pixels(await saved(png), 'rgb24');
+    expect(got.reduce((sum, value, index) => sum + Math.abs(value - cut[index]!), 0) / got.length).toBeLessThan(0.5);
+  });
+
+  // The crop is relative to each frame, so frames that change size mid-stream are cropped as the container says and taken to
+  // the planned picture.
+  it('FC21 a frame after a cropped stream shrinks mid-stream comes out at the planned size', async () => {
+    const png = await frame('shrink.webm', { entry: frameAt([3, 5], [2, 5]), target: { ...OPAQUE, width: 158, height: 96 } });
+    expect(header(png)).toMatchObject({ width: 158, height: 96 });
   });
 
   it('FC20 a cropped stream turned a quarter is cropped where it is stored, then turned upright', async () => {

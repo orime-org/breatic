@@ -40,6 +40,8 @@ export interface ProbeStream {
    * Chromium shows a WebM (`@ingest/container-crop.js`). Absent for any other container and for a crop of nothing.
    */
   crop?: ContainerCrop;
+  /** ffprobe's pixel format of a video stream, when it reported one. */
+  pixelFormat?: string;
   /** ffprobe's colour tags, when the stream carries them; HDR reads the source as they say. */
   colorTransfer?: string;
   colorPrimaries?: string;

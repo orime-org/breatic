@@ -56,6 +56,9 @@ beforeAll(async () => {
   // Three columns on the left and one row at the top; the turned file shows them at its bottom and its left.
   await writePixelCropped(join(dir, "whole.mkv"), join(dir, "crop.mkv"), { left: 3, top: 1 });
   await writePixelCropped(join(dir, "turned.mkv"), join(dir, "crop-turned.mkv"), { left: 3, top: 1 });
+  // The same picture at 10 bits, with the same crop (the cover depth).
+  await ff("whole10.mkv", ["-i", join(dir, "whole.mkv"), "-map", "0:v", "-c:v", "ffv1", "-pix_fmt", "yuv420p10le"]);
+  await writePixelCropped(join(dir, "whole10.mkv"), join(dir, "crop10.mkv"), { left: 3, top: 1 });
   // The same picture as H.264, which the tools would copy into MP4.
   await ff("whole264.mkv", ["-i", join(dir, "whole.mkv"), "-c:v", "libx264", "-qp", "0", "-pix_fmt", "yuv420p", "-c:a", "aac"]);
   await writePixelCropped(join(dir, "whole264.mkv"), join(dir, "crop264.mkv"), { left: 3, top: 1 });
@@ -109,6 +112,16 @@ describe("the cover cut from an uploaded source", () => {
   });
 });
 
+describe("the depth of a cropped cover", () => {
+  // A cover keeps its picture's depth whether or not its container crops it.
+  it.each([["whole.mkv", "rgb24"], ["crop.mkv", "rgb24"], ["crop10.mkv", "rgb48be"]])("%s gives a %s cover", async (name, depth) => {
+    const { stdout } = await run("ffmpeg", coverArgs(join(dir, name), "own-file", await probed(name)), { encoding: "buffer", maxBuffer: 1 << 24 });
+    const file = join(dir, `${name}-depth.png`);
+    await writeFile(file, stdout);
+    expect((await run("ffprobe", ["-v", "error", "-show_entries", "stream=pix_fmt", "-of", "csv=p=0", file])).stdout.trim()).toBe(depth);
+  });
+});
+
 describe("the earlier batches' video tools on an uploaded source", () => {
   // The H.264 outputs are taken to even sides; a stream copy would carry the crop as an MP4 clean aperture, which Chromium
   // does not apply, so a cropped source is encoded.
@@ -126,6 +139,14 @@ describe("the earlier batches' video tools on an uploaded source", () => {
     await runSteps(opSteps(op, params, join(dir, name), output, dir, await probed(name)));
     expect(await decodedSize(output)).toEqual(size);
     expect(pickMediaMetadata(readProbeOutput((await run("ffprobe", probeArgs(output, "own-file"))).stdout))).toMatchObject({ width: size[0], height: size[1] });
+  }, 60_000);
+
+  // Every H.264 output of the earlier batches is High 4:2:0 8-bit, which every browser plays; a crop to full chroma first
+  // leaves the depth and the output format as they were.
+  it("crop with a rectangle on crop.mkv writes H.264 High 4:2:0", async () => {
+    const output = join(dir, "rect.mp4");
+    await runSteps(opSteps("crop", { rect: { x: 1, y: 1, w: 100, h: 60 } }, join(dir, "crop264.mkv"), output, dir, await probed("crop264.mkv")));
+    expect((await run("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=profile,pix_fmt", "-of", "csv=p=0", output])).stdout.trim()).toBe("High,yuv420p");
   }, 60_000);
 
   // FFmpeg's own container crop rounds an offset of 3 to 2 and 1 to 0; the tools crop exactly, then take the sides to even.

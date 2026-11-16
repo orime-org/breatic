@@ -147,8 +147,8 @@ function hdrFilter(transfer: string, source: ProbeReport): string {
  * @returns The filter chain text.
  */
 function shown(source: ProbeReport, filters: string): string {
-  const crop = realVideoStream(source)?.crop;
-  return crop === undefined ? filters : `${exactCrop(crop)},${filters}`;
+  const video = realVideoStream(source);
+  return video?.crop === undefined ? filters : `${exactCrop(video.crop, video.pixelFormat)},${filters}`;
 }
 
 /**
@@ -268,7 +268,7 @@ export function opRuns(
       const rect = params.rect as { x: number; y: number; w: number; h: number } | null;
       if (rect === null) return [[...head, ...videoOut(source), ...audioOut(source), ...FASTSTART, output]];
       const crop = `crop=${even(rect.w)}:${even(rect.h)}:${Math.floor(rect.x)}:${Math.floor(rect.y)}`;
-      return [[...head, "-vf", shown(source, crop), ...audioOut(source), ...FASTSTART, output]];
+      return [[...head, "-vf", shown(source, crop), ...H264, ...audioOut(source), ...FASTSTART, output]];
     }
     case "speed": {
       const rate = numberOf(params, "rate");

@@ -102,6 +102,8 @@ describe("what ffprobe is asked", () => {
     expect(entries).toContain("stream_side_data=rotation");
     // The container format and its cropping: a Matroska PixelCrop is part of what the picture shows.
     expect(entries).toContain("displaymatrix,side_data_type,crop_top,crop_bottom,crop_left,crop_right");
+    // The pixel format: a crop to full chroma keeps the picture's depth.
+    expect(entries).toContain("pix_fmt");
     expect(entries).toContain("format=duration,format_name");
     expect(entries).toContain("start_pts");
     expect(entries).toContain("duration_ts");
@@ -502,7 +504,7 @@ describe("what the container's cropping reads as", () => {
 
     expect(args.slice(0, args.indexOf("-i"))).toEqual(expect.arrayContaining(["-apply_cropping", "codec"]));
     expect(args[args.indexOf("-vf") + 1]).toBe(
-      "format=pix_fmts=yuva444p16le|yuv444p16le,crop=iw-1-0:ih-0-3:1:0:exact=1,scale='min(1920,iw)':'min(1920,ih)':force_original_aspect_ratio=decrease",
+      "format=pix_fmts=yuva444p|yuv444p,crop=iw-1-0:ih-0-3:1:0:exact=1,scale='min(1920,iw)':'min(1920,ih)':force_original_aspect_ratio=decrease",
     );
   });
 });

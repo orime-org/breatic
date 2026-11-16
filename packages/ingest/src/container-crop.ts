@@ -76,11 +76,37 @@ export function shownCrop(crop: ContainerCrop, turn: DisplayTurn): ContainerCrop
 }
 
 /**
- * The filters that crop a shown picture exactly: on full-chroma frames, where an odd edge cuts no chroma sample in two.
+ * The exact crop of each frame by the container's edges: relative to the frame, so frames that change size mid-stream are
+ * cropped as the container says. Its input is full-chroma frames, where an odd edge cuts no chroma sample in two.
+ * @param crop - The pixels cropped at each edge.
+ * @returns The filter text.
+ * @throws {never} Never.
+ */
+export function cropFilter(crop: ContainerCrop): string {
+  return `crop=iw-${crop.left}-${crop.right}:ih-${crop.top}-${crop.bottom}:${crop.left}:${crop.top}:exact=1`;
+}
+
+/**
+ * Whether a pixel format holds more than 8 bits a component: planar formats of 9 to 16 bits, packed RGB of 48 or 64 bits.
+ * @param pixelFormat - The ffprobe pixel format; undefined when ffprobe reported none.
+ * @returns Whether it is deeper than 8 bits.
+ * @throws {never} Never.
+ */
+function deep(pixelFormat: string | undefined): boolean {
+  const bits = /(\d+)(le|be)$/u.exec(pixelFormat ?? "");
+  if (bits === null) return false;
+  const value = Number(bits[1]);
+  return (value >= 9 && value <= 16) || value === 48 || value === 64;
+}
+
+/**
+ * The filters that crop a shown picture exactly: taken to full chroma at its own depth, with alpha when the frames carry it
+ * (one depth is offered: a graph with an alpha extraction behind it cannot choose among both depths), then `cropFilter`.
  * @param crop - The crop of the shown picture.
+ * @param pixelFormat - The picture's ffprobe pixel format.
  * @returns The filter chain text.
  * @throws {never} Never.
  */
-export function exactCrop(crop: ContainerCrop): string {
-  return `format=pix_fmts=yuva444p16le|yuv444p16le,crop=iw-${crop.left}-${crop.right}:ih-${crop.top}-${crop.bottom}:${crop.left}:${crop.top}:exact=1`;
+export function exactCrop(crop: ContainerCrop, pixelFormat: string | undefined): string {
+  return `format=pix_fmts=${deep(pixelFormat) ? "yuva444p16le|yuv444p16le" : "yuva444p|yuv444p"},${cropFilter(crop)}`;
 }

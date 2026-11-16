@@ -330,9 +330,9 @@ export async function runAlphaPresentation(job: AlphaRunBody): Promise<AlphaRunR
         const packedWidth = planeWidth * 2;
         // The packed picture is the one the source shows, the size it is filed at: codec cropping only, a PixelCrop exactly.
         const decoder = [...CODEC_CROPPING_ONLY, ...alphaDecoderArgs(String(video.codec_name), typeof alphaMode === 'string' ? alphaMode : null)];
-        const crop = realVideoStream(source)?.crop;
+        const picture = realVideoStream(source);
         const output = join(directory, 'packed.mp4');
-        const filter = `[0:${integer(video.index)}]${crop === undefined ? '' : `${exactCrop(crop)},`}split=2[r][a];[r]format=gbrap,premultiply=inplace=1,format=rgb24,pad=${planeWidth}:${packedHeight}:0:0:color=black[rgb];[a]alphaextract,format=rgb24,pad=${planeWidth}:${packedHeight}:0:0:color=black[alpha];[rgb][alpha]hstack,format=yuv420p[v]`;
+        const filter = `[0:${integer(video.index)}]${picture?.crop === undefined ? '' : `${exactCrop(picture.crop, picture.pixelFormat)},`}split=2[r][a];[r]format=gbrap,premultiply=inplace=1,format=rgb24,pad=${planeWidth}:${packedHeight}:0:0:color=black[rgb];[a]alphaextract,format=rgb24,pad=${planeWidth}:${packedHeight}:0:0:color=black[alpha];[rgb][alpha]hstack,format=yuv420p[v]`;
         const last = originalClock.frames[originalClock.frames.length - 1]!;
         const timescale = originalClock.videoTimeBase.split('/')[1]!;
         const threads = String(Math.max(1, Math.floor(job.vcpu)));
