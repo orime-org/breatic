@@ -32,7 +32,7 @@ vi.mock("ai", () => ({
 import type * as DomainModule from "@breatic/domain";
 import { randomUUID } from "node:crypto";
 import { coverKeyFor, createPgClient, getTimelineConfig, initCore, loadLocales, timelineExecutionRepo } from "@breatic/core";
-import { initProvider, uploadGrantService, webAnimationSourceRepo } from "@breatic/domain";
+import { createUsageRecorder, initProvider, timelineOperationKey, toChargeCredits, uploadGrantService, webAnimationSourceRepo } from "@breatic/domain";
 import { durationToFrames } from "@breatic/shared";
 import {
   WEB_ANIMATION_CONTAINER_CLASS, WEB_ANIMATION_RENDER_CONTAINER_CLASS, webAnimationJobRequestSchema, webAnimationRenderJobRequestSchema,
@@ -223,6 +223,24 @@ describe("an export", () => {
     await pickUp(fx);
     expect(await read(fx.execution.id)).toMatchObject({ status: "failed", failureReason: reason, resultAssetId: null });
     expect(await usageRows(sql, fx.execution.id)).toEqual([expect.objectContaining({ source: "container", model: "cloudflare-container:web_animation_render" })]);
+  });
+
+  it("records the container once and charges it once when a pickup that lost its lock already recorded it", async () => {
+    const { fx } = await seedExport("running");
+    // The earlier pickup wrote the container's row, then lost the job lock before it charged.
+    const earlier = createUsageRecorder({
+      operationKey: timelineOperationKey(fx.execution.id), feature: "timeline_web_animation",
+      actorUserId: fx.userId, projectId: fx.projectId, onMissingCost: () => {},
+    });
+    earlier.recordServiceCall({ source: "container", service: "cloudflare-container:web_animation_render", provider: "cloudflare", requests: 1, costUsd: 0.5, costSource: "computed" });
+    await earlier.settle();
+    const ingest = installFakeIngest(fx);
+    ingest.read = () => json(renderReport("failed", { failureReason: "render_failed" }));
+    await pickUp(fx);
+    const rows = await usageRows(sql, fx.execution.id);
+    expect(rows).toHaveLength(1);
+    const [billed] = await sql<{ billed_credits: string }[]>`SELECT billed_credits::text FROM timeline_executions WHERE id = ${fx.execution.id}`;
+    expect(Number(billed!.billed_credits)).toBe(toChargeCredits(rows[0]!.credits));
   });
 
   it("fails as not saved when the video's registration does not register it", async () => {
