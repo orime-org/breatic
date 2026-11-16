@@ -19,6 +19,7 @@ import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Skeleton } from '@web/components/ui/skeleton';
 import { formatBytes } from '@web/lib/format-bytes';
+import { OperationsRow } from '@web/features/membership/OperationsRow';
 import { QuotaRow } from '@web/features/membership/QuotaRow';
 import { SALES_EMAIL } from '@web/features/membership/pricing';
 import { SubscriptionLines } from '@web/features/membership/SubscriptionLines';
@@ -95,7 +96,7 @@ export function MembershipContent({
   membership,
 }: MembershipContentProps): React.JSX.Element {
   const t = useTranslation();
-  const { tier, limits, usage, catalog, subscription } = membership;
+  const { tier, limits, usage, catalog, subscription, operations, storageLimitBytes } = membership;
   const onPriceList = isComparableMembershipTier(tier);
   const { choose, cancel, resume, busy, pending } =
     useSubscriptionActions(subscription);
@@ -193,6 +194,29 @@ export function MembershipContent({
             // that agreement, so the panel cannot print them — which makes the
             // address the one thing it can usefully offer.
               <>
+                {/* Storage against the agreement, or used against no cap when
+                    the account has no agreement on file (inner#1968, 3.6). */}
+                {storageLimitBytes === null ? (
+                  <div className='flex items-baseline justify-between gap-3' data-testid='quota-storage'>
+                    <span className='text-sm'>{t('membership.quota.storage')}</span>
+                    <span className='text-sm tabular-nums text-foreground-secondary'>
+                      {t('membership.quotaUnlimited', { used: formatBytes(usage.storageBytes) })}
+                    </span>
+                  </div>
+                ) : (
+                  <QuotaRow
+                    testId='quota-storage'
+                    label={t('membership.quota.storage')}
+                    value={t('membership.quotaValue', {
+                      used: formatBytes(usage.storageBytes),
+                      limit: formatBytes(storageLimitBytes),
+                    })}
+                    used={usage.storageBytes}
+                    limit={storageLimitBytes}
+                    overLabel={t('membership.overLimitTag')}
+                  />
+                )}
+                {operations === null ? null : <OperationsRow operations={operations} />}
                 <p
                   className='text-sm text-foreground-secondary'
                   data-testid='enterprise-quota-note'
@@ -244,6 +268,8 @@ export function MembershipContent({
                     {t('membership.overLimit.storage')}
                   </p>
                 ) : null}
+                {/* Self-hosted counts no operations, so it has no row (3.3). */}
+                {operations === null ? null : <OperationsRow operations={operations} />}
                 {tier === 'self_hosted' ? (
                 // The four per-studio ceilings, listed here only for this tier:
                 // it is not on the price list, so the comparison table below —

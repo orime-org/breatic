@@ -64,6 +64,8 @@ function limits(over: Partial<MembershipLimits> = {}): MembershipLimits {
     studio_members: 10,
     project_members: 12,
     storage_bytes: 200 * GIB,
+    monthly_operations: 4000,
+    running_tasks_per_user: 5,
     ...over,
   };
 }
@@ -109,10 +111,13 @@ function answer(over: Partial<AccountMembership> = {}): AccountMembership {
           studio_members: 1,
           project_members: 4,
           storage_bytes: 5 * GIB,
+          monthly_operations: 500,
+          running_tasks_per_user: 2,
         },
+        monthlyOperations: 500,
         prices: { month: null, year: null },
       },
-      { tier: 'pro', limits: limits(), prices: { month: { priceCents: 1999, currency: 'usd' }, year: { priceCents: 19999, currency: 'usd' } } },
+      { tier: 'pro', limits: limits(), monthlyOperations: 4000, prices: { month: { priceCents: 1999, currency: 'usd' }, year: { priceCents: 19999, currency: 'usd' } } },
       {
         tier: 'team',
         limits: {
@@ -122,11 +127,16 @@ function answer(over: Partial<AccountMembership> = {}): AccountMembership {
           studio_members: 100,
           project_members: 40,
           storage_bytes: 500 * GIB,
+          monthly_operations: 16000,
+          running_tasks_per_user: 10,
         },
+        monthlyOperations: 16000,
         prices: { month: { priceCents: 7999, currency: 'usd' }, year: { priceCents: 79999, currency: 'usd' } },
       },
     ],
     subscription: null,
+    storageLimitBytes: 200 * GIB,
+    operations: null,
     ...over,
   };
 }
@@ -263,9 +273,9 @@ describe('MembershipPanel', () => {
       answer({
         subscription: subscription({ period: 'month' }),
         catalog: [
-          { tier: 'base', limits: limits(), prices: { month: null, year: null } },
-          { tier: 'pro', limits: limits(), prices: { month: { priceCents: 1250, currency: 'eur' }, year: { priceCents: 12500, currency: 'eur' } } },
-          { tier: 'team', limits: limits(), prices: { month: { priceCents: 3900, currency: 'eur' }, year: { priceCents: 39000, currency: 'eur' } } },
+          { tier: 'base', limits: limits(), monthlyOperations: 4000, prices: { month: null, year: null } },
+          { tier: 'pro', limits: limits(), monthlyOperations: 4000, prices: { month: { priceCents: 1250, currency: 'eur' }, year: { priceCents: 12500, currency: 'eur' } } },
+          { tier: 'team', limits: limits(), monthlyOperations: 4000, prices: { month: { priceCents: 3900, currency: 'eur' }, year: { priceCents: 39000, currency: 'eur' } } },
         ],
       }),
     );
@@ -804,7 +814,9 @@ describe('MembershipPanel', () => {
       'Enterprise',
     );
     expect(screen.getByTestId('enterprise-quota-note')).toBeInTheDocument();
-    expect(screen.queryByTestId('quota-storage')).toBeNull();
+    // Storage is drawn against the agreement since inner#1968 (design 3.6);
+    // the other ceilings stay out.
+    expect(screen.queryByTestId('quota-team-studios')).toBeNull();
     expect(screen.queryByRole('table')).toBeNull();
     expect(screen.queryByTestId('tier-card-pro')).toBeNull();
     expect(screen.queryByTestId('membership-period-switch')).toBeNull();
@@ -980,6 +992,8 @@ describe('MembershipPanel', () => {
           studio_members: 33,
           project_members: 44,
           storage_bytes: 100 * 1024 ** 4,
+          monthly_operations: 9999,
+          running_tasks_per_user: 9999,
         },
       }),
     );

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import * as React from 'react';
-import { COMPARABLE_MEMBERSHIP_TIERS, type ComparableMembershipTier, type TierOffer } from '@breatic/shared';
+import { COMPARABLE_MEMBERSHIP_TIERS, getLocale, type ComparableMembershipTier, type TierOffer } from '@breatic/shared';
 
 import { Skeleton } from '@web/components/ui/skeleton';
 import { formatBytes } from '@web/lib/format-bytes';
@@ -81,7 +81,7 @@ interface ComparisonRow {
   cell: (offer: TierOffer) => string;
 }
 
-/** The six ceilings, in the order the table lists them. */
+/** The eight figures, in the order the table lists them. */
 const ROWS: readonly ComparisonRow[] = [
   { key: 'teamStudios', label: 'membership.quota.teamStudios', cell: (offer) => String(offer.limits.team_studios) },
   { key: 'projectsPerStudio', label: 'membership.quota.projectsPerStudio', cell: (offer) => String(offer.limits.projects_per_studio) },
@@ -89,6 +89,10 @@ const ROWS: readonly ComparisonRow[] = [
   { key: 'projectMembers', label: 'membership.quota.projectMembers', cell: (offer) => String(offer.limits.project_members) },
   { key: 'concurrentEditors', label: 'membership.quota.concurrentEditors', cell: (offer) => String(offer.limits.concurrent_editors) },
   { key: 'storage', label: 'membership.quota.storage', cell: (offer) => formatBytes(offer.limits.storage_bytes) },
+  // The two figures inner#1968 adds: the month's operations and the tasks one
+  // person runs at once.
+  { key: 'monthlyOperations', label: 'membership.quota.monthlyOperations', cell: (offer) => offer.monthlyOperations.toLocaleString(getLocale()) },
+  { key: 'runningTasksPerUser', label: 'membership.quota.runningTasksPerUser', cell: (offer) => String(offer.limits.running_tasks_per_user) },
 ];
 
 /**
