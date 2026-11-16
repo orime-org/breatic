@@ -22,6 +22,7 @@ import { _resetForTests } from '@web/data/yjs/manager';
 import { SpaceConnectionContext } from '@web/data/yjs/space-connection';
 import type { SocketState } from '@web/data/yjs/use-socket';
 import { WebAnimationSpace } from '@web/spaces/web-animation/WebAnimationSpace';
+import { useSpaceOpenRequestStore } from '@web/stores/space-open-request';
 
 vi.mock('@web/data/api/timeline', async (importOriginal) => {
   const actual = await importOriginal<typeof TimelineApiModule>();
@@ -99,6 +100,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  useSpaceOpenRequestStore.setState({ state: { status: 'none' } });
   for (const client of clients.splice(0)) client.clear();
   _resetForTests();
 });
@@ -152,6 +154,22 @@ describe('the preview', () => {
 
   it('opens the newest finished result', async () => {
     listing([done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z'), done(OLDER, 'Older logo', '2026-11-15T08:00:00.000000Z')]);
+    show();
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
+  });
+
+  it('opens the newest finished result when an open request that names no result opened the Space', async () => {
+    listing([done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z'), done(OLDER, 'Older logo', '2026-11-15T08:00:00.000000Z')]);
+    useSpaceOpenRequestStore.setState({ state: { status: 'opened', request: { type: 'web_animation' }, spaceId: SPACE } });
+    show();
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
+    expect(useSpaceOpenRequestStore.getState().state.status).toBe('none');
+  });
+
+  it('opens the newest finished result when the result an open request named cannot be read', async () => {
+    listing([done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z')]);
+    vi.mocked(timelineApi.getExecution).mockReset().mockRejectedValue(new Error('not found'));
+    useSpaceOpenRequestStore.setState({ state: { status: 'opened', request: { type: 'web_animation', select: OLDER }, spaceId: SPACE } });
     show();
     await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
   });

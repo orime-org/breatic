@@ -311,14 +311,13 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   }, [rowById, select]);
   const pick = React.useCallback((id: string): void => select({ type: 'pick', executionId: id }), [select]);
 
-  // The newest finished result opens once the list arrives, unless something else was asked for.
-  const opened = React.useRef(false);
+  // With nothing selected, the newest finished result opens once the list is there (design §7.1): on entering, after
+  // an open request that names no result, and after a named result could not be read.
   React.useEffect(() => {
-    if (opened.current || !lists.done.own.isSuccess || selectionRef.current.status !== 'none') return;
-    opened.current = true;
+    if (!lists.done.own.isSuccess || selection.status !== 'none') return;
     const newest = rowsOf(lists.done.own)[0] ?? rowsOf(lists.done.legacy)[0];
     if (newest !== undefined) pick(newest.id);
-  }, [lists.done.own, lists.done.legacy, pick]);
+  }, [selection.status, lists.done.own, lists.done.legacy, pick]);
   // A row's status crossing into the other tab moves the tab with it.
   const status = row?.status;
   React.useEffect(() => {
@@ -329,7 +328,6 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   const openRequest = useSpaceOpenRequestStore((state) => state.state);
   React.useEffect(() => {
     if (openRequest.status !== 'opened' || openRequest.spaceId !== spaceId) return;
-    opened.current = true;
     if (openRequest.request.select !== undefined) {
       locate(openRequest.request.select);
       dispatchPanels({ type: 'locate' });
