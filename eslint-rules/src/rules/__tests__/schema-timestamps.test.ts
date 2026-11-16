@@ -82,3 +82,24 @@ ruleTester.run("schema-timestamps", schemaTimestamps, {
     },
   ],
 });
+
+// inner#1968 (test spec A-26): the operations ledger is append-only and sits
+// in NO_SOFT_DELETE; the two spend-limit tables are settings and keep their
+// deleted_at like any other table.
+ruleTester.run("schema-timestamps operation tables", schemaTimestamps, {
+  valid: [
+    { code: `export const operationLedger = pgTable("operation_ledger", { id: uuid("id"), ...timestamps });` },
+    { code: `export const studioSpendLimits = pgTable("studio_spend_limits", { ...timestamps, deletedAt: timestamp("deleted_at") });` },
+    { code: `export const studioMemberSpendLimits = pgTable("studio_member_spend_limits", { ...timestamps, deletedAt: timestamp("deleted_at") });` },
+  ],
+  invalid: [
+    {
+      code: `export const studioSpendLimits = pgTable("studio_spend_limits", { ...timestamps });`,
+      errors: [{ messageId: "missingDeletedAt", data: { table: "studioSpendLimits" } }],
+    },
+    {
+      code: `export const studioMemberSpendLimits = pgTable("studio_member_spend_limits", { ...timestamps });`,
+      errors: [{ messageId: "missingDeletedAt", data: { table: "studioMemberSpendLimits" } }],
+    },
+  ],
+});

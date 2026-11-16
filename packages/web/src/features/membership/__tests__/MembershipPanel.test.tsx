@@ -38,6 +38,7 @@ import type {
 
 import { MembershipPanel } from '@web/features/membership/MembershipPanel';
 import { useCurrentUserStore } from '@web/stores/current-user';
+import { formatBytes } from '@web/lib/format-bytes';
 
 const membershipMock = vi.fn();
 vi.mock('@web/data/api/account', () => ({
@@ -1217,4 +1218,54 @@ describe('MembershipPanel while its answer is on the way (#307 A11/A12)', () => 
       expect(screen.getAllByTestId('section-skeleton')).toHaveLength(1);
     },
   );
+});
+
+describe('MembershipPanel for an enterprise account (inner#1968 F-20)', () => {
+  const TIB = 1024 ** 4;
+
+  /**
+   * An enterprise answer with storage used, its cap and the period's operations.
+   * @param storageLimitBytes - The agreement's storage cap, or null without an agreement.
+   * @param storageBytes - Bytes used.
+   * @returns The answer.
+   */
+  function enterprise(storageLimitBytes: number | null, storageBytes: number): AccountMembership {
+    return answer({
+      tier: 'enterprise',
+      limits: null,
+      usage: { teamStudios: 1, storageBytes },
+      storageLimitBytes,
+      operations: {
+        monthlyAllowance: 20000,
+        usedThisPeriod: 9830,
+        allowanceUsed: 9830,
+        allowanceRemaining: 10170,
+        overageThisPeriod: 0,
+        periodStart: '2026-11-10T00:00:00.000Z',
+        nextResetAt: '2026-12-10T00:00:00.000Z',
+        overageCredits: '0.5',
+      },
+    } as Partial<AccountMembership>);
+  }
+
+  it('draws storage against the agreement and the operations row for an active agreement', async () => {
+    const used = Math.round(1.24 * TIB);
+    membershipMock.mockResolvedValue(enterprise(5 * TIB, used));
+    setup();
+
+    const storage = await screen.findByTestId('quota-storage');
+    expect(storage).toHaveTextContent(`${formatBytes(used)} / 5 TiB`);
+    expect(screen.getByTestId('quota-operations')).toHaveTextContent('9,830 / 20,000');
+  });
+
+  it('draws storage as used against no cap, and the operations row, without an agreement', async () => {
+    const used = 320 * 1024 ** 3;
+    membershipMock.mockResolvedValue(enterprise(null, used));
+    setup();
+
+    const storage = await screen.findByTestId('quota-storage');
+    expect(storage).toHaveTextContent('320 GiB');
+    expect(storage).not.toHaveTextContent(/320 GiB \/ \d/);
+    expect(screen.getByTestId('quota-operations')).toHaveTextContent('9,830 / 20,000');
+  });
 });
