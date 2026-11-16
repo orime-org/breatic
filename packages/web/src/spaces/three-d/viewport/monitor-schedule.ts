@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /** Two independent facts about one monitor card (inner#1694 design 6.3); a failed renderer is shown by the card itself. */
 export interface MonitorCard {

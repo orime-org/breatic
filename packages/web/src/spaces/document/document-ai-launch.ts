@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What the AI output dialog takes from the body when it opens (inner#1860,
@@ -14,11 +14,11 @@ import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import type { EditorState } from '@tiptap/pm/state';
 import { CellSelection } from '@tiptap/pm/tables';
 
-import { blockAround, containerAt, inlineLetter, inOneCell, ownContentEnd, type AiCapture } from '@web/spaces/document/document-ai-range';
+import { blockAround, containerAt, inlineLetter, ownContentEnd, type AiCapture } from '@web/spaces/document/document-ai-range';
+import { bodyDepthBetween, carrierAt } from '@web/spaces/document/document-body-carrier';
 import { readTopBlocks } from '@web/spaces/document/document-blocks-read';
 import { letterBounds } from '@web/spaces/document/document-local-range';
 import { heldTables } from '@web/spaces/document/document-table-leave-selection';
-import { tableAround } from '@web/spaces/document/document-table-nodes';
 
 
 /** The blank line Markdown puts between two blocks. */
@@ -93,10 +93,12 @@ function wordEdges(doc: ProseMirrorNode, block: BlockAt): { start: number; end: 
  * in reading order, and a start at the end of a block other than the end's
  * steps on one; what is then inside one line of words is the selected
  * words, and anything else takes the whole blocks it runs from and to, a
- * table it runs into whole. An end outside any line (select-all, a block
+ * table or column group it runs out of a cell or column of whole
+ * (`document-body-carrier.ts`). An end outside any line (select-all, a block
  * selected) takes the blocks the selection holds. The insert block (§5.4)
- * is the range's last block: the whole table for a range that takes one in,
- * the block in the cell for words inside a single cell.
+ * is the range's last block: the whole table or column group for a range
+ * that takes one in, the block in the cell or column for words inside a
+ * single cell or column.
  * @param state - The editor state, holding the selection.
  * @returns The range, or null when it holds no words.
  */
@@ -129,14 +131,14 @@ export function aiCapture(state: EditorState): AiCapture | null {
   const $last = doc.resolve(order[last]!.pos + 1);
   // A table the editor shows taken whole (`heldTables`) is whole here too,
   // even when a step lands both ends in one of its cells.
-  const oneCell = inOneCell($first, $last) && heldTables(selection) === null;
-  const firstBlock = blockAround($first, oneCell)!;
-  const lastBlock = blockAround($last, oneCell)!;
+  const cellsHold = heldTables(selection) === null;
+  const firstBlock = blockAround($first, $last, cellsHold)!;
+  const lastBlock = blockAround($last, $first, cellsHold)!;
   const lastId = String(doc.nodeAt(lastBlock)!.attrs['id']);
   // Inside one block is inside one line of words: a legacy table's cells
   // are lines of one block, and a selection across them takes the table.
   const $start = doc.resolve(from);
-  if (first === last && $start.parent.isTextblock && $start.sameParent(doc.resolve(to)) && (oneCell || tableAround($start) === null)) {
+  if (first === last && $start.parent.isTextblock && $start.sameParent(doc.resolve(to)) && carrierAt($start, bodyDepthBetween($first, $last, cellsHold)) === null) {
     const letters = letterBounds(doc, { from, to }, inlineLetter);
     return letters === null ? null : { range: letters, firstId: null, lastId: null, insertId: lastId };
   }

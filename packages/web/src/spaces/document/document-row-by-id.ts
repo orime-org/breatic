@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Where a row is in the document, asked by the id the block carries.
@@ -46,6 +46,21 @@ export function rowById(
     return false;
   });
   return found;
+}
+
+/**
+ * Where a node stands in a document, by identity.
+ * @param doc - The document.
+ * @param node - The node.
+ * @returns The position before it, or -1 when the document holds it nowhere.
+ */
+export function positionOf(doc: PMNode, node: PMNode): number {
+  let at = -1;
+  doc.descendants((child, pos) => {
+    if (child === node) at = pos;
+    return at < 0;
+  });
+  return at;
 }
 
 /**

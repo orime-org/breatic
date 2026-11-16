@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * inner#1127 A1: the insert menu's media entries and the file picker behind
@@ -38,15 +38,17 @@ function openMenu(onPickMedia?: (kind: 'image' | 'audio' | 'video') => void): vo
 }
 
 describe('the media entries (A1)', () => {
-  it('come after the table, in the order image, audio, video', () => {
+  it('come after the table and columns, in the order image, audio, video', () => {
     openMenu(vi.fn());
 
     const ids = screen
       .getAllByRole('menuitem')
       .map((item) => item.getAttribute('data-testid'))
       .filter((id) => id !== null);
-    expect(ids.slice(-4)).toEqual([
+    // Columns follow the table (inner#1314 demo, "插入菜单").
+    expect(ids.slice(-5)).toEqual([
       'doc-block-insert-table',
+      'doc-block-insert-columns',
       'doc-block-insert-image',
       'doc-block-insert-audio',
       'doc-block-insert-video',

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { budgetDeadlineFrom, env, getAgentConfig, getStorageAdapter, logger } from "@breatic/core";
 import { assetRepo, createAgentPicturePreparer, userUrlSchema, SaveRefused } from "@breatic/domain";

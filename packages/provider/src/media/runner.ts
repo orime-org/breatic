@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { candidateOf, candidatesOf, type MediaBinding } from "@provider/config/schema.js";
 import type { Cost } from "@provider/cost.js";

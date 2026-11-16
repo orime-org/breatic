@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The document body's undo manager, and the plugin that uses it.
@@ -77,6 +77,9 @@ function protectedNodes(): Set<string> {
   }
 }
 
+/** One step on an undo or redo stack. */
+type UndoStep = NonNullable<ReturnType<Y.UndoManager['undo']>>;
+
 /**
  * What undo is allowed to delete.
  *
@@ -85,14 +88,18 @@ function protectedNodes(): Set<string> {
  * container's attributes: an attribute is a map entry, so it fails the test for
  * a `ContentType` and stays deletable.
  *
- * So an attribute is kept exactly when its container is — the same question is
- * put to upstream about the parent rather than restated here, which leaves one
- * rule in one place. A container with no `_item` is a root type, which undo
- * never deletes.
+ * So an attribute that came in with its container is kept exactly when its
+ * container is — the same question is put to upstream about the parent rather
+ * than restated here, which leaves one rule in one place. An attribute the
+ * step gave a container that was there before goes, as an attribute changed
+ * on it comes back: a newly set table column width is taken back
+ * (inner#1314). A container with no `_item` is a root type, which undo never
+ * deletes.
  * @param item - The yjs item undo proposes to delete.
+ * @param popping - The steps on the stack being taken back.
  * @returns True to allow the deletion, false to keep the item.
  */
-function isDeletableByUndo(item: Y.Item): boolean {
+function isDeletableByUndo(item: Y.Item, popping: readonly UndoStep[]): boolean {
   const nodes = protectedNodes();
   if (!defaultDeleteFilter(item, nodes)) {
     return false;
@@ -101,7 +108,47 @@ function isDeletableByUndo(item: Y.Item): boolean {
     return true;
   }
   const container = (item.parent as { _item?: Y.Item | null } | null)?._item;
-  return container == null || defaultDeleteFilter(container, nodes);
+  if (container == null || defaultDeleteFilter(container, nodes)) {
+    return true;
+  }
+  const step = popping.find((candidate) => Y.isDeleted(candidate.insertions, item.id));
+  return step !== undefined && !Y.isDeleted(step.insertions, container.id);
+}
+
+/**
+ * The undo manager of a document's body: while it takes a step back it tells
+ * its delete filter which steps are on the stack, since yjs only says which
+ * step it took once the step is done (`UndoManager.js` `popStackItem`).
+ */
+class BodyUndoManager extends Y.UndoManager {
+  /** The steps on the stack being taken back, while an undo or a redo runs. */
+  popping: readonly UndoStep[] = [];
+
+  /**
+   * Undoes the last step.
+   * @returns The step, or null.
+   */
+  override undo(): UndoStep | null {
+    this.popping = [...this.undoStack];
+    try {
+      return super.undo();
+    } finally {
+      this.popping = [];
+    }
+  }
+
+  /**
+   * Redoes the last undone step.
+   * @returns The step, or null.
+   */
+  override redo(): UndoStep | null {
+    this.popping = [...this.redoStack];
+    try {
+      return super.redo();
+    } finally {
+      this.popping = [];
+    }
+  }
 }
 
 /** Whether the dispatch now reaching Yjs is one the user made. */
@@ -151,12 +198,12 @@ export function createDocumentUndo(doc: Y.Doc): DocumentUndo {
   // Wrapped so `destroy()` also detaches the doc listener yjs leaks — see
   // `withDestroyListenerCleanup`; the canvas manager has the same problem and
   // the same wrapper.
-  const manager: Y.UndoManager = withDestroyListenerCleanup(
+  const manager: BodyUndoManager = withDestroyListenerCleanup(
     doc,
     () =>
-      new Y.UndoManager(documentBodyFragment(doc), {
+      new BodyUndoManager(documentBodyFragment(doc), {
         trackedOrigins: new Set([ySyncPluginKey]),
-        deleteFilter: isDeletableByUndo,
+        deleteFilter: (item) => isDeletableByUndo(item, manager.popping),
         // The marker answers for a ProseMirror dispatch, and the manager's
         // own write-back is not one — it carries the content an undo took
         // out, and asking a question about somebody else's dispatch keeps

@@ -4,7 +4,7 @@
 
 Use this guide to run Breatic for yourself or share it with your household, private group or colleagues within one organization. Install the application on one computer; other users connect through a browser. **Use published images, not development servers.** For source changes, see [Development setup](DEVELOPMENT.md).
 
-The [LICENSE](../LICENSE) permits individual use, private groups that are not publicly advertised or open to general sign-up, and internal organizational use. Without separate authorization, offering Breatic to the public is prohibited, whether paid or free. Limit LAN access to your permitted group as well.
+Breatic is licensed under the [GNU Affero General Public License v3.0](../LICENSE). If you modify it and let other people use your modified version over a network, you must offer them its complete source code under the same license. The Breatic name and logo are covered by [TRADEMARKS.md](../TRADEMARKS.md).
 
 ## 1. What you will run
 

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { chatApi } from '@web/data/api/chat';
 import { UploadFailedError } from '@web/data/upload/media-upload';
