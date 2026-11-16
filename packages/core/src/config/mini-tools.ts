@@ -13,7 +13,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { parse } from "yaml";
 import { z } from "zod";
-import { MINI_TOOL_JOB_MAX_EXTRA_INPUTS } from "@breatic/shared";
+import { MINI_TOOL_JOB_MAX_EXTRA_INPUTS, MINI_TOOL_JOB_MAX_OUTPUTS } from "@breatic/shared";
 import { CONTAINER_OPS, type ContainerOp } from "@breatic/shared/mini-tools";
 import { MONOREPO_ROOT } from "@core/config/env.js";
 
@@ -57,6 +57,9 @@ export const miniToolsConfigSchema = z
       .min(2)
       .max(MINI_TOOL_JOB_MAX_EXTRA_INPUTS + 1)
       .default(20),
+    // How many of one job's outputs the container writes back at once
+    // (inner#1968): a grid's tiles each wait on the Worker's answer.
+    output_concurrency: z.number().int().min(1).max(MINI_TOOL_JOB_MAX_OUTPUTS).default(6),
   })
   .superRefine((config, ctx) => {
     for (const [op, spec] of Object.entries(config.ops)) {

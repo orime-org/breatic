@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { describe, expect, it } from "vitest";
-import { MINI_TOOL_JOB_MAX_EXTRA_INPUTS } from "@breatic/shared";
+import { MINI_TOOL_JOB_MAX_EXTRA_INPUTS, MINI_TOOL_JOB_MAX_OUTPUTS } from "@breatic/shared";
 
 import { getMiniToolsConfig, miniToolsConfigSchema } from "@core/config/mini-tools.js";
 
@@ -54,6 +54,17 @@ describe("getMiniToolsConfig", () => {
     const bare = structuredClone(config);
     delete bare.join_max_clips;
     expect((miniToolsConfigSchema.parse(bare) as unknown as Record<string, unknown>).join_max_clips).toBe(20);
+  });
+
+  // inner#1968: how many of a job's outputs the container writes back at once.
+  it("reads output_concurrency, defaulting to 6 and bounded by the job contract's output cap", () => {
+    const config = getMiniToolsConfig() as unknown as Record<string, unknown>;
+    expect(config.output_concurrency).toBe(6);
+    const bare = structuredClone(config);
+    delete bare.output_concurrency;
+    expect((miniToolsConfigSchema.parse(bare) as unknown as Record<string, unknown>).output_concurrency).toBe(6);
+    expect(miniToolsConfigSchema.safeParse({ ...config, output_concurrency: 0 }).success).toBe(false);
+    expect(miniToolsConfigSchema.safeParse({ ...config, output_concurrency: MINI_TOOL_JOB_MAX_OUTPUTS + 1 }).success).toBe(false);
   });
 
   // inner#1825 §6.4: the job contract carries the source plus at most

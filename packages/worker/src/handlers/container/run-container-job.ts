@@ -146,7 +146,7 @@ async function jobFor(spec: MiniToolSpec, op: ContainerOp, input: ContainerRunIn
  * @throws {DeadlinePassed} When the deadline has passed with the job still going.
  */
 async function checkJob(op: ContainerOp, input: ContainerRunInput, job: StoredJob): Promise<EndedReport> {
-  const { poll_interval_ms: poll } = getMiniToolsConfig();
+  const { poll_interval_ms: poll, output_concurrency: outputConcurrency } = getMiniToolsConfig();
   // The job's own deadline and the room for its last report bound every call
   // (inner#1367). Past it, the read that finds the ending still goes out, under
   // the transport's own bound.
@@ -170,6 +170,7 @@ async function checkJob(op: ContainerOp, input: ContainerRunInput, job: StoredJo
         input: { storageKey: input.sourceKey },
         ...(input.extraKeys !== undefined && { extra: input.extraKeys.map((storageKey) => ({ storageKey })) }),
         outputs: job.outputs,
+        outputConcurrency,
       }, bound);
     } catch (err) {
       // The container could not start; the next pickup submits again.
