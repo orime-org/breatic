@@ -14,7 +14,6 @@ import { TooltipProvider } from '@web/components/ui/tooltip';
 import { applySceneCommand, readSceneDocument } from '@web/data/yjs/scene-document';
 import { SceneSession } from '@web/data/yjs/scene-session';
 import SceneEditor from '@web/spaces/three-d/SceneEditor';
-import { SCENE_VIEW_FOV } from '@web/spaces/three-d/viewport/scene-viewport-props';
 import type { SceneViewportProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
 import { useFollowStore } from '@web/stores/follow';
 import { useUIStore } from '@web/stores/ui';
@@ -87,21 +86,29 @@ afterEach(() => {
 });
 
 describe('SceneEditor, following a member', () => {
-  it('publishes the personal camera with the field of view while following nobody', async () => {
+  it('publishes no camera before the viewport reports one', async () => {
+    useFollowStore.getState().reset();
+    const setCamera = vi.spyOn(SceneSession.prototype, 'setCamera');
+    await setup();
+    expect(setCamera).toHaveBeenCalled();
+    for (const [camera] of setCamera.mock.calls) expect(camera).toBeNull();
+  });
+
+  it('publishes the personal camera with the field of view the viewport reports while following nobody', async () => {
     useFollowStore.getState().reset();
     const session = await setup();
     const setCamera = vi.spyOn(session, 'setCamera');
-    act(() => viewport().onViewChange({ position: [1, 2, 3], target: [0, 0, 0] }));
-    expect(setCamera).toHaveBeenLastCalledWith({ position: [1, 2, 3], target: [0, 0, 0], fov: SCENE_VIEW_FOV });
+    act(() => viewport().onViewChange({ position: [1, 2, 3], target: [0, 0, 0] }, 50));
+    expect(setCamera).toHaveBeenLastCalledWith({ position: [1, 2, 3], target: [0, 0, 0], fov: 50 });
   });
 
   it('publishes no camera while following a member, and its own once following stops', async () => {
     const session = await setup();
     const setCamera = vi.spyOn(session, 'setCamera');
-    act(() => viewport().onViewChange({ position: [1, 2, 3], target: [0, 0, 0] }));
+    act(() => viewport().onViewChange({ position: [1, 2, 3], target: [0, 0, 0] }, 50));
     expect(setCamera).toHaveBeenLastCalledWith(null);
     act(() => useFollowStore.getState().stop('button'));
-    expect(setCamera).toHaveBeenLastCalledWith({ position: [1, 2, 3], target: [0, 0, 0], fov: SCENE_VIEW_FOV });
+    expect(setCamera).toHaveBeenLastCalledWith({ position: [1, 2, 3], target: [0, 0, 0], fov: 50 });
   });
 
   it('stops following when the user moves the camera in the viewport or the overview', async () => {
