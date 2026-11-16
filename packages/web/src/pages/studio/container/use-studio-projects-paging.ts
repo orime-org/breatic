@@ -78,6 +78,7 @@ export function toContainerProject(p: ProjectSummary): ContainerProject {
  * @param options.slug - The studio's URL handle.
  * @param options.archived - The archived list instead of the live one.
  * @param options.sort - The sort.
+ * @param options.region - The Studio's region, when it is not the global one.
  * @param options.enabled - Whether to read at all.
  * @returns The list state and the two refs to place.
  */
@@ -85,18 +86,20 @@ export function useStudioProjectsPaging({
   slug,
   archived,
   sort,
+  region,
   enabled,
 }: {
   slug: string;
   archived: boolean;
   sort: StudioProjectSort;
+  region?: string | null;
   enabled: boolean;
 }): StudioProjectList {
   // Subscribes to language changes, so the key below follows them.
   useTranslation();
   const locale = getLocale();
   const query = useInfiniteQuery({
-    queryKey: studioProjectsListKey(slug, { archived, sort, locale }),
+    queryKey: studioProjectsListKey(slug, { archived, sort, locale, ...(region ? { region } : {}) }),
     queryFn: ({ pageParam }: { pageParam: string | undefined }) =>
       studiosApi.listProjects(slug, { archived, sort, cursor: pageParam }),
     initialPageParam: undefined as string | undefined,

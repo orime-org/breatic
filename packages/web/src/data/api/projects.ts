@@ -60,6 +60,12 @@ export interface StudioProjectsListKeyParts {
   sort: StudioProjectSort;
   /** Names sort by the interface language, so each language is its own list. */
   locale: string;
+  /**
+   * The region the list is read from, when it is not the global one
+   * (inner#1955): a slug that moved to a Studio in another region names
+   * another list.
+   */
+  region?: string;
 }
 
 /**

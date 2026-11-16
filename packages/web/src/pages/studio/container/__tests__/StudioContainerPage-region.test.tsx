@@ -112,6 +112,27 @@ describe('StudioContainerPage in a build with regions', () => {
     expect(client.getQueryData(['studio-region', 'far-studio'])).toEqual({ region: 'us-west' });
   });
 
+  // inner#1955: the tab still holds the old Studio, so its lists start on the
+  // old region before the re-check corrects it; they must be read again.
+  it('reads the Studio lists again once the re-check moved the Studio to its new region', async () => {
+    vi.mocked(studiosApi.get).mockReset();
+    vi.mocked(studiosApi.get)
+      .mockRejectedValueOnce(new ApiException({ status: 404, message: 'missing' }))
+      .mockResolvedValueOnce({ ...STUDIO, id: 's-near', region: null });
+    vi.mocked(studiosApi.listProjects).mockClear();
+    directory.studio.mockClear();
+    directory.studio.mockResolvedValueOnce({ region: 'us-west' });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 30_000 } } });
+    client.setQueryData(['studio-region', 'far-studio'], { region: 'sg' });
+    client.setQueryData(['studio', 'far-studio'], STUDIO, { updatedAt: 0 });
+
+    renderPage(client);
+
+    await waitFor(() => expect(studiosApi.get).toHaveBeenCalledTimes(2));
+    const corrected = directory.studio.mock.invocationCallOrder[0];
+    await waitFor(() => expect(Math.max(...vi.mocked(studiosApi.listProjects).mock.invocationCallOrder)).toBeGreaterThan(corrected));
+  });
+
   it('shows not found when the directory still names the region that does not have it', async () => {
     vi.mocked(studiosApi.get).mockReset();
     vi.mocked(studiosApi.get).mockRejectedValue(new ApiException({ status: 404, message: 'missing' }));

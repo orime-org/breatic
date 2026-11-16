@@ -119,6 +119,7 @@ export default function StudioContainerPage(): React.JSX.Element {
     slug,
     archived: false,
     sort: projectPrefs.sort,
+    region,
     enabled: isMember,
   });
   // Archived projects are the studio admin's alone; nobody else is sent for them.
@@ -146,10 +147,13 @@ export default function StudioContainerPage(): React.JSX.Element {
     slug,
     archived: true,
     sort: archivedPrefs.sort,
+    region,
     enabled: isStudioAdmin,
   });
   const membersQuery = useQuery({
-    queryKey: ['studio', slug, 'members'],
+    // Keyed by region like the project lists: a slug that moved to a Studio
+    // in another region names another roster.
+    queryKey: region ? ['studio', slug, 'members', region] : ['studio', slug, 'members'],
     queryFn: () => studiosApi.listMembers(slug),
     enabled: studioQuery.isSuccess,
   });
