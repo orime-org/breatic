@@ -15,7 +15,9 @@ import type { CreditSourceKind } from "@shared/types/credit.js";
 import type { MembershipTier } from "@shared/types/membership.js";
 import type { ProjectRole } from "@shared/types/role.js";
 import type { TimelineRate } from "@shared/timeline/time.js";
-import type { WebAnimationExecutionKind, WebAnimationExecutionOrigin, WebAnimationExecutionStatusSchema } from "@shared/timeline/web-animation.js";
+import type {
+  WebAnimationExecutionKind, WebAnimationExecutionOrigin, WebAnimationExecutionStatusSchema, WebAnimationPhaseSchema,
+} from "@shared/timeline/web-animation.js";
 import type { z } from "zod";
 
 /** User entity (excludes hashed_password for safety). */
@@ -967,7 +969,7 @@ export interface TimelineExecution {
   engine: "deepseek" | null;
   status: TimelineExecutionStatus;
   /** The stage a running attempt reports to the user. */
-  phase: "writing" | "validating" | "saving" | "rendering" | null;
+  phase: z.infer<typeof WebAnimationPhaseSchema> | null;
   steps: unknown[];
   /** How many attempts have claimed it. */
   attempt: number;
@@ -1013,8 +1015,8 @@ export interface TimelineWebResolutionOrigin {
   /** The Space that made it: a Motion Space, or a Timeline before #1490. */
   spaceId: string;
   /** Where it was asked from: a Motion Space, or a Timeline before #1490. */
-  origin: "timeline" | "web_animation_space";
-  kind: "web_animation_create" | "web_animation_modify";
+  origin: WebAnimationExecutionOrigin;
+  kind: Exclude<WebAnimationExecutionKind, "web_animation_export">;
   /** The whole prompt or modification instruction. */
   request: string;
   /** For a modification, the result it started from. */

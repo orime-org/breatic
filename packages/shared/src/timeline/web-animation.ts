@@ -112,8 +112,10 @@ export const WebAnimationExecutionKindSchema = z.enum([CREATE, MODIFY, EXPORT]);
 /** One kind of web-animation execution. */
 export type WebAnimationExecutionKind = z.infer<typeof WebAnimationExecutionKindSchema>;
 
+const OriginSchema = z.enum(["timeline", "web_animation_space"]);
+
 /** Where an execution was asked for: a Motion Space, or a Timeline before #1490 (and an older tab still open). */
-export type WebAnimationExecutionOrigin = "timeline" | "web_animation_space";
+export type WebAnimationExecutionOrigin = z.infer<typeof OriginSchema>;
 
 const engine = z.literal("deepseek");
 const aspect = z.enum(["16:9", "9:16", "1:1"]);
@@ -198,7 +200,7 @@ const rowCommon = {
   fence: z.string().nullable(),
   billedCredits: z.string().nullable(),
   billedAt: isoTime.nullable(),
-  origin: z.enum(["timeline", "web_animation_space"]),
+  origin: OriginSchema,
   status: WebAnimationExecutionStatusSchema,
   phase: WebAnimationPhaseSchema.nullable(),
   steps: z.array(z.unknown()),
