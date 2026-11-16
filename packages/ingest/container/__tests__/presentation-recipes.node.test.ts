@@ -293,6 +293,9 @@ beforeAll(async () => {
   // 60 fps H.264 with a white frame 60 (1 s) and 1.9 s of sound encoded straight into Matroska: its priming lies before 0.
   const primed = (codec: string): string[] => ['-f', 'lavfi', '-i', "color=c=black:s=160x96:r=60:d=2,format=yuv420p,geq=lum='if(eq(N\\,60)\\,235\\,16)':cb=128:cr=128",
     '-f', 'lavfi', '-i', 'sine=d=1.9', '-c:v', 'libx264', '-bf', '0', '-pix_fmt', 'yuv420p', ...tagged, '-c:a', codec];
+  // Sources whose clock starts after 0: video-only VP9 from 0.5 s, and VP9 with 1.5 s of Opus from 10 s (CC05).
+  await make('late-video.webm', ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=25:d=2', '-c:v', 'libvpx-vp9', '-output_ts_offset', '0.5']);
+  await make('late-opus.webm', ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=25:d=2', '-f', 'lavfi', '-i', 'sine=d=1.5', '-c:v', 'libvpx-vp9', '-c:a', 'libopus', '-output_ts_offset', '10']);
   await make('primed-aac60.mkv', primed('aac'));
   await make('primed-mp3-60.mkv', primed('libmp3lame'));
 });
@@ -638,7 +641,7 @@ describe('stitch (§5.4 块的时间、拼接)', () => {
 
 describe('copy_carrier and prepare_model_input', () => {
   it('CC01 copies the stream and tags the plan matrix (§4.1 简单稳定输入, §91 D2 copy rule on standard-4)', async () => {
-    const [file] = await produce({ [SOURCE]: join(dir, 'untagged.mp4') }, [{ kind: 'copy_carrier', inputId: SOURCE, colorMatrix: 'bt601', audio: null }]);
+    const [file] = await produce({ [SOURCE]: join(dir, 'untagged.mp4') }, [{ kind: 'copy_carrier', inputId: SOURCE, colorMatrix: 'bt601', origin: r(0), audio: null }]);
     const video = (await probe(file!)).streams[0]!;
     expect([video.codec_name, video.width, video.height, video.color_space]).toEqual(['h264', 320, 180, 'smpte170m']);
     expect((await packets(file!)).map(packet => packet.pts_time)).toEqual((await packets(join(dir, 'untagged.mp4'))).map(packet => packet.pts_time));
@@ -676,7 +679,7 @@ describe('copy_carrier and prepare_model_input', () => {
   it('CC02 an ALAC source: every video packet kept byte for byte, the audio encoded to AAC 48 kHz over the same timeline', async () => {
     const source = join(dir, 'alac.mp4');
     const audio = { start: r(0), end: r(2), origin: r(0), spans: [{ sourceStart: r(0), sourceEnd: r(2), presentationStart: r(0), rate: r(1) }] };
-    const [file] = await produce({ [SOURCE]: source }, [{ kind: 'copy_carrier', inputId: SOURCE, colorMatrix: 'bt709', audio: { kind: 'encode', ...audio } }]);
+    const [file] = await produce({ [SOURCE]: source }, [{ kind: 'copy_carrier', inputId: SOURCE, colorMatrix: 'bt709', origin: r(0), audio: { kind: 'encode', ...audio } }]);
     expect((await probe(file!)).streams.map(stream => stream.codec_type)).toEqual(['video', 'audio']);
     expect(await packetList(file!, 'v:0')).toEqual(await packetList(source, 'v:0'));
     const [sourceVideo, sourceAudio, video, carried] = await Promise.all([streamClock(source, 'v:0'), streamClock(source, 'a:0'), streamClock(file!, 'v:0'), streamClock(file!, 'a:0')]);
@@ -692,7 +695,7 @@ describe('copy_carrier and prepare_model_input', () => {
   it.each([['primed-aac60.mkv', 'copy'], ['primed-mp3-60.mkv', 'encode']] as const)('CC04 %s with %s audio: the copy keeps packet times, its white frame at 1 s', async (name, kind) => {
     const source = join(dir, name);
     const audio = kind === 'copy' ? { kind } : { kind, start: r(0), end: r(19, 10), origin: r(0), spans: null };
-    const [file] = await produce({ [SOURCE]: source }, [{ kind: 'copy_carrier', inputId: SOURCE, colorMatrix: 'bt709', audio }]);
+    const [file] = await produce({ [SOURCE]: source }, [{ kind: 'copy_carrier', inputId: SOURCE, colorMatrix: 'bt709', origin: r(0), audio }]);
     const video = await streamClock(file!, 'v:0');
     expect(Number(video.start_time)).toBe(0);
     const { stdout: times } = await run('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'frame=pts_time', '-of', 'csv=p=0', file!]);
@@ -701,11 +704,19 @@ describe('copy_carrier and prepare_model_input', () => {
     expect(Number(times.trim().split('\n')[white])).toBeCloseTo(1, 6);
   });
 
+  // §7.16 start row, §4.2.1 leading row: the plan's 0 is the source's origin, so the copies start there for picture and sound.
+  it.each([['late-video.webm', r(1, 2), null], ['late-opus.webm', r(10), 'encode']] as const)('CC05 %s: the copy starts at the plan origin, picture and sound at 0', async (name, origin, kind) => {
+    const audio = kind === null ? null : { kind, start: r(0), end: r(3, 2), origin, spans: null };
+    const [file] = await produce({ [SOURCE]: join(dir, name) }, [{ kind: 'copy_carrier', inputId: SOURCE, colorMatrix: 'bt709', origin, audio }]);
+    expect(Math.abs(Number((await streamClock(file!, 'v:0')).start_time))).toBeLessThan(0.001);
+    if (kind !== null) expect(Math.abs(Number((await streamClock(file!, 'a:0')).start_time))).toBeLessThan(0.03);
+  });
+
   // §94 D8 (design §7.17 copy_carrier row, §4.3 audio row): audio inside identity_formats, here an AAC source dispatched
   // only because twice its size outgrows the basic disk, is `{ kind: 'copy' }`: every packet of both streams kept.
   it('CC03 an AAC source dispatched for its size: every video and audio packet kept byte for byte', async () => {
     const source = join(dir, 'cfr.mp4');
-    const [file] = await produce({ [SOURCE]: source }, [{ kind: 'copy_carrier', inputId: SOURCE, colorMatrix: 'bt709', audio: { kind: 'copy' } }]);
+    const [file] = await produce({ [SOURCE]: source }, [{ kind: 'copy_carrier', inputId: SOURCE, colorMatrix: 'bt709', origin: r(0), audio: { kind: 'copy' } }]);
     expect((await probe(file!)).streams.map(stream => stream.codec_type)).toEqual(['video', 'audio']);
     expect(await packetList(file!, 'v:0')).toEqual(await packetList(source, 'v:0'));
     expect(await packetList(file!, 'a:0')).toEqual(await packetList(source, 'a:0'));

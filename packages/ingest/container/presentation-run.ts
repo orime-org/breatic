@@ -520,12 +520,14 @@ function matrixTag(codec: string, matrix: string): string | null {
 }
 
 /**
- * Stream-copy the first video into MP4 with `+faststart`, every packet time kept, writing only the plan's matrix tag (§4.1,
- * §91 D2-5); the basic copy and the standard-4 `copy_carrier` recipe both write the copy this way. The first audio is
- * copied as well, left out, or encoded by the caller's filter chain on a second input of the same source (§7.17).
+ * Stream-copy the first video into MP4 with `+faststart`, every packet time kept less the plan's origin, so the copy plays
+ * on the plan's clock (§7.16 start row), writing only the plan's matrix tag (§4.1, §91 D2-5); the basic copy and the
+ * standard-4 `copy_carrier` recipe both write the copy this way. The first audio is copied as well (on the same clock), left
+ * out, or encoded by the caller's filter chain on a second input of the same source, which starts it at 0 (§7.17).
  * @param input - The downloaded source.
  * @param output - The local MP4 to write.
  * @param matrix - The plan's colour matrix.
+ * @param origin - The plan's origin: the source time its 0 is.
  * @param run - The lifetime and frozen process IO bounds.
  * @param run.signal - The lifetime.
  * @param run.limits - The bounds.
@@ -534,7 +536,7 @@ function matrixTag(codec: string, matrix: string): string | null {
  * @throws {ProbeFailure} When the source has no video or the matrix has no tag value.
  * @throws {Error} When a process fails.
  */
-export async function copyWithMatrixTag(input: string, output: string, matrix: string,
+export async function copyWithMatrixTag(input: string, output: string, matrix: string, origin: { numerator: string; denominator: string },
   run: { signal: AbortSignal; limits: { probeStdoutBytes: number; analysisStdoutBytes: number; stderrTailBytes: number } },
   audio: 'copy' | null | { args: string[]; graph: string } = 'copy'): Promise<void> {
   const raw = json(await runPlanCommand('ffprobe', ['-v', 'error', '-protocol_whitelist', 'file', '-show_streams', '-of', 'json', input],
@@ -545,8 +547,11 @@ export async function copyWithMatrixTag(input: string, output: string, matrix: s
   const sound = audio === 'copy' ? ['-map', '0:a:0?', '-c:a', 'copy'] : audio === null ? ['-an']
     : ['-filter_complex', audio.graph, '-map', '[a]', '-c:a', 'aac', '-ar', '48000'];
   // -copyts keeps every packet time, so a source whose audio primes before 0 (FFmpeg's Matroska AAC, MP3, AC3) keeps its
-  // picture at its own start and the MP4 audio edit skips the priming.
-  await runPlanCommand('ffmpeg', ['-v', 'error', '-nostdin', '-y', '-protocol_whitelist', 'file', '-copyts', '-i', input, ...(typeof audio === 'object' && audio !== null ? [...audio.args, input] : []),
+  // picture at its own start and the MP4 audio edit skips the priming; -itsoffset moves the source onto the plan's clock,
+  // to the microsecond FFmpeg keeps time in.
+  const shift = (BigInt(origin.numerator) * 2_000_000n + BigInt(origin.denominator)) / (2n * BigInt(origin.denominator));
+  await runPlanCommand('ffmpeg', ['-v', 'error', '-nostdin', '-y', '-protocol_whitelist', 'file', '-copyts', ...(shift === 0n ? [] : ['-itsoffset', `${-shift}us`]),
+    '-i', input, ...(typeof audio === 'object' && audio !== null ? [...audio.args, input] : []),
     '-map', `0:${String(video.index)}`, '-c:v', 'copy', ...(tag === null ? [] : ['-bsf:v', tag]), ...sound, '-movflags', '+faststart', '-f', 'mp4', output],
   { signal: run.signal, stdoutBytes: run.limits.analysisStdoutBytes, stderrTailBytes: run.limits.stderrTailBytes });
 }
@@ -569,7 +574,8 @@ export function runPresentationCarrier(body: PresentationCarrierRequest, signal?
     }
     const answer = await planned(body, input, directory, lifetime);
     const output = join(directory, 'carrier.mp4');
-    await copyWithMatrixTag(input, output, (answer.plan as { colorMatrix: string }).colorMatrix, { signal: lifetime, limits: body.limits });
+    const plan = answer.plan as { colorMatrix: string; originMapping: { origin: { numerator: string; denominator: string } } };
+    await copyWithMatrixTag(input, output, plan.colorMatrix, plan.originMapping.origin, { signal: lifetime, limits: body.limits });
     const key = videoPresentationWorkKeyFor(body.storageKey, videoContainerJobId({ kind: 'presentation-copy', jobId: body.jobId, attempt: COPY_ATTEMPT }));
     const destination = new URL(objectUrlOn(PRESENTATION_CARRIER_HOST, key));
     const size = (await stat(output)).size;

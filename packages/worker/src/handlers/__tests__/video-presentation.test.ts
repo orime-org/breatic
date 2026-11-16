@@ -307,7 +307,7 @@ describe('dispatch on the frozen standard-4 class with §5.4 identities (inner#1
     expect(inputs).toEqual([{ inputId: expect.any(String), storageKey: KEY }]);
     // §91 D3a: the copy tags the plan's matrix. §94 D8 (design §7.17 copy_carrier row): the answer's copyAudio 'encode'
     // encodes over the stitch's audioOf entries (the display interval with the plan's origin and audio spans).
-    expect(job[0]!.outputs).toEqual([expect.objectContaining({ outputIndex: 0, storageKey: workKey(id), recipe: { kind: 'copy_carrier', inputId: inputs[0]!.inputId, colorMatrix: 'bt709',
+    expect(job[0]!.outputs).toEqual([expect.objectContaining({ outputIndex: 0, storageKey: workKey(id), recipe: { kind: 'copy_carrier', inputId: inputs[0]!.inputId, colorMatrix: 'bt709', origin: r(0),
       audio: { kind: 'encode', start: r(0), end: r(96, 25), origin: r(0), spans: AUDIO_SPANS } } })]);
     expect(actions('report_chunk')).toEqual([expect.objectContaining({ token: 'token-a', unit: { kind: 'presentation-copy' }, report: { kind: 'Sub' } })]);
     expect(indexOf((call) => call.body?.action === 'report_chunk')).toBeLessThan(indexOf((call) => call.path === '/jobs' && call.method === 'POST'));
@@ -320,7 +320,7 @@ describe('dispatch on the frozen standard-4 class with §5.4 identities (inner#1
   ] as const)('DS02 a dispatched copy whose answer names copyAudio %s writes that audio into the recipe', async (copyAudio, audio) => {
     answer = prepareAnswer({ route: 'dispatch_copy', copyAudio });
     await expect(advance()(data)).rejects.toBeInstanceOf(StillRunning);
-    expect((submitted()[0]!.outputs as { recipe: unknown }[])[0]!.recipe).toEqual({ kind: 'copy_carrier', inputId: expect.any(String), colorMatrix: 'bt709', audio });
+    expect((submitted()[0]!.outputs as { recipe: unknown }[])[0]!.recipe).toEqual({ kind: 'copy_carrier', inputId: expect.any(String), colorMatrix: 'bt709', origin: r(0), audio });
   });
 
   it('DS02 encode: advance to encode and submit one chunk_encode attempt per window, each with its own key', async () => {

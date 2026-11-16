@@ -87,7 +87,7 @@ export type MiniToolPlanRecipe =
   | { kind: "scene_cuts"; inputId: string; window: { start: number; end: number }; timescale: number; profile: MiniToolPlanDetectorProfile;
     entries: MiniToolPlanPlacedEntry[]; target: MiniToolPlanAnalysisTarget }
   /** The video is packet-copied; the audio is copied, encoded to AAC over the stitch's audio entries, or absent (§7.17). */
-  | { kind: "copy_carrier"; inputId: string; colorMatrix: string; audio: { kind: "copy" } | ({ kind: "encode" } & MiniToolPlanAudio) | null }
+  | { kind: "copy_carrier"; inputId: string; colorMatrix: string; origin: MiniToolPlanExact; audio: { kind: "copy" } | ({ kind: "encode" } & MiniToolPlanAudio) | null }
   // A transition chunk carries the profile and the output frames it covers on the profile's grid, both or neither.
   | ({ kind: "chunk_encode"; profile?: MiniToolPlanTransitionProfile; frames?: { start: number; end: number } } & MiniToolPlanWindowRecipe)
   | MiniToolPlanStitch

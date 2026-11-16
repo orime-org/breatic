@@ -141,7 +141,7 @@ const recipeUnion = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("scene_cuts"), inputId, window: ordinals, timescale: z.number().int().positive(), profile, entries: placedEntries, target: analysisTarget })
     .refine((recipe) => recipe.entries[0]!.ordinalOffset === recipe.window.start && recipe.entries.every((value) => value.ordinalOffset < recipe.window.end)),
   // Presentation carrier jobs (§7.17, §5.4): the worker writes the window's entries and the target from the plan.
-  z.strictObject({ kind: z.literal("copy_carrier"), inputId, colorMatrix: z.string().min(1),
+  z.strictObject({ kind: z.literal("copy_carrier"), inputId, colorMatrix: z.string().min(1), origin: time,
     audio: z.union([z.strictObject({ kind: z.literal("copy") }), z.strictObject({ kind: z.literal("encode"), start: time, end: time, origin: time, spans: z.array(editSpan).min(1).nullable() })
       .refine((value) => compare(value.end, value.start) > 0n)]).nullable() }),
   // A transition chunk names the output frames it covers beside the source window: on the profile's grid a clip at another

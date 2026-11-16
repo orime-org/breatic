@@ -122,7 +122,7 @@ async function requestFor(pickup: Pickup, unit: VideoPresentationChunkUnit, jobI
     const ledger = await ledgerOf(pickup);
     const choice = answer.copyAudio;
     if (choice === undefined) return null;
-    recipe = { kind: 'copy_carrier', inputId: SOURCE_INPUT_ID, colorMatrix: ledger.plan.colorMatrix,
+    recipe = { kind: 'copy_carrier', inputId: SOURCE_INPUT_ID, colorMatrix: ledger.plan.colorMatrix, origin: ledger.plan.originMapping.origin,
       audio: choice === null ? null : choice === 'copy' ? { kind: 'copy' } : { kind: 'encode', ...audioOf(ledger) } };
   }
   else if (unit.kind === 'presentation-chunk') {

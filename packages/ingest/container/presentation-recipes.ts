@@ -1238,9 +1238,9 @@ async function renderTransitionWindow(recipe: MiniToolPlanTransitionWindow, file
 async function copyCarrier(recipe: Extract<PresentationRecipe, { kind: "copy_carrier" }>, source: string, output: string,
   bounds: { signal: AbortSignal; limits: { probeStdoutBytes: number; analysisStdoutBytes: number; stderrTailBytes: number } }, run: Run): Promise<void> {
   const { audio } = recipe;
-  if (audio === null || audio.kind === "copy") { await copyWithMatrixTag(source, output, recipe.colorMatrix, bounds, audio === null ? null : "copy"); return; }
+  if (audio === null || audio.kind === "copy") { await copyWithMatrixTag(source, output, recipe.colorMatrix, recipe.origin, bounds, audio === null ? null : "copy"); return; }
   const { kind: _kind, ...entries } = audio;
-  await copyWithMatrixTag(source, output, recipe.colorMatrix, bounds, (await sourceFacts(source, run)).audio ? audioOf(1, entries) : null);
+  await copyWithMatrixTag(source, output, recipe.colorMatrix, recipe.origin, bounds, (await sourceFacts(source, run)).audio ? audioOf(1, entries) : null);
 }
 
 /**
