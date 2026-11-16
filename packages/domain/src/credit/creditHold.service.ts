@@ -122,6 +122,20 @@ export const CREDIT_HOLD_RELEASE_QUEUE = "credit-hold-release";
 export interface HoldReleaseJob {
   referenceId: string;
   abandon?: { studioId: string; actorUserId: string };
+  /** An extension to this ISO instant rather than a release. */
+  extendUntil?: string;
+}
+
+/**
+ * How a queued cleanup is named and keyed. An extension carries its target
+ * in its id, so it never stands in for the hold's release or a later
+ * extension: the queue ignores a job whose id it already holds.
+ * @param job - The cleanup.
+ * @returns The job's name and id.
+ */
+function queuedAs(job: HoldReleaseJob): { name: "release" | "abandon" | "extend"; jobId: string } {
+  if (job.extendUntil !== undefined) return { name: "extend", jobId: `${job.referenceId}:extend:${Date.parse(job.extendUntil)}` };
+  return { name: job.abandon === undefined ? "release" : "abandon", jobId: job.referenceId };
 }
 
 let releaseQueue: ReturnType<typeof createQueue> | null = null;
@@ -165,14 +179,15 @@ async function orQueue(call: () => Promise<void>, job: HoldReleaseJob): Promise<
   } catch (err) {
     if (isGlobalRegion(env) || !isRegionUnavailable(err)) throw err;
     releaseQueue ??= createQueue(CREDIT_HOLD_RELEASE_QUEUE);
-    await releaseQueue.add(job.abandon === undefined ? "release" : "abandon", job, {
+    const { name, jobId } = queuedAs(job);
+    await releaseQueue.add(name, job, {
       ...holdCleanupRetry(),
       removeOnComplete: true,
       removeOnFail: true,
       // A retry keeps every earlier stack trace unless told otherwise, and
       // the job hash is rewritten on each of its many tries.
       stackTraceLimit: 1,
-      jobId: job.referenceId,
+      jobId,
     });
   }
 }
@@ -184,7 +199,8 @@ async function orQueue(call: () => Promise<void>, job: HoldReleaseJob): Promise<
  * @throws {Error} When the global region still does not take it.
  */
 export async function runQueuedHoldRelease(job: HoldReleaseJob): Promise<void> {
-  if (job.abandon === undefined) await globalApi().releaseHold(job.referenceId);
+  if (job.extendUntil !== undefined) await globalApi().extendHold(job.referenceId, job.extendUntil);
+  else if (job.abandon === undefined) await globalApi().releaseHold(job.referenceId);
   else await globalApi().abandonHold({ ...job.abandon, referenceId: job.referenceId });
 }
 
@@ -226,13 +242,28 @@ export async function releaseHere(referenceId: string): Promise<void> {
 
 /**
  * Keep a task's hold alive while its cost is looked up after delivery (inner#1743): moved to a later expiry, never an
- * earlier one; a released hold stays released.
+ * earlier one; a released hold stays released. The hold lives in the global region (inner#1955); outside it an
+ * extension that finds the global region unavailable is queued and retried like a release.
  * @param referenceId - Its key, the task id.
  * @param until - The new expiry.
- * @throws {Error} When the database fails.
+ * @returns Once extended or queued.
+ * @throws {Error} When the global region refuses, or the retry cannot be queued.
  */
 export async function extendHold(referenceId: string, until: Date): Promise<void> {
-  await creditHoldRepo.extendHold(referenceId, until);
+  if (!env.PAYMENT_ENABLED) return;
+  const extendUntil = until.toISOString();
+  await orQueue(() => globalApi().extendHold(referenceId, extendUntil), { referenceId, extendUntil });
+}
+
+/**
+ * Extend a hold in the region that holds the books.
+ * @param referenceId - Its key.
+ * @param until - The new expiry, as an ISO instant.
+ * @returns Once written.
+ * @throws {Error} When the database fails.
+ */
+export async function extendHere(referenceId: string, until: string): Promise<void> {
+  await creditHoldRepo.extendHold(referenceId, new Date(until));
 }
 
 /**

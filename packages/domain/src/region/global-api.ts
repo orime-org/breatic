@@ -46,7 +46,7 @@ import {
   type RegionalChargeOutcome,
   type RegionalChargeRequest,
 } from "@domain/credit/creditLot.service.js";
-import { abandonHere, positionHere, releaseHere, reserveHere, type HoldFields, type ReserveOutcome } from "@domain/credit/creditHold.service.js";
+import { abandonHere, extendHere, positionHere, releaseHere, reserveHere, type HoldFields, type ReserveOutcome } from "@domain/credit/creditHold.service.js";
 
 /** An account as other regions read it. */
 export interface Account {
@@ -95,6 +95,13 @@ export const GLOBAL_FUNCTIONS = {
    * @returns Admitted, or refused with the Studio's position.
    */
   reserveCredits: (request: HoldFields & { studioId: string }): Promise<ReserveOutcome> => reserveHere(request),
+  /**
+   * Keep a task's hold alive while its cost is looked up (inner#1743).
+   * @param referenceId - Its key.
+   * @param until - The new expiry, as an ISO instant.
+   * @returns Once written.
+   */
+  extendHold: (referenceId: string, until: string): Promise<void> => extendHere(referenceId, until),
   /**
    * Release a hold a region took.
    * @param referenceId - The hold's key.
