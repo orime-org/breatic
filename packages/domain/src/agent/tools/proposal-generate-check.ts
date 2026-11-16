@@ -431,7 +431,8 @@ function lyricsSent(node: ProposalNode, chosen: ModelInfo, arriving: Wiring["arr
 export function generateRunOf(proposal: CanvasProposal, node: ProposalNode, index: number): { model: string; params: Record<string, unknown>; prompt: string } | undefined {
   const resolved = resolveModel(node, index);
   if ("refusal" in resolved) return undefined;
-  const wiring = checkWiring(proposal, node, index, resolved.chosen, nodeLabel(proposal.nodes, index));
+  // Which inputs are optional changes only a refusal's wording, and a refusal here means no run.
+  const wiring = checkWiring(proposal, node, index, resolved.chosen, nodeLabel(proposal.nodes, index), new Set());
   if ("refusal" in wiring) return undefined;
   const lyrics = lyricsSent(node, resolved.chosen, wiring.arriving);
   const entry = proposalModelEntry(node);
