@@ -47,8 +47,9 @@ media numbers and no cover, and the Agent cannot read pages.
 `image_build_context = "../.."` in every `[[containers]]` and
 `[[env.production.containers]]` block. The configured classes are `MediaContainer`,
 `MiniToolContainerStd1`, `MiniToolContainerStd4`, `LongMediaContainer` and
-`WebReaderContainer`, plus `WebAnimationContainer`, whose blocks stay commented
-out until web animation is enabled. Each block needs its own context because
+`WebReaderContainer`, plus `WebAnimationContainer` and
+`WebAnimationRenderContainer`, whose blocks stay commented out until web
+animation is enabled. Each block needs its own context because
 `containers` does not inherit into an environment.
 
 **A `wrangler.toml` copied before the page reader was added needs seven additions
@@ -190,17 +191,22 @@ This Worker binds container Durable Object classes: the media container
 (`MINI_TOOL_STD1`, `MINI_TOOL_STD4`, one instance per job and instance size),
 `LongMediaContainer` (`LONG_MEDIA`) for durable long-media jobs, the page
 reader (`WEB_READER`, one instance per `web_fetch` call), and, when enabled,
-`WebAnimationContainer` (`WEB_ANIMATION`, one instance per job). Keep these
+`WebAnimationContainer` (`WEB_ANIMATION`, one instance per creation or
+modification job) and `WebAnimationRenderContainer` (`WEB_ANIMATION_RENDER`,
+one instance per export). Keep these
 bindings and their `exports` aligned with the template in each environment.
 The upload path itself keeps nothing between requests: an upload's id and its
 part receipts travel with the browser and come back to finish it.
 
 ### Web animation
 
-Web-animation execution (`WebAnimationContainer`, `WEB_ANIMATION`) is off
-unless you enable it: its container, binding, export and `[assets]` blocks are
+Web-animation execution (`WebAnimationContainer`, `WEB_ANIMATION`) and its
+export (`WebAnimationRenderContainer`, `WEB_ANIMATION_RENDER`) are off unless
+you enable them: their container, binding, export and `[assets]` blocks are
 commented out in the template, and `HARNESS_OPENROUTER_API_KEY` is empty.
-Without the binding the web-animation job routes answer 501 `feature_disabled`;
+Without a binding its job routes, cancel
+(`POST /jobs/{WebAnimationContainer|WebAnimationRenderContainer}/{id}/cancel`)
+included, answer 501 `feature_disabled`;
 without any model key a submit answers 501 naming the variables it needs;
 everything else works. To develop it, uncomment those blocks and set a key. Its image (`web-animation.Dockerfile`: Node, Chromium,
 the DeepSeek Harness, the HyperFrames runtime and the font set) is large, so
