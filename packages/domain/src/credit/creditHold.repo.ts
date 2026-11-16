@@ -10,7 +10,7 @@
  */
 
 import { and, eq, gt, lt, sql } from "drizzle-orm";
-import { db, creditHolds } from "@breatic/core";
+import { db, creditChargeRequests, creditHolds } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 
 /** A hold about to be written. */
@@ -92,4 +92,27 @@ export async function extendHold(referenceId: string, until: Date, tx?: DbTx, du
     .update(creditHolds)
     .set({ expiresAt: until, updatedAt: new Date() })
     .where(and(eq(creditHolds.referenceId, referenceId), eq(creditHolds.status, "held"), lt(creditHolds.expiresAt, dueBefore), lt(creditHolds.expiresAt, until)));
+}
+
+/**
+ * What each person's counted holds in a studio add up to, leaving out a hold a
+ * pending charge request has taken over, which that request already counts
+ * (inner#1968, design 3.10).
+ * @param studioId - The studio.
+ * @param tx - Optional transaction, so an admission sums under its lock.
+ * @returns One sum per person holding anything.
+ */
+export async function sumUnclaimedByActor(studioId: string, tx?: DbTx): Promise<Array<{ actorUserId: string; amount: string }>> {
+  return (tx ?? db)
+    .select({ actorUserId: creditHolds.actorUserId, amount: sql<string>`SUM(${creditHolds.amount})::text` })
+    .from(creditHolds)
+    .where(
+      and(
+        eq(creditHolds.studioId, studioId),
+        eq(creditHolds.status, "held"),
+        gt(creditHolds.expiresAt, sql`now()`),
+        sql`NOT EXISTS (SELECT 1 FROM ${creditChargeRequests} WHERE ${creditChargeRequests.status} = 'pending' AND ${creditChargeRequests.releaseHold} = ${creditHolds.referenceId})`,
+      ),
+    )
+    .groupBy(creditHolds.actorUserId);
 }

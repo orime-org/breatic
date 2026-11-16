@@ -33,7 +33,7 @@ import { emitOperationAudit, type OperationAudit } from "@domain/operation/opera
 import { findLiveByKeyInStudio } from "@domain/asset/asset.repo.js";
 import { resolveOwnerStudioId } from "@domain/asset/asset.service.js";
 import * as creditHoldRepo from "@domain/credit/creditHold.repo.js";
-import { lockedPosition } from "@domain/credit/creditHold.service.js";
+import { lockedPosition, spendCapHit, type SpendCapHit } from "@domain/credit/creditHold.service.js";
 import * as creditLotService from "@domain/credit/creditLot.service.js";
 import { fromMicroCredits, serializeCreditPosition, toChargeCredits, toChargeMicro } from "@domain/credit/credit-math.js";
 
@@ -62,7 +62,8 @@ export type AdmitOutcome =
   | { kind: "not_metered" }
   | { kind: "covered" | "held"; studioId: string; accountUserId: string }
   | { kind: "taken"; status: OperationRow["status"] }
-  | ({ kind: "refused"; studioId: string } & ProjectCreditsView);
+  | ({ kind: "refused"; studioId: string } & ProjectCreditsView)
+  | { kind: "capped"; cap: SpendCapHit };
 
 /** What a count came to. */
 export interface CountOutcome {
@@ -77,7 +78,7 @@ class Rollback extends Error {
    * Carry an outcome out of the savepoint it rolls back.
    * @param outcome - What the admission came to.
    */
-  constructor(readonly outcome: Extract<AdmitOutcome, { kind: "refused" | "taken" }>) {
+  constructor(readonly outcome: Extract<AdmitOutcome, { kind: "refused" | "taken" | "capped" }>) {
     super("operation admission rolled back");
   }
 }
@@ -147,7 +148,8 @@ async function resolveInputs(studioId: string, inputs: readonly string[], tx: Db
  * payments are off or the tier is `self_hosted`; `taken` when its key has a
  * row; otherwise its derived inputs are claimed, then it is `covered` while
  * the allowance has room for what is in flight, or `held` with
- * `overage_credits` held on its studio, or `refused` when the studio cannot
+ * `overage_credits` held on its studio, `capped` when a monthly spend limit
+ * cannot take that much, or `refused` when the studio cannot
  * hold that much. A refusal rolls the claims back.
  * @param input - The operation.
  * @param tx - The entry's transaction, when the admission is its first statement.
@@ -189,6 +191,8 @@ export async function admitOperation(input: AdmitInput, tx?: DbTx): Promise<Admi
     if (inFlight >= Math.max(0, monthly - used)) {
       const amount = toChargeMicro(getOperationsConfig().overage_credits);
       const position = await lockedPosition(studioId, sp);
+      const cap = await spendCapHit(studioId, input.actorUserId, amount, sp);
+      if (cap !== null) throw new Rollback({ kind: "capped", cap });
       if (position.available < amount) throw new Rollback({ kind: "refused", studioId, ...serializeCreditPosition(position) });
       admittedAs = "held";
       overageHold = `operation:${input.key}`;

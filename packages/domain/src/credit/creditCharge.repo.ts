@@ -11,7 +11,7 @@
  * order the sweep reads in.
  */
 
-import { and, asc, eq, lt, sql } from "drizzle-orm";
+import { and, asc, eq, gte, lt, sql } from "drizzle-orm";
 import { db, creditChargeRequests } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 
@@ -220,4 +220,28 @@ export async function listSweepable(minAgeMs: number, limit: number): Promise<Sw
     .orderBy(asc(creditChargeRequests.updatedAt))
     .limit(limit)
     .for("update", { skipLocked: true });
+}
+
+/** What one person spent in a studio over a span. */
+export interface SpentByActor {
+  actorUserId: string;
+  /** Decimal string. */
+  amount: string;
+}
+
+/**
+ * What each person's charge requests in a studio add up to over a span,
+ * pending or settled (inner#1968, design 3.10).
+ * @param studioId - The studio the requests are counted against.
+ * @param from - The span's first instant.
+ * @param to - The instant after its last.
+ * @param tx - Optional transaction, so an admission sums under its lock.
+ * @returns One sum per person who has a request in the span.
+ */
+export async function sumByActorBetween(studioId: string, from: Date, to: Date, tx?: DbTx): Promise<SpentByActor[]> {
+  return (tx ?? db)
+    .select({ actorUserId: creditChargeRequests.actorUserId, amount: sql<string>`SUM(${creditChargeRequests.amount})::text` })
+    .from(creditChargeRequests)
+    .where(and(eq(creditChargeRequests.studioId, studioId), gte(creditChargeRequests.createdAt, from), lt(creditChargeRequests.createdAt, to)))
+    .groupBy(creditChargeRequests.actorUserId);
 }
