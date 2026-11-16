@@ -1123,7 +1123,8 @@
         "running": "运行中",
         "done": "完成",
         "failed": "失败",
-        "expired": "超时"
+        "expired": "超时",
+        "waiting": "排队中"
       },
       "countTip": "{status} · {count}",
       "action": {
@@ -1168,7 +1169,9 @@
         "generate": "生成",
         "understand": "理解",
         "transcribe": "转写"
-      }
+      },
+      "waitReason": "你同时运行的任务已达上限，前面的任务结束后自动开始",
+      "cancelFailed": "这个任务没能取消。"
     },
     "panel": {
       "hostDeletedByPeer": "协作者删除了节点。"
@@ -3036,7 +3039,38 @@
         "colProject": "Project",
         "colModel": "模型",
         "colAmount": "积分",
-        "loadError": "无法加载积分信息，请刷新页面重试。"
+        "loadError": "无法加载积分信息，请刷新页面重试。",
+        "spendCap": {
+          "title": "花费上限",
+          "studioMonthly": "Studio 每月总额上限",
+          "studioMonthlyHint": "所有人合计，独立于每人上限",
+          "memberDefault": "每人每月上限默认值",
+          "memberDefaultHint": "对没有单独设置的人生效",
+          "notSet": "不设",
+          "perMonth": "每月",
+          "studioSpent": "本月 Studio 已花",
+          "resetsAt": "重置于",
+          "saved": "花费上限已保存。",
+          "saveFailed": "花费上限没能保存，请重试。",
+          "save": "保存",
+          "colMember": "成员",
+          "colRelation": "关系",
+          "colSpent": "本月已花",
+          "colEffective": "生效上限",
+          "relationStudioMember": "Studio 成员",
+          "relationProjectCollaborator": "Project 协作者",
+          "relationFormer": "已离开（只读）",
+          "unlimited": "不限",
+          "zero": "0（禁止花积分）",
+          "amount": "{amount} 积分",
+          "sourceOverride": "单独设置",
+          "sourceDefault": "默认",
+          "atCap": "已到上限",
+          "override": "单独设置…",
+          "restoreDefault": "恢复默认",
+          "overrideTitle": "单独设置 · {name}",
+          "overrideHint": "只对这个人生效，覆盖默认值。"
+        }
       },
       "members": {
         "invite": "邀请成员",
@@ -3392,7 +3426,9 @@
       "projectsPerStudio": "每个 Studio 可建 Project",
       "studioMembers": "每个 Studio 成员上限",
       "projectMembers": "每个 Project 成员上限",
-      "concurrentEditors": "每个 Document 同时可编辑"
+      "concurrentEditors": "每个 Document 同时可编辑",
+      "monthlyOperations": "每月操作次数",
+      "runningTasksPerUser": "同时运行的任务数"
     },
     "quotaValue": "{used} / {limit}",
     "countItems": "{count} 个",
@@ -3463,6 +3499,15 @@
       "added": "已绑定，选择会员即享首期 {zhe} 折。",
       "loadFailed": "没有读到推广信息。",
       "retry": "重试"
+    },
+    "quotaUnlimited": "{used} / 不限",
+    "operations": {
+      "label": "本月操作次数",
+      "remaining": "剩余 {count} 次",
+      "resetsOn": "{date} 重置",
+      "overagePrice": "超出部分每次 {credits} 积分，从操作所在的 Studio 扣",
+      "overageCount": "本月已超出 {count} 次",
+      "shared": "在你管理的所有 Studio 中共用"
     }
   },
   "promoter": {
@@ -3546,7 +3591,7 @@
       "refunded": "已退款"
     },
     "billingOff": {
-      "title": "这个部署不计积分",
+      "title": "自部署不计积分",
       "body": "生成不扣积分，也不需要充值。用量仍然会记录下来。"
     },
     "total": "账号总额",
@@ -3571,7 +3616,7 @@
     "allStudios": "全部 Studio",
     "filterByStudio": "按 Studio 筛选",
     "ledgerEmpty": "还没有消耗记录。",
-    "ledgerBillingOff": "这个部署不计积分，下面是用量记录。",
+    "ledgerBillingOff": "自部署不计积分，下面是用量记录。",
     "colDay": "日期",
     "colWho": "谁花的",
     "colStudio": "Studio",
@@ -3645,6 +3690,16 @@
     },
     "refundHint": {
       "assigned": "解除指定后可以申请退款"
+    },
+    "eventOperationOverage": "超出操作次数",
+    "topUp": "充值",
+    "refusal": {
+      "operations": "本月操作次数已用完，积分不足。充值后可继续。",
+      "spendCap": "本月花费已到上限。请联系 Studio Admin"
+    },
+    "spendCap": {
+      "member": "你本月在这个 Studio 的花费已到上限（{limit} 积分），{date} 重置。需要更多请联系 Studio Admin",
+      "studio": "这个 Studio 本月的花费已到上限，{date} 重置。请联系 Studio Admin"
     }
   },
   "notFound": {

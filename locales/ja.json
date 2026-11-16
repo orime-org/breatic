@@ -1123,7 +1123,8 @@
         "running": "実行中",
         "done": "完了",
         "failed": "失敗",
-        "expired": "時間切れ"
+        "expired": "時間切れ",
+        "waiting": "待機中"
       },
       "countTip": "{status} · {count}",
       "action": {
@@ -1168,7 +1169,9 @@
         "generate": "生成",
         "understand": "内容を読み取る",
         "transcribe": "文字起こし"
-      }
+      },
+      "waitReason": "同時に実行できるタスク数の上限に達しています。前のタスクが終わると自動で開始します",
+      "cancelFailed": "このタスクをキャンセルできませんでした。"
     },
     "panel": {
       "hostDeletedByPeer": "コラボレーターがノードを削除しました。"
@@ -3036,7 +3039,38 @@
         "colProject": "Project",
         "colModel": "モデル",
         "colAmount": "クレジット",
-        "loadError": "クレジット情報を読み込めませんでした。ページを再読み込みしてください。"
+        "loadError": "クレジット情報を読み込めませんでした。ページを再読み込みしてください。",
+        "spendCap": {
+          "title": "利用上限",
+          "studioMonthly": "Studio の月間合計上限",
+          "studioMonthlyHint": "全員の合計。各自の上限とは別です",
+          "memberDefault": "1 人あたりの月間上限の既定値",
+          "memberDefaultHint": "個別に設定していない人に適用されます",
+          "notSet": "設定しない",
+          "perMonth": "毎月",
+          "studioSpent": "今月の Studio 利用額",
+          "resetsAt": "リセット",
+          "saved": "利用上限を保存しました。",
+          "saveFailed": "利用上限を保存できませんでした。もう一度お試しください。",
+          "save": "保存",
+          "colMember": "メンバー",
+          "colRelation": "関係",
+          "colSpent": "今月の利用額",
+          "colEffective": "適用中の上限",
+          "relationStudioMember": "Studio メンバー",
+          "relationProjectCollaborator": "Project 協力者",
+          "relationFormer": "退出済み（閲覧のみ）",
+          "unlimited": "無制限",
+          "zero": "0（クレジット使用不可）",
+          "amount": "{amount} クレジット",
+          "sourceOverride": "個別",
+          "sourceDefault": "既定",
+          "atCap": "上限到達",
+          "override": "個別に設定…",
+          "restoreDefault": "既定に戻す",
+          "overrideTitle": "個別の上限 · {name}",
+          "overrideHint": "この人にだけ適用され、既定値より優先されます。"
+        }
       },
       "members": {
         "invite": "メンバーを招待",
@@ -3392,7 +3426,9 @@
       "projectsPerStudio": "Studio ごとの Project 上限",
       "studioMembers": "Studio ごとのメンバー上限",
       "projectMembers": "Project ごとのメンバー上限",
-      "concurrentEditors": "1 Document の同時編集数"
+      "concurrentEditors": "1 Document の同時編集数",
+      "monthlyOperations": "月間操作回数",
+      "runningTasksPerUser": "同時に実行できるタスク数"
     },
     "quotaValue": "{used} / {limit}",
     "countItems": "{count} 件",
@@ -3463,6 +3499,15 @@
       "added": "登録しました。メンバーシップを選ぶと最初の期間が {percent}% 割引になります。",
       "loadFailed": "紹介情報を読み込めませんでした。",
       "retry": "再試行"
+    },
+    "quotaUnlimited": "{used} / 無制限",
+    "operations": {
+      "label": "今月の操作回数",
+      "remaining": "残り {count} 回",
+      "resetsOn": "{date} にリセット",
+      "overagePrice": "超過分は 1 回 {credits} クレジット、操作した Studio から差し引きます",
+      "overageCount": "今月 {count} 回超過",
+      "shared": "あなたが管理するすべての Studio で共有"
     }
   },
   "promoter": {
@@ -3546,7 +3591,7 @@
       "refunded": "返金済み"
     },
     "billingOff": {
-      "title": "この環境ではクレジットを消費しません",
+      "title": "セルフホストではクレジットを消費しません",
       "body": "生成しても差し引かれず、購入も不要です。使用量は記録されます。"
     },
     "total": "アカウント合計",
@@ -3571,7 +3616,7 @@
     "allStudios": "すべての Studio",
     "filterByStudio": "Studio で絞り込む",
     "ledgerEmpty": "消費の記録はまだありません。",
-    "ledgerBillingOff": "この環境ではクレジットを消費しません。以下は使用量の記録です。",
+    "ledgerBillingOff": "セルフホストではクレジットを消費しません。以下は使用量の記録です。",
     "colDay": "日付",
     "colWho": "使った人",
     "colStudio": "Studio",
@@ -3645,6 +3690,16 @@
     },
     "refundHint": {
       "assigned": "割り当てを解除すると返金を申請できます"
+    },
+    "eventOperationOverage": "操作回数の超過分",
+    "topUp": "チャージ",
+    "refusal": {
+      "operations": "今月の操作回数を使い切り、クレジットが足りません。チャージすると続けられます。",
+      "spendCap": "今月の利用額が上限に達しました。StudioのAdminに連絡してください"
+    },
+    "spendCap": {
+      "member": "このStudioでの今月の利用額が上限（{limit} クレジット）に達しました。{date} にリセットされます。追加が必要な場合はStudioのAdminに連絡してください",
+      "studio": "このStudioの今月の利用額が上限に達しました。{date} にリセットされます。StudioのAdminに連絡してください"
     }
   },
   "notFound": {

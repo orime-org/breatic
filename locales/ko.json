@@ -1123,7 +1123,8 @@
         "running": "실행 중",
         "done": "완료",
         "failed": "실패",
-        "expired": "시간 초과"
+        "expired": "시간 초과",
+        "waiting": "대기 중"
       },
       "countTip": "{status} · {count}",
       "action": {
@@ -1168,7 +1169,9 @@
         "generate": "생성",
         "understand": "내용 읽기",
         "transcribe": "받아쓰기"
-      }
+      },
+      "waitReason": "동시에 실행할 수 있는 작업 수에 도달했습니다. 앞의 작업이 끝나면 자동으로 시작됩니다",
+      "cancelFailed": "이 작업을 취소하지 못했습니다."
     },
     "panel": {
       "hostDeletedByPeer": "공동 작업자가 노드를 삭제했습니다."
@@ -3036,7 +3039,38 @@
         "colProject": "Project",
         "colModel": "모델",
         "colAmount": "크레딧",
-        "loadError": "크레딧 정보를 불러오지 못했습니다. 페이지를 새로고침하세요."
+        "loadError": "크레딧 정보를 불러오지 못했습니다. 페이지를 새로고침하세요.",
+        "spendCap": {
+          "title": "사용 한도",
+          "studioMonthly": "Studio 월간 총액 한도",
+          "studioMonthlyHint": "모든 사람 합계이며, 개인 한도와 별개입니다",
+          "memberDefault": "1인당 월간 한도 기본값",
+          "memberDefaultHint": "개별 설정이 없는 사람에게 적용됩니다",
+          "notSet": "설정 안 함",
+          "perMonth": "매월",
+          "studioSpent": "이번 달 Studio 사용액",
+          "resetsAt": "초기화",
+          "saved": "사용 한도를 저장했습니다.",
+          "saveFailed": "사용 한도를 저장하지 못했습니다. 다시 시도하세요.",
+          "save": "저장",
+          "colMember": "멤버",
+          "colRelation": "관계",
+          "colSpent": "이번 달 사용액",
+          "colEffective": "적용 한도",
+          "relationStudioMember": "Studio 멤버",
+          "relationProjectCollaborator": "Project 협업자",
+          "relationFormer": "떠남(읽기 전용)",
+          "unlimited": "무제한",
+          "zero": "0(크레딧 사용 불가)",
+          "amount": "{amount} 크레딧",
+          "sourceOverride": "개별",
+          "sourceDefault": "기본",
+          "atCap": "한도 도달",
+          "override": "개별 설정…",
+          "restoreDefault": "기본값으로 복원",
+          "overrideTitle": "개별 한도 · {name}",
+          "overrideHint": "이 사람에게만 적용되며 기본값보다 우선합니다."
+        }
       },
       "members": {
         "invite": "멤버 초대",
@@ -3392,7 +3426,9 @@
       "projectsPerStudio": "Studio당 Project 한도",
       "studioMembers": "Studio당 멤버 한도",
       "projectMembers": "Project당 멤버 한도",
-      "concurrentEditors": "Document당 동시 편집 수"
+      "concurrentEditors": "Document당 동시 편집 수",
+      "monthlyOperations": "월간 작업 횟수",
+      "runningTasksPerUser": "동시에 실행되는 작업 수"
     },
     "quotaValue": "{used} / {limit}",
     "countItems": "{count}개",
@@ -3463,6 +3499,15 @@
       "added": "등록되었습니다. 멤버십을 선택하면 첫 기간이 {percent}% 할인됩니다.",
       "loadFailed": "추천 정보를 불러오지 못했습니다.",
       "retry": "다시 시도"
+    },
+    "quotaUnlimited": "{used} / 무제한",
+    "operations": {
+      "label": "이번 달 작업 횟수",
+      "remaining": "{count}회 남음",
+      "resetsOn": "{date} 초기화",
+      "overagePrice": "초과분은 회당 {credits} 크레딧이며, 작업한 Studio에서 차감됩니다",
+      "overageCount": "이번 달 {count}회 초과",
+      "shared": "내가 관리하는 모든 Studio에서 공유"
     }
   },
   "promoter": {
@@ -3546,7 +3591,7 @@
       "refunded": "환불 완료"
     },
     "billingOff": {
-      "title": "이 배포에서는 크레딧을 차감하지 않습니다",
+      "title": "셀프 호스팅에서는 크레딧을 차감하지 않습니다",
       "body": "생성해도 차감되지 않고 구매할 필요도 없습니다. 사용량은 그대로 기록됩니다."
     },
     "total": "계정 총액",
@@ -3571,7 +3616,7 @@
     "allStudios": "전체 Studio",
     "filterByStudio": "Studio로 좁히기",
     "ledgerEmpty": "사용 기록이 아직 없습니다.",
-    "ledgerBillingOff": "이 배포에서는 크레딧을 차감하지 않습니다. 아래는 사용량 기록입니다.",
+    "ledgerBillingOff": "셀프 호스팅에서는 크레딧을 차감하지 않습니다. 아래는 사용량 기록입니다.",
     "colDay": "날짜",
     "colWho": "사용자",
     "colStudio": "Studio",
@@ -3645,6 +3690,16 @@
     },
     "refundHint": {
       "assigned": "지정을 해제하면 환불을 신청할 수 있습니다"
+    },
+    "eventOperationOverage": "작업 횟수 초과분",
+    "topUp": "충전",
+    "refusal": {
+      "operations": "이번 달 작업 횟수를 모두 사용했고 크레딧이 부족합니다. 충전하면 계속할 수 있습니다.",
+      "spendCap": "이번 달 사용 한도에 도달했습니다. Studio Admin에게 문의하세요"
+    },
+    "spendCap": {
+      "member": "이 Studio에서 이번 달 사용 한도({limit} 크레딧)에 도달했습니다. {date}에 초기화됩니다. 더 필요하면 Studio Admin에게 문의하세요",
+      "studio": "이 Studio의 이번 달 사용 한도에 도달했습니다. {date}에 초기화됩니다. Studio Admin에게 문의하세요"
     }
   },
   "notFound": {

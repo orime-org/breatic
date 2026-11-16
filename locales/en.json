@@ -1123,7 +1123,8 @@
         "running": "Running",
         "done": "Done",
         "failed": "Failed",
-        "expired": "Expired"
+        "expired": "Expired",
+        "waiting": "Queued"
       },
       "countTip": "{status} · {count}",
       "action": {
@@ -1168,7 +1169,9 @@
         "generate": "Generate",
         "understand": "Understand",
         "transcribe": "Transcribe"
-      }
+      },
+      "waitReason": "You've reached the number of tasks you can run at once. This one starts by itself when an earlier one ends.",
+      "cancelFailed": "That task could not be cancelled."
     },
     "panel": {
       "hostDeletedByPeer": "A collaborator deleted the node."
@@ -3036,7 +3039,38 @@
         "colProject": "Project",
         "colModel": "Model",
         "colAmount": "Credits",
-        "loadError": "Could not load credits. Refresh to try again."
+        "loadError": "Could not load credits. Refresh to try again.",
+        "spendCap": {
+          "title": "Spend limits",
+          "studioMonthly": "Studio monthly total",
+          "studioMonthlyHint": "Everyone together, apart from each person’s limit",
+          "memberDefault": "Default monthly limit per person",
+          "memberDefaultHint": "Applies to everyone without a limit of their own",
+          "notSet": "Not set",
+          "perMonth": "Per month",
+          "studioSpent": "Studio spent this month",
+          "resetsAt": "Resets",
+          "saved": "Spend limits saved.",
+          "saveFailed": "The spend limits could not be saved. Try again.",
+          "save": "Save",
+          "colMember": "Member",
+          "colRelation": "Relation",
+          "colSpent": "Spent this month",
+          "colEffective": "Limit in force",
+          "relationStudioMember": "Studio member",
+          "relationProjectCollaborator": "Project collaborator",
+          "relationFormer": "Left (read-only)",
+          "unlimited": "Unlimited",
+          "zero": "0 (no credits)",
+          "amount": "{amount} credits",
+          "sourceOverride": "Own",
+          "sourceDefault": "Default",
+          "atCap": "At limit",
+          "override": "Set own limit…",
+          "restoreDefault": "Restore default",
+          "overrideTitle": "Own limit · {name}",
+          "overrideHint": "Applies to this person only, over the default."
+        }
       },
       "members": {
         "invite": "Invite member",
@@ -3392,7 +3426,9 @@
       "projectsPerStudio": "Projects per Studio",
       "studioMembers": "Members per Studio",
       "projectMembers": "Members per Project",
-      "concurrentEditors": "Simultaneous connections per document"
+      "concurrentEditors": "Simultaneous connections per document",
+      "monthlyOperations": "Operations per month",
+      "runningTasksPerUser": "Tasks running at once"
     },
     "quotaValue": "{used} / {limit}",
     "countItems": "{count}",
@@ -3463,6 +3499,15 @@
       "added": "Added. Choose a membership to get {percent}% off the first period.",
       "loadFailed": "Couldn't load referral information.",
       "retry": "Retry"
+    },
+    "quotaUnlimited": "{used} / Unlimited",
+    "operations": {
+      "label": "Operations this month",
+      "remaining": "{count} left",
+      "resetsOn": "Resets {date}",
+      "overagePrice": "Each operation past the allowance costs {credits} credits, taken from the Studio it runs in",
+      "overageCount": "{count} over the allowance this month",
+      "shared": "Shared across every Studio you administer"
     }
   },
   "promoter": {
@@ -3546,7 +3591,7 @@
       "refunded": "Refunded"
     },
     "billingOff": {
-      "title": "This deployment does not charge credits",
+      "title": "A self-hosted deployment does not charge credits",
       "body": "Generating costs nothing and there is nothing to buy. What gets used is still recorded."
     },
     "total": "Account total",
@@ -3571,7 +3616,7 @@
     "allStudios": "All Studios",
     "filterByStudio": "Filter by Studio",
     "ledgerEmpty": "Nothing spent yet.",
-    "ledgerBillingOff": "This deployment does not charge credits. Below is what was used.",
+    "ledgerBillingOff": "A self-hosted deployment does not charge credits. Below is what was used.",
     "colDay": "Date",
     "colWho": "Who",
     "colStudio": "Studio",
@@ -3645,6 +3690,16 @@
     },
     "refundHint": {
       "assigned": "Unassign it to ask for a refund"
+    },
+    "eventOperationOverage": "Operations over the allowance",
+    "topUp": "Add credits",
+    "refusal": {
+      "operations": "This month's operations are used up and the credits are short. Add credits to continue.",
+      "spendCap": "The monthly spend limit is reached. Contact the Studio admin."
+    },
+    "spendCap": {
+      "member": "You've reached your monthly spend limit in this Studio ({limit} credits). It resets on {date}. Contact the Studio admin if you need more.",
+      "studio": "This Studio has reached its monthly spend limit. It resets on {date}. Contact the Studio admin."
     }
   },
   "notFound": {

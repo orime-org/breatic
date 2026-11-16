@@ -1123,7 +1123,8 @@
         "running": "執行中",
         "done": "完成",
         "failed": "失敗",
-        "expired": "逾時"
+        "expired": "逾時",
+        "waiting": "排隊中"
       },
       "countTip": "{status} · {count}",
       "action": {
@@ -1168,7 +1169,9 @@
         "generate": "生成",
         "understand": "理解",
         "transcribe": "轉寫"
-      }
+      },
+      "waitReason": "你同時執行的任務已達上限，前面的任務結束後自動開始",
+      "cancelFailed": "這個任務沒能取消。"
     },
     "panel": {
       "hostDeletedByPeer": "協作者刪除了節點。"
@@ -3036,7 +3039,38 @@
         "colProject": "Project",
         "colModel": "模型",
         "colAmount": "點數",
-        "loadError": "無法載入點數資訊，請重新整理頁面。"
+        "loadError": "無法載入點數資訊，請重新整理頁面。",
+        "spendCap": {
+          "title": "花費上限",
+          "studioMonthly": "Studio 每月總額上限",
+          "studioMonthlyHint": "所有人合計，獨立於每人上限",
+          "memberDefault": "每人每月上限預設值",
+          "memberDefaultHint": "對沒有單獨設定的人生效",
+          "notSet": "不設",
+          "perMonth": "每月",
+          "studioSpent": "本月 Studio 已花",
+          "resetsAt": "重置於",
+          "saved": "花費上限已儲存。",
+          "saveFailed": "花費上限沒能儲存，請重試。",
+          "save": "儲存",
+          "colMember": "成員",
+          "colRelation": "關係",
+          "colSpent": "本月已花",
+          "colEffective": "生效上限",
+          "relationStudioMember": "Studio 成員",
+          "relationProjectCollaborator": "Project 協作者",
+          "relationFormer": "已離開（唯讀）",
+          "unlimited": "不限",
+          "zero": "0（禁止花點數）",
+          "amount": "{amount} 點數",
+          "sourceOverride": "單獨設定",
+          "sourceDefault": "預設",
+          "atCap": "已達上限",
+          "override": "單獨設定…",
+          "restoreDefault": "恢復預設",
+          "overrideTitle": "單獨設定 · {name}",
+          "overrideHint": "只對這個人生效，覆蓋預設值。"
+        }
       },
       "members": {
         "invite": "邀請成員",
@@ -3392,7 +3426,9 @@
       "projectsPerStudio": "每個 Studio 可建 Project",
       "studioMembers": "每個 Studio 成員上限",
       "projectMembers": "每個 Project 成員上限",
-      "concurrentEditors": "每個 Document 同時可編輯"
+      "concurrentEditors": "每個 Document 同時可編輯",
+      "monthlyOperations": "每月操作次數",
+      "runningTasksPerUser": "同時執行的任務數"
     },
     "quotaValue": "{used} / {limit}",
     "countItems": "{count} 個",
@@ -3463,6 +3499,15 @@
       "added": "已綁定，選擇會員即享首期 {zhe} 折。",
       "loadFailed": "沒有讀到推廣資訊。",
       "retry": "重試"
+    },
+    "quotaUnlimited": "{used} / 不限",
+    "operations": {
+      "label": "本月操作次數",
+      "remaining": "剩餘 {count} 次",
+      "resetsOn": "{date} 重置",
+      "overagePrice": "超出部分每次 {credits} 點數，從操作所在的 Studio 扣",
+      "overageCount": "本月已超出 {count} 次",
+      "shared": "在你管理的所有 Studio 中共用"
     }
   },
   "promoter": {
@@ -3546,7 +3591,7 @@
       "refunded": "已退款"
     },
     "billingOff": {
-      "title": "這個部署不計點數",
+      "title": "自部署不計點數",
       "body": "生成不扣點數，也不需要儲值。用量仍會記錄下來。"
     },
     "total": "帳號總額",
@@ -3571,7 +3616,7 @@
     "allStudios": "全部 Studio",
     "filterByStudio": "依 Studio 篩選",
     "ledgerEmpty": "還沒有消耗紀錄。",
-    "ledgerBillingOff": "這個部署不計點數，以下是用量紀錄。",
+    "ledgerBillingOff": "自部署不計點數，以下是用量紀錄。",
     "colDay": "日期",
     "colWho": "誰花的",
     "colStudio": "Studio",
@@ -3645,6 +3690,16 @@
     },
     "refundHint": {
       "assigned": "解除指定後可以申請退款"
+    },
+    "eventOperationOverage": "超出操作次數",
+    "topUp": "儲值",
+    "refusal": {
+      "operations": "本月操作次數已用完，點數不足。儲值後可繼續。",
+      "spendCap": "本月花費已達上限。請聯絡 Studio Admin"
+    },
+    "spendCap": {
+      "member": "你本月在這個 Studio 的花費已達上限（{limit} 點數），{date} 重置。需要更多請聯絡 Studio Admin",
+      "studio": "這個 Studio 本月的花費已達上限，{date} 重置。請聯絡 Studio Admin"
     }
   },
   "notFound": {
