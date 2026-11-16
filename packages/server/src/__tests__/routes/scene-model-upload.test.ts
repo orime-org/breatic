@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
+import { randomUUID } from "node:crypto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as fc from "fast-check";
 
@@ -49,6 +50,8 @@ const STUDIO = "22222222-2222-4222-8222-222222222222";
 const NODE = "33333333-3333-4333-8333-333333333333";
 const SPACE = "44444444-4444-4444-8444-444444444444";
 const AUTH = { Cookie: "breatic_session=valid-token", "Content-Type": "application/json" };
+/** `upload:<userId>:<Idempotency-Key>`, the ledger key of an upload. */
+const UPLOAD_KEY = /^upload:user-1:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const BROWSER_TOOL = MINI_TOOLS.find((tool) => tool.run.kind === "browser")!.id;
 const TICKET = {
   kind: "ticket", uploadId: "upload-1", token: "upload-token", storageKey: "file/model.glb",
@@ -69,8 +72,9 @@ const { space_id: _space, label: _label, ...PLAIN } = MODEL;
  * @throws {Error} When application construction fails.
  */
 async function requestTicket(body: Record<string, unknown>): Promise<Response> {
+  // Every upload names its operation by an Idempotency-Key (inner#1968 design 3.2).
   return createApp().request("/api/v1/assets/upload-ticket", {
-    method: "POST", headers: AUTH, body: JSON.stringify(body),
+    method: "POST", headers: { ...AUTH, "Idempotency-Key": randomUUID() }, body: JSON.stringify(body),
   });
 }
 
@@ -98,7 +102,8 @@ describe("scene model upload request contract", () => {
     expect(mocks.projectService.assertAccess).toHaveBeenCalledWith(PROJECT, "user-1", "editor");
     expect(mocks.assetService.resolveOwnerStudioId).toHaveBeenCalledWith(PROJECT);
     expect(issueUploadTicket).toHaveBeenCalledWith(
-      { userId: "user-1", studioId: STUDIO, projectId: PROJECT },
+      // The upload's operation key is its user and its Idempotency-Key (inner#1968 design 3.2).
+      { userId: "user-1", studioId: STUDIO, projectId: PROJECT, operationKey: expect.stringMatching(UPLOAD_KEY) },
       { ...MODEL, content_type: contentType, filename },
       expect.any(Function),
     );
@@ -222,7 +227,7 @@ describe("scene model upload request contract", () => {
       expect(response.status).toBe(201);
       expect(mocks.projectService.assertAccess).toHaveBeenLastCalledWith(projectId, "user-1", "editor");
       expect(mocks.assetService.resolveOwnerStudioId).toHaveBeenLastCalledWith(projectId);
-      expect(issueUploadTicket.mock.calls[0]?.[0]).toEqual({ userId: "user-1", studioId, projectId });
+      expect(issueUploadTicket.mock.calls[0]?.[0]).toEqual({ userId: "user-1", studioId, projectId, operationKey: expect.stringMatching(UPLOAD_KEY) });
     }), { numRuns: 20 });
   });
 });

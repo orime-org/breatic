@@ -7,6 +7,7 @@
  * The browser reports it with every message; the route hands it to the agent
  * as it came, and the agent decides what an unknown one means.
  */
+import { randomUUID } from "node:crypto";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("ai", () => ({
@@ -76,9 +77,10 @@ const BODY = {
  * @returns The response status.
  */
 async function post(body: Record<string, unknown>): Promise<number> {
+  // A message runs once under its Idempotency-Key (inner#1968 design 3.2).
   const res = await createApp().request("/api/v1/chat/message", {
     method: "POST",
-    headers: AUTH,
+    headers: { ...AUTH, "Idempotency-Key": randomUUID() },
     body: JSON.stringify(body),
   });
   await res.text();

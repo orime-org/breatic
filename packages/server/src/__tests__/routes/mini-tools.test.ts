@@ -29,6 +29,7 @@ vi.mock("@server/modules", async (importOriginal) => {
 import { ForbiddenError } from "@breatic/core";
 import { assetRepo, modelCatalog } from "@breatic/domain";
 import { miniToolById } from "@breatic/shared/mini-tools";
+import { t } from "@breatic/shared";
 
 import { createApp } from "../../app.js";
 import { mocks, mockQueueAdd } from "../helpers/mock-core.js";
@@ -378,7 +379,10 @@ describe("POST /mini-tools", () => {
     expect(mocks.nodeTaskService.open).toHaveBeenCalledTimes(2);
   });
 
-  it("settles the opened rows as no_credits when the balance is short", async () => {
+  // A refusal holds nothing and opens no task or row (inner#1968 design 3.10
+  // U9): the credits are held before the task row is written, the browser is
+  // answered 402 and shows the sentence, and the node gets no failed row.
+  it("refuses with 402 and opens no task or row when the balance is short", async () => {
     mocks.creditHoldService.reserveCredits.mockResolvedValue({ ok: false, studioId: "s1", spendable: "0.000000", held: "0.000000", available: "0.000000" });
     const res = await post({
       tool: "image.upscale",
@@ -386,12 +390,13 @@ describe("POST /mini-tools", () => {
       source: { url: "https://assets.example.com/i/a.png" },
     });
 
-    expect(res.status).toBe(201);
-    expect(await res.json()).toEqual({ data: { task_id: "task-1", status: "failed" } });
-    expect(mocks.taskService.markFailed).toHaveBeenCalledWith("task-1", "no_credits");
+    expect(res.status).toBe(402);
+    expect(mocks.taskService.create).not.toHaveBeenCalled();
+    expect(mocks.nodeTaskService.open).not.toHaveBeenCalled();
+    expect(mockQueueAdd).not.toHaveBeenCalled();
   });
 
-  it("settles the opened rows as credits_held when running work holds what the run needs", async () => {
+  it("names the hold when running work holds what the run needs", async () => {
     mocks.creditHoldService.reserveCredits.mockResolvedValue({ ok: false, studioId: "s1", spendable: "100.000000", held: "90.000000", available: "10.000000" });
     const res = await post({
       tool: "image.upscale",
@@ -399,20 +404,23 @@ describe("POST /mini-tools", () => {
       source: { url: "https://assets.example.com/i/a.png" },
     });
 
-    expect(res.status).toBe(201);
-    expect(mocks.taskService.markFailed).toHaveBeenCalledWith("task-1", "credits_held");
+    expect(res.status).toBe(402);
+    expect(((await res.json()) as { error: { message: string } }).error.message).toBe(t("server.credit.held_by_running", { held: "90", available: "10" }));
+    expect(mocks.taskService.create).not.toHaveBeenCalled();
   });
 
-  it("still settles the rows as credits_held when the caller has unassigned credits to point at", async () => {
+  it("points at the unassigned credits when the caller has some, and still opens nothing", async () => {
     mocks.creditHoldService.reserveCredits.mockResolvedValue({ ok: false, studioId: "s1", spendable: "100.000000", held: "90.000000", available: "10.000000" });
     mocks.creditLotService.getUnassignedCredits.mockResolvedValueOnce("50.000000");
-    await post({
+    const res = await post({
       tool: "image.upscale",
       node_ids: [NODE_A],
       source: { url: "https://assets.example.com/i/a.png" },
     });
 
-    expect(mocks.taskService.markFailed).toHaveBeenCalledWith("task-1", "credits_held");
+    expect(res.status).toBe(402);
+    expect(((await res.json()) as { error: { message: string } }).error.message).toBe(t("server.credit.unassigned", { available: "50" }));
+    expect(mocks.taskService.create).not.toHaveBeenCalled();
   });
 
   it("refuses a param the tool does not expose, before any row opens", async () => {

@@ -12,6 +12,7 @@
  * template declares is refused before anything is opened.
  */
 
+import { randomUUID } from "node:crypto";
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from "vitest";
 vi.mock("ai", () => ({
   tool: (c: Record<string, unknown>) => c,
@@ -124,7 +125,8 @@ async function submit(body: Record<string, unknown>): Promise<Response> {
   const app = createApp();
   return app.request("/api/v1/canvas/ingest-url", {
     method: "POST",
-    headers: { ...AUTH, "content-type": "application/json" },
+    // Every address names its operation by an Idempotency-Key (inner#1968 design 3.2).
+    headers: { ...AUTH, "Idempotency-Key": randomUUID(), "content-type": "application/json" },
     body: JSON.stringify({ project_id: PROJECT, space_id: SPACE, node_id: NODE, ...body }),
   });
 }

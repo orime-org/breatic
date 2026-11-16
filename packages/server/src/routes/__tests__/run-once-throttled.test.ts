@@ -91,7 +91,8 @@ describe("run-once routes", () => {
         ),
       ),
     );
-    expect(all.size).toBe(9);
+    // Ten since an Agent message runs once under its own id (inner#1968 design 3.2).
+    expect(all.size).toBe(10);
     expect([...all].filter(([, first]) => !first).map(([name]) => name)).toEqual([]);
   });
 });

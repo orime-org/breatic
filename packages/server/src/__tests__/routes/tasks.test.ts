@@ -548,11 +548,11 @@ describe("Tasks routes", () => {
   const READ_INTO = "33333333-3333-4333-8333-333333333333";
 
   describe("POST /canvas/understand — what a refusal leaves behind", () => {
-    // The node's row is opened before the credit gate so a refusal has
-    // somewhere to be said. That order leaves this route holding two rows,
-    // and a refusal has to finish both — a task left `pending` is one no
-    // worker will ever touch and no sweep will ever end.
-    it("ends the task it created when the balance is short", async () => {
+    // The credits are held before the task row and the node's row are
+    // written (inner#1968 design 3.10 U9), so a refusal leaves neither: the
+    // browser is answered 402 and shows the sentence, and no task is left
+    // `pending` for no worker to touch.
+    it("writes no task when the balance is short", async () => {
       mocks.creditHoldService.reserveCredits.mockResolvedValue({ ok: false, studioId: "s1", spendable: "0.000000", held: "0.000000", available: "0.000000" });
       const app = createApp();
       const res = await app.request("/api/v1/canvas/understand", {
@@ -567,36 +567,9 @@ describe("Tasks routes", () => {
         }),
       });
 
-      expect(res.status).toBe(201);
-      expect(mocks.taskService.markFailed).toHaveBeenCalledWith(
-        expect.any(String),
-        "no_credits",
-      );
-    });
-
-    // Once a row is open, the row is the answer: it holds the cause and the
-    // node shows it. Saying 402 as well would leave the browser guessing at
-    // something only this route knows — whether a row exists — and a 500
-    // raised before the row opened looks exactly like one raised after.
-    it("answers with the row's own state once a row is open", async () => {
-      mocks.creditHoldService.reserveCredits.mockResolvedValue({ ok: false, studioId: "s1", spendable: "0.000000", held: "0.000000", available: "0.000000" });
-      const app = createApp();
-      const res = await app.request("/api/v1/canvas/understand", {
-        method: "POST",
-        headers: AUTH,
-        body: JSON.stringify({
-          project_id: PID,
-          space_id: SID,
-          source_type: "image",
-          source_url: "https://assets.invalid/image/a.png",
-          node_ids: ["11111111-1111-4111-8111-111111111111"],
-        }),
-      });
-
-      expect(res.status).toBe(201);
-      expect(await res.json()).toEqual({
-        data: { task_id: expect.any(String), status: "failed" },
-      });
+      expect(res.status).toBe(402);
+      expect(mocks.taskService.create).not.toHaveBeenCalled();
+      expect(mocks.taskService.markFailed).not.toHaveBeenCalled();
     });
   });
 
@@ -801,7 +774,8 @@ describe("Tasks routes", () => {
       expect.anything(),
       expect.anything(),
       "understand",
-      undefined,
+      // The id the run's credits were held under (inner#1968 design 3.10 U9).
+      expect.any(String),
       mocks.activityTransaction,
     );
   });
@@ -866,7 +840,8 @@ describe("Tasks routes", () => {
         expect.objectContaining({ reading: "transcribe" }),
         UNDERSTAND_PINS.model,
         "understand",
-        undefined,
+        // The id the run's credits were held under (inner#1968 design 3.10 U9).
+        expect.any(String),
         mocks.activityTransaction,
       );
     });
@@ -895,7 +870,7 @@ describe("Tasks routes", () => {
     // with the cause, and the node shows failed=1 (downstream-node-creation
     // decision, stage 4). A toast with no row behind it would leave a node
     // sitting there with nothing to explain it.
-    it("settles the row it opened when the balance is short", async () => {
+    it("opens no row when the balance is short (inner#1968 design 3.10 U9)", async () => {
       mocks.creditHoldService.reserveCredits.mockResolvedValue({ ok: false, studioId: "s1", spendable: "0.000000", held: "0.000000", available: "0.000000" });
       const app = createApp();
       const res = await app.request("/api/v1/canvas/understand", {
@@ -910,13 +885,9 @@ describe("Tasks routes", () => {
         }),
       });
 
-      expect(res.status).toBe(201);
-      expect(mocks.nodeTaskService.open).toHaveBeenCalledWith(
-        expect.objectContaining({ nodeId: READ_INTO }),
-      );
-      expect(mocks.nodeTaskService.settle).toHaveBeenCalledWith(
-        expect.objectContaining({ outcome: "failed", errorMessage: "no_credits" }),
-      );
+      expect(res.status).toBe(402);
+      expect(mocks.nodeTaskService.open).not.toHaveBeenCalled();
+      expect(mocks.nodeTaskService.settle).not.toHaveBeenCalled();
       expect(mockQueueAdd).not.toHaveBeenCalled();
     });
 
@@ -951,6 +922,8 @@ describe("Tasks routes", () => {
 
     it("holds the estimate under the task's id and releases it when the job cannot be queued (inner#1611)", async () => {
       mockQueueAdd.mockRejectedValueOnce(new Error("redis down"));
+      // The row takes the id its credits were held under (inner#1968 design 3.10 U9).
+      mocks.taskService.create.mockImplementationOnce(async (...args: unknown[]) => ({ id: args[8] as string, taskType: "understand" }));
       const app = createApp();
       await app.request("/api/v1/canvas/understand", {
         method: "POST",
