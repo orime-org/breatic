@@ -20,7 +20,7 @@ import { getNodeTaskConfig, AppError, logger } from "@breatic/core";
 import { canvasSpaceDocName } from "@breatic/shared";
 import { creditHoldService, nodeTaskService, operationService, taskService } from "@breatic/domain";
 import { admitOperationOrRefuse } from "@server/modules/operation/operation-admission.service.js";
-import { CreditsHeldError, reserveForRun } from "@server/modules/payment/credit-precheck.service.js";
+import { assertWithinSpendCap, reserveForRun } from "@server/modules/payment/credit-precheck.service.js";
 import { assertAccess } from "@server/modules/project/project.service.js";
 import { publishCountsQuietly } from "@server/modules/task/publish-counts.js";
 import { t } from "@breatic/shared";
@@ -125,16 +125,52 @@ export async function failOpenedTasks(
 }
 
 /**
- * Start a run whose result nodes are already on the canvas: open their rows,
- * check the credits, queue the job and keep its id. The rows open before the
- * credit check so a refusal is said where the node can show it.
+ * Hold a rowed run's estimate under the id its task row will carry, then
+ * write that row (inner#1968, design 3.10): a refusal, by the balance or by a
+ * monthly spend limit, leaves no task row and no node row behind, the same
+ * order the canvas generation takes. A free run (the grid) holds nothing: a
+ * studio in debt could hold no amount at all, and nothing will be charged.
+ * Every way out releases what was held and the operation admitted under
+ * `task:<taskId>`; once the row exists, {@link startRowedRun} settles the run.
+ * @param opts - The run.
+ * @param opts.taskId - The id the task row takes.
+ * @param opts.projectId - Owning project.
+ * @param opts.userId - Who started it.
+ * @param opts.credits - The run's estimate.
+ * @param opts.create - Writes the task row.
+ * @returns The task row.
+ * @throws {SpendCapReachedError} 402 when a monthly spend limit cannot take the estimate.
+ * @throws {AppError} 402 when the studio cannot cover the estimate; whatever writing the row throws.
+ */
+export async function holdRowedRun<T>(opts: {
+  taskId: string;
+  projectId: string;
+  userId: string;
+  credits: () => Promise<number>;
+  create: () => Promise<T>;
+}): Promise<T> {
+  try {
+    const credits = await opts.credits();
+    if (credits > 0) await reserveForRun(opts.projectId, opts.userId, opts.taskId, credits);
+    return await opts.create();
+  } catch (err) {
+    // A refused admission held nothing, and releasing it does nothing.
+    await creditHoldService.releaseHold(opts.taskId);
+    await operationService.releaseOperation(`task:${opts.taskId}`, undefined, "not_started");
+    throw err;
+  }
+}
+
+/**
+ * Start a run whose result nodes are already on the canvas and whose credits
+ * {@link holdRowedRun} already holds: open their rows, queue the job and keep
+ * its id.
  *
  * Once a row is open, any failure settles both accounts of the run — the task
  * and its rows — each on its own, so neither settlement takes the other down:
  * a task left `pending` is one no worker picks up and no sweep ends, and a row
- * left `running` counts a run that is not happening. `no_credits` and
- * `credits_held` are the causes the user can act on; anything else is ours,
- * and the log carries it.
+ * left `running` counts a run that is not happening. The cause is ours, and
+ * the log carries it.
  * @param opts - The run.
  * @param opts.taskId - The task this run belongs to.
  * @param opts.projectId - Owning project.
@@ -143,12 +179,11 @@ export async function failOpenedTasks(
  * @param opts.userId - Who started it.
  * @param opts.action - What the rows say this run is.
  * @param opts.label - What the rows name it by.
- * @param opts.credits - The run's estimate, held until the worker charges the run or it ends.
  * @param opts.enqueue - Queues the job, past the point of no return.
  * @param opts.logTag - Prefix of this lane's log events.
  * @param opts.logContext - Extra fields on the failure log.
- * @returns `"pending"` once queued, `"failed"` when refused after a row opened.
- * @throws {Error} The refusal itself, when no row opened to carry it.
+ * @returns `"pending"` once queued, `"failed"` when it failed after a row opened.
+ * @throws {Error} The failure itself, when no row opened to carry it.
  */
 export async function startRowedRun(opts: {
   taskId: string;
@@ -158,7 +193,6 @@ export async function startRowedRun(opts: {
   userId: string;
   action: Exclude<NodeTaskAction, "upload">;
   label: string;
-  credits: () => Promise<number>;
   enqueue: () => Promise<{ id?: string | undefined }>;
   logTag: string;
   logContext?: Record<string, unknown>;
@@ -175,20 +209,11 @@ export async function startRowedRun(opts: {
       action: opts.action,
       label: opts.label,
     });
-    const credits = await opts.credits();
-    // A free run (the grid) holds nothing: a studio in debt could hold no
-    // amount at all, and nothing will be charged (inner#1968).
-    if (credits > 0) await reserveForRun(projectId, opts.userId, taskId, credits);
     const job = await opts.enqueue();
     await recordJobId(taskId, job.id, projectId, opts.logTag);
     return "pending";
   } catch (err) {
-    const reason: TaskFailureReason =
-      err instanceof CreditsHeldError
-        ? "credits_held"
-        : err instanceof AppError && err.statusCode === 402
-          ? "no_credits"
-          : "internal";
+    const reason: TaskFailureReason = "internal";
     await settleUnqueuedRun(taskId, projectId, reason, () => failOpenedTasks(projectId, spaceId, rows, reason), opts.logTag);
     logger.warn({ err, taskId, projectId, reason, ...opts.logContext }, `${opts.logTag}_run_failed`);
     // An open row is the answer — it holds the cause and the node shows it.
@@ -216,6 +241,7 @@ export async function startRowedRun(opts: {
  * @returns The new task id, and what the checks returned.
  * @throws {AppError} 403 or 404 without editor access, the checks' refusal, 402 when the studio cannot cover the estimate.
  * @throws {OperationsExhaustedError} 402 when the month's operations are used up and the studio cannot pay for one more.
+ * @throws {SpendCapReachedError} 402 when a monthly spend limit cannot take the estimate.
  */
 export async function holdRun<T>(opts: {
   projectId: string;
@@ -227,10 +253,13 @@ export async function holdRun<T>(opts: {
   await assertAccess(opts.projectId, opts.userId, "editor");
   const checked = await opts.check();
   const taskId = randomUUID();
+  const estimate = await opts.credits(checked);
+  // A spend limit that cannot take it refuses before anything is written (inner#1968).
+  await assertWithinSpendCap(opts.projectId, opts.userId, estimate);
   // One generation is one operation, admitted before anything opens (inner#1968).
   await admitTaskOperation("generation", taskId, opts.projectId, opts.userId, opts.inputs(checked));
   try {
-    await reserveForRun(opts.projectId, opts.userId, taskId, await opts.credits(checked));
+    await reserveForRun(opts.projectId, opts.userId, taskId, estimate);
   } catch (err) {
     await operationService.releaseOperation(`task:${taskId}`, undefined, "not_started");
     throw err;

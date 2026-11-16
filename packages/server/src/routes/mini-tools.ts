@@ -25,8 +25,7 @@ import { runOnce } from "@server/middleware/run-once.js";
 import { idempotencyKeyHeaderSchema } from "@server/routes/schemas.js";
 import { projectService } from "@server/modules";
 import { prepareRun } from "@server/modules/mini-tool/mini-tool.service.js";
-import { admitTaskOperation, startRowedRun } from "@server/modules/task/generation-task.js";
-import { operationService } from "@breatic/domain";
+import { admitTaskOperation, holdRowedRun, startRowedRun } from "@server/modules/task/generation-task.js";
 
 const miniTools = new Hono<{ Variables: AuthVariables }>();
 
@@ -37,9 +36,9 @@ miniTools.use("*", requireAuth);
  * Run one mini-tool onto the result nodes the browser built.
  * @param c - Hono context with the validated request.
  * @returns `201` with `{ task_id, status }` — `"pending"` once queued,
- * `"failed"` when the run was refused after its rows opened (the rows hold
+ * `"failed"` when it failed after its rows opened (the rows hold
  * the cause).
- * @throws {AppError} The refusal itself, when no row was opened to carry it.
+ * @throws {AppError} 402 when credits or a spend limit refuse it, before any row opens; any other failure before a row opened.
  */
 miniTools.post(
   "/",
@@ -63,23 +62,13 @@ miniTools.post(
   const drawn = body.drawing === undefined ? [] : "mask" in body.drawing ? [body.drawing.mask] : [body.drawing.image];
   const expanded = body.expand === undefined ? [] : [body.expand.image, body.expand.mask];
   await admitTaskOperation("tool_run", taskId, body.project_id, user.id, [...drawn, ...expanded]);
-  let task: Awaited<ReturnType<typeof admitGeneration>>;
-  try {
-    task = await admitGeneration(
-      user.id,
-      body.project_id,
-      body.space_id,
-      taskType,
-      "append",
-      run.params,
-      run.model,
-      "mini_tool",
-      taskId,
-    );
-  } catch (err) {
-    await operationService.releaseOperation(`task:${taskId}`, undefined, "not_started");
-    throw err;
-  }
+  const task = await holdRowedRun({
+    taskId,
+    projectId: body.project_id,
+    userId: user.id,
+    credits: () => Promise.resolve(run.credits),
+    create: () => admitGeneration(user.id, body.project_id, body.space_id, taskType, "append", run.params, run.model, "mini_tool", taskId),
+  });
 
   const status = await startRowedRun({
     taskId: task.id,
@@ -89,7 +78,6 @@ miniTools.post(
     userId: user.id,
     action: "mini_tool",
     label: spec.id,
-    credits: () => Promise.resolve(run.credits),
     enqueue: () =>
       tasksQueue().add(
         "execute-mini-tool",

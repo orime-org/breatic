@@ -53,6 +53,7 @@ import { catalogEntryOf } from "@breatic/shared/mini-tools";
 import { nodeTaskService, runningSlotService } from "@breatic/domain";
 import {
   admitTaskOperation,
+  holdRowedRun,
   holdRun,
   mediaUrlsIn,
   openGenerationTasks,
@@ -536,9 +537,14 @@ async function startReading(
   await admitTaskOperation("tool_run", taskId, body.project_id, userId, []);
   // Understand tasks transcribe / analyze a media URL into a result node;
   // they always produce a new node ('append'), no overwrite semantics.
-  let task: Awaited<ReturnType<typeof admitGeneration>>;
-  try {
-    task = await admitGeneration(
+  // Its estimate is held before its task row is written, so a refusal by
+  // credits or a spend limit leaves nothing on the node (inner#1968).
+  const task = await holdRowedRun({
+    taskId,
+    projectId: body.project_id,
+    userId,
+    credits: () => estimateTaskCredits(model, { params }),
+    create: () => admitGeneration(
       userId,
       body.project_id,
       body.space_id,
@@ -551,15 +557,9 @@ async function startReading(
       // would then be the only ones it cannot account for.
       "understand",
       taskId,
-    );
-  } catch (err) {
-    await operationService.releaseOperation(`task:${taskId}`, undefined, "not_started");
-    throw err;
-  }
+    ),
+  });
 
-  // The node this run writes to is already on the canvas — the browser built
-  // it before the request went out — so its row opens before the credit
-  // gate, and a refusal is said where the node can show it.
   const status = await startRowedRun({
     taskId: task.id,
     projectId: body.project_id,
@@ -568,7 +568,6 @@ async function startReading(
     userId,
     action,
     label: model,
-    credits: () => estimateTaskCredits(model, { params }),
     enqueue: () =>
       tasksQueue().add(
         "execute-task",
