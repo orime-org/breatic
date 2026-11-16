@@ -23,10 +23,14 @@ import {
   autoUpdate,
   flip,
   offset,
+  safePolygon,
   shift,
   size,
   useFloating,
+  useHover,
+  useInteractions,
 } from '@floating-ui/react';
+import { ChevronRight } from 'lucide-react';
 import type { Transaction } from '@tiptap/pm/state';
 import * as React from 'react';
 
@@ -444,8 +448,9 @@ function OpenSlashMenu({ editor, menu, trigger, query }: OpenSlashMenuProps): Re
     };
   }, [editor, menu]);
 
-  // Anchored on the trigger the extension decorates, read at every
-  // measurement: the extension refreshes it on scroll before the menu moves.
+  // Anchored on the trigger the extension decorates, read live at every
+  // measurement: the extension's own rect is refreshed only on a transaction
+  // or a scroll, and a reflow (a narrower window) moves the trigger too.
   const { refs, floatingStyles, isPositioned, update } = useFloating({
     open: true,
     strategy: 'absolute',
@@ -465,7 +470,10 @@ function OpenSlashMenu({ editor, menu, trigger, query }: OpenSlashMenuProps): Re
   });
   React.useLayoutEffect(() => {
     refs.setPositionReference({
-      getBoundingClientRect: () => menu.store.state?.referencePos ?? new DOMRect(),
+      getBoundingClientRect: () =>
+        domElementOf(editor)?.querySelector('.bn-suggestion-decorator')?.getBoundingClientRect() ??
+        menu.store.state?.referencePos ??
+        new DOMRect(),
       contextElement: domElementOf(editor) ?? undefined,
     });
   }, [editor, menu, refs]);
@@ -474,14 +482,26 @@ function OpenSlashMenu({ editor, menu, trigger, query }: OpenSlashMenuProps): Re
     update();
   }, [referencePos, update]);
 
-  // The size grid stands beside the table row, as a submenu does.
+  // The size grid stands beside the table row, as a submenu does. The
+  // pointer may cross the rows below on its way to the grid: inside the
+  // triangle between the row and the grid nothing else takes the pointer,
+  // the grace the insert menu's Radix submenu gives.
   const gridFloat = useFloating({
     open: grid !== null,
+    onOpenChange: (open) => {
+      if (!open) closeGrid();
+      else setGrid((now) => (now !== null && now.query === query ? now : { query, at: null }));
+    },
     strategy: 'absolute',
     placement: 'right-start',
     middleware: [offset({ mainAxis: 4 + 5, alignmentAxis: -5 }), flip({ padding: EDGE }), shift({ padding: EDGE })],
     whileElementsMounted: autoUpdate,
   });
+  const gridHover = useHover(gridFloat.context, {
+    enabled: !reach.has('table'),
+    handleClose: safePolygon({ blockPointerEvents: true }),
+  });
+  const { getReferenceProps, getFloatingProps } = useInteractions([gridHover]);
 
   // The lit row stays in sight, scrolling the menu's own list only.
   const rowsRef = React.useRef<HTMLDivElement>(null);
@@ -535,6 +555,21 @@ function OpenSlashMenu({ editor, menu, trigger, query }: OpenSlashMenuProps): Re
                 const { Icon, labelKey } = insertEntryLook(id);
                 const out = reach.has(id);
                 const ruled = ruleBetween(items[at - 1], id);
+                const handlers = {
+                  onMouseEnter: (): void => {
+                    // A row out of reach does not light up under the
+                    // pointer, as in the insert menu.
+                    if (out) return;
+                    highlight(at);
+                    if (id !== 'table') closeGrid();
+                  },
+                  onMouseDown: (event: React.MouseEvent): void => {
+                    // Only the main button picks, as in the insert menu.
+                    if (event.button !== 0) return;
+                    if (id === 'table' && !out) openGrid(null);
+                    else pick(id);
+                  },
+                };
                 return (
                   <React.Fragment key={id}>
                     {ruled ? <Separator className='-mx-1 w-auto' /> : null}
@@ -552,21 +587,11 @@ function OpenSlashMenu({ editor, menu, trigger, query }: OpenSlashMenuProps): Re
                         out && UNAVAILABLE_KEYBOARD_FOCUS_ONLY,
                         id === 'table' && grid !== null && 'bg-accent',
                       )}
-                      onMouseEnter={() => {
-                        // A row out of reach does not light up under the
-                        // pointer, as in the insert menu.
-                        if (out) return;
-                        highlight(at);
-                        if (id === 'table') openGrid(null);
-                        else closeGrid();
-                      }}
-                      onMouseDown={() => {
-                        if (id === 'table' && !out) openGrid(null);
-                        else pick(id);
-                      }}
+                      {...(id === 'table' ? getReferenceProps(handlers) : handlers)}
                     >
                       <Icon />
                       {t(labelKey)}
+                      {id === 'table' ? <ChevronRight className='ml-auto size-4 text-muted-foreground' /> : null}
                     </Button>
                   </React.Fragment>
                 );
@@ -583,6 +608,7 @@ function OpenSlashMenu({ editor, menu, trigger, query }: OpenSlashMenuProps): Re
           onMouseDownCapture={keepFocus}
           className={menuSurface}
           {...layer}
+          {...getFloatingProps()}
         >
           <MenuRows>
             <PlainTableSizeGrid at={grid.at} onHover={onGridHover} onPick={onGridPick} />

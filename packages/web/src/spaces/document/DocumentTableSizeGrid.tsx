@@ -196,8 +196,9 @@ export const PlainTableSizeGrid = React.memo(function PlainTableSizeGrid({
               onMouseEnter={() => {
                 onHover(size);
               }}
-              onMouseDown={() => {
-                onPick(size);
+              onMouseDown={(event) => {
+                // Only the main button picks, as in the insert menu.
+                if (event.button === 0) onPick(size);
               }}
             />
           );
