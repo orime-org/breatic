@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import { Activity, AlertCircle, Film, Music, RotateCcw, Star } from 'lucide-react';
+import { Activity, AlertCircle, Film, Music, RotateCcw } from 'lucide-react';
 import { useEffect, useRef, type JSX } from 'react';
 import {
   useInfiniteQuery,
@@ -30,12 +30,12 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@web/components/ui/sheet';
+import { CreditChip } from '@web/components/CreditChip';
 import { Button } from '@web/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { cn } from '@web/lib/utils';
 import { usePendingKeys } from '@web/lib/use-pending-keys';
 import { asFiniteCredits } from '@web/lib/as-finite-credits';
-import { formatCreditAmount } from '@web/lib/format-credit-amount';
 import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusive-overlay';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -487,16 +487,11 @@ export function ProjectActivityButton({
                         {/* What the run consumed (spec §6.4 / INV-8): raw
                             value, 0 shown, hidden when there is no cost. */}
                         {credits != null ? (
-                          <span
+                          <CreditChip
                             data-testid={`project-activity-credits-${m.id}`}
-                            className='inline-flex shrink-0 items-center gap-0.5 text-xs tabular-nums text-foreground'
-                          >
-                            <Star
-                              className='h-3 w-3 text-muted-foreground'
-                              aria-hidden='true'
-                            />
-                            {formatCreditAmount(credits)}
-                          </span>
+                            credits={credits}
+                            billingPending={m.payload['billing'] === 'pending'}
+                          />
                         ) : null}
                       </div>
                     </div>

@@ -4,9 +4,9 @@
 /**
  * Which lane a generation's output takes into R2 (#181, design §2 and §4.5).
  *
- * Where the bytes are decides it. A synchronous transport answers with a
- * buffer this process is holding, so this process sends it; an async provider
- * answers with a temporary link, and the ingest Worker pulls that where R2
+ * Where the bytes are decides it. An upstream that answers a file inline leaves
+ * its bytes in this process, so this process sends them; when an upstream
+ * answers with a temporary link, the ingest Worker pulls it where R2
  * already is. Downloading it here and uploading it again would move every byte
  * twice, which is the one thing lane ③ exists to avoid.
  *
@@ -77,7 +77,6 @@ vi.mock("@breatic/domain", async (importOriginal) => ({
     recordProviderResult: vi.fn(),
   },
   nodeHistoryService: { recordGenerationSuccess: vi.fn(), recordGenerationFailure: vi.fn() },
-  getModel: vi.fn(),
   buildToolSet: vi.fn(),
   extractPromptText: vi.fn(),
 }));
@@ -112,7 +111,7 @@ beforeEach(() => {
 // key and served type alike; the rest keep the task type's.
 describe("persistOutputs — the type a declared output is stored as", () => {
   it("names a link's key and type after the model's declared output", async () => {
-    await persistOutputs([{ url: PROVIDER_URL }], {}, { ...baseOpts, taskType: "audio", outputType: "audio/wav" });
+    await persistOutputs([{ url: PROVIDER_URL }], { ...baseOpts, taskType: "audio", outputType: "audio/wav" });
     expect(mockTransferUrl.mock.calls[0]?.[1]).toMatchObject({ ext: ".wav", contentType: "audio/wav" });
   });
 
@@ -128,14 +127,14 @@ describe("persistOutputs — the type a declared output is stored as", () => {
   });
 
   it("keeps the task type's when the model declares nothing", async () => {
-    await persistOutputs([{ url: PROVIDER_URL }], {}, { ...baseOpts, taskType: "audio" });
+    await persistOutputs([{ url: PROVIDER_URL }], { ...baseOpts, taskType: "audio" });
     expect(mockTransferUrl.mock.calls[0]?.[1]).toMatchObject({ ext: ".mp3", contentType: "audio/mpeg" });
   });
 });
 
 describe("persistOutputs — the lane an output takes", () => {
   it("sends bytes it is holding, and pins what came back", async () => {
-    const out = await persistOutputs([bufferOutput()], {}, baseOpts);
+    const out = await persistOutputs([bufferOutput()], baseOpts);
 
     expect(mockUploadBytes).toHaveBeenCalledTimes(1);
     expect(mockUploadBytes.mock.calls[0]?.[1]).toMatchObject({
@@ -158,7 +157,7 @@ describe("persistOutputs — the lane an output takes", () => {
   });
 
   it("hands a provider's link over without reading it here", async () => {
-    const out = await persistOutputs([{ url: PROVIDER_URL }], {}, baseOpts);
+    const out = await persistOutputs([{ url: PROVIDER_URL }], baseOpts);
 
     expect(mockTransferUrl).toHaveBeenCalledTimes(1);
     expect(mockTransferUrl.mock.calls[0]?.[0]).toBe(PROVIDER_URL);
@@ -196,7 +195,7 @@ describe("persistOutputs — the lane an output takes", () => {
       coverUrl: "https://our-bucket/video/2026-01-01/1_uuid_cover.png",
     });
 
-    const out = await persistOutputs([{ url: PROVIDER_URL }], {}, {
+    const out = await persistOutputs([{ url: PROVIDER_URL }], {
       ...baseOpts,
       taskType: "video",
     });
@@ -220,7 +219,7 @@ describe("persistOutputs — the lane an output takes", () => {
       durationSeconds: 12.5,
     });
 
-    const out = await persistOutputs([{ url: PROVIDER_URL }], {}, {
+    const out = await persistOutputs([{ url: PROVIDER_URL }], {
       ...baseOpts,
       taskType: "video",
     });
@@ -237,7 +236,7 @@ describe("persistOutputs — the lane an output takes", () => {
     // object would store a second copy of it.
     const oursUrl = "https://our-bucket/image/2026-01-01/local-tool.png";
 
-    const out = await persistOutputs([{ url: oursUrl }], {}, baseOpts);
+    const out = await persistOutputs([{ url: oursUrl }], baseOpts);
 
     expect(mockTransferUrl).not.toHaveBeenCalled();
     expect(out[0]!.url).toBe(oursUrl);
@@ -249,7 +248,7 @@ describe("persistOutputs — the lane an output takes", () => {
     mockUploadBytes.mockRejectedValueOnce(new Error("the worker refused it"));
 
     await expect(
-      persistOutputs([bufferOutput()], {}, baseOpts),
+      persistOutputs([bufferOutput()], baseOpts),
     ).rejects.toThrow("the worker refused it");
   });
 
@@ -261,36 +260,7 @@ describe("persistOutputs — the lane an output takes", () => {
     mockTransferUrl.mockRejectedValueOnce(new Error("the worker refused it"));
 
     await expect(
-      persistOutputs([{ url: PROVIDER_URL }], {}, baseOpts),
+      persistOutputs([{ url: PROVIDER_URL }], baseOpts),
     ).rejects.toThrow("the worker refused it");
-  });
-});
-
-describe("persistOutputs — the provider's own extra fields", () => {
-  it("transfers them too, and pins the canonical", async () => {
-    const extras: Record<string, unknown> = { audio_url: PROVIDER_URL };
-
-    await persistOutputs([], extras, baseOpts);
-
-    expect(mockTransferUrl).toHaveBeenCalledWith(PROVIDER_URL, expect.anything());
-    // #181 §4.8: this used to keep the key just written, which on a dedup hit
-    // is the loser — queued for reclaim, so the field would name a 404.
-    expect(extras.audio_url).toBe(CANONICAL);
-    expect(extras.audio_url_original).toBe(PROVIDER_URL);
-  });
-
-  it("keeps the original when a transfer fails, without failing the task", async () => {
-    // None of these is what the node shows, so a generation that produced its
-    // deliverable is not failed over one of them.
-    mockTransferUrl.mockRejectedValueOnce(new Error("the worker refused it"));
-    const extras: Record<string, unknown> = { video_url: PROVIDER_URL };
-
-    await persistOutputs([], extras, baseOpts);
-
-    expect(extras.video_url).toBe(PROVIDER_URL);
-    expect(mockWarn).toHaveBeenCalledWith(
-      expect.objectContaining({ field: "video_url" }),
-      expect.stringContaining("keeping original"),
-    );
   });
 });

@@ -82,12 +82,10 @@ export type {
   ParamForce,
   ParamScalar,
   RemoteParamSource,
-  ModelProvider,
   ModelEntry,
+  ModelAvailability,
   CameraCommandEntry,
   CameraAngleParams,
-  PricingContract,
-  ExtraStep,
   SourceGroup,
   ItemField,
   ModelCatalog,
@@ -409,6 +407,11 @@ export type {
   AgentInstructionsSaveInput,
   AgentInstructionsView,
   ChatRunningAnswer,
+  ChatPendingItem,
+  ChatSendAnswer,
+  ChatSyncAnswer,
+  ChatStopAnswer,
+  ChatQueueRemoveAnswer,
   SceneGenerationAnswer,
   SceneGenerationBody,
 } from "@shared/schemas/index.js";
@@ -492,6 +495,8 @@ export {
   TimelineOperationReceiptSchema,
   TimelineDocumentV1Schema,
   TIMELINE_MAIN_TRACK_ID,
+  TIMELINE_SCHEMA_VERSIONS,
+  isTimelineSchemaVersion,
 } from "@shared/timeline/schema.js";
 export type {
   TimelineRate,
@@ -516,13 +521,18 @@ export {
   TIMELINE_LAYER_TRANSFORM_LIMITS,
   clampTimelineScale,
   normalizeTimelineLayerTransform,
+  roundTimelineFrameOffset,
   sameTimelineLayerTransform,
   timelineLayerBase,
   timelineLayerContains,
   timelineLayerCorners,
+  timelineLayerFrameOffset,
+  timelineLayerOffsetPixels,
   timelineLayerStyle,
 } from "@shared/timeline/layer-geometry.js";
-export type { TimelineLayerBox, TimelineLayerStyle, TimelineLayerTransform } from "@shared/timeline/layer-geometry.js";
+export type { TimelineLayerBox, TimelineLayerFrame, TimelineLayerStyle, TimelineLayerTransform } from "@shared/timeline/layer-geometry.js";
+export { TIMELINE_FRAME_PRESETS, TIMELINE_FRAME_PRESET_KEYS, timelineFramePresetOf } from "@shared/timeline/frame-presets.js";
+export type { TimelineFramePreset } from "@shared/timeline/frame-presets.js";
 
 export {
   DOCUMENT_SCHEMA,
@@ -600,9 +610,10 @@ export { newId, deriveId } from "@shared/ids.js";
 // The three gates on a capped list param — the panel while picking, the server
 // before enqueue, the worker before mapping to vendor names — read one number,
 // so a submission the panel allowed is never the one the worker truncates.
-export { completeEntries, itemCap, isPresent, stepRequested, usableUrls } from "@shared/item-cap.js";
+export { completeEntries, itemCap, isPresent, usableUrls } from "@shared/item-cap.js";
 export type { CappedParam } from "@shared/item-cap.js";
-export { joinSlotFiles } from "@shared/join-slot-files.js";
+export { joinSlotFiles, neutralReference } from "@shared/join-slot-files.js";
+export { cameraPrompt, paramsToSend, type SendableModel, type SendableParam, type SendableRun } from "@shared/send-params.js";
 export type { JoinDeclarations, JoinedRun } from "@shared/join-slot-files.js";
 export {
   addShot,
@@ -1183,3 +1194,4 @@ export type { AccountActivityEntity, AccountActivityKind, AccountActivityCoverag
 export type {
   TimelineExecution, TimelineExecutionRow, TimelineExecutionStatus, TimelineWebResolution, WebAnimationSourceVersion, DocumentVersion,
 } from "@shared/types/entities.js";
+export { routeSchema, type RunRoute } from "@shared/schemas/route.js";

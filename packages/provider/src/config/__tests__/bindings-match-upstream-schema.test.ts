@@ -139,6 +139,7 @@ function sampleStep(binding: MediaBinding, param: string | undefined): StepConte
     binding,
     customVoiceId: "voice-sample",
     voice: () => "voice-sample",
+    generated: () => SAMPLE_URL,
     description: SAMPLE_TEXT,
     itemIndex: 0,
     param,

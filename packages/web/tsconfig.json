@@ -24,6 +24,7 @@
     "paths": {
       "@web/*": ["src/*"],
       "@shared/*": ["../shared/src/*"],
+      "@provider/*": ["../provider/src/*"],
       "@locales/*": ["../../locales/*"]
     }
   },

@@ -191,4 +191,18 @@ export const designationSchema = z.object({
  */
 export const idParamSchema = z.object({ id: z.string().uuid() });
 
+/** The project a conversation request is made in (inner#1717). */
+export const chatProjectBodySchema = z.object({ project_id: z.string().uuid() });
+
+/** Which conversation's run to stop, in which project (inner#1717). */
+export const chatStopSchema = z.object({
+  conversation_id: z.string().uuid(),
+  project_id: z.string().uuid(),
+  /** The run the page reads; a stop naming another leaves the conversation's run alone. Absent from a page that predates it. */
+  run_id: z.string().uuid().optional(),
+});
+
+/** A waiting message of a conversation (inner#1717). */
+export const chatQueueParamSchema = z.object({ id: z.string().uuid(), messageId: z.string().uuid() });
+
 export { creditAmountFormatQuerySchema } from "@breatic/shared";

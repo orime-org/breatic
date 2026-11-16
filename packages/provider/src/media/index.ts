@@ -3,6 +3,7 @@
 
 export {
   createMediaRunner,
+  ticketState,
   type CallBounds,
   type LegacyRows,
   type LegacyStep,
@@ -16,5 +17,6 @@ export {
   type MediaWarning,
   type PlanOptions,
   type PollOptions,
+  type SendOptions,
   type StepKind,
 } from "@provider/media/runner.js";

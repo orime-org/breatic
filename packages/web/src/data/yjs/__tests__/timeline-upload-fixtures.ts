@@ -47,7 +47,7 @@ export function uploadClip(
     rate: { num: 1, den: 1 },
     gain: 1,
     mute: false,
-    transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+    transform: { frameX: 0, frameY: 0, scaleX: 1, scaleY: 1, rotation: 0 },
     ...fields,
   };
 }

@@ -96,19 +96,6 @@ export async function ensureSteps(taskId: string, plan: readonly PlannedStep[]):
 }
 
 /**
- * Record that a step was submitted, before it is polled.
- * @param stepId - The step.
- * @param predictionId - The WaveSpeed prediction id.
- * @returns Nothing.
- */
-export async function markSubmitted(stepId: string, predictionId: string): Promise<void> {
-  await db
-    .update(taskUpstreamSteps)
-    .set({ status: "submitted", predictionId })
-    .where(eq(taskUpstreamSteps.id, stepId));
-}
-
-/**
  * Record what a step learned before it is submitted, and what that cost
  * outside its prediction — the element's description and its understand call.
  * @param stepId - The step.

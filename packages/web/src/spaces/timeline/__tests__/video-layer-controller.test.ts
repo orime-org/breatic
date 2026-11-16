@@ -29,11 +29,11 @@ const SOURCE: TimelineVideoSource = {
 const A: TimelineVideoClip = {
   id: '30000000-0000-4000-8000-000000000001', trackId: 'visual-1', kind: 'video', sourceId: SOURCE.id,
   startFrame: 0, sourceInFrame: 0, durationFrames: 240, rate: { num: 2, den: 1 }, gain: 1.5, mute: false,
-  transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+  transform: { frameX: 0, frameY: 0, scaleX: 1, scaleY: 1, rotation: 0 },
 };
 const B: TimelineVideoClip = { ...A, id: '30000000-0000-4000-8000-000000000002', trackId: 'v2', rate: { num: 1, den: 2 }, gain: 0.4, mute: true };
 const DOCUMENT: TimelineDocumentV1 = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   settings: { width: 1920, height: 1080, fps: { num: 24, den: 1 } },
   tracks: { 'visual-1': { id: 'visual-1', kind: 'visual', order: 0 }, v2: { id: 'v2', kind: 'visual', order: 1 } },
   clips: { [A.id]: A, [B.id]: B },

@@ -10,15 +10,14 @@
  * key expiry only behave as described on a server that runs them, so these
  * cases talk to the test container rather than a double.
  *
- * The heartbeat is shortened to 200 ms so a lease (heartbeat times the misses
- * a browser allows) runs out inside a case. It is deliberately not the
- * shipped 5000, so a lease length written into the code instead of derived
- * from the config shows up here.
+ * The lease is shortened to 600 ms so it runs out inside a case. It is
+ * deliberately not the shipped 60000, so a lease length written into the code
+ * instead of read from `chat_run_lease_ms` shows up here (inner#1717).
  */
 
 import { describe, it, expect, beforeAll, vi } from "vitest";
 
-const { HEARTBEAT_MS } = vi.hoisted(() => ({ HEARTBEAT_MS: 200 }));
+const { LEASE_MS } = vi.hoisted(() => ({ LEASE_MS: 600 }));
 
 vi.mock("@breatic/core", async (importOriginal) => {
   const actual = await importOriginal<Record<string, unknown>>();
@@ -26,18 +25,15 @@ vi.mock("@breatic/core", async (importOriginal) => {
     ...actual,
     getAgentConfig: () => ({
       ...(actual.getAgentConfig as () => Record<string, unknown>)(),
-      sse_heartbeat_interval_ms: HEARTBEAT_MS,
+      chat_run_lease_ms: LEASE_MS,
     }),
   };
 });
 
 import crypto from "node:crypto";
 import { env, getRedis, initCore } from "@breatic/core";
-import { SSE_HEARTBEAT_MISSES_ALLOWED } from "@breatic/shared";
 import { holdRunning, runningConversationIds } from "@server/modules/conversation/running-turns.service.js";
 
-/** How long one lease lasts without a renewal. */
-const LEASE_MS = HEARTBEAT_MS * SSE_HEARTBEAT_MISSES_ALLOWED;
 
 beforeAll(() => {
   try {
@@ -96,30 +92,27 @@ describe("holdRunning", () => {
     const scope = freshScope();
     const conversationId = crypto.randomUUID();
 
-    await holdRunning({ ...scope, conversationId });
+    await holdRunning({ ...scope, conversationId, runId: crypto.randomUUID() });
 
     expect(await runningConversationIds(scope)).toEqual([conversationId]);
   });
 
-  it("writes one member named by the conversation and a lease id under the user's and project's key", async () => {
+  it("writes one member named by the conversation and the run under the user's and project's key", async () => {
     const scope = freshScope();
     const conversationId = crypto.randomUUID();
+    const runId = crypto.randomUUID();
 
-    await holdRunning({ ...scope, conversationId });
+    await holdRunning({ ...scope, conversationId, runId });
 
-    const members = await membersOf(scope);
-    expect(members).toHaveLength(1);
-    const member = members[0]!.member;
-    expect(member.startsWith(`${conversationId}:`)).toBe(true);
-    expect(member.length).toBeGreaterThan(conversationId.length + 1);
+    expect((await membersOf(scope)).map((m) => m.member)).toEqual([`${conversationId}:${runId}`]);
   });
 
-  it("lasts the heartbeat interval times the misses a browser allows, on the member and on the key", async () => {
+  it("lasts chat_run_lease_ms, on the member and on the key", async () => {
     const scope = freshScope();
     const conversationId = crypto.randomUUID();
 
     const before = Date.now();
-    await holdRunning({ ...scope, conversationId });
+    await holdRunning({ ...scope, conversationId, runId: crypto.randomUUID() });
     const after = Date.now();
 
     const [only] = await membersOf(scope);
@@ -131,12 +124,12 @@ describe("holdRunning", () => {
     expect(pttl).toBeGreaterThanOrEqual(LEASE_MS - (Date.now() - before) - 5);
   });
 
-  it("gives every hold its own member, even on the same conversation", async () => {
+  it("gives every run its own member, even on the same conversation", async () => {
     const scope = freshScope();
     const conversationId = crypto.randomUUID();
 
-    await holdRunning({ ...scope, conversationId });
-    await holdRunning({ ...scope, conversationId });
+    await holdRunning({ ...scope, conversationId, runId: crypto.randomUUID() });
+    await holdRunning({ ...scope, conversationId, runId: crypto.randomUUID() });
 
     const members = (await membersOf(scope)).map((m) => m.member);
     expect(members).toHaveLength(2);
@@ -147,7 +140,7 @@ describe("holdRunning", () => {
 describe("renew", () => {
   it("moves the member's expiry a whole lease past the renewal and refreshes the key", async () => {
     const scope = freshScope();
-    const lease = await holdRunning({ ...scope, conversationId: crypto.randomUUID() });
+    const lease = await holdRunning({ ...scope, conversationId: crypto.randomUUID(), runId: crypto.randomUUID() });
     const [held] = await membersOf(scope);
 
     await sleep(100);
@@ -165,7 +158,7 @@ describe("renew", () => {
   it("keeps a renewed lease listed past the point the first hold would have run out", async () => {
     const scope = freshScope();
     const conversationId = crypto.randomUUID();
-    const lease = await holdRunning({ ...scope, conversationId });
+    const lease = await holdRunning({ ...scope, conversationId, runId: crypto.randomUUID() });
 
     await sleep(LEASE_MS * 0.6);
     await lease.renew();
@@ -176,7 +169,7 @@ describe("renew", () => {
 
   it("does not bring back a lease a read already dropped", async () => {
     const scope = freshScope();
-    const lease = await holdRunning({ ...scope, conversationId: crypto.randomUUID() });
+    const lease = await holdRunning({ ...scope, conversationId: crypto.randomUUID(), runId: crypto.randomUUID() });
 
     await sleep(LEASE_MS + 100);
     expect(await runningConversationIds(scope)).toEqual([]);
@@ -191,7 +184,7 @@ describe("renew", () => {
 describe("release", () => {
   it("takes the conversation off the list at once", async () => {
     const scope = freshScope();
-    const lease = await holdRunning({ ...scope, conversationId: crypto.randomUUID() });
+    const lease = await holdRunning({ ...scope, conversationId: crypto.randomUUID(), runId: crypto.randomUUID() });
 
     await lease.release();
 
@@ -199,11 +192,11 @@ describe("release", () => {
     expect(await membersOf(scope)).toEqual([]);
   });
 
-  it("removes only its own lease when two turns run in one conversation", async () => {
+  it("removes only its own lease when a run and the next one in its conversation both hold one", async () => {
     const scope = freshScope();
     const conversationId = crypto.randomUUID();
-    const first = await holdRunning({ ...scope, conversationId });
-    const second = await holdRunning({ ...scope, conversationId });
+    const first = await holdRunning({ ...scope, conversationId, runId: crypto.randomUUID() });
+    const second = await holdRunning({ ...scope, conversationId, runId: crypto.randomUUID() });
 
     await first.release();
 
@@ -218,9 +211,9 @@ describe("release", () => {
   it("leaves the other lease's expiry alone when one is renewed", async () => {
     const scope = freshScope();
     const conversationId = crypto.randomUUID();
-    const first = await holdRunning({ ...scope, conversationId });
+    const first = await holdRunning({ ...scope, conversationId, runId: crypto.randomUUID() });
     await sleep(20);
-    await holdRunning({ ...scope, conversationId });
+    await holdRunning({ ...scope, conversationId, runId: crypto.randomUUID() });
     const before = await membersOf(scope);
 
     await sleep(50);
@@ -242,9 +235,9 @@ describe("runningConversationIds", () => {
     const scope = freshScope();
     const a = crypto.randomUUID();
     const b = crypto.randomUUID();
-    await holdRunning({ ...scope, conversationId: a });
-    await holdRunning({ ...scope, conversationId: a });
-    await holdRunning({ ...scope, conversationId: b });
+    await holdRunning({ ...scope, conversationId: a, runId: crypto.randomUUID() });
+    await holdRunning({ ...scope, conversationId: a, runId: crypto.randomUUID() });
+    await holdRunning({ ...scope, conversationId: b, runId: crypto.randomUUID() });
 
     const ids = await runningConversationIds(scope);
 
@@ -258,7 +251,7 @@ describe("runningConversationIds", () => {
   it("keeps a lease listed inside its lease and drops it after, when nothing renews it", async () => {
     const scope = freshScope();
     const conversationId = crypto.randomUUID();
-    await holdRunning({ ...scope, conversationId });
+    await holdRunning({ ...scope, conversationId, runId: crypto.randomUUID() });
 
     await sleep(LEASE_MS / 2);
     expect(await runningConversationIds(scope)).toEqual([conversationId]);
@@ -271,11 +264,11 @@ describe("runningConversationIds", () => {
     const scope = freshScope();
     const stale = crypto.randomUUID();
     const live = crypto.randomUUID();
-    await holdRunning({ ...scope, conversationId: stale });
+    await holdRunning({ ...scope, conversationId: stale, runId: crypto.randomUUID() });
     await sleep(LEASE_MS * 0.6);
     // Refreshes the key's own expiry, so only the stale member's score says
     // it is over: what drops it has to be the read, not the key expiring.
-    await holdRunning({ ...scope, conversationId: live });
+    await holdRunning({ ...scope, conversationId: live, runId: crypto.randomUUID() });
     await sleep(LEASE_MS * 0.6);
 
     expect(await runningConversationIds(scope)).toEqual([live]);
@@ -286,7 +279,7 @@ describe("runningConversationIds", () => {
 
   it("reads only the asking user's leases in the asked project", async () => {
     const owner = freshScope();
-    await holdRunning({ ...owner, conversationId: crypto.randomUUID() });
+    await holdRunning({ ...owner, conversationId: crypto.randomUUID(), runId: crypto.randomUUID() });
 
     expect(await runningConversationIds({ userId: crypto.randomUUID(), projectId: owner.projectId })).toEqual([]);
     expect(await runningConversationIds({ userId: owner.userId, projectId: crypto.randomUUID() })).toEqual([]);

@@ -103,16 +103,11 @@ function toolOutput(part: ToolPart): ToolResultPart["output"] {
  * to end there -- so it carries on as though the answer were given, and the
  * user never gets the rest.
  *
- * Says the connection ended rather than that the user pressed stop, because
- * pressing stop is not what this side is told. The route has one signal for
- * it (the one `streamUntilClientLeaves` raises when the client goes away) and
- * it covers the stop button, a closed tab, a dropped network and a sleeping
- * laptop alike. Told
- * the first when it was the third, the model opens the next turn apologising
- * for something the user never did. Telling the two apart needs the browser
- * to say which it was, which is task #149.
+ * Says the user pressed stop, because nothing else stops a turn now: a page
+ * that closes or loses its network leaves the turn running, and only the stop
+ * button ends it (inner#1717).
  */
-const STOP_NOTE = "[This turn did not finish: the connection to the user closed.]";
+const STOP_NOTE = "[This turn did not finish: the user pressed stop.]";
 
 /**
  * The note that says a turn broke off on its own.

@@ -41,7 +41,7 @@ const VIDEO_SOURCE: TimelineVideoSource = {
 const VIDEO: TimelineVideoClip = {
   id: '30000000-0000-4000-8000-000000000001', trackId: MAIN, kind: 'video', sourceId: VIDEO_SOURCE.id,
   startFrame: 0, sourceInFrame: 0, durationFrames: 240, rate: { num: 1, den: 1 }, gain: 1, mute: false,
-  transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+  transform: { frameX: 0, frameY: 0, scaleX: 1, scaleY: 1, rotation: 0 },
 };
 
 /**
@@ -58,7 +58,7 @@ function web(id: number, startFrame: number, durationFrames: number, sourceInFra
     id: `30000000-0000-4000-8000-0000000001${String(id).padStart(2, '0')}`, trackId: V2, kind: 'web-animation',
     contentBinding: { baseSourceResultId: SRC, operationId: null },
     startFrame, sourceInFrame, durationFrames, rate: { num: 1, den: 1 }, gain: 1, mute: false,
-    transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+    transform: { frameX: 0, frameY: 0, scaleX: 1, scaleY: 1, rotation: 0 },
   };
 }
 
@@ -71,7 +71,7 @@ function web(id: number, startFrame: number, durationFrames: number, sourceInFra
 function documentOf(clips: Array<TimelineVideoClip | TimelineWebAnimationClip>): TimelineDocumentV1 {
   const tracks: TimelineTrack[] = [{ id: MAIN, kind: 'visual', order: 0 }, { id: V2, kind: 'visual', order: 1 }, { id: V3, kind: 'visual', order: 2 }];
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     settings: { width: 1920, height: 1080, fps: FPS },
     tracks: Object.fromEntries(tracks.map((track) => [track.id, track])),
     clips: Object.fromEntries(clips.map((clip) => [clip.id, clip])),

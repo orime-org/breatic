@@ -60,3 +60,16 @@ describe("collab entry exits", () => {
     }
   });
 });
+
+describe("collab Timeline configuration check (#1502 design §2)", () => {
+  it("reads the Timeline configuration before the port opens, and logs and exits when it cannot", () => {
+    const check = code.indexOf("getTimelineConfig();");
+    const failed = code.indexOf('"timeline_config_invalid"');
+    const listen = code.indexOf("await server.listen();");
+    expect(check).toBeGreaterThanOrEqual(0);
+    expect(failed).toBeGreaterThan(check);
+    expect(listen).toBeGreaterThan(failed);
+    expect(code.slice(check, failed)).toMatch(/catch \(err\)[\s\S]*logger\.(error|fatal)\(\{ err\b[^}]*\}, $/);
+    expect(code.slice(failed, failed + 120)).toMatch(/exitProcess\(1\)/);
+  });
+});

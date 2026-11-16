@@ -29,6 +29,15 @@ describe("worker entry exits", () => {
     expect(code).toMatch(/if \(monitoring === "invalid_dsn"\) logger\.error\(\{\}, "sentry_dsn_invalid"\);/);
   });
 
+  it("builds the provider after the agent config it reads and before the model catalog, whose entries ask it", () => {
+    const agent = code.indexOf("getAgentConfig();");
+    const built = code.indexOf("initProvider();");
+    const catalog = code.indexOf("modelCatalog.getModelCatalog();");
+    expect(agent).toBeGreaterThanOrEqual(0);
+    expect(built).toBeGreaterThan(agent);
+    expect(catalog).toBeGreaterThan(built);
+  });
+
   it("never ends the process without sending pending error events", () => {
     expect(code).not.toMatch(/process\.exit\(/);
   });
@@ -46,5 +55,18 @@ describe("worker task failure log", () => {
     const block = code.slice(code.lastIndexOf("logger.error(", at), at);
     expect(block).toMatch(/\berr,/);
     expect(block).not.toMatch(/err\.message/);
+  });
+});
+
+describe("worker Timeline configuration check (#1502 design §2)", () => {
+  it("reads the Timeline configuration before it schedules the execution sweep, and logs and exits when it cannot", () => {
+    const check = code.indexOf("getTimelineConfig();");
+    const failed = code.indexOf('"timeline_config_invalid"');
+    const sweep = code.indexOf("getTimelineConfig().web_animation.sweep_interval_ms");
+    expect(check).toBeGreaterThanOrEqual(0);
+    expect(failed).toBeGreaterThan(check);
+    expect(sweep).toBeGreaterThan(failed);
+    expect(code.slice(check, failed)).toMatch(/catch \(err\)[\s\S]*logger\.(error|fatal)\(\{ err\b[^}]*\}, $/);
+    expect(code.slice(failed, failed + 80)).toMatch(/await exitProcess\(1\)/);
   });
 });

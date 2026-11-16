@@ -119,6 +119,18 @@ describe("reseller bindings load", () => {
       bind("fal", 2, { drops: { seed: "*" } }),
     ])).toEqual([]);
   });
+
+  it("refuses a reseller drops wildcard on a param a WaveSpeed step serves, naming model, upstream and param", () => {
+    const rig = { kind: "rig", endpoint: "tripo3d/rig", at: "after", for_param: "rig_skeleton", optional: true, pricing };
+    expect(loadProblems([
+      bind("wavespeed", 1, { drops: { rig_skeleton: "*" }, extra_steps: [rig] }),
+      bind("fal", 2, { drops: { rig_skeleton: "*" } }),
+    ])).toEqual([expect.stringMatching(/m.*fal.*rig_skeleton/)]);
+    expect(loadProblems([
+      bind("wavespeed", 1, { drops: { rig_skeleton: "*" }, extra_steps: [rig] }),
+      bind("fal", 2, { drops: { rig_skeleton: [false] } }),
+    ])).toEqual([]);
+  });
 });
 
 describe("reseller bindings against the catalog", () => {

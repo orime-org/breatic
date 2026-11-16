@@ -340,10 +340,10 @@ function timelineDocument(lanes: readonly LaneSpec[]): TimelineDocumentV1 {
   const clips: TimelineVideoClip[] = lanes.map((lane, index) => ({
     id: CLIP_IDS[index] ?? '', trackId: TRACKS[index]?.id ?? '', kind: 'video', sourceId: sources[index]?.id ?? '',
     startFrame: lane.start, sourceInFrame: lane.inFrame, durationFrames: lane.durationFrames, rate: { num: 1, den: 1 },
-    gain: 1, mute: false, transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+    gain: 1, mute: false, transform: { frameX: 0, frameY: 0, scaleX: 1, scaleY: 1, rotation: 0 },
   }));
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     settings: { width: 1920, height: 1080, fps: { num: FPS, den: 1 } },
     tracks: Object.fromEntries(TRACKS.map((track) => [track.id, track])),
     clips: Object.fromEntries(clips.map((clip) => [clip.id, clip])),

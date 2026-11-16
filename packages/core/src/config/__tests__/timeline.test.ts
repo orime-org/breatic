@@ -93,3 +93,24 @@ describe("preview multi-video sync (#1410 design §6.4)", () => {
     expect(getTimelineConfig().preview).toEqual(approved);
   });
 });
+
+describe("defaults: a new Timeline's frame is one of the seven presets (#1502 design §2)", () => {
+  const presets = [
+    [1920, 1080], [1080, 1920], [1080, 1080], [1440, 1080], [1080, 1350], [1080, 1620], [2520, 1080],
+  ] as const;
+
+  it.each(presets)("accepts %ix%i", (width, height) => {
+    expect(timelineConfigSchema.safeParse({ defaults: { width, height } }).success).toBe(true);
+  });
+
+  it("refuses 1280x720 and names every size it would accept", () => {
+    const parsed = timelineConfigSchema.safeParse({ defaults: { width: 1280, height: 720 } });
+    expect(parsed.success).toBe(false);
+    const message = parsed.error!.issues.map((issue) => issue.message).join("\n");
+    for (const [width, height] of presets) expect(message).toMatch(new RegExp(`${width}\\D{1,5}${height}`));
+  });
+
+  it("refuses 1620x1080, a 2:3 frame turned on its side, which is no preset", () => {
+    expect(timelineConfigSchema.safeParse({ defaults: { width: 1620, height: 1080 } }).success).toBe(false);
+  });
+});

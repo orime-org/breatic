@@ -17,6 +17,7 @@
   "dependencies": {
     "@breatic/core": "workspace:*",
     "@breatic/domain": "workspace:*",
+    "@breatic/provider": "workspace:*",
     "@breatic/shared": "workspace:*",
     "@google-ads/datamanager": "catalog:",
     "@sentry/node": "catalog:",

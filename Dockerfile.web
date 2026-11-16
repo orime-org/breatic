@@ -8,6 +8,7 @@ WORKDIR /app
 # Copy workspace config + package.json files
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml .npmrc ./
 COPY packages/shared/package.json packages/shared/
+COPY packages/provider/package.json packages/provider/
 COPY packages/server/package.json packages/server/
 COPY packages/collab/package.json packages/collab/
 COPY packages/web/package.json packages/web/
@@ -24,8 +25,8 @@ COPY tsconfig.base.json turbo.json ./
 COPY locales/ locales/
 COPY scripts/release.mjs scripts/release.mjs
 
-# Build shared (dependency) then web
-RUN pnpm turbo build --filter=@breatic/shared
+# Build every workspace package web depends on, then web below
+RUN pnpm turbo build --filter=@breatic/web^...
 
 # Optional public addresses for a separately hosted frontend. Empty values
 # preserve the same-origin API/WebSocket behavior of local deployments.

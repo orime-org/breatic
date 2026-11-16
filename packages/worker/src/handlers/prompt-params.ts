@@ -4,21 +4,9 @@
 /**
  * Taking the user's prompt out of a task's params (#1966).
  *
- * The prompt travels to a provider as a POSITIONAL argument, never inside
- * `params` — each provider puts it back under whatever key its transports
- * expect (`apiParams.prompt` for audio, `apiParams.text` for tts). So every
- * execution path has to lift it out of the bag on the way in.
- *
- * Two of the three paths `dispatch.ts` numbers used to do that inline, in
- * OPPOSITE orders: the direct AIGC path lifted first and validated the rest,
- * the mini-tool path validated first and read the prompt off the validated
- * result. (`runUnderstand`, which `dispatch.ts` numbers path 2, lifts inline
- * too, but it builds its params from scratch and never validates them, so it
- * has no order to get wrong and stays outside this module.) Nothing surfaced the difference
- * until a model stopped declaring `prompt` under `params` — `validateParams`
- * drops undeclared keys silently — and on the mini-tool path the user's words
- * stopped arriving. One shared function is what removes the second copy that
- * could drift, and what lets the declaration be deleted at all.
+ * The prompt travels to provider beside the params, never inside them; each binding writes it under its upstream's
+ * `prompt_field`. Validation drops keys a model does not declare, so the prompt is lifted out of the bag before the
+ * params are validated, and a model that declares no `prompt` param still receives the user's words.
  */
 
 import { extractPromptText } from "@breatic/shared";
@@ -72,7 +60,7 @@ type ValidateParams = (
  * validator — same mandate, different carrier (#1960).
  * @param params - Task params with the infra-only fields already stripped.
  * @param model - The model to validate against.
- * @param validateParams - The provider's validator.
+ * @param validateParams - The model's param check (`validateModelParams`).
  * @returns A `[prompt, resolvedModel, validated]` triple: the cleaned prompt, the model name the provider resolved to, and the params it accepted.
  */
 export function takePromptAndValidate(

@@ -100,38 +100,26 @@ describe("getCanvasCapabilities", () => {
     expect(reported).toContain("t2m");
   });
 
-  it("follows the catalog: a node whose models are all unreachable disappears", () => {
+  it("lists every node and mode on a deployment with no keys, since a model is listed whether or not it can run here", () => {
+    const everywhere = withEveryProviderKey();
     useEnvWithKeys([]);
-    expect(getCanvasCapabilities()).toEqual([]);
+    expect(getCanvasCapabilities()).toEqual(everywhere);
   });
 
-  it("follows the catalog: revoking the provider's key takes its models with it", () => {
+  it("names the keys a model lacks once its only upstream's key is gone, and none while it is set", () => {
     // A subset assertion against the full answer holds even for code that
-    // ignores keys entirely, so this subtracts the key and names what has to
-    // disappear.
+    // ignores keys entirely, so this subtracts the key and names what changes.
     useEnvWithKeys(allProviderKeyNames().filter((name) => name !== "WAVESPEED_API_KEY"));
-    expect(modelsForMode("audio", "tts").available, "tts runs on WaveSpeed alone").toBe(false);
+    const without = modelsForMode("audio", "tts");
+    if (!without.available) throw new Error("tts is offered without its key");
+    expect(without.models.find((model) => model.name === "realtime-tts-2")?.missingKeys, "tts runs on WaveSpeed alone").toEqual([
+      "WAVESPEED_API_KEY",
+    ]);
 
     useEnvWithKeys(allProviderKeyNames());
     const withKey = modelsForMode("audio", "tts");
-    expect(withKey.available && withKey.models.map((model) => model.name)).toContain(
-      "realtime-tts-2",
-    );
-  });
-
-  it("follows the catalog: a mode whose only models go, goes too", () => {
-    const both = ["WAVESPEED_API_KEY"];
-    useEnvWithKeys(allProviderKeyNames());
-    expect(
-      modesOfNode(getCanvasCapabilities(), "audio"),
-      "a2m is offered while its models are reachable",
-    ).toContain("a2m");
-
-    useEnvWithKeys(allProviderKeyNames().filter((name) => !both.includes(name)));
-    expect(
-      modesOfNode(getCanvasCapabilities(), "audio"),
-      "every music model is wavespeed-only",
-    ).not.toContain("a2m");
+    if (!withKey.available) throw new Error("tts is offered with its key");
+    expect(withKey.models.find((model) => model.name === "realtime-tts-2")?.missingKeys).toBeUndefined();
   });
 });
 

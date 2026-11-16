@@ -13,31 +13,32 @@
  * 机器恰好配了 key。
  */
 
-import { initCore } from "@breatic/core";
+import { getRawEnvVar, initCore } from "@breatic/core";
+import { createProvider } from "@breatic/provider";
+import { initProvider } from "../../provider/instance.js";
+import { readProviderConfig } from "../../provider/provider-config-loader.js";
 
-import {
-  getFullModelConfig,
-  getModelCatalog,
-  resetModelCatalog,
-  MODALITIES,
-} from "../model-catalog.js";
+import { getModelCatalog, resetModelCatalog } from "../model-catalog.js";
+
+let shippedConfig: ReturnType<typeof readProviderConfig> | undefined;
 
 /**
- * 目录里每个 provider 声明的那个环境变量名。
- *
- * 从配置读而不是写死一份清单：加一个 provider 就多一个变量名，写死的那份会在
- * 没人注意的时候漏掉它，而漏掉的后果正是这个模块要防的（那个 provider 的模型
- * 被过滤掉，依赖它的测试悄悄改走逃生分支）。
- * @returns 全部 provider 的 `api_key_env` 变量名，去重。
+ * The shipped provider configuration, parsed once per test process: the files do not change during a run, and
+ * parsing every yaml again before each case made the catalog suites several times slower.
+ * @returns The configuration `readProviderConfig` reads.
+ */
+function providerConfig(): ReturnType<typeof readProviderConfig> {
+  shippedConfig ??= readProviderConfig();
+  return shippedConfig;
+}
+
+/**
+ * The key variable of every upstream provider's configuration names, read from that configuration rather than a list
+ * written here: an upstream added there would be missed by a written list, and its models would read as unconfigured.
+ * @returns Every upstream's `key_env`, once each.
  */
 export function allProviderKeyNames(): string[] {
-  const names = new Set<string>();
-  for (const modality of MODALITIES) {
-    for (const config of Object.values(getFullModelConfig(modality).providers)) {
-      if (config.api_key_env) names.add(config.api_key_env);
-    }
-  }
-  return [...names];
+  return [...new Set(Object.values(providerConfig().upstreams).map((upstream) => upstream.key_env))];
 }
 
 /**
@@ -53,7 +54,16 @@ export function useEnvWithKeys(configured: readonly string[]): void {
     env[name] = configured.includes(name) ? "test-key" : "";
   }
   initCore(env);
+  rebuildProvider();
   resetModelCatalog();
+}
+
+/**
+ * This process's provider again, reading the environment just set. Built here and handed over: a test catalog is
+ * not one provider's configuration binds, and binding the shipped catalog is provider's own tests' to check.
+ */
+function rebuildProvider(): void {
+  initProvider(createProvider({ config: providerConfig(), keyOf: getRawEnvVar, llmMaxRetries: 0, cleanText: (text) => text }));
 }
 
 /**
@@ -81,5 +91,6 @@ export function useFullCatalog(): void {
 /** 把 core 的配置和目录缓存还回进程自己的环境。 */
 export function restoreProcessEnv(): void {
   initCore(process.env);
+  rebuildProvider();
   resetModelCatalog();
 }

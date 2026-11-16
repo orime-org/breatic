@@ -1,0 +1,366 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: Elastic-2.0
+
+/**
+ * One run per conversation, and the messages waiting for it (inner#1717).
+ *
+ * A conversation has at most one Agent run at a time, named by the run id in
+ * its `active` key. Messages sent while it runs wait in its `queue`; each step
+ * of the run moves what waits into `taken` and hands it to the model, and the
+ * taken list is dropped only once the reply that answers them is stored. A
+ * run that dies keeps its taken messages, and whichever instance opens the
+ * next run reads them first, so a sent message is answered or withdrawn and
+ * never silently lost.
+ *
+ * Every operation is one Lua script: deciding who runs and moving messages
+ * between the lists has to happen in one step, or two instances (or a send
+ * racing the end of a run) each see the conversation free and both, or
+ * neither, start a run. Every key starts with `REDIS_KEY_PREFIX`. `queue`,
+ * `taken` and `awaiting` never expire: they hold what the user sent and the
+ * card waiting for their answer, and are emptied only once answered,
+ * withdrawn, refused (the conversation is gone or no longer the owner's to
+ * run) or the conversation is deleted.
+ */
+
+import crypto from "node:crypto";
+import { env, getAgentConfig, getRedis, type Redis } from "@breatic/core";
+import type { ChatMessageInput } from "@breatic/shared";
+
+/** One message waiting for, or taken by, a run; the send request as restored, plus who sent it. */
+export type QueueItem = Omit<ChatMessageInput, "id" | "project_id" | "conversation_id"> & {
+  id: string;
+  sentAt: string;
+  userId: string;
+  acceptLanguage: string;
+};
+
+/** What a send did. */
+export type EnqueueResult =
+  | { status: "start"; runId: string; queue: QueueItem[] }
+  | { status: "queued" | "duplicate" | "full"; queue: QueueItem[] };
+
+/** What a sync found, or the run it opened. */
+export type ClaimResult = { status: "start"; runId: string } | { status: "running" | "awaiting" | "idle" };
+
+/** How a run ended, which decides what happens to its conversation next. */
+export type RunEnding =
+  /** Any other end, finished, stopped or failed alike: what waits opens the next run. */
+  | { kind: "done" }
+  | { kind: "unsaved" }
+  | { kind: "awaiting"; toolCallId: string }
+  | { kind: "shutdown" };
+
+/** The queue operations, bound to one Redis connection. */
+export interface ChatQueue {
+  enqueue(conversationId: string, item: QueueItem): Promise<EnqueueResult>;
+  claim(conversationId: string): Promise<ClaimResult>;
+  /** Take the conversation for a card's answer; `awaiting` is the card that was waiting, for `giveBack`. Busy while a run or a dead run's taken messages hold it. */
+  resume(conversationId: string, runId: string): Promise<{ status: "start"; awaiting: string | null } | { status: "busy" }>;
+  /** Hand back a conversation `resume` took for an answer that was then refused: to a new run when messages came meanwhile, otherwise freed with the card waiting again. */
+  giveBack(conversationId: string, runId: string, awaiting: string | null): Promise<string | null>;
+  head(conversationId: string, runId: string): Promise<QueueItem[]>;
+  drain(conversationId: string, runId: string): Promise<QueueItem[]>;
+  forget(conversationId: string, runId: string, ids: readonly string[]): Promise<QueueItem[]>;
+  /** Drop what the run's stored reply recorded; anything else it took goes back to the head of the queue, in order. */
+  ack(conversationId: string, runId: string, recorded: readonly string[]): Promise<void>;
+  remove(conversationId: string, id: string): Promise<"removed" | "taken" | "gone">;
+  settle(conversationId: string, runId: string, ending: RunEnding): Promise<string | null>;
+  renew(conversationId: string, runId: string): Promise<boolean>;
+  clear(conversationId: string): Promise<void>;
+  /** The messages waiting, in order. */
+  pending(conversationId: string): Promise<QueueItem[]>;
+  /** Whether a run holds the conversation, a card waits, and whether there is work a claim would start a run for. */
+  peek(conversationId: string): Promise<{ active: string | null; awaiting: boolean; work: boolean }>;
+}
+
+/** Appends a list's items to a reply table. Shared head of every script that answers with the queue. */
+const APPEND = `
+local function append(out, key)
+  for _, v in ipairs(redis.call('lrange', key, 0, -1)) do table.insert(out, v) end
+  return out
+end`;
+
+/** KEYS active, queue, ids, awaiting; ARGV id, item, max, idsTtlMs, newRunId, leaseMs. */
+const ENQUEUE = `${APPEND}
+if redis.call('sismember', KEYS[3], ARGV[1]) == 1 then return append({'duplicate', ''}, KEYS[2]) end
+if redis.call('llen', KEYS[2]) >= tonumber(ARGV[3]) then return append({'full', ''}, KEYS[2]) end
+redis.call('rpush', KEYS[2], ARGV[2])
+redis.call('sadd', KEYS[3], ARGV[1])
+redis.call('pexpire', KEYS[3], ARGV[4])
+if redis.call('exists', KEYS[1]) == 1 then return append({'queued', ''}, KEYS[2]) end
+redis.call('del', KEYS[4])
+redis.call('set', KEYS[1], ARGV[5], 'PX', ARGV[6])
+return append({'start', ARGV[5]}, KEYS[2])`;
+
+/** KEYS active, awaiting, taken, queue; ARGV newRunId, leaseMs. */
+const CLAIM = `
+if redis.call('exists', KEYS[1]) == 1 then return {'running', ''} end
+if redis.call('exists', KEYS[2]) == 1 then return {'awaiting', ''} end
+if redis.call('llen', KEYS[3]) == 0 and redis.call('llen', KEYS[4]) == 0 then return {'idle', ''} end
+redis.call('set', KEYS[1], ARGV[1], 'PX', ARGV[2])
+return {'start', ARGV[1]}`;
+
+/**
+ * KEYS active, awaiting, taken; ARGV runId, leaseMs. Busy while a run holds
+ * the conversation, or a dead run's taken messages wait: the next claim
+ * settles those against the store first.
+ */
+const RESUME = `
+if redis.call('exists', KEYS[1]) == 1 or redis.call('llen', KEYS[3]) > 0 then return {'busy', ''} end
+local card = redis.call('get', KEYS[2]) or ''
+redis.call('set', KEYS[1], ARGV[1], 'PX', ARGV[2])
+redis.call('del', KEYS[2])
+return {'start', card}`;
+
+/** KEYS active, awaiting, taken, queue; ARGV runId, card, newRunId, leaseMs. */
+const GIVE_BACK = `
+if redis.call('get', KEYS[1]) ~= ARGV[1] then return false end
+if redis.call('llen', KEYS[3]) > 0 or redis.call('llen', KEYS[4]) > 0 then
+  redis.call('set', KEYS[1], ARGV[3], 'PX', ARGV[4])
+  return ARGV[3]
+end
+redis.call('del', KEYS[1])
+if ARGV[2] ~= '' then redis.call('set', KEYS[2], ARGV[2]) end
+return false`;
+
+/** KEYS active, taken, queue; ARGV runId. */
+const HEAD = `
+if redis.call('get', KEYS[1]) ~= ARGV[1] then return {} end
+if redis.call('llen', KEYS[2]) > 0 then return redis.call('lrange', KEYS[2], 0, -1) end
+local first = redis.call('lpop', KEYS[3])
+if not first then return {} end
+redis.call('rpush', KEYS[2], first)
+return {first}`;
+
+/** KEYS active, taken, queue; ARGV runId. */
+const DRAIN = `
+if redis.call('get', KEYS[1]) ~= ARGV[1] then return {} end
+local items = redis.call('lrange', KEYS[3], 0, -1)
+if #items == 0 then return {} end
+redis.call('rpush', KEYS[2], unpack(items))
+redis.call('del', KEYS[3])
+return items`;
+
+/** KEYS active, taken; ARGV runId, then the ids to drop. */
+const FORGET = `
+if redis.call('get', KEYS[1]) ~= ARGV[1] then return {} end
+local drop = {}
+for i = 2, #ARGV do drop[ARGV[i]] = true end
+local keep = {}
+for _, v in ipairs(redis.call('lrange', KEYS[2], 0, -1)) do
+  if not drop[cjson.decode(v).id] then table.insert(keep, v) end
+end
+redis.call('del', KEYS[2])
+if #keep > 0 then redis.call('rpush', KEYS[2], unpack(keep)) end
+return keep`;
+
+/** KEYS active, taken, queue; ARGV runId, then the ids the stored reply recorded. */
+const ACK = `
+if redis.call('get', KEYS[1]) ~= ARGV[1] then return 1 end
+local recorded = {}
+for i = 2, #ARGV do recorded[ARGV[i]] = true end
+local back = {}
+for _, v in ipairs(redis.call('lrange', KEYS[2], 0, -1)) do
+  if not recorded[cjson.decode(v).id] then table.insert(back, v) end
+end
+for i = #back, 1, -1 do redis.call('lpush', KEYS[3], back[i]) end
+redis.call('del', KEYS[2])
+return 1`;
+
+/** KEYS queue, taken; ARGV id. */
+const REMOVE = `
+for _, v in ipairs(redis.call('lrange', KEYS[1], 0, -1)) do
+  if cjson.decode(v).id == ARGV[1] then
+    redis.call('lrem', KEYS[1], 1, v)
+    return 'removed'
+  end
+end
+for _, v in ipairs(redis.call('lrange', KEYS[2], 0, -1)) do
+  if cjson.decode(v).id == ARGV[1] then return 'taken' end
+end
+return 'gone'`;
+
+/** KEYS active, awaiting, queue; ARGV runId, kind, toolCallId, newRunId, leaseMs. */
+const SETTLE = `
+if redis.call('get', KEYS[1]) ~= ARGV[1] then return false end
+local kind = ARGV[2]
+if kind == 'awaiting' then redis.call('set', KEYS[2], ARGV[3]) end
+if kind == 'unsaved' or kind == 'awaiting' or kind == 'shutdown' or redis.call('llen', KEYS[3]) == 0 then
+  redis.call('del', KEYS[1])
+  return false
+end
+redis.call('set', KEYS[1], ARGV[4], 'PX', ARGV[5])
+return ARGV[4]`;
+
+/** KEYS active; ARGV runId, leaseMs. */
+const RENEW = `
+if redis.call('get', KEYS[1]) ~= ARGV[1] then return 0 end
+redis.call('pexpire', KEYS[1], ARGV[2])
+return 1`;
+
+/** The five keys of one conversation's queue. */
+export interface ChatQueueKeys {
+  active: string;
+  queue: string;
+  taken: string;
+  ids: string;
+  awaiting: string;
+}
+
+/**
+ * The key names of one conversation.
+ * @param c - Conversation id.
+ * @returns Its five keys.
+ */
+export function chatQueueKeys(c: string): ChatQueueKeys {
+  return {
+    active: `${env.REDIS_KEY_PREFIX}:server:chat-active:${c}`,
+    queue: `${env.REDIS_KEY_PREFIX}:server:chat-queue:${c}`,
+    taken: `${env.REDIS_KEY_PREFIX}:server:chat-taken:${c}`,
+    ids: `${env.REDIS_KEY_PREFIX}:server:chat-queue-ids:${c}`,
+    awaiting: `${env.REDIS_KEY_PREFIX}:server:chat-awaiting:${c}`,
+  };
+}
+
+/**
+ * Parse the stored items of a list.
+ * @param raw - JSON strings, as Redis holds them.
+ * @returns The items.
+ */
+function items(raw: readonly string[]): QueueItem[] {
+  return raw.map((r) => JSON.parse(r) as QueueItem);
+}
+
+/**
+ * Bind the queue operations to a Redis connection.
+ * @param redis - The DB 0 connection to run the scripts on.
+ * @returns The operations.
+ */
+export function createChatQueue(redis: Redis): ChatQueue {
+  /**
+   * The lease a run holds its conversation for, as a script argument.
+   * @returns Milliseconds, as text.
+   */
+  const leaseMs = (): string => String(getAgentConfig().chat_run_lease_ms);
+  /**
+   * A fresh run id.
+   * @returns A uuid.
+   */
+  const newRunId = (): string => crypto.randomUUID();
+  return {
+    async enqueue(c, item) {
+      const k = chatQueueKeys(c);
+      const cfg = getAgentConfig();
+      const [status, runId, ...queue] = (await redis.eval(
+        ENQUEUE,
+        4,
+        k.active,
+        k.queue,
+        k.ids,
+        k.awaiting,
+        item.id,
+        JSON.stringify(item),
+        String(cfg.chat_queue_max),
+        String(cfg.chat_queue_ids_ttl_ms),
+        newRunId(),
+        leaseMs(),
+      )) as string[];
+      if (status === "start") return { status, runId: runId!, queue: items(queue) };
+      return { status: status as "queued" | "duplicate" | "full", queue: items(queue) };
+    },
+    async claim(c) {
+      const k = chatQueueKeys(c);
+      const [status, runId] = (await redis.eval(
+        CLAIM,
+        4,
+        k.active,
+        k.awaiting,
+        k.taken,
+        k.queue,
+        newRunId(),
+        leaseMs(),
+      )) as string[];
+      if (status === "start") return { status, runId: runId! };
+      return { status: status as "running" | "awaiting" | "idle" };
+    },
+    async resume(c, runId) {
+      const k = chatQueueKeys(c);
+      const [status, card] = (await redis.eval(RESUME, 3, k.active, k.awaiting, k.taken, runId, leaseMs())) as [string, string];
+      return status === "busy" ? { status: "busy" } : { status: "start", awaiting: card === "" ? null : card };
+    },
+    async giveBack(c, runId, awaiting) {
+      const k = chatQueueKeys(c);
+      const next = (await redis.eval(GIVE_BACK, 4, k.active, k.awaiting, k.taken, k.queue, runId, awaiting ?? "", newRunId(), leaseMs())) as string | null;
+      return next ?? null;
+    },
+    async head(c, runId) {
+      const k = chatQueueKeys(c);
+      return items((await redis.eval(HEAD, 3, k.active, k.taken, k.queue, runId)) as string[]);
+    },
+    async drain(c, runId) {
+      const k = chatQueueKeys(c);
+      return items((await redis.eval(DRAIN, 3, k.active, k.taken, k.queue, runId)) as string[]);
+    },
+    async forget(c, runId, ids) {
+      const k = chatQueueKeys(c);
+      return items((await redis.eval(FORGET, 2, k.active, k.taken, runId, ...ids)) as string[]);
+    },
+    async ack(c, runId, recorded) {
+      const k = chatQueueKeys(c);
+      await redis.eval(ACK, 3, k.active, k.taken, k.queue, runId, ...recorded);
+    },
+    async remove(c, id) {
+      const k = chatQueueKeys(c);
+      return (await redis.eval(REMOVE, 2, k.queue, k.taken, id)) as "removed" | "taken" | "gone";
+    },
+    async settle(c, runId, ending) {
+      const k = chatQueueKeys(c);
+      const toolCallId = ending.kind === "awaiting" ? ending.toolCallId : "";
+      const next = (await redis.eval(
+        SETTLE,
+        3,
+        k.active,
+        k.awaiting,
+        k.queue,
+        runId,
+        ending.kind,
+        toolCallId,
+        newRunId(),
+        leaseMs(),
+      )) as string | null;
+      return next ?? null;
+    },
+    async renew(c, runId) {
+      const k = chatQueueKeys(c);
+      return (await redis.eval(RENEW, 1, k.active, runId, leaseMs())) === 1;
+    },
+    async clear(c) {
+      const k = chatQueueKeys(c);
+      await redis.del(k.active, k.queue, k.taken, k.ids, k.awaiting);
+    },
+    async pending(c) {
+      return items(await redis.lrange(chatQueueKeys(c).queue, 0, -1));
+    },
+    async peek(c) {
+      const k = chatQueueKeys(c);
+      const [active, awaiting, queued, taken] = await Promise.all([
+        redis.get(k.active),
+        redis.exists(k.awaiting),
+        redis.llen(k.queue),
+        redis.llen(k.taken),
+      ]);
+      return { active, awaiting: awaiting === 1, work: queued + taken > 0 };
+    },
+  };
+}
+
+let shared: ChatQueue | null = null;
+
+/**
+ * The queue operations on the shared DB 0 connection.
+ * @returns The operations.
+ */
+export function chatQueue(): ChatQueue {
+  shared ??= createChatQueue(getRedis());
+  return shared;
+}

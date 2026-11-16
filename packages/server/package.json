@@ -17,6 +17,7 @@
   "dependencies": {
     "@breatic/core": "workspace:*",
     "@breatic/domain": "workspace:*",
+    "@breatic/provider": "workspace:*",
     "@breatic/shared": "workspace:*",
     "@hono/node-server": "^2.1.0",
     "@hono/zod-validator": "^0.7.6",
@@ -32,6 +33,7 @@
     "mdast-util-to-markdown": "^2.1.2",
     "mjml": "5.4.1",
     "prom-client": "^14.2.0",
+    "resumable-stream": "2.2.13",
     "stripe": "catalog:",
     "yaml": "catalog:",
     "zod": "catalog:"

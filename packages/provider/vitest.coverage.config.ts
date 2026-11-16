@@ -6,8 +6,10 @@
  * estimate a run is frozen at and the formula evaluator under it, routing, the media runner and its
  * adapters, and every reader of an actual cost (WaveSpeed's billing, the understand adapters and the shared
  * understand exchange in understand/adapter.ts, which stamps the send moment an understand call is priced at and
- * builds its token buckets, the LLM switch, the price-table cost of every direct LLM call in llm.ts and the cost
- * lookup in provider.ts). Each of those files must be fully covered, and a failure
+ * builds its token buckets, the LLM switch, the price-table cost of every direct LLM call in llm.ts and prices.ts,
+ * the costs an upstream reports and their lookup in llm/upstreams/openrouter.ts, the web-animation Messages relay and
+ * each kind's Messages cost in messages/relay.ts and llm/upstreams/{common,*.messages}.ts, and the lookup dispatch in
+ * provider.ts). Each of those files must be fully covered, and a failure
  * lists the file and its uncovered lines (the root AGENTS.md#critical-paths; packages/provider/AGENTS.md#tests).
  */
 
@@ -33,6 +35,13 @@ export default defineConfig({
         "src/routing/route.ts",
         "src/routing/try-in-order.ts",
         "src/llm/llm.ts",
+        "src/llm/prices.ts",
+        "src/llm/upstreams/openrouter.ts",
+        "src/llm/upstreams/common.ts",
+        "src/llm/upstreams/openrouter.messages.ts",
+        "src/llm/upstreams/anthropic.messages.ts",
+        "src/llm/upstreams/deepseek.messages.ts",
+        "src/messages/relay.ts",
         "src/llm/switching.ts",
         "src/llm/understand/adapter.ts",
         "src/llm/understand/google.ts",

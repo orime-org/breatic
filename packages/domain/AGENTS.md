@@ -10,13 +10,13 @@ The business core shared by server and worker. These rules apply when you change
 
 ### Upstream step repos are worker-only
 
-**`task/upstreamStep.repo.ts` (`task_upstream_steps`) and `task/upstreamClone.repo.ts` (`studio_upstream_clones`) are read and written only by worker.** They are worker's record of each upstream call it made, and a retried task resumes from them.
+**`task/upstreamStep.repo.ts` (`task_upstream_steps`) and `task/upstreamClone.repo.ts` (`studio_upstream_clones`) are read and written only by worker.** The first holds a container mini-tool's `container_job` step and the upstream calls of tasks from before provider, which the worker turns into a provider ticket on their next pickup; the second is the clone cache the worker writes from provider's answers and hands back on every plan.
 
 ## Credits
 
 ### Estimate credits through the model catalog
 
-**Estimate credits only with `estimateModelCredits` / `estimateTaskCredits` in `model-catalog/model-catalog.ts`.** They apply each model's pricing contract through shared `estimateCredits`, and the enqueue pre-check depends on every estimate coming out the same way.
+**Estimate credits only with `estimateModelCredits` / `estimateTaskCredits` in `model-catalog/model-catalog.ts`.** They lay the run out with shared `prepareRunParams`, have provider price it on the upstream the route picks and turn that into credits with shared `creditEstimateOf`, the same steps the panels take; the enqueue pre-check depends on every estimate coming out the same way.
 
 ### Charging is atomic and idempotent
 

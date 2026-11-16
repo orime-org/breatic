@@ -23,15 +23,12 @@ const base = {
   readFloorMs: 5_000,
   timeoutMs: 180_000,
   model: "google/gemini-3.8-flash",
-  backend: "google-vertex",
-  apiKey: "unit-test-key",
-  baseUrl: "https://openrouter.ai/api/v1",
   maxOutputTokens: 2048,
   onBilled: vi.fn(),
 };
-const image: Media = { kind: "image", url: "https://example.com/image.bin" };
-const audio: Media = { kind: "audio", bytes: new Uint8Array([1, 2, 3, 4]), format: "wav" };
-const video: Media = { kind: "video", bytes: new Uint8Array([5, 6, 7]), format: "video/mp4" };
+const image: Media = { kind: "image", url: "https://example.com/image.bin", contentType: "image/png", read: async () => new Uint8Array() };
+const audio: Media = { kind: "audio", bytes: new Uint8Array([1, 2, 3, 4]), contentType: "audio/wav" };
+const video: Media = { kind: "video", bytes: new Uint8Array([5, 6, 7]), contentType: "video/mp4" };
 
 beforeEach(() => {
   fetchMediaMock.mockReset();
@@ -125,10 +122,10 @@ describe("understandMediaAt batches", () => {
       fetchMediaMock.mockReset();
       understandMediaMock.mockClear();
       const media = kinds.map((kind, index): Media => kind === "image"
-        ? { kind, url: `https://example.com/${index}.png` }
+        ? { kind, url: `https://example.com/${index}.png`, contentType: "image/png", read: async () => new Uint8Array() }
         : kind === "audio"
-          ? { kind, bytes: new Uint8Array([index]), format: "wav" }
-          : { kind, bytes: new Uint8Array([index]), format: "video/mp4" });
+          ? { kind, bytes: new Uint8Array([index]), contentType: "audio/wav" }
+          : { kind, bytes: new Uint8Array([index]), contentType: "video/mp4" });
       for (const item of media) fetchMediaMock.mockResolvedValueOnce(item);
       const items = kinds.map((_kind, index) => ({ url: `https://example.com/${index}.bin` }));
       await understandMediaAt({ ...base, items });

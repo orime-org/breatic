@@ -199,12 +199,29 @@ export async function sourceRows(sql: Sql, executionId: string): Promise<Record<
 const SHA_PACKAGE = "a".repeat(64);
 const SHA_MANIFEST = "b".repeat(64);
 
-/** The four kinds of call a report may list, with the figures these suites settle. */
+/**
+ * The four kinds of call a report may list, as provider's Messages relay ends them, with the figures these suites
+ * settle: OpenRouter reported the completed call's cost, left the interrupted one's pending by its generation, and
+ * the cut-off call never ended.
+ */
 export const CALLS = {
+  completed: {
+    seq: 1, upstream: "openrouter", messageId: "gen-1", tokens: { input: 1_000, output: 300, reasoning: 100, cacheRead: 200 },
+    cost: { state: "known", usd: 0.0125, source: "reported", tokens: { input: 1_200, cachedInput: 200, output: 300, reasoning: 100 } },
+    outcome: "completed",
+  },
+  upstreamError: { seq: 2, upstream: null, messageId: null, tokens: null, cost: null, outcome: "upstream_error" },
+  interrupted: {
+    seq: 3, upstream: "openrouter", messageId: "gen-3", tokens: null,
+    cost: { state: "pending", lookup: { upstream: "openrouter", generationId: "gen-3" } }, outcome: "interrupted",
+  },
+  cutOff: { seq: 4, upstream: "openrouter", messageId: "gen-4", tokens: null, cost: null, outcome: "cut_off" },
+} satisfies Record<string, WebAnimationJobCall>;
+
+/** Calls as a Worker deployed before the plan reports them: an OpenRouter cost in dollars, or none. */
+export const LEGACY_CALLS = {
   completed: { seq: 1, generationId: "gen-1", tokens: { input: 1_200, output: 300, reasoning: 100, cacheRead: 200 }, costUsd: 0.0125, outcome: "completed" },
-  upstreamError: { seq: 2, generationId: null, tokens: null, costUsd: null, outcome: "upstream_error" },
   interrupted: { seq: 3, generationId: "gen-3", tokens: { input: 900, output: 40, reasoning: 0, cacheRead: 0 }, costUsd: null, outcome: "interrupted" },
-  cutOff: { seq: 4, generationId: "gen-4", tokens: null, costUsd: null, outcome: "cut_off" },
 } satisfies Record<string, WebAnimationJobCall>;
 
 /**
@@ -334,6 +351,16 @@ export function notFound(): Response {
  */
 export function featureDisabled(): Response {
   return new Response("feature_disabled", { status: 501 });
+}
+
+/**
+ * The Worker's answer to a submit whose plan names no upstream with a key there.
+ * @param model - The plan's model.
+ * @param envVars - The Worker variables it needs.
+ * @returns The response.
+ */
+export function notConfigured(model: string, envVars: string[]): Response {
+  return Response.json({ error: "not_configured", model, envVars }, { status: 501 });
 }
 
 /**

@@ -11,6 +11,7 @@ import {
   completeEntries,
   evaluateExecute,
   extractPromptText,
+  neutralReference,
   PANEL_EDITOR_PARAM,
   promptPlainText,
   promptTaken,
@@ -69,9 +70,8 @@ function resolveModel(node: ProposalNode, index: number): { chosen: ModelInfo } 
   // `modelsForMode` already names what the node does offer instead.
   const reachable = modelsForMode(node.type, mode);
   if (!reachable.available) {
-    return reachable.offered.length > 0
-      ? refuse("mode-unbacked", `No model here backs "${mode}" on ${aNode(node.type)}. It offers: ${reachable.offered.join(", ")}.`)
-      : refuse("no-model-for-kind", `No ${node.type} model can generate right now.`);
+    const offers = reachable.offered.length > 0 ? ` It offers: ${reachable.offered.join(", ")}.` : "";
+    return refuse("mode-unbacked", `No model here backs "${mode}" on ${aNode(node.type)}.${offers}`);
   }
   const chosen = reachable.models.find((m) => m.name === model);
   return chosen
@@ -309,8 +309,9 @@ function checkWiring(proposal: CanvasProposal, node: ProposalNode, index: number
 
 /**
  * What the panel sends in place of each ref, the way it serialises it: a text
- * node's words, and a picture, clip or track as its pool's mention, numbered
- * within its kind in the order the pool lists them.
+ * node's words, and a picture, clip or track as a neutral reference to its
+ * place in its pool, numbered within its kind in the order the pool lists
+ * them (inner#1743).
  * @param proposal - The whole proposal.
  * @param node - The generation.
  * @param pooled - The indices wired into its pool, in order.
@@ -325,10 +326,10 @@ function refWordsFor(proposal: CanvasProposal, node: ProposalNode, pooled: reado
     const target = proposal.nodes[at];
     if (!target) return "";
     if (target.type === "text") return promptPlainText(target.prompt ?? []);
-    const mention = pool[target.type]?.mention;
-    if (mention === undefined) return "";
+    const kind = pool[target.type];
+    if (kind?.mention === undefined) return "";
     const n = pooled.filter((i) => proposal.nodes[i]?.type === target.type).indexOf(at);
-    return mention.replace("{n}", String(n + 1)).replace("{i}", String(n));
+    return neutralReference(kind.param, n + 1);
   };
 }
 

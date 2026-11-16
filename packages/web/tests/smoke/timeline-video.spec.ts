@@ -59,11 +59,11 @@ test('local video and its Project copy play, pause, seek and survive closing the
     await expect(outlet.getByTestId('timeline-play')).toHaveText('Pause');
     await expect.poll(() => video.evaluate((element: HTMLVideoElement) => !element.paused && element.currentTime > 0)).toBe(true);
     await expect.poll(async () => Number(await slider.getAttribute('aria-valuenow'))).toBeGreaterThan(0);
-    await expect(outlet.getByText('Playing', { exact: true })).toBeVisible();
+    await expect(outlet.locator('[data-playback-state]')).toHaveAttribute('data-playback-state', 'playing');
 
     await outlet.getByTestId('timeline-play').click();
     await expect(outlet.getByTestId('timeline-play')).toHaveText('Play');
-    await expect(outlet.getByText('Paused', { exact: true })).toBeVisible();
+    await expect(outlet.locator('[data-playback-state]')).toHaveAttribute('data-playback-state', 'paused');
     await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.paused)).toBe(true);
     const pausedFrame = await slider.getAttribute('aria-valuenow');
     const pausedTime = await video.evaluate((element: HTMLVideoElement) => element.currentTime);

@@ -43,7 +43,8 @@ function makeModel(name: string, over: Partial<ModelEntry> = {}): ModelEntry {
       duration: { description: '', values: [4, 6, 8], default: 8 },
       generate_audio: { description: '', values: [true, false], default: true },
     },
-    providers: [],
+    availability: { upstreams: [{ upstream: 'wavespeed', weight: 1, configured: false, envVar: 'WAVESPEED_API_KEY' }] },
+    pricing_rules: undefined,
     ...over,
     mode,
   };
@@ -835,7 +836,7 @@ describe('buildVideoPanelViewModel — references (#1927)', () => {
       mode: 'ref',
       atMentionedSourceIds: new Set(['src-a', 'src-v']),
     });
-    expect(vm.mentionTokens).toEqual({ 'src-a': 'Image 1', 'src-v': 'Video 1' });
+    expect(vm.mentionTokens).toEqual({ 'src-a': '{{ref:images:1}}', 'src-v': '{{ref:videos:1}}' });
   });
 
   it('knows how long each mentioned clip runs, for a price by the second (#2156)', () => {

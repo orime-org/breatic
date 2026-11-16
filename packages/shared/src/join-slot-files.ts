@@ -7,15 +7,26 @@
  * Some models take style images through their ordinary image list, told
  * apart only by the prompt. Such a model declares the style slot with
  * `joins` (the pool) and `prompt_note` (the sentence naming the files). The
- * worker runs this on the way upstream and the price estimate runs it on the
- * same params, so what is quoted is what is sent.
+ * worker runs this before handing a run to provider and the price estimate
+ * runs it on the same params, so what is quoted is what is sent.
  */
 
 import { usableUrls } from "@shared/item-cap.js";
 
 /**
- * The three fields this reads off each declaration. Loose on purpose: the
- * worker hands in the yaml-shaped entry and the panel the wire descriptor.
+ * How a prompt names one file of a param, whichever upstream serves the run: provider rewrites it in that upstream's
+ * own spelling (inner#1743).
+ * @param param - The param the file is in.
+ * @param n - Its place in the param, from 1.
+ * @returns The reference.
+ */
+export function neutralReference(param: string, n: number): string {
+  return `{{ref:${param}:${n}}}`;
+}
+
+/**
+ * The fields this reads off each declaration. Loose on purpose: the worker
+ * hands in the yaml-shaped entry and the panel the wire descriptor.
  */
 export type JoinDeclarations = Readonly<Record<string, object>>;
 
@@ -23,7 +34,6 @@ export type JoinDeclarations = Readonly<Record<string, object>>;
 interface JoinFields {
   readonly joins?: unknown;
   readonly prompt_note?: unknown;
-  readonly mention?: unknown;
 }
 
 /** A run's params and prompt after its joining slots are folded in. */
@@ -68,12 +78,9 @@ export function joinSlotFiles(
     // mention numbers count its entries.
     const sent = out[joins];
     const pool = Array.isArray(sent) ? sent.filter((v): v is string => typeof v === "string" && v.length > 0) : [];
-    // The catalog check holds every joined pool to a mention.
-    const mention = String((declared[joins] as JoinFields | undefined)?.mention ?? "");
-    const names = files.map((_, k) => {
-      const index = pool.length + k;
-      return mention.replace("{n}", String(index + 1)).replace("{i}", String(index));
-    });
+    // The catalog check holds every joined pool to a mention; each file is named by the neutral reference provider
+    // writes as the serving upstream spells it (inner#1743).
+    const names = files.map((_, k) => neutralReference(joins, pool.length + k + 1));
     out[joins] = [...pool, ...files];
     const said = note.replace("{list}", listPhrase(names));
     text = text.length > 0 ? `${text} ${said}` : said;

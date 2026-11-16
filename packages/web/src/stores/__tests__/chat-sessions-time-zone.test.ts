@@ -7,53 +7,26 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('@web/data/api/chat', () => ({
-  chatApi: {
-    streamConfig: vi.fn(async () => ({
-      heartbeatIntervalMs: 60_000,
-      attachmentMaxChars: 200_000,
-      attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200,
-    })),
-  },
+vi.mock('@web/data/upload/transfer-body', () => ({
+  bodyOrTransfer: async (_projectId: string, body: unknown) => body,
 }));
 
-const { chatSessionFor, evictAllChatSessions, sendInSession } = await import(
-  '@web/stores/chat-sessions'
-);
-
-/** A stream that opens a turn and ends it. */
-const OPENS_AND_ENDS =
-  'data: {"type":"start"}\n\ndata: {"type":"finish"}\n\ndata: [DONE]\n\n';
-
-let sent: Array<RequestInit | undefined> = [];
-const original = globalThis.fetch;
+import { chatApi } from '@web/data/api/chat';
+import { chatLive, resetChatLiveForTests } from '@web/stores/chat-live';
+import { chatSessionFor, evictAllChatSessions } from '@web/stores/chat-sessions';
+import { resetRunOnceForTests } from '@web/stores/task-actions-in-flight';
 
 beforeEach(() => {
-  evictAllChatSessions();
-  sent = [];
-  globalThis.fetch = ((_url: string, init?: RequestInit) => {
-    sent.push(init);
-    return Promise.resolve(
-      new Response(OPENS_AND_ENDS, {
-        status: 200,
-        headers: { 'Content-Type': 'text/event-stream' },
-      }),
-    );
-  }) as typeof globalThis.fetch;
+  vi.spyOn(chatApi, 'sendMessage').mockResolvedValue({ status: 'queued', pending: [], running: false });
+  chatSessionFor({ projectId: 'p-1', conversationId: 'c-1', history: [], onTitled: () => undefined });
 });
 
 afterEach(() => {
-  globalThis.fetch = original;
+  resetChatLiveForTests();
+  resetRunOnceForTests();
+  evictAllChatSessions();
   vi.restoreAllMocks();
 });
-
-/**
- * The body of the last request sent.
- * @returns That body, parsed.
- */
-function lastBody(): Record<string, unknown> {
-  return JSON.parse(String(sent.at(-1)?.body)) as Record<string, unknown>;
-}
 
 describe('the time zone on a message', () => {
   it('sends the zone the browser reports', async () => {
@@ -63,16 +36,10 @@ describe('the time zone on a message', () => {
     ) {
       return { ...actual.call(this), timeZone: 'Asia/Shanghai' };
     });
-    chatSessionFor({
-      projectId: 'p-1',
-      conversationId: 'c-1',
-      history: [],
-      onTitled: () => undefined,
-      onFirstFrame: () => undefined,
-    });
 
-    await sendInSession('c-1', 'what time is it?');
+    await chatLive.send({ projectId: 'p-1', conversationId: 'c-1', words: 'what time is it?', chips: [], spaces: {} });
 
-    expect(lastBody().time_zone).toBe('Asia/Shanghai');
+    const body = vi.mocked(chatApi.sendMessage).mock.calls.at(-1)?.[0] as Record<string, unknown>;
+    expect(body.time_zone).toBe('Asia/Shanghai');
   });
 });

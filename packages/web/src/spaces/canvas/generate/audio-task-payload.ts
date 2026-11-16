@@ -39,7 +39,7 @@ import { wireParams } from '@web/spaces/canvas/generate/stand-in';
  * the mode collects left empty, that null is what the panel gate, the
  * server's source gate and the mini-tool schema each refuse first; on a mode
  * taking any one of several, the nulls beside the picked one ride along and
- * the WaveSpeed transport strips them before the request.
+ * the worker's `paramsToSend` leaves them out before the run goes to provider.
  * @param slots - The slots the active mode collects.
  * @param slotUrls - What each slot currently holds.
  * @returns The source params, empty when nothing is picked.

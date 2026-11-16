@@ -44,16 +44,13 @@ const request = {
   readFloorMs: 5_000,
   timeoutMs: 180_000,
   model: "google/gemini-3.8-flash",
-  backend: "google-vertex",
-  apiKey: "test-key",
-  baseUrl: "https://openrouter.ai/api/v1",
   maxOutputTokens: 2048,
 };
 
 // Typed, so that a field added to `Media` is reported here rather than passing
 // as a shape the first half cannot produce: the mock takes `unknown`, and this
 // case's whole subject is that each half receives what the other sends.
-const media: Media = { kind: "video", bytes: new Uint8Array([1, 2, 3]), format: "video/mp4" };
+const media: Media = { kind: "video", bytes: new Uint8Array([1, 2, 3]), contentType: "video/mp4" };
 
 beforeEach(() => {
   fetchMediaMock.mockReset();
@@ -90,9 +87,6 @@ describe("understandMediaAt — what each half is told", () => {
         question: request.question,
         timeoutMs: 180_000,
         model: "google/gemini-3.8-flash",
-        backend: "google-vertex",
-        apiKey: "test-key",
-        baseUrl: "https://openrouter.ai/api/v1",
         maxOutputTokens: 2048,
       }),
     );

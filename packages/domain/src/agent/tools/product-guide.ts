@@ -399,7 +399,9 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.drawer.action.rename"))}.`,
     `The third, a pulse line, opens ${quoted(t("activity.header"))}: the project's uploads, generations and ` +
       "changes to spaces and members, newest first. Each finished generation shows the credits it used, a star " +
-      "with a number; a failed one shows a red exclamation mark; picture, video and sound entries have a " +
+      "with a number; one whose cost is still being billed shows the part known so far as a lower bound, " +
+      `≥ and a number, with ${quoted(t("credits.billingPending"))} beside it, until the final amount replaces it; ` +
+      "a failed one shows a red exclamation mark; picture, video and sound entries have a " +
       "thumbnail that shows a larger preview when hovered. The project's owner sees " +
       `${quoted(t("activity.action.restore"))} on a deleted space's entry, which brings the space back into ` +
       `${quoted(t("spaces.drawer.title"))}, not as a tab: open it from there. Afterwards that entry shows ` +
@@ -434,9 +436,22 @@ export function renderProductGuide(): string {
       "clicking one puts its words in the message box without sending them. The empty box reads " +
       `${quoted(t("chat.composer.placeholder"))}. Enter sends the message and Shift+Enter starts a new line. The ` +
       `dark square button with an upward arrow at the right of the box (hovering it shows ` +
-      `${quoted(t("chat.composer.send"))}) sends too. A message goes only when the box has some words, no reply ` +
-      "is being written and every attachment has finished uploading; otherwise Enter does nothing and the button " +
-      "is greyed. While a reply is being written the button becomes a red square, which stops the reply. A " +
+      `${quoted(t("chat.composer.send"))}) sends too. A message goes only when the box has some words and every ` +
+      "attachment has finished uploading; otherwise Enter does nothing and the button is greyed. While a message " +
+      "is on its way the box cannot be changed and a spinner stands in place of the button; once it has gone the " +
+      "box empties. While a reply is being written the user can go on writing and sending: a red square left of " +
+      `the send button (hovering it shows ${quoted(t("chat.composer.stop"))}) stops the reply, and the send button ` +
+      `then shows ${quoted(t("chat.composer.sendWhileRunning"))} on hover. A message sent meanwhile is read by the ` +
+      "Agent at its next step, " +
+      "inside the reply being written, where it then shows as the user's message. Until the Agent reads it, it " +
+      `waits in a list above the box headed ${quoted(t("chat.waiting.title", { count: 1 }))}, the same on every ` +
+      "tab and device; hovering the two buttons on its row shows " +
+      `${quoted(t("chat.waiting.retract"))}, which puts its words and attachments back in the box, and ` +
+      `${quoted(t("chat.waiting.delete"))}. While a questionnaire or Space request waits for an answer the list ` +
+      `adds ${quoted(t("chat.waiting.awaitingCard"))} The messages go on once it is answered. With no ` +
+      `credits the list adds ${quoted(t("chat.waiting.blocked"))} The messages go on once credits are added. ` +
+      "Switching to another conversation or " +
+      "leaving the page does not stop a reply: it goes on, and coming back shows it caught up. A " +
       `message holds up to ${CHAT_MESSAGE_MAX_CHARS.toLocaleString("en")} characters; at the limit a short message at the top ` +
       "of the screen says so, and again for each key the full box turns away.",
     "Left of that button, the name of the model that answers this conversation shows with a small downward " +
@@ -566,8 +581,11 @@ export function renderProductGuide(): string {
       `${quoted(t("chat.spaceRequest.declined"))}. Typing a message in the box instead also closes the card, ` +
       `which then reads ${quoted(t("chat.questionnaire.replied"))}.`,
     `When the conversation has older messages, ${quoted(t("chat.loadEarlier"))} at the top shows them. After ` +
-      "scrolling up, a round button with a downward arrow at the bottom goes back to the latest. If sending fails, " +
-      `a short message at the top of the screen says so, such as ${quoted(t("chat.error.network"))}, or ` +
+      "scrolling up, a round button with a downward arrow at the bottom goes back to the latest. A message that " +
+      "cannot reach the server is sent again by itself until it does; when that never gets an answer, a short " +
+      `message at the top of the screen says ${quoted(t("common.runOnce.unknownResult"))} When the connection to ` +
+      `a reply drops, such a message says ${quoted(t("chat.error.network"))} and the reply picks up again once the ` +
+      "page reaches it. A message the server turns away stays in the box, and such a message says why, such as " +
       `${quoted(t("chat.conversation.gone"))} when the conversation was deleted elsewhere. A message needs ` +
       "credits in the project's studio to be answered; with none, the message reads " +
       `${quoted(t("server.credit.none"))} or names what stands in the way, such as credits not yet assigned to ` +
@@ -1458,13 +1476,17 @@ export function renderProductGuide(): string {
     "## Timeline spaces",
     `The central video preview sits above the toolbar and the tracks. ${quoted(t("timeline.play"))} and ` +
       `${quoted(t("timeline.pause"))} control playback; the slider below the preview selects its integer frame. ` +
+      "At the right end of that play bar a menu shows the frame's aspect ratio and size, such as 16:9 · 1920×1080, and offers 16:9, 9:16, 1:1, 4:3, 4:5, 2:3 and 21:9; " +
+      "a new Timeline starts at 16:9. Choosing one changes the frame for everyone in the Space and is one undo step: the black preview frame takes that shape within the preview area, " +
+      "and each layer keeps its place relative to the frame, its scale and its rotation. A Timeline whose frame is not one of these sizes shows its size in the menu with no ratio checked. " +
+      "A Viewer sees the menu disabled. " +
       `The bottom visual track is ${quoted(t("timeline.mainTrack"))}; tracks above it are named like ` +
       `${quoted(t("timeline.track", { index: 2 }))}, and the preview draws every clip at the playhead, stacked from the bottom track up, each placed by its own position, size and angle. ` +
       "Each clip shows its name and its length as a timecode (hours:minutes:seconds:frames), as does the position beside the play button. Click a clip to select it, or an empty part of a track to clear the selection; " +
       "the panel on the right shows its source name, " +
       `${quoted(t("timeline.edit.track"))}, ${quoted(t("timeline.startFrame"))}, ${quoted(t("timeline.edit.inPoint"))} and ` +
       `${quoted(t("timeline.edit.duration"))}, then its video's length in frames at the Timeline's frame rate. Type a whole frame and press Enter or leave the field to apply it. ` +
-      `For a video or a web animation copy it also shows ${quoted(t("timeline.edit.transform"))}: ${quoted(t("timeline.edit.positionX"))} and ${quoted(t("timeline.edit.positionY"))} in canvas pixels, ` +
+      `For a video or a web animation copy it also shows ${quoted(t("timeline.edit.transform"))}: ${quoted(t("timeline.edit.positionX"))} and ${quoted(t("timeline.edit.positionY"))} in pixels of the Timeline's frame, ` +
       `${quoted(t("timeline.edit.scaleX"))} and ${quoted(t("timeline.edit.scaleY"))} from 1% to 10000%, and ${quoted(t("timeline.edit.rotation"))}; ` +
       `the ${quoted(t("timeline.edit.lockRatio"))} switch below them, on by default, makes a change to one scale change the other in proportion; a Viewer sees the values as text and no switch. ` +
       `For a clip that is not at the playhead the group shows ${quoted(t("timeline.edit.offFrame"))} Its values can still be changed. ` +
@@ -1518,11 +1540,11 @@ export function renderProductGuide(): string {
       "A video still loading is noted at the top right of the preview with its track as loading, " +
       `and a video that cannot be loaded is noted there with its track as unavailable, with ${quoted(t("timeline.retry"))}; ` +
       "the other layers keep playing, and a retry reloads only that video, with the preview waiting for it before going on together. " +
-      `The playback status shows ${quoted(t("timeline.transport.waiting"))} while a video it needs is getting ready. ` +
+      `While a video it needs is getting ready, small text above the position beside the play button reads ${quoted(t("timeline.transport.waiting"))}, and the slider, the menu and the buttons stay where they are. ` +
       `When the browser blocks playback with sound, playback pauses and says ${quoted(t("timeline.preview.playBlocked"))}`,
     `${quoted(t("timeline.webAnimation.create"))}, beside ${quoted(t("timeline.addMedia"))}, opens a dialog to have an animated web page made: ` +
       `${quoted(t("timeline.webAnimation.dialog.prompt"))}, ${quoted(t("timeline.webAnimation.dialog.engine"))} (DeepSeek), ` +
-      `${quoted(t("timeline.webAnimation.dialog.aspect"))} (16:9, 9:16 or 1:1), ${quoted(t("timeline.webAnimation.dialog.duration"))} and the switch ` +
+      `${quoted(t("timeline.webAnimation.dialog.aspect"))} (16:9, 9:16 or 1:1, starting at the one closest to the Timeline's frame), ${quoted(t("timeline.webAnimation.dialog.duration"))} and the switch ` +
       `${quoted(t("timeline.webAnimation.dialog.addAtPlayhead"))}, which starts on. ${quoted(t("timeline.webAnimation.dialog.execute"))} starts the run; ` +
       "if it is refused, for example because the Studio has no credits left, the dialog keeps what you typed and shows why. Usage is charged when the run ends. " +
       "With the switch on, a dashed placeholder clip goes in at the playhead, above the highest video there or on a new top track, and shows the result once it is ready. " +

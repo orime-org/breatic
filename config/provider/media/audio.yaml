@@ -289,7 +289,7 @@ models:
             reason: WaveSpeed text_prompt minLength 4
         pricing:
           kind: formula
-          base_price: 10000
+          base_price: 20000
           formula: '{"total_price": base_price * duration * num_samples}'
           discount_rate: 100
       - upstream: fal

@@ -61,12 +61,12 @@ describe("the model this build talks to", () => {
     expect(parsed.consolidation_model).toBe(MODEL);
   });
 
-  it("has a price, so a deployment that reaches DeepSeek directly still starts", () => {
+  it("has a direct price, so a deployment that reaches DeepSeek directly still starts", () => {
     // Through OpenRouter the call reports its own cost; with a DeepSeek key the
     // startup check (`assertModelsPriced`) refuses to run a model with no price.
-    const path = resolve(import.meta.dirname, "../../../../../config/usage-pricing.yaml");
-    const pricing = parse(readFileSync(path, "utf8")) as { models: Record<string, Record<string, number>> };
-    expect(pricing.models[MODEL]).toEqual({
+    const path = resolve(import.meta.dirname, "../../../../../config/provider/llm.yaml");
+    const llm = parse(readFileSync(path, "utf8")) as { prices: Record<string, Array<Record<string, unknown>>> };
+    expect(llm.prices[MODEL]?.[0]).toMatchObject({
       input_cache_hit_per_mtok: 0.006,
       input_cache_miss_per_mtok: 0.3,
       output_per_mtok: 1.2,

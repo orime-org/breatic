@@ -13,6 +13,7 @@
 
 import { Container } from "@cloudflare/containers";
 import type { OutboundHandlerContext, StopParams } from "@cloudflare/containers";
+import type { MessagesCallEnd, MessagesPlan } from "@breatic/provider/messages";
 import {
   WEB_ANIMATION_MANIFEST_MAX_BYTES,
   type WebAnimationJobReport,
@@ -23,7 +24,8 @@ import { noteFailure } from "@ingest/error-monitoring.js";
 import { askedKey } from "@ingest/object-url.js";
 import { MEDIA_OBJECT_HOST, mediaObjectUrl } from "@ingest/media-object-route.js";
 import { JOB_REPORT_HOST, JobStartFailed } from "@ingest/jobs/mini-tool-container.js";
-import { MODEL_HOST, relayModelCall, type ModelCallEnd } from "@ingest/jobs/web-animation-model-relay.js";
+import { harnessKeyOf } from "@ingest/jobs/harness-keys.js";
+import { MODEL_HOST, relayModelCall } from "@ingest/jobs/web-animation-model-relay.js";
 import {
   WEB_ANIMATION_PORT,
   WEB_ANIMATION_PROGRESS_PATH,
@@ -41,11 +43,14 @@ import {
 } from "@ingest/jobs/web-animation-transition.js";
 import { hashStoredObject, writeStreamedObject } from "@ingest/stored-object.js";
 
-/** What this class needs bound; the binding and the key are optional, and their absence turns the feature off. */
+/**
+ * What this class needs bound; the binding is optional, and its absence turns the feature off. The model keys are
+ * `HARNESS_` plus each upstream's key variable (`key_env` in `config/provider/upstreams.yaml`), read through
+ * `harnessKeyOf`.
+ */
 export interface WebAnimationEnv {
   BUCKET: R2Bucket;
   WEB_ANIMATION?: DurableObjectNamespace<WebAnimationContainer>;
-  HARNESS_OPENROUTER_API_KEY?: string;
 }
 
 /** What a submit answers. */
@@ -67,9 +72,12 @@ interface JobObjects {
   maxPackageBytes: number;
 }
 
-/** What the model relay is told about its job. */
+/**
+ * What the model relay is told about its job. `plan` is absent from a container started by a Worker deployed before
+ * the plan (inner#1743), whose stored outbound params carry `model` instead.
+ */
 interface ModelLimits {
-  model: string;
+  plan?: MessagesPlan;
   maxTokens: number;
   callTimeoutMs: number;
 }
@@ -178,13 +186,14 @@ export class WebAnimationContainer extends Container<WebAnimationEnv> {
   }
 
   /**
-   * Record the generation a call's stream started.
+   * Record who serves a call and the message its stream started.
    * @param seq - The call.
-   * @param generationId - OpenRouter's id from `message_start`.
+   * @param upstream - The upstream serving it.
+   * @param messageId - The id from `message_start`.
    * @returns Nothing.
    */
-  async recordModelCallStart(seq: number, generationId: string): Promise<void> {
-    await this.apply({ type: "recordModelCallStart", seq, generationId });
+  async recordModelCallStart(seq: number, upstream: string, messageId: string): Promise<void> {
+    await this.apply({ type: "recordModelCallStart", seq, upstream, messageId });
   }
 
   /**
@@ -193,7 +202,7 @@ export class WebAnimationContainer extends Container<WebAnimationEnv> {
    * @param end - How it ended.
    * @returns Nothing.
    */
-  async endModelCall(seq: number, end: ModelCallEnd): Promise<void> {
+  async endModelCall(seq: number, end: MessagesCallEnd): Promise<void> {
     await this.apply({ type: "endModelCall", seq, ...end });
   }
 
@@ -296,7 +305,8 @@ export class WebAnimationContainer extends Container<WebAnimationEnv> {
     const objects: JobObjects = {
       packageKey: request.packageKey, manifestKey: request.manifestKey, maxPackageBytes: request.maxPackageBytes,
     };
-    const limits: ModelLimits = { model: request.model, maxTokens: request.maxTokens, callTimeoutMs: request.callTimeoutMs };
+    // The routes submit only a request with a plan; its prices are as provider's messagesPlan wrote them.
+    const limits: ModelLimits = { plan: request.messagesPlan as MessagesPlan, maxTokens: request.maxTokens, callTimeoutMs: request.callTimeoutMs };
     const run: WebAnimationRunBody = {
       prompt: request.prompt,
       viewport: request.viewport,
@@ -385,26 +395,28 @@ function jobObject(env: WebAnimationEnv, ctx: OutboundHandlerContext<unknown>): 
 }
 
 /**
- * Relay one model call to OpenRouter under the job's limits.
+ * Relay one model call along the job's plan under its limits.
  * @param request - What the harness sent to `model.local`.
- * @param env - The bindings, holding our key.
- * @param ctx - The handler's context, carrying the job's limits.
- * @returns The relayed answer, or 503 when the job object could not be reached.
+ * @param env - The bindings, holding the keys.
+ * @param ctx - The handler's context, carrying the job's plan and limits.
+ * @returns The relayed answer, or 503 when the job object could not be reached or the container was started without a
+ *   plan, which no call is registered for.
  */
 async function modelCall(request: Request, env: WebAnimationEnv, ctx: OutboundHandlerContext<ModelLimits>): Promise<Response> {
+  const plan = ctx.params.plan;
+  if (plan === undefined) return new Response("The job was started without a model plan", { status: 503 });
   const job = jobObject(env, ctx);
   try {
     return await relayModelCall(request, {
-      apiKey: env.HARNESS_OPENROUTER_API_KEY ?? "",
-      model: ctx.params.model,
+      plan,
+      keyOf: harnessKeyOf(env),
       maxTokens: ctx.params.maxTokens,
       callTimeoutMs: ctx.params.callTimeoutMs,
       registry: {
         beginModelCall: () => job.beginModelCall(),
-        recordModelCallStart: (seq, generationId) => job.recordModelCallStart(seq, generationId),
+        recordModelCallStart: (seq, upstream, messageId) => job.recordModelCallStart(seq, upstream, messageId),
         endModelCall: (seq, end) => job.endModelCall(seq, end),
       },
-      fetch: (url, init) => fetch(url, init),
     });
   } catch (err) {
     noteFailure("ingest_web_animation_model_relay_failed", { containerId: ctx.containerId }, err);

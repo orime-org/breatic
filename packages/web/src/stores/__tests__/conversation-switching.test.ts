@@ -16,19 +16,30 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type * as ChatApiModule from '@web/data/api/chat';
 
-vi.mock('@web/data/api/chat', async (importOriginal) => ({
-  ...(await importOriginal<typeof ChatApiModule>()),
-  chatApi: {
-    streamConfig: vi.fn(async () => ({ heartbeatIntervalMs: 5000, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200 })),
-    openChat: vi.fn(),
-    messagesBefore: vi.fn(),
-    readConversation: vi.fn(),
-    listConversations: vi.fn(),
-    createConversation: vi.fn(),
-    renameConversation: vi.fn(),
-    deleteConversation: vi.fn(),
-  },
+vi.mock('@web/data/upload/transfer-body', () => ({
+  bodyOrTransfer: async (_projectId: string, body: unknown) => body,
 }));
+
+vi.mock('@web/data/api/chat', async (importOriginal) => {
+  const actual = await importOriginal<typeof ChatApiModule>();
+  return {
+    ...actual,
+    chatApi: {
+      streamPath: actual.chatApi.streamPath,
+      sync: vi.fn(async () => ({ pending: [], running: false, awaiting: false, next_sync_ms: 3000 })),
+      stop: vi.fn(async () => ({ stopped: true })),
+      sendMessage: vi.fn(async () => ({ status: 'start', pending: [], running: false })),
+      streamConfig: vi.fn(async () => ({ heartbeatIntervalMs: 5000, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200 })),
+      openChat: vi.fn(),
+      messagesBefore: vi.fn(),
+      readConversation: vi.fn(),
+      listConversations: vi.fn(),
+      createConversation: vi.fn(),
+      renameConversation: vi.fn(),
+      deleteConversation: vi.fn(),
+    },
+  };
+});
 
 import { ApiException } from '@web/data/api/types';
 import { chatApi } from '@web/data/api/chat';
@@ -38,46 +49,28 @@ import {
   _resetForTests,
 } from '@web/stores/conversation-runtime';
 import { watchChatMishaps } from '@web/stores/chat-mishaps';
-import { chatSessionFor, evictAllChatSessions, sendInSession } from '@web/stores/chat-sessions';
+import { chatSessionFor, evictAllChatSessions } from '@web/stores/chat-sessions';
+import { chatLive, resetChatLiveForTests } from '@web/stores/chat-live';
+import { resetRunOnceForTests } from '@web/stores/task-actions-in-flight';
+import { settle, stubRunWire, type RunWire } from '@web/test-utils/chat-run-wire';
 
 const P = 'p-1';
 
-/** 这一轮请求拿到的中止信号。 */
-let sent: AbortSignal | null | undefined;
+/** The run streams the page reads. */
+let wire: RunWire;
 
 /**
- * 让下一次发送拿到一条握在测试手里、永远不结束的流。
+ * Show a conversation the way its panel does, with a run holding it, and wait
+ * until the page reads that run's stream (inner#1717).
+ * @param conversationId - Which one.
  */
-function theWireStaysOpen(): void {
-  sent = undefined;
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async (_url: string, init?: RequestInit) => {
-      sent = init?.signal;
-      return new Response(new ReadableStream<Uint8Array>({ start() {} }), {
-        status: 200,
-        headers: { 'Content-Type': 'text/event-stream' },
-      });
-    }),
-  );
-}
-
-/**
- * 在一条会话里开一轮，并等到请求真的出去了。
- * @param conversationId - 哪一条。
- */
-async function aTurnIsRunningIn(conversationId: string): Promise<void> {
-  chatSessionFor({
-    projectId: P,
-    conversationId,
-    history: [],
-    onTitled: () => undefined,
-    onFirstFrame: () => undefined,
-  });
-  void sendInSession(conversationId, '一个要答很久的问题');
-  await vi.waitFor(() => {
-    expect(sent).toBeDefined();
-  });
+async function aRunIsReadIn(conversationId: string): Promise<void> {
+  chatSessionFor({ projectId: P, conversationId, history: [], onTitled: () => undefined });
+  vi.mocked(chatApi.sync).mockResolvedValueOnce({ pending: [], running: true, awaiting: false, next_sync_ms: 3000 });
+  chatLive.show(P, conversationId);
+  await settle();
+  expect(wire.last()?.conversationId).toBe(conversationId);
+  expect(wire.last()?.abandoned()).toBe(false);
 }
 
 function opens(list: Array<{ id: string; title: string | null }>, current = list[0]!.id): void {
@@ -92,25 +85,19 @@ describe('switching away from a running turn and back', () => {
     vi.clearAllMocks();
     _resetForTests();
     evictAllChatSessions();
-    theWireStaysOpen();
+    resetRunOnceForTests();
+    wire = stubRunWire();
   });
 
   afterEach(() => {
+    resetChatLiveForTests();
+    evictAllChatSessions();
     vi.unstubAllGlobals();
   });
 
-  it('keeps the turn, and keeps it stoppable', async () => {
+  it('keeps the conversation, lets go of its run without stopping it, and reads it again on coming back (RW-09)', async () => {
     opens([{ id: 'c-1', title: 'one' }, { id: 'c-2', title: 'two' }]);
     await conversationRuntime.ensureLoaded(P);
-    await aTurnIsRunningIn('c-1');
-    const running = chatSessionFor({
-      projectId: P,
-      conversationId: 'c-1',
-      history: [],
-      onTitled: () => undefined,
-      onFirstFrame: () => undefined,
-    });
-
     vi.mocked(chatApi.readConversation).mockImplementation((id) =>
       Promise.resolve({
         conversation: { id, title: id, agentModel: { id: 'deepseek/deepseek-v4.1-flash-1017', name: 'DeepSeek V4.1 Flash' } },
@@ -118,24 +105,34 @@ describe('switching away from a running turn and back', () => {
         hasMore: false,
       } as unknown as Awaited<ReturnType<typeof chatApi.readConversation>>),
     );
-    await conversationRuntime.switchTo(P, 'c-2');
-    await conversationRuntime.switchTo(P, 'c-1');
+    await aRunIsReadIn('c-1');
+    const first = wire.last()!;
+    const running = chatSessionFor({ projectId: P, conversationId: 'c-1', history: [], onTitled: () => undefined });
 
-    // 同一个实例,同一条请求。切走再切回来是换看哪一条,不是把那一轮结束掉。
-    expect(
-      chatSessionFor({
-        projectId: P,
-        conversationId: 'c-1',
-        history: [],
-        onTitled: () => undefined,
-        onFirstFrame: () => undefined,
-      }),
-    ).toBe(running);
-    expect(sent?.aborted).toBe(false);
+    // The panel follows the switch: it stops showing the one left, and shows
+    // the one picked.
+    await conversationRuntime.switchTo(P, 'c-2');
+    chatLive.hide('c-1');
+    chatLive.show(P, 'c-2');
+    await settle();
+
+    // Let go of, not stopped: the run is the server's and goes on there.
+    expect(first.abandoned()).toBe(true);
+    expect(chatApi.stop).not.toHaveBeenCalled();
+
+    await conversationRuntime.switchTo(P, 'c-1');
+    chatLive.hide('c-2');
+    await aRunIsReadIn('c-1');
+
+    // The same instance, and the run read again: switching away and back
+    // changes which one is looked at, not whether its run goes on.
+    expect(chatSessionFor({ projectId: P, conversationId: 'c-1', history: [], onTitled: () => undefined })).toBe(running);
+    expect(wire.streams().filter((x) => x.conversationId === 'c-1')).toHaveLength(2);
 
     conversationRuntime.leaveProject(P);
 
-    expect(sent?.aborted).toBe(true);
+    expect(wire.last()?.abandoned()).toBe(true);
+    expect(chatApi.stop).not.toHaveBeenCalled();
   });
 });
 
@@ -803,10 +800,13 @@ describe('pressing send while a switch is still on its way', () => {
     vi.clearAllMocks();
     _resetForTests();
     evictAllChatSessions();
-    theWireStaysOpen();
+    resetRunOnceForTests();
+    wire = stubRunWire();
   });
 
   afterEach(() => {
+    resetChatLiveForTests();
+    evictAllChatSessions();
     vi.unstubAllGlobals();
   });
 
@@ -833,7 +833,7 @@ describe('pressing send while a switch is still on its way', () => {
     const writeInto = await conversationRuntime.conversationForSending(P);
 
     expect(writeInto).toBeUndefined();
-    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+    expect(chatApi.sendMessage).not.toHaveBeenCalled();
 
     landSwitch?.();
     await switching;
@@ -862,9 +862,10 @@ describe('pressing send while a switch is still on its way', () => {
 
     const writeInto = await conversationRuntime.conversationForSending(P);
     expect(writeInto).toBe('c-1');
-    await aTurnIsRunningIn(writeInto!);
+    await chatLive.send({ projectId: P, conversationId: writeInto!, words: 'a question that takes long to answer', chips: [], spaces: {} });
 
-    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
+    expect(chatApi.sendMessage).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(chatApi.sendMessage).mock.calls[0]![0]).toMatchObject({ conversation_id: 'c-1' });
 
     landSwitch?.();
     await switching;
