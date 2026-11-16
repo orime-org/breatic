@@ -44,7 +44,7 @@ const baseRow = {
 function show(input: Partial<CreationDraftInput>, base?: WebAnimationRowView): void {
   const full: CreationDraftInput = { base: null, prompt: '', engine: 'deepseek', aspect: '16:9', durationSeconds: 4, ...input };
   render(<WebAnimationDialog projectId={PROJECT} spaceId={SPACE} draft={{ status: 'drafting', open: true, input: full, error: null }} retry={false}
-    limits={LIMITS as never} baseRow={base} onEdit={vi.fn()} onExecute={vi.fn()} onClose={vi.fn()} />);
+    limits={LIMITS as never} baseRow={base} baseRead={{ failed: false, retrying: false, retry: vi.fn() }} onEdit={vi.fn()} onExecute={vi.fn()} onClose={vi.fn()} />);
 }
 
 const MODIFY: Partial<CreationDraftInput> = { base: { executionId: BASE, sourceVersionId: BASE_SOURCE, request: 'Gold dot along an arc' } };

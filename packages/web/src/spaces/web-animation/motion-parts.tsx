@@ -93,6 +93,30 @@ export function MotionPanel({ testId, title, onClose, children }: MotionPanelPro
   </section>;
 }
 
+/** A preview that could not load. */
+interface PreviewUnavailableProps {
+  onRetry: () => void;
+  /** Whether the retry is waiting for the server. */
+  retrying?: boolean;
+}
+
+/**
+ * What a Motion preview shows when it could not load (#1490 design §7.3): unavailable, and a retry. It fills the box it
+ * is placed in.
+ * @param props - The retry.
+ * @param props.onRetry - Loads it again.
+ * @param props.retrying - Whether the retry is waiting.
+ * @returns The note.
+ * @throws {never} Never.
+ */
+export function PreviewUnavailable({ onRetry, retrying = false }: PreviewUnavailableProps): React.JSX.Element {
+  const t = useTranslation();
+  return <div className='absolute inset-0 flex flex-wrap content-center items-center justify-center gap-x-2 gap-y-1 bg-muted p-1 text-xs text-foreground'>
+    <span>{t('timeline.webAnimation.unavailable')}</span>
+    <Button type='button' variant='outline' size='compact' loading={retrying} onClick={onRetry}>{t('timeline.retry')}</Button>
+  </div>;
+}
+
 /** A finished create or modification. */
 export type PlayableRow = Extract<WebAnimationRowView, { kind: 'web_animation_create' | 'web_animation_modify' }> & { resultSourceVersionId: string };
 

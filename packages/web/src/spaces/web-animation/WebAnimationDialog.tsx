@@ -16,7 +16,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { useReturnFocus } from '@web/lib/overlay-focus';
 import type { CreationDraftInput, CreationDraftState } from '@web/spaces/web-animation/creation-draft';
 import { WEB_ANIMATION_ENGINE_NAMES, isWebAnimationEngine } from '@web/spaces/web-animation/execution-text';
-import { playable } from '@web/spaces/web-animation/motion-parts';
+import { PreviewUnavailable, playable } from '@web/spaces/web-animation/motion-parts';
 import { MotionResultPlayer } from '@web/spaces/web-animation/MotionResultPlayer';
 
 /** The open creation dialog's draft and actions. */
@@ -28,6 +28,8 @@ interface WebAnimationDialogProps {
   limits: TimelineClientLimits['webAnimation'];
   /** The result a modification starts from, once read. */
   baseRow: WebAnimationRowView | undefined;
+  /** Whether reading that result failed, and how to read it again. */
+  baseRead: { failed: boolean; retrying: boolean; retry: () => void };
   onEdit: (patch: Partial<CreationDraftInput>) => void;
   onExecute: () => void;
   onClose: () => void;
@@ -46,13 +48,14 @@ interface WebAnimationDialogProps {
  * @param props.retry - Whether it runs a finished execution again.
  * @param props.limits - The configured bounds.
  * @param props.baseRow - The result a modification starts from, once read.
+ * @param props.baseRead - Whether reading it failed, and its retry.
  * @param props.onEdit - Changes the input.
  * @param props.onExecute - Submits it.
  * @param props.onClose - Closes the dialog; a submission goes on.
  * @returns The dialog.
  * @throws {never} Never.
  */
-export function WebAnimationDialog({ projectId, spaceId, draft, retry, limits, baseRow, onEdit, onExecute, onClose }: WebAnimationDialogProps): React.JSX.Element {
+export function WebAnimationDialog({ projectId, spaceId, draft, retry, limits, baseRow, baseRead, onEdit, onExecute, onClose }: WebAnimationDialogProps): React.JSX.Element {
   const t = useTranslation();
   const returnFocus = useReturnFocus(true);
   const submitting = draft.status === 'submitting';
@@ -89,7 +92,7 @@ export function WebAnimationDialog({ projectId, spaceId, draft, retry, limits, b
             <div data-testid='web-animation-base' className='flex items-center gap-3 rounded-chrome border border-border p-2'>
               <div className='relative h-12 shrink-0 overflow-hidden rounded-chrome bg-muted' style={{ aspectRatio: baseAspect }}>
                 {base === undefined
-                  ? <Skeleton className='absolute inset-0 rounded-none' />
+                  ? baseRead.failed ? <PreviewUnavailable onRetry={baseRead.retry} retrying={baseRead.retrying} /> : <Skeleton className='absolute inset-0 rounded-none' />
                   : <MotionResultPlayer projectId={projectId} executionId={base.id} sourceVersionId={base.resultSourceVersionId} input={base.input}
                     frame={Math.floor(webAnimationDurationFrames(base.input) / 2)} />}
               </div>

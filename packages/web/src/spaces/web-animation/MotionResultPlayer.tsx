@@ -5,14 +5,13 @@ import * as React from 'react';
 import type { TimelineWebAnimationClip } from '@breatic/shared';
 import { webAnimationDurationFrames } from '@breatic/shared/space-content';
 
-import { Button } from '@web/components/ui/button';
 import { Skeleton } from '@web/components/ui/skeleton';
-import { useTranslation } from '@web/i18n/use-translation';
 import { UNDRAWN_PLAYER, usePlayerDefined, useWebInstanceDrawn } from '@web/spaces/timeline/TimelineWebPreview';
 import { useTimelineLimits } from '@web/spaces/timeline/use-timeline-limits';
 import { useWebAnimationPreviewUrl } from '@web/spaces/timeline/use-web-animation-preview-url';
 import { createWebAnimationHost, type WebAnimationPlayerElement, type WebInstanceState } from '@web/spaces/timeline/web-animation-host';
 import { TIMELINE_DEFAULT_PLACEMENT } from '@web/data/yjs/timeline-edit';
+import { PreviewUnavailable } from '@web/spaces/web-animation/motion-parts';
 
 /** One succeeded execution's result, and the frame the Space's play bar is on. */
 interface MotionResultPlayerProps {
@@ -39,7 +38,6 @@ interface MotionResultPlayerProps {
  * @throws {never} Never.
  */
 export function MotionResultPlayer({ projectId, executionId, sourceVersionId, input, frame }: MotionResultPlayerProps): React.JSX.Element {
-  const t = useTranslation();
   const preview = useWebAnimationPreviewUrl(projectId, sourceVersionId);
   const player = usePlayerDefined(true);
   const { defined } = player;
@@ -81,12 +79,7 @@ export function MotionResultPlayer({ projectId, executionId, sourceVersionId, in
   }, [host, frame]);
   const playerStyle = React.useMemo(() => ({ pointerEvents: 'none' as const, ...(drawn ? {} : UNDRAWN_PLAYER) }), [drawn]);
   return <div className='absolute inset-0 overflow-hidden rounded-chrome bg-muted'>
-    {unavailable
-      ? <div className='absolute inset-0 flex items-center justify-center gap-2 bg-muted text-xs text-foreground'>
-        <span>{t('timeline.webAnimation.unavailable')}</span>
-        <Button variant='outline' size='compact' onClick={retry}>{t('timeline.retry')}</Button>
-      </div>
-      : !drawn && <Skeleton className='absolute inset-0 size-full rounded-none' />}
+    {unavailable ? <PreviewUnavailable onRetry={retry} /> : !drawn && <Skeleton className='absolute inset-0 size-full rounded-none' />}
     {preview.url !== null && <hyperframes-player ref={setElement} src={preview.url} sandbox-origin='' disable-click-to-play='' data-web-state={state ?? 'loading'}
       className='absolute inset-0 size-full bg-transparent' style={playerStyle} />}
   </div>;

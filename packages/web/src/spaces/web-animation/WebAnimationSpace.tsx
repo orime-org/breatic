@@ -41,7 +41,7 @@ import { CANVAS_PLACEMENT_IDLE, transitionCanvasPlacement, type CanvasPlacementE
 import { transitionCreationDraft, type CreationDraftInput, type CreationDraftState } from '@web/spaces/web-animation/creation-draft';
 import { DEFAULT_WEB_ANIMATION_ENGINE, cancelIntent, executionStepKeys, failureSentenceKey, phaseKey, stepMark } from '@web/spaces/web-animation/execution-text';
 import { MOTION_PANELS_CLOSED, transitionMotionPanels, type MotionPanelsEvent, type MotionTab } from '@web/spaces/web-animation/motion-panels';
-import { BarButton, playable, rowSeconds, rowTitle } from '@web/spaces/web-animation/motion-parts';
+import { BarButton, PreviewUnavailable, playable, rowSeconds, rowTitle } from '@web/spaces/web-animation/motion-parts';
 import { requestTitle } from '@web/spaces/web-animation/web-animation-title';
 import { MotionAnnotationsPanel, formatAnnotationTime } from '@web/spaces/web-animation/MotionAnnotationsPanel';
 import { MotionExecutionsPanel } from '@web/spaces/web-animation/MotionExecutionsPanel';
@@ -469,10 +469,17 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
     staleTime: Infinity,
   });
   const baseRow = listedBase ?? readBase.data;
+  const { refetch: refetchBase } = readBase;
+  const baseRead = React.useMemo(() => ({
+    failed: listedBase === undefined && readBase.isError, retrying: readBase.isFetching, retry: () => void refetchBase(),
+  }), [listedBase, readBase.isError, readBase.isFetching, refetchBase]);
   const exportRow = row !== undefined && row.kind !== 'web_animation_export' ? row.export ?? null : null;
   const viewVideo = React.useCallback((): void => { if (exportRow !== null) locateShown(exportRow.executionId); }, [exportRow, locateShown]);
   const viewSource = React.useCallback((): void => { if (row?.kind === 'web_animation_export') locateShown(row.source.executionId); }, [row, locateShown]);
-  const exportAsset = useTimelineAsset(projectId, row?.kind === 'web_animation_export' ? row.resultAssetId ?? '' : '').data;
+  const exportAssetRead = useTimelineAsset(projectId, row?.kind === 'web_animation_export' ? row.resultAssetId ?? '' : '');
+  const exportAsset = exportAssetRead.data;
+  const { refetch: refetchExportAsset } = exportAssetRead;
+  const retryExportAsset = React.useCallback((): void => { void refetchExportAsset(); }, [refetchExportAsset]);
   const download = React.useCallback((): void => { if (exportAsset !== undefined) downloadAsset(exportAsset.fileUrl); }, [exportAsset]);
 
   // Annotations (design §10).
@@ -589,7 +596,8 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
         // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- a point on the frame is marked with the mouse only
         : <div data-testid='motion-preview' data-execution-id={row.id} className={cn('relative', shownDraft?.status === 'picking' && 'cursor-crosshair')} style={frameStyle} onClick={clickFrame}>
           {finished && playable(row) && <MotionResultPlayer projectId={projectId} executionId={row.id} sourceVersionId={row.resultSourceVersionId} input={row.input} frame={frame} />}
-          {finished && row.kind === 'web_animation_export' && <ExportVideo url={exportAsset?.fileUrl ?? null} time={clock.time} playing={clock.playing} />}
+          {finished && row.kind === 'web_animation_export' && <ExportVideo key={row.id} url={exportAsset?.fileUrl ?? null} assetFailed={exportAssetRead.isError}
+            assetRetrying={exportAssetRead.isFetching} onAssetRetry={retryExportAsset} time={clock.time} playing={clock.playing} />}
           {!finished && <div className='flex size-full flex-col items-center justify-center gap-2 rounded-chrome border border-dashed border-border bg-card text-xs text-muted-foreground'>
             {failed
               ? <span className='text-status-error-foreground'>{row.status === 'failed' ? t(failureSentenceKey(row.failureReason)) : t(`timeline.webAnimation.status.${row.status}`)}</span>
@@ -670,7 +678,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
-    {draft.status !== 'closed' && draft.open && limits !== undefined && <WebAnimationDialog projectId={projectId} spaceId={spaceId} draft={draft} retry={retryDialog} limits={limits} baseRow={baseRow}
+    {draft.status !== 'closed' && draft.open && limits !== undefined && <WebAnimationDialog projectId={projectId} spaceId={spaceId} draft={draft} retry={retryDialog} limits={limits} baseRow={baseRow} baseRead={baseRead}
       onEdit={editDraft} onExecute={execute} onClose={closeDraft} />}
   </div>;
 }
@@ -687,28 +695,51 @@ function bodyPreview(thread: ThreadData): string {
 }
 
 /** An exported video, driven by the play bar. */
-interface ExportVideoProps { url: string | null; time: number; playing: boolean }
+interface ExportVideoProps {
+  url: string | null;
+  /** Whether reading the video's asset failed, whether that read is being retried, and the retry. */
+  assetFailed: boolean;
+  assetRetrying: boolean;
+  onAssetRetry: () => void;
+  time: number;
+  playing: boolean;
+}
 
 /**
- * An exported video in the preview, kept on the play bar's time; its own controls are not drawn.
+ * An exported video in the preview, kept on the play bar's time; its own controls are not drawn. A video whose asset
+ * could not be read, or that failed to load, shows unavailable with a retry (design §7.3).
  * @param props - The video and the clock.
  * @param props.url - The video's address, once resolved.
+ * @param props.assetFailed - Whether reading its asset failed.
+ * @param props.assetRetrying - Whether that read is being retried.
+ * @param props.onAssetRetry - Reads its asset again.
  * @param props.time - The play bar's time.
  * @param props.playing - Whether the play bar plays.
  * @returns The video.
  * @throws {never} Never.
  */
-function ExportVideo({ url, time, playing }: ExportVideoProps): React.JSX.Element {
+function ExportVideo({ url, assetFailed, assetRetrying, onAssetRetry, time, playing }: ExportVideoProps): React.JSX.Element {
   const video = React.useRef<HTMLVideoElement>(null);
+  const [broken, setBroken] = React.useState(false);
+  // A new element loads the video again.
+  const [attempt, setAttempt] = React.useState(0);
+  const markBroken = React.useCallback((): void => setBroken(true), []);
+  const retry = React.useCallback((): void => {
+    if (assetFailed) onAssetRetry();
+    setBroken(false);
+    setAttempt((current) => current + 1);
+  }, [assetFailed, onAssetRetry]);
   React.useEffect(() => {
     const element = video.current;
     if (element === null) return;
     if (playing) void element.play().catch(() => {});
     else element.pause();
-  }, [playing]);
+  }, [playing, attempt]);
   React.useEffect(() => {
     const element = video.current;
     if (element !== null && !playing && Math.abs(element.currentTime - time) > 0.05) element.currentTime = time;
-  }, [time, playing]);
-  return url === null ? <div className='size-full rounded-chrome bg-card' /> : <video ref={video} src={url} muted playsInline preload='auto' className='size-full rounded-chrome bg-black object-contain' />;
+  }, [time, playing, attempt]);
+  if (assetFailed || broken) return <div className='relative size-full overflow-hidden rounded-chrome'><PreviewUnavailable onRetry={retry} retrying={assetRetrying} /></div>;
+  return url === null ? <div className='size-full rounded-chrome bg-card' />
+    : <video key={attempt} ref={video} src={url} muted playsInline preload='auto' onError={markBroken} className='size-full rounded-chrome bg-black object-contain' />;
 }

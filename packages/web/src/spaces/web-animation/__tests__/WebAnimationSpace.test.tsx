@@ -9,7 +9,7 @@
  */
 
 import * as React from 'react';
-import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -28,7 +28,7 @@ vi.mock('@web/data/api/timeline', async (importOriginal) => {
   const actual = await importOriginal<typeof TimelineApiModule>();
   return {
     ...actual,
-    timelineApi: { ...actual.timelineApi, listSpaceExecutions: vi.fn(), getExecution: vi.fn(), previewUrl: vi.fn(), limits: vi.fn() },
+    timelineApi: { ...actual.timelineApi, listSpaceExecutions: vi.fn(), getExecution: vi.fn(), previewUrl: vi.fn(), limits: vi.fn(), resolveAsset: vi.fn() },
   };
 });
 vi.mock('@hyperframes/player', () => ({}));
@@ -331,5 +331,58 @@ describe('opening an annotation', () => {
     const panel = await screen.findByTestId('motion-panel-annotations');
     await user.click(within(panel).getByRole('button', { name: /Logo too small/ }));
     expect(bar).toHaveTextContent('0:00.0 / 0:04.0');
+  });
+});
+
+describe('a preview that cannot load', () => {
+  it('says the result a modification starts from is unavailable, and reads it again on Retry', async () => {
+    const base = '90000000-0000-4000-8000-0000000000b1';
+    const created = done(NEWER, 'Make the dot red', '2026-11-15T09:00:00.000000Z');
+    listing([{
+      ...created, kind: 'web_animation_modify', status: 'failed', failureReason: 'check', resultSourceVersionId: null, base: { executionId: base, request: 'Gold dot' },
+      input: { baseSourceVersionId: '80000000-0000-4000-8000-0000000000b1', instruction: 'Make the dot red', engine: 'deepseek', aspect: '16:9', durationSeconds: 4, fps: { num: 24, den: 1 } },
+    }]);
+    vi.mocked(timelineApi.getExecution).mockReset().mockRejectedValue(new Error('network'));
+    show();
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId('motion-retry'));
+    const card = await screen.findByTestId('web-animation-base');
+    expect(await within(card).findByText(t('timeline.webAnimation.unavailable'))).toBeInTheDocument();
+    const reads = vi.mocked(timelineApi.getExecution).mock.calls.length;
+    await user.click(within(card).getByRole('button', { name: t('timeline.retry') }));
+    await waitFor(() => expect(vi.mocked(timelineApi.getExecution).mock.calls.length).toBeGreaterThan(reads));
+  });
+
+  /**
+   * List a finished export whose video asset is this one, and open it.
+   * @returns The user.
+   */
+  async function onExport(): Promise<ReturnType<typeof userEvent.setup>> {
+    const source = done(OLDER, 'Older logo', '2026-11-15T08:00:00.000000Z');
+    listing([{ ...exported(source), resultAssetId: '50000000-0000-4000-8000-000000000001' }]);
+    show();
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', EXPORT));
+    return userEvent.setup();
+  }
+
+  it('says an export whose video cannot be read is unavailable, and reads it again on Retry', async () => {
+    vi.mocked(timelineApi.resolveAsset).mockReset().mockRejectedValue(new Error('network'));
+    const user = await onExport();
+    const preview = screen.getByTestId('motion-preview');
+    expect(await within(preview).findByText(t('timeline.webAnimation.unavailable'))).toBeInTheDocument();
+    const reads = vi.mocked(timelineApi.resolveAsset).mock.calls.length;
+    await user.click(within(preview).getByRole('button', { name: t('timeline.retry') }));
+    await waitFor(() => expect(vi.mocked(timelineApi.resolveAsset).mock.calls.length).toBeGreaterThan(reads));
+  });
+
+  it('says an export whose video fails to play is unavailable, and loads it again on Retry', async () => {
+    vi.mocked(timelineApi.resolveAsset).mockReset().mockResolvedValue({ fileUrl: 'https://cdn.example/v.mp4', coverUrl: null, mimeType: 'video/mp4', sizeBytes: 1, width: 1920, height: 1080, durationSeconds: 4 } as never);
+    const user = await onExport();
+    const preview = screen.getByTestId('motion-preview');
+    const video = await waitFor(() => { const found = preview.querySelector('video'); expect(found).not.toBeNull(); return found as HTMLVideoElement; });
+    fireEvent.error(video);
+    await user.click(await within(preview).findByRole('button', { name: t('timeline.retry') }));
+    expect(preview.querySelector('video')).not.toBeNull();
+    expect(within(preview).queryByText(t('timeline.webAnimation.unavailable'))).toBeNull();
   });
 });
