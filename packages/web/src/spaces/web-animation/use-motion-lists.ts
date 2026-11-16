@@ -26,8 +26,6 @@ export interface MotionLists {
   byId: ReadonlyMap<string, WebAnimationRowView>;
   /** How many rows each tab holds, across both groups. */
   totals: { done: number; inProgress: number };
-  /** Whether the first page of each list has been read. */
-  loaded: boolean;
 }
 
 /**
@@ -116,6 +114,5 @@ export function useMotionLists(projectId: string, spaceId: string, refreshMs: nu
   }), [own, legacy]);
   const done = React.useMemo(() => ({ own: ownDone, legacy: legacyDone }), [ownDone, legacyDone]);
   const running = React.useMemo(() => ({ own: ownRunning, legacy: legacyRunning }), [ownRunning, legacyRunning]);
-  const loaded = ownDone.isSuccess && legacyDone.isSuccess && ownRunning.isSuccess && legacyRunning.isSuccess;
-  return { done, running, byId, totals, loaded };
+  return { done, running, byId, totals };
 }

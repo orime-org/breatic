@@ -60,7 +60,6 @@ import { runOnce, useRunning } from '@web/stores/task-actions-in-flight';
 const PIN_WINDOW_SECONDS = 0.15;
 const CLOSED_DRAFT: CreationDraftState = { status: 'closed' };
 
-/** A row whose result can be played: a finished create or modification. */
 /**
  * The frame ratio a row is shown at.
  * @param row - The row.
@@ -634,7 +633,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
       <div className='relative mr-2 flex h-8 min-w-24 flex-1 items-center'>
         <Slider aria-label={t('timeline.seek')} value={seekValue} onValueChange={seekTo} min={0} max={Math.max(0.01, durationSeconds)} step={0.01} disabled={!finished} className='w-full' />
         {finished && playable(row) && docReady && resultThreads.map(({ thread, anchor }) => <Button key={thread.id} type='button' variant={null} size={null} data-testid={`motion-marker-${thread.id}`}
-          aria-label={bodyPreview(thread)} title={undefined} onClick={() => openMarker(thread.id)}
+          aria-label={bodyPreview(thread)} onClick={() => openMarker(thread.id)}
           className={cn('absolute top-0 h-2.5 w-1.5 -translate-x-1/2 rounded-sm', thread.resolved ? 'bg-muted-foreground' : 'bg-status-selected')}
           style={{ left: `${(anchor.timeSeconds / Math.max(0.01, durationSeconds)) * 100}%` }} />)}
       </div>
