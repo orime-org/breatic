@@ -54,6 +54,20 @@ export async function insertHold(hold: NewHold, tx?: DbTx): Promise<void> {
 }
 
 /**
+ * Write a hold, or put a released one under the same key back in force: an
+ * Agent message admitted again after its release (inner#1968, design 3.3).
+ * @param hold - The hold.
+ * @param tx - The admission's transaction, which holds the studio's debt lock.
+ */
+export async function upsertHold(hold: NewHold, tx: DbTx): Promise<void> {
+  const now = new Date();
+  await tx.insert(creditHolds).values(hold).onConflictDoUpdate({
+    target: creditHolds.referenceId,
+    set: { studioId: hold.studioId, actorUserId: hold.actorUserId, amount: hold.amount, expiresAt: hold.expiresAt, status: "held", releasedAt: null, updatedAt: now },
+  });
+}
+
+/**
  * Release a hold. A key with no hold, or one already released, is left alone.
  * @param referenceId - Its key.
  * @param tx - Optional transaction, so a charge releases in its own commit.
@@ -70,9 +84,10 @@ export async function releaseHold(referenceId: string, tx?: DbTx): Promise<void>
  * Keep a held hold alive until a later moment; an earlier one, or a released hold, is left alone.
  * @param referenceId - Its key.
  * @param until - The new expiry.
+ * @param tx - Optional transaction handle.
  */
-export async function extendHold(referenceId: string, until: Date): Promise<void> {
-  await db
+export async function extendHold(referenceId: string, until: Date, tx?: DbTx): Promise<void> {
+  await (tx ?? db)
     .update(creditHolds)
     .set({ expiresAt: until, updatedAt: new Date() })
     .where(and(eq(creditHolds.referenceId, referenceId), eq(creditHolds.status, "held"), lt(creditHolds.expiresAt, until)));

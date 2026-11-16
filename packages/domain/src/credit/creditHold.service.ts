@@ -47,7 +47,7 @@ export type ReserveOutcome = { ok: true } | ({ ok: false; studioId: string } & P
  * @param tx - The transaction that takes and keeps the lock.
  * @returns Its balance, counted holds and what is left.
  */
-async function lockedPosition(studioId: string, tx: DbTx): Promise<CreditPositionMicro> {
+export async function lockedPosition(studioId: string, tx: DbTx): Promise<CreditPositionMicro> {
   const debt = await creditLotRepo.lockDebt(studioId, tx);
   const lots = await creditLotRepo.sumSpendableForStudio(studioId, tx);
   const held = await creditHoldRepo.sumHeldForStudio(studioId, tx);
