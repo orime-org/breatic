@@ -328,7 +328,7 @@ export async function runAlphaPresentation(job: AlphaRunBody): Promise<AlphaRunR
         const planeWidth = Math.ceil(width / 2) * 2;
         const packedHeight = Math.ceil(height / 2) * 2;
         const packedWidth = planeWidth * 2;
-        // The packed picture is the one the source shows, the size it is filed at: codec cropping only, a PixelCrop exactly.
+        // The packed picture is the one the source shows, the size it is filed at: codec cropping only, at the SAR's natural size.
         const decoder = [...CODEC_CROPPING_ONLY, ...alphaDecoderArgs(String(video.codec_name), typeof alphaMode === 'string' ? alphaMode : null)];
         const picture = shownFilters(source);
         const output = join(directory, 'packed.mp4');
