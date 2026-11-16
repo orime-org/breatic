@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /** Width of the track name column left of every lane. */
 export const TIMELINE_TRACK_HEADER_PX = 112;

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * A stand-in for `react-moveable` (breatic#1410 design §4.3). jsdom lays nothing out, so the real handles cannot be

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 // Run inside the built page reader image (inner#1664), offline: a local origin
 // serves samples and the service in /app/server.mjs reads them with its own
 // browser. The samples: an article, a redirect to it, a two-page PDF, a missing

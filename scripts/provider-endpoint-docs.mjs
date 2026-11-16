@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * How `scripts/provider-prices.ts` reads each bound endpoint's document from fal and SandBase (inner#1743): an

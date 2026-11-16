@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What an LLM upstream adapter is (`Vendor`) and the small readers its kinds share. Each kind's adapter is a file

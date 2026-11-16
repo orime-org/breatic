@@ -1288,7 +1288,7 @@ async function deductOnce(userId: string, amount: number, refKey: string): Promi
 
 ```ts
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 ```
 
 `Elastic-2.0` = Elastic License 2.0(见仓库根 `LICENSE`);Breatic 名称与标识的使用规则见仓库根 `TRADEMARKS.md`。

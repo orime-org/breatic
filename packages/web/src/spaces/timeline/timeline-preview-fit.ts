@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /** The preview frame's display size and its display pixels per canvas pixel. */
 export interface TimelinePreviewFit { factor: number; width: number; height: number }

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { expect, type Page, type Request, type Response } from 'playwright/test';
 import type { AccountActivityKind, ProjectVisitLookup, ProjectVisitOpened, ProjectVisitReceipt, ProjectVisitRequest } from '@breatic/shared';

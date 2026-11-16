@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { Quaternion } from 'three';
 import { SCENE_POSE_HIPS_KEY, type ScenePose } from '@breatic/shared';

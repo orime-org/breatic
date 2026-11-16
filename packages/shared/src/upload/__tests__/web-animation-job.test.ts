@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The worker ↔ ingest contract for web-animation jobs (inner#1711 design §3.7): one shape on both sides, so the
