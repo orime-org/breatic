@@ -16,7 +16,10 @@ const DEFAULT_ROUTE: RunRoute = { mode: 'default' };
 export interface RunAnswer {
   /** What it would cost on the upstream its route would choose; undefined when no upstream here can price it. */
   estimate: CreditEstimate | undefined;
-  /** Why no upstream here that the route may use takes it (#1521); undefined while one does. */
+  /**
+   * Why no upstream here that the route may use takes it (#1521); undefined while one does, when none is configured
+   * (servability answers that), and until it resolves.
+   */
   refusal: InputRefusalShape | undefined;
 }
 
@@ -69,9 +72,10 @@ export function useRunAnswer(
           if (current) setAnswer(next);
         },
         () => {
-          // Rules that do not parse or a formula the evaluator cannot run leave
-          // the star with nothing and refuse nothing; the server asks again
-          // before it holds anything.
+          // Rules that do not parse leave the star with nothing and refuse
+          // nothing; the server asks again before it holds anything. A formula
+          // or condition the evaluator cannot run does not land here: provider
+          // counts that upstream as refusing the run.
           if (current) setAnswer(NO_ANSWER);
         },
       );
@@ -85,8 +89,6 @@ export function useRunAnswer(
 
 /** What a generation entry shows and says about one run as set up. */
 export interface RunCheck {
-  /** The estimate, for an entry that prints it its own way. */
-  estimate: CreditEstimate | undefined;
   /** What prints beside the star; undefined until the estimate resolves. */
   creditText: string | undefined;
   /** What a press says when no upstream here takes the run (#1521), in the user's language. */
@@ -101,7 +103,7 @@ export interface RunCheck {
  * @param input - The run as it will be sent.
  * @param creditMultiplier - Credits per US cent, off the catalog.
  * @param route - How the run chooses its upstream, the same value its request carries.
- * @returns The estimate, its text, the refusal sentence and a ref to the latest one.
+ * @returns The estimate's text, the refusal sentence and a ref to the latest one.
  */
 export function useRunCheck(
   model: ModelEntry | undefined,
@@ -117,5 +119,5 @@ export function useRunCheck(
   React.useEffect(() => {
     latestRefusal.current = refusalText;
   }, [refusalText]);
-  return { estimate, creditText: estimate ? creditEstimateText(estimate, t) : undefined, refusalText, latestRefusal };
+  return { creditText: estimate ? creditEstimateText(estimate, t) : undefined, refusalText, latestRefusal };
 }
