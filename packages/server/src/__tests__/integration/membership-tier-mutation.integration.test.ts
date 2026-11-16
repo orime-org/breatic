@@ -60,6 +60,7 @@ import {
   getUserMembershipTier,
   getMembershipForUser,
   getLimitsForStudio,
+  getMembershipConfig,
   getMembershipLimits,
   db,
   lockLimitsForUser,
@@ -290,6 +291,18 @@ describe("changeMembershipTier", () => {
 });
 
 describe("a downgrade, which takes nothing away", () => {
+  // base allows 9999 projects since inner#1968 (design 3.8); the ceiling is
+  // pinned to 10 here so the downgrade still leaves the studio over it.
+  let shippedProjects = 0;
+  beforeAll(() => {
+    const base = getMembershipConfig().tiers.base as { projects_per_studio: number };
+    shippedProjects = base.projects_per_studio;
+    base.projects_per_studio = 10;
+  });
+  afterAll(() => {
+    (getMembershipConfig().tiers.base as { projects_per_studio: number }).projects_per_studio = shippedProjects;
+  });
+
   it("leaves every studio, project and member that already exists in place", async () => {
     // The ratified rule, and the one acceptance item whose requirement is that
     // NOTHING happens. Left implicit it would be pinned by nothing at all: a
@@ -344,9 +357,8 @@ describe("a downgrade, which takes nothing away", () => {
     // now below what this studio already holds, which is exactly the state the
     // rule describes and the quota suites already pin the refusal for.
     const limits = await getLimitsForStudio(studioId);
-    // base allows 9999 projects since inner#1968 (design 3.8), so the members
-    // count is the ceiling this studio now holds more than.
     expect(limits).toEqual(getMembershipLimits("base"));
+    expect(Number(after!.projects)).toBeGreaterThan(limits.projects_per_studio);
     expect(Number(after!.members)).toBeGreaterThan(limits.studio_members);
   });
 });
