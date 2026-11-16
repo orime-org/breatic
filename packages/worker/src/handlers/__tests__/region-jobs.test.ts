@@ -175,6 +175,25 @@ describe("region jobs", () => {
     expect(h.settle).toHaveBeenCalledWith("c", "s-c", { slug: "c", eventsInFlight: false });
   });
 
+  // inner#1955: only a region that gave no answer is skipped; a failure
+  // writing the answer here says nothing about the region.
+  it("keeps asking a region whose answer could not be settled here", async () => {
+    h.callRegion.mockReset();
+    h.postpone.mockClear();
+    h.settle.mockReset();
+    h.listDue.mockResolvedValueOnce([
+      { slug: "d", studioId: "s-d", region: "us-west" },
+      { slug: "e", studioId: "s-e", region: "us-west" },
+    ]);
+    h.callRegion.mockResolvedValue({ slug: "x", eventsInFlight: false });
+    h.settle.mockRejectedValueOnce(new Error("deadlock detected")).mockResolvedValueOnce(undefined);
+
+    expect(await sweepSlugReservations()).toBe(1);
+    expect(h.callRegion.mock.calls.filter((call) => call[0] === "us-west")).toHaveLength(2);
+    expect(h.postpone).not.toHaveBeenCalled();
+    expect(h.logError).toHaveBeenCalledWith(expect.objectContaining({ studioId: "s-d" }), "slug_reservation_settle_failed");
+  });
+
   // inner#1955: a self-hosted upgrade swaps every container in one
   // `docker compose up`; the worker starts last, so it aligns the directory.
   it("leaves it alone in a deployment that runs it by hand after the rollout", async () => {

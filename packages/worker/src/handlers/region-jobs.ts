@@ -126,23 +126,30 @@ export async function sweepSlugReservations(): Promise<number> {
   const silent = new Set<string>();
   for (const due of await studioDirectoryRepo.listDueSlugReservations(getRegionsConfig().slug_reservation_sweep_batch)) {
     const region = due.region ?? env.GLOBAL_REGION;
+    let state: directoryWrites.SlugState;
     try {
       if (silent.has(region)) {
         await directoryWrites.postponeSlugReservation(due.slug, due.studioId);
         continue;
       }
-      const state = region === env.REGION
+      state = region === env.REGION
         ? await directoryWrites.slugState(due.studioId)
         : ((await askRegion(region, "studioSlugState", [due.studioId])) as directoryWrites.SlugState);
-      await directoryWrites.settleSlugReservation(due.slug, due.studioId, state);
-      settled += 1;
     } catch (err) {
-      // The reservation stays held; a later sweep asks again.
+      // The region gave no answer: its reservations stay held, a window later.
       logger.error({ err, studioId: due.studioId, region }, "slug_reservation_settle_failed");
       silent.add(region);
       await directoryWrites.postponeSlugReservation(due.slug, due.studioId).catch((postponeErr: unknown) => {
         logger.error({ err: postponeErr, studioId: due.studioId, region }, "slug_reservation_postpone_failed");
       });
+      continue;
+    }
+    try {
+      await directoryWrites.settleSlugReservation(due.slug, due.studioId, state);
+      settled += 1;
+    } catch (err) {
+      // Writing the answer failed here; the reservation stays due for the next sweep.
+      logger.error({ err, studioId: due.studioId, region }, "slug_reservation_settle_failed");
     }
   }
   return settled;
