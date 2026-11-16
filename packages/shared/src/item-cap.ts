@@ -82,7 +82,7 @@ export function itemCap(descriptor: CappedParam): number | undefined {
  * @param fields - The fields one entry declares.
  * @returns The complete entries, each holding only its declared fields, a
  *   text field cleaned as a prompt is: the script names a speaker by the
- *   cleaned name, and the vendor matches the two (inner#1825 design 8.5).
+ *   cleaned name, and the vendor matches the two (inner#1825).
  */
 export function completeEntries(
   value: unknown,
