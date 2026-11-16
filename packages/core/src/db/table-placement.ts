@@ -33,6 +33,11 @@ export const TABLE_PLACEMENT: Readonly<Record<string, TablePlacement>> = {
   subscriptions: "global",
   enterprise_memberships: "global",
   enterprise_membership_operations: "global",
+  // External agents' OAuth records, personal access tokens and connections
+  // (#1488): account-level credentials, held with the sessions
+  oauth_records: "global",
+  personal_access_tokens: "global",
+  agent_connections: "global",
   // Payments
   payments: "global",
   purchase_consents: "global",
