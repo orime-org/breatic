@@ -37,6 +37,7 @@ import {
   creditLotService,
   handOffLookups,
   provider,
+  runningSlotService,
   sumCreditsByOperationKeys,
   timelineOperationKey,
   toChargeCredits,
@@ -239,13 +240,20 @@ function costOfCall(row: TimelineExecution, call: ReportedCall): Cost {
  */
 async function take(row: TimelineExecution): Promise<TimelineExecution | null> {
   if (row.status === "queued") {
-    // Never claimed, so never submitted: past its deadline it ends without a job.
-    if (Date.parse(row.deadlineAt) <= Date.now()) {
+    // Never claimed, so never submitted: past its deadline it ends without a
+    // job. One that waited for a running slot has no deadline until it starts.
+    if (row.slotWaitSince == null && Date.parse(row.deadlineAt) <= Date.now()) {
       await move(row, { type: "deadline" });
       return null;
     }
-    const claimed = await move(row, { type: "claim" });
-    return claimed.applied ? claimed.row : take(claimed.row);
+    // The running-task gate claims it when its person runs fewer than their
+    // limit; otherwise it throws StillRunning and the job goes back to the
+    // queue (inner#1968).
+    const gate = await runningSlotService.startWithinLimit({ table: "timeline_executions", id: row.id, jobId: "" });
+    for (const err of gate.publishFailures) logger.error({ err, executionId: row.id }, "running_slot_publish_failed");
+    const after = await timelineExecutionRepo.findById(row.id);
+    if (after === undefined) return null;
+    return gate.outcome === "started" && after.status === "running" ? after : take(after);
   }
   if (row.status === "running") {
     // A new attempt changes nothing the user sees, so it does not signal the Space; a phase change does.

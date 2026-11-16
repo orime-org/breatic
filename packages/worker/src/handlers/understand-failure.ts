@@ -186,6 +186,7 @@ const SAYS_SOMETHING_ABOUT_THE_FILE: Readonly<
   understand_unsupported_type: true,
   understand_over_cap: true,
   aborted: false,
+  cancelled: false,
   over_cap: false,
   expired: false,
   no_result: false,

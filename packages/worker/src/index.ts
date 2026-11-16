@@ -162,6 +162,7 @@ import { runTimelineExecution } from "@worker/handlers/timeline/web-animation-ex
 import { sweepTimelineExecutions } from "@worker/handlers/timeline/timeline-sweep.js";
 import { reportTimelineJobFailed } from "@worker/handlers/timeline/timeline-failed-job.js";
 import { sweepCreditCharges } from "@worker/handlers/credit-charge-sweep.js";
+import { sweepSlotWaiters } from "@worker/handlers/slot-wait-sweep.js";
 import { OPERATION_DEFERRED_SWEEP_QUEUE, attachOperationAuditLog, sweepDeferredOperations } from "@worker/handlers/operation-deferred-sweep.js";
 
 /** Queue holding the recurring sweep of Timeline executions that have not ended (inner#1711). */
@@ -169,6 +170,9 @@ const TIMELINE_SWEEP_QUEUE = "timeline-sweep";
 
 /** Queue holding the recurring sweep of charge requests still pending (inner#1617). */
 const CREDIT_CHARGE_SWEEP_QUEUE = "credit-charge-sweep";
+
+/** Queue holding the recurring sweep of tasks waiting for a running slot whose job may be lost (inner#1968). */
+const SLOT_WAIT_SWEEP_QUEUE = "slot-wait-sweep";
 
 /** Every BullMQ queue this process runs a worker for. */
 const WORKER_QUEUES: readonly string[] = [
@@ -185,6 +189,7 @@ const WORKER_QUEUES: readonly string[] = [
   TIMELINE_SWEEP_QUEUE,
   CREDIT_CHARGE_SWEEP_QUEUE,
   OPERATION_DEFERRED_SWEEP_QUEUE,
+  SLOT_WAIT_SWEEP_QUEUE,
 ];
 
 /** Cap graceful shutdown so a stuck drain can't hold the process. */
@@ -285,6 +290,21 @@ export function startWorker(): void {
   });
 
   const worker = createWorker<TaskJobData>("tasks", runTask);
+
+  // Tasks waiting for a running slot whose job was lost end as failed (inner#1968).
+  const slotWaitTasksQueue = createQueue("tasks");
+  const slotWaitSweepQueue = createQueue(SLOT_WAIT_SWEEP_QUEUE);
+  const slotWaitSweep = createWorker<Record<string, never>>(SLOT_WAIT_SWEEP_QUEUE, () => sweepSlotWaiters(slotWaitTasksQueue));
+  slotWaitSweep.on("failed", (job, err) => {
+    logger.error({ err, jobId: job?.id }, "slot_wait_sweep_failed");
+  });
+  void slotWaitSweepQueue.upsertJobScheduler(
+    SLOT_WAIT_SWEEP_QUEUE,
+    { every: getWorkerConfig().slot_wait_sweep_interval_ms },
+    { name: SLOT_WAIT_SWEEP_QUEUE, data: {}, opts: defaultJobOpts() },
+  ).catch((err: unknown) => {
+    logger.error({ err }, "slot_wait_sweep_schedule_failed");
+  });
 
   // Timeline web-animation executions (inner#1711). A job waiting on its container goes back to the queue as
   // delayed; one that used up its retries is only logged, and the sweep adds it again under the original deadline.
@@ -594,6 +614,7 @@ export function startWorker(): void {
         () => timelineSweep.close(),
         () => creditChargeSweep.close(),
         () => operationSweep.close(),
+        () => slotWaitSweep.close(),
         () => timelineEvents.close(),
         () => urlIngest.close(),
         () => uploadFinish.close(),

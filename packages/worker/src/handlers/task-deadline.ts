@@ -6,21 +6,22 @@
  */
 
 import { budgetDeadlineFrom } from "@breatic/core";
-import { nodeTaskService } from "@breatic/domain";
+import { nodeTaskService, taskService } from "@breatic/domain";
 
 /**
  * The deadline of a task's work. A task bound to canvas nodes ends with the
  * earliest of their rows; a task bound to none gets the same budget, counted
- * from when it was created — the moment a node's row would have started
- * counting.
+ * from when it started running: time spent waiting for a free running slot
+ * does not count (inner#1968).
  * @param taskId - The task.
- * @param createdAt - When the task row was created, or undefined when there is no row.
+ * @param fallback - The start to count from when the row records none.
  * @returns The deadline in epoch milliseconds.
  * @throws {Error} When the task row is gone: there is nothing to run against.
  */
-export async function taskDeadline(taskId: string, createdAt: Date | undefined): Promise<number> {
+export async function taskDeadline(taskId: string, fallback: Date | undefined): Promise<number> {
   const fromNodes = await nodeTaskService.deadlineFor(taskId);
   if (fromNodes !== null) return fromNodes;
-  if (createdAt === undefined) throw new Error(`task ${taskId} has no row to run against`);
-  return budgetDeadlineFrom(createdAt.getTime());
+  const startedAt = (await taskService.getByIdInternal(taskId))?.startedAt ?? fallback;
+  if (startedAt === undefined || startedAt === null) throw new Error(`task ${taskId} has no row to run against`);
+  return budgetDeadlineFrom(startedAt.getTime());
 }

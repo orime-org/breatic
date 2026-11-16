@@ -37,6 +37,7 @@ import type { getStreamRedis } from "@breatic/core";
 import { logger, projectActivitiesRepo, publishActivityNew } from "@breatic/core";
 import {
   nodeHistoryService,
+  runningSlotService,
   sceneTaskService,
   taskService,
   settleTaskForNode,
@@ -142,8 +143,29 @@ export async function cleanupFailedJobNodes(
   // The run is over whatever it was, so what was held for it is free again
   // (inner#1611). Released before the canvas checks below, which only decide
   // what the nodes are told. A release that fails leaves the hold to expire.
-  await releaseRunHold(job.data.taskId, job.data.userId);
-  await releaseRunOperation(job.data.taskId, job.data.userId);
+  // A task that did not bill ends here for good, waiting or running, under
+  // its person's running-slot lock (inner#1968): the task fails, its holds
+  // and ledger row are released in one commit, and every row it still has
+  // open ends failed, so the slot it held is free at once.
+  if (task?.billedAt) {
+    await releaseRunHold(job.data.taskId, job.data.userId);
+    await releaseRunOperation(job.data.taskId, job.data.userId);
+  } else {
+    const failure = storedFailure(
+      job.data.taskType,
+      new Error(`Task failed: ${reason}`),
+      undefined,
+      isTranscription(job.data.params ?? {}) ? "transcribe" : undefined,
+    );
+    try {
+      const ended = await runningSlotService.failTask(job.data.taskId, failure);
+      for (const err of ended.publishFailures) logger.warn({ err, taskId: job.data.taskId }, "crash_net_counts_publish_failed");
+    } catch (err) {
+      logger.error({ err, taskId: job.data.taskId }, "crash_net_task_fail_failed");
+      await releaseRunHold(job.data.taskId, job.data.userId);
+      await releaseRunOperation(job.data.taskId, job.data.userId);
+    }
+  }
 
   const { projectId, spaceId, targetNodeIds, sceneRowId } = job.data;
   if (!projectId) return 0;
