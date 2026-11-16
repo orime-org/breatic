@@ -184,6 +184,7 @@ abstract class MiniToolContainer extends Container<MiniToolEnv> {
               key: output.storageKey,
               ...(output.coverKey !== undefined && { coverUrl: mediaObjectUrl(output.coverKey) }),
             })),
+            ...(request.outputConcurrency !== undefined && { outputConcurrency: request.outputConcurrency }),
             reportUrl: `http://${JOB_REPORT_HOST}/report`,
           }),
         }),

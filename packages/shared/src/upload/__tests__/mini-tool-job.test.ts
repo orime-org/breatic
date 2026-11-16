@@ -53,3 +53,13 @@ describe("mini-tool job request, extra inputs (inner#1825)", () => {
     expect(miniToolJobRequestSchema.safeParse({ ...JOB, extra: extras(MINI_TOOL_JOB_MAX_EXTRA_INPUTS + 1) }).success).toBe(false);
   });
 });
+
+describe("mini-tool job request, output concurrency (inner#1968)", () => {
+  it("carries how many outputs may be written back at once, between one and the output cap", () => {
+    expect(miniToolJobRequestSchema.safeParse({ ...JOB, outputConcurrency: 6 }).data?.outputConcurrency).toBe(6);
+    expect(miniToolJobRequestSchema.safeParse(JOB).data?.outputConcurrency).toBeUndefined();
+    expect(miniToolJobRequestSchema.safeParse({ ...JOB, outputConcurrency: 0 }).success).toBe(false);
+    expect(miniToolJobRequestSchema.safeParse({ ...JOB, outputConcurrency: 1.5 }).success).toBe(false);
+    expect(miniToolJobRequestSchema.safeParse({ ...JOB, outputConcurrency: 65 }).success).toBe(false);
+  });
+});

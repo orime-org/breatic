@@ -112,9 +112,10 @@ function bucket(): R2Bucket {
 /**
  * Submit a job to a fresh object.
  * @param extra - The further inputs the job names, if any.
+ * @param more - Further request fields.
  * @returns The recorded run and the read handler's params.
  */
-async function submitted(extra?: { storageKey: string }[]): Promise<{ body: Record<string, unknown>; params: unknown }> {
+async function submitted(extra?: { storageKey: string }[], more: Record<string, unknown> = {}): Promise<{ body: Record<string, unknown>; params: unknown }> {
   const storage = new Map<string, unknown>();
   const ctx = {
     id: { toString: (): string => "job-object-1" },
@@ -137,6 +138,7 @@ async function submitted(extra?: { storageKey: string }[]): Promise<{ body: Reco
     input: { storageKey: SOURCE },
     ...(extra !== undefined && { extra }),
     outputs: [{ storageKey: "video/2026-11-10/out.mp4", contentType: "video/mp4" }],
+    ...more,
   } as unknown as MiniToolJobRequest;
   await job.submit(request);
   const posted = stand.recorded.posted.at(-1);
@@ -198,5 +200,12 @@ describe("a job with one input", () => {
     expect(body.extra ?? []).toEqual([]);
     expect(await read(params, SOURCE)).toBe(200);
     expect(await read(params, CLIP_B)).toBe(403);
+  });
+});
+
+describe("output concurrency (inner#1968)", () => {
+  it("hands the container the job's output concurrency, and none when the job names none", async () => {
+    expect((await submitted(undefined, { outputConcurrency: 6 })).body.outputConcurrency).toBe(6);
+    expect((await submitted()).body).not.toHaveProperty("outputConcurrency");
   });
 });
