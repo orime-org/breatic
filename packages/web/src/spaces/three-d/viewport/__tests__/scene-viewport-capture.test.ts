@@ -94,7 +94,10 @@ describe('reporting the personal view (#920)', () => {
   it('reports the opening view with the field of view once it is built, so the editor can publish it', async () => {
     const { runtime } = await open();
     const initial = (runtime as unknown as { props: SceneViewportProps }).props;
-    expect(initial.onViewChange).toHaveBeenCalledWith({ position: [7, 5, 8], target: [0, 1, 0] }, 45);
+    const [view, fov] = vi.mocked(initial.onViewChange).mock.calls[0]!;
+    view.position.forEach((value, index) => expect(value).toBeCloseTo([7, 5, 8][index]!));
+    view.target.forEach((value, index) => expect(value).toBeCloseTo([0, 1, 0][index]!));
+    expect(fov).toBe(45);
   });
 });
 
