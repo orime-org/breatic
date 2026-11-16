@@ -7,9 +7,11 @@
  *
  * Plain async functions (the data layer stays React-free; the `useQuery` /
  * `useMutation` bindings live in the pages that consume these). Every endpoint
- * requires auth (the httpOnly session cookie rides along via `withCredentials`).
+ * requires auth (the httpOnly session cookie, or the identity token cookie for
+ * a Studio in another region, rides along via `withCredentials`).
  */
 
+import { getRegionConfig, rememberProjectRegion, rememberStudioRegion, studioRegionOf } from '@web/data/api/regions';
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from '@web/data/api/request';
 // One shape for "a container has an outstanding ownership offer" — a project and
 // a studio differ in what changes hands, not in what the offer looks like.
@@ -40,6 +42,10 @@ export type RecentFeedItem = Omit<RecentItem, 'lastOpenedAt'> & {
 export interface CreateStudioBody {
   name: string;
   slug: string;
+  /** The id the browser names the Studio by, kept across retries of the same form (inner#1955). */
+  studioId: string;
+  /** The region chosen; omitted when the build has one region. */
+  region?: string;
 }
 
 /** Response of `GET /api/v1/studios/slug-available`. */
@@ -73,18 +79,22 @@ export const studiosApi = {
    * personal-first.
    * @returns the user's studios as summaries.
    */
-  listUserStudios(): Promise<StudioSummary[]> {
-    return apiGet<StudioSummary[]>('/studios');
+  async listUserStudios(): Promise<StudioSummary[]> {
+    const studios = await apiGet<StudioSummary[]>('/studios');
+    // Requests acting on one of them go to its region from now on (inner#1955).
+    if (getRegionConfig() !== null) for (const studio of studios) rememberStudioRegion([studio.id, studio.slug], studio.region);
+    return studios;
   },
   /**
    * `GET /api/v1/studios/recent` — the cross-studio "Recent" landing feed: the
    * projects the current user has opened, newest-first by their OWN last-open
    * time, filtered server-side to the ones they can still access. Backs the
-   * `/studio` default landing.
+   * `/studio` default landing. Projects in other regions are merged in;
+   * `unavailableRegions` names the regions that did not answer (inner#1955).
    * @returns the viewer's accessible recent projects (empty when none opened).
    */
-  getRecent(): Promise<RecentFeedItem[]> {
-    return apiGet<RecentFeedItem[]>('/studios/recent');
+  getRecent(): Promise<{ items: RecentFeedItem[]; unavailableRegions: string[] }> {
+    return apiGet<{ items: RecentFeedItem[]; unavailableRegions: string[] }>('/studios/recent');
   },
   /**
    * `POST /api/v1/studios` — create a team studio (display name + globally
@@ -137,13 +147,17 @@ export const studiosApi = {
    * @param query.cursor the previous page's `nextCursor`; omit for the first page.
    * @returns the page.
    */
-  listProjects(
+  async listProjects(
     slug: string,
     query: { archived: boolean; sort: StudioProjectSort; cursor: string | undefined },
   ): Promise<StudioProjectPage> {
     const params = new URLSearchParams({ archived: String(query.archived), sort: query.sort });
     if (query.cursor !== undefined) params.set('cursor', query.cursor);
-    return apiGet<StudioProjectPage>(`/studio/${slug}/projects?${params.toString()}`);
+    const page = await apiGet<StudioProjectPage>(`/studio/${slug}/projects?${params.toString()}`);
+    // A Studio's Projects live in its region (inner#1955).
+    const region = studioRegionOf(slug);
+    if (region !== undefined) for (const project of page.items) rememberProjectRegion(project.id, region);
+    return page;
   },
   /**
    * `GET /api/v1/studio/:slug/members` — the Members tab view: active members

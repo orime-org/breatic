@@ -54,7 +54,8 @@
       "signup_code_exhausted": "这个验证码已失效，请重新获取。",
       "signup_expired": "本次注册已过期。",
       "signup_resend_cooldown": "请 {seconds, plural, other {# 秒}}后再获取验证码。",
-      "signup_code_send_failed": "验证码发送失败，请重试。"
+      "signup_code_send_failed": "验证码发送失败，请重试。",
+      "invitation_region_unavailable": "暂时无法打开这条邀请，请稍后再试。"
     },
     "studio": {
       "slug_taken": "该 Slug 已被使用，请换一个。",
@@ -70,6 +71,10 @@
       "leave_last_admin": "离开这个 Studio 前请先转让 Admin。",
       "transfer_credits_designated": "还有积分包指定给这个 Studio。请先在头像菜单 →「积分」→「指定」里取消指定，再发起转让。",
       "designation_during_transfer": "这个 Studio 有待接受的转让，撤回或转让结束后才能再给它指定积分包。",
+      "transfer_processing": "Studio 转让正在处理，请稍后再试。",
+      "region_unavailable": "所选区域暂时无法创建 Studio，请稍后再试，或改选其他区域。",
+      "creation_in_progress": "上一次创建还在处理，请稍后再试。",
+      "creation_abandoned": "这个 Studio 没有创建成功，请重试。",
       "email_not_registered_no_mail": "该邮箱未注册。这个部署没有开启邮件，无法邀请未注册的邮箱。",
       "invite_mail_failed": "邮件没发出去，请重试。"
     },
@@ -362,6 +367,9 @@
     },
     "document": {
       "versions_full": "{limit, plural, other {这个 Document 的快照已满 # 张。删掉旧的快照后再保存。}}"
+    },
+    "region": {
+      "unavailable": "这个 Studio 暂时无法访问，请稍后再试。"
     }
   },
   "chat": {
@@ -2080,7 +2088,8 @@
       "helper": "你的主页将位于 /studio/…。{min}–{max} 个字符，以小写字母开头，只能用小写字母、数字和连字符；必须唯一。",
       "submit": "继续",
       "submitting": "设置中...",
-      "failed": "无法设置你的 Studio,请重试。"
+      "failed": "无法设置你的 Studio,请重试。",
+      "unavailable": "暂时无法完成注册，请稍后再试。"
     },
     "recovery": {
       "title": "保存你的恢复码",
@@ -3242,7 +3251,11 @@
         "slugRequired": "请填写 Slug。",
         "emailRequired": "请填写邮箱。",
         "slugUnverified": "暂时无法检查，提交时由服务器判断。",
-        "slugLabelOptional": "Slug（选填）"
+        "slugLabelOptional": "Slug（选填）",
+        "regionLabel": "区域",
+        "regionUnavailable": "所选区域暂时无法创建 Studio，请稍后再试，或改选其他区域。",
+        "creationInProgress": "上一次创建还在处理，请稍后再试。",
+        "regionHelper": "内容存放在这个区域，创建后不能更改。"
       },
       "toolbar": {
         "sortLabel": "排序",
@@ -3967,6 +3980,18 @@
       "playBlocked": "浏览器阻止了有声播放，请按播放开始。",
       "videoLoading": "{track}：视频加载中…",
       "videoUnavailable": "{track}：视频不可用"
+    }
+  },
+  "regions": {
+    "usWest": "美国西部",
+    "sg": "新加坡",
+    "unavailable": {
+      "studioTitle": "这个 Studio 暂时无法访问",
+      "projectTitle": "这个 Project 暂时无法访问",
+      "body": "你的内容没有丢失。",
+      "recents": "部分 Studio 暂时无法访问，相关内容稍后会恢复显示。",
+      "bell": "部分 Studio 暂时无法访问，相关通知稍后会恢复显示。",
+      "badge": "暂时无法访问"
     }
   }
 }

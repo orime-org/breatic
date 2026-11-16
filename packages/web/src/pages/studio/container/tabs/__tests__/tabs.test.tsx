@@ -321,6 +321,7 @@ const TEAM: StudioDetail = {
   avatarUrl: null,
   bio: null,
   myStudioRole: 'admin',
+  region: null,
 };
 const PERSONAL: StudioDetail = {
   id: 's2',
@@ -331,6 +332,7 @@ const PERSONAL: StudioDetail = {
   avatarUrl: null,
   bio: null,
   myStudioRole: 'admin',
+  region: null,
 };
 
 describe('SettingsTab — the danger zone, wired up', () => {

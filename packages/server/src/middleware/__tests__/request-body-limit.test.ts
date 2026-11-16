@@ -35,13 +35,20 @@ vi.mock("@breatic/core", async (importOriginal) => ({
   logger: logged,
 }));
 
-import { MONOREPO_ROOT, decideClientIdentity, loadLocales, runWithLocale } from "@breatic/core";
+import { identityCookieName, MONOREPO_ROOT, decideClientIdentity, initCore, loadLocales, runWithLocale } from "@breatic/core";
 import { t } from "@breatic/shared";
 import { getRequestBodyMaxBytes } from "@server/config/limits.js";
 import { localeMiddleware } from "@server/middleware/i18n.js";
 import { LOOPBACK_PEER, peer, withPeer } from "@server/__tests__/helpers/peer.js";
 
 loadLocales();
+
+/** A single-region deployment: the user is read from the session. */
+const SINGLE_REGION = {
+  DATABASE_URL: "postgres://breatic:breatic@localhost:5432/breatic",
+  YJS_DATABASE_URL: "postgres://breatic:breatic@localhost:5432/breatic_yjs",
+};
+initCore(SINGLE_REGION);
 
 const route = vi.fn();
 const CHUNK = 65_536;
@@ -234,6 +241,45 @@ describe("T12: the session lookup behind the logged user id", () => {
       expect.objectContaining({ userId: null }),
     ]);
     expect(logsNamed("request_body_session_lookup_failed")).toEqual([]);
+  });
+});
+
+// inner#1955: a region outside the global one holds no sessions; it knows
+// the user from the identity token, as requireAuth does.
+describe("the user logged for a refused body outside the global region", () => {
+  it("is read from the identity token, with no session lookup", async () => {
+    const { generateKeyPairSync } = await import("node:crypto");
+    const { signIdentityToken } = await import("@breatic/core");
+    const keys = generateKeyPairSync("ed25519");
+    const publicKey = keys.publicKey.export({ type: "spki", format: "pem" }).toString();
+    const token = signIdentityToken(
+      { sub: "u-far", sid: "s".repeat(64), email: "far@example.test", tier: "base", locale: "en", personalStudio: null },
+      { kid: "k1", privateKey: keys.privateKey.export({ type: "pkcs8", format: "pem" }).toString() },
+      Math.floor(Date.now() / 1000),
+    );
+    initCore({
+      ...SINGLE_REGION,
+      REGION: "sg",
+      GLOBAL_REGION: "us-west",
+      GLOBAL_API_URL: "http://global.invalid",
+      IDENTITY_PUBLIC_KEYS: JSON.stringify({ k1: publicKey }),
+      INTERNAL_API_SECRET: "region-test-secret",
+    });
+    try {
+      const L = getRequestBodyMaxBytes();
+      const app = withPeer(await appUnderTest());
+      const res = await app.request("/x", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Content-Length": String(L + 1), Cookie: `${identityCookieName()}=${token}` },
+        body: " ".repeat(L + 1),
+      });
+
+      expect(res.status).toBe(413);
+      expect(logsNamed("request_body_too_large")).toEqual([expect.objectContaining({ userId: "u-far" })]);
+      expect(accounts.getUserByToken).not.toHaveBeenCalled();
+    } finally {
+      initCore(SINGLE_REGION);
+    }
   });
 });
 

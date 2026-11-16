@@ -42,6 +42,7 @@ import {
 } from "@breatic/core";
 import { getRateLimit } from "@server/config/rate-limits.js";
 import type { Hono } from "hono";
+import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 try {
   initCore(process.env);
@@ -106,6 +107,7 @@ async function seedEditor(): Promise<{
 
   const token = crypto.randomBytes(24).toString("hex");
   await setSession(getRedis(), token, userId);
+  await mirrorAllInDirectory(sql);
   return {
     userId,
     studioId,

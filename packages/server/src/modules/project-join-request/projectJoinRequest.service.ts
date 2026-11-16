@@ -34,25 +34,25 @@
  */
 
 import { accountActivityRepo } from "@breatic/core";
-import { db, projectMembersRepo, ConflictError, NotFoundError, getLimitsForStudio } from "@breatic/core";
+import { db, projectMembersRepo, projectsRepo, ConflictError, NotFoundError } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
-import { studioMembersRepo } from "@breatic/domain";
+import { globalApi, studioMembersRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
 import type { DecisionGrantRole, RequestFailedReason } from "@breatic/shared";
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import * as projectRepo from "@server/modules/project/project.repo.js";
-import * as studioRepo from "@server/modules/studio/studio.repo.js";
-import * as userRepo from "@server/modules/auth/user.repo.js";
+import { studioRepo } from "@breatic/domain";
 import * as requestsRepo from "@server/modules/project-join-request/projectJoinRequests.repo.js";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
 import { buildProjectJoinRequestMail } from "@server/utils/notification-mail.js";
 import { decisionLink } from "@server/utils/decision-link.js";
 import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
 import { getDecisionWindowMs } from "@server/config/limits.js";
-import { isUniqueViolation } from "@server/utils/pg-error.js";
+import { isUniqueViolation } from "@breatic/core";
 import { isRefused, refusalError } from "@server/utils/deferred-decision.js";
 import type { Refused } from "@server/utils/deferred-decision.js";
+import { profilesService } from "@breatic/domain";
 
 
 /** What the join dialog needs about a project the caller cannot enter. */
@@ -95,11 +95,10 @@ async function loadForStudioMember(
 /**
  * Resolve a user's display name (their personal studio's name).
  * @param userId - The user.
- * @param tx - Enclosing transaction, when the caller is inside one.
  * @returns The name, or an empty string when unresolved.
  */
-async function displayName(userId: string, tx?: DbTx): Promise<string> {
-  const profiles = await studioRepo.getPersonalProfilesByCreators([userId], tx);
+async function displayName(userId: string): Promise<string> {
+  const profiles = await profilesService.personalProfiles([userId]);
   return profiles.get(userId)?.name ?? "";
 }
 
@@ -205,8 +204,8 @@ export async function request(input: {
     const origin = input.origin;
     await sendBestEffortMail(
       async () => {
-        const owner = await userRepo.getUserById(ownerUserId);
-        if (!owner) return null;
+        const owner = (await profilesService.accountsOf([ownerUserId])).get(ownerUserId);
+        if (owner === undefined) return null;
         return buildProjectJoinRequestMail({
           locale: owner.locale,
           ownerEmail: owner.email,
@@ -313,6 +312,22 @@ async function fail(req: OpenRequest, reason: RequestFailedReason, tx: DbTx): Pr
 }
 
 /**
+ * The collaborator ceiling of the studio a request's project belongs to, read
+ * from the global region before the deciding transaction (inner#1955). The
+ * request's project and the project's studio never change.
+ * @param requestId - The request.
+ * @returns The ceiling, or null when the request or its project is gone.
+ * @throws {Error} When the global region does not answer.
+ */
+async function collaboratorCeiling(requestId: string): Promise<number | null> {
+  const keys = await requestsRepo.getDecisionKeys(requestId);
+  if (keys === null) return null;
+  const studioId = await projectsRepo.findOwnerStudioId(keys.projectId);
+  if (studioId === undefined) return null;
+  return (await globalApi().getLimitsForStudio(studioId)).project_members;
+}
+
+/**
  * The owner lets the requester in with the chosen role.
  * @param input - The request, the deciding owner and the role to grant.
  * @param input.requestId - The request.
@@ -329,11 +344,12 @@ export async function approve(input: {
   role: DecisionGrantRole;
 }): Promise<void> {
   const deciderName = await displayName(input.ownerUserId);
+  const limit = await collaboratorCeiling(input.requestId);
   const outcome = await db.transaction<Refused | { projectId: string; requesterUserId: string } | { full: number }>(
     async (tx) => {
       const opened = await openForDecision(tx, input.requestId, input.ownerUserId);
       if (isRefused(opened)) return opened;
-      const { project_members: limit } = await getLimitsForStudio(opened.studioId, tx);
+      if (limit === null) return { refusal: "not_found" };
       if ((await projectMembersRepo.countCollaborators(opened.projectId, tx)) >= limit) {
         return { full: limit };
       }
@@ -457,10 +473,7 @@ export async function readdressOnOwnerChange(
   const pending = await requestsRepo.listLivePendingForProject(projectId, tx);
   if (pending.length === 0) return;
   const project = await projectRepo.getProjectById(projectId, tx);
-  const profiles = await studioRepo.getPersonalProfilesByCreators(
-    pending.map((p) => p.requesterUserId),
-    tx,
-  );
+  const profiles = await profilesService.personalProfiles(pending.map((p) => p.requesterUserId));
   for (const req of pending) {
     if (req.notificationId !== null) await notificationRepo.retire(req.notificationId, tx);
     const entry = await notificationService.createProjectJoinRequest({

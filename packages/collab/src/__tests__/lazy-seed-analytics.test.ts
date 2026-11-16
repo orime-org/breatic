@@ -39,6 +39,7 @@ vi.mock("@breatic/core", async (importActual: () => Promise<Record<string, unkno
 import { currentConsent } from "@breatic/core";
 import { CONSENT_COOKIE_NAME, CONSENT_REVISION, deriveId, projectMetaDocName } from "@breatic/shared";
 import { lazySeedMeta } from "../services/lazy-seed.js";
+import { BOUND_IDENTITY_HEADER } from "../infra/upgrade-session-gate.js";
 
 const PID = "11111111-1111-4111-8111-111111111111";
 
@@ -92,6 +93,14 @@ describe("lazySeedMeta analytics", () => {
     });
     expect(getSessionMock).toHaveBeenCalledWith({}, "tok");
     expect(reportSpaceCreatedMock).toHaveBeenCalledWith(expect.objectContaining({ userId: "user-from-session" }));
+  });
+
+  it("reads the opener from the identity the upgrade gate bound when the load carried no user", async () => {
+    const headers = upgrade({ [CONSENT_COOKIE_NAME]: ACCEPTED });
+    headers.set(BOUND_IDENTITY_HEADER, JSON.stringify({ userId: "user-from-token", sid: "sid-1" }));
+    await lazySeedMeta(projectMetaDocName(PID), { requestHeaders: headers, context: {} });
+    expect(getSessionMock).not.toHaveBeenCalled();
+    expect(reportSpaceCreatedMock).toHaveBeenCalledWith(expect.objectContaining({ userId: "user-from-token" }));
   });
 
   it("reports nothing without analytics consent", async () => {

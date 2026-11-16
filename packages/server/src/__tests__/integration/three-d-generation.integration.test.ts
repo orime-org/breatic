@@ -41,6 +41,7 @@ vi.mock("@breatic/domain", async (importOriginal: () => Promise<Record<string, u
 import crypto from "node:crypto";
 import fc from "fast-check";
 import postgres from "postgres";
+import { mirrorInDirectory } from "./directory-fixtures.js";
 import { Queue } from "bullmq";
 import {
   initCore,
@@ -164,6 +165,7 @@ async function seedProject(credits = 100_000): Promise<Seeded> {
   `;
   const studioId = studios[0]!.id;
   await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${studioId}, ${owner.userId}, 'admin')`;
+  await mirrorInDirectory(sql, studioId);
   const projects = await sql<{ id: string }[]>`
     INSERT INTO projects (studio_id, created_by_user_id, name, slug)
     VALUES (${studioId}, ${owner.userId}, ${`tdg-p-${tag}`}, ${`tdg-p-${tag}`}) RETURNING id

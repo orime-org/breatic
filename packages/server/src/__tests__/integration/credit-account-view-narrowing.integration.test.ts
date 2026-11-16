@@ -38,6 +38,7 @@ vi.mock("ai", () => ({
 }));
 
 import postgres from "postgres";
+import { mirrorInDirectory } from "./directory-fixtures.js";
 import { initCore } from "@breatic/core";
 import { creditLotRepo } from "@breatic/domain";
 
@@ -97,6 +98,7 @@ async function seedStudio(adminUserId: string): Promise<string> {
     INSERT INTO studio_members (studio_id, user_id, role)
     VALUES (${id}, ${adminUserId}, 'admin')
   `;
+  await mirrorInDirectory(sql, id);
   return id;
 }
 
@@ -199,10 +201,13 @@ describe("the account's own activity, narrowed to what it administers", () => {
     const studio = await seedStudio(payer);
     await seedSpend(payer, studio, 5);
 
+    // The directory names who administers the studio (inner#1955).
+    const successor = await seedUser();
     await sql`
       UPDATE studio_members SET deleted_at = now()
       WHERE studio_id = ${studio} AND user_id = ${payer}
     `;
+    await sql`UPDATE studio_directory SET admin_user_id = ${successor} WHERE studio_id = ${studio}`;
 
     expect(await creditLotRepo.listLedgerByPayer(payer, 20, null)).toEqual([]);
   });

@@ -426,7 +426,7 @@ describe('RQ-22 entries that only touch task counts are not judged', () => {
       fail(new BytesNotDelivered(new Error('network down')));
       for (let i = 0; i < 10; i += 1) await Promise.resolve();
     });
-    await waitFor(() => expect(report).toHaveBeenCalledWith('task-2'));
+    await waitFor(() => expect(report).toHaveBeenCalledWith('task-2', undefined));
     expect(toast.warning).not.toHaveBeenCalled();
   });
 });

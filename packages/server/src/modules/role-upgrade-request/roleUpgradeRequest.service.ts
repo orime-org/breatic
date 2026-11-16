@@ -41,11 +41,8 @@ import { accountActivityRepo } from "@breatic/core";
 import { db } from "@breatic/core";
 import * as notificationRepo from "@server/modules/notification/notification.repo.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
-import * as studioService from "@server/modules/studio/studio.service.js";
 import * as projectRepo from "@server/modules/project/project.repo.js";
-import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import * as requestsRepo from "@server/modules/role-upgrade-request/roleUpgradeRequests.repo.js";
-import * as userRepo from "@server/modules/auth/user.repo.js";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
 import { buildRoleUpgradeRequestMail } from "@server/utils/notification-mail.js";
 import { decisionLink } from "@server/utils/decision-link.js";
@@ -53,7 +50,7 @@ import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
 import {
   getDecisionWindowMs,
 } from "@server/config/limits.js";
-import { isUniqueViolation } from "@server/utils/pg-error.js";
+import { isUniqueViolation } from "@breatic/core";
 import {
   isRefused,
   refusalError,
@@ -64,6 +61,7 @@ import { ConflictError, NotFoundError } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { t } from "@breatic/shared";
 import type { NotificationEntity, RequestFailedReason } from "@breatic/shared";
+import { profilesService } from "@breatic/domain";
 
 interface RoleUpgradeRequestInput {
   requesterUserId: string;
@@ -169,8 +167,8 @@ export async function request(
         async () => {
           // Resolve the recipient INSIDE the best-effort boundary: a DB read
           // blip must not fail this request, which already committed.
-          const owner = await userRepo.getUserById(filedRequest.ownerUserId);
-          if (!owner) return null;
+          const owner = (await profilesService.accountsOf([filedRequest.ownerUserId])).get(filedRequest.ownerUserId);
+          if (owner === undefined) return null;
           return buildRoleUpgradeRequestMail({
             locale: owner.locale,
             ownerEmail: owner.email,
@@ -414,10 +412,7 @@ export async function readdressOnOwnerChange(
   }
   if (others.length === 0) return;
   const project = await projectRepo.getProjectById(projectId, tx);
-  const profiles = await studioRepo.getPersonalProfilesByCreators(
-    others.map((r) => r.requesterUserId),
-    tx,
-  );
+  const profiles = await profilesService.personalProfiles(others.map((r) => r.requesterUserId));
   for (const req of others) {
     const entry = await notificationService.createRoleUpgradeRequest({
       ownerUserId: newOwnerUserId,
@@ -583,7 +578,7 @@ async function fail(req: OpenRequest, reason: RequestFailedReason, tx: DbTx): Pr
 async function resolveActorProfile(
   userId: string,
 ): Promise<{ name: string; handle: string }> {
-  const profiles = await studioService.getPersonalStudioProfilesByUserIds([
+  const profiles = await profilesService.personalProfiles([
     userId,
   ]);
   const p = profiles.get(userId);

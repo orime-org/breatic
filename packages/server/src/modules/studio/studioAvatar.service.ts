@@ -10,9 +10,9 @@
  * step: the studio row is pointed at that asset's URL.
  */
 
-import * as studioRepo from "@server/modules/studio/studio.repo.js";
+import { directoryWrites, studioRepo } from "@breatic/domain";
 import { pictureUrl } from "@server/modules/asset/picture.service.js";
-import { AppError } from "@breatic/core";
+import { AppError, db } from "@breatic/core";
 import { t } from "@breatic/shared";
 import type { Studio } from "@breatic/shared";
 
@@ -33,9 +33,7 @@ export async function setAvatar(slug: string, assetId: string): Promise<Studio> 
   const studio = await studioRepo.getBySlug(slug);
   if (!studio) throw new AppError(404, t("server.error.not_found"));
   const url = await pictureUrl(studio.id, assetId);
-  const updated = await studioRepo.updateStudio(studio.id, { avatarUrl: url });
-  if (!updated) throw new AppError(404, t("server.error.not_found"));
-  return updated;
+  return writeAvatar(studio.id, url);
 }
 
 /**
@@ -52,7 +50,22 @@ export async function setAvatar(slug: string, assetId: string): Promise<Studio> 
 export async function clearAvatar(slug: string): Promise<Studio> {
   const studio = await studioRepo.getBySlug(slug);
   if (!studio) throw new AppError(404, t("server.error.not_found"));
-  const updated = await studioRepo.updateStudio(studio.id, { avatarUrl: null });
-  if (!updated) throw new AppError(404, t("server.error.not_found"));
-  return updated;
+  return writeAvatar(studio.id, null);
+}
+
+/**
+ * Write the avatar here and in the directory, in one transaction (inner#1955).
+ * @param studioId - The studio.
+ * @param avatarUrl - The picture's URL, or null to clear it.
+ * @returns The updated studio
+ * @throws {AppError} 404 the studio is gone
+ */
+async function writeAvatar(studioId: string, avatarUrl: string | null): Promise<Studio> {
+  return db.transaction(async (tx) => {
+    await studioRepo.lockStudio(studioId, tx);
+    const updated = await studioRepo.updateStudio(studioId, { avatarUrl });
+    if (!updated) throw new AppError(404, t("server.error.not_found"));
+    await directoryWrites.profileChanged(studioId, { avatarUrl }, tx);
+    return updated;
+  });
 }

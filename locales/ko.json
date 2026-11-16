@@ -49,7 +49,8 @@
       "signup_code_exhausted": "이 코드는 더 이상 사용할 수 없습니다. 새 코드를 받으세요.",
       "signup_expired": "가입 요청이 만료되었습니다.",
       "signup_resend_cooldown": "{seconds, plural, other {#초}} 후에 다시 코드를 받으세요.",
-      "signup_code_send_failed": "인증 코드를 보내지 못했습니다. 다시 시도하세요."
+      "signup_code_send_failed": "인증 코드를 보내지 못했습니다. 다시 시도하세요.",
+      "invitation_region_unavailable": "지금은 이 초대를 열 수 없습니다. 잠시 후 다시 시도해 주세요."
     },
     "studio": {
       "slug_taken": "이미 사용 중인 Slug입니다. 다른 것을 선택하세요.",
@@ -65,6 +66,10 @@
       "leave_last_admin": "이 Studio를 나가기 전에 먼저 Admin을 이전하세요.",
       "transfer_credits_designated": "이 Studio에 아직 크레딧 팩이 지정되어 있습니다. 아바타 메뉴 →「크레딧」→「지정」에서 해제한 뒤 양도하세요.",
       "designation_during_transfer": "이 Studio에 대기 중인 양도가 있습니다. 양도를 취소하거나 양도가 끝난 뒤에 다시 팩을 지정할 수 있습니다.",
+      "transfer_processing": "Studio 양도를 처리하는 중입니다. 잠시 후 다시 시도해 주세요.",
+      "region_unavailable": "선택한 리전에서는 지금 Studio를 만들 수 없습니다. 잠시 후 다시 시도하거나 다른 리전을 선택해 주세요.",
+      "creation_in_progress": "이전 생성 요청을 아직 처리하는 중입니다. 잠시 후 다시 시도해 주세요.",
+      "creation_abandoned": "이 Studio를 만들지 못했습니다. 다시 시도해 주세요.",
       "email_not_registered_no_mail": "등록되지 않은 이메일입니다. 이 배포에서는 이메일이 비활성화되어 있어 미등록 주소를 초대할 수 없습니다.",
       "invite_mail_failed": "이메일을 보내지 못했습니다. 다시 시도해 주세요."
     },
@@ -362,6 +367,9 @@
     },
     "document": {
       "versions_full": "{limit, plural, other {이 Document의 스냅샷이 최대 #개로 가득 찼습니다. 오래된 스냅샷을 삭제한 뒤 저장하세요.}}"
+    },
+    "region": {
+      "unavailable": "지금은 이 Studio에 접근할 수 없습니다. 잠시 후 다시 시도해 주세요."
     }
   },
   "chat": {
@@ -2080,7 +2088,8 @@
       "helper": "홈은 /studio/…에 위치합니다. {min}–{max}자, 소문자로 시작하며 소문자, 숫자, 하이픈만 사용할 수 있고 고유해야 합니다.",
       "submit": "계속",
       "submitting": "설정 중...",
-      "failed": "Studio를 설정할 수 없습니다. 다시 시도해 주세요."
+      "failed": "Studio를 설정할 수 없습니다. 다시 시도해 주세요.",
+      "unavailable": "지금은 가입을 완료할 수 없습니다. 잠시 후 다시 시도해 주세요."
     },
     "recovery": {
       "title": "복구 코드를 저장하세요",
@@ -3242,7 +3251,11 @@
         "slugRequired": "Slug를 입력해 주세요.",
         "emailRequired": "이메일 주소를 입력해 주세요.",
         "slugUnverified": "지금은 확인할 수 없습니다. 제출할 때 서버가 판단합니다.",
-        "slugLabelOptional": "Slug(선택)"
+        "slugLabelOptional": "Slug(선택)",
+        "regionLabel": "리전",
+        "regionUnavailable": "선택한 리전에서는 지금 Studio를 만들 수 없습니다. 잠시 후 다시 시도하거나 다른 리전을 선택해 주세요.",
+        "creationInProgress": "이전 Studio가 아직 만들어지는 중입니다. 잠시 후 다시 시도해 주세요.",
+        "regionHelper": "콘텐츠는 이 리전에 저장되며, 만든 후에는 변경할 수 없습니다."
       },
       "toolbar": {
         "sortLabel": "정렬",
@@ -3967,6 +3980,18 @@
       "playBlocked": "브라우저가 소리가 있는 재생을 차단했습니다. 재생을 눌러 시작하세요.",
       "videoLoading": "{track}: 동영상 불러오는 중…",
       "videoUnavailable": "{track}: 동영상을 사용할 수 없음"
+    }
+  },
+  "regions": {
+    "usWest": "미국 서부",
+    "sg": "싱가포르",
+    "unavailable": {
+      "studioTitle": "지금은 이 Studio에 접근할 수 없습니다",
+      "projectTitle": "지금은 이 Project에 접근할 수 없습니다",
+      "body": "콘텐츠는 그대로 있습니다.",
+      "recents": "일부 Studio에 지금 접근할 수 없습니다. 관련 항목은 나중에 다시 표시됩니다.",
+      "bell": "일부 Studio에 지금 접근할 수 없습니다. 관련 알림은 나중에 다시 표시됩니다.",
+      "badge": "일시적으로 접근 불가"
     }
   }
 }

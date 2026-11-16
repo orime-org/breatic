@@ -49,6 +49,11 @@ const CHECK_TIMEOUT_MS = 2000;
 export interface HealthCheck {
   name: string;
   check: () => Promise<boolean>;
+  /**
+   * Reported in the answer but never makes the instance unhealthy: for a
+   * dependency whose loss replacing this instance cannot fix.
+   */
+  informational?: boolean;
 }
 
 export interface HealthServerOptions {
@@ -186,7 +191,7 @@ export function startHealthServer(opts: HealthServerOptions): {
         let allOk = true;
         for (let i = 0; i < checks.length; i++) {
           checksMap[checks[i]!.name] = results[i]!;
-          if (!results[i]!.ok) allOk = false;
+          if (!results[i]!.ok && checks[i]!.informational !== true) allOk = false;
         }
         res.statusCode = allOk ? 200 : 503;
         res.setHeader("content-type", "application/json");

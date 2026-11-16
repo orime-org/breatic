@@ -177,7 +177,7 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
 
     await runMediaUpload(file, { projectId: 'p1', derived: true }, deps);
 
-    expect(deps.waitForEnding).toHaveBeenCalledWith(TICKET.storageKey, undefined);
+    expect(deps.waitForEnding).toHaveBeenCalledWith(TICKET.storageKey, undefined, undefined);
     expect(deps.onSuccess).toHaveBeenCalledExactlyOnceWith({
       fileUrl: 'https://cdn/p.png',
       assetId: 'asset-new',
@@ -326,6 +326,23 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
   // that will judge it. The failure names that row, which is how the browser
   // tells this apart from one where nothing on the server ever knew (#186
   // §3.7.3) — and what it keys the retry file by.
+  // inner#1955: the page may move to another region while the bytes go up;
+  // the region that opened the upload is where its ending and its row are.
+  it('waits for the ending and reports a failure at the API base the ticket was asked of', async () => {
+    const SG = 'https://sg.example.test/api/v1';
+    const sgTicket = { ...TICKET_NO_NODE, apiBase: SG };
+    const waited = makeUploadDeps({ requestTicket: vi.fn().mockResolvedValue(sgTicket) });
+    await runMediaUpload(file, { projectId: 'p1', derived: true }, waited);
+    expect(waited.waitForEnding).toHaveBeenCalledWith(TICKET.storageKey, undefined, SG);
+
+    const failed = makeUploadDeps({
+      requestTicket: vi.fn().mockResolvedValue({ ...TICKET, apiBase: SG }),
+      sendToIngest: vi.fn().mockRejectedValue(new Error('part refused')),
+    });
+    await runMediaUpload(file, context, failed);
+    expect(failed.onFailure).toHaveBeenCalledExactlyOnceWith({ reason: 'upload', taskId: TICKET.taskId, apiBase: SG });
+  });
+
   it('names the task row when the bytes failed after the ticket was granted', async () => {
     const deps = makeUploadDeps({
       sendToIngest: vi.fn().mockRejectedValue(new Error('part refused')),

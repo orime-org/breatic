@@ -20,8 +20,7 @@ import { decideClientIdentity, logger } from "@breatic/core";
 import { formatBytes, t } from "@breatic/shared";
 import { getRequestBodyMaxBytes } from "@server/config/limits.js";
 import { closeAfterRefusal } from "@server/middleware/close-after-refusal.js";
-import { readSessionCookie } from "@server/middleware/session-cookie.js";
-import { authService } from "@server/modules";
+import { requestUserId } from "@server/middleware/auth.js";
 
 /**
  * The size the request declared, for the log.
@@ -34,16 +33,14 @@ function declaredLength(c: Context): number | null {
 }
 
 /**
- * Who sent the refused body, when the request carries a live session.
+ * Who sent the refused body, when the request carries a valid identity.
  * Looked up the way `requireAuth` does, once, only for a refusal.
  * @param c - The request context.
- * @returns The user id, or null with no session, a dead one, or a failed lookup.
+ * @returns The user id, or null with no identity, a dead one, or a failed lookup.
  */
 async function sessionUserId(c: Context): Promise<string | null> {
-  const token = readSessionCookie(c);
-  if (!token) return null;
   try {
-    return (await authService.getUserByToken(token))?.id ?? null;
+    return await requestUserId(c);
   } catch (err) {
     logger.error({ err, path: c.req.path }, "request_body_session_lookup_failed");
     return null;

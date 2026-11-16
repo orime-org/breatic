@@ -20,6 +20,7 @@ const { envRef } = vi.hoisted(() => ({ envRef: { PAYMENT_ENABLED: true } }));
 vi.mock("@breatic/core", () => ({
   env: envRef,
   getMembershipForUser: vi.fn(),
+  studioDirectoryRepo: { countTeamQuota: vi.fn(), sumUsageElsewhere: vi.fn() },
   getSubscriptionPlan: (tier: string, period: string) => ({
     priceCents:
       (tier === "pro" ? 1999 : 7999) * (period === "year" ? 10 : 1),
@@ -38,16 +39,12 @@ vi.mock("@server/modules/asset/assetUsage.service.js", () => ({
   accountStorageUsage: vi.fn(),
 }));
 
-vi.mock("@server/modules/studio/studio.repo.js", () => ({
-  countTeamStudiosAdministeredBy: vi.fn(),
-}));
-
 import {
   getMembershipForUser,
+  studioDirectoryRepo,
 } from "@breatic/core";
 import { readStoredSubscriptionSummary } from "@server/modules/subscription/subscription-panel.js";
 import * as assetUsageService from "@server/modules/asset/assetUsage.service.js";
-import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import { readAccountMembership } from "@server/modules/account/membership.service.js";
 
 const LIMITS = {
@@ -73,7 +70,8 @@ beforeEach(() => {
     cancelAtPeriodEnd: false,
     payableInvoiceUrl: null,
   });
-  vi.mocked(studioRepo.countTeamStudiosAdministeredBy).mockResolvedValue(1);
+  vi.mocked(studioDirectoryRepo.countTeamQuota).mockResolvedValue(1);
+  vi.mocked(studioDirectoryRepo.sumUsageElsewhere).mockResolvedValue(0);
   vi.mocked(assetUsageService.accountStorageUsage).mockResolvedValue(0);
 });
 

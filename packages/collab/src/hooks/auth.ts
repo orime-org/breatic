@@ -52,10 +52,12 @@ import {
   createLogger,
   env,
   getSession,
+  isIdentityRevoked,
   projectAuthService,
   sessionCookieName,
   sessionId,
 } from "@breatic/core";
+import type { BoundIdentity } from "@collab/infra/upgrade-session-gate.js";
 import type { OwnSeat } from "@collab/services/connection-registry.js";
 import { parseDocName, READ_ONLY_COLLAB_TOKEN } from "@breatic/shared";
 import type { ProjectRole } from "@breatic/shared";
@@ -103,9 +105,11 @@ export interface AuthContext {
   /**
    * The session this connection was opened with: the token, to read it again,
    * and its id (core `sessionId`), to match announcements of ended sessions
-   * (inner#1548). Held in this process's memory only.
+   * (inner#1548). Held in this process's memory only. The token is null in a
+   * region that does not hold the sessions (inner#1955): there the connection
+   * carries only the id the upgrade's identity token named.
    */
-  session: { token: string; id: string };
+  session: { token: string | null; id: string };
 }
 
 /**
@@ -169,6 +173,13 @@ export interface CreateAuthHookOptions {
    * read-only.
    */
   hasOwnSeat: (documentName: string, userId: string) => Promise<OwnSeat>;
+  /**
+   * Set in a region that does not hold the sessions (inner#1955): the
+   * identity the upgrade gate verified and bound to this connection. Every
+   * document on the connection authenticates as it, checked only against
+   * this region's revocation tombstones; no session cookie is read.
+   */
+  boundIdentity?: (payload: { requestHeaders: Headers }) => BoundIdentity | undefined;
 }
 
 /**
@@ -185,6 +196,7 @@ export interface CreateAuthHookOptions {
  * @param root0.resolveConnectionLimit - Reads the writable-connection ceiling for a project from its studio's membership tier; a zero is a real zero, and a throw degrades this connection to read-only rather than refusing it. The meta doc never asks.
  * @param root0.countConnections - Counts a document's live connections cluster-wide (this connection not included) to evaluate the cap.
  * @param root0.hasOwnSeat - Asks whether the arriving person already holds a seat when the document is full, so nobody is kept out by themselves.
+ * @param root0.boundIdentity - In a region that does not hold the sessions, the identity bound to the connection at upgrade.
  * @returns The Hocuspocus `onAuthenticate` handler that resolves the authenticated user, mutates `connectionConfig.readOnly` — always for the meta doc, and for view-only members, connections presenting `READ_ONLY_COLLAB_TOKEN`, at-capacity documents or an unresolvable ceiling — and returns the user context, or throws to reject the connection.
  */
 export function createAuthHook({
@@ -192,6 +204,7 @@ export function createAuthHook({
   resolveConnectionLimit,
   countConnections,
   hasOwnSeat,
+  boundIdentity,
 }: CreateAuthHookOptions) {
   return async ({
     token: presentedToken,
@@ -236,39 +249,7 @@ export function createAuthHook({
         logger.warn({ documentName, reason: "origin_not_allowed" }, "auth_rejected");
         throw new Error("Origin not allowed");
       }
-      // Session token travels exclusively as the httpOnly session
-      // cookie (`sessionCookieName()`) sent on the WebSocket upgrade
-      // request (2026-05-26 cookie migration). Hocuspocus's own
-      // `token` field - sent by the client in the application-level
-      // auth frame - never identifies anyone; the client sends a
-      // placeholder like `"__cookie_auth__"` purely to trip Hocuspocus
-      // into invoking this hook (an empty token short-circuits
-      // `onAuthenticate` in v3, see ueberdosis/hocuspocus#596). The one
-      // value it acts on is `READ_ONLY_COLLAB_TOKEN`, which can only lower
-      // this connection's own rights (see `readsOnly` below).
-      const token = readCookie(
-        requestHeaders.get("cookie") ?? undefined,
-        sessionCookieName(),
-      );
-      if (!token) {
-        logger.warn(
-          { documentName, reason: "missing_cookie" },
-          "auth_rejected",
-        );
-        throw new Error("Missing session cookie");
-      }
-
-      // Resolve the session through core's shared session store - the
-      // same `{env}:session:{token}` key the API server writes, so the
-      // collab + server views can never drift on key prefix.
-      const userId = await getSession(redis, token);
-      if (!userId) {
-        logger.warn(
-          { documentName, reason: "session_not_found" },
-          "auth_rejected",
-        );
-        throw new Error("Invalid or expired session token");
-      }
+      const { userId, session } = await resolveSession(redis, documentName, requestHeaders, boundIdentity);
 
       const parsed = parseDocName(documentName);
       if (!parsed) {
@@ -498,7 +479,7 @@ export function createAuthHook({
         user: { id: userId, role },
         seatCap,
         arrivedAtMs,
-        session: { token, id: sessionId(token) },
+        session,
       };
     } catch (err) {
       // The walks above log + throw on auth-policy rejections
@@ -527,4 +508,58 @@ export function createAuthHook({
       throw err;
     }
   };
+}
+
+/**
+ * Who this connection is: the session cookie in the global region, the
+ * identity bound at upgrade everywhere else.
+ * @param redis - The session Redis.
+ * @param documentName - The document being authenticated, for the log.
+ * @param requestHeaders - The upgrade request's headers.
+ * @param boundIdentity - The bound identity reader, outside the global region.
+ * @returns The user and the session the connection holds.
+ * @throws {Error} When there is no credential, or it no longer stands.
+ */
+async function resolveSession(
+  redis: Redis,
+  documentName: string,
+  requestHeaders: Headers,
+  boundIdentity: CreateAuthHookOptions["boundIdentity"],
+): Promise<{ userId: string; session: AuthContext["session"] }> {
+  if (boundIdentity !== undefined) {
+    const bound = boundIdentity({ requestHeaders });
+    if (bound === undefined) {
+      logger.warn({ documentName, reason: "missing_identity" }, "auth_rejected");
+      throw new Error("Missing session cookie");
+    }
+    if (await isIdentityRevoked(redis, bound.sid)) {
+      logger.warn({ documentName, reason: "identity_revoked" }, "auth_rejected");
+      throw new Error("Invalid or expired session token");
+    }
+    return { userId: bound.userId, session: { token: null, id: bound.sid } };
+  }
+  // Session token travels exclusively as the httpOnly session
+  // cookie (`sessionCookieName()`) sent on the WebSocket upgrade
+  // request (2026-05-26 cookie migration). Hocuspocus's own
+  // `token` field - sent by the client in the application-level
+  // auth frame - never identifies anyone; the client sends a
+  // placeholder like `"__cookie_auth__"` purely to trip Hocuspocus
+  // into invoking this hook (an empty token short-circuits
+  // `onAuthenticate` in v3, see ueberdosis/hocuspocus#596). The one
+  // value it acts on is `READ_ONLY_COLLAB_TOKEN`, which can only lower
+  // this connection's own rights (see `readsOnly` in the hook).
+  const token = readCookie(requestHeaders.get("cookie") ?? undefined, sessionCookieName());
+  if (!token) {
+    logger.warn({ documentName, reason: "missing_cookie" }, "auth_rejected");
+    throw new Error("Missing session cookie");
+  }
+  // Resolve the session through core's shared session store - the
+  // same `{env}:session:{token}` key the API server writes, so the
+  // collab + server views can never drift on key prefix.
+  const userId = await getSession(redis, token);
+  if (!userId) {
+    logger.warn({ documentName, reason: "session_not_found" }, "auth_rejected");
+    throw new Error("Invalid or expired session token");
+  }
+  return { userId, session: { token, id: sessionId(token) } };
 }

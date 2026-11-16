@@ -21,7 +21,10 @@ const { service, warn } = vi.hoisted(() => ({
   warn: vi.fn(),
 }));
 
-vi.mock("@server/modules/studio/studioCreditDesignation.service.js", () => service);
+vi.mock("@breatic/domain", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  creditLotService: service,
+}));
 vi.mock("@server/modules/credit/credit-view.service.js", () => ({ getLot: vi.fn(async () => ({
   id: "11111111-1111-4111-8111-111111111111", sourceKind: "payment", purchasedCredits: "100.000000", remainingCredits: "100.000000",
   designatedStudioId: "22222222-2222-4222-8222-222222222222", designatedStudioName: "Selected Studio", designated: true,

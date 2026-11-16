@@ -46,7 +46,8 @@ const h = vi.hoisted(() => ({
 
 vi.mock("@breatic/core", async (importOriginal) => ({
   ...(await importOriginal<typeof CoreModule>()),
-  env: { PAYMENT_ENABLED: true, ENV: "test" },
+  env: { PAYMENT_ENABLED: true, ENV: "test", REGION: "us-west", GLOBAL_REGION: "us-west" },
+  projectsRepo: { findOwnerStudioId: async () => "studio-1" },
   db: {
     transaction: async (run: (tx: unknown) => Promise<unknown>): Promise<unknown> => {
       const result = await run({});
@@ -58,6 +59,11 @@ vi.mock("@breatic/core", async (importOriginal) => ({
     h.order.push("publish");
     return h.publish(projectId);
   },
+}));
+
+vi.mock("@domain/credit/creditChargeSettlement.repo.js", () => ({
+  claim: async () => ({ claimed: true }),
+  recordOutcome: async () => undefined,
 }));
 
 vi.mock("@domain/asset/asset.service.js", () => ({

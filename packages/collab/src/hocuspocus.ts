@@ -28,13 +28,14 @@ import {
   getRedis,
   getSession,
   getCollabRedis,
-  getProjectConcurrentEditorLimit,
+  isIdentityRevoked,
   projectAuthService,
   sendMail,
   MONOREPO_ROOT,
 } from "@breatic/core";
 import { createConnectionGate, recordingFailedAuth } from "@collab/infra/connection-gate.js";
-import { createUpgradeSessionGate } from "@collab/infra/upgrade-session-gate.js";
+import { createUpgradeSessionGate, readBoundIdentity } from "@collab/infra/upgrade-session-gate.js";
+import { concurrentEditorLimit } from "@collab/infra/region.js";
 import { createFrameAssembler, type FrameMessage, type FramePeer } from "@collab/infra/frame-assembler.js";
 import { filter as filterInbound, forgetSocket as forgetInboundSocket } from "@collab/infra/inbound-filter.js";
 import { createSharedThrottle } from "@collab/infra/shared-throttle.js";
@@ -133,6 +134,13 @@ export interface CollabServerInfra {
    * before. The unload gate stops retrying in time to rescue before it.
    */
   shutdownDeadline: () => number | undefined;
+  /**
+   * Set in a region that does not hold the sessions (inner#1955): the public
+   * keys identity tokens are verified with. Upgrades are then admitted on the
+   * identity token, and every document on a connection authenticates as what
+   * it named.
+   */
+  identityPublicKeys?: Readonly<Record<string, string>>;
 }
 
 /**
@@ -269,9 +277,16 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     : null;
   if (connectionGate) extensions.push(connectionGate);
 
+  // Outside the global region the upgrade is admitted on the identity token
+  // and every document on the connection authenticates as what it named
+  // (inner#1955).
+  const regionalKeys = infra.identityPublicKeys;
   const sessionGate = createUpgradeSessionGate({
     redis: authRedis,
     recordFailedUpgrade: connectionGate?.recordFailedUpgrade,
+    ...(regionalKeys
+      ? { identity: { publicKeys: regionalKeys, nowSeconds: () => Math.floor(Date.now() / 1000) } }
+      : {}),
   });
   extensions.push(sessionGate);
 
@@ -280,16 +295,16 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
   const authenticate = createAuthHook({
     redis: authRedis,
     // The ceiling belongs to the studio that owns this project, read from
-    // its current admin's membership tier (#88). It is looked up per
-    // handshake and deliberately not cached: a stale ceiling would outlive
-    // a tier change or a studio transfer with nothing to invalidate it.
+    // its current admin's membership tier (#88). In the global region it is
+    // looked up per handshake; elsewhere it comes from the global region and
+    // is cached for `limits_cache_ttl_ms` (inner#1955).
     //
     // A handshake is per DOCUMENT, not per socket — one socket carries the
     // meta doc plus every open Space, and `onAuthenticate` fires for each
     // (@hocuspocus/server 4.6.0 keys its hook payloads by document). Meta
     // and viewers skip the ceiling entirely (`auth.ts`), so the real cost
     // is one lookup per Space document opened.
-    resolveConnectionLimit: getProjectConcurrentEditorLimit,
+    resolveConnectionLimit: concurrentEditorLimit,
     // Cluster-wide count via the cross-instance registry (#1421), NOT
     // the local `getConnectionsCount()` (which only sees this process).
     // The count excludes this connection: registration happens later, in
@@ -303,6 +318,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     // by themselves. Replacing that seat is the `connected` hook's job.
     hasOwnSeat: (documentName: string, userId: string): Promise<OwnSeat> =>
       connectionRegistry.hasOwnSeat(documentName, userId),
+    ...(regionalKeys ? { boundIdentity: ({ requestHeaders }: { requestHeaders: Headers }) => readBoundIdentity(requestHeaders) } : {}),
   });
 
   // Assembled after the server exists, because the gate's final store
@@ -659,7 +675,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
       // The same for the session: one ended after the handshake read it was
       // announced before this connection could be found (inner#1548).
       try {
-        await closeIfSessionEnded(connection, (token) => getSession(authRedis, token));
+        await closeIfSessionEnded(connection, (token) => getSession(authRedis, token), (sid) => isIdentityRevoked(authRedis, sid));
       } catch (err) {
         logger.error({ err, documentName, userId: auth.user.id }, "session_recheck_failed");
       }

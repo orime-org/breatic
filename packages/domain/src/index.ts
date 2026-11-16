@@ -24,6 +24,19 @@ export * as creditSourceRepo from "@domain/credit/creditSource.repo.js";
 export * as creditLotService from "@domain/credit/creditLot.service.js";
 export * as creditLotRepo from "@domain/credit/creditLot.repo.js";
 export * as creditHoldService from "@domain/credit/creditHold.service.js";
+export * as studioDirectoryService from "@domain/region/studioDirectory.service.js";
+export * as studioCreationService from "@domain/region/studioCreation.service.js";
+export * as studioRegionService from "@domain/region/studioRegion.service.js";
+export * as regionOutboxService from "@domain/region/regionOutbox.service.js";
+export * as regionOutboxApplyService from "@domain/region/regionOutboxApply.service.js";
+export { REGION_FUNCTIONS, isKnownRegion, regionClient } from "@domain/region/region-api.js";
+export { lookupKeysHere, type KeyLookupAnswer } from "@domain/asset/asset-key-lookup.js";
+export * as directoryWrites from "@domain/region/directory-writes.js";
+export { globalApi, GLOBAL_FUNCTIONS, type Account, type GlobalApi } from "@domain/region/global-api.js";
+export * as profilesService from "@domain/region/profiles.service.js";
+export * as storageUsageService from "@domain/region/storageUsage.service.js";
+export type { StorageBudget } from "@domain/region/storageUsage.service.js";
+export type { Profile } from "@domain/region/studioDirectory.service.js";
 export { sumCreditsByOperationKeys } from "@domain/credit/agentUsage.repo.js";
 export * as webAnimationSourceRepo from "@domain/timeline/web-animation-source.repo.js";
 export { timelineOperationKey } from "@domain/timeline/operation-key.js";
@@ -55,6 +68,9 @@ export type { LotContext, PayerLedgerRow } from "@domain/credit/creditLot.repo.j
 // ── Studio auth (loadStudioRole + studio_members repo; server+worker) ──
 export * as studioAuthService from "@domain/auth/studioAuth.service.js";
 export * as studioMembersRepo from "@domain/auth/studioMembers.repo.js";
+export * as studioRepo from "@domain/studio/studio.repo.js";
+export * as usersRepo from "@domain/auth/user.repo.js";
+export * as studioTransfersRepo from "@domain/studio/studioTransfers.repo.js";
 
 // ── Task (+ markCompletedAndBill: completion and charge request in one commit) ─
 export * as taskService from "@domain/task/task.service.js";

@@ -39,6 +39,7 @@ const TEAM: StudioDetail = {
   avatarUrl: null,
   bio: null,
   myStudioRole: 'admin',
+  region: null,
 };
 
 /**

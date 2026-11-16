@@ -13,7 +13,7 @@ import type {
 } from '@breatic/shared';
 import type { UIMessage } from 'ai';
 
-import { API_BASE_PATH } from '@web/data/api/base-path';
+import { apiBaseForProject, getRegionConfig } from '@web/data/api/regions';
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut, runOnceRequest } from '@web/data/api/request';
 
 /**
@@ -312,10 +312,14 @@ export const chatApi = {
    * No time limit: the opening may take as long as its checks do.
    * @param body - What is sent, or the reference a body over the size limit was stored under.
    * @param key - The press's `Idempotency-Key`; a re-send carries the same key and the same body.
+   * @param projectId - The Project, whose region the message goes to even as a stored body that names none (inner#1955)
    * @returns The status and the messages still waiting
    */
-  sendMessage(body: object, key: string): Promise<ChatSendAnswer> {
-    return apiPost<ChatSendAnswer, object>('/chat/message', body, runOnceRequest(key));
+  sendMessage(body: object, key: string, projectId: string): Promise<ChatSendAnswer> {
+    return apiPost<ChatSendAnswer, object>('/chat/message', body, {
+      ...runOnceRequest(key),
+      baseURL: apiBaseForProject(projectId, getRegionConfig()),
+    });
   },
   /**
    * Ask where a conversation stands; the server opens a run for what waits
@@ -355,12 +359,14 @@ export const chatApi = {
     return answer.status;
   },
   /**
-   * Where the run that holds a conversation is read from (inner#1717).
+   * Where the run that holds a conversation is read from (inner#1717): the
+   * region of its Project, where the run is written (inner#1955).
    * @param conversationId - The conversation
-   * @returns The path, under the API prefix
+   * @param projectId - Project it lives in
+   * @returns The stream's address
    */
-  streamPath(conversationId: string): string {
-    return `${API_BASE_PATH}/chat/conversations/${conversationId}/stream`;
+  streamPath(conversationId: string, projectId: string): string {
+    return `${apiBaseForProject(projectId, getRegionConfig())}/chat/conversations/${conversationId}/stream`;
   },
   /**
    * Delete a conversation.

@@ -26,15 +26,12 @@
  */
 
 import { and, desc, eq, gt, isNull, lte, or, sql } from "drizzle-orm";
-import { alias } from "drizzle-orm/pg-core";
-import { db, projectInvitations, projects, studios, users } from "@breatic/core";
+import { db, projectInvitations } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
-import type {
-  InvitableProjectRole,
-  PendingProjectInvitationSummary,
-} from "@breatic/shared";
+import type { InvitableProjectRole } from "@breatic/shared";
 import type { RecipientInvitation, EmailInvitationCandidate } from "@server/modules/invitation/invitation.types.js";
-import { mintShareToken } from "@server/utils/share-token.js";
+import type { PendingInvitationRow } from "@server/modules/invitation/pending-display.js";
+import { mintShareToken } from "@breatic/core";
 
 /**
  * The membership-relevant fields of a just-accepted invite, returned by
@@ -311,50 +308,25 @@ export async function revokeIfPending(
 }
 
 /**
- * List a project's LIVE pending invitations with display fields, for the
- * owner's "invited (pending)" section.
- *
- * Joins the invitee to `users` for `email` and to their personal studio for the
- * display `name` + `avatar`, plus the inviter's personal studio for
- * `invitedByName` (two `studios` aliases). Only `status = 'pending'` and
- * non-expired, non-deleted rows; newest first.
+ * List a project's LIVE pending invitations, newest first: only
+ * `status = 'pending'`, non-expired, non-deleted rows. Display fields come from
+ * `withPendingDisplay`.
  * @param projectId - Project UUID
- * @returns Pending invitations with display fields (empty when none)
+ * @returns The invitations (empty when none)
  */
 export async function listPendingByProject(
   projectId: string,
-): Promise<PendingProjectInvitationSummary[]> {
-  const inviteeStudio = alias(studios, "invitee_studio");
-  const inviterStudio = alias(studios, "inviter_studio");
+): Promise<PendingInvitationRow<InvitableProjectRole>[]> {
   const rows = await db
     .select({
       invitationId: projectInvitations.id,
       invitedUserId: projectInvitations.invitedUserId,
-      name: inviteeStudio.name,
-      email: sql<string>`coalesce(${users.email}, ${projectInvitations.invitedEmail})`,
-      avatarUrl: inviteeStudio.avatarUrl,
+      invitedEmail: projectInvitations.invitedEmail,
+      invitedBy: projectInvitations.invitedBy,
       role: projectInvitations.role,
-      invitedByName: inviterStudio.name,
       expiresAt: projectInvitations.expiresAt,
     })
     .from(projectInvitations)
-    .leftJoin(users, eq(users.id, projectInvitations.invitedUserId))
-    .leftJoin(
-      inviteeStudio,
-      and(
-        eq(inviteeStudio.createdByUserId, projectInvitations.invitedUserId),
-        eq(inviteeStudio.type, "personal"),
-        isNull(inviteeStudio.deletedAt),
-      ),
-    )
-    .leftJoin(
-      inviterStudio,
-      and(
-        eq(inviterStudio.createdByUserId, projectInvitations.invitedBy),
-        eq(inviterStudio.type, "personal"),
-        isNull(inviterStudio.deletedAt),
-      ),
-    )
     .where(
       and(
         eq(projectInvitations.projectId, projectId),
@@ -364,80 +336,8 @@ export async function listPendingByProject(
       ),
     )
     .orderBy(desc(projectInvitations.createdAt));
-  return rows.map((r) => ({
-    invitationId: r.invitationId,
-    invitedUserId: r.invitedUserId,
-    awaitingSignup: r.invitedUserId === null,
-    name: r.name ?? r.email,
-    email: r.email,
-    avatarUrl: r.avatarUrl,
-    role: r.role as InvitableProjectRole,
-    invitedByName: r.invitedByName ?? "",
-    expiresAt: r.expiresAt.toISOString(),
-  }));
+  return rows.map((r) => ({ ...r, role: r.role as InvitableProjectRole }));
 }
-
-/**
- * Resolve a pending invite's landing-page detail by id (the email-link page
- * shows it before the invitee confirms). Joins the project (name + slug + id)
- * and the inviter's personal studio (name). Includes EXPIRED pendings (the page
- * renders an "expired" state) — only non-pending / soft-deleted rows return
- * null.
- * @param invitationId - Invitation id (resolved from the email-link token)
- * @returns Landing detail (incl. `invitedUserId` for the own-invite guard +
- *   `expiresAt` for the expiry check), or null if gone / no longer pending
- */
-export async function findLandingById(invitationId: string): Promise<{
-  projectName: string;
-  projectSlug: string;
-  projectId: string;
-  inviterName: string;
-  role: InvitableProjectRole;
-  invitedUserId: string | null;
-  expiresAt: Date;
-} | null> {
-  const inviterStudio = alias(studios, "inviter_studio_landing");
-  const rows = await db
-    .select({
-      projectName: projects.name,
-      projectSlug: projects.slug,
-      projectId: projects.id,
-      inviterName: inviterStudio.name,
-      role: projectInvitations.role,
-      invitedUserId: projectInvitations.invitedUserId,
-      expiresAt: projectInvitations.expiresAt,
-    })
-    .from(projectInvitations)
-    .innerJoin(projects, eq(projects.id, projectInvitations.projectId))
-    .leftJoin(
-      inviterStudio,
-      and(
-        eq(inviterStudio.createdByUserId, projectInvitations.invitedBy),
-        eq(inviterStudio.type, "personal"),
-        isNull(inviterStudio.deletedAt),
-      ),
-    )
-    .where(
-      and(
-        eq(projectInvitations.id, invitationId),
-        eq(projectInvitations.status, "pending"),
-        isNull(projectInvitations.deletedAt),
-      ),
-    )
-    .limit(1);
-  const row = rows[0];
-  if (!row) return null;
-  return {
-    projectName: row.projectName,
-    projectSlug: row.projectSlug,
-    projectId: row.projectId,
-    inviterName: row.inviterName ?? "",
-    role: row.role as InvitableProjectRole,
-    invitedUserId: row.invitedUserId,
-    expiresAt: row.expiresAt,
-  };
-}
-
 
 /** Fields shared by recipient arbitration and delivery settlement. */
 const recipientFields = {

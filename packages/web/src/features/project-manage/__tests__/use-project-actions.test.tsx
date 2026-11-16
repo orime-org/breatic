@@ -17,12 +17,18 @@ vi.mock('@web/data/api', async (importOriginal) => ({
 vi.mock('@web/lib/toast', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }));
+vi.mock('@web/data/api/regions', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@web/data/api/regions')>()),
+  rememberProjectRegion: vi.fn(),
+  getRegionConfig: () => ({ global: 'us-west', regions: {} }),
+}));
 
 import { projectsApi } from '@web/data/api';
 import { toast } from '@web/lib/toast';
 import { ApiException } from '@web/data/api/types';
 import { studioProjectsListKey } from '@web/data/api/projects';
 import { useProjectActions } from '@web/features/project-manage/use-project-actions';
+import { rememberProjectRegion, setCurrentRegion } from '@web/data/api/regions';
 
 // Every studio's lists: the in-project banner does not know the studio's slug.
 const LIVE = studioProjectsListKey('acme', { archived: false, sort: 'opened', locale: 'en' });
@@ -63,6 +69,28 @@ describe('useProjectActions', () => {
       }
     });
   }
+
+  // inner#1955: the directory hears of the copy a moment later, and opening it
+  // asks the directory for its region first.
+  it('remembers the copy in the region the duplicate request went to, even after the user moved on', async () => {
+    let answer: (copy: unknown) => void = () => undefined;
+    vi.mocked(projectsApi.duplicate).mockReturnValue(new Promise((resolve) => {
+      answer = resolve;
+    }) as never);
+    setCurrentRegion('sg');
+    try {
+      const { result } = setup();
+
+      act(() => result.current.duplicate());
+      await waitFor(() => expect(projectsApi.duplicate).toHaveBeenCalled());
+      setCurrentRegion(null);
+      answer({ id: 'p-copy', name: 'Copy' });
+
+      await waitFor(() => expect(rememberProjectRegion).toHaveBeenCalledWith('p-copy', 'sg'));
+    } finally {
+      setCurrentRegion(null);
+    }
+  });
 
   it('names the copy in the duplicate toast', async () => {
     vi.mocked(projectsApi.duplicate).mockResolvedValue({ name: 'Copy of Alley' } as never);

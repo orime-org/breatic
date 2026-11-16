@@ -60,6 +60,7 @@ function studio(over: Partial<StudioDetail> = {}): StudioDetail {
     bio: null,
     memberCount: 3,
     myStudioRole: 'admin',
+    region: null,
     ...over,
   };
 }

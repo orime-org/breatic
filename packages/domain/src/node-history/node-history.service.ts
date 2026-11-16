@@ -9,6 +9,7 @@
  */
 
 import * as repo from "@domain/node-history/node-history.repo.js";
+import { personalIdentities } from "@domain/region/profiles.service.js";
 import { NotFoundError } from "@breatic/core";
 import { t } from "@breatic/shared";
 import type { NodeHistoryEntity, NodeMediaNumbers } from "@breatic/shared";
@@ -205,7 +206,14 @@ export async function listByNode(
   nodeId: string,
   opts: { limit?: number; offset?: number; status?: "success" | "failed" } = {},
 ): Promise<{ entries: NodeHistoryEntity[]; total: number }> {
-  return repo.listByNode(projectId, nodeId, opts);
+  const page = await repo.listByNode(projectId, nodeId, opts);
+  // Operator names live on personal Studios in the global directory, and
+  // renames propagate (#1619, inner#1955); null when the Studio is gone.
+  const names = await personalIdentities(page.entries.map((entry) => entry.userId));
+  return {
+    entries: page.entries.map((entry) => ({ ...entry, operatorName: names.get(entry.userId)?.name ?? null })),
+    total: page.total,
+  };
 }
 
 /**

@@ -163,6 +163,17 @@ const studioSlug = z
   .refine((value) => !RESERVED_STUDIO_SLUGS.has(value), "slug_reserved");
 
 /**
+ * Where a new Studio goes (inner#1955): the id the page generated, reused
+ * while the form is unchanged so a retry is the same creation, and the region
+ * the user chose. Both are optional so a page loaded before regions existed
+ * still creates; the server then picks the id and the global region.
+ */
+const studioPlacement = {
+  studioId: z.uuid().optional(),
+  region: z.string().regex(/^[A-Za-z0-9-]{1,32}$/).optional(),
+};
+
+/**
  * `POST /auth/setup-studio` body — the second registration step. The
  * authenticated (but studio-less) user picks the slug for their personal
  * studio; the server validates it here and re-checks uniqueness against
@@ -170,6 +181,7 @@ const studioSlug = z
  */
 export const setupStudioSchema = z.object({
   slug: studioSlug,
+  ...studioPlacement,
 });
 export type SetupStudioInput = z.infer<typeof setupStudioSchema>;
 
@@ -182,6 +194,7 @@ export type SetupStudioInput = z.infer<typeof setupStudioSchema>;
 export const createTeamStudioSchema = z.object({
   name: z.string().trim().min(1).max(255),
   slug: studioSlug,
+  ...studioPlacement,
 });
 export type CreateTeamStudioInput = z.infer<typeof createTeamStudioSchema>;
 

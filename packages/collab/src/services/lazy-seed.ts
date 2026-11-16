@@ -53,6 +53,7 @@ import {
   spaceContentDocName,
 } from "@breatic/shared";
 import { readCookie } from "@collab/infra/cookie.js";
+import { readBoundIdentity } from "@collab/infra/upgrade-session-gate.js";
 import { reportSpaceCreated } from "@collab/services/space-analytics.js";
 import * as yjsDocumentsRepo from "@collab/services/yjs-documents.repo.js";
 
@@ -162,9 +163,14 @@ async function reportSeededSpace(
     const consent = parseConsentCookie(readCookie(cookies, CONSENT_COOKIE_NAME) ?? undefined, Date.now(), gpc);
     if (!consent.analytics) return;
     const fromContext = (opener.context as { user?: { id?: string } } | undefined)?.user?.id;
+    // Outside the global region there is no session to read: the upgrade
+    // gate bound the user from the identity token (inner#1955).
+    const bound = opener.requestHeaders ? readBoundIdentity(opener.requestHeaders)?.userId : undefined;
     const token = readCookie(cookies, sessionCookieName());
     const userId =
-      fromContext && fromContext !== SYSTEM_ACTOR ? fromContext : token ? await getSession(getRedis(), token) : null;
+      fromContext && fromContext !== SYSTEM_ACTOR
+        ? fromContext
+        : (bound ?? (token ? await getSession(getRedis(), token) : null));
     if (!userId) return;
     await runWithConsent(consent, () => reportSpaceCreated({ ...space, userId, via: "seed" }));
   } catch (err) {

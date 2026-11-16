@@ -54,7 +54,7 @@ export function failUploadIntoNode(target: Pick<UploadTarget, 'projectId' | 'spa
   const plan = resolveUploadFailure(outcome);
   if (plan.kind === 'reportToServer') {
     stashRetryFile(projectId, spaceId, plan.taskId, file, tag);
-    void canvasApi.reportNodeTaskFailure(plan.taskId).catch((err: unknown) => {
+    void canvasApi.reportNodeTaskFailure(plan.taskId, plan.apiBase).catch((err: unknown) => {
       // The report is itself a request that can fail for the same reason, and
       // the row still has its budget to fall back on; the line is for devtools.
       console.warn('node task failure report rejected', plan.taskId, err);

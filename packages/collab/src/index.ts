@@ -28,6 +28,7 @@ import {
   yjsRawPg,
   checkInfraReady,
   startHealthServer,
+  globalApiHealthChecks,
   runGracefulShutdown,
   closeQueues,
   InfraNotReadyError,
@@ -39,6 +40,7 @@ import {
   listenProjectMemberChanges,
   projectAuthService,
   type MemberChangeListener,
+  isGlobalRegion,
 } from "@breatic/core";
 import { getTimelineConfig, onDatabaseWaitTimeout } from "@breatic/core";
 import { getCollabConfig, getReassemblyLimits } from "@collab/config.js";
@@ -48,6 +50,7 @@ import { startTaskListener } from "@collab/services/task-listener.js";
 import { startLifecycleListener } from "@collab/services/lifecycle-listener.js";
 import { startProjectControlSync } from "@collab/services/project-control-sync.js";
 import { startSessionRevocation, type SessionRevocation } from "@collab/services/session-revocation.js";
+import { collabGlobalApi } from "@collab/infra/region.js";
 import { startMemberChangeSync } from "@collab/services/member-change-sync.js";
 
 // Initialize the root logger with the collab service name before any child
@@ -200,6 +203,7 @@ async function main(): Promise<void> {
     port: env.COLLAB_PORT,
     redisKeyPrefix: REDIS_KEY_PREFIX,
     shutdownDeadline: () => shutdownDeadlineAt,
+    ...(!isGlobalRegion(env) ? { identityPublicKeys: env.IDENTITY_PUBLIC_KEYS } : {}),
   });
 
   /**
@@ -293,6 +297,7 @@ async function main(): Promise<void> {
     sessionRevocation = await startSessionRevocation(hocuspocus, {
       source: controlRedis,
       readSession: (token) => getSession(getRedis(), token),
+      ...(!isGlobalRegion(env) ? { checkSessionIds: (sids: readonly string[]) => collabGlobalApi().checkSessions(sids) } : {}),
       recheckIntervalMs: getCollabConfig().session_recheck_interval_ms,
     });
   } catch (err) {
@@ -436,7 +441,7 @@ async function main(): Promise<void> {
       // failure mode that the infra probes above all miss).
       probeWsProcessing: probeDocProcessing,
       probeMemberListen: () => memberChanges.probe(MEMBER_LISTEN_PROBE_TIMEOUT_MS),
-    }),
+    }).concat(globalApiHealthChecks()),
   });
 
   // Graceful shutdown

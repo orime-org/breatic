@@ -26,7 +26,7 @@ vi.mock("@server/modules/invitation/invitation-lifecycle.service.js", () => ({
   claimInvitation: mocks.claimInvitation,
 }));
 
-import { claimEmailInvitations } from "@server/modules/invitation/claim-email-invitations.js";
+import { claimEmailInvitations, claimForwardedEmailInvitations } from "@server/modules/invitation/claim-email-invitations.js";
 
 const USER: UserEntity = {
   id: "invitee", email: "Invitee@Example.Test", emailVerified: true,
@@ -75,7 +75,7 @@ describe("email invitation compensation", () => {
     mocks.findStudioCandidates.mockResolvedValue([{ id: "studio-invite", targetId: "studio" }]);
     mocks.claimInvitation.mockRejectedValueOnce(failure);
 
-    await expect(claimEmailInvitations(USER)).resolves.toBeUndefined();
+    await expect(claimEmailInvitations(USER)).resolves.toEqual({ unavailable: null });
 
     expect(mocks.claimInvitation.mock.calls).toEqual([
       ["project", "failed-invite", "project", "invitee"],
@@ -87,12 +87,35 @@ describe("email invitation compensation", () => {
     }, "email_invitation_claim_failed");
   });
 
+  // inner#1955: a global-region outage is reported after every candidate was
+  // tried; only a forwarded claim fails its job on it, so the job retries.
+  it("reports a global-region outage after trying every candidate, and a forwarded claim throws it", async () => {
+    const { GlobalApiError, UNREACHABLE_STATUS } = await import("@breatic/core");
+    const outage = new GlobalApiError(UNREACHABLE_STATUS, "unreachable", "timed out");
+    mocks.findProjectCandidates.mockResolvedValue([
+      { id: "failed-invite", targetId: "project" },
+      { id: "next-invite", targetId: "another-project" },
+    ]);
+    mocks.findStudioCandidates.mockResolvedValue([]);
+    mocks.claimInvitation.mockRejectedValueOnce(outage);
+
+    await expect(claimEmailInvitations(USER)).resolves.toEqual({ unavailable: outage });
+    expect(mocks.claimInvitation).toHaveBeenCalledTimes(2);
+
+    mocks.claimInvitation.mockReset().mockRejectedValueOnce(outage).mockResolvedValue(undefined);
+    await expect(claimForwardedEmailInvitations(USER)).rejects.toBe(outage);
+  });
+
+  it("lets a forwarded claim with no outage succeed", async () => {
+    await expect(claimForwardedEmailInvitations(USER)).resolves.toBeUndefined();
+  });
+
   it("returns after a candidate scan failure and retries on the next authenticated call", async () => {
     const failure = new Error("database unavailable");
     mocks.findProjectCandidates.mockRejectedValueOnce(failure);
     mocks.findProjectCandidates.mockResolvedValueOnce([{ id: "retry-invite", targetId: "project" }]);
 
-    await expect(claimEmailInvitations(USER)).resolves.toBeUndefined();
+    await expect(claimEmailInvitations(USER)).resolves.toEqual({ unavailable: null });
     expect(mocks.error).toHaveBeenCalledExactlyOnceWith({
       err: failure, ctx: { userId: "invitee" },
     }, "email_invitation_claim_failed");

@@ -57,6 +57,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
 import type * as DomainModule from "@breatic/domain";
 import crypto from "node:crypto";
 import postgres from "postgres";
+import { mirrorInDirectory } from "./directory-fixtures.js";
 import {
   initCore,
   getRedis,
@@ -128,6 +129,7 @@ async function seed(credits = 100_000): Promise<Seeded> {
   await sql`
     INSERT INTO studio_members (studio_id, user_id, role) VALUES (${studio!.id}, ${user!.id}, 'admin')
   `;
+  await mirrorInDirectory(sql, studio!.id);
   const [project] = await sql<{ id: string }[]>`
     INSERT INTO projects (studio_id, created_by_user_id, name, slug)
     VALUES (${studio!.id}, ${user!.id}, ${tag}, ${`${tag}-p`}) RETURNING id

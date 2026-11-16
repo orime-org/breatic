@@ -24,6 +24,7 @@ export { onDatabaseWaitTimeout, type DatabaseWaitTimeout } from "@core/db/wait-t
 export { yjsDb, yjsRawPg, closeYjsDb } from "@core/db/client.js";
 export type { DbTx, YjsDbTx } from "@core/db/client.js";
 export { runMigrations, runYjsMigrations } from "@core/db/migrate.js";
+export { applyRegionGrants } from "@core/db/region-grants.js";
 export type { LegacyGiftConfirmation } from "@core/db/legacy-gift-migration.js";
 export { createTestDb, migrateDatabase, migrateYjsDatabase } from "@core/db/test-support.js";
 export type { TestDb } from "@core/db/test-support.js";
@@ -80,6 +81,28 @@ export { getStripeWebhookRecordingWriteTimeoutMs } from "@core/config/stripe-web
 export { getMiniToolsConfig, type MiniToolsConfig } from "@core/config/mini-tools.js";
 export { getUnderstandConfig, type UnderstandConfig } from "@core/config/understand.js";
 export { getSceneConfig, type SceneConfig } from "@core/config/scene.js";
+export { getRegionsConfig, type RegionsConfig } from "@core/config/regions.js";
+export { TABLE_PLACEMENT, type TablePlacement } from "@core/db/table-placement.js";
+export {
+  identityCookieName,
+  signIdentityToken,
+  verifyIdentityToken,
+  type IdentityClaims,
+  type IdentityClaimsInput,
+  type IdentityRefusal,
+  type IdentitySigningKey,
+  type IdentityVerdict,
+} from "@core/auth/identity-token.js";
+export { canonicalString, signRequest, type SignedParts } from "@core/region/signature.js";
+export { isGlobalRegion, isMultiRegion, otherRegionsOf, type RegionPlacement } from "@core/region/placement.js";
+export {
+  callRegion,
+  createGlobalApi,
+  GlobalApiError,
+  globalApiHealthChecks,
+  isRegionUnavailable,
+  UNREACHABLE_STATUS,
+} from "@core/region/global-api.js";
 export {
   getUsagePricing,
   parseUsagePricing,
@@ -161,6 +184,7 @@ export {
   publishCreditsChanged,
   publishSpaceTasksChanged,
   publishProjectConnectionsClose,
+  publishSessionsRevoked,
   projectControlChannelPattern,
   sessionsRevokedChannelName,
 } from "@core/infra/control-events.js";
@@ -185,6 +209,12 @@ export {
   revokeSession,
   revokeAllSessions,
   sessionCookieName,
+  backfillSessionIdIndex,
+  checkSessions,
+  recordRevokedIdentities,
+  isIdentityRevoked,
+  IDENTITY_REVOCATION_FORWARD_QUEUE,
+  INVITATION_CLAIM_FORWARD_QUEUE,
   type RevokeOutcome,
 } from "@core/infra/session-store.js";
 export { redactSessionError, type RedactedSessionError } from "@core/infra/session-error.js";
@@ -205,6 +235,13 @@ export { runWithContext, tryGetContext, getContext } from "@core/infra/request-c
 // @breatic/domain — collab never touches it.
 export * as projectMembersRepo from "@core/auth/projectMembers.repo.js";
 export * as projectsRepo from "@core/project/projects.repo.js";
+export { isDeadlock, isUniqueViolation } from "@core/db/pg-error.js";
+export { mintShareToken, regionOfShareToken } from "@core/infra/share-token.js";
+export * as studioDirectoryRepo from "@core/region/studioDirectory.repo.js";
+export * as regionOutboxRepo from "@core/region/regionOutbox.repo.js";
+export * as regionOutboxAppliedRepo from "@core/region/regionOutboxApplied.repo.js";
+export type { OutboxRow } from "@core/region/regionOutbox.repo.js";
+export type { DirectoryRow } from "@core/region/studioDirectory.repo.js";
 export * as projectAssetReferenceService from "@core/asset/project-asset-reference.service.js";
 export * as assetRepo from "@core/asset/asset.repo.js";
 export { StorageKeyRetiredError, type RegisterAssetInput } from "@core/asset/asset.repo.js";
@@ -309,6 +346,7 @@ export {
   adsConversionConfig,
   adsConversionState,
   enqueueAdsConversion,
+  enqueueAccountAdsConversion,
   requeueStaleAdsUploads,
   unscheduleAdsUploadSweep,
   scheduleAdsUploadSweep,

@@ -3,9 +3,10 @@
 
 /**
  * What the server's `/healthz` probes: every Postgres and Redis connection
- * the server uses (AGENTS.md#health-checks).
+ * the server uses (AGENTS.md#health-checks), and outside the global region
+ * whether the global region answers.
  */
-import { getRedis, pingDb, pingRedis, yjsRawPg, type HealthCheck } from "@breatic/core";
+import { getRedis, globalApiHealthChecks, pingDb, pingRedis, yjsRawPg, type HealthCheck } from "@breatic/core";
 import { getChatSubscriberRedis } from "@server/agent/run-stream.js";
 
 /**
@@ -23,5 +24,8 @@ export function serverHealthChecks(): HealthCheck[] {
     // The connection Agent chat runs hear their stops and readers on
     // (inner#1717); without it no run can be stopped or attached to.
     { name: "redis_chat_subscriber", check: () => pingRedis(getChatSubscriberRedis()) },
+    // Outside the global region: whether the global region answers (inner#1955);
+    // informational, so it never marks the instance unhealthy.
+    ...globalApiHealthChecks(),
   ];
 }

@@ -31,6 +31,7 @@ import type { Hono } from "hono";
 import { getRedis, initCore, loadLocales, runWithLocale, sessionCookieName, setSession } from "@breatic/core";
 import { t } from "@breatic/shared";
 import { withPeer } from "../helpers/peer.js";
+import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 try {
   initCore(process.env);
@@ -111,6 +112,7 @@ async function seedOwner(): Promise<Seeded> {
   `;
   const token = crypto.randomBytes(24).toString("hex");
   await setSession(getRedis(), token, userId);
+  await mirrorAllInDirectory(sql);
   return {
     userId,
     studioId: studio!.id,

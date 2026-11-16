@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { accountActivityRepo } from "@breatic/core";
-import { ConflictError, db, ForbiddenError, getLimitsForStudio, NotFoundError, projectMembersRepo } from "@breatic/core";
+import { ConflictError, db, ForbiddenError, NotFoundError, projectMembersRepo, projectsRepo } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
-import { studioMembersRepo } from "@breatic/domain";
+import { globalApi, studioMembersRepo } from "@breatic/domain";
 import { normalizeEmail, t } from "@breatic/shared";
-import type { InvitableProjectRole, UserEntity } from "@breatic/shared";
+import type { InvitableProjectRole } from "@breatic/shared";
 import * as projectRepo from "@server/modules/project/project.repo.js";
-import * as studioRepo from "@server/modules/studio/studio.repo.js";
-import * as usersRepo from "@server/modules/auth/user.repo.js";
+import { studioRepo } from "@breatic/domain";
+import { profilesService, type Account } from "@breatic/domain";
 import * as projectInvites from "@server/modules/project-invite/projectInvitations.repo.js";
 import * as studioInvites from "@server/modules/studio/studioInvitations.repo.js";
 import * as notifications from "@server/modules/notification/notification.service.js";
@@ -32,7 +32,7 @@ export interface PreparedInvitation {
   duplicate: boolean;
   invitation: RecipientInvitation;
   target: InvitationTarget;
-  invitee: UserEntity | null;
+  invitee: Account | null;
   inviterName: string;
 }
 
@@ -72,14 +72,13 @@ async function lockTarget(kind: InvitationKind, id: string, tx: DbTx, allowArchi
 }
 
 /**
- * Read the inviter's current display name in the invitation transaction.
+ * Read the inviter's current display name.
  * @param userId - The inviter.
- * @param tx - The enclosing transaction.
  * @returns Their display name.
- * @throws {Error} When persistence fails.
+ * @throws {Error} When the read fails.
  */
-async function inviterNameOf(userId: string, tx: DbTx): Promise<string> {
-  const profiles = await studioRepo.getPersonalProfilesByCreators([userId], tx);
+async function inviterNameOf(userId: string): Promise<string> {
+  const profiles = await profilesService.personalProfiles([userId]);
   return profiles.get(userId)?.name ?? "";
 }
 
@@ -121,13 +120,13 @@ async function notifyRecipient(target: InvitationTarget, invite: RecipientInvita
  * @returns Whether this transaction converted the original row.
  * @throws {Error} When persistence fails.
  */
-async function claimLocked(target: InvitationTarget, invite: RecipientInvitation, user: UserEntity, tx: DbTx): Promise<boolean> {
+async function claimLocked(target: InvitationTarget, invite: RecipientInvitation, user: Account, tx: DbTx): Promise<boolean> {
   if (!user.emailVerified || invite.invitedEmail !== normalizeEmail(user.email)) return false;
   const claimed = await invitationRepo(target.kind).claimPendingEmail(
     invite.id, normalizeEmail(user.email), user.id, getDecisionWindowMs(), tx,
   );
   if (!claimed) return false;
-  await notifyRecipient(target, claimed, await inviterNameOf(invite.invitedBy, tx), tx);
+  await notifyRecipient(target, claimed, await inviterNameOf(invite.invitedBy), tx);
   return true;
 }
 
@@ -140,7 +139,7 @@ async function claimLocked(target: InvitationTarget, invite: RecipientInvitation
  * @throws {ConflictError} When already a member.
  * @throws {Error} When persistence fails.
  */
-async function checkInvitationRecipient(target: InvitationTarget, user: UserEntity | null, tx: DbTx): Promise<void> {
+async function checkInvitationRecipient(target: InvitationTarget, user: Account | null, tx: DbTx): Promise<void> {
   const role = user === null ? null : target.kind === "project"
     ? await projectMembersRepo.getRole(target.id, user.id, tx)
     : await studioMembersRepo.getRole(target.id, user.id, tx);
@@ -148,16 +147,33 @@ async function checkInvitationRecipient(target: InvitationTarget, user: UserEnti
 }
 
 /**
+ * The seat ceiling an invitation counts against, read from the global region
+ * before the inviting transaction (inner#1955): a Project's collaborators or
+ * a Studio's members, by the Studio that pays. A project's studio never
+ * changes.
+ * @param kind - The membership target kind.
+ * @param targetId - The Project or Studio.
+ * @returns The ceiling.
+ * @throws {NotFoundError} When the project is gone.
+ * @throws {Error} When the global region does not answer.
+ */
+async function invitationCeiling(kind: InvitationKind, targetId: string): Promise<number> {
+  const studioId = kind === "project" ? await projectsRepo.findOwnerStudioId(targetId) : targetId;
+  if (studioId === undefined) throw new NotFoundError(t("server.error.not_found"));
+  const limits = await globalApi().getLimitsForStudio(studioId);
+  return kind === "project" ? limits.project_members : limits.studio_members;
+}
+
+/**
  * Check capacity before creating a new invitation under the target lock.
  * @param target - The locked membership target.
+ * @param limit - Its seat ceiling, from {@link invitationCeiling}.
  * @param tx - The enclosing transaction.
  * @returns Once a membership seat is available.
  * @throws {ConflictError} When capacity is exhausted.
  * @throws {Error} When persistence fails.
  */
-async function checkInvitationCapacity(target: InvitationTarget, tx: DbTx): Promise<void> {
-  const limits = await getLimitsForStudio(target.studioId, tx);
-  const limit = target.kind === "project" ? limits.project_members : limits.studio_members;
+async function checkInvitationCapacity(target: InvitationTarget, limit: number, tx: DbTx): Promise<void> {
   const count = target.kind === "project"
     ? await projectMembersRepo.countCollaborators(target.id, tx)
     : (await studioRepo.countMembersByStudioIds([target.id], tx)).get(target.id) ?? 0;
@@ -187,23 +203,26 @@ export async function prepareInvitation(input: {
   invitedBy: string;
 }): Promise<PreparedInvitation> {
   const email = normalizeEmail(input.email);
+  const limit = await invitationCeiling(input.kind, input.targetId);
+  const inviterName = await inviterNameOf(input.invitedBy);
   return db.transaction(async (tx) => {
     const target = await lockTarget(input.kind, input.targetId, tx);
     if (!target) throw new NotFoundError(t("server.error.not_found"));
     const repo = invitationRepo(input.kind);
-    const user = await usersRepo.getUserByEmail(email, tx);
+    // Read under the target lock, so an address that registered while this
+    // waited is invited as its account (inner#1955: from the global region).
+    const user = await profilesService.accountByEmail(email);
     await checkInvitationRecipient(target, user, tx);
     await repo.expireStalePendingEmail(target.id, email, tx);
     if (user) await repo.expireStalePending(target.id, user.id, tx);
     const pending = await repo.findPendingForRecipient(target.id, email, user?.id ?? null, tx);
     const ordinary = pending.find((row) => row.invitedUserId !== null);
     const existing = ordinary ?? pending[0];
-    const inviterName = await inviterNameOf(input.invitedBy, tx);
     if (existing) {
       if (existing.invitedUserId === null && user?.emailVerified) await claimLocked(target, existing, user, tx);
       return { duplicate: true, invitation: existing, target, invitee: user, inviterName };
     }
-    await checkInvitationCapacity(target, tx);
+    await checkInvitationCapacity(target, limit, tx);
     if (!user && !emailVerificationEnabled()) throw new NotFoundError(t(`server.${input.kind}.email_not_registered_no_mail`));
     const expiresAt = new Date(Date.now() + getDecisionWindowMs());
     const common = { invitedBy: input.invitedBy, expiresAt, tx };
@@ -223,7 +242,8 @@ export async function prepareInvitation(input: {
 }
 
 /**
- * Claim one candidate after rechecking account identity under its target lock.
+ * Claim one candidate after rechecking account identity under its target lock;
+ * the account is read from the global region (inner#1955).
  * @param kind - Target kind.
  * @param id - Candidate invitation id.
  * @param targetId - Immutable target id.
@@ -235,7 +255,7 @@ export async function claimInvitation(kind: InvitationKind, id: string, targetId
   await db.transaction(async (tx) => {
     const target = await lockTarget(kind, targetId, tx);
     if (!target) return;
-    const user = await usersRepo.getUserById(userId, tx);
+    const user = (await profilesService.accountsOf([userId])).get(userId);
     if (!user?.emailVerified) return;
     const repo = invitationRepo(kind);
     const invite = await repo.findRecipientById(id, tx);

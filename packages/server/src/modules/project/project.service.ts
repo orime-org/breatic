@@ -18,14 +18,14 @@
 
 import * as projectRepo from "@server/modules/project/project.repo.js";
 import { pictureUrl } from "@server/modules/asset/picture.service.js";
-import * as studioRepo from "@server/modules/studio/studio.repo.js";
+import { studioRepo } from "@breatic/domain";
 import { projectAuthService, projectAssetReferenceService } from "@breatic/core";
 import * as studioService from "@server/modules/studio/studio.service.js";
 import * as timelineGrantRepo from "@server/modules/timeline/execution-grant.repo.js";
-import { studioAuthService } from "@breatic/domain";
-import { accountActivityRepo, claimFirstMilestone, db, enqueueAdsConversion, getAccountAttribution, getLimitsForStudio, logger, projectEditsRepo, trackServerEvent } from "@breatic/core";
+import { directoryWrites, globalApi, studioAuthService } from "@breatic/domain";
+import { accountActivityRepo, currentAdsBrowser, db, logger, projectEditsRepo, trackServerEvent } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
-import { adClickFrom, t } from "@breatic/shared";
+import { t } from "@breatic/shared";
 import { NotFoundError, ForbiddenError, ConflictError } from "@breatic/core";
 import { ARCHIVED_PROJECT_SORTS, LIVE_PROJECT_SORTS, ROLE_RANK } from "@breatic/shared";
 import { getStudioProjectPageLimits } from "@server/config/limits.js";
@@ -118,10 +118,10 @@ export async function create(
   description?: string,
 ): Promise<ProjectEntity & { isFirst: boolean }> {
   await requireStudioCreateAccess(userId, studioId);
+  const limit = await projectCeiling(studioId);
 
-  const { project, isFirst } = await db.transaction(async (tx) => {
-    await assertStudioHasProjectRoom(studioId, tx);
-    const isFirst = await claimFirstMilestone("first-project", userId, tx);
+  const project = await db.transaction(async (tx) => {
+    await assertStudioHasProjectRoom(studioId, limit, tx);
     const created = await projectRepo.createProject(
       tx,
       studioId,
@@ -132,8 +132,10 @@ export async function create(
       description,
     );
     await accountActivityRepo.recordActivity({ userId, projectId: created.id, kind: "project_action" }, tx);
-    return { project: created, isFirst };
+    await directoryWrites.projectCreated(created.id, studioId, tx);
+    return created;
   });
+  const isFirst = await claimFirstProject(userId);
   reportProjectCreated(project, { via: "create", is_first: isFirst, space_type: spaceType });
   if (isFirst) await reportFirstProjectConversion(userId);
   // The page reports the first-project ad conversion from this (inner#1442 §4.9).
@@ -146,15 +148,41 @@ export async function create(
  */
 async function reportFirstProjectConversion(userId: string): Promise<void> {
   try {
-    await enqueueAdsConversion({
-      userId,
-      conversion: "first_project",
-      transactionId: `first-project:${userId}`,
-      click: adClickFrom(await getAccountAttribution(userId), Date.now()),
-    });
+    await globalApi().enqueueAdsConversion(
+      { userId, conversion: "first_project", transactionId: `first-project:${userId}` },
+      currentAdsBrowser(),
+    );
   } catch (err) {
     logger.error({ err, userId }, "ads_conversion_enqueue_failed");
   }
+}
+
+/**
+ * Claim the account's first-project milestone once its project is committed.
+ * The milestone lives with the account in the global region (inner#1955); a
+ * claim that fails is logged and the project stands.
+ * @param userId - The account that created a project
+ * @returns Whether this was the account's first
+ */
+async function claimFirstProject(userId: string): Promise<boolean> {
+  try {
+    return (await globalApi().claimAccountMilestone("first-project", userId)).claimed;
+  } catch (err) {
+    logger.error({ err, userId }, "first_project_milestone_claim_failed");
+    return false;
+  }
+}
+
+/**
+ * A studio's project ceiling, read from its current admin's membership
+ * before the transaction that counts against it; the global region holds
+ * the membership (inner#1955).
+ * @param studioId - The studio
+ * @returns How many live projects it may hold
+ * @throws {Error} When the studio has no live admin, or the global region does not answer
+ */
+async function projectCeiling(studioId: string): Promise<number> {
+  return (await globalApi().getLimitsForStudio(studioId)).projects_per_studio;
 }
 
 /**
@@ -191,6 +219,7 @@ function reportProjectCreated(project: ProjectEntity, properties: Record<string,
  * {@link studioProjectRoom}, asking for room only once it knows the project is
  * archived.
  * @param studioId - The studio the new project would land in
+ * @param limit - Its project ceiling, from {@link projectCeiling}
  * @param tx - The enclosing transaction; the lock is meaningless without one
  * @throws {NotFoundError} if no studio row has that id. Neither caller can
  *   reach this today: `create` is already past `requireStudioCreateAccess`,
@@ -202,9 +231,10 @@ function reportProjectCreated(project: ProjectEntity, properties: Record<string,
  */
 async function assertStudioHasProjectRoom(
   studioId: string,
+  limit: number,
   tx: DbTx,
 ): Promise<void> {
-  const room = await studioProjectRoom(studioId, tx);
+  const room = await studioProjectRoom(studioId, limit, tx);
   if (room === null) throw new NotFoundError(t("server.error.not_found"));
   if (!(await room.hasRoom())) {
     throw new ConflictError(t("server.project.limit_reached", { limit: room.limit }));
@@ -218,16 +248,16 @@ interface ProjectRoom {
 }
 
 /**
- * Lock the studio's row and read its project ceiling — the one place every
- * path that adds a live project (create, duplicate, restore) takes both.
+ * Lock the studio's row and count against its project ceiling — the one place
+ * every path that adds a live project (create, duplicate, restore) does both.
  * `hasRoom` counts when called, so a caller can ask it after its own checks.
  * @param studioId - The studio
+ * @param limit - Its project ceiling, from {@link projectCeiling}
  * @param tx - The enclosing transaction; the lock is meaningless without one
  * @returns The ceiling and the room check, or null when no studio row has that id
  */
-async function studioProjectRoom(studioId: string, tx: DbTx): Promise<ProjectRoom | null> {
+async function studioProjectRoom(studioId: string, limit: number, tx: DbTx): Promise<ProjectRoom | null> {
   if (!(await studioRepo.lockStudio(studioId, tx))) return null;
-  const { projects_per_studio: limit } = await getLimitsForStudio(studioId, tx);
   return {
     limit,
     hasRoom: async () => (await projectRepo.countLiveProjectsInStudio(studioId, tx)) < limit,
@@ -583,21 +613,25 @@ export async function duplicate(
   userId: string,
 ): Promise<ProjectEntity & { isFirst: boolean }> {
   await assertMayManage(sourceId, userId);
+  // A copy lands beside its source and counts against the source's studio,
+  // which a project never leaves.
+  const located = await projectRepo.getProjectById(sourceId);
+  if (!located) throw new NotFoundError(t("server.error.not_found"));
+  const limit = await projectCeiling(located.studioId);
 
-  const { project, isFirst } = await db.transaction(async (tx) => {
-    // Read first, because the studio to lock is the SOURCE's — a copy lands
-    // beside the thing it was copied from and counts against that studio.
+  const project = await db.transaction(async (tx) => {
     const source = await projectRepo.getProjectById(sourceId, tx);
     if (!source) throw new NotFoundError(t("server.error.not_found"));
-    await assertStudioHasProjectRoom(source.studioId, tx);
-    const isFirst = await claimFirstMilestone("first-project", userId, tx);
+    await assertStudioHasProjectRoom(source.studioId, limit, tx);
     const copy = await projectRepo.duplicateProject(tx, userId, source, copyName(source.name));
     await projectAssetReferenceService.copyProjectAssetReferences(sourceId, copy.id, tx);
     // A copy resolves and previews the web animations its source could (inner#1711).
     await timelineGrantRepo.copyGrants(sourceId, copy.id, tx);
     await accountActivityRepo.recordActivity({ userId, projectId: copy.id, kind: "project_action" }, tx);
-    return { project: copy, isFirst };
+    await directoryWrites.projectCreated(copy.id, source.studioId, tx);
+    return copy;
   });
+  const isFirst = await claimFirstProject(userId);
   reportProjectCreated(project, { via: "duplicate", is_first: isFirst });
   if (isFirst) await reportFirstProjectConversion(userId);
   // The page reports the first-project ad conversion from this (inner#1442 §4.9).
@@ -653,14 +687,14 @@ export async function archive(projectId: string, userId: string): Promise<void> 
 export async function restore(projectId: string, userId: string): Promise<void> {
   const { project, ...roles } = await managementFacts(projectId, userId);
   if (!mayArchive(roles)) throw new ForbiddenError(t("server.error.forbidden"));
-  const result = await db.transaction(async (tx) => {
-    const room = await studioProjectRoom(project.studioId, tx);
-    if (room === null) return { outcome: "missing" as const, limit: 0 };
+  const limit = await projectCeiling(project.studioId);
+  const outcome = await db.transaction(async (tx) => {
+    const room = await studioProjectRoom(project.studioId, limit, tx);
+    if (room === null) return "missing" as const;
     const outcome = await projectRepo.restoreProject(projectId, tx, room.hasRoom);
     if (outcome === "done") await accountActivityRepo.recordActivity({ userId, projectId, kind: "project_action" }, tx);
-    return { outcome, limit: room.limit };
+    return outcome;
   });
-  const { outcome, limit } = result;
   if (outcome === "missing") throw new NotFoundError(t("server.error.not_found"));
   if (outcome === "unchanged") throw new ConflictError(t("server.project.not_archived"));
   if (outcome === "full") throw new ConflictError(t("server.project.restore_limit_reached", { limit }));
