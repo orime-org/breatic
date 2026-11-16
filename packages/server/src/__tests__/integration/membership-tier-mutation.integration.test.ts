@@ -344,8 +344,9 @@ describe("a downgrade, which takes nothing away", () => {
     // now below what this studio already holds, which is exactly the state the
     // rule describes and the quota suites already pin the refusal for.
     const limits = await getLimitsForStudio(studioId);
+    // base allows 9999 projects since inner#1968 (design 3.8), so the members
+    // count is the ceiling this studio now holds more than.
     expect(limits).toEqual(getMembershipLimits("base"));
-    expect(Number(after!.projects)).toBeGreaterThan(limits.projects_per_studio);
     expect(Number(after!.members)).toBeGreaterThan(limits.studio_members);
   });
 });

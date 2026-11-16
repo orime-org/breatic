@@ -19,7 +19,7 @@ const { envRef } = vi.hoisted(() => ({ envRef: { PAYMENT_ENABLED: true } }));
 
 vi.mock("@breatic/core", () => ({
   env: envRef,
-  getMembershipForUser: vi.fn(),
+  getMembershipReadingForUser: vi.fn(),
   getSubscriptionPlan: (tier: string, period: string) => ({
     priceCents:
       (tier === "pro" ? 1999 : 7999) * (period === "year" ? 10 : 1),
@@ -28,6 +28,12 @@ vi.mock("@breatic/core", () => ({
   getMembershipLimits: () => LIMITS,
   COMPARABLE_MEMBERSHIP_TIERS: ["base", "pro", "team"],
   BILLING_PERIODS: ["month", "year"],
+}));
+
+// The panel's operations line is read through domain (inner#1968); this file
+// is about selling, so it answers "not counted".
+vi.mock("@breatic/domain", () => ({
+  operationService: { readOperationUsage: vi.fn(async () => null) },
 }));
 
 vi.mock("@server/modules/subscription/subscription-panel.js", () => ({
@@ -43,7 +49,7 @@ vi.mock("@server/modules/studio/studio.repo.js", () => ({
 }));
 
 import {
-  getMembershipForUser,
+  getMembershipReadingForUser,
 } from "@breatic/core";
 import { readStoredSubscriptionSummary } from "@server/modules/subscription/subscription-panel.js";
 import * as assetUsageService from "@server/modules/asset/assetUsage.service.js";
@@ -64,7 +70,7 @@ const USER = "u-1";
 beforeEach(() => {
   vi.clearAllMocks();
   envRef.PAYMENT_ENABLED = true;
-  vi.mocked(getMembershipForUser).mockResolvedValue({ tier: "pro", limits: LIMITS });
+  vi.mocked(getMembershipReadingForUser).mockResolvedValue({ effectiveTier: "pro", limits: LIMITS, storageBytes: LIMITS.storage_bytes } as unknown as Awaited<ReturnType<typeof getMembershipReadingForUser>>);
   vi.mocked(readStoredSubscriptionSummary).mockResolvedValue({
     state: "active",
     tier: "pro",
