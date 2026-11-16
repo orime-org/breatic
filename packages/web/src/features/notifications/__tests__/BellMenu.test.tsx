@@ -123,8 +123,10 @@ describe('BellMenu — empty list', () => {
     const user = userEvent.setup();
     setup();
     await user.click(screen.getByTestId('bell-trigger'));
-    expect(await screen.findByTestId('bell-regions-unavailable')).toBeInTheDocument();
+    const line = await screen.findByTestId('bell-regions-unavailable');
     expect(screen.queryByText(/No pending notifications/i)).not.toBeInTheDocument();
+    // It takes the place of the empty line, at that line's size.
+    expect(line).toHaveClass('text-sm');
   });
 });
 

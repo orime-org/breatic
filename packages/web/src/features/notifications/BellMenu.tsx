@@ -13,6 +13,7 @@ import { useNavigate } from 'react-router-dom';
 import { isRequestNotification } from '@breatic/shared';
 import { expiresInLabel } from '@web/lib/expires-in';
 import { formatRelativeTime } from '@web/lib/format-relative-time';
+import { cn } from '@web/lib/utils';
 
 import { Avatar, AvatarFallback } from '@web/components/ui/avatar';
 import { Button } from '@web/components/ui/button';
@@ -222,7 +223,10 @@ export function BellMenu(): React.JSX.Element {
           </ul>
         )}
         {regionsMissing ? (
-          <p className='px-3 py-2 text-2xs text-muted-foreground' data-testid='bell-regions-unavailable'>
+          <p
+            className={cn('px-3 py-2 text-muted-foreground', count === 0 ? 'text-sm' : 'text-2xs')}
+            data-testid='bell-regions-unavailable'
+          >
             {t('regions.unavailable.bell')}
           </p>
         ) : null}
