@@ -216,11 +216,33 @@ async function audioWindow(stream: Record<string, unknown> | undefined, input: s
 }
 
 /**
- * Whether Chromium plays the source on the plan's clock (§4.1 simple stable input row, §4.2.1), so it may play as-is: the plan's 0 is the
- * source's 0, every presented frame is a source frame and the last one declares its end; a lead before the first frame (which
- * Chromium shows) and a hold after the last (which it holds) are allowed; and the video's edits are none, or one rate-1 edit
- * at presentation 0 from the first frame that ends inside the last frame, which Chromium cuts there as the plan does (an
- * AVFoundation export, whose composition shift lengthens the last frame's decode delta).
+ * Whether the video stream FFmpeg demuxes (and Chrome plays, as-is or copied) runs to the end of the plan's last real frame.
+ * A stream-copy trim of a B-frame MP4 keeps a last P frame whose reordered B frames were cut: its stream ends before that
+ * frame's end, so Chrome reports a duration one frame short of the plan and the source is encoded instead. An edit's end is
+ * written on the movie clock, so the plan may end up to one tick of it past the stream (a 29.97 fps clip's edit rounded to
+ * 1/1000 s). A stream with no declared window (Matroska) is not judged here.
+ * @param video - The selected ffprobe stream.
+ * @param lastFrameEnd - Where the plan's last real frame ends, in source time.
+ * @param tick - One tick of the clock edit durations are written on, 0 without one.
+ * @returns Whether the stream reaches it.
+ * @throws {ProbeFailure} When the stream's clock is unknown.
+ */
+function demuxedVideoReaches(video: Record<string, unknown>, lastFrameEnd: PresentationRational, tick: PresentationRational): boolean {
+  if (!declaresAudioWindow(video)) return true;
+  const base = timeBase(video.time_base);
+  const end = at(integer(video.start_pts) + integer(video.duration_ts), base);
+  // end + tick >= lastFrameEnd, exactly.
+  const [en, ed, tn, td, ln, ld] = [end.numerator, end.denominator, tick.numerator, tick.denominator, lastFrameEnd.numerator, lastFrameEnd.denominator].map(BigInt) as [bigint, bigint, bigint, bigint, bigint, bigint];
+  return (en * td + tn * ed) * ld >= ln * ed * td;
+}
+
+/**
+ * Whether Chrome plays the source on the plan's clock (§4.1 simple stable input row, §4.2.1), so it may play as-is. Only the
+ * shapes measured in Chrome 157 frame by frame at every seek qualify: the plan's 0 is the source's 0, no lead comes before the
+ * first frame (a B-frame video with no edit list cannot be seeked between a keyframe's decode and presentation times), every
+ * presented frame is a source frame and the last one declares its end; a hold after the last frame is allowed; and the
+ * video's edits are none, or one rate-1 edit at presentation 0 from the first frame that ends inside the last frame, which
+ * Chrome cuts there as the plan does (an AVFoundation export, whose composition shift lengthens the last frame's decode delta).
  * @param plan - The assembled plan.
  * @param media - Where the media's first frame starts, its last frame starts and its last frame ends, in source time.
  * @param media.start - The first frame's start.
@@ -229,10 +251,10 @@ async function audioWindow(stream: Record<string, unknown> | undefined, input: s
  * @returns Whether it plays on the plan's clock.
  * @throws {RangeError} When a time is not an exact rational.
  */
-function playsOnPlanClock(plan: { originMapping: { origin: PresentationRational; entries: readonly { kind: string }[]; lastSource: { support: string } };
+function playsOnPlanClock(plan: { originMapping: { origin: PresentationRational; entries: readonly { kind: string }[]; firstSource: { lead: unknown }; lastSource: { support: string } };
   videoSpans: readonly VideoEditSpan[] | null }, media: { start: PresentationRational; lastStart: PresentationRational; end: PresentationRational }): boolean {
-  const { origin, entries, lastSource } = plan.originMapping;
-  if (BigInt(origin.numerator) !== 0n || lastSource.support !== 'declared' || entries.some((entry) => entry.kind !== 'source')) return false;
+  const { origin, entries, firstSource, lastSource } = plan.originMapping;
+  if (BigInt(origin.numerator) !== 0n || firstSource.lead !== null || lastSource.support !== 'declared' || entries.some((entry) => entry.kind !== 'source')) return false;
   if (plan.videoSpans === null) return true;
   if (plan.videoSpans.length !== 1) return false;
   const span = plan.videoSpans[0]!;
@@ -420,17 +442,18 @@ async function plan(body: PresentationProbeRequest, input: string, directory: st
   const hdr = isHdrTransfer(transfer);
   const output = videoCarrierGeometry(assembled.display, body.encoding.carrier.maxShortSide);
   const encodedFrames = assembled.originMapping.entries.reduce((total, entry) => total + (entry.kind === 'source' ? entry.count : 1), 0);
+  const reachesPlanEnd = demuxedVideoReaches(video, assembled.originMapping.lastSource.supportEnd, editTick ?? { numerator: '0', denominator: '1' });
   return {
     kind: 'planned', toolInputId, planSha256, plan: assembled,
     encoding: { keyframeOrdinals: keyframeOrdinals(assembled, packets), codedWidth: Number(video.width), codedHeight: Number(video.height), ...sourceKeyframesOf(packets, base, iso) },
     routeInput: {
       plan: { planSha256, producerVersion: PRODUCER_VERSION, profileVersion: PROFILE_VERSION }, hdr, alpha,
       // Playing as-is keeps the source's own clock, which must be the plan's as Chromium plays it (§4.1).
-      identityQualified: playsOnPlanClock(assembled, { start: mediaStart, lastStart, end: mediaEnd })
+      identityQualified: reachesPlanEnd && playsOnPlanClock(assembled, { start: mediaStart, lastStart, end: mediaEnd })
         && identityQualified({ container: containerOf(format), video, pixFmt, bitDepth: depth.bitDepth, matrixTagged, audioCodec }, body.probe.identityFormats),
       colorMatrixTagged: matrixTagged, codec,
       // §4.1 row 2: a copy keeps the plan when the plan presents the source unaltered and the MP4 carrier can hold the codec.
-      copyPreservesTimeline: videoPlanIsUnaltered(assembled) && MP4_COPY_CODECS.has(codec),
+      copyPreservesTimeline: reachesPlanEnd && videoPlanIsUnaltered(assembled) && MP4_COPY_CODECS.has(codec),
       // §4.1 row 2: only audio in the MP4 audio codecs of the frozen identity table is packet-copied; other audio is dispatched.
       audioCopyable: body.probe.identityFormats.some((entry) => entry.container === 'mp4' && entry.audioCodecs.includes(audioCodec)),
       sourceBytes: (await stat(input)).size,

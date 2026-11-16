@@ -195,6 +195,13 @@ beforeAll(async () => {
     await writeFile(join(dir, name), withVideoEdits(tail, edits));
     files.set(name, join(dir, name));
   }
+  // A stream-copy trim of a B-frame MP4 with AAC (LosslessCut, ffmpeg -c copy -t): its last P frame lost the B frames it
+  // was reordered with, so the video stream FFmpeg demuxes ends before the last frame the plan presents (Chrome 157:
+  // duration 1.6 against a plan of 1.633).
+  // A frame-index pattern on grey: x264 places its B frames so that the trim at 1.49 s cuts the two before the last P frame.
+  await make('bf-aac.mp4', ['-f', 'lavfi', '-i', "color=gray:s=320x180:r=30:d=2,format=yuv420p,geq=lum='if(mod(floor(N/pow(2\\,floor(X/32)))\\,2)\\,235\\,16)':cb=128:cr=128",
+    '-f', 'lavfi', '-i', 'sine=f=440:sample_rate=48000:d=2', ...h264bf, '-shortest']);
+  await make('trim-copy.mp4', ['-i', join(dir, 'bf-aac.mp4'), '-c', 'copy', '-t', '1.49']);
   await make('frag.mp4', [...bframes30, '-f', 'lavfi', '-i', 'sine=f=440:sample_rate=48000:d=2', ...h264bf, '-movflags', 'frag_keyframe+empty_moov']);
   // A stream-copy cut at 0.5 s: packets start at the 0.4 s keyframe and one edit starts 0.1 s (1280 of 12800) later.
   await make('cut.mp4', ['-ss', '0.5', '-i', join(dir, 'edit-base.mp4'), '-c', 'copy']);
@@ -564,15 +571,32 @@ describe('each field of the frozen identity table decides on its own (§91 D1-1)
     expect(answer.routeInput.identityQualified).toBe(false);
   });
 
-  // Chromium plays these on the plan's clock (measured durations equal the plan's; design §4.2.1: before a late first frame it
-  // shows that frame, after the last one it holds it): an AVFoundation export whose one edit ends inside the last frame, a
-  // hold after the last frame and a lead before the first.
-  it.each([['apple-export.mp4', 'videoSpans'], ['hold.mp4', 'hold'], ['frag.mp4', 'lead']])('IQ06 %s, origin 0 with a %s, plays as-is', async (name, edge) => {
+  // Chrome plays these on the plan's clock, frame by frame at every seek (measured in Chrome 157): an AVFoundation export
+  // whose one edit ends inside the last frame, and a hold after the last frame.
+  it.each([['apple-export.mp4', 'videoSpans'], ['hold.mp4', 'hold']])('IQ06 %s, origin 0 with a %s, plays as-is', async (name, edge) => {
     const answer = planned(await probed(name));
     const { originMapping, videoSpans } = answer.plan;
     expect(originMapping.origin.numerator).toBe('0');
-    expect({ videoSpans: videoSpans !== null, hold: originMapping.lastSource.hold !== null, lead: originMapping.firstSource.lead !== null }[edge]).toBe(true);
+    expect({ videoSpans: videoSpans !== null, hold: originMapping.lastSource.hold !== null }[edge]).toBe(true);
     expect(answer.routeInput.identityQualified).toBe(true);
+  });
+
+  // A lead before a B-frame video with no edit list: Chrome cannot seek to the frames between each keyframe's decode time
+  // and its presentation time (frag.mp4 seeked to 1.0 to 1.06 shows frame 30, the plan frames 28 and 29), so it takes a
+  // carrier, whose edit list Chrome seeks correctly.
+  it('IQ08 a B-frame video with a lead and no edit list does not play as-is', async () => {
+    const answer = planned(await probed('frag.mp4'));
+    expect(answer.plan.originMapping.firstSource.lead).not.toBeNull();
+    expect(answer.routeInput.identityQualified).toBe(false);
+  });
+
+  // A video stream that ends before the plan's last frame ends plays one frame short in Chrome, as-is or copied: it is
+  // encoded.
+  it('IQ09 a stream-copy trim whose demuxed video ends before the plan neither plays as-is nor copies', async () => {
+    const answer = planned(await probed('trim-copy.mp4'));
+    expect(answer.plan.originMapping.origin.numerator).toBe('0');
+    expect(answer.routeInput.identityQualified).toBe(false);
+    expect(answer.routeInput.copyPreservesTimeline).toBe(false);
   });
 
   // A Matroska last frame with no declared duration ends at a derived support, which Chromium does not show the same way.
