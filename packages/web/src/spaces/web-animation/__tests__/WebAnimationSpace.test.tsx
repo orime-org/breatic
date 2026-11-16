@@ -9,7 +9,7 @@
  */
 
 import * as React from 'react';
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -37,6 +37,7 @@ const PROJECT = '60000000-0000-4000-8000-000000000001';
 const SPACE = '70000000-0000-4000-8000-000000000001';
 const OLDER = '90000000-0000-4000-8000-000000000001';
 const NEWER = '90000000-0000-4000-8000-000000000002';
+const EXPORT = '90000000-0000-4000-8000-0000000000e1';
 const CONNECTED: SocketState = { provider: null, synced: true, hasEverSynced: true, status: 'connected', writeAccess: 'granted', authFailedReason: null };
 const LIMITS = {
   defaults: { width: 1920, height: 1080, fps: { num: 24, den: 1 } },
@@ -60,6 +61,20 @@ function done(id: string, request: string, createdAt: string): Record<string, un
     kind: 'web_animation_create', engine: 'deepseek', request, export: null,
     input: { prompt: request, engine: 'deepseek', aspect: '16:9', durationSeconds: 4, fps: { num: 24, den: 1 } },
     resultSourceVersionId: `80000000-0000-4000-8000-${id.slice(-12)}`, resultAssetId: null,
+  };
+}
+
+/**
+ * A finished export of a finished create row, as the list answers it.
+ * @param source - The create row it renders.
+ * @returns The row.
+ */
+function exported(source: Record<string, unknown>): Record<string, unknown> {
+  const { engine: _engine, request: _request, export: _export, resultSourceVersionId: _version, input: _input, ...common } = source;
+  return {
+    ...common, id: EXPORT, actionId: EXPORT, kind: 'web_animation_export', engine: null, resultSourceVersionId: null, resultAssetId: null,
+    input: { sourceVersionId: source.resultSourceVersionId, width: 1920, height: 1080, fps: { num: 24, den: 1 }, durationFrames: 96, videoKey: 'v/k.mp4' },
+    source: { executionId: source.id, request: source.request },
   };
 }
 
@@ -235,3 +250,65 @@ describe('the current result\'s actions', () => {
   });
 });
 
+
+describe('switching result while an annotation is being added', () => {
+  /**
+   * List a finished result that already has its export, and open it.
+   * @returns The user.
+   */
+  async function onResultWithVideo(): Promise<ReturnType<typeof userEvent.setup>> {
+    const source = { ...done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z'), export: { executionId: EXPORT, status: 'succeeded' } };
+    listing([source, exported(source), done(OLDER, 'Older logo', '2026-11-15T08:00:00.000000Z')]);
+    show();
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId('motion-action-add-annotation'));
+    await screen.findByTestId('motion-annotation-draft');
+    return user;
+  }
+
+  it('closes a draft with no words and shows the result asked for', async () => {
+    const user = await onResultWithVideo();
+    await user.click(screen.getByTestId('motion-action-view-video'));
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', EXPORT));
+    expect(screen.queryByTestId('motion-annotation-draft')).toBeNull();
+    expect(screen.queryByTestId('motion-discard-annotation')).toBeNull();
+  });
+
+  it('asks before throwing words away, and shows the result asked for once the user agrees', async () => {
+    const user = await onResultWithVideo();
+    await user.type(screen.getByTestId('doc-comment-motion-annotation-input'), 'Logo too small');
+    await user.click(screen.getByTestId('motion-action-view-video'));
+    expect(await screen.findByTestId('motion-discard-annotation')).toBeInTheDocument();
+    expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER);
+    await user.click(screen.getByTestId('motion-discard-annotation'));
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', EXPORT));
+    expect(screen.queryByTestId('motion-annotation-draft')).toBeNull();
+  });
+
+  it('opens the row picked in the execution list once the user agrees to discard', async () => {
+    const user = await onResultWithVideo();
+    await user.type(screen.getByTestId('doc-comment-motion-annotation-input'), 'Logo too small');
+    await user.click(screen.getByTestId('motion-open-executions'));
+    await user.click(await screen.findByTestId(`motion-row-${OLDER}`));
+    await user.click(await screen.findByTestId('motion-discard-annotation'));
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', OLDER));
+  });
+
+  it('keeps the draft and the result when the user keeps writing', async () => {
+    const user = await onResultWithVideo();
+    await user.type(screen.getByTestId('doc-comment-motion-annotation-input'), 'Logo too small');
+    await user.click(screen.getByTestId('motion-action-view-video'));
+    await user.click(await screen.findByRole('button', { name: t('spaces.webAnimation.keepWriting') }));
+    expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER);
+    expect(screen.getByTestId('doc-comment-motion-annotation-input')).toHaveValue('Logo too small');
+  });
+
+  it('closes the draft before an open request shows the result it names', async () => {
+    const user = await onResultWithVideo();
+    await user.click(screen.getByTestId('doc-comment-motion-annotation-input'));
+    act(() => useSpaceOpenRequestStore.setState({ state: { status: 'opened', request: { type: 'web_animation', select: OLDER }, spaceId: SPACE } }));
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', OLDER));
+    expect(screen.queryByTestId('motion-annotation-draft')).toBeNull();
+  });
+});

@@ -324,17 +324,6 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
     if (selectedId !== null && status !== undefined) select({ type: 'row_changed', row: { id: selectedId, status } });
   }, [selectedId, status, select]);
 
-  // An open request aimed at this Space (design §8.5): select its execution, then say it was handled.
-  const openRequest = useSpaceOpenRequestStore((state) => state.state);
-  React.useEffect(() => {
-    if (openRequest.status !== 'opened' || openRequest.spaceId !== spaceId) return;
-    if (openRequest.request.select !== undefined) {
-      locate(openRequest.request.select);
-      dispatchPanels({ type: 'locate' });
-    }
-    useSpaceOpenRequestStore.getState().dispatch({ type: 'handled' });
-  }, [openRequest, spaceId, locate]);
-
   // Esc closes the open panel.
   React.useEffect(() => {
     /**
@@ -353,6 +342,51 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   const fps = row === undefined ? { num: 24, den: 1 } : row.input.fps;
   const frame = Math.min(Math.round(clock.time * fps.num / fps.den), Math.max(0, Math.round(durationSeconds * fps.num / fps.den) - 1));
 
+  // Every change of the shown result passes the annotation draft first (design §13.7 switch_result): a draft without
+  // words closes; one with words asks, and the switch waits for the user to agree to discard it.
+  const [activeThreadId, setActiveThreadId] = React.useState<string | null>(null);
+  const [annotation, setAnnotation] = React.useState(ANNOTATION_DRAFT_IDLE);
+  // Which close of a draft with words the user is asked to confirm.
+  const [discardAsked, setDiscardAsked] = React.useState<'cancel' | 'switch_result' | null>(null);
+  const annotationRef = React.useRef(annotation);
+  const annotate = React.useCallback((event: AnnotationDraftEvent): void => {
+    const { state, effects } = transitionAnnotationDraft(annotationRef.current, event);
+    annotationRef.current = state;
+    setAnnotation(state);
+    for (const effect of effects) {
+      if (effect.type === 'pause') pauseClock();
+      if (effect.type === 'toast_disconnected') toast.warning(t('spaces.webAnimation.annotationDisconnected'));
+      if (effect.type === 'toast_failed' && effect.reason !== 'space_full') toast.error(t('spaces.webAnimation.annotationFailed'));
+      if (effect.type === 'confirm_discard') setDiscardAsked(event.type === 'switch_result' ? 'switch_result' : 'cancel');
+      if (effect.type === 'write') {
+        store.createThread({ initialComment: { body: asCommentBody(effect.text.trim()) as never }, metadata: { webAnimationAnchor: effect.anchor } }).then((thread) => {
+          annotate({ type: 'written' });
+          setActiveThreadId(thread.id);
+        }, (err: unknown) => annotate({ type: 'write_failed', reason: err instanceof SpaceFullError ? 'space_full' : 'failed' }));
+      }
+    }
+  }, [pauseClock, store, t]);
+  const pendingSwitch = React.useRef<(() => void) | null>(null);
+  const showResult = React.useCallback((go: () => void): void => {
+    annotate({ type: 'switch_result', confirmed: false });
+    const now = annotationRef.current.status;
+    if (now === 'writing') pendingSwitch.current = go;
+    else if (now === 'idle') go();
+  }, [annotate]);
+  const locateShown = React.useCallback((executionId: string): void => showResult(() => locate(executionId)), [showResult, locate]);
+
+  // An open request aimed at this Space (design §8.5): select its execution, then say it was handled.
+  const openRequest = useSpaceOpenRequestStore((state) => state.state);
+  React.useEffect(() => {
+    if (openRequest.status !== 'opened' || openRequest.spaceId !== spaceId) return;
+    const target = openRequest.request.select;
+    if (target !== undefined) {
+      locateShown(target);
+      dispatchPanels({ type: 'locate' });
+    }
+    useSpaceOpenRequestStore.getState().dispatch({ type: 'handled' });
+  }, [openRequest, spaceId, locateShown]);
+
   // Running, accepting and cancelling (design §4.2).
   const refresh = React.useCallback((): void => { void queryClient.invalidateQueries({ queryKey: spaceTasksQueryKey(projectId, spaceId) }); }, [queryClient, projectId, spaceId]);
   const accept = React.useCallback((request: WebAnimationAcceptRequest, actionId: string, onRefused?: (message: string) => void): void => {
@@ -369,12 +403,12 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
       }
       const { row: accepted, created } = outcome.result;
       setFetched((current) => new Map(current).set(accepted.id, accepted));
-      select({ type: 'accepted', created, row: accepted });
+      showResult(() => select({ type: 'accepted', created, row: accepted }));
       dispatchPanels({ type: 'accepted', created, tab: created || !webAnimationExecutionEnded(accepted.status) ? 'running' : 'done' });
       refresh();
       if (created) dispatchDraft({ type: 'accepted', executionId: accepted.id });
     });
-  }, [projectId, spaceId, select, refresh, t]);
+  }, [projectId, spaceId, select, showResult, refresh, t]);
   const cancel = React.useCallback((target: WebAnimationRowView): void => {
     if (readOnly) return;
     void runOnce(cancelIntent(target.id), {
@@ -436,8 +470,8 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   });
   const baseRow = listedBase ?? readBase.data;
   const exportRow = row !== undefined && row.kind !== 'web_animation_export' ? row.export ?? null : null;
-  const viewVideo = React.useCallback((): void => { if (exportRow !== null) locate(exportRow.executionId); }, [exportRow, locate]);
-  const viewSource = React.useCallback((): void => { if (row?.kind === 'web_animation_export') locate(row.source.executionId); }, [row, locate]);
+  const viewVideo = React.useCallback((): void => { if (exportRow !== null) locateShown(exportRow.executionId); }, [exportRow, locateShown]);
+  const viewSource = React.useCallback((): void => { if (row?.kind === 'web_animation_export') locateShown(row.source.executionId); }, [row, locateShown]);
   const exportAsset = useTimelineAsset(projectId, row?.kind === 'web_animation_export' ? row.resultAssetId ?? '' : '').data;
   const download = React.useCallback((): void => { if (exportAsset !== undefined) downloadAsset(exportAsset.fileUrl); }, [exportAsset]);
 
@@ -446,33 +480,11 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
     const anchor = readWebAnimationAnchor(thread.metadata);
     return thread.deletedAt === undefined && anchor !== null && anchor.executionId === selectedId ? [{ thread, anchor }] : [];
   }), [threads, selectedId]);
-  const [activeThreadId, setActiveThreadId] = React.useState<string | null>(null);
   const activeThread = React.useMemo(() => {
     const thread = threads.find((item) => item.id === activeThreadId && item.deletedAt === undefined);
     const anchor = thread === undefined ? null : readWebAnimationAnchor(thread.metadata);
     return thread === undefined || anchor === null ? null : { thread, anchor };
   }, [threads, activeThreadId]);
-  const [annotation, setAnnotation] = React.useState(ANNOTATION_DRAFT_IDLE);
-  // Which close of a draft with words the user is asked to confirm.
-  const [discardAsked, setDiscardAsked] = React.useState<'cancel' | 'switch_result' | null>(null);
-  const annotationRef = React.useRef(annotation);
-  const annotate = React.useCallback((event: AnnotationDraftEvent): void => {
-    const { state, effects } = transitionAnnotationDraft(annotationRef.current, event);
-    annotationRef.current = state;
-    setAnnotation(state);
-    for (const effect of effects) {
-      if (effect.type === 'pause') pauseClock();
-      if (effect.type === 'toast_disconnected') toast.warning(t('spaces.webAnimation.annotationDisconnected'));
-      if (effect.type === 'toast_failed' && effect.reason !== 'space_full') toast.error(t('spaces.webAnimation.annotationFailed'));
-      if (effect.type === 'confirm_discard') setDiscardAsked(event.type === 'switch_result' ? 'switch_result' : 'cancel');
-      if (effect.type === 'write') {
-        store.createThread({ initialComment: { body: asCommentBody(effect.text.trim()) as never }, metadata: { webAnimationAnchor: effect.anchor } }).then((thread) => {
-          annotate({ type: 'written' });
-          setActiveThreadId(thread.id);
-        }, (err: unknown) => annotate({ type: 'write_failed', reason: err instanceof SpaceFullError ? 'space_full' : 'failed' }));
-      }
-    }
-  }, [pauseClock, store, t]);
   React.useEffect(() => { annotate(docReady ? { type: 'reconnect' } : { type: 'disconnect' }); }, [docReady, annotate]);
   const addAnnotation = React.useCallback((): void => {
     if (selectedId !== null) {
@@ -486,26 +498,35 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
     const point: FramePoint = { x: Math.min(1, Math.max(0, (event.clientX - box.left) / box.width)), y: Math.min(1, Math.max(0, (event.clientY - box.top) / box.height)) };
     annotate({ type: 'click_frame', point });
   }, [annotate]);
-  const keepWriting = React.useCallback((open: boolean): void => { if (!open) setDiscardAsked(null); }, []);
+  const keepWriting = React.useCallback((open: boolean): void => {
+    if (open) return;
+    setDiscardAsked(null);
+    pendingSwitch.current = null;
+  }, []);
   const discard = React.useCallback((): void => {
     const asked = discardAsked;
+    const go = pendingSwitch.current;
     setDiscardAsked(null);
-    if (asked !== null) annotate({ type: asked, confirmed: true });
+    pendingSwitch.current = null;
+    if (asked === null) return;
+    annotate({ type: asked, confirmed: true });
+    if (asked === 'switch_result') go?.();
   }, [discardAsked, annotate]);
   const typeAnnotation = React.useCallback((text: string): void => annotate({ type: 'type', text }), [annotate]);
   const sendAnnotation = React.useCallback((): void => annotate({ type: 'send' }), [annotate]);
   const cancelAnnotation = React.useCallback((): void => annotate({ type: 'cancel', confirmed: false }), [annotate]);
+  const pendingSeek = React.useRef<number | null>(null);
   const openThread = React.useCallback((threadId: string): void => {
     const thread = threads.find((item) => item.id === threadId);
     const anchor = thread === undefined ? null : readWebAnimationAnchor(thread.metadata);
     if (anchor === null) return;
-    annotate({ type: 'switch_result', confirmed: false });
-    if (annotationRef.current.status !== 'idle') return;
-    setActiveThreadId(threadId);
-    if (anchor.executionId !== selectedId) locate(anchor.executionId);
-    pendingSeek.current = anchor.timeSeconds;
-  }, [threads, selectedId, locate, annotate]);
-  const pendingSeek = React.useRef<number | null>(null);
+    showResult(() => {
+      setActiveThreadId(threadId);
+      const shown = selectionRef.current;
+      pendingSeek.current = anchor.timeSeconds;
+      if (!(shown.status === 'selected' && shown.executionId === anchor.executionId)) locate(anchor.executionId);
+    });
+  }, [threads, showResult, locate]);
   React.useEffect(() => {
     if (pendingSeek.current === null || activeThread === null || activeThread.anchor.executionId !== selectedId) return;
     clock.seek(pendingSeek.current);
@@ -516,12 +537,10 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
     openThread(threadId);
   }, [openThread]);
   const closeThread = React.useCallback((): void => setActiveThreadId(null), []);
-  const pickRow = React.useCallback((id: string): void => {
-    annotate({ type: 'switch_result', confirmed: false });
-    if (annotationRef.current.status !== 'idle') return;
+  const pickRow = React.useCallback((id: string): void => showResult(() => {
     setActiveThreadId(null);
     pick(id);
-  }, [annotate, pick]);
+  }), [showResult, pick]);
   const order = React.useMemo(() => [...rowsOf(lists.done.own), ...rowsOf(lists.done.legacy)].map((item) => item.id), [lists.done.own, lists.done.legacy]);
   const unresolvedOnBase = row?.kind === 'web_animation_modify'
     ? threads.filter((thread) => !thread.resolved && thread.deletedAt === undefined && readWebAnimationAnchor(thread.metadata)?.executionId === row.base.executionId).length : 0;
@@ -540,7 +559,9 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
     const ratio = row === undefined ? 16 / 9 : ratioOf(row);
     return { aspectRatio: `${ratio}`, width: `min(100cqw, calc(100cqh * ${ratio}))` };
   }, [row]);
-  const draftPoint = annotation.status === 'writing' ? annotation.point : null;
+  // The draft shows only over the result it is on.
+  const shownDraft = annotation.status !== 'idle' && annotation.executionId === selectedId ? annotation : null;
+  const draftPoint = shownDraft?.status === 'writing' ? shownDraft.point : null;
   /**
    * Where a card sits over the frame: beside its point, or at the bottom of the frame without one.
    * @param point - The point, or null.
@@ -562,7 +583,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
             {!readOnly && <Button data-testid='motion-empty-new' size='sm' onClick={openNew} icon={<Plus className='size-4' />}>{t('spaces.webAnimation.new')}</Button>}
           </div>
         // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- a point on the frame is marked with the mouse only
-        : <div data-testid='motion-preview' data-execution-id={row.id} className={cn('relative', annotation.status === 'picking' && 'cursor-crosshair')} style={frameStyle} onClick={clickFrame}>
+        : <div data-testid='motion-preview' data-execution-id={row.id} className={cn('relative', shownDraft?.status === 'picking' && 'cursor-crosshair')} style={frameStyle} onClick={clickFrame}>
           {finished && playable(row) && <MotionResultPlayer projectId={projectId} executionId={row.id} sourceVersionId={row.resultSourceVersionId} input={row.input} frame={frame} />}
           {finished && row.kind === 'web_animation_export' && <ExportVideo url={exportAsset?.fileUrl ?? null} time={clock.time} playing={clock.playing} />}
           {!finished && <div className='flex size-full flex-col items-center justify-center gap-2 rounded-chrome border border-dashed border-border bg-card text-xs text-muted-foreground'>
@@ -578,16 +599,16 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
               onClick={(event) => { event.stopPropagation(); openThread(thread.id); }}
               className={cn('absolute size-5 -translate-x-1/2 -translate-y-full rounded-full rounded-bl-none border border-background', thread.resolved ? 'bg-muted-foreground' : 'bg-status-selected')}
               style={{ left: `${(anchor.point?.x ?? 0) * 100}%`, top: `${(anchor.point?.y ?? 0) * 100}%` }} />)}
-          {annotation.status === 'picking' && <div className='pointer-events-none absolute inset-x-0 top-2 flex justify-center'>
+          {shownDraft?.status === 'picking' && <div className='pointer-events-none absolute inset-x-0 top-2 flex justify-center'>
             <span className='rounded-full bg-popover px-3 py-1 text-xs text-popover-foreground shadow-md'>{t('spaces.webAnimation.pickPoint')}</span></div>}
           {draftPoint !== null && <span className='pointer-events-none absolute size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-background bg-status-selected'
             style={{ left: `${draftPoint.x * 100}%`, top: `${draftPoint.y * 100}%` }} />}
           {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- the click is only kept from the frame */}
-          {(annotation.status === 'picking' || annotation.status === 'writing' || annotation.status === 'sending') && <div data-testid='motion-annotation-draft'
+          {shownDraft !== null && <div data-testid='motion-annotation-draft'
             className='absolute z-20 w-72 rounded-chrome border border-border bg-card p-3 shadow-md' style={cardStyle(draftPoint)} onClick={(event) => event.stopPropagation()}>
-            <span className='mb-2 block text-2xs text-muted-foreground'>{t('spaces.webAnimation.annotateAt', { time: formatAnnotationTime(annotation.timeSeconds) })}</span>
+            <span className='mb-2 block text-2xs text-muted-foreground'>{t('spaces.webAnimation.annotateAt', { time: formatAnnotationTime(shownDraft.timeSeconds) })}</span>
             {/* eslint-disable-next-line jsx-a11y/no-autofocus -- the box the user just asked for by pressing Add annotation; they expect to type immediately */}
-            <DocumentCommentWriteBox name='motion-annotation' autoFocus value={annotation.status === 'picking' ? '' : annotation.text} placeholder={t('spaces.webAnimation.annotationPlaceholder')}
+            <DocumentCommentWriteBox name='motion-annotation' autoFocus value={shownDraft.status === 'picking' ? '' : shownDraft.text} placeholder={t('spaces.webAnimation.annotationPlaceholder')}
               onChange={typeAnnotation} onSave={sendAnnotation} onCancel={cancelAnnotation} />
           </div>}
           {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- the click is only kept from the frame */}
@@ -627,7 +648,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
           {!readOnly && <PlaceOnCanvas projectId={projectId} row={row} canvases={canvases} />}
           <BarButton testId='motion-action-view-source' label={t('spaces.webAnimation.viewSource')} icon={<Undo2 className='size-4' />} onClick={viewSource} />
         </>}
-        <Details row={row} unresolvedOnBase={unresolvedOnBase} readOnly={readOnly} onCancel={cancel} onOpen={locate} />
+        <Details row={row} unresolvedOnBase={unresolvedOnBase} readOnly={readOnly} onCancel={cancel} onOpen={locateShown} />
       </>}
       <Separator orientation='vertical' className='mx-1 h-5' />
       <BarButton testId='motion-open-executions' label={t('spaces.webAnimation.executions')} icon={<List className='size-4' />} pressed={panels.panel === 'executions'}
