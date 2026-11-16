@@ -41,8 +41,9 @@ export function MotionResultPlayer({ projectId, executionId, sourceVersionId, in
   const preview = useWebAnimationPreviewUrl(projectId, sourceVersionId);
   const player = usePlayerDefined(true);
   const { defined } = player;
-  const loadTimeoutMs = React.useRef<number | undefined>(undefined);
-  loadTimeoutMs.current = useTimelineLimits(projectId)?.webAnimation.playerLoadTimeoutMs;
+  const loadTimeoutMs = useTimelineLimits(projectId)?.webAnimation.playerLoadTimeoutMs;
+  const latestTimeoutMs = React.useRef(loadTimeoutMs);
+  latestTimeoutMs.current = loadTimeoutMs;
   const [element, setElement] = React.useState<HTMLElement | null>(null);
   const position = React.useRef(frame);
   const durationFrames = webAnimationDurationFrames(input);
@@ -54,7 +55,7 @@ export function MotionResultPlayer({ projectId, executionId, sourceVersionId, in
   const [state, setState] = React.useState<WebInstanceState | undefined>(undefined);
   const [host] = React.useState(() => {
     const created = createWebAnimationHost({
-      frame: () => position.current, timelineFps: () => fps, loadTimeoutMs: () => loadTimeoutMs.current,
+      frame: () => position.current, timelineFps: () => fps, loadTimeoutMs: () => latestTimeoutMs.current,
       // The one instance is keyed by its source version; its state decides whether the picture is drawn yet.
       onChange: () => setState(created.states().values().next().value),
     });
@@ -64,9 +65,10 @@ export function MotionResultPlayer({ projectId, executionId, sourceVersionId, in
   React.useEffect(() => host.listen(), [host]);
   React.useEffect(() => {
     host.sync(defined && element !== null ? [{ key: sourceVersionId, clip, fps, role: 'visible', player: element as WebAnimationPlayerElement }] : []);
-    // A detached or newly attached instance changes state without the host saying so.
+    // A detached or newly attached instance changes state without the host saying so; a timeout arriving after the
+    // instance attached starts its wait.
     setState(host.states().get(sourceVersionId));
-  }, [host, defined, element, sourceVersionId, clip, fps]);
+  }, [host, defined, element, sourceVersionId, clip, fps, loadTimeoutMs]);
   const { refresh } = preview;
   const unavailable = preview.failed || player.failed || state === 'failed';
   const retry = React.useCallback((): void => {

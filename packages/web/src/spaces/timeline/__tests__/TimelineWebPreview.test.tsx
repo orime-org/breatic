@@ -388,6 +388,15 @@ describe('Motion result player', () => {
     await waitFor(() => expect(document.querySelector('hyperframes-player')).toHaveAttribute('src', PREVIEW_URL));
     expect(screen.queryByRole('button', { name: t('timeline.retry') })).toBeNull();
   });
+  it('fails a page that never says it is ready once the player load timeout arrives after the player attached', async () => {
+    let answer: (value: unknown) => void = () => {};
+    vi.mocked(timelineApi.limits).mockReturnValue(new Promise((resolve) => { answer = resolve; }) as never);
+    showResult(null);
+    await waitFor(() => expect(document.querySelector('hyperframes-player')).toHaveAttribute('data-web-state', 'loading'));
+    withIframe(document.querySelector('hyperframes-player') as HTMLElement);
+    answer(LIMITS);
+    expect(await screen.findByRole('button', { name: t('timeline.retry') })).toBeInTheDocument();
+  });
 
   it('fails a page that never says it is ready within the Timeline player load timeout and offers a retry', async () => {
     showResult();

@@ -768,11 +768,13 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
   // tab runs no effects, so the stop detaches everything and showing it again attaches every instance with a new hello.
   React.useEffect(() => host.listen(), [host]);
 
+  // The load timeout arriving after the instances attached starts their wait.
+  const { webLoadTimeoutMs } = input;
   React.useEffect(() => {
     host.sync(webLayers);
     setWebStates(host.states());
     evaluateNow.current?.();
-  }, [host, webLayers]);
+  }, [host, webLayers, webLoadTimeoutMs]);
 
   React.useEffect(() => {
     evaluateNow.current?.();
