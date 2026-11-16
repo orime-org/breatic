@@ -38,6 +38,18 @@ interface TemplateMenuProps {
 }
 
 /**
+ * A template line with each hyphenated word kept whole: a browser may wrap
+ * after any hyphen, which leaves half a word on the next line.
+ * @param line - The line.
+ * @returns Its parts, each hyphenated word in a span that does not wrap.
+ */
+function keepHyphenatedWordsWhole(line: string): React.ReactNode[] {
+  return line
+    .split(/(\S+-\S+)/)
+    .map((part, index) => (index % 2 === 1 ? <span key={index} className='whitespace-nowrap'>{part}</span> : part));
+}
+
+/**
  * The template button in a generate panel's corner, left of the close button,
  * and the list it opens (inner#977): the creative goals of the node type's
  * templates, each opening a submenu of its templates (inner#1807). A template
@@ -108,8 +120,8 @@ export const TemplateMenu = React.memo(function TemplateMenu({
                           <DropdownMenuTrailing>{t('canvas.template.unavailable')}</DropdownMenuTrailing>
                         )}
                       </span>
-                      <span className='text-xs text-muted-foreground in-data-[highlighted]:text-foreground'>
-                        {t(`canvas.template.${template.id}.description`)}
+                      <span className='text-pretty text-xs text-muted-foreground in-data-[highlighted]:text-foreground'>
+                        {keepHyphenatedWordsWhole(t(`canvas.template.${template.id}.description`))}
                       </span>
                     </DropdownMenuItem>
                   );

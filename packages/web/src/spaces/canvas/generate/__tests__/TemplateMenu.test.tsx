@@ -127,6 +127,15 @@ describe('TemplateMenu', () => {
     expect(screen.queryByTestId('generate-template-costume-sheet')).toBeNull();
   });
 
+  it('keeps a hyphenated word of a template line on one line, the line reading as written', () => {
+    open('video');
+    openGoal('ecommerce');
+    const row = screen.getByTestId('generate-template-ugc-creator-review');
+    expect(row).toHaveTextContent('A creator talks up your product on a hand-held phone');
+    const kept = [...row.querySelectorAll('.whitespace-nowrap')].map((part) => part.textContent);
+    expect(kept).toEqual(['hand-held']);
+  });
+
   it('lists the video templates under their goal in a video panel', () => {
     open('video');
     expect(screen.getByTestId('generate-template-goal-character')).toBeInTheDocument();
