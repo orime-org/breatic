@@ -133,7 +133,7 @@ function storedStep(steps: unknown[]): JobStep | undefined {
 
 /**
  * The job an execution runs: fixed from its accepted input, the yaml and provider's plan of the attempt that first
- * submits it. A modification's job names its base package with that result's frame and length.
+ * submits it. A modification's job names its base package with that result's frame, length and font set.
  * @param row - The execution.
  * @param input - Its frozen input, a create or a modification.
  * @returns The step.
@@ -147,7 +147,12 @@ async function newStep(row: TimelineExecution, input: Exclude<WebAnimationExecut
   if (input.kind === "web_animation_modify") {
     const version = await webAnimationSourceRepo.findById(input.baseSourceVersionId);
     if (version === undefined) throw new Error(`Base source version ${input.baseSourceVersionId} is gone`);
-    base = { packageKey: version.packageKey, viewport: { width: version.width, height: version.height }, durationFrames: version.durationFrames };
+    base = {
+      packageKey: version.packageKey,
+      viewport: { width: version.width, height: version.height },
+      durationFrames: version.durationFrames,
+      fontSetVersion: version.fontSetVersion,
+    };
   }
   const prefix = `web-animation/${row.projectId}/${row.id}`;
   return {

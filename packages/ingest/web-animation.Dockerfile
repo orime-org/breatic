@@ -32,9 +32,9 @@ RUN npm install --no-audit --no-fund --global esbuild@0.25.12 \
     --tsconfig=tsconfig.json \
     --outfile=/out/server.mjs
 
-# The font set, laid out by the same script and from the same pinned package
-# versions as the Worker's static assets, so the stylesheet a package embeds
-# names exactly the files the preview serves.
+# The font sets, every released version, laid out by the same script and from
+# the same pinned package versions as the Worker's static assets, so the
+# stylesheet a package embeds names exactly the files the preview serves.
 COPY packages/ingest/package.json /tmp/ingest-package.json
 COPY packages/ingest/scripts/web-animation-fonts.mjs /fonts/packages/ingest/scripts/web-animation-fonts.mjs
 COPY config/timeline.yaml /fonts/config/timeline.yaml

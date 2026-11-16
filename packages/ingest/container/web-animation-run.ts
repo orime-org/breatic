@@ -535,18 +535,24 @@ export async function runWebAnimation(job: WebAnimationRunBody, settings: WebAni
   let ok = false;
   let failureReason = "internal";
   try {
-    const faces = JSON.parse(await readFile(join(settings.fontsDir, `v${job.fontSetVersion}`, "faces.json"), "utf8")) as WebAnimationFontFace[];
-    const pieces: WebAnimationInlinePieces = {
-      runtime: await readFile(settings.runtimeFile, "utf8"),
-      bridge: WEB_ANIMATION_BRIDGE_SCRIPT,
-      fontStylesheet: buildFontSetStylesheet(job.fontSetVersion, faces),
+    const runtime = await readFile(settings.runtimeFile, "utf8");
+    /**
+     * The three texts a package of one font set inlines.
+     * @param fontSetVersion - The font set.
+     * @returns Them.
+     */
+    const piecesOf = async (fontSetVersion: number): Promise<WebAnimationInlinePieces> => {
+      const faces = JSON.parse(await readFile(join(settings.fontsDir, `v${fontSetVersion}`, "faces.json"), "utf8")) as WebAnimationFontFace[];
+      return { runtime, bridge: WEB_ANIMATION_BRIDGE_SCRIPT, fontStylesheet: buildFontSetStylesheet(fontSetVersion, faces) };
     };
+    const pieces = await piecesOf(job.fontSetVersion);
     let composition = compositionTemplate(job);
     if (job.base !== undefined) {
       failureReason = "base_unavailable";
       const answered = await fetch(job.base.packageUrl, { method: "GET" });
       if (!answered.ok) throw new Error(`the base package was answered ${answered.status}`);
-      composition = unpackWebAnimationSource(await answered.text(), pieces);
+      // The base was packed with its own font set, which may be older than the one this result is packed with.
+      composition = unpackWebAnimationSource(await answered.text(), await piecesOf(job.base.fontSetVersion));
       failureReason = "internal";
     }
     await writeFile(join(work, "index.html"), composition);

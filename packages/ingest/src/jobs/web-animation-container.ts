@@ -337,7 +337,12 @@ export class WebAnimationContainer extends Container<WebAnimationEnv> {
       progressUrl: `http://${JOB_REPORT_HOST}${WEB_ANIMATION_PROGRESS_PATH}`,
       reportUrl: `http://${JOB_REPORT_HOST}${WEB_ANIMATION_REPORT_PATH}`,
       ...(request.base !== undefined && {
-        base: { packageUrl: mediaObjectUrl(request.base.packageKey), viewport: request.base.viewport, durationFrames: request.base.durationFrames },
+        base: {
+          packageUrl: mediaObjectUrl(request.base.packageKey),
+          viewport: request.base.viewport,
+          durationFrames: request.base.durationFrames,
+          fontSetVersion: request.base.fontSetVersion,
+        },
       }),
     };
     try {

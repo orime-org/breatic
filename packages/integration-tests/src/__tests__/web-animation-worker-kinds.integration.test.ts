@@ -160,7 +160,7 @@ describe("a modification", () => {
       prompt: "Make it slower",
       fps: FPS,
       durationFrames: durationToFrames(6, FPS),
-      base: { packageKey: base.packageKey, viewport: { width: 1920, height: 1080 }, durationFrames: 96 },
+      base: { packageKey: base.packageKey, viewport: { width: 1920, height: 1080 }, durationFrames: 96, fontSetVersion: 1 },
     });
     expect(job.viewport.height).toBeGreaterThan(job.viewport.width);
   });

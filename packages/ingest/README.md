@@ -208,8 +208,9 @@ the first `wrangler dev` builds for a while.
 
 The font set is served as static assets from `assets/web-animation/fonts`,
 laid out from the pinned `@fontsource-variable/*` devDependencies by
-`scripts/web-animation-fonts.mjs`; `pnpm dev` runs it when `[assets]` is
-enabled and `deploy:worker` always does. The image runs the same script on the
+`scripts/web-animation-fonts.mjs`, every released version beside the current
+one, because a stored package names the set it was packed with; `pnpm dev`
+runs it when `[assets]` is enabled and `deploy:worker` always does. The image runs the same script on the
 same versions, so the stylesheet a package embeds and the files the preview
 loads always match.
 

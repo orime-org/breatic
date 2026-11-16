@@ -25,8 +25,8 @@ RUN npm install --no-audit --no-fund --global esbuild@0.25.12 \
     --external:@hyperframes/producer \
     --outfile=/out/server.mjs
 
-# The same font set, from the same script and pinned packages as the creation
-# container and the Worker's static assets.
+# The same font sets, every released version, from the same script and pinned
+# packages as the creation container and the Worker's static assets.
 COPY packages/ingest/package.json /tmp/ingest-package.json
 COPY packages/ingest/scripts/web-animation-fonts.mjs /fonts/packages/ingest/scripts/web-animation-fonts.mjs
 COPY config/timeline.yaml /fonts/config/timeline.yaml

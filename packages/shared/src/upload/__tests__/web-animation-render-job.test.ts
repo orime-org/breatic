@@ -62,12 +62,12 @@ const video = {
 
 describe("modification jobs", () => {
   it("name the base package they start from, with its frame and length", () => {
-    const job = { ...createJob, base: { packageKey: "web-animation/p/b/index.html", viewport: { width: 1920, height: 1080 }, durationFrames: 96 } };
+    const job = { ...createJob, base: { packageKey: "web-animation/p/b/index.html", viewport: { width: 1920, height: 1080 }, durationFrames: 96, fontSetVersion: 1 } };
     expect(webAnimationJobRequestSchema.parse(job)).toEqual(job);
   });
 
   it("refuse a base package outside the private prefix", () => {
-    const job = { ...createJob, base: { packageKey: "generated/b/index.html", viewport: { width: 1920, height: 1080 }, durationFrames: 96 } };
+    const job = { ...createJob, base: { packageKey: "generated/b/index.html", viewport: { width: 1920, height: 1080 }, durationFrames: 96, fontSetVersion: 1 } };
     expect(webAnimationJobRequestSchema.safeParse(job).success).toBe(false);
   });
 });

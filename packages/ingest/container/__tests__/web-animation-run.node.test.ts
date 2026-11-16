@@ -162,9 +162,12 @@ async function serveFakeCdp(mode: Mode): Promise<string> {
   return `ws://127.0.0.1:${(server.address() as AddressInfo).port}/devtools/browser/fake`;
 }
 
+/** The one face each test font set holds, so a set's stylesheet names its own version. */
+const FACES = [{ family: "Inter", file: "inter-latin-wght-normal", unicodeRange: "U+0000-00FF" }];
+
 /**
  * Lay out a runner image in the test's directory: a harness that exits 0, a browser that prints the endpoint, an
- * empty runtime and an empty font set.
+ * empty runtime and font sets v1 and v2 of one face each.
  * @param endpoint - The DevTools endpoint the browser prints.
  * @returns The settings.
  */
@@ -176,8 +179,10 @@ async function image(endpoint: string, dshScript = "#!/bin/sh\nexit 0\n"): Promi
   await chmod(dshBin, 0o755);
   await chmod(chromiumBin, 0o755);
   const fontsDir = join(dir, "fonts");
-  await mkdir(join(fontsDir, "v1"), { recursive: true });
-  await writeFile(join(fontsDir, "v1", "faces.json"), "[]");
+  for (const version of [1, 2]) {
+    await mkdir(join(fontsDir, `v${version}`), { recursive: true });
+    await writeFile(join(fontsDir, `v${version}`, "faces.json"), JSON.stringify(FACES));
+  }
   const runtimeFile = join(dir, "runtime.js");
   await writeFile(runtimeFile, "");
   const home = join(dir, "home");
@@ -250,10 +255,11 @@ describe("a modification", () => {
   }
 
   /**
-   * Serve the base package as the creation run packed it, with the runtime and font set the test image holds.
+   * Serve the base package as the creation run packed it, with the runtime and a font set the test image holds.
+   * @param fontSetVersion - The font set it was packed with.
    */
-  function serveBase(): void {
-    served.set(BASE_URL, packWebAnimationSource({ composition: BASE, runtime: "", bridge: WEB_ANIMATION_BRIDGE_SCRIPT, fontStylesheet: buildFontSetStylesheet(1, []) }));
+  function serveBase(fontSetVersion = 1): void {
+    served.set(BASE_URL, packWebAnimationSource({ composition: BASE, runtime: "", bridge: WEB_ANIMATION_BRIDGE_SCRIPT, fontStylesheet: buildFontSetStylesheet(fontSetVersion, FACES) }));
   }
 
   it("starts the harness from the base's own composition, told to change it", { timeout: REPORT_WITHIN_MS + 5_000 }, async () => {
@@ -263,12 +269,25 @@ describe("a modification", () => {
       prompt: "Make it slower",
       viewport: { width: 1920, height: 1080 },
       durationFrames: 96,
-      base: { packageUrl: BASE_URL, viewport: { width: 1920, height: 1080 }, durationFrames: 96 },
+      base: { packageUrl: BASE_URL, viewport: { width: 1920, height: 1080 }, durationFrames: 96, fontSetVersion: 1 },
     });
     expect(await readFile(join(dir, "seen-index.html"), "utf8")).toBe(BASE);
     const agents = await readFile(join(dir, "seen-agents.md"), "utf8");
     expect(agents).toMatch(/existing composition/i);
     expect(agents).not.toMatch(/re-?lay ?out/i);
+  });
+
+  it("reads a base packed with an earlier font set than the run's", { timeout: REPORT_WITHIN_MS + 5_000 }, async () => {
+    serveBase(1);
+    const settings = await image(await serveFakeCdp("socket_closes"), capturingDsh());
+    await runAndReport(settings, {
+      prompt: "Make it slower",
+      viewport: { width: 1920, height: 1080 },
+      durationFrames: 96,
+      fontSetVersion: 2,
+      base: { packageUrl: BASE_URL, viewport: { width: 1920, height: 1080 }, durationFrames: 96, fontSetVersion: 1 },
+    });
+    expect(await readFile(join(dir, "seen-index.html"), "utf8")).toBe(BASE);
   });
 
   it("asks for a re-layout when the frame or the length changes", { timeout: REPORT_WITHIN_MS + 5_000 }, async () => {
@@ -278,7 +297,7 @@ describe("a modification", () => {
       prompt: "Make it vertical",
       viewport: { width: 1080, height: 1920 },
       durationFrames: 144,
-      base: { packageUrl: BASE_URL, viewport: { width: 1920, height: 1080 }, durationFrames: 96 },
+      base: { packageUrl: BASE_URL, viewport: { width: 1920, height: 1080 }, durationFrames: 96, fontSetVersion: 1 },
     });
     const agents = await readFile(join(dir, "seen-agents.md"), "utf8");
     expect(agents).toMatch(/re-?lay ?out/i);
@@ -289,7 +308,7 @@ describe("a modification", () => {
   it("fails the run as base_unavailable when the base package cannot be read, without running the harness", { timeout: REPORT_WITHIN_MS + 5_000 }, async () => {
     const settings = await image(await serveFakeCdp("socket_closes"), capturingDsh());
     expect(await runAndReport(settings, {
-      base: { packageUrl: BASE_URL, viewport: { width: 1920, height: 1080 }, durationFrames: 96 },
+      base: { packageUrl: BASE_URL, viewport: { width: 1920, height: 1080 }, durationFrames: 96, fontSetVersion: 1 },
     })).toEqual({ ok: false, failureReason: "base_unavailable", cpuUsec: expect.toSatisfy((v: unknown) => v === null || typeof v === "number") });
     await expect(readFile(join(dir, "seen-index.html"), "utf8")).rejects.toThrow();
   });

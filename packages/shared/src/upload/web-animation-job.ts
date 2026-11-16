@@ -76,11 +76,15 @@ export const webAnimationJobRequestSchema = z.object({
    * submit 501 `feature_disabled`; remove the optional once every job submitted without it is past its deadline.
    */
   messagesPlan: messagesPlan.optional(),
-  /** A modification's base: the package it starts from, read by GET through `r2.local`, with that result's frame and length. */
+  /**
+   * A modification's base: the package it starts from, read by GET through `r2.local`, with that result's frame and
+   * length and the font set it was packed with, which the runner unpacks it by.
+   */
   base: z.object({
     packageKey: webAnimationKey,
     viewport: z.object({ width: positiveInteger, height: positiveInteger }),
     durationFrames: positiveInteger,
+    fontSetVersion: positiveInteger,
   }).optional(),
 });
 

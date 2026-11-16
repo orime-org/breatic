@@ -32,8 +32,11 @@ export interface WebAnimationRunBody {
   /** Where it posts progress and its final report, through `jobs.local`. */
   progressUrl: string;
   reportUrl: string;
-  /** A modification's base: the package to start from, read by GET through `r2.local`, with its frame and length. */
-  base?: { packageUrl: string; viewport: { width: number; height: number }; durationFrames: number };
+  /**
+   * A modification's base: the package to start from, read by GET through `r2.local`, with its frame and length and
+   * the font set it was packed with, which may be older than the run's.
+   */
+  base?: { packageUrl: string; viewport: { width: number; height: number }; durationFrames: number; fontSetVersion: number };
 }
 
 /** The port the render runner listens on, and its paths, are the creation runner's. */
