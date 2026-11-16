@@ -162,9 +162,10 @@ export async function holdRowedRun<T>(opts: {
 }
 
 /**
- * Start a run whose result nodes are already on the canvas and whose credits
- * {@link holdRowedRun} already holds: open their rows, queue the job and keep
- * its id.
+ * Start a run whose result nodes are already on the canvas: hold its credits
+ * when `credits` is given (otherwise {@link holdRowedRun} already holds them),
+ * then open their rows, queue the job and keep its id. The hold comes before
+ * any row, so a refusal opens none (inner#1968, design 3.10 U9).
  *
  * Once a row is open, any failure settles both accounts of the run — the task
  * and its rows — each on its own, so neither settlement takes the other down:
@@ -179,6 +180,7 @@ export async function holdRowedRun<T>(opts: {
  * @param opts.userId - Who started it.
  * @param opts.action - What the rows say this run is.
  * @param opts.label - What the rows name it by.
+ * @param opts.credits - The run's estimate, when the caller has not held it yet.
  * @param opts.enqueue - Queues the job, past the point of no return.
  * @param opts.logTag - Prefix of this lane's log events.
  * @param opts.logContext - Extra fields on the failure log.
@@ -193,6 +195,7 @@ export async function startRowedRun(opts: {
   userId: string;
   action: Exclude<NodeTaskAction, "upload">;
   label: string;
+  credits?: () => Promise<number>;
   enqueue: () => Promise<{ id?: string | undefined }>;
   logTag: string;
   logContext?: Record<string, unknown>;
@@ -200,6 +203,9 @@ export async function startRowedRun(opts: {
   const { taskId, projectId, spaceId } = opts;
   let rows: OpenedTaskRow[] = [];
   try {
+    const credits = opts.credits === undefined ? 0 : await opts.credits();
+    // A free run (the grid) holds nothing: nothing will be charged.
+    if (credits > 0) await reserveForRun(projectId, opts.userId, taskId, credits);
     rows = await openGenerationTasks({
       projectId,
       spaceId,
