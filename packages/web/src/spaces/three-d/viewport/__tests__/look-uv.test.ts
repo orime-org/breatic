@@ -1,0 +1,189 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+/**
+ * UVs generated at template load for triangle meshes without them (inner#1693 design 5.1):
+ * rest positions in template-root metres, one projection axis per triangle, a clean seam
+ * where the axis changes, and images that read upright and unmirrored from outside.
+ */
+
+import {
+  Bone, BoxGeometry, BufferAttribute, BufferGeometry, Group, InstancedMesh, Line, LineBasicMaterial, Matrix4, Mesh,
+  MeshStandardMaterial, Points, PointsMaterial, Skeleton, SkinnedMesh, SphereGeometry, Vector3,
+} from 'three';
+import { describe, expect, it } from 'vitest';
+
+import * as lookUv from '@web/spaces/three-d/viewport/look-uv';
+
+/**
+ * The function under test.
+ * @returns generateLookUvs.
+ * @throws {AssertionError} When it is not exported.
+ */
+function generate(): (root: Group) => void {
+  const candidate = (lookUv as Record<string, unknown>).generateLookUvs;
+  expect(candidate, 'generateLookUvs must be exported').toBeTypeOf('function');
+  return candidate as (root: Group) => void;
+}
+
+/** A mesh's geometry without its UVs. */
+function withoutUv<T extends BufferGeometry>(geometry: T): T {
+  geometry.deleteAttribute('uv');
+  return geometry;
+}
+
+/** The triangles of a geometry as vertex index triples. */
+function triangles(geometry: BufferGeometry): number[][] {
+  const count = geometry.index ? geometry.index.count : geometry.attributes.position.count;
+  const at = (i: number): number => (geometry.index ? geometry.index.getX(i) : i);
+  return Array.from({ length: count / 3 }, (_, t) => [at(t * 3), at(t * 3 + 1), at(t * 3 + 2)]);
+}
+
+/** The main axis of a triangle's face normal, from rest positions in root space. */
+function faceAxis(points: Vector3[]): { axis: 'x' | 'y' | 'z'; sign: number } {
+  const [a, b, c] = points as [Vector3, Vector3, Vector3];
+  const n = new Vector3().subVectors(c, b).cross(new Vector3().subVectors(a, b));
+  const abs = { x: Math.abs(n.x), y: Math.abs(n.y), z: Math.abs(n.z) };
+  const axis = abs.x >= abs.y && abs.x >= abs.z ? 'x' : abs.z >= abs.y ? 'z' : 'y';
+  return { axis, sign: Math.sign(n[axis]) };
+}
+
+/** The UV the design's table gives a rest point on a face with this axis. */
+function expectedUv(p: Vector3, face: { axis: 'x' | 'y' | 'z'; sign: number }): [number, number] {
+  if (face.axis === 'x') return [face.sign > 0 ? -p.z : p.z, -p.y];
+  if (face.axis === 'z') return [face.sign > 0 ? p.x : -p.x, -p.y];
+  return [p.x, face.sign > 0 ? p.z : -p.z];
+}
+
+/** Rest positions of a mesh's vertices in its template root's space. */
+function restPoints(mesh: Mesh, root: Group): Vector3[] {
+  root.updateMatrixWorld(true);
+  const toRoot = new Matrix4().copy(root.matrixWorld).invert().multiply(mesh.matrixWorld);
+  const position = mesh.geometry.attributes.position;
+  return Array.from({ length: position.count }, (_, i) => mesh.getVertexPosition(i, new Vector3()).applyMatrix4(toRoot));
+}
+
+describe('generateLookUvs', () => {
+  it('projects every triangle of an indexed smooth sphere along its own face axis', () => {
+    const root = new Group();
+    const mesh = new Mesh(withoutUv(new SphereGeometry(0.5, 16, 12)), new MeshStandardMaterial());
+    root.add(mesh);
+    generate()(root);
+    const uv = mesh.geometry.attributes.uv;
+    expect(uv, 'a uv attribute is generated').toBeDefined();
+    const points = restPoints(mesh, root);
+    for (const [a, b, c] of triangles(mesh.geometry)) {
+      const face = faceAxis([points[a]!, points[b]!, points[c]!]);
+      for (const index of [a!, b!, c!]) {
+        const [u, v] = expectedUv(points[index]!, face);
+        expect(uv!.getX(index)).toBeCloseTo(u, 5);
+        expect(uv!.getY(index)).toBeCloseTo(v, 5);
+      }
+    }
+  });
+
+  it('measures the UVs in metres of the template root, through node scale', () => {
+    const root = new Group();
+    const holder = new Group(); holder.scale.setScalar(0.01);
+    const mesh = new Mesh(withoutUv(new BoxGeometry(100, 100, 100)), new MeshStandardMaterial());
+    holder.add(mesh); root.add(holder);
+    generate()(root);
+    const uv = mesh.geometry.attributes.uv!;
+    const us = Array.from({ length: uv.count }, (_, i) => uv.getX(i));
+    expect(Math.max(...us) - Math.min(...us)).toBeCloseTo(1, 5);
+  });
+
+  it('measures a skinned mesh at its skeleton rest pose, not at the identity bind matrix', () => {
+    const root = new Group();
+    const bone = new Bone();
+    root.add(bone);
+    const geometry = withoutUv(new BoxGeometry(2, 2, 2));
+    const count = geometry.attributes.position.count;
+    geometry.setAttribute('skinIndex', new BufferAttribute(new Uint16Array(count * 4), 4));
+    geometry.setAttribute('skinWeight', new BufferAttribute(new Float32Array(count * 4).map((_, i) => (i % 4 === 0 ? 1 : 0)), 4));
+    const mesh = new SkinnedMesh(geometry, new MeshStandardMaterial());
+    root.add(mesh);
+    // A quantised skin keeps its scale in the inverse bind matrix, as gltfpack writes it.
+    mesh.bind(new Skeleton([bone], [new Matrix4().makeScale(0.5, 0.5, 0.5)]), new Matrix4());
+    root.updateMatrixWorld(true);
+    generate()(root);
+    const uv = mesh.geometry.attributes.uv!;
+    const us = Array.from({ length: uv.count }, (_, i) => uv.getX(i));
+    expect(Math.max(...us) - Math.min(...us)).toBeCloseTo(1, 5);
+  });
+
+  it('splits a vertex shared by triangles on different axes, carrying its skin attributes along', () => {
+    const root = new Group();
+    const geometry = withoutUv(new SphereGeometry(0.5, 8, 6));
+    const count = geometry.attributes.position.count;
+    geometry.setAttribute('skinIndex', new BufferAttribute(new Uint16Array(count * 4), 4));
+    geometry.setAttribute('skinWeight', new BufferAttribute(new Float32Array(count * 4).fill(0.25), 4));
+    const mesh = new Mesh(geometry, new MeshStandardMaterial());
+    root.add(mesh);
+    generate()(root);
+    const out = mesh.geometry;
+    expect(out.attributes.position.count).toBeGreaterThan(count);
+    expect(out.attributes.skinIndex!.count).toBe(out.attributes.position.count);
+    expect(out.attributes.skinWeight!.count).toBe(out.attributes.position.count);
+  });
+
+  it('reads an image upright and unmirrored on the front and the back of a box', () => {
+    const root = new Group();
+    const mesh = new Mesh(withoutUv(new BoxGeometry(1, 1, 1)), new MeshStandardMaterial());
+    root.add(mesh);
+    generate()(root);
+    const points = restPoints(mesh, root);
+    const uv = mesh.geometry.attributes.uv!;
+    const faces = triangles(mesh.geometry).map((tri) => ({ tri, face: faceAxis(tri.map((i) => points[i]!)) }));
+    for (const sign of [1, -1]) {
+      const vertices = faces.filter(({ face }) => face.axis === 'z' && face.sign === sign).flatMap(({ tri }) => tri);
+      const top = vertices.find((i) => points[i]!.y > 0)!;
+      const bottom = vertices.find((i) => points[i]!.y < 0 && points[i]!.x === points[top]!.x)!;
+      // The image's top row is v = 0 (flipY false): the higher vertex has the smaller v.
+      expect(uv.getY(top)).toBeLessThan(uv.getY(bottom));
+      // Seen from outside, u grows to the viewer's right: +x on the front, -x on the back.
+      const left = vertices.find((i) => points[i]!.x * sign < 0)!;
+      const right = vertices.find((i) => points[i]!.x * sign > 0)!;
+      expect(uv.getX(right)).toBeGreaterThan(uv.getX(left));
+    }
+  });
+
+  it('gives each of two meshes sharing one geometry its own UVs', () => {
+    const root = new Group();
+    const shared = withoutUv(new BoxGeometry(1, 1, 1));
+    const near = new Mesh(shared, new MeshStandardMaterial());
+    const far = new Mesh(shared, new MeshStandardMaterial());
+    far.position.set(10, 0, 0);
+    root.add(near, far);
+    generate()(root);
+    expect(near.geometry).not.toBe(far.geometry);
+    const uMax = (mesh: Mesh): number => Math.max(...Array.from({ length: mesh.geometry.attributes.uv!.count }, (_, i) => Math.abs(mesh.geometry.attributes.uv!.getX(i))));
+    expect(uMax(far)).toBeGreaterThan(uMax(near) + 5);
+  });
+
+  it('projects an instanced mesh in its own coordinates without the instance matrices', () => {
+    const root = new Group();
+    const mesh = new InstancedMesh(withoutUv(new BoxGeometry(1, 1, 1)), new MeshStandardMaterial(), 2);
+    mesh.setMatrixAt(1, new Matrix4().makeTranslation(50, 0, 0));
+    root.add(mesh);
+    generate()(root);
+    const uv = mesh.geometry.attributes.uv!;
+    const us = Array.from({ length: uv.count }, (_, i) => Math.abs(uv.getX(i)));
+    expect(Math.max(...us)).toBeLessThanOrEqual(0.5 + 1e-6);
+  });
+
+  it('leaves a mesh that has UVs, and lines and points, untouched', () => {
+    const root = new Group();
+    const textured = new Mesh(new BoxGeometry(1, 1, 1), new MeshStandardMaterial());
+    const before = textured.geometry.attributes.uv!.array.slice();
+    const line = new Line(new BufferGeometry().setAttribute('position', new BufferAttribute(new Float32Array([0, 0, 0, 1, 0, 0, 1, 1, 0]), 3)), new LineBasicMaterial());
+    const points = new Points(new BufferGeometry().setAttribute('position', new BufferAttribute(new Float32Array([0, 0, 0, 1, 1, 1, 2, 0, 0]), 3)), new PointsMaterial());
+    root.add(textured, line, points);
+    generate()(root);
+    expect(textured.geometry.attributes.uv!.array).toEqual(before);
+    expect(line.geometry.attributes.uv).toBeUndefined();
+    expect(line.geometry.attributes.normal).toBeUndefined();
+    expect(points.geometry.attributes.uv).toBeUndefined();
+    expect(points.geometry.attributes.normal).toBeUndefined();
+  });
+});
