@@ -1,0 +1,197 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+/**
+ * The slash menu in the document body end to end (inner#1125).
+ *
+ * What jsdom cannot show: the menu opening under the real caret from real
+ * typing, a real input method committing the ideographic comma, the real
+ * Cmd/Ctrl+Z after a pick, the formula box taking focus, the size grid's
+ * pick, a code block and a table cell as the browser lays them out, and a
+ * click away from the menu.
+ *
+ * Wants dev running:
+ *   pnpm --filter @breatic/web test:smoke
+ */
+import { expect, type Page } from 'playwright/test';
+import { test } from '../helpers/slot';
+
+import { openSmokeProject } from '../helpers/project';
+import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR } from '../helpers/space';
+
+let page: Page;
+
+test.beforeEach(async ({ browser }) => {
+  page = await browser.newPage({ viewport: { width: 1680, height: 950 } });
+});
+
+const createdSpaceIds: string[] = [];
+
+test.afterEach(async () => {
+  while (createdSpaceIds.length > 0) {
+    await deleteSpace(page, createdSpaceIds.pop() as string);
+  }
+  await page?.close();
+});
+
+/** The open slash menu. */
+const MENU = '[data-testid="doc-slash-menu"]';
+
+/**
+ * Open a freshly made Document Space with the caret in the body.
+ * @param p - The page.
+ */
+async function openFreshDocument(p: Page): Promise<void> {
+  await openSmokeProject(p);
+  const id = await createSpace(p, 'document', `slash-${Date.now()}`);
+  createdSpaceIds.push(id);
+  const editor = p.locator(EDITOR);
+  await expect(editor).toBeVisible({ timeout: 15_000 });
+  await editor.click();
+  await expect(editor).toBeFocused();
+}
+
+/**
+ * Every text row as `type:text` (a heading as `heading2:text`, a quoted row
+ * with a leading `>`), and a formula block or table by its type, read off the
+ * editor's document.
+ * @param p - The page.
+ * @returns One entry per row.
+ */
+async function lines(p: Page): Promise<string[]> {
+  return p.evaluate((selector) => {
+    type PMNode = {
+      type: { name: string };
+      attrs: Record<string, unknown>;
+      isTextblock: boolean;
+      textContent: string;
+      descendants: (fn: (node: PMNode) => boolean | void) => void;
+    };
+    const view = document.querySelector(selector) as unknown as { editor?: { state: { doc: PMNode } } } | null;
+    if (view?.editor === undefined) return [];
+    const out: string[] = [];
+    view.editor.state.doc.descendants((node) => {
+      if (node.type.name === 'mathBlock' || node.type.name === 'docTable') {
+        out.push(node.type.name);
+        return false;
+      }
+      if (!node.isTextblock) return true;
+      const level = node.type.name === 'heading' ? String(node.attrs['level']) : '';
+      const quoted = node.attrs['quoted'] === true ? '>' : '';
+      out.push(`${quoted}${node.type.name}${level}:${node.textContent}`);
+      return false;
+    });
+    return out;
+  }, EDITOR);
+}
+
+test.describe('the slash menu in the document body', () => {
+  test('opens at a line start, picks with the arrows and Enter, and one undo brings the query back', async () => {
+    await openFreshDocument(page);
+    await page.keyboard.type('/head');
+    const menu = page.locator(MENU);
+    await expect(menu).toBeVisible();
+    await expect(page.getByTestId('doc-slash-row-heading-1')).toHaveAttribute('data-highlighted', '');
+
+    const caret = await page.evaluate(() => window.getSelection()?.getRangeAt(0).getBoundingClientRect().bottom ?? 0);
+    const top = (await menu.boundingBox())?.y ?? 0;
+    expect(top).toBeGreaterThanOrEqual(caret);
+
+    await page.keyboard.press('ArrowDown');
+    await expect(page.getByTestId('doc-slash-row-heading-2')).toHaveAttribute('data-highlighted', '');
+    await page.keyboard.press('Enter');
+    await expect(menu).toBeHidden();
+    await expect.poll(() => lines(page)).toEqual(['heading2:']);
+    await expect(page.locator(EDITOR)).toBeFocused();
+
+    await page.keyboard.press('ControlOrMeta+z');
+    await expect.poll(() => lines(page)).toEqual(['paragraph:/head']);
+  });
+
+  test('stays shut inside a word and puts the pick below a line with text', async () => {
+    await openFreshDocument(page);
+    await page.keyboard.type('abc/');
+    await expect(page.locator(MENU)).toBeHidden();
+    await page.keyboard.type(' /quo');
+    await expect(page.locator(MENU)).toBeVisible();
+    await page.keyboard.press('Enter');
+    await expect.poll(() => lines(page)).toEqual(['paragraph:abc/ ', '>paragraph:']);
+  });
+
+  test('says nothing matches, then closes; Esc and a click away close it with the text kept', async () => {
+    await openFreshDocument(page);
+    await page.keyboard.type('/zzz');
+    await expect(page.getByTestId('doc-slash-empty')).toBeVisible();
+    await page.keyboard.type('z');
+    await expect(page.locator(MENU)).toBeHidden();
+
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('/he');
+    await expect(page.locator(MENU)).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator(MENU)).toBeHidden();
+
+    await page.keyboard.press('Enter');
+    await page.keyboard.type('/he');
+    await expect(page.locator(MENU)).toBeVisible();
+    await page.locator(EDITOR).click({ position: { x: 5, y: 5 } });
+    await expect(page.locator(MENU)).toBeHidden();
+    await expect.poll(() => lines(page)).toEqual(['paragraph:/zzzz', 'paragraph:/he', 'paragraph:/he']);
+  });
+
+  test('opens the formula box as the plus menu does', async () => {
+    await openFreshDocument(page);
+    await page.keyboard.type('/formula');
+    await page.keyboard.press('Enter');
+    await expect(page.locator(`${EDITOR} .doc-math[data-open="true"] [data-formula-box] textarea`)).toBeFocused();
+    await expect.poll(() => lines(page)).toEqual(['mathBlock']);
+  });
+
+  test('opens the size grid and puts a table of the size picked', async () => {
+    await openFreshDocument(page);
+    await page.keyboard.type('/table');
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('doc-slash-table-grid')).toBeVisible();
+    await page.getByTestId('doc-slash-table-size-2-3').click();
+    await expect(page.locator(MENU)).toBeHidden();
+    await expect.poll(() => lines(page)).toContain('docTable');
+    const shape = await page.evaluate((selector) => {
+      const table = document.querySelector(`${selector} table`);
+      return table === null ? null : [table.querySelectorAll('tr').length, table.querySelector('tr')?.children.length ?? 0];
+    }, EDITOR);
+    expect(shape).toEqual([2, 3]);
+  });
+
+  test('stays shut in a code block', async () => {
+    await openFreshDocument(page);
+    await page.keyboard.type('/code');
+    await page.keyboard.press('Enter');
+    await expect.poll(() => lines(page)).toEqual(['codeBlock:']);
+    await page.keyboard.type('/');
+    await expect.poll(() => lines(page)).toEqual(['codeBlock:/']);
+    await expect(page.locator(MENU)).toBeHidden();
+  });
+
+  test('greys Table on a line in a table cell', async () => {
+    await openFreshDocument(page);
+    await page.keyboard.type('/table');
+    await page.keyboard.press('Enter');
+    await page.getByTestId('doc-slash-table-size-2-2').click();
+    await expect.poll(() => lines(page)).toContain('docTable');
+    await page.keyboard.type('/');
+    await expect(page.locator(MENU)).toBeVisible();
+    await expect(page.getByTestId('doc-slash-row-table')).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  test('opens on an ideographic comma committed by an input method', async () => {
+    await openFreshDocument(page);
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Input.imeSetComposition', { text: '、', selectionStart: 1, selectionEnd: 1 });
+    await cdp.send('Input.insertText', { text: '、' });
+    await expect(page.locator(MENU)).toBeVisible();
+    await expect.poll(() => lines(page)).toEqual(['paragraph:、']);
+    await page.keyboard.press('Escape');
+    await expect(page.locator(MENU)).toBeHidden();
+    await expect.poll(() => lines(page)).toEqual(['paragraph:、']);
+  });
+});
