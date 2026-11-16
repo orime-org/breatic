@@ -459,8 +459,8 @@ describe("the waiting count", () => {
   it("rewrites counts that differ only in waiting", () => {
     const nodeId = crypto.randomUUID();
     const { doc, data } = docWithNode(nodeId);
-    apply(doc, { nodeId, counts: { running: 1, waiting: 0, done: 0, failed: 0, expired: 0 } as never });
-    apply(doc, { nodeId, counts: { running: 1, waiting: 1, done: 0, failed: 0, expired: 0 } as never });
+    apply(doc, { nodeId, counts: { running: 1, waiting: 0, done: 0, failed: 0, expired: 0 } });
+    apply(doc, { nodeId, counts: { running: 1, waiting: 1, done: 0, failed: 0, expired: 0 } });
     expect(data.get("taskCounts")).toEqual({ running: 1, waiting: 1, done: 0, failed: 0, expired: 0 });
   });
 
@@ -472,7 +472,7 @@ describe("the waiting count", () => {
     data.set("taskCounts", { running: 1, done: 0, failed: 0, expired: 0 });
     let updates = 0;
     doc.on("update", () => { updates += 1; });
-    apply(doc, { nodeId, counts: { running: 1, waiting: 0, done: 0, failed: 0, expired: 0 } as never });
+    apply(doc, { nodeId, counts: { running: 1, waiting: 0, done: 0, failed: 0, expired: 0 } });
     expect(updates).toBe(0);
   });
 });
