@@ -264,7 +264,8 @@ export function dialogueText(lines: readonly DialogueLine[], speakers: readonly 
       const text = line.text.slice(plans[at]?.strip ?? 0).replace(/\s*\n\s*/g, " ").trim();
       // A line whose words the prompt cleaning drops (a tag, a comment, invisible characters) says nothing.
       if (extractPromptText(text) === "") return [];
-      const name = (speakers[(plans[at]?.speaker ?? 1) - 1]?.speaker ?? "").trim();
+      // Cleaned as the speakers list's names are, so the upstream pairs each turn with its speaker.
+      const name = extractPromptText(speakers[(plans[at]?.speaker ?? 1) - 1]?.speaker ?? "");
       return [`${name}: ${text}`];
     })
     .join("\n");

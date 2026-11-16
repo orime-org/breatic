@@ -80,6 +80,10 @@ describe('speakersShort', () => {
     expect(speakersShort(GEMINI, { speakers: HALF })).toBe(false);
     expect(speakersShort(PLAIN, { [STAND_IN_ON]: true })).toBe(false);
   });
+
+  it('counts a speaker whose name the prompt cleaning empties as not named (#1521)', () => {
+    expect(speakersShort(GEMINI, { speakers: [PAIR[0], { speaker: '<Host>', voice: 'Puck' }], [STAND_IN_ON]: true })).toBe(true);
+  });
 });
 
 describe('withStandInOn', () => {
@@ -140,6 +144,10 @@ describe('dialogueText', () => {
 
   it('numbers speakers from 1 and trims the name', () => {
     expect(dialogueText([{ speaker: 2, text: 'x' }], [{ speaker: ' Ava ' }, { speaker: '  Leo' }])).toBe('Leo: x');
+  });
+
+  it('names a speaker in the script as the speakers list sends the name, cleaned (#1521)', () => {
+    expect(dialogueText([{ speaker: 2, text: 'hi' }], [{ speaker: 'Ava' }, { speaker: 'Dr <b>Who</b>' }])).toBe('Dr Who: hi');
   });
 
   it('skips a line that is empty or only spaces', () => {
