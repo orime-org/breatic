@@ -22,6 +22,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { runPlanJob, type PlanRunBody } from '@ingest/container/plan-run.js';
 import { resolveVideoColorMatrix } from '@ingest/container/physical-video-probe.js';
 import { packedCarrierWidth } from '@shared/mini-tools/video-encode-plan.js';
+import { writePixelCropped } from './helpers/matroska-pixel-crop.js';
 import { coverArgs, coverDecoderArgs, probeArgs, readProbeOutput } from '@ingest/probe-command.js';
 
 const run = promisify(execFile);
@@ -259,6 +260,16 @@ beforeAll(async () => {
   await make('rot90.mp4', ['-display_rotation', '90', '-i', join(dir, 'cfr.mp4'), '-c', 'copy']);
   // The dispatched copy's source (§93 D8): cfr.mp4's picture with ALAC audio, which the MP4 entry's audio_codecs does not
   // list. 2 s of 44.1 kHz audio (88200 samples), one edit from media time 0 on both tracks.
+  // A half-transparent VP9 WebM, the same with a Matroska PixelCrop (3 columns left, 1 row top), and a ProRes 4444 copy of
+  // it in MOV, where FFmpeg writes the crop as a clean aperture; Chrome applies neither (CE25).
+  await make('half.webm', ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=25:d=0.4', '-vf', 'format=rgba,colorchannelmixer=aa=0.5,format=yuva420p', '-c:v', 'libvpx-vp9', '-lossless', '1']);
+  await writePixelCropped(join(dir, 'half.webm'), join(dir, 'half-crop.webm'), { left: 3, top: 1 });
+  await make('half-prores.mkv', ['-c:v', 'libvpx-vp9', '-i', join(dir, 'half.webm'), '-c:v', 'prores_ks', '-profile:v', '4444', '-pix_fmt', 'yuva444p10le']);
+  await writePixelCropped(join(dir, 'half-prores.mkv'), join(dir, 'half-prores-crop.mkv'), { left: 3, top: 1 });
+  await make('half-clap.mov', ['-i', join(dir, 'half-prores-crop.mkv'), '-c', 'copy']);
+  // A palette PNG in MOV, transparent on its left half and opaque on its right (CE26).
+  await make('palette.mov', ['-f', 'lavfi', '-i', 'testsrc2=s=64x36:r=25:d=0.4', '-filter_complex',
+    "format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='if(lt(X,32),0,255)',split[s0][s1];[s0]palettegen=reserve_transparent=1:stats_mode=single[p];[s1][p]paletteuse=alpha_threshold=128:new=1", '-c:v', 'png']);
   // Opaque everywhere, saturated green on its last eight columns: the packed planes' seam shows any chroma bleeding (CE24).
   await make('banner.mov', ['-f', 'lavfi', '-i', "color=c=white:s=64x36:r=25:d=0.4,format=rgba,geq=r='if(gte(X\\,56)\\,0\\,255)':g='255':b='if(gte(X\\,56)\\,0\\,255)':a='255'", '-c:v', 'png']);
   await make('alac.mp4', ['-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=25:d=2', '-f', 'lavfi', '-i', 'sine=f=1000:r=44100:d=2',
@@ -400,7 +411,7 @@ describe('chunk_encode (§5.4 切块、块的时间; §7.17)', () => {
     expect(Number(list[4]!.duration_time)).toBeCloseTo(1.04, 6);
   });
 
-  it.each(['alpha.mov', 'alpha.webm'])('CE08 packs an alpha source premultiplied colour left and alpha right on even planes (§3.5 alpha-packed; alpha-presentation.ts packing): %s', async (name) => {
+  it.each(['alpha.mov', 'alpha.webm'])('CE08 packs an alpha source premultiplied colour left and alpha right on even planes (§3.5 alpha-packed): %s', async (name) => {
     const recipe = chunk({ start: 0, end: 10 }, [span(r(0), r(0), r(0), r(2, 5))], { ...TARGET, width: packedCarrierWidth(64), height: 36, alpha: 'packed' });
     const [file] = await produce({ [SOURCE]: join(dir, name) }, [recipe]);
     const video = (await probe(file!)).streams[0]!;
@@ -435,6 +446,32 @@ describe('chunk_encode (§5.4 切块、块的时间; §7.17)', () => {
     const [edge, after] = [chroma(64 / 2 - 1), chroma(64 / 2)];
     for (const index of [0, 1]) expect(Math.abs(after[index]! - edge[index]!)).toBeLessThanOrEqual(6);
     expect(Math.abs(edge[0] - 128)).toBeGreaterThan(20);
+  });
+
+  // A container crop is not shown (Chrome applies neither a Matroska PixelCrop nor an MP4 clean aperture): the packed planes
+  // hold the whole coded picture, the alpha at half everywhere.
+  it.each(['half-crop.webm', 'half-clap.mov'])('CE25 %s packs its whole coded picture', async (name) => {
+    const target = { ...TARGET, width: packedCarrierWidth(160), height: 96, alpha: 'packed' };
+    const pack = async (source: string): Promise<string> => (await produce({ [SOURCE]: join(dir, source) }, [chunk({ start: 0, end: 10 }, [span(r(0), r(0), r(0), r(2, 5))], target)]))[0]!;
+    const file = await pack(name);
+    expect((await probe(file)).streams[0]).toMatchObject({ width: 324, height: 96 });
+    // 128 stored as limited-range luma 16 + 128 * 219 / 255 ≈ 126, over the whole alpha plane.
+    for (const mean of await lumaMeans(file, { x: 164, y: 0, width: 160, height: 96 })) expect(Math.abs(mean - 126)).toBeLessThan(4);
+    // Its colour plane is the uncropped source's, pixel for pixel (a crop scaled back would shift it by columns).
+    const plane = async (path: string): Promise<Buffer> =>
+      (await run('ffmpeg', ['-v', 'error', '-i', path, '-frames:v', '1', '-vf', 'extractplanes=y,crop=160:96:0:0', '-f', 'rawvideo', '-'], { encoding: 'buffer', maxBuffer: 1 << 24 })).stdout;
+    const [got, want] = [await plane(file), await plane(await pack(name.endsWith('.mov') ? 'half-prores.mkv' : 'half.webm'))];
+    expect(got.reduce((sum, value, index) => sum + Math.abs(value - want[index]!), 0) / got.length).toBeLessThan(1);
+  });
+
+  // A palette (pal8) frame becomes planar RGBA before the packing splits it: its transparent half packs clear, its opaque
+  // half solid.
+  it('CE26 a palette source packs its alpha', async () => {
+    const [file] = await produce({ [SOURCE]: join(dir, 'palette.mov') }, [chunk({ start: 0, end: 10 }, [span(r(0), r(0), r(0), r(2, 5))], { ...TARGET, colorMatrix: 'bt601', width: packedCarrierWidth(64), height: 36, alpha: 'packed' })]);
+    const [clear] = await lumaMeans(file!, { x: 68, y: 0, width: 32, height: 36 });
+    const [solid] = await lumaMeans(file!, { x: 100, y: 0, width: 32, height: 36 });
+    expect(clear!).toBeLessThan(24);
+    expect(solid!).toBeGreaterThan(228);
   });
 
   // SMPTE 240M and FCC sources decode with their own matrix.

@@ -523,7 +523,7 @@ const AAC = ["-map", "[a]", "-c:a", "aac", "-b:a", "192k", "-ar", "48000"];
 /**
  * What the recipes need to know of a source before reading it; `tick` is the first video stream's time base, `decoder` the
  * decoder options a VP9 or VP8 stream with alpha needs (FFmpeg's own decoders skip the alpha plane, which Matroska stores as a
- * BlockAdditional; only libvpx reads it, as alpha-presentation.ts decodes it).
+ * BlockAdditional; only libvpx reads it, through `alphaDecoderArgs`).
  */
 interface SourceFacts { iso: boolean; audio: boolean; mono: boolean; tick: [bigint, bigint] | null; decoder: string[]; colour: FrameColour }
 

@@ -231,7 +231,7 @@ describe('E2-3/E2-4 actions on the one presentation route (Q3; §7.1 `Er` takes 
 describe('E4-15 / D3-3 role-tagged output receipts of a stitch or copy (§5.1 step 4; §7.15 candidate 行)', () => {
   const object = (name: string, contentType: string): { storageKey: string; sha256: string; sizeBytes: number; contentType: string } => ({ storageKey: `${KEY}.${name}`, sha256: 'f'.repeat(64), sizeBytes: 4096, contentType });
   const native = { role: 'carrier', packing: 'native', ...object('copy', 'video/mp4') };
-  // A 95x63 picture packed on 96-wide planes: colour left, alpha right (alpha-presentation.ts packing).
+  // A 95x63 picture packed on 96-wide planes: colour left, alpha right.
   const GEOMETRY = { packedWidth: 192, packedHeight: 64, colorRect: { x: 0, y: 0, width: 95, height: 63 }, alphaRect: { x: 96, y: 0, width: 95, height: 63 } };
   const packedCarrier = { role: 'carrier', packing: 'alpha-packed', ...object('stitch', 'video/mp4'), geometry: GEOMETRY };
   const manifest = { role: 'manifest', ...object('stitch.manifest', 'application/json') };
