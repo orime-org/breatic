@@ -287,13 +287,13 @@ describe('startMiniToolRun', () => {
     expect(api.run).not.toHaveBeenCalled();
   });
 
-  it('names and places the tiles of a grid and fills them in one batch', async () => {
-    const files = [0, 1, 2, 3].map((i) => new File(['x'], `t${i}.png`, { type: 'image/png' }));
+  // The grid is cut on the server since inner#1968 (design 3.2.2): the press
+  // names and places the tiles, then sends one run for them and uploads nothing.
+  it('names and places the tiles of a grid and sends one run for them', async () => {
     const run = press({
       spec: tool('image.grid'),
       snapshot: { ...SNAPSHOT, params: { rows: 2, cols: 2 } },
       source: { id: 'src', name: 'IMG', position: { x: 0, y: 0 }, groupOrigin: null, mimeType: 'image/png' },
-      exportFile: vi.fn(() => Promise.resolve(files.map((file) => ({ file })))),
     });
 
     await startMiniToolRun(run);
@@ -301,11 +301,10 @@ describe('startMiniToolRun', () => {
     const nodes = canvas.addNode.mock.calls.map((call) => call[2]);
     expect(nodes.map((node) => node.data.name)).toEqual(['GRID-r1c1-IMG', 'GRID-r1c2-IMG', 'GRID-r2c1-IMG', 'GRID-r2c2-IMG']);
     expect(nodes[1].position.x - nodes[0].position.x).toBe(NODE_STEP.x);
-    expect(run.fillUploads).toHaveBeenCalledWith(
-      nodes.map((node, i) => ({ nodeId: node.id, file: files[i], markOp: marksOfBuilt()[i]!.op })),
-      { source: 'mini_tool', toolName: 'image.grid' },
-    );
-    expect(marksOfBuilt().map((mark) => mark?.action)).toEqual(['image.grid', 'image.grid', 'image.grid', 'image.grid']);
+    expect(api.run).toHaveBeenCalledTimes(1);
+    expect(api.run.mock.calls[0][0]).toMatchObject({ tool: 'image.grid', node_ids: nodes.map((node) => node.id) });
+    expect(run.exportFile).not.toHaveBeenCalled();
+    expect(run.fillUploads).not.toHaveBeenCalled();
     expect(run.fillUpload).not.toHaveBeenCalled();
   });
 
