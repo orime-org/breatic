@@ -345,6 +345,7 @@ function ProjectWorkspace({
     spaces,
     provider,
     users,
+    following,
     synced: metaSynced,
     status: connectionStatus,
   } = useProjectMeta(projectId);
@@ -396,7 +397,8 @@ function ProjectWorkspace({
 
   // ---- Following a member (#920) ----
   // This tab's Space in front and whom this user follows go out on the meta
-  // awareness; following someone takes this strip to their Space and stops
+  // awareness, the latter only for collab to keep the meta document's
+  // following table, which is what every peer reads; following someone takes this strip to their Space and stops
   // when they go offline, leave the project or start following someone.
   const metaAwareness = provider?.awareness ?? null;
   usePublishView(metaAwareness, tabs.activeId);
@@ -405,7 +407,7 @@ function ProjectWorkspace({
     () => new Set([...users.values()].filter((u) => u.online).map((u) => u.id)),
     [users],
   );
-  const memberViews = useMemberViews(metaAwareness, onlineUserIds);
+  const memberViews = useMemberViews(metaAwareness, following);
   const leaderView = followedUserId === null ? undefined : memberViews.get(followedUserId);
   const leaderSpaceId = leaderView?.spaceId ?? null;
   const openFollowedSpace = React.useCallback((spaceId: string) => {

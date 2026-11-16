@@ -512,12 +512,15 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
       scroller === null ||
       top === null ||
       bar === null ||
-      (last?.key === reveal && (last.height === readHeight || scroller.scrollTop !== last.top))
+      // A grown card is not chased once the user scrolled, nor while
+      // following: the leader decides where this body is.
+      (last?.key === reveal &&
+        (last.height === readHeight ||
+          scroller.scrollTop !== last.top ||
+          useFollowStore.getState().targetUserId !== null))
     ) {
       return;
     }
-    // While following, the leader decides where this body is, so a card that grows is not chased.
-    if (last?.key === reveal && useFollowStore.getState().targetUserId !== null) return;
     // The words may sit in a wide table scrolled away from them, which
     // scrolling the body up and down does not bring back.
     const root = domElementOf(editor);

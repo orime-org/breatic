@@ -68,6 +68,8 @@ import {
 import { createActivityHook } from "@collab/hooks/account-activity.js";
 import { createAuthHook } from "@collab/hooks/auth.js";
 import {
+  forgetFollowingOnDisconnect,
+  recordFollowingFromAwareness,
   recordPresenceOnConnect,
   stampIdentityOnAwareness,
 } from "@collab/hooks/presence-wiring.js";
@@ -649,14 +651,21 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     // server writes it from the credential it validated at the handshake.
     // Runs on every document, not just the meta one: carets live in the canvas
     // and document files, which is where an id becomes a name on a screen.
-    beforeHandleAwareness: async ({ states, connection, context }) => {
+    beforeHandleAwareness: async ({ states, connection, context, socketId, documentName, document }) => {
       stampIdentityOnAwareness({ states, connection, context });
+      // After the stamp, so the scratch entry is recognisable as holding only
+      // the identity (see `recordFollowingFromAwareness`).
+      recordFollowingFromAwareness({ states, connection, context, socketId, documentName, document }, {
+        now: Date.now,
+        staleAfterMs: timings.presenceStaleAfterMs,
+      });
     },
 
-    onDisconnect: async ({ documentName, context, socketId }) => {
+    onDisconnect: async ({ documentName, context, socketId, document }) => {
       // A refused duplicate held nothing; what is recorded under its socket
       // and document belongs to the connection it duplicated.
       if (refusedDuplicates.has(context)) return;
+      forgetFollowingOnDisconnect({ documentName, socketId, document });
       const ctx = context as { user?: { id: string } };
       const userId = ctx.user?.id;
       // Remove this connection from the cross-instance registry on clean
@@ -685,8 +694,9 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
         await connectionRegistry.unregister(documentName, socketId);
       }
       logger.info({ documentName, userId }, "Client disconnected");
-      // NOTHING about the document's contents is touched here, and both
-      // halves of that are deliberate.
+      // Beyond this connection's own following entry (keyed by socket, so its
+      // close is the whole story), NOTHING about the document's contents is
+      // touched here, and both halves of that are deliberate.
       //
       // The presence list is not written because this socket ending says
       // nothing about whether its owner is still in the project: one person

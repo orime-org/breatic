@@ -4,9 +4,9 @@
 import * as React from 'react';
 import type { Awareness } from 'y-protocols/awareness';
 
-import { FollowingKeeper, pickMemberViews, type AwarenessChange, type MemberView } from '@web/data/yjs/follow-presence';
+import { pickMemberViews, type MemberView } from '@web/data/yjs/follow-presence';
 
-/** Each other member's view, by user id; a member with no tab publishing either field is absent. */
+/** Each other member's view, by user id; a member with neither a view nor a following entry is absent. */
 export type MemberViews = ReadonlyMap<string, MemberView>;
 
 const EMPTY: MemberViews = new Map();
@@ -14,7 +14,7 @@ const EMPTY: MemberViews = new Map();
 /** What `useSyncExternalStore` reads the member views through. */
 interface MemberViewsStore {
   subscribe: (onChange: () => void) => () => void;
-  read: (onlineUserIds: ReadonlySet<string>) => MemberViews;
+  read: (following: ReadonlyMap<string, string>) => MemberViews;
 }
 
 /** The store while there is no awareness: nothing to list. */
@@ -42,20 +42,15 @@ function sameViews(a: MemberViews, b: MemberViews): boolean {
  * @returns The store.
  */
 function memberViewsStore(awareness: Awareness): MemberViewsStore {
-  const keeper = new FollowingKeeper(awareness);
   let version = 0;
-  let cache: { version: number; online: ReadonlySet<string> | null; views: MemberViews } = { version: -1, online: null, views: EMPTY };
+  let cache: { version: number; following: ReadonlyMap<string, string> | null; views: MemberViews } = { version: -1, following: null, views: EMPTY };
   return {
     subscribe: (onChange: () => void): (() => void) => {
-      keeper.seed();
       version += 1;
       /**
-       * Take in the change, then let React compare the snapshot.
-       * @param change - The clients the event lists.
-       * @param origin - The event's origin.
+       * Note the change, then let React compare the snapshot.
        */
-      const listener = (change: AwarenessChange, origin: unknown): void => {
-        keeper.observe(change, origin);
+      const listener = (): void => {
         version += 1;
         onChange();
       };
@@ -63,30 +58,29 @@ function memberViewsStore(awareness: Awareness): MemberViewsStore {
       awareness.on('change', listener);
       return (): void => awareness.off('change', listener);
     },
-    read: (onlineUserIds: ReadonlySet<string>): MemberViews => {
-      if (cache.version === version && cache.online === onlineUserIds) return cache.views;
-      const next = pickMemberViews(awareness.getStates(), awareness.clientID, keeper.kept(onlineUserIds));
-      cache = { version, online: onlineUserIds, views: sameViews(cache.views, next) ? cache.views : next };
+    read: (following: ReadonlyMap<string, string>): MemberViews => {
+      if (cache.version === version && cache.following === following) return cache.views;
+      const next = pickMemberViews(awareness.getStates(), awareness.clientID, following);
+      cache = { version, following, views: sameViews(cache.views, next) ? cache.views : next };
       return cache.views;
     },
   };
 }
 
 /**
- * Every other member's view (#920), read from the project's meta awareness:
- * the Space they have in front and whom they follow. A member whose entry
- * awareness dropped for silence keeps following while the server still counts
- * them online. Re-renders only when some member's Space or following changes,
- * not on every focus or time stamp rewrite.
+ * Every other member's view (#920): the Space they have in front, from the
+ * project's meta awareness, and whom they follow, from the server's following
+ * table. Re-renders only when some member's Space or following changes, not
+ * on every focus or time stamp rewrite.
  * @param metaAwareness - The project meta awareness, or null before it is attached.
- * @param onlineUserIds - The members the server's presence records count as online.
+ * @param following - Whom each member follows, `useProjectMeta(projectId).following`.
  * @returns The views by user id; empty without an awareness.
  */
-export function useMemberViews(metaAwareness: Awareness | null, onlineUserIds: ReadonlySet<string>): MemberViews {
+export function useMemberViews(metaAwareness: Awareness | null, following: ReadonlyMap<string, string>): MemberViews {
   const store = React.useMemo(
     (): MemberViewsStore => (metaAwareness ? memberViewsStore(metaAwareness) : NO_STORE),
     [metaAwareness],
   );
-  const read = React.useCallback((): MemberViews => store.read(onlineUserIds), [store, onlineUserIds]);
+  const read = React.useCallback((): MemberViews => store.read(following), [store, following]);
   return React.useSyncExternalStore(store.subscribe, read);
 }

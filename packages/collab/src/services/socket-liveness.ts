@@ -112,7 +112,7 @@ export function createLivenessHandler(
     const seats = settleSeats(socketId, connections, heardAt).catch((err: unknown) => {
       logger.error({ err, socketId }, "seat_refresh_failed");
     });
-    refreshPresenceForSocket(connections, presencePolicy, heardAt);
+    refreshPresenceForSocket(connections, presencePolicy, heardAt, socketId);
     return seats;
   };
 }

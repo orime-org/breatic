@@ -3192,6 +3192,7 @@ function CanvasSpaceInner({
   const frameCanvas = React.useCallback((): void => {
     void fitView(FIT_VIEW_OPTIONS);
   }, [fitView]);
+  const isCameraPlaced = React.useCallback((): boolean => storedViewport !== null || cameraPlaced.current, [storedViewport]);
   const onFollowMoveStart = useCanvasFollow({
     awareness,
     leaderUserId,
@@ -3199,7 +3200,7 @@ function CanvasSpaceInner({
     pane,
     applyViewport: applyFollowViewport,
     clearOpeningFit,
-    openingFitHeld: storedViewport === null && followingAtMount,
+    isCameraPlaced,
     frameCanvas,
   });
   const readCamera = React.useCallback((): FlowRect | null => {
