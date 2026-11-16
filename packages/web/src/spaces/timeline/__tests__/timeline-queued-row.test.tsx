@@ -37,7 +37,7 @@ function waitingRow(): TimelineExecutionRow {
     inputHash: 'sha256:q', engine: 'deepseek', status: 'queued', phase: null, steps: [], attempt: 1, fence: null,
     deadlineAt: new Date(Date.now() + 3_600_000).toISOString(), resultSourceVersionId: null, failureReason: null,
     billedCredits: null, billedAt: null, createdAt: '2026-11-15T08:00:00.000Z', updatedAt: '2026-11-15T08:00:00.000Z',
-    usageCredits: 0, slotWaitSince: '2026-11-15T08:00:01.000Z',
+    usageCredits: 0, slotWaitSince: '2026-11-15T08:00:01.000Z', slotWaitLimit: 2,
   } as TimelineExecutionRow;
 }
 

@@ -80,7 +80,7 @@ function waitingEntry(over: Partial<NodeTaskEntry> = {}): NodeTaskEntry {
 }
 
 describe('G-38 the counts column of a node with a waiting task', () => {
-  const counts = { running: 3, waiting: 1, done: 0, failed: 0, expired: 0 } as NodeTaskCounts;
+  const counts = { running: 3, waiting: 1, waitingLimit: 2, done: 0, failed: 0, expired: 0 } as NodeTaskCounts;
 
   it('draws running and queued as two cells', () => {
     render(<TooltipProvider><TaskCountColumn counts={counts} endedShown openFor={null} onOpen={vi.fn()} /></TooltipProvider>);

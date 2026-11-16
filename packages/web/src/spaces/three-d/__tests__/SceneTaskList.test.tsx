@@ -576,7 +576,7 @@ describe('a 3D generation waiting for a slot', () => {
   it('says queued, shows no minutes, and offers cancel', async () => {
     setLocale('zh-CN');
     try {
-      api.listSpaceTasks.mockResolvedValue(listed(generation({ id: 'queued', startedAt: new Date(NOW - 180_000).toISOString(), waitingSince: new Date(NOW - 180_000).toISOString() })));
+      api.listSpaceTasks.mockResolvedValue(listed(generation({ id: 'queued', startedAt: new Date(NOW - 180_000).toISOString(), waitingSince: new Date(NOW - 180_000).toISOString(), slotWaitLimit: 2 })));
       request.post.mockResolvedValue({ cancelled: true, counts: null });
       renderList();
       const queued = await rowOf('queued');
