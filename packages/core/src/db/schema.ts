@@ -811,11 +811,23 @@ export const tasks = pgTable(
      * uncovered part written as debt.
      */
     billedCredits: doublePrecision("billed_credits"),
+    /** First time the running-task gate held this task back (inner#1968); never changed after. */
+    slotWaitSince: timestamp("slot_wait_since", { withTimezone: true }),
+    /** When the gate last judged this waiting task. */
+    slotCheckedAt: timestamp("slot_checked_at", { withTimezone: true }),
+    /** The running-task limit the gate used at that judgement. */
+    slotWaitLimit: integer("slot_wait_limit"),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },
   (table) => [
     index("tasks_user_id_idx").on(table.userId),
+    index("tasks_user_running_idx")
+      .on(table.userId, table.startedAt)
+      .where(sql`${table.status} = 'running'`),
+    index("tasks_user_slot_wait_idx")
+      .on(table.userId, table.slotWaitLimit, table.createdAt)
+      .where(sql`${table.status} = 'pending' AND ${table.slotWaitSince} IS NOT NULL`),
     index("tasks_project_id_idx").on(table.projectId),
     index("tasks_project_space_idx").on(table.projectId, table.spaceId),
     index("tasks_task_type_idx").on(table.taskType),
@@ -1043,6 +1055,12 @@ export const nodeTasks = pgTable(
      * Null while a task runs.
      */
     settledAt: timestamp("settled_at", { withTimezone: true }),
+    /**
+     * Set while the task waits for a running-task slot (inner#1968), cleared
+     * when it is let through. The status stays `running` meanwhile; the two
+     * deadline harvests skip a waiting row.
+     */
+    waitingSince: timestamp("waiting_since", { withTimezone: true }),
 
     // The conservative allowance: within it the task certainly finishes, and
     // past it something outside what we promise has gone wrong.
@@ -1497,6 +1515,9 @@ export const subscriptions = pgTable(
     observedAt: timestamp("observed_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
+    // Stripe's top-level `billing_cycle_anchor` (0126, inner#1968): monthly
+    // operations periods count from it. Null on a row not observed since.
+    billingCycleAnchor: timestamp("billing_cycle_anchor", { withTimezone: true }),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },
@@ -2131,14 +2152,20 @@ export const creditChargeRequests = pgTable(
   "credit_charge_requests",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    // 'task' | 'timeline_execution' | 'operation'. CHECK in 0121.
-    kind: varchar("kind", { length: 24 }).$type<"task" | "timeline_execution" | "operation">().notNull(),
+    // 'task' | 'timeline_execution' | 'operation' | 'operation_overage'.
+    // CHECK in 0121, widened in 0126.
+    kind: varchar("kind", { length: 24 }).$type<"task" | "timeline_execution" | "operation" | "operation_overage">().notNull(),
     actorUserId: uuid("actor_user_id")
       .notNull()
       .references(() => users.id, { onDelete: "restrict" }),
     // What the settlement's ledger rows carry as their reference.
     referenceId: varchar("reference_id", { length: 255 }).notNull(),
     projectId: uuid("project_id").references(() => projects.id, { onDelete: "restrict" }),
+    // The studio the charge is counted against (0126, inner#1968): backfilled
+    // from the project, and written on every new request. Statistics only;
+    // which studio pays still follows the project, or this column when the
+    // request has no project.
+    studioId: uuid("studio_id").references(() => studios.id, { onDelete: "restrict" }),
     // Above zero. CHECK in 0121.
     amount: numeric("amount", { precision: 20, scale: 6 }).notNull(),
     description: text("description"),
@@ -2160,6 +2187,96 @@ export const creditChargeRequests = pgTable(
     index("credit_charge_requests_pending_idx")
       .on(table.updatedAt)
       .where(sql`${table.status} = 'pending'`),
+    index("credit_charge_requests_studio_actor_idx").on(table.studioId, table.actorUserId, table.createdAt),
+    index("credit_charge_requests_release_hold_idx")
+      .on(table.releaseHold)
+      .where(sql`${table.status} = 'pending' AND ${table.releaseHold} IS NOT NULL`),
+  ],
+);
+
+// ── 8g. Operations ledger (0126, inner#1968) ─────────────────────────
+
+/**
+ * One row per counted operation: reserved at admission, counted with the
+ * operation's success, or released. Append-only usage ledger; no deleted_at
+ * (see NO_SOFT_DELETE). CHECKs live in 0126.
+ */
+export const operationLedger = pgTable(
+  "operation_ledger",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    operationKey: varchar("operation_key", { length: 255 }).notNull().unique("operation_ledger_operation_key_key"),
+    // 'generation' | 'tool_run' | 'upload' | 'url_paste' | 'chat_message' | 'text_tool' | 'timeline'
+    kind: varchar("kind", { length: 16 }).notNull(),
+    // Whose allowance: the studio's admin at admission.
+    accountUserId: uuid("account_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+    studioId: uuid("studio_id").notNull().references(() => studios.id, { onDelete: "restrict" }),
+    // Null only for an upload without a project (a studio avatar).
+    projectId: uuid("project_id").references(() => projects.id, { onDelete: "restrict" }),
+    actorUserId: uuid("actor_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+    // 'reserved' | 'deferred' | 'counted' | 'released'
+    status: varchar("status", { length: 10 }).notNull(),
+    // 'covered' | 'held'
+    admittedAs: varchar("admitted_as", { length: 8 }).notNull(),
+    overageHold: varchar("overage_hold", { length: 255 }),
+    assetId: uuid("asset_id").references(() => studioAssets.id, { onDelete: "restrict" }),
+    absorbedBy: varchar("absorbed_by", { length: 255 }),
+    absorbedHoldReleased: boolean("absorbed_hold_released").default(false).notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    inputAssetIds: uuid("input_asset_ids").array().default(sql`'{}'::uuid[]`).notNull(),
+    // 'allowance' | 'overage'; set when counted.
+    slot: varchar("slot", { length: 10 }),
+    periodStart: timestamp("period_start", { withTimezone: true }),
+    countedAt: timestamp("counted_at", { withTimezone: true }),
+    chargeRequestId: uuid("charge_request_id").references(() => creditChargeRequests.id, { onDelete: "restrict" }),
+    releasedAt: timestamp("released_at", { withTimezone: true }),
+    releaseReason: varchar("release_reason", { length: 32 }),
+    ...timestamps,
+  },
+  (table) => [
+    index("operation_ledger_period_idx")
+      .on(table.accountUserId, table.periodStart)
+      .where(sql`${table.status} = 'counted'`),
+    index("operation_ledger_in_flight_idx")
+      .on(table.accountUserId, table.expiresAt)
+      .where(sql`${table.status} IN ('reserved', 'deferred')`),
+    index("operation_ledger_deferred_asset_idx")
+      .on(table.studioId, table.assetId)
+      .where(sql`${table.status} = 'deferred'`),
+    index("operation_ledger_deferred_expiry_idx")
+      .on(table.expiresAt)
+      .where(sql`${table.status} = 'deferred'`),
+  ],
+);
+
+// ── 8h. Spend limits (0126, inner#1968) ──────────────────────────────
+
+/** A studio's monthly spend limits: the per-member default and the studio total. Null means not set. */
+export const studioSpendLimits = pgTable("studio_spend_limits", {
+  studioId: uuid("studio_id").primaryKey().references(() => studios.id, { onDelete: "restrict" }),
+  memberDefaultCredits: numeric("member_default_credits", { precision: 20, scale: 6 }),
+  studioMonthlyCredits: numeric("studio_monthly_credits", { precision: 20, scale: 6 }),
+  updatedByUserId: uuid("updated_by_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  ...timestamps,
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+});
+
+/** One member's monthly spend limit in a studio, overriding the default; null means unlimited. */
+export const studioMemberSpendLimits = pgTable(
+  "studio_member_spend_limits",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    studioId: uuid("studio_id").notNull().references(() => studios.id, { onDelete: "restrict" }),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+    monthlyCredits: numeric("monthly_credits", { precision: 20, scale: 6 }),
+    updatedByUserId: uuid("updated_by_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+    ...timestamps,
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("studio_member_spend_limits_live_key")
+      .on(table.studioId, table.userId)
+      .where(sql`${table.deletedAt} IS NULL`),
   ],
 );
 
@@ -2325,6 +2442,12 @@ export const timelineExecutions = pgTable(
     failureReason: text("failure_reason"),
     billedCredits: numeric("billed_credits"),
     billedAt: timestamp("billed_at", { withTimezone: true }),
+    /** First time the running-task gate held this execution back (inner#1968). */
+    slotWaitSince: timestamp("slot_wait_since", { withTimezone: true }),
+    /** When the gate last judged it. */
+    slotCheckedAt: timestamp("slot_checked_at", { withTimezone: true }),
+    /** The limit the gate used at that judgement. */
+    slotWaitLimit: integer("slot_wait_limit"),
     ...timestamps,
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
@@ -2335,6 +2458,12 @@ export const timelineExecutions = pgTable(
     index("timeline_executions_space_idx")
       .on(table.projectId, table.spaceId, table.status, desc(table.createdAt))
       .where(sql`${table.deletedAt} IS NULL`),
+    index("timeline_executions_actor_running_idx")
+      .on(table.actorUserId, table.deadlineAt)
+      .where(sql`${table.status} IN ('running', 'cancelling')`),
+    index("timeline_executions_actor_slot_wait_idx")
+      .on(table.actorUserId, table.slotWaitLimit, table.createdAt)
+      .where(sql`${table.status} = 'queued' AND ${table.slotWaitSince} IS NOT NULL`),
     index("timeline_executions_open_idx")
       .on(table.createdAt)
       .where(sql`${table.deletedAt} IS NULL AND ${table.status} IN ('awaiting_landing', 'queued', 'running', 'cancelling')`),
@@ -3386,11 +3515,20 @@ export const uploadGrants = pgTable(
     generationTaskId: uuid("generation_task_id").references(() => tasks.id, {
       onDelete: "restrict",
     }),
+    /**
+     * The operations ledger key this grant's upload counts under (0126,
+     * inner#1968), written by the server when the grant is issued and never
+     * changed.
+     */
+    operationKey: varchar("operation_key", { length: 255 }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
   },
   (table) => [
+    index("upload_grants_operation_key_idx")
+      .on(table.operationKey)
+      .where(sql`${table.operationKey} IS NOT NULL`),
     // A storage key is issued at most once; this plain UNIQUE both enforces
     // that and serves the ownership lookup (storage_key alone locates the row,
     // then user_id + consumed_at IS NULL are checked). The studio is READ from
@@ -3525,6 +3663,9 @@ export const enterpriseMemberships = pgTable("enterprise_memberships", {
   studioMembers: integer("studio_members").notNull(),
   projectMembers: integer("project_members").notNull(),
   storageBytes: bigint("storage_bytes", { mode: "number" }).notNull(),
+  // 0126 (inner#1968); CHECKs there: >= 0, and 1 to 30.
+  monthlyOperations: integer("monthly_operations").default(16000).notNull(),
+  runningTasksPerUser: integer("running_tasks_per_user").default(10).notNull(),
   fallbackTier: varchar("fallback_tier", { length: 16 }).notNull(),
   revision: integer("revision").notNull(),
   ...timestamps,
