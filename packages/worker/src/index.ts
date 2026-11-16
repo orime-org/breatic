@@ -21,6 +21,7 @@ import {
   createQueueEvents,
   defaultJobOpts,
   getRegionsConfig,
+  getNodeTaskConfig,
   checkInfraReady,
   InfraNotReadyError,
   logger,
@@ -491,11 +492,20 @@ export function startWorker(): void {
     });
     // A cleanup that will not be tried again, including one whose worker
     // stalled out, leaves the hold to run out on its own; only the queue's
-    // events see every such end, and the job id is the hold's key.
-    createQueueEvents(CREDIT_HOLD_RELEASE_QUEUE).on("failed", ({ jobId, failedReason }) => {
-      logger.error({ referenceId: jobId, failedReason }, "credit_hold_cleanup_gave_up");
+    // events see every such end, and the job id is the hold's key. Every
+    // worker instance hears the event, so the one that claims it logs it.
+    const holdCleanupEnds = createQueueEvents(CREDIT_HOLD_RELEASE_QUEUE);
+    holdCleanupEnds.on("failed", ({ jobId, failedReason }) => {
+      void getRedis()
+        .set(`${env.REDIS_KEY_PREFIX}:hold-cleanup-gave-up:${jobId}`, "1", "PX", getNodeTaskConfig().default_budget_ms, "NX")
+        .then((claimed) => {
+          if (claimed === "OK") logger.error({ referenceId: jobId, failedReason }, "credit_hold_cleanup_gave_up");
+        })
+        .catch((err: unknown) => {
+          logger.error({ err, referenceId: jobId, failedReason }, "credit_hold_cleanup_gave_up");
+        });
     });
-    regionWorkers.push(holdRelease);
+    regionWorkers.push(holdRelease, holdCleanupEnds);
   }
   if (WORKER_QUEUES.includes(IDENTITY_REVOCATION_FORWARD_QUEUE)) {
     const revocationForward = createWorker<IdentityRevocationForwardJob>(IDENTITY_REVOCATION_FORWARD_QUEUE, forwardRevocation);
