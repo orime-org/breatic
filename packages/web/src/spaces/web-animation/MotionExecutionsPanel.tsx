@@ -74,7 +74,8 @@ export function MotionExecutionsPanel({ lists, tab, selectedId, onTab, onPick, o
   const { refetch: refetchLegacy } = current.legacy;
   const retry = React.useCallback((): void => { void refetchOwn(); void refetchLegacy(); }, [refetchOwn, refetchLegacy]);
   const pending = current.own.isPending || current.legacy.isPending;
-  const failed = current.own.isError || current.legacy.isError;
+  // Only a list that never loaded fails as a whole; a failed Load more or background read keeps the rows it has.
+  const failed = current.own.isLoadingError || current.legacy.isLoadingError;
   const empty = rowsOf(current.own).length === 0 && rowsOf(current.legacy).length === 0;
   return <MotionPanel testId='motion-panel-executions' title={t('spaces.webAnimation.executions')} onClose={onClose}>
     <Tabs value={tab} onValueChange={changeTab} className='shrink-0 border-b border-border px-2 py-1.5'>

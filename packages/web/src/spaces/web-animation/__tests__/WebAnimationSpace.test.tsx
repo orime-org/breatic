@@ -386,3 +386,38 @@ describe('a preview that cannot load', () => {
     expect(within(preview).queryByText(t('timeline.webAnimation.unavailable'))).toBeNull();
   });
 });
+
+describe('the execution list when a read fails', () => {
+  it('keeps the rows when Load more fails, and turns Load more into Retry', async () => {
+    const first = done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z');
+    vi.mocked(timelineApi.listSpaceExecutions).mockImplementation(async (params: { group?: string; scope?: string; cursor?: string }) => {
+      if (params.group === 'running' || params.scope === 'timeline') return { rows: [], nextCursor: null, totals: { done: 0, inProgress: 0 } } as never;
+      if (params.cursor !== undefined) throw new Error('network');
+      return { rows: [first], nextCursor: 'next', totals: { done: 2, inProgress: 0 } } as never;
+    });
+    show();
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId('motion-open-executions'));
+    const panel = await screen.findByTestId('motion-panel-executions');
+    await user.click(await within(panel).findByRole('button', { name: t('timeline.webAnimation.picker.loadMore') }));
+    expect(await within(panel).findByRole('button', { name: t('timeline.retry') })).toBeInTheDocument();
+    expect(within(panel).getByTestId(`motion-row-${NEWER}`)).toBeInTheDocument();
+    expect(within(panel).queryByText(t('spaces.webAnimation.listError'))).toBeNull();
+  });
+
+  it('says the list failed on a first read, and shows the list loading while Retry reads it again', async () => {
+    vi.mocked(timelineApi.listSpaceExecutions).mockImplementation(async (params: { group?: string; scope?: string }) => {
+      if (params.group === 'running' || params.scope === 'timeline') return { rows: [], nextCursor: null, totals: { done: 0, inProgress: 0 } } as never;
+      throw new Error('network');
+    });
+    show();
+    const user = userEvent.setup();
+    await user.click(await screen.findByTestId('motion-open-executions'));
+    const panel = await screen.findByTestId('motion-panel-executions');
+    expect(await within(panel).findByText(t('spaces.webAnimation.listError'))).toBeInTheDocument();
+    vi.mocked(timelineApi.listSpaceExecutions).mockImplementation(() => new Promise(() => {}));
+    await user.click(within(panel).getByRole('button', { name: t('timeline.retry') }));
+    await waitFor(() => expect(within(panel).queryByText(t('spaces.webAnimation.listError'))).toBeNull());
+    expect(panel.querySelectorAll('.skeleton-shimmer').length).toBeGreaterThan(0);
+  });
+});
