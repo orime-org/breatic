@@ -85,7 +85,11 @@ describe('StudioContainerPage in a build with regions', () => {
       .mockRejectedValueOnce(new ApiException({ status: 404, message: 'missing' }))
       .mockResolvedValueOnce({ ...STUDIO, id: 's-near', region: null });
     directory.studio.mockClear();
-    directory.studio.mockResolvedValueOnce({ region: 'us-west' });
+    // directoryApi.studio records the slug's region before it answers.
+    directory.studio.mockImplementationOnce(async (slug: string) => {
+      rememberStudioRegion([slug], 'us-west');
+      return { region: 'us-west' };
+    });
     // The app's own freshness window (QueryClientProvider), so the cached answer is used as it would be.
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 30_000 } } });
     client.setQueryData(['studio-region', 'far-studio'], { region: 'sg' });

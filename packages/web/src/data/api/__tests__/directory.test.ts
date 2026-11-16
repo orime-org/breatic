@@ -16,7 +16,7 @@ const apiGet = vi.hoisted(() => vi.fn());
 vi.mock('@web/data/api/request', () => ({ apiGet }));
 
 import { directoryApi } from '@web/data/api/directory';
-import { rememberProjectRegion } from '@web/data/api/regions';
+import { rememberProjectRegion, studioRegionOf } from '@web/data/api/regions';
 
 beforeEach(() => {
   apiGet.mockReset();
@@ -43,6 +43,8 @@ describe('the region of a Studio', () => {
 
     expect(await directoryApi.studio('someone-else')).toEqual({ region: 'sg' });
     expect(apiGet).toHaveBeenCalledWith('/directory/studios/someone-else');
+    // Requests acting on the slug go to the region the directory named.
+    expect(studioRegionOf('someone-else')).toBe('sg');
     expect(window.localStorage.getItem('breatic:region:studio:someone-else')).toBeNull();
   });
 });
