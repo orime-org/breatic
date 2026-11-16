@@ -343,7 +343,22 @@
     },
     "model": {
       "not_configured": "{model} is not set up on this deployment: it needs {envVars}.",
-      "upstream_not_bound": "{model} is not offered through {upstream}."
+      "upstream_not_bound": "{model} is not offered through {upstream}.",
+      "input_limit": {
+        "characters_max": "{model} takes at most {max, number} characters in {field}.",
+        "characters_min": "{model} needs at least {min, number} characters in {field}.",
+        "line_characters_max": "{model} takes at most {max, number} characters in each line of {field}.",
+        "item_characters_max": "{model} takes at most {max, number} characters in each of {field}.",
+        "lines_max": "{model} takes at most {max, number} lines in {field}.",
+        "chinese_characters_max": "{model} takes at most {max, number} Chinese characters in {field}.",
+        "unsupported": "{model} can’t take this run as set up. Change the settings or pick another model."
+      },
+      "input_field": {
+        "prompt": "the text",
+        "negative_prompt": "the negative prompt",
+        "lyrics": "the lyrics",
+        "multi_prompt": "the shot prompts"
+      }
     },
     "document": {
       "versions_full": "{limit, plural, one {This document already has 1 snapshot. Delete it to save a new one.} other {This document already has # snapshots. Delete an old one to save a new one.}}"
@@ -754,6 +769,7 @@
       "mentionEmpty": "No references available",
       "voicePlaceholder": "No voice chosen",
       "voiceSearchPlaceholder": "Search voices…",
+      "voiceSampleLanguage": "Sample",
       "voiceLoading": "Loading voices…",
       "voiceEmpty": "No matching voices",
       "voiceError": "Voices unavailable",
@@ -1151,7 +1167,9 @@
         "media_refused": "The model would not take this file.",
         "tool_failed": "The tool could not process this file.",
         "no_audio_track": "{kind, select, audio {This audio has no sound to read.} other {This video has no audio track.}}",
-        "cut_short": "This is too long to transcribe in full."
+        "cut_short": "This is too long to transcribe in full.",
+        "input_refused": "{model} can’t take this run as set up. Change the settings or pick another model.",
+        "model_not_configured": "{model} is not set up on this deployment: it needs {envVars}."
       },
       "kind": {
         "upload": "Upload",

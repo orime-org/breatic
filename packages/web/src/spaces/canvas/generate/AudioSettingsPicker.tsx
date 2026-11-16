@@ -46,6 +46,9 @@ import { useDraftBox } from '@web/spaces/canvas/generate/use-draft-box';
 /** The second panel's width in pixels. */
 const SECOND_PANEL_WIDTH = 288;
 
+/** The second panel's width when the voice list carries a sample language picker beside its search box (#1521). */
+const SAMPLE_LANGUAGE_PANEL_WIDTH = 320;
+
 /** What this picker's shared controls edit, by the catalog's own param names. */
 export type AudioParamsValue = Record<string, number>;
 
@@ -143,10 +146,6 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
 
   const layout = React.useMemo(() => settingsLayout(model, mode, value), [model, mode, value]);
   const standIn = layout.standIn;
-  // The language the user picked, for a voice that has a sample in each: the
-  // model's param whose values name languages.
-  const languageParam = Object.keys(model.params).find((name) => model.params[name]?.value_locales !== undefined);
-  const language = languageParam === undefined ? undefined : asChoice(value[languageParam]);
   const dialogue = standIn !== null && isStandInOn(value);
   const shared = React.useMemo(() => audioParamControls(model), [model]);
 
@@ -178,7 +177,8 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
     [showPanel],
   );
 
-  const [firstPanelRef, secondOnLeft] = useSecondPanelSide(panel, SECOND_PANEL_WIDTH);
+  const secondPanelWidth = model.sample_languages === undefined ? SECOND_PANEL_WIDTH : SAMPLE_LANGUAGE_PANEL_WIDTH;
+  const [firstPanelRef, secondOnLeft] = useSecondPanelSide(panel, secondPanelWidth);
 
   const inlineOnly = React.useCallback(
     (control: ModelControl) => layout.inline.some((c) => c.name === control.name),
@@ -381,7 +381,7 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
         {openRow !== undefined ? (
           <SecondPanelFrame
             onLeft={secondOnLeft}
-            maxWidth={SECOND_PANEL_WIDTH}
+            maxWidth={secondPanelWidth}
             testId='generate-audio-second-panel'
             className='overflow-hidden'
           >
@@ -397,7 +397,7 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
                 onLoadMore={voice.onLoadMore}
                 onRetry={() => voice.onOpenChange(true)}
                 player={player}
-                language={language}
+                sampleLanguages={model.sample_languages}
               />
             ) : openRow.kind === 'choice' ? (
               <OptionList
@@ -436,7 +436,7 @@ export const AudioSettingsPicker = React.memo(function AudioSettingsPicker({
                   onLoadMore={voice.onLoadMore}
                   onRetry={() => voice.onOpenChange(true)}
                   player={player}
-                  language={language}
+                  sampleLanguages={model.sample_languages}
                 />
               </>
             ) : (

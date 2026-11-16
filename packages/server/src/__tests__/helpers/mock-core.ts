@@ -201,6 +201,8 @@ export const mocks = {
   // breatic#1393 server gate (a style prompt with Mureka composing from a
   // melody). Default: no violation; the breatic#1393 test flips it.
   sendsUntakenPrompt: vi.fn().mockReturnValue(false),
+  // #1521 gate (no upstream here takes the run). Default: one does; the #1521 test flips it.
+  inputRefusalFor: vi.fn().mockResolvedValue(null),
   nodeHistoryService: {
     listByNode: vi.fn(),
     recordGenerationSuccess: vi.fn(),
@@ -642,6 +644,7 @@ export const domainMock = async () => ({
   violatesReferenceCountForModel: mocks.violatesReferenceCountForModel,
   violatesTextLengthForModel: mocks.violatesTextLengthForModel,
   sendsUntakenPrompt: mocks.sendsUntakenPrompt,
+  inputRefusalFor: mocks.inputRefusalFor,
   // A provider whose calls run on no model until a test hands one over.
   provider: fakeProvider(() => undefined),
   instructionsText: REAL_INSTRUCTIONS_TEXT,

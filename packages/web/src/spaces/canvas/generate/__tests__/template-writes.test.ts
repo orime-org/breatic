@@ -110,7 +110,7 @@ describe('templateParams', () => {
 
 /** Gemini's speech model: one voice, or a dialogue whose speakers replace it. */
 const GEMINI_TTS = {
-  name: 'gemini-3.1-flash-text-to-speech',
+  name: 'gemini-3.8-flash-text-to-speech',
   params: {
     speakers: {
       fill: 'panel',

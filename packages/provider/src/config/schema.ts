@@ -5,6 +5,7 @@ import { z } from "zod";
 import { hasUnderstandAdapter } from "@provider/llm/understand/dispatch.js";
 import { hasLlmAdapter } from "@provider/llm/vendors.js";
 import { mediaAdapter } from "@provider/media/adapters.js";
+import { dialogueSchema } from "@provider/pricing/dialogue.js";
 import { pricingRuleSchema, rejectSchema, vendorRejectSchema, type Reject } from "@provider/pricing/estimate.js";
 import { formulaProblem } from "@provider/pricing/evaluate.js";
 import type { Candidate } from "@provider/routing/route.js";
@@ -98,6 +99,7 @@ const STEP_AT = {
   rig: "after",
 } as const satisfies Record<z.infer<typeof extraStepSchema>["kind"], "before" | "after">;
 
+
 // Every binding carries its price: the cheapest mode and the
 // estimate both read it, and the shipped bindings all have one.
 const bindingSchema = z.strictObject({
@@ -114,6 +116,8 @@ const bindingSchema = z.strictObject({
   mentions: z.record(z.string(), z.string()).optional(),
   /** Per param holding voices: our voice id to this upstream's; a voice not listed keeps the upstream out of the candidates. */
   voice_map: z.record(z.string(), z.record(z.string(), z.string())).optional(),
+  /** A dialogue run's script is sent as turns, the prompt field left out. */
+  dialogue: dialogueSchema.optional(),
   /** Upstream fields sent with the same value on every call. */
   fixed: z.record(z.string(), z.unknown()).optional(),
   /**

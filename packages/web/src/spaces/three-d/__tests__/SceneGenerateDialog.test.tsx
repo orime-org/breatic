@@ -482,6 +482,60 @@ describe('SceneGenerateDialog (inner#1691 design 7.1)', () => {
   });
 });
 
+describe('SceneGenerateDialog — a run no upstream here takes (#1521)', () => {
+  beforeEach(() => {
+    // The text-to-3D entry's upstream here holds the prompt to five characters.
+    const capped = {
+      ...RAW_CATALOG,
+      three_d: RAW_CATALOG.three_d.map((raw) => {
+        if (raw.name !== T23D) return raw;
+        const rules = raw.pricing_rules as { upstreams: Record<string, unknown>[] };
+        return {
+          ...raw,
+          pricing_rules: {
+            ...rules,
+            upstreams: rules.upstreams.map((upstream) => ({
+              ...upstream,
+              prompt_field: 'prompt',
+              rejects: [{ when: '$length(prompt) > 5', reason: 'WaveSpeed prompt maxLength 5', limit: { field: 'prompt', measure: 'characters', max: 5 } }],
+            })),
+          },
+        };
+      }),
+    };
+    api.get.mockImplementation(async (url: string) => {
+      if (url === '/models') return capped;
+      throw new Error(`unexpected GET ${url}`);
+    });
+  });
+
+  it('says the limit an upstream here holds the prompt to on press, and sends nothing', async () => {
+    const user = userEvent.setup();
+    api.post.mockResolvedValue({ task_id: 'task-1', row_id: 'row-1', status: 'pending' });
+    renderDialog(fillOf({ prompt: 'A brass desk lamp' }));
+    await ready();
+    // The refusal is worked out off the render path, once the rules have loaded.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await user.click(screen.getByTestId('scene-generate-run'));
+
+    expect(shown(toast.warning)).toEqual(['Tripo H3.1 takes at most 5 characters in the text.']);
+    expect(api.post).not.toHaveBeenCalled();
+  });
+
+  it('sends a prompt within the limit once its trailing spaces and line breaks are trimmed', async () => {
+    const user = userEvent.setup();
+    api.post.mockResolvedValue({ task_id: 'task-1', row_id: 'row-1', status: 'pending' });
+    renderDialog(fillOf({ prompt: 'Lamps  \n\n ' }));
+    await ready();
+    // Pressed once the rules have read the run.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await user.click(screen.getByTestId('scene-generate-run'));
+
+    await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+    expect(shown(toast.warning)).toEqual([]);
+  });
+});
+
 const upload = vi.hoisted(() => ({ run: vi.fn() }));
 vi.mock('@web/data/upload/media-upload', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@web/data/upload/media-upload')>()),

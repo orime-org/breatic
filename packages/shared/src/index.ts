@@ -681,7 +681,7 @@ export {
 // called dead. How often they arrive is `config/agent.yaml`'s, served to the
 // browser at `GET /chat/stream-config`.
 export { SSE_HEARTBEAT_MISSES_ALLOWED } from "@shared/agent/heartbeat.js";
-export { extractPromptText } from "@shared/agent/extract-prompt.js";
+export { cleanTextParams, extractPromptText, type TextParamSpec } from "@shared/agent/extract-prompt.js";
 export { applyForces, checkParamCombination, gateHolds, gateParams, promptTaken, resolveParams } from "@shared/param-resolution.js";
 export { modesOf, picturesOf } from "@shared/scene-generation.js";
 export type { AppliedForces, ParamViolation, ResolvableModel, ResolvableParam } from "@shared/param-resolution.js";
@@ -949,6 +949,8 @@ export {
   type TemplateShot,
   type TemplateTriggers,
 } from "@shared/canvas/generation-templates.js";
+export { RETIRED_MODELS, currentModelName, withCurrentModelNames, type NodeModelFields } from "@shared/canvas/retired-models.js";
+export { inputRefusalText, type InputLimitShape, type InputRefusalShape } from "@shared/input-refusal.js";
 export {
   STAND_IN_ON,
   dialogueSideOf,
@@ -960,6 +962,7 @@ export {
   speakersShort,
   standInOf,
   typedSpeaker,
+  wireParams,
   withStandInOn,
   type DialogueLine,
   type LinePlan,

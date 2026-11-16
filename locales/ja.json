@@ -343,7 +343,22 @@
     },
     "model": {
       "not_configured": "このデプロイでは {model} がまだ設定されていません。{envVars} の設定が必要です。",
-      "upstream_not_bound": "{model} は {upstream} 経由では提供されていません。"
+      "upstream_not_bound": "{model} は {upstream} 経由では提供されていません。",
+      "input_limit": {
+        "characters_max": "{model} の{field}は最大 {max, number} 文字です。",
+        "characters_min": "{model} の{field}は {min, number} 文字以上必要です。",
+        "line_characters_max": "{model} の{field}は1行あたり最大 {max, number} 文字です。",
+        "item_characters_max": "{model} の{field}は1件あたり最大 {max, number} 文字です。",
+        "lines_max": "{model} の{field}は最大 {max, number} 行です。",
+        "chinese_characters_max": "{model} の{field}は漢字最大 {max, number} 文字です。",
+        "unsupported": "{model} は現在の設定では実行できません。設定を変えるか、別のモデルを選んでください。"
+      },
+      "input_field": {
+        "prompt": "テキスト",
+        "negative_prompt": "ネガティブプロンプト",
+        "lyrics": "歌詞",
+        "multi_prompt": "ショットのプロンプト"
+      }
     },
     "document": {
       "versions_full": "{limit, plural, other {この Document のスナップショットは上限の # 件に達しています。古いスナップショットを削除してから保存してください。}}"
@@ -741,6 +756,7 @@
       "mentionEmpty": "参照できるものがありません",
       "voicePlaceholder": "音声が未選択",
       "voiceSearchPlaceholder": "音声を検索…",
+      "voiceSampleLanguage": "試聴",
       "voiceLoading": "音声を読み込み中…",
       "voiceEmpty": "一致する音声がありません",
       "voiceError": "音声を利用できません",
@@ -1151,7 +1167,9 @@
         "media_refused": "モデルがこのファイルを受け付けませんでした。",
         "tool_failed": "ツールでこのファイルを処理できませんでした。",
         "no_audio_track": "{kind, select, audio {この音声から音を読み取れません。} other {この動画には音声トラックがありません。}}",
-        "cut_short": "長すぎて最後まで文字起こしできませんでした。"
+        "cut_short": "長すぎて最後まで文字起こしできませんでした。",
+        "input_refused": "{model} は現在の設定では実行できません。設定を変えるか、別のモデルを選んでください。",
+        "model_not_configured": "このデプロイでは {model} がまだ設定されていません。{envVars} の設定が必要です。"
       },
       "kind": {
         "upload": "アップロード",

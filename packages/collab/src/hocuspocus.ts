@@ -90,6 +90,7 @@ import {
 import { createChangeTrackingExtension } from "@collab/services/change-tracking.js";
 import { getCollabConfig, getConnectionTimings, getReassemblyLimits } from "@collab/config.js";
 import { convertStoredTablesOnLoad } from "@collab/services/legacy-table-conversion.js";
+import { convertRetiredModelsOnLoad } from "@collab/services/retired-model-conversion.js";
 import { convertStoredTimelineTransformsOnLoad } from "@collab/services/legacy-timeline-transform-conversion.js";
 import {
   acknowledge,
@@ -508,6 +509,26 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
           }
         } catch (err) {
           logger.error({ err, documentName, reason: "timeline_transform_migrate_failed" }, "timeline_transform_migrate_failed");
+        }
+      }
+
+      // A canvas node saved on a retired model is stored under its replacement
+      // (#1521), at the same point and on the same terms as the tables above;
+      // until it succeeds web reads the old name as the new one.
+      if (parsed?.kind === "canvas") {
+        try {
+          const converted = await convertRetiredModelsOnLoad({
+            documentName,
+            document,
+            takeLock: async (key) =>
+              (await getCollabRedis().set(key, instanceId, "PX", getCollabConfig().retired_model_migrate_lock_ms, "NX")) === "OK",
+            readStored: () => fetchDocData(documentName),
+          });
+          if (converted > 0) {
+            logger.info({ documentName, converted, reason: "retired_model_migrated" }, "retired_model_migrated");
+          }
+        } catch (err) {
+          logger.error({ err, documentName, reason: "retired_model_migrate_failed" }, "retired_model_migrate_failed");
         }
       }
 

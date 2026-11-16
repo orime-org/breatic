@@ -914,6 +914,9 @@ export function renderProductGuide(): string {
     `  - ${quoted(t("canvas.generatePanel.errorStorageFull"))}`,
     `  - ${quoted(t("canvas.generatePanel.errorUnavailable"))}`,
     `  - ${quoted(t("canvas.generatePanel.errorFailed"))}`,
+    "  - a sentence naming the model and, when a count says it, the limit the run breaks there, such as how many " +
+      "characters or lines its text may have; otherwise it says the model can't take the run as set up and to change " +
+      "the settings or pick another model",
     "When the run finishes, its result replaces what the node held. A run makes one result; there is no count. " +
       "To get another, open the panel again and press the arrow: it can start while an earlier task is still " +
       "running, each finished result replaces what the node holds in turn, and the earlier ones stay in its " +
@@ -1064,7 +1067,10 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.generatePanel.voicePlaceholder"))} until a voice is picked; clicking it opens rows such ` +
       `as ${quoted(t("canvas.generatePanel.audioVoice"))}, which opens the voice list beside it with ` +
       `${quoted(t("canvas.generatePanel.voiceSearchPlaceholder"))} and a play button on each voice that has a ` +
-      "sample; " +
+      "sample; on a model whose samples come in several languages a menu marked " +
+      `${quoted(t("canvas.generatePanel.voiceSampleLanguage"))} beside the search box picks the language the samples ` +
+      "play in, starting from the one the user last picked there, else the interface language; it changes only what the user hears there, and the speech " +
+      "generated is in the language of the script; " +
       `sliders such as ${quoted(t("canvas.generatePanel.voiceSpeed"))}, ` +
       `${quoted(t("canvas.generatePanel.voiceVolume"))}, ${quoted(t("canvas.generatePanel.voiceSimilarity"))} ` +
       `and ${quoted(t("canvas.generatePanel.voiceStability"))} (marked ` +

@@ -20,6 +20,7 @@
  * through both.
  */
 
+import { extractPromptText } from "@shared/agent/extract-prompt.js";
 import { completeEntries } from "@shared/item-cap.js";
 
 /**
@@ -116,6 +117,25 @@ export function withStandInOn(
   const standIn = standInOf(model);
   if (!model || !standIn || typeof params[STAND_IN_ON] === "boolean" || completeCount(model, standIn, params) === 0) return { ...params };
   return { ...params, [STAND_IN_ON]: true };
+}
+
+/**
+ * The params that leave the browser for a run: the side of the stand-in not in use is dropped, and the switch itself
+ * never goes. Every check that asks about a run before it is sent reads this record too.
+ * @param model - The model the params belong to, or undefined when unknown.
+ * @param params - Its param record.
+ * @returns The record as the run and the estimate read it.
+ * @throws {never} Never.
+ */
+export function wireParams(
+  model: StandInModel | undefined,
+  params: Readonly<Record<string, unknown>>,
+): Record<string, unknown> {
+  const { [STAND_IN_ON]: _switch, ...rest } = params;
+  const standIn = standInOf(model);
+  if (!standIn) return rest;
+  const { [isStandInOn(params) ? standIn.replaces : standIn.name]: _dropped, ...sent } = rest;
+  return sent;
 }
 
 /**
@@ -242,8 +262,10 @@ export function dialogueText(lines: readonly DialogueLine[], speakers: readonly 
   return lines
     .flatMap((line, at) => {
       const text = line.text.slice(plans[at]?.strip ?? 0).replace(/\s*\n\s*/g, " ").trim();
-      if (text === "") return [];
-      const name = (speakers[(plans[at]?.speaker ?? 1) - 1]?.speaker ?? "").trim();
+      // A line whose words the prompt cleaning drops (a tag, a comment, invisible characters) says nothing.
+      if (extractPromptText(text) === "") return [];
+      // Cleaned as the speakers list's names are, so the upstream pairs each turn with its speaker.
+      const name = extractPromptText(speakers[(plans[at]?.speaker ?? 1) - 1]?.speaker ?? "");
       return [`${name}: ${text}`];
     })
     .join("\n");

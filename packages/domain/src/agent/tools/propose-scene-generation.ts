@@ -22,7 +22,8 @@ import { AppError } from "@breatic/core";
 import { SCENE_VIEW_SLOTS, THREE_D_GENERATION_MODES, type ParamViolation, type ProposalRefused, type SceneGenerationProposal } from "@breatic/shared";
 
 import { resolveProjectImageInputs } from "@domain/asset/project-image-inputs.js";
-import { estimateTaskCredits } from "@domain/model-catalog/model-catalog.js";
+import { estimateTaskCredits, inputRefusalFor } from "@domain/model-catalog/model-catalog.js";
+import { upstreamRefusal } from "@domain/agent/tools/upstream-refusal.js";
 import { planSceneGeneration, type SceneGenerationProblem } from "@domain/model-catalog/scene-generation.js";
 import { LIST_GENERATION_MODELS } from "@domain/agent/tools/tool-names.js";
 
@@ -136,6 +137,8 @@ async function answerSceneGeneration(input: SceneGenerationInput, projectId: str
   const params = input.params ?? {};
   const plan = planSceneGeneration({ mode: input.mode, model: input.model, prompt: input.prompt, params, imageCount: views.length });
   if (!plan.ok) return refused(problemWords(plan.problem));
+  const refusal = await inputRefusalFor(plan.entry.name, { params: plan.params, prompt: plan.prompt ?? undefined });
+  if (refusal !== null) return refused(upstreamRefusal("The 3D generation", plan.entry.name, refusal));
   let images: Array<{ assetId: string; url: string }> = [];
   try {
     if (views.length > 0) {

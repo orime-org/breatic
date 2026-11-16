@@ -13,6 +13,7 @@
  * the worker and the panel both need to answer the same way.
  */
 
+import { extractPromptText } from "@shared/agent/extract-prompt.js";
 import type { ParamDescriptor } from "@shared/types/model-catalog.js";
 
 /**
@@ -74,14 +75,14 @@ export function itemCap(descriptor: CappedParam): number | undefined {
 
 /**
  * The entries of a list param that fill every field it declares: a text field
- * with something other than spaces, a choice with one of its values. An entry
+ * with words left once the prompt cleaning has run, a choice with one of its values. An entry
  * left half-filled in the editor names nothing the vendor can use, so the
  * worker sends only these and the panel counts only these against a floor.
  * @param value - What the run carries for the list; node data, untrusted.
  * @param fields - The fields one entry declares.
  * @returns The complete entries, each holding only its declared fields, a
- *   text field without the spaces around it: the script names a speaker by
- *   the trimmed name, and the vendor matches the two (inner#1825 design 8.5).
+ *   text field cleaned as a prompt is: the script names a speaker by the
+ *   cleaned name, and the vendor matches the two (inner#1825).
  */
 export function completeEntries(
   value: unknown,
@@ -98,12 +99,12 @@ export function completeEntries(
       const v = held[field];
       return offered !== undefined
         ? offered.some((option) => option === v)
-        : typeof v === "string" && v.trim() !== "";
+        : typeof v === "string" && extractPromptText(v) !== "";
     });
     if (filled) {
       complete.push(Object.fromEntries(names.map((field) => {
         const v = held[field];
-        return [field, fields[field]?.values === undefined && typeof v === "string" ? v.trim() : v];
+        return [field, fields[field]?.values === undefined && typeof v === "string" ? extractPromptText(v) : v];
       })));
     }
   }

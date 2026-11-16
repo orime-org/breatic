@@ -361,6 +361,17 @@ describe("miniToolRequestSchema", () => {
 });
 
 describe("miniToolEstimateInput", () => {
+  it("asks about the prompt the worker sends: the tool's own words around what the user typed, cleaned (#1521)", () => {
+    const run = (id: string, typed: string): string | undefined => {
+      const spec = miniToolById(id);
+      return spec && miniToolEstimateInput(spec, { params: {}, prompt: typed, source: { url: "https://cdn.example.com/a.png" }, slots: {} }).prompt;
+    };
+    const restyle = miniToolById("image.restyle")?.prompt?.preamble ?? "";
+    expect(run("image.restyle", "  bold   ink  ")).toBe(`${restyle} Also: bold ink`);
+    expect(run("image.restyle", "   ")).toBe(restyle);
+    expect(run("video.motion", "a  dancer\n\n\n\u200Bspins")).toBe("a dancer\n\nspins");
+  });
+
   it("puts the source url and its duration under the pinned model's source param", () => {
     const separate = miniToolById("audio.separate");
     const input =

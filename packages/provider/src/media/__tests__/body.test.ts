@@ -127,3 +127,66 @@ describe("buildBody — reseller binding vocabulary", () => {
     expect(buildBody(binding, { prompt: "a cat", params: {} })).toEqual({ prompt: "a cat", rendering_speed: "QUALITY", mode: "async" });
   });
 });
+
+describe("buildBody — a dialogue script sent as turns (#1521)", () => {
+  const pricing = { kind: "formula", base_price: 0, formula: "", discount_rate: 100 };
+  const binding: MediaBinding = {
+    upstream: "wavespeed",
+    weight: 1,
+    model_id: "m",
+    prompt_field: "text",
+    params: {
+      speakers: { field: "speakers", item_fields: { speaker: { field: "speaker_id" }, voice: { field: "voice" } } },
+      voice_id: { field: "voice" },
+    },
+    dialogue: { speakers: "speakers", name: "speaker", field: "turns", speaker_field: "speaker_id", text_field: "text" },
+    pricing,
+  };
+  const pair = [{ speaker: "Ava", voice: "Kore" }, { speaker: "Leo", voice: "Puck" }];
+
+  it("sends each `Name: line` as a turn of that speaker and leaves the prompt field out", () => {
+    expect(buildBody(binding, { prompt: "Ava: Hi there.\nLeo: Hello, Ava.", params: { speakers: pair } })).toEqual({
+      speakers: [{ speaker_id: "Ava", voice: "Kore" }, { speaker_id: "Leo", voice: "Puck" }],
+      turns: [{ speaker_id: "Ava", text: "Hi there." }, { speaker_id: "Leo", text: "Hello, Ava." }],
+    });
+  });
+
+  it("matches a name with spaces, and the longer of two names that share a start", () => {
+    const speakers = [{ speaker: "Al", voice: "Kore" }, { speaker: "Al Smith", voice: "Puck" }];
+    expect(buildBody(binding, { prompt: "Al Smith: One.\nAl: Two: three.", params: { speakers } }).turns).toEqual([
+      { speaker_id: "Al Smith", text: "One." },
+      { speaker_id: "Al", text: "Two: three." },
+    ]);
+  });
+
+  it("matches a name with spaces around it as the script writes it, trimmed, and sends it as the speakers list carries it", () => {
+    const speakers = [{ speaker: "Ava", voice: "Kore" }, { speaker: " Leo ", voice: "Puck" }];
+    expect(buildBody(binding, { prompt: "Ava: Hi.\nLeo: Hello.", params: { speakers } }).turns).toEqual([
+      { speaker_id: "Ava", text: "Hi." },
+      { speaker_id: " Leo ", text: "Hello." },
+    ]);
+  });
+
+  it("skips blank lines and gives a line naming no speaker to the first one, whole", () => {
+    expect(buildBody(binding, { prompt: "\nAva: Hi.\n  \nSomeone: who?\n", params: { speakers: pair } }).turns).toEqual([
+      { speaker_id: "Ava", text: "Hi." },
+      { speaker_id: "Ava", text: "Someone: who?" },
+    ]);
+  });
+
+  it("sends the prompt as it is when the run names no speakers", () => {
+    expect(buildBody(binding, { prompt: "Hello.", params: { voice_id: "Kore" } })).toEqual({ text: "Hello.", voice: "Kore" });
+    expect(buildBody(binding, { prompt: "Hello.", params: { speakers: [], voice_id: "Kore" } })).toEqual({ text: "Hello.", voice: "Kore" });
+  });
+
+  it("sends no turns when the script has no words", () => {
+    expect(buildBody(binding, { prompt: "", params: { speakers: pair } })).toEqual({
+      speakers: [{ speaker_id: "Ava", voice: "Kore" }, { speaker_id: "Leo", voice: "Puck" }],
+    });
+  });
+
+  it("reads speakers that are not what they claim to be as no speakers, as collaborative data can be anything", () => {
+    expect(buildBody(binding, { prompt: "Hi.", params: { speakers: "Ava" } })).toEqual({ text: "Hi.", speakers: "Ava" });
+    expect(buildBody(binding, { prompt: "Ava: Hi.", params: { speakers: [null, { speaker: 3 }] } }).turns).toBeUndefined();
+  });
+});

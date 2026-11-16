@@ -4,6 +4,7 @@
 export { priceUsd, type PriceContract } from "@provider/pricing/evaluate.js";
 export {
   estimateCost,
+  inputRefusal,
   orderByPrice,
   parsePricingRules,
   type Availability,
@@ -12,6 +13,8 @@ export {
   type EstimateBound,
   type EstimateInput,
   type HeldClone,
+  type InputLimit,
   type PricingRules,
+  type RejectedInput,
   type Route,
 } from "@provider/pricing/estimate.js";

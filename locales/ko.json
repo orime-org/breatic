@@ -343,7 +343,22 @@
     },
     "model": {
       "not_configured": "이 배포에는 {model}이(가) 아직 설정되지 않았습니다. {envVars}을(를) 설정해야 합니다.",
-      "upstream_not_bound": "{model}은(는) {upstream}을(를) 통해 제공되지 않습니다."
+      "upstream_not_bound": "{model}은(는) {upstream}을(를) 통해 제공되지 않습니다.",
+      "input_limit": {
+        "characters_max": "{model}의 {field}은(는) 최대 {max, number}자입니다.",
+        "characters_min": "{model}의 {field}은(는) {min, number}자 이상이어야 합니다.",
+        "line_characters_max": "{model}의 {field}은(는) 한 줄에 최대 {max, number}자입니다.",
+        "item_characters_max": "{model}의 {field}은(는) 항목마다 최대 {max, number}자입니다.",
+        "lines_max": "{model}의 {field}은(는) 최대 {max, number}줄입니다.",
+        "chinese_characters_max": "{model}의 {field}은(는) 한자 최대 {max, number}자입니다.",
+        "unsupported": "{model}은(는) 현재 설정으로 실행할 수 없습니다. 설정을 바꾸거나 다른 모델을 선택하세요."
+      },
+      "input_field": {
+        "prompt": "텍스트",
+        "negative_prompt": "네거티브 프롬프트",
+        "lyrics": "가사",
+        "multi_prompt": "샷 프롬프트"
+      }
     },
     "document": {
       "versions_full": "{limit, plural, other {이 Document의 스냅샷이 최대 #개로 가득 찼습니다. 오래된 스냅샷을 삭제한 뒤 저장하세요.}}"
@@ -741,6 +756,7 @@
       "mentionEmpty": "참조할 수 있는 항목이 없습니다",
       "voicePlaceholder": "음성 미선택",
       "voiceSearchPlaceholder": "음성 검색…",
+      "voiceSampleLanguage": "미리듣기",
       "voiceLoading": "음성 불러오는 중…",
       "voiceEmpty": "일치하는 음성이 없습니다",
       "voiceError": "음성을 사용할 수 없습니다",
@@ -1151,7 +1167,9 @@
         "media_refused": "모델이 이 파일을 받지 않았습니다.",
         "tool_failed": "도구가 이 파일을 처리하지 못했습니다.",
         "no_audio_track": "{kind, select, audio {이 오디오에서 소리를 읽을 수 없습니다.} other {이 동영상에는 오디오 트랙이 없습니다.}}",
-        "cut_short": "너무 길어서 끝까지 받아쓰지 못했습니다."
+        "cut_short": "너무 길어서 끝까지 받아쓰지 못했습니다.",
+        "input_refused": "{model}은(는) 현재 설정으로 실행할 수 없습니다. 설정을 바꾸거나 다른 모델을 선택하세요.",
+        "model_not_configured": "이 배포에는 {model}이(가) 아직 설정되지 않았습니다. {envVars}을(를) 설정해야 합니다."
       },
       "kind": {
         "upload": "업로드",
