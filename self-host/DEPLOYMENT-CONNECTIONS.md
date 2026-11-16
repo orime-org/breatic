@@ -135,9 +135,13 @@ A deployment can run Studios in more than one region. One region is the global r
 | `IDENTITY_PUBLIC_KEYS` | Blank | JSON `{"<key id>": "<PEM public key>"}`, including the global region's current key |
 | `IDENTITY_COOKIE_DOMAIN` | The parent domain shared by every region's API host, when the hosts differ; blank when all regions share one API host | The same |
 | `DATABASE_APP_ROLE` | Blank | The role the services' `DATABASE_URL` logs in as. Run `pnpm db:migrate` with a `DATABASE_URL` whose account may create tables and grant: its last step grants this role the region's tables and revokes the global ones. The `migrate` service in `docker-compose.yml` runs the migrations without that step |
+| `PAYMENT_ENABLED`, Stripe settings | Payments as configured | `PAYMENT_ENABLED` the same as the global region, so runs hold credits through it; no Stripe secrets. With it on the server reads `config/subscription.yaml` and `config/pricing.yaml` at start, so copy them from the global region |
+| `ALLOWED_ORIGINS` | Includes the product's web origin | The same, on server and collab (collab refuses WebSocket handshakes from other origins) |
 | `DIRECTORY_RECONCILE_ON_START` | `true` makes the worker align the Studio directory once at start; `docker-compose.yml` sets it and starts the worker after a healthy server, so the previous release has stopped by then. A deployment that cannot guarantee that leaves it blank and runs `pnpm db:reconcile-directory` once with the global region's settings after every process of the previous release has exited | Blank |
 
 Build the web image with `VITE_REGIONS` (a build argument of `Dockerfile.web`): `{"global": "<region>", "regions": {"<region>": {"api": "<public API URL>", "collab": "<public collab URL>"}}}`, one entry per region including the global one. Blank builds a single-region front end that keeps its API base: `VITE_API_BASE_URL` when set, otherwise the same-origin `/api/v1`.
+
+`pnpm db:migrate` and `pnpm db:reconcile-directory` run from a source checkout of the release (`pnpm install --frozen-lockfile && pnpm build` first) with that region's database settings; the product image carries no `scripts/`, `tsx` or `turbo`.
 
 Every region's internal listener must reach the others over a private network only, as in [Back office internal API](#back-office-internal-api). Calls between regions are limited under `region-api` in `config/rate-limits.yaml`, separately from the back office's `internal-api`, and their timeouts, sweeps and batch sizes are in `config/regions.yaml`.
 
