@@ -13,8 +13,8 @@ import { useCanvasFollow, type CanvasFollowInput } from '@web/spaces/canvas/use-
 import { useFollowStore } from '@web/stores/follow';
 
 /*
- * Framing once following ends (#920 design 4.2.1): `CanvasFollowInput` no
- * longer has `openingFitHeld`; it takes `isCameraPlaced: () => boolean`, which
+ * Framing once following ends (#920 design 4.2.1): `CanvasFollowInput` takes
+ * `isCameraPlaced: () => boolean`, which
  * CanvasSpace answers with `storedViewport !== null || cameraPlaced.current`
  * (the ref every camera move sets). When following ends on a canvas whose
  * camera was never placed, the hook calls `frameCanvas` once; a move the user
