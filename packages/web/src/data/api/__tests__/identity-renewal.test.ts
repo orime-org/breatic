@@ -118,6 +118,23 @@ describe('startIdentityRenewal', () => {
     stop();
   });
 
+  it('leaves the timer of a new sign-in running when the previous renewal is refused late', async () => {
+    vi.useFakeTimers();
+    let refuse: (err: unknown) => void = () => undefined;
+    const old = vi.fn(() => new Promise<void>((_, reject) => { refuse = reject; }));
+    const stopOld = startIdentityRenewal(old, TWO_REGIONS);
+    await vi.advanceTimersByTimeAsync(45_000);
+    expect(old).toHaveBeenCalledTimes(1);
+
+    stopOld();
+    const renew = vi.fn(async () => undefined);
+    const stop = startIdentityRenewal(renew, TWO_REGIONS);
+    refuse(new ApiException({ status: 401, message: 'signed out' }));
+    await vi.advanceTimersByTimeAsync(45_000 * 2);
+    expect(renew).toHaveBeenCalledTimes(2);
+    stop();
+  });
+
   it('keeps renewing after a failure that is not about the session', async () => {
     vi.useFakeTimers();
     const renew = vi.fn(async () => {

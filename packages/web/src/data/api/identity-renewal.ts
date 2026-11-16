@@ -50,7 +50,7 @@ export function renewIdentityNow(): Promise<void> {
       if (renewer === renew) startTimer();
     },
     (err: unknown) => {
-      if (err instanceof ApiException && err.status === 401) stopTimer();
+      if (err instanceof ApiException && err.status === 401 && renewer === renew) stopTimer();
     },
   ).finally(() => {
     inFlight = null;
