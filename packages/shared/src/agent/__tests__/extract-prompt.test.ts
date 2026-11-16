@@ -46,8 +46,13 @@ describe("extractPromptText — what it strips", () => {
     expect(extractPromptText("5 < 6\n\n然后 7 > 3")).toBe("5 < 6\n\n然后 7 > 3");
   });
 
-  it("removes a tag whose attributes run onto the next line", () => {
-    expect(extractPromptText('<div\nclass="x">y</div>')).toBe("y");
+  it("keeps what sits between brackets on two lines: a line break is the user's own (#1521)", () => {
+    // A dialogue sends one turn per line, and a script is read out line by line, so no bracket pair
+    // reaching across a line may take a line's words with it.
+    expect(extractPromptText("Ava: Is x <y?\nBen: No, y> x")).toBe("Ava: Is x <y?\nBen: No, y> x");
+    expect(extractPromptText("a <!-- one\ntwo --> b")).toBe("a <!-- one\ntwo --> b");
+    expect(extractPromptText('<div\nclass="x">y</div>')).toBe('<div\nclass="x">y');
+    expect(extractPromptText("<b>bold</b> and <!-- note --> kept")).toBe("bold and kept");
   });
 
   it("removes zero-width and invisible characters", () => {

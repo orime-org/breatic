@@ -26,15 +26,17 @@ export function extractPromptText(prompt: unknown): string {
 
   let text = typeof prompt === "string" ? prompt : String(prompt);
 
-  // Strip HTML comments
-  text = text.replace(/<!--[\s\S]*?-->/g, " ");
+  // Strip HTML comments, each within one line.
+  text = text.replace(/<!--[^\n]*?-->/g, " ");
 
   // Strip HTML tags. A tag opens with a letter, optionally behind a slash —
   // requiring that is what separates markup from a pair of angle brackets a
   // person typed. `<[^>]*>` matched both, and a voiceover script is read out
   // word for word: `under <100, over >50` lost the clause between the two,
-  // and `5 < 6` lost every line down to the next `>`.
-  text = text.replace(/<\/?[a-zA-Z][^<>]*>/g, " ");
+  // and `5 < 6` lost every line down to the next `>`. A tag and a comment end
+  // on the line they open on: a line break is the user's own, and a dialogue
+  // sends one turn per line (#1521).
+  text = text.replace(/<\/?[a-zA-Z][^<>\n]*>/g, " ");
 
   // Decode common HTML entities
   text = text
