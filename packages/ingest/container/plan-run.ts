@@ -12,7 +12,7 @@ import { executeLipsyncRecipe, isLipsyncRecipe } from "@ingest/container/lipsync
 import { executeModelRecipe, isModelRecipe } from "@ingest/container/model-recipes.js";
 import { runPlanCommand } from "@ingest/container/plan-command.js";
 import { download, put, cpuUsec } from "@ingest/container/mini-tool-run.js";
-import { coverArgs, coverDecoderArgs, probeArgs, readProbeOutput } from "@ingest/probe-command.js";
+import { coverArgs, probeArgs, readProbeOutput } from "@ingest/probe-command.js";
 import { pngSize } from "@ingest/png-size.js";
 
 /** The internal, attempt-bound run sent by the validated job object. */
@@ -40,7 +40,7 @@ async function writeCover(output: { coverUrl: string; file: string }, directory:
   try {
     const options = { signal, stdoutBytes: limits.analysisStdoutBytes, stderrTailBytes: limits.stderrTailBytes };
     const report = readProbeOutput((await runPlanCommand("ffprobe", probeArgs(output.file, "own-file"), options)).toString("utf8"));
-    const bytes = await runPlanCommand("ffmpeg", coverArgs(output.file, "own-file", coverDecoderArgs(report)), options);
+    const bytes = await runPlanCommand("ffmpeg", coverArgs(output.file, "own-file", report), options);
     const size = pngSize(new Uint8Array(bytes));
     if (size === null) throw new Error("Optional cover is not a PNG");
     const file = join(directory, "cover.png");

@@ -20,6 +20,7 @@ import type { MediaOfOutput } from "@ingest/jobs/container-report.js";
 import { runPlanCommand } from "@ingest/container/plan-command.js";
 import { copyWithMatrixTag } from "@ingest/container/presentation-run.js";
 import { TAGGED_MATRICES, videoContainerCrop } from "@ingest/container/physical-video-probe.js";
+import { displayTurn } from "@ingest/container-crop.js";
 import { alphaDecoderArgs, probeArgs, readProbeOutput } from "@ingest/probe-command.js";
 import { pickMediaMetadata } from "@ingest/media-metadata.js";
 import { pngSize } from "@ingest/png-size.js";
@@ -563,27 +564,6 @@ interface ProbedVideo {
 }
 
 /**
- * The turn FFmpeg's autorotate applies for a display matrix (fftools/ffmpeg_filter.c, FFmpeg 8): a transpose for a quarter
- * turn, flips for a half turn or a mirror; and which output directions it reverses.
- * @param side - The stream's side data.
- * @returns The turn's filter (null for none), whether it transposes, and the reversed directions.
- * @throws {never} Never.
- */
-function autorotation(side: ProbedVideo["side_data_list"]): { filter: string | null; transposed: boolean; x: boolean; y: boolean } {
-  const entry = side?.find((item) => typeof item.displaymatrix === "string");
-  if (entry === undefined) return { filter: null, transposed: false, x: false, y: false };
-  const m = entry.displaymatrix!.replace(/\d{8}:/gu, " ").trim().split(/\s+/u).map(Number);
-  let theta = -Math.round(entry.rotation ?? 0);
-  theta -= 360 * Math.floor(theta / 360 + 0.9 / 360);
-  const near = (angle: number): boolean => Math.abs(theta - angle) < 1;
-  if (near(90)) return m[3]! > 0 ? { filter: "transpose=cclock_flip", transposed: true, x: false, y: false } : { filter: "transpose=clock", transposed: true, x: true, y: false };
-  if (near(270)) return m[3]! < 0 ? { filter: "transpose=clock_flip", transposed: true, x: true, y: true } : { filter: "transpose=cclock", transposed: true, x: false, y: true };
-  const x = near(180) && m[0]! < 0;
-  const y = (near(180) || near(0)) && m[4]! < 0;
-  return { filter: x || y ? [x ? "hflip" : "", y ? "vflip" : ""].filter((part) => part !== "").join(",") : null, transposed: false, x, y };
-}
-
-/**
  * The colour facts the tone map and the odd-frame conversion read of a video stream (`FrameColour`). A VP8/VP9 stream with
  * alpha decodes (through libvpx, `alphaDecoderArgs`) with an alpha plane ffprobe's pixel format does not show. A Matroska
  * PixelCrop reaches the graph uncropped and in its stored orientation, and is cropped exactly there before the turn.
@@ -597,7 +577,7 @@ function frameColour(video: ProbedVideo, formatName: string): FrameColour {
   const vpxAlpha = alphaDecoderArgs(video.codec_name, Object.entries(video.tags ?? {}).find(([key]) => key.toLowerCase() === "alpha_mode")?.[1]).length > 0;
   const format = vpxAlpha ? (video.pix_fmt ?? "").replace(/^yuv(?!a)/u, "yuva") : video.pix_fmt ?? "";
   const planar = PLANAR_SUBSAMPLED.exec(format);
-  const turn = autorotation(video.side_data_list);
+  const turn = displayTurn(video.side_data_list);
   const [hsub, vsub] = planar === null ? [false, false] : [planar[1] !== "440", planar[1] !== "422"];
   const transfer = known(video.color_transfer, ZSCALE_TRANSFERS);
   // The graph turns the frames itself, after reading them in their stored orientation, when autorotate would misplace chroma:

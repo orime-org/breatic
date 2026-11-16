@@ -12,6 +12,8 @@
  * and it is the half of the contract that has a rule worth stating.
  */
 
+import type { ContainerCrop } from "@ingest/container-crop.js";
+
 /** One stream as the container reports it. */
 export interface ProbeStream {
   index: number;
@@ -33,6 +35,11 @@ export interface ProbeStream {
    * cover cut from the same run comes out already turned.
    */
   rotation?: number;
+  /**
+   * A video stream's Matroska PixelCrop, in the orientation the picture is shown at: part of what the picture shows, as
+   * Chromium shows a WebM (`@ingest/container-crop.js`). Absent for any other container and for a crop of nothing.
+   */
+  crop?: ContainerCrop;
   /** ffprobe's colour tags, when the stream carries them; HDR reads the source as they say. */
   colorTransfer?: string;
   colorPrimaries?: string;
@@ -146,9 +153,13 @@ export function pickMediaMetadata(report: ProbeReport): MediaMetadata {
     media?.width != null && media.height != null
       ? { width: media.width, height: media.height }
       : { width: null, height: null };
-  const sized = turnsTheFrame(media?.rotation)
+  const turned = turnsTheFrame(media?.rotation)
     ? { width: stored.height, height: stored.width }
     : stored;
+  const crop = media?.crop;
+  const sized = crop === undefined || turned.width === null || turned.height === null
+    ? turned
+    : { width: turned.width - crop.left - crop.right, height: turned.height - crop.top - crop.bottom };
   // A still image probes with a format duration of zero often enough to matter,
   // and zero seconds is not a duration anyone can act on.
   const duration =

@@ -63,7 +63,7 @@ describe("opRuns", () => {
     expect(stands.args.filter((arg) => arg === "-ss")).toHaveLength(1);
     expect([after(stands.args, "-seek_timestamp"), after(stands.args, "-ss"), after(stands.args, "-t")]).toEqual(["1", "1.600000", "2.500000"]);
     const [moved] = answers(start, "0.100000\n", "1.680000,1.600000\n", "1.200000,1.120000\n") as [Extract<RunStep, { kind: "run" }>];
-    expect(moved.args.slice(moved.args.indexOf("-ss"), moved.args.indexOf("-vf"))).toEqual(["-ss", "1.520000", "-protocol_whitelist", "file", "-i", IN, "-ss", "0.080000", "-t", "2.500000"]);
+    expect(moved.args.slice(moved.args.indexOf("-ss"), moved.args.indexOf("-vf"))).toEqual(["-ss", "1.520000", "-protocol_whitelist", "file", "-apply_cropping", "codec", "-i", IN, "-ss", "0.080000", "-t", "2.500000"]);
     expect(after(moved.args, "-vf")).toBe(EVEN);
     expect(moved.args.at(-1)).toBe(OUT);
   });

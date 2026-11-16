@@ -769,11 +769,11 @@ describe('copy_carrier and prepare_model_input', () => {
 });
 
 describe('the cover of a transparent video (§3.5; storage cover row)', () => {
-  it.each([['alpha.webm', ['-c:v', 'libvpx-vp9']], ['alpha.mov', []]] as const)('CV01 the cover cut from %s keeps its alpha', async (name, decoder) => {
+  it.each([['alpha.webm', ['-apply_cropping', 'codec', '-c:v', 'libvpx-vp9']], ['alpha.mov', ['-apply_cropping', 'codec']]] as const)('CV01 the cover cut from %s keeps its alpha', async (name, decoder) => {
     const path = join(dir, name);
     const report = readProbeOutput((await run('ffprobe', probeArgs(path, 'own-file'), { maxBuffer: 1 << 24 })).stdout);
     expect(coverDecoderArgs(report)).toEqual(decoder);
-    const { stdout } = await run('ffmpeg', coverArgs(path, 'own-file', coverDecoderArgs(report)), { encoding: 'buffer', maxBuffer: 1 << 24 });
+    const { stdout } = await run('ffmpeg', coverArgs(path, 'own-file', report), { encoding: 'buffer', maxBuffer: 1 << 24 });
     // PNG IHDR colour type, byte 25: 6 is RGBA.
     expect((stdout as unknown as Buffer)[25]).toBe(6);
   });

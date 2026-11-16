@@ -5,6 +5,7 @@ import type { MatroskaPhysicalVideoProbe, PhysicalVideoProbe } from "@shared/upl
 export type { MatroskaPhysicalVideoProbe, PhysicalVideoProbe } from "@shared/upload/video-source-ledger-types.js";
 
 import type { MatroskaMetadata } from "@ingest/container/matroska-metadata.js";
+import { matroskaCrop, NO_CONTAINER_CROP, type ContainerCrop } from "@ingest/container-crop.js";
 
 /**
  * Bind original selected FFprobe frame tokens to exact Matroska block headers.
@@ -230,7 +231,7 @@ export function resolveVideoColorMatrix(stream: Record<string, unknown>): string
  * @returns The display width and height.
  * @throws {TypeError} When the coded size, SAR or rotation is malformed.
  */
-export function videoDisplayGeometry(stream: Record<string, unknown>, crop: VideoContainerCrop = NO_CONTAINER_CROP): { width: number; height: number } {
+export function videoDisplayGeometry(stream: Record<string, unknown>, crop: ContainerCrop = NO_CONTAINER_CROP): { width: number; height: number } {
   const { width, height } = stream;
   if (typeof width !== "number" || typeof height !== "number" || !Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width <= 0 || height <= 0) {
     throw new TypeError("Expected the coded video size");
@@ -251,28 +252,15 @@ export function videoDisplayGeometry(stream: Record<string, unknown>, crop: Vide
   return Math.abs(rotation) % 180 === 90 ? { width: shownHeight, height: displayWidth } : { width: displayWidth, height: shownHeight };
 }
 
-/** The pixels a container crops at each edge of the coded picture. */
-export interface VideoContainerCrop { top: number; bottom: number; left: number; right: number }
-export const NO_CONTAINER_CROP: VideoContainerCrop = { top: 0, bottom: 0, left: 0, right: 0 };
-
 /**
- * The container cropping the picture is shown with (ffprobe's Frame Cropping side data): a Matroska stream's PixelCrop, which
- * Chromium shows a WebM with; zero for any other container, whose cropping (an MP4 clap box) Chromium does not apply. FFmpeg's
- * decoders apply container cropping rounded to the chroma grid, so the recipes decode with `-apply_cropping codec` and crop
- * exactly in the graph.
+ * The container cropping the picture is shown with: a Matroska stream's PixelCrop (`@ingest/container-crop.js`), zero for
+ * any other container and for none.
  * @param stream - The selected ffprobe stream.
  * @param formatName - The ffprobe format name.
- * @returns The pixels cropped at each edge.
+ * @returns The pixels cropped at each edge, in the stored orientation.
  * @throws {TypeError} When a cropping value is malformed.
  */
-export function videoContainerCrop(stream: Record<string, unknown>, formatName: string): VideoContainerCrop {
-  if (!formatName.split(",").includes("matroska")) return NO_CONTAINER_CROP;
+export function videoContainerCrop(stream: Record<string, unknown>, formatName: string): ContainerCrop {
   const sideData = Array.isArray(stream.side_data_list) ? stream.side_data_list.map(probeObject) : [];
-  const entry = sideData.find((item) => item.side_data_type === "Frame Cropping") ?? {};
-  const value = (key: string): number => {
-    const found = entry[key] ?? 0;
-    if (typeof found !== "number" || !Number.isSafeInteger(found) || found < 0) throw new TypeError("Expected a container cropping value");
-    return found;
-  };
-  return { top: value("crop_top"), bottom: value("crop_bottom"), left: value("crop_left"), right: value("crop_right") };
+  return matroskaCrop(sideData, formatName) ?? NO_CONTAINER_CROP;
 }

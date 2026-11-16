@@ -18,6 +18,7 @@ import { buildAdjustVideoFilter, parseAdjustValue } from "@shared/adjust-value.j
 import { DENOISE_NOISE_FLOOR_DB, denoiseReductionDb } from "@shared/audio-denoise.js";
 import { buildCompressorFilter, type DynamicsValue } from "@shared/audio-dynamics.js";
 import { PEAK_LIMITER, buildEqFilter } from "@shared/audio-eq.js";
+import { CODEC_CROPPING_ONLY, exactCrop } from "@ingest/container-crop.js";
 import { realVideoStream, type ProbeReport } from "@ingest/media-metadata.js";
 import { ffmpegSeconds, readMicroseconds, seekBeforeLanding, seekLandingArgs } from "@ingest/probe-command.js";
 
@@ -139,14 +140,27 @@ function hdrFilter(transfer: string, source: ProbeReport): string {
 }
 
 /**
+ * The filters that take the source's decoded frames, which keep codec cropping only (`CODEC_CROPPING_ONLY`), to the
+ * picture it shows: a Matroska PixelCrop cropped exactly (`@ingest/container-crop.js`), followed by the given filters.
+ * @param source - The source's probe.
+ * @param filters - The operation's own video filters.
+ * @returns The filter chain text.
+ */
+function shown(source: ProbeReport, filters: string): string {
+  const crop = realVideoStream(source)?.crop;
+  return crop === undefined ? filters : `${exactCrop(crop)},${filters}`;
+}
+
+/**
  * The source's picture into the output: copied when an mp4 plays it as it is,
- * otherwise encoded as H.264 on even sides.
+ * otherwise encoded as H.264 on even sides. A cropped source is encoded: a copy
+ * would carry its PixelCrop as an MP4 clean aperture, which Chromium does not apply.
  * @param source - The source's probe.
  * @returns The video arguments.
  */
 function videoOut(source: ProbeReport): string[] {
   const codec = realVideoStream(source)?.codecName ?? "";
-  if (!MP4_VIDEO.has(codec)) return ["-vf", EVEN, ...H264];
+  if (!MP4_VIDEO.has(codec) || realVideoStream(source)?.crop !== undefined) return ["-vf", shown(source, EVEN), ...H264];
   // An HEVC stream copied into mp4 is tagged hev1 by default, which Safari does not open.
   return codec === "hevc" ? ["-c:v", "copy", "-tag:v", "hvc1"] : ["-c:v", "copy"];
 }
@@ -248,13 +262,13 @@ export function opRuns(
   workDir: string,
   source: ProbeReport,
 ): string[][] {
-  const head = [...QUIET, ...SOURCE, "-i", input];
+  const head = [...QUIET, ...SOURCE, ...CODEC_CROPPING_ONLY, "-i", input];
   switch (op) {
     case "crop": {
       const rect = params.rect as { x: number; y: number; w: number; h: number } | null;
       if (rect === null) return [[...head, ...videoOut(source), ...audioOut(source), ...FASTSTART, output]];
       const crop = `crop=${even(rect.w)}:${even(rect.h)}:${Math.floor(rect.x)}:${Math.floor(rect.y)}`;
-      return [[...head, "-vf", crop, ...audioOut(source), ...FASTSTART, output]];
+      return [[...head, "-vf", shown(source, crop), ...audioOut(source), ...FASTSTART, output]];
     }
     case "speed": {
       const rate = numberOf(params, "rate");
@@ -262,7 +276,7 @@ export function opRuns(
         [
           ...head,
           "-filter:v",
-          `${EVEN},setpts=PTS/${rate.toFixed(6)}`,
+          shown(source, `${EVEN},setpts=PTS/${rate.toFixed(6)}`),
           "-filter:a",
           atempoChain(rate),
           ...H264,
@@ -273,17 +287,17 @@ export function opRuns(
       ];
     }
     case "adjust":
-      return [[...head, "-vf", `${EVEN},${buildAdjustVideoFilter(parseAdjustValue(params.value))}`, ...H264, ...audioOut(source), ...FASTSTART, output]];
+      return [[...head, "-vf", shown(source, `${EVEN},${buildAdjustVideoFilter(parseAdjustValue(params.value))}`), ...H264, ...audioOut(source), ...FASTSTART, output]];
     case "audio_denoise":
       return [[...head, ...videoOut(source), "-af", denoiseFilter(numberOf(params, "intensity")), ...AAC, ...FASTSTART, output]];
     case "stabilize": {
       const transforms = `${workDir}/transforms.trf`;
       return [
-        [...head, "-vf", `${EVEN},vidstabdetect=shakiness=${numberOf(params, "shakiness")}:result=${transforms}`, "-f", "null", "-"],
+        [...head, "-vf", shown(source, `${EVEN},vidstabdetect=shakiness=${numberOf(params, "shakiness")}:result=${transforms}`), "-f", "null", "-"],
         [
           ...head,
           "-vf",
-          `${EVEN},vidstabtransform=smoothing=${numberOf(params, "smoothing")}:input=${transforms}`,
+          shown(source, `${EVEN},vidstabtransform=smoothing=${numberOf(params, "smoothing")}:input=${transforms}`),
           ...H264,
           ...audioOut(source),
           ...FASTSTART,
@@ -294,7 +308,7 @@ export function opRuns(
     case "hdr": {
       const transfer = TRANSFER[params.transfer as keyof typeof TRANSFER];
       if (transfer === undefined) throw new Error("transfer is not pq or hlg");
-      const filter = hdrFilter(transfer, source);
+      const filter = shown(source, hdrFilter(transfer, source));
       return [
         [
           ...head,
@@ -626,7 +640,7 @@ export function opSteps(
   source: ProbeReport,
 ): RunStep[] {
   if (AUDIO_OPS.has(op)) return audioSteps(op as AudioOp, params, input, output, source);
-  if (op === "cut") return cutSteps(params, input, output);
+  if (op === "cut") return cutSteps(params, input, output, source);
   return opRuns(op as Exclude<VideoOp, "cut">, params, input, output, workDir, source).map((args) => ({ kind: "run", program: "ffmpeg", args }));
 }
 
@@ -638,10 +652,11 @@ export function opSteps(
  * @param params - The cut's params: `range` in seconds.
  * @param input - The local copy of the source.
  * @param output - The file the cut writes.
+ * @param source - The source's probe: its picture as shown.
  * @returns The measuring step that starts the chain.
  * @throws {never} Building the steps cannot fail.
  */
-function cutSteps(params: Record<string, unknown>, input: string, output: string): RunStep[] {
+function cutSteps(params: Record<string, unknown>, input: string, output: string, source: ProbeReport): RunStep[] {
   const range = params.range as { start: number; end: number };
   const [fromUs, toUs] = [range.start, range.end].map((seconds) => BigInt(seconds.toFixed(3).replace(".", "")) * 1000n) as [bigint, bigint];
   // ffprobe writes its answer to stderr, which is what a measuring step hands on.
@@ -656,9 +671,9 @@ function cutSteps(params: Record<string, unknown>, input: string, output: string
       return [{
         kind: "run",
         program: "ffmpeg",
-        args: [...QUIET, "-seek_timestamp", "1", "-ss", ffmpegSeconds(seekUs), ...SOURCE, "-i", input,
+        args: [...QUIET, "-seek_timestamp", "1", "-ss", ffmpegSeconds(seekUs), ...SOURCE, ...CODEC_CROPPING_ONLY, "-i", input,
           ...(seekUs < targetUs ? ["-ss", ffmpegSeconds(targetUs - seekUs)] : []), "-t", ffmpegSeconds(toUs - fromUs),
-          "-vf", EVEN, ...H264, ...AAC, ...FASTSTART, output],
+          "-vf", shown(source, EVEN), ...H264, ...AAC, ...FASTSTART, output],
       }];
     },
   });

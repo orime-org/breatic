@@ -200,6 +200,22 @@ describe("a stream the display matrix says to turn", () => {
 // measured on ffmpeg 8.0.1 — what the container ships — one JPEG read as
 // `image2` with duration 0.040000 and another as `jpeg_pipe` with none. The ticket's content type says what the
 // bytes are, and it is the same authority that decides whether to cut a cover.
+// A Matroska PixelCrop is part of what the picture shows, as Chromium shows a WebM; the probe reads it in the orientation
+// the picture is shown at, so it comes off the shown pair.
+describe("a stream its container crops", () => {
+  it("files the pair less the crop", () => {
+    const picked = pickMediaMetadata(report([{ ...VIDEO_STREAM, crop: { top: 1, bottom: 2, left: 3, right: 4 } }], 2));
+
+    expect(picked).toMatchObject({ width: 1273, height: 717 });
+  });
+
+  it("takes the crop off the turned pair", () => {
+    const picked = pickMediaMetadata(report([{ ...VIDEO_STREAM, rotation: 90, crop: { top: 0, bottom: 3, left: 1, right: 0 } }], 2));
+
+    expect(picked).toMatchObject({ width: 719, height: 1277 });
+  });
+});
+
 describe("how long the media runs", () => {
   it("answers no duration for an image, whatever ffprobe read", () => {
     const picked = mediaNumbersFor("image/jpeg", report([VIDEO_STREAM], 0.04));

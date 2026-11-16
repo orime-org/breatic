@@ -57,6 +57,7 @@
     "../src/video-alpha-classification.ts",
     "../src/probe-command.ts",
     "../src/media-metadata.ts",
+    "../src/container-crop.ts",
     "../src/long-media-measured-window.ts",
     "../src/png-size.ts",
     "../src/preview-step.ts",
