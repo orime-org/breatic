@@ -131,7 +131,9 @@ describe("an anamorphic source", () => {
     const { stdout } = await run("ffmpeg", coverArgs(join(dir, "sar.mp4"), "own-file", await probed("sar.mp4")), { encoding: "buffer", maxBuffer: 1 << 24 });
     const file = join(dir, "sar-cover.png");
     await writeFile(file, stdout);
-    expect(mean(await rgb(file, "null"), await rgb(join(dir, "sar.mp4"), "scale=480:240"))).toBeLessThan(1);
+    expect((await run("ffprobe", ["-v", "error", "-show_entries", "stream=width,height", "-of", "csv=p=0", file])).stdout.trim()).toBe("480,240");
+    // swscale rounds the two conversion orders apart by about one level, differently on arm64 and amd64.
+    expect(mean(await rgb(file, "null"), await rgb(join(dir, "sar.mp4"), "scale=480:240"))).toBeLessThan(3);
   });
 
   // The panel gives a rectangle in the size the video element shows (videoWidth x videoHeight); the right half of 480x240.
