@@ -28,12 +28,12 @@ beforeAll(() => {
 });
 
 describe("the formula in the product guide", () => {
-  it("lists the formula entry right after the table in the insert menu", () => {
-    const doc = section("Document spaces");
-    const table = `"${t("spaces.document.commands.table")}" on their own`;
-    const formula = `"${t("spaces.document.commands.formula")}"`;
-    expect(doc).toContain(formula);
-    expect(doc.indexOf(formula)).toBeGreaterThan(doc.indexOf(table));
+  it("lists the formula entry after the table and columns in the insert menu", () => {
+    const quote = (key: string): string => `"${t(key)}"`;
+    expect(section("Document spaces")).toContain(
+      `${quote("spaces.document.commands.table")} and ${quote("spaces.document.commands.columns")} on their own, then ` +
+        `${quote("spaces.document.commands.formula")}, then `,
+    );
   });
 
   it("says a formula is typed between $$ and edited in a box opened by clicking it", () => {
