@@ -13,7 +13,7 @@ import type { CollaboratorNames } from '@web/features/collab-editor/use-collabor
 import type { SceneUploadEntry, SceneUploads } from '@web/spaces/three-d/scene-uploads';
 import { SceneTaskList } from '@web/spaces/three-d/SceneTaskList';
 import { toast } from '@web/lib/toast';
-import { t } from '@breatic/shared';
+import { setLocale, t } from '@breatic/shared';
 import { ApiException } from '@web/data/api/types';
 import { failureSentence } from '@web/spaces/canvas/failure-sentence';
 
@@ -566,6 +566,27 @@ describe('the 3D Space task list rig line (inner#1692)', () => {
     renderList();
     for (const id of ['plain-done', 'plain-running', 'broken', 'import']) {
       expect(within(await rowOf(id)).queryByTestId('scene-task-rig-note'), id).toBeNull();
+    }
+  });
+});
+
+// inner#1968 G-39: a generation that waits for a free slot says so, counts no
+// minutes, and can be cancelled through the canvas task cancel route.
+describe('a 3D generation waiting for a slot', () => {
+  it('says queued, shows no minutes, and offers cancel', async () => {
+    setLocale('zh-CN');
+    try {
+      api.listSpaceTasks.mockResolvedValue(listed(generation({ id: 'queued', startedAt: new Date(NOW - 180_000).toISOString(), waitingSince: new Date(NOW - 180_000).toISOString() })));
+      request.post.mockResolvedValue({ cancelled: true, counts: null });
+      renderList();
+      const queued = await rowOf('queued');
+      expect(queued).toHaveTextContent('排队中');
+      expect(queued).not.toHaveTextContent('分钟');
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      await user.click(within(queued).getByRole('button', { name: '取消' }));
+      await waitFor(() => expect(request.post.mock.calls.some(([path]) => /\/canvas\/tasks\/[^/]+\/cancel$/.test(String(path)))).toBe(true));
+    } finally {
+      setLocale('en');
     }
   });
 });

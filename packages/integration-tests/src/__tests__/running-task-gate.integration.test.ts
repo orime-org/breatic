@@ -43,10 +43,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import fc from "fast-check";
 import postgres from "postgres";
-import { getNodeTaskConfig, getStreamRedis, getWorkerConfig, initCore, initLogger, loadLocales, REPORT_GRACE_MS, timelineExecutionRepo } from "@breatic/core";
-import { nodeTaskService, runningSlotService, taskService } from "@breatic/domain";
+import { Worker, type Job, type Queue } from "bullmq";
+import { canvasSpaceDocName } from "@breatic/shared";
+import { createQueue, getNodeTaskConfig, getStreamRedis, getWorkerConfig, initCore, initLogger, loadLocales, REPORT_GRACE_MS, taskEventsStreamKey, timelineExecutionRepo } from "@breatic/core";
+import { nodeTaskService, runningSlotService, sceneTaskService, taskService } from "@breatic/domain";
 import { cleanupFailedJobNodes } from "@worker/handlers/failed-job-cleanup.js";
-import { finishFailedRun } from "@worker/handlers/dispatch.js";
+import { finishFailedRun, runTask, type TaskJobData } from "@worker/handlers/dispatch.js";
+import { listSpaceTasks } from "@server/modules/asset/scene-tasks.service.js";
 import { taskDeadline } from "@worker/handlers/task-deadline.js";
 import { sweepTimelineExecutions } from "@worker/handlers/timeline/timeline-sweep.js";
 
@@ -112,6 +115,7 @@ async function person(tier: Tier = "base", runningTasks = 10): Promise<Person> {
   await sql`insert into studios(id, created_by_user_id, slug, type, name) values (${studioId}, ${userId}, ${`g-${studioId}`}, 'personal', 'Gate')`;
   await sql`insert into studio_members(studio_id, user_id, role) values (${studioId}, ${userId}, 'admin')`;
   await sql`insert into projects(id, studio_id, created_by_user_id, slug, name) values (${projectId}, ${studioId}, ${userId}, ${`g-${projectId}`}, 'Gate')`;
+  await sql`insert into project_members(project_id, user_id, role, added_by) values (${projectId}, ${userId}, 'owner', null)`;
   return { userId, studioId, projectId, spaceId: crypto.randomUUID() };
 }
 
@@ -129,6 +133,10 @@ interface TaskSeed {
   /** The project; the person's own by default. */
   projectId?: string;
   jobId?: string | null;
+  /** The task type; an image generation by default. */
+  taskType?: string;
+  /** Open the node row as a 3D Space's own row (no node). */
+  scene?: boolean;
 }
 
 /** A seeded task and its node row. */
@@ -151,7 +159,7 @@ async function seedTask(p: Person, s: TaskSeed = {}): Promise<Seeded> {
     user_id: p.userId,
     project_id: s.projectId ?? p.projectId,
     space_id: p.spaceId,
-    task_type: "image",
+    task_type: s.taskType ?? "image",
     mode: "append",
     model: "flux-schnell",
     status: s.status ?? "pending",
@@ -166,8 +174,8 @@ async function seedTask(p: Person, s: TaskSeed = {}): Promise<Seeded> {
     row.slot_wait_limit = s.waiting.limit;
   }
   await sql`insert into tasks ${sql(row)}`;
-  if (!s.node) return { taskId, nodeId: null, nodeTaskId: null };
-  const nodeId = crypto.randomUUID();
+  if (!s.node && !s.scene) return { taskId, nodeId: null, nodeTaskId: null };
+  const nodeId = s.scene ? null : crypto.randomUUID();
   const node: Record<string, unknown> = {
     project_id: s.projectId ?? p.projectId,
     space_id: p.spaceId,
@@ -181,6 +189,7 @@ async function seedTask(p: Person, s: TaskSeed = {}): Promise<Seeded> {
     label: "flux-schnell",
     task_id: taskId,
   };
+  if (s.scene) node.origin = "space";
   if (s.waiting) node.waiting_since = s.waiting.since;
   const [inserted] = await sql<{ id: string }[]>`insert into node_tasks ${sql(node)} returning id`;
   return { taskId, nodeId, nodeTaskId: inserted!.id };
@@ -780,6 +789,132 @@ describe("G waiting for a free slot", () => {
     expect(row!.status).toBe("expired");
     const [ledger] = await sql<{ status: string }[]>`select status from operation_ledger where operation_key = ${key}`;
     expect(ledger!.status).toBe("released");
+  });
+});
+
+/**
+ * Every node-task-counts event the stream carries for one node.
+ * @param p - Whose canvas.
+ * @param nodeId - The node.
+ * @returns Each event's counts, oldest first.
+ */
+async function countsEvents(p: Person, nodeId: string): Promise<Record<string, number>[]> {
+  const raw = (await getStreamRedis().xrange(taskEventsStreamKey(), "-", "+")) as [string, string[]][];
+  return raw
+    .map(([, fields]) => JSON.parse(fields[fields.indexOf("payload") + 1]!) as Record<string, unknown>)
+    .filter((e) => e.type === "node-task-counts" && e.docName === canvasSpaceDocName(p.projectId, p.spaceId) && e.nodeId === nodeId)
+    .map((e) => e.counts as Record<string, number>);
+}
+
+/** A real BullMQ queue and a worker that takes its jobs by hand. */
+interface Lane {
+  queue: Queue;
+  worker: Worker;
+}
+
+/**
+ * A queue of its own and a hand-driven worker on it.
+ * @returns Both.
+ */
+function lane(): Lane {
+  const queue = createQueue(`gate-${crypto.randomUUID()}`);
+  const worker = new Worker(queue.name, null, { connection: queue.opts.connection, lockDuration: 60_000, autorun: false });
+  return { queue, worker };
+}
+
+/**
+ * Queue a task's job and take it as the worker does, with its lock token.
+ * @param l - The lane.
+ * @param p - Whose task.
+ * @param taskId - The task.
+ * @param taskType - Its type.
+ * @param nodeIds - The nodes it writes to.
+ * @returns The active job and its token.
+ */
+async function takeJob(l: Lane, p: Person, taskId: string, taskType: string, nodeIds: string[] = []): Promise<{ job: Job<TaskJobData>; token: string }> {
+  const existing = await l.queue.getJob(taskId);
+  if (existing === undefined) {
+    const data: TaskJobData = { taskId, taskType, userId: p.userId, projectId: p.projectId, spaceId: p.spaceId, params: {}, mode: "append", targetNodeIds: nodeIds };
+    await l.queue.add("execute-task", data, { jobId: taskId, attempts: 3 });
+  } else if ((await existing.getState()) === "delayed") {
+    await existing.promote();
+  }
+  const token = crypto.randomUUID();
+  const job = (await l.worker.getNextJob(token)) as Job<TaskJobData> | undefined;
+  if (job === undefined || job.id !== taskId) throw new Error("the lane handed out another job");
+  return { job, token };
+}
+
+describe("G the gate's caller puts a waiting job back on the queue (K4)", () => {
+  it("G-03 K4 a job picked twelve times while its person runs their limit goes back delayed each time and spends no attempt", async () => {
+    const p = await person("enterprise", 1);
+    await running(p, 1);
+    // A reading that names no node fails on its first line, so a pickup that
+    // is not held back by the gate never reaches a paid call.
+    const t = await seedTask(p, { taskType: "understand" });
+    const l = lane();
+    try {
+      for (let i = 0; i < 12; i += 1) {
+        const { job, token } = await takeJob(l, p, t.taskId, "understand");
+        const thrown = await runTask(job, token).then(() => null, (err: unknown) => err);
+        expect((thrown as Error | null)?.name).toBe("DelayedError");
+        const stored = await l.queue.getJob(t.taskId);
+        expect(await stored!.getState()).toBe("delayed");
+        expect(stored!.attemptsMade).toBe(0);
+        expect((await taskRow(t.taskId)).status).toBe("pending");
+      }
+    } finally {
+      await l.worker.close();
+      await l.queue.obliterate({ force: true });
+      await l.queue.close();
+    }
+  });
+
+  it("G-22 while the worker is away for minutes, reading the node list and the 3D list ends no waiting task, and the job starts once it is back", async () => {
+    const p = await person();
+    await running(p, 2);
+    const now = await dbNow();
+    const away = new Date(now.getTime() - 120_000);
+    const waiting = { since: away, checkedAt: away, limit: 2 };
+    const onNode = await seedTask(p, { node: true, taskType: "understand", nodeStartedAt: new Date(now.getTime() - B - 60_000), waiting });
+    const onScene = await seedTask(p, { scene: true, nodeStartedAt: new Date(now.getTime() - B - 60_000), waiting });
+    const l = lane();
+    try {
+      await l.queue.add("execute-task", { taskId: onNode.taskId, taskType: "understand", userId: p.userId, projectId: p.projectId, spaceId: p.spaceId, params: {}, mode: "append" } satisfies TaskJobData, { jobId: onNode.taskId, attempts: 3, delay: 60_000 });
+      const listed = await nodeTaskService.harvestAndList({ projectId: p.projectId, nodeId: onNode.nodeId! });
+      expect(listed.counts).toMatchObject({ running: 1, waiting: 1, expired: 0 });
+      const scene = await sceneTaskService.harvestAndList(p.projectId, p.spaceId);
+      expect(scene.harvested).toBe(0);
+      const wire = await listSpaceTasks(p.userId, p.projectId, p.spaceId);
+      const row = wire.tasks.find((x) => x.id === onScene.nodeTaskId) as Record<string, unknown> | undefined;
+      expect(row).toMatchObject({ status: "running" });
+      expect(row?.waitingSince).toBe(away.toISOString());
+      expect((await nodeRow(onNode.nodeTaskId!)).status).toBe("running");
+      expect((await taskRow(onNode.taskId)).status).toBe("pending");
+      await sql`update tasks set status = 'completed', completed_at = now() where user_id = ${p.userId} and status = 'running'`;
+      const { job, token } = await takeJob(l, p, onNode.taskId, "understand");
+      await runTask(job, token).catch(() => undefined);
+      const started = await taskRow(onNode.taskId);
+      expect(started.status).not.toBe("pending");
+      expect(started.started_at).not.toBeNull();
+    } finally {
+      await l.worker.close();
+      await l.queue.obliterate({ force: true });
+      await l.queue.close();
+    }
+  });
+});
+
+describe("G the node's counts event says how many wait", () => {
+  it("first waiting publishes counts with waiting 1, and starting publishes waiting 0", async () => {
+    const p = await person();
+    await running(p, 2);
+    const t = await seedTask(p, { node: true });
+    expect(await pick(t.taskId)).toMatchObject({ waiting: true });
+    expect((await countsEvents(p, t.nodeId!)).at(-1)).toMatchObject({ running: 1, waiting: 1 });
+    await sql`update tasks set status = 'completed', completed_at = now() where user_id = ${p.userId} and status = 'running'`;
+    expect(await pick(t.taskId)).toEqual({ started: true });
+    expect((await countsEvents(p, t.nodeId!)).at(-1)).toMatchObject({ running: 1, waiting: 0 });
   });
 });
 

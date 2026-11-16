@@ -31,7 +31,7 @@ vi.mock("@breatic/shared", async (importOriginal) =>
 import crypto from "node:crypto";
 import postgres from "postgres";
 import type { Hono } from "hono";
-import { getNodeTaskConfig, initCore, loadLocales, REPORT_GRACE_MS, timelineExecutionRepo } from "@breatic/core";
+import { getNodeTaskConfig, initCore, loadLocales, timelineExecutionRepo } from "@breatic/core";
 import { TASK_FAILURE_REASONS } from "@breatic/shared";
 import * as timelineExecutionService from "@server/modules/timeline/timeline-execution.service.js";
 import { PAYMENTS_ON, request, seedAccount, seedMember, type Account, type Actor } from "./operation-counting-fixtures.js";
@@ -181,7 +181,7 @@ describe("G-29 cancelling a Timeline execution that has not started", () => {
     if (row === null) throw new Error("fixture execution conflicted");
     if (state === "queued") await timelineExecutionRepo.transition({ id: row.id, event: { type: "land", inputHash: row.inputHash } });
     const key = `timeline:${row.id}`;
-    const until = new Date(Date.now() + budget + REPORT_GRACE_MS);
+    const until = new Date(Date.now() + budget + 60_000);
     await sql`insert into credit_holds(studio_id, actor_user_id, reference_id, amount, status, expires_at) values (${a.studioId}, ${a.userId}, ${`operation:${key}`}, 0.5, 'held', ${until})`;
     await sql`insert into operation_ledger(operation_key, kind, account_user_id, studio_id, project_id, actor_user_id, status, admitted_as, overage_hold, expires_at)
       values (${key}, 'timeline', ${a.userId}, ${a.studioId}, ${a.projectId}, ${a.userId}, 'reserved', 'held', ${`operation:${key}`}, ${until})`;

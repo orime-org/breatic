@@ -1,0 +1,157 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: Elastic-2.0
+
+/**
+ * A canvas task that waits for a free slot (inner#1968, test spec G-34 and
+ * G-38; the confirmed demo's "排队中" page).
+ *
+ * The counts carry `waiting`, a subset of `running`. The column draws
+ * "running − waiting" as running and `waiting` as its own cell, whose tip says
+ * how many wait and why: "你同时运行的任务已达上限（{limit} 个），前面的任务结束后自动开始".
+ * A waiting row of the task list says "排队中", shows no running time and
+ * offers "取消". A node whose only task waits is still busy: it cannot be
+ * deleted or filled by a template.
+ *
+ * Shapes this suite chose where the design names none: the row learns it waits
+ * from `entry.waitingSince` and cancels through an `onCancel(taskId)` prop; the
+ * tip's limit is not pinned to a number, since neither the counts nor the row
+ * carry it.
+ */
+
+import * as React from 'react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+
+vi.mock('@web/data/api/canvas', () => ({
+  getCachedUnderstandMaxBytes: vi.fn(() => null),
+}));
+
+import { setLocale, type NodeTaskCounts, type NodeTaskEntry } from '@breatic/shared';
+import { TooltipProvider } from '@web/components/ui/tooltip';
+import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
+import { deriveHandling } from '@web/data/yjs/node-view';
+import { CollaboratorNamesProvider } from '@web/features/collab-editor/collaborator-names-context';
+import { TaskCountColumn } from '@web/spaces/canvas/tasks/TaskCountColumn';
+import { TaskRow } from '@web/spaces/canvas/tasks/TaskRow';
+import { standsEmpty } from '@web/spaces/canvas/use-node-creation';
+
+const WAIT_TIP = /你同时运行的任务已达上限（\d+ 个），前面的任务结束后自动开始/;
+const OPENED = '2026-11-15T10:00:00.000Z';
+const NOW = Date.parse(OPENED) + 10 * 60 * 1000;
+
+beforeEach(() => setLocale('zh-CN'));
+afterEach(() => {
+  cleanup();
+  setLocale('en');
+});
+
+/**
+ * A waiting generation row.
+ * @param over - What differs.
+ * @returns The entry.
+ */
+function waitingEntry(over: Partial<NodeTaskEntry> = {}): NodeTaskEntry {
+  return {
+    id: 't-wait',
+    projectId: 'p-1',
+    spaceId: 's-1',
+    nodeId: 'n-1',
+    kind: 'generation',
+    action: 'generate',
+    status: 'running',
+    startedByUserId: 'u-1',
+    startedAt: OPENED,
+    settledAt: null,
+    budgetMs: 7_200_000,
+    label: 'flux-schnell',
+    errorMessage: null,
+    nodeHistoryId: null,
+    content: null,
+    coverUrl: null,
+    mediaWidth: null,
+    mediaHeight: null,
+    duration: null,
+    mimeType: null,
+    size: null,
+    waitingSince: OPENED,
+    ...over,
+  } as NodeTaskEntry;
+}
+
+describe('G-38 the counts column of a node with a waiting task', () => {
+  const counts = { running: 3, waiting: 1, done: 0, failed: 0, expired: 0 } as NodeTaskCounts;
+
+  it('draws running and queued as two cells', () => {
+    render(<TooltipProvider><TaskCountColumn counts={counts} endedShown openFor={null} onOpen={vi.fn()} /></TooltipProvider>);
+    const shown = screen.getAllByTestId(/^task-count-/).map((el) => el.getAttribute('data-testid'));
+    expect(shown).toEqual(['task-count-running', 'task-count-waiting']);
+  });
+
+  it('counts the running cell without the waiting ones', async () => {
+    render(<TooltipProvider><TaskCountColumn counts={counts} endedShown openFor={null} onOpen={vi.fn()} /></TooltipProvider>);
+    await userEvent.hover(screen.getByTestId('task-count-running'));
+    expect((await screen.findAllByText('运行中 · 2')).length).toBeGreaterThan(0);
+  });
+
+  it('says how many wait and why on the queued cell', async () => {
+    render(<TooltipProvider><TaskCountColumn counts={counts} endedShown openFor={null} onOpen={vi.fn()} /></TooltipProvider>);
+    await userEvent.hover(screen.getByTestId('task-count-waiting'));
+    const tip = await screen.findByRole('tooltip');
+    expect(tip).toHaveTextContent('排队中 · 1');
+    expect(tip.textContent).toMatch(WAIT_TIP);
+  });
+});
+
+describe('G-38 a waiting row of the task list', () => {
+  /**
+   * Render the row as a writer.
+   * @param onCancel - What cancelling calls.
+   */
+  function renderWaiting(onCancel: (id: string) => void): void {
+    const props = {
+      entry: waitingEntry(),
+      now: NOW,
+      hasRetryFile: false,
+      readOnly: false,
+      retrying: false,
+      dismissing: false,
+      onView: (): void => {},
+      onRetry: (): void => {},
+      onDismiss: (): void => {},
+      onCancel,
+    } as React.ComponentProps<typeof TaskRow>;
+    render(
+      <TooltipProvider>
+        <CollaboratorNamesProvider value={{ resolve: () => 'Ada', members: [] }}>
+          <TaskRow {...props} />
+        </CollaboratorNamesProvider>
+      </TooltipProvider>,
+    );
+  }
+
+  it('says queued, shows no running time and offers cancel', async () => {
+    const onCancel = vi.fn();
+    renderWaiting(onCancel);
+    const row = screen.getByTestId('node-task-row');
+    expect(row).toHaveTextContent('排队中');
+    expect(row).not.toHaveTextContent('已运行');
+    await userEvent.click(screen.getByRole('button', { name: '取消' }));
+    expect(onCancel).toHaveBeenCalledWith('t-wait');
+  });
+});
+
+describe('G-34 a node whose only task waits', () => {
+  // Passes before this work: `running` already includes the waiting task, and
+  // both gates read `running > 0`.
+  const counts = { running: 1, waiting: 1, done: 0, failed: 0, expired: 0 } as NodeTaskCounts;
+
+  it('still handles a task, so it cannot be deleted', () => {
+    expect(deriveHandling({ taskCounts: counts })).toBe(true);
+  });
+
+  it('does not stand empty, so a template does not fill it', () => {
+    const view = { id: 'n-1', type: 'image', data: { taskCounts: counts } } as unknown as CanvasNodeView;
+    expect(standsEmpty(view)).toBe(false);
+  });
+});

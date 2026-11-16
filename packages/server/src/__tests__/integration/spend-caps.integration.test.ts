@@ -32,6 +32,17 @@
 import { initConfiguredProvider } from "@breatic/integration-tests/provider";
 import { afterAll, beforeAll, describe, expect, inject, it, vi } from "vitest";
 
+vi.mock("ai", () => ({
+  generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
+  streamText: () => ({
+    fullStream: (async function* () {})(),
+    text: Promise.resolve(""),
+    usage: Promise.resolve({ totalTokens: 0 }),
+  }),
+  stepCountIs: (_n: number) => () => false,
+  tool: (config: Record<string, unknown>) => config,
+}));
+
 vi.mock("@breatic/shared", async (importOriginal) =>
   (await import("../helpers/ingest-open-double.js")).sharedWithOpenDouble(importOriginal),
 );
@@ -45,6 +56,9 @@ import { creditHoldService, creditLotService, SMALLEST_CREDIT } from "@breatic/d
 import { precheckCredits, reserveForRun } from "@server/modules/payment/credit-precheck.service.js";
 import { keysOf } from "./chat-run-harness.js";
 import { chargeNow } from "./studio-credit-fixtures.js";
+import { startRun } from "@server/agent/chat-run.js";
+import { chatQueue } from "@server/modules/chat-queue/chat-queue.service.js";
+import * as studioTransferService from "@server/modules/studio/studioTransfer.service.js";
 import { PAYMENTS_ON, dbNow, request, seedAccount, seedMember, signIn, ticket, type Account, type Actor } from "./operation-counting-fixtures.js";
 
 let sql: ReturnType<typeof postgres>;
@@ -398,6 +412,7 @@ describe("H the settings routes", () => {
     const a = await seedAccount(sql);
     const y = await seedMember(sql, a);
     const res = await request(app, a.cookie, "GET", `/studio/${slugOf(a)}/spend-limits`, undefined);
+    expect(res.status, await res.clone().text()).toBe(200);
     const { data } = (await res.json()) as { data: { members: Array<Record<string, unknown>> } };
     expect(data.members.find((m) => m.userId === y.userId)).toMatchObject({ effective: null, override: null });
   });
@@ -421,6 +436,8 @@ describe("H the settings routes", () => {
 
   it("H-24 an override for someone who is in neither the studio nor any of its projects is 404", async () => {
     const a = await seedAccount(sql);
+    const y = await seedMember(sql, a);
+    expect((await request(app, a.cookie, "PUT", `/studio/${slugOf(a)}/members/${y.userId}/spend-limit`, { monthlyCredits: 5 })).status).toBe(200);
     const stranger = crypto.randomUUID();
     await sql`insert into users(id, email, email_verified) values (${stranger}, ${`${stranger}@example.test`}, true)`;
     const res = await request(app, a.cookie, "PUT", `/studio/${slugOf(a)}/members/${stranger}/spend-limit`, { monthlyCredits: 5 });
@@ -456,6 +473,7 @@ describe("H the settings routes", () => {
 
   it("5.1 #9 the four routes answer 404 on a personal studio", async () => {
     const a = await seedAccount(sql);
+    expect((await request(app, a.cookie, "GET", `/studio/${slugOf(a)}/spend-limits`, undefined)).status).toBe(200);
     await sql`update studios set type = 'personal' where id = ${a.studioId}`;
     const slug = slugOf(a);
     const answers = [
@@ -524,6 +542,65 @@ describe("H refusals on the entries", () => {
     const { data } = (await res.json()) as { data: Record<string, unknown> };
     expect(data).toMatchObject({ running: false, blocked: "spend_cap", scope: "member", resetsAt: (await month()).next.toISOString() });
     expect((data.pending as unknown[]).length).toBe(1);
+  });
+});
+
+describe("H-11 the three admissions on a balance above zero share the cap", () => {
+  it("refuses a send, opens no new round for a queued message, and sync says the cap blocks it", async () => {
+    const a = await seedAccount(sql);
+    const y = await seedMember(sql, a);
+    await caps(a, 10);
+    await spend(a, y.userId, 9.99);
+    const opened = await request(app, y.cookie, "POST", "/chat/open", { project_id: a.projectId });
+    const conversationId = ((await opened.json()) as { data: { current: { conversation: { id: string } } } }).data.current.conversation.id;
+    await getRedis().set(keysOf(conversationId).active, "R-running");
+    const queuedId = crypto.randomUUID();
+    const queued = await request(app, y.cookie, "POST", "/chat/message", { id: queuedId, message: "hello", project_id: a.projectId, conversation_id: conversationId }, { "Idempotency-Key": queuedId });
+    expect(queued.status, await queued.clone().text()).toBeLessThan(300);
+    await spend(a, y.userId, 0.01);
+
+    // The send: refused at the cap while the run still holds the conversation.
+    const sendId = crypto.randomUUID();
+    const sent = await request(app, y.cookie, "POST", "/chat/message", { id: sendId, message: "again", project_id: a.projectId, conversation_id: conversationId }, { "Idempotency-Key": sendId });
+    expect(sent.status).toBe(402);
+    expect(await refusal(sent)).toMatchObject({ reason: "spend_cap_reached", scope: "member" });
+
+    // The new round: the run ends and the next one is claimed for what waits.
+    await getRedis().del(keysOf(conversationId).active);
+    const claimed = await chatQueue().claim(conversationId);
+    if (claimed.status !== "start") throw new Error("no run claimed");
+    const { opened: round } = startRun({ conversationId, projectId: a.projectId, userId: y.userId, runId: claimed.runId, entrance: { kind: "head" } });
+    expect(await round).toEqual({ running: false });
+    expect((await chatQueue().pending(conversationId)).map((item) => item.id)).toEqual([queuedId]);
+
+    // The sync.
+    const synced = await request(app, y.cookie, "POST", `/chat/conversations/${conversationId}/sync`, { project_id: a.projectId });
+    expect(((await synced.json()) as { data: Record<string, unknown> }).data).toMatchObject({ running: false, blocked: "spend_cap", scope: "member" });
+  });
+});
+
+describe("H-27 a transfer leaves the caps alone", () => {
+  // Written against the design: the caps belong to the studio, so a transfer
+  // writes neither table. Nothing in the transfer touches them today, so this
+  // passes once the two tables exist.
+  it("keeps both tables as they were after the admin hands the studio over", async () => {
+    // No credits designated: a transfer is refused while a pack is assigned.
+    const a = await seedAccount(sql, { credits: 0 });
+    const y = await seedMember(sql, a);
+    await sql`update users set membership_tier = 'pro' where id = ${y.userId}`;
+    await caps(a, 10, 100);
+    await override(a, y.userId, 20);
+    const before = {
+      studio: await sql`select * from studio_spend_limits where studio_id = ${a.studioId}`,
+      members: await sql`select * from studio_member_spend_limits where studio_id = ${a.studioId} order by id`,
+    };
+    await studioTransferService.requestTransfer(slugOf(a), a.userId, y.userId);
+    const [transfer] = await sql<{ id: string }[]>`select id from studio_transfers where studio_id = ${a.studioId} order by created_at desc limit 1`;
+    await studioTransferService.confirmTransfer(transfer!.id, y.userId);
+    const [role] = await sql<{ role: string }[]>`select role from studio_members where studio_id = ${a.studioId} and user_id = ${y.userId}`;
+    expect(role!.role).toBe("admin");
+    expect(await sql`select * from studio_spend_limits where studio_id = ${a.studioId}`).toEqual(before.studio);
+    expect(await sql`select * from studio_member_spend_limits where studio_id = ${a.studioId} order by id`).toEqual(before.members);
   });
 });
 
