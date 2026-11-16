@@ -3098,7 +3098,7 @@
         "regionLabel": "Region",
         "regionUnavailable": "Studios can't be created in this region right now. Please try again later, or pick another region.",
         "creationInProgress": "Your last Studio is still being created. Please try again later.",
-        "regionHelper": "Your Studio's content is stored in this region; the one closest to your team is faster. It can't be changed after the Studio is created."
+        "regionHelper": "Content is stored in this region and can't be moved later."
       },
       "toolbar": {
         "sortLabel": "Sort",
@@ -3819,11 +3819,10 @@
     "unavailable": {
       "studioTitle": "This Studio can't be reached right now",
       "projectTitle": "This Project can't be reached right now",
-      "body": "The region it lives in can't be reached right now. Your content is safe. Please try again later.",
+      "body": "Your content is safe.",
       "recents": "Some Studios can't be reached right now. Their items will show again later.",
       "bell": "Some Studios can't be reached right now. Their notifications will show again later.",
-      "badge": "Unavailable",
-      "badgeHint": "The region this Studio lives in can't be reached right now. Please try again later."
+      "badge": "Unavailable"
     }
   }
 }

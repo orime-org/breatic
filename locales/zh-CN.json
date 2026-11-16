@@ -3098,7 +3098,7 @@
         "regionLabel": "区域",
         "regionUnavailable": "所选区域暂时无法创建 Studio，请稍后再试，或改选其他区域。",
         "creationInProgress": "上一次创建还在处理，请稍后再试。",
-        "regionHelper": "Studio 的内容存放在这个区域，选离团队近的更快。创建后不能更改。"
+        "regionHelper": "内容存放在这个区域，创建后不能更改。"
       },
       "toolbar": {
         "sortLabel": "排序",
@@ -3819,11 +3819,10 @@
     "unavailable": {
       "studioTitle": "这个 Studio 暂时无法访问",
       "projectTitle": "这个 Project 暂时无法访问",
-      "body": "它所在的区域暂时连接不上，你的内容没有丢失。请稍后再试。",
+      "body": "你的内容没有丢失。",
       "recents": "部分 Studio 暂时无法访问，相关内容稍后会恢复显示。",
       "bell": "部分 Studio 暂时无法访问，相关通知稍后会恢复显示。",
-      "badge": "暂时无法访问",
-      "badgeHint": "这个 Studio 所在的区域暂时无法连接，请稍后再试。"
+      "badge": "暂时无法访问"
     }
   }
 }

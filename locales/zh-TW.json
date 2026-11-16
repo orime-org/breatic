@@ -3098,7 +3098,7 @@
         "regionLabel": "區域",
         "regionUnavailable": "所選區域暫時無法建立 Studio，請稍後再試，或改選其他區域。",
         "creationInProgress": "上一次建立仍在處理中，請稍後再試。",
-        "regionHelper": "Studio 的內容存放在這個區域，選離團隊近的更快。建立後無法變更。"
+        "regionHelper": "內容存放在這個區域，建立後無法變更。"
       },
       "toolbar": {
         "sortLabel": "排序",
@@ -3819,11 +3819,10 @@
     "unavailable": {
       "studioTitle": "這個 Studio 暫時無法存取",
       "projectTitle": "這個 Project 暫時無法存取",
-      "body": "它所在的區域暫時無法連線，你的內容沒有遺失。請稍後再試。",
+      "body": "你的內容沒有遺失。",
       "recents": "部分 Studio 暫時無法存取，相關內容稍後會恢復顯示。",
       "bell": "部分 Studio 暫時無法存取，相關通知稍後會恢復顯示。",
-      "badge": "暫時無法存取",
-      "badgeHint": "這個 Studio 所在的區域暫時無法連線，請稍後再試。"
+      "badge": "暫時無法存取"
     }
   }
 }

@@ -1351,7 +1351,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "chat.sceneProposal.credits": { excluded: REASONS.FILLS_A_VALUE },
   "chat.sceneProposal.setting": { described: /each choice after its setting's name/ },
   "regions.unavailable.bell": { excluded: REASONS.SAYS_WHAT_HAPPENED },
-  "regions.unavailable.body": { excluded: REASONS.SAYS_TRY_AGAIN },
+  "regions.unavailable.body": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "regions.unavailable.projectTitle": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "regions.unavailable.studioTitle": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "studio.container.card.archiveFailed": { excluded: REASONS.NOT_ON_THESE_SCREENS },

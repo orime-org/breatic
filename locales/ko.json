@@ -3098,7 +3098,7 @@
         "regionLabel": "리전",
         "regionUnavailable": "선택한 리전에서는 지금 Studio를 만들 수 없습니다. 잠시 후 다시 시도하거나 다른 리전을 선택해 주세요.",
         "creationInProgress": "이전 Studio가 아직 만들어지는 중입니다. 잠시 후 다시 시도해 주세요.",
-        "regionHelper": "Studio의 콘텐츠는 이 리전에 저장됩니다. 팀과 가까운 리전일수록 빠릅니다. 만든 후에는 변경할 수 없습니다."
+        "regionHelper": "콘텐츠는 이 리전에 저장되며, 만든 후에는 변경할 수 없습니다."
       },
       "toolbar": {
         "sortLabel": "정렬",
@@ -3819,11 +3819,10 @@
     "unavailable": {
       "studioTitle": "지금은 이 Studio에 접근할 수 없습니다",
       "projectTitle": "지금은 이 Project에 접근할 수 없습니다",
-      "body": "저장된 리전에 지금 연결할 수 없습니다. 콘텐츠는 그대로 있습니다. 잠시 후 다시 시도해 주세요.",
+      "body": "콘텐츠는 그대로 있습니다.",
       "recents": "일부 Studio에 지금 접근할 수 없습니다. 관련 항목은 나중에 다시 표시됩니다.",
       "bell": "일부 Studio에 지금 접근할 수 없습니다. 관련 알림은 나중에 다시 표시됩니다.",
-      "badge": "일시적으로 접근 불가",
-      "badgeHint": "이 Studio가 있는 리전에 지금 연결할 수 없습니다. 잠시 후 다시 시도해 주세요."
+      "badge": "일시적으로 접근 불가"
     }
   }
 }
