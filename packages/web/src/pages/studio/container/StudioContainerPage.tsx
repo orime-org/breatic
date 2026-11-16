@@ -93,6 +93,13 @@ export default function StudioContainerPage(): React.JSX.Element {
         if (regions === null || !(err instanceof ApiException && err.status === 404)) throw err;
         const fresh = await directoryApi.studio(slug);
         if (fresh.region === region) throw err;
+        rememberStudioRegion([slug], fresh.region);
+        // A switcher row still naming the slug belongs to the Studio that left
+        // it; the region query reads those rows first.
+        queryClient.setQueryData<StudioSummary[]>(['studios', 'user'], (list) =>
+          list?.filter((s) => s.slug !== slug || s.region === fresh.region),
+        );
+        void queryClient.invalidateQueries({ queryKey: ['studios', 'user'] });
         queryClient.setQueryData(['studio-region', slug], { region: fresh.region });
         return studiosApi.get(slug);
       }

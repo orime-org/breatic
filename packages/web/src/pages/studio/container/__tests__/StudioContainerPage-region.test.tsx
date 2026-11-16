@@ -89,13 +89,27 @@ describe('StudioContainerPage in a build with regions', () => {
     // The app's own freshness window (QueryClientProvider), so the cached answer is used as it would be.
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 30_000 } } });
     client.setQueryData(['studio-region', 'far-studio'], { region: 'sg' });
+    client.setQueryData(['studios', 'user'], [
+      { ...STUDIO, id: 's-far', slug: 'far-studio', region: 'sg' },
+      { ...STUDIO, id: 's-other', slug: 'other-studio', region: 'sg' },
+    ]);
 
     renderPage(client);
 
     expect(await screen.findByText('Far Studio')).toBeInTheDocument();
     expect(directory.studio).toHaveBeenCalledTimes(1);
     expect(studiosApi.get).toHaveBeenCalledTimes(2);
+    // The re-read goes where the region memory now points.
+    const remembered = vi.mocked(rememberStudioRegion).mock.calls.findIndex((call) => call[1] === 'us-west');
+    expect(remembered).toBeGreaterThanOrEqual(0);
+    expect(vi.mocked(rememberStudioRegion).mock.invocationCallOrder[remembered]).toBeLessThan(
+      vi.mocked(studiosApi.get).mock.invocationCallOrder[1],
+    );
     await waitFor(() => expect(rememberStudioRegion).toHaveBeenCalledWith(['far-studio', 's-near'], 'us-west'));
+    // A later region refetch must not find the old switcher row again.
+    directory.studio.mockResolvedValue({ region: 'us-west' });
+    await client.refetchQueries({ queryKey: ['studio-region', 'far-studio'] });
+    expect(client.getQueryData(['studio-region', 'far-studio'])).toEqual({ region: 'us-west' });
   });
 
   it('shows not found when the directory still names the region that does not have it', async () => {
