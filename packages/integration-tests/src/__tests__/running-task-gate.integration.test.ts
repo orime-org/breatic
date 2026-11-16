@@ -9,8 +9,8 @@
  * row nobody has taken yet (`tasks.status = 'pending'`, Timeline `queued`).
  * Under `pg_try_advisory_xact_lock(hashtext('running-tasks:' || user_id))` it
  * counts what the person runs (`R`: `tasks` running within
- * `default_budget_ms + REPORT_GRACE_MS` of their start, plus Timeline
- * `running`/`cancelling` within `REPORT_GRACE_MS` of their deadline) and the
+ * `default_budget_ms + reportGraceMs()` of their start, plus Timeline
+ * `running`/`cancelling` within `reportGraceMs()` of their deadline) and the
  * earlier waiters under the same limit that were checked within
  * `slot_wait_stale_ms` (`W`). `R + W < L` starts the row; otherwise it waits:
  * the row keeps `pending`, `slot_wait_since` is written once, the node task row
@@ -45,7 +45,7 @@ import fc from "fast-check";
 import postgres from "postgres";
 import { Worker, type Job, type Queue } from "bullmq";
 import { canvasSpaceDocName, spaceTasksChangedChannel } from "@breatic/shared";
-import { createQueue, env, getNodeTaskConfig, getStreamRedis, getWorkerConfig, initCore, initLogger, loadLocales, REPORT_GRACE_MS, taskEventsStreamKey, timelineExecutionRepo } from "@breatic/core";
+import { createQueue, env, getNodeTaskConfig, getStreamRedis, getWorkerConfig, initCore, initLogger, loadLocales, reportGraceMs, taskEventsStreamKey, timelineExecutionRepo } from "@breatic/core";
 import { nodeTaskService, runningSlotService, sceneTaskService, taskService } from "@breatic/domain";
 import { cleanupFailedJobNodes } from "@worker/handlers/failed-job-cleanup.js";
 import { finishFailedRun, runTask, type TaskJobData } from "@worker/handlers/dispatch.js";
@@ -511,14 +511,14 @@ describe("G waiting for a free slot", () => {
   it("G-09 a running row past its budget and the report grace holds no slot", async () => {
     const p = await person("enterprise", 1);
     const now = await dbNow();
-    await running(p, 1, new Date(now.getTime() - (B + REPORT_GRACE_MS) - 1));
+    await running(p, 1, new Date(now.getTime() - (B + reportGraceMs()) - 1));
     expect(await pick((await seedTask(p)).taskId)).toEqual({ started: true });
   });
 
   it("G-10 a running row just inside its budget and the report grace still holds its slot", async () => {
     const p = await person("enterprise", 1);
     const now = await dbNow();
-    await running(p, 1, new Date(now.getTime() - (B + REPORT_GRACE_MS) + 1000));
+    await running(p, 1, new Date(now.getTime() - (B + reportGraceMs()) + 1000));
     expect(await pick((await seedTask(p)).taskId)).toMatchObject({ waiting: true });
   });
 
@@ -583,8 +583,8 @@ describe("G waiting for a free slot", () => {
     for (const held of [kept.credit, kept.overage, kept.ledger]) expect(held.expires_at.getTime()).toBe(keepAt.getTime());
     const renewed = await holdings(renew.taskId);
     for (const held of [renewed.credit, renewed.overage, renewed.ledger]) {
-      expect(held.expires_at.getTime()).toBeGreaterThanOrEqual(before.getTime() + B + REPORT_GRACE_MS - 1);
-      expect(held.expires_at.getTime()).toBeLessThanOrEqual(after.getTime() + B + REPORT_GRACE_MS + 1);
+      expect(held.expires_at.getTime()).toBeGreaterThanOrEqual(before.getTime() + B + reportGraceMs() - 1);
+      expect(held.expires_at.getTime()).toBeLessThanOrEqual(after.getTime() + B + reportGraceMs() + 1);
     }
   });
 
@@ -599,8 +599,8 @@ describe("G waiting for a free slot", () => {
     const held = await holdings(t.taskId);
     for (const h of [held.credit, held.overage, held.ledger]) {
       expect(h.status).not.toBe("released");
-      expect(h.expires_at.getTime()).toBeGreaterThanOrEqual(before.getTime() + B + REPORT_GRACE_MS - 1);
-      expect(h.expires_at.getTime()).toBeLessThanOrEqual(after.getTime() + B + REPORT_GRACE_MS + 1);
+      expect(h.expires_at.getTime()).toBeGreaterThanOrEqual(before.getTime() + B + reportGraceMs() - 1);
+      expect(h.expires_at.getTime()).toBeLessThanOrEqual(after.getTime() + B + reportGraceMs() + 1);
     }
   });
 

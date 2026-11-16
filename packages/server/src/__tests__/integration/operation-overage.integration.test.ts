@@ -29,7 +29,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import postgres from "postgres";
-import { db, getNodeTaskConfig, initCore, loadLocales, REPORT_GRACE_MS } from "@breatic/core";
+import { db, getNodeTaskConfig, initCore, loadLocales, reportGraceMs } from "@breatic/core";
 import { creditHoldService, creditLotService, operationService } from "@breatic/domain";
 import { seedDesignatedLot } from "./studio-credit-fixtures.js";
 
@@ -391,13 +391,13 @@ describe("D-09 the overage price is not scaled by CREDIT_MULTIPLIER", () => {
 });
 
 describe("how long an admitted operation stays in flight", () => {
-  it("5.1 #7 a generation row lives for the task budget plus REPORT_GRACE_MS, which is twice the container poll interval", async () => {
-    expect(REPORT_GRACE_MS).toBe(10_000);
+  it("5.1 #7 a generation row lives for the task budget plus reportGraceMs, which is twice the container poll interval", async () => {
+    expect(reportGraceMs()).toBe(10_000);
     const a = await account(0, 0);
     const key = await admit(a);
     const row = await ledger(key);
     const lifetime = row!.expires_at.getTime() - row!.created_at.getTime();
-    expect(Math.abs(lifetime - (getNodeTaskConfig().default_budget_ms + REPORT_GRACE_MS))).toBeLessThan(1000);
+    expect(Math.abs(lifetime - (getNodeTaskConfig().default_budget_ms + reportGraceMs()))).toBeLessThan(1000);
   });
 
   it("D-20 an Agent message's row and its hold live for the chat lease, and once it lapses the message no longer counts as in flight", async () => {
