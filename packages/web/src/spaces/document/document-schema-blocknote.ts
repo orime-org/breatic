@@ -35,6 +35,7 @@ import {
 
 import { BODY_HEADING_LEVELS } from '@web/spaces/document/document-block-type';
 import { buildListItemSpecs } from '@web/spaces/document/document-list-block';
+import { mathBlockSpec, mathInlineSpec } from '@web/spaces/document/document-math';
 import { withMediaView } from '@web/spaces/document/document-media-blocknote';
 import { legacyTableSpec } from '@web/spaces/document/document-table-legacy';
 import { docColumnSpecs } from '@web/spaces/document/document-column-nodes';
@@ -107,7 +108,7 @@ function withProps<T extends SpecWithProps>(
 }
 
 /**
- * Builds the schema: twelve block types, five added props, the rest turned off.
+ * Builds the schema: thirteen block types, five added props, the rest turned off.
  * @returns The schema to hand `BlockNoteEditor.create`.
  * @throws {Error} Whatever BlockNote throws while validating the specs.
  */
@@ -172,6 +173,8 @@ export function buildDocumentSchema(): ReturnType<typeof BlockNoteSchema.create>
       withProps(enabled.video, { ...QUOTED_PROP, ...MEDIA_SIZE_PROPS, ...UPLOAD_ID_PROP }),
     ),
     audio: withMediaView(withProps(enabled.audio, { ...QUOTED_PROP, ...UPLOAD_ID_PROP })),
+    // A formula on a line of its own (inner#1423).
+    mathBlock: mathBlockSpec(),
     unsupportedBlock: unsupportedBlockSpec,
   };
 
@@ -179,6 +182,8 @@ export function buildDocumentSchema(): ReturnType<typeof BlockNoteSchema.create>
     blockSpecs,
     inlineContentSpecs: {
       ...defaultInlineContentSpecs,
+      // A formula inside a line (inner#1423).
+      math: mathInlineSpec(),
       unsupportedInline: unsupportedInlineSpec,
     },
     styleSpecs: { ...defaultStyleSpecs },

@@ -171,7 +171,7 @@ function dragStart(): { event: Event; setDragImage: ReturnType<typeof vi.fn> } {
   const setDragImage = vi.fn();
   const event = new MouseEvent('dragstart', { bubbles: true, cancelable: true, clientX: 10, clientY: 10 });
   Object.defineProperty(event, 'dataTransfer', {
-    value: { setDragImage, setData: vi.fn(), clearData: vi.fn(), getData: vi.fn(() => ''), files: [], effectAllowed: 'all' },
+    value: { setDragImage, setData: vi.fn(), clearData: vi.fn(), getData: vi.fn(() => ''), types: [], files: [], effectAllowed: 'all' },
   });
   return { event, setDragImage };
 }

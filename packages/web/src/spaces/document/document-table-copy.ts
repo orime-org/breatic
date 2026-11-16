@@ -17,7 +17,7 @@
  * - a selection that takes a table whole copies that table whole
  *   (`heldRange`), from the table's edge;
  * - any other selection that holds a table copies as BlockNote copies it,
- *   with the plain text the Agent reads (`blocksMarkdown`).
+ *   with the plain text people read (`blocksPlainText`).
  *
  * A stored (legacy) table copies by the same rules (inner#1351 design §5.4.3
  * "stored tables"): words in one of its cells as those words, a selection
@@ -41,7 +41,7 @@ import { AllSelection, NodeSelection, Plugin, PluginKey, type Transaction } from
 import { CellSelection, deleteCellSelection } from '@tiptap/pm/tables';
 import type { EditorView } from '@tiptap/pm/view';
 
-import { blocksMarkdown } from '@web/spaces/document/document-table-markdown';
+import { blocksPlainText } from '@web/spaces/document/document-table-markdown';
 import { bodyEdgeBetween } from '@web/spaces/document/document-body-edge-selection';
 import { heldRange, replaceHeld, type HeldTables } from '@web/spaces/document/document-table-leave-selection';
 import { bodyDepthBetween } from '@web/spaces/document/document-body-carrier';
@@ -277,9 +277,21 @@ export function tableClipped(editor: CopyEditor, view: EditorView): Clipped | nu
   if (picked === null) return null;
   if (picked.slice === null) {
     const { clipboardHTML, externalHTML } = selectedFragmentToHTML(view, editor);
-    return { internal: clipboardHTML, external: externalHTML, plain: blocksMarkdown(editor, picked.blocks) };
+    return { internal: clipboardHTML, external: externalHTML, plain: blocksPlainText(editor, picked.blocks) };
   }
   return clippedOf(editor, view, { blocks: picked.blocks, slice: picked.slice });
+}
+
+/**
+ * The plain text a copy of the selection writes for people, which a drag of
+ * the same selection carries too: ProseMirror serialises both alike, and the
+ * chat box takes a drop's plain text.
+ * @param editor - The editor.
+ * @param view - The editor view.
+ * @returns The plain text.
+ */
+function copiedPlainText(editor: CopyEditor, view: EditorView): string {
+  return tableClipped(editor, view)?.plain ?? selectedFragmentToHTML(view, editor).plain;
 }
 
 /**
@@ -293,7 +305,7 @@ function clippedOf(editor: CopyEditor, view: EditorView, picked: SlicedBlocks): 
   return {
     internal: internalHTML(view, picked.slice),
     external: editor.blocksToHTMLLossy(picked.blocks),
-    plain: blocksMarkdown(editor, picked.blocks),
+    plain: blocksPlainText(editor, picked.blocks),
   };
 }
 
@@ -325,44 +337,72 @@ export function writeClipped(event: ClipboardEvent, clipped: Clipped): void {
 }
 
 /**
- * The extension that takes these copies and cuts.
+ * The extension that takes these copies and cuts, and gives a selection drag
+ * the plain text its copy writes.
  * @returns The extension, for the assembly to register.
  */
-export const documentTableCopyExtension = createExtension(({ editor }) => ({
-  key: 'documentTableCopy',
-  prosemirrorPlugins: [
-    new Plugin({
-      key: new PluginKey('documentTableCopy'),
-      props: {
-        // A drag of the selection carries what its copy does (words in a cell
-        // without the table around them, a range leaving a table with the
-        // table): ProseMirror keeps this slice at dragstart (`view.dragging`),
-        // before the selection can move (Outline `TableCell.ts` clips the same).
-        transformCopied: (slice, view) =>
-          (slice.eq(view.state.selection.content()) ? tableClippedBlocks(view)?.slice : null) ?? slice,
-        handleDOMEvents: {
-          copy: (view, event) => {
-            const clipped = tableClipped(editor as unknown as CopyEditor, view);
-            if (clipped === null) return false;
-            writeClipped(event, clipped);
-            return true;
-          },
-          cut: (view, event) => {
-            const clipped = tableClipped(editor as unknown as CopyEditor, view);
-            if (clipped === null) return false;
-            writeClipped(event, clipped);
-            if (!view.editable) return true;
-            const tr = view.state.tr;
-            if (view.state.selection instanceof CellSelection) {
-              deleteCellSelection(view.state, view.dispatch);
-            } else {
-              if (!replaceStoredHeld(view.state.selection, tr)) tr.deleteSelection();
-              view.dispatch(tr);
+export const documentTableCopyExtension = createExtension(({ editor }) => {
+  // Set while the body's own dragstart runs, the one serialising whose plain
+  // text is kept; `writing` is the serialising the copy itself does inside.
+  let dragging = false;
+  let writing = false;
+  const copyEditor = editor as unknown as CopyEditor;
+  return {
+    key: 'documentTableCopy',
+    prosemirrorPlugins: [
+      new Plugin({
+        key: new PluginKey('documentTableCopy'),
+        props: {
+          // A selection drag carries the plain text a copy of it writes, as
+          // ProseMirror serialises a copy and a drag alike; every other
+          // serialising is Tiptap's. A selected block's drag is BlockNote's
+          // own, which moves the selection onto the block's container first.
+          clipboardTextSerializer: (_slice, view) => {
+            if (!dragging || writing) return '';
+            writing = true;
+            try {
+              return copiedPlainText(copyEditor, view);
+            } finally {
+              writing = false;
             }
-            return true;
+          },
+          // A drag of the selection carries what its copy does (words in a cell
+          // without the table around them, a range leaving a table with the
+          // table): ProseMirror keeps this slice at dragstart (`view.dragging`),
+          // before the selection can move (Outline `TableCell.ts` clips the same).
+          transformCopied: (slice, view) =>
+            (slice.eq(view.state.selection.content()) ? tableClippedBlocks(view)?.slice : null) ?? slice,
+          handleDOMEvents: {
+            dragstart: () => {
+              dragging = true;
+              queueMicrotask(() => {
+                dragging = false;
+              });
+              return false;
+            },
+            copy: (view, event) => {
+              const clipped = tableClipped(copyEditor, view);
+              if (clipped === null) return false;
+              writeClipped(event, clipped);
+              return true;
+            },
+            cut: (view, event) => {
+              const clipped = tableClipped(copyEditor, view);
+              if (clipped === null) return false;
+              writeClipped(event, clipped);
+              if (!view.editable) return true;
+              const tr = view.state.tr;
+              if (view.state.selection instanceof CellSelection) {
+                deleteCellSelection(view.state, view.dispatch);
+              } else {
+                if (!replaceStoredHeld(view.state.selection, tr)) tr.deleteSelection();
+                view.dispatch(tr);
+              }
+              return true;
+            },
           },
         },
-      },
-    }),
-  ],
-}));
+      }),
+    ],
+  };
+});

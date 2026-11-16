@@ -751,6 +751,47 @@ describe('@ in the chat box', () => {
     expect(onChange).toHaveBeenLastCalledWith(plain);
   });
 
+  it('drops the plain text of a web page, as a paste of it takes it', () => {
+    const { onChange } = setup({ draft: '' });
+    act(() => box().commands.focus('end'));
+    const plain = 'x $$a$$ $$b$$ y';
+    fireEvent.drop(box().view.dom, {
+      dataTransfer: {
+        files: [],
+        types: ['text/html', 'text/plain'],
+        getData: (type: string) =>
+          type === 'text/plain' ? plain : type === 'text/html' ? '<p>x <span>$$a$$</span><span>$$b$$</span> y</p>' : '',
+      },
+    });
+
+    expect(onChange).toHaveBeenLastCalledWith(plain);
+  });
+
+  it('lands a dropped page text where it is dropped, the caret right after it', () => {
+    const { onChange } = setup({ draft: 'hello' });
+    act(() => box().commands.focus('end'));
+    const view = box().view;
+    // Between "he" and "llo": jsdom lays nothing out, so the point is given.
+    view.posAtCoords = (): { pos: number; inside: number } => ({ pos: 3, inside: -1 });
+    fireEvent.drop(view.dom, {
+      dataTransfer: { files: [], types: ['text/html', 'text/plain'], getData: (type: string) => (type === 'text/plain' ? 'X' : type === 'text/html' ? '<p>X</p>' : '') },
+    });
+
+    expect(onChange).toHaveBeenLastCalledWith('heXllo');
+    expect(box().state.selection.from).toBe(4);
+  });
+
+  it('leaves a drag inside the box to ProseMirror', () => {
+    const { onChange } = setup({ draft: 'one' });
+    act(() => box().commands.focus('end'));
+    (box().view as unknown as { dragging: unknown }).dragging = { slice: box().state.selection.content(), move: true };
+    fireEvent.drop(box().view.dom, {
+      dataTransfer: { files: [], types: ['text/html', 'text/plain'], getData: (type: string) => (type === 'text/plain' ? 'two' : type === 'text/html' ? '<p>two</p>' : '') },
+    });
+
+    expect(onChange).not.toHaveBeenCalledWith('onetwo');
+  });
+
   it('copies lines out one line break apart and pastes them back as they were', () => {
     const { onChange } = setup({ draft: 'one\ntwo' });
     act(() => box().commands.selectAll());

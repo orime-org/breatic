@@ -1205,6 +1205,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "spaces.create.typeLabel": { excluded: REASONS.FILLS_A_VALUE },
   "spaces.document.blockHandle.dragTip": { excluded: REASONS.SCREEN_READER, look: /a handle of six dots/ },
   "spaces.document.blockHandle.insertHere": { excluded: REASONS.SCREEN_READER, look: /shows a plus at its left/ },
+  "spaces.document.math.placeholder": { excluded: REASONS.SAYS_WHAT_TO_TYPE },
   "spaces.document.media.uploading": { excluded: REASONS.PASSING },
   "spaces.document.media.uploadingPercent": { excluded: REASONS.PASSING },
   "spaces.document.media.notPasted": { excluded: REASONS.SAYS_WHAT_HAPPENED },

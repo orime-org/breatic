@@ -2356,6 +2356,7 @@
         "taskList": "待辦清單",
         "divider": "分隔線",
         "table": "表格",
+        "formula": "公式",
         "columns": "分欄",
         "align": "對齊",
         "alignLeft": "靠左",
@@ -2521,6 +2522,13 @@
         "notWrittenYet": "已上傳，還沒寫進正文",
         "notPasted": "{count} 項沒有貼上。",
         "stillUploading": "{count} 個圖片、影片或音訊還在上傳，沒有貼上。上傳完成後重新複製。"
+      },
+      "math": {
+        "placeholder": "輸入 LaTeX，例如 E = mc^2",
+        "empty": "新增公式",
+        "blank": "空公式",
+        "error": "公式有誤",
+        "ok": "確定"
       },
       "versions": {
         "title": "快照",

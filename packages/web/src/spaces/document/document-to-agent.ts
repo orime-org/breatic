@@ -32,6 +32,7 @@ import { attachToChat } from '@web/stores/attach-to-chat';
 import type { TrayItem } from '@web/stores/chat-attachments';
 import { blocksMarkdown } from '@web/spaces/document/document-table-markdown';
 import { cellsBlocks, tableClippedBlocks, wholeTablesRange } from '@web/spaces/document/document-table-copy';
+import { formulaSource, holdsFormula, isFormula } from '@web/spaces/document/document-math';
 
 /**
  * The first non-empty line of some text, cut to the length a name may run.
@@ -42,6 +43,16 @@ import { cellsBlocks, tableClippedBlocks, wholeTablesRange } from '@web/spaces/d
 function nameFrom(text: string): string {
   const line = text.split('\n').map((l) => l.trim()).find((l) => l !== '') ?? '';
   return clipAttachmentName(line);
+}
+
+/**
+ * Reads a formula as `$$source$$` on one line, a block one too, since a name
+ * is one line, and any other leaf as a line break.
+ * @param leaf - The leaf.
+ * @returns Its words.
+ */
+function leafWordsOf(leaf: PMNode): string {
+  return isFormula(leaf) ? `$$${formulaSource(leaf)}$$` : '\n';
 }
 
 /**
@@ -72,7 +83,7 @@ function textItem(id: string, name: string, text: string): TrayItem {
 function selectedWords(doc: PMNode, selection: Selection): string {
   return [...selection.ranges]
     .sort((a, b) => a.$from.pos - b.$from.pos)
-    .map((range) => doc.textBetween(range.$from.pos, range.$to.pos, '\n', '\n'))
+    .map((range) => doc.textBetween(range.$from.pos, range.$to.pos, '\n', leafWordsOf))
     .join('\n');
 }
 
@@ -96,8 +107,8 @@ function isUploadedMedia(node: PMNode): boolean {
 }
 
 /**
- * Whether a stretch of a node holds something to hand the Agent: words, or
- * uploaded media, which the Markdown carries. Spaces alone and pending media
+ * Whether a stretch of a node holds something to hand the Agent: words,
+ * uploaded media or a formula with a source, which the Markdown carries. Spaces alone and pending media
  * count as nothing; a pending one exports only a line saying its upload is
  * unfinished. One walk that stops at the first match: the bubble bar asks on
  * every render, over a select-all too (`hasTextIn` walks for the same reason).
@@ -110,7 +121,9 @@ function holdsContentBetween(node: PMNode, from: number, to: number): boolean {
   let found = false;
   node.nodesBetween(from, to, (child, pos) => {
     if (found) return false;
-    found = child.isText ? holdsWords(child.text!.slice(Math.max(0, from - pos), to - pos)) : isUploadedMedia(child);
+    found = child.isText
+      ? holdsWords(child.text!.slice(Math.max(0, from - pos), to - pos))
+      : isUploadedMedia(child) || holdsFormula(child);
     return !found;
   });
   return found;
@@ -201,7 +214,7 @@ export function blockItem(editor: ToolEditor, blockId: string): TrayItem {
     throw new Error(`no block ${blockId} in the document`);
   }
   const markdown = blocksMarkdown(editor, [block]);
-  const words = node.textBetween(0, node.content.size, '\n', '\n');
+  const words = node.textBetween(0, node.content.size, '\n', leafWordsOf);
   return textItem(`document-block-${blockId}`, nameFrom(words), markdown);
 }
 
@@ -255,7 +268,7 @@ export function mediaRowItems(editor: ToolEditor, blockId: string): TrayItem[] {
   // `mediaItem` has found the block.
   const nested = getNodeById(blockId, editor.prosemirrorState.doc)!.node.maybeChild(1);
   if (nested === null || !holdsContentBetween(nested, 0, nested.content.size)) return [media];
-  const words = nested.textBetween(0, nested.content.size, '\n', '\n');
+  const words = nested.textBetween(0, nested.content.size, '\n', leafWordsOf);
   // The editor is typed without its schema, so its blocks read as `never`.
   const { children } = editor.getBlock(blockId)! as { readonly children: readonly { readonly id: string }[] };
   const markdown = blocksMarkdown(editor, children as never).trimEnd();

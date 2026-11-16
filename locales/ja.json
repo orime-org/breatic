@@ -2356,6 +2356,7 @@
         "taskList": "タスクリスト",
         "divider": "区切り線",
         "table": "表",
+        "formula": "数式",
         "columns": "列",
         "align": "配置",
         "alignLeft": "左揃え",
@@ -2521,6 +2522,13 @@
         "notWrittenYet": "アップロード済み。まだ追加されていません",
         "notPasted": "{count} 件を貼り付けられませんでした。",
         "stillUploading": "{count} 件の画像・動画・音声はアップロード中のため貼り付けられませんでした。アップロードが完了したらもう一度コピーしてください。"
+      },
+      "math": {
+        "placeholder": "LaTeX を入力（例：E = mc^2）",
+        "empty": "数式を追加",
+        "blank": "空の数式",
+        "error": "数式にエラーがあります",
+        "ok": "OK"
       },
       "versions": {
         "title": "スナップショット",

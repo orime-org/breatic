@@ -9,7 +9,7 @@
  * is hovered, with them or alone (T13, user 2026-10-21).
  */
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { BlockNoteContext } from '@blocknote/react';
 import * as Y from 'yjs';
@@ -19,10 +19,9 @@ import { documentBodyFragment } from '@breatic/shared';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { DocumentTableHandlesController } from '@web/spaces/document/DocumentTableHandlesController';
 import { moveRowTo } from '@web/spaces/document/document-drag-move';
+import { copyCommand, type Editor } from '@web/spaces/document/__tests__/paste-harness';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
 import { setTableFullscreen } from '@web/spaces/document/document-table-fullscreen';
-
-type Editor = ReturnType<typeof buildDocumentEditor>;
 
 const mounted: Editor[] = [];
 
@@ -165,31 +164,14 @@ describe('the table\'s own strip (T13, user 2026-10-21)', () => {
   });
 
   it('cuts the whole table from its menu (inner#1239)', async () => {
-    const written: Record<string, string> = {};
-    Object.defineProperty(document, 'execCommand', {
-      configurable: true,
-      value: vi.fn(() => {
-        const event = new Event('copy', { bubbles: true, cancelable: true });
-        Object.defineProperty(event, 'clipboardData', {
-          value: {
-            setData: (format: string, value: string) => {
-              written[format] = value;
-            },
-            clearData: () => undefined,
-            getData: (format: string) => written[format] ?? '',
-          },
-        });
-        document.dispatchEvent(event);
-        return true;
-      }),
-    });
+    const clip = copyCommand();
     const editor = open();
     pointAt(editor, 'b1');
     fireEvent.click(screen.getByTestId('doc-block-table-handle'));
 
     fireEvent.click(screen.getByTestId('doc-block-row-cut'));
 
-    await waitFor(() => expect(written['text/html']).toContain('<table'));
+    await waitFor(() => expect(clip['text/html']).toContain('<table'));
     expect((editor.document as { type: string }[]).some((block) => block.type === 'docTable')).toBe(false);
   });
 });

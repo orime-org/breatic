@@ -43,6 +43,7 @@ const BLOCK_NAME_KEY: Readonly<Record<string, string>> = {
   image: 'spaces.document.media.image',
   video: 'spaces.document.media.video',
   audio: 'spaces.document.media.audio',
+  mathBlock: 'spaces.document.commands.formula',
 };
 
 /** The line a press that landed shows. */

@@ -2356,6 +2356,7 @@
         "taskList": "To-do list",
         "divider": "Divider",
         "table": "Table",
+        "formula": "Formula",
         "columns": "Columns",
         "align": "Alignment",
         "alignLeft": "Left",
@@ -2521,6 +2522,13 @@
         "notWrittenYet": "Uploaded, not added yet",
         "notPasted": "{count, plural, one {# item was not pasted.} other {# items were not pasted.}}",
         "stillUploading": "{count, plural, one {# image, video or audio is still uploading and was not pasted. Copy it again once the upload finishes.} other {# images, videos or audio are still uploading and were not pasted. Copy them again once the upload finishes.}}"
+      },
+      "math": {
+        "placeholder": "Enter LaTeX, e.g. E = mc^2",
+        "empty": "Add a formula",
+        "blank": "Empty formula",
+        "error": "Formula has an error",
+        "ok": "OK"
       },
       "versions": {
         "title": "Snapshots",

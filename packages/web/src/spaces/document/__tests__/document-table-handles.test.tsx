@@ -21,9 +21,8 @@ import { BODY_ANCHOR, BODY_LAYER } from '@web/spaces/document/document-body-focu
 import { deleteRowAt, insertRow } from '@web/spaces/document/document-table-run';
 import { TABLE_CONTROL } from '@web/spaces/document/document-table-handles';
 import { tableTargetOf } from '@web/spaces/document/document-table-target';
+import { copyCommand, type Editor } from '@web/spaces/document/__tests__/paste-harness';
 import { tableBlock } from '@web/spaces/document/__tests__/table-fixtures';
-
-type Editor = ReturnType<typeof buildDocumentEditor>;
 
 const side = vi.hoisted(() => ({
   editor: undefined as unknown,
@@ -390,37 +389,20 @@ describe('copy, cut and paste from the handles (inner#1239)', () => {
    * @returns What the last copy wrote.
    */
   function fakeClipboard(): Record<string, string> {
-    const written: Record<string, string> = {};
-    Object.defineProperty(document, 'execCommand', {
-      configurable: true,
-      value: vi.fn(() => {
-        const event = new Event('copy', { bubbles: true, cancelable: true });
-        Object.defineProperty(event, 'clipboardData', {
-          value: {
-            setData: (format: string, value: string) => {
-              written[format] = value;
-            },
-            clearData: () => undefined,
-            getData: (format: string) => written[format] ?? '',
-          },
-        });
-        document.dispatchEvent(event);
-        return true;
-      }),
-    });
+    const clip = copyCommand();
     vi.stubGlobal('navigator', {
       ...navigator,
       clipboard: {
         read: vi.fn(async () => [
           {
             types: ['text/html', 'text/plain'],
-            getType: async (type: string) => new Blob([written[type] ?? ''], { type }),
+            getType: async (type: string) => new Blob([clip[type] ?? ''], { type }),
           },
         ]),
         write: vi.fn(async () => undefined),
       },
     });
-    return written;
+    return clip;
   }
 
   it('cuts the row it was opened on', async () => {
@@ -437,14 +419,14 @@ describe('copy, cut and paste from the handles (inner#1239)', () => {
   });
 
   it('pastes a copied row below the row it was opened on', async () => {
-    const written = fakeClipboard();
+    const clip = fakeClipboard();
     const editor = openOver(0, 0);
     const { rerender } = render(<DocumentTableHandle orientation='row' hideOtherElements={() => undefined} />);
     fireEvent.click(screen.getByTestId('doc-table-row-handle'));
     await act(async () => {
       fireEvent.click(screen.getByTestId('doc-table-row-copy'));
     });
-    await waitFor(() => expect(written['text/html']).toContain('a1'));
+    await waitFor(() => expect(clip['text/html']).toContain('a1'));
     // The pointer moves to the second row, and the handle opens there.
     side.state = { ...(side.state as object), rowIndex: 1, cellPos: cellPosAt(editor, 1, 0) };
     rerender(<DocumentTableHandle orientation='row' hideOtherElements={() => undefined} />);

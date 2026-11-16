@@ -2356,6 +2356,7 @@
         "taskList": "任务列表",
         "divider": "分割线",
         "table": "表格",
+        "formula": "公式",
         "columns": "分栏",
         "align": "对齐",
         "alignLeft": "靠左",
@@ -2521,6 +2522,13 @@
         "notWrittenYet": "已上传，还没写进正文",
         "notPasted": "{count} 项没有粘贴进来。",
         "stillUploading": "{count} 个图片、视频或音频还在上传，没有粘贴进来。上传完成后重新复制。"
+      },
+      "math": {
+        "placeholder": "输入 LaTeX，例如 E = mc^2",
+        "empty": "添加公式",
+        "blank": "空公式",
+        "error": "公式有误",
+        "ok": "确定"
       },
       "versions": {
         "title": "快照",

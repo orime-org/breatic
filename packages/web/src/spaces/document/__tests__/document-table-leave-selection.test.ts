@@ -26,9 +26,8 @@ import { writeStyle } from '@web/spaces/document/document-style-write';
 import { selectionItem } from '@web/spaces/document/document-to-agent';
 import { tableClipped } from '@web/spaces/document/document-table-copy';
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
+import { written, type Editor } from '@web/spaces/document/__tests__/paste-harness';
 import { tableBlock, type TableInput } from '@web/spaces/document/__tests__/table-fixtures';
-
-type Editor = ReturnType<typeof buildDocumentEditor>;
 
 const mounted: Editor[] = [];
 
@@ -443,27 +442,6 @@ describe('deleting or typing over a selection leaving a table', () => {
 });
 
 /**
- * Dispatches a cut, the way the browser hands one to the body.
- * @param editor - The editor.
- * @returns What went on the clipboard.
- */
-function cut(editor: Editor): Record<string, string> {
-  const data: Record<string, string> = {};
-  const event = new Event('cut', { bubbles: true, cancelable: true });
-  Object.defineProperty(event, 'clipboardData', {
-    value: {
-      setData: (format: string, value: string) => {
-        data[format] = value;
-      },
-      clearData: () => undefined,
-      getData: (format: string) => data[format] ?? '',
-    },
-  });
-  editor.prosemirrorView.dom.dispatchEvent(event);
-  return data;
-}
-
-/**
  * Selects from some words to an edge of the body.
  * @param editor - The editor.
  * @param anchor - Where it starts.
@@ -482,7 +460,7 @@ describe('a selection from a cell to an edge of the body', () => {
     const { editor } = openWith(tableThenEmpty());
     selectToEdge(editor, at(editor, 'a2', 1), 'end');
 
-    const clipboard = cut(editor);
+    const clipboard = written(editor.prosemirrorView.dom, 'cut');
 
     expect(clipboard['text/html']).toContain('<table');
     expect(blocks(editor).filter((block) => block === 'docTable')).toEqual([]);
