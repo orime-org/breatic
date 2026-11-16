@@ -16,6 +16,7 @@
   <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat"></a>
   <a href="https://discord.gg/Yeu6A4aejN"><img alt="Discord community" src="https://img.shields.io/badge/discord-join%20community-5865F2?style=flat&amp;logo=discord&amp;logoColor=white"></a>
   <a href="#get-started"><img alt="Quickstart guide" src="https://img.shields.io/badge/quickstart-guide-green?style=flat"></a>
+  <a href="https://github.com/NipunaRanasinghe/awesome-ai-agents/blob/main/EMERGING.md"><img alt="Emerging in Awesome AI Agents" src="https://img.shields.io/badge/Emerging_in-Awesome_AI_Agents-0969da?style=flat"></a>
 </p>
 
 <p align="center" dir="ltr">
