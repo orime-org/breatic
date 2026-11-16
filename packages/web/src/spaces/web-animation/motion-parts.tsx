@@ -93,6 +93,19 @@ export function MotionPanel({ testId, title, onClose, children }: MotionPanelPro
   </section>;
 }
 
+/** A finished create or modification. */
+export type PlayableRow = Extract<WebAnimationRowView, { kind: 'web_animation_create' | 'web_animation_modify' }> & { resultSourceVersionId: string };
+
+/**
+ * Whether a row is a finished create or modification, whose result plays and takes annotations.
+ * @param row - The row.
+ * @returns True for one.
+ * @throws {never} Never.
+ */
+export function playable(row: WebAnimationRowView | undefined): row is PlayableRow {
+  return row !== undefined && row.kind !== 'web_animation_export' && row.status === 'succeeded' && row.resultSourceVersionId !== null;
+}
+
 /**
  * A row's title by the one title rule.
  * @param row - The row.

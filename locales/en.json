@@ -2819,10 +2819,11 @@
       "completed": "Completed",
       "details": "Details",
       "dialog": {
-        "instruction": "Change",
+        "instruction": "What to change",
         "instructionPlaceholder": "For example: slow the title down and darken the background",
         "modifyDescription": "Modified from “{base}”. The original result stays as it is.",
-        "modifyTitle": "Modify web animation"
+        "modifyTitle": "Modify web animation",
+        "relayout": "The picture will be laid out again for the new size."
       },
       "discardAnnotation": "Discard this annotation?",
       "discard": "Discard",

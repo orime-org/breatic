@@ -1578,8 +1578,9 @@ export function renderProductGuide(): string {
       `Ones made in a Timeline before Motion existed are listed at the end under ${quoted(t("spaces.webAnimation.madeInTimeline"))}, and can be modified and exported like the others. ` +
       "A modification is named after the request it was modified from followed by its own change, and an exported video after the web animation it renders.",
     `On a finished web animation the bar offers ${quoted(t("spaces.webAnimation.addAnnotation"))}, ${quoted(t("spaces.webAnimation.modify"))} and ${quoted(t("spaces.webAnimation.export"))}. ` +
-      `${quoted(t("spaces.webAnimation.modify"))} opens the dialog titled ${quoted(t("spaces.webAnimation.dialog.modifyTitle"))} to describe the change under ${quoted(t("spaces.webAnimation.dialog.instruction"))}; ` +
-      "it makes a new web animation from the shown one, which stays as it was with its annotations. " +
+      `${quoted(t("spaces.webAnimation.modify"))} opens the dialog titled ${quoted(t("spaces.webAnimation.dialog.modifyTitle"))}, with a small preview of the shown web animation at the top, ` +
+      `to describe the change under ${quoted(t("spaces.webAnimation.dialog.instruction"))}; the aspect ratio and length start as the shown one's, and once either differs the dialog says ` +
+      `${quoted(t("spaces.webAnimation.dialog.relayout"))} It makes a new web animation from the shown one, which stays as it was with its annotations. ` +
       `${quoted(t("spaces.webAnimation.export"))} renders it to a video in this Space; once the Space has one, the button reads ${quoted(t("spaces.webAnimation.viewVideo"))} and shows that video. ` +
       `On a finished video the bar offers ${quoted(t("spaces.webAnimation.download"))}, ${quoted(t("spaces.webAnimation.placeOnCanvas"))} and ${quoted(t("spaces.webAnimation.viewSource"))}. ` +
       `${quoted(t("spaces.webAnimation.placeOnCanvas"))} lists the Project's canvases (it is unavailable with ${quoted(t("spaces.webAnimation.noCanvas"))} when there are none) and puts the video on the chosen one ` +

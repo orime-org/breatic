@@ -41,7 +41,7 @@ import { CANVAS_PLACEMENT_IDLE, transitionCanvasPlacement, type CanvasPlacementE
 import { transitionCreationDraft, type CreationDraftInput, type CreationDraftState } from '@web/spaces/web-animation/creation-draft';
 import { DEFAULT_WEB_ANIMATION_ENGINE, cancelIntent, executionStepKeys, failureSentenceKey, phaseKey, stepMark } from '@web/spaces/web-animation/execution-text';
 import { MOTION_PANELS_CLOSED, transitionMotionPanels, type MotionPanelsEvent, type MotionTab } from '@web/spaces/web-animation/motion-panels';
-import { BarButton, rowSeconds, rowTitle } from '@web/spaces/web-animation/motion-parts';
+import { BarButton, playable, rowSeconds, rowTitle } from '@web/spaces/web-animation/motion-parts';
 import { requestTitle } from '@web/spaces/web-animation/web-animation-title';
 import { MotionAnnotationsPanel, formatAnnotationTime } from '@web/spaces/web-animation/MotionAnnotationsPanel';
 import { MotionExecutionsPanel } from '@web/spaces/web-animation/MotionExecutionsPanel';
@@ -61,18 +61,6 @@ const PIN_WINDOW_SECONDS = 0.15;
 const CLOSED_DRAFT: CreationDraftState = { status: 'closed' };
 
 /** A row whose result can be played: a finished create or modification. */
-type PlayableRow = Extract<WebAnimationRowView, { kind: 'web_animation_create' | 'web_animation_modify' }>;
-
-/**
- * Whether a row is a finished create or modification, whose result plays and takes annotations.
- * @param row - The row.
- * @returns True for one.
- * @throws {never} Never.
- */
-function playable(row: WebAnimationRowView | undefined): row is PlayableRow & { resultSourceVersionId: string } {
-  return row !== undefined && row.kind !== 'web_animation_export' && row.status === 'succeeded' && row.resultSourceVersionId !== null;
-}
-
 /**
  * The frame ratio a row is shown at.
  * @param row - The row.
@@ -428,7 +416,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   // The shown result's actions (design §7.2).
   const modify = React.useCallback((): void => {
     if (!playable(row)) return;
-    openDialog({ base: { sourceVersionId: row.resultSourceVersionId, request: row.request }, aspect: row.input.aspect, durationSeconds: row.input.durationSeconds });
+    openDialog({ base: { executionId: row.id, sourceVersionId: row.resultSourceVersionId, request: row.request }, aspect: row.input.aspect, durationSeconds: row.input.durationSeconds });
   }, [row, openDialog]);
   const exportVideo = React.useCallback((): void => {
     if (playable(row)) accept({ kind: 'web_animation_export', sourceVersionId: row.resultSourceVersionId }, newId());
@@ -436,9 +424,19 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   const retry = React.useCallback((): void => {
     if (row === undefined) return;
     if (row.kind === 'web_animation_export') { accept({ kind: 'web_animation_export', sourceVersionId: row.input.sourceVersionId }, newId()); return; }
-    const base = row.kind === 'web_animation_modify' ? { sourceVersionId: row.input.baseSourceVersionId, request: row.base.request } : null;
+    const base = row.kind === 'web_animation_modify' ? { executionId: row.base.executionId, sourceVersionId: row.input.baseSourceVersionId, request: row.base.request } : null;
     openDialog({ base, prompt: row.request, aspect: row.input.aspect, durationSeconds: row.input.durationSeconds }, true);
   }, [row, accept, openDialog]);
+  // The result a modification starts from: listed here, or read once when it is not.
+  const baseId = draft.status !== 'closed' ? draft.input.base?.executionId ?? null : null;
+  const listedBase = baseId === null ? undefined : rowById(baseId);
+  const readBase = useQuery({
+    queryKey: [...spaceTasksQueryKey(projectId, spaceId), 'motion-base', baseId],
+    queryFn: ({ signal }) => timelineApi.getExecution(projectId, spaceId, baseId ?? '', signal),
+    enabled: baseId !== null && listedBase === undefined,
+    staleTime: Infinity,
+  });
+  const baseRow = listedBase ?? readBase.data;
   const exportRow = row !== undefined && row.kind !== 'web_animation_export' ? row.export ?? null : null;
   const viewVideo = React.useCallback((): void => { if (exportRow !== null) locate(exportRow.executionId); }, [exportRow, locate]);
   const viewSource = React.useCallback((): void => { if (row?.kind === 'web_animation_export') locate(row.source.executionId); }, [row, locate]);
@@ -649,7 +647,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
-    {draft.status !== 'closed' && draft.open && limits !== undefined && <WebAnimationDialog spaceId={spaceId} draft={draft} retry={retryDialog} limits={limits}
+    {draft.status !== 'closed' && draft.open && limits !== undefined && <WebAnimationDialog projectId={projectId} spaceId={spaceId} draft={draft} retry={retryDialog} limits={limits} baseRow={baseRow}
       onEdit={editDraft} onExecute={execute} onClose={closeDraft} />}
   </div>;
 }

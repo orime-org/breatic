@@ -3,24 +3,31 @@
 
 import * as React from 'react';
 import type { TimelineClientLimits } from '@breatic/shared';
+import { webAnimationDurationFrames, type WebAnimationRowView } from '@breatic/shared/space-content';
 
 import { Button } from '@web/components/ui/button';
 import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@web/components/ui/dialog';
 import { Input } from '@web/components/ui/input';
 import { Label } from '@web/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@web/components/ui/select';
+import { Skeleton } from '@web/components/ui/skeleton';
 import { Textarea } from '@web/components/ui/textarea';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useReturnFocus } from '@web/lib/overlay-focus';
 import type { CreationDraftInput, CreationDraftState } from '@web/spaces/web-animation/creation-draft';
 import { WEB_ANIMATION_ENGINE_NAMES, isWebAnimationEngine } from '@web/spaces/web-animation/execution-text';
+import { playable } from '@web/spaces/web-animation/motion-parts';
+import { MotionResultPlayer } from '@web/spaces/web-animation/MotionResultPlayer';
 
 /** The open creation dialog's draft and actions. */
 interface WebAnimationDialogProps {
+  projectId: string;
   spaceId: string;
   draft: Exclude<CreationDraftState, { status: 'closed' }>;
   retry: boolean;
   limits: TimelineClientLimits['webAnimation'];
+  /** The result a modification starts from, once read. */
+  baseRow: WebAnimationRowView | undefined;
   onEdit: (patch: Partial<CreationDraftInput>) => void;
   onExecute: () => void;
   onClose: () => void;
@@ -28,21 +35,24 @@ interface WebAnimationDialogProps {
 
 /**
  * The Motion Space's New and Modify dialog (inner#1711 design §8, #1490 design §5.1): the prompt, or a modification's
- * instruction with the request it starts from, then engine, aspect and duration. Execute fixes what is shown; while
+ * instruction under a small preview of the result it starts from, then engine, aspect and duration; a modification whose
+ * aspect or length differs from that result says the picture is laid out again. Execute fixes what is shown; while
  * it waits the fields hold and the button shows it is waiting; a refusal comes back here with the server's reason and
  * the input kept.
  * @param props - The draft and its actions.
+ * @param props.projectId - The Project, through which the preview is read.
  * @param props.spaceId - The Space, for field ids.
  * @param props.draft - The open draft.
  * @param props.retry - Whether it runs a finished execution again.
  * @param props.limits - The configured bounds.
+ * @param props.baseRow - The result a modification starts from, once read.
  * @param props.onEdit - Changes the input.
  * @param props.onExecute - Submits it.
  * @param props.onClose - Closes the dialog; a submission goes on.
  * @returns The dialog.
  * @throws {never} Never.
  */
-export function WebAnimationDialog({ spaceId, draft, retry, limits, onEdit, onExecute, onClose }: WebAnimationDialogProps): React.JSX.Element {
+export function WebAnimationDialog({ projectId, spaceId, draft, retry, limits, baseRow, onEdit, onExecute, onClose }: WebAnimationDialogProps): React.JSX.Element {
   const t = useTranslation();
   const returnFocus = useReturnFocus(true);
   const submitting = draft.status === 'submitting';
@@ -64,11 +74,26 @@ export function WebAnimationDialog({ spaceId, draft, retry, limits, onEdit, onEx
   }, [onEdit]);
   const fieldId = `motion-dialog-${spaceId}`;
   const modifying = input.base !== null;
+  const base = playable(baseRow) ? baseRow : undefined;
+  const relayout = base !== undefined && (input.aspect !== base.input.aspect || input.durationSeconds !== base.input.durationSeconds);
+  const baseAspect = (base?.input.aspect ?? input.aspect).replace(':', ' / ');
   return <Dialog open onOpenChange={changeOpen}>
     <DialogContent onCloseAutoFocus={returnFocus}>
       <DialogHeader>
         <DialogTitle>{t(modifying ? 'spaces.webAnimation.dialog.modifyTitle' : retry ? 'timeline.webAnimation.dialog.retryTitle' : 'timeline.webAnimation.dialog.title')}</DialogTitle>
-        <DialogDescription>{modifying ? t('spaces.webAnimation.dialog.modifyDescription', { base: input.base?.request ?? '' }) : t('timeline.webAnimation.dialog.description')}</DialogDescription>
+        {modifying
+          ? <DialogDescription asChild>
+            <div data-testid='web-animation-base' className='flex items-center gap-3 rounded-chrome border border-border p-2'>
+              <div className='relative h-12 shrink-0 overflow-hidden rounded-chrome bg-muted' style={{ aspectRatio: baseAspect }}>
+                {base === undefined
+                  ? <Skeleton className='absolute inset-0 rounded-none' />
+                  : <MotionResultPlayer projectId={projectId} executionId={base.id} sourceVersionId={base.resultSourceVersionId} input={base.input}
+                    frame={Math.floor(webAnimationDurationFrames(base.input) / 2)} />}
+              </div>
+              <span className='min-w-0'>{t('spaces.webAnimation.dialog.modifyDescription', { base: input.base?.request ?? '' })}</span>
+            </div>
+          </DialogDescription>
+          : <DialogDescription>{t('timeline.webAnimation.dialog.description')}</DialogDescription>}
       </DialogHeader>
       <form noValidate onSubmit={submit}>
         <DialogBody className='flex flex-col gap-4'>
@@ -99,6 +124,7 @@ export function WebAnimationDialog({ spaceId, draft, retry, limits, onEdit, onEx
                 value={Number.isFinite(input.durationSeconds) ? input.durationSeconds : ''} disabled={submitting} onChange={changeDuration} />
             </div>
           </div>
+          {relayout && <p className='text-xs text-muted-foreground'>{t('spaces.webAnimation.dialog.relayout')}</p>}
           {error !== null && <p role='alert' className='text-sm text-status-error-foreground'>{error}</p>}
         </DialogBody>
         <DialogFooter>

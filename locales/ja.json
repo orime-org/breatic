@@ -2819,10 +2819,11 @@
       "completed": "完了",
       "details": "詳細",
       "dialog": {
-        "instruction": "変更内容",
+        "instruction": "変えたいところ",
         "instructionPlaceholder": "例：タイトルをゆっくりにして、背景をもっと暗く",
         "modifyDescription": "「{base}」を修正します。元の結果はそのまま残ります。",
-        "modifyTitle": "Web アニメーションを修正"
+        "modifyTitle": "Web アニメーションを修正",
+        "relayout": "新しいサイズに合わせて画面を組み直します。"
       },
       "discardAnnotation": "この注釈を破棄しますか？",
       "discard": "破棄",

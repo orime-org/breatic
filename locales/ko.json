@@ -2819,10 +2819,11 @@
       "completed": "완료",
       "details": "세부 정보",
       "dialog": {
-        "instruction": "수정 요청",
+        "instruction": "바꿀 부분",
         "instructionPlaceholder": "예: 제목을 더 천천히, 배경은 더 어둡게",
         "modifyDescription": "“{base}”을(를) 수정합니다. 원래 결과는 그대로 유지됩니다.",
-        "modifyTitle": "웹 애니메이션 수정"
+        "modifyTitle": "웹 애니메이션 수정",
+        "relayout": "새 크기에 맞게 화면을 다시 배치합니다."
       },
       "discardAnnotation": "이 주석을 버릴까요?",
       "discard": "버리기",

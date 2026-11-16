@@ -15,7 +15,7 @@ import type { WebAnimationEngine } from '@web/spaces/web-animation/execution-tex
 /** What the user fills in. */
 export interface CreationDraftInput {
   /** The result a modification starts from, or null for a new animation. */
-  base: { sourceVersionId: string; request: string } | null;
+  base: { executionId: string; sourceVersionId: string; request: string } | null;
   /** The prompt of a new animation, or the instruction of a modification. */
   prompt: string;
   engine: WebAnimationEngine;
