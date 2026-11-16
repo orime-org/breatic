@@ -23,6 +23,7 @@
 import { vi, describe, it, expect, beforeEach } from "vitest";
 
 const mockMarkFailed = vi.hoisted(() => vi.fn(async () => true));
+const mockRecordAttemptError = vi.hoisted(() => vi.fn(async () => true));
 const mockRecordFailure = vi.hoisted(() => vi.fn());
 const mockSettleTaskForNode = vi.hoisted(() => vi.fn());
 const mockInsertActivity = vi.hoisted(() => vi.fn());
@@ -55,6 +56,8 @@ vi.mock("@breatic/domain", () => ({
   buildAgentConfig: vi.fn(),
   generateTextRetry: vi.fn(),
   taskService: { markFailed: mockMarkFailed },
+  // An attempt with a retry to come keeps the task running (inner#1968 design 3.9).
+  taskRepo: { recordAttemptError: mockRecordAttemptError },
   upstreamStepRepo: { failOpenSteps: mockFailOpenSteps },
   assetService: {},
   creditLotService: {},
@@ -193,14 +196,17 @@ describe("a failed attempt with a retry still to come", () => {
     vi.clearAllMocks();
   });
 
-  // The first pair records the attempt, which happened. The second pair
-  // records the outcome, which has not been reached: settling now marks the
-  // row failed while the next attempt is on its way, and the feed records
-  // outcomes rather than attempts.
+  // The first pair records the attempt, which happened: its cause on the
+  // task row, which stays running and keeps its running slot (inner#1968
+  // design 3.9), and its history entry. The second pair records the outcome,
+  // which has not been reached: settling now marks the row failed while the
+  // next attempt is on its way, and the feed records outcomes rather than
+  // attempts.
   it("records the attempt and leaves the outcome open", async () => {
     await finishFailedRun({ ...END, settles: false });
 
-    expect(mockMarkFailed).toHaveBeenCalledTimes(1);
+    expect(mockRecordAttemptError).toHaveBeenCalledWith("task-1", "it broke");
+    expect(mockMarkFailed).not.toHaveBeenCalled();
     expect(mockRecordFailure).toHaveBeenCalledTimes(1);
     expect(mockSettleTaskForNode).not.toHaveBeenCalled();
     expect(mockInsertActivity).not.toHaveBeenCalled();
