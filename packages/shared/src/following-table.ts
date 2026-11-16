@@ -27,3 +27,17 @@ export const followingEntrySchema = z.object({
 
 /** One entry of {@link FOLLOWING_TABLE}. */
 export type FollowingEntry = z.infer<typeof followingEntrySchema>;
+
+/**
+ * What a browser tab declares in meta awareness as `following`: whom it
+ * follows and when it started following that member. Collab records it into
+ * {@link FOLLOWING_TABLE}; anything that fails this schema reads as "follows
+ * nobody".
+ */
+export const followingDeclarationSchema = z.object({
+  id: z.string().min(1),
+  at: z.number().finite(),
+});
+
+/** A tab's `following` declaration. */
+export type FollowingDeclaration = z.infer<typeof followingDeclarationSchema>;

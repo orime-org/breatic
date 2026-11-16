@@ -33,7 +33,7 @@
  * ({@link forgetFollowingOnDisconnect}).
  */
 
-import { parseDocName } from "@breatic/shared";
+import { followingDeclarationSchema, parseDocName } from "@breatic/shared";
 
 import { stampConnectionIdentity } from "@collab/hooks/awareness-identity.js";
 import {
@@ -218,14 +218,13 @@ export function refreshPresenceForSocket(
 ): void {
   for (const [documentName, connection] of connections) {
     if (!isMetaDoc(documentName)) continue;
-    touchFollowing({ document: connection.document, socketId, heardAt });
+    const { document } = connection;
     const userId = userIdOf({ context: connection.context });
-    if (!userId) return;
-    if (!touchLastSeen({ document: connection.document, userId, heardAt })) return;
-    sweepStalePresence({
-      document: connection.document,
-      now: policy.now(),
-      staleAfterMs: policy.staleAfterMs,
+    // One transaction: every meta update is broadcast to the whole project.
+    document.transact(() => {
+      touchFollowing({ document, socketId, heardAt });
+      if (!userId || !touchLastSeen({ document, userId, heardAt })) return;
+      sweepStalePresence({ document, now: policy.now(), staleAfterMs: policy.staleAfterMs });
     });
     return;
   }
@@ -270,20 +269,6 @@ function isScratchEntry(state: Record<string, unknown>): boolean {
 }
 
 /**
- * Read a `following` declaration off an awareness entry.
- * @param value - The entry's `following` field.
- * @returns The target and start time, or null for "follows nobody" (null,
- * absent or malformed).
- */
-function declaredFollowing(value: unknown): { id: string; at: number } | null {
-  if (typeof value !== "object" || value === null) return null;
-  const { id, at } = value as { id?: unknown; at?: unknown };
-  if (typeof id !== "string" || id.length === 0) return null;
-  if (typeof at !== "number" || !Number.isFinite(at)) return null;
-  return { id, at };
-}
-
-/**
  * Record whom the sending connection follows, from one meta awareness frame.
  *
  * Read here rather than from applied awareness updates because this hook sees
@@ -317,9 +302,9 @@ export function recordFollowingFromAwareness(
   const { document, socketId } = payload;
   for (const state of payload.states.values()) {
     if (state === null || typeof state !== "object" || isScratchEntry(state)) continue;
-    const following = declaredFollowing(state.following);
-    if (following) {
-      writeFollowing({ document, socketId, userId, target: following.id, at: following.at, now: policy.now() });
+    const following = followingDeclarationSchema.safeParse(state.following);
+    if (following.success) {
+      writeFollowing({ document, socketId, userId, target: following.data.id, at: following.data.at, now: policy.now() });
     } else {
       deleteFollowing({ document, socketId });
     }

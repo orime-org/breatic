@@ -17,6 +17,8 @@
 import type { Awareness } from 'y-protocols/awareness';
 import { z } from 'zod';
 
+import { followingDeclarationSchema } from '@breatic/shared';
+
 import { readUserId } from '@web/data/yjs/awareness-user';
 
 /** A wall-clock instant in milliseconds. */
@@ -35,7 +37,7 @@ const SCHEMAS = {
     focused: z.boolean(),
   }),
   // Apart from `view` because a hidden tab withdraws its view but still follows.
-  following: z.object({ id: z.string().min(1), at: instant }),
+  following: followingDeclarationSchema,
   camera: z.object({ x: z.number(), y: z.number(), width: z.number().positive(), height: z.number().positive(), at: instant }),
   topBlockId: z.object({ id: z.string().min(1), at: instant }),
   camera3d: z.object({ position: vector3, target: vector3, fov: z.number().positive(), at: instant }),
