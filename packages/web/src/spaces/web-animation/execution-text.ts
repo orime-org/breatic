@@ -54,6 +54,18 @@ export function failureSentenceKey(reason: string | null): string {
 }
 
 /**
+ * The message an ended run that did not succeed is told with: its failure reason when it failed, otherwise its status
+ * (cancelled, expired).
+ * @param status - The run's status.
+ * @param reason - Its stored failure reason, or null.
+ * @returns The catalog key.
+ * @throws {never} Never.
+ */
+export function endedSentenceKey(status: TimelineExecutionStatus, reason: string | null): string {
+  return status === 'failed' ? failureSentenceKey(reason) : `timeline.webAnimation.status.${status}`;
+}
+
+/**
  * The catalog keys of a run's steps: saving the request, then the phases of its kind.
  * @param kind - The execution's kind.
  * @returns The keys, in order.

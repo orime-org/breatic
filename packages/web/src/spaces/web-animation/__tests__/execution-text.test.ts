@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { failureSentenceKey } from '@web/spaces/web-animation/execution-text';
+import { endedSentenceKey, failureSentenceKey } from '@web/spaces/web-animation/execution-text';
 import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 
 /**
@@ -41,5 +41,13 @@ describe('a creation failure', () => {
     expect(failureSentenceKey('harness_failed')).toBe('timeline.webAnimation.failure.stopped');
     expect(failureSentenceKey('validation_failed')).toBe('timeline.webAnimation.failure.check');
     expect(failureSentenceKey(null)).toBe('timeline.webAnimation.failure.unknown');
+  });
+});
+
+describe('an ended run that did not succeed', () => {
+  it('tells a failure by its reason and a cancelled or expired run by its status', () => {
+    expect(endedSentenceKey('failed', 'save_failed')).toBe(failureSentenceKey('save_failed'));
+    expect(endedSentenceKey('cancelled', null)).toBe('timeline.webAnimation.status.cancelled');
+    expect(endedSentenceKey('expired', 'internal')).toBe('timeline.webAnimation.status.expired');
   });
 });

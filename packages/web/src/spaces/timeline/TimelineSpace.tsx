@@ -54,7 +54,7 @@ import { TimelineWebAnimationPicker, type PickableResult } from '@web/spaces/tim
 import { TimelineWebPreview, PreviewNote, type TimelineUploadNote, type TimelineWebEntry } from '@web/spaces/timeline/TimelineWebPreview';
 import { useTimelineLimits, useTimelinePreviewLimits } from '@web/spaces/timeline/use-timeline-limits';
 import { useTimelineWebResolution } from '@web/spaces/timeline/use-timeline-web-resolution';
-import { failureSentenceKey } from '@web/spaces/web-animation/execution-text';
+import { endedSentenceKey } from '@web/spaces/web-animation/execution-text';
 import { requestTitle, type TitleTranslator } from '@web/spaces/web-animation/web-animation-title';
 import { useSpaceOpenRequestStore } from '@web/stores/space-open-request';
 import type { TimelineWebLayer, WebAnimationPlayerElement } from '@web/spaces/timeline/web-animation-host';
@@ -538,8 +538,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   const selectedWebCopy = React.useMemo(() => selectedWeb === undefined ? null : {
     request: selectedWeb.request,
     baseRequest: selectedWeb.baseRequest,
-    failure: selectedWeb.state === 'failed' && selectedWeb.status === 'failed' ? t(failureSentenceKey(selectedWeb.failureReason))
-      : selectedWeb.state === 'failed' && selectedWeb.status !== null ? t(`timeline.webAnimation.status.${selectedWeb.status}`) : null,
+    failure: selectedWeb.state === 'failed' && selectedWeb.status !== null ? t(endedSentenceKey(selectedWeb.status, selectedWeb.failureReason)) : null,
     onOpenInMotion: selectedWeb.state === 'failed' && selectedOrigin !== null && canOpenInMotion ? openSelectedInMotion : null,
     opening: requestStatus === 'creating',
   }, [selectedWeb, selectedOrigin, canOpenInMotion, openSelectedInMotion, requestStatus, t]);

@@ -39,7 +39,7 @@ import { ANNOTATION_DRAFT_IDLE, transitionAnnotationDraft, type AnnotationDraftE
 import { webAnimationAnnotationStore } from '@web/spaces/web-animation/annotation-thread-store';
 import { CANVAS_PLACEMENT_IDLE, transitionCanvasPlacement, type CanvasPlacementEvent } from '@web/spaces/web-animation/canvas-placement';
 import { transitionCreationDraft, type CreationDraftInput, type CreationDraftState } from '@web/spaces/web-animation/creation-draft';
-import { DEFAULT_WEB_ANIMATION_ENGINE, cancelIntent, executionStepKeys, failureSentenceKey, phaseKey, stepMark } from '@web/spaces/web-animation/execution-text';
+import { DEFAULT_WEB_ANIMATION_ENGINE, cancelIntent, endedSentenceKey, executionStepKeys, failureSentenceKey, phaseKey, stepMark } from '@web/spaces/web-animation/execution-text';
 import { MOTION_PANELS_CLOSED, transitionMotionPanels, type MotionPanelsEvent, type MotionTab } from '@web/spaces/web-animation/motion-panels';
 import { BarButton, PreviewUnavailable, playable, rowSeconds } from '@web/spaces/web-animation/motion-parts';
 import { requestTitle, webAnimationTitle } from '@web/spaces/web-animation/web-animation-title';
@@ -590,7 +590,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
             assetRetrying={exportAssetRead.isFetching} onAssetRetry={retryExportAsset} time={clock.time} playing={clock.playing} />}
           {!finished && <div className='flex size-full flex-col items-center justify-center gap-2 rounded-chrome border border-dashed border-border bg-card text-xs text-muted-foreground'>
             {failed
-              ? <span className='text-status-error-foreground'>{row.status === 'failed' ? t(failureSentenceKey(row.failureReason)) : t(`timeline.webAnimation.status.${row.status}`)}</span>
+              ? <span className='text-status-error-foreground'>{t(endedSentenceKey(row.status, row.failureReason))}</span>
               : <span className='flex items-center gap-1.5'><LoaderCircle className='size-3.5 animate-spin' />
                 {`${t(`timeline.webAnimation.status.${row.status}`)}${row.phase !== null ? ` · ${t(phaseKey(row.kind, row.phase))}` : ''}`}</span>}
             {failed && !readOnly && <Button data-testid='motion-retry' variant='outline' size='sm' onClick={retry} icon={<RotateCcw className='size-4' />}>
