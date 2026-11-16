@@ -50,6 +50,8 @@ function input(over: Partial<CanvasFollowInput> & Pick<CanvasFollowInput, 'aware
     pane: PANE,
     applyViewport: vi.fn(),
     clearOpeningFit: vi.fn(),
+    openingFitHeld: false,
+    frameCanvas: vi.fn(),
     ...over,
   };
 }
@@ -212,6 +214,39 @@ describe('useCanvasFollow', () => {
     const clearOpeningFit = vi.fn();
     renderHook(() => useCanvasFollow(input({ awareness: local, clearOpeningFit })));
     expect(clearOpeningFit).toHaveBeenCalledTimes(1);
+  });
+
+  it('frames a canvas that opened while following once following ends, when no alignment ever placed it', () => {
+    const local = makeAwareness();
+    const frameCanvas = vi.fn();
+    const { rerender } = renderHook((p: CanvasFollowInput) => useCanvasFollow(p), {
+      initialProps: input({ awareness: local, openingFitHeld: true, frameCanvas }),
+    });
+    expect(frameCanvas).not.toHaveBeenCalled();
+    rerender(input({ awareness: local, openingFitHeld: true, frameCanvas, leaderUserId: null }));
+    expect(frameCanvas).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves a canvas the follow placed where it is once following ends', () => {
+    const local = makeAwareness();
+    const peer = makeAwareness();
+    const frameCanvas = vi.fn();
+    const { rerender } = renderHook((p: CanvasFollowInput) => useCanvasFollow(p), {
+      initialProps: input({ awareness: local, openingFitHeld: true, frameCanvas }),
+    });
+    arrive(local, peer, { user: { id: 'leader' }, camera: { ...RECT, at: 1 } });
+    rerender(input({ awareness: local, openingFitHeld: true, frameCanvas, leaderUserId: null }));
+    expect(frameCanvas).not.toHaveBeenCalled();
+  });
+
+  it('frames nothing when following ends on a canvas that kept its own opening fit', () => {
+    const local = makeAwareness();
+    const frameCanvas = vi.fn();
+    const { rerender } = renderHook((p: CanvasFollowInput) => useCanvasFollow(p), {
+      initialProps: input({ awareness: local, frameCanvas }),
+    });
+    rerender(input({ awareness: local, frameCanvas, leaderUserId: null }));
+    expect(frameCanvas).not.toHaveBeenCalled();
   });
 
   it('stops on a toolbar, minimap or shortcut move before the first alignment', () => {

@@ -45,6 +45,6 @@ describe('sameRect', () => {
     expect(sameRect(rect, { ...rect })).toBe(true);
     expect(sameRect(rect, { ...rect, height: 5 })).toBe(false);
     expect(sameRect(null, rect)).toBe(false);
-    expect(sameRect(undefined, null)).toBe(true);
+    expect(sameRect(null, null)).toBe(true);
   });
 });
