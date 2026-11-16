@@ -93,8 +93,6 @@ const STRIP_BUTTON = 'size-6 shrink-0 [&_svg]:size-4 text-muted-foreground';
  */
 type StripFace = 'grip' | 'plus' | 'table';
 
-/** Quote is out of reach: the line is already in a quote. Module-level so the memo sees one set. */
-
 /** Each face's test id. */
 const TEST_ID: Readonly<Record<StripFace, string>> = {
   grip: 'doc-block-handle',

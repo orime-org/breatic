@@ -49,6 +49,8 @@ import { compositionEndOf } from '@web/spaces/document/document-enter';
 import type { HandleEditor } from '@web/spaces/document/document-handle-commands';
 import {
   INSERT_ENTRY_IDS,
+  INSERT_ENTRY_IDS_WITHOUT_MEDIA,
+  MEDIA_ENTRY_IDS,
   insertEntryLook,
   insertReach,
   ruleBetween,
@@ -59,17 +61,12 @@ import { openFormulaBlock } from '@web/spaces/document/document-math';
 import { UNAVAILABLE_KEYBOARD_FOCUS_ONLY } from '@web/spaces/document/document-unavailable-control';
 import type { MediaBlockType } from '@web/spaces/document/document-media-types';
 import { asOneUndoStep, undoOf } from '@web/spaces/document/document-proposal-landing';
-import { filterInsertEntries, closesForNoMatch, queryWhileComposing } from '@web/spaces/document/document-slash-filter';
+import { filterInsertEntries, closesForNoMatch } from '@web/spaces/document/document-slash-filter';
 import { landSlashMedia, pickInSlashMenu, slashTyped } from '@web/spaces/document/document-slash-pick';
 import { SLASH_TRIGGERS, slashMayOpen, slashMenuShown } from '@web/spaces/document/document-slash-trigger';
 import { useDocumentMediaPick } from '@web/spaces/document/DocumentMediaPicker';
 import { PlainTableSizeGrid, stepCell } from '@web/spaces/document/DocumentTableSizeGrid';
 
-/** The media entries, which a pick hands to the file picker. */
-const MEDIA: ReadonlySet<string> = new Set<MediaBlockType>(['image', 'audio', 'video']);
-
-/** The entries offered where no file can be picked. */
-const WITHOUT_MEDIA = INSERT_ENTRY_IDS.filter((id) => !MEDIA.has(id));
 
 /** The gap between the menu and what it opens from, as the insert menu's. */
 const GAP = 6;
@@ -263,9 +260,9 @@ function OpenSlashMenu({ editor, menu, trigger, query }: OpenSlashMenuProps): Re
   // menu keeps the query from before the composition until it ends (5.3).
   const [frozen, setFrozen] = React.useState<string | null>(null);
   const composing = frozen !== null;
-  const filterQuery = queryWhileComposing({ query, composing, before: frozen ?? query });
+  const filterQuery = frozen ?? query;
 
-  const ids = mediaPick === null ? WITHOUT_MEDIA : INSERT_ENTRY_IDS;
+  const ids = mediaPick === null ? INSERT_ENTRY_IDS_WITHOUT_MEDIA : INSERT_ENTRY_IDS;
   const items = filterInsertEntries(ids, filterQuery, (id) => {
     const key = insertEntryLook(id).labelKey;
     return [t(key), englishMessage(key) ?? ''];
@@ -331,7 +328,7 @@ function OpenSlashMenu({ editor, menu, trigger, query }: OpenSlashMenuProps): Re
       const record = slashTyped(editor, now.blockId, typed, now.offset);
       menu.closeMenu();
       if (record === undefined) return;
-      if (MEDIA.has(id)) {
+      if (MEDIA_ENTRY_IDS.has(id)) {
         // The query stays until files are chosen; closing the picker without
         // one leaves the line as it is (5.9).
         mediaPick?.(id as MediaBlockType, (blocks) => {
@@ -504,28 +501,21 @@ function OpenSlashMenu({ editor, menu, trigger, query }: OpenSlashMenuProps): Re
   const { getReferenceProps, getFloatingProps } = useInteractions([gridHover]);
 
   // The lit row stays in sight, scrolling the menu's own list only.
-  const rowsRef = React.useRef<HTMLDivElement>(null);
   React.useEffect(() => {
-    const lit = rowsRef.current?.querySelector<HTMLElement>('[data-highlighted]');
+    const lit = refs.floating.current?.querySelector<HTMLElement>('[data-highlighted]');
     const scroller = lit?.closest<HTMLElement>('[data-radix-scroll-area-viewport]');
     if (lit === undefined || lit === null || scroller === null || scroller === undefined) return;
     const box = lit.getBoundingClientRect();
     const view = scroller.getBoundingClientRect();
     if (box.top < view.top) scroller.scrollTo({ top: scroller.scrollTop + box.top - view.top });
     else if (box.bottom > view.bottom) scroller.scrollTo({ top: scroller.scrollTop + box.bottom - view.bottom });
-  }, [index, filterQuery]);
+  }, [index, filterQuery, refs]);
 
   const onGridPick = React.useCallback(
     (at: TableSize): void => {
       pick('table', at);
     },
     [pick],
-  );
-  const onGridHover = React.useCallback(
-    (at: TableSize): void => {
-      openGrid(at);
-    },
-    [openGrid],
   );
 
   const scroller = domElementOf(editor)?.closest<HTMLElement>('[data-radix-scroll-area-viewport]') ?? undefined;
@@ -545,59 +535,57 @@ function OpenSlashMenu({ editor, menu, trigger, query }: OpenSlashMenuProps): Re
         {...layer}
       >
         <MenuRows rowsClassName='flex flex-col gap-1'>
-          <div ref={rowsRef} className='contents'>
-            {items.length === 0 ? (
-              <div data-testid='doc-slash-empty' className='px-2 py-1.5 text-sm text-muted-foreground'>
-                {t('spaces.document.slashMenu.empty')}
-              </div>
-            ) : (
-              items.map((id, at) => {
-                const { Icon, labelKey } = insertEntryLook(id);
-                const out = reach.has(id);
-                const ruled = ruleBetween(items[at - 1], id);
-                const handlers = {
-                  onMouseEnter: (): void => {
-                    // A row out of reach does not light up under the
-                    // pointer, as in the insert menu.
-                    if (out) return;
-                    highlight(at);
-                    if (id !== 'table') closeGrid();
-                  },
-                  onMouseDown: (event: React.MouseEvent): void => {
-                    // Only the main button picks, as in the insert menu.
-                    if (event.button !== 0) return;
-                    if (id === 'table' && !out) openGrid(null);
-                    else pick(id);
-                  },
-                };
-                return (
-                  <React.Fragment key={id}>
-                    {ruled ? <Separator className='-mx-1 w-auto' /> : null}
-                    <Button
-                      ref={id === 'table' ? gridFloat.refs.setReference : undefined}
-                      variant={null}
-                      size={null}
-                      tabIndex={-1}
-                      data-testid={`doc-slash-row-${id}`}
-                      data-highlighted={at === index ? '' : undefined}
-                      aria-disabled={out ? 'true' : undefined}
-                      className={cn(
-                        menuItemBase,
-                        'w-full justify-start font-normal data-[highlighted]:bg-accent',
-                        out && UNAVAILABLE_KEYBOARD_FOCUS_ONLY,
-                        id === 'table' && grid !== null && 'bg-accent',
-                      )}
-                      {...(id === 'table' ? getReferenceProps(handlers) : handlers)}
-                    >
-                      <Icon />
-                      {t(labelKey)}
-                      {id === 'table' ? <ChevronRight className='ml-auto size-4 text-muted-foreground' /> : null}
-                    </Button>
-                  </React.Fragment>
-                );
-              })
-            )}
-          </div>
+          {items.length === 0 ? (
+            <div data-testid='doc-slash-empty' className='px-2 py-1.5 text-sm text-muted-foreground'>
+              {t('spaces.document.slashMenu.empty')}
+            </div>
+          ) : (
+            items.map((id, at) => {
+              const { Icon, labelKey } = insertEntryLook(id);
+              const out = reach.has(id);
+              const ruled = ruleBetween(items[at - 1], id);
+              const handlers = {
+                onMouseEnter: (): void => {
+                  // A row out of reach does not light up under the
+                  // pointer, as in the insert menu.
+                  if (out) return;
+                  highlight(at);
+                  if (id !== 'table') closeGrid();
+                },
+                onMouseDown: (event: React.MouseEvent): void => {
+                  // Only the main button picks, as in the insert menu.
+                  if (event.button !== 0) return;
+                  if (id === 'table' && !out) openGrid(null);
+                  else pick(id);
+                },
+              };
+              return (
+                <React.Fragment key={id}>
+                  {ruled ? <Separator className='-mx-1 w-auto' /> : null}
+                  <Button
+                    ref={id === 'table' ? gridFloat.refs.setReference : undefined}
+                    variant={null}
+                    size={null}
+                    tabIndex={-1}
+                    data-testid={`doc-slash-row-${id}`}
+                    data-highlighted={at === index ? '' : undefined}
+                    aria-disabled={out ? 'true' : undefined}
+                    className={cn(
+                      menuItemBase,
+                      'w-full justify-start font-normal data-[highlighted]:bg-accent',
+                      out && UNAVAILABLE_KEYBOARD_FOCUS_ONLY,
+                      id === 'table' && grid !== null && 'bg-accent',
+                    )}
+                    {...(id === 'table' ? getReferenceProps(handlers) : handlers)}
+                  >
+                    <Icon />
+                    {t(labelKey)}
+                    {id === 'table' ? <ChevronRight className='ml-auto size-4 text-muted-foreground' /> : null}
+                  </Button>
+                </React.Fragment>
+              );
+            })
+          )}
         </MenuRows>
       </div>
       {grid === null ? null : (
@@ -611,7 +599,7 @@ function OpenSlashMenu({ editor, menu, trigger, query }: OpenSlashMenuProps): Re
           {...getFloatingProps()}
         >
           <MenuRows>
-            <PlainTableSizeGrid at={grid.at} onHover={onGridHover} onPick={onGridPick} />
+            <PlainTableSizeGrid at={grid.at} onHover={openGrid} onPick={onGridPick} />
           </MenuRows>
         </div>
       )}

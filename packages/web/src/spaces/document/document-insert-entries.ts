@@ -34,6 +34,14 @@ export const INSERT_ENTRY_IDS = [
 /** One entry of the insert menu. */
 export type InsertEntryId = (typeof INSERT_ENTRY_IDS)[number];
 
+/** The media entries, which open the file picker instead of inserting a block. */
+export const MEDIA_ENTRY_IDS: ReadonlySet<InsertEntryId> = new Set<InsertEntryId>(['image', 'audio', 'video']);
+
+/** The entries offered where no file can be picked. */
+export const INSERT_ENTRY_IDS_WITHOUT_MEDIA: readonly InsertEntryId[] = INSERT_ENTRY_IDS.filter(
+  (id) => !MEDIA_ENTRY_IDS.has(id),
+);
+
 /** What an entry draws: its icon and the key of its name. */
 export interface InsertEntryLook {
   readonly Icon: LucideIcon;
@@ -64,7 +72,7 @@ export function insertEntryLook(id: InsertEntryId): InsertEntryLook {
 /**
  * The group an entry sits in. A rule is drawn wherever two neighbouring
  * entries are in different groups: block types group by dimension, as the
- * block type menu does (`rulesAfter`), and the rest share one group.
+ * block type menu does, and the rest share one group.
  * @param id - The entry.
  * @returns Its group.
  */

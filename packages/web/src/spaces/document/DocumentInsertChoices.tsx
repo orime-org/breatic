@@ -24,6 +24,8 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { itemWithin, whenOutOfReach } from '@web/spaces/document/document-block-menu-parts';
 import {
   INSERT_ENTRY_IDS,
+  INSERT_ENTRY_IDS_WITHOUT_MEDIA,
+  MEDIA_ENTRY_IDS,
   insertEntryLook,
   ruleBetween,
   type InsertEntryId,
@@ -32,9 +34,6 @@ import { COLUMNS, type InsertChoice, type TableSize } from '@web/spaces/document
 import { DocumentTableSizeGrid } from '@web/spaces/document/DocumentTableSizeGrid';
 import { toast } from '@web/lib/toast';
 import type { MediaBlockType } from '@web/spaces/document/document-media-types';
-
-/** The media entries, which run `onPickMedia` instead of `onPick`. */
-const MEDIA_ENTRIES: ReadonlySet<InsertEntryId> = new Set<InsertEntryId>(['image', 'audio', 'video']);
 
 interface DocumentInsertChoicesProps {
   /** What picking an entry does. */
@@ -78,7 +77,7 @@ export const DocumentInsertChoices = React.memo(function DocumentInsertChoices({
   );
   // Every row comes from `INSERT_ENTRY_IDS`, the list the slash menu draws
   // too; a rule sits wherever two neighbours are in different groups.
-  const entries = onPickMedia === undefined ? INSERT_ENTRY_IDS.filter((id) => !MEDIA_ENTRIES.has(id)) : INSERT_ENTRY_IDS;
+  const entries = onPickMedia === undefined ? INSERT_ENTRY_IDS_WITHOUT_MEDIA : INSERT_ENTRY_IDS;
   return (
     <>
       {entries.map((id, index) => {
@@ -104,7 +103,7 @@ export const DocumentInsertChoices = React.memo(function DocumentInsertChoices({
             id === COLUMNS
               ? itemWithin(!columnsUnreachable, onPickColumns, onColumnsRefused)
               : itemWithin(unreachable?.has(id) !== true, () => {
-                if (MEDIA_ENTRIES.has(id)) onPickMedia?.(id as MediaBlockType);
+                if (MEDIA_ENTRY_IDS.has(id)) onPickMedia?.(id as MediaBlockType);
                 else onPick(id as InsertChoice);
               });
           row = (

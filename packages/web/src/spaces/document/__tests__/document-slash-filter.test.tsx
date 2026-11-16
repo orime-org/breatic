@@ -13,7 +13,7 @@ import * as React from 'react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@web/components/ui/dropdown-menu';
 import { DocumentInsertChoices } from '@web/spaces/document/DocumentInsertChoices';
 import { INSERT_ENTRY_IDS } from '@web/spaces/document/document-insert-entries';
-import { closesForNoMatch, filterInsertEntries, queryWhileComposing } from '@web/spaces/document/document-slash-filter';
+import { closesForNoMatch, filterInsertEntries } from '@web/spaces/document/document-slash-filter';
 
 describe('the slash menu rows', () => {
   it('are the insert menu rows, in its order', () => {
@@ -63,12 +63,6 @@ describe('filtering by what is typed after the trigger', () => {
 });
 
 describe('typing through an input method', () => {
-  it('filters by the query from before the composition while composing', () => {
-    expect(queryWhileComposing({ query: 'biaog', composing: true, before: '' })).toBe('');
-    expect(queryWhileComposing({ query: 'xbiao', composing: true, before: 'x' })).toBe('x');
-    expect(queryWhileComposing({ query: '表格', composing: false, before: '' })).toBe('表格');
-  });
-
   it('never closes for a missing match while composing', () => {
     expect(closesForNoMatch({ query: 'biaog', matched: false, lastUsefulLength: 1, composing: true })).toBe(false);
   });

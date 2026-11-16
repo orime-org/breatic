@@ -24,27 +24,6 @@ export function filterInsertEntries<Id extends string>(
   return ids.filter((id) => namesOf(id).some((name) => name.toLocaleLowerCase().includes(wanted)));
 }
 
-/** The query as the menu sees it, and whether an input method is composing. */
-interface ComposingQuery {
-  /** The text from the trigger to the caret. */
-  readonly query: string;
-  /** Whether an input method composition is in progress. */
-  readonly composing: boolean;
-  /** The query as it stood when the composition began. */
-  readonly before: string;
-}
-
-/**
- * The query the menu filters by. While an input method composes, its pinyin
- * or kana sits in the document; filtering by it would empty the menu, so the
- * query from before the composition stands until it ends.
- * @param state - The query and the composition.
- * @returns The query to filter by.
- */
-export function queryWhileComposing(state: ComposingQuery): string {
-  return state.composing ? state.before : state.query;
-}
-
 /** What the close rule reads. */
 interface NoMatchState {
   /** The query filtered by. */

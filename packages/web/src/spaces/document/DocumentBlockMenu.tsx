@@ -54,7 +54,6 @@ import { MenuTick } from '@web/spaces/document/MenuTick';
 import {
   TYPE_MENU_WIDTH,
   itemWithin,
-  rulesAfter,
   whenOutOfReach,
 } from '@web/spaces/document/document-block-menu-parts';
 import {
@@ -92,7 +91,7 @@ import { useDocumentMediaPick } from '@web/spaces/document/DocumentMediaPicker';
 import type { MediaBlockType } from '@web/spaces/document/document-media-types';
 import { DocumentInsertChoices } from '@web/spaces/document/DocumentInsertChoices';
 import { useRowNow } from '@web/spaces/document/use-row-now';
-import { insertReach, reachFromKey, reachKey } from '@web/spaces/document/document-insert-entries';
+import { insertReach, reachFromKey, reachKey, ruleBetween } from '@web/spaces/document/document-insert-entries';
 import { openTableFullscreen } from '@web/spaces/document/document-table-fullscreen';
 import { copyTableLine, cutTableLine, firstCellOf } from '@web/spaces/document/document-table-line-clipboard';
 import { toast } from '@web/lib/toast';
@@ -394,10 +393,8 @@ export function DocumentBlockMenu({
                   const ItemIcon = item.Icon;
                   const reachable =
                     item.id === 'quote' ? faces.quotable : faces.holdsText;
-                  const ruled = rulesAfter(
-                    item.id,
-                    BLOCK_TYPE_ITEMS[index + 1]?.id,
-                  );
+                  const next = BLOCK_TYPE_ITEMS[index + 1]?.id;
+                  const ruled = next !== undefined && ruleBetween(item.id, next);
                   return (
                     <React.Fragment key={item.id}>
                       <DropdownMenuItem

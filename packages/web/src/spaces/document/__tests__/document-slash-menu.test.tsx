@@ -232,6 +232,19 @@ describe('the keyboard in the menu (A3)', () => {
     expect(read(editor)[0]?.type).toBe('paragraph');
   });
 
+  it('keeps filtering by the query from before a composition until it ends', () => {
+    const { editor } = open([para('')]);
+    caretAtEnd(editor, read(editor)[0]!.id);
+    type(editor, '/');
+    const all = rows();
+    const view = editor.prosemirrorView!;
+    act(() => {
+      view.dom.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
+    });
+    type(editor, 'biao');
+    expect(rows()).toEqual(all);
+  });
+
   it('closes when the trigger is deleted', () => {
     const { editor } = open([para('')]);
     caretAtEnd(editor, read(editor)[0]!.id);
