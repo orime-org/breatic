@@ -247,7 +247,8 @@ test('a member follows another across Spaces, canvas camera and document scroll,
     await page.getByTestId('members-trigger').click();
     const viewB = page.locator('[data-testid^="members-follow-"]');
     await expect(viewB).toHaveAttribute('aria-disabled', 'true', { timeout: 15_000 });
-    await viewB.click();
+    // Playwright waits forever on an aria-disabled control; a user's click reaches it.
+    await viewB.click({ force: true });
     await expect(page.locator('[data-sonner-toast]').filter({ hasText: /following you/i })).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(page.getByTestId('follow-bar')).toHaveCount(0);
