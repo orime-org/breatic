@@ -183,16 +183,12 @@ describe('narrowing the menu (A2)', () => {
 
   it('finds an entry by its name in the interface language and by its English name', () => {
     setLocale('zh-CN');
-    const { editor } = open([para('')]);
-    const id = read(editor)[0]!.id;
-    caretAtEnd(editor, id);
+    const { editor } = open([para(''), para('')]);
+    caretAtEnd(editor, read(editor)[0]!.id);
     type(editor, '/表格');
     expect(rows()).toEqual(['table']);
     press(editor, 'Escape');
-    act(() => {
-      editor.updateBlock(id, { content: '' } as never);
-    });
-    caretAtEnd(editor, id);
+    caretAtEnd(editor, read(editor)[1]!.id);
     type(editor, '/table');
     expect(rows()).toEqual(['table']);
   });
@@ -304,10 +300,11 @@ describe('the table entry (A4, design 5.8)', () => {
     press(editor, 'ArrowRight');
     press(editor, 'ArrowDown');
     press(editor, 'Enter');
-    const table = read(editor).find((block) => block.type !== 'paragraph');
-    const tableRows = (table?.content as { rows?: { cells: unknown[] }[] } | undefined)?.rows;
-    expect(tableRows).toHaveLength(2);
-    expect(tableRows?.[0]?.cells).toHaveLength(2);
+    const table = read(editor).find((block) => block.type !== 'paragraph') as
+      | (ReadBlock & { children: { children: unknown[] }[] })
+      | undefined;
+    expect(table?.children).toHaveLength(2);
+    expect(table?.children[0]?.children).toHaveLength(2);
   });
 
   it('goes back to the list on Escape and keeps what was typed', () => {
