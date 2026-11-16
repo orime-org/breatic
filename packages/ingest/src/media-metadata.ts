@@ -96,7 +96,8 @@ function turnsTheFrame(rotation: number | undefined): boolean {
 
 /**
  * The size Chromium shows a coded picture at (`VideoAspectRatio::GetNaturalSize`, measured): a sample aspect ratio above 1
- * widens it, below 1 makes it taller, the scaled side rounded to the nearest pixel; a quarter turn then swaps the sides.
+ * widens it, below 1 makes it taller, the scaled side rounded to the nearest pixel in double precision as Chromium computes
+ * it (102 · 13/12 is 110.49999999999999, so 110); a quarter turn then swaps the sides.
  * @param width - The coded width.
  * @param height - The coded height.
  * @param sampleAspectRatio - The sample aspect ratio; undefined or 0:n for square pixels.
@@ -107,11 +108,8 @@ function turnsTheFrame(rotation: number | undefined): boolean {
 export function naturalSize(width: number, height: number, sampleAspectRatio: { numerator: number; denominator: number } | undefined,
   quarterTurn: boolean): { width: number; height: number } {
   const ratio = sampleAspectRatio === undefined || sampleAspectRatio.numerator <= 0 || sampleAspectRatio.denominator <= 0 ? null : sampleAspectRatio;
-  // n / d rounded half up, exactly: floor((2n + d) / 2d).
-  const round = (numerator: bigint, denominator: bigint): number => Number((2n * numerator + denominator) / (2n * denominator));
-  const shown = ratio === null || ratio.numerator === ratio.denominator ? { width, height }
-    : ratio.numerator > ratio.denominator ? { width: round(BigInt(width) * BigInt(ratio.numerator), BigInt(ratio.denominator)), height }
-      : { width, height: round(BigInt(height) * BigInt(ratio.denominator), BigInt(ratio.numerator)) };
+  const aspect = ratio === null ? 1 : ratio.numerator / ratio.denominator;
+  const shown = aspect > 1 ? { width: Math.round(width * aspect), height } : aspect < 1 ? { width, height: Math.round(height / aspect) } : { width, height };
   return quarterTurn ? { width: shown.height, height: shown.width } : shown;
 }
 

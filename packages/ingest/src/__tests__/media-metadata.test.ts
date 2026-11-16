@@ -217,6 +217,15 @@ describe("a video whose pixels are not square", () => {
     expect(pickMediaMetadata(report([{ ...VIDEO_STREAM, width: 720, height: 480, sampleAspectRatio }], 2))).toMatchObject(size);
   });
 
+  // Chromium rounds the double product (VideoAspectRatio::GetNaturalSize): 102 · (13/12) is 110.49999999999999 there, so 110
+  // (measured in Chromium 151 and Chrome 157), though the exact product 110.5 would round to 111.
+  it.each([
+    [102, 80, { numerator: 13, denominator: 12 }, { width: 110, height: 80 }],
+    [120, 78, { numerator: 12, denominator: 17 }, { width: 120, height: 110 }],
+  ])("files %ix%i at SAR %o with Chromium's double rounding", (width, height, sampleAspectRatio, size) => {
+    expect(pickMediaMetadata(report([{ ...VIDEO_STREAM, width, height, sampleAspectRatio }], 2))).toMatchObject(size);
+  });
+
   it("files a still image at its stored pixels", () => {
     expect(mediaNumbersFor("image/jpeg", report([ANAMORPHIC], 0.04))).toMatchObject({ width: 360, height: 240 });
   });
