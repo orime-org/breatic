@@ -102,3 +102,9 @@ describe('transitionSpaceOpenRequest — opened', () => {
     expect(transitionSpaceOpenRequest(OPENED, event)).toEqual({ state: OPENED, effects: [] });
   });
 });
+
+describe('transitionSpaceOpenRequest — the Project page closes', () => {
+  it.each([NONE, REQUESTING, CREATING, { ...CREATING, next: other }, OPENED] as SpaceOpenRequestState[])('ends the request from %o, so a later one is taken', (state) => {
+    expect(transitionSpaceOpenRequest(state, { type: 'reset' })).toEqual({ state: NONE, effects: [] });
+  });
+});

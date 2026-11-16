@@ -67,6 +67,8 @@ export function useSpaceOpenRequestRouting(
     if (activeId === state.spaceId) front.current = true;
     else if (front.current) run({ type: 'leave' });
   }, [state, activeId, run]);
+  // The page that resolves requests and reports a made Space is going away: what it left pending can never finish.
+  React.useEffect(() => () => { useSpaceOpenRequestStore.getState().dispatch({ type: 'reset' }); }, []);
   const created = React.useCallback((spaceId: string): void => {
     if (useSpaceOpenRequestStore.getState().state.status === 'creating') run({ type: 'created', spaceId });
   }, [run]);

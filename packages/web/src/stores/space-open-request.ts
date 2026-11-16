@@ -35,7 +35,9 @@ export type SpaceOpenRequestEvent =
   | { type: 'created'; spaceId: string }
   | { type: 'create_failed' }
   | { type: 'handled' }
-  | { type: 'leave' };
+  | { type: 'leave' }
+  /** The Project page that carries requests out closed; nothing can finish what is pending. */
+  | { type: 'reset' };
 
 /** What the project page does next. */
 export type SpaceOpenRequestEffect =
@@ -64,6 +66,7 @@ const NONE: SpaceOpenRequestState = { status: 'none' };
  */
 export function transitionSpaceOpenRequest(state: SpaceOpenRequestState, event: SpaceOpenRequestEvent): SpaceOpenRequestTransition {
   const stay: SpaceOpenRequestTransition = { state, effects: [] };
+  if (event.type === 'reset') return { state: NONE, effects: [] };
   if (event.type === 'request') {
     if (state.status === 'creating') return { state: { ...state, next: event.request }, effects: [] };
     return { state: { status: 'requesting', request: event.request }, effects: [{ type: 'resolve', request: event.request }] };
