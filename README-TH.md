@@ -1,7 +1,7 @@
 <h1 align="center">Breatic</h1>
 
 <p align="center"><strong>พื้นที่ทำงานสร้างสรรค์ด้วย AI สำหรับทีมที่ทำงานร่วมกันแบบเรียลไทม์</strong></p>
-<p align="center">ใช้งานออนไลน์ได้ · เปิดให้เข้าถึงซอร์สโค้ด · เบราว์เซอร์เดสก์ท็อป</p>
+<p align="center">ใช้งานออนไลน์ได้ · โอเพนซอร์ส · เบราว์เซอร์เดสก์ท็อป</p>
 
 <p align="center">
   <a href="https://breatic.ai/?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=repository_listing_202610&amp;utm_content=readme_website_th">เว็บไซต์</a> ·
@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/orime-org/breatic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/orime-org/breatic?style=flat&amp;color=blueviolet&amp;label=release&amp;display_name=tag"></a>
-  <a href="LICENSE"><img alt="License: Elastic-2.0" src="https://img.shields.io/badge/license-Elastic--2.0-blue?style=flat"></a>
+  <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat"></a>
   <a href="https://discord.gg/Yeu6A4aejN"><img alt="Discord community" src="https://img.shields.io/badge/discord-join%20community-5865F2?style=flat&amp;logo=discord&amp;logoColor=white"></a>
   <a href="#get-started"><img alt="Quickstart guide" src="https://img.shields.io/badge/quickstart-guide-green?style=flat"></a>
 </p>
@@ -96,7 +96,7 @@
 
 ## สัญญาอนุญาตและการใช้งานที่อนุญาต
 
-ซอร์สโค้ดของ Breatic เปิดให้เข้าถึงภายใต้ [Elastic License 2.0](LICENSE) (Elastic-2.0) คุณสามารถอ่าน แก้ไข แจกจ่ายต่อ และใช้งานเองหรือภายในองค์กร รวมถึงงานเชิงพาณิชย์ได้ แต่ไม่สามารถให้ Breatic แก่บุคคลที่สามในรูปแบบบริการโฮสต์หรือบริการที่มีผู้ดูแลให้ โปรดอ่านเงื่อนไขฉบับเต็มในสัญญาอนุญาต
+Breatic เป็นโอเพนซอร์สภายใต้ [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0-only) คุณสามารถใช้งาน ศึกษา แก้ไข และโฮสต์ Breatic เองได้ทุกวัตถุประสงค์ รวมถึงเชิงพาณิชย์ หากคุณแก้ไข Breatic และให้ผู้อื่นใช้งานเวอร์ชันที่แก้ไขผ่านเครือข่าย คุณต้องเสนอซอร์สโค้ดฉบับสมบูรณ์ให้แก่พวกเขาภายใต้สัญญาอนุญาตเดียวกัน โปรดอ่านเงื่อนไขฉบับเต็มในสัญญาอนุญาต
 
 ชื่อและโลโก้ Breatic เป็นเครื่องหมายการค้าของ Orime, Inc. และไม่อยู่ภายใต้สัญญาอนุญาตซอฟต์แวร์นี้ ดู [TRADEMARKS.md](TRADEMARKS.md) สัญญาอนุญาตไม่ได้จำกัดเนื้อหาที่คุณสร้างด้วย Breatic
 

@@ -1,7 +1,7 @@
 <h1 align="center">Breatic</h1>
 
 <p align="center"><strong>مساحة عمل إبداعية بالذكاء الاصطناعي تتيح للفرق التعاون في الوقت الفعلي.</strong></p>
-<p align="center">متاح عبر الإنترنت · الشيفرة المصدرية متاحة · متصفح سطح المكتب</p>
+<p align="center">متاح عبر الإنترنت · مفتوح المصدر · متصفح سطح المكتب</p>
 
 <p align="center">
   <a href="https://breatic.ai/?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=repository_listing_202610&amp;utm_content=readme_website_ar">الموقع</a> ·
@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/orime-org/breatic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/orime-org/breatic?style=flat&amp;color=blueviolet&amp;label=release&amp;display_name=tag"></a>
-  <a href="LICENSE"><img alt="License: Elastic-2.0" src="https://img.shields.io/badge/license-Elastic--2.0-blue?style=flat"></a>
+  <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat"></a>
   <a href="https://discord.gg/Yeu6A4aejN"><img alt="Discord community" src="https://img.shields.io/badge/discord-join%20community-5865F2?style=flat&amp;logo=discord&amp;logoColor=white"></a>
   <a href="#get-started"><img alt="Quickstart guide" src="https://img.shields.io/badge/quickstart-guide-green?style=flat"></a>
 </p>
@@ -98,7 +98,7 @@
 
 ## الترخيص والاستخدام المسموح
 
-الشيفرة المصدرية لـBreatic متاحة بموجب [Elastic License 2.0](LICENSE) (Elastic-2.0). يمكنك قراءتها وتعديلها وإعادة توزيعها وتشغيلها لنفسك أو داخل مؤسستك، بما في ذلك للأعمال التجارية. لا يجوز تقديم Breatic لأطراف ثالثة كخدمة مستضافة أو مُدارة. راجع النص الكامل للترخيص.
+Breatic مشروع مفتوح المصدر بموجب [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0-only). يمكنك استخدام Breatic ودراسته وتعديله واستضافته بنفسك لأي غرض، بما في ذلك الاستخدام التجاري. إذا عدّلت Breatic وأتحت لآخرين استخدام النسخة المعدّلة عبر شبكة، فعليك أن توفّر لهم شيفرتها المصدرية الكاملة بموجب الترخيص نفسه. راجع النص الكامل للترخيص.
 
 اسم Breatic وشعاره علامتان تجاريتان لشركة Orime, Inc. ولا يشملهما ترخيص البرمجيات؛ راجع [TRADEMARKS.md](TRADEMARKS.md). لا يقيّد الترخيص المحتوى الذي تنشئه باستخدام Breatic.
 
