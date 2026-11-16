@@ -43,22 +43,36 @@ export interface OperationRow {
   readonly inputAssetIds: readonly string[];
 }
 
-const ROW = {
-  operationKey: operationLedger.operationKey,
-  kind: operationLedger.kind,
-  accountUserId: operationLedger.accountUserId,
-  studioId: operationLedger.studioId,
-  projectId: operationLedger.projectId,
-  actorUserId: operationLedger.actorUserId,
-  status: operationLedger.status,
-  admittedAs: operationLedger.admittedAs,
-  overageHold: operationLedger.overageHold,
-  assetId: operationLedger.assetId,
-  absorbedBy: operationLedger.absorbedBy,
-  absorbedHoldReleased: operationLedger.absorbedHoldReleased,
-  expiresAt: operationLedger.expiresAt,
-  inputAssetIds: operationLedger.inputAssetIds,
-};
+/** The columns a row is read with. */
+type RowColumns = Pick<
+  typeof operationLedger,
+  "operationKey" | "kind" | "accountUserId" | "studioId" | "projectId" | "actorUserId" | "status" | "admittedAs"
+  | "overageHold" | "assetId" | "absorbedBy" | "absorbedHoldReleased" | "expiresAt" | "inputAssetIds"
+>;
+
+/**
+ * The columns a row is read with; built when called, so importing this module
+ * reads nothing from the schema.
+ * @returns The selection.
+ */
+function rowColumns(): RowColumns {
+  return {
+    operationKey: operationLedger.operationKey,
+    kind: operationLedger.kind,
+    accountUserId: operationLedger.accountUserId,
+    studioId: operationLedger.studioId,
+    projectId: operationLedger.projectId,
+    actorUserId: operationLedger.actorUserId,
+    status: operationLedger.status,
+    admittedAs: operationLedger.admittedAs,
+    overageHold: operationLedger.overageHold,
+    assetId: operationLedger.assetId,
+    absorbedBy: operationLedger.absorbedBy,
+    absorbedHoldReleased: operationLedger.absorbedHoldReleased,
+    expiresAt: operationLedger.expiresAt,
+    inputAssetIds: operationLedger.inputAssetIds,
+  };
+}
 
 /**
  * Narrow a selected row to the entity.
@@ -130,7 +144,7 @@ export async function countCoveredInFlight(accountUserId: string, admitting: str
  * @returns The row, or null.
  */
 export async function findByKey(key: string, tx?: DbTx): Promise<OperationRow | null> {
-  const [row] = await (tx ?? db).select(ROW).from(operationLedger).where(eq(operationLedger.operationKey, key));
+  const [row] = await (tx ?? db).select(rowColumns()).from(operationLedger).where(eq(operationLedger.operationKey, key));
   return row === undefined ? null : toRow(row);
 }
 
@@ -210,7 +224,7 @@ export async function claimOne(
       where status = 'deferred' and absorbed_by is null and expires_at > now()
         and studio_id = ${where.studioId} and account_user_id = ${where.accountUserId} and asset_id = ${where.assetId}
       order by created_at limit 1)`))
-    .returning(ROW);
+    .returning(rowColumns());
   return row === undefined ? null : toRow(row);
 }
 
@@ -251,7 +265,7 @@ export async function markCounted(key: string, from: "reserved" | "deferred", at
       eq(operationLedger.status, from),
       ...(from === "deferred" ? [sql`${operationLedger.expiresAt} <= now()`, sql`not ${claimantLive()}`] : []),
     ))
-    .returning(ROW);
+    .returning(rowColumns());
   return row === undefined ? null : toRow(row);
 }
 
@@ -277,7 +291,7 @@ export async function markDeferred(key: string, assetId: string, tx: DbTx): Prom
     .update(operationLedger)
     .set({ status: "deferred", assetId, updatedAt: sql`now()` })
     .where(and(eq(operationLedger.operationKey, key), eq(operationLedger.status, "reserved")))
-    .returning(ROW);
+    .returning(rowColumns());
   return row === undefined ? null : toRow(row);
 }
 
@@ -303,7 +317,7 @@ export async function markReleased(key: string, reason: string, tx: DbTx): Promi
     .update(operationLedger)
     .set({ status: "released", releasedAt: sql`now()`, releaseReason: reason.slice(0, 32), updatedAt: sql`now()` })
     .where(and(eq(operationLedger.operationKey, key), eq(operationLedger.status, "reserved")))
-    .returning(ROW);
+    .returning(rowColumns());
   return row === undefined ? null : toRow(row);
 }
 
@@ -325,7 +339,7 @@ export async function markAbsorbed(counted: OperationRow, tx: DbTx): Promise<Ope
       eq(operationLedger.studioId, counted.studioId),
       eq(operationLedger.accountUserId, counted.accountUserId),
     ))
-    .returning(ROW);
+    .returning(rowColumns());
   return rows.map(toRow);
 }
 
