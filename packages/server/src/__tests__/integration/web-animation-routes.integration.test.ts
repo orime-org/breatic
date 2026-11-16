@@ -13,6 +13,23 @@
 
 import { describe, it, expect, afterAll, beforeAll, inject, vi } from "vitest";
 
+// Counts the source-version reads a row view makes; every call goes through to the real repository.
+const versionReads = vi.hoisted(() => ({ count: 0 }));
+vi.mock("@breatic/domain", async (importOriginal) => {
+  const actual = await importOriginal<typeof DomainModule>();
+  const repo = actual.webAnimationSourceRepo;
+  return {
+    ...actual,
+    webAnimationSourceRepo: {
+      ...repo,
+      findByIds: (...args: Parameters<typeof repo.findByIds>) => {
+        versionReads.count += 1;
+        return repo.findByIds(...args);
+      },
+    },
+  };
+});
+
 vi.mock("ai", () => ({
   generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
   streamText: () => ({
@@ -24,6 +41,7 @@ vi.mock("ai", () => ({
   tool: (config: Record<string, unknown>) => config,
 }));
 
+import type * as DomainModule from "@breatic/domain";
 import crypto from "node:crypto";
 import postgres from "postgres";
 import type { Hono } from "hono";
@@ -495,6 +513,27 @@ describe("GET /timeline/executions/:id", () => {
     expect(res.status, await res.clone().text()).toBe(200);
     const { data } = (await res.json()) as { data: RowView };
     expect(data).toMatchObject({ id: execution.id, export: { executionId: made.id, status: "queued" } });
+  });
+
+  it("reads two generations of a long modification chain, whatever its length", async () => {
+    const fx = await seedProject();
+    const { versionId: first } = await finishedCreate(fx);
+    let baseVersion = first;
+    const chain: TimelineExecution[] = [];
+    for (const instruction of ["Slower", "Bluer", "Bigger", "Louder"]) {
+      const modified = await insertExecution({ projectId: fx.projectId, spaceId: fx.spaceId, actorUserId: fx.editor.userId, kind: "web_animation_modify", input: { baseSourceVersionId: baseVersion, instruction, engine: "deepseek", aspect: "16:9", durationSeconds: 4, fps: { num: 24, den: 1 } } });
+      await grant(modified.id, fx.projectId);
+      baseVersion = (await succeed(modified)).id;
+      chain.push(modified);
+    }
+    const exported = await insertExecution({ projectId: fx.projectId, spaceId: fx.spaceId, actorUserId: fx.editor.userId, kind: "web_animation_export", input: { sourceVersionId: baseVersion, width: 1920, height: 1080, fps: { num: 24, den: 1 }, durationFrames: 96, videoKey: "generated/chain.mp4" } });
+    await grant(exported.id, fx.projectId);
+    versionReads.count = 0;
+    const res = await get(fx.viewer.cookie, `/timeline/executions/${exported.id}?projectId=${fx.projectId}&spaceId=${fx.spaceId}`);
+    expect(res.status, await res.clone().text()).toBe(200);
+    const { data } = (await res.json()) as { data: RowView };
+    expect(data.source).toEqual({ executionId: chain[3]!.id, request: "Louder", base: { executionId: chain[2]!.id, request: "Bigger" } });
+    expect(versionReads.count).toBe(2);
   });
 
   it("answers a row this Project holds no grant for with 404", async () => {

@@ -302,13 +302,15 @@ function readInput(row: TimelineExecution): WebAnimationExecutionInput | null {
 interface Resolved { execution: TimelineExecution; input: WebAnimationExecutionInput }
 
 /**
- * Resolve the executions behind source versions, following a modification to its own base, and cache them.
+ * Resolve the executions behind source versions and, for a modification, its own base, and cache them: the row view
+ * names at most a row's base or source and that source's base, so two levels are read whatever the chain's length.
  * @param versionIds - The versions.
  * @param byVersion - What is already resolved, by version id; filled in place.
+ * @param depth - How many levels to read, these versions included.
  * @returns Nothing.
  * @throws {Error} When a read fails.
  */
-async function resolveVersions(versionIds: readonly string[], byVersion: Map<string, Resolved>): Promise<void> {
+async function resolveVersions(versionIds: readonly string[], byVersion: Map<string, Resolved>, depth = 2): Promise<void> {
   const wanted = [...new Set(versionIds)].filter((id) => !byVersion.has(id));
   if (wanted.length === 0) return;
   const versions = await webAnimationSourceRepo.findByIds(wanted);
@@ -321,7 +323,7 @@ async function resolveVersions(versionIds: readonly string[], byVersion: Map<str
     byVersion.set(version.id, { execution, input });
     if (input.kind === "web_animation_modify") bases.push(input.baseSourceVersionId);
   }
-  if (bases.length > 0) await resolveVersions(bases, byVersion);
+  if (bases.length > 0 && depth > 1) await resolveVersions(bases, byVersion, depth - 1);
 }
 
 /**
