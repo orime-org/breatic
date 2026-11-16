@@ -5,7 +5,6 @@ import * as React from 'react';
 import type { Awareness } from 'y-protocols/awareness';
 
 import { pickLeaderField } from '@web/data/yjs/follow-presence';
-import { FOLLOW_BAR_HEIGHT } from '@web/features/follow/FollowBar';
 import {
   LANDING,
   markAlignment,
@@ -79,7 +78,7 @@ export function useDocumentFollow(input: DocumentFollowInput): void {
      * @param id - The block to align to.
      */
     const alignTo = (id: string): void => {
-      const top = scrollTopForBlock(viewport, root, id, { landing: LANDING + FOLLOW_BAR_HEIGHT });
+      const top = scrollTopForBlock(viewport, root, id, { landing: LANDING });
       if (top === null) {
         pending = id;
         return;

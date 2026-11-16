@@ -7,15 +7,14 @@ import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate } from 'y-protoc
 import * as Y from 'yjs';
 
 import { SCROLLBAR_MARK } from '@web/components/ui/scroll-area';
-import { FOLLOW_BAR_HEIGHT } from '@web/features/follow/FollowBar';
 import { LANDING } from '@web/spaces/document/block-scroll';
 import { useDocumentFollow, type DocumentFollowInput } from '@web/spaces/document/use-document-follow';
 import { usePublishTopBlock, type PublishTopBlockInput } from '@web/spaces/document/use-publish-top-block';
 import { useFollowStore } from '@web/stores/follow';
 
 const CLIENT_HEIGHT = 500;
-/** Where a followed block lands: below the follow bar that covers the top of the body (finding C). */
-const FOLLOWED_LANDING = LANDING + FOLLOW_BAR_HEIGHT;
+/** Where a followed block lands: the body's own landing, since the follow bar sits above the body. */
+const FOLLOWED_LANDING = LANDING;
 const docs: Y.Doc[] = [];
 const resizeCallbacks = new Map<Element,() => void>();
 const realResizeObserver = globalThis.ResizeObserver;

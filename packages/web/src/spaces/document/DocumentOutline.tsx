@@ -447,7 +447,7 @@ export const DocumentOutline = React.memo(function DocumentOutline({
         )}
         style={over ? OPEN_WIDTH : undefined}
       >
-        <div className='flex flex-none pb-2 pl-[var(--doc-entry-inset)] pt-[calc(1.25rem+var(--doc-follow-inset))]'>
+        <div className='flex flex-none pb-2 pl-[var(--doc-entry-inset)] pt-5'>
           <Tooltip>
             <TooltipTrigger asChild>
               <Button

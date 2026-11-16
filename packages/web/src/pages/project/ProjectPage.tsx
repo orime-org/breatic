@@ -1087,93 +1087,95 @@ function ProjectWorkspace({
                 disappearing (caught by the real-browser screenshot). Floating
                 UI that must escape the box (menus / tooltips) portals to
                 document.body and is unaffected. */}
-                  <div className='relative flex-1 overflow-hidden'>
-                    {/* Every open tab holds its document's connection; the
+                  <div className='relative flex flex-1 flex-col overflow-hidden'>
+                    <FollowBar spaceType={activeSpace?.type ?? null} />
+                    <div className='relative min-h-0 flex-1'>
+                      {/* Every open tab holds its document's connection; the
                     one on screen shows its body, and a tab switched away from
                     keeps its body mounted and hidden (inner#1235). */}
-                    {openBodies.map((tab) => (
-                      <OpenSpace
-                        key={tab.id}
-                        projectId={projectId}
-                        spaceId={tab.id}
-                        type={tab.type}
-                        active={tab.id === activeSpace?.id}
-                        visited={visited.has(tab.id)}
-                        readOnly={isViewer}
-                        myRole={role}
-                      />
-                    ))}
-                    <FollowBar />
-                    {activeSpace ? null : (
-                      <div
-                        data-testid='no-active-space'
-                        className='flex h-full w-full items-center justify-center text-sm text-muted-foreground'
-                      >
-                        {t('project.space.noActive')}
-                      </div>
-                    )}
-                    {activeSpace?.type === 'canvas' ? (
-                      <>
-                        <input
-                          ref={uploadInputRef}
-                          type='file'
-                          multiple
-                          accept={`${uploadAcceptFor('all')},text/*`}
-                          hidden
-                          data-testid='canvas-upload-input'
-                          onChange={(e) => {
-                            const files = e.target.files;
-                            if (files && files.length > 0) {
-                              requestUpload([...files]);
-                            }
-                            // Reset so picking the same file again re-fires change.
-                            e.target.value = '';
-                          }}
+                      {openBodies.map((tab) => (
+                        <OpenSpace
+                          key={tab.id}
+                          projectId={projectId}
+                          spaceId={tab.id}
+                          type={tab.type}
+                          active={tab.id === activeSpace?.id}
+                          visited={visited.has(tab.id)}
+                          readOnly={isViewer}
+                          myRole={role}
                         />
-                        <LeftFloatingMenu
-                          disabled={isViewer}
-                          concealed={picking}
-                          armedTool={placingAnnotation ? 'comment' : undefined}
-                          onCreateNode={requestNodeCreate}
-                          onPick={(tool) => {
-                          // Open the file picker synchronously inside the click so
-                          // the browser keeps user-activation; the canvas fulfils
-                          // the picked files via the upload mailbox.
-                            if (tool === 'upload') uploadInputRef.current?.click();
-                            // Arm the annotation tool; the canvas is waiting for the
-                            // click that says where the note goes (#1881 §6.4).
-                            // The lit button is the third way back out, beside
-                            // Escape and dropping the note — pressing the tool
-                            // that is already in hand puts it down.
-                            if (tool === 'comment') {
-                              if (placingAnnotation) endAnnotationPlacement();
-                              else startAnnotationPlacement();
-                            }
-                          // Comment is the one button here that arms a mode, so
-                          // it is the one that wears a pressed state; upload is
-                          // fire and forget. The node-library (`nodes`) button
-                          // owns its own dropdown, and the shortcuts button its
-                          // own dialog.
-                          }}
-                        />
-                        <ViewportToolbar
-                          zoom={zoom}
-                          concealed={picking}
-                          minimapVisible={minimapVisible}
-                          snapToGrid={snapToGrid}
-                          canUndo={canUndo}
-                          canRedo={canRedo}
-                          onZoomIn={() => requestViewportCommand('zoomIn')}
-                          onZoomOut={() => requestViewportCommand('zoomOut')}
-                          onZoomChange={(z) => requestViewportCommand({ zoomTo: z })}
-                          onFit={() => requestViewportCommand('fit')}
-                          onToggleSnap={toggleSnapToGrid}
-                          onToggleMinimap={toggleMinimap}
-                          onUndo={() => requestHistoryCommand('undo')}
-                          onRedo={() => requestHistoryCommand('redo')}
-                        />
-                      </>
-                    ) : null}
+                      ))}
+                      {activeSpace ? null : (
+                        <div
+                          data-testid='no-active-space'
+                          className='flex h-full w-full items-center justify-center text-sm text-muted-foreground'
+                        >
+                          {t('project.space.noActive')}
+                        </div>
+                      )}
+                      {activeSpace?.type === 'canvas' ? (
+                        <>
+                          <input
+                            ref={uploadInputRef}
+                            type='file'
+                            multiple
+                            accept={`${uploadAcceptFor('all')},text/*`}
+                            hidden
+                            data-testid='canvas-upload-input'
+                            onChange={(e) => {
+                              const files = e.target.files;
+                              if (files && files.length > 0) {
+                                requestUpload([...files]);
+                              }
+                              // Reset so picking the same file again re-fires change.
+                              e.target.value = '';
+                            }}
+                          />
+                          <LeftFloatingMenu
+                            disabled={isViewer}
+                            concealed={picking}
+                            armedTool={placingAnnotation ? 'comment' : undefined}
+                            onCreateNode={requestNodeCreate}
+                            onPick={(tool) => {
+                              // Open the file picker synchronously inside the click so
+                              // the browser keeps user-activation; the canvas fulfils
+                              // the picked files via the upload mailbox.
+                              if (tool === 'upload') uploadInputRef.current?.click();
+                              // Arm the annotation tool; the canvas is waiting for the
+                              // click that says where the note goes (#1881 §6.4).
+                              // The lit button is the third way back out, beside
+                              // Escape and dropping the note — pressing the tool
+                              // that is already in hand puts it down.
+                              if (tool === 'comment') {
+                                if (placingAnnotation) endAnnotationPlacement();
+                                else startAnnotationPlacement();
+                              }
+                              // Comment is the one button here that arms a mode, so
+                              // it is the one that wears a pressed state; upload is
+                              // fire and forget. The node-library (`nodes`) button
+                              // owns its own dropdown, and the shortcuts button its
+                              // own dialog.
+                            }}
+                          />
+                          <ViewportToolbar
+                            zoom={zoom}
+                            concealed={picking}
+                            minimapVisible={minimapVisible}
+                            snapToGrid={snapToGrid}
+                            canUndo={canUndo}
+                            canRedo={canRedo}
+                            onZoomIn={() => requestViewportCommand('zoomIn')}
+                            onZoomOut={() => requestViewportCommand('zoomOut')}
+                            onZoomChange={(z) => requestViewportCommand({ zoomTo: z })}
+                            onFit={() => requestViewportCommand('fit')}
+                            onToggleSnap={toggleSnapToGrid}
+                            onToggleMinimap={toggleMinimap}
+                            onUndo={() => requestHistoryCommand('undo')}
+                            onRedo={() => requestHistoryCommand('redo')}
+                          />
+                        </>
+                      ) : null}
+                    </div>
                   </div>
                 </section>
               </Panel>

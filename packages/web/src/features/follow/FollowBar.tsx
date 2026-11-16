@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import type { SpaceType } from '@breatic/shared';
 import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
@@ -8,17 +9,26 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { userPaletteColor } from '@web/lib/user-color';
 import { stopFollowing, useFollowStore } from '@web/stores/follow';
 
-/** The bar's height in pixels (`h-8`); a followed view is aligned below it, so it stays visible. */
+/** The bar's height in pixels (`h-8`); a followed canvas view is aligned below it, so it stays visible. */
 export const FOLLOW_BAR_HEIGHT = 32;
 
 /**
- * The "Following X · Stop" bar floating at the top of the Space area, and the
- * outline around that area in the leader's colour, while this user follows a
- * member (#920). Renders nothing otherwise. Its parent is the positioned
- * element that hosts the open Space bodies.
+ * Whether the bar lies over a Space of this type. The user pans Canvas and 3D
+ * freely, so nothing is lost under the bar; any other Space would hide its top
+ * lines under it, so there the bar takes its own row and the Space moves down.
+ */
+const BAR_OVER_SPACE: Record<SpaceType, boolean> = { canvas: true, '3d': true, document: false, timeline: false };
+
+/**
+ * The "Following X · Stop" bar at the top of the Space area, and the outline
+ * around that area in the leader's colour, while this user follows a member
+ * (#920). Renders nothing otherwise. Its parent is the positioned flex column
+ * that hosts the open Space bodies below it.
+ * @param props - The bar's input.
+ * @param props.spaceType - The type of the Space on screen; null when none is open.
  * @returns The bar and outline, or null while not following.
  */
-export function FollowBar(): React.JSX.Element | null {
+export function FollowBar({ spaceType }: { spaceType: SpaceType | null }): React.JSX.Element | null {
   const t = useTranslation();
   const leaderId = useFollowStore((s) => s.targetUserId);
   const leaderName = useFollowStore((s) => s.targetName);
@@ -37,7 +47,7 @@ export function FollowBar(): React.JSX.Element | null {
       />
       <div
         data-testid='follow-bar'
-        className='absolute inset-x-0 top-0 z-20 flex h-8 items-center justify-center gap-2 text-xs text-[color:var(--color-on-palette)]'
+        className={`${spaceType !== null && BAR_OVER_SPACE[spaceType] ? 'absolute inset-x-0 top-0' : 'relative shrink-0'} z-20 flex h-8 items-center justify-center gap-2 text-xs text-[color:var(--color-on-palette)]`}
         style={{ background: leaderColor }}
       >
         <span className='truncate font-semibold'>{t('members.follow.bar', { name: leaderName })}</span>

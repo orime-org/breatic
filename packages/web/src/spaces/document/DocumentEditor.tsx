@@ -56,7 +56,6 @@ import { useDocumentVersions } from '@web/spaces/document/use-document-versions'
 import { DocumentVersionAreaUnavailable } from '@web/spaces/document/DocumentVersionAreaUnavailable';
 import { useDocumentFollow } from '@web/spaces/document/use-document-follow';
 import { usePublishTopBlock } from '@web/spaces/document/use-publish-top-block';
-import { FOLLOW_BAR_HEIGHT } from '@web/features/follow/FollowBar';
 import { useFollowStore } from '@web/stores/follow';
 import type { Awareness } from 'y-protocols/awareness';
 
@@ -268,15 +267,6 @@ export const DocumentEditor = React.memo(function DocumentEditor({
   // Both rest while the snapshot panel shows in the same viewport; the
   // follower aligns after the layout effect above gave the body its place back.
   const leaderUserId = useFollowStore((s) => s.targetUserId);
-  // The follow bar lies over the top of the Space; the outline toggle and the
-  // whole-document entry pinned there step down below it.
-  const rowVars = React.useMemo(
-    (): React.CSSProperties => ({
-      ...BODY_ROW_VARS,
-      '--doc-follow-inset': `${String(leaderUserId === null ? 0 : FOLLOW_BAR_HEIGHT)}px`,
-    }) as React.CSSProperties,
-    [leaderUserId],
-  );
   useDocumentFollow({ awareness, leaderUserId, viewport, root: bodyRoot, paused: panelOpen });
   usePublishTopBlock({ awareness, viewport, root: bodyRoot, paused: panelOpen });
 
@@ -471,7 +461,7 @@ export const DocumentEditor = React.memo(function DocumentEditor({
           wheel anywhere in here moves both sides together. The heading outline
           stands left of it, outside the scroller, so it stays put while the
           body scrolls (inner#1149). */}
-      <div className={`${BODY_ROW_CLASS} flex min-h-0 flex-1`} style={rowVars}>
+      <div className={`${BODY_ROW_CLASS} flex min-h-0 flex-1`} style={BODY_ROW_VARS}>
         {/* It lists the body's headings. Behind the snapshot panel, and under a
             full-screen table, it steps aside the way a hidden Space does:
             hidden rather than unmounted, folds and tuck kept. */}

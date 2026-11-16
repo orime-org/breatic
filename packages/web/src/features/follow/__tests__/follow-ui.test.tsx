@@ -22,14 +22,14 @@ beforeEach(() => {
 
 describe('FollowBar', () => {
   it('renders nothing while not following', () => {
-    render(<FollowBar />);
+    render(<FollowBar spaceType='canvas' />);
     expect(screen.queryByTestId('follow-bar')).toBeNull();
     expect(screen.queryByTestId('follow-outline')).toBeNull();
   });
 
   it('shows whom the user follows in the leader colour, with the outline', () => {
     useFollowStore.getState().start('u1', 'Li Lei');
-    render(<FollowBar />);
+    render(<FollowBar spaceType='canvas' />);
     expect(screen.getByTestId('follow-bar')).toHaveTextContent('Li Lei');
     // The bar takes the leader's collaborator colour itself, from whom the store follows.
     expect(screen.getByTestId('follow-bar').style.background).toBe(userPaletteColor('u1'));
@@ -40,7 +40,7 @@ describe('FollowBar', () => {
     // The chip leans toward the theme foreground, away from the on-palette
     // text, so Stop reads at least as clearly as the label in both themes.
     useFollowStore.getState().start('u1', 'Li Lei');
-    render(<FollowBar />);
+    render(<FollowBar spaceType='canvas' />);
     expect(screen.getByText(t('members.follow.bar', { name: 'Li Lei' }))).toHaveClass('font-semibold');
     const stop = screen.getByTestId('follow-bar-stop');
     expect(stop.className).toContain('bg-[color-mix(in_srgb,var(--color-foreground)_20%,transparent)]');
@@ -50,16 +50,33 @@ describe('FollowBar', () => {
 
   it('exports the bar height the Spaces keep clear while following', () => {
     useFollowStore.getState().start('u1', 'Li Lei');
-    render(<FollowBar />);
+    render(<FollowBar spaceType='canvas' />);
     expect(FOLLOW_BAR_HEIGHT).toBe(32);
     // h-8 is 32px; the Spaces align below it, so the two must not drift apart.
     expect(screen.getByTestId('follow-bar')).toHaveClass('h-8');
   });
 
+  it('lies over a Space the user pans freely, and takes its own row above any other', () => {
+    // Canvas and 3D move under the bar at will; a document or a timeline would
+    // lose its top lines under it, so their content moves down instead.
+    useFollowStore.getState().start('u1', 'Li Lei');
+    for (const type of ['canvas', '3d'] as const) {
+      const { unmount } = render(<FollowBar spaceType={type} />);
+      expect(screen.getByTestId('follow-bar')).toHaveClass('absolute');
+      unmount();
+    }
+    for (const type of ['document', 'timeline', null] as const) {
+      const { unmount } = render(<FollowBar spaceType={type} />);
+      expect(screen.getByTestId('follow-bar')).toHaveClass('shrink-0');
+      expect(screen.getByTestId('follow-bar')).not.toHaveClass('absolute');
+      unmount();
+    }
+  });
+
   it('stops following when its stop button is pressed', async () => {
     useFollowStore.getState().start('u1', 'Li Lei');
     const user = userEvent.setup();
-    render(<FollowBar />);
+    render(<FollowBar spaceType='canvas' />);
     await user.click(screen.getByTestId('follow-bar-stop'));
     expect(useFollowStore.getState().targetUserId).toBeNull();
     expect(useFollowStore.getState().stopped?.reason).toBe('button');

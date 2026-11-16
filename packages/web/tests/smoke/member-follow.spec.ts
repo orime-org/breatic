@@ -50,7 +50,8 @@ async function followTheOther(page: Page): Promise<void> {
   const view = page.locator('[data-testid^="members-follow-"]');
   await expect(view).toHaveCount(1, { timeout: 30_000 });
   await view.click();
-  await page.keyboard.press('Escape');
+  // Starting to follow closes the member list by itself.
+  await expect(page.getByTestId('members-popover')).toHaveCount(0);
   await expect(page.getByTestId('follow-bar')).toBeVisible();
 }
 
@@ -129,10 +130,10 @@ async function distanceToEnd(page: Page): Promise<number> {
 }
 
 /**
- * Where the follow lands the leader's top block: this far below the top of the body, which is the
- * editor's own landing (16) plus the follow bar (32) laid over the top of the body.
+ * Where the follow lands the leader's top block: the editor's own landing below the top of the
+ * body; the follow bar sits in its own row above the body.
  */
-const LANDING = 16 + 32;
+const LANDING = 16;
 
 /**
  * Scroll the document body of a page by a distance, the way the user does.
@@ -212,6 +213,13 @@ test('a member follows another across Spaces, canvas camera and document scroll,
     const leaderTop = (await documentView(page)).top!;
     await expect.poll(async () => lineOffset(bPage!, leaderTop), { timeout: 15_000 }).toBeCloseTo(LANDING, 0);
     expect((await documentView(bPage)).scrollTop).toBeGreaterThan(0);
+    // Above a document the bar takes its own row: no line of the body lies under it.
+    const bar = (await bPage.getByTestId('follow-bar').boundingBox())!;
+    const bodyTop = await bPage.evaluate((outlet) => {
+      const body = document.querySelector(`${outlet} .doc-body-editor`) as HTMLElement;
+      return (body.closest('[data-radix-scroll-area-viewport]') as HTMLElement).getBoundingClientRect().top;
+    }, VISIBLE_SPACE);
+    expect(bodyTop).toBeGreaterThanOrEqual(bar.y + bar.height - 0.5);
 
     // A inserts a paragraph above both views (A's top block stays); B keeps following.
     const before = await documentView(page);
@@ -250,6 +258,8 @@ test('a member follows another across Spaces, canvas camera and document scroll,
     // Playwright waits forever on an aria-disabled control; a user's click reaches it.
     await viewB.click({ force: true });
     await expect(page.locator('[data-sonner-toast]').filter({ hasText: /following you/i })).toBeVisible();
+    // Nothing happened, so the member list stays open.
+    await expect(page.getByTestId('members-popover')).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(page.getByTestId('follow-bar')).toHaveCount(0);
     await expect(bPage.getByTestId('follow-bar')).toBeVisible();
