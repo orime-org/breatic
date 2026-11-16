@@ -540,14 +540,14 @@ async function runTaskBody(
   // on the queue without spending an attempt. Placed before the retry warning
   // and the deadline, since a waiting task has no start yet.
   let startedAt: Date;
-  if (existing?.status === "running") {
+  if (existing === null || !GATED_STATUSES.has(existing.status)) {
     startedAt = await taskService.markRunning(taskId, job.id ?? "", new Date());
   } else {
     let gate: Awaited<ReturnType<typeof runningSlotService.startWithinLimit>>;
     try {
       gate = await runningSlotService.startWithinLimit({ table: "tasks", id: taskId, jobId: job.id ?? "" });
     } catch (err) {
-      if (err instanceof StillRunning && token !== undefined) {
+      if (err instanceof runningSlotService.StillRunning && token !== undefined) {
         logPublishFailures(taskId, err.publishFailures);
         await job.moveToDelayed(err.resumeAt, token);
         throw new DelayedError();
@@ -1478,6 +1478,13 @@ export async function settleSceneRow(
     logger.error({ err, taskId, sceneRowId, projectId: row.projectId, spaceId: row.spaceId }, "space_tasks_publish_failed");
   }
 }
+
+/**
+ * The task statuses a pickup hands to the running-task gate rather than to
+ * `markRunning` (inner#1968): one nobody has run yet, and the ended ones it
+ * returns from (closing what an old failure left open).
+ */
+const GATED_STATUSES: ReadonlySet<string> = new Set(["pending", "failed", "completed", "cancelled"]);
 
 /**
  * Log the canvas signals the running-task gate could not send: the rows are

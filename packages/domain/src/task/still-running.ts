@@ -2,21 +2,16 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * What a pickup does when the work it started is not finished
- * (inner#1337 §3.1).
- *
- * A task waits on an upstream — a prediction, a container job — by going
- * back to the queue between two questions about it, so no worker slot is
- * held while nothing is happening. The waiting ends at the task's two-hour
- * budget (`default_budget_ms` in `config/node-tasks.yaml`). A task waiting for
- * a free running slot goes back the same way (inner#1968).
+ * What the running-task gate throws when a task must wait for a free running
+ * slot (inner#1968). The worker's own `StillRunning` (inner#1337 §3.1) says
+ * the same about upstream work; the worker puts the job back on the queue for
+ * either, spending none of its attempts.
  */
 
 /**
- * This pickup cannot finish its work yet — the upstream work is still going,
- * the question about it got no usable answer, or no reading place was free:
- * the run goes back to the queue and comes back at `resumeAt`, spending none
- * of its attempts.
+ * This pickup cannot start the task yet: its person runs as many tasks as the
+ * limit allows, or another pickup of theirs holds the gate. The run goes back
+ * to the queue and comes back at `resumeAt`.
  */
 export class StillRunning extends Error {
   /**

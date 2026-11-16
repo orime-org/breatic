@@ -249,7 +249,14 @@ async function take(row: TimelineExecution): Promise<TimelineExecution | null> {
     // The running-task gate claims it when its person runs fewer than their
     // limit; otherwise it throws StillRunning and the job goes back to the
     // queue (inner#1968).
-    const gate = await runningSlotService.startWithinLimit({ table: "timeline_executions", id: row.id, jobId: "" });
+    let gate: Awaited<ReturnType<typeof runningSlotService.startWithinLimit>>;
+    try {
+      gate = await runningSlotService.startWithinLimit({ table: "timeline_executions", id: row.id, jobId: "" });
+    } catch (err) {
+      if (!(err instanceof runningSlotService.StillRunning)) throw err;
+      for (const failure of err.publishFailures) logger.error({ err: failure, executionId: row.id }, "running_slot_publish_failed");
+      throw new StillRunning(err.resumeAt);
+    }
     for (const err of gate.publishFailures) logger.error({ err, executionId: row.id }, "running_slot_publish_failed");
     const after = await timelineExecutionRepo.findById(row.id);
     if (after === undefined) return null;

@@ -40,6 +40,8 @@ import * as operationService from "@domain/operation/operation.service.js";
 import { emitNodeTaskCounts } from "@domain/canvas-node/node-state-events.js";
 import { timelineOperationKey } from "@domain/timeline/operation-key.js";
 import { StillRunning } from "@domain/task/still-running.js";
+
+export { StillRunning };
 import type { NodeTaskCounts, TaskRowPlace } from "@domain/node-task/node-task.repo.js";
 
 /** Which row the gate judges. */
