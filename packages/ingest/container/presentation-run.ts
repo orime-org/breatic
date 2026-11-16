@@ -29,7 +29,7 @@ import { declaresAudioWindow, readStreamWindow } from '@ingest/container/stream-
 import { PlanCommandExit, runPlanCommand } from '@ingest/container/plan-command.js';
 import { inspectIsoBmffFile } from '@ingest/container/iso-bmff-metadata.js';
 import { exactPresentationTime, planEditListPresentation } from '@ingest/container/iso-bmff-presentation.js';
-import { CODEC_CROPPING_ONLY } from '@ingest/container-crop.js';
+import { CODEC_CROPPING_ONLY } from '@ingest/shown-picture.js';
 import { parsePhysicalVideoPackets, resolveVideoColorMatrix, videoContainerCrop, videoDisplayGeometry, videoPacketProbeArgs, type PhysicalVideoPacket } from '@ingest/container/physical-video-probe.js';
 import { assembleVideoPresentationPlan, editSpans, type VideoPresentationPlanInput } from '@ingest/container/assemble-video-source-ledger.js';
 

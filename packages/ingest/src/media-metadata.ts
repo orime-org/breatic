@@ -12,7 +12,7 @@
  * and it is the half of the contract that has a rule worth stating.
  */
 
-import type { ContainerCrop } from "@ingest/container-crop.js";
+import type { ContainerCrop } from "@ingest/shown-picture.js";
 
 /** One stream as the container reports it. */
 export interface ProbeStream {
@@ -37,11 +37,13 @@ export interface ProbeStream {
   rotation?: number;
   /**
    * A video stream's Matroska PixelCrop, in the orientation the picture is shown at: part of what the picture shows, as
-   * Chromium shows a WebM (`@ingest/container-crop.js`). Absent for any other container and for a crop of nothing.
+   * Chromium shows a WebM (`@ingest/shown-picture.js`). Absent for any other container and for a crop of nothing.
    */
   crop?: ContainerCrop;
   /** ffprobe's pixel format of a video stream, when it reported one. */
   pixelFormat?: string;
+  /** A video stream's sample aspect ratio when it is not square (ffprobe's `sample_aspect_ratio`; 0:1 reads as square). */
+  sampleAspectRatio?: { numerator: number; denominator: number };
   /** ffprobe's colour tags, when the stream carries them; HDR reads the source as they say. */
   colorTransfer?: string;
   colorPrimaries?: string;
@@ -144,10 +146,14 @@ export function hasPreviewableFrame(report: ProbeReport): boolean {
  * outright would file the cover's size as the song's. Duration comes off the
  * container format rather than any stream, so it is the same number for a file
  * whose audio and video run to different lengths.
+ * A video's size is the picture it shows: the coded pair turned by the display matrix, less a Matroska PixelCrop, with the
+ * stored width scaled by a non-square sample aspect ratio and truncated as FFmpeg's `scale=iw*sar:ih` (which a quarter turn
+ * shows as the height). A still image is filed at its pixels: browsers do not show an image's pixel aspect.
  * @param report - What the container answered.
+ * @param still - Whether the object is a still image.
  * @returns The three values, each null when this media has no such number.
  */
-export function pickMediaMetadata(report: ProbeReport): MediaMetadata {
+export function pickMediaMetadata(report: ProbeReport, still = false): MediaMetadata {
   const media = realVideoStream(report);
   // Both or neither: half a pair describes no frame, and a reader that got one
   // of them would have to carry its own rule for the missing one.
@@ -159,9 +165,16 @@ export function pickMediaMetadata(report: ProbeReport): MediaMetadata {
     ? { width: stored.height, height: stored.width }
     : stored;
   const crop = media?.crop;
-  const sized = crop === undefined || turned.width === null || turned.height === null
+  const cropped = crop === undefined || turned.width === null || turned.height === null
     ? turned
     : { width: turned.width - crop.left - crop.right, height: turned.height - crop.top - crop.bottom };
+  const sar = still ? undefined : media?.sampleAspectRatio;
+  const scaled = (side: number): number => Math.floor((side * sar!.numerator) / sar!.denominator);
+  const sized = sar === undefined || cropped.width === null || cropped.height === null
+    ? cropped
+    : turnsTheFrame(media?.rotation)
+      ? { width: cropped.width, height: scaled(cropped.height) }
+      : { width: scaled(cropped.width), height: cropped.height };
   // A still image probes with a format duration of zero often enough to matter,
   // and zero seconds is not a duration anyone can act on.
   const duration =
@@ -188,7 +201,8 @@ export function mediaNumbersFor(
   storedType: string,
   report: ProbeReport,
 ): MediaMetadata {
-  const picked = pickMediaMetadata(report);
-  if (!storedType.startsWith("image/")) return picked;
+  const still = storedType.startsWith("image/");
+  const picked = pickMediaMetadata(report, still);
+  if (!still) return picked;
   return { ...picked, durationSeconds: null };
 }

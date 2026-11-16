@@ -5,7 +5,7 @@ import type { MatroskaPhysicalVideoProbe, PhysicalVideoProbe } from "@shared/upl
 export type { MatroskaPhysicalVideoProbe, PhysicalVideoProbe } from "@shared/upload/video-source-ledger-types.js";
 
 import type { MatroskaMetadata } from "@ingest/container/matroska-metadata.js";
-import { matroskaCrop, NO_CONTAINER_CROP, type ContainerCrop } from "@ingest/container-crop.js";
+import { matroskaCrop, NO_CONTAINER_CROP, type ContainerCrop } from "@ingest/shown-picture.js";
 
 /**
  * Bind original selected FFprobe frame tokens to exact Matroska block headers.
@@ -253,7 +253,7 @@ export function videoDisplayGeometry(stream: Record<string, unknown>, crop: Cont
 }
 
 /**
- * The container cropping the picture is shown with: a Matroska stream's PixelCrop (`@ingest/container-crop.js`), zero for
+ * The container cropping the picture is shown with: a Matroska stream's PixelCrop (`@ingest/shown-picture.js`), zero for
  * any other container and for none.
  * @param stream - The selected ffprobe stream.
  * @param formatName - The ffprobe format name.

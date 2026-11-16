@@ -102,8 +102,9 @@ describe("what ffprobe is asked", () => {
     expect(entries).toContain("stream_side_data=rotation");
     // The container format and its cropping: a Matroska PixelCrop is part of what the picture shows.
     expect(entries).toContain("displaymatrix,side_data_type,crop_top,crop_bottom,crop_left,crop_right");
-    // The pixel format: a crop to full chroma keeps the picture's depth.
+    // The pixel format: a crop to full chroma keeps the picture's depth; the sample aspect ratio is part of what it shows.
     expect(entries).toContain("pix_fmt");
+    expect(entries).toContain("sample_aspect_ratio");
     expect(entries).toContain("format=duration,format_name");
     expect(entries).toContain("start_pts");
     expect(entries).toContain("duration_ts");

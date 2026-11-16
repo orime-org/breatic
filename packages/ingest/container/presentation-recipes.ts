@@ -20,7 +20,7 @@ import type { MediaOfOutput } from "@ingest/jobs/container-report.js";
 import { runPlanCommand } from "@ingest/container/plan-command.js";
 import { copyWithMatrixTag } from "@ingest/container/presentation-run.js";
 import { TAGGED_MATRICES, videoContainerCrop } from "@ingest/container/physical-video-probe.js";
-import { cropFilter, displayTurn } from "@ingest/container-crop.js";
+import { cropFilter, displayTurn } from "@ingest/shown-picture.js";
 import { alphaDecoderArgs, probeArgs, readProbeOutput } from "@ingest/probe-command.js";
 import { pickMediaMetadata } from "@ingest/media-metadata.js";
 import { pngSize } from "@ingest/png-size.js";

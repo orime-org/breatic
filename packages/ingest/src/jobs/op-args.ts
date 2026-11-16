@@ -18,7 +18,7 @@ import { buildAdjustVideoFilter, parseAdjustValue } from "@shared/adjust-value.j
 import { DENOISE_NOISE_FLOOR_DB, denoiseReductionDb } from "@shared/audio-denoise.js";
 import { buildCompressorFilter, type DynamicsValue } from "@shared/audio-dynamics.js";
 import { PEAK_LIMITER, buildEqFilter } from "@shared/audio-eq.js";
-import { CODEC_CROPPING_ONLY, exactCrop } from "@ingest/container-crop.js";
+import { CODEC_CROPPING_ONLY, shownFilters } from "@ingest/shown-picture.js";
 import { realVideoStream, type ProbeReport } from "@ingest/media-metadata.js";
 import { ffmpegSeconds, readMicroseconds, seekBeforeLanding, seekLandingArgs } from "@ingest/probe-command.js";
 
@@ -53,7 +53,7 @@ const SOURCE = ["-protocol_whitelist", "file"];
  * An odd-sized source is legal, and the encoders, vidstab and zscale all need
  * even sides; every chain that re-encodes starts here.
  */
-const EVEN = "scale=trunc(iw/2)*2:trunc(ih/2)*2";
+const EVEN = "scale=trunc(iw/2)*2:trunc(ih/2)*2,setsar=1";
 
 /**
  * Round down to an even number of at least 2, which libx264 needs.
@@ -141,14 +141,15 @@ function hdrFilter(transfer: string, source: ProbeReport): string {
 
 /**
  * The filters that take the source's decoded frames, which keep codec cropping only (`CODEC_CROPPING_ONLY`), to the
- * picture it shows: a Matroska PixelCrop cropped exactly (`@ingest/container-crop.js`), followed by the given filters.
+ * picture it shows (`shownFilters`: a Matroska PixelCrop cropped exactly, a non-square sample aspect ratio scaled to the
+ * shown size), followed by the given filters; a crop rectangle from the panel is in that shown picture.
  * @param source - The source's probe.
  * @param filters - The operation's own video filters.
  * @returns The filter chain text.
  */
 function shown(source: ProbeReport, filters: string): string {
-  const video = realVideoStream(source);
-  return video?.crop === undefined ? filters : `${exactCrop(video.crop, video.pixelFormat)},${filters}`;
+  const picture = shownFilters(source);
+  return picture === null ? filters : `${picture},${filters}`;
 }
 
 /**

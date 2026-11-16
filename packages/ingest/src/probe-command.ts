@@ -15,8 +15,8 @@ import { AUDIO_PEAK_RATE } from "@shared/audio-peaks.js";
 import type { AgentPictureSpec } from "@shared/upload/agent-picture-types.js";
 import type { LongMediaJobRequest } from "@shared/media/long-media-job-types.js";
 
-import { CODEC_CROPPING_ONLY, displayTurn, exactCrop, matroskaCrop, shownCrop, type ContainerCrop, type PictureSideData } from "@ingest/container-crop.js";
-import { NOTHING_FOUND, realVideoStream } from "@ingest/media-metadata.js";
+import { CODEC_CROPPING_ONLY, displayTurn, matroskaCrop, shownCrop, shownFilters, type ContainerCrop, type PictureSideData } from "@ingest/shown-picture.js";
+import { NOTHING_FOUND } from "@ingest/media-metadata.js";
 import type { ProbeReport, ProbeStream } from "@ingest/media-metadata.js";
 
 /**
@@ -212,7 +212,7 @@ export function probeArgs(objectUrl: string, from: ReadFrom = "object"): string[
     "-read_intervals",
     "%+#1",
     "-show_entries",
-    "stream=index,codec_type,codec_name,width,height,pix_fmt,color_transfer,color_primaries,color_space,sample_rate,channels,channel_layout,start_pts,duration_ts,time_base:stream_side_data=rotation,displaymatrix,side_data_type,crop_top,crop_bottom,crop_left,crop_right:stream_disposition=attached_pic:stream_tags=alpha_mode:format=duration,format_name:frame=stream_index,pts,best_effort_timestamp:frame_side_data=rotation",
+    "stream=index,codec_type,codec_name,width,height,pix_fmt,sample_aspect_ratio,color_transfer,color_primaries,color_space,sample_rate,channels,channel_layout,start_pts,duration_ts,time_base:stream_side_data=rotation,displaymatrix,side_data_type,crop_top,crop_bottom,crop_left,crop_right:stream_disposition=attached_pic:stream_tags=alpha_mode:format=duration,format_name:frame=stream_index,pts,best_effort_timestamp:frame_side_data=rotation",
     "-of",
     "json",
     objectUrl,
@@ -239,8 +239,7 @@ export const COVER_CONTENT_TYPE = "image/png";
  * @returns The argument list, without the program name.
  */
 export function coverArgs(objectUrl: string, from: ReadFrom = "object", report: ProbeReport = NOTHING_FOUND): string[] {
-  const video = realVideoStream(report);
-  const crop = video?.crop;
+  const shown = shownFilters(report);
   return [
     "-v",
     "error",
@@ -252,7 +251,7 @@ export function coverArgs(objectUrl: string, from: ReadFrom = "object", report: 
     "-vframes",
     "1",
     "-vf",
-    crop === undefined ? COVER_SCALE : `${exactCrop(crop, video?.pixelFormat)},${COVER_SCALE}`,
+    shown === null ? COVER_SCALE : `${shown},${COVER_SCALE}`,
     "-f",
     "image2",
     "-vcodec",
@@ -414,6 +413,7 @@ interface RawStream {
   tags?: Record<string, string>;
   side_data_list?: PictureSideData[];
   pix_fmt?: string;
+  sample_aspect_ratio?: string;
   color_transfer?: string;
   color_primaries?: string;
   color_space?: string;
@@ -506,7 +506,20 @@ function alphaModeOf(raw: RawStream): { alphaMode?: string } {
 }
 
 /**
- * A video stream's Matroska PixelCrop, in the orientation the picture is shown at (`@ingest/container-crop.js`).
+ * A video stream's sample aspect ratio when it is not square; 0:1 (unknown) reads as square.
+ * @param raw - The stream.
+ * @returns The ratio as a field, or nothing.
+ * @throws {never} Never.
+ */
+function sampleAspectRatioOf(raw: RawStream): { sampleAspectRatio?: { numerator: number; denominator: number } } {
+  const ratio = raw.codec_type === "video" ? /^(\d+):(\d+)$/u.exec(raw.sample_aspect_ratio ?? "") : null;
+  if (ratio === null) return {};
+  const [numerator, denominator] = [Number(ratio[1]), Number(ratio[2])];
+  return numerator > 0 && denominator > 0 && numerator !== denominator ? { sampleAspectRatio: { numerator, denominator } } : {};
+}
+
+/**
+ * A video stream's Matroska PixelCrop, in the orientation the picture is shown at (`@ingest/shown-picture.js`).
  * @param raw - The stream.
  * @param formatName - The ffprobe format name.
  * @returns The crop as a field, or nothing.
@@ -548,6 +561,7 @@ export function readProbeOutput(stdout: string): ProbeReport {
     ...alphaModeOf(raw),
     ...rotationOf(raw, frames),
     ...(raw.pix_fmt === undefined ? {} : { pixelFormat: raw.pix_fmt }),
+    ...sampleAspectRatioOf(raw),
     ...(raw.color_transfer === undefined ? {} : { colorTransfer: raw.color_transfer }),
     ...(raw.color_primaries === undefined ? {} : { colorPrimaries: raw.color_primaries }),
     ...(raw.color_space === undefined ? {} : { colorSpace: raw.color_space }),

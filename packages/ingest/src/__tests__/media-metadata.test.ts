@@ -216,6 +216,30 @@ describe("a stream its container crops", () => {
   });
 });
 
+// A video's sample aspect ratio is part of what it shows: Chromium shows 360x240 at SAR 4:3 as 480x240. The width is scaled
+// and truncated as FFmpeg's `scale=iw*sar:ih`, along the stored width, which a quarter turn shows as the height. A still
+// image's pixel aspect is not shown by browsers.
+describe("a video whose pixels are not square", () => {
+  const ANAMORPHIC = { ...VIDEO_STREAM, width: 360, height: 240, sampleAspectRatio: { numerator: 4, denominator: 3 } };
+
+  it("files the width the sample aspect ratio shows", () => {
+    expect(pickMediaMetadata(report([ANAMORPHIC], 2))).toMatchObject({ width: 480, height: 240 });
+  });
+
+  it("files a turned picture's height as the scaled stored width", () => {
+    expect(pickMediaMetadata(report([{ ...ANAMORPHIC, rotation: 90 }], 2))).toMatchObject({ width: 240, height: 480 });
+  });
+
+  it("scales what the crop leaves, truncating as FFmpeg does", () => {
+    expect(pickMediaMetadata(report([{ ...ANAMORPHIC, width: 720, height: 480, sampleAspectRatio: { numerator: 10, denominator: 11 }, crop: { top: 0, bottom: 0, left: 1, right: 0 } }], 2)))
+      .toMatchObject({ width: 653, height: 480 });
+  });
+
+  it("files a still image at its stored pixels", () => {
+    expect(mediaNumbersFor("image/jpeg", report([ANAMORPHIC], 0.04))).toMatchObject({ width: 360, height: 240 });
+  });
+});
+
 describe("how long the media runs", () => {
   it("answers no duration for an image, whatever ffprobe read", () => {
     const picked = mediaNumbersFor("image/jpeg", report([VIDEO_STREAM], 0.04));

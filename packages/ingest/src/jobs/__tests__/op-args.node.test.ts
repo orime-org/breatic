@@ -17,7 +17,7 @@ import type { ProbeReport } from "@ingest/media-metadata.js";
 const IN = "/tmp/job/source";
 const OUT = "/tmp/job/out.mp4";
 const WORK = "/tmp/job";
-const EVEN = "scale=trunc(iw/2)*2:trunc(ih/2)*2";
+const EVEN = "scale=trunc(iw/2)*2:trunc(ih/2)*2,setsar=1";
 
 /**
  * The value after a flag in one run.
@@ -108,7 +108,7 @@ describe("opRuns", () => {
   // zimg then finds no path between colorspaces ("code 3074").
   it("names the primaries the linear step writes", () => {
     const [pq] = opRuns("hdr", { transfer: "pq" }, IN, OUT, WORK, videoProbe());
-    const linear = after(pq!, "-vf")!.split(",")[1]!;
+    const linear = after(pq!, "-vf")!.split(",").find((step) => step.startsWith("zscale=tin="))!;
     expect(linear.split(":")).toContain("p=bt709");
   });
 });

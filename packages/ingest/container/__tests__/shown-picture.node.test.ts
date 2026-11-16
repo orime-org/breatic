@@ -46,7 +46,7 @@ async function decodedSize(path: string): Promise<[number, number]> {
 }
 
 beforeAll(async () => {
-  dir = await mkdtemp(join(tmpdir(), "container-crop-"));
+  dir = await mkdtemp(join(tmpdir(), "shown-picture-"));
   const ff = async (name: string, args: string[]): Promise<void> => {
     await run("ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", ...args, join(dir, name)]);
   };
@@ -62,6 +62,8 @@ beforeAll(async () => {
   // The same picture as H.264, which the tools would copy into MP4.
   await ff("whole264.mkv", ["-i", join(dir, "whole.mkv"), "-c:v", "libx264", "-qp", "0", "-pix_fmt", "yuv420p", "-c:a", "aac"]);
   await writePixelCropped(join(dir, "whole264.mkv"), join(dir, "crop264.mkv"), { left: 3, top: 1 });
+  // An anamorphic picture: 360x240 stored with SAR 4:3, which Chromium shows at 480x240.
+  await ff("sar.mp4", ["-f", "lavfi", "-i", "testsrc2=s=360x240:r=25:d=0.4", "-vf", "setsar=4/3", "-c:v", "libx264", "-qp", "0", "-pix_fmt", "yuv420p"]);
   // FFmpeg writes the PixelCrop into MP4 as a clean aperture, which it reads back and applies on decode.
   await ff("clap.mp4", ["-i", join(dir, "crop.mkv"), "-map", "0:v", "-c", "copy"]);
   await ff("whole.mp4", ["-i", join(dir, "whole.mkv"), "-map", "0:v", "-c", "copy"]);
@@ -76,6 +78,7 @@ describe("the size an uploaded source is filed at", () => {
     ["crop.mkv", { width: 157, height: 95 }],
     ["crop-turned.mkv", { width: 95, height: 157 }],
     ["clap.mp4", { width: 160, height: 96 }],
+    ["sar.mp4", { width: 480, height: 240 }],
   ])("%s files as %o", async (name, size) => {
     expect(pickMediaMetadata(await probed(name))).toMatchObject(size);
   });
@@ -110,6 +113,41 @@ describe("the cover cut from an uploaded source", () => {
     expect(got.length).toBe(want.length);
     expect(got.reduce((sum, value, index) => sum + Math.abs(value - want[index]!), 0) / got.length).toBeLessThan(0.5);
   });
+});
+
+describe("an anamorphic source", () => {
+  /**
+   * One frame as RGB bytes.
+   * @param path - The file.
+   * @param filter - The filters before RGB.
+   * @returns The bytes.
+   */
+  async function rgb(path: string, filter: string): Promise<Buffer> {
+    return (await run("ffmpeg", ["-v", "error", "-i", path, "-frames:v", "1", "-vf", `${filter},format=rgb24`, "-f", "rawvideo", "-"], { encoding: "buffer", maxBuffer: 1 << 24 })).stdout;
+  }
+  const mean = (a: Buffer, b: Buffer): number => (a.length === b.length ? a.reduce((sum, value, index) => sum + Math.abs(value - b[index]!), 0) / a.length : Number.POSITIVE_INFINITY);
+
+  it("has a cover of the picture Chromium shows, 480x240", async () => {
+    const { stdout } = await run("ffmpeg", coverArgs(join(dir, "sar.mp4"), "own-file", await probed("sar.mp4")), { encoding: "buffer", maxBuffer: 1 << 24 });
+    const file = join(dir, "sar-cover.png");
+    await writeFile(file, stdout);
+    expect(mean(await rgb(file, "null"), await rgb(join(dir, "sar.mp4"), "scale=480:240"))).toBeLessThan(1);
+  });
+
+  // The panel gives a rectangle in the size the video element shows (videoWidth x videoHeight); the right half of 480x240.
+  it("crops the rectangle the panel drew on the shown picture, with square pixels", async () => {
+    const output = join(dir, "sar-rect.mp4");
+    await runSteps(opSteps("crop", { rect: { x: 240, y: 0, w: 240, h: 240 } }, join(dir, "sar.mp4"), output, dir, await probed("sar.mp4")));
+    expect((await run("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,sample_aspect_ratio", "-of", "csv=p=0", output])).stdout.trim()).toMatch(/^240,240,(1:1|N\/A)$/u);
+    const got = await rgb(output, "null");
+    expect(mean(got, await rgb(join(dir, "sar.mp4"), "scale=480:240,crop=240:240:240:0"))).toBeLessThan(mean(got, await rgb(join(dir, "sar.mp4"), "crop=240:240:120:0")));
+  }, 60_000);
+
+  it("adjusts into the picture Chromium shows, 480x240 with square pixels", async () => {
+    const output = join(dir, "sar-adjust.mp4");
+    await runSteps(opSteps("adjust", { value: {} }, join(dir, "sar.mp4"), output, dir, await probed("sar.mp4")));
+    expect((await run("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,sample_aspect_ratio", "-of", "csv=p=0", output])).stdout.trim()).toMatch(/^480,240,(1:1|N\/A)$/u);
+  }, 60_000);
 });
 
 describe("the depth of a cropped cover", () => {

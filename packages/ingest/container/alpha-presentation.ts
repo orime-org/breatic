@@ -7,8 +7,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ALPHA_RUN_PATH, type AlphaPresentationReport, type AlphaProbeEvidence, type AlphaRunBody, type AlphaRunResult } from '@ingest/alpha-run-contract.js';
 import { classifyVideoAlpha } from '@ingest/video-alpha-classification.js';
-import { CODEC_CROPPING_ONLY, exactCrop } from '@ingest/container-crop.js';
-import { pickMediaMetadata, realVideoStream } from '@ingest/media-metadata.js';
+import { CODEC_CROPPING_ONLY, shownFilters } from '@ingest/shown-picture.js';
+import { pickMediaMetadata } from '@ingest/media-metadata.js';
 import { alphaDecoderArgs, readProbeOutput } from '@ingest/probe-command.js';
 import { audioOut } from '@ingest/jobs/op-args.js';
 import { cpuUsec, download, put } from '@ingest/container/mini-tool-run.js';
@@ -330,9 +330,9 @@ export async function runAlphaPresentation(job: AlphaRunBody): Promise<AlphaRunR
         const packedWidth = planeWidth * 2;
         // The packed picture is the one the source shows, the size it is filed at: codec cropping only, a PixelCrop exactly.
         const decoder = [...CODEC_CROPPING_ONLY, ...alphaDecoderArgs(String(video.codec_name), typeof alphaMode === 'string' ? alphaMode : null)];
-        const picture = realVideoStream(source);
+        const picture = shownFilters(source);
         const output = join(directory, 'packed.mp4');
-        const filter = `[0:${integer(video.index)}]${picture?.crop === undefined ? '' : `${exactCrop(picture.crop, picture.pixelFormat)},`}split=2[r][a];[r]format=gbrap,premultiply=inplace=1,format=rgb24,pad=${planeWidth}:${packedHeight}:0:0:color=black[rgb];[a]alphaextract,format=rgb24,pad=${planeWidth}:${packedHeight}:0:0:color=black[alpha];[rgb][alpha]hstack,format=yuv420p[v]`;
+        const filter = `[0:${integer(video.index)}]${picture === null ? '' : `${picture},`}split=2[r][a];[r]format=gbrap,premultiply=inplace=1,format=rgb24,pad=${planeWidth}:${packedHeight}:0:0:color=black[rgb];[a]alphaextract,format=rgb24,pad=${planeWidth}:${packedHeight}:0:0:color=black[alpha];[rgb][alpha]hstack,format=yuv420p[v]`;
         const last = originalClock.frames[originalClock.frames.length - 1]!;
         const timescale = originalClock.videoTimeBase.split('/')[1]!;
         const threads = String(Math.max(1, Math.floor(job.vcpu)));

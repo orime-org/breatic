@@ -6,8 +6,11 @@
  * `media/formats/webm/webm_video_client.cc` reads it into the visible rectangle) and an MP4 clean aperture is not (its
  * `media/formats/mp4/box_definitions.cc` has no clap). ffprobe reports both as the stream's Frame Cropping side data, and
  * FFmpeg's decoders apply both, rounded to the chroma grid, so every decode of a source keeps codec cropping only
- * (`CODEC_CROPPING_ONLY`) and crops a PixelCrop exactly itself.
+ * (`CODEC_CROPPING_ONLY`) and crops a PixelCrop exactly itself. A video's sample aspect ratio is shown too: Chromium's
+ * natural size is the cropped width scaled by it, as `videoDisplayGeometry` plans it.
  */
+
+import { pickMediaMetadata, realVideoStream, type ProbeReport } from "@ingest/media-metadata.js";
 
 /** The pixels a container crops at each edge of a picture. */
 export interface ContainerCrop { top: number; bottom: number; left: number; right: number }
@@ -109,4 +112,21 @@ function deep(pixelFormat: string | undefined): boolean {
  */
 export function exactCrop(crop: ContainerCrop, pixelFormat: string | undefined): string {
   return `format=pix_fmts=${deep(pixelFormat) ? "yuva444p16le|yuv444p16le" : "yuva444p|yuv444p"},${cropFilter(crop)}`;
+}
+
+/**
+ * The filters that take a source's decoded frames, which keep codec cropping only and are turned by FFmpeg's autorotate, to
+ * the picture it shows: a Matroska PixelCrop cropped exactly, then a non-square sample aspect ratio scaled to the size the
+ * source is filed at, with square pixels.
+ * @param report - The source's probe.
+ * @returns The filter chain text, or null when the decoded frames are the shown picture.
+ * @throws {never} Never.
+ */
+export function shownFilters(report: ProbeReport): string | null {
+  const video = realVideoStream(report);
+  if (video === undefined) return null;
+  const steps = video.crop === undefined ? [] : [exactCrop(video.crop, video.pixelFormat)];
+  const { width, height } = pickMediaMetadata(report);
+  if (video.sampleAspectRatio !== undefined && width !== null && height !== null) steps.push(`scale=${width}:${height},setsar=1`);
+  return steps.length === 0 ? null : steps.join(",");
 }
