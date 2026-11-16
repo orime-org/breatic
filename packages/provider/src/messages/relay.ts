@@ -244,6 +244,9 @@ function relayed(candidate: MessagesCandidate, speaker: MessagesSpeaker, upstrea
       }
     }
     if (event["type"] === "message_delta") usage = { ...startUsage, ...(isObject(event["usage"]) ? event["usage"] : {}) };
+    // The harness takes message_stop as the end of the call and sends its next one at once, while the upstream may
+    // still hold the body open; the call is ended before the harness can see it.
+    if (event["type"] === "message_stop") await end();
     return `data: ${JSON.stringify(event)}${carriage}`;
   };
 
