@@ -62,11 +62,6 @@ export default function StudioRecentPage(): React.JSX.Element {
   ) : (
     <ScrollArea className='h-full'>
       <RecentLanding projects={projects} collections={[]} incomplete={regionsMissing} />
-      {regionsMissing ? (
-        <p className='mx-auto w-full max-w-[1100px] px-7 pb-6 text-xs text-muted-foreground' data-testid='recent-regions-unavailable'>
-          {t('regions.unavailable.recents')}
-        </p>
-      ) : null}
     </ScrollArea>
   );
 }

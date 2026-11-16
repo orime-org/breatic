@@ -27,7 +27,7 @@ interface RecentLandingProps {
  * @param root0 - component props
  * @param root0.projects - recent projects across all studios (newest first)
  * @param root0.collections - recent collections across all studios
- * @param root0.incomplete - a region did not answer; an empty feed then shows no empty state
+ * @param root0.incomplete - a region did not answer: the header says so and an empty feed shows no empty state
  * @returns the recent landing (header + content or empty state).
  */
 export function RecentLanding({
@@ -46,6 +46,11 @@ export function RecentLanding({
         <p className='mt-1 text-xs text-muted-foreground'>
           {t('studio.recent.subtitle')}
         </p>
+        {incomplete ? (
+          <p className='mt-1 text-xs text-muted-foreground' data-testid='recent-regions-unavailable'>
+            {t('regions.unavailable.recents')}
+          </p>
+        ) : null}
       </div>
       {isEmpty && incomplete ? null : isEmpty ? (
         <EmptyState

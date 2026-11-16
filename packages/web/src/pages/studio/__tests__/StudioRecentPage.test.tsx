@@ -77,6 +77,14 @@ describe('StudioRecentPage (fetches + maps the cross-studio recent feed)', () =>
     expect(screen.queryByText(/Nothing recent yet/i)).not.toBeInTheDocument();
   });
 
+  it('says some Studios are out of reach before the list it leaves short', async () => {
+    vi.mocked(studiosApi.getRecent).mockResolvedValue({ items: [WIRE], unavailableRegions: ['sg'] });
+    setup();
+    const line = await screen.findByTestId('recent-regions-unavailable');
+    const list = await screen.findByText(/Recent projects/i);
+    expect(line.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it('shows a loading spinner while the feed is in flight', () => {
     // A never-resolving promise keeps the query pending.
     vi.mocked(studiosApi.getRecent).mockReturnValue(new Promise(() => {}));
