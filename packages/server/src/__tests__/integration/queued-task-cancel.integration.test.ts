@@ -110,6 +110,18 @@ describe("G-25 cancelling a task that has not started", () => {
     expect(await standing(taskId)).toEqual({ task: "cancelled", hold: "released", ledger: "released", node: { status: "failed", error_message: "cancelled" } });
   });
 
+  // The node and 3D task lists hold only their rows' ids, which differ from
+  // the task's when one run fills several nodes, so the route takes a row's
+  // id for its task (inner#1968).
+  it("takes the id of a row in a task list for the task that row runs", async () => {
+    const a = await seedAccount(sql);
+    const { taskId } = await generate(a);
+    const [row] = await sql<{ id: string }[]>`select id from node_tasks where task_id = ${taskId}`;
+    const res = await cancel(a, row!.id);
+    expect(res.status, await res.clone().text()).toBe(200);
+    expect(await standing(taskId)).toMatchObject({ task: "cancelled", node: { status: "failed", error_message: "cancelled" } });
+  });
+
   it("names `cancelled` among the stored failure reasons", () => {
     expect(TASK_FAILURE_REASONS as readonly string[]).toContain("cancelled");
   });
