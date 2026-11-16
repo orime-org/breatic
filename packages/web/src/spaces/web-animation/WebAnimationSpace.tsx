@@ -327,7 +327,10 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   // Playback over the shown result.
   const durationSeconds = row === undefined ? 0 : rowSeconds(row);
   const clock = useMotionClock(row?.status === 'succeeded' ? durationSeconds : 0, selectedId);
+  // Only the clock's stable parts reach callbacks and effects; its time changes every frame of play.
   const { pause: pauseClock, seek: seekClock } = clock;
+  const clockTime = React.useRef(clock.time);
+  clockTime.current = clock.time;
   const fps = row === undefined ? { num: 24, den: 1 } : row.input.fps;
   const frame = Math.min(Math.round(clock.time * fps.num / fps.den), Math.max(0, Math.round(durationSeconds * fps.num / fps.den) - 1));
 
@@ -486,9 +489,9 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
     if (selectedId !== null) {
       setActiveThreadId(null);
       // The anchor's time lies within the result (design §13.6).
-      annotate({ type: 'add', executionId: selectedId, timeSeconds: anchorTimeWithin(clock.time, durationSeconds) });
+      annotate({ type: 'add', executionId: selectedId, timeSeconds: anchorTimeWithin(clockTime.current, durationSeconds) });
     }
-  }, [selectedId, clock.time, durationSeconds, annotate]);
+  }, [selectedId, durationSeconds, annotate]);
   const clickFrame = React.useCallback((event: React.MouseEvent<HTMLDivElement>): void => {
     if (annotationRef.current.status !== 'picking' && annotationRef.current.status !== 'writing') return;
     const box = event.currentTarget.getBoundingClientRect();
@@ -530,9 +533,9 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   }, [threads, showResult, seekClock, locate]);
   React.useEffect(() => {
     if (pendingSeek.current === null || activeThread === null || activeThread.anchor.executionId !== selectedId) return;
-    clock.seek(pendingSeek.current);
+    seekClock(pendingSeek.current);
     pendingSeek.current = null;
-  }, [activeThread, selectedId, clock]);
+  }, [activeThread, selectedId, seekClock]);
   const openMarker = React.useCallback((threadId: string): void => {
     dispatchPanels({ type: 'marker', threadId });
     openThread(threadId);
@@ -550,7 +553,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   const toggleAnnotations = React.useCallback((): void => panelsEvent({ type: 'toggle_annotations' }), [panelsEvent]);
   const closePanel = React.useCallback((): void => panelsEvent({ type: 'escape' }), [panelsEvent]);
   const pickTab = React.useCallback((tab: MotionTab): void => panelsEvent({ type: 'pick_tab', tab }), [panelsEvent]);
-  const seekTo = React.useCallback((value: number[]): void => clock.seek(value[0] ?? 0), [clock]);
+  const seekTo = React.useCallback((value: number[]): void => seekClock(value[0] ?? 0), [seekClock]);
   const seekValue = React.useMemo(() => [clock.time], [clock.time]);
   const finished = row?.status === 'succeeded';
   const failed = row !== undefined && webAnimationExecutionFailed(row.status);
