@@ -14,7 +14,7 @@ export const PRODUCT_COMMERCIAL_SHOTLIST: GenerationTemplate = {
   inputs: [{ key: "product", type: "image" }],
   steps: [],
   agentNote:
-    "a 12-second widescreen premium film of the user's product as a timed shot list in one prompt, each shot at least 2 seconds, ending held on the hero frame; the product kept as in the photo; the user fills in the look (for example cool and minimal) and the one detail shown in slow motion",
+    "a 12-second widescreen premium film of the user's product as a timed list of four shots in one prompt, each shot at least 2 seconds, ending held on the hero frame; the product kept as in the photo; the user fills in the look (for example cool and minimal) and the one detail shown in slow motion",
   goal: "ecommerce",
   triggers: {
     asks: ["a premium product film", "a high-end product commercial"],

@@ -17,7 +17,7 @@ export const LIVESTREAM_PITCH: GenerationTemplate = {
   ],
   steps: [],
   agentNote:
-    "a 12-second vertical livestream selling clip: the host from the user's photo pitches the product from the other photo in a lit live-shopping room, holding it up close to the lens; the host and the product each kept as in their photo; the user fills in the selling points and the tone",
+    "a 12-second vertical livestream selling clip in three timed parts: the host from the user's photo pitches the product from the other photo in a lit live-shopping room, brings it up close to the lens and ends holding it next to their face; the host and the product each kept as in their photo; the user fills in the selling points and the tone",
   goal: "ecommerce",
   triggers: {
     asks: ["a livestream selling clip", "a live shopping video"],

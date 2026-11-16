@@ -17,7 +17,7 @@ export const PET_SELFIE_VLOG: GenerationTemplate = {
   ],
   steps: [],
   agentNote:
-    "a 10-second vertical phone selfie vlog in which the user's pet walks in, steals the shot and ends with its nose filling the lens; exactly one animal, its real way of moving",
+    "a 10-second vertical phone selfie vlog in three timed parts in which the user's pet walks in, steals the shot and ends with its nose filling the lens; exactly one animal, its real way of moving; the person holding the phone is optional and the model casts someone when it is left empty; the user fills in where it happens and what the pet does to steal the shot",
   goal: "social-hooks",
   triggers: {
     asks: ["a pet video", "a video of my dog or cat", "a funny vlog with my pet"],

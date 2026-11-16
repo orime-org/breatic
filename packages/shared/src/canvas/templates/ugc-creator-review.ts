@@ -17,7 +17,7 @@ export const UGC_CREATOR_REVIEW: GenerationTemplate = {
   ],
   steps: [],
   agentNote:
-    "a 15-second vertical handheld phone video in which the creator from the user's photo talks about the product from the other photo, the creator and the product each kept as in their photo; the user fills in what the creator says, each line no longer than 8 English words, and what they point out on the product; it ends on the product alone, then the creator holding it next to their face, looking into the lens",
+    "a 15-second vertical handheld phone video in five timed parts in which the creator from the user's photo talks about the product from the other photo, the creator and the product each kept as in their photo; the user fills in the creator's three lines (each no longer than 8 English words, or 15 characters in Chinese, Japanese or Korean) and what they point out on the product; it ends on the product alone, then the creator holding it next to their face, looking into the lens",
   goal: "ecommerce",
   triggers: {
     asks: ["a creator review video", "an unboxing review by an influencer", "a UGC ad"],

@@ -18,7 +18,7 @@ export const VARIANT_CAROUSEL_AD: GenerationTemplate = {
   ],
   steps: [],
   agentNote:
-    "a 20-second vertical ad showing the same product in the three colours or styles of the user's three photos, one part each, in one camera position and light, joined by the same transition; each part keeps the colour of its own photo and the shape stays the same; the user fills in the backdrop colour and the transition",
+    "a 20-second vertical ad showing the same product in the three colours or styles of the user's three photos, one part each, in one camera position and light, joined by the same transition and ending with all three side by side for the last 2 seconds; each part keeps the colour of its own photo and the shape stays the same; the user fills in the backdrop colour and the transition",
   goal: "ecommerce",
   triggers: {
     asks: ["a video showing all the colours", "a multi-variant product video"],
