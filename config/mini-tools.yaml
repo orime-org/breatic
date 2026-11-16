@@ -97,6 +97,11 @@ ops:
   audio_join:
     container_class: "MiniToolContainerStd4"
     precheck_seconds: 900
+  # inner#1968: the grid's tiles, cut with vips. Free, so precheck_seconds
+  # only sizes the run, never an estimate.
+  grid:
+    container_class: "MiniToolContainerStd1"
+    precheck_seconds: 300
 
 # The most clips one join takes, its source included (inner#1825 §6.3). The
 # join panel's add tile and slot pick stop here; at most

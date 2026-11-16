@@ -271,5 +271,6 @@ export async function runContainerJob(
   }
   const credits = await recordUsage(input, op, job.containerClass, report.usage);
   await upstreamStepRepo.markDone(stepId, { state: "done" });
-  return [{ outputs, cost: 0 }, credits];
+  // A free tool (the grid) still writes its usage row and charges nothing (inner#1968).
+  return [{ outputs, cost: 0 }, spec.billing === "free" ? 0 : credits];
 }

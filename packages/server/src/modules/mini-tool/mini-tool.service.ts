@@ -246,7 +246,8 @@ async function prepareContainerRun(spec: MiniToolSpec, op: string, body: MiniToo
     params: body.params,
     sourceKey: source.key,
     inputKeys,
-    credits: Math.max(creditsForUsd(usd, env.CREDIT_MULTIPLIER), MIN_TASK_CREDIT_COST),
+    // A free tool (the grid) calls no external model: nothing is held or charged (inner#1968).
+    credits: spec.billing === "free" ? 0 : Math.max(creditsForUsd(usd, env.CREDIT_MULTIPLIER), MIN_TASK_CREDIT_COST),
   };
 }
 

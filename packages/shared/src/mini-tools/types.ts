@@ -37,6 +37,8 @@ export const CONTAINER_OPS = [
   // clips after the source.
   "join",
   "audio_join",
+  // inner#1968: the grid, cut from an image source with vips.
+  "grid",
 ] as const;
 
 /** One of {@link CONTAINER_OPS}. */
@@ -321,6 +323,11 @@ interface MiniToolBase {
   readonly prompt?: { readonly placeholderKey: string; readonly defaultText?: string; readonly preamble?: string };
   /** A line the panel shows under the controls, saying what the tool fixes for the user. */
   readonly noteKey?: string;
+  /**
+   * Present on a tool that charges no credits: it calls no external model
+   * (inner#1968, design 3.2.2). Every side reads its price from here.
+   */
+  readonly billing?: "free";
   /**
    * A catalog param the server fills with the aspect ratio nearest the
    * source's size, read off the request; the user never sets it.
