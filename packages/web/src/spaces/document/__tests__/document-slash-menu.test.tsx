@@ -373,4 +373,26 @@ describe('a trigger an input method commits (design 5.1)', () => {
     expect(menu()).not.toBeNull();
     expect(textOf(editor, id)).toBe('、');
   });
+  it('writes nothing to the line when it opens, so one undo takes the committed trigger out', async () => {
+    const { editor, manager } = open([para('ab ')]);
+    const id = read(editor)[0]!.id;
+    caretAtEnd(editor, id);
+    const view = editor.prosemirrorView!;
+    act(() => {
+      view.dispatch(view.state.tr.insertText('、'));
+    });
+    // The user paused while the input method still showed the trigger.
+    manager.stopCapturing();
+    const steps = manager.undoStack.length;
+    await act(async () => {
+      view.dom.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '、' }));
+      for (let turn = 0; turn < 5; turn += 1) await Promise.resolve();
+    });
+    expect(menu()).not.toBeNull();
+    expect(manager.undoStack.length).toBe(steps);
+    act(() => {
+      manager.undo();
+    });
+    expect(textOf(editor, id)).toBe('ab ');
+  });
 });
