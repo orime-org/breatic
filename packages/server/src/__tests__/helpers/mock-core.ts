@@ -280,6 +280,26 @@ export const mocks = {
     reserveCredits: vi.fn().mockResolvedValue({ ok: true }),
     releaseHold: vi.fn().mockResolvedValue(undefined),
     getCreditPosition: vi.fn().mockResolvedValue({ spendable: "100.000000", held: "0.000000", available: "100.000000" }),
+    // No monthly spend limit is reached (inner#1968 design 3.10); limits are pinned by the integration suites.
+    spendCapFor: vi.fn().mockResolvedValue(null),
+  },
+  // The operation ledger every metered entry admits through (inner#1968
+  // design 3.2). Route tests are about routing: every operation is admitted
+  // as covered by the allowance; the ledger itself is pinned by the
+  // integration suites.
+  operationService: {
+    onOperationAudit: vi.fn(() => () => {}),
+    admitOperation: vi.fn().mockResolvedValue({ kind: "covered", studioId: "studio-1", accountUserId: "user-1" }),
+    operationStatus: vi.fn().mockResolvedValue(null),
+    countOperation: vi.fn().mockResolvedValue(null),
+    settleOverage: vi.fn().mockResolvedValue(undefined),
+    releaseOperation: vi.fn().mockResolvedValue(true),
+    renewOperation: vi.fn().mockResolvedValue(undefined),
+    defersCount: vi.fn().mockReturnValue(false),
+    deferOperation: vi.fn().mockResolvedValue(true),
+    recordOperationAsset: vi.fn().mockResolvedValue(undefined),
+    readMeteredOperationUsage: vi.fn().mockResolvedValue(null),
+    readOperationUsage: vi.fn().mockResolvedValue(null),
   },
   creditLotService: {
     // Read at module evaluation by `routes/schemas.ts`, so a double without it
@@ -626,6 +646,7 @@ export const domainMock = async () => ({
   UNDERSTAND_PINS: REAL_UNDERSTAND_PINS,
   creditLotService: mocks.creditLotService,
   creditHoldService: mocks.creditHoldService,
+  operationService: mocks.operationService,
   nodeHistoryService: mocks.nodeHistoryService,
   nodeHistoryRepo: mocks.nodeHistoryRepo,
   modelCatalog: { getModelCatalog: vi.fn().mockReturnValue({ image: [], video: [], audio: [], tts: [], three_d: [], total: 0 }) },

@@ -20,12 +20,15 @@ vi.mock("@server/middleware/auth.js", () => ({
   },
 }));
 
-const service = vi.hoisted(() => ({ executeTextTool: vi.fn() }));
+// The run's ledger key is the real one's shape (inner#1968 design 3.2).
+const service = vi.hoisted(() => ({ executeTextTool: vi.fn(), textToolOperationKey: (key: string) => `text_tool:${key}` }));
 // The caller is an editor of the project and its studio can pay (inner#1860).
 vi.mock("@server/modules", () => ({
   textToolService: service,
   projectService: { assertAccess: async () => undefined },
   precheckCredits: async () => undefined,
+  // One run is one operation, admitted before the stream opens (inner#1968 design 3.2).
+  admitOperationOrRefuse: async () => ({ kind: "covered", studioId: "studio-1", accountUserId: "user-1" }),
 }));
 
 // Whether this deployment can serve the tool's model is not this file's subject either.
