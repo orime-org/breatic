@@ -17,7 +17,7 @@ import { PRESENCE_WRITE_INTERVAL_MS, createPublishThrottle } from '@web/lib/publ
 import { userPaletteColor } from '@web/lib/user-color';
 import type { WriteAccess } from '@web/data/yjs/use-socket';
 
-/** This page's personal 3D camera as a follower reads it (#920); `fov` is in degrees. */
+/** This page's personal 3D camera as published in `camera3d` for followers (#920); `fov` is in degrees. */
 export type SceneCamera = Omit<FollowFieldValue<'camera3d'>, 'at'>;
 
 /** A gesture draft: the transform fields a drag previews, or the whole pose a joint drag shows. */
@@ -227,7 +227,7 @@ export class SceneSession {
   /**
    * Publish one complete presence snapshot; ineligible views withdraw synchronously.
    * `camera3d` goes out while the body is visible and connected whatever the
-   * window focus, because a follower keeps watching a leader who clicked away.
+   * window focus, so a leader who clicked away still publishes it.
    */
   private publishNow(): void {
     const awareness = this.environment.awareness;
@@ -250,7 +250,7 @@ export class SceneSession {
   }
 
   /**
-   * Set the personal camera a follower reads; it goes out through the presence throttle.
+   * Set the personal camera published as `camera3d`; it goes out through the presence throttle.
    * @param camera - The camera, or null to withdraw it.
    */
   setCamera(camera: SceneCamera | null): void {

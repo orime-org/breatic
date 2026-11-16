@@ -64,7 +64,7 @@ Cross-service stream keys: [packages/core/AGENTS.md#stream-keys](../core/AGENTS.
 
 ### Following table
 
-**Whom each connection follows lives in meta `following`, keyed by socket id (`{ userId, target, at, lastSeenAt }`, schema `followingEntrySchema` in `@breatic/shared`), and only the server writes it: from the sender's own `following` declaration in `beforeHandleAwareness`, refreshed by the same signs of life as presence, deleted on disconnect (never for a refused duplicate, which shares the socket id) and by the stale sweep.** A browser's awareness ages a hidden tab out on throttled timers while the socket stays alive, so peers read this table, never each other's awareness.
+**Whom each connection follows lives in meta `following`, keyed by socket id (`{ userId, target, at, lastSeenAt }`, schema `followingEntrySchema` in `@breatic/shared`), and only the server writes it: from the sender's own `following` declaration in `beforeHandleAwareness`, refreshed by the same signs of life as presence, deleted on disconnect (never for a refused duplicate, which shares the socket id) and by the stale sweep.** A browser's awareness ages a hidden tab out on throttled timers while the socket stays alive, so peers learn whom a member follows from this table, never from the `following` in each other's awareness.
 
 ### Liveness follows the transport
 

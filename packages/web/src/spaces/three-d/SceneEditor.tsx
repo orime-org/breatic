@@ -177,9 +177,9 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     };
   }, [session, userId, projectId, spaceId, t]);
 
-  // A tab following a member shows the leader's camera, not one of its own, so
-  // it publishes none for anyone to follow (#920); it publishes its own again
-  // once following stops.
+  // A tab following a member publishes no camera for anyone to follow (#920):
+  // following is one level deep. It publishes its own again once following
+  // stops.
   const following = useFollowStore((s) => s.targetUserId !== null);
   const latestFollowing = React.useRef(following);
   latestFollowing.current = following;

@@ -29,14 +29,14 @@ const FIELD = 'timelineView' satisfies FollowField;
 /**
  * Publish this Timeline's view as `timelineView` for a follower (#920): the
  * visible frame range, the track scroll, the playhead and the playback state.
- * While playing, the playhead published is the anchor's frame: a follower
- * plays on from the anchor itself, so the value changes only on play, pause,
+ * While playing, the playhead published is the anchor's frame, so a reader
+ * can play on from the anchor and the value changes only on play, pause,
  * seek, scroll, zoom or a change of the track's width rather than every
  * frame. Writes go through the presence throttle and are sent again after a
  * restore from the bfcache, which empties the local state; unmounting, which
  * also happens when the Space body is hidden, withdraws the field at once, and
- * so does following a member, whose view this tab then shows rather than one
- * of its own.
+ * so does following a member: following is one level deep, so nobody follows
+ * a follower.
  * @param input - The awareness, track viewport, zoom, playhead and playback state.
  * @throws {never} Never.
  */
