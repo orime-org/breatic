@@ -387,7 +387,7 @@ export class SceneViewportRuntime {
 
   /**
    * Where a new light goes from the camera on screen (design 3.6): its pose is the record's while live and the still's
-   * when frozen; the light aims at the pivot ahead of it, at the pilot's pivot distance, and sits beside its position.
+   * when frozen; the light aims at the pivot ahead of it, at the pilot's pivot distance, and sits above that pivot, offset toward the camera and to its left.
    * @returns The pivot and the viewer, or null outside a camera view.
    */
   private lightAnchor(): { centre: [number, number, number]; viewer: [number, number, number] } | null {

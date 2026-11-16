@@ -107,8 +107,8 @@ export interface ScenePilotControl {
   /** Drop a press in progress; true when there was one, so Escape stops there. */
   escape: () => boolean;
   /**
-   * Where a new light goes from the camera on screen, live or as a still: the pivot it aims at and the viewer it sits
-   * beside; null outside a camera view.
+   * Where a new light goes from the camera on screen, live or as a still: the pivot it aims at and the viewer whose
+   * direction it is offset toward; null outside a camera view.
    */
   lightAnchor: () => { centre: SceneVector3; viewer: SceneVector3 } | null;
 }

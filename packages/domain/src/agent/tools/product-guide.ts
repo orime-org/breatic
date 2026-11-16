@@ -1607,7 +1607,7 @@ export function renderProductGuide(): string {
       "Looking through a camera from the director console uses the same frame and menu with these differences: the frame has the camera's own aspect ratio, the view shows exactly what the camera sees, " +
       `and ${quoted(t("spaces.threeD.director.exitCamera"))} replaces ${quoted(t("spaces.threeD.viewfinder.cancel"))} and goes back to the view you had before. ` +
       "The aspect ratio in the menu is the camera's own and changing it changes the camera for everyone; under Free, dragging a corner changes the camera's free ratio. " +
-      "Dragging anywhere except on a transform handle or a joint dot moves the camera itself: a left drag turns it around a point ahead of it, keeping its tilt, a right drag or Shift with a left drag slides it, and the wheel moves it forward or back. " +
+      "Dragging anywhere except on a transform handle or a joint dot moves the camera itself: a left drag turns it around a point ahead of it without rolling it, a right drag or Shift with a left drag slides it, and the wheel moves it forward or back. " +
       "A click still selects. The move is written when you let go, or shortly after the wheel stops. " +
       `A locked camera does not move, and a drag on it says ${quoted(t("spaces.threeD.director.cameraLocked"))} ` +
       "A Viewer can look through a camera and leave it, but cannot move it, change its ratio or take a still. " +
@@ -1622,12 +1622,12 @@ export function renderProductGuide(): string {
       `Clicking the picture, whose tooltip says ${quoted(t("spaces.threeD.director.look"))}, looks through that camera; that card gets a dark border. ` +
       `With no camera it says ${quoted(t("spaces.threeD.director.camerasEmpty"))} ` +
       `Under ${quoted(t("spaces.threeD.director.lights"))}, the plus icon ${quoted(t("spaces.threeD.director.addLight"))} offers ${quoted(t("spaces.threeD.director.lightDirectional"))}, ` +
-      `${quoted(t("spaces.threeD.director.lightPoint"))} and ${quoted(t("spaces.threeD.director.lightSpot"))}; a new light is white, casts shadows and sits above the centre of your view, aimed at it. ` +
+      `${quoted(t("spaces.threeD.director.lightPoint"))} and ${quoted(t("spaces.threeD.director.lightSpot"))}; a new light is white, casts shadows and sits above and in front of the centre of your view, to the left, aimed at it. ` +
       `A scene holds at most ${String(getSceneConfig().director.max_lights)} lights: at that number the three choices are unavailable and the section says so. ` +
       `Each light's row has a colour dot, its name, its type and a ${quoted(t("spaces.threeD.castShadow"))} switch; a row may say ${quoted(t("spaces.threeD.director.lightOverLimit"))} ` +
       `or ${quoted(t("spaces.threeD.director.shadowBudget"))}, when this computer's graphics cannot show another shadow. With no light it says ${quoted(t("spaces.threeD.director.lightsEmpty"))} ` +
       `Under ${quoted(t("spaces.threeD.director.ambient"))} are a ${quoted(t("spaces.threeD.color"))} swatch and an ${quoted(t("spaces.threeD.intensity"))} slider shared by everyone. ` +
-      "Clicking a camera's or light's icon in the scene, anywhere on its light row, or its card menu's first item selects it and opens its settings under its card or row, and a selected light's row is outlined: the name, " +
+      "Clicking a camera's or light's icon in the scene, the dot, name or type on its light row, or its card menu's first item selects it and opens its settings under its card or row, and a selected light's row is outlined: the name, " +
       `for a camera ${quoted(t("spaces.threeD.focalLength"))} (presets from 14 to 200 mm, ${quoted(t("spaces.threeD.director.customFocal"))}, and a box taking 8 to 300) and ${quoted(t("spaces.threeD.frame"))}, ` +
       `for a light ${quoted(t("spaces.threeD.color"))}, ${quoted(t("spaces.threeD.intensity"))} and, for a spotlight, ${quoted(t("spaces.threeD.angle"))} (its ${quoted(t("spaces.threeD.castShadow"))} switch is the one on its row), and a ${quoted(t("spaces.threeD.lock"))} switch. ` +
       `${quoted(t("spaces.threeD.properties"))} shows the same settings, a light's ${quoted(t("spaces.threeD.castShadow"))} switch among them, with the position and rotation. A slider or colour previews while you drag and is written once when you let go. ` +
