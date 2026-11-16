@@ -10,14 +10,14 @@
  * response arrives, and the run is charged what the record adds up to.
  */
 
-import { accountActivityRepo } from "@breatic/core";
+import { accountActivityRepo, db } from "@breatic/core";
 import { serializeCreditMicro, type CreditDecimal, type TextToolLanguage } from "@breatic/shared";
 
 import { stepCountIs } from "ai";
 import { provider, streamTextRetry } from "@breatic/domain";
 import { getModelForTool, getPromptForTool, getTextToolsConfig } from "@server/config/text-tools.js";
 import { logger } from "@breatic/core";
-import { creditLotService, createUsageRecorder } from "@breatic/domain";
+import { creditLotService, createUsageRecorder, operationService } from "@breatic/domain";
 import type { UsageRecorder } from "@breatic/domain";
 import { watchModelCalls, type ModelCallWatch } from "@server/agent/model-call-watch.js";
 
@@ -174,6 +174,9 @@ export async function* executeTextTool(
       totalTokens,
     );
 
+    // Counted before the event is handed over: a client leaving on it
+    // cannot undo the count (inner#1968). A stopped run counts too.
+    await countRun(operationKey);
     if (signal.aborted) {
       yield { type: "aborted", tokens: totalTokens, creditsUsed };
     } else {
@@ -196,13 +199,36 @@ export async function* executeTextTool(
     );
 
     if (signal.aborted) {
+      await countRun(operationKey);
       yield { type: "aborted", tokens: totalTokens, creditsUsed };
     } else {
+      // A run that failed is not an operation; its model fee is still charged above.
+      await operationService.releaseOperation(textToolOperationKey(operationKey), undefined, "run_failed");
       // The raw error rides the event so the application caller (the SSE
       // route) can log it with full request context.
       yield { type: "error", err };
     }
   }
+}
+
+/**
+ * The operations ledger key of a text-tool run.
+ * @param operationKey - The key the route minted for the run.
+ * @returns `text_tool:<operationKey>`.
+ */
+export function textToolOperationKey(operationKey: string): string {
+  return `text_tool:${operationKey}`;
+}
+
+/**
+ * Count a run that ended done or stopped as one operation, in its own
+ * commit; each count point calls it, and the count is a compare-and-set, so
+ * the run counts once.
+ * @param operationKey - The key the route minted for the run.
+ */
+async function countRun(operationKey: string): Promise<void> {
+  const counted = await db.transaction((tx) => operationService.countOperation(textToolOperationKey(operationKey), tx));
+  await operationService.settleOverage(counted);
 }
 
 /**
