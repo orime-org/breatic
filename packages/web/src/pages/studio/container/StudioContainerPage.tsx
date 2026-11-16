@@ -316,7 +316,7 @@ export default function StudioContainerPage(): React.JSX.Element {
                   />
                 ) : null}
                 {tab === 'credits' ? (
-                  <CreditsTab slug={slug} />
+                  <CreditsTab slug={slug} region={region} />
                 ) : null}
                 {tab === 'settings' ? (
                   <SettingsTab studio={view.studio} members={members} />
