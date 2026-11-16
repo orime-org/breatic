@@ -17,14 +17,28 @@ export const IDENTITY_RENEW_INTERVAL_MS = 45_000;
 let renewer: (() => Promise<unknown>) | null = null;
 let renewedAt = 0;
 let inFlight: Promise<void> | null = null;
-let stopRenewal: (() => void) | null = null;
+let timer: ReturnType<typeof setInterval> | null = null;
+
+/** Renew every interval, unless the timer already runs. */
+function startTimer(): void {
+  timer ??= setInterval(() => {
+    void renewIdentityNow();
+  }, IDENTITY_RENEW_INTERVAL_MS);
+}
+
+/** Stop renewing every interval. */
+function stopTimer(): void {
+  if (timer !== null) clearInterval(timer);
+  timer = null;
+}
 
 /**
  * Renew now, sharing one request among everyone who asks while it runs: the
  * timer, a stream about to open, and every request a region refused with
- * `identity_expired`. A failed renewal is left to the next tick or sender;
- * one the global region refuses with 401 means the session is gone, and the
- * renewal stops until the next sign-in starts it again.
+ * `identity_expired`. A failed renewal is left to the next tick or sender. One
+ * the global region refuses with 401 means the session is gone: the timer
+ * stops, while a stream or a refused request can still ask, and the first
+ * renewal that works again, after a sign-in in another tab, restarts it.
  * @returns Once the renewal has answered.
  */
 export function renewIdentityNow(): Promise<void> {
@@ -33,9 +47,10 @@ export function renewIdentityNow(): Promise<void> {
   inFlight ??= renew().then(
     () => {
       renewedAt = Date.now();
+      if (renewer === renew) startTimer();
     },
     (err: unknown) => {
-      if (err instanceof ApiException && err.status === 401) stopRenewal?.();
+      if (err instanceof ApiException && err.status === 401) stopTimer();
     },
   ).finally(() => {
     inFlight = null;
@@ -65,23 +80,19 @@ export function startIdentityRenewal(renew: () => Promise<unknown>, config: Regi
   if (config === null || Object.keys(config.regions).length < 2) return () => undefined;
   renewer = renew;
   renewedAt = Date.now();
-  const timer = setInterval(() => {
-    void renewIdentityNow();
-  }, IDENTITY_RENEW_INTERVAL_MS);
+  startTimer();
   /** Renew a stale token as soon as the tab or the network is back. */
   const onBack = (): void => {
     if (document.visibilityState === 'visible') void ensureFreshIdentity();
   };
   document.addEventListener('visibilitychange', onBack);
   window.addEventListener('online', onBack);
-  /** Stop the timer and listeners; the next sign-in starts them again. */
-  const stop = (): void => {
-    clearInterval(timer);
+  return () => {
     document.removeEventListener('visibilitychange', onBack);
     window.removeEventListener('online', onBack);
-    if (renewer === renew) renewer = null;
-    if (stopRenewal === stop) stopRenewal = null;
+    if (renewer === renew) {
+      renewer = null;
+      stopTimer();
+    }
   };
-  stopRenewal = stop;
-  return stop;
 }

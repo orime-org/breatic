@@ -17,7 +17,7 @@ const checkStaleRelease = vi.hoisted(() => vi.fn((_reason: unknown) => Promise.r
 vi.mock('@web/data/deployment/stale-release', () => ({ checkStaleRelease }));
 
 import { request } from '@web/data/api/request';
-import { IDENTITY_RENEW_INTERVAL_MS, ensureFreshIdentity, startIdentityRenewal } from '@web/data/api/identity-renewal';
+import { IDENTITY_RENEW_INTERVAL_MS, ensureFreshIdentity, renewIdentityNow, startIdentityRenewal } from '@web/data/api/identity-renewal';
 import { parseRegionConfig } from '@web/data/api/regions';
 import { ApiException } from '@web/data/api/types';
 
@@ -95,6 +95,26 @@ describe('startIdentityRenewal', () => {
     const stop = startIdentityRenewal(renew, TWO_REGIONS);
     await vi.advanceTimersByTimeAsync(45_000 * 3);
     expect(renew).toHaveBeenCalledTimes(1);
+    stop();
+  });
+
+  it('still renews on demand after a 401, and resumes the timer once a renewal works again', async () => {
+    vi.useFakeTimers();
+    let signedOut = true;
+    const renew = vi.fn(async () => {
+      if (signedOut) throw new ApiException({ status: 401, message: 'not signed in' });
+    });
+
+    const stop = startIdentityRenewal(renew, TWO_REGIONS);
+    await vi.advanceTimersByTimeAsync(45_000 * 2);
+    expect(renew).toHaveBeenCalledTimes(1);
+
+    // The user signed in again elsewhere; a region refusal asks for a renewal.
+    signedOut = false;
+    await renewIdentityNow();
+    expect(renew).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(45_000 * 2);
+    expect(renew).toHaveBeenCalledTimes(4);
     stop();
   });
 
