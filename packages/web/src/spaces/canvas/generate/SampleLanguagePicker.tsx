@@ -63,8 +63,8 @@ export const SampleLanguagePicker = React.memo(function SampleLanguagePicker({
         <TooltipTrigger asChild>
           <PopoverTrigger asChild>
             <Button type='button' variant={null} size={null} data-testid='generate-voice-language' onFocusCapture={suppressTooltipFocusOpen}
-              className='flex h-8 w-[168px] shrink-0 items-center gap-1 whitespace-nowrap rounded-chrome border border-border bg-background px-2.5 text-xs text-foreground transition-colors hover-enabled:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'>
-              <span className='shrink-0 text-muted-foreground'>{t('canvas.generatePanel.voiceSampleLanguage')} ·</span>
+              className='flex h-8 w-[168px] shrink-0 items-center gap-1 whitespace-nowrap rounded-chrome border border-border bg-transparent px-2.5 text-sm text-foreground transition-colors hover-enabled:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'>
+              <span className='shrink-0 text-foreground-secondary'>{t('canvas.generatePanel.voiceSampleLanguage')} ·</span>
               <span className='min-w-0 flex-1 truncate text-left'>{named}</span>
               <ChevronDown className='size-3.5 shrink-0 opacity-60' aria-hidden='true' />
             </Button>
@@ -72,7 +72,7 @@ export const SampleLanguagePicker = React.memo(function SampleLanguagePicker({
         </TooltipTrigger>
         <TooltipContent side='top' portal>{named}</TooltipContent>
       </Tooltip>
-      <PopoverContent side='bottom' align='end' avoidCollisions={false} className='w-64 p-0 shadow-md'>
+      <PopoverContent side='bottom' align='end' avoidCollisions={false} className='w-[200px] p-0 shadow-md'>
         <OptionList
           options={options}
           value={value}

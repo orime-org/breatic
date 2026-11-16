@@ -415,6 +415,15 @@ test('Gemini keeps its reading mode and speakers in the settings pill, and its v
   const [search, picker] = await Promise.all([page.getByTestId('generate-voice-search').boundingBox(), sampleLanguage.boundingBox()]);
   expect(Math.abs(search!.y - picker!.y)).toBeLessThan(2);
   expect(picker!.x).toBeGreaterThan(search!.x);
+  // The list is widened beside the picker so the search box keeps its placeholder whole (#1521).
+  expect(Math.round(sb!.width)).toBe(320);
+  expect(search!.width).toBeGreaterThanOrEqual(120);
+  // The picker's list leaves the voice names to its left readable rather than a sliver of first letters.
+  await sampleLanguage.click();
+  const languageList = page.getByTestId('generate-voice-language-search').locator('xpath=ancestor::*[@role="dialog"][1]');
+  // Measured once the list has finished opening: it grows in from 95%.
+  await expect.poll(async () => Math.round((await languageList.boundingBox())?.width ?? 0)).toBe(200);
+  await page.keyboard.press('Escape');
   await sampleLanguage.click();
   const options = page.locator('[data-testid^="generate-voice-language-"]:not([data-testid$="-search"])');
   await expect(options).toHaveCount(24);
