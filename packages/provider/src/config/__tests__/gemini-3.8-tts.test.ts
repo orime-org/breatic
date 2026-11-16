@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Gemini 3.8 Flash TTS replaces 3.1 (#1521): bound to WaveSpeed (fal and SandBase follow once they are enabled), a
