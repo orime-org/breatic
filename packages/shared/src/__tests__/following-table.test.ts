@@ -20,7 +20,7 @@
 import { describe, it, expect } from "vitest";
 import fc from "fast-check";
 
-import { FOLLOWING_TABLE, followingEntrySchema } from "@shared/index.js";
+import { FOLLOWING_TABLE, followingDeclarationSchema, followingEntrySchema } from "@shared/index.js";
 
 const GOOD = { userId: "u-li", target: "u-wang", at: 1_700_000_000_000, lastSeenAt: 1_700_000_005_000 };
 
@@ -66,5 +66,25 @@ describe("following table contract", () => {
     { input: { userId: GOOD.userId, target: GOOD.target, at: GOOD.at } },
   ])("rejects a malformed entry: $input", ({ input }) => {
     expect(followingEntrySchema.safeParse(input).success).toBe(false);
+  });
+});
+
+// The browser declares `following {id, at}` in meta awareness; collab reads that
+// declaration and web types its writer from the same schema.
+describe("following declaration contract", () => {
+  it("accepts the declaration a tab publishes", () => {
+    const declared = { id: "u-wang", at: 1_700_000_000_000 };
+    expect(followingDeclarationSchema.safeParse(declared)).toEqual({ success: true, data: declared });
+  });
+
+  it.each([
+    ["an empty target", { id: "", at: 1 }],
+    ["a non-string target", { id: 7, at: 1 }],
+    ["a missing start time", { id: "u-wang" }],
+    ["an infinite start time", { id: "u-wang", at: Number.POSITIVE_INFINITY }],
+    ["a NaN start time", { id: "u-wang", at: Number.NaN }],
+    ["null", null],
+  ])("rejects %s", (_name, value) => {
+    expect(followingDeclarationSchema.safeParse(value).success).toBe(false);
   });
 });

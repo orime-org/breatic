@@ -30,7 +30,7 @@ import {
   waitFor,
   type LiveClient,
 } from "@collab/__tests__/helpers/live-hocuspocus.js";
-import { readFollowing, readPresence, writeFollowing } from "@collab/hooks/presence";
+import { markOnline, readFollowing, readPresence, writeFollowing } from "@collab/hooks/presence";
 import {
   forgetFollowingOnDisconnect,
   recordFollowingFromAwareness,
@@ -787,6 +787,28 @@ describe("presence wiring — the server keeps whom each connection follows", ()
     expect(readPresence(doc, ALICE)).toBeNull();
     expect(readFollowing(doc, "sock-1")?.lastSeenAt).toBe(7_000);
     expect(readFollowing(doc, "sock-2")?.lastSeenAt).toBe(1_000);
+    doc.destroy();
+  });
+
+  it("sends one meta update per sign of life for a socket that follows someone and has a presence record", () => {
+    // Every update is broadcast to the whole project; the entry and the record
+    // move together in one transaction.
+    const doc = new Y.Doc();
+    markOnline({ document: doc, userId: ALICE, now: 1_000 });
+    writeFollowing({ document: doc, socketId: "sock-1", userId: ALICE, target: "u-bob", at: 500, now: 1_000 });
+    let updates = 0;
+    doc.on("update", () => { updates += 1; });
+
+    refreshPresenceForSocket(
+      new Map([[META_DOC, { context: { user: { id: ALICE } }, document: doc }]]),
+      { now: () => 7_000, ...POLICY },
+      7_000,
+      "sock-1",
+    );
+
+    expect(updates).toBe(1);
+    expect(readPresence(doc, ALICE)?.lastSeenAt).toBe(7_000);
+    expect(readFollowing(doc, "sock-1")?.lastSeenAt).toBe(7_000);
     doc.destroy();
   });
 
