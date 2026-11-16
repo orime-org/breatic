@@ -12,7 +12,7 @@
  * charged for the seconds the report says it used.
  */
 
-import { env, getMiniToolsConfig, logger, REPORT_GRACE_MS } from "@breatic/core";
+import { env, getMiniToolsConfig, logger } from "@breatic/core";
 import {
   containerCostUsd,
   createUsageRecorder,
@@ -150,7 +150,7 @@ async function checkJob(op: ContainerOp, input: ContainerRunInput, job: StoredJo
   // The job's own deadline and the room for its last report bound every call
   // (inner#1367). Past it, the read that finds the ending still goes out, under
   // the transport's own bound.
-  const endsAt = job.deadlineAt + REPORT_GRACE_MS;
+  const endsAt = job.deadlineAt + poll * 2;
   const bound = untilDeadlineIfAhead(endsAt);
   let report = await readMiniToolJob(
     env.INGEST_BASE_URL,
@@ -178,8 +178,8 @@ async function checkJob(op: ContainerOp, input: ContainerRunInput, job: StoredJo
     }
   }
   if (report?.state === "done" || report?.state === "failed") return report;
-  // The Durable Object ends the job at its deadline; REPORT_GRACE_MS leaves
-  // room for its report to land. A job still going after that ran out of time, which
+  // The Durable Object ends the job at its deadline; two polls leave room for
+  // its report to land. A job still going after that ran out of time, which
   // settles as expired like any other task (inner#1367).
   assertBeforeDeadline(endsAt);
   throw new StillRunning(Date.now() + poll);
