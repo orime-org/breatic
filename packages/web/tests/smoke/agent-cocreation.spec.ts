@@ -156,7 +156,8 @@ async function askHelper(api: APIRequestContext, prompt: string, asObject = fals
 async function send(api: APIRequestContext, scenario: Scenario, body: Record<string, unknown>): Promise<string> {
   const isCard = 'answer' in body || 'shared_spaces' in body;
   const res = await api.post('/api/v1/chat/message', {
-    headers: { 'Accept-Language': scenario.lang },
+    // A new message runs once per operation id (inner#1968 design 3.2); a card answer needs none.
+    headers: { 'Accept-Language': scenario.lang, ...(isCard ? {} : { 'Idempotency-Key': randomUUID() }) },
     data: isCard ? body : { id: randomUUID(), ...body },
     timeout: 120_000, // answered once the run's opening stage is done
   });

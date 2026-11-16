@@ -101,7 +101,8 @@ async function submit(
       const res = await fetch('/api/v1/canvas/ingest-url', {
         method: 'POST',
         credentials: 'include',
-        headers: { 'content-type': 'application/json' },
+        // One operation id per press, as the panel sends it (inner#1968 design 3.2).
+        headers: { 'content-type': 'application/json', 'idempotency-key': crypto.randomUUID() },
         body: JSON.stringify({
           url: address,
           project_id: project,

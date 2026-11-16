@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { expect, type Locator, type Page, type Route } from 'playwright/test';
 import { unzipSync, strFromU8 } from 'three/addons/libs/fflate.module.js';
@@ -464,7 +464,7 @@ for (const role of ['editor', 'viewer'] as const) {
         const stored = await httpRequest(asset.url, { method: 'GET' }, { replaySafe: true });
         expect(stored.status).toBe(200);
         const bytes = new Uint8Array(await stored.arrayBuffer());
-        const refused = await peerContext.request.post('/api/v1/assets/upload-ticket', { data: {
+        const refused = await peerContext.request.post('/api/v1/assets/upload-ticket', { headers: { 'Idempotency-Key': randomUUID() }, data: {
           project_id: projectId, purpose: 'scene_model', space_id: id, label: 'Shared model', filename: 'shared-model.zip', content_type: 'application/zip',
           size: bytes.byteLength, client_hash: createHash('sha256').update(bytes).digest('hex'),
         } });
