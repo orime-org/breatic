@@ -63,8 +63,26 @@ function cursorAfter(row: TimelineExecution): string {
   return Buffer.from(JSON.stringify([row.createdAt, row.id]), "utf8").toString("base64url");
 }
 
+/** An execution id as Postgres writes a uuid. */
+const CURSOR_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+/** A creation time as the repository writes it: UTC, to the microsecond. */
+const CURSOR_TIME = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{6}Z$/;
+
 /**
- * Read a cursor back.
+ * Whether a text is a creation time the repository wrote: its form, and a real instant, which a day the month does
+ * not have fails because the parsed date prints back differently.
+ * @param text - The text.
+ * @returns Whether it is.
+ * @throws {never} Never.
+ */
+function isCursorTime(text: string): boolean {
+  if (!CURSOR_TIME.test(text)) return false;
+  const parsed = new Date(text);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 23) === text.slice(0, 23);
+}
+
+/**
+ * Read a cursor back; only what the cursor carries in exactly the form this repository writes reaches the query.
  * @param cursor - The opaque cursor.
  * @returns The time text and id it carries.
  * @throws {BadCursorError} When it is not one this repository wrote.
@@ -73,7 +91,7 @@ function readCursor(cursor: string): { createdAt: string; id: string } {
   try {
     const parsed = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")) as unknown;
     if (Array.isArray(parsed) && typeof parsed[0] === "string" && typeof parsed[1] === "string"
-      && /^[0-9a-f-]{36}$/.test(parsed[1]) && !Number.isNaN(Date.parse(parsed[0]))) {
+      && CURSOR_ID.test(parsed[1]) && isCursorTime(parsed[0])) {
       return { createdAt: parsed[0], id: parsed[1] };
     }
   } catch {

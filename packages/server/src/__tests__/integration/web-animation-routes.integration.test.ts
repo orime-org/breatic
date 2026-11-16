@@ -434,6 +434,20 @@ describe("GET /timeline/space-executions", () => {
     expect(done.nextCursor).toBeNull();
   });
 
+  it.each([
+    ["an id of 36 dashes", ["2026-11-15T08:00:00.123456Z", "-".repeat(36)]],
+    ["an id with hyphens out of place", ["2026-11-15T08:00:00.123456Z", "0123456789abcdef0123456789abcdef----"]],
+    ["a bare year", ["2026", "00000000-0000-4000-8000-000000000001"]],
+    ["a date in another form", ["1/2/3", "00000000-0000-4000-8000-000000000001"]],
+    ["a day the month does not have", ["2026-02-30T08:00:00.123456Z", "00000000-0000-4000-8000-000000000001"]],
+  ])("refuses a cursor with %s as a validation error, not a server error", async (_name, carried) => {
+    const fx = await seedProject();
+    const cursor = Buffer.from(JSON.stringify(carried), "utf8").toString("base64url");
+    const res = await get(fx.viewer.cookie, `/timeline/space-executions?projectId=${fx.projectId}&spaceId=${fx.spaceId}&scope=space&group=done&cursor=${cursor}`);
+    expect(res.status).toBe(422);
+    expect(await res.json()).toEqual({ error: { code: 422, message: t("server.error.validation") } });
+  });
+
   it("pages by creation time and id without skipping rows that share a microsecond", async () => {
     const fx = await seedProject();
     const rows = [];
