@@ -28,9 +28,10 @@ const voiceListQuerySchema = z.object({
 /**
  * `GET /api/v1/models` — full model catalog.
  *
- * Returns all available models grouped by modality (image, video, audio,
- * tts, three_d, understand). Each model includes params, tier, providers,
- * and cost info. Models without configured API keys are excluded.
+ * Returns every model grouped by modality (image, video, audio, tts,
+ * three_d, understand), whatever this deployment has configured. Each model
+ * carries its params, its pricing rules and its availability: each upstream
+ * that serves it and whether that upstream's key is set.
  *
  * Frontend should call this once at startup and cache the result.
  * @returns Model catalog with total count

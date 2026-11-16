@@ -4,8 +4,9 @@
 /**
  * The voices a tts model offers, read from the voices its yaml entry lists.
  *
- * Every tts model runs on WaveSpeed, which has no voice endpoint to ask, so
- * the catalog carries each model's voices inline. The id handed back here is
+ * No upstream of a tts model has a voice endpoint we ask, so the catalog
+ * carries each model's voices inline; each binding maps our voice ids to its
+ * upstream's (`voice_map` in config/provider/media/tts.yaml). The id handed back here is
  * the one the upstream accepts, because it is what the panel writes into the
  * node and what the next generation sends back out.
  */

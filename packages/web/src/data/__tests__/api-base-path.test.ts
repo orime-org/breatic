@@ -29,7 +29,7 @@ vi.mock('@microsoft/fetch-event-source', () => ({
 import { API_BASE_PATH } from '@web/data/api/base-path';
 import { request } from '@web/data/api/request';
 import { textToolsApi } from '@web/data/api/text-tools';
-import { chatSessionFor, evictAllChatSessions } from '@web/stores/chat-sessions';
+import { chatSessionFor, evictAllChatSessions, readRun } from '@web/stores/chat-sessions';
 
 /**
  * The URL the last stream call was opened against.
@@ -60,20 +60,15 @@ describe('the API prefix has one definition', () => {
 
   it('the agent chat stream opens under it', async () => {
     // Driven rather than read off the transport: the SDK keeps `api`
-    // protected, and what matters is the address a turn actually goes to.
-    const fetching = vi.fn(async (_url: string) => new Response('', { status: 204 }));
+    // protected, and what matters is the address a run is read from.
+    const fetching = vi.fn(async (_url: string) => new Response(null, { status: 204 }));
     vi.stubGlobal('fetch', fetching);
+    chatSessionFor({ projectId: 'p1', conversationId: 'c1', history: [], onTitled: () => undefined });
 
-    await chatSessionFor({
-      projectId: 'p1',
-      conversationId: 'c1',
-      history: [],
-      onTitled: () => undefined,
-      onFirstFrame: () => undefined,
-    }).sendMessage({ text: 'hi' });
+    await readRun('c1', () => undefined);
 
     const [url] = fetching.mock.calls[0] ?? [];
-    expect(String(url)).toBe(`${API_BASE_PATH}/chat/message`);
+    expect(String(url)).toBe(`${API_BASE_PATH}/chat/conversations/c1/stream`);
   });
 
   it('the text mini-tool stream opens under it', async () => {

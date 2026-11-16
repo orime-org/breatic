@@ -182,7 +182,10 @@
       "ask_not_found": "This question card is not in this conversation.",
       "ask_already_answered": "This question card has already been answered.",
       "model_unavailable": "The selected model is no longer available.",
-      "answer_mismatch": "These answers do not fit the questions on the card."
+      "answer_mismatch": "These answers do not fit the questions on the card.",
+      "queue_full": "Too many messages are waiting. Wait for the Agent to read them, or take one back.",
+      "turn_busy": "The Agent is still working on this conversation. Try again once it finishes.",
+      "shutting_down": "The server is restarting. Try again in a moment."
     },
     "mail": {
       "studio_invite": {
@@ -338,6 +341,10 @@
       "still_running": "This generation is still finishing and may still produce a result. Try again in a moment.",
       "has_result": "This generation finished with a result, which is now on the task list."
     },
+    "model": {
+      "not_configured": "{model} is not set up on this deployment: it needs {envVars}.",
+      "upstream_not_bound": "{model} is not offered through {upstream}."
+    },
     "document": {
       "versions_full": "{limit, plural, one {This document already has 1 snapshot. Delete it to save a new one.} other {This document already has # snapshots. Delete an old one to save a new one.}}"
     }
@@ -353,6 +360,8 @@
       "placeholder": "Ask something, or hand me things from the canvas…",
       "inputAria": "Chat input",
       "send": "Send",
+      "sendWhileRunning": "Send · The Agent reads it at its next step",
+      "stop": "Stop",
       "sending": "Sending",
       "atLimit": "At the {limit, number}-character limit",
       "attach": "Attach files",
@@ -619,6 +628,14 @@
       "cleared": "Project instructions cleared",
       "readFailed": "Couldn't load the Project instructions",
       "saveFailed": "Couldn't save the Project instructions"
+    },
+    "waiting": {
+      "title": "Waiting for the Agent ({count})",
+      "awaitingCard": "Answer the card above to go on, or just send a message.",
+      "blocked": "Not enough credits. Add credits to continue.",
+      "retract": "Back to the box",
+      "delete": "Delete",
+      "listAria": "Messages waiting for the Agent"
     }
   },
   "canvas": {
@@ -904,6 +921,7 @@
       "param": {
         "compose_from": "Compose from",
         "language": "Language",
+        "language_boost": "Language",
         "voice_description": "Voice description",
         "speakers": "Speakers",
         "emotion": "Emotion",
@@ -1495,6 +1513,8 @@
         "comics-storyboards": "Comics & storyboards",
         "food": "Food",
         "social-hooks": "Social hooks",
+        "posters": "Posters & graphics",
+        "speed": "Motion & speed",
         "sound": "Sound, music & voice"
       },
       "storyboard-grid-25": {
@@ -1789,6 +1809,60 @@
       },
       "applyFailed": "Couldn't apply the template.",
       "groupLocked": "The group is locked. Unlock it to add nodes.",
+      "name-as-world-typography": {
+        "name": "Name as a tiny world",
+        "description": "A name built as a miniature world, its letters shaped by what it is known for",
+        "prompt": "A typographic illustration. The name {✏️ the name, e.g. ROME} is built as a miniature world: every letter, or every character for a name in Chinese, Japanese or Korean, is a tiny architectural model standing on a plain light ground, and the whole name reads clearly with every letter spelled and shaped exactly right. What the name is known for reshapes its letters: {✏️ what it is known for and how it bends a letter, e.g. the Colosseum forms the O, aqueduct arches run through the M}. Tiny people, vehicles and trees at model scale. 6 to 14 short hand-written technical annotations in thin lines point at the details, a few words each, in the language of this prompt. Accent colour: {✏️ one accent colour, e.g. terracotta red}; everything else in soft neutral tones. Soft daylight from the upper left, gentle shadows. No other text."
+      },
+      "destination-festival-poster": {
+        "name": "Festival travel poster",
+        "description": "A hand-drawn travel poster of a place in its festival or season",
+        "prompt": "A hand-drawn travel poster of {✏️ the place, e.g. Kyoto} during {✏️ the festival or season, e.g. the autumn maple season}. Screen print and risograph look: 4 to 6 flat ink colours, slightly misregistered layers, visible grain and halftone dots. A bold landmark or scene of the place fills the poster, with people celebrating in the middle ground. The only text is the title {✏️ the title, e.g. KYOTO · AUTUMN}, in large hand-lettered type at the top, spelled exactly as given. No other words, logos or small print."
+      },
+      "photo-paper-diorama": {
+        "name": "Photo to paper diorama",
+        "description": "The photo's lower half torn into paper craft, with two hand-written lines",
+        "prompt": "Keep the top half of [📎 Photo] exactly as it is. The bottom half becomes torn handmade paper with rough fibrous edges, layered like a collage, and {✏️ which element of the photo, e.g. the dog} rises out of it as a paper-craft relief, cut and folded from coloured paper and casting small real shadows. Across the paper, two short hand-written lines in ink: {✏️ the two lines, e.g. Sunday walks / smell like grass}, spelled exactly as given. Soft daylight. No other text.",
+        "input": {
+          "photo": {
+            "name": "Photo",
+            "note": "Add the photo first, then generate."
+          }
+        }
+      },
+      "vehicle-speed-cutlist": {
+        "name": "Vehicle speed cut list",
+        "description": "A car or motorbike at speed, a new camera angle every second",
+        "prompt": "A 12-second 16:9 vehicle speed film in exactly 12 cuts, one cut per second. The vehicle is [📎 Vehicle]: the same model, colour, wheels, stance and number plate as in the picture in every cut, nothing else taken from the picture; its wheels turn and its suspension compresses like a real one. {✏️ Who drives, e.g. a rider in a black full-face helmet the whole time}. Road: {✏️ the road and the weather, e.g. a wet mountain road at dawn, guardrails and pine trees on both sides}. 90% of the film is pure camera motion, 10% scenery. The first frame is already at full speed. 0–1 s: road-level camera, the front tyre fills the frame and the road streaks under it. 1–2 s: side tracking shot level with the vehicle, the roadside racing past. 2–3 s: low camera ahead, the vehicle charges straight at the lens. 3–4 s: close-up of the rear wheel and suspension working over the road surface. 4–5 s: drone shot from above following the road. 5–6 s: close-up of the exhaust, heat shimmer behind it; on an electric vehicle, the rear wheel hub. 6–7 s: camera behind, the road narrowing ahead. 7–8 s: low side shot at tyre height, the road surface tearing past. 8–9 s: over-the-shoulder shot of the person driving. 9–10 s: wide shot, the vehicle a streak through its surroundings. 10–11 s: road-level camera as it passes, the road surface blurring past the lens. 11–12 s: the vehicle shoots out of frame and the camera stays on the empty road. One light source: {✏️ the light, e.g. a low sun at the end of the road}. Sound: the engine note rising through each gear (on an electric vehicle, the motor whine climbing), tyre roar and wind, one beat of silence after it passes in the last second. Close-ups only on tyres, suspension and exhaust or hub, never on badges or dials. No made-up letters or numbers on the number plate, no duplicated parts, no wheels changing shape, no vehicle floating above the road. No text on screen.",
+        "input": {
+          "vehicle": {
+            "name": "Vehicle",
+            "note": "Add a clear photo of the whole car or motorbike first, then generate."
+          }
+        }
+      },
+      "sports-live-coverage": {
+        "name": "Live sports coverage",
+        "description": "An obstacle course filmed like live TV, with crowd and commentator",
+        "prompt": "A 12-second 16:9 live sports broadcast. The athlete is [📎 Athlete]: the same face, hair, build and outfit as in the picture, nothing else taken from the picture. Course: {✏️ the course and its obstacles in order, e.g. an obstacle course over a pool: a balance beam, a swinging bag, a foam wall}; the athlete moves through it from left to right. Each camera has one job and the cuts land on the action. 0–3 s: wide crane shot of the whole course, the direction of travel and the first obstacle; the athlete is already under way. 3–6 s: long lens tracking from the side as the athlete reaches {✏️ the obstacle they run into, e.g. the swinging bag}. 6–9 s: low camera on the contact: the athlete and the obstacle meet, the force pushes the athlete the way the obstacle moves or throws them back off it, their body bends away from it, then {✏️ what happens, e.g. they fall into the water with a big splash}; nothing reacts before the contact. 9–12 s: finish camera on the ending: {✏️ how it ends, e.g. they climb out soaked and wave to the crowd}; whatever the contact left on them (wet clothes, mud, tiredness) stays from then on. One light source: the venue's own light from above (floodlights, or the sun outdoors). Sound: the athlete's feet, wheels or skis on the course and whatever on it moves or is hit, the crowd and an excited commentator reacting just after each contact, a breath of silence right before the contact. No on-screen graphics, no text on screen.",
+        "input": {
+          "athlete": {
+            "name": "Athlete",
+            "note": "Add a clear full-body photo of the athlete first, then generate."
+          }
+        }
+      },
+      "extreme-sports-run": {
+        "name": "Extreme sports run",
+        "description": "One stunt, run-up to landing, in one take",
+        "prompt": "A 10-second vertical action clip in one continuous take. The person is [📎 Person]: the same face, build and outfit as in the picture, nothing else taken from the picture; the same person, gear, place and light throughout. Sport and place: {✏️ e.g. snowboarding off a kicker on a sunny mountain slope}. The camera operator follows on the move: no cuts, no jumps to another angle. 0–3 s run-up: already moving fast toward the take-off, {✏️ e.g. the board edge carving the snow, spray flying off each turn}. 3–5 s take-off: knees compress, then extend as they leave the ground at the take-off. 5–7 s in the air: {✏️ the move, e.g. one grab of the board}, the body moving naturally and continuously through it, and if it spins, no set number of spins. 7–10 s landing: they touch down with knees and hips folding deep to take the weight, {✏️ e.g. snow bursting out around the board}, then carry the speed on. One light source: the place's own (the sun on an open slope). Sound: skis, board, wheels or feet on the surface and the wind, near silence at the top of the jump, a heavy thud on landing. No flying or hovering, no teleporting, no light upright landing, no injury. No text on screen.",
+        "input": {
+          "person": {
+            "name": "Person",
+            "note": "Add a clear full-body photo of the person first, then generate."
+          }
+        }
+      },
       "ambience-sfx-bed": {
         "name": "Ambience bed with foley",
         "description": "A looping place sound with a few foley hits",
@@ -2323,6 +2397,7 @@
       "comment": {
         "placeholder": "Write a comment…",
         "targetGone": "The text was changed or deleted.",
+        "mediaGone": "This media was deleted.",
         "cannotWrite": "You can no longer write here.",
         "railTitle": "Comments",
         "filterOpen": "Unresolved",
@@ -2429,6 +2504,7 @@
         "captionReadOnly": "Read-only. You can copy this draft.",
         "captionRetained": "Media removed. Copy this draft before closing the Space.",
         "notFinished": "Upload not finished",
+        "notUploaded": "The media has not finished uploading.",
         "pendingExport": "{name} (upload not finished)",
         "uploadFailed": "Upload failed",
         "failure": {
@@ -3492,6 +3568,7 @@
     "close": "Close",
     "indexLabel": "Credit sections",
     "unit": "credits",
+    "billingPending": "Billing",
     "loadFailed": "Could not load. Close and open again.",
     "listEnd": "No more",
     "listPageFailed": "Could not load this page. Scroll to retry.",
@@ -3697,7 +3774,6 @@
       "missing_source": "Its video is missing",
       "source_unresolved": "Its web animation is unavailable"
     },
-    "loadingMedia": "Loading video…",
     "mediaUnavailable": "This video is unavailable.",
     "retry": "Retry",
     "play": "Play",
@@ -3711,10 +3787,7 @@
     "startFrame": "Start frame",
     "cancel": "Cancel",
     "transport": {
-      "paused": "Paused",
-      "playing": "Playing",
-      "waiting": "Buffering…",
-      "failed": "Playback failed"
+      "waiting": "Buffering…"
     },
     "material": {
       "description": "Choose a video and confirm its position.",
@@ -3739,6 +3812,8 @@
       "source_unavailable": "This video is unavailable. Choose another or retry.",
       "metadata_unavailable": "Video duration is unavailable. Retry or choose another video.",
       "invalid_range": "Enter a frame range inside the video.",
+      "notNumber": "Enter a number.",
+      "scaleRange": "Enter {min} to {max}.",
       "target_missing": "The target has changed. Check the position and retry.",
       "clip_removed": "This clip was removed by another member.",
       "permission_changed": "Editing permission changed. Confirm again to add this video.",
@@ -3777,7 +3852,15 @@
       "magnetStartHint": "Main track magnet is on. Drag to reorder.",
       "splitOutside": "Move the playhead inside the selected clip to split it.",
       "lowestTrack": "This clip is already on the bottom visual track.",
-      "bumped": "{count, plural, one {# linked clip moved} other {# linked clips moved}} to a track above."
+      "bumped": "{count, plural, one {# linked clip moved} other {# linked clips moved}} to a track above.",
+      "transform": "Position and size",
+      "positionX": "X (px)",
+      "positionY": "Y (px)",
+      "scaleX": "Width scale (%)",
+      "scaleY": "Height scale (%)",
+      "rotation": "Rotation (°)",
+      "lockRatio": "Lock ratio",
+      "offFrame": "This clip is not at the current frame."
     },
     "webAnimation": {
       "create": "Create web animation",
@@ -3849,6 +3932,11 @@
       "waiting": "Uploaded, waiting for edit access",
       "unfinished": "Unfinished",
       "preview": "{track}: {state, select, failed {video upload failed, not shown} unfinished {video unfinished, not shown} other {video uploading…}}"
+    },
+    "preview": {
+      "playBlocked": "The browser blocked playback with sound. Press play to start.",
+      "videoLoading": "{track}: video loading…",
+      "videoUnavailable": "{track}: video unavailable"
     }
   }
 }

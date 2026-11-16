@@ -19,6 +19,8 @@ import {
   AlignRight,
   Download,
   Maximize2,
+  MessageSquarePlus,
+  MessageSquareText,
   Trash2,
   Type,
 } from 'lucide-react';
@@ -79,6 +81,19 @@ export interface MediaBlockActions {
   readonly bodyHolds: (element: Element) => boolean;
 }
 
+/**
+ * What the toolbar's Comment and Add to Agent and the comment icon do, the
+ * same for every media block in the body (inner#1316 §5.1, §5.4).
+ */
+export interface MediaCommentActions {
+  /** Opens a comment draft on the block; null where the editor has no comments. */
+  readonly comment: ((blockId: string) => void) | null;
+  /** Reads every open comment on the block. */
+  readonly read: (blockId: string) => void;
+  /** Hands the block to the project's Agent; null outside a project. */
+  readonly addToAgent: ((blockId: string) => void) | null;
+}
+
 interface DocumentMediaBlockProps {
   editor: object;
   blockId: string;
@@ -97,6 +112,14 @@ interface DocumentMediaBlockProps {
   /** Told when the pointer arrives on the media or its toolbar, or leaves them. */
   onHover: (host: HTMLElement, on: boolean) => void;
   actions: MediaBlockActions;
+  /** Comment, Add to Agent and the comment icon. */
+  commentActions: MediaCommentActions;
+  /** How many open comments stand on the block. */
+  commentCount: number;
+  /** Whether the block is outlined: a comment on it is selected or its card is under the pointer, or a draft is aimed at it. */
+  commentReading: boolean;
+  /** Whether a table is open full screen, where neither entry nor icon is drawn. */
+  tableFullscreen: boolean;
 }
 
 /** The narrowest an image or a video can be dragged to. */
@@ -169,9 +192,9 @@ const CORNERS = [
 
 /**
  * The selection bar's rule between groups (16px tall, 5px either side once the
- * bar's 2px gap is counted), drawn after the last alignment: an element of its
- * own inside the block would put line breaks in the page's selection of the
- * block.
+ * bar's 2px gap is counted), drawn after a group's last button: an element of
+ * its own inside the block would put line breaks in the page's selection of
+ * the block.
  */
 const GROUP_RULE_AFTER =
   'relative mr-[9px] after:absolute after:-right-[6px] after:top-1/2 after:h-4 after:w-px after:-translate-y-1/2 after:bg-border';
@@ -267,8 +290,13 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
   host,
   onHover,
   actions,
+  commentActions,
+  commentCount,
+  commentReading,
+  tableFullscreen,
 }: DocumentMediaBlockProps): React.JSX.Element {
   const t = useTranslation();
+  const { comment, addToAgent } = commentActions;
   const sized = type !== 'audio';
   const frame = React.useRef<HTMLDivElement>(null);
   const [dragWidth, setDragWidth] = React.useState<number | null>(null);
@@ -358,8 +386,9 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
     openFullscreenOn({ kind: type, src: props.url, size: storedSize });
   }, [actions, panelShown, props.url, storedSize, type, openFullscreenOn]);
   // Above the media, unless the scroller has no room there — then on the
-  // media itself, along its top. Never under it: below the media sit its
-  // caption and the next block, and a bar there reads as theirs.
+  // media itself, along its top, or in a table cell under it (`below`). In
+  // the body never under it: below the media sit its caption and the next
+  // block, and a bar there reads as theirs.
   const [side, setSide] = React.useState<'top' | 'inside'>('top');
   const placeToolbar = React.useCallback((): void => {
     const element = frame.current;
@@ -379,12 +408,16 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
   React.useLayoutEffect(() => {
     setInCell(host.closest(`[data-node-type='${DOC_TABLE}']`) !== null);
   }, [host]);
+  // A cell's media is small and sits under its row and column handles, so
+  // a toolbar laid on it would hide most of it: there it goes under the
+  // media instead, where the cell's own space is.
+  const below = inCell && side === 'inside';
   const { refs: layerRefs, floatingStyles: layerStyles } = useFloating({
     open: toolbarShown,
-    placement: 'top',
+    placement: below ? 'bottom' : 'top',
     strategy: inCell ? 'fixed' : 'absolute',
     middleware: [
-      offset(side === 'top' ? 0 : ({ rects }) => -rects.floating.height - TOOLBAR_GAP),
+      offset(side === 'top' || below ? 0 : ({ rects }) => -rects.floating.height - TOOLBAR_GAP),
       shift({ boundary: viewport ?? undefined }),
     ],
     // The library runs this whenever both elements are mounted, open or not;
@@ -692,9 +725,30 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
         label={t('spaces.document.media.download')}
         action='download'
         testId='doc-media-download'
+        // Add to Agent and Comment stand apart from the file's own actions,
+        // as in the selection bubble bar.
+        className={!tableFullscreen && (addToAgent !== null || comment !== null) ? GROUP_RULE_AFTER : undefined}
         onPress={actions.download}
       >
         <Download />
+      </ToolButton>}
+      {!readOnly && !tableFullscreen && addToAgent !== null && <ToolButton
+        tabbable={floating && panelShown}
+        label={t('canvas.contextMenu.addToAgent')}
+        action='add-to-agent'
+        testId='doc-media-add-to-agent'
+        onPress={() => addToAgent(blockId)}
+      >
+        <MessageSquarePlus />
+      </ToolButton>}
+      {!readOnly && !tableFullscreen && comment !== null && <ToolButton
+        tabbable={floating && panelShown}
+        label={t('spaces.document.commands.comment')}
+        action='comment'
+        testId='doc-media-comment'
+        onPress={() => comment(blockId)}
+      >
+        <MessageSquareText />
       </ToolButton>}
       {!readOnly && <ToolButton
         tabbable={floating && panelShown}
@@ -714,9 +768,10 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
     <div
       data-testid='doc-media-frame'
       data-media-frame=''
+      data-comment-reading={commentReading}
       onPointerEnter={pointerOn}
       onPointerLeave={pointerOff}
-      className='relative'
+      className='relative data-[comment-reading=true]:outline data-[comment-reading=true]:outline-1 data-[comment-reading=true]:outline-offset-2 data-[comment-reading=true]:outline-[var(--color-comment-outline)]'
       draggable
       // Decided as the press lands: the corners resize and the player's
       // controls play, and a native drag starting under either would
@@ -730,6 +785,31 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
       onDragEnd={actions.dragEnd}
     >
       {body}
+      {commentCount > 0 && !tableFullscreen && (
+        <Button
+          variant='chrome-ghost'
+          size='compact'
+          data-testid='doc-media-comment-badge'
+          // The block's own control, so a press here reads the comments and
+          // leaves the user's caret alone; shown to a viewer too, who reads
+          // comments (`index.css` hides the rest of the chrome in a body that
+          // cannot be edited).
+          data-media-chrome=''
+          data-media-viewer=''
+          // A press here reads the comments; it starts no drag of the block.
+          // On a picture or video it rides the corner; audio has no edge of
+          // its own and its waveform reaches the corner, so there it sits
+          // just above, clear of the bars.
+          className={cn(
+            'nodrag absolute z-10 gap-0.5 rounded-full border border-border bg-popover px-1.5 text-2xs shadow-sm',
+            type === 'audio' ? 'bottom-full right-0 mb-0.5' : '-right-2 -top-2',
+          )}
+          onClick={() => commentActions.read(blockId)}
+        >
+          <MessageSquareText className='size-3' />
+          {commentCount}
+        </Button>
+      )}
       {sized &&
             selected &&
             CORNERS.map(({ corner, side: towards, place, cursor }) => (
@@ -796,11 +876,12 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
           style={layerStyles}
           className={cn(
             toolbarShown && !floating ? 'pointer-events-auto' : 'pointer-events-none',
-            // In a cell, over the table's row and column handles (10), as the
-            // selection bubble bar is: both are summoned by the user's hand
-            // and go when it leaves.
-            inCell ? 'z-20' : 'z-10',
+            // In a cell, over the table's row and column handles (10) and the
+            // block handles (20), as the selection bubble bar is: both are
+            // summoned by the user's hand and go when it leaves.
+            inCell ? 'z-30' : 'z-10',
             side === 'top' && 'pb-2',
+            below && 'pt-2',
           )}
         />
         {/* The media itself, which is what a frame goes around: the caption

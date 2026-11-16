@@ -11,6 +11,7 @@ import type { FinishReason, LanguageModelUsage, ProviderMetadata } from "ai";
 import type { UpstreamDecl } from "@provider/config/schema.js";
 import { HttpStatus } from "@provider/http/errors.js";
 import { answerText, deliver, isSuccess, parsed, type OutgoingRequest } from "@provider/http/request.js";
+import type { UnderstandMedia } from "@provider/llm/api.js";
 import type { VendorOptions } from "@provider/llm/vendors.js";
 
 /** One item uploaded to an upstream: its file's address, and its uri once the file is ready. */
@@ -35,7 +36,7 @@ export interface UnderstandCall {
   modelId: string;
   /** The question, already cleaned. */
   question: string;
-  media: { bytes: Uint8Array; contentType: string }[];
+  media: UnderstandMedia[];
   maxOutputTokens: number;
   /** OpenRouter's `provider` object for the call, sent as given: the model's backend pin and, for a cheapest call, the price sort. */
   provider?: VendorOptions;
@@ -121,6 +122,41 @@ export interface UnderstandAdapter {
   read(body: unknown): Reading;
   /** How a 2xx answer is costed. */
   billing(body: unknown): Billing;
+  /** Whether a refusal's error value says the content was blocked (the upstream's own words for it). */
+  contentBlocked?(error: unknown): boolean;
+}
+
+/** An item's bytes and type, as an upstream that needs bytes sends them. */
+export type MediaBytes = { bytes: Uint8Array; contentType: string };
+
+/** The caller's reader of an image failed; the call ends with the caller's error, on no other upstream. */
+export class MediaReadFailed extends Error {
+  /**
+   * Wrap the caller's error.
+   * @param cause - What the reader threw.
+   */
+  constructor(cause: unknown) {
+    super("The caller's reader of an image failed", { cause });
+    this.name = "MediaReadFailed";
+  }
+}
+
+/**
+ * The bytes of every item: an item handed over by its address is read with the caller's reader.
+ * @param media - The items.
+ * @param signal - The call's signal.
+ * @returns Each item's bytes and type.
+ * @throws {MediaReadFailed} When a reader fails.
+ */
+export async function bytesOf(media: readonly UnderstandMedia[], signal: AbortSignal): Promise<MediaBytes[]> {
+  return Promise.all(media.map(async (item) => {
+    if (!("read" in item)) return item;
+    try {
+      return { bytes: await item.read(signal), contentType: item.contentType };
+    } catch (error) {
+      throw new MediaReadFailed(error);
+    }
+  }));
 }
 
 /** The largest answer read, in bytes. */

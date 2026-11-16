@@ -465,7 +465,7 @@ describe("reading OpenRouter's understand answer against one typed structure", (
     ["at the top of the body, with a code that is not a number", { ...completion, error: { code: "upstream_error", message: "it broke" } }],
     ["at the top of the body, with no code", { ...completion, error: { message: "it broke" } }],
     ["in the choice, with no code and nothing written", { ...completion, choices: [{ index: 0, message: { role: "assistant", content: "" }, finish_reason: "error", error: { message: "it broke" } }] }],
-  ])("refuses with the answer's own status an error %s, as today's understand does", async (_name, body) => {
+  ])("refuses with the answer's own status an error %s, as the understand before provider did", async (_name, body) => {
     const error = await openRouterAnswering({ status: 200, body });
     expect(error).toBeInstanceOf(UpstreamRequestRejected);
     expect((error as UpstreamRequestRejected).status).toBe(200);
@@ -478,16 +478,36 @@ describe("reading OpenRouter's understand answer against one typed structure", (
     expect((error as UpstreamRequestRejected).status).toBeUndefined();
   });
 
+  // Walked entry by entry: an entry with no case can be deleted with the suite still green, and the files it
+  // covers are then refused.
   it.each([
+    ["audio/mpeg", "mp3"],
+    ["audio/mp3", "mp3"],
+    ["audio/x-mpeg", "mp3"],
+    ["audio/wav", "wav"],
+    ["audio/x-wav", "wav"],
+    ["audio/wave", "wav"],
+    ["audio/vnd.wave", "wav"],
+    ["audio/mp4", "m4a"],
     ["audio/x-m4a", "m4a"],
     ["audio/m4a", "m4a"],
-    ["audio/x-mpeg", "mp3"],
-    ["audio/mp3", "mp3"],
-    ["audio/x-wav", "wav"],
+    ["audio/webm", "webm"],
   ])("names %s by OpenRouter's format %s, as shared's canonical types do", async (contentType, format) => {
     await openRouterAnswering({ status: 200, body: completion }, [{ bytes: new Uint8Array([1, 2]), contentType }]);
     const sent = posted(fakes.openrouter)[0] as { messages: { content: { type: string; input_audio?: { format: string } }[] }[] };
     expect(sent.messages[0]!.content.find((p) => p.type === "input_audio")?.input_audio?.format).toBe(format);
+  });
+
+  it.each([
+    ["video/mp4", "video/mp4"],
+    ["video/mpeg", "video/mpeg"],
+    ["video/webm", "video/webm"],
+    ["video/mov", "video/mov"],
+    ["video/quicktime", "video/mov"],
+  ])("sends %s to OpenRouter under the name %s", async (contentType, name) => {
+    await openRouterAnswering({ status: 200, body: completion }, [{ bytes: new Uint8Array([1, 2]), contentType }]);
+    const sent = posted(fakes.openrouter)[0] as { messages: { content: { type: string; video_url?: { url: string } }[] }[] };
+    expect(sent.messages[0]!.content.find((p) => p.type === "video_url")?.video_url?.url).toBe(`data:${name};base64,AQI=`);
   });
 });
 
@@ -535,5 +555,114 @@ describe("understand in cheapest mode", () => {
   it("sends only the backend pin in default mode", async () => {
     await llmProvider(fakes, keys, { understandOpenRouterFirst: true }).llm.understand(question());
     expect(posted(fakes.openrouter)[0]?.provider).toEqual({ only: ["google-vertex"], allow_fallbacks: false });
+  });
+});
+
+describe("an image handed over by its address", () => {
+  const bytes = new Uint8Array([137, 80, 78, 71, 1, 2, 3]);
+
+  /**
+   * An image item whose reads are counted.
+   * @param read - What reading it does.
+   * @returns The item and how often it was read.
+   */
+  const addressed = (read: () => Promise<Uint8Array> = () => Promise.resolve(bytes)): { item: { url: string; contentType: string; read: () => Promise<Uint8Array> }; reads: () => number } => {
+    let reads = 0;
+    return {
+      item: { url: "https://media.example/a.png", contentType: "image/jpeg", read: () => { reads += 1; return read(); } },
+      reads: () => reads,
+    };
+  };
+
+  it("sends OpenRouter the address, as before provider, and never reads the image", async () => {
+    const { item, reads } = addressed();
+    await llmProvider(fakes, keys, { understandOpenRouterFirst: true }).llm.understand({ ...question(), media: [item] });
+    const parts = (posted(fakes.openrouter)[0] as { messages: { content: Record<string, unknown>[] }[] }).messages[0]!.content;
+    expect(parts).toContainEqual({ type: "image_url", image_url: { url: "https://media.example/a.png" } });
+    expect(reads()).toBe(0);
+  });
+
+  it("reads the image for Google and sends it inline under the type the caller gave", async () => {
+    const { item, reads } = addressed();
+    await llmProvider(fakes, keys).llm.understand({ ...question(), media: [item] });
+    const parts = (posted(fakes.google)[0] as { contents: { parts: Record<string, unknown>[] }[] }).contents[0]!.parts;
+    expect(parts).toContainEqual({ inlineData: { mimeType: "image/jpeg", data: Buffer.from(bytes).toString("base64") } });
+    expect(reads()).toBe(1);
+  });
+
+  it("ends as interrupted with the reader's own error as its cause, moving on to no other upstream", async () => {
+    const unreachable = new Error("the image's host did not answer");
+    const { item } = addressed(() => Promise.reject(unreachable));
+    const error = await llmProvider(fakes, keys).llm.understand({ ...question(), media: [item] }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(UnderstandInterrupted);
+    expect((error as UnderstandInterrupted).cause).toBe(unreachable);
+    expect((error as UnderstandInterrupted).costs).toEqual([]);
+    expect(generated()).toBe(0);
+    expect(posted(fakes.openrouter)).toHaveLength(0);
+  });
+});
+
+describe("an understand refusal for its content", () => {
+  it.each(["content_policy_violation", "refusal"])("says the content was blocked when OpenRouter's refusal names %s", async (errorType) => {
+    const error = await openRouterAnswering({ status: 403, body: { error: { code: 403, message: "blocked", metadata: { error_type: errorType } } } });
+    expect(error).toBeInstanceOf(UpstreamRequestRejected);
+    expect((error as UpstreamRequestRejected).status).toBe(403);
+    expect((error as UpstreamRequestRejected).reason).toBe("content_blocked");
+  });
+
+  it("says the content was blocked when the error comes inside a 200 answer", async () => {
+    const body = { id: "gen-u", error: { code: 403, message: "blocked", metadata: { error_type: "content_policy_violation" } }, usage: { cost: 0.001 } };
+    const error = await openRouterAnswering({ status: 200, body });
+    expect((error as UpstreamRequestRejected).reason).toBe("content_blocked");
+  });
+
+  it("names no reason for a 403 that is about the key or the budget", async () => {
+    const error = await openRouterAnswering({ status: 403, body: { error: { code: 403, message: "Key limit exceeded" } } });
+    expect(error).toBeInstanceOf(UpstreamRequestRejected);
+    expect((error as UpstreamRequestRejected).reason).toBeUndefined();
+  });
+});
+
+describe("the question an understand call sends", () => {
+  const media = [
+    { bytes: new Uint8Array([1, 2]), contentType: "audio/wav" },
+    { url: "https://example.com/picture.png", contentType: "image/png", read: async (): Promise<Uint8Array> => new Uint8Array([7]) },
+    { bytes: new Uint8Array([3, 4]), contentType: "video/mp4" },
+  ];
+
+  it("goes first through OpenRouter, then each item numbered in its order", async () => {
+    await llmProvider(fakes, keys, { understandOpenRouterFirst: true }).llm.understand({ ...question(), question: "Compare these.", media });
+    const parts = (posted(fakes.openrouter)[0] as { messages: { content: Record<string, unknown>[] }[] }).messages[0]!.content;
+    expect(parts).toEqual([
+      { type: "text", text: "Compare these." },
+      { type: "text", text: "Item 1" },
+      { type: "input_audio", input_audio: { data: "AQI=", format: "wav" } },
+      { type: "text", text: "Item 2" },
+      { type: "image_url", image_url: { url: "https://example.com/picture.png" } },
+      { type: "text", text: "Item 3" },
+      { type: "video_url", video_url: { url: "data:video/mp4;base64,AwQ=" } },
+    ]);
+  });
+
+  it("goes first to Google, then each item numbered in its order", async () => {
+    await llmProvider(fakes, keys).llm.understand({ ...question(), question: "Compare these.", media });
+    const parts = (posted(fakes.google)[0] as { contents: { parts: Record<string, unknown>[] }[] }).contents[0]!.parts;
+    expect(parts).toEqual([
+      { text: "Compare these." },
+      { text: "Item 1" },
+      { inlineData: { mimeType: "audio/wav", data: "AQI=" } },
+      { text: "Item 2" },
+      { inlineData: { mimeType: "image/png", data: "Bw==" } },
+      { text: "Item 3" },
+      { inlineData: { mimeType: "video/mp4", data: "AwQ=" } },
+    ]);
+  });
+
+  it("is cleaned with the caller's text cleaning, on each upstream", async () => {
+    const clean = { cleanText: (t: string): string => t.replaceAll("HIDDEN", "") };
+    await llmProvider(fakes, keys, clean).llm.understand({ ...question(), question: "What is in it?HIDDEN" });
+    expect(JSON.stringify(posted(fakes.google)[0])).not.toContain("HIDDEN");
+    await llmProvider(fakes, keys, { ...clean, understandOpenRouterFirst: true }).llm.understand({ ...question(), question: "What is in it?HIDDEN" });
+    expect(JSON.stringify(posted(fakes.openrouter)[0])).not.toContain("HIDDEN");
   });
 });

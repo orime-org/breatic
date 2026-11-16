@@ -6,7 +6,7 @@ import { durationToFrames, type TimelineRate } from "@shared/timeline/time.js";
 
 export type { TimelineRate };
 
-/** The fixed creation viewport and frame rate of one Timeline document. */
+/** The frame size and frame rate of one Timeline document; the size changes with `set_frame` (#1502), the rate never. */
 export interface TimelineSettings { width: number; height: number; fps: TimelineRate }
 
 /** A track identity; presentation libraries do not own this format. */
@@ -35,7 +35,7 @@ export interface TimelineVideoClip {
   rate: TimelineRate;
   gain: number;
   mute: boolean;
-  transform: { x: number; y: number; scaleX: number; scaleY: number; rotation: number };
+  transform: { frameX: number; frameY: number; scaleX: number; scaleY: number; rotation: number };
 }
 
 /** Which execution result a web-animation copy shows: a succeeded source version, an in-progress execution, or both. */
@@ -60,12 +60,26 @@ export type TimelineClip = TimelineVideoClip | TimelineWebAnimationClip | Timeli
 /** The record that an accepted action has landed in this document, keyed by its action id. */
 export interface TimelineOperationReceipt { executionId: string; inputHash: string; landedAt: string }
 
+/** The Timeline document versions readers accept; 2 stores clip offsets as fractions of the frame (#1502). */
+export const TIMELINE_SCHEMA_VERSIONS = [1, 2] as const;
+
+/**
+ * Whether a stored `schemaVersion` is one readers accept.
+ * @param value - The stored value.
+ * @returns Whether it is a readable version.
+ * @throws {never} Never.
+ */
+export function isTimelineSchemaVersion(value: unknown): value is (typeof TIMELINE_SCHEMA_VERSIONS)[number] {
+  return TIMELINE_SCHEMA_VERSIONS.some((version) => version === value);
+}
+
 /** The seeded bottom visual track; it is magnetic when the editing user turns magnet on. */
 export const TIMELINE_MAIN_TRACK_ID = "visual-1";
 
 /** Our persisted integer-frame format, independent of any editor library. */
 export interface TimelineDocumentV1 {
-  schemaVersion: 1;
+  /** 2 since #1502 stores clip offsets as fractions of the frame; a version 1 document is read the same way. */
+  schemaVersion: (typeof TIMELINE_SCHEMA_VERSIONS)[number];
   settings: TimelineSettings;
   tracks: Record<string, TimelineTrack>;
   clips: Record<string, TimelineClip>;
@@ -79,7 +93,7 @@ const identity = z.uuid();
 
 /** The rational rate carried in our persisted format. */
 export const TimelineRateSchema = z.object({ num: positiveInteger, den: positiveInteger }).strict();
-/** Creation parameters, fixed in the document after its seed is stored. */
+/** The frame size and rate; only `set_frame` changes the size after the seed, and the rate stays as seeded. */
 export const TimelineSettingsSchema = z.object({ width: positiveInteger, height: positiveInteger, fps: TimelineRateSchema }).strict();
 /** Stable tracks used by both the editor and its serialized snapshots. */
 export const TimelineTrackSchema = z.object({ id: z.string().min(1).max(64), kind: z.enum(["visual", "audio"]), order: safeFrame }).strict();
@@ -111,7 +125,7 @@ const placementFields = {
   gain: z.number().finite().min(0),
   mute: z.boolean(),
   transform: z.object({
-    x: z.number().finite(), y: z.number().finite(),
+    frameX: z.number().finite(), frameY: z.number().finite(),
     scaleX: z.number().finite().refine((value) => value !== 0),
     scaleY: z.number().finite().refine((value) => value !== 0),
     rotation: z.number().finite(),
@@ -148,7 +162,7 @@ export const TimelineOperationReceiptSchema = z.object({
 
 /** Our complete versioned DTO, independent of a presentation library. */
 export const TimelineDocumentV1Schema: z.ZodType<TimelineDocumentV1> = z.object({
-  schemaVersion: z.literal(1),
+  schemaVersion: z.literal(TIMELINE_SCHEMA_VERSIONS),
   settings: TimelineSettingsSchema,
   tracks: z.record(z.string(), TimelineTrackSchema),
   clips: z.record(z.string(), TimelineClipSchema),

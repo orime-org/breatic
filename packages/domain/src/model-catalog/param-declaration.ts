@@ -75,9 +75,6 @@ const declarationSchema = z.object({
   // The value that is sent as nothing: choosing it leaves the param out of the
   // request, for the upstream's own behaviour when it is absent ("auto").
   absent_value: z.union([z.string(), z.number(), z.boolean()]).optional(),
-  // What a value is sent as upstream, keyed by its string form, when the
-  // endpoint spells it differently (Kling's switch sends "intelligence").
-  upstream_values: z.record(z.string(), z.string()).optional(),
   // A list the endpoint has no field for: each entry is written into the
   // prompt with this template.
   into_prompt: z.string().optional(),
@@ -112,9 +109,6 @@ const declarationSchema = z.object({
   // reads (#2156, design §13.2): `{n}` counts the sent list of this kind from
   // 1, `{i}` from 0.
   mention: z.string().optional(),
-  // The upstream takes each entry of this list as an object with the URL
-  // under this key (Krea's `reference: [{ image }]`).
-  item_key: z.string().optional(),
   // The upstream has no field of its own for this slot: its files are
   // appended to the named pool and the prompt names them (inner#826).
   joins: z.string().optional(),
@@ -157,16 +151,13 @@ const DECLARATION_KEYS: ReadonlySet<string> = new Set([
   "max",
   "step",
   "remote_source",
-  "upstream",
   "absent_value",
-  "upstream_values",
   "into_prompt",
   "label",
   "value_labels",
   "value_locales",
   "fields",
   "mention",
-  "item_key",
   "joins",
   "prompt_note",
 ]);
@@ -354,14 +345,6 @@ function faultsOn(
   // choice does not offer is never held and the param is always sent.
   if (declared.absent_value !== undefined && !offered.has(String(declared.absent_value))) {
     faults.push(`absent_value "${declared.absent_value}" is not one of the values offered`);
-  }
-
-  // A spelling for a value the choice does not offer is never used, so a
-  // misspelled key would leave the endpoint receiving our own spelling.
-  for (const value of Object.keys(declared.upstream_values ?? {})) {
-    if (!offered.has(value)) {
-      faults.push(`upstream_values names "${value}", which values does not offer`);
-    }
   }
 
   // Only a list of entries is written into the prompt, and a template with no

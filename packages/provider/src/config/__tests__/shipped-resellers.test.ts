@@ -37,10 +37,12 @@ const RESELLERS: Readonly<Record<string, { fal?: string; sandbase?: string }>> =
   "krea-v2-large-text-to-image": { fal: "krea/v2/large/text-to-image" },
   // fal turns MagicPrompt on or off; WaveSpeed and SandBase leave it to Ideogram's AUTO (inner#1859).
   "ideogram-v3-quality": {},
+  "seedream-v5.5-text-to-image": {},
   "recraft-v4-style-text-to-image": { fal: "recraft/v4/style/text-to-image" },
   "gpt-image-2.5-sunburst-edit": { fal: "openai/gpt-image-2.5/sunburst/edit", sandbase: "openai/gpt-image-2.5-sunburst/edit" },
   "muse-image-edit": { fal: "meta/muse-image/edit" },
   "nano-banana-pro-edit-ultra": {},
+  "seedream-v5.5-edit": {},
   // fal bills it per output megapixel at the source's size, which an estimate cannot know (inner#1859).
   // SandBase runs it on fal's endpoint, whose steps, guidance and LoRA scale WaveSpeed states no counterpart of (inner#1859).
   "qwen-image-edit-multiple-angles": {},
@@ -315,7 +317,7 @@ describe("the limits a reseller states beyond its schema", () => {
 
   it.each(["fal", "sandbase"])("counts a HappyHorse prompt on %s as it is sent, each reference written the upstream's way", async (upstream) => {
     const reference = { images: ["https://a/1.png"] };
-    expect(await refused("happyhorse-1.1-reference-to-video", upstream, { prompt: `${"x".repeat(2490)}<<ref:images:1>>`, params: reference })).toBeUndefined();
+    expect(await refused("happyhorse-1.1-reference-to-video", upstream, { prompt: `${"x".repeat(2490)}{{ref:images:1}}`, params: reference })).toBeUndefined();
   });
 
   it("prices each GPT Image 2.5 edit reference on fal at fal's figure for a large image", async () => {

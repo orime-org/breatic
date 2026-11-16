@@ -40,7 +40,7 @@ const clip = {
   rate: { num: 1, den: 1 },
   gain: 1,
   mute: false,
-  transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+  transform: { frameX: 0, frameY: 0, scaleX: 1, scaleY: 1, rotation: 0 },
 };
 const add: TimelineEditCommand = {
   operation: 'add_video',
@@ -287,7 +287,7 @@ describe('Timeline native edit transactions', () => {
     for (const mutate of [
       () => Reflect.set(command.parameters.source, 'durationSeconds', '9'),
       () => Reflect.set(command.parameters.clip, 'startFrame', 144),
-      () => Reflect.set(command.parameters.clip.transform, 'x', 17),
+      () => Reflect.set(command.parameters.clip.transform, 'frameX', 0.5),
     ]) {
       try {
         mutate();
@@ -1296,5 +1296,191 @@ describe('An edit leaves records it does not change in their stored shape (inner
     const stored = doc.getMap('clips').get(C2);
     expect(stored).not.toBeInstanceOf(Y.Map);
     expect(stored).toEqual(fixtureClip(C2, V2, 50, 10));
+  });
+});
+
+/**
+ * Writing `set_frame` and converting leftover pixel-format clips before an edit (breatic#1502 design §3.1, §4, §5).
+ * `set_frame` overwrites the whole `settings` value of the `timeline` map under the edit's origin, as an `edit` write,
+ * and changes no track, clip or source. Before any edit is written, every clip record still holding the pixel format
+ * `{ x, y }` is converted to frame fractions measured against the settings it was placed under, in one untracked
+ * transaction that no personal undo holds; a version-1 document becomes version 2 in that write.
+ */
+describe('applyTimelineEdit writes set_frame and converts leftover pixel clips first (breatic#1502)', () => {
+  const A = cid(1);
+  const P = cid(2);
+  const FRAME_PRESETS = [
+    ['16:9', 1920, 1080], ['9:16', 1080, 1920], ['1:1', 1080, 1080], ['4:3', 1440, 1080], ['4:5', 1080, 1350], ['2:3', 1080, 1620], ['21:9', 2520, 1080],
+  ] as const;
+  type FramePreset = (typeof FRAME_PRESETS)[number][0];
+  const setFrame = (preset: FramePreset): TimelineEditCommand => ({ operation: 'set_frame', parameters: { preset }, placement: OFF });
+  const IDENTITY = { frameX: 0, frameY: 0, scaleX: 1, scaleY: 1, rotation: 0 };
+  // A picture-in-picture placed in pixels on the 1920 x 1080 frame: a quarter frame right of and above the centre.
+  const PIXEL_PIP = { x: 480, y: -270, scaleX: 0.25, scaleY: 0.25, rotation: 10 };
+  const FRACTION_PIP = { frameX: 0.25, frameY: -0.25, scaleX: 0.25, scaleY: 0.25, rotation: 10 };
+
+  /**
+   * The undo manager the edit session holds once it also tracks the timeline map.
+   * @param doc - The document.
+   * @returns The undo manager.
+   * @throws {never} Never.
+   */
+  function sessionUndo(doc: Y.Doc): Y.UndoManager {
+    return new Y.UndoManager([doc.getMap('tracks'), doc.getMap('clips'), doc.getMap('sources'), doc.getMap('timeline')], { trackedOrigins: new Set([ORIGIN]), captureTimeout: 0 });
+  }
+
+  /**
+   * A document holding A on the main track and P on v2, P's transform stored in the pixel format as an earlier
+   * web build wrote it.
+   * @param pixel - P's stored pixel transform.
+   * @param version - The document's format version.
+   * @returns The document.
+   * @throws {Error} When seeding fails.
+   */
+  function withPixelClip(pixel: Record<string, number> = PIXEL_PIP, version: 1 | 2 = 1): Y.Doc {
+    const doc = docFrom(timeline([fixtureClip(A, MAIN, 0, 48), fixtureClip(P, V2, 10, 20)]));
+    doc.transact(() => {
+      (doc.getMap('clips').get(P) as Y.Map<unknown>).set('transform', pixel);
+      doc.getMap('timeline').set('schemaVersion', version);
+    }, 'legacy-web');
+    return doc;
+  }
+
+  /**
+   * The stored transform of one clip record.
+   * @param doc - The document.
+   * @param id - The clip.
+   * @returns The raw stored value.
+   * @throws {never} Never.
+   */
+  function storedTransform(doc: Y.Doc, id: string): unknown {
+    return (doc.getMap('clips').get(id) as Y.Map<unknown> | undefined)?.get('transform');
+  }
+
+  it('overwrites the whole settings value with the preset size under the edit origin, keeping fps and every record', () => {
+    const doc = docFrom(timeline([fixtureClip(A, MAIN, 0, 48), fixtureClip(P, V2, 10, 20, { transform: FRACTION_PIP })]));
+    const before = readTimelineDocument(doc);
+    const changes = recordChanges(doc);
+    const settingsWrites: unknown[] = [];
+    doc.getMap('timeline').observe((event) => { for (const key of event.keysChanged) settingsWrites.push([key, event.transaction.origin]); });
+    accepted(applyTimelineEdit(doc, setFrame('9:16'), ORIGIN));
+    expect(doc.getMap('timeline').get('settings')).toEqual({ width: 1080, height: 1920, fps: settings.fps });
+    expect(settingsWrites).toEqual([['settings', ORIGIN]]);
+    expect(changes).toEqual([]);
+    expect(readTimelineDocument(doc)).toEqual({ ...before, settings: { width: 1080, height: 1920, fps: settings.fps } });
+  });
+
+  it('writes the frame of each of the seven presets', () => {
+    for (const [preset, width, height] of FRAME_PRESETS) {
+      const doc = docFrom(timeline([]));
+      if (preset === '16:9') accepted(applyTimelineEdit(doc, setFrame('1:1'), ORIGIN));
+      accepted(applyTimelineEdit(doc, setFrame(preset), ORIGIN));
+      expect(readTimelineDocument(doc).settings, preset).toEqual({ width, height, fps: settings.fps });
+    }
+  });
+
+  it('writes nothing and adds no undo step for the current preset', () => {
+    const doc = docFrom(timeline([fixtureClip(A, MAIN, 0, 48)]));
+    const undo = sessionUndo(doc);
+    const before = Y.encodeStateAsUpdate(doc);
+    const update = vi.fn();
+    doc.on('update', update);
+    expect(applyTimelineEdit(doc, setFrame('16:9'), ORIGIN)).toMatchObject({ ok: true });
+    expect(update).not.toHaveBeenCalled();
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+    expect(undo.undoStack).toHaveLength(0);
+  });
+
+  it('is one undo step that restores only the settings, and redo sets them again', () => {
+    const doc = docFrom(timeline([fixtureClip(A, MAIN, 0, 48), fixtureClip(P, V2, 10, 20, { transform: FRACTION_PIP })]));
+    const undo = sessionUndo(doc);
+    const before = readTimelineDocument(doc);
+    accepted(applyTimelineEdit(doc, setFrame('21:9'), ORIGIN));
+    expect(undo.undoStack).toHaveLength(1);
+    undo.undo();
+    expect(readTimelineDocument(doc)).toEqual(before);
+    undo.redo();
+    expect(readTimelineDocument(doc)).toEqual({ ...before, settings: { width: 2520, height: 1080, fps: settings.fps } });
+  });
+
+  it('converts a leftover pixel clip under the current frame before set_frame, so its centre keeps its place in the frame', () => {
+    const doc = withPixelClip();
+    accepted(applyTimelineEdit(doc, setFrame('9:16'), ORIGIN));
+    // 480 / 1920 and -270 / 1080 of the 16:9 frame it was placed in, not of the 9:16 frame it is shown in now.
+    expect(storedTransform(doc, P)).toEqual(FRACTION_PIP);
+    expect(readTimelineDocument(doc).clips[P]?.transform).toEqual(FRACTION_PIP);
+    expect(readTimelineDocument(doc).settings).toEqual({ width: 1080, height: 1920, fps: settings.fps });
+    expect(doc.getMap('timeline').get('schemaVersion')).toBe(2);
+  });
+
+  it('converts the leftover in an untracked transaction before the edit, so undo takes back only the edit', () => {
+    const doc = withPixelClip();
+    const undo = sessionUndo(doc);
+    const origins: unknown[] = [];
+    doc.on('afterTransaction', (transaction: Y.Transaction) => { origins.push(transaction.origin); });
+    accepted(applyTimelineEdit(doc, move(A, 100, OFF), ORIGIN));
+    expect(origins).toHaveLength(2);
+    expect(origins[0]).not.toBe(ORIGIN);
+    expect(origins[1]).toBe(ORIGIN);
+    expect(storedTransform(doc, P)).toEqual(FRACTION_PIP);
+    undo.undo();
+    expect(readTimelineDocument(doc).clips[A]?.startFrame).toBe(0);
+    expect(storedTransform(doc, P)).toEqual(FRACTION_PIP);
+    expect(doc.getMap('timeline').get('schemaVersion')).toBe(2);
+    expect(undo.undoStack).toHaveLength(0);
+  });
+
+  it('converts a leftover pixel clip in a version-2 document too, leaving the version alone', () => {
+    const doc = withPixelClip(PIXEL_PIP, 2);
+    accepted(applyTimelineEdit(doc, setFrame('1:1'), ORIGIN));
+    expect(storedTransform(doc, P)).toEqual(FRACTION_PIP);
+    expect(doc.getMap('timeline').get('schemaVersion')).toBe(2);
+  });
+
+  it('makes a version-1 document version 2 when an edit writes a frame-fraction clip into it', () => {
+    const doc = docFrom(timeline([]));
+    doc.transact(() => doc.getMap('timeline').set('schemaVersion', 1), 'legacy-web');
+    accepted(applyTimelineEdit(doc, addVideo(fixtureClip(A, MAIN, 0, 48), OFF), ORIGIN));
+    expect(storedTransform(doc, A)).toEqual(IDENTITY);
+    expect(doc.getMap('timeline').get('schemaVersion')).toBe(2);
+  });
+
+  it('writes in one transaction, with no conversion, for a version-2 document holding no pixel clip', () => {
+    const doc = docFrom(timeline([fixtureClip(A, MAIN, 0, 48), fixtureClip(P, V2, 10, 20, { transform: FRACTION_PIP })]));
+    const origins: unknown[] = [];
+    doc.on('afterTransaction', (transaction: Y.Transaction) => { origins.push(transaction.origin); });
+    accepted(applyTimelineEdit(doc, setFrame('4:3'), ORIGIN));
+    expect(origins).toEqual([ORIGIN]);
+  });
+
+  it('converts nothing and writes nothing for a refused edit', () => {
+    const doc = withPixelClip();
+    const before = Y.encodeStateAsUpdate(doc);
+    expect(applyTimelineEdit(doc, move(cid(99), 0, OFF), ORIGIN)).toEqual({ ok: false, reason: 'target_missing' });
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+  });
+
+  it('keeps every layer centre at the same place in the frame across any leftover pixel offset and any sequence of presets (fast-check)', () => {
+    fc.assert(fc.property(
+      fc.integer({ min: -19_200, max: 19_200 }), fc.integer({ min: -10_800, max: 10_800 }),
+      fc.array(fc.constantFrom(...FRAME_PRESETS.map(([preset]) => preset)), { minLength: 1, maxLength: 6 }),
+      (x, y, presets) => {
+        const doc = withPixelClip({ ...PIXEL_PIP, x, y });
+        let previous = '16:9';
+        try {
+          for (const preset of presets) {
+            expect(applyTimelineEdit(doc, setFrame(preset), ORIGIN)).toMatchObject({ ok: true });
+            // Choosing the frame already in use is no edit and writes nothing (design §3.1), so only a change stores.
+            const changed = preset !== previous;
+            previous = preset;
+            const transform = readTimelineDocument(doc).clips[P]?.transform as { frameX: number; frameY: number } | undefined;
+            // Measured against the 1920 x 1080 frame the pixels were placed in, within the 0.00001 offset step.
+            expect(Math.abs((transform?.frameX ?? Number.NaN) - x / 1920)).toBeLessThanOrEqual(0.000005 + 1e-12);
+            expect(Math.abs((transform?.frameY ?? Number.NaN) - y / 1080)).toBeLessThanOrEqual(0.000005 + 1e-12);
+            if (changed) expect(storedTransform(doc, P)).toEqual(readTimelineDocument(doc).clips[P]?.transform);
+          }
+        } finally { doc.destroy(); }
+      },
+    ), { numRuns: 100 });
   });
 });

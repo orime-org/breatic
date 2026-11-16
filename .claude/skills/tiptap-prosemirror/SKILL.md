@@ -145,7 +145,7 @@ WebKit's contenteditable deletes an element that becomes empty during a composit
 
 **A table sits in a horizontal scroller that clips anything reaching past it, so chrome drawn over a block in a cell (a media toolbar) is placed with floating-ui `strategy: 'fixed'` and stays among the block's own elements.** Moving it into a `FloatingPortal` breaks hover when it already holds a portal (a media toolbar sits in `MediaControlsPortal`): with a portal nested in a portal, React reports the pointer moving from the bar onto its own button as leaving the bar, and the bar closes under the hand. Before relying on `fixed`, check that no ancestor has a `transform`, `filter`, `contain: layout`/`paint` or a `container-type` (which implies layout containment); any of them makes that ancestor the containing block. `DocumentMediaBlock.tsx` does this when the block is in a `docTable`.
 
-**`useFloating` runs `whileElementsMounted` whenever both elements are mounted, whatever `open` says.** Pass `autoUpdate` only while the placement is needed (`whileElementsMounted: inCell ? autoUpdate : undefined`), or every instance keeps its scroll listeners and resize observer.
+**`useFloating` runs `whileElementsMounted` whenever both elements are mounted, whatever `open` says.** Pass `autoUpdate` only while the placement is needed (`whileElementsMounted: toolbarShown ? autoUpdate : undefined`), or every instance keeps its scroll listeners and resize observer.
 
 ### Document body CSS layer
 

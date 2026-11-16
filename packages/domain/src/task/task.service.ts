@@ -120,28 +120,26 @@ export async function markRunning(taskId: string, jobId: string, now: Date): Pro
 }
 
 /**
- * Mark a task as completed with its result.
+ * Complete a task whose cost is still being looked up, leaving it unbilled (inner#1743): the result carries
+ * `costWait` and the pending lookups; the task's own job bills it once they are answered.
  * @param taskId - Task UUID
- * @param result - Task output data
- * @param creditsUsed - Optional credits consumed
+ * @param result - Its result, with `costWait` and the pending lookups.
  * @param durationMs - How long the run took from its first start, in milliseconds
+ * @returns True for the call that completed it.
  */
-export async function markCompleted(
-  taskId: string,
-  result: Record<string, unknown>,
-  creditsUsed?: number,
-  durationMs?: number,
-): Promise<void> {
-  await taskRepo.updateTaskStatus(taskId, "completed", { result, creditsUsed, durationMs });
+export async function markCompleted(taskId: string, result: Record<string, unknown>, durationMs: number): Promise<boolean> {
+  return taskRepo.markCompleted(taskId, result, durationMs);
 }
 
 /**
- * Mark a task as failed with an error message.
+ * Mark a task as failed with an error message. A task completed and waiting on its cost is left alone: a stale run's
+ * failure must not undo a delivered result.
  * @param taskId - Task UUID
  * @param error - Error description
+ * @returns True when the row was written.
  */
-export async function markFailed(taskId: string, error: string): Promise<void> {
-  await taskRepo.updateTaskStatus(taskId, "failed", { error });
+export async function markFailed(taskId: string, error: string): Promise<boolean> {
+  return taskRepo.updateTaskStatus(taskId, "failed", { error });
 }
 
 /**
@@ -170,19 +168,6 @@ export async function recordProviderResult(
 }
 
 /**
- * Persist the vendor task id for an async generation (post-submit, pre-poll).
- * On BullMQ retry the Worker resumes by polling this id, not re-submitting (#1628).
- * @param taskId - UUID of the task to update.
- * @param providerTaskId - The vendor's task/request id returned by submit.
- */
-export async function recordProviderTaskId(
-  taskId: string,
-  providerTaskId: string,
-): Promise<void> {
-  await taskRepo.recordProviderTaskId(taskId, providerTaskId);
-}
-
-/**
  * Mark a task completed and record its charge, in one commit (inner#1617).
  *
  * The `billed_at` CAS decides which attempt completes the task; only that one
@@ -207,6 +192,30 @@ export async function markCompletedAndBill(
   return db.transaction(async (tx) => {
     const won = await taskRepo.markCompletedAndBill(taskId, result, creditsUsed, durationMs, tx);
     if (won && charge !== null && charge.amount > 0) {
+      await creditLotService.requestCharge({ ...charge, kind: "task", referenceId: taskId }, tx);
+    }
+    return won;
+  });
+}
+
+/**
+ * Bill a task that completed while waiting on its cost, and record its charge, in one commit (inner#1743).
+ *
+ * The `billed_at` CAS decides which pickup bills the task; only that one records the charge request.
+ * @param taskId - UUID of the task to bill.
+ * @param credits - What the run consumed.
+ * @param charge - The charge to record when this call wins.
+ * @returns `true` if this call billed the task, `false` if it was already billed.
+ * @throws {Error} When either write fails; neither then commits.
+ */
+export async function markBilledAndCharge(
+  taskId: string,
+  credits: number,
+  charge: Omit<creditLotService.ChargeRequestInput, "kind" | "referenceId">,
+): Promise<boolean> {
+  return db.transaction(async (tx) => {
+    const won = await taskRepo.markBilled(taskId, credits, tx);
+    if (won && charge.amount > 0) {
       await creditLotService.requestCharge({ ...charge, kind: "task", referenceId: taskId }, tx);
     }
     return won;

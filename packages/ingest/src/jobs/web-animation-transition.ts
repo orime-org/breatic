@@ -12,6 +12,7 @@
  * record. A terminal record never changes again.
  */
 
+import type { MessagesCallEnd } from "@breatic/provider/messages";
 import type { WebAnimationJobCall, WebAnimationJobReport, WebAnimationJobRequest } from "@breatic/shared/space-content";
 
 /** Where a job is. */
@@ -20,8 +21,13 @@ export type WebAnimationJobState = WebAnimationJobReport["state"];
 /** A state a job ends in. */
 type Terminal = "done" | "failed" | "cancelled" | "expired";
 
-/** One call as stored; `outcome` is null while it is open. */
-type StoredCall = Omit<WebAnimationJobCall, "outcome"> & { outcome: WebAnimationJobCall["outcome"] | null };
+/** One call as stored, in the report's shape; `outcome` is null while it is open. */
+type StoredCall = Pick<WebAnimationJobCall, "seq" | "tokens"> & {
+  upstream: string | null;
+  messageId: string | null;
+  cost: MessagesCallEnd["cost"];
+  outcome: WebAnimationJobCall["outcome"] | null;
+};
 
 /** One job as the object stores it. */
 export interface WebAnimationJobRecord {
@@ -50,8 +56,8 @@ export type WebAnimationJobEvent =
   | { type: "cancel"; deadlineAt: number }
   | { type: "deadline" }
   | { type: "beginModelCall" }
-  | { type: "recordModelCallStart"; seq: number; generationId: string }
-  | ({ type: "endModelCall"; seq: number } & Pick<WebAnimationJobCall, "outcome" | "tokens" | "costUsd">)
+  | { type: "recordModelCallStart"; seq: number; upstream: string; messageId: string }
+  | ({ type: "endModelCall"; seq: number } & Pick<MessagesCallEnd, "outcome" | "upstream" | "tokens" | "cost">)
   | { type: "written"; key: string; sha256: string; bytes: number }
   | { type: "progress"; phase: NonNullable<WebAnimationJobReport["phase"]>; steps: unknown[] }
   | { type: "finished"; ok: boolean; failureReason: string | null; cpuUsec: number | null }
@@ -203,18 +209,22 @@ export function transitionWebAnimationJob(
     case "beginModelCall": {
       if (!running || openCall(record) !== undefined) return stay(record);
       const seq = record.calls.length + 1;
-      const call: StoredCall = { seq, generationId: null, tokens: null, costUsd: null, outcome: null };
+      const call: StoredCall = { seq, upstream: null, messageId: null, tokens: null, cost: null, outcome: null };
       return { record: { ...record, calls: [...record.calls, call] }, effects: [], seq, refused: false };
     }
     case "recordModelCallStart": {
       if (openCall(record)?.seq !== event.seq) return stay(record);
-      const calls = record.calls.map((call) => (call.seq === event.seq ? { ...call, generationId: event.generationId } : call));
+      const calls = record.calls.map((call) => (call.seq === event.seq ? { ...call, upstream: event.upstream, messageId: event.messageId } : call));
       return stay({ ...record, calls });
     }
     case "endModelCall": {
       if (openCall(record)?.seq !== event.seq) return stay(record);
-      const { outcome, tokens, costUsd } = event;
-      const ended = { ...record, calls: record.calls.map((call) => (call.seq === event.seq ? { ...call, outcome, tokens, costUsd } : call)) };
+      const { outcome, tokens, cost } = event;
+      // A call whose end names no upstream keeps the one its start recorded.
+      const ended = {
+        ...record,
+        calls: record.calls.map((call) => (call.seq === event.seq ? { ...call, outcome, upstream: event.upstream ?? call.upstream, tokens, cost } : call)),
+      };
       return record.endAs === null ? stay(ended) : end(ended, record.endAs.state, record.endAs.failureReason, now);
     }
     case "written": {

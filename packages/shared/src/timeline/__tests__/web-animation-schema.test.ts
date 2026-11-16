@@ -15,7 +15,7 @@ import {
 } from "../schema.js";
 
 const settings = { width: 1920, height: 1080, fps: { num: 24, den: 1 } };
-const identityTransform = { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 };
+const identityTransform = { frameX: 0, frameY: 0, scaleX: 1, scaleY: 1, rotation: 0 };
 const SOURCE_VERSION = "30000000-0000-4000-8000-000000000001";
 const EXECUTION = "40000000-0000-4000-8000-000000000001";
 const ACTION = "50000000-0000-4000-8000-000000000001";

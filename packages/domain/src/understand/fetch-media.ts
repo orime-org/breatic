@@ -10,10 +10,10 @@
  * oversized file be refused without a model call. A server that states neither
  * is caught on the way past.
  *
- * Only video and audio become bytes. An image stays an address because the
- * backend fetches images itself, measured working; the same measurement says a
- * video url comes back 400 and an audio url is read as base64 and fails to
- * decode.
+ * Only video and audio become bytes. An image stays an address, with a reader
+ * for its bytes beside it: an upstream that fetches images itself is sent the
+ * address, measured working, and one that needs the bytes reads them under the
+ * same gate and limits as here.
  */
 
 import { BodyTooLarge, EmptyBody, httpRequest, readBytesWithin, reasonOf } from "@breatic/shared";
@@ -293,8 +293,8 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
   // and handing the url over regardless spends a model call to be told the
   // backend could not fetch it, in words that name the service rather than the
   // status.
-  if (settledPeek && settled?.kind === "image") {
-    return { kind: "image", url: request.url };
+  if (settledPeek && settled?.kind === "image" && declared !== undefined) {
+    return imageAt(request, declared);
   }
 
   // Everything else needs the bytes anyway, and the GET brings the type along
@@ -357,7 +357,7 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
     // Settled by the GET rather than the peek, and an image still travels as
     // its address — so the bytes on their way here are not wanted.
     void res.body?.cancel();
-    return { kind: "image", url: request.url };
+    return imageAt(request, mediaType);
   }
   if (limit <= 0) {
     void res.body?.cancel();
@@ -389,7 +389,50 @@ export async function fetchMedia(request: FetchMediaRequest): Promise<Media> {
     }
     throw new MediaUnavailable("slow", { detail: reasonOf(err) });
   }
-  return kind.kind === "audio"
-    ? { kind: "audio", bytes, format: kind.format }
-    : { kind: "video", bytes, format: kind.format };
+  return { kind: kind.kind, bytes, contentType: mediaType };
+}
+
+/**
+ * An image at its address, with a reader for its bytes.
+ * @param request - The address and the caller's limits.
+ * @param contentType - The type it was settled as.
+ * @returns The image.
+ */
+function imageAt(request: FetchMediaRequest, contentType: string): Media {
+  return { kind: "image", url: request.url, contentType, read: (signal) => readImage(request, signal) };
+}
+
+/**
+ * Read an image's bytes, through the same gate and within the same limits as
+ * every other read here.
+ * @param request - The address and the caller's limits.
+ * @param signal - The model call's signal.
+ * @returns The bytes.
+ * @throws {MediaUnavailable} when the address yields no bytes within the limits.
+ */
+async function readImage(request: FetchMediaRequest, signal: AbortSignal): Promise<Uint8Array> {
+  const within = { ...request, signal: request.signal === undefined ? signal : AbortSignal.any([request.signal, signal]) };
+  let res: Response;
+  try {
+    res = await fetchGuarded(request.url, {}, within);
+  } catch (err) {
+    within.signal.throwIfAborted();
+    if (err instanceof MediaUnavailable) throw err;
+    throw new MediaUnavailable("unreachable", { detail: reasonOf(err) });
+  }
+  if (!res.ok) {
+    void res.body?.cancel();
+    throw new MediaUnavailable("unreachable", { status: res.status });
+  }
+  const limit = request.maxBytes;
+  const expected = statedLength(res.headers) ?? limit;
+  const budgetMs = Math.max(request.readFloorMs, (expected / request.minBytesPerSec) * 1000);
+  try {
+    return await readBytesWithin(res, budgetMs, limit, within.signal);
+  } catch (err) {
+    within.signal.throwIfAborted();
+    if (err instanceof BodyTooLarge) throw new MediaUnavailable("too-large", { limit });
+    if (err instanceof EmptyBody) throw new MediaUnavailable("empty", {});
+    throw new MediaUnavailable("slow", { detail: reasonOf(err) });
+  }
 }

@@ -16,6 +16,7 @@
  *      一旦落库就会被 worker 捡走，那时候再没有任何一道检查。
  */
 
+import { initConfiguredProvider } from "@breatic/integration-tests/provider";
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
 
 vi.mock("ai", () => ({
@@ -59,6 +60,7 @@ try {
   // already initialised by a sibling suite in this worker — fine.
 }
 loadLocales();
+initConfiguredProvider();
 
 let sql: ReturnType<typeof postgres>;
 let app: Hono;

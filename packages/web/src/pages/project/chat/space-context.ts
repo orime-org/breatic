@@ -14,7 +14,7 @@
  */
 
 import type { QueryClient } from '@tanstack/react-query';
-import { isGenerationNodeType, spacesNewestFirst } from '@breatic/shared';
+import { documentCommentThreads, isGenerationNodeType, spacesNewestFirst } from '@breatic/shared';
 import type { ChatAttachedChip, ChatCanvasDetail, ChatDocumentBlock, ChatSpace, ChatSpaceContext, ModelCatalog } from '@breatic/shared';
 import type * as Y from 'yjs';
 
@@ -32,6 +32,7 @@ import { canvasGraphs } from '@web/stores/canvas-graph';
 import { spaceContentReadable } from '@web/pages/project/space-type';
 import { peekDocumentEditor } from '@web/spaces/document/document-editor-cache';
 import { readTopBlocks } from '@web/spaces/document/document-blocks-read';
+import { anchoredMediaIds } from '@web/spaces/document/document-comment-media';
 import type { ReadBlock } from '@web/spaces/document/document-blocks-read';
 
 /** The open Space as read at the press, before its content is cut. */
@@ -209,7 +210,9 @@ function documentBlocks(source: SpaceContextSource, space: ProjectSpace): ReadBl
   const name = docName.documentSpace(source.projectId, space.id);
   if (!holdsSynced(name)) return null;
   const handle = peekDocumentEditor(name);
-  return handle === undefined ? null : readTopBlocks(handle.editor);
+  return handle === undefined
+    ? null
+    : readTopBlocks(handle.editor, anchoredMediaIds(documentCommentThreads(getDoc(name))));
 }
 
 /** A document as it goes: its content and the blocks the content shows. */

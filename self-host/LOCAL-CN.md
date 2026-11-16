@@ -83,7 +83,7 @@ REDIS_COLLAB_URL=redis://redis:6379/3
 
 自带的 Nginx 拒收超过 1 MiB 的请求体（`docker/breatic-locations.conf` 的 `client_max_body_size 1m`），与 `config/limits.yaml` 的 `request_body_max_bytes` 是同一个上限，两处要一起改。
 
-供应商密钥必须替换为自己的有效值；不使用的密钥留空。配置 `OPENROUTER_API_KEY` 可以为未配置厂商直连密钥的文本模型提供调用入口，具体仍受模型可用性和账户额度限制。图像、视频等按 `config/models/<类型>/providers.yaml` 的 `api_key_env` 配置；例如 WaveSpeed 对应模型需要 `WAVESPEED_API_KEY`。
+供应商密钥必须替换为自己的有效值；不使用的密钥留空。配置 `OPENROUTER_API_KEY` 可以为未配置厂商直连密钥的文本模型提供调用入口，具体仍受模型可用性和账户额度限制。每家上游读的环境变量名写在 `config/provider/upstreams.yaml` 的 `key_env`；图像、视频等生成模型至少要配上它在 `config/provider/media/<类型>.yaml` 里列出的一家上游的密钥，例如 `WAVESPEED_API_KEY` 或 `FAL_KEY`。
 
 <a id="cloudflare"></a>
 ## 4. 正式部署 Cloudflare 上传服务

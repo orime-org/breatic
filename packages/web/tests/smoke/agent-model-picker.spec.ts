@@ -16,6 +16,7 @@ import { expect, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
 import { dataOf } from '../helpers/api';
 import { startNewConversation } from '../helpers/conversation';
+import { answerRuns } from '../helpers/fake-run';
 import { openSmokeProject, smokeProjectId } from '../helpers/project';
 
 /** What `GET /chat/models` answers. */
@@ -60,15 +61,7 @@ test('a pick is kept by its conversation, starts the next one and goes out with 
     await startNewConversation(page);
     await expect(page.getByTestId('chat-model-picker')).toHaveText(target.name);
 
-    const sent: Array<Record<string, unknown>> = [];
-    await page.route('**/chat/message', async (route) => {
-      sent.push(route.request().postDataJSON() as Record<string, unknown>);
-      await route.fulfill({
-        status: 200,
-        headers: { 'content-type': 'text/event-stream' },
-        body: 'data: {"type":"start"}\n\ndata: {"type":"finish"}\n\ndata: [DONE]\n\n',
-      });
-    });
+    const { bodies: sent } = await answerRuns(page, () => [{ type: 'start', messageId: 'm-pick' }, { type: 'finish' }]);
     const composer = page.getByTestId('chat-composer-box');
     await composer.fill('hello');
     await composer.press('Enter');

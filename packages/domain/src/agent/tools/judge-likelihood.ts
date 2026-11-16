@@ -15,14 +15,12 @@
  * cost more to keep true than the JSON costs to carry.
  */
 
-import { getAgentConfig, getRawEnvVar } from "@breatic/core";
-import { FAILURE_LINES } from "@breatic/shared";
+import { getAgentConfig } from "@breatic/core";
 import { tool } from "ai";
 import type { Tool } from "ai";
 import { z } from "zod";
 
-import { toolFailed } from "@domain/agent/tools/failure.js";
-import { askJev, JEV_PINS } from "@domain/agent/tools/jev.js";
+import { askJev } from "@domain/agent/tools/jev.js";
 import { usageContextSchema } from "@domain/agent/tools/usage-context.js";
 import type { UsageContext } from "@domain/agent/tools/usage-context.js";
 import type { JevAnswers } from "@domain/agent/tools/jev.js";
@@ -141,31 +139,16 @@ export const judgeLikelihood: Tool<z.infer<typeof inputSchema>, JevAnswers, Usag
     { state, questions },
     { abortSignal, context }: { abortSignal?: AbortSignal; context: UsageContext },
   ): Promise<JevAnswers> => {
-    const apiKey = getRawEnvVar("OPENROUTER_API_KEY") ?? "";
-    if (!apiKey) {
-      // Defensive: `buildToolSet` leaves this tool out of the set entirely
-      // when the key is missing, so a turn should not reach here.
-      throw toolFailed(
-        "Judgement is not available on this deployment: it has no credentials. Tell the " +
-          "user, and do not try again.",
-        FAILURE_LINES.unavailable,
-      );
-    }
-
+    // A deployment without the decisions endpoint's key has this tool left
+    // out of the set (`buildToolSet`); one that reaches it anyway is told so
+    // by `askJev`.
     return askJev({
-      apiKey,
       state,
       questions,
       budgetMs: getAgentConfig().judge_likelihood_timeout_ms,
       ...(abortSignal ? { abortSignal } : {}),
-      onBilled: (costUsd) =>
-        context.usage.recordServiceCall({
-          source: "tool:judge_likelihood",
-          service: JEV_PINS.model,
-          provider: "openrouter",
-          requests: 1,
-          ...(costUsd === undefined ? {} : { costUsd }),
-        }),
+      onBilled: ({ cost, upstream, model }) =>
+        context.usage.recordModelCall({ source: "tool:judge_likelihood", model, upstream, cost, requests: 1 }),
     });
   },
 });

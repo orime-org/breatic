@@ -2,23 +2,11 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Every model the agent can run on has a way to be priced (#296).
- *
- * A model reached through OpenRouter reports what each call cost. One reached
- * directly reports only tokens, and is priced from `config/usage-pricing.yaml`;
- * without a price there, its first call would fail after the money was spent.
- * So the services check at startup, where whoever edited the config is
- * watching.
+ * The models the agent runs on, which the services check at startup have a way to be priced (#296): provider's
+ * `assertModelsPriced` refuses one reached directly without a price, where whoever edited the config is watching.
  */
 
-import { getAgentConfig, getUsagePricing, type UsagePricing } from "@breatic/core";
-import { resolveProvider } from "@domain/agent/llm.js";
-
-/** What the check reads; injected in tests. */
-export interface PriceCheckSources {
-  pricing: UsagePricing;
-  providerOf: (model: string) => string;
-}
+import { getAgentConfig } from "@breatic/core";
 
 /**
  * The models the agent's own paths run on: every model the user can pick
@@ -28,25 +16,4 @@ export interface PriceCheckSources {
 export function agentModelIds(): string[] {
   const config = getAgentConfig();
   return [...new Set([...config.chat_models.map((m) => m.id), config.consolidation_model])];
-}
-
-/**
- * Refuse to run when a directly reached model has no price.
- * @param models - The models this process can run on.
- * @param sources - The price table and the routing; the live ones by default.
- * @throws {Error} Naming every model that has no price.
- */
-export function assertModelsPriced(
-  models: readonly string[],
-  sources: PriceCheckSources = { pricing: getUsagePricing(), providerOf: resolveProvider },
-): void {
-  const unpriced = [...new Set(models)].filter(
-    (model) => sources.providerOf(model) !== "openrouter" && !sources.pricing.models[model],
-  );
-  if (unpriced.length > 0) {
-    throw new Error(
-      `No price in config/usage-pricing.yaml for ${unpriced.join(", ")}, ` +
-        "which this deployment reaches directly and which report no cost of their own",
-    );
-  }
 }

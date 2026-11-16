@@ -2,22 +2,22 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Asking a model one question about an ordered collection of media.
+ * Asking a model one question about an ordered collection of media, through provider.
  *
- * Straight at the service's HTTP API. The three media shapes below are the
- * ones it takes, measured one by one against the live endpoint, and none of
- * them survives a trip through a general-purpose SDK: an SDK that normalises
- * parts rejects two of the three outright and rewrites the third's declared
- * type from the bytes' own signature.
- *
- * Who to ask is entirely the caller's: the model, the backend, the credential
- * and the address all arrive as inputs. So this module reads no catalog and no
- * configuration. The agent tool and worker tasks supply those inputs where
- * each already knows them.
+ * Who answers, and how each upstream is sent the media, is provider's. What is
+ * kept here is what the callers read: each billed answer reported once, and a
+ * refusal judged into what it is about.
  */
 
-import { EmptyBody, httpRequest, readWithin, stripUnicodeTags } from "@breatic/shared";
-import { UnderstandRefused } from "@domain/understand/types.js";
+import {
+  costsOf,
+  NoUpstreamAvailable,
+  UnderstandInterrupted,
+  UpstreamRequestRejected,
+  type UnderstandMedia,
+} from "@breatic/provider";
+import { provider } from "@domain/provider/instance.js";
+import { MediaUnavailable, UnderstandRefused } from "@domain/understand/types.js";
 import type {
   Media,
   MediaTransport,
@@ -26,41 +26,6 @@ import type {
   UnderstandAnswer,
   UnderstandRequest,
 } from "@domain/understand/types.js";
-
-/**
- * Build the one content part that carries the media.
- *
- * Three shapes, one per kind, each measured against the live endpoint:
- * an image travels as an address the backend fetches, a video as a data uri,
- * and audio as bare base64 with its format named separately. Handing a video a
- * plain url comes back 400 `Cannot fetch content`; handing audio one has the
- * url read as base64 and fail to decode.
- * @param media - The media to send.
- * @returns The content part.
- */
-function mediaPart(media: Media): Record<string, unknown> {
-  if (media.kind === "image") {
-    return { type: "image_url", image_url: { url: media.url } };
-  }
-
-  // A zero-copy view: `media.bytes` is already the bytes, and `Buffer.from`
-  // on a Uint8Array copies the lot a second time.
-  const base64 = Buffer.from(
-    media.bytes.buffer,
-    media.bytes.byteOffset,
-    media.bytes.byteLength,
-  ).toString("base64");
-
-  // Both formats travel with the media: which video and which audio can be
-  // sent is settled where the address is settled, so nothing is left to decide
-  // here. What a server calls a file and what this endpoint calls it are two
-  // facts, and the second one arrived with the bytes.
-  if (media.kind === "video") {
-    return { type: "video_url", video_url: { url: `data:${media.format};base64,${base64}` } };
-  }
-
-  return { type: "input_audio", input_audio: { data: base64, format: media.format } };
-}
 
 /**
  * What a refusal carrying this code is about.
@@ -73,194 +38,37 @@ function mediaPart(media: Media): Record<string, unknown> {
  * measured, `server: cloudflare`, whose 520 through 530 are nowhere in the
  * service's table and whose origin ceiling is shorter than the call budget
  * here, so 524 is what a large upload and a slow answer arrive at.
- * @param facts - The code, where the words came from, and how the media went.
+ * @param facts - The code and how the media went.
  * @returns Which of the five it is about.
  */
 function refusalKind(facts: RefusalFacts): RefusalKind {
   // A moment, not a fact: the service's own 408 and 429, every 5xx it names,
-  // and every 5xx it does not — this endpoint answers from behind an edge
-  // network (measured, `server: cloudflare`) whose 520 through 530 are nowhere
-  // in the service's own table.
+  // and every 5xx it does not.
   const { code } = facts;
   if (code === 408 || code === 429 || code >= 500) return "transient";
-
-  // The three kinds below all say something about what the caller sent, so
-  // each of them needs the service's own words to say it with. Anything else
-  // falls through to the kind that speaks about us, which is where a code
-  // nobody has thought about belongs: named for the media, every new code
-  // becomes a false accusation about somebody's file.
-  if (facts.source === "envelope") {
-    // The provider's body ceiling, reached by what we put in it.
-    if (code === 413) return "media";
-    // Measured, a video sent as a url comes back 400 `Cannot fetch content`.
-    // Only an address-only batch supports the existing unreachable-address
-    // classification. In a mixed batch, the same status may be an inline
-    // decoding or request failure; it cannot establish that a URL was unreachable.
-    if (code === 400) return facts.transport === "address" ? "unfetchable" : "media";
-    // The one shape where the status has nothing to say: it is 200 by
-    // construction. Measured, that is this model's guardrail declining the
-    // question, and a differently worded one about the same file is answered.
-    if (code === 200) return "content-filter";
-  }
+  // The provider's body ceiling, reached by what we put in it.
+  if (code === 413) return "media";
+  // Measured, a video sent as a url comes back 400 `Cannot fetch content`.
+  // Only an address-only batch supports the unreachable-address
+  // classification. In a mixed batch, the same status may be an inline
+  // decoding or request failure; it cannot establish that a URL was unreachable.
+  if (code === 400) return facts.transport === "address" ? "unfetchable" : "media";
+  // The one shape where the status has nothing to say: it is 200 by
+  // construction. Measured, that is this model's guardrail declining the
+  // question, and a differently worded one about the same file is answered.
+  if (code === 200) return "content-filter";
   return "deployment";
 }
 
 /**
- * What the endpoint answers with, as far as anything here reads it.
- *
- * `error.code` is read because the transport status cannot always speak: an
- * error raised once the model is already producing output arrives on a 200 with
- * the real code inside the envelope.
+ * One item as provider takes it.
+ * @param media - The item.
+ * @returns The item.
  */
-interface ServiceError {
-  message?: unknown;
-  code?: unknown;
-  /** `error_type` names the kind of failure where the code alone cannot: a 403 is a key, a budget or a content block. */
-  metadata?: { error_type?: unknown };
-}
-
-interface Completion {
-  choices?: Array<{
-    message?: { content?: unknown };
-    finish_reason?: unknown;
-    error?: ServiceError;
-  }>;
-  error?: ServiceError;
-  /**
-   * What the call took. The backend puts it on every answer, and `cost` is
-   * the amount charged to the account, denominated in US dollars.
-   */
-  usage?: { cost?: unknown };
-}
-
-/**
- * Read the answer, or say why there is none.
- *
- * A 200 carrying an `error` object is a refusal wearing a success code, and
- * this endpoint really does answer that way: measured (inner#856, 2026-10-22),
- * a block arrives on a 200 with `error: {code: 403, message: "SAFETY"}` in the
- * body, now and then and not for every send of the same audio. So the status
- * is not what decides — the body is.
- * @param res - The response as it arrived.
- * @param budgetMs - How long the whole body may take to arrive.
- * @param transport - Whether this batch uses addresses, inline media or both.
- * @param signal - The caller's signal, so the read ends when they do.
- * @param onBilled - Told once, when the answer shows the call was billed.
- * @returns What the model wrote and why it stopped.
- * @throws {UnderstandRefused} when the body carries no answer.
- */
-async function readAnswer(
-  res: Response,
-  budgetMs: number,
-  transport: MediaTransport,
-  signal: AbortSignal | undefined,
-  onBilled: (costUsd: number | undefined) => void,
-): Promise<UnderstandAnswer> {
-  /**
-   * A refusal, judged from everything known about it.
-   *
-   * Every throw that has facts to judge goes through here, so the rules live
-   * in one function and each throw states only what it holds. The one throw
-   * that does not is the body that stopped part way, which is a fact no code
-   * carries: the status is whatever the answer would have been.
-   * @param detail - The words, whoever wrote them.
-   * @param about - What is known beyond the words themselves.
-   * @param about.source - Where they came from.
-   * @param about.code - The code to judge by, when it is not the transport's.
-   * @param about.errorType - The service's own name for the failure, carried and not judged.
-   * @returns The refusal to throw.
-   */
-  const refusal = (
-    detail: string,
-    about: { source: RefusalFacts["source"]; code?: number; errorType?: string },
-  ): UnderstandRefused => {
-    const code = about.code ?? res.status;
-    const { errorType, ...facts } = about;
-    return new UnderstandRefused(
-      code,
-      detail,
-      refusalKind({ ...facts, code, transport }),
-      errorType,
-    );
-  };
-
-  /**
-   * The refusal an `error` object stands for, wherever it was found.
-   *
-   * The code is the envelope's own when it carries one: an error raised once
-   * the model is already producing output arrives on a 200, which by
-   * construction says nothing about what went wrong.
-   * Its `error_type` travels on the refusal as a fact for the caller; it
-   * judges nothing here.
-   * @param error - The object the service put in the body.
-   * @param fallback - The body as it arrived, for an envelope with no message.
-   * @returns The refusal to throw.
-   */
-  const fromEnvelope = (error: ServiceError, fallback: string): UnderstandRefused =>
-    refusal(String(error.message ?? fallback), {
-      source: "envelope",
-      ...(typeof error.code === "number" ? { code: error.code } : {}),
-      ...(typeof error.metadata?.error_type === "string"
-        ? { errorType: error.metadata.error_type }
-        : {}),
-    });
-
-  let text: string;
-  try {
-    text = await readWithin(res, budgetMs, signal);
-  } catch (err) {
-    // A success status is the service taking the call, so it was billed
-    // whatever became of the body; the figure is lost with it.
-    if (res.ok) onBilled(undefined);
-    // The transport's deadline was spent when it handed this response back, so
-    // an upstream that dribbles bytes would otherwise hold the call open with
-    // nothing to show for it.
-    //
-    // A body that stopped part way is the one failure the status cannot speak
-    // for: the headers arrived, so the status is whatever the answer would have
-    // been, and a second attempt gets the rest. A body that was never there is
-    // not that — the status is the whole of what came, and calling it a
-    // stopped read puts a permanent failure on the retry side, where the retry
-    // re-uploads the entire clip.
-    if (err instanceof EmptyBody) throw refusal("the answer carried nothing", { source: "ours" });
-    throw new UnderstandRefused(
-      res.status,
-      `the answer never finished arriving: ${String(err)}`,
-      "transient",
-    );
-  }
-
-  let body: Completion;
-  try {
-    body = JSON.parse(text) as Completion;
-  } catch {
-    if (res.ok) onBilled(undefined);
-    throw refusal(text.slice(0, 300), { source: "body" });
-  }
-  // Reported before any refusal is judged: a refused call can be billed too,
-  // and says so with a cost on its body.
-  const charged = body.usage?.cost;
-  if (typeof charged === "number" && Number.isFinite(charged)) onBilled(charged);
-  else if (res.ok) onBilled(undefined);
-
-  if (body.error) throw fromEnvelope(body.error, text.slice(0, 300));
-
-  const choice = body.choices?.[0];
-  if (!res.ok || !choice) {
-    throw refusal(text.slice(0, 300), { source: "body" });
-  }
-
-  const written = typeof choice.message?.content === "string" ? choice.message.content : "";
-  // The service's second place for an error: a non-streaming call that fails
-  // once the model is producing output puts it inside the choice, beside a
-  // `finish_reason` of "error". With words already written it is a stop rather
-  // than a refusal, and the reason it stopped travels on in `finishReason`.
-  if (choice.error && written === "") throw fromEnvelope(choice.error, text.slice(0, 300));
-
-  return {
-    text: written,
-    finishReason: typeof choice.finish_reason === "string" ? choice.finish_reason : "unknown",
-  };
+function itemOf(media: Media): UnderstandMedia {
+  return media.kind === "image"
+    ? { url: media.url, contentType: media.contentType, read: media.read }
+    : { bytes: media.bytes, contentType: media.contentType };
 }
 
 /**
@@ -270,64 +78,41 @@ async function readAnswer(
  * whatever `finishReason` it carried, empty text and all. Deciding what an
  * empty answer or a truncated one should say to anyone is the caller's, one
  * layer up, where the user is known.
- * @param request - The media, the question, and who to ask.
+ * @param request - The media, the question, and the model.
  * @returns What the model wrote and why it stopped.
  * @throws {UnderstandRefused} when the service would not answer.
+ * @throws {MediaUnavailable} when an image's bytes could not be read for an upstream that needs them.
+ * @throws {UnderstandInterrupted} when the call ended without an answer for another reason.
  */
 export async function understandMedia(request: UnderstandRequest): Promise<UnderstandAnswer> {
-  const body: Record<string, unknown> = {
-    model: request.model,
-    max_tokens: request.maxOutputTokens,
-    messages: [
-      {
-        role: "user",
-        content: [
-          { type: "text", text: stripUnicodeTags(request.question) },
-          ...request.media.flatMap((media, index) => [
-            { type: "text", text: `Item ${String(index + 1)}` },
-            mediaPart(media),
-          ]),
-        ],
-      },
-    ],
-  };
-  // Stated only when a backend was asked for. Left out, the service routes the
-  // call itself, and the two backends behind one model do not behave alike:
-  // measured, a 26 MiB body one takes the other refuses with 413.
-  if (request.backend) {
-    body.provider = { only: [request.backend], allow_fallbacks: false };
-  }
-
   request.signal?.throwIfAborted();
   await request.onRequestSending?.();
-  const res = await httpRequest(
-    `${request.baseUrl}/chat/completions`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${request.apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-    },
-    {
-      // A replay re-uploads the whole clip. The transport's own retries are
-      // for deliveries that produced no effect, and an upload that reached the
-      // far side and then lost its answer has produced one worth minutes.
-      replaySafe: false,
-      timeoutMs: request.timeoutMs,
-      ...(request.signal ? { signal: request.signal } : {}),
-    },
-  );
-
   const hasAddresses = request.media.some((media) => media.kind === "image");
   const hasInline = request.media.some((media) => media.kind !== "image");
   const transport: MediaTransport = hasAddresses ? (hasInline ? "mixed" : "address") : "inline";
-  return readAnswer(
-    res,
-    request.timeoutMs,
-    transport,
-    request.signal,
-    request.onBilled,
-  );
+  try {
+    const answer = await provider().llm.understand({
+      model: request.model,
+      question: request.question,
+      media: request.media.map(itemOf),
+      maxOutputTokens: request.maxOutputTokens,
+      deadlineAt: Date.now() + request.timeoutMs,
+      ...(request.signal ? { signal: request.signal } : {}),
+    });
+    for (const cost of answer.costs) request.onBilled(cost, answer.upstream);
+    return { text: answer.text, finishReason: answer.finishReason };
+  } catch (err) {
+    const upstream = err instanceof UpstreamRequestRejected ? err.upstream : "";
+    for (const cost of costsOf(err)) request.onBilled(cost, upstream);
+    request.signal?.throwIfAborted();
+    if (err instanceof UpstreamRequestRejected && err.status !== undefined) {
+      throw new UnderstandRefused(err.status, err.message, refusalKind({ code: err.status, transport }), err.reason === "content_blocked");
+    }
+    if (err instanceof UpstreamRequestRejected || err instanceof NoUpstreamAvailable) {
+      throw new UnderstandRefused(0, err.message, "deployment");
+    }
+    // An image an upstream needed the bytes of, and could not have.
+    if (err instanceof UnderstandInterrupted && err.cause instanceof MediaUnavailable) throw err.cause;
+    throw err;
+  }
 }

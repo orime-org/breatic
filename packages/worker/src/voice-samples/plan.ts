@@ -6,23 +6,25 @@
  * (#2156, design §16.4).
  *
  * The keys are the catalog's own (`sample_key`, and `sample_keys` for a voice
- * that speaks whichever language the user picks). A key names its language
+ * that speaks whichever language the user picks). Each sample is a run in our
+ * param names; which field each becomes on an upstream is provider's. A key names its language
  * by the path segment after the model — `voice-samples/<model>/<lang>/<voice>.mp3`
  * — and a key with no segment is English. The sentence each language says,
- * and the extra fields a model takes (`extra_body`), come from
+ * and the extra params a model takes (`extra_body`), come from
  * `config/voice-samples.json`; a many-language voice is also sent its
  * language under the model's own language param, taken from the key it has
  * in `sample_keys`.
  */
 
 import type { FullModelEntry, VoiceSampleConfig } from "@breatic/domain";
+import type { MediaInput } from "@breatic/provider/media";
 
 /** One sample to make. */
 export interface VoiceSampleJob {
   model: string;
   key: string;
-  /** The request body, in the upstream's field names. */
-  body: Record<string, unknown>;
+  /** The run, in our param names. */
+  input: MediaInput;
 }
 
 /** The tag a sample key without a language segment speaks. */
@@ -40,17 +42,17 @@ function tagOf(model: string, key: string): string {
 }
 
 /**
- * The upstream field a declared param is sent as.
+ * The name of a declared param.
  * @param entry - The model.
  * @param find - Which param.
- * @returns The field name, or undefined when the model declares no such param.
+ * @returns Its name, or undefined when the model declares no such param.
  */
-function fieldOf(
+function paramOf(
   entry: FullModelEntry,
   find: (spec: NonNullable<FullModelEntry["params"]>[string]) => boolean,
 ): string | undefined {
   for (const [name, spec] of Object.entries(entry.params ?? {})) {
-    if (find(spec)) return spec.upstream ?? name;
+    if (find(spec)) return name;
   }
   return undefined;
 }
@@ -68,10 +70,9 @@ export function planVoiceSamples(models: readonly FullModelEntry[], config: Voic
   for (const entry of models) {
     const voices = entry.voices ?? [];
     if (!voices.some((voice) => voice.sample_key !== undefined || voice.sample_keys !== undefined)) continue;
-    const voiceField = fieldOf(entry, (spec) => spec.remote_source === "voices");
-    if (voiceField === undefined) throw new Error(`${entry.name} has voice samples but no voice param`);
-    const languageField = fieldOf(entry, (spec) => spec.value_locales !== undefined);
-    const textField = entry.prompt_upstream ?? "prompt";
+    const voiceParam = paramOf(entry, (spec) => spec.remote_source === "voices");
+    if (voiceParam === undefined) throw new Error(`${entry.name} has voice samples but no voice param`);
+    const languageParam = paramOf(entry, (spec) => spec.value_locales !== undefined);
 
     /**
      * The job for one key.
@@ -86,19 +87,21 @@ export function planVoiceSamples(models: readonly FullModelEntry[], config: Voic
       const said = config.languages[tag];
       if (said === undefined) throw new Error(`${key}: no sentence for language "${tag}"`);
       const extra = Object.fromEntries(
-        Object.entries(config.extra_body[entry.name] ?? {}).map(([field, value]) => [
-          field,
+        Object.entries(config.extra_body[entry.name] ?? {}).map(([param, value]) => [
+          param,
           value.replace("{boost}", said.boost ?? ""),
         ]),
       );
       return {
         model: entry.name,
         key,
-        body: {
-          [textField]: said.text,
-          [voiceField]: voiceId,
-          ...(language !== undefined && languageField !== undefined ? { [languageField]: language } : {}),
-          ...extra,
+        input: {
+          prompt: said.text,
+          params: {
+            [voiceParam]: voiceId,
+            ...(language !== undefined && languageParam !== undefined ? { [languageParam]: language } : {}),
+            ...extra,
+          },
         },
       };
     };

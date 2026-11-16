@@ -6,6 +6,7 @@
   "exports": {
     "./containers": "./src/test-utils/containers.ts",
     "./env": "./src/test-utils/env.ts",
+    "./provider": "./src/test-utils/provider.ts",
     "./provided-context": {
       "types": "./src/test-utils/provided-context.d.ts"
     }
@@ -18,6 +19,7 @@
   "devDependencies": {
     "@breatic/core": "workspace:*",
     "@breatic/domain": "workspace:*",
+    "@breatic/provider": "workspace:*",
     "@breatic/shared": "workspace:*",
     "@hocuspocus/extension-redis": "catalog:",
     "@hocuspocus/server": "catalog:",

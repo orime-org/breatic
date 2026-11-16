@@ -15,7 +15,7 @@ import { test } from '../helpers/slot';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 import { roomForUploads } from '../helpers/upload-budget';
 import {
-  expectTimelineVideoReady, moveTimelineClip, openTimeline, selectTimelineClip, timelineClipIds, uploadTimelineVideo, withTimelinePeer,
+  expectTimelineVideoReady, moveTimelineClip, openTimeline, selectTimelineClip, timelineClipIds, timelineVideoOf, uploadTimelineVideo, withTimelinePeer,
 } from '../helpers/timeline-media';
 
 const FIXTURE = resolve(__dirname, '../fixtures/media-history.mp4');
@@ -71,13 +71,13 @@ async function setSwitch(page: Page, testId: string, on: boolean): Promise<void>
 }
 
 /**
- * Wait until the preview's native video at the playhead has decoded a frame of whatever it plays.
+ * Wait until the placement's native video in the preview has decoded a frame of whatever it plays.
  * @throws {Error} When no video decodes.
  */
-async function expectPreviewDecodes(page: Page): Promise<void> {
-  const video = visibleSpace(page).getByTestId('timeline-preview').locator('video');
+async function expectPreviewDecodes(page: Page, clipId: string): Promise<void> {
+  const video = timelineVideoOf(page, clipId);
   await expect(video).toHaveAttribute('src', /^https?:/, { timeout: CONVERTED_MS });
-  await expectTimelineVideoReady(page, (await video.getAttribute('src'))!);
+  await expectTimelineVideoReady(page, clipId, (await video.getAttribute('src'))!);
 }
 
 test('a local video uploads behind the closed dialog, spins the tab, holds the close and becomes a playable video @needs-storage @needs-ingest', async ({ page }) => {
@@ -116,7 +116,7 @@ test('a local video uploads behind the closed dialog, spins the tab, holds the c
     await selectTimelineClip(page, first.clipId);
     await visibleSpace(page).getByTestId('timeline-delete').click();
     await expect(visibleSpace(page).getByTestId(`timeline-clip-${first.clipId}`)).toHaveCount(0);
-    await expectPreviewDecodes(page);
+    await expectPreviewDecodes(page, clipId);
   } finally {
     for (const id of spaces.reverse()) await deleteSpace(page, id);
   }
@@ -137,7 +137,7 @@ test('a failed upload keeps its placeholder, says why and lands on retry @needs-
     await roomForUploads(1);
     await outlet.getByTestId('timeline-upload-retry').click();
     await expect(outlet.getByTestId(`timeline-clip-${clipId}`)).toHaveAttribute('data-kind', 'video', { timeout: CONVERTED_MS });
-    await expectPreviewDecodes(page);
+    await expectPreviewDecodes(page, clipId);
   } finally {
     await deleteSpace(page, spaceId);
   }

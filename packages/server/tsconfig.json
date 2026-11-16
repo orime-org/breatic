@@ -7,7 +7,8 @@
       "@server/*": ["./src/*"],
       "@shared/*": ["../shared/src/*"],
       "@core/*": ["../core/src/*"],
-      "@domain/*": ["../domain/src/*"]
+      "@domain/*": ["../domain/src/*"],
+      "@provider/*": ["../provider/src/*"]
     }
   },
   "include": [

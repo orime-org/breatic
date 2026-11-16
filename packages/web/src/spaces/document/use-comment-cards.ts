@@ -28,6 +28,7 @@ import {
   commentsOn,
   type CommentsApi,
 } from '@web/spaces/document/document-comment-extension';
+import { mediaBlockIdOf, mediaQuotes, sameMediaQuote, type MediaQuote } from '@web/spaces/document/document-comment-media';
 import type { RailCard } from '@web/spaces/document/document-comment-rail';
 import {
   threadQuoteIn,
@@ -62,8 +63,10 @@ export interface CommentCardView {
   readonly id: string;
   /** Whether it has been settled, which is what the card offers on it. */
   readonly settled: boolean;
-  /** The words it is about. */
+  /** The words it is about; empty for a comment on media. */
   readonly quote: string;
+  /** The picture, video or audio it is about, or null for a comment on words. */
+  readonly media: MediaQuote | null;
   /** The opening comment and every reply, oldest first. */
   readonly entries: readonly CommentEntryView[];
 }
@@ -132,6 +135,7 @@ function entryOf(
  * @param doc - The body, which the quote is read out of.
  * @param walked - Every thread's stretches, walked once for the whole panel.
  * @param threads - Every thread, built once for the whole panel.
+ * @param onMedia - The media cards' quotes, by block id, read once for the whole panel.
  * @returns The card, or null once the thread or its words are gone.
  */
 function drawCard(
@@ -139,15 +143,20 @@ function drawCard(
   source: CommentsApi,
   doc: ProseMirrorNode,
   walked: ReadonlyMap<string, readonly ThreadRange[]>,
-  threads: ReadonlyMap<string, { comments: readonly CommentData[] }>,
+  threads: ReadonlyMap<string, { comments: readonly CommentData[]; metadata?: unknown }>,
+  onMedia: ReadonlyMap<string, MediaQuote>,
 ): CommentCardView | null {
   const thread = threads.get(card.id);
+  if (thread === undefined) return null;
   const quote = threadQuoteIn(doc, card.id, walked);
-  if (thread === undefined || quote === null) return null;
+  const blockId = mediaBlockIdOf(thread.metadata);
+  const media = quote === null && blockId !== null ? onMedia.get(blockId) ?? null : null;
+  if (quote === null && media === null) return null;
   return {
     id: card.id,
     settled: card.settled,
-    quote,
+    quote: quote ?? '',
+    media,
     entries: thread.comments.map((comment) => entryOf(comment, source)),
   };
 }
@@ -163,6 +172,7 @@ function sameCard(a: CommentCardView, b: CommentCardView): boolean {
     a.id === b.id &&
     a.settled === b.settled &&
     a.quote === b.quote &&
+    sameMediaQuote(a.media, b.media) &&
     a.entries.length === b.entries.length &&
     a.entries.every((entry, index) => {
       const other = b.entries[index];
@@ -238,12 +248,14 @@ export function useCommentCards(
     // not a lookup, it rebuilds the whole map and deserialises every comment
     // in it (`@blocknote/core/dist/y.js:676-681`).
     const threads = comments.threadStore.getThreads();
+    // The media cards' quotes, in one walk too.
+    const onMedia = mediaQuotes(doc, [...threads.values()].flatMap((thread) => mediaBlockIdOf(thread.metadata) ?? []));
     const next: CommentCards = {
       unresolved: rail.unresolved
-        .map((card) => drawCard(card, comments, doc, walked, threads))
+        .map((card) => drawCard(card, comments, doc, walked, threads, onMedia))
         .filter((card) => card !== null),
       resolved: rail.resolved
-        .map((card) => drawCard(card, comments, doc, walked, threads))
+        .map((card) => drawCard(card, comments, doc, walked, threads, onMedia))
         .filter((card) => card !== null),
     };
     return next;

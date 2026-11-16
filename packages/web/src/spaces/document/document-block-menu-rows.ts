@@ -59,8 +59,10 @@ export interface BlockMenuRow {
  * Comment (inner#936).
  *
  * Comment opens a draft over the hovered row (A2), and reads unavailable on
- * a row with no words in it (A3) — the same two answers the bubble bar's own
- * comment entry gives.
+ * a row with no text in it, spaces counting as text (A3) — the same two
+ * answers the bubble bar's own comment entry gives. An uploaded picture,
+ * video or audio takes a comment whole, and a pending one greys it
+ * (inner#1316).
  *
  * Alignment and colour open what the bubble bar's own two slots open, down to
  * the rows and the panel, and each carries the icon the demo draws for it.

@@ -16,6 +16,10 @@ import { MONOREPO_ROOT } from "@core/config/env.js";
 
 const nodeTaskConfigSchema = z.object({
   default_budget_ms: z.number().int().positive().default(7_200_000),
+  /** How long after a generation finishes its unbilled cost is first looked up; each later lookup waits twice as long. */
+  cost_wait_delay_ms: z.number().int().positive().default(30_000),
+  /** How many times an unbilled cost is looked up before the task is billed on what is known. */
+  cost_wait_attempts: z.number().int().positive().default(6),
 });
 
 /** Validated node task configuration. */

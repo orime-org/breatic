@@ -58,7 +58,7 @@ import {
   tableLineSelection,
   type PasteSide,
 } from '@web/spaces/document/document-table-line-clipboard';
-import { selectionHasWords } from '@web/spaces/document/document-to-agent';
+import { selectionHoldsContent } from '@web/spaces/document/document-to-agent';
 import { itemWithin } from '@web/spaces/document/document-block-menu-parts';
 import { BLOCK_MENU_ROWS, TABLE_MENU_ROWS } from '@web/spaces/document/document-block-menu-rows';
 import type { HandleEditor } from '@web/spaces/document/document-handle-commands';
@@ -194,8 +194,8 @@ interface MenuFaces {
   readonly headerIsOn: boolean;
   /** Whether no merged cell reaches out of the row (or column): copy, cut, paste and Add to Agent need it. */
   readonly whole: boolean;
-  /** Whether the row (or column) holds words: Add to Agent needs them, as the bubble bar's does. */
-  readonly words: boolean;
+  /** Whether the row (or column) holds words or uploaded media: Add to Agent needs them, as the bubble bar's does. */
+  readonly content: boolean;
 }
 
 /**
@@ -221,12 +221,12 @@ function HandleMenuRows({ editor, row }: { editor: HandleEditor; row: boolean })
           headerReachable: row ? at.top === 0 : at.left === 0,
           headerIsOn: headerOn(state.doc, pos, row ? 'row' : 'column'),
           whole: line !== null,
-          words: line !== null && selectionHasWords(state.doc, line),
+          content: line !== null && selectionHoldsContent(state.doc, line),
         };
       },
       [row],
     ),
-    (a, b) => a === b || (a !== null && b !== null && a.headerReachable === b.headerReachable && a.headerIsOn === b.headerIsOn && a.whole === b.whole && a.words === b.words),
+    (a, b) => a === b || (a !== null && b !== null && a.headerReachable === b.headerReachable && a.headerIsOn === b.headerIsOn && a.whole === b.whole && a.content === b.content),
   );
   const projectId = useDocumentProjectId();
 
@@ -321,7 +321,7 @@ function HandleMenuRows({ editor, row }: { editor: HandleEditor; row: boolean })
         <>
           <DropdownMenuItem
             data-testid={`${stem}addToAgent`}
-            {...itemWithin(faces.words, () => {
+            {...itemWithin(faces.content, () => {
               onTargetCell(editor, (pos) => {
                 const item = tableLineItem(editor as never, pos, scope);
                 if (item !== null) void attachToChat(projectId, [item]);

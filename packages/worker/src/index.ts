@@ -56,6 +56,7 @@ import {
   AUDIO_PEAKS_QUEUE,
   MAIL_QUEUE,
   UPLOAD_FINISH_QUEUE,
+  initProvider,
   type AudioPeaksJob,
   type MailJob,
   type MediaReadJob,
@@ -111,6 +112,16 @@ try {
   await exitProcess(1);
 }
 
+// Every model call goes through provider (inner#1743); its configuration is
+// checked whole when it is built, so a bad upstream, route or binding fails
+// here, naming every problem, instead of inside the first call that needs it.
+try {
+  initProvider();
+} catch (err) {
+  logger.error({ err }, "provider_config_invalid");
+  await exitProcess(1);
+}
+
 // Same preflight for config/models/*.yaml (#1966). Every model must declare
 // `takes_prompt`, and the catalog is lazy like agent.yaml above —
 // lazy here means a missing declaration surfaces inside whichever job first
@@ -120,6 +131,15 @@ try {
   modelCatalog.getModelCatalog();
 } catch (err) {
   logger.error({ err }, "model_catalog_invalid");
+  await exitProcess(1);
+}
+
+// A default frame outside the presets (#1502) would otherwise throw uncaught from startWorker() when it schedules the
+// Timeline sweep, with no named log line.
+try {
+  getTimelineConfig();
+} catch (err) {
+  logger.error({ err }, "timeline_config_invalid");
   await exitProcess(1);
 }
 import { runTask } from "@worker/handlers/dispatch.js";
@@ -323,15 +343,15 @@ export function startWorker(): void {
     settleWhenStalled(job);
   });
 
-  // The later lookup of an OpenRouter call whose cost was not in hand (#296). Its retries
-  // are the waiting: the job throws until OpenRouter has the cost.
+  // The later lookup of a model call whose cost was not in hand (#296). Its retries are the
+  // waiting: the job throws while provider answers the cost pending.
   const usageLookup = createWorker<UsageLookupJob>(USAGE_LOOKUP_QUEUE, (job) => runUsageLookup(job));
 
   usageLookup.on("failed", (job, err) => {
     logger.warn(
       {
         err,
-        generationId: job?.data.generationId,
+        lookup: job === undefined ? undefined : "lookup" in job.data ? job.data.lookup : { generationId: job.data.generationId },
         attemptsMade: job?.attemptsMade,
         attemptsAllowed: job?.opts?.attempts,
       },

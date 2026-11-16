@@ -91,7 +91,7 @@ vi.mock("@breatic/domain", async () => {
           ended?.({
             responseId: "gen-test",
             usage: { inputTokens: 3, outputTokens: 4, totalTokens: 7 },
-            providerMetadata: { openrouter: { usage: { cost: 0.01 } } },
+            providerMetadata: { test: { costUsd: 0.01 } },
           });
           for (const text of model.deltas) yield { type: "text-delta", text };
         })(),
@@ -110,7 +110,7 @@ vi.mock("@server/modules", async (importOriginal) => {
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { NotFoundError, ForbiddenError } from "@breatic/core";
-import { callOptionsFor, getModel } from "@breatic/domain";
+import { provider } from "@breatic/domain";
 import { parse } from "yaml";
 import { createApp } from "../../app.js";
 import { mocks } from "../helpers/mock-core.js";
@@ -255,7 +255,6 @@ beforeEach(() => {
   mocks.projectService.assertAccess.mockReset().mockResolvedValue(undefined);
   mocks.creditLotService.getSpendableCredits.mockReset().mockResolvedValue("100.000000");
   mocks.checkRateLimit.mockReset().mockResolvedValue({ allowed: true });
-  vi.mocked(callOptionsFor).mockReset().mockReturnValue({ providerOptions: {} });
   model.deltas = ["ok"];
   model.gate = null;
   model.entered = 0;
@@ -499,16 +498,13 @@ describe("the stream framing", () => {
 
 describe("the model call", () => {
   it("uses the configured model at the configured thinking level and sends no temperature", async () => {
-    vi.mocked(callOptionsFor).mockReturnValueOnce({ providerOptions: { marker: { from: "callOptionsFor" } } });
-
     await run(bodyFor("polish"));
 
-    expect(vi.mocked(getModel)).toHaveBeenCalledWith("google/gemini-3.8-flash");
-    expect(vi.mocked(callOptionsFor)).toHaveBeenCalledWith(
+    expect(vi.mocked(provider().llm.prepare)).toHaveBeenCalledWith(
       "google/gemini-3.8-flash",
-      expect.objectContaining({ thinkingLevel: "low" }),
+      { thinking: true, thinkingLevel: "low", cache: false },
     );
-    expect(model.calls[0]?.providerOptions).toEqual({ marker: { from: "callOptionsFor" } });
+    expect(model.calls[0]).toMatchObject({ providerOptions: {}, maxRetries: 0 });
     expect(model.calls[0]).not.toHaveProperty("temperature");
   });
 

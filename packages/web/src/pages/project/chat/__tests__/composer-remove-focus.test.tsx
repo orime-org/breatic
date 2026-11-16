@@ -9,7 +9,8 @@
 
 import * as React from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, screen } from '@testing-library/react';
+import { renderWithTooltips as render } from '@web/test-utils/render-with-tooltips';
 
 import { ChatComposer } from '@web/pages/project/chat/ChatComposer';
 import type { TrayItem } from '@web/stores/chat-attachments';

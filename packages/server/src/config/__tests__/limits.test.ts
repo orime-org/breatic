@@ -20,11 +20,26 @@ import {
   getActivityFeedPageLimits,
   getCanvasReferencePoolCap,
   getNodeHistoryPageSize,
+  getServerShutdownDeadlineMs,
   getDecisionWindowDays,
   getDecisionWindowMs,
   getDecisionWindowSeconds,
   MS_PER_DAY,
 } from "@server/config/limits.js";
+
+describe("the server's shutdown deadline (inner#1717, SD-10)", () => {
+  it("defaults to 4000 ms when the key is absent", () => {
+    expect(limitsConfigSchema.parse({}).server_shutdown_deadline_ms).toBe(4000);
+  });
+
+  it("reads the value config/limits.yaml carries", () => {
+    expect(getServerShutdownDeadlineMs()).toBe(4000);
+  });
+
+  it("rejects a non-positive value", () => {
+    expect(() => limitsConfigSchema.parse({ server_shutdown_deadline_ms: 0 })).toThrow();
+  });
+});
 
 describe("limits config — schema", () => {
   it("accepts explicit positive integers", () => {

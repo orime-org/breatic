@@ -329,3 +329,29 @@ describe("an old single-question card", () => {
     expect(text).toBe("Q1 Which ratio?\noptions: 16:9, 9:16");
   });
 });
+
+describe("a message the user sent while the turn ran (inner#1717)", () => {
+  it("is its own user line between the reply's text around it (PT-05)", () => {
+    const parts: MessagePart[] = [
+      { type: "text", text: "A" },
+      { type: "user-message", id: "m-2", sentAt: "2026-11-12T08:00:00.000Z", parts: [{ type: "text", text: "改成蓝色" }] },
+      { type: "text", text: "B" },
+    ];
+    expect(messageText(parts)).toBe("A\nuser: 改成蓝色\nB");
+  });
+
+  it("names what was attached to it on its own user line", () => {
+    const parts: MessagePart[] = [
+      {
+        type: "user-message",
+        id: "m-2",
+        sentAt: "2026-11-12T08:00:00.000Z",
+        parts: [
+          { type: "attachment", chip: { name: "brief.pdf" } as never },
+          { type: "text", text: "use this" },
+        ],
+      },
+    ];
+    expect(messageText(parts)).toBe("user: [attached: brief.pdf]\nuse this");
+  });
+});

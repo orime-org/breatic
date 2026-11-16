@@ -72,18 +72,31 @@ const describeSchema = z.strictObject({
 });
 
 const extraStepSchema = z.strictObject({
-  kind: z.enum(["upload_reference", "upload_melody", "vocal", "element", "speak"]),
+  kind: z.enum(["upload_reference", "upload_melody", "vocal", "element", "speak", "rig"]),
   endpoint: z.string().min(1),
   at: z.enum(["before", "after"]),
-  /** The param it serves; the step is skipped when the param carries nothing. */
+  /** The param it serves; the step is skipped when the param asks for none (`stepRequested`: nothing, or a switch turned off). */
   for_param: z.string().optional(),
   /** One step per item of the param. */
   per_item: z.boolean().optional(),
+  /** A failure of this step keeps the run: the previous step's output is delivered. */
+  optional: z.boolean().optional(),
   /** For an element step: how its reference image is described first. */
   describe: describeSchema.optional(),
   /** What one call of this step costs. */
   pricing: pricingRule.optional(),
 });
+
+// Where each kind of step runs: the model's own call sends the ids the steps before it made,
+// and the steps after it read what it made.
+const STEP_AT = {
+  upload_reference: "before",
+  upload_melody: "before",
+  vocal: "before",
+  element: "before",
+  speak: "after",
+  rig: "after",
+} as const satisfies Record<z.infer<typeof extraStepSchema>["kind"], "before" | "after">;
 
 // Every binding carries its price: the cheapest mode and the
 // estimate both read it, and the shipped bindings all have one.
@@ -175,17 +188,6 @@ const openRouterQuantization = z.enum(["int4", "int8", "fp4", "mxfp4", "nvfp4", 
  * closed-weight model's own and its cloud partners' endpoints state none.
  */
 const OPENROUTER_QUANTIZATIONS: readonly z.infer<typeof openRouterQuantization>[] = ["int8", "fp8", "mxfp8", "fp16", "bf16", "fp32", "unknown"];
-
-/**
- * The quantizations a cheapest OpenRouter call of one model takes: `openrouter_quantizations`, without `unknown` when one of
- * the model's endpoints states a level, since an endpoint that states none could then be a coarser host's.
- * @param quantizations - `openrouter_quantizations`.
- * @param statesQuantization - Whether one of the model's OpenRouter endpoints states a level (it is in `openrouter_states_quantization`).
- * @returns The levels the model's call takes.
- */
-export function openRouterLevels<T extends string>(quantizations: T[], statesQuantization: boolean): T[] {
-  return statesQuantization ? quantizations.filter((q) => q !== "unknown") : quantizations;
-}
 
 /** How often an uploaded Gemini file is asked about by default, in ms. */
 const GEMINI_FILE_POLL_MS = 5_000;
@@ -435,7 +437,8 @@ export function parseProviderConfig(input: ProviderConfigInput): ProviderConfig 
     if (vendor !== undefined && vendor.length > 0) rejects[model] = vendor.map(({ source: _source, ...limit }) => limit);
     const bindings = overridden(model, upstreams, raw.routing?.models?.[model]?.weights, problems);
     checkList(model, bindings, raw.upstreams, problems);
-    const sentByWaveSpeed = new Set(bindings.filter((b) => raw.upstreams[b.upstream]?.kind === "wavespeed").flatMap((b) => Object.keys(b.params ?? {})));
+    const sentByWaveSpeed = new Set(bindings.filter((b) => raw.upstreams[b.upstream]?.kind === "wavespeed")
+      .flatMap((b) => [...Object.keys(b.params ?? {}), ...(b.extra_steps ?? []).flatMap((s) => (s.for_param === undefined ? [] : [s.for_param]))]));
     for (const binding of bindings) {
       const { upstream } = binding;
       // An undeclared upstream is already reported by checkList.
@@ -445,7 +448,8 @@ export function parseProviderConfig(input: ProviderConfigInput): ProviderConfig 
       if (adapter !== undefined) {
         for (const step of binding.extra_steps ?? []) {
           if (adapter.steps[step.kind] === undefined) problems.push(`${model}: the binding to "${upstream}" has an extra step of kind "${step.kind}", which the ${kind} adapter does not speak`);
-          if (step.kind === "speak" && (binding.reused_by === undefined || step.at !== "after")) problems.push(`${model}: the binding to "${upstream}" has a speak step that does not follow its own voice call (it needs reused_by and at: after)`);
+          if (step.at !== STEP_AT[step.kind]) problems.push(`${model}: the binding to "${upstream}" has a ${step.kind} step at: ${step.at}, which runs ${STEP_AT[step.kind]} the model's own call (it needs at: ${STEP_AT[step.kind]})`);
+          else if (step.kind === "speak" && binding.reused_by === undefined) problems.push(`${model}: the binding to "${upstream}" has a speak step with no voice call of its own to follow (it needs reused_by)`);
         }
       }
       if (kind === "fal" && binding.output_field === undefined) problems.push(`${model}: the binding to "${upstream}" has no output_field, which a fal binding needs`);
@@ -577,6 +581,9 @@ function coverageProblems(model: string, binding: MediaBinding, params: CatalogS
   const at = `${model}: "${binding.upstream}"`;
   for (const param of Object.keys(binding.drops ?? {})) {
     if (params[param] === undefined) problems.push(`${at} drops param "${param}", which the model does not have`);
+  }
+  for (const step of binding.extra_steps ?? []) {
+    if (step.for_param !== undefined && params[step.for_param] === undefined) problems.push(`${at} has a ${step.kind} step for param "${step.for_param}", which the model does not have`);
   }
   for (const [param, declared] of Object.entries(params)) {
     const bound = binding.params?.[param];

@@ -8,37 +8,36 @@
  */
 
 import type { JSONValue, SystemModelMessage } from "ai";
-import { candidateOf, hasKey, openRouterLevels, ProviderConfigError, type LlmPrice, type LlmRoute, type ProviderConfig } from "@provider/config/schema.js";
-import type { Cost, TokenBuckets } from "@provider/cost.js";
-import { z } from "zod";
+import { candidateOf, hasKey, ProviderConfigError, type LlmRoute, type ProviderConfig } from "@provider/config/schema.js";
+import type { Cost, PendingCost, TokenBuckets } from "@provider/cost.js";
 import { BilledAnswerLost, NoUpstreamAvailable, UnderstandInterrupted, UpstreamRequestRejected } from "@provider/errors.js";
 import { HttpStatus, NoAnswer } from "@provider/http/errors.js";
 import { answerText, boundSignal, fetchJson, isSuccess, parsed, send } from "@provider/http/request.js";
 import type { CapabilityPolicy, CallWants, FinishedCall, LlmApi, PreparedCall, SystemParts } from "@provider/llm/api.js";
-import { classifyLlm, costRefOf, InBandError, pauseBeforeRetry, reportedCost, SwitchingModel } from "@provider/llm/switching.js";
-import { AnswerUnread, assertSucceeded, StepRefused, UnreadableAnswer, type UnderstandSession } from "@provider/llm/understand/adapter.js";
+import { priceAt, tokenUsd } from "@provider/llm/prices.js";
+import { classifyLlm, costRefOf, InBandError, pauseBeforeRetry, SwitchingModel } from "@provider/llm/switching.js";
+import { AnswerUnread, assertSucceeded, MediaReadFailed, StepRefused, UnreadableAnswer, type UnderstandSession } from "@provider/llm/understand/adapter.js";
 import { understandAdapterOf } from "@provider/llm/understand/dispatch.js";
-import { costedOf } from "@provider/llm/understand/openrouter.js";
-import { cacheMark, isClaude, messageOf, optionsFor, vendorOf, type ModelV4, type VendorOptions } from "@provider/llm/vendors.js";
+import { messagesSpeakerOf } from "@provider/llm/upstreams/messages.js";
+import { cacheMark, hasLlmAdapter, isClaude, messageOf, optionsFor, vendorOf, type ModelV4, type Vendor, type VendorOptions } from "@provider/llm/vendors.js";
+import type { MessagesPlan } from "@provider/messages/relay.js";
 import type { ProviderOptions } from "@provider/provider.js";
 import type { Failure } from "@provider/routing/decide.js";
 import { planRoute, type Candidate, type Route, type RoutePlan } from "@provider/routing/route.js";
 import { tryInOrder } from "@provider/routing/try-in-order.js";
 
-/** The decisions endpoint's model (JEV), pinned like domain's `JEV_PINS`. */
-const JEV_MODEL = "typesafe/jev-1.13";
-/** The decisions endpoint, beside the OpenRouter API base. */
-const JEV_PATH = "../alpha/decisions";
+/** How long a decisions refusal's words may take to arrive; the status already says what happened. */
+const REFUSAL_WORDS_MS = 500;
+
 const DEFAULT_ROUTE: Route = { mode: "default" };
 
-/** OpenRouter's model list, as far as it is read. */
-const modelListSchema = z.looseObject({ data: z.array(z.unknown()) });
-
-/** One row of the model list; a row that is not shaped so is skipped. */
-const modelRowSchema = z.looseObject({
-  id: z.string(),
-  architecture: z.looseObject({ input_modalities: z.array(z.unknown()).optional() }).nullish(),
-});
+/** One model's cached context window and its clocks. */
+interface WindowEntry {
+  window: number | undefined;
+  freshUntil: number;
+  retryAfter: number;
+  refreshing: Promise<void> | undefined;
+}
 
 /**
  * Wait for the shared refresh while letting just this caller leave.
@@ -62,39 +61,6 @@ async function waitForCatalog(pending: Promise<void>, signal?: AbortSignal): Pro
       signal.removeEventListener("abort", stop);
     });
   });
-}
-
-/**
- * The direct price entry in effect at a moment: the last that took effect at or before it, else the first.
- * @param entries - A model's direct prices, their `from` ascending.
- * @param at - The moment, in epoch ms.
- * @returns The entry; its `from` is set when a later price is in effect.
- */
-function entryAt(entries: ProviderConfig["llm"]["prices"][string], at: number): ProviderConfig["llm"]["prices"][string][number] & { from?: string } {
-  const [first, ...later] = entries;
-  return later.findLast((e) => Date.parse(e.from) <= at) ?? first;
-}
-
-/**
- * The direct price in effect at a moment: the last that took effect at or before it (the first is in effect from the
- * start), every per-million-token price times its off-peak factor when the moment is outside the price's peak hours
- * (a UTC weekday of one window, a UTC time in `[from, to)`, a UTC date not among its holidays).
- * @param entries - A model's direct prices, their `from` ascending, or none.
- * @param at - The moment, in epoch ms.
- * @returns The price, or undefined when the model has none.
- */
-function priceAt(entries: ProviderConfig["llm"]["prices"][string] | undefined, at: number): LlmPrice | undefined {
-  if (entries === undefined) return undefined;
-  const entry = entryAt(entries, at);
-  const offPeak = entry.off_peak;
-  const moment = new Date(at);
-  const time = moment.toISOString().slice(11, 16);
-  const peak = offPeak === undefined
-    || (!offPeak.holidays.includes(moment.toISOString().slice(0, 10))
-      && offPeak.peak_utc.some((w) => w.days.includes(moment.getUTCDay()) && time >= w.from && time < w.to));
-  const factor = peak ? 1 : offPeak.factor;
-  // Every number of a price is a per-million-token price, so each is scaled, a field added later included.
-  return Object.fromEntries(Object.entries(entry).flatMap(([field, usd]) => (typeof usd === "number" ? [[field, usd * factor]] : []))) as LlmPrice;
 }
 
 /**
@@ -126,6 +92,8 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
     freshUntil: 0,
     retryAfter: 0,
   };
+  /** Each model's context window and its clocks, refreshed apart from the model list. */
+  const windows = new Map<string, WindowEntry>();
 
   /**
    * An upstream's adapter kind.
@@ -133,6 +101,13 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
    * @returns Its kind.
    */
   const kindOf = (upstream: string): string => config.upstreams[upstream]!.kind;
+
+  /**
+   * An upstream's LLM adapter, when its kind has one (a media upstream has none).
+   * @param upstream - The upstream.
+   * @returns Its adapter, or undefined.
+   */
+  const llmVendorOf = (upstream: string): Vendor | undefined => (hasLlmAdapter(kindOf(upstream)) ? vendorOf(kindOf(upstream)) : undefined);
 
   /**
    * The id an upstream serves our model id under.
@@ -188,32 +163,34 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
   const planFor = (route: LlmRoute, modelId: string, chosen: Route): RoutePlan => {
     const candidates = candidatesOn(route);
     if (chosen.mode !== "cheapest") return planRoute(modelId, chosen, candidates);
-    // Cheapest by unit price: input first, then output, then weight; an upstream without a price goes last.
     const plan = planRoute(modelId, DEFAULT_ROUTE, candidates);
-    // One moment for the whole ranking: the direct price in effect when the call is planned.
+    return { ...plan, order: byUnitPrice(modelId, plan.order) };
+  };
+
+  /**
+   * Upstreams cheapest first by unit price: input first, then output, then weight; an upstream without a price goes
+   * last. One moment for the whole ranking: the direct price in effect now.
+   * @param modelId - Our model id.
+   * @param upstreams - The upstreams, each with its weight.
+   * @returns Them in price order.
+   */
+  const byUnitPrice = <T extends { upstream: string; weight: number }>(modelId: string, upstreams: readonly T[]): T[] => {
     const at = Date.now();
-    const entries = config.llm.prices[modelId];
-    const direct = priceAt(entries, at);
-    // While a dated direct price is in effect, OpenRouter's prices read before it took effect (or read at a moment the
-    // file does not state) are another moment's prices: unknown, so OpenRouter ranks last. Under a model's first price,
-    // or with no direct price, they are ranked.
-    const changedAt = entries === undefined ? undefined : entryAt(entries, at).from;
-    const readAt = config.llm.openrouter_prices_at === undefined ? -Infinity : Date.parse(config.llm.openrouter_prices_at);
-    const stale = changedAt !== undefined && Date.parse(changedAt) > readAt;
+    const direct = priceAt(config.llm.prices[modelId], at);
     /**
      * An upstream's input and output unit prices.
      * @param c - The upstream.
      * @returns Both prices; infinite when unknown.
      */
-    const price = (c: Candidate): [number, number] => {
-      const p = kindOf(c.upstream) === "openrouter" ? (stale ? undefined : config.llm.openrouter_prices[modelId]) : direct;
+    const price = (c: T): [number, number] => {
+      const listed = vendorOf(kindOf(c.upstream)).listedPrice;
+      const p = listed === undefined ? direct : listed(config.llm, modelId, at);
       return p === undefined ? [Infinity, Infinity] : [p.input_cache_miss_per_mtok, p.output_per_mtok];
     };
-    const order = [...plan.order].sort((a, b) => {
+    return [...upstreams].sort((a, b) => {
       const [pa, pb] = [price(a), price(b)];
       return pa[0] - pb[0] || pa[1] - pb[1] || a.weight - b.weight;
     });
-    return { ...plan, order };
   };
 
   /**
@@ -226,33 +203,25 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
     route.upstreams.map(({ upstream, weight }) => candidateOf(config, upstream, weight, options.keyOf));
 
   /**
-   * The OpenRouter-kind upstreams the decisions endpoint can use, the one it uses first.
+   * The upstreams that serve the decisions endpoint, the one it uses first.
    * @returns Their names.
    */
   const judgeUpstreams = (): string[] => {
-    const names = Object.keys(config.upstreams).filter((u) => kindOf(u) === "openrouter");
+    const names = Object.keys(config.upstreams).filter((u) => llmVendorOf(u)?.decisions !== undefined);
     const used = names.find((u) => hasKey(options.keyOf, config.upstreams[u]!.key_env)) ?? names[0];
     return used === undefined ? [] : [used, ...names.filter((u) => u !== used)];
   };
 
   /**
-   * The OpenRouter `provider` object of one call: in cheapest mode, its endpoints cheapest first within the
-   * model's quantizations (`openRouterLevels`; a cheapest call is ranked by that endpoint, `openrouter_prices`), and for an
-   * understand call the model's backend pin, which is understand's alone.
-   * @param upstream - The upstream the call goes to; only an OpenRouter one gets the object.
+   * What an upstream is told about where to send one call, its own routing options, or nothing.
+   * @param upstream - The upstream the call goes to.
    * @param modelId - Our model id.
    * @param chosen - The caller's mode.
    * @param pinned - Whether the call is held to the model's backend pin: an understand call is, a prepared call never.
-   * @returns The object, or undefined when the upstream is not OpenRouter or the object would be empty.
+   * @returns The options, or undefined.
    */
-  const openRouterRouting = (upstream: string, modelId: string, chosen: Route, pinned: boolean): VendorOptions | undefined => {
-    if (kindOf(upstream) !== "openrouter") return undefined;
-    const routing: VendorOptions = {
-      ...(pinned ? config.llm.openrouter_backends[modelId] : {}),
-      ...(chosen.mode === "cheapest" ? { sort: "price", quantizations: openRouterLevels(config.llm.openrouter_quantizations, config.llm.openrouter_states_quantization.includes(modelId)) } : {}),
-    };
-    return Object.keys(routing).length === 0 ? undefined : routing;
-  };
+  const routingFor = (upstream: string, modelId: string, chosen: Route, pinned: boolean): VendorOptions | undefined =>
+    vendorOf(kindOf(upstream)).routing?.(config.llm, modelId, chosen.mode === "cheapest", pinned);
 
   /**
    * What a call sends each upstream of its plan, keyed by the SDK name each reads.
@@ -267,10 +236,20 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
     for (const { upstream } of plan.order) {
       const vendor = vendorOf(kindOf(upstream));
       // A prepared call is never pinned to a backend: the pin is understand's alone.
-      const provider = openRouterRouting(upstream, modelId, chosen, false);
+      const provider = routingFor(upstream, modelId, chosen, false);
       merged[vendor.sdkName] = { ...optionsFor(vendor, modelId, wants), ...(provider === undefined ? {} : { provider }) };
     }
     return merged;
+  };
+
+  /**
+   * The upstream a finished call names as the one that served it.
+   * @param finished - The call's metadata.
+   * @returns The upstream, when the configuration declares it.
+   */
+  const servedBy = (finished: Pick<FinishedCall, "providerMetadata">): string | undefined => {
+    const upstream = (finished.providerMetadata?.breatic as { upstream?: unknown } | undefined)?.upstream;
+    return typeof upstream === "string" && config.upstreams[upstream] !== undefined ? upstream : undefined;
   };
 
   /**
@@ -279,19 +258,20 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
    * @returns Known, pending or missing.
    */
   const costOf = (finished: FinishedCall): Cost => {
-    const breatic = finished.providerMetadata?.breatic as { upstream?: unknown; costRef?: unknown; cacheTtl?: unknown; sentAt?: unknown } | undefined;
+    const breatic = finished.providerMetadata?.breatic as { costRef?: unknown; cacheTtl?: unknown; sentAt?: unknown } | undefined;
     const { usage } = finished;
-    // Split as domain's usage-cost bucketsOf splits it; reasoning is part of output.
+    // Input counts every input token, the cached among them; reasoning is part of output.
     const tokens: TokenBuckets = {
       input: usage.inputTokens ?? 0,
       cachedInput: usage.inputTokenDetails?.cacheReadTokens ?? 0,
       output: usage.outputTokens ?? 0,
       reasoning: usage.outputTokenDetails?.reasoningTokens ?? 0,
     };
-    const upstream = typeof breatic?.upstream === "string" ? breatic.upstream : undefined;
-    if (upstream === undefined || config.upstreams[upstream] === undefined) return { state: "missing", reason: "the call names no upstream", tokens };
-    if (kindOf(upstream) === "openrouter") {
-      const reported = reportedCost(finished.providerMetadata);
+    const upstream = servedBy(finished);
+    if (upstream === undefined) return { state: "missing", reason: "the call names no upstream", tokens };
+    const costs = llmVendorOf(upstream)?.costs;
+    if (costs !== undefined) {
+      const reported = costs.reported(finished.providerMetadata);
       if (reported !== undefined) return { state: "known", usd: reported, tokens, source: "reported" };
       const ref = breatic?.costRef as { upstream?: unknown; generationId?: unknown } | undefined;
       return typeof ref?.generationId === "string"
@@ -305,13 +285,8 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
     if (usage.inputTokens === undefined && usage.outputTokens === undefined) return { state: "missing", reason: `${upstream} reported no token usage for ${finished.model}`, tokens };
     const price = priceAt(config.llm.prices[finished.model], breatic.sentAt);
     if (price === undefined) return { state: "missing", reason: `no direct price for ${finished.model}`, tokens };
-    const { input, cachedInput } = tokens;
     const written = usage.inputTokenDetails?.cacheWriteTokens ?? 0;
-    const writePrice = (breatic?.cacheTtl === "1h" ? price.input_cache_write_1h_per_mtok : price.input_cache_write_5m_per_mtok) ?? price.input_cache_miss_per_mtok;
-    const usd = ((input - cachedInput - written) * price.input_cache_miss_per_mtok
-      + cachedInput * (price.input_cache_hit_per_mtok ?? price.input_cache_miss_per_mtok)
-      + written * writePrice
-      + (usage.outputTokens ?? 0) * price.output_per_mtok) / 1_000_000;
+    const usd = tokenUsd(price, { input: tokens.input, cachedInput: tokens.cachedInput, written, output: usage.outputTokens ?? 0 }, breatic?.cacheTtl);
     return { state: "known", usd, tokens, source: "price_table" };
   };
 
@@ -322,8 +297,11 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
    * @param upstream - The upstream it was on.
    * @returns Its class, or null.
    */
-  const understandFailure = (error: unknown, upstream: string): Failure | null =>
-    classifyLlm(error, error instanceof StepRefused ? undefined : vendorOf(kindOf(upstream)));
+  const understandFailure = (error: unknown, upstream: string): Failure | null => {
+    // The caller's reader failed: the upstream was never asked, so the call stops here and moves on nowhere.
+    if (error instanceof MediaReadFailed) return null;
+    return classifyLlm(error, error instanceof StepRefused ? undefined : vendorOf(kindOf(upstream)));
+  };
 
   /**
    * How an understand call ended, when it did not answer: a refusal the route
@@ -340,97 +318,151 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
   const understandEnding = (model: string, upstream: string | undefined, error: unknown, billed: Cost[]): Error => {
     if (error instanceof NoUpstreamAvailable) return new NoUpstreamAvailable(error.model, error.reasons, billed);
     if (upstream === undefined) return new UnderstandInterrupted(model, billed, error);
+    if (error instanceof MediaReadFailed) return new UnderstandInterrupted(model, billed, error.cause);
+    /**
+     * What the refusal was about, read the answering upstream's way from its error value.
+     * @param value - The upstream's error value.
+     * @returns The reason, when it says one.
+     */
+    const reasonOf = (value: unknown): { reason?: "content_blocked" } =>
+      (understandAdapterOf(kindOf(upstream)).contentBlocked?.(value) === true ? { reason: "content_blocked" } : {});
     if (error instanceof UnreadableAnswer) return new UpstreamRequestRejected(model, upstream, error.message, billed, { cause: error });
     const failure = understandFailure(error, upstream);
     if (error instanceof InBandError) {
       const status = failure?.kind === "http_status" ? failure.status : error.answerStatus;
       if (status === undefined) return new UnderstandInterrupted(model, billed, error);
       const said = (error.error as { message?: unknown } | null)?.message;
-      return new UpstreamRequestRejected(model, upstream, typeof said === "string" ? said : error.message, billed, { status, cause: error });
+      return new UpstreamRequestRejected(model, upstream, typeof said === "string" ? said : error.message, billed, { status, cause: error, ...reasonOf(error.error) });
     }
     if (failure?.kind !== "http_status") return new UnderstandInterrupted(model, billed, error);
     // The refused answer's whole text, a model answer's or an upload step's.
-    const said = messageOf(parsed(error instanceof HttpStatus ? error.body : undefined));
-    return new UpstreamRequestRejected(model, upstream, said !== "" ? said : (error as Error).message, billed, { status: failure.status, cause: error });
+    const refused = parsed(error instanceof HttpStatus ? error.body : undefined);
+    const said = messageOf(refused);
+    const value = (refused as { error?: unknown } | null | undefined)?.error;
+    return new UpstreamRequestRejected(model, upstream, said !== "" ? said : (error as Error).message, billed, { status: failure.status, cause: error, ...reasonOf(value) });
   };
 
   /**
    * What an answer that served nothing cost, read from its body: the cost it
-   * reported, else a lookup by an OpenRouter generation id, else missing for a 2xx.
+   * reported, else a lookup by the generation it names, else missing for a 2xx.
    * @param upstream - The upstream that answered.
    * @param status - The answer's status.
    * @param text - The answer's body.
    * @returns The cost, or undefined for a refusal status whose body names none.
    */
   const answerCost = (upstream: string, status: number, text: string | undefined): Cost | undefined => {
-    const body = costedOf(parsed(text));
-    const reported = body.usage?.cost;
-    if (reported !== undefined) return { state: "known", usd: reported, source: "reported" };
-    const ref = costRefOf(upstream, kindOf(upstream) === "openrouter", body.id, undefined);
+    const costs = vendorOf(kindOf(upstream)).costs;
+    const body = costs?.ofBody(parsed(text)) ?? {};
+    if (body.cost !== undefined) return { state: "known", usd: body.cost, source: "reported" };
+    const ref = costRefOf(upstream, costs, body.id, undefined);
     if (ref !== undefined) return { state: "pending", lookup: ref };
     return isSuccess(status) ? { state: "missing", reason: `${upstream} answered with no cost and no generation id` } : undefined;
   };
 
   /**
-   * The first upstream of OpenRouter's kind the route allows.
+   * The first upstream serving the decisions endpoint that the route allows.
    * @param chosen - The caller's mode.
-   * @returns Its name and key.
+   * @returns Its name, key and the endpoint it serves.
    * @throws {NoUpstreamAvailable} When none has a key.
-   * @throws {UpstreamRequestRejected} When the route names an upstream of another kind.
+   * @throws {UpstreamRequestRejected} When the route names an upstream that does not serve it.
    */
-  const openrouter = (chosen: Route): { upstream: string; key: string } => {
+  const decisionsUpstream = (chosen: Route): { upstream: string; key: string; decisions: NonNullable<Vendor["decisions"]> } => {
     const names = judgeUpstreams();
+    // The endpoint's model, named in an error before an upstream is chosen.
+    const model = names.length === 0 ? "the decisions endpoint" : llmVendorOf(names[0]!)!.decisions!.model;
     if (chosen.mode === "upstream" && !names.includes(chosen.upstream)) {
-      throw new UpstreamRequestRejected(JEV_MODEL, chosen.upstream, `${chosen.upstream} does not serve ${JEV_MODEL}`);
+      throw new UpstreamRequestRejected(model, chosen.upstream, `${chosen.upstream} does not serve ${model}`);
     }
     const pool = chosen.mode === "upstream" ? [chosen.upstream] : names;
     const configured = pool.find((u) => hasKey(options.keyOf, config.upstreams[u]!.key_env));
     if (configured === undefined) {
-      throw new NoUpstreamAvailable(JEV_MODEL, pool.map((u) => ({ upstream: u, kind: "missing_key", envVar: config.upstreams[u]!.key_env })));
+      throw new NoUpstreamAvailable(model, pool.map((u) => ({ upstream: u, kind: "missing_key", envVar: config.upstreams[u]!.key_env })));
     }
-    return { upstream: configured, key: options.keyOf(config.upstreams[configured]!.key_env)! };
+    return { upstream: configured, key: options.keyOf(config.upstreams[configured]!.key_env)!, decisions: llmVendorOf(configured)!.decisions! };
   };
 
   /**
-   * Read OpenRouter's model list into the picture capability of each model.
+   * Read the model list of the first upstream that has one into the picture capability of each model.
    * @param policy - Its timeout and cache intervals.
    * @returns Once the cache clocks are updated.
    */
   const refreshCatalog = async (policy: CapabilityPolicy): Promise<void> => {
     try {
-      const name = Object.keys(config.upstreams).find((u) => kindOf(u) === "openrouter");
-      if (name === undefined) throw new Error("No OpenRouter upstream to read the model list from");
-      const url = `${config.upstreams[name]!.base_url}/models`;
+      const name = Object.keys(config.upstreams).find((u) => llmVendorOf(u)?.catalog !== undefined);
+      if (name === undefined) throw new Error("No upstream to read the model list from");
+      const lister = llmVendorOf(name)!.catalog!;
       const body = await fetchJson(
-        { url, method: "GET", headers: { accept: "application/json" } },
+        { url: lister.url(config.upstreams[name]!), method: "GET", headers: { accept: "application/json" } },
         { replaySafe: true, deadlineAt: Date.now() + policy.timeoutMs, maxBodyBytes: Number.MAX_SAFE_INTEGER, idleMs: policy.timeoutMs },
       );
-      const list = modelListSchema.safeParse(body);
-      if (!list.success) throw new Error("The model list holds no models");
-      const pictures = new Map<string, boolean>();
-      for (const raw of list.data.data) {
-        // A row it cannot read is skipped; the rest of the list still counts.
-        const row = modelRowSchema.safeParse(raw);
-        if (!row.success) continue;
-        pictures.set(row.data.id, row.data.architecture?.input_modalities?.includes("image") === true);
-      }
+      const pictures = lister.read(body);
+      if (pictures === undefined) throw new Error("The model list holds no models");
       catalog = { pictures, freshUntil: Date.now() + policy.ttlMs, retryAfter: 0 };
     } catch {
       catalog = { ...catalog, retryAfter: Date.now() + policy.retryMs };
     }
   };
 
+  /**
+   * Read one model's endpoint list, at the first upstream that has a model list, into its context window. A failure
+   * keeps the last window and cools down.
+   * @param modelId - Our model id.
+   * @param entry - Its cache entry, updated in place.
+   * @param policy - Its timeout and cache intervals.
+   * @returns Once the entry's clocks are updated.
+   */
+  const refreshWindow = async (modelId: string, entry: WindowEntry, policy: CapabilityPolicy): Promise<void> => {
+    try {
+      const name = Object.keys(config.upstreams).find((u) => llmVendorOf(u)?.catalog !== undefined);
+      if (name === undefined) throw new Error("No upstream to read the endpoint list from");
+      const reader = llmVendorOf(name)!.catalog!.contextWindow;
+      const body = await fetchJson(
+        { url: reader.url(config.upstreams[name]!, modelId), method: "GET", headers: { accept: "application/json" } },
+        { replaySafe: true, deadlineAt: Date.now() + policy.timeoutMs, maxBodyBytes: Number.MAX_SAFE_INTEGER, idleMs: policy.timeoutMs },
+      );
+      const window = reader.read(body);
+      if (window === undefined) throw new Error("No endpoint of the model states a context length");
+      Object.assign(entry, { window, freshUntil: Date.now() + policy.ttlMs, retryAfter: 0 });
+    } catch {
+      entry.retryAfter = Date.now() + policy.retryMs;
+    }
+  };
+
+  /**
+   * One model's context window, refreshed when its cache is stale and not cooling down.
+   * @param modelId - Our model id.
+   * @param policy - Its timeout and cache intervals.
+   * @param signal - The waiting caller's stop signal.
+   * @returns The window, or undefined when it has never been read.
+   * @throws {unknown} The stop signal's reason when the caller leaves.
+   */
+  const contextWindowOf = async (modelId: string, policy: CapabilityPolicy, signal?: AbortSignal): Promise<number | undefined> => {
+    let entry = windows.get(modelId);
+    if (entry === undefined) {
+      entry = { window: undefined, freshUntil: 0, retryAfter: 0, refreshing: undefined };
+      windows.set(modelId, entry);
+    }
+    const now = Date.now();
+    if (now >= entry.freshUntil && now >= entry.retryAfter) {
+      const one = entry;
+      one.refreshing ??= refreshWindow(modelId, one, policy).finally(() => {
+        one.refreshing = undefined;
+      });
+    }
+    if (entry.refreshing !== undefined) await waitForCatalog(entry.refreshing, signal);
+    return entry.window;
+  };
+
   return {
     prepare(modelId, wants, chosen = DEFAULT_ROUTE): PreparedCall {
       const route = routeOf(config.llm.routes, modelId);
       const plan = planFor(route, modelId, chosen);
-      const pending = new Map<string, Cost>();
+      const pending = new Map<string, PendingCost>();
       const model = new SwitchingModel({
         modelId,
         plan,
         modelFor: (c) => modelOn(route, c.upstream, modelId),
         vendorFor: (upstream) => vendorOf(kindOf(upstream)),
-        tracksGenerations: (upstream) => kindOf(upstream) === "openrouter",
         maxRetries: options.llmMaxRetries,
         pending,
         breatic: wants.cache === false ? {} : { cacheTtl: wants.cache },
@@ -448,13 +480,14 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
             if (Object.keys(mark).length > 0) marks[vendor.sdkName] = mark;
           }
           if (Object.keys(marks).length === 0) {
-            return [{ role: "system", content: [parts.base, parts.project, parts.conversation].filter((p) => p !== undefined).join("\n\n") }];
+            return [{ role: "system", content: [parts.base, parts.project, parts.conversation, parts.projectInstructions].filter((p) => p !== undefined).join("\n\n") }];
           }
           const providerOptions = marks as Record<string, Record<string, JSONValue>>;
           return [
             { role: "system", content: parts.base, providerOptions },
             ...(parts.project === undefined ? [] : [{ role: "system" as const, content: parts.project, providerOptions }]),
             ...(parts.conversation === undefined ? [] : [{ role: "system" as const, content: parts.conversation }]),
+            ...(parts.projectInstructions === undefined ? [] : [{ role: "system" as const, content: parts.projectInstructions }]),
           ];
         },
         pendingCosts: () => [...pending.values()],
@@ -462,6 +495,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
     },
 
     costOf,
+    servedBy,
 
     async understand(request, chosen = DEFAULT_ROUTE) {
       const route = routeOf(config.llm.understand_routes, request.model);
@@ -483,7 +517,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
             const decl = config.upstreams[c.upstream]!;
             const adapter = understandAdapterOf(decl.kind);
             // Held to the model's backend pin, which is understand's alone, and in cheapest mode sorted by price as a prepared call is.
-            const provider = openRouterRouting(c.upstream, request.model, chosen, true);
+            const provider = routingFor(c.upstream, request.model, chosen, true);
             let answered;
             try {
               answered = await adapter.ask({
@@ -526,7 +560,7 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
               throw new UnreadableAnswer(reading.unreadable);
             }
             const { usage, providerMetadata, generationId, missing } = adapter.billing(answered.body);
-            const costRef = costRefOf(c.upstream, kindOf(c.upstream) === "openrouter", generationId, providerMetadata);
+            const costRef = costRefOf(c.upstream, vendorOf(kindOf(c.upstream)).costs, generationId, providerMetadata);
             billed.push(missing !== undefined
               ? { state: "missing", reason: missing }
               : costOf({ model: request.model, usage, providerMetadata: { ...providerMetadata, breatic: { upstream: c.upstream, sentAt: answered.sentAt, ...(costRef ? { costRef } : {}) } } }));
@@ -543,11 +577,44 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
       }
     },
 
+    messagesPlan(modelId, chosen = DEFAULT_ROUTE): MessagesPlan {
+      const route = routeOf(config.llm.routes, modelId);
+      // Every upstream of the route that takes a Messages request, whatever keys this process holds: the Worker that
+      // sends the call reads its own.
+      const speaking = route.upstreams.filter(({ upstream }) => messagesSpeakerOf(kindOf(upstream)) !== undefined);
+      if (chosen.mode === "upstream" && !speaking.some(({ upstream }) => upstream === chosen.upstream)) {
+        throw new UpstreamRequestRejected(modelId, chosen.upstream, `${chosen.upstream} takes no Messages request for ${modelId}`);
+      }
+      const picked = chosen.mode === "upstream"
+        ? speaking.filter(({ upstream }) => upstream === chosen.upstream)
+        : chosen.mode === "cheapest" ? byUnitPrice(modelId, speaking) : speaking;
+      if (picked.length === 0) {
+        throw new NoUpstreamAvailable(modelId, route.upstreams.map(({ upstream }) => ({ upstream, kind: "failed", failure: "takes no Messages request" })));
+      }
+      return {
+        model: modelId,
+        candidates: picked.map(({ upstream }) => {
+          const decl = config.upstreams[upstream]!;
+          // An upstream that reports no cost of its own is priced from the model's direct prices.
+          const prices = vendorOf(decl.kind).costs === undefined ? config.llm.prices[modelId] : undefined;
+          return {
+            upstream,
+            kind: decl.kind,
+            baseUrl: decl.base_url,
+            vendorModel: vendorModelId(route, upstream, modelId),
+            keyEnv: decl.key_env,
+            ...(prices === undefined ? {} : { prices }),
+          };
+        }),
+      };
+    },
+
     async judge(request, chosen = DEFAULT_ROUTE) {
-      const { upstream, key } = openrouter(chosen);
-      const url = new URL(JEV_PATH, `${config.upstreams[upstream]!.base_url}/`).toString();
+      const { upstream, key, decisions } = decisionsUpstream(chosen);
+      const served = { upstream, model: decisions.model };
+      const url = decisions.url(config.upstreams[upstream]!);
       const body = JSON.stringify({
-        model: JEV_MODEL,
+        model: decisions.model,
         state: cleanDeep(request.state, options.cleanText),
         questions: cleanDeep(request.questions, options.cleanText),
       });
@@ -555,21 +622,27 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
       const response = await send({ url, method: "POST", headers: { authorization: `Bearer ${key}`, "content-type": "application/json" }, body }, bounds);
       let text: string;
       try {
-        text = await answerText(url, response, Number.MAX_SAFE_INTEGER, Math.max(1, bounds.deadlineAt - Date.now()), bounds);
+        // A refusal is complete at its status; its words are an addition, and a body that stalls is not worth the
+        // rest of the call's budget, so they get a short wait of their own.
+        const remaining = Math.max(1, bounds.deadlineAt - Date.now());
+        text = await answerText(url, response, Number.MAX_SAFE_INTEGER, isSuccess(response.status) ? remaining : Math.min(remaining, REFUSAL_WORDS_MS), bounds);
       } catch (error) {
         // A 2xx was billed though its body was lost; a refusal's lost body reads as no words.
-        throw new NoAnswer(url, new BilledAnswerLost(`the decisions endpoint answered ${response.status} and its body could not be read`, error));
+        throw new NoAnswer(url, new BilledAnswerLost(`the decisions endpoint answered ${response.status} and its body could not be read`, error, served));
       }
-      if (!isSuccess(response.status)) return { status: response.status, body: text };
-      const reported = costedOf(parsed(text)).usage?.cost;
+      if (!isSuccess(response.status)) return { status: response.status, body: text, ...served };
+      const reported = vendorOf(kindOf(upstream)).costs?.ofBody(parsed(text)).cost;
       const cost: Cost = reported === undefined ? { state: "missing", reason: "the decisions endpoint reported no cost" } : { state: "known", usd: reported, source: "reported" };
-      return { status: response.status, body: text, cost };
+      return { status: response.status, body: text, cost, ...served };
     },
 
     availability(modelId, use) {
-      const candidates = use === "judge"
-        ? judgeUpstreams().map((upstream, weight) => candidateOf(config, upstream, weight, options.keyOf))
-        : candidatesOn(routeOf(use === "call" ? config.llm.routes : config.llm.understand_routes, modelId));
+      const candidates = candidatesOn(routeOf(use === "call" ? config.llm.routes : config.llm.understand_routes, modelId));
+      return { upstreams: candidates.map(({ upstream, weight, configured, envVar }) => ({ upstream, weight, configured, envVar })) };
+    },
+
+    judgeAvailability() {
+      const candidates = judgeUpstreams().map((upstream, weight) => candidateOf(config, upstream, weight, options.keyOf));
       return { upstreams: candidates.map(({ upstream, weight, configured, envVar }) => ({ upstream, weight, configured, envVar })) };
     },
 
@@ -588,16 +661,24 @@ export function createLlm(config: ProviderConfig, options: ProviderOptions): Llm
 
     async capabilities(modelId, policy, signal) {
       signal?.throwIfAborted();
-      if (policy.override !== "auto") return { pictures: policy.override === "yes" };
-      const now = Date.now();
-      if (now >= catalog.freshUntil && now >= catalog.retryAfter) {
-        refreshing ??= refreshCatalog(policy).finally(() => {
-          refreshing = undefined;
-        });
-        await waitForCatalog(refreshing, signal);
-      }
+      /**
+       * Whether the model takes pictures: the deployment's override, else the model list.
+       * @returns The answer.
+       */
+      const pictures = async (): Promise<boolean> => {
+        if (policy.override !== "auto") return policy.override === "yes";
+        const now = Date.now();
+        if (now >= catalog.freshUntil && now >= catalog.retryAfter) {
+          refreshing ??= refreshCatalog(policy).finally(() => {
+            refreshing = undefined;
+          });
+          await waitForCatalog(refreshing, signal);
+        }
+        return catalog.pictures.get(modelId) === true;
+      };
+      const [takesPictures, contextWindow] = await Promise.all([pictures(), contextWindowOf(modelId, policy, signal)]);
       signal?.throwIfAborted();
-      return { pictures: catalog.pictures.get(modelId) === true };
+      return { pictures: takesPictures, ...(contextWindow === undefined ? {} : { contextWindow }) };
     },
   };
 }

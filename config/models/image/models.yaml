@@ -1,5 +1,7 @@
-# Models of this modality, every one run on WaveSpeed. Within a mode the first
-# model listed is the one a panel opens on, so entries are ordered by how the
+# Models of this modality, in our own param names; which upstreams serve each
+# model, what its params are sent as and what a run costs are in
+# config/provider/media/image.yaml. Within a mode the first model listed is the
+# one a panel opens on, so entries are ordered by how the
 # catalog ranks them for their mode.
 # Guidelines:
 #   model.display_name   — the vendor's name for the model, never the mode it
@@ -18,17 +20,9 @@
 #                          sentence here the catalog or the panel can prove wrong
 #                          is a promise nothing keeps. Guarded by domain's
 #                          guides-name-what-the-model-takes test.
-#   model.prompt_upstream — the upstream field the prompt is sent as, when it is
-#                          not `prompt` (`text`, `text_prompt`).
 #   model.source_groups  — per mode, params of which at least one has to carry
 #                          material, for inputs the upstream schema leaves
 #                          optional one by one but refuses all empty.
-#   model.extra_steps    — upstream calls a run makes besides the model's own
-#                          endpoint, each priced by its own WaveSpeed contract;
-#                          `at` says whether it runs before or after that call.
-#   param.upstream       — the upstream field this param is sent as, when the
-#                          names differ. The one mapping the request builder,
-#                          the price estimate and the voice-sample planner read.
 #   param.label          — marks a control only this model has; on screen it
 #                          is named by canvas.generatePanel.param.<name> in
 #                          locales/*.json, like the shared controls.
@@ -40,15 +34,11 @@
 #                          `fields` and `max_items`), text (a free text field).
 #                          `values: [true, false]` draws a switch; `min`, `max`
 #                          and `step` draw a slider; other `values` an option group.
-#   param.default        — what the param holds when the user sets nothing;
-#                          a run sends it unless it equals `absent_value`.
-#   param.absent_value   — the value that is sent as nothing: holding it
-#                          leaves the param out of the request (`auto` lets
-#                          the upstream decide).
-#   provider.pricing     — the endpoint's WaveSpeed pricing contract, verbatim:
-#                          base_price (1,000,000 = 1 USD), the JSONata formula
-#                          (empty means base_price per call) and discount_rate
-#                          in percent. The price estimate evaluates it.
+#   param.default        — what the param holds when the user sets nothing.
+#   param.absent_value   — the value that stands for "let the upstream decide"
+#                          (`auto`); whether holding it sends nothing is set
+#                          per upstream by the binding's `absent_value` in
+#                          config/provider/media/<type>.yaml.
 #   generation_time      — max generation time in seconds (worst case)
 
 models:
@@ -59,7 +49,7 @@ models:
     takes_prompt: true
     tier: "recommended"
     description: "Top-ranked fidelity, 4K, 5 quality tiers"
-    guide: "The default when the image simply has to be as good as it gets — highest measured fidelity and prompt adherence of anything available."
+    guide: "The default when the image simply has to be as good as it gets — highest measured fidelity and prompt adherence of anything available; it writes short titles and labels exactly in English and Chinese."
     generation_time: 120
     icon: "openai"
     params:
@@ -81,14 +71,6 @@ models:
         values: ["1k", "2k", "4k"]
         value_labels: {"1k": "1K", "2k": "2K", "4k": "4K"}
         fill: "panel"
-    providers:
-      - name: "wavespeed"
-        model_id: "openai/gpt-image-2.5-sunburst/text-to-image"
-        priority: 1
-        pricing:
-          base_price: 24000
-          formula: "{\"total_price\": ((quality = \"low\") ? (resolution = \"4k\" ? 30000 : (resolution = \"2k\" ? 20000 : 10000)) : ((quality = \"high\") ? (resolution = \"4k\" ? 270000 : (resolution = \"2k\" ? 150000 : 90000)) : ((quality = \"xhigh\") ? (resolution = \"4k\" ? 480000 : (resolution = \"2k\" ? 270000 : 160000)) : ((quality = \"max\") ? (resolution = \"4k\" ? 1000000 : (resolution = \"2k\" ? 600000 : 360000)) : (resolution = \"4k\" ? 70000 : (resolution = \"2k\" ? 40000 : 24000))))))}"
-          discount_rate: 100
 
   - name: "grok-imagine-image-v2.0-text-to-image"
     display_name: "Grok Imagine Image 2.0"
@@ -111,14 +93,6 @@ models:
         values: ["1k", "2k"]
         value_labels: {"1k": "1K", "2k": "2K"}
         fill: "panel"
-    providers:
-      - name: "wavespeed"
-        model_id: "x-ai/grok-imagine-image-v2.0/text-to-image"
-        priority: 1
-        pricing:
-          base_price: 50000
-          formula: ""
-          discount_rate: 100
 
   - name: "nano-banana-2"
     display_name: "Nano Banana 2"
@@ -186,14 +160,6 @@ models:
         fill: "panel"
         when:
           flag_on: "enable_camera"
-    providers:
-      - name: "wavespeed"
-        model_id: "google/nano-banana-2/text-to-image"
-        priority: 1
-        pricing:
-          base_price: 70000
-          formula: "{\"total_price\": ((resolution = \"0.5k\" ? 45000 : base_price * (resolution = \"2k\" ? 1.5 : (resolution = \"4k\" ? 2 : 1))) + (enable_web_search ? 14000 : 0) + (enable_image_search ? 14000 : 0)) }"
-          discount_rate: 90
 
   - name: "nano-banana-2-relight"
     display_name: "Nano Banana 2 Relight"
@@ -279,14 +245,6 @@ models:
         values: ["0.5k", "1k", "2k", "4k"]
         value_labels: {"0.5k": "0.5K", "1k": "1K", "2k": "2K", "4k": "4K"}
         fill: "tool"
-    providers:
-      - name: "wavespeed"
-        model_id: "google/nano-banana-2/edit"
-        priority: 1
-        pricing:
-          base_price: 70000
-          formula: "{\"total_price\": (resolution = \"0.5k\" ? 45000 : (resolution = \"2k\" ? 105000 : (resolution = \"4k\" ? 140000 : base_price)))}"
-          discount_rate: 100
 
   - name: "nano-banana-2-quick-edit"
     display_name: "Nano Banana 2 Quick Edit"
@@ -317,14 +275,6 @@ models:
         values: ["0.5k", "1k", "2k", "4k"]
         value_labels: {"0.5k": "0.5K", "1k": "1K", "2k": "2K", "4k": "4K"}
         fill: "tool"
-    providers:
-      - name: "wavespeed"
-        model_id: "google/nano-banana-2/edit"
-        priority: 1
-        pricing:
-          base_price: 70000
-          formula: "{\"total_price\": (resolution = \"0.5k\" ? 45000 : (resolution = \"2k\" ? 105000 : (resolution = \"4k\" ? 140000 : base_price)))}"
-          discount_rate: 100
 
   - name: "recraft-v4.1-pro-text-to-vector"
     display_name: "Recraft V4.1 Pro Vector"
@@ -337,19 +287,10 @@ models:
     icon: "recraft"
     params:
       aspect_ratio:
-        upstream: "image_size"
         description: "Output aspect ratio"
         default: "1:1"
         values: ["1:1", "16:9", "9:16", "4:3", "3:4"]
         fill: "panel"
-    providers:
-      - name: "wavespeed"
-        model_id: "recraft-ai/recraft-v4.1-pro/text-to-vector"
-        priority: 1
-        pricing:
-          base_price: 300000
-          formula: ""
-          discount_rate: 100
 
   - name: "riverflow-2.0-pro-text-to-image"
     display_name: "Riverflow 2.0 Pro"
@@ -378,14 +319,6 @@ models:
         default: false
         values: [true, false]
         fill: "panel"
-    providers:
-      - name: "wavespeed"
-        model_id: "sourceful/riverflow-2.0-pro/text-to-image"
-        priority: 1
-        pricing:
-          base_price: 150000
-          formula: "{\"total_price\": base_price * (resolution = \"4k\" ? 11/5 : 1)}"
-          discount_rate: 100
 
   - name: "krea-v2-large-text-to-image"
     display_name: "Krea V2 Large"
@@ -416,16 +349,6 @@ models:
         accepts: "image"
         fill: "canvas"
         optional: true
-        upstream: "reference"
-        item_key: "image"
-    providers:
-      - name: "wavespeed"
-        model_id: "wavespeed-ai/krea-v2-large/text-to-image"
-        priority: 1
-        pricing:
-          base_price: 60000
-          formula: "{\"total_price\": base_price + (($count(reference) > 0) ? 5000 : 0)}"
-          discount_rate: 100
 
   - name: "ideogram-v3-quality"
     display_name: "Ideogram V3 Quality"
@@ -443,7 +366,6 @@ models:
         values: ["1:1", "16:9", "9:16", "4:3", "3:4"]
         fill: "panel"
       rendering:
-        upstream: "style"
         description: "Rendering type"
         label: "Rendering"
         default: "Auto"
@@ -457,15 +379,34 @@ models:
         accepts: "image"
         fill: "canvas"
         optional: true
-        upstream: "reference_images"
-    providers:
-      - name: "wavespeed"
-        model_id: "ideogram-ai/ideogram-v3-quality"
-        priority: 1
-        pricing:
-          base_price: 90000
-          formula: ""
-          discount_rate: 100
+
+  - name: "seedream-v5.5-text-to-image"
+    display_name: "Seedream 5.5"
+    mode: "t2i"
+    takes_prompt: true
+    tier: "optional"
+    description: "Photoreal detail, transparent background"
+    guide: "Lifelike photographic detail and natural light at a low price per image; it writes short titles and labels exactly in English and Chinese, and can hand back the picture on a transparent background."
+    generation_time: 230
+    icon: "seedream"
+    params:
+      aspect_ratio:
+        description: "Output aspect ratio"
+        default: "1:1"
+        values: ["1:1", "1:2", "2:1", "1:3", "3:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "9:21", "21:9"]
+        fill: "panel"
+      resolution:
+        description: "Output resolution"
+        default: "1k"
+        values: ["1k", "1.5k", "2k"]
+        value_labels: {"1k": "1K", "1.5k": "1.5K", "2k": "2K"}
+        fill: "panel"
+      transparency:
+        description: "Transparent background"
+        label: "Transparent background"
+        default: false
+        values: [true, false]
+        fill: "panel"
 
   - name: "recraft-v4-style-text-to-image"
     display_name: "Recraft V4 Style"
@@ -495,15 +436,6 @@ models:
         max_items: 3
         accepts: "image"
         fill: "canvas"
-        upstream: "images"
-    providers:
-      - name: "wavespeed"
-        model_id: "recraft-ai/recraft-v4-style/text-to-image"
-        priority: 1
-        pricing:
-          base_price: 38500
-          formula: "{\"total_price\": base_price + (($exists(images) and $count(images) > 0) ? 5500 : 0)}"
-          discount_rate: 100
 
   - name: "gpt-image-2.5-sunburst-edit"
     display_name: "GPT Image 2.5 Sunburst"
@@ -511,7 +443,7 @@ models:
     takes_prompt: true
     tier: "recommended"
     description: "13 refs + 3 style, 4K, tier to max"
-    guide: "The highest-fidelity instruction editor; takes 13 references plus 3 style images in one run."
+    guide: "The highest-fidelity instruction editor; takes 13 references plus 3 style images in one run and writes short lines of text exactly in English and Chinese."
     generation_time: 120
     icon: "openai"
     params:
@@ -553,14 +485,6 @@ models:
         values: ["1k", "2k", "4k"]
         value_labels: {"1k": "1K", "2k": "2K", "4k": "4K"}
         fill: "panel"
-    providers:
-      - name: "wavespeed"
-        model_id: "openai/gpt-image-2.5-sunburst/edit"
-        priority: 1
-        pricing:
-          base_price: 39000
-          formula: "{\"total_price\": ((quality = \"low\") ? (resolution = \"4k\" ? 45000 : (resolution = \"2k\" ? 35000 : 25000)) : ((quality = \"high\") ? (resolution = \"4k\" ? 285000 : (resolution = \"2k\" ? 165000 : 105000)) : ((quality = \"xhigh\") ? (resolution = \"4k\" ? 495000 : (resolution = \"2k\" ? 285000 : 175000)) : ((quality = \"max\") ? (resolution = \"4k\" ? 1015000 : (resolution = \"2k\" ? 615000 : 375000)) : (resolution = \"4k\" ? 85000 : (resolution = \"2k\" ? 55000 : 39000)))))) + (($count(images) - 1) * 15000)}"
-          discount_rate: 100
 
   - name: "muse-image-edit"
     display_name: "Muse Image"
@@ -579,7 +503,6 @@ models:
         values: ["auto", "21:9", "16:9", "4:3", "3:2", "1:1", "2:3", "3:4", "9:16", "9:21"]
         fill: "panel"
       images:
-        upstream: "image_urls"
         description: "Images to edit"
         default: null
         type: "list"
@@ -604,14 +527,6 @@ models:
         values: ["webp", "png", "jpeg"]
         fill: "none"
         note: "our default: png (lossless, keeps alpha)"
-    providers:
-      - name: "wavespeed"
-        model_id: "meta/muse-image/edit"
-        priority: 1
-        pricing:
-          base_price: 11000
-          formula: ""
-          discount_rate: 100
 
   - name: "nano-banana-pro-edit-ultra"
     display_name: "Nano Banana Pro Ultra"
@@ -654,14 +569,54 @@ models:
         values: ["4k", "8k"]
         value_labels: {"4k": "4K", "8k": "8K"}
         fill: "panel"
-    providers:
-      - name: "wavespeed"
-        model_id: "google/nano-banana-pro/edit-ultra"
-        priority: 1
-        pricing:
-          base_price: 150000
-          formula: "{\"total_price\": base_price * (resolution = \"4k\" ? 1 : (resolution = \"8k\" ? 1.2 : 1))}"
-          discount_rate: 100
+
+  - name: "seedream-v5.5-edit"
+    display_name: "Seedream 5.5"
+    mode: ["i2i", "edit"]
+    takes_prompt: true
+    tier: "optional"
+    description: "Keeps unedited areas, 7 refs + 3 style"
+    guide: "Edits that leave the untouched parts as they were across repeated rounds; takes 7 references plus 3 style images and can cut the subject out onto a transparent background."
+    generation_time: 150
+    icon: "seedream"
+    params:
+      aspect_ratio:
+        description: "Output aspect ratio"
+        default: "auto"
+        absent_value: "auto"
+        values: ["auto", "1:1", "1:2", "2:1", "1:3", "3:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "9:21", "21:9"]
+        fill: "panel"
+      images:
+        description: "Images to edit"
+        default: null
+        type: "list"
+        # The upstream takes 10 images; 3 of them are kept for the style slot.
+        max_items: 7
+        accepts: "image"
+        fill: "pool"
+        mention: "image {n}"
+      style_images:
+        description: "Style reference images"
+        default: null
+        type: "list"
+        max_items: 3
+        accepts: "image"
+        fill: "canvas"
+        optional: true
+        joins: "images"
+        prompt_note: "Style references: {list}. Apply their style to the result."
+      resolution:
+        description: "Output resolution"
+        default: "1k"
+        values: ["1k", "1.5k", "2k"]
+        value_labels: {"1k": "1K", "1.5k": "1.5K", "2k": "2K"}
+        fill: "panel"
+      transparency:
+        description: "Transparent background"
+        label: "Transparent background"
+        default: false
+        values: [true, false]
+        fill: "panel"
 
   - name: "qwen-image-edit-multiple-angles"
     display_name: "Qwen Image Multiple Angles"
@@ -718,14 +673,6 @@ models:
         step: 30
         value_labels: {"-30": "Low angle", "0": "Eye level", "30": "Elevated", "60": "High angle"}
         fill: "panel"
-    providers:
-      - name: "wavespeed"
-        model_id: "wavespeed-ai/qwen-image/edit-multiple-angles"
-        priority: 1
-        pricing:
-          base_price: 25000
-          formula: ""
-          discount_rate: 100
 
   - name: "pro-upscaler"
     display_name: "Pro Upscaler"
@@ -756,14 +703,6 @@ models:
         min: 1
         max: 64
         fill: "tool"
-    providers:
-      - name: "wavespeed"
-        model_id: "clarity-ai/pro-upscaler"
-        priority: 1
-        pricing:
-          base_price: 30000
-          formula: "{\"total_price\": base_price * target_megapixels}"
-          discount_rate: 100
 
   - name: "bria-remove-background"
     display_name: "Bria Remove Background"
@@ -780,14 +719,6 @@ models:
         default: null
         accepts: "image"
         fill: "tool"
-    providers:
-      - name: "wavespeed"
-        model_id: "bria/remove-background"
-        priority: 1
-        pricing:
-          base_price: 18000
-          formula: ""
-          discount_rate: 100
 
   - name: "bria-genfill"
     display_name: "Bria GenFill"
@@ -812,14 +743,6 @@ models:
         default: null
         accepts: "image"
         fill: "tool"
-    providers:
-      - name: "wavespeed"
-        model_id: "bria/fibo-edit/genfill"
-        priority: 1
-        pricing:
-          base_price: 40000
-          formula: ""
-          discount_rate: 100
 
   - name: "bria-eraser"
     display_name: "Bria Eraser"
@@ -841,14 +764,6 @@ models:
         default: null
         accepts: "image"
         fill: "tool"
-    providers:
-      - name: "wavespeed"
-        model_id: "bria/eraser"
-        priority: 1
-        pricing:
-          base_price: 40000
-          formula: ""
-          discount_rate: 100
 
   - name: "seedream-v4.5-edit"
     display_name: "Seedream 4.5 Edit"
@@ -867,11 +782,3 @@ models:
         max_items: 1
         accepts: "image"
         fill: "tool"
-    providers:
-      - name: "wavespeed"
-        model_id: "bytedance/seedream-v4.5/edit"
-        priority: 1
-        pricing:
-          base_price: 40000
-          formula: ""
-          discount_rate: 100

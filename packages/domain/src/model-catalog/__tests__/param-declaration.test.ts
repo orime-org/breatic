@@ -225,16 +225,13 @@ describe("a parameter declaration", () => {
     ).toThrow(/a-model.*style_images.*\{list\}/s);
   });
 
-  it("passes an item_key that wraps each entry of a list", () => {
+  it.each(["upstream", "upstream_values", "item_key"])("refuses %s, which says how an upstream takes the param and belongs in its binding", (key) => {
     expect(() =>
       assertParamDeclarations(
         "image",
-        modelWith(
-          { style_images: { fill: "canvas", accepts: "image", type: "list", max_items: 3, upstream: "reference", item_key: "image" } },
-          "t2i",
-        ),
+        modelWith({ style_images: { fill: "canvas", accepts: "image", type: "list", max_items: 3, [key]: "image" } }, "t2i"),
       ),
-    ).not.toThrow();
+    ).toThrow(new RegExp(`a-model\\.style_images.*${key}`, "s"));
   });
 
   it("is refused when it caps how many it takes without saying it takes a list", () => {
@@ -558,25 +555,6 @@ describe("a panel parameter's default", () => {
   it("lets a switch name false as the value that is sent as nothing", () => {
     const toggle = { fill: "panel", values: [true, false], default: false, absent_value: false };
     expect(() => assertParamDeclarations("video", modelWith({ auto_shots: toggle }, "t2v"))).not.toThrow();
-  });
-
-  it("lets a value be sent as another spelling only when the choice offers that value", () => {
-    const toggle = { fill: "panel", values: [true, false], default: false, upstream: "shot_type" };
-    expect(() =>
-      assertParamDeclarations(
-        "video",
-        modelWith({ auto_shots: { ...toggle, upstream_values: { true: "intelligence" } } }, "t2v"),
-      ),
-    ).not.toThrow();
-    expect(() =>
-      assertParamDeclarations("video", modelWith({ auto_shots: { ...toggle, upstream_values: { on: "x" } } }, "t2v")),
-    ).toThrow(/a-model\.auto_shots.*upstream_values/s);
-    expect(() =>
-      assertParamDeclarations(
-        "video",
-        modelWith({ seed: { fill: "panel", min: 0, max: 9, default: 0, upstream_values: { "1": "x" } } }, "t2v"),
-      ),
-    ).toThrow(/a-model\.seed.*upstream_values/s);
   });
 
   it("lets only a list of entries write them into the prompt, and only with a place for each one's text", () => {

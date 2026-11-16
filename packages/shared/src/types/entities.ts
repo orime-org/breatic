@@ -243,9 +243,22 @@ export type MessagePart =
      * Why, when it is not an ordinary failure: `too_long` is a turn whose
      * request could not be made to fit the model's context window however
      * much earlier history was folded into memory (inner#1567). The user is
-     * told to narrow the request rather than to send it again.
+     * told to narrow the request rather than to send it again. `shutdown` is a
+     * turn the server stopped because it was shutting down (inner#1717).
      */
-    reason?: "too_long";
+    reason?: "too_long" | "shutdown";
+  }
+  /**
+   * A message the user sent while this turn ran, taken in at the step
+   * where the model first read it (inner#1717). It sits in the reply at that
+   * place, so the conversation reads back in the order things happened; its
+   * id is the id the page sent it with, and `sentAt` when the server accepted it.
+   */
+  | {
+    type: "user-message";
+    id: string;
+    sentAt: string;
+    parts: Array<{ type: "attachment"; chip: ChatAttachedChip } | { type: "text"; text: string }>;
   }
   /**
    * The turn reached the ceiling on one call's output and stopped mid-sentence.

@@ -29,6 +29,7 @@ vi.mock("ai", () => ({
 import crypto from "node:crypto";
 import postgres from "postgres";
 import { initCore, getRedis, setSession, sessionCookieName, loadLocales } from "@breatic/core";
+import { initConfiguredProvider } from "@breatic/integration-tests/provider";
 import { sceneTaskService } from "@breatic/domain";
 import type { Hono } from "hono";
 
@@ -48,6 +49,7 @@ beforeAll(async () => {
     prepare: false,
     connection: { application_name: "three-d-rig-notice-test-driver" },
   });
+  initConfiguredProvider();
   const { createApp } = await import("@server/app.js");
   app = createApp();
 });

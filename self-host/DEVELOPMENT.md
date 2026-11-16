@@ -169,9 +169,9 @@ The secret must exactly match the root `.env`. Do not put bucket, port or CORS s
 
 ## 5. Configure AI capabilities
 
-Set your `OPENROUTER_API_KEY` in `.env` and confirm access and quota for the configured models. Text routing prefers a configured vendor's direct key and otherwise uses OpenRouter. Leave unused `OPENAI_API_KEY`, `GOOGLE_API_KEY`, `ANTHROPIC_API_KEY` and `DEEPSEEK_API_KEY` empty.
+Every model call goes through the provider layer, which tries a model's upstreams in weight order and skips any whose key is not set. Each upstream reads its key from the variable named by `key_env` in `config/provider/upstreams.yaml`. Set your `OPENROUTER_API_KEY` in `.env` and confirm access and quota for the configured models: text models are routed to a vendor's own API when its key is set and otherwise to OpenRouter (`config/provider/llm.yaml`). Leave unused `OPENAI_API_KEY`, `GOOGLE_API_KEY`, `ANTHROPIC_API_KEY` and `DEEPSEEK_API_KEY` empty.
 
-One text key does not cover every image, video, audio, speech or 3D provider. For the models you want to use, find `api_key_env` in `config/models/<type>/providers.yaml` and set that variable. WaveSpeed models, for example, need `WAVESPEED_API_KEY`. Unconfigured providers are outside your current acceptance checks.
+One text key does not cover image, video, audio, speech or 3D generation. Each of those models lists its upstreams in `config/provider/media/<type>.yaml`; set the key of at least one of them, for example `WAVESPEED_API_KEY` or `FAL_KEY`. Every model stays in the list whatever is configured; a run of one with no configured upstream is refused, naming the variables it needs. Unconfigured models are outside your current acceptance checks.
 
 Google sign-in, real SMTP email, Stripe and Brave search are optional integrations. Configure them in the relevant `.env.dev` sections when needed. Enabling `PAYMENT_ENABLED` does not solve model-provider quota issues.
 

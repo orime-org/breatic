@@ -16,7 +16,7 @@
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 import { getAgentConfig } from "@breatic/core";
-import { FAILURE_LINES, formatCredits, isMemberLeave, type NodeHistoryEntity, type ProjectActivityEntry } from "@breatic/shared";
+import { FAILURE_LINES, formatCredits, isMemberLeave, type MessagePart, type NodeHistoryEntity, type ProjectActivityEntry } from "@breatic/shared";
 
 import { pageLinksIn } from "@domain/agent/page-links.js";
 import { cutMarker, keptText, messageText } from "@domain/agent/tools/conversation-text.js";
@@ -353,7 +353,7 @@ function versionLine(v: NodeHistoryEntity): string {
     ...(str(meta, "toolId") ? [`mini-tool ${String(str(meta, "toolId"))}`] : []),
     ...(prompt === undefined ? [] : [`prompt ${asText(prompt)}`]),
     ...(Object.keys(rest).length > 0 ? [`params ${clip(JSON.stringify(rest), cfg.records_params_max_chars)}`] : []),
-    ...(typeof credits === "number" ? [`${formatCredits(credits, "en-US")} credits`] : []),
+    ...(typeof credits === "number" ? [creditsText(credits, meta["billing"])] : []),
     ...(content === undefined ? [] : [`content ${content}`]),
     ...(v.errorMessage ? [`error ${v.errorMessage}`] : []),
     v.createdAt.toISOString(),
@@ -414,6 +414,18 @@ function nodePage(nodeId: string, recs: NodeRecords, offsets: { tasks: number; v
 }
 
 /**
+ * A run's credits as a record line says them: while its task waits on its upstream's bill, the amount is what is
+ * known so far (inner#1743).
+ * @param credits - The credits the record carries.
+ * @param billing - The record's billing state.
+ * @returns The words.
+ */
+function creditsText(credits: number, billing: unknown): string {
+  const amount = `${formatCredits(credits, "en-US")} credits`;
+  return billing === "pending" ? `${amount} so far, still being billed` : amount;
+}
+
+/**
  * One activity entry, on one line.
  * @param e - The entry.
  * @param records - The turn's records, for a Space the entry does not name.
@@ -435,7 +447,7 @@ function activityLine(e: ProjectActivityEntry, records: ProjectRecords): string 
     ...(e.nodeId === null ? [] : [`node ${e.nodeId}`]),
     ...(str(p, "model") ? [`model ${String(str(p, "model"))}`] : []),
     ...(str(p, "toolName") ? [`mini-tool ${String(str(p, "toolName"))}`] : []),
-    ...(typeof credits === "number" ? [`${formatCredits(credits, "en-US")} credits`] : []),
+    ...(typeof credits === "number" ? [creditsText(credits, p["billing"])] : []),
     ...(str(p, "fileUrl") ? [`result ${String(str(p, "fileUrl"))}`] : []),
     ...(str(p, "errorMessage") ? [`error ${String(str(p, "errorMessage"))}`] : []),
     ...(str(p, "role") ? [`role ${str(p, "previousRole") ? `${String(str(p, "previousRole"))} → ` : ""}${String(str(p, "role"))}`] : []),
@@ -524,6 +536,22 @@ function userLinksIn(messages: readonly { role: string; text: string }[]): strin
   return messages.flatMap((m) => (m.role === "user" ? pageLinksIn(m.text) : []));
 }
 
+/**
+ * A message's text split by who wrote it: a reply's messages the user sent
+ * mid-turn are the user's, the rest of it the Agent's (inner#1717).
+ * @param m - The message.
+ * @param m.role - Who wrote it.
+ * @param m.parts - What it holds.
+ * @returns Each piece with who wrote it, in order.
+ */
+function spokenBy(m: { role: string; parts: MessagePart[] }): { role: string; text: string }[] {
+  if (m.role === "user") return [{ role: m.role, text: messageText(m.parts) }];
+  return [
+    { role: m.role, text: messageText(m.parts.filter((p) => p.type !== "user-message")) },
+    ...m.parts.flatMap((p) => (p.type === "user-message" ? [{ role: "user", text: messageText(p.parts) }] : [])),
+  ];
+}
+
 /** List or search the user's conversations in this project. */
 const searchConversations: Tool<z.infer<typeof searchInput>, ConversationRead, RecordsContext> = tool({
   description:
@@ -582,7 +610,7 @@ const readConversation: Tool<z.infer<typeof readInput>, ConversationRead, Record
     );
     return {
       text: turnPage(read, to_turn),
-      userLinks: userLinksIn(read.messages.map((m) => ({ role: m.role, text: messageText(m.parts) }))),
+      userLinks: userLinksIn(read.messages.flatMap(spokenBy)),
     };
   },
 });

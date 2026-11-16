@@ -98,8 +98,6 @@ describe("the models the multi-shot mode offers", () => {
 
   it.each(KLING)("%s offers auto multi-shot as a switch only in %s", (name, mode) => {
     expect(videoEntry(name).params?.auto_shots).toMatchObject({
-      upstream: "shot_type",
-      upstream_values: { true: "intelligence" },
       values: [true, false],
       default: false,
       absent_value: false,

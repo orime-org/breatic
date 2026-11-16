@@ -33,7 +33,7 @@ const SPEECH = {
   generation_time: 10,
   takes_prompt: true,
   params: { voice_id: { description: '', default: null, remote_source: 'voices' } },
-  providers: [],
+  availability: { upstreams: [] },
 } as unknown as ModelEntry;
 
 const CATALOG = {

@@ -32,6 +32,7 @@ import {
 } from '@web/spaces/document/document-comment-rail';
 import { useCachedSnapshot } from '@web/spaces/document/use-editor-snapshot';
 import { commentsOn } from '@web/spaces/document/document-comment-extension';
+import { commentPositions } from '@web/spaces/document/document-comment-media';
 import type { ToolEditor } from '@web/spaces/document/document-tool-button';
 
 /** What an editor with no comments reads as, one object for every such read. */
@@ -84,24 +85,25 @@ export function useCommentRail(editor: ToolEditor): CommentRail {
   const subscribe = React.useCallback(
     (onChange: () => void): (() => void) => {
       if (comments === undefined) return () => undefined;
-      // Both, because either can change what a card says without the other
-      // moving: resolving touches only the store, deleting the text only the
-      // positions.
+      // The store for comments written, resolved and deleted; the body for
+      // where every comment stands. The library writes its position table
+      // while the change applies, so it is current when the body's listeners
+      // run, and a comment on media stands on its block in the body.
       const stopThreads = comments.threadStore.subscribe(onChange);
-      const stopPositions = comments.store.subscribe(onChange);
+      const stopBody = editor.onChange(onChange);
       return () => {
         stopThreads();
-        stopPositions();
+        stopBody();
       };
     },
-    [comments],
+    [comments, editor],
   );
 
   const read = React.useCallback((): CommentRail => {
     if (comments === undefined) return EMPTY_RAIL;
     const threads = [...comments.threadStore.getThreads().values()];
-    return commentRail(threads, comments.store.state.threadPositions);
-  }, [comments]);
+    return commentRail(threads, commentPositions(editor.prosemirrorState.doc, threads, comments.store.state.threadPositions));
+  }, [comments, editor]);
 
   return useCachedSnapshot(subscribe, read, sameRail);
 }

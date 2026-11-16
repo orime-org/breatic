@@ -11,7 +11,7 @@ import { QueryClient } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 import type { ChatAttachedChip, ChatSpaceContext, ModelCatalog } from '@breatic/shared';
-import { chatMessageSchema, documentBodyFragment } from '@breatic/shared';
+import { chatMessageSchema, documentBodyFragment, documentCommentThreads } from '@breatic/shared';
 
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
 import { COMMENT_MARK } from '@web/spaces/document/document-comment-extension';
@@ -232,6 +232,7 @@ describe('an open canvas', () => {
    */
   const accepted = (current: ChatSpaceContext['current_space']): boolean =>
     chatMessageSchema.safeParse({
+      id: '33333333-3333-4333-8333-333333333333',
       message: 'hi',
       project_id: '11111111-1111-4111-8111-111111111111',
       conversation_id: '22222222-2222-4222-8222-222222222222',
@@ -437,6 +438,19 @@ describe('an open document', () => {
     expect(readBlocks().map((b) => b.lossy)).toEqual([true, true]);
   });
 
+  it('marks a block whose picture carries a comment, read from the Space\'s own comments', async () => {
+    const name = await openDocument('Before');
+    const editor = (editors.get(name) as { editor: DocumentEditor }).editor;
+    editor.insertBlocks([{ id: 'pic', type: 'image', props: { url: 'https://cdn.test/a.png', name: 'a.png' } }] as never, editor.document[0]!, 'after');
+    const thread = new Y.Map<unknown>();
+    thread.set('metadata', { mediaBlockId: 'pic' });
+    documentCommentThreads(getDoc(name)).set('t1', thread);
+
+    const [before] = editor.document as { id: string }[];
+
+    expect(readBlocks().map((b) => [b.id, b.lossy])).toEqual([[before!.id, false], ['pic', true]]);
+  });
+
   it('marks a coloured table, whose colour its Markdown does not carry', async () => {
     const name = await openDocument('| A | B |\n| --- | --- |\n| 1 | 2 |\n\n| C | D |\n| --- | --- |\n| 3 | 4 |');
     const editor = (editors.get(name) as { editor: DocumentEditor }).editor;
@@ -599,6 +613,7 @@ describe('cutting what was read to the limits', () => {
 
     expect(
       chatMessageSchema.safeParse({
+        id: '33333333-3333-4333-8333-333333333333',
         message: 'hi',
         project_id: '11111111-1111-4111-8111-111111111111',
         conversation_id: '22222222-2222-4222-8222-222222222222',

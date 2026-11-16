@@ -241,3 +241,8 @@ document_schema:
 # Temporary (#1362): removed with the conversion once no stored table is left.
 doc_table_migrate_lock_ms: 300000
 
+# How long one instance holds the per-document lock under which it stores a
+# Timeline's pixel-offset clips as frame offsets and marks the document version
+# 2 (#1502). The lock is never released, only expires; it has to outlast
+# store_interval_ms by far.
+timeline_transform_migrate_lock_ms: 300000

@@ -134,12 +134,12 @@ function repairAfterPop(doc: Y.Doc, name: string, records: RecordSnapshot | unde
  * Create the personal session for a Timeline document.
  * @param doc - The live collaborative document.
  * @param name - Its canonical name, whose size gates the session's writes.
- * @returns The session; its undo manager tracks only this session's edits to tracks, clips and sources.
+ * @returns The session; its undo manager tracks only this session's edits to tracks, clips, sources and the frame size.
  * @throws {never} Never.
  */
 function createTimelineEditSession(doc: Y.Doc, name: string): TimelineEditSession {
   const origin = Symbol('timeline-local-edit');
-  const history = withDestroyListenerCleanup(doc, () => new Y.UndoManager([doc.getMap('tracks'), doc.getMap('clips'), doc.getMap('sources')], { trackedOrigins: new Set([origin]), captureTimeout: 0 }));
+  const history = withDestroyListenerCleanup(doc, () => new Y.UndoManager([doc.getMap('tracks'), doc.getMap('clips'), doc.getMap('sources'), doc.getMap('timeline')], { trackedOrigins: new Set([origin]), captureTimeout: 0 }));
   const listeners = new Set<() => void>();
   let selected: string | null = null;
   let snapshot: TimelineEditSessionSnapshot = { canUndo: false, canRedo: false, selectedClipId: null };

@@ -12,19 +12,23 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type * as ChatApiModule from '@web/data/api/chat';
 
-vi.mock('@web/data/api/chat', async (importOriginal) => ({
-  ...(await importOriginal<typeof ChatApiModule>()),
-  chatApi: {
-    streamConfig: vi.fn(async () => ({ heartbeatIntervalMs: 5000, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200 })),
-    openChat: vi.fn(),
-    messagesBefore: vi.fn(),
-    readConversation: vi.fn(),
-    listConversations: vi.fn(),
-    createConversation: vi.fn(),
-    renameConversation: vi.fn(),
-    deleteConversation: vi.fn(),
-  },
-}));
+vi.mock('@web/data/api/chat', async (importOriginal) => {
+  const actual = await importOriginal<typeof ChatApiModule>();
+  return {
+    ...actual,
+    chatApi: {
+      streamPath: actual.chatApi.streamPath,
+      streamConfig: vi.fn(async () => ({ heartbeatIntervalMs: 5000, attachmentMaxChars: 200_000, attachmentMaxItems: 10, currentSpaceMaxChars: 100_000, spaceListMaxItems: 200 })),
+      openChat: vi.fn(),
+      messagesBefore: vi.fn(),
+      readConversation: vi.fn(),
+      listConversations: vi.fn(),
+      createConversation: vi.fn(),
+      renameConversation: vi.fn(),
+      deleteConversation: vi.fn(),
+    },
+  };
+});
 
 import { chatApi } from '@web/data/api/chat';
 import { chatAttachments, type TrayItem } from '@web/stores/chat-attachments';
@@ -44,9 +48,10 @@ import {
 import {
   chatSessionFor,
   evictAllChatSessions,
-  sendInSession,
-  stopChatSession,
+  letGoOfRun,
+  readRun,
 } from '@web/stores/chat-sessions';
+import { stubRunWire } from '@web/test-utils/chat-run-wire';
 
 const PROJECT = 'p-1';
 
@@ -75,57 +80,34 @@ function openAnswers(
 
 
 /**
- * 说一句话,并让服务端在这一轮的流上带回会话的名字。
+ * Read the run a message opened, and let the server name the conversation on
+ * its stream.
  *
- * 走的是真实那条路:名字是服务端在 `data-conversation-titled` 上说的,会话
- * 实例听见了转给这个 store。测试直接调那个内部函数就绕开了这条线,而线断了
- * 没有任何测试会红。
- * @param conversationId - 说话的那条会话。
- * @param said - 说了什么。
- * @param title - 服务端回的名字。
+ * The real path: the name is what the server says on `data-conversation-titled`
+ * on the run's stream (inner#1717), which the session hears and hands to this
+ * store. A test calling the store's function directly would go round that
+ * line, and no test would go red when it broke.
+ * @param conversationId - The conversation spoken in.
+ * @param title - The name the server gives it.
  */
-async function speakAndHearTitle(
-  conversationId: string,
-  said: string,
-  title: string,
-): Promise<void> {
-  let push: ((chunk: Record<string, unknown>) => void) | undefined;
-  const encoder = new TextEncoder();
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async () => {
-      let controller: ReadableStreamDefaultController<Uint8Array>;
-      const body = new ReadableStream<Uint8Array>({
-        start(c) {
-          controller = c;
-        },
-      });
-      push = (chunk) => {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`));
-      };
-      return new Response(body, {
-        status: 200,
-        headers: { 'Content-Type': 'text/event-stream' },
-      });
-    }),
-  );
-
+async function hearTitleOnTheRun(conversationId: string, title: string): Promise<void> {
+  const wire = stubRunWire();
   chatSessionFor({
     projectId: PROJECT,
     conversationId,
     history: [],
     onTitled: (named) => conversationRuntime.noteActivity(PROJECT, conversationId, named),
-    onFirstFrame: () => undefined,
   });
-  void sendInSession(conversationId, said);
+  const reading = readRun(conversationId, () => undefined);
   await vi.waitFor(() => {
-    expect(push).toBeDefined();
+    expect(wire.last()).not.toBeNull();
   });
-  push?.({ type: 'data-conversation-titled', data: { title } });
+  wire.last()?.push({ type: 'data-conversation-titled', data: { title } });
   await vi.waitFor(() => {
     expect(useConversationRuntime.getState().conversations[conversationId]?.title).toBe(title);
   });
-  stopChatSession(conversationId);
+  letGoOfRun(conversationId);
+  await reading;
   vi.unstubAllGlobals();
 }
 
@@ -340,7 +322,7 @@ describe('naming a conversation', () => {
     openAnswers([{ id: 'c-1', title: null }], 'c-1');
     await conversationRuntime.ensureLoaded(PROJECT);
 
-    await speakAndHearTitle('c-1', 'find me a reference', 'find me a reference');
+    await hearTitleOnTheRun('c-1', 'find me a reference');
 
     const listed = useConversationRuntime.getState().listByProject[PROJECT];
     expect(listed?.[0]?.title).toBe('find me a reference');
@@ -523,7 +505,7 @@ describe('what the list says about when a conversation was last used', () => {
       },
     }));
 
-    await speakAndHearTitle('c-2', 'said something', 'said something');
+    await hearTitleOnTheRun('c-2', 'said something');
 
     const listed = useConversationRuntime.getState().listByProject[PROJECT]!;
     expect(listed.map((c) => c.id)).toEqual(['c-2', 'c-1']);
@@ -826,13 +808,14 @@ describe('the name of the conversation on screen', () => {
   });
 
   it('is what the first message named it', async () => {
-    // 走真实那条路:发一句话,服务器在流上回它给这条会话取的名字。
+    // The real path: the run the first message opened carries the name the
+    // server gave the conversation.
     openAnswers([{ id: 'c-1', title: null }], 'c-1');
     await conversationRuntime.ensureLoaded(PROJECT);
 
-    await speakAndHearTitle('c-1', '第一句话', '第一句话');
+    await hearTitleOnTheRun('c-1', 'the first message');
 
-    expect(useConversationRuntime.getState().conversations['c-1']?.title).toBe('第一句话');
+    expect(useConversationRuntime.getState().conversations['c-1']?.title).toBe('the first message');
   });
 });
 

@@ -7,7 +7,8 @@
  * uploads them exactly as it does a pick.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, screen } from '@testing-library/react';
+import { renderWithTooltips as render } from '@web/test-utils/render-with-tooltips';
 
 import { ChatComposer } from '@web/pages/project/chat/ChatComposer';
 import { CLIPBOARD_MARKER, CLIPBOARD_VERSION, serializeClipboard, type ClipboardPayload } from '@web/spaces/canvas/node-clipboard';

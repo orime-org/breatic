@@ -11,11 +11,14 @@
 import * as React from 'react';
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import fc from 'fast-check';
 import * as Y from 'yjs';
-import { TimelineVideoClipSchema, type TimelineVideoSource } from '@breatic/shared';
+import { TimelineClipSchema, TimelineVideoClipSchema, type TimelineClip, type TimelineVideoSource } from '@breatic/shared';
+import { readTimelineContent } from '@breatic/shared/space-content';
 import { resolveTimelineArrangement } from '@web/data/yjs/timeline-arrangement';
-import { applyTimelineEdit, readTimelineDocument } from '@web/data/yjs/timeline-document';
+import { applyTimelineEdit, convertTimelineUpload, readTimelineDocument } from '@web/data/yjs/timeline-document';
 import type { TimelineEditCommand } from '@web/data/yjs/timeline-edit';
+import { UPLOAD_ID, addUpload, clipRecords, registeredVideo, uploadClip } from '@web/data/yjs/__tests__/timeline-upload-fixtures';
 
 import { _resetForTests, destroyDoc, docName, getDoc } from '@web/data/yjs/manager';
 import { evictTimelineEditSession, getTimelineEditSession, type TimelineEditSession } from '@web/data/yjs/timeline-edit-session';
@@ -1394,5 +1397,335 @@ describe('Undo around clips a peer stored as plain objects (inner#1708 R1, R2)',
     for (const doc of [mine, peer]) expect(readTimelineDocument(doc).clips[P]).toBeDefined();
     (undoer === 'mine' ? mineSession : peerSession).undo();
     for (const doc of [mine, peer]) expect(readTimelineDocument(doc).clips[P]).toBeDefined();
+  });
+});
+
+/**
+ * `set_transform` between two replicas (breatic#1410 design §3.2, §9.1 item 8). A transform is one field of the clip
+ * record, so it merges with a peer's concurrent range edit field by field, and my undo takes back only the transform.
+ */
+describe('Timeline edit session set_transform with a concurrent peer (breatic#1410)', () => {
+  type Transform = TimelineClip['transform'];
+  const IDENTITY: Transform = { frameX: 0, frameY: 0, scaleX: 1, scaleY: 1, rotation: 0 };
+  const SHIFTED: Transform = { frameX: 0.16667, frameY: -0.16713, scaleX: 0.5, scaleY: 0.75, rotation: 15.25 };
+  const setTransform = (clipId: string, transform: Transform): TimelineEditCommand =>
+    ({ operation: 'set_transform', parameters: { clipId, transform }, placement: OFF });
+  const setRange = (clipId: string, startFrame: number, sourceInFrame: number, durationFrames: number): TimelineEditCommand =>
+    ({ operation: 'set_range', parameters: { clipId, startFrame, sourceInFrame, durationFrames }, placement: OFF });
+  const CASES = [
+    { seededByMe: true, mineFirst: true }, { seededByMe: true, mineFirst: false },
+    { seededByMe: false, mineFirst: true }, { seededByMe: false, mineFirst: false },
+  ];
+
+  /**
+   * Two replicas in sync but not connected, my session on the one `seededByMe` picks.
+   * @param seededByMe - Whether my replica wrote the seed.
+   * @returns Both replicas and my session.
+   * @throws {Error} When seeding fails.
+   */
+  function apart(seededByMe: boolean): { mine: Y.Doc; peer: Y.Doc; session: TimelineEditSession } {
+    const seeded = keep(seededDoc(timeline([clip(A, MAIN, 0, 48), clip(X, 'v2', 10, 20)])));
+    const copy = keep(new Y.Doc());
+    Y.applyUpdate(copy, Y.encodeStateAsUpdate(seeded));
+    const mine = seededByMe ? seeded : copy;
+    return { mine, peer: seededByMe ? copy : seeded, session: sessionOf(mine) };
+  }
+
+  /**
+   * Exchange every update between the replicas in the given order.
+   * @param mine - My replica.
+   * @param peer - The peer replica.
+   * @param mineFirst - Whether my replica receives first.
+   * @throws {never} Never.
+   */
+  function sync(mine: Y.Doc, peer: Y.Doc, mineFirst: boolean): void {
+    if (mineFirst) Y.applyUpdate(mine, Y.encodeStateAsUpdate(peer), 'remote');
+    Y.applyUpdate(peer, Y.encodeStateAsUpdate(mine), 'remote');
+    if (!mineFirst) Y.applyUpdate(mine, Y.encodeStateAsUpdate(peer), 'remote');
+  }
+
+  it.each(CASES)('keeps my transform and the peer\'s concurrent range on the same clip (seeded by me $seededByMe, I receive first $mineFirst)', ({ seededByMe, mineFirst }) => {
+    const { mine, peer, session } = apart(seededByMe);
+    expect(session.edit(setTransform(X, SHIFTED))).toMatchObject({ ok: true });
+    expect(applyTimelineEdit(peer, setRange(X, 12, 5, 30), Symbol('peer'))).toMatchObject({ ok: true });
+    sync(mine, peer, mineFirst);
+    const merged = { ...clip(X, 'v2', 12, 30, { sourceInFrame: 5 }), transform: SHIFTED };
+    expect(readTimelineDocument(mine).clips[X]).toEqual(merged);
+    expect(readTimelineDocument(peer).clips[X]).toEqual(merged);
+  });
+
+  it.each(CASES)('undoes only my transform and leaves the peer\'s range, then redoes it (seeded by me $seededByMe, I receive first $mineFirst)', ({ seededByMe, mineFirst }) => {
+    const { mine, peer, session } = apart(seededByMe);
+    expect(session.edit(setTransform(X, SHIFTED))).toMatchObject({ ok: true });
+    expect(applyTimelineEdit(peer, setRange(X, 12, 5, 30), Symbol('peer'))).toMatchObject({ ok: true });
+    sync(mine, peer, mineFirst);
+    session.undo();
+    sync(mine, peer, mineFirst);
+    const ranged = clip(X, 'v2', 12, 30, { sourceInFrame: 5 });
+    for (const doc of [mine, peer]) expect(readTimelineDocument(doc).clips[X]).toEqual({ ...ranged, transform: IDENTITY });
+    expect(session.getSnapshot()).toMatchObject({ canUndo: false, canRedo: true });
+    session.redo();
+    sync(mine, peer, mineFirst);
+    for (const doc of [mine, peer]) expect(readTimelineDocument(doc).clips[X]).toEqual({ ...ranged, transform: SHIFTED });
+  });
+
+  it('keeps an upload placeholder\'s transform when it turns into a video, and undoes and redoes it after the conversion', () => {
+    const { mine, peer, session } = pair();
+    const PLACEHOLDER = cid(31);
+    expect(session.edit(addUpload(uploadClip(PLACEHOLDER, 'v2', 100), OFF))).toMatchObject({ ok: true });
+    expect(session.edit(setTransform(PLACEHOLDER, SHIFTED))).toMatchObject({ ok: true });
+    convertTimelineUpload(mine, UPLOAD_ID, registeredVideo(5));
+    for (const doc of [mine, peer]) {
+      expect(readTimelineDocument(doc).clips[PLACEHOLDER]).toMatchObject({ kind: 'video', trackId: 'v2', startFrame: 100, transform: SHIFTED });
+    }
+    session.undo();
+    for (const doc of [mine, peer]) {
+      expect(clipRecords(doc)[PLACEHOLDER]).not.toHaveProperty('upload');
+      expect(TimelineVideoClipSchema.safeParse(clipRecords(doc)[PLACEHOLDER]).success).toBe(true);
+      expect(readTimelineDocument(doc).clips[PLACEHOLDER]).toMatchObject({ kind: 'video', startFrame: 100, transform: IDENTITY });
+    }
+    session.redo();
+    for (const doc of [mine, peer]) {
+      expect(TimelineVideoClipSchema.safeParse(clipRecords(doc)[PLACEHOLDER]).success).toBe(true);
+      expect(readTimelineDocument(doc).clips[PLACEHOLDER]).toMatchObject({ kind: 'video', startFrame: 100, transform: SHIFTED });
+    }
+  });
+
+  type Step =
+    | { who: 0 | 1; kind: 'transform'; pick: number; transform: Transform }
+    | { who: 0 | 1; kind: 'move'; pick: number; start: number }
+    | { who: 0 | 1; kind: 'range'; pick: number; sourceIn: number; length: number }
+    | { who: 0 | 1; kind: 'delete'; pick: number }
+    | { who: 0 | 1; kind: 'undo' }
+    | { who: 0 | 1; kind: 'redo' }
+    | { who: 0 | 1; kind: 'sync' };
+  const who = fc.constantFrom<0 | 1>(0, 1);
+  const transform: fc.Arbitrary<Transform> = fc.record({
+    frameX: fc.integer({ min: -1_000_000, max: 1_000_000 }).map((value) => value / 100_000),
+    frameY: fc.integer({ min: -1_000_000, max: 1_000_000 }).map((value) => value / 100_000),
+    scaleX: fc.integer({ min: 100, max: 1_000_000 }).map((value) => value / 10_000),
+    scaleY: fc.integer({ min: 100, max: 1_000_000 }).map((value) => value / 10_000),
+    rotation: fc.integer({ min: -17_999, max: 17_999 }).map((value) => value / 100),
+  });
+  const step: fc.Arbitrary<Step> = fc.oneof(
+    { weight: 3, arbitrary: fc.record({ who, kind: fc.constant('transform' as const), pick: fc.nat(), transform }) },
+    fc.record({ who, kind: fc.constant('move' as const), pick: fc.nat(), start: fc.integer({ min: 0, max: 200 }) }),
+    fc.record({ who, kind: fc.constant('range' as const), pick: fc.nat(), sourceIn: fc.integer({ min: 0, max: 60 }), length: fc.integer({ min: 1, max: 60 }) }),
+    fc.record({ who, kind: fc.constant('delete' as const), pick: fc.nat() }),
+    fc.record({ who, kind: fc.constant('undo' as const) }),
+    fc.record({ who, kind: fc.constant('redo' as const) }),
+    fc.record({ who, kind: fc.constant('sync' as const) }),
+  );
+
+  it('converges with every clip record valid for any interleaving of both users\' edits, undo and redo (fast-check)', () => {
+    fc.assert(fc.property(fc.array(step, { minLength: 1, maxLength: 16 }), fc.boolean(), (steps, mineFirst) => {
+      const seeded = seededDoc(timeline([clip(A, MAIN, 0, 48), clip(B, MAIN, 48, 48), clip(X, 'v2', 10, 20), uploadClip(Z, 'v2', 100)]));
+      const copy = new Y.Doc();
+      Y.applyUpdate(copy, Y.encodeStateAsUpdate(seeded));
+      const replicas = [seeded, copy] as const;
+      const sessions = [getTimelineEditSession(seeded, NAME), getTimelineEditSession(copy, PEER_NAME)] as const;
+      try {
+        for (const next of steps) {
+          const doc = replicas[next.who];
+          const session = sessions[next.who];
+          const ids = [...doc.getMap('clips').keys()].sort();
+          const target = 'pick' in next ? ids[next.pick % Math.max(1, ids.length)] : undefined;
+          const current = target === undefined ? undefined : readTimelineDocument(doc).clips[target];
+          if (next.kind === 'sync') sync(seeded, copy, mineFirst);
+          else if (next.kind === 'undo') session.undo();
+          else if (next.kind === 'redo') session.redo();
+          else if (target !== undefined && current !== undefined) {
+            if (next.kind === 'transform') {
+              const plan = session.edit(setTransform(target, next.transform));
+              // An in-range transform of a clip this replica holds is never refused for its range.
+              expect(plan.ok ? 'ok' : plan.reason, `transform of ${target}`).not.toBe('invalid_range');
+              if (plan.ok) expect(readTimelineDocument(doc).clips[target]?.transform).toEqual(next.transform);
+            } else if (next.kind === 'move') {
+              session.edit(move(target, next.start));
+            } else if (next.kind === 'range') {
+              session.edit(setRange(target, current.startFrame, next.sourceIn, next.length));
+            } else {
+              session.edit({ operation: 'delete', parameters: { clipId: target }, placement: OFF });
+            }
+          }
+          for (const replica of replicas) {
+            for (const [id, record] of Object.entries(clipRecords(replica))) {
+              expect(TimelineClipSchema.safeParse(record).success, `after ${JSON.stringify(next)}, clip ${id}: ${JSON.stringify(record)}`).toBe(true);
+            }
+          }
+        }
+        sync(seeded, copy, mineFirst);
+        expect(clipRecords(copy)).toEqual(clipRecords(seeded));
+        expect(readTimelineDocument(copy)).toEqual(readTimelineDocument(seeded));
+        for (const replica of replicas) expect(readTimelineContent(replica).damaged.clips).toEqual([]);
+      } finally {
+        evictTimelineEditSession(NAME);
+        evictTimelineEditSession(PEER_NAME);
+        seeded.destroy();
+        copy.destroy();
+      }
+    }), { numRuns: 100 });
+  });
+});
+
+/**
+ * Undo of the frame preset (breatic#1502 design §3.2, §8). The session's undo manager also tracks the `timeline` map,
+ * so one `set_frame` is one personal step that restores only the previous `settings`; layers keep their frame
+ * fractions, so a layer a collaborator moved meanwhile stays where they put it. Undo restores my steps in reverse
+ * order: a step whose key a peer wrote since changes nothing and the same press goes on to my earlier step, which redo
+ * can bring back; a value my own undo restored counts as mine.
+ */
+describe('Timeline edit session undo of the frame preset (breatic#1502)', () => {
+  type Transform = TimelineClip['transform'];
+  type FramePreset = '16:9' | '9:16' | '1:1' | '4:3' | '4:5' | '2:3' | '21:9';
+  const SIZES: Record<FramePreset, readonly [number, number]> = {
+    '16:9': [1920, 1080], '9:16': [1080, 1920], '1:1': [1080, 1080], '4:3': [1440, 1080], '4:5': [1080, 1350], '2:3': [1080, 1620], '21:9': [2520, 1080],
+  };
+  const PRESETS = Object.keys(SIZES) as FramePreset[];
+  const FPS = { num: 24, den: 1 };
+  const PIP: Transform = { frameX: 0.35, frameY: -0.35, scaleX: 0.3, scaleY: 0.3, rotation: 0 };
+  const setFrame = (preset: FramePreset): TimelineEditCommand => ({ operation: 'set_frame', parameters: { preset }, placement: OFF });
+  const setTransform = (clipId: string, transform: Transform): TimelineEditCommand => ({ operation: 'set_transform', parameters: { clipId, transform }, placement: OFF });
+
+  /**
+   * The settings a preset gives at the fixtures' 24 fps.
+   * @param preset - The preset.
+   * @returns The settings.
+   * @throws {never} Never.
+   */
+  const frameOf = (preset: FramePreset): { width: number; height: number; fps: typeof FPS } => ({ width: SIZES[preset][0], height: SIZES[preset][1], fps: FPS });
+
+  it('makes one set_frame one undo step that restores only the settings, and redo sets them again', () => {
+    const { mine, peer, session } = pair([clip(A, MAIN, 0, 48), clip(X, 'v2', 10, 20, { transform: PIP })]);
+    const before = readTimelineDocument(mine);
+    expect(session.edit(setFrame('9:16'))).toMatchObject({ ok: true });
+    expect(session.getSnapshot()).toMatchObject({ canUndo: true, canRedo: false });
+    for (const doc of [mine, peer]) expect(readTimelineDocument(doc)).toEqual({ ...before, settings: frameOf('9:16') });
+    session.undo();
+    for (const doc of [mine, peer]) expect(readTimelineDocument(doc)).toEqual(before);
+    expect(session.getSnapshot()).toMatchObject({ canUndo: false, canRedo: true });
+    session.redo();
+    for (const doc of [mine, peer]) expect(readTimelineDocument(doc)).toEqual({ ...before, settings: frameOf('9:16') });
+  });
+
+  it('adds no undo step for the current preset', () => {
+    const { session } = pair();
+    expect(session.edit(setFrame('16:9'))).toMatchObject({ ok: true });
+    expect(session.getSnapshot()).toMatchObject({ canUndo: false, canRedo: false });
+  });
+
+  it('undoes my preset in its own step after a clip edit, leaving the clip edit for the next undo', () => {
+    const { mine, session } = pair();
+    session.edit(move(X, 40));
+    session.edit(setFrame('1:1'));
+    session.undo();
+    expect(readTimelineDocument(mine).settings).toEqual(frameOf('16:9'));
+    expect(readTimelineDocument(mine).clips[X]?.startFrame).toBe(40);
+    session.undo();
+    expect(readTimelineDocument(mine).clips[X]?.startFrame).toBe(10);
+  });
+
+  it('restores my previous preset and leaves the layer a peer moved meanwhile at the fractions the peer wrote', () => {
+    const { mine, peer, session } = pair([clip(A, MAIN, 0, 48), clip(X, 'v2', 10, 20, { transform: PIP })]);
+    expect(session.edit(setFrame('9:16'))).toMatchObject({ ok: true });
+    const moved: Transform = { ...PIP, frameX: -0.2, frameY: 0.1 };
+    expect(applyTimelineEdit(peer, setTransform(X, moved), Symbol('peer'))).toMatchObject({ ok: true });
+    session.undo();
+    for (const doc of [mine, peer]) {
+      expect(readTimelineDocument(doc).settings).toEqual(frameOf('16:9'));
+      expect(readTimelineDocument(doc).clips[X]?.transform).toEqual(moved);
+    }
+  });
+
+  it('keeps the peer\'s later preset on undo, undoes my earlier move in the same press, and redo brings the move back', () => {
+    const { mine, peer, session } = pair();
+    session.edit(move(X, 40));
+    session.edit(setFrame('9:16'));
+    expect(applyTimelineEdit(peer, setFrame('4:5'), Symbol('peer'))).toMatchObject({ ok: true });
+    session.undo();
+    for (const doc of [mine, peer]) {
+      expect(readTimelineDocument(doc).settings).toEqual(frameOf('4:5'));
+      expect(readTimelineDocument(doc).clips[X]?.startFrame).toBe(10);
+    }
+    expect(session.getSnapshot()).toMatchObject({ canUndo: false, canRedo: true });
+    session.redo();
+    for (const doc of [mine, peer]) {
+      expect(readTimelineDocument(doc).clips[X]?.startFrame).toBe(40);
+      expect(readTimelineDocument(doc).settings).toEqual(frameOf('4:5'));
+    }
+    expect(session.getSnapshot()).toMatchObject({ canRedo: false });
+  });
+
+  it('goes back to the peer\'s preset and then to the one before mine, when I set B, the peer C and I D', () => {
+    const { mine, peer, session } = pair();
+    session.edit(setFrame('9:16'));
+    expect(applyTimelineEdit(peer, setFrame('1:1'), Symbol('peer'))).toMatchObject({ ok: true });
+    session.edit(setFrame('21:9'));
+    session.undo();
+    for (const doc of [mine, peer]) expect(readTimelineDocument(doc).settings).toEqual(frameOf('1:1'));
+    session.undo();
+    for (const doc of [mine, peer]) expect(readTimelineDocument(doc).settings).toEqual(frameOf('16:9'));
+  });
+
+  it('converges on one preset when two users set different presets at once', () => {
+    const seeded = keep(seededDoc(timeline([clip(A, MAIN, 0, 48)])));
+    const copy = keep(new Y.Doc());
+    Y.applyUpdate(copy, Y.encodeStateAsUpdate(seeded));
+    const session = sessionOf(seeded);
+    session.edit(setFrame('9:16'));
+    expect(applyTimelineEdit(copy, setFrame('4:3'), Symbol('peer'))).toMatchObject({ ok: true });
+    Y.applyUpdate(seeded, Y.encodeStateAsUpdate(copy), 'remote');
+    Y.applyUpdate(copy, Y.encodeStateAsUpdate(seeded), 'remote');
+    const settings = readTimelineDocument(seeded).settings;
+    expect(readTimelineDocument(copy).settings).toEqual(settings);
+    expect([frameOf('9:16'), frameOf('4:3')]).toContainEqual(settings);
+  });
+
+  type FrameStep =
+    | { who: 0 | 1; kind: 'frame'; preset: FramePreset }
+    | { who: 0 | 1; kind: 'place'; frameX: number; frameY: number }
+    | { who: 0 | 1; kind: 'undo' }
+    | { who: 0 | 1; kind: 'redo' };
+  const who = fc.constantFrom<0 | 1>(0, 1);
+  const frameStep: fc.Arbitrary<FrameStep> = fc.oneof(
+    { weight: 3, arbitrary: fc.record({ who, kind: fc.constant('frame' as const), preset: fc.constantFrom(...PRESETS) }) },
+    fc.record({ who, kind: fc.constant('place' as const), frameX: fc.integer({ min: -50_000, max: 50_000 }).map((value) => value / 100_000), frameY: fc.integer({ min: -50_000, max: 50_000 }).map((value) => value / 100_000) }),
+    { weight: 2, arbitrary: fc.record({ who, kind: fc.constant('undo' as const) }) },
+    fc.record({ who, kind: fc.constant('redo' as const) }),
+  );
+
+  it('keeps every layer at the fractions last written for it, whatever presets, undo and redo do, and both replicas converge (fast-check)', () => {
+    fc.assert(fc.property(fc.array(frameStep, { minLength: 1, maxLength: 16 }), (steps) => {
+      const left = seededDoc(timeline([clip(A, MAIN, 0, 48), clip(X, 'v2', 10, 20, { transform: PIP })]));
+      const right = new Y.Doc();
+      connect(left, right);
+      const replicas = [left, right] as const;
+      const sessions = [getTimelineEditSession(left, NAME), getTimelineEditSession(right, PEER_NAME)] as const;
+      try {
+        for (const next of steps) {
+          const session = sessions[next.who];
+          if (next.kind === 'frame') expect(session.edit(setFrame(next.preset))).toMatchObject({ ok: true });
+          else if (next.kind === 'place') expect(session.edit(setTransform(X, { ...PIP, frameX: next.frameX, frameY: next.frameY }))).toMatchObject({ ok: true });
+          else if (next.kind === 'undo') session.undo();
+          else session.redo();
+          const settings = readTimelineDocument(left).settings;
+          expect(PRESETS.map(frameOf)).toContainEqual(settings);
+          expect(readTimelineDocument(right)).toEqual(readTimelineDocument(left));
+        }
+        // Only set_transform and its undo or redo move a layer; a preset change or its undo never does.
+        const placements = steps.filter((step) => step.kind === 'place');
+        if (placements.length === 0) expect(readTimelineDocument(left).clips[X]?.transform).toEqual(PIP);
+        for (const replica of replicas) {
+          const transform = readTimelineDocument(replica).clips[X]?.transform;
+          const candidates = [PIP, ...placements.map((step) => ({ ...PIP, frameX: step.frameX, frameY: step.frameY }))];
+          expect(candidates).toContainEqual(transform);
+        }
+      } finally {
+        evictTimelineEditSession(NAME);
+        evictTimelineEditSession(PEER_NAME);
+        left.destroy();
+        right.destroy();
+      }
+    }), { numRuns: 100 });
   });
 });

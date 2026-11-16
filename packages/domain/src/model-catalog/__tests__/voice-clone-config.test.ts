@@ -9,14 +9,13 @@
  * the text in the cloned voice with MiniMax Speech 2.8 HD (design §9.5).
  */
 
-import { initCore } from "@breatic/core";
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 
-import { getFullModelConfig, type FullModelEntry } from "@domain/model-catalog/model-catalog.js";
+import { getFullModelConfig, getModelCatalog, type FullModelEntry } from "@domain/model-catalog/model-catalog.js";
+import { restoreProcessEnv, useFullCatalog } from "./catalog-env.js";
 
-beforeAll(() => {
-  initCore(process.env);
-});
+beforeAll(useFullCatalog);
+afterAll(restoreProcessEnv);
 
 /**
  * The tts bucket's entry for a model name.
@@ -56,7 +55,7 @@ describe("MiniMax Voice Clone", () => {
     expect(clone().icon).toBe("minimax");
   });
 
-  it("runs on WaveSpeed", () => {
-    expect(clone().providers?.map((p) => p.model_id)).toEqual(["minimax/voice-clone"]);
+  it("runs on WaveSpeed first", () => {
+    expect(getModelCatalog().tts.find((m) => m.name === "minimax-voice-clone")?.availability.upstreams[0]?.upstream).toBe("wavespeed");
   });
 });

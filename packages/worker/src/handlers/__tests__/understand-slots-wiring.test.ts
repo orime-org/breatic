@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * Both worker readings of media take a place before they read (inner#1337
- * §3.3): a canvas reading, and the description a video element is created
- * with. When no place is free, neither reaches the media.
+ * A canvas reading of media takes a place before it reads (inner#1337 §3.3):
+ * when no place is free, it does not reach the media. The description a video
+ * element is created with takes one too, through the model run's reading place
+ * (`model-task.test.ts`).
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -43,7 +44,6 @@ vi.mock("@breatic/domain", async () => ({
   taskService: {},
   creditLotService: {},
   creditsForUsd: vi.fn(),
-  resolveActiveProvider: vi.fn(),
   nodeHistoryService: {},
   settleTaskForNode: vi.fn(),
   understandMediaAt: h.understandMediaAt,
@@ -52,10 +52,9 @@ vi.mock("@breatic/domain", async () => ({
   readingLimitsUntil: (await import("@domain/understand/limits-until.js")).readingLimitsUntil,
 }));
 
-const { stepDepsFor } = await import("@worker/handlers/step-deps.js");
 const { runUnderstand } = await import("@worker/handlers/dispatch.js");
 
-const usage = { recordServiceCall: vi.fn(), settle: vi.fn(async () => 0) };
+const usage = { recordServiceCall: vi.fn(), settle: vi.fn(async () => 0), awaitingLookup: () => [] };
 
 beforeEach(() => {
   h.understandMediaAt.mockReset();
@@ -64,17 +63,6 @@ beforeEach(() => {
 });
 
 describe("a worker reading of media", () => {
-  it("describes an element image inside a place", async () => {
-    await expect(stepDepsFor(null, Date.now() + 3_600_000).describeImage("https://a/cat.png")).resolves.toMatchObject({ text: "a cat" });
-  });
-
-  it("does not describe an element image when no place is free", async () => {
-    h.full.value = true;
-
-    await expect(stepDepsFor(null, Date.now() + 3_600_000).describeImage("https://a/cat.png")).rejects.toBeInstanceOf(h.StillRunning);
-    expect(h.understandMediaAt).not.toHaveBeenCalled();
-  });
-
   it("does not read a canvas node's media when no place is free", async () => {
     h.full.value = true;
 

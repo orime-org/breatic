@@ -225,10 +225,11 @@ function MessageListInner({
                 {t('chat.loadEarlier')}
               </Button>
             ) : null}
-            {messages.map((m) => (
+            {messages.map((m, i) => (
               <MessageBubble
                 key={m.id}
                 message={m}
+                afterReply={m.takenIn === true && messages[i - 1]?.role === 'assistant'}
                 // Only the bubble that is still waiting has anywhere to put it,
                 // and handing the same value to every bubble takes the whole
                 // list through a render each time a fold starts and ends.

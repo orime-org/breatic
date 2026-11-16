@@ -242,6 +242,26 @@ export async function createGenerationSuccessIfAbsent(data: {
 }
 
 /**
+ * Write the credits a task was billed on its generation rows, and clear the `billing: "pending"` they carried while
+ * the task waited on its cost (inner#1743).
+ * @param taskId - The task.
+ * @param credits - What it was billed.
+ */
+export async function updateGenerationCredits(taskId: string, credits: number): Promise<void> {
+  await db
+    .update(nodeHistory)
+    .set({ metadata: sql`(coalesce(${nodeHistory.metadata}, '{}'::jsonb) - 'billing') || jsonb_build_object('credits', ${credits}::numeric)` })
+    .where(
+      and(
+        eq(nodeHistory.taskId, taskId),
+        eq(nodeHistory.entryType, "generation"),
+        eq(nodeHistory.status, "success"),
+        isNull(nodeHistory.deletedAt),
+      ),
+    );
+}
+
+/**
  * Idempotently record a successful upload. Two partial unique indexes can
  * block the insert: the granted storage key from migration 0071 — a report
  * that arrives twice (#173) — and content per node from migration 0087 —

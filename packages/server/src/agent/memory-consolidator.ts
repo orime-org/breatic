@@ -28,20 +28,20 @@ import { parseCreditDecimal } from "@breatic/shared";
 
 import { stepCountIs } from "ai";
 import type { ModelMessage } from "ai";
+import type { PreparedCall } from "@breatic/provider";
 import {
   generateTextRetry,
-  getModel,
-  callOptionsFor,
   creditLotService,
   createUsageRecorder,
   handOffLookups,
-  resolveProvider,
+  provider,
 } from "@breatic/domain";
 import type { UsageRecorder } from "@breatic/domain";
 import { getAgentConfig, logger, MEMORY_CONTENT_MAX_CHARS, MEMORY_TITLE_MAX_CHARS } from "@breatic/core";
 import { memoryService } from "@server/modules";
 import type { ConsolidationInput } from "@server/modules/memory/memory.service.js";
 import { readConsolidationAnswer } from "@server/agent/consolidation-answer.js";
+import { watchModelCalls } from "@server/agent/model-call-watch.js";
 
 const CONSOLIDATION_PROMPT = `\
 You are the memory consolidator for an AI creative assistant. The turns below are leaving the assistant's context. You are given them, the memory entries the assistant keeps about this user, and where the conversation has got to. Record what the turns add as changes to single entries.
@@ -212,6 +212,8 @@ interface ConsolidationBill {
   usage: UsageRecorder;
   /** Which model spent it. */
   model: string;
+  /** The upstream that served the call; what the charge names. */
+  upstream: string;
 }
 
 /**
@@ -224,10 +226,11 @@ interface ConsolidationBill {
  * @param conversationId - The conversation it folded.
  * @param watermarkBefore - Where the watermark stood.
  * @param foldId - The id this fold drew when it started.
- * @param attempt - Which answer this was, from 1.
+ * @param attempt - Which answer this was, from 1; `cut` for what the fold's calls were billed for and could not hand
+ *   over in a finish.
  * @returns The key.
  */
-function consolidationKey(conversationId: string, watermarkBefore: number, foldId: string, attempt: number): string {
+function consolidationKey(conversationId: string, watermarkBefore: number, foldId: string, attempt: number | "cut"): string {
   return `consolidate:${conversationId}:${String(watermarkBefore)}:${foldId}:${String(attempt)}`;
 }
 
@@ -240,7 +243,7 @@ function consolidationKey(conversationId: string, watermarkBefore: number, foldI
  * @param input - Who ran it, over which window, and what it cost.
  */
 async function bill(input: ConsolidationBill): Promise<void> {
-  const { userId, conversationId, projectId, watermarkBefore, usage, model } = input;
+  const { userId, conversationId, projectId, watermarkBefore, usage, model, upstream } = input;
 
   let chargedAmount = 0;
   try {
@@ -249,10 +252,9 @@ async function bill(input: ConsolidationBill): Promise<void> {
     for (const err of writeFailures) {
       logger.error({ err, userId, conversationId, watermarkBefore }, "agent_usage_record_failed");
     }
-    // An OpenRouter call whose cost is not in hand is looked up and charged
-    // later, under a key of its own.
+    // A call whose cost is not in hand is looked up and charged later, under
+    // a key of its own.
     await handOffLookups(usage.awaitingLookup(), usage.operation, {
-      model,
       description: "Memory consolidation",
       charge: true,
     }).catch((err: unknown) =>
@@ -268,7 +270,7 @@ async function bill(input: ConsolidationBill): Promise<void> {
         amount,
         description: "Memory consolidation",
         model,
-        provider: resolveProvider(model),
+        provider: upstream,
       },
     );
 
@@ -337,13 +339,15 @@ export async function consolidateWindow(window: ConsolidationWindow): Promise<Co
   // Everything the call is built from, gathered before a single token is
   // spent. A read that fails here costs this turn its fold and nothing else.
   let input: ConsolidationInput;
-  let model: ReturnType<typeof getModel>;
+  let prepared: PreparedCall;
   try {
     input = await memoryService.consolidationInput(
       { userId, projectId, conversationId },
       config.consolidation_entries_max_chars,
     );
-    model = getModel(config.consolidation_model);
+    // Folding a transcript has no reasoning step in it, and asks for a fixed
+    // temperature of 0; provider sends each the way the upstream takes it.
+    prepared = provider().llm.prepare(config.consolidation_model, { thinking: false, cache: false, temperature: 0 });
   } catch (err) {
     if (userLeft(err)) return "aborted";
     logger.error({ err, ...where }, "memory_consolidation_untouched");
@@ -362,77 +366,102 @@ export async function consolidateWindow(window: ConsolidationWindow): Promise<Co
   // From here on the model is involved, so every ending below has calls
   // behind it that were paid for.
   try {
-    for (let attempt = 1; attempt <= config.consolidation_answer_attempts; attempt += 1) {
-      // One call, and transport retries happen inside it: `generateTextRetry`
-      // is handed `llm_max_retries`.
-      const result = await generateTextRetry({
-        model,
-        messages,
-        stopWhen: stepCountIs(1),
-        // Folding a transcript has no reasoning step in it, and asks for a
-        // fixed temperature of 0. Which of the two each model takes, and how,
-        // is settled in the routing table.
-        ...callOptionsFor(config.consolidation_model, { thinking: false, cache: false, temperature: 0 }),
-        maxOutputTokens: config.max_output_tokens,
-        ...(signal ? { abortSignal: signal } : {}),
-      });
+    return await foldWithModel();
+  } finally {
+    await billCutOff();
+  }
 
-      // Billed the moment the call comes back, which is the moment the tokens
-      // are gone, whatever becomes of the answer.
-      const usage = createUsageRecorder({
-        operationKey: consolidationKey(conversationId, watermarkBefore, foldId, attempt),
-        feature: "memory_consolidation",
-        actorUserId: userId,
-        projectId,
-        onMissingCost: (row) => logger.error({ row, ...where }, "agent_usage_cost_missing"),
-      });
-      usage.recordModelCall({
-        source: "model",
-        model: config.consolidation_model,
-        provider: resolveProvider(config.consolidation_model),
-        usage: result.usage,
-        providerMetadata: result.providerMetadata,
-        generationId: result.response.id,
-      });
-      await bill({ userId, conversationId, projectId, watermarkBefore, usage, model: config.consolidation_model });
+  /**
+   * Bill what the prepared call was billed for and could not hand over in a finish (an answer cut mid-body, a call
+   * that failed after the upstream answered), once the fold is over, under a key of this fold's own.
+   */
+  async function billCutOff(): Promise<void> {
+    if (prepared.pendingCosts().length === 0) return;
+    const usage = createUsageRecorder({
+      operationKey: consolidationKey(conversationId, watermarkBefore, foldId, "cut"),
+      feature: "memory_consolidation",
+      actorUserId: userId,
+      projectId,
+      onMissingCost: (row) => logger.error({ row, ...where }, "agent_usage_cost_missing"),
+    });
+    const watch = watchModelCalls(usage, { model: config.consolidation_model, description: "Memory consolidation" }, prepared.pendingCosts);
+    await watch.handOff().catch((err: unknown) => logger.error({ err, ...where }, "usage_lookup_enqueue_failed"));
+    await bill({ userId, conversationId, projectId, watermarkBefore, usage, model: config.consolidation_model, upstream: watch.served() ?? "" });
+  }
 
-      if (userLeft()) return "aborted";
-      // An answer cut off by the output limit is cut off again when asked
-      // the same way; the fold fails here.
-      if (result.finishReason === "length") {
-        throw new Error(`consolidation answer was cut off by the output limit at attempt ${String(attempt)}`);
-      }
-
-      const read = readConsolidationAnswer(result.text, rules);
-      if (read.ok) {
-        const outcome = await memoryService.commitConsolidation({
-          userId,
-          projectId,
-          conversationId,
-          shown: input.full,
-          watermarkBefore,
-          newWatermark,
-          progress: read.answer.progress,
-          operations: read.answer.operations,
+  /**
+   * Ask the model for the fold, again with what was wrong, up to the configured attempts, and write the answer.
+   * @returns How the fold ended.
+   */
+  async function foldWithModel(): Promise<ConsolidationOutcome> {
+    try {
+      for (let attempt = 1; attempt <= config.consolidation_answer_attempts; attempt += 1) {
+        // One call; provider retries and moves to the next upstream inside it.
+        const result = await generateTextRetry({
+          model: prepared.model,
+          messages,
+          stopWhen: stepCountIs(1),
+          ...prepared.options,
+          maxOutputTokens: config.max_output_tokens,
+          ...(signal ? { abortSignal: signal } : {}),
         });
-        // The call was made and paid for whichever ending it reached, so this
-        // line is written for both; the message says which.
-        logger.info(
-          { ...where, outcome, attempt, operations: read.answer.operations.length },
-          outcome === "written" ? "memory_consolidation_written" : "memory_consolidation_superseded",
-        );
-        return outcome;
+
+        // Billed the moment the call comes back, which is the moment the tokens
+        // are gone, whatever becomes of the answer.
+        const usage = createUsageRecorder({
+          operationKey: consolidationKey(conversationId, watermarkBefore, foldId, attempt),
+          feature: "memory_consolidation",
+          actorUserId: userId,
+          projectId,
+          onMissingCost: (row) => logger.error({ row, ...where }, "agent_usage_cost_missing"),
+        });
+        const upstream = provider().llm.servedBy(result) ?? "";
+        usage.recordModelCall({
+          source: "model",
+          model: config.consolidation_model,
+          upstream,
+          cost: provider().llm.costOf({ model: config.consolidation_model, usage: result.usage, providerMetadata: result.providerMetadata }),
+        });
+        await bill({ userId, conversationId, projectId, watermarkBefore, usage, model: config.consolidation_model, upstream });
+
+        if (userLeft()) return "aborted";
+        // An answer cut off by the output limit is cut off again when asked
+        // the same way; the fold fails here.
+        if (result.finishReason === "length") {
+          throw new Error(`consolidation answer was cut off by the output limit at attempt ${String(attempt)}`);
+        }
+
+        const read = readConsolidationAnswer(result.text, rules);
+        if (read.ok) {
+          const outcome = await memoryService.commitConsolidation({
+            userId,
+            projectId,
+            conversationId,
+            shown: input.full,
+            watermarkBefore,
+            newWatermark,
+            progress: read.answer.progress,
+            operations: read.answer.operations,
+          });
+          // The call was made and paid for whichever ending it reached, so this
+          // line is written for both; the message says which.
+          logger.info(
+            { ...where, outcome, attempt, operations: read.answer.operations.length },
+            outcome === "written" ? "memory_consolidation_written" : "memory_consolidation_superseded",
+          );
+          return outcome;
+        }
+        errors = read.errors;
+        logger.warn({ ...where, attempt, errors }, "memory_consolidation_answer_refused");
+        messages.push({ role: "assistant", content: result.text }, { role: "user", content: refusal(errors) });
       }
-      errors = read.errors;
-      logger.warn({ ...where, attempt, errors }, "memory_consolidation_answer_refused");
-      messages.push({ role: "assistant", content: result.text }, { role: "user", content: refusal(errors) });
+      throw new Error(`consolidation answer failed its checks ${String(config.consolidation_answer_attempts)} times: ${errors.join("; ")}`);
+    } catch (err) {
+      if (userLeft(err)) return "aborted";
+      // The watermark is where it was and nothing was written: the next fold
+      // reads these turns again.
+      logger.error({ err, ...where }, "memory_consolidation_failed");
+      return "failed";
     }
-    throw new Error(`consolidation answer failed its checks ${String(config.consolidation_answer_attempts)} times: ${errors.join("; ")}`);
-  } catch (err) {
-    if (userLeft(err)) return "aborted";
-    // The watermark is where it was and nothing was written: the next fold
-    // reads these turns again.
-    logger.error({ err, ...where }, "memory_consolidation_failed");
-    return "failed";
   }
 }

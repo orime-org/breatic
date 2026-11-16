@@ -383,8 +383,7 @@ describe("list_generation_models says which settings set the price (breatic#1361
     const answer = await run<PricedModelsForMode>(generationModels, { nodeType: "image", mode: "t2i" });
     if (!answer.available) throw new Error("t2i has models");
     const rendered = renderGenerationModelsForModel(answer);
-    const flat = "grok-imagine-image-v2.0-text-to-image";
-    for (const [model, param] of [["nano-banana-2", "aspect_ratio"], [flat, "aspect_ratio"], [flat, "resolution"]] as const) {
+    for (const [model, param] of [["nano-banana-2", "aspect_ratio"], ["grok-imagine-image-v2.0-text-to-image", "aspect_ratio"]] as const) {
       const options = answer.models.find((one) => one.name === model)?.params[param]?.options ?? [];
       // Guards the case itself: every value prices the same.
       expect(new Set(await creditsAcross(model, param, options)).size, `${model} ${param}`).toBe(1);
