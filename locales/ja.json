@@ -348,6 +348,10 @@
     "document": {
       "versions_full": "{limit, plural, other {この Document のスナップショットは上限の # 件に達しています。古いスナップショットを削除してから保存してください。}}"
     },
+    "spend_cap": {
+      "member": "このStudioでの今月の利用額が上限（{limit} クレジット）に達しました。追加が必要な場合はStudioの管理者に連絡してください",
+      "studio": "このStudioの今月の利用額が上限に達しました。Studioの管理者に連絡してください"
+    },
     "operation": {
       "exhausted": "今月の操作回数を使い切りました。クレジットが {credits} に足りません。チャージすると続けられます。",
       "key_taken": "この操作はすでに処理されています。"

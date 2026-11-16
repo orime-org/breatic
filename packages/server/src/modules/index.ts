@@ -35,7 +35,7 @@ export * as runningTurnsService from "@server/modules/conversation/running-turns
 export * as memoryService from "@server/modules/memory/memory.service.js";
 export * as paymentService from "@server/modules/payment/payment.service.js";
 export { precheckCredits, reserveForRun } from "@server/modules/payment/credit-precheck.service.js";
-export { admitOperationOrRefuse, OperationsExhaustedError, OperationKeyTakenError, ReasonedError } from "@server/modules/operation/operation-admission.service.js";
+export { admitOperationOrRefuse, OperationsExhaustedError, OperationKeyTakenError, ReasonedError, SpendCapReachedError } from "@server/modules/operation/operation-admission.service.js";
 export * as creditViewService from "@server/modules/credit/credit-view.service.js";
 export {
   assertStorageAllowance,

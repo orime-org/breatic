@@ -8,7 +8,7 @@
 
 import { AppError, getOperationsConfig, logger } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
-import { operationService } from "@breatic/domain";
+import { operationService, type creditHoldService } from "@breatic/domain";
 import { formatCredits, getActiveLocale, t } from "@breatic/shared";
 
 /**
@@ -42,6 +42,34 @@ export class OperationsExhaustedError extends ReasonedError {
   }
 }
 
+/** Work refused by a studio's monthly spend limit (inner#1968, design 3.10). */
+export class SpendCapReachedError extends ReasonedError {
+  /** The person's own limit, or the studio's total. */
+  readonly scope: creditHoldService.SpendCapHit["scope"];
+  /** The limit, as a decimal string. */
+  readonly limit: string;
+  /** When the month resets, as ISO text. */
+  readonly resetsAt: string;
+
+  /**
+   * Build the refusal.
+   * @param cap - The limit the work would pass.
+   */
+  constructor(cap: creditHoldService.SpendCapHit) {
+    super(
+      402,
+      cap.scope === "member"
+        ? t("server.spend_cap.member", { limit: formatCredits(cap.limit, getActiveLocale()) })
+        : t("server.spend_cap.studio"),
+      "spend_cap_reached",
+    );
+    this.name = "SpendCapReachedError";
+    this.scope = cap.scope;
+    this.limit = cap.limit;
+    this.resetsAt = cap.resetsAt;
+  }
+}
+
 /** The operation key already has a row: this operation ran before. */
 export class OperationKeyTakenError extends ReasonedError {
   /** Build the refusal. */
@@ -56,6 +84,7 @@ export class OperationKeyTakenError extends ReasonedError {
  * @param tx - The entry's transaction, when the admission is its first statement.
  * @returns The admission: not metered, covered or held.
  * @throws {OperationsExhaustedError} 402 when the studio cannot hold the overage price.
+ * @throws {SpendCapReachedError} 402 when a monthly spend limit cannot take the overage price.
  * @throws {OperationKeyTakenError} 409 when the key already has a row.
  */
 export async function admitOperationOrRefuse(
@@ -64,6 +93,7 @@ export async function admitOperationOrRefuse(
 ): Promise<Exclude<operationService.AdmitOutcome, { kind: "refused" | "taken" }>> {
   const outcome = await operationService.admitOperation(input, tx);
   if (outcome.kind === "refused") throw new OperationsExhaustedError();
+  if (outcome.kind === "capped") throw new SpendCapReachedError(outcome.cap);
   if (outcome.kind === "taken") refuseTakenKey(input.actorUserId, input.projectId ?? null, input.key);
   return outcome;
 }

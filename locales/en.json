@@ -348,6 +348,10 @@
     "document": {
       "versions_full": "{limit, plural, one {This document already has 1 snapshot. Delete it to save a new one.} other {This document already has # snapshots. Delete an old one to save a new one.}}"
     },
+    "spend_cap": {
+      "member": "You've reached your monthly spend limit in this Studio ({limit} credits). Contact the Studio admin if you need more.",
+      "studio": "This Studio has reached its monthly spend limit. Contact the Studio admin."
+    },
     "operation": {
       "exhausted": "This month's operations are used up, and there are fewer than {credits} credits for the next one. Add credits to continue.",
       "key_taken": "This operation was already handled."

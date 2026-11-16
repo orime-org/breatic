@@ -20,6 +20,7 @@
 
 import { AppError, env, getNodeTaskConfig } from "@breatic/core";
 import { assetService, creditHoldService, creditLotService } from "@breatic/domain";
+import { SpendCapReachedError } from "@server/modules/operation/operation-admission.service.js";
 import { parseCreditDecimal, quantizeQuotedCredits, serializeCreditMicro, ceilToCreditCent, formatCredits, getActiveLocale, t, type ProjectCreditsView } from "@breatic/shared";
 
 /**
@@ -129,6 +130,7 @@ async function refuse(userId: string, required: number, figures: RefusalFigures)
  * @param userId - The authenticated caller.
  * @param referenceId - The run's task id, which the worker releases by.
  * @param required - The run's estimate.
+ * @throws {SpendCapReachedError} 402 when a monthly spend limit cannot take the estimate.
  * @throws {CreditsHeldError} 402 when running work holds what it needs.
  * @throws {AppError} 402 when the studio cannot cover it for another cause.
  * @throws {RangeError} When the estimate is negative or not a number.
@@ -149,6 +151,7 @@ export async function reserveForRun(
     ttlMs: getNodeTaskConfig().default_budget_ms,
   });
   if (outcome.ok) return;
+  if (outcome.cap !== undefined) throw new SpendCapReachedError(outcome.cap);
   await refuse(userId, charge, outcome);
 }
 
@@ -159,6 +162,7 @@ export async function reserveForRun(
  * @param projectId - The project the work belongs to; its studio pays.
  * @param userId - The authenticated caller.
  * @param required - Credits the studio's balance must at least reach.
+ * @throws {SpendCapReachedError} 402 when the caller or the studio has spent its monthly limit.
  * @throws {AppError} 402 when the balance does not cover `required`.
  */
 export async function precheckCredits(
@@ -167,9 +171,27 @@ export async function precheckCredits(
   required: number,
 ): Promise<void> {
   if (!env.PAYMENT_ENABLED) return;
+  // Judged before the balance, as every admission judges it (design 3.10).
+  const cap = await creditHoldService.spendCapFor(projectId, userId, null);
+  if (cap !== null) throw new SpendCapReachedError(cap);
 
   const studioId = await assetService.resolveOwnerStudioId(projectId);
   const spendable = await creditLotService.getSpendableCredits(studioId);
   if (parseCreditDecimal(spendable) >= quantizeQuotedCredits(required)) return;
   await refuse(userId, required, { studioId, spendable, held: serializeCreditMicro(0n), available: spendable });
+}
+
+/**
+ * Refuse a run a monthly spend limit cannot take before anything is written
+ * for it, so the refusal leaves no operation behind (inner#1968, design
+ * 3.10). `reserveForRun` judges it again under the studio's debt lock with
+ * the hold it writes; this one only saves the writes in between.
+ * @param projectId - The project the run belongs to; its studio pays.
+ * @param userId - The authenticated caller.
+ * @param required - The run's estimate.
+ * @throws {SpendCapReachedError} 402 when the caller or the studio cannot spend that much more this month.
+ */
+export async function assertWithinSpendCap(projectId: string, userId: string, required: number): Promise<void> {
+  const cap = await creditHoldService.spendCapFor(projectId, userId, ceilToCreditCent(required));
+  if (cap !== null) throw new SpendCapReachedError(cap);
 }

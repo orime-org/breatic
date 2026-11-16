@@ -48,7 +48,7 @@ import { agentInstructionsService } from "@server/modules";
 import { runningTurnsService } from "@server/modules";
 import { projectService } from "@server/modules";
 import { precheckCredits } from "@server/modules";
-import { OperationsExhaustedError } from "@server/modules";
+import { OperationsExhaustedError, SpendCapReachedError } from "@server/modules";
 import { chatOperationKey, releaseChatMessages, renewChatMessages } from "@server/modules/operation/operation-admission.service.js";
 import { SMALLEST_CREDIT, operationService } from "@breatic/domain";
 import { startRun, stopChannel } from "@server/agent/chat-run.js";
@@ -410,6 +410,7 @@ chat.post("/message", runChatMessageOnce, acceptTransferBody("chat_message"), va
     revive: true,
   });
   if (admitted.kind === "refused") throw new OperationsExhaustedError();
+  if (admitted.kind === "capped") throw new SpendCapReachedError(admitted.cap);
   if (admitted.kind === "taken" && admitted.status !== "reserved") {
     logger.warn({ userId: user.id, projectId: body.project_id, key: operationKey }, "operation_key_taken");
     const { active } = await chatQueue().peek(conversation.id);
@@ -481,9 +482,14 @@ chat.post(
         await precheckCredits(projectId, user.id, SMALLEST_CREDIT);
       } catch (err) {
         if (!(err instanceof AppError) || err.statusCode !== 402) throw err;
-        return c.json({
-          data: { pending: pendingOf(await queue.pending(conversation.id)), running: false, awaiting: false, blocked: "credits", next_sync_ms },
-        });
+        const pending = pendingOf(await queue.pending(conversation.id));
+        // A spend limit is lifted by the Studio's admin, not by adding credits (inner#1968).
+        if (err instanceof SpendCapReachedError) {
+          return c.json({
+            data: { pending, running: false, awaiting: false, blocked: "spend_cap", scope: err.scope, resetsAt: err.resetsAt, next_sync_ms },
+          });
+        }
+        return c.json({ data: { pending, running: false, awaiting: false, blocked: "credits", next_sync_ms } });
       }
       const claimed = await queue.claim(conversation.id);
       if (claimed.status === "start") {
