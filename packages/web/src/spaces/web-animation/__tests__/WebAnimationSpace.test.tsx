@@ -202,6 +202,12 @@ describe('the two panels', () => {
     expect(screen.queryByTestId('motion-panel-executions')).toBeNull();
   });
 
+  it('stacks the panels inside the Space, under the Space notices drawn over it', async () => {
+    show();
+    // Its own stacking context keeps every z-index inside below the outlet's read-only and size notices (z-10).
+    expect(await screen.findByTestId('motion-space')).toHaveClass('isolate');
+  });
+
   it('keeps one panel open at a time and closes it with Esc', async () => {
     show();
     const user = userEvent.setup();

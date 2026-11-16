@@ -582,7 +582,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
     ? { left: '50%', bottom: 8, transform: 'translateX(-50%)' }
     : { left: `calc(${point.x * 100}% + 14px)`, top: `calc(${point.y * 100}% - 12px)` });
 
-  return <div data-testid='motion-space' className='relative h-full overflow-hidden bg-muted'>
+  return <div data-testid='motion-space' className='relative isolate h-full overflow-hidden bg-muted'>
     {panels.panel === 'executions' && <MotionExecutionsPanel lists={lists} tab={panels.tab} selectedId={selectedId} onTab={pickTab} onPick={pickRow} onClose={closePanel} />}
     {panels.panel === 'annotations' && <MotionAnnotationsPanel threads={threads} order={order} rows={lists.byId} activeThreadId={activeThreadId} onOpen={openThread} onClose={closePanel} />}
     <div className={cn('absolute bottom-[4.5rem] left-6 top-6 flex items-center justify-center', panelOpen ? 'right-[22rem]' : 'right-6')} style={{ containerType: 'size' }}>
