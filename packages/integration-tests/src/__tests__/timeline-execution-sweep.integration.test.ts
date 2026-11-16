@@ -28,6 +28,17 @@ vi.mock("@breatic/domain", async (importOriginal) => {
   return { ...actual, creditHoldService: { ...actual.creditHoldService, releaseHold: release } };
 });
 
+// A batch of two, so a handful of rows spans several batches. A proxy, not a copy, keeps the live `logger` binding
+// that `captureErrorLogs` replaces.
+vi.mock("@breatic/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof CoreModule>();
+  const getTimelineConfig = (): ReturnType<typeof actual.getTimelineConfig> => {
+    const config = actual.getTimelineConfig();
+    return { ...config, web_animation: { ...config.web_animation, sweep_batch_size: 2 } };
+  };
+  return new Proxy(actual, { get: (target, key) => (key === "getTimelineConfig" ? getTimelineConfig : Reflect.get(target, key)) });
+});
+
 vi.mock("ai", () => ({
   generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
   streamText: () => ({
@@ -39,6 +50,7 @@ vi.mock("ai", () => ({
   tool: (config: Record<string, unknown>) => config,
 }));
 
+import type * as CoreModule from "@breatic/core";
 import type * as DomainModule from "@breatic/domain";
 import type { Job, Queue } from "bullmq";
 import { createPgClient, createQueue, createWorker, env, getStreamRedis, initCore, loadLocales, type Redis } from "@breatic/core";
@@ -226,6 +238,12 @@ describe("sweeping rows that should have a job", () => {
     expect(WAITING).toContain(job?.state);
     expect(job?.data).toMatchObject({ executionId: fx.execution.id });
     expect((await read(fx.execution.id)).status).toBe("queued");
+  });
+
+  it("adds the job of every open row in one sweep, however many batches they span", async () => {
+    const rows = [await seed("running"), await seed("running"), await seed("queued"), await seed("queued"), await seed("queued")];
+    await sweepTimelineExecutions(queue);
+    for (const fx of rows) expect(WAITING).toContain((await liveJob(fx.execution.id))?.state);
   });
 
   it.each(["running", "cancelling"] as const)("adds the missing job of a %s row", async (state) => {

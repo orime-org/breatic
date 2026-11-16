@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The `timeline` BullMQ queue's contract (inner#1711 design §5.1, §5.2): collab adds an execution's job when its
- * landing is accepted, the worker's sweep adds it again when it is missing, and the worker runs it. One job per
- * execution, under the execution's id, so adding it again while it waits is a no-op.
+ * The `timeline` BullMQ queue's contract (inner#1711 design §5.1, §5.2; #1490 design §4.2): the server adds an
+ * execution's job once its accept commits, the worker's sweep adds it again when it is missing, and the worker runs
+ * it. One job per execution, under the execution's id, so adding it again while it waits is a no-op.
  */
 
 import type { Queue } from "bullmq";

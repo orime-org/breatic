@@ -9,7 +9,7 @@
  * answered with the current row and `applied: false` instead of a write.
  */
 
-import { and, asc, desc, eq, inArray, isNull, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, lte, sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import type { PgColumn, PgUpdateSetSource } from "drizzle-orm/pg-core";
 import type { TimelineExecution, TimelineExecutionStatus } from "@breatic/shared";
@@ -327,19 +327,21 @@ export async function listForSpace(
 }
 
 /**
- * List executions that have not reached a terminal state, oldest first, for the worker sweep.
+ * List one page of the executions that have not reached a terminal state, by id, for the worker sweep, which pages
+ * through all of them so no row waits behind a full batch of others.
  * @param options - The page.
  * @param options.limit - The most rows to return.
+ * @param options.afterId - The last id of the previous page; the first page when omitted.
  * @param tx - The transaction to read in.
  * @returns The rows.
  * @throws {Error} When the read fails.
  */
-export async function listForSweep(options: { limit: number }, tx?: DbTx): Promise<TimelineExecution[]> {
+export async function listForSweep(options: { limit: number; afterId?: string }, tx?: DbTx): Promise<TimelineExecution[]> {
   const rows = await (tx ?? db)
     .select(columns)
     .from(t)
-    .where(and(inArray(t.status, OPEN), isNull(t.deletedAt)))
-    .orderBy(asc(t.createdAt))
+    .where(and(inArray(t.status, OPEN), isNull(t.deletedAt), options.afterId === undefined ? undefined : gt(t.id, options.afterId)))
+    .orderBy(asc(t.id))
     .limit(options.limit);
   return rows.map(toEntity);
 }

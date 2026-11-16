@@ -11,7 +11,7 @@
  * Project sees what its source made, and may preview, modify and export it but not cancel it.
  */
 
-import { describe, it, expect, beforeAll, inject, vi } from "vitest";
+import { describe, it, expect, afterAll, beforeAll, inject, vi } from "vitest";
 
 vi.mock("ai", () => ({
   generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
@@ -27,7 +27,7 @@ vi.mock("ai", () => ({
 import crypto from "node:crypto";
 import postgres from "postgres";
 import type { Hono } from "hono";
-import { coverKeyFor, getTimelineConfig, timelineExecutionRepo } from "@breatic/core";
+import { TIMELINE_QUEUE, coverKeyFor, createQueue, getTimelineConfig, timelineExecutionRepo } from "@breatic/core";
 import { extractPromptText, t, type TimelineExecution } from "@breatic/shared";
 import { WebAnimationRowViewSchema } from "@breatic/shared/space-content";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
@@ -39,9 +39,16 @@ let sql: ReturnType<typeof postgres>;
 let app: Hono;
 const { seedUser, seedProject, insertExecution, grant, step, succeed, signalsFor, expectNotFound, fillStorage, grantedProjects } = h;
 
+let queue: ReturnType<typeof createQueue>;
+
 beforeAll(() => {
   sql = h.sql;
   app = h.app;
+  queue = createQueue(TIMELINE_QUEUE);
+});
+
+afterAll(async () => {
+  await queue?.close();
 });
 
 /** A row as the routes answer it. */
@@ -205,6 +212,13 @@ describe("POST /timeline/executions — create from a Motion Space", () => {
     expect(await signalsFor(fx.projectId, fx.spaceId)).toEqual([
       { type: "project-space-tasks:changed", projectId: fx.projectId, spaceId: fx.spaceId, ts: expect.any(Number) },
     ]);
+  });
+
+  it("adds the row's job to the timeline queue as soon as it is accepted, without waiting for the sweep", async () => {
+    const fx = await seedProject();
+    const data = await acceptRow(fx.editor.cookie, createBody(fx), 201);
+    const job = await queue.getJob(data.id);
+    expect(job?.data).toEqual({ executionId: data.id });
   });
 
   it("refuses the same action sent again as another kind with 409", async () => {

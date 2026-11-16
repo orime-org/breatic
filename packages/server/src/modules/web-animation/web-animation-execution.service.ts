@@ -8,7 +8,7 @@
  * differs. An export then looks for a live export of the same source in the same Motion Space that this Project holds
  * a grant for, and answers it. Only a new row needs a balance above zero (no credits are held; settlement later
  * charges actual use) and, for an export, storage left; the row starts `queued` and is written with this Project's
- * grant in one transaction, an export with the upload its video is written to. Reads answer through the grants, as
+ * grant in one transaction, an export with the upload its video is written to, and its job is added once that commits. Reads answer through the grants, as
  * the one row view, so a duplicated Project sees, modifies and exports what its source made and cancels only its own.
  */
 
@@ -19,6 +19,7 @@ import {
   ForbiddenError,
   NotFoundError,
   ValidationError,
+  addTimelineExecutionJob,
   budgetDeadlineFrom,
   db,
   env,
@@ -57,6 +58,7 @@ import { assertStorageAllowance } from "@server/modules/asset/storageQuota.servi
 import { precheckCredits } from "@server/modules/payment/credit-precheck.service.js";
 import * as projectService from "@server/modules/project/project.service.js";
 import { publishSpaceTasksQuietly } from "@server/modules/task/publish-counts.js";
+import { timelineQueue } from "@server/modules/web-animation/timeline-queue.js";
 import * as grantRepo from "@server/modules/web-animation/execution-grant.repo.js";
 import * as listRepo from "@server/modules/web-animation/web-animation-list.repo.js";
 
@@ -247,6 +249,10 @@ export async function accept(userId: string, body: WebAnimationExecutionRequest 
       if (inserted === null) throw new InsertLost();
       await grantRepo.insertGrant({ executionId: inserted.id, projectId }, tx);
       return inserted;
+    });
+    // The row runs as soon as its job is in the queue; a failed add is left to the worker's sweep.
+    await addTimelineExecutionJob(timelineQueue(), row.id).catch((err: unknown) => {
+      logger.error({ err, executionId: row.id, projectId, spaceId, userId }, "web_animation_execution_enqueue_failed");
     });
     await publishSpaceTasksQuietly(projectId, spaceId);
     return answer(row, true);

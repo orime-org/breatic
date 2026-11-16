@@ -37,7 +37,7 @@ const webAnimationSchema = z.object({
   preview_premount_ms: positiveInt.default(2000),
   /** How many loaded preview pages no copy uses that the preview keeps for reuse before unloading the oldest. */
   preview_idle_instances_max: positiveInt.default(8),
-  /** How often the worker sweeps executions that have not ended, and how many it reads per sweep. */
+  /** How often the worker sweeps executions that have not ended, and how many it reads per batch; a sweep reads them all. */
   sweep_interval_ms: positiveInt.default(30_000),
   sweep_batch_size: positiveInt.default(200),
   /** How long a pickup waits before asking the container job again. */
