@@ -182,6 +182,17 @@ describe('CM §4.3 colour matrix resolved once into the plan', () => {
   ])('CM02 an untagged source %o resolves by its coded height to %s', (stream, matrix) => {
     expect(probeExport('resolveVideoColorMatrix')(stream)).toBe(matrix);
   });
+
+  // The plan holds only matrices the recipes decode and tag: SMPTE 240M and FCC as tagged; an RGB-coded stream (PNG, FFV1 RGB,
+  // whose frames the scaler converts with no input matrix) and a matrix neither swscale nor the tag filters write resolve as
+  // an untagged one.
+  it.each([
+    [{ color_space: 'smpte240m', height: 1080 }, 'smpte240m'], [{ color_space: 'fcc', height: 480 }, 'fcc'],
+    [{ color_space: 'gbr', height: 36 }, 'bt601'], [{ color_space: 'gbr', height: 1080 }, 'bt709'],
+    [{ color_space: 'ycgco', height: 1080 }, 'bt709'], [{ color_space: 'bt2020c', height: 480 }, 'bt601'],
+  ])('CM03 a source tagged %o resolves to %s', (stream, matrix) => {
+    expect(probeExport('resolveVideoColorMatrix')(stream)).toBe(matrix);
+  });
 });
 
 describe('DG §4.3 display geometry', () => {

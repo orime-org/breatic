@@ -20,6 +20,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { runPlanJob, type PlanRunBody } from '@ingest/container/plan-run.js';
+import { resolveVideoColorMatrix } from '@ingest/container/physical-video-probe.js';
 import { coverArgs, coverDecoderArgs, probeArgs, readProbeOutput } from '@ingest/probe-command.js';
 
 const run = promisify(execFile);
@@ -405,6 +406,23 @@ describe('chunk_encode (§5.4 切块、块的时间; §7.17)', () => {
     for (const mean of await lumaMeans(file!, { x: 64, y: 0, width: 64, height: 36 })) expect(Math.abs(mean - 71)).toBeLessThan(6);
   });
 
+  // An RGB-coded source (PNG in MOV) packs with the matrix its own plan resolves; the scaler converts RGB frames with no
+  // input matrix, so the packed picture is the same whatever that matrix is.
+  it('CE22 an RGB-coded alpha source packs with its plan matrix, its picture independent of it', async () => {
+    const source = join(dir, 'alpha.mov');
+    const planMatrix = resolveVideoColorMatrix((await probe(source)).streams[0] as unknown as Record<string, unknown>);
+    const packed = async (colorMatrix: string): Promise<number[]> =>
+      lumaMeans((await produce({ [SOURCE]: source }, [chunk({ start: 0, end: 10 }, [span(r(0), r(0), r(0), r(2, 5))], { ...TARGET, colorMatrix, width: 128, height: 36, alpha: 'packed' })]))[0]!);
+    const [own, bt709, bt601] = [await packed(planMatrix), await packed('bt709'), await packed('bt601')];
+    expect(own).toEqual(bt709);
+    expect(bt601).toEqual(bt709);
+  });
+
+  // SMPTE 240M and FCC sources decode with their own matrix.
+  it.each(['smpte240m', 'fcc'])('CE23 a %s plan decodes', async (colorMatrix) => {
+    await produce({ [SOURCE]: join(dir, 'cfr.mp4') }, [chunk({ start: 0, end: 10 }, [span(r(0), r(0), r(0), r(2, 5))], { ...TARGET, colorMatrix })]);
+  });
+
   // An edit that starts inside a source frame keeps that frame, shown from clipStart (design §7.17 时间线「被剪辑起点截去一部分的帧保留」;
   // D1 CT04 「the first kept partially」). §5.4 cuts chunks only at presented-frame boundaries, so a chunk window never starts
   // mid-frame; a partial frame exists only where a span starts mid-frame, as the first entry (CE09) or a later one (CE10).
@@ -687,6 +705,12 @@ describe('copy_carrier and prepare_model_input', () => {
     expect([video.start_time, carried.start_time]).toEqual([sourceVideo.start_time, sourceAudio.start_time]);
     const sourceSeconds = sourceAudio.duration_ts / Number(sourceAudio.sample_rate);
     expect(Math.abs(carried.duration_ts / 48000 - sourceSeconds)).toBeLessThanOrEqual(1 / 96000);
+  });
+
+  // The copy writes the plan's matrix as the stream's tag (H.264 matrix_coefficients 7 and 4).
+  it.each(['smpte240m', 'fcc'])('CC06 a %s plan is tagged on the copy', async (colorMatrix) => {
+    const [file] = await produce({ [SOURCE]: join(dir, 'cfr.mp4') }, [{ kind: 'copy_carrier', inputId: SOURCE, colorMatrix, origin: r(0), audio: null }]);
+    expect((await probe(file!)).streams.find((stream) => stream.codec_type === 'video')?.color_space).toBe(colorMatrix);
   });
 
   // §4.2 effective audio, §4.1 row 2: FFmpeg's Matroska muxer puts AAC and MP3 priming before time 0; the copies keep every

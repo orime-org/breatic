@@ -825,7 +825,9 @@ describe('modelResultDecode (the one decode rule for a model\'s video result)', 
     expect(modelResultDecode(stream)).toBe(expected);
   });
 
-  it('a tag with no decode matrix is refused', () => {
-    expect(() => modelResultDecode({ color_space: 'ycgco' })).toThrow(RangeError);
+  // The same table as a source's plan matrix: a tag outside it (an RGB-coded result, a matrix the scaler cannot read) decodes
+  // as an untagged result.
+  it.each([['gbr', 'bt601'], ['ycgco', 'bt601'], ['smpte240m', 'smpte240m'], ['fcc', 'fcc']])('a %s tag decodes %s', (tag, matrix) => {
+    expect(modelResultDecode({ color_space: tag })).toBe(`in_color_matrix=${matrix}:in_range=tv`);
   });
 });

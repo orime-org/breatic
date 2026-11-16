@@ -94,7 +94,7 @@ export interface OddFrames {
   leadY: boolean;
 }
 // The plan's matrix names (physical-video-probe.ts) as zscale spells them.
-const ZSCALE_MATRICES: Readonly<Record<string, string>> = { bt709: "709", bt601: "170m", bt2020nc: "2020_ncl" };
+const ZSCALE_MATRICES: Readonly<Record<string, string>> = { bt709: "709", bt601: "170m", bt2020nc: "2020_ncl", smpte240m: "smpte240m", fcc: "fcc" };
 
 /**
  * Odd-sided planar subsampled frames as even ones (§4.3 odd-size row): taken to their planned size (a mid-stream size change
@@ -218,7 +218,7 @@ function toneMap(matrix: string, colour: FrameColour, label: string, keepAlpha: 
 }
 export const BT709_TAGS = "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709:range=tv";
 // The plan's matrix names (physical-video-probe.ts) as the scale filter spells them.
-const SCALE_MATRICES: Readonly<Record<string, string>> = { bt709: "bt709", bt601: "bt601", bt2020nc: "bt2020" };
+const SCALE_MATRICES: Readonly<Record<string, string>> = { bt709: "bt709", bt601: "bt601", bt2020nc: "bt2020", smpte240m: "smpte240m", fcc: "fcc" };
 
 /**
  * Subtract two exact times.
@@ -318,17 +318,17 @@ export function decodedPicture(source: { colorMatrix: string; toneMap: "none" | 
 
 /**
  * The scale options that decode a model's video result (erase, expand, lip-sync), from the result's own tags: its
- * `color_space` mapped as a source's is, and BT.601 when untagged, because the providers encode RGB with swscale's default
- * and write no tags (measured on VACE expand and Bria eraser output, 720p included, so the source rule's BT.709 for an
- * untagged stream of 720 lines or more does not hold here); its `color_range`, and limited range when untagged.
+ * `color_space` mapped as a source's is when `TAGGED_MATRICES` has it, and BT.601 otherwise, because the providers encode RGB
+ * with swscale's default and write no tags (measured on VACE expand and Bria eraser output, 720p included, so the source
+ * rule's BT.709 for an untagged stream of 720 lines or more does not hold here); its `color_range`, and limited range when
+ * untagged.
  * @param stream - The result's ffprobe video stream, read for its `color_space` and `color_range`.
  * @returns The `in_color_matrix` and `in_range` options.
- * @throws {RangeError} When the tagged matrix has no decode value.
+ * @throws {never} Never.
  */
 export function modelResultDecode(stream: Record<string, unknown>): string {
-  const tag = typeof stream.color_space === "string" && stream.color_space !== "" && stream.color_space !== "unknown" ? stream.color_space : null;
-  const matrix = SCALE_MATRICES[tag === null ? "bt601" : TAGGED_MATRICES[tag] ?? tag];
-  if (matrix === undefined) throw new RangeError(`No decode matrix for ${String(tag)}`);
+  const tag = stream.color_space;
+  const matrix = SCALE_MATRICES[typeof tag === "string" && Object.hasOwn(TAGGED_MATRICES, tag) ? TAGGED_MATRICES[tag]! : "bt601"]!;
   return `in_color_matrix=${matrix}:in_range=${stream.color_range === "pc" ? "pc" : "tv"}`;
 }
 

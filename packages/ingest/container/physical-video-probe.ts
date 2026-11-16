@@ -204,19 +204,24 @@ export function parsePhysicalVideoPackets(metadata: unknown, packetBytes: Buffer
   return { streamIndex, sourceTimeBase, packets };
 }
 
-/** Tagged ffprobe `color_space` values and the matrix the plan records for them. */
-export const TAGGED_MATRICES: Readonly<Record<string, string>> = { bt709: "bt709", smpte170m: "bt601", bt470bg: "bt601", bt2020nc: "bt2020nc" };
+/**
+ * Tagged ffprobe `color_space` values and the matrix the plan records for them: every matrix the recipes decode (swscale and
+ * zscale) and the copy tags (H.264/HEVC matrix_coefficients, VP9 color_space).
+ */
+export const TAGGED_MATRICES: Readonly<Record<string, string>> = { bt709: "bt709", smpte170m: "bt601", bt470bg: "bt601", bt2020nc: "bt2020nc", smpte240m: "smpte240m", fcc: "fcc" };
 
 /**
- * Resolve the colour matrix once for the plan (§4.3): a tag is kept; an untagged or `unknown` stream is BT.709 when its
- * coded height is at least 720 and BT.601 otherwise, whatever its rotation.
+ * Resolve the colour matrix once for the plan (§4.3): a tag in `TAGGED_MATRICES` is kept; any other stream is BT.709 when its
+ * coded height is at least 720 and BT.601 otherwise, whatever its rotation. That covers untagged and `unknown` streams,
+ * RGB-coded ones (`gbr`: PNG, FFV1 RGB, whose frames the scaler converts with no input matrix) and matrices the recipes
+ * cannot decode.
  * @param stream - The selected ffprobe stream.
  * @returns The matrix.
  * @throws {TypeError} When an untagged stream has no positive integer coded height.
  */
 export function resolveVideoColorMatrix(stream: Record<string, unknown>): string {
   const tag = stream.color_space;
-  if (typeof tag === "string" && tag !== "" && tag !== "unknown") return Object.hasOwn(TAGGED_MATRICES, tag) ? TAGGED_MATRICES[tag]! : tag;
+  if (typeof tag === "string" && Object.hasOwn(TAGGED_MATRICES, tag)) return TAGGED_MATRICES[tag]!;
   const height = stream.height;
   if (typeof height !== "number" || !Number.isSafeInteger(height) || height <= 0) throw new TypeError("Expected the coded video height");
   return height >= 720 ? "bt709" : "bt601";

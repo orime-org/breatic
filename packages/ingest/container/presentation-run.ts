@@ -558,8 +558,9 @@ export function runPresentationLedger(body: PresentationLedgerRequest, signal?: 
 }
 
 /** The matrix coefficients each tag filter writes for a plan matrix (H.273; vp9_metadata names its colour spaces). */
-const MATRIX_CODES: Readonly<Record<string, string>> = { bt709: '1', bt601: '6', bt2020nc: '9' };
-const VP9_COLOR_SPACES: Readonly<Record<string, string>> = { bt709: 'bt709', bt601: 'bt601', bt2020nc: 'bt2020' };
+const MATRIX_CODES: Readonly<Record<string, string>> = { bt709: '1', bt601: '6', bt2020nc: '9', smpte240m: '7', fcc: '4' };
+// VP9 has no FCC colour space, so a VP9 stream is never tagged FCC.
+const VP9_COLOR_SPACES: Readonly<Record<string, string>> = { bt709: 'bt709', bt601: 'bt601', bt2020nc: 'bt2020', smpte240m: 'smpte240' };
 
 /**
  * The bitstream filter that writes only the plan's matrix tag (§4.1, §91 D2-5), or none when the codec has no tag filter.
