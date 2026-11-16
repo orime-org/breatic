@@ -41,7 +41,7 @@ export {
 // ── Server-only schemas (complex discriminated unions) ───────────────
 
 import { z } from "zod";
-import { REQUEST_SHAPE_PARAMS, creditAmountFormatQuerySchema, ARCHIVED_PROJECT_SORTS, LIVE_PROJECT_SORTS, TEXT_TOOL_INSTRUCTIONS_MAX, TEXT_TOOL_LANGUAGES, TEXT_TOOL_TONES } from "@breatic/shared";
+import { creditAmountFormatQuerySchema, ARCHIVED_PROJECT_SORTS, LIVE_PROJECT_SORTS, TEXT_TOOL_INSTRUCTIONS_MAX, TEXT_TOOL_LANGUAGES, TEXT_TOOL_TONES } from "@breatic/shared";
 import { creditLotService } from "@breatic/domain";
 
 // Mini-Tools: Text
@@ -103,25 +103,6 @@ export const idempotencyKeyHeaderSchema = z.object({
     .string()
     .regex(creditLotService.REFKEY_PATTERN)
     .optional(),
-});
-
-/** A UUID in its canonical text form. */
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/**
- * The `Idempotency-Key` of a request whose key is also an operation's id
- * (inner#1968, design 21 #8): the browser makes one per file, address or
- * message with `crypto.randomUUID()`, so anything else comes from a page
- * that predates the contract. A missing key is refused by `runOnce`.
- */
-export const operationIdHeaderSchema = z.object({
-  "idempotency-key": z
-    .string()
-    .optional()
-    .refine((key) => key === undefined || UUID_PATTERN.test(key), {
-      message: "the Idempotency-Key of an operation is a UUID",
-      params: REQUEST_SHAPE_PARAMS,
-    }),
 });
 
 /**

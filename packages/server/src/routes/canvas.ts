@@ -20,7 +20,6 @@ import { runOnce } from "@server/middleware/run-once.js";
 import { z } from "zod";
 import {
   idempotencyKeyHeaderSchema,
-  operationIdHeaderSchema,
   taskCreateSchema,
   understandSchema,
   transcribeSchema,
@@ -190,10 +189,9 @@ function templateResourceUrl(path: string): string {
 canvas.post(
   "/ingest-url",
   rateLimitFor("ingest-url", "user"),
-  validate("header", operationIdHeaderSchema),
   validate("json", ingestUrlSchema),
   // One address of one press is one operation, keyed by the browser's id (inner#1968).
-  runOnce("ingest-url"),
+  runOnce("ingest-url", { operationId: true }),
   async (c) => {
     const user = c.get("user");
     const body = c.req.valid("json");
@@ -205,7 +203,7 @@ canvas.post(
       nodeId: body.node_id,
       userId: user.id,
       // A template's own resource is not the user's operation.
-      operationKey: body.template_resource === undefined ? `url:${user.id}:${c.req.valid("header")["idempotency-key"]!}` : null,
+      operationKey: body.template_resource === undefined ? `url:${user.id}:${c.req.header("idempotency-key")!}` : null,
     });
     return c.json({ data: { task_id: taskId } }, 201);
   },

@@ -212,17 +212,27 @@ async function finish(
   c.res.headers.set("Idempotency-Status", "done");
 }
 
+/** A UUID in its canonical text form. */
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /**
  * Run the route once per `Idempotency-Key`; mount after `requireAuth` and
  * the request validators.
  * @param scope - Which run-once request this route is.
+ * @param options - How the key is checked.
+ * @param options.operationId - The key is also an operation's id (inner#1968,
+ *   design 21 #8): the page makes it with `crypto.randomUUID()`, so anything
+ *   else comes from a page that predates the contract.
  * @returns The middleware.
  */
-export function runOnce(scope: IdempotencyScope): MiddlewareHandler<{ Variables: AuthVariables }> {
+export function runOnce(scope: IdempotencyScope, options: { operationId?: boolean } = {}): MiddlewareHandler<{ Variables: AuthVariables }> {
   return async (c, next) => {
     const key = c.req.header("idempotency-key");
     // Only a page built before this route required a key leaves it out.
     if (!key) return refuse(c, 400, "server.idempotency.missing", undefined, REQUEST_SHAPE_REASON);
+    if (options.operationId === true && !UUID_PATTERN.test(key)) {
+      return refuse(c, 400, "server.idempotency.missing", undefined, REQUEST_SHAPE_REASON);
+    }
 
     const ctx: RunContext = { userId: c.get("user").id, scope, key };
     const redisKey = `${env.REDIS_KEY_PREFIX}:server:idempotency:${ctx.userId}:${scope}:${key}`;

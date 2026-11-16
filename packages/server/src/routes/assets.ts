@@ -53,7 +53,6 @@ import { userUrlSchema } from "@breatic/domain";
 import { startUrlIngest } from "@server/modules/asset/url-ingest.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import { runOnce } from "@server/middleware/run-once.js";
-import { operationIdHeaderSchema } from "@server/routes/schemas.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor, rateLimitForAll } from "@server/middleware/rate-limit.js";
 import {
@@ -336,10 +335,9 @@ assets.post(
   requireAuth,
   // One window with the canvas lane: both start fetches through our Worker.
   rateLimitFor("ingest-url", "user"),
-  validate("header", operationIdHeaderSchema),
   validate("json", ingestUrlSchema),
   // One address of one press is one operation, keyed by the browser's id (inner#1968).
-  runOnce("ingest-url"),
+  runOnce("ingest-url", { operationId: true }),
   async (c) => {
     const user = c.get("user");
     const body = c.req.valid("json");
@@ -348,7 +346,7 @@ assets.post(
       projectId: body.project_id,
       spaceId: body.space_id,
       userId: user.id,
-      operationKey: `url:${user.id}:${c.req.valid("header")["idempotency-key"]!}`,
+      operationKey: `url:${user.id}:${c.req.header("idempotency-key")!}`,
     });
     return c.json({ data: { storage_key: key } }, 201);
   },
@@ -369,10 +367,9 @@ assets.post(
   "/upload-ticket",
   requireAuth,
   rateLimitFor("upload-ticket", "user"),
-  validate("header", operationIdHeaderSchema),
   validate("json", uploadTicketSchema),
   // One file of one press is one operation, keyed by the browser's id (inner#1968).
-  runOnce("upload-ticket"),
+  runOnce("upload-ticket", { operationId: true }),
   async (c) => {
     const user = c.get("user");
     const body = c.req.valid("json");
@@ -393,7 +390,7 @@ assets.post(
         : body.studio_id;
 
     const outcome = await issueUploadTicket(
-      { userId: user.id, studioId, projectId: body.project_id, operationKey: `upload:${user.id}:${c.req.valid("header")["idempotency-key"]!}` },
+      { userId: user.id, studioId, projectId: body.project_id, operationKey: `upload:${user.id}:${c.req.header("idempotency-key")!}` },
       body,
       async () => {
         await assertStudioStorageAllowance(studioId, "upload");
