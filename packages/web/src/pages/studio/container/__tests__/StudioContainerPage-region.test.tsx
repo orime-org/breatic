@@ -35,19 +35,22 @@ import StudioContainerPage from '@web/pages/studio/container/StudioContainerPage
 import { renderWithTooltips as render } from '@web/test-utils/render-with-tooltips';
 import { rememberStudioRegion } from '@web/data/api/regions';
 import { studiosApi } from '@web/data/api/studios';
+import { fetchStudioCredits } from '@web/data/api/credits';
 import { ApiException } from '@web/data/api/types';
 
 /**
  * Render the Studio page for a slug.
  * @param client - The query client, possibly holding an earlier answer.
+ * @param path - The address opened, the Projects tab by default.
  * @returns The rendered page.
  */
-function renderPage(client: QueryClient): ReturnType<typeof render> {
+function renderPage(client: QueryClient, path = '/studio/far-studio'): ReturnType<typeof render> {
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={['/studio/far-studio']}>
+      <MemoryRouter initialEntries={[path]}>
         <Routes>
           <Route path='/studio/:slug' element={<StudioContainerPage />} />
+          <Route path='/studio/:slug/:tab' element={<StudioContainerPage />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -135,6 +138,25 @@ describe('StudioContainerPage in a build with regions', () => {
     await waitFor(() => expect(studiosApi.get).toHaveBeenCalledTimes(2));
     const corrected = directory.studio.mock.invocationCallOrder[0];
     await waitFor(() => expect(Math.max(...vi.mocked(studiosApi.listProjects).mock.invocationCallOrder)).toBeGreaterThan(corrected));
+  });
+
+  it('reads the Studio credits again once the re-check moved the Studio to its new region', async () => {
+    vi.mocked(studiosApi.get).mockReset();
+    vi.mocked(studiosApi.get)
+      .mockRejectedValueOnce(new ApiException({ status: 404, message: 'missing' }))
+      .mockResolvedValueOnce({ ...STUDIO, id: 's-near', region: null });
+    vi.mocked(fetchStudioCredits).mockClear();
+    directory.studio.mockClear();
+    directory.studio.mockResolvedValueOnce({ region: 'us-west' });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 30_000 } } });
+    client.setQueryData(['studio-region', 'far-studio'], { region: 'sg' });
+    client.setQueryData(['studio', 'far-studio'], STUDIO, { updatedAt: 0 });
+
+    renderPage(client, '/studio/far-studio/credits');
+
+    await waitFor(() => expect(studiosApi.get).toHaveBeenCalledTimes(2));
+    const corrected = directory.studio.mock.invocationCallOrder[0];
+    await waitFor(() => expect(Math.max(...vi.mocked(fetchStudioCredits).mock.invocationCallOrder)).toBeGreaterThan(corrected));
   });
 
   it('shows not found when the directory still names the region that does not have it', async () => {
