@@ -224,3 +224,19 @@ describe("runJob — one input", () => {
     expect(h.opSteps.mock.calls[0]![6] ?? []).toEqual([]);
   });
 });
+
+describe("runJob — a grid (inner#1968)", () => {
+  /** A still picture's probe. */
+  const still: ProbeReport = { streams: [{ index: 0, codecType: "video", codecName: "png", width: 900, height: 600, attachedPic: false }], durationSeconds: null };
+
+  it("hands each tile's run its output index and files every tile as an image", async () => {
+    h.probes = { source: still, "out.png": still };
+    const outputs = [0, 1, 2].map((i) => ({ url: `${OBJECTS}/image/tile-${String(i)}.png`, key: `image/tile-${String(i)}.png` }));
+
+    await runJob({ op: "grid", params: { rows: 2, cols: 2, skip: [3] }, input: `${OBJECTS}/image/a.png`, outputs, reportUrl: REPORT });
+
+    expect(h.opSteps.mock.calls.map((call) => [call[0], call[7]])).toEqual([["grid", 0], ["grid", 1], ["grid", 2]]);
+    expect(lastReport()).toMatchObject({ ok: true });
+    expect(Object.keys(lastReport().media as Record<string, unknown>)).toEqual(outputs.map((output) => output.key));
+  });
+});

@@ -129,11 +129,11 @@ export async function runJob(job: RunBody): Promise<void> {
       const path = join(dir, `source-${i + 1}`);
       extra.push({ path, probe: await fetched(url, path, false) });
     }
-    for (const output of job.outputs) {
+    for (const [index, output] of job.outputs.entries()) {
       const file = join(dir, outputFileName(job.op));
       // An operation runs as long as its job's deadline allows; the Durable
       // Object destroys the container when that passes.
-      await runSteps(opSteps(job.op, job.params, input, file, dir, source, extra));
+      await runSteps(opSteps(job.op, job.params, input, file, dir, source, extra, index));
       const probed = await runCommand("ffprobe", probeArgs(file, "own-file")).then((out) => out.stdout, () => null);
       const report = probed === null ? NOTHING_FOUND : readProbeOutput(probed.toString("utf8"));
       const empty = outputRefusal(report, mediumOf(job.op));
