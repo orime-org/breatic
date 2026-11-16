@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { judgeWebAnimationRender } from "../web-animation-render.js";
+import { judgeWebAnimationRender, markCompositionsWithoutTimeline } from "../web-animation-render.js";
 
 const EXPECTED = { durationFrames: 144, width: 1080, height: 1920 };
 
@@ -25,5 +25,23 @@ describe("judgeWebAnimationRender", () => {
     ["no frames counted", { frames: null, width: 1080, height: 1920 }],
   ])("fails a video with %s as frame_mismatch", (_name, probe) => {
     expect(judgeWebAnimationRender(probe, EXPECTED)).toBe("frame_mismatch");
+  });
+});
+
+describe("markCompositionsWithoutTimeline", () => {
+  const PACKAGE = "<!doctype html>\n<html>\n<head><script>\nconst q = document.querySelector(\"[data-composition-id]\"); const s = \"<div data-composition-id>\";\n</script>\n" +
+    "<!-- <div data-composition-id=\"x\"> -->\n</head>\n<body>\n<div id=\"main\" data-composition-id=\"main\" data-start=\"0\" data-duration=\"4\"><p>Logo</p></div>\n</body>\n</html>\n";
+
+  it("marks the composition root so the producer does not wait for a timeline it never registers", () => {
+    const marked = markCompositionsWithoutTimeline(PACKAGE);
+    expect(marked).toContain("<div data-no-timeline id=\"main\" data-composition-id=\"main\"");
+    expect(marked.match(/data-no-timeline/g)).toHaveLength(1);
+  });
+
+  it("marks every composition host, whatever its quoting, and leaves a marked one alone", () => {
+    const html = "<body><section data-composition-id='main'><div class=a data-composition-id=b></div><i data-composition-id=\"c\" data-no-timeline></i></section></body>";
+    expect(markCompositionsWithoutTimeline(html)).toBe(
+      "<body><section data-no-timeline data-composition-id='main'><div data-no-timeline class=a data-composition-id=b></div><i data-composition-id=\"c\" data-no-timeline></i></section></body>",
+    );
   });
 });

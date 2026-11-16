@@ -72,6 +72,27 @@ export function judgeWebAnimationRender(probe: RenderedVideo, expected: { durati
 }
 
 /**
+ * Mark every composition host `data-no-timeline`. The runner's packages animate with CSS and the Web Animations API
+ * and never register `window.__timelines`, so without the mark the producer waits 45 s per host before it renders.
+ * Scripts, styles and comments are skipped, so a selector or string in the inlined runtime is never taken for a host.
+ * @param html - The source package.
+ * @returns The package with each unmarked host marked.
+ * @throws {never} Never.
+ */
+export function markCompositionsWithoutTimeline(html: string): string {
+  const masked = html.replace(/<!--[\s\S]*?-->|<(script|style)\b[\s\S]*?<\/\1\s*>/gi, (block) => " ".repeat(block.length));
+  let marked = "";
+  let from = 0;
+  for (const tag of masked.matchAll(/<[a-z][\w-]*[^<>]*>/gi)) {
+    if (!/\sdata-composition-id(?=[\s=>/])/i.test(tag[0]) || /\sdata-no-timeline(?=[\s=>/])/i.test(tag[0])) continue;
+    const at = tag.index + tag[0].search(/[\s/>]/);
+    marked += `${html.slice(from, at)} data-no-timeline`;
+    from = at;
+  }
+  return marked + html.slice(from);
+}
+
+/**
  * Run a program and collect what it printed.
  * @param bin - The program.
  * @param args - Its arguments.
@@ -167,7 +188,7 @@ export async function runWebAnimationRender(job: WebAnimationRenderRunBody, sett
     if (!source.ok) throw new RenderStopped("render_failed", `the package was answered ${source.status}`);
     const project = join(work, "project");
     await mkdir(project, { recursive: true });
-    await writeFile(join(project, "index.html"), await source.text());
+    await writeFile(join(project, "index.html"), markCompositionsWithoutTimeline(await source.text()));
     // The package's stylesheet names `../fonts/v<n>/`, which the producer's server serves from the project's root.
     await cp(join(settings.fontsDir, `v${job.fontSetVersion}`), join(project, "fonts", `v${job.fontSetVersion}`), { recursive: true });
 
