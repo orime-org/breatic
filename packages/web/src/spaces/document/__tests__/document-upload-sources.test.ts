@@ -271,6 +271,17 @@ describe('an address refused for operations used up', () => {
     const outcome = await run('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' }, noProgress);
     expect(failure(outcome)).toEqual({ reason: 'operations', retryable: true });
   });
+
+  // Design 21 row 23: the block says the toast's sentence, with the price.
+  it('carries the price the server named', async () => {
+    const { run } = sources({
+      ingest: vi.fn(async () => Promise.reject(new ApiException({
+        status: 402, message: 'used up', reason: 'operations_exhausted', details: { reason: 'operations_exhausted', credits: '0.5' },
+      }))),
+    });
+    const outcome = await run('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' }, noProgress);
+    expect(failure(outcome)).toEqual({ reason: 'operations', retryable: true, credits: '0.5' });
+  });
 });
 
 // inner#1968 H-33: an address pasted into a Document once the spend cap is

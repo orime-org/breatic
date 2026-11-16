@@ -65,6 +65,8 @@ export type PendingFailureReason =
 export interface UploadFailure {
   readonly reason: PendingFailureReason;
   readonly retryable: boolean;
+  /** With `operations`: what one more operation costs, as the server said it (inner#1968). */
+  readonly credits?: string;
 }
 
 /** How an upload ended. */

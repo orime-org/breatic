@@ -65,16 +65,16 @@ const askedAgain = new Set<string>();
 
 /**
  * What the tray says when a spend limit stopped the waiting messages' run
- * (inner#1968, design 3.10): the Studio's total with its reset day; a
- * person's own limit, whose amount the sync answer does not carry, without it.
+ * (inner#1968, design 3.10 and 21 row 23): the toast's own sentence, with the
+ * limit and its reset day; a bare one only from a server that sent neither.
  * @param seen - What the sync answered.
  * @returns The sentence, or null when no limit stopped it.
  */
 function capNoteOf(seen: ChatSyncAnswer): string | null {
   if (seen.blocked !== 'spend_cap') return null;
-  return seen.scope === 'studio' && seen.resetsAt !== undefined
-    ? spendCapMessage('spend_cap_reached', 'studio', '', seen.resetsAt)
-    : t('credits.refusal.spendCap');
+  if (seen.scope === undefined || seen.resetsAt === undefined) return t('credits.refusal.spendCap');
+  if (seen.scope === 'member' && seen.limit === undefined) return t('credits.refusal.spendCap');
+  return spendCapMessage('spend_cap_reached', seen.scope, seen.limit ?? '', seen.resetsAt);
 }
 
 /**

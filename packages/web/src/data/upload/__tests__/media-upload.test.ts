@@ -627,3 +627,19 @@ describe('a ticket refused for a spend cap', () => {
     expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({ reason: 'spendCap' });
   });
 });
+
+// inner#1968 design 21 row 23: the ticket's refusal names the price of one
+// more operation, which the failure carries to wherever the sentence is said.
+describe('a ticket refused for operations used up, with the price named', () => {
+  it('carries the price on the failure', async () => {
+    const deps = makeUploadDeps({
+      requestTicket: vi.fn().mockRejectedValue(
+        new ApiException({ status: 402, message: 'used up', reason: 'operations_exhausted', details: { reason: 'operations_exhausted', credits: '0.5' } }),
+      ),
+    });
+
+    await runMediaUpload(new File(['x'], 'photo.png', { type: 'image/png' }), { projectId: 'p1', nodeId: 'n1', spaceId: 's1' }, deps);
+
+    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({ reason: 'operations', credits: '0.5' });
+  });
+});

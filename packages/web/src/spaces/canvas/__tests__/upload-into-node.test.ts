@@ -181,6 +181,12 @@ describe('an upload refused for operations used up', () => {
     expectTopUpToast(toastsShown(h.toast.error, h.toast.warning), '本月操作次数已用完', '充值');
   });
 
+  // Design 21 row 23: the same sentence as the toast elsewhere, with the price.
+  it('names the price the server gave', () => {
+    failUploadIntoNode(TARGET, { reason: 'operations', credits: '0.5' }, FILE);
+    expectTopUpToast(toastsShown(h.toast.error, h.toast.warning), '本月操作次数已用完，积分不足 0.5。充值后可继续。', '充值');
+  });
+
   it('offers no 充值 action for a spend limit', () => {
     failUploadIntoNode(TARGET, { reason: 'spendCap' } as unknown as UploadFailure, FILE);
     expectNoTopUpAction(toastsShown(h.toast.error, h.toast.warning));

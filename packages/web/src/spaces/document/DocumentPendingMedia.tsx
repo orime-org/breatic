@@ -21,6 +21,7 @@ import * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
+import { operationsSentence } from '@web/stores/credit-refusals';
 import { cn } from '@web/lib/utils';
 import { MediaCaption } from '@web/spaces/document/DocumentMediaBlock';
 import type { PendingStatus } from '@web/spaces/document/document-pending-status';
@@ -95,7 +96,9 @@ export const DocumentPendingMedia = React.memo(function DocumentPendingMedia({
   const failed = status.kind === 'failed' || status.kind === 'peerFailed';
   const said =
     status.kind === 'failed'
-      ? t(FAILURE_MESSAGE[status.failure.reason])
+      ? status.failure.reason === 'operations'
+        ? operationsSentence(status.failure.credits)
+        : t(FAILURE_MESSAGE[status.failure.reason])
       : status.kind === 'peerFailed'
         ? t(FAILURE_MESSAGE.failed)
         : percent === null

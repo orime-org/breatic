@@ -11,7 +11,7 @@
  * without stopping the run, and coming back reads it again from its start.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { ChatSyncAnswer } from '@breatic/shared';
+import { setLocale, type ChatSyncAnswer } from '@breatic/shared';
 import { chatApi } from '@web/data/api/chat';
 import type { ConversationRead, StoredUiMessage } from '@web/data/api/chat';
 import { chatSessionFor, evictAllChatSessions } from '@web/stores/chat-sessions';
@@ -451,6 +451,28 @@ describe('the sync of the conversation on screen', () => {
     chatLive.show('p1', 'c1');
     await settle();
     expect(useChatWaiting.getState().byConversation.c1).toMatchObject({ pending: [m1], blocked: true, awaiting: false });
+  });
+  // inner#1968 design 21 row 23: the tray says the toast's own sentence,
+  // with the person's limit and the local reset day.
+  it('says a spend limit in the tray as the toast does, with its amount', async () => {
+    const zone = process.env.TZ;
+    process.env.TZ = 'UTC';
+    setLocale('zh-CN');
+    try {
+      const m1 = { id: 'm1', sentAt: '2026-11-12T08:00:00.000Z', words: 'one', chips: [] };
+      vi.mocked(chatApi.sync).mockResolvedValueOnce({
+        ...IDLE, pending: [m1], blocked: 'spend_cap', scope: 'member', limit: '10.000000', resetsAt: '2026-12-01T00:00:00.000Z',
+      });
+      chatLive.show('p1', 'c1');
+      await settle();
+      expect(useChatWaiting.getState().byConversation.c1?.capNote).toBe(
+        '你本月在这个 Studio 的花费已到上限（10 积分），2026年12月1日 重置。需要更多请联系 Studio Admin',
+      );
+    } finally {
+      setLocale('en');
+      if (zone === undefined) delete process.env.TZ;
+      else process.env.TZ = zone;
+    }
   });
 });
 

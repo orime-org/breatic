@@ -13,6 +13,7 @@
 import { t } from '@breatic/shared';
 
 import { ApiException } from '@web/data/api/types';
+import { formatCreditAmount } from '@web/lib/format-credit-amount';
 import { spendCapMessage } from '@web/lib/spend-cap-message';
 import { toast } from '@web/lib/toast';
 import { useUIStore } from '@web/stores/ui';
@@ -48,6 +49,19 @@ export function topUpAction(): TopUpAction {
 }
 
 /**
+ * The used-up sentence where no server text is at hand (an upload, a
+ * Document block): the server's own wording with the price it named, or a
+ * sentence without the price when it named none (design 21 row 23).
+ * @param credits - What one more operation costs, as a decimal string.
+ * @returns The sentence.
+ */
+export function operationsSentence(credits: string | undefined): string {
+  return credits === undefined
+    ? t('credits.refusal.operations')
+    : t('server.operation.exhausted', { credits: formatCreditAmount(credits) });
+}
+
+/**
  * Whether a failure is the refusal past the month's operations.
  * @param err - What a request rejected with.
  * @returns True for that refusal.
@@ -73,7 +87,8 @@ export function isSpendCapReached(err: unknown): boolean {
 export function refusalSentence(err: unknown): string | null {
   if (!(err instanceof ApiException)) return null;
   if (err.reason === OPERATIONS_EXHAUSTED) {
-    return err.fromServer && err.message ? err.message : t('credits.refusal.operations');
+    const credits = err.details?.credits;
+    return err.fromServer && err.message ? err.message : operationsSentence(typeof credits === 'string' ? credits : undefined);
   }
   if (err.reason !== SPEND_CAP_REACHED) return null;
   const { scope, limit, resetsAt } = err.details ?? {};

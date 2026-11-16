@@ -122,6 +122,8 @@ export function isUploadFailureReason(
 export interface UploadFailure {
   reason: UploadFailureReason;
   taskId?: string;
+  /** With `operations`: what one more operation costs, as the server said it (design 21 row 23). */
+  credits?: string;
 }
 
 /** Too Many Requests (RFC 6585 §4): a per-user limit on the upload routes. */
@@ -161,6 +163,18 @@ function failureOf(err: unknown): UploadFailureReason {
   // anyone will end the row — and nobody will.
   if (err instanceof BytesNotDelivered) return 'transfer';
   return REASON_BY_STATUS.get(errorStatus(err) ?? -1) ?? 'upload';
+}
+
+/**
+ * A refused ticket's failure: its reason, and for used-up operations the
+ * price of one more when the server named it.
+ * @param err - The rejection value.
+ * @returns The failure to report.
+ */
+function ticketFailureOf(err: unknown): UploadFailure {
+  const reason = failureOf(err);
+  const credits = reason === 'operations' && err instanceof ApiException ? err.details?.credits : undefined;
+  return typeof credits === 'string' ? { reason, credits } : { reason };
 }
 
 /**
@@ -355,7 +369,7 @@ export async function runMediaUpload(
     signal?.throwIfAborted();
   } catch (err) {
     signal?.throwIfAborted();
-    deps.onFailure({ reason: failureOf(err) });
+    deps.onFailure(ticketFailureOf(err));
     return;
   }
 
@@ -545,8 +559,9 @@ export class UploadFailedError extends Error {
   /**
    * Name the reason the upload did not complete.
    * @param reason - The pipeline's verdict, also the message.
+   * @param credits - With `operations`: what one more operation costs, when the server said.
    */
-  constructor(readonly reason: UploadFailureReason) {
+  constructor(readonly reason: UploadFailureReason, readonly credits?: string) {
     super(reason);
     this.name = 'UploadFailedError';
   }
@@ -580,7 +595,7 @@ export function uploadMedia(
       ...(onProgress !== undefined && { onProgress }),
       ...(onRegistering !== undefined && { onRegistering }),
       onSuccess: resolve,
-      onFailure: (outcome) => reject(new UploadFailedError(outcome.reason)),
+      onFailure: (outcome) => reject(new UploadFailedError(outcome.reason, outcome.credits)),
     }, signal).catch(reject);
   });
 }
