@@ -61,7 +61,7 @@ Check: render the fragment with `new PgDialect().sqlToQuery(...)`; any `$1` mean
 
 ### Membership limits
 
-**Configured tiers use `config/membership.yaml`; active enterprise membership uses the account's saved negotiated limits.** Count ceilings are non-negative integers checked as `count >= limit`, so zero means zero and large values remain ordinary limits. Effective enterprise storage retains its exemption even when a negotiated storage value is recorded.
+**Configured tiers use `config/membership.yaml`; active enterprise membership uses the account's saved negotiated limits.** Count ceilings are non-negative integers checked as `count >= limit`, so zero means zero and large values remain ordinary limits. An active agreement's `storage_bytes` caps storage like any tier; only an enterprise account without a saved agreement keeps uncapped storage. Monthly operations and the running-task limit come only from `negotiatedOperationsOf`, which gives an account without an agreement 16,000 and 10 instead of the limits lookup's error.
 
 **Read effective tiers, limits, storage and subscription-settlement protection through `auth/membership.repo.ts`, which derives them from one membership snapshot.** Studio entitlement belongs to its current admin; missing legacy enterprise information remains explicit. Read [membership entitlements](../../docs/ARCHITECTURE.md#membership-entitlements) before changing expiry, origin protection, presentation or management writes.
 
