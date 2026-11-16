@@ -400,16 +400,26 @@ describe('Motion result player', () => {
     await userEvent.click(retry);
     await waitFor(() => expect(vi.mocked(timelineApi.previewUrl).mock.calls.length).toBeGreaterThan(calls));
   });
+
+  it('loads a failed page again on retry', async () => {
+    showResult({ ...LIMITS, webAnimation: { ...LIMITS.webAnimation, playerLoadTimeoutMs: 60_000 } });
+    await waitFor(() => expect(document.querySelector('hyperframes-player')).not.toBeNull());
+    const result = withIframe(document.querySelector('hyperframes-player') as HTMLElement);
+    act(() => { result.element.dispatchEvent(new Event('error')); });
+    await userEvent.click(await screen.findByRole('button', { name: t('timeline.retry') }));
+    await waitFor(() => expect(document.querySelector('hyperframes-player')).toHaveAttribute('data-web-state', 'loading'));
+    expect(screen.queryByRole('button', { name: t('timeline.retry') })).toBeNull();
+  });
 });
 
 /**
  * Render a succeeded execution's result in the Motion player, inside the query cache the Motion Space provides.
+ * @param limits - The Timeline limits the Motion Space has read already; null when they are still on their way.
  * @throws {Error} When rendering fails.
  */
-function showResult(): void {
+function showResult(limits: typeof LIMITS | null = LIMITS): void {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
-  // The Motion Space has read the Timeline limits already.
-  client.setQueryData(['timeline-limits', PROJECT], LIMITS);
+  if (limits !== null) client.setQueryData(['timeline-limits', PROJECT], limits);
   render(<QueryClientProvider client={client}><div className='relative'>
     <MotionResultPlayer projectId={PROJECT} executionId={EXECUTION} sourceVersionId={SRC_A} input={{ durationSeconds: 2, fps: FPS }} frame={0} />
   </div></QueryClientProvider>);

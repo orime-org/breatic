@@ -72,7 +72,10 @@ export function MotionResultPlayer({ projectId, executionId, sourceVersionId, in
   const retry = React.useCallback((): void => {
     player.retry();
     refresh();
-  }, [player, refresh]);
+    host.retry(sourceVersionId);
+    // The host reports only the changes it makes on its own.
+    setState(host.states().get(sourceVersionId));
+  }, [player, refresh, host, sourceVersionId]);
   React.useEffect(() => {
     position.current = frame;
     host.reposition();
