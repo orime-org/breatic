@@ -587,7 +587,10 @@ export function renderProductGuide(): string {
       `${quoted(t("chat.conversation.gone"))} when the conversation was deleted elsewhere. A message needs ` +
       "credits in the project's studio to be answered; with none, the message reads " +
       `${quoted(t("server.credit.none"))} or names what stands in the way, such as credits not yet assigned to ` +
-      "a studio. Credits are bought from the account menu on the studio pages, under " +
+      "a studio. When the month's operations of the Studio's admin are used up and the Studio's credits cannot " +
+      `pay for one more, a sent message is refused and stays in the box, and the message says ${quoted(t("credits.refusal.operations"))} ` +
+      `with a ${quoted(t("credits.topUp"))} button that opens the credits panel. A message waiting its turn when a ` +
+      "monthly spend limit is reached stays waiting, and the waiting area above the box says so. Credits are bought from the account menu on the studio pages, under " +
       `${quoted(t("studio.topBar.credits"))} then ${quoted(t("credits.section.buy"))}; only the studio's admin ` +
       "can assign them to this studio, so anyone else asks the admin. Where the deployment takes payments, " +
       `${quoted(t("studio.topBar.membership"))} in the same menu opens the membership panel, which has a ` +
@@ -911,6 +914,11 @@ export function renderProductGuide(): string {
     `  - ${quoted(t("canvas.generatePanel.errorStorageFull"))}`,
     `  - ${quoted(t("canvas.generatePanel.errorUnavailable"))}`,
     `  - ${quoted(t("canvas.generatePanel.errorFailed"))}`,
+    "  - when the month's operations of the Studio's admin are used up and the Studio's credits cannot pay " +
+      `for one more, with a ${quoted(t("credits.topUp"))} button that opens the credits panel: ${quoted(t("credits.refusal.operations"))}`,
+    "  - when a monthly spend limit the Studio's admin set is reached, with no button, since adding credits does " +
+      "not lift a limit (see the When something is wrong section); the message names the limit and the day it " +
+      `resets, or says only ${quoted(t("credits.refusal.spendCap"))}`,
     "When the run finishes, its result replaces what the node held. A run makes one result; there is no count. " +
       "To get another, open the panel again and press the arrow: it can start while an earlier task is still " +
       "running, each finished result replaces what the node holds in turn, and the earlier ones stay in its " +
@@ -934,6 +942,15 @@ export function renderProductGuide(): string {
       `hand, and ${quoted(t("canvas.task.action.clear"))}; an expired one offers ` +
       `${quoted(t("canvas.task.action.view"))} when a late result came, which opens the node's history at that ` +
       `result so you can restore it, and ${quoted(t("canvas.task.action.clear"))}.`,
+    "Each person runs only so many tasks at once, a number that comes with the membership of the Studio's admin; " +
+      "a task past it waits its turn and starts by itself when an earlier one ends, and the time it waits does " +
+      "not count against its two hours. A node with a waiting task shows an hourglass in that column, just below " +
+      `the spinning circle; hovering it shows ${quoted(t("canvas.task.status.waiting"))} with how many, and why: ` +
+      `${quoted(t("canvas.task.waitReason"))} — clicking it opens the ${quoted(t("canvas.task.status.running"))} ` +
+      `list, where a waiting row says ${quoted(t("canvas.task.status.waiting"))}, shows no running time and ` +
+      `offers ${quoted(t("common.cancel"))}, which ends it as ${quoted(t("canvas.task.failure.cancelled"))} A task ` +
+      "that has started running cannot be cancelled; pressing it then says " +
+      `${quoted(t("canvas.task.alreadyStarted"))} A node with a waiting task cannot be deleted, as with a running one.`,
     "",
     "## Inside the generation panel",
     "The top row holds the tool buttons, each an icon over its name, with an X at the far right that closes the " +
@@ -1260,6 +1277,8 @@ export function renderProductGuide(): string {
       "stays open; text being typed and the controls on the node, such as a player's seek bar, keep their own keys. " +
       "Pressing the arrow puts the result in new nodes to " +
       "the right of the source, joined to it by a line and named after it (such as CROP- followed by its name); " +
+      `${quoted(t("canvas.miniTool.image.grid.label"))} is cut on our server: its tile nodes appear at once, each ` +
+      "shows its task in the column past its right edge, and the picture arrives on it when the task is done. " +
       `${quoted(t("canvas.miniTool.image.grid.label"))} cuts only the picked tiles and lays each out at the row and ` +
       "column it was cut from, inside a new group named GRID- followed by the source's name (even when one tile is " +
       "picked), each tile named by its place (GRID-r1c1- and so on, then the source's name), and selects the group. " +
@@ -1609,7 +1628,9 @@ export function renderProductGuide(): string {
       "the prompt is empty (Text to 3D), no view is filled or a view's upload failed (Image to 3D). " +
       `On the answer it closes and the ${quoted(t("spaces.threeD.tasks"))} panel opens on the new row, clearing the panel's filters if they would hide it; a generation that could not start gets its row too, with the reason and Retry. ` +
       "Closing the dialog while the generation is being submitted lets the submission carry on, and its answer still opens the panel on the new row. " +
-      "A refusal, such as too few credits or a view that is not a picture of this Project, keeps the dialog open with everything in it and says why in a short message.",
+      "A refusal, such as too few credits or a view that is not a picture of this Project, keeps the dialog open with everything in it and says why in a short message. " +
+      `A generation waiting its turn, past the number of tasks one person runs at once, says ${quoted(t("canvas.task.status.waiting"))} on its row, counts no minutes, ` +
+      `offers ${quoted(t("common.cancel"))} and says why it waits: ${quoted(t("canvas.task.waitReason"))} — one that has started running cannot be cancelled.`,
     `The floating bar at the bottom right orders ${quoted(t("spaces.threeD.undo"))}, ${quoted(t("spaces.threeD.redo"))}, ` +
       `${quoted(t("spaces.threeD.properties"))}, ${quoted(t("spaces.threeD.objects"))}, ${quoted(t("spaces.threeD.tasks"))} and ` +
       `${quoted(t("spaces.threeD.minimap"))}. The three panel buttons keep their ordinary appearance while open. ` +
@@ -2088,6 +2109,18 @@ export function renderProductGuide(): string {
       "Deleting a snapshot asks first and cannot be undone.",
     "",
     "## When something is wrong",
+    "- A monthly spend limit is reached, the person's own or the Studio's total: the message names the limit " +
+      `and the day it resets, or says only ${quoted(t("credits.refusal.spendCap"))} — work that spends credits is refused ` +
+      "until the month resets (on the first of the month, UTC); work already running finishes. Adding credits " +
+      "does not lift it, so the message has no button; only the Studio's admin can change the limits. They are " +
+      `on the Studio page's ${quoted(t("studio.container.tabs.credits"))} tab, under ${quoted(t("studio.container.credits.spendCap.title"))}: ` +
+      `${quoted(t("studio.container.credits.spendCap.studioMonthly"))} and ${quoted(t("studio.container.credits.spendCap.memberDefault"))}, each ` +
+      `${quoted(t("studio.container.credits.spendCap.notSet"))} or an amount per month, with what the Studio spent this month and ` +
+      "when it resets; below, everyone who can spend there, Studio members and " +
+      `${quoted(t("studio.container.credits.spendCap.relationProjectCollaborator"))} alike, with what they spent and the limit that ` +
+      `applies, where ${quoted(t("studio.container.credits.spendCap.override"))} gives one person a limit of their own (an amount, ` +
+      `${quoted(t("studio.container.credits.spendCap.unlimited"))} or ${quoted(t("studio.container.credits.spendCap.zero"))}) and ` +
+      `${quoted(t("studio.container.credits.spendCap.restoreDefault"))} puts them back on the default. A personal Studio has no limits.`,
     `- ${quoted(t("connection.banner.disconnected.text"))} across the top, with ` +
       `${quoted(t("connection.banner.reload"))}: the connection dropped, and the work area is covered until it ` +
       `comes back. ${quoted(t("connection.banner.authFailed.text"))} offers ` +
