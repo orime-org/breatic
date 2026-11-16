@@ -55,8 +55,12 @@ export type MiniToolJobReport =
   | { state: "done"; outputs: (IngestMeasurements & { storageKey: string })[]; usage: ContainerUsage }
   | { state: "failed"; reason: ContainerFailure; usage: ContainerUsage | null };
 
-/** The most outputs one container job may write; every container tool's result count stays within it. */
-export const MINI_TOOL_JOB_MAX_OUTPUTS = 8;
+/**
+ * The most outputs one container job may write; every container tool's
+ * result count stays within it. The grid split, cut in the container since
+ * inner#1968, writes up to eight rows by eight columns of tiles.
+ */
+export const MINI_TOOL_JOB_MAX_OUTPUTS = 64;
 
 /**
  * The most inputs one container job may read after its first (inner#1825):
