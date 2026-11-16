@@ -5,7 +5,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // The api layer already unwraps the `{ data }` envelope, so these mocks
 // resolve directly to the inner object a caller sees.
-vi.mock('@web/data/api/request', () => ({
+// `runOnceRequest` stays real: a ticket and a fetched address carry their
+// operation key since inner#1968 (design 3.2).
+vi.mock('@web/data/api/request', async (importOriginal) => ({
+  runOnceRequest: (await importOriginal<typeof import('@web/data/api/request')>()).runOnceRequest,
   apiGet: vi.fn(),
   apiPost: vi.fn(),
   request: { get: vi.fn() },
