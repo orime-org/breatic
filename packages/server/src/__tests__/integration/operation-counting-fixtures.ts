@@ -118,7 +118,7 @@ export async function seedAccount(sql: Sql, options: AccountOptions = {}): Promi
 export async function seedMember(sql: Sql, a: Account): Promise<Actor> {
   const userId = crypto.randomUUID();
   await sql`insert into users(id, email, email_verified) values (${userId}, ${`${userId}@example.test`}, true)`;
-  await sql`insert into studio_members(studio_id, user_id, role) values (${a.studioId}, ${userId}, 'editor')`;
+  await sql`insert into studio_members(studio_id, user_id, role) values (${a.studioId}, ${userId}, 'maintainer')`;
   await sql`insert into project_members(project_id, user_id, role, added_by) values (${a.projectId}, ${userId}, 'editor', ${a.userId})`;
   return { userId, cookie: await signIn(userId) };
 }
