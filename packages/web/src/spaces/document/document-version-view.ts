@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The read-only preview editor that shows snapshots and comparisons
@@ -92,6 +92,7 @@ export function buildVersionPreview(options: {
 }): Editor {
   return buildDocumentEditor({
     fragment: documentBodyFragment(new Y.Doc()),
+    showsSavedBodies: true,
     extensions: [
       // Colours follow the kind of change, not an author (index.css, `.doc-body`).
       DiffVersioningExtension({

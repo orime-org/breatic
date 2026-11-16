@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Every press in an editable body goes through one entry first (inner#1127
@@ -102,6 +102,10 @@ export function pressTargetOf(view: EditorView, event: MouseEvent): PressTarget 
   if ((columnResizingPluginKey.getState(view.state)?.activeHandle ?? -1) > -1) {
     return { kind: 'column-resize', element: target };
   }
+  // The divider between two columns is dragged as a table's column line is
+  // (inner#1314 design 5.4).
+  const divider = target.closest('.doc-column-divider');
+  if (divider !== null && view.dom.contains(divider)) return { kind: 'column-resize', element: divider };
   if (view.dom.contains(target)) {
     const quiet = target.closest('[data-upload-slot], input[type="checkbox"]');
     if (quiet !== null) return { kind: 'quiet-control', element: quiet };

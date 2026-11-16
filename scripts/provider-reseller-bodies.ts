@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Writes the reviewed request bodies of every fal and SandBase binding (inner#1775), which

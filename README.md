@@ -1,7 +1,7 @@
 <h1 align="center">Breatic</h1>
 
 <p align="center"><strong>The real-time collaborative AI workspace for creative teams.</strong></p>
-<p align="center">Available online · Source-available · Desktop browser</p>
+<p align="center">Available online · Open source · Desktop browser</p>
 
 <p align="center">
   <a href="https://breatic.ai/?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=repository_listing_202610&amp;utm_content=readme_website_en">Website</a> ·
@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/orime-org/breatic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/orime-org/breatic?style=flat&amp;color=blueviolet&amp;label=release&amp;display_name=tag"></a>
-  <a href="LICENSE"><img alt="License: Elastic-2.0" src="https://img.shields.io/badge/license-Elastic--2.0-blue?style=flat"></a>
+  <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat"></a>
   <a href="https://discord.gg/Yeu6A4aejN"><img alt="Discord community" src="https://img.shields.io/badge/discord-join%20community-5865F2?style=flat&amp;logo=discord&amp;logoColor=white"></a>
   <a href="#get-started"><img alt="Quickstart guide" src="https://img.shields.io/badge/quickstart-guide-green?style=flat"></a>
 </p>
@@ -115,9 +115,9 @@ The application uses TypeScript, React/Vite, Hono, PostgreSQL, Redis/BullMQ and 
 
 ## License and permitted use
 
-Breatic is **source-available** under the [Elastic License 2.0](LICENSE) (`Elastic-2.0`).
+Breatic is **open source** under the [GNU Affero General Public License v3.0](LICENSE) (`AGPL-3.0-only`).
 
-You may read, modify and redistribute Breatic, and run it for yourself or inside your own organization, including for commercial work. You may not provide Breatic to third parties as a hosted or managed service. See the license for the complete terms.
+You may use, study, modify and self-host Breatic for any purpose, including commercial use. If you modify Breatic and let other people use your modified version over a network, you must offer them its complete source code under the same license. See the license for the complete terms.
 
 The Breatic name and logo are trademarks of Orime, Inc. and are not covered by the license; see [TRADEMARKS.md](TRADEMARKS.md). The license places no restriction on the content you create with Breatic.
 

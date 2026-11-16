@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The model picker in the chat composer (#1363): a pick is kept by the

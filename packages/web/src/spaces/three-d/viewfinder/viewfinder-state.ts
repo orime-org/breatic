@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 import { DEFAULT_VIEWFINDER_RATIO, type ViewfinderRatio, type ViewfinderRect } from '@web/spaces/three-d/viewfinder/viewfinder-geometry';
 

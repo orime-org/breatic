@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The rows of the block handle menu, and what each one runs: the seven of a
@@ -92,6 +92,7 @@ import { useDocumentMediaPick } from '@web/spaces/document/DocumentMediaPicker';
 import type { MediaBlockType } from '@web/spaces/document/document-media-types';
 import { DocumentInsertChoices } from '@web/spaces/document/DocumentInsertChoices';
 import { useRowNow } from '@web/spaces/document/use-row-now';
+import { columnsOutOfReach } from '@web/spaces/document/document-column-entry';
 import { blockInTableCell } from '@web/spaces/document/document-table-nodes';
 import { openTableFullscreen } from '@web/spaces/document/document-table-fullscreen';
 import { copyTableLine, cutTableLine, firstCellOf } from '@web/spaces/document/document-table-line-clipboard';
@@ -443,6 +444,7 @@ export function DocumentBlockMenu({
                   onPick={onInsertBelow}
                   onPickMedia={onInsertMediaBelow}
                   tableUnreachable={blockInTableCell(editor.prosemirrorState.doc, block.id)}
+                  columnsUnreachable={columnsOutOfReach(editor.prosemirrorState.doc, block.id)}
                 />
               </DropdownMenuSubContent>
             </DropdownMenuSub>

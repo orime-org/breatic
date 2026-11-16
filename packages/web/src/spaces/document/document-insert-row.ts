@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What the insert menu does to the row it was opened on.
@@ -15,6 +15,7 @@
 
 import type { BlockTypeId } from '@web/spaces/document/document-block-ticks';
 import { runBlockType } from '@web/spaces/document/document-block-run';
+import { DOC_COLUMN, DOC_COLUMN_LIST } from '@web/spaces/document/document-column-geometry';
 import { DIVIDER } from '@web/spaces/document/document-divider';
 import { quotedAs, type BlockSpec } from '@web/spaces/document/document-file-input';
 import {
@@ -31,8 +32,31 @@ export interface TableSize {
   readonly cols: number;
 }
 
-/** One entry of the insert menu: a block type, the divider, or a table of a size. */
-export type InsertChoice = BlockTypeId | typeof DIVIDER | { readonly table: TableSize };
+/** The insert menu's columns entry (inner#1314 design §5.3). */
+export const COLUMNS = 'columns';
+
+/** One entry of the insert menu: a block type, the divider, columns, or a table of a size. */
+export type InsertChoice = BlockTypeId | typeof DIVIDER | typeof COLUMNS | { readonly table: TableSize };
+
+/**
+ * Two columns, each holding one empty paragraph.
+ * @returns The group block.
+ */
+function emptyColumns(): BlockSpec {
+  const column = { type: DOC_COLUMN, children: [{ type: 'paragraph' }] };
+  return { type: DOC_COLUMN_LIST, children: [column, column] } as BlockSpec;
+}
+
+/**
+ * Puts the caret at the start of a group's first column.
+ * @param editor - The editor.
+ * @param groupId - The group's id.
+ */
+function caretInFirstColumn(editor: HandleEditor, groupId: string): void {
+  const group = editor.getBlock(groupId) as { children?: { children?: { id: string }[] }[] } | undefined;
+  const first = group?.children?.[0]?.children?.[0];
+  if (first !== undefined) editor.setTextCursorPosition(first.id, 'start');
+}
 
 /**
  * An empty table of a size.
@@ -118,6 +142,10 @@ export function insertBelow(
 ): void {
   if (choice === DIVIDER) {
     insertRowForMenu(editor, row, [{ type: DIVIDER }]);
+  } else if (choice === COLUMNS) {
+    const made = insertRowForMenu(editor, row, [emptyColumns()]);
+    const group = editor.getPrevBlock(made) as { id: string } | undefined;
+    if (group !== undefined) caretInFirstColumn(editor, group.id);
   } else if (typeof choice === 'object') {
     const made = insertRowForMenu(editor, row, [emptyTable(choice.table, false)]);
     const table = editor.getPrevBlock(made) as { id: string } | undefined;
@@ -202,6 +230,11 @@ export function fillEmptyRow(
   choice: InsertChoice,
 ): void {
   editor.transact(() => {
+    if (choice === COLUMNS) {
+      editor.updateBlock(row.id, emptyColumns() as never);
+      caretInFirstColumn(editor, row.id);
+      return;
+    }
     if (typeof choice === 'object') {
       // `updateBlock` keeps the row's id and merges its props, so the quote
       // stays on the table it becomes.

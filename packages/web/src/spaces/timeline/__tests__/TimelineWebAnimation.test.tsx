@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Web animation in the Timeline Space as users drive it (inner#1711 design §8, §9, V1, V2, V5, A8).

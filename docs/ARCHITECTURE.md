@@ -458,7 +458,7 @@ Agent 与画布的单文件超限音频或视频共用长媒体路径。Node dom
 
 **要往流上加一个我们自己的名字,在让它真正发出来的那次改动里加**。声明一个还没人发的名字,等于告诉前端去等一个永远不来的东西。它管的是 `data-*` part 的名字。模型的 reasoning 上流,但它走的是 SDK 协议自己的 part,不占我们这十二个名字里的任何一个 —— 这条规矩管不到它。**一次调用要不要 reasoning,由发起它的那处自己说**(`provider().llm.prepare` 的 `thinking`,见 [Agent 的 provider 路由](#agent-provider-routing)),没有全局开关。
 
-**一轮属于会话的运行,不属于发起它的请求**(`agent/chat-run.ts`)。`POST /chat/message` 鉴权、三查之后把消息排进这条会话的队列(`chat-queue.service.ts`):没有运行占着会话时开一次运行,请求等运行的开头阶段做完才答复;有运行在跑时这条消息等在队列里,运行在下一个 step 之前把它接进来(写一帧 `data-user-message`),答复里是等待区。**开头阶段的次序是硬的**:核会话主人还能不能跑 → 取出等着的消息 → 把开头那条按它自己的 id 落库 → 占住运行列表 → 建这次运行的可续读流(`agent/run-stream.ts`:`resumable-stream` 在运行所在进程的内存里留下每一帧,经 Redis 发布订阅重放给任何实例上接上来的页面;运行所在的进程没了,流也就读不到了);做完才答复,所以答复到达时那条消息已经在历史里、流也已经接得上。之后才在后台读记忆、读历史、调模型,谁在读都跑到底。接进来的消息在队列的 `taken` 里留到这一轮的回复落库;进程崩溃时由下一次运行先处理它们,丢的只有这一轮已经输出、还没落库的回答。**读历史必须排除当前这一轮**(`getMessagesForLlm` 的上界参数):开头那条刚落库,读进去等于把它喂给模型两遍。**页面经 `GET /chat/conversations/:id/stream` 读这次运行**,从第一帧重放、再接着收;没有运行或流读不到答 204,等下一次 `sync`。**停一轮只有三条路**:`POST /chat/stop`(带上流里 `data-run` 给的运行 id,按下时这一轮刚结束、下一轮已经开了的话不停下一轮)· 删除会话 · server 停机;前两条经 Redis 发布到运行所在的实例。读的页面离开不停运行。**每条流的第一帧是心跳**,第二帧是 `data-run`(`agent/run-wire.ts`);两者都带 `transient: true`,SDK 交给 `onData` 之后就丢掉,不进回复(`stores/chat-sessions.ts` 的 `isAnswering`)。**会话内容不走这条流**:打开一条会话是 `POST /chat/open` 和 `GET /chat/conversations/:id` 两个 HTTP 端点的事,一次给一页(条数在 `config/agent.yaml`),流上只有这次运行自己的输出。**流里出错怎么收尾**:这一轮里的失败由 `main-agent.ts` 记一次日志(`agent_turn_failed`),先写 `data-failed`,再由 SDK 写 `error` 帧;`run-wire.ts` 兜住开这一轮时抛出的异常(记 `chat_turn_failed`,补写 `data-failed` 和 `error`)和收尾抛出的异常(记 `chat_run_settle_failed`,补写 `error`),然后都正常关流 —— 以出错结束的流让每个接着的页面都无话可说;框架对回调抛出的异常是正常关流,而正常关流在浏览器看来跟一轮答完了一模一样。
+**一轮属于会话的运行,不属于发起它的请求**(`agent/chat-run.ts`)。`POST /chat/message` 鉴权、三查之后把消息排进这条会话的队列(`chat-queue.service.ts`):没有运行占着会话时开一次运行,请求等运行的开头阶段做完才答复;有运行在跑时这条消息等在队列里,运行在下一个 step 之前把它接进来(写一帧 `data-user-message`),答复里是等待区。**开头阶段的次序是硬的**:核会话主人还能不能跑 → 取出等着的消息 → 把开头那条按它自己的 id 落库 → 占住运行列表 → 建这次运行的可续读流(`agent/run-stream.ts`:`resumable-stream` 在运行所在进程的内存里留下每一帧,经 Redis 发布订阅重放给任何实例上接上来的页面;运行所在的进程没了,流也就读不到了);做完才答复,所以答复到达时那条消息已经在历史里、流也已经接得上。之后才在后台读记忆、读历史、调模型,谁在读都跑到底。接进来的消息在队列的 `taken` 里留到这一轮的回复落库;进程崩溃时由下一次运行先处理它们,丢的只有这一轮已经输出、还没落库的回答。**读历史必须排除当前这一轮**(`getMessagesForLlm` 的上界参数):开头那条刚落库,读进去等于把它喂给模型两遍。**页面经 `GET /chat/conversations/:id/stream` 读这次运行**,从第一帧重放、再接着收;没有运行或流读不到答 204,等下一次 `sync`。运行所在的进程没了时,接流等 1 秒的 ack 就答 204:`patches/resumable-stream@2.2.13.patch` 让这次等待一到时间就结束(库原样时,定时器正好在第 1000 毫秒触发会让请求一直挂着,见 vercel/resumable-stream#50),`agent/__tests__/run-stream-ack-timeout.test.ts` 在补丁丢失时会红;升级 `resumable-stream` 时连补丁一起重做。**停一轮只有三条路**:`POST /chat/stop`(带上流里 `data-run` 给的运行 id,按下时这一轮刚结束、下一轮已经开了的话不停下一轮)· 删除会话 · server 停机;前两条经 Redis 发布到运行所在的实例。读的页面离开不停运行。**每条流的第一帧是心跳**,第二帧是 `data-run`(`agent/run-wire.ts`);两者都带 `transient: true`,SDK 交给 `onData` 之后就丢掉,不进回复(`stores/chat-sessions.ts` 的 `isAnswering`)。**会话内容不走这条流**:打开一条会话是 `POST /chat/open` 和 `GET /chat/conversations/:id` 两个 HTTP 端点的事,一次给一页(条数在 `config/agent.yaml`),流上只有这次运行自己的输出。**流里出错怎么收尾**:这一轮里的失败由 `main-agent.ts` 记一次日志(`agent_turn_failed`),先写 `data-failed`,再由 SDK 写 `error` 帧;`run-wire.ts` 兜住开这一轮时抛出的异常(记 `chat_turn_failed`,补写 `data-failed` 和 `error`)和收尾抛出的异常(记 `chat_run_settle_failed`,补写 `error`),然后都正常关流 —— 以出错结束的流让每个接着的页面都无话可说;框架对回调抛出的异常是正常关流,而正常关流在浏览器看来跟一轮答完了一模一样。
 
 **这条流每 5 秒说一次自己还活着**(`heartbeat`,`data` 为空)。一轮可能长时间什么都不产出 —— 首字慢、在等一个工具 —— 而那在线路上跟连接死掉一模一样:同样的沉默、同样开着的 socket。浏览器分不出来,所以服务端按固定节奏发这个帧,**它到达本身就是全部内容**;心跳跟其他帧一起存在流里,晚接上的页面也会重放到。客户端连着三个间隔没收到就放开这条流,向正在看的人闪一句「网络错误」,然后重读最近一页历史、重新接上(`stores/chat-live.ts`)。运行在 server 上照常跑,这一页的断线不改它的结局。
 
@@ -1290,10 +1290,10 @@ async function deductOnce(userId: string, amount: number, refKey: string): Promi
 
 ```ts
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 ```
 
-`Elastic-2.0` = Elastic License 2.0(见仓库根 `LICENSE`);Breatic 名称与标识的使用规则见仓库根 `TRADEMARKS.md`。
+`AGPL-3.0-only` = GNU Affero General Public License v3.0,仅限这一版本(见仓库根 `LICENSE`);Breatic 名称与标识的使用规则见仓库根 `TRADEMARKS.md`。
 
 - **豁免**:shadcn vendor(`web` 的 `components/ui/`)—— 第三方 IP,不挂 Orime 版权。
 - **CI 强制**:`breatic/no-missing-license-header`(扫 `packages/*/src` 的 `.ts`/`.tsx` + `eslint-rules/src` 与 `repo-lint/src` 的 `.ts`,排除 vendor;新文件缺头即 fail)。**双行都校验** —— 版权行与许可行都得在、都得在最前两行且顺序正确;只认第一行的话,写错许可证的文件能过。

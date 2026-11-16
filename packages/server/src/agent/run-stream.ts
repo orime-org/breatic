@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * Where a run's answer streams, so any page can read it from the start
@@ -8,12 +8,13 @@
  * `resumable-stream` keeps every frame a run writes and replays them to each
  * reader that attaches, on any instance, through Redis. It calls some of its
  * Redis operations inside `.then(async ...)` with no catch (2.2.13
- * `dist/runtime.js:90-94`, `:117-141`, `:254-255`): one failure there is an
+ * `dist/runtime.js:90-94`, `:117-141`): one failure there is an
  * unhandled rejection, and Node 24 ends the process on one. So the publisher
  * and subscriber handed to it catch exactly those calls -- a publish, an
  * unsubscribe, writing the finished sentinel -- log them and carry on, and a
- * failed read of the sentinel answers "still running", which keeps the ack
- * timer and the done watchdog from throwing or closing a live reader. The two
+ * failed read of the sentinel answers "still running", which keeps the done
+ * watchdog from closing a live reader. A reader's ack timer always settles its
+ * attach, through `patches/resumable-stream@2.2.13.patch` (vercel/resumable-stream#50). The two
  * calls a new stream awaits before it exists, the request subscription and the
  * running sentinel, still throw, so a stream that cannot be set up fails
  * where its run can see it.

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * The agent reads a template in full before proposing it (inner#1807): the
@@ -137,6 +137,10 @@ describe("get_generation_template", () => {
 
   it("lets a template put the text it asks for in the picture, labels, a title or lines of verse, and keeps out any other text", () => {
     expect(TEMPLATE_CRAFT.picture).toContain("put no text in the picture unless the template asks for it (labels, a title, lines of verse)");
+  });
+
+  it("lets a template set a cut rhythm faster than the beat every 2 to 3 seconds", () => {
+    expect(TEMPLATE_CRAFT.video).toContain("a visible beat every 2 to 3 seconds unless the template sets its own cut rhythm");
   });
 
   it("has words in every craft section", () => {

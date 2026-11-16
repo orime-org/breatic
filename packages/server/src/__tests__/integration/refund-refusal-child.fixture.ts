@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /** An owned internal-API process for the pre-commit exit integration case. */
 import { serve } from "@hono/node-server";

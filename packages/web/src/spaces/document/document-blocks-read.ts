@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * A document read block by block for the Agent (inner#1509).
@@ -13,6 +13,7 @@
 
 import type { BlockNoteEditor } from '@blocknote/core';
 import type { Mark, Node as ProseMirrorNode } from '@tiptap/pm/model';
+import { DOC_COLUMN_LIST } from '@web/spaces/document/document-column-geometry';
 import { isMediaBlockType } from '@web/spaces/document/document-media-types';
 import { blocksMarkdown } from '@web/spaces/document/document-table-markdown';
 
@@ -79,6 +80,9 @@ function lossyBlock(node: ProseMirrorNode, commentedMedia: ReadonlySet<string>):
    */
   const drops = (child: ProseMirrorNode): boolean =>
     STAND_INS.has(child.type.name) ||
+    // A column group: Markdown writes its blocks one under another
+    // (inner#1314 design §5.5).
+    child.type.name === DOC_COLUMN_LIST ||
     // A comment on media stands on the block's id, which a rewrite replaces
     // (inner#1316 §5.4).
     (child.type.name === 'blockContainer' && commentedMedia.has(String(child.attrs.id)) && isMediaBlockType(child.firstChild?.type.name ?? '')) ||

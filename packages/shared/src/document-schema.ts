@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * What a document Space's editor is able to represent, as plain data, plus the
@@ -102,7 +102,7 @@ export interface DocumentSchema {
  * date did not move would be refused wherever an older one is published.
  */
 export const DOCUMENT_SCHEMA: DocumentSchema = {
-  publishedAt: "2026-10-31T04:33:58Z",
+  publishedAt: "2026-11-13T10:10:00Z",
 
   // Attribute names are here because adding an attribute to a node both sides
   // already know (a heading gaining an alignment, say) leaves no trace in the
@@ -140,8 +140,11 @@ export const DOCUMENT_SCHEMA: DocumentSchema = {
     codeBlock: ["language", "quoted"],
     divider: ["quoted"],
     doc: [],
-    // The table whose cells hold blocks (inner#1619). Each is a layout block:
-    // its node holds its children directly and carries the block id itself.
+    // The column group and its columns (inner#1314), and the table whose cells
+    // hold blocks (inner#1619). Each is a layout block: its node holds its
+    // children directly and carries the block id itself.
+    docColumn: ["id", "width"],
+    docColumnList: ["id"],
     docTable: ["id", "quoted", "textColor"],
     docTableCell: ["backgroundColor", "colspan", "colwidth", "id", "rowspan"],
     docTableHeader: ["backgroundColor", "colspan", "colwidth", "id", "rowspan"],
@@ -232,9 +235,11 @@ export const DOCUMENT_SCHEMA: DocumentSchema = {
     codeBlock: "text*",
     divider: "",
     doc: "blockGroup",
+    docColumn: "(blockContainer | docTable)+",
+    docColumnList: "docColumn*",
     docTable: "docTableRow+",
-    docTableCell: "blockContainer+",
-    docTableHeader: "blockContainer+",
+    docTableCell: "(blockContainer | docColumnList)+",
+    docTableHeader: "(blockContainer | docColumnList)+",
     docTableRow: "(docTableCell | docTableHeader)*",
     hardBreak: "",
     heading: "inline*",

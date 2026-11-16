@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: Elastic-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 
 /**
  * `takePromptAndValidate` (#1966): the one place the prompt leaves the params bag. It lifts the prompt before the
