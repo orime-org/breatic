@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 import { act, renderHook } from '@testing-library/react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
 import { usePublishTimelineView, type PublishTimelineViewInput } from '@web/spaces/timeline/use-publish-timeline-view';
+import { useFollowStore } from '@web/stores/follow';
 
 const docs: Y.Doc[] = [];
 
@@ -24,16 +25,23 @@ function makeAwareness(): Awareness {
  * A track viewport with settable scroll offsets and a fixed width.
  * @returns The element and its offset setter.
  */
-function trackViewport(): { el: HTMLElement; scrollTo: (left: number, top: number) => void } {
+function trackViewport(): { el: HTMLElement; scrollTo: (left: number, top: number) => void; setWidth: (w: number) => void } {
   const el = document.createElement('div');
   document.body.appendChild(el);
   let left = 0;
   let top = 0;
+  let width = 1112;
   Object.defineProperty(el, 'scrollLeft', { get: () => left, configurable: true });
   Object.defineProperty(el, 'scrollTop', { get: () => top, configurable: true });
-  Object.defineProperty(el, 'clientWidth', { get: () => 1112, configurable: true });
+  Object.defineProperty(el, 'clientWidth', { get: () => width, configurable: true });
   return {
     el,
+    setWidth: (w) => {
+      width = w;
+      act(() => {
+        for (const callback of resizeCallbacks) callback();
+      });
+    },
     scrollTo: (l, tp) => {
       left = l;
       top = tp;
@@ -54,7 +62,30 @@ function view(awareness: Awareness): Record<string, unknown> | null {
   return state?.timelineView ?? null;
 }
 
+/** Every ResizeObserver callback the hook registered, so a test can report a size change. */
+const resizeCallbacks = new Set<() => void>();
+
+beforeEach(() => {
+  useFollowStore.getState().reset();
+  vi.stubGlobal('ResizeObserver', class {
+    private readonly callback: () => void;
+    constructor(callback: () => void) {
+      this.callback = callback;
+    }
+    observe(): void {
+      resizeCallbacks.add(this.callback);
+    }
+    unobserve(): void {
+      resizeCallbacks.delete(this.callback);
+    }
+    disconnect(): void {
+      resizeCallbacks.delete(this.callback);
+    }
+  });
+});
+
 afterEach(() => {
+  resizeCallbacks.clear();
   for (const doc of docs.splice(0)) doc.destroy();
   document.body.innerHTML = '';
 });
@@ -117,6 +148,29 @@ describe('usePublishTimelineView', () => {
     // Pausing is news again, with the frame it stopped on.
     rerender(input(awareness, el, { intent: 'pause', anchor: null, frame: 36 }));
     await vi.waitFor(() => expect(view(awareness)).toMatchObject({ intent: 'pause', anchor: null, frame: 36 }));
+  });
+
+  it('republishes the visible frame range when the track viewport changes width', async () => {
+    const awareness = makeAwareness();
+    const { el, setWidth } = trackViewport();
+    renderHook(() => usePublishTimelineView(input(awareness, el)));
+    await vi.waitFor(() => expect(view(awareness)).not.toBeNull());
+    const before = view(awareness)?.endFrame as number;
+    setWidth(2112);
+    await vi.waitFor(() => expect(view(awareness)?.endFrame).toBe(before + 250));
+  });
+
+  it('publishes no view while this tab follows a member, and its own once following stops', async () => {
+    useFollowStore.getState().start('leader', 'Leader');
+    const awareness = makeAwareness();
+    const { el, scrollTo } = trackViewport();
+    renderHook(() => usePublishTimelineView(input(awareness, el, { frame: 7 })));
+    scrollTo(40, 0);
+    expect(view(awareness)).toBeNull();
+    act(() => useFollowStore.getState().stop('button'));
+    await vi.waitFor(() => expect(view(awareness)).toMatchObject({ frame: 7 }));
+    act(() => useFollowStore.getState().start('leader', 'Leader'));
+    expect(view(awareness)).toBeNull();
   });
 
   it('publishes the view again after the page comes back from the back-forward cache', async () => {

@@ -7,7 +7,7 @@ import userEvent from '@testing-library/user-event';
 
 import { MembersStack } from '@web/pages/project/chrome/top-bar/MembersStack';
 import type { Member } from '@web/data/api/members';
-import { useFollowStore } from '@web/stores/follow';
+import { useFollowStore, type FollowOther } from '@web/stores/follow';
 import { useUIStore } from '@web/stores/ui';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
 import { t } from '@breatic/shared';
@@ -188,7 +188,7 @@ describe('MembersStack, following', () => {
         members={MEMBERS}
         currentUserId='u-vw'
         onlineUserIds={new Set(['u-own', 'u-ed', 'u-vw'])}
-        followingByUser={new Map([['u-ed', 'u-own']])}
+        followTargets={new Map<string, FollowOther>([['u-ed', { name: 'Owner Person' }]])}
       />,
     );
     await user.click(screen.getByTestId('members-trigger'));
@@ -207,29 +207,13 @@ describe('MembersStack, following', () => {
         members={MEMBERS}
         currentUserId='u-vw'
         onlineUserIds={new Set(['u-ed', 'u-vw'])}
-        followingByUser={new Map([['u-ed', 'u-vw']])}
+        followTargets={new Map<string, FollowOther>([['u-ed', 'you']])}
       />,
     );
     await user.click(screen.getByTestId('members-trigger'));
     await user.click(screen.getByTestId('members-follow-m-ed'));
     expect(useFollowStore.getState().targetUserId).toBeNull();
     expect(toastMock.info).toHaveBeenCalledWith(t('members.follow.busyYou', { name: 'Editor Person' }));
-  });
-
-  it('offers View as usual on a member following someone who is not on the roster', async () => {
-    const user = userEvent.setup();
-    render(
-      <MembersStack
-        members={MEMBERS}
-        currentUserId='u-vw'
-        onlineUserIds={new Set(['u-ed', 'u-vw'])}
-        followingByUser={new Map([['u-ed', 'u-gone']])}
-      />,
-    );
-    await user.click(screen.getByTestId('members-trigger'));
-    await user.click(screen.getByTestId('members-follow-m-ed'));
-    expect(useFollowStore.getState().targetUserId).toBe('u-ed');
-    expect(toastMock.info).not.toHaveBeenCalled();
   });
 
   it('shows each row online or offline', async () => {

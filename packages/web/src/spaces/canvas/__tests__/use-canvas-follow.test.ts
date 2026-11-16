@@ -50,6 +50,7 @@ function input(over: Partial<CanvasFollowInput> & Pick<CanvasFollowInput, 'aware
     pane: PANE,
     applyViewport: vi.fn(),
     clearOpeningFit: vi.fn(),
+    openingFitPending: () => false,
     ...over,
   };
 }
@@ -207,11 +208,19 @@ describe('useCanvasFollow', () => {
     expect(useFollowStore.getState().stopped?.reason).toBe('viewport');
   });
 
-  it('lets a programmatic move before the first alignment pass, such as the opening fit', () => {
+  it('lets the opening fit of a canvas with no stored view pass before the first alignment', () => {
+    const local = makeAwareness();
+    const { result } = renderHook(() => useCanvasFollow(input({ awareness: local, openingFitPending: () => true })));
+    act(() => result.current.onMoveStart(null));
+    expect(useFollowStore.getState().targetUserId).toBe('leader');
+  });
+
+  it('stops on a toolbar, minimap or shortcut move before the first alignment', () => {
+    // The leader has no camera on this canvas (no Space open, or not published yet), so nothing aligns.
     const local = makeAwareness();
     const { result } = renderHook(() => useCanvasFollow(input({ awareness: local })));
     act(() => result.current.onMoveStart(null));
-    expect(useFollowStore.getState().targetUserId).toBe('leader');
+    expect(useFollowStore.getState().stopped?.reason).toBe('viewport');
   });
 
 });

@@ -87,10 +87,20 @@ afterEach(() => {
 });
 
 describe('SceneEditor, following a member', () => {
-  it('publishes the personal camera with the field of view', async () => {
+  it('publishes the personal camera with the field of view while following nobody', async () => {
+    useFollowStore.getState().reset();
     const session = await setup();
     const setCamera = vi.spyOn(session, 'setCamera');
     act(() => viewport().onViewChange({ position: [1, 2, 3], target: [0, 0, 0] }));
+    expect(setCamera).toHaveBeenLastCalledWith({ position: [1, 2, 3], target: [0, 0, 0], fov: SCENE_CAMERA_FOV });
+  });
+
+  it('publishes no camera while following a member, and its own once following stops', async () => {
+    const session = await setup();
+    const setCamera = vi.spyOn(session, 'setCamera');
+    act(() => viewport().onViewChange({ position: [1, 2, 3], target: [0, 0, 0] }));
+    expect(setCamera).toHaveBeenLastCalledWith(null);
+    act(() => useFollowStore.getState().stop('button'));
     expect(setCamera).toHaveBeenLastCalledWith({ position: [1, 2, 3], target: [0, 0, 0], fov: SCENE_CAMERA_FOV });
   });
 

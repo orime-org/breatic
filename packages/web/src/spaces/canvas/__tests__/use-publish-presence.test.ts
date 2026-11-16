@@ -12,13 +12,14 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { renderHook } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
 import type { ActiveNodeSources } from '@web/spaces/canvas/active-node-ids';
 import type { GestureGeometry } from '@web/spaces/canvas/gesture-table';
 import { usePublishPresence } from '@web/spaces/canvas/use-publish-presence';
+import { useFollowStore } from '@web/stores/follow';
 
 /** The three fields this client writes into awareness. */
 interface Published {
@@ -1021,6 +1022,30 @@ describe('usePublishPresence, the camera', () => {
       expect(camera(awareness)).toMatchObject({ x: 10, y: 20, width: 800, height: 600 });
     });
     expect(camera(awareness)?.at as number).toBeGreaterThanOrEqual(before);
+  });
+
+  it('publishes no camera while this tab follows a member, and its own once following stops', async () => {
+    useFollowStore.getState().reset();
+    useFollowStore.getState().start('leader', 'Leader');
+    const awareness = makeAwareness();
+    const { container } = makeCanvas();
+    renderHook(() =>
+      usePublishPresence({
+        awareness,
+        sources: NOTHING,
+        synced: true,
+        containerRef: { current: container },
+        toFlowPosition: SHIFTED,
+        readCamera: () => ({ x: 10, y: 20, width: 800, height: 600 }),
+      }),
+    );
+    await vi.waitFor(() => expect(awareness.getLocalState()).toHaveProperty('activeNodeIds'));
+    expect(camera(awareness)).toBeNull();
+    act(() => useFollowStore.getState().stop('button'));
+    await vi.waitFor(() => expect(camera(awareness)).toMatchObject({ x: 10, y: 20 }));
+    act(() => useFollowStore.getState().start('leader', 'Leader'));
+    await vi.waitFor(() => expect(camera(awareness)).toBeNull());
+    useFollowStore.getState().reset();
   });
 
   it('republishes when the viewport pans', async () => {

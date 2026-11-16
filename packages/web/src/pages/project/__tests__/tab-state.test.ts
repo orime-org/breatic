@@ -351,3 +351,20 @@ describe('reduceTabState — what is worth storing', () => {
     expect(one.persist).toBe(true);
   });
 });
+
+describe('reduceTabState — whether following moved the strip (#920)', () => {
+  it('records that an open asked for by following moved the tab, and that any other change did not', () => {
+    const followed = reduceTabState(ready(['a', 'b'], 'a'), { type: 'open', spaceId: 'b', byFollow: true });
+    expect(followed).toMatchObject({ activeId: 'b', byFollow: true, persist: true });
+    const appended = reduceTabState(ready(['a'], 'a'), { type: 'open', spaceId: 'c', byFollow: true });
+    expect(appended).toMatchObject({ openIds: ['a', 'c'], activeId: 'c', byFollow: true });
+    expect(reduceTabState(followed, { type: 'open', spaceId: 'a' }).byFollow).toBe(false);
+    expect(reduceTabState(followed, { type: 'close', spaceId: 'b' }).byFollow).toBe(false);
+    expect(reduceTabState(followed, { type: 'reorder', spaceId: 'b', beforeSpaceId: 'a' }).byFollow).toBe(false);
+    expect(reduceTabState(followed, { type: 'spaces', spaces: [{ id: 'a' }] as TabOrderEntry[] }).byFollow).toBe(false);
+  });
+
+  it('starts with following not having moved the strip', () => {
+    expect(fresh().byFollow).toBe(false);
+  });
+});

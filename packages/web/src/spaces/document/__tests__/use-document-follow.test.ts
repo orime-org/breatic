@@ -228,55 +228,39 @@ describe('useDocumentFollow', () => {
     expect(b.viewport.scrollTop).toBe(2000 - FOLLOWED_LANDING);
   });
 
-  it('stops on the user wheeling the body before the first alignment', () => {
+  it('stops when the user scrolls the body before the first alignment, by any route', () => {
+    // The leader shows no block yet (no Space open, snapshot panel open, or not published).
     const b = body([['a', 0], ['b', 1000]]);
     const local = makeAwareness();
     renderHook(() => useDocumentFollow(input(b, local)));
-    act(() => {
-      b.viewport.dispatchEvent(new WheelEvent('wheel', { deltaY: 120, bubbles: true }));
-    });
+    // Wheel, scroll keys, the scrollbar, an outline heading or a comment jump all end in this scroll.
+    b.scrollBy(300);
     expect(useFollowStore.getState().stopped?.reason).toBe('viewport');
   });
 
-  it.each(['PageUp', 'PageDown', 'Home', 'End', ' ', 'ArrowUp', 'ArrowDown'])(
-    'stops on the scroll key %j before the first alignment, while the leader block has not arrived',
+  it.each(['PageUp', 'PageDown', 'Home', 'End', ' ', 'ArrowUp', 'ArrowDown', 'a'])(
+    'keeps following when the key %j typed in the body scrolls nothing before the first alignment',
     (key) => {
       const b = body([['a', 0]]);
       const local = makeAwareness();
-      const peer = makeAwareness();
       renderHook(() => useDocumentFollow(input(b, local)));
-      arrive(local, peer, { user: { id: 'leader' }, topBlockId: { id: 'late', at: 1 } });
       act(() => {
         b.root.firstElementChild?.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
       });
-      expect(useFollowStore.getState().stopped?.reason).toBe('viewport');
+      expect(useFollowStore.getState().targetUserId).toBe('leader');
     },
   );
 
-  it('keeps following on a key that does not scroll before the first alignment', () => {
-    const b = body([['a', 0]]);
-    const local = makeAwareness();
-    renderHook(() => useDocumentFollow(input(b, local)));
-    act(() => {
-      b.viewport.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }));
-    });
-    expect(useFollowStore.getState().targetUserId).toBe('leader');
-  });
-
-  it('stops on a press on this body scrollbar before the first alignment, not on another scroller\'s', () => {
+  it('keeps following through scroll anchoring before the first alignment', () => {
     const b = body([['a', 0], ['b', 1000]]);
-    const other = body([['x', 0]]);
+    b.viewport.scrollTop = 900;
     const local = makeAwareness();
     renderHook(() => useDocumentFollow(input(b, local)));
-    // The rail cancels its own pointerdown, so only a window capture listener sees it.
-    const thumbOf = (bar: HTMLElement): Element => bar.firstElementChild as Element;
-    act(() => {
-      thumbOf(other.scrollbar).dispatchEvent(new Event('pointerdown', { bubbles: true }));
-    });
+    // Someone inserts 80px above: the browser keeps the block in place by scrolling with it.
+    b.lines.set('b', 1080);
+    b.scrollBy(80);
     expect(useFollowStore.getState().targetUserId).toBe('leader');
-    act(() => {
-      thumbOf(b.scrollbar).dispatchEvent(new Event('pointerdown', { bubbles: true }));
-    });
+    b.scrollBy(200);
     expect(useFollowStore.getState().stopped?.reason).toBe('viewport');
   });
 
@@ -291,6 +275,11 @@ describe('useDocumentFollow', () => {
 });
 
 describe('usePublishTopBlock', () => {
+  // A tab publishes its own top block only while it follows nobody.
+  beforeEach(() => {
+    useFollowStore.getState().reset();
+  });
+
   /**
    * Read the published field.
    * @param awareness - The awareness.
@@ -319,6 +308,19 @@ describe('usePublishTopBlock', () => {
     await vi.waitFor(() => expect(published(awareness)?.id).toBe('a'));
     b.scrollBy(1010);
     await vi.waitFor(() => expect(published(awareness)?.id).toBe('b'));
+  });
+
+  it('publishes no top block while this tab follows a member, and its own once following stops', async () => {
+    const b = body([['a', 0], ['b', 1000]]);
+    const awareness = makeAwareness();
+    useFollowStore.getState().start('leader', 'Leader');
+    renderHook(() => usePublishTopBlock(input(b, awareness)));
+    b.scrollBy(10);
+    expect(published(awareness)).toBeNull();
+    act(() => useFollowStore.getState().stop('button'));
+    await vi.waitFor(() => expect(published(awareness)?.id).toBe('a'));
+    act(() => useFollowStore.getState().start('leader', 'Leader'));
+    expect(published(awareness)).toBeNull();
   });
 
   it('publishes the top block again after the page comes back from the back-forward cache', async () => {

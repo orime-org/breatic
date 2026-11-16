@@ -27,6 +27,7 @@ function input(over: Partial<FollowRoutingInput>): FollowRoutingInput {
     activeId: 's1',
     ready: true,
     persist: true,
+    byFollow: false,
     open: vi.fn(),
     ...over,
   };
@@ -49,7 +50,7 @@ describe('useFollowRouting', () => {
     const { rerender } = renderHook((p: FollowRoutingInput) => useFollowRouting(p), { initialProps: input({ open }) });
     rerender(input({ open, leaderSpaceId: 's3' }));
     expect(open).toHaveBeenLastCalledWith('s3');
-    rerender(input({ open, leaderSpaceId: 's3', activeId: 's3', persist: true }));
+    rerender(input({ open, leaderSpaceId: 's3', activeId: 's3', persist: true, byFollow: true }));
     expect(useFollowStore.getState().targetUserId).toBe('leader');
     expect(useFollowStore.getState().stopped).toBeNull();
   });
@@ -70,11 +71,24 @@ describe('useFollowRouting', () => {
     rerender(input({ open, leaderSpaceId: 's3' }));
     rerender(input({ open, leaderSpaceId: 's1' }));
     // Neither landing is the user's own switch.
-    rerender(input({ open, leaderSpaceId: 's1', activeId: 's3', persist: true }));
-    rerender(input({ open, leaderSpaceId: 's1', activeId: 's1', persist: true }));
+    rerender(input({ open, leaderSpaceId: 's1', activeId: 's3', persist: true, byFollow: true }));
+    rerender(input({ open, leaderSpaceId: 's1', activeId: 's1', persist: true, byFollow: true }));
     expect(useFollowStore.getState().targetUserId).toBe('leader');
     expect(useFollowStore.getState().stopped).toBeNull();
     expect(open).toHaveBeenLastCalledWith('s1');
+  });
+
+  it('stops on the user\'s own switch after the opens it asked for landed in one render', () => {
+    const open = vi.fn();
+    const { rerender } = renderHook((p: FollowRoutingInput) => useFollowRouting(p), { initialProps: input({ open }) });
+    // The leader goes s1 -> s3 -> s1 and both opens land in one render: the tab never leaves s1.
+    rerender(input({ open, leaderSpaceId: 's3' }));
+    rerender(input({ open, leaderSpaceId: 's1' }));
+    expect(open.mock.calls.map((c) => c[0])).toEqual(['s3', 's1']);
+    rerender(input({ open, leaderSpaceId: 's1', activeId: 's1', byFollow: true }));
+    // The user then clicks the s3 tab the follow left on the strip.
+    rerender(input({ open, leaderSpaceId: 's1', activeId: 's3', persist: true, byFollow: false }));
+    expect(useFollowStore.getState().stopped?.reason).toBe('space');
   });
 
   it('stays put when the leader closes every tab or names a Space that is gone', () => {
