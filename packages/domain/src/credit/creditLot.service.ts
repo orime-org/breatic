@@ -359,7 +359,9 @@ async function applyCharge(input: ChargeInput, tx: DbTx): Promise<ChargeOutcome>
   // request row and joins the rest at the debt, a
   // designation one table earlier, and accepting a transfer at the
   // membership. An admission that holds credits takes the same debt lock, so
-  // it sees this charge and the hold it releases together.
+  // it sees this charge and the hold it releases together. An operation's
+  // admission (inner#1968) takes the account's `users` row before the debt,
+  // and a settlement never waits on `users`, so the two cannot deadlock.
   await creditLotRepo.lockDebt(studioId, tx);
   if (input.releaseHold) await creditHoldRepo.releaseHold(input.releaseHold, tx);
   const candidates = await creditLotRepo.listSpendableLots(studioId, tx);
