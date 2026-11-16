@@ -5,17 +5,35 @@ import * as Y from 'yjs';
 import { z } from 'zod';
 
 import {
-  SCENE_FORMAT_VERSION, SCENE_POSE_KEY_PREFIX, SceneObjectSchema, SceneObjectValuesSchema, ScenePoseSchema,
-  expandScenePose, gatherScenePose, getSceneRootMap,
+  DEFAULT_VIEWFINDER_RATIO, SCENE_AMBIENT_COLOR_DEFAULT, SCENE_AMBIENT_INTENSITY_DEFAULT, SCENE_AMBIENT_INTENSITY_MAX,
+  SCENE_FOCAL_LENGTH_DEFAULT, SCENE_FORMAT_VERSION, SCENE_LIGHT_COLOR_DEFAULT, SCENE_LIGHT_INTENSITY, SCENE_POSE_KEY_PREFIX, SCENE_SPOT_ANGLE_DEFAULT,
+  SceneColorSchema, SceneObjectSchema, SceneObjectValuesSchema, ScenePoseSchema,
+  expandScenePose, gatherScenePose, getSceneRootMap, isSceneModelFile, nextDirectorNumber,
   type SceneEditableField, type SceneModel, type SceneObject, type SceneObjectValues, type ScenePose,
 } from '@breatic/shared';
 
 import { strongestKind, writeSpaceDoc, type SpaceRefusalReason, type SpaceWriteKind } from '@web/data/yjs/space-write';
 import { withDestroyListenerCleanup } from '@web/data/yjs/undo-manager-cleanup';
 
-// A `patch` command writes only the transform fields and the name; a pose is written by `pose` commands.
-const PATCH_SCHEMA = SceneObjectValuesSchema.pick({ name: true, position: true, rotation: true, scale: true })
-  .partial().extend({ id: z.string().uuid() }).strict();
+/** Fields a `patch` command may write; a pose is written by `pose` commands, a number and the lock by their own. */
+const PATCH_MASK = { name: true, position: true, rotation: true, scale: true,
+  focalLength: true, frame: true, freeRatio: true, color: true, intensity: true, castShadow: true, angle: true } as const;
+const PATCH_FIELDS = Object.keys(PATCH_MASK) as Array<keyof typeof PATCH_MASK>;
+const PATCH_SCHEMA = SceneObjectValuesSchema.pick(PATCH_MASK).partial().extend({ id: z.string().uuid() }).strict();
+
+/** The ambient light stored on the `scene` root. */
+const SceneEnvironmentSchema = z.object({
+  ambientColor: SceneColorSchema,
+  ambientIntensity: z.number().finite().min(0).max(SCENE_AMBIENT_INTENSITY_MAX),
+}).strict();
+export type SceneEnvironmentValues = z.infer<typeof SceneEnvironmentSchema>;
+const ENVIRONMENT_DEFAULTS: SceneEnvironmentValues = { ambientColor: SCENE_AMBIENT_COLOR_DEFAULT, ambientIntensity: SCENE_AMBIENT_INTENSITY_DEFAULT };
+
+/** Limits a command is checked against; a caller that passes none may add no light. */
+export interface SceneCommandLimits {
+  maxLights: number;
+}
+const NO_LIGHTS: SceneCommandLimits = { maxLights: 0 };
 
 export type ScenePatch = z.infer<typeof PATCH_SCHEMA>;
 export type SceneCommand =
@@ -24,14 +42,15 @@ export type SceneCommand =
   | { type: 'delete'; ids: readonly string[] }
   | { type: 'lock'; ids: readonly string[]; locked: boolean }
   | { type: 'duplicate'; copies: readonly { sourceId: string; id: string }[] }
-  | { type: 'pose'; id: string; set: ScenePose; replace: boolean };
+  | { type: 'pose'; id: string; set: ScenePose; replace: boolean }
+  | { type: 'environment'; set: Partial<SceneEnvironmentValues> };
 
 /**
  * Why a scene command was refused. `full`, `over_ceiling` and `resyncing` come from the Space's size (inner#1790)
  * and have already been told: `full` and `over_ceiling` by `writeSpaceDoc`'s toast, `resyncing` by the rebuild's
  * own toast.
  */
-export type SceneCommandFailure = 'readOnly' | 'unsupported' | 'invalid' | 'locked' | 'missing' | 'duplicate' | SpaceRefusalReason;
+export type SceneCommandFailure = 'readOnly' | 'unsupported' | 'invalid' | 'locked' | 'missing' | 'duplicate' | 'lightLimit' | SpaceRefusalReason;
 export type SceneCommandResult = { ok: true; ids: readonly string[] } | { ok: false; reason: SceneCommandFailure };
 
 export interface SceneDocumentSnapshot {
@@ -39,6 +58,7 @@ export interface SceneDocumentSnapshot {
   version: unknown;
   objects: readonly SceneObject[];
   invalidObjects: readonly { id: string; error: string }[];
+  environment: SceneEnvironmentValues;
 }
 
 interface SceneWrite { id: string; field: SceneEditableField; value: unknown }
@@ -46,9 +66,11 @@ interface SceneUnset { id: string; field: SceneEditableField }
 interface SceneCreation { id: string; values: SceneObjectValues }
 /** One flat pose key on a record: written with a value, deleted without one. */
 interface ScenePoseWrite { id: string; key: string; value?: readonly number[] }
+/** One key on the `scene` root. */
+interface SceneRootWrite { key: keyof SceneEnvironmentValues; value: unknown }
 /** `unsets` delete a key whose absence reads as its default (an unlock deletes `locked`). */
 type ScenePlan = { ok: true; ids: readonly string[]; creates: SceneCreation[]; writes: SceneWrite[]; unsets: SceneUnset[]; deletes: string[];
-  poseWrites: ScenePoseWrite[] }
+  poseWrites: ScenePoseWrite[]; rootWrites: SceneRootWrite[] }
   | { ok: false; reason: SceneCommandFailure };
 
 /**
@@ -68,8 +90,28 @@ export function isSceneSizeRefusal(reason: SceneCommandFailure): reason is Space
  * @returns Defaults for every editable key.
  */
 function editableDefaults(model: SceneModel): Omit<SceneObjectValues, 'model'> {
-  return { name: model.kind === 'builtin' ? model.id : 'Model', position: [0, 0, 0],
-    rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false };
+  const transform = { position: [0, 0, 0] as [number, number, number], rotation: [0, 0, 0, 1] as [number, number, number, number],
+    scale: [1, 1, 1] as [number, number, number], locked: false };
+  if (model.kind === 'camera') {
+    return { ...transform, name: 'Camera', focalLength: SCENE_FOCAL_LENGTH_DEFAULT, frame: DEFAULT_VIEWFINDER_RATIO, freeRatio: 16 / 9 };
+  }
+  if (model.kind === 'light') {
+    return { ...transform, name: 'Light', color: SCENE_LIGHT_COLOR_DEFAULT, intensity: SCENE_LIGHT_INTENSITY[model.type].initial, castShadow: true,
+      ...(model.type === 'spot' ? { angle: SCENE_SPOT_ANGLE_DEFAULT } : {}) };
+  }
+  return { ...transform, name: model.kind === 'builtin' ? model.id : 'Model' };
+}
+
+/**
+ * Read the ambient light; a missing or malformed key reads as its default.
+ * @param scene - The `scene` root.
+ * @returns The ambient colour and intensity.
+ */
+function readEnvironment(scene: Y.Map<unknown>): SceneEnvironmentValues {
+  const color = SceneEnvironmentSchema.shape.ambientColor.safeParse(scene.get('ambientColor'));
+  const intensity = SceneEnvironmentSchema.shape.ambientIntensity.safeParse(scene.get('ambientIntensity'));
+  return { ambientColor: color.success ? color.data : ENVIRONMENT_DEFAULTS.ambientColor,
+    ambientIntensity: intensity.success ? intensity.data : ENVIRONMENT_DEFAULTS.ambientIntensity };
 }
 
 /**
@@ -95,13 +137,15 @@ function readRecord(id: string, value: unknown): SceneObject {
 export function readSceneDocument(doc: Y.Doc): SceneDocumentSnapshot {
   let version: unknown;
   let records: Y.Map<unknown>;
+  let root: Y.Map<unknown>;
   try {
-    version = getSceneRootMap(doc, 'scene').get('formatVersion');
+    root = getSceneRootMap(doc, 'scene');
+    version = root.get('formatVersion');
     records = getSceneRootMap(doc, 'objects');
   } catch (error) {
     return { status: 'unsupported', version, objects: [], invalidObjects: [
       { id: 'scene', error: String(error) },
-    ] };
+    ], environment: ENVIRONMENT_DEFAULTS };
   }
   const status = version === undefined ? 'loading' : version === SCENE_FORMAT_VERSION ? 'ready' : 'unsupported';
   const objects: SceneObject[] = [];
@@ -115,7 +159,7 @@ export function readSceneDocument(doc: Y.Doc): SceneDocumentSnapshot {
       }
     });
   }
-  return { status, version, objects, invalidObjects };
+  return { status, version, objects, invalidObjects, environment: readEnvironment(root) };
 }
 
 /**
@@ -145,19 +189,30 @@ export function validateSceneRecovery(doc: Y.Doc): void {
 }
 
 /**
- * Bind personal command history to the objects root; only this client's command origin is tracked.
+ * Bind personal command history to the objects and scene roots; only this client's command origin is tracked.
  * @param doc - Live collaborative scene document.
  * @param origin - Origin tracked only by this local command history.
- * @returns Personal undo manager over local record creations, field overwrites and deletions.
+ * @returns Personal undo manager over local record creations, field overwrites, deletions and ambient changes.
  */
 export function createSceneHistory(doc: Y.Doc, origin: symbol): Y.UndoManager {
-  const root = doc.share.get('objects');
   // A decoded root must first acquire its Map constructor. An already typed
   // incompatible root stays intact for inspection by the format validator.
-  const scope = root && root.constructor !== Y.AbstractType ? root : doc.getMap('objects');
+  const scope = (['objects', 'scene'] as const).map((name) => {
+    const root = doc.share.get(name);
+    return root && root.constructor !== Y.AbstractType ? root : doc.getMap(name);
+  });
   return withDestroyListenerCleanup(doc, () => new Y.UndoManager(scope, {
     trackedOrigins: new Set([origin]), captureTimeout: 0,
   }));
+}
+
+/**
+ * Count the valid lights a projection holds.
+ * @param objects - Valid records.
+ * @returns How many are lights.
+ */
+function lightCount(objects: readonly { model: SceneModel }[]): number {
+  return objects.filter((object) => object.model.kind === 'light').length;
 }
 
 /**
@@ -166,15 +221,26 @@ export function createSceneHistory(doc: Y.Doc, origin: symbol): Y.UndoManager {
  * @param _name - Its canonical document name; the size is judged when the plan is written.
  * @param command - User operation to validate against current committed scene data.
  * @param canEdit - Current write permission derived from role and connection facts.
+ * @param limits - What the command is checked against; without them no light can be added.
  * @returns Record creations, field overwrites and deletions, or the typed refusal.
  */
-export function planSceneCommand(doc: Y.Doc, _name: string, command: SceneCommand, canEdit: boolean): ScenePlan {
+export function planSceneCommand(doc: Y.Doc, _name: string, command: SceneCommand, canEdit: boolean, limits: SceneCommandLimits = NO_LIGHTS): ScenePlan {
   if (!canEdit) return { ok: false, reason: 'readOnly' };
   const scene = readSceneDocument(doc);
   if (scene.status !== 'ready') return { ok: false, reason: 'unsupported' };
   const byId = new Map(scene.objects.map((object) => [object.id, object]));
   const invalidIds = new Set(scene.invalidObjects.map((object) => object.id));
-  const plan: Extract<ScenePlan, { ok: true }> = { ok: true, ids: [], creates: [], writes: [], unsets: [], deletes: [], poseWrites: [] };
+  const plan: Extract<ScenePlan, { ok: true }> = { ok: true, ids: [], creates: [], writes: [], unsets: [], deletes: [], poseWrites: [], rootWrites: [] };
+
+  if (command.type === 'environment') {
+    const parsed = SceneEnvironmentSchema.partial().safeParse(command.set);
+    if (!parsed.success) return { ok: false, reason: 'invalid' };
+    for (const key of ['ambientColor', 'ambientIntensity'] as const) {
+      const value = parsed.data[key];
+      if (value !== undefined && value !== scene.environment[key]) plan.rootWrites.push({ key, value });
+    }
+    return plan;
+  }
 
   if (command.type === 'create' || command.type === 'duplicate') {
     const requested = command.type === 'create' ? command.objects.map((object) => object.id) : command.copies.map((copy) => copy.id);
@@ -184,12 +250,15 @@ export function planSceneCommand(doc: Y.Doc, _name: string, command: SceneComman
     const creations: unknown[] = [];
     if (command.type === 'create') creations.push(...command.objects);
     else {
+      // Copies of a camera or a light take the next numbers of their kind, one after another.
+      const next = { camera: nextDirectorNumber(scene.objects, 'camera'), light: nextDirectorNumber(scene.objects, 'light') };
       for (const copy of command.copies) {
         const source = byId.get(copy.sourceId);
         if (!source) return { ok: false, reason: invalidIds.has(copy.sourceId) ? 'invalid' : 'missing' };
         const name = SceneObjectValuesSchema.shape.name.safeParse(`${source.name} copy`);
         creations.push({ ...source, id: copy.id, name: name.success ? name.data : source.name,
-          position: [source.position[0] + 1, source.position[1], source.position[2] + 1], locked: false });
+          position: [source.position[0] + 1, source.position[1], source.position[2] + 1], locked: false,
+          ...(isSceneModelFile(source.model) ? {} : { number: next[source.model.kind]++ }) });
       }
     }
     for (const creation of creations) {
@@ -198,6 +267,8 @@ export function planSceneCommand(doc: Y.Doc, _name: string, command: SceneComman
       const { id, ...values } = parsed.data;
       plan.creates.push({ id, values });
     }
+    const added = lightCount(plan.creates.map((creation) => creation.values));
+    if (added > 0 && lightCount(scene.objects) + added > limits.maxLights) return { ok: false, reason: 'lightLimit' };
     plan.ids = requested;
     return plan;
   }
@@ -206,6 +277,7 @@ export function planSceneCommand(doc: Y.Doc, _name: string, command: SceneComman
     const object = byId.get(command.id);
     if (!object) return { ok: false, reason: invalidIds.has(command.id) ? 'invalid' : 'missing' };
     if (object.locked) return { ok: false, reason: 'locked' };
+    if (!isSceneModelFile(object.model)) return { ok: false, reason: 'invalid' };
     const set = ScenePoseSchema.safeParse(command.set);
     if (!set.success) return { ok: false, reason: 'invalid' };
     const current: ScenePose = object.pose ?? {};
@@ -231,7 +303,11 @@ export function planSceneCommand(doc: Y.Doc, _name: string, command: SceneComman
     for (const patch of command.patches) {
       const parsed = PATCH_SCHEMA.safeParse(patch);
       if (!parsed.success) return { ok: false, reason: 'invalid' };
-      for (const field of ['name', 'position', 'rotation', 'scale'] as const) {
+      const object = byId.get(patch.id) as SceneObject;
+      const { model } = object;
+      if (model.kind === 'light' && model.type === 'point' && parsed.data.rotation !== undefined) return { ok: false, reason: 'invalid' };
+      if (!SceneObjectSchema.safeParse({ ...object, ...parsed.data }).success) return { ok: false, reason: 'invalid' };
+      for (const field of PATCH_FIELDS) {
         if (parsed.data[field] !== undefined) plan.writes.push({ id: patch.id, field, value: parsed.data[field] });
       }
     }
@@ -253,7 +329,7 @@ export function planSceneCommand(doc: Y.Doc, _name: string, command: SceneComman
  * @returns The strongest of them.
  */
 function planKind(plan: Extract<ScenePlan, { ok: true }>): SpaceWriteKind {
-  const edits = plan.writes.length > 0 || plan.poseWrites.some((write) => write.value !== undefined);
+  const edits = plan.writes.length > 0 || plan.rootWrites.length > 0 || plan.poseWrites.some((write) => write.value !== undefined);
   return strongestKind(...(plan.creates.length > 0 ? ['add' as const] : []), ...(edits ? ['edit' as const] : []));
 }
 
@@ -265,16 +341,19 @@ function planKind(plan: Extract<ScenePlan, { ok: true }>): SpaceWriteKind {
  * @param origin - Origin tracked only by this local command history.
  * @param canEdit - Current write permission derived from role and connection facts.
  * @param name - Its canonical document name, whose size gates the write.
+ * @param limits - What the command is checked against; without them no light can be added.
  * @returns Affected object identities or the command refusal.
  */
-export function applySceneCommand(doc: Y.Doc, command: SceneCommand, origin: symbol, canEdit: boolean, name: string): SceneCommandResult {
-  const plan = planSceneCommand(doc, name, command, canEdit);
+export function applySceneCommand(doc: Y.Doc, command: SceneCommand, origin: symbol, canEdit: boolean, name: string,
+  limits: SceneCommandLimits = NO_LIGHTS): SceneCommandResult {
+  const plan = planSceneCommand(doc, name, command, canEdit, limits);
   if (!plan.ok) return plan;
   // A command that changes nothing leaves no transaction, so no empty undo item.
-  if (plan.creates.length + plan.writes.length + plan.unsets.length + plan.deletes.length + plan.poseWrites.length === 0) {
+  if (plan.creates.length + plan.writes.length + plan.unsets.length + plan.deletes.length + plan.poseWrites.length + plan.rootWrites.length === 0) {
     return { ok: true, ids: plan.ids };
   }
   const objects = doc.getMap<unknown>('objects');
+  const root = doc.getMap<unknown>('scene');
   const written = writeSpaceDoc(name, { kind: planKind(plan) }, () => doc.transact(() => {
     for (const creation of plan.creates) {
       const { pose, ...values } = creation.values;
@@ -289,6 +368,7 @@ export function applySceneCommand(doc: Y.Doc, command: SceneCommand, origin: sym
       else record.set(key, write.value);
     }
     for (const id of plan.deletes) objects.delete(id);
+    for (const write of plan.rootWrites) root.set(write.key, write.value);
   }, origin));
   return written.ok ? { ok: true, ids: plan.ids } : written;
 }

@@ -143,13 +143,27 @@ export function SpaceDrawer({
     event.preventDefault();
     sheetContentRef.current?.focus();
   }, []);
+  // A row that opened a Space hands the keyboard to that Space: the trigger
+  // takes focus back only once the drawer's exit animation ends, and a
+  // panel the user has opened in the new Space meanwhile would lose focus
+  // to it and close.
+  const openedSpace = React.useRef(false);
+  const handleCloseAutoFocus = React.useCallback((event: Event): void => {
+    if (openedSpace.current) event.preventDefault();
+  }, []);
+  // Each opening starts afresh: a reopening during the exit animation never
+  // unmounts the drawer, so its own close must still return focus.
+  const handleOpenChange = React.useCallback((next: boolean): void => {
+    if (next) openedSpace.current = false;
+    setOpen(next);
+  }, [setOpen]);
   const handleEscapeKeyDown = React.useCallback((event: KeyboardEvent): void => {
     // Escape inside a rename box ends the rename (the box's own handler);
     // the drawer stays. The box carries `data-renaming` for this.
     if (document.activeElement?.hasAttribute('data-renaming')) event.preventDefault();
   }, []);
   return (
-    <Sheet open={open} onOpenChange={setOpen} modal>
+    <Sheet open={open} onOpenChange={handleOpenChange} modal>
       <SheetTrigger asChild>
         <Button
           variant='chrome-ghost'
@@ -176,6 +190,7 @@ export function SpaceDrawer({
         className='flex w-[315px] flex-col p-0'
         data-testid='space-drawer'
         onEscapeKeyDown={handleEscapeKeyDown}
+        onCloseAutoFocus={handleCloseAutoFocus}
       >
         <SheetHeader className='border-b border-border px-4 py-3'>
           <SheetTitle className='text-base font-semibold text-foreground'>
@@ -205,6 +220,7 @@ export function SpaceDrawer({
                   isActive={s.id === activeSpaceId}
                   isLastSpace={spaces.length === 1}
                   onActivate={() => {
+                    openedSpace.current = true;
                     onActivate(s.id);
                     setOpen(false);
                   }}

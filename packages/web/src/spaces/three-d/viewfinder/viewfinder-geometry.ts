@@ -1,24 +1,20 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { SCENE_FREE_RATIO_MAX, SCENE_FREE_RATIO_MIN } from '@breatic/shared';
+
 import { captureResize, resizeFromCapture, type CropRect } from '@web/lib/crop-math';
 
-/** The viewfinder's ratios in menu order; `Free` constrains nothing. */
-export const VIEWFINDER_RATIOS = ['Free', '16:9', '9:16', '1:1', '4:3', '3:4', '3:2', '2:3'] as const;
-export type ViewfinderRatio = (typeof VIEWFINDER_RATIOS)[number];
-export const DEFAULT_VIEWFINDER_RATIO: ViewfinderRatio = '16:9';
 export type ViewfinderCorner = 'nw' | 'ne' | 'sw' | 'se';
 export type ViewfinderRect = CropRect;
 
 /**
- * The width/height a ratio holds the frame to.
- * @param ratio - The menu value.
- * @returns The ratio, or null for Free.
+ * A free frame's width over height, held to the bounds the scene stores.
+ * @param ratio - The measured ratio.
+ * @returns The stored ratio.
  */
-export function viewfinderRatioValue(ratio: ViewfinderRatio): number | null {
-  if (ratio === 'Free') return null;
-  const [w, h] = ratio.split(':').map(Number);
-  return (w ?? 1) / (h ?? 1);
+export function clampFreeRatio(ratio: number): number {
+  return Math.min(SCENE_FREE_RATIO_MAX, Math.max(SCENE_FREE_RATIO_MIN, ratio));
 }
 
 /**

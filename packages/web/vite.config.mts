@@ -210,6 +210,10 @@ export default defineConfig(({ command, mode }) => {
             if (/[\\/]src[\\/]spaces[\\/]three-d[\\/]model-import-(errors|error-text)\.ts$/.test(id)) {
               return 'model-import-errors';
             }
+            // The eager scene editor and the lazy viewport both read a camera's frame ratio; the module imports nothing at runtime.
+            if (/[\\/]src[\\/]spaces[\\/]three-d[\\/]viewfinder[\\/]viewfinder-ratio\.ts$/.test(id)) {
+              return 'viewfinder-ratio';
+            }
             // Shared overlay code and icons stay independent of the route that opens them.
             if (/[\\/]src[\\/]lib[\\/]overlay-focus\.ts$/.test(id)
               || /[\\/]node_modules[\\/]lucide-react[\\/]dist[\\/]esm[\\/]icons[\\/](upload|triangle-alert|folder-open)\.m?js$/.test(id)) {

@@ -23,7 +23,7 @@ function PanelExample(): React.JSX.Element {
     <div ref={stage}>
       <canvas tabIndex={0} />
       <Button ref={opener} onClick={() => setOpen(true)}>Open inspector</Button>
-      <SceneRightPanel open={open} onOpenChange={setOpen} title='Inspector' automatic={automatic} stage={stage}
+      <SceneRightPanel open={open} onOpenChange={setOpen} title='Inspector' automatic={automatic} stage={stage} bottom='0px'
         returnTarget={opener} contentRef={content} cancelGesture={() => false}>
         <input aria-label='Object name' autoComplete='off' />
       </SceneRightPanel>
