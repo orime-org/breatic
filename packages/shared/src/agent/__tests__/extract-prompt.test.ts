@@ -137,3 +137,32 @@ describe("extractPromptText — cleaning twice is cleaning once", () => {
   });
 });
 
+/**
+ * Every prompt a request carries is cleaned before anything else refuses it, so the cleaning must take time in
+ * proportion to the text: a body near the request cap must not hold the server's thread (#1521).
+ */
+describe("extractPromptText — time in proportion to the text", () => {
+  /**
+   * How long one cleaning takes.
+   * @param text - The text.
+   * @returns Milliseconds.
+   */
+  const timed = (text: string): number => {
+    const start = performance.now();
+    extractPromptText(text);
+    return performance.now() - start;
+  };
+
+  it("unwinds a deeply nested entity in one go", () => {
+    const nested = `&${"amp;".repeat(64_000)}lt;b&gt;x`;
+    expect(extractPromptText(nested)).toBe("x");
+    expect(timed(nested)).toBeLessThan(500);
+  });
+
+  it("passes over many comments that never close", () => {
+    const open = `${"<!--".repeat(64_000)} words`;
+    expect(timed(open)).toBeLessThan(500);
+    expect(extractPromptText("a <!-- one --> b <!-- two")).toBe("a b <!-- two");
+  });
+});
+

@@ -23,7 +23,9 @@ import { stripUnicodeTags } from "@shared/agent/strip-unicode-tags.js";
  * character inside brackets goes after the tags are stripped), so it runs
  * until the text stops changing: cleaning a value twice gives what cleaning it
  * once gave, and a check that cleans once judges what a sender that cleans
- * twice sends (#1521). Every pass only removes, decodes or folds, so it ends.
+ * twice sends (#1521). Every pass only removes, decodes or folds and takes time
+ * in proportion to the text, and a pass can leave at most a tag decoded or
+ * joined behind, so a few passes reach the end.
  * @param prompt - Raw prompt value (string, HTML, or unknown)
  * @returns Clean plain text suitable for AIGC provider input
  */
@@ -32,6 +34,36 @@ export function extractPromptText(prompt: unknown): string {
   let text = typeof prompt === "string" ? prompt : String(prompt);
   for (let next = cleanOnce(text); next !== text; next = cleanOnce(text)) text = next;
   return text;
+}
+
+/** The entities the cleaning decodes, by name. */
+const DECODED: Readonly<Record<string, string>> = { lt: "<", gt: ">", amp: "&", quot: '"', "#39": "'", nbsp: " " };
+
+/** One entity, behind any number of `amp;` it was escaped with. */
+const ENTITY = /&(?:amp;)*(lt|gt|amp|quot|#39|nbsp);/g;
+
+/**
+ * The text with every HTML comment removed, each from its `<!--` to the first `-->` after it on the same line,
+ * scanning each line once.
+ * @param text - The text.
+ * @returns The text, each comment replaced by a space.
+ * @throws {never} Never.
+ */
+function stripComments(text: string): string {
+  return text.split("\n").map((line) => {
+    let kept = "";
+    let from = 0;
+    for (;;) {
+      const open = line.indexOf("<!--", from);
+      if (open < 0) break;
+      const close = line.indexOf("-->", open + 4);
+      // No comment closes on this line after this one opens, so none after it does either.
+      if (close < 0) break;
+      kept += `${line.slice(from, open)} `;
+      from = close + 3;
+    }
+    return kept + line.slice(from);
+  }).join("\n");
 }
 
 /**
@@ -44,7 +76,7 @@ function cleanOnce(raw: string): string {
   let text = raw;
 
   // Strip HTML comments, each within one line.
-  text = text.replace(/<!--[^\n]*?-->/g, " ");
+  text = stripComments(text);
 
   // Strip HTML tags. A tag opens with a letter, optionally behind a slash —
   // requiring that is what separates markup from a pair of angle brackets a
@@ -55,14 +87,9 @@ function cleanOnce(raw: string): string {
   // sends one turn per line (#1521).
   text = text.replace(/<\/?[a-zA-Z][^<>\n]*>/g, " ");
 
-  // Decode common HTML entities
-  text = text
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, " ");
+  // Decode common HTML entities, a whole `&amp;amp;…` chain at once so its
+  // depth never sets the number of passes.
+  text = text.replace(ENTITY, (_chain, name: string) => DECODED[name] ?? "");
 
   // Remove zero-width characters, and the tag characters a hidden instruction
   // is spelled in
