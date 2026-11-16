@@ -81,7 +81,7 @@ export function collabUrlFor(region: string | null, config: RegionConfig | null)
   return config === null ? undefined : addressesOf(region, config).collab;
 }
 
-/** Time zones in the Americas' Pacific that stay with the global region. */
+/** Pacific time zones of US states and territories, which stay with the global region. */
 const US_PACIFIC = new Set(['Pacific/Honolulu', 'Pacific/Guam', 'Pacific/Saipan', 'Pacific/Pago_Pago', 'Pacific/Midway', 'Pacific/Johnston', 'Pacific/Wake']);
 
 /**

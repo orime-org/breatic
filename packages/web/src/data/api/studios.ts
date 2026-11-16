@@ -7,7 +7,8 @@
  *
  * Plain async functions (the data layer stays React-free; the `useQuery` /
  * `useMutation` bindings live in the pages that consume these). Every endpoint
- * requires auth (the httpOnly session cookie rides along via `withCredentials`).
+ * requires auth (the httpOnly session cookie, or the identity token cookie for
+ * a Studio in another region, rides along via `withCredentials`).
  */
 
 import { getRegionConfig, rememberProjectRegion, rememberStudioRegion, studioRegionOf } from '@web/data/api/regions';

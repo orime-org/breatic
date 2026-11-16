@@ -5,10 +5,11 @@
  * Studio repository — `studios` table data access.
  *
  * A studio is `personal` (one per user, created at the slug-setup
- * onboarding step) or `team`. The slug (URL handle) is globally unique and
- * chosen by the user. "One personal studio per user" is enforced by the
- * `studios_owner_personal_idx` partial unique index; a taken handle by
- * `studios_slug_idx`.
+ * onboarding step) or `team`. The slug (URL handle) is chosen by the user and
+ * unique across every region, and a user has one personal studio in any
+ * region; the global directory enforces both (`studio_directory_slug_live`,
+ * `studio_directory_one_personal`, inner#1955). `studios_owner_personal_idx`
+ * and `studios_slug_idx` hold the same rules within this region's database.
  */
 
 import { and, desc, eq, isNull, inArray, sql } from "drizzle-orm";
@@ -63,8 +64,8 @@ export async function getPersonalByCreator(
  * Insert a personal studio (slug = name = the chosen handle).
  *
  * Caller must ensure no active personal studio exists for the user (the
- * `studios_owner_personal_idx` partial unique index rejects duplicates;
- * `studios_slug_idx` rejects a taken handle). Accepts an optional Drizzle
+ * `studios_owner_personal_idx` partial unique index rejects duplicates in
+ * this region; `studios_slug_idx` rejects a handle taken in this region). Accepts an optional Drizzle
  * transaction so setup-studio can create the studio + the creator's admin
  * member row in one atomic operation.
  * @param createdByUserId - The creator's user UUID
@@ -95,11 +96,11 @@ export async function createPersonalStudio(
  * Unlike a personal studio (one per user), a user may own many team studios —
  * the `studios_owner_personal_idx` partial unique index is scoped to
  * `type='personal'`, so team rows are unconstrained on creator. The
- * global-unique slug index (`studios_slug_idx`) still rejects a taken handle.
+ * slug index (`studios_slug_idx`) still rejects a handle taken in this region.
  * Accepts an optional transaction so the service can create the studio + the
  * creator's admin member row atomically.
  * @param createdByUserId - The creator's user UUID (becomes the studio admin)
- * @param slug - The globally-unique URL handle
+ * @param slug - The URL handle, unique across regions
  * @param name - The display name (independent of the slug)
  * @param tx - Optional transaction handle
  * @param id - The id to create it under, when the caller chose one (inner#1955)
@@ -237,10 +238,10 @@ export async function getIdentitiesByStudioIds(
 /**
  * Look up an active studio (personal or team) by its URL handle.
  *
- * Backs the container shell (`GET /studio/:slug`). The slug is globally
- * unique among active studios (`studios_slug_idx`), so at most one row
+ * Backs the container shell (`GET /studio/:slug`). The slug is unique among
+ * this region's active studios (`studios_slug_idx`), so at most one row
  * matches.
- * @param slug - The studio's globally-unique slug
+ * @param slug - The studio's slug
  * @returns The studio entity, or `null` if no active studio has that slug
  */
 export async function getBySlug(slug: string): Promise<Studio | null> {

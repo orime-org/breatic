@@ -6,8 +6,8 @@
  * of a non-global region's new Project or new slug through that region's
  * outbox, a moment later; the tab that made the change already knows the
  * region and answers from it. A Project id never changes, so its region is
- * kept across page loads; a slug can move to another Studio, so only this
- * tab's own rename is remembered, and only in memory.
+ * kept across page loads; a slug can move to another Studio, so a Studio's
+ * region is kept only in this tab's memory and asked again on each page load.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

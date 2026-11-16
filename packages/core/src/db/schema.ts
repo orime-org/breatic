@@ -2099,7 +2099,8 @@ export const creditChargeRequests = pgTable(
     projectId: uuid("project_id").references(() => projects.id, { onDelete: "restrict" }),
     // The Studio charged, read from the Project when the request is written,
     // so the global region can settle without reading this region's rows
-    // (inner#1955). Null only on rows written before 0125 with no Project.
+    // (inner#1955). Null when the request names no Project or its Project
+    // was already gone, rows written before 0125 included.
     studioId: uuid("studio_id"),
     // Above zero. CHECK in 0121.
     amount: numeric("amount", { precision: 20, scale: 6 }).notNull(),

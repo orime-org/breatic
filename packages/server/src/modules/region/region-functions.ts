@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: Elastic-2.0
 
 /**
- * The reads a region serves the global region for one user's cross-region
- * lists (inner#1955), beside domain's `REGION_FUNCTIONS`.
+ * The functions a region serves the global region (inner#1955), beside
+ * domain's `REGION_FUNCTIONS`: reads for one user's cross-region lists, the
+ * back office's storage-reclaim calls, notification read marks, session
+ * revocation, forwarded invitation claims, slug-reservation state and paste
+ * key lookups.
  */
 
 import type { NotificationListView, RecentItem, SignupInvitationPreview } from "@breatic/shared";

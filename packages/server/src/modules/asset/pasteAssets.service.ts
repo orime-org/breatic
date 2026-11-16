@@ -55,8 +55,9 @@ export async function pasteAssets(input: PasteInput): Promise<CanvasPasteAnswer>
   const map: Record<string, string | null> = {};
 
   // Every key the paste names is read from this region's ledger in one
-  // answer, and the ones it does not hold are asked of the other regions in
-  // one call each (inner#1955).
+  // answer, and the ones it does not hold are asked elsewhere in one call per
+  // region: the global region asks every other region, any other region asks
+  // the global region (inner#1955).
   const addresses = new Set([...input.urls, ...input.pairs.flatMap((pair) => [pair.url, pair.cover])]);
   const here = await lookupKeysHere([...addresses].map((address) => storage.keyFromUrl(address)).filter((key) => key !== null));
   const local = new Map(Object.entries(here).map(([key, answer]) => [key, answer.asset]));
@@ -66,7 +67,7 @@ export async function pasteAssets(input: PasteInput): Promise<CanvasPasteAnswer>
   const covers = new Map<string, StudioAssetEntity>();
 
   /**
-   * The live row an address names, from any Studio in any region.
+   * The live row an address names, from this region or a region asked.
    * @param address - A storage address.
    * @returns The row, or null.
    */

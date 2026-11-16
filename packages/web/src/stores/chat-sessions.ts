@@ -286,9 +286,10 @@ function transportFor(
     // Two spellings is how both streaming endpoints once came to post at an
     // address the server does not serve, with nothing complaining.
     api: `${apiBaseForProject(projectId, getRegionConfig())}/chat/message`,
-    // The session cookie is what says who is asking, and a cross-origin
-    // default would leave it off in any deployment where the API is not the
-    // page's own origin.
+    // The httpOnly cookies say who is asking (the session in the global
+    // region, the identity token in any other), and a cross-origin default
+    // would leave them off in any deployment where the API is not the page's
+    // own origin.
     credentials: 'include',
     prepareSendMessagesRequest: async ({ messages, body: carried }) => {
       // Read before anything is awaited: the turn this request belongs to.

@@ -245,7 +245,9 @@ async function claimSlotAndSlug(input: CreateStudioInput, limit: number, tx: DbT
  * @param input - The creation.
  * @param options - The trial credits of a personal Studio.
  * @returns The Studio.
- * @throws {ConflictError} `slug_taken` or `team_limit_reached`.
+ * @throws {ConflictError} `slug_taken`, `team_limit_reached`, or
+ *   `studio_creation_in_progress` while a creation of the user's still waits
+ *   on another region.
  */
 async function createHere(input: CreateStudioInput, options: CreateStudioOptions): Promise<Studio> {
   return db.transaction(async (tx) => {

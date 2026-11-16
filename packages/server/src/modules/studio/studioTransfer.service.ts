@@ -294,7 +294,7 @@ export async function confirmTransfer(
  * time, so the roles are swapped exactly when the directory moved.
  * @param options - How long an offer may stay accepting first.
  * @param options.olderThanMs - Offers accepting for longer than this are finished.
- * @returns How many offers were finished or invalidated.
+ * @returns How many stale accepting offers this pass looked at.
  */
 export async function sweepAcceptingTransfers(options: { olderThanMs: number }): Promise<number> {
   const ids = await transfersRepo.listStaleAccepting(options.olderThanMs);
@@ -347,9 +347,9 @@ async function finishAccepted(transferId: string): Promise<void> {
   const parties = await transfersRepo.findParties(transferId);
   if (!parties) return;
   // Resolved BEFORE the transaction opens: a display field for the outcome
-  // notification, needing no transactional consistency — and a read issued from
-  // inside a transaction reaches for a SECOND pooled connection while the first
-  // is still held.
+  // notification that needs no transactional consistency, and outside the
+  // global region a call to the global region that should not run while the
+  // Studio row is locked.
   const accepterProfiles = await profilesService.personalProfiles([parties.toUserId]);
   await db.transaction(async (tx) => {
     await studioRepo.lockStudio(parties.studioId, tx);

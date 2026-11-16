@@ -92,12 +92,14 @@ export const requireAuth: MiddlewareHandler<{
 };
 
 /**
- * The id of the user a request carries, read the way `requireAuth` reads it:
- * the identity token outside the global region, the session in it. For logs
- * about a request refused before authentication; it never answers.
+ * The id of the user a request carries: the identity token outside the
+ * global region, the session in it. For logs about a request refused before
+ * authentication; it never answers, so outside the global region it skips
+ * the revocation tombstone `requireAuth` checks, and a revoked token that has
+ * not expired still names its user.
  * @param c - The request context.
  * @returns The user id, or null when the request carries no valid one.
- * @throws {Error} When the session or tombstone store cannot be read.
+ * @throws {Error} When the session store cannot be read (global region).
  */
 export async function requestUserId(c: Context): Promise<string | null> {
   if (!isGlobalRegion(env)) {
