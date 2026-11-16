@@ -36,9 +36,17 @@ export class ReasonedError extends AppError {
 
 /** The month's operations are used up and the studio cannot pay for one more. */
 export class OperationsExhaustedError extends ReasonedError {
+  /**
+   * The overage price, as a decimal string: the answer carries it so a page
+   * can say the same sentence where it shows no server text (design 21 row 23).
+   */
+  readonly credits: string;
+
   /** Build the refusal, naming the overage price. */
   constructor() {
-    super(402, t("server.operation.exhausted", { credits: formatCredits(getOperationsConfig().overage_credits, getActiveLocale()) }), "operations_exhausted");
+    const overage = getOperationsConfig().overage_credits;
+    super(402, t("server.operation.exhausted", { credits: formatCredits(overage, getActiveLocale()) }), "operations_exhausted");
+    this.credits = String(overage);
   }
 }
 

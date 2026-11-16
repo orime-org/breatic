@@ -1049,6 +1049,8 @@ export interface ChatSyncAnswer {
   blocked?: "credits" | "spend_cap";
   /** With `spend_cap`: whose limit, the user's own or the Studio's total. */
   scope?: "member" | "studio";
+  /** With `spend_cap`: the limit reached, as a credit decimal. */
+  limit?: string;
   /** With `spend_cap`: when the limit resets, as ISO text. */
   resetsAt?: string;
   /** When to ask again, in milliseconds. */

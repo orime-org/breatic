@@ -486,7 +486,7 @@ chat.post(
         // A spend limit is lifted by the Studio's admin, not by adding credits (inner#1968).
         if (err instanceof SpendCapReachedError) {
           return c.json({
-            data: { pending, running: false, awaiting: false, blocked: "spend_cap", scope: err.scope, resetsAt: err.resetsAt, next_sync_ms },
+            data: { pending, running: false, awaiting: false, blocked: "spend_cap", scope: err.scope, limit: err.limit, resetsAt: err.resetsAt, next_sync_ms },
           });
         }
         return c.json({ data: { pending, running: false, awaiting: false, blocked: "credits", next_sync_ms } });

@@ -543,6 +543,24 @@ describe("H refusals on the entries", () => {
     expect(data).toMatchObject({ running: false, blocked: "spend_cap", scope: "member", resetsAt: (await month()).next.toISOString() });
     expect((data.pending as unknown[]).length).toBe(1);
   });
+
+  it("design 21 row 23: the cap the sync names carries its limit, so the tray says the toast's sentence", async () => {
+    const a = await seedAccount(sql);
+    const y = await seedMember(sql, a);
+    await caps(a, 10);
+    const opened = await request(app, y.cookie, "POST", "/chat/open", { project_id: a.projectId });
+    const conversationId = ((await opened.json()) as { data: { current: { conversation: { id: string } } } }).data.current.conversation.id;
+    await getRedis().set(keysOf(conversationId).active, "R-running");
+    const id = crypto.randomUUID();
+    const sent = await request(app, y.cookie, "POST", "/chat/message", { id, message: "hello", project_id: a.projectId, conversation_id: conversationId }, { "Idempotency-Key": id });
+    expect(sent.status, await sent.clone().text()).toBeLessThan(300);
+    await spend(a, y.userId, 10);
+    await getRedis().del(keysOf(conversationId).active);
+    const res = await request(app, y.cookie, "POST", `/chat/conversations/${conversationId}/sync`, { project_id: a.projectId });
+    const { data } = (await res.json()) as { data: Record<string, unknown> };
+    expect(data.blocked).toBe("spend_cap");
+    expect(Number(data.limit)).toBe(10);
+  });
 });
 
 describe("H-11 the three admissions on a balance above zero share the cap", () => {
