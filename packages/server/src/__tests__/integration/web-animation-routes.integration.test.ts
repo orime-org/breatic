@@ -448,6 +448,46 @@ describe("GET /timeline/space-executions", () => {
     expect(await res.json()).toEqual({ error: { code: 422, message: t("server.error.validation") } });
   });
 
+  it("counts in each total exactly the rows its pages hold, in every scope", async () => {
+    const fx = await seedProject();
+    const { versionId } = await finishedCreate(fx);
+    const otherSpace = crypto.randomUUID();
+    for (const origin of ["web_animation_space", "timeline"] as const) {
+      const spaceId = origin === "timeline" ? otherSpace : fx.spaceId;
+      const queued = await insertExecution({ projectId: fx.projectId, spaceId, actorUserId: fx.editor.userId, origin });
+      const failed = await insertExecution({ projectId: fx.projectId, spaceId, actorUserId: fx.editor.userId, origin });
+      await grant(queued.id, fx.projectId);
+      await grant(failed.id, fx.projectId);
+      await step(failed.id, { type: "failure", fence: null, reason: "enqueue_failed" });
+      await finishedCreate(fx, spaceId);
+    }
+    await acceptRow(fx.editor.cookie, exportBody(fx, versionId), 201);
+    /**
+     * Read every page of a list.
+     * @param path - The list without a cursor.
+     * @returns Its rows and the totals of its first page.
+     */
+    const readAll = async (path: string): Promise<{ ids: string[]; totals: Page["totals"] }> => {
+      const first = await page(fx.viewer.cookie, `${path}&limit=1`);
+      const ids = first.rows.map((row) => row.id);
+      for (let cursor = first.nextCursor; cursor !== null;) {
+        const next = await page(fx.viewer.cookie, `${path}&limit=1&cursor=${encodeURIComponent(cursor)}`);
+        ids.push(...next.rows.map((row) => row.id));
+        cursor = next.nextCursor;
+      }
+      return { ids, totals: first.totals };
+    };
+    for (const scope of ["space", "timeline"]) {
+      const path = `/timeline/space-executions?projectId=${fx.projectId}&spaceId=${fx.spaceId}&scope=${scope}`;
+      const done = await readAll(`${path}&group=done`);
+      const running = await readAll(`${path}&group=running`);
+      expect(done.totals, scope).toEqual({ done: done.ids.length, inProgress: running.ids.length });
+      expect(done.ids.length * running.ids.length, scope).toBeGreaterThan(0);
+    }
+    const results = await readAll(`/timeline/results?projectId=${fx.projectId}`);
+    expect(results.totals.done + results.totals.inProgress).toBe(results.ids.length);
+  });
+
   it("pages by creation time and id without skipping rows that share a microsecond", async () => {
     const fx = await seedProject();
     const rows = [];

@@ -27,7 +27,13 @@ export const WebAnimationExecutionStatusSchema = z.enum(["awaiting_landing", "qu
 /** A web-animation execution's status. */
 export type WebAnimationExecutionStatus = z.infer<typeof WebAnimationExecutionStatusSchema>;
 
-const ENDED: ReadonlySet<WebAnimationExecutionStatus> = new Set(["succeeded", "failed", "cancelled", "expired"]);
+/** The statuses an execution can no longer leave. */
+export const WEB_ANIMATION_ENDED_STATUSES = ["succeeded", "failed", "cancelled", "expired"] as const satisfies readonly WebAnimationExecutionStatus[];
+
+const ENDED: ReadonlySet<WebAnimationExecutionStatus> = new Set(WEB_ANIMATION_ENDED_STATUSES);
+
+/** The statuses of an execution still in progress: every other one. */
+export const WEB_ANIMATION_OPEN_STATUSES: readonly WebAnimationExecutionStatus[] = WebAnimationExecutionStatusSchema.options.filter((status) => !ENDED.has(status));
 
 /**
  * Whether an execution has ended: it succeeded, failed, was cancelled or expired.

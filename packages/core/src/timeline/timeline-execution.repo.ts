@@ -13,6 +13,7 @@ import { and, asc, desc, eq, gt, inArray, isNull, lte, sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import type { PgColumn, PgUpdateSetSource } from "drizzle-orm/pg-core";
 import type { TimelineExecution, TimelineExecutionStatus } from "@breatic/shared";
+import { WEB_ANIMATION_OPEN_STATUSES } from "@breatic/shared/space-content";
 import { db, type DbTx } from "@core/db/client.js";
 import { timelineExecutions as t } from "@core/db/schema.js";
 
@@ -53,8 +54,6 @@ export interface TimelineExecutionTransition {
   /** The row after the call. */
   row: TimelineExecution;
 }
-
-const OPEN: readonly TimelineExecutionStatus[] = ["awaiting_landing", "queued", "running", "cancelling"];
 
 /**
  * Render a timestamp as UTC ISO text at the microsecond precision the column stores.
@@ -231,7 +230,7 @@ function plan(event: TimelineExecutionEvent): { where: SQL | undefined; set: PgU
     case "cancelAck":
       return { where: eq(t.status, "cancelling"), set: { status: "cancelled", fence: null } };
     case "deadline":
-      return { where: and(inArray(t.status, OPEN), lte(t.deadlineAt, sql`now()`)), set: { status: "expired", fence: null } };
+      return { where: and(inArray(t.status, WEB_ANIMATION_OPEN_STATUSES), lte(t.deadlineAt, sql`now()`)), set: { status: "expired", fence: null } };
     case "progress":
       return { where: and(eq(t.status, "running"), event.fence === null ? sql`false` : eq(t.fence, event.fence)), set: { phase: event.phase } };
   }
@@ -340,7 +339,7 @@ export async function listForSweep(options: { limit: number; afterId?: string },
   const rows = await (tx ?? db)
     .select(columns)
     .from(t)
-    .where(and(inArray(t.status, OPEN), isNull(t.deletedAt), options.afterId === undefined ? undefined : gt(t.id, options.afterId)))
+    .where(and(inArray(t.status, WEB_ANIMATION_OPEN_STATUSES), isNull(t.deletedAt), options.afterId === undefined ? undefined : gt(t.id, options.afterId)))
     .orderBy(asc(t.id))
     .limit(options.limit);
   return rows.map(toEntity);

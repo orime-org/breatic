@@ -11,6 +11,7 @@ export { readSpaceMediaReferences, type SpaceMediaReferences } from "@shared/spa
 export {
   WEB_ANIMATION_RUNTIME, WebAnimationManifestSchema, matchWebAnimationManifest, encodePreviewToken, decodePreviewToken,
   webAnimationDurationFrames, WEB_ANIMATION_MANIFEST_MAX_BYTES, WebAnimationExecutionStatusSchema, webAnimationExecutionEnded,
+  WEB_ANIMATION_ENDED_STATUSES, WEB_ANIMATION_OPEN_STATUSES,
   webAnimationExecutionFailed, WebAnimationExecutionKindSchema, WebAnimationExecutionRequestSchema, WebAnimationExecutionInputSchema,
   executionInputOf, WebAnimationPhaseSchema, WebAnimationRowViewSchema, WebAnimationAnchorSchema, readWebAnimationAnchor, anchorTimeWithin,
   type WebAnimationManifest, type WebAnimationExpectation, type WebAnimationManifestMismatch, type WebAnimationExecutionStatus,
