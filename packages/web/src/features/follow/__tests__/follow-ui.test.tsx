@@ -4,11 +4,12 @@
 import { act, render, renderHook, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { t } from '@breatic/shared';
 
 import type { ProjectUser } from '@web/data/yjs/project-meta';
 import { FOLLOW_BAR_HEIGHT, FollowBar } from '@web/features/follow/FollowBar';
 import { useFollowExitToast } from '@web/features/follow/use-follow-exit-toast';
-import { useFollowLeaderPresence } from '@web/features/follow/use-follow-leader-presence';
+import { useFollowLeaderPresence, type FollowLeaderPresenceInput } from '@web/features/follow/use-follow-leader-presence';
 import { useFollowStore } from '@web/stores/follow';
 
 const toastMock = vi.hoisted(() => ({ info: vi.fn(), warning: vi.fn(), error: vi.fn(), success: vi.fn() }));
@@ -98,6 +99,24 @@ describe('useFollowExitToast', () => {
     expect(String(toastMock.warning.mock.calls[0]?.[0])).toContain('Removed Member');
   });
 
+  it('names the leader and whom they started following', () => {
+    renderHook(() => useFollowExitToast());
+    act(() => {
+      useFollowStore.getState().start('u1', 'Li Lei');
+      useFollowStore.getState().stop('leaderFollows', { name: 'Wang Fang' });
+    });
+    expect(toastMock.info).toHaveBeenCalledWith(t('members.follow.stoppedLeaderFollows', { name: 'Li Lei', other: 'Wang Fang' }));
+  });
+
+  it('says the leader started following this user', () => {
+    renderHook(() => useFollowExitToast());
+    act(() => {
+      useFollowStore.getState().start('u1', 'Li Lei');
+      useFollowStore.getState().stop('leaderFollows', 'you');
+    });
+    expect(toastMock.info).toHaveBeenCalledWith(t('members.follow.stoppedLeaderFollowsYou', { name: 'Li Lei' }));
+  });
+
   it('says nothing for a reset on leaving the project', () => {
     renderHook(() => useFollowExitToast());
     act(() => {
@@ -120,10 +139,22 @@ describe('useFollowLeaderPresence', () => {
     return { id, online, lastSeenAt: 0 } as ProjectUser;
   }
 
+  /** The roster by user id: the leader, this user and a third member. */
+  const NAMES: ReadonlyMap<string, string> = new Map([['u1', 'Li Lei'], ['me', 'Me'], ['u2', 'Wang Fang']]);
+
+  /**
+   * Inputs for one render, with the leader online and following nobody.
+   * @param over - What the case sets.
+   * @returns The input.
+   */
+  function presence(over: Partial<FollowLeaderPresenceInput>): FollowLeaderPresenceInput {
+    return { users: [user('u1', true)], memberNames: NAMES, synced: true, currentUserId: 'me', leaderFollowing: null, ...over };
+  }
+
   it('stops with offline when the leader goes offline', () => {
     useFollowStore.getState().start('u1', 'Li Lei');
     const { rerender } = renderHook(
-      (p: { users: ProjectUser[] }) => useFollowLeaderPresence({ users: p.users, memberUserIds: ['u1', 'me'], synced: true }),
+      (p: { users: ProjectUser[] }) => useFollowLeaderPresence(presence({ users: p.users })),
       { initialProps: { users: [user('u1', true)] } },
     );
     expect(useFollowStore.getState().targetUserId).toBe('u1');
@@ -133,13 +164,37 @@ describe('useFollowLeaderPresence', () => {
 
   it('stops with offline when the leader is no longer a member', () => {
     useFollowStore.getState().start('u1', 'Li Lei');
-    renderHook(() => useFollowLeaderPresence({ users: [user('u1', true)], memberUserIds: ['me'], synced: true }));
+    renderHook(() => useFollowLeaderPresence(presence({ memberNames: new Map([['me', 'Me']]) })));
     expect(useFollowStore.getState().stopped?.reason).toBe('offline');
   });
 
   it('judges nothing before the presence records have synced', () => {
     useFollowStore.getState().start('u1', 'Li Lei');
-    renderHook(() => useFollowLeaderPresence({ users: [], memberUserIds: [], synced: false }));
+    renderHook(() => useFollowLeaderPresence(presence({ users: [], memberNames: new Map(), synced: false, leaderFollowing: 'u2' })));
     expect(useFollowStore.getState().targetUserId).toBe('u1');
+  });
+
+  it('stops when the leader starts following another member, naming them', () => {
+    useFollowStore.getState().start('u1', 'Li Lei');
+    const { rerender } = renderHook(
+      (p: { leaderFollowing: string | null }) => useFollowLeaderPresence(presence(p)),
+      { initialProps: { leaderFollowing: null as string | null } },
+    );
+    expect(useFollowStore.getState().targetUserId).toBe('u1');
+    rerender({ leaderFollowing: 'u2' });
+    expect(useFollowStore.getState().stopped).toMatchObject({ reason: 'leaderFollows', userId: 'u1', other: { name: 'Wang Fang' } });
+  });
+
+  it('stops when the leader starts following this user', () => {
+    useFollowStore.getState().start('u1', 'Li Lei');
+    renderHook(() => useFollowLeaderPresence(presence({ leaderFollowing: 'me' })));
+    expect(useFollowStore.getState().stopped).toMatchObject({ reason: 'leaderFollows', other: 'you' });
+  });
+
+  it('keeps following while the member the leader follows is not on the roster', () => {
+    useFollowStore.getState().start('u1', 'Li Lei');
+    renderHook(() => useFollowLeaderPresence(presence({ leaderFollowing: 'u-gone' })));
+    expect(useFollowStore.getState().targetUserId).toBe('u1');
+    expect(useFollowStore.getState().stopped).toBeNull();
   });
 });

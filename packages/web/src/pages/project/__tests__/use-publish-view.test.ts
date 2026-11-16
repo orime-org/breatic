@@ -1,12 +1,13 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: Elastic-2.0
 
-import { renderHook } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 
 import { usePublishView } from '@web/pages/project/use-publish-view';
+import { useFollowStore } from '@web/stores/follow';
 
 const open: Array<{ doc: Y.Doc; awareness: Awareness }> = [];
 let visibility: DocumentVisibilityState = 'visible';
@@ -22,13 +23,21 @@ function makeAwareness(): Awareness {
   return awareness;
 }
 
+/** The `view` field as this hook writes it. */
+interface PublishedView {
+  spaceId: string | null;
+  at: number;
+  focused: boolean;
+  following: string | null;
+}
+
 /**
  * Read the published view.
  * @param awareness - The awareness.
  * @returns The view field, or null.
  */
-function view(awareness: Awareness): { spaceId: string | null; at: number; focused: boolean } | null {
-  const state = awareness.getLocalState() as { view?: { spaceId: string | null; at: number; focused: boolean } | null } | null;
+function view(awareness: Awareness): PublishedView | null {
+  const state = awareness.getLocalState() as { view?: PublishedView | null } | null;
   return state?.view ?? null;
 }
 
@@ -45,6 +54,7 @@ beforeEach(() => {
   visibility = 'visible';
   Object.defineProperty(document, 'visibilityState', { get: () => visibility, configurable: true });
   vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+  useFollowStore.getState().reset();
 });
 
 afterEach(() => {
@@ -62,6 +72,25 @@ describe('usePublishView', () => {
     renderHook(() => usePublishView(awareness, 's1'));
     expect(view(awareness)).toMatchObject({ spaceId: 's1', focused: true });
     expect(view(awareness)!.at).toBeGreaterThanOrEqual(before);
+  });
+
+  it('publishes whom this user follows, rewritten when following starts, switches or stops', () => {
+    const awareness = makeAwareness();
+    renderHook(() => usePublishView(awareness, 's1'));
+    expect(view(awareness)?.following).toBeNull();
+    act(() => useFollowStore.getState().start('u1', 'Li Lei'));
+    expect(view(awareness)).toMatchObject({ spaceId: 's1', following: 'u1' });
+    act(() => useFollowStore.getState().start('u2', 'Han Meimei'));
+    expect(view(awareness)?.following).toBe('u2');
+    act(() => useFollowStore.getState().stop('button'));
+    expect(view(awareness)?.following).toBeNull();
+  });
+
+  it('publishes the member already being followed when it mounts', () => {
+    useFollowStore.getState().start('u1', 'Li Lei');
+    const awareness = makeAwareness();
+    renderHook(() => usePublishView(awareness, 's1'));
+    expect(view(awareness)?.following).toBe('u1');
   });
 
   it('republishes when the Space in front changes, and publishes null when every tab is closed', () => {

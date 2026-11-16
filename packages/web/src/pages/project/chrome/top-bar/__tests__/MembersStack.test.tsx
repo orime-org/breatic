@@ -10,6 +10,10 @@ import type { Member } from '@web/data/api/members';
 import { useFollowStore } from '@web/stores/follow';
 import { useUIStore } from '@web/stores/ui';
 import { expectNoA11yViolations } from '@web/test-utils/a11y';
+import { t } from '@breatic/shared';
+
+const toastMock = vi.hoisted(() => ({ info: vi.fn(), warning: vi.fn(), error: vi.fn(), success: vi.fn() }));
+vi.mock('@web/lib/toast', () => ({ toast: toastMock }));
 
 // Real-shape members for the role-gating tests: an owner (me), a non-owner
 // editor, and a non-owner viewer. The popover is read-only — removing /
@@ -174,6 +178,58 @@ describe('MembersStack', () => {
 describe('MembersStack, following', () => {
   beforeEach(() => {
     useFollowStore.getState().reset();
+    toastMock.info.mockClear();
+  });
+
+  it('dims View on a member who is following someone, and pressing it only says whom they follow', async () => {
+    const user = userEvent.setup();
+    render(
+      <MembersStack
+        members={MEMBERS}
+        currentUserId='u-vw'
+        onlineUserIds={new Set(['u-own', 'u-ed', 'u-vw'])}
+        followingByUser={new Map([['u-ed', 'u-own']])}
+      />,
+    );
+    await user.click(screen.getByTestId('members-trigger'));
+    const view = screen.getByTestId('members-follow-m-ed');
+    expect(view).toHaveAttribute('aria-disabled', 'true');
+    expect(screen.getByTestId('members-follow-m-own')).not.toHaveAttribute('aria-disabled');
+    await user.click(view);
+    expect(useFollowStore.getState().targetUserId).toBeNull();
+    expect(toastMock.info).toHaveBeenCalledWith(t('members.follow.busy', { name: 'Editor Person', other: 'Owner Person' }));
+  });
+
+  it('says a member is following this user when View is pressed on them', async () => {
+    const user = userEvent.setup();
+    render(
+      <MembersStack
+        members={MEMBERS}
+        currentUserId='u-vw'
+        onlineUserIds={new Set(['u-ed', 'u-vw'])}
+        followingByUser={new Map([['u-ed', 'u-vw']])}
+      />,
+    );
+    await user.click(screen.getByTestId('members-trigger'));
+    await user.click(screen.getByTestId('members-follow-m-ed'));
+    expect(useFollowStore.getState().targetUserId).toBeNull();
+    expect(toastMock.info).toHaveBeenCalledWith(t('members.follow.busyYou', { name: 'Editor Person' }));
+  });
+
+  it('offers View as usual on a member following someone who is not on the roster', async () => {
+    const user = userEvent.setup();
+    render(
+      <MembersStack
+        members={MEMBERS}
+        currentUserId='u-vw'
+        onlineUserIds={new Set(['u-ed', 'u-vw'])}
+        followingByUser={new Map([['u-ed', 'u-gone']])}
+      />,
+    );
+    await user.click(screen.getByTestId('members-trigger'));
+    await user.click(screen.getByTestId('members-follow-m-ed'));
+    expect(useFollowStore.getState().targetUserId).toBe('u-ed');
+    expect(toastMock.info).not.toHaveBeenCalled();
   });
 
   it('shows each row online or offline', async () => {

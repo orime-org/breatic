@@ -35,8 +35,8 @@ describe('useFollowStore', () => {
     expect(useFollowStore.getState().stopped?.seq).not.toBe(first?.seq);
   });
 
-  it('records each of the four reasons', () => {
-    for (const reason of ['button', 'viewport', 'space', 'offline'] as const) {
+  it('records each of the five reasons', () => {
+    for (const reason of ['button', 'viewport', 'space', 'offline', 'leaderFollows'] as const) {
       useFollowStore.getState().start('u1', 'Li Lei');
       useFollowStore.getState().stop(reason);
       expect(useFollowStore.getState().stopped?.reason).toBe(reason);
@@ -51,6 +51,18 @@ describe('useFollowStore', () => {
     useFollowStore.getState().stop('offline');
     expect(useFollowStore.getState().stopped).toMatchObject({ reason: 'offline', userId: 'u2', name: 'Han Meimei' });
     expect(useFollowStore.getState().targetName).toBeNull();
+  });
+
+  it('records whom the leader started following, a member by name or this user', () => {
+    useFollowStore.getState().start('u1', 'Li Lei');
+    useFollowStore.getState().stop('leaderFollows', { name: 'Wang Fang' });
+    expect(useFollowStore.getState().stopped).toMatchObject({ reason: 'leaderFollows', name: 'Li Lei', other: { name: 'Wang Fang' } });
+    useFollowStore.getState().start('u1', 'Li Lei');
+    useFollowStore.getState().stop('leaderFollows', 'you');
+    expect(useFollowStore.getState().stopped).toMatchObject({ reason: 'leaderFollows', other: 'you' });
+    useFollowStore.getState().start('u1', 'Li Lei');
+    useFollowStore.getState().stop('viewport');
+    expect(useFollowStore.getState().stopped?.other).toBeNull();
   });
 
   it('does nothing when asked to stop while not following', () => {

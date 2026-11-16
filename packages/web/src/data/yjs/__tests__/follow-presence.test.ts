@@ -17,12 +17,14 @@ function entry(userId: string, fields: Record<string, unknown>): Record<string, 
 
 describe('follow presence fields', () => {
   it('reads a well-formed view and rejects malformed ones', () => {
-    expect(readFollowField(entry('u', { view: { spaceId: 's1', at: 10, focused: true } }), 'view'))
-      .toEqual({ spaceId: 's1', at: 10, focused: true });
-    expect(readFollowField(entry('u', { view: { spaceId: null, at: 10, focused: false } }), 'view'))
-      .toEqual({ spaceId: null, at: 10, focused: false });
+    expect(readFollowField(entry('u', { view: { spaceId: 's1', at: 10, focused: true, following: 'u2' } }), 'view'))
+      .toEqual({ spaceId: 's1', at: 10, focused: true, following: 'u2' });
+    expect(readFollowField(entry('u', { view: { spaceId: null, at: 10, focused: false, following: null } }), 'view'))
+      .toEqual({ spaceId: null, at: 10, focused: false, following: null });
     for (const bad of [
       { spaceId: '', at: 10, focused: true },
+      { spaceId: 's1', at: 10, focused: true, following: '' },
+      { spaceId: 's1', at: 10, focused: true, following: 7 },
       { spaceId: 's1', at: Number.NaN, focused: true },
       { spaceId: 's1', at: 10 },
       { spaceId: 7, at: 10, focused: true },
@@ -32,6 +34,11 @@ describe('follow presence fields', () => {
       expect(readFollowField(entry('u', { view: bad }), 'view')).toBeNull();
     }
     expect(readFollowField(entry('u', {}), 'view')).toBeNull();
+  });
+
+  it('reads a view written without whom the member follows as following nobody', () => {
+    expect(readFollowField(entry('u', { view: { spaceId: 's1', at: 10, focused: true } }), 'view'))
+      .toEqual({ spaceId: 's1', at: 10, focused: true, following: null });
   });
 
   it('reads a canvas camera only with a positive visible size', () => {
